@@ -285,7 +285,12 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		return nil, fmt.Errorf("failed to get azure instance id for node %q (%v)", nodeID, err)
 	}
 
-	lun, err := d.cloud.GetDiskLun("", diskURI, nodeName)
+	diskName, err := getDiskName(diskURI)
+	if err != nil {
+		return nil, err
+	}
+
+	lun, err := d.cloud.GetDiskLun(diskName, diskURI, nodeName)
 	if err == cloudprovider.InstanceNotFound {
 		// Log error and continue with attach
 		glog.Warningf(
@@ -308,12 +313,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		}
 		glog.V(2).Infof("Trying to attach volume %q lun %d to node %q.", diskURI, lun, nodeName)
 		isManagedDisk := isManagedDisk(diskURI)
-		// todo: get cachingMode from req.GetVolumeAttributes()
-		// todo: get diskName from req.GetVolumeAttributes()
-		diskName, err := getDiskName(diskURI)
-		if err != nil {
-			return nil, err
-		}
+		// todo: get cachingMode from req.GetVolumeAttributes(), now it's default as ReadOnly
 
 		err = d.cloud.AttachDisk(isManagedDisk, diskName, diskURI, nodeName, lun, compute.CachingTypesReadOnly)
 		if err == nil {
