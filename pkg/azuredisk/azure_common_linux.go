@@ -30,7 +30,7 @@ import (
 
 // exclude those used by azure as resource and OS root in /dev/disk/azure
 func listAzureDiskPath(io ioHandler) []string {
-	azureDiskPath := "/dev/disk/azure/"
+	azureDiskPath := "/devhost/disk/azure/"
 	var azureDiskList []string
 	if dirs, err := io.ReadDir(azureDiskPath); err == nil {
 		for _, f := range dirs {
@@ -161,7 +161,7 @@ func findDiskByLunWithConstraint(lun int, io ioHandler, azureDisks []string) (st
 						}
 					}
 					if !found {
-						devLinkPaths := []string{"/dev/disk/azure/scsi1/", "/dev/disk/by-id/"}
+						devLinkPaths := []string{"/devhost/disk/azure/scsi1/", "/devhost/disk/by-id/"}
 						for _, devLinkPath := range devLinkPaths {
 							diskPath, err := getDiskLinkByDevName(io, devLinkPath, devName)
 							if err == nil {
@@ -170,7 +170,7 @@ func findDiskByLunWithConstraint(lun int, io ioHandler, azureDisks []string) (st
 							}
 							klog.Warningf("azureDisk - getDiskLinkByDevName by %s under %s failed, error: %v", devName, devLinkPath, err)
 						}
-						return "/dev/" + devName, nil
+						return "/devhost/" + devName, nil
 					}
 				}
 			}

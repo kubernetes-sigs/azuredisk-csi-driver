@@ -62,7 +62,7 @@ spec:
             - mountPath: /var/lib/waagent/ManagedIdentity-Settings
               readOnly: true
               name: msi
-            - mountPath: /dev
+            - mountPath: /devhost #use /devhost to avoid conflict
               name: device-dir
             - mountPath: /sys
               name: sys-dir

@@ -347,10 +347,15 @@ func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.Control
 		return nil, fmt.Errorf("failed to get azure instance id for node %q (%v)", nodeID, err)
 	}
 
+	diskName, err := getDiskName(diskURI)
+	if err != nil {
+		return nil, err
+	}
+
 	getLunMutex.LockKey(instanceid)
 	defer getLunMutex.UnlockKey(instanceid)
 
-	if err := d.cloud.DetachDiskByName("", diskURI, nodeName); err != nil {
+	if err := d.cloud.DetachDiskByName(diskName, diskURI, nodeName); err != nil {
 		return nil, status.Errorf(codes.Internal, "Could not detach volume %q from node %q: %v", diskURI, nodeID, err)
 	}
 	glog.V(2).Infof("ControllerUnpublishVolume: volume %s detached from node %s", diskURI, nodeID)
