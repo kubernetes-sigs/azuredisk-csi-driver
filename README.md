@@ -78,15 +78,13 @@ kubectl create -f https://raw.githubusercontent.com/andyzhangx/azuredisk-csi-dri
 ```
 $ watch kubectl describe po nginx-azuredisk
 $ kubectl exec -it nginx-azuredisk -- bash
-root@nginx-azuredisk:/# df -h
-Filesystem                                                                                             Size  Used Avail Use% Mounted on
-overlay                                                                                                 30G   19G   11G  65% /
-tmpfs                                                                                                  3.5G     0  3.5G   0% /dev
+Filesystem      Size  Used Avail Use% Mounted on
+overlay          30G   15G   15G  52% /
 ...
-//f571xxx.file.core.windows.net/pvc-file-dynamic-e2ade9f3-f88b-11e8-8429-000d3a03e7d7  1.0G   64K  1.0G   1% /mnt/azuredisk
+/dev/sdc        9.8G   37M  9.8G   1% /mnt/azuredisk
 ...
 ```
-In the above example, there is a `/mnt/azuredisk` directory mounted as dysk filesystem.
+In the above example, there is a `/mnt/azuredisk` directory mounted as disk filesystem.
 
 ## Kubernetes Development
 Please refer to [development guide](./docs/csi-dev.md)
