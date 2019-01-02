@@ -48,7 +48,7 @@ var (
 		string(api.AzureDedicatedBlobDisk),
 		string(api.AzureManagedDisk))
 
-	lunPathRE = regexp.MustCompile(`/devhost/disk/azure/scsi(?:.*)/lun(.+)`)
+	lunPathRE = regexp.MustCompile(`/dev(?:.*)/disk/azure/scsi(?:.*)/lun(.+)`)
 )
 
 func normalizeKind(kind string) (v1.AzureDataDiskKind, error) {
