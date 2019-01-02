@@ -19,7 +19,7 @@ spec:
           args:
             - --v=5
             - --csi-address=/csi/csi.sock
-            - --kubelet-registration-path=/var/lib/kubelet/plugins/csi-azuredisk/csi.sock
+            - --kubelet-registration-path=/var/lib/kubelet/plugins/disk.csi.azure.com/csi.sock
           env:
             - name: KUBE_NODE_NAME
               valueFrom:
@@ -70,7 +70,7 @@ spec:
               name: scsi-host-dir         
       volumes:
         - hostPath:
-            path: /var/lib/kubelet/plugins/csi-azuredisk
+            path: /var/lib/kubelet/plugins/disk.csi.azure.com
             type: DirectoryOrCreate
           name: socket-dir
         - hostPath:

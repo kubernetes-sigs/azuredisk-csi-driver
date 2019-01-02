@@ -24,7 +24,7 @@ csi-azuredisk-nqxn9           2/2     Running   0          21h   10.240.0.35   k
 csi-azuredisk-provisioner-0   1/1     Running   0          22h   10.240.0.39   k8s-agentpool-17181929-1
 ```
 
- - clean up azure file CSI driver
+ - clean up azure disk CSI driver
 ```
 kubectl delete ds csi-azuredisk
 kubectl delete sts csi-azuredisk-provisioner

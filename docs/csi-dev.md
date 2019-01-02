@@ -24,26 +24,26 @@ $ csc identity plugin-info --endpoint tcp://127.0.0.1:10000
 "csi-azuredisk" "v0.1.0-alpha"
 ```
 
-#### 2. Create an azure file volume
+#### 2. Create an azure disk volume
 ```
 $ csc controller new --endpoint tcp://127.0.0.1:10000 --cap 1,block CSIVolumeName  --req-bytes 2147483648 --params skuname=Standard_LRS
 CSIVolumeID       2147483648      "accountname"="f5713de20cde511e8ba4900" "skuname"="Standard_LRS"
 ```
 
-#### 3. Mount an azure file volume to a user specified directory
+#### 3. Mount an azure disk volume to a user specified directory
 ```
 $ mkdir ~/testmount
 $ csc node publish --endpoint tcp://127.0.0.1:10000 --cap 1,block --target-path ~/testmount CSIVolumeID
 #f5713de20cde511e8ba4900#pvc-file-dynamic-8ff5d05a-f47c-11e8-9c3a-000d3a00df41
 ```
 
-#### 4. Unmount azure file volume
+#### 4. Unmount azure disk volume
 ```
 $ csc node unpublish --endpoint tcp://127.0.0.1:10000 --target-path ~/testmount CSIVolumeID
 CSIVolumeID
 ```
 
-#### 5. Delete azure file volume
+#### 5. Delete azure disk volume
 ```
 $ csc controller del --endpoint tcp://127.0.0.1:10000 CSIVolumeID
 CSIVolumeID

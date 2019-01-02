@@ -43,7 +43,7 @@ func main() {
 func handle() {
 	driver := azuredisk.NewDriver(*nodeID)
 	if driver == nil {
-		glog.Fatalln("Failed to initialize azurefile CSI Driver")
+		glog.Fatalln("Failed to initialize azuredisk CSI Driver")
 	}
 	driver.Run(*endpoint)
 }
