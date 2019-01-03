@@ -31,7 +31,7 @@ import (
 
 const (
 	driverName    = "disk.csi.azure.com"
-	vendorVersion = "0.0.1"
+	vendorVersion = "v0.1.0-alpha"
 	topologyKey   = "topology." + driverName + "/zone"
 )
 

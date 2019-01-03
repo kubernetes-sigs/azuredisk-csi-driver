@@ -84,7 +84,6 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	var (
 		location, account  string
 		storageAccountType string
-		cachingMode        v1.AzureDataDiskCachingMode
 		strKind            string
 		err                error
 		resourceGroup      string
@@ -105,8 +104,6 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			storageAccountType = v
 		case "kind":
 			strKind = v
-		case "cachingmode":
-			cachingMode = v1.AzureDataDiskCachingMode(v)
 		case "resourcegroup":
 			resourceGroup = v
 			/* new zone implementation in csi, these parameters are not needed
@@ -153,10 +150,6 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	}
 
 	selectedAvailabilityZone := pickAvailabilityZone(req.GetAccessibilityRequirements())
-
-	if cachingMode, err = normalizeCachingMode(cachingMode); err != nil {
-		return nil, err
-	}
 
 	// create disk
 	glog.V(2).Infof("begin to create azure disk(%s) account type(%s) rg(%s) location(%s) size(%d)", diskName, skuName, resourceGroup, location, requestGiB)
@@ -313,9 +306,12 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		}
 		glog.V(2).Infof("Trying to attach volume %q lun %d to node %q.", diskURI, lun, nodeName)
 		isManagedDisk := isManagedDisk(diskURI)
-		// todo: get cachingMode from req.GetVolumeAttributes(), now it's default as ReadOnly
 
-		err = d.cloud.AttachDisk(isManagedDisk, diskName, diskURI, nodeName, lun, compute.CachingTypesReadOnly)
+		var cachingMode compute.CachingTypes
+		if cachingMode, err = getCachingMode(req.GetVolumeAttributes()); err != nil {
+			return nil, err
+		}
+		err = d.cloud.AttachDisk(isManagedDisk, diskName, diskURI, nodeName, lun, cachingMode)
 		if err == nil {
 			glog.V(2).Infof("Attach operation successful: volume %q attached to node %q.", diskURI, nodeName)
 		} else {
@@ -380,6 +376,40 @@ func (d *Driver) ValidateVolumeCapabilities(ctx context.Context, req *csi.Valida
 	return &csi.ValidateVolumeCapabilitiesResponse{Supported: true, Message: ""}, nil
 }
 
+// ControllerGetCapabilities returns the capabilities of the Controller plugin
+func (d *Driver) ControllerGetCapabilities(ctx context.Context, req *csi.ControllerGetCapabilitiesRequest) (*csi.ControllerGetCapabilitiesResponse, error) {
+	glog.V(2).Infof("Using default ControllerGetCapabilities")
+
+	return &csi.ControllerGetCapabilitiesResponse{
+		Capabilities: d.Cap,
+	}, nil
+}
+
+// GetCapacity returns the capacity of the total available storage pool
+func (d *Driver) GetCapacity(ctx context.Context, req *csi.GetCapacityRequest) (*csi.GetCapacityResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "")
+}
+
+// ListVolumes return all available volumes
+func (d *Driver) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest) (*csi.ListVolumesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "")
+}
+
+// CreateSnapshot create a snapshot (todo)
+func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "")
+}
+
+// DeleteSnapshot delete a snapshot (todo)
+func (d *Driver) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "")
+}
+
+// ListSnapshots list all snapshots (todo)
+func (d *Driver) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "")
+}
+
 func isValidVolumeCapabilities(volCaps []*csi.VolumeCapability) bool {
 	hasSupport := func(cap *csi.VolumeCapability) bool {
 		for _, c := range volumeCaps {
@@ -426,36 +456,19 @@ func pickAvailabilityZone(requirement *csi.TopologyRequirement) string {
 	return ""
 }
 
-// ControllerGetCapabilities returns the capabilities of the Controller plugin
-func (d *Driver) ControllerGetCapabilities(ctx context.Context, req *csi.ControllerGetCapabilitiesRequest) (*csi.ControllerGetCapabilitiesResponse, error) {
-	glog.V(2).Infof("Using default ControllerGetCapabilities")
+func getCachingMode(attributes map[string]string) (compute.CachingTypes, error) {
+	var (
+		cachingMode v1.AzureDataDiskCachingMode
+		err         error
+	)
 
-	return &csi.ControllerGetCapabilitiesResponse{
-		Capabilities: d.Cap,
-	}, nil
-}
+	for k, v := range attributes {
+		switch strings.ToLower(k) {
+		case "cachingmode":
+			cachingMode = v1.AzureDataDiskCachingMode(v)
+		}
+	}
 
-// GetCapacity returns the capacity of the total available storage pool
-func (d *Driver) GetCapacity(ctx context.Context, req *csi.GetCapacityRequest) (*csi.GetCapacityResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
-}
-
-// ListVolumes return all available volumes
-func (d *Driver) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest) (*csi.ListVolumesResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
-}
-
-// CreateSnapshot create a snapshot (todo)
-func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
-}
-
-// DeleteSnapshot delete a snapshot (todo)
-func (d *Driver) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
-}
-
-// ListSnapshots list all snapshots (todo)
-func (d *Driver) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
+	cachingMode, err = normalizeCachingMode(cachingMode)
+	return compute.CachingTypes(cachingMode), err
 }
