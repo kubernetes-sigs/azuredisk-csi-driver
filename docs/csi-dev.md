@@ -26,47 +26,63 @@ $ csc identity plugin-info --endpoint tcp://127.0.0.1:10000
 
 #### 2. Create an azure disk volume
 ```
-$ csc controller new --endpoint tcp://127.0.0.1:10000 --cap 1,block CSIVolumeName  --req-bytes 2147483648 --params skuname=Standard_LRS
-CSIVolumeID       2147483648      "accountname"="f5713de20cde511e8ba4900" "skuname"="Standard_LRS"
+$ csc controller new --endpoint tcp://127.0.0.1:10000 --cap 1,block CSIVolumeName  --req-bytes 2147483648 --params skuname=Standard_LRS,kind=managed
+"/subscriptions/b9d2281e-dcd5-4dfd-9a97-xxx/resourceGroups/xxx/providers/Microsoft.Compute/disks/pvc-disk-dynamic-398b838f-0432-11e9-9978-000d3a00df41"        2147483648      "kind"="managed"        "skuname"="Standard_LRS"
 ```
 
-#### 3. Mount an azure disk volume to a user specified directory
+#### 3. Attach an azure disk volume to a node
 ```
-$ mkdir ~/testmount
-$ csc node publish --endpoint tcp://127.0.0.1:10000 --cap 1,block --target-path ~/testmount CSIVolumeID
-#f5713de20cde511e8ba4900#pvc-file-dynamic-8ff5d05a-f47c-11e8-9c3a-000d3a00df41
+$ csc controller publish --endpoint tcp://127.0.0.1:10000 --node-id k8s-agentpool-17181929-0 --cap 1,block "/subscriptions/b9d2281e-dcd5-4dfd-9a97-xxx/resourceGroups/xxx/providers/Microsoft.Compute/disks/pvc-disk-dynamic-398b838f-0432-11e9-9978-000d3a00df41"
 ```
 
-#### 4. Unmount azure disk volume
+#### 4. Stage an azure disk volume on a node (format and mount disk to a staging path)
 ```
-$ csc node unpublish --endpoint tcp://127.0.0.1:10000 --target-path ~/testmount CSIVolumeID
-CSIVolumeID
-```
-
-#### 5. Delete azure disk volume
-```
-$ csc controller del --endpoint tcp://127.0.0.1:10000 CSIVolumeID
-CSIVolumeID
+$ csc node stage --endpoint tcp://127.0.0.1:10000 --cap 1,block --staging-target-path=/tmp/staging-path --pub-info devicePath="0" "/subscriptions/b9d2281e-dcd5-4dfd-9a97-xxx/resourceGroups/xxx/providers/Microsoft.Compute/disks/pvc-disk-dynamic-398b838f-0432-11e9-9978-000d3a00df41"
 ```
 
-#### 6. Validate volume capabilities
+#### 5. Publish an azure disk volume on a node (bind mount the volume from staging to target path)
+```
+$ csc node publish --endpoint tcp://127.0.0.1:10000 --cap 1,block --staging-target-path=/tmp/staging-path --target-path=/tmp/publish-path "/subscriptions/b9d2281e-dcd5-4dfd-9a97-xxx/resourceGroups/xxx/providers/Microsoft.Compute/disks/pvc-disk-dynamic-398b838f-0432-11e9-9978-000d3a00df41"
+```
+
+#### 6. Unpublish an azure disk volume on a node
+```
+$ csc node unpublish --endpoint tcp://127.0.0.1:10000 --target-path=/tmp/publish-path "/subscriptions/b9d2281e-dcd5-4dfd-9a97-xxx/resourceGroups/xxx/providers/Microsoft.Compute/disks/pvc-disk-dynamic-398b838f-0432-11e9-9978-000d3a00df41"
+```
+
+#### 7. Unstage an azure disk volume on a node
+```
+$ csc node unstage --endpoint tcp://127.0.0.1:10000 --staging-target-path=/tmp/staging-path "/subscriptions/b9d2281e-dcd5-4dfd-9a97-xxx/resourceGroups/xxx/providers/Microsoft.Compute/disks/pvc-disk-dynamic-398b838f-0432-11e9-9978-000d3a00df41"
+```
+
+#### 8. Detach an azure disk volume from a node
+```
+$ csc controller unpublish --endpoint tcp://127.0.0.1:10000 --node-id k8s-agentpool-17181929-0 "/subscriptions/b9d2281e-dcd5-4dfd-9a97-xxx/resourceGroups/xxx/providers/Microsoft.Compute/disks/pvc-disk-dynamic-398b838f-0432-11e9-9978-000d3a00df41"
+```
+
+#### 9. Delete an azure disk volume
+```
+$ csc controller del --endpoint tcp://127.0.0.1:10000 "/subscriptions/b9d2281e-dcd5-4dfd-9a97-xxx/resourceGroups/xxx/providers/Microsoft.Compute/disks/pvc-disk-dynamic-398b838f-0432-11e9-9978-000d3a00df41"
+```
+
+#### 10. Validate volume capabilities
 ```
 $ csc controller validate-volume-capabilities --endpoint tcp://127.0.0.1:10000 --cap 1,block CSIVolumeID
 CSIVolumeID  true
 ```
 
-#### 7. Get NodeID
+#### 11. Get NodeID
 ```
 $ csc node get-id --endpoint tcp://127.0.0.1:10000
 CSINode
 ```
 
-#### 8. Create snapshot
+#### 12. Create snapshot
 ```
 $  csc controller create-snapshot
 ```
 
-#### 9. Delete snapshot
+#### 13. Delete snapshot
 ```
 $  csc controller delete-snapshot
 ```
