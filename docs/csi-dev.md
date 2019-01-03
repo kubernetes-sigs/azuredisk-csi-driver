@@ -1,4 +1,4 @@
-# Azure file CSI driver development guide
+# Azure disk CSI driver development guide
 
 ### Build azurediskplugin
 ```

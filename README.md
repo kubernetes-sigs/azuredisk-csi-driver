@@ -48,12 +48,7 @@ kubectl create -f https://raw.githubusercontent.com/andyzhangx/azuredisk-csi-dri
 ```
 
 #### Example#2: Azuredisk Static Provisioning(use an existing azure disk)
- - Use `kubectl create secret` to create `azure-secret` with existing storage account name and key
-```
-kubectl create secret generic azure-secret --from-literal accountname=NAME --from-literal accountkey="KEY" --type=Opaque
-```
-
- - Create an azuredisk CSI PV, download `pv-azuredisk-csi.yaml` file and edit `sharename` in `volumeAttributes`
+ - Create an azuredisk CSI PV, download `pv-azuredisk-csi.yaml` file and edit `diskName`, `diskURI` in `volumeAttributes`
 ```
 wget https://raw.githubusercontent.com/andyzhangx/azuredisk-csi-driver/master/deploy/example/pv-azuredisk-csi.yaml
 vi pv-azuredisk-csi.yaml

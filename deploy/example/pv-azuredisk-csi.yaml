@@ -12,3 +12,9 @@ spec:
     driver: disk.csi.azure.com
     readOnly: false
     volumeHandle: arbitrary-volumeid
+    volumeAttributes:
+      kind: Managed
+      diskName: {disk-id}
+      diskURI: /subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id}
+      cachingMode: ReadOnly
+      fsType: ext4
