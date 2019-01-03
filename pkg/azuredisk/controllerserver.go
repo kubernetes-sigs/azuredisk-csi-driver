@@ -84,6 +84,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	var (
 		location, account  string
 		storageAccountType string
+		cachingMode        v1.AzureDataDiskCachingMode
 		strKind            string
 		err                error
 		resourceGroup      string
@@ -104,6 +105,8 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			storageAccountType = v
 		case "kind":
 			strKind = v
+		case "cachingmode":
+			cachingMode = v1.AzureDataDiskCachingMode(v)
 		case "resourcegroup":
 			resourceGroup = v
 			/* new zone implementation in csi, these parameters are not needed
@@ -135,6 +138,10 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	// normalize values
 	skuName, err := normalizeStorageAccountType(storageAccountType)
 	if err != nil {
+		return nil, err
+	}
+
+	if cachingMode, err = normalizeCachingMode(cachingMode); err != nil {
 		return nil, err
 	}
 
@@ -245,6 +252,7 @@ func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest)
 			return &csi.DeleteVolumeResponse{}, err
 		}
 	}
+	glog.V(2).Infof("delete azure disk(%s) successfullly", diskURI)
 
 	return &csi.DeleteVolumeResponse{}, nil
 }
@@ -304,13 +312,13 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 			glog.Warningf("no LUN available for instance %q (%v)", nodeName, err)
 			return nil, fmt.Errorf("all LUNs are used, cannot attach volume %q to instance %q (%v)", diskURI, instanceid, err)
 		}
-		glog.V(2).Infof("Trying to attach volume %q lun %d to node %q.", diskURI, lun, nodeName)
 		isManagedDisk := isManagedDisk(diskURI)
 
 		var cachingMode compute.CachingTypes
 		if cachingMode, err = getCachingMode(req.GetVolumeAttributes()); err != nil {
 			return nil, err
 		}
+		glog.V(2).Infof("Trying to attach volume %q lun %d to node %q", diskURI, lun, nodeName)
 		err = d.cloud.AttachDisk(isManagedDisk, diskName, diskURI, nodeName, lun, cachingMode)
 		if err == nil {
 			glog.V(2).Infof("Attach operation successful: volume %q attached to node %q.", diskURI, nodeName)
@@ -318,6 +326,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 			glog.V(2).Infof("Attach volume %q to instance %q failed with %v", diskURI, instanceid, err)
 			return nil, fmt.Errorf("Attach volume %q to instance %q failed with %v", diskURI, instanceid, err)
 		}
+		glog.V(2).Infof("attach volume %q lun %d to node %q successfully", diskURI, lun, nodeName)
 	}
 
 	pvInfo := map[string]string{"devicePath": strconv.Itoa(int(lun))}
@@ -351,13 +360,14 @@ func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.Control
 	getLunMutex.LockKey(instanceid)
 	defer getLunMutex.UnlockKey(instanceid)
 
+	glog.V(2).Infof("Trying to detach volume %s from node %s", diskURI, nodeID)
 	err = d.cloud.DetachDiskByName(diskName, diskURI, nodeName)
 	if strings.Contains(err.Error(), errDiskNotFound) {
-		glog.Warningf("ControllerUnpublishVolume: volume %s already detached from node %s", diskURI, nodeID)
+		glog.Warningf("volume %s already detached from node %s", diskURI, nodeID)
 	} else {
 		return nil, status.Errorf(codes.Internal, "Could not detach volume %q from node %q: %v", diskURI, nodeID, err)
 	}
-	glog.V(2).Infof("ControllerUnpublishVolume: volume %s detached from node %s", diskURI, nodeID)
+	glog.V(2).Infof("detach volume %s from node %s successfully", diskURI, nodeID)
 
 	return &csi.ControllerUnpublishVolumeResponse{}, nil
 }
