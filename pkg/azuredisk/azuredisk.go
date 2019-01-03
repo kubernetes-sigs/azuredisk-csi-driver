@@ -30,9 +30,10 @@ import (
 )
 
 const (
-	driverName    = "disk.csi.azure.com"
-	vendorVersion = "v0.1.0-alpha"
-	topologyKey   = "topology." + driverName + "/zone"
+	driverName      = "disk.csi.azure.com"
+	vendorVersion   = "v0.1.0-alpha"
+	topologyKey     = "topology." + driverName + "/zone"
+	errDiskNotFound = "not found"
 )
 
 var (
