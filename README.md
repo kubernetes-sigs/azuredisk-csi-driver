@@ -6,17 +6,20 @@
  - supported agent OS: Linux
 
 ## About
-This driver allows Kubernetes to use [azure disk](https://docs.microsoft.com/en-us/azure/storage/files/storage-files-introduction) volume, csi plugin name: `disk.csi.azure.com`
+This driver allows Kubernetes to use [azure disk](https://azure.microsoft.com/en-us/services/storage/disks/) volume, csi plugin name: `disk.csi.azure.com`
 
 ## `disk.csi.azure.com` driver parameters
  > storage class `disk.csi.azure.com` parameters are compatable with built-in [azuredisk](https://kubernetes.io/docs/concepts/storage/volumes/#azuredisk) plugin
  
-Name | Meaning | Example | Mandatory | Notes
+Name | Meaning | Available Values(or example) | Mandatory | Notes
 --- | --- | --- | --- | ---
-skuName | azure disk storage account type | `Standard_LRS`, `Standard_GRS`, `Standard_RAGRS` | No | if empty, `Standard_LRS` is the default value)
-storageAccount | specify the storage account name in which azure disk share will be created | STORAGE_ACCOUNT_NAME | No | if empty, driver find a suitable storage account that matches `skuName` in the same resource group
-location | specify the location in which azure disk share will be created | `eastus`, `westus`, etc. | No | if empty, driver will use the same location name as current k8s cluster
-resourceGroup | specify the resource group in which azure disk share will be created | RG_NAME | No | if empty, driver will use the same resource group name as current k8s cluster
+skuName | azure disk storage account type (alias: `storageAccountType`)| `Standard_LRS`, `Premium_LRS`, `StandardSSD_LRS`, `UltraSSD_LRS` | No | if empty, `Standard_LRS` is the default value)
+kind | managed or unmanaged(blob based) disk | `managed` (`dedicated`, `shared` are deprecated since it's using unmanaged disk) | No | if empty, `managed` is the default value)
+storageAccount | specify the storage account name in which azure disk will be created | STORAGE_ACCOUNT_NAME | No | if empty, driver find a suitable storage account that matches `skuName` in the same resource group
+location | specify the location in which azure disk will be created | `eastus`, `westus`, etc. | No | if empty, driver will use the same location name as current k8s cluster
+resourceGroup | specify the resource group in which azure disk will be created | RG_NAME | No | if empty, driver will use the same resource group name as current k8s cluster
+DiskIOPSReadWrite | [UltraSSD disk](https://docs.microsoft.com/en-us/azure/virtual-machines/linux/disks-ultra-ssd) IOPS Capability |  | No | if empty, `500` is the default value
+DiskMBpsReadWrite | [UltraSSD disk](https://docs.microsoft.com/en-us/azure/virtual-machines/linux/disks-ultra-ssd) Throughput Capability |  | No | if empty, `100` is the default value
 
 ## Prerequisite
  - To ensure that all necessary features are enabled, set the following feature gate flags to true:
@@ -44,7 +47,7 @@ kubectl create -f https://raw.githubusercontent.com/andyzhangx/azuredisk-csi-dri
 kubectl create -f https://raw.githubusercontent.com/andyzhangx/azuredisk-csi-driver/master/deploy/example/pvc-azuredisk-csi.yaml
 ```
 
-#### Example#2: Azuredisk Static Provisioning(use an existing azure disk share)
+#### Example#2: Azuredisk Static Provisioning(use an existing azure disk)
  - Use `kubectl create secret` to create `azure-secret` with existing storage account name and key
 ```
 kubectl create secret generic azure-secret --from-literal accountname=NAME --from-literal accountkey="KEY" --type=Opaque
