@@ -158,7 +158,6 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 
 	selectedAvailabilityZone := pickAvailabilityZone(req.GetAccessibilityRequirements())
 
-	// create disk
 	glog.V(2).Infof("begin to create azure disk(%s) account type(%s) rg(%s) location(%s) size(%d)", diskName, skuName, resourceGroup, location, requestGiB)
 
 	diskURI := ""
@@ -323,7 +322,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		if err == nil {
 			glog.V(2).Infof("Attach operation successful: volume %q attached to node %q.", diskURI, nodeName)
 		} else {
-			glog.V(2).Infof("Attach volume %q to instance %q failed with %v", diskURI, instanceid, err)
+			glog.Errorf("Attach volume %q to instance %q failed with %v", diskURI, instanceid, err)
 			return nil, fmt.Errorf("Attach volume %q to instance %q failed with %v", diskURI, instanceid, err)
 		}
 		glog.V(2).Infof("attach volume %q lun %d to node %q successfully", diskURI, lun, nodeName)
