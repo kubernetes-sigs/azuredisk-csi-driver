@@ -361,11 +361,12 @@ func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.Control
 	defer getLunMutex.UnlockKey(instanceid)
 
 	glog.V(2).Infof("Trying to detach volume %s from node %s", diskURI, nodeID)
-	err = d.cloud.DetachDiskByName(diskName, diskURI, nodeName)
-	if strings.Contains(err.Error(), errDiskNotFound) {
-		glog.Warningf("volume %s already detached from node %s", diskURI, nodeID)
-	} else {
-		return nil, status.Errorf(codes.Internal, "Could not detach volume %q from node %q: %v", diskURI, nodeID, err)
+	if err := d.cloud.DetachDiskByName(diskName, diskURI, nodeName); err != nil {
+		if strings.Contains(err.Error(), errDiskNotFound) {
+			glog.Warningf("volume %s already detached from node %s", diskURI, nodeID)
+		} else {
+			return nil, status.Errorf(codes.Internal, "Could not detach volume %q from node %q: %v", diskURI, nodeID, err)
+		}
 	}
 	glog.V(2).Infof("detach volume %s from node %s successfully", diskURI, nodeID)
 
