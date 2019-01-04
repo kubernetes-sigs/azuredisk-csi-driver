@@ -1,0 +1,15 @@
+language: go
+go_import_path: github.com/andyzhangx/azuredisk-csi-driver
+
+env:
+  global:
+    - GO111MODULE=off
+
+go:
+  - "1.10.x"
+  - "1.11.4"
+
+script:
+  - make test
+  - make azuredisk
+  - make azuredisk-container
