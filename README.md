@@ -5,10 +5,10 @@
  - supported Kubernetes version: v1.12.0 or later version
  - supported agent OS: Linux
 
-## About
+### About
 This driver allows Kubernetes to use [azure disk](https://azure.microsoft.com/en-us/services/storage/disks/) volume, csi plugin name: `disk.csi.azure.com`
 
-## `disk.csi.azure.com` driver parameters
+### `disk.csi.azure.com` driver parameters
  > storage class `disk.csi.azure.com` parameters are compatable with built-in [azuredisk](https://kubernetes.io/docs/concepts/storage/volumes/#azuredisk) plugin
  
 Name | Meaning | Available Values(or example) | Mandatory | Default value
