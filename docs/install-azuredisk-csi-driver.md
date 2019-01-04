@@ -13,7 +13,7 @@ kubectl apply -f https://raw.githubusercontent.com/andyzhangx/azuredisk-csi-driv
 
  - check pods status:
 ```
-watch kubectl get po -o wide
+watch kubectl get po -o wide -n kube-system
 ```
 example output:
 ```
@@ -26,7 +26,7 @@ csi-azuredisk-provisioner-0   1/1     Running   0          22h   10.240.0.39   k
 
  - clean up azure disk CSI driver
 ```
-kubectl delete ds csi-azuredisk
-kubectl delete sts csi-azuredisk-provisioner
-kubectl delete sts csi-azuredisk-attacher
+kubectl delete ds csi-azuredisk -n kube-system
+kubectl delete sts csi-azuredisk-provisioner -n kube-system
+kubectl delete sts csi-azuredisk-attacher -n kube-system
 ```
