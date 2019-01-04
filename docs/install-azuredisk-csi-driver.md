@@ -1,7 +1,7 @@
 # Install azuredisk CSI driver on a kubernetes cluster
 ```
-kubectl apply -f https://raw.githubusercontent.com/andyzhangx/azuredisk-csi-driver/master/deploy/crd-csi-driver-registry.yaml
-kubectl apply -f https://raw.githubusercontent.com/andyzhangx/azuredisk-csi-driver/master/deploy/crd-csi-node-info.yaml
+kubectl apply -f https://raw.githubusercontent.com/andyzhangx/azuredisk-csi-driver/master/deploy/crd-csi-driver-registry.yaml --validate=false
+kubectl apply -f https://raw.githubusercontent.com/andyzhangx/azuredisk-csi-driver/master/deploy/crd-csi-node-info.yaml --validate=false
 kubectl apply -f https://raw.githubusercontent.com/andyzhangx/azuredisk-csi-driver/master/deploy/rbac-csi-attacher.yaml
 kubectl apply -f https://raw.githubusercontent.com/andyzhangx/azuredisk-csi-driver/master/deploy/rbac-csi-driver-registrar.yaml
 kubectl apply -f https://raw.githubusercontent.com/andyzhangx/azuredisk-csi-driver/master/deploy/rbac-csi-provisioner.yaml
