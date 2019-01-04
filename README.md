@@ -8,8 +8,8 @@
 ### About
 This driver allows Kubernetes to use [azure disk](https://azure.microsoft.com/en-us/services/storage/disks/) volume, csi plugin name: `disk.csi.azure.com`
 
-### `disk.csi.azure.com` driver parameters
-Please refer to [driver parameters](./docs/driver-parameters.md)
+### Driver parameters
+Please refer to [`disk.csi.azure.com` driver parameters](./docs/driver-parameters.md)
  > storage class `disk.csi.azure.com` parameters are compatable with built-in [azuredisk](https://kubernetes.io/docs/concepts/storage/volumes/#azuredisk) plugin
 
 ## Prerequisite
