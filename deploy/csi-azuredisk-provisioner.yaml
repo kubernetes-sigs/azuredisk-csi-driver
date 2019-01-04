@@ -1,7 +1,8 @@
 kind: Service
 apiVersion: v1
 metadata:
-  name: csi-azuredisk-provisioner 
+  name: csi-azuredisk-provisioner
+  namespace: kube-system
   labels:
     app: csi-azuredisk-provisioner 
 spec:
@@ -16,6 +17,7 @@ kind: StatefulSet
 apiVersion: apps/v1
 metadata:
   name: csi-azuredisk-provisioner
+  namespace: kube-system
 spec:
   serviceName: "csi-azuredisk-provisioner"
   replicas: 1

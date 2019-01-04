@@ -2,6 +2,7 @@ kind: DaemonSet
 apiVersion: apps/v1
 metadata:
   name: csi-azuredisk
+  namespace: kube-system
 spec:
   selector:
     matchLabels:
