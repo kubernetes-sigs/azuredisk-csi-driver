@@ -70,7 +70,7 @@ $ kubectl exec -it nginx-azuredisk -- bash
 Filesystem      Size  Used Avail Use% Mounted on
 overlay          30G   15G   15G  52% /
 ...
-/dev/sdc        9.8G   37M  9.8G   1% /mnt/azuredisk
+/devhost/sdc        9.8G   37M  9.8G   1% /mnt/azuredisk
 ...
 ```
 In the above example, there is a `/mnt/azuredisk` directory mounted as disk filesystem.
