@@ -200,6 +200,7 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		}
 	}
 
+	// todo: looks like here fsType is useless since we only use "fsType" in VolumeAttributes
 	fsType := req.GetVolumeCapability().GetMount().GetFsType()
 
 	readOnly := req.GetReadonly()

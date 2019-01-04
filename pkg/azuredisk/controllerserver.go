@@ -127,7 +127,8 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		case "diskmbpsreadwrite":
 			diskMbpsReadWrite = v
 		default:
-			return nil, fmt.Errorf("AzureDisk - invalid option %s in storage class", k)
+			//don't return error here since there are some parameters(e.g. fsType) used in disk mount process
+			//return nil, fmt.Errorf("AzureDisk - invalid option %s in storage class", k)
 		}
 	}
 
