@@ -21,6 +21,7 @@ import (
 	"io/ioutil"
 	"os"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi/v0"
@@ -89,12 +90,8 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		msg := fmt.Sprintf("target %q is not a valid mount point", target)
 		return nil, status.Error(codes.InvalidArgument, msg)
 	}
-	// Get fs type that the volume will be formatted with
-	attributes := req.GetVolumeAttributes()
-	fsType, exists := attributes["fsType"]
-	if !exists || fsType == "" {
-		fsType = defaultFsType
-	}
+	// Get fsType that the volume will be formatted with
+	fsType := getFStype(req.GetVolumeAttributes())
 
 	io := &osIOHandler{}
 	scsiHostRescan(io, d.mounter.Exec)
@@ -278,4 +275,17 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 	return &csi.NodeGetInfoResponse{
 		NodeId: d.NodeID,
 	}, nil
+}
+
+func getFStype(attributes map[string]string) string {
+	fsType := defaultFsType
+
+	for k, v := range attributes {
+		switch strings.ToLower(k) {
+		case "fstype":
+			fsType = strings.ToLower(v)
+		}
+	}
+
+	return fsType
 }
