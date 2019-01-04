@@ -1,5 +1,5 @@
 ### `disk.csi.azure.com` driver parameters
- > storage class `disk.csi.azure.com` parameters are compatable with built-in [azuredisk](https://kubernetes.io/docs/concepts/storage/volumes/#azuredisk) plugin
+ > storage class `disk.csi.azure.com` parameters are compatible with built-in [azuredisk](https://kubernetes.io/docs/concepts/storage/volumes/#azuredisk) plugin
  
 Name | Meaning | Available Values(or example) | Mandatory | Default value
 --- | --- | --- | --- | ---
