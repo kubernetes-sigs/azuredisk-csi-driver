@@ -1,13 +1,17 @@
 # Azure disk CSI driver development guide
 
-### Build azurediskplugin
+ - Build azure disk plugin
 ```
-$ make azuredisk
+$ make azurefile
 ```
 
 > Before running CSI driver, create "/etc/kubernetes/azure.json" file under testing server(it's better copy `azure.json` file from a k8s cluster with service principle configured correctly) and set `AZURE_CREDENTIAL_FILE` as following:
 ```
 export set AZURE_CREDENTIAL_FILE=/etc/kubernetes/azure.json
+```
+ - Run test
+```
+$ make test
 ```
 
 ### Start CSI driver
