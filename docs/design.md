@@ -8,8 +8,8 @@ Support both Linux & Windows | In Progress | Windows related work is in progress
 Compatible with original storage class parameters and usage| Completed | there is a little difference in static provision, see [example](../deploy/example/pv-azuredisk-csi.yaml) |
 Support sovereign cloud| Completed | need verification |
 
-### work items
-item | Status | Notes
+### Work items
+Item | Status | Notes
 --- | --- | --- |
 Support volume size grow | to-do |  |
 Support block size | to-do |  |
