@@ -7,6 +7,7 @@ Support service principal and msi authentication | Completed | need verification
 Support both Linux & Windows | In Progress | Windows related work is in progress: [Enable CSI hostpath example on windows](https://github.com/kubernetes-csi/drivers/issues/79) |
 Compatible with original storage class parameters and usage| Completed | there is a little difference in static provision, see [example](../deploy/example/pv-azuredisk-csi.yaml) |
 Support sovereign cloud| Completed | need verification |
+Support unmanaged(blob based) azure disk| Completed | need verification |
 
 ### Work items
 Item | Status | Notes
