@@ -17,11 +17,10 @@ DiskIOPSReadWrite | [UltraSSD disk](https://docs.microsoft.com/en-us/azure/virtu
 DiskMBpsReadWrite | [UltraSSD disk](https://docs.microsoft.com/en-us/azure/virtual-machines/linux/disks-ultra-ssd) Throughput Capability | 1~2000 | No | `100`
 
  - Static Provisioning(use existing azure disk)
- 
+  > get a quick example [here](../deploy/example/pv-azuredisk-csi.yaml)
+
 Name | Meaning | Available Value | Mandatory | Default value
 --- | --- | --- | --- | ---
 volumeHandle| azure disk URI | /subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id} | Yes | N/A
 volumeAttributes.fsType | File System Type | `ext4`, `ext3`, `xfs` | No | `ext4`
 volumeAttributes.cachingMode | [disk host cache setting](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/premium-storage-performance#disk-caching)| `None`, `ReadOnly`, `ReadWrite` | No  | `ReadOnly`
-
-  > get a quick example [here](../deploy/example/pv-azuredisk-csi.yaml) 
