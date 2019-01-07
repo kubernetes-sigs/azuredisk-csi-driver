@@ -17,6 +17,7 @@ limitations under the License.
 */
 
 package azuredisk
+
 import (
 	"encoding/json"
 	"fmt"
