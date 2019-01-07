@@ -13,4 +13,5 @@ script:
   - hack/verify-all.sh
   - make test
   - make azuredisk
+  - make azuredisk-windows
   - make azuredisk-container
