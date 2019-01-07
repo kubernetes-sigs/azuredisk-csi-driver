@@ -186,7 +186,7 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 			glog.Errorf("azureDisk - Unmount directory %s failed with %v", target, err)
 			return nil, err
 		}
-		notMnt = true
+		// notMnt = true
 	}
 
 	if runtime.GOOS != "windows" {

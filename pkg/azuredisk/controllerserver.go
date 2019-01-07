@@ -49,12 +49,6 @@ var (
 		},
 	}
 
-	// controllerCaps represents the capability of controller service
-	controllerCaps = []csi.ControllerServiceCapability_RPC_Type{
-		csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
-		csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME,
-	}
-
 	getLunMutex = keymutex.NewHashed(0)
 )
 
@@ -70,7 +64,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	if len(name) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "CreateVolume Name must be provided")
 	}
-	if volumeCapabilities == nil || len(volumeCapabilities) == 0 {
+	if len(volumeCapabilities) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "CreateVolume Volume capabilities must be provided")
 	}
 
@@ -142,7 +136,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		return nil, err
 	}
 
-	if cachingMode, err = normalizeCachingMode(cachingMode); err != nil {
+	if _, err = normalizeCachingMode(cachingMode); err != nil {
 		return nil, err
 	}
 
@@ -211,11 +205,13 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	}
 	*/
 
+	/* todo: snapshot support
 	if req.GetVolumeContentSource() != nil {
 		contentSource := req.GetVolumeContentSource()
 		if contentSource.GetSnapshot() != nil {
 		}
 	}
+	*/
 
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
@@ -305,7 +301,11 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 	} else {
 		glog.V(2).Infof("GetDiskLun returned: %v. Initiating attaching volume %q to node %q.", err, diskURI, nodeName)
 		getLunMutex.LockKey(instanceid)
-		defer getLunMutex.UnlockKey(instanceid)
+		defer func() {
+			if err := getLunMutex.UnlockKey(instanceid); err != nil {
+				glog.Errorf("failed to UnlockKey: %q", instanceid)
+			}
+		}()
 
 		lun, err = d.cloud.GetNextDiskLun(nodeName)
 		if err != nil {
@@ -358,7 +358,11 @@ func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.Control
 	}
 
 	getLunMutex.LockKey(instanceid)
-	defer getLunMutex.UnlockKey(instanceid)
+	defer func() {
+		if err := getLunMutex.UnlockKey(instanceid); err != nil {
+			glog.Errorf("failed to UnlockKey: %q", instanceid)
+		}
+	}()
 
 	glog.V(2).Infof("Trying to detach volume %s from node %s", diskURI, nodeID)
 	if err := d.cloud.DetachDiskByName(diskName, diskURI, nodeName); err != nil {
