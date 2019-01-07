@@ -29,6 +29,9 @@ test:
 azuredisk:
 	if [ ! -d ./vendor ]; then dep ensure -vendor-only; fi
 	CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-X github.com/andyzhangx/azuredisk-csi-driver/pkg/azuredisk.vendorVersion=$(IMAGE_VERSION) -extldflags "-static"' -o _output/azurediskplugin ./pkg/azurediskplugin
+azuredisk-windows:
+	if [ ! -d ./vendor ]; then dep ensure -vendor-only; fi
+	CGO_ENABLED=0 GOOS=windows go build -a -ldflags '-X github.com/andyzhangx/azuredisk-csi-driver/pkg/azuredisk.vendorVersion=$(IMAGE_VERSION) -extldflags "-static"' -o _output/azurediskplugin.exe ./pkg/azurediskplugin
 azuredisk-container: azuredisk
 	docker build --no-cache -t $(IMAGE_TAG) -f ./pkg/azurediskplugin/Dockerfile .
 push: azuredisk-container
