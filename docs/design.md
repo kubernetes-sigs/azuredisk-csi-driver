@@ -3,7 +3,7 @@
 
 Goal | Status | Notes
 --- | --- | --- |
-Support Kubernetes release 1.12 or later | In Progress | Kubernetes release prior to 1.12 won't be supported |
+Support Kubernetes release 1.12 or later | In Progress | release prior to 1.12 won't be supported |
 Support service principal and msi authentication | Completed | need verification on msi |
 Support both Linux & Windows | In Progress | Windows related work is in progress: [Enable CSI hostpath example on windows](https://github.com/kubernetes-csi/drivers/issues/79) |
 Compatible with original storage class parameters and usage| Completed | there is a little difference in static provision, see [example](../deploy/example/pv-azuredisk-csi.yaml) |
@@ -16,7 +16,7 @@ Item | Status | Notes
 Support volume size grow | to-do |  |
 Support block size | to-do |  |
 Support snapshot | to-do |  |
-Enable CI on Windows | to-do |  |
+Enable CI on Windows | done |  |
 Complete all unit tests | In Progress |  |
 Set up E2E test | to-do |  |
 Support zone | to-do | need verification since csi has different zone usage compared to original usage |
