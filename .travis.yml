@@ -9,18 +9,16 @@ go:
   - "1.10.x"
   - "1.11.4"
 
-before_install:
-- |
+script:
+  - |
     set -e
     # fail loudly when force-pushed
     MODIFIED_FILES=$(git diff --name-only $TRAVIS_COMMIT_RANGE)
     # waiting for native solution https://github.com/travis-ci/travis-ci/issues/6301
     if ! echo ${MODIFIED_FILES} | grep -qvE '(\.md$)|(^doc)/'; then
       echo "Only docs were updated, stopping build process."
-      exit
+      exit 0
     fi
-
-script:
   - hack/verify-all.sh
   - make test
   - make azuredisk
