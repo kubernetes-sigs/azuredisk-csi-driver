@@ -1,4 +1,5 @@
 # azuredisk CSI driver for Kubernetes (Alpha)
+![TravisCI](https://travis-ci.com/andyzhangx/azuredisk-csi-driver.svg?branch=master)
 
 **WARNING**: This driver is in ALPHA currently. Do NOT use this driver in a production environment in its current state.
 
