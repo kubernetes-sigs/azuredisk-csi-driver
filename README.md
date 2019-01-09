@@ -1,4 +1,4 @@
-# azuredisk CSI driver for Kubernetes (Alpha)
+# azuredisk CSI driver for Kubernetes
 ![TravisCI](https://travis-ci.com/andyzhangx/azuredisk-csi-driver.svg?branch=master)
 [![Coverage Status](https://coveralls.io/repos/github/andyzhangx/azuredisk-csi-driver/badge.svg?branch=master)](https://coveralls.io/github/andyzhangx/azuredisk-csi-driver?branch=master)
 [![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fandyzhangx%2Fazuredisk-csi-driver.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2Fandyzhangx%2Fazuredisk-csi-driver?ref=badge_shield)
@@ -10,6 +10,12 @@
 
 ### About
 This driver allows Kubernetes to use [azure disk](https://azure.microsoft.com/en-us/services/storage/disks/) volume, csi plugin name: `disk.csi.azure.com`
+
+### Project Status
+Status: Aplha
+
+### Container Images:
+`andyzhangx/azuredisk-csi:v0.1.0-alpha`
 
 ### Driver parameters
 Please refer to [`disk.csi.azure.com` driver parameters](./docs/driver-parameters.md)
