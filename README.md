@@ -5,9 +5,6 @@
 
 **WARNING**: This driver is in ALPHA currently. Do NOT use this driver in a production environment in its current state.
 
- - supported Kubernetes version: v1.12.0 or later version
- - supported agent OS: Linux
-
 ### About
 This driver allows Kubernetes to use [azure disk](https://azure.microsoft.com/en-us/services/storage/disks/) volume, csi plugin name: `disk.csi.azure.com`
 
@@ -21,7 +18,10 @@ Status: Aplha
 Please refer to [`disk.csi.azure.com` driver parameters](./docs/driver-parameters.md)
  > storage class `disk.csi.azure.com` parameters are compatible with built-in [azuredisk](https://kubernetes.io/docs/concepts/storage/volumes/#azuredisk) plugin
 
-## Prerequisite
+## Kubernetes User Guide
+ - supported Kubernetes version: v1.12.0 or later version
+ - supported agent OS: Linux
+### Prerequisite
  - To ensure that all necessary features are enabled, set the following feature gate flags to true:
 ```
 --feature-gates=CSIPersistentVolume=true,MountPropagation=true,VolumeSnapshotDataSource=true,KubeletPluginsWatcher=true,CSINodeInfo=true,CSIDriverRegistry=true
@@ -31,12 +31,12 @@ CSIPersistentVolume is enabled by default in v1.10. MountPropagation is enabled 
  - An [Cloud provider config file](https://github.com/kubernetes/cloud-provider-azure/blob/master/docs/cloud-provider-config.md) should already exist on all agent nodes
  > usually it's `/etc/kubernetes/azure.json` deployed by AKS or acs-engine, and supports both `service principal` and `msi`
 
-### Install azuredisk CSI driver on a kubernetes cluster
+### Install azuredisk CSI driver on a Kubernetes cluster
 Please refer to [install azuredisk csi driver](./docs/install-azuredisk-csi-driver.md)
 
-## Example
-### 1. create a pod with csi azuredisk driver mount on linux
-#### Example#1: Azuredisk Dynamic Provisioning
+### E2E Usage example
+#### 1. create a pod with csi azuredisk driver mount on linux
+##### Option#1: Azuredisk Dynamic Provisioning
  - Create an azuredisk CSI storage class
 ```
 kubectl create -f https://raw.githubusercontent.com/andyzhangx/azuredisk-csi-driver/master/deploy/example/storageclass-azuredisk-csi.yaml
@@ -47,7 +47,7 @@ kubectl create -f https://raw.githubusercontent.com/andyzhangx/azuredisk-csi-dri
 kubectl create -f https://raw.githubusercontent.com/andyzhangx/azuredisk-csi-driver/master/deploy/example/pvc-azuredisk-csi.yaml
 ```
 
-#### Example#2: Azuredisk Static Provisioning(use an existing azure disk)
+##### Option#2: Azuredisk Static Provisioning(use an existing azure disk)
  - Create an azuredisk CSI PV, download `pv-azuredisk-csi.yaml` file and edit `diskName`, `diskURI` in `volumeAttributes`
 ```
 wget https://raw.githubusercontent.com/andyzhangx/azuredisk-csi-driver/master/deploy/example/pv-azuredisk-csi.yaml
@@ -60,7 +60,7 @@ kubectl create -f pv-azuredisk-csi.yaml
 kubectl create -f https://raw.githubusercontent.com/andyzhangx/azuredisk-csi-driver/master/deploy/example/pvc-azuredisk-csi-static.yaml
 ```
 
-### 2. validate PVC status and create an nginx pod
+#### 2. validate PVC status and create an nginx pod
  - make sure pvc is created and in `Bound` status finally
 ```
 watch kubectl describe pvc pvc-azuredisk
@@ -71,7 +71,7 @@ watch kubectl describe pvc pvc-azuredisk
 kubectl create -f https://raw.githubusercontent.com/andyzhangx/azuredisk-csi-driver/master/deploy/example/nginx-pod-azuredisk.yaml
 ```
 
-### 3. enter the pod container to do validation
+#### 3. enter the pod container to do validation
  - watch the status of pod until its Status changed from `Pending` to `Running` and then enter the pod container
 ```
 $ watch kubectl describe po nginx-azuredisk
@@ -93,7 +93,3 @@ Please refer to [development guide](./docs/csi-dev.md)
  - [Analysis of the CSI Spec](https://blog.thecodeteam.com/2017/11/03/analysis-csi-spec/)
  - [CSI Drivers](https://github.com/kubernetes-csi/drivers)
  - [Container Storage Interface (CSI) Specification](https://github.com/container-storage-interface/spec)
-
-
-## License
-[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fandyzhangx%2Fazuredisk-csi-driver.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2Fandyzhangx%2Fazuredisk-csi-driver?ref=badge_large)
