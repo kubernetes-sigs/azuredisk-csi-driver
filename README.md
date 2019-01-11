@@ -12,7 +12,7 @@ This driver allows Kubernetes to use [azure disk](https://azure.microsoft.com/en
 Status: Aplha
 
 ### Container Images:
-`andyzhangx/azuredisk-csi:v0.1.0-alpha`
+`mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.1.0-alpha`
 
 ### Driver parameters
 Please refer to [`disk.csi.azure.com` driver parameters](./docs/driver-parameters.md)
