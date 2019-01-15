@@ -13,9 +13,9 @@ Support unmanaged(blob based) azure disk| Completed | need verification |
 ### Work items
 Item | Status | Notes
 --- | --- | --- |
-Support volume size grow | to-do |  |
-Support block size | to-do |  |
-Support snapshot | to-do |  |
+Support volume size grow | Pending | Not ready on upstream: [Feature request: CSI plugin support expand volume size](https://github.com/kubernetes/kubernetes/issues/62096) |
+Support raw block size | to-do |beta in 1.14: [Add resizing support to CSI volumes](https://github.com/kubernetes/enhancements/issues/556)|
+Support snapshot | to-do | beta in 1.14: [Snapshot / Restore Volume Support for Kubernetes (CRD + External Controller) ](https://github.com/kubernetes/enhancements/issues/177) |
 Enable CI on Windows | done |  |
 Complete all unit tests | In Progress |  |
 Set up E2E test | to-do |  |
