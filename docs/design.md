@@ -18,7 +18,7 @@ Support raw block size | to-do | upstream feature is beta in 1.14: [Add resizing
 Support snapshot | to-do | upstream feature is beta in 1.14: [Snapshot / Restore Volume Support for Kubernetes (CRD + External Controller) ](https://github.com/kubernetes/enhancements/issues/177) |
 Enable CI on Windows | done |  |
 Complete all unit tests | In Progress |  |
-Set up E2E test | to-do |  |
+Set up E2E test | In Progress | https://github.com/andyzhangx/azuredisk-csi-driver/issues/6 |
 Support zone | to-do | need verification since csi has different zone usage compared to original usage |
 Implement azure disk csi driver on Windows | to-do |  |
 
