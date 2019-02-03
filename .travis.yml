@@ -6,7 +6,6 @@ env:
     - GO111MODULE=off
 
 go:
-  - "1.10.x"
   - "1.11.4"
 
 before_install:
