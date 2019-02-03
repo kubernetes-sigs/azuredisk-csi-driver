@@ -6,6 +6,7 @@ approvers:
 - lavalamp
 - mengqiy
 - thockin
+- dims
 reviewers:
 - apelisse
 - dashpole
@@ -13,3 +14,7 @@ reviewers:
 - lavalamp
 - mengqiy
 - thockin
+- andrewsykim
+- cheftako
+- mcrute
+- dims
