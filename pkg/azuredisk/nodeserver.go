@@ -62,7 +62,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		return nil, status.Error(codes.InvalidArgument, "Volume capability not supported")
 	}
 
-	devicePath, ok := req.PublishInfo["devicePath"]
+	devicePath, ok := req.PublishContext["devicePath"]
 	if !ok {
 		return nil, status.Error(codes.InvalidArgument, "devicePath not provided")
 	}
@@ -91,7 +91,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		return nil, status.Error(codes.InvalidArgument, msg)
 	}
 	// Get fsType that the volume will be formatted with
-	fsType := getFStype(req.GetVolumeAttributes())
+	fsType := getFStype(req.GetVolumeContext())
 
 	io := &osIOHandler{}
 	scsiHostRescan(io, d.mounter.Exec)
@@ -197,15 +197,15 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		}
 	}
 
-	// todo: looks like here fsType is useless since we only use "fsType" in VolumeAttributes
+	// todo: looks like here fsType is useless since we only use "fsType" in VolumeContext
 	fsType := req.GetVolumeCapability().GetMount().GetFsType()
 
 	readOnly := req.GetReadonly()
 	volumeID := req.GetVolumeId()
-	attrib := req.GetVolumeAttributes()
+	attrib := req.GetVolumeContext()
 	mountFlags := req.GetVolumeCapability().GetMount().GetMountFlags()
 
-	glog.V(2).Infof("target %v\nfstype %v\n\nreadonly %v\nvolumeId %v\nattributes %v\nmountflags %v\n",
+	glog.V(2).Infof("target %v\nfstype %v\n\nreadonly %v\nvolumeId %v\nContext %v\nmountflags %v\n",
 		target, fsType, readOnly, volumeID, attrib, mountFlags)
 
 	mountOptions := []string{"bind"}
@@ -259,15 +259,6 @@ func (d *Driver) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapabi
 	}, nil
 }
 
-// NodeGetId return a unique ID of the node on which this plugin is running
-func (d *Driver) NodeGetId(ctx context.Context, req *csi.NodeGetIdRequest) (*csi.NodeGetIdResponse, error) {
-	glog.V(5).Infof("Using default NodeGetId")
-
-	return &csi.NodeGetIdResponse{
-		NodeId: d.NodeID,
-	}, nil
-}
-
 // NodeGetInfo return info of the node on which this plugin is running
 func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
 	glog.V(5).Infof("Using default NodeGetInfo")
@@ -275,6 +266,10 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 	return &csi.NodeGetInfoResponse{
 		NodeId: d.NodeID,
 	}, nil
+}
+
+func (d *Driver) NodeGetVolumeStats(ctx context.Context, in *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "")
 }
 
 func getFStype(attributes map[string]string) string {

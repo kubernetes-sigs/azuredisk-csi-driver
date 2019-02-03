@@ -215,9 +215,9 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
-			Id:            diskURI,
+			VolumeId:      diskURI,
 			CapacityBytes: req.GetCapacityRange().GetRequiredBytes(),
-			Attributes:    parameters,
+			VolumeContext: parameters,
 			AccessibleTopology: []*csi.Topology{
 				{
 					Segments: map[string]string{topologyKey: selectedAvailabilityZone},
@@ -315,7 +315,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		isManagedDisk := isManagedDisk(diskURI)
 
 		var cachingMode compute.CachingTypes
-		if cachingMode, err = getCachingMode(req.GetVolumeAttributes()); err != nil {
+		if cachingMode, err = getCachingMode(req.GetVolumeContext()); err != nil {
 			return nil, err
 		}
 		glog.V(2).Infof("Trying to attach volume %q lun %d to node %q", diskURI, lun, nodeName)
@@ -330,7 +330,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 	}
 
 	pvInfo := map[string]string{"devicePath": strconv.Itoa(int(lun))}
-	return &csi.ControllerPublishVolumeResponse{PublishInfo: pvInfo}, nil
+	return &csi.ControllerPublishVolumeResponse{PublishContext: pvInfo}, nil
 }
 
 // ControllerUnpublishVolume detach an azure disk from a required node
@@ -388,10 +388,10 @@ func (d *Driver) ValidateVolumeCapabilities(ctx context.Context, req *csi.Valida
 
 	for _, cap := range req.VolumeCapabilities {
 		if cap.GetAccessMode().GetMode() != csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER {
-			return &csi.ValidateVolumeCapabilitiesResponse{Supported: false, Message: ""}, nil
+			return &csi.ValidateVolumeCapabilitiesResponse{Message: ""}, nil
 		}
 	}
-	return &csi.ValidateVolumeCapabilitiesResponse{Supported: true, Message: ""}, nil
+	return &csi.ValidateVolumeCapabilitiesResponse{Message: ""}, nil
 }
 
 // ControllerGetCapabilities returns the capabilities of the Controller plugin
