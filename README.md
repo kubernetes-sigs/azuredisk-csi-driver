@@ -29,7 +29,7 @@ Please refer to [`disk.csi.azure.com` driver parameters](./docs/driver-parameter
 CSIPersistentVolume is enabled by default in v1.10. MountPropagation is enabled by default in v1.10. VolumeSnapshotDataSource is a new alpha feature in v1.12. KubeletPluginsWatcher is enabled by default in v1.12. CSINodeInfo and CSIDriverRegistry are new alpha features in v1.12.
 
  - An [Cloud provider config file](https://github.com/kubernetes/cloud-provider-azure/blob/master/docs/cloud-provider-config.md) should already exist on all agent nodes
- > usually it's `/etc/kubernetes/azure.json` deployed by AKS or acs-engine, and supports both `service principal` and `msi`
+ > usually it's `/etc/kubernetes/azure.json` on k8s node deployed by AKS or aks-engine, here is an [`azure.json` example](./deploy/example/azure.json)
 
 ### Install azuredisk CSI driver on a Kubernetes cluster
 Please refer to [install azuredisk csi driver](./docs/install-azuredisk-csi-driver.md)
