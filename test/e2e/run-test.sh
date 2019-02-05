@@ -29,7 +29,25 @@ sed -i "s/resourceGroup-input/$resourceGroup/g" $AZURE_CREDENTIAL_FILE
 _output/azurediskplugin --endpoint $endpoint --nodeid CSINode -v=5 &
 sleep 3
 
-# begin to run CSI functions one by one
+# begin to run CSI function test one by one
+echo "create volume test:"
+value=`$GOPATH/bin/csc controller new --endpoint $endpoint --cap 1,block CSIVolumeName  --req-bytes 2147483648 --params skuname=Standard_LRS,kind=managed`
+retcode=$?
+if [ $retcode -gt 0 ]; then
+	exit $retcode
+fi
+sleep 30
+
+volumeid=`echo $value | awk '{print $1}'`
+echo "got volume id: $volumeid"
+echo "delete volume test:"
+$GOPATH/bin/csc controller del --endpoint $endpoint $volumeid
+retcode=$?
+if [ $retcode -gt 0 ]; then
+	exit $retcode
+fi
+sleep 30
+
 $GOPATH/bin/csc identity plugin-info --endpoint $endpoint
 retcode=$?
 if [ $retcode -gt 0 ]; then
