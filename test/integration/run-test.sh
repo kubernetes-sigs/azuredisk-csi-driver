@@ -40,10 +40,9 @@ if [ ! -z $aadClientSecret ]; then
 	if [ $retcode -gt 0 ]; then
 		exit $retcode
 	fi
-	sleep 30
+	sleep 15
 
-	id=`echo $value | awk '{print $1}'`
-	volumeid=`echo $id | sed 's/"//g'`
+	volumeid=`echo $value | awk '{print $1}' | sed 's/"//g'`
 	echo "got volume id: $volumeid"
 
 	echo "attach volume test:"
@@ -52,7 +51,7 @@ if [ ! -z $aadClientSecret ]; then
 	if [ $retcode -gt 0 ]; then
 		exit $retcode
 	fi
-	sleep 30
+	sleep 20
 
 	echo "detach volume test:"
 	$csc controller unpublish --endpoint $endpoint --node-id $nodeid $volumeid
@@ -68,7 +67,7 @@ if [ ! -z $aadClientSecret ]; then
 	if [ $retcode -gt 0 ]; then
 		exit $retcode
 	fi
-	sleep 30
+	sleep 15
 fi
 
 $csc identity plugin-info --endpoint $endpoint
