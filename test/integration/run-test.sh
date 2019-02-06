@@ -17,6 +17,7 @@
 set -euo pipefail
 
 endpoint="tcp://127.0.0.1:10000"
+csc=$GOPATH/bin/csc
 # run CSI driver as a background service
 export set AZURE_CREDENTIAL_FILE=test/integration/azure.json
 
@@ -34,37 +35,54 @@ sleep 3
 # begin to run CSI function test one by one
 if [ ! -z $aadClientSecret ]; then
 	echo "create volume test:"
-	value=`$GOPATH/bin/csc controller new --endpoint $endpoint --cap 1,block CSIVolumeName  --req-bytes 2147483648 --params skuname=Standard_LRS,kind=managed`
+	value=`$csc controller new --endpoint $endpoint --cap 1,block CSIVolumeName  --req-bytes 2147483648 --params skuname=Standard_LRS,kind=managed`
 	retcode=$?
 	if [ $retcode -gt 0 ]; then
 		exit $retcode
 	fi
-	sleep 30
+	sleep 15
 
-	volumeid=`echo $value | awk '{print $1}'`
+	volumeid=`echo $value | awk '{print $1}' | sed 's/"//g'`
 	echo "got volume id: $volumeid"
-	echo "delete volume test:"
-	$GOPATH/bin/csc controller del --endpoint $endpoint $volumeid
+
+	echo "attach volume test:"
+	$csc controller publish --endpoint $endpoint --node-id $nodeid --cap 1,block $volumeid
+	retcode=$?
+	if [ $retcode -gt 0 ]; then
+		exit $retcode
+	fi
+	sleep 20
+
+	echo "detach volume test:"
+	$csc controller unpublish --endpoint $endpoint --node-id $nodeid $volumeid
 	retcode=$?
 	if [ $retcode -gt 0 ]; then
 		exit $retcode
 	fi
 	sleep 30
+
+	echo "delete volume test:"
+	$csc controller del --endpoint $endpoint $volumeid
+	retcode=$?
+	if [ $retcode -gt 0 ]; then
+		exit $retcode
+	fi
+	sleep 15
 fi
 
-$GOPATH/bin/csc identity plugin-info --endpoint $endpoint
+$csc identity plugin-info --endpoint $endpoint
 retcode=$?
 if [ $retcode -gt 0 ]; then
 	exit $retcode
 fi
 
-$GOPATH/bin/csc controller validate-volume-capabilities --endpoint $endpoint --cap 1,block CSIVolumeID
+$csc controller validate-volume-capabilities --endpoint $endpoint --cap 1,block CSIVolumeID
 retcode=$?
 if [ $retcode -gt 0 ]; then
 	exit $retcode
 fi
 
-$GOPATH/bin/csc node get-info --endpoint $endpoint
+$csc node get-info --endpoint $endpoint
 retcode=$?
 if [ $retcode -gt 0 ]; then
 	exit $retcode
