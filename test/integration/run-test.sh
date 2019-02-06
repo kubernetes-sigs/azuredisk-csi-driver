@@ -18,35 +18,39 @@ set -euo pipefail
 
 endpoint="tcp://127.0.0.1:10000"
 # run CSI driver as a background service
-export set AZURE_CREDENTIAL_FILE=test/e2e/azure.json
+export set AZURE_CREDENTIAL_FILE=test/integration/azure.json
 
-sed -i "s/tenantId-input/$tenantId/g" $AZURE_CREDENTIAL_FILE
-sed -i "s/subscriptionId-input/$subscriptionId/g" $AZURE_CREDENTIAL_FILE
-sed -i "s/aadClientId-input/$aadClientId/g" $AZURE_CREDENTIAL_FILE
-sed -i "s/aadClientSecret-input/$aadClientSecret/g" $AZURE_CREDENTIAL_FILE
-sed -i "s/resourceGroup-input/$resourceGroup/g" $AZURE_CREDENTIAL_FILE
+if [ ! -z $aadClientSecret ]; then
+	sed -i "s/tenantId-input/$tenantId/g" $AZURE_CREDENTIAL_FILE
+	sed -i "s/subscriptionId-input/$subscriptionId/g" $AZURE_CREDENTIAL_FILE
+	sed -i "s/aadClientId-input/$aadClientId/g" $AZURE_CREDENTIAL_FILE
+	sed -i "s/aadClientSecret-input/$aadClientSecret/g" $AZURE_CREDENTIAL_FILE
+	sed -i "s/resourceGroup-input/$resourceGroup/g" $AZURE_CREDENTIAL_FILE
+fi
 
 _output/azurediskplugin --endpoint $endpoint --nodeid CSINode -v=5 &
 sleep 3
 
 # begin to run CSI function test one by one
-echo "create volume test:"
-value=`$GOPATH/bin/csc controller new --endpoint $endpoint --cap 1,block CSIVolumeName  --req-bytes 2147483648 --params skuname=Standard_LRS,kind=managed`
-retcode=$?
-if [ $retcode -gt 0 ]; then
-	exit $retcode
-fi
-sleep 30
+if [ ! -z $aadClientSecret ]; then
+	echo "create volume test:"
+	value=`$GOPATH/bin/csc controller new --endpoint $endpoint --cap 1,block CSIVolumeName  --req-bytes 2147483648 --params skuname=Standard_LRS,kind=managed`
+	retcode=$?
+	if [ $retcode -gt 0 ]; then
+		exit $retcode
+	fi
+	sleep 30
 
-volumeid=`echo $value | awk '{print $1}'`
-echo "got volume id: $volumeid"
-echo "delete volume test:"
-$GOPATH/bin/csc controller del --endpoint $endpoint $volumeid
-retcode=$?
-if [ $retcode -gt 0 ]; then
-	exit $retcode
+	volumeid=`echo $value | awk '{print $1}'`
+	echo "got volume id: $volumeid"
+	echo "delete volume test:"
+	$GOPATH/bin/csc controller del --endpoint $endpoint $volumeid
+	retcode=$?
+	if [ $retcode -gt 0 ]; then
+		exit $retcode
+	fi
+	sleep 30
 fi
-sleep 30
 
 $GOPATH/bin/csc identity plugin-info --endpoint $endpoint
 retcode=$?
