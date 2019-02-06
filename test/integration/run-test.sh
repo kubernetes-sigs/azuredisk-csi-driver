@@ -42,7 +42,8 @@ if [ ! -z $aadClientSecret ]; then
 	fi
 	sleep 30
 
-	volumeid=`echo $value | awk '{print $1}'`
+	id=`echo $value | awk '{print $1}'`
+	volumeid=`echo $id | sed 's/"//g'`
 	echo "got volume id: $volumeid"
 
 	echo "attach volume test:"
