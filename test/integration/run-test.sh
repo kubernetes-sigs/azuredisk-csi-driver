@@ -16,23 +16,29 @@
 
 set -euo pipefail
 
-endpoint="tcp://127.0.0.1:10000"
 csc=$GOPATH/bin/csc
-# run CSI driver as a background service
-export set AZURE_CREDENTIAL_FILE=test/integration/azure.json
 
-if [ ! -z $aadClientSecret ]; then
-	sed -i "s/tenantId-input/$tenantId/g" $AZURE_CREDENTIAL_FILE
-	sed -i "s/subscriptionId-input/$subscriptionId/g" $AZURE_CREDENTIAL_FILE
-	sed -i "s/aadClientId-input/$aadClientId/g" $AZURE_CREDENTIAL_FILE
-	sed -i "s/aadClientSecret-input/$aadClientSecret/g" $AZURE_CREDENTIAL_FILE
-	sed -i "s/resourceGroup-input/$resourceGroup/g" $AZURE_CREDENTIAL_FILE
+endpoint="tcp://127.0.0.1:10000"
+if [ $# -gt 0 ]; then
+	endpoint=$1
 fi
 
-_output/azurediskplugin --endpoint $endpoint --nodeid CSINode -v=5 &
-sleep 3
+node="CSINode"
+if [ $# -gt 1 ]; then
+	node=$2
+fi
 
-# begin to run CSI function test one by one
+cloud="AzurePublicCloud"
+if [ $# -gt 2 ]; then
+        cloud=$3
+fi
+
+echo "being to run integration test on $cloud ..."
+# run CSI driver as a background service
+_output/azurediskplugin --endpoint $endpoint --nodeid CSINode -v=5 &
+sleep 10
+
+# begin to run CSI functions one by one
 if [ ! -z $aadClientSecret ]; then
 	echo "create volume test:"
 	value=`$csc controller new --endpoint $endpoint --cap 1,block CSIVolumeName  --req-bytes 2147483648 --params skuname=Standard_LRS,kind=managed`
@@ -46,7 +52,7 @@ if [ ! -z $aadClientSecret ]; then
 	echo "got volume id: $volumeid"
 
 	echo "attach volume test:"
-	$csc controller publish --endpoint $endpoint --node-id $nodeid --cap 1,block $volumeid
+	$csc controller publish --endpoint $endpoint --node-id $node --cap 1,block $volumeid
 	retcode=$?
 	if [ $retcode -gt 0 ]; then
 		exit $retcode
@@ -54,7 +60,7 @@ if [ ! -z $aadClientSecret ]; then
 	sleep 20
 
 	echo "detach volume test:"
-	$csc controller unpublish --endpoint $endpoint --node-id $nodeid $volumeid
+	$csc controller unpublish --endpoint $endpoint --node-id $node $volumeid
 	retcode=$?
 	if [ $retcode -gt 0 ]; then
 		exit $retcode
@@ -87,3 +93,5 @@ retcode=$?
 if [ $retcode -gt 0 ]; then
 	exit $retcode
 fi
+
+echo "integration test on $cloud is completed."

@@ -18,6 +18,6 @@ script:
   - make azuredisk
   - go test -covermode=count -coverprofile=profile.cov ./pkg/...
   - $GOPATH/bin/goveralls -coverprofile=profile.cov -service=travis-ci
-  - test/integration/run-test.sh
+  - test/integration/run-tests-all-clouds.sh
   - make azuredisk-windows
   - make azuredisk-container
