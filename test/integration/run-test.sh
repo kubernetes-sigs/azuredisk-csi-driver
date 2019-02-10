@@ -16,56 +16,82 @@
 
 set -euo pipefail
 
-endpoint="tcp://127.0.0.1:10000"
-# run CSI driver as a background service
-export set AZURE_CREDENTIAL_FILE=test/integration/azure.json
+csc=$GOPATH/bin/csc
 
-if [ ! -z $aadClientSecret ]; then
-	sed -i "s/tenantId-input/$tenantId/g" $AZURE_CREDENTIAL_FILE
-	sed -i "s/subscriptionId-input/$subscriptionId/g" $AZURE_CREDENTIAL_FILE
-	sed -i "s/aadClientId-input/$aadClientId/g" $AZURE_CREDENTIAL_FILE
-	sed -i "s/aadClientSecret-input/$aadClientSecret/g" $AZURE_CREDENTIAL_FILE
-	sed -i "s/resourceGroup-input/$resourceGroup/g" $AZURE_CREDENTIAL_FILE
+endpoint="tcp://127.0.0.1:10000"
+if [ $# -gt 0 ]; then
+	endpoint=$1
 fi
 
-_output/azurediskplugin --endpoint $endpoint --nodeid CSINode -v=5 &
-sleep 3
+node="CSINode"
+if [ $# -gt 1 ]; then
+	node=$2
+fi
 
-# begin to run CSI function test one by one
+cloud="AzurePublicCloud"
+if [ $# -gt 2 ]; then
+        cloud=$3
+fi
+
+echo "being to run integration test on $cloud ..."
+# run CSI driver as a background service
+_output/azurediskplugin --endpoint $endpoint --nodeid CSINode -v=5 &
+sleep 10
+
+# begin to run CSI functions one by one
 if [ ! -z $aadClientSecret ]; then
 	echo "create volume test:"
-	value=`$GOPATH/bin/csc controller new --endpoint $endpoint --cap 1,block CSIVolumeName  --req-bytes 2147483648 --params skuname=Standard_LRS,kind=managed`
+	value=`$csc controller new --endpoint $endpoint --cap 1,block CSIVolumeName  --req-bytes 2147483648 --params skuname=Standard_LRS,kind=managed`
 	retcode=$?
 	if [ $retcode -gt 0 ]; then
 		exit $retcode
 	fi
-	sleep 30
+	sleep 15
 
-	volumeid=`echo $value | awk '{print $1}'`
+	volumeid=`echo $value | awk '{print $1}' | sed 's/"//g'`
 	echo "got volume id: $volumeid"
-	echo "delete volume test:"
-	$GOPATH/bin/csc controller del --endpoint $endpoint $volumeid
+
+	echo "attach volume test:"
+	$csc controller publish --endpoint $endpoint --node-id $node --cap 1,block $volumeid
+	retcode=$?
+	if [ $retcode -gt 0 ]; then
+		exit $retcode
+	fi
+	sleep 20
+
+	echo "detach volume test:"
+	$csc controller unpublish --endpoint $endpoint --node-id $node $volumeid
 	retcode=$?
 	if [ $retcode -gt 0 ]; then
 		exit $retcode
 	fi
 	sleep 30
+
+	echo "delete volume test:"
+	$csc controller del --endpoint $endpoint $volumeid
+	retcode=$?
+	if [ $retcode -gt 0 ]; then
+		exit $retcode
+	fi
+	sleep 15
 fi
 
-$GOPATH/bin/csc identity plugin-info --endpoint $endpoint
+$csc identity plugin-info --endpoint $endpoint
 retcode=$?
 if [ $retcode -gt 0 ]; then
 	exit $retcode
 fi
 
-$GOPATH/bin/csc controller validate-volume-capabilities --endpoint $endpoint --cap 1,block CSIVolumeID
+$csc controller validate-volume-capabilities --endpoint $endpoint --cap 1,block CSIVolumeID
 retcode=$?
 if [ $retcode -gt 0 ]; then
 	exit $retcode
 fi
 
-$GOPATH/bin/csc node get-info --endpoint $endpoint
+$csc node get-info --endpoint $endpoint
 retcode=$?
 if [ $retcode -gt 0 ]; then
 	exit $retcode
 fi
+
+echo "integration test on $cloud is completed."
