@@ -14,10 +14,9 @@ before_install:
 
 script:
   - hack/verify-all.sh
-  - make test
-  - make azuredisk
   - go test -covermode=count -coverprofile=profile.cov ./pkg/...
   - $GOPATH/bin/goveralls -coverprofile=profile.cov -service=travis-ci
-  - test/integration/run-tests-all-clouds.sh
+  - make azuredisk
+  - make integration-test
   - make azuredisk-windows
   - make azuredisk-container
