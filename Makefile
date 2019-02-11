@@ -26,6 +26,8 @@ all: azuredisk
 test:
 	go test github.com/andyzhangx/azuredisk-csi-driver/pkg/... -cover
 	go vet github.com/andyzhangx/azuredisk-csi-driver/pkg/...
+integration-test:
+	test/integration/run-tests-all-clouds.sh
 azuredisk:
 	if [ ! -d ./vendor ]; then dep ensure -vendor-only; fi
 	CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-X github.com/andyzhangx/azuredisk-csi-driver/pkg/azuredisk.vendorVersion=$(IMAGE_VERSION) -extldflags "-static"' -o _output/azurediskplugin ./pkg/azurediskplugin
