@@ -1,5 +1,5 @@
 /*
-Copyright 2017 The Kubernetes Authors.
+Copyright 2019 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@ limitations under the License.
 package azuredisk
 
 import (
-	"fmt"
 	"reflect"
 	"testing"
 
@@ -26,51 +25,51 @@ import (
 
 func TestGetCachingMode(t *testing.T) {
 	tests := []struct {
-		options   map[string]string
-		expected1 compute.CachingTypes
-		expected2 error
+		options             map[string]string
+		expectedCachingMode compute.CachingTypes
+		expectedError       bool
 	}{
 		{
 			nil,
 			compute.CachingTypes(defaultAzureDataDiskCachingMode),
-			nil,
+			false,
 		},
 		{
 			map[string]string{},
 			compute.CachingTypes(defaultAzureDataDiskCachingMode),
-			nil,
+			false,
 		},
 		{
 			map[string]string{"cachingmode": ""},
 			compute.CachingTypes(defaultAzureDataDiskCachingMode),
-			nil,
+			false,
 		},
 		{
 			map[string]string{"cachingmode": "None"},
 			compute.CachingTypes("None"),
-			nil,
+			false,
 		},
 		{
 			map[string]string{"cachingmode": "ReadOnly"},
 			compute.CachingTypes("ReadOnly"),
-			nil,
+			false,
 		},
 		{
 			map[string]string{"cachingmode": "ReadWrite"},
 			compute.CachingTypes("ReadWrite"),
-			nil,
+			false,
 		},
 		{
 			map[string]string{"cachingmode": "WriteOnly"},
 			compute.CachingTypes(""),
-			fmt.Errorf("azureDisk - %s is not supported cachingmode. Supported values are %s", "WriteOnly", supportedCachingModes.List()),
+			true,
 		},
 	}
 
 	for _, test := range tests {
-		result1, result2 := getCachingMode(test.options)
-		if !reflect.DeepEqual(result1, test.expected1) || !reflect.DeepEqual(result2, test.expected2) {
-			t.Errorf("input: %q, getCachingMode result1: %q, expected1: %q, result2: %q, expected2: %q", test.options, result1, test.expected1, result2, test.expected2)
+		resultCachingMode, resultError := getCachingMode(test.options)
+		if !reflect.DeepEqual(resultCachingMode, test.expectedCachingMode) || !reflect.DeepEqual(resultError != nil, test.expectedError) {
+			t.Errorf("input: %s, getCachingMode resultCachingMode: %s, expectedCachingMode: %s, resultError: %s, expectedError: %t", test.options, resultCachingMode, test.expectedCachingMode, resultError, test.expectedError)
 		}
 	}
 }

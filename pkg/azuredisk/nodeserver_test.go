@@ -1,5 +1,5 @@
 /*
-Copyright 2017 The Kubernetes Authors.
+Copyright 2019 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -46,12 +46,16 @@ func TestGetFStype(t *testing.T) {
 			map[string]string{"FSType": "xfs"},
 			"xfs",
 		},
+		{
+			map[string]string{"fstype": "EXT4"},
+			"ext4",
+		},
 	}
 
 	for _, test := range tests {
 		result := getFStype(test.options)
 		if !reflect.DeepEqual(result, test.expected) {
-			t.Errorf("input: %q, getFStype result: %q, expected: %q", test.options, result, test.expected)
+			t.Errorf("input: %q, getFStype result: %s, expected: %s", test.options, result, test.expected)
 		}
 	}
 }
