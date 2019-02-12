@@ -17,7 +17,6 @@ limitations under the License.
 package azuredisk
 
 import (
-	"reflect"
 	"testing"
 )
 
@@ -54,7 +53,7 @@ func TestGetFStype(t *testing.T) {
 
 	for _, test := range tests {
 		result := getFStype(test.options)
-		if !reflect.DeepEqual(result, test.expected) {
+		if result != test.expected {
 			t.Errorf("input: %q, getFStype result: %s, expected: %s", test.options, result, test.expected)
 		}
 	}

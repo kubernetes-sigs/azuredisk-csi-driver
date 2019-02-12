@@ -17,7 +17,6 @@ limitations under the License.
 package azuredisk
 
 import (
-	"reflect"
 	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2018-10-01/compute"
@@ -68,7 +67,7 @@ func TestGetCachingMode(t *testing.T) {
 
 	for _, test := range tests {
 		resultCachingMode, resultError := getCachingMode(test.options)
-		if !reflect.DeepEqual(resultCachingMode, test.expectedCachingMode) || !reflect.DeepEqual(resultError != nil, test.expectedError) {
+		if resultCachingMode != test.expectedCachingMode || (resultError != nil) != test.expectedError {
 			t.Errorf("input: %s, getCachingMode resultCachingMode: %s, expectedCachingMode: %s, resultError: %s, expectedError: %t", test.options, resultCachingMode, test.expectedCachingMode, resultError, test.expectedError)
 		}
 	}
