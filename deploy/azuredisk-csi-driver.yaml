@@ -83,7 +83,7 @@ spec:
             type: DirectoryOrCreate
           name: mountpoint-dir
         - hostPath:
-            path: /var/lib/kubelet/plugins
+            path: /var/lib/kubelet/plugins_registry/
             type: Directory
           name: registration-dir
         - hostPath:
