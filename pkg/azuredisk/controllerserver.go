@@ -287,6 +287,14 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		return nil, err
 	}
 
+	glog.V(2).Infof("GetDiskLun returned: %v. Initiating attaching volume %q to node %q.", err, diskURI, nodeName)
+	getLunMutex.LockKey(instanceid)
+	defer func() {
+		if err := getLunMutex.UnlockKey(instanceid); err != nil {
+			glog.Errorf("failed to UnlockKey: %q", instanceid)
+		}
+	}()
+
 	lun, err := d.cloud.GetDiskLun(diskName, diskURI, nodeName)
 	if err == cloudprovider.InstanceNotFound {
 		// Log error and continue with attach
@@ -299,14 +307,6 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		// Volume is already attached to node.
 		glog.V(2).Infof("Attach operation is successful. volume %q is already attached to node %q at lun %d.", diskURI, instanceid, lun)
 	} else {
-		glog.V(2).Infof("GetDiskLun returned: %v. Initiating attaching volume %q to node %q.", err, diskURI, nodeName)
-		getLunMutex.LockKey(instanceid)
-		defer func() {
-			if err := getLunMutex.UnlockKey(instanceid); err != nil {
-				glog.Errorf("failed to UnlockKey: %q", instanceid)
-			}
-		}()
-
 		lun, err = d.cloud.GetNextDiskLun(nodeName)
 		if err != nil {
 			glog.Warningf("no LUN available for instance %q (%v)", nodeName, err)
