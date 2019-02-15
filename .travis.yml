@@ -20,4 +20,3 @@ script:
   - make azuredisk
   - make integration-test
   - make azuredisk-windows
-  - make azuredisk-container
