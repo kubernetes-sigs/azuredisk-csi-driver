@@ -34,8 +34,6 @@ if [ $# -gt 2 ]; then
 fi
 
 echo "being to run integration test on $cloud ..."
-# kill azurediskplugin first
-pkill azurediskplugin
 
 # run CSI driver as a background service
 _output/azurediskplugin --endpoint $endpoint --nodeid CSINode -v=5 &
@@ -96,5 +94,8 @@ retcode=$?
 if [ $retcode -gt 0 ]; then
 	exit $retcode
 fi
+
+# kill azurediskplugin first
+/usr/bin/pkill -f azurediskplugin
 
 echo "integration test on $cloud is completed."
