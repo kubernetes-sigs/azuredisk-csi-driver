@@ -12,22 +12,16 @@ This driver allows Kubernetes to use [azure disk](https://azure.microsoft.com/en
 Status: Alpha
 
 ### Container Images:
-`mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.1.0-alpha`
+`mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.2.0-alpha`
 
 ### Driver parameters
 Please refer to [`disk.csi.azure.com` driver parameters](./docs/driver-parameters.md)
  > storage class `disk.csi.azure.com` parameters are compatible with built-in [azuredisk](https://kubernetes.io/docs/concepts/storage/volumes/#azuredisk) plugin
 
 ## Kubernetes User Guide
- - supported Kubernetes version: v1.12.0 or later version
+ - supported Kubernetes version: v1.13.0 or later version
  - supported agent OS: Linux
 ### Prerequisite
- - To ensure that all necessary features are enabled, set the following feature gate flags to true:
-```
---feature-gates=CSIPersistentVolume=true,MountPropagation=true,VolumeSnapshotDataSource=true,KubeletPluginsWatcher=true,CSINodeInfo=true,CSIDriverRegistry=true
-```
-`VolumeSnapshotDataSource` is a new alpha feature in v1.12. `KubeletPluginsWatcher` is enabled by default in v1.12. `CSINodeInfo` and `CSIDriverRegistry` are new alpha features in v1.12.
-
  - The driver initialization depends on a [Cloud provider config file](https://github.com/kubernetes/cloud-provider-azure/blob/master/docs/cloud-provider-config.md), usually it's `/etc/kubernetes/azure.json` on all k8s nodes deployed by AKS or aks-engine, here is an [azure.json example](./deploy/example/azure.json)
 
 ### Install azuredisk CSI driver on a Kubernetes cluster
