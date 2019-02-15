@@ -96,6 +96,7 @@ if [ $retcode -gt 0 ]; then
 fi
 
 # kill azurediskplugin first
+echo "pkill -f azurediskplugin"
 /usr/bin/pkill -f azurediskplugin
 
 echo "integration test on $cloud is completed."
