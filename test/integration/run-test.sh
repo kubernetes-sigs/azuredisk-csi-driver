@@ -34,6 +34,9 @@ if [ $# -gt 2 ]; then
 fi
 
 echo "being to run integration test on $cloud ..."
+# kill azurediskplugin first
+pkill azurediskplugin
+
 # run CSI driver as a background service
 _output/azurediskplugin --endpoint $endpoint --nodeid CSINode -v=5 &
 sleep 10
