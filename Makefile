@@ -19,7 +19,7 @@ IMAGE_TAG=$(REGISTRY_NAME)/$(IMAGE_NAME):$(IMAGE_VERSION)
 IMAGE_TAG_LATEST=$(REGISTRY_NAME)/$(IMAGE_NAME):latest
 REV=$(shell git describe --long --tags --dirty)
 
-.PHONY: all azuredisk azuredisk-container clean test-sanity
+.PHONY: all azuredisk azuredisk-container clean
 
 all: azuredisk
 
