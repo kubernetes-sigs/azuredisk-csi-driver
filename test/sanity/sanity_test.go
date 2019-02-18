@@ -31,7 +31,7 @@ const (
 	endpoint  = "unix://" + socket
 )
 
-func TestSanity(t *testing.T) {	
+func TestSanity(t *testing.T) {
 	ddriver := azuredisk.NewDriver("someNodeID")
 
 	go func() {
