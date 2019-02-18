@@ -1,0 +1,21 @@
+language: go
+go_import_path: github.com/csi-driver/azuredisk-csi-driver
+
+env:
+  global:
+    - GO111MODULE=off
+
+go:
+  - "1.11.4"
+
+before_install:
+  - go get github.com/mattn/goveralls
+  - go get github.com/rexray/gocsi/csc
+  - sudo apt update && sudo apt install procps -y  # for installing pkill
+
+script:
+  - hack/verify-all.sh
+  - go test -covermode=count -coverprofile=profile.cov ./pkg/...
+  - make azuredisk
+  - make integration-test
+  - make azuredisk-windows
