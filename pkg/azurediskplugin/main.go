@@ -20,7 +20,7 @@ import (
 	"flag"
 	"os"
 
-	"github.com/andyzhangx/azuredisk-csi-driver/pkg/azuredisk"
+	"github.com/csi-driver/azuredisk-csi-driver/pkg/azuredisk"
 	"github.com/golang/glog"
 )
 
