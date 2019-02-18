@@ -19,7 +19,7 @@ IMAGE_TAG=$(REGISTRY_NAME)/$(IMAGE_NAME):$(IMAGE_VERSION)
 IMAGE_TAG_LATEST=$(REGISTRY_NAME)/$(IMAGE_NAME):latest
 REV=$(shell git describe --long --tags --dirty)
 
-.PHONY: all azuredisk azuredisk-container clean
+.PHONY: all azuredisk azuredisk-container clean test-sanity
 
 all: azuredisk
 
@@ -28,6 +28,8 @@ test:
 	go vet github.com/csi-driver/azuredisk-csi-driver/pkg/...
 integration-test:
 	test/integration/run-tests-all-clouds.sh
+test-sanity:
+	go test -v ./test/sanity/...
 azuredisk:
 	if [ ! -d ./vendor ]; then dep ensure -vendor-only; fi
 	CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-X github.com/csi-driver/azuredisk-csi-driver/pkg/azuredisk.vendorVersion=$(IMAGE_VERSION) -extldflags "-static"' -o _output/azurediskplugin ./pkg/azurediskplugin
