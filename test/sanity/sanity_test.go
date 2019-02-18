@@ -32,7 +32,7 @@ const (
 )
 
 func TestSanity(t *testing.T) {	
-	ddriver := azuredisk.NewDriver("fakeNodeID")
+	ddriver := azuredisk.NewDriver("someNodeID")
 
 	go func() {
 		ddriver.Run(endpoint)
