@@ -42,14 +42,6 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:f64e41853dcf777d55e1d9bee69619c595ca1445e006257044044ef52e5d7f1d"
-  name = "github.com/andyzhangx/azuredisk-csi-driver"
-  packages = ["pkg/azuredisk"]
-  pruneopts = ""
-  revision = "4eaf85e2b85648db870f759682bc0f5a5adc9098"
-
-[[projects]]
-  branch = "master"
   digest = "1:c0bec5f9b98d0bc872ff5e834fac186b807b656683bd29cb82fb207a1513fabb"
   name = "github.com/beorn7/perks"
   packages = ["quantile"]
@@ -991,7 +983,6 @@
   input-imports = [
     "github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2018-10-01/compute",
     "github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2018-07-01/storage",
-    "github.com/andyzhangx/azuredisk-csi-driver/pkg/azuredisk",
     "github.com/container-storage-interface/spec/lib/go/csi",
     "github.com/golang/glog",
     "github.com/kubernetes-csi/csi-test/pkg/sanity",
