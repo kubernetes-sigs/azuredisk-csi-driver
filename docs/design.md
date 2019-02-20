@@ -17,11 +17,11 @@ Support volume size grow | Pending | Not ready on upstream: [Feature request: CS
 Support raw block size | to-do | upstream feature is beta in 1.14: [Add resizing support to CSI volumes](https://github.com/kubernetes/enhancements/issues/556)|
 Support snapshot | to-do | upstream feature is beta in 1.14: [Snapshot / Restore Volume Support for Kubernetes (CRD + External Controller) ](https://github.com/kubernetes/enhancements/issues/177) |
 Enable CI on Windows | done |  |
-Complete all unit tests | In Progress | https://github.com/csi-driver/azuredisk-csi-driver/issues/7 |
+Complete all unit tests | done | https://github.com/csi-driver/azuredisk-csi-driver/issues/7 |
 Set up sanity test | In Progress | https://github.com/csi-driver/azuredisk-csi-driver/issues/9 |
 Set up E2E test | In Progress | https://github.com/csi-driver/azuredisk-csi-driver/issues/6 |
 Support zone | to-do | need verification since csi has different zone usage compared to original usage |
-Implement azure disk csi driver on Windows | to-do |  |
+Implement azure disk csi driver on Windows | to-do | https://github.com/csi-driver/azuredisk-csi-driver/issues/45 |
 
 ### Implementation details
 To prevent possible regression issues, azuredisk CSI driver use [azure cloud provider](https://github.com/kubernetes/kubernetes/tree/v1.13.0/pkg/cloudprovider/providers/azure) library. Thus, all bug fixes in the built-in azure disk plugin would be incorporated into this driver.
