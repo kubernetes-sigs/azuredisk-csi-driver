@@ -72,8 +72,17 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		return nil, status.Error(codes.InvalidArgument, "Volume capabilities not supported")
 	}
 
-	volSizeBytes := int64(req.GetCapacityRange().GetRequiredBytes())
-	requestGiB := int(util.RoundUpSize(volSizeBytes, 1024*1024*1024))
+	volSizeBytes := int64(util.GIB)
+	if req.GetCapacityRange() != nil {
+		volSizeBytes = req.GetCapacityRange().GetRequiredBytes()
+	}
+
+	requestGiB := int(util.RoundUpSize(volSizeBytes, util.GIB))
+
+	maxVolSize := int(req.GetCapacityRange().GetLimitBytes())
+	if (maxVolSize > 0) && (maxVolSize < requestGiB) {
+		return nil, status.Error(codes.InvalidArgument, "After round-up, volume size exceeds the limit specified")
+	}
 
 	var (
 		location, account  string
