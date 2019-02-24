@@ -6,7 +6,7 @@ env:
     - GO111MODULE=off
 
 go:
-  - "1.11.4"
+  - "1.11.5"
 
 before_install:
   - go get github.com/mattn/goveralls
