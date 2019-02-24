@@ -61,10 +61,9 @@ spec:
             httpGet:
               path: /healthz
               port: healthz
-            initialDelaySeconds: 10
-            timeoutSeconds: 3
-            periodSeconds: 2
-            failureThreshold: 1
+            initialDelaySeconds: 30
+            timeoutSeconds: 10
+            periodSeconds: 30
           env:
             - name: AZURE_CREDENTIAL_FILE
               value: "/etc/kubernetes/azure.json"	
