@@ -19,6 +19,7 @@ metadata:
   name: csi-azuredisk-attacher
   namespace: {{ .Release.Namespace }}
 {{ include "adcd.labels" . | indent 2 }}
+    app: csi-azuredisk-attacher
 spec:
   serviceName: "csi-azuredisk-attacher"
   replicas: 1

@@ -1,12 +1,3 @@
-# crd-csi-driver-registry.yaml --validate=false
-# crd-csi-node-info.yaml --validate=false
-# rbac-csi-attacher
-# rbac-csi-driver-registrar
-# rbac-csi-provisioner
-# rbac-csi-snapshotter
-# csi-azuredisk-provisioner
-# csi-azuredisk-attacher
-# azuredisk-csi-driver
 apiVersion: v1
 appVersion: "0.1.0-alpha"
 description: Azure disk Container Storage Interface (CSI) Storage Plugin

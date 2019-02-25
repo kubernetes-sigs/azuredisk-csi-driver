@@ -1,15 +1,6 @@
-{{/*  */}}
-{{- define "adcd.name" }}
-{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
-{{- end -}}
+{{/* vim: set filetype=mustache: */}}
 
-{{/*  */}}
-{{- define "adcd.fullname" }}
-{{- $name := default .Chart.Name .Values.nameOverride -}}
-{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
-{{- end -}}
-
-{{/*  */}}
+{{/* labels for helm resources */}}
 {{- define "adcd.labels" }}
 labels:
   heritage: "{{ .Release.Service }}"
@@ -17,5 +8,4 @@ labels:
   revision: "{{ .Release.Revision }}"
   chart: "{{ .Chart.Name }}"
   chartVersion: "{{ .Chart.Version }}"
-  app: {{ template "adcd.name" . }}
 {{- end -}}

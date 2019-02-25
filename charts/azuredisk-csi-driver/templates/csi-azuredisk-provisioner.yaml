@@ -19,6 +19,7 @@ metadata:
   name: csi-azuredisk-provisioner
   namespace: {{ .Release.Namespace }}
 {{ include "adcd.labels" . | indent 2 }}
+    app: csi-azuredisk-provisioner
 spec:
   serviceName: "csi-azuredisk-provisioner"
   replicas: 1
