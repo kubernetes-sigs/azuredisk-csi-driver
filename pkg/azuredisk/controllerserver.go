@@ -23,9 +23,9 @@ import (
 	"strconv"
 	"strings"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/cloud-provider"
+	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/kubernetes/pkg/cloudprovider/providers/azure"
 	"k8s.io/kubernetes/pkg/util/keymutex"
 	"k8s.io/kubernetes/pkg/volume/util"
@@ -33,8 +33,8 @@ import (
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2018-10-01/compute"
 	"github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2018-07-01/storage"
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/golang/glog"
 	"github.com/pborman/uuid"
+	"k8s.io/klog"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -55,7 +55,7 @@ var (
 // CreateVolume provisions an azure disk
 func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
 	if err := d.ValidateControllerServiceRequest(csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME); err != nil {
-		glog.Errorf("invalid create volume req: %v", req)
+		klog.Errorf("invalid create volume req: %v", req)
 		return nil, err
 	}
 
@@ -72,8 +72,17 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		return nil, status.Error(codes.InvalidArgument, "Volume capabilities not supported")
 	}
 
-	volSizeBytes := int64(req.GetCapacityRange().GetRequiredBytes())
-	requestGiB := int(util.RoundUpSize(volSizeBytes, 1024*1024*1024))
+	volSizeBytes := int64(util.GIB)
+	if req.GetCapacityRange() != nil {
+		volSizeBytes = req.GetCapacityRange().GetRequiredBytes()
+	}
+
+	requestGiB := int(util.RoundUpSize(volSizeBytes, util.GIB))
+
+	maxVolSize := int(req.GetCapacityRange().GetLimitBytes())
+	if (maxVolSize > 0) && (maxVolSize < requestGiB) {
+		return nil, status.Error(codes.InvalidArgument, "After round-up, volume size exceeds the limit specified")
+	}
 
 	var (
 		location, account  string
@@ -153,7 +162,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 
 	selectedAvailabilityZone := pickAvailabilityZone(req.GetAccessibilityRequirements())
 
-	glog.V(2).Infof("begin to create azure disk(%s) account type(%s) rg(%s) location(%s) size(%d)", diskName, skuName, resourceGroup, location, requestGiB)
+	klog.V(2).Infof("begin to create azure disk(%s) account type(%s) rg(%s) location(%s) size(%d)", diskName, skuName, resourceGroup, location, requestGiB)
 
 	diskURI := ""
 	if kind == v1.AzureManagedDisk {
@@ -193,7 +202,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		}
 	}
 
-	glog.V(2).Infof("create azure disk(%s) account type(%s) rg(%s) location(%s) size(%d) successfully", diskName, skuName, resourceGroup, location, requestGiB)
+	klog.V(2).Infof("create azure disk(%s) account type(%s) rg(%s) location(%s) size(%d) successfully", diskName, skuName, resourceGroup, location, requestGiB)
 
 	/*  todo: block volume support
 	if utilfeature.DefaultFeatureGate.Enabled(features.BlockVolume) {
@@ -238,7 +247,7 @@ func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest)
 	}
 	diskURI := req.VolumeId
 
-	glog.V(2).Infof("deleting azure disk(%s)", diskURI)
+	klog.V(2).Infof("deleting azure disk(%s)", diskURI)
 	if isManagedDisk(diskURI) {
 		if err := d.cloud.DeleteManagedDisk(diskURI); err != nil {
 			return &csi.DeleteVolumeResponse{}, err
@@ -248,14 +257,14 @@ func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest)
 			return &csi.DeleteVolumeResponse{}, err
 		}
 	}
-	glog.V(2).Infof("delete azure disk(%s) successfullly", diskURI)
+	klog.V(2).Infof("delete azure disk(%s) successfullly", diskURI)
 
 	return &csi.DeleteVolumeResponse{}, nil
 }
 
 // ControllerPublishVolume attach an azure disk to a required node
 func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.ControllerPublishVolumeRequest) (*csi.ControllerPublishVolumeResponse, error) {
-	glog.V(2).Infof("ControllerPublishVolume: called with args %+v", *req)
+	klog.V(2).Infof("ControllerPublishVolume: called with args %+v", *req)
 	diskURI := req.GetVolumeId()
 	if len(diskURI) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID not provided")
@@ -287,29 +296,29 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		return nil, err
 	}
 
-	glog.V(2).Infof("GetDiskLun returned: %v. Initiating attaching volume %q to node %q.", err, diskURI, nodeName)
+	klog.V(2).Infof("GetDiskLun returned: %v. Initiating attaching volume %q to node %q.", err, diskURI, nodeName)
 	getLunMutex.LockKey(instanceid)
 	defer func() {
 		if err := getLunMutex.UnlockKey(instanceid); err != nil {
-			glog.Errorf("failed to UnlockKey: %q", instanceid)
+			klog.Errorf("failed to UnlockKey: %q", instanceid)
 		}
 	}()
 
 	lun, err := d.cloud.GetDiskLun(diskName, diskURI, nodeName)
 	if err == cloudprovider.InstanceNotFound {
 		// Log error and continue with attach
-		glog.Warningf(
+		klog.Warningf(
 			"Error checking if volume is already attached to current node (%q). Will continue and try attach anyway. err=%v",
 			instanceid, err)
 	}
 
 	if err == nil {
 		// Volume is already attached to node.
-		glog.V(2).Infof("Attach operation is successful. volume %q is already attached to node %q at lun %d.", diskURI, instanceid, lun)
+		klog.V(2).Infof("Attach operation is successful. volume %q is already attached to node %q at lun %d.", diskURI, instanceid, lun)
 	} else {
 		lun, err = d.cloud.GetNextDiskLun(nodeName)
 		if err != nil {
-			glog.Warningf("no LUN available for instance %q (%v)", nodeName, err)
+			klog.Warningf("no LUN available for instance %q (%v)", nodeName, err)
 			return nil, fmt.Errorf("all LUNs are used, cannot attach volume %q to instance %q (%v)", diskURI, instanceid, err)
 		}
 		isManagedDisk := isManagedDisk(diskURI)
@@ -318,15 +327,15 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		if cachingMode, err = getCachingMode(req.GetVolumeContext()); err != nil {
 			return nil, err
 		}
-		glog.V(2).Infof("Trying to attach volume %q lun %d to node %q", diskURI, lun, nodeName)
+		klog.V(2).Infof("Trying to attach volume %q lun %d to node %q", diskURI, lun, nodeName)
 		err = d.cloud.AttachDisk(isManagedDisk, diskName, diskURI, nodeName, lun, cachingMode)
 		if err == nil {
-			glog.V(2).Infof("Attach operation successful: volume %q attached to node %q.", diskURI, nodeName)
+			klog.V(2).Infof("Attach operation successful: volume %q attached to node %q.", diskURI, nodeName)
 		} else {
-			glog.Errorf("Attach volume %q to instance %q failed with %v", diskURI, instanceid, err)
+			klog.Errorf("Attach volume %q to instance %q failed with %v", diskURI, instanceid, err)
 			return nil, fmt.Errorf("Attach volume %q to instance %q failed with %v", diskURI, instanceid, err)
 		}
-		glog.V(2).Infof("attach volume %q lun %d to node %q successfully", diskURI, lun, nodeName)
+		klog.V(2).Infof("attach volume %q lun %d to node %q successfully", diskURI, lun, nodeName)
 	}
 
 	pvInfo := map[string]string{"devicePath": strconv.Itoa(int(lun))}
@@ -335,7 +344,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 
 // ControllerUnpublishVolume detach an azure disk from a required node
 func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.ControllerUnpublishVolumeRequest) (*csi.ControllerUnpublishVolumeResponse, error) {
-	glog.V(2).Infof("ControllerUnpublishVolume: called with args %+v", *req)
+	klog.V(2).Infof("ControllerUnpublishVolume: called with args %+v", *req)
 	diskURI := req.GetVolumeId()
 	if len(diskURI) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID not provided")
@@ -360,19 +369,19 @@ func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.Control
 	getLunMutex.LockKey(instanceid)
 	defer func() {
 		if err := getLunMutex.UnlockKey(instanceid); err != nil {
-			glog.Errorf("failed to UnlockKey: %q", instanceid)
+			klog.Errorf("failed to UnlockKey: %q", instanceid)
 		}
 	}()
 
-	glog.V(2).Infof("Trying to detach volume %s from node %s", diskURI, nodeID)
+	klog.V(2).Infof("Trying to detach volume %s from node %s", diskURI, nodeID)
 	if err := d.cloud.DetachDiskByName(diskName, diskURI, nodeName); err != nil {
 		if strings.Contains(err.Error(), errDiskNotFound) {
-			glog.Warningf("volume %s already detached from node %s", diskURI, nodeID)
+			klog.Warningf("volume %s already detached from node %s", diskURI, nodeID)
 		} else {
 			return nil, status.Errorf(codes.Internal, "Could not detach volume %q from node %q: %v", diskURI, nodeID, err)
 		}
 	}
-	glog.V(2).Infof("detach volume %s from node %s successfully", diskURI, nodeID)
+	klog.V(2).Infof("detach volume %s from node %s successfully", diskURI, nodeID)
 
 	return &csi.ControllerUnpublishVolumeResponse{}, nil
 }
@@ -396,7 +405,7 @@ func (d *Driver) ValidateVolumeCapabilities(ctx context.Context, req *csi.Valida
 
 // ControllerGetCapabilities returns the capabilities of the Controller plugin
 func (d *Driver) ControllerGetCapabilities(ctx context.Context, req *csi.ControllerGetCapabilitiesRequest) (*csi.ControllerGetCapabilitiesResponse, error) {
-	glog.V(2).Infof("Using default ControllerGetCapabilities")
+	klog.V(2).Infof("Using default ControllerGetCapabilities")
 
 	return &csi.ControllerGetCapabilitiesResponse{
 		Capabilities: d.Cap,

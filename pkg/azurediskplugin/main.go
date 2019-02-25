@@ -20,8 +20,8 @@ import (
 	"flag"
 	"os"
 
-	"github.com/andyzhangx/azuredisk-csi-driver/pkg/azuredisk"
-	"github.com/golang/glog"
+	"github.com/csi-driver/azuredisk-csi-driver/pkg/azuredisk"
+	"k8s.io/klog"
 )
 
 func init() {
@@ -34,7 +34,13 @@ var (
 )
 
 func main() {
+	klog.InitFlags(nil)
 	flag.Parse()
+
+	if *nodeID == "" {
+		klog.Error("--nodeid is a required parameter")
+		os.Exit(1)
+	}
 
 	handle()
 	os.Exit(0)
@@ -43,7 +49,7 @@ func main() {
 func handle() {
 	driver := azuredisk.NewDriver(*nodeID)
 	if driver == nil {
-		glog.Fatalln("Failed to initialize azuredisk CSI Driver")
+		klog.Fatalln("Failed to initialize azuredisk CSI Driver")
 	}
 	driver.Run(*endpoint)
 }

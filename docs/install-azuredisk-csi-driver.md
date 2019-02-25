@@ -1,14 +1,14 @@
 # Install azuredisk CSI driver on a kubernetes cluster
 ```
-kubectl apply -f https://raw.githubusercontent.com/andyzhangx/azuredisk-csi-driver/master/deploy/crd-csi-driver-registry.yaml --validate=false
-kubectl apply -f https://raw.githubusercontent.com/andyzhangx/azuredisk-csi-driver/master/deploy/crd-csi-node-info.yaml --validate=false
-kubectl apply -f https://raw.githubusercontent.com/andyzhangx/azuredisk-csi-driver/master/deploy/rbac-csi-attacher.yaml
-kubectl apply -f https://raw.githubusercontent.com/andyzhangx/azuredisk-csi-driver/master/deploy/rbac-csi-driver-registrar.yaml
-kubectl apply -f https://raw.githubusercontent.com/andyzhangx/azuredisk-csi-driver/master/deploy/rbac-csi-provisioner.yaml
-kubectl apply -f https://raw.githubusercontent.com/andyzhangx/azuredisk-csi-driver/master/deploy/rbac-csi-snapshotter.yaml
-kubectl apply -f https://raw.githubusercontent.com/andyzhangx/azuredisk-csi-driver/master/deploy/csi-azuredisk-provisioner.yaml
-kubectl apply -f https://raw.githubusercontent.com/andyzhangx/azuredisk-csi-driver/master/deploy/csi-azuredisk-attacher.yaml
-kubectl apply -f https://raw.githubusercontent.com/andyzhangx/azuredisk-csi-driver/master/deploy/azuredisk-csi-driver.yaml
+kubectl apply -f https://raw.githubusercontent.com/csi-driver/azuredisk-csi-driver/master/deploy/crd-csi-driver-registry.yaml --validate=false
+kubectl apply -f https://raw.githubusercontent.com/csi-driver/azuredisk-csi-driver/master/deploy/crd-csi-node-info.yaml --validate=false
+kubectl apply -f https://raw.githubusercontent.com/csi-driver/azuredisk-csi-driver/master/deploy/rbac-csi-attacher.yaml
+kubectl apply -f https://raw.githubusercontent.com/csi-driver/azuredisk-csi-driver/master/deploy/rbac-csi-driver-registrar.yaml
+kubectl apply -f https://raw.githubusercontent.com/csi-driver/azuredisk-csi-driver/master/deploy/rbac-csi-provisioner.yaml
+kubectl apply -f https://raw.githubusercontent.com/csi-driver/azuredisk-csi-driver/master/deploy/rbac-csi-snapshotter.yaml
+kubectl apply -f https://raw.githubusercontent.com/csi-driver/azuredisk-csi-driver/master/deploy/csi-azuredisk-provisioner.yaml
+kubectl apply -f https://raw.githubusercontent.com/csi-driver/azuredisk-csi-driver/master/deploy/csi-azuredisk-attacher.yaml
+kubectl apply -f https://raw.githubusercontent.com/csi-driver/azuredisk-csi-driver/master/deploy/azuredisk-csi-driver.yaml
 ```
 
  - check pods status:
