@@ -3,8 +3,6 @@ image:
   tag: v0.2.0-alpha
   pullPolicy: Always
 
-provider: azure
-
 serviceAccount:
   create: true
 

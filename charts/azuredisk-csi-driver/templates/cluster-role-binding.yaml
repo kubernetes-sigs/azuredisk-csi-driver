@@ -1,10 +1,10 @@
-{{ if .Values.rbac.create }}
+{{- if .Values.rbac.create -}}
 # Attacher must be able to work with PVs, nodes and VolumeAttachments
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: external-attacher-runner
-{{ include "adcd.labels" . | indent 2 }}
+{{ include "azuredisk.labels" . | indent 2 }}
 rules:
   - apiGroups: [""]
     resources: ["persistentvolumes"]
@@ -24,7 +24,7 @@ kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: csi-attacher-role
-{{ include "adcd.labels" . | indent 2 }}
+{{ include "azuredisk.labels" . | indent 2 }}
 subjects:
   - kind: ServiceAccount
     name: csi-attacher
@@ -44,7 +44,7 @@ metadata:
   # replace with non-default namespace name
   namespace: {{ .Release.Namespace }}
   name: external-attacher-cfg
-{{ include "adcd.labels" . | indent 2 }}
+{{ include "azuredisk.labels" . | indent 2 }}
 rules:
 - apiGroups: [""]
   resources: ["configmaps"]
@@ -57,7 +57,7 @@ metadata:
   name: csi-attacher-role-cfg
   # replace with non-default namespace name
   namespace: {{ .Release.Namespace }}
-{{ include "adcd.labels" . | indent 2 }}
+{{ include "azuredisk.labels" . | indent 2 }}
 subjects:
   - kind: ServiceAccount
     name: csi-attacher
@@ -73,7 +73,7 @@ kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: driver-registrar-runner
-{{ include "adcd.labels" . | indent 2 }}
+{{ include "azuredisk.labels" . | indent 2 }}
 rules:
   - apiGroups: [""]
     resources: ["events"]
@@ -94,7 +94,7 @@ kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: csi-driver-registrar-role
-{{ include "adcd.labels" . | indent 2 }}
+{{ include "azuredisk.labels" . | indent 2 }}
 subjects:
   - kind: ServiceAccount
     name: csi-driver-registrar
@@ -110,7 +110,7 @@ kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: external-provisioner-runner
-{{ include "adcd.labels" . | indent 2 }}
+{{ include "azuredisk.labels" . | indent 2 }}
 rules:
   - apiGroups: [""]
     resources: ["secrets"]
@@ -139,7 +139,7 @@ kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: csi-provisioner-role
-{{ include "adcd.labels" . | indent 2 }}
+{{ include "azuredisk.labels" . | indent 2 }}
 subjects:
   - kind: ServiceAccount
     name: csi-provisioner
@@ -159,7 +159,7 @@ metadata:
   # replace with non-default namespace name
   namespace: {{ .Release.Namespace }}
   name: external-provisioner-cfg
-{{ include "adcd.labels" . | indent 2 }}
+{{ include "azuredisk.labels" . | indent 2 }}
 rules:
 - apiGroups: [""]
   resources: ["endpoints"]
@@ -172,7 +172,7 @@ metadata:
   name: csi-provisioner-role-cfg
   # replace with non-default namespace name
   namespace: {{ .Release.Namespace }}
-{{ include "adcd.labels" . | indent 2 }}
+{{ include "azuredisk.labels" . | indent 2 }}
 subjects:
   - kind: ServiceAccount
     name: csi-provisioner
@@ -189,7 +189,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   # rename if there are conflicts
   name: external-snapshotter-runner
-{{ include "adcd.labels" . | indent 2 }}
+{{ include "azuredisk.labels" . | indent 2 }}
 rules:
   - apiGroups: [""]
     resources: ["persistentvolumes"]
@@ -224,7 +224,7 @@ kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: csi-snapshotter-role
-{{ include "adcd.labels" . | indent 2 }}
+{{ include "azuredisk.labels" . | indent 2 }}
 subjects:
   - kind: ServiceAccount
     name: csi-snapshotter

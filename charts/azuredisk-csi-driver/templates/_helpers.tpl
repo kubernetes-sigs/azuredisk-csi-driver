@@ -1,7 +1,7 @@
 {{/* vim: set filetype=mustache: */}}
 
 {{/* labels for helm resources */}}
-{{- define "adcd.labels" -}}
+{{- define "azuredisk.labels" -}}
 labels:
   heritage: "{{ .Release.Service }}"
   release: "{{ .Release.Name }}"

@@ -3,7 +3,7 @@ apiVersion: v1
 metadata:
   name: csi-azuredisk-provisioner
   namespace: {{ .Release.Namespace }}
-{{ include "adcd.labels" . | indent 2 }}
+{{ include "azuredisk.labels" . | indent 2 }}
     app: csi-azuredisk-provisioner
 spec:
   selector:
@@ -18,7 +18,7 @@ apiVersion: apps/v1
 metadata:
   name: csi-azuredisk-provisioner
   namespace: {{ .Release.Namespace }}
-{{ include "adcd.labels" . | indent 2 }}
+{{ include "azuredisk.labels" . | indent 2 }}
     app: csi-azuredisk-provisioner
 spec:
   serviceName: "csi-azuredisk-provisioner"
@@ -28,7 +28,7 @@ spec:
       app: csi-azuredisk-provisioner
   template:
     metadata:
-{{ include "adcd.labels" . | indent 6 }}
+{{ include "azuredisk.labels" . | indent 6 }}
         app: csi-azuredisk-provisioner
     spec:
       serviceAccountName: csi-provisioner

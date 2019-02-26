@@ -3,7 +3,7 @@ apiVersion: apps/v1
 metadata:
   name: csi-azuredisk
   namespace: {{ .Release.Namespace }}
-{{ include "adcd.labels" . | indent 2 }}
+{{ include "azuredisk.labels" . | indent 2 }}
     app: csi-azuredisk
 spec:
   selector:
@@ -11,7 +11,7 @@ spec:
       app: csi-azuredisk
   template:
     metadata:
-{{ include "adcd.labels" . | indent 6 }}
+{{ include "azuredisk.labels" . | indent 6 }}
         app: csi-azuredisk
     spec:
       serviceAccountName: csi-driver-registrar
@@ -72,10 +72,8 @@ spec:
             timeoutSeconds: 10
             periodSeconds: 30
           env:
-{{- if eq .Values.provider "azure" }}
             - name: AZURE_CREDENTIAL_FILE
               value: "/etc/kubernetes/azure.json"
-{{- end }}
             - name: CSI_ENDPOINT
               value: unix:///csi/csi.sock
             - name: KUBE_NODE_NAME
@@ -92,13 +90,11 @@ spec:
             - mountPath: /var/lib/kubelet/pods
               mountPropagation: Bidirectional
               name: mountpoint-dir
-{{- if eq .Values.provider "azure" }}
             - mountPath: /etc/kubernetes/
               name: azure-cred
             - mountPath: /var/lib/waagent/ManagedIdentity-Settings
               readOnly: true
               name: msi
-{{- end }}
             - mountPath: /devhost #use /devhost to avoid conflict
               name: device-dir
             - mountPath: /sys/bus/scsi/devices
@@ -118,7 +114,6 @@ spec:
             path: /var/lib/kubelet/plugins_registry/
             type: DirectoryOrCreate
           name: registration-dir
-{{- if eq .Values.provider "azure" }}
         - hostPath:
             path: /etc/kubernetes/
             type: Directory
@@ -126,7 +121,6 @@ spec:
         - hostPath:
             path: /var/lib/waagent/ManagedIdentity-Settings
           name: msi
-{{- end }}
         - hostPath:
             path: /dev
             type: Directory
