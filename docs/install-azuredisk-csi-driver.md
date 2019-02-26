@@ -5,8 +5,8 @@ If you have already installed Helm, you can also use it to install azuredisk CSI
 ## Installation with kubectl
 
 ```
-kubectl apply -f https://raw.githubusercontent.com/csi-driver/azuredisk-csi-driver/master/deploy/crd-csi-driver-registry.yaml --validate=false
-kubectl apply -f https://raw.githubusercontent.com/csi-driver/azuredisk-csi-driver/master/deploy/crd-csi-node-info.yaml --validate=false
+kubectl apply -f https://raw.githubusercontent.com/csi-driver/azuredisk-csi-driver/master/deploy/crd-csi-driver-registry.yaml
+kubectl apply -f https://raw.githubusercontent.com/csi-driver/azuredisk-csi-driver/master/deploy/crd-csi-node-info.yaml
 kubectl apply -f https://raw.githubusercontent.com/csi-driver/azuredisk-csi-driver/master/deploy/rbac-csi-attacher.yaml
 kubectl apply -f https://raw.githubusercontent.com/csi-driver/azuredisk-csi-driver/master/deploy/rbac-csi-driver-registrar.yaml
 kubectl apply -f https://raw.githubusercontent.com/csi-driver/azuredisk-csi-driver/master/deploy/rbac-csi-provisioner.yaml

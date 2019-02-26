@@ -4,10 +4,10 @@ metadata:
   name: csi-azuredisk-provisioner
   namespace: kube-system
   labels:
-    app: csi-azuredisk-provisioner 
+    app: csi-azuredisk-provisioner
 spec:
   selector:
-    app: csi-azuredisk-provisioner 
+    app: csi-azuredisk-provisioner
   ports:
     - name: dummy
       port: 12345
