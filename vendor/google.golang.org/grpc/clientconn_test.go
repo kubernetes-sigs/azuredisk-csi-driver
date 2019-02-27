@@ -624,6 +624,92 @@ func (s) TestWithAuthorityAndTLS(t *testing.T) {
 	}
 }
 
+// When creating a transport configured with n addresses, only calculate the
+// backoff once per "round" of attempts instead of once per address (n times
+// per "round" of attempts).
+func (s) TestDial_OneBackoffPerRetryGroup(t *testing.T) {
+	getMinConnectTimeoutBackup := getMinConnectTimeout
+	defer func() {
+		getMinConnectTimeout = getMinConnectTimeoutBackup
+	}()
+	var attempts uint32
+	getMinConnectTimeout = func() time.Duration {
+		if atomic.AddUint32(&attempts, 1) == 1 {
+			// Once all addresses are exhausted, hang around and wait for the
+			// client.Close to happen rather than re-starting a new round of
+			// attempts.
+			return time.Hour
+		}
+		t.Error("only one attempt backoff calculation, but got more")
+		return 0
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	lis1, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		t.Fatalf("Error while listening. Err: %v", err)
+	}
+	defer lis1.Close()
+
+	lis2, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		t.Fatalf("Error while listening. Err: %v", err)
+	}
+	defer lis2.Close()
+
+	server1Done := make(chan struct{})
+	server2Done := make(chan struct{})
+
+	// Launch server 1.
+	go func() {
+		conn, err := lis1.Accept()
+		if err != nil {
+			t.Error(err)
+			return
+		}
+
+		conn.Close()
+		close(server1Done)
+	}()
+	// Launch server 2.
+	go func() {
+		conn, err := lis2.Accept()
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		conn.Close()
+		close(server2Done)
+	}()
+
+	rb := manual.NewBuilderWithScheme("whatever")
+	rb.InitialAddrs([]resolver.Address{
+		{Addr: lis1.Addr().String()},
+		{Addr: lis2.Addr().String()},
+	})
+	client, err := DialContext(ctx, "this-gets-overwritten", WithInsecure(), WithBalancerName(stateRecordingBalancerName), withResolverBuilder(rb))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	timeout := time.After(15 * time.Second)
+
+	select {
+	case <-timeout:
+		t.Fatal("timed out waiting for test to finish")
+	case <-server1Done:
+	}
+
+	select {
+	case <-timeout:
+		t.Fatal("timed out waiting for test to finish")
+	case <-server2Done:
+	}
+}
+
 func (s) TestDialContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -853,12 +939,39 @@ func (s) TestClientUpdatesParamsAfterGoAway(t *testing.T) {
 		t.Fatalf("Failed to listen. Err: %v", err)
 	}
 	defer lis.Close()
+	connected := make(chan struct{})
+	go func() {
+		conn, err := lis.Accept()
+		if err != nil {
+			t.Errorf("error accepting connection: %v", err)
+			return
+		}
+		defer conn.Close()
+		f := http2.NewFramer(conn, conn)
+		// Start a goroutine to read from the conn to prevent the client from
+		// blocking after it writes its preface.
+		go func() {
+			for {
+				if _, err := f.ReadFrame(); err != nil {
+					return
+				}
+			}
+		}()
+		if err := f.WriteSettings(http2.Setting{}); err != nil {
+			t.Errorf("error writing settings: %v", err)
+			return
+		}
+		<-connected
+		if err := f.WriteGoAway(0, http2.ErrCodeEnhanceYourCalm, []byte("too_many_pings")); err != nil {
+			t.Errorf("error writing GOAWAY: %v", err)
+			return
+		}
+	}()
 	addr := lis.Addr().String()
-	s := NewServer()
-	go s.Serve(lis)
-	defer s.Stop()
-	cc, err := Dial(addr, WithBlock(), WithInsecure(), WithKeepaliveParams(keepalive.ClientParameters{
-		Time:                50 * time.Millisecond,
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cc, err := DialContext(ctx, addr, WithBlock(), WithInsecure(), WithKeepaliveParams(keepalive.ClientParameters{
+		Time:                10 * time.Second,
 		Timeout:             100 * time.Millisecond,
 		PermitWithoutStream: true,
 	}))
@@ -866,12 +979,21 @@ func (s) TestClientUpdatesParamsAfterGoAway(t *testing.T) {
 		t.Fatalf("Dial(%s, _) = _, %v, want _, <nil>", addr, err)
 	}
 	defer cc.Close()
-	time.Sleep(1 * time.Second)
-	cc.mu.RLock()
-	defer cc.mu.RUnlock()
-	v := cc.mkp.Time
-	if v < 100*time.Millisecond {
-		t.Fatalf("cc.dopts.copts.Keepalive.Time = %v , want 100ms", v)
+	close(connected)
+	for {
+		time.Sleep(10 * time.Millisecond)
+		cc.mu.RLock()
+		v := cc.mkp.Time
+		if v == 20*time.Second {
+			// Success
+			cc.mu.RUnlock()
+			return
+		}
+		if ctx.Err() != nil {
+			// Timeout
+			t.Fatalf("cc.dopts.copts.Keepalive.Time = %v , want 20s", v)
+		}
+		cc.mu.RUnlock()
 	}
 }
 
@@ -1003,9 +1125,6 @@ func (s) TestUpdateAddresses_RetryFromFirstAddr(t *testing.T) {
 	server2ContactedSecondTime := make(chan struct{})
 	server3Contacted := make(chan struct{})
 
-	stateNotifications := make(chan connectivity.State, 100)
-	testBalancer.ResetNotifier(stateNotifications)
-
 	// Launch server 1.
 	go func() {
 		// First, let's allow the initial connection to go READY. We need to do
@@ -1024,6 +1143,10 @@ func (s) TestUpdateAddresses_RetryFromFirstAddr(t *testing.T) {
 			return
 		}
 
+		// nextStateNotifier() is updated after balancerBuilder.Build(), which is
+		// called by grpc.Dial. It's safe to do it here because lis1.Accept blocks
+		// until balancer is built to process the addresses.
+		stateNotifications := testBalancerBuilder.nextStateNotifier()
 		// Wait for the transport to become ready.
 		for s := range stateNotifications {
 			if s == connectivity.Ready {

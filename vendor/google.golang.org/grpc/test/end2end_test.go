@@ -51,6 +51,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/encoding"
 	_ "google.golang.org/grpc/encoding/gzip"
 	_ "google.golang.org/grpc/grpclog/glogger"
 	"google.golang.org/grpc/health"
@@ -61,7 +62,6 @@ import (
 	"google.golang.org/grpc/internal/grpctest"
 	"google.golang.org/grpc/internal/leakcheck"
 	"google.golang.org/grpc/internal/testutils"
-	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/resolver"
@@ -171,7 +171,7 @@ func (s *testServer) EmptyCall(ctx context.Context, in *testpb.Empty) (*testpb.E
 
 func newPayload(t testpb.PayloadType, size int32) (*testpb.Payload, error) {
 	if size < 0 {
-		return nil, fmt.Errorf("Requested a response with invalid length %d", size)
+		return nil, fmt.Errorf("requested a response with invalid length %d", size)
 	}
 	body := make([]byte, size)
 	switch t {
@@ -179,7 +179,7 @@ func newPayload(t testpb.PayloadType, size int32) (*testpb.Payload, error) {
 	case testpb.PayloadType_UNCOMPRESSABLE:
 		return nil, fmt.Errorf("PayloadType UNCOMPRESSABLE is not supported")
 	default:
-		return nil, fmt.Errorf("Unsupported payload type: %d", t)
+		return nil, fmt.Errorf("unsupported payload type: %d", t)
 	}
 	return &testpb.Payload{
 		Type: t,
@@ -500,7 +500,7 @@ type test struct {
 	streamServerInt             grpc.StreamServerInterceptor
 	unknownHandler              grpc.StreamHandler
 	sc                          <-chan grpc.ServiceConfig
-	customCodec                 grpc.Codec
+	customCodec                 encoding.Codec
 	serverInitialWindowSize     int32
 	serverInitialConnWindowSize int32
 	clientInitialWindowSize     int32
@@ -509,8 +509,6 @@ type test struct {
 	customDialOptions           []grpc.DialOption
 	customServerOptions         []grpc.ServerOption
 	resolverScheme              string
-	cliKeepAlive                *keepalive.ClientParameters
-	svrKeepAlive                *keepalive.ServerParameters
 
 	// All test dialing is blocking by default. Set this to true if dial
 	// should be non-blocking.
@@ -631,12 +629,6 @@ func (te *test) listenAndServe(ts testpb.TestServiceServer, listen func(network,
 		sopts = append(sopts, grpc.Creds(creds))
 	case "clientTimeoutCreds":
 		sopts = append(sopts, grpc.Creds(&clientTimeoutCreds{}))
-	}
-	if te.customCodec != nil {
-		sopts = append(sopts, grpc.CustomCodec(te.customCodec))
-	}
-	if te.svrKeepAlive != nil {
-		sopts = append(sopts, grpc.KeepaliveParams(*te.svrKeepAlive))
 	}
 	sopts = append(sopts, te.customServerOptions...)
 	s := grpc.NewServer(sopts...)
@@ -866,7 +858,7 @@ func (te *test) configDial(opts ...grpc.DialOption) ([]grpc.DialOption, string) 
 		opts = append(opts, grpc.WithPerRPCCredentials(te.perRPCCreds))
 	}
 	if te.customCodec != nil {
-		opts = append(opts, grpc.WithDefaultCallOptions(grpc.CallCustomCodec(te.customCodec)))
+		opts = append(opts, grpc.WithDefaultCallOptions(grpc.ForceCodec(te.customCodec)))
 	}
 	if !te.nonBlockingDial && te.srvAddr != "" {
 		// Only do a blocking dial if server is up.
@@ -874,9 +866,6 @@ func (te *test) configDial(opts ...grpc.DialOption) ([]grpc.DialOption, string) 
 	}
 	if te.srvAddr == "" {
 		te.srvAddr = "client.side.only.test"
-	}
-	if te.cliKeepAlive != nil {
-		opts = append(opts, grpc.WithKeepaliveParams(*te.cliKeepAlive))
 	}
 	opts = append(opts, te.customDialOptions...)
 	return opts, scheme
@@ -1060,7 +1049,9 @@ func testServerGoAway(t *testing.T, e env) {
 	cc := te.clientConn()
 	tc := testpb.NewTestServiceClient(cc)
 	// Finish an RPC to make sure the connection is good.
-	if _, err := tc.EmptyCall(context.Background(), &testpb.Empty{}, grpc.WaitForReady(true)); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, err := tc.EmptyCall(ctx, &testpb.Empty{}, grpc.WaitForReady(true)); err != nil {
 		t.Fatalf("TestService/EmptyCall(_, _) = _, %v, want _, <nil>", err)
 	}
 	ch := make(chan struct{})
@@ -1078,7 +1069,9 @@ func testServerGoAway(t *testing.T, e env) {
 		cancel()
 	}
 	// A new RPC should fail.
-	if _, err := tc.EmptyCall(context.Background(), &testpb.Empty{}); status.Code(err) != codes.Unavailable && status.Code(err) != codes.Internal {
+	ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, err := tc.EmptyCall(ctx, &testpb.Empty{}); status.Code(err) != codes.Unavailable && status.Code(err) != codes.Internal {
 		t.Fatalf("TestService/EmptyCall(_, _) = _, %v, want _, %s or %s", err, codes.Unavailable, codes.Internal)
 	}
 	<-ch
@@ -5152,6 +5145,7 @@ type stubServer struct {
 
 	// Customizable implementations of server handlers.
 	emptyCall      func(ctx context.Context, in *testpb.Empty) (*testpb.Empty, error)
+	unaryCall      func(ctx context.Context, in *testpb.SimpleRequest) (*testpb.SimpleResponse, error)
 	fullDuplexCall func(stream testpb.TestService_FullDuplexCallServer) error
 
 	// A client connected to this service the test may use.  Created in Start().
@@ -5165,6 +5159,10 @@ type stubServer struct {
 
 func (ss *stubServer) EmptyCall(ctx context.Context, in *testpb.Empty) (*testpb.Empty, error) {
 	return ss.emptyCall(ctx, in)
+}
+
+func (ss *stubServer) UnaryCall(ctx context.Context, in *testpb.SimpleRequest) (*testpb.SimpleResponse, error) {
+	return ss.unaryCall(ctx, in)
 }
 
 func (ss *stubServer) FullDuplexCall(stream testpb.TestService_FullDuplexCallServer) error {
@@ -5732,7 +5730,7 @@ func (c *errCodec) Unmarshal(data []byte, v interface{}) error {
 	return nil
 }
 
-func (c *errCodec) String() string {
+func (c *errCodec) Name() string {
 	return "Fermat's near-miss."
 }
 
@@ -6951,7 +6949,7 @@ func testLargeTimeout(t *testing.T, e env) {
 	for i, maxTimeout := range timeouts {
 		ts.unaryCall = func(ctx context.Context, in *testpb.SimpleRequest) (*testpb.SimpleResponse, error) {
 			deadline, ok := ctx.Deadline()
-			timeout := deadline.Sub(time.Now())
+			timeout := time.Until(deadline)
 			minTimeout := maxTimeout - 5*time.Second
 			if !ok || timeout < minTimeout || timeout > maxTimeout {
 				t.Errorf("ctx.Deadline() = (now+%v), %v; want [%v, %v], true", timeout, ok, minTimeout, maxTimeout)
