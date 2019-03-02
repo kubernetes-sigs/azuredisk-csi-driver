@@ -56,6 +56,12 @@ if [ -v aadClientSecret ]; then
 	volumeid=`echo $value | awk '{print $1}' | sed 's/"//g'`
 	echo "got volume id: $volumeid"
 
+	$csc controller validate-volume-capabilities --endpoint $endpoint --cap 1,block $volumeid
+	retcode=$?
+	if [ $retcode -gt 0 ]; then
+		exit $retcode
+	fi
+
 	echo "attach volume test:"
 	$csc controller publish --endpoint $endpoint --node-id $node --cap 1,block $volumeid
 	retcode=$?
@@ -82,12 +88,6 @@ if [ -v aadClientSecret ]; then
 fi
 
 $csc identity plugin-info --endpoint $endpoint
-retcode=$?
-if [ $retcode -gt 0 ]; then
-	exit $retcode
-fi
-
-$csc controller validate-volume-capabilities --endpoint $endpoint --cap 1,block CSIVolumeID
 retcode=$?
 if [ $retcode -gt 0 ]; then
 	exit $retcode
