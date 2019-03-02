@@ -388,11 +388,27 @@ func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.Control
 
 // ValidateVolumeCapabilities return the capabilities of the volume
 func (d *Driver) ValidateVolumeCapabilities(ctx context.Context, req *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, error) {
-	if len(req.GetVolumeId()) == 0 {
+	diskURI := req.GetVolumeId()
+	if len(diskURI) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in request")
 	}
 	if req.GetVolumeCapabilities() == nil {
 		return nil, status.Error(codes.InvalidArgument, "Volume capabilities missing in request")
+	}
+
+	diskName, err := getDiskName(diskURI)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "Volume not found")
+	}
+
+	resourceGroup, err := getResourceGroupFromDiskURI(diskURI)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "Volume not found")
+	}
+
+	_, err = d.cloud.DisksClient.Get(ctx, resourceGroup, diskName)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "Volume not found")
 	}
 
 	for _, cap := range req.VolumeCapabilities {

@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestIsManagedDisk(t *testing.T) {
@@ -88,6 +90,42 @@ func TestGetDiskName(t *testing.T) {
 		if !reflect.DeepEqual(result1, test.expected1) || !reflect.DeepEqual(result2, test.expected2) {
 			t.Errorf("input: %q, getDiskName result1: %q, expected1: %q, result2: %q, expected2: %q", test.options, result1, test.expected1,
 				result2, test.expected2)
+		}
+	}
+}
+
+func TestGetResourceGroupFromDiskURI(t *testing.T) {
+	tests := []struct {
+		diskURL        string
+		expectedResult string
+		expectError    bool
+	}{
+		{
+			diskURL:        "/subscriptions/4be8920b-2978-43d7-axyz-04d8549c1d05/resourceGroups/azure-k8s1102/providers/Microsoft.Compute/disks/andy-mghyb1102-dynamic-pvc-f7f014c9-49f4-11e8-ab5c-000d3af7b38e",
+			expectedResult: "azure-k8s1102",
+			expectError:    false,
+		},
+		{
+			diskURL:        "/4be8920b-2978-43d7-axyz-04d8549c1d05/resourceGroups/azure-k8s1102/providers/Microsoft.Compute/disks/andy-mghyb1102-dynamic-pvc-f7f014c9-49f4-11e8-ab5c-000d3af7b38e",
+			expectedResult: "",
+			expectError:    true,
+		},
+		{
+			diskURL:        "",
+			expectedResult: "",
+			expectError:    true,
+		},
+	}
+
+	for _, test := range tests {
+		result, err := getResourceGroupFromDiskURI(test.diskURL)
+		assert.Equal(t, result, test.expectedResult, "Expect result not equal with getResourceGroupFromDiskURI(%s) return: %q, expected: %q",
+			test.diskURL, result, test.expectedResult)
+
+		if test.expectError {
+			assert.NotNil(t, err, "Expect error during getResourceGroupFromDiskURI(%s)", test.diskURL)
+		} else {
+			assert.Nil(t, err, "Expect error is nil during getResourceGroupFromDiskURI(%s)", test.diskURL)
 		}
 	}
 }

@@ -118,3 +118,11 @@ func getDiskName(diskURI string) (string, error) {
 	}
 	return matches[1], nil
 }
+
+func getResourceGroupFromDiskURI(diskURI string) (string, error) {
+	fields := strings.Split(diskURI, "/")
+	if len(fields) != 9 || fields[3] != "resourceGroups" {
+		return "", fmt.Errorf("invalid disk URI: %s", diskURI)
+	}
+	return fields[4], nil
+}
