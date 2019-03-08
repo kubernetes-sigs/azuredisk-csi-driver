@@ -1,7 +1,7 @@
 # azuredisk CSI driver for Kubernetes
-![TravisCI](https://travis-ci.com/csi-driver/azuredisk-csi-driver.svg?branch=master)
-[![Coverage Status](https://coveralls.io/repos/github/csi-driver/azuredisk-csi-driver/badge.svg?branch=master)](https://coveralls.io/github/csi-driver/azuredisk-csi-driver?branch=master)
-[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fcsi-driver%2Fazuredisk-csi-driver.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2Fcsi-driver%2Fazuredisk-csi-driver?ref=badge_shield)
+![TravisCI](https://travis-ci.com/kubernetes-sigs/azuredisk-csi-driver.svg?branch=master)
+[![Coverage Status](https://coveralls.io/repos/github/kubernetes-sigs/azuredisk-csi-driver/badge.svg?branch=master)](https://coveralls.io/github/kubernetes-sigs/azuredisk-csi-driver?branch=master)
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fkubernetes-sigs%2Fazuredisk-csi-driver.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2Fkubernetes-sigs%2Fazuredisk-csi-driver?ref=badge_shield)
 
 **WARNING**: This driver is in ALPHA currently. Do NOT use this driver in a production environment in its current state.
 
@@ -40,25 +40,25 @@ Please refer to [install azuredisk csi driver](./docs/install-azuredisk-csi-driv
 ##### Option#1: Azuredisk Dynamic Provisioning
  - Create an azuredisk CSI storage class
 ```
-kubectl create -f https://raw.githubusercontent.com/csi-driver/azuredisk-csi-driver/master/deploy/example/storageclass-azuredisk-csi.yaml
+kubectl create -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/storageclass-azuredisk-csi.yaml
 ```
 
  - Create an azuredisk CSI PVC
 ```
-kubectl create -f https://raw.githubusercontent.com/csi-driver/azuredisk-csi-driver/master/deploy/example/pvc-azuredisk-csi.yaml
+kubectl create -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/pvc-azuredisk-csi.yaml
 ```
 
 ##### Option#2: Azuredisk Static Provisioning(use an existing azure disk)
  - Create an azuredisk CSI PV, download `pv-azuredisk-csi.yaml` file and edit `diskName`, `diskURI` in `volumeAttributes`
 ```
-wget https://raw.githubusercontent.com/csi-driver/azuredisk-csi-driver/master/deploy/example/pv-azuredisk-csi.yaml
+wget https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/pv-azuredisk-csi.yaml
 vi pv-azuredisk-csi.yaml
 kubectl create -f pv-azuredisk-csi.yaml
 ```
 
  - Create an azuredisk CSI PVC which would be bound to the above PV
 ```
-kubectl create -f https://raw.githubusercontent.com/csi-driver/azuredisk-csi-driver/master/deploy/example/pvc-azuredisk-csi-static.yaml
+kubectl create -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/pvc-azuredisk-csi-static.yaml
 ```
 
 #### 2. validate PVC status and create an nginx pod
@@ -69,7 +69,7 @@ watch kubectl describe pvc pvc-azuredisk
 
  - create a pod with azuredisk CSI PVC
 ```
-kubectl create -f https://raw.githubusercontent.com/csi-driver/azuredisk-csi-driver/master/deploy/example/nginx-pod-azuredisk.yaml
+kubectl create -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/nginx-pod-azuredisk.yaml
 ```
 
 #### 3. enter the pod container to do validation

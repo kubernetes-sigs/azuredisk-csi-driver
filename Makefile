@@ -24,18 +24,18 @@ REV=$(shell git describe --long --tags --dirty)
 all: azuredisk
 
 test:
-	go test github.com/csi-driver/azuredisk-csi-driver/pkg/... -cover
-	go vet github.com/csi-driver/azuredisk-csi-driver/pkg/...
+	go test github.com/kubernetes-sigs/azuredisk-csi-driver/pkg/... -cover
+	go vet github.com/kubernetes-sigs/azuredisk-csi-driver/pkg/...
 integration-test:
 	test/integration/run-tests-all-clouds.sh
 test-sanity:
 	go test -v ./test/sanity/...
 azuredisk:
 	if [ ! -d ./vendor ]; then dep ensure -vendor-only; fi
-	CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-X github.com/csi-driver/azuredisk-csi-driver/pkg/azuredisk.vendorVersion=$(IMAGE_VERSION) -extldflags "-static"' -o _output/azurediskplugin ./pkg/azurediskplugin
+	CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-X github.com/kubernetes-sigs/azuredisk-csi-driver/pkg/azuredisk.vendorVersion=$(IMAGE_VERSION) -extldflags "-static"' -o _output/azurediskplugin ./pkg/azurediskplugin
 azuredisk-windows:
 	if [ ! -d ./vendor ]; then dep ensure -vendor-only; fi
-	CGO_ENABLED=0 GOOS=windows go build -a -ldflags '-X github.com/csi-driver/azuredisk-csi-driver/pkg/azuredisk.vendorVersion=$(IMAGE_VERSION) -extldflags "-static"' -o _output/azurediskplugin.exe ./pkg/azurediskplugin
+	CGO_ENABLED=0 GOOS=windows go build -a -ldflags '-X github.com/kubernetes-sigs/azuredisk-csi-driver/pkg/azuredisk.vendorVersion=$(IMAGE_VERSION) -extldflags "-static"' -o _output/azurediskplugin.exe ./pkg/azurediskplugin
 azuredisk-container: azuredisk
 	docker build --no-cache -t $(IMAGE_TAG) -f ./pkg/azurediskplugin/Dockerfile .
 push: azuredisk-container

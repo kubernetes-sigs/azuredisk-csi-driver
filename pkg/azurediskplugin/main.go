@@ -20,7 +20,7 @@ import (
 	"flag"
 	"os"
 
-	"github.com/csi-driver/azuredisk-csi-driver/pkg/azuredisk"
+	"github.com/kubernetes-sigs/azuredisk-csi-driver/pkg/azuredisk"
 	"k8s.io/klog"
 )
 

@@ -21,7 +21,7 @@ import (
 
 	sanity "github.com/kubernetes-csi/csi-test/pkg/sanity"
 
-	azuredisk "github.com/csi-driver/azuredisk-csi-driver/pkg/azuredisk"
+	azuredisk "github.com/kubernetes-sigs/azuredisk-csi-driver/pkg/azuredisk"
 )
 
 const (
