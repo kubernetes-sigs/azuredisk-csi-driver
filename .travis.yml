@@ -1,5 +1,5 @@
 language: go
-go_import_path: github.com/csi-driver/azuredisk-csi-driver
+go_import_path: github.com/kubernetes-sigs/azuredisk-csi-driver
 
 env:
   global:
