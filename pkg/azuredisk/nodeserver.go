@@ -17,6 +17,7 @@ limitations under the License.
 package azuredisk
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -24,21 +25,24 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2018-10-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"k8s.io/klog"
-
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"k8s.io/klog"
 
-	"golang.org/x/net/context"
-
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/kubernetes/pkg/volume/util"
 )
 
 const (
-	defaultFsType = "ext4"
+	defaultFsType           = "ext4"
+	defaultAzureVolumeLimit = 16
 )
+
+// store vm size list in current region
+var vmSizeList *[]compute.VirtualMachineSize
 
 // NodeStageVolume mount disk device to a staging path
 func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
@@ -263,9 +267,49 @@ func (d *Driver) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapabi
 func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
 	klog.V(5).Infof("Using default NodeGetInfo")
 
+	instances, ok := d.cloud.Instances()
+	if !ok {
+		return nil, status.Error(codes.Internal, "Failed to get instances from cloud provider")
+	}
+
+	instanceType, err := instances.InstanceType(context.TODO(), types.NodeName(d.NodeID))
+	if err != nil {
+		return nil, status.Error(codes.Internal, "Failed to get instance type from Azure cloud provider, nodeName: "+d.NodeID)
+	}
+
+	if vmSizeList == nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		result, err := d.cloud.VirtualMachineSizesClient.List(ctx, d.cloud.Location)
+		if err != nil || result.Value == nil {
+			return nil, status.Error(codes.Internal, "failed to list vm sizes in GetVolumeLimits from Azure cloud provider, nodeName: "+d.NodeID)
+		}
+		vmSizeList = result.Value
+	}
+
 	return &csi.NodeGetInfoResponse{
-		NodeId: d.NodeID,
+		NodeId:            d.NodeID,
+		MaxVolumesPerNode: getMaxDataDiskCount(instanceType, vmSizeList),
 	}, nil
+}
+
+func getMaxDataDiskCount(instanceType string, sizeList *[]compute.VirtualMachineSize) int64 {
+	if sizeList == nil {
+		return defaultAzureVolumeLimit
+	}
+
+	vmsize := strings.ToUpper(instanceType)
+	for _, size := range *sizeList {
+		if size.Name == nil || size.MaxDataDiskCount == nil {
+			klog.Errorf("failed to get vm size in getMaxDataDiskCount")
+			continue
+		}
+		if strings.ToUpper(*size.Name) == vmsize {
+			klog.V(12).Infof("got a matching size in getMaxDataDiskCount, Name: %s, MaxDataDiskCount: %d", *size.Name, *size.MaxDataDiskCount)
+			return int64(*size.MaxDataDiskCount)
+		}
+	}
+	return defaultAzureVolumeLimit
 }
 
 func (d *Driver) NodeGetVolumeStats(ctx context.Context, in *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
