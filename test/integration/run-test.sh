@@ -45,6 +45,12 @@ fi
 
 # begin to run CSI functions one by one
 if [ -v aadClientSecret ]; then
+	$csc node get-info --endpoint $endpoint
+	retcode=$?
+	if [ $retcode -gt 0 ]; then
+		exit $retcode
+	fi
+
 	echo "create volume test:"
 	value=`$csc controller new --endpoint $endpoint --cap 1,block CSIVolumeName  --req-bytes 2147483648 --params skuname=Standard_LRS,kind=managed`
 	retcode=$?
@@ -88,12 +94,6 @@ if [ -v aadClientSecret ]; then
 fi
 
 $csc identity plugin-info --endpoint $endpoint
-retcode=$?
-if [ $retcode -gt 0 ]; then
-	exit $retcode
-fi
-
-$csc node get-info --endpoint $endpoint
 retcode=$?
 if [ $retcode -gt 0 ]; then
 	exit $retcode
