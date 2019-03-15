@@ -17,6 +17,7 @@ limitations under the License.
 package azuredisk
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 	"strings"
@@ -125,4 +126,23 @@ func getResourceGroupFromDiskURI(diskURI string) (string, error) {
 		return "", fmt.Errorf("invalid disk URI: %s", diskURI)
 	}
 	return fields[4], nil
+}
+
+func (d *Driver) checkDiskExists(ctx context.Context, diskURI string) error {
+	diskName, err := getDiskName(diskURI)
+	if err != nil {
+		return err
+	}
+
+	resourceGroup, err := getResourceGroupFromDiskURI(diskURI)
+	if err != nil {
+		return err
+	}
+
+	_, err = d.cloud.DisksClient.Get(ctx, resourceGroup, diskName)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

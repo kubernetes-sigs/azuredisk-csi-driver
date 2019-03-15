@@ -280,6 +280,11 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		return nil, status.Error(codes.InvalidArgument, "Volume capability not supported")
 	}
 
+	err := d.checkDiskExists(ctx, diskURI)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume not found, failed with error: %v", err))
+	}
+
 	nodeID := req.GetNodeId()
 	if len(nodeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Node ID not provided")
@@ -396,19 +401,9 @@ func (d *Driver) ValidateVolumeCapabilities(ctx context.Context, req *csi.Valida
 		return nil, status.Error(codes.InvalidArgument, "Volume capabilities missing in request")
 	}
 
-	diskName, err := getDiskName(diskURI)
+	err := d.checkDiskExists(ctx, diskURI)
 	if err != nil {
-		return nil, status.Error(codes.NotFound, "Volume not found")
-	}
-
-	resourceGroup, err := getResourceGroupFromDiskURI(diskURI)
-	if err != nil {
-		return nil, status.Error(codes.NotFound, "Volume not found")
-	}
-
-	_, err = d.cloud.DisksClient.Get(ctx, resourceGroup, diskName)
-	if err != nil {
-		return nil, status.Error(codes.NotFound, "Volume not found")
+		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume not found, failed with error: %v", err))
 	}
 
 	for _, cap := range req.VolumeCapabilities {
