@@ -289,11 +289,11 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 	if len(nodeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Node ID not provided")
 	}
-	nodeName := types.NodeName(nodeID)
 
+	nodeName := types.NodeName(nodeID)
 	instanceid, err := d.cloud.InstanceID(context.TODO(), nodeName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get azure instance id for node %q (%v)", nodeID, err)
+		return nil, status.Error(codes.NotFound, fmt.Sprintf("failed to get azure instance id for node %q (%v)", nodeID, err))
 	}
 
 	diskName, err := getDiskName(diskURI)
