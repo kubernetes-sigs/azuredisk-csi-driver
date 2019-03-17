@@ -212,17 +212,6 @@
   version = "v1.1.0"
 
 [[projects]]
-  branch = "master"
-  digest = "1:5f183f44c6102e9dc266dd9d79632616c2ba05580bd67d2c8827bf02eabd7679"
-  name = "github.com/kubernetes-sigs/azuredisk-csi-driver"
-  packages = [
-    "pkg/azuredisk",
-    "pkg/csi-common",
-  ]
-  pruneopts = "UT"
-  revision = "9101b899ba3832a9101f894f6c3ec460f16bd6e9"
-
-[[projects]]
   digest = "1:4e878df5f4e9fd625bf9c9aac77ef7cbfa4a74c01265505527c23470c0e40300"
   name = "github.com/marstr/guid"
   packages = ["."]
@@ -991,8 +980,6 @@
     "github.com/container-storage-interface/spec/lib/go/csi",
     "github.com/golang/protobuf/ptypes/wrappers",
     "github.com/kubernetes-csi/csi-test/pkg/sanity",
-    "github.com/kubernetes-sigs/azuredisk-csi-driver/pkg/azuredisk",
-    "github.com/kubernetes-sigs/azuredisk-csi-driver/pkg/csi-common",
     "github.com/pborman/uuid",
     "github.com/stretchr/testify/assert",
     "golang.org/x/net/context",
