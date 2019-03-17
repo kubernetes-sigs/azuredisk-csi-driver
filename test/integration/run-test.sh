@@ -36,7 +36,7 @@ fi
 echo "being to run integration test on $cloud ..."
 
 # run CSI driver as a background service
-_output/azurediskplugin --endpoint $endpoint --nodeid CSINode -v=5 &
+_output/azurediskplugin --endpoint $endpoint --nodeid $node -v=5 &
 if [ $cloud = "AzureChinaCloud" ]; then
 	sleep 20
 else
