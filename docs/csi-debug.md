@@ -8,7 +8,7 @@ csi-azuredisk-bctp5                             2/2     Running   0          23m
 csi-azuredisk-provisioner-0                     1/1     Running   0          23m     10.240.0.43    k8s-agentpool-17181929-1   <none>
 csi-azuredisk-wwpxc                             2/2     Running   0          23m     10.240.0.4     k8s-agentpool-17181929-0   <none>
 ```
-In above example, `csi-azuredisk-provisioner-0` is running on `k8s-agentpool-17181929-1`, so `csi-azuredisk-bctp5` which is running on same node is the backend csi driver intact with `csi-azuredisk-provisioner-0`
+In above example, `csi-azuredisk-provisioner-0` is running on `k8s-agentpool-17181929-1`, so `csi-azuredisk-bctp5` which is running on same node is the backend csi driver interacting with `csi-azuredisk-provisioner-0`
  - get csi driver logs
 ```
 $ kubectl logs csi-azuredisk-provisioner-0 -n kube-system
