@@ -31,9 +31,6 @@ import (
 )
 
 const (
-	driverName      = "disk.csi.azure.com"
-	vendorVersion   = "v0.2.0-alpha"
-	topologyKey     = "topology." + driverName + "/zone"
 	errDiskNotFound = "not found"
 )
 
@@ -52,25 +49,20 @@ type Driver struct {
 // NewDriver Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
 // does not support optional driver plugin info manifest field. Refer to CSI spec for more details.
 func NewDriver(nodeID string) *Driver {
-	if nodeID == "" {
-		klog.Fatalln("NodeID missing")
-		return nil
-	}
-
 	driver := Driver{}
-
 	driver.Name = driverName
-	driver.Version = vendorVersion
+	driver.Version = driverVersion
 	driver.NodeID = nodeID
-
 	return &driver
 }
 
 // Run driver initialization
 func (d *Driver) Run(endpoint string) {
-	klog.Infof("Driver: %v ", driverName)
-	klog.Infof("Version: %s", vendorVersion)
-
+	versionMeta, err := GetVersionYAML()
+	if err != nil {
+		klog.Fatalf("%v", err)
+	}
+	klog.Infof("\nDRIVER INFORMATION:\n-------------------\n%s\n\nStreaming logs below:", versionMeta)
 	cloud, err := GetCloudProvider()
 	if err != nil {
 		klog.Fatalln("failed to get Azure Cloud Provider")
