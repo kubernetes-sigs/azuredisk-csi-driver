@@ -25,7 +25,7 @@ import (
 )
 
 func init() {
-	_ = flag.Set("logtostderr", "true")
+	klog.InitFlags(nil)
 }
 
 var (
@@ -34,7 +34,6 @@ var (
 )
 
 func main() {
-	klog.InitFlags(nil)
 	flag.Parse()
 
 	if *nodeID == "" {
