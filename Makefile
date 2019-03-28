@@ -12,12 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+PKG=github.com/kubernetes-sigs/azuredisk-csi-driver
 REGISTRY_NAME=andyzhangx
+DRIVER_NAME=disk.csi.azure.com
 IMAGE_NAME=azuredisk-csi
 IMAGE_VERSION=v0.2.0-alpha
 IMAGE_TAG=$(REGISTRY_NAME)/$(IMAGE_NAME):$(IMAGE_VERSION)
 IMAGE_TAG_LATEST=$(REGISTRY_NAME)/$(IMAGE_NAME):latest
 REV=$(shell git describe --long --tags --dirty)
+GIT_COMMIT?=$(shell git rev-parse HEAD)
+BUILD_DATE?=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+TOPOLOGY_KEY=topology.$(DRIVER_NAME)/zone
+LDFLAGS?="-X ${PKG}/pkg/azuredisk.driverVersion=${IMAGE_VERSION} -X ${PKG}/pkg/azuredisk.gitCommit=${GIT_COMMIT} -X ${PKG}/pkg/azuredisk.buildDate=${BUILD_DATE} -X ${PKG}/pkg/azuredisk.driverName=${DRIVER_NAME} -X ${PKG}/pkg/azuredisk.topologyKey=${TOPOLOGY_KEY} -extldflags "-static""
 
 .PHONY: all azuredisk azuredisk-container clean
 
@@ -32,10 +38,10 @@ test-sanity:
 	go test -v ./test/sanity/...
 azuredisk:
 	if [ ! -d ./vendor ]; then dep ensure -vendor-only; fi
-	CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-X github.com/kubernetes-sigs/azuredisk-csi-driver/pkg/azuredisk.vendorVersion=$(IMAGE_VERSION) -extldflags "-static"' -o _output/azurediskplugin ./pkg/azurediskplugin
+	CGO_ENABLED=0 GOOS=linux go build -a -ldflags ${LDFLAGS} -o _output/azurediskplugin ./pkg/azurediskplugin
 azuredisk-windows:
 	if [ ! -d ./vendor ]; then dep ensure -vendor-only; fi
-	CGO_ENABLED=0 GOOS=windows go build -a -ldflags '-X github.com/kubernetes-sigs/azuredisk-csi-driver/pkg/azuredisk.vendorVersion=$(IMAGE_VERSION) -extldflags "-static"' -o _output/azurediskplugin.exe ./pkg/azurediskplugin
+	CGO_ENABLED=0 GOOS=windows go build -a -ldflags ${LDFLAGS} -o _output/azurediskplugin.exe ./pkg/azurediskplugin
 azuredisk-container: azuredisk
 	docker build --no-cache -t $(IMAGE_TAG) -f ./pkg/azurediskplugin/Dockerfile .
 push: azuredisk-container

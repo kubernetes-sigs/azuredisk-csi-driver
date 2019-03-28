@@ -18,6 +18,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"os"
 
 	"github.com/kubernetes-sigs/azuredisk-csi-driver/pkg/azuredisk"
@@ -31,10 +32,19 @@ func init() {
 var (
 	endpoint = flag.String("endpoint", "unix://tmp/csi.sock", "CSI endpoint")
 	nodeID   = flag.String("nodeid", "", "node id")
+	version  = flag.Bool("version", false, "Print the version and exit.")
 )
 
 func main() {
 	flag.Parse()
+	if *version {
+		info, err := azuredisk.GetVersionYAML()
+		if err != nil {
+			klog.Fatalln(err)
+		}
+		fmt.Println(info)
+		os.Exit(0)
+	}
 
 	if *nodeID == "" {
 		klog.Error("--nodeid is a required parameter")
