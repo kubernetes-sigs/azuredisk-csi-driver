@@ -249,6 +249,12 @@ func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest)
 
 	klog.V(2).Infof("deleting azure disk(%s)", diskURI)
 	if isManagedDisk(diskURI) {
+		_, err := getResourceGroupFromDiskURI(diskURI)
+		if err != nil {
+			klog.Errorf("getResourceGroupFromDiskURI(%s) in DeleteVolume failed with error: %v", err)
+			return &csi.DeleteVolumeResponse{}, nil
+		}
+
 		if err := d.cloud.DeleteManagedDisk(diskURI); err != nil {
 			return &csi.DeleteVolumeResponse{}, err
 		}
