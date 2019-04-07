@@ -141,7 +141,7 @@ func (d *Driver) checkDiskExists(ctx context.Context, diskURI string) error {
 	return nil
 }
 
-func (d *Driver) validateDiskURI(diskURI string) error {
+func isValidDiskURI(diskURI string) error {
 	if isManagedDisk(diskURI) {
 		if strings.Index(diskURI, "/subscriptions/") != 0 {
 			return fmt.Errorf("Inavlid DiskURI: %v, correct format: %v", diskURI, diskURISupportedManaged)
