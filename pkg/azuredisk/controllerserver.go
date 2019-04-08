@@ -247,6 +247,11 @@ func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest)
 	}
 	diskURI := req.VolumeId
 
+	if err := isValidDiskURI(diskURI); err != nil {
+		klog.Errorf("validateDiskURI(%s) in DeleteVolume failed with error: %v", diskURI, err)
+		return &csi.DeleteVolumeResponse{}, nil
+	}
+
 	klog.V(2).Infof("deleting azure disk(%s)", diskURI)
 	if isManagedDisk(diskURI) {
 		if err := d.cloud.DeleteManagedDisk(diskURI); err != nil {

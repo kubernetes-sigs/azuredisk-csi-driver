@@ -35,8 +35,10 @@ const (
 )
 
 var (
-	managedDiskPathRE   = regexp.MustCompile(`.*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/disks/(.+)`)
-	unmanagedDiskPathRE = regexp.MustCompile(`http(?:.*)://(?:.*)/vhds/(.+)`)
+	managedDiskPathRE       = regexp.MustCompile(`.*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/disks/(.+)`)
+	unmanagedDiskPathRE     = regexp.MustCompile(`http(?:.*)://(?:.*)/vhds/(.+)`)
+	diskURISupportedManaged = []string{"/subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id}"}
+	diskURISupportedBlob    = []string{"https://{account-name}.blob.core.windows.net/{container-name}/{disk-name}.vhd"}
 )
 
 // Driver implements all interfaces of CSI drivers
@@ -134,6 +136,20 @@ func (d *Driver) checkDiskExists(ctx context.Context, diskURI string) error {
 	_, err = d.cloud.DisksClient.Get(ctx, resourceGroup, diskName)
 	if err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func isValidDiskURI(diskURI string) error {
+	if isManagedDisk(diskURI) {
+		if strings.Index(diskURI, "/subscriptions/") != 0 {
+			return fmt.Errorf("Inavlid DiskURI: %v, correct format: %v", diskURI, diskURISupportedManaged)
+		}
+	} else {
+		if strings.Index(diskURI, "https://") != 0 {
+			return fmt.Errorf("Inavlid DiskURI: %v, correct format: %v", diskURI, diskURISupportedBlob)
+		}
 	}
 
 	return nil

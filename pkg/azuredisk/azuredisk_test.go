@@ -129,3 +129,41 @@ func TestGetResourceGroupFromDiskURI(t *testing.T) {
 		}
 	}
 }
+
+func TestIsValidDiskURI(t *testing.T) {
+	supportedManagedDiskURI := diskURISupportedManaged
+	supportedBlobDiskURI := diskURISupportedBlob
+
+	tests := []struct {
+		diskURI     string
+		expectError error
+	}{
+		{
+			diskURI:     "/subscriptions/b9d2281e/resourceGroups/test-resource/providers/Microsoft.Compute/disks/pvc-disk-dynamic-9e102c53",
+			expectError: nil,
+		},
+		{
+			diskURI:     "resourceGroups/test-resource/providers/Microsoft.Compute/disks/pvc-disk-dynamic-9e102c53",
+			expectError: fmt.Errorf("Inavlid DiskURI: resourceGroups/test-resource/providers/Microsoft.Compute/disks/pvc-disk-dynamic-9e102c53, correct format: %v", supportedManagedDiskURI),
+		},
+		{
+			diskURI:     "https://test-saccount.blob.core.windows.net/container/pvc-disk-dynamic-9e102c53-593d-11e9-934e-705a0f18a318.vhd",
+			expectError: nil,
+		},
+		{
+			diskURI:     "test.com",
+			expectError: fmt.Errorf("Inavlid DiskURI: test.com, correct format: %v", supportedManagedDiskURI),
+		},
+		{
+			diskURI:     "http://test-saccount.blob.core.windows.net/container/pvc-disk-dynamic-9e102c53-593d-11e9-934e-705a0f18a318.vhd",
+			expectError: fmt.Errorf("Inavlid DiskURI: http://test-saccount.blob.core.windows.net/container/pvc-disk-dynamic-9e102c53-593d-11e9-934e-705a0f18a318.vhd, correct format: %v", supportedBlobDiskURI),
+		},
+	}
+
+	for _, test := range tests {
+		err := isValidDiskURI(test.diskURI)
+		if !reflect.DeepEqual(err, test.expectError) {
+			t.Errorf("DiskURI: %q, isValidDiskURI err: %q, expected1: %q", test.diskURI, err, test.expectError)
+		}
+	}
+}
