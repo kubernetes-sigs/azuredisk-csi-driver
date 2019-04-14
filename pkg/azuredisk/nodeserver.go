@@ -91,8 +91,14 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	}
 
 	if !notMnt {
-		msg := fmt.Sprintf("target %q is not a valid mount point", target)
-		return nil, status.Error(codes.InvalidArgument, msg)
+		klog.V(2).Infof("target %q is already a valid mount point(device path: %v), skip format and mount", target, devicePath)
+		// todo: check who is mounted here. No error if its us
+		/*
+			1) Target Path MUST be the vol referenced by vol ID
+			2) VolumeCapability MUST match
+			3) Readonly MUST match
+		*/
+		return &csi.NodeStageVolumeResponse{}, nil
 	}
 	// Get fsType that the volume will be formatted with
 	fsType := getFStype(req.GetVolumeContext())
