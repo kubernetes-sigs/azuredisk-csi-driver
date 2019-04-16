@@ -23,12 +23,14 @@ import (
 	"strconv"
 	"strings"
 
+	volumehelper "github.com/kubernetes-sigs/azuredisk-csi-driver/pkg/util"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/kubernetes/pkg/cloudprovider/providers/azure"
-	"k8s.io/kubernetes/pkg/util/keymutex"
 	"k8s.io/kubernetes/pkg/volume/util"
+	"k8s.io/utils/keymutex"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2018-10-01/compute"
 	"github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2018-07-01/storage"
@@ -72,12 +74,8 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		return nil, status.Error(codes.InvalidArgument, "Volume capabilities not supported")
 	}
 
-	volSizeBytes := int64(util.GIB)
-	if req.GetCapacityRange() != nil {
-		volSizeBytes = req.GetCapacityRange().GetRequiredBytes()
-	}
-
-	requestGiB := int(util.RoundUpSize(volSizeBytes, util.GIB))
+	volSizeBytes := int64(req.GetCapacityRange().GetRequiredBytes())
+	requestGiB := int(volumehelper.RoundUpGiB(volSizeBytes))
 
 	maxVolSize := int(req.GetCapacityRange().GetLimitBytes())
 	if (maxVolSize > 0) && (maxVolSize < requestGiB) {
