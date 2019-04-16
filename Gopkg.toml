@@ -21,12 +21,20 @@
 #  version = "2.4.0"
 
 [prune]
-  unused-packages = true
   go-tests = true
+  unused-packages = true
+  non-go = true
+
+[[override]]
+  name = "github.com/container-storage-interface/spec"
+  revision = "ed0bb0e1557548aa028307f48728767cfe8f6345"
+  # it's strange that "version = 1.0.0" does not work, use revision instead
+  #version = "v1.0.0"
 
 [[constraint]]
-  name = "github.com/container-storage-interface/spec"
-  version = "1.0.0"
+  name = "github.com/kubernetes-csi/csi-test"
+  revision = "5b1e3786b7c8f7ca514b40e882a0b5dc36e4c842"
+  #version = "v1.1.0"
 
 [[override]]
   revision = "5db89f0ca68677abc5eefce8f2a0a772c98ba52d"
@@ -50,23 +58,35 @@
 
 [[constraint]]
   name = "k8s.io/kubernetes"
-  version = "v1.13.0"
+  version = "v1.14.0"
 
 [[override]]
   name = "gopkg.in/fsnotify.v1"
   source = "https://github.com/fsnotify/fsnotify.git"
 
 [[override]]
-  version = "kubernetes-1.13.0"
+  version = "kubernetes-1.14.0"
   name = "k8s.io/api"
 
 [[override]]
-  version = "kubernetes-1.13.0"
+  version = "kubernetes-1.14.0"
   name = "k8s.io/apiserver"
 
 [[override]]
-  version = "kubernetes-1.13.0"
+  version = "kubernetes-1.14.0"
   name = "k8s.io/apiextensions-apiserver"
+
+[[override]]
+  version = "kubernetes-1.14.0"
+  name = "k8s.io/client-go"
+
+[[override]]
+  version = "kubernetes-1.14.0"
+  name = "k8s.io/apimachinery"
+
+[[override]]
+  version = "kubernetes-1.14.0"
+  name = "k8s.io/cli-runtime"
 
 [[override]]
   name = "github.com/golang/protobuf"
