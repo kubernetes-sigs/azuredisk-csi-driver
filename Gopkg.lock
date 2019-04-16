@@ -342,7 +342,7 @@
   name = "github.com/prometheus/procfs"
   packages = ["."]
   pruneopts = "NUT"
-  revision = "e22ddced71425e65e388b17b7d0289c5ea77d06e"
+  revision = "8368d24ba045f26503eb745b624d930cbe214c79"
 
 [[projects]]
   branch = "master"
