@@ -1,6 +1,6 @@
 # v0.2.0-alpha
 
-## [v0.2.0-alpha](https://github.com/kubernetes-sigs/azuredisk-csi-driver/tree/v0.2.0-alpha) (2019-02-12)
+## [v0.2.0-alpha](https://github.com/kubernetes-sigs/azuredisk-csi-driver/tree/v0.2.0-alpha) (2019-04-17)
 
 [Documentation](https://github.com/kubernetes-sigs/azuredisk-csi-driver/blob/v0.2.0-alpha/README.md)
 
