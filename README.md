@@ -3,8 +3,6 @@
 [![Coverage Status](https://coveralls.io/repos/github/kubernetes-sigs/azuredisk-csi-driver/badge.svg?branch=master)](https://coveralls.io/github/kubernetes-sigs/azuredisk-csi-driver?branch=master)
 [![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fkubernetes-sigs%2Fazuredisk-csi-driver.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2Fkubernetes-sigs%2Fazuredisk-csi-driver?ref=badge_shield)
 
-**WARNING**: This driver is in ALPHA currently. Do NOT use this driver in a production environment in its current state.
-
 ### About
 This driver allows Kubernetes to use [azure disk](https://azure.microsoft.com/en-us/services/storage/disks/) volume, csi plugin name: `disk.csi.azure.com`
 
@@ -30,7 +28,8 @@ Please refer to [`disk.csi.azure.com` driver parameters](./docs/driver-parameter
  > storage class `disk.csi.azure.com` parameters are compatible with built-in [azuredisk](https://kubernetes.io/docs/concepts/storage/volumes/#azuredisk) plugin
 
 ### Prerequisite
- - The driver initialization depends on a [Cloud provider config file](https://github.com/kubernetes/cloud-provider-azure/blob/master/docs/cloud-provider-config.md), usually it's `/etc/kubernetes/azure.json` on all k8s nodes deployed by AKS or aks-engine, here is an [azure.json example](./deploy/example/azure.json)
+ - The driver initialization depends on a [Cloud provider config file](https://github.com/kubernetes/cloud-provider-azure/blob/master/docs/cloud-provider-config.md), usually it's `/etc/kubernetes/azure.json` on all kubernetes nodes deployed by AKS or aks-engine, here is an [azure.json example](./deploy/example/azure.json)
+ > if cluster is based on Managed Service Identity(MSI), make sure all agent nodes have `Contributor` role for current resource group
 
 ### Install azuredisk CSI driver on a Kubernetes cluster
 Please refer to [install azuredisk csi driver](./docs/install-azuredisk-csi-driver.md)
