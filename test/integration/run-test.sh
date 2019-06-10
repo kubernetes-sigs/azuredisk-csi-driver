@@ -84,6 +84,30 @@ if [ -v aadClientSecret ]; then
 	fi
 	sleep 30
 
+	echo "create snapshot test:"
+	$csc controller create-snapshot snapshot-test-name --endpoint $endpoint --source-volume $volumeid
+	retcode=$?
+	if [ $retcode -gt 0 ]; then
+		exit $retcode
+	fi
+	sleep 5
+
+	echo "list snapshots test:"
+	$csc controller list-snapshots --endpoint $endpoint
+	retcode=$?
+	if [ $retcode -gt 0 ]; then
+		exit $retcode
+	fi
+	sleep 5
+
+	echo "delete snapshot test:"
+	$csc controller delete-snapshot snapshot-test-name --endpoint $endpoint
+	retcode=$?
+	if [ $retcode -gt 0 ]; then
+		exit $retcode
+	fi
+	sleep 5
+
 	echo "delete volume test:"
 	$csc controller del --endpoint $endpoint $volumeid
 	retcode=$?

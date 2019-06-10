@@ -37,6 +37,7 @@ const (
 var (
 	managedDiskPathRE       = regexp.MustCompile(`.*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/disks/(.+)`)
 	unmanagedDiskPathRE     = regexp.MustCompile(`http(?:.*)://(?:.*)/vhds/(.+)`)
+	diskSnapshotPathRE      = regexp.MustCompile(`.*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/snapshots/(.+)`)
 	diskURISupportedManaged = []string{"/subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id}"}
 	diskURISupportedBlob    = []string{"https://{account-name}.blob.core.windows.net/{container-name}/{disk-name}.vhd"}
 )
@@ -114,7 +115,15 @@ func getDiskName(diskURI string) (string, error) {
 	return matches[1], nil
 }
 
-func getResourceGroupFromDiskURI(diskURI string) (string, error) {
+func getSnapshotName(snapshotURI string) (string, error) {
+	matches := diskSnapshotPathRE.FindStringSubmatch(snapshotURI)
+	if len(matches) != 2 {
+		return "", fmt.Errorf("could not get snapshot name from %s, correct format: %s", snapshotURI, diskSnapshotPathRE)
+	}
+	return matches[1], nil
+}
+
+func getResourceGroupFromURI(diskURI string) (string, error) {
 	fields := strings.Split(diskURI, "/")
 	if len(fields) != 9 || fields[3] != "resourceGroups" {
 		return "", fmt.Errorf("invalid disk URI: %s", diskURI)
@@ -128,7 +137,7 @@ func (d *Driver) checkDiskExists(ctx context.Context, diskURI string) error {
 		return err
 	}
 
-	resourceGroup, err := getResourceGroupFromDiskURI(diskURI)
+	resourceGroup, err := getResourceGroupFromURI(diskURI)
 	if err != nil {
 		return err
 	}
