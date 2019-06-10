@@ -438,12 +438,63 @@ func (d *Driver) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest) (
 
 // CreateSnapshot create a snapshot (todo)
 func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
+	klog.V(2).Infof("CreateSnapshot called with request %v", *req)
+
+	volumeID := req.GetSourceVolumeId()
+	if len(req.Name) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "Snapshot name must be provided")
+	}
+	if len(volumeID) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "CreateSnapshot Source Volume ID must be provided")
+	}
+
+	// todo: Check if snapshot already exists
+
+	snapShot := compute.Snapshot{
+		SnapshotProperties: &compute.SnapshotProperties{
+			CreationData: &compute.CreationData{
+				CreateOption: compute.Copy,
+				SourceURI:    &volumeID,
+			},
+		},
+		ID:       &volumeID,
+		Location: &d.cloud.Location,
+	}
+
+	future, err := d.cloud.SnapshotsClient.CreateOrUpdate(ctx, d.cloud.ResourceGroup, req.Name, snapShot)
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("create snapshot error: %v", err))
+	}
+	err = future.WaitForCompletionRef(ctx, d.cloud.SnapshotsClient.Client)
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("create snapshot error: %v", err))
+	}
+
+	createResp := &csi.CreateSnapshotResponse{
+		Snapshot: &csi.Snapshot{
+			//SizeBytes:      common.GbToBytes(snapshot.DiskSizeGb),
+			//SnapshotId:     cleanSelfLink(snapshot.SelfLink),
+			SourceVolumeId: volumeID,
+			//CreationTime:   tp,
+			ReadyToUse: true,
+		},
+	}
+	return createResp, nil
 }
 
 // DeleteSnapshot delete a snapshot (todo)
 func (d *Driver) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
+	klog.V(2).Infof("DeleteSnapshot called with request %v", *req)
+
+	future, err := d.cloud.SnapshotsClient.Delete(ctx, d.cloud.ResourceGroup, req.SnapshotId)
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("delete snapshot error: %v", err))
+	}
+	err = future.WaitForCompletionRef(ctx, d.cloud.SnapshotsClient.Client)
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("delete snapshot error: %v", err))
+	}
+	return &csi.DeleteSnapshotResponse{}, nil
 }
 
 // ListSnapshots list all snapshots (todo)

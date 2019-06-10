@@ -80,8 +80,8 @@ func (d *Driver) Run(endpoint string) {
 		[]csi.ControllerServiceCapability_RPC_Type{
 			csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
 			csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME,
-			//csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT,
-			//csi.ControllerServiceCapability_RPC_LIST_SNAPSHOTS,
+			csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT,
+			csi.ControllerServiceCapability_RPC_LIST_SNAPSHOTS,
 		})
 	d.AddVolumeCapabilityAccessModes([]csi.VolumeCapability_AccessMode_Mode{csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER})
 	d.AddNodeServiceCapabilities([]csi.NodeServiceCapability_RPC_Type{
