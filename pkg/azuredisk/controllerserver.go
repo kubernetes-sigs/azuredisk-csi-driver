@@ -28,6 +28,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	cloudprovider "k8s.io/cloud-provider"
+	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/cloudprovider/providers/azure"
 	"k8s.io/kubernetes/pkg/volume/util"
 	"k8s.io/utils/keymutex"
@@ -35,8 +36,8 @@ import (
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2018-10-01/compute"
 	"github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2018-07-01/storage"
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/golang/protobuf/ptypes"
 	"github.com/pborman/uuid"
-	"k8s.io/klog"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -212,7 +213,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	}
 	*/
 
-	/* todo: snapshot support
+	/* todo: Add support for Volume Source (cloning) introduced in CSI v1.0.0
 	if req.GetVolumeContentSource() != nil {
 		contentSource := req.GetVolumeContentSource()
 		if contentSource.GetSnapshot() != nil {
@@ -436,19 +437,132 @@ func (d *Driver) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest) (
 	return nil, status.Error(codes.Unimplemented, "")
 }
 
-// CreateSnapshot create a snapshot (todo)
+// CreateSnapshot create a snapshot
 func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
+	klog.V(2).Infof("CreateSnapshot called with request %v", *req)
+
+	sourceVolumeID := req.GetSourceVolumeId()
+	snapshotName := req.Name
+	if len(snapshotName) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "Snapshot name must be provided")
+	}
+	if len(sourceVolumeID) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "CreateSnapshot Source Volume ID must be provided")
+	}
+
+	snapshot := compute.Snapshot{
+		SnapshotProperties: &compute.SnapshotProperties{
+			CreationData: &compute.CreationData{
+				CreateOption: compute.Copy,
+				SourceURI:    &sourceVolumeID,
+			},
+		},
+		Location: &d.cloud.Location,
+	}
+
+	//todo: add metrics here
+	klog.V(2).Infof("begin to create snapshot(%s) under rg(%s)", snapshotName, d.cloud.ResourceGroup)
+	future, err := d.cloud.SnapshotsClient.CreateOrUpdate(ctx, d.cloud.ResourceGroup, snapshotName, snapshot)
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("create snapshot error: %v", err))
+	}
+	err = future.WaitForCompletionRef(ctx, d.cloud.SnapshotsClient.Client)
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("create snapshot error: %v", err))
+	}
+	klog.V(2).Infof("create snapshot(%s) under rg(%s) successfully", snapshotName, d.cloud.ResourceGroup)
+
+	csiSnapshot, err := d.getSnapshotByID(ctx, snapshotName, sourceVolumeID)
+	if err != nil {
+		return nil, err
+	}
+
+	createResp := &csi.CreateSnapshotResponse{
+		Snapshot: csiSnapshot,
+	}
+	return createResp, nil
 }
 
-// DeleteSnapshot delete a snapshot (todo)
+// DeleteSnapshot delete a snapshot
 func (d *Driver) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
+	klog.V(2).Infof("DeleteSnapshot called with request %v", *req)
+
+	snapshotName, resourceGroup, err := d.extractSnapshotInfo(req.SnapshotId)
+	if err != nil {
+		return nil, err
+	}
+
+	//todo: add metrics here
+	klog.V(2).Infof("begin to delete snapshot(%s) under rg(%s)", snapshotName, resourceGroup)
+	future, err := d.cloud.SnapshotsClient.Delete(ctx, resourceGroup, snapshotName)
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("delete snapshot error: %v", err))
+	}
+	err = future.WaitForCompletionRef(ctx, d.cloud.SnapshotsClient.Client)
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("delete snapshot error: %v", err))
+	}
+	klog.V(2).Infof("delete snapshot(%s) under rg(%s) successfully", snapshotName, resourceGroup)
+	return &csi.DeleteSnapshotResponse{}, nil
 }
 
-// ListSnapshots list all snapshots (todo)
+// ListSnapshots list all snapshots
 func (d *Driver) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
+	klog.V(2).Infof("ListSnapshots called with request %v", *req)
+
+	// SnapshotId is not empty, return snapshot that match the snapshot id.
+	if len(req.GetSnapshotId()) != 0 {
+		snapshot, err := d.getSnapshotByID(ctx, req.GetSnapshotId(), req.SourceVolumeId)
+		if err != nil {
+			return nil, err
+		}
+		entries := []*csi.ListSnapshotsResponse_Entry{
+			{
+				Snapshot: snapshot,
+			},
+		}
+		listSnapshotResp := &csi.ListSnapshotsResponse{
+			Entries: entries,
+		}
+		return listSnapshotResp, nil
+	}
+
+	// no SnapshotId is set, so we return all snapshots that satify the reqeust.
+	snapshotListPage, err := d.cloud.SnapshotsClient.ListByResourceGroup(ctx, d.cloud.ResourceGroup)
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown list snapshot error: %v", err))
+	}
+	entries := []*csi.ListSnapshotsResponse_Entry{}
+	for _, snapshot := range snapshotListPage.Values() {
+		csiSnapshot, err := generateCSISnapshot(req.SourceVolumeId, &snapshot)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate snapshot entry: %v", err)
+		}
+		entries = append(entries, &csi.ListSnapshotsResponse_Entry{Snapshot: csiSnapshot})
+	}
+	nextToken := ""
+	if snapshotListPage.Response().NextLink != nil {
+		nextToken = *snapshotListPage.Response().NextLink
+	}
+	listSnapshotResp := &csi.ListSnapshotsResponse{
+		Entries:   entries,
+		NextToken: nextToken,
+	}
+	return listSnapshotResp, nil
+}
+
+func (d *Driver) getSnapshotByID(ctx context.Context, snapshotID, sourceVolumeID string) (*csi.Snapshot, error) {
+	snapshotName, resourceGroup, err := d.extractSnapshotInfo(snapshotID)
+	if err != nil {
+		return nil, err
+	}
+
+	snapshot, err := d.cloud.SnapshotsClient.Get(ctx, resourceGroup, snapshotName)
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("get snapshot %s from rg(%s) error: %v", snapshotName, resourceGroup, err))
+	}
+
+	return generateCSISnapshot(sourceVolumeID, &snapshot)
 }
 
 func isValidVolumeCapabilities(volCaps []*csi.VolumeCapability) bool {
@@ -512,4 +626,50 @@ func getCachingMode(attributes map[string]string) (compute.CachingTypes, error) 
 
 	cachingMode, err = normalizeCachingMode(cachingMode)
 	return compute.CachingTypes(cachingMode), err
+}
+
+func generateCSISnapshot(sourceVolumeID string, snapshot *compute.Snapshot) (*csi.Snapshot, error) {
+	if snapshot == nil || snapshot.SnapshotProperties == nil {
+		return nil, fmt.Errorf("snapshot property is nil")
+	}
+
+	tp, err := ptypes.TimestampProto(snapshot.SnapshotProperties.TimeCreated.ToTime())
+	if err != nil {
+		return nil, fmt.Errorf("Failed to covert creation timestamp: %v", err)
+	}
+	ready, _ := isCSISnapshotReady(*snapshot.SnapshotProperties.ProvisioningState)
+
+	return &csi.Snapshot{
+		SizeBytes:      volumehelper.GiBToBytes(int64(*snapshot.SnapshotProperties.DiskSizeGB)),
+		SnapshotId:     *snapshot.ID,
+		SourceVolumeId: sourceVolumeID,
+		CreationTime:   tp,
+		ReadyToUse:     ready,
+	}, nil
+}
+
+func isCSISnapshotReady(state string) (bool, error) {
+	switch strings.ToLower(state) {
+	case "succeeded":
+		return true, nil
+	default:
+		return false, nil
+	}
+}
+
+func (d *Driver) extractSnapshotInfo(snapshotID string) (string, string, error) {
+	var snapshotName, resourceGroup string
+	var err error
+	if !strings.Contains(snapshotID, "/subscriptions/") {
+		snapshotName = snapshotID
+		resourceGroup = d.cloud.ResourceGroup
+	} else {
+		if snapshotName, err = getSnapshotName(snapshotID); err != nil {
+			return "", "", err
+		}
+		if resourceGroup, err = getResourceGroupFromURI(snapshotID); err != nil {
+			return "", "", err
+		}
+	}
+	return snapshotName, resourceGroup, err
 }

@@ -83,10 +83,10 @@ CSINode
 
 #### 12. Create snapshot
 ```
-$  csc controller create-snapshot
+$ csc controller create-snapshot snapshot-name --endpoint tcp://127.0.0.1:10000 --source-volume "/subscriptions/b9d2281e-dcd5-4dfd-9a97-xxx/resourceGroups/xxx/providers/Microsoft.Compute/disks/pvc-disk-dynamic-398b838f-0432-11e9-9978-000d3a00df41"
 ```
 
 #### 13. Delete snapshot
 ```
-$  csc controller delete-snapshot
+$ csc controller delete-snapshot snapshot-name --endpoint tcp://127.0.0.1:10000
 ```

@@ -94,7 +94,34 @@ func TestGetDiskName(t *testing.T) {
 	}
 }
 
-func TestGetResourceGroupFromDiskURI(t *testing.T) {
+func TestGetSnapshotName(t *testing.T) {
+	tests := []struct {
+		options   string
+		expected1 string
+		expected2 error
+	}{
+		{
+			options:   "testurl/subscriptions/12/resourceGroups/23/providers/Microsoft.Compute/snapshots/snapshot-name",
+			expected1: "snapshot-name",
+			expected2: nil,
+		},
+		{
+			options:   "testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name",
+			expected1: "",
+			expected2: fmt.Errorf("could not get snapshot name from testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name, correct format: %s", diskSnapshotPathRE),
+		},
+	}
+
+	for _, test := range tests {
+		result1, result2 := getSnapshotName(test.options)
+		if !reflect.DeepEqual(result1, test.expected1) || !reflect.DeepEqual(result2, test.expected2) {
+			t.Errorf("input: %q, getSnapshotName result1: %q, expected1: %q, result2: %q, expected2: %q", test.options, result1, test.expected1,
+				result2, test.expected2)
+		}
+	}
+}
+
+func TestGetResourceGroupFromURI(t *testing.T) {
 	tests := []struct {
 		diskURL        string
 		expectedResult string
@@ -118,14 +145,14 @@ func TestGetResourceGroupFromDiskURI(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		result, err := getResourceGroupFromDiskURI(test.diskURL)
-		assert.Equal(t, result, test.expectedResult, "Expect result not equal with getResourceGroupFromDiskURI(%s) return: %q, expected: %q",
+		result, err := getResourceGroupFromURI(test.diskURL)
+		assert.Equal(t, result, test.expectedResult, "Expect result not equal with getResourceGroupFromURI(%s) return: %q, expected: %q",
 			test.diskURL, result, test.expectedResult)
 
 		if test.expectError {
-			assert.NotNil(t, err, "Expect error during getResourceGroupFromDiskURI(%s)", test.diskURL)
+			assert.NotNil(t, err, "Expect error during getResourceGroupFromURI(%s)", test.diskURL)
 		} else {
-			assert.Nil(t, err, "Expect error is nil during getResourceGroupFromDiskURI(%s)", test.diskURL)
+			assert.Nil(t, err, "Expect error is nil during getResourceGroupFromURI(%s)", test.diskURL)
 		}
 	}
 }
