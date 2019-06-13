@@ -29,7 +29,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog"
-	"k8s.io/kubernetes/pkg/cloudprovider/providers/azure"
 	"k8s.io/kubernetes/pkg/volume/util"
 	"k8s.io/utils/keymutex"
 
@@ -172,7 +171,13 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		}
 		*/
 
-		volumeOptions := &azure.ManagedDiskOptions{
+		snapshotID := ""
+		content := req.GetVolumeContentSource()
+		if content != nil && content.GetSnapshot() != nil {
+			snapshotID = content.GetSnapshot().GetSnapshotId()
+		}
+
+		volumeOptions := &ManagedDiskOptions{
 			DiskName:           diskName,
 			StorageAccountType: skuName,
 			ResourceGroup:      resourceGroup,
@@ -182,8 +187,9 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			AvailabilityZone:   selectedAvailabilityZone,
 			DiskIOPSReadWrite:  diskIopsReadWrite,
 			DiskMBpsReadWrite:  diskMbpsReadWrite,
+			SourceResourceID:   snapshotID,
 		}
-		diskURI, err = d.cloud.CreateManagedDisk(volumeOptions)
+		diskURI, err = d.CreateManagedDisk(ctx, volumeOptions)
 		if err != nil {
 			return nil, err
 		}
