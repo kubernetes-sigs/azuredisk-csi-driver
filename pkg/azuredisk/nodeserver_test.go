@@ -31,11 +31,11 @@ func TestGetFStype(t *testing.T) {
 	}{
 		{
 			nil,
-			defaultFsType,
+			"",
 		},
 		{
 			map[string]string{},
-			defaultFsType,
+			"",
 		},
 		{
 			map[string]string{"fstype": ""},

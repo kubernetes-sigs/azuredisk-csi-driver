@@ -57,12 +57,12 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		return nil, status.Error(codes.InvalidArgument, "Staging target not provided")
 	}
 
-	volCap := req.GetVolumeCapability()
-	if volCap == nil {
+	volumeCapability := req.GetVolumeCapability()
+	if volumeCapability == nil {
 		return nil, status.Error(codes.InvalidArgument, "Volume capability not provided")
 	}
 
-	if !isValidVolumeCapabilities([]*csi.VolumeCapability{volCap}) {
+	if !isValidVolumeCapabilities([]*csi.VolumeCapability{volumeCapability}) {
 		return nil, status.Error(codes.InvalidArgument, "Volume capability not supported")
 	}
 
@@ -100,8 +100,21 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		*/
 		return &csi.NodeStageVolumeResponse{}, nil
 	}
-	// Get fsType that the volume will be formatted with
-	fsType := getFStype(req.GetVolumeContext())
+	// Get fsType and mountOptions that the volume will be formatted and mounted with
+	fstype := defaultFsType
+	options := []string{}
+	if mnt := volumeCapability.GetMount(); mnt != nil {
+		if mnt.FsType != "" {
+			fstype = mnt.FsType
+		}
+		options = append(options, mnt.MountFlags...)
+	}
+
+	volContextFSType := getFStype(req.GetVolumeContext())
+	if volContextFSType != "" {
+		// respect "fstype" setting in storage class parameters
+		fstype = volContextFSType
+	}
 
 	io := &osIOHandler{}
 	scsiHostRescan(io, d.mounter.Exec)
@@ -124,8 +137,8 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	}
 
 	// FormatAndMount will format only if needed
-	klog.V(2).Infof("NodeStageVolume: formatting %s and mounting at %s", newDevicePath, target)
-	err = d.mounter.FormatAndMount(newDevicePath, target, fsType, nil)
+	klog.V(2).Infof("NodeStageVolume: formatting %s and mounting at %s with mount options(%s)", newDevicePath, target, options)
+	err = d.mounter.FormatAndMount(newDevicePath, target, fstype, options)
 	if err != nil {
 		msg := fmt.Sprintf("could not format %q and mount it at %q", lun, target)
 		return nil, status.Error(codes.Internal, msg)
@@ -230,7 +243,7 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 	}
 
 	klog.V(2).Infof("NodePublishVolume: mounting %s at %s", source, target)
-	if err := d.mounter.Mount(source, target, "ext4", mountOptions); err != nil {
+	if err := d.mounter.Mount(source, target, "", mountOptions); err != nil {
 		os.Remove(target)
 		return nil, status.Errorf(codes.Internal, "Could not mount %q at %q: %v", source, target, err)
 	}
@@ -328,14 +341,12 @@ func (d *Driver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolume
 }
 
 func getFStype(attributes map[string]string) string {
-	fsType := defaultFsType
-
 	for k, v := range attributes {
 		switch strings.ToLower(k) {
 		case "fstype":
-			fsType = strings.ToLower(v)
+			return strings.ToLower(v)
 		}
 	}
 
-	return fsType
+	return ""
 }
