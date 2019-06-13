@@ -322,6 +322,11 @@ func (d *Driver) NodeGetVolumeStats(ctx context.Context, in *csi.NodeGetVolumeSt
 	return nil, status.Error(codes.Unimplemented, "")
 }
 
+// NodeExpandVolume node expand volume
+func (d *Driver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, fmt.Sprintf("NodeExpandVolume is not yet implemented"))
+}
+
 func getFStype(attributes map[string]string) string {
 	fsType := defaultFsType
 
