@@ -27,9 +27,7 @@
 
 [[override]]
   name = "github.com/container-storage-interface/spec"
-  revision = "ed0bb0e1557548aa028307f48728767cfe8f6345"
-  # it's strange that "version = 1.0.0" does not work, use revision instead
-  #version = "v1.0.0"
+  version = "v1.1.0"
 
 [[constraint]]
   name = "github.com/kubernetes-csi/csi-test"

@@ -443,6 +443,11 @@ func (d *Driver) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest) (
 	return nil, status.Error(codes.Unimplemented, "")
 }
 
+// ControllerExpandVolume controller expand volume
+func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "ControllerExpandVolume is not yet implemented")
+}
+
 // CreateSnapshot create a snapshot
 func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
 	klog.V(2).Infof("CreateSnapshot called with request %v", *req)
