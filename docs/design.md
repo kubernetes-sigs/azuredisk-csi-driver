@@ -8,14 +8,14 @@ Support service principal and msi authentication | Completed |  |
 Support both Linux & Windows | In Progress | Windows related work is in progress: [Enable CSI hostpath example on windows](https://github.com/kubernetes-csi/drivers/issues/79) |
 Compatible with original storage class parameters and usage| Completed | there is a little difference in static provision, see [example](../deploy/example/pv-azuredisk-csi.yaml) |
 Support sovereign cloud| Completed | verification pass on Azure China |
-Support unmanaged(blob based) azure disk| Completed | need verification |
+Support unmanaged(blob based) azure disk| N/A | won't support unmanaged(blob based) azure disk |
 
 ### Work items
 Item | Status | Notes
 --- | --- | --- |
 Support volume size grow | to-do | [Feature request: CSI plugin support expand volume size](https://github.com/kubernetes/kubernetes/issues/62096) |
 Support raw block size | to-do | upstream feature is beta in 1.14: [Add resizing support to CSI volumes](https://github.com/kubernetes/enhancements/issues/556)|
-Support snapshot | to-do | upstream feature is beta in 1.14: [Snapshot / Restore Volume Support for Kubernetes (CRD + External Controller) ](https://github.com/kubernetes/enhancements/issues/177) |
+Support snapshot | In Progress | upstream feature is beta in 1.14: [Snapshot / Restore Volume Support for Kubernetes (CRD + External Controller) ](https://github.com/kubernetes/enhancements/issues/177) |
 Enable CI on Windows | Completed |  |
 Complete all unit tests | Completed | https://github.com/kubernetes-sigs/azuredisk-csi-driver/issues/7 |
 Set up sanity test | In Progress | https://github.com/kubernetes-sigs/azuredisk-csi-driver/issues/9 |
