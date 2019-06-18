@@ -90,3 +90,8 @@ $ csc controller create-snapshot snapshot-name --endpoint tcp://127.0.0.1:10000 
 ```
 $ csc controller delete-snapshot snapshot-name --endpoint tcp://127.0.0.1:10000
 ```
+
+#### 14. List snapshot
+```
+$ csc controller list-snapshots --endpoint tcp://127.0.0.1:10000
+```
