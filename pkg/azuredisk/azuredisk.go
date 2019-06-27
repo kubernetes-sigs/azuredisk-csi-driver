@@ -24,15 +24,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2018-10-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-03-01/compute"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 
 	csicommon "github.com/kubernetes-sigs/azuredisk-csi-driver/pkg/csi-common"
 	kwait "k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog"
-	"k8s.io/kubernetes/pkg/cloudprovider/providers/azure"
 	"k8s.io/kubernetes/pkg/util/mount"
+	"k8s.io/legacy-cloud-providers/azure"
 )
 
 const (
