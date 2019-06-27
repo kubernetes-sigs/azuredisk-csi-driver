@@ -30,9 +30,8 @@ import (
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/volume/util"
-	"k8s.io/utils/keymutex"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2018-10-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-03-01/compute"
 	"github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2018-07-01/storage"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/protobuf/ptypes"
@@ -50,8 +49,6 @@ var (
 			Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
 		},
 	}
-
-	getLunMutex = keymutex.NewHashed(0)
 )
 
 // CreateVolume provisions an azure disk
@@ -312,12 +309,6 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 	}
 
 	klog.V(2).Infof("GetDiskLun returned: %v. Initiating attaching volume %q to node %q.", err, diskURI, nodeName)
-	getLunMutex.LockKey(instanceid)
-	defer func() {
-		if err := getLunMutex.UnlockKey(instanceid); err != nil {
-			klog.Errorf("failed to UnlockKey: %q", instanceid)
-		}
-	}()
 
 	lun, err := d.cloud.GetDiskLun(diskName, diskURI, nodeName)
 	if err == cloudprovider.InstanceNotFound {
@@ -331,26 +322,21 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		// Volume is already attached to node.
 		klog.V(2).Infof("Attach operation is successful. volume %q is already attached to node %q at lun %d.", diskURI, instanceid, lun)
 	} else {
-		lun, err = d.cloud.GetNextDiskLun(nodeName)
-		if err != nil {
-			klog.Warningf("no LUN available for instance %q (%v)", nodeName, err)
-			return nil, fmt.Errorf("all LUNs are used, cannot attach volume %q to instance %q (%v)", diskURI, instanceid, err)
-		}
 		isManagedDisk := isManagedDisk(diskURI)
 
 		var cachingMode compute.CachingTypes
 		if cachingMode, err = getCachingMode(req.GetVolumeContext()); err != nil {
 			return nil, err
 		}
-		klog.V(2).Infof("Trying to attach volume %q lun %d to node %q", diskURI, lun, nodeName)
-		err = d.cloud.AttachDisk(isManagedDisk, diskName, diskURI, nodeName, lun, cachingMode)
+		klog.V(2).Infof("Trying to attach volume %q to node %q", diskURI, nodeName)
+		lun, err = d.cloud.AttachDisk(isManagedDisk, diskName, diskURI, nodeName, cachingMode)
 		if err == nil {
 			klog.V(2).Infof("Attach operation successful: volume %q attached to node %q.", diskURI, nodeName)
 		} else {
 			klog.Errorf("Attach volume %q to instance %q failed with %v", diskURI, instanceid, err)
 			return nil, fmt.Errorf("Attach volume %q to instance %q failed with %v", diskURI, instanceid, err)
 		}
-		klog.V(2).Infof("attach volume %q lun %d to node %q successfully", diskURI, lun, nodeName)
+		klog.V(2).Infof("attach volume %q to node %q successfully", diskURI, nodeName)
 	}
 
 	pvInfo := map[string]string{"devicePath": strconv.Itoa(int(lun))}
@@ -371,25 +357,13 @@ func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.Control
 	}
 	nodeName := types.NodeName(nodeID)
 
-	instanceid, err := d.cloud.InstanceID(context.TODO(), nodeName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get azure instance id for node %q (%v)", nodeID, err)
-	}
-
 	diskName, err := getDiskName(diskURI)
 	if err != nil {
 		return nil, err
 	}
 
-	getLunMutex.LockKey(instanceid)
-	defer func() {
-		if err := getLunMutex.UnlockKey(instanceid); err != nil {
-			klog.Errorf("failed to UnlockKey: %q", instanceid)
-		}
-	}()
-
 	klog.V(2).Infof("Trying to detach volume %s from node %s", diskURI, nodeID)
-	if err := d.cloud.DetachDiskByName(diskName, diskURI, nodeName); err != nil {
+	if err := d.cloud.DetachDisk(diskName, diskURI, nodeName); err != nil {
 		if strings.Contains(err.Error(), errDiskNotFound) {
 			klog.Warningf("volume %s already detached from node %s", diskURI, nodeID)
 		} else {

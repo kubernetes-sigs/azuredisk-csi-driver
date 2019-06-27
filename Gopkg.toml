@@ -31,8 +31,8 @@
 
 [[constraint]]
   name = "github.com/kubernetes-csi/csi-test"
-  revision = "5b1e3786b7c8f7ca514b40e882a0b5dc36e4c842"
-  #version = "v1.1.0"
+  #revision = "5b1e3786b7c8f7ca514b40e882a0b5dc36e4c842"
+  version = "v1.1.0"
 
 [[override]]
   revision = "5db89f0ca68677abc5eefce8f2a0a772c98ba52d"
@@ -56,34 +56,34 @@
 
 [[constraint]]
   name = "k8s.io/kubernetes"
-  version = "v1.14.0"
+  version = "v1.15.0"
 
 [[override]]
   name = "gopkg.in/fsnotify.v1"
   source = "https://github.com/fsnotify/fsnotify.git"
 
 [[override]]
-  version = "kubernetes-1.14.0"
+  version = "kubernetes-1.15.0"
   name = "k8s.io/api"
 
 [[override]]
-  version = "kubernetes-1.14.0"
+  version = "kubernetes-1.15.0"
   name = "k8s.io/apiserver"
 
 [[override]]
-  version = "kubernetes-1.14.0"
+  version = "kubernetes-1.15.0"
   name = "k8s.io/apiextensions-apiserver"
 
 [[override]]
-  version = "kubernetes-1.14.0"
+  version = "kubernetes-1.15.0"
   name = "k8s.io/client-go"
 
 [[override]]
-  version = "kubernetes-1.14.0"
+  version = "kubernetes-1.15.0"
   name = "k8s.io/apimachinery"
 
 [[override]]
-  version = "kubernetes-1.14.0"
+  version = "kubernetes-1.15.0"
   name = "k8s.io/cli-runtime"
 
 [[override]]
@@ -100,4 +100,8 @@
 
 [[override]]
   name = "github.com/Azure/azure-sdk-for-go"
-  version = "v21.3.0"
+  version = "v21.4.0"
+
+[[override]]
+  name = "github.com/Azure/go-autorest"
+  version = "v11.5.1"
