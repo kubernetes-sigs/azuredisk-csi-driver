@@ -101,7 +101,3 @@
 [[override]]
   name = "github.com/Azure/azure-sdk-for-go"
   version = "v21.4.0"
-
-[[override]]
-  name = "github.com/Azure/go-autorest"
-  version = "v11.5.1"
