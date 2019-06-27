@@ -8,4 +8,4 @@ spec:
   resources:
     requests:
       storage: 10Gi
-  storageClassName: disk.csi.azure.com
+  storageClassName: azuredisk

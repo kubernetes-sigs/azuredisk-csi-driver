@@ -60,10 +60,12 @@ spec:
           image: quay.io/k8scsi/csi-snapshotter:v1.1.0
           args:
             - --csi-address=$(ADDRESS)
-            - --connection-timeout=15s
           env:
             - name: ADDRESS
-              value: /var/lib/csi/sockets/pluginproxy/csi.sock
+              value: /csi/csi.sock
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
         - name: liveness-probe
           image: quay.io/k8scsi/livenessprobe:v1.1.0
           args:
