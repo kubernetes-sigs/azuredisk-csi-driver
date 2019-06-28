@@ -140,7 +140,7 @@ func getSnapshotName(snapshotURI string) (string, error) {
 
 func getResourceGroupFromURI(diskURI string) (string, error) {
 	fields := strings.Split(diskURI, "/")
-	if len(fields) != 9 || fields[3] != "resourceGroups" {
+	if len(fields) != 9 || strings.ToLower(fields[3]) != "resourcegroups" {
 		return "", fmt.Errorf("invalid disk URI: %s", diskURI)
 	}
 	return fields[4], nil
