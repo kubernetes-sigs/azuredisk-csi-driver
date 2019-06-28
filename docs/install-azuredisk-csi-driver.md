@@ -20,10 +20,10 @@ watch kubectl get po -o wide -n kube-system | grep csi-azuredisk
 example output:
 
 ```
-NAME                                   READY   STATUS    RESTARTS   AGE    IP            NODE
-csi-azuredisk-controller-0             6/6     Running   3          109s   10.244.0.40   aks-nodepool1-35570981-0   
-csi-azuredisk-node-dxtxp               3/3     Running   3          7d2h   10.240.0.5    aks-nodepool1-35570981-0
-
+NAME                                            READY   STATUS    RESTARTS   AGE     IP             NODE
+csi-azuredisk-controller-56bfddd689-dh5tk       6/6     Running   0          35s     10.240.0.19    k8s-agentpool-22533604-0
+csi-azuredisk-node-cvgbs                        3/3     Running   0          7m4s    10.240.0.35    k8s-agentpool-22533604-1
+csi-azuredisk-node-dr4s4                        3/3     Running   0          7m4s    10.240.0.4     k8s-agentpool-22533604-0
 ```
 
 - clean up azure disk CSI driver
