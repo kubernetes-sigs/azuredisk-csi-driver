@@ -34,8 +34,8 @@ test:
 	go vet github.com/kubernetes-sigs/azuredisk-csi-driver/pkg/...
 integration-test:
 	test/integration/run-tests-all-clouds.sh
-test-sanity:
-	go test -v ./test/sanity/...
+sanity-test:
+	test/sanity/run-tests-all-clouds.sh
 azuredisk:
 	if [ ! -d ./vendor ]; then dep ensure -vendor-only; fi
 	CGO_ENABLED=0 GOOS=linux go build -a -ldflags ${LDFLAGS} -o _output/azurediskplugin ./pkg/azurediskplugin
