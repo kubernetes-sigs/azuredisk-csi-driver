@@ -19,5 +19,6 @@ script:
   - hack/verify-all.sh
   - go test -covermode=count -coverprofile=profile.cov ./pkg/...
   - make azuredisk
+  - make sanity-test
   - make integration-test
   - make azuredisk-windows
