@@ -16,7 +16,9 @@
 
 # set -euo pipefail
 
-export set AZURE_CREDENTIAL_FILE=/tmp/azure.json
+if [ -z ${AZURE_CREDENTIAL_FILE} ]; then
+	export set AZURE_CREDENTIAL_FILE=/tmp/azure.json
+fi
 
 # run test on AzurePublicCloud
 if [ -v aadClientSecret ]; then
@@ -30,7 +32,13 @@ if [ -v aadClientSecret ]; then
 	sed -i "s/location-input/$location/g" $AZURE_CREDENTIAL_FILE
 
 	go test -v ./test/sanity/...
+	# make it always succeed for now until enabled sanity test on CI
+	exit 0
+else
+	if [ -v subscriptionId ]; then
+		echo "skip sanity test in CI env"
+	else
+		# run test in user mode
+		go test -v ./test/sanity/...
+	fi
 fi
-
-# make it always succeed for now
-exit 0
