@@ -23,6 +23,9 @@ if [ $# -gt 0 ]; then
 	endpoint=$1
 fi
 
+volname=`date +%s`
+volname="citest-$volname"
+
 node="CSINode"
 if [ $# -gt 1 ]; then
 	node=$2
@@ -52,7 +55,7 @@ if [ -v aadClientSecret ]; then
 	fi
 
 	echo "create volume test:"
-	value=`$csc controller new --endpoint $endpoint --cap 1,block CSIVolumeName  --req-bytes 2147483648 --params skuname=Standard_LRS,kind=managed`
+	value=`$csc controller new --endpoint $endpoint --cap 1,block $volname --req-bytes 2147483648 --params skuname=Standard_LRS,kind=managed`
 	retcode=$?
 	if [ $retcode -gt 0 ]; then
 		exit $retcode
