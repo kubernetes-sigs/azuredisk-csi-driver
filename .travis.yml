@@ -7,18 +7,29 @@ env:
     - GO111MODULE=off
 
 go:
-  - "1.11.4"
+  - "1.12.1"
 
-before_install:
-  - go get github.com/mattn/goveralls
-  - go get github.com/rexray/gocsi/csc
-  - go get github.com/golang/dep/cmd/dep
-  - sudo apt update && sudo apt install procps -y  # for installing pkill
-
-script:
-  - hack/verify-all.sh
-  - go test -covermode=count -coverprofile=profile.cov ./pkg/...
-  - make azuredisk
-  - make sanity-test
-  - make integration-test
-  - make azuredisk-windows
+jobs:
+  include:
+    - stage: test
+      name: "build test"
+      install:
+        - GO111MODULE=off go get github.com/mattn/goveralls
+        - go get github.com/golang/dep/cmd/dep
+      script:
+        - hack/verify-all.sh
+        - make azuredisk
+        - make azuredisk-windows
+        - go test -covermode=count -coverprofile=profile.cov ./pkg/...
+    - stage: test
+      name: "sanity test"
+      script: make sanity-test
+      after_failure: TRAVIS_TEST_RESULT=0
+    - stage: test
+      name: "integration test"
+      install:
+        - GO111MODULE=off go get github.com/rexray/gocsi/csc
+        - sudo apt update && sudo apt install procps -y  # for installing pkill
+      script:
+        - make azuredisk
+        - make integration-test
