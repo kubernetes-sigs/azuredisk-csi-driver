@@ -29,13 +29,11 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog"
-	"k8s.io/kubernetes/pkg/volume/util"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-03-01/compute"
 	"github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2018-07-01/storage"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/protobuf/ptypes"
-	"github.com/pborman/uuid"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -88,6 +86,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		resourceGroup      string
 		diskIopsReadWrite  string
 		diskMbpsReadWrite  string
+		diskName           string
 	)
 
 	parameters := req.GetParameters()
@@ -124,15 +123,17 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			diskIopsReadWrite = v
 		case "diskmbpsreadwrite":
 			diskMbpsReadWrite = v
+		case "diskname":
+			diskName = v
 		default:
 			//don't return error here since there are some parameters(e.g. fsType) used in disk mount process
 			//return nil, fmt.Errorf("AzureDisk - invalid option %s in storage class", k)
 		}
 	}
 
-	// maxLength = 79 - (4 for ".vhd") = 75
-	// todo: get cluster name
-	diskName := util.GenerateVolumeName("pvc-disk", uuid.NewUUID().String(), 75)
+	if diskName == "" {
+		diskName = getValidDiskName(name)
+	}
 
 	// normalize values
 	skuName, err := normalizeStorageAccountType(storageAccountType)
@@ -192,12 +193,12 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		}
 	} else {
 		if kind == v1.AzureDedicatedBlobDisk {
-			_, diskURI, _, err = d.cloud.CreateVolume(name, account, storageAccountType, location, requestGiB)
+			_, diskURI, _, err = d.cloud.CreateVolume(diskName, account, storageAccountType, location, requestGiB)
 			if err != nil {
 				return nil, err
 			}
 		} else {
-			diskURI, err = d.cloud.CreateBlobDisk(name, storage.SkuName(storageAccountType), requestGiB)
+			diskURI, err = d.cloud.CreateBlobDisk(diskName, storage.SkuName(storageAccountType), requestGiB)
 			if err != nil {
 				return nil, err
 			}
