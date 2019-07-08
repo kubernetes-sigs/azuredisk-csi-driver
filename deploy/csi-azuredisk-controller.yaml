@@ -85,6 +85,9 @@ spec:
             - containerPort: 9602
               name: healthz
               protocol: TCP
+            - containerPort: 10252
+              name: metrics
+              protocol: TCP
           livenessProbe:
             failureThreshold: 5
             httpGet:
@@ -117,3 +120,16 @@ spec:
         - name: msi
           hostPath:
             path: /var/lib/waagent/ManagedIdentity-Settings
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: csi-azuredisk-controller
+  namespace: kube-system
+spec:
+  selector:
+    app: csi-azuredisk-controller
+  ports:
+  - port: 10252
+    targetPort: 10252
+  type: ClusterIP
