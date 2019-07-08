@@ -322,11 +322,12 @@
   version = "v1.0.0"
 
 [[projects]]
-  digest = "1:623090ece42820e4121c5c85a4373b10b922e79f3b8c44caad67a45a50e10054"
+  digest = "1:097cc61836050f45cbb712ae3bb45d66fba464c16b8fac09907fa3c1f753eff6"
   name = "github.com/prometheus/client_golang"
   packages = [
     "prometheus",
     "prometheus/internal",
+    "prometheus/promhttp",
   ]
   pruneopts = "NUT"
   revision = "4ab88e80c249ed361d3299e2930427d9ac43ef8d"
@@ -1019,6 +1020,7 @@
     "github.com/golang/protobuf/ptypes/wrappers",
     "github.com/kubernetes-csi/csi-test/pkg/sanity",
     "github.com/pborman/uuid",
+    "github.com/prometheus/client_golang/prometheus/promhttp",
     "github.com/stretchr/testify/assert",
     "golang.org/x/net/context",
     "google.golang.org/grpc",
