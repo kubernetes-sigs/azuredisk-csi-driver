@@ -36,6 +36,8 @@ import (
 )
 
 const (
+	driverName = "disk.csi.azure.com"
+
 	errDiskNotFound = "not found"
 	// default IOPS Caps & Throughput Cap (MBps) per https://docs.microsoft.com/en-us/azure/virtual-machines/linux/disks-ultra-ssd
 	defaultDiskIOPSReadWrite = 500

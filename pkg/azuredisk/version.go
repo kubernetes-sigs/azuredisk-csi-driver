@@ -29,7 +29,6 @@ var (
 	driverVersion = "N/A"
 	gitCommit     = "N/A"
 	buildDate     = "N/A"
-	driverName    = "N/A"
 	topologyKey   = "N/A"
 )
 
