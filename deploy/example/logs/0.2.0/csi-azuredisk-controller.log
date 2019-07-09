@@ -1,0 +1,170 @@
+I0708 02:04:46.356845       1 azuredisk.go:65] 
+DRIVER INFORMATION:
+-------------------
+Build Date: "2019-04-15T07:48:30Z"
+Compiler: gc
+Driver Name: disk.csi.azure.com
+Driver Version: v0.2.0-alpha
+Git Commit: eb37d28331fc88d4021bda2567c0ae6092aa016c
+Go Version: go1.12.1
+Platform: linux/amd64
+Topology Key: topology.disk.csi.azure.com/zone
+
+Streaming logs below:
+I0708 02:04:46.356956       1 azure.go:32] AZURE_CREDENTIAL_FILE env var set as /etc/kubernetes/azure.json
+I0708 02:04:46.357597       1 azure_auth.go:81] azure: using client_id+client_secret to retrieve access token
+I0708 02:04:46.357626       1 azure.go:258] Azure cloudprovider (read ops) using rate limit config: QPS=3, bucket=10
+I0708 02:04:46.357640       1 azure.go:262] Azure cloudprovider (write ops) using rate limit config: QPS=1, bucket=5
+I0708 02:04:46.357750       1 azure.go:324] Azure cloudprovider using try backoff: retries=6, exponent=1.500000, duration=5, jitter=1.000000
+I0708 02:04:46.357862       1 mount_linux.go:165] Detected OS without systemd
+I0708 02:04:46.357879       1 driver.go:80] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0708 02:04:46.357886       1 driver.go:80] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0708 02:04:46.357908       1 driver.go:99] Enabling volume access mode: SINGLE_NODE_WRITER
+I0708 02:04:46.357937       1 driver.go:90] Enabling node service capability: STAGE_UNSTAGE_VOLUME
+I0708 02:04:46.358114       1 server.go:103] Listening for connections on address: &net.UnixAddr{Name:"//csi/csi.sock", Net:"unix"}
+I0708 02:04:46.690976       1 utils.go:106] GRPC call: /csi.v1.Identity/GetPluginInfo
+I0708 02:04:46.691150       1 utils.go:107] GRPC request: 
+I0708 02:04:46.691235       1 identityserver.go:33] Using default GetPluginInfo
+I0708 02:04:46.691256       1 utils.go:112] GRPC response: name:"disk.csi.azure.com" vendor_version:"v0.2.0-alpha" 
+I0708 02:04:47.089454       1 utils.go:106] GRPC call: /csi.v1.Identity/Probe
+I0708 02:04:47.089584       1 utils.go:107] GRPC request: 
+I0708 02:04:47.089661       1 utils.go:112] GRPC response: ready:<value:true > 
+I0708 02:04:47.091999       1 utils.go:106] GRPC call: /csi.v1.Identity/GetPluginInfo
+I0708 02:04:47.092009       1 utils.go:107] GRPC request: 
+I0708 02:04:47.092067       1 identityserver.go:33] Using default GetPluginInfo
+I0708 02:04:47.092072       1 utils.go:112] GRPC response: name:"disk.csi.azure.com" vendor_version:"v0.2.0-alpha" 
+I0708 02:04:47.093370       1 utils.go:106] GRPC call: /csi.v1.Identity/GetPluginCapabilities
+I0708 02:04:47.093380       1 utils.go:107] GRPC request: 
+I0708 02:04:47.093394       1 identityserver.go:59] Using default capabilities
+I0708 02:04:47.093399       1 utils.go:112] GRPC response: capabilities:<service:<type:CONTROLLER_SERVICE > > 
+I0708 02:04:47.095348       1 utils.go:106] GRPC call: /csi.v1.Controller/ControllerGetCapabilities
+I0708 02:04:47.095358       1 utils.go:107] GRPC request: 
+I0708 02:04:47.095372       1 controllerserver.go:419] Using default ControllerGetCapabilities
+I0708 02:04:47.095376       1 utils.go:112] GRPC response: capabilities:<rpc:<type:CREATE_DELETE_VOLUME > > capabilities:<rpc:<type:PUBLISH_UNPUBLISH_VOLUME > > 
+I0708 02:04:47.239426       1 utils.go:106] GRPC call: /csi.v1.Identity/GetPluginInfo
+I0708 02:04:47.239443       1 utils.go:107] GRPC request: 
+I0708 02:04:47.239602       1 identityserver.go:33] Using default GetPluginInfo
+I0708 02:04:47.239608       1 utils.go:112] GRPC response: name:"disk.csi.azure.com" vendor_version:"v0.2.0-alpha" 
+I0708 02:05:19.141920       1 utils.go:106] GRPC call: /csi.v1.Identity/Probe
+I0708 02:05:19.141940       1 utils.go:107] GRPC request: 
+I0708 02:05:19.141993       1 utils.go:112] GRPC response: ready:<value:true > 
+I0708 02:05:49.141909       1 utils.go:106] GRPC call: /csi.v1.Identity/Probe
+I0708 02:05:49.141929       1 utils.go:107] GRPC request: 
+I0708 02:05:49.141965       1 utils.go:112] GRPC response: ready:<value:true > 
+I0708 02:06:19.141943       1 utils.go:106] GRPC call: /csi.v1.Identity/Probe
+I0708 02:06:19.142128       1 utils.go:107] GRPC request: 
+I0708 02:06:19.142204       1 utils.go:112] GRPC response: ready:<value:true > 
+I0708 02:06:20.956871       1 utils.go:106] GRPC call: /csi.v1.Identity/GetPluginCapabilities
+I0708 02:06:20.957081       1 utils.go:107] GRPC request: 
+I0708 02:06:20.957204       1 identityserver.go:59] Using default capabilities
+I0708 02:06:20.957288       1 utils.go:112] GRPC response: capabilities:<service:<type:CONTROLLER_SERVICE > > 
+I0708 02:06:20.958283       1 utils.go:106] GRPC call: /csi.v1.Controller/ControllerGetCapabilities
+I0708 02:06:20.958437       1 utils.go:107] GRPC request: 
+I0708 02:06:20.958590       1 controllerserver.go:419] Using default ControllerGetCapabilities
+I0708 02:06:20.958710       1 utils.go:112] GRPC response: capabilities:<rpc:<type:CREATE_DELETE_VOLUME > > capabilities:<rpc:<type:PUBLISH_UNPUBLISH_VOLUME > > 
+I0708 02:06:20.959157       1 utils.go:106] GRPC call: /csi.v1.Identity/GetPluginInfo
+I0708 02:06:20.959171       1 utils.go:107] GRPC request: 
+I0708 02:06:20.959233       1 identityserver.go:33] Using default GetPluginInfo
+I0708 02:06:20.959239       1 utils.go:112] GRPC response: name:"disk.csi.azure.com" vendor_version:"v0.2.0-alpha" 
+I0708 02:06:20.959710       1 utils.go:106] GRPC call: /csi.v1.Controller/CreateVolume
+I0708 02:06:20.959795       1 utils.go:107] GRPC request: name:"pvc-fabb207f-a124-11e9-b849-aa9ac0373741" capacity_range:<required_bytes:10737418240 > volume_capabilities:<mount:<fs_type:"ext4" > access_mode:<mode:SINGLE_NODE_WRITER > > parameters:<key:"cachingMode" value:"ReadOnly" > parameters:<key:"kind" value:"managed" > parameters:<key:"skuname" value:"Standard_LRS" > 
+I0708 02:06:20.960196       1 controllerserver.go:165] begin to create azure disk(pvc-disk-dynamic-fac4b8e4-a124-11e9-8c50-c6e5c33cad5d) account type(Standard_LRS) rg() location() size(10)
+I0708 02:06:20.960329       1 azure_managedDiskController.go:74] azureDisk - creating new managed Name:pvc-disk-dynamic-fac4b8e4-a124-11e9-8c50-c6e5c33cad5d StorageAccountType:Standard_LRS Size:10
+I0708 02:06:26.607236       1 azure_managedDiskController.go:172] azureDisk - created new MD Name:pvc-disk-dynamic-fac4b8e4-a124-11e9-8c50-c6e5c33cad5d StorageAccountType:Standard_LRS Size:10
+I0708 02:06:26.607270       1 controllerserver.go:205] create azure disk(pvc-disk-dynamic-fac4b8e4-a124-11e9-8c50-c6e5c33cad5d) account type(Standard_LRS) rg() location() size(10) successfully
+I0708 02:06:26.607281       1 utils.go:112] GRPC response: volume:<capacity_bytes:10737418240 volume_id:"/subscriptions/.../resourceGroups/MC_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/disks/pvc-disk-dynamic-fac4b8e4-a124-11e9-8c50-c6e5c33cad5d" volume_context:<key:"cachingMode" value:"ReadOnly" > volume_context:<key:"kind" value:"managed" > volume_context:<key:"skuname" value:"Standard_LRS" > accessible_topology:<segments:<key:"topology.disk.csi.azure.com/zone" value:"" > > > 
+I0708 02:06:49.141881       1 utils.go:106] GRPC call: /csi.v1.Identity/Probe
+I0708 02:06:49.141901       1 utils.go:107] GRPC request: 
+I0708 02:06:49.142094       1 utils.go:112] GRPC response: ready:<value:true > 
+I0708 02:07:02.908790       1 utils.go:106] GRPC call: /csi.v1.Controller/ControllerPublishVolume
+I0708 02:07:02.908930       1 utils.go:107] GRPC request: volume_id:"/subscriptions/.../resourceGroups/MC_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/disks/pvc-disk-dynamic-fac4b8e4-a124-11e9-8c50-c6e5c33cad5d" node_id:"aks-agentpool-41197296-0" volume_capability:<mount:<fs_type:"ext4" > access_mode:<mode:SINGLE_NODE_WRITER > > volume_context:<key:"cachingMode" value:"ReadOnly" > volume_context:<key:"kind" value:"managed" > volume_context:<key:"skuname" value:"Standard_LRS" > volume_context:<key:"storage.kubernetes.io/csiProvisionerIdentity" value:"1562551478534-8081-disk.csi.azure.com" > 
+I0708 02:07:02.909162       1 controllerserver.go:267] ControllerPublishVolume: called with args {VolumeId:/subscriptions/.../resourceGroups/MC_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/disks/pvc-disk-dynamic-fac4b8e4-a124-11e9-8c50-c6e5c33cad5d NodeId:aks-agentpool-41197296-0 VolumeCapability:mount:<fs_type:"ext4" > access_mode:<mode:SINGLE_NODE_WRITER >  Readonly:false Secrets:map[] VolumeContext:map[cachingMode:ReadOnly kind:managed skuname:Standard_LRS storage.kubernetes.io/csiProvisionerIdentity:1562551478534-8081-disk.csi.azure.com] XXX_NoUnkeyedLiteral:{} XXX_unrecognized:[] XXX_sizecache:0}
+I0708 02:07:02.948540       1 controllerserver.go:304] GetDiskLun returned: <nil>. Initiating attaching volume "/subscriptions/.../resourceGroups/MC_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/disks/pvc-disk-dynamic-fac4b8e4-a124-11e9-8c50-c6e5c33cad5d" to node "aks-agentpool-41197296-0".
+I0708 02:07:02.948613       1 hashed.go:47] hashedKeyMutex.LockKey(...) called for id "/subscriptions/.../resourceGroups/MC_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/virtualMachines/aks-agentpool-41197296-0"
+I0708 02:07:02.948626       1 hashed.go:49] hashedKeyMutex.LockKey(...) for id "/subscriptions/.../resourceGroups/MC_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/virtualMachines/aks-agentpool-41197296-0" completed.
+I0708 02:07:03.011845       1 controllerserver.go:335] Trying to attach volume "/subscriptions/.../resourceGroups/MC_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/disks/pvc-disk-dynamic-fac4b8e4-a124-11e9-8c50-c6e5c33cad5d" lun 0 to node "aks-agentpool-41197296-0"
+I0708 02:07:03.011880       1 azure_controller_standard.go:77] azureDisk - update(MC_andy-virtualnode_andy-virtualnode_eastus2): vm(aks-agentpool-41197296-0) - attach disk(pvc-disk-dynamic-fac4b8e4-a124-11e9-8c50-c6e5c33cad5d)
+I0708 02:07:19.142897       1 utils.go:106] GRPC call: /csi.v1.Identity/Probe
+I0708 02:07:19.142912       1 utils.go:107] GRPC request: 
+I0708 02:07:19.142945       1 utils.go:112] GRPC response: ready:<value:true > 
+I0708 02:07:38.506091       1 azure_controller_standard.go:94] azureDisk - attach disk(pvc-disk-dynamic-fac4b8e4-a124-11e9-8c50-c6e5c33cad5d) succeeded
+I0708 02:07:38.506121       1 controllerserver.go:338] Attach operation successful: volume "/subscriptions/.../resourceGroups/MC_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/disks/pvc-disk-dynamic-fac4b8e4-a124-11e9-8c50-c6e5c33cad5d" attached to node "aks-agentpool-41197296-0".
+I0708 02:07:38.506138       1 controllerserver.go:343] attach volume "/subscriptions/.../resourceGroups/MC_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/disks/pvc-disk-dynamic-fac4b8e4-a124-11e9-8c50-c6e5c33cad5d" lun 0 to node "aks-agentpool-41197296-0" successfully
+I0708 02:07:38.506155       1 hashed.go:54] hashedKeyMutex.UnlockKey(...) called for id "/subscriptions/.../resourceGroups/MC_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/virtualMachines/aks-agentpool-41197296-0"
+I0708 02:07:38.506164       1 hashed.go:56] hashedKeyMutex.UnlockKey(...) for id "/subscriptions/.../resourceGroups/MC_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/virtualMachines/aks-agentpool-41197296-0" completed.
+I0708 02:07:38.506174       1 utils.go:112] GRPC response: publish_context:<key:"devicePath" value:"0" > 
+I0708 02:07:49.141956       1 utils.go:106] GRPC call: /csi.v1.Identity/Probe
+I0708 02:07:49.141971       1 utils.go:107] GRPC request: 
+I0708 02:07:49.142003       1 utils.go:112] GRPC response: ready:<value:true > 
+I0708 02:08:19.142076       1 utils.go:106] GRPC call: /csi.v1.Identity/Probe
+I0708 02:08:19.142261       1 utils.go:107] GRPC request: 
+I0708 02:08:19.142338       1 utils.go:112] GRPC response: ready:<value:true > 
+I0708 02:08:49.141928       1 utils.go:106] GRPC call: /csi.v1.Identity/Probe
+I0708 02:08:49.142011       1 utils.go:107] GRPC request: 
+I0708 02:08:49.142215       1 utils.go:112] GRPC response: ready:<value:true > 
+I0708 02:09:19.141808       1 utils.go:106] GRPC call: /csi.v1.Identity/Probe
+I0708 02:09:19.141822       1 utils.go:107] GRPC request: 
+I0708 02:09:19.141856       1 utils.go:112] GRPC response: ready:<value:true > 
+I0708 02:09:39.452064       1 utils.go:106] GRPC call: /csi.v1.Controller/ControllerUnpublishVolume
+I0708 02:09:39.452163       1 utils.go:107] GRPC request: volume_id:"/subscriptions/.../resourceGroups/MC_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/disks/pvc-disk-dynamic-fac4b8e4-a124-11e9-8c50-c6e5c33cad5d" node_id:"aks-agentpool-41197296-0" 
+I0708 02:09:39.452211       1 controllerserver.go:352] ControllerUnpublishVolume: called with args {VolumeId:/subscriptions/.../resourceGroups/MC_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/disks/pvc-disk-dynamic-fac4b8e4-a124-11e9-8c50-c6e5c33cad5d NodeId:aks-agentpool-41197296-0 Secrets:map[] XXX_NoUnkeyedLiteral:{} XXX_unrecognized:[] XXX_sizecache:0}
+I0708 02:09:39.452246       1 expiration_cache.go:98] Entry InstanceMetadata: &{key:InstanceMetadata data:0xc000673cd0 lock:{state:0 sema:0}} has expired
+I0708 02:09:39.457483       1 hashed.go:47] hashedKeyMutex.LockKey(...) called for id "/subscriptions/.../resourceGroups/MC_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/virtualMachines/aks-agentpool-41197296-0"
+I0708 02:09:39.457529       1 hashed.go:49] hashedKeyMutex.LockKey(...) for id "/subscriptions/.../resourceGroups/MC_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/virtualMachines/aks-agentpool-41197296-0" completed.
+I0708 02:09:39.457618       1 controllerserver.go:381] Trying to detach volume /subscriptions/.../resourceGroups/MC_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/disks/pvc-disk-dynamic-fac4b8e4-a124-11e9-8c50-c6e5c33cad5d from node aks-agentpool-41197296-0
+I0708 02:09:39.551551       1 azure_controller_standard.go:122] azureDisk - detach disk: name "pvc-disk-dynamic-fac4b8e4-a124-11e9-8c50-c6e5c33cad5d" uri "/subscriptions/.../resourceGroups/MC_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/disks/pvc-disk-dynamic-fac4b8e4-a124-11e9-8c50-c6e5c33cad5d"
+I0708 02:09:39.551585       1 azure_controller_standard.go:142] azureDisk - update(MC_andy-virtualnode_andy-virtualnode_eastus2): vm(aks-agentpool-41197296-0) - detach disk(pvc-disk-dynamic-fac4b8e4-a124-11e9-8c50-c6e5c33cad5d)
+I0708 02:09:41.778693       1 utils.go:106] GRPC call: /csi.v1.Identity/GetPluginCapabilities
+I0708 02:09:41.778708       1 utils.go:107] GRPC request: 
+I0708 02:09:41.778798       1 identityserver.go:59] Using default capabilities
+I0708 02:09:41.778805       1 utils.go:112] GRPC response: capabilities:<service:<type:CONTROLLER_SERVICE > > 
+I0708 02:09:41.779255       1 utils.go:106] GRPC call: /csi.v1.Controller/ControllerGetCapabilities
+I0708 02:09:41.779264       1 utils.go:107] GRPC request: 
+I0708 02:09:41.779290       1 controllerserver.go:419] Using default ControllerGetCapabilities
+I0708 02:09:41.779295       1 utils.go:112] GRPC response: capabilities:<rpc:<type:CREATE_DELETE_VOLUME > > capabilities:<rpc:<type:PUBLISH_UNPUBLISH_VOLUME > > 
+I0708 02:09:41.779729       1 utils.go:106] GRPC call: /csi.v1.Identity/GetPluginInfo
+I0708 02:09:41.779736       1 utils.go:107] GRPC request: 
+I0708 02:09:41.779756       1 identityserver.go:33] Using default GetPluginInfo
+I0708 02:09:41.779760       1 utils.go:112] GRPC response: name:"disk.csi.azure.com" vendor_version:"v0.2.0-alpha" 
+I0708 02:09:41.787775       1 utils.go:106] GRPC call: /csi.v1.Controller/DeleteVolume
+I0708 02:09:41.787786       1 utils.go:107] GRPC request: volume_id:"/subscriptions/.../resourceGroups/MC_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/disks/pvc-disk-dynamic-fac4b8e4-a124-11e9-8c50-c6e5c33cad5d" 
+I0708 02:09:41.787824       1 controllerserver.go:250] deleting azure disk(/subscriptions/.../resourceGroups/MC_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/disks/pvc-disk-dynamic-fac4b8e4-a124-11e9-8c50-c6e5c33cad5d)
+E0708 02:09:42.024138       1 utils.go:110] GRPC error: compute.DisksClient#Delete: Failure sending request: StatusCode=0 -- Original Error: autorest/azure: Service returned an error. Status=<nil> Code="OperationNotAllowed" Message="Disk pvc-disk-dynamic-fac4b8e4-a124-11e9-8c50-c6e5c33cad5d is attached to VM /subscriptions/.../resourceGroups/MC_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/virtualMachines/aks-agentpool-41197296-0."
+I0708 02:09:49.141968       1 utils.go:106] GRPC call: /csi.v1.Identity/Probe
+I0708 02:09:49.142137       1 utils.go:107] GRPC request: 
+I0708 02:09:49.142212       1 utils.go:112] GRPC response: ready:<value:true > 
+I0708 02:09:57.036968       1 utils.go:106] GRPC call: /csi.v1.Identity/GetPluginCapabilities
+I0708 02:09:57.036997       1 utils.go:107] GRPC request: 
+I0708 02:09:57.037279       1 identityserver.go:59] Using default capabilities
+I0708 02:09:57.037287       1 utils.go:112] GRPC response: capabilities:<service:<type:CONTROLLER_SERVICE > > 
+I0708 02:09:57.037648       1 utils.go:106] GRPC call: /csi.v1.Controller/ControllerGetCapabilities
+I0708 02:09:57.037665       1 utils.go:107] GRPC request: 
+I0708 02:09:57.037759       1 controllerserver.go:419] Using default ControllerGetCapabilities
+I0708 02:09:57.037922       1 utils.go:112] GRPC response: capabilities:<rpc:<type:CREATE_DELETE_VOLUME > > capabilities:<rpc:<type:PUBLISH_UNPUBLISH_VOLUME > > 
+I0708 02:09:57.038357       1 utils.go:106] GRPC call: /csi.v1.Identity/GetPluginInfo
+I0708 02:09:57.038372       1 utils.go:107] GRPC request: 
+I0708 02:09:57.038396       1 identityserver.go:33] Using default GetPluginInfo
+I0708 02:09:57.038401       1 utils.go:112] GRPC response: name:"disk.csi.azure.com" vendor_version:"v0.2.0-alpha" 
+I0708 02:09:57.046245       1 utils.go:106] GRPC call: /csi.v1.Controller/DeleteVolume
+I0708 02:09:57.046463       1 utils.go:107] GRPC request: volume_id:"/subscriptions/.../resourceGroups/MC_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/disks/pvc-disk-dynamic-fac4b8e4-a124-11e9-8c50-c6e5c33cad5d" 
+I0708 02:09:57.046516       1 controllerserver.go:250] deleting azure disk(/subscriptions/.../resourceGroups/MC_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/disks/pvc-disk-dynamic-fac4b8e4-a124-11e9-8c50-c6e5c33cad5d)
+E0708 02:09:57.295441       1 utils.go:110] GRPC error: compute.DisksClient#Delete: Failure sending request: StatusCode=0 -- Original Error: autorest/azure: Service returned an error. Status=<nil> Code="OperationNotAllowed" Message="Disk pvc-disk-dynamic-fac4b8e4-a124-11e9-8c50-c6e5c33cad5d is attached to VM /subscriptions/.../resourceGroups/MC_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/virtualMachines/aks-agentpool-41197296-0."
+I0708 02:10:04.901291       1 azure_controller_standard.go:161] azureDisk - detach disk(pvc-disk-dynamic-fac4b8e4-a124-11e9-8c50-c6e5c33cad5d, /subscriptions/.../resourceGroups/MC_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/disks/pvc-disk-dynamic-fac4b8e4-a124-11e9-8c50-c6e5c33cad5d) succeeded
+I0708 02:10:04.901326       1 controllerserver.go:389] detach volume /subscriptions/.../resourceGroups/MC_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/disks/pvc-disk-dynamic-fac4b8e4-a124-11e9-8c50-c6e5c33cad5d from node aks-agentpool-41197296-0 successfully
+I0708 02:10:04.901334       1 hashed.go:54] hashedKeyMutex.UnlockKey(...) called for id "/subscriptions/.../resourceGroups/MC_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/virtualMachines/aks-agentpool-41197296-0"
+I0708 02:10:04.901346       1 hashed.go:56] hashedKeyMutex.UnlockKey(...) for id "/subscriptions/.../resourceGroups/MC_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/virtualMachines/aks-agentpool-41197296-0" completed.
+I0708 02:10:04.901356       1 utils.go:112] GRPC response: 
+I0708 02:10:04.917031       1 utils.go:106] GRPC call: /csi.v1.Controller/ControllerUnpublishVolume
+I0708 02:10:04.917044       1 utils.go:107] GRPC request: volume_id:"/subscriptions/.../resourceGroups/MC_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/disks/pvc-disk-dynamic-fac4b8e4-a124-11e9-8c50-c6e5c33cad5d" node_id:"aks-agentpool-41197296-0" 
+I0708 02:10:04.917083       1 controllerserver.go:352] ControllerUnpublishVolume: called with args {VolumeId:/subscriptions/.../resourceGroups/MC_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/disks/pvc-disk-dynamic-fac4b8e4-a124-11e9-8c50-c6e5c33cad5d NodeId:aks-agentpool-41197296-0 Secrets:map[] XXX_NoUnkeyedLiteral:{} XXX_unrecognized:[] XXX_sizecache:0}
+I0708 02:10:04.917163       1 hashed.go:47] hashedKeyMutex.LockKey(...) called for id "/subscriptions/.../resourceGroups/MC_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/virtualMachines/aks-agentpool-41197296-0"
+I0708 02:10:04.917176       1 hashed.go:49] hashedKeyMutex.LockKey(...) for id "/subscriptions/.../resourceGroups/MC_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/virtualMachines/aks-agentpool-41197296-0" completed.
+I0708 02:10:04.917190       1 controllerserver.go:381] Trying to detach volume /subscriptions/.../resourceGroups/MC_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/disks/pvc-disk-dynamic-fac4b8e4-a124-11e9-8c50-c6e5c33cad5d from node aks-agentpool-41197296-0
+W0708 02:10:04.995319       1 controllerserver.go:384] volume /subscriptions/.../resourceGroups/MC_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/disks/pvc-disk-dynamic-fac4b8e4-a124-11e9-8c50-c6e5c33cad5d already detached from node aks-agentpool-41197296-0
+I0708 02:10:04.995374       1 controllerserver.go:389] detach volume /subscriptions/.../resourceGroups/MC_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/disks/pvc-disk-dynamic-fac4b8e4-a124-11e9-8c50-c6e5c33cad5d from node aks-agentpool-41197296-0 successfully
+I0708 02:10:04.995381       1 hashed.go:54] hashedKeyMutex.UnlockKey(...) called for id "/subscriptions/.../resourceGroups/MC_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/virtualMachines/aks-agentpool-41197296-0"
+I0708 02:10:04.995395       1 hashed.go:56] hashedKeyMutex.UnlockKey(...) for id "/subscriptions/.../resourceGroups/MC_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/virtualMachines/aks-agentpool-41197296-0" completed.
+I0708 02:10:04.995404       1 utils.go:112] GRPC response: 
+I0708 02:10:19.141759       1 utils.go:106] GRPC call: /csi.v1.Identity/Probe
+I0708 02:10:19.141896       1 utils.go:107] GRPC request: 
+I0708 02:10:19.142014       1 utils.go:112] GRPC response: ready:<value:true > 
