@@ -293,7 +293,8 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 
 	instanceType, err := instances.InstanceType(context.TODO(), types.NodeName(d.NodeID))
 	if err != nil {
-		return nil, status.Error(codes.Internal, "Failed to get instance type from Azure cloud provider, nodeName: "+d.NodeID)
+		klog.Warningf("Failed to get instance type from Azure cloud provider, nodeName: %v, error: %v", d.NodeID, err)
+		instanceType = ""
 	}
 
 	if vmSizeList == nil {
@@ -313,7 +314,7 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 }
 
 func getMaxDataDiskCount(instanceType string, sizeList *[]compute.VirtualMachineSize) int64 {
-	if sizeList == nil {
+	if instanceType == "" || sizeList == nil {
 		return defaultAzureVolumeLimit
 	}
 
