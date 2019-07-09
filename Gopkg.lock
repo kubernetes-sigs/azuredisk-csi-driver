@@ -10,11 +10,11 @@
   version = "v0.4.12"
 
 [[projects]]
-  digest = "1:ca89d3ad821076e515ffcd2f31df99e5b1b98f1b2b2b5fb81dd2dfdf5b3c171c"
+  digest = "1:8d4645122a69d632abb4fd09f0f8b1bc6efd327b7626b47aef4c33a8652cdf0d"
   name = "github.com/Azure/azure-sdk-for-go"
   packages = [
     "services/compute/mgmt/2019-03-01/compute",
-    "services/network/mgmt/2018-07-01/network",
+    "services/network/mgmt/2018-08-01/network",
     "services/storage/mgmt/2018-07-01/storage",
     "storage",
     "version",
@@ -104,7 +104,7 @@
   name = "github.com/golang/groupcache"
   packages = ["lru"]
   pruneopts = "NUT"
-  revision = "5b532d6fd5efaf7fa130d4e859a2fde0fc3a9e1b"
+  revision = "869f871628b6baa9cfbc11732cdf6546b17c1298"
 
 [[projects]]
   digest = "1:27d8aff388ac8ea2d4057097ef4aad2f98a6a8796477213096160b72b6c87cf2"
@@ -170,7 +170,7 @@
   version = "v0.3.0"
 
 [[projects]]
-  digest = "1:1f643bd280f09699d6ee583c2be50cac9f90f1eaaf03408a92d893b96de81f5b"
+  digest = "1:960e8004095e3be6cff988becc8cc9ec1dc0e06887144ed46ff2da86e7c0efea"
   name = "github.com/grpc-ecosystem/grpc-gateway"
   packages = [
     "internal",
@@ -178,8 +178,8 @@
     "utilities",
   ]
   pruneopts = "NUT"
-  revision = "cd0c8ef3533e9c04e6520cac37a81fe262fb0b34"
-  version = "v1.9.2"
+  revision = "d54b3615f714b03edde6d9206fa0476a9169c966"
+  version = "v1.9.3"
 
 [[projects]]
   digest = "1:52094d0f8bdf831d1a2401e9b6fee5795fdc0b2a2d1f8bb1980834c289e79129"
@@ -433,7 +433,7 @@
     "ssh/terminal",
   ]
   pruneopts = "NUT"
-  revision = "cc06ce4a13d484c0101a9e92913248488a75786d"
+  revision = "4def268fd1a49955bfb3dda92fe3db4f924f2285"
 
 [[projects]]
   branch = "master"
@@ -453,7 +453,7 @@
     "trace",
   ]
   pruneopts = "NUT"
-  revision = "3b0461eec859c4b73bb64fdc8285971fd33e3938"
+  revision = "da137c7871d730100384dbcf36e6f8fa493aef5b"
 
 [[projects]]
   branch = "master"
@@ -564,10 +564,10 @@
     "protobuf/field_mask",
   ]
   pruneopts = "NUT"
-  revision = "621ef7fb66c1288c79ce6bdba008e0068b34e12f"
+  revision = "3bdd9d9f5532d75d09efb230bd767d265245cfe5"
 
 [[projects]]
-  digest = "1:1ec4bc6f7cbf98268fafafea40cdeb5ff5d4914cc9b9ef615fbbfc1ac43c0622"
+  digest = "1:2faab8e13984b728cde9ced456912a0fc5cd43da5b9a4b45b749dc3ae63f27b2"
   name = "google.golang.org/grpc"
   packages = [
     ".",
@@ -599,13 +599,14 @@
     "resolver",
     "resolver/dns",
     "resolver/passthrough",
+    "serviceconfig",
     "stats",
     "status",
     "tap",
   ]
   pruneopts = "NUT"
-  revision = "501c41df7f472c740d0674ff27122f3f48c80ce7"
-  version = "v1.21.1"
+  revision = "1d89a3c832915b2314551c1d2a506874d62e53f7"
+  version = "v1.22.0"
 
 [[projects]]
   digest = "1:1b91ae0dc69a41d4c2ed23ea5cffb721ea63f5037ca4b81e6d6771fbb8f45129"
@@ -919,7 +920,7 @@
     "volume/helpers",
   ]
   pruneopts = "NUT"
-  revision = "9dc79cf4f9c7141135a3d01033e431ba73c1d8f6"
+  revision = "02ef7372f6c090f5a90430f1b178b38f1fba2b1e"
 
 [[projects]]
   branch = "master"
@@ -927,7 +928,7 @@
   name = "k8s.io/component-base"
   packages = ["featuregate"]
   pruneopts = "NUT"
-  revision = "ca439aa083f5d688601c5bda43b65729bd8136eb"
+  revision = "65d72cfeb85d7715a40c73efae516013d28cb865"
 
 [[projects]]
   digest = "1:43099cc4ed575c40f80277c7ba7168df37d0c663bdc4f541325430bd175cce8a"
@@ -972,14 +973,14 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:fc1069d5e03349147bc66d2fb8e13ff4859130c2336f061bbe3f9c1c11fefad7"
+  digest = "1:6cf154f83bb7623bea77afdc5d7e7b4c498aef0767bcf46ba4bf1c0e0bbf3296"
   name = "k8s.io/legacy-cloud-providers"
   packages = [
     "azure",
     "azure/auth",
   ]
   pruneopts = "NUT"
-  revision = "d8621ceb9c643933d60c95cc197aec263cba13fb"
+  revision = "24befeb85c5f4e6ff80021f17f1549bccd3afd74"
 
 [[projects]]
   branch = "master"
