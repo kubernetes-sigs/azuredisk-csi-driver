@@ -624,6 +624,10 @@ func generateCSISnapshot(sourceVolumeID string, snapshot *compute.Snapshot) (*cs
 	}
 	ready, _ := isCSISnapshotReady(*snapshot.SnapshotProperties.ProvisioningState)
 
+	if snapshot.SnapshotProperties.DiskSizeGB == nil {
+		return nil, fmt.Errorf("diskSizeGB of snapshot property is nil")
+	}
+
 	return &csi.Snapshot{
 		SizeBytes:      volumehelper.GiBToBytes(int64(*snapshot.SnapshotProperties.DiskSizeGB)),
 		SnapshotId:     *snapshot.ID,
