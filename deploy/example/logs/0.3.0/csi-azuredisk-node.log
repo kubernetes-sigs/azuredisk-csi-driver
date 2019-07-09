@@ -1,0 +1,222 @@
+I0708 09:10:38.978041       1 main.go:84] set up prometheus server on 127.0.0.1:10252
+I0708 09:10:38.978530       1 azuredisk.go:83] 
+DRIVER INFORMATION:
+-------------------
+Build Date: "2019-07-08T01:35:31Z"
+Compiler: gc
+Driver Name: disk.csi.azure.com
+Driver Version: v0.3.0
+Git Commit: 460894728aab1d32f64436d2e09cbf6453bfee34
+Go Version: go1.12.1
+Platform: linux/amd64
+Topology Key: topology.disk.csi.azure.com/zone
+
+Streaming logs below:
+I0708 09:10:38.978551       1 azure.go:31] AZURE_CREDENTIAL_FILE env var set as /etc/kubernetes/azure.json
+I0708 09:10:38.979091       1 azure_auth.go:86] azure: using client_id+client_secret to retrieve access token
+I0708 09:10:38.979120       1 azure.go:338] Azure cloudprovider (read ops) using rate limit config: QPS=3, bucket=10
+I0708 09:10:38.979129       1 azure.go:342] Azure cloudprovider (write ops) using rate limit config: QPS=1, bucket=5
+I0708 09:10:38.979160       1 azure.go:378] Azure cloudprovider using try backoff: retries=6, exponent=1.500000, duration=5, jitter=1.000000
+I0708 09:10:38.979355       1 mount_linux.go:160] Detected OS without systemd
+I0708 09:10:38.979377       1 driver.go:80] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0708 09:10:38.979382       1 driver.go:80] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0708 09:10:38.979385       1 driver.go:80] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0708 09:10:38.979388       1 driver.go:80] Enabling controller service capability: LIST_SNAPSHOTS
+I0708 09:10:38.979407       1 driver.go:99] Enabling volume access mode: SINGLE_NODE_WRITER
+I0708 09:10:38.979412       1 driver.go:90] Enabling node service capability: STAGE_UNSTAGE_VOLUME
+I0708 09:10:38.979606       1 server.go:103] Listening for connections on address: &net.UnixAddr{Name:"//csi/csi.sock", Net:"unix"}
+I0708 09:10:39.213364       1 utils.go:112] GRPC call: /csi.v1.Identity/GetPluginInfo
+I0708 09:10:39.213385       1 utils.go:113] GRPC request: 
+I0708 09:10:39.213391       1 identityserver.go:33] Using default GetPluginInfo
+I0708 09:10:39.213395       1 utils.go:119] GRPC response: name:"disk.csi.azure.com" vendor_version:"v0.3.0" 
+I0708 09:10:39.240314       1 utils.go:112] GRPC call: /csi.v1.Node/NodeGetInfo
+I0708 09:10:39.240354       1 utils.go:113] GRPC request: 
+I0708 09:10:39.240383       1 nodeserver.go:287] Using default NodeGetInfo
+I0708 09:10:39.828690       1 utils.go:119] GRPC response: node_id:"aks-agentpool-41197296-0" max_volumes_per_node:8 
+I0708 09:11:23.501019       1 utils.go:112] GRPC call: /csi.v1.Identity/GetPluginInfo
+I0708 09:11:23.501264       1 utils.go:113] GRPC request: 
+I0708 09:11:23.501368       1 identityserver.go:33] Using default GetPluginInfo
+I0708 09:11:23.501473       1 utils.go:119] GRPC response: name:"disk.csi.azure.com" vendor_version:"v0.3.0" 
+I0708 09:11:23.505953       1 utils.go:112] GRPC call: /csi.v1.Identity/Probe
+I0708 09:11:23.506125       1 utils.go:113] GRPC request: 
+I0708 09:11:23.506184       1 utils.go:119] GRPC response: ready:<value:true > 
+I0708 09:11:53.490014       1 utils.go:112] GRPC call: /csi.v1.Identity/GetPluginInfo
+I0708 09:11:53.490036       1 utils.go:113] GRPC request: 
+I0708 09:11:53.490043       1 identityserver.go:33] Using default GetPluginInfo
+I0708 09:11:53.490048       1 utils.go:119] GRPC response: name:"disk.csi.azure.com" vendor_version:"v0.3.0" 
+I0708 09:11:53.491749       1 utils.go:112] GRPC call: /csi.v1.Identity/Probe
+I0708 09:11:53.491765       1 utils.go:113] GRPC request: 
+I0708 09:11:53.491772       1 utils.go:119] GRPC response: ready:<value:true > 
+I0708 09:12:23.494297       1 utils.go:112] GRPC call: /csi.v1.Identity/GetPluginInfo
+I0708 09:12:23.494458       1 utils.go:113] GRPC request: 
+I0708 09:12:23.494538       1 identityserver.go:33] Using default GetPluginInfo
+I0708 09:12:23.494617       1 utils.go:119] GRPC response: name:"disk.csi.azure.com" vendor_version:"v0.3.0" 
+I0708 09:12:23.502086       1 utils.go:112] GRPC call: /csi.v1.Identity/Probe
+I0708 09:12:23.502221       1 utils.go:113] GRPC request: 
+I0708 09:12:23.502362       1 utils.go:119] GRPC response: ready:<value:true > 
+I0708 09:12:53.490890       1 utils.go:112] GRPC call: /csi.v1.Identity/GetPluginInfo
+I0708 09:12:53.490925       1 utils.go:113] GRPC request: 
+I0708 09:12:53.491035       1 identityserver.go:33] Using default GetPluginInfo
+I0708 09:12:53.491115       1 utils.go:119] GRPC response: name:"disk.csi.azure.com" vendor_version:"v0.3.0" 
+I0708 09:12:53.493252       1 utils.go:112] GRPC call: /csi.v1.Identity/Probe
+I0708 09:12:53.493297       1 utils.go:113] GRPC request: 
+I0708 09:12:53.493304       1 utils.go:119] GRPC response: ready:<value:true > 
+I0708 09:13:23.490083       1 utils.go:112] GRPC call: /csi.v1.Identity/GetPluginInfo
+I0708 09:13:23.490145       1 utils.go:113] GRPC request: 
+I0708 09:13:23.490180       1 identityserver.go:33] Using default GetPluginInfo
+I0708 09:13:23.490204       1 utils.go:119] GRPC response: name:"disk.csi.azure.com" vendor_version:"v0.3.0" 
+I0708 09:13:23.491615       1 utils.go:112] GRPC call: /csi.v1.Identity/Probe
+I0708 09:13:23.491774       1 utils.go:113] GRPC request: 
+I0708 09:13:23.491815       1 utils.go:119] GRPC response: ready:<value:true > 
+I0708 09:13:53.490648       1 utils.go:112] GRPC call: /csi.v1.Identity/GetPluginInfo
+I0708 09:13:53.490673       1 utils.go:113] GRPC request: 
+I0708 09:13:53.490680       1 identityserver.go:33] Using default GetPluginInfo
+I0708 09:13:53.490685       1 utils.go:119] GRPC response: name:"disk.csi.azure.com" vendor_version:"v0.3.0" 
+I0708 09:13:53.492004       1 utils.go:112] GRPC call: /csi.v1.Identity/Probe
+I0708 09:13:53.492024       1 utils.go:113] GRPC request: 
+I0708 09:13:53.492030       1 utils.go:119] GRPC response: ready:<value:true > 
+I0708 09:14:23.490502       1 utils.go:112] GRPC call: /csi.v1.Identity/GetPluginInfo
+I0708 09:14:23.490595       1 utils.go:113] GRPC request: 
+I0708 09:14:23.490616       1 identityserver.go:33] Using default GetPluginInfo
+I0708 09:14:23.490631       1 utils.go:119] GRPC response: name:"disk.csi.azure.com" vendor_version:"v0.3.0" 
+I0708 09:14:23.491980       1 utils.go:112] GRPC call: /csi.v1.Identity/Probe
+I0708 09:14:23.491997       1 utils.go:113] GRPC request: 
+I0708 09:14:23.492002       1 utils.go:119] GRPC response: ready:<value:true > 
+I0708 09:14:53.490542       1 utils.go:112] GRPC call: /csi.v1.Identity/GetPluginInfo
+I0708 09:14:53.490634       1 utils.go:113] GRPC request: 
+I0708 09:14:53.490700       1 identityserver.go:33] Using default GetPluginInfo
+I0708 09:14:53.490713       1 utils.go:119] GRPC response: name:"disk.csi.azure.com" vendor_version:"v0.3.0" 
+I0708 09:14:53.492645       1 utils.go:112] GRPC call: /csi.v1.Identity/Probe
+I0708 09:14:53.492661       1 utils.go:113] GRPC request: 
+I0708 09:14:53.492684       1 utils.go:119] GRPC response: ready:<value:true > 
+I0708 09:15:23.490260       1 utils.go:112] GRPC call: /csi.v1.Identity/GetPluginInfo
+I0708 09:15:23.490398       1 utils.go:113] GRPC request: 
+I0708 09:15:23.490460       1 identityserver.go:33] Using default GetPluginInfo
+I0708 09:15:23.490512       1 utils.go:119] GRPC response: name:"disk.csi.azure.com" vendor_version:"v0.3.0" 
+I0708 09:15:23.491817       1 utils.go:112] GRPC call: /csi.v1.Identity/Probe
+I0708 09:15:23.491836       1 utils.go:113] GRPC request: 
+I0708 09:15:23.491841       1 utils.go:119] GRPC response: ready:<value:true > 
+I0708 09:15:53.489744       1 utils.go:112] GRPC call: /csi.v1.Identity/GetPluginInfo
+I0708 09:15:53.489785       1 utils.go:113] GRPC request: 
+I0708 09:15:53.489791       1 identityserver.go:33] Using default GetPluginInfo
+I0708 09:15:53.489795       1 utils.go:119] GRPC response: name:"disk.csi.azure.com" vendor_version:"v0.3.0" 
+I0708 09:15:53.491332       1 utils.go:112] GRPC call: /csi.v1.Identity/Probe
+I0708 09:15:53.491414       1 utils.go:113] GRPC request: 
+I0708 09:15:53.491420       1 utils.go:119] GRPC response: ready:<value:true > 
+I0708 09:16:23.490586       1 utils.go:112] GRPC call: /csi.v1.Identity/GetPluginInfo
+I0708 09:16:23.490771       1 utils.go:113] GRPC request: 
+I0708 09:16:23.490833       1 identityserver.go:33] Using default GetPluginInfo
+I0708 09:16:23.490889       1 utils.go:119] GRPC response: name:"disk.csi.azure.com" vendor_version:"v0.3.0" 
+I0708 09:16:23.492174       1 utils.go:112] GRPC call: /csi.v1.Identity/Probe
+I0708 09:16:23.492262       1 utils.go:113] GRPC request: 
+I0708 09:16:23.492399       1 utils.go:119] GRPC response: ready:<value:true > 
+I0708 09:16:37.727301       1 utils.go:112] GRPC call: /csi.v1.Node/NodeGetCapabilities
+I0708 09:16:37.727322       1 utils.go:113] GRPC request: 
+I0708 09:16:37.727327       1 nodeserver.go:278] Using default NodeGetCapabilities
+I0708 09:16:37.727331       1 utils.go:119] GRPC response: capabilities:<rpc:<type:STAGE_UNSTAGE_VOLUME > > 
+I0708 09:16:37.735174       1 utils.go:112] GRPC call: /csi.v1.Node/NodeStageVolume
+I0708 09:16:37.735486       1 utils.go:113] GRPC request: volume_id:"/subscriptions/.../resourceGroups/mc_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/disks/pvc-disk-dynamic-e7e22319-a160-11e9-b723-f2729dcdb631" publish_context:<key:"devicePath" value:"0" > staging_target_path:"/var/lib/kubelet/plugins/kubernetes.io/csi/pv/pvc-e2372121-a160-11e9-b849-aa9ac0373741/globalmount" volume_capability:<mount:<fs_type:"ext4" > access_mode:<mode:SINGLE_NODE_WRITER > > volume_context:<key:"cachingMode" value:"ReadOnly" > volume_context:<key:"kind" value:"managed" > volume_context:<key:"skuname" value:"Standard_LRS" > volume_context:<key:"storage.kubernetes.io/csiProvisionerIdentity" value:"1562577147927-8081-disk.csi.azure.com" > 
+I0708 09:16:37.735613       1 nodeserver.go:49] NodeStageVolume: called with args {VolumeId:/subscriptions/.../resourceGroups/mc_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/disks/pvc-disk-dynamic-e7e22319-a160-11e9-b723-f2729dcdb631 PublishContext:map[devicePath:0] StagingTargetPath:/var/lib/kubelet/plugins/kubernetes.io/csi/pv/pvc-e2372121-a160-11e9-b849-aa9ac0373741/globalmount VolumeCapability:mount:<fs_type:"ext4" > access_mode:<mode:SINGLE_NODE_WRITER >  Secrets:map[] VolumeContext:map[cachingMode:ReadOnly kind:managed skuname:Standard_LRS storage.kubernetes.io/csiProvisionerIdentity:1562577147927-8081-disk.csi.azure.com] XXX_NoUnkeyedLiteral:{} XXX_unrecognized:[] XXX_sizecache:0}
+I0708 09:16:42.356268       1 azure_common_linux.go:168] azureDisk - found /devhost/disk/azure/scsi1/lun0 by sdc under /devhost/disk/azure/scsi1/
+I0708 09:16:42.356334       1 nodeserver.go:140] NodeStageVolume: formatting /devhost/disk/azure/scsi1/lun0 and mounting at /var/lib/kubelet/plugins/kubernetes.io/csi/pv/pvc-e2372121-a160-11e9-b849-aa9ac0373741/globalmount with mount options([])
+I0708 09:16:42.356346       1 mount_linux.go:441] Checking for issues with fsck on disk: /devhost/disk/azure/scsi1/lun0
+I0708 09:16:42.379342       1 mount_linux.go:454] `fsck` error fsck from util-linux 2.29.2
+fsck.ext2: Bad magic number in super-block while trying to open /devhost/sdc
+/devhost/sdc: 
+The superblock could not be read or does not describe a valid ext2/ext3/ext4
+filesystem.  If the device is valid and it really contains an ext2/ext3/ext4
+filesystem (and not swap or ufs or something else), then the superblock
+is corrupt, and you might try running e2fsck with an alternate superblock:
+    e2fsck -b 8193 <device>
+ or
+    e2fsck -b 32768 <device>
+
+I0708 09:16:42.379609       1 mount_linux.go:460] Attempting to mount disk: ext4 /devhost/disk/azure/scsi1/lun0 /var/lib/kubelet/plugins/kubernetes.io/csi/pv/pvc-e2372121-a160-11e9-b849-aa9ac0373741/globalmount
+I0708 09:16:42.379702       1 mount_linux.go:142] Mounting cmd (mount) with arguments ([-t ext4 -o defaults /devhost/disk/azure/scsi1/lun0 /var/lib/kubelet/plugins/kubernetes.io/csi/pv/pvc-e2372121-a160-11e9-b849-aa9ac0373741/globalmount])
+E0708 09:16:42.388955       1 mount_linux.go:147] Mount failed: exit status 32
+Mounting command: mount
+Mounting arguments: -t ext4 -o defaults /devhost/disk/azure/scsi1/lun0 /var/lib/kubelet/plugins/kubernetes.io/csi/pv/pvc-e2372121-a160-11e9-b849-aa9ac0373741/globalmount
+Output: mount: wrong fs type, bad option, bad superblock on /devhost/sdc,
+       missing codepage or helper program, or other error
+
+       In some cases useful info is found in syslog - try
+       dmesg | tail or so.
+
+I0708 09:16:42.389174       1 mount_linux.go:515] Attempting to determine if disk "/devhost/disk/azure/scsi1/lun0" is formatted using blkid with args: ([-p -s TYPE -s PTTYPE -o export /devhost/disk/azure/scsi1/lun0])
+I0708 09:16:42.397204       1 mount_linux.go:518] Output: "", err: exit status 2
+I0708 09:16:42.397300       1 mount_linux.go:489] Disk "/devhost/disk/azure/scsi1/lun0" appears to be unformatted, attempting to format as type: "ext4" with options: [-F -m0 /devhost/disk/azure/scsi1/lun0]
+I0708 09:16:43.548357       1 mount_linux.go:493] Disk successfully formatted (mkfs): ext4 - /devhost/disk/azure/scsi1/lun0 /var/lib/kubelet/plugins/kubernetes.io/csi/pv/pvc-e2372121-a160-11e9-b849-aa9ac0373741/globalmount
+I0708 09:16:43.548484       1 mount_linux.go:142] Mounting cmd (mount) with arguments ([-t ext4 -o defaults /devhost/disk/azure/scsi1/lun0 /var/lib/kubelet/plugins/kubernetes.io/csi/pv/pvc-e2372121-a160-11e9-b849-aa9ac0373741/globalmount])
+I0708 09:16:43.561862       1 nodeserver.go:146] NodeStageVolume: format /devhost/disk/azure/scsi1/lun0 and mounting at /var/lib/kubelet/plugins/kubernetes.io/csi/pv/pvc-e2372121-a160-11e9-b849-aa9ac0373741/globalmount successfully.
+I0708 09:16:43.561877       1 utils.go:119] GRPC response: 
+I0708 09:16:43.566007       1 utils.go:112] GRPC call: /csi.v1.Node/NodeGetCapabilities
+I0708 09:16:43.566021       1 utils.go:113] GRPC request: 
+I0708 09:16:43.566026       1 nodeserver.go:278] Using default NodeGetCapabilities
+I0708 09:16:43.566031       1 utils.go:119] GRPC response: capabilities:<rpc:<type:STAGE_UNSTAGE_VOLUME > > 
+I0708 09:16:43.570101       1 utils.go:112] GRPC call: /csi.v1.Node/NodePublishVolume
+I0708 09:16:43.570117       1 utils.go:113] GRPC request: volume_id:"/subscriptions/.../resourceGroups/mc_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/disks/pvc-disk-dynamic-e7e22319-a160-11e9-b723-f2729dcdb631" publish_context:<key:"devicePath" value:"0" > staging_target_path:"/var/lib/kubelet/plugins/kubernetes.io/csi/pv/pvc-e2372121-a160-11e9-b849-aa9ac0373741/globalmount" target_path:"/var/lib/kubelet/pods/f0b0bf90-a160-11e9-b849-aa9ac0373741/volumes/kubernetes.io~csi/pvc-e2372121-a160-11e9-b849-aa9ac0373741/mount" volume_capability:<mount:<fs_type:"ext4" > access_mode:<mode:SINGLE_NODE_WRITER > > volume_context:<key:"cachingMode" value:"ReadOnly" > volume_context:<key:"kind" value:"managed" > volume_context:<key:"skuname" value:"Standard_LRS" > volume_context:<key:"storage.kubernetes.io/csiProvisionerIdentity" value:"1562577147927-8081-disk.csi.azure.com" > 
+I0708 09:16:43.570145       1 nodeserver.go:231] target /var/lib/kubelet/pods/f0b0bf90-a160-11e9-b849-aa9ac0373741/volumes/kubernetes.io~csi/pvc-e2372121-a160-11e9-b849-aa9ac0373741/mount
+fstype ext4
+
+readonly false
+volumeId /subscriptions/.../resourceGroups/mc_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/disks/pvc-disk-dynamic-e7e22319-a160-11e9-b723-f2729dcdb631
+Context map[cachingMode:ReadOnly kind:managed skuname:Standard_LRS storage.kubernetes.io/csiProvisionerIdentity:1562577147927-8081-disk.csi.azure.com]
+mountflags []
+I0708 09:16:43.570172       1 nodeserver.go:240] NodePublishVolume: creating dir /var/lib/kubelet/pods/f0b0bf90-a160-11e9-b849-aa9ac0373741/volumes/kubernetes.io~csi/pvc-e2372121-a160-11e9-b849-aa9ac0373741/mount
+I0708 09:16:43.570256       1 nodeserver.go:245] NodePublishVolume: mounting /var/lib/kubelet/plugins/kubernetes.io/csi/pv/pvc-e2372121-a160-11e9-b849-aa9ac0373741/globalmount at /var/lib/kubelet/pods/f0b0bf90-a160-11e9-b849-aa9ac0373741/volumes/kubernetes.io~csi/pvc-e2372121-a160-11e9-b849-aa9ac0373741/mount
+I0708 09:16:43.570274       1 mount_linux.go:142] Mounting cmd (mount) with arguments ([-o bind /var/lib/kubelet/plugins/kubernetes.io/csi/pv/pvc-e2372121-a160-11e9-b849-aa9ac0373741/globalmount /var/lib/kubelet/pods/f0b0bf90-a160-11e9-b849-aa9ac0373741/volumes/kubernetes.io~csi/pvc-e2372121-a160-11e9-b849-aa9ac0373741/mount])
+I0708 09:16:43.572198       1 mount_linux.go:142] Mounting cmd (mount) with arguments ([-o bind,remount /var/lib/kubelet/plugins/kubernetes.io/csi/pv/pvc-e2372121-a160-11e9-b849-aa9ac0373741/globalmount /var/lib/kubelet/pods/f0b0bf90-a160-11e9-b849-aa9ac0373741/volumes/kubernetes.io~csi/pvc-e2372121-a160-11e9-b849-aa9ac0373741/mount])
+I0708 09:16:43.575826       1 nodeserver.go:250] NodePublishVolume: mount /var/lib/kubelet/plugins/kubernetes.io/csi/pv/pvc-e2372121-a160-11e9-b849-aa9ac0373741/globalmount at /var/lib/kubelet/pods/f0b0bf90-a160-11e9-b849-aa9ac0373741/volumes/kubernetes.io~csi/pvc-e2372121-a160-11e9-b849-aa9ac0373741/mount successfully
+I0708 09:16:43.575846       1 utils.go:119] GRPC response: 
+I0708 09:16:53.490722       1 utils.go:112] GRPC call: /csi.v1.Identity/GetPluginInfo
+I0708 09:16:53.490800       1 utils.go:113] GRPC request: 
+I0708 09:16:53.490836       1 identityserver.go:33] Using default GetPluginInfo
+I0708 09:16:53.490854       1 utils.go:119] GRPC response: name:"disk.csi.azure.com" vendor_version:"v0.3.0" 
+I0708 09:16:53.493308       1 utils.go:112] GRPC call: /csi.v1.Identity/Probe
+I0708 09:16:53.493591       1 utils.go:113] GRPC request: 
+I0708 09:16:53.493667       1 utils.go:119] GRPC response: ready:<value:true > 
+I0708 09:17:23.490133       1 utils.go:112] GRPC call: /csi.v1.Identity/GetPluginInfo
+I0708 09:17:23.490154       1 utils.go:113] GRPC request: 
+I0708 09:17:23.490161       1 identityserver.go:33] Using default GetPluginInfo
+I0708 09:17:23.490165       1 utils.go:119] GRPC response: name:"disk.csi.azure.com" vendor_version:"v0.3.0" 
+I0708 09:17:23.491372       1 utils.go:112] GRPC call: /csi.v1.Identity/Probe
+I0708 09:17:23.491473       1 utils.go:113] GRPC request: 
+I0708 09:17:23.491571       1 utils.go:119] GRPC response: ready:<value:true > 
+I0708 09:17:52.793026       1 utils.go:112] GRPC call: /csi.v1.Node/NodeUnpublishVolume
+I0708 09:17:52.793221       1 utils.go:113] GRPC request: volume_id:"/subscriptions/.../resourceGroups/mc_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/disks/pvc-disk-dynamic-e7e22319-a160-11e9-b723-f2729dcdb631" target_path:"/var/lib/kubelet/pods/f0b0bf90-a160-11e9-b849-aa9ac0373741/volumes/kubernetes.io~csi/pvc-e2372121-a160-11e9-b849-aa9ac0373741/mount" 
+I0708 09:17:52.793366       1 nodeserver.go:266] NodeUnpublishVolume: unmounting volume /subscriptions/.../resourceGroups/mc_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/disks/pvc-disk-dynamic-e7e22319-a160-11e9-b723-f2729dcdb631 on /var/lib/kubelet/pods/f0b0bf90-a160-11e9-b849-aa9ac0373741/volumes/kubernetes.io~csi/pvc-e2372121-a160-11e9-b849-aa9ac0373741/mount
+I0708 09:17:52.793461       1 mount_linux.go:209] Unmounting /var/lib/kubelet/pods/f0b0bf90-a160-11e9-b849-aa9ac0373741/volumes/kubernetes.io~csi/pvc-e2372121-a160-11e9-b849-aa9ac0373741/mount
+I0708 09:17:52.810862       1 nodeserver.go:271] NodeUnpublishVolume: unmount volume /subscriptions/.../resourceGroups/mc_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/disks/pvc-disk-dynamic-e7e22319-a160-11e9-b723-f2729dcdb631 on /var/lib/kubelet/pods/f0b0bf90-a160-11e9-b849-aa9ac0373741/volumes/kubernetes.io~csi/pvc-e2372121-a160-11e9-b849-aa9ac0373741/mount successfully
+I0708 09:17:52.810967       1 utils.go:119] GRPC response: 
+I0708 09:17:52.895304       1 utils.go:112] GRPC call: /csi.v1.Node/NodeGetCapabilities
+I0708 09:17:52.895326       1 utils.go:113] GRPC request: 
+I0708 09:17:52.895332       1 nodeserver.go:278] Using default NodeGetCapabilities
+I0708 09:17:52.895336       1 utils.go:119] GRPC response: capabilities:<rpc:<type:STAGE_UNSTAGE_VOLUME > > 
+I0708 09:17:52.896453       1 utils.go:112] GRPC call: /csi.v1.Node/NodeUnstageVolume
+I0708 09:17:52.896473       1 utils.go:113] GRPC request: volume_id:"/subscriptions/.../resourceGroups/mc_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/disks/pvc-disk-dynamic-e7e22319-a160-11e9-b723-f2729dcdb631" staging_target_path:"/var/lib/kubelet/plugins/kubernetes.io/csi/pv/pvc-e2372121-a160-11e9-b849-aa9ac0373741/globalmount" 
+I0708 09:17:52.896481       1 nodeserver.go:153] NodeUnstageVolume: called with args {VolumeId:/subscriptions/.../resourceGroups/mc_andy-virtualnode_andy-virtualnode_eastus2/providers/Microsoft.Compute/disks/pvc-disk-dynamic-e7e22319-a160-11e9-b723-f2729dcdb631 StagingTargetPath:/var/lib/kubelet/plugins/kubernetes.io/csi/pv/pvc-e2372121-a160-11e9-b849-aa9ac0373741/globalmount XXX_NoUnkeyedLiteral:{} XXX_unrecognized:[] XXX_sizecache:0}
+I0708 09:17:52.896549       1 nodeserver.go:164] NodeUnstageVolume: unmounting /var/lib/kubelet/plugins/kubernetes.io/csi/pv/pvc-e2372121-a160-11e9-b849-aa9ac0373741/globalmount
+I0708 09:17:52.896597       1 mount_linux.go:209] Unmounting /var/lib/kubelet/plugins/kubernetes.io/csi/pv/pvc-e2372121-a160-11e9-b849-aa9ac0373741/globalmount
+I0708 09:17:52.974471       1 nodeserver.go:169] NodeUnstageVolume: unmount /var/lib/kubelet/plugins/kubernetes.io/csi/pv/pvc-e2372121-a160-11e9-b849-aa9ac0373741/globalmount successfully
+I0708 09:17:52.974487       1 utils.go:119] GRPC response: 
+I0708 09:17:53.490138       1 utils.go:112] GRPC call: /csi.v1.Identity/GetPluginInfo
+I0708 09:17:53.490331       1 utils.go:113] GRPC request: 
+I0708 09:17:53.490413       1 identityserver.go:33] Using default GetPluginInfo
+I0708 09:17:53.490449       1 utils.go:119] GRPC response: name:"disk.csi.azure.com" vendor_version:"v0.3.0" 
+I0708 09:17:53.491986       1 utils.go:112] GRPC call: /csi.v1.Identity/Probe
+I0708 09:17:53.492174       1 utils.go:113] GRPC request: 
+I0708 09:17:53.492292       1 utils.go:119] GRPC response: ready:<value:true > 
+I0708 09:18:23.490093       1 utils.go:112] GRPC call: /csi.v1.Identity/GetPluginInfo
+I0708 09:18:23.490222       1 utils.go:113] GRPC request: 
+I0708 09:18:23.490352       1 identityserver.go:33] Using default GetPluginInfo
+I0708 09:18:23.490438       1 utils.go:119] GRPC response: name:"disk.csi.azure.com" vendor_version:"v0.3.0" 
+I0708 09:18:23.492381       1 utils.go:112] GRPC call: /csi.v1.Identity/Probe
+I0708 09:18:23.492481       1 utils.go:113] GRPC request: 
+I0708 09:18:23.492559       1 utils.go:119] GRPC response: ready:<value:true > 
+I0708 09:18:53.490663       1 utils.go:112] GRPC call: /csi.v1.Identity/GetPluginInfo
+I0708 09:18:53.490728       1 utils.go:113] GRPC request: 
+I0708 09:18:53.490843       1 identityserver.go:33] Using default GetPluginInfo
+I0708 09:18:53.490858       1 utils.go:119] GRPC response: name:"disk.csi.azure.com" vendor_version:"v0.3.0" 
+I0708 09:18:53.494027       1 utils.go:112] GRPC call: /csi.v1.Identity/Probe
+I0708 09:18:53.494044       1 utils.go:113] GRPC request: 
+I0708 09:18:53.494049       1 utils.go:119] GRPC response: ready:<value:true > 
