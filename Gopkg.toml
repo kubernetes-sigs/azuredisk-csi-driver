@@ -31,8 +31,7 @@
 
 [[constraint]]
   name = "github.com/kubernetes-csi/csi-test"
-  #revision = "5b1e3786b7c8f7ca514b40e882a0b5dc36e4c842"
-  version = "v1.1.0"
+  version = "=v1.1.0"
 
 [[override]]
   revision = "5db89f0ca68677abc5eefce8f2a0a772c98ba52d"

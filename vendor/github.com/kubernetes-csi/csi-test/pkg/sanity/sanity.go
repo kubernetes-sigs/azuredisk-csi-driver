@@ -29,7 +29,6 @@ import (
 	"google.golang.org/grpc"
 
 	. "github.com/onsi/ginkgo"
-	"github.com/onsi/ginkgo/reporters"
 	. "github.com/onsi/gomega"
 )
 
@@ -56,8 +55,6 @@ type Config struct {
 	TestVolumeSize           int64
 	TestVolumeParametersFile string
 	TestVolumeParameters     map[string]string
-
-	JUnitFile string
 }
 
 // SanityContext holds the variables that each test can depend on. It
@@ -91,14 +88,7 @@ func Test(t *testing.T, reqConfig *Config) {
 
 	registerTestsInGinkgo(sc)
 	RegisterFailHandler(Fail)
-
-	var specReporters []Reporter
-	if reqConfig.JUnitFile != "" {
-		junitReporter := reporters.NewJUnitReporter(reqConfig.JUnitFile)
-		specReporters = append(specReporters, junitReporter)
-	}
-	RunSpecsWithDefaultAndCustomReporters(t, "CSI Driver Test Suite", specReporters)
-	sc.Conn.Close()
+	RunSpecs(t, "CSI Driver Test Suite")
 }
 
 func GinkgoTest(reqConfig *Config) {
@@ -123,9 +113,6 @@ func (sc *SanityContext) setup() {
 	// dynamically (and differently!) in a BeforeEach, so only
 	// reuse the connection if the address is still the same.
 	if sc.Conn == nil || sc.connAddress != sc.Config.Address {
-		if sc.Conn != nil {
-			sc.Conn.Close()
-		}
 		By("connecting to CSI driver")
 		sc.Conn, err = utils.Connect(sc.Config.Address)
 		Expect(err).NotTo(HaveOccurred())

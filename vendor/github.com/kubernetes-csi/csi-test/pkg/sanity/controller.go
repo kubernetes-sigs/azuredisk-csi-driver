@@ -126,7 +126,6 @@ var _ = DescribeSanity("Controller Service", func(sc *SanityContext) {
 				case csi.ControllerServiceCapability_RPC_LIST_SNAPSHOTS:
 				case csi.ControllerServiceCapability_RPC_PUBLISH_READONLY:
 				case csi.ControllerServiceCapability_RPC_CLONE_VOLUME:
-				case csi.ControllerServiceCapability_RPC_EXPAND_VOLUME:
 				default:
 					Fail(fmt.Sprintf("Unknown capability: %v\n", cap.GetRpc().GetType()))
 				}
@@ -604,56 +603,16 @@ var _ = DescribeSanity("Controller Service", func(sc *SanityContext) {
 
 		It("should fail when no volume capabilities are provided", func() {
 
-			// Create Volume First
-			By("creating a single node writer volume")
-			name := uniqueString("sanity-controller-validate-nocaps")
-
-			vol, err := c.CreateVolume(
-				context.Background(),
-				&csi.CreateVolumeRequest{
-					Name: name,
-					VolumeCapabilities: []*csi.VolumeCapability{
-						{
-							AccessType: &csi.VolumeCapability_Mount{
-								Mount: &csi.VolumeCapability_MountVolume{},
-							},
-							AccessMode: &csi.VolumeCapability_AccessMode{
-								Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
-							},
-						},
-					},
-					Secrets:    sc.Secrets.CreateVolumeSecret,
-					Parameters: sc.Config.TestVolumeParameters,
-				},
-			)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(vol).NotTo(BeNil())
-			Expect(vol.GetVolume()).NotTo(BeNil())
-			Expect(vol.GetVolume().GetVolumeId()).NotTo(BeEmpty())
-			cl.RegisterVolume(name, VolumeInfo{VolumeID: vol.GetVolume().GetVolumeId()})
-
-			_, err = c.ValidateVolumeCapabilities(
+			_, err := c.ValidateVolumeCapabilities(
 				context.Background(),
 				&csi.ValidateVolumeCapabilitiesRequest{
-					VolumeId: vol.GetVolume().GetVolumeId(),
+					VolumeId: "id",
 				})
 			Expect(err).To(HaveOccurred())
 
 			serverError, ok := status.FromError(err)
 			Expect(ok).To(BeTrue())
 			Expect(serverError.Code()).To(Equal(codes.InvalidArgument))
-
-			By("cleaning up deleting the volume")
-
-			_, err = c.DeleteVolume(
-				context.Background(),
-				&csi.DeleteVolumeRequest{
-					VolumeId: vol.GetVolume().GetVolumeId(),
-					Secrets:  sc.Secrets.DeleteVolumeSecret,
-				},
-			)
-			Expect(err).NotTo(HaveOccurred())
-			cl.UnregisterVolume(name)
 		})
 
 		It("should return appropriate values (no optional values added)", func() {
