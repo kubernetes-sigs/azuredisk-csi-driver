@@ -215,15 +215,15 @@
   version = "v1.1.6"
 
 [[projects]]
-  digest = "1:432fea868210b05faefdd757e43a33ccafb2ff52d5279cb97e3d46803b476107"
+  digest = "1:5b7d11a9941a975a126f7d79e3871f9201ed715c62af86e9dca1e231cc184192"
   name = "github.com/kubernetes-csi/csi-test"
   packages = [
     "pkg/sanity",
     "utils",
   ]
   pruneopts = "NUT"
-  revision = "d6050bc370c91c9bc777acbeb66bfb38da14a4a6"
-  version = "v1.1.1"
+  revision = "5b1e3786b7c8f7ca514b40e882a0b5dc36e4c842"
+  version = "v1.1.0"
 
 [[projects]]
   digest = "1:13ada91f079028d1b4ca88e10a16439dcfa6541d26ed2e61e770f56d06301933"
