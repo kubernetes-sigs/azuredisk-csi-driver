@@ -17,6 +17,7 @@ limitations under the License.
 package sanity
 
 import (
+	"os"
 	"testing"
 
 	sanity "github.com/kubernetes-csi/csi-test/pkg/sanity"
@@ -36,7 +37,8 @@ const (
 func TestSanity(t *testing.T) {
 	klog.InitFlags(nil)
 
-	ddriver := azuredisk.NewDriver("someNodeID")
+	nodeId := os.Getenv("nodeid")
+	ddriver := azuredisk.NewDriver(nodeId)
 
 	go func() {
 		ddriver.Run(endpoint)
