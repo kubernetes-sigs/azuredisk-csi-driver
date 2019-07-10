@@ -200,3 +200,121 @@ func TestIsValidDiskURI(t *testing.T) {
 		}
 	}
 }
+
+func TestGetValidDiskName(t *testing.T) {
+	tests := []struct {
+		volumeName string
+		expected   string
+	}{
+		{
+			volumeName: "az",
+			expected:   "az",
+		},
+		{
+			volumeName: "09",
+			expected:   "09",
+		},
+		{
+			volumeName: "a-z",
+			expected:   "a-z",
+		},
+		{
+			volumeName: "AZ",
+			expected:   "AZ",
+		},
+		{
+			volumeName: "123456789-123456789-123456789-123456789-123456789.123456789-123456789_1234567890",
+			expected:   "123456789-123456789-123456789-123456789-123456789.123456789-123456789_1234567890",
+		},
+	}
+
+	for _, test := range tests {
+		result := getValidDiskName(test.volumeName)
+		if !reflect.DeepEqual(result, test.expected) {
+			t.Errorf("input: %q, getValidFileShareName result: %q, expected: %q", test.volumeName, result, test.expected)
+		}
+	}
+}
+
+func TestCheckDiskName(t *testing.T) {
+	tests := []struct {
+		diskName string
+		expected bool
+	}{
+		{
+			diskName: "a",
+			expected: true,
+		},
+		{
+			diskName: ".",
+			expected: false,
+		},
+		{
+			diskName: "_",
+			expected: false,
+		},
+		{
+			diskName: "_",
+			expected: false,
+		},
+		{
+			diskName: "09",
+			expected: true,
+		},
+		{
+			diskName: "az",
+			expected: true,
+		},
+		{
+			diskName: "1_",
+			expected: true,
+		},
+		{
+			diskName: "_1",
+			expected: false,
+		},
+		{
+			diskName: "1.",
+			expected: false,
+		},
+		{
+			diskName: "1-",
+			expected: false,
+		},
+		{
+			diskName: "0.z",
+			expected: true,
+		},
+		{
+			diskName: "1.2",
+			expected: true,
+		},
+		{
+			diskName: "a-9",
+			expected: true,
+		},
+		{
+			diskName: "a_c",
+			expected: true,
+		},
+		{
+			diskName: "1__",
+			expected: true,
+		},
+		{
+			diskName: "a---9",
+			expected: true,
+		},
+		{
+			diskName: "1#2",
+			expected: false,
+		},
+	}
+
+	for _, test := range tests {
+		result := checkDiskName(test.diskName)
+		if !reflect.DeepEqual(result, test.expected) {
+			t.Errorf("input: %q, checkShareNameBeginAndEnd result: %v, expected: %v", test.diskName, result, test.expected)
+		}
+	}
+}

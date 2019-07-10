@@ -23,15 +23,18 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-03-01/compute"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/pborman/uuid"
 
 	csicommon "github.com/kubernetes-sigs/azuredisk-csi-driver/pkg/csi-common"
 	kwait "k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/util/mount"
+	"k8s.io/kubernetes/pkg/volume/util"
 	"k8s.io/legacy-cloud-providers/azure"
 )
 
@@ -42,6 +45,10 @@ const (
 	// default IOPS Caps & Throughput Cap (MBps) per https://docs.microsoft.com/en-us/azure/virtual-machines/linux/disks-ultra-ssd
 	defaultDiskIOPSReadWrite = 500
 	defaultDiskMBpsReadWrite = 100
+
+	// see https://docs.microsoft.com/en-us/rest/api/compute/disks/createorupdate#uri-parameters
+	diskNameMinLength = 1
+	diskNameMaxLength = 80
 )
 
 var (
@@ -316,4 +323,38 @@ func (d *Driver) CreateManagedDisk(ctx context.Context, options *ManagedDiskOpti
 	}
 
 	return diskID, nil
+}
+
+// TThe name must begin with a letter or number, end with a letter, number or underscore,
+// and may contain only letters, numbers, underscores, periods, or hyphens.
+//
+// See https://docs.microsoft.com/en-us/rest/api/compute/disks/createorupdate#uri-parameters
+func getValidDiskName(volumeName string) string {
+	diskName := volumeName
+	if len(diskName) > diskNameMaxLength {
+		diskName = diskName[0:diskNameMaxLength]
+		klog.Warningf("since the maximum name length is 80, so it is truncated as (%q)", diskName)
+	}
+	if !checkDiskName(diskName) || len(diskName) < diskNameMinLength {
+		// maxLength = 80 - (4 for ".vhd") = 75
+		// todo: get cluster name
+		diskName = util.GenerateVolumeName("pvc-disk", uuid.NewUUID().String(), 76)
+		klog.Warningf("the requested volume name (%q) is invalid, so it is regenerated as (%q)", volumeName, diskName)
+	}
+
+	return diskName
+}
+
+func checkDiskName(diskName string) bool {
+	length := len(diskName)
+
+	for i, v := range diskName {
+		if !(unicode.IsLetter(v) || unicode.IsDigit(v) || v == '_' || v == '.' || v == '-') ||
+			(i == 0 && !(unicode.IsLetter(v) || unicode.IsDigit(v))) ||
+			(i == length-1 && !(unicode.IsLetter(v) || unicode.IsDigit(v) || v == '_')) {
+			return false
+		}
+	}
+
+	return true
 }
