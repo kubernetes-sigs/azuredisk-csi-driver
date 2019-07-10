@@ -19,6 +19,7 @@ package azuredisk
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -36,6 +37,9 @@ import (
 	"k8s.io/kubernetes/pkg/util/mount"
 	"k8s.io/kubernetes/pkg/volume/util"
 	"k8s.io/legacy-cloud-providers/azure"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 const (
@@ -49,6 +53,9 @@ const (
 	// see https://docs.microsoft.com/en-us/rest/api/compute/disks/createorupdate#uri-parameters
 	diskNameMinLength = 1
 	diskNameMaxLength = 80
+
+	//default disk size is 1 GiB
+	defaultDiskSize = 1
 )
 
 var (
@@ -172,6 +179,18 @@ func (d *Driver) checkDiskExists(ctx context.Context, diskURI string) error {
 	}
 
 	return nil
+}
+
+func (d *Driver) checkDiskCapacity(ctx context.Context, resourceGroup, diskName string, requestGiB int) (bool, error) {
+	disk, err := d.cloud.DisksClient.Get(ctx, resourceGroup, diskName)
+	// Because we can not judge the reason of the error. Maybe the disk does not exist.
+	// So here we do not handle the error.
+	if err == nil {
+		if !reflect.DeepEqual(disk, compute.Disk{}) && disk.DiskSizeGB != nil && int(*disk.DiskSizeGB) != requestGiB {
+			return false, status.Errorf(codes.AlreadyExists, "the request volume already exists, but its capacity(%v) is different from (%v)", *disk.DiskProperties.DiskSizeGB, requestGiB)
+		}
+	}
+	return true, nil
 }
 
 func isValidDiskURI(diskURI string) error {

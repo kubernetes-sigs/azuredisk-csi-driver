@@ -68,9 +68,12 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	if !isValidVolumeCapabilities(volumeCapabilities) {
 		return nil, status.Error(codes.InvalidArgument, "Volume capabilities not supported")
 	}
-
-	volSizeBytes := int64(req.GetCapacityRange().GetRequiredBytes())
+	capacityBytes := req.GetCapacityRange().GetRequiredBytes()
+	volSizeBytes := int64(capacityBytes)
 	requestGiB := int(volumehelper.RoundUpGiB(volSizeBytes))
+	if requestGiB == 0 {
+		requestGiB = defaultDiskSize
+	}
 
 	maxVolSize := int(req.GetCapacityRange().GetLimitBytes())
 	if (maxVolSize > 0) && (maxVolSize < requestGiB) {
@@ -135,6 +138,10 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		diskName = getValidDiskName(name)
 	}
 
+	if resourceGroup == "" {
+		resourceGroup = d.cloud.ResourceGroup
+	}
+
 	// normalize values
 	skuName, err := normalizeStorageAccountType(storageAccountType)
 	if err != nil {
@@ -157,6 +164,10 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	}
 
 	selectedAvailabilityZone := pickAvailabilityZone(req.GetAccessibilityRequirements())
+
+	if ok, err := d.checkDiskCapacity(ctx, resourceGroup, diskName, requestGiB); !ok {
+		return nil, err
+	}
 
 	klog.V(2).Infof("begin to create azure disk(%s) account type(%s) rg(%s) location(%s) size(%d)", diskName, skuName, resourceGroup, location, requestGiB)
 
@@ -228,7 +239,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
 			VolumeId:      diskURI,
-			CapacityBytes: req.GetCapacityRange().GetRequiredBytes(),
+			CapacityBytes: capacityBytes,
 			VolumeContext: parameters,
 			AccessibleTopology: []*csi.Topology{
 				{
