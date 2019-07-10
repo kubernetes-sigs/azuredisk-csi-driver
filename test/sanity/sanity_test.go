@@ -22,6 +22,8 @@ import (
 	sanity "github.com/kubernetes-csi/csi-test/pkg/sanity"
 
 	azuredisk "github.com/kubernetes-sigs/azuredisk-csi-driver/pkg/azuredisk"
+
+	"k8s.io/klog"
 )
 
 const (
@@ -32,6 +34,8 @@ const (
 )
 
 func TestSanity(t *testing.T) {
+	klog.InitFlags(nil)
+
 	ddriver := azuredisk.NewDriver("someNodeID")
 
 	go func() {
