@@ -484,6 +484,10 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 func (d *Driver) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
 	klog.V(2).Infof("DeleteSnapshot called with request %v", *req)
 
+	if len(req.SnapshotId) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "Snapshot ID must be provided")
+	}
+
 	snapshotName, resourceGroup, err := d.extractSnapshotInfo(req.SnapshotId)
 	if err != nil {
 		return nil, err
