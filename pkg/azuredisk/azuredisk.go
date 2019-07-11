@@ -53,6 +53,8 @@ const (
 	// see https://docs.microsoft.com/en-us/rest/api/compute/disks/createorupdate#uri-parameters
 	diskNameMinLength = 1
 	diskNameMaxLength = 80
+	// maxLength = 80 - (4 for ".vhd") = 76
+	diskNameGenerateMaxLength = 76
 
 	//default disk size is 1 GiB
 	defaultDiskSize = 1
@@ -344,20 +346,25 @@ func (d *Driver) CreateManagedDisk(ctx context.Context, options *ManagedDiskOpti
 	return diskID, nil
 }
 
-// TThe name must begin with a letter or number, end with a letter, number or underscore,
+// Disk name must begin with a letter or number, end with a letter, number or underscore,
 // and may contain only letters, numbers, underscores, periods, or hyphens.
-//
 // See https://docs.microsoft.com/en-us/rest/api/compute/disks/createorupdate#uri-parameters
+//
+//
+// Snapshot name must begin with a letter or number, end with a letter, number or underscore,
+// and may contain only letters, numbers, underscores, periods, or hyphens.
+// See https://docs.microsoft.com/en-us/rest/api/compute/snapshots/createorupdate#uri-parameters
+//
+// Since the naming rule of disk is same with snapshot's, here we use the same function to handle disks and snapshots.
 func getValidDiskName(volumeName string) string {
 	diskName := volumeName
 	if len(diskName) > diskNameMaxLength {
 		diskName = diskName[0:diskNameMaxLength]
-		klog.Warningf("since the maximum name length is 80, so it is truncated as (%q)", diskName)
+		klog.Warningf("since the maximum volume name length is %d, so it is truncated as (%q)", diskNameMaxLength, diskName)
 	}
 	if !checkDiskName(diskName) || len(diskName) < diskNameMinLength {
-		// maxLength = 80 - (4 for ".vhd") = 75
 		// todo: get cluster name
-		diskName = util.GenerateVolumeName("pvc-disk", uuid.NewUUID().String(), 76)
+		diskName = util.GenerateVolumeName("pvc-disk", uuid.NewUUID().String(), diskNameGenerateMaxLength)
 		klog.Warningf("the requested volume name (%q) is invalid, so it is regenerated as (%q)", volumeName, diskName)
 	}
 

@@ -135,8 +135,9 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	}
 
 	if diskName == "" {
-		diskName = getValidDiskName(name)
+		diskName = name
 	}
+	diskName = getValidDiskName(diskName)
 
 	if resourceGroup == "" {
 		resourceGroup = d.cloud.ResourceGroup
@@ -446,6 +447,8 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	if len(sourceVolumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "CreateSnapshot Source Volume ID must be provided")
 	}
+
+	snapshotName = getValidDiskName(snapshotName)
 
 	snapshot := compute.Snapshot{
 		SnapshotProperties: &compute.SnapshotProperties{
