@@ -518,6 +518,9 @@ func (d *Driver) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsReques
 	if len(req.GetSnapshotId()) != 0 {
 		snapshot, err := d.getSnapshotByID(ctx, req.GetSnapshotId(), req.SourceVolumeId)
 		if err != nil {
+			if strings.Contains(err.Error(), resourceNotFound) {
+				return &csi.ListSnapshotsResponse{}, nil
+			}
 			return nil, err
 		}
 		entries := []*csi.ListSnapshotsResponse_Entry{

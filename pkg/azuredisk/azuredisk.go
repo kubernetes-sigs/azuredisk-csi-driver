@@ -58,6 +58,8 @@ const (
 
 	//default disk size is 1 GiB
 	defaultDiskSize = 1
+
+	resourceNotFound = "ResourceNotFound"
 )
 
 var (
