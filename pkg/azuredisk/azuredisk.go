@@ -386,3 +386,13 @@ func checkDiskName(diskName string) bool {
 
 	return true
 }
+
+func getSourceVolumeId(snapshot *compute.Snapshot) string {
+	if snapshot != nil &&
+		snapshot.SnapshotProperties != nil &&
+		snapshot.SnapshotProperties.CreationData != nil &&
+		snapshot.SnapshotProperties.CreationData.SourceResourceID != nil {
+		return *snapshot.SnapshotProperties.CreationData.SourceResourceID
+	}
+	return ""
+}

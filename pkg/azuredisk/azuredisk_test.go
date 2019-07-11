@@ -21,6 +21,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-03-01/compute"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -315,6 +316,55 @@ func TestCheckDiskName(t *testing.T) {
 		result := checkDiskName(test.diskName)
 		if !reflect.DeepEqual(result, test.expected) {
 			t.Errorf("input: %q, checkShareNameBeginAndEnd result: %v, expected: %v", test.diskName, result, test.expected)
+		}
+	}
+}
+
+func TestGetSourceVolumeId(t *testing.T) {
+	SourceResourceID := "test"
+
+	tests := []struct {
+		snapshot *compute.Snapshot
+		expected string
+	}{
+		{
+			snapshot: &compute.Snapshot{
+				SnapshotProperties: &compute.SnapshotProperties{
+					CreationData: &compute.CreationData{
+						SourceResourceID: &SourceResourceID,
+					},
+				},
+			},
+			expected: "test",
+		},
+		{
+			snapshot: &compute.Snapshot{
+				SnapshotProperties: &compute.SnapshotProperties{
+					CreationData: &compute.CreationData{},
+				},
+			},
+			expected: "",
+		},
+		{
+			snapshot: &compute.Snapshot{
+				SnapshotProperties: &compute.SnapshotProperties{},
+			},
+			expected: "",
+		},
+		{
+			snapshot: &compute.Snapshot{},
+			expected: "",
+		},
+		{
+			snapshot: nil,
+			expected: "",
+		},
+	}
+
+	for _, test := range tests {
+		result := getSourceVolumeId(test.snapshot)
+		if !reflect.DeepEqual(result, test.expected) {
+			t.Errorf("input: %v, getValidFileShareName result: %q, expected: %q", test.snapshot, result, test.expected)
 		}
 	}
 }
