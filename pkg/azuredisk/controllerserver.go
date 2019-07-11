@@ -464,7 +464,11 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	klog.V(2).Infof("begin to create snapshot(%s) under rg(%s)", snapshotName, d.cloud.ResourceGroup)
 	future, err := d.cloud.SnapshotsClient.CreateOrUpdate(ctx, d.cloud.ResourceGroup, snapshotName, snapshot)
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("create snapshot error: %v", err))
+		if strings.Contains(err.Error(), "existing disk") {
+			return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("request snapshot(%s) under rg(%s) already exists, but the SourceVolumeId is different, error details: %v", snapshotName, d.cloud.ResourceGroup, err))
+		} else {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("create snapshot error: %v", err))
+		}
 	}
 	err = future.WaitForCompletionRef(ctx, d.cloud.SnapshotsClient.Client)
 	if err != nil {
