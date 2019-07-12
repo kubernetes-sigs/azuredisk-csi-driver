@@ -543,14 +543,23 @@ func (d *Driver) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsReques
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown list snapshot error: %v", err))
 	}
+	match := false
 	entries := []*csi.ListSnapshotsResponse_Entry{}
 	for _, snapshot := range snapshotListPage.Values() {
+		if req.SourceVolumeId == getSourceVolumeId(&snapshot) {
+			match = true
+		}
 		csiSnapshot, err := generateCSISnapshot(req.SourceVolumeId, &snapshot)
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate snapshot entry: %v", err)
 		}
 		entries = append(entries, &csi.ListSnapshotsResponse_Entry{Snapshot: csiSnapshot})
 	}
+	// return empty if SourceVolumeId is not empty and does not match the listed snapshot's SourceVolumeId
+	if req.SourceVolumeId != "" && !match {
+		return &csi.ListSnapshotsResponse{}, nil
+	}
+
 	nextToken := ""
 	if snapshotListPage.Response().NextLink != nil {
 		nextToken = *snapshotListPage.Response().NextLink
