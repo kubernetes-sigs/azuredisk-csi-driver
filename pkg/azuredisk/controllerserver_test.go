@@ -20,6 +20,10 @@ import (
 	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-03-01/compute"
+	"github.com/container-storage-interface/spec/lib/go/csi"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func TestGetCachingMode(t *testing.T) {
@@ -69,6 +73,59 @@ func TestGetCachingMode(t *testing.T) {
 		resultCachingMode, resultError := getCachingMode(test.options)
 		if resultCachingMode != test.expectedCachingMode || (resultError != nil) != test.expectedError {
 			t.Errorf("input: %s, getCachingMode resultCachingMode: %s, expectedCachingMode: %s, resultError: %s, expectedError: %t", test.options, resultCachingMode, test.expectedCachingMode, resultError, test.expectedError)
+		}
+	}
+}
+
+func TestGetEntriesAndNextToken(t *testing.T) {
+	tests := []struct {
+		request          *csi.ListSnapshotsRequest
+		snapshotListPage compute.SnapshotListPage
+		expectedResponse *csi.ListSnapshotsResponse
+		expectedError    error
+	}{
+		{
+			&csi.ListSnapshotsRequest{
+				MaxEntries:    2,
+				StartingToken: "a",
+			},
+			compute.SnapshotListPage{},
+			nil,
+			status.Errorf(codes.Aborted, "ListSnapshots starting token(a) parsing with error: strconv.Atoi: parsing \"a\": invalid syntax"),
+		},
+		{
+			&csi.ListSnapshotsRequest{
+				MaxEntries:    2,
+				StartingToken: "01",
+			},
+			compute.SnapshotListPage{},
+			nil,
+			status.Errorf(codes.Aborted, "ListSnapshots starting token(1) is greater than total number of snapshots"),
+		},
+		{
+			&csi.ListSnapshotsRequest{
+				MaxEntries:    2,
+				StartingToken: "0",
+			},
+			compute.SnapshotListPage{},
+			nil,
+			status.Errorf(codes.Aborted, "ListSnapshots starting token(0) is greater than total number of snapshots"),
+		},
+		{
+			&csi.ListSnapshotsRequest{
+				MaxEntries:    2,
+				StartingToken: "-1",
+			},
+			compute.SnapshotListPage{},
+			nil,
+			status.Errorf(codes.Aborted, "ListSnapshots starting token(-1) can not be negative"),
+		},
+	}
+
+	for _, test := range tests {
+		resultResponse, resultError := getEntriesAndNextToken(test.request, test.snapshotListPage)
+		if resultResponse != test.expectedResponse || resultError.Error() != test.expectedError.Error() {
+			t.Errorf("request: %v, snapshotListPage: %v, resultResponse: %v, expectedResponse: %v, resultError: %v, expectedError: %v", test.request, test.snapshotListPage, resultResponse, test.expectedResponse, resultError, test.expectedError)
 		}
 	}
 }
