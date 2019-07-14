@@ -19,6 +19,7 @@ jobs:
       script:
         - hack/verify-all.sh
         - make azuredisk
+        - make azuredisk-container
         - make azuredisk-windows
         - go test -covermode=count -coverprofile=profile.cov ./pkg/...
     - stage: test
