@@ -543,32 +543,8 @@ func (d *Driver) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsReques
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown list snapshot error: %v", err))
 	}
-	match := false
-	entries := []*csi.ListSnapshotsResponse_Entry{}
-	for _, snapshot := range snapshotListPage.Values() {
-		if req.SourceVolumeId == getSourceVolumeId(&snapshot) {
-			match = true
-		}
-		csiSnapshot, err := generateCSISnapshot(req.SourceVolumeId, &snapshot)
-		if err != nil {
-			return nil, fmt.Errorf("failed to generate snapshot entry: %v", err)
-		}
-		entries = append(entries, &csi.ListSnapshotsResponse_Entry{Snapshot: csiSnapshot})
-	}
-	// return empty if SourceVolumeId is not empty and does not match the listed snapshot's SourceVolumeId
-	if req.SourceVolumeId != "" && !match {
-		return &csi.ListSnapshotsResponse{}, nil
-	}
 
-	nextToken := ""
-	if snapshotListPage.Response().NextLink != nil {
-		nextToken = *snapshotListPage.Response().NextLink
-	}
-	listSnapshotResp := &csi.ListSnapshotsResponse{
-		Entries:   entries,
-		NextToken: nextToken,
-	}
-	return listSnapshotResp, nil
+	return getEntriesAndNextToken(req, snapshotListPage)
 }
 
 func (d *Driver) getSnapshotByID(ctx context.Context, snapshotID, sourceVolumeID string) (*csi.Snapshot, error) {
@@ -700,4 +676,66 @@ func (d *Driver) extractSnapshotInfo(snapshotID string) (string, string, error) 
 		}
 	}
 	return snapshotName, resourceGroup, err
+}
+
+// There are 4 scenarios for listing snapshots.
+// 1. StartingToken is null, and MaxEntries is null. Return all snapshots from zero.
+// 2. StartingToken is null, and MaxEntries is not null. Return `MaxEntries` snapshots from zero.
+// 3. StartingToken is not null, and MaxEntries is null. Return all snapshots from `StartingToken`.
+// 4. StartingToken is not null, and MaxEntries is not null. Return `MaxEntries` snapshots from `StartingToken`.
+func getEntriesAndNextToken(req *csi.ListSnapshotsRequest, snapshotListPage compute.SnapshotListPage) (*csi.ListSnapshotsResponse, error) {
+	if req == nil {
+		return nil, status.Errorf(codes.Aborted, "request is nil")
+	}
+
+	var err error
+	start := 0
+	if req.StartingToken != "" {
+		start, err = strconv.Atoi(req.StartingToken)
+		if err != nil {
+			return nil, status.Errorf(codes.Aborted, "ListSnapshots starting token(%s) parsing with error: %v", req.StartingToken, err)
+
+		}
+		if start >= len(snapshotListPage.Values()) {
+			return nil, status.Errorf(codes.Aborted, "ListSnapshots starting token(%d) is greater than total number of snapshots", start)
+		}
+		if start < 0 {
+			return nil, status.Errorf(codes.Aborted, "ListSnapshots starting token(%d) can not be negative", start)
+		}
+	}
+	perPage := 0
+	if req.MaxEntries > 0 {
+		perPage = int(req.MaxEntries)
+	}
+
+	match := false
+	entries := []*csi.ListSnapshotsResponse_Entry{}
+	for i, snapshot := range snapshotListPage.Values() {
+		if req.SourceVolumeId == getSourceVolumeId(&snapshot) {
+			match = true
+		}
+		csiSnapshot, err := generateCSISnapshot(req.SourceVolumeId, &snapshot)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate snapshot entry: %v", err)
+		}
+		if i >= start && (perPage == 0 || (perPage > 0 && i < start+perPage)) {
+			entries = append(entries, &csi.ListSnapshotsResponse_Entry{Snapshot: csiSnapshot})
+		}
+	}
+	// return empty if SourceVolumeId is not empty and does not match the listed snapshot's SourceVolumeId
+	if req.SourceVolumeId != "" && !match {
+		return &csi.ListSnapshotsResponse{}, nil
+	}
+
+	nextToken := len(snapshotListPage.Values())
+	if start+perPage < len(snapshotListPage.Values()) {
+		nextToken = start + perPage
+	}
+
+	listSnapshotResp := &csi.ListSnapshotsResponse{
+		Entries:   entries,
+		NextToken: strconv.Itoa(nextToken),
+	}
+
+	return listSnapshotResp, nil
 }
