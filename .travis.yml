@@ -24,8 +24,9 @@ jobs:
         - go test -covermode=count -coverprofile=profile.cov ./pkg/...
     - stage: test
       name: "sanity test"
-      script: make sanity-test
-      after_failure: TRAVIS_TEST_RESULT=0
+      script: 
+        - make azuredisk
+        - make sanity-test
     - stage: test
       name: "integration test"
       install:

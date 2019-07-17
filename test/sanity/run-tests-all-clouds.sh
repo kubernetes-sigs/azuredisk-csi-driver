@@ -33,7 +33,7 @@ if [ -v aadClientSecret ]; then
 	sed -i "s/resourceGroup-input/$resourceGroup/g" $AZURE_CREDENTIAL_FILE
 	sed -i "s/location-input/$location/g" $AZURE_CREDENTIAL_FILE
 
-	sudo ${GO_BIN_PATH} test -v ./test/sanity/...
+	test/sanity/run-test.sh $nodeid
 else
 	if [ -v subscriptionId ]; then
 		echo "skip sanity test in CI env"
