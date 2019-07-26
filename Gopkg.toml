@@ -55,7 +55,7 @@
 
 [[constraint]]
   name = "k8s.io/kubernetes"
-  version = "v1.15.0"
+  version = "=v1.15.0"
 
 [[override]]
   name = "gopkg.in/fsnotify.v1"
@@ -104,3 +104,7 @@
 [[override]]
   name = "github.com/prometheus/client_golang"
   version = "v1.0.0"
+
+[[override]]
+  name = "github.com/kubernetes-csi/external-snapshotter"
+  version = "=v1.0.1"
