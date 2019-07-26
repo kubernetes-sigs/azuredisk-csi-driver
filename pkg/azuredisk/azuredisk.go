@@ -43,7 +43,7 @@ import (
 )
 
 const (
-	driverName = "disk.csi.azure.com"
+	DriverName = "disk.csi.azure.com"
 
 	errDiskNotFound = "not found"
 	// default IOPS Caps & Throughput Cap (MBps) per https://docs.microsoft.com/en-us/azure/virtual-machines/linux/disks-ultra-ssd
@@ -88,7 +88,7 @@ type Driver struct {
 // does not support optional driver plugin info manifest field. Refer to CSI spec for more details.
 func NewDriver(nodeID string) *Driver {
 	driver := Driver{}
-	driver.Name = driverName
+	driver.Name = DriverName
 	driver.Version = driverVersion
 	driver.NodeID = nodeID
 	return &driver
