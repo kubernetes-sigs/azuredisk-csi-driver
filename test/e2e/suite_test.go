@@ -41,5 +41,5 @@ func init() {
 
 func TestE2E(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "AzureFile CSI Driver End-to-End Tests")
+	RunSpecs(t, "AzureDisk CSI Driver End-to-End Tests")
 }
