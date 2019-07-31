@@ -74,6 +74,31 @@ var _ = Describe("Dynamic Provisioning", func() {
 		test.Run(cs, ns)
 	})
 
+	// Track issue https://github.com/kubernetes/kubernetes/issues/70505
+	It("should create a volume on demand and mount it as readOnly in a pod", func() {
+		pods := []testsuites.PodDetails{
+			{
+				Cmd: "touch /mnt/test-1/data",
+				Volumes: []testsuites.VolumeDetails{
+					{
+						FSType:    "ext4",
+						ClaimSize: "10Gi",
+						VolumeMount: testsuites.VolumeMountDetails{
+							NameGenerate:      "test-volume-",
+							MountPathGenerate: "/mnt/test-",
+							ReadOnly:          true,
+						},
+					},
+				},
+			},
+		}
+		test := testsuites.DynamicallyProvisionedReadOnlyVolumeTest{
+			CSIDriver: testDriver,
+			Pods:      pods,
+		}
+		test.Run(cs, ns)
+	})
+
 	It("should create multiple PV objects, bind to PVCs and attach all to different pods on the same node", func() {
 		pods := []testsuites.PodDetails{
 			{
