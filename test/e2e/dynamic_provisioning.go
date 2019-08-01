@@ -39,11 +39,11 @@ var _ = Describe("Dynamic Provisioning", func() {
 	)
 
 	nodeid := os.Getenv("nodeid")
-	blobfuseDriver := azuredisk.NewDriver(nodeid)
+	azurediskDriver := azuredisk.NewDriver(nodeid)
 	endpoint := "unix:///tmp/csi.sock"
 
 	go func() {
-		blobfuseDriver.Run(endpoint)
+		azurediskDriver.Run(endpoint)
 	}()
 
 	BeforeEach(func() {
@@ -157,6 +157,39 @@ var _ = Describe("Dynamic Provisioning", func() {
 				Cmd:            []string{"cat", "/mnt/test-1/data"},
 				ExpectedString: "hello world\nhello world\n", // pod will be restarted so expect to see 2 instances of string
 			},
+		}
+		test.Run(cs, ns)
+	})
+
+	It(fmt.Sprintf("should delete PV with reclaimPolicy %q", v1.PersistentVolumeReclaimDelete), func() {
+		reclaimPolicy := v1.PersistentVolumeReclaimDelete
+		volumes := []testsuites.VolumeDetails{
+			{
+				FSType:        "ext4",
+				ClaimSize:     "10Gi",
+				ReclaimPolicy: &reclaimPolicy,
+			},
+		}
+		test := testsuites.DynamicallyProvisionedReclaimPolicyTest{
+			CSIDriver: testDriver,
+			Volumes:   volumes,
+		}
+		test.Run(cs, ns)
+	})
+
+	It(fmt.Sprintf("[env] should retain PV with reclaimPolicy %q", v1.PersistentVolumeReclaimRetain), func() {
+		reclaimPolicy := v1.PersistentVolumeReclaimRetain
+		volumes := []testsuites.VolumeDetails{
+			{
+				FSType:        "ext4",
+				ClaimSize:     "10Gi",
+				ReclaimPolicy: &reclaimPolicy,
+			},
+		}
+		test := testsuites.DynamicallyProvisionedReclaimPolicyTest{
+			CSIDriver: testDriver,
+			Volumes:   volumes,
+			Azuredisk: azurediskDriver,
 		}
 		test.Run(cs, ns)
 	})
