@@ -366,7 +366,7 @@ type TestDeployment struct {
 }
 
 func NewTestDeployment(c clientset.Interface, ns *v1.Namespace, command string, pvc *v1.PersistentVolumeClaim, volumeName, mountPath string, readOnly bool) *TestDeployment {
-	generateName := "ebs-volume-tester-"
+	generateName := "azuredisk-volume-tester-"
 	selectorValue := fmt.Sprintf("%s%d", generateName, rand.Int())
 	replicas := int32(1)
 	return &TestDeployment{
