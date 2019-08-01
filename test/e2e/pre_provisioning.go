@@ -75,6 +75,40 @@ var _ = Describe("[azuredisk-csi-e2e] [single-az] Pre-Provisioned", func() {
 		}
 	})
 
+	It("[env] should use a pre-provisioned volume and mount it as readOnly in a pod", func() {
+		req := makeCreateVolumeReq("pre-provisioned-readOnly")
+		resp, err := azurediskDriver.CreateVolume(context.Background(), req)
+		if err != nil {
+			Fail(fmt.Sprintf("create volume error: %v", err))
+		}
+		volumeID = resp.Volume.VolumeId
+		By(fmt.Sprintf("Successfully provisioned AzureDisk volume: %q\n", volumeID))
+
+		diskSize := fmt.Sprintf("%dGi", defaultDiskSize)
+		pods := []testsuites.PodDetails{
+			{
+				Cmd: "echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data",
+				Volumes: []testsuites.VolumeDetails{
+					{
+						VolumeID:  volumeID,
+						FSType:    "ext4",
+						ClaimSize: diskSize,
+						VolumeMount: testsuites.VolumeMountDetails{
+							NameGenerate:      "test-volume-",
+							MountPathGenerate: "/mnt/test-",
+							ReadOnly:          true,
+						},
+					},
+				},
+			},
+		}
+		test := testsuites.PreProvisionedReadOnlyVolumeTest{
+			CSIDriver: testDriver,
+			Pods:      pods,
+		}
+		test.Run(cs, ns)
+	})
+
 	It(fmt.Sprintf("[env] should use a pre-provisioned volume and retain PV with reclaimPolicy %q", v1.PersistentVolumeReclaimRetain), func() {
 		req := makeCreateVolumeReq("pre-provisioned-retain-reclaimPolicy")
 		resp, err := azurediskDriver.CreateVolume(context.Background(), req)
