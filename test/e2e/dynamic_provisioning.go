@@ -74,7 +74,30 @@ var _ = Describe("Dynamic Provisioning", func() {
 		test.Run(cs, ns)
 	})
 
-	// Track issue https://github.com/kubernetes/kubernetes/issues/70505
+	It(fmt.Sprintf("should create a raw block volume on demand"), func() {
+		pods := []testsuites.PodDetails{
+			{
+				Cmd: "ls /dev | grep e2e-test",
+				Volumes: []testsuites.VolumeDetails{
+					{
+						ClaimSize:  "10Gi",
+						VolumeMode: testsuites.Block,
+						VolumeDevice: testsuites.VolumeDeviceDetails{
+							NameGenerate: "test-volume-",
+							DevicePath:   "/dev/e2e-test",
+						},
+					},
+				},
+			},
+		}
+		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
+			CSIDriver: testDriver,
+			Pods:      pods,
+		}
+		test.Run(cs, ns)
+	})
+
+	//Track issue https://github.com/kubernetes/kubernetes/issues/70505
 	It("should create a volume on demand and mount it as readOnly in a pod", func() {
 		pods := []testsuites.PodDetails{
 			{
