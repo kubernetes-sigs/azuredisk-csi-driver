@@ -50,7 +50,7 @@ type VolumeSnapshotTestDriver interface {
 	GetVolumeSnapshotClass(namespace string) *v1alpha1.VolumeSnapshotClass
 }
 
-func getStorageClass(
+func GetStorageClass(
 	generateName string,
 	provisioner string,
 	parameters map[string]string,

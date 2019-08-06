@@ -15,12 +15,8 @@ limitations under the License.
 package e2e
 
 import (
-	"context"
 	"fmt"
-	"os"
 
-	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/kubernetes-sigs/azuredisk-csi-driver/pkg/azuredisk"
 	"github.com/kubernetes-sigs/azuredisk-csi-driver/test/e2e/driver"
 	"github.com/kubernetes-sigs/azuredisk-csi-driver/test/e2e/testsuites"
 	. "github.com/onsi/ginkgo"
@@ -34,10 +30,6 @@ const (
 	defaultDiskSize = 10
 )
 
-var (
-	defaultDiskSizeBytes int64 = defaultDiskSize * 1024 * 1024 * 1024
-)
-
 var _ = Describe("[azuredisk-csi-e2e] [single-az] Pre-Provisioned", func() {
 	f := framework.NewDefaultFramework("azuredisk")
 
@@ -45,17 +37,7 @@ var _ = Describe("[azuredisk-csi-e2e] [single-az] Pre-Provisioned", func() {
 		cs         clientset.Interface
 		ns         *v1.Namespace
 		testDriver driver.PreProvisionedVolumeTestDriver
-		volumeID   string
-		// Set to true if the volume should be deleted automatically after test
-		skipManuallyDeletingVolume bool
 	)
-	nodeid := os.Getenv("nodeid")
-	azurediskDriver := azuredisk.NewDriver(nodeid)
-	endpoint := "unix:///tmp/csi.sock"
-
-	go func() {
-		azurediskDriver.Run(endpoint)
-	}()
 
 	BeforeEach(func() {
 		cs = f.ClientSet
@@ -63,27 +45,8 @@ var _ = Describe("[azuredisk-csi-e2e] [single-az] Pre-Provisioned", func() {
 		testDriver = driver.InitAzureDiskCSIDriver()
 	})
 
-	AfterEach(func() {
-		if !skipManuallyDeletingVolume {
-			req := &csi.DeleteVolumeRequest{
-				VolumeId: volumeID,
-			}
-			_, err := azurediskDriver.DeleteVolume(context.Background(), req)
-			if err != nil {
-				Fail(fmt.Sprintf("create volume %q error: %v", volumeID, err))
-			}
-		}
-	})
-
 	It("[env] should use a pre-provisioned volume and mount it as readOnly in a pod", func() {
-		req := makeCreateVolumeReq("pre-provisioned-readOnly")
-		resp, err := azurediskDriver.CreateVolume(context.Background(), req)
-		if err != nil {
-			Fail(fmt.Sprintf("create volume error: %v", err))
-		}
-		volumeID = resp.Volume.VolumeId
-		By(fmt.Sprintf("Successfully provisioned AzureDisk volume: %q\n", volumeID))
-
+		volumeID := "pre-provisioned-readonly"
 		diskSize := fmt.Sprintf("%dGi", defaultDiskSize)
 		pods := []testsuites.PodDetails{
 			{
@@ -110,14 +73,7 @@ var _ = Describe("[azuredisk-csi-e2e] [single-az] Pre-Provisioned", func() {
 	})
 
 	It(fmt.Sprintf("[env] should use a pre-provisioned volume and retain PV with reclaimPolicy %q", v1.PersistentVolumeReclaimRetain), func() {
-		req := makeCreateVolumeReq("pre-provisioned-retain-reclaimPolicy")
-		resp, err := azurediskDriver.CreateVolume(context.Background(), req)
-		if err != nil {
-			Fail(fmt.Sprintf("create volume error: %v", err))
-		}
-		volumeID = resp.Volume.VolumeId
-		By(fmt.Sprintf("Successfully provisioned AzureDisk volume: %q\n", volumeID))
-
+		volumeID := "pre-provisioned-retain-reclaimpolicy"
 		diskSize := fmt.Sprintf("%dGi", defaultDiskSize)
 		reclaimPolicy := v1.PersistentVolumeReclaimRetain
 		volumes := []testsuites.VolumeDetails{
@@ -135,25 +91,3 @@ var _ = Describe("[azuredisk-csi-e2e] [single-az] Pre-Provisioned", func() {
 		test.Run(cs, ns)
 	})
 })
-
-func makeCreateVolumeReq(volumeName string) *csi.CreateVolumeRequest {
-	req := &csi.CreateVolumeRequest{
-		Name: volumeName,
-		VolumeCapabilities: []*csi.VolumeCapability{
-			{
-				AccessType: &csi.VolumeCapability_Mount{
-					Mount: &csi.VolumeCapability_MountVolume{},
-				},
-				AccessMode: &csi.VolumeCapability_AccessMode{
-					Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
-				},
-			},
-		},
-		CapacityRange: &csi.CapacityRange{
-			RequiredBytes: defaultDiskSizeBytes,
-			LimitBytes:    defaultDiskSizeBytes,
-		},
-	}
-
-	return req
-}

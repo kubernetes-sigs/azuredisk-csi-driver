@@ -168,12 +168,13 @@ func (volume *VolumeDetails) SetupDynamicPersistentVolumeClaim(client clientset.
 
 func (volume *VolumeDetails) SetupPreProvisionedPersistentVolumeClaim(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.PreProvisionedVolumeTestDriver) (*TestPersistentVolumeClaim, []func()) {
 	cleanupFuncs := make([]func(), 0)
-	By("setting up the PV")
-	pv := csiDriver.GetPersistentVolume(volume.VolumeID, volume.FSType, volume.ClaimSize, volume.ReclaimPolicy, namespace.Name)
-	tpv := NewTestPreProvisionedPersistentVolume(client, pv)
-	tpv.Create()
-	By("setting up the PVC")
-	tpvc := NewTestPersistentVolumeClaim(client, namespace, volume.ClaimSize, volume.VolumeMode, nil)
+	By("setting up the StorageClass")
+	storageClass := getStorageClass(driver.GetParameters(), volume.MountOptions, volume.ReclaimPolicy, volume.VolumeBindingMode, volume.AllowedTopologyValues, namespace.Name)
+	tsc := NewTestStorageClass(client, namespace, storageClass)
+	createdStorageClass := tsc.Create()
+	cleanupFuncs = append(cleanupFuncs, tsc.Cleanup)
+	By("setting up the PVC and PV")
+	tpvc := NewTestPersistentVolumeClaim(client, namespace, volume.ClaimSize, volume.VolumeMode, &createdStorageClass)
 	tpvc.Create()
 	cleanupFuncs = append(cleanupFuncs, tpvc.DeleteBoundPersistentVolume)
 	cleanupFuncs = append(cleanupFuncs, tpvc.Cleanup)
@@ -181,6 +182,12 @@ func (volume *VolumeDetails) SetupPreProvisionedPersistentVolumeClaim(client cli
 	tpvc.ValidateProvisionedPersistentVolume()
 
 	return tpvc, cleanupFuncs
+}
+
+func getStorageClass(parameters map[string]string, mountOptions []string, reclaimPolicy *v1.PersistentVolumeReclaimPolicy, bindingMode *storagev1.VolumeBindingMode, allowedTopologyValues []string, namespace string) *storagev1.StorageClass {
+	provisioner := "disk.csi.azure.com"
+	generateName := fmt.Sprintf("%s-%s-pre-provisioned-sc-", namespace, provisioner)
+	return driver.GetStorageClass(generateName, provisioner, parameters, mountOptions, reclaimPolicy, bindingMode, nil)
 }
 
 func CreateVolumeSnapshotClass(client restclientset.Interface, namespace *v1.Namespace, csiDriver driver.VolumeSnapshotTestDriver) (*TestVolumeSnapshotClass, func()) {
