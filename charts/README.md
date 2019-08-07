@@ -2,32 +2,21 @@
 
 Quick start instructions for the setup and configuration of azuredisk CSI driver using Helm.
 
-Choose one of the following two mutually exclusive options described below.
+## Prerequisites
 
-## Option#1: Install with Helm via `helm template`
+1. [install Helm Client](https://helm.sh/docs/using_helm/#installing-the-helm-client)
 
-```shell
-$ helm template charts/azuredisk-csi-driver --name azuredisk-csi-driver --namespace kube-system > $HOME/azuredisk-csi-driver.yaml
-$ kubectl apply -f $HOME/azuredisk-csi-driver.yaml
-```
+2. [initialize Helm and install Tiller](https://helm.sh/docs/using_helm/#initialize-helm-and-install-tiller)
 
-## Option#2: Install with Helm and Tiller via `helm install`
-
-This option need to install [Tiller](https://github.com/kubernetes/helm/blob/master/docs/architecture.md#components), please see [Using Helm](https://helm.sh/docs/using_helm/#example-service-account-with-cluster-admin-role) for more information.
+## Install AzureDisk via `helm install`
 
 ```shell
-$ helm install charts/azuredisk-csi-driver --name azuredisk-csi-driver --namespace kube-system
+$ cd $GOPATH/src/github.com/kubernetes-sigs/azuredisk/charts/master
+$ helm package azuredisk-csi-driver
+$ helm install azuredisk-csi-driver-latest.tgz --name azuredisk-csi-driver --namespace csi-demo
 ```
 
 ## Uninstall
-
-- For option#1, uninstall using `kubectl`:
-
-```shell
-$ kubectl delete -f $HOME/azuredisk-csi-driver.yaml
-```
-
-- For option#2, uninstall using `helm`:
 
 ```shell
 $ helm delete --purge azuredisk-csi-driver
