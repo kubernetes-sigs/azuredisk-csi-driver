@@ -1,58 +1,58 @@
 kind: DaemonSet
 apiVersion: apps/v1
 metadata:
-  name: csi-azuredisk
+  name: csi-azuredisk-node
   namespace: {{ .Release.Namespace }}
-{{ include "azuredisk.labels" . | indent 2 }}
-    app: csi-azuredisk
+  labels:
+    heritage: "{{ .Release.Service }}"
+    release: "{{ .Release.Name }}"
+    revision: "{{ .Release.Revision }}"
+    chart: "{{ .Chart.Name }}"
+    chartVersion: "{{ .Chart.Version }}"
 spec:
   selector:
     matchLabels:
-      app: csi-azuredisk
+      app: csi-azuredisk-node
   template:
     metadata:
 {{ include "azuredisk.labels" . | indent 6 }}
-        app: csi-azuredisk
+        app: csi-azuredisk-node
     spec:
-      serviceAccountName: csi-driver-registrar
       hostNetwork: true
+      nodeSelector:
+        beta.kubernetes.io/os: linux
+      priorityClassName: system-node-critical
       containers:
         - name: liveness-probe
           imagePullPolicy: Always
           volumeMounts:
-          - mountPath: /csi
-            name: socket-dir
+            - mountPath: /csi
+              name: socket-dir
           image: quay.io/k8scsi/livenessprobe:v1.0.2
           args:
-          - --csi-address=/csi/csi.sock
-          - --connection-timeout=3s
-        - name: driver-registrar
-          image: quay.io/k8scsi/csi-node-driver-registrar:v1.0.2
-          args:
-            - --v=5
             - --csi-address=/csi/csi.sock
-            - --kubelet-registration-path=/var/lib/kubelet/plugins/disk.csi.azure.com/csi.sock
+            - --connection-timeout=3s
+            - --health-port=9602
+        - name: node-driver-registrar
+          image: quay.io/k8scsi/csi-node-driver-registrar:v1.1.0
+          args:
+            - --csi-address=$(ADDRESS)
+            - --kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)
+            - --v=5
           lifecycle:
             preStop:
               exec:
-                command:
-                  [
-                    "/bin/sh",
-                    "-c",
-                    "rm -rf /registration/disk.csi.azure.com /registration/disk.csi.azure.com-reg.sock",
-                  ]
+                command: ["/bin/sh", "-c", "rm -rf /registration/disk.csi.azure.com-reg.sock /csi/csi.sock"]
           env:
-            - name: KUBE_NODE_NAME
-              valueFrom:
-                fieldRef:
-                  apiVersion: v1
-                  fieldPath: spec.nodeName
-          imagePullPolicy: Always
+            - name: ADDRESS
+              value: /csi/csi.sock
+            - name: DRIVER_REG_SOCK_PATH
+              value: /var/lib/kubelet/plugins/disk.csi.azure.com/csi.sock
           volumeMounts:
-          - mountPath: /csi
-            name: socket-dir
-          - mountPath: /registration
-            name: registration-dir
+            - name: socket-dir
+              mountPath: /csi
+            - name: registration-dir
+              mountPath: /registration
         - name: azuredisk
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           args:
@@ -60,7 +60,7 @@ spec:
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--nodeid=$(KUBE_NODE_NAME)"
           ports:
-            - containerPort: 9808
+            - containerPort: 9602
               name: healthz
               protocol: TCP
           livenessProbe:
@@ -87,7 +87,7 @@ spec:
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
-            - mountPath: /var/lib/kubelet/pods
+            - mountPath: /var/lib/kubelet/
               mountPropagation: Bidirectional
               name: mountpoint-dir
             - mountPath: /etc/kubernetes/
@@ -107,7 +107,7 @@ spec:
             type: DirectoryOrCreate
           name: socket-dir
         - hostPath:
-            path: /var/lib/kubelet/pods
+            path: /var/lib/kubelet/
             type: DirectoryOrCreate
           name: mountpoint-dir
         - hostPath:

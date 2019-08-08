@@ -1,6 +1,6 @@
 image:
   repository: mcr.microsoft.com/k8s/csi/azuredisk-csi
-  tag: v0.2.0-alpha
+  tag: v0.4.0
   pullPolicy: Always
 
 serviceAccount:
