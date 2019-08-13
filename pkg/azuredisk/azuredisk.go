@@ -60,6 +60,9 @@ const (
 	defaultDiskSize = 1
 
 	resourceNotFound = "ResourceNotFound"
+
+	// VolumeAttributes for Partition
+	volumeAttributePartition = "partition"
 )
 
 var (
