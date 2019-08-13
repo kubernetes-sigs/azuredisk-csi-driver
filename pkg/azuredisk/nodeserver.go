@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -66,13 +67,15 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		return nil, status.Error(codes.InvalidArgument, "Volume capability not supported")
 	}
 
+	// If the access type is block, do nothing for stage
+	switch req.GetVolumeCapability().GetAccessType().(type) {
+	case *csi.VolumeCapability_Block:
+		return &csi.NodeStageVolumeResponse{}, nil
+	}
+
 	devicePath, ok := req.PublishContext["devicePath"]
 	if !ok {
 		return nil, status.Error(codes.InvalidArgument, "devicePath not provided")
-	}
-	lun, err := getDiskLUN(devicePath)
-	if err != nil {
-		return nil, err
 	}
 
 	// TODO: consider replacing IsLikelyNotMountPoint by IsNotMountPoint
@@ -116,34 +119,19 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		fstype = volContextFSType
 	}
 
-	io := &osIOHandler{}
-	scsiHostRescan(io, d.mounter.Exec)
-
-	newDevicePath := ""
-	err = wait.Poll(1*time.Second, 2*time.Minute, func() (bool, error) {
-		if newDevicePath, err = findDiskByLun(int(lun), io, d.mounter.Exec); err != nil {
-			return false, fmt.Errorf("azureDisk - findDiskByLun(%v) failed with error(%s)", lun, err)
-		}
-
-		// did we find it?
-		if newDevicePath != "" {
-			return true, nil
-		}
-
-		return false, fmt.Errorf("azureDisk - findDiskByLun(%v) failed within timeout", lun)
-	})
+	source, lun, err := d.findDiskAndLun(devicePath)
 	if err != nil {
-		return nil, err
+		return nil, status.Errorf(codes.Internal, "Failed to find disk and lun %s. %v", devicePath, err)
 	}
 
 	// FormatAndMount will format only if needed
-	klog.V(2).Infof("NodeStageVolume: formatting %s and mounting at %s with mount options(%s)", newDevicePath, target, options)
-	err = d.mounter.FormatAndMount(newDevicePath, target, fstype, options)
+	klog.V(2).Infof("NodeStageVolume: formatting %s and mounting at %s with mount options(%s)", source, target, options)
+	err = d.mounter.FormatAndMount(source, target, fstype, options)
 	if err != nil {
 		msg := fmt.Sprintf("could not format %q and mount it at %q", lun, target)
 		return nil, status.Error(codes.Internal, msg)
 	}
-	klog.V(2).Infof("NodeStageVolume: format %s and mounting at %s successfully.", newDevicePath, target)
+	klog.V(2).Infof("NodeStageVolume: format %s and mounting at %s successfully.", source, target)
 
 	return &csi.NodeStageVolumeResponse{}, nil
 }
@@ -190,61 +178,62 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		return nil, status.Error(codes.InvalidArgument, "Target path not provided")
 	}
 
-	notMnt, err := d.mounter.IsLikelyNotMountPoint(target)
-	if err != nil && !os.IsNotExist(err) {
-		klog.V(2).Infof("azureDisk - cannot validate mount point for on %s, error: %v", target, err)
-		return nil, err
-	}
+	mountOptions := getNodePublishMountOptions(req)
 
-	if !notMnt {
-		// testing original mount point, make sure the mount link is valid
-		_, err := ioutil.ReadDir(target)
-		if err == nil {
-			klog.V(2).Infof("azureDisk - already mounted to target %s", target)
-			return &csi.NodePublishVolumeResponse{}, nil
+	switch req.GetVolumeCapability().GetAccessType().(type) {
+	case *csi.VolumeCapability_Block:
+		devicePath, ok := req.PublishContext["devicePath"]
+		if !ok {
+			return nil, status.Error(codes.InvalidArgument, "devicePath not provided")
 		}
-		// mount link is invalid, now unmount and remount later
-		klog.Warningf("azureDisk - ReadDir %s failed with %v, unmount this directory", target, err)
-		if err := d.mounter.Unmount(target); err != nil {
-			klog.Errorf("azureDisk - Unmount directory %s failed with %v", target, err)
-			return nil, err
+		var err error
+		source, _, err = d.findDiskAndLun(devicePath)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "Failed to find device path %s. %v", devicePath, err)
 		}
-		// notMnt = true
-	}
+		klog.V(2).Infof("NodePublishVolume [block]: find device path %s -> %s", devicePath, source)
 
-	if runtime.GOOS != "windows" {
-		// in windows, we will use mklink to mount, will MkdirAll in Mount func
-		if err := os.MkdirAll(target, 0750); err != nil {
-			klog.Errorf("azureDisk - mkdir failed on target: %s (%v)", target, err)
-			return nil, err
+		// Since the block device target path is file, its parent directory should be ensured to be valid.
+		parentDir := filepath.Dir(target)
+		if err := d.ensureMountPoint(parentDir); err != nil {
+			return nil, status.Errorf(codes.Internal, "Could not mount target %q: %v", parentDir, err)
 		}
-	}
 
-	// todo: looks like here fsType is useless since we only use "fsType" in VolumeContext
-	fsType := req.GetVolumeCapability().GetMount().GetFsType()
+		// Create the mount point as a file since bind mount device node requires it to be a file
+		klog.V(2).Infof("NodePublishVolume [block]: making target file %s", target)
+		err = d.mounter.MakeFile(target)
+		if err != nil {
+			if removeErr := os.Remove(target); removeErr != nil {
+				return nil, status.Errorf(codes.Internal, "Could not remove mount target %q: %v", target, removeErr)
+			}
+			return nil, status.Errorf(codes.Internal, "Could not create file %q: %v", target, err)
+		}
+	case *csi.VolumeCapability_Mount:
+		if err := d.ensureMountPoint(target); err != nil {
+			return nil, status.Errorf(codes.Internal, "Could not mount target %q: %v", target, err)
+		}
+		// todo: looks like here fsType is useless since we only use "fsType" in VolumeContext
+		fsType := req.GetVolumeCapability().GetMount().GetFsType()
 
-	readOnly := req.GetReadonly()
-	volumeID := req.GetVolumeId()
-	attrib := req.GetVolumeContext()
-	mountFlags := req.GetVolumeCapability().GetMount().GetMountFlags()
+		readOnly := req.GetReadonly()
+		volumeID := req.GetVolumeId()
+		attrib := req.GetVolumeContext()
+		mountFlags := req.GetVolumeCapability().GetMount().GetMountFlags()
 
-	klog.V(2).Infof("target %v\nfstype %v\n\nreadonly %v\nvolumeId %v\nContext %v\nmountflags %v\n",
-		target, fsType, readOnly, volumeID, attrib, mountFlags)
+		klog.V(2).Infof("target %v\nfstype %v\n\nreadonly %v\nvolumeId %v\nContext %v\nmountflags %v\n",
+			target, fsType, readOnly, volumeID, attrib, mountFlags)
 
-	mountOptions := []string{"bind"}
-	if req.GetReadonly() {
-		mountOptions = append(mountOptions, "ro")
-	}
-	mountOptions = util.JoinMountOptions(mountFlags, mountOptions)
-
-	klog.V(2).Infof("NodePublishVolume: creating dir %s", target)
-	if err := d.mounter.MakeDir(target); err != nil {
-		return nil, status.Errorf(codes.Internal, "Could not create dir %q: %v", target, err)
+		klog.V(2).Infof("NodePublishVolume: creating dir %s", target)
+		if err := d.mounter.MakeDir(target); err != nil {
+			return nil, status.Errorf(codes.Internal, "Could not create dir %q: %v", target, err)
+		}
 	}
 
 	klog.V(2).Infof("NodePublishVolume: mounting %s at %s", source, target)
 	if err := d.mounter.Mount(source, target, "", mountOptions); err != nil {
-		os.Remove(target)
+		if removeErr := os.Remove(target); removeErr != nil {
+			return nil, status.Errorf(codes.Internal, "Could not remove mount target %q: %v", target, removeErr)
+		}
 		return nil, status.Errorf(codes.Internal, "Could not mount %q at %q: %v", source, target, err)
 	}
 	klog.V(2).Infof("NodePublishVolume: mount %s at %s successfully", source, target)
@@ -350,4 +339,84 @@ func getFStype(attributes map[string]string) string {
 	}
 
 	return ""
+}
+
+// ensureMountPoint: ensure mount point to be valid.
+// If it is not existed, it will be created.
+func (d *Driver) ensureMountPoint(target string) error {
+	notMnt, err := d.mounter.IsLikelyNotMountPoint(target)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	if !notMnt {
+		// testing original mount point, make sure the mount link is valid
+		_, err := ioutil.ReadDir(target)
+		if err == nil {
+			klog.V(2).Infof("azureDisk - already mounted to target %s", target)
+			return nil
+		}
+		// mount link is invalid, now unmount and remount later
+		klog.Warningf("azureDisk - ReadDir %s failed with %v, unmount this directory", target, err)
+		if err := d.mounter.Unmount(target); err != nil {
+			klog.Errorf("azureDisk - Unmount directory %s failed with %v", target, err)
+			return err
+		}
+		// notMnt = true
+	}
+
+	if runtime.GOOS != "windows" {
+		// in windows, we will use mklink to mount, will MkdirAll in Mount func
+		if err := os.MkdirAll(target, 0750); err != nil {
+			klog.Errorf("azureDisk - mkdir failed on target: %s (%v)", target, err)
+			return err
+		}
+	}
+
+	return nil
+}
+
+// findDiskAndLun: devicePath is a LUN num, returns <device-path, lun>, e.g. </dev/sdx, 1>.
+// Before node stage and publish, the devicePath has been handle to a LUN number.
+// So in this function, devicePath is always a LUN number.
+// e.g. devicePath is 1, returns /dev/disk/azure/scsi1/lun1 and 1.
+func (d *Driver) findDiskAndLun(devicePath string) (string, int32, error) {
+	lun, err := getDiskLUN(devicePath)
+	if err != nil {
+		return "", -1, err
+	}
+
+	io := &osIOHandler{}
+	scsiHostRescan(io, d.mounter.Exec)
+
+	newDevicePath := ""
+	err = wait.Poll(1*time.Second, 2*time.Minute, func() (bool, error) {
+		var err error
+		if newDevicePath, err = findDiskByLun(int(lun), io, d.mounter.Exec); err != nil {
+			return false, fmt.Errorf("azureDisk - findDiskByLun(%v) failed with error(%s)", lun, err)
+		}
+
+		// did we find it?
+		if newDevicePath != "" {
+			return true, nil
+		}
+
+		return false, fmt.Errorf("azureDisk - findDiskByLun(%v) failed within timeout", lun)
+	})
+	if err != nil {
+		return "", -1, err
+	}
+
+	return newDevicePath, lun, err
+}
+
+func getNodePublishMountOptions(req *csi.NodePublishVolumeRequest) []string {
+	mountFlags := req.GetVolumeCapability().GetMount().GetMountFlags()
+	mountOptions := []string{"bind"}
+	if req.GetReadonly() {
+		mountOptions = append(mountOptions, "ro")
+	}
+	mountOptions = util.JoinMountOptions(mountFlags, mountOptions)
+
+	return mountOptions
 }

@@ -497,11 +497,10 @@ func NewTestPod(c clientset.Interface, ns *v1.Namespace, command string) *TestPo
 			Spec: v1.PodSpec{
 				Containers: []v1.Container{
 					{
-						Name:         "volume-tester",
-						Image:        imageutils.GetE2EImage(imageutils.BusyBox),
-						Command:      []string{"/bin/sh"},
-						Args:         []string{"-c", command},
-						VolumeMounts: make([]v1.VolumeMount, 0),
+						Name:    "volume-tester",
+						Image:   imageutils.GetE2EImage(imageutils.BusyBox),
+						Command: []string{"/bin/sh"},
+						Args:    []string{"-c", command},
 					},
 				},
 				RestartPolicy: v1.RestartPolicyNever,
@@ -553,6 +552,7 @@ func (t *TestPod) SetupVolume(pvc *v1.PersistentVolumeClaim, name, mountPath str
 		MountPath: mountPath,
 		ReadOnly:  readOnly,
 	}
+	t.pod.Spec.Containers[0].VolumeMounts = make([]v1.VolumeMount, 0)
 	t.pod.Spec.Containers[0].VolumeMounts = append(t.pod.Spec.Containers[0].VolumeMounts, volumeMount)
 
 	volume := v1.Volume{
@@ -571,6 +571,7 @@ func (t *TestPod) SetupRawBlockVolume(pvc *v1.PersistentVolumeClaim, name, devic
 		Name:       name,
 		DevicePath: devicePath,
 	}
+	t.pod.Spec.Containers[0].VolumeDevices = make([]v1.VolumeDevice, 0)
 	t.pod.Spec.Containers[0].VolumeDevices = append(t.pod.Spec.Containers[0].VolumeDevices, volumeDevice)
 
 	volume := v1.Volume{
