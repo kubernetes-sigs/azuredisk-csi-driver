@@ -126,14 +126,14 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 
 	// If partition is specified, should mount it only instead of the entire disk.
 	if partition, ok := req.GetVolumeContext()[volumeAttributePartition]; ok {
-		newDevicePath = newDevicePath + "-part" + partition
+		source = source + "-part" + partition
 	}
 
 	// FormatAndMount will format only if needed
 	klog.V(2).Infof("NodeStageVolume: formatting %s and mounting at %s with mount options(%s)", source, target, options)
 	err = d.mounter.FormatAndMount(source, target, fstype, options)
 	if err != nil {
-		msg := fmt.Sprintf("could not format %q(lun: %q), and mount it at %q", newDevicePath, lun, target)
+		msg := fmt.Sprintf("could not format %q(lun: %q), and mount it at %q", source, lun, target)
 		return nil, status.Error(codes.Internal, msg)
 	}
 	klog.V(2).Infof("NodeStageVolume: format %s and mounting at %s successfully.", source, target)
