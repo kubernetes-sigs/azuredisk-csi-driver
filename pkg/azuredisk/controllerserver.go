@@ -49,6 +49,8 @@ var (
 	}
 )
 
+const azureDiskKind = "kind"
+
 // CreateVolume provisions an azure disk
 func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
 	if err := d.ValidateControllerServiceRequest(csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME); err != nil {
@@ -103,7 +105,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			account = v
 		case "storageaccounttype":
 			storageAccountType = v
-		case "kind":
+		case azureDiskKind:
 			strKind = v
 		case "cachingmode":
 			cachingMode = v1.AzureDataDiskCachingMode(v)
@@ -236,6 +238,11 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		}
 	}
 	*/
+
+	// for CSI migration: reset kind value, make it well formatted
+	if _, ok := parameters[azureDiskKind]; ok {
+		parameters[azureDiskKind] = string(kind)
+	}
 
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
