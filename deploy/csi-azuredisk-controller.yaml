@@ -20,11 +20,13 @@ spec:
       priorityClassName: system-cluster-critical
       containers:
         - name: csi-provisioner
-          image: quay.io/k8scsi/csi-provisioner:v1.0.1
+          image: quay.io/k8scsi/csi-provisioner:v1.3.0
           args:
             - "--provisioner=disk.csi.azure.com"
             - "--csi-address=$(ADDRESS)"
             - "--connection-timeout=15s"
+            - "--v=5"
+            - "--timeout=120s"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -33,7 +35,7 @@ spec:
             - mountPath: /csi
               name: socket-dir
         - name: csi-attacher
-          image: quay.io/k8scsi/csi-attacher:v1.0.1
+          image: quay.io/k8scsi/csi-attacher:v1.2.0
           args:
             - --v=5
             - --csi-address=$(ADDRESS)
