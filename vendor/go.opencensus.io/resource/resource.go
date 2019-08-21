@@ -26,7 +26,6 @@ import (
 	"strings"
 )
 
-// Environment variables used by FromEnv to decode a resource.
 const (
 	EnvVarType   = "OC_RESOURCE_TYPE"
 	EnvVarLabels = "OC_RESOURCE_LABELS"

@@ -99,7 +99,7 @@
 
 [[override]]
   name = "github.com/Azure/azure-sdk-for-go"
-  version = "v21.4.0"
+  version = "v32.5.0"
 
 [[override]]
   name = "github.com/prometheus/client_golang"
@@ -108,3 +108,7 @@
 [[override]]
   name = "github.com/kubernetes-csi/external-snapshotter"
   version = "=v1.0.1"
+
+[[override]]
+  name = "contrib.go.opencensus.io/exporter/ocagent"
+  version = "=v0.4.12"
