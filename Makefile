@@ -13,10 +13,10 @@
 # limitations under the License.
 
 PKG=github.com/kubernetes-sigs/azuredisk-csi-driver
-REGISTRY_NAME=andyzhangx
+REGISTRY_NAME?=andyzhangx
 DRIVER_NAME=disk.csi.azure.com
 IMAGE_NAME=azuredisk-csi
-IMAGE_VERSION=v0.4.0
+IMAGE_VERSION?=v0.4.0
 IMAGE_TAG=$(REGISTRY_NAME)/$(IMAGE_NAME):$(IMAGE_VERSION)
 IMAGE_TAG_LATEST=$(REGISTRY_NAME)/$(IMAGE_NAME):latest
 REV=$(shell git describe --long --tags --dirty)
@@ -46,6 +46,8 @@ azuredisk-windows:
 	CGO_ENABLED=0 GOOS=windows go build -a -ldflags ${LDFLAGS} -o _output/azurediskplugin.exe ./pkg/azurediskplugin
 azuredisk-container: azuredisk
 	docker build --no-cache -t $(IMAGE_TAG) -f ./pkg/azurediskplugin/Dockerfile .
+azuredisk-container-windows: azuredisk-windows
+	docker build --no-cache --platform windows/amd64 -t $(IMAGE_TAG) -f ./pkg/azurediskplugin/Windows.Dockerfile .
 push: azuredisk-container
 	docker push $(IMAGE_TAG)
 push-latest: azuredisk-container
