@@ -12,8 +12,8 @@ Status: Beta
 ### Container Images & CSI Compatibility:
 |Azure Disk CSI Driver Version  | Image                                              | v0.3.0| v1.0.0 |
 |-------------------------------|----------------------------------------------------|-------|--------|
-|v0.1.0                         |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.1.0-alpha| yes   | no     |
-|v0.2.0                         |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.2.0-alpha| no    | yes    |
+|v0.1.0                         |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.1.0      | yes   | no     |
+|v0.2.0                         |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.2.0      | no    | yes    |
 |v0.3.0                         |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.3.0      | no    | yes    |
 |master branch                  |mcr.microsoft.com/k8s/csi/azuredisk-csi:latest      | no    | yes    |
 
