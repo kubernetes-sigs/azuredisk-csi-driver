@@ -3,9 +3,9 @@
 ## Create a Source PVC
 
 ```console
-kubectl apply -f $GOPATH/src/github.com/kubernetes-sigs/azuredisk-csi-driver/deploy/example/storageclass-azuredisk-csi.yaml
-kubectl apply -f $GOPATH/src/github.com/kubernetes-sigs/azuredisk-csi-driver/deploy/example/pvc-azuredisk-csi.yaml
-kubectl apply -f $GOPATH/src/github.com/kubernetes-sigs/azuredisk-csi-driver/deploy/example/nginx-pod-azuredisk.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/storageclass-azuredisk-csi.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/pvc-azuredisk-csi.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/nginx-pod-azuredisk.yaml
 ```
 
 ### Check the Source PVC
@@ -19,8 +19,8 @@ outfile
 ## Create a Snapshot of the Source PVC
 
 ```console
-kubectl apply -f $GOPATH/src/github.com/kubernetes-sigs/azuredisk-csi-driver/deploy/example/snapshot/storageclass-azuredisk-snapshot.yaml
-kubectl apply -f $GOPATH/src/github.com/kubernetes-sigs/azuredisk-csi-driver/deploy/example/snapshot/azuredisk-volume-snapshot.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/snapshot/storageclass-azuredisk-snapshot.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/snapshot/azuredisk-volume-snapshot.yaml
 ```
 ### Check the Creation Status
 
@@ -58,8 +58,8 @@ Events:           <none>
 ## Restore the Snapshot into a New PVC
 
 ```console
-kubectl apply -f $GOPATH/src/github.com/kubernetes-sigs/azuredisk-csi-driver/deploy/example/snapshot/pvc-azuredisk-snapshot-restored.yaml
-kubectl apply -f $GOPATH/src/github.com/kubernetes-sigs/azuredisk-csi-driver/deploy/example/snapshot/nginx-pod-restored-snapshot.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/snapshot/pvc-azuredisk-snapshot-restored.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/snapshot/nginx-pod-restored-snapshot.yaml
 ```
 
 ### Check Sample Data
