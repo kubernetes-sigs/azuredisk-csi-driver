@@ -10,11 +10,12 @@
   version = "v0.4.12"
 
 [[projects]]
-  digest = "1:42210ac83a055ff855869722cda3628f6a5d5c00c0d35a9318e0dc69daa3396b"
+  digest = "1:dc4e3e2f87859d2a3ef0f111bd1b577164db3d750fa4cc51c64b30ab7b48fef9"
   name = "github.com/Azure/azure-sdk-for-go"
   packages = [
     "services/compute/mgmt/2019-03-01/compute",
     "services/network/mgmt/2018-08-01/network",
+    "services/resources/mgmt/2018-05-01/resources",
     "services/storage/mgmt/2018-07-01/storage",
     "storage",
     "version",
@@ -497,6 +498,14 @@
   pruneopts = "NUT"
   revision = "adf5a7427709b9deb95d29d3fa8a2bf9cfd388f1"
   version = "v1.2"
+
+[[projects]]
+  digest = "1:4e9827f31d4fc1ddd732a0e3af4e863d281dd405adb2bfb96a25cc5346a77caf"
+  name = "github.com/pelletier/go-toml"
+  packages = ["."]
+  pruneopts = "NUT"
+  revision = "728039f679cbcd4f6a54e080d2219a4c4928c546"
+  version = "v1.4.0"
 
 [[projects]]
   branch = "master"
@@ -1487,17 +1496,21 @@
   analyzer-version = 1
   input-imports = [
     "github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-03-01/compute",
+    "github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2018-05-01/resources",
     "github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2018-07-01/storage",
+    "github.com/Azure/go-autorest/autorest",
+    "github.com/Azure/go-autorest/autorest/adal",
+    "github.com/Azure/go-autorest/autorest/azure",
     "github.com/Azure/go-autorest/autorest/to",
     "github.com/container-storage-interface/spec/lib/go/csi",
     "github.com/golang/protobuf/ptypes",
     "github.com/golang/protobuf/ptypes/wrappers",
-    "github.com/kubernetes-csi/csi-test/pkg/sanity",
     "github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1alpha1",
     "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned",
     "github.com/onsi/ginkgo",
     "github.com/onsi/gomega",
     "github.com/pborman/uuid",
+    "github.com/pelletier/go-toml",
     "github.com/prometheus/client_golang/prometheus/promhttp",
     "github.com/stretchr/testify/assert",
     "golang.org/x/net/context",

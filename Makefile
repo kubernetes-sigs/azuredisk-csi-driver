@@ -35,11 +35,11 @@ verify:
 
 .PHONY: unit-test
 unit-test:
-	go test -v github.com/kubernetes-sigs/azuredisk-csi-driver/pkg/... -cover
+	go test -v -cover ./pkg/... ./test/utils/credentials
 
 .PHONY: sanity-test
 sanity-test: azuredisk
-	test/sanity/run-tests-all-clouds.sh
+	go test -v -timeout=10m ./test/sanity
 
 .PHONY: integration-test
 integration-test: azuredisk

@@ -14,40 +14,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+set -euo pipefail
 
- set -euo pipefail
+function cleanup {
+  echo 'pkill -f azurediskplugin'
+  pkill -f azurediskplugin
+  echo 'Deleting CSI sanity test binary'
+  rm -rf csi-test
+}
 
- if [ -v GOPATH ]; then
-		mkdir $GOPATH/src/github.com/kubernetes-csi
-		pushd $GOPATH/src/github.com/kubernetes-csi
-		git clone https://github.com/kubernetes-csi/csi-test.git -b v1.1.0
-        pushd $GOPATH/src/github.com/kubernetes-csi/csi-test/cmd/csi-sanity
-		make && make install 
-		popd
-		popd
+trap cleanup EXIT
+
+readonly endpoint='unix:///tmp/csi.sock'
+nodeid='CSINode'
+if [[ "$#" -gt 0 ]] && [[ -n "$1" ]]; then
+  nodeid="$1"
 fi
 
- endpoint="unix:///tmp/csi.sock"
+_output/azurediskplugin --endpoint "$endpoint" --nodeid "$nodeid" -v=5 &
 
-node="CSINode"
-if [ $# -gt 0 ]; then
-	node=$1
-fi
-
- echo "being to run sanity test ..."
-
- sudo _output/azurediskplugin --endpoint $endpoint --nodeid $node -v=5 &
-
- sudo $GOPATH/src/github.com/kubernetes-csi/csi-test/cmd/csi-sanity/csi-sanity --ginkgo.v --csi.endpoint=$endpoint -ginkgo.skip='should work'
-
- retcode=$?
-
- if [ $retcode -ne 0 ]; then
-	exit $retcode
-fi
-
- # kill azurediskplugin first
-echo "pkill -f azurediskplugin"
-sudo /usr/bin/pkill -f azurediskplugin
-
-echo "sanity test is completed."
+echo 'Begin to run sanity test...'
+readonly CSI_SANITY_BIN='csi-test/cmd/csi-sanity/csi-sanity'
+"$CSI_SANITY_BIN" --ginkgo.v --ginkgo.noColor --csi.endpoint="$endpoint" --ginkgo.skip='should work'
