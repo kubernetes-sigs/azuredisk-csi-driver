@@ -12,25 +12,26 @@ go:
 jobs:
   include:
     - stage: test
-      name: "build test"
+      name: "code verification test"
       install:
-        - GO111MODULE=off go get github.com/mattn/goveralls
+        - go get github.com/mattn/goveralls
         - go get github.com/golang/dep/cmd/dep
       script:
-        - hack/verify-all.sh
-        - make azuredisk-container
-        - make azuredisk-windows
-        - go test -covermode=count -coverprofile=profile.cov ./pkg/...
+        - make verify
+    - stage: test
+      name: "unit test"
+      install:
+        - GO111MODULE=off go get github.com/mattn/goveralls
+      script:
+        - make unit-test
     - stage: test
       name: "sanity test"
-      script: 
-        - make azuredisk
+      script:
         - make sanity-test
     - stage: test
       name: "integration test"
       install:
-        - GO111MODULE=off go get github.com/rexray/gocsi/csc
+        - go get github.com/rexray/gocsi/csc
         - sudo apt update && sudo apt install procps -y  # for installing pkill
       script:
-        - make azuredisk
         - make integration-test
