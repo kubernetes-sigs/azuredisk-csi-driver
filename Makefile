@@ -13,17 +13,20 @@
 # limitations under the License.
 
 PKG = github.com/kubernetes-sigs/azuredisk-csi-driver
-REGISTRY_NAME ?= andyzhangx
+REGISTRY ?= andyzhangx
 DRIVER_NAME = disk.csi.azure.com
 IMAGE_NAME = azuredisk-csi
 IMAGE_VERSION ?= v0.5.0
-IMAGE_TAG = $(REGISTRY_NAME)/$(IMAGE_NAME):$(IMAGE_VERSION)
-IMAGE_TAG_LATEST = $(REGISTRY_NAME)/$(IMAGE_NAME):latest
+IMAGE_TAG = $(REGISTRY)/$(IMAGE_NAME):$(IMAGE_VERSION)
+IMAGE_TAG_LATEST = $(REGISTRY)/$(IMAGE_NAME):latest
 REV = $(shell git describe --long --tags --dirty)
 GIT_COMMIT ?= $(shell git rev-parse HEAD)
 BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 TOPOLOGY_KEY = topology.$(DRIVER_NAME)/zone
 LDFLAGS ?= "-X ${PKG}/pkg/azuredisk.driverVersion=${IMAGE_VERSION} -X ${PKG}/pkg/azuredisk.gitCommit=${GIT_COMMIT} -X ${PKG}/pkg/azuredisk.buildDate=${BUILD_DATE} -X ${PKG}/pkg/azuredisk.DriverName=${DRIVER_NAME} -X ${PKG}/pkg/azuredisk.topologyKey=${TOPOLOGY_KEY} -extldflags "-static""
+GOPATH ?= $(shell go env GOPATH)
+GOBIN ?= $(GOPATH)/bin
+export GOPATH GOBIN
 
 .PHONY: all
 all: azuredisk
@@ -39,11 +42,11 @@ unit-test:
 
 .PHONY: sanity-test
 sanity-test: azuredisk
-	go test -v -timeout=10m ./test/sanity
+	go test -v -timeout=20m ./test/sanity
 
 .PHONY: integration-test
 integration-test: azuredisk
-	test/integration/run-tests-all-clouds.sh
+	go test -v -timeout=20m ./test/integration
 
 .PHONY: e2e-test
 e2e-test: azuredisk

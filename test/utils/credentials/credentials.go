@@ -15,7 +15,7 @@ import (
 const (
 	AzurePublicCloud            = "AzurePublicCloud"
 	AzureChinaCloud             = "AzureChinaCloud"
-	ResourceGroupPrefix         = "azurefile-csi-driver-test-"
+	ResourceGroupPrefix         = "azuredisk-csi-driver-test-"
 	TempAzureCredentialFilePath = "/tmp/azure.json"
 
 	azureCredentialFileTemplate = `{

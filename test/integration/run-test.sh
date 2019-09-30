@@ -16,118 +16,77 @@
 
 set -euo pipefail
 
-csc=$GOPATH/bin/csc
+function cleanup {
+  echo 'pkill -f azurediskplugin'
+  pkill -f azurediskplugin
+}
 
-endpoint="tcp://127.0.0.1:10000"
-if [ $# -gt 0 ]; then
-	endpoint=$1
+readonly CSC_BIN="$GOBIN/csc"
+readonly volname="citest-$(date +%s)"
+
+endpoint='tcp://127.0.0.1:10000'
+if [[ "$#" -gt 0 ]]; then
+  endpoint="$1"
 fi
 
-volname=`date +%s`
-volname="citest-$volname"
-
-node="CSINode"
+node='CSINode'
 if [ $# -gt 1 ]; then
-	node=$2
+  node="$2"
 fi
 
-cloud="AzurePublicCloud"
-if [ $# -gt 2 ]; then
-        cloud=$3
+cloud='AzurePublicCloud'
+if [[ "$#" -gt 2 ]]; then
+  cloud="$3"
 fi
 
-echo "being to run integration test on $cloud ..."
+echo "Begin to run integration test on $cloud..."
 
-# run CSI driver as a background service
-_output/azurediskplugin --endpoint $endpoint --nodeid $node -v=5 &
-if [ $cloud = "AzureChinaCloud" ]; then
-	sleep 20
+# Run CSI driver as a background service
+_output/azurediskplugin --endpoint "$endpoint" --nodeid "$node" -v=5 &
+trap cleanup EXIT
+
+if [[ "$cloud" == 'AzureChinaCloud' ]]; then
+  sleep 25
 else
-	sleep 5
+  sleep 5
 fi
 
 # begin to run CSI functions one by one
-if [ -v aadClientSecret ]; then
-	$csc node get-info --endpoint $endpoint
-	retcode=$?
-	if [ $retcode -gt 0 ]; then
-		exit $retcode
-	fi
+"$CSC_BIN" node get-info --endpoint "$endpoint"
 
-	echo "create volume test:"
-	value=`$csc controller new --endpoint $endpoint --cap 1,block $volname --req-bytes 2147483648 --params skuname=Standard_LRS,kind=managed`
-	retcode=$?
-	if [ $retcode -gt 0 ]; then
-		exit $retcode
-	fi
-	sleep 15
+echo 'Create volume test:'
+readonly value=$("$CSC_BIN" controller new --endpoint "$endpoint" --cap 1,block "$volname" --req-bytes 2147483648 --params skuname=Standard_LRS,kind=managed)
+sleep 15
 
-	volumeid=`echo $value | awk '{print $1}' | sed 's/"//g'`
-	echo "got volume id: $volumeid"
+readonly volumeid=$(echo "$value" | awk '{print $1}' | sed 's/"//g')
+echo "Got volume id: $volumeid"
 
-	$csc controller validate-volume-capabilities --endpoint $endpoint --cap 1,block $volumeid
-	retcode=$?
-	if [ $retcode -gt 0 ]; then
-		exit $retcode
-	fi
+"$CSC_BIN" controller validate-volume-capabilities --endpoint "$endpoint" --cap 1,block "$volumeid"
 
-	echo "attach volume test:"
-	$csc controller publish --endpoint $endpoint --node-id $node --cap 1,block $volumeid
-	retcode=$?
-	if [ $retcode -gt 0 ]; then
-		exit $retcode
-	fi
-	sleep 20
+echo 'Attach volume test:'
+"$CSC_BIN" controller publish --endpoint "$endpoint" --node-id "$node" --cap 1,block "$volumeid"
+sleep 20
 
-	echo "detach volume test:"
-	$csc controller unpublish --endpoint $endpoint --node-id $node $volumeid
-	retcode=$?
-	if [ $retcode -gt 0 ]; then
-		exit $retcode
-	fi
-	sleep 30
+echo 'Detach volume test:'
+"$CSC_BIN" controller unpublish --endpoint "$endpoint" --node-id "$node" "$volumeid"
+sleep 30
 
-	echo "create snapshot test:"
-	$csc controller create-snapshot snapshot-test-name --endpoint $endpoint --source-volume $volumeid
-	retcode=$?
-	if [ $retcode -gt 0 ]; then
-		exit $retcode
-	fi
-	sleep 5
+echo 'Create snapshot test:'
+"$CSC_BIN" controller create-snapshot snapshot-test-name --endpoint "$endpoint" --source-volume "$volumeid"
+sleep 5
 
-	echo "list snapshots test:"
-	$csc controller list-snapshots --endpoint $endpoint
-	retcode=$?
-	if [ $retcode -gt 0 ]; then
-		exit $retcode
-	fi
-	sleep 5
+echo 'List snapshots test:'
+"$CSC_BIN" controller list-snapshots --endpoint "$endpoint"
+sleep 5
 
-	echo "delete snapshot test:"
-	$csc controller delete-snapshot snapshot-test-name --endpoint $endpoint
-	retcode=$?
-	if [ $retcode -gt 0 ]; then
-		exit $retcode
-	fi
-	sleep 5
+echo 'Delete snapshot test:'
+"$CSC_BIN" controller delete-snapshot snapshot-test-name --endpoint "$endpoint"
+sleep 5
 
-	echo "delete volume test:"
-	$csc controller del --endpoint $endpoint $volumeid
-	retcode=$?
-	if [ $retcode -gt 0 ]; then
-		exit $retcode
-	fi
-	sleep 15
-fi
+echo 'Delete volume test:'
+"$CSC_BIN" controller del --endpoint "$endpoint" "$volumeid"
+sleep 15
 
-$csc identity plugin-info --endpoint $endpoint
-retcode=$?
-if [ $retcode -gt 0 ]; then
-	exit $retcode
-fi
+"$CSC_BIN" identity plugin-info --endpoint "$endpoint"
 
-# kill azurediskplugin first
-echo "pkill -f azurediskplugin"
-/usr/bin/pkill -f azurediskplugin
-
-echo "integration test on $cloud is completed."
+echo "Integration test on $cloud is completed."
