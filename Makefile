@@ -17,6 +17,10 @@ REGISTRY ?= andyzhangx
 DRIVER_NAME = disk.csi.azure.com
 IMAGE_NAME = azuredisk-csi
 IMAGE_VERSION ?= v0.5.0
+# Use a custom version for E2E tests if we are in Prow
+ifdef AZURE_CREDENTIALS
+override IMAGE_VERSION := e2e-$(GIT_COMMIT)
+endif
 IMAGE_TAG = $(REGISTRY)/$(IMAGE_NAME):$(IMAGE_VERSION)
 IMAGE_TAG_LATEST = $(REGISTRY)/$(IMAGE_NAME):latest
 REV = $(shell git describe --long --tags --dirty)
@@ -24,6 +28,7 @@ GIT_COMMIT ?= $(shell git rev-parse HEAD)
 BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 TOPOLOGY_KEY = topology.$(DRIVER_NAME)/zone
 LDFLAGS ?= "-X ${PKG}/pkg/azuredisk.driverVersion=${IMAGE_VERSION} -X ${PKG}/pkg/azuredisk.gitCommit=${GIT_COMMIT} -X ${PKG}/pkg/azuredisk.buildDate=${BUILD_DATE} -X ${PKG}/pkg/azuredisk.DriverName=${DRIVER_NAME} -X ${PKG}/pkg/azuredisk.topologyKey=${TOPOLOGY_KEY} -extldflags "-static""
+GINKGO_FLAGS = "-ginkgo.noColor"
 GOPATH ?= $(shell go env GOPATH)
 GOBIN ?= $(GOPATH)/bin
 export GOPATH GOBIN
@@ -34,7 +39,7 @@ all: azuredisk
 .PHONY: verify
 verify:
 	hack/verify-all.sh
-	go vet github.com/kubernetes-sigs/azuredisk-csi-driver/pkg/...
+	go vet ./pkg/...
 
 .PHONY: unit-test
 unit-test:
@@ -49,8 +54,29 @@ integration-test: azuredisk
 	go test -v -timeout=20m ./test/integration
 
 .PHONY: e2e-test
-e2e-test: azuredisk
-	test/e2e/run-test.sh
+e2e-test:
+	go test -v -timeout=30m ./test/e2e ${GINKGO_FLAGS}
+
+.PHONY: e2e-bootstrap
+e2e-bootstrap: install-helm
+	# Only build and push the image if it does not exist in the registry
+	docker pull $(IMAGE_TAG) || make azuredisk-container push
+	helm install charts/latest/azuredisk-csi-driver -n azuredisk-csi-driver --namespace kube-system --wait \
+		--set image.pullPolicy=IfNotPresent \
+		--set image.repository=$(REGISTRY)/$(IMAGE_NAME) \
+		--set image.tag=$(IMAGE_VERSION)
+
+.PHONY: install-helm
+install-helm:
+	# Use v2.11.0 helm to match tiller's version in clusters made by aks-engine
+	curl https://raw.githubusercontent.com/helm/helm/master/scripts/get | DESIRED_VERSION=v2.11.0 bash
+	# Make sure tiller is ready
+	kubectl wait pod -l name=tiller --namespace kube-system --for condition=ready
+	helm version
+
+.PHONY: e2e-teardown
+e2e-teardown:
+	helm delete --purge azuredisk-csi-driver
 
 .PHONY: azuredisk
 azuredisk:

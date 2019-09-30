@@ -17,16 +17,28 @@ limitations under the License.
 package e2e
 
 import (
+	"context"
+	"fmt"
+	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/kubernetes-sigs/azuredisk-csi-driver/pkg/azuredisk"
+	"github.com/kubernetes-sigs/azuredisk-csi-driver/test/utils/azure"
+	"github.com/kubernetes-sigs/azuredisk-csi-driver/test/utils/credentials"
+	"github.com/kubernetes-sigs/azuredisk-csi-driver/test/utils/testutil"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"github.com/pborman/uuid"
 	"k8s.io/kubernetes/test/e2e/framework"
 )
 
 const kubeconfigEnvVar = "KUBECONFIG"
+
+var azurediskDriver *azuredisk.Driver
 
 func init() {
 	// k8s.io/kubernetes/test/e2e/framework requires env KUBECONFIG to be set
@@ -38,6 +50,81 @@ func init() {
 	framework.HandleFlags()
 	framework.AfterReadingAllFlags(&framework.TestContext)
 }
+
+var _ = BeforeSuite(func() {
+	creds, err := credentials.CreateAzureCredentialFile(false)
+	Expect(err).NotTo(HaveOccurred())
+	azureClient, err := azure.GetAzureClient(creds.Cloud, creds.SubscriptionID, creds.AADClientID, creds.TenantID, creds.AADClientSecret)
+	Expect(err).NotTo(HaveOccurred())
+	_, err = azureClient.EnsureResourceGroup(context.Background(), creds.ResourceGroup, creds.Location, nil)
+	Expect(err).NotTo(HaveOccurred())
+
+	// Need to login to ACR using SP credential if we are running in Prow so we can push test images.
+	// If running locally, user should run 'docker login' before running E2E tests
+	if testutil.IsRunningInProw() {
+		registry := os.Getenv("REGISTRY")
+		Expect(registry).NotTo(Equal(""))
+
+		log.Println("Attempting docker login with Azure service principal")
+		cmd := exec.Command("docker", "login", fmt.Sprintf("--username=%s", creds.AADClientID), fmt.Sprintf("--password=%s", creds.AADClientSecret), registry)
+		err := cmd.Run()
+		Expect(err).NotTo(HaveOccurred())
+		log.Println("docker login is successful")
+	}
+
+	// Install Azure Disk CSI Driver on cluster from project root
+	err = os.Chdir("../..")
+	Expect(err).NotTo(HaveOccurred())
+	defer func() {
+		err := os.Chdir("test/e2e")
+		Expect(err).NotTo(HaveOccurred())
+	}()
+
+	projectRoot, err := os.Getwd()
+	Expect(err).NotTo(HaveOccurred())
+	Expect(strings.HasSuffix(projectRoot, "azuredisk-csi-driver")).To(Equal(true))
+
+	log.Println("Installing Azure Disk CSI Driver...")
+	cmd := exec.Command("make", "e2e-bootstrap")
+	cmd.Dir = projectRoot
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	err = cmd.Run()
+	Expect(err).NotTo(HaveOccurred())
+	log.Println("Azure Disk CSI Driver installed")
+
+	nodeid := os.Getenv("nodeid")
+	azurediskDriver = azuredisk.NewDriver(nodeid)
+	go func() {
+		os.Setenv("AZURE_CREDENTIAL_FILE", credentials.TempAzureCredentialFilePath)
+		azurediskDriver.Run(fmt.Sprintf("unix:///tmp/csi-%s.sock", uuid.NewUUID().String()))
+	}()
+})
+
+var _ = AfterSuite(func() {
+	err := os.Chdir("../..")
+	Expect(err).NotTo(HaveOccurred())
+	defer func() {
+		err := os.Chdir("test/e2e")
+		Expect(err).NotTo(HaveOccurred())
+	}()
+
+	projectRoot, err := os.Getwd()
+	Expect(err).NotTo(HaveOccurred())
+	Expect(strings.HasSuffix(projectRoot, "azuredisk-csi-driver")).To(Equal(true))
+
+	log.Println("Uninstalling Azure Disk CSI Driver...")
+	cmd := exec.Command("make", "e2e-teardown")
+	cmd.Dir = projectRoot
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	err = cmd.Run()
+	Expect(err).NotTo(HaveOccurred())
+	log.Println("Azure Disk CSI Driver uninstalled")
+
+	err = credentials.DeleteAzureCredentialFile()
+	Expect(err).NotTo(HaveOccurred())
+})
 
 func TestE2E(t *testing.T) {
 	RegisterFailHandler(Fail)

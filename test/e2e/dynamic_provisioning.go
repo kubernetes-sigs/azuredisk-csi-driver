@@ -18,9 +18,7 @@ package e2e
 
 import (
 	"fmt"
-	"os"
 
-	"github.com/kubernetes-sigs/azuredisk-csi-driver/pkg/azuredisk"
 	"github.com/kubernetes-sigs/azuredisk-csi-driver/test/e2e/driver"
 	"github.com/kubernetes-sigs/azuredisk-csi-driver/test/e2e/testsuites"
 	. "github.com/onsi/ginkgo"
@@ -37,14 +35,6 @@ var _ = Describe("Dynamic Provisioning", func() {
 		ns         *v1.Namespace
 		testDriver driver.PVTestDriver
 	)
-
-	nodeid := os.Getenv("nodeid")
-	azurediskDriver := azuredisk.NewDriver(nodeid)
-	endpoint := "unix:///tmp/csi.sock"
-
-	go func() {
-		azurediskDriver.Run(endpoint)
-	}()
 
 	BeforeEach(func() {
 		cs = f.ClientSet
