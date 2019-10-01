@@ -318,11 +318,6 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 	}
 
 	nodeName := types.NodeName(nodeID)
-	instanceid, err := d.cloud.InstanceID(context.TODO(), nodeName)
-	if err != nil {
-		return nil, status.Error(codes.NotFound, fmt.Sprintf("failed to get azure instance id for node %q (%v)", nodeID, err))
-	}
-
 	diskName, err := getDiskName(diskURI)
 	if err != nil {
 		return nil, err
@@ -332,15 +327,12 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 
 	lun, err := d.cloud.GetDiskLun(diskName, diskURI, nodeName)
 	if err == cloudprovider.InstanceNotFound {
-		// Log error and continue with attach
-		klog.Warningf(
-			"Error checking if volume is already attached to current node (%q). Will continue and try attach anyway. err=%v",
-			instanceid, err)
+		return nil, status.Error(codes.NotFound, fmt.Sprintf("failed to get azure instance id for node %q (%v)", nodeName, err))
 	}
 
 	if err == nil {
 		// Volume is already attached to node.
-		klog.V(2).Infof("Attach operation is successful. volume %q is already attached to node %q at lun %d.", diskURI, instanceid, lun)
+		klog.V(2).Infof("Attach operation is successful. volume %q is already attached to node %q at lun %d.", diskURI, nodeName, lun)
 	} else {
 		isManagedDisk := isManagedDisk(diskURI)
 
@@ -353,8 +345,8 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		if err == nil {
 			klog.V(2).Infof("Attach operation successful: volume %q attached to node %q.", diskURI, nodeName)
 		} else {
-			klog.Errorf("Attach volume %q to instance %q failed with %v", diskURI, instanceid, err)
-			return nil, fmt.Errorf("Attach volume %q to instance %q failed with %v", diskURI, instanceid, err)
+			klog.Errorf("Attach volume %q to instance %q failed with %v", diskURI, nodeName, err)
+			return nil, fmt.Errorf("Attach volume %q to instance %q failed with %v", diskURI, nodeName, err)
 		}
 		klog.V(2).Infof("attach volume %q to node %q successfully", diskURI, nodeName)
 	}
