@@ -17,7 +17,6 @@ limitations under the License.
 package azure
 
 import (
-	"context"
 	"fmt"
 	"path"
 	"time"
@@ -126,19 +125,14 @@ func (c *controllerCommon) AttachDisk(isManagedDisk bool, diskName, diskURI stri
 		return -1, err
 	}
 
-	instanceid, err := c.cloud.InstanceID(context.TODO(), nodeName)
-	if err != nil {
-		klog.Warningf("failed to get azure instance id (%v)", err)
-		return -1, fmt.Errorf("failed to get azure instance id for node %q (%v)", nodeName, err)
-	}
-
-	diskOpMutex.LockKey(instanceid)
-	defer diskOpMutex.UnlockKey(instanceid)
+	nodeNameKey := string(nodeName)
+	diskOpMutex.LockKey(nodeNameKey)
+	defer diskOpMutex.UnlockKey(nodeNameKey)
 
 	lun, err := c.GetNextDiskLun(nodeName)
 	if err != nil {
 		klog.Warningf("no LUN available for instance %q (%v)", nodeName, err)
-		return -1, fmt.Errorf("all LUNs are used, cannot attach volume (%s, %s) to instance %q (%v)", diskName, diskURI, instanceid, err)
+		return -1, fmt.Errorf("all LUNs are used, cannot attach volume (%s, %s) to instance %q (%v)", diskName, diskURI, nodeName, err)
 	}
 
 	klog.V(2).Infof("Trying to attach volume %q lun %d to node %q.", diskURI, lun, nodeName)
@@ -152,25 +146,20 @@ func (c *controllerCommon) DetachDisk(diskName, diskURI string, nodeName types.N
 		return err
 	}
 
-	instanceid, err := c.cloud.InstanceID(context.TODO(), nodeName)
-	if err != nil {
-		klog.Warningf("failed to get azure instance id (%v)", err)
-		return fmt.Errorf("failed to get azure instance id for node %q (%v)", nodeName, err)
-	}
-
 	klog.V(2).Infof("detach %v from node %q", diskURI, nodeName)
 
 	// make the lock here as small as possible
-	diskOpMutex.LockKey(instanceid)
+	nodeNameKey := string(nodeName)
+	diskOpMutex.LockKey(nodeNameKey)
 	resp, err := vmset.DetachDisk(diskName, diskURI, nodeName)
-	diskOpMutex.UnlockKey(instanceid)
+	diskOpMutex.UnlockKey(nodeNameKey)
 
 	if c.cloud.CloudProviderBackoff && shouldRetryHTTPRequest(resp, err) {
 		klog.V(2).Infof("azureDisk - update backing off: detach disk(%s, %s), err: %v", diskName, diskURI, err)
 		retryErr := kwait.ExponentialBackoff(c.cloud.RequestBackoff(), func() (bool, error) {
-			diskOpMutex.LockKey(instanceid)
+			diskOpMutex.LockKey(nodeNameKey)
 			resp, err := vmset.DetachDisk(diskName, diskURI, nodeName)
-			diskOpMutex.UnlockKey(instanceid)
+			diskOpMutex.UnlockKey(nodeNameKey)
 			return c.cloud.processHTTPRetryResponse(nil, "", resp, err)
 		})
 		if retryErr != nil {

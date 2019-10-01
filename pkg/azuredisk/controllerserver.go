@@ -284,7 +284,7 @@ func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest)
 			return &csi.DeleteVolumeResponse{}, err
 		}
 	}
-	klog.V(2).Infof("delete azure disk(%s) successfullly", diskURI)
+	klog.V(2).Infof("delete azure disk(%s) successfully", diskURI)
 
 	return &csi.DeleteVolumeResponse{}, nil
 }
