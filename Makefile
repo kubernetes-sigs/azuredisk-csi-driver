@@ -13,6 +13,7 @@
 # limitations under the License.
 
 PKG = github.com/kubernetes-sigs/azuredisk-csi-driver
+GIT_COMMIT ?= $(shell git rev-parse HEAD)
 REGISTRY ?= andyzhangx
 DRIVER_NAME = disk.csi.azure.com
 IMAGE_NAME = azuredisk-csi
@@ -24,14 +25,14 @@ endif
 IMAGE_TAG = $(REGISTRY)/$(IMAGE_NAME):$(IMAGE_VERSION)
 IMAGE_TAG_LATEST = $(REGISTRY)/$(IMAGE_NAME):latest
 REV = $(shell git describe --long --tags --dirty)
-GIT_COMMIT ?= $(shell git rev-parse HEAD)
 BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 TOPOLOGY_KEY = topology.$(DRIVER_NAME)/zone
 LDFLAGS ?= "-X ${PKG}/pkg/azuredisk.driverVersion=${IMAGE_VERSION} -X ${PKG}/pkg/azuredisk.gitCommit=${GIT_COMMIT} -X ${PKG}/pkg/azuredisk.buildDate=${BUILD_DATE} -X ${PKG}/pkg/azuredisk.DriverName=${DRIVER_NAME} -X ${PKG}/pkg/azuredisk.topologyKey=${TOPOLOGY_KEY} -extldflags "-static""
 GINKGO_FLAGS = "-ginkgo.noColor"
 GOPATH ?= $(shell go env GOPATH)
 GOBIN ?= $(GOPATH)/bin
-export GOPATH GOBIN
+GO111MODULE = off
+export GOPATH GOBIN GO111MODULE
 
 .PHONY: all
 all: azuredisk
@@ -71,7 +72,7 @@ install-helm:
 	# Use v2.11.0 helm to match tiller's version in clusters made by aks-engine
 	curl https://raw.githubusercontent.com/helm/helm/master/scripts/get | DESIRED_VERSION=v2.11.0 bash
 	# Make sure tiller is ready
-	kubectl wait pod -l name=tiller --namespace kube-system --for condition=ready
+	kubectl wait pod -l name=tiller --namespace kube-system --for condition=ready --timeout 5m
 	helm version
 
 .PHONY: e2e-teardown

@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-set -eo pipefail
+set -euo pipefail
 
 function install_csi_sanity_bin {
   echo 'Installing CSI sanity test binary...'
@@ -24,6 +24,6 @@ function install_csi_sanity_bin {
   popd
 }
 
-sudo apt update && sudo apt install cifs-utils procps -y
+apt update && apt install cifs-utils procps -y
 install_csi_sanity_bin
-sudo test/sanity/run-test.sh "$nodeid"
+test/sanity/run-test.sh "$nodeid"

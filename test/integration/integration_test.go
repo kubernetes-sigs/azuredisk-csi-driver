@@ -14,6 +14,10 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+const (
+	nodeid = "integration-test-node"
+)
+
 func TestIntegrationOnAzurePublicCloud(t *testing.T) {
 	// Test on AzurePublicCloud
 	creds, err := credentials.CreateAzureCredentialFile(false)
@@ -48,7 +52,9 @@ func TestIntegrationOnAzureChinaCloud(t *testing.T) {
 }
 
 func testIntegration(t *testing.T, creds *credentials.Credentials) {
+	// Set necessary env vars for sanity test
 	os.Setenv("AZURE_CREDENTIAL_FILE", credentials.TempAzureCredentialFilePath)
+	os.Setenv("nodeid", nodeid)
 
 	azureClient, err := azure.GetAzureClient(creds.Cloud, creds.SubscriptionID, creds.AADClientID, creds.TenantID, creds.AADClientSecret)
 	assert.NoError(t, err)
@@ -66,6 +72,10 @@ func testIntegration(t *testing.T, creds *credentials.Credentials) {
 			assert.NoError(t, err)
 		}
 	}()
+
+	log.Printf("Creating a VM in %s", creds.ResourceGroup)
+	_, err = azureClient.EnsureVirtualMachine(ctx, creds.ResourceGroup, creds.Location, nodeid)
+	assert.NoError(t, err)
 
 	// Execute the script from project root
 	err = os.Chdir("../..")

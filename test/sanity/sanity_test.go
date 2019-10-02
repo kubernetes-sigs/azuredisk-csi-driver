@@ -29,6 +29,10 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+const (
+	nodeid = "sanity-test-node"
+)
+
 func TestSanity(t *testing.T) {
 	creds, err := credentials.CreateAzureCredentialFile(false)
 	defer func() {
@@ -38,13 +42,15 @@ func TestSanity(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, creds)
 
+	// Set necessary env vars for sanity test
 	os.Setenv("AZURE_CREDENTIAL_FILE", credentials.TempAzureCredentialFilePath)
+	os.Setenv("nodeid", nodeid)
 
 	azureClient, err := azure.GetAzureClient(creds.Cloud, creds.SubscriptionID, creds.AADClientID, creds.TenantID, creds.AADClientSecret)
 	assert.NoError(t, err)
 
 	ctx := context.Background()
-	// Create an empty resource group for sanity test
+	// Create a resource group with a VM for sanity test
 	log.Printf("Creating resource group %s in %s", creds.ResourceGroup, creds.Cloud)
 	_, err = azureClient.EnsureResourceGroup(ctx, creds.ResourceGroup, creds.Location, nil)
 	assert.NoError(t, err)
@@ -56,6 +62,10 @@ func TestSanity(t *testing.T) {
 			assert.NoError(t, err)
 		}
 	}()
+
+	log.Printf("Creating a VM in %s", creds.ResourceGroup)
+	_, err = azureClient.EnsureVirtualMachine(ctx, creds.ResourceGroup, creds.Location, nodeid)
+	assert.NoError(t, err)
 
 	// Execute the script from project root
 	err = os.Chdir("../..")
