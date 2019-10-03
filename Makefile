@@ -48,15 +48,15 @@ unit-test:
 
 .PHONY: sanity-test
 sanity-test: azuredisk
-	go test -v -timeout=20m ./test/sanity
+	go test -v -timeout=30m ./test/sanity
 
 .PHONY: integration-test
 integration-test: azuredisk
-	go test -v -timeout=20m ./test/integration
+	go test -v -timeout=30m ./test/integration
 
 .PHONY: e2e-test
 e2e-test:
-	go test -v -timeout=30m ./test/e2e ${GINKGO_FLAGS}
+	go test -v -timeout=0 ./test/e2e ${GINKGO_FLAGS}
 
 .PHONY: e2e-bootstrap
 e2e-bootstrap: install-helm
