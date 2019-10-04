@@ -280,10 +280,12 @@ func (d *Driver) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapabi
 func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
 	klog.V(5).Infof("Using default NodeGetInfo")
 
-	// Disable UseInstanceMetadata to mitigate a timeout issue from IMDS
-	// https://github.com/kubernetes-sigs/azuredisk-csi-driver/issues/168
-	d.cloud.UseInstanceMetadata = false
-	instanceType, err := d.cloud.InstanceType(context.TODO(), types.NodeName(d.NodeID))
+	instances, ok := d.cloud.Instances()
+	if !ok {
+		return nil, status.Error(codes.Internal, "Failed to get instances from cloud provider")
+	}
+
+	instanceType, err := instances.InstanceType(context.TODO(), types.NodeName(d.NodeID))
 	if err != nil {
 		klog.Warningf("Failed to get instance type from Azure cloud provider, nodeName: %v, error: %v", d.NodeID, err)
 		instanceType = ""

@@ -12,6 +12,7 @@ spec:
       labels:
         app: csi-azuredisk-node
     spec:
+      hostNetwork: true
       nodeSelector:
         beta.kubernetes.io/os: linux
       priorityClassName: system-node-critical

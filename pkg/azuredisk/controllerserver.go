@@ -341,6 +341,9 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 			return nil, err
 		}
 		klog.V(2).Infof("Trying to attach volume %q to node %q", diskURI, nodeName)
+		// Disable UseInstanceMetadata to mitigate a timeout issue from IMDS
+		// https://github.com/kubernetes-sigs/azuredisk-csi-driver/issues/168
+		d.cloud.Config.UseInstanceMetadata = false
 		lun, err = d.cloud.AttachDisk(isManagedDisk, diskName, diskURI, nodeName, cachingMode)
 		if err == nil {
 			klog.V(2).Infof("Attach operation successful: volume %q attached to node %q.", diskURI, nodeName)
@@ -375,6 +378,9 @@ func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.Control
 	}
 
 	klog.V(2).Infof("Trying to detach volume %s from node %s", diskURI, nodeID)
+	// Disable UseInstanceMetadata to mitigate a timeout issue from IMDS
+	// https://github.com/kubernetes-sigs/azuredisk-csi-driver/issues/168
+	d.cloud.Config.UseInstanceMetadata = false
 	if err := d.cloud.DetachDisk(diskName, diskURI, nodeName); err != nil {
 		if strings.Contains(err.Error(), errDiskNotFound) {
 			klog.Warningf("volume %s already detached from node %s", diskURI, nodeID)
