@@ -15,10 +15,10 @@ limitations under the License.
 package testsuites
 
 import (
-	"github.com/kubernetes-sigs/azuredisk-csi-driver/pkg/azuredisk"
-	"github.com/kubernetes-sigs/azuredisk-csi-driver/test/e2e/driver"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
+	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 )
 

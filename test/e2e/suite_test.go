@@ -26,10 +26,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kubernetes-sigs/azuredisk-csi-driver/pkg/azuredisk"
-	"github.com/kubernetes-sigs/azuredisk-csi-driver/test/utils/azure"
-	"github.com/kubernetes-sigs/azuredisk-csi-driver/test/utils/credentials"
-	"github.com/kubernetes-sigs/azuredisk-csi-driver/test/utils/testutil"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
+	"sigs.k8s.io/azuredisk-csi-driver/test/utils/azure"
+	"sigs.k8s.io/azuredisk-csi-driver/test/utils/credentials"
+	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
+
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/pborman/uuid"
