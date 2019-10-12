@@ -15,6 +15,7 @@ Status: Beta
 |v0.1.0                         |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.1.0      | yes   | no     |
 |v0.2.0                         |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.2.0      | no    | yes    |
 |v0.3.0                         |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.3.0      | no    | yes    |
+|v0.4.0                         |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.4.0      | no    | yes    |
 |master branch                  |mcr.microsoft.com/k8s/csi/azuredisk-csi:latest      | no    | yes    |
 
 ### Kubernetes Compatibility
@@ -23,6 +24,7 @@ Status: Beta
 | v0.1.0                                   | yes  | yes   |
 | v0.2.0                                   | no   | yes   |
 | v0.3.0                                   | no   | yes   |
+| v0.4.0                                   | no   | yes   |
 | master branch                            | no   | yes   |
 
 ### Driver parameters
