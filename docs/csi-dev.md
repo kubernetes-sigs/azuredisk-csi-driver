@@ -1,5 +1,10 @@
 # Azure disk CSI driver development guide
 
+ - Clone the repo
+```
+$ git clone https://github.com/kubernetes-sigs/azuredisk-csi-driver $GOPATH/src/sigs.k8s.io/azuredisk-csi-driver
+```
+
  - Build azure disk plugin
 ```
 $ make azuredisk

@@ -17,25 +17,20 @@ package e2e
 import (
 	"context"
 	"fmt"
-	"os"
+
+	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
+	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/testsuites"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/kubernetes-sigs/azuredisk-csi-driver/pkg/azuredisk"
-	"github.com/kubernetes-sigs/azuredisk-csi-driver/test/e2e/driver"
-	"github.com/kubernetes-sigs/azuredisk-csi-driver/test/e2e/testsuites"
 	. "github.com/onsi/ginkgo"
-
 	v1 "k8s.io/api/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
 )
 
 const (
-	defaultDiskSize = 10
-)
-
-var (
-	defaultDiskSizeBytes int64 = defaultDiskSize * 1024 * 1024 * 1024
+	defaultDiskSize      = 10
+	defaultDiskSizeBytes = defaultDiskSize * 1024 * 1024 * 1024
 )
 
 var _ = Describe("[azuredisk-csi-e2e] [single-az] Pre-Provisioned", func() {
@@ -49,13 +44,6 @@ var _ = Describe("[azuredisk-csi-e2e] [single-az] Pre-Provisioned", func() {
 		// Set to true if the volume should be deleted automatically after test
 		skipManuallyDeletingVolume bool
 	)
-	nodeid := os.Getenv("nodeid")
-	azurediskDriver := azuredisk.NewDriver(nodeid)
-	endpoint := "unix:///tmp/csi.sock"
-
-	go func() {
-		azurediskDriver.Run(endpoint)
-	}()
 
 	BeforeEach(func() {
 		cs = f.ClientSet
