@@ -18,9 +18,12 @@ set -euo pipefail
 
 function install_csi_sanity_bin {
   echo 'Installing CSI sanity test binary...'
-  git clone https://github.com/kubernetes-csi/csi-test.git -b v1.1.0
+  mkdir -p $GOPATH/src/github.com/kubernetes-csi
+  pushd $GOPATH/src/github.com/kubernetes-csi
+  git clone https://github.com/kubernetes-csi/csi-test.git -b v2.2.0
   pushd csi-test/cmd/csi-sanity
-  make
+  make && make install
+  popd
   popd
 }
 

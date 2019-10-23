@@ -376,17 +376,6 @@
   version = "v1.1.7"
 
 [[projects]]
-  digest = "1:5b7d11a9941a975a126f7d79e3871f9201ed715c62af86e9dca1e231cc184192"
-  name = "github.com/kubernetes-csi/csi-test"
-  packages = [
-    "pkg/sanity",
-    "utils",
-  ]
-  pruneopts = "NUT"
-  revision = "5b1e3786b7c8f7ca514b40e882a0b5dc36e4c842"
-  version = "v1.1.0"
-
-[[projects]]
   digest = "1:aa5b698b0274a8b8ea3ede91f4f0284ba1b3b2ff9c8525651b9b6857aafdfac1"
   name = "github.com/kubernetes-csi/external-snapshotter"
   packages = [
