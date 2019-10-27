@@ -106,6 +106,11 @@ push-latest:
 	docker tag $(IMAGE_TAG) $(IMAGE_TAG_LATEST)
 	docker push $(IMAGE_TAG_LATEST)
 
+.PHONY: build-push
+build-push: azuredisk-container
+	docker tag $(IMAGE_TAG) $(IMAGE_TAG_LATEST)
+	docker push $(IMAGE_TAG_LATEST)
+
 .PHONY: clean
 clean:
 	go clean -r -x
