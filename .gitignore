@@ -69,3 +69,5 @@ cscope.*
 /bazel-*
 *.pyc
 
+# golangci-lint
+/bin/*

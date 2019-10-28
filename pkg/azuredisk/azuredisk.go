@@ -62,6 +62,9 @@ const (
 
 	// VolumeAttributes for Partition
 	volumeAttributePartition = "partition"
+
+	// see https://docs.microsoft.com/en-us/rest/api/compute/disks/createorupdate#create-a-managed-disk-by-copying-a-snapshot.
+	diskSnapshotPath = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/snapshots/%s"
 )
 
 var (
@@ -263,12 +266,9 @@ func (d *Driver) CreateManagedDisk(ctx context.Context, options *ManagedDiskOpti
 
 	diskSizeGB := int32(options.SizeGB)
 	diskSku := compute.DiskStorageAccountTypes(options.StorageAccountType)
-	creationData := compute.CreationData{CreateOption: compute.Empty}
-	if options.SourceResourceID != "" {
-		creationData = compute.CreationData{
-			CreateOption:     compute.Copy,
-			SourceResourceID: &options.SourceResourceID,
-		}
+	creationData, err := getValidCreationData(d.cloud.SubscriptionID, options.ResourceGroup, options.SourceResourceID)
+	if err != nil {
+		return "", status.Error(codes.Internal, err.Error())
 	}
 
 	diskProperties := compute.DiskProperties{
@@ -321,6 +321,9 @@ func (d *Driver) CreateManagedDisk(ctx context.Context, options *ManagedDiskOpti
 
 	_, err = d.cloud.DisksClient.CreateOrUpdate(ctx, options.ResourceGroup, options.DiskName, model)
 	if err != nil {
+		if strings.Contains(err.Error(), "NotFound") {
+			return "", status.Errorf(codes.NotFound, "the specify snapshot(%s) is not found under rg(%s), failed with error: %v", options.SourceResourceID, options.ResourceGroup, err)
+		}
 		return "", err
 	}
 
@@ -397,4 +400,23 @@ func getSourceVolumeId(snapshot *compute.Snapshot) string {
 		return *snapshot.SnapshotProperties.CreationData.SourceResourceID
 	}
 	return ""
+}
+
+func getValidCreationData(subscriptionID, resourceGroup, sourceResourceID string) (compute.CreationData, error) {
+	if sourceResourceID == "" {
+		return compute.CreationData{
+			CreateOption: compute.Empty,
+		}, nil
+	}
+	if match := diskSnapshotPathRE.FindString(sourceResourceID); match == "" {
+		sourceResourceID = fmt.Sprintf(diskSnapshotPath, subscriptionID, resourceGroup, sourceResourceID)
+	}
+	splits := strings.Split(sourceResourceID, "/")
+	if len(splits) > 9 {
+		return compute.CreationData{}, fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", sourceResourceID, diskSnapshotPathRE)
+	}
+	return compute.CreationData{
+		CreateOption:     compute.Copy,
+		SourceResourceID: &sourceResourceID,
+	}, nil
 }
