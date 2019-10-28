@@ -10,22 +10,20 @@ This driver allows Kubernetes to use [azure disk](https://azure.microsoft.com/en
 Status: Beta
 
 ### Container Images & CSI Compatibility:
-|Azure Disk CSI Driver Version  | Image                                              | v0.3.0| v1.0.0 |
-|-------------------------------|----------------------------------------------------|-------|--------|
-|v0.1.0                         |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.1.0      | yes   | no     |
-|v0.2.0                         |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.2.0      | no    | yes    |
-|v0.3.0                         |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.3.0      | no    | yes    |
-|v0.4.0                         |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.4.0      | no    | yes    |
-|master branch                  |mcr.microsoft.com/k8s/csi/azuredisk-csi:latest      | no    | yes    |
+|Azure Disk CSI Driver Version  | Image                                              | v1.0.0 |
+|-------------------------------|----------------------------------------------------|--------|
+|master branch                  |mcr.microsoft.com/k8s/csi/azuredisk-csi:latest      | yes    |
+|v0.4.0                         |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.4.0      | yes    |
+|v0.3.0                         |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.3.0      | yes    |
+|v0.2.0                         |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.2.0      | yes    |
 
 ### Kubernetes Compatibility
-| Azure Disk CSI Driver\Kubernetes Version | 1.12 | 1.13+ | 
-|------------------------------------------|------|-------|
-| v0.1.0                                   | yes  | yes   |
-| v0.2.0                                   | no   | yes   |
-| v0.3.0                                   | no   | yes   |
-| v0.4.0                                   | no   | yes   |
-| master branch                            | no   | yes   |
+| Azure Disk CSI Driver\Kubernetes Version | 1.13+ |
+|------------------------------------------|-------|
+| master branch                            | yes   |
+| v0.4.0                                   | yes   |
+| v0.3.0                                   | yes   |
+| v0.2.0                                   | yes   |
 
 ### Driver parameters
 Please refer to [`disk.csi.azure.com` driver parameters](./docs/driver-parameters.md)
