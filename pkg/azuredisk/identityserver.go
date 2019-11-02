@@ -66,6 +66,13 @@ func (f *Driver) GetPluginCapabilities(ctx context.Context, req *csi.GetPluginCa
 					},
 				},
 			},
+			{
+				Type: &csi.PluginCapability_Service_{
+					Service: &csi.PluginCapability_Service{
+						Type: csi.PluginCapability_Service_VOLUME_ACCESSIBILITY_CONSTRAINTS,
+					},
+				},
+			},
 		},
 	}, nil
 }

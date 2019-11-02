@@ -289,7 +289,7 @@ func (d *Driver) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapabi
 
 // NodeGetInfo return info of the node on which this plugin is running
 func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
-	klog.V(5).Infof("Using default NodeGetInfo")
+	klog.V(4).Infof("NodeGetInfo: called with args %+v", *req)
 
 	instances, ok := d.cloud.Instances()
 	if !ok {
@@ -307,14 +307,27 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 		defer cancel()
 		result, err := d.cloud.VirtualMachineSizesClient.List(ctx, d.cloud.Location)
 		if err != nil || result.Value == nil {
-			return nil, status.Error(codes.Internal, "failed to list vm sizes in GetVolumeLimits from Azure cloud provider, nodeName: "+d.NodeID)
+			klog.Warningf("list vm sizes of nodeName(%s) failed with error: %v ", d.NodeID, err)
+		} else {
+			vmSizeList = result.Value
 		}
-		vmSizeList = result.Value
+	}
+
+	topology := &csi.Topology{
+		Segments: map[string]string{},
+	}
+	zone, err := d.cloud.GetZone(ctx)
+	if err != nil {
+		klog.Warningf("Failed to get zone from Azure cloud provider, nodeName: %v, error: %v", d.NodeID, err)
+	} else {
+		topology.Segments[topologyKey] = zone.FailureDomain
+		klog.V(2).Infof("NodeGetInfo, nodeName: %v, zone: %v", d.NodeID, zone.FailureDomain)
 	}
 
 	return &csi.NodeGetInfoResponse{
-		NodeId:            d.NodeID,
-		MaxVolumesPerNode: getMaxDataDiskCount(instanceType, vmSizeList),
+		NodeId:             d.NodeID,
+		MaxVolumesPerNode:  getMaxDataDiskCount(instanceType, vmSizeList),
+		AccessibleTopology: topology,
 	}, nil
 }
 

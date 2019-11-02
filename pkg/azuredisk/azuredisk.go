@@ -254,6 +254,7 @@ func (d *Driver) CreateManagedDisk(ctx context.Context, options *ManagedDiskOpti
 	if len(options.AvailabilityZone) > 0 {
 		zoneList := []string{d.cloud.GetZoneID(options.AvailabilityZone)}
 		createZones = &zoneList
+		klog.V(4).Infof("azureDisk - AvailabilityZone: %v, zone list: %v", options.AvailabilityZone, zoneList)
 	}
 
 	// insert original tags to newTags
