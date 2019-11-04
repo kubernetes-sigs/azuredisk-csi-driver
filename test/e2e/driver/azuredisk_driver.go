@@ -31,7 +31,10 @@ import (
 	"k8s.io/klog"
 )
 
-const AzureDriverNameVar = "AZURE_STORAGE_DRIVER"
+const (
+	AzureDriverNameVar = "AZURE_STORAGE_DRIVER"
+	topologyKey = "topology.disk.csi.azure.com/zone"
+)
 
 // Implement DynamicPVTestDriver interface
 type azureDiskDriver struct {
@@ -63,8 +66,21 @@ func (d *azureDiskDriver) IsInTree() bool {
 
 func (d *azureDiskDriver) GetDynamicProvisionStorageClass(parameters map[string]string, mountOptions []string, reclaimPolicy *v1.PersistentVolumeReclaimPolicy, bindingMode *storagev1.VolumeBindingMode, allowedTopologyValues []string, namespace string) *storagev1.StorageClass {
 	provisioner := d.driverName
-	generateName := fmt.Sprintf("%s-%s-dynamic-sc-", namespace, normalizeProvisioner(provisioner))
-	return getStorageClass(generateName, provisioner, parameters, mountOptions, reclaimPolicy, bindingMode, nil)
+	generateName := fmt.Sprintf("%s-%s-dynamic-sc-", namespace, provisioner)
+	allowedTopologies := make([]v1.TopologySelectorTerm, 0)
+	if len(allowedTopologyValues) > 0 {
+		topologySelectorTerm := v1.TopologySelectorTerm{
+			MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+				{
+					Key:    topologyKey,
+					Values: allowedTopologyValues,
+				},
+			},
+		}
+		allowedTopologies = append(allowedTopologies, topologySelectorTerm)
+	}
+
+	return getStorageClass(generateName, provisioner, parameters, mountOptions, reclaimPolicy, bindingMode, allowedTopologies)
 }
 
 func (d *azureDiskDriver) GetVolumeSnapshotClass(namespace string) *v1alpha1.VolumeSnapshotClass {

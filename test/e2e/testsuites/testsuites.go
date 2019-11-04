@@ -308,6 +308,14 @@ func generatePVC(namespace, storageClassName, claimSize string, volumeMode v1.Pe
 }
 
 func (t *TestPersistentVolumeClaim) Cleanup() {
+	// Since PV is created after pod creation when the volume binding mode is WaitForFirstConsumer,
+	// we need to populate fields such as PVC and PV info in TestPersistentVolumeClaim, and valid it
+	if *t.storageClass.VolumeBindingMode == storagev1.VolumeBindingWaitForFirstConsumer {
+		var err error
+		t.persistentVolumeClaim, err = t.client.CoreV1().PersistentVolumeClaims(t.namespace.Name).Get(t.persistentVolumeClaim.Name, metav1.GetOptions{})
+		framework.ExpectNoError(err)
+		t.ValidateProvisionedPersistentVolume()
+	}
 	e2elog.Logf("deleting PVC %q/%q", t.namespace.Name, t.persistentVolumeClaim.Name)
 	err := framework.DeletePersistentVolumeClaim(t.client, t.persistentVolumeClaim.Name, t.namespace.Name)
 	framework.ExpectNoError(err)
