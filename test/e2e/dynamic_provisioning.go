@@ -64,7 +64,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			framework.ExpectNoError(err)
 			allowedTopologyValuesMap := make(map[string]bool)
 			for _, node := range nodes.Items {
-				if zone, ok := node.Labels[v1.LabelZoneFailureDomain]; ok {
+				if zone, ok := node.Labels[driver.TopologyKey]; ok {
 					allowedTopologyValuesMap[zone] = true
 				}
 			}
@@ -307,10 +307,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 }
 
 func (t *dynamicProvisioningTestSuite) injectAllowedTopologyValuesAndVolumeBindingMode(volumes []testsuites.VolumeDetails) []testsuites.VolumeDetails {
-	for _, volume := range volumes {
-		volume.AllowedTopologyValues = t.allowedTopologyValues
+	for i := range volumes {
+		volumes[i].AllowedTopologyValues = t.allowedTopologyValues
 		volumeBindingMode := storagev1.VolumeBindingWaitForFirstConsumer
-		volume.VolumeBindingMode = &volumeBindingMode
+		volumes[i].VolumeBindingMode = &volumeBindingMode
 	}
 	return volumes
 }

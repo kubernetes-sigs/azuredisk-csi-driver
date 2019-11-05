@@ -130,8 +130,10 @@ func (pod *PodDetails) SetupDeployment(client clientset.Interface, namespace *v1
 	By("setting up the PVC")
 	tpvc := NewTestPersistentVolumeClaim(client, namespace, volume.ClaimSize, volume.VolumeMode, &createdStorageClass)
 	tpvc.Create()
-	tpvc.WaitForBound()
-	tpvc.ValidateProvisionedPersistentVolume()
+	if volume.VolumeBindingMode == nil || *volume.VolumeBindingMode == storagev1.VolumeBindingImmediate {
+		tpvc.WaitForBound()
+		tpvc.ValidateProvisionedPersistentVolume()
+	}
 	cleanupFuncs = append(cleanupFuncs, tpvc.Cleanup)
 	By("setting up the Deployment")
 	tDeployment := NewTestDeployment(client, namespace, pod.Cmd, tpvc.persistentVolumeClaim, fmt.Sprintf("%s%d", volume.VolumeMount.NameGenerate, 1), fmt.Sprintf("%s%d", volume.VolumeMount.MountPathGenerate, 1), volume.VolumeMount.ReadOnly)
