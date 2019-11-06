@@ -38,12 +38,21 @@ import (
 )
 
 const (
-	defaultFsType           = "ext4"
+	defaultLinuxFsType      = "ext4"
+	defaultWindowsFsType    = "ntfs"
 	defaultAzureVolumeLimit = 16
 )
 
 // store vm size list in current region
 var vmSizeList *[]compute.VirtualMachineSize
+
+func getDefaultFsType() string {
+	if runtime.GOOS == "windows" {
+		return defaultWindowsFsType
+	} else {
+		return defaultLinuxFsType
+	}
+}
 
 // NodeStageVolume mount disk device to a staging path
 func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
@@ -104,7 +113,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		return &csi.NodeStageVolumeResponse{}, nil
 	}
 	// Get fsType and mountOptions that the volume will be formatted and mounted with
-	fstype := defaultFsType
+	fstype := getDefaultFsType()
 	options := []string{}
 	if mnt := volumeCapability.GetMount(); mnt != nil {
 		if mnt.FsType != "" {
