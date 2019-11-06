@@ -114,19 +114,6 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			cachingMode = v1.AzureDataDiskCachingMode(v)
 		case "resourcegroup":
 			resourceGroup = v
-			/* new zone implementation in csi, these parameters are not needed
-			case "zone":
-				zonePresent = true
-				availabilityZone = v
-			case "zones":
-				zonesPresent = true
-				availabilityZones, err = util.ZonesToSet(v)
-				if err != nil {
-					return nil, fmt.Errorf("error parsing zones %s, must be strings separated by commas: %v", v, err)
-				}
-			case "zoned":
-				strZoned = v
-			*/
 		case "diskiopsreadwrite":
 			diskIopsReadWrite = v
 		case "diskmbpsreadwrite":
@@ -169,13 +156,14 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		}
 	}
 
-	selectedAvailabilityZone := pickAvailabilityZone(req.GetAccessibilityRequirements())
+	selectedAvailabilityZone := pickAvailabilityZone(req.GetAccessibilityRequirements(), d.cloud.Location)
 
 	if ok, err := d.checkDiskCapacity(ctx, resourceGroup, diskName, requestGiB); !ok {
 		return nil, err
 	}
 
-	klog.V(2).Infof("begin to create azure disk(%s) account type(%s) rg(%s) location(%s) size(%d)", diskName, skuName, resourceGroup, location, requestGiB)
+	klog.V(2).Infof("begin to create azure disk(%s) account type(%s) rg(%s) location(%s) size(%d) selectedAvailabilityZone(%v)",
+		diskName, skuName, resourceGroup, location, requestGiB, selectedAvailabilityZone)
 
 	diskURI := ""
 	contentSource := &csi.VolumeContentSource{}
@@ -666,21 +654,23 @@ func isValidVolumeCapabilities(volCaps []*csi.VolumeCapability) bool {
 }
 
 // pickAvailabilityZone selects 1 zone given topology requirement.
-// if not found, empty string is returned.
-func pickAvailabilityZone(requirement *csi.TopologyRequirement) string {
+// if not found or topology requirement is not zone format, empty string is returned.
+func pickAvailabilityZone(requirement *csi.TopologyRequirement, region string) string {
 	if requirement == nil {
 		return ""
 	}
 	for _, topology := range requirement.GetPreferred() {
-		zone, exists := topology.GetSegments()[topologyKey]
-		if exists {
-			return zone
+		if zone, exists := topology.GetSegments()[topologyKey]; exists {
+			if isAvailabilityZone(zone, region) {
+				return zone
+			}
 		}
 	}
 	for _, topology := range requirement.GetRequisite() {
-		zone, exists := topology.GetSegments()[topologyKey]
-		if exists {
-			return zone
+		if zone, exists := topology.GetSegments()[topologyKey]; exists {
+			if isAvailabilityZone(zone, region) {
+				return zone
+			}
 		}
 	}
 	return ""

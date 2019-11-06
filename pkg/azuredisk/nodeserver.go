@@ -314,14 +314,16 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 	}
 
 	topology := &csi.Topology{
-		Segments: map[string]string{},
+		Segments: map[string]string{topologyKey: ""},
 	}
 	zone, err := d.cloud.GetZone(ctx)
 	if err != nil {
 		klog.Warningf("Failed to get zone from Azure cloud provider, nodeName: %v, error: %v", d.NodeID, err)
 	} else {
-		topology.Segments[topologyKey] = zone.FailureDomain
-		klog.V(2).Infof("NodeGetInfo, nodeName: %v, zone: %v", d.NodeID, zone.FailureDomain)
+		if isAvailabilityZone(zone.FailureDomain, d.cloud.Location) {
+			topology.Segments[topologyKey] = zone.FailureDomain
+			klog.V(2).Infof("NodeGetInfo, nodeName: %v, zone: %v", d.NodeID, zone.FailureDomain)
+		}
 	}
 
 	return &csi.NodeGetInfoResponse{

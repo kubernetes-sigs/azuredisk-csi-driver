@@ -444,3 +444,8 @@ func getValidCreationData(subscriptionID, resourceGroup, sourceResourceID, sourc
 		SourceResourceID: &sourceResourceID,
 	}, nil
 }
+
+// isAvailabilityZone returns true if the zone is in format of <region>-<zone-id>.
+func isAvailabilityZone(zone, region string) bool {
+	return strings.HasPrefix(zone, fmt.Sprintf("%s-", region))
+}
