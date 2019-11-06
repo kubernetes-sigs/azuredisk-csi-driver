@@ -23,7 +23,9 @@ spec:
           image: "{{ .Values.image.csiProvisioner.repository }}:{{ .Values.image.csiProvisioner.tag }}"
           args:
             - "--provisioner=disk.csi.azure.com"
+            {{- if .Values.featureGates.topology }}
             - "--feature-gates=Topology=true"
+            {{ end }}
             - "--csi-address=$(ADDRESS)"
             - "--connection-timeout=15s"
             - "--v=5"

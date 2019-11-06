@@ -191,8 +191,8 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			},
 		}
 		if isMultiZone {
-			for _, pod := range pods {
-				pod.Volumes = t.injectAllowedTopologyValuesAndVolumeBindingMode(pod.Volumes)
+			for i := range pods {
+				pods[i].Volumes = t.injectAllowedTopologyValuesAndVolumeBindingMode(pods[i].Volumes)
 			}
 		}
 		test := testsuites.DynamicallyProvisionedCollocatedPodTest{

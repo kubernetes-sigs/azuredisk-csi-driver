@@ -33,3 +33,6 @@ serviceAccount:
 
 rbac:
   create: true
+
+featureGates:
+  topology: false
