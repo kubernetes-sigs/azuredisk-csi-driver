@@ -31,16 +31,16 @@ const (
 	defaultAzureChinaCloudLocation  = "chinaeast2"
 
 	// Env vars
-	tenantIdEnvVar        = "TENANT_ID"
-	subscriptionIdEnvVar  = "SUBSCRIPTION_ID"
-	aadClientIdEnvVar     = "AAD_CLIENT_ID"
+	tenantIDEnvVar        = "TENANT_ID"
+	subscriptionIDEnvVar  = "SUBSCRIPTION_ID"
+	aadClientIDEnvVar     = "AAD_CLIENT_ID"
 	aadClientSecretEnvVar = "AAD_CLIENT_SECRET"
 	resourceGroupEnvVar   = "RESOURCE_GROUP"
 	locationEnvVar        = "LOCATION"
 
-	tenantIdChinaEnvVar        = "TENANT_ID_CHINA"
-	subscriptionIdChinaEnvVar  = "SUBSCRIPTION_ID_CHINA"
-	aadClientIdChinaEnvVar     = "AAD_CLIENT_ID_CHINA"
+	tenantIDChinaEnvVar        = "TENANT_ID_CHINA"
+	subscriptionIDChinaEnvVar  = "SUBSCRIPTION_ID_CHINA"
+	aadClientIDChinaEnvVar     = "AAD_CLIENT_ID_CHINA"
 	aadClientSecretChinaEnvVar = "AAD_CLIENT_SECRET_CHINA"
 	resourceGroupChinaEnvVar   = "RESOURCE_GROUP_CHINA"
 	locationChinaEnvVar        = "LOCATION_CHINA"
@@ -78,20 +78,20 @@ type Credentials struct {
 // Azure File CSI driver tests and returns the credentials
 func CreateAzureCredentialFile(isAzureChinaCloud bool) (*Credentials, error) {
 	// Search credentials through env vars first
-	var cloud, tenantId, subscriptionId, aadClientId, aadClientSecret, resourceGroup, location string
+	var cloud, tenantID, subscriptionID, aadClientID, aadClientSecret, resourceGroup, location string
 	if isAzureChinaCloud {
 		cloud = AzureChinaCloud
-		tenantId = os.Getenv(tenantIdChinaEnvVar)
-		subscriptionId = os.Getenv(subscriptionIdChinaEnvVar)
-		aadClientId = os.Getenv(aadClientIdChinaEnvVar)
+		tenantID = os.Getenv(tenantIDChinaEnvVar)
+		subscriptionID = os.Getenv(subscriptionIDChinaEnvVar)
+		aadClientID = os.Getenv(aadClientIDChinaEnvVar)
 		aadClientSecret = os.Getenv(aadClientSecretChinaEnvVar)
 		resourceGroup = os.Getenv(resourceGroupChinaEnvVar)
 		location = os.Getenv(locationChinaEnvVar)
 	} else {
 		cloud = AzurePublicCloud
-		tenantId = os.Getenv(tenantIdEnvVar)
-		subscriptionId = os.Getenv(subscriptionIdEnvVar)
-		aadClientId = os.Getenv(aadClientIdEnvVar)
+		tenantID = os.Getenv(tenantIDEnvVar)
+		subscriptionID = os.Getenv(subscriptionIDEnvVar)
+		aadClientID = os.Getenv(aadClientIDEnvVar)
 		aadClientSecret = os.Getenv(aadClientSecretEnvVar)
 		resourceGroup = os.Getenv(resourceGroupEnvVar)
 		location = os.Getenv(locationEnvVar)
@@ -110,8 +110,8 @@ func CreateAzureCredentialFile(isAzureChinaCloud bool) (*Credentials, error) {
 	}
 
 	// Running test locally
-	if tenantId != "" && subscriptionId != "" && aadClientId != "" && aadClientSecret != "" {
-		return parseAndExecuteTemplate(cloud, tenantId, subscriptionId, aadClientId, aadClientSecret, resourceGroup, location)
+	if tenantID != "" && subscriptionID != "" && aadClientID != "" && aadClientSecret != "" {
+		return parseAndExecuteTemplate(cloud, tenantID, subscriptionID, aadClientID, aadClientSecret, resourceGroup, location)
 	}
 
 	// If the tests are being run in Prow, credentials are not supplied through env vars. Instead, it is supplied
@@ -127,7 +127,7 @@ func CreateAzureCredentialFile(isAzureChinaCloud bool) (*Credentials, error) {
 	}
 
 	return nil, fmt.Errorf("If you are running tests locally, you will need to set the following env vars: $%s, $%s, $%s, $%s, $%s, $%s",
-		tenantIdEnvVar, subscriptionIdEnvVar, aadClientIdEnvVar, aadClientSecretEnvVar, resourceGroupEnvVar, locationEnvVar)
+		tenantIDEnvVar, subscriptionIDEnvVar, aadClientIDEnvVar, aadClientSecretEnvVar, resourceGroupEnvVar, locationEnvVar)
 }
 
 // CreateAzureCredentialFile deletes the temporary Azure credential file
@@ -157,7 +157,7 @@ func getCredentialsFromAzureCredentials(azureCredentialsPath string) (*Credentia
 }
 
 // parseAndExecuteTemplate replaces credential placeholders in hack/template/azure.json with actual credentials
-func parseAndExecuteTemplate(cloud, tenantId, subscriptionId, aadClientId, aadClientSecret, resourceGroup, location string) (*Credentials, error) {
+func parseAndExecuteTemplate(cloud, tenantID, subscriptionID, aadClientID, aadClientSecret, resourceGroup, location string) (*Credentials, error) {
 	t := template.New("AzureCredentialFileTemplate")
 	t, err := t.Parse(azureCredentialFileTemplate)
 	if err != nil {
@@ -172,9 +172,9 @@ func parseAndExecuteTemplate(cloud, tenantId, subscriptionId, aadClientId, aadCl
 
 	c := Credentials{
 		cloud,
-		tenantId,
-		subscriptionId,
-		aadClientId,
+		tenantID,
+		subscriptionID,
+		aadClientID,
 		aadClientSecret,
 		resourceGroup,
 		location,
