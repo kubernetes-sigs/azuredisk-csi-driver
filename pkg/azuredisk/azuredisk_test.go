@@ -515,3 +515,24 @@ func TestIsAvailabilityZone(t *testing.T) {
 		}
 	}
 }
+
+func TestIsAvailabilityZone(t *testing.T) {
+	region := "eastus"
+	tests := []struct {
+		desc     string
+		zone     string
+		expected bool
+	}{
+		{"empty string should return false", "", false},
+		{"wrong farmat should return false", "123", false},
+		{"wrong location should return false", "chinanorth-1", false},
+		{"correct zone should return true", "eastus-1", true},
+	}
+
+	for _, test := range tests {
+		actual := isAvailabilityZone(test.zone, region)
+		if actual != test.expected {
+			t.Errorf("test [%q] get unexpected result: %v != %v", test.desc, actual, test.expected)
+		}
+	}
+}
