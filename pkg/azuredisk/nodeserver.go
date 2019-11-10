@@ -342,8 +342,9 @@ func (d *Driver) NodeGetVolumeStats(ctx context.Context, in *csi.NodeGetVolumeSt
 }
 
 // NodeExpandVolume node expand volume
+// N/A for azure disk
 func (d *Driver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
-	return nil, status.Error(codes.Unimplemented, fmt.Sprintf("NodeExpandVolume is not yet implemented"))
+	return nil, status.Error(codes.Unimplemented, "")
 }
 
 func getFStype(attributes map[string]string) string {
