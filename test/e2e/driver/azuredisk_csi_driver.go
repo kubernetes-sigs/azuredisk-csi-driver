@@ -18,6 +18,8 @@ package driver
 
 import (
 	"fmt"
+	"os"
+	"strings"
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
 
@@ -26,35 +28,48 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/klog"
 )
+
+const azureDriverNameVar = "AZURE_STORAGE_DRIVER"
 
 // Implement DynamicPVTestDriver interface
 type azureDiskCSIDriver struct {
 	driverName string
 }
 
+func normalizeProvisioner(provisioner string) string {
+	return strings.ReplaceAll(provisioner, "/", "-")
+}
+
 // InitAzureDiskCSIDriver returns azureDiskCSIDriver that implemnts DynamicPVTestDriver interface
 func InitAzureDiskCSIDriver() PVTestDriver {
+	driverName := os.Getenv(azureDriverNameVar)
+	if driverName == "" {
+		driverName = azuredisk.DriverName
+	}
+
+	klog.Infof("Using azure disk driver: %s", driverName)
 	return &azureDiskCSIDriver{
-		driverName: azuredisk.DriverName,
+		driverName: driverName,
 	}
 }
 
 func (d *azureDiskCSIDriver) GetDynamicProvisionStorageClass(parameters map[string]string, mountOptions []string, reclaimPolicy *v1.PersistentVolumeReclaimPolicy, bindingMode *storagev1.VolumeBindingMode, allowedTopologyValues []string, namespace string) *storagev1.StorageClass {
 	provisioner := d.driverName
-	generateName := fmt.Sprintf("%s-%s-dynamic-sc-", namespace, provisioner)
+	generateName := fmt.Sprintf("%s-%s-dynamic-sc-", namespace, normalizeProvisioner(provisioner))
 	return getStorageClass(generateName, provisioner, parameters, mountOptions, reclaimPolicy, bindingMode, nil)
 }
 
 func (d *azureDiskCSIDriver) GetVolumeSnapshotClass(namespace string) *v1alpha1.VolumeSnapshotClass {
 	provisioner := d.driverName
-	generateName := fmt.Sprintf("%s-%s-dynamic-sc-", namespace, provisioner)
+	generateName := fmt.Sprintf("%s-%s-dynamic-sc-", namespace, normalizeProvisioner(provisioner))
 	return getVolumeSnapshotClass(generateName, provisioner)
 }
 
 func (d *azureDiskCSIDriver) GetPersistentVolume(volumeID string, fsType string, size string, reclaimPolicy *v1.PersistentVolumeReclaimPolicy, namespace string) *v1.PersistentVolume {
 	provisioner := d.driverName
-	generateName := fmt.Sprintf("%s-%s-preprovsioned-pv-", namespace, provisioner)
+	generateName := fmt.Sprintf("%s-%s-preprovsioned-pv-", namespace, normalizeProvisioner(provisioner))
 	// Default to Retain ReclaimPolicy for pre-provisioned volumes
 	pvReclaimPolicy := v1.PersistentVolumeReclaimRetain
 	if reclaimPolicy != nil {
