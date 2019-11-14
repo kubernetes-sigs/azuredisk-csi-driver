@@ -27,9 +27,9 @@ import (
 	"testing"
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
+	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/azure"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/credentials"
-	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -51,7 +51,9 @@ var _ = BeforeSuite(func() {
 	framework.HandleFlags()
 	framework.AfterReadingAllFlags(&framework.TestContext)
 
-	if testutil.IsRunningInProw() {
+	// Default storage driver configuration is CSI. Freshly built
+	// CSI driver is installed for that case.
+	if os.Getenv(driver.AzureDriverNameVar) == "" {
 		creds, err := credentials.CreateAzureCredentialFile(false)
 		Expect(err).NotTo(HaveOccurred())
 		azureClient, err := azure.GetAzureClient(creds.Cloud, creds.SubscriptionID, creds.AADClientID, creds.TenantID, creds.AADClientSecret)
@@ -102,7 +104,7 @@ var _ = BeforeSuite(func() {
 })
 
 var _ = AfterSuite(func() {
-	if testutil.IsRunningInProw() {
+	if os.Getenv(driver.AzureDriverNameVar) == "" {
 		err := os.Chdir("../..")
 		Expect(err).NotTo(HaveOccurred())
 		defer func() {

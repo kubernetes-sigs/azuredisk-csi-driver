@@ -31,7 +31,7 @@ import (
 	"k8s.io/klog"
 )
 
-const azureDriverNameVar = "AZURE_STORAGE_DRIVER"
+const AzureDriverNameVar = "AZURE_STORAGE_DRIVER"
 
 // Implement DynamicPVTestDriver interface
 type azureDiskCSIDriver struct {
@@ -44,7 +44,7 @@ func normalizeProvisioner(provisioner string) string {
 
 // InitAzureDiskCSIDriver returns azureDiskCSIDriver that implemnts DynamicPVTestDriver interface
 func InitAzureDiskCSIDriver() PVTestDriver {
-	driverName := os.Getenv(azureDriverNameVar)
+	driverName := os.Getenv(AzureDriverNameVar)
 	if driverName == "" {
 		driverName = azuredisk.DriverName
 	}
