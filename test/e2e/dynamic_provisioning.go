@@ -192,6 +192,9 @@ var _ = Describe("Dynamic Provisioning", func() {
 	})
 
 	It(fmt.Sprintf("[env] should retain PV with reclaimPolicy %q", v1.PersistentVolumeReclaimRetain), func() {
+		// This tests uses the CSI driver to delete the PV.
+		// TODO: Go via the k8s interfaces and also make it more reliable for in-tree and then
+		//       test can be enabled.
 		if testDriver.IsInTree() {
 			Skip("Test running with in tree configuration")
 		}
