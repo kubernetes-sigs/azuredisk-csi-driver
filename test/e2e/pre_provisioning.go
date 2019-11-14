@@ -48,7 +48,7 @@ var _ = Describe("[azuredisk-csi-e2e] [single-az] Pre-Provisioned", func() {
 	BeforeEach(func() {
 		cs = f.ClientSet
 		ns = f.Namespace
-		testDriver = driver.InitAzureDiskCSIDriver()
+		testDriver = driver.InitAzureDiskDriver()
 	})
 
 	AfterEach(func() {

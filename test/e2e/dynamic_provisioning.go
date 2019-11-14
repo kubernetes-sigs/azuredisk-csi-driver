@@ -42,7 +42,7 @@ var _ = Describe("Dynamic Provisioning", func() {
 		ns = f.Namespace
 	})
 
-	testDriver = driver.InitAzureDiskCSIDriver()
+	testDriver = driver.InitAzureDiskDriver()
 	It(fmt.Sprintf("should create a volume on demand"), func() {
 		pods := []testsuites.PodDetails{
 			{

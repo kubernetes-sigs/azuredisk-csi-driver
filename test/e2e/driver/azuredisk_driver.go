@@ -44,8 +44,8 @@ func normalizeProvisioner(provisioner string) string {
 	return strings.ReplaceAll(provisioner, "/", "-")
 }
 
-// InitAzureDiskCSIDriver returns azureDiskDriver that implemnts DynamicPVTestDriver interface
-func InitAzureDiskCSIDriver() PVTestDriver {
+// InitAzureDiskDriver returns azureDiskDriver that implemnts DynamicPVTestDriver interface
+func InitAzureDiskDriver() PVTestDriver {
 	driverName := os.Getenv(AzureDriverNameVar)
 	if driverName == "" {
 		driverName = azuredisk.DriverName
