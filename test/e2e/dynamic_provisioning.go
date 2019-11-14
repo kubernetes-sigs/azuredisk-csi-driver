@@ -34,7 +34,7 @@ var _ = Describe("Dynamic Provisioning", func() {
 	var (
 		cs         clientset.Interface
 		ns         *v1.Namespace
-		testDriver driver.PVTestDriver
+		testDriver driver.DynamicPVTestDriver
 	)
 
 	BeforeEach(func() {
@@ -192,6 +192,9 @@ var _ = Describe("Dynamic Provisioning", func() {
 	})
 
 	It(fmt.Sprintf("[env] should retain PV with reclaimPolicy %q", v1.PersistentVolumeReclaimRetain), func() {
+		if testDriver.IsInTree() {
+			Skip("Test running with in tree configuration")
+		}
 		reclaimPolicy := v1.PersistentVolumeReclaimRetain
 		volumes := []testsuites.VolumeDetails{
 			{
