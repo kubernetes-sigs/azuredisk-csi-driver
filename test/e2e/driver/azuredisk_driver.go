@@ -18,6 +18,8 @@ package driver
 
 import (
 	"fmt"
+	"os"
+	"strings"
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
 
@@ -26,35 +28,54 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/klog"
 )
 
+const AzureDriverNameVar = "AZURE_STORAGE_DRIVER"
+
 // Implement DynamicPVTestDriver interface
-type azureDiskCSIDriver struct {
+type azureDiskDriver struct {
 	driverName string
 }
 
-// InitAzureDiskCSIDriver returns azureDiskCSIDriver that implemnts DynamicPVTestDriver interface
-func InitAzureDiskCSIDriver() PVTestDriver {
-	return &azureDiskCSIDriver{
-		driverName: azuredisk.DriverName,
+// normalizeProvisioner extracts any '/' character in the provisioner name to '-'.
+// StorageClass name cannot container '/' character.
+func normalizeProvisioner(provisioner string) string {
+	return strings.ReplaceAll(provisioner, "/", "-")
+}
+
+// InitAzureDiskDriver returns azureDiskDriver that implemnts DynamicPVTestDriver interface
+func InitAzureDiskDriver() PVTestDriver {
+	driverName := os.Getenv(AzureDriverNameVar)
+	if driverName == "" {
+		driverName = azuredisk.DriverName
+	}
+
+	klog.Infof("Using azure disk driver: %s", driverName)
+	return &azureDiskDriver{
+		driverName: driverName,
 	}
 }
 
-func (d *azureDiskCSIDriver) GetDynamicProvisionStorageClass(parameters map[string]string, mountOptions []string, reclaimPolicy *v1.PersistentVolumeReclaimPolicy, bindingMode *storagev1.VolumeBindingMode, allowedTopologyValues []string, namespace string) *storagev1.StorageClass {
+func (d *azureDiskDriver) IsInTree() bool {
+	return d.driverName != azuredisk.DriverName
+}
+
+func (d *azureDiskDriver) GetDynamicProvisionStorageClass(parameters map[string]string, mountOptions []string, reclaimPolicy *v1.PersistentVolumeReclaimPolicy, bindingMode *storagev1.VolumeBindingMode, allowedTopologyValues []string, namespace string) *storagev1.StorageClass {
 	provisioner := d.driverName
-	generateName := fmt.Sprintf("%s-%s-dynamic-sc-", namespace, provisioner)
+	generateName := fmt.Sprintf("%s-%s-dynamic-sc-", namespace, normalizeProvisioner(provisioner))
 	return getStorageClass(generateName, provisioner, parameters, mountOptions, reclaimPolicy, bindingMode, nil)
 }
 
-func (d *azureDiskCSIDriver) GetVolumeSnapshotClass(namespace string) *v1alpha1.VolumeSnapshotClass {
+func (d *azureDiskDriver) GetVolumeSnapshotClass(namespace string) *v1alpha1.VolumeSnapshotClass {
 	provisioner := d.driverName
-	generateName := fmt.Sprintf("%s-%s-dynamic-sc-", namespace, provisioner)
+	generateName := fmt.Sprintf("%s-%s-dynamic-sc-", namespace, normalizeProvisioner(provisioner))
 	return getVolumeSnapshotClass(generateName, provisioner)
 }
 
-func (d *azureDiskCSIDriver) GetPersistentVolume(volumeID string, fsType string, size string, reclaimPolicy *v1.PersistentVolumeReclaimPolicy, namespace string) *v1.PersistentVolume {
+func (d *azureDiskDriver) GetPersistentVolume(volumeID string, fsType string, size string, reclaimPolicy *v1.PersistentVolumeReclaimPolicy, namespace string) *v1.PersistentVolume {
 	provisioner := d.driverName
-	generateName := fmt.Sprintf("%s-%s-preprovsioned-pv-", namespace, provisioner)
+	generateName := fmt.Sprintf("%s-%s-preprovsioned-pv-", namespace, normalizeProvisioner(provisioner))
 	// Default to Retain ReclaimPolicy for pre-provisioned volumes
 	pvReclaimPolicy := v1.PersistentVolumeReclaimRetain
 	if reclaimPolicy != nil {

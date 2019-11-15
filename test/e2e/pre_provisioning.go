@@ -48,7 +48,7 @@ var _ = Describe("[azuredisk-csi-e2e] [single-az] Pre-Provisioned", func() {
 	BeforeEach(func() {
 		cs = f.ClientSet
 		ns = f.Namespace
-		testDriver = driver.InitAzureDiskCSIDriver()
+		testDriver = driver.InitAzureDiskDriver()
 	})
 
 	AfterEach(func() {
@@ -64,6 +64,12 @@ var _ = Describe("[azuredisk-csi-e2e] [single-az] Pre-Provisioned", func() {
 	})
 
 	It("[env] should use a pre-provisioned volume and mount it as readOnly in a pod", func() {
+		// Az tests need to be changed to pass the right parameters for in-tree driver.
+		// Skip these tests until above is fixed.
+		if testDriver.IsInTree() {
+			Skip("Test running with in tree configuration")
+		}
+
 		req := makeCreateVolumeReq("pre-provisioned-readOnly")
 		resp, err := azurediskDriver.CreateVolume(context.Background(), req)
 		if err != nil {
@@ -98,6 +104,11 @@ var _ = Describe("[azuredisk-csi-e2e] [single-az] Pre-Provisioned", func() {
 	})
 
 	It(fmt.Sprintf("[env] should use a pre-provisioned volume and retain PV with reclaimPolicy %q", v1.PersistentVolumeReclaimRetain), func() {
+		// Az tests need to be changed to pass the right parameters for in-tree driver.
+		// Skip these tests until above is fixed.
+		if testDriver.IsInTree() {
+			Skip("Test running with in tree configuration")
+		}
 		req := makeCreateVolumeReq("pre-provisioned-retain-reclaimPolicy")
 		resp, err := azurediskDriver.CreateVolume(context.Background(), req)
 		if err != nil {

@@ -34,7 +34,7 @@ var _ = Describe("Dynamic Provisioning", func() {
 	var (
 		cs         clientset.Interface
 		ns         *v1.Namespace
-		testDriver driver.PVTestDriver
+		testDriver driver.DynamicPVTestDriver
 	)
 
 	BeforeEach(func() {
@@ -42,7 +42,7 @@ var _ = Describe("Dynamic Provisioning", func() {
 		ns = f.Namespace
 	})
 
-	testDriver = driver.InitAzureDiskCSIDriver()
+	testDriver = driver.InitAzureDiskDriver()
 	It(fmt.Sprintf("should create a volume on demand"), func() {
 		pods := []testsuites.PodDetails{
 			{
@@ -192,6 +192,12 @@ var _ = Describe("Dynamic Provisioning", func() {
 	})
 
 	It(fmt.Sprintf("[env] should retain PV with reclaimPolicy %q", v1.PersistentVolumeReclaimRetain), func() {
+		// This tests uses the CSI driver to delete the PV.
+		// TODO: Go via the k8s interfaces and also make it more reliable for in-tree and then
+		//       test can be enabled.
+		if testDriver.IsInTree() {
+			Skip("Test running with in tree configuration")
+		}
 		reclaimPolicy := v1.PersistentVolumeReclaimRetain
 		volumes := []testsuites.VolumeDetails{
 			{
