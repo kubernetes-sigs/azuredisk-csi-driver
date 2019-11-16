@@ -35,7 +35,7 @@
             }
         },
         "masterProfile": {
-            "count": 5,
+            "count": 1,
             "dnsPrefix": "{dnsPrefix}",
             "vmSize": "Standard_DS2_v2",
             "availabilityProfile": "VirtualMachineScaleSets",
@@ -47,8 +47,8 @@
         "agentPoolProfiles": [
             {
                 "name": "agentpool",
-                "count": 4,
-                "vmSize": "Standard_D4s_v3",
+                "count": 2,
+                "vmSize": "Standard_DS2_v2",
                 "availabilityProfile": "VirtualMachineScaleSets",
                 "availabilityZones": [
                     "1",
