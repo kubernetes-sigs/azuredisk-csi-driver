@@ -32,6 +32,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog"
@@ -435,7 +436,61 @@ func (d *Driver) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest) (
 
 // ControllerExpandVolume controller expand volume
 func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "ControllerExpandVolume is not yet implemented")
+	if len(req.GetVolumeId()) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in request")
+	}
+	if err := d.ValidateControllerServiceRequest(csi.ControllerServiceCapability_RPC_EXPAND_VOLUME); err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid expand volume request: %v", req)
+	}
+
+	capacityBytes := req.GetCapacityRange().GetRequiredBytes()
+	if capacityBytes == 0 {
+		return nil, status.Error(codes.InvalidArgument, "volume capacity range missing in request")
+	}
+	requestSize := *resource.NewQuantity(capacityBytes, resource.BinarySI)
+
+	diskURI := req.GetVolumeId()
+	if !isManagedDisk(diskURI) {
+		return nil, status.Errorf(codes.InvalidArgument, "the disk type(%s) is not ManagedDisk", diskURI)
+	}
+	if err := isValidDiskURI(diskURI); err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "disk URI(%s) is not valid: %v", diskURI, err)
+	}
+
+	diskName, err := getDiskName(diskURI)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "could not get disk name from diskURI(%s) with error(%v)", diskURI, err)
+	}
+	resourceGroup, err := getResourceGroupFromURI(diskURI)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "could not get resource group from diskURI(%s) with error(%v)", diskURI, err)
+	}
+
+	disk, err := d.cloud.DisksClient.Get(ctx, resourceGroup, diskName)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "could not get the disk(%s) under rg(%s) with error(%v)", diskName, resourceGroup, err)
+	}
+	if disk.DiskProperties.DiskSizeGB == nil {
+		return nil, status.Errorf(codes.Internal, "could not get size of the disk(%s)", diskName)
+	}
+	oldSize := *resource.NewQuantity(int64(*disk.DiskProperties.DiskSizeGB), resource.BinarySI)
+
+	klog.V(2).Infof("begin to expand azure disk(%s) with new size(%v)", diskURI, requestSize)
+	newSize, err := d.cloud.ResizeDisk(diskURI, oldSize, requestSize)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to resize disk(%s) with error(%v)", diskURI, err)
+	}
+
+	currentSize, ok := newSize.AsInt64()
+	if !ok {
+		return nil, status.Errorf(codes.Internal, "failed to transform disk size with error(%v)", err)
+	}
+
+	klog.V(2).Infof("expand azure disk(%s) successfully, currentSize(%v)", diskURI, currentSize)
+
+	return &csi.ControllerExpandVolumeResponse{
+		CapacityBytes: currentSize,
+	}, nil
 }
 
 // CreateSnapshot create a snapshot
