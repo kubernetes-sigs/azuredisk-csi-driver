@@ -96,7 +96,6 @@ var _ = BeforeSuite(func() {
 		log.Println("Azure Disk CSI Driver installed")
 
 		nodeid := os.Getenv("nodeid")
-		Expect(nodeid).ShouldNot(BeEmpty())
 		azurediskDriver = azuredisk.NewDriver(nodeid)
 		go func() {
 			os.Setenv("AZURE_CREDENTIAL_FILE", credentials.TempAzureCredentialFilePath)
