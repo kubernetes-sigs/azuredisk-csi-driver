@@ -63,9 +63,9 @@ e2e-bootstrap: install-helm
 	# Only build and push the image if it does not exist in the registry
 	docker pull $(IMAGE_TAG) || make azuredisk-container push
 	helm install charts/latest/azuredisk-csi-driver -n azuredisk-csi-driver --namespace kube-system --wait \
-		--set image.pullPolicy=IfNotPresent \
-		--set image.repository=$(REGISTRY)/$(IMAGE_NAME) \
-		--set image.tag=$(IMAGE_VERSION)
+		--set image.azuredisk.pullPolicy=IfNotPresent \
+		--set image.azuredisk.repository=$(REGISTRY)/$(IMAGE_NAME) \
+		--set image.azuredisk.tag=$(IMAGE_VERSION)
 
 .PHONY: install-helm
 install-helm:
