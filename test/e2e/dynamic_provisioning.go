@@ -213,4 +213,33 @@ var _ = Describe("Dynamic Provisioning", func() {
 		}
 		test.Run(cs, ns)
 	})
+
+	It("cloning a volume from an existing volume", func() {
+		pod := testsuites.PodDetails{
+			Cmd: "echo 'hello world' >> /mnt/test-1/data && while true; do sleep 1; done",
+			Volumes: []testsuites.VolumeDetails{
+				{
+					FSType:    "ext4",
+					ClaimSize: "10Gi",
+					VolumeMount: testsuites.VolumeMountDetails{
+						NameGenerate:      "test-volume-",
+						MountPathGenerate: "/mnt/test-",
+					},
+				},
+			},
+		}
+		volume := testsuites.VolumeDetails{
+			FSType:    "ext4",
+			ClaimSize: "10Gi",
+			DataSource: &testsuites.DataSource{
+				Kind: testsuites.VolumePVCKind,
+			},
+		}
+		test := testsuites.DynamicallyProvisionedVolumeCloningTest{
+			CSIDriver: testDriver,
+			Pod:       pod,
+			Volume:    volume,
+		}
+		test.Run(cs, ns)
+	})
 })
