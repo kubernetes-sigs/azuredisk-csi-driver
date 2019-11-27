@@ -141,6 +141,19 @@ var _ = Describe("Dynamic Provisioning", func() {
 					},
 				},
 			},
+			{
+				Cmd: "while true; do echo $(date -u) >> /mnt/test-1/data; sleep 1; done",
+				Volumes: []testsuites.VolumeDetails{
+					{
+						FSType:    "xfs",
+						ClaimSize: "10Gi",
+						VolumeMount: testsuites.VolumeMountDetails{
+							NameGenerate:      "test-volume-",
+							MountPathGenerate: "/mnt/test-",
+						},
+					},
+				},
+			},
 		}
 		test := testsuites.DynamicallyProvisionedCollocatedPodTest{
 			CSIDriver:    testDriver,
