@@ -28,7 +28,7 @@ REV = $(shell git describe --long --tags --dirty)
 BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 TOPOLOGY_KEY = topology.$(DRIVER_NAME)/zone
 LDFLAGS ?= "-X ${PKG}/pkg/azuredisk.driverVersion=${IMAGE_VERSION} -X ${PKG}/pkg/azuredisk.gitCommit=${GIT_COMMIT} -X ${PKG}/pkg/azuredisk.buildDate=${BUILD_DATE} -X ${PKG}/pkg/azuredisk.DriverName=${DRIVER_NAME} -X ${PKG}/pkg/azuredisk.topologyKey=${TOPOLOGY_KEY} -extldflags "-static""
-GINKGO_FLAGS = "-ginkgo.noColor"
+GINKGO_FLAGS = -ginkgo.noColor -ginkgo.v
 GOPATH ?= $(shell go env GOPATH)
 GOBIN ?= $(GOPATH)/bin
 GO111MODULE = off
