@@ -25,6 +25,8 @@ spec:
             - "--provisioner=disk.csi.azure.com"
             - "--csi-address=$(ADDRESS)"
             - "--connection-timeout=15s"
+            - "--v=5"
+            - "--timeout=120s"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
