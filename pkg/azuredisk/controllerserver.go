@@ -48,7 +48,11 @@ var (
 	}
 )
 
-const azureDiskKind = "kind"
+const (
+	azureDiskKind  = "kind"
+	sourceSnapshot = "snapshot"
+	sourceVolume   = "volume"
+)
 
 // CreateVolume provisions an azure disk
 func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
@@ -174,6 +178,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	klog.V(2).Infof("begin to create azure disk(%s) account type(%s) rg(%s) location(%s) size(%d)", diskName, skuName, resourceGroup, location, requestGiB)
 
 	diskURI := ""
+	contentSource := &csi.VolumeContentSource{}
 	if kind == v1.AzureManagedDisk {
 		tags := make(map[string]string)
 		/* todo: check where are the tags in CSI
@@ -182,10 +187,32 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		}
 		*/
 
-		snapshotID := ""
+		sourceID := ""
+		sourceType := ""
 		content := req.GetVolumeContentSource()
-		if content != nil && content.GetSnapshot() != nil {
-			snapshotID = content.GetSnapshot().GetSnapshotId()
+		if content != nil {
+			if content.GetSnapshot() != nil {
+				sourceID = content.GetSnapshot().GetSnapshotId()
+				sourceType = sourceSnapshot
+				contentSource = &csi.VolumeContentSource{
+					Type: &csi.VolumeContentSource_Snapshot{
+						Snapshot: &csi.VolumeContentSource_SnapshotSource{
+							SnapshotId: sourceID,
+						},
+					},
+				}
+			} else {
+				sourceID = content.GetVolume().GetVolumeId()
+				sourceType = sourceVolume
+				contentSource = &csi.VolumeContentSource{
+					Type: &csi.VolumeContentSource_Volume{
+						Volume: &csi.VolumeContentSource_VolumeSource{
+							VolumeId: sourceID,
+						},
+					},
+				}
+
+			}
 		}
 
 		volumeOptions := &ManagedDiskOptions{
@@ -198,7 +225,8 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			AvailabilityZone:   selectedAvailabilityZone,
 			DiskIOPSReadWrite:  diskIopsReadWrite,
 			DiskMBpsReadWrite:  diskMbpsReadWrite,
-			SourceResourceID:   snapshotID,
+			SourceResourceID:   sourceID,
+			SourceType:         sourceType,
 		}
 		diskURI, err = d.CreateManagedDisk(ctx, volumeOptions)
 		if err != nil {
@@ -230,14 +258,6 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	}
 	*/
 
-	/* todo: Add support for Volume Source (cloning) introduced in CSI v1.0.0
-	if req.GetVolumeContentSource() != nil {
-		contentSource := req.GetVolumeContentSource()
-		if contentSource.GetSnapshot() != nil {
-		}
-	}
-	*/
-
 	// for CSI migration: reset kind value, make it well formatted
 	if _, ok := parameters[azureDiskKind]; ok {
 		parameters[azureDiskKind] = string(kind)
@@ -248,6 +268,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			VolumeId:      diskURI,
 			CapacityBytes: capacityBytes,
 			VolumeContext: parameters,
+			ContentSource: contentSource,
 			AccessibleTopology: []*csi.Topology{
 				{
 					Segments: map[string]string{topologyKey: selectedAvailabilityZone},

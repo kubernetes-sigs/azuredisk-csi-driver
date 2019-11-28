@@ -47,8 +47,10 @@ type VolumeDetails struct {
 	VolumeDevice          VolumeDeviceDetails
 	// Optional, used with pre-provisioned volumes
 	VolumeID string
-	// Optional, used with PVCs created from snapshots
+	// Optional, used with PVCs created from snapshots or pvc
 	DataSource *DataSource
+	// Optional, used with specified StorageClass
+	StorageClass *storagev1.StorageClass
 }
 
 type VolumeMode int
@@ -60,6 +62,7 @@ const (
 
 const (
 	VolumeSnapshotKind = "VolumeSnapshot"
+	VolumePVCKind      = "PersistentVolumeClaim"
 	SnapshotAPIVersion = "snapshot.storage.k8s.io/v1alpha1"
 	APIVersionv1alpha1 = "v1alpha1"
 )
@@ -80,6 +83,7 @@ type VolumeDeviceDetails struct {
 }
 
 type DataSource struct {
+	Kind string
 	Name string
 }
 
@@ -89,6 +93,7 @@ func (pod *PodDetails) SetupWithDynamicVolumes(client clientset.Interface, names
 	for n, v := range pod.Volumes {
 		tpvc, funcs := v.SetupDynamicPersistentVolumeClaim(client, namespace, csiDriver)
 		cleanupFuncs = append(cleanupFuncs, funcs...)
+		By("setting up the pod")
 		if v.VolumeMode == Block {
 			tpod.SetupRawBlockVolume(tpvc.persistentVolumeClaim, fmt.Sprintf("%s%d", v.VolumeDevice.NameGenerate, n+1), v.VolumeDevice.DevicePath)
 		} else {
@@ -137,22 +142,25 @@ func (pod *PodDetails) SetupDeployment(client clientset.Interface, namespace *v1
 
 func (volume *VolumeDetails) SetupDynamicPersistentVolumeClaim(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.DynamicPVTestDriver) (*TestPersistentVolumeClaim, []func()) {
 	cleanupFuncs := make([]func(), 0)
-	By("setting up the StorageClass")
-	storageClass := csiDriver.GetDynamicProvisionStorageClass(driver.GetParameters(), volume.MountOptions, volume.ReclaimPolicy, volume.VolumeBindingMode, volume.AllowedTopologyValues, namespace.Name)
-	tsc := NewTestStorageClass(client, namespace, storageClass)
-	createdStorageClass := tsc.Create()
-	cleanupFuncs = append(cleanupFuncs, tsc.Cleanup)
+	storageClass := volume.StorageClass
+	if storageClass == nil {
+		tsc, tscCleanup := volume.CreateStorageClass(client, namespace, csiDriver)
+		cleanupFuncs = append(cleanupFuncs, tscCleanup)
+		storageClass = tsc.storageClass
+	}
 	By("setting up the PVC and PV")
 	var tpvc *TestPersistentVolumeClaim
 	if volume.DataSource != nil {
 		dataSource := &v1.TypedLocalObjectReference{
-			Name:     volume.DataSource.Name,
-			Kind:     VolumeSnapshotKind,
-			APIGroup: &SnapshotAPIGroup,
+			Name: volume.DataSource.Name,
+			Kind: volume.DataSource.Kind,
 		}
-		tpvc = NewTestPersistentVolumeClaimWithDataSource(client, namespace, volume.ClaimSize, volume.VolumeMode, &createdStorageClass, dataSource)
+		if volume.DataSource.Kind == VolumeSnapshotKind {
+			dataSource.APIGroup = &SnapshotAPIGroup
+		}
+		tpvc = NewTestPersistentVolumeClaimWithDataSource(client, namespace, volume.ClaimSize, volume.VolumeMode, storageClass, dataSource)
 	} else {
-		tpvc = NewTestPersistentVolumeClaim(client, namespace, volume.ClaimSize, volume.VolumeMode, &createdStorageClass)
+		tpvc = NewTestPersistentVolumeClaim(client, namespace, volume.ClaimSize, volume.VolumeMode, storageClass)
 	}
 	tpvc.Create()
 	cleanupFuncs = append(cleanupFuncs, tpvc.Cleanup)
@@ -180,6 +188,14 @@ func (volume *VolumeDetails) SetupPreProvisionedPersistentVolumeClaim(client cli
 	tpvc.ValidateProvisionedPersistentVolume()
 
 	return tpvc, cleanupFuncs
+}
+
+func (volume *VolumeDetails) CreateStorageClass(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.DynamicPVTestDriver) (*TestStorageClass, func()) {
+	By("setting up the StorageClass")
+	storageClass := csiDriver.GetDynamicProvisionStorageClass(driver.GetParameters(), volume.MountOptions, volume.ReclaimPolicy, volume.VolumeBindingMode, volume.AllowedTopologyValues, namespace.Name)
+	tsc := NewTestStorageClass(client, namespace, storageClass)
+	tsc.Create()
+	return tsc, tsc.Cleanup
 }
 
 func CreateVolumeSnapshotClass(client restclientset.Interface, namespace *v1.Namespace, csiDriver driver.VolumeSnapshotTestDriver) (*TestVolumeSnapshotClass, func()) {

@@ -66,6 +66,9 @@ const (
 
 	// see https://docs.microsoft.com/en-us/rest/api/compute/disks/createorupdate#create-a-managed-disk-by-copying-a-snapshot.
 	diskSnapshotPath = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/snapshots/%s"
+
+	// see https://docs.microsoft.com/en-us/rest/api/compute/disks/createorupdate#create-a-managed-disk-from-an-existing-managed-disk-in-the-same-or-different-subscription.
+	managedDiskPath = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s"
 )
 
 var (
@@ -121,6 +124,7 @@ func (d *Driver) Run(endpoint string) {
 			csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME,
 			csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT,
 			csi.ControllerServiceCapability_RPC_LIST_SNAPSHOTS,
+			csi.ControllerServiceCapability_RPC_CLONE_VOLUME,
 			csi.ControllerServiceCapability_RPC_EXPAND_VOLUME,
 		})
 	d.AddVolumeCapabilityAccessModes([]csi.VolumeCapability_AccessMode_Mode{csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER})
@@ -237,6 +241,8 @@ type ManagedDiskOptions struct {
 	DiskMBpsReadWrite string
 	// if SourceResourceID is not empty, then it's a disk copy operation(for snapshot)
 	SourceResourceID string
+	// The type of source
+	SourceType string
 }
 
 //CreateManagedDisk : create managed disk
@@ -265,7 +271,7 @@ func (d *Driver) CreateManagedDisk(ctx context.Context, options *ManagedDiskOpti
 
 	diskSizeGB := int32(options.SizeGB)
 	diskSku := compute.DiskStorageAccountTypes(options.StorageAccountType)
-	creationData, err := getValidCreationData(d.cloud.SubscriptionID, options.ResourceGroup, options.SourceResourceID)
+	creationData, err := getValidCreationData(d.cloud.SubscriptionID, options.ResourceGroup, options.SourceResourceID, options.SourceType)
 	if err != nil {
 		return "", status.Error(codes.Internal, err.Error())
 	}
@@ -401,18 +407,36 @@ func getSourceVolumeId(snapshot *compute.Snapshot) string {
 	return ""
 }
 
-func getValidCreationData(subscriptionID, resourceGroup, sourceResourceID string) (compute.CreationData, error) {
+func getValidCreationData(subscriptionID, resourceGroup, sourceResourceID, sourceType string) (compute.CreationData, error) {
 	if sourceResourceID == "" {
 		return compute.CreationData{
 			CreateOption: compute.Empty,
 		}, nil
 	}
-	if match := diskSnapshotPathRE.FindString(sourceResourceID); match == "" {
-		sourceResourceID = fmt.Sprintf(diskSnapshotPath, subscriptionID, resourceGroup, sourceResourceID)
+
+	switch sourceType {
+	case sourceSnapshot:
+		if match := diskSnapshotPathRE.FindString(sourceResourceID); match == "" {
+			sourceResourceID = fmt.Sprintf(diskSnapshotPath, subscriptionID, resourceGroup, sourceResourceID)
+		}
+
+	case sourceVolume:
+		if match := managedDiskPathRE.FindString(sourceResourceID); match == "" {
+			sourceResourceID = fmt.Sprintf(managedDiskPath, subscriptionID, resourceGroup, sourceResourceID)
+		}
+	default:
+		return compute.CreationData{
+			CreateOption: compute.Empty,
+		}, nil
 	}
+
 	splits := strings.Split(sourceResourceID, "/")
 	if len(splits) > 9 {
-		return compute.CreationData{}, fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", sourceResourceID, diskSnapshotPathRE)
+		if sourceType == sourceSnapshot {
+			return compute.CreationData{}, fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", sourceResourceID, diskSnapshotPathRE)
+		} else {
+			return compute.CreationData{}, fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", sourceResourceID, managedDiskPathRE)
+		}
 	}
 	return compute.CreationData{
 		CreateOption:     compute.Copy,

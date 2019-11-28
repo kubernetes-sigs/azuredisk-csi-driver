@@ -117,6 +117,15 @@ var _ = AfterSuite(func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(strings.HasSuffix(projectRoot, "azuredisk-csi-driver")).To(Equal(true))
 
+		log.Println("===================azuredisk log===================")
+		cmdSh := exec.Command("sh", "test/utils/azuredisk_log.sh")
+		cmdSh.Dir = projectRoot
+		cmdSh.Stdout = os.Stdout
+		cmdSh.Stderr = os.Stderr
+		err = cmdSh.Run()
+		Expect(err).NotTo(HaveOccurred())
+		log.Println("===================================================")
+
 		log.Println("Uninstalling Azure Disk CSI Driver...")
 		cmd := exec.Command("make", "e2e-teardown")
 		cmd.Dir = projectRoot
