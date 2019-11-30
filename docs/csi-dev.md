@@ -24,7 +24,7 @@ make azuredisk-container
 make push-latest
 ```
 
-### Test locally by csc tool
+### Test locally using csc tool
 Install `csc` tool according to https://github.com/rexray/gocsi/tree/master/csc:
 ```
 $ mkdir -p $GOPATH/src/github.com
