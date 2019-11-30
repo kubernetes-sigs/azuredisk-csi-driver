@@ -24,15 +24,6 @@ make azuredisk-container
 make push-latest
 ```
 
-### Start CSI driver locally
-```
-$ ./_output/azurediskplugin --endpoint tcp://127.0.0.1:10000 --nodeid CSINode -v=5
-```
-> Before running CSI driver, create "/etc/kubernetes/azure.json" file under testing server(it's better copy `azure.json` file from a k8s cluster with service principle configured correctly) and set `AZURE_CREDENTIAL_FILE` as following:
-```
-export set AZURE_CREDENTIAL_FILE=/etc/kubernetes/azure.json
-```
-
 ### Test locally by csc tool
 Install `csc` tool according to https://github.com/rexray/gocsi/tree/master/csc:
 ```
@@ -43,10 +34,20 @@ $ cd rexray/gocsi/csc
 $ make build
 ```
 
+#### Start CSI driver locally
+```
+$ cd $GOPATH/src/sigs.k8s.io/azuredisk-csi-driver
+$ ./_output/azurediskplugin --endpoint tcp://127.0.0.1:10000 --nodeid CSINode -v=5 &
+```
+> Before running CSI driver, create "/etc/kubernetes/azure.json" file under testing server(it's better copy `azure.json` file from a k8s cluster with service principle configured correctly) and set `AZURE_CREDENTIAL_FILE` as following:
+```
+export set AZURE_CREDENTIAL_FILE=/etc/kubernetes/azure.json
+```
+
 #### 1. Get plugin info
 ```
 $ csc identity plugin-info --endpoint tcp://127.0.0.1:10000
-"csi-azuredisk" "v0.1.0-alpha"
+"disk.csi.azure.com"    "v0.5.0"
 ```
 
 #### 2. Create an azure disk volume
