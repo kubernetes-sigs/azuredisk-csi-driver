@@ -2,6 +2,7 @@
 
  - Clone the repo
 ```
+$ mkdir -p $GOPATH/src/sigs.k8s.io/
 $ git clone https://github.com/kubernetes-sigs/azuredisk-csi-driver $GOPATH/src/sigs.k8s.io/azuredisk-csi-driver
 ```
 
