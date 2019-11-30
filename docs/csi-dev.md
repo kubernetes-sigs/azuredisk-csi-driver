@@ -33,8 +33,15 @@ $ ./_output/azurediskplugin --endpoint tcp://127.0.0.1:10000 --nodeid CSINode -v
 export set AZURE_CREDENTIAL_FILE=/etc/kubernetes/azure.json
 ```
 
-### Test using csc
-Get ```csc``` tool from https://github.com/rexray/gocsi/tree/master/csc
+### Test locally by csc tool
+Install `csc` tool according to https://github.com/rexray/gocsi/tree/master/csc:
+```
+$ mkdir -p $GOPATH/src/github.com
+$ cd $GOPATH/src/github.com
+$ git clone https://github.com/rexray/gocsi.git
+$ cd rexray/gocsi/csc
+$ make build
+```
 
 #### 1. Get plugin info
 ```
