@@ -7,21 +7,29 @@ $ git clone https://github.com/kubernetes-sigs/azuredisk-csi-driver $GOPATH/src/
 
  - Build azure disk plugin
 ```
+$ cd azuredisk-csi-driver
 $ make azuredisk
 ```
 
+ - Run unit test
+```
+$ make unit-test
+```
+
+ - Build continer image and push to dockerhub
+```
+export REGISTRY=<dockerhub-alias>
+make azuredisk-container
+make push-latest
+```
+
+### Start CSI driver locally
+```
+$ ./_output/azurediskplugin --endpoint tcp://127.0.0.1:10000 --nodeid CSINode -v=5
+```
 > Before running CSI driver, create "/etc/kubernetes/azure.json" file under testing server(it's better copy `azure.json` file from a k8s cluster with service principle configured correctly) and set `AZURE_CREDENTIAL_FILE` as following:
 ```
 export set AZURE_CREDENTIAL_FILE=/etc/kubernetes/azure.json
-```
- - Run test
-```
-$ make test
-```
-
-### Start CSI driver
-```
-$ ./_output/azurediskplugin --endpoint tcp://127.0.0.1:10000 --nodeid CSINode -v=5
 ```
 
 ### Test using csc
