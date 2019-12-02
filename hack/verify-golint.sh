@@ -18,6 +18,6 @@ set -euo pipefail
 
 GO111MODULE=off go get -u github.com/golangci/golangci-lint/cmd/golangci-lint
 
-"$GOBIN"/golangci-lint run --deadline=10m
+golangci-lint run --deadline=10m
 
 echo "Congratulations! All Go source files have been linted."
