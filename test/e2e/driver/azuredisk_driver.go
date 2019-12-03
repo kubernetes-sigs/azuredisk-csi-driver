@@ -33,7 +33,7 @@ import (
 
 const (
 	AzureDriverNameVar = "AZURE_STORAGE_DRIVER"
-	TopologyKey = "topology.disk.csi.azure.com/zone"
+	TopologyKey        = "topology.disk.csi.azure.com/zone"
 )
 
 // Implement DynamicPVTestDriver interface
@@ -66,7 +66,7 @@ func (d *azureDiskDriver) IsInTree() bool {
 
 func (d *azureDiskDriver) GetDynamicProvisionStorageClass(parameters map[string]string, mountOptions []string, reclaimPolicy *v1.PersistentVolumeReclaimPolicy, bindingMode *storagev1.VolumeBindingMode, allowedTopologyValues []string, namespace string) *storagev1.StorageClass {
 	provisioner := d.driverName
-	generateName := fmt.Sprintf("%s-%s-dynamic-sc-", namespace, provisioner)
+	generateName := fmt.Sprintf("%s-%s-dynamic-sc-", namespace, normalizeProvisioner(provisioner))
 	var allowedTopologies []v1.TopologySelectorTerm
 	if len(allowedTopologyValues) > 0 {
 		allowedTopologies = []v1.TopologySelectorTerm{

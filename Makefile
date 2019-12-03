@@ -72,7 +72,6 @@ e2e-bootstrap: install-helm
 		--set image.azuredisk.pullPolicy=IfNotPresent \
 		--set image.azuredisk.repository=$(REGISTRY)/$(IMAGE_NAME) \
 		--set image.azuredisk.tag=$(IMAGE_VERSION)
-		--set featureGates.topology=$(ENABLE_TOPOLOGY)
 
 .PHONY: install-helm
 install-helm:
