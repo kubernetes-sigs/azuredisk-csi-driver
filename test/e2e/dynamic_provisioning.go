@@ -58,7 +58,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	BeforeEach(func() {
 		cs = f.ClientSet
 		ns = f.Namespace
-		// Populate allowedTopologyValues from node labels
+		// Populate allowedTopologyValues from node labels fior the first time
 		if isMultiZone && len(t.allowedTopologyValues) == 0 {
 			nodes, err := cs.CoreV1().Nodes().List(metav1.ListOptions{})
 			framework.ExpectNoError(err)
@@ -76,74 +76,71 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 
 	testDriver = driver.InitAzureDiskDriver()
 	It(fmt.Sprintf("should create a volume on demand"), func() {
-		pod := testsuites.PodDetails{
-			Cmd: "echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data",
-			Volumes: []testsuites.VolumeDetails{
-				{
-					ClaimSize: "10Gi",
-					VolumeMount: testsuites.VolumeMountDetails{
-						NameGenerate:      "test-volume-",
-						MountPathGenerate: "/mnt/test-",
+		pods := []testsuites.PodDetails{
+			{
+				Cmd: "echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data",
+				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+					{
+						ClaimSize: "10Gi",
+						VolumeMount: testsuites.VolumeMountDetails{
+							NameGenerate:      "test-volume-",
+							MountPathGenerate: "/mnt/test-",
+						},
 					},
-				},
+				}, isMultiZone),
 			},
-		}
-		if isMultiZone {
-			pod.Volumes = t.injectAllowedTopologyValuesAndVolumeBindingMode(pod.Volumes)
 		}
 		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
 			CSIDriver: testDriver,
-			Pods:      []testsuites.PodDetails{pod},
+			Pods:      pods,
 		}
 		test.Run(cs, ns)
 	})
 
 	It(fmt.Sprintf("should create a raw block volume on demand"), func() {
-		pod := testsuites.PodDetails{
-			Cmd: "ls /dev | grep e2e-test",
-			Volumes: []testsuites.VolumeDetails{
-				{
-					ClaimSize:  "10Gi",
-					VolumeMode: testsuites.Block,
-					VolumeDevice: testsuites.VolumeDeviceDetails{
-						NameGenerate: "test-volume-",
-						DevicePath:   "/dev/e2e-test",
+		pods := []testsuites.PodDetails{
+			{
+				Cmd: "ls /dev | grep e2e-test",
+				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+					{
+						ClaimSize:  "10Gi",
+						VolumeMode: testsuites.Block,
+						VolumeDevice: testsuites.VolumeDeviceDetails{
+							NameGenerate: "test-volume-",
+							DevicePath:   "/dev/e2e-test",
+						},
 					},
-				},
+				}, isMultiZone),
 			},
-		}
-		if isMultiZone {
-			pod.Volumes = t.injectAllowedTopologyValuesAndVolumeBindingMode(pod.Volumes)
 		}
 		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
 			CSIDriver: testDriver,
-			Pods:      []testsuites.PodDetails{pod},
+			Pods:      pods,
 		}
 		test.Run(cs, ns)
 	})
 
 	//Track issue https://github.com/kubernetes/kubernetes/issues/70505
 	It("should create a volume on demand and mount it as readOnly in a pod", func() {
-		pod := testsuites.PodDetails{
-			Cmd: "touch /mnt/test-1/data",
-			Volumes: []testsuites.VolumeDetails{
-				{
-					FSType:    "ext4",
-					ClaimSize: "10Gi",
-					VolumeMount: testsuites.VolumeMountDetails{
-						NameGenerate:      "test-volume-",
-						MountPathGenerate: "/mnt/test-",
-						ReadOnly:          true,
+		pods := []testsuites.PodDetails{
+			{
+				Cmd: "touch /mnt/test-1/data",
+				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+					{
+						FSType:    "ext4",
+						ClaimSize: "10Gi",
+						VolumeMount: testsuites.VolumeMountDetails{
+							NameGenerate:      "test-volume-",
+							MountPathGenerate: "/mnt/test-",
+							ReadOnly:          true,
+						},
 					},
-				},
+				}, isMultiZone),
 			},
-		}
-		if isMultiZone {
-			pod.Volumes = t.injectAllowedTopologyValuesAndVolumeBindingMode(pod.Volumes)
 		}
 		test := testsuites.DynamicallyProvisionedReadOnlyVolumeTest{
 			CSIDriver: testDriver,
-			Pods:      []testsuites.PodDetails{pod},
+			Pods:      pods,
 		}
 		test.Run(cs, ns)
 	})
@@ -152,7 +149,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		pods := []testsuites.PodDetails{
 			{
 				Cmd: "while true; do echo $(date -u) >> /mnt/test-1/data; sleep 1; done",
-				Volumes: []testsuites.VolumeDetails{
+				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
 						FSType:    "ext3",
 						ClaimSize: "10Gi",
@@ -161,11 +158,11 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 							MountPathGenerate: "/mnt/test-",
 						},
 					},
-				},
+				}, isMultiZone),
 			},
 			{
 				Cmd: "while true; do echo $(date -u) >> /mnt/test-1/data; sleep 1; done",
-				Volumes: []testsuites.VolumeDetails{
+				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
 						FSType:    "ext4",
 						ClaimSize: "10Gi",
@@ -174,11 +171,11 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 							MountPathGenerate: "/mnt/test-",
 						},
 					},
-				},
+				}, isMultiZone),
 			},
 			{
 				Cmd: "while true; do echo $(date -u) >> /mnt/test-1/data; sleep 1; done",
-				Volumes: []testsuites.VolumeDetails{
+				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
 						FSType:    "xfs",
 						ClaimSize: "10Gi",
@@ -187,13 +184,8 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 							MountPathGenerate: "/mnt/test-",
 						},
 					},
-				},
+				}, isMultiZone),
 			},
-		}
-		if isMultiZone {
-			for i := range pods {
-				pods[i].Volumes = t.injectAllowedTopologyValuesAndVolumeBindingMode(pods[i].Volumes)
-			}
 		}
 		test := testsuites.DynamicallyProvisionedCollocatedPodTest{
 			CSIDriver:    testDriver,
@@ -206,7 +198,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	It("should create a deployment object, write and read to it, delete the pod and write and read to it again", func() {
 		pod := testsuites.PodDetails{
 			Cmd: "echo 'hello world' >> /mnt/test-1/data && while true; do sleep 1; done",
-			Volumes: []testsuites.VolumeDetails{
+			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 				{
 					FSType:    "ext3",
 					ClaimSize: "10Gi",
@@ -215,10 +207,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 						MountPathGenerate: "/mnt/test-",
 					},
 				},
-			},
-		}
-		if isMultiZone {
-			pod.Volumes = t.injectAllowedTopologyValuesAndVolumeBindingMode(pod.Volumes)
+			}, isMultiZone),
 		}
 		test := testsuites.DynamicallyProvisionedDeletePodTest{
 			CSIDriver: testDriver,
@@ -233,16 +222,13 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 
 	It(fmt.Sprintf("should delete PV with reclaimPolicy %q", v1.PersistentVolumeReclaimDelete), func() {
 		reclaimPolicy := v1.PersistentVolumeReclaimDelete
-		volumes := []testsuites.VolumeDetails{
+		volumes := t.normalizeVolumes([]testsuites.VolumeDetails{
 			{
 				FSType:        "ext4",
 				ClaimSize:     "10Gi",
 				ReclaimPolicy: &reclaimPolicy,
 			},
-		}
-		if isMultiZone {
-			volumes = t.injectAllowedTopologyValuesAndVolumeBindingMode(volumes)
-		}
+		}, isMultiZone)
 		test := testsuites.DynamicallyProvisionedReclaimPolicyTest{
 			CSIDriver: testDriver,
 			Volumes:   volumes,
@@ -258,16 +244,13 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			Skip("Test running with in tree configuration")
 		}
 		reclaimPolicy := v1.PersistentVolumeReclaimRetain
-		volumes := []testsuites.VolumeDetails{
+		volumes := t.normalizeVolumes([]testsuites.VolumeDetails{
 			{
 				FSType:        "ext4",
 				ClaimSize:     "10Gi",
 				ReclaimPolicy: &reclaimPolicy,
 			},
-		}
-		if isMultiZone {
-			volumes = t.injectAllowedTopologyValuesAndVolumeBindingMode(volumes)
-		}
+		}, isMultiZone)
 		test := testsuites.DynamicallyProvisionedReclaimPolicyTest{
 			CSIDriver: testDriver,
 			Volumes:   volumes,
@@ -279,7 +262,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	It("cloning a volume from an existing volume", func() {
 		pod := testsuites.PodDetails{
 			Cmd: "echo 'hello world' >> /mnt/test-1/data && while true; do sleep 1; done",
-			Volumes: []testsuites.VolumeDetails{
+			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 				{
 					FSType:    "ext4",
 					ClaimSize: "10Gi",
@@ -288,15 +271,15 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 						MountPathGenerate: "/mnt/test-",
 					},
 				},
-			},
+			}, isMultiZone),
 		}
-		volume := testsuites.VolumeDetails{
+		volume := t.normalizeVolume(testsuites.VolumeDetails{
 			FSType:    "ext4",
 			ClaimSize: "10Gi",
 			DataSource: &testsuites.DataSource{
 				Kind: testsuites.VolumePVCKind,
 			},
-		}
+		}, isMultiZone)
 		test := testsuites.DynamicallyProvisionedVolumeCloningTest{
 			CSIDriver: testDriver,
 			Pod:       pod,
@@ -306,11 +289,21 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	})
 }
 
-func (t *dynamicProvisioningTestSuite) injectAllowedTopologyValuesAndVolumeBindingMode(volumes []testsuites.VolumeDetails) []testsuites.VolumeDetails {
+// Normalize volumes by adding allowed topology values and WaitForFirstConsumer binding mode if we are testing in a multi-az cluster
+func (t *dynamicProvisioningTestSuite) normalizeVolumes(volumes []testsuites.VolumeDetails, isMultiZone bool) []testsuites.VolumeDetails {
 	for i := range volumes {
-		volumes[i].AllowedTopologyValues = t.allowedTopologyValues
-		volumeBindingMode := storagev1.VolumeBindingWaitForFirstConsumer
-		volumes[i].VolumeBindingMode = &volumeBindingMode
+		volumes[i] = t.normalizeVolume(volumes[i], isMultiZone)
 	}
 	return volumes
+}
+
+func (t *dynamicProvisioningTestSuite) normalizeVolume(volume testsuites.VolumeDetails, isMultiZone bool) testsuites.VolumeDetails {
+	if !isMultiZone {
+		return volume
+	}
+
+	volume.AllowedTopologyValues = t.allowedTopologyValues
+	volumeBindingMode := storagev1.VolumeBindingWaitForFirstConsumer
+	volume.VolumeBindingMode = &volumeBindingMode
+	return volume
 }
