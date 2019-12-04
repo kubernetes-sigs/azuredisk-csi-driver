@@ -35,10 +35,10 @@ Please refer to [`disk.csi.azure.com` driver parameters](./docs/driver-parameter
 Please refer to [install azuredisk csi driver](./docs/install-azuredisk-csi-driver.md)
 
 ### Examples
- - [E2E usage example](./deploy/example/e2e_usage.md)
- - [Snapshot example](./deploy/example/snapshot)
- - [Volume Cloning example](./deploy/example/cloning)
- - [Raw Block Volume example](./deploy/example/rawblock)
+ - [Basic usage](./deploy/example/e2e_usage.md)
+ - [Snapshot](./deploy/example/snapshot)
+ - [Volume Cloning](./deploy/example/cloning)
+ - [Raw Block Volume](./deploy/example/rawblock)
 
 ## Kubernetes Development
 Please refer to [development guide](./docs/csi-dev.md)
