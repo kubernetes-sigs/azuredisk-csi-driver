@@ -43,7 +43,7 @@ func (t *DynamicallyProvisionedVolumeCloningTest) Run(client clientset.Interface
 	for i := range cleanups {
 		defer cleanups[i]()
 	}
-	if *t.Pod.Volumes[0].VolumeBindingMode == storagev1.VolumeBindingWaitForFirstConsumer {
+	if t.Pod.Volumes[0].VolumeBindingMode != nil && *t.Pod.Volumes[0].VolumeBindingMode == storagev1.VolumeBindingWaitForFirstConsumer {
 		By("deploying the pod")
 		tpod.Create()
 		defer tpod.Cleanup()
@@ -59,7 +59,7 @@ func (t *DynamicallyProvisionedVolumeCloningTest) Run(client clientset.Interface
 	}
 
 	By("validating the cloned volume")
-	if *t.Volume.VolumeBindingMode == storagev1.VolumeBindingWaitForFirstConsumer {
+	if t.Volume.VolumeBindingMode != nil && *t.Volume.VolumeBindingMode == storagev1.VolumeBindingWaitForFirstConsumer {
 		podWithClonedVolume := NewTestPod(client, namespace, t.Pod.Cmd)
 		podWithClonedVolume.SetupVolume(tpvc.persistentVolumeClaim, t.Pod.Volumes[0].VolumeMount.NameGenerate+"0", t.Pod.Volumes[0].VolumeMount.MountPathGenerate+"0", t.Volume.VolumeMount.ReadOnly)
 		By("deploying the pod with cloned volume")
