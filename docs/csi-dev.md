@@ -123,7 +123,7 @@ make azuredisk-container
 make push-latest
 ```
 
- - Replace `mcr.microsoft.com/k8s/csi/azuredisk-csi:latest` in `csi-azuredisk-controller.yaml` and `csi-azuredisk-node.yaml` with above dockerhub image urls and then follow [install CSI driver master version](https://github.com/kubernetes-sigs/azuredisk-csi-driver/blob/master/docs/install-csi-driver-master.md)
+ - Replace `mcr.microsoft.com/k8s/csi/azuredisk-csi:latest` in [`csi-azuredisk-controller.yaml`](https://github.com/kubernetes-sigs/azuredisk-csi-driver/blob/master/deploy/csi-azuredisk-controller.yaml) and [`csi-azuredisk-node.yaml`](https://github.com/kubernetes-sigs/azuredisk-csi-driver/blob/master/deploy/csi-azuredisk-node.yaml) with above dockerhub image urls and then follow [install CSI driver master version](https://github.com/kubernetes-sigs/azuredisk-csi-driver/blob/master/docs/install-csi-driver-master.md)
  ```
 wget -O csi-azuredisk-controller.yaml https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/csi-azuredisk-controller.yaml
 # edit csi-azuredisk-controller.yaml
