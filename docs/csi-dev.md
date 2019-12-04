@@ -115,7 +115,7 @@ $ csc controller list-snapshots --endpoint tcp://127.0.0.1:10000
 
 ## How to test CSI driver in a Kubernetes cluster
 
- - Build continer image and push image to dockerhub
+ - Build driver image and push image to dockerhub
 ```
 # run `docker login` first
 export REGISTRY=<dockerhub-alias>
