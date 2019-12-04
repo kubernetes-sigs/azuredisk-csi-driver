@@ -120,7 +120,7 @@ $ csc controller list-snapshots --endpoint tcp://127.0.0.1:10000
 export REGISTRY=<dockerhub-alias>
 make azuredisk-container
 make push-latest
-# need run `docker login` first
+# run `docker login` first
 ```
 
  - Replace `mcr.microsoft.com/k8s/csi/azuredisk-csi:latest` in `csi-azuredisk-controller.yaml` and `csi-azuredisk-node.yaml` with above dockerhub image urls and then follow [install CSI driver master version](https://github.com/kubernetes-sigs/azuredisk-csi-driver/blob/master/docs/install-csi-driver-master.md)
