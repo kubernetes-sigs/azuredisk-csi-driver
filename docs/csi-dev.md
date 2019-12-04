@@ -1,12 +1,13 @@
 # Azure disk CSI driver development guide
 
+## How to build this project
  - Clone repo
 ```
 $ mkdir -p $GOPATH/src/sigs.k8s.io/
 $ git clone https://github.com/kubernetes-sigs/azuredisk-csi-driver $GOPATH/src/sigs.k8s.io/azuredisk-csi-driver
 ```
 
- - Build azure disk plugin
+ - Build CSI driver
 ```
 $ cd $GOPATH/src/sigs.k8s.io/azuredisk-csi-driver
 $ make azuredisk
@@ -17,14 +18,8 @@ $ make azuredisk
 $ make unit-test
 ```
 
- - Build continer image and push to dockerhub
-```
-export REGISTRY=<dockerhub-alias>
-make azuredisk-container
-make push-latest
-```
+## How to test CSI driver in local environment
 
-### Test locally using csc tool
 Install `csc` tool according to https://github.com/rexray/gocsi/tree/master/csc:
 ```
 $ mkdir -p $GOPATH/src/github.com
@@ -117,3 +112,24 @@ $ csc controller delete-snapshot snapshot-name --endpoint tcp://127.0.0.1:10000
 ```
 $ csc controller list-snapshots --endpoint tcp://127.0.0.1:10000
 ```
+
+## How to test CSI driver in a Kubernetes cluster
+
+ - Build continer image and push image to dockerhub
+```
+export REGISTRY=<dockerhub-alias>
+make azuredisk-container
+make push-latest
+# need run `docker login` first
+```
+
+ - Replace `mcr.microsoft.com/k8s/csi/azuredisk-csi:latest` in `csi-azuredisk-controller.yaml` and `csi-azuredisk-node.yaml` with above dockerhub image urls and then follow [install CSI driver master version](https://github.com/kubernetes-sigs/azuredisk-csi-driver/blob/master/docs/install-csi-driver-master.md)
+ ```
+wget -O csi-azuredisk-controller.yaml https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/csi-azuredisk-controller.yaml
+# edit csi-azuredisk-controller.yaml
+kubectl apply -f csi-azuredisk-controller.yaml
+
+wget -O csi-azuredisk-node.yaml https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/csi-azuredisk-node.yaml
+# edit csi-azuredisk-node.yaml
+kubectl apply -f csi-azuredisk-node.yaml
+ ```
