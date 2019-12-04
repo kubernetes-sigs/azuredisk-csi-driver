@@ -19,6 +19,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 
 	v1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	clientset "k8s.io/client-go/kubernetes"
 )
 
@@ -32,6 +33,9 @@ type DynamicallyProvisionedReclaimPolicyTest struct {
 
 func (t *DynamicallyProvisionedReclaimPolicyTest) Run(client clientset.Interface, namespace *v1.Namespace) {
 	for _, volume := range t.Volumes {
+		// Force volume binding mode to immediate so the PV can be provisioned without a pod
+		volumeBindingMode := storagev1.VolumeBindingImmediate
+		volume.VolumeBindingMode = &volumeBindingMode
 		tpvc, _ := volume.SetupDynamicPersistentVolumeClaim(client, namespace, t.CSIDriver)
 
 		// will delete the PVC

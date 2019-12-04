@@ -24,11 +24,29 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	v1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
 )
 
-var _ = Describe("Dynamic Provisioning", func() {
+var _ = Describe("[azuredisk-csi-e2e] Dynamic Provisioning", func() {
+	t := dynamicProvisioningTestSuite{}
+
+	Context("[single-az]", func() {
+		t.defineTests(false)
+	})
+
+	Context("[multi-az]", func() {
+		t.defineTests(true)
+	})
+})
+
+type dynamicProvisioningTestSuite struct {
+	allowedTopologyValues []string
+}
+
+func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	f := framework.NewDefaultFramework("azuredisk")
 
 	var (
@@ -40,6 +58,20 @@ var _ = Describe("Dynamic Provisioning", func() {
 	BeforeEach(func() {
 		cs = f.ClientSet
 		ns = f.Namespace
+		// Populate allowedTopologyValues from node labels fior the first time
+		if isMultiZone && len(t.allowedTopologyValues) == 0 {
+			nodes, err := cs.CoreV1().Nodes().List(metav1.ListOptions{})
+			framework.ExpectNoError(err)
+			allowedTopologyValuesMap := make(map[string]bool)
+			for _, node := range nodes.Items {
+				if zone, ok := node.Labels[driver.TopologyKey]; ok {
+					allowedTopologyValuesMap[zone] = true
+				}
+			}
+			for k := range allowedTopologyValuesMap {
+				t.allowedTopologyValues = append(t.allowedTopologyValues, k)
+			}
+		}
 	})
 
 	testDriver = driver.InitAzureDiskDriver()
@@ -47,7 +79,7 @@ var _ = Describe("Dynamic Provisioning", func() {
 		pods := []testsuites.PodDetails{
 			{
 				Cmd: "echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data",
-				Volumes: []testsuites.VolumeDetails{
+				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
 						ClaimSize: "10Gi",
 						VolumeMount: testsuites.VolumeMountDetails{
@@ -55,7 +87,7 @@ var _ = Describe("Dynamic Provisioning", func() {
 							MountPathGenerate: "/mnt/test-",
 						},
 					},
-				},
+				}, isMultiZone),
 			},
 		}
 		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
@@ -69,7 +101,7 @@ var _ = Describe("Dynamic Provisioning", func() {
 		pods := []testsuites.PodDetails{
 			{
 				Cmd: "ls /dev | grep e2e-test",
-				Volumes: []testsuites.VolumeDetails{
+				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
 						ClaimSize:  "10Gi",
 						VolumeMode: testsuites.Block,
@@ -78,7 +110,7 @@ var _ = Describe("Dynamic Provisioning", func() {
 							DevicePath:   "/dev/e2e-test",
 						},
 					},
-				},
+				}, isMultiZone),
 			},
 		}
 		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
@@ -93,7 +125,7 @@ var _ = Describe("Dynamic Provisioning", func() {
 		pods := []testsuites.PodDetails{
 			{
 				Cmd: "touch /mnt/test-1/data",
-				Volumes: []testsuites.VolumeDetails{
+				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
 						FSType:    "ext4",
 						ClaimSize: "10Gi",
@@ -103,7 +135,7 @@ var _ = Describe("Dynamic Provisioning", func() {
 							ReadOnly:          true,
 						},
 					},
-				},
+				}, isMultiZone),
 			},
 		}
 		test := testsuites.DynamicallyProvisionedReadOnlyVolumeTest{
@@ -117,7 +149,7 @@ var _ = Describe("Dynamic Provisioning", func() {
 		pods := []testsuites.PodDetails{
 			{
 				Cmd: "while true; do echo $(date -u) >> /mnt/test-1/data; sleep 1; done",
-				Volumes: []testsuites.VolumeDetails{
+				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
 						FSType:    "ext3",
 						ClaimSize: "10Gi",
@@ -126,11 +158,11 @@ var _ = Describe("Dynamic Provisioning", func() {
 							MountPathGenerate: "/mnt/test-",
 						},
 					},
-				},
+				}, isMultiZone),
 			},
 			{
 				Cmd: "while true; do echo $(date -u) >> /mnt/test-1/data; sleep 1; done",
-				Volumes: []testsuites.VolumeDetails{
+				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
 						FSType:    "ext4",
 						ClaimSize: "10Gi",
@@ -139,11 +171,11 @@ var _ = Describe("Dynamic Provisioning", func() {
 							MountPathGenerate: "/mnt/test-",
 						},
 					},
-				},
+				}, isMultiZone),
 			},
 			{
 				Cmd: "while true; do echo $(date -u) >> /mnt/test-1/data; sleep 1; done",
-				Volumes: []testsuites.VolumeDetails{
+				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
 						FSType:    "xfs",
 						ClaimSize: "10Gi",
@@ -152,7 +184,7 @@ var _ = Describe("Dynamic Provisioning", func() {
 							MountPathGenerate: "/mnt/test-",
 						},
 					},
-				},
+				}, isMultiZone),
 			},
 		}
 		test := testsuites.DynamicallyProvisionedCollocatedPodTest{
@@ -166,7 +198,7 @@ var _ = Describe("Dynamic Provisioning", func() {
 	It("should create a deployment object, write and read to it, delete the pod and write and read to it again", func() {
 		pod := testsuites.PodDetails{
 			Cmd: "echo 'hello world' >> /mnt/test-1/data && while true; do sleep 1; done",
-			Volumes: []testsuites.VolumeDetails{
+			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 				{
 					FSType:    "ext3",
 					ClaimSize: "10Gi",
@@ -175,7 +207,7 @@ var _ = Describe("Dynamic Provisioning", func() {
 						MountPathGenerate: "/mnt/test-",
 					},
 				},
-			},
+			}, isMultiZone),
 		}
 		test := testsuites.DynamicallyProvisionedDeletePodTest{
 			CSIDriver: testDriver,
@@ -190,13 +222,13 @@ var _ = Describe("Dynamic Provisioning", func() {
 
 	It(fmt.Sprintf("should delete PV with reclaimPolicy %q", v1.PersistentVolumeReclaimDelete), func() {
 		reclaimPolicy := v1.PersistentVolumeReclaimDelete
-		volumes := []testsuites.VolumeDetails{
+		volumes := t.normalizeVolumes([]testsuites.VolumeDetails{
 			{
 				FSType:        "ext4",
 				ClaimSize:     "10Gi",
 				ReclaimPolicy: &reclaimPolicy,
 			},
-		}
+		}, isMultiZone)
 		test := testsuites.DynamicallyProvisionedReclaimPolicyTest{
 			CSIDriver: testDriver,
 			Volumes:   volumes,
@@ -212,13 +244,13 @@ var _ = Describe("Dynamic Provisioning", func() {
 			Skip("Test running with in tree configuration")
 		}
 		reclaimPolicy := v1.PersistentVolumeReclaimRetain
-		volumes := []testsuites.VolumeDetails{
+		volumes := t.normalizeVolumes([]testsuites.VolumeDetails{
 			{
 				FSType:        "ext4",
 				ClaimSize:     "10Gi",
 				ReclaimPolicy: &reclaimPolicy,
 			},
-		}
+		}, isMultiZone)
 		test := testsuites.DynamicallyProvisionedReclaimPolicyTest{
 			CSIDriver: testDriver,
 			Volumes:   volumes,
@@ -230,7 +262,7 @@ var _ = Describe("Dynamic Provisioning", func() {
 	It("cloning a volume from an existing volume", func() {
 		pod := testsuites.PodDetails{
 			Cmd: "echo 'hello world' >> /mnt/test-1/data && while true; do sleep 1; done",
-			Volumes: []testsuites.VolumeDetails{
+			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 				{
 					FSType:    "ext4",
 					ClaimSize: "10Gi",
@@ -239,15 +271,15 @@ var _ = Describe("Dynamic Provisioning", func() {
 						MountPathGenerate: "/mnt/test-",
 					},
 				},
-			},
+			}, isMultiZone),
 		}
-		volume := testsuites.VolumeDetails{
+		volume := t.normalizeVolume(testsuites.VolumeDetails{
 			FSType:    "ext4",
 			ClaimSize: "10Gi",
 			DataSource: &testsuites.DataSource{
 				Kind: testsuites.VolumePVCKind,
 			},
-		}
+		}, isMultiZone)
 		test := testsuites.DynamicallyProvisionedVolumeCloningTest{
 			CSIDriver: testDriver,
 			Pod:       pod,
@@ -255,4 +287,23 @@ var _ = Describe("Dynamic Provisioning", func() {
 		}
 		test.Run(cs, ns)
 	})
-})
+}
+
+// Normalize volumes by adding allowed topology values and WaitForFirstConsumer binding mode if we are testing in a multi-az cluster
+func (t *dynamicProvisioningTestSuite) normalizeVolumes(volumes []testsuites.VolumeDetails, isMultiZone bool) []testsuites.VolumeDetails {
+	for i := range volumes {
+		volumes[i] = t.normalizeVolume(volumes[i], isMultiZone)
+	}
+	return volumes
+}
+
+func (t *dynamicProvisioningTestSuite) normalizeVolume(volume testsuites.VolumeDetails, isMultiZone bool) testsuites.VolumeDetails {
+	if !isMultiZone {
+		return volume
+	}
+
+	volume.AllowedTopologyValues = t.allowedTopologyValues
+	volumeBindingMode := storagev1.VolumeBindingWaitForFirstConsumer
+	volume.VolumeBindingMode = &volumeBindingMode
+	return volume
+}
