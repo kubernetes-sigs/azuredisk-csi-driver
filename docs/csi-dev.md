@@ -20,7 +20,7 @@ $ make unit-test
 
 ## How to test CSI driver in local environment
 
-Install `csc` tool according to https://github.com/rexray/gocsi/tree/master/csc:
+Install `csc` tool according to https://github.com/rexray/gocsi/tree/master/csc
 ```
 $ mkdir -p $GOPATH/src/github.com
 $ cd $GOPATH/src/github.com
@@ -117,10 +117,10 @@ $ csc controller list-snapshots --endpoint tcp://127.0.0.1:10000
 
  - Build continer image and push image to dockerhub
 ```
+# run `docker login` first
 export REGISTRY=<dockerhub-alias>
 make azuredisk-container
 make push-latest
-# run `docker login` first
 ```
 
  - Replace `mcr.microsoft.com/k8s/csi/azuredisk-csi:latest` in `csi-azuredisk-controller.yaml` and `csi-azuredisk-node.yaml` with above dockerhub image urls and then follow [install CSI driver master version](https://github.com/kubernetes-sigs/azuredisk-csi-driver/blob/master/docs/install-csi-driver-master.md)
