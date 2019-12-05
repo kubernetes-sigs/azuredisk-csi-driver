@@ -19,7 +19,7 @@ package testsuites
 import (
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 
-	. "github.com/onsi/ginkgo"
+	"github.com/onsi/ginkgo"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -44,13 +44,13 @@ func (t *DynamicallyProvisionedVolumeCloningTest) Run(client clientset.Interface
 		defer cleanups[i]()
 	}
 	if t.Pod.Volumes[0].VolumeBindingMode != nil && *t.Pod.Volumes[0].VolumeBindingMode == storagev1.VolumeBindingWaitForFirstConsumer {
-		By("deploying the pod")
+		ginkgo.By("deploying the pod")
 		tpod.Create()
 		defer tpod.Cleanup()
 		tpod.WaitForRunning()
 	}
 
-	By("creating the pvc from an existing pvc")
+	ginkgo.By("creating the pvc from an existing pvc")
 	t.Volume.DataSource.Name = tpod.pod.Spec.Volumes[0].VolumeSource.PersistentVolumeClaim.ClaimName
 	t.Volume.StorageClass = tsc.storageClass
 	tpvc, cleanups := t.Volume.SetupDynamicPersistentVolumeClaim(client, namespace, t.CSIDriver)
@@ -58,11 +58,11 @@ func (t *DynamicallyProvisionedVolumeCloningTest) Run(client clientset.Interface
 		defer cleanups[i]()
 	}
 
-	By("validating the cloned volume")
+	ginkgo.By("validating the cloned volume")
 	if t.Volume.VolumeBindingMode != nil && *t.Volume.VolumeBindingMode == storagev1.VolumeBindingWaitForFirstConsumer {
 		podWithClonedVolume := NewTestPod(client, namespace, t.Pod.Cmd)
 		podWithClonedVolume.SetupVolume(tpvc.persistentVolumeClaim, t.Pod.Volumes[0].VolumeMount.NameGenerate+"0", t.Pod.Volumes[0].VolumeMount.MountPathGenerate+"0", t.Volume.VolumeMount.ReadOnly)
-		By("deploying the pod with cloned volume")
+		ginkgo.By("deploying the pod with cloned volume")
 		podWithClonedVolume.Create()
 		defer podWithClonedVolume.Cleanup()
 		tpvc.WaitForBound()
