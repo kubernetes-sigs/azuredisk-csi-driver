@@ -22,7 +22,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/testsuites"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	. "github.com/onsi/ginkgo"
+	"github.com/onsi/ginkgo"
 	v1 "k8s.io/api/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
@@ -33,7 +33,7 @@ const (
 	defaultDiskSizeBytes = defaultDiskSize * 1024 * 1024 * 1024
 )
 
-var _ = Describe("[azuredisk-csi-e2e] [single-az] Pre-Provisioned", func() {
+var _ = ginkgo.Describe("[azuredisk-csi-e2e] [single-az] Pre-Provisioned", func() {
 	f := framework.NewDefaultFramework("azuredisk")
 
 	var (
@@ -45,38 +45,38 @@ var _ = Describe("[azuredisk-csi-e2e] [single-az] Pre-Provisioned", func() {
 		skipManuallyDeletingVolume bool
 	)
 
-	BeforeEach(func() {
+	ginkgo.BeforeEach(func() {
 		cs = f.ClientSet
 		ns = f.Namespace
 		testDriver = driver.InitAzureDiskDriver()
 	})
 
-	AfterEach(func() {
+	ginkgo.AfterEach(func() {
 		if !skipManuallyDeletingVolume {
 			req := &csi.DeleteVolumeRequest{
 				VolumeId: volumeID,
 			}
 			_, err := azurediskDriver.DeleteVolume(context.Background(), req)
 			if err != nil {
-				Fail(fmt.Sprintf("create volume %q error: %v", volumeID, err))
+				ginkgo.Fail(fmt.Sprintf("create volume %q error: %v", volumeID, err))
 			}
 		}
 	})
 
-	It("[env] should use a pre-provisioned volume and mount it as readOnly in a pod", func() {
+	ginkgo.It("[env] should use a pre-provisioned volume and mount it as readOnly in a pod", func() {
 		// Az tests need to be changed to pass the right parameters for in-tree driver.
 		// Skip these tests until above is fixed.
 		if testDriver.IsInTree() {
-			Skip("Test running with in tree configuration")
+			ginkgo.Skip("Test running with in tree configuration")
 		}
 
 		req := makeCreateVolumeReq("pre-provisioned-readOnly")
 		resp, err := azurediskDriver.CreateVolume(context.Background(), req)
 		if err != nil {
-			Fail(fmt.Sprintf("create volume error: %v", err))
+			ginkgo.Fail(fmt.Sprintf("create volume error: %v", err))
 		}
 		volumeID = resp.Volume.VolumeId
-		By(fmt.Sprintf("Successfully provisioned AzureDisk volume: %q\n", volumeID))
+		ginkgo.By(fmt.Sprintf("Successfully provisioned AzureDisk volume: %q\n", volumeID))
 
 		diskSize := fmt.Sprintf("%dGi", defaultDiskSize)
 		pods := []testsuites.PodDetails{
@@ -103,19 +103,19 @@ var _ = Describe("[azuredisk-csi-e2e] [single-az] Pre-Provisioned", func() {
 		test.Run(cs, ns)
 	})
 
-	It(fmt.Sprintf("[env] should use a pre-provisioned volume and retain PV with reclaimPolicy %q", v1.PersistentVolumeReclaimRetain), func() {
+	ginkgo.It(fmt.Sprintf("[env] should use a pre-provisioned volume and retain PV with reclaimPolicy %q", v1.PersistentVolumeReclaimRetain), func() {
 		// Az tests need to be changed to pass the right parameters for in-tree driver.
 		// Skip these tests until above is fixed.
 		if testDriver.IsInTree() {
-			Skip("Test running with in tree configuration")
+			ginkgo.Skip("Test running with in tree configuration")
 		}
 		req := makeCreateVolumeReq("pre-provisioned-retain-reclaimPolicy")
 		resp, err := azurediskDriver.CreateVolume(context.Background(), req)
 		if err != nil {
-			Fail(fmt.Sprintf("create volume error: %v", err))
+			ginkgo.Fail(fmt.Sprintf("create volume error: %v", err))
 		}
 		volumeID = resp.Volume.VolumeId
-		By(fmt.Sprintf("Successfully provisioned AzureDisk volume: %q\n", volumeID))
+		ginkgo.By(fmt.Sprintf("Successfully provisioned AzureDisk volume: %q\n", volumeID))
 
 		diskSize := fmt.Sprintf("%dGi", defaultDiskSize)
 		reclaimPolicy := v1.PersistentVolumeReclaimRetain

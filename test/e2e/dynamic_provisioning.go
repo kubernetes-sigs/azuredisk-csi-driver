@@ -22,7 +22,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/testsuites"
 
-	. "github.com/onsi/ginkgo"
+	"github.com/onsi/ginkgo"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -30,14 +30,14 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework"
 )
 
-var _ = Describe("[azuredisk-csi-e2e] Dynamic Provisioning", func() {
+var _ = ginkgo.Describe("[azuredisk-csi-e2e] Dynamic Provisioning", func() {
 	t := dynamicProvisioningTestSuite{}
 
-	Context("[single-az]", func() {
+	ginkgo.Context("[single-az]", func() {
 		t.defineTests(false)
 	})
 
-	Context("[multi-az]", func() {
+	ginkgo.Context("[multi-az]", func() {
 		t.defineTests(true)
 	})
 })
@@ -55,7 +55,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		testDriver driver.DynamicPVTestDriver
 	)
 
-	BeforeEach(func() {
+	ginkgo.BeforeEach(func() {
 		cs = f.ClientSet
 		ns = f.Namespace
 		// Populate allowedTopologyValues from node labels fior the first time
@@ -75,7 +75,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	})
 
 	testDriver = driver.InitAzureDiskDriver()
-	It(fmt.Sprintf("should create a volume on demand"), func() {
+	ginkgo.It(fmt.Sprintf("should create a volume on demand"), func() {
 		pods := []testsuites.PodDetails{
 			{
 				Cmd: "echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data",
@@ -97,7 +97,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		test.Run(cs, ns)
 	})
 
-	It(fmt.Sprintf("should create a raw block volume on demand"), func() {
+	ginkgo.It(fmt.Sprintf("should create a raw block volume on demand"), func() {
 		pods := []testsuites.PodDetails{
 			{
 				Cmd: "ls /dev | grep e2e-test",
@@ -121,7 +121,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	})
 
 	//Track issue https://github.com/kubernetes/kubernetes/issues/70505
-	It("should create a volume on demand and mount it as readOnly in a pod", func() {
+	ginkgo.It("should create a volume on demand and mount it as readOnly in a pod", func() {
 		pods := []testsuites.PodDetails{
 			{
 				Cmd: "touch /mnt/test-1/data",
@@ -145,7 +145,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		test.Run(cs, ns)
 	})
 
-	It("should create multiple PV objects, bind to PVCs and attach all to different pods on the same node", func() {
+	ginkgo.It("should create multiple PV objects, bind to PVCs and attach all to different pods on the same node", func() {
 		pods := []testsuites.PodDetails{
 			{
 				Cmd: "while true; do echo $(date -u) >> /mnt/test-1/data; sleep 1; done",
@@ -195,7 +195,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		test.Run(cs, ns)
 	})
 
-	It("should create a deployment object, write and read to it, delete the pod and write and read to it again", func() {
+	ginkgo.It("should create a deployment object, write and read to it, delete the pod and write and read to it again", func() {
 		pod := testsuites.PodDetails{
 			Cmd: "echo 'hello world' >> /mnt/test-1/data && while true; do sleep 1; done",
 			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
@@ -220,7 +220,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		test.Run(cs, ns)
 	})
 
-	It(fmt.Sprintf("should delete PV with reclaimPolicy %q", v1.PersistentVolumeReclaimDelete), func() {
+	ginkgo.It(fmt.Sprintf("should delete PV with reclaimPolicy %q", v1.PersistentVolumeReclaimDelete), func() {
 		reclaimPolicy := v1.PersistentVolumeReclaimDelete
 		volumes := t.normalizeVolumes([]testsuites.VolumeDetails{
 			{
@@ -236,12 +236,12 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		test.Run(cs, ns)
 	})
 
-	It(fmt.Sprintf("[env] should retain PV with reclaimPolicy %q", v1.PersistentVolumeReclaimRetain), func() {
+	ginkgo.It(fmt.Sprintf("[env] should retain PV with reclaimPolicy %q", v1.PersistentVolumeReclaimRetain), func() {
 		// This tests uses the CSI driver to delete the PV.
 		// TODO: Go via the k8s interfaces and also make it more reliable for in-tree and then
 		//       test can be enabled.
 		if testDriver.IsInTree() {
-			Skip("Test running with in tree configuration")
+			ginkgo.Skip("Test running with in tree configuration")
 		}
 		reclaimPolicy := v1.PersistentVolumeReclaimRetain
 		volumes := t.normalizeVolumes([]testsuites.VolumeDetails{
@@ -259,7 +259,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		test.Run(cs, ns)
 	})
 
-	It("cloning a volume from an existing volume", func() {
+	ginkgo.It("cloning a volume from an existing volume", func() {
 		pod := testsuites.PodDetails{
 			Cmd: "echo 'hello world' >> /mnt/test-1/data && while true; do sleep 1; done",
 			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
