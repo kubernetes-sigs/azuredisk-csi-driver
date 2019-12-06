@@ -1,5 +1,9 @@
 # Snapshot Example
 
+## Enable Volume Snapshot Data Source Feature Gate
+
+Since volume snapshot is an alpha feature in Kubernetes v1.12, you need to enable a new alpha feature gate called `VolumeSnapshotDataSource` in the Kubernetes API server. Refer to [Kubernetes Cluster Setup](https://kubernetes-csi.github.io/docs/snapshot-restore-feature.html#kubernetes-cluster-setup) for more details.
+
 ## Create a Source PVC
 
 ```console
