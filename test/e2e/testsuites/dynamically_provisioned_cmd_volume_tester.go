@@ -43,7 +43,7 @@ func (t *DynamicallyProvisionedCmdVolumeTest) Run(client clientset.Interface, na
 		ginkgo.By("deploying the pod")
 		tpod.Create()
 		defer tpod.Cleanup()
-		ginkgo.By("checking that the pods command exits with no error")
+		ginkgo.By("checking that the pod's command exits with no error")
 		tpod.WaitForSuccess()
 	}
 }

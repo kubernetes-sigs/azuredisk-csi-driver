@@ -44,7 +44,7 @@ func (t *PreProvisionedReadOnlyVolumeTest) Run(client clientset.Interface, names
 		ginkgo.By("deploying the pod")
 		tpod.Create()
 		defer tpod.Cleanup()
-		ginkgo.By("checking that the pods command exits with an error")
+		ginkgo.By("checking that the pod's command exits with an error")
 		tpod.WaitForFailure()
 		ginkgo.By("checking that pod logs contain expected message")
 		body, err := tpod.Logs()

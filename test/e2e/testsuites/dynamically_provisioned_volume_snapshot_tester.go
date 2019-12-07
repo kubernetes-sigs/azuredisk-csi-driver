@@ -30,9 +30,9 @@ import (
 // And finally delete the snapshot
 // This test only supports a single volume
 type DynamicallyProvisionedVolumeSnapshotTest struct {
-	CSIDriver   driver.PVTestDriver
-	Pod         PodDetails
-	RestoredPod PodDetails
+	CSIDriver       driver.PVTestDriver
+	Pod             PodDetails
+	PodWithSnapshot PodDetails
 }
 
 func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interface, restclient restclientset.Interface, namespace *v1.Namespace) {
@@ -47,29 +47,31 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interfac
 	ginkgo.By("deploying the pod")
 	tpod.Create()
 	defer tpod.Cleanup()
-	ginkgo.By("checking that the pods command exits with no error")
+	ginkgo.By("checking that the pod's command exits with no error")
 	tpod.WaitForSuccess()
 
-	ginkgo.By("taking snapshots")
+	ginkgo.By("creating volume snapshot class")
 	tvsc, cleanup := CreateVolumeSnapshotClass(restclient, namespace, t.CSIDriver)
 	defer cleanup()
 
+	ginkgo.By("taking snapshots")
 	snapshot := tvsc.CreateSnapshot(tpvc.persistentVolumeClaim)
 	defer tvsc.DeleteSnapshot(snapshot)
 	tvsc.ReadyToUse(snapshot)
 
-	t.RestoredPod.Volumes[0].DataSource = &DataSource{Name: snapshot.Name}
-	trpod := NewTestPod(client, namespace, t.RestoredPod.Cmd)
-	rvolume := t.RestoredPod.Volumes[0]
-	trpvc, rpvcCleanup := rvolume.SetupDynamicPersistentVolumeClaim(client, namespace, t.CSIDriver)
-	for i := range rpvcCleanup {
-		defer rpvcCleanup[i]()
+	snapshotVolume := volume
+	snapshotVolume.DataSource = &DataSource{
+		Kind: VolumeSnapshotKind,
+		Name: snapshot.Name,
 	}
-	trpod.SetupVolume(trpvc.persistentVolumeClaim, rvolume.VolumeMount.NameGenerate+"1", rvolume.VolumeMount.MountPathGenerate+"1", rvolume.VolumeMount.ReadOnly)
-
+	t.PodWithSnapshot.Volumes = []VolumeDetails{snapshotVolume}
+	tPodWithSnapshot, tPodWithSnapshotCleanup := t.PodWithSnapshot.SetupWithDynamicVolumes(client, namespace, t.CSIDriver)
+	for i := range tPodWithSnapshotCleanup {
+		defer tPodWithSnapshotCleanup[i]()
+	}
 	ginkgo.By("deploying a second pod with a volume restored from the snapshot")
-	trpod.Create()
-	defer trpod.Cleanup()
-	ginkgo.By("checking that the pods command exits with no error")
-	trpod.WaitForSuccess()
+	tPodWithSnapshot.Create()
+	defer tPodWithSnapshot.Cleanup()
+	ginkgo.By("checking that the pod's command exits with no error")
+	tPodWithSnapshot.WaitForSuccess()
 }

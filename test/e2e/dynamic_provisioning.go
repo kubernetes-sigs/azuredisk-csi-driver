@@ -87,28 +87,6 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	})
 
 	testDriver = driver.InitAzureDiskDriver()
-	ginkgo.It("should create a volume on demand", func() {
-		pods := []testsuites.PodDetails{
-			{
-				Cmd: "echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data",
-				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
-					{
-						ClaimSize: "10Gi",
-						VolumeMount: testsuites.VolumeMountDetails{
-							NameGenerate:      "test-volume-",
-							MountPathGenerate: "/mnt/test-",
-						},
-					},
-				}, isMultiZone),
-			},
-		}
-		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
-			CSIDriver: testDriver,
-			Pods:      pods,
-		}
-		test.Run(cs, ns)
-	})
-
 	ginkgo.It("should create a volume on demand with mount options", func() {
 		pods := []testsuites.PodDetails{
 			{
@@ -297,9 +275,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		test.Run(cs, ns)
 	})
 
-	ginkgo.It("cloning a volume from an existing volume", func() {
+	ginkgo.It("should clone a volume from an existing volume and read from it", func() {
 		pod := testsuites.PodDetails{
-			Cmd: "echo 'hello world' >> /mnt/test-1/data && while true; do sleep 1; done",
+			Cmd: "echo 'hello world' > /mnt/test-1/data",
 			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 				{
 					FSType:    "ext4",
@@ -311,17 +289,13 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 				},
 			}, isMultiZone),
 		}
-		volume := t.normalizeVolume(testsuites.VolumeDetails{
-			FSType:    "ext4",
-			ClaimSize: "10Gi",
-			DataSource: &testsuites.DataSource{
-				Kind: testsuites.VolumePVCKind,
-			},
-		}, isMultiZone)
+		podWithClonedVolume := testsuites.PodDetails{
+			Cmd: "grep 'hello world' /mnt/test-1/data",
+		}
 		test := testsuites.DynamicallyProvisionedVolumeCloningTest{
-			CSIDriver: testDriver,
-			Pod:       pod,
-			Volume:    volume,
+			CSIDriver:           testDriver,
+			Pod:                 pod,
+			PodWithClonedVolume: podWithClonedVolume,
 		}
 		test.Run(cs, ns)
 	})
@@ -329,7 +303,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	ginkgo.It("should create multiple PV objects, bind to PVCs and attach all to a single pod", func() {
 		pods := []testsuites.PodDetails{
 			{
-				Cmd: "echo 'hello world' > /mnt/test-1/data && echo 'hello world' > /mnt/test-2/data && echo 'hello world' > /mnt/test-3/data && grep 'hello world' /mnt/test-1/data  && grep 'hello world' /mnt/test-2/data && grep 'hello world' /mnt/test-3/data",
+				Cmd: "echo 'hello world' > /mnt/test-1/data && echo 'hello world' > /mnt/test-2/data && echo 'hello world' > /mnt/test-3/data && grep 'hello world' /mnt/test-1/data && grep 'hello world' /mnt/test-2/data && grep 'hello world' /mnt/test-3/data",
 				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
 						FSType:    "ext3",
@@ -400,7 +374,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 
 	ginkgo.It("should create a pod, write and read to it, take a volume snapshot, and create another pod from the snapshot", func() {
 		pod := testsuites.PodDetails{
-			Cmd: "echo 'hello world' >> /mnt/test-1/data && grep 'hello world' /mnt/test-1/data && sync",
+			Cmd: "echo 'hello world' > /mnt/test-1/data",
 			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 				{
 					FSType:    "ext4",
@@ -412,23 +386,13 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 				},
 			}, isMultiZone),
 		}
-		restoredPod := testsuites.PodDetails{
+		podWithSnapshot := testsuites.PodDetails{
 			Cmd: "grep 'hello world' /mnt/test-1/data",
-			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
-				{
-					FSType:    "ext4",
-					ClaimSize: "10Gi",
-					VolumeMount: testsuites.VolumeMountDetails{
-						NameGenerate:      "test-volume-",
-						MountPathGenerate: "/mnt/test-",
-					},
-				},
-			}, isMultiZone),
 		}
 		test := testsuites.DynamicallyProvisionedVolumeSnapshotTest{
-			CSIDriver:   testDriver,
-			Pod:         pod,
-			RestoredPod: restoredPod,
+			CSIDriver:       testDriver,
+			Pod:             pod,
+			PodWithSnapshot: podWithSnapshot,
 		}
 		test.Run(cs, snapshotrcs, ns)
 	})
