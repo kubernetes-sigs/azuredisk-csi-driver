@@ -257,7 +257,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		// TODO: Go via the k8s interfaces and also make it more reliable for in-tree and then
 		//       test can be enabled.
 		if testDriver.IsInTree() {
-			ginkgo.Skip("Test running with in tree configuration")
+			ginkgo.Skip("reclaimPolicy test case is only available for CSI drivers")
 		}
 		reclaimPolicy := v1.PersistentVolumeReclaimRetain
 		volumes := t.normalizeVolumes([]testsuites.VolumeDetails{
@@ -276,6 +276,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	})
 
 	ginkgo.It("should clone a volume from an existing volume and read from it", func() {
+		if testDriver.IsInTree() {
+			ginkgo.Skip("Volume cloning support is only available for CSI drivers")
+		}
 		pod := testsuites.PodDetails{
 			Cmd: "echo 'hello world' > /mnt/test-1/data",
 			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
@@ -373,6 +376,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	})
 
 	ginkgo.It("should create a pod, write and read to it, take a volume snapshot, and create another pod from the snapshot", func() {
+		if testDriver.IsInTree() {
+			ginkgo.Skip("Volume snapshot support is only available for CSI drivers")
+		}
 		pod := testsuites.PodDetails{
 			Cmd: "echo 'hello world' > /mnt/test-1/data",
 			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
