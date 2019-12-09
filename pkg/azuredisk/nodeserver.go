@@ -23,17 +23,21 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
+
+	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-03-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"k8s.io/klog"
 
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/klog"
+	"k8s.io/kubernetes/pkg/util/resizefs"
 	"k8s.io/kubernetes/pkg/volume/util"
 )
 
@@ -357,9 +361,46 @@ func (d *Driver) NodeGetVolumeStats(ctx context.Context, in *csi.NodeGetVolumeSt
 }
 
 // NodeExpandVolume node expand volume
-// N/A for azure disk
 func (d *Driver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
+	klog.V(2).Infof("NodeExpandVolume: called with args %+v", *req)
+	volumeID := req.GetVolumeId()
+	if len(volumeID) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "Volume ID not provided")
+	}
+	capacityBytes := req.GetCapacityRange().GetRequiredBytes()
+	volSizeBytes := int64(capacityBytes)
+	requestGiB := volumehelper.RoundUpGiB(volSizeBytes)
+
+	args := []string{"-o", "source", "--noheadings", "--target", req.GetVolumePath()}
+	output, err := d.mounter.Run("findmnt", args...)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "Could not determine device path: %v", err)
+	}
+
+	devicePath := strings.TrimSpace(string(output))
+	if len(devicePath) == 0 {
+		return nil, status.Errorf(codes.Internal, "Could not get valid device for mount path: %q", req.GetVolumePath())
+	}
+
+	resizer := resizefs.NewResizeFs(d.mounter)
+	if _, err := resizer.Resize(devicePath, req.GetVolumePath()); err != nil {
+		return nil, status.Errorf(codes.Internal, "Could not resize volume %q (%q):  %v", volumeID, devicePath, err)
+	}
+
+	gotBlockSizeBytes, err := d.getBlockSizeBytes(devicePath)
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Could not get size of block volume at path %s: %v", devicePath, err))
+	}
+	gotBlockGiB := volumehelper.RoundUpGiB(gotBlockSizeBytes)
+	if gotBlockGiB < requestGiB {
+		// Because size was rounded up, getting more size than requested will be a success.
+		return nil, status.Errorf(codes.Internal, "resize requested for %v, but after resizing volume size was %v", requestGiB, gotBlockGiB)
+	}
+	klog.V(2).Infof("NodeExpandVolume succeeded on resizing volume %v to %v", volumeID, gotBlockSizeBytes)
+
+	return &csi.NodeExpandVolumeResponse{
+		CapacityBytes: gotBlockSizeBytes,
+	}, nil
 }
 
 func getFStype(attributes map[string]string) string {
@@ -451,4 +492,17 @@ func getNodePublishMountOptions(req *csi.NodePublishVolumeRequest) []string {
 	mountOptions = util.JoinMountOptions(mountFlags, mountOptions)
 
 	return mountOptions
+}
+
+func (d *Driver) getBlockSizeBytes(devicePath string) (int64, error) {
+	output, err := d.mounter.Exec.Run("blockdev", "--getsize64", devicePath)
+	if err != nil {
+		return -1, fmt.Errorf("error when getting size of block volume at path %s: output: %s, err: %v", devicePath, string(output), err)
+	}
+	strOut := strings.TrimSpace(string(output))
+	gotSizeBytes, err := strconv.ParseInt(strOut, 10, 64)
+	if err != nil {
+		return -1, fmt.Errorf("failed to parse size %s into int a size", strOut)
+	}
+	return gotSizeBytes, nil
 }

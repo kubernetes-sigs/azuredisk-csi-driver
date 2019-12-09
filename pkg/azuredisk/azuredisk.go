@@ -130,6 +130,7 @@ func (d *Driver) Run(endpoint string) {
 	d.AddVolumeCapabilityAccessModes([]csi.VolumeCapability_AccessMode_Mode{csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER})
 	d.AddNodeServiceCapabilities([]csi.NodeServiceCapability_RPC_Type{
 		csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
+		csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
 	})
 
 	s := csicommon.NewNonBlockingGRPCServer()
