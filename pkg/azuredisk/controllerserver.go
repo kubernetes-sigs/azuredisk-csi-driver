@@ -498,7 +498,8 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 	klog.V(2).Infof("expand azure disk(%s) successfully, currentSize(%v)", diskURI, currentSize)
 
 	return &csi.ControllerExpandVolumeResponse{
-		CapacityBytes: currentSize,
+		CapacityBytes:         currentSize,
+		NodeExpansionRequired: true,
 	}, nil
 }
 
