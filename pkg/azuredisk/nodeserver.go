@@ -339,9 +339,19 @@ func (d *Driver) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeS
 	if len(req.VolumePath) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "NodeGetVolumeStats volume path was empty")
 	}
+
 	target := req.VolumePath
 	if len(target) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Staging target not provided")
+	}
+
+	diskURI := req.VolumeId
+	if err := isValidDiskURI(diskURI); err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "disk URI(%s) is not valid: %v", diskURI, err)
+	}
+
+	if err := d.checkDiskExists(ctx, diskURI); err != nil {
+		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume not found, failed with error: %v", err))
 	}
 
 	isBlock, err := isBlockDevice(req.VolumePath)
