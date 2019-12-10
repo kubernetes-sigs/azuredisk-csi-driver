@@ -31,6 +31,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-07-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"golang.org/x/sys/unix"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -331,8 +332,58 @@ func getMaxDataDiskCount(instanceType string, sizeList *[]compute.VirtualMachine
 	return defaultAzureVolumeLimit
 }
 
-func (d *Driver) NodeGetVolumeStats(ctx context.Context, in *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
+func (d *Driver) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
+	if len(req.VolumeId) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "NodeGetVolumeStats volume ID was empty")
+	}
+	if len(req.VolumePath) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "NodeGetVolumeStats volume path was empty")
+	}
+	target := req.VolumePath
+	if len(target) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "Staging target not provided")
+	}
+
+	isBlock, err := isBlockDevice(req.VolumePath)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "Failed to determine whether %s is block device: %v", req.VolumePath, err)
+	}
+	if isBlock {
+		bcap, err := d.getBlockSizeBytes(req.VolumePath)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "Failed to get block capacity on path %s: %v", req.VolumePath, err)
+		}
+		return &csi.NodeGetVolumeStatsResponse{
+			Usage: []*csi.VolumeUsage{
+				{
+					Unit:  csi.VolumeUsage_BYTES,
+					Total: bcap,
+				},
+			},
+		}, nil
+	}
+
+	available, capacity, used, inodesFree, inodes, inodesUsed, err := statFS(req.VolumePath)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "Failed to get fs info on path %s: %v", req.VolumePath, err)
+	}
+
+	return &csi.NodeGetVolumeStatsResponse{
+		Usage: []*csi.VolumeUsage{
+			{
+				Unit:      csi.VolumeUsage_BYTES,
+				Available: available,
+				Total:     capacity,
+				Used:      used,
+			},
+			{
+				Unit:      csi.VolumeUsage_INODES,
+				Available: inodesFree,
+				Total:     inodes,
+				Used:      inodesUsed,
+			},
+		},
+	}, nil
 }
 
 // NodeExpandVolume node expand volume
@@ -469,6 +520,51 @@ func (d *Driver) getBlockSizeBytes(devicePath string) (int64, error) {
 		return -1, fmt.Errorf("failed to parse size %s into int a size", strOut)
 	}
 	return gotSizeBytes, nil
+}
+
+func getNodePublishMountOptions(req *csi.NodePublishVolumeRequest) []string {
+	mountFlags := req.GetVolumeCapability().GetMount().GetMountFlags()
+	mountOptions := []string{"bind"}
+	if req.GetReadonly() {
+		mountOptions = append(mountOptions, "ro")
+	}
+	mountOptions = util.JoinMountOptions(mountFlags, mountOptions)
+
+	return mountOptions
+}
+
+func statFS(path string) (available, capacity, used, inodesFree, inodes, inodesUsed int64, err error) {
+	statfs := &unix.Statfs_t{}
+	err = unix.Statfs(path, statfs)
+	if err != nil {
+		err = fmt.Errorf("Failed to get fs info on path %s: %v", path, err)
+		return
+	}
+
+	// Available is blocks available * fragment size
+	available = int64(statfs.Bavail) * int64(statfs.Bsize)
+
+	// Capacity is total block count * fragment size
+	capacity = int64(statfs.Blocks) * int64(statfs.Bsize)
+
+	// Usage is block being used * fragment size (aka block size).
+	used = (int64(statfs.Blocks) - int64(statfs.Bfree)) * int64(statfs.Bsize)
+
+	inodes = int64(statfs.Files)
+	inodesFree = int64(statfs.Ffree)
+	inodesUsed = inodes - inodesFree
+
+	return
+}
+
+func isBlockDevice(fullPath string) (bool, error) {
+	var st unix.Stat_t
+	err := unix.Stat(fullPath, &st)
+	if err != nil {
+		return false, err
+	}
+
+	return (st.Mode & unix.S_IFMT) == unix.S_IFBLK, nil
 }
 
 func (d *Driver) ensureBlockTargetFile(target string) error {
