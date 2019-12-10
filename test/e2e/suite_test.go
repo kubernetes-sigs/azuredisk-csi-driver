@@ -32,8 +32,8 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/credentials"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
 
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
+	"github.com/onsi/ginkgo"
+	"github.com/onsi/gomega"
 	"github.com/pborman/uuid"
 	"k8s.io/kubernetes/test/e2e/framework"
 )
@@ -42,7 +42,7 @@ const kubeconfigEnvVar = "KUBECONFIG"
 
 var azurediskDriver *azuredisk.Driver
 
-var _ = BeforeSuite(func() {
+var _ = ginkgo.BeforeSuite(func() {
 	// k8s.io/kubernetes/test/e2e/framework requires env KUBECONFIG to be set
 	// it does not fall back to defaults
 	if os.Getenv(kubeconfigEnvVar) == "" {
@@ -56,35 +56,35 @@ var _ = BeforeSuite(func() {
 	// CSI driver is installed for that case.
 	if os.Getenv(driver.AzureDriverNameVar) == "" && testutil.IsRunningInProw() {
 		creds, err := credentials.CreateAzureCredentialFile(false)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		azureClient, err := azure.GetAzureClient(creds.Cloud, creds.SubscriptionID, creds.AADClientID, creds.TenantID, creds.AADClientSecret)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		_, err = azureClient.EnsureResourceGroup(context.Background(), creds.ResourceGroup, creds.Location, nil)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		// Need to login to ACR using SP credential if we are running in Prow so we can push test images.
 		// If running locally, user should run 'docker login' before running E2E tests
 
 		registry := os.Getenv("REGISTRY")
-		Expect(registry).NotTo(Equal(""))
+		gomega.Expect(registry).NotTo(gomega.Equal(""))
 
 		log.Println("Attempting docker login with Azure service principal")
 		cmd := exec.Command("docker", "login", fmt.Sprintf("--username=%s", creds.AADClientID), fmt.Sprintf("--password=%s", creds.AADClientSecret), registry)
 		err = cmd.Run()
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		log.Println("docker login is successful")
 
 		// Install Azure Disk CSI Driver on cluster from project root
 		err = os.Chdir("../..")
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		defer func() {
 			err := os.Chdir("test/e2e")
-			Expect(err).NotTo(HaveOccurred())
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		}()
 
 		projectRoot, err := os.Getwd()
-		Expect(err).NotTo(HaveOccurred())
-		Expect(strings.HasSuffix(projectRoot, "azuredisk-csi-driver")).To(Equal(true))
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		gomega.Expect(strings.HasSuffix(projectRoot, "azuredisk-csi-driver")).To(gomega.Equal(true))
 
 		log.Println("Installing Azure Disk CSI Driver...")
 		cmd = exec.Command("make", "e2e-bootstrap")
@@ -92,7 +92,7 @@ var _ = BeforeSuite(func() {
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		err = cmd.Run()
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		log.Println("Azure Disk CSI Driver installed")
 
 		nodeid := os.Getenv("nodeid")
@@ -104,18 +104,18 @@ var _ = BeforeSuite(func() {
 	}
 })
 
-var _ = AfterSuite(func() {
+var _ = ginkgo.AfterSuite(func() {
 	if os.Getenv(driver.AzureDriverNameVar) == "" && testutil.IsRunningInProw() {
 		err := os.Chdir("../..")
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		defer func() {
 			err := os.Chdir("test/e2e")
-			Expect(err).NotTo(HaveOccurred())
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		}()
 
 		projectRoot, err := os.Getwd()
-		Expect(err).NotTo(HaveOccurred())
-		Expect(strings.HasSuffix(projectRoot, "azuredisk-csi-driver")).To(Equal(true))
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		gomega.Expect(strings.HasSuffix(projectRoot, "azuredisk-csi-driver")).To(gomega.Equal(true))
 
 		log.Println("===================azuredisk log===================")
 		cmdSh := exec.Command("sh", "test/utils/azuredisk_log.sh")
@@ -123,7 +123,7 @@ var _ = AfterSuite(func() {
 		cmdSh.Stdout = os.Stdout
 		cmdSh.Stderr = os.Stderr
 		err = cmdSh.Run()
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		log.Println("===================================================")
 
 		log.Println("Uninstalling Azure Disk CSI Driver...")
@@ -132,15 +132,15 @@ var _ = AfterSuite(func() {
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		err = cmd.Run()
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		log.Println("Azure Disk CSI Driver uninstalled")
 
 		err = credentials.DeleteAzureCredentialFile()
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	}
 })
 
 func TestE2E(t *testing.T) {
-	RegisterFailHandler(Fail)
-	RunSpecs(t, "AzureDisk CSI Driver End-to-End Tests")
+	gomega.RegisterFailHandler(ginkgo.Fail)
+	ginkgo.RunSpecs(t, "AzureDisk CSI Driver End-to-End Tests")
 }
