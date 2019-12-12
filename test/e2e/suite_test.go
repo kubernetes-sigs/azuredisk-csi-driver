@@ -22,23 +22,28 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/onsi/ginkgo"
+	"github.com/onsi/ginkgo/reporters"
+	"github.com/onsi/gomega"
+	"github.com/pborman/uuid"
+	"k8s.io/kubernetes/test/e2e/framework"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/azure"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/credentials"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
-
-	"github.com/onsi/ginkgo"
-	"github.com/onsi/gomega"
-	"github.com/pborman/uuid"
-	"k8s.io/kubernetes/test/e2e/framework"
 )
 
-const kubeconfigEnvVar = "KUBECONFIG"
+const (
+	kubeconfigEnvVar = "KUBECONFIG"
+	reportDirEnv     = "ARTIFACTS"
+	defaultReportDir = "/workspace/_artifacts"
+)
 
 var azurediskDriver *azuredisk.Driver
 
@@ -142,5 +147,10 @@ var _ = ginkgo.AfterSuite(func() {
 
 func TestE2E(t *testing.T) {
 	gomega.RegisterFailHandler(ginkgo.Fail)
-	ginkgo.RunSpecs(t, "AzureDisk CSI Driver End-to-End Tests")
+	reportDir := os.Getenv(reportDirEnv)
+	if reportDir == "" {
+		reportDir = defaultReportDir
+	}
+	r := []ginkgo.Reporter{reporters.NewJUnitReporter(path.Join(reportDir, "junit_01.xml"))}
+	ginkgo.RunSpecsWithDefaultAndCustomReporters(t, "AzureDisk CSI Driver End-to-End Tests", r)
 }

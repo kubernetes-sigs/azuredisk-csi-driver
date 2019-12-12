@@ -1498,6 +1498,7 @@
     "github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1alpha1",
     "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned",
     "github.com/onsi/ginkgo",
+    "github.com/onsi/ginkgo/reporters",
     "github.com/onsi/gomega",
     "github.com/pborman/uuid",
     "github.com/pelletier/go-toml",
