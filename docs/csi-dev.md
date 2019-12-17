@@ -22,10 +22,10 @@ $ make unit-test
 
 Install `csc` tool according to https://github.com/rexray/gocsi/tree/master/csc
 ```
-$ mkdir -p $GOPATH/src/github.com
-$ cd $GOPATH/src/github.com
+$ mkdir -p $GOPATH/src/github.com/rexray
+$ cd $GOPATH/src/github.com/rexray
 $ git clone https://github.com/rexray/gocsi.git
-$ cd rexray/gocsi/csc
+$ cd gocsi/csc
 $ make build
 ```
 
