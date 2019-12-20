@@ -37,3 +37,6 @@ serviceAccount:
 
 rbac:
   create: true
+
+controller:
+  replicas: 3
