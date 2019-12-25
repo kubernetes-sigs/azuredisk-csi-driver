@@ -28,7 +28,7 @@ import (
 
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-03-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-07-01/compute"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/pborman/uuid"
@@ -36,9 +36,9 @@ import (
 	"google.golang.org/grpc/status"
 	kwait "k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog"
-	"k8s.io/kubernetes/pkg/util/mount"
 	"k8s.io/kubernetes/pkg/volume/util"
 	"k8s.io/legacy-cloud-providers/azure"
+	"k8s.io/utils/mount"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
 )
 

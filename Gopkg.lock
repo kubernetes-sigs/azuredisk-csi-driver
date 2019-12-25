@@ -250,17 +250,17 @@
   version = "v1.1.9"
 
 [[projects]]
-  digest = "1:aa5b698b0274a8b8ea3ede91f4f0284ba1b3b2ff9c8525651b9b6857aafdfac1"
+  branch = "master"
+  digest = "1:775dd16bb1280c2723378738cf1619f93840fe9bf65ca9b526c49bc8e0bb0cc8"
   name = "github.com/kubernetes-csi/external-snapshotter"
   packages = [
-    "pkg/apis/volumesnapshot/v1alpha1",
+    "pkg/apis/volumesnapshot/v1beta1",
     "pkg/client/clientset/versioned",
     "pkg/client/clientset/versioned/scheme",
-    "pkg/client/clientset/versioned/typed/volumesnapshot/v1alpha1",
+    "pkg/client/clientset/versioned/typed/volumesnapshot/v1beta1",
   ]
   pruneopts = "NUT"
-  revision = "0d2cdd7bde5ea9d41ae47ef4184ca20ebe0435e1"
-  version = "v1.0.1"
+  revision = "81797595c8b0522c6742fb22ee0243ebead44099"
 
 [[projects]]
   digest = "1:5985ef4caf91ece5d54817c11ea25f182697534f8ae6521eadcd628c142ac4b6"
@@ -1253,7 +1253,7 @@
   version = "v0.17.0"
 
 [[projects]]
-  digest = "1:fb50eeed2b6304f7bb018ed240c2a968f1d1e94950e7ca89ee9f0b66c2c2bf10"
+  digest = "1:eb9825e07628bf8af30b50c2d9ad0acc9657dbe70dd1676b4fe05de1bd94fabd"
   name = "k8s.io/kubernetes"
   packages = [
     "pkg/api/legacyscheme",
@@ -1275,6 +1275,7 @@
     "pkg/apis/policy",
     "pkg/apis/policy/validation",
     "pkg/apis/scheduling",
+    "pkg/apis/storage/v1/util",
     "pkg/capabilities",
     "pkg/client/conditions",
     "pkg/controller",
@@ -1330,11 +1331,13 @@
     "pkg/volume/util/volumepathhandler",
     "test/e2e/framework",
     "test/e2e/framework/auth",
+    "test/e2e/framework/config",
     "test/e2e/framework/ginkgowrapper",
     "test/e2e/framework/log",
     "test/e2e/framework/metrics",
     "test/e2e/framework/node",
     "test/e2e/framework/pod",
+    "test/e2e/framework/pv",
     "test/e2e/framework/resource",
     "test/e2e/framework/ssh",
     "test/e2e/perftype",
@@ -1403,7 +1406,7 @@
     "github.com/container-storage-interface/spec/lib/go/csi",
     "github.com/golang/protobuf/ptypes",
     "github.com/golang/protobuf/ptypes/wrappers",
-    "github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1alpha1",
+    "github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1beta1",
     "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned",
     "github.com/onsi/ginkgo",
     "github.com/onsi/ginkgo/reporters",
@@ -1422,13 +1425,12 @@
     "k8s.io/apimachinery/pkg/api/errors",
     "k8s.io/apimachinery/pkg/api/resource",
     "k8s.io/apimachinery/pkg/apis/meta/v1",
-    "k8s.io/apimachinery/pkg/runtime",
     "k8s.io/apimachinery/pkg/runtime/schema",
-    "k8s.io/apimachinery/pkg/runtime/serializer",
     "k8s.io/apimachinery/pkg/types",
     "k8s.io/apimachinery/pkg/util/sets",
     "k8s.io/apimachinery/pkg/util/wait",
     "k8s.io/client-go/kubernetes",
+    "k8s.io/client-go/kubernetes/scheme",
     "k8s.io/client-go/rest",
     "k8s.io/cloud-provider",
     "k8s.io/klog",
@@ -1437,7 +1439,10 @@
     "k8s.io/kubernetes/pkg/util/resizefs",
     "k8s.io/kubernetes/pkg/volume/util",
     "k8s.io/kubernetes/test/e2e/framework",
+    "k8s.io/kubernetes/test/e2e/framework/config",
     "k8s.io/kubernetes/test/e2e/framework/log",
+    "k8s.io/kubernetes/test/e2e/framework/pod",
+    "k8s.io/kubernetes/test/e2e/framework/pv",
     "k8s.io/kubernetes/test/utils",
     "k8s.io/kubernetes/test/utils/image",
     "k8s.io/legacy-cloud-providers/azure",

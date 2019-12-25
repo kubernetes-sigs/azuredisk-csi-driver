@@ -18,6 +18,7 @@ package e2e
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -32,6 +33,7 @@ import (
 	"github.com/onsi/gomega"
 	"github.com/pborman/uuid"
 	"k8s.io/kubernetes/test/e2e/framework"
+	"k8s.io/kubernetes/test/e2e/framework/config"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/azure"
@@ -47,6 +49,14 @@ const (
 
 var azurediskDriver *azuredisk.Driver
 
+// handleFlags sets up all flags and parses the command line.
+func handleFlags() {
+	config.CopyFlags(config.Flags, flag.CommandLine)
+	framework.RegisterCommonFlags(flag.CommandLine)
+	framework.RegisterClusterFlags(flag.CommandLine)
+	flag.Parse()
+}
+
 var _ = ginkgo.BeforeSuite(func() {
 	// k8s.io/kubernetes/test/e2e/framework requires env KUBECONFIG to be set
 	// it does not fall back to defaults
@@ -54,7 +64,7 @@ var _ = ginkgo.BeforeSuite(func() {
 		kubeconfig := filepath.Join(os.Getenv("HOME"), ".kube", "config")
 		os.Setenv(kubeconfigEnvVar, kubeconfig)
 	}
-	framework.HandleFlags()
+	handleFlags()
 	framework.AfterReadingAllFlags(&framework.TestContext)
 
 	// Default storage driver configuration is CSI. Freshly built

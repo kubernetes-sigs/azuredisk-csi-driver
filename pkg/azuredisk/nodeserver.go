@@ -29,7 +29,7 @@ import (
 
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-03-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-07-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -95,7 +95,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	notMnt, err := d.mounter.IsLikelyNotMountPoint(target)
 	if err != nil {
 		if os.IsNotExist(err) {
-			if errMkDir := d.mounter.MakeDir(target); errMkDir != nil {
+			if errMkDir := os.MkdirAll(target, 0750); errMkDir != nil {
 				msg := fmt.Sprintf("could not create target dir %q: %v", target, errMkDir)
 				return nil, status.Error(codes.Internal, msg)
 			}
@@ -220,7 +220,7 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 
 		// Create the mount point as a file since bind mount device node requires it to be a file
 		klog.V(2).Infof("NodePublishVolume [block]: making target file %s", target)
-		err = d.mounter.MakeFile(target)
+		err = MakeFile(target)
 		if err != nil {
 			if removeErr := os.Remove(target); removeErr != nil {
 				return nil, status.Errorf(codes.Internal, "Could not remove mount target %q: %v", target, removeErr)
@@ -243,7 +243,7 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 			target, fsType, readOnly, volumeID, attrib, mountFlags)
 
 		klog.V(2).Infof("NodePublishVolume: creating dir %s", target)
-		if err := d.mounter.MakeDir(target); err != nil {
+		if err := os.MkdirAll(target, 0750); err != nil {
 			return nil, status.Errorf(codes.Internal, "Could not create dir %q: %v", target, err)
 		}
 	}
@@ -372,7 +372,7 @@ func (d *Driver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolume
 	requestGiB := volumehelper.RoundUpGiB(volSizeBytes)
 
 	args := []string{"-o", "source", "--noheadings", "--target", req.GetVolumePath()}
-	output, err := d.mounter.Run("findmnt", args...)
+	output, err := d.mounter.Exec.Command("findmnt", args...).CombinedOutput()
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "Could not determine device path: %v", err)
 	}
@@ -495,7 +495,7 @@ func getNodePublishMountOptions(req *csi.NodePublishVolumeRequest) []string {
 }
 
 func (d *Driver) getBlockSizeBytes(devicePath string) (int64, error) {
-	output, err := d.mounter.Exec.Run("blockdev", "--getsize64", devicePath)
+	output, err := d.mounter.Exec.Command("blockdev", "--getsize64", devicePath).CombinedOutput()
 	if err != nil {
 		return -1, fmt.Errorf("error when getting size of block volume at path %s: output: %s, err: %v", devicePath, string(output), err)
 	}
@@ -505,4 +505,17 @@ func (d *Driver) getBlockSizeBytes(devicePath string) (int64, error) {
 		return -1, fmt.Errorf("failed to parse size %s into int a size", strOut)
 	}
 	return gotSizeBytes, nil
+}
+
+func MakeFile(pathname string) error {
+	f, err := os.OpenFile(pathname, os.O_CREATE, os.FileMode(0644))
+	defer func() {
+		f.Close()
+	}()
+	if err != nil {
+		if !os.IsExist(err) {
+			return err
+		}
+	}
+	return nil
 }
