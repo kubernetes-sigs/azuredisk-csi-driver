@@ -75,6 +75,16 @@ func TestGetDiskName(t *testing.T) {
 			expected2: fmt.Errorf("could not get disk name from testurl/subscriptions/23/providers/Microsoft.Compute/disks/name, correct format: %s", mDiskPathRE),
 		},
 		{
+			options:   "testurl/subscriptions/12/resourcegroups/23/providers/microsoft.compute/disks/name",
+			expected1: "name",
+			expected2: nil,
+		},
+		{
+			options:   "testurl/subscriPtions/12/Resourcegroups/23/Providers/microsoft.compute/dISKS/name",
+			expected1: "name",
+			expected2: nil,
+		},
+		{
 			options:   "http://test.com/vhds/name",
 			expected1: "name",
 			expected2: nil,
@@ -103,6 +113,11 @@ func TestGetSnapshotName(t *testing.T) {
 	}{
 		{
 			options:   "testurl/subscriptions/12/resourceGroups/23/providers/Microsoft.Compute/snapshots/snapshot-name",
+			expected1: "snapshot-name",
+			expected2: nil,
+		},
+		{
+			options:   "testurl/subscriptions/12/resourcegroups/23/providers/microsoft.compute/SNAPSHOTS/snapshot-name",
 			expected1: "snapshot-name",
 			expected2: nil,
 		},
