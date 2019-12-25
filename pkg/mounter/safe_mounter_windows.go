@@ -22,7 +22,8 @@ import (
 	"fmt"
 	"os"
 
-	"k8s.io/kubernetes/pkg/util/mount"
+	utilexec "k8s.io/utils/exec"
+	"k8s.io/utils/mount"
 )
 
 var _ mount.Interface = &CSIProxyMounter{}
@@ -66,9 +67,11 @@ func (mounter *CSIProxyMounter) MakeRShared(path string) error {
 	return fmt.Errorf("MakeRShared not implemented for CSIProxyMounter")
 }
 
+/*
 func (mounter *CSIProxyMounter) GetFileType(pathname string) (mount.FileType, error) {
 	return mount.FileType("fake"), fmt.Errorf("GetFileType not implemented for CSIProxyMounter")
 }
+*/
 
 func (mounter *CSIProxyMounter) MakeFile(pathname string) error {
 	return fmt.Errorf("MakeFile not implemented for CSIProxyMounter")
@@ -106,6 +109,6 @@ func NewSafeMounter() *mount.SafeFormatAndMount {
 	CSIProxyMounter := &CSIProxyMounter{}
 	return &mount.SafeFormatAndMount{
 		Interface: CSIProxyMounter,
-		Exec:      mount.NewOsExec(),
+		Exec:      utilexec.New(),
 	}
 }

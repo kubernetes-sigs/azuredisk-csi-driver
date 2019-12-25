@@ -24,10 +24,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-03-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-07-01/compute"
 	"github.com/stretchr/testify/assert"
 
-	"k8s.io/kubernetes/pkg/util/mount"
+	utilexec "k8s.io/utils/exec"
 )
 
 type fakeFileInfo struct {
@@ -124,7 +124,7 @@ func TestIoHandler(t *testing.T) {
 	if runtime.GOOS != "windows" && runtime.GOOS != "linux" {
 		t.Skipf("TestIoHandler not supported on GOOS=%s", runtime.GOOS)
 	}
-	disk, err := findDiskByLun(lun, &fakeIOHandler{}, mount.NewOsExec())
+	disk, err := findDiskByLun(lun, &fakeIOHandler{}, utilexec.New())
 	if runtime.GOOS == "windows" {
 		if err != nil {
 			t.Errorf("no data disk found: disk %v err %v", disk, err)
