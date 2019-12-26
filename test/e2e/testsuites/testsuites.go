@@ -39,7 +39,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	restclientset "k8s.io/client-go/rest"
 	deploymentutil "k8s.io/kubernetes/pkg/controller/deployment/util"
-	"k8s.io/kubernetes/test/e2e/framework"
+	framework "k8s.io/kubernetes/test/e2e/framework/pv"
 	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
 	testutil "k8s.io/kubernetes/test/utils"
 	imageutils "k8s.io/kubernetes/test/utils/image"
@@ -102,7 +102,7 @@ func NewTestVolumeSnapshotClass(c restclientset.Interface, ns *v1.Namespace, vsc
 func (t *TestVolumeSnapshotClass) Create() {
 	ginkgo.By("creating a VolumeSnapshotClass")
 	var err error
-	t.volumeSnapshotClass, err = snapshotclientset.New(t.client).restClient.VolumeSnapshotClasses().Create(t.volumeSnapshotClass)
+	t.volumeSnapshotClass, err = snapshotclientset.New(t.client).SnapshotV1beta1().VolumeSnapshotClasses().Create(t.volumeSnapshotClass)
 	framework.ExpectNoError(err)
 }
 
@@ -119,13 +119,13 @@ func (t *TestVolumeSnapshotClass) CreateSnapshot(pvc *v1.PersistentVolumeClaim) 
 		},
 		Spec: v1beta1.VolumeSnapshotSpec{
 			VolumeSnapshotClassName: &t.volumeSnapshotClass.Name,
-			Source: &v1.TypedLocalObjectReference{
-				Kind: "PersistentVolumeClaim",
-				Name: pvc.Name,
+			Source: v1beta1.VolumeSnapshotSource{
+				PersistentVolumeClaimName: &pvc.Name,
+				// VolumeSnapshotContentName: "", todo: not sure how to specify
 			},
 		},
 	}
-	snapshot, err := snapshotclientset.New(t.client).VolumeSnapshots(t.namespace.Name).Create(snapshot)
+	snapshot, err := snapshotclientset.New(t.client).SnapshotV1beta1().VolumeSnapshots(t.namespace.Name).Create(snapshot)
 	framework.ExpectNoError(err)
 	return snapshot
 }
@@ -133,24 +133,24 @@ func (t *TestVolumeSnapshotClass) CreateSnapshot(pvc *v1.PersistentVolumeClaim) 
 func (t *TestVolumeSnapshotClass) ReadyToUse(snapshot *v1beta1.VolumeSnapshot) {
 	ginkgo.By("waiting for VolumeSnapshot to be ready to use - " + snapshot.Name)
 	err := wait.Poll(15*time.Second, 5*time.Minute, func() (bool, error) {
-		vs, err := snapshotclientset.New(t.client).SnapshotV1beta1Client().VolumeSnapshots(t.namespace.Name).Get(snapshot.Name, metav1.GetOptions{})
+		vs, err := snapshotclientset.New(t.client).SnapshotV1beta1().VolumeSnapshots(t.namespace.Name).Get(snapshot.Name, metav1.GetOptions{})
 		if err != nil {
 			return false, fmt.Errorf("did not see ReadyToUse: %v", err)
 		}
-		return vs.Status.ReadyToUse, nil
+		return *vs.Status.ReadyToUse, nil
 	})
 	framework.ExpectNoError(err)
 }
 
 func (t *TestVolumeSnapshotClass) DeleteSnapshot(vs *v1beta1.VolumeSnapshot) {
 	ginkgo.By("deleting a VolumeSnapshot " + vs.Name)
-	err := snapshotclientset.New(t.client).SnapshotV1beta1Client().VolumeSnapshots(t.namespace.Name).Delete(vs.Name, &metav1.DeleteOptions{})
+	err := snapshotclientset.New(t.client).SnapshotV1beta1().VolumeSnapshots(t.namespace.Name).Delete(vs.Name, &metav1.DeleteOptions{})
 	framework.ExpectNoError(err)
 }
 
 func (t *TestVolumeSnapshotClass) Cleanup() {
 	e2elog.Logf("deleting VolumeSnapshotClass %s", t.volumeSnapshotClass.Name)
-	err := snapshotclientset.New(t.client).SnapshotV1beta1Client().VolumeSnapshotClasses().Delete(t.volumeSnapshotClass.Name, nil)
+	err := snapshotclientset.New(t.client).SnapshotV1beta1().VolumeSnapshotClasses().Delete(t.volumeSnapshotClass.Name, nil)
 	framework.ExpectNoError(err)
 }
 
@@ -162,7 +162,7 @@ type TestPreProvisionedPersistentVolume struct {
 
 func NewTestPreProvisionedPersistentVolume(c clientset.Interface, pv *v1.PersistentVolume) *TestPreProvisionedPersistentVolume {
 	return &TestPreProvisionedPersistentVolume{
-		client:                    c,
+		client: c,
 		requestedPersistentVolume: pv,
 	}
 }
