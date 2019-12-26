@@ -2,14 +2,16 @@
 
 
 [[projects]]
-  digest = "1:cb99c8fb794b9a66ed642491111e85c040ab55ac094c8e3f436d58c1999710b1"
+  digest = "1:58d5af59e56579b816cfd9bd71db44d50725675e81eb8053772cc542ed86b428"
   name = "github.com/Azure/azure-sdk-for-go"
   packages = [
     "services/compute/mgmt/2019-03-01/compute",
     "services/compute/mgmt/2019-07-01/compute",
+    "services/network/mgmt/2018-07-01/network",
     "services/network/mgmt/2018-08-01/network",
     "services/network/mgmt/2019-06-01/network",
     "services/resources/mgmt/2018-05-01/resources",
+    "services/storage/mgmt/2018-07-01/storage",
     "services/storage/mgmt/2019-04-01/storage",
     "storage",
     "version",
@@ -250,17 +252,17 @@
   version = "v1.1.9"
 
 [[projects]]
-  digest = "1:aa5b698b0274a8b8ea3ede91f4f0284ba1b3b2ff9c8525651b9b6857aafdfac1"
+  branch = "master"
+  digest = "1:775dd16bb1280c2723378738cf1619f93840fe9bf65ca9b526c49bc8e0bb0cc8"
   name = "github.com/kubernetes-csi/external-snapshotter"
   packages = [
-    "pkg/apis/volumesnapshot/v1alpha1",
+    "pkg/apis/volumesnapshot/v1beta1",
     "pkg/client/clientset/versioned",
     "pkg/client/clientset/versioned/scheme",
-    "pkg/client/clientset/versioned/typed/volumesnapshot/v1alpha1",
+    "pkg/client/clientset/versioned/typed/volumesnapshot/v1beta1",
   ]
   pruneopts = "NUT"
-  revision = "0d2cdd7bde5ea9d41ae47ef4184ca20ebe0435e1"
-  version = "v1.0.1"
+  revision = "81797595c8b0522c6742fb22ee0243ebead44099"
 
 [[projects]]
   digest = "1:5985ef4caf91ece5d54817c11ea25f182697534f8ae6521eadcd628c142ac4b6"
@@ -1403,7 +1405,7 @@
     "github.com/container-storage-interface/spec/lib/go/csi",
     "github.com/golang/protobuf/ptypes",
     "github.com/golang/protobuf/ptypes/wrappers",
-    "github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1alpha1",
+    "github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1beta1",
     "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned",
     "github.com/onsi/ginkgo",
     "github.com/onsi/ginkgo/reporters",
