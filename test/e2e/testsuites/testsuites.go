@@ -39,7 +39,8 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	restclientset "k8s.io/client-go/rest"
 	deploymentutil "k8s.io/kubernetes/pkg/controller/deployment/util"
-	framework "k8s.io/kubernetes/test/e2e/framework/pv"
+	"k8s.io/kubernetes/test/e2e/framework"
+	e2epv "k8s.io/kubernetes/test/e2e/framework/pv"
 	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
 	testutil "k8s.io/kubernetes/test/utils"
 	imageutils "k8s.io/kubernetes/test/utils/image"
@@ -274,7 +275,7 @@ func (t *TestPersistentVolumeClaim) WaitForBound() v1.PersistentVolumeClaim {
 	var err error
 
 	ginkgo.By(fmt.Sprintf("waiting for PVC to be in phase %q", v1.ClaimBound))
-	err = framework.WaitForPersistentVolumeClaimPhase(v1.ClaimBound, t.client, t.namespace.Name, t.persistentVolumeClaim.Name, framework.Poll, framework.ClaimProvisionTimeout)
+	err = e2epv.WaitForPersistentVolumeClaimPhase(v1.ClaimBound, t.client, t.namespace.Name, t.persistentVolumeClaim.Name, framework.Poll, framework.ClaimProvisionTimeout)
 	framework.ExpectNoError(err)
 
 	ginkgo.By("checking the PVC")
@@ -317,7 +318,7 @@ func (t *TestPersistentVolumeClaim) Cleanup() {
 		t.ValidateProvisionedPersistentVolume()
 	}
 	e2elog.Logf("deleting PVC %q/%q", t.namespace.Name, t.persistentVolumeClaim.Name)
-	err := framework.DeletePersistentVolumeClaim(t.client, t.persistentVolumeClaim.Name, t.namespace.Name)
+	err := e2epv.DeletePersistentVolumeClaim(t.client, t.persistentVolumeClaim.Name, t.namespace.Name)
 	framework.ExpectNoError(err)
 	// Wait for the PV to get deleted if reclaim policy is Delete. (If it's
 	// Retain, there's no use waiting because the PV won't be auto-deleted and
@@ -327,11 +328,11 @@ func (t *TestPersistentVolumeClaim) Cleanup() {
 	// in a couple of minutes.
 	if t.persistentVolume.Spec.PersistentVolumeReclaimPolicy == v1.PersistentVolumeReclaimDelete {
 		ginkgo.By(fmt.Sprintf("waiting for claim's PV %q to be deleted", t.persistentVolume.Name))
-		err := framework.WaitForPersistentVolumeDeleted(t.client, t.persistentVolume.Name, 5*time.Second, 10*time.Minute)
+		err := e2epv.WaitForPersistentVolumeDeleted(t.client, t.persistentVolume.Name, 5*time.Second, 10*time.Minute)
 		framework.ExpectNoError(err)
 	}
 	// Wait for the PVC to be deleted
-	err = framework.WaitForPersistentVolumeClaimDeleted(t.client, t.persistentVolumeClaim.Name, t.namespace.Name, 5*time.Second, 5*time.Minute)
+	err = e2epv.WaitForPersistentVolumeClaimDeleted(t.client, t.persistentVolumeClaim.Name, t.namespace.Name, 5*time.Second, 5*time.Minute)
 	framework.ExpectNoError(err)
 }
 
@@ -340,13 +341,13 @@ func (t *TestPersistentVolumeClaim) ReclaimPolicy() v1.PersistentVolumeReclaimPo
 }
 
 func (t *TestPersistentVolumeClaim) WaitForPersistentVolumePhase(phase v1.PersistentVolumePhase) {
-	err := framework.WaitForPersistentVolumePhase(phase, t.client, t.persistentVolume.Name, 5*time.Second, 10*time.Minute)
+	err := e2epv.WaitForPersistentVolumePhase(phase, t.client, t.persistentVolume.Name, 5*time.Second, 10*time.Minute)
 	framework.ExpectNoError(err)
 }
 
 func (t *TestPersistentVolumeClaim) DeleteBoundPersistentVolume() {
 	ginkgo.By(fmt.Sprintf("deleting PV %q", t.persistentVolume.Name))
-	err := framework.DeletePersistentVolume(t.client, t.persistentVolume.Name)
+	err := e2epv.DeletePersistentVolume(t.client, t.persistentVolume.Name)
 	framework.ExpectNoError(err)
 	ginkgo.By(fmt.Sprintf("waiting for claim's PV %q to be deleted", t.persistentVolume.Name))
 	err = framework.WaitForPersistentVolumeDeleted(t.client, t.persistentVolume.Name, 5*time.Second, 10*time.Minute)
@@ -525,17 +526,17 @@ func (t *TestPod) Create() {
 }
 
 func (t *TestPod) WaitForSuccess() {
-	err := framework.WaitForPodSuccessInNamespaceSlow(t.client, t.pod.Name, t.namespace.Name)
+	err := e2epv.WaitForPodSuccessInNamespaceSlow(t.client, t.pod.Name, t.namespace.Name)
 	framework.ExpectNoError(err)
 }
 
 func (t *TestPod) WaitForRunning() {
-	err := framework.WaitForPodRunningInNamespace(t.client, t.pod)
+	err := e2epv.WaitForPodRunningInNamespace(t.client, t.pod)
 	framework.ExpectNoError(err)
 }
 
 // Ideally this would be in "k8s.io/kubernetes/test/e2e/framework"
-// Similar to framework.WaitForPodSuccessInNamespaceSlow
+// Similar to e2epv.WaitForPodSuccessInNamespaceSlow
 var podFailedCondition = func(pod *v1.Pod) (bool, error) {
 	switch pod.Status.Phase {
 	case v1.PodFailed:
@@ -549,7 +550,7 @@ var podFailedCondition = func(pod *v1.Pod) (bool, error) {
 }
 
 func (t *TestPod) WaitForFailure() {
-	err := framework.WaitForPodCondition(t.client, t.namespace.Name, t.pod.Name, failedConditionDescription, slowPodStartTimeout, podFailedCondition)
+	err := e2epv.WaitForPodCondition(t.client, t.namespace.Name, t.pod.Name, failedConditionDescription, slowPodStartTimeout, podFailedCondition)
 	framework.ExpectNoError(err)
 }
 
