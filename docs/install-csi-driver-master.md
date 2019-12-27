@@ -13,7 +13,8 @@ kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi
 - check pods status:
 
 ```
-watch kubectl get po -o wide -n kube-system | grep csi-azuredisk
+kubectl -n kube-system get pod -o wide --watch -l app=csi-azuredisk-controller
+kubectl -n kube-system get pod -o wide --watch -l app=csi-azuredisk-node
 ```
 
 example output:
