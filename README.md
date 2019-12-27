@@ -17,7 +17,7 @@ Status: Beta
 |v0.3.0                         |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.3.0      | yes    |
 
 ### Kubernetes Compatibility
-| Azure Disk CSI Driver\Kubernetes Version | 1.13+ |
+| Azure Disk CSI Driver\Kubernetes Version | 1.14+ |
 |------------------------------------------|-------|
 | master branch                            | yes   |
 | v0.4.0                                   | yes   |
