@@ -2,7 +2,7 @@
 
 
 [[projects]]
-  digest = "1:cb99c8fb794b9a66ed642491111e85c040ab55ac094c8e3f436d58c1999710b1"
+  digest = "1:b8a15dc6b677c2f6df7ecdc97af2718b6472c54a996912595126bcceab4dda50"
   name = "github.com/Azure/azure-sdk-for-go"
   packages = [
     "services/compute/mgmt/2019-03-01/compute",
@@ -10,7 +10,7 @@
     "services/network/mgmt/2018-08-01/network",
     "services/network/mgmt/2019-06-01/network",
     "services/resources/mgmt/2018-05-01/resources",
-    "services/storage/mgmt/2019-04-01/storage",
+    "services/storage/mgmt/2019-06-01/storage",
     "storage",
     "version",
   ]
@@ -1355,15 +1355,16 @@
   version = "v1.15.0"
 
 [[projects]]
-  digest = "1:b53432193783baeb49b66a173bacf7de4af6ccec4f9813a2aad5515e6032b89f"
+  branch = "master"
+  digest = "1:4a5c7273a61ca009fef04bf144d890507bb6c059b52bcc195959a1989b6a3c27"
   name = "k8s.io/legacy-cloud-providers"
   packages = [
     "azure",
     "azure/auth",
+    "azure/retry",
   ]
   pruneopts = "NUT"
-  revision = "b5fed2ccee230e9dd2db9c07e5b1230b9af50272"
-  version = "v0.17.0"
+  revision = "caaba3c58c7140ff41bf3de32d0c6de1b5f2508a"
 
 [[projects]]
   branch = "master"
@@ -1432,7 +1433,7 @@
     "github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-07-01/compute",
     "github.com/Azure/azure-sdk-for-go/services/network/mgmt/2018-08-01/network",
     "github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2018-05-01/resources",
-    "github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2019-04-01/storage",
+    "github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2019-06-01/storage",
     "github.com/Azure/go-autorest/autorest",
     "github.com/Azure/go-autorest/autorest/adal",
     "github.com/Azure/go-autorest/autorest/azure",
