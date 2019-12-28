@@ -399,7 +399,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			Pod:             pod,
 			PodWithSnapshot: podWithSnapshot,
 		}
-		test.Run(cs, snapshotrcs, ns)
+		test.CSIDriver.IsInTree()
+		snapshotrcs.APIVersion()
+		// todo: renable snapshot e2e test, details: https://github.com/kubernetes-sigs/azuredisk-csi-driver/issues/232
+		//test.Run(cs, snapshotrcs, ns)
 	})
 }
 
