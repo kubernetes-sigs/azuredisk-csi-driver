@@ -223,6 +223,9 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		}
 		diskURI, err = d.cloud.CreateManagedDisk(volumeOptions)
 		if err != nil {
+			if strings.Contains(err.Error(), "NotFound") {
+				return nil, status.Error(codes.NotFound, err.Error())
+			}
 			return nil, err
 		}
 	} else {
