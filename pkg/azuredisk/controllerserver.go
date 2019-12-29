@@ -26,7 +26,7 @@ import (
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-07-01/compute"
-	"github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2019-04-01/storage"
+	"github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2019-06-01/storage"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/protobuf/ptypes"
 	"google.golang.org/grpc/codes"
@@ -475,14 +475,14 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 		return nil, status.Errorf(codes.Internal, "could not get resource group from diskURI(%s) with error(%v)", diskURI, err)
 	}
 
-	disk, err := d.cloud.DisksClient.Get(ctx, resourceGroup, diskName)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "could not get the disk(%s) under rg(%s) with error(%v)", diskName, resourceGroup, err)
+	result, rerr := d.cloud.DisksClient.Get(ctx, resourceGroup, diskName)
+	if rerr != nil {
+		return nil, status.Errorf(codes.Internal, "could not get the disk(%s) under rg(%s) with error(%v)", diskName, resourceGroup, rerr.Error())
 	}
-	if disk.DiskProperties.DiskSizeGB == nil {
+	if result.DiskProperties.DiskSizeGB == nil {
 		return nil, status.Errorf(codes.Internal, "could not get size of the disk(%s)", diskName)
 	}
-	oldSize := *resource.NewQuantity(int64(*disk.DiskProperties.DiskSizeGB), resource.BinarySI)
+	oldSize := *resource.NewQuantity(int64(*result.DiskProperties.DiskSizeGB), resource.BinarySI)
 
 	klog.V(2).Infof("begin to expand azure disk(%s) with new size(%v)", diskURI, requestSize)
 	newSize, err := d.cloud.ResizeDisk(diskURI, oldSize, requestSize)

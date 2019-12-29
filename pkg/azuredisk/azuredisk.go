@@ -186,9 +186,8 @@ func (d *Driver) checkDiskExists(ctx context.Context, diskURI string) error {
 		return err
 	}
 
-	_, err = d.cloud.DisksClient.Get(ctx, resourceGroup, diskName)
-	if err != nil {
-		return err
+	if _, rerr := d.cloud.DisksClient.Get(ctx, resourceGroup, diskName); rerr != nil {
+		return rerr.Error()
 	}
 
 	return nil
@@ -326,12 +325,11 @@ func (d *Driver) CreateManagedDisk(ctx context.Context, options *ManagedDiskOpti
 		options.ResourceGroup = d.cloud.ResourceGroup
 	}
 
-	_, err = d.cloud.DisksClient.CreateOrUpdate(ctx, options.ResourceGroup, options.DiskName, model)
-	if err != nil {
-		if strings.Contains(err.Error(), "NotFound") {
-			return "", status.Errorf(codes.NotFound, "the specify snapshot(%s) is not found under rg(%s), failed with error: %v", options.SourceResourceID, options.ResourceGroup, err)
+	if rerr := d.cloud.DisksClient.CreateOrUpdate(ctx, options.ResourceGroup, options.DiskName, model); rerr != nil {
+		if strings.Contains(rerr.Error().Error(), "NotFound") {
+			return "", status.Errorf(codes.NotFound, "the specify snapshot(%s) is not found under rg(%s), failed with error: %v", options.SourceResourceID, options.ResourceGroup, rerr.Error())
 		}
-		return "", err
+		return "", rerr.Error()
 	}
 
 	diskID := ""

@@ -104,3 +104,7 @@
 [[override]]
   name = "contrib.go.opencensus.io/exporter/ocagent"
   version = "=v0.4.12"
+
+[[constraint]]
+  branch = "master"
+  name = "k8s.io/legacy-cloud-providers"
