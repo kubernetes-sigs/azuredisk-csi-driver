@@ -36,6 +36,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog"
+	"k8s.io/legacy-cloud-providers/azure"
 )
 
 var (
@@ -86,15 +87,16 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	}
 
 	var (
-		location, account  string
-		storageAccountType string
-		cachingMode        v1.AzureDataDiskCachingMode
-		strKind            string
-		err                error
-		resourceGroup      string
-		diskIopsReadWrite  string
-		diskMbpsReadWrite  string
-		diskName           string
+		location, account   string
+		storageAccountType  string
+		cachingMode         v1.AzureDataDiskCachingMode
+		strKind             string
+		err                 error
+		resourceGroup       string
+		diskIopsReadWrite   string
+		diskMbpsReadWrite   string
+		diskName            string
+		diskEncryptionSetID string
 	)
 
 	parameters := req.GetParameters()
@@ -120,6 +122,8 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			diskMbpsReadWrite = v
 		case "diskname":
 			diskName = v
+		case "diskencryptionsetid":
+			diskEncryptionSetID = v
 		default:
 			//don't return error here since there are some parameters(e.g. fsType) used in disk mount process
 			//return nil, fmt.Errorf("AzureDisk - invalid option %s in storage class", k)
@@ -203,21 +207,25 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			}
 		}
 
-		volumeOptions := &ManagedDiskOptions{
-			DiskName:           diskName,
-			StorageAccountType: skuName,
-			ResourceGroup:      resourceGroup,
-			PVCName:            "",
-			SizeGB:             requestGiB,
-			Tags:               tags,
-			AvailabilityZone:   selectedAvailabilityZone,
-			DiskIOPSReadWrite:  diskIopsReadWrite,
-			DiskMBpsReadWrite:  diskMbpsReadWrite,
-			SourceResourceID:   sourceID,
-			SourceType:         sourceType,
+		volumeOptions := &azure.ManagedDiskOptions{
+			DiskName:            diskName,
+			StorageAccountType:  skuName,
+			ResourceGroup:       resourceGroup,
+			PVCName:             "",
+			SizeGB:              requestGiB,
+			Tags:                tags,
+			AvailabilityZone:    selectedAvailabilityZone,
+			DiskIOPSReadWrite:   diskIopsReadWrite,
+			DiskMBpsReadWrite:   diskMbpsReadWrite,
+			SourceResourceID:    sourceID,
+			SourceType:          sourceType,
+			DiskEncryptionSetID: diskEncryptionSetID,
 		}
-		diskURI, err = d.CreateManagedDisk(ctx, volumeOptions)
+		diskURI, err = d.cloud.CreateManagedDisk(volumeOptions)
 		if err != nil {
+			if strings.Contains(err.Error(), "NotFound") {
+				return nil, status.Error(codes.NotFound, err.Error())
+			}
 			return nil, err
 		}
 	} else {
