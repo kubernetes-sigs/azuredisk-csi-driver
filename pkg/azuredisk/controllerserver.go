@@ -97,6 +97,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		diskMbpsReadWrite   string
 		diskName            string
 		diskEncryptionSetID string
+		customTags          string
 	)
 
 	parameters := req.GetParameters()
@@ -124,6 +125,8 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			diskName = v
 		case "diskencryptionsetid":
 			diskEncryptionSetID = v
+		case "tags":
+			customTags = v
 		default:
 			//don't return error here since there are some parameters(e.g. fsType) used in disk mount process
 			//return nil, fmt.Errorf("AzureDisk - invalid option %s in storage class", k)
@@ -166,6 +169,11 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		return nil, err
 	}
 
+	customTagsMap, err := volumehelper.ConvertTagsToMap(customTags)
+	if err != nil {
+		return nil, err
+	}
+
 	klog.V(2).Infof("begin to create azure disk(%s) account type(%s) rg(%s) location(%s) size(%d) selectedAvailabilityZone(%v)",
 		diskName, skuName, resourceGroup, location, requestGiB, selectedAvailabilityZone)
 
@@ -173,6 +181,9 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	contentSource := &csi.VolumeContentSource{}
 	if kind == v1.AzureManagedDisk {
 		tags := make(map[string]string)
+		for k, v := range customTagsMap {
+			tags[k] = v
+		}
 		/* todo: check where are the tags in CSI
 		if p.options.CloudTags != nil {
 			tags = *(p.options.CloudTags)
