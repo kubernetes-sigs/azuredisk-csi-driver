@@ -17,7 +17,7 @@ image:
     pullPolicy: Always
   csiSnapshotter:
     repository: mcr.microsoft.com/oss/kubernetes-csi/csi-snapshotter
-    tag: v1.2.2
+    tag: v1.1.0
     pullPolicy: Always
   csiResizer:
     repository: mcr.microsoft.com/oss/kubernetes-csi/csi-resizer
