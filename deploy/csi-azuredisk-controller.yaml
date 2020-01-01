@@ -53,7 +53,7 @@ spec:
           - mountPath: /csi
             name: socket-dir
         - name: cluster-driver-registrar
-          image: quay.io/k8scsi/csi-cluster-driver-registrar:v1.0.1
+          image: mcr.microsoft.com/oss/kubernetes-csi/csi-cluster-driver-registrar:v1.0.1
           args:
             - --csi-address=$(ADDRESS)
             - --driver-requires-attachment=true
