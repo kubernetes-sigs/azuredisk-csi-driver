@@ -27,6 +27,13 @@ spec:
             - --csi-address=/csi/csi.sock
             - --connection-timeout=3s
             - --health-port=9602
+          resources:
+            limits:
+              cpu: 200m
+              memory: 200Mi
+            requests:
+              cpu: 10m
+              memory: 20Mi
         - name: node-driver-registrar
           image: mcr.microsoft.com/oss/kubernetes-csi/csi-node-driver-registrar:v1.1.0
           args:
@@ -47,6 +54,13 @@ spec:
               mountPath: /csi
             - name: registration-dir
               mountPath: /registration
+          resources:
+            limits:
+              cpu: 200m
+              memory: 200Mi
+            requests:
+              cpu: 10m
+              memory: 20Mi
         - name: azuredisk
           image: mcr.microsoft.com/k8s/csi/azuredisk-csi:latest
           args:
@@ -95,6 +109,13 @@ spec:
               name: sys-devices-dir
             - mountPath: /sys/class/scsi_host/
               name: scsi-host-dir
+          resources:
+            limits:
+              cpu: 200m
+              memory: 200Mi
+            requests:
+              cpu: 10m
+              memory: 20Mi
       volumes:
         - hostPath:
             path: /var/lib/kubelet/plugins/disk.csi.azure.com
