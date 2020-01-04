@@ -36,6 +36,7 @@ Please refer to [install azuredisk csi driver](./docs/install-azuredisk-csi-driv
 
 ### Examples
  - [Basic usage](./deploy/example/e2e_usage.md)
+ - [Topology(Availability Zone)](./deploy/example/topology)
  - [Snapshot](./deploy/example/snapshot)
  - [Volume Cloning](./deploy/example/cloning)
  - [Volume Expansion](./deploy/example/resizing) 
