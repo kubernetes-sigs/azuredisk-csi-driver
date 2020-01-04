@@ -5,6 +5,10 @@ set -e
 NS=kube-system
 CONTAINER=azuredisk
 
+echo "print out all $NS namespace pods status ..."
+kubectl get pods -n${NS}
+echo "======================================================================================"
+
 echo "print out csi-azuredisk-controller logs ..."
 echo "======================================================================================"
 LABEL='app=csi-azuredisk-controller'
