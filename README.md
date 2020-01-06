@@ -13,6 +13,7 @@ Status: Beta
 |Azure Disk CSI Driver Version  | Image                                              | v1.0.0 |
 |-------------------------------|----------------------------------------------------|--------|
 |master branch                  |mcr.microsoft.com/k8s/csi/azuredisk-csi:latest      | yes    |
+|v0.5.0                         |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.5.0      | yes    |
 |v0.4.0                         |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.4.0      | yes    |
 |v0.3.0                         |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.3.0      | yes    |
 
@@ -20,6 +21,7 @@ Status: Beta
 | Azure Disk CSI Driver\Kubernetes Version | 1.14+ |
 |------------------------------------------|-------|
 | master branch                            | yes   |
+| v0.5.0                                   | yes   |
 | v0.4.0                                   | yes   |
 | v0.3.0                                   | yes   |
 
