@@ -16,7 +16,7 @@
 
 set -uo pipefail
 
-kubectl apply -f deploy/crd-csi-driver-registry.yaml
+kubectl apply -f deploy/csi-azuredisk-driver.yaml
 kubectl apply -f deploy/crd-csi-node-info.yaml
 kubectl apply -f deploy/rbac-csi-azuredisk-controller.yaml
 kubectl apply -f deploy/csi-azuredisk-controller.yaml
