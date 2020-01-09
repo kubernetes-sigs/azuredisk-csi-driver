@@ -13,9 +13,9 @@ $ cd $GOPATH/src/sigs.k8s.io/azuredisk-csi-driver
 $ make azuredisk
 ```
 
- - Run unit test
+ - Run verification before sending PR
 ```
-$ make unit-test
+$ make verify
 ```
 
 ## How to test CSI driver in local environment
