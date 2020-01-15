@@ -1,0 +1,26 @@
+kind: Pod
+apiVersion: v1
+metadata:
+  name: nginx-azuredisk-inline
+spec:
+  nodeSelector:
+    beta.kubernetes.io/os: linux
+  containers:
+  - image: nginx
+    name: nginx-azuredisk
+    command:
+    - "/bin/sh"
+    - "-c"
+    - while true; do echo $(date) >> /mnt/azuredisk/outfile; sleep 1; done
+    volumeMounts:
+    - name: azuredisk02
+      mountPath: "/mnt/azuredisk"
+  volumes:
+  - name: azuredisk02
+    csi:
+      driver: disk.csi.azure.com
+      volumeAttributes:
+        capacity: 10Gi # default is 1Gi
+        storageAccountType: Standard_LRS # default is Standard_LRS
+      readOnly: false  # default is false
+      fsType: ext4 # default is ext4
