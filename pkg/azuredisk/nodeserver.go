@@ -44,6 +44,10 @@ const (
 	defaultLinuxFsType      = "ext4"
 	defaultWindowsFsType    = "ntfs"
 	defaultAzureVolumeLimit = 16
+
+	ephemeralVolumeIdTemplate = "ephemeral-%s"
+	// see https://github.com/kubernetes/api/blob/master/storage/v1beta1/types.go#L294
+	ephemeralVolumeKey = "csi.storage.k8s.io/ephemeral"
 )
 
 // store vm size list in current region
@@ -186,6 +190,11 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in request")
 	}
 
+	ephemeral := req.GetVolumeContext()[ephemeralVolumeKey] == "true"
+	if ephemeral {
+		return d.nodePublishEphemeralVolume(ctx, req)
+	}
+
 	source := req.GetStagingTargetPath()
 	if len(source) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Staging target not provided")
@@ -247,12 +256,24 @@ func (d *Driver) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublish
 	targetPath := req.GetTargetPath()
 	volumeID := req.GetVolumeId()
 
+	ephemeral := false
+	// In the persistent scenario, the volumeID is like /subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/disks/xxx.
+	// In the inline scenario, according to the volumeHandle(https://github.com/kubernetes/kubernetes/blob/master/pkg/volume/csi/csi_mounter.go#L450-L454),
+	// the volumeID is like "csi-xxxxxx".
+	if match := managedDiskPathRE.FindString(volumeID); match == "" && strings.Contains(volumeID, "csi-") {
+		ephemeral = true
+	}
+
 	klog.V(2).Infof("NodeUnpublishVolume: unmounting volume %s on %s", volumeID, targetPath)
 	err := d.mounter.Unmount(req.GetTargetPath())
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	klog.V(2).Infof("NodeUnpublishVolume: unmount volume %s on %s successfully", volumeID, targetPath)
+
+	if ephemeral {
+		return d.nodeUnpublishEphemeralVolume(ctx, req)
+	}
 
 	return &csi.NodeUnpublishVolumeResponse{}, nil
 }
@@ -488,4 +509,115 @@ func (d *Driver) ensureBlockTargetFile(target string) error {
 	}
 
 	return nil
+}
+
+func (d *Driver) nodePublishEphemeralVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
+	volumeId := req.GetVolumeId()
+	ephemeralVolumeId := fmt.Sprintf(ephemeralVolumeIdTemplate, volumeId)
+
+	capacity := req.GetVolumeContext()["capacity"]
+	size, err := strconv.Atoi(strings.TrimSuffix(capacity, "Gi"))
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "Unable to parse capacity %v", err)
+	}
+	if size <= 0 {
+		return nil, status.Errorf(codes.Internal, "size(%v) is illegal, please provide the positive size value", size)
+	}
+
+	klog.V(2).Infof("nodePublishEphemeralVolume: creating volume(%s)", ephemeralVolumeId)
+	createVolumeReq := &csi.CreateVolumeRequest{
+		Name: ephemeralVolumeId,
+		CapacityRange: &csi.CapacityRange{
+			RequiredBytes: volumehelper.GiBToBytes(int64(size)),
+		},
+		VolumeCapabilities: []*csi.VolumeCapability{req.GetVolumeCapability()},
+		Parameters:         req.GetVolumeContext(),
+	}
+	createVolumeResp, err := d.CreateVolume(ctx, createVolumeReq)
+	if err != nil {
+		return nil, err
+	}
+	diskURI := createVolumeResp.Volume.VolumeId
+	defer func() {
+		if err != nil {
+			deleteVolumeReq := &csi.DeleteVolumeRequest{
+				VolumeId: diskURI,
+			}
+			if _, err1 := d.DeleteVolume(ctx, deleteVolumeReq); err1 != nil {
+				klog.Errorf("nodePublishEphemeralVolume: fail to delete volume(%s): %v", diskURI, err1)
+			}
+		}
+	}()
+	klog.V(2).Infof("nodePublishEphemeralVolume: create the managed disk(%s) successfully", ephemeralVolumeId)
+
+	// attach volume to node
+	controllerPublishVolumeReq := &csi.ControllerPublishVolumeRequest{
+		VolumeId:         diskURI,
+		NodeId:           d.NodeID,
+		Readonly:         req.GetReadonly(),
+		VolumeCapability: req.GetVolumeCapability(),
+	}
+
+	klog.V(2).Infof("nodePublishEphemeralVolume: attaching the managed disk(%s) to node(%s)", diskURI, d.NodeID)
+	controllerPublishResp, err := d.ControllerPublishVolume(ctx, controllerPublishVolumeReq)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err != nil {
+			controllerUnpublishVolumeReq := &csi.ControllerUnpublishVolumeRequest{
+				VolumeId: diskURI,
+				NodeId:   d.NodeID,
+			}
+			if _, err1 := d.ControllerUnpublishVolume(ctx, controllerUnpublishVolumeReq); err1 != nil {
+				klog.Errorf("nodePublishEphemeralVolume: fail to detach volume(%s): %v", diskURI, err1)
+			}
+		}
+	}()
+	klog.V(2).Infof("nodePublishEphemeralVolume: attach the managed disk(%s) to node(%s) successfully", diskURI, d.NodeID)
+
+	nodeStageVolumeReq := &csi.NodeStageVolumeRequest{
+		VolumeId:          diskURI,
+		PublishContext:    controllerPublishResp.PublishContext,
+		StagingTargetPath: req.GetTargetPath(),
+		VolumeCapability:  req.GetVolumeCapability(),
+		VolumeContext:     req.GetVolumeContext(),
+	}
+	_, err = d.NodeStageVolume(ctx, nodeStageVolumeReq)
+	if err != nil {
+		return nil, err
+	}
+	klog.V(2).Infof("nodePublishEphemeralVolume: node publish ephemeral volume(%s) successfully", diskURI)
+
+	return &csi.NodePublishVolumeResponse{}, nil
+}
+
+func (d *Driver) nodeUnpublishEphemeralVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
+	volumeId := req.GetVolumeId()
+	diskName := fmt.Sprintf(ephemeralVolumeIdTemplate, volumeId)
+
+	_, diskURI, err := d.cloud.GetDisk(d.cloud.ResourceGroup, diskName)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "could not get azuredisk(%s) under rg(%s): %v", diskName, d.cloud.ResourceGroup, err)
+	}
+
+	controllerUnpublishVolumeReq := &csi.ControllerUnpublishVolumeRequest{
+		VolumeId: diskURI,
+		NodeId:   d.NodeID,
+	}
+	_, err = d.ControllerUnpublishVolume(ctx, controllerUnpublishVolumeReq)
+	if err != nil {
+		return nil, err
+	}
+
+	deleteVolumeReq := &csi.DeleteVolumeRequest{
+		VolumeId: diskURI,
+	}
+	if _, err := d.DeleteVolume(ctx, deleteVolumeReq); err != nil {
+		return nil, err
+	}
+
+	klog.V(2).Infof("nodeUnpublishEphemeralVolume: node unpublish ephemeral volume(%s) successfully", diskURI)
+
+	return &csi.NodeUnpublishVolumeResponse{}, nil
 }
