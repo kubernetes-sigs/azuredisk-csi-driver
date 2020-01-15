@@ -19,13 +19,14 @@
   version = "v35.1.0"
 
 [[projects]]
-  digest = "1:7dc53e012b9e58f6fc52dce9c201d38dbc3c0e573bad4a56fa0f861823934915"
+  digest = "1:069a94a5296e2a3157305fa85ed5fd06b45c4b64ac1803f22e4efbb772c72919"
   name = "github.com/Azure/go-autorest"
   packages = [
     "autorest",
     "autorest/adal",
     "autorest/azure",
     "autorest/date",
+    "autorest/mocks",
     "autorest/to",
     "autorest/validation",
     "logger",
@@ -245,7 +246,7 @@
   version = "v1.0.0"
 
 [[projects]]
-  digest = "1:1d1cbf539d9ac35eb3148129f96be5537f1a1330cadcc7e3a83b4e72a59672a3"
+  digest = "1:0aeda02073125667ac6c9df50c7921cb22c08a4accdc54589c697a7e76be65c2"
   name = "github.com/google/go-cmp"
   packages = [
     "cmp",
@@ -255,8 +256,8 @@
     "cmp/internal/value",
   ]
   pruneopts = "NUT"
-  revision = "2d0692c2e9617365a95b295612ac0d4415ba4627"
-  version = "v0.3.1"
+  revision = "5a6f75716e1203a923a78c9efb94089d857df0f6"
+  version = "v0.4.0"
 
 [[projects]]
   digest = "1:52c5834e2bebac9030c97cc0798ac11c3aa8a39f098aeb419f142533da6cd3cc"
@@ -484,12 +485,12 @@
   version = "v3.0.0"
 
 [[projects]]
-  digest = "1:14715f705ff5dfe0ffd6571d7d201dd8e921030f8070321a79380d8ca4ec1a24"
+  digest = "1:4047c378584616813d610c9f993bf90dd0d07aed8d94bd3bc299cd35ececdcba"
   name = "github.com/pkg/errors"
   packages = ["."]
   pruneopts = "NUT"
-  revision = "ba968bfe8b2f7e042a574c888954fccecfa385b4"
-  version = "v0.8.1"
+  revision = "614d223910a179a466c1767a985424175c39b465"
+  version = "v0.9.1"
 
 [[projects]]
   digest = "1:0028cb19b2e4c3112225cd871870f2d9cf49b9b4276531f03438a88e94be86fe"
@@ -528,8 +529,8 @@
     "model",
   ]
   pruneopts = "NUT"
-  revision = "287d3e634a1e550c9e463dd7e5a75a422c614505"
-  version = "v0.7.0"
+  revision = "629b6ff9b3aafafba54ab96663903fde9544f037"
+  version = "v0.8.0"
 
 [[projects]]
   digest = "1:a4b063a766f50cdadc1fce12053e3bde8599f1f8b7621d7e293cd2fc86543a44"
@@ -599,7 +600,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:5a82dd7741e23c60aef95b3483979f428b462e20bdee9e665b7753bfec9e2b80"
+  digest = "1:9094365d9add58ab36d51b9809d4a4675726276197d7fb501e2272bb2bb5ed41"
   name = "golang.org/x/crypto"
   packages = [
     "chacha20",
@@ -615,11 +616,11 @@
     "ssh/terminal",
   ]
   pruneopts = "NUT"
-  revision = "53104e6ec876ad4e22ad27cce588b01392043c1b"
+  revision = "61a87790db17894570dfb32dbaa0a4af9ce60cb4"
 
 [[projects]]
   branch = "master"
-  digest = "1:cd148de9baaf0a3c052982e16c2bb83d03b8c501f115793055e3ff4533c9a1b7"
+  digest = "1:fbb9d7f20a8c3ef134ede7de0ce4d3b39b1f8e37d083a0ac58bbeeaf95db991a"
   name = "golang.org/x/net"
   packages = [
     "context",
@@ -636,7 +637,7 @@
     "websocket",
   ]
   pruneopts = "NUT"
-  revision = "c0dbc17a35534bf2e581d7a942408dc936316da4"
+  revision = "6afb5195e5aab057fda82e27171243402346b0ad"
 
 [[projects]]
   branch = "master"
@@ -647,11 +648,11 @@
     "internal",
   ]
   pruneopts = "NUT"
-  revision = "858c2ad4c8b6c5d10852cb89079f6ca1c7309787"
+  revision = "bf48bf16ab8d622ce64ec6ce98d2c98f916b6303"
 
 [[projects]]
   branch = "master"
-  digest = "1:ac4060222b479541f48c3c245b91e5a8905b063737a5d9b8676e59a3c93705bc"
+  digest = "1:79742237f49a9764ee1ad7c88b949d95f87ceae293746bbc3a113d0f48c99d56"
   name = "golang.org/x/sys"
   packages = [
     "cpu",
@@ -659,7 +660,7 @@
     "windows",
   ]
   pruneopts = "NUT"
-  revision = "c709ea063b76879dc9915358f55d4d77c16ab6d5"
+  revision = "86b910548bc16777f40503131aa424ae0a092199"
 
 [[projects]]
   digest = "1:0b5dc8c3581fc3ea2b80cc2e360dfb9c2d61dd0cba0d2fe247e8edd3e83f7551"
@@ -740,7 +741,7 @@
   name = "google.golang.org/genproto"
   packages = ["googleapis/rpc/status"]
   pruneopts = "NUT"
-  revision = "3caeed10a8bf5b67c6007d5b0a7016f367cedbad"
+  revision = "e1de0a7b01eb2fc11d735e4bfb79d2e53ec9edb3"
 
 [[projects]]
   digest = "1:5060173b5a1d668358eb8881453eb96d3cf1ed1b35f0f4af52c56f741c121865"
@@ -953,7 +954,7 @@
   version = "kubernetes-1.15.0"
 
 [[projects]]
-  digest = "1:f24bc8279d2198bad11c56a888aa5da0d52eb278515a9386a2edabf6f49fc6dc"
+  digest = "1:58e83178fc33a0bce25d2adc20fcd2549e0931112792368bde654eb16cc6422e"
   name = "k8s.io/apiserver"
   packages = [
     "pkg/apis/audit",
@@ -971,8 +972,8 @@
     "pkg/util/feature",
   ]
   pruneopts = "NUT"
-  revision = "47dc9a115b1874c96c20cea91d02b36e4faa1bb1"
-  version = "kubernetes-1.15.0"
+  revision = "cbea221a7227b5781b748ccf1fb55795bc3f2a33"
+  version = "v0.15.7"
 
 [[projects]]
   digest = "1:f107a860bd0f6b51b21bc0d21ca093cc655560361fd812c7035951648651c128"
@@ -1183,8 +1184,8 @@
     "volume/helpers",
   ]
   pruneopts = "NUT"
-  revision = "c2aacd33d446994829d9e8830d83b047cfb11fda"
-  version = "v0.17.0"
+  revision = "23c4c4effb51a3aa6dc504c28a900e4ce4bd74ec"
+  version = "v0.17.1"
 
 [[projects]]
   digest = "1:efc62514dfea557663b84e62f75e565b6a49878ece5080a4f801128141853201"
@@ -1197,8 +1198,8 @@
     "version",
   ]
   pruneopts = "NUT"
-  revision = "d28e171e54a29670f44b1cc6eed68fd609028f62"
-  version = "v0.17.0"
+  revision = "e22fc98bf46cf388fdc8cb047daf7a6b4f208954"
+  version = "v0.17.1"
 
 [[projects]]
   digest = "1:5e496d711fa03e4aaf3cab0d7de079634a9465ebf940613b69b34f5cc6513db8"
@@ -1206,7 +1207,7 @@
   packages = ["pkg/apis/runtime/v1alpha2"]
   pruneopts = "NUT"
   revision = "775aa3c1cf7380ba8b7362f5a52f1e6d2e130bb9"
-  version = "v0.17.0"
+  version = "v0.17.1"
 
 [[projects]]
   digest = "1:c0693cb981f43d82a767a3217b7640a4bdb341731d3814b38602f4e5dc4f01b3"
@@ -1356,15 +1357,20 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:4a5c7273a61ca009fef04bf144d890507bb6c059b52bcc195959a1989b6a3c27"
+  digest = "1:b8b9a518526c381fd83f4fba024bc3c1234b0df8421890cc1bb53f7fb60a28d8"
   name = "k8s.io/legacy-cloud-providers"
   packages = [
     "azure",
     "azure/auth",
+    "azure/clients",
+    "azure/clients/armclient",
+    "azure/clients/vmssclient",
+    "azure/clients/vmssvmclient",
+    "azure/metrics",
     "azure/retry",
   ]
   pruneopts = "NUT"
-  revision = "caaba3c58c7140ff41bf3de32d0c6de1b5f2508a"
+  revision = "927ffce4520879364880e477b4de018c15ec53ff"
 
 [[projects]]
   branch = "master"
@@ -1384,7 +1390,7 @@
     "trace",
   ]
   pruneopts = "NUT"
-  revision = "f07c713de88362aef7545072487d6118bd4a3d4a"
+  revision = "94aeca20bf0991bf33922a5938174b9147ab8ca7"
 
 [[projects]]
   digest = "1:cb422c75bab66a8339a38b64e837f3b28f3d5a8c06abd7b9048f420363baa18a"

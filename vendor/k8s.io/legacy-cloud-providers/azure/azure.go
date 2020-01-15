@@ -45,6 +45,10 @@ import (
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog"
 	"k8s.io/legacy-cloud-providers/azure/auth"
+	azclients "k8s.io/legacy-cloud-providers/azure/clients"
+	"k8s.io/legacy-cloud-providers/azure/clients/vmssclient"
+	"k8s.io/legacy-cloud-providers/azure/clients/vmssvmclient"
+	"k8s.io/legacy-cloud-providers/azure/retry"
 	"sigs.k8s.io/yaml"
 )
 
@@ -114,6 +118,8 @@ type Config struct {
 	SubnetName string `json:"subnetName,omitempty" yaml:"subnetName,omitempty"`
 	// The name of the security group attached to the cluster's subnet
 	SecurityGroupName string `json:"securityGroupName,omitempty" yaml:"securityGroupName,omitempty"`
+	// The name of the resource group that the security group is deployed in
+	SecurityGroupResourceGroup string `json:"securityGroupResourceGroup,omitempty" yaml:"securityGroupResourceGroup,omitempty"`
 	// (Optional in 1.6) The name of the route table attached to the subnet that the cluster is deployed in
 	RouteTableName string `json:"routeTableName,omitempty" yaml:"routeTableName,omitempty"`
 	// The name of the resource group that the RouteTable is deployed in
@@ -328,6 +334,10 @@ func (az *Cloud) InitializeCloudFromConfig(config *Config, fromSecret bool) erro
 		config.RouteTableResourceGroup = config.ResourceGroup
 	}
 
+	if config.SecurityGroupResourceGroup == "" {
+		config.SecurityGroupResourceGroup = config.ResourceGroup
+	}
+
 	if config.VMType == "" {
 		// default to standard vmType if not set.
 		config.VMType = vmTypeStandard
@@ -448,13 +458,23 @@ func (az *Cloud) InitializeCloudFromConfig(config *Config, fromSecret bool) erro
 	}
 
 	// Initialize Azure clients.
-	azClientConfig := &azClientConfig{
-		subscriptionID:                 config.SubscriptionID,
-		resourceManagerEndpoint:        env.ResourceManagerEndpoint,
-		servicePrincipalToken:          servicePrincipalToken,
+	azClientConfig := &azclients.ClientConfig{
+		Location:                       config.Location,
+		SubscriptionID:                 config.SubscriptionID,
+		ResourceManagerEndpoint:        env.ResourceManagerEndpoint,
+		ServicePrincipalToken:          servicePrincipalToken,
 		CloudProviderBackoffRetries:    config.CloudProviderBackoffRetries,
 		CloudProviderBackoffDuration:   config.CloudProviderBackoffDuration,
 		ShouldOmitCloudProviderBackoff: config.shouldOmitCloudProviderBackoff(),
+		Backoff:                        &retry.Backoff{Steps: 1},
+	}
+	if config.CloudProviderBackoff {
+		azClientConfig.Backoff = &retry.Backoff{
+			Steps:    config.CloudProviderBackoffRetries,
+			Factor:   config.CloudProviderBackoffExponent,
+			Duration: time.Duration(config.CloudProviderBackoffDuration) * time.Second,
+			Jitter:   config.CloudProviderBackoffJitter,
+		}
 	}
 	az.DisksClient = newAzDisksClient(azClientConfig.WithRateLimiter(config.DiskRateLimit))
 	az.SnapshotsClient = newSnapshotsClient(azClientConfig.WithRateLimiter(config.SnapshotRateLimit))
@@ -468,8 +488,12 @@ func (az *Cloud) InitializeCloudFromConfig(config *Config, fromSecret bool) erro
 	az.VirtualMachinesClient = newAzVirtualMachinesClient(azClientConfig.WithRateLimiter(config.VirtualMachineRateLimit))
 	az.PublicIPAddressesClient = newAzPublicIPAddressesClient(azClientConfig.WithRateLimiter(config.PublicIPAddressRateLimit))
 	az.VirtualMachineSizesClient = newAzVirtualMachineSizesClient(azClientConfig.WithRateLimiter(config.VirtualMachineSizeRateLimit))
-	az.VirtualMachineScaleSetsClient = newAzVirtualMachineScaleSetsClient(azClientConfig.WithRateLimiter(config.VirtualMachineScaleSetRateLimit))
-	az.VirtualMachineScaleSetVMsClient = newAzVirtualMachineScaleSetVMsClient(azClientConfig.WithRateLimiter(config.VirtualMachineScaleSetRateLimit))
+
+	az.VirtualMachineScaleSetsClient = vmssclient.New(azClientConfig.WithRateLimiter(config.VirtualMachineScaleSetRateLimit))
+	vmssVMClientConfig := azClientConfig.WithRateLimiter(config.VirtualMachineScaleSetRateLimit)
+	vmssVMClientConfig.Backoff = vmssVMClientConfig.Backoff.WithNonRetriableErrors([]string{vmssVMNotActiveErrorMessage})
+	az.VirtualMachineScaleSetVMsClient = vmssvmclient.New(vmssVMClientConfig)
+
 	// TODO(feiskyer): refactor azureFileClient to Interface.
 	az.FileClient = &azureFileClient{env: *env}
 
