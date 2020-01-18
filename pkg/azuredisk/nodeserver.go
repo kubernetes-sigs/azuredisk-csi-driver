@@ -38,7 +38,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/util/resizefs"
-	"k8s.io/kubernetes/pkg/volume/util"
 )
 
 const (
@@ -197,7 +196,10 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		return nil, status.Error(codes.InvalidArgument, "Target path not provided")
 	}
 
-	mountOptions := getNodePublishMountOptions(req)
+	mountOptions := []string{"bind"}
+	if req.GetReadonly() {
+		mountOptions = append(mountOptions, "ro")
+	}
 
 	switch req.GetVolumeCapability().GetAccessType().(type) {
 	case *csi.VolumeCapability_Block:
@@ -211,40 +213,13 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 			return nil, status.Errorf(codes.Internal, "Failed to find device path %s. %v", devicePath, err)
 		}
 		klog.V(2).Infof("NodePublishVolume [block]: find device path %s -> %s", devicePath, source)
-
-		// Since the block device target path is file, its parent directory should be ensured to be valid.
-		parentDir := filepath.Dir(target)
-		if err := d.ensureMountPoint(parentDir); err != nil {
-			return nil, status.Errorf(codes.Internal, "Could not mount target %q: %v", parentDir, err)
-		}
-
-		// Create the mount point as a file since bind mount device node requires it to be a file
-		klog.V(2).Infof("NodePublishVolume [block]: making target file %s", target)
-		err = d.mounter.MakeFile(target)
+		err = d.ensureBlockTargetFile(target)
 		if err != nil {
-			if removeErr := os.Remove(target); removeErr != nil {
-				return nil, status.Errorf(codes.Internal, "Could not remove mount target %q: %v", target, removeErr)
-			}
-			return nil, status.Errorf(codes.Internal, "Could not create file %q: %v", target, err)
+			return nil, err
 		}
 	case *csi.VolumeCapability_Mount:
 		if err := d.ensureMountPoint(target); err != nil {
 			return nil, status.Errorf(codes.Internal, "Could not mount target %q: %v", target, err)
-		}
-		// todo: looks like here fsType is useless since we only use "fsType" in VolumeContext
-		fsType := req.GetVolumeCapability().GetMount().GetFsType()
-
-		readOnly := req.GetReadonly()
-		volumeID := req.GetVolumeId()
-		attrib := req.GetVolumeContext()
-		mountFlags := req.GetVolumeCapability().GetMount().GetMountFlags()
-
-		klog.V(2).Infof("target %v\nfstype %v\n\nreadonly %v\nvolumeId %v\nContext %v\nmountflags %v\n",
-			target, fsType, readOnly, volumeID, attrib, mountFlags)
-
-		klog.V(2).Infof("NodePublishVolume: creating dir %s", target)
-		if err := d.mounter.MakeDir(target); err != nil {
-			return nil, status.Errorf(codes.Internal, "Could not create dir %q: %v", target, err)
 		}
 	}
 
@@ -440,7 +415,7 @@ func (d *Driver) ensureMountPoint(target string) error {
 
 	if runtime.GOOS != "windows" {
 		// in windows, we will use mklink to mount, will MkdirAll in Mount func
-		if err := os.MkdirAll(target, 0750); err != nil {
+		if err := d.mounter.MakeDir(target); err != nil {
 			klog.Errorf("azureDisk - mkdir failed on target: %s (%v)", target, err)
 			return err
 		}
@@ -483,17 +458,6 @@ func (d *Driver) findDiskAndLun(devicePath string) (string, int32, error) {
 	return newDevicePath, lun, err
 }
 
-func getNodePublishMountOptions(req *csi.NodePublishVolumeRequest) []string {
-	mountFlags := req.GetVolumeCapability().GetMount().GetMountFlags()
-	mountOptions := []string{"bind"}
-	if req.GetReadonly() {
-		mountOptions = append(mountOptions, "ro")
-	}
-	mountOptions = util.JoinMountOptions(mountFlags, mountOptions)
-
-	return mountOptions
-}
-
 func (d *Driver) getBlockSizeBytes(devicePath string) (int64, error) {
 	output, err := d.mounter.Exec.Run("blockdev", "--getsize64", devicePath)
 	if err != nil {
@@ -505,4 +469,23 @@ func (d *Driver) getBlockSizeBytes(devicePath string) (int64, error) {
 		return -1, fmt.Errorf("failed to parse size %s into int a size", strOut)
 	}
 	return gotSizeBytes, nil
+}
+
+func (d *Driver) ensureBlockTargetFile(target string) error {
+	// Since the block device target path is file, its parent directory should be ensured to be valid.
+	parentDir := filepath.Dir(target)
+	if err := d.ensureMountPoint(parentDir); err != nil {
+		return status.Errorf(codes.Internal, "Could not mount target %q: %v", parentDir, err)
+	}
+	// Create the mount point as a file since bind mount device node requires it to be a file
+	klog.V(2).Infof("ensureBlockTargetFile [block]: making target file %s", target)
+	err := d.mounter.MakeFile(target)
+	if err != nil {
+		if removeErr := os.Remove(target); removeErr != nil {
+			return status.Errorf(codes.Internal, "Could not remove mount target %q: %v", target, removeErr)
+		}
+		return status.Errorf(codes.Internal, "Could not create file %q: %v", target, err)
+	}
+
+	return nil
 }

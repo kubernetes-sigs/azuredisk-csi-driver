@@ -17,12 +17,10 @@ limitations under the License.
 package azuredisk
 
 import (
-	"reflect"
 	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-07-01/compute"
 	"github.com/Azure/go-autorest/autorest/to"
-	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -96,45 +94,5 @@ func TestGetMaxDataDiskCount(t *testing.T) {
 	for _, test := range tests {
 		result := getMaxDataDiskCount(test.instanceType, test.sizeList)
 		assert.Equal(t, test.expectResult, result)
-	}
-}
-
-func TestGetNodePublishMountOptions(t *testing.T) {
-	tests := []struct {
-		request  *csi.NodePublishVolumeRequest
-		expected []string
-	}{
-		{
-			request: &csi.NodePublishVolumeRequest{
-				VolumeCapability: &csi.VolumeCapability{},
-			},
-			expected: []string{"bind"},
-		},
-		{
-			request: &csi.NodePublishVolumeRequest{
-				VolumeCapability: &csi.VolumeCapability{},
-				Readonly:         true,
-			},
-			expected: []string{"bind", "ro"},
-		},
-		{
-			request: &csi.NodePublishVolumeRequest{
-				VolumeCapability: &csi.VolumeCapability{
-					AccessType: &csi.VolumeCapability_Mount{
-						Mount: &csi.VolumeCapability_MountVolume{
-							MountFlags: []string{"rw"},
-						},
-					},
-				},
-			},
-			expected: []string{"bind", "rw"},
-		},
-	}
-
-	for _, test := range tests {
-		result := getNodePublishMountOptions(test.request)
-		if !reflect.DeepEqual(result, test.expected) {
-			t.Errorf("input: %v, getFStype result: %v, expected: %v", test.request, result, test.expected)
-		}
 	}
 }
