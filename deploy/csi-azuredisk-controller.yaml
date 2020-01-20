@@ -20,7 +20,7 @@ spec:
       priorityClassName: system-cluster-critical
       containers:
         - name: csi-provisioner
-          image: mcr.microsoft.com/oss/kubernetes-csi/csi-provisioner:v1.4.0
+          image: mcr.microsoft.com/oss/kubernetes-csi/csi-provisioner:v1.5.0
           args:
             - "--provisioner=disk.csi.azure.com"
             - "--feature-gates=Topology=true"
