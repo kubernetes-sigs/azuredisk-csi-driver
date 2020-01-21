@@ -33,7 +33,7 @@ const (
 	defaultDiskSizeBytes = defaultDiskSize * 1024 * 1024 * 1024
 )
 
-var _ = ginkgo.Describe("[azuredisk-csi-e2e] [single-az] Pre-Provisioned", func() {
+var _ = ginkgo.Describe("Pre-Provisioned", func() {
 	f := framework.NewDefaultFramework("azuredisk")
 
 	var (
@@ -63,7 +63,7 @@ var _ = ginkgo.Describe("[azuredisk-csi-e2e] [single-az] Pre-Provisioned", func(
 		}
 	})
 
-	ginkgo.It("[env] should use a pre-provisioned volume and mount it as readOnly in a pod", func() {
+	ginkgo.It("should use a pre-provisioned volume and mount it as readOnly in a pod [disk.csi.azure.com]", func() {
 		// Az tests need to be changed to pass the right parameters for in-tree driver.
 		// Skip these tests until above is fixed.
 		if testDriver.IsInTree() {
@@ -103,7 +103,7 @@ var _ = ginkgo.Describe("[azuredisk-csi-e2e] [single-az] Pre-Provisioned", func(
 		test.Run(cs, ns)
 	})
 
-	ginkgo.It(fmt.Sprintf("[env] should use a pre-provisioned volume and retain PV with reclaimPolicy %q", v1.PersistentVolumeReclaimRetain), func() {
+	ginkgo.It(fmt.Sprintf("should use a pre-provisioned volume and retain PV with reclaimPolicy %q [disk.csi.azure.com]", v1.PersistentVolumeReclaimRetain), func() {
 		// Az tests need to be changed to pass the right parameters for in-tree driver.
 		// Skip these tests until above is fixed.
 		if testDriver.IsInTree() {
