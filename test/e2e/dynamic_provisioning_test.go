@@ -37,6 +37,10 @@ import (
 var _ = ginkgo.Describe("Dynamic Provisioning", func() {
 	t := dynamicProvisioningTestSuite{}
 
+	ginkgo.Context("[single-az]", func() {
+		t.defineTests(false)
+	})
+
 	ginkgo.Context("[multi-az]", func() {
 		t.defineTests(true)
 	})

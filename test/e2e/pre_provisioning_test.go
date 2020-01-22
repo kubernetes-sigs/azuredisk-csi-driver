@@ -63,75 +63,77 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 		}
 	})
 
-	ginkgo.It("should use a pre-provisioned volume and mount it as readOnly in a pod [disk.csi.azure.com]", func() {
-		// Az tests need to be changed to pass the right parameters for in-tree driver.
-		// Skip these tests until above is fixed.
-		if testDriver.IsInTree() {
-			ginkgo.Skip("Test running with in tree configuration")
-		}
+	ginkgo.Context("[single-az]", func() {
+		ginkgo.It("should use a pre-provisioned volume and mount it as readOnly in a pod [disk.csi.azure.com]", func() {
+			// Az tests need to be changed to pass the right parameters for in-tree driver.
+			// Skip these tests until above is fixed.
+			if testDriver.IsInTree() {
+				ginkgo.Skip("Test running with in tree configuration")
+			}
 
-		req := makeCreateVolumeReq("pre-provisioned-readOnly")
-		resp, err := azurediskDriver.CreateVolume(context.Background(), req)
-		if err != nil {
-			ginkgo.Fail(fmt.Sprintf("create volume error: %v", err))
-		}
-		volumeID = resp.Volume.VolumeId
-		ginkgo.By(fmt.Sprintf("Successfully provisioned AzureDisk volume: %q\n", volumeID))
+			req := makeCreateVolumeReq("pre-provisioned-readOnly")
+			resp, err := azurediskDriver.CreateVolume(context.Background(), req)
+			if err != nil {
+				ginkgo.Fail(fmt.Sprintf("create volume error: %v", err))
+			}
+			volumeID = resp.Volume.VolumeId
+			ginkgo.By(fmt.Sprintf("Successfully provisioned AzureDisk volume: %q\n", volumeID))
 
-		diskSize := fmt.Sprintf("%dGi", defaultDiskSize)
-		pods := []testsuites.PodDetails{
-			{
-				Cmd: "echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data",
-				Volumes: []testsuites.VolumeDetails{
-					{
-						VolumeID:  volumeID,
-						FSType:    "ext4",
-						ClaimSize: diskSize,
-						VolumeMount: testsuites.VolumeMountDetails{
-							NameGenerate:      "test-volume-",
-							MountPathGenerate: "/mnt/test-",
-							ReadOnly:          true,
+			diskSize := fmt.Sprintf("%dGi", defaultDiskSize)
+			pods := []testsuites.PodDetails{
+				{
+					Cmd: "echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data",
+					Volumes: []testsuites.VolumeDetails{
+						{
+							VolumeID:  volumeID,
+							FSType:    "ext4",
+							ClaimSize: diskSize,
+							VolumeMount: testsuites.VolumeMountDetails{
+								NameGenerate:      "test-volume-",
+								MountPathGenerate: "/mnt/test-",
+								ReadOnly:          true,
+							},
 						},
 					},
 				},
-			},
-		}
-		test := testsuites.PreProvisionedReadOnlyVolumeTest{
-			CSIDriver: testDriver,
-			Pods:      pods,
-		}
-		test.Run(cs, ns)
-	})
+			}
+			test := testsuites.PreProvisionedReadOnlyVolumeTest{
+				CSIDriver: testDriver,
+				Pods:      pods,
+			}
+			test.Run(cs, ns)
+		})
 
-	ginkgo.It(fmt.Sprintf("should use a pre-provisioned volume and retain PV with reclaimPolicy %q [disk.csi.azure.com]", v1.PersistentVolumeReclaimRetain), func() {
-		// Az tests need to be changed to pass the right parameters for in-tree driver.
-		// Skip these tests until above is fixed.
-		if testDriver.IsInTree() {
-			ginkgo.Skip("Test running with in tree configuration")
-		}
-		req := makeCreateVolumeReq("pre-provisioned-retain-reclaimPolicy")
-		resp, err := azurediskDriver.CreateVolume(context.Background(), req)
-		if err != nil {
-			ginkgo.Fail(fmt.Sprintf("create volume error: %v", err))
-		}
-		volumeID = resp.Volume.VolumeId
-		ginkgo.By(fmt.Sprintf("Successfully provisioned AzureDisk volume: %q\n", volumeID))
+		ginkgo.It(fmt.Sprintf("should use a pre-provisioned volume and retain PV with reclaimPolicy %q [disk.csi.azure.com]", v1.PersistentVolumeReclaimRetain), func() {
+			// Az tests need to be changed to pass the right parameters for in-tree driver.
+			// Skip these tests until above is fixed.
+			if testDriver.IsInTree() {
+				ginkgo.Skip("Test running with in tree configuration")
+			}
+			req := makeCreateVolumeReq("pre-provisioned-retain-reclaimPolicy")
+			resp, err := azurediskDriver.CreateVolume(context.Background(), req)
+			if err != nil {
+				ginkgo.Fail(fmt.Sprintf("create volume error: %v", err))
+			}
+			volumeID = resp.Volume.VolumeId
+			ginkgo.By(fmt.Sprintf("Successfully provisioned AzureDisk volume: %q\n", volumeID))
 
-		diskSize := fmt.Sprintf("%dGi", defaultDiskSize)
-		reclaimPolicy := v1.PersistentVolumeReclaimRetain
-		volumes := []testsuites.VolumeDetails{
-			{
-				VolumeID:      volumeID,
-				FSType:        "ext4",
-				ClaimSize:     diskSize,
-				ReclaimPolicy: &reclaimPolicy,
-			},
-		}
-		test := testsuites.PreProvisionedReclaimPolicyTest{
-			CSIDriver: testDriver,
-			Volumes:   volumes,
-		}
-		test.Run(cs, ns)
+			diskSize := fmt.Sprintf("%dGi", defaultDiskSize)
+			reclaimPolicy := v1.PersistentVolumeReclaimRetain
+			volumes := []testsuites.VolumeDetails{
+				{
+					VolumeID:      volumeID,
+					FSType:        "ext4",
+					ClaimSize:     diskSize,
+					ReclaimPolicy: &reclaimPolicy,
+				},
+			}
+			test := testsuites.PreProvisionedReclaimPolicyTest{
+				CSIDriver: testDriver,
+				Volumes:   volumes,
+			}
+			test.Run(cs, ns)
+		})
 	})
 })
 
