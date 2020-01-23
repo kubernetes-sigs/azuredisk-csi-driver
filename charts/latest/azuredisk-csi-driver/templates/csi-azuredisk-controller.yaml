@@ -90,6 +90,7 @@ spec:
           args:
             - "-csi-address=$(ADDRESS)"
             - "-leader-election"
+            - "-v=5"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -128,6 +129,7 @@ spec:
             - --csi-address=/csi/csi.sock
             - --connection-timeout=3s
             - --health-port=9602
+            - --v=5
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
