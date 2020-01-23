@@ -7,7 +7,6 @@
             "orchestratorRelease": "1.16",
             "kubernetesConfig": {
                 "useCloudControllerManager": true,
-                "customCcmImage": "mcr.microsoft.com/k8s/core/azure-cloud-controller-manager:v0.3.0",
                 "networkPolicy": "none",
                 "cloudProviderRateLimitQPS": 6,
                 "cloudProviderRateLimitBucket": 20,
