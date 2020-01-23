@@ -47,6 +47,13 @@ const (
 
 var azurediskDriver *azuredisk.Driver
 
+type testCmd struct {
+	command  string
+	args     []string
+	startLog string
+	endLog   string
+}
+
 var _ = ginkgo.BeforeSuite(func() {
 	// k8s.io/kubernetes/test/e2e/framework requires env KUBECONFIG to be set
 	// it does not fall back to defaults
@@ -80,25 +87,13 @@ var _ = ginkgo.BeforeSuite(func() {
 		log.Println("docker login is successful")
 
 		// Install Azure Disk CSI Driver on cluster from project root
-		err = os.Chdir("../..")
-		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		defer func() {
-			err := os.Chdir("test/e2e")
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		}()
-
-		projectRoot, err := os.Getwd()
-		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		gomega.Expect(strings.HasSuffix(projectRoot, "azuredisk-csi-driver")).To(gomega.Equal(true))
-
-		log.Println("Installing Azure Disk CSI Driver...")
-		cmd = exec.Command("make", "e2e-bootstrap")
-		cmd.Dir = projectRoot
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		err = cmd.Run()
-		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		log.Println("Azure Disk CSI Driver installed")
+		e2eBootstrap := testCmd{
+			command:  "make",
+			args:     []string{"e2e-bootstrap"},
+			startLog: "Installing Azure Disk CSI Driver...",
+			endLog:   "Azure Disk CSI Driver installed",
+		}
+		execTestCmd([]testCmd{e2eBootstrap})
 
 		nodeid := os.Getenv("nodeid")
 		azurediskDriver = azuredisk.NewDriver(nodeid)
@@ -111,36 +106,21 @@ var _ = ginkgo.BeforeSuite(func() {
 
 var _ = ginkgo.AfterSuite(func() {
 	if os.Getenv(driver.AzureDriverNameVar) == "" && testutil.IsRunningInProw() {
-		err := os.Chdir("../..")
-		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		defer func() {
-			err := os.Chdir("test/e2e")
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		}()
+		azurediskLog := testCmd{
+			command:  "sh",
+			args:     []string{"test/utils/azuredisk_log.sh"},
+			startLog: "===================azuredisk log===================",
+			endLog:   "===================================================",
+		}
+		e2eTeardown := testCmd{
+			command:  "make",
+			args:     []string{"e2e-teardown"},
+			startLog: "Uninstalling Azure Disk CSI Driver...",
+			endLog:   "Azure Disk CSI Driver uninstalled",
+		}
+		execTestCmd([]testCmd{azurediskLog, e2eTeardown})
 
-		projectRoot, err := os.Getwd()
-		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		gomega.Expect(strings.HasSuffix(projectRoot, "azuredisk-csi-driver")).To(gomega.Equal(true))
-
-		log.Println("===================azuredisk log===================")
-		cmdSh := exec.Command("sh", "test/utils/azuredisk_log.sh")
-		cmdSh.Dir = projectRoot
-		cmdSh.Stdout = os.Stdout
-		cmdSh.Stderr = os.Stderr
-		err = cmdSh.Run()
-		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		log.Println("===================================================")
-
-		log.Println("Uninstalling Azure Disk CSI Driver...")
-		cmd := exec.Command("make", "e2e-teardown")
-		cmd.Dir = projectRoot
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		err = cmd.Run()
-		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		log.Println("Azure Disk CSI Driver uninstalled")
-
-		err = credentials.DeleteAzureCredentialFile()
+		err := credentials.DeleteAzureCredentialFile()
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	}
 })
@@ -153,4 +133,28 @@ func TestE2E(t *testing.T) {
 	}
 	r := []ginkgo.Reporter{reporters.NewJUnitReporter(path.Join(reportDir, "junit_01.xml"))}
 	ginkgo.RunSpecsWithDefaultAndCustomReporters(t, "AzureDisk CSI Driver End-to-End Tests", r)
+}
+
+func execTestCmd(cmds []testCmd) {
+	err := os.Chdir("../..")
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	defer func() {
+		err := os.Chdir("test/e2e")
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	}()
+
+	projectRoot, err := os.Getwd()
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	gomega.Expect(strings.HasSuffix(projectRoot, "azuredisk-csi-driver")).To(gomega.Equal(true))
+
+	for _, cmd := range cmds {
+		log.Println(cmd.startLog)
+		cmdSh := exec.Command(cmd.command, cmd.args...)
+		cmdSh.Dir = projectRoot
+		cmdSh.Stdout = os.Stdout
+		cmdSh.Stderr = os.Stderr
+		err = cmdSh.Run()
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		log.Println(cmd.endLog)
+	}
 }
