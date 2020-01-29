@@ -25,23 +25,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-const (
-	fakeDriverName = "fake"
-	fakeNodeID     = "fakeNodeID"
-)
-
-var (
-	vendorVersion = "0.3.0"
-)
-
-func NewFakeDriver() *CSIDriver {
-
-	driver := NewCSIDriver(fakeDriverName, vendorVersion, fakeNodeID)
-
-	return driver
-}
-
-func TestNewFakeDriver(t *testing.T) {
+func TestNewFakeCSIDriver(t *testing.T) {
 	// Test New fake driver with invalid arguments.
 	d := NewCSIDriver("", vendorVersion, fakeNodeID)
 	assert.Nil(t, d)
@@ -49,7 +33,7 @@ func TestNewFakeDriver(t *testing.T) {
 
 func TestGetVolumeCapabilityAccessModes(t *testing.T) {
 
-	d := NewFakeDriver()
+	d := NewFakeCSIDriver()
 
 	// Test no volume access modes.
 	// REVISIT: Do we need to support any default access modes.
@@ -64,7 +48,7 @@ func TestGetVolumeCapabilityAccessModes(t *testing.T) {
 }
 
 func TestValidateControllerServiceRequest(t *testing.T) {
-	d := NewFakeDriver()
+	d := NewFakeCSIDriver()
 
 	// Valid requests which require no capabilities
 	err := d.ValidateControllerServiceRequest(csi.ControllerServiceCapability_RPC_UNKNOWN)

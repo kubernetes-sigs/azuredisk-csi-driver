@@ -1,5 +1,5 @@
 /*
-Copyright 2017 The Kubernetes Authors.
+Copyright 2020 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,22 +16,18 @@ limitations under the License.
 
 package csicommon
 
-import (
-	"context"
-	"testing"
-
-	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/stretchr/testify/assert"
+const (
+	fakeCSIDriverName = "fake"
+	fakeNodeID        = "fakeNodeID"
 )
 
-func TestGetPluginInfo(t *testing.T) {
-	d := NewFakeCSIDriver()
+var (
+	vendorVersion = "0.3.0"
+)
 
-	ids := NewDefaultIdentityServer(d)
+func NewFakeCSIDriver() *CSIDriver {
 
-	req := csi.GetPluginInfoRequest{}
-	resp, err := ids.GetPluginInfo(context.Background(), &req)
-	assert.NoError(t, err)
-	assert.Equal(t, resp.GetName(), fakeCSIDriverName)
-	assert.Equal(t, resp.GetVendorVersion(), vendorVersion)
+	driver := NewCSIDriver(fakeCSIDriverName, vendorVersion, fakeNodeID)
+
+	return driver
 }

@@ -25,7 +25,7 @@ import (
 )
 
 func TestNodeGetInfo(t *testing.T) {
-	d := NewFakeDriver()
+	d := NewFakeCSIDriver()
 
 	ns := NewDefaultNodeServer(d)
 
@@ -37,7 +37,7 @@ func TestNodeGetInfo(t *testing.T) {
 }
 
 func TestNodeGetCapabilities(t *testing.T) {
-	d := NewFakeDriver()
+	d := NewFakeCSIDriver()
 
 	ns := NewDefaultNodeServer(d)
 
