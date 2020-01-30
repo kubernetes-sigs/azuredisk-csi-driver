@@ -31,7 +31,6 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-07-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"golang.org/x/sys/unix"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -39,6 +38,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/util/resizefs"
+	"k8s.io/kubernetes/pkg/volume"
 )
 
 const (
@@ -347,14 +347,14 @@ func (d *Driver) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeS
 
 	diskURI := req.VolumeId
 	if err := isValidDiskURI(diskURI); err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "disk URI(%s) is not valid: %v", diskURI, err)
+		return nil, status.Errorf(codes.NotFound, "disk URI(%s) is not valid: %v", diskURI, err)
 	}
 
 	if err := d.checkDiskExists(ctx, diskURI); err != nil {
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume not found, failed with error: %v", err))
 	}
 
-	isBlock, err := isBlockDevice(req.VolumePath)
+	isBlock, err := d.mounter.Interface.PathIsDevice(req.VolumePath)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "Failed to determine whether %s is block device: %v", req.VolumePath, err)
 	}
@@ -373,9 +373,35 @@ func (d *Driver) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeS
 		}, nil
 	}
 
-	available, capacity, used, inodesFree, inodes, inodesUsed, err := statFS(req.VolumePath)
+	volumeMetrics, err := volume.NewMetricsStatFS(req.VolumePath).GetMetrics()
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Failed to get fs info on path %s: %v", req.VolumePath, err)
+		return nil, err
+	}
+
+	available, ok := volumeMetrics.Available.AsInt64()
+	if !ok {
+		return nil, status.Errorf(codes.Internal, "failed to transform volume available size(%v)", volumeMetrics.Available)
+	}
+	capacity, ok := volumeMetrics.Capacity.AsInt64()
+	if !ok {
+		return nil, status.Errorf(codes.Internal, "failed to transform volume capacity size(%v)", volumeMetrics.Capacity)
+	}
+	used, ok := volumeMetrics.Used.AsInt64()
+	if !ok {
+		return nil, status.Errorf(codes.Internal, "failed to transform volume used size(%v)", volumeMetrics.Used)
+	}
+
+	inodesFree, ok := volumeMetrics.InodesFree.AsInt64()
+	if !ok {
+		return nil, status.Errorf(codes.Internal, "failed to transform disk inodes free(%v)", volumeMetrics.InodesFree)
+	}
+	inodes, ok := volumeMetrics.Inodes.AsInt64()
+	if !ok {
+		return nil, status.Errorf(codes.Internal, "failed to transform disk inodes(%v)", volumeMetrics.Inodes)
+	}
+	inodesUsed, ok := volumeMetrics.InodesUsed.AsInt64()
+	if !ok {
+		return nil, status.Errorf(codes.Internal, "failed to transform disk inodes used(%v)", volumeMetrics.InodesUsed)
 	}
 
 	return &csi.NodeGetVolumeStatsResponse{
@@ -530,51 +556,6 @@ func (d *Driver) getBlockSizeBytes(devicePath string) (int64, error) {
 		return -1, fmt.Errorf("failed to parse size %s into int a size", strOut)
 	}
 	return gotSizeBytes, nil
-}
-
-func getNodePublishMountOptions(req *csi.NodePublishVolumeRequest) []string {
-	mountFlags := req.GetVolumeCapability().GetMount().GetMountFlags()
-	mountOptions := []string{"bind"}
-	if req.GetReadonly() {
-		mountOptions = append(mountOptions, "ro")
-	}
-	mountOptions = util.JoinMountOptions(mountFlags, mountOptions)
-
-	return mountOptions
-}
-
-func statFS(path string) (available, capacity, used, inodesFree, inodes, inodesUsed int64, err error) {
-	statfs := &unix.Statfs_t{}
-	err = unix.Statfs(path, statfs)
-	if err != nil {
-		err = fmt.Errorf("Failed to get fs info on path %s: %v", path, err)
-		return
-	}
-
-	// Available is blocks available * fragment size
-	available = int64(statfs.Bavail) * int64(statfs.Bsize)
-
-	// Capacity is total block count * fragment size
-	capacity = int64(statfs.Blocks) * int64(statfs.Bsize)
-
-	// Usage is block being used * fragment size (aka block size).
-	used = (int64(statfs.Blocks) - int64(statfs.Bfree)) * int64(statfs.Bsize)
-
-	inodes = int64(statfs.Files)
-	inodesFree = int64(statfs.Ffree)
-	inodesUsed = inodes - inodesFree
-
-	return
-}
-
-func isBlockDevice(fullPath string) (bool, error) {
-	var st unix.Stat_t
-	err := unix.Stat(fullPath, &st)
-	if err != nil {
-		return false, err
-	}
-
-	return (st.Mode & unix.S_IFMT) == unix.S_IFBLK, nil
 }
 
 func (d *Driver) ensureBlockTargetFile(target string) error {
