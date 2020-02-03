@@ -5,9 +5,6 @@
 ### About
 This driver allows Kubernetes to use [azure disk](https://azure.microsoft.com/en-us/services/storage/disks/) volume, csi plugin name: `disk.csi.azure.com`
 
-### Project Status
-Status: Beta
-
 ### Container Images & CSI Compatibility:
 |Azure Disk CSI Driver Version  | Image                                              | v1.0.0 |
 |-------------------------------|----------------------------------------------------|--------|
