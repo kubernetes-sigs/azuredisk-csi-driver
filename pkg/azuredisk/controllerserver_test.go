@@ -80,7 +80,7 @@ func TestGetCachingMode(t *testing.T) {
 func TestGetEntriesAndNextToken(t *testing.T) {
 	tests := []struct {
 		request          *csi.ListSnapshotsRequest
-		snapshotListPage compute.SnapshotListPage
+		snapshots        []compute.Snapshot
 		expectedResponse *csi.ListSnapshotsResponse
 		expectedError    error
 	}{
@@ -89,7 +89,7 @@ func TestGetEntriesAndNextToken(t *testing.T) {
 				MaxEntries:    2,
 				StartingToken: "a",
 			},
-			compute.SnapshotListPage{},
+			[]compute.Snapshot{},
 			nil,
 			status.Errorf(codes.Aborted, "ListSnapshots starting token(a) parsing with error: strconv.Atoi: parsing \"a\": invalid syntax"),
 		},
@@ -98,7 +98,7 @@ func TestGetEntriesAndNextToken(t *testing.T) {
 				MaxEntries:    2,
 				StartingToken: "01",
 			},
-			compute.SnapshotListPage{},
+			[]compute.Snapshot{},
 			nil,
 			status.Errorf(codes.Aborted, "ListSnapshots starting token(1) is greater than total number of snapshots"),
 		},
@@ -107,7 +107,7 @@ func TestGetEntriesAndNextToken(t *testing.T) {
 				MaxEntries:    2,
 				StartingToken: "0",
 			},
-			compute.SnapshotListPage{},
+			[]compute.Snapshot{},
 			nil,
 			status.Errorf(codes.Aborted, "ListSnapshots starting token(0) is greater than total number of snapshots"),
 		},
@@ -116,16 +116,16 @@ func TestGetEntriesAndNextToken(t *testing.T) {
 				MaxEntries:    2,
 				StartingToken: "-1",
 			},
-			compute.SnapshotListPage{},
+			[]compute.Snapshot{},
 			nil,
 			status.Errorf(codes.Aborted, "ListSnapshots starting token(-1) can not be negative"),
 		},
 	}
 
 	for _, test := range tests {
-		resultResponse, resultError := getEntriesAndNextToken(test.request, test.snapshotListPage)
+		resultResponse, resultError := getEntriesAndNextToken(test.request, test.snapshots)
 		if resultResponse != test.expectedResponse || resultError.Error() != test.expectedError.Error() {
-			t.Errorf("request: %v, snapshotListPage: %v, resultResponse: %v, expectedResponse: %v, resultError: %v, expectedError: %v", test.request, test.snapshotListPage, resultResponse, test.expectedResponse, resultError, test.expectedError)
+			t.Errorf("request: %v, snapshotListPage: %v, resultResponse: %v, expectedResponse: %v, resultError: %v, expectedError: %v", test.request, test.snapshots, resultResponse, test.expectedResponse, resultError, test.expectedError)
 		}
 	}
 }
