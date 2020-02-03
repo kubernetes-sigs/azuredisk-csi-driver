@@ -548,7 +548,7 @@ func (fVMC *fakeVirtualMachineScaleSetVMsClient) setFakeStore(store map[string]m
 	fVMC.FakeStore = store
 }
 
-func (fVMC *fakeVirtualMachineScaleSetVMsClient) List(ctx context.Context, resourceGroupName string, virtualMachineScaleSetName string, filter string, selectParameter string, expand string) (result []compute.VirtualMachineScaleSetVM, err *retry.Error) {
+func (fVMC *fakeVirtualMachineScaleSetVMsClient) List(ctx context.Context, resourceGroupName string, virtualMachineScaleSetName string, expand string) (result []compute.VirtualMachineScaleSetVM, err *retry.Error) {
 	fVMC.mutex.Lock()
 	defer fVMC.mutex.Unlock()
 
@@ -664,6 +664,7 @@ func (fVMSSC *fakeVirtualMachineScaleSetsClient) UpdateInstances(ctx context.Con
 type fakeRoutesClient struct {
 	mutex     *sync.Mutex
 	FakeStore map[string]map[string]network.Route
+	Calls     []string
 }
 
 func newFakeRoutesClient() *fakeRoutesClient {
@@ -677,6 +678,8 @@ func (fRC *fakeRoutesClient) CreateOrUpdate(ctx context.Context, resourceGroupNa
 	fRC.mutex.Lock()
 	defer fRC.mutex.Unlock()
 
+	fRC.Calls = append(fRC.Calls, "CreateOrUpdate")
+
 	if _, ok := fRC.FakeStore[routeTableName]; !ok {
 		fRC.FakeStore[routeTableName] = make(map[string]network.Route)
 	}
@@ -688,6 +691,8 @@ func (fRC *fakeRoutesClient) CreateOrUpdate(ctx context.Context, resourceGroupNa
 func (fRC *fakeRoutesClient) Delete(ctx context.Context, resourceGroupName string, routeTableName string, routeName string) *retry.Error {
 	fRC.mutex.Lock()
 	defer fRC.mutex.Unlock()
+
+	fRC.Calls = append(fRC.Calls, "Delete")
 
 	if routes, ok := fRC.FakeStore[routeTableName]; ok {
 		if _, ok := routes[routeName]; ok {
@@ -767,7 +772,7 @@ type fakeStorageAccountClient struct {
 	mutex     *sync.Mutex
 	FakeStore map[string]map[string]storage.Account
 	Keys      storage.AccountListKeysResult
-	Accounts  storage.AccountListResult
+	Accounts  []storage.Account
 	Err       error
 }
 
@@ -820,7 +825,7 @@ func (fSAC *fakeStorageAccountClient) ListKeys(ctx context.Context, resourceGrou
 	return fSAC.Keys, nil
 }
 
-func (fSAC *fakeStorageAccountClient) ListByResourceGroup(ctx context.Context, resourceGroupName string) (result storage.AccountListResult, err *retry.Error) {
+func (fSAC *fakeStorageAccountClient) ListByResourceGroup(ctx context.Context, resourceGroupName string) (result []storage.Account, err *retry.Error) {
 	return fSAC.Accounts, nil
 }
 

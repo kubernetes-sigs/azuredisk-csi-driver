@@ -19,13 +19,20 @@ limitations under the License.
 package retry
 
 import (
+	"bytes"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"k8s.io/klog"
+)
+
+const (
+	// RetryAfterHeaderKey is the retry-after header key in ARM responses.
+	RetryAfterHeaderKey = "Retry-After"
 )
 
 var (
@@ -53,8 +60,24 @@ func (err *Error) Error() error {
 		return nil
 	}
 
-	return fmt.Errorf("Retriable: %v, RetryAfter: %s, HTTPStatusCode: %d, RawError: %v",
-		err.Retriable, err.RetryAfter.String(), err.HTTPStatusCode, err.RawError)
+	// Convert time to seconds for better logging.
+	retryAfterSeconds := 0
+	curTime := now()
+	if err.RetryAfter.After(curTime) {
+		retryAfterSeconds = int(err.RetryAfter.Sub(curTime) / time.Second)
+	}
+
+	return fmt.Errorf("Retriable: %v, RetryAfter: %ds, HTTPStatusCode: %d, RawError: %v",
+		err.Retriable, retryAfterSeconds, err.HTTPStatusCode, err.RawError)
+}
+
+// IsThrottled returns true the if the request is being throttled.
+func (err *Error) IsThrottled() bool {
+	if err == nil {
+		return false
+	}
+
+	return err.HTTPStatusCode == http.StatusTooManyRequests || err.RetryAfter.After(now())
 }
 
 // NewError creates a new Error.
@@ -73,6 +96,25 @@ func GetRetriableError(err error) *Error {
 	}
 }
 
+// GetRateLimitError creates a new error for rate limiting.
+func GetRateLimitError(isWrite bool, opName string) *Error {
+	opType := "read"
+	if isWrite {
+		opType = "write"
+	}
+	return GetRetriableError(fmt.Errorf("azure cloud provider rate limited(%s) for operation %q", opType, opName))
+}
+
+// GetThrottlingError creates a new error for throttling.
+func GetThrottlingError(operation, reason string, retryAfter time.Time) *Error {
+	rawError := fmt.Errorf("azure cloud provider throttled for operation %s with reason %q", operation, reason)
+	return &Error{
+		Retriable:  true,
+		RawError:   rawError,
+		RetryAfter: retryAfter,
+	}
+}
+
 // GetError gets a new Error based on resp and error.
 func GetError(resp *http.Response, err error) *Error {
 	if err == nil && resp == nil {
@@ -88,12 +130,8 @@ func GetError(resp *http.Response, err error) *Error {
 	if retryAfterDuration := getRetryAfter(resp); retryAfterDuration != 0 {
 		retryAfter = now().Add(retryAfterDuration)
 	}
-	rawError := err
-	if err == nil && resp != nil {
-		rawError = fmt.Errorf("HTTP response: %v", resp.StatusCode)
-	}
 	return &Error{
-		RawError:       rawError,
+		RawError:       getRawError(resp, err),
 		RetryAfter:     retryAfter,
 		Retriable:      shouldRetryHTTPRequest(resp, err),
 		HTTPStatusCode: getHTTPStatusCode(resp),
@@ -114,6 +152,27 @@ func isSuccessHTTPResponse(resp *http.Response) bool {
 	return false
 }
 
+func getRawError(resp *http.Response, err error) error {
+	if err != nil {
+		return err
+	}
+
+	if resp == nil || resp.Body == nil {
+		return fmt.Errorf("empty HTTP response")
+	}
+
+	// return the http status if unabled to get response body.
+	defer resp.Body.Close()
+	respBody, _ := ioutil.ReadAll(resp.Body)
+	resp.Body = ioutil.NopCloser(bytes.NewReader(respBody))
+	if len(respBody) == 0 {
+		return fmt.Errorf("HTTP status code (%d)", resp.StatusCode)
+	}
+
+	// return the raw response body.
+	return fmt.Errorf("%s", string(respBody))
+}
+
 func getHTTPStatusCode(resp *http.Response) int {
 	if resp == nil {
 		return -1
@@ -125,8 +184,9 @@ func getHTTPStatusCode(resp *http.Response) int {
 // shouldRetryHTTPRequest determines if the request is retriable.
 func shouldRetryHTTPRequest(resp *http.Response, err error) bool {
 	if resp != nil {
-		// HTTP 412 (StatusPreconditionFailed) means etag mismatch, hence we shouldn't retry.
-		if resp.StatusCode == http.StatusPreconditionFailed {
+		// HTTP 412 (StatusPreconditionFailed) means etag mismatch
+		// HTTP 400 (BadRequest) means the request cannot be accepted, hence we shouldn't retry.
+		if resp.StatusCode == http.StatusPreconditionFailed || resp.StatusCode == http.StatusBadRequest {
 			return false
 		}
 
@@ -150,7 +210,7 @@ func getRetryAfter(resp *http.Response) time.Duration {
 		return 0
 	}
 
-	ra := resp.Header.Get("Retry-After")
+	ra := resp.Header.Get(RetryAfterHeaderKey)
 	if ra == "" {
 		return 0
 	}
