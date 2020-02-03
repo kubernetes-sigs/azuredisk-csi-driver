@@ -5,19 +5,6 @@
 
 Volume snapshot is an alpha feature since Kubernetes v1.12(beta in v1.17), feature gate [`VolumeSnapshotDataSource`](https://github.com/kubernetes/kubernetes/blob/bb7bad49f54b682a9ec2d6c82824673acc33c64c/pkg/features/kube_features.go#L354-L359) must be enabled before v1.17, refer to [Snapshot & Restore Feature](https://kubernetes-csi.github.io/docs/snapshot-restore-feature.html) for more details.
 
-## Create VolumeSnapshotClass, VolumeSnapshot and VolumeSnapshotContent CRD
-```console
-kubectl create -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/config/crd/snapshot.storage.k8s.io_volumesnapshotclasses.yaml
-kubectl create -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/config/crd/snapshot.storage.k8s.io_volumesnapshotcontents.yaml
-kubectl create -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml
-```
-
-## Create Common Snapshot Controller
-```console
-kubectl create -f deploy/example/snapshot/controller/rbac-snapshot-controller.yaml
-kubectl create -f deploy/example/snapshot/controller/setup-snapshot-controller.yaml
-```
-
 ## Create a Source PVC
 
 ```console
