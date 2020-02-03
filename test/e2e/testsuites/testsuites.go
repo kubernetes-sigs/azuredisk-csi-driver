@@ -25,7 +25,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1alpha1"
+	"github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1beta1"
 	snapshotclientset "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned"
 	"github.com/onsi/ginkgo"
 	"github.com/onsi/gomega"
@@ -102,7 +102,7 @@ func NewTestVolumeSnapshotClass(c restclientset.Interface, ns *v1.Namespace, vsc
 func (t *TestVolumeSnapshotClass) Create() {
 	ginkgo.By("creating a VolumeSnapshotClass")
 	var err error
-	t.volumeSnapshotClass, err = snapshotclientset.New(t.client).VolumesnapshotV1alpha1().VolumeSnapshotClasses().Create(t.volumeSnapshotClass)
+	t.volumeSnapshotClass, err = snapshotclientset.New(t.client).VolumesnapshotV1beta1().VolumeSnapshotClasses().Create(t.volumeSnapshotClass)
 	framework.ExpectNoError(err)
 }
 
@@ -125,7 +125,7 @@ func (t *TestVolumeSnapshotClass) CreateSnapshot(pvc *v1.PersistentVolumeClaim) 
 			},
 		},
 	}
-	snapshot, err := snapshotclientset.New(t.client).VolumesnapshotV1alpha1().VolumeSnapshots(t.namespace.Name).Create(snapshot)
+	snapshot, err := snapshotclientset.New(t.client).VolumesnapshotV1beta1().VolumeSnapshots(t.namespace.Name).Create(snapshot)
 	framework.ExpectNoError(err)
 	return snapshot
 }
@@ -133,7 +133,7 @@ func (t *TestVolumeSnapshotClass) CreateSnapshot(pvc *v1.PersistentVolumeClaim) 
 func (t *TestVolumeSnapshotClass) ReadyToUse(snapshot *v1alpha1.VolumeSnapshot) {
 	ginkgo.By("waiting for VolumeSnapshot to be ready to use - " + snapshot.Name)
 	err := wait.Poll(15*time.Second, 5*time.Minute, func() (bool, error) {
-		vs, err := snapshotclientset.New(t.client).VolumesnapshotV1alpha1().VolumeSnapshots(t.namespace.Name).Get(snapshot.Name, metav1.GetOptions{})
+		vs, err := snapshotclientset.New(t.client).VolumesnapshotV1beta1().VolumeSnapshots(t.namespace.Name).Get(snapshot.Name, metav1.GetOptions{})
 		if err != nil {
 			return false, fmt.Errorf("did not see ReadyToUse: %v", err)
 		}
@@ -144,13 +144,13 @@ func (t *TestVolumeSnapshotClass) ReadyToUse(snapshot *v1alpha1.VolumeSnapshot) 
 
 func (t *TestVolumeSnapshotClass) DeleteSnapshot(vs *v1alpha1.VolumeSnapshot) {
 	ginkgo.By("deleting a VolumeSnapshot " + vs.Name)
-	err := snapshotclientset.New(t.client).VolumesnapshotV1alpha1().VolumeSnapshots(t.namespace.Name).Delete(vs.Name, &metav1.DeleteOptions{})
+	err := snapshotclientset.New(t.client).VolumesnapshotV1beta1().VolumeSnapshots(t.namespace.Name).Delete(vs.Name, &metav1.DeleteOptions{})
 	framework.ExpectNoError(err)
 }
 
 func (t *TestVolumeSnapshotClass) Cleanup() {
 	e2elog.Logf("deleting VolumeSnapshotClass %s", t.volumeSnapshotClass.Name)
-	err := snapshotclientset.New(t.client).VolumesnapshotV1alpha1().VolumeSnapshotClasses().Delete(t.volumeSnapshotClass.Name, nil)
+	err := snapshotclientset.New(t.client).VolumesnapshotV1beta1().VolumeSnapshotClasses().Delete(t.volumeSnapshotClass.Name, nil)
 	framework.ExpectNoError(err)
 }
 

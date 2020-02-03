@@ -549,17 +549,13 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 
 	//todo: add metrics here
 	klog.V(2).Infof("begin to create snapshot(%s) under rg(%s)", snapshotName, d.cloud.ResourceGroup)
-	future, err := d.cloud.SnapshotsClient.CreateOrUpdate(ctx, d.cloud.ResourceGroup, snapshotName, snapshot)
-	if err != nil {
-		if strings.Contains(err.Error(), "existing disk") {
-			return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("request snapshot(%s) under rg(%s) already exists, but the SourceVolumeId is different, error details: %v", snapshotName, d.cloud.ResourceGroup, err))
+	rerr := d.cloud.SnapshotsClient.CreateOrUpdate(ctx, d.cloud.ResourceGroup, snapshotName, snapshot)
+	if rerr != nil {
+		if strings.Contains(rerr.Error().Error(), "existing disk") {
+			return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("request snapshot(%s) under rg(%s) already exists, but the SourceVolumeId is different, error details: %v", snapshotName, d.cloud.ResourceGroup, rerr.Error()))
 		} else {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("create snapshot error: %v", err))
+			return nil, status.Error(codes.Internal, fmt.Sprintf("create snapshot error: %v", rerr.Error()))
 		}
-	}
-	err = future.WaitForCompletionRef(ctx, d.cloud.SnapshotsClient.Client)
-	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("create snapshot error: %v", err))
 	}
 	klog.V(2).Infof("create snapshot(%s) under rg(%s) successfully", snapshotName, d.cloud.ResourceGroup)
 
@@ -589,13 +585,9 @@ func (d *Driver) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequ
 
 	//todo: add metrics here
 	klog.V(2).Infof("begin to delete snapshot(%s) under rg(%s)", snapshotName, resourceGroup)
-	future, err := d.cloud.SnapshotsClient.Delete(ctx, resourceGroup, snapshotName)
-	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("delete snapshot error: %v", err))
-	}
-	err = future.WaitForCompletionRef(ctx, d.cloud.SnapshotsClient.Client)
-	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("delete snapshot error: %v", err))
+	rerr := d.cloud.SnapshotsClient.Delete(ctx, resourceGroup, snapshotName)
+	if rerr != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("delete snapshot error: %v", rerr.Error()))
 	}
 	klog.V(2).Infof("delete snapshot(%s) under rg(%s) successfully", snapshotName, resourceGroup)
 	return &csi.DeleteSnapshotResponse{}, nil
@@ -640,9 +632,9 @@ func (d *Driver) getSnapshotByID(ctx context.Context, snapshotID, sourceVolumeID
 		return nil, err
 	}
 
-	snapshot, err := d.cloud.SnapshotsClient.Get(ctx, resourceGroup, snapshotName)
-	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("get snapshot %s from rg(%s) error: %v", snapshotName, resourceGroup, err))
+	snapshot, rerr := d.cloud.SnapshotsClient.Get(ctx, resourceGroup, snapshotName)
+	if rerr != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("get snapshot %s from rg(%s) error: %v", snapshotName, resourceGroup, rerr.Error()))
 	}
 
 	return generateCSISnapshot(sourceVolumeID, &snapshot)

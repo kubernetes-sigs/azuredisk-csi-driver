@@ -23,7 +23,7 @@ import (
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
 
-	"github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1alpha1"
+	"github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1beta1"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
