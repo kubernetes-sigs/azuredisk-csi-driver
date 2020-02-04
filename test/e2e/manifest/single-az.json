@@ -7,6 +7,7 @@
             "orchestratorRelease": "1.16",
             "kubernetesConfig": {
                 "useManagedIdentity": true,
+                "userAssignedID": "azuredisk-csi-driver-e2e-test-id",
                 "useCloudControllerManager": true,
                 "networkPolicy": "none",
                 "cloudProviderRateLimitQPS": 6,
