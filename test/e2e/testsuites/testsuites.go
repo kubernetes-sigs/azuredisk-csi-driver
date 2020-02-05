@@ -352,13 +352,13 @@ func (t *TestPersistentVolumeClaim) DeleteBoundPersistentVolume() {
 	framework.ExpectNoError(err)
 }
 
-func (t *TestPersistentVolumeClaim) DeleteBackingVolume(azfile *azuredisk.Driver) {
+func (t *TestPersistentVolumeClaim) DeleteBackingVolume(driver *azuredisk.Driver) {
 	volumeID := t.persistentVolume.Spec.CSI.VolumeHandle
 	ginkgo.By(fmt.Sprintf("deleting azuredisk volume %q", volumeID))
 	req := &csi.DeleteVolumeRequest{
 		VolumeId: volumeID,
 	}
-	_, err := azfile.DeleteVolume(context.Background(), req)
+	_, err := driver.DeleteVolume(context.Background(), req)
 	if err != nil {
 		ginkgo.Fail(fmt.Sprintf("could not delete volume %q: %v", volumeID, err))
 	}
