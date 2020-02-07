@@ -94,6 +94,7 @@ func getVolumeSnapshotClass(generateName string, provisioner string) *v1beta1.Vo
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: generateName,
 		},
-		Driver: provisioner,
+		Driver:         provisioner,
+		DeletionPolicy: v1beta1.VolumeSnapshotContentDelete,
 	}
 }

@@ -3,7 +3,7 @@
 ## Prerequisite
  - Enable Volume Snapshot Data Source Feature Gate
 
-Volume snapshot is an alpha feature since Kubernetes v1.12(beta in v1.17), feature gate [`VolumeSnapshotDataSource`](https://github.com/kubernetes/kubernetes/blob/bb7bad49f54b682a9ec2d6c82824673acc33c64c/pkg/features/kube_features.go#L354-L359) must be enabled before v1.17, refer to [Snapshot & Restore Feature](https://kubernetes-csi.github.io/docs/snapshot-restore-feature.html) for more details.
+Volume snapshot is only support from v1.17(beta), refer to [Snapshot & Restore Feature](https://kubernetes-csi.github.io/docs/snapshot-restore-feature.html) for more details.
 
 ## Create a Source PVC
 
