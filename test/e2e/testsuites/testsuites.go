@@ -148,9 +148,11 @@ func (t *TestVolumeSnapshotClass) DeleteSnapshot(vs *v1beta1.VolumeSnapshot) {
 }
 
 func (t *TestVolumeSnapshotClass) Cleanup() {
-	e2elog.Logf("deleting VolumeSnapshotClass %s", t.volumeSnapshotClass.Name)
-	err := snapshotclientset.New(t.client).SnapshotV1beta1().VolumeSnapshotClasses().Delete(t.volumeSnapshotClass.Name, nil)
-	framework.ExpectNoError(err)
+	// skip deleting volume snapshot storage class otherwise snapshot e2e test will fail, details:
+	// https://github.com/kubernetes-sigs/azuredisk-csi-driver/pull/260#issuecomment-583296932
+	e2elog.Logf("skip deleting VolumeSnapshotClass %s", t.volumeSnapshotClass.Name)
+	//err := snapshotclientset.New(t.client).SnapshotV1beta1().VolumeSnapshotClasses().Delete(t.volumeSnapshotClass.Name, nil)
+	//framework.ExpectNoError(err)
 }
 
 type TestPreProvisionedPersistentVolume struct {
