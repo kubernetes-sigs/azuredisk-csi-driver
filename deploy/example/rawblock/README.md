@@ -1,6 +1,7 @@
 # Raw Block Volume Example
 
-1. User requests a PVC with `volumeMode = Block`
+1. User requests a PVC with `volumeMode: Block`
+> `volumeMode` value is `Filesystem` by default
 
 ```yaml
 apiVersion: v1
@@ -45,7 +46,7 @@ spec:
 
 3. Finally the Block PV is passed to the Pod as /dev/xvda (or any user defined devicePath) 
 
-```
+```console
 # kubectl exec -it nginx-azuredisk bash
 root@nginx-azuredisk:/# dd if=/dev/zero of=/dev/xvda bs=1024k count=100
 100+0 records in
