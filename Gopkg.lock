@@ -19,7 +19,7 @@
   version = "v35.1.0"
 
 [[projects]]
-  digest = "1:53419ab9dc0da8dd52ec715307e9810fcda560a6ad59ffdad67e49d9b10997fe"
+  digest = "1:ef6c406874d5b03c57a55f806b66a948e940d9edb95f16b443d7c6d9318a3e28"
   name = "github.com/Azure/go-autorest"
   packages = [
     "autorest",
@@ -33,8 +33,8 @@
     "tracing",
   ]
   pruneopts = "NUT"
-  revision = "20a15b4e99645bc30a1cf8de518a6e8ac331c864"
-  version = "v13.3.2"
+  revision = "d3556005bee162041840c107de09f1047b781da4"
+  version = "v13.3.3"
 
 [[projects]]
   digest = "1:4816836c291b7f2a0da7deefa679ef234be8ad845a199ed2e48779234536cefa"
@@ -126,15 +126,15 @@
   revision = "6480d4af844c189cf5dd913db24ddd339d3a4f85"
 
 [[projects]]
-  digest = "1:708d6a04d281f2b7600e5d350d77c51737fcedb71970946cccadb3c326071466"
+  digest = "1:b4ead29a4d5e49c80b6b110ff10bb4614b768097435845a144241a6dce7a3513"
   name = "github.com/emicklei/go-restful"
   packages = [
     ".",
     "log",
   ]
   pruneopts = "NUT"
-  revision = "99f05a26a0a1c71e664ebe6a76d29b2c80333056"
-  version = "v2.11.1"
+  revision = "a2fa14558f9a828f859fcad1d5c824437d7d4388"
+  version = "v2.11.2"
 
 [[projects]]
   digest = "1:ad32dc29f37281bacb5dcedff17c9461dc1739dc8a5f63a71ab491c6e92edf8d"
@@ -600,9 +600,10 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:a6f904da55a306e3bfef640b7b206322f403ba4e94f5bc86020efe486cded134"
+  digest = "1:30f0ebe3690d128ab8c3166a87c38da508c50d18ae880ec4c595a8fe8786050c"
   name = "golang.org/x/crypto"
   packages = [
+    "blowfish",
     "chacha20",
     "curve25519",
     "ed25519",
@@ -613,10 +614,11 @@
     "pkcs12/internal/rc2",
     "poly1305",
     "ssh",
+    "ssh/internal/bcrypt_pbkdf",
     "ssh/terminal",
   ]
   pruneopts = "NUT"
-  revision = "69ecbb4d6d5dab05e49161c6e77ea40a030884e1"
+  revision = "ecb85df213405b7d32e4d73cb5bbaace2ec88881"
 
 [[projects]]
   branch = "master"
@@ -741,10 +743,10 @@
   name = "google.golang.org/genproto"
   packages = ["googleapis/rpc/status"]
   pruneopts = "NUT"
-  revision = "58ce757ed39bbbe3bf3960b90ded218031b35389"
+  revision = "4f3edf09f4f643aee978706652368efb6e407faa"
 
 [[projects]]
-  digest = "1:03f73b48e55de043fe37bc0f99692c8a6550eb6499eb1edf8447b5abada4cba9"
+  digest = "1:ad113f760f5a2a924fd1ea324539df77f3e0166bbaf7f886985fbb447737323b"
   name = "google.golang.org/grpc"
   packages = [
     ".",
@@ -785,8 +787,8 @@
     "tap",
   ]
   pruneopts = "NUT"
-  revision = "a89bee78ddf0f67f27c06b1b2b1b071c18408724"
-  version = "v1.27.0"
+  revision = "f495f5b15ae7ccda3b38c53a1bfcde4c1a58a2bc"
+  version = "v1.27.1"
 
 [[projects]]
   digest = "1:1b91ae0dc69a41d4c2ed23ea5cffb721ea63f5037ca4b81e6d6771fbb8f45129"
@@ -1226,7 +1228,7 @@
     "pkg/util/proto",
   ]
   pruneopts = "NUT"
-  revision = "cdac1c71ff9fcb581b648dfea9ae0eb5c80afa25"
+  revision = "addea2498afe5a6d58f8bdcd9ae51363d12f12ef"
 
 [[projects]]
   digest = "1:82223790edc28f8311a18d874377e92e9c9f175b860c9321f4515412082d09d6"
@@ -1357,7 +1359,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:0952fe50f68ed755287866330db7a780b0940cb9c0f72fd6a3dbaec41e363c3a"
+  digest = "1:252a977e8044c3afa016e3748ccb4aa9cea0a6c01a0f476157dff08a75d47765"
   name = "k8s.io/legacy-cloud-providers"
   packages = [
     "azure",
@@ -1382,7 +1384,7 @@
     "azure/retry",
   ]
   pruneopts = "NUT"
-  revision = "b0dccdf763a22dea0844dd23a1c9b4041b975d1c"
+  revision = "f79ac4ac8f0d94a7b3b5295a7dbbf3991462789e"
 
 [[projects]]
   branch = "master"
@@ -1436,12 +1438,12 @@
   version = "v2.0.3"
 
 [[projects]]
-  digest = "1:8730e0150dfb2b7e173890c8b9868e7a273082ef8e39f4940e3506a481cf895c"
+  digest = "1:5fdf0517a870044f13def5f9f2dc75eb8cfb88baf7862eaf9884a06152f9391b"
   name = "sigs.k8s.io/yaml"
   packages = ["."]
   pruneopts = "NUT"
-  revision = "fd68e9863619f6ec2fdd8625fe1f02e7c877e480"
-  version = "v1.1.0"
+  revision = "9fc95527decd95bb9d28cc2eab08179b2d0f6971"
+  version = "v1.2.0"
 
 [solve-meta]
   analyzer-name = "dep"
