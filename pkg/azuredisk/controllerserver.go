@@ -549,17 +549,13 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 
 	//todo: add metrics here
 	klog.V(2).Infof("begin to create snapshot(%s) under rg(%s)", snapshotName, d.cloud.ResourceGroup)
-	future, err := d.cloud.SnapshotsClient.CreateOrUpdate(ctx, d.cloud.ResourceGroup, snapshotName, snapshot)
-	if err != nil {
-		if strings.Contains(err.Error(), "existing disk") {
-			return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("request snapshot(%s) under rg(%s) already exists, but the SourceVolumeId is different, error details: %v", snapshotName, d.cloud.ResourceGroup, err))
+	rerr := d.cloud.SnapshotsClient.CreateOrUpdate(ctx, d.cloud.ResourceGroup, snapshotName, snapshot)
+	if rerr != nil {
+		if strings.Contains(rerr.Error().Error(), "existing disk") {
+			return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("request snapshot(%s) under rg(%s) already exists, but the SourceVolumeId is different, error details: %v", snapshotName, d.cloud.ResourceGroup, rerr.Error()))
 		} else {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("create snapshot error: %v", err))
+			return nil, status.Error(codes.Internal, fmt.Sprintf("create snapshot error: %v", rerr.Error()))
 		}
-	}
-	err = future.WaitForCompletionRef(ctx, d.cloud.SnapshotsClient.Client)
-	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("create snapshot error: %v", err))
 	}
 	klog.V(2).Infof("create snapshot(%s) under rg(%s) successfully", snapshotName, d.cloud.ResourceGroup)
 
@@ -589,13 +585,9 @@ func (d *Driver) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequ
 
 	//todo: add metrics here
 	klog.V(2).Infof("begin to delete snapshot(%s) under rg(%s)", snapshotName, resourceGroup)
-	future, err := d.cloud.SnapshotsClient.Delete(ctx, resourceGroup, snapshotName)
-	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("delete snapshot error: %v", err))
-	}
-	err = future.WaitForCompletionRef(ctx, d.cloud.SnapshotsClient.Client)
-	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("delete snapshot error: %v", err))
+	rerr := d.cloud.SnapshotsClient.Delete(ctx, resourceGroup, snapshotName)
+	if rerr != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("delete snapshot error: %v", rerr.Error()))
 	}
 	klog.V(2).Infof("delete snapshot(%s) under rg(%s) successfully", snapshotName, resourceGroup)
 	return &csi.DeleteSnapshotResponse{}, nil
@@ -626,12 +618,12 @@ func (d *Driver) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsReques
 	}
 
 	// no SnapshotId is set, so we return all snapshots that satify the reqeust.
-	snapshotListPage, err := d.cloud.SnapshotsClient.ListByResourceGroup(ctx, d.cloud.ResourceGroup)
+	snapshots, err := d.cloud.SnapshotsClient.ListByResourceGroup(ctx, d.cloud.ResourceGroup)
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown list snapshot error: %v", err))
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown list snapshot error: %v", err.Error()))
 	}
 
-	return getEntriesAndNextToken(req, snapshotListPage)
+	return getEntriesAndNextToken(req, snapshots)
 }
 
 func (d *Driver) getSnapshotByID(ctx context.Context, snapshotID, sourceVolumeID string) (*csi.Snapshot, error) {
@@ -640,9 +632,9 @@ func (d *Driver) getSnapshotByID(ctx context.Context, snapshotID, sourceVolumeID
 		return nil, err
 	}
 
-	snapshot, err := d.cloud.SnapshotsClient.Get(ctx, resourceGroup, snapshotName)
-	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("get snapshot %s from rg(%s) error: %v", snapshotName, resourceGroup, err))
+	snapshot, rerr := d.cloud.SnapshotsClient.Get(ctx, resourceGroup, snapshotName)
+	if rerr != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("get snapshot %s from rg(%s) error: %v", snapshotName, resourceGroup, rerr.Error()))
 	}
 
 	return generateCSISnapshot(sourceVolumeID, &snapshot)
@@ -772,7 +764,7 @@ func (d *Driver) extractSnapshotInfo(snapshotID string) (string, string, error) 
 // 2. StartingToken is null, and MaxEntries is not null. Return `MaxEntries` snapshots from zero.
 // 3. StartingToken is not null, and MaxEntries is null. Return all snapshots from `StartingToken`.
 // 4. StartingToken is not null, and MaxEntries is not null. Return `MaxEntries` snapshots from `StartingToken`.
-func getEntriesAndNextToken(req *csi.ListSnapshotsRequest, snapshotListPage compute.SnapshotListPage) (*csi.ListSnapshotsResponse, error) {
+func getEntriesAndNextToken(req *csi.ListSnapshotsRequest, snapshots []compute.Snapshot) (*csi.ListSnapshotsResponse, error) {
 	if req == nil {
 		return nil, status.Errorf(codes.Aborted, "request is nil")
 	}
@@ -785,7 +777,7 @@ func getEntriesAndNextToken(req *csi.ListSnapshotsRequest, snapshotListPage comp
 			return nil, status.Errorf(codes.Aborted, "ListSnapshots starting token(%s) parsing with error: %v", req.StartingToken, err)
 
 		}
-		if start >= len(snapshotListPage.Values()) {
+		if start >= len(snapshots) {
 			return nil, status.Errorf(codes.Aborted, "ListSnapshots starting token(%d) is greater than total number of snapshots", start)
 		}
 		if start < 0 {
@@ -799,7 +791,7 @@ func getEntriesAndNextToken(req *csi.ListSnapshotsRequest, snapshotListPage comp
 
 	match := false
 	entries := []*csi.ListSnapshotsResponse_Entry{}
-	for i, snapshot := range snapshotListPage.Values() {
+	for i, snapshot := range snapshots {
 		if req.SourceVolumeId == getSourceVolumeId(&snapshot) {
 			match = true
 		}
@@ -816,8 +808,8 @@ func getEntriesAndNextToken(req *csi.ListSnapshotsRequest, snapshotListPage comp
 		return &csi.ListSnapshotsResponse{}, nil
 	}
 
-	nextToken := len(snapshotListPage.Values())
-	if start+perPage < len(snapshotListPage.Values()) {
+	nextToken := len(snapshots)
+	if start+perPage < len(snapshots) {
 		nextToken = start + perPage
 	}
 

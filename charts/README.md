@@ -11,7 +11,7 @@ Quick start instructions for the setup and configuration of azuredisk CSI driver
 ```console
 $ cd $GOPATH/src/sigs.k8s.io/azuredisk-csi-driver/charts/latest
 $ helm package azuredisk-csi-driver
-$ helm install azuredisk-csi-driver azuredisk-csi-driver-latest.tgz --namespace kube-system
+$ helm install -n azuredisk-csi-driver azuredisk-csi-driver-latest.tgz --namespace kube-system
 ```
 
 ## Uninstall

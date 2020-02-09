@@ -99,7 +99,7 @@
 
 [[override]]
   name = "github.com/kubernetes-csi/external-snapshotter"
-  version = "=v1.0.1"
+  version = "=v2.0.0"
 
 [[override]]
   name = "contrib.go.opencensus.io/exporter/ocagent"

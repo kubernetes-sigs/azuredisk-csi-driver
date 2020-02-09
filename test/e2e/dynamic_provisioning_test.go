@@ -73,7 +73,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		ns = f.Namespace
 
 		var err error
-		snapshotrcs, err = restClient(testsuites.SnapshotAPIGroup, testsuites.APIVersionv1alpha1)
+		snapshotrcs, err = restClient(testsuites.SnapshotAPIGroup, testsuites.APIVersionv1beta1)
 		if err != nil {
 			ginkgo.Fail(fmt.Sprintf("could not get rest clientset: %v", err))
 		}

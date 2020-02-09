@@ -23,7 +23,7 @@ import (
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
 
-	"github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1alpha1"
+	"github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1beta1"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -47,7 +47,7 @@ func normalizeProvisioner(provisioner string) string {
 	return strings.ReplaceAll(provisioner, "/", "-")
 }
 
-// InitAzureDiskDriver returns azureDiskDriver that implemnts DynamicPVTestDriver interface
+// InitAzureDiskDriver returns azureDiskDriver that implements DynamicPVTestDriver interface
 func InitAzureDiskDriver() PVTestDriver {
 	driverName := os.Getenv(AzureDriverNameVar)
 	if driverName == "" {
@@ -84,7 +84,7 @@ func (d *azureDiskDriver) GetDynamicProvisionStorageClass(parameters map[string]
 	return getStorageClass(generateName, provisioner, parameters, mountOptions, reclaimPolicy, bindingMode, allowedTopologies)
 }
 
-func (d *azureDiskDriver) GetVolumeSnapshotClass(namespace string) *v1alpha1.VolumeSnapshotClass {
+func (d *azureDiskDriver) GetVolumeSnapshotClass(namespace string) *v1beta1.VolumeSnapshotClass {
 	provisioner := d.driverName
 	generateName := fmt.Sprintf("%s-%s-dynamic-sc-", namespace, normalizeProvisioner(provisioner))
 	return getVolumeSnapshotClass(generateName, provisioner)

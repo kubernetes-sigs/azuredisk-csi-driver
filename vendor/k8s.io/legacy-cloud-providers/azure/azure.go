@@ -27,7 +27,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-07-01/compute"
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/azure"
 
@@ -39,12 +38,27 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
-	"k8s.io/client-go/pkg/version"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog"
 	"k8s.io/legacy-cloud-providers/azure/auth"
+	azclients "k8s.io/legacy-cloud-providers/azure/clients"
+	"k8s.io/legacy-cloud-providers/azure/clients/diskclient"
+	"k8s.io/legacy-cloud-providers/azure/clients/interfaceclient"
+	"k8s.io/legacy-cloud-providers/azure/clients/loadbalancerclient"
+	"k8s.io/legacy-cloud-providers/azure/clients/publicipclient"
+	"k8s.io/legacy-cloud-providers/azure/clients/routeclient"
+	"k8s.io/legacy-cloud-providers/azure/clients/routetableclient"
+	"k8s.io/legacy-cloud-providers/azure/clients/securitygroupclient"
+	"k8s.io/legacy-cloud-providers/azure/clients/snapshotclient"
+	"k8s.io/legacy-cloud-providers/azure/clients/storageaccountclient"
+	"k8s.io/legacy-cloud-providers/azure/clients/subnetclient"
+	"k8s.io/legacy-cloud-providers/azure/clients/vmclient"
+	"k8s.io/legacy-cloud-providers/azure/clients/vmsizeclient"
+	"k8s.io/legacy-cloud-providers/azure/clients/vmssclient"
+	"k8s.io/legacy-cloud-providers/azure/clients/vmssvmclient"
+	"k8s.io/legacy-cloud-providers/azure/retry"
 	"sigs.k8s.io/yaml"
 )
 
@@ -114,6 +128,8 @@ type Config struct {
 	SubnetName string `json:"subnetName,omitempty" yaml:"subnetName,omitempty"`
 	// The name of the security group attached to the cluster's subnet
 	SecurityGroupName string `json:"securityGroupName,omitempty" yaml:"securityGroupName,omitempty"`
+	// The name of the resource group that the security group is deployed in
+	SecurityGroupResourceGroup string `json:"securityGroupResourceGroup,omitempty" yaml:"securityGroupResourceGroup,omitempty"`
 	// (Optional in 1.6) The name of the route table attached to the subnet that the cluster is deployed in
 	RouteTableName string `json:"routeTableName,omitempty" yaml:"routeTableName,omitempty"`
 	// The name of the resource group that the RouteTable is deployed in
@@ -197,6 +213,9 @@ type Config struct {
 	NsgCacheTTLInSeconds int `json:"nsgCacheTTLInSeconds,omitempty" yaml:"nsgCacheTTLInSeconds,omitempty"`
 	// RouteTableCacheTTLInSeconds sets the cache TTL for route table
 	RouteTableCacheTTLInSeconds int `json:"routeTableCacheTTLInSeconds,omitempty" yaml:"routeTableCacheTTLInSeconds,omitempty"`
+
+	// DisableAvailabilitySetNodes disables VMAS nodes support when "VMType" is set to "vmss".
+	DisableAvailabilitySetNodes bool `json:"disableAvailabilitySetNodes,omitempty" yaml:"disableAvailabilitySetNodes,omitempty"`
 }
 
 var _ cloudprovider.Interface = (*Cloud)(nil)
@@ -211,21 +230,21 @@ type Cloud struct {
 	Config
 	Environment azure.Environment
 
-	RoutesClient                    RoutesClient
-	SubnetsClient                   SubnetsClient
-	InterfacesClient                InterfacesClient
-	RouteTablesClient               RouteTablesClient
-	LoadBalancerClient              LoadBalancersClient
-	PublicIPAddressesClient         PublicIPAddressesClient
-	SecurityGroupsClient            SecurityGroupsClient
-	VirtualMachinesClient           VirtualMachinesClient
-	StorageAccountClient            StorageAccountClient
-	DisksClient                     DisksClient
-	SnapshotsClient                 *compute.SnapshotsClient
+	RoutesClient                    routeclient.Interface
+	SubnetsClient                   subnetclient.Interface
+	InterfacesClient                interfaceclient.Interface
+	RouteTablesClient               routetableclient.Interface
+	LoadBalancerClient              loadbalancerclient.Interface
+	PublicIPAddressesClient         publicipclient.Interface
+	SecurityGroupsClient            securitygroupclient.Interface
+	VirtualMachinesClient           vmclient.Interface
+	StorageAccountClient            storageaccountclient.Interface
+	DisksClient                     diskclient.Interface
+	SnapshotsClient                 snapshotclient.Interface
 	FileClient                      FileClient
-	VirtualMachineScaleSetsClient   VirtualMachineScaleSetsClient
-	VirtualMachineScaleSetVMsClient VirtualMachineScaleSetVMsClient
-	VirtualMachineSizesClient       VirtualMachineSizesClient
+	VirtualMachineScaleSetsClient   vmssclient.Interface
+	VirtualMachineScaleSetVMsClient vmssvmclient.Interface
+	VirtualMachineSizesClient       vmsizeclient.Interface
 
 	ResourceRequestBackoff wait.Backoff
 	metadata               *InstanceMetadataService
@@ -328,9 +347,17 @@ func (az *Cloud) InitializeCloudFromConfig(config *Config, fromSecret bool) erro
 		config.RouteTableResourceGroup = config.ResourceGroup
 	}
 
+	if config.SecurityGroupResourceGroup == "" {
+		config.SecurityGroupResourceGroup = config.ResourceGroup
+	}
+
 	if config.VMType == "" {
 		// default to standard vmType if not set.
 		config.VMType = vmTypeStandard
+	}
+
+	if config.DisableAvailabilitySetNodes && config.VMType != vmTypeVMSS {
+		return fmt.Errorf("disableAvailabilitySetNodes %v is only supported when vmType is 'vmss'", config.DisableAvailabilitySetNodes)
 	}
 
 	if config.CloudConfigType == "" {
@@ -448,30 +475,51 @@ func (az *Cloud) InitializeCloudFromConfig(config *Config, fromSecret bool) erro
 	}
 
 	// Initialize Azure clients.
-	azClientConfig := &azClientConfig{
-		subscriptionID:                 config.SubscriptionID,
-		resourceManagerEndpoint:        env.ResourceManagerEndpoint,
-		servicePrincipalToken:          servicePrincipalToken,
+	azClientConfig := &azclients.ClientConfig{
+		Location:                       config.Location,
+		SubscriptionID:                 config.SubscriptionID,
+		ResourceManagerEndpoint:        env.ResourceManagerEndpoint,
+		ServicePrincipalToken:          servicePrincipalToken,
 		CloudProviderBackoffRetries:    config.CloudProviderBackoffRetries,
 		CloudProviderBackoffDuration:   config.CloudProviderBackoffDuration,
 		ShouldOmitCloudProviderBackoff: config.shouldOmitCloudProviderBackoff(),
+		Backoff:                        &retry.Backoff{Steps: 1},
 	}
-	az.DisksClient = newAzDisksClient(azClientConfig.WithRateLimiter(config.DiskRateLimit))
-	az.SnapshotsClient = newSnapshotsClient(azClientConfig.WithRateLimiter(config.SnapshotRateLimit))
-	az.RoutesClient = newAzRoutesClient(azClientConfig.WithRateLimiter(config.RouteRateLimit))
-	az.SubnetsClient = newAzSubnetsClient(azClientConfig.WithRateLimiter(config.SubnetsRateLimit))
-	az.InterfacesClient = newAzInterfacesClient(azClientConfig.WithRateLimiter(config.InterfaceRateLimit))
-	az.RouteTablesClient = newAzRouteTablesClient(azClientConfig.WithRateLimiter(config.RouteTableRateLimit))
-	az.LoadBalancerClient = newAzLoadBalancersClient(azClientConfig.WithRateLimiter(config.LoadBalancerRateLimit))
-	az.SecurityGroupsClient = newAzSecurityGroupsClient(azClientConfig.WithRateLimiter(config.SecurityGroupRateLimit))
-	az.StorageAccountClient = newAzStorageAccountClient(azClientConfig.WithRateLimiter(config.StorageAccountRateLimit))
-	az.VirtualMachinesClient = newAzVirtualMachinesClient(azClientConfig.WithRateLimiter(config.VirtualMachineRateLimit))
-	az.PublicIPAddressesClient = newAzPublicIPAddressesClient(azClientConfig.WithRateLimiter(config.PublicIPAddressRateLimit))
-	az.VirtualMachineSizesClient = newAzVirtualMachineSizesClient(azClientConfig.WithRateLimiter(config.VirtualMachineSizeRateLimit))
-	az.VirtualMachineScaleSetsClient = newAzVirtualMachineScaleSetsClient(azClientConfig.WithRateLimiter(config.VirtualMachineScaleSetRateLimit))
-	az.VirtualMachineScaleSetVMsClient = newAzVirtualMachineScaleSetVMsClient(azClientConfig.WithRateLimiter(config.VirtualMachineScaleSetRateLimit))
-	// TODO(feiskyer): refactor azureFileClient to Interface.
-	az.FileClient = &azureFileClient{env: *env}
+	if config.CloudProviderBackoff {
+		azClientConfig.Backoff = &retry.Backoff{
+			Steps:    config.CloudProviderBackoffRetries,
+			Factor:   config.CloudProviderBackoffExponent,
+			Duration: time.Duration(config.CloudProviderBackoffDuration) * time.Second,
+			Jitter:   config.CloudProviderBackoffJitter,
+		}
+	}
+	az.RoutesClient = routeclient.New(azClientConfig.WithRateLimiter(config.RouteRateLimit))
+	az.SubnetsClient = subnetclient.New(azClientConfig.WithRateLimiter(config.SubnetsRateLimit))
+	az.InterfacesClient = interfaceclient.New(azClientConfig.WithRateLimiter(config.InterfaceRateLimit))
+	az.RouteTablesClient = routetableclient.New(azClientConfig.WithRateLimiter(config.RouteTableRateLimit))
+	az.LoadBalancerClient = loadbalancerclient.New(azClientConfig.WithRateLimiter(config.LoadBalancerRateLimit))
+	az.SecurityGroupsClient = securitygroupclient.New(azClientConfig.WithRateLimiter(config.SecurityGroupRateLimit))
+	az.PublicIPAddressesClient = publicipclient.New(azClientConfig.WithRateLimiter(config.PublicIPAddressRateLimit))
+	az.VirtualMachineScaleSetsClient = vmssclient.New(azClientConfig.WithRateLimiter(config.VirtualMachineScaleSetRateLimit))
+	az.VirtualMachineSizesClient = vmsizeclient.New(azClientConfig.WithRateLimiter(config.VirtualMachineSizeRateLimit))
+	az.SnapshotsClient = snapshotclient.New(azClientConfig.WithRateLimiter(config.SnapshotRateLimit))
+	az.StorageAccountClient = storageaccountclient.New(azClientConfig.WithRateLimiter(config.StorageAccountRateLimit))
+
+	// fileClient is not based on armclient, but it's still backoff retried.
+	az.FileClient = newAzureFileClient(env, azClientConfig.Backoff.WithNonRetriableErrors([]string{}, []int{http.StatusNotFound}))
+
+	vmClientConfig := azClientConfig.WithRateLimiter(config.VirtualMachineRateLimit)
+	vmClientConfig.Backoff = vmClientConfig.Backoff.WithNonRetriableErrors([]string{}, []int{http.StatusConflict})
+	az.VirtualMachinesClient = vmclient.New(vmClientConfig)
+
+	// Error "not an active Virtual Machine Scale Set VM" is not retriable for VMSS VM.
+	vmssVMClientConfig := azClientConfig.WithRateLimiter(config.VirtualMachineScaleSetRateLimit)
+	vmssVMClientConfig.Backoff = vmssVMClientConfig.Backoff.WithNonRetriableErrors([]string{vmssVMNotActiveErrorMessage}, []int{http.StatusConflict})
+	az.VirtualMachineScaleSetVMsClient = vmssvmclient.New(vmssVMClientConfig)
+
+	disksClientConfig := azClientConfig.WithRateLimiter(config.DiskRateLimit)
+	disksClientConfig.Backoff = disksClientConfig.Backoff.WithNonRetriableErrors([]string{}, []int{http.StatusNotFound, http.StatusConflict})
+	az.DisksClient = diskclient.New(disksClientConfig)
 
 	if az.MaximumLoadBalancerRuleCount == 0 {
 		az.MaximumLoadBalancerRuleCount = maximumLoadBalancerRuleCount
@@ -578,15 +626,6 @@ func (az *Cloud) HasClusterID() bool {
 // ProviderName returns the cloud provider ID.
 func (az *Cloud) ProviderName() string {
 	return CloudProviderName
-}
-
-// configureUserAgent configures the autorest client with a user agent that
-// includes "kubernetes" and the full kubernetes git version string
-// example:
-// Azure-SDK-for-Go/7.0.1-beta arm-network/2016-09-01; kubernetes-cloudprovider/v1.7.0-alpha.2.711+a2fadef8170bb0-dirty;
-func configureUserAgent(client *autorest.Client) {
-	k8sVersion := version.Get().GitVersion
-	client.UserAgent = fmt.Sprintf("%s; kubernetes-cloudprovider/%s", client.UserAgent, k8sVersion)
 }
 
 func initDiskControllers(az *Cloud) error {

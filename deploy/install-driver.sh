@@ -21,3 +21,7 @@ kubectl apply -f deploy/crd-csi-node-info.yaml
 kubectl apply -f deploy/rbac-csi-azuredisk-controller.yaml
 kubectl apply -f deploy/csi-azuredisk-controller.yaml
 kubectl apply -f deploy/csi-azuredisk-node.yaml
+
+kubectl apply -f deploy/rbac-csi-snapshot-controller.yaml
+kubectl apply -f deploy/crd-csi-snapshot.yaml
+kubectl apply -f deploy/csi-snapshot-controller.yaml
