@@ -32,7 +32,7 @@ image:
     tag: v1.1.0
     pullPolicy: Always
   csiSnapshotController:
-    repository: quay.io/k8scsi/snapshot-controller
+    repository: mcr.microsoft.com/oss/kubernetes-csi/snapshot-controller
     tag: v2.0.0
     pullPolicy: Always
 
