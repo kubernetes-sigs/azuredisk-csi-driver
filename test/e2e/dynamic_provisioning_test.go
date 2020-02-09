@@ -34,7 +34,7 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework"
 )
 
-var _ = ginkgo.Describe("[azuredisk-csi-e2e] Dynamic Provisioning", func() {
+var _ = ginkgo.Describe("Dynamic Provisioning", func() {
 	t := dynamicProvisioningTestSuite{}
 
 	ginkgo.Context("[single-az]", func() {
@@ -95,7 +95,8 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	})
 
 	testDriver = driver.InitAzureDiskDriver()
-	ginkgo.It("should create a volume on demand with mount options", func() {
+
+	ginkgo.It("should create a volume on demand with mount options [kubernetes.io/azure-disk] [disk.csi.azure.com]", func() {
 		pods := []testsuites.PodDetails{
 			{
 				Cmd: "echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data",
@@ -121,7 +122,34 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		test.Run(cs, ns)
 	})
 
-	ginkgo.It("should create a raw block volume on demand", func() {
+	ginkgo.It("should receive FailedMount event with invalid mount options [kubernetes.io/azure-disk] [disk.csi.azure.com]", func() {
+		pods := []testsuites.PodDetails{
+			{
+				Cmd: "echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data",
+				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+					{
+						ClaimSize: "10Gi",
+						MountOptions: []string{
+							"invalid",
+							"mount",
+							"options",
+						},
+						VolumeMount: testsuites.VolumeMountDetails{
+							NameGenerate:      "test-volume-",
+							MountPathGenerate: "/mnt/test-",
+						},
+					},
+				}, isMultiZone),
+			},
+		}
+		test := testsuites.DynamicallyProvisionedInvalidMountOptions{
+			CSIDriver: testDriver,
+			Pods:      pods,
+		}
+		test.Run(cs, ns)
+	})
+
+	ginkgo.It("should create a raw block volume on demand [kubernetes.io/azure-disk] [disk.csi.azure.com]", func() {
 		pods := []testsuites.PodDetails{
 			{
 				Cmd: "ls /dev | grep e2e-test",
@@ -145,7 +173,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	})
 
 	//Track issue https://github.com/kubernetes/kubernetes/issues/70505
-	ginkgo.It("should create a volume on demand and mount it as readOnly in a pod", func() {
+	ginkgo.It("should create a volume on demand and mount it as readOnly in a pod [kubernetes.io/azure-disk] [disk.csi.azure.com]", func() {
 		pods := []testsuites.PodDetails{
 			{
 				Cmd: "touch /mnt/test-1/data",
@@ -169,7 +197,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		test.Run(cs, ns)
 	})
 
-	ginkgo.It("should create multiple PV objects, bind to PVCs and attach all to different pods on the same node", func() {
+	ginkgo.It("should create multiple PV objects, bind to PVCs and attach all to different pods on the same node [kubernetes.io/azure-disk] [disk.csi.azure.com]", func() {
 		pods := []testsuites.PodDetails{
 			{
 				Cmd: "while true; do echo $(date -u) >> /mnt/test-1/data; sleep 1; done",
@@ -219,7 +247,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		test.Run(cs, ns)
 	})
 
-	ginkgo.It("should create a deployment object, write and read to it, delete the pod and write and read to it again", func() {
+	ginkgo.It("should create a deployment object, write and read to it, delete the pod and write and read to it again [kubernetes.io/azure-disk] [disk.csi.azure.com]", func() {
 		pod := testsuites.PodDetails{
 			Cmd: "echo 'hello world' >> /mnt/test-1/data && while true; do sleep 1; done",
 			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
@@ -244,7 +272,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		test.Run(cs, ns)
 	})
 
-	ginkgo.It(fmt.Sprintf("should delete PV with reclaimPolicy %q", v1.PersistentVolumeReclaimDelete), func() {
+	ginkgo.It(fmt.Sprintf("should delete PV with reclaimPolicy %q [kubernetes.io/azure-disk] [disk.csi.azure.com]", v1.PersistentVolumeReclaimDelete), func() {
 		reclaimPolicy := v1.PersistentVolumeReclaimDelete
 		volumes := t.normalizeVolumes([]testsuites.VolumeDetails{
 			{
@@ -260,7 +288,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		test.Run(cs, ns)
 	})
 
-	ginkgo.It(fmt.Sprintf("[env] should retain PV with reclaimPolicy %q", v1.PersistentVolumeReclaimRetain), func() {
+	ginkgo.It(fmt.Sprintf("should retain PV with reclaimPolicy %q [disk.csi.azure.com]", v1.PersistentVolumeReclaimRetain), func() {
 		// This tests uses the CSI driver to delete the PV.
 		// TODO: Go via the k8s interfaces and also make it more reliable for in-tree and then
 		//       test can be enabled.
@@ -283,7 +311,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		test.Run(cs, ns)
 	})
 
-	ginkgo.It("should clone a volume from an existing volume and read from it", func() {
+	ginkgo.It("should clone a volume from an existing volume and read from it [disk.csi.azure.com]", func() {
 		if testDriver.IsInTree() {
 			ginkgo.Skip("Volume cloning support is only available for CSI drivers")
 		}
@@ -311,7 +339,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		test.Run(cs, ns)
 	})
 
-	ginkgo.It("should create multiple PV objects, bind to PVCs and attach all to a single pod", func() {
+	ginkgo.It("should create multiple PV objects, bind to PVCs and attach all to a single pod [kubernetes.io/azure-disk] [disk.csi.azure.com]", func() {
 		pods := []testsuites.PodDetails{
 			{
 				Cmd: "echo 'hello world' > /mnt/test-1/data && echo 'hello world' > /mnt/test-2/data && echo 'hello world' > /mnt/test-3/data && grep 'hello world' /mnt/test-1/data && grep 'hello world' /mnt/test-2/data && grep 'hello world' /mnt/test-3/data",
@@ -350,7 +378,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		test.Run(cs, ns)
 	})
 
-	ginkgo.It("should create a raw block volume and a filesystem volume on demand and bind to the same pod", func() {
+	ginkgo.It("should create a raw block volume and a filesystem volume on demand and bind to the same pod [kubernetes.io/azure-disk] [disk.csi.azure.com]", func() {
 		pods := []testsuites.PodDetails{
 			{
 				Cmd: "dd if=/dev/zero of=/dev/xvda bs=1024k count=100 && echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data",
@@ -383,7 +411,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		test.Run(cs, ns)
 	})
 
-	ginkgo.It("should create a pod, write and read to it, take a volume snapshot, and create another pod from the snapshot", func() {
+	ginkgo.It("should create a pod, write and read to it, take a volume snapshot, and create another pod from the snapshot [disk.csi.azure.com]", func() {
 		if testDriver.IsInTree() {
 			ginkgo.Skip("Volume snapshot support is only available for CSI drivers")
 		}
