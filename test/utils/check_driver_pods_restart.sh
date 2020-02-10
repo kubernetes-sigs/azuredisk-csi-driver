@@ -12,7 +12,7 @@ do
     if [ "$num" -ne "0" ]
     then
         echo "there is a driver pod which has restarted"
-	#disable pods restart check temporarily
+	#disable pods restart check temporarily since there is driver restart in MSI enabled cluster
         #exit 3
     fi
 done

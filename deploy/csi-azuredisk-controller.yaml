@@ -129,7 +129,7 @@ spec:
           args:
             - --csi-address=/csi/csi.sock
             - --connection-timeout=3s
-            - --health-port=9602
+            - --health-port=29602
             - --v=5
           volumeMounts:
             - name: socket-dir
@@ -148,10 +148,10 @@ spec:
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--nodeid=$(KUBE_NODE_NAME)"
           ports:
-            - containerPort: 9602
+            - containerPort: 29602
               name: healthz
               protocol: TCP
-            - containerPort: 10252
+            - containerPort: 29604
               name: metrics
               protocol: TCP
           livenessProbe:
@@ -193,16 +193,3 @@ spec:
         - name: msi
           hostPath:
             path: /var/lib/waagent/ManagedIdentity-Settings
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: csi-azuredisk-controller
-  namespace: kube-system
-spec:
-  selector:
-    app: csi-azuredisk-controller
-  ports:
-  - port: 10252
-    targetPort: 10252
-  type: ClusterIP
