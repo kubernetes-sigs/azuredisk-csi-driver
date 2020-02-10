@@ -24,7 +24,6 @@ spec:
           args:
             - "--v=5"
             - "-leader-election"
-          imagePullPolicy: Always
           resources:
             limits:
               cpu: 1000m
@@ -32,4 +31,4 @@ spec:
             requests:
               cpu: 10m
               memory: 20Mi
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          imagePullPolicy: {{ .Values.image.csiSnapshotController.pullPolicy }}
