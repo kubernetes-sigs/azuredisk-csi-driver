@@ -86,7 +86,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		return &csi.NodeStageVolumeResponse{}, nil
 	}
 
-	devicePath, ok := req.PublishContext["devicePath"]
+	devicePath, ok := req.PublishContext[devicePath]
 	if !ok {
 		return nil, status.Error(codes.InvalidArgument, "devicePath not provided")
 	}
@@ -204,7 +204,7 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 
 	switch req.GetVolumeCapability().GetAccessType().(type) {
 	case *csi.VolumeCapability_Block:
-		devicePath, ok := req.PublishContext["devicePath"]
+		devicePath, ok := req.PublishContext[devicePath]
 		if !ok {
 			return nil, status.Error(codes.InvalidArgument, "devicePath not provided")
 		}

@@ -381,7 +381,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		klog.V(2).Infof("attach volume %q to node %q successfully", diskURI, nodeName)
 	}
 
-	pvInfo := map[string]string{"devicePath": strconv.Itoa(int(lun))}
+	pvInfo := map[string]string{devicePath: strconv.Itoa(int(lun))}
 	return &csi.ControllerPublishVolumeResponse{PublishContext: pvInfo}, nil
 }
 
