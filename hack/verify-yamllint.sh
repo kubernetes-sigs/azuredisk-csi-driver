@@ -18,18 +18,23 @@ if [[ -z "$(command -v yamllint)" ]]; then
   apt update && apt install yamllint -y
 fi
 
-yamllint -f parsable deploy/*.yaml | grep -v "line too long" > /tmp/yamllint.log
-cat /tmp/yamllint.log
-linecount=`cat /tmp/yamllint.log | grep -v "line too long" | wc -l`
+LOG=/tmp/yamllint.log
+helmPath=charts/latest/azuredisk-csi-driver/templates
+
+yamllint -f parsable deploy/*.yaml | grep -v "line too long" > $LOG
+cat $LOG
+linecount=`cat $LOG | grep -v "line too long" | wc -l`
 if [ $linecount -gt 0 ]; then
-	echo "yaml files under deploy/ are not linted"
+	echo "yaml files under deploy/ are not linted, failed with: "
+	cat $LOG
 	exit 1
 fi
 
-yamllint -f parsable charts/latest/azuredisk-csi-driver/templates/*.yaml | grep -v "line too long" | grep -v "too many spaces inside braces" | grep -v "missing document start" | grep -v "syntax error" > /tmp/yamllint.log
-linecount=`cat /tmp/yamllint.log | wc -l`
+yamllint -f parsable $helmPath/*.yaml | grep -v "line too long" | grep -v "too many spaces inside braces" | grep -v "missing document start" | grep -v "syntax error" > $LOG
+linecount=`cat $LOG | wc -l`
 if [ $linecount -gt 0 ]; then
-	echo "yaml files under charts/latest/azuredisk-csi-driver/templates/ are not linted"
+	echo "yaml files under $helmPath/ are not linted, failed with: "
+	cat $LOG
 	exit 1
 fi
 
