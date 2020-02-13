@@ -38,6 +38,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/util/resizefs"
+	"k8s.io/kubernetes/pkg/volume"
 )
 
 const (
@@ -331,8 +332,94 @@ func getMaxDataDiskCount(instanceType string, sizeList *[]compute.VirtualMachine
 	return defaultAzureVolumeLimit
 }
 
-func (d *Driver) NodeGetVolumeStats(ctx context.Context, in *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
+func (d *Driver) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
+	if len(req.VolumeId) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "NodeGetVolumeStats volume ID was empty")
+	}
+	if len(req.VolumePath) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "NodeGetVolumeStats volume path was empty")
+	}
+
+	target := req.VolumePath
+	if len(target) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "Staging target not provided")
+	}
+
+	diskURI := req.VolumeId
+	if err := isValidDiskURI(diskURI); err != nil {
+		return nil, status.Errorf(codes.NotFound, "disk URI(%s) is not valid: %v", diskURI, err)
+	}
+
+	if err := d.checkDiskExists(ctx, diskURI); err != nil {
+		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume not found, failed with error: %v", err))
+	}
+
+	isBlock, err := d.mounter.Interface.PathIsDevice(req.VolumePath)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "Failed to determine whether %s is block device: %v", req.VolumePath, err)
+	}
+	if isBlock {
+		bcap, err := d.getBlockSizeBytes(req.VolumePath)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "Failed to get block capacity on path %s: %v", req.VolumePath, err)
+		}
+		return &csi.NodeGetVolumeStatsResponse{
+			Usage: []*csi.VolumeUsage{
+				{
+					Unit:  csi.VolumeUsage_BYTES,
+					Total: bcap,
+				},
+			},
+		}, nil
+	}
+
+	volumeMetrics, err := volume.NewMetricsStatFS(req.VolumePath).GetMetrics()
+	if err != nil {
+		return nil, err
+	}
+
+	available, ok := volumeMetrics.Available.AsInt64()
+	if !ok {
+		return nil, status.Errorf(codes.Internal, "failed to transform volume available size(%v)", volumeMetrics.Available)
+	}
+	capacity, ok := volumeMetrics.Capacity.AsInt64()
+	if !ok {
+		return nil, status.Errorf(codes.Internal, "failed to transform volume capacity size(%v)", volumeMetrics.Capacity)
+	}
+	used, ok := volumeMetrics.Used.AsInt64()
+	if !ok {
+		return nil, status.Errorf(codes.Internal, "failed to transform volume used size(%v)", volumeMetrics.Used)
+	}
+
+	inodesFree, ok := volumeMetrics.InodesFree.AsInt64()
+	if !ok {
+		return nil, status.Errorf(codes.Internal, "failed to transform disk inodes free(%v)", volumeMetrics.InodesFree)
+	}
+	inodes, ok := volumeMetrics.Inodes.AsInt64()
+	if !ok {
+		return nil, status.Errorf(codes.Internal, "failed to transform disk inodes(%v)", volumeMetrics.Inodes)
+	}
+	inodesUsed, ok := volumeMetrics.InodesUsed.AsInt64()
+	if !ok {
+		return nil, status.Errorf(codes.Internal, "failed to transform disk inodes used(%v)", volumeMetrics.InodesUsed)
+	}
+
+	return &csi.NodeGetVolumeStatsResponse{
+		Usage: []*csi.VolumeUsage{
+			{
+				Unit:      csi.VolumeUsage_BYTES,
+				Available: available,
+				Total:     capacity,
+				Used:      used,
+			},
+			{
+				Unit:      csi.VolumeUsage_INODES,
+				Available: inodesFree,
+				Total:     inodes,
+				Used:      inodesUsed,
+			},
+		},
+	}, nil
 }
 
 // NodeExpandVolume node expand volume

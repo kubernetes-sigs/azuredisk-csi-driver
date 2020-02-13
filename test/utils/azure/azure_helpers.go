@@ -102,7 +102,7 @@ func (az *AzureClient) EnsureVirtualMachine(ctx context.Context, groupName, loca
 			Location: to.StringPtr(location),
 			VirtualMachineProperties: &compute.VirtualMachineProperties{
 				HardwareProfile: &compute.HardwareProfile{
-					VMSize: compute.VirtualMachineSizeTypesStandardF2,
+					VMSize: compute.VirtualMachineSizeTypesStandardDS2V2,
 				},
 				StorageProfile: &compute.StorageProfile{
 					ImageReference: &compute.ImageReference{
