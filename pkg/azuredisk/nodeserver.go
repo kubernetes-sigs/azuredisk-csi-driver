@@ -448,8 +448,8 @@ func (d *Driver) findDiskAndLun(devicePath string) (string, int32, error) {
 		if newDevicePath != "" {
 			return true, nil
 		}
-
-		return false, fmt.Errorf("azureDisk - findDiskByLun(%v) failed within timeout", lun)
+		// wait until timeout
+		return false, nil
 	})
 	if err != nil {
 		return "", -1, err
