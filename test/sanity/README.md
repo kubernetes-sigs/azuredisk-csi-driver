@@ -4,15 +4,21 @@ Testing the Azure Disk CSI driver using the [`sanity`](https://github.com/kubern
 ## Run Integration Tests Locally
 ### Prerequisite
  - make sure `GOPATH` is set
-
- - set the environment variable AZURE_CREDENTIAL_FILE with the path to cloud provider config file only if you have the file at a different location than `/etc/kubernetes/azure.json`
- > By default Cloud provider config file is present at `/etc/kubernetes/azure.json` on a kubernetes cluster node
 ```
-export set AZURE_CREDENTIAL_FILE=
+# echo $GOPATH
+/root/go
+```
+ - set following environment variables
+```console
+export TENANT_ID=
+export SUBSCRIPTION_ID=
+export AAD_CLIENT_ID=
+export AAD_CLIENT_SECRET=
+export RESOURCE_GROUP=
+export LOCATION=
 ```
 
 ### Run sanity tests
 ```
 make sanity-test
 ```
-
