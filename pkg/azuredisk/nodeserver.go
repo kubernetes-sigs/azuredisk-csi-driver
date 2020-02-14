@@ -356,7 +356,7 @@ func (d *Driver) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeS
 
 	isBlock, err := d.mounter.Interface.PathIsDevice(req.VolumePath)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Failed to determine whether %s is block device: %v", req.VolumePath, err)
+		return nil, status.Errorf(codes.NotFound, "Failed to determine whether %s is block device: %v", req.VolumePath, err)
 	}
 	if isBlock {
 		bcap, err := d.getBlockSizeBytes(req.VolumePath)
