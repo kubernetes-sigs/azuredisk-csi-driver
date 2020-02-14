@@ -132,9 +132,10 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		fstype = volContextFSType
 	}
 
-	source, lun, err := d.findDiskAndLun(devicePath)
+	// devicePath is actually a lun num
+	source, _, err := d.findDiskAndLun(devicePath)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Failed to find disk and lun %s. %v", devicePath, err)
+		return nil, status.Errorf(codes.Internal, "Failed to find disk on lun %s. %v", devicePath, err)
 	}
 
 	// If partition is specified, should mount it only instead of the entire disk.
@@ -146,7 +147,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	klog.V(2).Infof("NodeStageVolume: formatting %s and mounting at %s with mount options(%s)", source, target, options)
 	err = d.mounter.FormatAndMount(source, target, fstype, options)
 	if err != nil {
-		msg := fmt.Sprintf("could not format %q(lun: %q), and mount it at %q", source, lun, target)
+		msg := fmt.Sprintf("could not format %q(lun: %q), and mount it at %q", source, devicePath, target)
 		return nil, status.Error(codes.Internal, msg)
 	}
 	klog.V(2).Infof("NodeStageVolume: format %s and mounting at %s successfully.", source, target)
@@ -538,10 +539,9 @@ func (d *Driver) findDiskAndLun(devicePath string) (string, int32, error) {
 		// wait until timeout
 		return false, nil
 	})
-	if err != nil {
-		return "", -1, err
+	if err == nil && newDevicePath == "" {
+		err = fmt.Errorf("azureDisk - findDiskByLun(%v) failed within timeout", lun)
 	}
-
 	return newDevicePath, lun, err
 }
 
