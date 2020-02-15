@@ -17,6 +17,7 @@ DiskIOPSReadWrite | [UltraSSD disk](https://docs.microsoft.com/en-us/azure/virtu
 DiskMBpsReadWrite | [UltraSSD disk](https://docs.microsoft.com/en-us/azure/virtual-machines/linux/disks-ultra-ssd) Throughput Capability | 1~2000 | No | `100`
 tags | azure disk [tags](https://docs.microsoft.com/en-us/azure/azure-resource-manager/management/tag-resources) | tag format: 'foo=aaa,bar=bbb' | No | ""
 diskEncryptionSetID | ResourceId of the disk encryption set to use for [enabling encryption at rest](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/disk-encryption) | format: `/subscriptions/{subs-id}/resourceGroups/{rg-name}/providers/Microsoft.Compute/diskEncryptionSets/{diskEncryptionSet-name}` | No | ""
+writeAcceleratorEnabled | Write Accelerator on Azure Disks [https://docs.microsoft.com/azure/virtual-machines/windows/how-to-enable-write-accelerator) | `true`, `false` | No | ""
 
  - Static Provisioning(use existing azure disk)
   > get a quick example [here](../deploy/example/pv-azuredisk-csi.yaml)

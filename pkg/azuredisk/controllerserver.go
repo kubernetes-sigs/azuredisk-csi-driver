@@ -87,17 +87,18 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	}
 
 	var (
-		location, account   string
-		storageAccountType  string
-		cachingMode         v1.AzureDataDiskCachingMode
-		strKind             string
-		err                 error
-		resourceGroup       string
-		diskIopsReadWrite   string
-		diskMbpsReadWrite   string
-		diskName            string
-		diskEncryptionSetID string
-		customTags          string
+		location, account       string
+		storageAccountType      string
+		cachingMode             v1.AzureDataDiskCachingMode
+		strKind                 string
+		err                     error
+		resourceGroup           string
+		diskIopsReadWrite       string
+		diskMbpsReadWrite       string
+		diskName                string
+		diskEncryptionSetID     string
+		customTags              string
+		writeAcceleratorEnabled string
 	)
 
 	parameters := req.GetParameters()
@@ -127,6 +128,8 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			diskEncryptionSetID = v
 		case "tags":
 			customTags = v
+		case azure.WriteAcceleratorEnabled:
+			writeAcceleratorEnabled = v
 		default:
 			//don't return error here since there are some parameters(e.g. fsType) used in disk mount process
 			//return nil, fmt.Errorf("AzureDisk - invalid option %s in storage class", k)
@@ -190,6 +193,9 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		}
 		*/
 
+		if strings.EqualFold(writeAcceleratorEnabled, "true") {
+			tags[azure.WriteAcceleratorEnabled] = "true"
+		}
 		sourceID := ""
 		sourceType := ""
 		content := req.GetVolumeContentSource()
@@ -381,7 +387,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		klog.V(2).Infof("attach volume %q to node %q successfully", diskURI, nodeName)
 	}
 
-	pvInfo := map[string]string{devicePath: strconv.Itoa(int(lun))}
+	pvInfo := map[string]string{LUN: strconv.Itoa(int(lun))}
 	return &csi.ControllerPublishVolumeResponse{PublishContext: pvInfo}, nil
 }
 
