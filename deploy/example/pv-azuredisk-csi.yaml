@@ -15,4 +15,3 @@ spec:
     volumeHandle: /subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id}
     volumeAttributes:
       fsType: ext4
----

@@ -11,4 +11,3 @@ spec:
       storage: 10Gi
   volumeName: pv-azuredisk
   storageClassName: ""
----
