@@ -1,3 +1,4 @@
+---
 kind: PersistentVolumeClaim
 apiVersion: v1
 metadata:
@@ -10,3 +11,4 @@ spec:
       storage: 10Gi
   volumeName: pv-azuredisk
   storageClassName: ""
+---

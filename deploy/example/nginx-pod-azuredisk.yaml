@@ -1,3 +1,4 @@
+---
 kind: Pod
 apiVersion: v1
 metadata:
@@ -19,3 +20,4 @@ spec:
   - name: azuredisk01
     persistentVolumeClaim:
       claimName: pvc-azuredisk
+---
