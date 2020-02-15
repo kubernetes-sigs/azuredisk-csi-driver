@@ -1,6 +1,6 @@
 # Volume Resizing Example
 
-## Enable Volume Resizing Feature Gate
+## Enable Volume Resize Feature Gate
 
 > Resize Feature Status
 > Kubernetes 1.14, 1.15: alpha
@@ -36,7 +36,7 @@ volumeBindingMode: Immediate
 2. Create storageclass, pvc and pod.
 
 ```console
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/resizing/storageclass-azuredisk-csi-resize.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/storageclass-azuredisk-csi.yaml
 kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/pvc-azuredisk-csi.yaml
 kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/nginx-pod-azuredisk.yaml
 ```

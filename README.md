@@ -37,7 +37,7 @@ Please refer to [install azuredisk csi driver](./docs/install-azuredisk-csi-driv
  - [Topology(Availability Zone)](./deploy/example/topology)
  - [Snapshot](./deploy/example/snapshot)
  - [Volume Cloning](./deploy/example/cloning)
- - [Volume Expansion](./deploy/example/resizing) 
+ - [Volume Expansion](./deploy/example/resize) 
  - [Raw Block Volume](./deploy/example/rawblock)
 
 ## Kubernetes Development

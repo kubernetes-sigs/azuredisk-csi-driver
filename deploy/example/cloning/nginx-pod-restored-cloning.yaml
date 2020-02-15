@@ -1,3 +1,4 @@
+---
 kind: Pod
 apiVersion: v1
 metadata:
@@ -6,15 +7,15 @@ spec:
   nodeSelector:
     beta.kubernetes.io/os: linux
   containers:
-  - image: nginx
-    name: nginx-restored-cloning
-    args:
-    - sleep
-    - "3600"
-    volumeMounts:
-    - name: azuredisk-cloning
-      mountPath: "/mnt/azuredisk"
+    - image: nginx
+      name: nginx-restored-cloning
+      args:
+        - sleep
+        - "3600"
+      volumeMounts:
+        - name: azuredisk-cloning
+          mountPath: "/mnt/azuredisk"
   volumes:
-  - name: azuredisk-cloning
-    persistentVolumeClaim:
-      claimName: pvc-azuredisk-cloning
+    - name: azuredisk-cloning
+      persistentVolumeClaim:
+        claimName: pvc-azuredisk-cloning
