@@ -533,7 +533,7 @@
   version = "v0.9.1"
 
 [[projects]]
-  digest = "1:a4b063a766f50cdadc1fce12053e3bde8599f1f8b7621d7e293cd2fc86543a44"
+  digest = "1:dacb29568d7b8e145b953ca0a9334e516ce02e56c61e902372c6c074c4846107"
   name = "github.com/prometheus/procfs"
   packages = [
     ".",
@@ -541,8 +541,8 @@
     "internal/util",
   ]
   pruneopts = "NUT"
-  revision = "6d489fc7f1d9cd890a250f3ea3431b1744b9623f"
-  version = "v0.0.8"
+  revision = "584181f8e7015e8fbd319be9a5a9341d8f3d64df"
+  version = "v0.0.9"
 
 [[projects]]
   branch = "master"
@@ -618,7 +618,7 @@
     "ssh/terminal",
   ]
   pruneopts = "NUT"
-  revision = "ecb85df213405b7d32e4d73cb5bbaace2ec88881"
+  revision = "1d94cc7ab1c630336ab82ccb9c9cda72a875c382"
 
 [[projects]]
   branch = "master"
@@ -654,7 +654,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:db930a38f2ce644d060bc2e85c29c75f8d7987ebd12019d95b361de7cf0277b4"
+  digest = "1:faf563ed638ad22f775c6935c2dfab57037244f1ab3681dc241b7ddfdae00e86"
   name = "golang.org/x/sys"
   packages = [
     "cpu",
@@ -662,7 +662,7 @@
     "windows",
   ]
   pruneopts = "NUT"
-  revision = "d101bd2416d505c0448a6ce8a282482678040a89"
+  revision = "12a6c2dcc1e4cb348b57847c73987099e261714b"
 
 [[projects]]
   digest = "1:0b5dc8c3581fc3ea2b80cc2e360dfb9c2d61dd0cba0d2fe247e8edd3e83f7551"
@@ -743,7 +743,7 @@
   name = "google.golang.org/genproto"
   packages = ["googleapis/rpc/status"]
   pruneopts = "NUT"
-  revision = "4f3edf09f4f643aee978706652368efb6e407faa"
+  revision = "66ed5ce911ce4978d229e861f15b63d8bf359acb"
 
 [[projects]]
   digest = "1:ad113f760f5a2a924fd1ea324539df77f3e0166bbaf7f886985fbb447737323b"
@@ -1176,7 +1176,7 @@
   version = "kubernetes-1.15.0"
 
 [[projects]]
-  digest = "1:87fb9e43294b29a87f0fba36491a00f9797d1f71ebced0428315f950bec4b50e"
+  digest = "1:361aa5c4259c5d67ff1b9409ad18676e6de38c33eaafed48a38147e95b3edf90"
   name = "k8s.io/cloud-provider"
   packages = [
     ".",
@@ -1186,8 +1186,8 @@
     "volume/helpers",
   ]
   pruneopts = "NUT"
-  revision = "580c13bb6ed994e37388dd3bdd941d7b0a368dce"
-  version = "v0.17.2"
+  revision = "78825dd9730bbf7a0cbe3c99c6b99a32f22edaa2"
+  version = "v0.17.3"
 
 [[projects]]
   digest = "1:efc62514dfea557663b84e62f75e565b6a49878ece5080a4f801128141853201"
@@ -1200,16 +1200,16 @@
     "version",
   ]
   pruneopts = "NUT"
-  revision = "47d744dd27ec8a51b725b948828652b8676896f1"
-  version = "v0.17.2"
+  revision = "55d3b87c981552e2ab33b9d9527cc867444dbe34"
+  version = "v0.17.3"
 
 [[projects]]
   digest = "1:5e496d711fa03e4aaf3cab0d7de079634a9465ebf940613b69b34f5cc6513db8"
   name = "k8s.io/cri-api"
   packages = ["pkg/apis/runtime/v1alpha2"]
   pruneopts = "NUT"
-  revision = "775aa3c1cf7380ba8b7362f5a52f1e6d2e130bb9"
-  version = "v0.17.2"
+  revision = "cb8a25f43f0ec4d73f78b0e88440c3fba80ad84d"
+  version = "v0.17.3"
 
 [[projects]]
   digest = "1:c0693cb981f43d82a767a3217b7640a4bdb341731d3814b38602f4e5dc4f01b3"
@@ -1359,7 +1359,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:252a977e8044c3afa016e3748ccb4aa9cea0a6c01a0f476157dff08a75d47765"
+  digest = "1:eb1203a64fbd22d413d92e5b7166ee4e07f48f4044c409add5133e5a1eb389f9"
   name = "k8s.io/legacy-cloud-providers"
   packages = [
     "azure",
@@ -1384,7 +1384,7 @@
     "azure/retry",
   ]
   pruneopts = "NUT"
-  revision = "f79ac4ac8f0d94a7b3b5295a7dbbf3991462789e"
+  revision = "6cfeca845411707fa1f6ef311da1d35960e0cd8c"
 
 [[projects]]
   branch = "master"
