@@ -8,3 +8,4 @@ parameters:
   skuname: StandardSSD_LRS  # alias: storageaccounttype, available values: Standard_LRS, Premium_LRS, StandardSSD_LRS, UltraSSD_LRS
 reclaimPolicy: Delete
 volumeBindingMode: Immediate
+allowVolumeExpansion: true

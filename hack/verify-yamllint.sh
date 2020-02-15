@@ -21,7 +21,7 @@ fi
 LOG=/tmp/yamllint.log
 helmPath=charts/latest/azuredisk-csi-driver/templates
 
-for path in "deploy/*.yaml" "deploy/example/*.yaml" "deploy/example/metrics/*.yaml"
+for path in "deploy/*.yaml" "deploy/example/*.yaml" "deploy/example/metrics/*.yaml" "deploy/example/snapshot/*.yaml" "deploy/example/cloning/*.yaml" "deploy/example/rawblock/*.yaml"
 do
     echo "checking yamllint under path: $path ..."
     yamllint -f parsable $path | grep -v "line too long" > $LOG
