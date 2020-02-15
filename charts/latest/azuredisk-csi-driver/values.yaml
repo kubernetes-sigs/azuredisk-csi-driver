@@ -45,5 +45,8 @@ rbac:
 controller:
   replicas: 2
 
+node:
+  metricsPort: 29605
+
 snapshotController:
   replicas: 1
