@@ -86,9 +86,9 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		return &csi.NodeStageVolumeResponse{}, nil
 	}
 
-	devicePath, ok := req.PublishContext[devicePath]
+	lun, ok := req.PublishContext[LUN]
 	if !ok {
-		return nil, status.Error(codes.InvalidArgument, "devicePath not provided")
+		return nil, status.Error(codes.InvalidArgument, "lun not provided")
 	}
 
 	// TODO: consider replacing IsLikelyNotMountPoint by IsNotMountPoint
@@ -107,7 +107,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	}
 
 	if !notMnt {
-		klog.V(2).Infof("target %q is already a valid mount point(device path: %v), skip format and mount", target, devicePath)
+		klog.V(2).Infof("target %q is already a valid mount point(lun: %v), skip format and mount", target, lun)
 		// todo: check who is mounted here. No error if its us
 		/*
 			1) Target Path MUST be the vol referenced by vol ID
@@ -132,10 +132,9 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		fstype = volContextFSType
 	}
 
-	// devicePath is actually a lun num
-	source, _, err := d.findDiskAndLun(devicePath)
+	source, err := d.getDevicePathWithLUN(lun)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Failed to find disk on lun %s. %v", devicePath, err)
+		return nil, status.Errorf(codes.Internal, "Failed to find disk on lun %s. %v", lun, err)
 	}
 
 	// If partition is specified, should mount it only instead of the entire disk.
@@ -147,7 +146,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	klog.V(2).Infof("NodeStageVolume: formatting %s and mounting at %s with mount options(%s)", source, target, options)
 	err = d.mounter.FormatAndMount(source, target, fstype, options)
 	if err != nil {
-		msg := fmt.Sprintf("could not format %q(lun: %q), and mount it at %q", source, devicePath, target)
+		msg := fmt.Sprintf("could not format %q(lun: %q), and mount it at %q", source, lun, target)
 		return nil, status.Error(codes.Internal, msg)
 	}
 	klog.V(2).Infof("NodeStageVolume: format %s and mounting at %s successfully.", source, target)
@@ -205,16 +204,16 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 
 	switch req.GetVolumeCapability().GetAccessType().(type) {
 	case *csi.VolumeCapability_Block:
-		devicePath, ok := req.PublishContext[devicePath]
+		lun, ok := req.PublishContext[LUN]
 		if !ok {
-			return nil, status.Error(codes.InvalidArgument, "devicePath not provided")
+			return nil, status.Error(codes.InvalidArgument, "lun not provided")
 		}
 		var err error
-		source, _, err = d.findDiskAndLun(devicePath)
+		source, err = d.getDevicePathWithLUN(lun)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "Failed to find device path %s. %v", devicePath, err)
+			return nil, status.Errorf(codes.Internal, "Failed to find device path with lun %s. %v", lun, err)
 		}
-		klog.V(2).Infof("NodePublishVolume [block]: find device path %s -> %s", devicePath, source)
+		klog.V(2).Infof("NodePublishVolume [block]: found device path %s with lun %s", source, lun)
 		err = d.ensureBlockTargetFile(target)
 		if err != nil {
 			return nil, err
@@ -512,14 +511,10 @@ func (d *Driver) ensureMountPoint(target string) error {
 	return nil
 }
 
-// findDiskAndLun: devicePath is a LUN num, returns <device-path, lun>, e.g. </dev/sdx, 1>.
-// Before node stage and publish, the devicePath has been handle to a LUN number.
-// So in this function, devicePath is always a LUN number.
-// e.g. devicePath is 1, returns /dev/disk/azure/scsi1/lun1 and 1.
-func (d *Driver) findDiskAndLun(devicePath string) (string, int32, error) {
-	lun, err := getDiskLUN(devicePath)
+func (d *Driver) getDevicePathWithLUN(lunStr string) (string, error) {
+	lun, err := getDiskLUN(lunStr)
 	if err != nil {
-		return "", -1, err
+		return "", err
 	}
 
 	io := &osIOHandler{}
@@ -542,7 +537,7 @@ func (d *Driver) findDiskAndLun(devicePath string) (string, int32, error) {
 	if err == nil && newDevicePath == "" {
 		err = fmt.Errorf("azureDisk - findDiskByLun(%v) failed within timeout", lun)
 	}
-	return newDevicePath, lun, err
+	return newDevicePath, err
 }
 
 func (d *Driver) getBlockSizeBytes(devicePath string) (int64, error) {

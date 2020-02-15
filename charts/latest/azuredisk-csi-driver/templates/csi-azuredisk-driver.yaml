@@ -5,5 +5,5 @@ metadata:
 spec:
   attachRequired: true
   podInfoOnMount: true
-  volumeLifecycleModes:
+  volumeLifecycleModes:  # added in Kubernetes 1.16
     - Persistent
