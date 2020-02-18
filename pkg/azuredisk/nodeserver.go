@@ -302,11 +302,11 @@ func getMaxDataDiskCount(instanceType string) int64 {
 	vmsize := strings.ToUpper(instanceType)
 	maxDataDiskCount, exists := maxDataDiskCountMap[vmsize]
 	if exists {
-		klog.V(12).Infof("got a matching size in getMaxDataDiskCount, VM Size: %s, MaxDataDiskCount: %d", vmsize, maxDataDiskCount)
+		klog.V(5).Infof("got a matching size in getMaxDataDiskCount, VM Size: %s, MaxDataDiskCount: %d", vmsize, maxDataDiskCount)
 		return maxDataDiskCount
 	}
 
-	klog.V(12).Infof("not found a matching size in getMaxDataDiskCount, VM Size: %s, use default volume limit: %d", vmsize, defaultAzureVolumeLimit)
+	klog.V(5).Infof("not found a matching size in getMaxDataDiskCount, VM Size: %s, use default volume limit: %d", vmsize, defaultAzureVolumeLimit)
 	return defaultAzureVolumeLimit
 }
 
