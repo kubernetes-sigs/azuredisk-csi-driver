@@ -29,7 +29,6 @@ import (
 
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-07-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -46,9 +45,6 @@ const (
 	defaultWindowsFsType    = "ntfs"
 	defaultAzureVolumeLimit = 16
 )
-
-// store vm size list in current region
-var vmSizeList *[]compute.VirtualMachineSize
 
 func getDefaultFsType() string {
 	if runtime.GOOS == "windows" {
@@ -282,17 +278,6 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 		instanceType = ""
 	}
 
-	if vmSizeList == nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		defer cancel()
-		result, err := d.cloud.VirtualMachineSizesClient.List(ctx, d.cloud.Location)
-		if err != nil || result.Value == nil {
-			klog.Warningf("list vm sizes of nodeName(%s) failed with error: %v ", d.NodeID, err)
-		} else {
-			vmSizeList = result.Value
-		}
-	}
-
 	topology := &csi.Topology{
 		Segments: map[string]string{topologyKey: ""},
 	}
@@ -308,27 +293,20 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 
 	return &csi.NodeGetInfoResponse{
 		NodeId:             d.NodeID,
-		MaxVolumesPerNode:  getMaxDataDiskCount(instanceType, vmSizeList),
+		MaxVolumesPerNode:  getMaxDataDiskCount(instanceType),
 		AccessibleTopology: topology,
 	}, nil
 }
 
-func getMaxDataDiskCount(instanceType string, sizeList *[]compute.VirtualMachineSize) int64 {
-	if instanceType == "" || sizeList == nil {
-		return defaultAzureVolumeLimit
+func getMaxDataDiskCount(instanceType string) int64 {
+	vmsize := strings.ToUpper(instanceType)
+	maxDataDiskCount, exists := maxDataDiskCountMap[vmsize]
+	if exists {
+		klog.V(12).Infof("got a matching size in getMaxDataDiskCount, VM Size: %s, MaxDataDiskCount: %d", vmsize, maxDataDiskCount)
+		return maxDataDiskCount
 	}
 
-	vmsize := strings.ToUpper(instanceType)
-	for _, size := range *sizeList {
-		if size.Name == nil || size.MaxDataDiskCount == nil {
-			klog.Errorf("failed to get vm size in getMaxDataDiskCount")
-			continue
-		}
-		if strings.ToUpper(*size.Name) == vmsize {
-			klog.V(12).Infof("got a matching size in getMaxDataDiskCount, Name: %s, MaxDataDiskCount: %d", *size.Name, *size.MaxDataDiskCount)
-			return int64(*size.MaxDataDiskCount)
-		}
-	}
+	klog.V(12).Infof("not found a matching size in getMaxDataDiskCount, VM Size: %s, use default volume limit: %d", vmsize, defaultAzureVolumeLimit)
 	return defaultAzureVolumeLimit
 }
 
