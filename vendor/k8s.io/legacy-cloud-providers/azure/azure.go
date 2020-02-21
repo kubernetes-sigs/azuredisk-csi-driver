@@ -43,6 +43,7 @@ import (
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog"
 	"k8s.io/legacy-cloud-providers/azure/auth"
+	azcache "k8s.io/legacy-cloud-providers/azure/cache"
 	azclients "k8s.io/legacy-cloud-providers/azure/clients"
 	"k8s.io/legacy-cloud-providers/azure/clients/diskclient"
 	"k8s.io/legacy-cloud-providers/azure/clients/interfaceclient"
@@ -272,11 +273,12 @@ type Cloud struct {
 	kubeClient       clientset.Interface
 	eventBroadcaster record.EventBroadcaster
 	eventRecorder    record.EventRecorder
+	routeUpdater     *delayedRouteUpdater
 
-	vmCache  *timedCache
-	lbCache  *timedCache
-	nsgCache *timedCache
-	rtCache  *timedCache
+	vmCache  *azcache.TimedCache
+	lbCache  *azcache.TimedCache
+	nsgCache *azcache.TimedCache
+	rtCache  *azcache.TimedCache
 
 	*BlobDiskController
 	*ManagedDiskController
@@ -551,6 +553,10 @@ func (az *Cloud) InitializeCloudFromConfig(config *Config, fromSecret bool) erro
 	if err := initDiskControllers(az); err != nil {
 		return err
 	}
+
+	// start delayed route updater.
+	az.routeUpdater = newDelayedRouteUpdater(az, routeUpdateInterval)
+	go az.routeUpdater.run()
 
 	return nil
 }
