@@ -19,7 +19,7 @@
   version = "v35.1.0"
 
 [[projects]]
-  digest = "1:ef6c406874d5b03c57a55f806b66a948e940d9edb95f16b443d7c6d9318a3e28"
+  digest = "1:ed3f3996d7b4037cbf4661b2fb3eeeb90beb323cd71c7dc39d3790e6bf0e6950"
   name = "github.com/Azure/go-autorest"
   packages = [
     "autorest",
@@ -33,8 +33,8 @@
     "tracing",
   ]
   pruneopts = "NUT"
-  revision = "d3556005bee162041840c107de09f1047b781da4"
-  version = "v13.3.3"
+  revision = "327ff6ce8b902f9afe648d5ea8ff6dc26c26f150"
+  version = "v13.4.0"
 
 [[projects]]
   digest = "1:4816836c291b7f2a0da7deefa679ef234be8ad845a199ed2e48779234536cefa"
@@ -361,7 +361,7 @@
   version = "v2.0.0"
 
 [[projects]]
-  digest = "1:927762c6729b4e72957ba3310e485ed09cf8451c5a637a52fd016a9fe09e7936"
+  digest = "1:7bbccd3dd7998f2a180264ec1d12e362ed8e02f55ea7b82ac0d0f48ffa2d8888"
   name = "github.com/mailru/easyjson"
   packages = [
     "buffer",
@@ -369,8 +369,8 @@
     "jwriter",
   ]
   pruneopts = "NUT"
-  revision = "1b2b06f5f209fea48ff5922d8bfb2b9ed5d8f00b"
-  version = "v0.7.0"
+  revision = "8edcc4e51f39ddbd3505a3386aff3f435a7fd028"
+  version = "v0.7.1"
 
 [[projects]]
   digest = "1:5985ef4caf91ece5d54817c11ea25f182697534f8ae6521eadcd628c142ac4b6"
@@ -541,8 +541,8 @@
     "internal/util",
   ]
   pruneopts = "NUT"
-  revision = "584181f8e7015e8fbd319be9a5a9341d8f3d64df"
-  version = "v0.0.9"
+  revision = "4850c197847aa06aecc37570077fc16e9215d565"
+  version = "v0.0.10"
 
 [[projects]]
   branch = "master"
@@ -572,12 +572,12 @@
   version = "v1.2.2"
 
 [[projects]]
-  digest = "1:d3533ee568fc00a971617ec09dc0f0b3eddfb4adbc1275f8f6332553d67506b4"
+  digest = "1:30e2ca04703e6939567efd97f381f0ff5b11880cbb53dad256773bd8e2064e0a"
   name = "github.com/spf13/cobra"
   packages = ["."]
   pruneopts = "NUT"
-  revision = "f2b07da1e2c38d5f12845a4f607e2e1018cbb1f5"
-  version = "v0.0.5"
+  revision = "0da06874266c88228b8f14615396a1f6bfc90ed7"
+  version = "v0.0.6"
 
 [[projects]]
   digest = "1:d115708a27806831d1babbc6f28a7478ddf8e32a7095507c816e2515fb03a810"
@@ -588,19 +588,19 @@
   version = "v1.0.5"
 
 [[projects]]
-  digest = "1:7096df4a9258067bb9ff5da62864a645d38dd94cd3f273ff4ab54d0de548a348"
+  digest = "1:e6aedc9ffe708685ae5bb6c1e9fb12ce9d3ef0aa14872c620c8d34e13fc233e2"
   name = "github.com/stretchr/testify"
   packages = [
     "assert",
     "require",
   ]
   pruneopts = "NUT"
-  revision = "221dbe5ed46703ee255b1da0dec05086f5035f62"
-  version = "v1.4.0"
+  revision = "3ebf1ddaeb260c4b1ae502a01c7844fa8c1fa0e9"
+  version = "v1.5.1"
 
 [[projects]]
   branch = "master"
-  digest = "1:30f0ebe3690d128ab8c3166a87c38da508c50d18ae880ec4c595a8fe8786050c"
+  digest = "1:bcdd9d03a5a157e397d600c6bdc15d41e9ab613336ac9faae9106410fe568701"
   name = "golang.org/x/crypto"
   packages = [
     "blowfish",
@@ -618,11 +618,11 @@
     "ssh/terminal",
   ]
   pruneopts = "NUT"
-  revision = "1d94cc7ab1c630336ab82ccb9c9cda72a875c382"
+  revision = "bac4c82f69751a6dd76e702d54b3ceb88adab236"
 
 [[projects]]
   branch = "master"
-  digest = "1:7cb71c0b216c3ee993745c8755ec824e1bf5987ea6dbf6d04ffca4e68492ce4a"
+  digest = "1:838607c2a6df558cc646f66f958954c10e514a80b486ba2926bdd6390b3efd4c"
   name = "golang.org/x/net"
   packages = [
     "context",
@@ -639,7 +639,7 @@
     "websocket",
   ]
   pruneopts = "NUT"
-  revision = "16171245cfb220d5317888b716d69c1fb4e7992b"
+  revision = "46282727080fcf56da5781d0a9ef2fda184be5e6"
 
 [[projects]]
   branch = "master"
@@ -654,7 +654,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:faf563ed638ad22f775c6935c2dfab57037244f1ab3681dc241b7ddfdae00e86"
+  digest = "1:7864e7e170bbb40aab1897695942d4b504adb4850122550c4d8cc57b6e4e8615"
   name = "golang.org/x/sys"
   packages = [
     "cpu",
@@ -662,7 +662,7 @@
     "windows",
   ]
   pruneopts = "NUT"
-  revision = "12a6c2dcc1e4cb348b57847c73987099e261714b"
+  revision = "cb0a6d8edb6c3528b01a0be84a5fe513dbf880a6"
 
 [[projects]]
   digest = "1:0b5dc8c3581fc3ea2b80cc2e360dfb9c2d61dd0cba0d2fe247e8edd3e83f7551"
@@ -743,7 +743,7 @@
   name = "google.golang.org/genproto"
   packages = ["googleapis/rpc/status"]
   pruneopts = "NUT"
-  revision = "66ed5ce911ce4978d229e861f15b63d8bf359acb"
+  revision = "dad8c97a84f542cf0c67e3ab67b1c09e795fb4af"
 
 [[projects]]
   digest = "1:ad113f760f5a2a924fd1ea324539df77f3e0166bbaf7f886985fbb447737323b"
@@ -1359,11 +1359,12 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:eb1203a64fbd22d413d92e5b7166ee4e07f48f4044c409add5133e5a1eb389f9"
+  digest = "1:641e1eadbadfd1136f9aa40bd8b57d7b98c3d948101935afb162448d3138d70a"
   name = "k8s.io/legacy-cloud-providers"
   packages = [
     "azure",
     "azure/auth",
+    "azure/cache",
     "azure/clients",
     "azure/clients/armclient",
     "azure/clients/diskclient",
@@ -1384,7 +1385,7 @@
     "azure/retry",
   ]
   pruneopts = "NUT"
-  revision = "6cfeca845411707fa1f6ef311da1d35960e0cd8c"
+  revision = "5d0436fa4dba454aa237a42bab2edca178acfb41"
 
 [[projects]]
   branch = "master"
@@ -1468,7 +1469,6 @@
     "github.com/onsi/gomega",
     "github.com/pborman/uuid",
     "github.com/pelletier/go-toml",
-    "github.com/prometheus/client_golang/prometheus/promhttp",
     "github.com/stretchr/testify/assert",
     "golang.org/x/net/context",
     "google.golang.org/grpc",
@@ -1490,6 +1490,7 @@
     "k8s.io/client-go/kubernetes",
     "k8s.io/client-go/rest",
     "k8s.io/cloud-provider",
+    "k8s.io/component-base/metrics/legacyregistry",
     "k8s.io/klog",
     "k8s.io/kubernetes/pkg/apis/core",
     "k8s.io/kubernetes/pkg/controller/deployment/util",
