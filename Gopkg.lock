@@ -600,7 +600,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:bcdd9d03a5a157e397d600c6bdc15d41e9ab613336ac9faae9106410fe568701"
+  digest = "1:5b3b0f48dcf9a8ba6a3adcff1de370b3be532ca90a5fb44afe9ca1113fd9f2eb"
   name = "golang.org/x/crypto"
   packages = [
     "blowfish",
@@ -618,7 +618,7 @@
     "ssh/terminal",
   ]
   pruneopts = "NUT"
-  revision = "bac4c82f69751a6dd76e702d54b3ceb88adab236"
+  revision = "2aa609cf4a9d7d1126360de73b55b6002f9e052a"
 
 [[projects]]
   branch = "master"
@@ -639,7 +639,7 @@
     "websocket",
   ]
   pruneopts = "NUT"
-  revision = "46282727080fcf56da5781d0a9ef2fda184be5e6"
+  revision = "078779b8f2d83d3faf06633707560018f91a9e82"
 
 [[projects]]
   branch = "master"
@@ -1359,7 +1359,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:641e1eadbadfd1136f9aa40bd8b57d7b98c3d948101935afb162448d3138d70a"
+  digest = "1:f220b24aac6df8233507f1220be69daa10e955159d714bd55e2b54f5627490a1"
   name = "k8s.io/legacy-cloud-providers"
   packages = [
     "azure",
@@ -1385,7 +1385,7 @@
     "azure/retry",
   ]
   pruneopts = "NUT"
-  revision = "5d0436fa4dba454aa237a42bab2edca178acfb41"
+  revision = "b164a9d9150286f1fdb1f7e4b2b8d5417d9844c8"
 
 [[projects]]
   branch = "master"
