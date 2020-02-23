@@ -17,6 +17,8 @@ limitations under the License.
 package azuredisk
 
 import (
+	"context"
+	"reflect"
 	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-07-01/compute"
@@ -24,7 +26,23 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 )
+
+var (
+	testVolumeName = "unit-test-volume"
+)
+
+func checkTestError(t *testing.T, expectedErrCode codes.Code, err error) {
+	s, ok := status.FromError(err)
+	if !ok {
+		t.Errorf("could not get error status from err: %v", s)
+	}
+	if s.Code() != expectedErrCode {
+		t.Errorf("expected error code: %v, actual: %v, err: %v", expectedErrCode, s.Code(), err)
+	}
+}
 
 func TestGetCachingMode(t *testing.T) {
 	tests := []struct {
@@ -126,6 +144,131 @@ func TestGetEntriesAndNextToken(t *testing.T) {
 		resultResponse, resultError := getEntriesAndNextToken(test.request, test.snapshots)
 		if resultResponse != test.expectedResponse || resultError.Error() != test.expectedError.Error() {
 			t.Errorf("request: %v, snapshotListPage: %v, resultResponse: %v, expectedResponse: %v, resultError: %v, expectedError: %v", test.request, test.snapshots, resultResponse, test.expectedResponse, resultError, test.expectedError)
+		}
+	}
+}
+
+func TestCreateVolume(t *testing.T) {
+	d := NewFakeDriver()
+
+	tests := []struct {
+		desc            string
+		req             *csi.CreateVolumeRequest
+		expectedResp    *csi.CreateVolumeResponse
+		expectedErrCode codes.Code
+	}{
+		{
+			desc: "fail with no name",
+			req: &csi.CreateVolumeRequest{
+				Name: "",
+			},
+			expectedResp:    nil,
+			expectedErrCode: codes.InvalidArgument,
+		},
+		{
+			desc: "fail with no volume capabilities",
+			req: &csi.CreateVolumeRequest{
+				Name: testVolumeName,
+			},
+			expectedResp:    nil,
+			expectedErrCode: codes.InvalidArgument,
+		},
+		{
+			desc: "fail with the invalid capabilities",
+			req: &csi.CreateVolumeRequest{
+				Name:               testVolumeName,
+				VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_UNKNOWN),
+			},
+			expectedResp:    nil,
+			expectedErrCode: codes.InvalidArgument,
+		},
+		{
+			desc: "fail with the invalid requested size",
+			req: &csi.CreateVolumeRequest{
+				Name:               testVolumeName,
+				VolumeCapabilities: stdVolumeCapabilities,
+				CapacityRange: &csi.CapacityRange{
+					RequiredBytes: volumehelper.GiBToBytes(20),
+					LimitBytes:    volumehelper.GiBToBytes(15),
+				},
+			},
+			expectedResp:    nil,
+			expectedErrCode: codes.InvalidArgument,
+		},
+		{
+			desc: "success standard",
+			req: &csi.CreateVolumeRequest{
+				Name:               testVolumeName,
+				VolumeCapabilities: stdVolumeCapabilities,
+				CapacityRange:      stdCapacityRange,
+			},
+			expectedResp: &csi.CreateVolumeResponse{
+				Volume: &csi.Volume{
+					VolumeId:      testVolumeName, //fmt.Sprintf(managedDiskPath, d.cloud.SubscriptionID, d.cloud.ResourceGroup, testVolumeName),
+					CapacityBytes: stdCapacityRange.RequiredBytes,
+					VolumeContext: nil,
+					ContentSource: &csi.VolumeContentSource{},
+					AccessibleTopology: []*csi.Topology{
+						{
+							Segments: map[string]string{topologyKey: ""},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		result, err := d.CreateVolume(context.Background(), test.req)
+		if err != nil {
+			checkTestError(t, test.expectedErrCode, err)
+		}
+		if !reflect.DeepEqual(result, test.expectedResp) {
+			t.Errorf("input request: %v, CreateVolume result: %v, expected: %v", test.req, result, test.expectedResp)
+		}
+	}
+}
+
+func TestDeleteVolume(t *testing.T) {
+	d := NewFakeDriver()
+
+	tests := []struct {
+		desc            string
+		req             *csi.DeleteVolumeRequest
+		expectedResp    *csi.DeleteVolumeResponse
+		expectedErrCode codes.Code
+	}{
+		{
+			desc: "fail with no volume id",
+			req: &csi.DeleteVolumeRequest{
+				VolumeId: "",
+			},
+			expectedResp:    nil,
+			expectedErrCode: codes.InvalidArgument,
+		},
+		{
+			desc: "fail with the invalid diskURI",
+			req: &csi.DeleteVolumeRequest{
+				VolumeId: "123",
+			},
+			expectedResp: &csi.DeleteVolumeResponse{},
+		},
+		{
+			desc: "success standard",
+			req: &csi.DeleteVolumeRequest{
+				VolumeId: testVolumeName, //fmt.Sprintf(managedDiskPath, d.cloud.SubscriptionID, d.cloud.ResourceGroup, testVolumeName),
+			},
+			expectedResp: &csi.DeleteVolumeResponse{},
+		},
+	}
+
+	for _, test := range tests {
+		result, err := d.DeleteVolume(context.Background(), test.req)
+		if err != nil {
+			checkTestError(t, test.expectedErrCode, err)
+		}
+		if !reflect.DeepEqual(result, test.expectedResp) {
+			t.Errorf("input request: %v, DeleteVolume result: %v, expected: %v", test.req, result, test.expectedResp)
 		}
 	}
 }

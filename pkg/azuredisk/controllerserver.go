@@ -81,7 +81,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		requestGiB = defaultDiskSize
 	}
 
-	maxVolSize := int(req.GetCapacityRange().GetLimitBytes())
+	maxVolSize := int(volumehelper.RoundUpGiB(req.GetCapacityRange().GetLimitBytes()))
 	if (maxVolSize > 0) && (maxVolSize < requestGiB) {
 		return nil, status.Error(codes.InvalidArgument, "After round-up, volume size exceeds the limit specified")
 	}
