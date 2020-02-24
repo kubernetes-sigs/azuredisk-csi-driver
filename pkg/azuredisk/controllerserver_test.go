@@ -204,7 +204,7 @@ func TestCreateVolume(t *testing.T) {
 			},
 			expectedResp: &csi.CreateVolumeResponse{
 				Volume: &csi.Volume{
-					VolumeId:      testVolumeName, //fmt.Sprintf(managedDiskPath, d.cloud.SubscriptionID, d.cloud.ResourceGroup, testVolumeName),
+					VolumeId:      testVolumeName,
 					CapacityBytes: stdCapacityRange.RequiredBytes,
 					VolumeContext: nil,
 					ContentSource: &csi.VolumeContentSource{},
@@ -256,7 +256,7 @@ func TestDeleteVolume(t *testing.T) {
 		{
 			desc: "success standard",
 			req: &csi.DeleteVolumeRequest{
-				VolumeId: testVolumeName, //fmt.Sprintf(managedDiskPath, d.cloud.SubscriptionID, d.cloud.ResourceGroup, testVolumeName),
+				VolumeId: testVolumeName,
 			},
 			expectedResp: &csi.DeleteVolumeResponse{},
 		},
