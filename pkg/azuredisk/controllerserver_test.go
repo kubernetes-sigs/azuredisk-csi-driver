@@ -149,8 +149,10 @@ func TestGetEntriesAndNextToken(t *testing.T) {
 }
 
 func TestCreateVolume(t *testing.T) {
-	d := NewFakeDriver()
-
+	d, err := NewFakeDriver()
+	if err != nil {
+		t.Fatalf("Error getting driver: %v", err)
+	}
 	tests := []struct {
 		desc            string
 		req             *csi.CreateVolumeRequest
@@ -230,7 +232,10 @@ func TestCreateVolume(t *testing.T) {
 }
 
 func TestDeleteVolume(t *testing.T) {
-	d := NewFakeDriver()
+	d, err := NewFakeDriver()
+	if err != nil {
+		t.Fatalf("Error getting driver: %v", err)
+	}
 
 	tests := []struct {
 		desc            string

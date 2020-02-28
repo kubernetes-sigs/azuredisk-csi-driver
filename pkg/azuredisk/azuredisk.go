@@ -104,7 +104,10 @@ func (d *Driver) Run(endpoint string) {
 	}
 	d.cloud = cloud
 
-	d.mounter = mounter.NewSafeMounter()
+	d.mounter, err = mounter.NewSafeMounter()
+	if err != nil {
+		klog.Fatalf("Failed to get safe mounter. Error: %v", err)
+	}
 
 	d.AddControllerServiceCapabilities(
 		[]csi.ControllerServiceCapability_RPC_Type{
