@@ -25,9 +25,17 @@ import (
 )
 
 // Note: This file is added only to ensure that the UTs can be run from MacOS.
-func scsiHostRescan(io ioHandler, exec mount.Exec) {
+func scsiHostRescan(io ioHandler, m *mount.SafeFormatAndMount) {
 }
 
-func findDiskByLun(lun int, io ioHandler, exec mount.Exec) (string, error) {
+func formatAndMount(source, target, fstype string, options []string, m *mount.SafeFormatAndMount) error {
+	return nil
+}
+
+func findDiskByLun(lun int, io ioHandler, m *mount.SafeFormatAndMount) (string, error) {
 	return "", fmt.Errorf("findDiskByLun not implemented")
+}
+
+func preparePublishPath(path string, m *mount.SafeFormatAndMount) error {
+	return nil
 }
