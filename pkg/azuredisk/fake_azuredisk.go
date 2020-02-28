@@ -50,7 +50,7 @@ var (
 	}
 )
 
-func NewFakeDriver() *Driver {
+func NewFakeDriver() (*Driver, error) {
 	driver := Driver{}
 	driver.Name = fakeDriverName
 	driver.Version = fakeDriverVersion
@@ -58,7 +58,12 @@ func NewFakeDriver() *Driver {
 	driver.CSIDriver = *csicommon.NewFakeCSIDriver()
 
 	driver.cloud = azure.GetTestCloud()
-	driver.mounter = mounter.NewSafeMounter()
+	mounter, err := mounter.NewSafeMounter()
+	if err != nil {
+		return nil, err
+	}
+
+	driver.mounter = mounter
 
 	driver.AddControllerServiceCapabilities(
 		[]csi.ControllerServiceCapability_RPC_Type{
@@ -75,7 +80,7 @@ func NewFakeDriver() *Driver {
 		csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
 	})
 
-	return &driver
+	return &driver, nil
 }
 
 func createVolumeCapabilities(accessMode csi.VolumeCapability_AccessMode_Mode) []*csi.VolumeCapability {

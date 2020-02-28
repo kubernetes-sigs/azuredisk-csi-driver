@@ -108,3 +108,7 @@
 [[constraint]]
   branch = "master"
   name = "k8s.io/legacy-cloud-providers"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/kubernetes-csi/csi-proxy"

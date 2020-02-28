@@ -140,7 +140,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 
 	// FormatAndMount will format only if needed
 	klog.V(2).Infof("NodeStageVolume: formatting %s and mounting at %s with mount options(%s)", source, target, options)
-	err = d.mounter.FormatAndMount(source, target, fstype, options)
+	err = d.formatAndMount(source, target, fstype, options)
 	if err != nil {
 		msg := fmt.Sprintf("could not format %q(lun: %q), and mount it at %q", source, lun, target)
 		return nil, status.Error(codes.Internal, msg)
@@ -193,6 +193,11 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		return nil, status.Error(codes.InvalidArgument, "Target path not provided")
 	}
 
+	err := preparePublishPath(target, d.mounter)
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Target path could not be prepared: %v", err))
+	}
+
 	mountOptions := []string{"bind"}
 	if req.GetReadonly() {
 		mountOptions = append(mountOptions, "ro")
@@ -222,9 +227,6 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 
 	klog.V(2).Infof("NodePublishVolume: mounting %s at %s", source, target)
 	if err := d.mounter.Mount(source, target, "", mountOptions); err != nil {
-		if removeErr := os.Remove(target); removeErr != nil {
-			return nil, status.Errorf(codes.Internal, "Could not remove mount target %q: %v", target, removeErr)
-		}
 		return nil, status.Errorf(codes.Internal, "Could not mount %q at %q: %v", source, target, err)
 	}
 	klog.V(2).Infof("NodePublishVolume: mount %s at %s successfully", source, target)
@@ -489,6 +491,10 @@ func (d *Driver) ensureMountPoint(target string) error {
 	return nil
 }
 
+func (d *Driver) formatAndMount(source, target, fstype string, options []string) error {
+	return formatAndMount(source, target, fstype, options, d.mounter)
+}
+
 func (d *Driver) getDevicePathWithLUN(lunStr string) (string, error) {
 	lun, err := getDiskLUN(lunStr)
 	if err != nil {
@@ -496,12 +502,12 @@ func (d *Driver) getDevicePathWithLUN(lunStr string) (string, error) {
 	}
 
 	io := &osIOHandler{}
-	scsiHostRescan(io, d.mounter.Exec)
+	scsiHostRescan(io, d.mounter)
 
 	newDevicePath := ""
 	err = wait.Poll(1*time.Second, 2*time.Minute, func() (bool, error) {
 		var err error
-		if newDevicePath, err = findDiskByLun(int(lun), io, d.mounter.Exec); err != nil {
+		if newDevicePath, err = findDiskByLun(int(lun), io, d.mounter); err != nil {
 			return false, fmt.Errorf("azureDisk - findDiskByLun(%v) failed with error(%s)", lun, err)
 		}
 

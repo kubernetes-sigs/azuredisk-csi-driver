@@ -20,9 +20,9 @@ package mounter
 
 import "k8s.io/kubernetes/pkg/util/mount"
 
-func NewSafeMounter() *mount.SafeFormatAndMount {
+func NewSafeMounter() (*mount.SafeFormatAndMount, error) {
 	return &mount.SafeFormatAndMount{
 		Interface: mount.New(""),
 		Exec:      mount.NewOsExec(),
-	}
+	}, nil
 }

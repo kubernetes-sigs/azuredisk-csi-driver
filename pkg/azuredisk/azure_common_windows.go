@@ -19,100 +19,68 @@ limitations under the License.
 package azuredisk
 
 import (
-	"encoding/json"
 	"fmt"
 	"strconv"
-	"strings"
 
 	"k8s.io/klog"
 
 	"k8s.io/kubernetes/pkg/util/mount"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
 )
 
-func scsiHostRescan(io ioHandler, exec mount.Exec) {
-	cmd := "Update-HostStorageCache"
-	output, err := exec.Run("powershell", "/c", cmd)
-	if err != nil {
-		klog.Errorf("Update-HostStorageCache failed in scsiHostRescan, error: %v, output: %q", err, string(output))
+func formatAndMount(source, target, fstype string, options []string, m *mount.SafeFormatAndMount) error {
+	proxy, ok := m.Interface.(*mounter.CSIProxyMounter)
+	if !ok {
+		return fmt.Errorf("could not cast to csi proxy class")
+	}
+	return proxy.FormatAndMount(source, target, fstype, options)
+}
+
+func scsiHostRescan(io ioHandler, m *mount.SafeFormatAndMount) {
+	proxy, ok := m.Interface.(*mounter.CSIProxyMounter)
+	if !ok {
+		klog.Errorf("could not cast to csi proxy class")
+		return
+	}
+
+	if err := proxy.Rescan(); err != nil {
+		klog.Errorf("Rescan failed in scsiHostRescan, error: %v", err)
 	}
 }
 
 // search Windows disk number by LUN
-func findDiskByLun(lun int, iohandler ioHandler, exec mount.Exec) (string, error) {
-	cmd := `Get-Disk | select number, location | ConvertTo-Json`
-	output, err := exec.Run("powershell", "/c", cmd)
+func findDiskByLun(lun int, iohandler ioHandler, m *mount.SafeFormatAndMount) (string, error) {
+	proxy, ok := m.Interface.(*mounter.CSIProxyMounter)
+	if !ok {
+		return "", fmt.Errorf("could not cast to csi proxy class")
+	}
+
+	diskNum, err := proxy.FindDiskByLun(strconv.Itoa(lun))
 	if err != nil {
-		klog.Errorf("Get-Disk failed in findDiskByLun, error: %v, output: %q", err, string(output))
 		return "", err
 	}
-
-	if len(output) < 10 {
-		return "", fmt.Errorf("Get-Disk output is too short, output: %q", string(output))
-	}
-
-	var data []map[string]interface{}
-	if err = json.Unmarshal(output, &data); err != nil {
-		klog.Errorf("Get-Disk output is not a json array, output: %q", string(output))
-		return "", err
-	}
-
-	for _, v := range data {
-		if jsonLocation, ok := v["location"]; ok {
-			if location, ok := jsonLocation.(string); ok {
-				if !strings.Contains(location, " LUN ") {
-					continue
-				}
-
-				arr := strings.Split(location, " ")
-				arrLen := len(arr)
-				if arrLen < 3 {
-					klog.Warningf("unexpected json structure from Get-Disk, location: %q", jsonLocation)
-					continue
-				}
-
-				klog.V(4).Infof("found a disk, locatin: %q, lun: %q", location, arr[arrLen-1])
-				//last element of location field is LUN number, e.g.
-				//		"location":  "Integrated : Adapter 3 : Port 0 : Target 0 : LUN 1"
-				l, err := strconv.Atoi(arr[arrLen-1])
-				if err != nil {
-					klog.Warningf("cannot parse element from data structure, location: %q, element: %q", location, arr[arrLen-1])
-					continue
-				}
-
-				if l == lun {
-					klog.V(4).Infof("found a disk and lun, locatin: %q, lun: %d", location, lun)
-					if d, ok := v["number"]; ok {
-						if diskNum, ok := d.(float64); ok {
-							klog.V(2).Infof("azureDisk Mount: got disk number(%d) by LUN(%d)", int(diskNum), lun)
-							return strconv.Itoa(int(diskNum)), nil
-						}
-						klog.Warningf("LUN(%d) found, but could not get disk number(%q), location: %q", lun, d, location)
-					}
-					return "", fmt.Errorf("LUN(%d) found, but could not get disk number, location: %q", lun, location)
-				}
-			}
-		}
-	}
-
-	return "", nil
+	return diskNum, err
 }
 
-func formatIfNotFormatted(disk string, fstype string, exec mount.Exec) {
-	if err := mount.ValidateDiskNumber(disk); err != nil {
-		klog.Errorf("azureDisk Mount: formatIfNotFormatted failed, err: %v\n", err)
-		return
+// preparePublishPath - In case of windows, the publish code path creates a soft link
+// from global stage path to the publish path. But kubelet creates the directory in advance.
+// We work around this issue by deleting the publish path then recreating the link.
+func preparePublishPath(path string, m *mount.SafeFormatAndMount) error {
+	proxy, ok := m.Interface.(*mounter.CSIProxyMounter)
+	if !ok {
+		return fmt.Errorf("could not cast to csi proxy class")
 	}
 
-	if len(fstype) == 0 {
-		// Use 'NTFS' as the default
-		fstype = "NTFS"
-	}
-	cmd := fmt.Sprintf("Get-Disk -Number %s | Where partitionstyle -eq 'raw' | Initialize-Disk -PartitionStyle MBR -PassThru", disk)
-	cmd += fmt.Sprintf(" | New-Partition -AssignDriveLetter -UseMaximumSize | Format-Volume -FileSystem %s -Confirm:$false", fstype)
-	output, err := exec.Run("powershell", "/c", cmd)
+	isExists, err := proxy.ExistsPath(path)
 	if err != nil {
-		klog.Errorf("azureDisk Mount: Get-Disk failed, error: %v, output: %q", err, string(output))
-	} else {
-		klog.Infof("azureDisk Mount: Disk successfully formatted, disk: %q, fstype: %q\n", disk, fstype)
+		return err
 	}
+
+	if isExists {
+		err = proxy.Rmdir(path)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

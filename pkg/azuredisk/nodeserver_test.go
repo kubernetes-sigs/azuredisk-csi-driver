@@ -105,7 +105,10 @@ func TestEnsureMountPoint(t *testing.T) {
 		return nil, nil
 	}
 
-	d := NewFakeDriver()
+	d, err := NewFakeDriver()
+	if err != nil {
+		t.Fatalf("Error getting driver: %v", err)
+	}
 
 	tests := []struct {
 		desc          string

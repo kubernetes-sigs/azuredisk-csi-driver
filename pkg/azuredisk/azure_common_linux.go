@@ -71,7 +71,7 @@ func getDiskLinkByDevName(io ioHandler, devLinkPath, devName string) (string, er
 	return "", fmt.Errorf("read %s error: %v", devLinkPath, err)
 }
 
-func scsiHostRescan(io ioHandler, exec mount.Exec) {
+func scsiHostRescan(io ioHandler, m *mount.SafeFormatAndMount) {
 	scsi_path := "/sys/class/scsi_host/"
 	if dirs, err := io.ReadDir(scsi_path); err == nil {
 		for _, f := range dirs {
@@ -86,9 +86,13 @@ func scsiHostRescan(io ioHandler, exec mount.Exec) {
 	}
 }
 
-func findDiskByLun(lun int, io ioHandler, exec mount.Exec) (string, error) {
+func findDiskByLun(lun int, io ioHandler, m *mount.SafeFormatAndMount) (string, error) {
 	azureDisks := listAzureDiskPath(io)
 	return findDiskByLunWithConstraint(lun, io, azureDisks)
+}
+
+func formatAndMount(source, target, fstype string, options []string, m *mount.SafeFormatAndMount) error {
+	return m.FormatAndMount(source, target, fstype, options)
 }
 
 // finds a device mounted to "current" node
@@ -180,4 +184,8 @@ func findDiskByLunWithConstraint(lun int, io ioHandler, azureDisks []string) (st
 		}
 	}
 	return "", err
+}
+
+func preparePublishPath(path string, m *mount.SafeFormatAndMount) error {
+	return nil
 }
