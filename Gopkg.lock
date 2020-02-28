@@ -348,6 +348,23 @@
   version = "v1.1.9"
 
 [[projects]]
+  branch = "master"
+  digest = "1:92524f753b58fec236b576d3d6b3c1183546dc088b0b48eef69aecbdaf833920"
+  name = "github.com/kubernetes-csi/csi-proxy"
+  packages = [
+    "client",
+    "client/api/disk/v1alpha1",
+    "client/api/filesystem/v1alpha1",
+    "client/api/volume/v1alpha1",
+    "client/apiversion",
+    "client/groups/disk/v1alpha1",
+    "client/groups/filesystem/v1alpha1",
+    "client/groups/volume/v1alpha1",
+  ]
+  pruneopts = "NUT"
+  revision = "9dee974c5759c83c112130f3d95e20bed6bd8bc0"
+
+[[projects]]
   digest = "1:775dd16bb1280c2723378738cf1619f93840fe9bf65ca9b526c49bc8e0bb0cc8"
   name = "github.com/kubernetes-csi/external-snapshotter"
   packages = [
@@ -1462,6 +1479,13 @@
     "github.com/container-storage-interface/spec/lib/go/csi",
     "github.com/golang/protobuf/ptypes",
     "github.com/golang/protobuf/ptypes/wrappers",
+    "github.com/kubernetes-csi/csi-proxy/client",
+    "github.com/kubernetes-csi/csi-proxy/client/api/disk/v1alpha1",
+    "github.com/kubernetes-csi/csi-proxy/client/api/filesystem/v1alpha1",
+    "github.com/kubernetes-csi/csi-proxy/client/api/volume/v1alpha1",
+    "github.com/kubernetes-csi/csi-proxy/client/groups/disk/v1alpha1",
+    "github.com/kubernetes-csi/csi-proxy/client/groups/filesystem/v1alpha1",
+    "github.com/kubernetes-csi/csi-proxy/client/groups/volume/v1alpha1",
     "github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1beta1",
     "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned",
     "github.com/onsi/ginkgo",
