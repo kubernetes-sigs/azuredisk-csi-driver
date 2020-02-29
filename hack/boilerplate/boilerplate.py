@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# Copyright 2019 The Kubernetes Authors.
+# Copyright 2015 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,14 +17,12 @@
 from __future__ import print_function
 
 import argparse
+import datetime
 import difflib
 import glob
-import json
-import mmap
 import os
 import re
 import sys
-from datetime import date
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -32,14 +30,12 @@ parser.add_argument(
     help="list of files to check, all files if unspecified",
     nargs='*')
 
-# Rootdir defaults to the directory **above** the repo-infra dir.
-rootdir = os.path.dirname(__file__) + "./../../../"
+rootdir = os.path.dirname(__file__) + "/../../"
 rootdir = os.path.abspath(rootdir)
 parser.add_argument(
     "--rootdir", default=rootdir, help="root directory to examine")
 
-default_boilerplate_dir = os.path.join(rootdir, "blobfuse-csi-driver/hack/boilerplate")
-
+default_boilerplate_dir = os.path.join(rootdir, "hack/boilerplate")
 parser.add_argument(
     "--boilerplate-dir", default=default_boilerplate_dir)
 
@@ -65,6 +61,14 @@ def get_refs():
 
     return refs
 
+def is_generated_file(filename, data, regexs):
+    for d in skipped_ungenerated_files:
+        if d in filename:
+            return False
+
+    p = regexs["generated"]
+    return p.search(data)
+
 def file_passes(filename, refs, regexs):
     try:
         f = open(filename, 'r')
@@ -75,20 +79,27 @@ def file_passes(filename, refs, regexs):
     data = f.read()
     f.close()
 
+    # determine if the file is automatically generated
+    generated = is_generated_file(filename, data, regexs)
+
     basename = os.path.basename(filename)
     extension = file_extension(filename)
+    if generated:
+        if extension == "go":
+            extension = "generatego"
+        elif extension == "bzl":
+            extension = "generatebzl"
+
     if extension != "":
         ref = refs[extension]
     else:
         ref = refs[basename]
 
-    # remove build tags from the top of Go files
-    if extension == "go":
+    # remove extra content from the top of files
+    if extension == "go" or extension == "generatego":
         p = regexs["go_build_constraints"]
         (data, found) = p.subn("", data, 1)
-
-    # remove shebang from the top of shell files
-    if extension == "sh" or extension == "py":
+    elif extension == "sh":
         p = regexs["shebang"]
         (data, found) = p.subn("", data, 1)
 
@@ -107,15 +118,19 @@ def file_passes(filename, refs, regexs):
     p = regexs["year"]
     for d in data:
         if p.search(d):
-            print('File %s is missing the year' % filename, file=verbose_out)
+            if generated:
+                print('File %s has the YEAR field, but it should not be in generated file' % filename, file=verbose_out)
+            else:
+                print('File %s has the YEAR field, but missing the year of date' % filename, file=verbose_out)
             return False
 
-    # Replace all occurrences of the regex "CURRENT_YEAR|...|2016|2015|2014" with "YEAR"
-    p = regexs["date"]
-    for i, d in enumerate(data):
-        (data[i], found) = p.subn('YEAR', d)
-        if found != 0:
-            break
+    if not generated:
+        # Replace all occurrences of the regex "2014|2015|2016|2017|2018" with "YEAR"
+        p = regexs["date"]
+        for i, d in enumerate(data):
+            (data[i], found) = p.subn('YEAR', d)
+            if found != 0:
+                break
 
     # if we don't match the reference at this point, fail
     if ref != data:
@@ -132,9 +147,12 @@ def file_passes(filename, refs, regexs):
 def file_extension(filename):
     return os.path.splitext(filename)[1].split(".")[-1].lower()
 
-skipped_dirs = ['Godeps', 'third_party', '_gopath', '_output', '.git',
-                'cluster/env.sh', 'vendor', 'test/e2e/generated/bindata.go',
-                'repo-infra/verify/boilerplate/test', '.glide']
+skipped_dirs = ['Godeps', 'third_party', '_gopath', '_output', '.git', 'cluster/env.sh',
+                "vendor", "test/e2e/generated/bindata.go", "hack/boilerplate/test",
+                "pkg/kubectl/generated/bindata.go"]
+
+# list all the files contain 'DO NOT EDIT', but are not generated
+skipped_ungenerated_files = ['hack/lib/swagger.sh', 'hack/boilerplate/boilerplate.py']
 
 def normalize_files(files):
     newfiles = []
@@ -142,6 +160,9 @@ def normalize_files(files):
         if any(x in pathname for x in skipped_dirs):
             continue
         newfiles.append(pathname)
+    for i, pathname in enumerate(newfiles):
+        if not os.path.isabs(pathname):
+            newfiles[i] = os.path.join(args.rootdir, pathname)
     return newfiles
 
 def get_files(extensions):
@@ -163,7 +184,6 @@ def get_files(extensions):
                 files.append(pathname)
 
     files = normalize_files(files)
-
     outfiles = []
     for pathname in files:
         basename = os.path.basename(pathname)
@@ -172,20 +192,24 @@ def get_files(extensions):
             outfiles.append(pathname)
     return outfiles
 
+def get_dates():
+    years = datetime.datetime.now().year
+    return '(%s)' % '|'.join((str(year) for year in range(2014, years+1)))
+
 def get_regexs():
     regexs = {}
     # Search for "YEAR" which exists in the boilerplate, but shouldn't in the real thing
     regexs["year"] = re.compile( 'YEAR' )
-    # dates can be 2014, 2015, 2016, ..., CURRENT_YEAR, company holder names can be anything
-    years = range(2014, date.today().year + 1)
-    regexs["date"] = re.compile( '(%s)' % "|".join(map(lambda l: str(l), years)) )
+    # get_dates return 2014, 2015, 2016, 2017, or 2018 until the current year as a regex like: "(2014|2015|2016|2017|2018)";
+    # company holder names can be anything
+    regexs["date"] = re.compile(get_dates())
     # strip // +build \n\n build constraints
     regexs["go_build_constraints"] = re.compile(r"^(// \+build.*\n)+\n", re.MULTILINE)
     # strip #!.* from shell scripts
     regexs["shebang"] = re.compile(r"^(#!.*\n)\n*", re.MULTILINE)
+    # Search for generated files
+    regexs["generated"] = re.compile( 'DO NOT EDIT' )
     return regexs
-
-
 
 def main():
     regexs = get_regexs()
@@ -199,4 +223,4 @@ def main():
     return 0
 
 if __name__ == "__main__":
-    sys.exit(main())
+  sys.exit(main())
