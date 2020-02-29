@@ -18,6 +18,7 @@ package azuredisk
 
 import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/golang/mock/gomock"
 
 	"k8s.io/legacy-cloud-providers/azure"
 
@@ -57,7 +58,10 @@ func NewFakeDriver() (*Driver, error) {
 	driver.NodeID = fakeNodeID
 	driver.CSIDriver = *csicommon.NewFakeCSIDriver()
 
-	driver.cloud = azure.GetTestCloud()
+	ctrl := gomock.NewController(nil)
+	defer ctrl.Finish()
+
+	driver.cloud = azure.GetTestCloud(ctrl)
 	mounter, err := mounter.NewSafeMounter()
 	if err != nil {
 		return nil, err
