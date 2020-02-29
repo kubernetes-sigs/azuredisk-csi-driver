@@ -9,7 +9,7 @@ spec:
   resources:
     requests:
       storage: 1Gi
-  storageClassName: azuredisk.csi.azure.com
+  storageClassName: disk.csi.azure.com
 ---
 apiVersion: apps/v1
 kind: Deployment
