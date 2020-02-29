@@ -222,7 +222,15 @@
   revision = "8c9f03a8e57eb486e42badaed3fb287da51807ba"
 
 [[projects]]
-  digest = "1:d44fe4c55ffc94caf1d95f93d4d5f9df24e51d994e38a1435bd7926278028fdd"
+  digest = "1:7ae311278f7ccaa724de8f2cdec0a507ba3ee6dea8c77237e8157bcf64b0f28b"
+  name = "github.com/golang/mock"
+  packages = ["gomock"]
+  pruneopts = "NUT"
+  revision = "b48cb6623c04dae64c28537143aca42d16561daf"
+  version = "v1.4.1"
+
+[[projects]]
+  digest = "1:58e8c7bfdbe1fc325ddb508d95ad7b2249623537124359f5ec8efed18f663255"
   name = "github.com/golang/protobuf"
   packages = [
     "proto",
@@ -234,8 +242,8 @@
     "ptypes/wrappers",
   ]
   pruneopts = "NUT"
-  revision = "d23c5127dc24889085f8ccea5c9d560a57a879d8"
-  version = "v1.3.3"
+  revision = "5d5b4c10bd43f85e63bd9e4a3fa9b1ea2ef88af2"
+  version = "v1.3.4"
 
 [[projects]]
   digest = "1:05f95ffdfcf651bdb0f05b40b69e7f5663047f8da75c72d58728acb59b5cc107"
@@ -362,7 +370,7 @@
     "client/groups/volume/v1alpha1",
   ]
   pruneopts = "NUT"
-  revision = "9dee974c5759c83c112130f3d95e20bed6bd8bc0"
+  revision = "77f08881831f4b46ab816b44f314774c9cdaf504"
 
 [[projects]]
   digest = "1:775dd16bb1280c2723378738cf1619f93840fe9bf65ca9b526c49bc8e0bb0cc8"
@@ -639,7 +647,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:838607c2a6df558cc646f66f958954c10e514a80b486ba2926bdd6390b3efd4c"
+  digest = "1:320f51243b09c56244b24782db778d97792f1c13eba5c5a27acb1621cc3bc5ba"
   name = "golang.org/x/net"
   packages = [
     "context",
@@ -656,7 +664,7 @@
     "websocket",
   ]
   pruneopts = "NUT"
-  revision = "078779b8f2d83d3faf06633707560018f91a9e82"
+  revision = "0de0cce0169b09b364e001f108dc0399ea8630b3"
 
 [[projects]]
   branch = "master"
@@ -671,7 +679,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:7864e7e170bbb40aab1897695942d4b504adb4850122550c4d8cc57b6e4e8615"
+  digest = "1:eb431589171bc54fda9c0f24cef20c0328dcb870b853644e346b1556ec78f26c"
   name = "golang.org/x/sys"
   packages = [
     "cpu",
@@ -679,7 +687,7 @@
     "windows",
   ]
   pruneopts = "NUT"
-  revision = "cb0a6d8edb6c3528b01a0be84a5fe513dbf880a6"
+  revision = "d5e6a3e2c0ae16fc7480523ebcb7fd4dd3215489"
 
 [[projects]]
   digest = "1:0b5dc8c3581fc3ea2b80cc2e360dfb9c2d61dd0cba0d2fe247e8edd3e83f7551"
@@ -756,11 +764,11 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:0c679e19d1865dd65e7ec400bf9562d8f161cf59c4f74c0bb50f365fc9fb19eb"
+  digest = "1:1c2a9b5021f7fe23a6f880468633f407f8b600a67e29b10f1892ae4425085820"
   name = "google.golang.org/genproto"
   packages = ["googleapis/rpc/status"]
   pruneopts = "NUT"
-  revision = "dad8c97a84f542cf0c67e3ab67b1c09e795fb4af"
+  revision = "8c2c7df3a383ef6eb341a587aee53b6d5607eb55"
 
 [[projects]]
   digest = "1:ad113f760f5a2a924fd1ea324539df77f3e0166bbaf7f886985fbb447737323b"
@@ -1376,7 +1384,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:f220b24aac6df8233507f1220be69daa10e955159d714bd55e2b54f5627490a1"
+  digest = "1:74831d213db1b573ec3a6a238122dc81b86a53f2124292d3a0194b057b2754a0"
   name = "k8s.io/legacy-cloud-providers"
   packages = [
     "azure",
@@ -1389,11 +1397,14 @@
     "azure/clients/loadbalancerclient",
     "azure/clients/publicipclient",
     "azure/clients/routeclient",
+    "azure/clients/routeclient/mockrouteclient",
     "azure/clients/routetableclient",
+    "azure/clients/routetableclient/mockroutetableclient",
     "azure/clients/securitygroupclient",
     "azure/clients/snapshotclient",
     "azure/clients/storageaccountclient",
     "azure/clients/subnetclient",
+    "azure/clients/subnetclient/mocksubnetclient",
     "azure/clients/vmclient",
     "azure/clients/vmsizeclient",
     "azure/clients/vmssclient",
@@ -1402,7 +1413,7 @@
     "azure/retry",
   ]
   pruneopts = "NUT"
-  revision = "b164a9d9150286f1fdb1f7e4b2b8d5417d9844c8"
+  revision = "aea2bb1b3f2462e11082bf5003ecb31261958b83"
 
 [[projects]]
   branch = "master"
@@ -1422,7 +1433,7 @@
     "trace",
   ]
   pruneopts = "NUT"
-  revision = "861946025e3491219eaccb1bf693e23df70c2fa8"
+  revision = "f9c14454073b22c698bbe5e19fe6c20c4651e326"
 
 [[projects]]
   digest = "1:cb422c75bab66a8339a38b64e837f3b28f3d5a8c06abd7b9048f420363baa18a"
@@ -1479,7 +1490,6 @@
     "github.com/container-storage-interface/spec/lib/go/csi",
     "github.com/golang/protobuf/ptypes",
     "github.com/golang/protobuf/ptypes/wrappers",
-    "github.com/kubernetes-csi/csi-proxy/client",
     "github.com/kubernetes-csi/csi-proxy/client/api/disk/v1alpha1",
     "github.com/kubernetes-csi/csi-proxy/client/api/filesystem/v1alpha1",
     "github.com/kubernetes-csi/csi-proxy/client/api/volume/v1alpha1",
