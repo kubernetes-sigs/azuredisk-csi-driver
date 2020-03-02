@@ -301,3 +301,9 @@ func getValidCreationData(subscriptionID, resourceGroup, sourceResourceID, sourc
 func isAvailabilityZone(zone, region string) bool {
 	return strings.HasPrefix(zone, fmt.Sprintf("%s-", region))
 }
+
+func IsCorruptedDir(dir string) bool {
+	_, pathErr := mount.PathExists(dir)
+	fmt.Printf("IsCorruptedDir(%s) returned with error: %v", dir, pathErr)
+	return pathErr != nil && mount.IsCorruptedMnt(pathErr)
+}
