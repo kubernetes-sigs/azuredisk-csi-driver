@@ -18,6 +18,11 @@ spec:
       nodeSelector:
         beta.kubernetes.io/os: linux
       priorityClassName: system-cluster-critical
+      tolerations:
+        - key: "node-role.kubernetes.io/master"
+          operator: "Equal"
+          value: "true"
+          effect: "NoSchedule"
       containers:
         - name: csi-snapshot-controller
           image: mcr.microsoft.com/oss/kubernetes-csi/snapshot-controller:v2.0.0
