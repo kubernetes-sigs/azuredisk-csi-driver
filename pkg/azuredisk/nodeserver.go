@@ -88,31 +88,10 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		return nil, status.Error(codes.InvalidArgument, "lun not provided")
 	}
 
-	// TODO: consider replacing IsLikelyNotMountPoint by IsNotMountPoint
-	notMnt, err := d.mounter.IsLikelyNotMountPoint(target)
-	if err != nil {
-		if os.IsNotExist(err) {
-			if errMkDir := d.mounter.MakeDir(target); errMkDir != nil {
-				msg := fmt.Sprintf("could not create target dir %q: %v", target, errMkDir)
-				return nil, status.Error(codes.Internal, msg)
-			}
-			notMnt = true
-		} else {
-			msg := fmt.Sprintf("could not determine if %q is valid mount point: %v", target, err)
-			return nil, status.Error(codes.Internal, msg)
-		}
+	if err := d.ensureMountPoint(target); err != nil {
+		return nil, status.Errorf(codes.Internal, "Could not mount target %q: %v", target, err)
 	}
 
-	if !notMnt {
-		klog.V(2).Infof("target %q is already a valid mount point(lun: %v), skip format and mount", target, lun)
-		// todo: check who is mounted here. No error if its us
-		/*
-			1) Target Path MUST be the vol referenced by vol ID
-			2) VolumeCapability MUST match
-			3) Readonly MUST match
-		*/
-		return &csi.NodeStageVolumeResponse{}, nil
-	}
 	// Get fsType and mountOptions that the volume will be formatted and mounted with
 	fstype := getDefaultFsType()
 	options := []string{}
@@ -462,7 +441,12 @@ func getFStype(attributes map[string]string) string {
 func (d *Driver) ensureMountPoint(target string) error {
 	notMnt, err := d.mounter.IsLikelyNotMountPoint(target)
 	if err != nil && !os.IsNotExist(err) {
-		return err
+		if IsCorruptedDir(target) {
+			notMnt = false
+			klog.Warningf("detected corrupted mount for targetPath [%s]", target)
+		} else {
+			return err
+		}
 	}
 
 	if !notMnt {
