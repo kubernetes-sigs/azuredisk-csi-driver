@@ -40,9 +40,11 @@ import (
 )
 
 const (
-	kubeconfigEnvVar = "KUBECONFIG"
-	reportDirEnv     = "ARTIFACTS"
-	defaultReportDir = "/workspace/_artifacts"
+	kubeconfigEnvVar    = "KUBECONFIG"
+	reportDirEnvVar     = "ARTIFACTS"
+	testMigrationEnvVar = "TEST_MIGRATION"
+	defaultReportDir    = "/workspace/_artifacts"
+	inTreeStorageClass  = "kubernetes.io/azure-disk"
 )
 
 var azurediskDriver *azuredisk.Driver
@@ -66,7 +68,9 @@ var _ = ginkgo.BeforeSuite(func() {
 
 	// Default storage driver configuration is CSI. Freshly built
 	// CSI driver is installed for that case.
-	if os.Getenv(driver.AzureDriverNameVar) == "" && testutil.IsRunningInProw() {
+	isUsingInTreeVolumePlugin := os.Getenv(driver.AzureDriverNameVar) == inTreeStorageClass
+	isTestingMigration := os.Getenv(testMigrationEnvVar) != ""
+	if testutil.IsRunningInProw() && (isTestingMigration || !isUsingInTreeVolumePlugin) {
 		creds, err := credentials.CreateAzureCredentialFile(false)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		azureClient, err := azure.GetAzureClient(creds.Cloud, creds.SubscriptionID, creds.AADClientID, creds.TenantID, creds.AADClientSecret)
@@ -127,7 +131,7 @@ var _ = ginkgo.AfterSuite(func() {
 
 func TestE2E(t *testing.T) {
 	gomega.RegisterFailHandler(ginkgo.Fail)
-	reportDir := os.Getenv(reportDirEnv)
+	reportDir := os.Getenv(reportDirEnvVar)
 	if reportDir == "" {
 		reportDir = defaultReportDir
 	}
