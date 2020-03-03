@@ -74,7 +74,7 @@ func (mounter *CSIProxyMounter) Mount(source string, target string, fstype strin
 //       rmdir with either pod or plugin context.
 func (mounter *CSIProxyMounter) Rmdir(path string) error {
 	rmdirRequest := &fsv1alpha1.RmdirRequest{
-		Path:    path,
+		Path:    normalizeWindowsPath(path),
 		Context: fsv1alpha1.PathContext_POD,
 		Force:   true,
 	}
@@ -113,7 +113,7 @@ func (mounter *CSIProxyMounter) IsLikelyNotMountPoint(path string) (bool, error)
 
 	response, err := mounter.FsClient.IsMountPoint(context.Background(),
 		&fsv1alpha1.IsMountPointRequest{
-			Path: path,
+			Path: normalizeWindowsPath(path),
 		})
 	if err != nil {
 		return false, err
@@ -150,7 +150,7 @@ func (mounter *CSIProxyMounter) MakeFile(pathname string) error {
 // with Plugin context..
 func (mounter *CSIProxyMounter) MakeDir(pathname string) error {
 	mkdirReq := &fsv1alpha1.MkdirRequest{
-		Path:    pathname,
+		Path:    normalizeWindowsPath(pathname),
 		Context: fsv1alpha1.PathContext_PLUGIN,
 	}
 	_, err := mounter.FsClient.Mkdir(context.Background(), mkdirReq)
@@ -166,7 +166,7 @@ func (mounter *CSIProxyMounter) MakeDir(pathname string) error {
 func (mounter *CSIProxyMounter) ExistsPath(path string) (bool, error) {
 	isExistsResponse, err := mounter.FsClient.PathExists(context.Background(),
 		&fsv1alpha1.PathExistsRequest{
-			Path: path,
+			Path: normalizeWindowsPath(path),
 		})
 	return isExistsResponse.Exists, err
 }
@@ -265,7 +265,7 @@ func (mounter *CSIProxyMounter) FormatAndMount(source string, target string, fst
 	// Mount the volume by calling the CSI proxy call.
 	mountVolumeRequest := &volumev1alpha1.MountVolumeRequest{
 		VolumeId: volumeID,
-		Path:     target,
+		Path:     normalizeWindowsPath(target),
 	}
 	_, err = mounter.VolumeClient.MountVolume(context.Background(), mountVolumeRequest)
 	if err != nil {
