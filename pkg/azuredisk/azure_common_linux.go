@@ -32,7 +32,7 @@ import (
 // "/dev/disk/azure/scsi0" dir is populated in Standard_DC4s/DC2s on Ubuntu 18.04
 func listAzureDiskPath(io ioHandler) []string {
 	var azureDiskList []string
-	azureResourcePaths := []string{"/devhost/disk/azure/", "/devhost/disk/azure/scsi0/"}
+	azureResourcePaths := []string{"/dev/disk/azure/", "/dev/disk/azure/scsi0/"}
 	for _, azureDiskPath := range azureResourcePaths {
 		if dirs, err := io.ReadDir(azureDiskPath); err == nil {
 			for _, f := range dirs {
@@ -168,7 +168,7 @@ func findDiskByLunWithConstraint(lun int, io ioHandler, azureDisks []string) (st
 						}
 					}
 					if !found {
-						devLinkPaths := []string{"/devhost/disk/azure/scsi1/", "/devhost/disk/by-id/"}
+						devLinkPaths := []string{"/dev/disk/azure/scsi1/", "/dev/disk/by-id/"}
 						for _, devLinkPath := range devLinkPaths {
 							diskPath, err := getDiskLinkByDevName(io, devLinkPath, devName)
 							if err == nil {
@@ -177,7 +177,7 @@ func findDiskByLunWithConstraint(lun int, io ioHandler, azureDisks []string) (st
 							}
 							klog.Warningf("azureDisk - getDiskLinkByDevName by %s under %s failed, error: %v", devName, devLinkPath, err)
 						}
-						return "/devhost/" + devName, nil
+						return "/dev/" + devName, nil
 					}
 				}
 			}
