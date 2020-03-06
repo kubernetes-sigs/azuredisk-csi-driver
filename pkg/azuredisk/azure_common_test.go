@@ -129,7 +129,7 @@ func TestIoHandler(t *testing.T) {
 		}
 	} else {
 		// if no disk matches lun, exit
-		if disk != "/devhost/"+devName || err != nil {
+		if disk != "/dev/"+devName || err != nil {
 			t.Errorf("no data disk found: disk %v err %v", disk, err)
 		}
 	}
