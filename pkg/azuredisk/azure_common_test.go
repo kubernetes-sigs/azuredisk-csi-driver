@@ -143,7 +143,7 @@ func TestNormalizeStorageAccountType(t *testing.T) {
 	}{
 		{
 			storageAccountType:  "",
-			expectedAccountType: compute.StandardLRS,
+			expectedAccountType: compute.StandardSSDLRS,
 			expectError:         false,
 		},
 		{

@@ -25,15 +25,14 @@ echo "==========================================================================
 
 echo "print out controller logs ..."
 echo "======================================================================================"
-kubectl logs `kubectl get po --all-namespaces | grep controller-manager | cut -d ' ' -f4` -n${NS}
-if [ $? != 0 ]; then
-    echo "not found any controller-manager logs"
-fi
-
 LABEL='app=csi-azuredisk-controller'
 kubectl get pods -n${NS} -l${LABEL} \
     | awk 'NR>1 {print $1}' \
     | xargs -I {} kubectl logs {} --prefix -c${CONTAINER} -n${NS}
+
+if [ $? != 0 ]; then
+    kubectl logs `kubectl get po -n kube-system | grep controller-manager | cut -d ' ' -f1` -n${NS}
+fi
 
 echo "print out csi-snapshot-controller logs ..."
 echo "======================================================================================"
