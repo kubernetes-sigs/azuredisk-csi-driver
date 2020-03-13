@@ -111,9 +111,7 @@ var _ = ginkgo.BeforeSuite(func() {
 var _ = ginkgo.AfterSuite(func() {
 	// Default storage driver configuration is CSI. Freshly built
 	// CSI driver is installed for that case.
-	isUsingInTreeVolumePlugin := os.Getenv(driver.AzureDriverNameVar) == inTreeStorageClass
-	isTestingMigration := os.Getenv(testMigrationEnvVar) != ""
-	if testutil.IsRunningInProw() && (isTestingMigration || !isUsingInTreeVolumePlugin) {
+	if testutil.IsRunningInProw() {
 		azurediskLog := testCmd{
 			command:  "sh",
 			args:     []string{"test/utils/azuredisk_log.sh"},
