@@ -31,7 +31,8 @@ kubectl get pods -n${NS} -l${LABEL} \
     | xargs -I {} kubectl logs {} --prefix -c${CONTAINER} -n${NS}
 
 if [ $? != 0 ]; then
-    kubectl logs `kubectl get po -n kube-system | grep controller-manager | cut -d ' ' -f1` -n${NS}
+    kubectl logs `kubectl get pods -n kube-system | grep controller-manager | cut -d ' ' -f1` -n${NS}
+    exit $?
 fi
 
 echo "print out csi-snapshot-controller logs ..."
