@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-set -e
+# set -e
 
 NS=kube-system
 CONTAINER=azuredisk
@@ -23,12 +23,16 @@ echo "print out all $NS namespace pods status ..."
 kubectl get pods -n${NS} -o wide
 echo "======================================================================================"
 
-echo "print out csi-azuredisk-controller logs ..."
+echo "print out controller logs ..."
 echo "======================================================================================"
 LABEL='app=csi-azuredisk-controller'
 kubectl get pods -n${NS} -l${LABEL} \
     | awk 'NR>1 {print $1}' \
     | xargs -I {} kubectl logs {} --prefix -c${CONTAINER} -n${NS}
+
+if [ $? != 0 ]; then
+    kubectl logs `kubectl get po -n kube-system | grep controller-manager | cut -d ' ' -f1` -n${NS}
+fi
 
 echo "print out csi-snapshot-controller logs ..."
 echo "======================================================================================"
