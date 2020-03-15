@@ -47,7 +47,11 @@ const (
 	inTreeStorageClass  = "kubernetes.io/azure-disk"
 )
 
-var azurediskDriver *azuredisk.Driver
+var (
+	azurediskDriver           *azuredisk.Driver
+	isUsingInTreeVolumePlugin = os.Getenv(driver.AzureDriverNameVar) == inTreeStorageClass
+	isTestingMigration        = os.Getenv(testMigrationEnvVar) != ""
+)
 
 type testCmd struct {
 	command  string
@@ -68,8 +72,6 @@ var _ = ginkgo.BeforeSuite(func() {
 
 	// Default storage driver configuration is CSI. Freshly built
 	// CSI driver is installed for that case.
-	isUsingInTreeVolumePlugin := os.Getenv(driver.AzureDriverNameVar) == inTreeStorageClass
-	isTestingMigration := os.Getenv(testMigrationEnvVar) != ""
 	if testutil.IsRunningInProw() && (isTestingMigration || !isUsingInTreeVolumePlugin) {
 		creds, err := credentials.CreateAzureCredentialFile(false)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
@@ -118,16 +120,17 @@ var _ = ginkgo.AfterSuite(func() {
 			startLog: "===================azuredisk log===================",
 			endLog:   "===================================================",
 		}
-		e2eTeardown := testCmd{
-			command:  "make",
-			args:     []string{"e2e-teardown"},
-			startLog: "Uninstalling Azure Disk CSI Driver...",
-			endLog:   "Azure Disk CSI Driver uninstalled",
+		if isTestingMigration || !isUsingInTreeVolumePlugin {
+			e2eTeardown := testCmd{
+				command:  "make",
+				args:     []string{"e2e-teardown"},
+				startLog: "Uninstalling Azure Disk CSI Driver...",
+				endLog:   "Azure Disk CSI Driver uninstalled",
+			}
+			execTestCmd([]testCmd{azurediskLog, e2eTeardown})
+			err := credentials.DeleteAzureCredentialFile()
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		}
-		execTestCmd([]testCmd{azurediskLog, e2eTeardown})
-
-		err := credentials.DeleteAzureCredentialFile()
-		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	}
 })
 
