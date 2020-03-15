@@ -31,6 +31,9 @@ kubectl get pods -n${NS} -l${LABEL} \
     | xargs -I {} kubectl logs {} --prefix -c${CONTAINER} -n${NS}
 
 if [ $? != 0 ]; then
+    # only for testing
+    kubectl get pods -n${NS} | grep controller-manager
+    kubectl get pods -n${NS} | grep controller-manager awk '{print $1}'
     kubectl get pods -n${NS} | grep controller-manager \
         | awk '{print $1}' \
         | xargs -I {} kubectl logs {} --prefix -n${NS}
