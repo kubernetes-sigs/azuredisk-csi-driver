@@ -32,6 +32,7 @@ kubectl get pods -n${NS} -l${LABEL} \
 
 if [ $? != 0 ]; then
     # only for testing
+    echo "print out controller-manager logs ..."
     kubectl get pods -n${NS} | grep controller-manager
     kubectl get pods -n${NS} | grep controller-manager awk '{print $1}'
     kubectl get pods -n${NS} | grep controller-manager \
