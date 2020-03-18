@@ -34,23 +34,35 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework"
 )
 
-var _ = ginkgo.Describe("Dynamic Provisioning", func() {
-	t := dynamicProvisioningTestSuite{}
-
-	ginkgo.Context("[single-az]", func() {
-		t.defineTests(false)
-	})
-
-	ginkgo.Context("[multi-az]", func() {
-		t.defineTests(true)
-	})
-})
-
 type dynamicProvisioningTestSuite struct {
 	allowedTopologyValues []string
 }
 
-func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
+// A list of commands
+const (
+	echoHelloWorldAndGrep = iota
+	createEmptyFile
+	appendDateToFileAndSleep
+	echoHelloWorldAndSleep
+)
+
+var _ = ginkgo.Describe("Dynamic Provisioning", func() {
+	t := dynamicProvisioningTestSuite{}
+
+	// ginkgo.Context("[single-az]", func() {
+	// 	t.defineTests(false, false)
+	// })
+
+	// ginkgo.Context("[multi-az]", func() {
+	// 	t.defineTests(true, false)
+	// })
+
+	ginkgo.Context("[Windows]", func() {
+		t.defineTests(false, true)
+	})
+})
+
+func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone, isWindows bool) {
 	f := framework.NewDefaultFramework("azuredisk")
 
 	var (
@@ -95,11 +107,11 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	})
 
 	testDriver = driver.InitAzureDiskDriver()
-
-	ginkgo.It("should create a volume on demand with mount options [kubernetes.io/azure-disk] [disk.csi.azure.com]", func() {
+	testCommands := defineTestCommands(isWindows)
+	ginkgo.FIt("should create a volume on demand with mount options [kubernetes.io/azure-disk] [disk.csi.azure.com]", func() {
 		pods := []testsuites.PodDetails{
 			{
-				Cmd: "echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data",
+				Cmd: testCommands[echoHelloWorldAndGrep],
 				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
 						ClaimSize: "10Gi",
@@ -113,6 +125,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 						},
 					},
 				}, isMultiZone),
+				IsWindows: isWindows,
 			},
 		}
 		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
@@ -123,9 +136,13 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	})
 
 	ginkgo.It("should receive FailedMount event with invalid mount options [kubernetes.io/azure-disk] [disk.csi.azure.com]", func() {
+		if isWindows {
+			ginkgo.Skip("test case not supported by Windows clusters")
+		}
+
 		pods := []testsuites.PodDetails{
 			{
-				Cmd: "echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data",
+				Cmd: testCommands[echoHelloWorldAndGrep],
 				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
 						ClaimSize: "10Gi",
@@ -150,6 +167,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	})
 
 	ginkgo.It("should create a raw block volume on demand [kubernetes.io/azure-disk] [disk.csi.azure.com]", func() {
+		if isWindows {
+			ginkgo.Skip("test case not supported by Windows clusters")
+		}
+
 		pods := []testsuites.PodDetails{
 			{
 				Cmd: "ls /dev | grep e2e-test",
@@ -172,11 +193,11 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		test.Run(cs, ns)
 	})
 
-	//Track issue https://github.com/kubernetes/kubernetes/issues/70505
-	ginkgo.It("should create a volume on demand and mount it as readOnly in a pod [kubernetes.io/azure-disk] [disk.csi.azure.com]", func() {
+	// Track issue https://github.com/kubernetes/kubernetes/issues/70505
+	ginkgo.FIt("should create a volume on demand and mount it as readOnly in a pod [kubernetes.io/azure-disk] [disk.csi.azure.com]", func() {
 		pods := []testsuites.PodDetails{
 			{
-				Cmd: "touch /mnt/test-1/data",
+				Cmd: testCommands[createEmptyFile],
 				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
 						FSType:    "ext4",
@@ -188,6 +209,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 						},
 					},
 				}, isMultiZone),
+				IsWindows: isWindows,
 			},
 		}
 		test := testsuites.DynamicallyProvisionedReadOnlyVolumeTest{
@@ -197,10 +219,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		test.Run(cs, ns)
 	})
 
-	ginkgo.It("should create multiple PV objects, bind to PVCs and attach all to different pods on the same node [kubernetes.io/azure-disk] [disk.csi.azure.com]", func() {
+	ginkgo.FIt("should create multiple PV objects, bind to PVCs and attach all to different pods on the same node [kubernetes.io/azure-disk] [disk.csi.azure.com]", func() {
 		pods := []testsuites.PodDetails{
 			{
-				Cmd: "while true; do echo $(date -u) >> /mnt/test-1/data; sleep 1; done",
+				Cmd: testCommands[appendDateToFileAndSleep],
 				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
 						FSType:    "ext3",
@@ -211,9 +233,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 						},
 					},
 				}, isMultiZone),
+				IsWindows: isWindows,
 			},
 			{
-				Cmd: "while true; do echo $(date -u) >> /mnt/test-1/data; sleep 1; done",
+				Cmd: testCommands[appendDateToFileAndSleep],
 				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
 						FSType:    "ext4",
@@ -224,9 +247,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 						},
 					},
 				}, isMultiZone),
+				IsWindows: isWindows,
 			},
 			{
-				Cmd: "while true; do echo $(date -u) >> /mnt/test-1/data; sleep 1; done",
+				Cmd: testCommands[appendDateToFileAndSleep],
 				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
 						FSType:    "xfs",
@@ -237,6 +261,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 						},
 					},
 				}, isMultiZone),
+				IsWindows: isWindows,
 			},
 		}
 		test := testsuites.DynamicallyProvisionedCollocatedPodTest{
@@ -247,9 +272,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		test.Run(cs, ns)
 	})
 
-	ginkgo.It("should create a deployment object, write and read to it, delete the pod and write and read to it again [kubernetes.io/azure-disk] [disk.csi.azure.com]", func() {
+	ginkgo.FIt("should create a deployment object, write and read to it, delete the pod and write and read to it again [kubernetes.io/azure-disk] [disk.csi.azure.com]", func() {
 		pod := testsuites.PodDetails{
-			Cmd: "echo 'hello world' >> /mnt/test-1/data && while true; do sleep 1; done",
+			Cmd: testCommands[echoHelloWorldAndSleep],
 			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 				{
 					FSType:    "ext3",
@@ -260,13 +285,21 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 					},
 				},
 			}, isMultiZone),
+			IsWindows: isWindows,
+		}
+
+		podCheckCmd := []string{"cat", "/mnt/test-1/data"}
+		expectedString := "hello world\nhello world\n"
+		if isWindows {
+			podCheckCmd = []string{"powershell.exe", "cat", "C:\\mnt\\test-1\\data.txt"}
+			expectedString = "hello world\r\nhello world\r\n"
 		}
 		test := testsuites.DynamicallyProvisionedDeletePodTest{
 			CSIDriver: testDriver,
 			Pod:       pod,
 			PodCheck: &testsuites.PodExecCheck{
-				Cmd:            []string{"cat", "/mnt/test-1/data"},
-				ExpectedString: "hello world\nhello world\n", // pod will be restarted so expect to see 2 instances of string
+				Cmd:            podCheckCmd,
+				ExpectedString: expectedString, // pod will be restarted so expect to see 2 instances of string
 			},
 		}
 		test.Run(cs, ns)
@@ -469,4 +502,20 @@ func restClient(group string, version string) (restclientset.Interface, error) {
 	config.APIPath = "/apis"
 	config.NegotiatedSerializer = serializer.DirectCodecFactory{CodecFactory: serializer.NewCodecFactory(runtime.NewScheme())}
 	return restclientset.RESTClientFor(config)
+}
+
+func defineTestCommands(isWindows bool) map[int]string {
+	testCommands := make(map[int]string)
+	if isWindows {
+		testCommands[echoHelloWorldAndGrep] = "echo 'hello world' | Out-File -FilePath C:\\mnt\\test-1\\data.txt; Get-Content C:\\mnt\\test-1\\data.txt | findstr 'hello world'"
+		testCommands[createEmptyFile] = "echo $null >> C:\\mnt\\test-1\\data"
+		testCommands[appendDateToFileAndSleep] = "while (1) { Add-Content C:\\mnt\\test-1\\data.txt $(Get-Date -Format u); sleep 1 }"
+		testCommands[echoHelloWorldAndSleep] = "Add-Content C:\\mnt\\test-1\\data.txt 'hello world'; while (1) { sleep 1 }"
+	} else {
+		testCommands[echoHelloWorldAndGrep] = "echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"
+		testCommands[createEmptyFile] = "touch /mnt/test-1/data"
+		testCommands[appendDateToFileAndSleep] = "while true; do echo $(date -u) >> /mnt/test-1/data; sleep 1; done"
+		testCommands[echoHelloWorldAndSleep] = "echo 'hello world' >> /mnt/test-1/data && while true; do sleep 1; done"
+	}
+	return testCommands
 }
