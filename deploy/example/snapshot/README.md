@@ -16,7 +16,7 @@ kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi
 ### Check the Source PVC
 
 ```console
-$ kubectl exec nginx-azuredisk -- ls /mnt/disk
+$ kubectl exec nginx-azuredisk -- ls /mnt/azuredisk
 lost+found
 outfile
 ```
@@ -69,7 +69,7 @@ kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi
 ### Check Sample Data
 
 ```console
-$ kubectl exec nginx-restored -- ls /mnt/disk
+$ kubectl exec nginx-restored -- ls /mnt/azuredisk
 lost+found
 outfile
 ```
