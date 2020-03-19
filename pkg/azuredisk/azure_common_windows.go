@@ -84,3 +84,9 @@ func preparePublishPath(path string, m *mount.SafeFormatAndMount) error {
 	}
 	return nil
 }
+
+func CleanupMountPoint(path string, m *mount.SafeFormatAndMount, extensiveCheck bool) error {
+	// CSI proxy alpha does not support fixing the corrupted directory. So we will
+	// just do the unmount for now.
+	return m.Unmount(path)
+}
