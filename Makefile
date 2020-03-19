@@ -22,6 +22,9 @@ IMAGE_VERSION ?= v0.7.0
 ifdef AZURE_CREDENTIALS
 override IMAGE_VERSION := e2e-$(GIT_COMMIT)
 endif
+ifdef TEST_WINDOWS
+IMAGE_VERSION = $(IMAGE_VERSION)-windows
+endif
 IMAGE_TAG = $(REGISTRY)/$(IMAGE_NAME):$(IMAGE_VERSION)
 IMAGE_TAG_LATEST = $(REGISTRY)/$(IMAGE_NAME):latest
 REV = $(shell git describe --long --tags --dirty)
@@ -65,25 +68,26 @@ e2e-test:
 	go test -v -timeout=0 ./test/e2e ${GINKGO_FLAGS}
 
 .PHONY: e2e-bootstrap
-e2e-bootstrap: install-helm
+e2e-bootstrap: kustomize
 	# Only build and push the image if it does not exist in the registry
 	docker pull $(IMAGE_TAG) || make azuredisk-container push
-	helm install charts/latest/azuredisk-csi-driver -n azuredisk-csi-driver --namespace kube-system --wait \
-		--set image.azuredisk.pullPolicy=IfNotPresent \
-		--set image.azuredisk.repository=$(REGISTRY)/$(IMAGE_NAME) \
-		--set image.azuredisk.tag=$(IMAGE_VERSION)
+	cd deploy && kustomize edit set image mcr.microsoft.com/k8s/csi/azuredisk-csi=$(IMAGE_TAG)
+	kustomize build deploy | kubectl apply -f -
 
-.PHONY: install-helm
-install-helm:
-	# Use v2.11.0 helm to match tiller's version in clusters made by aks-engine
-	curl https://raw.githubusercontent.com/helm/helm/master/scripts/get | DESIRED_VERSION=v2.11.0 bash
-	# Make sure tiller is ready
-	kubectl wait pod -l name=tiller --namespace kube-system --for condition=ready --timeout 5m
-	helm version
+.PHONY: e2e-bootstrap-windows
+e2e-bootstrap-windows: kustomize
+	# Only build and push the image if it does not exist in the registry
+	docker pull $(IMAGE_TAG) || make azuredisk-container-windows push
+	cd deploy/windows && kustomize edit set image mcr.microsoft.com/k8s/csi/azuredisk-csi=$(IMAGE_TAG)
+	kustomize build deploy/windows | kubectl apply -f -
 
 .PHONY: e2e-teardown
 e2e-teardown:
-	helm delete --purge azuredisk-csi-driver
+	kustomize build deploy | kubectl delete -f -
+
+.PHONY: e2e-teardown-windows
+e2e-teardown-windows:
+	kustomize build deploy/windows | kubectl delete -f -
 
 .PHONY: azuredisk
 azuredisk:
@@ -125,3 +129,7 @@ build-push: azuredisk-container
 clean:
 	go clean -r -x
 	-rm -rf _output
+
+.PHONY: kustomize
+kustomize:
+	GO111MODULE=on go get sigs.k8s.io/kustomize/kustomize/v3@v3.3.0

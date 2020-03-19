@@ -54,9 +54,9 @@ var _ = ginkgo.Describe("Dynamic Provisioning", func() {
 		t.defineTests(false)
 	})
 
-	// ginkgo.Context("[multi-az]", func() {
-	// 	t.defineTests(true)
-	// })
+	ginkgo.Context("[multi-az]", func() {
+		t.defineTests(true)
+	})
 })
 
 func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {

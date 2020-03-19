@@ -120,6 +120,9 @@ var _ = ginkgo.AfterSuite(func() {
 				startLog: "Uninstalling Azure Disk CSI Driver...",
 				endLog:   "Azure Disk CSI Driver uninstalled",
 			}
+			if isWindowsCluster {
+				e2eTeardown.args = []string{"e2e-teardown-windows"}
+			}
 			execTestCmd([]testCmd{azurediskLog, e2eTeardown})
 			err := credentials.DeleteAzureCredentialFile()
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())

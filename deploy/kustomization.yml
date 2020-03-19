@@ -1,0 +1,11 @@
+namespace: kube-system
+
+resources:
+  - crd-csi-node-info.yaml
+  - crd-csi-snapshot.yaml
+  - csi-azuredisk-controller.yaml
+  - csi-azuredisk-driver.yaml
+  - csi-azuredisk-node.yaml
+  - csi-snapshot-controller.yaml
+  - rbac-csi-azuredisk-controller.yaml
+  - rbac-csi-snapshot-controller.yaml
