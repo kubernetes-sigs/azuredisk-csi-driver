@@ -50,20 +50,16 @@ const (
 var _ = ginkgo.Describe("Dynamic Provisioning", func() {
 	t := dynamicProvisioningTestSuite{}
 
-	// ginkgo.Context("[single-az]", func() {
-	// 	t.defineTests(false, false)
-	// })
+	ginkgo.Context("[single-az]", func() {
+		t.defineTests(false)
+	})
 
 	// ginkgo.Context("[multi-az]", func() {
-	// 	t.defineTests(true, false)
+	// 	t.defineTests(true)
 	// })
-
-	ginkgo.Context("[Windows]", func() {
-		t.defineTests(false, true)
-	})
 })
 
-func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone, isWindows bool) {
+func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	f := framework.NewDefaultFramework("azuredisk")
 
 	var (
@@ -108,7 +104,8 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone, isWindows bool) 
 	})
 
 	testDriver = driver.InitAzureDiskDriver()
-	testCommands := defineTestCommands(isWindows)
+	testCommands := defineTestCommands()
+
 	ginkgo.It("should create a volume on demand with mount options [kubernetes.io/azure-disk] [disk.csi.azure.com]", func() {
 		pods := []testsuites.PodDetails{
 			{
@@ -126,7 +123,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone, isWindows bool) 
 						},
 					},
 				}, isMultiZone),
-				IsWindows: isWindows,
+				IsWindows: isWindowsCluster,
 			},
 		}
 		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
@@ -137,9 +134,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone, isWindows bool) 
 	})
 
 	ginkgo.It("should receive FailedMount event with invalid mount options [kubernetes.io/azure-disk] [disk.csi.azure.com]", func() {
-		if isWindows {
-			ginkgo.Skip("test case not supported by Windows clusters")
-		}
+		skipIfTestingInWindowsCluster()
 
 		pods := []testsuites.PodDetails{
 			{
@@ -167,7 +162,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone, isWindows bool) 
 		test.Run(cs, ns)
 	})
 
-	ginkgo.FIt("should create a raw block volume on demand [kubernetes.io/azure-disk] [disk.csi.azure.com]", func() {
+	ginkgo.It("should create a raw block volume on demand [kubernetes.io/azure-disk] [disk.csi.azure.com]", func() {
+		skipIfTestingInWindowsCluster()
+
 		pods := []testsuites.PodDetails{
 			{
 				Cmd: "ls /dev | findstr 'e2e-test'",
@@ -181,7 +178,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone, isWindows bool) 
 						},
 					},
 				}, isMultiZone),
-				IsWindows: isWindows,
+				IsWindows: isWindowsCluster,
 			},
 		}
 		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
@@ -207,7 +204,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone, isWindows bool) 
 						},
 					},
 				}, isMultiZone),
-				IsWindows: isWindows,
+				IsWindows: isWindowsCluster,
 			},
 		}
 		test := testsuites.DynamicallyProvisionedReadOnlyVolumeTest{
@@ -231,7 +228,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone, isWindows bool) 
 						},
 					},
 				}, isMultiZone),
-				IsWindows: isWindows,
+				IsWindows: isWindowsCluster,
 			},
 			{
 				Cmd: testCommands[appendDateToFileAndSleep],
@@ -245,7 +242,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone, isWindows bool) 
 						},
 					},
 				}, isMultiZone),
-				IsWindows: isWindows,
+				IsWindows: isWindowsCluster,
 			},
 			{
 				Cmd: testCommands[appendDateToFileAndSleep],
@@ -259,7 +256,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone, isWindows bool) 
 						},
 					},
 				}, isMultiZone),
-				IsWindows: isWindows,
+				IsWindows: isWindowsCluster,
 			},
 		}
 		test := testsuites.DynamicallyProvisionedCollocatedPodTest{
@@ -283,12 +280,12 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone, isWindows bool) 
 					},
 				},
 			}, isMultiZone),
-			IsWindows: isWindows,
+			IsWindows: isWindowsCluster,
 		}
 
 		podCheckCmd := []string{"cat", "/mnt/test-1/data"}
 		expectedString := "hello world\nhello world\n"
-		if isWindows {
+		if isWindowsCluster {
 			podCheckCmd = []string{"powershell.exe", "cat", "C:\\mnt\\test-1\\data.txt"}
 			expectedString = "hello world\r\nhello world\r\n"
 		}
@@ -323,9 +320,8 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone, isWindows bool) 
 		// This tests uses the CSI driver to delete the PV.
 		// TODO: Go via the k8s interfaces and also make it more reliable for in-tree and then
 		//       test can be enabled.
-		if testDriver.IsInTree() {
-			ginkgo.Skip("reclaimPolicy test case is only available for CSI drivers")
-		}
+		skipIfUsingInTreeVolumePlugin()
+
 		reclaimPolicy := v1.PersistentVolumeReclaimRetain
 		volumes := t.normalizeVolumes([]testsuites.VolumeDetails{
 			{
@@ -343,12 +339,8 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone, isWindows bool) 
 	})
 
 	ginkgo.It("should clone a volume from an existing volume and read from it [disk.csi.azure.com]", func() {
-		if testDriver.IsInTree() {
-			ginkgo.Skip("Volume cloning support is only available for CSI drivers")
-		}
-		if isWindows {
-			ginkgo.Skip("test case not supported by Windows clusters")
-		}
+		skipIfTestingInWindowsCluster()
+		skipIfUsingInTreeVolumePlugin()
 
 		pod := testsuites.PodDetails{
 			Cmd: "echo 'hello world' > /mnt/test-1/data",
@@ -404,7 +396,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone, isWindows bool) 
 						},
 					},
 				}, isMultiZone),
-				IsWindows: isWindows,
+				IsWindows: isWindowsCluster,
 			},
 		}
 		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
@@ -415,9 +407,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone, isWindows bool) 
 	})
 
 	ginkgo.It("should create a raw block volume and a filesystem volume on demand and bind to the same pod [kubernetes.io/azure-disk] [disk.csi.azure.com]", func() {
-		if isWindows {
-			ginkgo.Skip("test case not supported by Windows clusters")
-		}
+		skipIfTestingInWindowsCluster()
 
 		pods := []testsuites.PodDetails{
 			{
@@ -452,12 +442,8 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone, isWindows bool) 
 	})
 
 	ginkgo.It("should create a pod, write and read to it, take a volume snapshot, and create another pod from the snapshot [disk.csi.azure.com]", func() {
-		if testDriver.IsInTree() {
-			ginkgo.Skip("Volume snapshot support is only available for CSI drivers")
-		}
-		if isWindows {
-			ginkgo.Skip("test case not supported by Windows clusters")
-		}
+		skipIfTestingInWindowsCluster()
+		skipIfUsingInTreeVolumePlugin()
 
 		pod := testsuites.PodDetails{
 			Cmd: "echo 'hello world' > /mnt/test-1/data",
@@ -515,9 +501,9 @@ func restClient(group string, version string) (restclientset.Interface, error) {
 	return restclientset.RESTClientFor(config)
 }
 
-func defineTestCommands(isWindows bool) map[int]string {
+func defineTestCommands() map[int]string {
 	testCommands := make(map[int]string)
-	if isWindows {
+	if isWindowsCluster {
 		testCommands[echoHelloWorldAndGrep] = "echo 'hello world' | Out-File -FilePath C:\\mnt\\test-1\\data.txt; Get-Content C:\\mnt\\test-1\\data.txt | findstr 'hello world'"
 		testCommands[createEmptyFile] = "echo $null >> C:\\mnt\\test-1\\data"
 		testCommands[appendDateToFileAndSleep] = "while (1) { Add-Content C:\\mnt\\test-1\\data.txt $(Get-Date -Format u); sleep 1 }"
@@ -531,4 +517,16 @@ func defineTestCommands(isWindows bool) map[int]string {
 		testCommands[echoHelloWorldAndGrepForThreeTimes] = "echo 'hello world' > /mnt/test-1/data && echo 'hello world' > /mnt/test-2/data && echo 'hello world' > /mnt/test-3/data && grep 'hello world' /mnt/test-1/data && grep 'hello world' /mnt/test-2/data && grep 'hello world' /mnt/test-3/data"
 	}
 	return testCommands
+}
+
+func skipIfTestingInWindowsCluster() {
+	if isWindowsCluster {
+		ginkgo.Skip("test case not supported by Windows clusters")
+	}
+}
+
+func skipIfUsingInTreeVolumePlugin() {
+	if isUsingInTreeVolumePlugin {
+		ginkgo.Skip("test case is only available for CSI drivers")
+	}
 }

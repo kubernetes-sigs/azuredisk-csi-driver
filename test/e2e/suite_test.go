@@ -43,6 +43,7 @@ const (
 	kubeconfigEnvVar    = "KUBECONFIG"
 	reportDirEnvVar     = "ARTIFACTS"
 	testMigrationEnvVar = "TEST_MIGRATION"
+	testWindowsEnvVar   = "TEST_WINDOWS"
 	defaultReportDir    = "/workspace/_artifacts"
 	inTreeStorageClass  = "kubernetes.io/azure-disk"
 )
@@ -51,6 +52,7 @@ var (
 	azurediskDriver           *azuredisk.Driver
 	isUsingInTreeVolumePlugin = os.Getenv(driver.AzureDriverNameVar) == inTreeStorageClass
 	isTestingMigration        = os.Getenv(testMigrationEnvVar) != ""
+	isWindowsCluster          = os.Getenv(testWindowsEnvVar) != ""
 )
 
 type testCmd struct {
@@ -80,24 +82,15 @@ var _ = ginkgo.BeforeSuite(func() {
 		_, err = azureClient.EnsureResourceGroup(context.Background(), creds.ResourceGroup, creds.Location, nil)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-		// Need to login to ACR using SP credential if we are running in Prow so we can push test images.
-		// If running locally, user should run 'docker login' before running E2E tests
-
-		registry := os.Getenv("REGISTRY")
-		gomega.Expect(registry).NotTo(gomega.Equal(""))
-
-		log.Println("Attempting docker login with Azure service principal")
-		cmd := exec.Command("docker", "login", fmt.Sprintf("--username=%s", creds.AADClientID), fmt.Sprintf("--password=%s", creds.AADClientSecret), registry)
-		err = cmd.Run()
-		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		log.Println("docker login is successful")
-
 		// Install Azure Disk CSI Driver on cluster from project root
 		e2eBootstrap := testCmd{
 			command:  "make",
 			args:     []string{"e2e-bootstrap"},
 			startLog: "Installing Azure Disk CSI Driver...",
 			endLog:   "Azure Disk CSI Driver installed",
+		}
+		if isWindowsCluster {
+			e2eBootstrap.args = []string{"e2e-bootstrap-windows"}
 		}
 		execTestCmd([]testCmd{e2eBootstrap})
 
