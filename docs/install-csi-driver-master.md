@@ -2,6 +2,8 @@
 
 ### Installation with kubectl
 
+#### Linux
+
 ```console
 kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/csi-azuredisk-driver.yaml
 kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/crd-csi-node-info.yaml
@@ -15,7 +17,23 @@ kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi
 kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/csi-snapshot-controller.yaml
 ```
 
-- check pods status:
+#### Windows
+
+Windows CSI driver requires [CSI Proxy](https://github.com/kubernetes-csi/csi-proxy) to be installed on the system. Please use the 
+instructions in the [aks-engine](https://github.com/Azure/aks-engine/blob/master/docs/topics/csi-proxy-windows.md) repo to create 
+a cluster with CSI proxy installed. 
+
+> Note: Windows CSI drivers are in alpha state.
+
+```console
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/csi-azuredisk-driver.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/crd-csi-node-info.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/rbac-csi-azuredisk-controller.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/csi-azuredisk-controller.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/csi-azuredisk-node-windows.yaml
+```
+
+### Check pods status:
 
 ```console
 kubectl -n kube-system get pod -o wide --watch -l app=csi-azuredisk-controller
@@ -33,7 +51,7 @@ csi-azuredisk-node-cvgbs                        3/3     Running   0          7m4
 csi-azuredisk-node-dr4s4                        3/3     Running   0          7m4s    10.240.0.4     k8s-agentpool-22533604-0
 ```
 
-- clean up azure disk CSI driver
+### Clean up azure disk CSI driver
 
 ```console
 kubectl delete -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/csi-azuredisk-controller.yaml
@@ -44,4 +62,5 @@ kubectl delete -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-cs
 kubectl delete -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/csi-snapshot-controller.yaml
 kubectl delete -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/rbac-csi-snapshot-controller.yaml
 kubectl delete -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/crd-csi-snapshot.yaml
+kubectl delete -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/csi-azuredisk-node-windows.yaml
 ```
