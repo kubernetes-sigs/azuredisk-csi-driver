@@ -22,9 +22,6 @@ IMAGE_VERSION ?= v0.7.0
 ifdef AZURE_CREDENTIALS
 override IMAGE_VERSION := e2e-$(GIT_COMMIT)
 endif
-ifdef TEST_WINDOWS
-IMAGE_VERSION = $(IMAGE_VERSION)-windows
-endif
 IMAGE_TAG = $(REGISTRY)/$(IMAGE_NAME):$(IMAGE_VERSION)
 IMAGE_TAG_LATEST = $(REGISTRY)/$(IMAGE_NAME):latest
 REV = $(shell git describe --long --tags --dirty)
@@ -73,21 +70,13 @@ e2e-bootstrap: kustomize
 	docker pull $(IMAGE_TAG) || make azuredisk-container push
 	cd deploy && kustomize edit set image mcr.microsoft.com/k8s/csi/azuredisk-csi=$(IMAGE_TAG)
 	kustomize build deploy | kubectl apply -f -
-
-.PHONY: e2e-bootstrap-windows
-e2e-bootstrap-windows: kustomize
-	# Only build and push the image if it does not exist in the registry
-	docker pull $(IMAGE_TAG) || make azuredisk-container-windows push
-	cd deploy/windows && kustomize edit set image mcr.microsoft.com/k8s/csi/azuredisk-csi=$(IMAGE_TAG)
-	kustomize build deploy/windows | kubectl apply -f -
+	kubectl wait --for=condition=ready po --all -l app=csi-azuredisk-controller -n kube-system --timeout=5m
+	kubectl wait --for=condition=ready po --all -l app=csi-azuredisk-node -n kube-system --timeout=5m
+	kubectl wait --for=condition=ready po --all -l app=csi-snapshot-controller -n kube-system --timeout=5m
 
 .PHONY: e2e-teardown
 e2e-teardown:
 	kustomize build deploy | kubectl delete -f -
-
-.PHONY: e2e-teardown-windows
-e2e-teardown-windows:
-	kustomize build deploy/windows | kubectl delete -f -
 
 .PHONY: azuredisk
 azuredisk:

@@ -39,7 +39,6 @@ type DynamicallyProvisionedReadOnlyVolumeTest struct {
 }
 
 func (t *DynamicallyProvisionedReadOnlyVolumeTest) Run(client clientset.Interface, namespace *v1.Namespace) {
-	var expectedReadOnlyLog string
 	for _, pod := range t.Pods {
 		if pod.IsWindows {
 			expectedReadOnlyLog = "FileOpenFailure"

@@ -167,7 +167,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 
 		pods := []testsuites.PodDetails{
 			{
-				Cmd: "ls /dev | findstr 'e2e-test'",
+				Cmd: "ls /dev | grep e2e-test",
 				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
 						ClaimSize:  "10Gi",
@@ -178,7 +178,6 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 						},
 					},
 				}, isMultiZone),
-				IsWindows: isWindowsCluster,
 			},
 		}
 		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
@@ -517,16 +516,4 @@ func defineTestCommands() map[int]string {
 		testCommands[echoHelloWorldAndGrepForThreeTimes] = "echo 'hello world' > /mnt/test-1/data && echo 'hello world' > /mnt/test-2/data && echo 'hello world' > /mnt/test-3/data && grep 'hello world' /mnt/test-1/data && grep 'hello world' /mnt/test-2/data && grep 'hello world' /mnt/test-3/data"
 	}
 	return testCommands
-}
-
-func skipIfTestingInWindowsCluster() {
-	if isWindowsCluster {
-		ginkgo.Skip("test case not supported by Windows clusters")
-	}
-}
-
-func skipIfUsingInTreeVolumePlugin() {
-	if isUsingInTreeVolumePlugin {
-		ginkgo.Skip("test case is only available for CSI drivers")
-	}
 }

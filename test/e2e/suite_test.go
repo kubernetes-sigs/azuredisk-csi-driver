@@ -89,9 +89,6 @@ var _ = ginkgo.BeforeSuite(func() {
 			startLog: "Installing Azure Disk CSI Driver...",
 			endLog:   "Azure Disk CSI Driver installed",
 		}
-		if isWindowsCluster {
-			e2eBootstrap.args = []string{"e2e-bootstrap-windows"}
-		}
 		execTestCmd([]testCmd{e2eBootstrap})
 
 		nodeid := os.Getenv("nodeid")
@@ -119,9 +116,6 @@ var _ = ginkgo.AfterSuite(func() {
 				args:     []string{"e2e-teardown"},
 				startLog: "Uninstalling Azure Disk CSI Driver...",
 				endLog:   "Azure Disk CSI Driver uninstalled",
-			}
-			if isWindowsCluster {
-				e2eTeardown.args = []string{"e2e-teardown-windows"}
 			}
 			execTestCmd([]testCmd{azurediskLog, e2eTeardown})
 			err := credentials.DeleteAzureCredentialFile()
@@ -161,5 +155,17 @@ func execTestCmd(cmds []testCmd) {
 		err = cmdSh.Run()
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		log.Println(cmd.endLog)
+	}
+}
+
+func skipIfTestingInWindowsCluster() {
+	if isWindowsCluster {
+		ginkgo.Skip("test case not supported by Windows clusters")
+	}
+}
+
+func skipIfUsingInTreeVolumePlugin() {
+	if isUsingInTreeVolumePlugin {
+		ginkgo.Skip("test case is only available for CSI drivers")
 	}
 }
