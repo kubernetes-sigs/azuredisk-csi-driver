@@ -189,3 +189,7 @@ func findDiskByLunWithConstraint(lun int, io ioHandler, azureDisks []string) (st
 func preparePublishPath(path string, m *mount.SafeFormatAndMount) error {
 	return nil
 }
+
+func CleanupMountPoint(path string, m *mount.SafeFormatAndMount, extensiveCheck bool) error {
+	return mount.CleanupMountPoint(path, m, extensiveCheck)
+}

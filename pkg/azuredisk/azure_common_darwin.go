@@ -39,3 +39,7 @@ func findDiskByLun(lun int, io ioHandler, m *mount.SafeFormatAndMount) (string, 
 func preparePublishPath(path string, m *mount.SafeFormatAndMount) error {
 	return nil
 }
+
+func CleanupMountPoint(path string, m *mount.SafeFormatAndMount, extensiveCheck bool) error {
+	return nil
+}
