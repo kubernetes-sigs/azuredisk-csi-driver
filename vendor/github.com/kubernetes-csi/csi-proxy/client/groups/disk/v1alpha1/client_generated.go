@@ -51,6 +51,10 @@ func (w *Client) Close() error {
 // ensures we implement all the required methods
 var _ v1alpha1.DiskClient = &Client{}
 
+func (w *Client) GetDiskNumberByName(context context.Context, request *v1alpha1.GetDiskNumberByNameRequest, opts ...grpc.CallOption) (*v1alpha1.GetDiskNumberByNameResponse, error) {
+	return w.client.GetDiskNumberByName(context, request, opts...)
+}
+
 func (w *Client) ListDiskLocations(context context.Context, request *v1alpha1.ListDiskLocationsRequest, opts ...grpc.CallOption) (*v1alpha1.ListDiskLocationsResponse, error) {
 	return w.client.ListDiskLocations(context, request, opts...)
 }

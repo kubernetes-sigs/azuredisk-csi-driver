@@ -2,11 +2,11 @@
 
 
 [[projects]]
-  digest = "1:b8a15dc6b677c2f6df7ecdc97af2718b6472c54a996912595126bcceab4dda50"
+  digest = "1:c2a0eb3a2e35fb6838ac39a36204444a6378be2d5ef1a0c56cd9c158627a1dc6"
   name = "github.com/Azure/azure-sdk-for-go"
   packages = [
     "services/compute/mgmt/2019-03-01/compute",
-    "services/compute/mgmt/2019-07-01/compute",
+    "services/compute/mgmt/2019-12-01/compute",
     "services/network/mgmt/2018-08-01/network",
     "services/network/mgmt/2019-06-01/network",
     "services/resources/mgmt/2018-05-01/resources",
@@ -15,8 +15,8 @@
     "version",
   ]
   pruneopts = "NUT"
-  revision = "70d9a4eff9734ddb835417774ae0d332569bdd18"
-  version = "v35.1.0"
+  revision = "f1b3b9b7d4962c94c77d16ce75f9a8e981eb2488"
+  version = "v40.4.0"
 
 [[projects]]
   digest = "1:ed3f3996d7b4037cbf4661b2fb3eeeb90beb323cd71c7dc39d3790e6bf0e6950"
@@ -357,7 +357,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:92524f753b58fec236b576d3d6b3c1183546dc088b0b48eef69aecbdaf833920"
+  digest = "1:c8f7e1cdf87cf9c7926167d958d3290f62b7a1f9660e5b7b2c93d020573ab1d8"
   name = "github.com/kubernetes-csi/csi-proxy"
   packages = [
     "client",
@@ -370,7 +370,7 @@
     "client/groups/volume/v1alpha1",
   ]
   pruneopts = "NUT"
-  revision = "49ccfef52bef0b555fab7b9c0b4bf72a6b00f3a1"
+  revision = "d6ab313001078eafc69e67d76070bcf3cdcdeecf"
 
 [[projects]]
   digest = "1:775dd16bb1280c2723378738cf1619f93840fe9bf65ca9b526c49bc8e0bb0cc8"
@@ -558,7 +558,7 @@
   version = "v0.9.1"
 
 [[projects]]
-  digest = "1:dacb29568d7b8e145b953ca0a9334e516ce02e56c61e902372c6c074c4846107"
+  digest = "1:d9f73273a8a8b1e0309145c2196939acdad7a865651a5185f9d88d068b504e4e"
   name = "github.com/prometheus/procfs"
   packages = [
     ".",
@@ -566,8 +566,8 @@
     "internal/util",
   ]
   pruneopts = "NUT"
-  revision = "4850c197847aa06aecc37570077fc16e9215d565"
-  version = "v0.0.10"
+  revision = "46159f73e74d1cb8dc223deef9b2d049286f46b1"
+  version = "v0.0.11"
 
 [[projects]]
   branch = "master"
@@ -625,7 +625,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:5b3b0f48dcf9a8ba6a3adcff1de370b3be532ca90a5fb44afe9ca1113fd9f2eb"
+  digest = "1:79d1d562dcced754e35fea9f9a62a11a94733413e6eeb4ca3b5069ad124f0ec7"
   name = "golang.org/x/crypto"
   packages = [
     "blowfish",
@@ -643,11 +643,11 @@
     "ssh/terminal",
   ]
   pruneopts = "NUT"
-  revision = "f7b00557c8c46a1ea4b035cae84f52028c2c0564"
+  revision = "891825fb96dfc23279b4a42f710d49e78e05b333"
 
 [[projects]]
   branch = "master"
-  digest = "1:320f51243b09c56244b24782db778d97792f1c13eba5c5a27acb1621cc3bc5ba"
+  digest = "1:e43093a69c889fdd3a0499d29009c634c6e8d37e1d2399123f73981d8d85767d"
   name = "golang.org/x/net"
   packages = [
     "context",
@@ -664,7 +664,7 @@
     "websocket",
   ]
   pruneopts = "NUT"
-  revision = "244492dfa37ae2ce87222fd06250a03160745faa"
+  revision = "118fecf932d8fea033f3b7aca66fba22cfdd517d"
 
 [[projects]]
   branch = "master"
@@ -687,7 +687,7 @@
     "windows",
   ]
   pruneopts = "NUT"
-  revision = "5766fd39f98ddd8d769ad4aedcee557dd28de90f"
+  revision = "af34d8274f850ead0ac2056234f8fb0196d9891b"
 
 [[projects]]
   digest = "1:0b5dc8c3581fc3ea2b80cc2e360dfb9c2d61dd0cba0d2fe247e8edd3e83f7551"
@@ -768,7 +768,7 @@
   name = "google.golang.org/genproto"
   packages = ["googleapis/rpc/status"]
   pruneopts = "NUT"
-  revision = "1f3552e48f24ac35a91be3fd5ea65959428857e4"
+  revision = "08878b785e9c1c5903852e4cb9277fce9d1e16d5"
 
 [[projects]]
   digest = "1:634ba50bc431d4d278abbb3593c18962291cf43cae92cc16c47e63ba4c54ba37"
@@ -1386,7 +1386,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:3db4e42ae482062871c7e7092e0d33f3a7da3580c5f06010277bb1490e1f3d4b"
+  digest = "1:19f2357ed7512e81b96f2f39a9689acda611efe61bd57cf556edd20aef3eac59"
   name = "k8s.io/legacy-cloud-providers"
   packages = [
     "azure",
@@ -1415,11 +1415,11 @@
     "azure/retry",
   ]
   pruneopts = "NUT"
-  revision = "0c1f05d20338cf9082a9e0a19877032d4a2cf8fb"
+  revision = "b1122c945f5e8157d531179013fadad95e10e0d6"
 
 [[projects]]
   branch = "master"
-  digest = "1:4fee870052331d633f6b2a8b559c2feaf89ab2b08173730ed22753cdefa7cd48"
+  digest = "1:48860988610adbf9553ac990009bbb920c955497e106b021deb90056f20c9c21"
   name = "k8s.io/utils"
   packages = [
     "buffer",
@@ -1435,7 +1435,7 @@
     "trace",
   ]
   pruneopts = "NUT"
-  revision = "0a110f9eb7ab662220ed640640f50c4be9b6b485"
+  revision = "4a6ff033650d9ce34359cf57e8bc1e64f4a25146"
 
 [[projects]]
   digest = "1:cb422c75bab66a8339a38b64e837f3b28f3d5a8c06abd7b9048f420363baa18a"
@@ -1481,7 +1481,7 @@
   analyzer-version = 1
   input-imports = [
     "github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-03-01/compute",
-    "github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-07-01/compute",
+    "github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-12-01/compute",
     "github.com/Azure/azure-sdk-for-go/services/network/mgmt/2018-08-01/network",
     "github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2018-05-01/resources",
     "github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2019-06-01/storage",

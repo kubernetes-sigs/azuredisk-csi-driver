@@ -91,7 +91,7 @@
 
 [[override]]
   name = "github.com/Azure/azure-sdk-for-go"
-  version = "v35.0.0"
+  version = "v40.2.0"
 
 [[override]]
   name = "github.com/prometheus/client_golang"
