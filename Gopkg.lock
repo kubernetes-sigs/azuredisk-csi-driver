@@ -2,7 +2,7 @@
 
 
 [[projects]]
-  digest = "1:c2a0eb3a2e35fb6838ac39a36204444a6378be2d5ef1a0c56cd9c158627a1dc6"
+  digest = "1:655d0b0f66fe1d4f8ab383d5bfc00b06f2effc5945f0fee48220556505b287fa"
   name = "github.com/Azure/azure-sdk-for-go"
   packages = [
     "services/compute/mgmt/2019-03-01/compute",
@@ -15,8 +15,8 @@
     "version",
   ]
   pruneopts = "NUT"
-  revision = "f1b3b9b7d4962c94c77d16ce75f9a8e981eb2488"
-  version = "v40.4.0"
+  revision = "4acdfccd3e1bd96cf929459f72f25cb0dd1f6ce8"
+  version = "v40.5.0"
 
 [[projects]]
   digest = "1:ed3f3996d7b4037cbf4661b2fb3eeeb90beb323cd71c7dc39d3790e6bf0e6950"
@@ -679,7 +679,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:9143b4d1ec01c31c02aa3589efc187e55ff77dc10a5b1decdd7ca18d37f0ed71"
+  digest = "1:ad77a8fe044558366b974696604a580052e99453134bf8ece8f81a1121b58f71"
   name = "golang.org/x/sys"
   packages = [
     "cpu",
@@ -687,7 +687,7 @@
     "windows",
   ]
   pruneopts = "NUT"
-  revision = "af34d8274f850ead0ac2056234f8fb0196d9891b"
+  revision = "328b4cd54aaeaba222936f16d417999f7e521f7b"
 
 [[projects]]
   digest = "1:0b5dc8c3581fc3ea2b80cc2e360dfb9c2d61dd0cba0d2fe247e8edd3e83f7551"
@@ -1386,7 +1386,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:19f2357ed7512e81b96f2f39a9689acda611efe61bd57cf556edd20aef3eac59"
+  digest = "1:cfa53370098127dd82c51172c8d6e17385965b9d3067f5144bcd25d7757149a6"
   name = "k8s.io/legacy-cloud-providers"
   packages = [
     "azure",
@@ -1415,11 +1415,11 @@
     "azure/retry",
   ]
   pruneopts = "NUT"
-  revision = "b1122c945f5e8157d531179013fadad95e10e0d6"
+  revision = "563886ebb1625c0dd4813a88ae4f8e3f740d00a7"
 
 [[projects]]
   branch = "master"
-  digest = "1:48860988610adbf9553ac990009bbb920c955497e106b021deb90056f20c9c21"
+  digest = "1:35d9ccbcf79f010068ee234bdd026a62925d19fb63b7bdb4069748a917a58e1e"
   name = "k8s.io/utils"
   packages = [
     "buffer",
@@ -1435,7 +1435,7 @@
     "trace",
   ]
   pruneopts = "NUT"
-  revision = "4a6ff033650d9ce34359cf57e8bc1e64f4a25146"
+  revision = "327a8059b905f89edaae6412417fb2354b188f5d"
 
 [[projects]]
   digest = "1:cb422c75bab66a8339a38b64e837f3b28f3d5a8c06abd7b9048f420363baa18a"
