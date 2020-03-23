@@ -169,3 +169,24 @@ func skipIfUsingInTreeVolumePlugin() {
 		ginkgo.Skip("test case is only available for CSI drivers")
 	}
 }
+
+func convertToPowershellCommandIfNecessary(command string) string {
+	if !isWindowsCluster {
+		return command
+	}
+
+	switch command {
+	case "echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data":
+		return "echo 'hello world' | Out-File -FilePath C:\\mnt\\test-1\\data.txt; Get-Content C:\\mnt\\test-1\\data.txt | findstr 'hello world'"
+	case "touch /mnt/test-1/data":
+		return "echo $null >> C:\\mnt\\test-1\\data"
+	case "while true; do echo $(date -u) >> /mnt/test-1/data; sleep 1; done":
+		return "while (1) { Add-Content C:\\mnt\\test-1\\data.txt $(Get-Date -Format u); sleep 1 }"
+	case "echo 'hello world' >> /mnt/test-1/data && while true; do sleep 1; done":
+		return "Add-Content C:\\mnt\\test-1\\data.txt 'hello world'; while (1) { sleep 1 }"
+	case "echo 'hello world' > /mnt/test-1/data && echo 'hello world' > /mnt/test-2/data && echo 'hello world' > /mnt/test-3/data && grep 'hello world' /mnt/test-1/data && grep 'hello world' /mnt/test-2/data && grep 'hello world' /mnt/test-3/data":
+		return "echo 'hello world' | Out-File -FilePath C:\\mnt\\test-1\\data.txt; Get-Content C:\\mnt\\test-1\\data.txt | findstr 'hello world'; echo 'hello world' | Out-File -FilePath C:\\mnt\\test-2\\data.txt; Get-Content C:\\mnt\\test-2\\data.txt | findstr 'hello world'; echo 'hello world' | Out-File -FilePath C:\\mnt\\test-3\\data.txt; Get-Content C:\\mnt\\test-3\\data.txt | findstr 'hello world'"
+	}
+
+	return command
+}

@@ -38,15 +38,6 @@ type dynamicProvisioningTestSuite struct {
 	allowedTopologyValues []string
 }
 
-// A list of commands
-const (
-	echoHelloWorldAndGrep = iota
-	createEmptyFile
-	appendDateToFileAndSleep
-	echoHelloWorldAndSleep
-	echoHelloWorldAndGrepForThreeTimes
-)
-
 var _ = ginkgo.Describe("Dynamic Provisioning", func() {
 	t := dynamicProvisioningTestSuite{}
 
@@ -104,12 +95,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	})
 
 	testDriver = driver.InitAzureDiskDriver()
-	testCommands := defineTestCommands()
-
-	ginkgo.It("should create a volume on demand with mount options [kubernetes.io/azure-disk] [disk.csi.azure.com]", func() {
+	ginkgo.It("should create a volume on demand with mount options [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func() {
 		pods := []testsuites.PodDetails{
 			{
-				Cmd: testCommands[echoHelloWorldAndGrep],
+				Cmd: convertToPowershellCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
 				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
 						ClaimSize: "10Gi",
@@ -138,7 +127,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 
 		pods := []testsuites.PodDetails{
 			{
-				Cmd: testCommands[echoHelloWorldAndGrep],
+				Cmd: "echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data",
 				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
 						ClaimSize: "10Gi",
@@ -188,10 +177,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	})
 
 	// Track issue https://github.com/kubernetes/kubernetes/issues/70505
-	ginkgo.It("should create a volume on demand and mount it as readOnly in a pod [kubernetes.io/azure-disk] [disk.csi.azure.com]", func() {
+	ginkgo.It("should create a volume on demand and mount it as readOnly in a pod [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func() {
 		pods := []testsuites.PodDetails{
 			{
-				Cmd: testCommands[createEmptyFile],
+				Cmd: convertToPowershellCommandIfNecessary("touch /mnt/test-1/data"),
 				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
 						FSType:    "ext4",
@@ -213,10 +202,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		test.Run(cs, ns)
 	})
 
-	ginkgo.It("should create multiple PV objects, bind to PVCs and attach all to different pods on the same node [kubernetes.io/azure-disk] [disk.csi.azure.com]", func() {
+	ginkgo.It("should create multiple PV objects, bind to PVCs and attach all to different pods on the same node [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func() {
 		pods := []testsuites.PodDetails{
 			{
-				Cmd: testCommands[appendDateToFileAndSleep],
+				Cmd: convertToPowershellCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 1; done"),
 				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
 						FSType:    "ext3",
@@ -230,7 +219,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 				IsWindows: isWindowsCluster,
 			},
 			{
-				Cmd: testCommands[appendDateToFileAndSleep],
+				Cmd: convertToPowershellCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 1; done"),
 				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
 						FSType:    "ext4",
@@ -244,7 +233,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 				IsWindows: isWindowsCluster,
 			},
 			{
-				Cmd: testCommands[appendDateToFileAndSleep],
+				Cmd: convertToPowershellCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 1; done"),
 				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
 						FSType:    "xfs",
@@ -266,9 +255,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		test.Run(cs, ns)
 	})
 
-	ginkgo.It("should create a deployment object, write and read to it, delete the pod and write and read to it again [kubernetes.io/azure-disk] [disk.csi.azure.com]", func() {
+	ginkgo.It("should create a deployment object, write and read to it, delete the pod and write and read to it again [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func() {
 		pod := testsuites.PodDetails{
-			Cmd: testCommands[echoHelloWorldAndSleep],
+			Cmd: convertToPowershellCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 1; done"),
 			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 				{
 					FSType:    "ext3",
@@ -299,7 +288,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		test.Run(cs, ns)
 	})
 
-	ginkgo.It(fmt.Sprintf("should delete PV with reclaimPolicy %q [kubernetes.io/azure-disk] [disk.csi.azure.com]", v1.PersistentVolumeReclaimDelete), func() {
+	ginkgo.It(fmt.Sprintf("should delete PV with reclaimPolicy %q [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", v1.PersistentVolumeReclaimDelete), func() {
 		reclaimPolicy := v1.PersistentVolumeReclaimDelete
 		volumes := t.normalizeVolumes([]testsuites.VolumeDetails{
 			{
@@ -365,10 +354,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		test.Run(cs, ns)
 	})
 
-	ginkgo.It("should create multiple PV objects, bind to PVCs and attach all to a single pod [kubernetes.io/azure-disk] [disk.csi.azure.com]", func() {
+	ginkgo.It("should create multiple PV objects, bind to PVCs and attach all to a single pod [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func() {
 		pods := []testsuites.PodDetails{
 			{
-				Cmd: testCommands[echoHelloWorldAndGrepForThreeTimes],
+				Cmd: convertToPowershellCommandIfNecessary("echo 'hello world' | Out-File -FilePath C:\\mnt\\test-1\\data.txt; Get-Content C:\\mnt\\test-1\\data.txt | findstr 'hello world'; echo 'hello world' | Out-File -FilePath C:\\mnt\\test-2\\data.txt; Get-Content C:\\mnt\\test-2\\data.txt | findstr 'hello world'; echo 'hello world' | Out-File -FilePath C:\\mnt\\test-3\\data.txt; Get-Content C:\\mnt\\test-3\\data.txt | findstr 'hello world'"),
 				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
 						FSType:    "ext3",
@@ -498,22 +487,4 @@ func restClient(group string, version string) (restclientset.Interface, error) {
 	config.APIPath = "/apis"
 	config.NegotiatedSerializer = serializer.DirectCodecFactory{CodecFactory: serializer.NewCodecFactory(runtime.NewScheme())}
 	return restclientset.RESTClientFor(config)
-}
-
-func defineTestCommands() map[int]string {
-	testCommands := make(map[int]string)
-	if isWindowsCluster {
-		testCommands[echoHelloWorldAndGrep] = "echo 'hello world' | Out-File -FilePath C:\\mnt\\test-1\\data.txt; Get-Content C:\\mnt\\test-1\\data.txt | findstr 'hello world'"
-		testCommands[createEmptyFile] = "echo $null >> C:\\mnt\\test-1\\data"
-		testCommands[appendDateToFileAndSleep] = "while (1) { Add-Content C:\\mnt\\test-1\\data.txt $(Get-Date -Format u); sleep 1 }"
-		testCommands[echoHelloWorldAndSleep] = "Add-Content C:\\mnt\\test-1\\data.txt 'hello world'; while (1) { sleep 1 }"
-		testCommands[echoHelloWorldAndGrepForThreeTimes] = "echo 'hello world' | Out-File -FilePath C:\\mnt\\test-1\\data.txt; Get-Content C:\\mnt\\test-1\\data.txt | findstr 'hello world'; echo 'hello world' | Out-File -FilePath C:\\mnt\\test-2\\data.txt; Get-Content C:\\mnt\\test-2\\data.txt | findstr 'hello world'; echo 'hello world' | Out-File -FilePath C:\\mnt\\test-3\\data.txt; Get-Content C:\\mnt\\test-3\\data.txt | findstr 'hello world'"
-	} else {
-		testCommands[echoHelloWorldAndGrep] = "echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"
-		testCommands[createEmptyFile] = "touch /mnt/test-1/data"
-		testCommands[appendDateToFileAndSleep] = "while true; do echo $(date -u) >> /mnt/test-1/data; sleep 1; done"
-		testCommands[echoHelloWorldAndSleep] = "echo 'hello world' >> /mnt/test-1/data && while true; do sleep 1; done"
-		testCommands[echoHelloWorldAndGrepForThreeTimes] = "echo 'hello world' > /mnt/test-1/data && echo 'hello world' > /mnt/test-2/data && echo 'hello world' > /mnt/test-3/data && grep 'hello world' /mnt/test-1/data && grep 'hello world' /mnt/test-2/data && grep 'hello world' /mnt/test-3/data"
-	}
-	return testCommands
 }
