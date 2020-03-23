@@ -99,6 +99,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		diskEncryptionSetID     string
 		customTags              string
 		writeAcceleratorEnabled string
+		maxShares               int
 	)
 
 	parameters := req.GetParameters()
@@ -130,6 +131,14 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			customTags = v
 		case azure.WriteAcceleratorEnabled:
 			writeAcceleratorEnabled = v
+		case "maxshares":
+			maxShares, err = strconv.Atoi(v)
+			if err != nil {
+				return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("parse %s failed with error: %v", v, err))
+			}
+			if maxShares < 1 {
+				return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("parse %s returned with invalid value: %d", v, maxShares))
+			}
 		default:
 			//don't return error here since there are some parameters(e.g. fsType) used in disk mount process
 			//return nil, fmt.Errorf("AzureDisk - invalid option %s in storage class", k)
@@ -237,6 +246,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			SourceResourceID:    sourceID,
 			SourceType:          sourceType,
 			DiskEncryptionSetID: diskEncryptionSetID,
+			MaxShares:           int32(maxShares),
 		}
 		diskURI, err = d.cloud.CreateManagedDisk(volumeOptions)
 		if err != nil {

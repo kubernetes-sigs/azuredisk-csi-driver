@@ -136,6 +136,19 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			}
 			test.Run(cs, ns)
 		})
+
+		ginkgo.It("should fail when maxShares is invalid [disk.csi.azure.com][shared disk]", func() {
+			// Az tests need to be changed to pass the right parameters for in-tree driver.
+			// Skip these tests until above is fixed.
+			if testDriver.IsInTree() {
+				ginkgo.Skip("Test running with in tree configuration")
+			}
+			skipManuallyDeletingVolume = true
+			req := makeCreateVolumeReq("invalid-maxShares")
+			req.Parameters = map[string]string{"maxShares": "0"}
+			_, err := azurediskDriver.CreateVolume(context.Background(), req)
+			framework.ExpectError(err)
+		})
 	})
 })
 
