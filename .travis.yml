@@ -1,13 +1,16 @@
 language: go
+
 go_import_path: sigs.k8s.io/azuredisk-csi-driver
-dist: bionic
 
-go:
-  - "1.12.1"
+services: docker
 
-before_install:
-  - GO111MODULE=off go get github.com/mattn/goveralls
+os: windows
+
+before_script:
+  - docker version
 
 script:
-  - go test -covermode=count -coverprofile=profile.cov ./pkg/...
-  - $GOPATH/bin/goveralls -coverprofile=profile.cov -service=travis-ci
+  - |-
+    docker login -u $PROW_AAD_CLIENT_ID -p $PROW_AAD_CLIENT_SECRET $REGISTRY
+    make azuredisk-container-windows push
+    docker logout
