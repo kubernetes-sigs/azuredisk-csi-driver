@@ -23,7 +23,7 @@ kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi
 kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/csi-snapshot-controller.yaml
 ```
 
-#### Windows
+ - Windows support
 > Note: Windows CSI driver is in alpha stage.
 
 ```console
