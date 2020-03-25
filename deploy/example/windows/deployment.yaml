@@ -1,0 +1,42 @@
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: pvc-azuredisk
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: disk.csi.azure.com
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aspnet-azuredisk
+  labels:
+    app: aspnet
+spec:
+  replicas: 1
+  template:
+    metadata:
+      name: aspnet
+      labels:
+        app: aspnet
+    spec:
+      nodeSelector:
+        "beta.kubernetes.io/os": windows
+      containers:
+        - name: aspnet
+          image: mcr.microsoft.com/dotnet/framework/samples:aspnetapp
+          volumeMounts:
+            - name: azuredisk
+              mountPath: "/mnt/azuredisk"
+      volumes:
+        - name: azuredisk
+          persistentVolumeClaim:
+            claimName: pvc-azuredisk
+  selector:
+    matchLabels:
+      app: aspnet

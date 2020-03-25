@@ -1,0 +1,38 @@
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: aspnet-azuredisk
+  labels:
+    app: aspnet
+spec:
+  serviceName: aspnet-azuredisk
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: aspnet
+    spec:
+      nodeSelector:
+        "beta.kubernetes.io/os": windows
+      containers:
+        - name: aspnet-azuredisk
+          image: mcr.microsoft.com/dotnet/framework/samples:aspnetapp
+          volumeMounts:
+            - name: persistent-storage
+              mountPath: /mnt/azuredisk
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: aspnet
+  volumeClaimTemplates:
+    - metadata:
+        name: persistent-storage
+        annotations:
+          volume.beta.kubernetes.io/storage-class: disk.csi.azure.com
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 100Gi
