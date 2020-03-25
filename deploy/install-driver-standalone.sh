@@ -33,7 +33,7 @@ kubectl apply -f $repo/csi-azuredisk-controller.yaml
 kubectl apply -f $repo/csi-azuredisk-node.yaml
 
 if [[ "$#" -gt 1 ]]; then
-  if [[ "$1" = "windows" ]]; then
+  if [[ "$2" = "windows" ]]; then
     echo "Install Azure Disk CSI Windows driver ..."
     kubectl apply -f $repo/csi-azuredisk-node-windows.yaml
   fi
