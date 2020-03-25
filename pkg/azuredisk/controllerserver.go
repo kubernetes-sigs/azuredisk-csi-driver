@@ -41,10 +41,21 @@ import (
 
 var (
 	// volumeCaps represents how the volume could be accessed.
-	// It is SINGLE_NODE_WRITER since azure disk could only be attached to a single node at any given time.
 	volumeCaps = []csi.VolumeCapability_AccessMode{
 		{
 			Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+		},
+		{
+			Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY,
+		},
+		{
+			Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY,
+		},
+		{
+			Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_SINGLE_WRITER,
+		},
+		{
+			Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER,
 		},
 	}
 )
@@ -62,18 +73,15 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		return nil, err
 	}
 
-	volumeCapabilities := req.GetVolumeCapabilities()
 	name := req.GetName()
 	if len(name) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "CreateVolume Name must be provided")
 	}
-	if len(volumeCapabilities) == 0 {
+	volCaps := req.GetVolumeCapabilities()
+	if len(volCaps) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "CreateVolume Volume capabilities must be provided")
 	}
 
-	if !isValidVolumeCapabilities(volumeCapabilities) {
-		return nil, status.Error(codes.InvalidArgument, "Volume capabilities not supported")
-	}
 	capacityBytes := req.GetCapacityRange().GetRequiredBytes()
 	volSizeBytes := int64(capacityBytes)
 	requestGiB := int(volumehelper.RoundUpGiB(volSizeBytes))
@@ -142,6 +150,16 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		default:
 			//don't return error here since there are some parameters(e.g. fsType) used in disk mount process
 			//return nil, fmt.Errorf("AzureDisk - invalid option %s in storage class", k)
+		}
+	}
+
+	if maxShares < 2 {
+		for _, c := range volCaps {
+			mode := c.GetAccessMode().Mode
+			if mode != csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER &&
+				mode != csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY {
+				return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Volume capability(%v) not supported", mode))
+			}
 		}
 	}
 
