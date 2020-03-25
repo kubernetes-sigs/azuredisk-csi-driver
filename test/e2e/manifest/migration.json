@@ -14,25 +14,11 @@
                 },
                 "kubeletConfig": {
                     "--feature-gates": "CSIMigration=true,CSIMigrationAzureDisk=true"
-                },                
+                },
                 "apiServerConfig": {
                     "--feature-gates": "VolumeSnapshotDataSource=true",
                     "--enable-admission-plugins": "NamespaceLifecycle,LimitRanger,ServiceAccount,DefaultStorageClass,ResourceQuota,AlwaysPullImages"
-                },
-                "addons": [
-                    {
-                        "name": "azuredisk-csi-driver",
-                        "enabled": false
-                    },
-                    {
-                        "name": "azurefile-csi-driver",
-                        "enabled": false
-                    },
-                    {
-                        "name": "tiller",
-                        "enabled": true
-                    }
-                ]
+                }
             }
         },
         "masterProfile": {

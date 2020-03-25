@@ -34,10 +34,6 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework"
 )
 
-type dynamicProvisioningTestSuite struct {
-	allowedTopologyValues []string
-}
-
 var _ = ginkgo.Describe("Dynamic Provisioning", func() {
 	t := dynamicProvisioningTestSuite{}
 
@@ -49,6 +45,10 @@ var _ = ginkgo.Describe("Dynamic Provisioning", func() {
 		t.defineTests(true)
 	})
 })
+
+type dynamicProvisioningTestSuite struct {
+	allowedTopologyValues []string
+}
 
 func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	f := framework.NewDefaultFramework("azuredisk")
@@ -357,7 +357,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	ginkgo.It("should create multiple PV objects, bind to PVCs and attach all to a single pod [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func() {
 		pods := []testsuites.PodDetails{
 			{
-				Cmd: convertToPowershellCommandIfNecessary("echo 'hello world' | Out-File -FilePath C:\\mnt\\test-1\\data.txt; Get-Content C:\\mnt\\test-1\\data.txt | findstr 'hello world'; echo 'hello world' | Out-File -FilePath C:\\mnt\\test-2\\data.txt; Get-Content C:\\mnt\\test-2\\data.txt | findstr 'hello world'; echo 'hello world' | Out-File -FilePath C:\\mnt\\test-3\\data.txt; Get-Content C:\\mnt\\test-3\\data.txt | findstr 'hello world'"),
+				Cmd: convertToPowershellCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && echo 'hello world' > /mnt/test-2/data && echo 'hello world' > /mnt/test-3/data && grep 'hello world' /mnt/test-1/data && grep 'hello world' /mnt/test-2/data && grep 'hello world' /mnt/test-3/data"),
 				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
 						FSType:    "ext3",

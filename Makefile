@@ -65,18 +65,21 @@ e2e-test:
 	go test -v -timeout=0 ./test/e2e ${GINKGO_FLAGS}
 
 .PHONY: e2e-bootstrap
-e2e-bootstrap: kustomize
+e2e-bootstrap: install-helm
 	# Only build and push the image if it does not exist in the registry
 	docker pull $(IMAGE_TAG) || make azuredisk-container push
-	cd deploy && kustomize edit set image mcr.microsoft.com/k8s/csi/azuredisk-csi=$(IMAGE_TAG)
-	kustomize build deploy | kubectl apply -f -
-	kubectl wait --for=condition=ready po --all -l app=csi-azuredisk-controller -n kube-system --timeout=5m
-	kubectl wait --for=condition=ready po --all -l app=csi-azuredisk-node -n kube-system --timeout=5m
-	kubectl wait --for=condition=ready po --all -l app=csi-snapshot-controller -n kube-system --timeout=5m
+	helm install azuredisk-csi-driver charts/latest/azuredisk-csi-driver --namespace kube-system --wait --timeout=15m \
+		--set image.azuredisk.pullPolicy=IfNotPresent \
+		--set image.azuredisk.repository=$(REGISTRY)/$(IMAGE_NAME) \
+		--set image.azuredisk.tag=$(IMAGE_VERSION)
+
+.PHONY: install-helm
+install-helm:
+	curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash
 
 .PHONY: e2e-teardown
 e2e-teardown:
-	kustomize build deploy | kubectl delete -f -
+	helm delete azuredisk-csi-driver --namespace kube-system
 
 .PHONY: azuredisk
 azuredisk:
@@ -118,7 +121,3 @@ build-push: azuredisk-container
 clean:
 	go clean -r -x
 	-rm -rf _output
-
-.PHONY: kustomize
-kustomize:
-	GO111MODULE=on go get sigs.k8s.io/kustomize/kustomize/v3@v3.3.0
