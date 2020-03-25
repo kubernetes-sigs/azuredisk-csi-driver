@@ -1,0 +1,52 @@
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: disk.csi.azure.com
+provisioner: disk.csi.azure.com
+parameters:
+  skuname: Premium_LRS  # Currently shared disk only available with premium SSD
+  maxShares: "2"
+  cachingMode: None  # ReadOnly cache is not available for premium SSD with maxShares>1
+reclaimPolicy: Delete
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: pvc-azuredisk
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 256Gi  # minimum size of shared disk is 256GB (P15)
+  volumeMode: Block
+  storageClassName: disk.csi.azure.com
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: nginx
+  name: deployment-sharedisk
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+      name: deployment-sharedisk
+    spec:
+      containers:
+        - name: deployment-sharedisk
+          image: nginx
+          volumeDevices:
+            - name: azuredisk
+              devicePath: /dev/sdx
+      volumes:
+        - name: azuredisk
+          persistentVolumeClaim:
+            claimName: pvc-azuredisk

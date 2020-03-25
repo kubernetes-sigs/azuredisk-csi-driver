@@ -1,7 +1,7 @@
 # Raw Block Volume Example
 
-1. User requests a PVC with `volumeMode: Block`
-> `volumeMode` value is `Filesystem` by default
+1. Specify `volumeMode` as `Block` in PVC
+> `volumeMode` is `Filesystem` by default
 
 ```yaml
 apiVersion: v1
@@ -18,7 +18,7 @@ spec:
   storageClassName: disk.csi.azure.com
 ```
 
-2. Then requests a Pod with `volumeDevices` and specifies `devicePath`
+2. Specify `volumeDevices`, `devicePath` in Pod Spec
 
 ```yaml
 kind: Pod
@@ -31,24 +31,20 @@ spec:
   containers:
   - image: nginx
     name: nginx-azuredisk
-    command:
-    - "/bin/sh"
-    - "-c"
-    - while true; do echo $(date) >> /mnt/azuredisk/outfile; sleep 1; done
     volumeDevices:
-    - name: azuredisk01
-      devicePath: /dev/xvda
+    - name: azuredisk
+      devicePath: /dev/sdx
   volumes:
-  - name: azuredisk01
+  - name: azuredisk
     persistentVolumeClaim:
       claimName: pvc-azuredisk
 ```
 
-3. Finally the Block PV is passed to the Pod as /dev/xvda (or any user defined devicePath) 
+3. Check block device in pod
 
 ```console
 # kubectl exec -it nginx-azuredisk bash
-root@nginx-azuredisk:/# dd if=/dev/zero of=/dev/xvda bs=1024k count=100
+root@nginx-azuredisk:/# dd if=/dev/zero of=/dev/sdx bs=1024k count=100
 100+0 records in
 100+0 records out
 104857600 bytes (105 MB, 100 MiB) copied, 0.0566293 s, 1.9 GB/s

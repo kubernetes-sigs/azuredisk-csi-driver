@@ -40,6 +40,7 @@ Please refer to [install azuredisk csi driver](./docs/install-azuredisk-csi-driv
  - [Volume Expansion](./deploy/example/resize) 
  - [Raw Block Volume](./deploy/example/rawblock)
  - [Windows](./deploy/example/windows)
+ - [Shared Disk](./deploy/example/sharedisk)
 
 ## Kubernetes Development
 Please refer to [development guide](./docs/csi-dev.md)
