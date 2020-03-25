@@ -44,7 +44,7 @@ export GOPATH GOBIN GO111MODULE
 all: azuredisk
 
 .PHONY: verify
-verify:
+verify: unit-test
 	hack/verify-all.sh
 	go vet ./pkg/...
 
