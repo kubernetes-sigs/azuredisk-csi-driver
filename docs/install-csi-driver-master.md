@@ -1,7 +1,6 @@
 ## Install CSI driver development version on a Kubernetes cluster
 
 ### Install by kubectl
-#### Linux
  - option#1
 ```console
 curl -skSL https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/install-driver-standalone.sh | bash -s --
