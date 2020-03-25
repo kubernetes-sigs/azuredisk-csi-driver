@@ -68,22 +68,18 @@ e2e-test:
 e2e-bootstrap: install-helm
 	# Only build and push the image if it does not exist in the registry
 	docker pull $(IMAGE_TAG) || make azuredisk-container push
-	helm install charts/latest/azuredisk-csi-driver -n azuredisk-csi-driver --namespace kube-system --wait \
+	helm install azuredisk-csi-driver charts/latest/azuredisk-csi-driver --namespace kube-system --wait --timeout=15m \
 		--set image.azuredisk.pullPolicy=IfNotPresent \
 		--set image.azuredisk.repository=$(REGISTRY)/$(IMAGE_NAME) \
 		--set image.azuredisk.tag=$(IMAGE_VERSION)
 
 .PHONY: install-helm
 install-helm:
-	# Use v2.11.0 helm to match tiller's version in clusters made by aks-engine
-	curl https://raw.githubusercontent.com/helm/helm/master/scripts/get | DESIRED_VERSION=v2.11.0 bash
-	# Make sure tiller is ready
-	kubectl wait pod -l name=tiller --namespace kube-system --for condition=ready --timeout 5m
-	helm version
+	curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash
 
 .PHONY: e2e-teardown
 e2e-teardown:
-	helm delete --purge azuredisk-csi-driver
+	helm delete azuredisk-csi-driver --namespace kube-system
 
 .PHONY: azuredisk
 azuredisk:

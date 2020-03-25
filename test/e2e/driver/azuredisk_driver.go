@@ -60,10 +60,6 @@ func InitAzureDiskDriver() PVTestDriver {
 	}
 }
 
-func (d *azureDiskDriver) IsInTree() bool {
-	return d.driverName != azuredisk.DriverName
-}
-
 func (d *azureDiskDriver) GetDynamicProvisionStorageClass(parameters map[string]string, mountOptions []string, reclaimPolicy *v1.PersistentVolumeReclaimPolicy, bindingMode *storagev1.VolumeBindingMode, allowedTopologyValues []string, namespace string) *storagev1.StorageClass {
 	provisioner := d.driverName
 	generateName := fmt.Sprintf("%s-%s-dynamic-sc-", namespace, normalizeProvisioner(provisioner))

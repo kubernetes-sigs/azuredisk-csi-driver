@@ -43,6 +43,7 @@ const (
 	kubeconfigEnvVar    = "KUBECONFIG"
 	reportDirEnvVar     = "ARTIFACTS"
 	testMigrationEnvVar = "TEST_MIGRATION"
+	testWindowsEnvVar   = "TEST_WINDOWS"
 	defaultReportDir    = "/workspace/_artifacts"
 	inTreeStorageClass  = "kubernetes.io/azure-disk"
 )
@@ -51,6 +52,7 @@ var (
 	azurediskDriver           *azuredisk.Driver
 	isUsingInTreeVolumePlugin = os.Getenv(driver.AzureDriverNameVar) == inTreeStorageClass
 	isTestingMigration        = os.Getenv(testMigrationEnvVar) != ""
+	isWindowsCluster          = os.Getenv(testWindowsEnvVar) != ""
 )
 
 type testCmd struct {
@@ -79,18 +81,6 @@ var _ = ginkgo.BeforeSuite(func() {
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		_, err = azureClient.EnsureResourceGroup(context.Background(), creds.ResourceGroup, creds.Location, nil)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-
-		// Need to login to ACR using SP credential if we are running in Prow so we can push test images.
-		// If running locally, user should run 'docker login' before running E2E tests
-
-		registry := os.Getenv("REGISTRY")
-		gomega.Expect(registry).NotTo(gomega.Equal(""))
-
-		log.Println("Attempting docker login with Azure service principal")
-		cmd := exec.Command("docker", "login", fmt.Sprintf("--username=%s", creds.AADClientID), fmt.Sprintf("--password=%s", creds.AADClientSecret), registry)
-		err = cmd.Run()
-		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		log.Println("docker login is successful")
 
 		// Install Azure Disk CSI Driver on cluster from project root
 		e2eBootstrap := testCmd{
@@ -166,4 +156,37 @@ func execTestCmd(cmds []testCmd) {
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		log.Println(cmd.endLog)
 	}
+}
+
+func skipIfTestingInWindowsCluster() {
+	if isWindowsCluster {
+		ginkgo.Skip("test case not supported by Windows clusters")
+	}
+}
+
+func skipIfUsingInTreeVolumePlugin() {
+	if isUsingInTreeVolumePlugin {
+		ginkgo.Skip("test case is only available for CSI drivers")
+	}
+}
+
+func convertToPowershellCommandIfNecessary(command string) string {
+	if !isWindowsCluster {
+		return command
+	}
+
+	switch command {
+	case "echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data":
+		return "echo 'hello world' | Out-File -FilePath C:\\mnt\\test-1\\data.txt; Get-Content C:\\mnt\\test-1\\data.txt | findstr 'hello world'"
+	case "touch /mnt/test-1/data":
+		return "echo $null >> C:\\mnt\\test-1\\data"
+	case "while true; do echo $(date -u) >> /mnt/test-1/data; sleep 1; done":
+		return "while (1) { Add-Content C:\\mnt\\test-1\\data.txt $(Get-Date -Format u); sleep 1 }"
+	case "echo 'hello world' >> /mnt/test-1/data && while true; do sleep 1; done":
+		return "Add-Content C:\\mnt\\test-1\\data.txt 'hello world'; while (1) { sleep 1 }"
+	case "echo 'hello world' > /mnt/test-1/data && echo 'hello world' > /mnt/test-2/data && echo 'hello world' > /mnt/test-3/data && grep 'hello world' /mnt/test-1/data && grep 'hello world' /mnt/test-2/data && grep 'hello world' /mnt/test-3/data":
+		return "echo 'hello world' | Out-File -FilePath C:\\mnt\\test-1\\data.txt; Get-Content C:\\mnt\\test-1\\data.txt | findstr 'hello world'; echo 'hello world' | Out-File -FilePath C:\\mnt\\test-2\\data.txt; Get-Content C:\\mnt\\test-2\\data.txt | findstr 'hello world'; echo 'hello world' | Out-File -FilePath C:\\mnt\\test-3\\data.txt; Get-Content C:\\mnt\\test-3\\data.txt | findstr 'hello world'"
+	}
+
+	return command
 }

@@ -69,9 +69,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 		ginkgo.It("should use a pre-provisioned volume and mount it as readOnly in a pod [disk.csi.azure.com]", func() {
 			// Az tests need to be changed to pass the right parameters for in-tree driver.
 			// Skip these tests until above is fixed.
-			if testDriver.IsInTree() {
-				ginkgo.Skip("Test running with in tree configuration")
-			}
+			skipIfUsingInTreeVolumePlugin()
 
 			req := makeCreateVolumeReq("pre-provisioned-readOnly")
 			resp, err := azurediskDriver.CreateVolume(context.Background(), req)
@@ -109,9 +107,8 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 		ginkgo.It(fmt.Sprintf("should use a pre-provisioned volume and retain PV with reclaimPolicy %q [disk.csi.azure.com]", v1.PersistentVolumeReclaimRetain), func() {
 			// Az tests need to be changed to pass the right parameters for in-tree driver.
 			// Skip these tests until above is fixed.
-			if testDriver.IsInTree() {
-				ginkgo.Skip("Test running with in tree configuration")
-			}
+			skipIfUsingInTreeVolumePlugin()
+
 			req := makeCreateVolumeReq("pre-provisioned-retain-reclaimPolicy")
 			resp, err := azurediskDriver.CreateVolume(context.Background(), req)
 			if err != nil {
@@ -140,9 +137,8 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 		ginkgo.It("should fail when maxShares is invalid [disk.csi.azure.com][shared disk]", func() {
 			// Az tests need to be changed to pass the right parameters for in-tree driver.
 			// Skip these tests until above is fixed.
-			if testDriver.IsInTree() {
-				ginkgo.Skip("Test running with in tree configuration")
-			}
+			skipIfUsingInTreeVolumePlugin()
+
 			skipManuallyDeletingVolume = true
 			req := makeCreateVolumeReq("invalid-maxShares")
 			req.Parameters = map[string]string{"maxShares": "0"}
