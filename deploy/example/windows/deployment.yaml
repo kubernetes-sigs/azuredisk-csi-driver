@@ -26,7 +26,7 @@ spec:
         app: aspnet
     spec:
       nodeSelector:
-        "beta.kubernetes.io/os": windows
+        "kubernetes.io/os": windows
       containers:
         - name: aspnet
           image: mcr.microsoft.com/dotnet/framework/samples:aspnetapp

@@ -14,7 +14,7 @@ spec:
         app: csi-azuredisk-node-win
     spec:
       nodeSelector:
-        beta.kubernetes.io/os: windows
+        kubernetes.io/os: windows
       priorityClassName: system-node-critical
       containers:
         - name: liveness-probe
