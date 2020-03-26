@@ -15,7 +15,7 @@ kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi
 kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/csi-azuredisk-node.yaml
 ```
 
- - install snapshot components
+ - Enable snapshot support
 > skip below yaml configurations if snapshot feature(only available from v1.17.0) will not be used
 ```
 kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/crd-csi-snapshot.yaml
@@ -23,7 +23,7 @@ kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi
 kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/csi-snapshot-controller.yaml
 ```
 
- - Windows support
+ - Enable Windows support
 > Note: Windows CSI driver is in alpha stage.
 
 ```console
