@@ -9,14 +9,10 @@ spec:
   containers:
     - image: nginx
       name: nginx-azuredisk
-      command:
-        - "/bin/sh"
-        - "-c"
-        - while true; do echo $(date) >> /mnt/azuredisk/outfile; sleep 1; done
       volumeDevices:
-        - name: azuredisk01
+        - name: azuredisk
           devicePath: /dev/xvda
   volumes:
-    - name: azuredisk01
+    - name: azuredisk
       persistentVolumeClaim:
         claimName: pvc-azuredisk
