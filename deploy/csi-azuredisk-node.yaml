@@ -17,9 +17,10 @@ spec:
       nodeSelector:
         kubernetes.io/os: linux
       priorityClassName: system-node-critical
+      tolerations:
+        - operator: "Exists"
       containers:
         - name: liveness-probe
-          imagePullPolicy: Always
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
@@ -37,7 +38,7 @@ spec:
               cpu: 10m
               memory: 20Mi
         - name: node-driver-registrar
-          image: mcr.microsoft.com/oss/kubernetes-csi/csi-node-driver-registrar:v1.1.0
+          image: mcr.microsoft.com/oss/kubernetes-csi/csi-node-driver-registrar:v1.2.0
           args:
             - --csi-address=$(ADDRESS)
             - --kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)
@@ -95,7 +96,6 @@ spec:
                 fieldRef:
                   apiVersion: v1
                   fieldPath: spec.nodeName
-          imagePullPolicy: Always
           securityContext:
             privileged: true
           volumeMounts:
