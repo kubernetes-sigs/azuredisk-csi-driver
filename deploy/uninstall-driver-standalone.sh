@@ -27,10 +27,13 @@ if [ $ver != "master" ]; then
 fi
 
 echo "Uninstalling Azure Disk CSI driver, version: $ver ..."
-kubectl delete -f  $repo/csi-azuredisk-controller.yaml --ignore-not-found
-kubectl delete -f  $repo/csi-azuredisk-node.yaml --ignore-not-found
-kubectl delete -f  $repo/csi-azuredisk-node-windows.yaml --ignore-not-found
-kubectl delete -f  $repo/csi-azuredisk-driver.yaml --ignore-not-found
-kubectl delete -f  $repo/crd-csi-node-info.yaml --ignore-not-found
-kubectl delete -f  $repo/rbac-csi-azuredisk-controller.yaml --ignore-not-found
+kubectl delete -f $repo/crd-csi-snapshot.yaml --ignore-not-found
+kubectl delete -f $repo/rbac-csi-snapshot-controller.yaml --ignore-not-found
+kubectl delete -f $repo/csi-snapshot-controller.yaml --ignore-not-found
+kubectl delete -f $repo/csi-azuredisk-controller.yaml --ignore-not-found
+kubectl delete -f $repo/csi-azuredisk-node.yaml --ignore-not-found
+kubectl delete -f $repo/csi-azuredisk-node-windows.yaml --ignore-not-found
+kubectl delete -f $repo/csi-azuredisk-driver.yaml --ignore-not-found
+kubectl delete -f $repo/crd-csi-node-info.yaml --ignore-not-found
+kubectl delete -f $repo/rbac-csi-azuredisk-controller.yaml --ignore-not-found
 echo 'Uninstalled Azure Disk CSI driver successfully.'

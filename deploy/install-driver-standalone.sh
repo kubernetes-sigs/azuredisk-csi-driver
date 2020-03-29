@@ -33,8 +33,15 @@ kubectl apply -f $repo/csi-azuredisk-controller.yaml
 kubectl apply -f $repo/csi-azuredisk-node.yaml
 
 if [[ "$#" -gt 1 ]]; then
-  if [[ "$2" = "windows" ]]; then
-    echo "Install Azure Disk CSI Windows driver ..."
+  if [[ "$2" == *"snapshot"* ]]; then
+    echo "install snapshot driver ..."
+    kubectl apply -f $repo/crd-csi-snapshot.yaml
+    kubectl apply -f $repo/rbac-csi-snapshot-controller.yaml
+    kubectl apply -f $repo/csi-snapshot-controller.yaml
+  fi
+
+  if [[ "$2" == *"windows"* ]]; then
+    echo "install Windows driver ..."
     kubectl apply -f $repo/csi-azuredisk-node-windows.yaml
   fi
 fi

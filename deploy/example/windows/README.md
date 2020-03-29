@@ -11,7 +11,7 @@ CSI on Windows support is an alpha feature since Kubernetes v1.18, refer to [Win
 
 ## Install CSI Driver
 
-Follow the [instructions](https://github.com/kubernetes-sigs/azuredisk-csi-driver/blob/master/docs/install-csi-driver-master.md#windows) to install windows version driver.
+Follow the [instructions](https://github.com/kubernetes-sigs/azuredisk-csi-driver/blob/master/docs/install-csi-driver-master.md) to install windows driver.
 
 ## Deploy a Windows pod with PVC mount
 
