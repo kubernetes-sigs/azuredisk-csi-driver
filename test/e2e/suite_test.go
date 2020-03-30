@@ -105,7 +105,7 @@ var _ = ginkgo.AfterSuite(func() {
 	// CSI driver is installed for that case.
 	if testutil.IsRunningInProw() {
 		azurediskLog := testCmd{
-			command:  "sh",
+			command:  "bash",
 			args:     []string{"test/utils/azuredisk_log.sh"},
 			startLog: "===================azuredisk log===================",
 			endLog:   "===================================================",
