@@ -11,13 +11,6 @@ curl -skSL https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-drive
 curl -skSL https://raw.githubusercontent.com/andyzhangx/azuredisk-csi-driver/win-script/deploy/install-driver-standalone.sh | bash -s master snapshot --
 ```
 
- - Enable Windows support
-> Note: Windows CSI driver is in alpha stage.
-
-```console
-curl -skSL https://raw.githubusercontent.com/andyzhangx/azuredisk-csi-driver/win-script/deploy/install-driver-standalone.sh | bash -s master windows --
-```
-
 ### Check pods status:
 
 ```console
