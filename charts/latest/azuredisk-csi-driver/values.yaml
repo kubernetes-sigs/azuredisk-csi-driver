@@ -41,7 +41,7 @@ node:
   metricsPort: 29605
   
 snapshot:
-  enabled: true
+  enabled: false
   image:
     csiSnapshotter:
       repository: mcr.microsoft.com/oss/kubernetes-csi/csi-snapshotter
