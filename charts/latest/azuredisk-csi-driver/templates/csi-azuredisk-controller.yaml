@@ -89,8 +89,9 @@ spec:
             requests:
               cpu: 10m
               memory: 20Mi
+        {{- if .Values.snapshot.enabled}}
         - name: csi-snapshotter
-          image: "{{ .Values.image.csiSnapshotter.repository }}:{{ .Values.image.csiSnapshotter.tag }}"
+          image: "{{ .Values.snapshot.image.csiSnapshotter.repository }}:{{ .Values.snapshot.image.csiSnapshotter.tag }}"
           args:
             - "-csi-address=$(ADDRESS)"
             - "-leader-election"
@@ -108,6 +109,7 @@ spec:
             requests:
               cpu: 10m
               memory: 20Mi
+        {{- end}}
         - name: csi-resizer
           image: "{{ .Values.image.csiResizer.repository }}:{{ .Values.image.csiResizer.tag }}"
           args:

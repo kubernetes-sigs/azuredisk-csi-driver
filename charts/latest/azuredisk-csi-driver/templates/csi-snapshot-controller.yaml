@@ -1,17 +1,18 @@
----
+{{- if .Values.snapshot.enabled -}}
 kind: Deployment
 apiVersion: apps/v1
 metadata:
   name: csi-snapshot-controller
   namespace: {{ .Release.Namespace }}
+{{ include "azuredisk.labels" . | indent 2 }}
 spec:
-  replicas: {{ .Values.snapshotController.replicas }}
+  replicas: {{ .Values.snapshot.snapshotController.replicas }}
   selector:
     matchLabels:
       app: csi-snapshot-controller
   template:
     metadata:
-      labels:
+{{ include "azuredisk.labels" . | indent 6 }}
         app: csi-snapshot-controller
     spec:
       serviceAccountName: csi-snapshot-controller-sa
@@ -25,7 +26,7 @@ spec:
           effect: "NoSchedule"
       containers:
         - name: csi-snapshot-controller
-          image: "{{ .Values.image.csiSnapshotController.repository }}:{{ .Values.image.csiSnapshotController.tag }}"
+          image: "{{ .Values.snapshot.image.csiSnapshotController.repository }}:{{ .Values.snapshot.image.csiSnapshotController.tag }}"
           args:
             - "--v=5"
             - "-leader-election"
@@ -36,4 +37,5 @@ spec:
             requests:
               cpu: 10m
               memory: 20Mi
-          imagePullPolicy: {{ .Values.image.csiSnapshotController.pullPolicy }}
+          imagePullPolicy: {{ .Values.snapshot.image.csiSnapshotController.pullPolicy }}
+{{- end -}}
