@@ -14,7 +14,7 @@ This driver allows Kubernetes to use [azure disk](https://azure.microsoft.com/en
 |v0.4.0                         |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.4.0      | yes    |
 
 ### Kubernetes Compatibility
-| Azure Disk CSI Driver\Kubernetes Version | 1.14+ |
+| Azure Disk CSI Driver\Kubernetes Version | 1.16+ |
 |------------------------------------------|-------|
 | master branch                            | yes   |
 | v0.6.0                                   | yes   |
