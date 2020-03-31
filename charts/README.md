@@ -68,3 +68,12 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `windows.image.nodeDriverRegistrar.repository`    | windows csi-node-driver-registrar docker image             | mcr.microsoft.com/oss/kubernetes-csi/csi-node-driver-registrar |
 | `windows.image.nodeDriverRegistrar.tag`           | windows csi-node-driver-registrar docker image tag         | v1.2.1-alpha.1-windows-1809-amd64                            |
 | `windows.image.nodeDriverRegistrar.pullPolicy`    | windows csi-node-driver-registrar image pull policy        | IfNotPresent                                                 |
+
+## Troubleshooting
+
+If there are some errors when using helm to install, follow the steps to debug:
+
+1. Add `--wait -v=5 --debug` in `helm install` command.
+2. Then the error pods  can be located.
+3. Use `kubectl describe ` to acquire more info.
+4. Check the related resource of the pod, such as serviceaacount, rbac, etc.
