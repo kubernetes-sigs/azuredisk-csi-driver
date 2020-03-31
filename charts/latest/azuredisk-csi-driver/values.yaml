@@ -15,10 +15,6 @@ image:
     repository: mcr.microsoft.com/oss/kubernetes-csi/csi-cluster-driver-registrar
     tag: v1.0.1
     pullPolicy: IfNotPresent
-  csiSnapshotter:
-    repository: mcr.microsoft.com/oss/kubernetes-csi/csi-snapshotter
-    tag: v2.0.0
-    pullPolicy: IfNotPresent
   csiResizer:
     repository: mcr.microsoft.com/oss/kubernetes-csi/csi-resizer
     tag: v0.3.0
@@ -30,10 +26,6 @@ image:
   nodeDriverRegistrar:
     repository: mcr.microsoft.com/oss/kubernetes-csi/csi-node-driver-registrar
     tag: v1.2.0
-    pullPolicy: IfNotPresent
-  csiSnapshotController:
-    repository: mcr.microsoft.com/oss/kubernetes-csi/snapshot-controller
-    tag: v2.0.0
     pullPolicy: IfNotPresent
 
 serviceAccount:
@@ -47,6 +39,31 @@ controller:
 
 node:
   metricsPort: 29605
+  
+snapshot:
+  enabled: false
+  image:
+    csiSnapshotter:
+      repository: mcr.microsoft.com/oss/kubernetes-csi/csi-snapshotter
+      tag: v2.0.0
+      pullPolicy: IfNotPresent
+    csiSnapshotController:
+      repository: mcr.microsoft.com/oss/kubernetes-csi/snapshot-controller
+      tag: v2.0.0
+      pullPolicy: IfNotPresent
+  snapshotController:
+    replicas: 1
+    serviceAccount: true
+    rbac: true
 
-snapshotController:
-  replicas: 1
+windows:
+  enabled: false
+  image:
+    livenessProbe:
+      repository: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe
+      tag: v2.0.1-alpha.1-windows-1809-amd64
+      pullPolicy: IfNotPresent
+    nodeDriverRegistrar:
+      repository: mcr.microsoft.com/oss/kubernetes-csi/csi-node-driver-registrar
+      tag: v1.2.1-alpha.1-windows-1809-amd64
+      pullPolicy: IfNotPresent

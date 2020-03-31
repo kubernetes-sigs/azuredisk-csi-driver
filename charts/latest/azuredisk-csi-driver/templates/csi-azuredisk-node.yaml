@@ -1,3 +1,4 @@
+{{- if eq .Values.windows.enabled false }}
 kind: DaemonSet
 apiVersion: apps/v1
 metadata:
@@ -155,3 +156,4 @@ spec:
             path: /sys/class/scsi_host/
             type: Directory
           name: scsi-host-dir
+{{- end -}}
