@@ -2,13 +2,13 @@
 
 ### Install by kubectl
 ```console
-curl -skSL https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/install-driver-standalone.sh | bash -s master --
+curl -skSL https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/install-driver.sh | bash -s master --
 ```
 
  - Enable snapshot support
 > Note: only available from v1.17.0
 ```console
-curl -skSL https://raw.githubusercontent.com/andyzhangx/azuredisk-csi-driver/win-script/deploy/install-driver-standalone.sh | bash -s master snapshot --
+curl -skSL https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/win-script/deploy/install-driver.sh | bash -s master snapshot --
 ```
 
 ### Check pods status:
@@ -32,5 +32,5 @@ csi-azuredisk-node-dr4s4                        3/3     Running   0          7m4
 ### Clean up CSI driver
 
 ```console
-curl -skSL https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/uninstall-driver-standalone.sh | bash -s master --
+curl -skSL https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/uninstall-driver.sh | bash -s master --
 ```

@@ -105,7 +105,7 @@ var _ = ginkgo.AfterSuite(func() {
 	// CSI driver is installed for that case.
 	if testutil.IsRunningInProw() {
 		azurediskLog := testCmd{
-			command:  "sh",
+			command:  "bash",
 			args:     []string{"test/utils/azuredisk_log.sh"},
 			startLog: "===================azuredisk log===================",
 			endLog:   "===================================================",
@@ -118,6 +118,22 @@ var _ = ginkgo.AfterSuite(func() {
 				endLog:   "Azure Disk CSI Driver uninstalled",
 			}
 			execTestCmd([]testCmd{azurediskLog, e2eTeardown})
+
+			// install/uninstall Azure Disk CSI Driver deployment scripts test
+			installDriver := testCmd{
+				command:  "bash",
+				args:     []string{"deploy/install-driver.sh", "master", "windows,snapshot,local"},
+				startLog: "===================install Azure Disk CSI Driver deployment scripts test===================",
+				endLog:   "===================================================",
+			}
+			uninstallDriver := testCmd{
+				command:  "bash",
+				args:     []string{"deploy/uninstall-driver.sh", "master", "windows,snapshot,local"},
+				startLog: "===================uninstall Azure Disk CSI Driver deployment scripts test===================",
+				endLog:   "===================================================",
+			}
+			execTestCmd([]testCmd{installDriver, uninstallDriver})
+
 			err := credentials.DeleteAzureCredentialFile()
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		}
