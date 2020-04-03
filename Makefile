@@ -15,11 +15,12 @@
 PKG = sigs.k8s.io/azuredisk-csi-driver
 GIT_COMMIT ?= $(shell git rev-parse HEAD)
 REGISTRY ?= andyzhangx
+REGISTRY_NAME = $(shell echo $(REGISTRY) | sed "s/.azurecr.io//g")
 DRIVER_NAME = disk.csi.azure.com
 IMAGE_NAME = azuredisk-csi
 IMAGE_VERSION ?= v0.7.0
-# Use a custom version for E2E tests if we are in Prow
-ifdef AZURE_CREDENTIALS
+# Use a custom version for E2E tests if we are testing in CI
+ifdef CI
 override IMAGE_VERSION := e2e-$(GIT_COMMIT)
 endif
 IMAGE_TAG = $(REGISTRY)/$(IMAGE_NAME):$(IMAGE_VERSION)
@@ -38,7 +39,8 @@ endif
 GOPATH ?= $(shell go env GOPATH)
 GOBIN ?= $(GOPATH)/bin
 GO111MODULE = off
-export GOPATH GOBIN GO111MODULE
+DOCKER_CLI_EXPERIMENTAL = enabled
+export GOPATH GOBIN GO111MODULE DOCKER_CLI_EXPERIMENTAL
 
 .PHONY: all
 all: azuredisk
@@ -66,13 +68,18 @@ e2e-test:
 
 .PHONY: e2e-bootstrap
 e2e-bootstrap: install-helm
-	# Only build and push the image if it does not exist in the registry
 	docker pull $(IMAGE_TAG) || make azuredisk-container push
+ifdef TEST_WINDOWS
 	helm install azuredisk-csi-driver charts/latest/azuredisk-csi-driver --namespace kube-system --wait --timeout=15m -v=5 --debug \
-		--set image.azuredisk.pullPolicy=IfNotPresent \
+		--set image.azuredisk.repository=$(REGISTRY)/$(IMAGE_NAME) \
+		--set image.azuredisk.tag=$(IMAGE_VERSION) \
+		--set windows.enabled=true
+else
+	helm install azuredisk-csi-driver charts/latest/azuredisk-csi-driver --namespace kube-system --wait --timeout=15m -v=5 --debug \
 		--set image.azuredisk.repository=$(REGISTRY)/$(IMAGE_NAME) \
 		--set image.azuredisk.tag=$(IMAGE_VERSION) \
 		--set snapshot.enabled=true
+endif
 
 .PHONY: install-helm
 install-helm:
@@ -92,21 +99,32 @@ azuredisk-windows:
 	if [ ! -d ./vendor ]; then dep ensure -vendor-only; fi
 	CGO_ENABLED=0 GOOS=windows go build -a -ldflags ${LDFLAGS} -o _output/azurediskplugin.exe ./pkg/azurediskplugin
 
-.PHONY: container
-container: azuredisk
-	docker build --no-cache -t $(IMAGE_TAG) -f ./pkg/azurediskplugin/Dockerfile .
-
 .PHONY: azuredisk-container
-azuredisk-container: azuredisk
+azuredisk-container:
+ifdef CI
+	az acr login --name $(REGISTRY_NAME)
+	make azuredisk azuredisk-windows
+	az acr build --registry $(REGISTRY_NAME) -t $(IMAGE_TAG)-linux-amd64 -f ./pkg/azurediskplugin/Dockerfile --platform linux .
+	az acr build --registry $(REGISTRY_NAME) -t $(IMAGE_TAG)-windows-1809-amd64 -f ./pkg/azurediskplugin/Windows.Dockerfile --platform windows .
+	docker manifest create $(IMAGE_TAG) $(IMAGE_TAG)-linux-amd64 $(IMAGE_TAG)-windows-1809-amd64
+	docker manifest inspect $(IMAGE_TAG)
+else
+ifdef TEST_WINDOWS
+	make azuredisk-windows
+	docker build --no-cache -t $(IMAGE_TAG) -f ./pkg/azurediskplugin/Windows.Dockerfile .
+else
+	make azurediskfi
 	docker build --no-cache -t $(IMAGE_TAG) -f ./pkg/azurediskplugin/Dockerfile .
-
-.PHONY: azuredisk-container-windows
-azuredisk-container-windows: azuredisk-windows
-	docker build --no-cache --platform windows/amd64 -t $(IMAGE_TAG) -f ./pkg/azurediskplugin/Windows.Dockerfile .
+endif
+endif
 
 .PHONY: push
 push:
+ifdef CI
+	docker manifest push --purge $(IMAGE_TAG)
+else
 	docker push $(IMAGE_TAG)
+endif
 
 .PHONY: push-latest
 push-latest:

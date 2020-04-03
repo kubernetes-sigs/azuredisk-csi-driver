@@ -82,7 +82,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			diskSize := fmt.Sprintf("%dGi", defaultDiskSize)
 			pods := []testsuites.PodDetails{
 				{
-					Cmd: "echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data",
+					Cmd: convertToPowershellCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
 					Volumes: []testsuites.VolumeDetails{
 						{
 							VolumeID:  volumeID,
@@ -95,6 +95,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 							},
 						},
 					},
+					IsWindows: isWindowsCluster,
 				},
 			}
 			test := testsuites.PreProvisionedReadOnlyVolumeTest{

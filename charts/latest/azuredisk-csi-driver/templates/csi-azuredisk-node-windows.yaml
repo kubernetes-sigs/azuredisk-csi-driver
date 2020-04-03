@@ -26,10 +26,10 @@ spec:
               name: plugin-dir
           image: "{{ .Values.windows.image.livenessProbe.repository }}:{{ .Values.windows.image.livenessProbe.tag }}"
           args:
-            - --csi-address=$(CSI_ENDPOINT)
-            - --probe-timeout=3s
-            - --health-port=29603
-            - --v=5
+            - "--csi-address=$(CSI_ENDPOINT)"
+            - "--probe-timeout=3s"
+            - "--health-port=29603"
+            - "--v=5"
           env:
             - name: CSI_ENDPOINT
               value: unix://C:\\csi\\csi.sock
@@ -44,9 +44,9 @@ spec:
         - name: node-driver-registrar
           image: "{{ .Values.windows.image.nodeDriverRegistrar.repository }}:{{ .Values.windows.image.nodeDriverRegistrar.tag }}"
           args:
-            - --v=5
-            - --csi-address=$(CSI_ENDPOINT)
-            - --kubelet-registration-path=C:\\var\\lib\\kubelet\\plugins\\disk.csi.azure.com\\csi.sock
+            - "--v=5"
+            - "--csi-address=$(CSI_ENDPOINT)"
+            - "--kubelet-registration-path=C:\\var\\lib\\kubelet\\plugins\\disk.csi.azure.com\\csi.sock"
           env:
             - name: CSI_ENDPOINT
               value: unix://C:\\csi\\csi.sock
@@ -72,9 +72,9 @@ spec:
         - name: azuredisk
           image: "{{ .Values.image.azuredisk.repository }}:{{ .Values.image.azuredisk.tag }}"
           args:
-            - --v=5
-            - --endpoint=$(CSI_ENDPOINT)
-            - --nodeid=$(KUBE_NODE_NAME)
+            - "--v=5"
+            - "--endpoint=$(CSI_ENDPOINT)"
+            - "--nodeid=$(KUBE_NODE_NAME)"
             - "--metrics-address=0.0.0.0:{{ .Values.node.metricsPort }}"
           ports:
             - containerPort: 29603
