@@ -113,7 +113,7 @@ ifdef TEST_WINDOWS
 	make azuredisk-windows
 	docker build --no-cache -t $(IMAGE_TAG) -f ./pkg/azurediskplugin/Windows.Dockerfile .
 else
-	make azurediskfi
+	make azuredisk
 	docker build --no-cache -t $(IMAGE_TAG) -f ./pkg/azurediskplugin/Dockerfile .
 endif
 endif
