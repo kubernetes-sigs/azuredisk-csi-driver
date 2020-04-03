@@ -43,20 +43,16 @@ pip install yq
 # Extract images from csi-azuredisk-controller.yaml
 expected_csi_provisioner_image="$(cat ${PKG_ROOT}/deploy/csi-azuredisk-controller.yaml | yq -r .spec.template.spec.containers[0].image | head -n 1)"
 expected_csi_attacher_image="$(cat ${PKG_ROOT}/deploy/csi-azuredisk-controller.yaml | yq -r .spec.template.spec.containers[1].image | head -n 1)"
-expected_cluster_driver_registrar_image="$(cat ${PKG_ROOT}/deploy/csi-azuredisk-controller.yaml | yq -r .spec.template.spec.containers[2].image | head -n 1)"
-expected_csi_snapshotter_image="$(cat ${PKG_ROOT}/deploy/csi-azuredisk-controller.yaml | yq -r .spec.template.spec.containers[3].image | head -n 1)"
-expected_csi_resizer_image="$(cat ${PKG_ROOT}/deploy/csi-azuredisk-controller.yaml | yq -r .spec.template.spec.containers[4].image | head -n 1)"
-expected_liveness_probe_image="$(cat ${PKG_ROOT}/deploy/csi-azuredisk-controller.yaml | yq -r .spec.template.spec.containers[5].image | head -n 1)"
-expected_azuredisk_image="$(cat ${PKG_ROOT}/deploy/csi-azuredisk-controller.yaml | yq -r .spec.template.spec.containers[6].image | head -n 1)"
+expected_csi_snapshotter_image="$(cat ${PKG_ROOT}/deploy/csi-azuredisk-controller.yaml | yq -r .spec.template.spec.containers[2].image | head -n 1)"
+expected_csi_resizer_image="$(cat ${PKG_ROOT}/deploy/csi-azuredisk-controller.yaml | yq -r .spec.template.spec.containers[3].image | head -n 1)"
+expected_liveness_probe_image="$(cat ${PKG_ROOT}/deploy/csi-azuredisk-controller.yaml | yq -r .spec.template.spec.containers[4].image | head -n 1)"
+expected_azuredisk_image="$(cat ${PKG_ROOT}/deploy/csi-azuredisk-controller.yaml | yq -r .spec.template.spec.containers[5].image | head -n 1)"
 
 csi_provisioner_image="$(get_image_from_helm_chart ".image.csiProvisioner")"
 validate_image "${expected_csi_provisioner_image}" "${csi_provisioner_image}"
 
 csi_attacher_image="$(get_image_from_helm_chart ".image.csiAttacher")"
 validate_image "${expected_csi_attacher_image}" "${csi_attacher_image}"
-
-cluster_driver_registrar_image="$(get_image_from_helm_chart ".image.clusterDriverRegistrar")"
-validate_image "${expected_cluster_driver_registrar_image}" "${cluster_driver_registrar_image}"
 
 csi_snapshotter_image="$(get_image_from_helm_chart ".snapshot.image.csiSnapshotter")"
 validate_image "${expected_csi_snapshotter_image}" "${csi_snapshotter_image}"
