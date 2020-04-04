@@ -73,7 +73,8 @@ ifdef TEST_WINDOWS
 	helm install azuredisk-csi-driver charts/latest/azuredisk-csi-driver --namespace kube-system --wait --timeout=15m -v=5 --debug \
 		--set image.azuredisk.repository=$(REGISTRY)/$(IMAGE_NAME) \
 		--set image.azuredisk.tag=$(IMAGE_VERSION) \
-		--set windows.enabled=true
+		--set windows.enabled=true \
+		--set controller.replicas=1
 else
 	helm install azuredisk-csi-driver charts/latest/azuredisk-csi-driver --namespace kube-system --wait --timeout=15m -v=5 --debug \
 		--set image.azuredisk.repository=$(REGISTRY)/$(IMAGE_NAME) \
