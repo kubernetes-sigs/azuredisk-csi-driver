@@ -26,8 +26,8 @@ Please refer to [`disk.csi.azure.com` driver parameters](./docs/driver-parameter
  > storage class `disk.csi.azure.com` parameters are compatible with built-in [azuredisk](https://kubernetes.io/docs/concepts/storage/volumes/#azuredisk) plugin
 
 ### Prerequisite
- - The driver initialization depends on a [Cloud provider config file](https://github.com/kubernetes/cloud-provider-azure/blob/master/docs/cloud-provider-config.md), usually it's `/etc/kubernetes/azure.json` on all kubernetes nodes deployed by AKS or aks-engine, here is an [azure.json example](./deploy/example/azure.json)
- > if cluster is based on Managed Service Identity(MSI), make sure all agent nodes have `Contributor` role for current resource group
+ - The driver initialization depends on a [Cloud provider config file](https://github.com/kubernetes/cloud-provider-azure/blob/master/docs/cloud-provider-config.md), usually it's `/etc/kubernetes/azure.json` on all kubernetes nodes deployed by [AKS](https://docs.microsoft.com/en-us/azure/aks/) or [aks-engine](https://github.com/Azure/aks-engine), here is an [azure.json example](./deploy/example/azure.json)
+ > if cluster identity is [Managed Service Identity(MSI)](https://docs.microsoft.com/en-us/azure/aks/use-managed-identity), make sure user assigned identity has `Contributor` role on node resource group
 
 ### Install azuredisk CSI driver on a Kubernetes cluster
 Please refer to [install azuredisk csi driver](./docs/install-azuredisk-csi-driver.md)
