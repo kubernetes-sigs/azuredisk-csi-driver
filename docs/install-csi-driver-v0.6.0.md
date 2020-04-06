@@ -8,7 +8,7 @@ curl -skSL https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-drive
  - Enable snapshot support
 > Note: only available from v1.17.0
 ```console
-curl -skSL https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/win-script/deploy/install-driver.sh | bash -s v0.6.0 snapshot --
+curl -skSL https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/install-driver.sh | bash -s v0.6.0 snapshot --
 ```
 
 ### Check pods status:
