@@ -22,30 +22,38 @@ import (
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
 	"k8s.io/legacy-cloud-providers/azure"
 )
 
+var (
+	DefaultAzureCredentialFileEnv = "AZURE_CREDENTIAL_FILE"
+	DefaultCredFilePath           = "/etc/kubernetes/azure.json"
+)
+
 // GetCloudProvider get Azure Cloud Provider
-func GetCloudProvider() (*azure.Cloud, error) {
-	klog.V(2).Infof("reading cloud config from secret")
-	kubeClient, err := getKubeClient()
-	if err != nil {
+func GetCloudProvider(kubeconfig string) (*azure.Cloud, error) {
+	kubeClient, err := getKubeClient(kubeconfig)
+	if err != nil && !os.IsNotExist(err) && err != rest.ErrNotInCluster {
 		return nil, fmt.Errorf("failed to get KubeClient: %v", err)
 	}
-	az := &azure.Cloud{
-		KubeClient: kubeClient,
-	}
-	az.InitializeCloudFromSecret()
 
-	if az.SubscriptionID == "" {
+	az := &azure.Cloud{}
+	if kubeClient != nil {
+		klog.V(2).Infof("reading cloud config from secret")
+		az.KubeClient = kubeClient
+		az.InitializeCloudFromSecret()
+	}
+
+	if az.TenantID == "" || az.SubscriptionID == "" {
 		klog.V(2).Infof("could not read cloud config from secret")
-		credFile, ok := os.LookupEnv("AZURE_CREDENTIAL_FILE")
+		credFile, ok := os.LookupEnv(DefaultAzureCredentialFileEnv)
 		if ok {
-			klog.V(2).Infof("AZURE_CREDENTIAL_FILE env var set as %v", credFile)
+			klog.V(2).Infof("%s env var set as %v", DefaultAzureCredentialFileEnv, credFile)
 		} else {
-			credFile = "/etc/kubernetes/azure.json"
-			klog.V(2).Infof("use default AZURE_CREDENTIAL_FILE env var: %v", credFile)
+			credFile = DefaultCredFilePath
+			klog.V(2).Infof("use default %s env var: %v", DefaultAzureCredentialFileEnv, credFile)
 		}
 
 		f, err := os.Open(credFile)
@@ -55,6 +63,7 @@ func GetCloudProvider() (*azure.Cloud, error) {
 		}
 		defer f.Close()
 
+		klog.V(2).Infof("read cloud config from file: %s successfully", credFile)
 		return azure.NewCloudWithoutFeatureGates(f)
 	}
 
@@ -62,10 +71,20 @@ func GetCloudProvider() (*azure.Cloud, error) {
 	return az, nil
 }
 
-func getKubeClient() (*kubernetes.Clientset, error) {
-	config, err := rest.InClusterConfig()
-	if err != nil {
-		return nil, err
+func getKubeClient(kubeconfig string) (*kubernetes.Clientset, error) {
+	var (
+		config *rest.Config
+		err    error
+	)
+	if kubeconfig != "" {
+		if config, err = clientcmd.BuildConfigFromFlags("", kubeconfig); err != nil {
+			return nil, err
+		}
+	} else {
+		if config, err = rest.InClusterConfig(); err != nil {
+			return nil, err
+		}
 	}
+
 	return kubernetes.NewForConfig(config)
 }
