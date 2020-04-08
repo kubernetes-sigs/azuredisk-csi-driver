@@ -12,12 +12,24 @@ k8s-agentpool-83483713-vmss000000   Ready    agent    62d   v1.16.2   ...topolog
 k8s-agentpool-83483713-vmss000001   Ready    agent    62d   v1.16.2   ...topology.disk.csi.azure.com/zone=eastus2-1
 ```
 
-### Create an azure disk storage class with topology support
+### Use following storage class with topology support
 
-```console
-$ wget -O storageclass-azuredisk-csi-topology.yaml https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/storageclass-azuredisk-csi-topology.yaml
-# edit `topology.disk.csi.azure.com/zone` values with above node topology label value
-$ kubectl apply -f storageclass-azuredisk-csi-topology.yaml
+```yaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: disk.csi.azure.com
+provisioner: disk.csi.azure.com
+parameters:
+  skuname: StandardSSD_LRS  # alias: storageaccounttype, available values: Standard_LRS, Premium_LRS, StandardSSD_LRS, UltraSSD_LRS
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer  # available values: "WaitForFirstConsumer", "Immediate"
+allowedTopologies:
+  - matchLabelExpressions:
+      - key: topology.disk.csi.azure.com/zone
+        values:
+          - eastus2-1
+          - eastus2-2
 ```
  > make sure `volumeBindingMode` is set as `WaitForFirstConsumer`
 
