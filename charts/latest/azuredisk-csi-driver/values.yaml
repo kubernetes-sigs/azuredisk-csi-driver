@@ -52,6 +52,9 @@ snapshot:
     serviceAccount: true
     rbac: true
 
+linux:
+  enabled: true
+
 windows:
   enabled: false
   image:
