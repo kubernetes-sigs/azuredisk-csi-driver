@@ -93,9 +93,10 @@ var _ = ginkgo.BeforeSuite(func() {
 
 		nodeid := os.Getenv("nodeid")
 		azurediskDriver = azuredisk.NewDriver(nodeid)
+		kubeconfig := os.Getenv(kubeconfigEnvVar)
 		go func() {
 			os.Setenv("AZURE_CREDENTIAL_FILE", credentials.TempAzureCredentialFilePath)
-			azurediskDriver.Run(fmt.Sprintf("unix:///tmp/csi-%s.sock", uuid.NewUUID().String()))
+			azurediskDriver.Run(fmt.Sprintf("unix:///tmp/csi-%s.sock", uuid.NewUUID().String()), kubeconfig)
 		}()
 	}
 })

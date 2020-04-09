@@ -40,6 +40,7 @@ var (
 	nodeID         = flag.String("nodeid", "", "node id")
 	version        = flag.Bool("version", false, "Print the version and exit.")
 	metricsAddress = flag.String("metrics-address", "0.0.0.0:29604", "export the metrics")
+	kubeconfig     = flag.String("kubeconfig", "", "Absolute path to the kubeconfig file. Required only when running out of cluster.")
 )
 
 func main() {
@@ -68,7 +69,7 @@ func handle() {
 	if driver == nil {
 		klog.Fatalln("Failed to initialize azuredisk CSI Driver")
 	}
-	driver.Run(*endpoint)
+	driver.Run(*endpoint, *kubeconfig)
 }
 
 func exportMetrics() {

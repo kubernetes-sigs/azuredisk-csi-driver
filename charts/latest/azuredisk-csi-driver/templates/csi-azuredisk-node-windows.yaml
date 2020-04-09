@@ -14,6 +14,7 @@ spec:
 {{ include "azuredisk.labels" . | indent 6 }}
         app: csi-azuredisk-node
     spec:
+      serviceAccountName: csi-azuredisk-node-sa
       nodeSelector:
         kubernetes.io/os: windows
       priorityClassName: system-node-critical

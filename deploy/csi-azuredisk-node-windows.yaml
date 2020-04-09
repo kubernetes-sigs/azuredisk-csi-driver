@@ -13,6 +13,7 @@ spec:
       labels:
         app: csi-azuredisk-node-win
     spec:
+      serviceAccountName: csi-azuredisk-node-sa
       nodeSelector:
         kubernetes.io/os: windows
       priorityClassName: system-node-critical
