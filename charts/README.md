@@ -61,6 +61,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `snapshot.snapshotController.replicas`            | the replicas of snapshot-controller                        | 1                                                            |
 | `snapshot.snapshotController.serviceAccount`      | whether create service account of snapshot-controller      | true                                                         |
 | `snapshot.snapshotController.rbac`                | whether create rbac of snapshot-controller                 | true                                                         |
+| `linux.enabled`                                   | whether enable linux feature                               | true                                                         |
 | `windows.enabled`                                 | whether enable windows feature                             | false                                                        |
 | `windows.image.livenessProbe.repository`          | windows liveness-probe docker image                        | mcr.microsoft.com/oss/kubernetes-csi/livenessprobe           |
 | `windows.image.livenessProbe.tag`                 | windows liveness-probe docker image tag                    | v2.0.1-alpha.1-windows-1809-amd64                            |
