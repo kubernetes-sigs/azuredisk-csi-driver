@@ -299,28 +299,22 @@ func (d *Driver) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeS
 		return nil, status.Error(codes.InvalidArgument, "NodeGetVolumeStats volume path was empty")
 	}
 
-	target := req.VolumePath
-	if len(target) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "Staging target not provided")
-	}
-
-	diskURI := req.VolumeId
-	if err := isValidDiskURI(diskURI); err != nil {
-		return nil, status.Errorf(codes.NotFound, "disk URI(%s) is not valid: %v", diskURI, err)
-	}
-
-	if err := d.checkDiskExists(ctx, diskURI); err != nil {
-		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume not found, failed with error: %v", err))
+	_, err := os.Stat(req.VolumePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, status.Errorf(codes.NotFound, "path %s does not exist", req.VolumePath)
+		}
+		return nil, status.Errorf(codes.Internal, "failed to stat file %s: %v", req.VolumePath, err)
 	}
 
 	isBlock, err := d.mounter.Interface.PathIsDevice(req.VolumePath)
 	if err != nil {
-		return nil, status.Errorf(codes.NotFound, "Failed to determine whether %s is block device: %v", req.VolumePath, err)
+		return nil, status.Errorf(codes.NotFound, "failed to determine whether %s is block device: %v", req.VolumePath, err)
 	}
 	if isBlock {
 		bcap, err := d.getBlockSizeBytes(req.VolumePath)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "Failed to get block capacity on path %s: %v", req.VolumePath, err)
+			return nil, status.Errorf(codes.Internal, "failed to get block capacity on path %s: %v", req.VolumePath, err)
 		}
 		return &csi.NodeGetVolumeStatsResponse{
 			Usage: []*csi.VolumeUsage{
