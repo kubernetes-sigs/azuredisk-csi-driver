@@ -36,11 +36,13 @@ func init() {
 }
 
 var (
-	endpoint       = flag.String("endpoint", "unix://tmp/csi.sock", "CSI endpoint")
-	nodeID         = flag.String("nodeid", "", "node id")
-	version        = flag.Bool("version", false, "Print the version and exit.")
-	metricsAddress = flag.String("metrics-address", "0.0.0.0:29604", "export the metrics")
-	kubeconfig     = flag.String("kubeconfig", "", "Absolute path to the kubeconfig file. Required only when running out of cluster.")
+	endpoint             = flag.String("endpoint", "unix://tmp/csi.sock", "CSI endpoint")
+	kubeconfig           = flag.String("kubeconfig", "", "Absolute path to the kubeconfig file. Required only when running out of cluster.")
+	metricsAddress       = flag.String("metrics-address", "0.0.0.0:29604", "export the metrics")
+	nodeID               = flag.String("nodeid", "", "node id")
+	runControllerService = flag.Bool("run-controller-service", true, "If set to false then the CSI driver does not activate its controller service (default: true)")
+	runNodeService       = flag.Bool("run-node-service", true, "If set to false then the CSI driver does not activate its node service (default: true)")
+	version              = flag.Bool("version", false, "Print the version and exit.")
 )
 
 func main() {
@@ -54,7 +56,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	if *nodeID == "" {
+	if *nodeID == "" && *runNodeService {
 		// nodeid is not needed in controller component
 		klog.Warning("nodeid is empty")
 	}
@@ -69,7 +71,7 @@ func handle() {
 	if driver == nil {
 		klog.Fatalln("Failed to initialize azuredisk CSI Driver")
 	}
-	driver.Run(*endpoint, *kubeconfig)
+	driver.Run(*endpoint, *kubeconfig, *runControllerService, *runNodeService)
 }
 
 func exportMetrics() {

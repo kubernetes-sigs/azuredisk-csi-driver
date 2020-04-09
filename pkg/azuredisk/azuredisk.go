@@ -92,25 +92,25 @@ func NewDriver(nodeID string) *Driver {
 }
 
 // Run driver initialization
-func (d *Driver) Run(endpoint, kubeconfig string) {
+func (d *Driver) Run(endpoint, kubeconfig string, runControllerService, runNodeService bool) {
 	versionMeta, err := GetVersionYAML()
 	if err != nil {
 		klog.Fatalf("%v", err)
 	}
+
 	klog.Infof("\nDRIVER INFORMATION:\n-------------------\n%s\n\nStreaming logs below:", versionMeta)
-	cloud, err := GetCloudProvider(kubeconfig)
-	if err != nil || cloud.TenantID == "" || cloud.SubscriptionID == "" {
-		klog.Fatalf("failed to get Azure Cloud Provider, error: %v", err)
-	}
-	d.cloud = cloud
 
-	d.mounter, err = mounter.NewSafeMounter()
-	if err != nil {
-		klog.Fatalf("Failed to get safe mounter. Error: %v", err)
-	}
+	var (
+		s = csicommon.NewNonBlockingGRPCServer()
+		// If enabled, Driver d acts as IdentityServer, ControllerServer and NodeServer
+		cs csi.ControllerServer
+		ns csi.NodeServer
+	)
 
-	d.AddControllerServiceCapabilities(
-		[]csi.ControllerServiceCapability_RPC_Type{
+	if runControllerService {
+		cs = d
+
+		d.AddControllerServiceCapabilities([]csi.ControllerServiceCapability_RPC_Type{
 			csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
 			csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME,
 			csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT,
@@ -118,16 +118,34 @@ func (d *Driver) Run(endpoint, kubeconfig string) {
 			csi.ControllerServiceCapability_RPC_CLONE_VOLUME,
 			csi.ControllerServiceCapability_RPC_EXPAND_VOLUME,
 		})
-	d.AddVolumeCapabilityAccessModes([]csi.VolumeCapability_AccessMode_Mode{csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER})
-	d.AddNodeServiceCapabilities([]csi.NodeServiceCapability_RPC_Type{
-		csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
-		csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
-		csi.NodeServiceCapability_RPC_GET_VOLUME_STATS,
+	}
+
+	if runNodeService {
+		ns = d
+
+		d.AddNodeServiceCapabilities([]csi.NodeServiceCapability_RPC_Type{
+			csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
+			csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
+			csi.NodeServiceCapability_RPC_GET_VOLUME_STATS,
+		})
+
+		d.mounter, err = mounter.NewSafeMounter()
+		if err != nil {
+			klog.Fatalf("Failed to get safe mounter. Error: %v", err)
+		}
+	}
+
+	cloud, err := GetCloudProvider(kubeconfig)
+	if err != nil || cloud.TenantID == "" || cloud.SubscriptionID == "" {
+		klog.Fatalf("failed to get Azure Cloud Provider, error: %v, tenant id: %q, subscription id: %q", err, cloud.TenantID, cloud.SubscriptionID)
+	}
+	d.cloud = cloud
+
+	d.AddVolumeCapabilityAccessModes([]csi.VolumeCapability_AccessMode_Mode{
+		csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
 	})
 
-	s := csicommon.NewNonBlockingGRPCServer()
-	// Driver d act as IdentityServer, ControllerServer and NodeServer
-	s.Start(endpoint, d, d, d)
+	s.Start(endpoint, d, cs, ns)
 	s.Wait()
 }
 
