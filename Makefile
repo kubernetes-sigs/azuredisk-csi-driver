@@ -18,7 +18,7 @@ REGISTRY ?= andyzhangx
 REGISTRY_NAME = $(shell echo $(REGISTRY) | sed "s/.azurecr.io//g")
 DRIVER_NAME = disk.csi.azure.com
 IMAGE_NAME = azuredisk-csi
-IMAGE_VERSION ?= v0.7.0
+IMAGE_VERSION ?= v0.8.0
 # Use a custom version for E2E tests if we are testing in CI
 ifdef CI
 override IMAGE_VERSION := e2e-$(GIT_COMMIT)
