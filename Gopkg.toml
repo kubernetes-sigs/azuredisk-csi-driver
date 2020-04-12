@@ -45,6 +45,14 @@
   name = "google.golang.org/grpc"
   version = "1.10.0"
 
+[[override]]
+  name = "k8s.io/klog"
+  version = "=v1.0.0"
+
+[[override]]
+  name = "k8s.io/utils"
+  revision = "6496210b90e852b26b227eaedea39b286063fae6"
+
 [[constraint]]
   name = "k8s.io/kubernetes"
   version = "=v1.15.0"
