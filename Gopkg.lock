@@ -2,7 +2,7 @@
 
 
 [[projects]]
-  digest = "1:655d0b0f66fe1d4f8ab383d5bfc00b06f2effc5945f0fee48220556505b287fa"
+  digest = "1:3246edd8dddc5e95fda8d1172b3a3f5bca6b446a3aa97a3ecd59ed9e9cce8c5c"
   name = "github.com/Azure/azure-sdk-for-go"
   packages = [
     "services/compute/mgmt/2019-03-01/compute",
@@ -15,8 +15,8 @@
     "version",
   ]
   pruneopts = "NUT"
-  revision = "4acdfccd3e1bd96cf929459f72f25cb0dd1f6ce8"
-  version = "v40.5.0"
+  revision = "797e8ede3a89e35d4a847127b5f1b7426bd42cd0"
+  version = "v40.6.0"
 
 [[projects]]
   digest = "1:ed3f3996d7b4037cbf4661b2fb3eeeb90beb323cd71c7dc39d3790e6bf0e6950"
@@ -332,12 +332,12 @@
   version = "v1.0.0"
 
 [[projects]]
-  digest = "1:7c47a990a91ab4922f4009c8ba8dcf35dad08e2b697cf26ea87eaae90e3f7aa1"
+  digest = "1:b391e0e88682b33e62e6bcb005a4cfdebe9a14969dab6ebc5e7e4c166986e427"
   name = "github.com/imdario/mergo"
   packages = ["."]
   pruneopts = "NUT"
-  revision = "1afb36080aec31e0d1528973ebe6721b191b0369"
-  version = "v0.3.8"
+  revision = "66f88b4ae75f5edcc556623b96ff32c06360fbb7"
+  version = "v0.3.9"
 
 [[projects]]
   digest = "1:406338ad39ab2e37b7f4452906442a3dbf0eb3379dd1f06aafb5c07e769a5fbb"
@@ -357,7 +357,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:c8f7e1cdf87cf9c7926167d958d3290f62b7a1f9660e5b7b2c93d020573ab1d8"
+  digest = "1:da7ef7979b25a5cf0b4ca4fcbce3c4a58ca352cf31092d6e0baaa04354509ee1"
   name = "github.com/kubernetes-csi/csi-proxy"
   packages = [
     "client",
@@ -370,7 +370,7 @@
     "client/groups/volume/v1alpha1",
   ]
   pruneopts = "NUT"
-  revision = "d6ab313001078eafc69e67d76070bcf3cdcdeecf"
+  revision = "9eff16441b2aa5d61411c88d430576e3a34729b3"
 
 [[projects]]
   digest = "1:775dd16bb1280c2723378738cf1619f93840fe9bf65ca9b526c49bc8e0bb0cc8"
@@ -486,12 +486,12 @@
   version = "v1.2"
 
 [[projects]]
-  digest = "1:efec7b15c9f6f20c96a5710fea5d946aabf13018d9e2d2c50a4746f850514f9d"
+  digest = "1:a9f0e3995b962f3e8db041c2475491661f33d7f873bcfc517bacd4b709039d9c"
   name = "github.com/pelletier/go-toml"
   packages = ["."]
   pruneopts = "NUT"
-  revision = "903d9455db9ff1d7ac1ab199062eca7266dd11a3"
-  version = "v1.6.0"
+  revision = "8e8d2a6aad23fcaa64716c5fa6975ec3abbf8281"
+  version = "v1.7.0"
 
 [[projects]]
   branch = "master"
@@ -597,12 +597,12 @@
   version = "v1.2.2"
 
 [[projects]]
-  digest = "1:30e2ca04703e6939567efd97f381f0ff5b11880cbb53dad256773bd8e2064e0a"
+  digest = "1:cae9f5ec514bfd95d4292a27124d368aa542be8a12fbdd3148cf981daddea182"
   name = "github.com/spf13/cobra"
   packages = ["."]
   pruneopts = "NUT"
-  revision = "0da06874266c88228b8f14615396a1f6bfc90ed7"
-  version = "v0.0.6"
+  revision = "6607e6b8603f56adb027298ee6695e06ffb3a819"
+  version = "0.0.7"
 
 [[projects]]
   digest = "1:d115708a27806831d1babbc6f28a7478ddf8e32a7095507c816e2515fb03a810"
@@ -625,7 +625,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:79d1d562dcced754e35fea9f9a62a11a94733413e6eeb4ca3b5069ad124f0ec7"
+  digest = "1:d87fa2eea098e96c9e3a2e68226499023a1e0678fbe18e82c91b0cf3e47a9ad8"
   name = "golang.org/x/crypto"
   packages = [
     "blowfish",
@@ -643,7 +643,7 @@
     "ssh/terminal",
   ]
   pruneopts = "NUT"
-  revision = "891825fb96dfc23279b4a42f710d49e78e05b333"
+  revision = "056763e48d71961566155f089ac0f02f1dda9b5a"
 
 [[projects]]
   branch = "master"
@@ -664,7 +664,7 @@
     "websocket",
   ]
   pruneopts = "NUT"
-  revision = "118fecf932d8fea033f3b7aca66fba22cfdd517d"
+  revision = "d3edc9973b7eb1fb302b0ff2c62357091cea9a30"
 
 [[projects]]
   branch = "master"
@@ -679,7 +679,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:ad77a8fe044558366b974696604a580052e99453134bf8ece8f81a1121b58f71"
+  digest = "1:263ac31abd30c1ed01adb3c59f4448cf596d6b96ed481ab5f781cee47c41467d"
   name = "golang.org/x/sys"
   packages = [
     "cpu",
@@ -687,7 +687,7 @@
     "windows",
   ]
   pruneopts = "NUT"
-  revision = "328b4cd54aaeaba222936f16d417999f7e521f7b"
+  revision = "59c9f1ba88faf592b225274f69c5ef1e4ebacf82"
 
 [[projects]]
   digest = "1:0b5dc8c3581fc3ea2b80cc2e360dfb9c2d61dd0cba0d2fe247e8edd3e83f7551"
@@ -768,10 +768,10 @@
   name = "google.golang.org/genproto"
   packages = ["googleapis/rpc/status"]
   pruneopts = "NUT"
-  revision = "08878b785e9c1c5903852e4cb9277fce9d1e16d5"
+  revision = "0848e9f44c368a0543357679c19d4eab1177012f"
 
 [[projects]]
-  digest = "1:634ba50bc431d4d278abbb3593c18962291cf43cae92cc16c47e63ba4c54ba37"
+  digest = "1:b1ec951d8c5b2a2349bc6524ef21fcfc991614db53a39f405b0e66767c814d54"
   name = "google.golang.org/grpc"
   packages = [
     ".",
@@ -814,8 +814,8 @@
     "tap",
   ]
   pruneopts = "NUT"
-  revision = "142182889d38b76209f1d9f1d8e91d7608aff542"
-  version = "v1.28.0"
+  revision = "ac54eec90516cee50fc6b9b113b34628a85f976f"
+  version = "v1.28.1"
 
 [[projects]]
   digest = "1:0914bf7efc3e3052163e92b859a89f3b407ad353d7c3b7f59a1bbb4fd05bb25d"
@@ -1203,7 +1203,7 @@
   version = "kubernetes-1.15.0"
 
 [[projects]]
-  digest = "1:361aa5c4259c5d67ff1b9409ad18676e6de38c33eaafed48a38147e95b3edf90"
+  digest = "1:e925e70f90602433aedd4c653f6b12f551dfac837806f33ae6e865bc6bf512b6"
   name = "k8s.io/cloud-provider"
   packages = [
     ".",
@@ -1213,11 +1213,11 @@
     "volume/helpers",
   ]
   pruneopts = "NUT"
-  revision = "d5528a01d84552308049f8ef4a4bb463303242a1"
-  version = "v0.17.4"
+  revision = "acd0ea69fca90d79f98f792d795ae772fd5e45d6"
+  version = "v0.18.1"
 
 [[projects]]
-  digest = "1:efc62514dfea557663b84e62f75e565b6a49878ece5080a4f801128141853201"
+  digest = "1:8077f2e8ab16c434a195f76bf5e3a2c63748f823d4c842afd34d8c20d119c8b5"
   name = "k8s.io/component-base"
   packages = [
     "cli/flag",
@@ -1227,16 +1227,16 @@
     "version",
   ]
   pruneopts = "NUT"
-  revision = "802f7a6873d62153719c067b2c87dbd2bdda8ac4"
-  version = "v0.17.4"
+  revision = "e97f9333e66a37516ab20a1a6f34610faa1c4df0"
+  version = "v0.18.1"
 
 [[projects]]
-  digest = "1:5e496d711fa03e4aaf3cab0d7de079634a9465ebf940613b69b34f5cc6513db8"
+  digest = "1:d421f50f129b561c8484b404e6e877968e8163d52cd62f1fe30ffde4cf2f94f8"
   name = "k8s.io/cri-api"
   packages = ["pkg/apis/runtime/v1alpha2"]
   pruneopts = "NUT"
-  revision = "cb8a25f43f0ec4d73f78b0e88440c3fba80ad84d"
-  version = "v0.17.4"
+  revision = "3d1680d8d202aa12c5dc5689170c3c03a488d35b"
+  version = "v0.18.1"
 
 [[projects]]
   digest = "1:c0693cb981f43d82a767a3217b7640a4bdb341731d3814b38602f4e5dc4f01b3"
@@ -1247,15 +1247,15 @@
   version = "v1.0.0"
 
 [[projects]]
-  branch = "master"
-  digest = "1:5808bb1694e8727155e7c023499195cd0f9931b56545fe37795985f87f024696"
+  branch = "feature-serverside-apply"
+  digest = "1:f4fb3421360af5c51070bfe0c1c7467f8809fa70e278e129f068f5106b5c8a65"
   name = "k8s.io/kube-openapi"
   packages = [
     "pkg/common",
     "pkg/util/proto",
   ]
   pruneopts = "NUT"
-  revision = "addea2498afe5a6d58f8bdcd9ae51363d12f12ef"
+  revision = "f442ecb314a3679150c272e2b9713d8deed5955d"
 
 [[projects]]
   digest = "1:82223790edc28f8311a18d874377e92e9c9f175b860c9321f4515412082d09d6"
@@ -1386,7 +1386,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:cfa53370098127dd82c51172c8d6e17385965b9d3067f5144bcd25d7757149a6"
+  digest = "1:97ccf61693b1be5afeab32d95b8a6fa672017e64bee1f2340e735678345351d4"
   name = "k8s.io/legacy-cloud-providers"
   packages = [
     "azure",
@@ -1415,10 +1415,9 @@
     "azure/retry",
   ]
   pruneopts = "NUT"
-  revision = "563886ebb1625c0dd4813a88ae4f8e3f740d00a7"
+  revision = "4a75fa4bcfcbe7aacc2bd9ebb293e799815856c4"
 
 [[projects]]
-  branch = "master"
   digest = "1:35d9ccbcf79f010068ee234bdd026a62925d19fb63b7bdb4069748a917a58e1e"
   name = "k8s.io/utils"
   packages = [
@@ -1435,7 +1434,7 @@
     "trace",
   ]
   pruneopts = "NUT"
-  revision = "327a8059b905f89edaae6412417fb2354b188f5d"
+  revision = "6496210b90e852b26b227eaedea39b286063fae6"
 
 [[projects]]
   digest = "1:cb422c75bab66a8339a38b64e837f3b28f3d5a8c06abd7b9048f420363baa18a"
@@ -1526,6 +1525,7 @@
     "k8s.io/apimachinery/pkg/util/wait",
     "k8s.io/client-go/kubernetes",
     "k8s.io/client-go/rest",
+    "k8s.io/client-go/tools/clientcmd",
     "k8s.io/cloud-provider",
     "k8s.io/component-base/metrics/legacyregistry",
     "k8s.io/klog",
