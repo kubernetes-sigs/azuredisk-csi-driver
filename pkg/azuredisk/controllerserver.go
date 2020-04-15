@@ -571,6 +571,25 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 
 	snapshotName = getValidDiskName(snapshotName)
 
+	var customTags string
+	parameters := req.GetParameters()
+	for k, v := range parameters {
+		switch strings.ToLower(k) {
+		case "tags":
+			customTags = v
+		default:
+		}
+	}
+
+	customTagsMap, err := volumehelper.ConvertTagsToMap(customTags)
+	if err != nil {
+		return nil, err
+	}
+	tags := make(map[string]*string)
+	for k, v := range customTagsMap {
+		tags[k] = &v
+	}
+
 	snapshot := compute.Snapshot{
 		SnapshotProperties: &compute.SnapshotProperties{
 			CreationData: &compute.CreationData{
@@ -579,6 +598,7 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 			},
 		},
 		Location: &d.cloud.Location,
+		Tags:     tags,
 	}
 
 	//todo: add metrics here

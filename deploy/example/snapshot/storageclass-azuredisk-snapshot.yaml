@@ -5,3 +5,5 @@ metadata:
   name: csi-azuredisk-vsc
 driver: disk.csi.azure.com
 deletionPolicy: Delete
+parameters:
+  tags: 'foo=aaa,bar=bbb'  # Tag names are case-insensitive and are limited to 512 characters. Tag values are case-sensitive and are limited to 256 characters.
