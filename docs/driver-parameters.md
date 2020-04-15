@@ -1,7 +1,7 @@
-### `disk.csi.azure.com` driver parameters
+## `disk.csi.azure.com` driver parameters
  > storage class `disk.csi.azure.com` parameters are compatible with built-in [azuredisk](https://kubernetes.io/docs/concepts/storage/volumes/#azuredisk) plugin
 
- - Dynamic Provisioning
+### Dynamic Provisioning
   > get a quick example [here](../deploy/example/storageclass-azuredisk-csi.yaml)
 
 Name | Meaning | Available Value | Mandatory | Default value
@@ -17,9 +17,9 @@ DiskIOPSReadWrite | [UltraSSD disk](https://docs.microsoft.com/en-us/azure/virtu
 DiskMBpsReadWrite | [UltraSSD disk](https://docs.microsoft.com/en-us/azure/virtual-machines/linux/disks-ultra-ssd) Throughput Capability | 1~2000 | No | `100`
 tags | azure disk [tags](https://docs.microsoft.com/en-us/azure/azure-resource-manager/management/tag-resources) | tag format: 'foo=aaa,bar=bbb' | No | ""
 diskEncryptionSetID | ResourceId of the disk encryption set to use for [enabling encryption at rest](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/disk-encryption) | format: `/subscriptions/{subs-id}/resourceGroups/{rg-name}/providers/Microsoft.Compute/diskEncryptionSets/{diskEncryptionSet-name}` | No | ""
-writeAcceleratorEnabled | Write Accelerator on Azure Disks [https://docs.microsoft.com/azure/virtual-machines/windows/how-to-enable-write-accelerator) | `true`, `false` | No | ""
+writeAcceleratorEnabled | [Write Accelerator on Azure Disks](https://docs.microsoft.com/azure/virtual-machines/windows/how-to-enable-write-accelerator) | `true`, `false` | No | ""
 
- - Static Provisioning(use existing azure disk)
+### Static Provisioning(use existing azure disk)
   > get a quick example [here](../deploy/example/pv-azuredisk-csi.yaml)
 
 Name | Meaning | Available Value | Mandatory | Default value
@@ -27,3 +27,8 @@ Name | Meaning | Available Value | Mandatory | Default value
 volumeHandle| azure disk URI | /subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id} | Yes | N/A
 volumeAttributes.fsType | File System Type | `ext4`, `ext3`, `xfs` | No | `ext4`
 volumeAttributes.cachingMode | [disk host cache setting](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/premium-storage-performance#disk-caching)| `None`, `ReadOnly`, `ReadWrite` | No  | `ReadOnly`
+
+### `VolumeSnapshotClass`
+ Name | Meaning | Available Value | Mandatory | Default value
+--- | --- | --- | --- | ---
+tags | azure disk [tags](https://docs.microsoft.com/en-us/azure/azure-resource-manager/management/tag-resources) | tag format: 'foo=aaa,bar=bbb' | No | ""
