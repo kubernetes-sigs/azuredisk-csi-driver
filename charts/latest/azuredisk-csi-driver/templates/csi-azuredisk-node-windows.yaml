@@ -37,11 +37,11 @@ spec:
           imagePullPolicy: {{ .Values.windows.image.livenessProbe.pullPolicy }}
           resources:
             limits:
-              cpu: 2
-              memory: 2Gi
+              cpu: 1
+              memory: 1Gi
             requests:
-              cpu: 10m
-              memory: 20Mi
+              cpu: 500m
+              memory: 512Mi
         - name: node-driver-registrar
           image: "{{ .Values.windows.image.nodeDriverRegistrar.repository }}:{{ .Values.windows.image.nodeDriverRegistrar.tag }}"
           args:
@@ -65,11 +65,11 @@ spec:
               mountPath: C:\registration
           resources:
             limits:
-              cpu: 2
-              memory: 2Gi
+              cpu: 1
+              memory: 1Gi
             requests:
-              cpu: 10m
-              memory: 20Mi
+              cpu: 500m
+              memory: 512Mi
         - name: azuredisk
           image: "{{ .Values.image.azuredisk.repository }}:{{ .Values.image.azuredisk.tag }}"
           args:
@@ -120,11 +120,11 @@ spec:
               mountPath: \\.\pipe\csi-proxy-volume-v1alpha1
           resources:
             limits:
-              cpu: 2
-              memory: 2Gi
+              cpu: 1
+              memory: 1Gi
             requests:
-              cpu: 10m
-              memory: 20Mi
+              cpu: 500m
+              memory: 512Mi
       volumes:
         - name: csi-proxy-fs-pipe
           hostPath:
