@@ -38,7 +38,6 @@ kubectl apply -f $repo/csi-azuredisk-driver.yaml
 kubectl apply -f $repo/crd-csi-node-info.yaml
 kubectl apply -f $repo/rbac-csi-azuredisk-controller.yaml
 kubectl apply -f $repo/rbac-csi-azuredisk-node.yaml
-kubectl apply -f $repo/rbac-csi-azuredisk-secret.yaml
 kubectl apply -f $repo/csi-azuredisk-controller.yaml
 kubectl apply -f $repo/csi-azuredisk-node.yaml
 
