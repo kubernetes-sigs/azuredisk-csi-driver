@@ -88,11 +88,11 @@ type DataSource struct {
 	Name string
 }
 
-func (pod *PodDetails) SetupWithDynamicVolumes(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.DynamicPVTestDriver) (*TestPod, []func()) {
+func (pod *PodDetails) SetupWithDynamicVolumes(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.DynamicPVTestDriver, storageClassParameters map[string]string) (*TestPod, []func()) {
 	tpod := NewTestPod(client, namespace, pod.Cmd, pod.IsWindows)
 	cleanupFuncs := make([]func(), 0)
 	for n, v := range pod.Volumes {
-		tpvc, funcs := v.SetupDynamicPersistentVolumeClaim(client, namespace, csiDriver)
+		tpvc, funcs := v.SetupDynamicPersistentVolumeClaim(client, namespace, csiDriver, storageClassParameters)
 		cleanupFuncs = append(cleanupFuncs, funcs...)
 		ginkgo.By("setting up the pod")
 		if v.VolumeMode == Block {
@@ -143,11 +143,11 @@ func (pod *PodDetails) SetupDeployment(client clientset.Interface, namespace *v1
 	return tDeployment, cleanupFuncs
 }
 
-func (volume *VolumeDetails) SetupDynamicPersistentVolumeClaim(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.DynamicPVTestDriver) (*TestPersistentVolumeClaim, []func()) {
+func (volume *VolumeDetails) SetupDynamicPersistentVolumeClaim(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.DynamicPVTestDriver, storageClassParameters map[string]string) (*TestPersistentVolumeClaim, []func()) {
 	cleanupFuncs := make([]func(), 0)
 	storageClass := volume.StorageClass
 	if storageClass == nil {
-		tsc, tscCleanup := volume.CreateStorageClass(client, namespace, csiDriver)
+		tsc, tscCleanup := volume.CreateStorageClass(client, namespace, csiDriver, storageClassParameters)
 		cleanupFuncs = append(cleanupFuncs, tscCleanup)
 		storageClass = tsc.storageClass
 	}
@@ -193,9 +193,9 @@ func (volume *VolumeDetails) SetupPreProvisionedPersistentVolumeClaim(client cli
 	return tpvc, cleanupFuncs
 }
 
-func (volume *VolumeDetails) CreateStorageClass(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.DynamicPVTestDriver) (*TestStorageClass, func()) {
+func (volume *VolumeDetails) CreateStorageClass(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.DynamicPVTestDriver, storageClassParameters map[string]string) (*TestStorageClass, func()) {
 	ginkgo.By("setting up the StorageClass")
-	storageClass := csiDriver.GetDynamicProvisionStorageClass(driver.GetParameters(), volume.MountOptions, volume.ReclaimPolicy, volume.VolumeBindingMode, volume.AllowedTopologyValues, namespace.Name)
+	storageClass := csiDriver.GetDynamicProvisionStorageClass(storageClassParameters, volume.MountOptions, volume.ReclaimPolicy, volume.VolumeBindingMode, volume.AllowedTopologyValues, namespace.Name)
 	tsc := NewTestStorageClass(client, namespace, storageClass)
 	tsc.Create()
 	return tsc, tsc.Cleanup

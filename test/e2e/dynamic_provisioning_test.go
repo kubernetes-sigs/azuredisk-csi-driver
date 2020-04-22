@@ -116,8 +116,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			},
 		}
 		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
-			CSIDriver: testDriver,
-			Pods:      pods,
+			CSIDriver:              testDriver,
+			Pods:                   pods,
+			StorageClassParameters: map[string]string{"skuName": "Standard_LRS"},
 		}
 		test.Run(cs, ns)
 	})
@@ -145,8 +146,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			},
 		}
 		test := testsuites.DynamicallyProvisionedInvalidMountOptions{
-			CSIDriver: testDriver,
-			Pods:      pods,
+			CSIDriver:              testDriver,
+			Pods:                   pods,
+			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
 		}
 		test.Run(cs, ns)
 	})
@@ -170,8 +172,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			},
 		}
 		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
-			CSIDriver: testDriver,
-			Pods:      pods,
+			CSIDriver:              testDriver,
+			Pods:                   pods,
+			StorageClassParameters: map[string]string{"skuName": "Premium_LRS"},
 		}
 		test.Run(cs, ns)
 	})
@@ -196,8 +199,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			},
 		}
 		test := testsuites.DynamicallyProvisionedReadOnlyVolumeTest{
-			CSIDriver: testDriver,
-			Pods:      pods,
+			CSIDriver:              testDriver,
+			Pods:                   pods,
+			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
 		}
 		test.Run(cs, ns)
 	})
@@ -248,9 +252,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			},
 		}
 		test := testsuites.DynamicallyProvisionedCollocatedPodTest{
-			CSIDriver:    testDriver,
-			Pods:         pods,
-			ColocatePods: true,
+			CSIDriver:              testDriver,
+			Pods:                   pods,
+			ColocatePods:           true,
+			StorageClassParameters: map[string]string{"skuName": "Premium_LRS"},
 		}
 		test.Run(cs, ns)
 	})
@@ -347,9 +352,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			Cmd: "grep 'hello world' /mnt/test-1/data",
 		}
 		test := testsuites.DynamicallyProvisionedVolumeCloningTest{
-			CSIDriver:           testDriver,
-			Pod:                 pod,
-			PodWithClonedVolume: podWithClonedVolume,
+			CSIDriver:              testDriver,
+			Pod:                    pod,
+			PodWithClonedVolume:    podWithClonedVolume,
+			StorageClassParameters: map[string]string{"skuName": "Standard_LRS"},
 		}
 		test.Run(cs, ns)
 	})
@@ -388,8 +394,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			},
 		}
 		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
-			CSIDriver: testDriver,
-			Pods:      pods,
+			CSIDriver:              testDriver,
+			Pods:                   pods,
+			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
 		}
 		test.Run(cs, ns)
 	})
@@ -423,8 +430,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			},
 		}
 		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
-			CSIDriver: testDriver,
-			Pods:      pods,
+			CSIDriver:              testDriver,
+			Pods:                   pods,
+			StorageClassParameters: map[string]string{"skuName": "Premium_LRS"},
 		}
 		test.Run(cs, ns)
 	})
@@ -450,9 +458,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			Cmd: "grep 'hello world' /mnt/test-1/data",
 		}
 		test := testsuites.DynamicallyProvisionedVolumeSnapshotTest{
-			CSIDriver:       testDriver,
-			Pod:             pod,
-			PodWithSnapshot: podWithSnapshot,
+			CSIDriver:              testDriver,
+			Pod:                    pod,
+			PodWithSnapshot:        podWithSnapshot,
+			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
 		}
 		test.Run(cs, snapshotrcs, ns)
 	})

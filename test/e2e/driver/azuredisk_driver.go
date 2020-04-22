@@ -122,6 +122,6 @@ func (d *azureDiskDriver) GetPersistentVolume(volumeID string, fsType string, si
 
 func GetParameters() map[string]string {
 	return map[string]string{
-		"skuName": "Standard_LRS",
+		"skuName": "StandardSSD_LRS",
 	}
 }

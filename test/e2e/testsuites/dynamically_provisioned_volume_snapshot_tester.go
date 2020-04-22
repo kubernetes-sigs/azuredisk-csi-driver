@@ -32,15 +32,16 @@ import (
 // And finally delete the snapshot
 // This test only supports a single volume
 type DynamicallyProvisionedVolumeSnapshotTest struct {
-	CSIDriver       driver.PVTestDriver
-	Pod             PodDetails
-	PodWithSnapshot PodDetails
+	CSIDriver              driver.PVTestDriver
+	Pod                    PodDetails
+	PodWithSnapshot        PodDetails
+	StorageClassParameters map[string]string
 }
 
 func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interface, restclient restclientset.Interface, namespace *v1.Namespace) {
 	tpod := NewTestPod(client, namespace, t.Pod.Cmd, t.Pod.IsWindows)
 	volume := t.Pod.Volumes[0]
-	tpvc, pvcCleanup := volume.SetupDynamicPersistentVolumeClaim(client, namespace, t.CSIDriver)
+	tpvc, pvcCleanup := volume.SetupDynamicPersistentVolumeClaim(client, namespace, t.CSIDriver, t.StorageClassParameters)
 	for i := range pvcCleanup {
 		defer pvcCleanup[i]()
 	}
@@ -67,7 +68,7 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interfac
 		Name: snapshot.Name,
 	}
 	t.PodWithSnapshot.Volumes = []VolumeDetails{snapshotVolume}
-	tPodWithSnapshot, tPodWithSnapshotCleanup := t.PodWithSnapshot.SetupWithDynamicVolumes(client, namespace, t.CSIDriver)
+	tPodWithSnapshot, tPodWithSnapshotCleanup := t.PodWithSnapshot.SetupWithDynamicVolumes(client, namespace, t.CSIDriver, t.StorageClassParameters)
 	for i := range tPodWithSnapshotCleanup {
 		defer tPodWithSnapshotCleanup[i]()
 	}
