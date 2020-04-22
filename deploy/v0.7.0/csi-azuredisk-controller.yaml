@@ -28,10 +28,8 @@ spec:
         - name: csi-provisioner
           image: mcr.microsoft.com/oss/kubernetes-csi/csi-provisioner:v1.5.0
           args:
-            - "--provisioner=disk.csi.azure.com"
             - "--feature-gates=Topology=true"
             - "--csi-address=$(ADDRESS)"
-            - "--connection-timeout=15s"
             - "--v=5"
             - "--timeout=120s"
             - "--enable-leader-election"
