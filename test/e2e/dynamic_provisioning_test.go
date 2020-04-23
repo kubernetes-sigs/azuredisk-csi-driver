@@ -279,7 +279,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		podCheckCmd := []string{"cat", "/mnt/test-1/data"}
 		expectedString := "hello world\n"
 		if isWindowsCluster {
-			podCheckCmd = []string{"powershell.exe", "cat", "C:\\mnt\\test-1\\data.txt"}
+			podCheckCmd = []string{"powershell.exe", "-Command", "Get-Content C:\\mnt\\test-1\\data.txt"}
 			expectedString = "hello world\r\n"
 		}
 		test := testsuites.DynamicallyProvisionedDeletePodTest{
