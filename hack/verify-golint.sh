@@ -16,8 +16,11 @@
 
 set -euo pipefail
 
-curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.24.0
+if [[ -z "$(command -v golangci-lint)" ]]; then
+  echo "Cannot find golangci-lint. Installing golangci-lint..."
+  curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.24.0
+fi
 
 golangci-lint run --deadline=10m
 
-echo "Congratulations! All Go source files have been linted."
+echo "Congratulations! Lint check completed for all Go source files."
