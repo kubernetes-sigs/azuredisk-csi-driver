@@ -32,8 +32,9 @@ import (
 // Waiting for the PV provisioner to create a new PV
 // Testing that the Pod(s) cannot write to the volume when mounted
 type DynamicallyProvisionedReadOnlyVolumeTest struct {
-	CSIDriver driver.DynamicPVTestDriver
-	Pods      []PodDetails
+	CSIDriver              driver.DynamicPVTestDriver
+	Pods                   []PodDetails
+	StorageClassParameters map[string]string
 }
 
 func (t *DynamicallyProvisionedReadOnlyVolumeTest) Run(client clientset.Interface, namespace *v1.Namespace) {
@@ -42,7 +43,7 @@ func (t *DynamicallyProvisionedReadOnlyVolumeTest) Run(client clientset.Interfac
 		if pod.IsWindows {
 			expectedReadOnlyLog = "FileOpenFailure"
 		}
-		tpod, cleanup := pod.SetupWithDynamicVolumes(client, namespace, t.CSIDriver)
+		tpod, cleanup := pod.SetupWithDynamicVolumes(client, namespace, t.CSIDriver, t.StorageClassParameters)
 		// defer must be called here for resources not get removed before using them
 		for i := range cleanup {
 			defer cleanup[i]()

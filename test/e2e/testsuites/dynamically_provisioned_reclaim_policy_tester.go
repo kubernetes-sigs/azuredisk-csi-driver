@@ -28,9 +28,10 @@ import (
 // DynamicallyProvisionedReclaimPolicyTest will provision required PV(s) and PVC(s)
 // Testing the correct behavior for different reclaimPolicies
 type DynamicallyProvisionedReclaimPolicyTest struct {
-	CSIDriver driver.DynamicPVTestDriver
-	Volumes   []VolumeDetails
-	Azuredisk *azuredisk.Driver
+	CSIDriver              driver.DynamicPVTestDriver
+	Volumes                []VolumeDetails
+	Azuredisk              *azuredisk.Driver
+	StorageClassParameters map[string]string
 }
 
 func (t *DynamicallyProvisionedReclaimPolicyTest) Run(client clientset.Interface, namespace *v1.Namespace) {
@@ -38,7 +39,7 @@ func (t *DynamicallyProvisionedReclaimPolicyTest) Run(client clientset.Interface
 		// Force volume binding mode to immediate so the PV can be provisioned without a pod
 		volumeBindingMode := storagev1.VolumeBindingImmediate
 		volume.VolumeBindingMode = &volumeBindingMode
-		tpvc, _ := volume.SetupDynamicPersistentVolumeClaim(client, namespace, t.CSIDriver)
+		tpvc, _ := volume.SetupDynamicPersistentVolumeClaim(client, namespace, t.CSIDriver, t.StorageClassParameters)
 
 		// will delete the PVC
 		// will also wait for PV to be deleted when reclaimPolicy=Delete

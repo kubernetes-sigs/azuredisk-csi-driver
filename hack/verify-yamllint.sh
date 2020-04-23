@@ -21,6 +21,14 @@ fi
 LOG=/tmp/yamllint.log
 helmPath=charts/latest/azuredisk-csi-driver/templates
 
+echo "checking yaml files num ..."
+deployDirNum=`ls deploy/*.yaml | wc -l`
+helmDirNum=`ls $helmPath/*.yaml | grep -v serviceaccount | wc -l`
+if [[ "${deployDirNum}" != "${helmDirNum}" ]]; then
+  echo "yaml file num($deployDirNum) under deploy/ not equal to num($helmDirNum) under $helmPath"
+  exit 1
+fi
+
 for path in "deploy/*.yaml" "deploy/example/*.yaml" "deploy/example/metrics/*.yaml" "deploy/example/snapshot/*.yaml" "deploy/example/cloning/*.yaml" "deploy/example/rawblock/*.yaml" "deploy/example/windows/*.yaml" "deploy/example/sharedisk/*.yaml"
 do
     echo "checking yamllint under path: $path ..."

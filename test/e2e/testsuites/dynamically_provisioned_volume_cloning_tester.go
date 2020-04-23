@@ -26,19 +26,20 @@ import (
 
 // DynamicallyProvisionedVolumeCloningTest will provision required StorageClass(es), PVC(s) and Pod(s)
 type DynamicallyProvisionedVolumeCloningTest struct {
-	CSIDriver           driver.DynamicPVTestDriver
-	Pod                 PodDetails
-	PodWithClonedVolume PodDetails
+	CSIDriver              driver.DynamicPVTestDriver
+	Pod                    PodDetails
+	PodWithClonedVolume    PodDetails
+	StorageClassParameters map[string]string
 }
 
 func (t *DynamicallyProvisionedVolumeCloningTest) Run(client clientset.Interface, namespace *v1.Namespace) {
 	// create the storageClass
-	tsc, tscCleanup := t.Pod.Volumes[0].CreateStorageClass(client, namespace, t.CSIDriver)
+	tsc, tscCleanup := t.Pod.Volumes[0].CreateStorageClass(client, namespace, t.CSIDriver, t.StorageClassParameters)
 	defer tscCleanup()
 
 	// create the pod
 	t.Pod.Volumes[0].StorageClass = tsc.storageClass
-	tpod, cleanups := t.Pod.SetupWithDynamicVolumes(client, namespace, t.CSIDriver)
+	tpod, cleanups := t.Pod.SetupWithDynamicVolumes(client, namespace, t.CSIDriver, t.StorageClassParameters)
 	for i := range cleanups {
 		defer cleanups[i]()
 	}
@@ -57,7 +58,7 @@ func (t *DynamicallyProvisionedVolumeCloningTest) Run(client clientset.Interface
 	}
 	clonedVolume.StorageClass = tsc.storageClass
 	t.PodWithClonedVolume.Volumes = []VolumeDetails{clonedVolume}
-	tpod, cleanups = t.PodWithClonedVolume.SetupWithDynamicVolumes(client, namespace, t.CSIDriver)
+	tpod, cleanups = t.PodWithClonedVolume.SetupWithDynamicVolumes(client, namespace, t.CSIDriver, t.StorageClassParameters)
 	for i := range cleanups {
 		defer cleanups[i]()
 	}
