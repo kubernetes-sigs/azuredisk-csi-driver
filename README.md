@@ -5,21 +5,12 @@
 ### About
 This driver allows Kubernetes to use [azure disk](https://azure.microsoft.com/en-us/services/storage/disks/) volume, csi plugin name: `disk.csi.azure.com`
 
-### Container Images & CSI Compatibility:
-|Azure Disk CSI Driver Version  | Image                                              | v1.0.0 |
-|-------------------------------|----------------------------------------------------|--------|
-|master branch                  |mcr.microsoft.com/k8s/csi/azuredisk-csi:latest      | yes    |
-|v0.7.0                         |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.7.0      | yes    |
-|v0.6.0                         |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.6.0      | yes    |
-|v0.5.0                         |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.5.0      | yes    |
-
-### Kubernetes Compatibility
-| Azure Disk CSI Driver\Kubernetes Version | 1.14+ |
-|------------------------------------------|-------|
-| master branch                            | yes   |
-| v0.7.0                                   | yes   |
-| v0.6.0                                   | yes   |
-| v0.5.0                                   | yes   |
+### Container Images & Kubernetes Compatibility
+|Azure Disk CSI Driver Version  | Image                                              | 1.14+ |
+|-------------------------------|----------------------------------------------------|-------|
+|master branch                  |mcr.microsoft.com/k8s/csi/azuredisk-csi:latest      | yes   |
+|v0.7.0                         |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.7.0      | yes   |
+|v0.6.0                         |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.6.0      | yes   |
 
 ### Driver parameters
 Please refer to [`disk.csi.azure.com` driver parameters](./docs/driver-parameters.md)
