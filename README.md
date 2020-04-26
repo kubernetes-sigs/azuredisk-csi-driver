@@ -41,10 +41,12 @@ Please refer to [install azuredisk csi driver](./docs/install-azuredisk-csi-driv
  - [Raw Block Volume](./deploy/example/rawblock)
  - [Windows](./deploy/example/windows)
  - [Shared Disk](./deploy/example/sharedisk)
+ 
+### Troubleshooting
+ - [CSI driver troubleshooting guide](./docs/csi-debug.md)
 
 ## Kubernetes Development
 Please refer to [development guide](./docs/csi-dev.md)
-
 
 ### Links
  - [Kubernetes CSI Documentation](https://kubernetes-csi.github.io/docs/)
