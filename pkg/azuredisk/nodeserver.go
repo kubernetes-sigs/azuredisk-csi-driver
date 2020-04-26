@@ -49,9 +49,9 @@ const (
 func getDefaultFsType() string {
 	if runtime.GOOS == "windows" {
 		return defaultWindowsFsType
-	} else {
-		return defaultLinuxFsType
 	}
+
+	return defaultLinuxFsType
 }
 
 // NodeStageVolume mount disk device to a staging path

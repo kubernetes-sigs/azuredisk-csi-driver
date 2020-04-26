@@ -250,7 +250,7 @@ func checkDiskName(diskName string) bool {
 	return true
 }
 
-func getSourceVolumeId(snapshot *compute.Snapshot) string {
+func getSourceVolumeID(snapshot *compute.Snapshot) string {
 	if snapshot != nil &&
 		snapshot.SnapshotProperties != nil &&
 		snapshot.SnapshotProperties.CreationData != nil &&
@@ -287,9 +287,9 @@ func getValidCreationData(subscriptionID, resourceGroup, sourceResourceID, sourc
 	if len(splits) > 9 {
 		if sourceType == sourceSnapshot {
 			return compute.CreationData{}, fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", sourceResourceID, diskSnapshotPathRE)
-		} else {
-			return compute.CreationData{}, fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", sourceResourceID, managedDiskPathRE)
 		}
+
+		return compute.CreationData{}, fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", sourceResourceID, managedDiskPathRE)
 	}
 	return compute.CreationData{
 		CreateOption:     compute.Copy,

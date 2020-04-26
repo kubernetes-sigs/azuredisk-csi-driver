@@ -338,7 +338,7 @@ func TestCheckDiskName(t *testing.T) {
 	}
 }
 
-func TestGetSourceVolumeId(t *testing.T) {
+func TestGetSourceVolumeID(t *testing.T) {
 	SourceResourceID := "test"
 
 	tests := []struct {
@@ -380,7 +380,7 @@ func TestGetSourceVolumeId(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		result := getSourceVolumeId(test.snapshot)
+		result := getSourceVolumeID(test.snapshot)
 		if !reflect.DeepEqual(result, test.expected) {
 			t.Errorf("input: %v, getValidFileShareName result: %q, expected: %q", test.snapshot, result, test.expected)
 		}
@@ -388,8 +388,8 @@ func TestGetSourceVolumeId(t *testing.T) {
 }
 
 func TestGetValidCreationData(t *testing.T) {
-	sourceResourceSnapshotId := "/subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/snapshots/xxx"
-	sourceResourceVolumeId := "/subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/disks/xxx"
+	sourceResourceSnapshotID := "/subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/snapshots/xxx"
+	sourceResourceVolumeID := "/subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/disks/xxx"
 
 	tests := []struct {
 		subscriptionID   string
@@ -416,7 +416,7 @@ func TestGetValidCreationData(t *testing.T) {
 			sourceType:       sourceSnapshot,
 			expected1: compute.CreationData{
 				CreateOption:     compute.Copy,
-				SourceResourceID: &sourceResourceSnapshotId,
+				SourceResourceID: &sourceResourceSnapshotID,
 			},
 			expected2: nil,
 		},
@@ -427,7 +427,7 @@ func TestGetValidCreationData(t *testing.T) {
 			sourceType:       sourceSnapshot,
 			expected1: compute.CreationData{
 				CreateOption:     compute.Copy,
-				SourceResourceID: &sourceResourceSnapshotId,
+				SourceResourceID: &sourceResourceSnapshotID,
 			},
 			expected2: nil,
 		},
@@ -480,7 +480,7 @@ func TestGetValidCreationData(t *testing.T) {
 			sourceType:       sourceVolume,
 			expected1: compute.CreationData{
 				CreateOption:     compute.Copy,
-				SourceResourceID: &sourceResourceVolumeId,
+				SourceResourceID: &sourceResourceVolumeID,
 			},
 			expected2: nil,
 		},
@@ -491,7 +491,7 @@ func TestGetValidCreationData(t *testing.T) {
 			sourceType:       sourceVolume,
 			expected1: compute.CreationData{
 				CreateOption:     compute.Copy,
-				SourceResourceID: &sourceResourceVolumeId,
+				SourceResourceID: &sourceResourceVolumeID,
 			},
 			expected2: nil,
 		},

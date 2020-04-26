@@ -62,15 +62,15 @@ const (
 	locationChinaEnvVar        = "LOCATION_CHINA"
 )
 
-// CredentialsConfig is used in Prow to store Azure credentials
+// ProwConfig is used in Prow to store Azure credentials
 // https://github.com/kubernetes/test-infra/blob/master/kubetest/azure.go#L116-L118
-type CredentialsConfig struct {
-	Creds CredentialsFromProw
+type ProwConfig struct {
+	Creds ProwCredentials
 }
 
-// CredentialsFromProw is used in Prow to store Azure credentials
+// ProwCredentials is used in Prow to store Azure credentials
 // https://github.com/kubernetes/test-infra/blob/master/kubetest/azure.go#L107-L114
-type CredentialsFromProw struct {
+type ProwCredentials struct {
 	ClientID           string
 	ClientSecret       string
 	TenantID           string
@@ -157,14 +157,14 @@ func DeleteAzureCredentialFile() error {
 
 // getCredentialsFromAzureCredentials parses the azure credentials toml (AZURE_CREDENTIALS)
 // in Prow and return the credential information usable to Azure File CSI driver
-func getCredentialsFromAzureCredentials(azureCredentialsPath string) (*CredentialsFromProw, error) {
+func getCredentialsFromAzureCredentials(azureCredentialsPath string) (*ProwCredentials, error) {
 	content, err := ioutil.ReadFile(azureCredentialsPath)
 	klog.V(2).Infof("Reading credentials file %v", azureCredentialsPath)
 	if err != nil {
 		return nil, fmt.Errorf("error reading credentials file %v %v", azureCredentialsPath, err)
 	}
 
-	c := CredentialsConfig{}
+	c := ProwConfig{}
 	if err := toml.Unmarshal(content, &c); err != nil {
 		return nil, fmt.Errorf("error parsing credentials file %v %v", azureCredentialsPath, err)
 	}
