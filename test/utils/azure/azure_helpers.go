@@ -32,7 +32,7 @@ import (
 	"github.com/Azure/go-autorest/autorest/to"
 )
 
-type AzureClient struct {
+type Client struct {
 	environment    azure.Environment
 	subscriptionID string
 	groupsClient   resources.GroupsClient
@@ -42,7 +42,7 @@ type AzureClient struct {
 	vnetClient     network.VirtualNetworksClient
 }
 
-func GetAzureClient(cloud, subscriptionID, clientID, tenantID, clientSecret string) (*AzureClient, error) {
+func GetAzureClient(cloud, subscriptionID, clientID, tenantID, clientSecret string) (*Client, error) {
 	env, err := azure.EnvironmentFromName(cloud)
 	if err != nil {
 		return nil, err
@@ -61,7 +61,7 @@ func GetAzureClient(cloud, subscriptionID, clientID, tenantID, clientSecret stri
 	return getClient(env, subscriptionID, tenantID, armSpt), nil
 }
 
-func (az *AzureClient) EnsureResourceGroup(ctx context.Context, name, location string, managedBy *string) (resourceGroup *resources.Group, err error) {
+func (az *Client) EnsureResourceGroup(ctx context.Context, name, location string, managedBy *string) (resourceGroup *resources.Group, err error) {
 	var tags map[string]*string
 	group, err := az.groupsClient.Get(ctx, name)
 	if err == nil && group.Tags != nil {
@@ -87,7 +87,7 @@ func (az *AzureClient) EnsureResourceGroup(ctx context.Context, name, location s
 	return &response, nil
 }
 
-func (az *AzureClient) DeleteResourceGroup(ctx context.Context, groupName string) error {
+func (az *Client) DeleteResourceGroup(ctx context.Context, groupName string) error {
 	_, err := az.groupsClient.Get(ctx, groupName)
 	if err == nil {
 		future, err := az.groupsClient.Delete(ctx, groupName)
@@ -104,7 +104,7 @@ func (az *AzureClient) DeleteResourceGroup(ctx context.Context, groupName string
 	return nil
 }
 
-func (az *AzureClient) EnsureVirtualMachine(ctx context.Context, groupName, location, vmName string) (vm compute.VirtualMachine, err error) {
+func (az *Client) EnsureVirtualMachine(ctx context.Context, groupName, location, vmName string) (vm compute.VirtualMachine, err error) {
 	nic, err := az.EnsureNIC(ctx, groupName, location, vmName+"-nic", vmName+"-vnet", vmName+"-subnet")
 	if err != nil {
 		return vm, err
@@ -158,7 +158,7 @@ func (az *AzureClient) EnsureVirtualMachine(ctx context.Context, groupName, loca
 	return future.Result(az.vmClient)
 }
 
-func (az *AzureClient) EnsureNIC(ctx context.Context, groupName, location, nicName, vnetName, subnetName string) (nic network.Interface, err error) {
+func (az *Client) EnsureNIC(ctx context.Context, groupName, location, nicName, vnetName, subnetName string) (nic network.Interface, err error) {
 	_, err = az.EnsureVirtualNetworkAndSubnet(ctx, groupName, location, vnetName, subnetName)
 	if err != nil {
 		return nic, err
@@ -201,7 +201,7 @@ func (az *AzureClient) EnsureNIC(ctx context.Context, groupName, location, nicNa
 	return future.Result(az.nicClient)
 }
 
-func (az *AzureClient) EnsureVirtualNetworkAndSubnet(ctx context.Context, groupName, location, vnetName, subnetName string) (vnet network.VirtualNetwork, err error) {
+func (az *Client) EnsureVirtualNetworkAndSubnet(ctx context.Context, groupName, location, vnetName, subnetName string) (vnet network.VirtualNetwork, err error) {
 	future, err := az.vnetClient.CreateOrUpdate(
 		ctx,
 		groupName,
@@ -235,7 +235,7 @@ func (az *AzureClient) EnsureVirtualNetworkAndSubnet(ctx context.Context, groupN
 	return future.Result(az.vnetClient)
 }
 
-func (az *AzureClient) GetVirtualNetworkSubnet(ctx context.Context, groupName, vnetName, subnetName string) (network.Subnet, error) {
+func (az *Client) GetVirtualNetworkSubnet(ctx context.Context, groupName, vnetName, subnetName string) (network.Subnet, error) {
 	return az.subnetsClient.Get(ctx, groupName, vnetName, subnetName, "")
 }
 
@@ -248,8 +248,8 @@ func getOAuthConfig(env azure.Environment, subscriptionID, tenantID string) (*ad
 	return oauthConfig, nil
 }
 
-func getClient(env azure.Environment, subscriptionID, tenantID string, armSpt *adal.ServicePrincipalToken) *AzureClient {
-	c := &AzureClient{
+func getClient(env azure.Environment, subscriptionID, tenantID string, armSpt *adal.ServicePrincipalToken) *Client {
+	c := &Client{
 		environment:    env,
 		subscriptionID: subscriptionID,
 		groupsClient:   resources.NewGroupsClientWithBaseURI(env.ResourceManagerEndpoint, subscriptionID),

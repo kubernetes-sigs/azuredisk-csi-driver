@@ -21,6 +21,8 @@ if [[ -z "$(command -v golangci-lint)" ]]; then
   curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.24.0
 fi
 
-golangci-lint run --deadline=10m
+readonly PKG_ROOT="$(git rev-parse --show-toplevel)"
 
-echo "Congratulations! Lint check completed for all Go source files."
+golangci-lint run --config ${PKG_ROOT}/.golangci.yml
+
+echo "Success! Lint check completed for all Go source files."

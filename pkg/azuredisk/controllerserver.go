@@ -607,9 +607,9 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	if rerr != nil {
 		if strings.Contains(rerr.Error().Error(), "existing disk") {
 			return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("request snapshot(%s) under rg(%s) already exists, but the SourceVolumeId is different, error details: %v", snapshotName, d.cloud.ResourceGroup, rerr.Error()))
-		} else {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("create snapshot error: %v", rerr.Error()))
 		}
+
+		return nil, status.Error(codes.Internal, fmt.Sprintf("create snapshot error: %v", rerr.Error()))
 	}
 	klog.V(2).Infof("create snapshot(%s) under rg(%s) successfully", snapshotName, d.cloud.ResourceGroup)
 
@@ -775,7 +775,7 @@ func generateCSISnapshot(sourceVolumeID string, snapshot *compute.Snapshot) (*cs
 	}
 
 	if sourceVolumeID == "" {
-		sourceVolumeID = getSourceVolumeId(snapshot)
+		sourceVolumeID = getSourceVolumeID(snapshot)
 	}
 
 	return &csi.Snapshot{
@@ -846,7 +846,7 @@ func getEntriesAndNextToken(req *csi.ListSnapshotsRequest, snapshots []compute.S
 	match := false
 	entries := []*csi.ListSnapshotsResponse_Entry{}
 	for i, snapshot := range snapshots {
-		if req.SourceVolumeId == getSourceVolumeId(&snapshot) {
+		if req.SourceVolumeId == getSourceVolumeID(&snapshot) {
 			match = true
 		}
 		csiSnapshot, err := generateCSISnapshot(req.SourceVolumeId, &snapshot)

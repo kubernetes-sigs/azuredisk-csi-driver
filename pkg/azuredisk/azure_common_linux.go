@@ -72,17 +72,17 @@ func getDiskLinkByDevName(io ioHandler, devLinkPath, devName string) (string, er
 }
 
 func scsiHostRescan(io ioHandler, m *mount.SafeFormatAndMount) {
-	scsi_path := "/sys/class/scsi_host/"
-	if dirs, err := io.ReadDir(scsi_path); err == nil {
+	scsiPath := "/sys/class/scsi_host/"
+	if dirs, err := io.ReadDir(scsiPath); err == nil {
 		for _, f := range dirs {
-			name := scsi_path + f.Name() + "/scan"
+			name := scsiPath + f.Name() + "/scan"
 			data := []byte("- - -")
 			if err = io.WriteFile(name, data, 0666); err != nil {
 				klog.Warningf("failed to rescan scsi host %s", name)
 			}
 		}
 	} else {
-		klog.Warningf("failed to read %s, err %v", scsi_path, err)
+		klog.Warningf("failed to read %s, err %v", scsiPath, err)
 	}
 }
 
@@ -98,8 +98,8 @@ func formatAndMount(source, target, fstype string, options []string, m *mount.Sa
 // finds a device mounted to "current" node
 func findDiskByLunWithConstraint(lun int, io ioHandler, azureDisks []string) (string, error) {
 	var err error
-	sys_path := "/sys/bus/scsi/devices"
-	if dirs, err := io.ReadDir(sys_path); err == nil {
+	sysPath := "/sys/bus/scsi/devices"
+	if dirs, err := io.ReadDir(sysPath); err == nil {
 		for _, f := range dirs {
 			name := f.Name()
 			// look for path like /sys/bus/scsi/devices/3:0:0:1
@@ -131,7 +131,7 @@ func findDiskByLunWithConstraint(lun int, io ioHandler, azureDisks []string) (st
 			if lun == l {
 				// find the matching LUN
 				// read vendor and model to ensure it is a VHD disk
-				vendorPath := filepath.Join(sys_path, name, "vendor")
+				vendorPath := filepath.Join(sysPath, name, "vendor")
 				vendorBytes, err := io.ReadFile(vendorPath)
 				if err != nil {
 					klog.Errorf("failed to read device vendor, err: %v", err)
@@ -143,7 +143,7 @@ func findDiskByLunWithConstraint(lun int, io ioHandler, azureDisks []string) (st
 					continue
 				}
 
-				modelPath := filepath.Join(sys_path, name, "model")
+				modelPath := filepath.Join(sysPath, name, "model")
 				modelBytes, err := io.ReadFile(modelPath)
 				if err != nil {
 					klog.Errorf("failed to read device model, err: %v", err)
@@ -156,7 +156,7 @@ func findDiskByLunWithConstraint(lun int, io ioHandler, azureDisks []string) (st
 				}
 
 				// find a disk, validate name
-				dir := filepath.Join(sys_path, name, "block")
+				dir := filepath.Join(sysPath, name, "block")
 				if dev, err := io.ReadDir(dir); err == nil {
 					found := false
 					devName := dev[0].Name()
