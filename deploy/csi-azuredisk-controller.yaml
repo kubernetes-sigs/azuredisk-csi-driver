@@ -127,7 +127,6 @@ spec:
           args:
             - "--v=5"
             - "--endpoint=$(CSI_ENDPOINT)"
-            - "--nodeid=$(KUBE_NODE_NAME)"
           ports:
             - containerPort: 29602
               name: healthz
