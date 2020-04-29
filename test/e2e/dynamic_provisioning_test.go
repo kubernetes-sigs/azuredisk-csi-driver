@@ -120,6 +120,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			Pods:                   pods,
 			StorageClassParameters: map[string]string{"skuName": "Standard_LRS"},
 		}
+
+		if isMultiZone && isUsingInTreeVolumePlugin {
+			test.StorageClassParameters["zoned"] = "true"
+		}
 		test.Run(cs, ns)
 	})
 
@@ -150,6 +154,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			Pods:                   pods,
 			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
 		}
+		if isMultiZone && isUsingInTreeVolumePlugin {
+			test.StorageClassParameters["zoned"] = "true"
+		}
 		test.Run(cs, ns)
 	})
 
@@ -175,6 +182,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			CSIDriver:              testDriver,
 			Pods:                   pods,
 			StorageClassParameters: map[string]string{"skuName": "Premium_LRS"},
+		}
+		if isMultiZone && isUsingInTreeVolumePlugin {
+			test.StorageClassParameters["zoned"] = "true"
 		}
 		test.Run(cs, ns)
 	})
@@ -202,6 +212,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			CSIDriver:              testDriver,
 			Pods:                   pods,
 			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
+		}
+		if isMultiZone && isUsingInTreeVolumePlugin {
+			test.StorageClassParameters["zoned"] = "true"
 		}
 		test.Run(cs, ns)
 	})
@@ -257,6 +270,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			ColocatePods:           true,
 			StorageClassParameters: map[string]string{"skuName": "Premium_LRS"},
 		}
+		if isMultiZone && isUsingInTreeVolumePlugin {
+			test.StorageClassParameters["zoned"] = "true"
+		}
 		test.Run(cs, ns)
 	})
 
@@ -305,6 +321,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		test := testsuites.DynamicallyProvisionedReclaimPolicyTest{
 			CSIDriver: testDriver,
 			Volumes:   volumes,
+		}
+		if isMultiZone && isUsingInTreeVolumePlugin {
+			test.StorageClassParameters["zoned"] = "true"
 		}
 		test.Run(cs, ns)
 	})
@@ -398,6 +417,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			Pods:                   pods,
 			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
 		}
+		if isMultiZone && isUsingInTreeVolumePlugin {
+			test.StorageClassParameters["zoned"] = "true"
+		}
 		test.Run(cs, ns)
 	})
 
@@ -433,6 +455,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			CSIDriver:              testDriver,
 			Pods:                   pods,
 			StorageClassParameters: map[string]string{"skuName": "Premium_LRS"},
+		}
+		if isMultiZone && isUsingInTreeVolumePlugin {
+			test.StorageClassParameters["zoned"] = "true"
 		}
 		test.Run(cs, ns)
 	})
