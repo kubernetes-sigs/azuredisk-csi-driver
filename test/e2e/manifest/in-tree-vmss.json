@@ -21,7 +21,11 @@
         "masterProfile": {
             "count": 1,
             "dnsPrefix": "{dnsPrefix}",
-            "vmSize": "Standard_DS2_v2"
+            "vmSize": "Standard_DS2_v2",
+            "availabilityZones": [
+                "1",
+                "2"
+            ]            
         },
         "agentPoolProfiles": [
             {
@@ -29,7 +33,11 @@
                 "count": 2,
                 "vmSize": "Standard_DS2_v2",
                 "availabilityProfile": "VirtualMachineScaleSets",
-                "storageProfile": "ManagedDisks"
+                "storageProfile": "ManagedDisks",
+                "availabilityZones": [
+                    "1",
+                    "2"
+                ]                
             }
         ],
         "linuxProfile": {
