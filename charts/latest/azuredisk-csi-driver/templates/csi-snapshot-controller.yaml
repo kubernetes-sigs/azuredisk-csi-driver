@@ -29,7 +29,7 @@ spec:
           image: "{{ .Values.snapshot.image.csiSnapshotController.repository }}:{{ .Values.snapshot.image.csiSnapshotController.tag }}"
           args:
             - "--v=5"
-            - "-leader-election"
+            - "--leader-election=false"
           resources:
             limits:
               cpu: 1000m
