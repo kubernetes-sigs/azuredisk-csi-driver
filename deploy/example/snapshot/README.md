@@ -1,7 +1,6 @@
 # Snapshot Example
 
-### Minimum Kubernetes Version: v1.17.0
-refer to [Snapshot & Restore Feature](https://kubernetes-csi.github.io/docs/snapshot-restore-feature.html) for more details.
+- Snapshot feature is beta since Kubernetes v1.17.0, refer to [Snapshot & Restore Feature](https://kubernetes-csi.github.io/docs/snapshot-restore-feature.html) for more details.
 
 ## Install CSI Driver
 
