@@ -78,4 +78,10 @@ validate_image "${expected_node_driver_registrar}" "${node_driver_registrar}"
 
 validate_image "${expected_azuredisk_image}" "${azuredisk_image}"
 
+# Extract images from csi-snapshot-controller.yaml
+expected_snapshot_controller_image="$(cat ${PKG_ROOT}/deploy/csi-snapshot-controller.yaml | yq -r .spec.template.spec.containers[0].image | head -n 1)"
+
+snapshot_controller_image="$(get_image_from_helm_chart ".snapshot.image.csiSnapshotController")"
+validate_image "${expected_snapshot_controller_image}" "${snapshot_controller_image}"
+
 echo "Images in deploy/ matches those in the latest helm chart."
