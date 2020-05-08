@@ -105,7 +105,7 @@ func TestEnsureMountPoint(t *testing.T) {
 		return nil, nil
 	}
 
-	d, err := NewFakeDriver()
+	d, err := NewFakeDriver(t)
 	if err != nil {
 		t.Fatalf("Error getting driver: %v", err)
 	}

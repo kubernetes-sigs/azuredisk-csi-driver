@@ -17,6 +17,8 @@ limitations under the License.
 package azuredisk
 
 import (
+	"testing"
+
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
 
@@ -51,14 +53,14 @@ var (
 	}
 )
 
-func NewFakeDriver() (*Driver, error) {
+func NewFakeDriver(t *testing.T) (*Driver, error) {
 	driver := Driver{}
 	driver.Name = fakeDriverName
 	driver.Version = fakeDriverVersion
 	driver.NodeID = fakeNodeID
 	driver.CSIDriver = *csicommon.NewFakeCSIDriver()
 
-	ctrl := gomock.NewController(nil)
+	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
 	driver.cloud = azure.GetTestCloud(ctrl)
