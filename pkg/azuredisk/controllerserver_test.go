@@ -18,20 +18,25 @@ package azuredisk
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-12-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/golang/mock/gomock"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"k8s.io/legacy-cloud-providers/azure/clients/diskclient/mockdiskclient"
 
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 )
 
 var (
 	testVolumeName = "unit-test-volume"
+	testVolumeID   = fmt.Sprintf(managedDiskPath, "subs", "rg", testVolumeName)
 )
 
 func checkTestError(t *testing.T, expectedErrCode codes.Code, err error) {
@@ -149,7 +154,7 @@ func TestGetEntriesAndNextToken(t *testing.T) {
 }
 
 func TestCreateVolume(t *testing.T) {
-	d, err := NewFakeDriver()
+	d, err := NewFakeDriver(t)
 	if err != nil {
 		t.Fatalf("Error getting driver: %v", err)
 	}
@@ -159,6 +164,27 @@ func TestCreateVolume(t *testing.T) {
 		expectedResp    *csi.CreateVolumeResponse
 		expectedErrCode codes.Code
 	}{
+		{
+			desc: "success standard",
+			req: &csi.CreateVolumeRequest{
+				Name:               testVolumeName,
+				VolumeCapabilities: stdVolumeCapabilities,
+				CapacityRange:      stdCapacityRange,
+			},
+			expectedResp: &csi.CreateVolumeResponse{
+				Volume: &csi.Volume{
+					VolumeId:      testVolumeID,
+					CapacityBytes: stdCapacityRange.RequiredBytes,
+					VolumeContext: nil,
+					ContentSource: &csi.VolumeContentSource{},
+					AccessibleTopology: []*csi.Topology{
+						{
+							Segments: map[string]string{topologyKey: ""},
+						},
+					},
+				},
+			},
+		},
 		{
 			desc: "fail with no name",
 			req: &csi.CreateVolumeRequest{
@@ -197,42 +223,41 @@ func TestCreateVolume(t *testing.T) {
 			expectedResp:    nil,
 			expectedErrCode: codes.InvalidArgument,
 		},
-		{
-			desc: "success standard",
-			req: &csi.CreateVolumeRequest{
-				Name:               testVolumeName,
-				VolumeCapabilities: stdVolumeCapabilities,
-				CapacityRange:      stdCapacityRange,
-			},
-			expectedResp: &csi.CreateVolumeResponse{
-				Volume: &csi.Volume{
-					VolumeId:      testVolumeName,
-					CapacityBytes: stdCapacityRange.RequiredBytes,
-					VolumeContext: nil,
-					ContentSource: &csi.VolumeContentSource{},
-					AccessibleTopology: []*csi.Topology{
-						{
-							Segments: map[string]string{topologyKey: ""},
-						},
-					},
-				},
-			},
-		},
 	}
 
 	for _, test := range tests {
-		result, err := d.CreateVolume(context.Background(), test.req)
+		ctx, cancel := context.WithCancel(context.TODO())
+		defer cancel()
+		name := test.req.Name
+		id := fmt.Sprintf(managedDiskPath, "subs", "rg", name)
+		size := int32(1)
+		if test.req.CapacityRange != nil {
+			size = int32(volumehelper.BytesToGiB(test.req.CapacityRange.RequiredBytes))
+		}
+		state := string(compute.ProvisioningStateSucceeded)
+		disk := compute.Disk{
+			ID:   &id,
+			Name: &name,
+			DiskProperties: &compute.DiskProperties{
+				DiskSizeGB:        &size,
+				ProvisioningState: &state,
+			},
+		}
+		d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Eq(ctx), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+		d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().CreateOrUpdate(gomock.Eq(ctx), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+
+		result, err := d.CreateVolume(ctx, test.req)
 		if err != nil {
 			checkTestError(t, test.expectedErrCode, err)
 		}
 		if !reflect.DeepEqual(result, test.expectedResp) {
-			t.Errorf("input request: %v, CreateVolume result: %v, expected: %v", test.req, result, test.expectedResp)
+			t.Errorf("desc: %v,\ninput request: %v, CreateVolume result: %v, expected: %v", test.desc, test.req, result, test.expectedResp)
 		}
 	}
 }
 
 func TestDeleteVolume(t *testing.T) {
-	d, err := NewFakeDriver()
+	d, err := NewFakeDriver(t)
 	if err != nil {
 		t.Fatalf("Error getting driver: %v", err)
 	}
@@ -243,6 +268,13 @@ func TestDeleteVolume(t *testing.T) {
 		expectedResp    *csi.DeleteVolumeResponse
 		expectedErrCode codes.Code
 	}{
+		{
+			desc: "success standard",
+			req: &csi.DeleteVolumeRequest{
+				VolumeId: testVolumeID,
+			},
+			expectedResp: &csi.DeleteVolumeResponse{},
+		},
 		{
 			desc: "fail with no volume id",
 			req: &csi.DeleteVolumeRequest{
@@ -258,16 +290,19 @@ func TestDeleteVolume(t *testing.T) {
 			},
 			expectedResp: &csi.DeleteVolumeResponse{},
 		},
-		{
-			desc: "success standard",
-			req: &csi.DeleteVolumeRequest{
-				VolumeId: testVolumeName,
-			},
-			expectedResp: &csi.DeleteVolumeResponse{},
-		},
 	}
 
 	for _, test := range tests {
+		ctx, cancel := context.WithCancel(context.TODO())
+		defer cancel()
+		id := test.req.VolumeId
+		disk := compute.Disk{
+			ID: &id,
+		}
+
+		d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Eq(ctx), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+		d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().Delete(gomock.Eq(ctx), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+
 		result, err := d.DeleteVolume(context.Background(), test.req)
 		if err != nil {
 			checkTestError(t, test.expectedErrCode, err)
