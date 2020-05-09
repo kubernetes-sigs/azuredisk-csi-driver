@@ -97,7 +97,7 @@ spec:
             - name: socket-dir
               mountPath: /csi
         - name: azuredisk
-          image: mcr.microsoft.com/k8s/csi/azuredisk-csi:latest
+          image: mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.5.0
           args:
             - "--v=5"
             - "--endpoint=$(CSI_ENDPOINT)"
