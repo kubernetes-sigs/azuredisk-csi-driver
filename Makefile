@@ -103,7 +103,7 @@ azuredisk-windows:
 
 .PHONY: container
 container:
-	docker build --no-cache --build-arg LDFLAGS=$(LDFLAGS) -t $(IMAGE_TAG) -f ./pkg/azurediskplugin/Dockerfile .
+	docker buildx build --build-arg LDFLAGS=${LDFLAGS} -t $(IMAGE_TAG) -f ./pkg/azurediskplugin/Dockerfile --platform="linux/amd64" --output "type=docker,push=false" .
 
 .PHONY: azuredisk-container
 azuredisk-container:
@@ -112,8 +112,7 @@ ifdef CI
 	docker buildx rm container-builder || true
 	docker buildx create --use --name=container-builder
 	docker buildx build --build-arg LDFLAGS=${LDFLAGS} -t $(IMAGE_TAG)-linux-amd64 -f ./pkg/azurediskplugin/Dockerfile --platform="linux/amd64" --push .
-	make azuredisk-windows
-	docker buildx build  -t $(IMAGE_TAG)-windows-1809-amd64 -f ./pkg/azurediskplugin/Windows.Dockerfile --platform="windows/amd64" --push .
+	docker buildx build --build-arg LDFLAGS=${LDFLAGS} -t $(IMAGE_TAG)-windows-1809-amd64 -f ./pkg/azurediskplugin/Windows.Dockerfile --platform="windows/amd64" --push .
 	docker manifest create $(IMAGE_TAG) $(IMAGE_TAG)-linux-amd64 $(IMAGE_TAG)-windows-1809-amd64
 	docker manifest inspect $(IMAGE_TAG)
 else
