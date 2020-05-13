@@ -12,10 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM mcr.microsoft.com/aks/fundamental/base-ubuntu:v0.0.5
-RUN apt-get update && apt-get install -y util-linux e2fsprogs mount ca-certificates udev xfsprogs
+
+FROM golang:1.13.10-alpine3.10 as builder
+WORKDIR /go/src/sigs.k8s.io/azuredisk-csi-driver
+ADD . .
+ARG LDFLAGS
+RUN CGO_ENABLED=0 GOOS=linux go build -a -ldflags "${LDFLAGS:--X sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk.driverVersion=latest}" -o _output/azurediskplugin ./pkg/azurediskplugin
+
+FROM us.gcr.io/k8s-artifacts-prod/build-image/debian-base-amd64:v2.1.0
+COPY --from=builder /go/src/sigs.k8s.io/azuredisk-csi-driver/_output/azurediskplugin /azurediskplugin
+RUN clean-install util-linux e2fsprogs mount ca-certificates udev xfsprogs
+
 LABEL maintainers="andyzhangx"
 LABEL description="Azure Disk CSI Driver"
 
-COPY ./_output/azurediskplugin /azurediskplugin
 ENTRYPOINT ["/azurediskplugin"]
