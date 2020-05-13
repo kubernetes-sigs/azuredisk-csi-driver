@@ -94,24 +94,26 @@ e2e-teardown:
 .PHONY: azuredisk
 azuredisk:
 	if [ ! -d ./vendor ]; then dep ensure -vendor-only; fi
-	CGO_ENABLED=0 GOOS=linux go build -a -ldflags ${LDFLAGS} -o _output/azurediskplugin ./pkg/azurediskplugin
+	CGO_ENABLED=0 GOOS=linux go build -a -ldflags "${LDFLAGS}" -o _output/azurediskplugin ./pkg/azurediskplugin
 
 .PHONY: azuredisk-windows
 azuredisk-windows:
 	if [ ! -d ./vendor ]; then dep ensure -vendor-only; fi
-	CGO_ENABLED=0 GOOS=windows go build -a -ldflags ${LDFLAGS} -o _output/azurediskplugin.exe ./pkg/azurediskplugin
+	CGO_ENABLED=0 GOOS=windows go build -a -ldflags "${LDFLAGS}" -o _output/azurediskplugin.exe ./pkg/azurediskplugin
 
 .PHONY: container
 container:
-	docker build --no-cache --build-arg LDFLAGS=$(LDFLAGS) -t $(IMAGE_TAG) -f ./pkg/azurediskplugin/Dockerfile .
+	docker build --no-cache --build-arg LDFLAGS="$(LDFLAGS)" -t $(IMAGE_TAG) -f ./pkg/azurediskplugin/Dockerfile .
 
 .PHONY: azuredisk-container
 azuredisk-container:
 ifdef CI
 	az acr login --name $(REGISTRY_NAME)
-	make azuredisk azuredisk-windows
-	az acr build --registry $(REGISTRY_NAME) -t $(IMAGE_TAG)-linux-amd64 -f ./pkg/azurediskplugin/Dockerfile --platform linux .
-	az acr build --registry $(REGISTRY_NAME) -t $(IMAGE_TAG)-windows-1809-amd64 -f ./pkg/azurediskplugin/Windows.Dockerfile --platform windows .
+	docker buildx rm container-builder || true
+	docker buildx create --use --name=container-builder
+	docker buildx build --build-arg LDFLAGS="${LDFLAGS}" -t $(IMAGE_TAG)-linux-amd64 -f ./pkg/azurediskplugin/Dockerfile --platform="linux/amd64" --push .
+	make azuredisk-windows
+	docker buildx build  -t $(IMAGE_TAG)-windows-1809-amd64 -f ./pkg/azurediskplugin/Windows.Dockerfile --platform="windows/amd64" --push .
 	docker manifest create $(IMAGE_TAG) $(IMAGE_TAG)-linux-amd64 $(IMAGE_TAG)-windows-1809-amd64
 	docker manifest inspect $(IMAGE_TAG)
 else
@@ -119,8 +121,7 @@ ifdef TEST_WINDOWS
 	make azuredisk-windows
 	docker build --no-cache -t $(IMAGE_TAG) -f ./pkg/azurediskplugin/Windows.Dockerfile .
 else
-	make azuredisk
-	docker build --no-cache -t $(IMAGE_TAG) -f ./pkg/azurediskplugin/Dockerfile .
+	make container
 endif
 endif
 
