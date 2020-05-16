@@ -15,15 +15,17 @@
 PKG = sigs.k8s.io/azuredisk-csi-driver
 GIT_COMMIT ?= $(shell git rev-parse HEAD)
 REGISTRY ?= andyzhangx
-REGISTRY_NAME = $(shell echo $(REGISTRY) | sed "s/.azurecr.io//g")
+REGISTRY_NAME ?= $(shell echo $(REGISTRY) | sed "s/.azurecr.io//g")
 DRIVER_NAME = disk.csi.azure.com
-IMAGE_NAME = azuredisk-csi
+IMAGE_NAME ?= azuredisk-csi
 IMAGE_VERSION ?= v0.8.0
 # Use a custom version for E2E tests if we are testing in CI
 ifdef CI
+ifndef PUBLISH
 override IMAGE_VERSION := e2e-$(GIT_COMMIT)
 endif
-IMAGE_TAG = $(REGISTRY)/$(IMAGE_NAME):$(IMAGE_VERSION)
+endif
+IMAGE_TAG ?= $(REGISTRY)/$(IMAGE_NAME):$(IMAGE_VERSION)
 IMAGE_TAG_LATEST = $(REGISTRY)/$(IMAGE_NAME):latest
 REV = $(shell git describe --long --tags --dirty)
 BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -115,6 +117,10 @@ ifdef CI
 	docker buildx build --no-cache --build-arg LDFLAGS=${LDFLAGS} -t $(IMAGE_TAG)-windows-1809-amd64 -f ./pkg/azurediskplugin/Windows.Dockerfile --platform="windows/amd64" --push .
 	docker manifest create $(IMAGE_TAG) $(IMAGE_TAG)-linux-amd64 $(IMAGE_TAG)-windows-1809-amd64
 	docker manifest inspect $(IMAGE_TAG)
+ifdef PUBLISH
+	docker manifest create $(IMAGE_TAG_LATEST) $(IMAGE_TAG)-linux-amd64 $(IMAGE_TAG)-windows-1809-amd64
+	docker manifest inspect $(IMAGE_TAG_LATEST)
+endif
 else
 ifdef TEST_WINDOWS
 	docker buildx build --no-cache --build-arg LDFLAGS=${LDFLAGS} -t $(IMAGE_TAG)-windows-1809-amd64 -f ./pkg/azurediskplugin/Windows.Dockerfile --platform="windows/amd64" --output "type=image" .
@@ -133,8 +139,11 @@ endif
 
 .PHONY: push-latest
 push-latest:
-	docker tag $(IMAGE_TAG) $(IMAGE_TAG_LATEST)
+ifdef CI
+	docker manifest push --purge $(IMAGE_TAG_LATEST)
+else
 	docker push $(IMAGE_TAG_LATEST)
+endif
 
 .PHONY: build-push
 build-push: azuredisk-container
