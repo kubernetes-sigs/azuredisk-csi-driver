@@ -297,17 +297,17 @@ func (mounter *SafeFormatAndMount) formatAndMount(source string, target string, 
 
 	// format disk if it is unformatted(raw)
 	cmd := fmt.Sprintf("Get-Disk -Number %s | Where partitionstyle -eq 'raw' | Initialize-Disk -PartitionStyle MBR -PassThru"+
-		" | New-Partition -AssignDriveLetter -UseMaximumSize | Format-Volume -FileSystem %s -Confirm:$false", source, fstype)
+		" | New-Partition -UseMaximumSize | Format-Volume -FileSystem %s -Confirm:$false", source, fstype)
 	if output, err := mounter.Exec.Run("powershell", "/c", cmd); err != nil {
 		return fmt.Errorf("diskMount: format disk failed, error: %v, output: %q", err, string(output))
 	}
 	klog.V(4).Infof("diskMount: Disk successfully formatted, disk: %q, fstype: %q", source, fstype)
 
-	driveLetter, err := getDriveLetterByDiskNumber(source, mounter.Exec)
+	volumeIds, err := listVolumesOnDisk(source)
 	if err != nil {
 		return err
 	}
-	driverPath := driveLetter + ":"
+	driverPath := volumeIds[0]
 	target = normalizeWindowsPath(target)
 	klog.V(4).Infof("Attempting to formatAndMount disk: %s %s %s", fstype, driverPath, target)
 	if output, err := mounter.Exec.Run("cmd", "/c", "mklink", "/D", target, driverPath); err != nil {
@@ -339,17 +339,17 @@ func ValidateDiskNumber(disk string) error {
 	return nil
 }
 
-// Get drive letter according to windows disk number
-func getDriveLetterByDiskNumber(diskNum string, exec Exec) (string, error) {
-	cmd := fmt.Sprintf("(Get-Partition -DiskNumber %s).DriveLetter", diskNum)
-	output, err := exec.Run("powershell", "/c", cmd)
+// ListVolumesOnDisk - returns back list of volumes(volumeIDs) in the disk (requested in diskID).
+func listVolumesOnDisk(diskID string) (volumeIDs []string, err error) {
+	cmd := fmt.Sprintf("(Get-Disk -DeviceId %s | Get-Partition | Get-Volume).UniqueId", diskID)
+	output, err := exec.Command("powershell", "/c", cmd).CombinedOutput()
+	klog.V(4).Infof("listVolumesOnDisk id from %s: %s", diskID, string(output))
 	if err != nil {
-		return "", fmt.Errorf("azureMount: Get Drive Letter failed: %v, output: %q", err, string(output))
+		return []string{}, fmt.Errorf("error list volumes on disk. cmd: %s, output: %s, error: %v", cmd, string(output), err)
 	}
-	if len(string(output)) < 1 {
-		return "", fmt.Errorf("azureMount: Get Drive Letter failed, output is empty")
-	}
-	return string(output)[:1], nil
+
+	volumeIds := strings.Split(strings.TrimSpace(string(output)), "\r\n")
+	return volumeIds, nil
 }
 
 // getAllParentLinks walks all symbolic links and return all the parent targets recursively
