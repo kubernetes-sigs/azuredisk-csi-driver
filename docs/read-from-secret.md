@@ -13,7 +13,7 @@ This driver also supports [reading the cloud config from Kubernetes secrets](htt
 cat azure.json | base64 | awk '{printf $0}'; echo
 ```
 
-1. create a secret file(`azure-cloud-provider.yaml`) with following values and fill in `cloud-config` value produced in step#2
+3. create a secret file(`azure-cloud-provider.yaml`) with following values and fill in `cloud-config` value produced in step#2
 
 ```
 apiVersion: v1
@@ -26,7 +26,7 @@ metadata:
 type: Opaque
 ```
 
-1. Create a `azure-cloud-provider` secret in k8s cluster
+4. Create a `azure-cloud-provider` secret in k8s cluster
 
 ```
 kubectl create -f azure-cloud-provider.yaml
