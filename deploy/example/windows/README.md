@@ -7,7 +7,7 @@ CSI on Windows support is an alpha feature since Kubernetes v1.18, refer to [Win
 ## Prerequisite
 - Install CSI-Proxy on Windows Node
 
-[csi-proxy installation](https://github.com/Azure/aks-engine/blob/master/docs/topics/csi-proxy-windows.md) is supported with [aks-engine v0.48.0](https://github.com/Azure/aks-engine/releases/tag/v0.48.0).
+[csi-proxy installation](https://github.com/Azure/aks-engine/blob/master/docs/topics/csi-proxy-windows.md) is supported with [aks-engine v0.48.0](https://github.com/Azure/aks-engine/releases/tag/v0.48.0) or higher version
 
 ## Install CSI Driver
 ```console
