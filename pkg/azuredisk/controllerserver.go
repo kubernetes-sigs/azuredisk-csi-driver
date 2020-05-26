@@ -573,11 +573,18 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	snapshotName = getValidDiskName(snapshotName)
 
 	var customTags string
+	// set incremental snapshot as true by default
+	incremental := true
+
 	parameters := req.GetParameters()
 	for k, v := range parameters {
 		switch strings.ToLower(k) {
 		case "tags":
 			customTags = v
+		case "incremental":
+			if v == "false" {
+				incremental = false
+			}
 		default:
 		}
 	}
@@ -597,13 +604,14 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 				CreateOption: compute.Copy,
 				SourceURI:    &sourceVolumeID,
 			},
+			Incremental: &incremental,
 		},
 		Location: &d.cloud.Location,
 		Tags:     tags,
 	}
 
 	//todo: add metrics here
-	klog.V(2).Infof("begin to create snapshot(%s) under rg(%s)", snapshotName, resourceGroup)
+	klog.V(2).Infof("begin to create snapshot(%s, incremental: %v) under rg(%s)", snapshotName, incremental, resourceGroup)
 	rerr := d.cloud.SnapshotsClient.CreateOrUpdate(ctx, resourceGroup, snapshotName, snapshot)
 	if rerr != nil {
 		if strings.Contains(rerr.Error().Error(), "existing disk") {
