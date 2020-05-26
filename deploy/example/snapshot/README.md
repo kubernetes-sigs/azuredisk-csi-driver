@@ -6,30 +6,25 @@
 
 Follow the [instructions](https://github.com/kubernetes-sigs/azuredisk-csi-driver/blob/master/docs/install-csi-driver-master.md) to install snapshot driver.
 
-## Create a Source PVC
-
+### 1. Create source PVC and an example pod to write data 
 ```console
 kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/storageclass-azuredisk-csi.yaml
 kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/pvc-azuredisk-csi.yaml
 kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/nginx-pod-azuredisk.yaml
 ```
-
-### Check the Source PVC
-
+ - Check source PVC
 ```console
 $ kubectl exec nginx-azuredisk -- ls /mnt/azuredisk
 lost+found
 outfile
 ```
 
-## Create a Snapshot of the Source PVC
-
+### 2. Create a snapshot on source PVC
 ```console
 kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/snapshot/storageclass-azuredisk-snapshot.yaml
 kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/snapshot/azuredisk-volume-snapshot.yaml
 ```
-### Check the Creation Status
-
+ - Check snapshot Status
 ```console
 $ kubectl describe volumesnapshot azuredisk-volume-snapshot
 Name:         azuredisk-volume-snapshot
@@ -59,16 +54,15 @@ Status:
   Restore Size:                        10Gi
 Events:                                <none>
 ```
+> In above example, `snapcontent-2b0ef334-4112-4c86-8360-079c625d5562` is the snapshot name
 
-## Restore the Snapshot into a New PVC
-
+### 3. Create a new PVC based on snapshot
 ```console
 kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/snapshot/pvc-azuredisk-snapshot-restored.yaml
 kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/snapshot/nginx-pod-restored-snapshot.yaml
 ```
 
-### Check Sample Data
-
+ - Check data
 ```console
 $ kubectl exec nginx-restored -- ls /mnt/azuredisk
 lost+found
