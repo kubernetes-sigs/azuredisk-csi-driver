@@ -14,16 +14,16 @@ jobs:
     steps:
 
     - name: Set up Go 1.x
-      uses: actions/setup-go@v1
+      uses: actions/setup-go@v2
       with:
-        go-version: ^1.12
+        go-version: ^1.13
       id: go
 
     - name: Check out code into the Go module directory
-      uses: actions/checkout@v1
+      uses: actions/checkout@v2
 
     - name: Test
-      run: go test -covermode=count -coverprofile=profile.cov ./pkg/...
+      run: sudo go test -covermode=count -coverprofile=profile.cov ./pkg/...
         
     - name: Send coverage
       env:
