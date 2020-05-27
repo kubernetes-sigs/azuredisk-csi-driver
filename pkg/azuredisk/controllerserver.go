@@ -557,12 +557,17 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	klog.V(2).Infof("CreateSnapshot called with request %v", *req)
 
 	sourceVolumeID := req.GetSourceVolumeId()
-	snapshotName := req.Name
-	if len(snapshotName) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "Snapshot name must be provided")
-	}
 	if len(sourceVolumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "CreateSnapshot Source Volume ID must be provided")
+	}
+	snapshotName := req.Name
+	if len(snapshotName) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "snapshot name must be provided")
+	}
+
+	resourceGroup, err := getResourceGroupFromURI(sourceVolumeID)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "could not get resource group from diskURI(%s) with error(%v)", sourceVolumeID, err)
 	}
 
 	snapshotName = getValidDiskName(snapshotName)
@@ -598,16 +603,16 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	}
 
 	//todo: add metrics here
-	klog.V(2).Infof("begin to create snapshot(%s) under rg(%s)", snapshotName, d.cloud.ResourceGroup)
-	rerr := d.cloud.SnapshotsClient.CreateOrUpdate(ctx, d.cloud.ResourceGroup, snapshotName, snapshot)
+	klog.V(2).Infof("begin to create snapshot(%s) under rg(%s)", snapshotName, resourceGroup)
+	rerr := d.cloud.SnapshotsClient.CreateOrUpdate(ctx, resourceGroup, snapshotName, snapshot)
 	if rerr != nil {
 		if strings.Contains(rerr.Error().Error(), "existing disk") {
-			return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("request snapshot(%s) under rg(%s) already exists, but the SourceVolumeId is different, error details: %v", snapshotName, d.cloud.ResourceGroup, rerr.Error()))
+			return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("request snapshot(%s) under rg(%s) already exists, but the SourceVolumeId is different, error details: %v", snapshotName, resourceGroup, rerr.Error()))
 		}
 
 		return nil, status.Error(codes.Internal, fmt.Sprintf("create snapshot error: %v", rerr.Error()))
 	}
-	klog.V(2).Infof("create snapshot(%s) under rg(%s) successfully", snapshotName, d.cloud.ResourceGroup)
+	klog.V(2).Infof("create snapshot(%s) under rg(%s) successfully", snapshotName, resourceGroup)
 
 	csiSnapshot, err := d.getSnapshotByID(ctx, snapshotName, sourceVolumeID)
 	if err != nil {
@@ -667,7 +672,7 @@ func (d *Driver) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsReques
 		return listSnapshotResp, nil
 	}
 
-	// no SnapshotId is set, so we return all snapshots that satify the reqeust.
+	// no SnapshotId is set, return all snapshots that satisfy the request.
 	snapshots, err := d.cloud.SnapshotsClient.ListByResourceGroup(ctx, d.cloud.ResourceGroup)
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown list snapshot error: %v", err.Error()))
