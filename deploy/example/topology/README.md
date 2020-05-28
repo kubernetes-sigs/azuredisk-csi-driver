@@ -19,15 +19,9 @@ metadata:
   name: disk.csi.azure.com
 provisioner: disk.csi.azure.com
 parameters:
-  skuname: StandardSSD_LRS  # alias: storageaccounttype, available values: Standard_LRS, Premium_LRS, StandardSSD_LRS, UltraSSD_LRS
+  skuname: StandardSSD_LRS  # available values: Standard_LRS, Premium_LRS, StandardSSD_LRS, UltraSSD_LRS
 reclaimPolicy: Delete
 volumeBindingMode: WaitForFirstConsumer  # make sure `volumeBindingMode` is set as `WaitForFirstConsumer`
-allowedTopologies:
-  - matchLabelExpressions:
-      - key: topology.disk.csi.azure.com/zone
-        values:
-          - eastus2-1
-          - eastus2-2
 ```
 
 ### Follow azure disk dynamic provisioning
@@ -36,3 +30,4 @@ Continue from step `Create an azuredisk CSI PVC`, refer to [Basic usage](../e2e_
 
 #### Links
  - [Azure Availability Zones](https://github.com/kubernetes-sigs/cloud-provider-azure/blob/master/docs/using-availability-zones.md)
+ - [Allowed Topologies](https://kubernetes.io/docs/concepts/storage/storage-classes/#allowed-topologies)
