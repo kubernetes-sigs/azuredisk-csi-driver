@@ -145,3 +145,79 @@ func TestLogGRPC(t *testing.T) {
 		})
 	}
 }
+func TestNewDefaultNodeServer(t *testing.T) {
+	d := NewFakeCSIDriver()
+	resp := NewDefaultNodeServer(d)
+	assert.NotNil(t, resp)
+	assert.Equal(t, resp.Driver.Name, fakeCSIDriverName)
+	assert.Equal(t, resp.Driver.NodeID, fakeNodeID)
+	assert.Equal(t, resp.Driver.Version, vendorVersion)
+}
+
+func TestNewDefaultIdentityServer(t *testing.T) {
+	d := NewFakeCSIDriver()
+	resp := NewDefaultIdentityServer(d)
+	assert.NotNil(t, resp)
+	assert.Equal(t, resp.Driver.Name, fakeCSIDriverName)
+	assert.Equal(t, resp.Driver.NodeID, fakeNodeID)
+	assert.Equal(t, resp.Driver.Version, vendorVersion)
+}
+
+func TestNewDefaultControllerServer(t *testing.T) {
+	d := NewFakeCSIDriver()
+	resp := NewDefaultControllerServer(d)
+	assert.NotNil(t, resp)
+	assert.Equal(t, resp.Driver.Name, fakeCSIDriverName)
+	assert.Equal(t, resp.Driver.NodeID, fakeNodeID)
+	assert.Equal(t, resp.Driver.Version, vendorVersion)
+}
+func TestNewControllerServiceCapability(t *testing.T) {
+	tests := []struct {
+		cap csi.ControllerServiceCapability_RPC_Type
+	}{
+		{
+			cap: csi.ControllerServiceCapability_RPC_UNKNOWN,
+		},
+		{
+			cap: csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
+		},
+		{
+			cap: csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME,
+		},
+		{
+			cap: csi.ControllerServiceCapability_RPC_LIST_VOLUMES,
+		},
+		{
+			cap: csi.ControllerServiceCapability_RPC_GET_CAPACITY,
+		},
+	}
+	for _, test := range tests {
+		resp := NewControllerServiceCapability(test.cap)
+		assert.NotNil(t, resp)
+		assert.Equal(t, resp.XXX_sizecache, int32(0))
+	}
+}
+
+func TestNewNodeServiceCapability(t *testing.T) {
+	tests := []struct {
+		cap csi.NodeServiceCapability_RPC_Type
+	}{
+		{
+			cap: csi.NodeServiceCapability_RPC_UNKNOWN,
+		},
+		{
+			cap: csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
+		},
+		{
+			cap: csi.NodeServiceCapability_RPC_GET_VOLUME_STATS,
+		},
+		{
+			cap: csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
+		},
+	}
+	for _, test := range tests {
+		resp := NewNodeServiceCapability(test.cap)
+		assert.NotNil(t, resp)
+		assert.Equal(t, resp.XXX_sizecache, int32(0))
+	}
+}
