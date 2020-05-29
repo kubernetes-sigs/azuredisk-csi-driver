@@ -17,14 +17,35 @@ limitations under the License.
 package azuredisk
 
 import (
+	"github.com/container-storage-interface/spec/lib/go/csi"
 	"io/ioutil"
 	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 
+	"context"
 	"k8s.io/kubernetes/pkg/util/mount"
 )
+
+func TestNodeGetCapabilities(t *testing.T) {
+	d, _ := NewFakeDriver(t)
+	capType := &csi.NodeServiceCapability_Rpc{
+		Rpc: &csi.NodeServiceCapability_RPC{
+			Type: csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
+		},
+	}
+	capList := []*csi.NodeServiceCapability{{
+		Type: capType,
+	}}
+	d.NSCap = capList
+	// Test valid request
+	req := csi.NodeGetCapabilitiesRequest{}
+	resp, err := d.NodeGetCapabilities(context.Background(), &req)
+	assert.NotNil(t, resp)
+	assert.Equal(t, resp.Capabilities[0].GetType(), capType)
+	assert.NoError(t, err)
+}
 
 func TestGetFStype(t *testing.T) {
 	tests := []struct {
