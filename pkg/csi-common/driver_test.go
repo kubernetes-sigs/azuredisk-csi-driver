@@ -25,10 +25,27 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-func TestNewFakeCSIDriver(t *testing.T) {
-	// Test New fake driver with invalid arguments.
-	d := NewCSIDriver("", vendorVersion, fakeNodeID)
-	assert.Nil(t, d)
+func TestNewCSIDriver(t *testing.T) {
+	tests := []struct {
+		name   string
+		vendor string
+		nodeID string
+	}{
+		{
+			name:   "",
+			vendor: "0.1.0",
+			nodeID: "fakeID",
+		},
+		{
+			name:   "testDriver",
+			vendor: "0.1.0",
+			nodeID: "",
+		},
+	}
+	for _, test := range tests {
+		result := NewCSIDriver(test.name, test.vendor, test.nodeID)
+		assert.Nil(t, result)
+	}
 }
 
 func TestGetVolumeCapabilityAccessModes(t *testing.T) {
