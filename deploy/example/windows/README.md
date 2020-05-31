@@ -1,4 +1,4 @@
-# CSI on Windows example
+# CSI driver on Windows
 
 ## Feature Status: Alpha
 
@@ -15,7 +15,6 @@ curl -skSL https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-drive
 ```
 
 ## Deploy a Windows pod with PVC mount
-
 ### Create Storage Class
 ```console
 kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/storageclass-azuredisk-csi.yaml
@@ -28,7 +27,7 @@ kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi
 
 #### enter pod container to do validation
 ```console
-# k exec -it busybox-azuredisk-0 cmd
+# kubectl exec -it busybox-azuredisk-0 cmd
 Microsoft Windows [Version 10.0.17763.1098]
 (c) 2018 Microsoft Corporation. All rights reserved.
 
@@ -50,4 +49,4 @@ c:\mnt\azuredisk>cat data.txt
 2020-05-31 12:41:01Z
 2020-05-31 12:41:02Z
 ```
-In the above example, there is a `c:\mnt\azuredisk` directory mounted as NTFS filesystem.
+In the above example, there is a `c:\mnt\azuredisk` directory mounted as `NTFS` filesystem.
