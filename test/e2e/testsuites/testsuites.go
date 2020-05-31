@@ -458,8 +458,7 @@ func (t *TestDeployment) WaitForPodReady() {
 	// always get first pod as there should only be one
 	pod := pods.Items[0]
 	t.podName = pod.Name
-	// set timeout as 10min for windows pod
-	err = framework.WaitTimeoutForPodRunningInNamespace(t.client, pod.Name, pod.Namespace, slowPodStartTimeout)
+	err = framework.WaitForPodRunningInNamespace(t.client, &pod)
 	framework.ExpectNoError(err)
 }
 
