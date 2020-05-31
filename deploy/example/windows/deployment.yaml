@@ -14,29 +14,36 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: aspnet-azuredisk
   labels:
-    app: aspnet
+    app: busybox
+  name: busybox-azuredisk
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      app: busybox
   template:
     metadata:
-      name: aspnet
       labels:
-        app: aspnet
+        app: busybox
+      name: busybox-azuredisk
     spec:
-      nodeSelector:
-        "kubernetes.io/os": windows
       containers:
-        - name: aspnet
-          image: mcr.microsoft.com/dotnet/framework/samples:aspnetapp
+        - name: busybox-azuredisk
+          image: e2eteam/busybox:1.29
+          command:
+            - "powershell.exe"
+            - "-Command"
+            - "while (1) { Add-Content -Encoding Ascii C:\\mnt\\azuredisk\\data.txt $(Get-Date -Format u); sleep 1 }"
           volumeMounts:
             - name: azuredisk
               mountPath: "/mnt/azuredisk"
+              readOnly: false
       volumes:
         - name: azuredisk
           persistentVolumeClaim:
             claimName: pvc-azuredisk
-  selector:
-    matchLabels:
-      app: aspnet
+  strategy:
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
