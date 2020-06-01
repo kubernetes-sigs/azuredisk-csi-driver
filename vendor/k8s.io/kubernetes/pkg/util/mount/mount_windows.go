@@ -309,9 +309,12 @@ func (mounter *SafeFormatAndMount) formatAndMount(source string, target string, 
 	}
 	driverPath := volumeIds[0]
 	target = normalizeWindowsPath(target)
+	if err := os.MkdirAll(target, 0750); err != nil {
+		return fmt.Errorf("diskMount - mountDevice:CreateDirectory(%s) failed with %s", target, err)
+	}
 	klog.V(4).Infof("Attempting to formatAndMount disk: %s %s %s", fstype, driverPath, target)
-	if output, err := mounter.Exec.Run("cmd", "/c", "mklink", "/D", target, driverPath); err != nil {
-		klog.Errorf("mklink failed: %v, output: %q", err, string(output))
+	if output, err := mounter.Exec.Run("cmd", "/c", "mountvol", target, driverPath); err != nil {
+		klog.Errorf("mountvol failed: %v, output: %q", err, string(output))
 		return err
 	}
 	return nil
