@@ -565,16 +565,13 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 		return nil, status.Error(codes.InvalidArgument, "snapshot name must be provided")
 	}
 
-	resourceGroup, err := getResourceGroupFromURI(sourceVolumeID)
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "could not get resource group from diskURI(%s) with error(%v)", sourceVolumeID, err)
-	}
-
 	snapshotName = getValidDiskName(snapshotName)
 
 	var customTags string
 	// set incremental snapshot as true by default
 	incremental := true
+	var resourceGroup string
+	var err error
 
 	parameters := req.GetParameters()
 	for k, v := range parameters {
@@ -585,8 +582,16 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 			if v == "false" {
 				incremental = false
 			}
+		case "resourcegroup":
+			resourceGroup = v
 		default:
 			return nil, fmt.Errorf("AzureDisk - invalid option %s in VolumeSnapshotClass", k)
+		}
+	}
+	if resourceGroup == "" {
+		resourceGroup, err = getResourceGroupFromURI(sourceVolumeID)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "could not get resource group from diskURI(%s) with error(%v)", sourceVolumeID, err)
 		}
 	}
 
