@@ -7,8 +7,7 @@
  > For AKS cluster, need to modify `resourceGroup` to the node resource group name inside `/etc/kubernetes/azure.json`
 
 ### How to run E2E tests
-
-```bash
+```console
 # Using CSI Driver
 make e2e-test
 
@@ -19,4 +18,7 @@ make e2e-test
 # Run in a Windows cluster
 export TEST_WINDOWS="true"
 make e2e-test
+
+# Run specific e2e tests
+go test -v -timeout=0 ./test/e2e -ginkgo.noColor -ginkgo.v -ginkgo.focus="deployment"
 ```
