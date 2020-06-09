@@ -16,7 +16,7 @@ Only raw block device(`volumeMode: Block`) is supported on shared disk feature, 
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: disk.csi.azure.com
+  name: managed-csi
 provisioner: disk.csi.azure.com
 parameters:
   skuname: Premium_LRS  # Currently shared disk only available with premium SSD
@@ -35,7 +35,7 @@ spec:
     requests:
       storage: 256Gi  # minimum size of shared disk is 256GB (P15)
   volumeMode: Block
-  storageClassName: disk.csi.azure.com
+  storageClassName: managed-csi
 ```
 
 2. Create a deployment with 2 replicas and specify `volumeDevices`, `devicePath` in Spec

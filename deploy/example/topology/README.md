@@ -16,7 +16,7 @@ k8s-agentpool-83483713-vmss000001   Ready    agent    62d   v1.16.2   ...topolog
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: disk.csi.azure.com
+  name: managed-csi
 provisioner: disk.csi.azure.com
 parameters:
   skuname: StandardSSD_LRS  # available values: Standard_LRS, Premium_LRS, StandardSSD_LRS, UltraSSD_LRS
