@@ -15,7 +15,7 @@ spec:
     requests:
       storage: 10Gi
   volumeMode: Block
-  storageClassName: disk.csi.azure.com
+  storageClassName: managed-csi
 ```
 
 2. Specify `volumeDevices`, `devicePath` in Pod Spec

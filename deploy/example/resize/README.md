@@ -22,7 +22,7 @@ In Kuberntest 1.16, the feature has been beta. The feature gate is enabled by de
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: disk.csi.azure.com
+  name: managed-csi
 provisioner: disk.csi.azure.com
 allowVolumeExpansion: true
 parameters:

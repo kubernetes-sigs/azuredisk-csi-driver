@@ -9,7 +9,7 @@ spec:
   resources:
     requests:
       storage: 100Gi
-  storageClassName: disk.csi.azure.com
+  storageClassName: managed-csi
 ---
 apiVersion: apps/v1
 kind: Deployment
