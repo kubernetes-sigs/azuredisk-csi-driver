@@ -6,12 +6,30 @@ Quick start instructions for the setup and configuration of azuredisk CSI driver
 
 1. [install Helm Client 3.0+ ](https://helm.sh/docs/intro/quickstart/#install-helm)
 
-## Install AzureDisk via `helm install`
+## Install latest AzureDisk CSI Driver via `helm install`
 
 ```console
 $ cd $GOPATH/src/sigs.k8s.io/azuredisk-csi-driver/charts/latest
 $ helm package azuredisk-csi-driver
 $ helm install azuredisk-csi-driver azuredisk-csi-driver-latest.tgz --namespace kube-system
+```
+  
+## Install CSI Driver released version using Helm repository
+
+```console
+$ helm repo add azuredisk-csi-driver https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts
+$ helm install --name azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system
+```    
+
+### Search for different versions of charts available
+```console
+$ helm search -l azuredisk-csi-driver/
+```  
+
+### Install a specific version of Helm chart
+Specify the version of the chart to be installed using the `--version` parameter. 
+```console
+helm install --name azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v0.7.0
 ```
 
 ## Uninstall
