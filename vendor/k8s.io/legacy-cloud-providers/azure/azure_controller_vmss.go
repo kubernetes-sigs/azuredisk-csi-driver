@@ -46,7 +46,8 @@ func (ss *scaleSet) AttachDisk(isManagedDisk bool, diskName, diskURI string, nod
 
 	disks := []compute.DataDisk{}
 	if vm.StorageProfile != nil && vm.StorageProfile.DataDisks != nil {
-		disks = filterDetachingDisks(*vm.StorageProfile.DataDisks)
+		disks = make([]compute.DataDisk, len(*vm.StorageProfile.DataDisks))
+		copy(disks, *vm.StorageProfile.DataDisks)
 	}
 	if isManagedDisk {
 		managedDisk := &compute.ManagedDiskParameters{ID: &diskURI}
