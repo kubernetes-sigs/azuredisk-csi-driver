@@ -25,7 +25,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"context"
-	"k8s.io/kubernetes/pkg/util/mount"
+	"k8s.io/utils/mount"
 )
 
 func TestNodeGetCapabilities(t *testing.T) {

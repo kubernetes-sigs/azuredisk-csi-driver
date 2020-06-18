@@ -24,7 +24,7 @@ import (
 
 	"k8s.io/klog"
 
-	"k8s.io/kubernetes/pkg/util/mount"
+	"k8s.io/utils/mount"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
 )
 

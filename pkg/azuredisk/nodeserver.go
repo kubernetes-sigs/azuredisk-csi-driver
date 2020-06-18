@@ -38,6 +38,7 @@ import (
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/util/resizefs"
 	"k8s.io/kubernetes/pkg/volume"
+	"k8s.io/kubernetes/pkg/volume/util/hostutil"
 )
 
 const (
@@ -307,7 +308,7 @@ func (d *Driver) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeS
 		return nil, status.Errorf(codes.Internal, "failed to stat file %s: %v", req.VolumePath, err)
 	}
 
-	isBlock, err := d.mounter.Interface.PathIsDevice(req.VolumePath)
+	isBlock, err := hostutil.NewHostUtil().PathIsDevice(req.VolumePath)
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "failed to determine whether %s is block device: %v", req.VolumePath, err)
 	}
@@ -387,7 +388,7 @@ func (d *Driver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolume
 	requestGiB := volumehelper.RoundUpGiB(volSizeBytes)
 
 	args := []string{"-o", "source", "--noheadings", "--target", req.GetVolumePath()}
-	output, err := d.mounter.Run("findmnt", args...)
+	output, err := d.mounter.Exec.Command("findmnt", args...).Output()
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "Could not determine device path: %v", err)
 	}
@@ -460,7 +461,7 @@ func (d *Driver) ensureMountPoint(target string) error {
 
 	if runtime.GOOS != "windows" {
 		// in windows, we will use mklink to mount, will MkdirAll in Mount func
-		if err := d.mounter.MakeDir(target); err != nil {
+		if err := volumehelper.MakeDir(target); err != nil {
 			klog.Errorf("azureDisk - mkdir failed on target: %s (%v)", target, err)
 			return err
 		}
@@ -503,7 +504,7 @@ func (d *Driver) getDevicePathWithLUN(lunStr string) (string, error) {
 }
 
 func (d *Driver) getBlockSizeBytes(devicePath string) (int64, error) {
-	output, err := d.mounter.Exec.Run("blockdev", "--getsize64", devicePath)
+	output, err := d.mounter.Exec.Command("blockdev", "--getsize64", devicePath).Output()
 	if err != nil {
 		return -1, fmt.Errorf("error when getting size of block volume at path %s: output: %s, err: %v", devicePath, string(output), err)
 	}
@@ -523,7 +524,7 @@ func (d *Driver) ensureBlockTargetFile(target string) error {
 	}
 	// Create the mount point as a file since bind mount device node requires it to be a file
 	klog.V(2).Infof("ensureBlockTargetFile [block]: making target file %s", target)
-	err := d.mounter.MakeFile(target)
+	err := volumehelper.MakeFile(target)
 	if err != nil {
 		if removeErr := os.Remove(target); removeErr != nil {
 			return status.Errorf(codes.Internal, "Could not remove mount target %q: %v", target, removeErr)

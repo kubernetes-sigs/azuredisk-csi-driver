@@ -34,7 +34,8 @@ import (
 	volumeclientv1alpha1 "github.com/kubernetes-csi/csi-proxy/client/groups/volume/v1alpha1"
 
 	"k8s.io/klog"
-	"k8s.io/kubernetes/pkg/util/mount"
+	utilexec "k8s.io/utils/exec"
+	"k8s.io/utils/mount"
 )
 
 var _ mount.Interface = &CSIProxyMounter{}
@@ -137,10 +138,6 @@ func (mounter *CSIProxyMounter) MakeRShared(path string) error {
 	return fmt.Errorf("MakeRShared not implemented for CSIProxyMounter")
 }
 
-func (mounter *CSIProxyMounter) GetFileType(pathname string) (mount.FileType, error) {
-	return mount.FileType("fake"), fmt.Errorf("GetFileType not implemented for CSIProxyMounter")
-}
-
 func (mounter *CSIProxyMounter) MakeFile(pathname string) error {
 	return fmt.Errorf("MakeFile not implemented for CSIProxyMounter")
 }
@@ -189,6 +186,10 @@ func (mounter *CSIProxyMounter) GetSELinuxSupport(pathname string) (bool, error)
 
 func (mounter *CSIProxyMounter) GetMode(pathname string) (os.FileMode, error) {
 	return 0, fmt.Errorf("GetMode not implemented for CSIProxyMounter")
+}
+
+func (mounter *CSIProxyMounter) MountSensitive(source string, target string, fstype string, options []string, sensitiveOptions []string) error {
+	return fmt.Errorf("MountSensitive not implemented for CSIProxyMounter")
 }
 
 // Rescan would trigger an update storage cache via the CSI proxy.
@@ -303,6 +304,6 @@ func NewSafeMounter() (*mount.SafeFormatAndMount, error) {
 	}
 	return &mount.SafeFormatAndMount{
 		Interface: csiProxyMounter,
-		Exec:      mount.NewOsExec(),
+		Exec:      utilexec.New(),
 	}, nil
 }

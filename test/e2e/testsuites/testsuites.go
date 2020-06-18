@@ -25,8 +25,8 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1beta1"
-	snapshotclientset "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned"
+	"github.com/kubernetes-csi/external-snapshotter/v2/pkg/apis/volumesnapshot/v1beta1"
+	snapshotclientset "github.com/kubernetes-csi/external-snapshotter/v2/pkg/client/clientset/versioned"
 	"github.com/onsi/ginkgo"
 	"github.com/onsi/gomega"
 	apps "k8s.io/api/apps/v1"
