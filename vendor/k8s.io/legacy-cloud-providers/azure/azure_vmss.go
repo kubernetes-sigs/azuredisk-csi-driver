@@ -35,7 +35,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	cloudprovider "k8s.io/cloud-provider"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 	azcache "k8s.io/legacy-cloud-providers/azure/cache"
 	utilnet "k8s.io/utils/net"
 )
@@ -189,6 +189,16 @@ func (ss *scaleSet) getVmssVM(nodeName string, crt azcache.AzureCacheReadType) (
 
 // GetPowerStatusByNodeName returns the power state of the specified node.
 func (ss *scaleSet) GetPowerStatusByNodeName(name string) (powerState string, err error) {
+	managedByAS, err := ss.isNodeManagedByAvailabilitySet(name, azcache.CacheReadTypeUnsafe)
+	if err != nil {
+		klog.Errorf("Failed to check isNodeManagedByAvailabilitySet: %v", err)
+		return "", err
+	}
+	if managedByAS {
+		// vm is managed by availability set.
+		return ss.availabilitySet.GetPowerStatusByNodeName(name)
+	}
+
 	_, _, vm, err := ss.getVmssVM(name, azcache.CacheReadTypeDefault)
 	if err != nil {
 		return powerState, err
@@ -550,7 +560,7 @@ func extractResourceGroupByProviderID(providerID string) (string, error) {
 	return matches[1], nil
 }
 
-// listScaleSets lists all scale sets.
+// listScaleSets lists all scale sets with orchestrationMode ScaleSetVM.
 func (ss *scaleSet) listScaleSets(resourceGroup string) ([]string, error) {
 	ctx, cancel := getContextWithCancel()
 	defer cancel()
@@ -566,6 +576,11 @@ func (ss *scaleSet) listScaleSets(resourceGroup string) ([]string, error) {
 		name := *vmss.Name
 		if vmss.Sku != nil && to.Int64(vmss.Sku.Capacity) == 0 {
 			klog.V(3).Infof("Capacity of VMSS %q is 0, skipping", name)
+			continue
+		}
+
+		if vmss.VirtualMachineScaleSetProperties == nil || vmss.VirtualMachineScaleSetProperties.VirtualMachineProfile == nil {
+			klog.V(3).Infof("VMSS %q orchestrationMode is VirtualMachine, skipping", name)
 			continue
 		}
 
