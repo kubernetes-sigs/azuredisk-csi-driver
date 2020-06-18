@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright 2018 The Kubernetes Authors.
+# Copyright 2020 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,12 +16,21 @@
 
 set -euo pipefail
 
-readonly PKG_ROOT=$(git rev-parse --show-toplevel)
-
-${PKG_ROOT}/hack/verify-gofmt.sh
-${PKG_ROOT}/hack/verify-govet.sh
-${PKG_ROOT}/hack/verify-golint.sh
-${PKG_ROOT}/hack/verify-yamllint.sh
-${PKG_ROOT}/hack/verify-boilerplate.sh
-${PKG_ROOT}/hack/verify-helm-chart.sh
-${PKG_ROOT}/hack/verify-spelling.sh
+VERSION=${1#"v"}
+if [ -z "$VERSION" ]; then
+    echo "Must specify version!"
+    exit 1
+fi
+MODS=($(
+    curl -sS https://raw.githubusercontent.com/kubernetes/kubernetes/v${VERSION}/go.mod |
+    sed -n 's|.*k8s.io/\(.*\) => ./staging/src/k8s.io/.*|k8s.io/\1|p'
+))
+for MOD in "${MODS[@]}"; do
+    echo $MOD
+    V=$(
+        go mod download -json "${MOD}@kubernetes-${VERSION}" |
+        sed -n 's|.*"Version": "\(.*\)".*|\1|p'
+    )
+    echo ${V}
+    go mod edit "-replace=${MOD}=${MOD}@${V}"
+done

@@ -95,12 +95,10 @@ e2e-teardown:
 
 .PHONY: azuredisk
 azuredisk:
-	if [ ! -d ./vendor ]; then dep ensure -vendor-only; fi
 	CGO_ENABLED=0 GOOS=linux go build -a -ldflags ${LDFLAGS} -o _output/azurediskplugin ./pkg/azurediskplugin
 
 .PHONY: azuredisk-windows
 azuredisk-windows:
-	if [ ! -d ./vendor ]; then dep ensure -vendor-only; fi
 	CGO_ENABLED=0 GOOS=windows go build -a -ldflags ${LDFLAGS} -o _output/azurediskplugin.exe ./pkg/azurediskplugin
 
 .PHONY: container
