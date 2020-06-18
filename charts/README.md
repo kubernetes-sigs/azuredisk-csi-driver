@@ -18,18 +18,18 @@ $ helm install azuredisk-csi-driver azuredisk-csi-driver-latest.tgz --namespace 
 
 ```console
 $ helm repo add azuredisk-csi-driver https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts
-$ helm install --name azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system
+$ helm install  azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system
 ```    
 
 ### Search for different versions of charts available
 ```console
-$ helm search -l azuredisk-csi-driver/
+$ helm search repo -l azuredisk-csi-driver/
 ```  
 
 ### Install a specific version of Helm chart
 Specify the version of the chart to be installed using the `--version` parameter. 
 ```console
-helm install --name azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v0.7.0
+helm install  azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v0.7.0
 ```
 
 ## Uninstall
