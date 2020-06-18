@@ -804,7 +804,7 @@ k8s.io/legacy-cloud-providers/azure/clients/vmssvmclient
 k8s.io/legacy-cloud-providers/azure/clients/vmssvmclient/mockvmssvmclient
 k8s.io/legacy-cloud-providers/azure/metrics
 k8s.io/legacy-cloud-providers/azure/retry
-# k8s.io/utils v0.0.0-20200414100711-2df71ebbae66
+# k8s.io/utils v0.0.0-20200603063816-c1c6865ac451
 k8s.io/utils/buffer
 k8s.io/utils/exec
 k8s.io/utils/integer

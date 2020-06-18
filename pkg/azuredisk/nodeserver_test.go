@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"context"
+	testingexec "k8s.io/utils/exec/testing"
 	"k8s.io/utils/mount"
 )
 
@@ -122,10 +123,6 @@ func TestEnsureMountPoint(t *testing.T) {
 	}
 	defer os.RemoveAll(mntPoint)
 
-	fakeExecCallback := func(cmd string, args ...string) ([]byte, error) {
-		return nil, nil
-	}
-
 	d, err := NewFakeDriver(t)
 	if err != nil {
 		t.Fatalf("Error getting driver: %v", err)
@@ -172,15 +169,16 @@ func TestEnsureMountPoint(t *testing.T) {
 			MountPoints:      []mount.MountPoint{{Path: test.target}},
 			MountCheckErrors: mountCheckErrors,
 		}
+		fakeExec := &testingexec.FakeExec{ExactOrder: true}
 
 		d.mounter = &mount.SafeFormatAndMount{
 			Interface: fakeMounter,
-			Exec:      mount.NewFakeExec(fakeExecCallback),
+			Exec:      fakeExec,
 		}
 
 		result := d.ensureMountPoint(test.target)
 		if (result == nil && test.expectedErr != "") || (result != nil && (result.Error() != test.expectedErr)) {
-			t.Errorf("input: (%+v), result: %v, expectedErr: %v", test, result, test.expectedErr)
+			t.Errorf("desc: %s\ninput: (%+v), result: %v, expectedErr: %v", test.desc, test, result, test.expectedErr)
 		}
 	}
 }

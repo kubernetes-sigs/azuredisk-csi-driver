@@ -81,7 +81,7 @@ users:
 		{
 			desc:        "[failure] out of cluster & in cluster, specify a empty kubeconfig, no credential file",
 			kubeconfig:  emptyKubeConfig,
-			expectedErr: fmt.Errorf("failed to get KubeClient: invalid configuration: no configuration has been provided"),
+			expectedErr: fmt.Errorf("failed to get KubeClient: invalid configuration: no configuration has been provided, try setting KUBERNETES_MASTER environment variable"),
 		},
 		{
 			desc:        "[failure] out of cluster & in cluster, specify a fake kubeconfig, no credential file",
