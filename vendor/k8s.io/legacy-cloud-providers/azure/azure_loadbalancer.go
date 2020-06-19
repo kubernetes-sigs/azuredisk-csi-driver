@@ -34,7 +34,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	cloudprovider "k8s.io/cloud-provider"
 	servicehelpers "k8s.io/cloud-provider/service/helpers"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 	azcache "k8s.io/legacy-cloud-providers/azure/cache"
 	utilnet "k8s.io/utils/net"
 )
@@ -1080,14 +1080,8 @@ func (az *Cloud) reconcileLoadBalancerRule(
 					BackendPort:         to.Int32Ptr(port.Port),
 					DisableOutboundSnat: to.BoolPtr(az.disableLoadBalancerOutboundSNAT()),
 					EnableTCPReset:      enableTCPReset,
+					EnableFloatingIP:    to.BoolPtr(true),
 				},
-			}
-			// LB does not support floating IPs for IPV6 rules
-			if utilnet.IsIPv6String(service.Spec.ClusterIP) {
-				expectedRule.BackendPort = to.Int32Ptr(port.NodePort)
-				expectedRule.EnableFloatingIP = to.BoolPtr(false)
-			} else {
-				expectedRule.EnableFloatingIP = to.BoolPtr(true)
 			}
 
 			if protocol == v1.ProtocolTCP {

@@ -25,7 +25,7 @@ import (
 	libstrings "strings"
 
 	"k8s.io/klog"
-	"k8s.io/kubernetes/pkg/util/mount"
+	"k8s.io/utils/mount"
 )
 
 // exclude those used by azure as resource and OS root in /dev/disk/azure, /dev/disk/azure/scsi0

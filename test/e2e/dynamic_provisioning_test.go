@@ -17,6 +17,7 @@ limitations under the License.
 package e2e
 
 import (
+	"context"
 	"fmt"
 
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
@@ -80,7 +81,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 
 		// Populate allowedTopologyValues from node labels fior the first time
 		if isMultiZone && len(t.allowedTopologyValues) == 0 {
-			nodes, err := cs.CoreV1().Nodes().List(metav1.ListOptions{})
+			nodes, err := cs.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 			framework.ExpectNoError(err)
 			allowedTopologyValuesMap := make(map[string]bool)
 			for _, node := range nodes.Items {
@@ -494,6 +495,6 @@ func restClient(group string, version string) (restclientset.Interface, error) {
 	gv := schema.GroupVersion{Group: group, Version: version}
 	config.GroupVersion = &gv
 	config.APIPath = "/apis"
-	config.NegotiatedSerializer = serializer.DirectCodecFactory{CodecFactory: serializer.NewCodecFactory(runtime.NewScheme())}
+	config.NegotiatedSerializer = serializer.WithoutConversionCodecFactory{CodecFactory: serializer.NewCodecFactory(runtime.NewScheme())}
 	return restclientset.RESTClientFor(config)
 }

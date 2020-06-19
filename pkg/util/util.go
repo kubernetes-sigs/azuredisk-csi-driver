@@ -18,6 +18,7 @@ package util
 
 import (
 	"fmt"
+	"os"
 	"strings"
 )
 
@@ -85,4 +86,25 @@ func ConvertTagsToMap(tags string) (map[string]string, error) {
 	}
 
 	return m, nil
+}
+
+func MakeDir(pathname string) error {
+	err := os.MkdirAll(pathname, os.FileMode(0755))
+	if err != nil {
+		if !os.IsExist(err) {
+			return err
+		}
+	}
+	return nil
+}
+
+func MakeFile(pathname string) error {
+	f, err := os.OpenFile(pathname, os.O_CREATE|os.O_RDWR, os.FileMode(0755))
+	if err != nil {
+		return fmt.Errorf("failed to open file %s: %v", pathname, err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("failed to close file %s: %v", pathname, err)
+	}
+	return nil
 }

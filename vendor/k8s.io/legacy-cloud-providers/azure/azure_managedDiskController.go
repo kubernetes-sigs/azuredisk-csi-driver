@@ -33,7 +33,7 @@ import (
 	kwait "k8s.io/apimachinery/pkg/util/wait"
 	cloudvolume "k8s.io/cloud-provider/volume"
 	volumehelpers "k8s.io/cloud-provider/volume/helpers"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 )
 
 const (
@@ -284,7 +284,11 @@ func (c *ManagedDiskController) ResizeDisk(diskURI string, oldSize resource.Quan
 	}
 
 	// Azure resizes in chunks of GiB (not GB)
-	requestGiB := int32(volumehelpers.RoundUpToGiB(newSize))
+	requestGiB, err := volumehelpers.RoundUpToGiBInt32(newSize)
+	if err != nil {
+		return oldSize, err
+	}
+
 	newSizeQuant := resource.MustParse(fmt.Sprintf("%dGi", requestGiB))
 
 	klog.V(2).Infof("azureDisk - begin to resize disk(%s) with new size(%d), old size(%v)", diskName, requestGiB, oldSize)

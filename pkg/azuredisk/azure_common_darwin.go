@@ -21,7 +21,7 @@ package azuredisk
 import (
 	"fmt"
 
-	"k8s.io/kubernetes/pkg/util/mount"
+	"k8s.io/utils/mount"
 )
 
 // Note: This file is added only to ensure that the UTs can be run from MacOS.
