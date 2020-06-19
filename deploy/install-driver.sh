@@ -35,7 +35,6 @@ fi
 
 echo "Installing Azure Disk CSI driver, version: $ver ..."
 kubectl apply -f $repo/csi-azuredisk-driver.yaml
-kubectl apply -f $repo/crd-csi-node-info.yaml
 kubectl apply -f $repo/rbac-csi-azuredisk-controller.yaml
 kubectl apply -f $repo/rbac-csi-azuredisk-node.yaml
 kubectl apply -f $repo/csi-azuredisk-controller.yaml

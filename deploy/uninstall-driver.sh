@@ -41,7 +41,6 @@ kubectl delete -f $repo/csi-azuredisk-controller.yaml --ignore-not-found
 kubectl delete -f $repo/csi-azuredisk-node.yaml --ignore-not-found
 kubectl delete -f $repo/csi-azuredisk-node-windows.yaml --ignore-not-found
 kubectl delete -f $repo/csi-azuredisk-driver.yaml --ignore-not-found
-kubectl delete -f $repo/crd-csi-node-info.yaml --ignore-not-found
 kubectl delete -f $repo/rbac-csi-azuredisk-controller.yaml --ignore-not-found
 kubectl delete -f $repo/rbac-csi-azuredisk-node.yaml --ignore-not-found
 echo 'Uninstalled Azure Disk CSI driver successfully.'
