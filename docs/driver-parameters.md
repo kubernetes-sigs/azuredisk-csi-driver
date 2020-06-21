@@ -1,5 +1,5 @@
 ## `disk.csi.azure.com` driver parameters
- > storage class `disk.csi.azure.com` parameters are compatible with built-in [azuredisk](https://kubernetes.io/docs/concepts/storage/volumes/#azuredisk) plugin
+ > storage class `disk.csi.azure.com` parameters are compatible with built-in [kubernetes.io/azure-disk](https://kubernetes.io/docs/concepts/storage/volumes/#azuredisk) driver
 
 ### Dynamic Provisioning
   > get a quick example [here](../deploy/example/storageclass-azuredisk-csi.yaml)
@@ -24,7 +24,7 @@ writeAcceleratorEnabled | [Write Accelerator on Azure Disks](https://docs.micros
 
 Name | Meaning | Available Value | Mandatory | Default value
 --- | --- | --- | --- | ---
-volumeHandle| azure disk URI | /subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id} | Yes | N/A
+volumeHandle| Azure disk URI | /subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id} | Yes | N/A
 volumeAttributes.fsType | File System Type | `ext4`, `ext3`, `xfs` | No | `ext4`
 volumeAttributes.partition | partition num of the existing disk | `1`, `2`, `3` | No | empty(no partition) (make sure partition format is like `-part1`)
 volumeAttributes.cachingMode | [disk host cache setting](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/premium-storage-performance#disk-caching)| `None`, `ReadOnly`, `ReadWrite` | No  | `ReadOnly`
@@ -32,4 +32,5 @@ volumeAttributes.cachingMode | [disk host cache setting](https://docs.microsoft.
 ### `VolumeSnapshotClass`
  Name | Meaning | Available Value | Mandatory | Default value
 --- | --- | --- | --- | ---
+resourceGroup | resource group for storing snapshot shots | EXISTING RESOURCE GROUP | No | If not specified, snapshot will be stored in the same resource group as source Azure disk
 tags | azure disk [tags](https://docs.microsoft.com/en-us/azure/azure-resource-manager/management/tag-resources) | tag format: 'foo=aaa,bar=bbb' | No | ""
