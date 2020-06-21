@@ -466,6 +466,33 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		}
 		test.Run(cs, snapshotrcs, ns)
 	})
+
+	ginkgo.It("should create a pod with multiple volumes [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func() {
+		volumes := []testsuites.VolumeDetails{}
+		for i := 1; i <= 3; i++ {
+			volume := testsuites.VolumeDetails{
+				ClaimSize: "10Gi",
+				VolumeMount: testsuites.VolumeMountDetails{
+					NameGenerate:      "test-volume-",
+					MountPathGenerate: "/mnt/test-",
+				},
+			}
+			volumes = append(volumes, volume)
+		}
+
+		pods := []testsuites.PodDetails{
+			{
+				Cmd:       convertToPowershellCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
+				Volumes:   volumes,
+				IsWindows: isWindowsCluster,
+			},
+		}
+		test := testsuites.DynamicallyProvisionedPodWithMultiplePVsTest{
+			CSIDriver: testDriver,
+			Pods:      pods,
+		}
+		test.Run(cs, ns)
+	})
 }
 
 // Normalize volumes by adding allowed topology values and WaitForFirstConsumer binding mode if we are testing in a multi-az cluster
