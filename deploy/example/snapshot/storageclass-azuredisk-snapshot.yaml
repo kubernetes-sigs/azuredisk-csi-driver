@@ -7,4 +7,3 @@ driver: disk.csi.azure.com
 deletionPolicy: Delete
 parameters:
   incremental: "true"  # available values: "true", "false" ("true" by default)
-  tags: 'foo=aaa,bar=bbb'  # Tag names are case-insensitive and are limited to 512 characters. Tag values are case-sensitive and are limited to 256 characters.
