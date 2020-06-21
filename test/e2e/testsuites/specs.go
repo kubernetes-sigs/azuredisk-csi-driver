@@ -69,7 +69,8 @@ const (
 )
 
 var (
-	SnapshotAPIGroup = "snapshot.storage.k8s.io"
+	SnapshotAPIGroup             = "snapshot.storage.k8s.io"
+	supportedStorageAccountTypes = []string{"Standard_LRS", "Premium_LRS", "StandardSSD_LRS"}
 )
 
 type VolumeMountDetails struct {
@@ -95,6 +96,24 @@ func (pod *PodDetails) SetupWithDynamicVolumes(client clientset.Interface, names
 		tpvc, funcs := v.SetupDynamicPersistentVolumeClaim(client, namespace, csiDriver, storageClassParameters)
 		cleanupFuncs = append(cleanupFuncs, funcs...)
 		ginkgo.By("setting up the pod")
+		if v.VolumeMode == Block {
+			tpod.SetupRawBlockVolume(tpvc.persistentVolumeClaim, fmt.Sprintf("%s%d", v.VolumeDevice.NameGenerate, n+1), v.VolumeDevice.DevicePath)
+		} else {
+			tpod.SetupVolume(tpvc.persistentVolumeClaim, fmt.Sprintf("%s%d", v.VolumeMount.NameGenerate, n+1), fmt.Sprintf("%s%d", v.VolumeMount.MountPathGenerate, n+1), v.VolumeMount.ReadOnly)
+		}
+	}
+	return tpod, cleanupFuncs
+}
+
+// SetupWithDynamicMultipleVolumes each pod will be mounted with multiple volumes with different storage account types
+func (pod *PodDetails) SetupWithDynamicMultipleVolumes(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.DynamicPVTestDriver) (*TestPod, []func()) {
+	tpod := NewTestPod(client, namespace, pod.Cmd, pod.IsWindows)
+	cleanupFuncs := make([]func(), 0)
+	accountTypeCount := len(supportedStorageAccountTypes)
+	for n, v := range pod.Volumes {
+		storageClassParameters := map[string]string{"skuName": supportedStorageAccountTypes[n%accountTypeCount]}
+		tpvc, funcs := v.SetupDynamicPersistentVolumeClaim(client, namespace, csiDriver, storageClassParameters)
+		cleanupFuncs = append(cleanupFuncs, funcs...)
 		if v.VolumeMode == Block {
 			tpod.SetupRawBlockVolume(tpvc.persistentVolumeClaim, fmt.Sprintf("%s%d", v.VolumeDevice.NameGenerate, n+1), v.VolumeDevice.DevicePath)
 		} else {
