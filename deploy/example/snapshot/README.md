@@ -1,9 +1,9 @@
-# Azure Disk Snapshot functionality
+# Azure Disk Snapshot feature
 
 - Snapshot feature is beta since Kubernetes v1.17.0, refer to [Snapshot & Restore Feature](https://kubernetes-csi.github.io/docs/snapshot-restore-feature.html) for more details.
 
 ## Introduction
-This driver supports both [full and incremental snapshot functionalities](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/incremental-snapshots), user could set `incremental` in `VolumeSnapshotClass` to control whether create full or incremental(by default) snapshot:
+This driver supports both [full and incremental snapshot functionalities](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/incremental-snapshots), user could set `incremental` in `VolumeSnapshotClass` to control whether create full or incremental(by default) snapshot(refer to [VolumeSnapshotClass](../../../docs/driver-parameters.md#volumesnapshotclass) for detailed parameters description):
 
 ```
 apiVersion: snapshot.storage.k8s.io/v1beta1
