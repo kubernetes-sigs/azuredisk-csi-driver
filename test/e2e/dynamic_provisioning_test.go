@@ -483,7 +483,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		pods := []testsuites.PodDetails{
 			{
 				Cmd:       convertToPowershellCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
-				Volumes:   volumes,
+				Volumes:   t.normalizeVolumes(volumes, isMultiZone),
 				IsWindows: isWindowsCluster,
 			},
 		}
