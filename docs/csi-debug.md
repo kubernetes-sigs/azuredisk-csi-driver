@@ -1,5 +1,5 @@
 ## CSI driver debug tips
-### Case#1: disk create/delete/attach/detach failed
+### Case#1: disk create/delete/attach/detach/snapshot/restore failed
  - locate csi driver pod
 ```console
 $ kubectl get po -o wide -n kube-system | grep csi-azuredisk-controller
