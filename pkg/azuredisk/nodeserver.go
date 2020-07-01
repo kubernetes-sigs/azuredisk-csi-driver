@@ -146,7 +146,7 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 	klog.V(2).Infof("NodeUnstageVolume: unmounting %s", stagingTargetPath)
 	err := CleanupMountPoint(stagingTargetPath, d.mounter, false)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to unmount staing target %q: %v", stagingTargetPath, err)
+		return nil, status.Errorf(codes.Internal, "failed to unmount staging target %q: %v", stagingTargetPath, err)
 	}
 	klog.V(2).Infof("NodeUnstageVolume: unmount %s successfully", stagingTargetPath)
 
