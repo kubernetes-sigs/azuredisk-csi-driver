@@ -229,10 +229,15 @@ func (c *Client) createOrUpdateSnapshot(ctx context.Context, resourceGroupName s
 	}
 
 	if response != nil && response.StatusCode != http.StatusNoContent {
-		_, rerr = c.createOrUpdateResponder(response)
+		future, rerr = c.createOrUpdateResponder(response)
 		if rerr != nil {
 			klog.V(5).Infof("Received error in %s: resourceID: %s, error: %s", "snapshot.put.respond", resourceID, rerr.Error())
 			return rerr
+		}
+
+		if err := c.armClient.WaitForAsyncOperationCompletion(ctx, &future, "snapshotclient.createOrUpdate"); err != nil {
+			klog.V(5).Infof("Received error in %s: resourceID: %s, error: %s", "snapshot.put.wait", resourceID, rerr.Error())
+			return retry.NewError(false, err)
 		}
 	}
 
