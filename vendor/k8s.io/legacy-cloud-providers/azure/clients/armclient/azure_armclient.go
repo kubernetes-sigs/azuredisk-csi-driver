@@ -53,7 +53,7 @@ type Client struct {
 // New creates a ARM client
 func New(authorizer autorest.Authorizer, baseURI, userAgent, apiVersion, clientRegion string, clientBackoff *retry.Backoff) *Client {
 	restClient := autorest.NewClientWithUserAgent(userAgent)
-	restClient.PollingDelay = 5 * time.Second
+	restClient.PollingDelay = 2 * time.Second
 	restClient.RetryAttempts = 3
 	restClient.RetryDuration = time.Second * 1
 	restClient.Authorizer = authorizer
