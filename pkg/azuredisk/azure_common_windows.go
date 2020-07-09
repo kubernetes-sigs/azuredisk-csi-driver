@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	"k8s.io/utils/mount"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"

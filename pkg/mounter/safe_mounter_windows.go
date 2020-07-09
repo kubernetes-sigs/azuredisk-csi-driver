@@ -33,7 +33,7 @@ import (
 	volumev1alpha1 "github.com/kubernetes-csi/csi-proxy/client/api/volume/v1alpha1"
 	volumeclientv1alpha1 "github.com/kubernetes-csi/csi-proxy/client/groups/volume/v1alpha1"
 
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 	utilexec "k8s.io/utils/exec"
 	"k8s.io/utils/mount"
 )
