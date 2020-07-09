@@ -28,7 +28,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
 
 	"k8s.io/component-base/metrics/legacyregistry"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 )
 
 func init() {
