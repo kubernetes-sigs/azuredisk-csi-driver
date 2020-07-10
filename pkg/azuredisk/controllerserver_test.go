@@ -315,6 +315,19 @@ func TestDeleteVolume(t *testing.T) {
 	}
 }
 
+func TestControllerGetVolume(t *testing.T) {
+	d, err := NewFakeDriver(t)
+	if err != nil {
+		t.Fatalf("Error getting driver: %v", err)
+	}
+	req := csi.ControllerGetVolumeRequest{}
+	resp, err := d.ControllerGetVolume(context.Background(), &req)
+	assert.Nil(t, resp)
+	if !reflect.DeepEqual(err, status.Error(codes.Unimplemented, "")) {
+		t.Errorf("Unexpected error: %v", err)
+	}
+}
+
 func TestIsCSISnapshotReady(t *testing.T) {
 	tests := []struct {
 		state        string
