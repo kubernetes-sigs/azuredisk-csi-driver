@@ -19,10 +19,11 @@ package network
 
 import (
 	"context"
+	"net/http"
+
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/Azure/go-autorest/tracing"
-	"net/http"
 )
 
 // P2sVpnServerConfigurationsClient is the network Client
@@ -84,7 +85,7 @@ func (client P2sVpnServerConfigurationsClient) CreateOrUpdatePreparer(ctx contex
 		"virtualWanName":                autorest.Encode("path", virtualWanName),
 	}
 
-	const APIVersion = "2019-06-01"
+	const APIVersion = "2017-10-01"
 	queryParameters := map[string]interface{}{
 		"api-version": APIVersion,
 	}
@@ -165,7 +166,7 @@ func (client P2sVpnServerConfigurationsClient) DeletePreparer(ctx context.Contex
 		"virtualWanName":                autorest.Encode("path", virtualWanName),
 	}
 
-	const APIVersion = "2019-06-01"
+	const APIVersion = "2017-10-01"
 	queryParameters := map[string]interface{}{
 		"api-version": APIVersion,
 	}
@@ -248,7 +249,7 @@ func (client P2sVpnServerConfigurationsClient) GetPreparer(ctx context.Context, 
 		"virtualWanName":                autorest.Encode("path", virtualWanName),
 	}
 
-	const APIVersion = "2019-06-01"
+	const APIVersion = "2017-10-01"
 	queryParameters := map[string]interface{}{
 		"api-version": APIVersion,
 	}
@@ -325,7 +326,7 @@ func (client P2sVpnServerConfigurationsClient) ListByVirtualWanPreparer(ctx cont
 		"virtualWanName":    autorest.Encode("path", virtualWanName),
 	}
 
-	const APIVersion = "2019-06-01"
+	const APIVersion = "2017-10-01"
 	queryParameters := map[string]interface{}{
 		"api-version": APIVersion,
 	}

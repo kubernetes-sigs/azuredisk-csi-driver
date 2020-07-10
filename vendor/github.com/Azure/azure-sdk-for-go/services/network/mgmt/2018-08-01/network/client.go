@@ -22,10 +22,11 @@ package network
 
 import (
 	"context"
+	"net/http"
+
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/Azure/go-autorest/tracing"
-	"net/http"
 )
 
 const (
@@ -99,7 +100,7 @@ func (client BaseClient) CheckDNSNameAvailabilityPreparer(ctx context.Context, l
 		"subscriptionId": autorest.Encode("path", client.SubscriptionID),
 	}
 
-	const APIVersion = "2018-08-01"
+	const APIVersion = "2017-10-01"
 	queryParameters := map[string]interface{}{
 		"api-version":     APIVersion,
 		"domainNameLabel": autorest.Encode("query", domainNameLabel),
@@ -176,7 +177,7 @@ func (client BaseClient) SupportedSecurityProvidersPreparer(ctx context.Context,
 		"virtualWANName":    autorest.Encode("path", virtualWANName),
 	}
 
-	const APIVersion = "2018-08-01"
+	const APIVersion = "2017-10-01"
 	queryParameters := map[string]interface{}{
 		"api-version": APIVersion,
 	}

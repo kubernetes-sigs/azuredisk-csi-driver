@@ -27,10 +27,12 @@ import (
 
 const (
 	// APIVersion is the API version for network.
-	APIVersion = "2019-06-01"
+	//APIVersion = "2019-06-01"
+	APIVersion = "2017-10-01"
 
 	// ComputeAPIVersion is the API version for compute. It is required to get VMSS public IP.
-	ComputeAPIVersion = "2017-03-30"
+	//ComputeAPIVersion = "2017-03-30"
+	ComputeAPIVersion = "2017-12-01"
 )
 
 // Interface is the client interface for PublicIPAddress.

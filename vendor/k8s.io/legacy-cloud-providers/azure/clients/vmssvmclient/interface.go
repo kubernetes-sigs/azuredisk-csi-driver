@@ -27,7 +27,7 @@ import (
 
 const (
 	// APIVersion is the API version for VMSS.
-	APIVersion = "2019-07-01"
+	APIVersion = "2017-12-01"
 )
 
 // Interface is the client interface for VirtualMachineScaleSetVM.

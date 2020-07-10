@@ -69,7 +69,8 @@ func New(authorizer autorest.Authorizer, baseURI, userAgent, apiVersion, clientR
 			Steps: 1,
 		}
 	}
-
+	klog.Infof("sigs.k8.io-new")
+	klog.Infof("apiVersion in azure_armcclient.go is %s", apiVersion)
 	return &Client{
 		client:       restClient,
 		baseURI:      baseURI,

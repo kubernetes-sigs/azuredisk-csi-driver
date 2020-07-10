@@ -55,11 +55,13 @@ type Client struct {
 
 // New creates a new VirtualMachine client with ratelimiting.
 func New(config *azclients.ClientConfig) *Client {
+	klog.V(2).Infof("New Version of the repo")
+	klog.V(2).Infof("In azure_vmclient.go:New")
 	baseURI := config.ResourceManagerEndpoint
 	authorizer := config.Authorizer
-	armClient := armclient.New(authorizer, baseURI, "", APIVersion, config.Location, config.Backoff)
+	klog.Infof("Passing APIVersion 2017-12-01")
+	armClient := armclient.New(authorizer, baseURI, "", "2017-12-01", config.Location, config.Backoff)
 	rateLimiterReader, rateLimiterWriter := azclients.NewRateLimiter(config.RateLimitConfig)
-
 	klog.V(2).Infof("Azure VirtualMachine client (read ops) using rate limit config: QPS=%g, bucket=%d",
 		config.RateLimitConfig.CloudProviderRateLimitQPS,
 		config.RateLimitConfig.CloudProviderRateLimitBucket)
