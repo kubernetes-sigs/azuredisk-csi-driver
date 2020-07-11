@@ -102,8 +102,8 @@ azuredisk-windows:
 	CGO_ENABLED=0 GOOS=windows go build -a -ldflags ${LDFLAGS} -o _output/azurediskplugin.exe ./pkg/azurediskplugin
 
 .PHONY: container
-container:
-	docker buildx build --no-cache --build-arg LDFLAGS=${LDFLAGS} -t $(IMAGE_TAG) -f ./pkg/azurediskplugin/Dockerfile --platform="linux/amd64" --output "type=docker,push=false" .
+container: azuredisk
+	docker build --no-cache -t $(IMAGE_TAG) -f ./pkg/azurediskplugin/dev.Dockerfile .
 
 .PHONY: azuredisk-container
 azuredisk-container:
@@ -123,7 +123,7 @@ else
 ifdef TEST_WINDOWS
 	docker buildx build --no-cache --build-arg LDFLAGS=${LDFLAGS} -t $(IMAGE_TAG)-windows-1809-amd64 -f ./pkg/azurediskplugin/Windows.Dockerfile --platform="windows/amd64" --output "type=image" .
 else
-	make container
+	docker buildx build --no-cache --build-arg LDFLAGS=${LDFLAGS} -t $(IMAGE_TAG) -f ./pkg/azurediskplugin/Dockerfile --platform="linux/amd64" --output "type=docker,push=false" .
 endif
 endif
 
