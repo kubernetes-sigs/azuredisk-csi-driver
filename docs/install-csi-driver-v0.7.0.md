@@ -1,4 +1,4 @@
-## Install CSI driver development version on a Kubernetes cluster
+## Install CSI driver v0.7.0 version on a Kubernetes cluster
 
 ### Install by kubectl
 ```console
