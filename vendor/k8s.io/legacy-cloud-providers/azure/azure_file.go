@@ -20,11 +20,12 @@ package azure
 
 import (
 	"github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2019-06-01/storage"
+	"k8s.io/legacy-cloud-providers/azure/clients/fileclient"
 )
 
 // create file share
-func (az *Cloud) createFileShare(resourceGroupName, accountName, name string, sizeGiB int) error {
-	return az.FileClient.CreateFileShare(resourceGroupName, accountName, name, sizeGiB)
+func (az *Cloud) createFileShare(resourceGroupName, accountName string, shareOptions *fileclient.ShareOptions) error {
+	return az.FileClient.CreateFileShare(resourceGroupName, accountName, shareOptions)
 }
 
 func (az *Cloud) deleteFileShare(resourceGroupName, accountName, name string) error {
