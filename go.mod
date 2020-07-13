@@ -28,7 +28,7 @@ require (
 	k8s.io/klog/v2 v2.2.0
 	k8s.io/kubernetes v1.18.1
 	k8s.io/legacy-cloud-providers v0.0.0
-	k8s.io/utils v0.0.0-20200603063816-c1c6865ac451
+	k8s.io/utils v0.0.0-20200619165400-6e3d28b6ed19
 	sigs.k8s.io/yaml v1.2.0
 )
 
@@ -43,7 +43,7 @@ replace (
 	k8s.io/apiserver => k8s.io/apiserver v0.18.1
 	k8s.io/cli-runtime => k8s.io/cli-runtime v0.18.1
 	k8s.io/client-go => k8s.io/client-go v0.18.1
-	k8s.io/cloud-provider => k8s.io/cloud-provider v0.0.0-20200521010552-19fa0136a360
+	k8s.io/cloud-provider => k8s.io/cloud-provider v0.0.0-20200711020125-52e5381d8dd1
 	k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.18.1
 	k8s.io/code-generator => k8s.io/code-generator v0.18.3-beta.0
 	k8s.io/component-base => k8s.io/component-base v0.18.1
@@ -55,7 +55,7 @@ replace (
 	k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.18.1
 	k8s.io/kubectl => k8s.io/kubectl v0.18.1
 	k8s.io/kubelet => k8s.io/kubelet v0.18.1
-	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.0.0-20200619215319-3e8d72e51d7d
+	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.0.0-20200712053159-5181b302c995
 	k8s.io/metrics => k8s.io/metrics v0.18.1
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.18.1
 	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.18.1
