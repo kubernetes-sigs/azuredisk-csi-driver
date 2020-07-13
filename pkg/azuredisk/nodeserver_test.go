@@ -19,7 +19,7 @@ package azuredisk
 import (
 	"context"
 	"errors"
-	"io/ioutil"
+	"fmt"
 	"os"
 	"reflect"
 	"syscall"
@@ -30,7 +30,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	testingexec "k8s.io/utils/exec/testing"
+	"k8s.io/utils/exec/testing"
 	"k8s.io/utils/mount"
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
@@ -129,70 +129,59 @@ func TestGetMaxDataDiskCount(t *testing.T) {
 }
 
 func TestEnsureMountPoint(t *testing.T) {
-	mntPoint, err := ioutil.TempDir(os.TempDir(), "azuredisk-csi-mount-test")
-	if err != nil {
-		t.Fatalf("failed to create tmp dir: %v", err)
-	}
-	defer os.RemoveAll(mntPoint)
-
-	d, err := NewFakeDriver(t)
-	if err != nil {
-		t.Fatalf("Error getting driver: %v", err)
-	}
+	errorTarget := "./error_is_likely_target"
+	alreadyExistTarget := "./false_is_likely_exist_target"
+	azuredisk := "./azure.go"
 
 	tests := []struct {
-		desc          string
-		target        string
-		mountCheckErr error
-		expectedErr   string
+		desc        string
+		target      string
+		expectedErr error
 	}{
 		{
-			desc:          "success with NotExist dir",
-			target:        "/tmp/NotExist",
-			mountCheckErr: os.ErrNotExist,
-			expectedErr:   "",
+			desc:        "[Error] Mocked by IsLikelyNotMountPoint",
+			target:      errorTarget,
+			expectedErr: fmt.Errorf("fake IsLikelyNotMountPoint: fake error"),
 		},
 		{
-			desc:          "success with already mounted dir",
-			target:        mntPoint,
-			mountCheckErr: nil,
-			expectedErr:   "",
+			desc:        "[Error] Not a directory",
+			target:      azuredisk,
+			expectedErr: &os.PathError{Op: "mkdir", Path: "./azure.go", Err: syscall.ENOTDIR},
 		},
 		{
-			desc:          "success with invalid link, then unmount",
-			target:        "/tmp/InvalidLink",
-			mountCheckErr: nil,
-			expectedErr:   "",
+			desc:        "[Success] Successful run",
+			target:      targetTest,
+			expectedErr: nil,
 		},
 		{
-			desc:          "fail with non-NotExist error",
-			target:        "/tmp/noPermission",
-			mountCheckErr: os.ErrPermission,
-			expectedErr:   os.ErrPermission.Error(),
+			desc:        "[Success] Already existing mount",
+			target:      alreadyExistTarget,
+			expectedErr: nil,
 		},
+	}
+
+	// Setup
+	_ = makeDir(alreadyExistTarget)
+	d, _ := NewFakeDriver(t)
+	fakeMounter := &fakeMounter{}
+	fakeExec := &testingexec.FakeExec{ExactOrder: true}
+	d.mounter = &mount.SafeFormatAndMount{
+		Interface: fakeMounter,
+		Exec:      fakeExec,
 	}
 
 	for _, test := range tests {
-		mountCheckErrors := map[string]error{
-			test.target: test.mountCheckErr,
-		}
-
-		fakeMounter := &mount.FakeMounter{
-			MountPoints:      []mount.MountPoint{{Path: test.target}},
-			MountCheckErrors: mountCheckErrors,
-		}
-		fakeExec := &testingexec.FakeExec{ExactOrder: true}
-
-		d.mounter = &mount.SafeFormatAndMount{
-			Interface: fakeMounter,
-			Exec:      fakeExec,
-		}
-
-		result := d.ensureMountPoint(test.target)
-		if (result == nil && test.expectedErr != "") || (result != nil && (result.Error() != test.expectedErr)) {
-			t.Errorf("desc: %s\ninput: (%+v), result: %v, expectedErr: %v", test.desc, test, result, test.expectedErr)
+		err := d.ensureMountPoint(test.target)
+		if !reflect.DeepEqual(err, test.expectedErr) {
+			t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
 		}
 	}
+
+	// Clean up
+	err := os.RemoveAll(alreadyExistTarget)
+	assert.NoError(t, err)
+	err = os.RemoveAll(targetTest)
+	assert.NoError(t, err)
 }
 
 func TestNodeGetVolumeStats(t *testing.T) {
@@ -325,6 +314,8 @@ func TestNodeStageVolume(t *testing.T) {
 }
 
 func TestNodeUnstageVolume(t *testing.T) {
+	errorTarget := "./error_is_likely_target"
+	targetFile := "./abc.go"
 	tests := []struct {
 		desc        string
 		req         csi.NodeUnstageVolumeRequest
@@ -341,24 +332,26 @@ func TestNodeUnstageVolume(t *testing.T) {
 			expectedErr: status.Error(codes.InvalidArgument, "Staging target not provided"),
 		},
 		{
-			desc:        "Valid request",
-			req:         csi.NodeUnstageVolumeRequest{StagingTargetPath: "./abc.go", VolumeId: "vol_1"},
-			expectedErr: nil,
+			desc:        "[Error] CleanupMountPoint error mocked by IsLikelyNotMountPoint",
+			req:         csi.NodeUnstageVolumeRequest{StagingTargetPath: errorTarget, VolumeId: "vol_1"},
+			expectedErr: status.Error(codes.Internal, "failed to unmount staging target \"./error_is_likely_target\": fake IsLikelyNotMountPoint: fake error"),
 		},
 		{
-			desc:        "Valid request stage target busy",
-			req:         csi.NodeUnstageVolumeRequest{StagingTargetPath: targetTest, VolumeId: "vol_1"},
-			expectedErr: status.Errorf(codes.Internal, "failed to unmount staging target \"./target_test\": remove ./target_test: device or resource busy"),
+			desc:        "[Success] Valid request",
+			req:         csi.NodeUnstageVolumeRequest{StagingTargetPath: targetFile, VolumeId: "vol_1"},
+			expectedErr: nil,
 		},
 	}
 
-	// Setup
-	_ = makeDir(sourceTest)
-	_ = makeDir(targetTest)
+	//Setup
+	_ = makeDir(errorTarget)
 	d, _ := NewFakeDriver(t)
-	d.mounter, _ = mounter.NewSafeMounter()
-	mountOptions := []string{"bind"}
-	_ = d.mounter.Mount(sourceTest, targetTest, "", mountOptions)
+	fakeMounter := &fakeMounter{}
+	fakeExec := &testingexec.FakeExec{ExactOrder: true}
+	d.mounter = &mount.SafeFormatAndMount{
+		Interface: fakeMounter,
+		Exec:      fakeExec,
+	}
 
 	for _, test := range tests {
 		_, err := d.NodeUnstageVolume(context.Background(), &test.req)
@@ -369,15 +362,24 @@ func TestNodeUnstageVolume(t *testing.T) {
 	}
 
 	// Clean up
-	_ = syscall.Unmount(targetTest, syscall.MNT_DETACH)
-	err := os.RemoveAll(sourceTest)
-	assert.NoError(t, err)
-	err = os.RemoveAll(targetTest)
+	err := os.RemoveAll(errorTarget)
 	assert.NoError(t, err)
 }
 
 func TestNodePublishVolume(t *testing.T) {
 	volumeCap := csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER}
+	publishContext := map[string]string{
+		LUN: "/dev/01",
+	}
+	errorMountSource := "./error_mount_source"
+	alreadyMountedTarget := "./false_is_likely_exist_target"
+	azuredisk := "./azure.go"
+	stdVolCap := &csi.VolumeCapability_Mount{
+		Mount: &csi.VolumeCapability_MountVolume{},
+	}
+	stdVolCapBlock := &csi.VolumeCapability_Block{
+		Block: &csi.VolumeCapability_BlockVolume{},
+	}
 
 	tests := []struct {
 		desc        string
@@ -408,16 +410,53 @@ func TestNodePublishVolume(t *testing.T) {
 			expectedErr: status.Error(codes.InvalidArgument, "Target path not provided"),
 		},
 		{
-			desc: "Valid request read only",
+			desc: "[Error] Not a directory",
+			req: csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap, AccessType: stdVolCap},
+				VolumeId:          "vol_1",
+				TargetPath:        azuredisk,
+				StagingTargetPath: sourceTest,
+				Readonly:          true},
+			expectedErr: status.Errorf(codes.Internal, "Could not mount target \"./azure.go\": mkdir ./azure.go: not a directory"),
+		},
+		{
+			desc: "[Error] Lun not provided",
+			req: csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap, AccessType: stdVolCapBlock},
+				VolumeId:          "vol_1",
+				TargetPath:        azuredisk,
+				StagingTargetPath: sourceTest,
+				Readonly:          true},
+			expectedErr: status.Error(codes.InvalidArgument, "lun not provided"),
+		},
+		{
+			desc: "[Error] Lun not valid",
+			req: csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap, AccessType: stdVolCapBlock},
+				VolumeId:          "vol_1",
+				TargetPath:        azuredisk,
+				StagingTargetPath: sourceTest,
+				PublishContext:    publishContext,
+				Readonly:          true},
+			expectedErr: status.Error(codes.Internal, "Failed to find device path with lun /dev/01. cannot parse deviceInfo: /dev/01"),
+		},
+		{
+			desc: "[Error] Mount error mocked by Mount",
 			req: csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap},
 				VolumeId:          "vol_1",
 				TargetPath:        targetTest,
+				StagingTargetPath: errorMountSource,
+				Readonly:          true},
+			expectedErr: status.Errorf(codes.Internal, "Could not mount \"./error_mount_source\" at \"./target_test\": fake Mount: source error"),
+		},
+		{
+			desc: "[Success] Valid request already mounted",
+			req: csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap},
+				VolumeId:          "vol_1",
+				TargetPath:        alreadyMountedTarget,
 				StagingTargetPath: sourceTest,
 				Readonly:          true},
 			expectedErr: nil,
 		},
 		{
-			desc: "Error mounting resource busy",
+			desc: "[Success] Valid request",
 			req: csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap},
 				VolumeId:          "vol_1",
 				TargetPath:        targetTest,
@@ -428,10 +467,14 @@ func TestNodePublishVolume(t *testing.T) {
 	}
 
 	// Setup
-	_ = makeDir(sourceTest)
-	_ = makeDir(targetTest)
+	_ = makeDir(alreadyMountedTarget)
 	d, _ := NewFakeDriver(t)
-	d.mounter, _ = mounter.NewSafeMounter()
+	fakeMounter := &fakeMounter{}
+	fakeExec := &testingexec.FakeExec{ExactOrder: true}
+	d.mounter = &mount.SafeFormatAndMount{
+		Interface: fakeMounter,
+		Exec:      fakeExec,
+	}
 
 	for _, test := range tests {
 		_, err := d.NodePublishVolume(context.Background(), &test.req)
@@ -441,16 +484,16 @@ func TestNodePublishVolume(t *testing.T) {
 		}
 	}
 
-	//Clean up
-	_ = syscall.Unmount(sourceTest, syscall.MNT_DETACH)
-	_ = syscall.Unmount(targetTest, syscall.MNT_DETACH)
-	err := os.RemoveAll(sourceTest)
+	// Clean up
+	err := os.RemoveAll(targetTest)
 	assert.NoError(t, err)
-	err = os.RemoveAll(targetTest)
+	err = os.RemoveAll(alreadyMountedTarget)
 	assert.NoError(t, err)
 }
 
 func TestNodeUnpublishVolume(t *testing.T) {
+	errorTarget := "./error_is_likely_target"
+	targetFile := "./abc.go"
 	tests := []struct {
 		desc        string
 		req         csi.NodeUnpublishVolumeRequest
@@ -467,33 +510,36 @@ func TestNodeUnpublishVolume(t *testing.T) {
 			expectedErr: status.Error(codes.InvalidArgument, "Target path missing in request"),
 		},
 		{
-			desc:        "Valid request",
-			req:         csi.NodeUnpublishVolumeRequest{TargetPath: "./abc.go", VolumeId: "vol_1"},
+			desc:        "[Error] Unmount error mocked by IsLikelyNotMountPoint",
+			req:         csi.NodeUnpublishVolumeRequest{TargetPath: errorTarget, VolumeId: "vol_1"},
+			expectedErr: status.Error(codes.Internal, "failed to unmount target \"./error_is_likely_target\": fake IsLikelyNotMountPoint: fake error"),
+		},
+		{
+			desc:        "[Success] Valid request",
+			req:         csi.NodeUnpublishVolumeRequest{TargetPath: targetFile, VolumeId: "vol_1"},
 			expectedErr: nil,
 		},
 	}
 
 	// Setup
-	_ = makeDir(sourceTest)
-	_ = makeDir(targetTest)
+	_ = makeDir(errorTarget)
 	d, _ := NewFakeDriver(t)
-	d.mounter, _ = mounter.NewSafeMounter()
-	mountOptions := []string{"bind"}
-	_ = d.mounter.Mount(sourceTest, targetTest, "", mountOptions)
+	fakeMounter := &fakeMounter{}
+	fakeExec := &testingexec.FakeExec{ExactOrder: true}
+	d.mounter = &mount.SafeFormatAndMount{
+		Interface: fakeMounter,
+		Exec:      fakeExec,
+	}
 
 	for _, test := range tests {
 		_, err := d.NodeUnpublishVolume(context.Background(), &test.req)
-
 		if !reflect.DeepEqual(err, test.expectedErr) {
 			t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
 		}
 	}
 
-	//Clean up
-	_ = syscall.Unmount(targetTest, syscall.MNT_DETACH)
-	err := os.RemoveAll(sourceTest)
-	assert.NoError(t, err)
-	err = os.RemoveAll(targetTest)
+	// Clean up
+	err := os.RemoveAll(errorTarget)
 	assert.NoError(t, err)
 }
 
