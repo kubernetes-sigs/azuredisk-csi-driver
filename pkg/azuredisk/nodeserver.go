@@ -484,7 +484,7 @@ func (d *Driver) getDevicePathWithLUN(lunStr string) (string, error) {
 	scsiHostRescan(io, d.mounter)
 
 	newDevicePath := ""
-	err = wait.Poll(1*time.Second, 2*time.Minute, func() (bool, error) {
+	err = wait.PollImmediate(1*time.Second, 2*time.Minute, func() (bool, error) {
 		var err error
 		if newDevicePath, err = findDiskByLun(int(lun), io, d.mounter); err != nil {
 			return false, fmt.Errorf("azureDisk - findDiskByLun(%v) failed with error(%s)", lun, err)
