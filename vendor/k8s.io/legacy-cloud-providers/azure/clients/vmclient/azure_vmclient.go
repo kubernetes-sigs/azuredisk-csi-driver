@@ -246,7 +246,8 @@ func (c *Client) updateVM(ctx context.Context, resourceGroupName string, VMName 
 		"Microsoft.Compute/virtualMachines",
 		VMName,
 	)
-
+	klog.Infof("In update of azure_vmclient.go")
+	klog.Infof("Calling armCleint.PatchResource")
 	response, rerr := c.armClient.PatchResource(ctx, resourceID, parameters)
 	defer c.armClient.CloseResponse(ctx, response)
 	if rerr != nil {

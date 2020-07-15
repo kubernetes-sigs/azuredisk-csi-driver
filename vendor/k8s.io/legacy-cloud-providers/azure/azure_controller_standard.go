@@ -116,6 +116,19 @@ func (as *availabilitySet) AttachDisk(isManagedDisk bool, diskName, diskURI stri
 	return nil
 }
 
+func filterDisk(disk compute.DataDisk, disks []compute.DataDisk) []compute.DataDisk {
+	//make one less than number of data disk currently
+	finalDisks := make([]compute.DataDisk, len(disks)-1)
+	for i, attachedDisk := range disks {
+		if attachedDisk.Name != disk.Name {
+			finalDisks[i] = attachedDisk
+		} else {
+			klog.Infof("Filtering data disk with name %s at index", *attachedDisk.Name, i)
+		}
+	}
+	return finalDisks
+}
+
 // DetachDisk detaches a disk from host
 // the vhd can be identified by diskName or diskURI
 func (as *availabilitySet) DetachDisk(diskName, diskURI string, nodeName types.NodeName) error {
@@ -134,6 +147,7 @@ func (as *availabilitySet) DetachDisk(diskName, diskURI string, nodeName types.N
 
 	disks := make([]compute.DataDisk, len(*vm.StorageProfile.DataDisks))
 	copy(disks, *vm.StorageProfile.DataDisks)
+	finalDisks := make([]compute.DataDisk, len(*vm.StorageProfile.DataDisks)-1)
 
 	bFoundDisk := false
 	for i, disk := range disks {
@@ -142,8 +156,13 @@ func (as *availabilitySet) DetachDisk(diskName, diskURI string, nodeName types.N
 			(disk.ManagedDisk != nil && diskURI != "" && strings.EqualFold(*disk.ManagedDisk.ID, diskURI)) {
 			// found the disk
 			klog.V(2).Infof("azureDisk - detach disk: name %q uri %q", diskName, diskURI)
-			disks[i].ToBeDetached = to.BoolPtr(true)
+			klog.Infof("%v", i)
+			klog.V(2).Infof("azureDisk - detach disk commenting out ToBeDetached property")
+			//disks[i].ToBeDetached = to.BoolPtr(true)
 			bFoundDisk = true
+			//AzureStack change.
+			//When disk is found, filter the disk
+			finalDisks = filterDisk(disk, disks)
 			break
 		}
 	}
@@ -157,7 +176,9 @@ func (as *availabilitySet) DetachDisk(diskName, diskURI string, nodeName types.N
 		VirtualMachineProperties: &compute.VirtualMachineProperties{
 			HardwareProfile: vm.HardwareProfile,
 			StorageProfile: &compute.StorageProfile{
-				DataDisks: &disks,
+				//AzureStack change
+				//DataDisks: &disks,
+				DataDisks: &finalDisks,
 			},
 		},
 	}

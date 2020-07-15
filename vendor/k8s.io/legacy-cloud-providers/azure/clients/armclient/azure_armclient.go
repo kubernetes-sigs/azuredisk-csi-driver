@@ -454,6 +454,7 @@ func (c *Client) PutResourceWithDecorators(ctx context.Context, resourceID strin
 
 // PatchResource patches a resource by resource ID
 func (c *Client) PatchResource(ctx context.Context, resourceID string, parameters interface{}) (*http.Response, *retry.Error) {
+	klog.Infof("In PatchResource of azure_armclient.go")
 	decorators := []autorest.PrepareDecorator{
 		autorest.WithPathParameters("{resourceID}", map[string]interface{}{"resourceID": resourceID}),
 		autorest.WithJSON(parameters),
