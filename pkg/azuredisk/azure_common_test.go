@@ -18,6 +18,7 @@ package azuredisk
 
 import (
 	"fmt"
+	api "k8s.io/kubernetes/pkg/apis/core"
 	"os"
 	"runtime"
 	"strings"
@@ -26,6 +27,8 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-12-01/compute"
 	"github.com/stretchr/testify/assert"
+
+	v1 "k8s.io/api/core/v1"
 )
 
 type fakeFileInfo struct {
@@ -135,6 +138,39 @@ func TestIoHandler(t *testing.T) {
 	}
 }
 
+func TestNormalizeKind(t *testing.T) {
+	tests := []struct {
+		desc          string
+		req           string
+		expectedErr   error
+		expectedValue v1.AzureDataDiskKind
+	}{
+		{
+			desc:          "CachingMode not exist",
+			req:           "",
+			expectedErr:   nil,
+			expectedValue: "Managed",
+		},
+		{
+			desc:          "Not supported CachingMode",
+			req:           "WriteOnly",
+			expectedErr:   fmt.Errorf("azureDisk - WriteOnly is not supported disk kind. Supported values are [Dedicated Managed Shared]"),
+			expectedValue: "",
+		},
+		{
+			desc:          "Valid CachingMode",
+			req:           string(api.AzureDedicatedBlobDisk),
+			expectedErr:   nil,
+			expectedValue: "Dedicated",
+		},
+	}
+	for _, test := range tests {
+		value, err := normalizeKind(test.req)
+		assert.Equal(t, value, test.expectedValue)
+		assert.Equal(t, err, test.expectedErr, fmt.Sprintf("error msg: %v", err))
+	}
+}
+
 func TestNormalizeStorageAccountType(t *testing.T) {
 	tests := []struct {
 		storageAccountType  string
@@ -180,6 +216,38 @@ func TestNormalizeStorageAccountType(t *testing.T) {
 	}
 }
 
+func TestNormalizeCachingMode(t *testing.T) {
+	tests := []struct {
+		desc          string
+		req           v1.AzureDataDiskCachingMode
+		expectedErr   error
+		expectedValue v1.AzureDataDiskCachingMode
+	}{
+		{
+			desc:          "CachingMode not exist",
+			req:           "",
+			expectedErr:   nil,
+			expectedValue: v1.AzureDataDiskCachingReadOnly,
+		},
+		{
+			desc:          "Not supported CachingMode",
+			req:           "WriteOnly",
+			expectedErr:   fmt.Errorf("azureDisk - WriteOnly is not supported cachingmode. Supported values are [None ReadOnly ReadWrite]"),
+			expectedValue: "",
+		},
+		{
+			desc:          "Valid CachingMode",
+			req:           "ReadOnly",
+			expectedErr:   nil,
+			expectedValue: "ReadOnly",
+		},
+	}
+	for _, test := range tests {
+		value, err := normalizeCachingMode(test.req)
+		assert.Equal(t, value, test.expectedValue)
+		assert.Equal(t, err, test.expectedErr, fmt.Sprintf("error msg: %v", err))
+	}
+}
 func TestGetDiskLUN(t *testing.T) {
 	tests := []struct {
 		deviceInfo  string
@@ -237,5 +305,21 @@ func TestGetDiskLUN(t *testing.T) {
 		result, err := getDiskLUN(test.deviceInfo)
 		assert.Equal(t, result, test.expectedLUN)
 		assert.Equal(t, err != nil, test.expectError, fmt.Sprintf("error msg: %v", err))
+	}
+}
+
+func TestStrFirstLetterToUpper(t *testing.T) {
+	str := "t"
+
+	if str != strFirstLetterToUpper(str) {
+		t.Errorf("result wrong")
+	}
+	str = "test"
+	if strFirstLetterToUpper(str) != "Test" {
+		t.Errorf("result wrong")
+	}
+	str = "Test"
+	if strFirstLetterToUpper(str) != "Test" {
+		t.Errorf("result wrong")
 	}
 }
