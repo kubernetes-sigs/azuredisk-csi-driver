@@ -438,6 +438,57 @@ func TestControllerPublishVolume(t *testing.T) {
 	}
 }
 
+func TestControllerUnpublishVolume(t *testing.T) {
+	d, err := NewFakeDriver(t)
+	d.cloud = &azure.Cloud{}
+	if err != nil {
+		t.Fatalf("Error getting driver: %v", err)
+	}
+	tests := []struct {
+		desc        string
+		req         *csi.ControllerUnpublishVolumeRequest
+		expectedErr error
+	}{
+		{
+			desc:        "Volume ID missing",
+			req:         &csi.ControllerUnpublishVolumeRequest{},
+			expectedErr: status.Error(codes.InvalidArgument, "Volume ID not provided"),
+		},
+		{
+			desc: "Node ID missing",
+			req: &csi.ControllerUnpublishVolumeRequest{
+				VolumeId: "vol_1",
+			},
+			expectedErr: status.Error(codes.InvalidArgument, "Node ID not provided"),
+		},
+	}
+	for _, test := range tests {
+		_, err := d.ControllerUnpublishVolume(context.Background(), test.req)
+		if !reflect.DeepEqual(err, test.expectedErr) {
+			t.Errorf("Unexpected error: %v", err)
+		}
+	}
+}
+
+func TestControllerGetCapabilities(t *testing.T) {
+	d, _ := NewFakeDriver(t)
+	capType := &csi.ControllerServiceCapability_Rpc{
+		Rpc: &csi.ControllerServiceCapability_RPC{
+			Type: csi.ControllerServiceCapability_RPC_UNKNOWN,
+		},
+	}
+	capList := []*csi.ControllerServiceCapability{{
+		Type: capType,
+	}}
+	d.Cap = capList
+	// Test valid request
+	req := csi.ControllerGetCapabilitiesRequest{}
+	resp, err := d.ControllerGetCapabilities(context.Background(), &req)
+	assert.NotNil(t, resp)
+	assert.Equal(t, resp.Capabilities[0].GetType(), capType)
+	assert.NoError(t, err)
+}
+
 func TestIsValidVolumeCapabilities(t *testing.T) {
 	var caps []*csi.VolumeCapability
 	stdVolCap := csi.VolumeCapability{
@@ -540,5 +591,68 @@ func TestControllerExpandVolume(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, tc.testFunc)
+	}
+}
+
+func TestCreateSnapshot(t *testing.T) {
+	d, _ := NewFakeDriver(t)
+	d.cloud = &azure.Cloud{}
+
+	tests := []struct {
+		desc        string
+		req         *csi.CreateSnapshotRequest
+		expectedErr error
+	}{
+		{
+			desc:        "Source volume ID missing",
+			req:         &csi.CreateSnapshotRequest{},
+			expectedErr: status.Error(codes.InvalidArgument, "CreateSnapshot Source Volume ID must be provided"),
+		},
+		{
+			desc: "Snapshot name missing",
+			req: &csi.CreateSnapshotRequest{
+				SourceVolumeId: "vol_1",
+			},
+			expectedErr: status.Error(codes.InvalidArgument, "snapshot name must be provided"),
+		},
+		{
+			desc: "Invalid volume ID",
+			req: &csi.CreateSnapshotRequest{
+				SourceVolumeId: "vol_1",
+				Name:           "snapname",
+			},
+			expectedErr: status.Errorf(codes.InvalidArgument, "could not get resource group from diskURI(vol_1) with error(invalid disk URI: vol_1)"),
+		},
+	}
+
+	for _, test := range tests {
+		_, err := d.CreateSnapshot(context.Background(), test.req)
+		if !reflect.DeepEqual(err, test.expectedErr) {
+			t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
+		}
+	}
+}
+
+func TestDeleteSnapshot(t *testing.T) {
+	d, _ := NewFakeDriver(t)
+	d.cloud = &azure.Cloud{}
+
+	tests := []struct {
+		desc        string
+		req         *csi.DeleteSnapshotRequest
+		expectedErr error
+	}{
+		{
+			desc:        "Snaoshot ID missing",
+			req:         &csi.DeleteSnapshotRequest{},
+			expectedErr: status.Error(codes.InvalidArgument, "Snapshot ID must be provided"),
+		},
+	}
+
+	for _, test := range tests {
+		_, err := d.DeleteSnapshot(context.Background(), test.req)
+		if !reflect.DeepEqual(err, test.expectedErr) {
+			t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
+		}
 	}
 }
