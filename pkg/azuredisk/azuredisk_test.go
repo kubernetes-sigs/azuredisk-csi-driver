@@ -100,7 +100,7 @@ func TestGetDiskName(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		result1, result2 := getDiskName(test.options)
+		result1, result2 := GetDiskName(test.options)
 		if !reflect.DeepEqual(result1, test.expected1) || !reflect.DeepEqual(result2, test.expected2) {
 			t.Errorf("input: %q, getDiskName result1: %q, expected1: %q, result2: %q, expected2: %q", test.options, result1, test.expected1,
 				result2, test.expected2)
@@ -170,7 +170,7 @@ func TestGetResourceGroupFromURI(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		result, err := getResourceGroupFromURI(test.diskURL)
+		result, err := GetResourceGroupFromURI(test.diskURL)
 		assert.Equal(t, result, test.expectedResult, "Expect result not equal with getResourceGroupFromURI(%s) return: %q, expected: %q",
 			test.diskURL, result, test.expectedResult)
 
