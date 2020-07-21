@@ -19,6 +19,7 @@ package testsuites
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/onsi/ginkgo"
 
@@ -66,6 +67,9 @@ func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface,
 		framework.ExpectNoError(err, fmt.Sprintf("fail to resize pvc(%s): %v", pvcName, err))
 	}
 	updatedSize := updatedPvc.Spec.Resources.Requests["storage"]
+
+	ginkgo.By("sleep 30s waiting for resize complete")
+	time.Sleep(30 * time.Second)
 
 	ginkgo.By("checking the resizing result")
 	newPvc, err := client.CoreV1().PersistentVolumeClaims(namespace.Name).Get(context.TODO(), pvcName, metav1.GetOptions{})
