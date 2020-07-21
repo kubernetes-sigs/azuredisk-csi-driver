@@ -493,6 +493,22 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		}
 		test.Run(cs, ns)
 	})
+
+	ginkgo.It("should create a volume on demand and resize it [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func() {
+		volume := testsuites.VolumeDetails{
+			ClaimSize: "10Gi",
+			VolumeMount: testsuites.VolumeMountDetails{
+				NameGenerate:      "test-volume-",
+				MountPathGenerate: "/mnt/test-",
+			},
+		}
+		test := testsuites.DynamicallyProvisionedResizeVolumeTest{
+			CSIDriver:              testDriver,
+			Volume:                 volume,
+			StorageClassParameters: map[string]string{"skuName": "Standard_LRS"},
+		}
+		test.Run(cs, ns)
+	})
 }
 
 // Normalize volumes by adding allowed topology values and WaitForFirstConsumer binding mode if we are testing in a multi-az cluster
