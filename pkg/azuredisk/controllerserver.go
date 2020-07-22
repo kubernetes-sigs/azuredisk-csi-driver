@@ -384,7 +384,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 	}
 
 	nodeName := types.NodeName(nodeID)
-	diskName, err := getDiskName(diskURI)
+	diskName, err := GetDiskName(diskURI)
 	if err != nil {
 		return nil, err
 	}
@@ -436,7 +436,7 @@ func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.Control
 	}
 	nodeName := types.NodeName(nodeID)
 
-	diskName, err := getDiskName(diskURI)
+	diskName, err := GetDiskName(diskURI)
 	if err != nil {
 		return nil, err
 	}
@@ -520,11 +520,11 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 		return nil, status.Errorf(codes.InvalidArgument, "disk URI(%s) is not valid: %v", diskURI, err)
 	}
 
-	diskName, err := getDiskName(diskURI)
+	diskName, err := GetDiskName(diskURI)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "could not get disk name from diskURI(%s) with error(%v)", diskURI, err)
 	}
-	resourceGroup, err := getResourceGroupFromURI(diskURI)
+	resourceGroup, err := GetResourceGroupFromURI(diskURI)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "could not get resource group from diskURI(%s) with error(%v)", diskURI, err)
 	}
@@ -594,7 +594,7 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 		}
 	}
 	if resourceGroup == "" {
-		resourceGroup, err = getResourceGroupFromURI(sourceVolumeID)
+		resourceGroup, err = GetResourceGroupFromURI(sourceVolumeID)
 		if err != nil {
 			return nil, status.Errorf(codes.InvalidArgument, "could not get resource group from diskURI(%s) with error(%v)", sourceVolumeID, err)
 		}
@@ -826,7 +826,7 @@ func (d *Driver) extractSnapshotInfo(snapshotID string) (string, string, error) 
 		if snapshotName, err = getSnapshotName(snapshotID); err != nil {
 			return "", "", err
 		}
-		if resourceGroup, err = getResourceGroupFromURI(snapshotID); err != nil {
+		if resourceGroup, err = GetResourceGroupFromURI(snapshotID); err != nil {
 			return "", "", err
 		}
 	}

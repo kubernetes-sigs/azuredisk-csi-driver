@@ -40,6 +40,7 @@ type Client struct {
 	nicClient      network.InterfacesClient
 	subnetsClient  network.SubnetsClient
 	vnetClient     network.VirtualNetworksClient
+	disksClient    compute.DisksClient
 }
 
 func GetAzureClient(cloud, subscriptionID, clientID, tenantID, clientSecret string) (*Client, error) {
@@ -59,6 +60,11 @@ func GetAzureClient(cloud, subscriptionID, clientID, tenantID, clientSecret stri
 	}
 
 	return getClient(env, subscriptionID, tenantID, armSpt), nil
+}
+
+func (az *Client) GetAzureDisksClient() (compute.DisksClient, error) {
+
+	return az.disksClient, nil
 }
 
 func (az *Client) EnsureResourceGroup(ctx context.Context, name, location string, managedBy *string) (resourceGroup *resources.Group, err error) {
@@ -257,6 +263,7 @@ func getClient(env azure.Environment, subscriptionID, tenantID string, armSpt *a
 		nicClient:      network.NewInterfacesClient(subscriptionID),
 		subnetsClient:  network.NewSubnetsClient(subscriptionID),
 		vnetClient:     network.NewVirtualNetworksClient(subscriptionID),
+		disksClient:    compute.NewDisksClient(subscriptionID),
 	}
 
 	authorizer := autorest.NewBearerAuthorizer(armSpt)
@@ -265,6 +272,7 @@ func getClient(env azure.Environment, subscriptionID, tenantID string, armSpt *a
 	c.nicClient.Authorizer = authorizer
 	c.subnetsClient.Authorizer = authorizer
 	c.vnetClient.Authorizer = authorizer
+	c.disksClient.Authorizer = authorizer
 
 	return c
 }

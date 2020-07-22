@@ -145,7 +145,7 @@ func isManagedDisk(diskURI string) bool {
 	return true
 }
 
-func getDiskName(diskURI string) (string, error) {
+func GetDiskName(diskURI string) (string, error) {
 	diskPathRE := managedDiskPathRE
 	if !isManagedDisk(diskURI) {
 		diskPathRE = unmanagedDiskPathRE
@@ -166,7 +166,7 @@ func getSnapshotName(snapshotURI string) (string, error) {
 	return matches[1], nil
 }
 
-func getResourceGroupFromURI(diskURI string) (string, error) {
+func GetResourceGroupFromURI(diskURI string) (string, error) {
 	fields := strings.Split(diskURI, "/")
 	if len(fields) != 9 || strings.ToLower(fields[3]) != "resourcegroups" {
 		return "", fmt.Errorf("invalid disk URI: %s", diskURI)
@@ -175,12 +175,12 @@ func getResourceGroupFromURI(diskURI string) (string, error) {
 }
 
 func (d *Driver) checkDiskExists(ctx context.Context, diskURI string) error {
-	diskName, err := getDiskName(diskURI)
+	diskName, err := GetDiskName(diskURI)
 	if err != nil {
 		return err
 	}
 
-	resourceGroup, err := getResourceGroupFromURI(diskURI)
+	resourceGroup, err := GetResourceGroupFromURI(diskURI)
 	if err != nil {
 		return err
 	}
