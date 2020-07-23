@@ -19,9 +19,11 @@ package testsuites
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/onsi/ginkgo"
+	"github.com/onsi/gomega"
 
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
@@ -30,8 +32,11 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
 
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
+	"sigs.k8s.io/azuredisk-csi-driver/test/utils/azure"
+	"sigs.k8s.io/azuredisk-csi-driver/test/utils/credentials"
 )
 
 // DynamicallyProvisionedResizeVolumeTest will provision required StorageClass(es), PVC(s)
@@ -78,7 +83,36 @@ func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface,
 	}
 	newSize := newPvc.Spec.Resources.Requests["storage"]
 	if !newSize.Equal(updatedSize) {
-		framework.Failf("newSize(%+v) is not equal to updatedSize(%+v)", newSize, updatedSize)
+		framework.Failf("newSize(%+v) is not equal to updatedSize(%+v)", newSize.String(), updatedSize.String())
+	}
+
+	ginkgo.By("checking the resizing PV result")
+	newPv, _ := client.CoreV1().PersistentVolumes().Get(context.Background(), newPvc.Spec.VolumeName, metav1.GetOptions{})
+	newPvSize := newPv.Spec.Capacity["storage"]
+	if !newSize.Equal(newPvSize) {
+		framework.Failf("newPVCSize(%+v) is not equal to newPVSize(%+v)", newSize.String(), newPvSize.String())
+	}
+
+	ginkgo.By("checking the resizing azuredisk result")
+	diskURI := newPv.Spec.PersistentVolumeSource.CSI.VolumeHandle
+	diskName, err := azuredisk.GetDiskName(diskURI)
+	framework.ExpectNoError(err, fmt.Sprintf("Error getting diskName for azuredisk %v", err))
+	resourceGroup, err := azuredisk.GetResourceGroupFromURI(diskURI)
+	framework.ExpectNoError(err, fmt.Sprintf("Error getting resourceGroup for azuredisk %v", err))
+
+	creds, err := credentials.CreateAzureCredentialFile(false)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	azureClient, err := azure.GetAzureClient(creds.Cloud, creds.SubscriptionID, creds.AADClientID, creds.TenantID, creds.AADClientSecret)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+	//get disk information
+	disksClient, err := azureClient.GetAzureDisksClient()
+	framework.ExpectNoError(err, fmt.Sprintf("Error getting client for azuredisk %v", err))
+	disktest, err := disksClient.Get(context.Background(), resourceGroup, diskName)
+	framework.ExpectNoError(err, fmt.Sprintf("Error getting disk for azuredisk %v", err))
+	newdiskSize := strconv.Itoa(int(*disktest.DiskSizeGB)) + "Gi"
+	if !(newSize.String() == newdiskSize) {
+		framework.Failf("newPVCSize(%+v) is not equal to new azurediskSize(%+v)", newSize.String(), newdiskSize)
 	}
 
 	// will delete the PVC
