@@ -543,6 +543,88 @@ func TestNodeUnpublishVolume(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func TestNodeExpandVolume(t *testing.T) {
+	d, _ := NewFakeDriver(t)
+	tests := []struct {
+		desc        string
+		req         csi.NodeExpandVolumeRequest
+		expectedErr error
+	}{
+		{
+			desc:        "Volume ID missing",
+			req:         csi.NodeExpandVolumeRequest{},
+			expectedErr: status.Error(codes.InvalidArgument, "Volume ID not provided"),
+		},
+	}
+	for _, test := range tests {
+		_, err := d.NodeExpandVolume(context.Background(), &test.req)
+		if !reflect.DeepEqual(err, test.expectedErr) {
+			t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
+		}
+	}
+}
+
+func TestGetBlockSizeBytes(t *testing.T) {
+	d, _ := NewFakeDriver(t)
+	testTarget := "./test"
+	tests := []struct {
+		desc        string
+		req         string
+		expectedErr error
+	}{
+		{
+			desc:        "no exist path",
+			req:         "testpath",
+			expectedErr: fmt.Errorf("error when getting size of block volume at path testpath: output: , err: exit status 1"),
+		},
+		{
+			desc:        "invalid path",
+			req:         testTarget,
+			expectedErr: fmt.Errorf("error when getting size of block volume at path ./test: output: , err: exit status 1"),
+		},
+	}
+	for _, test := range tests {
+		_, err := d.getBlockSizeBytes(test.req)
+		if !reflect.DeepEqual(err, test.expectedErr) {
+			t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
+		}
+	}
+	//Setup
+	_ = makeDir(testTarget)
+
+	err := os.RemoveAll(testTarget)
+	assert.NoError(t, err)
+}
+
+func TestEnsureBlockTargetFile(t *testing.T) {
+	testTarget := "./test"
+	d, _ := NewFakeDriver(t)
+	tests := []struct {
+		desc        string
+		req         string
+		expectedErr error
+	}{
+		{
+			desc:        "valid test",
+			req:         testTarget,
+			expectedErr: nil,
+		},
+		{
+			desc:        "test if file exists",
+			req:         "./test/test",
+			expectedErr: status.Error(codes.Internal, "Could not mount target \"test\": mkdir test: not a directory"),
+		},
+	}
+	for _, test := range tests {
+		err := d.ensureBlockTargetFile(test.req)
+		if !reflect.DeepEqual(err, test.expectedErr) {
+			t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
+		}
+	}
+	err := os.RemoveAll(testTarget)
+	assert.NoError(t, err)
+}
+
 func makeDir(pathname string) error {
 	err := os.MkdirAll(pathname, os.FileMode(0755))
 	if err != nil {
