@@ -412,6 +412,8 @@ func TestControllerPublishVolume(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error getting driver: %v", err)
 	}
+	volumeCap := csi.VolumeCapability_AccessMode{Mode: 2}
+	volumeCapWrong := csi.VolumeCapability_AccessMode{Mode: 10}
 	tests := []struct {
 		desc        string
 		req         *csi.ControllerPublishVolumeRequest
@@ -429,11 +431,46 @@ func TestControllerPublishVolume(t *testing.T) {
 			},
 			expectedErr: status.Error(codes.InvalidArgument, "Volume capability not provided"),
 		},
+		{
+			desc: "Volume capability not supported",
+			req: &csi.ControllerPublishVolumeRequest{
+				VolumeId:         "vol_1",
+				VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCapWrong},
+			},
+			expectedErr: status.Error(codes.InvalidArgument, "Volume capability not supported"),
+		},
+		{
+			desc: "diskName error",
+			req: &csi.ControllerPublishVolumeRequest{
+				VolumeId:         "vol_1",
+				VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap},
+			},
+			expectedErr: status.Error(codes.NotFound, "Volume not found, failed with error: could not get disk name from vol_1, correct format: (?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/disks/(.+)"),
+		},
+		{
+			desc: "NodeID missing",
+			req: &csi.ControllerPublishVolumeRequest{
+				VolumeId:         testVolumeID,
+				VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap},
+			},
+			expectedErr: status.Error(codes.InvalidArgument, "Node ID not provided"),
+		},
 	}
+
 	for _, test := range tests {
+		id := test.req.VolumeId
+		disk := compute.Disk{
+			ID: &id,
+		}
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		mockDiskClient := mockdiskclient.NewMockInterface(ctrl)
+		d.cloud = &azure.Cloud{}
+		d.cloud.DisksClient = mockDiskClient
+		mockDiskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
 		_, err := d.ControllerPublishVolume(context.Background(), test.req)
 		if !reflect.DeepEqual(err, test.expectedErr) {
-			t.Errorf("Unexpected error: %v", err)
+			t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
 		}
 	}
 }
@@ -461,11 +498,19 @@ func TestControllerUnpublishVolume(t *testing.T) {
 			},
 			expectedErr: status.Error(codes.InvalidArgument, "Node ID not provided"),
 		},
+		{
+			desc: "DiskName error",
+			req: &csi.ControllerUnpublishVolumeRequest{
+				VolumeId: "vol_1",
+				NodeId:   "unit-test-node",
+			},
+			expectedErr: fmt.Errorf("could not get disk name from vol_1, correct format: (?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/disks/(.+)"),
+		},
 	}
 	for _, test := range tests {
 		_, err := d.ControllerUnpublishVolume(context.Background(), test.req)
 		if !reflect.DeepEqual(err, test.expectedErr) {
-			t.Errorf("Unexpected error: %v", err)
+			t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
 		}
 	}
 }
@@ -583,12 +628,39 @@ func TestControllerExpandVolume(t *testing.T) {
 				expectedErr := status.Errorf(codes.InvalidArgument, "disk URI(vol_1) is not valid: Inavlid DiskURI: vol_1, correct format: [/subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id}]")
 				_, err := d.ControllerExpandVolume(ctx, req)
 				if !reflect.DeepEqual(err, expectedErr) {
-					t.Errorf("Unexpected error: %v", err)
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "DiskSize missing",
+			testFunc: func(t *testing.T) {
+				req := &csi.ControllerExpandVolumeRequest{
+					VolumeId:      testVolumeID,
+					CapacityRange: stdCapRange,
+				}
+				id := req.VolumeId
+				diskProperties := compute.DiskProperties{}
+				disk := compute.Disk{
+					ID:             &id,
+					DiskProperties: &diskProperties,
+				}
+				ctx := context.Background()
+				d, _ := NewFakeDriver(t)
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				mockDiskClient := mockdiskclient.NewMockInterface(ctrl)
+				d.cloud = &azure.Cloud{}
+				d.cloud.DisksClient = mockDiskClient
+				mockDiskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+				expectedErr := status.Errorf(codes.Internal, "could not get size of the disk(unit-test-volume)")
+				_, err := d.ControllerExpandVolume(ctx, req)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
 		},
 	}
-
 	for _, tc := range testCases {
 		t.Run(tc.name, tc.testFunc)
 	}
