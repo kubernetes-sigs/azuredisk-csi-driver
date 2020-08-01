@@ -24,6 +24,12 @@ spec:
           operator: "Equal"
           value: "true"
           effect: "NoSchedule"
+      dnsConfig:
+        options:
+          - name: single-request-reopen
+          - name: ndots
+            value: "5"
+          - name: use-vc
       containers:
         - name: csi-provisioner
           image: "{{ .Values.image.csiProvisioner.repository }}:{{ .Values.image.csiProvisioner.tag }}"
