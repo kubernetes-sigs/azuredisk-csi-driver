@@ -1098,3 +1098,23 @@ func TestGetSnapshotByID(t *testing.T) {
 		t.Run(tc.name, tc.testFunc)
 	}
 }
+
+func TestGetCapacity(t *testing.T) {
+	d, _ := NewFakeDriver(t)
+	req := csi.GetCapacityRequest{}
+	resp, err := d.GetCapacity(context.Background(), &req)
+	assert.Nil(t, resp)
+	if !reflect.DeepEqual(err, status.Error(codes.Unimplemented, "")) {
+		t.Errorf("Unexpected error: %v", err)
+	}
+}
+
+func TestListVolumes(t *testing.T) {
+	d, _ := NewFakeDriver(t)
+	req := csi.ListVolumesRequest{}
+	resp, err := d.ListVolumes(context.Background(), &req)
+	assert.Nil(t, resp)
+	if !reflect.DeepEqual(err, status.Error(codes.Unimplemented, "")) {
+		t.Errorf("Unexpected error: %v", err)
+	}
+}
