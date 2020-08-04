@@ -21,9 +21,9 @@ ARG TARGETOS
 ARG LDFLAGS
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -a -ldflags "${LDFLAGS:--X sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk.driverVersion=latest}" -o _output/azurediskplugin ./pkg/azurediskplugin
 
-FROM us.gcr.io/k8s-artifacts-prod/build-image/debian-base-amd64:v2.1.0
+FROM mcr.microsoft.com/aks/fundamental/base-ubuntu:v0.0.5
 COPY --from=builder /go/src/sigs.k8s.io/azuredisk-csi-driver/_output/azurediskplugin /azurediskplugin
-RUN clean-install util-linux e2fsprogs mount ca-certificates udev xfsprogs
+RUN apt-get update && apt-get install -y util-linux e2fsprogs mount ca-certificates udev xfsprogs
 
 LABEL maintainers="andyzhangx"
 LABEL description="Azure Disk CSI Driver"
