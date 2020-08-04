@@ -23,7 +23,7 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -a -ldflags "${LDFL
 
 FROM us.gcr.io/k8s-artifacts-prod/build-image/debian-base-amd64:v2.1.0
 COPY --from=builder /go/src/sigs.k8s.io/azuredisk-csi-driver/_output/azurediskplugin /azurediskplugin
-RUN clean-install util-linux e2fsprogs mount ca-certificates udev xfsprogs
+RUN clean-install util-linux e2fsprogs mount ca-certificates udev xfsprogs libc6
 
 LABEL maintainers="andyzhangx"
 LABEL description="Azure Disk CSI Driver"
