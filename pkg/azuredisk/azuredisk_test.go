@@ -17,8 +17,12 @@ limitations under the License.
 package azuredisk
 
 import (
+	"context"
 	"fmt"
+	"github.com/golang/mock/gomock"
+	"google.golang.org/grpc/status"
 	"io/ioutil"
+	"k8s.io/legacy-cloud-providers/azure/clients/diskclient/mockdiskclient"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -567,4 +571,43 @@ func TestIsCorruptedDir(t *testing.T) {
 		isCorruptedDir := IsCorruptedDir(test.dir)
 		assert.Equal(t, test.expectedResult, isCorruptedDir, "TestCase[%d]: %s", i, test.desc)
 	}
+}
+
+func TestNewDriver(t *testing.T) {
+	nodeid := "test"
+	driver := Driver{}
+	driver.Name = DriverName
+	driver.Version = driverVersion
+	driver.NodeID = nodeid
+	newdriver := NewDriver(nodeid)
+	assert.Equal(t, driver, *newdriver)
+}
+
+func TestCheckDiskExists(t *testing.T) {
+	diskName := "-"
+	assert.Equal(t, false, checkDiskName(diskName))
+	diskName = "test"
+	assert.Equal(t, true, checkDiskName(diskName))
+}
+
+func TestCheckDiskCapacity(t *testing.T) {
+	d, _ := NewFakeDriver(t)
+	size := int32(10)
+	diskName := "unit-test"
+	resourceGroup := "unit-test"
+	disk := compute.Disk{
+		DiskProperties: &compute.DiskProperties{
+			DiskSizeGB: &size,
+		},
+	}
+	d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+	flag, err := d.checkDiskCapacity(context.TODO(), resourceGroup, diskName, 10)
+	assert.Equal(t, flag, true)
+	assert.Nil(t, err)
+
+	flag, err = d.checkDiskCapacity(context.TODO(), resourceGroup, diskName, 11)
+	assert.Equal(t, flag, false)
+	expectedErr := status.Errorf(6, "the request volume already exists, but its capacity(10) is different from (11)")
+	assert.Equal(t, err, expectedErr)
+
 }
