@@ -13,7 +13,7 @@
 # limitations under the License.
 
 FROM mcr.microsoft.com/aks/fundamental/base-ubuntu:v0.0.5
-RUN apt-get update && apt-get install -y util-linux e2fsprogs mount ca-certificates udev xfsprogs libc6
+RUN apt-get update && apt-get install -y util-linux e2fsprogs mount ca-certificates udev xfsprogs libc6 gcc
 LABEL maintainers="andyzhangx"
 LABEL description="Azure Disk CSI Driver"
 
