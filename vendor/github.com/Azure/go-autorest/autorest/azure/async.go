@@ -174,7 +174,6 @@ func (f *Future) WaitForCompletionRef(ctx context.Context, client autorest.Clien
 			return
 		}
 	}
-
 	done, err := f.DoneWithContext(ctx, client)
 	for attempts := 0; !done; done, err = f.DoneWithContext(ctx, client) {
 		if attempts >= client.RetryAttempts {
