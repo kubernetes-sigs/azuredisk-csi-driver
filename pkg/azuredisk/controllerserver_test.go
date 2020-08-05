@@ -22,6 +22,7 @@ import (
 	"github.com/Azure/go-autorest/autorest/date"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/stretchr/testify/assert"
+	api "k8s.io/kubernetes/pkg/apis/core"
 	"k8s.io/legacy-cloud-providers/azure"
 	"k8s.io/legacy-cloud-providers/azure/clients/snapshotclient/mocksnapshotclient"
 	"k8s.io/legacy-cloud-providers/azure/retry"
@@ -159,105 +160,259 @@ func TestGetEntriesAndNextToken(t *testing.T) {
 }
 
 func TestCreateVolume(t *testing.T) {
-	d, err := NewFakeDriver(t)
-	if err != nil {
-		t.Fatalf("Error getting driver: %v", err)
-	}
-	tests := []struct {
-		desc            string
-		req             *csi.CreateVolumeRequest
-		expectedResp    *csi.CreateVolumeResponse
-		expectedErrCode codes.Code
+	testCases := []struct {
+		name     string
+		testFunc func(t *testing.T)
 	}{
 		{
-			desc: "success standard",
-			req: &csi.CreateVolumeRequest{
-				Name:               testVolumeName,
-				VolumeCapabilities: stdVolumeCapabilities,
-				CapacityRange:      stdCapacityRange,
-			},
-			expectedResp: &csi.CreateVolumeResponse{
-				Volume: &csi.Volume{
-					VolumeId:      testVolumeID,
-					CapacityBytes: stdCapacityRange.RequiredBytes,
-					VolumeContext: nil,
-					ContentSource: &csi.VolumeContentSource{},
-					AccessibleTopology: []*csi.Topology{
-						{
-							Segments: map[string]string{topologyKey: ""},
-						},
-					},
-				},
+			name: " volume name missing",
+			testFunc: func(t *testing.T) {
+				d, _ := NewFakeDriver(t)
+				req := &csi.CreateVolumeRequest{}
+				_, err := d.CreateVolume(context.Background(), req)
+				expectedErr := status.Error(codes.InvalidArgument, "CreateVolume Name must be provided")
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
 			},
 		},
 		{
-			desc: "fail with no name",
-			req: &csi.CreateVolumeRequest{
-				Name: "",
+			name: "volume capabilities missing",
+			testFunc: func(t *testing.T) {
+				d, _ := NewFakeDriver(t)
+				req := &csi.CreateVolumeRequest{
+					Name: "unit-test",
+				}
+				_, err := d.CreateVolume(context.Background(), req)
+				expectedErr := status.Error(codes.InvalidArgument, "CreateVolume Volume capabilities must be provided")
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
 			},
-			expectedResp:    nil,
-			expectedErrCode: codes.InvalidArgument,
 		},
 		{
-			desc: "fail with no volume capabilities",
-			req: &csi.CreateVolumeRequest{
-				Name: testVolumeName,
+			name: "require volume size exceed",
+			testFunc: func(t *testing.T) {
+				d, _ := NewFakeDriver(t)
+				stdCapacityRange = &csi.CapacityRange{
+					RequiredBytes: volumehelper.GiBToBytes(15),
+					LimitBytes:    volumehelper.GiBToBytes(10),
+				}
+				req := &csi.CreateVolumeRequest{
+					Name:               "unit-test",
+					CapacityRange:      stdCapacityRange,
+					VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
+				}
+				_, err := d.CreateVolume(context.Background(), req)
+				expectedErr := status.Error(codes.InvalidArgument, "After round-up, volume size exceeds the limit specified")
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
 			},
-			expectedResp:    nil,
-			expectedErrCode: codes.InvalidArgument,
 		},
 		{
-			desc: "fail with the invalid capabilities",
-			req: &csi.CreateVolumeRequest{
-				Name:               testVolumeName,
-				VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_UNKNOWN),
+			name: "maxshare parse error ",
+			testFunc: func(t *testing.T) {
+				d, _ := NewFakeDriver(t)
+				mp := make(map[string]string)
+				mp["maxshares"] = "aaa"
+				req := &csi.CreateVolumeRequest{
+					Name:               "unit-test",
+					VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
+					Parameters:         mp,
+				}
+				_, err := d.CreateVolume(context.Background(), req)
+				expectedErr := status.Error(codes.InvalidArgument, "parse aaa failed with error: strconv.Atoi: parsing \"aaa\": invalid syntax")
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
 			},
-			expectedResp:    nil,
-			expectedErrCode: codes.InvalidArgument,
 		},
 		{
-			desc: "fail with the invalid requested size",
-			req: &csi.CreateVolumeRequest{
-				Name:               testVolumeName,
-				VolumeCapabilities: stdVolumeCapabilities,
-				CapacityRange: &csi.CapacityRange{
-					RequiredBytes: volumehelper.GiBToBytes(20),
-					LimitBytes:    volumehelper.GiBToBytes(15),
-				},
+			name: "maxshare invalid value ",
+			testFunc: func(t *testing.T) {
+				d, _ := NewFakeDriver(t)
+				mp := make(map[string]string)
+				mp["maxshares"] = "0"
+				req := &csi.CreateVolumeRequest{
+					Name:               "unit-test",
+					VolumeCapabilities: stdVolumeCapabilities,
+					Parameters:         mp,
+				}
+				_, err := d.CreateVolume(context.Background(), req)
+				expectedErr := status.Error(codes.InvalidArgument, "parse 0 returned with invalid value: 0")
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
 			},
-			expectedResp:    nil,
-			expectedErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "Volume capability not supported ",
+			testFunc: func(t *testing.T) {
+				d, _ := NewFakeDriver(t)
+				mp := make(map[string]string)
+				mp["maxshares"] = "1"
+				req := &csi.CreateVolumeRequest{
+					Name:               "unit-test",
+					VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY),
+					Parameters:         mp,
+				}
+				_, err := d.CreateVolume(context.Background(), req)
+				expectedErr := status.Error(codes.InvalidArgument, "Volume capability(MULTI_NODE_READER_ONLY) not supported")
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "normalize storageaccounttype error ",
+			testFunc: func(t *testing.T) {
+				d, _ := NewFakeDriver(t)
+				mp := make(map[string]string)
+				mp["storageaccounttype"] = "NOT_EXISTING"
+				req := &csi.CreateVolumeRequest{
+					Name:               "unit-test",
+					VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
+					Parameters:         mp,
+				}
+				_, err := d.CreateVolume(context.Background(), req)
+				expectedErr := fmt.Errorf("azureDisk - NOT_EXISTING is not supported sku/storageaccounttype. Supported values are [Premium_LRS Standard_LRS StandardSSD_LRS UltraSSD_LRS]")
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "normalize cache mode error ",
+			testFunc: func(t *testing.T) {
+				d, _ := NewFakeDriver(t)
+				mp := make(map[string]string)
+				mp["cachingmode"] = "WriteOnly"
+				req := &csi.CreateVolumeRequest{
+					Name:               "unit-test",
+					VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
+					Parameters:         mp,
+				}
+				_, err := d.CreateVolume(context.Background(), req)
+				expectedErr := fmt.Errorf("azureDisk - WriteOnly is not supported cachingmode. Supported values are [None ReadOnly ReadWrite]")
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "normalize kind  error ",
+			testFunc: func(t *testing.T) {
+				d, _ := NewFakeDriver(t)
+				mp := make(map[string]string)
+				mp["kind"] = "WriteOnly"
+				req := &csi.CreateVolumeRequest{
+					Name:               "unit-test",
+					VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
+					Parameters:         mp,
+				}
+				_, err := d.CreateVolume(context.Background(), req)
+				expectedErr := fmt.Errorf("azureDisk - WriteOnly is not supported disk kind. Supported values are [Dedicated Managed Shared]")
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "StorageClass option error ",
+			testFunc: func(t *testing.T) {
+				d, _ := NewFakeDriver(t)
+				mp := make(map[string]string)
+				mp["kind"] = string(api.AzureDedicatedBlobDisk)
+				req := &csi.CreateVolumeRequest{
+					Name:               "unit-test",
+					VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
+					Parameters:         mp,
+				}
+				_, err := d.CreateVolume(context.Background(), req)
+				expectedErr := fmt.Errorf("StorageClass option 'resourceGroup' can be used only for managed disks")
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "custom tags error ",
+			testFunc: func(t *testing.T) {
+				d, _ := NewFakeDriver(t)
+				mp := make(map[string]string)
+				mp["tags"] = "unit-test"
+				req := &csi.CreateVolumeRequest{
+					Name:               "unit-test",
+					VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
+					Parameters:         mp,
+				}
+				disk := compute.Disk{
+					DiskProperties: &compute.DiskProperties{},
+				}
+				d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+				_, err := d.CreateVolume(context.Background(), req)
+				expectedErr := fmt.Errorf("Tags 'unit-test' are invalid, the format should like: 'key1=value1,key2=value2'")
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "create managed disk error ",
+			testFunc: func(t *testing.T) {
+				d, _ := NewFakeDriver(t)
+				mp := make(map[string]string)
+				mp["tags"] = "unit=test"
+				req := &csi.CreateVolumeRequest{
+					Name:               "unit-test",
+					VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
+					Parameters:         mp,
+				}
+				disk := compute.Disk{
+					DiskProperties: &compute.DiskProperties{},
+				}
+				d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+				rerr := &retry.Error{
+					RawError: fmt.Errorf("test"),
+				}
+				d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rerr).AnyTimes()
+				_, err := d.CreateVolume(context.Background(), req)
+				expectedErr := fmt.Errorf("Retriable: false, RetryAfter: 0s, HTTPStatusCode: 0, RawError: test")
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "create managed disk not found error ",
+			testFunc: func(t *testing.T) {
+				d, _ := NewFakeDriver(t)
+				mp := make(map[string]string)
+				mp["tags"] = "unit=test"
+				req := &csi.CreateVolumeRequest{
+					Name:               "unit-test",
+					VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
+					Parameters:         mp,
+				}
+				disk := compute.Disk{
+					DiskProperties: &compute.DiskProperties{},
+				}
+				d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+				rerr := &retry.Error{
+					RawError: fmt.Errorf("NotFound"),
+				}
+				d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rerr).AnyTimes()
+				_, err := d.CreateVolume(context.Background(), req)
+				expectedErr := status.Error(codes.NotFound, "Retriable: false, RetryAfter: 0s, HTTPStatusCode: 0, RawError: NotFound")
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
 		},
 	}
-
-	for _, test := range tests {
-		ctx, cancel := context.WithCancel(context.TODO())
-		defer cancel()
-		name := test.req.Name
-		id := fmt.Sprintf(managedDiskPath, "subs", "rg", name)
-		size := int32(1)
-		if test.req.CapacityRange != nil {
-			size = int32(volumehelper.BytesToGiB(test.req.CapacityRange.RequiredBytes))
-		}
-		state := string(compute.ProvisioningStateSucceeded)
-		disk := compute.Disk{
-			ID:   &id,
-			Name: &name,
-			DiskProperties: &compute.DiskProperties{
-				DiskSizeGB:        &size,
-				ProvisioningState: &state,
-			},
-		}
-		d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Eq(ctx), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
-		d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().CreateOrUpdate(gomock.Eq(ctx), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
-
-		result, err := d.CreateVolume(ctx, test.req)
-		if err != nil {
-			checkTestError(t, test.expectedErrCode, err)
-		}
-		if !reflect.DeepEqual(result, test.expectedResp) {
-			t.Errorf("desc: %v,\ninput request: %v, CreateVolume result: %v, expected: %v", test.desc, test.req, result, test.expectedResp)
-		}
+	for _, tc := range testCases {
+		t.Run(tc.name, tc.testFunc)
 	}
 }
 

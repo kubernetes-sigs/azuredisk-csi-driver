@@ -651,3 +651,24 @@ func TestMakeDir(t *testing.T) {
 	err = os.RemoveAll(targetTest)
 	assert.NoError(t, err)
 }
+
+func TestGetDevicePathWithLUN(t *testing.T) {
+	d, _ := NewFakeDriver(t)
+	tests := []struct {
+		desc        string
+		req         string
+		expectedErr error
+	}{
+		{
+			desc:        "valid test",
+			req:         "unit-test",
+			expectedErr: fmt.Errorf("cannot parse deviceInfo: unit-test"),
+		},
+	}
+	for _, test := range tests {
+		_, err := d.getDevicePathWithLUN(test.req)
+		if !reflect.DeepEqual(err, test.expectedErr) {
+			t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
+		}
+	}
+}
