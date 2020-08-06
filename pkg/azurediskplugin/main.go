@@ -69,7 +69,7 @@ func handle() {
 	if driver == nil {
 		klog.Fatalln("Failed to initialize azuredisk CSI Driver")
 	}
-	driver.Run(*endpoint, *kubeconfig)
+	driver.Run(*endpoint, *kubeconfig, false)
 }
 
 func exportMetrics() {
