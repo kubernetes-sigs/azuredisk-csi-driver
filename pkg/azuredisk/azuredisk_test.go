@@ -22,6 +22,7 @@ import (
 	"github.com/golang/mock/gomock"
 	"google.golang.org/grpc/status"
 	"io/ioutil"
+	"k8s.io/legacy-cloud-providers/azure"
 	"k8s.io/legacy-cloud-providers/azure/clients/diskclient/mockdiskclient"
 	"os"
 	"path/filepath"
@@ -610,4 +611,78 @@ func TestCheckDiskCapacity(t *testing.T) {
 	expectedErr := status.Errorf(6, "the request volume already exists, but its capacity(10) is different from (11)")
 	assert.Equal(t, err, expectedErr)
 
+}
+
+func TestRun(t *testing.T) {
+	fakeCredFile := "fake-cred-file.json"
+	fakeCredContent := `{
+    "tenantId": "1234",
+    "subscriptionId": "12345",
+    "aadClientId": "123456",
+    "aadClientSecret": "1234567",
+    "resourceGroup": "rg1",
+    "location": "loc"
+}`
+
+	testCases := []struct {
+		name     string
+		testFunc func(t *testing.T)
+	}{
+		{
+			name: "Successful run",
+			testFunc: func(t *testing.T) {
+				if err := ioutil.WriteFile(fakeCredFile, []byte(fakeCredContent), 0666); err != nil {
+					t.Error(err)
+				}
+
+				defer func() {
+					if err := os.Remove(fakeCredFile); err != nil {
+						t.Error(err)
+					}
+				}()
+
+				originalCredFile, ok := os.LookupEnv(DefaultAzureCredentialFileEnv)
+				if ok {
+					defer os.Setenv(DefaultAzureCredentialFileEnv, originalCredFile)
+				} else {
+					defer os.Unsetenv(DefaultAzureCredentialFileEnv)
+				}
+				os.Setenv(DefaultAzureCredentialFileEnv, fakeCredFile)
+
+				d, _ := NewFakeDriver(t)
+				d.Run("tcp://127.0.0.1:0", "", true)
+			},
+		},
+		{
+			name: "Successful run with node ID missing",
+			testFunc: func(t *testing.T) {
+				if err := ioutil.WriteFile(fakeCredFile, []byte(fakeCredContent), 0666); err != nil {
+					t.Error(err)
+				}
+
+				defer func() {
+					if err := os.Remove(fakeCredFile); err != nil {
+						t.Error(err)
+					}
+				}()
+
+				originalCredFile, ok := os.LookupEnv(DefaultAzureCredentialFileEnv)
+				if ok {
+					defer os.Setenv(DefaultAzureCredentialFileEnv, originalCredFile)
+				} else {
+					defer os.Unsetenv(DefaultAzureCredentialFileEnv)
+				}
+				os.Setenv(DefaultAzureCredentialFileEnv, fakeCredFile)
+
+				d, _ := NewFakeDriver(t)
+				d.cloud = &azure.Cloud{}
+				d.NodeID = ""
+				d.Run("tcp://127.0.0.1:0", "", true)
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, tc.testFunc)
+	}
 }
