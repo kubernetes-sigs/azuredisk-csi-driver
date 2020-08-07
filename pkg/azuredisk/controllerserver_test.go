@@ -107,6 +107,27 @@ func TestGetCachingMode(t *testing.T) {
 }
 
 func TestGetEntriesAndNextToken(t *testing.T) {
+	provisioningState := "succeeded"
+	DiskSize := int32(10)
+	snapshotID := "test"
+	sourceVolumeID := "unit-test"
+	creationdate := compute.CreationData{
+		SourceResourceID: &sourceVolumeID,
+	}
+	snapshot := compute.Snapshot{
+		SnapshotProperties: &compute.SnapshotProperties{
+			TimeCreated:       &date.Time{},
+			ProvisioningState: &provisioningState,
+			DiskSizeGB:        &DiskSize,
+			CreationData:      &creationdate,
+		},
+		ID: &snapshotID,
+	}
+	snapshots := []compute.Snapshot{}
+	snapshots = append(snapshots, snapshot)
+	entries := []*csi.ListSnapshotsResponse_Entry{}
+	csiSnapshot, _ := generateCSISnapshot(sourceVolumeID, &snapshot)
+	entries = append(entries, &csi.ListSnapshotsResponse_Entry{Snapshot: csiSnapshot})
 	tests := []struct {
 		request          *csi.ListSnapshotsRequest
 		snapshots        []compute.Snapshot
@@ -149,11 +170,23 @@ func TestGetEntriesAndNextToken(t *testing.T) {
 			nil,
 			status.Errorf(codes.Aborted, "ListSnapshots starting token(-1) can not be negative"),
 		},
+		{
+			&csi.ListSnapshotsRequest{
+				MaxEntries:     2,
+				SourceVolumeId: sourceVolumeID,
+			},
+			snapshots,
+			&csi.ListSnapshotsResponse{
+				Entries:   entries,
+				NextToken: "1",
+			},
+			error(nil),
+		},
 	}
 
 	for _, test := range tests {
 		resultResponse, resultError := getEntriesAndNextToken(test.request, test.snapshots)
-		if resultResponse != test.expectedResponse || resultError.Error() != test.expectedError.Error() {
+		if !reflect.DeepEqual(resultResponse, test.expectedResponse) || (!reflect.DeepEqual(resultError, test.expectedError)) {
 			t.Errorf("request: %v, snapshotListPage: %v, resultResponse: %v, expectedResponse: %v, resultError: %v, expectedError: %v", test.request, test.snapshots, resultResponse, test.expectedResponse, resultError, test.expectedError)
 		}
 	}
@@ -164,6 +197,20 @@ func TestCreateVolume(t *testing.T) {
 		name     string
 		testFunc func(t *testing.T)
 	}{
+		{
+			name: " invalid ",
+			testFunc: func(t *testing.T) {
+				d, _ := NewFakeDriver(t)
+				d.Cap = []*csi.ControllerServiceCapability{}
+
+				req := &csi.CreateVolumeRequest{}
+				_, err := d.CreateVolume(context.Background(), req)
+				expectedErr := status.Error(codes.InvalidArgument, "CREATE_DELETE_VOLUME")
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
 		{
 			name: " volume name missing",
 			testFunc: func(t *testing.T) {
@@ -216,16 +263,6 @@ func TestCreateVolume(t *testing.T) {
 				d, _ := NewFakeDriver(t)
 				mp := make(map[string]string)
 				mp["maxshares"] = "aaa"
-				mp["skuname"] = "ut"
-				mp["location"] = "ut"
-				mp["storageaccount"] = "ut"
-				mp["resourcegroup"] = "ut"
-				mp["diskiopsreadwrite"] = "ut"
-				mp["diskmbpsreadwrite"] = "ut"
-				mp["diskname"] = "ut"
-				mp["diskencryptionsetid"] = "ut"
-				mp["writeacceleratorenabled"] = "ut"
-
 				req := &csi.CreateVolumeRequest{
 					Name:               "unit-test",
 					VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
@@ -262,6 +299,16 @@ func TestCreateVolume(t *testing.T) {
 				d, _ := NewFakeDriver(t)
 				mp := make(map[string]string)
 				mp["maxshares"] = "1"
+				mp["skuname"] = "ut"
+				mp["location"] = "ut"
+				mp["storageaccount"] = "ut"
+				mp["storageaccounttype"] = "ut"
+				mp["resourcegroup"] = "ut"
+				mp["diskiopsreadwrite"] = "ut"
+				mp["diskmbpsreadwrite"] = "ut"
+				mp["diskname"] = "ut"
+				mp["diskencryptionsetid"] = "ut"
+				mp["writeacceleratorenabled"] = "ut"
 				req := &csi.CreateVolumeRequest{
 					Name:               "unit-test",
 					VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY),
@@ -409,7 +456,7 @@ func TestCreateVolume(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				d, _ := NewFakeDriver(t)
 				mp := make(map[string]string)
-				mp["tags"] = "unit=test"
+				mp["unit-test"] = "unit=test"
 				volumeContentSourceSnapshotSource := &csi.VolumeContentSource_Snapshot{}
 				volumecontensource := csi.VolumeContentSource{
 					Type: volumeContentSourceSnapshotSource,
@@ -824,6 +871,23 @@ func TestControllerExpandVolume(t *testing.T) {
 				d, _ := NewFakeDriver(t)
 
 				expectedErr := status.Error(codes.InvalidArgument, "volume capacity range missing in request")
+				_, err := d.ControllerExpandVolume(ctx, req)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("Unexpected error: %v", err)
+				}
+			},
+		},
+		{
+			name: "disk type is not managedDisk",
+			testFunc: func(t *testing.T) {
+				req := &csi.ControllerExpandVolumeRequest{
+					VolumeId:      "httptest",
+					CapacityRange: stdCapRange,
+				}
+				ctx := context.Background()
+				d, _ := NewFakeDriver(t)
+
+				expectedErr := status.Error(codes.InvalidArgument, "the disk type(httptest) is not ManagedDisk")
 				_, err := d.ControllerExpandVolume(ctx, req)
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("Unexpected error: %v", err)
@@ -1363,7 +1427,51 @@ func TestListSnapshots(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "List resource error",
+			testFunc: func(t *testing.T) {
+				req := csi.ListSnapshotsRequest{}
+				d, _ := NewFakeDriver(t)
+				snapshot := compute.Snapshot{}
+				snapshots := []compute.Snapshot{}
+				snapshots = append(snapshots, snapshot)
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				rerr := &retry.Error{
+					RawError: fmt.Errorf("test"),
+				}
+				mockSnapshotClient := mocksnapshotclient.NewMockInterface(ctrl)
+				d.cloud.SnapshotsClient = mockSnapshotClient
+				mockSnapshotClient.EXPECT().ListByResourceGroup(gomock.Any(), gomock.Any()).Return(snapshots, rerr).AnyTimes()
+				expectedErr := status.Error(codes.Internal, "Unknown list snapshot error: Retriable: false, RetryAfter: 0s, HTTPStatusCode: 0, RawError: test")
+				_, err := d.ListSnapshots(context.TODO(), &req)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "snapshot property nil",
+			testFunc: func(t *testing.T) {
+				req := csi.ListSnapshotsRequest{}
+				d, _ := NewFakeDriver(t)
+				snapshot := compute.Snapshot{}
+				snapshots := []compute.Snapshot{}
+				snapshots = append(snapshots, snapshot)
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				mockSnapshotClient := mocksnapshotclient.NewMockInterface(ctrl)
+				d.cloud.SnapshotsClient = mockSnapshotClient
+				mockSnapshotClient.EXPECT().ListByResourceGroup(gomock.Any(), gomock.Any()).Return(snapshots, nil).AnyTimes()
+				expectedErr := fmt.Errorf("failed to generate snapshot entry: snapshot property is nil")
+				_, err := d.ListSnapshots(context.TODO(), &req)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
 	}
+
 	for _, tc := range testCases {
 		t.Run(tc.name, tc.testFunc)
 	}
@@ -1478,6 +1586,82 @@ func TestValidateVolumeCapabilities(t *testing.T) {
 				_, err := d.ValidateVolumeCapabilities(context.TODO(), &req)
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, tc.testFunc)
+	}
+}
+
+func TestPickAvailabilityZone(t *testing.T) {
+	testCases := []struct {
+		name     string
+		testFunc func(t *testing.T)
+	}{
+		{
+			name: "requirement missing ",
+			testFunc: func(t *testing.T) {
+				expectedresponse := ""
+				region := "test"
+				actualresponse := pickAvailabilityZone(nil, region)
+				if !reflect.DeepEqual(expectedresponse, actualresponse) {
+					t.Errorf("actualresponse: (%v), expectedresponse: (%v)", actualresponse, expectedresponse)
+				}
+			},
+		},
+		{
+			name: "valid get preferred",
+			testFunc: func(t *testing.T) {
+				expectedresponse := "test-01"
+				region := "test"
+				mp := make(map[string]string)
+				mp["N/A"] = "test-01"
+				topology := &csi.Topology{
+					Segments: mp,
+				}
+				topologies := []*csi.Topology{}
+				topologies = append(topologies, topology)
+				req := &csi.TopologyRequirement{
+					Preferred: topologies,
+				}
+				actualresponse := pickAvailabilityZone(req, region)
+				if !reflect.DeepEqual(expectedresponse, actualresponse) {
+					t.Errorf("actualresponse: (%v), expectedresponse: (%v)", actualresponse, expectedresponse)
+				}
+			},
+		},
+		{
+			name: "valid get requisite",
+			testFunc: func(t *testing.T) {
+				expectedresponse := "test-01"
+				region := "test"
+				mp := make(map[string]string)
+				mp["N/A"] = "test-01"
+				topology := &csi.Topology{
+					Segments: mp,
+				}
+				topologies := []*csi.Topology{}
+				topologies = append(topologies, topology)
+				req := &csi.TopologyRequirement{
+					Requisite: topologies,
+				}
+				actualresponse := pickAvailabilityZone(req, region)
+				if !reflect.DeepEqual(expectedresponse, actualresponse) {
+					t.Errorf("actualresponse: (%v), expectedresponse: (%v)", actualresponse, expectedresponse)
+				}
+			},
+		},
+		{
+			name: "empty request ",
+			testFunc: func(t *testing.T) {
+				req := &csi.TopologyRequirement{}
+				expectedresponse := ""
+				region := "test"
+				actualresponse := pickAvailabilityZone(req, region)
+				if !reflect.DeepEqual(expectedresponse, actualresponse) {
+					t.Errorf("actualresponse: (%v), expectedresponse: (%v)", actualresponse, expectedresponse)
 				}
 			},
 		},
