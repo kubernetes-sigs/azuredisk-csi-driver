@@ -497,7 +497,6 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	})
 
 	ginkgo.It("should create a volume on demand and resize it  [disk.csi.azure.com] [Windows]", func() {
-		skipIfUsingInTreeVolumePlugin()
 		volume := testsuites.VolumeDetails{
 			ClaimSize: "10Gi",
 			VolumeMount: testsuites.VolumeMountDetails{
