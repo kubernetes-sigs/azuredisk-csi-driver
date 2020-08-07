@@ -17,6 +17,7 @@ limitations under the License.
 package util
 
 import (
+	"os"
 	"reflect"
 	"testing"
 
@@ -121,4 +122,26 @@ func TestConvertTagsToMap(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestMakeDir(t *testing.T) {
+	targetTest := "./target_test"
+	//Successfully create directory
+	err := MakeDir(targetTest)
+	assert.NoError(t, err)
+
+	// Remove the directory created
+	err = os.RemoveAll(targetTest)
+	assert.NoError(t, err)
+}
+
+func TestMakeFile(t *testing.T) {
+	targetTest := "./target_test"
+	//Successfully create directory
+	err := MakeFile(targetTest)
+	assert.NoError(t, err)
+
+	// Remove the directory created
+	err = os.RemoveAll(targetTest)
+	assert.NoError(t, err)
 }

@@ -34,6 +34,7 @@ import (
 	"k8s.io/utils/mount"
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
+	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 )
 
 const (
@@ -232,9 +233,12 @@ func TestNodeGetVolumeStats(t *testing.T) {
 
 func TestNodeStageVolume(t *testing.T) {
 	stdVolCap := &csi.VolumeCapability_Mount{
-		Mount: &csi.VolumeCapability_MountVolume{},
+		Mount: &csi.VolumeCapability_MountVolume{
+			FsType: defaultLinuxFsType,
+		},
 	}
-
+	mp := make(map[string]string)
+	mp["fstype"] = defaultLinuxFsType
 	stdVolCapBlock := &csi.VolumeCapability_Block{
 		Block: &csi.VolumeCapability_BlockVolume{},
 	}
@@ -287,7 +291,10 @@ func TestNodeStageVolume(t *testing.T) {
 			req: csi.NodeStageVolumeRequest{VolumeId: "vol_1", StagingTargetPath: sourceTest,
 				VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap,
 					AccessType: stdVolCap},
-				PublishContext: publishContext},
+				PublishContext: publishContext,
+				VolumeContext:  mp,
+			},
+
 			expectedErr: status.Error(codes.Internal, "Failed to find disk on lun /dev/01. cannot parse deviceInfo: /dev/01"),
 		},
 	}
@@ -545,6 +552,10 @@ func TestNodeUnpublishVolume(t *testing.T) {
 
 func TestNodeExpandVolume(t *testing.T) {
 	d, _ := NewFakeDriver(t)
+	stdCapacityRange = &csi.CapacityRange{
+		RequiredBytes: volumehelper.GiBToBytes(15),
+		LimitBytes:    volumehelper.GiBToBytes(10),
+	}
 	tests := []struct {
 		desc        string
 		req         csi.NodeExpandVolumeRequest
@@ -554,6 +565,15 @@ func TestNodeExpandVolume(t *testing.T) {
 			desc:        "Volume ID missing",
 			req:         csi.NodeExpandVolumeRequest{},
 			expectedErr: status.Error(codes.InvalidArgument, "Volume ID not provided"),
+		},
+		{
+			desc: "cound not find path",
+			req: csi.NodeExpandVolumeRequest{
+				CapacityRange: stdCapacityRange,
+				VolumePath:    "./test",
+				VolumeId:      "test",
+			},
+			expectedErr: status.Error(codes.Internal, "Could not determine device path: exit status 1"),
 		},
 	}
 	for _, test := range tests {
