@@ -90,11 +90,17 @@ func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface,
 	newPv, _ := client.CoreV1().PersistentVolumes().Get(context.Background(), newPvc.Spec.VolumeName, metav1.GetOptions{})
 	newPvSize := newPv.Spec.Capacity["storage"]
 	if !newSize.Equal(newPvSize) {
-		framework.Failf("newPVCSize(%+v) is not equal to newPVSize(%+v)", newSize.String(), newPvSize.String())
+		ginkgo.By(fmt.Sprintf("newPVCSize(%+v) is not equal to newPVSize(%+v)", newSize.String(), newPvSize.String()))
 	}
 
 	ginkgo.By("checking the resizing azuredisk result")
-	diskURI := newPv.Spec.PersistentVolumeSource.CSI.VolumeHandle
+	var diskURI string
+	if newPv.Spec.PersistentVolumeSource.CSI != nil {
+		diskURI = newPv.Spec.PersistentVolumeSource.CSI.VolumeHandle
+	} else if newPv.Spec.PersistentVolumeSource.AzureDisk != nil {
+		diskURI = newPv.Spec.PersistentVolumeSource.AzureDisk.DataDiskURI
+	}
+	ginkgo.By(fmt.Sprintf("got DiskURI: %v", diskURI))
 	diskName, err := azuredisk.GetDiskName(diskURI)
 	framework.ExpectNoError(err, fmt.Sprintf("Error getting diskName for azuredisk %v", err))
 	resourceGroup, err := azuredisk.GetResourceGroupFromURI(diskURI)
