@@ -4,12 +4,13 @@
 [![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fkubernetes-sigs%2Fazuredisk-csi-driver.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2Fkubernetes-sigs%2Fazuredisk-csi-driver?ref=badge_shield)
 
 ### About
-This driver allows Kubernetes to use [azure disk](https://azure.microsoft.com/en-us/services/storage/disks/) volume, csi plugin name: `disk.csi.azure.com`
+This driver allows Kubernetes to use [Azure disk](https://azure.microsoft.com/en-us/services/storage/disks/) volume, csi plugin name: `disk.csi.azure.com`
 
 ### Container Images & Kubernetes Compatibility
 |Azure Disk CSI Driver Version  | Image                                              | 1.14+ |
 |-------------------------------|----------------------------------------------------|-------|
 |master branch                  |mcr.microsoft.com/k8s/csi/azuredisk-csi:latest      | yes   |
+|v0.8.0                         |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.8.0      | yes   |
 |v0.7.0                         |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.7.0      | yes   |
 |v0.6.0                         |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.6.0      | yes   |
 
