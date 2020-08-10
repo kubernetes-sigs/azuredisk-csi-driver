@@ -55,6 +55,7 @@ var (
 	isUsingInTreeVolumePlugin = os.Getenv(driver.AzureDriverNameVar) == inTreeStorageClass
 	isTestingMigration        = os.Getenv(testMigrationEnvVar) != ""
 	isWindowsCluster          = os.Getenv(testWindowsEnvVar) != ""
+	enableE2EBootstrap        bool
 )
 
 type testCmd struct {
@@ -62,6 +63,10 @@ type testCmd struct {
 	args     []string
 	startLog string
 	endLog   string
+}
+
+func init() {
+	flag.BoolVar(&enableE2EBootstrap, "e2e.bootstrap", true, "install azuredisk-csi-driver as part of e2e test when set to true")
 }
 
 var _ = ginkgo.BeforeSuite(func() {
@@ -85,13 +90,15 @@ var _ = ginkgo.BeforeSuite(func() {
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		// Install Azure Disk CSI Driver on cluster from project root
-		e2eBootstrap := testCmd{
-			command:  "make",
-			args:     []string{"e2e-bootstrap"},
-			startLog: "Installing Azure Disk CSI Driver...",
-			endLog:   "Azure Disk CSI Driver installed",
+		if enableE2EBootstrap {
+			e2eBootstrap := testCmd{
+				command:  "make",
+				args:     []string{"e2e-bootstrap"},
+				startLog: "Installing Azure Disk CSI Driver...",
+				endLog:   "Azure Disk CSI Driver installed",
+			}
+			execTestCmd([]testCmd{e2eBootstrap})
 		}
-		execTestCmd([]testCmd{e2eBootstrap})
 
 		nodeid := os.Getenv("nodeid")
 		azurediskDriver = azuredisk.NewDriver(nodeid)
@@ -114,13 +121,15 @@ var _ = ginkgo.AfterSuite(func() {
 			endLog:   "===================================================",
 		}
 		if isTestingMigration || !isUsingInTreeVolumePlugin {
-			e2eTeardown := testCmd{
-				command:  "make",
-				args:     []string{"e2e-teardown"},
-				startLog: "Uninstalling Azure Disk CSI Driver...",
-				endLog:   "Azure Disk CSI Driver uninstalled",
+			if enableE2EBootstrap {
+				e2eTeardown := testCmd{
+					command:  "make",
+					args:     []string{"e2e-teardown"},
+					startLog: "Uninstalling Azure Disk CSI Driver...",
+					endLog:   "Azure Disk CSI Driver uninstalled",
+				}
+				execTestCmd([]testCmd{azurediskLog, e2eTeardown})
 			}
-			execTestCmd([]testCmd{azurediskLog, e2eTeardown})
 
 			// install/uninstall Azure Disk CSI Driver deployment scripts test
 			installDriver := testCmd{
