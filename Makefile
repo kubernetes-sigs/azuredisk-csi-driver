@@ -32,7 +32,7 @@ BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 TOPOLOGY_KEY = topology.$(DRIVER_NAME)/zone
 ENABLE_TOPOLOGY ?= false
 LDFLAGS ?= "-X ${PKG}/pkg/azuredisk.driverVersion=${IMAGE_VERSION} -X ${PKG}/pkg/azuredisk.gitCommit=${GIT_COMMIT} -X ${PKG}/pkg/azuredisk.buildDate=${BUILD_DATE} -X ${PKG}/pkg/azuredisk.DriverName=${DRIVER_NAME} -X ${PKG}/pkg/azuredisk.topologyKey=${TOPOLOGY_KEY} -extldflags "-static""
-E2E_BOOTSTRAP ?= true
+E2E_HELM_OPTIONS ?= --set image.azuredisk.repository=$(REGISTRY)/$(IMAGE_NAME) --set image.azuredisk.tag=$(IMAGE_VERSION)
 GINKGO_FLAGS = -ginkgo.noColor -ginkgo.v
 ifeq ($(ENABLE_TOPOLOGY), true)
 GINKGO_FLAGS += -ginkgo.focus="\[multi-az\]"
@@ -67,22 +67,20 @@ integration-test: azuredisk
 
 .PHONY: e2e-test
 e2e-test:
-	go test -v -timeout=0 ./test/e2e -e2e.bootstrap=${E2E_BOOTSTRAP} ${GINKGO_FLAGS}
+	go test -v -timeout=0 ./test/e2e ${GINKGO_FLAGS}
 
 .PHONY: e2e-bootstrap
 e2e-bootstrap: install-helm
 	docker pull $(IMAGE_TAG) || make azuredisk-container push
 ifdef TEST_WINDOWS
 	helm install azuredisk-csi-driver charts/latest/azuredisk-csi-driver --namespace kube-system --wait --timeout=15m -v=5 --debug \
-		--set image.azuredisk.repository=$(REGISTRY)/$(IMAGE_NAME) \
-		--set image.azuredisk.tag=$(IMAGE_VERSION) \
+		${E2E_HELM_OPTIONS} \
 		--set windows.enabled=true \
 		--set linux.enabled=false \
 		--set controller.replicas=1
 else
 	helm install azuredisk-csi-driver charts/latest/azuredisk-csi-driver --namespace kube-system --wait --timeout=15m -v=5 --debug \
-		--set image.azuredisk.repository=$(REGISTRY)/$(IMAGE_NAME) \
-		--set image.azuredisk.tag=$(IMAGE_VERSION) \
+		${E2E_HELM_OPTIONS} \
 		--set snapshot.enabled=true
 endif
 
