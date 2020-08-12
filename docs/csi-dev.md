@@ -154,3 +154,9 @@ export GO111MODULE=on
 go mod tidy
 go mod vendor
 ```
+
+### How to update chart index
+
+```console
+helm repo index charts --url=https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts
+```
