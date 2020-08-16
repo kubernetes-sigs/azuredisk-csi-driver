@@ -28,6 +28,8 @@ spec:
         app: nginx
       name: deployment-azuredisk
     spec:
+      nodeSelector:
+        "kubernetes.io/os": linux
       containers:
         - name: deployment-azuredisk
           image: nginx
