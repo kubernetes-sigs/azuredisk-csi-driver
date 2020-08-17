@@ -1,0 +1,98 @@
+/*
+Copyright 2019 The Kubernetes Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package testsuites
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-03-01/compute"
+	"github.com/onsi/ginkgo"
+	"github.com/onsi/gomega"
+
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/kubernetes/test/e2e/framework"
+
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
+	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
+	"sigs.k8s.io/azuredisk-csi-driver/test/utils/azure"
+	"sigs.k8s.io/azuredisk-csi-driver/test/utils/credentials"
+)
+
+// DynamicallyProvisionedAzureDiskDetach will provision required StorageClass(es), PVC(s) and Pod(s)
+// Waiting for the PV provisioner to create azuredisk
+// delete Pods
+// Testing if disk is in unattached state
+type DynamicallyProvisionedAzureDiskDetach struct {
+	CSIDriver              driver.DynamicPVTestDriver
+	Pods                   []PodDetails
+	StorageClassParameters map[string]string
+}
+
+func (t *DynamicallyProvisionedAzureDiskDetach) Run(client clientset.Interface, namespace *v1.Namespace) {
+	for _, pod := range t.Pods {
+		tpod, cleanup := pod.SetupWithDynamicVolumes(client, namespace, t.CSIDriver, t.StorageClassParameters)
+
+		ginkgo.By("deploying the pod")
+		tpod.Create()
+
+		ginkgo.By("checking that the pod is running")
+		tpod.WaitForRunning()
+
+		ginkgo.By("getting azuredisk information")
+		//Get diskURI from pv information
+		pvcname := tpod.pod.Spec.Volumes[0].VolumeSource.PersistentVolumeClaim.ClaimName
+		pvc, err := client.CoreV1().PersistentVolumeClaims(namespace.Name).Get(context.Background(), pvcname, metav1.GetOptions{})
+		framework.ExpectNoError(err, fmt.Sprintf("Error getting pvc for azuredisk %v", err))
+
+		pvname := pvc.Spec.VolumeName
+		pv, _ := client.CoreV1().PersistentVolumes().Get(context.Background(), pvname, metav1.GetOptions{})
+		diskURI := pv.Spec.PersistentVolumeSource.CSI.VolumeHandle
+		diskName, err := azuredisk.GetDiskName(diskURI)
+		framework.ExpectNoError(err, fmt.Sprintf("Error getting diskName for azuredisk %v", err))
+		resourceGroup, err := azuredisk.GetResourceGroupFromURI(diskURI)
+		framework.ExpectNoError(err, fmt.Sprintf("Error getting resourceGroup for azuredisk %v", err))
+
+		creds, err := credentials.CreateAzureCredentialFile(false)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		azureClient, err := azure.GetAzureClient(creds.Cloud, creds.SubscriptionID, creds.AADClientID, creds.TenantID, creds.AADClientSecret)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+		//get disk information
+		disksClient, err := azureClient.GetAzureDisksClient()
+		framework.ExpectNoError(err, fmt.Sprintf("Error getting client for azuredisk %v", err))
+		disktest, err := disksClient.Get(context.Background(), resourceGroup, diskName)
+		framework.ExpectNoError(err, fmt.Sprintf("Error getting disk for azuredisk %v", err))
+		framework.ExpectEqual(compute.Attached, disktest.DiskState)
+
+		ginkgo.By("begin to delete the pod ")
+		tpod.Cleanup()
+		time.Sleep(90 * time.Second)
+		//get disk information after pod delete.
+		disktest, err = disksClient.Get(context.Background(), resourceGroup, diskName)
+		framework.ExpectNoError(err, fmt.Sprintf("Error getting disk for azuredisk %v", err))
+		framework.ExpectEqual(compute.Unattached, disktest.DiskState)
+
+		for i := range cleanup {
+			cleanup[i]()
+		}
+
+	}
+}
