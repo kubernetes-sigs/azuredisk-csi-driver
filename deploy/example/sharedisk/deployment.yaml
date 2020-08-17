@@ -40,6 +40,8 @@ spec:
         app: nginx
       name: deployment-sharedisk
     spec:
+      nodeSelector:
+        kubernetes.io/os: linux
       containers:
         - name: deployment-sharedisk
           image: nginx

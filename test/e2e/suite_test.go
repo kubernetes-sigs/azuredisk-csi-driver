@@ -113,6 +113,16 @@ var _ = ginkgo.AfterSuite(func() {
 			startLog: "===================azuredisk log===================",
 			endLog:   "===================================================",
 		}
+		if isTestingMigration || isUsingInTreeVolumePlugin {
+			cmLog := testCmd{
+				command:  "bash",
+				args:     []string{"test/utils/controller-manager-log.sh"},
+				startLog: "===================controller-manager log=======",
+				endLog:   "===================================================",
+			}
+			execTestCmd([]testCmd{cmLog})
+		}
+
 		if isTestingMigration || !isUsingInTreeVolumePlugin {
 			e2eTeardown := testCmd{
 				command:  "make",

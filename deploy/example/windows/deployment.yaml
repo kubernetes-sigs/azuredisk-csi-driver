@@ -28,6 +28,8 @@ spec:
         app: busybox
       name: busybox-azuredisk
     spec:
+      nodeSelector:
+        "kubernetes.io/os": windows
       containers:
         - name: busybox-azuredisk
           image: e2eteam/busybox:1.29

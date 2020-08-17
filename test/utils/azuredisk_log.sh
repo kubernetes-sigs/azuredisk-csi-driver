@@ -30,17 +30,6 @@ kubectl get pods -n${NS} -l${LABEL} \
     | awk 'NR>1 {print $1}' \
     | xargs -I {} kubectl logs {} --prefix -c${CONTAINER} -n${NS}
 
-if [ $? != 0 ]; then
-    # only for testing
-    echo "print out controller-manager logs ..."
-    kubectl get pods -n${NS} | grep controller-manager
-    kubectl get pods -n${NS} | grep controller-manager awk '{print $1}'
-    kubectl get pods -n${NS} | grep controller-manager \
-        | awk '{print $1}' \
-        | xargs -I {} kubectl logs {} --prefix -n${NS}
-    exit $?
-fi
-
 echo "print out csi-snapshot-controller logs ..."
 echo "======================================================================================"
 LABEL='app=csi-snapshot-controller'
@@ -51,6 +40,13 @@ kubectl get pods -n${NS} -l${LABEL} \
 echo "print out csi-azuredisk-node logs ..."
 echo "======================================================================================"
 LABEL='app=csi-azuredisk-node'
+kubectl get pods -n${NS} -l${LABEL} \
+    | awk 'NR>1 {print $1}' \
+    | xargs -I {} kubectl logs {} --prefix -c${CONTAINER} -n${NS}
+
+echo "print out csi-azuredisk-node-win logs ..."
+echo "======================================================================================"
+LABEL='app=csi-azuredisk-node-win'
 kubectl get pods -n${NS} -l${LABEL} \
     | awk 'NR>1 {print $1}' \
     | xargs -I {} kubectl logs {} --prefix -c${CONTAINER} -n${NS}
