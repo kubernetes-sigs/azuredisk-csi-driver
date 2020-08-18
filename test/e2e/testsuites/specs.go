@@ -162,6 +162,28 @@ func (pod *PodDetails) SetupDeployment(client clientset.Interface, namespace *v1
 	return tDeployment, cleanupFuncs
 }
 
+func (pod *PodDetails) SetupStatefulset(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.DynamicPVTestDriver) (*TestStatefulset, []func()) {
+	cleanupFuncs := make([]func(), 0)
+	volume := pod.Volumes[0]
+	ginkgo.By("setting up the StorageClass")
+	storageClass := csiDriver.GetDynamicProvisionStorageClass(driver.GetParameters(), volume.MountOptions, volume.ReclaimPolicy, volume.VolumeBindingMode, volume.AllowedTopologyValues, namespace.Name)
+	tsc := NewTestStorageClass(client, namespace, storageClass)
+	createdStorageClass := tsc.Create()
+	cleanupFuncs = append(cleanupFuncs, tsc.Cleanup)
+	ginkgo.By("setting up the PVC")
+	tpvc := NewTestPersistentVolumeClaim(client, namespace, volume.ClaimSize, volume.VolumeMode, &createdStorageClass)
+	storageClassName := ""
+	if tpvc.storageClass != nil {
+		storageClassName = tpvc.storageClass.Name
+	}
+	tpvc.requestedPersistentVolumeClaim = generateStatefulSetPVC(tpvc.namespace.Name, storageClassName, tpvc.claimSize, tpvc.volumeMode, tpvc.dataSource)
+	ginkgo.By("setting up the statefulset")
+	tStatefulset := NewTestStatefulset(client, namespace, pod.Cmd, tpvc.requestedPersistentVolumeClaim, "pvc", fmt.Sprintf("%s%d", volume.VolumeMount.MountPathGenerate, 1), volume.VolumeMount.ReadOnly, pod.IsWindows)
+
+	cleanupFuncs = append(cleanupFuncs, tStatefulset.Cleanup)
+	return tStatefulset, cleanupFuncs
+}
+
 func (volume *VolumeDetails) SetupDynamicPersistentVolumeClaim(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.DynamicPVTestDriver, storageClassParameters map[string]string) (*TestPersistentVolumeClaim, []func()) {
 	cleanupFuncs := make([]func(), 0)
 	storageClass := volume.StorageClass
