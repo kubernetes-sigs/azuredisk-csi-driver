@@ -64,7 +64,12 @@ func (t *DynamicallyProvisionedAzureDiskDetach) Run(client clientset.Interface, 
 
 		pvname := pvc.Spec.VolumeName
 		pv, _ := client.CoreV1().PersistentVolumes().Get(context.Background(), pvname, metav1.GetOptions{})
-		diskURI := pv.Spec.PersistentVolumeSource.CSI.VolumeHandle
+		var diskURI string
+		if pv.Spec.PersistentVolumeSource.CSI != nil {
+			diskURI = pv.Spec.PersistentVolumeSource.CSI.VolumeHandle
+		} else if pv.Spec.PersistentVolumeSource.AzureDisk != nil {
+			diskURI = pv.Spec.PersistentVolumeSource.AzureDisk.DataDiskURI
+		}
 		diskName, err := azuredisk.GetDiskName(diskURI)
 		framework.ExpectNoError(err, fmt.Sprintf("Error getting diskName for azuredisk %v", err))
 		resourceGroup, err := azuredisk.GetResourceGroupFromURI(diskURI)
