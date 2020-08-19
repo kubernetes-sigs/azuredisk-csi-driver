@@ -103,3 +103,21 @@ func TestValidateControllerServiceRequest(t *testing.T) {
 	assert.NoError(t, err)
 
 }
+
+func TestAddControllerServiceCapabilities(t *testing.T) {
+	d := NewFakeCSIDriver()
+	var csc []*csi.ControllerServiceCapability
+	rpcTest := []csi.ControllerServiceCapability_RPC_Type{
+		csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
+		csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME,
+		csi.ControllerServiceCapability_RPC_GET_CAPACITY,
+		csi.ControllerServiceCapability_RPC_LIST_VOLUMES,
+	}
+	d.AddControllerServiceCapabilities(rpcTest)
+	for _, c := range rpcTest {
+
+		csc = append(csc, NewControllerServiceCapability(c))
+	}
+	assert.Equal(t, csc, d.Cap)
+
+}
