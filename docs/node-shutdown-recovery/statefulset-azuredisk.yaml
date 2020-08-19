@@ -1,0 +1,47 @@
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: statefulset-autorecover
+  labels:
+    k8s-app: nginx
+spec:
+  podManagementPolicy: OrderedReady  # Parallel
+  serviceName: statefulset-autorecover
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        k8s-app: nginx
+    spec:
+      tolerations:
+        - key: "node.kubernetes.io/not-ready"
+          operator: "Exists"
+          effect: "NoExecute"
+          tolerationSeconds: 10
+        - key: "node.kubernetes.io/unreachable"
+          operator: "Exists"
+          effect: "NoExecute"
+          tolerationSeconds: 10
+      terminationGracePeriodSeconds: 0
+      containers:
+        - name: statefulset-autorecover
+          image: nginx
+          volumeMounts:
+            - name: persistent-storage
+              mountPath: /mnt/azuredisk
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      k8s-app: nginx
+  volumeClaimTemplates:
+    - metadata:
+        name: persistent-storage
+        annotations:
+          volume.beta.kubernetes.io/storage-class: default
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi
