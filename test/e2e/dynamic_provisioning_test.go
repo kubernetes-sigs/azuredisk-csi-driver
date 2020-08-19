@@ -545,7 +545,6 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	})
 
 	ginkgo.It("should detach disk after pod deleted [disk.csi.azure.com] [Windows]", func() {
-		skipIfUsingInTreeVolumePlugin()
 		pods := []testsuites.PodDetails{
 			{
 				Cmd: convertToPowershellCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
