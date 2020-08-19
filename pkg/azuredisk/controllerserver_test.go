@@ -619,7 +619,7 @@ func TestIsCSISnapshotReady(t *testing.T) {
 	}
 }
 
-func TestExtractSnapshotInfo(t *testing.T) {
+func TestGetSnapshotInfo(t *testing.T) {
 	d, err := NewFakeDriver(t)
 	if err != nil {
 		t.Fatalf("Error getting driver: %v", err)
@@ -649,16 +649,9 @@ func TestExtractSnapshotInfo(t *testing.T) {
 			expected2:  "",
 			expected3:  fmt.Errorf("could not get snapshot name from testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name, correct format: (?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/snapshots/(.+)"),
 		},
-		{
-			// case snapshotID does not contain subscriptions
-			snapshotID: "testurl/subscription/12/resourcegroups/23/providers/Microsoft.Compute/snapshots/snapshot-name",
-			expected1:  "testurl/subscription/12/resourcegroups/23/providers/Microsoft.Compute/snapshots/snapshot-name",
-			expected2:  d.cloud.ResourceGroup,
-			expected3:  nil,
-		},
 	}
 	for _, test := range tests {
-		snapshotName, resourceGroup, err := d.extractSnapshotInfo(test.snapshotID)
+		snapshotName, resourceGroup, err := d.getSnapshotInfo(test.snapshotID)
 		if !reflect.DeepEqual(snapshotName, test.expected1) || !reflect.DeepEqual(resourceGroup, test.expected2) || !reflect.DeepEqual(err, test.expected3) {
 			t.Errorf("input: %q, getSnapshotName result: %q, expected1: %q, getresourcegroup result: %q, expected2: %q\n", test.snapshotID, snapshotName, test.expected1,
 				resourceGroup, test.expected2)

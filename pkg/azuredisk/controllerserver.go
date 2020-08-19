@@ -648,13 +648,24 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 func (d *Driver) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
 	klog.V(2).Infof("DeleteSnapshot called with request %v", *req)
 
-	if len(req.SnapshotId) == 0 {
+	snapshotID := req.SnapshotId
+	if len(snapshotID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Snapshot ID must be provided")
 	}
 
-	snapshotName, resourceGroup, err := d.extractSnapshotInfo(req.SnapshotId)
-	if err != nil {
-		return nil, err
+	var (
+		snapshotName, resourceGroup string
+		err                         error
+	)
+
+	if strings.Contains(snapshotID, "/subscriptions/") {
+		snapshotName, resourceGroup, err = d.getSnapshotInfo(snapshotID)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		snapshotName = snapshotID
+		resourceGroup = d.cloud.ResourceGroup
 	}
 
 	//todo: add metrics here
@@ -701,9 +712,19 @@ func (d *Driver) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsReques
 }
 
 func (d *Driver) getSnapshotByID(ctx context.Context, snapshotID, sourceVolumeID string) (*csi.Snapshot, error) {
-	snapshotName, resourceGroup, err := d.extractSnapshotInfo(snapshotID)
-	if err != nil {
-		return nil, err
+	var (
+		snapshotName, resourceGroup string
+		err                         error
+	)
+
+	if strings.Contains(snapshotID, "/subscriptions/") {
+		snapshotName, resourceGroup, err = d.getSnapshotInfo(snapshotID)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		snapshotName = snapshotID
+		resourceGroup = d.cloud.ResourceGroup
 	}
 
 	snapshot, rerr := d.cloud.SnapshotsClient.Get(ctx, resourceGroup, snapshotName)
@@ -816,19 +837,13 @@ func isCSISnapshotReady(state string) (bool, error) {
 	}
 }
 
-func (d *Driver) extractSnapshotInfo(snapshotID string) (string, string, error) {
-	var snapshotName, resourceGroup string
-	var err error
-	if !strings.Contains(snapshotID, "/subscriptions/") {
-		snapshotName = snapshotID
-		resourceGroup = d.cloud.ResourceGroup
-	} else {
-		if snapshotName, err = getSnapshotName(snapshotID); err != nil {
-			return "", "", err
-		}
-		if resourceGroup, err = GetResourceGroupFromURI(snapshotID); err != nil {
-			return "", "", err
-		}
+// The format of snapshot id is /subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/snapshots/snapshot-xxx-xxx.
+func (d *Driver) getSnapshotInfo(snapshotID string) (snapshotName, resourceGroup string, err error) {
+	if snapshotName, err = getSnapshotName(snapshotID); err != nil {
+		return "", "", err
+	}
+	if resourceGroup, err = GetResourceGroupFromURI(snapshotID); err != nil {
+		return "", "", err
 	}
 	return snapshotName, resourceGroup, err
 }
