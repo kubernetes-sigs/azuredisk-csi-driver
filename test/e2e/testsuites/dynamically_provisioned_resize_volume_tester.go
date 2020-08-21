@@ -46,7 +46,6 @@ type DynamicallyProvisionedResizeVolumeTest struct {
 	CSIDriver              driver.DynamicPVTestDriver
 	StorageClassParameters map[string]string
 	Volume                 VolumeDetails
-	IsTestingMigration     bool
 }
 
 func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface, namespace *v1.Namespace) {
@@ -90,7 +89,7 @@ func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface,
 	ginkgo.By("checking the resizing PV result")
 	newPv, _ := client.CoreV1().PersistentVolumes().Get(context.Background(), newPvc.Spec.VolumeName, metav1.GetOptions{})
 	newPvSize := newPv.Spec.Capacity["storage"]
-	if !newSize.Equal(newPvSize) && !t.IsTestingMigration {
+	if !newSize.Equal(newPvSize) {
 		ginkgo.By(fmt.Sprintf("newPVCSize(%+v) is not equal to newPVSize(%+v)", newSize.String(), newPvSize.String()))
 	}
 
@@ -118,7 +117,7 @@ func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface,
 	disktest, err := disksClient.Get(context.Background(), resourceGroup, diskName)
 	framework.ExpectNoError(err, fmt.Sprintf("Error getting disk for azuredisk %v", err))
 	newdiskSize := strconv.Itoa(int(*disktest.DiskSizeGB)) + "Gi"
-	if !(newSize.String() == newdiskSize) && !t.IsTestingMigration {
+	if !(newSize.String() == newdiskSize) {
 		framework.Failf("newPVCSize(%+v) is not equal to new azurediskSize(%+v)", newSize.String(), newdiskSize)
 	}
 
