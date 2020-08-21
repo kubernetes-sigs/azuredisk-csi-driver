@@ -508,7 +508,6 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			CSIDriver:              testDriver,
 			Volume:                 volume,
 			StorageClassParameters: map[string]string{"skuName": "Standard_LRS"},
-			IsTestingMigration:     isTestingMigration,
 		}
 		test.Run(cs, ns)
 	})
