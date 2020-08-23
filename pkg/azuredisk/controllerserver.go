@@ -35,6 +35,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
 	cloudprovider "k8s.io/cloud-provider"
+	volerr "k8s.io/cloud-provider/volume/errors"
 	"k8s.io/klog/v2"
 	"k8s.io/legacy-cloud-providers/azure"
 )
@@ -411,8 +412,18 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		if err == nil {
 			klog.V(2).Infof("Attach operation successful: volume %q attached to node %q.", diskURI, nodeName)
 		} else {
-			klog.Errorf("Attach volume %q to instance %q failed with %v", diskURI, nodeName, err)
-			return nil, fmt.Errorf("Attach volume %q to instance %q failed with %v", diskURI, nodeName, err)
+			if derr, ok := err.(*volerr.DanglingAttachError); ok {
+				klog.Warningf("volume %q is already attached to node %q, try detach first", diskURI, derr.CurrentNode)
+				if err = d.cloud.DetachDisk(diskName, diskURI, derr.CurrentNode); err != nil {
+					return nil, status.Errorf(codes.Internal, "Could not detach volume %q from node %q: %v", diskURI, derr.CurrentNode, err)
+				}
+				klog.V(2).Infof("Trying to attach volume %q to node %q again", diskURI, nodeName)
+				lun, err = d.cloud.AttachDisk(isManagedDisk, diskName, diskURI, nodeName, cachingMode)
+			}
+			if err != nil {
+				klog.Errorf("Attach volume %q to instance %q failed with %v", diskURI, nodeName, err)
+				return nil, fmt.Errorf("Attach volume %q to instance %q failed with %v", diskURI, nodeName, err)
+			}
 		}
 		klog.V(2).Infof("attach volume %q to node %q successfully", diskURI, nodeName)
 	}
