@@ -6,6 +6,8 @@
             "orchestratorType": "Kubernetes",
             "orchestratorRelease": "1.16",
             "kubernetesConfig": {
+                "networkPlugin": "azure",
+                "containerRuntime": "containerd",
                 "useCloudControllerManager": true,
                 "networkPolicy": "none",
                 "cloudProviderRateLimitQPS": 6,
