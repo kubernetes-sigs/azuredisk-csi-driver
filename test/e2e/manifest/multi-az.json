@@ -9,7 +9,6 @@
                 "networkPlugin": "azure",
                 "containerRuntime": "containerd",
                 "useCloudControllerManager": true,
-                "networkPolicy": "none",
                 "cloudProviderRateLimitQPS": 6,
                 "cloudProviderRateLimitBucket": 20,
                 "controllerManagerConfig": {
