@@ -34,7 +34,7 @@ spec:
     - metadata:
         name: persistent-storage
         annotations:
-          volume.beta.kubernetes.io/storage-class: disk.csi.azure.com
+          volume.beta.kubernetes.io/storage-class: managed-csi
       spec:
         accessModes: ["ReadWriteOnce"]
         resources:

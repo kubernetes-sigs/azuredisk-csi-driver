@@ -19,6 +19,10 @@
 NS=kube-system
 CONTAINER=azuredisk
 
+echo "print out all nodes status ..."
+kubectl get nodes -o wide
+echo "======================================================================================"
+
 echo "print out all $NS namespace pods status ..."
 kubectl get pods -n${NS} -o wide
 echo "======================================================================================"
