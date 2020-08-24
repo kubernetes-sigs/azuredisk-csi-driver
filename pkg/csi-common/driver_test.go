@@ -46,6 +46,12 @@ func TestNewCSIDriver(t *testing.T) {
 		result := NewCSIDriver(test.name, test.vendor, test.nodeID)
 		assert.Nil(t, result)
 	}
+	driver := &CSIDriver{
+		Name:    "unit-test",
+		Version: "",
+		NodeID:  "unit-test"}
+	testdriver := NewCSIDriver("unit-test", "", "unit-test")
+	assert.Equal(t, testdriver, driver)
 }
 
 func TestGetVolumeCapabilityAccessModes(t *testing.T) {
@@ -119,5 +125,21 @@ func TestAddControllerServiceCapabilities(t *testing.T) {
 		csc = append(csc, NewControllerServiceCapability(c))
 	}
 	assert.Equal(t, csc, d.Cap)
+
+}
+
+func TestAddCNodeServiceCapabilities(t *testing.T) {
+	d := NewFakeCSIDriver()
+	var nsc []*csi.NodeServiceCapability
+	rpcTest := []csi.NodeServiceCapability_RPC_Type{
+		csi.NodeServiceCapability_RPC_UNKNOWN,
+		csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
+	}
+	d.AddNodeServiceCapabilities(rpcTest)
+	for _, c := range rpcTest {
+
+		nsc = append(nsc, NewNodeServiceCapability(c))
+	}
+	assert.Equal(t, nsc, d.NSCap)
 
 }
