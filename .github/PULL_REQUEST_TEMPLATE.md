@@ -14,6 +14,7 @@ https://github.com/kubernetes/community/blob/master/contributors/devel/sig-relea
 <!--
 Add one of the following kinds:
 /kind bug
+/kind test
 /kind cleanup
 /kind documentation
 /kind feature
