@@ -56,7 +56,7 @@ linux:
   enabled: true
 
 windows:
-  enabled: false
+  enabled: true
   image:
     livenessProbe:
       repository: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe
