@@ -86,7 +86,7 @@ func (d *azureDiskDriver) GetVolumeSnapshotClass(namespace string) *v1beta1.Volu
 	return getVolumeSnapshotClass(generateName, provisioner)
 }
 
-func (d *azureDiskDriver) GetPersistentVolume(volumeID string, fsType string, size string, reclaimPolicy *v1.PersistentVolumeReclaimPolicy, namespace string) *v1.PersistentVolume {
+func (d *azureDiskDriver) GetPersistentVolume(volumeID string, fsType string, size string, reclaimPolicy *v1.PersistentVolumeReclaimPolicy, namespace string, volumeContext map[string]string) *v1.PersistentVolume {
 	provisioner := d.driverName
 	generateName := fmt.Sprintf("%s-%s-preprovsioned-pv-", namespace, normalizeProvisioner(provisioner))
 	// Default to Retain ReclaimPolicy for pre-provisioned volumes
@@ -111,9 +111,10 @@ func (d *azureDiskDriver) GetPersistentVolume(volumeID string, fsType string, si
 			PersistentVolumeReclaimPolicy: pvReclaimPolicy,
 			PersistentVolumeSource: v1.PersistentVolumeSource{
 				CSI: &v1.CSIPersistentVolumeSource{
-					Driver:       provisioner,
-					VolumeHandle: volumeID,
-					FSType:       fsType,
+					Driver:           provisioner,
+					VolumeHandle:     volumeID,
+					FSType:           fsType,
+					VolumeAttributes: volumeContext,
 				},
 			},
 		},

@@ -26,13 +26,14 @@ import (
 // PreProvisionedReclaimPolicyTest will provision required PV(s) and PVC(s)
 // Testing the correct behavior for different reclaimPolicies
 type PreProvisionedReclaimPolicyTest struct {
-	CSIDriver driver.PreProvisionedVolumeTestDriver
-	Volumes   []VolumeDetails
+	CSIDriver     driver.PreProvisionedVolumeTestDriver
+	Volumes       []VolumeDetails
+	VolumeContext map[string]string
 }
 
 func (t *PreProvisionedReclaimPolicyTest) Run(client clientset.Interface, namespace *v1.Namespace) {
 	for _, volume := range t.Volumes {
-		tpvc, _ := volume.SetupPreProvisionedPersistentVolumeClaim(client, namespace, t.CSIDriver)
+		tpvc, _ := volume.SetupPreProvisionedPersistentVolumeClaim(client, namespace, t.CSIDriver, t.VolumeContext)
 
 		// will delete the PVC
 		// will also wait for PV to be deleted when reclaimPolicy=Delete

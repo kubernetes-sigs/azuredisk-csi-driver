@@ -17,32 +17,23 @@ limitations under the License.
 package testsuites
 
 import (
-	"fmt"
-
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 
 	"github.com/onsi/ginkgo"
-	"github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
-	"k8s.io/kubernetes/test/e2e/framework"
 )
 
-// PreProvisionedReadOnlyVolumeTest will provision required PV(s), PVC(s) and Pod(s)
-// Testing that the Pod(s) cannot write to the volume when mounted
-type PreProvisionedReadOnlyVolumeTest struct {
+// PreProvisionedMultiplePodsTest will provision required PV(s), PVC(s) and Pod(s)
+// Testing that a volume could be mounted by multiple pods
+type PreProvisionedMultiplePodsTest struct {
 	CSIDriver     driver.PreProvisionedVolumeTestDriver
 	Pods          []PodDetails
 	VolumeContext map[string]string
 }
 
-func (t *PreProvisionedReadOnlyVolumeTest) Run(client clientset.Interface, namespace *v1.Namespace) {
+func (t *PreProvisionedMultiplePodsTest) Run(client clientset.Interface, namespace *v1.Namespace) {
 	for _, pod := range t.Pods {
-		expectedReadOnlyLog := "Read-only file system"
-		if pod.IsWindows {
-			expectedReadOnlyLog = "FileOpenFailure"
-		}
-
 		tpod, cleanup := pod.SetupWithPreProvisionedVolumes(client, namespace, t.CSIDriver, t.VolumeContext)
 		// defer must be called here for resources not get removed before using them
 		for i := range cleanup {
@@ -52,11 +43,7 @@ func (t *PreProvisionedReadOnlyVolumeTest) Run(client clientset.Interface, names
 		ginkgo.By("deploying the pod")
 		tpod.Create()
 		defer tpod.Cleanup()
-		ginkgo.By("checking that the pod's command exits with an error")
-		tpod.WaitForFailure()
-		ginkgo.By("checking that pod logs contain expected message")
-		body, err := tpod.Logs()
-		framework.ExpectNoError(err, fmt.Sprintf("Error getting logs for pod %s: %v", tpod.pod.Name, err))
-		gomega.Expect(string(body)).To(gomega.ContainSubstring(expectedReadOnlyLog))
+		ginkgo.By("checking that the pod's command exits with no error")
+		tpod.WaitForSuccess()
 	}
 }
