@@ -31,8 +31,7 @@ import (
 )
 
 const (
-	defaultDiskSize      = 10
-	defaultDiskSizeBytes = defaultDiskSize * 1024 * 1024 * 1024
+	defaultDiskSize = 10
 )
 
 var _ = ginkgo.Describe("Pre-Provisioned", func() {
@@ -71,7 +70,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			// Skip these tests until above is fixed.
 			skipIfUsingInTreeVolumePlugin()
 
-			req := makeCreateVolumeReq("pre-provisioned-readOnly")
+			req := makeCreateVolumeReq("pre-provisioned-readOnly", 10)
 			resp, err := azurediskDriver.CreateVolume(context.Background(), req)
 			if err != nil {
 				ginkgo.Fail(fmt.Sprintf("create volume error: %v", err))
@@ -110,7 +109,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			// Skip these tests until above is fixed.
 			skipIfUsingInTreeVolumePlugin()
 
-			req := makeCreateVolumeReq("pre-provisioned-retain-reclaimPolicy")
+			req := makeCreateVolumeReq("pre-provisioned-retain-reclaimPolicy", 10)
 			resp, err := azurediskDriver.CreateVolume(context.Background(), req)
 			if err != nil {
 				ginkgo.Fail(fmt.Sprintf("create volume error: %v", err))
@@ -135,13 +134,29 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			test.Run(cs, ns)
 		})
 
+		ginkgo.It("should succeed when creating a shared disk [disk.csi.azure.com][shared disk]", func() {
+			skipIfUsingInTreeVolumePlugin()
+			req := makeCreateVolumeReq("shared-disk", 256)
+			req.Parameters = map[string]string{
+				"skuName":     "Premium_LRS",
+				"maxShares":   "2",
+				"cachingMode": "None",
+			}
+			resp, err := azurediskDriver.CreateVolume(context.Background(), req)
+			if err != nil {
+				ginkgo.Fail(fmt.Sprintf("create volume error: %v", err))
+			}
+			volumeID = resp.Volume.VolumeId
+			ginkgo.By(fmt.Sprintf("Successfully provisioned a shared disk volume: %q\n", volumeID))
+		})
+
 		ginkgo.It("should fail when maxShares is invalid [disk.csi.azure.com][shared disk]", func() {
 			// Az tests need to be changed to pass the right parameters for in-tree driver.
 			// Skip these tests until above is fixed.
 			skipIfUsingInTreeVolumePlugin()
 
 			skipManuallyDeletingVolume = true
-			req := makeCreateVolumeReq("invalid-maxShares")
+			req := makeCreateVolumeReq("invalid-maxShares", 256)
 			req.Parameters = map[string]string{"maxShares": "0"}
 			_, err := azurediskDriver.CreateVolume(context.Background(), req)
 			framework.ExpectError(err)
@@ -149,7 +164,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 	})
 })
 
-func makeCreateVolumeReq(volumeName string) *csi.CreateVolumeRequest {
+func makeCreateVolumeReq(volumeName string, sizeGiB int64) *csi.CreateVolumeRequest {
 	req := &csi.CreateVolumeRequest{
 		Name: volumeName,
 		VolumeCapabilities: []*csi.VolumeCapability{
@@ -163,8 +178,8 @@ func makeCreateVolumeReq(volumeName string) *csi.CreateVolumeRequest {
 			},
 		},
 		CapacityRange: &csi.CapacityRange{
-			RequiredBytes: defaultDiskSizeBytes,
-			LimitBytes:    defaultDiskSizeBytes,
+			RequiredBytes: sizeGiB * 1024 * 1024 * 1024,
+			LimitBytes:    sizeGiB * 1024 * 1024 * 1024,
 		},
 	}
 
