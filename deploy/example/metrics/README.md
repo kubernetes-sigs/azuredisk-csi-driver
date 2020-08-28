@@ -14,7 +14,8 @@ csi-azuredisk-controller   ClusterIP   10.0.184.0   20.39.21.132  29604/TCP   47
 
 3. Run following command to get cloudprovider_azure disk operation metrics
 ```console
-curl http://{CLUSTER-IP}:29604/metrics | grep cloudprovider_azure | grep disk | grep -e sum -e count
+ip=`kubectl get svc csi-azuredisk-controller -n kube-system | grep disk | awk '{print $4}'`
+curl http://$ip:29604/metrics | grep cloudprovider_azure | grep disk | grep -e sum -e count
 ```
 
  - following output shows `attach_disk` costs 12s and `detach_disk` costs 18s
