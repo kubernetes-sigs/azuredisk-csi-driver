@@ -10,4 +10,4 @@ spec:
   ports:
     - port: 29604
       targetPort: 29604
-  type: ClusterIP
+  type: LoadBalancer

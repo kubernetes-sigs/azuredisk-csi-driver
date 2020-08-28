@@ -65,7 +65,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 	})
 
 	ginkgo.Context("[single-az]", func() {
-		ginkgo.It("should use a pre-provisioned volume and mount it as readOnly in a pod [disk.csi.azure.com]", func() {
+		ginkgo.It("should use a pre-provisioned volume and mount it as readOnly in a pod [disk.csi.azure.com][windows]", func() {
 			// Az tests need to be changed to pass the right parameters for in-tree driver.
 			// Skip these tests until above is fixed.
 			skipIfUsingInTreeVolumePlugin()
@@ -104,7 +104,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			test.Run(cs, ns)
 		})
 
-		ginkgo.It(fmt.Sprintf("should use a pre-provisioned volume and retain PV with reclaimPolicy %q [disk.csi.azure.com]", v1.PersistentVolumeReclaimRetain), func() {
+		ginkgo.It(fmt.Sprintf("should use a pre-provisioned volume and retain PV with reclaimPolicy %q [disk.csi.azure.com][windows]", v1.PersistentVolumeReclaimRetain), func() {
 			// Az tests need to be changed to pass the right parameters for in-tree driver.
 			// Skip these tests until above is fixed.
 			skipIfUsingInTreeVolumePlugin()
@@ -135,7 +135,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			test.Run(cs, ns)
 		})
 
-		ginkgo.It("should succeed when creating a shared disk [disk.csi.azure.com][shared disk]", func() {
+		ginkgo.It("should succeed when creating a shared disk [disk.csi.azure.com][windows]", func() {
 			skipIfUsingInTreeVolumePlugin()
 			req := makeCreateVolumeReq("single-shared-disk", 256)
 			req.Parameters = map[string]string{
@@ -154,7 +154,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			ginkgo.By(fmt.Sprintf("Successfully provisioned a shared disk volume: %q\n", volumeID))
 		})
 
-		ginkgo.It("should fail when maxShares is invalid [disk.csi.azure.com][shared disk]", func() {
+		ginkgo.It("should fail when maxShares is invalid [disk.csi.azure.com][windows]", func() {
 			// Az tests need to be changed to pass the right parameters for in-tree driver.
 			// Skip these tests until above is fixed.
 			skipIfUsingInTreeVolumePlugin()
