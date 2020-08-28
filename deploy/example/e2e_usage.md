@@ -6,9 +6,9 @@
 kubectl create -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/storageclass-azuredisk-csi.yaml
 ```
 
- - Create an azuredisk CSI PVC
+ - Create a statefulset with Azure Disk mount
 ```
-kubectl create -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/pvc-azuredisk-csi.yaml
+kubectl create -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/statefulset.yaml
 ```
 
 ##### Option#2: Azuredisk Static Provisioning(use an existing azure disk)
