@@ -123,11 +123,11 @@ func (pod *PodDetails) SetupWithDynamicMultipleVolumes(client clientset.Interfac
 	return tpod, cleanupFuncs
 }
 
-func (pod *PodDetails) SetupWithPreProvisionedVolumes(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.PreProvisionedVolumeTestDriver) (*TestPod, []func()) {
+func (pod *PodDetails) SetupWithPreProvisionedVolumes(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.PreProvisionedVolumeTestDriver, volumeContext map[string]string) (*TestPod, []func()) {
 	tpod := NewTestPod(client, namespace, pod.Cmd, pod.IsWindows)
 	cleanupFuncs := make([]func(), 0)
 	for n, v := range pod.Volumes {
-		tpvc, funcs := v.SetupPreProvisionedPersistentVolumeClaim(client, namespace, csiDriver)
+		tpvc, funcs := v.SetupPreProvisionedPersistentVolumeClaim(client, namespace, csiDriver, volumeContext)
 		cleanupFuncs = append(cleanupFuncs, funcs...)
 
 		if v.VolumeMode == Block {
@@ -217,10 +217,10 @@ func (volume *VolumeDetails) SetupDynamicPersistentVolumeClaim(client clientset.
 	return tpvc, cleanupFuncs
 }
 
-func (volume *VolumeDetails) SetupPreProvisionedPersistentVolumeClaim(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.PreProvisionedVolumeTestDriver) (*TestPersistentVolumeClaim, []func()) {
+func (volume *VolumeDetails) SetupPreProvisionedPersistentVolumeClaim(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.PreProvisionedVolumeTestDriver, volumeContext map[string]string) (*TestPersistentVolumeClaim, []func()) {
 	cleanupFuncs := make([]func(), 0)
 	ginkgo.By("setting up the PV")
-	pv := csiDriver.GetPersistentVolume(volume.VolumeID, volume.FSType, volume.ClaimSize, volume.ReclaimPolicy, namespace.Name)
+	pv := csiDriver.GetPersistentVolume(volume.VolumeID, volume.FSType, volume.ClaimSize, volume.ReclaimPolicy, namespace.Name, volumeContext)
 	tpv := NewTestPreProvisionedPersistentVolume(client, pv)
 	tpv.Create()
 	ginkgo.By("setting up the PVC")

@@ -205,8 +205,8 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		return nil, err
 	}
 
-	klog.V(2).Infof("begin to create azure disk(%s) account type(%s) rg(%s) location(%s) size(%d) selectedAvailabilityZone(%v)",
-		diskName, skuName, resourceGroup, location, requestGiB, selectedAvailabilityZone)
+	klog.V(2).Infof("begin to create azure disk(%s) account type(%s) rg(%s) location(%s) size(%d) selectedAvailabilityZone(%v) maxShares(%d)",
+		diskName, skuName, resourceGroup, location, requestGiB, selectedAvailabilityZone, maxShares)
 
 	diskURI := ""
 	contentSource := &csi.VolumeContentSource{}
