@@ -91,7 +91,14 @@ var _ = ginkgo.BeforeSuite(func() {
 			startLog: "Installing Azure Disk CSI Driver...",
 			endLog:   "Azure Disk CSI Driver installed",
 		}
-		execTestCmd([]testCmd{e2eBootstrap})
+
+		createMetricsSVC := testCmd{
+			command:  "make",
+			args:     []string{"create-metrics-svc"},
+			startLog: "create metrics service ...",
+			endLog:   "metrics service created",
+		}
+		execTestCmd([]testCmd{e2eBootstrap, createMetricsSVC})
 
 		nodeid := os.Getenv("nodeid")
 		azurediskDriver = azuredisk.NewDriver(nodeid)
