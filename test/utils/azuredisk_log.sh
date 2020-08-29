@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# set -e
+set -e
 
 NS=kube-system
 CONTAINER=azuredisk
@@ -58,4 +58,4 @@ kubectl get pods -n${NS} -l${LABEL} \
 echo "print out cloudprovider_azure metrics ..."
 echo "======================================================================================"
 ip=`kubectl get svc csi-azuredisk-controller -n kube-system | grep disk | awk '{print $4}'`
-curl http://$ip:29604/metrics | grep cloudprovider_azure | grep disk | grep -e sum -e count
+curl http://$ip:29604/metrics

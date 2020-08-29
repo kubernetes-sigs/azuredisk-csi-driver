@@ -8,14 +8,14 @@ kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi
 2. Get `EXTERNAL-IP` of service `csi-azuredisk-controller`
 ```console
 $ kubectl get svc csi-azuredisk-controller -n kube-system
-NAME                       TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)     AGE
-csi-azuredisk-controller   ClusterIP   10.0.184.0   20.39.21.132  29604/TCP   47m
+NAME                       TYPE           CLUSTER-IP     EXTERNAL-IP   PORT(S)           AGE
+csi-azuredisk-controller   LoadBalancer   10.0.217.224   20.39.0.91    29604:32128/TCP   45m
 ```
 
 3. Run following command to get cloudprovider_azure disk operation metrics
 ```console
 ip=`kubectl get svc csi-azuredisk-controller -n kube-system | grep disk | awk '{print $4}'`
-curl http://$ip:29604/metrics | grep cloudprovider_azure | grep disk | grep -e sum -e count
+curl http://$ip:29604/metrics | grep cloudprovider_azure | grep ch_disk | grep -e sum -e count
 ```
 
  - following output shows `attach_disk` costs 12s and `detach_disk` costs 18s
