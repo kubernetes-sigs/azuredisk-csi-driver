@@ -48,6 +48,9 @@ Please refer to [install azuredisk csi driver](./docs/install-azuredisk-csi-driv
 ## Kubernetes Development
 Please refer to [development guide](./docs/csi-dev.md)
 
+### View CI Results
+Check testgrid [provider-azure-azuredisk-csi-driver](https://testgrid.k8s.io/provider-azure-azuredisk-csi-driver) dashboard.
+
 ### Links
  - [Kubernetes CSI Documentation](https://kubernetes-csi.github.io/docs/)
  - [CSI Drivers](https://github.com/kubernetes-csi/drivers)
