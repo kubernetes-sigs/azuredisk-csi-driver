@@ -32,6 +32,7 @@ rbac:
 
 controller:
   replicas: 2
+  metricsPort: 29604
 
 node:
   metricsPort: 29605
