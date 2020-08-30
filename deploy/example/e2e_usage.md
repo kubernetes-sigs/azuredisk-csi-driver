@@ -28,14 +28,14 @@ vi pv-azuredisk-csi.yaml
 kubectl create -f pv-azuredisk-csi.yaml
 ```
 
- - Create an azuredisk CSI PVC which would be bound to the above PV
+ - Create a PVC
 ```
 kubectl create -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/pvc-azuredisk-csi-static.yaml
 ```
 
- - make sure pvc is created and in `Bound` status finally
+ - make sure PVC is created and in `Bound` status after a while
 ```
-watch kubectl describe pvc pvc-azuredisk
+kubectl describe pvc pvc-azuredisk
 ```
 
  - create a pod with PVC mount
