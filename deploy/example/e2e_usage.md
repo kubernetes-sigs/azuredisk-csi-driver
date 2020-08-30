@@ -12,7 +12,7 @@ kubectl create -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-cs
 
  - Execute `df -h` command in the container
 ```
-# k exec -it statefulset-azuredisk-0 sh
+# kubectl exec -it statefulset-azuredisk-0 sh
 # df -h
 Filesystem      Size  Used Avail Use% Mounted on
 ...
