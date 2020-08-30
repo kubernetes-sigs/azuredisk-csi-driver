@@ -41,6 +41,7 @@ Please refer to [install azuredisk csi driver](./docs/install-azuredisk-csi-driv
  - [Raw Block Volume](./deploy/example/rawblock)
  - [Windows](./deploy/example/windows)
  - [Shared Disk](./deploy/example/sharedisk)
+ - [Volume Limits](./deploy/example/volumelimits)
  
 ### Troubleshooting
  - [CSI driver troubleshooting guide](./docs/csi-debug.md)
