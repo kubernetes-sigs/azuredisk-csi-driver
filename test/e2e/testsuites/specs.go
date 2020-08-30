@@ -32,6 +32,7 @@ type PodDetails struct {
 	Cmd       string
 	Volumes   []VolumeDetails
 	IsWindows bool
+	UseCMD    bool
 }
 
 type VolumeDetails struct {
@@ -178,7 +179,7 @@ func (pod *PodDetails) SetupStatefulset(client clientset.Interface, namespace *v
 	}
 	tpvc.requestedPersistentVolumeClaim = generateStatefulSetPVC(tpvc.namespace.Name, storageClassName, tpvc.claimSize, tpvc.volumeMode, tpvc.dataSource)
 	ginkgo.By("setting up the statefulset")
-	tStatefulset := NewTestStatefulset(client, namespace, pod.Cmd, tpvc.requestedPersistentVolumeClaim, "pvc", fmt.Sprintf("%s%d", volume.VolumeMount.MountPathGenerate, 1), volume.VolumeMount.ReadOnly, pod.IsWindows)
+	tStatefulset := NewTestStatefulset(client, namespace, pod.Cmd, tpvc.requestedPersistentVolumeClaim, "pvc", fmt.Sprintf("%s%d", volume.VolumeMount.MountPathGenerate, 1), volume.VolumeMount.ReadOnly, pod.IsWindows, pod.UseCMD)
 
 	cleanupFuncs = append(cleanupFuncs, tStatefulset.Cleanup)
 	return tStatefulset, cleanupFuncs

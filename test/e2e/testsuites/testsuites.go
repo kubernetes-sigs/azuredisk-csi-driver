@@ -535,7 +535,7 @@ type TestStatefulset struct {
 	podName     string
 }
 
-func NewTestStatefulset(c clientset.Interface, ns *v1.Namespace, command string, pvc *v1.PersistentVolumeClaim, volumeName, mountPath string, readOnly, isWindows bool) *TestStatefulset {
+func NewTestStatefulset(c clientset.Interface, ns *v1.Namespace, command string, pvc *v1.PersistentVolumeClaim, volumeName, mountPath string, readOnly, isWindows, useCMD bool) *TestStatefulset {
 	generateName := "azuredisk-volume-tester-"
 	selectorValue := fmt.Sprintf("%s%d", generateName, rand.Int())
 	replicas := int32(1)
@@ -585,9 +585,15 @@ func NewTestStatefulset(c clientset.Interface, ns *v1.Namespace, command string,
 		testStatefulset.statefulset.Spec.Template.Spec.NodeSelector = map[string]string{
 			"kubernetes.io/os": "windows",
 		}
-		testStatefulset.statefulset.Spec.Template.Spec.Containers[0].Image = "e2eteam/busybox:1.29"
-		testStatefulset.statefulset.Spec.Template.Spec.Containers[0].Command = []string{"powershell.exe"}
-		testStatefulset.statefulset.Spec.Template.Spec.Containers[0].Args = []string{"-Command", command}
+		if useCMD {
+			testStatefulset.statefulset.Spec.Template.Spec.Containers[0].Image = "e2eteam/busybox:1.29"
+			testStatefulset.statefulset.Spec.Template.Spec.Containers[0].Command = []string{"cmd"}
+			testStatefulset.statefulset.Spec.Template.Spec.Containers[0].Args = []string{"/c", command}
+		} else {
+			testStatefulset.statefulset.Spec.Template.Spec.Containers[0].Image = "e2eteam/busybox:1.29"
+			testStatefulset.statefulset.Spec.Template.Spec.Containers[0].Command = []string{"powershell.exe"}
+			testStatefulset.statefulset.Spec.Template.Spec.Containers[0].Args = []string{"-Command", command}
+		}
 	}
 
 	return testStatefulset
