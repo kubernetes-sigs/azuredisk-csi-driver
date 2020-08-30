@@ -1,6 +1,6 @@
 ## CSI driver example
 ### Azuredisk Dynamic Provisioning
- - Create an azuredisk CSI storage class
+ - Create a CSI storage class
 ```
 kubectl create -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/storageclass-azuredisk-csi.yaml
 ```
@@ -8,6 +8,16 @@ kubectl create -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-cs
  - Create a statefulset with Azure Disk mount
 ```
 kubectl create -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/statefulset.yaml
+```
+
+ - Execute `df -h` command in the container
+```
+# k exec -it statefulset-azuredisk-0 sh
+# df -h
+Filesystem      Size  Used Avail Use% Mounted on
+...
+/dev/sdc         98G   62M   98G   1% /mnt/azuredisk
+...
 ```
 
 ### Azuredisk Static Provisioning(use an existing azure disk)
@@ -23,26 +33,22 @@ kubectl create -f pv-azuredisk-csi.yaml
 kubectl create -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/pvc-azuredisk-csi-static.yaml
 ```
 
-#### Validate PVC status and create an nginx pod
  - make sure pvc is created and in `Bound` status finally
 ```
 watch kubectl describe pvc pvc-azuredisk
 ```
 
- - create a pod with azuredisk CSI PVC
+ - create a pod with PVC mount
 ```
 kubectl create -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/nginx-pod-azuredisk.yaml
 ```
 
-#### Enter container to verify
- - watch the status of pod until its Status changed from `Pending` to `Running` and then enter the pod container
+ - Execute `df -h` command in the container
 ```
-$ watch kubectl describe po nginx-azuredisk
 $ kubectl exec -it nginx-azuredisk -- bash
 Filesystem      Size  Used Avail Use% Mounted on
-overlay          30G   15G   15G  52% /
 ...
-/devhost/sdc        9.8G   37M  9.8G   1% /mnt/azuredisk
+/dev/sdc         98G   62M   98G   1% /mnt/azuredisk
 ...
 ```
 In the above example, there is a `/mnt/azuredisk` directory mounted as disk filesystem.
