@@ -1,6 +1,6 @@
 # Shared disk(Multi-node ReadWrite)
 
-## Feature Status: Alpha
+## Feature Status: Beta
 
 [Azure shared disks](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/disks-shared) (preview) is a new feature for Azure managed disks that enables attaching an Azure managed disk to multiple virtual machines (VMs) simultaneously. Attaching a managed disk to multiple VMs allows you to either deploy new or migrate existing clustered applications to Azure.
 
