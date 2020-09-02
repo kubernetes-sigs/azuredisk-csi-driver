@@ -99,7 +99,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	ginkgo.It("should create a volume on demand with mount options [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func() {
 		pods := []testsuites.PodDetails{
 			{
-				Cmd: convertToPowershellCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
+				Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
 				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
 						ClaimSize: "10Gi",
@@ -184,7 +184,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	ginkgo.It("should create a volume on demand and mount it as readOnly in a pod [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func() {
 		pods := []testsuites.PodDetails{
 			{
-				Cmd: convertToPowershellCommandIfNecessary("touch /mnt/test-1/data"),
+				Cmd: convertToPowershellorCmdCommandIfNecessary("touch /mnt/test-1/data"),
 				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
 						FSType:    "ext4",
@@ -210,7 +210,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	ginkgo.It("should create multiple PV objects, bind to PVCs and attach all to different pods on the same node [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func() {
 		pods := []testsuites.PodDetails{
 			{
-				Cmd: convertToPowershellCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
+				Cmd: convertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
 				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
 						FSType:    "ext3",
@@ -224,7 +224,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 				IsWindows: isWindowsCluster,
 			},
 			{
-				Cmd: convertToPowershellCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
+				Cmd: convertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
 				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
 						FSType:    "ext4",
@@ -238,7 +238,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 				IsWindows: isWindowsCluster,
 			},
 			{
-				Cmd: convertToPowershellCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
+				Cmd: convertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
 				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
 						FSType:    "xfs",
@@ -265,7 +265,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		skipIfTestingInWindowsCluster()
 
 		pod := testsuites.PodDetails{
-			Cmd: convertToPowershellCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
+			Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
 			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 				{
 					FSType:    "ext3",
@@ -282,7 +282,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		podCheckCmd := []string{"cat", "/mnt/test-1/data"}
 		expectedString := "hello world\n"
 		if isWindowsCluster {
-			podCheckCmd = []string{"powershell.exe", "-Command", "Get-Content C:\\mnt\\test-1\\data.txt"}
+			podCheckCmd = []string{"cmd", "/c", "type C:\\mnt\\test-1\\data.txt"}
 			expectedString = "hello world\r\n"
 		}
 		test := testsuites.DynamicallyProvisionedDeletePodTest{
@@ -366,7 +366,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	ginkgo.It("should create multiple PV objects, bind to PVCs and attach all to a single pod [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func() {
 		pods := []testsuites.PodDetails{
 			{
-				Cmd: convertToPowershellCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && echo 'hello world' > /mnt/test-2/data && echo 'hello world' > /mnt/test-3/data && grep 'hello world' /mnt/test-1/data && grep 'hello world' /mnt/test-2/data && grep 'hello world' /mnt/test-3/data"),
+				Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && echo 'hello world' > /mnt/test-2/data && echo 'hello world' > /mnt/test-3/data && grep 'hello world' /mnt/test-1/data && grep 'hello world' /mnt/test-2/data && grep 'hello world' /mnt/test-3/data"),
 				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
 						FSType:    "ext3",
@@ -484,7 +484,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 
 		pods := []testsuites.PodDetails{
 			{
-				Cmd:       convertToPowershellCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
+				Cmd:       convertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
 				Volumes:   t.normalizeVolumes(volumes, isMultiZone),
 				IsWindows: isWindowsCluster,
 			},
@@ -516,7 +516,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		skipIfUsingInTreeVolumePlugin()
 		pods := []testsuites.PodDetails{
 			{
-				Cmd: convertToPowershellCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
+				Cmd: convertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
 				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
 						ClaimSize: "10Gi",
@@ -546,7 +546,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	ginkgo.It("should detach disk after pod deleted [disk.csi.azure.com] [Windows]", func() {
 		pods := []testsuites.PodDetails{
 			{
-				Cmd: convertToPowershellCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
+				Cmd: convertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
 				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
 						ClaimSize: "10Gi",
@@ -572,9 +572,8 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	})
 
 	ginkgo.It("should create a statefulset object, write and read to it, delete the pod and write and read to it again [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func() {
-
 		pod := testsuites.PodDetails{
-			Cmd: convertToPowershellCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
+			Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
 			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 				{
 					FSType:    "ext3",
@@ -586,12 +585,13 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 				},
 			}, isMultiZone),
 			IsWindows: isWindowsCluster,
+			UseCMD:    true,
 		}
 
 		podCheckCmd := []string{"cat", "/mnt/test-1/data"}
 		expectedString := "hello world\n"
 		if isWindowsCluster {
-			podCheckCmd = []string{"powershell.exe", "-Command", "Get-Content C:\\mnt\\test-1\\data.txt"}
+			podCheckCmd = []string{"cmd", "/c", "type C:\\mnt\\test-1\\data.txt"}
 			expectedString = "hello world\r\n"
 		}
 		test := testsuites.DynamicallyProvisionedStatefulSetTest{
