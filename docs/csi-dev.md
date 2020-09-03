@@ -117,7 +117,7 @@ $ csc controller list-snapshots --endpoint tcp://127.0.0.1:10000
 ```console
 # run `docker login` first
 export REGISTRY=<dockerhub-alias>
-make azuredisk-container
+make container
 make push-latest
 ```
 
