@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"runtime"
 	"syscall"
 	"testing"
 
@@ -30,7 +31,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"k8s.io/utils/exec/testing"
+	testingexec "k8s.io/utils/exec/testing"
 	"k8s.io/utils/mount"
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
@@ -232,6 +233,10 @@ func TestNodeGetVolumeStats(t *testing.T) {
 }
 
 func TestNodeStageVolume(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skipf("skip test on GOOS=%s", runtime.GOOS)
+	}
+
 	stdVolCap := &csi.VolumeCapability_Mount{
 		Mount: &csi.VolumeCapability_MountVolume{
 			FsType: defaultLinuxFsType,
