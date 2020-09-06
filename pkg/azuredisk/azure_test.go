@@ -21,10 +21,18 @@ import (
 	"io/ioutil"
 	"os"
 	"reflect"
+	"runtime"
 	"testing"
 )
 
+func skipTestsIfWindows(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping tests on Windows")
+	}
+}
+
 func TestGetCloudProvider(t *testing.T) {
+	skipTestsIfWindows(t)
 	fakeCredFile := "fake-cred-file.json"
 	fakeKubeConfig := "fake-kube-config"
 	emptyKubeConfig := "empty-kube-config"
