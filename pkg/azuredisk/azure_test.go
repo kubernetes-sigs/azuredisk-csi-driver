@@ -25,14 +25,14 @@ import (
 	"testing"
 )
 
-func skipTestsIfWindows(t *testing.T) {
+func skipIfTestingOnWindows(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Skipping tests on Windows")
 	}
 }
 
 func TestGetCloudProvider(t *testing.T) {
-	skipTestsIfWindows(t)
+	skipIfTestingOnWindows(t)
 	fakeCredFile := "fake-cred-file.json"
 	fakeKubeConfig := "fake-kube-config"
 	emptyKubeConfig := "empty-kube-config"

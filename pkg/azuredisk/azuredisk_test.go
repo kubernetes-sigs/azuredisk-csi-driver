@@ -544,7 +544,7 @@ func TestIsAvailabilityZone(t *testing.T) {
 }
 
 func TestIsCorruptedDir(t *testing.T) {
-	skipTestsIfWindows(t)
+	skipIfTestingOnWindows(t)
 	existingMountPath, err := ioutil.TempDir(os.TempDir(), "csi-mount-test")
 	if err != nil {
 		t.Fatalf("failed to create tmp dir: %v", err)
