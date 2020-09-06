@@ -131,6 +131,7 @@ func TestGetMaxDataDiskCount(t *testing.T) {
 }
 
 func TestEnsureMountPoint(t *testing.T) {
+	skipIfTestingOnWindows(t)
 	errorTarget := "./error_is_likely_target"
 	alreadyExistTarget := "./false_is_likely_exist_target"
 	azuredisk := "./azure.go"
