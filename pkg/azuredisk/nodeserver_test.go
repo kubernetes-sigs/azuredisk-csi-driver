@@ -131,7 +131,6 @@ func TestGetMaxDataDiskCount(t *testing.T) {
 }
 
 func TestEnsureMountPoint(t *testing.T) {
-	skipIfTestingOnWindows(t)
 	errorTarget := "./error_is_likely_target"
 	alreadyExistTarget := "./false_is_likely_exist_target"
 	azuredisk := "./azure.go"
@@ -327,7 +326,6 @@ func TestNodeStageVolume(t *testing.T) {
 }
 
 func TestNodeUnstageVolume(t *testing.T) {
-	skipIfTestingOnWindows(t)
 	errorTarget := "./error_is_likely_target"
 	targetFile := "./abc.go"
 	tests := []struct {
@@ -381,7 +379,6 @@ func TestNodeUnstageVolume(t *testing.T) {
 }
 
 func TestNodePublishVolume(t *testing.T) {
-	skipIfTestingOnWindows(t)
 	volumeCap := csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER}
 	publishContext := map[string]string{
 		LUN: "/dev/01",
@@ -507,7 +504,6 @@ func TestNodePublishVolume(t *testing.T) {
 }
 
 func TestNodeUnpublishVolume(t *testing.T) {
-	skipIfTestingOnWindows(t)
 	errorTarget := "./error_is_likely_target"
 	targetFile := "./abc.go"
 	tests := []struct {
@@ -560,7 +556,6 @@ func TestNodeUnpublishVolume(t *testing.T) {
 }
 
 func TestNodeExpandVolume(t *testing.T) {
-	skipIfTestingOnWindows(t)
 	d, _ := NewFakeDriver(t)
 	stdCapacityRange = &csi.CapacityRange{
 		RequiredBytes: volumehelper.GiBToBytes(15),
@@ -595,7 +590,6 @@ func TestNodeExpandVolume(t *testing.T) {
 }
 
 func TestGetBlockSizeBytes(t *testing.T) {
-	skipIfTestingOnWindows(t)
 	d, _ := NewFakeDriver(t)
 	testTarget := "./test"
 	tests := []struct {
@@ -628,7 +622,6 @@ func TestGetBlockSizeBytes(t *testing.T) {
 }
 
 func TestEnsureBlockTargetFile(t *testing.T) {
-	skipIfTestingOnWindows(t)
 	testTarget := "./test"
 	d, _ := NewFakeDriver(t)
 	tests := []struct {
