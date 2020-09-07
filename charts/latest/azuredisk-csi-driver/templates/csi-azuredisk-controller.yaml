@@ -32,7 +32,7 @@ spec:
             - "--feature-gates=Topology=true"
             - "--csi-address=$(ADDRESS)"
             - "--v=5"
-            - "--timeout=120s"
+            - "--timeout=15s"
             - "--enable-leader-election"
             - "--leader-election-type=leases"
           env:
