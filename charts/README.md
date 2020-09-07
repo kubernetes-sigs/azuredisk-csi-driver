@@ -51,13 +51,10 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `image.csiProvisioner.tag`                        | csi-provisioner docker image tag                           | v1.5.0                                                       |
 | `image.csiProvisioner.pullPolicy`                 | csi-provisioner image pull policy                          | IfNotPresent                                                 |
 | `image.csiAttacher.repository`                    | csi-attacher docker image                                  | mcr.microsoft.com/oss/kubernetes-csi/csi-attacher            |
-| `image.csiAttacher.tag`                           | csi-attacher docker image tag                              | v1.2.0                                                       |
+| `image.csiAttacher.tag`                           | csi-attacher docker image tag                              | v2.2.0                                                       |
 | `image.csiAttacher.pullPolicy`                    | csi-attacher image pull policy                             | IfNotPresent                                                 |
-| `image.clusterDriverRegistrar.repository`         | cluster-driver-registrar docker image                      | mcr.microsoft.com/oss/kubernetes-csi/csi-cluster-driver-registrar |
-| `image.clusterDriverRegistrar.tag`                | cluster-driver-registrar docker image tag                  | v1.0.1                                                       |
-| `image.clusterDriverRegistrar.pullPolicy`         | cluster-driver-registrar image pull policy                 | IfNotPresent                                                 |
 | `image.csiResizer.repository`                     | csi-resizer docker image                                   | mcr.microsoft.com/oss/kubernetes-csi/csi-resizer             |
-| `image.csiResizer.tag`                            | csi-resizer docker image tag                               | v0.3.0                                                       |
+| `image.csiResizer.tag`                            | csi-resizer docker image tag                               | v0.5.0                                                       |
 | `image.csiResizer.pullPolicy`                     | csi-resizer image pull policy                              | IfNotPresent                                                 |
 | `image.livenessProbe.repository`                  | liveness-probe docker image                                | mcr.microsoft.com/oss/kubernetes-csi/livenessprobe           |
 | `image.livenessProbe.tag`                         | liveness-probe docker image tag                            | v1.1.0                                                       |
@@ -73,10 +70,10 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `node.metricsPort`                                | metrics port of csi-azuredisk-node                         |29605                                                        |
 | `snapshot.enabled`                                | whether enable snapshot feature                            | false                                                        |
 | `snapshot.image.csiSnapshotter.repository`        | csi-snapshotter docker image                               | mcr.microsoft.com/oss/kubernetes-csi/csi-snapshotter         |
-| `snapshot.image.csiSnapshotter.tag`               | csi-snapshotter docker image tag                           | v2.0.0                                                       |
+| `snapshot.image.csiSnapshotter.tag`               | csi-snapshotter docker image tag                           | v2.0.1                                                       |
 | `snapshot.image.csiSnapshotter.pullPolicy`        | csi-snapshotter image pull policy                          | IfNotPresent                                                 |
 | `snapshot.image.csiSnapshotController.repository` | snapshot-controller docker image                           | mcr.microsoft.com/oss/kubernetes-csi/snapshot-controller     |
-| `snapshot.image.csiSnapshotController.tag`        | snapshot-controller docker image tag                       | v2.0.0                                                       |
+| `snapshot.image.csiSnapshotController.tag`        | snapshot-controller docker image tag                       | v2.1.1                                                       |
 | `snapshot.image.csiSnapshotController.pullPolicy` | snapshot-controller image pull policy                      | IfNotPresent                                                 |
 | `snapshot.snapshotController.replicas`            | the replicas of snapshot-controller                        | 1                                                            |
 | `snapshot.snapshotController.serviceAccount`      | whether create service account of snapshot-controller      | true                                                         |
