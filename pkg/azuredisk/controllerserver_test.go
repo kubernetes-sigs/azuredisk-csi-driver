@@ -19,6 +19,9 @@ package azuredisk
 import (
 	"context"
 	"fmt"
+	"reflect"
+	"testing"
+
 	"github.com/Azure/go-autorest/autorest/date"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/stretchr/testify/assert"
@@ -26,8 +29,6 @@ import (
 	"k8s.io/legacy-cloud-providers/azure"
 	"k8s.io/legacy-cloud-providers/azure/clients/snapshotclient/mocksnapshotclient"
 	"k8s.io/legacy-cloud-providers/azure/retry"
-	"reflect"
-	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-12-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -940,7 +941,6 @@ func TestControllerExpandVolume(t *testing.T) {
 }
 
 func TestCreateSnapshot(t *testing.T) {
-
 	testCases := []struct {
 		name     string
 		testFunc func(t *testing.T)
@@ -1101,7 +1101,7 @@ func TestCreateSnapshot(t *testing.T) {
 				mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, rerr).AnyTimes()
 				_, err := d.CreateSnapshot(context.Background(), req)
-				expectedErr := status.Errorf(codes.Internal, "get snapshot unit-test from rg() error: Retriable: false, RetryAfter: 0s, HTTPStatusCode: 0, RawError: get snapshot error")
+				expectedErr := status.Errorf(codes.Internal, "get snapshot unit-test from rg(rg) error: Retriable: false, RetryAfter: 0s, HTTPStatusCode: 0, RawError: get snapshot error")
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
@@ -1183,10 +1183,10 @@ func TestDeleteSnapshot(t *testing.T) {
 			name: "Snapshot ID invalid",
 			testFunc: func(t *testing.T) {
 				req := &csi.DeleteSnapshotRequest{
-					SnapshotId: "testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name",
+					SnapshotId: "/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name",
 				}
 				d, _ := NewFakeDriver(t)
-				expectedErr := fmt.Errorf("could not get snapshot name from testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name, correct format: (?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/snapshots/(.+)")
+				expectedErr := fmt.Errorf("could not get snapshot name from /subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name, correct format: (?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/snapshots/(.+)")
 				_, err := d.DeleteSnapshot(context.Background(), req)
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
@@ -1333,7 +1333,7 @@ func TestGetSnapshotByID(t *testing.T) {
 				d.cloud = &azure.Cloud{}
 				snapshotID := "testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name"
 				expectedErr := fmt.Errorf("could not get snapshot name from testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name, correct format: (?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/snapshots/(.+)")
-				_, err := d.getSnapshotByID(ctx, snapshotID, sourceVolumeID)
+				_, err := d.getSnapshotByID(ctx, d.cloud.ResourceGroup, snapshotID, sourceVolumeID)
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
@@ -1359,7 +1359,7 @@ func TestGetSnapshotByID(t *testing.T) {
 				snapshotVolumeID := "unit-test"
 				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, rerr).AnyTimes()
 				expectedErr := fmt.Errorf("could not get snapshot name from testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name, correct format: (?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/snapshots/(.+)")
-				_, err := d.getSnapshotByID(context.Background(), snapshotID, snapshotVolumeID)
+				_, err := d.getSnapshotByID(context.Background(), d.cloud.ResourceGroup, snapshotID, snapshotVolumeID)
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
