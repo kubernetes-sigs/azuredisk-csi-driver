@@ -205,17 +205,24 @@ func (d *Driver) checkDiskCapacity(ctx context.Context, resourceGroup, diskName 
 }
 
 func isValidDiskURI(diskURI string) error {
-	if isManagedDisk(diskURI) {
-		if strings.Index(diskURI, "/subscriptions/") != 0 {
+	uri := strings.ToLower(diskURI)
+	if isManagedDisk(uri) {
+		if strings.Index(uri, "/subscriptions/") != 0 {
 			return fmt.Errorf("Inavlid DiskURI: %v, correct format: %v", diskURI, diskURISupportedManaged)
 		}
 	} else {
-		if strings.Index(diskURI, "https://") != 0 {
+		if strings.Index(uri, "https://") != 0 {
 			return fmt.Errorf("Inavlid DiskURI: %v, correct format: %v", diskURI, diskURISupportedBlob)
 		}
 	}
 
 	return nil
+}
+
+// isARMResourceID check whether resourceID is an ARM ResourceID
+func isARMResourceID(resourceID string) bool {
+	id := strings.ToLower(resourceID)
+	return strings.Contains(id, "/subscriptions/")
 }
 
 // Disk name must begin with a letter or number, end with a letter, number or underscore,

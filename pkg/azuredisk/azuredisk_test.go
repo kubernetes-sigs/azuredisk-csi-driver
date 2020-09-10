@@ -19,15 +19,16 @@ package azuredisk
 import (
 	"context"
 	"fmt"
-	"github.com/golang/mock/gomock"
-	"google.golang.org/grpc/status"
 	"io/ioutil"
-	"k8s.io/legacy-cloud-providers/azure"
-	"k8s.io/legacy-cloud-providers/azure/clients/diskclient/mockdiskclient"
 	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
+
+	"github.com/golang/mock/gomock"
+	"google.golang.org/grpc/status"
+	"k8s.io/legacy-cloud-providers/azure"
+	"k8s.io/legacy-cloud-providers/azure/clients/diskclient/mockdiskclient"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-12-01/compute"
 	"github.com/stretchr/testify/assert"
@@ -200,6 +201,10 @@ func TestIsValidDiskURI(t *testing.T) {
 			expectError: nil,
 		},
 		{
+			diskURI:     "/Subscriptions/b9d2281e/resourceGroups/test-resource/providers/Microsoft.Compute/disks/pvc-disk-dynamic-9e102c53",
+			expectError: nil,
+		},
+		{
 			diskURI:     "resourceGroups/test-resource/providers/Microsoft.Compute/disks/pvc-disk-dynamic-9e102c53",
 			expectError: fmt.Errorf("Inavlid DiskURI: resourceGroups/test-resource/providers/Microsoft.Compute/disks/pvc-disk-dynamic-9e102c53, correct format: %v", supportedManagedDiskURI),
 		},
@@ -221,6 +226,45 @@ func TestIsValidDiskURI(t *testing.T) {
 		err := isValidDiskURI(test.diskURI)
 		if !reflect.DeepEqual(err, test.expectError) {
 			t.Errorf("DiskURI: %q, isValidDiskURI err: %q, expected1: %q", test.diskURI, err, test.expectError)
+		}
+	}
+}
+
+func TestIsARMResourceID(t *testing.T) {
+	tests := []struct {
+		resourceID   string
+		expectResult bool
+	}{
+		{
+			resourceID:   "/subscriptions/b9d2281e/resourceGroups/test-resource/providers/Microsoft.Compute/disks/pvc-disk-dynamic-9e102c53",
+			expectResult: true,
+		},
+		{
+			resourceID:   "/Subscriptions/b9d2281e/resourceGroups/test-resource/providers/Microsoft.Compute/disks/pvc-disk-dynamic-9e102c53",
+			expectResult: true,
+		},
+		{
+			resourceID:   "resourceGroups/test-resource/providers/Microsoft.Compute/disks/pvc-disk-dynamic-9e102c53",
+			expectResult: false,
+		},
+		{
+			resourceID:   "https://test-saccount.blob.core.windows.net/container/pvc-disk-dynamic-9e102c53-593d-11e9-934e-705a0f18a318.vhd",
+			expectResult: false,
+		},
+		{
+			resourceID:   "test.com",
+			expectResult: false,
+		},
+		{
+			resourceID:   "",
+			expectResult: false,
+		},
+	}
+
+	for _, test := range tests {
+		result := isARMResourceID(test.resourceID)
+		if result != test.expectResult {
+			t.Errorf("ResourceID: %s, result: %v, expectResult: %v", test.resourceID, result, test.expectResult)
 		}
 	}
 }

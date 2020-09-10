@@ -642,7 +642,7 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	}
 	klog.V(2).Infof("create snapshot(%s) under rg(%s) successfully", snapshotName, resourceGroup)
 
-	csiSnapshot, err := d.getSnapshotByID(ctx, snapshotName, sourceVolumeID)
+	csiSnapshot, err := d.getSnapshotByID(ctx, resourceGroup, snapshotName, sourceVolumeID)
 	if err != nil {
 		return nil, err
 	}
@@ -662,19 +662,15 @@ func (d *Driver) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequ
 		return nil, status.Error(codes.InvalidArgument, "Snapshot ID must be provided")
 	}
 
-	var (
-		snapshotName, resourceGroup string
-		err                         error
-	)
+	var err error
+	snapshotName := snapshotID
+	resourceGroup := d.cloud.ResourceGroup
 
-	if strings.Contains(snapshotID, "/subscriptions/") {
+	if isARMResourceID(snapshotID) {
 		snapshotName, resourceGroup, err = d.getSnapshotInfo(snapshotID)
 		if err != nil {
 			return nil, err
 		}
-	} else {
-		snapshotName = snapshotID
-		resourceGroup = d.cloud.ResourceGroup
 	}
 
 	//todo: add metrics here
@@ -693,7 +689,7 @@ func (d *Driver) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsReques
 
 	// SnapshotId is not empty, return snapshot that match the snapshot id.
 	if len(req.GetSnapshotId()) != 0 {
-		snapshot, err := d.getSnapshotByID(ctx, req.GetSnapshotId(), req.SourceVolumeId)
+		snapshot, err := d.getSnapshotByID(ctx, d.cloud.ResourceGroup, req.GetSnapshotId(), req.SourceVolumeId)
 		if err != nil {
 			if strings.Contains(err.Error(), resourceNotFound) {
 				return &csi.ListSnapshotsResponse{}, nil
@@ -720,20 +716,14 @@ func (d *Driver) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsReques
 	return getEntriesAndNextToken(req, snapshots)
 }
 
-func (d *Driver) getSnapshotByID(ctx context.Context, snapshotID, sourceVolumeID string) (*csi.Snapshot, error) {
-	var (
-		snapshotName, resourceGroup string
-		err                         error
-	)
-
-	if strings.Contains(snapshotID, "/subscriptions/") {
+func (d *Driver) getSnapshotByID(ctx context.Context, resourceGroup, snapshotID, sourceVolumeID string) (*csi.Snapshot, error) {
+	var err error
+	snapshotName := snapshotID
+	if isARMResourceID(snapshotID) {
 		snapshotName, resourceGroup, err = d.getSnapshotInfo(snapshotID)
 		if err != nil {
 			return nil, err
 		}
-	} else {
-		snapshotName = snapshotID
-		resourceGroup = d.cloud.ResourceGroup
 	}
 
 	snapshot, rerr := d.cloud.SnapshotsClient.Get(ctx, resourceGroup, snapshotName)
