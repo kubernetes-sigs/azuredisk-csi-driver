@@ -29,8 +29,10 @@ import (
 	"github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2019-06-01/storage"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/protobuf/ptypes"
+
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
@@ -38,6 +40,7 @@ import (
 	volerr "k8s.io/cloud-provider/volume/errors"
 	"k8s.io/klog/v2"
 	"k8s.io/legacy-cloud-providers/azure"
+	"k8s.io/legacy-cloud-providers/azure/metrics"
 )
 
 var (
@@ -62,9 +65,10 @@ var (
 )
 
 const (
-	azureDiskKind  = "kind"
-	sourceSnapshot = "snapshot"
-	sourceVolume   = "volume"
+	azureDiskKind          = "kind"
+	sourceSnapshot         = "snapshot"
+	sourceVolume           = "volume"
+	azureDiskCSIDriverName = "azuredisk_csi_driver"
 )
 
 // CreateVolume provisions an azure disk
@@ -358,6 +362,12 @@ func (d *Driver) ControllerGetVolume(context.Context, *csi.ControllerGetVolumeRe
 
 // ControllerPublishVolume attach an azure disk to a required node
 func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.ControllerPublishVolumeRequest) (*csi.ControllerPublishVolumeResponse, error) {
+	mc := metrics.NewMetricContext(azureDiskCSIDriverName, "controller_publish_volume", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
+	isOperationSucceeded := false
+	defer func() {
+		mc.ObserveOperationWithResult(isOperationSucceeded)
+	}()
+
 	diskURI := req.GetVolumeId()
 	if len(diskURI) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID not provided")
@@ -429,11 +439,18 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 	}
 
 	pvInfo := map[string]string{LUN: strconv.Itoa(int(lun))}
+	isOperationSucceeded = true
 	return &csi.ControllerPublishVolumeResponse{PublishContext: pvInfo}, nil
 }
 
 // ControllerUnpublishVolume detach an azure disk from a required node
 func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.ControllerUnpublishVolumeRequest) (*csi.ControllerUnpublishVolumeResponse, error) {
+	mc := metrics.NewMetricContext(azureDiskCSIDriverName, "controller_unpublish_volume", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
+	isOperationSucceeded := false
+	defer func() {
+		mc.ObserveOperationWithResult(isOperationSucceeded)
+	}()
+
 	diskURI := req.GetVolumeId()
 	if len(diskURI) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID not provided")
@@ -460,6 +477,7 @@ func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.Control
 		}
 	}
 	klog.V(2).Infof("detach volume %s from node %s successfully", diskURI, nodeID)
+	isOperationSucceeded = true
 
 	return &csi.ControllerUnpublishVolumeResponse{}, nil
 }
