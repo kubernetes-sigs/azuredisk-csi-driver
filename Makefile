@@ -43,6 +43,7 @@ GOPATH ?= $(shell go env GOPATH)
 GOBIN ?= $(GOPATH)/bin
 GO111MODULE = off
 DOCKER_CLI_EXPERIMENTAL = enabled
+export
 export GOPATH GOBIN GO111MODULE DOCKER_CLI_EXPERIMENTAL
 
 .PHONY: all
@@ -109,10 +110,8 @@ azuredisk-container: azuredisk azuredisk-windows
 	docker buildx rm container-builder || true
 	docker buildx create --use --name=container-builder
 ifdef CI
-	docker buildx build --no-cache -t $(IMAGE_TAG)-linux-amd64 -f ./pkg/azurediskplugin/Dockerfile --platform="linux/amd64" --push .
-	docker buildx build --no-cache -t $(IMAGE_TAG)-windows-1809-amd64 -f ./pkg/azurediskplugin/Windows.Dockerfile --platform="windows/amd64" --push .
-	docker manifest create $(IMAGE_TAG) $(IMAGE_TAG)-linux-amd64 $(IMAGE_TAG)-windows-1809-amd64
-	docker manifest inspect $(IMAGE_TAG)
+	bash -x build.sh build_and_push
+	bash -x build.sh manifest
 ifdef PUBLISH
 	docker manifest create $(IMAGE_TAG_LATEST) $(IMAGE_TAG)-linux-amd64 $(IMAGE_TAG)-windows-1809-amd64
 	docker manifest inspect $(IMAGE_TAG_LATEST)
