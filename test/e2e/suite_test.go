@@ -114,12 +114,6 @@ var _ = ginkgo.AfterSuite(func() {
 	// Default storage driver configuration is CSI. Freshly built
 	// CSI driver is installed for that case.
 	if testutil.IsRunningInProw() {
-		azurediskLog := testCmd{
-			command:  "bash",
-			args:     []string{"test/utils/azuredisk_log.sh"},
-			startLog: "===================azuredisk log===================",
-			endLog:   "===================================================",
-		}
 		if isTestingMigration || isUsingInTreeVolumePlugin {
 			cmLog := testCmd{
 				command:  "bash",
@@ -131,6 +125,13 @@ var _ = ginkgo.AfterSuite(func() {
 		}
 
 		if isTestingMigration || !isUsingInTreeVolumePlugin {
+			azurediskLog := testCmd{
+				command:  "bash",
+				args:     []string{"test/utils/azuredisk_log.sh"},
+				startLog: "===================azuredisk log===================",
+				endLog:   "===================================================",
+			}
+
 			e2eTeardown := testCmd{
 				command:  "make",
 				args:     []string{"e2e-teardown"},
