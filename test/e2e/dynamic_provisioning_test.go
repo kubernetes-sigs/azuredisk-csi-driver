@@ -337,6 +337,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	ginkgo.It("should clone a volume from an existing volume and read from it [disk.csi.azure.com]", func() {
 		skipIfTestingInWindowsCluster()
 		skipIfUsingInTreeVolumePlugin()
+		if !isMultiZone {
+			// todo: remove this when single-az tests are runnong on 1.16
+			ginkgo.Skip("test case not supported by single-az test since it's running on 1.15")
+		}
 
 		pod := testsuites.PodDetails{
 			Cmd: "echo 'hello world' > /mnt/test-1/data",
