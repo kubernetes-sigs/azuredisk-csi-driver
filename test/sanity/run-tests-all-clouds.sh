@@ -27,6 +27,7 @@ function install_csi_sanity_bin {
   popd
 }
 
+export GO111MODULE=off
 apt update && apt install cifs-utils procps -y
 install_csi_sanity_bin
 test/sanity/run-test.sh "$nodeid"
