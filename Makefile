@@ -41,7 +41,7 @@ GINKGO_FLAGS += -ginkgo.focus="\[single-az\]"
 endif
 GOPATH ?= $(shell go env GOPATH)
 GOBIN ?= $(GOPATH)/bin
-GO111MODULE = off
+GO111MODULE = on
 DOCKER_CLI_EXPERIMENTAL = enabled
 export GOPATH GOBIN GO111MODULE DOCKER_CLI_EXPERIMENTAL
 
