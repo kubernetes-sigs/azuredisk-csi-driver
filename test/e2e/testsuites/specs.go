@@ -19,13 +19,14 @@ package testsuites
 import (
 	"fmt"
 
-	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
-
 	"github.com/onsi/ginkgo"
+
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	restclientset "k8s.io/client-go/rest"
+
+	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 )
 
 type PodDetails struct {
@@ -247,7 +248,6 @@ func CreateVolumeSnapshotClass(client restclientset.Interface, namespace *v1.Nam
 	ginkgo.By("setting up the VolumeSnapshotClass")
 	volumeSnapshotClass := csiDriver.GetVolumeSnapshotClass(namespace.Name)
 	tvsc := NewTestVolumeSnapshotClass(client, namespace, volumeSnapshotClass)
-	tvsc.Create()
 
 	return tvsc, tvsc.Cleanup
 }

@@ -17,12 +17,22 @@ limitations under the License.
 package testsuites
 
 import (
+	"context"
+	"fmt"
+	"strings"
+
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
+	"sigs.k8s.io/azuredisk-csi-driver/test/utils/azure"
+	"sigs.k8s.io/azuredisk-csi-driver/test/utils/credentials"
 
 	"github.com/onsi/ginkgo"
+	"github.com/pborman/uuid"
+
 	v1 "k8s.io/api/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	restclientset "k8s.io/client-go/rest"
+	"k8s.io/kubernetes/test/e2e/framework"
+	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
 )
 
 // DynamicallyProvisionedVolumeSnapshotTest will provision required StorageClass(es),VolumeSnapshotClass(es), PVC(s) and Pod(s)
@@ -46,15 +56,47 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interfac
 		defer pvcCleanup[i]()
 	}
 	tpod.SetupVolume(tpvc.persistentVolumeClaim, volume.VolumeMount.NameGenerate+"1", volume.VolumeMount.MountPathGenerate+"1", volume.VolumeMount.ReadOnly)
-
 	ginkgo.By("deploying the pod")
 	tpod.Create()
 	defer tpod.Cleanup()
 	ginkgo.By("checking that the pod's command exits with no error")
 	tpod.WaitForSuccess()
 
-	ginkgo.By("creating volume snapshot class")
+	ginkgo.By("Checking Prow test resource group")
+	creds, err := credentials.CreateAzureCredentialFile(false)
+	framework.ExpectNoError(err, fmt.Sprintf("Error getting creds for AzurePublicCloud %v", err))
+	defer func() {
+		err := credentials.DeleteAzureCredentialFile()
+		framework.ExpectNoError(err)
+	}()
+
+	ginkgo.By("Prow test resource group: " + creds.ResourceGroup)
+
+	azureClient, err := azure.GetAzureClient(creds.Cloud, creds.SubscriptionID, creds.AADClientID, creds.TenantID, creds.AADClientSecret)
+	framework.ExpectNoError(err)
+
+	//create external resource group
+	externalRG := credentials.ResourceGroupPrefix + uuid.NewUUID().String()
+	ginkgo.By("Creating external resource group: " + externalRG)
+	ctx := context.Background()
+	_, err = azureClient.EnsureResourceGroup(ctx, externalRG, creds.Location, nil)
+	framework.ExpectNoError(err)
+	defer func() {
+		// Only delete resource group the test created
+		if strings.HasPrefix(externalRG, credentials.ResourceGroupPrefix) {
+			e2elog.Logf("Deleting resource group %s", externalRG)
+			err := azureClient.DeleteResourceGroup(ctx, externalRG)
+			framework.ExpectNoError(err)
+		}
+	}()
+
+	ginkgo.By("creating volume snapshot class with external rg " + externalRG)
 	tvsc, cleanup := CreateVolumeSnapshotClass(restclient, namespace, t.CSIDriver)
+	mp := map[string]string{
+		"resourceGroup": externalRG,
+	}
+	tvsc.volumeSnapshotClass.Parameters = mp
+	tvsc.Create()
 	defer cleanup()
 
 	ginkgo.By("taking snapshots")
@@ -77,4 +119,5 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interfac
 	defer tPodWithSnapshot.Cleanup()
 	ginkgo.By("checking that the pod's command exits with no error")
 	tPodWithSnapshot.WaitForSuccess()
+
 }
