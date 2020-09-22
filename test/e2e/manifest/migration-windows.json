@@ -8,6 +8,7 @@
             "kubernetesConfig": {
                 "networkPlugin": "azure",
                 "containerRuntime": "containerd",
+                "windowsContainerdURL": "https://github.com/containerd/containerd/releases/download/v1.4.0/containerd-1.4.0-windows-amd64.tar.gz",
                 "cloudProviderRateLimitQPS": 6,
                 "cloudProviderRateLimitBucket": 20,
                 "controllerManagerConfig": {
