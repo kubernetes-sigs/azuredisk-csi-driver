@@ -44,7 +44,7 @@ spec:
         kubernetes.io/os: linux
       containers:
         - name: deployment-sharedisk
-          image: nginx
+          image: mcr.microsoft.com/oss/nginx/nginx:1.17.3-alpine
           volumeDevices:
             - name: azuredisk
               devicePath: /dev/sdx
