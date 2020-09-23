@@ -29,7 +29,7 @@ spec:
   nodeSelector:
     kubernetes.io/os: linux
   containers:
-  - image: nginx
+  - image: mcr.microsoft.com/oss/nginx/nginx:1.17.3-alpine
     name: nginx-azuredisk
     volumeDevices:
     - name: azuredisk

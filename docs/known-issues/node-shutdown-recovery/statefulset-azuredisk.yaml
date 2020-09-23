@@ -26,7 +26,7 @@ spec:
       terminationGracePeriodSeconds: 0
       containers:
         - name: statefulset-autorecover
-          image: nginx
+          image: mcr.microsoft.com/oss/nginx/nginx:1.17.3-alpine
           volumeMounts:
             - name: persistent-storage
               mountPath: /mnt/azuredisk
