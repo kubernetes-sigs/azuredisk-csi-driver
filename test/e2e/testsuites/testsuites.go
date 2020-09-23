@@ -729,6 +729,11 @@ func (t *TestPod) WaitForSuccess() {
 	framework.ExpectNoError(err)
 }
 
+func (t *TestPod) Exec(command []string, expectedString string) {
+	_, err := framework.LookForStringInPodExec(t.namespace.Name, t.pod.Name, command, expectedString, execTimeout)
+	framework.ExpectNoError(err)
+}
+
 func (t *TestPod) WaitForRunning() {
 	err := e2epod.WaitForPodRunningInNamespace(t.client, t.pod)
 	framework.ExpectNoError(err)

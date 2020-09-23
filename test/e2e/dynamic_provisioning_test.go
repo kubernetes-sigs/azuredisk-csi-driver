@@ -462,7 +462,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			}, isMultiZone),
 		}
 		podWithSnapshot := testsuites.PodDetails{
-			Cmd: "grep 'hello world' /mnt/test-1/data",
+			Cmd: convertToPowershellorCmdCommandIfNecessary("while true; do cat /mnt/test-1/data; sleep 3600; done"),
 		}
 		test := testsuites.DynamicallyProvisionedVolumeSnapshotTest{
 			CSIDriver:              testDriver,

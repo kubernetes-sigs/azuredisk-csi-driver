@@ -75,6 +75,8 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interfac
 	ginkgo.By("deploying a second pod with a volume restored from the snapshot")
 	tPodWithSnapshot.Create()
 	defer tPodWithSnapshot.Cleanup()
-	ginkgo.By("checking that the pod's command exits with no error")
-	tPodWithSnapshot.WaitForSuccess()
+	ginkgo.By("Waiting for pod running")
+	tPodWithSnapshot.WaitForRunning()
+	ginkgo.By("checking pod exec after volume restored from the snapshot")
+	tPodWithSnapshot.Exec([]string{"cat", "/mnt/test-1/data"}, "hello world")
 }
