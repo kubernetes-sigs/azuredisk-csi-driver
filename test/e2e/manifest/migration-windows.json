@@ -30,7 +30,7 @@
             {
                 "name": "windowspool1",
                 "count": 2,
-                "vmSize": "Standard_D2s_v3",
+                "vmSize": "Standard_D4s_v3",
                 "osDiskSizeGB": 128,
                 "availabilityProfile": "VirtualMachineScaleSets",
                 "osType": "Windows"
