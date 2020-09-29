@@ -73,27 +73,27 @@ func TestGetCachingMode(t *testing.T) {
 			false,
 		},
 		{
-			map[string]string{"cachingmode": ""},
+			map[string]string{cachingModeField: ""},
 			compute.CachingTypes(defaultAzureDataDiskCachingMode),
 			false,
 		},
 		{
-			map[string]string{"cachingmode": "None"},
+			map[string]string{cachingModeField: "None"},
 			compute.CachingTypes("None"),
 			false,
 		},
 		{
-			map[string]string{"cachingmode": "ReadOnly"},
+			map[string]string{cachingModeField: "ReadOnly"},
 			compute.CachingTypes("ReadOnly"),
 			false,
 		},
 		{
-			map[string]string{"cachingmode": "ReadWrite"},
+			map[string]string{cachingModeField: "ReadWrite"},
 			compute.CachingTypes("ReadWrite"),
 			false,
 		},
 		{
-			map[string]string{"cachingmode": "WriteOnly"},
+			map[string]string{cachingModeField: "WriteOnly"},
 			compute.CachingTypes(""),
 			true,
 		},
@@ -263,7 +263,7 @@ func TestCreateVolume(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				d, _ := NewFakeDriver(t)
 				mp := make(map[string]string)
-				mp["maxshares"] = "aaa"
+				mp[maxSharesField] = "aaa"
 				req := &csi.CreateVolumeRequest{
 					Name:               "unit-test",
 					VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
@@ -281,7 +281,7 @@ func TestCreateVolume(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				d, _ := NewFakeDriver(t)
 				mp := make(map[string]string)
-				mp["maxshares"] = "0"
+				mp[maxSharesField] = "0"
 				req := &csi.CreateVolumeRequest{
 					Name:               "unit-test",
 					VolumeCapabilities: stdVolumeCapabilities,
@@ -299,15 +299,15 @@ func TestCreateVolume(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				d, _ := NewFakeDriver(t)
 				mp := make(map[string]string)
-				mp["maxshares"] = "1"
-				mp["skuname"] = "ut"
-				mp["location"] = "ut"
-				mp["storageaccount"] = "ut"
-				mp["storageaccounttype"] = "ut"
-				mp["resourcegroup"] = "ut"
-				mp["diskiopsreadwrite"] = "ut"
-				mp["diskmbpsreadwrite"] = "ut"
-				mp["diskname"] = "ut"
+				mp[maxSharesField] = "1"
+				mp[skuNameField] = "ut"
+				mp[locationField] = "ut"
+				mp[storageAccountField] = "ut"
+				mp[storageAccountTypeField] = "ut"
+				mp[resourceGroupField] = "ut"
+				mp[diskIOPSReadWriteField] = "ut"
+				mp[diskMBPSReadWriteField] = "ut"
+				mp[diskNameField] = "ut"
 				mp["diskencryptionsetid"] = "ut"
 				mp["writeacceleratorenabled"] = "ut"
 				req := &csi.CreateVolumeRequest{
@@ -327,7 +327,7 @@ func TestCreateVolume(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				d, _ := NewFakeDriver(t)
 				mp := make(map[string]string)
-				mp["storageaccounttype"] = "NOT_EXISTING"
+				mp[storageAccountTypeField] = "NOT_EXISTING"
 				req := &csi.CreateVolumeRequest{
 					Name:               "unit-test",
 					VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
@@ -345,7 +345,7 @@ func TestCreateVolume(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				d, _ := NewFakeDriver(t)
 				mp := make(map[string]string)
-				mp["cachingmode"] = "WriteOnly"
+				mp[cachingModeField] = "WriteOnly"
 				req := &csi.CreateVolumeRequest{
 					Name:               "unit-test",
 					VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
@@ -1011,8 +1011,8 @@ func TestCreateSnapshot(t *testing.T) {
 				d.cloud = &azure.Cloud{}
 				parameter := make(map[string]string)
 				parameter["tags"] = "unit-test"
-				parameter["incremental"] = "false"
-				parameter["resourcegroup"] = "test"
+				parameter[incrementalField] = "false"
+				parameter[resourceGroupField] = "test"
 				req := &csi.CreateSnapshotRequest{
 					SourceVolumeId: testVolumeID,
 					Name:           "snapname",

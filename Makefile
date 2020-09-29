@@ -160,3 +160,4 @@ create-example-deployment:
 	kubectl apply -f deploy/example/storageclass-azuredisk-csi.yaml
 	kubectl apply -f deploy/example/deployment.yaml
 	kubectl apply -f deploy/example/statefulset.yaml
+	kubectl apply -f deploy/example/windows/statefulset.yaml

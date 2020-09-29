@@ -64,6 +64,20 @@ const (
 	managedDiskPath = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s"
 
 	LUN = "LUN"
+
+	cachingModeField        = "cachingmode"
+	storageAccountTypeField = "storageaccounttype"
+	storageAccountField     = "storageaccount"
+	skuNameField            = "skuname"
+	locationField           = "location"
+	resourceGroupField      = "resourcegroup"
+	diskIOPSReadWriteField  = "diskiopsreadwrite"
+	diskMBPSReadWriteField  = "diskmbpsreadwrite"
+	diskNameField           = "diskname"
+	desIDField              = "diskencryptionsetid"
+	tagsField               = "tags"
+	maxSharesField          = "maxshares"
+	incrementalField        = "incremental"
 )
 
 var (

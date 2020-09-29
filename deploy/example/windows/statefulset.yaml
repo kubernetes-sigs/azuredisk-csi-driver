@@ -2,11 +2,11 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: busybox-azuredisk
+  name: busybox-azuredisk-win
   labels:
     app: busybox
 spec:
-  serviceName: busybox-azuredisk
+  serviceName: busybox-azuredisk-win
   replicas: 1
   template:
     metadata:

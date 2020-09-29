@@ -8,7 +8,7 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 100Gi
+      storage: 10Gi
   storageClassName: managed-csi
 ---
 apiVersion: apps/v1
@@ -16,7 +16,7 @@ kind: Deployment
 metadata:
   labels:
     app: busybox
-  name: busybox-azuredisk
+  name: busybox-azuredisk-win
 spec:
   replicas: 1
   selector:
@@ -26,7 +26,7 @@ spec:
     metadata:
       labels:
         app: busybox
-      name: busybox-azuredisk
+      name: busybox-azuredisk-win
     spec:
       nodeSelector:
         "kubernetes.io/os": windows
