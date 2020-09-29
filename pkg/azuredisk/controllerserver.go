@@ -116,35 +116,38 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	)
 
 	parameters := req.GetParameters()
+	if parameters == nil {
+		parameters = make(map[string]string)
+	}
 	for k, v := range parameters {
 		switch strings.ToLower(k) {
-		case "skuname":
+		case skuNameField:
 			storageAccountType = v
-		case "location":
+		case locationField:
 			location = v
-		case "storageaccount":
+		case storageAccountField:
 			account = v
-		case "storageaccounttype":
+		case storageAccountTypeField:
 			storageAccountType = v
 		case azureDiskKind:
 			strKind = v
-		case "cachingmode":
+		case cachingModeField:
 			cachingMode = v1.AzureDataDiskCachingMode(v)
-		case "resourcegroup":
+		case resourceGroupField:
 			resourceGroup = v
-		case "diskiopsreadwrite":
+		case diskIOPSReadWriteField:
 			diskIopsReadWrite = v
-		case "diskmbpsreadwrite":
+		case diskMBPSReadWriteField:
 			diskMbpsReadWrite = v
-		case "diskname":
+		case diskNameField:
 			diskName = v
-		case "diskencryptionsetid":
+		case desIDField:
 			diskEncryptionSetID = v
-		case "tags":
+		case tagsField:
 			customTags = v
 		case azure.WriteAcceleratorEnabled:
 			writeAcceleratorEnabled = v
-		case "maxshares":
+		case maxSharesField:
 			maxShares, err = strconv.Atoi(v)
 			if err != nil {
 				return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("parse %s failed with error: %v", v, err))
@@ -608,13 +611,13 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	parameters := req.GetParameters()
 	for k, v := range parameters {
 		switch strings.ToLower(k) {
-		case "tags":
+		case tagsField:
 			customTags = v
-		case "incremental":
+		case incrementalField:
 			if v == "false" {
 				incremental = false
 			}
-		case "resourcegroup":
+		case resourceGroupField:
 			resourceGroup = v
 		default:
 			return nil, fmt.Errorf("AzureDisk - invalid option %s in VolumeSnapshotClass", k)
@@ -808,7 +811,7 @@ func getCachingMode(attributes map[string]string) (compute.CachingTypes, error) 
 
 	for k, v := range attributes {
 		switch strings.ToLower(k) {
-		case "cachingmode":
+		case cachingModeField:
 			cachingMode = v1.AzureDataDiskCachingMode(v)
 		}
 	}
