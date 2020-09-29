@@ -17,5 +17,9 @@ RUN apt-get update && apt-get install -y util-linux e2fsprogs mount ca-certifica
 LABEL maintainers="andyzhangx"
 LABEL description="Azure Disk CSI Driver"
 
+# Create a nonroot user
+RUN useradd -u 10001 nonroot
+USER nonroot
+
 COPY ./_output/azurediskplugin /azurediskplugin
 ENTRYPOINT ["/azurediskplugin"]

@@ -106,6 +106,7 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:
             privileged: true
+            runAsUser: 0
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
