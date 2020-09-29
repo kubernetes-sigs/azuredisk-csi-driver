@@ -126,6 +126,14 @@ var _ = ginkgo.AfterSuite(func() {
 		}
 
 		if isTestingMigration || !isUsingInTreeVolumePlugin {
+			checkPodsRestart := testCmd{
+				command:  "bash",
+				args:     []string{"test/utils/check_driver_pods_restart.sh", "log"},
+				startLog: "Check driver pods if restarts ...",
+				endLog:   "Check successfully",
+			}
+			execTestCmd([]testCmd{checkPodsRestart})
+
 			createExampleDeployment := testCmd{
 				command:  "make",
 				args:     []string{"create-example-deployment"},
@@ -231,7 +239,7 @@ func convertToPowershellorCmdCommandIfNecessary(command string) string {
 	case "while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done":
 		return "while (1) { Add-Content -Encoding Ascii C:\\mnt\\test-1\\data.txt $(Get-Date -Format u); sleep 3600 }"
 	case "echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done":
-		return "echo hello world>> C:\\mnt\\test-1\\data.txt& FOR /L %N IN () DO timeout 3600"
+		return "echo hello world>> C:\\mnt\\test-1\\data.txt&sleep 3600"
 	case "echo 'hello world' > /mnt/test-1/data && echo 'hello world' > /mnt/test-2/data && echo 'hello world' > /mnt/test-3/data && grep 'hello world' /mnt/test-1/data && grep 'hello world' /mnt/test-2/data && grep 'hello world' /mnt/test-3/data":
 		return "echo 'hello world' | Out-File -FilePath C:\\mnt\\test-1\\data.txt; Get-Content C:\\mnt\\test-1\\data.txt | findstr 'hello world'; echo 'hello world' | Out-File -FilePath C:\\mnt\\test-2\\data.txt; Get-Content C:\\mnt\\test-2\\data.txt | findstr 'hello world'; echo 'hello world' | Out-File -FilePath C:\\mnt\\test-3\\data.txt; Get-Content C:\\mnt\\test-3\\data.txt | findstr 'hello world'"
 	}
