@@ -32,6 +32,7 @@ func skipIfTestingOnWindows(t *testing.T) {
 }
 
 func TestGetCloudProvider(t *testing.T) {
+	// skip for now as this is very flaky on Windows
 	skipIfTestingOnWindows(t)
 	fakeCredFile := "fake-cred-file.json"
 	fakeKubeConfig := "fake-kube-config"
