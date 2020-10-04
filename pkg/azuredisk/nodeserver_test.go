@@ -155,24 +155,25 @@ func TestEnsureMountPoint(t *testing.T) {
 	assert.NoError(t, err)
 
 	tests := []struct {
-		desc        string
-		target      string
-		expectedErr testutil.TestError
+		desc          string
+		target        string
+		skipOnWindows bool
+		expectedErr   testutil.TestError
 	}{
 		{
-			desc:   "[Error] Mocked by IsLikelyNotMountPoint",
-			target: errorTarget,
+			desc:          "[Error] Mocked by IsLikelyNotMountPoint",
+			target:        errorTarget,
+			skipOnWindows: true, // no error reported in windows
 			expectedErr: testutil.TestError{
-				LinuxError:   errors.New("fake IsLikelyNotMountPoint: fake error"),
-				WindowsError: nil, // different mount behaviour on windows,
+				DefaultError: errors.New("fake IsLikelyNotMountPoint: fake error"),
 			},
 		},
 		{
-			desc:   "[Error] Not a directory",
-			target: azuredisk,
+			desc:          "[Error] Not a directory",
+			target:        azuredisk,
+			skipOnWindows: true, // no error reported in windows
 			expectedErr: testutil.TestError{
-				LinuxError:   &os.PathError{Op: "mkdir", Path: azuredisk, Err: syscall.ENOTDIR},
-				WindowsError: nil, // different mount behaviour on windows),
+				DefaultError: &os.PathError{Op: "mkdir", Path: azuredisk, Err: syscall.ENOTDIR},
 			},
 		},
 		{
@@ -195,9 +196,11 @@ func TestEnsureMountPoint(t *testing.T) {
 	d.mounter = fakeMounter
 
 	for _, test := range tests {
-		err := d.ensureMountPoint(test.target)
-		if !testutil.AssertError(&test.expectedErr, err) {
-			t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr.Error())
+		if !(runtime.GOOS == "windows" && test.skipOnWindows) {
+			err := d.ensureMountPoint(test.target)
+			if !testutil.AssertError(&test.expectedErr, err) {
+				t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr.Error())
+			}
 		}
 	}
 
@@ -350,33 +353,32 @@ func TestNodeUnstageVolume(t *testing.T) {
 	assert.NoError(t, err)
 
 	tests := []struct {
-		desc        string
-		req         csi.NodeUnstageVolumeRequest
-		expectedErr testutil.TestError
+		desc          string
+		req           csi.NodeUnstageVolumeRequest
+		skipOnWindows bool
+		expectedErr   testutil.TestError
 	}{
 		{
 			desc: "Volume ID missing",
 			req:  csi.NodeUnstageVolumeRequest{StagingTargetPath: targetTest},
 			expectedErr: testutil.TestError{
-				LinuxError:   status.Error(codes.InvalidArgument, "Volume ID not provided"),
-				WindowsError: status.Error(codes.InvalidArgument, "Volume ID not provided"),
+				DefaultError: status.Error(codes.InvalidArgument, "Volume ID not provided"),
 			},
 		},
 		{
 			desc: "Staging target missing ",
 			req:  csi.NodeUnstageVolumeRequest{VolumeId: "vol_1"},
 			expectedErr: testutil.TestError{
-				LinuxError:   status.Error(codes.InvalidArgument, "Staging target not provided"),
-				WindowsError: status.Error(codes.InvalidArgument, "Staging target not provided"),
+				DefaultError: status.Error(codes.InvalidArgument, "Staging target not provided"),
 			},
 		},
 		{
-			desc: "[Error] CleanupMountPoint error mocked by IsLikelyNotMountPoint",
-			req:  csi.NodeUnstageVolumeRequest{StagingTargetPath: errorTarget, VolumeId: "vol_1"},
+			desc:          "[Error] CleanupMountPoint error mocked by IsLikelyNotMountPoint",
+			req:           csi.NodeUnstageVolumeRequest{StagingTargetPath: errorTarget, VolumeId: "vol_1"},
+			skipOnWindows: true, // no error reported in windows
 			expectedErr: testutil.TestError{
-				LinuxError: status.Error(codes.Internal, fmt.Sprintf("failed to unmount staging target \"%s\": "+
+				DefaultError: status.Error(codes.Internal, fmt.Sprintf("failed to unmount staging target \"%s\": "+
 					"fake IsLikelyNotMountPoint: fake error", errorTarget)),
-				WindowsError: nil, // different mount behaviour on windows
 			},
 		},
 		{
@@ -394,9 +396,11 @@ func TestNodeUnstageVolume(t *testing.T) {
 	d.mounter = fakeMounter
 
 	for _, test := range tests {
-		_, err := d.NodeUnstageVolume(context.Background(), &test.req)
-		if !testutil.AssertError(&test.expectedErr, err) {
-			t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr.Error())
+		if !(runtime.GOOS == "windows" && test.skipOnWindows) {
+			_, err := d.NodeUnstageVolume(context.Background(), &test.req)
+			if !testutil.AssertError(&test.expectedErr, err) {
+				t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr.Error())
+			}
 		}
 	}
 
@@ -441,16 +445,14 @@ func TestNodePublishVolume(t *testing.T) {
 			desc: "Volume capabilities missing",
 			req:  csi.NodePublishVolumeRequest{},
 			expectedErr: testutil.TestError{
-				LinuxError:   status.Error(codes.InvalidArgument, "Volume capability missing in request"),
-				WindowsError: status.Error(codes.InvalidArgument, "Volume capability missing in request"),
+				DefaultError: status.Error(codes.InvalidArgument, "Volume capability missing in request"),
 			},
 		},
 		{
 			desc: "Volume ID missing",
 			req:  csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap}},
 			expectedErr: testutil.TestError{
-				LinuxError:   status.Error(codes.InvalidArgument, "Volume ID missing in request"),
-				WindowsError: status.Error(codes.InvalidArgument, "Volume ID missing in request"),
+				DefaultError: status.Error(codes.InvalidArgument, "Volume ID missing in request"),
 			},
 		},
 		{
@@ -458,8 +460,7 @@ func TestNodePublishVolume(t *testing.T) {
 			req: csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap},
 				VolumeId: "vol_1"},
 			expectedErr: testutil.TestError{
-				LinuxError:   status.Error(codes.InvalidArgument, "Staging target not provided"),
-				WindowsError: status.Error(codes.InvalidArgument, "Staging target not provided"),
+				DefaultError: status.Error(codes.InvalidArgument, "Staging target not provided"),
 			},
 		},
 		{
@@ -468,8 +469,7 @@ func TestNodePublishVolume(t *testing.T) {
 				VolumeId:          "vol_1",
 				StagingTargetPath: sourceTest},
 			expectedErr: testutil.TestError{
-				LinuxError:   status.Error(codes.InvalidArgument, "Target path not provided"),
-				WindowsError: status.Error(codes.InvalidArgument, "Target path not provided"),
+				DefaultError: status.Error(codes.InvalidArgument, "Target path not provided"),
 			},
 		},
 		{
@@ -481,9 +481,7 @@ func TestNodePublishVolume(t *testing.T) {
 				Readonly:          true},
 			skipOnWindows: true, // permission issues
 			expectedErr: testutil.TestError{
-				LinuxError: status.Errorf(codes.Internal, fmt.Sprintf("Could not mount target \"%s\": "+
-					"mkdir %s: not a directory", azuredisk, azuredisk)),
-				WindowsError: status.Errorf(codes.Internal, fmt.Sprintf("Could not mount target \"%s\": "+
+				DefaultError: status.Errorf(codes.Internal, fmt.Sprintf("Could not mount target \"%s\": "+
 					"mkdir %s: not a directory", azuredisk, azuredisk)),
 			},
 		},
@@ -495,8 +493,7 @@ func TestNodePublishVolume(t *testing.T) {
 				StagingTargetPath: sourceTest,
 				Readonly:          true},
 			expectedErr: testutil.TestError{
-				LinuxError:   status.Error(codes.InvalidArgument, "lun not provided"),
-				WindowsError: status.Error(codes.InvalidArgument, "lun not provided"),
+				DefaultError: status.Error(codes.InvalidArgument, "lun not provided"),
 			},
 		},
 		{
@@ -508,8 +505,7 @@ func TestNodePublishVolume(t *testing.T) {
 				PublishContext:    publishContext,
 				Readonly:          true},
 			expectedErr: testutil.TestError{
-				LinuxError:   status.Error(codes.Internal, "Failed to find device path with lun /dev/01. cannot parse deviceInfo: /dev/01"),
-				WindowsError: status.Error(codes.Internal, "Failed to find device path with lun /dev/01. cannot parse deviceInfo: /dev/01"),
+				DefaultError: status.Error(codes.Internal, "Failed to find device path with lun /dev/01. cannot parse deviceInfo: /dev/01"),
 			},
 		},
 		{
@@ -521,9 +517,7 @@ func TestNodePublishVolume(t *testing.T) {
 				Readonly:          true},
 			skipOnWindows: true, // permission issues
 			expectedErr: testutil.TestError{
-				LinuxError: status.Errorf(codes.Internal, fmt.Sprintf("Could not mount \"%s\" at \"%s\": "+
-					"fake Mount: source error", errorMountSource, targetTest)),
-				WindowsError: status.Errorf(codes.Internal, fmt.Sprintf("Could not mount \"%s\" at \"%s\": "+
+				DefaultError: status.Errorf(codes.Internal, fmt.Sprintf("Could not mount \"%s\" at \"%s\": "+
 					"fake Mount: source error", errorMountSource, targetTest)),
 			},
 		},
@@ -580,32 +574,31 @@ func TestNodeUnpublishVolume(t *testing.T) {
 	assert.NoError(t, err)
 
 	tests := []struct {
-		desc        string
-		req         csi.NodeUnpublishVolumeRequest
-		expectedErr testutil.TestError
+		desc          string
+		req           csi.NodeUnpublishVolumeRequest
+		skipOnWindows bool
+		expectedErr   testutil.TestError
 	}{
 		{
 			desc: "Volume ID missing",
 			req:  csi.NodeUnpublishVolumeRequest{TargetPath: targetTest},
 			expectedErr: testutil.TestError{
-				LinuxError:   status.Error(codes.InvalidArgument, "Volume ID missing in request"),
-				WindowsError: status.Error(codes.InvalidArgument, "Volume ID missing in request"),
+				DefaultError: status.Error(codes.InvalidArgument, "Volume ID missing in request"),
 			},
 		},
 		{
 			desc: "Target missing",
 			req:  csi.NodeUnpublishVolumeRequest{VolumeId: "vol_1"},
 			expectedErr: testutil.TestError{
-				LinuxError:   status.Error(codes.InvalidArgument, "Target path missing in request"),
-				WindowsError: status.Error(codes.InvalidArgument, "Target path missing in request"),
+				DefaultError: status.Error(codes.InvalidArgument, "Target path missing in request"),
 			},
 		},
 		{
-			desc: "[Error] Unmount error mocked by IsLikelyNotMountPoint",
-			req:  csi.NodeUnpublishVolumeRequest{TargetPath: errorTarget, VolumeId: "vol_1"},
+			desc:          "[Error] Unmount error mocked by IsLikelyNotMountPoint",
+			req:           csi.NodeUnpublishVolumeRequest{TargetPath: errorTarget, VolumeId: "vol_1"},
+			skipOnWindows: true, // no error reported in windows
 			expectedErr: testutil.TestError{
-				LinuxError:   status.Error(codes.Internal, fmt.Sprintf("failed to unmount target \"%s\": fake IsLikelyNotMountPoint: fake error", errorTarget)),
-				WindowsError: nil, // different mount behaviour on windows
+				DefaultError: status.Error(codes.Internal, fmt.Sprintf("failed to unmount target \"%s\": fake IsLikelyNotMountPoint: fake error", errorTarget)),
 			},
 		},
 		{
@@ -649,8 +642,7 @@ func TestNodeExpandVolume(t *testing.T) {
 			desc: "Volume ID missing",
 			req:  csi.NodeExpandVolumeRequest{},
 			expectedErr: testutil.TestError{
-				LinuxError:   status.Error(codes.InvalidArgument, "Volume ID not provided"),
-				WindowsError: status.Error(codes.InvalidArgument, "Volume ID not provided"),
+				DefaultError: status.Error(codes.InvalidArgument, "Volume ID not provided"),
 			},
 		},
 		{
@@ -661,7 +653,7 @@ func TestNodeExpandVolume(t *testing.T) {
 				VolumeId:      "test",
 			},
 			expectedErr: testutil.TestError{
-				LinuxError:   status.Error(codes.Internal, "Could not determine device path: exit status 1"),
+				DefaultError: status.Error(codes.Internal, "Could not determine device path: exit status 1"),
 				WindowsError: status.Error(codes.Internal, "Could not determine device path: executable file not found in %PATH%"),
 			},
 		},
@@ -688,7 +680,7 @@ func TestGetBlockSizeBytes(t *testing.T) {
 			desc: "no exist path",
 			req:  "testpath",
 			expectedErr: testutil.TestError{
-				LinuxError:   errors.New("error when getting size of block volume at path testpath: output: , err: exit status 1"),
+				DefaultError: errors.New("error when getting size of block volume at path testpath: output: , err: exit status 1"),
 				WindowsError: errors.New("error when getting size of block volume at path testpath: output: , err: executable file not found in %PATH%"),
 			},
 		},
@@ -696,7 +688,7 @@ func TestGetBlockSizeBytes(t *testing.T) {
 			desc: "invalid path",
 			req:  testTarget,
 			expectedErr: testutil.TestError{
-				LinuxError:   fmt.Errorf("error when getting size of block volume at path %s: output: , err: exit status 1", testTarget),
+				DefaultError: fmt.Errorf("error when getting size of block volume at path %s: output: , err: exit status 1", testTarget),
 				WindowsError: fmt.Errorf("error when getting size of block volume at path %s: output: , err: executable file not found in %%PATH%%", testTarget),
 			},
 		},
@@ -735,7 +727,7 @@ func TestEnsureBlockTargetFile(t *testing.T) {
 			desc: "test if file exists",
 			req:  testPath,
 			expectedErr: testutil.TestError{
-				LinuxError:   status.Error(codes.Internal, fmt.Sprintf("Could not mount target \"%s\": mkdir %s: not a directory", testTarget, testTarget)),
+				DefaultError: status.Error(codes.Internal, fmt.Sprintf("Could not mount target \"%s\": mkdir %s: not a directory", testTarget, testTarget)),
 				WindowsError: status.Error(codes.Internal, fmt.Sprintf("Could not remove mount target %#v: remove %s: The system cannot find the path specified.", testPath, testPath)),
 			},
 		},

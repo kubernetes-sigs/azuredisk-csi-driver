@@ -31,44 +31,28 @@ func IsRunningInProw() bool {
 // TestError is used to define the errors given by different kinds of OS
 // Implements the `error` interface
 type TestError struct {
-	LinuxError   error
+	DefaultError error
 	WindowsError error
 }
 
 // Error returns the error on the basis of the platform
 func (t TestError) Error() string {
-	switch runtime.GOOS {
-	case linux:
-		if t.LinuxError == nil {
-			return ""
-		}
-		return t.LinuxError.Error()
-	case windows:
-		if t.WindowsError == nil {
-			return ""
-		}
-		return t.WindowsError.Error()
-	default:
-		return fmt.Sprintf("could not find error for ARCH: %s", runtime.GOOS)
+	if t.WindowsError == nil || !isWindows() {
+		return t.DefaultError.Error()
 	}
+	return t.WindowsError.Error()
 }
-
-const (
-	windows = "windows"
-	linux   = "linux"
-)
 
 // AssertError checks if the TestError matches with the actual error
 // on the basis of the platform on which it is running
-func AssertError(expected *TestError, actual error) bool {
-	switch runtime.GOOS {
-	case linux:
-		return reflect.DeepEqual(expected.LinuxError, actual)
-	case windows:
-		return reflect.DeepEqual(expected.WindowsError, actual)
-	default:
-		return false
+func AssertError(actual *TestError, expected error) bool {
+	if isWindows() {
+		if actual.WindowsError == nil {
+			return reflect.DeepEqual(actual.DefaultError, expected)
+		}
+		return reflect.DeepEqual(actual.WindowsError, expected)
 	}
+	return reflect.DeepEqual(actual.DefaultError, expected)
 }
 
 // GetWorkDirPath returns the path to the current working directory
@@ -78,4 +62,7 @@ func GetWorkDirPath(dir string) (string, error) {
 		return "", err
 	}
 	return fmt.Sprintf("%s%c%s", path, os.PathSeparator, dir), nil
+}
+func isWindows() bool {
+	return runtime.GOOS == "windows"
 }
