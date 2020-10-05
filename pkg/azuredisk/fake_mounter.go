@@ -18,6 +18,9 @@ package azuredisk
 
 import (
 	"fmt"
+	testingexec "k8s.io/utils/exec/testing"
+	"runtime"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
 	"strings"
 
 	"k8s.io/utils/mount"
@@ -58,4 +61,14 @@ func (f *fakeMounter) IsLikelyNotMountPoint(file string) (bool, error) {
 		return false, nil
 	}
 	return true, nil
+}
+
+func NewFakeMounter() (*mount.SafeFormatAndMount, error) {
+	if runtime.GOOS == "windows" {
+		return mounter.NewSafeMounter()
+	}
+	return &mount.SafeFormatAndMount{
+		Interface: &fakeMounter{},
+		Exec:      &testingexec.FakeExec{ExactOrder: true},
+	}, nil
 }

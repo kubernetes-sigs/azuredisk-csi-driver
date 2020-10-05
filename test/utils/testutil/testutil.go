@@ -16,9 +16,53 @@ limitations under the License.
 
 package testutil
 
-import "os"
+import (
+	"fmt"
+	"os"
+	"reflect"
+	"runtime"
+)
 
 func IsRunningInProw() bool {
 	_, ok := os.LookupEnv("AZURE_CREDENTIALS")
 	return ok
+}
+
+// TestError is used to define the errors given by different kinds of OS
+// Implements the `error` interface
+type TestError struct {
+	DefaultError error
+	WindowsError error
+}
+
+// Error returns the error on the basis of the platform
+func (t TestError) Error() string {
+	if t.WindowsError == nil || !isWindows() {
+		return t.DefaultError.Error()
+	}
+	return t.WindowsError.Error()
+}
+
+// AssertError checks if the TestError matches with the actual error
+// on the basis of the platform on which it is running
+func AssertError(actual *TestError, expected error) bool {
+	if isWindows() {
+		if actual.WindowsError == nil {
+			return reflect.DeepEqual(actual.DefaultError, expected)
+		}
+		return reflect.DeepEqual(actual.WindowsError, expected)
+	}
+	return reflect.DeepEqual(actual.DefaultError, expected)
+}
+
+// GetWorkDirPath returns the path to the current working directory
+func GetWorkDirPath(dir string) (string, error) {
+	path, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%s%c%s", path, os.PathSeparator, dir), nil
+}
+func isWindows() bool {
+	return runtime.GOOS == "windows"
 }
