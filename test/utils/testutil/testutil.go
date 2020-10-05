@@ -38,7 +38,13 @@ type TestError struct {
 // Error returns the error on the basis of the platform
 func (t TestError) Error() string {
 	if t.WindowsError == nil || !isWindows() {
+		if t.DefaultError == nil {
+			return ""
+		}
 		return t.DefaultError.Error()
+	}
+	if t.WindowsError == nil {
+		return ""
 	}
 	return t.WindowsError.Error()
 }
