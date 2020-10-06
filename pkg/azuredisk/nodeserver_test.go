@@ -215,9 +215,10 @@ func TestNodeGetVolumeStats(t *testing.T) {
 	nonexistedPath := "/not/a/real/directory"
 	fakePath := "/tmp/fake-volume-path"
 	tests := []struct {
-		desc        string
-		req         csi.NodeGetVolumeStatsRequest
-		expectedErr error
+		desc         string
+		req          csi.NodeGetVolumeStatsRequest
+		expectedErr  error
+		skipOnDarwin bool
 	}{
 		{
 			desc:        "Volume ID missing",
@@ -235,9 +236,10 @@ func TestNodeGetVolumeStats(t *testing.T) {
 			expectedErr: status.Errorf(codes.NotFound, "path /not/a/real/directory does not exist"),
 		},
 		{
-			desc:        "standard success",
-			req:         csi.NodeGetVolumeStatsRequest{VolumePath: fakePath, VolumeId: "vol_1"},
-			expectedErr: nil,
+			desc:         "standard success",
+			req:          csi.NodeGetVolumeStatsRequest{VolumePath: fakePath, VolumeId: "vol_1"},
+			skipOnDarwin: true,
+			expectedErr:  nil,
 		},
 	}
 
@@ -246,9 +248,11 @@ func TestNodeGetVolumeStats(t *testing.T) {
 	d, _ := NewFakeDriver(t)
 
 	for _, test := range tests {
-		_, err := d.NodeGetVolumeStats(context.Background(), &test.req)
-		if !reflect.DeepEqual(err, test.expectedErr) {
-			t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
+		if !(test.skipOnDarwin && runtime.GOOS == "darwin") {
+			_, err := d.NodeGetVolumeStats(context.Background(), &test.req)
+			if !reflect.DeepEqual(err, test.expectedErr) {
+				t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
+			}
 		}
 	}
 
@@ -276,9 +280,10 @@ func TestNodeStageVolume(t *testing.T) {
 	}
 
 	tests := []struct {
-		desc        string
-		req         csi.NodeStageVolumeRequest
-		expectedErr error
+		desc         string
+		req          csi.NodeStageVolumeRequest
+		expectedErr  error
+		skipOnDarwin bool
 	}{
 		{
 			desc:        "Volume ID missing",
@@ -313,7 +318,8 @@ func TestNodeStageVolume(t *testing.T) {
 			expectedErr: status.Error(codes.InvalidArgument, "lun not provided"),
 		},
 		{
-			desc: "Invalid Lun",
+			desc:         "Invalid Lun",
+			skipOnDarwin: true,
 			req: csi.NodeStageVolumeRequest{VolumeId: "vol_1", StagingTargetPath: sourceTest,
 				VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap,
 					AccessType: stdVolCap},
@@ -331,11 +337,13 @@ func TestNodeStageVolume(t *testing.T) {
 	d, _ := NewFakeDriver(t)
 	d.mounter, _ = mounter.NewSafeMounter()
 	for _, test := range tests {
-		_, err := d.NodeStageVolume(context.Background(), &test.req)
-		if test.desc == "Failed volume mount" {
-			assert.Error(t, err)
-		} else if !reflect.DeepEqual(err, test.expectedErr) {
-			t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
+		if !(test.skipOnDarwin && runtime.GOOS == "darwin") {
+			_, err := d.NodeStageVolume(context.Background(), &test.req)
+			if test.desc == "Failed volume mount" {
+				assert.Error(t, err)
+			} else if !reflect.DeepEqual(err, test.expectedErr) {
+				t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
+			}
 		}
 	}
 
@@ -356,6 +364,7 @@ func TestNodeUnstageVolume(t *testing.T) {
 		desc          string
 		req           csi.NodeUnstageVolumeRequest
 		skipOnWindows bool
+		skipOnDarwin  bool
 		expectedErr   testutil.TestError
 	}{
 		{
@@ -376,6 +385,7 @@ func TestNodeUnstageVolume(t *testing.T) {
 			desc:          "[Error] CleanupMountPoint error mocked by IsLikelyNotMountPoint",
 			req:           csi.NodeUnstageVolumeRequest{StagingTargetPath: errorTarget, VolumeId: "vol_1"},
 			skipOnWindows: true, // no error reported in windows
+			skipOnDarwin:  true,
 			expectedErr: testutil.TestError{
 				DefaultError: status.Error(codes.Internal, fmt.Sprintf("failed to unmount staging target \"%s\": "+
 					"fake IsLikelyNotMountPoint: fake error", errorTarget)),
@@ -396,7 +406,8 @@ func TestNodeUnstageVolume(t *testing.T) {
 	d.mounter = fakeMounter
 
 	for _, test := range tests {
-		if !(runtime.GOOS == "windows" && test.skipOnWindows) {
+		if !(runtime.GOOS == "windows" && test.skipOnWindows) &&
+			!(runtime.GOOS == "darwin" && test.skipOnDarwin) {
 			_, err := d.NodeUnstageVolume(context.Background(), &test.req)
 			if !testutil.AssertError(&test.expectedErr, err) {
 				t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr.Error())
@@ -577,6 +588,7 @@ func TestNodeUnpublishVolume(t *testing.T) {
 		desc          string
 		req           csi.NodeUnpublishVolumeRequest
 		skipOnWindows bool
+		skipOnDarwin  bool
 		expectedErr   testutil.TestError
 	}{
 		{
@@ -597,6 +609,7 @@ func TestNodeUnpublishVolume(t *testing.T) {
 			desc:          "[Error] Unmount error mocked by IsLikelyNotMountPoint",
 			req:           csi.NodeUnpublishVolumeRequest{TargetPath: errorTarget, VolumeId: "vol_1"},
 			skipOnWindows: true, // no error reported in windows
+			skipOnDarwin:  true, // no error reported in darwin
 			expectedErr: testutil.TestError{
 				DefaultError: status.Error(codes.Internal, fmt.Sprintf("failed to unmount target \"%s\": fake IsLikelyNotMountPoint: fake error", errorTarget)),
 			},
@@ -616,9 +629,12 @@ func TestNodeUnpublishVolume(t *testing.T) {
 	d.mounter = fakeMounter
 
 	for _, test := range tests {
-		_, err := d.NodeUnpublishVolume(context.Background(), &test.req)
-		if !testutil.AssertError(&test.expectedErr, err) {
-			t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr.Error())
+		if !(test.skipOnWindows && runtime.GOOS == "windows") &&
+			!(test.skipOnDarwin && runtime.GOOS == "darwin") {
+			_, err := d.NodeUnpublishVolume(context.Background(), &test.req)
+			if !testutil.AssertError(&test.expectedErr, err) {
+				t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr.Error())
+			}
 		}
 	}
 
@@ -632,6 +648,15 @@ func TestNodeExpandVolume(t *testing.T) {
 	stdCapacityRange = &csi.CapacityRange{
 		RequiredBytes: volumehelper.GiBToBytes(15),
 		LimitBytes:    volumehelper.GiBToBytes(10),
+	}
+
+	invalidPathErr := testutil.TestError{
+		DefaultError: status.Error(codes.Internal, "Could not determine device path: exit status 1"),
+		WindowsError: status.Error(codes.Internal, "Could not determine device path: executable file not found in %PATH%"),
+	}
+
+	if runtime.GOOS == "darwin" {
+		invalidPathErr.DefaultError = status.Error(codes.Internal, "Could not determine device path: executable file not found in $PATH")
 	}
 	tests := []struct {
 		desc        string
@@ -652,10 +677,7 @@ func TestNodeExpandVolume(t *testing.T) {
 				VolumePath:    "./test",
 				VolumeId:      "test",
 			},
-			expectedErr: testutil.TestError{
-				DefaultError: status.Error(codes.Internal, "Could not determine device path: exit status 1"),
-				WindowsError: status.Error(codes.Internal, "Could not determine device path: executable file not found in %PATH%"),
-			},
+			expectedErr: invalidPathErr,
 		},
 	}
 	for _, test := range tests {
@@ -671,6 +693,12 @@ func TestGetBlockSizeBytes(t *testing.T) {
 	testTarget, err := testutil.GetWorkDirPath("test")
 	assert.NoError(t, err)
 
+	notFoundErr := "exit status 1"
+	// exception in darwin
+	if runtime.GOOS == "darwin" {
+		notFoundErr = "executable file not found in $PATH"
+	}
+
 	tests := []struct {
 		desc        string
 		req         string
@@ -680,16 +708,18 @@ func TestGetBlockSizeBytes(t *testing.T) {
 			desc: "no exist path",
 			req:  "testpath",
 			expectedErr: testutil.TestError{
-				DefaultError: errors.New("error when getting size of block volume at path testpath: output: , err: exit status 1"),
-				WindowsError: errors.New("error when getting size of block volume at path testpath: output: , err: executable file not found in %PATH%"),
+				DefaultError: fmt.Errorf("error when getting size of block volume at path testpath: output: , err: %s", notFoundErr),
+				WindowsError: fmt.Errorf("error when getting size of block volume at path testpath: output: , err: %s", notFoundErr),
 			},
 		},
 		{
 			desc: "invalid path",
 			req:  testTarget,
 			expectedErr: testutil.TestError{
-				DefaultError: fmt.Errorf("error when getting size of block volume at path %s: output: , err: exit status 1", testTarget),
-				WindowsError: fmt.Errorf("error when getting size of block volume at path %s: output: , err: executable file not found in %%PATH%%", testTarget),
+				DefaultError: fmt.Errorf("error when getting size of block volume at path %s: "+
+					"output: , err: %s", testTarget, notFoundErr),
+				WindowsError: fmt.Errorf("error when getting size of block volume at path %s: "+
+					"output: , err: %s", testTarget, notFoundErr),
 			},
 		},
 	}
@@ -707,11 +737,17 @@ func TestGetBlockSizeBytes(t *testing.T) {
 }
 
 func TestEnsureBlockTargetFile(t *testing.T) {
+	// sip this test because `util/mount` not supported
+	// on darwin
+	if runtime.GOOS == "darwin" {
+		t.Skip("Skipping tests on darwin")
+	}
 	testTarget, err := testutil.GetWorkDirPath("test")
 	assert.NoError(t, err)
 	testPath, err := testutil.GetWorkDirPath(fmt.Sprintf("test%ctest", os.PathSeparator))
 	assert.NoError(t, err)
-	d, _ := NewFakeDriver(t)
+	d, err := NewFakeDriver(t)
+	assert.NoError(t, err)
 
 	tests := []struct {
 		desc        string

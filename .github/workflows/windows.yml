@@ -1,5 +1,4 @@
-name: Go
-
+name: Windows Build & Unit Tests
 on:
   push:
     branches: [ master ]
@@ -20,9 +19,9 @@ jobs:
           go-version: ${{ matrix.go-version }}
       - name: Checkout code
         uses: actions/checkout@v2
-      - name: Build
+      - name: Build Test
         run: |
-          go build -a -o _output/azurediskplugin.exe ./pkg/azurediskplugin
+          make azuredisk-windows
       - name: Run Windows Unit Tests
         run: |
           # start the CSI Proxy before running tests on windows
