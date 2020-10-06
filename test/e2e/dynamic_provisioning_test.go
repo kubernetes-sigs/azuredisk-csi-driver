@@ -359,10 +359,13 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			Cmd: "grep 'hello world' /mnt/test-1/data",
 		}
 		test := testsuites.DynamicallyProvisionedVolumeCloningTest{
-			CSIDriver:              testDriver,
-			Pod:                    pod,
-			PodWithClonedVolume:    podWithClonedVolume,
-			StorageClassParameters: map[string]string{"skuName": "Standard_LRS"},
+			CSIDriver:           testDriver,
+			Pod:                 pod,
+			PodWithClonedVolume: podWithClonedVolume,
+			StorageClassParameters: map[string]string{
+				"skuName": "Standard_LRS",
+				"fsType":  "xfs",
+			},
 		}
 		test.Run(cs, ns)
 	})
