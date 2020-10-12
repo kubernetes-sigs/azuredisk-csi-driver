@@ -157,7 +157,7 @@ func (pod *PodDetails) SetupDeployment(client clientset.Interface, namespace *v1
 	}
 	cleanupFuncs = append(cleanupFuncs, tpvc.Cleanup)
 	ginkgo.By("setting up the Deployment")
-	tDeployment := NewTestDeployment(client, namespace, pod.Cmd, tpvc.persistentVolumeClaim, fmt.Sprintf("%s%d", volume.VolumeMount.NameGenerate, 1), fmt.Sprintf("%s%d", volume.VolumeMount.MountPathGenerate, 1), volume.VolumeMount.ReadOnly, pod.IsWindows)
+	tDeployment := NewTestDeployment(client, namespace, pod.Cmd, tpvc.persistentVolumeClaim, fmt.Sprintf("%s%d", volume.VolumeMount.NameGenerate, 1), fmt.Sprintf("%s%d", volume.VolumeMount.MountPathGenerate, 1), volume.VolumeMount.ReadOnly, pod.IsWindows, pod.UseCMD)
 
 	cleanupFuncs = append(cleanupFuncs, tDeployment.Cleanup)
 	return tDeployment, cleanupFuncs
