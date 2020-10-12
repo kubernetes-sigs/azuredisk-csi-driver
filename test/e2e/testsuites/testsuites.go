@@ -19,9 +19,10 @@ package testsuites
 import (
 	"context"
 	"fmt"
-	"k8s.io/klog"
 	"math/rand"
 	"time"
+
+	"k8s.io/klog"
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
 
@@ -402,7 +403,7 @@ type TestDeployment struct {
 	podName    string
 }
 
-func NewTestDeployment(c clientset.Interface, ns *v1.Namespace, command string, pvc *v1.PersistentVolumeClaim, volumeName, mountPath string, readOnly, isWindows bool) *TestDeployment {
+func NewTestDeployment(c clientset.Interface, ns *v1.Namespace, command string, pvc *v1.PersistentVolumeClaim, volumeName, mountPath string, readOnly, isWindows bool, useCMD bool) *TestDeployment {
 	generateName := "azuredisk-volume-tester-"
 	selectorValue := fmt.Sprintf("%s%d", generateName, rand.Int())
 	replicas := int32(1)
@@ -460,8 +461,13 @@ func NewTestDeployment(c clientset.Interface, ns *v1.Namespace, command string, 
 			"kubernetes.io/os": "windows",
 		}
 		testDeployment.deployment.Spec.Template.Spec.Containers[0].Image = "e2eteam/busybox:1.29"
-		testDeployment.deployment.Spec.Template.Spec.Containers[0].Command = []string{"powershell.exe"}
-		testDeployment.deployment.Spec.Template.Spec.Containers[0].Args = []string{"-Command", command}
+		if useCMD {
+			testDeployment.deployment.Spec.Template.Spec.Containers[0].Command = []string{"cmd"}
+			testDeployment.deployment.Spec.Template.Spec.Containers[0].Args = []string{"/c", command}
+		} else {
+			testDeployment.deployment.Spec.Template.Spec.Containers[0].Command = []string{"powershell.exe"}
+			testDeployment.deployment.Spec.Template.Spec.Containers[0].Args = []string{"-Command", command}
+		}
 	}
 
 	return testDeployment
@@ -585,12 +591,11 @@ func NewTestStatefulset(c clientset.Interface, ns *v1.Namespace, command string,
 		testStatefulset.statefulset.Spec.Template.Spec.NodeSelector = map[string]string{
 			"kubernetes.io/os": "windows",
 		}
+		testStatefulset.statefulset.Spec.Template.Spec.Containers[0].Image = "e2eteam/busybox:1.29"
 		if useCMD {
-			testStatefulset.statefulset.Spec.Template.Spec.Containers[0].Image = "e2eteam/busybox:1.29"
 			testStatefulset.statefulset.Spec.Template.Spec.Containers[0].Command = []string{"cmd"}
 			testStatefulset.statefulset.Spec.Template.Spec.Containers[0].Args = []string{"/c", command}
 		} else {
-			testStatefulset.statefulset.Spec.Template.Spec.Containers[0].Image = "e2eteam/busybox:1.29"
 			testStatefulset.statefulset.Spec.Template.Spec.Containers[0].Command = []string{"powershell.exe"}
 			testStatefulset.statefulset.Spec.Template.Spec.Containers[0].Args = []string{"-Command", command}
 		}
