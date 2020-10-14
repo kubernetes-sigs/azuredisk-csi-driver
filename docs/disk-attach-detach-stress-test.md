@@ -1,4 +1,5 @@
 # Set up Azure Disk attach/detach stress test
+ - Required OS environment: Linux
 
 ## Set up an AKS cluster
 > follow guide [Create an AKS cluster](https://docs.microsoft.com/en-us/azure/aks/)
