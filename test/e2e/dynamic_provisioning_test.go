@@ -509,7 +509,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		test.Run(cs, ns)
 	})
 
-	ginkgo.It("should create a volume on demand and resize it  [disk.csi.azure.com] [Windows]", func() {
+	ginkgo.It("should create a volume on demand and resize it  [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func() {
 		volume := testsuites.VolumeDetails{
 			ClaimSize: "10Gi",
 			VolumeMount: testsuites.VolumeMountDetails{
@@ -526,7 +526,6 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	})
 
 	ginkgo.It("should create a volume azuredisk with tag  [disk.csi.azure.com] [Windows]", func() {
-		skipIfUsingInTreeVolumePlugin()
 		pods := []testsuites.PodDetails{
 			{
 				Cmd: convertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
