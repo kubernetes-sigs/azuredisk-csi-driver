@@ -10,10 +10,10 @@
                 "cloudProviderRateLimitQPS": 6,
                 "cloudProviderRateLimitBucket": 20,
                 "controllerManagerConfig": {
-                    "--feature-gates": "CSIInlineVolume=true,LocalStorageCapacityIsolation=true,ServiceNodeExclusion=true,CSIMigration=true,CSIMigrationAzureDisk=true"
+                    "--feature-gates": "CSIInlineVolume=true,LocalStorageCapacityIsolation=true,ServiceNodeExclusion=true,CSIMigration=true,CSIMigrationAzureDisk=true,CSIMigrationAzureDiskComplete=true"
                 },
                 "kubeletConfig": {
-                    "--feature-gates": "CSIMigration=true,CSIMigrationAzureDisk=true"
+                    "--feature-gates": "CSIMigration=true,CSIMigrationAzureDisk=true,CSIMigrationAzureDiskComplete=true"
                 },
                 "apiServerConfig": {
                     "--feature-gates": "VolumeSnapshotDataSource=true",
