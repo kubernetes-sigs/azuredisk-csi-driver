@@ -10,12 +10,12 @@ Testing the Azure Disk CSI driver using the [`sanity`](https://github.com/kubern
 ```
  - set following environment variables
 ```console
-export TENANT_ID=
-export SUBSCRIPTION_ID=
-export AAD_CLIENT_ID=
-export AAD_CLIENT_SECRET=
-export RESOURCE_GROUP=
-export LOCATION=
+export AZURE_TENANT_ID=
+export AZURE_SUBSCRIPTION_ID=
+export AZURE_CLIENT_ID=
+export AZURE_CLIENT_SECRET=
+export AZURE_RESOURCE_GROUP=
+export AZURE_LOCATION=
 ```
 
 ### Run sanity tests
