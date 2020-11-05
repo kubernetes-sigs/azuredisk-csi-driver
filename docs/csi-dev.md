@@ -117,8 +117,11 @@ $ csc controller list-snapshots --endpoint tcp://127.0.0.1:10000
 ```console
 # run `docker login` first
 export REGISTRY=<dockerhub-alias>
-make container
-make push-latest
+export IMAGE_VERSION=latest
+# build linux, windows 1809, 1903, 1909, and 2004 images
+make container-all
+# create a manifest list for the images above
+make push-manifest
 ```
 
  - Replace `mcr.microsoft.com/k8s/csi/azuredisk-csi:latest` in [`csi-azuredisk-controller.yaml`](https://github.com/kubernetes-sigs/azuredisk-csi-driver/blob/master/deploy/csi-azuredisk-controller.yaml) and [`csi-azuredisk-node.yaml`](https://github.com/kubernetes-sigs/azuredisk-csi-driver/blob/master/deploy/csi-azuredisk-node.yaml) with above dockerhub image urls and then follow [install CSI driver master version](https://github.com/kubernetes-sigs/azuredisk-csi-driver/blob/master/docs/install-csi-driver-master.md)
@@ -131,14 +134,14 @@ wget -O csi-azuredisk-node.yaml https://raw.githubusercontent.com/kubernetes-sig
 # edit csi-azuredisk-node.yaml
 kubectl apply -f csi-azuredisk-node.yaml
  ```
- 
+
 ### How to update Azure cloud provider library
  - get latest version of [github.com/kubernetes/legacy-cloud-providers](https://github.com/kubernetes/legacy-cloud-providers/tree/master/azure)
 > in following example, `20200619215319-3e8d72e51d7d` is the git version
 ```console
 # git clone https://github.com/kubernetes/legacy-cloud-providers.git
 # cd ~/go/src/github.com/kubernetes/legacy-cloud-providers
-# TZ=UTC 
+# TZ=UTC
 # git --no-pager show \
   --quiet \
   --abbrev=12 \
