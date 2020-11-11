@@ -5,7 +5,7 @@ go 1.13
 require (
 	github.com/Azure/azure-sdk-for-go v43.0.0+incompatible
 	github.com/Azure/go-autorest/autorest v0.11.1
-	github.com/Azure/go-autorest/autorest/adal v0.9.0
+	github.com/Azure/go-autorest/autorest/adal v0.9.5
 	github.com/Azure/go-autorest/autorest/date v0.3.0
 	github.com/Azure/go-autorest/autorest/to v0.2.0
 	github.com/container-storage-interface/spec v1.3.0
@@ -19,7 +19,7 @@ require (
 	github.com/pborman/uuid v1.2.0
 	github.com/pelletier/go-toml v1.2.0
 	github.com/stretchr/testify v1.4.0
-	golang.org/x/net v0.0.0-20200114155413-6afb5195e5aa
+	golang.org/x/net v0.0.0-20200202094626-16171245cfb2
 	google.golang.org/grpc v1.28.0
 	k8s.io/api v0.18.1
 	k8s.io/apimachinery v0.18.1
@@ -27,10 +27,10 @@ require (
 	k8s.io/cloud-provider v0.0.0
 	k8s.io/component-base v0.18.1
 	k8s.io/klog v1.0.0
-	k8s.io/klog/v2 v2.2.0
+	k8s.io/klog/v2 v2.4.0
 	k8s.io/kubernetes v1.18.1
 	k8s.io/legacy-cloud-providers v0.0.0
-	k8s.io/utils v0.0.0-20200729134348-d5654de09c73
+	k8s.io/utils v0.0.0-20201104234853-8146046b121e
 	sigs.k8s.io/yaml v1.2.0
 )
 
@@ -57,7 +57,7 @@ replace (
 	k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.18.1
 	k8s.io/kubectl => k8s.io/kubectl v0.18.1
 	k8s.io/kubelet => k8s.io/kubelet v0.18.1
-	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.0.0-20201002082450-ece81ae6c22c
+	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.0.0-20201111004915-af39eebb21ef
 	k8s.io/metrics => k8s.io/metrics v0.18.1
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.18.1
 	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.18.1
