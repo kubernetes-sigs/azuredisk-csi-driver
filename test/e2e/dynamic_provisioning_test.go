@@ -262,6 +262,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	})
 
 	ginkgo.It("should create a deployment object, write and read to it, delete the pod and write and read to it again [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func() {
+		skipIfUsingInTreeVolumePlugin()
 		if isWindowsCluster {
 			// waiting for fix(https://github.com/kubernetes/kubernetes/pull/95456) in CSI driver
 			if !isUsingInTreeVolumePlugin || isTestingMigration {
