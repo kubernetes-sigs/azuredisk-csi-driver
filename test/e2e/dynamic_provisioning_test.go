@@ -262,7 +262,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	})
 
 	ginkgo.It("should create a deployment object, write and read to it, delete the pod and write and read to it again [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func() {
-		skipIfUsingInTreeVolumePlugin()
+		skipIfTestingInWindowsCluster()
 		if isWindowsCluster {
 			// waiting for fix(https://github.com/kubernetes/kubernetes/pull/95456) in CSI driver
 			if !isUsingInTreeVolumePlugin || isTestingMigration {
@@ -586,6 +586,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	})
 
 	ginkgo.It("should create a statefulset object, write and read to it, delete the pod and write and read to it again [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func() {
+		skipIfTestingInWindowsCluster()
 		pod := testsuites.PodDetails{
 			Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
 			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
