@@ -10,6 +10,7 @@ $ kubectl get no --show-labels | grep topo
 k8s-agentpool-83483713-vmss000000   Ready    agent    62d   v1.16.2   ...topology.disk.csi.azure.com/zone=eastus2-1
 k8s-agentpool-83483713-vmss000001   Ready    agent    62d   v1.16.2   ...topology.disk.csi.azure.com/zone=eastus2-1
 ```
+> if node is in non-zone, topology label `topology.disk.csi.azure.com/zone` would be empty
 
 ### Use following storage class with topology support
 ```yaml
