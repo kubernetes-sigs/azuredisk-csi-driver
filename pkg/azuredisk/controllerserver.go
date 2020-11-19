@@ -90,8 +90,8 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	capacityBytes := req.GetCapacityRange().GetRequiredBytes()
 	volSizeBytes := int64(capacityBytes)
 	requestGiB := int(volumehelper.RoundUpGiB(volSizeBytes))
-	if requestGiB == 0 {
-		requestGiB = defaultDiskSize
+	if requestGiB < minimumDiskSizeGiB {
+		requestGiB = minimumDiskSizeGiB
 	}
 
 	maxVolSize := int(volumehelper.RoundUpGiB(req.GetCapacityRange().GetLimitBytes()))
