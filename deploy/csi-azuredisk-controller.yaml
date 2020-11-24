@@ -153,6 +153,8 @@ spec:
                   optional: true
             - name: CSI_ENDPOINT
               value: unix:///csi/csi.sock
+            - name: AZURE_ENVIRONMENT_FILEPATH  # For Azure Stack Cloud
+              value: /etc/kubernetes/azurestackcloud.json
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
@@ -161,6 +163,9 @@ spec:
             - mountPath: /var/lib/waagent/ManagedIdentity-Settings
               readOnly: true
               name: msi
+            - name: ssl
+              mountPath: /etc/ssl/certs
+              readOnly: true
           resources:
             limits:
               cpu: 200m
@@ -178,3 +183,6 @@ spec:
         - name: msi
           hostPath:
             path: /var/lib/waagent/ManagedIdentity-Settings
+        - name: ssl
+          hostPath:
+            path: /etc/ssl/certs
