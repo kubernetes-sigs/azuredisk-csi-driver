@@ -34,5 +34,5 @@ fi
 _output/azurediskplugin --endpoint "$endpoint" --nodeid "$nodeid" -v=5 &
 
 echo 'Begin to run sanity test...'
-readonly CSI_SANITY_BIN='csi-sanity'
-"$CSI_SANITY_BIN" --ginkgo.v --ginkgo.noColor --csi.endpoint="$endpoint" --ginkgo.skip='should work|should fail when volume does not exist on the specified path'
+readonly CSI_SANITY_BIN='csi-test/cmd/csi-sanity/csi-sanity'
+"$CSI_SANITY_BIN" --ginkgo.v --csi.endpoint="$endpoint" --ginkgo.skip='should work|should fail when volume does not exist on the specified path'

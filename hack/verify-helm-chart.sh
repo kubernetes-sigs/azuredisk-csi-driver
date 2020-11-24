@@ -37,6 +37,17 @@ function validate_image() {
 
 echo "Comparing image version between helm chart and manifests in deploy folder"
 
+if [[ -z "$(command -v pip)" ]]; then
+  echo "Cannot find pip. Installing pip3..."
+  apt install python3-pip -y
+  update-alternatives --install /usr/bin/pip pip /usr/bin/pip3 1
+fi
+
+if [[ -z "$(command -v jq)" ]]; then
+  echo "Cannot find jq. Installing yq..."
+  apt install jq -y
+fi
+
 # jq-equivalent for yaml
 pip install yq
 
