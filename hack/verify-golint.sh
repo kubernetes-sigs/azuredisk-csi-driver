@@ -18,11 +18,13 @@ set -euo pipefail
 
 if [[ -z "$(command -v golangci-lint)" ]]; then
   echo "Cannot find golangci-lint. Installing golangci-lint..."
-  curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.24.0
+  curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.31.0
+  export PATH=$PATH:$(go env GOPATH)/bin
 fi
 
+echo "Verifying golint"
 readonly PKG_ROOT="$(git rev-parse --show-toplevel)"
 
 golangci-lint run --config ${PKG_ROOT}/.golangci.yml
 
-echo "Success! Lint check completed for all Go source files."
+echo "Congratulations! Lint check completed for all Go source files."

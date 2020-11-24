@@ -29,12 +29,11 @@ if [[ "${deployDirNum}" != "${helmDirNum}" ]]; then
   exit 1
 fi
 
-for path in "deploy/*.yaml" "deploy/example/*.yaml" "deploy/example/metrics/*.yaml" "deploy/example/snapshot/*.yaml" "deploy/example/cloning/*.yaml" "deploy/example/rawblock/*.yaml" "deploy/example/windows/*.yaml" "deploy/example/sharedisk/*.yaml" "docs/node-shutdown-recovery/*.yaml"
+for path in "deploy/*.yaml" "deploy/example/*.yaml" "deploy/example/metrics/*.yaml" "deploy/example/snapshot/*.yaml" "deploy/example/cloning/*.yaml" "deploy/example/rawblock/*.yaml" "deploy/example/windows/*.yaml" "deploy/example/sharedisk/*.yaml"
 do
     echo "checking yamllint under path: $path ..."
     yamllint -f parsable $path | grep -v "line too long" > $LOG
-    cat $LOG
-    linecount=`cat $LOG | grep -v "line too long" | grep -v crd-csi-snapshot | wc -l`
+    linecount=`cat $LOG | grep -v crd-csi-snapshot | wc -l`
     if [ $linecount -gt 0 ]; then
         echo "yaml files under $path are not linted, failed with: "
         cat $LOG
