@@ -63,7 +63,7 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interfac
 	tpod.WaitForSuccess()
 
 	ginkgo.By("Checking Prow test resource group")
-	creds, err := credentials.CreateAzureCredentialFile(false)
+	creds, err := credentials.CreateAzureCredentialFile()
 	framework.ExpectNoError(err, fmt.Sprintf("Error getting creds for AzurePublicCloud %v", err))
 	defer func() {
 		err := credentials.DeleteAzureCredentialFile()

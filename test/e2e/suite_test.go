@@ -78,7 +78,7 @@ var _ = ginkgo.BeforeSuite(func() {
 	// Default storage driver configuration is CSI. Freshly built
 	// CSI driver is installed for that case.
 	if testutil.IsRunningInProw() && (isTestingMigration || !isUsingInTreeVolumePlugin) {
-		creds, err := credentials.CreateAzureCredentialFile(false)
+		creds, err := credentials.CreateAzureCredentialFile()
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		azureClient, err := azure.GetAzureClient(creds.Cloud, creds.SubscriptionID, creds.AADClientID, creds.TenantID, creds.AADClientSecret)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
