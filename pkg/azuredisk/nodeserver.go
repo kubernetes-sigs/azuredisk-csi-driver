@@ -380,7 +380,7 @@ func (d *Driver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolume
 	volSizeBytes := int64(capacityBytes)
 	requestGiB := volumehelper.RoundUpGiB(volSizeBytes)
 
-	args := []string{"-o", "source", "--noheadings", "--target", req.GetVolumePath()}
+	args := []string{"-o", "source", "--noheadings", "--mountpoint", req.GetVolumePath()}
 	output, err := d.mounter.Exec.Command("findmnt", args...).Output()
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "Could not determine device path: %v", err)
