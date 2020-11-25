@@ -29,7 +29,7 @@ if [[ "${deployDirNum}" != "${helmDirNum}" ]]; then
   exit 1
 fi
 
-for path in "deploy/*.yaml" "deploy/example/*.yaml" "deploy/example/metrics/*.yaml" "deploy/example/snapshot/*.yaml" "deploy/example/cloning/*.yaml" "deploy/example/rawblock/*.yaml" "deploy/example/windows/*.yaml" "deploy/example/sharedisk/*.yaml"
+for path in "deploy/*.yaml" "deploy/example/*.yaml" "deploy/example/metrics/*.yaml" "deploy/example/snapshot/*.yaml" "deploy/example/cloning/*.yaml" "deploy/example/rawblock/*.yaml" "deploy/example/windows/*.yaml" "deploy/example/sharedisk/*.yaml" "docs/known-issues/node-shutdown-recovery/*.yaml"
 do
     echo "checking yamllint under path: $path ..."
     yamllint -f parsable $path | grep -v "line too long" > $LOG
