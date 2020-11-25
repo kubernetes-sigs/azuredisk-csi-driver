@@ -94,7 +94,7 @@ ifdef TEST_WINDOWS
 		${E2E_HELM_OPTIONS} \
 		--set windows.enabled=true \
 		--set linux.enabled=false \
-		--set controller.runOnMasterNode=true \
+		--set controller.runOnMaster=true \
 		--set controller.replicas=1
 else
 	helm install azuredisk-csi-driver charts/latest/azuredisk-csi-driver --namespace kube-system --wait --timeout=15m -v=5 --debug \
