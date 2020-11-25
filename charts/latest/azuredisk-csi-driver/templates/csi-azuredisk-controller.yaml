@@ -18,7 +18,7 @@ spec:
       serviceAccountName: csi-azuredisk-controller-sa
       nodeSelector:
         kubernetes.io/os: linux
-        {{- if .Values.controller.runOnMasterNode}}
+        {{- if .Values.controller.runOnMaster}}
         kubernetes.io/role: master
         {{- end}}
       priorityClassName: system-cluster-critical
