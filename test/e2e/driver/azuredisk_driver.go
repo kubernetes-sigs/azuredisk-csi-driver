@@ -77,6 +77,12 @@ func (d *azureDiskDriver) GetDynamicProvisionStorageClass(parameters map[string]
 		}
 	}
 
+	if strings.EqualFold(os.Getenv("AZURE_CLOUD_NAME"), "AZURESTACKCLOUD") {
+		if sku, ok := parameters["skuName"]; ok && !strings.EqualFold(sku, "Standard_LRS") && !strings.EqualFold(sku, "Premium_LRS") {
+			parameters["skuName"] = "Standard_LRS"
+		}
+	}
+
 	return getStorageClass(generateName, provisioner, parameters, mountOptions, reclaimPolicy, bindingMode, allowedTopologies)
 }
 

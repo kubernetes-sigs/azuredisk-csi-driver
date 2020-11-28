@@ -35,6 +35,11 @@ var (
 	DefaultCredFilePathWindows    = "C:\\k\\azure.json"
 )
 
+// IsAzureStackCloud decides whether the driver is running on Azure Stack Cloud.
+func IsAzureStackCloud(cloud *azure.Cloud) bool {
+	return strings.EqualFold(cloud.Config.Cloud, "AZURESTACKCLOUD")
+}
+
 // GetCloudProvider get Azure Cloud Provider
 func GetCloudProvider(kubeconfig string) (*azure.Cloud, error) {
 	kubeClient, err := getKubeClient(kubeconfig)

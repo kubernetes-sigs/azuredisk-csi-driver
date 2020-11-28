@@ -46,6 +46,7 @@ const (
 	reportDirEnvVar     = "ARTIFACTS"
 	testMigrationEnvVar = "TEST_MIGRATION"
 	testWindowsEnvVar   = "TEST_WINDOWS"
+	cloudNameEnvVar     = "AZURE_CLOUD_NAME"
 	defaultReportDir    = "/workspace/_artifacts"
 	inTreeStorageClass  = "kubernetes.io/azure-disk"
 )
@@ -55,6 +56,7 @@ var (
 	isUsingInTreeVolumePlugin = os.Getenv(driver.AzureDriverNameVar) == inTreeStorageClass
 	isTestingMigration        = os.Getenv(testMigrationEnvVar) != ""
 	isWindowsCluster          = os.Getenv(testWindowsEnvVar) != ""
+	isAzureStackCloud         = strings.EqualFold(os.Getenv(cloudNameEnvVar), "AZURESTACKCLOUD")
 )
 
 type testCmd struct {
@@ -227,6 +229,12 @@ func skipIfTestingInWindowsCluster() {
 func skipIfUsingInTreeVolumePlugin() {
 	if isUsingInTreeVolumePlugin {
 		ginkgo.Skip("test case is only available for CSI drivers")
+	}
+}
+
+func skipIfOnAzureStackCloud() {
+	if isAzureStackCloud {
+		ginkgo.Skip("test case not supported on Azure Stack Cloud")
 	}
 }
 
