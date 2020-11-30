@@ -113,6 +113,8 @@ spec:
                 fieldRef:
                   apiVersion: v1
                   fieldPath: spec.nodeName
+            - name: AZURE_ENVIRONMENT_FILEPATH  # For Azure Stack Cloud
+              value: /etc/kubernetes/azurestackcloud.json
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:
             privileged: true
@@ -133,6 +135,9 @@ spec:
               name: sys-devices-dir
             - mountPath: /sys/class/scsi_host/
               name: scsi-host-dir
+            - name: ssl
+              mountPath: /etc/ssl/certs
+              readOnly: true
           resources:
             limits:
               cpu: 200m
@@ -172,4 +177,7 @@ spec:
             path: /sys/class/scsi_host/
             type: Directory
           name: scsi-host-dir
+        - name: ssl
+          hostPath:
+            path: /etc/ssl/certs
 {{- end -}}

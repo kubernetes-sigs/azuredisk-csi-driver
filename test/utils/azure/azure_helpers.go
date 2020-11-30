@@ -259,11 +259,11 @@ func getClient(env azure.Environment, subscriptionID, tenantID string, armSpt *a
 		environment:    env,
 		subscriptionID: subscriptionID,
 		groupsClient:   resources.NewGroupsClientWithBaseURI(env.ResourceManagerEndpoint, subscriptionID),
-		vmClient:       compute.NewVirtualMachinesClient(subscriptionID),
-		nicClient:      network.NewInterfacesClient(subscriptionID),
-		subnetsClient:  network.NewSubnetsClient(subscriptionID),
-		vnetClient:     network.NewVirtualNetworksClient(subscriptionID),
-		disksClient:    compute.NewDisksClient(subscriptionID),
+		vmClient:       compute.NewVirtualMachinesClientWithBaseURI(env.ResourceManagerEndpoint, subscriptionID),
+		nicClient:      network.NewInterfacesClientWithBaseURI(env.ResourceManagerEndpoint, subscriptionID),
+		subnetsClient:  network.NewSubnetsClientWithBaseURI(env.ResourceManagerEndpoint, subscriptionID),
+		vnetClient:     network.NewVirtualNetworksClientWithBaseURI(env.ResourceManagerEndpoint, subscriptionID),
+		disksClient:    compute.NewDisksClientWithBaseURI(env.ResourceManagerEndpoint, subscriptionID),
 	}
 
 	authorizer := autorest.NewBearerAuthorizer(armSpt)

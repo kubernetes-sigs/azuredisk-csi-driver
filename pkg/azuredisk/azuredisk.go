@@ -39,6 +39,7 @@ import (
 )
 
 const (
+	// DriverName driver name
 	DriverName = "disk.csi.azure.com"
 
 	errDiskNotFound = "not found"
@@ -49,8 +50,8 @@ const (
 	// maxLength = 80 - (4 for ".vhd") = 76
 	diskNameGenerateMaxLength = 76
 
-	//default disk size is 1 GiB
-	defaultDiskSize = 1
+	// minimum disk size is 1 GiB
+	minimumDiskSizeGiB = 1
 
 	resourceNotFound = "ResourceNotFound"
 
@@ -63,6 +64,7 @@ const (
 	// see https://docs.microsoft.com/en-us/rest/api/compute/disks/createorupdate#create-a-managed-disk-from-an-existing-managed-disk-in-the-same-or-different-subscription.
 	managedDiskPath = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s"
 
+	// LUN lun number
 	LUN = "LUN"
 
 	cachingModeField        = "cachingmode"

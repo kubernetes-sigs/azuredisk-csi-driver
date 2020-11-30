@@ -21,7 +21,7 @@ image:
     pullPolicy: IfNotPresent
   nodeDriverRegistrar:
     repository: mcr.microsoft.com/oss/kubernetes-csi/csi-node-driver-registrar
-    tag: v1.2.0
+    tag: v2.0.1
     pullPolicy: IfNotPresent
 
 serviceAccount:
@@ -33,6 +33,7 @@ rbac:
 controller:
   replicas: 2
   metricsPort: 29604
+  runOnMaster: false
 
 node:
   metricsPort: 29605
@@ -65,5 +66,5 @@ windows:
       pullPolicy: IfNotPresent
     nodeDriverRegistrar:
       repository: mcr.microsoft.com/oss/kubernetes-csi/csi-node-driver-registrar
-      tag: v1.2.1-alpha.1-windows-1809-amd64
+      tag: v2.0.1
       pullPolicy: IfNotPresent

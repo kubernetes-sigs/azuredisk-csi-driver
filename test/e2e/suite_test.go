@@ -39,7 +39,6 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/azure"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/credentials"
-	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
 )
 
 const (
@@ -47,6 +46,7 @@ const (
 	reportDirEnvVar     = "ARTIFACTS"
 	testMigrationEnvVar = "TEST_MIGRATION"
 	testWindowsEnvVar   = "TEST_WINDOWS"
+	cloudNameEnvVar     = "AZURE_CLOUD_NAME"
 	defaultReportDir    = "/workspace/_artifacts"
 	inTreeStorageClass  = "kubernetes.io/azure-disk"
 )
@@ -56,6 +56,7 @@ var (
 	isUsingInTreeVolumePlugin = os.Getenv(driver.AzureDriverNameVar) == inTreeStorageClass
 	isTestingMigration        = os.Getenv(testMigrationEnvVar) != ""
 	isWindowsCluster          = os.Getenv(testWindowsEnvVar) != ""
+	isAzureStackCloud         = strings.EqualFold(os.Getenv(cloudNameEnvVar), "AZURESTACKCLOUD")
 )
 
 type testCmd struct {
@@ -77,8 +78,8 @@ var _ = ginkgo.BeforeSuite(func() {
 
 	// Default storage driver configuration is CSI. Freshly built
 	// CSI driver is installed for that case.
-	if testutil.IsRunningInProw() && (isTestingMigration || !isUsingInTreeVolumePlugin) {
-		creds, err := credentials.CreateAzureCredentialFile(false)
+	if isTestingMigration || !isUsingInTreeVolumePlugin {
+		creds, err := credentials.CreateAzureCredentialFile()
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		azureClient, err := azure.GetAzureClient(creds.Cloud, creds.SubscriptionID, creds.AADClientID, creds.TenantID, creds.AADClientSecret)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
@@ -114,69 +115,74 @@ var _ = ginkgo.BeforeSuite(func() {
 var _ = ginkgo.AfterSuite(func() {
 	// Default storage driver configuration is CSI. Freshly built
 	// CSI driver is installed for that case.
-	if testutil.IsRunningInProw() {
-		if isTestingMigration || isUsingInTreeVolumePlugin {
-			cmLog := testCmd{
-				command:  "bash",
-				args:     []string{"test/utils/controller-manager-log.sh"},
-				startLog: "===================controller-manager log=======",
-				endLog:   "===================================================",
-			}
-			execTestCmd([]testCmd{cmLog})
+	if isTestingMigration || isUsingInTreeVolumePlugin {
+		cmLog := testCmd{
+			command:  "bash",
+			args:     []string{"test/utils/controller-manager-log.sh"},
+			startLog: "===================controller-manager log=======",
+			endLog:   "===================================================",
+		}
+		execTestCmd([]testCmd{cmLog})
+	}
+
+	if isTestingMigration || !isUsingInTreeVolumePlugin {
+		checkPodsRestart := testCmd{
+			command:  "bash",
+			args:     []string{"test/utils/check_driver_pods_restart.sh", "log"},
+			startLog: "Check driver pods if restarts ...",
+			endLog:   "Check successfully",
+		}
+		execTestCmd([]testCmd{checkPodsRestart})
+
+		createExampleDeployment := testCmd{
+			command:  "make",
+			args:     []string{"create-example-deployment"},
+			startLog: "create example deployments",
+			endLog:   "example deployments created",
+		}
+		execTestCmd([]testCmd{createExampleDeployment})
+		// sleep 120s waiting for deployment running complete
+		time.Sleep(120 * time.Second)
+
+		azurediskLog := testCmd{
+			command:  "bash",
+			args:     []string{"test/utils/azuredisk_log.sh"},
+			startLog: "===================azuredisk log===================",
+			endLog:   "===================================================",
 		}
 
-		if isTestingMigration || !isUsingInTreeVolumePlugin {
-			checkPodsRestart := testCmd{
-				command:  "bash",
-				args:     []string{"test/utils/check_driver_pods_restart.sh", "log"},
-				startLog: "Check driver pods if restarts ...",
-				endLog:   "Check successfully",
-			}
-			execTestCmd([]testCmd{checkPodsRestart})
-
-			createExampleDeployment := testCmd{
-				command:  "make",
-				args:     []string{"create-example-deployment"},
-				startLog: "create example deployments",
-				endLog:   "example deployments created",
-			}
-			execTestCmd([]testCmd{createExampleDeployment})
-			// sleep 120s waiting for deployment running complete
-			time.Sleep(120 * time.Second)
-
-			azurediskLog := testCmd{
-				command:  "bash",
-				args:     []string{"test/utils/azuredisk_log.sh"},
-				startLog: "===================azuredisk log===================",
-				endLog:   "===================================================",
-			}
-
-			e2eTeardown := testCmd{
-				command:  "make",
-				args:     []string{"e2e-teardown"},
-				startLog: "Uninstalling Azure Disk CSI Driver...",
-				endLog:   "Azure Disk CSI Driver uninstalled",
-			}
-			execTestCmd([]testCmd{azurediskLog, e2eTeardown})
-
-			// install/uninstall Azure Disk CSI Driver deployment scripts test
-			installDriver := testCmd{
-				command:  "bash",
-				args:     []string{"deploy/install-driver.sh", "master", "windows,snapshot,local"},
-				startLog: "===================install Azure Disk CSI Driver deployment scripts test===================",
-				endLog:   "===================================================",
-			}
-			uninstallDriver := testCmd{
-				command:  "bash",
-				args:     []string{"deploy/uninstall-driver.sh", "master", "windows,snapshot,local"},
-				startLog: "===================uninstall Azure Disk CSI Driver deployment scripts test===================",
-				endLog:   "===================================================",
-			}
-			execTestCmd([]testCmd{installDriver, uninstallDriver})
-
-			err := credentials.DeleteAzureCredentialFile()
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		deleteMetricsSVC := testCmd{
+			command:  "make",
+			args:     []string{"delete-metrics-svc"},
+			startLog: "delete metrics service...",
+			endLog:   "metrics service deleted",
 		}
+
+		e2eTeardown := testCmd{
+			command:  "make",
+			args:     []string{"e2e-teardown"},
+			startLog: "Uninstalling Azure Disk CSI Driver...",
+			endLog:   "Azure Disk CSI Driver uninstalled",
+		}
+		execTestCmd([]testCmd{azurediskLog, deleteMetricsSVC, e2eTeardown})
+
+		// install/uninstall Azure Disk CSI Driver deployment scripts test
+		installDriver := testCmd{
+			command:  "bash",
+			args:     []string{"deploy/install-driver.sh", "master", "windows,snapshot,local"},
+			startLog: "===================install Azure Disk CSI Driver deployment scripts test===================",
+			endLog:   "===================================================",
+		}
+		uninstallDriver := testCmd{
+			command:  "bash",
+			args:     []string{"deploy/uninstall-driver.sh", "master", "windows,snapshot,local"},
+			startLog: "===================uninstall Azure Disk CSI Driver deployment scripts test===================",
+			endLog:   "===================================================",
+		}
+		execTestCmd([]testCmd{installDriver, uninstallDriver})
+
+		err := credentials.DeleteAzureCredentialFile()
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	}
 })
 
@@ -223,6 +229,12 @@ func skipIfTestingInWindowsCluster() {
 func skipIfUsingInTreeVolumePlugin() {
 	if isUsingInTreeVolumePlugin {
 		ginkgo.Skip("test case is only available for CSI drivers")
+	}
+}
+
+func skipIfOnAzureStackCloud() {
+	if isAzureStackCloud {
+		ginkgo.Skip("test case not supported on Azure Stack Cloud")
 	}
 }
 

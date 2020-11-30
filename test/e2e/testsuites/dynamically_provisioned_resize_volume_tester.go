@@ -106,7 +106,7 @@ func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface,
 	resourceGroup, err := azuredisk.GetResourceGroupFromURI(diskURI)
 	framework.ExpectNoError(err, fmt.Sprintf("Error getting resourceGroup for azuredisk %v", err))
 
-	creds, err := credentials.CreateAzureCredentialFile(false)
+	creds, err := credentials.CreateAzureCredentialFile()
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	azureClient, err := azure.GetAzureClient(creds.Cloud, creds.SubscriptionID, creds.AADClientID, creds.TenantID, creds.AADClientSecret)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())

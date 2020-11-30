@@ -17,7 +17,7 @@ spec:
       hostNetwork: true
       serviceAccountName: csi-azuredisk-controller-sa
       nodeSelector:
-        kubernetes.io/os: linux
+        kubernetes.io/os: linux  # add "kubernetes.io/role: master" to run controller on master node
       priorityClassName: system-cluster-critical
       tolerations:
         - key: "node-role.kubernetes.io/master"
@@ -153,6 +153,8 @@ spec:
                   optional: true
             - name: CSI_ENDPOINT
               value: unix:///csi/csi.sock
+            - name: AZURE_ENVIRONMENT_FILEPATH  # For Azure Stack Cloud
+              value: /etc/kubernetes/azurestackcloud.json
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
@@ -161,6 +163,9 @@ spec:
             - mountPath: /var/lib/waagent/ManagedIdentity-Settings
               readOnly: true
               name: msi
+            - name: ssl
+              mountPath: /etc/ssl/certs
+              readOnly: true
           resources:
             limits:
               cpu: 200m
@@ -178,3 +183,6 @@ spec:
         - name: msi
           hostPath:
             path: /var/lib/waagent/ManagedIdentity-Settings
+        - name: ssl
+          hostPath:
+            path: /etc/ssl/certs
