@@ -380,19 +380,55 @@ func (d *Driver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolume
 	volSizeBytes := int64(capacityBytes)
 	requestGiB := volumehelper.RoundUpGiB(volSizeBytes)
 
-	args := []string{"-o", "source", "--noheadings", "--mountpoint", req.GetVolumePath()}
-	output, err := d.mounter.Exec.Command("findmnt", args...).Output()
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Could not determine device path: %v", err)
+	volumePath := req.GetVolumePath()
+	if len(volumePath) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "volume path must be provided")
 	}
 
-	devicePath := strings.TrimSpace(string(output))
-	if len(devicePath) == 0 {
-		return nil, status.Errorf(codes.Internal, "Could not get valid device for mount path: %q", req.GetVolumePath())
+	isBlock, err := hostutil.NewHostUtil().PathIsDevice(volumePath)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to determine device path for volumePath [%v]: %v", volumePath, err)
+	}
+	if isBlock {
+		// Noop for Block NodeExpandVolume
+		klog.V(4).Infof("NodeExpandVolume succeeded on %v to %s, path check is block so this is a no-op", volumeID, volumePath)
+		return &csi.NodeExpandVolumeResponse{}, nil
+	}
+
+	// Hopefully devicePath was passed from req
+	// In kubernetes 1.19 above, it will be passed by kubelet.
+	devicePath := req.GetStagingTargetPath()
+	if devicePath == "" {
+		args := []string{"-o", "source", "--noheadings", "--mountpoint", volumePath}
+		output, err := d.mounter.Exec.Command("findmnt", args...).Output()
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "Could not determine device path: %v", err)
+		}
+
+		devicePath = strings.TrimSpace(string(output))
+		if len(devicePath) == 0 {
+			return nil, status.Errorf(codes.Internal, "Could not get valid device for mount path: %q", volumePath)
+		}
+	}
+
+	volumeCapability := req.GetVolumeCapability()
+	if volumeCapability != nil {
+		// VolumeCapability is optional, if specified, validate it
+		caps := []*csi.VolumeCapability{volumeCapability}
+		if !isValidVolumeCapabilities(caps) {
+			return nil, status.Error(codes.InvalidArgument, "VolumeCapability is invalid.")
+		}
+
+		if blk := volumeCapability.GetBlock(); blk != nil {
+			// Noop for Block NodeExpandVolume
+			// This should not be executed but if somehow it is set to Block we should be cautious
+			klog.Warningf("NodeExpandVolume succeeded on %v to %s, capability is block but block check failed to identify it", volumeID, volumePath)
+			return &csi.NodeExpandVolumeResponse{}, nil
+		}
 	}
 
 	resizer := resizefs.NewResizeFs(d.mounter)
-	if _, err := resizer.Resize(devicePath, req.GetVolumePath()); err != nil {
+	if _, err := resizer.Resize(devicePath, volumePath); err != nil {
 		return nil, status.Errorf(codes.Internal, "Could not resize volume %q (%q):  %v", volumeID, devicePath, err)
 	}
 
