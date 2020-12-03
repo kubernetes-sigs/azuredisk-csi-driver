@@ -24,9 +24,10 @@ import (
 	"os"
 	"reflect"
 	"runtime"
-	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
 	"syscall"
 	"testing"
+
+	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/stretchr/testify/assert"
@@ -651,12 +652,12 @@ func TestNodeExpandVolume(t *testing.T) {
 	}
 
 	invalidPathErr := testutil.TestError{
-		DefaultError: status.Error(codes.Internal, "Could not determine device path: exit status 1"),
+		DefaultError: status.Error(codes.Internal, "failed to determine device path for volumePath [./test]: path \"./test\" does not exist"),
 		WindowsError: status.Error(codes.Internal, "Could not determine device path: executable file not found in %PATH%"),
 	}
 
 	if runtime.GOOS == "darwin" {
-		invalidPathErr.DefaultError = status.Error(codes.Internal, "Could not determine device path: executable file not found in $PATH")
+		invalidPathErr.DefaultError = status.Error(codes.Internal, "failed to determine device path for volumePath [./test]: volume/util/hostutil on this platform is not supported")
 	}
 	tests := []struct {
 		desc        string
@@ -678,6 +679,17 @@ func TestNodeExpandVolume(t *testing.T) {
 				VolumeId:      "test",
 			},
 			expectedErr: invalidPathErr,
+		},
+		{
+			desc: "volume path not provide",
+			req: csi.NodeExpandVolumeRequest{
+				CapacityRange:     stdCapacityRange,
+				StagingTargetPath: "test",
+				VolumeId:          "test",
+			},
+			expectedErr: testutil.TestError{
+				DefaultError: status.Error(codes.InvalidArgument, "volume path must be provided"),
+			},
 		},
 	}
 	for _, test := range tests {
