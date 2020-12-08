@@ -1,5 +1,5 @@
 ## Driver Parameters
- > storage class `disk.csi.azure.com` parameters are compatible with in-tree [kubernetes.io/azure-disk](https://kubernetes.io/docs/concepts/storage/volumes/#azuredisk) driver
+`disk.csi.azure.com` driver parameters
 
 ### Dynamic Provisioning
  > get an [example](../deploy/example/storageclass-azuredisk-csi.yaml)
