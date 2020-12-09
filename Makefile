@@ -140,6 +140,9 @@ container-windows:
 container-all: azuredisk azuredisk-windows
 	docker buildx rm container-builder || true
 	docker buildx create --use --name=container-builder
+ifdef AZURE_STACK
+	docker run --privileged --name buildx_buildkit_container-builder0 -d --mount type=bind,src=/etc/ssl/certs,dst=/etc/ssl/certs moby/buildkit:latest || true
+endif
 	$(MAKE) container-linux
 	for osversion in $(ALL_OSVERSIONS.windows); do \
 		OSVERSION=$${osversion} $(MAKE) container-windows; \
