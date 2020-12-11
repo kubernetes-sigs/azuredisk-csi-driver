@@ -27,8 +27,9 @@ Please refer to [`disk.csi.azure.com` driver parameters](./docs/driver-parameter
  - This driver also supports [read cloud config from kuberenetes secret](./docs/read-from-secret.md).
  - If cluster identity is [Managed Service Identity(MSI)](https://docs.microsoft.com/en-us/azure/aks/use-managed-identity), make sure user assigned identity has `Contributor` role on node resource group
 
-### Install azuredisk CSI driver on a Kubernetes cluster
-Please refer to [install azuredisk csi driver](./docs/install-azuredisk-csi-driver.md)
+### Install driver on a Kubernetes cluster
+ - install by [kubectl](./docs/install-azuredisk-csi-driver.md)
+ - install by [helm charts](./charts)
 
 ### Examples
  - [Basic usage](./deploy/example/e2e_usage.md)
