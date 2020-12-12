@@ -47,7 +47,7 @@ export GOPATH GOBIN GO111MODULE DOCKER_CLI_EXPERIMENTAL
 
 # Generate all combination of all OS, ARCH, and OSVERSIONS for iteration
 ALL_OS = linux windows
-ALL_ARCH.linux = amd64
+ALL_ARCH.linux = amd64 arm64
 ALL_OS_ARCH.linux = $(foreach arch, ${ALL_ARCH.linux}, linux-$(arch))
 ALL_ARCH.windows = amd64
 ALL_OSVERSIONS.windows := 1809 1903 1909 2004
@@ -112,7 +112,7 @@ e2e-teardown:
 
 .PHONY: azuredisk
 azuredisk:
-	CGO_ENABLED=0 GOOS=linux go build -a -ldflags ${LDFLAGS} -mod vendor -o _output/azurediskplugin ./pkg/azurediskplugin
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(ARCH) go build -a -ldflags ${LDFLAGS} -mod vendor -o _output/azurediskplugin ./pkg/azurediskplugin
 
 .PHONY: azuredisk-windows
 azuredisk-windows:
@@ -137,7 +137,7 @@ container-windows:
 		 -t $(IMAGE_TAG)-windows-$(OSVERSION)-$(ARCH) --build-arg OSVERSION=$(OSVERSION) -f ./pkg/azurediskplugin/Windows.Dockerfile .
 
 .PHONY: container-all
-container-all: azuredisk azuredisk-windows
+container-all: azuredisk-windows
 	docker buildx rm container-builder || true
 	docker buildx create --use --name=container-builder
 	# only moby/buildkit:foreign-mediatype works on building Windows image now
@@ -145,9 +145,15 @@ container-all: azuredisk azuredisk-windows
 	docker run --privileged --name buildx_buildkit_container-builder0 -d andyzhangx/buildkit:v0.8.0-foreign-mediatype
 	# sleep 2s waiting for container-builder running complete
 	sleep 2
-	$(MAKE) container-linux
 	for osversion in $(ALL_OSVERSIONS.windows); do \
 		OSVERSION=$${osversion} $(MAKE) container-windows; \
+	done
+
+	# enable qemu for arm64 build
+	docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+	for arch in $(ALL_ARCH.linux); do \
+		ARCH=$${arch} $(MAKE) azuredisk; \
+		ARCH=$${arch} $(MAKE) container-linux; \
 	done
 
 .PHONY: push-manifest
