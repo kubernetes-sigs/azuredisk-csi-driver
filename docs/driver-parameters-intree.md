@@ -1,8 +1,8 @@
 ## Driver Parameters
-`disk.csi.azure.com` driver parameters
+
+in-tree [kubernetes.io/azure-disk](https://kubernetes.io/docs/concepts/storage/volumes/#azuredisk) driver parameters
 
 ### Dynamic Provisioning
- > get an [example](../deploy/example/storageclass-azuredisk-csi.yaml)
 
 Name | Meaning | Available Value | Mandatory | Default value
 --- | --- | --- | --- | ---
@@ -19,19 +19,12 @@ tags | azure disk [tags](https://docs.microsoft.com/en-us/azure/azure-resource-m
 diskEncryptionSetID | ResourceId of the disk encryption set to use for [enabling encryption at rest](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/disk-encryption) | format: `/subscriptions/{subs-id}/resourceGroups/{rg-name}/providers/Microsoft.Compute/diskEncryptionSets/{diskEncryptionSet-name}` | No | ""
 writeAcceleratorEnabled | [Write Accelerator on Azure Disks](https://docs.microsoft.com/azure/virtual-machines/windows/how-to-enable-write-accelerator) | `true`, `false` | No | ""
 
-### Static Provisioning(bring your own Azure Disk)
- > get an [example](../deploy/example/pv-azuredisk-csi.yaml)
+### Static Provisioning(bring your own disk)
 
 Name | Meaning | Available Value | Mandatory | Default value
 --- | --- | --- | --- | ---
-volumeHandle| Azure disk URI | /subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id} | Yes | N/A
-volumeAttributes.fsType | File System Type | `ext4`, `ext3`, `xfs` | No | `ext4`
-volumeAttributes.partition | partition num of the existing disk | `1`, `2`, `3` | No | empty(no partition) </br>- make sure partition format is like `-part1`
-volumeAttributes.cachingMode | [disk host cache setting](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/premium-storage-performance#disk-caching)| `None`, `ReadOnly`, `ReadWrite` | No  | `ReadOnly`
-
-### `VolumeSnapshotClass`
- Name | Meaning | Available Value | Mandatory | Default value
---- | --- | --- | --- | ---
-resourceGroup | resource group for storing snapshot shots | EXISTING RESOURCE GROUP | No | If not specified, snapshot will be stored in the same resource group as source Azure disk
-incremental | take [full or incremental snapshot](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/incremental-snapshots) | `true`, `false` | No | `true`
-tags | azure disk [tags](https://docs.microsoft.com/en-us/azure/azure-resource-manager/management/tag-resources) | tag format: 'key1=val1,key2=val2' | No | ""
+diskName | disk name | | Yes |
+diskName | disk resource ID | /subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id} | Yes |
+fsType | File System Type | `ext4`, `ext3`, `ext2`, `xfs` | No | `ext4`
+cachingMode | [Azure Data Disk Host Cache Setting](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/premium-storage-performance#disk-caching) | `None`, `ReadOnly`, `ReadWrite` | No | `ReadOnly`
+readOnly | file system read only or not  | `true`, `false` | No | `false`

@@ -140,6 +140,11 @@ container-windows:
 container-all: azuredisk azuredisk-windows
 	docker buildx rm container-builder || true
 	docker buildx create --use --name=container-builder
+	# only moby/buildkit:foreign-mediatype works on building Windows image now
+	# https://github.com/moby/buildkit/pull/1879
+	docker run --privileged --name buildx_buildkit_container-builder0 -d andyzhangx/buildkit:v0.8.0-foreign-mediatype
+	# sleep 2s waiting for container-builder running complete
+	sleep 2
 	$(MAKE) container-linux
 	for osversion in $(ALL_OSVERSIONS.windows); do \
 		OSVERSION=$${osversion} $(MAKE) container-windows; \
