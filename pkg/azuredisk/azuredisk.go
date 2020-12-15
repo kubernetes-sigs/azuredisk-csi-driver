@@ -80,6 +80,9 @@ const (
 	tagsField               = "tags"
 	maxSharesField          = "maxshares"
 	incrementalField        = "incremental"
+	pvcNamespaceKeyField    = "csi.storage.k8s.io/pvc/namespace"
+    pvcNameKeyField         = "csi.storage.k8s.io/pvc/name"
+    pvNameKeyField          = "csi.storage.k8s.io/pv/name"
 )
 
 var (

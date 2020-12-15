@@ -111,6 +111,9 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		diskName                string
 		diskEncryptionSetID     string
 		customTags              string
+		pvcNameKey              string
+		pvcNamespaceKey         string
+		pvNameKey               string
 		writeAcceleratorEnabled string
 		maxShares               int
 	)
@@ -119,6 +122,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	if parameters == nil {
 		parameters = make(map[string]string)
 	}
+
 	for k, v := range parameters {
 		switch strings.ToLower(k) {
 		case skuNameField:
@@ -145,6 +149,12 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			diskEncryptionSetID = v
 		case tagsField:
 			customTags = v
+		case pvNameKeyField:
+            pvNameKey = v
+        case pvcNamespaceKeyField:
+            pvcNamespaceKey = v
+        case pvcNameKeyField:
+        	pvcNameKey = v
 		case azure.WriteAcceleratorEnabled:
 			writeAcceleratorEnabled = v
 		case maxSharesField:
@@ -235,6 +245,15 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		tags := make(map[string]string)
 		for k, v := range customTagsMap {
 			tags[k] = v
+		}
+        if pvcNamespaceKey != "" {
+        	tags["csi.storage.k8s.io-pvc-namespace"] = pvcNamespaceKey
+        }
+		if pvcNameKey != "" {
+			tags["csi.storage.k8s.io-pvc-name"] = pvcNameKey
+		}
+		if pvNameKey != "" {
+			tags["csi.storage.k8s.io-pv-name"] = pvNameKey
 		}
 		/* todo: check where are the tags in CSI
 		if p.options.CloudTags != nil {
