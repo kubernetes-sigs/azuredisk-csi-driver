@@ -150,10 +150,10 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		case tagsField:
 			customTags = v
 		case pvNameKeyField:
-            pvNameKey = v
-        case pvcNamespaceKeyField:
-            pvcNamespaceKey = v
-        case pvcNameKeyField:
+			pvNameKey = v
+		case pvcNamespaceKeyField:
+			pvcNamespaceKey = v
+		case pvcNameKeyField:
         	pvcNameKey = v
 		case azure.WriteAcceleratorEnabled:
 			writeAcceleratorEnabled = v
@@ -246,9 +246,9 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		for k, v := range customTagsMap {
 			tags[k] = v
 		}
-        if pvcNamespaceKey != "" {
-        	tags["csi.storage.k8s.io-pvc-namespace"] = pvcNamespaceKey
-        }
+		if pvcNamespaceKey != "" {
+			tags["csi.storage.k8s.io-pvc-namespace"] = pvcNamespaceKey
+		}
 		if pvcNameKey != "" {
 			tags["csi.storage.k8s.io-pvc-name"] = pvcNameKey
 		}
