@@ -1481,12 +1481,133 @@ func TestGetCapacity(t *testing.T) {
 }
 
 func TestListVolumes(t *testing.T) {
-	d, _ := NewFakeDriver(t)
-	req := csi.ListVolumesRequest{}
-	resp, err := d.ListVolumes(context.Background(), &req)
-	assert.Nil(t, resp)
-	if !reflect.DeepEqual(err, status.Error(codes.Unimplemented, "")) {
-		t.Errorf("Unexpected error: %v", err)
+	testCases := []struct {
+		name     string
+		testFunc func(t *testing.T)
+	}{
+		{
+			name: "Valid list without max_entries or starting_token",
+			testFunc: func(t *testing.T) {
+				req := csi.ListVolumesRequest{}
+				d, _ := NewFakeDriver(t)
+				fakeVolumeID := "test"
+				disk := compute.Disk{ID: &fakeVolumeID}
+				disks := []compute.Disk{}
+				disks = append(disks, disk)
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().ListByResourceGroup(gomock.Any(), gomock.Any()).Return(disks, nil).AnyTimes()
+				expectedErr := error(nil)
+				listVolumesResponse, err := d.ListVolumes(context.TODO(), &req)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+				if listVolumesResponse.NextToken != "" {
+					t.Errorf("actualNextToken: (%v), expectedNextToken: (%v)", listVolumesResponse.NextToken, "")
+				}
+			},
+		},
+		{
+			name: "Valid list with max_entries",
+			testFunc: func(t *testing.T) {
+				req := csi.ListVolumesRequest{
+					MaxEntries: 1,
+				}
+				d, _ := NewFakeDriver(t)
+				fakeVolumeID := "test"
+				disk1, disk2 := compute.Disk{ID: &fakeVolumeID}, compute.Disk{ID: &fakeVolumeID}
+				disks := []compute.Disk{}
+				disks = append(disks, disk1, disk2)
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().ListByResourceGroup(gomock.Any(), gomock.Any()).Return(disks, nil).AnyTimes()
+				expectedErr := error(nil)
+				listVolumesResponse, err := d.ListVolumes(context.TODO(), &req)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+				if len(listVolumesResponse.Entries) != int(req.MaxEntries) {
+					t.Errorf("Actual number of entries: (%v), Expected number of entries: (%v)", len(listVolumesResponse.Entries), req.MaxEntries)
+				}
+				if listVolumesResponse.NextToken != "1" {
+					t.Errorf("actualNextToken: (%v), expectedNextToken: (%v)", listVolumesResponse.NextToken, "1")
+				}
+			},
+		},
+		{
+			name: "Valid list with max_entries and starting_token",
+			testFunc: func(t *testing.T) {
+				req := csi.ListVolumesRequest{
+					StartingToken: "1",
+					MaxEntries:    1,
+				}
+				d, _ := NewFakeDriver(t)
+				fakeVolumeID1, fakeVolumeID12 := "test1", "test2"
+				disk1, disk2 := compute.Disk{ID: &fakeVolumeID1}, compute.Disk{ID: &fakeVolumeID12}
+				disks := []compute.Disk{}
+				disks = append(disks, disk1, disk2)
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().ListByResourceGroup(gomock.Any(), gomock.Any()).Return(disks, nil).AnyTimes()
+				expectedErr := error(nil)
+				listVolumesResponse, err := d.ListVolumes(context.TODO(), &req)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+				if len(listVolumesResponse.Entries) != int(req.MaxEntries) {
+					t.Errorf("Actual number of entries: (%v), Expected number of entries: (%v)", len(listVolumesResponse.Entries), req.MaxEntries)
+				}
+				if listVolumesResponse.NextToken != "" {
+					t.Errorf("actualNextToken: (%v), expectedNextToken: (%v)", listVolumesResponse.NextToken, "")
+				}
+				if listVolumesResponse.Entries[0].Volume.VolumeId != fakeVolumeID12 {
+					t.Errorf("actualVolumeId: (%v), expectedVolumeId: (%v)", listVolumesResponse.Entries[0].Volume.VolumeId, fakeVolumeID12)
+				}
+			},
+		},
+		{
+			name: "ListVolumes request with starting token but no entries in response",
+			testFunc: func(t *testing.T) {
+				req := csi.ListVolumesRequest{
+					StartingToken: "1",
+				}
+				d, _ := NewFakeDriver(t)
+				disks := []compute.Disk{}
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().ListByResourceGroup(gomock.Any(), gomock.Any()).Return(disks, nil).AnyTimes()
+				expectedErr := status.Error(codes.Aborted, "ListVolumes starting token(1) on rg(rg) is greater than total number of volumes")
+				_, err := d.ListVolumes(context.TODO(), &req)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "ListVolumes list resource error",
+			testFunc: func(t *testing.T) {
+				req := csi.ListVolumesRequest{
+					StartingToken: "1",
+				}
+				d, _ := NewFakeDriver(t)
+				disks := []compute.Disk{}
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				rerr := &retry.Error{
+					RawError: fmt.Errorf("test"),
+				}
+				d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().ListByResourceGroup(gomock.Any(), gomock.Any()).Return(disks, rerr).AnyTimes()
+				expectedErr := status.Error(codes.Internal, "ListVolumes on rg(rg) failed with error: Retriable: false, RetryAfter: 0s, HTTPStatusCode: 0, RawError: test")
+				_, err := d.ListVolumes(context.TODO(), &req)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, tc.testFunc)
 	}
 }
 

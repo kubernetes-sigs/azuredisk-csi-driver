@@ -538,7 +538,68 @@ func (d *Driver) GetCapacity(ctx context.Context, req *csi.GetCapacityRequest) (
 
 // ListVolumes return all available volumes
 func (d *Driver) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest) (*csi.ListVolumesResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
+	var err error
+	start := 0
+	if req.StartingToken != "" {
+		start, err = strconv.Atoi(req.StartingToken)
+		if err != nil {
+			return nil, status.Errorf(codes.Aborted, "ListVolumes starting token(%s) parsing with error: %v", req.StartingToken, err)
+		}
+		if start < 0 {
+			return nil, status.Errorf(codes.Aborted, "ListVolumes starting token(%d) can not be negative", start)
+		}
+	}
+
+	disks, derr := d.cloud.DisksClient.ListByResourceGroup(ctx, d.cloud.ResourceGroup)
+	if derr != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("ListVolumes on rg(%s) failed with error: %v", d.cloud.ResourceGroup, derr.Error()))
+	}
+
+	if start != 0 && start >= len(disks) {
+		return nil, status.Errorf(codes.Aborted, "ListVolumes starting token(%d) on rg(%s) is greater than total number of volumes", start, d.cloud.ResourceGroup)
+	}
+
+	maxEntries := len(disks) - start
+	if req.MaxEntries > 0 && int(req.MaxEntries) < maxEntries {
+		maxEntries = int(req.MaxEntries)
+	}
+	pageEnd := start + maxEntries
+
+	vmSet := d.cloud.VMSet
+	entries := []*csi.ListVolumesResponse_Entry{}
+	for i := start; i < pageEnd; i++ {
+		d := disks[i]
+		nodeList := []string{}
+
+		if d.ManagedBy != nil {
+			attachedNode, err := vmSet.GetNodeNameByProviderID(*d.ManagedBy)
+			if err != nil {
+				return nil, err
+			}
+			nodeList = append(nodeList, string(attachedNode))
+		}
+
+		entries = append(entries, &csi.ListVolumesResponse_Entry{
+			Volume: &csi.Volume{
+				VolumeId: *d.ID,
+			},
+			Status: &csi.ListVolumesResponse_VolumeStatus{
+				PublishedNodeIds: nodeList,
+			},
+		})
+	}
+
+	nextTokenString := ""
+	if pageEnd < len(disks) {
+		nextTokenString = strconv.Itoa(pageEnd)
+	}
+
+	listVolumesResp := &csi.ListVolumesResponse{
+		Entries:   entries,
+		NextToken: nextTokenString,
+	}
+
+	return listVolumesResp, nil
 }
 
 // ControllerExpandVolume controller expand volume
