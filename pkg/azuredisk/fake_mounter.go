@@ -18,12 +18,13 @@ package azuredisk
 
 import (
 	"fmt"
-	testingexec "k8s.io/utils/exec/testing"
 	"runtime"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
 	"strings"
 
-	"k8s.io/utils/mount"
+	"k8s.io/mount-utils"
+	testingexec "k8s.io/utils/exec/testing"
+
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
 )
 
 type fakeMounter struct {

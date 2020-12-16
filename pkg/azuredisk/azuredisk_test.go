@@ -25,13 +25,14 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/golang/mock/gomock"
 	"google.golang.org/grpc/status"
-	"k8s.io/legacy-cloud-providers/azure"
-	"k8s.io/legacy-cloud-providers/azure/clients/diskclient/mockdiskclient"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-12-01/compute"
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
+
+	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/diskclient/mockdiskclient"
+	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
 func TestIsManagedDisk(t *testing.T) {

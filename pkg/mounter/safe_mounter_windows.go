@@ -34,8 +34,8 @@ import (
 	volumeclientv1alpha1 "github.com/kubernetes-csi/csi-proxy/client/groups/volume/v1alpha1"
 
 	"k8s.io/klog/v2"
+	"k8s.io/mount-utils"
 	utilexec "k8s.io/utils/exec"
-	"k8s.io/utils/mount"
 )
 
 var _ mount.Interface = &CSIProxyMounter{}
@@ -172,27 +172,31 @@ func (mounter *CSIProxyMounter) ExistsPath(path string) (bool, error) {
 }
 
 func (mounter *CSIProxyMounter) EvalHostSymlinks(pathname string) (string, error) {
-	return "", fmt.Errorf("EvalHostSymlinks not implemented for CSIProxyMounter")
+	return "", fmt.Errorf("EvalHostSymlinks is not implemented for CSIProxyMounter")
 }
 
 func (mounter *CSIProxyMounter) GetMountRefs(pathname string) ([]string, error) {
-	return []string{}, fmt.Errorf("GetMountRefs not implemented for CSIProxyMounter")
+	return []string{}, fmt.Errorf("GetMountRefs is not implemented for CSIProxyMounter")
 }
 
 func (mounter *CSIProxyMounter) GetFSGroup(pathname string) (int64, error) {
-	return -1, fmt.Errorf("GetFSGroup not implemented for CSIProxyMounter")
+	return -1, fmt.Errorf("GetFSGroup is not implemented for CSIProxyMounter")
 }
 
 func (mounter *CSIProxyMounter) GetSELinuxSupport(pathname string) (bool, error) {
-	return false, fmt.Errorf("GetSELinuxSupport not implemented for CSIProxyMounter")
+	return false, fmt.Errorf("GetSELinuxSupport is not implemented for CSIProxyMounter")
 }
 
 func (mounter *CSIProxyMounter) GetMode(pathname string) (os.FileMode, error) {
-	return 0, fmt.Errorf("GetMode not implemented for CSIProxyMounter")
+	return 0, fmt.Errorf("GetMode is not implemented for CSIProxyMounter")
 }
 
 func (mounter *CSIProxyMounter) MountSensitive(source string, target string, fstype string, options []string, sensitiveOptions []string) error {
-	return fmt.Errorf("MountSensitive not implemented for CSIProxyMounter")
+	return fmt.Errorf("MountSensitive is not implemented for CSIProxyMounter")
+}
+
+func (mounter *CSIProxyMounter) MountSensitiveWithoutSystemd(source string, target string, fstype string, options []string, sensitiveOptions []string) error {
+	return fmt.Errorf("MountSensitiveWithoutSystemd is not implemented for CSIProxyMounter")
 }
 
 // Rescan would trigger an update storage cache via the CSI proxy.

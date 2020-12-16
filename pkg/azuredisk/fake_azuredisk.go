@@ -22,11 +22,10 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
 
-	"k8s.io/legacy-cloud-providers/azure"
-
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
+	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
 const (
