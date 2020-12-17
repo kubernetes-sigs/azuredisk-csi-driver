@@ -80,30 +80,6 @@ func NewNodeServiceCapability(cap csi.NodeServiceCapability_RPC_Type) *csi.NodeS
 	}
 }
 
-func RunNodePublishServer(endpoint string, d *CSIDriver, ns csi.NodeServer, testMode bool) {
-	ids := NewDefaultIdentityServer(d)
-
-	s := NewNonBlockingGRPCServer()
-	s.Start(endpoint, ids, nil, ns, testMode)
-	s.Wait()
-}
-
-func RunControllerPublishServer(endpoint string, d *CSIDriver, cs csi.ControllerServer, testMode bool) {
-	ids := NewDefaultIdentityServer(d)
-
-	s := NewNonBlockingGRPCServer()
-	s.Start(endpoint, ids, cs, nil, testMode)
-	s.Wait()
-}
-
-func RunControllerandNodePublishServer(endpoint string, d *CSIDriver, cs csi.ControllerServer, ns csi.NodeServer, testMode bool) {
-	ids := NewDefaultIdentityServer(d)
-
-	s := NewNonBlockingGRPCServer()
-	s.Start(endpoint, ids, cs, ns, testMode)
-	s.Wait()
-}
-
 func logGRPC(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	klog.V(3).Infof("GRPC call: %s", info.FullMethod)
 	klog.V(5).Infof("GRPC request: %s", protosanitizer.StripSecrets(req))
