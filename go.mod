@@ -67,5 +67,5 @@ replace (
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.20.0
 	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.20.0
 	k8s.io/sample-controller => k8s.io/sample-controller v0.20.0
-	sigs.k8s.io/cloud-provider-azure => sigs.k8s.io/cloud-provider-azure v0.6.1-0.20201216085636-a128f0b42b5a
+	sigs.k8s.io/cloud-provider-azure => sigs.k8s.io/cloud-provider-azure v0.6.1-0.20201216132022-d1c222ae6518
 )
