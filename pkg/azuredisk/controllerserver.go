@@ -23,8 +23,6 @@ import (
 	"strconv"
 	"strings"
 
-	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
-
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-12-01/compute"
 	"github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2019-06-01/storage"
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -39,8 +37,10 @@ import (
 	cloudprovider "k8s.io/cloud-provider"
 	volerr "k8s.io/cloud-provider/volume/errors"
 	"k8s.io/klog/v2"
-	"k8s.io/legacy-cloud-providers/azure"
-	"k8s.io/legacy-cloud-providers/azure/metrics"
+
+	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
+	"sigs.k8s.io/cloud-provider-azure/pkg/metrics"
+	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
 var (

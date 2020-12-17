@@ -26,7 +26,8 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
-	"k8s.io/legacy-cloud-providers/azure"
+
+	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
 var (

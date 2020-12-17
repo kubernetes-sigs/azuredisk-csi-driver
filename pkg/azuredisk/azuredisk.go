@@ -24,18 +24,20 @@ import (
 	"strings"
 	"unicode"
 
-	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
-
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-12-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/pborman/uuid"
+
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/volume/util"
-	"k8s.io/legacy-cloud-providers/azure"
-	"k8s.io/utils/mount"
+	"k8s.io/mount-utils"
+
+	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
+	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
 const (
