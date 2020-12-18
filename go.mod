@@ -1,6 +1,6 @@
 module sigs.k8s.io/azuredisk-csi-driver
 
-go 1.13
+go 1.15
 
 require (
 	github.com/Azure/azure-sdk-for-go v43.0.0+incompatible
