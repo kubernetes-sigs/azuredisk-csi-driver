@@ -1,5 +1,7 @@
+// +build !providerless
+
 /*
-Copyright 2020 The Kubernetes Authors.
+Copyright 2017 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -219,7 +221,7 @@ func (c *ManagedDiskController) DeleteManagedDisk(diskURI string) error {
 	ctx, cancel := getContextWithCancel()
 	defer cancel()
 
-	if _, ok := c.common.diskAttachDetachMap.Load(strings.ToLower(diskURI)); ok {
+	if _, ok := c.common.diskStateMap.Load(strings.ToLower(diskURI)); ok {
 		return fmt.Errorf("failed to delete disk(%s) since it's in attaching or detaching state", diskURI)
 	}
 
