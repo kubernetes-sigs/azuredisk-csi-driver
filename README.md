@@ -43,9 +43,12 @@ Please refer to [`disk.csi.azure.com` driver parameters](./docs/driver-parameter
  - [Windows](./deploy/example/windows)
  - [Shared Disk](./deploy/example/sharedisk)
  - [Volume Limits](./deploy/example/volumelimits)
- 
+
 ### Troubleshooting
  - [CSI driver troubleshooting guide](./docs/csi-debug.md)
+ 
+### Support
+Please see our [support policy][support-policy]
 
 ## Kubernetes Development
 Please refer to [development guide](./docs/csi-dev.md)
@@ -57,3 +60,5 @@ Check testgrid [provider-azure-azuredisk-csi-driver](https://testgrid.k8s.io/pro
  - [Kubernetes CSI Documentation](https://kubernetes-csi.github.io/docs/)
  - [CSI Drivers](https://github.com/kubernetes-csi/drivers)
  - [Container Storage Interface (CSI) Specification](https://github.com/container-storage-interface/spec)
+
+[support-policy]: support.md
