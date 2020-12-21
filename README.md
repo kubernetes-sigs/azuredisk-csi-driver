@@ -48,13 +48,13 @@ Please refer to [`disk.csi.azure.com` driver parameters](./docs/driver-parameter
  - [CSI driver troubleshooting guide](./docs/csi-debug.md)
  
 ### Support
-Please see our [support policy][support-policy]
+ - Please see our [support policy][support-policy]
 
 ## Kubernetes Development
-Please refer to [development guide](./docs/csi-dev.md)
+ - Please refer to [development guide](./docs/csi-dev.md)
 
 ### View CI Results
-Check testgrid [provider-azure-azuredisk-csi-driver](https://testgrid.k8s.io/provider-azure-azuredisk-csi-driver) dashboard.
+ - Check testgrid [provider-azure-azuredisk-csi-driver](https://testgrid.k8s.io/provider-azure-azuredisk-csi-driver) dashboard.
 
 ### Links
  - [Kubernetes CSI Documentation](https://kubernetes-csi.github.io/docs/)
