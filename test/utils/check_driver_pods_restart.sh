@@ -43,7 +43,7 @@ for ((i=0; i<${#processed_restarts[@]}; i++)); do
         if [[ "$1" == "log" ]]; then
             kubectl describe po ${processed_pods[$i]} -n kube-system
             echo "======================================================================================"
-            echo "print previous azuredisk cotnainer logs since there is a restart"
+            echo "print previous azuredisk container logs since there is a restart"
             kubectl logs ${processed_pods[$i]} -c azuredisk -p -n kube-system
             echo "======================================================================================"
         fi
