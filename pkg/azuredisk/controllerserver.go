@@ -19,6 +19,7 @@ package azuredisk
 import (
 	"context"
 	"fmt"
+	"path"
 	"strconv"
 	"strings"
 
@@ -63,11 +64,13 @@ var (
 )
 
 const (
-	sourceSnapshot         = "snapshot"
-	sourceVolume           = "volume"
-	azureDiskCSIDriverName = "azuredisk_csi_driver"
-	NotFound               = "NotFound"
-	CreatedForPVNameKey    = "kubernetes.io-created-for-pv-name"
+	sourceSnapshot           = "snapshot"
+	sourceVolume             = "volume"
+	azureDiskCSIDriverName   = "azuredisk_csi_driver"
+	NotFound                 = "NotFound"
+	CreatedForPVNameKey      = "kubernetes.io-created-for-pv-name"
+	resizeRequired           = "resizeRequired"
+	sourceDiskSearchMaxDepth = 10
 )
 
 // CreateVolume provisions an azure disk
@@ -160,6 +163,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			//return nil, fmt.Errorf("AzureDisk - invalid option %s in storage class", k)
 		}
 	}
+	parameters[resizeRequired] = strconv.FormatBool(false)
 
 	if IsAzureStackCloud(d.cloud) {
 		if maxShares > 1 {
@@ -258,6 +262,11 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 				},
 			}
 
+			ctx, cancel := context.WithCancel(context.Background())
+			if sourceGiB, _ := d.GetSourceDiskSize(ctx, resourceGroup, path.Base(sourceID), 0, sourceDiskSearchMaxDepth); sourceGiB != nil && *sourceGiB < int32(requestGiB) {
+				parameters[resizeRequired] = strconv.FormatBool(true)
+			}
+			cancel()
 		}
 	}
 
@@ -794,6 +803,33 @@ func (d *Driver) getSnapshotByID(ctx context.Context, resourceGroup, snapshotID,
 	}
 
 	return generateCSISnapshot(sourceVolumeID, &snapshot)
+}
+
+// GetSourceDiskSize recursively searches for the sourceDisk and returns: sourceDisk disk size, error
+func (d *Driver) GetSourceDiskSize(ctx context.Context, resourceGroup, diskName string, curDepth, maxDepth int) (*int32, error) {
+	if curDepth > maxDepth {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("current depth (%d) surpassed the max depth (%d) while searching for the source disk size", curDepth, maxDepth))
+	}
+	result, rerr := d.cloud.DisksClient.Get(ctx, resourceGroup, diskName)
+	if rerr != nil {
+		return nil, rerr.Error()
+	}
+	if result.DiskProperties == nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("DiskProperty not found for disk (%s) in resource group (%s)", diskName, resourceGroup))
+	}
+
+	if result.DiskProperties.CreationData != nil && (*result.DiskProperties.CreationData).CreateOption == "Copy" {
+		klog.V(2).Infof("Clone source disk has a parent source")
+		sourceResourceID := *result.DiskProperties.CreationData.SourceResourceID
+		parentResourceGroup, _ := GetResourceGroupFromURI(sourceResourceID)
+		parentDiskName := path.Base(sourceResourceID)
+		return d.GetSourceDiskSize(ctx, parentResourceGroup, parentDiskName, curDepth+1, maxDepth)
+	}
+
+	if (*result.DiskProperties).DiskSizeGB == nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("DiskSizeGB for disk (%s) in resourcegroup (%s) is nil", diskName, resourceGroup))
+	}
+	return (*result.DiskProperties).DiskSizeGB, nil
 }
 
 func isValidVolumeCapabilities(volCaps []*csi.VolumeCapability) bool {
