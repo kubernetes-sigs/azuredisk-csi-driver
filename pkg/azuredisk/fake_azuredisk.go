@@ -78,6 +78,8 @@ func NewFakeDriver(t *testing.T) (*Driver, error) {
 			csi.ControllerServiceCapability_RPC_LIST_SNAPSHOTS,
 			csi.ControllerServiceCapability_RPC_CLONE_VOLUME,
 			csi.ControllerServiceCapability_RPC_EXPAND_VOLUME,
+			csi.ControllerServiceCapability_RPC_LIST_VOLUMES,
+			csi.ControllerServiceCapability_RPC_LIST_VOLUMES_PUBLISHED_NODES,
 		})
 	driver.AddVolumeCapabilityAccessModes([]csi.VolumeCapability_AccessMode_Mode{csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER})
 	driver.AddNodeServiceCapabilities([]csi.NodeServiceCapability_RPC_Type{

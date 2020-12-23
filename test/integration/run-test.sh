@@ -67,6 +67,9 @@ echo 'Attach volume test:'
 "$CSC_BIN" controller publish --endpoint "$endpoint" --node-id "$node" --cap 1,block "$volumeid"
 sleep 20
 
+echo 'ListVolumes test:'
+"$CSC_BIN" controller list-volumes --endpoint "$endpoint" --max-entries 1 --starting-token 0
+
 echo 'Detach volume test:'
 "$CSC_BIN" controller unpublish --endpoint "$endpoint" --node-id "$node" "$volumeid"
 sleep 30
