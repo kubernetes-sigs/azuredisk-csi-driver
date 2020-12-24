@@ -974,33 +974,26 @@ func getEntriesAndNextToken(req *csi.ListSnapshotsRequest, snapshots []compute.S
 			return nil, status.Errorf(codes.Aborted, "ListSnapshots starting token(%d) can not be negative", start)
 		}
 	}
-	perPage := 0
-	if req.MaxEntries > 0 {
-		perPage = int(req.MaxEntries)
-	}
 
-	match := false
-	entries := []*csi.ListSnapshotsResponse_Entry{}
-	for i, snapshot := range snapshots {
-		if req.SourceVolumeId == getSourceVolumeID(&snapshot) {
-			match = true
-		}
-		csiSnapshot, err := generateCSISnapshot(req.SourceVolumeId, &snapshot)
-		if err != nil {
-			return nil, fmt.Errorf("failed to generate snapshot entry: %v", err)
-		}
-		if i >= start && (perPage == 0 || (perPage > 0 && i < start+perPage)) {
-			entries = append(entries, &csi.ListSnapshotsResponse_Entry{Snapshot: csiSnapshot})
-		}
+	maxEntries := len(snapshots) - start
+	if req.MaxEntries > 0 && int(req.MaxEntries) < maxEntries {
+		maxEntries = int(req.MaxEntries)
 	}
-	// return empty if SourceVolumeId is not empty and does not match the listed snapshot's SourceVolumeId
-	if req.SourceVolumeId != "" && !match {
-		return &csi.ListSnapshotsResponse{}, nil
+	entries := []*csi.ListSnapshotsResponse_Entry{}
+	for count := 0; start < len(snapshots) && count < maxEntries; start++ {
+		if (req.SourceVolumeId != "" && req.SourceVolumeId == getSourceVolumeID(&snapshots[start])) || req.SourceVolumeId == "" {
+			csiSnapshot, err := generateCSISnapshot(req.SourceVolumeId, &snapshots[start])
+			if err != nil {
+				return nil, fmt.Errorf("failed to generate snapshot entry: %v", err)
+			}
+			entries = append(entries, &csi.ListSnapshotsResponse_Entry{Snapshot: csiSnapshot})
+			count++
+		}
 	}
 
 	nextToken := len(snapshots)
-	if start+perPage < len(snapshots) {
-		nextToken = start + perPage
+	if start < len(snapshots) {
+		nextToken = start
 	}
 
 	listSnapshotResp := &csi.ListSnapshotsResponse{
