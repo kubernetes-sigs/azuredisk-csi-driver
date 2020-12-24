@@ -652,12 +652,12 @@ func TestNodeExpandVolume(t *testing.T) {
 	}
 
 	invalidPathErr := testutil.TestError{
-		DefaultError: status.Error(codes.Internal, "failed to determine device path for volumePath [./test]: path \"./test\" does not exist"),
-		WindowsError: status.Error(codes.Internal, "Could not determine device path: executable file not found in %PATH%"),
+		DefaultError: status.Error(codes.NotFound, "failed to determine device path for volumePath [./test]: path \"./test\" does not exist"),
+		WindowsError: status.Error(codes.NotFound, "Could not determine device path: executable file not found in %PATH%"),
 	}
 
 	if runtime.GOOS == "darwin" {
-		invalidPathErr.DefaultError = status.Error(codes.Internal, "failed to determine device path for volumePath [./test]: volume/util/hostutil on this platform is not supported")
+		invalidPathErr.DefaultError = status.Error(codes.NotFound, "failed to determine device path for volumePath [./test]: volume/util/hostutil on this platform is not supported")
 	}
 	tests := []struct {
 		desc        string

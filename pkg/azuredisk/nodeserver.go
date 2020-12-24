@@ -387,7 +387,7 @@ func (d *Driver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolume
 
 	isBlock, err := hostutil.NewHostUtil().PathIsDevice(volumePath)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to determine device path for volumePath [%v]: %v", volumePath, err)
+		return nil, status.Errorf(codes.NotFound, "failed to determine device path for volumePath [%v]: %v", volumePath, err)
 	}
 	if isBlock {
 		// Noop for Block NodeExpandVolume
@@ -402,7 +402,7 @@ func (d *Driver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolume
 		args := []string{"-o", "source", "--noheadings", "--mountpoint", volumePath}
 		output, err := d.mounter.Exec.Command("findmnt", args...).Output()
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "Could not determine device path: %v", err)
+			return nil, status.Errorf(codes.NotFound, "Could not determine device path: %v", err)
 		}
 
 		devicePath = strings.TrimSpace(string(output))
