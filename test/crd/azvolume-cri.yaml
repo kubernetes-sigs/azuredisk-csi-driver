@@ -1,0 +1,6 @@
+apiVersion: disk.csi.azure.com/v1beta1
+kind: AzVolume
+metadata:
+  name: test-az-volume1
+spec:
+  underlyingVolume: pvc-01
