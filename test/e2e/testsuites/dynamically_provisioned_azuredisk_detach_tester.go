@@ -90,7 +90,7 @@ func (t *DynamicallyProvisionedAzureDiskDetach) Run(client clientset.Interface, 
 		ginkgo.By("begin to delete the pod ")
 		tpod.Cleanup()
 		// 90s is not enough in Windows disk detach test
-		time.Sleep(180 * time.Second)
+		time.Sleep(300 * time.Second)
 		//get disk information after pod delete.
 		disktest, err = disksClient.Get(context.Background(), resourceGroup, diskName)
 		framework.ExpectNoError(err, fmt.Sprintf("Error getting disk for azuredisk %v", err))
