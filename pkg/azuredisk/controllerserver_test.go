@@ -1463,6 +1463,43 @@ func TestListSnapshots(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "List snapshots when source volumeId is given",
+			testFunc: func(t *testing.T) {
+				req := csi.ListSnapshotsRequest{SourceVolumeId: "test"}
+				d, _ := NewFakeDriver(t)
+				volumeID := "test"
+				DiskSize := int32(10)
+				snapshotID := "test"
+				provisioningState := "succeeded"
+				snapshot1 := compute.Snapshot{
+					SnapshotProperties: &compute.SnapshotProperties{
+						TimeCreated:       &date.Time{},
+						ProvisioningState: &provisioningState,
+						DiskSizeGB:        &DiskSize,
+						CreationData:      &compute.CreationData{SourceResourceID: &volumeID},
+					},
+					ID: &snapshotID}
+				snapshot2 := compute.Snapshot{}
+				snapshots := []compute.Snapshot{}
+				snapshots = append(snapshots, snapshot1, snapshot2)
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				mockSnapshotClient := mocksnapshotclient.NewMockInterface(ctrl)
+				d.cloud.SnapshotsClient = mockSnapshotClient
+				mockSnapshotClient.EXPECT().ListByResourceGroup(gomock.Any(), gomock.Any()).Return(snapshots, nil).AnyTimes()
+				snapshotsResponse, _ := d.ListSnapshots(context.TODO(), &req)
+				if len(snapshotsResponse.Entries) != 1 {
+					t.Errorf("actualNumberOfEntries: (%v), expectedNumberOfEntries: (%v)", len(snapshotsResponse.Entries), 1)
+				}
+				if snapshotsResponse.Entries[0].Snapshot.SourceVolumeId != volumeID {
+					t.Errorf("actualVolumeId: (%v), expectedVolumeId: (%v)", snapshotsResponse.Entries[0].Snapshot.SourceVolumeId, volumeID)
+				}
+				if snapshotsResponse.NextToken != "2" {
+					t.Errorf("actualNextToken: (%v), expectedNextToken: (%v)", snapshotsResponse.NextToken, "2")
+				}
+			},
+		},
 	}
 
 	for _, tc := range testCases {
