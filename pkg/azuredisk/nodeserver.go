@@ -87,8 +87,13 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		return nil, status.Error(codes.InvalidArgument, "lun not provided")
 	}
 
-	if err := d.ensureMountPoint(target); err != nil {
+	mnt, err := d.ensureMountPoint(target)
+	if err != nil {
 		return nil, status.Errorf(codes.Internal, "Could not mount target %q: %v", target, err)
+	}
+	if mnt {
+		klog.V(2).Infof("NodeStageVolume: already mounted on target %s", target)
+		return &csi.NodeStageVolumeResponse{}, nil
 	}
 
 	// Get fsType and mountOptions that the volume will be formatted and mounted with
@@ -197,8 +202,13 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 			return nil, err
 		}
 	case *csi.VolumeCapability_Mount:
-		if err := d.ensureMountPoint(target); err != nil {
+		mnt, err := d.ensureMountPoint(target)
+		if err != nil {
 			return nil, status.Errorf(codes.Internal, "Could not mount target %q: %v", target, err)
+		}
+		if mnt {
+			klog.V(2).Infof("NodePublishVolume: already mounted on target %s", target)
+			return &csi.NodePublishVolumeResponse{}, nil
 		}
 	}
 
@@ -459,16 +469,16 @@ func getFStype(attributes map[string]string) string {
 	return ""
 }
 
-// ensureMountPoint: ensure mount point to be valid.
-// If it is not existed, it will be created.
-func (d *Driver) ensureMountPoint(target string) error {
+// ensureMountPoint: create mount point if not exists
+// return <true, nil> if it's already a mounted point otherwise return <false, nil>
+func (d *Driver) ensureMountPoint(target string) (bool, error) {
 	notMnt, err := d.mounter.IsLikelyNotMountPoint(target)
 	if err != nil && !os.IsNotExist(err) {
 		if IsCorruptedDir(target) {
 			notMnt = false
 			klog.Warningf("detected corrupted mount for targetPath [%s]", target)
 		} else {
-			return err
+			return !notMnt, err
 		}
 	}
 
@@ -476,27 +486,28 @@ func (d *Driver) ensureMountPoint(target string) error {
 		// testing original mount point, make sure the mount link is valid
 		_, err := ioutil.ReadDir(target)
 		if err == nil {
-			klog.V(2).Infof("azureDisk - already mounted to target %s", target)
-			return nil
+			klog.V(2).Infof("already mounted to target %s", target)
+			return !notMnt, nil
 		}
 		// mount link is invalid, now unmount and remount later
-		klog.Warningf("azureDisk - ReadDir %s failed with %v, unmount this directory", target, err)
+		klog.Warningf("ReadDir %s failed with %v, unmount this directory", target, err)
 		if err := d.mounter.Unmount(target); err != nil {
-			klog.Errorf("azureDisk - Unmount directory %s failed with %v", target, err)
-			return err
+			klog.Errorf("Unmount directory %s failed with %v", target, err)
+			return !notMnt, err
 		}
-		// notMnt = true
+		notMnt = true
+		return !notMnt, err
 	}
 
 	if runtime.GOOS != "windows" {
 		// in windows, we will use mklink to mount, will MkdirAll in Mount func
 		if err := volumehelper.MakeDir(target); err != nil {
-			klog.Errorf("azureDisk - mkdir failed on target: %s (%v)", target, err)
-			return err
+			klog.Errorf("mkdir failed on target: %s (%v)", target, err)
+			return !notMnt, err
 		}
 	}
 
-	return nil
+	return !notMnt, nil
 }
 
 func (d *Driver) formatAndMount(source, target, fstype string, options []string) error {
@@ -548,7 +559,7 @@ func (d *Driver) getBlockSizeBytes(devicePath string) (int64, error) {
 func (d *Driver) ensureBlockTargetFile(target string) error {
 	// Since the block device target path is file, its parent directory should be ensured to be valid.
 	parentDir := filepath.Dir(target)
-	if err := d.ensureMountPoint(parentDir); err != nil {
+	if _, err := d.ensureMountPoint(parentDir); err != nil {
 		return status.Errorf(codes.Internal, "Could not mount target %q: %v", parentDir, err)
 	}
 	// Create the mount point as a file since bind mount device node requires it to be a file

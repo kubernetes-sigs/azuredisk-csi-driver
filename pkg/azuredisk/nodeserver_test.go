@@ -159,6 +159,7 @@ func TestEnsureMountPoint(t *testing.T) {
 		desc          string
 		target        string
 		skipOnWindows bool
+		expectedMnt   bool
 		expectedErr   testutil.TestError
 	}{
 		{
@@ -168,6 +169,7 @@ func TestEnsureMountPoint(t *testing.T) {
 			expectedErr: testutil.TestError{
 				DefaultError: errors.New("fake IsLikelyNotMountPoint: fake error"),
 			},
+			expectedMnt: false,
 		},
 		{
 			desc:          "[Error] Not a directory",
@@ -181,11 +183,13 @@ func TestEnsureMountPoint(t *testing.T) {
 			desc:        "[Success] Successful run",
 			target:      targetTest,
 			expectedErr: testutil.TestError{},
+			expectedMnt: false,
 		},
 		{
 			desc:        "[Success] Already existing mount",
 			target:      alreadyExistTarget,
 			expectedErr: testutil.TestError{},
+			expectedMnt: true,
 		},
 	}
 
@@ -198,9 +202,12 @@ func TestEnsureMountPoint(t *testing.T) {
 
 	for _, test := range tests {
 		if !(runtime.GOOS == "windows" && test.skipOnWindows) {
-			err := d.ensureMountPoint(test.target)
+			mnt, err := d.ensureMountPoint(test.target)
 			if !testutil.AssertError(&test.expectedErr, err) {
 				t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr.Error())
+			}
+			if err == nil {
+				assert.Equal(t, test.expectedMnt, mnt)
 			}
 		}
 	}
