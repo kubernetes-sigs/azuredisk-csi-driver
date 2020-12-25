@@ -35,4 +35,4 @@ _output/azurediskplugin --endpoint "$endpoint" --nodeid "$nodeid" -v=5 &
 
 echo 'Begin to run sanity test...'
 readonly CSI_SANITY_BIN='csi-sanity'
-"$CSI_SANITY_BIN" --ginkgo.v --csi.endpoint="$endpoint" --ginkgo.skip='should work|should fail when volume does not exist on the specified path|should return appropriate capabilities|pagination should detect volumes added between pages and accept tokens when the last volume from a page is deleted'
+"$CSI_SANITY_BIN" --ginkgo.v --csi.endpoint="$endpoint" --ginkgo.skip='should work|should fail when volume does not exist on the specified path|should be idempotent|pagination should detect volumes added between pages and accept tokens when the last volume from a page is deleted'
