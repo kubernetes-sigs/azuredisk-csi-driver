@@ -33,6 +33,7 @@ import (
 	cloudprovider "k8s.io/cloud-provider"
 	volerr "k8s.io/cloud-provider/volume/errors"
 	"k8s.io/klog/v2"
+
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
 )
@@ -47,7 +48,6 @@ const (
 	diskCachingLimit = 4096 // GiB
 
 	maxLUN                 = 64 // max number of LUNs per VM
-	errLeaseFailed         = "AcquireDiskLeaseFailed"
 	errLeaseIDMissing      = "LeaseIdMissing"
 	errContainerNotFound   = "ContainerNotFound"
 	errStatusCode400       = "statuscode=400"
@@ -215,7 +215,7 @@ func (c *controllerCommon) AttachDisk(isManagedDisk bool, diskName, diskURI stri
 
 	c.lockMap.LockEntry(node)
 	defer c.lockMap.UnlockEntry(node)
-	diskMap, err := c.getAttachDiskRequest(node)
+	diskMap, err := c.cleanAttachDiskRequests(node)
 	if err != nil {
 		return -1, err
 	}
@@ -259,27 +259,23 @@ func (c *controllerCommon) insertAttachDiskRequest(diskURI, nodeName string, opt
 	return nil
 }
 
-func (c *controllerCommon) getAttachDiskRequest(nodeName string) (map[string]*AttachDiskOptions, error) {
-	var diskMap, diskMapCopy map[string]*AttachDiskOptions
+// clean up attach disk requests
+// return original attach disk requests
+func (c *controllerCommon) cleanAttachDiskRequests(nodeName string) (map[string]*AttachDiskOptions, error) {
+	var diskMap map[string]*AttachDiskOptions
 
 	attachDiskMapKey := nodeName + attachDiskMapKeySuffix
 	c.lockMap.LockEntry(attachDiskMapKey)
 	defer c.lockMap.UnlockEntry(attachDiskMapKey)
 	v, ok := c.attachDiskMap.Load(nodeName)
 	if !ok {
-		return diskMapCopy, nil
+		return diskMap, nil
 	}
 	if diskMap, ok = v.(map[string]*AttachDiskOptions); !ok {
-		return diskMapCopy, fmt.Errorf("convert attachDiskMap failure on node(%s)", nodeName)
+		return diskMap, fmt.Errorf("convert attachDiskMap failure on node(%s)", nodeName)
 	}
-
-	diskMapCopy = make(map[string]*AttachDiskOptions)
-	for uri, opt := range diskMap {
-		diskMapCopy[uri] = opt
-		// clean up original requests in disk map
-		delete(diskMap, uri)
-	}
-	return diskMapCopy, nil
+	c.attachDiskMap.Store(nodeName, make(map[string]*AttachDiskOptions))
+	return diskMap, nil
 }
 
 // DetachDisk detaches a disk from VM
@@ -308,7 +304,7 @@ func (c *controllerCommon) DetachDisk(diskName, diskURI string, nodeName types.N
 	}
 
 	c.lockMap.LockEntry(node)
-	diskMap, err := c.getDetachDiskRequest(node)
+	diskMap, err := c.cleanDetachDiskRequests(node)
 	if err != nil {
 		return err
 	}
@@ -382,27 +378,24 @@ func (c *controllerCommon) insertDetachDiskRequest(diskName, diskURI, nodeName s
 	return nil
 }
 
-func (c *controllerCommon) getDetachDiskRequest(nodeName string) (map[string]string, error) {
-	var diskMap, diskMapCopy map[string]string
+// clean up detach disk requests
+// return original detach disk requests
+func (c *controllerCommon) cleanDetachDiskRequests(nodeName string) (map[string]string, error) {
+	var diskMap map[string]string
 
 	detachDiskMapKey := nodeName + detachDiskMapKeySuffix
 	c.lockMap.LockEntry(detachDiskMapKey)
 	defer c.lockMap.UnlockEntry(detachDiskMapKey)
 	v, ok := c.detachDiskMap.Load(nodeName)
 	if !ok {
-		return diskMapCopy, nil
+		return diskMap, nil
 	}
 	if diskMap, ok = v.(map[string]string); !ok {
-		return diskMapCopy, fmt.Errorf("convert detachDiskMap failure on node(%s)", nodeName)
+		return diskMap, fmt.Errorf("convert detachDiskMap failure on node(%s)", nodeName)
 	}
-
-	diskMapCopy = make(map[string]string)
-	for uri, opt := range diskMap {
-		diskMapCopy[uri] = opt
-		// clean up original requests in disk map
-		delete(diskMap, uri)
-	}
-	return diskMapCopy, nil
+	// clean up original requests in disk map
+	c.detachDiskMap.Store(nodeName, make(map[string]string))
+	return diskMap, nil
 }
 
 // getNodeDataDisks invokes vmSet interfaces to get data disks for the node.
@@ -441,32 +434,10 @@ func (c *controllerCommon) GetDiskLun(diskName, diskURI string, nodeName types.N
 	return -1, fmt.Errorf("cannot find Lun for disk %s", diskName)
 }
 
-// GetNextDiskLun searches all vhd attachment on the host and find unused lun. Return -1 if all luns are used.
-func (c *controllerCommon) GetNextDiskLun(nodeName types.NodeName) (int32, error) {
-	disks, err := c.getNodeDataDisks(nodeName, azcache.CacheReadTypeDefault)
-	if err != nil {
-		klog.Errorf("error of getting data disks for node %q: %v", nodeName, err)
-		return -1, err
-	}
-
-	used := make([]bool, maxLUN)
-	for _, disk := range disks {
-		if disk.Lun != nil {
-			used[*disk.Lun] = true
-		}
-	}
-	for k, v := range used {
-		if !v {
-			return int32(k), nil
-		}
-	}
-	return -1, fmt.Errorf("all luns are used")
-}
-
 // SetDiskLun find unused luns and allocate lun for every disk in diskMap.
 // Return lun of diskURI, -1 if all luns are used.
 func (c *controllerCommon) SetDiskLun(nodeName types.NodeName, diskURI string, diskMap map[string]*AttachDiskOptions) (int32, error) {
-	disks, err := c.getNodeDataDisks(nodeName, azcache.CacheReadTypeDefault)
+	disks, err := c.getNodeDataDisks(nodeName, azcache.CacheReadTypeForceRefresh)
 	if err != nil {
 		klog.Errorf("error of getting data disks for node %q: %v", nodeName, err)
 		return -1, err

@@ -25,6 +25,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
+
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 )
 
@@ -111,7 +112,9 @@ func (ss *scaleSet) AttachDisk(nodeName types.NodeName, diskMap map[string]*Atta
 	defer cancel()
 
 	// Invalidate the cache right after updating
-	defer ss.deleteCacheForNode(vmName)
+	defer func() {
+		_ = ss.deleteCacheForNode(vmName)
+	}()
 
 	klog.V(2).Infof("azureDisk - update(%s): vm(%s) - attach disk list(%s)", nodeResourceGroup, nodeName, diskMap)
 	rerr := ss.VirtualMachineScaleSetVMsClient.Update(ctx, nodeResourceGroup, ssName, instanceID, newVM, "attach_disk")
@@ -185,7 +188,9 @@ func (ss *scaleSet) DetachDisk(nodeName types.NodeName, diskMap map[string]strin
 	defer cancel()
 
 	// Invalidate the cache right after updating
-	defer ss.deleteCacheForNode(vmName)
+	defer func() {
+		_ = ss.deleteCacheForNode(vmName)
+	}()
 
 	klog.V(2).Infof("azureDisk - update(%s): vm(%s) - detach disk list(%s)", nodeResourceGroup, nodeName, diskMap)
 	rerr := ss.VirtualMachineScaleSetVMsClient.Update(ctx, nodeResourceGroup, ssName, instanceID, newVM, "detach_disk")

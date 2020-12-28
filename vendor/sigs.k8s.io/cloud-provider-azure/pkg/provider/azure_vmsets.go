@@ -23,13 +23,14 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	cloudprovider "k8s.io/cloud-provider"
+
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 )
 
 // VMSet defines functions all vmsets (including scale set and availability
 // set) should be implemented.
 // Don't forget to run the following command to generate the mock client:
-// mockgen -source=$GOPATH/src/k8s.io/kubernetes/staging/src/k8s.io/legacy-cloud-providers/azure/azure_vmsets.go -package=mockvmsets VMSet > $GOPATH/src/k8s.io/kubernetes/staging/src/k8s.io/legacy-cloud-providers/azure/mockvmsets/azure_mock_vmsets.go
+// mockgen -source=$GOPATH/src/sigs.k8s.io/cloud-provider-azure/pkg/provider/azure_vmsets.go -package=mockvmsets VMSet > $GOPATH/src/sigs.k8s.io/cloud-provider-azure/pkg/mockvmsets/azure_mock_vmsets.go
 type VMSet interface {
 	// GetInstanceIDByNodeName gets the cloud provider ID by node name.
 	// It must return ("", cloudprovider.InstanceNotFound) if the instance does

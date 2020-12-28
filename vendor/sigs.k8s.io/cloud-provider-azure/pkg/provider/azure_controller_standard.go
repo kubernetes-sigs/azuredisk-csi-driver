@@ -25,6 +25,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
+
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 )
 
@@ -108,7 +109,9 @@ func (as *availabilitySet) AttachDisk(nodeName types.NodeName, diskMap map[strin
 	defer cancel()
 
 	// Invalidate the cache right after updating
-	defer as.cloud.vmCache.Delete(vmName)
+	defer func() {
+		_ = as.cloud.vmCache.Delete(vmName)
+	}()
 
 	rerr := as.VirtualMachinesClient.Update(ctx, nodeResourceGroup, vmName, newVM, "attach_disk")
 	if rerr != nil {
@@ -181,7 +184,9 @@ func (as *availabilitySet) DetachDisk(nodeName types.NodeName, diskMap map[strin
 	defer cancel()
 
 	// Invalidate the cache right after updating
-	defer as.cloud.vmCache.Delete(vmName)
+	defer func() {
+		_ = as.cloud.vmCache.Delete(vmName)
+	}()
 
 	rerr := as.VirtualMachinesClient.Update(ctx, nodeResourceGroup, vmName, newVM, "detach_disk")
 	if rerr != nil {
