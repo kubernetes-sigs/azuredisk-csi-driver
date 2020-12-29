@@ -82,6 +82,7 @@ const (
 	tagsField               = "tags"
 	maxSharesField          = "maxshares"
 	incrementalField        = "incremental"
+	logicalSectorSizeField  = "logicalsectorsize"
 )
 
 var (

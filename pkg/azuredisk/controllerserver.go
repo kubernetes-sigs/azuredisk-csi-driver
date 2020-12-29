@@ -108,6 +108,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		resourceGroup           string
 		diskIopsReadWrite       string
 		diskMbpsReadWrite       string
+		logicalSectorSize       int
 		diskName                string
 		diskEncryptionSetID     string
 		customTags              string
@@ -139,6 +140,11 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			diskIopsReadWrite = v
 		case diskMBPSReadWriteField:
 			diskMbpsReadWrite = v
+		case logicalSectorSizeField:
+			logicalSectorSize, err = strconv.Atoi(v)
+			if err != nil {
+				return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("parse %s failed with error: %v", v, err))
+			}
 		case diskNameField:
 			diskName = v
 		case desIDField:
@@ -287,6 +293,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			SourceType:          sourceType,
 			DiskEncryptionSetID: diskEncryptionSetID,
 			MaxShares:           int32(maxShares),
+			LogicalSectorSize:   logicalSectorSize,
 		}
 		diskURI, err = d.cloud.CreateManagedDisk(volumeOptions)
 		if err != nil {
