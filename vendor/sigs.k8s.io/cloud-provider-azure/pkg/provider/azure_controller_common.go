@@ -193,12 +193,6 @@ func (c *controllerCommon) AttachDisk(isManagedDisk bool, diskName, diskURI stri
 		}
 	}
 
-	instanceid, err := c.cloud.InstanceID(context.TODO(), nodeName)
-	if err != nil {
-		klog.Warningf("failed to get azure instance id (%v) for node %s", err, nodeName)
-		return -1, fmt.Errorf("failed to get azure instance id for node %q (%v)", nodeName, err)
-	}
-
 	options := AttachDiskOptions{
 		lun:                     -1,
 		isManagedDisk:           isManagedDisk,
@@ -222,8 +216,7 @@ func (c *controllerCommon) AttachDisk(isManagedDisk bool, diskName, diskURI stri
 
 	lun, err := c.SetDiskLun(nodeName, disk, diskMap)
 	if err != nil {
-		klog.Warningf("no LUN available for instance %q (%v)", nodeName, err)
-		return -1, fmt.Errorf("all LUNs are used, cannot attach volume (%s, %s) to instance %q (%v)", diskName, diskURI, instanceid, err)
+		return -1, err
 	}
 
 	klog.V(2).Infof("Trying to attach volume %q lun %d to node %q, diskMap: %s", diskURI, lun, nodeName, diskMap)
