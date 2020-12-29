@@ -69,6 +69,8 @@ const (
 	sourceSnapshot         = "snapshot"
 	sourceVolume           = "volume"
 	azureDiskCSIDriverName = "azuredisk_csi_driver"
+	NotFound               = "NotFound"
+	CreatedForPVNameKey    = "kubernetes.io-created-for-pv-name"
 )
 
 // CreateVolume provisions an azure disk
@@ -194,7 +196,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 
 	if IsAzureStackCloud(d.cloud) {
 		if skuName != compute.StandardLRS && skuName != compute.PremiumLRS {
-			klog.V(2).Infof("Use sku %s instead as Azure Stack does not support %s.", compute.StandardLRS, skuName)
+			klog.Warningf("Use sku %s instead as Azure Stack does not support %s.", compute.StandardLRS, skuName)
 			skuName = compute.StandardLRS
 			storageAccountType = string(compute.StandardLRS)
 		}
@@ -230,12 +232,13 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		diskName, skuName, resourceGroup, location, requestGiB, selectedAvailabilityZone, maxShares)
 
 	diskURI := ""
+	tags := make(map[string]string)
 	contentSource := &csi.VolumeContentSource{}
 	if kind == v1.AzureManagedDisk {
-		tags := make(map[string]string)
 		for k, v := range customTagsMap {
 			tags[k] = v
 		}
+		tags[CreatedForPVNameKey] = name
 		/* todo: check where are the tags in CSI
 		if p.options.CloudTags != nil {
 			tags = *(p.options.CloudTags)
@@ -290,7 +293,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		}
 		diskURI, err = d.cloud.CreateManagedDisk(volumeOptions)
 		if err != nil {
-			if strings.Contains(err.Error(), "NotFound") {
+			if strings.Contains(err.Error(), NotFound) {
 				return nil, status.Error(codes.NotFound, err.Error())
 			}
 			return nil, err
@@ -309,7 +312,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		}
 	}
 
-	klog.V(2).Infof("create azure disk(%s) account type(%s) rg(%s) location(%s) size(%d) successfully", diskName, skuName, resourceGroup, location, requestGiB)
+	klog.V(2).Infof("create azure disk(%s) account type(%s) rg(%s) location(%s) size(%d) tags(%s) successfully", diskName, skuName, resourceGroup, location, requestGiB, tags)
 
 	/*  todo: block volume support
 	if utilfeature.DefaultFeatureGate.Enabled(features.BlockVolume) {
