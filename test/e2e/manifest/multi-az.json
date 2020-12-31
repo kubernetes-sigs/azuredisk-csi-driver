@@ -36,6 +36,7 @@
             "dnsPrefix": "{dnsPrefix}",
             "vmSize": "Standard_D2s_v3",
             "availabilityProfile": "VirtualMachineScaleSets",
+            "ultraSSDEnabled": true,
             "availabilityZones": [
                 "1",
                 "2"
@@ -47,6 +48,7 @@
                 "count": 2,
                 "vmSize": "Standard_D2s_v3",
                 "availabilityProfile": "VirtualMachineScaleSets",
+                "ultraSSDEnabled": true,
                 "availabilityZones": [
                     "1",
                     "2"
