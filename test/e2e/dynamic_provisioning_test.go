@@ -97,12 +97,16 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 
 	testDriver = driver.InitAzureDiskDriver()
 	ginkgo.It("should create a volume on demand with mount options [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func() {
+		pvcSize := "10Gi"
+		if isMultiZone {
+			pvcSize = "1000Gi"
+		}
 		pods := []testsuites.PodDetails{
 			{
 				Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
 				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
-						ClaimSize: "10Gi",
+						ClaimSize: pvcSize,
 						MountOptions: []string{
 							"barrier=1",
 							"acl",
@@ -120,6 +124,15 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			CSIDriver:              testDriver,
 			Pods:                   pods,
 			StorageClassParameters: map[string]string{"skuName": "Standard_LRS"},
+		}
+
+		if isMultiZone {
+			test.StorageClassParameters = map[string]string{
+				"skuName":           "UltraSSD_LRS",
+				"cachingmode":       "None",
+				"diskIopsReadWrite": "2000",
+				"diskMbpsReadWrite": "320",
+			}
 		}
 		test.Run(cs, ns)
 	})
