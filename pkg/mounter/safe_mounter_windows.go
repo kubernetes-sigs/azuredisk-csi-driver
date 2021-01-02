@@ -88,6 +88,18 @@ func (mounter *CSIProxyMounter) Rmdir(path string) error {
 
 // Unmount - Removes the directory - equivalent to unmount on Linux.
 func (mounter *CSIProxyMounter) Unmount(target string) error {
+	// WriteVolumeCache before unmount
+	response, err := mounter.VolumeClient.GetVolumeIDFromMount(context.Background(), &volume.VolumeIDFromMountRequest{Mount: target})
+	if err != nil || response == nil {
+		klog.Warningf("GetVolumeIDFromMount(%s) failed with error: %v, response: %v", target, err, response)
+	} else {
+		request := &volume.WriteVolumeCacheRequest{
+			VolumeId: response.VolumeId,
+		}
+		if res, err := mounter.VolumeClient.WriteVolumeCache(context.Background(), request); err != nil {
+			klog.Warningf("WriteVolumeCache(%s) failed with error: %v, response: %v", response.VolumeId, err, res)
+		}
+	}
 	return mounter.Rmdir(target)
 }
 
