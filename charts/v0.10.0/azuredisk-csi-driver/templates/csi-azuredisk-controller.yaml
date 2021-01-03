@@ -1,32 +1,36 @@
----
 kind: Deployment
 apiVersion: apps/v1
 metadata:
   name: csi-azuredisk-controller
-  namespace: kube-system
+  namespace: {{ .Release.Namespace }}
+{{ include "azuredisk.labels" . | indent 2 }}
 spec:
-  replicas: 2
+  replicas: {{ .Values.controller.replicas }}
   selector:
     matchLabels:
       app: csi-azuredisk-controller
   template:
     metadata:
-      labels:
+{{ include "azuredisk.labels" . | indent 6 }}
         app: csi-azuredisk-controller
     spec:
       hostNetwork: true
       serviceAccountName: csi-azuredisk-controller-sa
       nodeSelector:
-        kubernetes.io/os: linux  # add "kubernetes.io/role: master" to run controller on master node
+        kubernetes.io/os: linux
+        {{- if .Values.controller.runOnMaster}}
+        kubernetes.io/role: master
+        {{- end}}
       priorityClassName: system-cluster-critical
       tolerations:
         - key: "node-role.kubernetes.io/master"
           operator: "Equal"
           value: "true"
           effect: "NoSchedule"
+      {{- include "azuredisk.pullSecrets" . | indent 6 }}
       containers:
         - name: csi-provisioner
-          image: mcr.microsoft.com/oss/kubernetes-csi/csi-provisioner:v1.5.0
+          image: "{{ .Values.image.csiProvisioner.repository }}:{{ .Values.image.csiProvisioner.tag }}"
           args:
             - "--feature-gates=Topology=true"
             - "--csi-address=$(ADDRESS)"
@@ -48,7 +52,7 @@ spec:
               cpu: 10m
               memory: 20Mi
         - name: csi-attacher
-          image: mcr.microsoft.com/oss/kubernetes-csi/csi-attacher:v2.2.0
+          image: "{{ .Values.image.csiAttacher.repository }}:{{ .Values.image.csiAttacher.tag }}"
           args:
             - "-v=5"
             - "-csi-address=$(ADDRESS)"
@@ -58,8 +62,8 @@ spec:
             - name: ADDRESS
               value: /csi/csi.sock
           volumeMounts:
-            - mountPath: /csi
-              name: socket-dir
+          - mountPath: /csi
+            name: socket-dir
           resources:
             limits:
               cpu: 100m
@@ -67,12 +71,13 @@ spec:
             requests:
               cpu: 10m
               memory: 20Mi
+        {{- if .Values.snapshot.enabled}}
         - name: csi-snapshotter
-          image: mcr.microsoft.com/oss/kubernetes-csi/csi-snapshotter:v2.0.1
+          image: "{{ .Values.snapshot.image.csiSnapshotter.repository }}:{{ .Values.snapshot.image.csiSnapshotter.tag }}"
           args:
             - "-csi-address=$(ADDRESS)"
             - "-leader-election"
-            - "--v=5"
+            - "-v=5"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -86,8 +91,9 @@ spec:
             requests:
               cpu: 10m
               memory: 20Mi
+        {{- end}}
         - name: csi-resizer
-          image: mcr.microsoft.com/oss/kubernetes-csi/csi-resizer:v0.5.0
+          image: "{{ .Values.image.csiResizer.repository }}:{{ .Values.image.csiResizer.tag }}"
           args:
             - "-csi-address=$(ADDRESS)"
             - "-v=5"
@@ -106,7 +112,7 @@ spec:
               cpu: 10m
               memory: 20Mi
         - name: liveness-probe
-          image: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe:v2.0.0
+          image: "{{ .Values.image.livenessProbe.repository }}:{{ .Values.image.livenessProbe.tag }}"
           args:
             - --csi-address=/csi/csi.sock
             - --probe-timeout=3s
@@ -123,17 +129,16 @@ spec:
               cpu: 10m
               memory: 20Mi
         - name: azuredisk
-          image: mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.10.0
-          imagePullPolicy: IfNotPresent
+          image: "{{ .Values.image.azuredisk.repository }}:{{ .Values.image.azuredisk.tag }}"
           args:
             - "--v=5"
             - "--endpoint=$(CSI_ENDPOINT)"
-            - "--metrics-address=0.0.0.0:29604"
+            - "--metrics-address=0.0.0.0:{{ .Values.controller.metricsPort }}"
           ports:
             - containerPort: 29602
               name: healthz
               protocol: TCP
-            - containerPort: 29604
+            - containerPort: {{ .Values.controller.metricsPort }}
               name: metrics
               protocol: TCP
           livenessProbe:
@@ -155,6 +160,7 @@ spec:
               value: unix:///csi/csi.sock
             - name: AZURE_ENVIRONMENT_FILEPATH  # For Azure Stack Cloud
               value: /etc/kubernetes/azurestackcloud.json
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
