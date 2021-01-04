@@ -29,7 +29,7 @@ $ helm search repo -l azuredisk-csi-driver/
 ### Install a specific version of Helm chart
 Specify the version of the chart to be installed using the `--version` parameter. 
 ```console
-helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v0.9.0
+helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v0.10.0
 ```
 
 ## Uninstall
