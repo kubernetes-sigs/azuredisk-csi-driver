@@ -4,7 +4,7 @@ Quick start instructions for the setup and configuration of azuredisk CSI driver
 
 ## Prerequisites
 
-1. [install Helm Client 3.0+ ](https://helm.sh/docs/intro/quickstart/#install-helm)
+ - [install Helm](https://helm.sh/docs/intro/quickstart/#install-helm)
 
 ## Install latest AzureDisk CSI Driver via `helm install`
 
@@ -21,7 +21,7 @@ $ helm repo add azuredisk-csi-driver https://raw.githubusercontent.com/kubernete
 $ helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v0.10.0
 ```    
 
-### Search for different versions of charts available
+### Search for different chart versions
 ```console
 $ helm search repo -l azuredisk-csi-driver/
 ```  
@@ -32,7 +32,7 @@ $ helm search repo -l azuredisk-csi-driver/
 $ helm uninstall azuredisk-csi-driver -n kube-system
 ```
 
-## The Latest Helm Chart Configuration
+## Latest Helm Chart Configuration
 
 The following table lists the configurable parameters of the latest Azure Disk CSI Driver chart and their default values.
 
@@ -84,10 +84,5 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `windows.image.nodeDriverRegistrar.pullPolicy`    | windows csi-node-driver-registrar image pull policy        | IfNotPresent                                                 |
 
 ## Troubleshooting
-
-If there are some errors when using helm to install, follow the steps to debug:
-
-1. Add `--wait -v=5 --debug` in `helm install` command.
-2. Then the error pods  can be located.
-3. Use `kubectl describe ` to acquire more info.
-4. Check the related resource of the pod, such as serviceaacount, rbac, etc.
+ - Add `--wait -v=5 --debug` in `helm install` command to get detailed error
+ - Use `kubectl describe` to get more info
