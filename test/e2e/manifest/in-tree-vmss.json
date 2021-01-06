@@ -21,7 +21,7 @@
         "masterProfile": {
             "count": 1,
             "dnsPrefix": "{dnsPrefix}",
-            "vmSize": "Standard_DS2_v2",
+            "vmSize": "Standard_D2s_v3",
             "availabilityZones": [
                 "1",
                 "2"
@@ -31,8 +31,9 @@
             {
                 "name": "agentpool1",
                 "count": 2,
-                "vmSize": "Standard_DS2_v2",
+                "vmSize": "Standard_D2s_v3",
                 "availabilityProfile": "VirtualMachineScaleSets",
+                "ultraSSDEnabled": true,
                 "availabilityZones": [
                     "1",
                     "2"
