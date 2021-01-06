@@ -126,7 +126,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			StorageClassParameters: map[string]string{"skuName": "Standard_LRS"},
 		}
 
-		if isMultiZone {
+		if isMultiZone && !isUsingInTreeVolumePlugin {
 			test.StorageClassParameters = map[string]string{
 				"skuName":           "UltraSSD_LRS",
 				"cachingmode":       "None",
