@@ -123,11 +123,11 @@ spec:
             - name: azure-config
               mountPath: C:\k
             - name: csi-proxy-fs-pipe
-              mountPath: \\.\pipe\csi-proxy-filesystem-v1alpha1
+              mountPath: \\.\pipe\csi-proxy-filesystem-v1beta1
             - name: csi-proxy-disk-pipe
-              mountPath: \\.\pipe\csi-proxy-disk-v1alpha1
+              mountPath: \\.\pipe\csi-proxy-disk-v1beta2
             - name: csi-proxy-volume-pipe
-              mountPath: \\.\pipe\csi-proxy-volume-v1alpha1
+              mountPath: \\.\pipe\csi-proxy-volume-v1beta2
           resources:
             limits:
               cpu: 400m
@@ -138,15 +138,15 @@ spec:
       volumes:
         - name: csi-proxy-fs-pipe
           hostPath:
-            path: \\.\pipe\csi-proxy-filesystem-v1alpha1
+            path: \\.\pipe\csi-proxy-filesystem-v1beta1
             type: ""
         - name: csi-proxy-disk-pipe
           hostPath:
-            path: \\.\pipe\csi-proxy-disk-v1alpha1
+            path: \\.\pipe\csi-proxy-disk-v1beta2
             type: ""
         - name: csi-proxy-volume-pipe
           hostPath:
-            path: \\.\pipe\csi-proxy-volume-v1alpha1
+            path: \\.\pipe\csi-proxy-volume-v1beta2
             type: ""
         - name: registration-dir
           hostPath:

@@ -473,7 +473,7 @@ func TestCreateVolume(t *testing.T) {
 				}
 				d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
 				rerr := &retry.Error{
-					RawError: fmt.Errorf("NotFound"),
+					RawError: fmt.Errorf(NotFound),
 				}
 				d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rerr).AnyTimes()
 				_, err := d.CreateVolume(context.Background(), req)

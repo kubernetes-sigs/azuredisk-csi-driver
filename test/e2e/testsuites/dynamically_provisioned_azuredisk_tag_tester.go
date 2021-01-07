@@ -95,6 +95,7 @@ func (t *DynamicallyProvisionedAzureDiskWithTag) Run(client clientset.Interface,
 				framework.ExpectEqual(*disktest.Tags[k], v)
 			}
 		}
-
+		_, ok := disktest.Tags[azuredisk.CreatedForPVNameKey]
+		framework.ExpectEqual(ok, true)
 	}
 }

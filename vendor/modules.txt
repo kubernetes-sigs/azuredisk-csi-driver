@@ -1,9 +1,7 @@
 # github.com/Azure/azure-sdk-for-go v49.1.0+incompatible
 ## explicit
-github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-03-01/compute
 github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-06-30/compute
 github.com/Azure/azure-sdk-for-go/services/containerservice/mgmt/2020-04-01/containerservice
-github.com/Azure/azure-sdk-for-go/services/network/mgmt/2018-08-01/network
 github.com/Azure/azure-sdk-for-go/services/network/mgmt/2019-06-01/network
 github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2017-05-10/resources
 github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2018-05-01/resources
@@ -133,16 +131,16 @@ github.com/json-iterator/go
 # github.com/kubernetes-csi/csi-lib-utils v0.7.0
 ## explicit
 github.com/kubernetes-csi/csi-lib-utils/protosanitizer
-# github.com/kubernetes-csi/csi-proxy/client v0.0.0-20200330215040-9eff16441b2a
+# github.com/kubernetes-csi/csi-proxy/client v0.2.2
 ## explicit
 github.com/kubernetes-csi/csi-proxy/client
-github.com/kubernetes-csi/csi-proxy/client/api/disk/v1alpha1
-github.com/kubernetes-csi/csi-proxy/client/api/filesystem/v1alpha1
-github.com/kubernetes-csi/csi-proxy/client/api/volume/v1alpha1
+github.com/kubernetes-csi/csi-proxy/client/api/disk/v1beta2
+github.com/kubernetes-csi/csi-proxy/client/api/filesystem/v1beta1
+github.com/kubernetes-csi/csi-proxy/client/api/volume/v1beta2
 github.com/kubernetes-csi/csi-proxy/client/apiversion
-github.com/kubernetes-csi/csi-proxy/client/groups/disk/v1alpha1
-github.com/kubernetes-csi/csi-proxy/client/groups/filesystem/v1alpha1
-github.com/kubernetes-csi/csi-proxy/client/groups/volume/v1alpha1
+github.com/kubernetes-csi/csi-proxy/client/groups/disk/v1beta2
+github.com/kubernetes-csi/csi-proxy/client/groups/filesystem/v1beta1
+github.com/kubernetes-csi/csi-proxy/client/groups/volume/v1beta2
 # github.com/kubernetes-csi/external-snapshotter/v2 v2.0.0-20200617021606-4800ca72d403
 ## explicit
 github.com/kubernetes-csi/external-snapshotter/v2/pkg/apis/volumesnapshot/v1beta1
@@ -824,7 +822,7 @@ k8s.io/utils/trace
 # sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.0.14
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/client
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/proto/client
-# sigs.k8s.io/cloud-provider-azure v0.0.0 => sigs.k8s.io/cloud-provider-azure v0.6.1-0.20201223035826-d12fc98b424d
+# sigs.k8s.io/cloud-provider-azure v0.0.0 => sigs.k8s.io/cloud-provider-azure v0.6.1-0.20201231035350-7e37c2c97661
 ## explicit
 sigs.k8s.io/cloud-provider-azure/pkg/auth
 sigs.k8s.io/cloud-provider-azure/pkg/azureclients
@@ -898,5 +896,5 @@ sigs.k8s.io/yaml
 # k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.20.0
 # k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.20.0
 # k8s.io/sample-controller => k8s.io/sample-controller v0.20.0
-# sigs.k8s.io/cloud-provider-azure => sigs.k8s.io/cloud-provider-azure v0.6.1-0.20201223035826-d12fc98b424d
+# sigs.k8s.io/cloud-provider-azure => sigs.k8s.io/cloud-provider-azure v0.6.1-0.20201231035350-7e37c2c97661
 # github.com/niemeyer/pretty => github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e
