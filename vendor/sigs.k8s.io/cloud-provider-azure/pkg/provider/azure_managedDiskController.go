@@ -68,7 +68,7 @@ type ManagedDiskOptions struct {
 	// Throughput Cap (MBps) for UltraSSD disk
 	DiskMBpsReadWrite string
 	// Logical sector size in bytes for Ultra disks
-	LogicalSectorSize int
+	LogicalSectorSize int32
 	// if SourceResourceID is not empty, then it's a disk copy operation(for snapshot)
 	SourceResourceID string
 	// The type of source
@@ -137,8 +137,9 @@ func (c *ManagedDiskController) CreateManagedDisk(options *ManagedDiskOptions) (
 			diskMBpsReadWrite = int64(v)
 		}
 		diskProperties.DiskMBpsReadWrite = to.Int64Ptr(diskMBpsReadWrite)
+
 		if options.LogicalSectorSize != 0 {
-			diskProperties.CreationData.LogicalSectorSize = to.Int32Ptr(int32(options.LogicalSectorSize))
+			diskProperties.CreationData.LogicalSectorSize = to.Int32Ptr(options.LogicalSectorSize)
 		}
 	} else {
 		if options.DiskIOPSReadWrite != "" {

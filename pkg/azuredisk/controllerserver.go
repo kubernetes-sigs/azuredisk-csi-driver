@@ -296,7 +296,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			SourceType:          sourceType,
 			DiskEncryptionSetID: diskEncryptionSetID,
 			MaxShares:           int32(maxShares),
-			LogicalSectorSize:   logicalSectorSize,
+			LogicalSectorSize:   int32(logicalSectorSize),
 		}
 		diskURI, err = d.cloud.CreateManagedDisk(volumeOptions)
 		if err != nil {

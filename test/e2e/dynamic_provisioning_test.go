@@ -132,6 +132,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 				"cachingmode":       "None",
 				"diskIopsReadWrite": "2000",
 				"diskMbpsReadWrite": "320",
+				"logicalSectorSize": "512",
 			}
 		}
 		test.Run(cs, ns)
