@@ -42,6 +42,7 @@ const (
 	testAadClientSecret = "test-aad-client-secret"
 	testResourceGroup   = "test-resource-group"
 	testLocation        = "test-location"
+	testVMType          = "standard"
 )
 
 func TestCreateAzureCredentialFileOnAzurePublicCloud(t *testing.T) {
@@ -52,6 +53,7 @@ func TestCreateAzureCredentialFileOnAzurePublicCloud(t *testing.T) {
 		os.Setenv(aadClientSecretEnvVar, "")
 		os.Setenv(resourceGroupEnvVar, testResourceGroup)
 		os.Setenv(locationEnvVar, testLocation)
+		os.Setenv(vmTypeEnvVar, testVMType)
 		withAzureCredentials(t)
 	})
 
@@ -62,6 +64,7 @@ func TestCreateAzureCredentialFileOnAzurePublicCloud(t *testing.T) {
 		os.Setenv(aadClientSecretEnvVar, testAadClientSecret)
 		os.Setenv(resourceGroupEnvVar, testResourceGroup)
 		os.Setenv(locationEnvVar, testLocation)
+		os.Setenv(vmTypeEnvVar, testVMType)
 		withEnvironmentVariables(t)
 	})
 }
@@ -75,6 +78,7 @@ func TestCreateAzureCredentialFileOnAzureStackCloud(t *testing.T) {
 		os.Setenv(aadClientSecretEnvVar, testAadClientSecret)
 		os.Setenv(resourceGroupEnvVar, testResourceGroup)
 		os.Setenv(locationEnvVar, testLocation)
+		os.Setenv(vmTypeEnvVar, testVMType)
 		withEnvironmentVariables(t)
 	})
 }
@@ -108,6 +112,7 @@ func withAzureCredentials(t *testing.T) {
 	assert.Equal(t, "8c416dc5-xxxx-xxxx-xxxx-d77069e2a255", creds.AADClientSecret)
 	assert.Equal(t, testResourceGroup, creds.ResourceGroup)
 	assert.Equal(t, testLocation, creds.Location)
+	assert.Equal(t, testVMType, creds.VMType)
 
 	azureCredentialFileContent, err := ioutil.ReadFile(TempAzureCredentialFilePath)
 	assert.NoError(t, err)
@@ -120,7 +125,8 @@ func withAzureCredentials(t *testing.T) {
 		"subscriptionId": "b9d2281e-xxxx-xxxx-xxxx-0d50377cdf76",
 		"aadClientSecret": "8c416dc5-xxxx-xxxx-xxxx-d77069e2a255",
 		"resourceGroup": "test-resource-group",
-		"location": "test-location"
+		"location": "test-location",
+		"vmType": "standard"
 	}
 	`
 	tmpl := template.New("expectedAzureCredentialFileContent")
@@ -158,6 +164,7 @@ func withEnvironmentVariables(t *testing.T) {
 	assert.Equal(t, testAadClientSecret, creds.AADClientSecret)
 	assert.Equal(t, testResourceGroup, creds.ResourceGroup)
 	assert.Equal(t, testLocation, creds.Location)
+	assert.Equal(t, testVMType, creds.VMType)
 
 	azureCredentialFileContent, err := ioutil.ReadFile(TempAzureCredentialFilePath)
 	assert.NoError(t, err)
@@ -170,7 +177,8 @@ func withEnvironmentVariables(t *testing.T) {
 		"aadClientId": "test-aad-client-id",
 		"aadClientSecret": "test-aad-client-secret",
 		"resourceGroup": "test-resource-group",
-		"location": "test-location"
+		"location": "test-location",
+		"vmType": "standard"
 	}
 	`
 	tmpl := template.New("expectedAzureCredentialFileContent")

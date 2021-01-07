@@ -810,6 +810,28 @@ func (t *TestPod) SetNodeSelector(nodeSelector map[string]string) {
 	t.pod.Spec.NodeSelector = nodeSelector
 }
 
+func (t *TestPod) ListNodes() []string {
+	var err error
+	var nodes *v1.NodeList
+	var nodeNames []string
+	nodes, err = t.client.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+	framework.ExpectNoError(err)
+	for _, item := range nodes.Items {
+		nodeNames = append(nodeNames, item.ObjectMeta.Name)
+	}
+	return nodeNames
+}
+
+func (t *TestPod) SetNodeUnschedulable(nodeName string, unschedulable bool) {
+	var err error
+	var node *v1.Node
+	node, err = t.client.CoreV1().Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
+	framework.ExpectNoError(err)
+	node.Spec.Unschedulable = unschedulable
+	_, err = t.client.CoreV1().Nodes().Update(context.TODO(), node, metav1.UpdateOptions{})
+	framework.ExpectNoError(err)
+}
+
 func (t *TestPod) Cleanup() {
 	cleanupPodOrFail(t.client, t.pod.Name, t.namespace.Name)
 }
