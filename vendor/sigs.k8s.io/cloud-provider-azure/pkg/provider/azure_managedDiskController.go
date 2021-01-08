@@ -139,6 +139,7 @@ func (c *ManagedDiskController) CreateManagedDisk(options *ManagedDiskOptions) (
 		diskProperties.DiskMBpsReadWrite = to.Int64Ptr(diskMBpsReadWrite)
 
 		if options.LogicalSectorSize != 0 {
+			klog.V(2).Infof("AzureDisk - requested LogicalSectorSize: %v", options.LogicalSectorSize)
 			diskProperties.CreationData.LogicalSectorSize = to.Int32Ptr(options.LogicalSectorSize)
 		}
 	} else {
