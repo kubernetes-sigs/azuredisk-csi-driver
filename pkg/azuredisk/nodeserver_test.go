@@ -728,19 +728,7 @@ func TestNodeExpandVolume(t *testing.T) {
 			},
 		},
 		{
-			desc: "Invalid device path",
-			req: csi.NodeExpandVolumeRequest{
-				CapacityRange: stdCapacityRange,
-				VolumePath:   targetTest,
-				VolumeId:      "test",
-				StagingTargetPath: "",
-			},
-			expectedErr: testutil.TestError{
-				DefaultError: status.Errorf(codes.NotFound, "Could not determine device path: %s", notFoundErr),
-			},
-		},
-		{
-			desc: "Invalid size at path",
+			desc: "No block size at path",
 			req: csi.NodeExpandVolumeRequest{
 				CapacityRange: stdCapacityRange,
 				VolumePath:   targetTest,
