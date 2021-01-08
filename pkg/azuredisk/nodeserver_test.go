@@ -653,6 +653,10 @@ func TestNodeUnpublishVolume(t *testing.T) {
 
 func TestNodeExpandVolume(t *testing.T) {
 	d, _ := NewFakeDriver(t)
+	_ = makeDir(targetTest)
+	notFoundErr := "exit status 1"
+	volumeCapWrong := csi.VolumeCapability_AccessMode{Mode: 10}
+
 	stdCapacityRange = &csi.CapacityRange{
 		RequiredBytes: volumehelper.GiBToBytes(15),
 		LimitBytes:    volumehelper.GiBToBytes(10),
@@ -698,6 +702,56 @@ func TestNodeExpandVolume(t *testing.T) {
 				DefaultError: status.Error(codes.InvalidArgument, "volume path must be provided"),
 			},
 		},
+		{
+			desc: "Volume capacity invalid",
+			req: csi.NodeExpandVolumeRequest{
+				CapacityRange: stdCapacityRange,
+				VolumePath:    targetTest,
+				VolumeId:      "test",
+				StagingTargetPath: "test",
+				VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCapWrong},
+			},
+			expectedErr: testutil.TestError{
+				DefaultError: status.Error(codes.InvalidArgument, "VolumeCapability is invalid."),
+			},
+		},
+		{
+			desc: "Invalid device path",
+			req: csi.NodeExpandVolumeRequest{
+				CapacityRange: stdCapacityRange,
+				VolumePath:   targetTest,
+				VolumeId:      "test",
+				StagingTargetPath: "",
+			},
+			expectedErr: testutil.TestError{
+				DefaultError: status.Errorf(codes.NotFound, "Could not determine device path: %s", notFoundErr),
+			},
+		},
+		{
+			desc: "Invalid device path",
+			req: csi.NodeExpandVolumeRequest{
+				CapacityRange: stdCapacityRange,
+				VolumePath:   targetTest,
+				VolumeId:      "test",
+				StagingTargetPath: "",
+			},
+			expectedErr: testutil.TestError{
+				DefaultError: status.Errorf(codes.NotFound, "Could not determine device path: %s", notFoundErr),
+			},
+		},
+		{
+			desc: "Invalid size at path",
+			req: csi.NodeExpandVolumeRequest{
+				CapacityRange: stdCapacityRange,
+				VolumePath:   targetTest,
+				VolumeId:      "test",
+				StagingTargetPath: "test",
+			},
+			expectedErr: testutil.TestError{
+				DefaultError: status.Error(codes.Internal, "Could not get size of block volume at path test: error when getting size of block volume at path test: output: , err: exit status 1"),
+			},
+		},
+
 	}
 	for _, test := range tests {
 		_, err := d.NodeExpandVolume(context.Background(), &test.req)
@@ -705,6 +759,9 @@ func TestNodeExpandVolume(t *testing.T) {
 			t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr.Error())
 		}
 	}
+
+	err := os.RemoveAll(targetTest)
+	assert.NoError(t, err)
 }
 
 func TestGetBlockSizeBytes(t *testing.T) {
