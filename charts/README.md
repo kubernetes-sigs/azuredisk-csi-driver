@@ -14,6 +14,13 @@ $ helm package azuredisk-csi-driver
 $ helm install azuredisk-csi-driver azuredisk-csi-driver-latest.tgz --namespace kube-system
 ```
   
+## Install latest AzureDisk CSI Driver on Azure Stack via `helm install`
+
+```console
+$ cd $GOPATH/src/sigs.k8s.io/azuredisk-csi-driver/
+$ helm install azuredisk-csi-driver ./charts/latest/azuredisk-csi-driver --namespace kube-system --set cloud=AzureStackCloud
+```
+
 ## Install CSI Driver released version using Helm repository
 
 ```console
@@ -61,8 +68,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `rbac.create`                                     | whether create rbac of csi-azuredisk-controller            | true                                                         |
 | `controller.replicas`                             | the replicas of csi-azuredisk-controller                   | 2                                                            |
 | `controller.metricsPort`                          | metrics port of csi-azuredisk-controller                   |29604                                                        |
-| `controller.runOnMaster`                          | run csi-azuredisk-controller on master node                |
-`false`                                                    |
+| `controller.runOnMaster`                          | run csi-azuredisk-controller on master node                | false                                                        |
 | `node.metricsPort`                                | metrics port of csi-azuredisk-node                         |29605                                                        |
 | `snapshot.enabled`                                | whether enable snapshot feature                            | false                                                        |
 | `snapshot.image.csiSnapshotter.repository`        | csi-snapshotter docker image                               | mcr.microsoft.com/oss/kubernetes-csi/csi-snapshotter         |
@@ -84,6 +90,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `windows.image.nodeDriverRegistrar.pullPolicy`    | windows csi-node-driver-registrar image pull policy        | IfNotPresent                                                 |
 | `kubelet.linuxPath`                               | configure the kubelet path for Linux node                  | `/var/lib/kubelet`                                                |
 | `kubelet.windowsPath`                             | configure the kubelet path for Windows node                | `'C:\var\lib\kubelet'`                                            |
+| `cloud`                                           | the cloud environment the driver is running on             | AzurePublicCloud                                                  |
 
 ## Troubleshooting
  - Add `--wait -v=5 --debug` in `helm install` command to get detailed error

@@ -19,6 +19,7 @@ REGISTRY_NAME ?= $(shell echo $(REGISTRY) | sed "s/.azurecr.io//g")
 DRIVER_NAME = disk.csi.azure.com
 IMAGE_NAME ?= azuredisk-csi
 IMAGE_VERSION ?= v0.11.0
+CLOUD ?= AzurePublicCloud
 # Use a custom version for E2E tests if we are testing in CI
 ifdef CI
 ifndef PUBLISH
@@ -95,11 +96,13 @@ ifdef TEST_WINDOWS
 		--set windows.enabled=true \
 		--set linux.enabled=false \
 		--set controller.runOnMaster=true \
-		--set controller.replicas=1
+		--set controller.replicas=1 \
+		--set cloud=CLOUD
 else
 	helm install azuredisk-csi-driver charts/latest/azuredisk-csi-driver --namespace kube-system --wait --timeout=15m -v=5 --debug \
 		${E2E_HELM_OPTIONS} \
-		--set snapshot.enabled=true
+		--set snapshot.enabled=true \
+		--set cloud=CLOUD
 endif
 
 .PHONY: install-helm
@@ -140,7 +143,7 @@ container-windows:
 container-all: azuredisk azuredisk-windows
 	docker buildx rm container-builder || true
 	docker buildx create --use --name=container-builder
-ifdef AZURE_STACK
+ifeq ($(CLOUD), "AzureStackCloud")
 	docker run --privileged --name buildx_buildkit_container-builder0 -d --mount type=bind,src=/etc/ssl/certs,dst=/etc/ssl/certs moby/buildkit:latest || true
 endif
 	$(MAKE) container-linux
