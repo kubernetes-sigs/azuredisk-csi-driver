@@ -154,8 +154,6 @@ spec:
                   optional: true
             - name: CSI_ENDPOINT
               value: unix:///csi/csi.sock
-            - name: AZURE_ENVIRONMENT_FILEPATH  # For Azure Stack Cloud
-              value: /etc/kubernetes/azurestackcloud.json
           volumeMounts:
             - mountPath: /csi
               name: socket-dir

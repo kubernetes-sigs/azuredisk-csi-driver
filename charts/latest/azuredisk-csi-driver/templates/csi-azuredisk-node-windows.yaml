@@ -116,8 +116,10 @@ spec:
                 fieldRef:
                   apiVersion: v1
                   fieldPath: spec.nodeName
-            - name: AZURE_ENVIRONMENT_FILEPATH  # For Azure Stack Cloud
+            {{- if eq .Values.cloud "AzureStackCloud" }}
+            - name: AZURE_ENVIRONMENT_FILEPATH
               value: C:\k\azurestackcloud.json
+            {{- end }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:
             privileged: true

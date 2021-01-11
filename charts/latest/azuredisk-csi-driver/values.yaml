@@ -72,3 +72,5 @@ windows:
 kubelet:
   windowsPath: 'C:\var\lib\kubelet'
   linuxPath: /var/lib/kubelet
+
+cloud: AzurePublicCloud

@@ -112,8 +112,6 @@ spec:
                 fieldRef:
                   apiVersion: v1
                   fieldPath: spec.nodeName
-            - name: AZURE_ENVIRONMENT_FILEPATH  # For Azure Stack Cloud
-              value: /etc/kubernetes/azurestackcloud.json
           securityContext:
             privileged: true
           volumeMounts:
