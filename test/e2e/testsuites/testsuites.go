@@ -742,6 +742,11 @@ func (t *TestPod) WaitForRunning() {
 	framework.ExpectNoError(err)
 }
 
+func (t *TestPod) WaitForRunningLong() {
+	err := e2epod.WaitForPodRunningInNamespaceSlow(t.client, t.pod.Name, t.namespace.Name)
+	framework.ExpectNoError(err)
+}
+
 func (t *TestPod) WaitForFailedMountError() {
 	err := e2eevents.WaitTimeoutForEvent(
 		t.client,
