@@ -17,8 +17,9 @@ $ helm install azuredisk-csi-driver azuredisk-csi-driver-latest.tgz --namespace 
 ## Install latest AzureDisk CSI Driver on Azure Stack via `helm install`
 
 ```console
-$ cd $GOPATH/src/sigs.k8s.io/azuredisk-csi-driver/
-$ helm install azuredisk-csi-driver ./charts/latest/azuredisk-csi-driver --namespace kube-system --set cloud=AzureStackCloud
+$ cd $GOPATH/src/sigs.k8s.io/azuredisk-csi-driver/charts/latest
+$ helm package azuredisk-csi-driver
+$ helm install azuredisk-csi-driver azuredisk-csi-driver-latest.tgz --namespace kube-system --set cloud=AzureStackCloud
 ```
 
 ## Install CSI Driver released version using Helm repository
