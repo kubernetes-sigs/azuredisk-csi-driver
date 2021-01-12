@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The Kubernetes Authors.
+Copyright 2021 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,30 +19,30 @@ limitations under the License.
 package fake
 
 import (
-	v1beta1 "github.com/abhisheksinghbaghel/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1beta1"
+	v1alpha1 "github.com/abhisheksinghbaghel/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1alpha1"
 	rest "k8s.io/client-go/rest"
 	testing "k8s.io/client-go/testing"
 )
 
-type FakeDiskV1beta1 struct {
+type FakeDiskV1alpha1 struct {
 	*testing.Fake
 }
 
-func (c *FakeDiskV1beta1) AzDriverNodes(namespace string) v1beta1.AzDriverNodeInterface {
+func (c *FakeDiskV1alpha1) AzDriverNodes(namespace string) v1alpha1.AzDriverNodeInterface {
 	return &FakeAzDriverNodes{c, namespace}
 }
 
-func (c *FakeDiskV1beta1) AzVolumes(namespace string) v1beta1.AzVolumeInterface {
+func (c *FakeDiskV1alpha1) AzVolumes(namespace string) v1alpha1.AzVolumeInterface {
 	return &FakeAzVolumes{c, namespace}
 }
 
-func (c *FakeDiskV1beta1) AzVolumeAttachments(namespace string) v1beta1.AzVolumeAttachmentInterface {
+func (c *FakeDiskV1alpha1) AzVolumeAttachments(namespace string) v1alpha1.AzVolumeAttachmentInterface {
 	return &FakeAzVolumeAttachments{c, namespace}
 }
 
 // RESTClient returns a RESTClient that is used to communicate
 // with API server by this client implementation.
-func (c *FakeDiskV1beta1) RESTClient() rest.Interface {
+func (c *FakeDiskV1alpha1) RESTClient() rest.Interface {
 	var ret *rest.RESTClient
 	return ret
 }

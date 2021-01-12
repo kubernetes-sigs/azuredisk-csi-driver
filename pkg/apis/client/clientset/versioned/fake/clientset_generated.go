@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The Kubernetes Authors.
+Copyright 2021 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,8 +20,8 @@ package fake
 
 import (
 	clientset "github.com/abhisheksinghbaghel/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
-	diskv1beta1 "github.com/abhisheksinghbaghel/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1beta1"
-	fakediskv1beta1 "github.com/abhisheksinghbaghel/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1beta1/fake"
+	diskv1alpha1 "github.com/abhisheksinghbaghel/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1alpha1"
+	fakediskv1alpha1 "github.com/abhisheksinghbaghel/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1alpha1/fake"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/discovery"
@@ -76,7 +76,7 @@ func (c *Clientset) Tracker() testing.ObjectTracker {
 
 var _ clientset.Interface = &Clientset{}
 
-// DiskV1beta1 retrieves the DiskV1beta1Client
-func (c *Clientset) DiskV1beta1() diskv1beta1.DiskV1beta1Interface {
-	return &fakediskv1beta1.FakeDiskV1beta1{Fake: &c.Fake}
+// DiskV1alpha1 retrieves the DiskV1alpha1Client
+func (c *Clientset) DiskV1alpha1() diskv1alpha1.DiskV1alpha1Interface {
+	return &fakediskv1alpha1.FakeDiskV1alpha1{Fake: &c.Fake}
 }

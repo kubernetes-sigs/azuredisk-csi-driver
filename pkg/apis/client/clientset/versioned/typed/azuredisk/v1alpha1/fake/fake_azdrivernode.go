@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The Kubernetes Authors.
+Copyright 2021 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ package fake
 import (
 	"context"
 
-	v1beta1 "github.com/abhisheksinghbaghel/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	v1alpha1 "github.com/abhisheksinghbaghel/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
@@ -32,29 +32,29 @@ import (
 
 // FakeAzDriverNodes implements AzDriverNodeInterface
 type FakeAzDriverNodes struct {
-	Fake *FakeDiskV1beta1
+	Fake *FakeDiskV1alpha1
 	ns   string
 }
 
-var azdrivernodesResource = schema.GroupVersionResource{Group: "disk.csi.azure.com", Version: "v1beta1", Resource: "azdrivernodes"}
+var azdrivernodesResource = schema.GroupVersionResource{Group: "disk.csi.azure.com", Version: "v1alpha1", Resource: "azdrivernodes"}
 
-var azdrivernodesKind = schema.GroupVersionKind{Group: "disk.csi.azure.com", Version: "v1beta1", Kind: "AzDriverNode"}
+var azdrivernodesKind = schema.GroupVersionKind{Group: "disk.csi.azure.com", Version: "v1alpha1", Kind: "AzDriverNode"}
 
 // Get takes name of the azDriverNode, and returns the corresponding azDriverNode object, and an error if there is any.
-func (c *FakeAzDriverNodes) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1beta1.AzDriverNode, err error) {
+func (c *FakeAzDriverNodes) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.AzDriverNode, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewGetAction(azdrivernodesResource, c.ns, name), &v1beta1.AzDriverNode{})
+		Invokes(testing.NewGetAction(azdrivernodesResource, c.ns, name), &v1alpha1.AzDriverNode{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*v1beta1.AzDriverNode), err
+	return obj.(*v1alpha1.AzDriverNode), err
 }
 
 // List takes label and field selectors, and returns the list of AzDriverNodes that match those selectors.
-func (c *FakeAzDriverNodes) List(ctx context.Context, opts v1.ListOptions) (result *v1beta1.AzDriverNodeList, err error) {
+func (c *FakeAzDriverNodes) List(ctx context.Context, opts v1.ListOptions) (result *v1alpha1.AzDriverNodeList, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewListAction(azdrivernodesResource, azdrivernodesKind, c.ns, opts), &v1beta1.AzDriverNodeList{})
+		Invokes(testing.NewListAction(azdrivernodesResource, azdrivernodesKind, c.ns, opts), &v1alpha1.AzDriverNodeList{})
 
 	if obj == nil {
 		return nil, err
@@ -64,8 +64,8 @@ func (c *FakeAzDriverNodes) List(ctx context.Context, opts v1.ListOptions) (resu
 	if label == nil {
 		label = labels.Everything()
 	}
-	list := &v1beta1.AzDriverNodeList{ListMeta: obj.(*v1beta1.AzDriverNodeList).ListMeta}
-	for _, item := range obj.(*v1beta1.AzDriverNodeList).Items {
+	list := &v1alpha1.AzDriverNodeList{ListMeta: obj.(*v1alpha1.AzDriverNodeList).ListMeta}
+	for _, item := range obj.(*v1alpha1.AzDriverNodeList).Items {
 		if label.Matches(labels.Set(item.Labels)) {
 			list.Items = append(list.Items, item)
 		}
@@ -81,31 +81,31 @@ func (c *FakeAzDriverNodes) Watch(ctx context.Context, opts v1.ListOptions) (wat
 }
 
 // Create takes the representation of a azDriverNode and creates it.  Returns the server's representation of the azDriverNode, and an error, if there is any.
-func (c *FakeAzDriverNodes) Create(ctx context.Context, azDriverNode *v1beta1.AzDriverNode, opts v1.CreateOptions) (result *v1beta1.AzDriverNode, err error) {
+func (c *FakeAzDriverNodes) Create(ctx context.Context, azDriverNode *v1alpha1.AzDriverNode, opts v1.CreateOptions) (result *v1alpha1.AzDriverNode, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewCreateAction(azdrivernodesResource, c.ns, azDriverNode), &v1beta1.AzDriverNode{})
+		Invokes(testing.NewCreateAction(azdrivernodesResource, c.ns, azDriverNode), &v1alpha1.AzDriverNode{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*v1beta1.AzDriverNode), err
+	return obj.(*v1alpha1.AzDriverNode), err
 }
 
 // Update takes the representation of a azDriverNode and updates it. Returns the server's representation of the azDriverNode, and an error, if there is any.
-func (c *FakeAzDriverNodes) Update(ctx context.Context, azDriverNode *v1beta1.AzDriverNode, opts v1.UpdateOptions) (result *v1beta1.AzDriverNode, err error) {
+func (c *FakeAzDriverNodes) Update(ctx context.Context, azDriverNode *v1alpha1.AzDriverNode, opts v1.UpdateOptions) (result *v1alpha1.AzDriverNode, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewUpdateAction(azdrivernodesResource, c.ns, azDriverNode), &v1beta1.AzDriverNode{})
+		Invokes(testing.NewUpdateAction(azdrivernodesResource, c.ns, azDriverNode), &v1alpha1.AzDriverNode{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*v1beta1.AzDriverNode), err
+	return obj.(*v1alpha1.AzDriverNode), err
 }
 
 // Delete takes name of the azDriverNode and deletes it. Returns an error if one occurs.
 func (c *FakeAzDriverNodes) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewDeleteAction(azdrivernodesResource, c.ns, name), &v1beta1.AzDriverNode{})
+		Invokes(testing.NewDeleteAction(azdrivernodesResource, c.ns, name), &v1alpha1.AzDriverNode{})
 
 	return err
 }
@@ -114,17 +114,17 @@ func (c *FakeAzDriverNodes) Delete(ctx context.Context, name string, opts v1.Del
 func (c *FakeAzDriverNodes) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
 	action := testing.NewDeleteCollectionAction(azdrivernodesResource, c.ns, listOpts)
 
-	_, err := c.Fake.Invokes(action, &v1beta1.AzDriverNodeList{})
+	_, err := c.Fake.Invokes(action, &v1alpha1.AzDriverNodeList{})
 	return err
 }
 
 // Patch applies the patch and returns the patched azDriverNode.
-func (c *FakeAzDriverNodes) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1beta1.AzDriverNode, err error) {
+func (c *FakeAzDriverNodes) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.AzDriverNode, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewPatchSubresourceAction(azdrivernodesResource, c.ns, name, pt, data, subresources...), &v1beta1.AzDriverNode{})
+		Invokes(testing.NewPatchSubresourceAction(azdrivernodesResource, c.ns, name, pt, data, subresources...), &v1alpha1.AzDriverNode{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*v1beta1.AzDriverNode), err
+	return obj.(*v1alpha1.AzDriverNode), err
 }

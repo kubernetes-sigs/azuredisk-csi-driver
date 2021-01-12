@@ -64,4 +64,5 @@ replace (
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.18.1
 	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.18.1
 	k8s.io/sample-controller => k8s.io/sample-controller v0.18.1
+	sigs.k8s.io/azuredisk-csi-driver => /home/azureuser/go/src/github.com/abhisheksinghbaghel/azuredisk-csi-driver
 )

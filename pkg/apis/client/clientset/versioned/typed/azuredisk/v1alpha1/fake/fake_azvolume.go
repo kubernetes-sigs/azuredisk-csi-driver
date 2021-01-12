@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The Kubernetes Authors.
+Copyright 2021 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ package fake
 import (
 	"context"
 
-	v1beta1 "github.com/abhisheksinghbaghel/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	v1alpha1 "github.com/abhisheksinghbaghel/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
@@ -32,29 +32,29 @@ import (
 
 // FakeAzVolumes implements AzVolumeInterface
 type FakeAzVolumes struct {
-	Fake *FakeDiskV1beta1
+	Fake *FakeDiskV1alpha1
 	ns   string
 }
 
-var azvolumesResource = schema.GroupVersionResource{Group: "disk.csi.azure.com", Version: "v1beta1", Resource: "azvolumes"}
+var azvolumesResource = schema.GroupVersionResource{Group: "disk.csi.azure.com", Version: "v1alpha1", Resource: "azvolumes"}
 
-var azvolumesKind = schema.GroupVersionKind{Group: "disk.csi.azure.com", Version: "v1beta1", Kind: "AzVolume"}
+var azvolumesKind = schema.GroupVersionKind{Group: "disk.csi.azure.com", Version: "v1alpha1", Kind: "AzVolume"}
 
 // Get takes name of the azVolume, and returns the corresponding azVolume object, and an error if there is any.
-func (c *FakeAzVolumes) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1beta1.AzVolume, err error) {
+func (c *FakeAzVolumes) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.AzVolume, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewGetAction(azvolumesResource, c.ns, name), &v1beta1.AzVolume{})
+		Invokes(testing.NewGetAction(azvolumesResource, c.ns, name), &v1alpha1.AzVolume{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*v1beta1.AzVolume), err
+	return obj.(*v1alpha1.AzVolume), err
 }
 
 // List takes label and field selectors, and returns the list of AzVolumes that match those selectors.
-func (c *FakeAzVolumes) List(ctx context.Context, opts v1.ListOptions) (result *v1beta1.AzVolumeList, err error) {
+func (c *FakeAzVolumes) List(ctx context.Context, opts v1.ListOptions) (result *v1alpha1.AzVolumeList, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewListAction(azvolumesResource, azvolumesKind, c.ns, opts), &v1beta1.AzVolumeList{})
+		Invokes(testing.NewListAction(azvolumesResource, azvolumesKind, c.ns, opts), &v1alpha1.AzVolumeList{})
 
 	if obj == nil {
 		return nil, err
@@ -64,8 +64,8 @@ func (c *FakeAzVolumes) List(ctx context.Context, opts v1.ListOptions) (result *
 	if label == nil {
 		label = labels.Everything()
 	}
-	list := &v1beta1.AzVolumeList{ListMeta: obj.(*v1beta1.AzVolumeList).ListMeta}
-	for _, item := range obj.(*v1beta1.AzVolumeList).Items {
+	list := &v1alpha1.AzVolumeList{ListMeta: obj.(*v1alpha1.AzVolumeList).ListMeta}
+	for _, item := range obj.(*v1alpha1.AzVolumeList).Items {
 		if label.Matches(labels.Set(item.Labels)) {
 			list.Items = append(list.Items, item)
 		}
@@ -81,31 +81,31 @@ func (c *FakeAzVolumes) Watch(ctx context.Context, opts v1.ListOptions) (watch.I
 }
 
 // Create takes the representation of a azVolume and creates it.  Returns the server's representation of the azVolume, and an error, if there is any.
-func (c *FakeAzVolumes) Create(ctx context.Context, azVolume *v1beta1.AzVolume, opts v1.CreateOptions) (result *v1beta1.AzVolume, err error) {
+func (c *FakeAzVolumes) Create(ctx context.Context, azVolume *v1alpha1.AzVolume, opts v1.CreateOptions) (result *v1alpha1.AzVolume, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewCreateAction(azvolumesResource, c.ns, azVolume), &v1beta1.AzVolume{})
+		Invokes(testing.NewCreateAction(azvolumesResource, c.ns, azVolume), &v1alpha1.AzVolume{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*v1beta1.AzVolume), err
+	return obj.(*v1alpha1.AzVolume), err
 }
 
 // Update takes the representation of a azVolume and updates it. Returns the server's representation of the azVolume, and an error, if there is any.
-func (c *FakeAzVolumes) Update(ctx context.Context, azVolume *v1beta1.AzVolume, opts v1.UpdateOptions) (result *v1beta1.AzVolume, err error) {
+func (c *FakeAzVolumes) Update(ctx context.Context, azVolume *v1alpha1.AzVolume, opts v1.UpdateOptions) (result *v1alpha1.AzVolume, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewUpdateAction(azvolumesResource, c.ns, azVolume), &v1beta1.AzVolume{})
+		Invokes(testing.NewUpdateAction(azvolumesResource, c.ns, azVolume), &v1alpha1.AzVolume{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*v1beta1.AzVolume), err
+	return obj.(*v1alpha1.AzVolume), err
 }
 
 // Delete takes name of the azVolume and deletes it. Returns an error if one occurs.
 func (c *FakeAzVolumes) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewDeleteAction(azvolumesResource, c.ns, name), &v1beta1.AzVolume{})
+		Invokes(testing.NewDeleteAction(azvolumesResource, c.ns, name), &v1alpha1.AzVolume{})
 
 	return err
 }
@@ -114,17 +114,17 @@ func (c *FakeAzVolumes) Delete(ctx context.Context, name string, opts v1.DeleteO
 func (c *FakeAzVolumes) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
 	action := testing.NewDeleteCollectionAction(azvolumesResource, c.ns, listOpts)
 
-	_, err := c.Fake.Invokes(action, &v1beta1.AzVolumeList{})
+	_, err := c.Fake.Invokes(action, &v1alpha1.AzVolumeList{})
 	return err
 }
 
 // Patch applies the patch and returns the patched azVolume.
-func (c *FakeAzVolumes) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1beta1.AzVolume, err error) {
+func (c *FakeAzVolumes) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.AzVolume, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewPatchSubresourceAction(azvolumesResource, c.ns, name, pt, data, subresources...), &v1beta1.AzVolume{})
+		Invokes(testing.NewPatchSubresourceAction(azvolumesResource, c.ns, name, pt, data, subresources...), &v1alpha1.AzVolume{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*v1beta1.AzVolume), err
+	return obj.(*v1alpha1.AzVolume), err
 }

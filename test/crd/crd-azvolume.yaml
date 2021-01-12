@@ -4,7 +4,7 @@ metadata:
   name: azvolumes.disk.csi.azure.com
 spec:
   group: disk.csi.azure.com
-  version: v1beta1
+  version: v1alpha1
   names:
     kind: AzVolume
     plural: azvolumes
