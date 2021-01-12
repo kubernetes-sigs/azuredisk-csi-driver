@@ -581,22 +581,25 @@ func (d *Driver) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest) (
 		d := disks[i]
 		nodeList := []string{}
 
-		if d.ManagedBy != nil {
-			attachedNode, err := vmSet.GetNodeNameByProviderID(*d.ManagedBy)
-			if err != nil {
-				return nil, err
+		// HyperVGeneration property is only setup for os disks. Only the non os disks should be included in the list
+		if d.DiskProperties == nil || d.DiskProperties.HyperVGeneration == "" {
+			if d.ManagedBy != nil {
+				attachedNode, err := vmSet.GetNodeNameByProviderID(*d.ManagedBy)
+				if err != nil {
+					return nil, err
+				}
+				nodeList = append(nodeList, string(attachedNode))
 			}
-			nodeList = append(nodeList, string(attachedNode))
-		}
 
-		entries = append(entries, &csi.ListVolumesResponse_Entry{
-			Volume: &csi.Volume{
-				VolumeId: *d.ID,
-			},
-			Status: &csi.ListVolumesResponse_VolumeStatus{
-				PublishedNodeIds: nodeList,
-			},
-		})
+			entries = append(entries, &csi.ListVolumesResponse_Entry{
+				Volume: &csi.Volume{
+					VolumeId: *d.ID,
+				},
+				Status: &csi.ListVolumesResponse_VolumeStatus{
+					PublishedNodeIds: nodeList,
+				},
+			})
+		}
 	}
 
 	nextTokenString := ""
