@@ -75,6 +75,9 @@ func (az *Client) EnsureResourceGroup(ctx context.Context, name, location string
 	} else {
 		tags = make(map[string]*string)
 	}
+	if managedBy == nil {
+		managedBy = group.ManagedBy
+	}
 	// Tags for correlating resource groups with prow jobs on testgrid
 	tags["buildID"] = stringPointer(os.Getenv("BUILD_ID"))
 	tags["jobName"] = stringPointer(os.Getenv("JOB_NAME"))
