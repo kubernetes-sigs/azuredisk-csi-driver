@@ -1,0 +1,8 @@
+StorageClass:
+    FromName: true
+SnapshotClass:
+    FromName: true
+DriverInfo:
+    Name: disk.csi.azure.com
+    Capabilities:
+        persistence: true
