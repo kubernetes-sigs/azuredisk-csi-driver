@@ -163,9 +163,6 @@ spec:
             - mountPath: /var/lib/waagent/ManagedIdentity-Settings
               readOnly: true
               name: msi
-            - name: ssl
-              mountPath: /etc/ssl/certs
-              readOnly: true
           resources:
             limits:
               cpu: 200m
@@ -183,6 +180,3 @@ spec:
         - name: msi
           hostPath:
             path: /var/lib/waagent/ManagedIdentity-Settings
-        - name: ssl
-          hostPath:
-            path: /etc/ssl/certs
