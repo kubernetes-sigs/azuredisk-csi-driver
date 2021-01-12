@@ -133,9 +133,6 @@ spec:
               name: sys-devices-dir
             - mountPath: /sys/class/scsi_host/
               name: scsi-host-dir
-            - name: ssl
-              mountPath: /etc/ssl/certs
-              readOnly: true
           resources:
             limits:
               cpu: 200m
@@ -175,7 +172,4 @@ spec:
             path: /sys/class/scsi_host/
             type: Directory
           name: scsi-host-dir
-        - name: ssl
-          hostPath:
-            path: /etc/ssl/certs
 ---
