@@ -24,8 +24,6 @@ import (
 	"testing"
 	"time"
 
-	api "k8s.io/kubernetes/pkg/apis/core"
-
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-06-30/compute"
 	"github.com/stretchr/testify/assert"
 
@@ -136,39 +134,6 @@ func TestIoHandler(t *testing.T) {
 		if disk != "/dev/"+devName || err != nil {
 			t.Errorf("no data disk found: disk %v err %v", disk, err)
 		}
-	}
-}
-
-func TestNormalizeKind(t *testing.T) {
-	tests := []struct {
-		desc          string
-		req           string
-		expectedErr   error
-		expectedValue v1.AzureDataDiskKind
-	}{
-		{
-			desc:          "CachingMode not exist",
-			req:           "",
-			expectedErr:   nil,
-			expectedValue: "Managed",
-		},
-		{
-			desc:          "Not supported CachingMode",
-			req:           "WriteOnly",
-			expectedErr:   fmt.Errorf("azureDisk - WriteOnly is not supported disk kind. Supported values are [Dedicated Managed Shared]"),
-			expectedValue: "",
-		},
-		{
-			desc:          "Valid CachingMode",
-			req:           string(api.AzureDedicatedBlobDisk),
-			expectedErr:   nil,
-			expectedValue: "Dedicated",
-		},
-	}
-	for _, test := range tests {
-		value, err := normalizeKind(test.req)
-		assert.Equal(t, value, test.expectedValue)
-		assert.Equal(t, err, test.expectedErr, fmt.Sprintf("error msg: %v", err))
 	}
 }
 

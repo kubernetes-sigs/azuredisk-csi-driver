@@ -18,13 +18,11 @@ package azuredisk
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-06-30/compute"
-	"github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2019-06-01/storage"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/protobuf/ptypes"
 
@@ -65,7 +63,6 @@ var (
 )
 
 const (
-	azureDiskKind          = "kind"
 	sourceSnapshot         = "snapshot"
 	sourceVolume           = "volume"
 	azureDiskCSIDriverName = "azuredisk_csi_driver"
@@ -102,10 +99,9 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	}
 
 	var (
-		location, account       string
+		location                string
 		storageAccountType      string
 		cachingMode             v1.AzureDataDiskCachingMode
-		strKind                 string
 		err                     error
 		resourceGroup           string
 		diskIopsReadWrite       string
@@ -128,12 +124,8 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			storageAccountType = v
 		case locationField:
 			location = v
-		case storageAccountField:
-			account = v
 		case storageAccountTypeField:
 			storageAccountType = v
-		case azureDiskKind:
-			strKind = v
 		case cachingModeField:
 			cachingMode = v1.AzureDataDiskCachingMode(v)
 		case resourceGroupField:
@@ -204,23 +196,11 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		if skuName != compute.StandardLRS && skuName != compute.PremiumLRS {
 			klog.Warningf("Use sku %s instead as Azure Stack does not support %s.", compute.StandardLRS, skuName)
 			skuName = compute.StandardLRS
-			storageAccountType = string(compute.StandardLRS)
 		}
 	}
 
 	if _, err = normalizeCachingMode(cachingMode); err != nil {
 		return nil, err
-	}
-
-	kind, err := normalizeKind(strFirstLetterToUpper(strKind))
-	if err != nil {
-		return nil, err
-	}
-
-	if kind != v1.AzureManagedDisk {
-		if resourceGroup != "" {
-			return nil, errors.New("StorageClass option 'resourceGroup' can be used only for managed disks")
-		}
 	}
 
 	selectedAvailabilityZone := pickAvailabilityZone(req.GetAccessibilityRequirements(), d.cloud.Location)
@@ -240,83 +220,69 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	diskURI := ""
 	tags := make(map[string]string)
 	contentSource := &csi.VolumeContentSource{}
-	if kind == v1.AzureManagedDisk {
-		for k, v := range customTagsMap {
-			tags[k] = v
-		}
-		tags[CreatedForPVNameKey] = name
-		/* todo: check where are the tags in CSI
-		if p.options.CloudTags != nil {
-			tags = *(p.options.CloudTags)
-		}
-		*/
+	for k, v := range customTagsMap {
+		tags[k] = v
+	}
+	tags[CreatedForPVNameKey] = name
+	/* todo: check where are the tags in CSI
+	if p.options.CloudTags != nil {
+		tags = *(p.options.CloudTags)
+	}
+	*/
 
-		if strings.EqualFold(writeAcceleratorEnabled, "true") {
-			tags[azure.WriteAcceleratorEnabled] = "true"
-		}
-		sourceID := ""
-		sourceType := ""
-		content := req.GetVolumeContentSource()
-		if content != nil {
-			if content.GetSnapshot() != nil {
-				sourceID = content.GetSnapshot().GetSnapshotId()
-				sourceType = sourceSnapshot
-				contentSource = &csi.VolumeContentSource{
-					Type: &csi.VolumeContentSource_Snapshot{
-						Snapshot: &csi.VolumeContentSource_SnapshotSource{
-							SnapshotId: sourceID,
-						},
+	if strings.EqualFold(writeAcceleratorEnabled, "true") {
+		tags[azure.WriteAcceleratorEnabled] = "true"
+	}
+	sourceID := ""
+	sourceType := ""
+	content := req.GetVolumeContentSource()
+	if content != nil {
+		if content.GetSnapshot() != nil {
+			sourceID = content.GetSnapshot().GetSnapshotId()
+			sourceType = sourceSnapshot
+			contentSource = &csi.VolumeContentSource{
+				Type: &csi.VolumeContentSource_Snapshot{
+					Snapshot: &csi.VolumeContentSource_SnapshotSource{
+						SnapshotId: sourceID,
 					},
-				}
-			} else {
-				sourceID = content.GetVolume().GetVolumeId()
-				sourceType = sourceVolume
-				contentSource = &csi.VolumeContentSource{
-					Type: &csi.VolumeContentSource_Volume{
-						Volume: &csi.VolumeContentSource_VolumeSource{
-							VolumeId: sourceID,
-						},
-					},
-				}
-
-			}
-		}
-
-		volumeOptions := &azure.ManagedDiskOptions{
-			DiskName:            diskName,
-			StorageAccountType:  skuName,
-			ResourceGroup:       resourceGroup,
-			PVCName:             "",
-			SizeGB:              requestGiB,
-			Tags:                tags,
-			AvailabilityZone:    selectedAvailabilityZone,
-			DiskIOPSReadWrite:   diskIopsReadWrite,
-			DiskMBpsReadWrite:   diskMbpsReadWrite,
-			SourceResourceID:    sourceID,
-			SourceType:          sourceType,
-			DiskEncryptionSetID: diskEncryptionSetID,
-			MaxShares:           int32(maxShares),
-			LogicalSectorSize:   int32(logicalSectorSize),
-		}
-		diskURI, err = d.cloud.CreateManagedDisk(volumeOptions)
-		if err != nil {
-			if strings.Contains(err.Error(), NotFound) {
-				return nil, status.Error(codes.NotFound, err.Error())
-			}
-			return nil, err
-		}
-	} else {
-		if kind == v1.AzureDedicatedBlobDisk {
-			_, diskURI, _, err = d.cloud.CreateVolume(diskName, account, storageAccountType, location, requestGiB)
-			if err != nil {
-				return nil, err
+				},
 			}
 		} else {
-			diskURI, err = d.cloud.CreateBlobDisk(diskName, storage.SkuName(storageAccountType), requestGiB)
-			if err != nil {
-				return nil, err
+			sourceID = content.GetVolume().GetVolumeId()
+			sourceType = sourceVolume
+			contentSource = &csi.VolumeContentSource{
+				Type: &csi.VolumeContentSource_Volume{
+					Volume: &csi.VolumeContentSource_VolumeSource{
+						VolumeId: sourceID,
+					},
+				},
 			}
+
 		}
+	}
+
+	volumeOptions := &azure.ManagedDiskOptions{
+		DiskName:            diskName,
+		StorageAccountType:  skuName,
+		ResourceGroup:       resourceGroup,
+		PVCName:             "",
+		SizeGB:              requestGiB,
+		Tags:                tags,
+		AvailabilityZone:    selectedAvailabilityZone,
+		DiskIOPSReadWrite:   diskIopsReadWrite,
+		DiskMBpsReadWrite:   diskMbpsReadWrite,
+		SourceResourceID:    sourceID,
+		SourceType:          sourceType,
+		DiskEncryptionSetID: diskEncryptionSetID,
+		MaxShares:           int32(maxShares),
+		LogicalSectorSize:   int32(logicalSectorSize),
+	}
+	diskURI, err = d.cloud.CreateManagedDisk(volumeOptions)
+	if err != nil {
+		if strings.Contains(err.Error(), NotFound) {
+			return nil, status.Error(codes.NotFound, err.Error())
+		}
+		return nil, err
 	}
 
 	klog.V(2).Infof("create azure disk(%s) account type(%s) rg(%s) location(%s) size(%d) tags(%s) successfully", diskName, skuName, resourceGroup, location, requestGiB, tags)
@@ -330,11 +296,6 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		}
 	}
 	*/
-
-	// for CSI migration: reset kind value, make it well formatted
-	if _, ok := parameters[azureDiskKind]; ok {
-		parameters[azureDiskKind] = string(kind)
-	}
 
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
@@ -368,18 +329,9 @@ func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest)
 	}
 
 	klog.V(2).Infof("deleting azure disk(%s)", diskURI)
-	if isManagedDisk(diskURI) {
-		if err := d.cloud.DeleteManagedDisk(diskURI); err != nil {
-			return &csi.DeleteVolumeResponse{}, err
-		}
-	} else {
-		if err := d.cloud.DeleteBlobDisk(diskURI); err != nil {
-			return &csi.DeleteVolumeResponse{}, err
-		}
-	}
-	klog.V(2).Infof("delete azure disk(%s) successfully", diskURI)
-
-	return &csi.DeleteVolumeResponse{}, nil
+	err := d.cloud.DeleteManagedDisk(diskURI)
+	klog.V(2).Infof("delete azure disk(%s) returned with %v", diskURI, err)
+	return &csi.DeleteVolumeResponse{}, err
 }
 
 // ControllerGetVolume get volume
@@ -437,15 +389,13 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		// Volume is already attached to node.
 		klog.V(2).Infof("Attach operation is successful. volume %q is already attached to node %q at lun %d.", diskURI, nodeName, lun)
 	} else {
-		isManagedDisk := isManagedDisk(diskURI)
-
 		var cachingMode compute.CachingTypes
 		if cachingMode, err = getCachingMode(req.GetVolumeContext()); err != nil {
 			return nil, err
 		}
 		klog.V(2).Infof("Trying to attach volume %q to node %q", diskURI, nodeName)
 
-		lun, err = d.cloud.AttachDisk(isManagedDisk, diskName, diskURI, nodeName, cachingMode)
+		lun, err = d.cloud.AttachDisk(true, diskName, diskURI, nodeName, cachingMode)
 		if err == nil {
 			klog.V(2).Infof("Attach operation successful: volume %q attached to node %q.", diskURI, nodeName)
 		} else {
@@ -455,7 +405,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 					return nil, status.Errorf(codes.Internal, "Could not detach volume %q from node %q: %v", diskURI, derr.CurrentNode, err)
 				}
 				klog.V(2).Infof("Trying to attach volume %q to node %q again", diskURI, nodeName)
-				lun, err = d.cloud.AttachDisk(isManagedDisk, diskName, diskURI, nodeName, cachingMode)
+				lun, err = d.cloud.AttachDisk(true, diskName, diskURI, nodeName, cachingMode)
 			}
 			if err != nil {
 				klog.Errorf("Attach volume %q to instance %q failed with %v", diskURI, nodeName, err)
@@ -631,9 +581,6 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 	requestSize := *resource.NewQuantity(capacityBytes, resource.BinarySI)
 
 	diskURI := req.GetVolumeId()
-	if !isManagedDisk(diskURI) {
-		return nil, status.Errorf(codes.InvalidArgument, "the disk type(%s) is not ManagedDisk", diskURI)
-	}
 	if err := isValidDiskURI(diskURI); err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "disk URI(%s) is not valid: %v", diskURI, err)
 	}

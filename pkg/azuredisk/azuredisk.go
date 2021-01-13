@@ -87,10 +87,8 @@ const (
 
 var (
 	managedDiskPathRE       = regexp.MustCompile(`(?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/disks/(.+)`)
-	unmanagedDiskPathRE     = regexp.MustCompile(`http(?:.*)://(?:.*)/vhds/(.+)`)
 	diskSnapshotPathRE      = regexp.MustCompile(`(?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/snapshots/(.+)`)
 	diskURISupportedManaged = []string{"/subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id}"}
-	diskURISupportedBlob    = []string{"https://{account-name}.blob.core.windows.net/{container-name}/{disk-name}.vhd"}
 )
 
 // Driver implements all interfaces of CSI drivers
@@ -159,22 +157,10 @@ func (d *Driver) Run(endpoint, kubeconfig string, testBool bool) {
 	s.Wait()
 }
 
-func isManagedDisk(diskURI string) bool {
-	if len(diskURI) > 4 && strings.ToLower(diskURI[:4]) == "http" {
-		return false
-	}
-	return true
-}
-
 func GetDiskName(diskURI string) (string, error) {
-	diskPathRE := managedDiskPathRE
-	if !isManagedDisk(diskURI) {
-		diskPathRE = unmanagedDiskPathRE
-	}
-
-	matches := diskPathRE.FindStringSubmatch(diskURI)
+	matches := managedDiskPathRE.FindStringSubmatch(diskURI)
 	if len(matches) != 2 {
-		return "", fmt.Errorf("could not get disk name from %s, correct format: %s", diskURI, diskPathRE)
+		return "", fmt.Errorf("could not get disk name from %s, correct format: %s", diskURI, managedDiskPathRE)
 	}
 	return matches[1], nil
 }
@@ -226,17 +212,9 @@ func (d *Driver) checkDiskCapacity(ctx context.Context, resourceGroup, diskName 
 }
 
 func isValidDiskURI(diskURI string) error {
-	uri := strings.ToLower(diskURI)
-	if isManagedDisk(uri) {
-		if strings.Index(uri, "/subscriptions/") != 0 {
-			return fmt.Errorf("Inavlid DiskURI: %v, correct format: %v", diskURI, diskURISupportedManaged)
-		}
-	} else {
-		if strings.Index(uri, "https://") != 0 {
-			return fmt.Errorf("Inavlid DiskURI: %v, correct format: %v", diskURI, diskURISupportedBlob)
-		}
+	if strings.Index(strings.ToLower(diskURI), "/subscriptions/") != 0 {
+		return fmt.Errorf("Inavlid DiskURI: %v, correct format: %v", diskURI, diskURISupportedManaged)
 	}
-
 	return nil
 }
 
