@@ -33,7 +33,6 @@ import (
 
 const (
 	defaultStorageAccountType       = compute.StandardSSDLRS
-	defaultAzureDiskKind            = v1.AzureManagedDisk
 	defaultAzureDataDiskCachingMode = v1.AzureDataDiskCachingReadOnly
 )
 
@@ -43,25 +42,8 @@ var (
 		string(api.AzureDataDiskCachingReadOnly),
 		string(api.AzureDataDiskCachingReadWrite))
 
-	supportedDiskKinds = sets.NewString(
-		string(api.AzureSharedBlobDisk),
-		string(api.AzureDedicatedBlobDisk),
-		string(api.AzureManagedDisk))
-
 	lunPathRE = regexp.MustCompile(`/dev(?:.*)/disk/azure/scsi(?:.*)/lun(.+)`)
 )
-
-func normalizeKind(kind string) (v1.AzureDataDiskKind, error) {
-	if kind == "" {
-		return defaultAzureDiskKind, nil
-	}
-
-	if !supportedDiskKinds.Has(kind) {
-		return "", fmt.Errorf("azureDisk - %s is not supported disk kind. Supported values are %s", kind, supportedDiskKinds.List())
-	}
-
-	return v1.AzureDataDiskKind(kind), nil
-}
 
 func normalizeStorageAccountType(storageAccountType string) (compute.DiskStorageAccountTypes, error) {
 	if storageAccountType == "" {

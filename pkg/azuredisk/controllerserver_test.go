@@ -25,7 +25,6 @@ import (
 	"github.com/Azure/go-autorest/autorest/date"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/stretchr/testify/assert"
-	api "k8s.io/kubernetes/pkg/apis/core"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-06-30/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -353,42 +352,6 @@ func TestCreateVolume(t *testing.T) {
 				}
 				_, err := d.CreateVolume(context.Background(), req)
 				expectedErr := fmt.Errorf("azureDisk - WriteOnly is not supported cachingmode. Supported values are [None ReadOnly ReadWrite]")
-				if !reflect.DeepEqual(err, expectedErr) {
-					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
-				}
-			},
-		},
-		{
-			name: "normalize kind  error ",
-			testFunc: func(t *testing.T) {
-				d, _ := NewFakeDriver(t)
-				mp := make(map[string]string)
-				mp["kind"] = "WriteOnly"
-				req := &csi.CreateVolumeRequest{
-					Name:               "unit-test",
-					VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
-					Parameters:         mp,
-				}
-				_, err := d.CreateVolume(context.Background(), req)
-				expectedErr := fmt.Errorf("azureDisk - WriteOnly is not supported disk kind. Supported values are [Dedicated Managed Shared]")
-				if !reflect.DeepEqual(err, expectedErr) {
-					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
-				}
-			},
-		},
-		{
-			name: "StorageClass option error ",
-			testFunc: func(t *testing.T) {
-				d, _ := NewFakeDriver(t)
-				mp := make(map[string]string)
-				mp["kind"] = string(api.AzureDedicatedBlobDisk)
-				req := &csi.CreateVolumeRequest{
-					Name:               "unit-test",
-					VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
-					Parameters:         mp,
-				}
-				_, err := d.CreateVolume(context.Background(), req)
-				expectedErr := fmt.Errorf("StorageClass option 'resourceGroup' can be used only for managed disks")
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
@@ -881,7 +844,7 @@ func TestControllerExpandVolume(t *testing.T) {
 				ctx := context.Background()
 				d, _ := NewFakeDriver(t)
 
-				expectedErr := status.Error(codes.InvalidArgument, "the disk type(httptest) is not ManagedDisk")
+				expectedErr := status.Error(codes.InvalidArgument, "disk URI(httptest) is not valid: Inavlid DiskURI: httptest, correct format: [/subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id}]")
 				_, err := d.ControllerExpandVolume(ctx, req)
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("Unexpected error: %v", err)
