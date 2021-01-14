@@ -44,6 +44,8 @@ import (
 type DynamicallyProvisionedVolumeSnapshotTest struct {
 	CSIDriver              driver.PVTestDriver
 	Pod                    PodDetails
+	ShouldOverwrite        bool
+	PodOverwrite           PodDetails
 	PodWithSnapshot        PodDetails
 	StorageClassParameters map[string]string
 }
@@ -101,6 +103,18 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interfac
 
 	ginkgo.By("taking snapshots")
 	snapshot := tvsc.CreateSnapshot(tpvc.persistentVolumeClaim)
+
+	if t.ShouldOverwrite {
+		tpod = NewTestPod(client, namespace, t.PodOverwrite.Cmd, t.PodOverwrite.IsWindows)
+
+		tpod.SetupVolume(tpvc.persistentVolumeClaim, volume.VolumeMount.NameGenerate+"1", volume.VolumeMount.MountPathGenerate+"1", volume.VolumeMount.ReadOnly)
+		ginkgo.By("deploying a new pod to overwrite pv data")
+		tpod.Create()
+		defer tpod.Cleanup()
+		ginkgo.By("checking that the pod's command exits with no error")
+		tpod.WaitForSuccess()
+	}
+
 	defer tvsc.DeleteSnapshot(snapshot)
 	tvsc.ReadyToUse(snapshot)
 
@@ -114,7 +128,7 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interfac
 	for i := range tPodWithSnapshotCleanup {
 		defer tPodWithSnapshotCleanup[i]()
 	}
-	ginkgo.By("deploying a second pod with a volume restored from the snapshot")
+	ginkgo.By("deploying a pod with a volume restored from the snapshot")
 	tPodWithSnapshot.Create()
 	defer tPodWithSnapshot.Cleanup()
 	ginkgo.By("checking that the pod's command exits with no error")
