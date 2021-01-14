@@ -37,6 +37,7 @@ import (
 
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
+	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
@@ -94,8 +95,9 @@ var (
 // Driver implements all interfaces of CSI drivers
 type Driver struct {
 	csicommon.CSIDriver
-	cloud   *azure.Cloud
-	mounter *mount.SafeFormatAndMount
+	cloud       *azure.Cloud
+	mounter     *mount.SafeFormatAndMount
+	volumeLocks *volumehelper.VolumeLocks
 }
 
 // NewDriver Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
@@ -105,6 +107,7 @@ func NewDriver(nodeID string) *Driver {
 	driver.Name = DriverName
 	driver.Version = driverVersion
 	driver.NodeID = nodeID
+	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	return &driver
 }
 

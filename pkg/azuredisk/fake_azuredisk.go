@@ -58,6 +58,7 @@ func NewFakeDriver(t *testing.T) (*Driver, error) {
 	driver.Version = fakeDriverVersion
 	driver.NodeID = fakeNodeID
 	driver.CSIDriver = *csicommon.NewFakeCSIDriver()
+	driver.volumeLocks = volumehelper.NewVolumeLocks()
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()

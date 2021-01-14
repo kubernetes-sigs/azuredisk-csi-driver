@@ -31,6 +31,7 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/diskclient/mockdiskclient"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
@@ -598,6 +599,7 @@ func TestNewDriver(t *testing.T) {
 	driver.Name = DriverName
 	driver.Version = driverVersion
 	driver.NodeID = nodeid
+	driver.volumeLocks = util.NewVolumeLocks()
 	newdriver := NewDriver(nodeid)
 	assert.Equal(t, driver, *newdriver)
 }
