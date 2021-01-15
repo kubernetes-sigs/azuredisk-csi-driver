@@ -350,9 +350,8 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	ginkgo.It("should clone a volume from an existing volume and read from it [disk.csi.azure.com]", func() {
 		skipIfTestingInWindowsCluster()
 		skipIfUsingInTreeVolumePlugin()
-		if !isMultiZone {
-			// todo: remove this when single-az tests are runnong on 1.16
-			ginkgo.Skip("test case not supported by single-az test since it's running on 1.15")
+		if isMultiZone {
+			ginkgo.Skip("test case not supported running in multi zone cluster")
 		}
 
 		pod := testsuites.PodDetails{
@@ -375,6 +374,44 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			CSIDriver:           testDriver,
 			Pod:                 pod,
 			PodWithClonedVolume: podWithClonedVolume,
+			StorageClassParameters: map[string]string{
+				"skuName": "Standard_LRS",
+				"fsType":  "xfs",
+			},
+		}
+		test.Run(cs, ns)
+	})
+
+	ginkgo.It("should clone a volume of larger size than the source volume and make sure the filesystem is appropriately adjusted [disk.csi.azure.com]", func() {
+		skipIfTestingInWindowsCluster()
+		skipIfUsingInTreeVolumePlugin()
+		if isMultiZone {
+			ginkgo.Skip("test case not supported running in multi zone cluster")
+		}
+
+		pod := testsuites.PodDetails{
+			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+				{
+					FSType:    "ext4",
+					ClaimSize: "10Gi",
+					VolumeMount: testsuites.VolumeMountDetails{
+						NameGenerate:      "test-volume-",
+						MountPathGenerate: "/mnt/test-",
+					},
+				},
+			}, isMultiZone),
+		}
+		clonedVolumeSize := "20Gi"
+
+		podWithClonedVolume := testsuites.PodDetails{
+			Cmd: "df -h | grep /mnt/test- | awk '{print $2}' | grep 20.0G",
+		}
+
+		test := testsuites.DynamicallyProvisionedVolumeCloningTest{
+			CSIDriver:           testDriver,
+			Pod:                 pod,
+			PodWithClonedVolume: podWithClonedVolume,
+			ClonedVolumeSize:    clonedVolumeSize,
 			StorageClassParameters: map[string]string{
 				"skuName": "Standard_LRS",
 				"fsType":  "xfs",
@@ -483,6 +520,44 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		test := testsuites.DynamicallyProvisionedVolumeSnapshotTest{
 			CSIDriver:              testDriver,
 			Pod:                    pod,
+			ShouldOverwrite:        false,
+			PodWithSnapshot:        podWithSnapshot,
+			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
+		}
+		test.Run(cs, snapshotrcs, ns)
+	})
+
+	ginkgo.It("should create a pod, write to its pv, take a volume snapshot, overwrite data in original pv, create another pod from the snapshot, and read unaltered original data from original pv[disk.csi.azure.com]", func() {
+		skipIfTestingInWindowsCluster()
+		skipIfUsingInTreeVolumePlugin()
+
+		pod := testsuites.PodDetails{
+			Cmd: "echo 'hello world' > /mnt/test-1/data",
+			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+				{
+					FSType:    "ext4",
+					ClaimSize: "10Gi",
+					VolumeMount: testsuites.VolumeMountDetails{
+						NameGenerate:      "test-volume-",
+						MountPathGenerate: "/mnt/test-",
+					},
+				},
+			}, isMultiZone),
+		}
+
+		podOverwrite := testsuites.PodDetails{
+			Cmd: "echo 'overwrite' > /mnt/test-1/data",
+		}
+
+		podWithSnapshot := testsuites.PodDetails{
+			Cmd: "grep 'hello world' /mnt/test-1/data",
+		}
+
+		test := testsuites.DynamicallyProvisionedVolumeSnapshotTest{
+			CSIDriver:              testDriver,
+			Pod:                    pod,
+			ShouldOverwrite:        true,
+			PodOverwrite:           podOverwrite,
 			PodWithSnapshot:        podWithSnapshot,
 			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
 		}

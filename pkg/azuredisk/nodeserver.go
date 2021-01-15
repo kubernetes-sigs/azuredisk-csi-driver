@@ -137,6 +137,21 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	}
 	klog.V(2).Infof("NodeStageVolume: format %s and mounting at %s successfully.", source, target)
 
+	// if resize is required, resize filesystem
+	if required, ok := req.GetVolumeContext()[resizeRequired]; ok && required == "true" {
+		klog.V(2).Infof("NodeStageVolume: fs resize initiating on target(%s) volumeid(%s)", target, diskURI)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "NodeStageVolume: Could not get volume path for %s: %v", target, err)
+		}
+
+		resizer := resizefs.NewResizeFs(d.mounter)
+		if _, err := resizer.Resize(source, target); err != nil {
+			return nil, status.Errorf(codes.Internal, "NodeStageVolume: Could not resize volume %q (%q):  %v", diskURI, source, err)
+		}
+
+		klog.V(2).Infof("NodeStageVolume: fs resize successful on target(%s) volumeid(%s).", target, diskURI)
+	}
+
 	return &csi.NodeStageVolumeResponse{}, nil
 }
 
@@ -233,6 +248,7 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 	if err := d.mounter.Mount(source, target, "", mountOptions); err != nil {
 		return nil, status.Errorf(codes.Internal, "Could not mount %q at %q: %v", source, target, err)
 	}
+
 	klog.V(2).Infof("NodePublishVolume: mount %s at %s successfully", source, target)
 
 	return &csi.NodePublishVolumeResponse{}, nil
@@ -433,8 +449,7 @@ func (d *Driver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolume
 	// In kubernetes 1.19 above, it will be passed by kubelet.
 	devicePath := req.GetStagingTargetPath()
 	if devicePath == "" {
-		args := []string{"-o", "source", "--noheadings", "--mountpoint", volumePath}
-		output, err := d.mounter.Exec.Command("findmnt", args...).Output()
+		output, err := d.getDevicePathWithMountPath(volumePath)
 		if err != nil {
 			return nil, status.Errorf(codes.NotFound, "Could not determine device path: %v", err)
 		}
@@ -565,6 +580,21 @@ func (d *Driver) getDevicePathWithLUN(lunStr string) (string, error) {
 		err = fmt.Errorf("azureDisk - findDiskByLun(%v) failed within timeout", lun)
 	}
 	return newDevicePath, err
+}
+
+func (d *Driver) getDevicePathWithMountPath(mountPath string) (string, error) {
+	args := []string{"-o", "source", "--noheadings", "--mountpoint", mountPath}
+	output, err := d.mounter.Exec.Command("findmnt", args...).Output()
+	if err != nil {
+		return "", status.Errorf(codes.Internal, "Could not determine device path: %v", err)
+	}
+
+	devicePath := strings.TrimSpace(string(output))
+	if len(devicePath) == 0 {
+		return "", status.Errorf(codes.Internal, "Could not get valid device for mount path: %q", mountPath)
+	}
+
+	return devicePath, nil
 }
 
 func (d *Driver) getBlockSizeBytes(devicePath string) (int64, error) {
