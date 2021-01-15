@@ -350,10 +350,6 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	ginkgo.It("should clone a volume from an existing volume and read from it [disk.csi.azure.com]", func() {
 		skipIfTestingInWindowsCluster()
 		skipIfUsingInTreeVolumePlugin()
-		if !isMultiZone {
-			// todo: remove this when single-az tests are runnong on 1.16
-			ginkgo.Skip("test case not supported by single-az test since it's running on 1.15")
-		}
 
 		pod := testsuites.PodDetails{
 			Cmd: "echo 'hello world' > /mnt/test-1/data",
@@ -375,6 +371,41 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			CSIDriver:           testDriver,
 			Pod:                 pod,
 			PodWithClonedVolume: podWithClonedVolume,
+			StorageClassParameters: map[string]string{
+				"skuName": "Standard_LRS",
+				"fsType":  "xfs",
+			},
+		}
+		test.Run(cs, ns)
+	})
+
+	ginkgo.It("should clone a volume of larger size than the source volume and make sure the filesystem is appropriately adjusted [disk.csi.azure.com]", func() {
+		skipIfTestingInWindowsCluster()
+		skipIfUsingInTreeVolumePlugin()
+
+		pod := testsuites.PodDetails{
+			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+				{
+					FSType:    "ext4",
+					ClaimSize: "10Gi",
+					VolumeMount: testsuites.VolumeMountDetails{
+						NameGenerate:      "test-volume-",
+						MountPathGenerate: "/mnt/test-",
+					},
+				},
+			}, isMultiZone),
+		}
+		clonedVolumeSize := "20Gi"
+
+		podWithClonedVolume := testsuites.PodDetails{
+			Cmd: "df -h | grep /mnt/test- | awk '{print $2}' | grep 20.0G",
+		}
+
+		test := testsuites.DynamicallyProvisionedVolumeCloningTest{
+			CSIDriver:           testDriver,
+			Pod:                 pod,
+			PodWithClonedVolume: podWithClonedVolume,
+			ClonedVolumeSize:    clonedVolumeSize,
 			StorageClassParameters: map[string]string{
 				"skuName": "Standard_LRS",
 				"fsType":  "xfs",
