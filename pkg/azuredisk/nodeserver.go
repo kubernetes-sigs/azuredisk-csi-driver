@@ -427,7 +427,7 @@ func (d *Driver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolume
 	if devicePath == "" {
 		output, err := d.getDevicePathWithMountPath(volumePath)
 		if err != nil {
-			return nil, status.Errorf(codes.NotFound, "Could not determine device path: %v", err)
+			return nil, status.Errorf(codes.NotFound, err.Error())
 		}
 
 		devicePath = strings.TrimSpace(string(output))
@@ -562,12 +562,12 @@ func (d *Driver) getDevicePathWithMountPath(mountPath string) (string, error) {
 	args := []string{"-o", "source", "--noheadings", "--mountpoint", mountPath}
 	output, err := d.mounter.Exec.Command("findmnt", args...).Output()
 	if err != nil {
-		return "", status.Errorf(codes.Internal, "Could not determine device path: %v", err)
+		return "", fmt.Errorf("could not determine device path(%s), error: %v", mountPath, err)
 	}
 
 	devicePath := strings.TrimSpace(string(output))
 	if len(devicePath) == 0 {
-		return "", status.Errorf(codes.Internal, "Could not get valid device for mount path: %q", mountPath)
+		return "", fmt.Errorf("could not get valid device for mount path: %q", mountPath)
 	}
 
 	return devicePath, nil
