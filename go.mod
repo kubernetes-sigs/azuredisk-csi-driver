@@ -26,7 +26,6 @@ require (
 	k8s.io/client-go v0.20.0
 	k8s.io/cloud-provider v0.20.0
 	k8s.io/component-base v0.20.0
-	k8s.io/klog v1.0.0
 	k8s.io/klog/v2 v2.4.0
 	k8s.io/kubernetes v1.21.0-alpha.0.0.20201210005053-f58c4d8cd725
 	k8s.io/mount-utils v0.0.0

@@ -670,7 +670,7 @@ func TestNodeExpandVolume(t *testing.T) {
 		DefaultError: status.Error(codes.InvalidArgument, "VolumeCapability is invalid."),
 	}
 	devicePathErr := testutil.TestError{
-		DefaultError: status.Errorf(codes.NotFound, "Could not determine device path: %s", notFoundErr),
+		DefaultError: status.Errorf(codes.NotFound, "could not determine device path(%s), error: %v", targetTest, notFoundErr),
 	}
 	blockSizeErr := testutil.TestError{
 		DefaultError: status.Error(codes.Internal, "Could not get size of block volume at path test: error when getting size of block volume at path test: output: , err: exit status 1"),
