@@ -189,13 +189,6 @@ clean:
 create-metrics-svc:
 	kubectl create -f deploy/example/metrics/csi-azuredisk-controller-svc.yaml
 
-.PHONY: create-example-deployment
-create-example-deployment:
-	kubectl apply -f deploy/example/storageclass-azuredisk-csi.yaml
-	kubectl apply -f deploy/example/deployment.yaml
-	kubectl apply -f deploy/example/statefulset.yaml
-	kubectl apply -f deploy/example/windows/statefulset.yaml
-
 .PHONY: delete-metrics-svc
 delete-metrics-svc:
 	kubectl delete -f deploy/example/metrics/csi-azuredisk-controller-svc.yaml --ignore-not-found
