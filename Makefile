@@ -97,12 +97,12 @@ ifdef TEST_WINDOWS
 		--set linux.enabled=false \
 		--set controller.runOnMaster=true \
 		--set controller.replicas=1 \
-		--set cloud=CLOUD
+		--set cloud=$(CLOUD)
 else
 	helm install azuredisk-csi-driver charts/latest/azuredisk-csi-driver --namespace kube-system --wait --timeout=15m -v=5 --debug \
 		${E2E_HELM_OPTIONS} \
 		--set snapshot.enabled=true \
-		--set cloud=CLOUD
+		--set cloud=$(CLOUD)
 endif
 
 .PHONY: install-helm
@@ -143,7 +143,7 @@ container-windows:
 container-all: azuredisk azuredisk-windows
 	docker buildx rm container-builder || true
 	docker buildx create --use --name=container-builder
-ifeq ($(CLOUD), "AzureStackCloud")
+ifeq ($(CLOUD), AzureStackCloud)
 	docker run --privileged --name buildx_buildkit_container-builder0 -d --mount type=bind,src=/etc/ssl/certs,dst=/etc/ssl/certs moby/buildkit:latest || true
 endif
 	$(MAKE) container-linux
