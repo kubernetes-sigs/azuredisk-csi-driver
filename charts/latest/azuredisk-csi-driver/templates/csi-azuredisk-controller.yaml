@@ -34,7 +34,7 @@ spec:
           args:
             - "--feature-gates=Topology=true"
             - "--csi-address=$(ADDRESS)"
-            - "--v=5"
+            - "--v=2"
             - "--timeout=15s"
             - "--enable-leader-election"
             - "--leader-election-type=leases"
@@ -54,7 +54,7 @@ spec:
         - name: csi-attacher
           image: "{{ .Values.image.csiAttacher.repository }}:{{ .Values.image.csiAttacher.tag }}"
           args:
-            - "-v=5"
+            - "-v=2"
             - "-csi-address=$(ADDRESS)"
             - "-timeout=120s"
             - "-leader-election"
@@ -77,7 +77,7 @@ spec:
           args:
             - "-csi-address=$(ADDRESS)"
             - "-leader-election"
-            - "-v=5"
+            - "-v=2"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -96,7 +96,7 @@ spec:
           image: "{{ .Values.image.csiResizer.repository }}:{{ .Values.image.csiResizer.tag }}"
           args:
             - "-csi-address=$(ADDRESS)"
-            - "-v=5"
+            - "-v=2"
             - "-leader-election"
             - '-handle-volume-inuse-error=true'
           env:
@@ -118,7 +118,7 @@ spec:
             - --csi-address=/csi/csi.sock
             - --probe-timeout=3s
             - --health-port=29602
-            - --v=5
+            - --v=2
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
