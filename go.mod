@@ -8,6 +8,7 @@ require (
 	github.com/Azure/go-autorest/autorest/adal v0.9.5
 	github.com/Azure/go-autorest/autorest/date v0.3.0
 	github.com/Azure/go-autorest/autorest/to v0.2.0
+	github.com/abhisheksinghbaghel/azuredisk-csi-driver v0.0.0-00010101000000-000000000000 // indirect
 	github.com/container-storage-interface/spec v1.3.0
 	github.com/golang/mock v1.4.3
 	github.com/golang/protobuf v1.3.5
@@ -35,6 +36,7 @@ require (
 )
 
 replace (
+	github.com/abhisheksinghbaghel/azuredisk-csi-driver => /home/azureuser/go/src/github.com/abhisheksinghbaghel/azuredisk-csi-driver
 	github.com/container-storage-interface/spec => github.com/container-storage-interface/spec v1.3.0
 	github.com/prometheus/client_golang => github.com/prometheus/client_golang v1.0.0
 	go.etcd.io/etcd => go.etcd.io/etcd v0.0.0-20200410171415-59f5fb25a533
@@ -62,4 +64,5 @@ replace (
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.18.1
 	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.18.1
 	k8s.io/sample-controller => k8s.io/sample-controller v0.18.1
+	sigs.k8s.io/azuredisk-csi-driver => /home/azureuser/go/src/github.com/abhisheksinghbaghel/azuredisk-csi-driver
 )
