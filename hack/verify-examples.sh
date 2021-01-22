@@ -17,7 +17,11 @@ set -euo pipefail
 
 echo "begin to create deployment examples ..."
 
-kubectl apply -f deploy/example/storageclass-azuredisk-csi.yaml
+if [[ "$2" == "azurestackcloud" ]]; then
+	kubectl apply -f deploy/example/storageclass-azuredisk-csi-azurestack.yaml
+else
+    kubectl apply -f deploy/example/storageclass-azuredisk-csi.yaml
+fi
 
 if [[ "$1" == "linux" ]]; then
     kubectl apply -f deploy/example/deployment.yaml

@@ -18,6 +18,8 @@ package testsuites
 
 import (
 	"fmt"
+	"os"
+	"strings"
 
 	"github.com/onsi/ginkgo"
 
@@ -71,8 +73,10 @@ const (
 )
 
 var (
-	SnapshotAPIGroup             = "snapshot.storage.k8s.io"
-	supportedStorageAccountTypes = []string{"Standard_LRS", "Premium_LRS", "StandardSSD_LRS"}
+	SnapshotAPIGroup                             = "snapshot.storage.k8s.io"
+	isAzureStackCloud                            = strings.EqualFold(os.Getenv("AZURE_CLOUD_NAME"), "AZURESTACKCLOUD")
+	azurePublicCloudSupportedStorageAccountTypes = []string{"Standard_LRS", "Premium_LRS", "StandardSSD_LRS"}
+	azureStackCloudSupportedStorageAccountTypes  = []string{"Standard_LRS", "Premium_LRS"}
 )
 
 type VolumeMountDetails struct {
@@ -111,6 +115,10 @@ func (pod *PodDetails) SetupWithDynamicVolumes(client clientset.Interface, names
 func (pod *PodDetails) SetupWithDynamicMultipleVolumes(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.DynamicPVTestDriver) (*TestPod, []func()) {
 	tpod := NewTestPod(client, namespace, pod.Cmd, pod.IsWindows)
 	cleanupFuncs := make([]func(), 0)
+	supportedStorageAccountTypes := azurePublicCloudSupportedStorageAccountTypes
+	if isAzureStackCloud {
+		supportedStorageAccountTypes = azureStackCloudSupportedStorageAccountTypes
+	}
 	accountTypeCount := len(supportedStorageAccountTypes)
 	for n, v := range pod.Volumes {
 		storageClassParameters := map[string]string{"skuName": supportedStorageAccountTypes[n%accountTypeCount]}

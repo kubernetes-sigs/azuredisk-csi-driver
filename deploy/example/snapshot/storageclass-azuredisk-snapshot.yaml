@@ -6,4 +6,4 @@ metadata:
 driver: disk.csi.azure.com
 deletionPolicy: Delete
 parameters:
-  incremental: "true"  # available values: "true", "false" ("true" by default)
+  incremental: "true"  # available values: "true", "false" ("true" by default for Azure Public Cloud, and "false" by default for Azure Stack Cloud)
