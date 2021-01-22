@@ -23,18 +23,19 @@ if [[ "$1" == "linux" ]]; then
     kubectl apply -f deploy/example/deployment.yaml
     kubectl apply -f deploy/example/statefulset.yaml
     kubectl apply -f deploy/example/statefulset-nonroot.yaml
+    echo "sleep 180s for Linux ..."
+    sleep 180
 fi
 
 if [[ "$1" == "windows" ]]; then
     kubectl apply -f deploy/example/windows/deployment.yaml
     kubectl apply -f deploy/example/windows/statefulset.yaml
+    echo "sleep 240s for Windows ..."
+    sleep 240
 fi
 
-echo "sleep 180s ..."
-sleep 180
-
 echo "begin to check pod status ..."
-kubectl get pods
+kubectl get pods -o wide
 
 if [[ "$1" == "linux" ]]; then
     kubectl get pods --field-selector status.phase=Running | grep deployment-azuredisk
@@ -43,8 +44,6 @@ if [[ "$1" == "linux" ]]; then
 fi
 
 if [[ "$1" == "windows" ]]; then
-    echo "sleep 120s for Windows ..."
-    sleep 120
     kubectl get pods --field-selector status.phase=Running | grep deployment-azuredisk-win
     kubectl get pods --field-selector status.phase=Running | grep statefulset-azuredisk-win-0
 fi
