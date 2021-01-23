@@ -18,6 +18,7 @@ REGISTRY ?= andyzhangx
 REGISTRY_NAME ?= $(shell echo $(REGISTRY) | sed "s/.azurecr.io//g")
 DRIVER_NAME = disk.csi.azure.com
 IMAGE_NAME ?= azuredisk-csi
+SCHEDULER_EXTENDER_IMAGE_NAME ?= azdiskschedulerextender-csi
 IMAGE_VERSION ?= v0.10.0
 # Use a custom version for E2E tests if we are testing in CI
 ifdef CI
@@ -27,11 +28,14 @@ endif
 endif
 IMAGE_TAG ?= $(REGISTRY)/$(IMAGE_NAME):$(IMAGE_VERSION)
 IMAGE_TAG_LATEST = $(REGISTRY)/$(IMAGE_NAME):latest
+AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG ?= $(REGISTRY)/$(SCHEDULER_EXTENDER_IMAGE_NAME):$(IMAGE_VERSION)
+AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG_LATEST = $(REGISTRY)/$(SCHEDULER_EXTENDER_IMAGE_NAME):latest
 REV = $(shell git describe --long --tags --dirty)
 BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 TOPOLOGY_KEY = topology.$(DRIVER_NAME)/zone
 ENABLE_TOPOLOGY ?= false
 LDFLAGS ?= "-X ${PKG}/pkg/azuredisk.driverVersion=${IMAGE_VERSION} -X ${PKG}/pkg/azuredisk.gitCommit=${GIT_COMMIT} -X ${PKG}/pkg/azuredisk.buildDate=${BUILD_DATE} -X ${PKG}/pkg/azuredisk.DriverName=${DRIVER_NAME} -X ${PKG}/pkg/azuredisk.topologyKey=${TOPOLOGY_KEY} -extldflags "-static""
+SCHEDULER_EXTENDER_LDFLAGS ?= "-X ${PKG}/pkg/azuredisk.schedulerVersion=${IMAGE_VERSION} -X ${PKG}/pkg/azuredisk.gitCommit=${GIT_COMMIT} -X ${PKG}/pkg/azuredisk.buildDate=${BUILD_DATE} -X ${PKG}/pkg/azuredisk.DriverName=${DRIVER_NAME} -extldflags "-static""
 E2E_HELM_OPTIONS ?= --set image.azuredisk.repository=$(REGISTRY)/$(IMAGE_NAME) --set image.azuredisk.tag=$(IMAGE_VERSION) --set image.azuredisk.pullPolicy=Always
 GINKGO_FLAGS = -ginkgo.v
 ifeq ($(ENABLE_TOPOLOGY), true)
@@ -122,6 +126,18 @@ azuredisk-windows:
 azuredisk-darwin:
 	CGO_ENABLED=0 GOOS=darwin go build -a -ldflags ${LDFLAGS} -mod vendor -o _output/azurediskplugin ./pkg/azurediskplugin
 
+.PHONY: azdiskschedulerextender
+azdiskschedulerextender:
+	CGO_ENABLED=0 GOOS=linux go build -a -ldflags ${SCHEDULER_EXTENDER_LDFLAGS} -mod vendor -o _output/azdiskschedulerextender ./pkg/azdiskschedulerextender
+
+.PHONY: azdiskschedulerextender-windows
+azdiskschedulerextender-windows:
+	CGO_ENABLED=0 GOOS=windows go build -a -ldflags ${SCHEDULER_EXTENDER_LDFLAGS} -mod vendor -o _output/azdiskschedulerextender.exe ./pkg/azdiskschedulerextender
+
+.PHONY: azdiskschedulerextender-darwin
+azdiskschedulerextender-darwin:
+	CGO_ENABLED=0 GOOS=darwin go build -a -ldflags ${SCHEDULER_EXTENDER_LDFLAGS} -mod vendor -o _output/azdiskschedulerextender ./pkg/azdiskschedulerextender
+
 .PHONY: container
 container: azuredisk
 	docker build --no-cache -t $(IMAGE_TAG) -f ./pkg/azurediskplugin/dev.Dockerfile .
@@ -135,6 +151,20 @@ container-linux:
 container-windows:
 	docker buildx build --pull --output=type=$(OUTPUT_TYPE) --platform="windows/$(ARCH)" \
 		 -t $(IMAGE_TAG)-windows-$(OSVERSION)-$(ARCH) --build-arg OSVERSION=$(OSVERSION) -f ./pkg/azurediskplugin/Windows.Dockerfile .
+
+.PHONY: azdiskschedulerextender-container
+azdiskschedulerextender-container: azdiskschedulerextender
+	docker build --no-cache -t $(AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG) -f ./pkg/azdiskschedulerextender/dev.Dockerfile .
+
+.PHONY: azdiskschedulerextender-container-linux
+azdiskschedulerextender-container-linux:
+	docker buildx build --pull --output=type=$(OUTPUT_TYPE) --platform="linux/$(ARCH)" \
+		-t $(AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG)-linux-$(ARCH) -f ./pkg/azdiskschedulerextender/Dockerfile .
+
+.PHONY: azdiskschedulerextender-container-windows
+azdiskschedulerextender-container-windows:
+	docker buildx build --pull --output=type=$(OUTPUT_TYPE) --platform="windows/$(ARCH)" \
+		 -t $(AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG)-windows-$(OSVERSION)-$(ARCH) --build-arg OSVERSION=$(OSVERSION) -f ./pkg/azdiskschedulerextender/Windows.Dockerfile .
 
 .PHONY: container-all
 container-all: azuredisk azuredisk-windows
@@ -152,6 +182,7 @@ container-all: azuredisk azuredisk-windows
 
 .PHONY: push-manifest
 push-manifest:
+	# TODO: Add publish commands for azdiskschedulerextender
 	docker manifest create --amend $(IMAGE_TAG) $(foreach osarch, $(ALL_OS_ARCH), $(IMAGE_TAG)-${osarch})
 	# add "os.version" field to windows images (based on https://github.com/kubernetes/kubernetes/blob/master/build/pause/Makefile)
 	set -x; \
@@ -178,6 +209,11 @@ ifdef CI
 else
 	docker push $(IMAGE_TAG_LATEST)
 endif
+
+.PHONY: push-latest-azdiskschedulerextender
+push-latest-azdiskschedulerextender:
+	# TODO: Add publish commands for azdiskschedulerextender in CI environment
+	docker push $(AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG)
 
 .PHONY: clean
 clean:

@@ -29,6 +29,7 @@ require (
 	k8s.io/component-base v0.18.1
 	k8s.io/klog v1.0.0
 	k8s.io/klog/v2 v2.4.0
+	k8s.io/kube-scheduler v0.0.0
 	k8s.io/kubernetes v1.18.1
 	k8s.io/legacy-cloud-providers v0.0.0
 	k8s.io/utils v0.0.0-20201110183641-67b214c5f920
@@ -59,6 +60,7 @@ replace (
 	k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.18.1
 	k8s.io/kubectl => k8s.io/kubectl v0.18.1
 	k8s.io/kubelet => k8s.io/kubelet v0.18.1
+	k8s.io/kubernetes => k8s.io/kubernetes v1.18.1
 	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.0.0-20201125092503-cc0a0abf3d78
 	k8s.io/metrics => k8s.io/metrics v0.18.1
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.18.1

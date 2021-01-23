@@ -986,7 +986,6 @@ k8s.io/kube-scheduler v0.18.1/go.mod h1:yHhIPctl3FcdZDLHsOqDe48cqqEgiokPE/wGpqaC
 k8s.io/kubectl v0.18.1 h1:2b5x4BPlZd+ypSk0NBOKoVjbqkTj5Xp3kAzHg9O12yo=
 k8s.io/kubectl v0.18.1/go.mod h1:7bLKKp5gSrtuSCIbclgifVOCwdLBs+h3oETVqLn1928=
 k8s.io/kubelet v0.18.1/go.mod h1:wlhv8yVMnbTp0haWYfuOzD7fqq7F35bWcIFIpdy9w9A=
-k8s.io/kubernetes v1.18.0/go.mod h1:z8xjOOO1Ljz+TaHpOxVGC7cxtF32TesIamoQ+BZrVS0=
 k8s.io/kubernetes v1.18.1 h1:qW6zgSY96X/NO+ueIIfsFSbHl/e0Txio62XcA4cxpIk=
 k8s.io/kubernetes v1.18.1/go.mod h1:z8xjOOO1Ljz+TaHpOxVGC7cxtF32TesIamoQ+BZrVS0=
 k8s.io/legacy-cloud-providers v0.0.0-20201125092503-cc0a0abf3d78 h1:xCUndS3HpfLOte06VBLGR+lg2OAiIi8RuW6GRPyQkfg=
