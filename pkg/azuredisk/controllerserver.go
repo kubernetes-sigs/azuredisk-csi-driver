@@ -165,7 +165,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	}
 	parameters[resizeRequired] = strconv.FormatBool(false)
 
-	if IsAzureStackCloud(d.cloud) {
+	if IsAzureStackCloud(d.cloud.Config.Cloud) {
 		if maxShares > 1 {
 			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Invalid maxShares value: %d as Azure Stack does not support shared disk.", maxShares))
 		}
@@ -191,16 +191,9 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	}
 
 	// normalize values
-	skuName, err := normalizeStorageAccountType(storageAccountType)
+	skuName, err := normalizeStorageAccountType(storageAccountType, d.cloud.Config.Cloud)
 	if err != nil {
 		return nil, err
-	}
-
-	if IsAzureStackCloud(d.cloud) {
-		if skuName != compute.StandardLRS && skuName != compute.PremiumLRS {
-			klog.Warningf("Use sku %s instead as Azure Stack does not support %s.", compute.StandardLRS, skuName)
-			skuName = compute.StandardLRS
-		}
 	}
 
 	if _, err = normalizeCachingMode(cachingMode); err != nil {
@@ -689,7 +682,7 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 		}
 	}
 
-	if IsAzureStackCloud(d.cloud) {
+	if IsAzureStackCloud(d.cloud.Config.Cloud) {
 		klog.V(2).Info("Use full snapshot instead as Azure Stack does not incremental snapshot.")
 		incremental = false
 	}

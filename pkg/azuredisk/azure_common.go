@@ -32,8 +32,9 @@ import (
 )
 
 const (
-	defaultStorageAccountType       = compute.StandardSSDLRS
-	defaultAzureDataDiskCachingMode = v1.AzureDataDiskCachingReadOnly
+	azurePublicCloudDefaultStorageAccountType = compute.StandardSSDLRS
+	azureStackCloudDefaultStorageAccountType  = compute.StandardLRS
+	defaultAzureDataDiskCachingMode           = v1.AzureDataDiskCachingReadOnly
 )
 
 var (
@@ -45,13 +46,19 @@ var (
 	lunPathRE = regexp.MustCompile(`/dev(?:.*)/disk/azure/scsi(?:.*)/lun(.+)`)
 )
 
-func normalizeStorageAccountType(storageAccountType string) (compute.DiskStorageAccountTypes, error) {
+func normalizeStorageAccountType(storageAccountType, cloud string) (compute.DiskStorageAccountTypes, error) {
 	if storageAccountType == "" {
-		return defaultStorageAccountType, nil
+		if IsAzureStackCloud(cloud) {
+			return azureStackCloudDefaultStorageAccountType, nil
+		}
+		return azurePublicCloudDefaultStorageAccountType, nil
 	}
 
 	sku := compute.DiskStorageAccountTypes(storageAccountType)
 	supportedSkuNames := compute.PossibleDiskStorageAccountTypesValues()
+	if IsAzureStackCloud(cloud) {
+		supportedSkuNames = []compute.DiskStorageAccountTypes{compute.StandardLRS, compute.PremiumLRS}
+	}
 	for _, s := range supportedSkuNames {
 		if sku == s {
 			return sku, nil

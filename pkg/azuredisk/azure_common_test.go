@@ -139,44 +139,63 @@ func TestIoHandler(t *testing.T) {
 
 func TestNormalizeStorageAccountType(t *testing.T) {
 	tests := []struct {
+		cloud               string
 		storageAccountType  string
 		expectedAccountType compute.DiskStorageAccountTypes
 		expectError         bool
 	}{
 		{
+			cloud:               "AZUREPUBLICCLOUD",
 			storageAccountType:  "",
 			expectedAccountType: compute.StandardSSDLRS,
 			expectError:         false,
 		},
 		{
+			cloud:               "AZURESTACKCLOUD",
+			storageAccountType:  "",
+			expectedAccountType: compute.StandardLRS,
+			expectError:         false,
+		},
+		{
+			cloud:               "AZUREPUBLICCLOUD",
 			storageAccountType:  "NOT_EXISTING",
 			expectedAccountType: "",
 			expectError:         true,
 		},
 		{
+			cloud:               "AZUREPUBLICCLOUD",
 			storageAccountType:  "Standard_LRS",
 			expectedAccountType: compute.StandardLRS,
 			expectError:         false,
 		},
 		{
+			cloud:               "AZUREPUBLICCLOUD",
 			storageAccountType:  "Premium_LRS",
 			expectedAccountType: compute.PremiumLRS,
 			expectError:         false,
 		},
 		{
+			cloud:               "AZUREPUBLICCLOUD",
 			storageAccountType:  "StandardSSD_LRS",
 			expectedAccountType: compute.StandardSSDLRS,
 			expectError:         false,
 		},
 		{
+			cloud:               "AZUREPUBLICCLOUD",
 			storageAccountType:  "UltraSSD_LRS",
 			expectedAccountType: compute.UltraSSDLRS,
 			expectError:         false,
 		},
+		{
+			cloud:               "AZURESTACKCLOUD",
+			storageAccountType:  "UltraSSD_LRS",
+			expectedAccountType: "",
+			expectError:         true,
+		},
 	}
 
 	for _, test := range tests {
-		result, err := normalizeStorageAccountType(test.storageAccountType)
+		result, err := normalizeStorageAccountType(test.storageAccountType, test.cloud)
 		assert.Equal(t, result, test.expectedAccountType)
 		assert.Equal(t, err != nil, test.expectError, fmt.Sprintf("error msg: %v", err))
 	}

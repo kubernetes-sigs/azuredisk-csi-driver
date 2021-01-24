@@ -165,6 +165,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			Pods:                   pods,
 			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
 		}
+		if isAzureStackCloud {
+			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}
+		}
 		test.Run(cs, ns)
 	})
 
@@ -217,6 +220,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			CSIDriver:              testDriver,
 			Pods:                   pods,
 			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
+		}
+		if isAzureStackCloud {
+			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}
 		}
 		test.Run(cs, ns)
 	})
@@ -458,6 +464,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			Pods:                   pods,
 			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
 		}
+		if isAzureStackCloud {
+			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}
+		}
 		test.Run(cs, ns)
 	})
 
@@ -524,6 +533,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			PodWithSnapshot:        podWithSnapshot,
 			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
 		}
+		if isAzureStackCloud {
+			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}
+		}
 		test.Run(cs, snapshotrcs, ns)
 	})
 
@@ -560,6 +572,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			PodOverwrite:           podOverwrite,
 			PodWithSnapshot:        podWithSnapshot,
 			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
+		}
+		if isAzureStackCloud {
+			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}
 		}
 		test.Run(cs, snapshotrcs, ns)
 	})

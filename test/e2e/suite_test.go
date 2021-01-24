@@ -134,12 +134,16 @@ var _ = ginkgo.AfterSuite(func() {
 		execTestCmd([]testCmd{checkPodsRestart})
 
 		os := "linux"
+		cloud := "azurepubliccloud"
 		if isWindowsCluster {
 			os = "windows"
 		}
+		if isAzureStackCloud {
+			cloud = "azurestackcloud"
+		}
 		createExampleDeployment := testCmd{
 			command:  "bash",
-			args:     []string{"hack/verify-examples.sh", os},
+			args:     []string{"hack/verify-examples.sh", os, cloud},
 			startLog: "create example deployments",
 			endLog:   "example deployments created",
 		}

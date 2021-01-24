@@ -50,6 +50,9 @@ Please refer to [`disk.csi.azure.com` driver parameters](./docs/driver-parameter
 ### Support
  - Please see our [support policy][support-policy]
 
+### Limitations
+ - Please refer to [Azure Disk CSI Driver Limitations](./docs/limitations.md)
+
 ## Kubernetes Development
  - Please refer to [development guide](./docs/csi-dev.md)
 
