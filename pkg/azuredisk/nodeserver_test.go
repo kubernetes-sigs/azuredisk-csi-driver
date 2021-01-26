@@ -159,6 +159,7 @@ func TestEnsureMountPoint(t *testing.T) {
 		desc          string
 		target        string
 		skipOnWindows bool
+		expectedMnt   bool
 		expectedErr   testutil.TestError
 	}{
 		{
@@ -168,6 +169,7 @@ func TestEnsureMountPoint(t *testing.T) {
 			expectedErr: testutil.TestError{
 				DefaultError: errors.New("fake IsLikelyNotMountPoint: fake error"),
 			},
+			expectedMnt: false,
 		},
 		{
 			desc:          "[Error] Not a directory",
@@ -181,11 +183,13 @@ func TestEnsureMountPoint(t *testing.T) {
 			desc:        "[Success] Successful run",
 			target:      targetTest,
 			expectedErr: testutil.TestError{},
+			expectedMnt: false,
 		},
 		{
 			desc:        "[Success] Already existing mount",
 			target:      alreadyExistTarget,
 			expectedErr: testutil.TestError{},
+			expectedMnt: true,
 		},
 	}
 
@@ -198,9 +202,12 @@ func TestEnsureMountPoint(t *testing.T) {
 
 	for _, test := range tests {
 		if !(runtime.GOOS == "windows" && test.skipOnWindows) {
-			err := d.ensureMountPoint(test.target)
+			mnt, err := d.ensureMountPoint(test.target)
 			if !testutil.AssertError(&test.expectedErr, err) {
 				t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr.Error())
+			}
+			if err == nil {
+				assert.Equal(t, test.expectedMnt, mnt)
 			}
 		}
 	}
@@ -646,18 +653,34 @@ func TestNodeUnpublishVolume(t *testing.T) {
 
 func TestNodeExpandVolume(t *testing.T) {
 	d, _ := NewFakeDriver(t)
+	_ = makeDir(targetTest)
+	notFoundErr := "exit status 1"
+	volumeCapWrong := csi.VolumeCapability_AccessMode{Mode: 10}
+
 	stdCapacityRange = &csi.CapacityRange{
 		RequiredBytes: volumehelper.GiBToBytes(15),
 		LimitBytes:    volumehelper.GiBToBytes(10),
 	}
 
 	invalidPathErr := testutil.TestError{
-		DefaultError: status.Error(codes.Internal, "failed to determine device path for volumePath [./test]: path \"./test\" does not exist"),
-		WindowsError: status.Error(codes.Internal, "Could not determine device path: executable file not found in %PATH%"),
+		DefaultError: status.Error(codes.NotFound, "failed to determine device path for volumePath [./test]: path \"./test\" does not exist"),
+		WindowsError: status.Error(codes.NotFound, "Could not determine device path: executable file not found in %PATH%"),
+	}
+	volumeCapacityErr := testutil.TestError{
+		DefaultError: status.Error(codes.InvalidArgument, "VolumeCapability is invalid."),
+	}
+	devicePathErr := testutil.TestError{
+		DefaultError: status.Errorf(codes.NotFound, "could not determine device path(%s), error: %v", targetTest, notFoundErr),
+	}
+	blockSizeErr := testutil.TestError{
+		DefaultError: status.Error(codes.Internal, "Could not get size of block volume at path test: error when getting size of block volume at path test: output: , err: exit status 1"),
 	}
 
 	if runtime.GOOS == "darwin" {
-		invalidPathErr.DefaultError = status.Error(codes.Internal, "failed to determine device path for volumePath [./test]: volume/util/hostutil on this platform is not supported")
+		invalidPathErr.DefaultError = status.Error(codes.NotFound, "failed to determine device path for volumePath [./test]: volume/util/hostutil on this platform is not supported")
+		volumeCapacityErr.DefaultError = status.Errorf(codes.NotFound, "failed to determine device path for volumePath [%s]: volume/util/hostutil on this platform is not supported", targetTest)
+		devicePathErr.DefaultError = status.Errorf(codes.NotFound, "failed to determine device path for volumePath [%s]: volume/util/hostutil on this platform is not supported", targetTest)
+		blockSizeErr.DefaultError = status.Errorf(codes.NotFound, "failed to determine device path for volumePath [%s]: volume/util/hostutil on this platform is not supported", targetTest)
 	}
 	tests := []struct {
 		desc        string
@@ -691,6 +714,37 @@ func TestNodeExpandVolume(t *testing.T) {
 				DefaultError: status.Error(codes.InvalidArgument, "volume path must be provided"),
 			},
 		},
+		{
+			desc: "Volume capacity invalid",
+			req: csi.NodeExpandVolumeRequest{
+				CapacityRange:     stdCapacityRange,
+				VolumePath:        targetTest,
+				VolumeId:          "test",
+				StagingTargetPath: "test",
+				VolumeCapability:  &csi.VolumeCapability{AccessMode: &volumeCapWrong},
+			},
+			expectedErr: volumeCapacityErr,
+		},
+		{
+			desc: "Invalid device path",
+			req: csi.NodeExpandVolumeRequest{
+				CapacityRange:     stdCapacityRange,
+				VolumePath:        targetTest,
+				VolumeId:          "test",
+				StagingTargetPath: "",
+			},
+			expectedErr: devicePathErr,
+		},
+		{
+			desc: "No block size at path",
+			req: csi.NodeExpandVolumeRequest{
+				CapacityRange:     stdCapacityRange,
+				VolumePath:        targetTest,
+				VolumeId:          "test",
+				StagingTargetPath: "test",
+			},
+			expectedErr: blockSizeErr,
+		},
 	}
 	for _, test := range tests {
 		_, err := d.NodeExpandVolume(context.Background(), &test.req)
@@ -698,6 +752,8 @@ func TestNodeExpandVolume(t *testing.T) {
 			t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr.Error())
 		}
 	}
+	err := os.RemoveAll(targetTest)
+	assert.NoError(t, err)
 }
 
 func TestGetBlockSizeBytes(t *testing.T) {

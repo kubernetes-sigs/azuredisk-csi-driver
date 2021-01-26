@@ -25,20 +25,19 @@ import (
 	"github.com/Azure/go-autorest/autorest/date"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/stretchr/testify/assert"
-	api "k8s.io/kubernetes/pkg/apis/core"
-	"k8s.io/legacy-cloud-providers/azure"
-	"k8s.io/legacy-cloud-providers/azure/clients/snapshotclient/mocksnapshotclient"
-	"k8s.io/legacy-cloud-providers/azure/retry"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-12-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-06-30/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"k8s.io/legacy-cloud-providers/azure/clients/diskclient/mockdiskclient"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/diskclient/mockdiskclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/snapshotclient/mocksnapshotclient"
+	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
+	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
 )
 
 var (
@@ -359,42 +358,6 @@ func TestCreateVolume(t *testing.T) {
 			},
 		},
 		{
-			name: "normalize kind  error ",
-			testFunc: func(t *testing.T) {
-				d, _ := NewFakeDriver(t)
-				mp := make(map[string]string)
-				mp["kind"] = "WriteOnly"
-				req := &csi.CreateVolumeRequest{
-					Name:               "unit-test",
-					VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
-					Parameters:         mp,
-				}
-				_, err := d.CreateVolume(context.Background(), req)
-				expectedErr := fmt.Errorf("azureDisk - WriteOnly is not supported disk kind. Supported values are [Dedicated Managed Shared]")
-				if !reflect.DeepEqual(err, expectedErr) {
-					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
-				}
-			},
-		},
-		{
-			name: "StorageClass option error ",
-			testFunc: func(t *testing.T) {
-				d, _ := NewFakeDriver(t)
-				mp := make(map[string]string)
-				mp["kind"] = string(api.AzureDedicatedBlobDisk)
-				req := &csi.CreateVolumeRequest{
-					Name:               "unit-test",
-					VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
-					Parameters:         mp,
-				}
-				_, err := d.CreateVolume(context.Background(), req)
-				expectedErr := fmt.Errorf("StorageClass option 'resourceGroup' can be used only for managed disks")
-				if !reflect.DeepEqual(err, expectedErr) {
-					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
-				}
-			},
-		},
-		{
 			name: "custom tags error ",
 			testFunc: func(t *testing.T) {
 				d, _ := NewFakeDriver(t)
@@ -473,7 +436,7 @@ func TestCreateVolume(t *testing.T) {
 				}
 				d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
 				rerr := &retry.Error{
-					RawError: fmt.Errorf("NotFound"),
+					RawError: fmt.Errorf(NotFound),
 				}
 				d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rerr).AnyTimes()
 				_, err := d.CreateVolume(context.Background(), req)
@@ -881,7 +844,7 @@ func TestControllerExpandVolume(t *testing.T) {
 				ctx := context.Background()
 				d, _ := NewFakeDriver(t)
 
-				expectedErr := status.Error(codes.InvalidArgument, "the disk type(httptest) is not ManagedDisk")
+				expectedErr := status.Error(codes.InvalidArgument, "disk URI(httptest) is not valid: Inavlid DiskURI: httptest, correct format: [/subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id}]")
 				_, err := d.ControllerExpandVolume(ctx, req)
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("Unexpected error: %v", err)
@@ -1463,6 +1426,43 @@ func TestListSnapshots(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "List snapshots when source volumeId is given",
+			testFunc: func(t *testing.T) {
+				req := csi.ListSnapshotsRequest{SourceVolumeId: "test"}
+				d, _ := NewFakeDriver(t)
+				volumeID := "test"
+				DiskSize := int32(10)
+				snapshotID := "test"
+				provisioningState := "succeeded"
+				snapshot1 := compute.Snapshot{
+					SnapshotProperties: &compute.SnapshotProperties{
+						TimeCreated:       &date.Time{},
+						ProvisioningState: &provisioningState,
+						DiskSizeGB:        &DiskSize,
+						CreationData:      &compute.CreationData{SourceResourceID: &volumeID},
+					},
+					ID: &snapshotID}
+				snapshot2 := compute.Snapshot{}
+				snapshots := []compute.Snapshot{}
+				snapshots = append(snapshots, snapshot1, snapshot2)
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				mockSnapshotClient := mocksnapshotclient.NewMockInterface(ctrl)
+				d.cloud.SnapshotsClient = mockSnapshotClient
+				mockSnapshotClient.EXPECT().ListByResourceGroup(gomock.Any(), gomock.Any()).Return(snapshots, nil).AnyTimes()
+				snapshotsResponse, _ := d.ListSnapshots(context.TODO(), &req)
+				if len(snapshotsResponse.Entries) != 1 {
+					t.Errorf("actualNumberOfEntries: (%v), expectedNumberOfEntries: (%v)", len(snapshotsResponse.Entries), 1)
+				}
+				if snapshotsResponse.Entries[0].Snapshot.SourceVolumeId != volumeID {
+					t.Errorf("actualVolumeId: (%v), expectedVolumeId: (%v)", snapshotsResponse.Entries[0].Snapshot.SourceVolumeId, volumeID)
+				}
+				if snapshotsResponse.NextToken != "2" {
+					t.Errorf("actualNextToken: (%v), expectedNextToken: (%v)", snapshotsResponse.NextToken, "2")
+				}
+			},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -1481,12 +1481,133 @@ func TestGetCapacity(t *testing.T) {
 }
 
 func TestListVolumes(t *testing.T) {
-	d, _ := NewFakeDriver(t)
-	req := csi.ListVolumesRequest{}
-	resp, err := d.ListVolumes(context.Background(), &req)
-	assert.Nil(t, resp)
-	if !reflect.DeepEqual(err, status.Error(codes.Unimplemented, "")) {
-		t.Errorf("Unexpected error: %v", err)
+	testCases := []struct {
+		name     string
+		testFunc func(t *testing.T)
+	}{
+		{
+			name: "Valid list without max_entries or starting_token",
+			testFunc: func(t *testing.T) {
+				req := csi.ListVolumesRequest{}
+				d, _ := NewFakeDriver(t)
+				fakeVolumeID := "test"
+				disk := compute.Disk{ID: &fakeVolumeID}
+				disks := []compute.Disk{}
+				disks = append(disks, disk)
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().ListByResourceGroup(gomock.Any(), gomock.Any()).Return(disks, nil).AnyTimes()
+				expectedErr := error(nil)
+				listVolumesResponse, err := d.ListVolumes(context.TODO(), &req)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+				if listVolumesResponse.NextToken != "" {
+					t.Errorf("actualNextToken: (%v), expectedNextToken: (%v)", listVolumesResponse.NextToken, "")
+				}
+			},
+		},
+		{
+			name: "Valid list with max_entries",
+			testFunc: func(t *testing.T) {
+				req := csi.ListVolumesRequest{
+					MaxEntries: 1,
+				}
+				d, _ := NewFakeDriver(t)
+				fakeVolumeID := "test"
+				disk1, disk2 := compute.Disk{ID: &fakeVolumeID}, compute.Disk{ID: &fakeVolumeID}
+				disks := []compute.Disk{}
+				disks = append(disks, disk1, disk2)
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().ListByResourceGroup(gomock.Any(), gomock.Any()).Return(disks, nil).AnyTimes()
+				expectedErr := error(nil)
+				listVolumesResponse, err := d.ListVolumes(context.TODO(), &req)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+				if len(listVolumesResponse.Entries) != int(req.MaxEntries) {
+					t.Errorf("Actual number of entries: (%v), Expected number of entries: (%v)", len(listVolumesResponse.Entries), req.MaxEntries)
+				}
+				if listVolumesResponse.NextToken != "1" {
+					t.Errorf("actualNextToken: (%v), expectedNextToken: (%v)", listVolumesResponse.NextToken, "1")
+				}
+			},
+		},
+		{
+			name: "Valid list with max_entries and starting_token",
+			testFunc: func(t *testing.T) {
+				req := csi.ListVolumesRequest{
+					StartingToken: "1",
+					MaxEntries:    1,
+				}
+				d, _ := NewFakeDriver(t)
+				fakeVolumeID1, fakeVolumeID12 := "test1", "test2"
+				disk1, disk2 := compute.Disk{ID: &fakeVolumeID1}, compute.Disk{ID: &fakeVolumeID12}
+				disks := []compute.Disk{}
+				disks = append(disks, disk1, disk2)
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().ListByResourceGroup(gomock.Any(), gomock.Any()).Return(disks, nil).AnyTimes()
+				expectedErr := error(nil)
+				listVolumesResponse, err := d.ListVolumes(context.TODO(), &req)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+				if len(listVolumesResponse.Entries) != int(req.MaxEntries) {
+					t.Errorf("Actual number of entries: (%v), Expected number of entries: (%v)", len(listVolumesResponse.Entries), req.MaxEntries)
+				}
+				if listVolumesResponse.NextToken != "" {
+					t.Errorf("actualNextToken: (%v), expectedNextToken: (%v)", listVolumesResponse.NextToken, "")
+				}
+				if listVolumesResponse.Entries[0].Volume.VolumeId != fakeVolumeID12 {
+					t.Errorf("actualVolumeId: (%v), expectedVolumeId: (%v)", listVolumesResponse.Entries[0].Volume.VolumeId, fakeVolumeID12)
+				}
+			},
+		},
+		{
+			name: "ListVolumes request with starting token but no entries in response",
+			testFunc: func(t *testing.T) {
+				req := csi.ListVolumesRequest{
+					StartingToken: "1",
+				}
+				d, _ := NewFakeDriver(t)
+				disks := []compute.Disk{}
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().ListByResourceGroup(gomock.Any(), gomock.Any()).Return(disks, nil).AnyTimes()
+				expectedErr := status.Error(codes.Aborted, "ListVolumes starting token(1) on rg(rg) is greater than total number of volumes")
+				_, err := d.ListVolumes(context.TODO(), &req)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "ListVolumes list resource error",
+			testFunc: func(t *testing.T) {
+				req := csi.ListVolumesRequest{
+					StartingToken: "1",
+				}
+				d, _ := NewFakeDriver(t)
+				disks := []compute.Disk{}
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				rerr := &retry.Error{
+					RawError: fmt.Errorf("test"),
+				}
+				d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().ListByResourceGroup(gomock.Any(), gomock.Any()).Return(disks, rerr).AnyTimes()
+				expectedErr := status.Error(codes.Internal, "ListVolumes on rg(rg) failed with error: Retriable: false, RetryAfter: 0s, HTTPStatusCode: 0, RawError: test")
+				_, err := d.ListVolumes(context.TODO(), &req)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, tc.testFunc)
 	}
 }
 
@@ -1655,6 +1776,108 @@ func TestPickAvailabilityZone(t *testing.T) {
 				actualresponse := pickAvailabilityZone(req, region)
 				if !reflect.DeepEqual(expectedresponse, actualresponse) {
 					t.Errorf("actualresponse: (%v), expectedresponse: (%v)", actualresponse, expectedresponse)
+				}
+			},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, tc.testFunc)
+	}
+}
+
+func TestGetSourceDiskSize(t *testing.T) {
+	testCases := []struct {
+		name     string
+		testFunc func(t *testing.T)
+	}{
+		{
+			name: "max depth reached",
+			testFunc: func(t *testing.T) {
+				d, _ := NewFakeDriver(t)
+				_, err := d.GetSourceDiskSize(context.Background(), "test-rg", "test-disk", 2, 1)
+				expectedErr := status.Errorf(codes.Internal, "current depth (2) surpassed the max depth (1) while searching for the source disk size")
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "diskproperty not found",
+			testFunc: func(t *testing.T) {
+				d, _ := NewFakeDriver(t)
+				disk := compute.Disk{}
+				d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+				_, err := d.GetSourceDiskSize(context.Background(), "test-rg", "test-disk", 0, 1)
+				expectedErr := status.Error(codes.Internal, "DiskProperty not found for disk (test-disk) in resource group (test-rg)")
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "nil DiskSizeGB",
+			testFunc: func(t *testing.T) {
+				d, _ := NewFakeDriver(t)
+				diskProperties := compute.DiskProperties{}
+				disk := compute.Disk{
+					DiskProperties: &diskProperties,
+				}
+				d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+				_, err := d.GetSourceDiskSize(context.Background(), "test-rg", "test-disk", 0, 1)
+				expectedErr := status.Error(codes.Internal, "DiskSizeGB for disk (test-disk) in resourcegroup (test-rg) is nil")
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "successful search: depth 1",
+			testFunc: func(t *testing.T) {
+				d, _ := NewFakeDriver(t)
+				diskSizeGB := int32(8)
+				diskProperties := compute.DiskProperties{
+					DiskSizeGB: &diskSizeGB,
+				}
+				disk := compute.Disk{
+					DiskProperties: &diskProperties,
+				}
+				d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+				size, _ := d.GetSourceDiskSize(context.Background(), "test-rg", "test-disk", 0, 1)
+				expectedOutput := diskSizeGB
+				if *size != expectedOutput {
+					t.Errorf("actualOutput: (%v), expectedOutput: (%v)", *size, expectedOutput)
+				}
+			},
+		},
+		{
+			name: "successful serach: depth 2",
+			testFunc: func(t *testing.T) {
+				d, _ := NewFakeDriver(t)
+				diskSizeGB1 := int32(16)
+				diskSizeGB2 := int32(8)
+				sourceURI := "/subscriptions/xxxxxxxx/resourcegroups/test-rg/providers/microsoft.compute/disks/test-disk-1"
+				creationData := compute.CreationData{
+					CreateOption: "Copy",
+					SourceURI:    &sourceURI,
+				}
+				diskProperties1 := compute.DiskProperties{
+					CreationData: &creationData,
+					DiskSizeGB:   &diskSizeGB1,
+				}
+				diskProperties2 := compute.DiskProperties{
+					DiskSizeGB: &diskSizeGB2,
+				}
+				disk1 := compute.Disk{
+					DiskProperties: &diskProperties1,
+				}
+				disk2 := compute.Disk{
+					DiskProperties: &diskProperties2,
+				}
+				d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk1, nil).Return(disk2, nil).AnyTimes()
+				size, _ := d.GetSourceDiskSize(context.Background(), "test-rg", "test-disk-1", 0, 2)
+				expectedOutput := diskSizeGB2
+				if *size != expectedOutput {
+					t.Errorf("actualOutput: (%v), expectedOutput: (%v)", *size, expectedOutput)
 				}
 			},
 		},

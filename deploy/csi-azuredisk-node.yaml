@@ -35,12 +35,12 @@ spec:
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
-          image: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe:v2.0.0
+          image: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe:v2.2.0
           args:
             - --csi-address=/csi/csi.sock
             - --probe-timeout=3s
             - --health-port=29603
-            - --v=5
+            - --v=2
           resources:
             limits:
               cpu: 100m
@@ -53,7 +53,7 @@ spec:
           args:
             - --csi-address=$(ADDRESS)
             - --kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)
-            - --v=5
+            - --v=2
           lifecycle:
             preStop:
               exec:
@@ -112,8 +112,6 @@ spec:
                 fieldRef:
                   apiVersion: v1
                   fieldPath: spec.nodeName
-            - name: AZURE_ENVIRONMENT_FILEPATH  # For Azure Stack Cloud
-              value: /etc/kubernetes/azurestackcloud.json
           securityContext:
             privileged: true
           volumeMounts:
@@ -133,9 +131,6 @@ spec:
               name: sys-devices-dir
             - mountPath: /sys/class/scsi_host/
               name: scsi-host-dir
-            - name: ssl
-              mountPath: /etc/ssl/certs
-              readOnly: true
           resources:
             limits:
               cpu: 200m
@@ -175,7 +170,4 @@ spec:
             path: /sys/class/scsi_host/
             type: Directory
           name: scsi-host-dir
-        - name: ssl
-          hostPath:
-            path: /etc/ssl/certs
 ---

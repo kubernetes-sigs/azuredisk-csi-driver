@@ -30,7 +30,7 @@ spec:
           args:
             - "--feature-gates=Topology=true"
             - "--csi-address=$(ADDRESS)"
-            - "--v=5"
+            - "--v=2"
             - "--timeout=15s"
             - "--enable-leader-election"
             - "--leader-election-type=leases"
@@ -50,7 +50,7 @@ spec:
         - name: csi-attacher
           image: mcr.microsoft.com/oss/kubernetes-csi/csi-attacher:v2.2.0
           args:
-            - "-v=5"
+            - "-v=2"
             - "-csi-address=$(ADDRESS)"
             - "-timeout=120s"
             - "-leader-election"
@@ -68,11 +68,11 @@ spec:
               cpu: 10m
               memory: 20Mi
         - name: csi-snapshotter
-          image: mcr.microsoft.com/oss/kubernetes-csi/csi-snapshotter:v2.0.1
+          image: mcr.microsoft.com/oss/kubernetes-csi/csi-snapshotter:v3.0.3
           args:
             - "-csi-address=$(ADDRESS)"
             - "-leader-election"
-            - "--v=5"
+            - "--v=2"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -87,11 +87,12 @@ spec:
               cpu: 10m
               memory: 20Mi
         - name: csi-resizer
-          image: mcr.microsoft.com/oss/kubernetes-csi/csi-resizer:v0.5.0
+          image: mcr.microsoft.com/oss/kubernetes-csi/csi-resizer:v1.1.0
           args:
             - "-csi-address=$(ADDRESS)"
-            - "-v=5"
+            - "-v=2"
             - "-leader-election"
+            - '-handle-volume-inuse-error=true'
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -106,12 +107,12 @@ spec:
               cpu: 10m
               memory: 20Mi
         - name: liveness-probe
-          image: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe:v2.0.0
+          image: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe:v2.2.0
           args:
             - --csi-address=/csi/csi.sock
             - --probe-timeout=3s
             - --health-port=29602
-            - --v=5
+            - --v=2
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
@@ -153,8 +154,6 @@ spec:
                   optional: true
             - name: CSI_ENDPOINT
               value: unix:///csi/csi.sock
-            - name: AZURE_ENVIRONMENT_FILEPATH  # For Azure Stack Cloud
-              value: /etc/kubernetes/azurestackcloud.json
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
@@ -163,9 +162,6 @@ spec:
             - mountPath: /var/lib/waagent/ManagedIdentity-Settings
               readOnly: true
               name: msi
-            - name: ssl
-              mountPath: /etc/ssl/certs
-              readOnly: true
           resources:
             limits:
               cpu: 200m
@@ -183,6 +179,3 @@ spec:
         - name: msi
           hostPath:
             path: /var/lib/waagent/ManagedIdentity-Settings
-        - name: ssl
-          hostPath:
-            path: /etc/ssl/certs

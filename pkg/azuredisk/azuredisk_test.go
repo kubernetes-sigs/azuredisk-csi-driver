@@ -25,49 +25,19 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/golang/mock/gomock"
 	"google.golang.org/grpc/status"
-	"k8s.io/legacy-cloud-providers/azure"
-	"k8s.io/legacy-cloud-providers/azure/clients/diskclient/mockdiskclient"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-12-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-06-30/compute"
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
+
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/diskclient/mockdiskclient"
+	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
-
-func TestIsManagedDisk(t *testing.T) {
-	tests := []struct {
-		options  string
-		expected bool
-	}{
-		{
-			options:  "testurl/subscriptions/12/resourceGroups/23/providers/Microsoft.Compute/disks/name",
-			expected: true,
-		},
-		{
-			options:  "test.com",
-			expected: true,
-		},
-		{
-			options:  "HTTP://test.com",
-			expected: false,
-		},
-		{
-			options:  "http://test.com/vhds/name",
-			expected: false,
-		},
-	}
-
-	for _, test := range tests {
-		result := isManagedDisk(test.options)
-		if !reflect.DeepEqual(result, test.expected) {
-			t.Errorf("input: %q, isManagedDisk result: %t, expected: %t", test.options, result, test.expected)
-		}
-	}
-}
 
 func TestGetDiskName(t *testing.T) {
 	mDiskPathRE := managedDiskPathRE
-	uDiskPathRE := unmanagedDiskPathRE
 	tests := []struct {
 		options   string
 		expected1 string
@@ -95,13 +65,13 @@ func TestGetDiskName(t *testing.T) {
 		},
 		{
 			options:   "http://test.com/vhds/name",
-			expected1: "name",
-			expected2: nil,
+			expected1: "",
+			expected2: fmt.Errorf("could not get disk name from http://test.com/vhds/name, correct format: %s", mDiskPathRE),
 		},
 		{
 			options:   "http://test.io/name",
 			expected1: "",
-			expected2: fmt.Errorf("could not get disk name from http://test.io/name, correct format: %s", uDiskPathRE),
+			expected2: fmt.Errorf("could not get disk name from http://test.io/name, correct format: %s", mDiskPathRE),
 		},
 	}
 
@@ -190,7 +160,6 @@ func TestGetResourceGroupFromURI(t *testing.T) {
 
 func TestIsValidDiskURI(t *testing.T) {
 	supportedManagedDiskURI := diskURISupportedManaged
-	supportedBlobDiskURI := diskURISupportedBlob
 
 	tests := []struct {
 		diskURI     string
@@ -210,7 +179,7 @@ func TestIsValidDiskURI(t *testing.T) {
 		},
 		{
 			diskURI:     "https://test-saccount.blob.core.windows.net/container/pvc-disk-dynamic-9e102c53-593d-11e9-934e-705a0f18a318.vhd",
-			expectError: nil,
+			expectError: fmt.Errorf("Inavlid DiskURI: https://test-saccount.blob.core.windows.net/container/pvc-disk-dynamic-9e102c53-593d-11e9-934e-705a0f18a318.vhd, correct format: %v", supportedManagedDiskURI),
 		},
 		{
 			diskURI:     "test.com",
@@ -218,7 +187,7 @@ func TestIsValidDiskURI(t *testing.T) {
 		},
 		{
 			diskURI:     "http://test-saccount.blob.core.windows.net/container/pvc-disk-dynamic-9e102c53-593d-11e9-934e-705a0f18a318.vhd",
-			expectError: fmt.Errorf("Inavlid DiskURI: http://test-saccount.blob.core.windows.net/container/pvc-disk-dynamic-9e102c53-593d-11e9-934e-705a0f18a318.vhd, correct format: %v", supportedBlobDiskURI),
+			expectError: fmt.Errorf("Inavlid DiskURI: http://test-saccount.blob.core.windows.net/container/pvc-disk-dynamic-9e102c53-593d-11e9-934e-705a0f18a318.vhd, correct format: %v", supportedManagedDiskURI),
 		},
 	}
 
@@ -630,6 +599,7 @@ func TestNewDriver(t *testing.T) {
 	driver.Name = DriverName
 	driver.Version = driverVersion
 	driver.NodeID = nodeid
+	driver.volumeLocks = util.NewVolumeLocks()
 	newdriver := NewDriver(nodeid)
 	assert.Equal(t, driver, *newdriver)
 }

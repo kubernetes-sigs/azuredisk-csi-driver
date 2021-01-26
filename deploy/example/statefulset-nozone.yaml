@@ -1,0 +1,56 @@
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: statefulset-azuredisk
+  labels:
+    app: nginx
+spec:
+  podManagementPolicy: Parallel  # default is OrderedReady
+  serviceName: statefulset-azuredisk
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      nodeSelector:
+        "kubernetes.io/os": linux
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: failure-domain.beta.kubernetes.io/zone
+                    operator: In
+                    values:
+                      - "0"
+                      - "1"
+                      - "2"
+                      - "3"
+                      - "4"
+      containers:
+        - name: statefulset-azuredisk
+          image: mcr.microsoft.com/oss/nginx/nginx:1.19.5
+          command:
+            - "/bin/bash"
+            - "-c"
+            - set -euo pipefail; while true; do echo $(date) >> /mnt/azuredisk/outfile; sleep 1; done
+          volumeMounts:
+            - name: persistent-storage
+              mountPath: /mnt/azuredisk
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: nginx
+  volumeClaimTemplates:
+    - metadata:
+        name: persistent-storage
+        annotations:
+          volume.beta.kubernetes.io/storage-class: managed-csi
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi

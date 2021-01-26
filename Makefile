@@ -19,7 +19,8 @@ REGISTRY_NAME ?= $(shell echo $(REGISTRY) | sed "s/.azurecr.io//g")
 DRIVER_NAME = disk.csi.azure.com
 IMAGE_NAME ?= azuredisk-csi
 SCHEDULER_EXTENDER_IMAGE_NAME ?= azdiskschedulerextender-csi
-IMAGE_VERSION ?= v0.10.0
+IMAGE_VERSION ?= v1.0.0
+CLOUD ?= AzurePublicCloud
 # Use a custom version for E2E tests if we are testing in CI
 ifdef CI
 ifndef PUBLISH
@@ -99,11 +100,13 @@ ifdef TEST_WINDOWS
 		--set windows.enabled=true \
 		--set linux.enabled=false \
 		--set controller.runOnMaster=true \
-		--set controller.replicas=1
+		--set controller.replicas=1 \
+		--set cloud=$(CLOUD)
 else
 	helm install azuredisk-csi-driver charts/latest/azuredisk-csi-driver --namespace kube-system --wait --timeout=15m -v=5 --debug \
 		${E2E_HELM_OPTIONS} \
-		--set snapshot.enabled=true
+		--set snapshot.enabled=true \
+		--set cloud=$(CLOUD)
 endif
 
 .PHONY: install-helm
@@ -170,11 +173,9 @@ azdiskschedulerextender-container-windows:
 container-all: azuredisk azuredisk-windows
 	docker buildx rm container-builder || true
 	docker buildx create --use --name=container-builder
-	# only moby/buildkit:foreign-mediatype works on building Windows image now
-	# https://github.com/moby/buildkit/pull/1879
-	docker run --privileged --name buildx_buildkit_container-builder0 -d andyzhangx/buildkit:v0.8.0-foreign-mediatype
-	# sleep 2s waiting for container-builder running complete
-	sleep 2
+ifeq ($(CLOUD), AzureStackCloud)
+	docker run --privileged --name buildx_buildkit_container-builder0 -d --mount type=bind,src=/etc/ssl/certs,dst=/etc/ssl/certs moby/buildkit:latest || true
+endif
 	$(MAKE) container-linux
 	for osversion in $(ALL_OSVERSIONS.windows); do \
 		OSVERSION=$${osversion} $(MAKE) container-windows; \
@@ -186,7 +187,7 @@ push-manifest:
 	docker manifest create --amend $(IMAGE_TAG) $(foreach osarch, $(ALL_OS_ARCH), $(IMAGE_TAG)-${osarch})
 	# add "os.version" field to windows images (based on https://github.com/kubernetes/kubernetes/blob/master/build/pause/Makefile)
 	set -x; \
-	registry_prefix=$(shell (echo ${REGISTRY} | grep -Eq ".*\/.*") && echo "docker.io/" || echo ""); \
+	registry_prefix=$(shell (echo ${REGISTRY} | grep -Eq ".*[\/\.].*") && echo "" || echo "docker.io/"); \
 	manifest_image_folder=`echo "$${registry_prefix}${IMAGE_TAG}" | sed "s|/|_|g" | sed "s/:/-/"`; \
 	for arch in $(ALL_ARCH.windows); do \
 		for osversion in $(ALL_OSVERSIONS.windows); do \
@@ -223,13 +224,6 @@ clean:
 .PHONY: create-metrics-svc
 create-metrics-svc:
 	kubectl create -f deploy/example/metrics/csi-azuredisk-controller-svc.yaml
-
-.PHONY: create-example-deployment
-create-example-deployment:
-	kubectl apply -f deploy/example/storageclass-azuredisk-csi.yaml
-	kubectl apply -f deploy/example/deployment.yaml
-	kubectl apply -f deploy/example/statefulset.yaml
-	kubectl apply -f deploy/example/windows/statefulset.yaml
 
 .PHONY: delete-metrics-svc
 delete-metrics-svc:

@@ -24,7 +24,7 @@ import (
 	"strconv"
 	libstrings "strings"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-12-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-06-30/compute"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -32,9 +32,9 @@ import (
 )
 
 const (
-	defaultStorageAccountType       = compute.StandardSSDLRS
-	defaultAzureDiskKind            = v1.AzureManagedDisk
-	defaultAzureDataDiskCachingMode = v1.AzureDataDiskCachingReadOnly
+	azurePublicCloudDefaultStorageAccountType = compute.StandardSSDLRS
+	azureStackCloudDefaultStorageAccountType  = compute.StandardLRS
+	defaultAzureDataDiskCachingMode           = v1.AzureDataDiskCachingReadOnly
 )
 
 var (
@@ -43,33 +43,22 @@ var (
 		string(api.AzureDataDiskCachingReadOnly),
 		string(api.AzureDataDiskCachingReadWrite))
 
-	supportedDiskKinds = sets.NewString(
-		string(api.AzureSharedBlobDisk),
-		string(api.AzureDedicatedBlobDisk),
-		string(api.AzureManagedDisk))
-
 	lunPathRE = regexp.MustCompile(`/dev(?:.*)/disk/azure/scsi(?:.*)/lun(.+)`)
 )
 
-func normalizeKind(kind string) (v1.AzureDataDiskKind, error) {
-	if kind == "" {
-		return defaultAzureDiskKind, nil
-	}
-
-	if !supportedDiskKinds.Has(kind) {
-		return "", fmt.Errorf("azureDisk - %s is not supported disk kind. Supported values are %s", kind, supportedDiskKinds.List())
-	}
-
-	return v1.AzureDataDiskKind(kind), nil
-}
-
-func normalizeStorageAccountType(storageAccountType string) (compute.DiskStorageAccountTypes, error) {
+func normalizeStorageAccountType(storageAccountType, cloud string) (compute.DiskStorageAccountTypes, error) {
 	if storageAccountType == "" {
-		return defaultStorageAccountType, nil
+		if IsAzureStackCloud(cloud) {
+			return azureStackCloudDefaultStorageAccountType, nil
+		}
+		return azurePublicCloudDefaultStorageAccountType, nil
 	}
 
 	sku := compute.DiskStorageAccountTypes(storageAccountType)
 	supportedSkuNames := compute.PossibleDiskStorageAccountTypesValues()
+	if IsAzureStackCloud(cloud) {
+		supportedSkuNames = []compute.DiskStorageAccountTypes{compute.StandardLRS, compute.PremiumLRS}
+	}
 	for _, s := range supportedSkuNames {
 		if sku == s {
 			return sku, nil

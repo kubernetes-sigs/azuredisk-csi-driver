@@ -18,8 +18,15 @@ make e2e-test
 go test -v -timeout=0 ./test/e2e -ginkgo.noColor -ginkgo.v -ginkgo.focus="deployment"
 ```
 
-> testing against in-tree volume driver
+ - testing against in-tree volume driver
 ```console
+export AZURE_STORAGE_DRIVER="kubernetes.io/azure-disk"
+make e2e-test
+```
+
+ - migration test
+```console
+export TEST_MIGRATION="true"
 export AZURE_STORAGE_DRIVER="kubernetes.io/azure-disk"
 make e2e-test
 ```

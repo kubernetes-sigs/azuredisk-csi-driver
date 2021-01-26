@@ -26,7 +26,8 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
-	"k8s.io/legacy-cloud-providers/azure"
+
+	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
 var (
@@ -36,8 +37,8 @@ var (
 )
 
 // IsAzureStackCloud decides whether the driver is running on Azure Stack Cloud.
-func IsAzureStackCloud(cloud *azure.Cloud) bool {
-	return strings.EqualFold(cloud.Config.Cloud, "AZURESTACKCLOUD")
+func IsAzureStackCloud(cloud string) bool {
+	return strings.EqualFold(cloud, "AZURESTACKCLOUD")
 }
 
 // GetCloudProvider get Azure Cloud Provider

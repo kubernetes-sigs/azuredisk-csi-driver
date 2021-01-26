@@ -42,7 +42,7 @@ spec:
             - --csi-address=/csi/csi.sock
             - --probe-timeout=3s
             - --health-port=29603
-            - --v=5
+            - --v=2
           resources:
             limits:
               cpu: 100m
@@ -55,7 +55,7 @@ spec:
           args:
             - --csi-address=$(ADDRESS)
             - --kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)
-            - --v=5
+            - --v=2
           lifecycle:
             preStop:
               exec:
@@ -64,7 +64,7 @@ spec:
             - name: ADDRESS
               value: /csi/csi.sock
             - name: DRIVER_REG_SOCK_PATH
-              value: /var/lib/kubelet/plugins/disk.csi.azure.com/csi.sock
+              value: {{ .Values.kubelet.linuxPath }}/plugins/disk.csi.azure.com/csi.sock
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
@@ -113,15 +113,17 @@ spec:
                 fieldRef:
                   apiVersion: v1
                   fieldPath: spec.nodeName
-            - name: AZURE_ENVIRONMENT_FILEPATH  # For Azure Stack Cloud
+            {{- if eq .Values.cloud "AzureStackCloud" }}
+            - name: AZURE_ENVIRONMENT_FILEPATH
               value: /etc/kubernetes/azurestackcloud.json
+            {{- end }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:
             privileged: true
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
-            - mountPath: /var/lib/kubelet/
+            - mountPath: {{ .Values.kubelet.linuxPath }}/
               mountPropagation: Bidirectional
               name: mountpoint-dir
             - mountPath: /etc/kubernetes/
@@ -135,9 +137,11 @@ spec:
               name: sys-devices-dir
             - mountPath: /sys/class/scsi_host/
               name: scsi-host-dir
+            {{- if eq .Values.cloud "AzureStackCloud" }}
             - name: ssl
               mountPath: /etc/ssl/certs
               readOnly: true
+            {{- end }}
           resources:
             limits:
               cpu: 200m
@@ -147,15 +151,15 @@ spec:
               memory: 20Mi
       volumes:
         - hostPath:
-            path: /var/lib/kubelet/plugins/disk.csi.azure.com
+            path: {{ .Values.kubelet.linuxPath }}/plugins/disk.csi.azure.com
             type: DirectoryOrCreate
           name: socket-dir
         - hostPath:
-            path: /var/lib/kubelet/
+            path: {{ .Values.kubelet.linuxPath }}/
             type: DirectoryOrCreate
           name: mountpoint-dir
         - hostPath:
-            path: /var/lib/kubelet/plugins_registry/
+            path: {{ .Values.kubelet.linuxPath }}/plugins_registry/
             type: DirectoryOrCreate
           name: registration-dir
         - hostPath:
@@ -177,7 +181,9 @@ spec:
             path: /sys/class/scsi_host/
             type: Directory
           name: scsi-host-dir
+        {{- if eq .Values.cloud "AzureStackCloud" }}
         - name: ssl
           hostPath:
             path: /etc/ssl/certs
+        {{- end }}
 {{- end -}}

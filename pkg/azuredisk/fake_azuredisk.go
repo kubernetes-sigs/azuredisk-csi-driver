@@ -22,11 +22,10 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
 
-	"k8s.io/legacy-cloud-providers/azure"
-
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
+	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
 const (
@@ -59,6 +58,7 @@ func NewFakeDriver(t *testing.T) (*Driver, error) {
 	driver.Version = fakeDriverVersion
 	driver.NodeID = fakeNodeID
 	driver.CSIDriver = *csicommon.NewFakeCSIDriver()
+	driver.volumeLocks = volumehelper.NewVolumeLocks()
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -79,6 +79,8 @@ func NewFakeDriver(t *testing.T) (*Driver, error) {
 			csi.ControllerServiceCapability_RPC_LIST_SNAPSHOTS,
 			csi.ControllerServiceCapability_RPC_CLONE_VOLUME,
 			csi.ControllerServiceCapability_RPC_EXPAND_VOLUME,
+			csi.ControllerServiceCapability_RPC_LIST_VOLUMES,
+			csi.ControllerServiceCapability_RPC_LIST_VOLUMES_PUBLISHED_NODES,
 		})
 	driver.AddVolumeCapabilityAccessModes([]csi.VolumeCapability_AccessMode_Mode{csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER})
 	driver.AddNodeServiceCapabilities([]csi.NodeServiceCapability_RPC_Type{

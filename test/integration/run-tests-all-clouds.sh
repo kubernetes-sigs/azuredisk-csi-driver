@@ -17,7 +17,7 @@
 set -euo pipefail
 
 apt update && apt install cifs-utils procps -y
-go get github.com/rexray/gocsi/csc
+GO111MODULE=off go get github.com/rexray/gocsi/csc
 
 cloud='AzurePublicCloud'
 if [[ "$#" -gt 0 ]]; then

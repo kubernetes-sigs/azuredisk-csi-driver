@@ -7,19 +7,19 @@
 This driver allows Kubernetes to use [Azure disk](https://azure.microsoft.com/en-us/services/storage/disks/) volume, csi plugin name: `disk.csi.azure.com`
 
 ### Container Images & Kubernetes Compatibility
-|Driver Version  |Image                                           | 1.14+ |
+|Driver Version  |Image                                           | 1.15+ |
 |----------------|------------------------------------------------|-------|
 |master branch   |mcr.microsoft.com/k8s/csi/azuredisk-csi:latest  | yes   |
+|v0.10.0         |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.10.0 | yes   |
 |v0.9.0          |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.9.0  | yes   |
 |v0.8.0          |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.8.0  | yes   |
-|v0.7.0          |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.7.0  | yes   |
 
 ### Driver parameters
 Please refer to [`disk.csi.azure.com` driver parameters](./docs/driver-parameters.md)
  > storage class `disk.csi.azure.com` parameters are compatible with built-in [azuredisk](https://kubernetes.io/docs/concepts/storage/volumes/#azuredisk) plugin
 
 ### Prerequisite
- - The driver depends on [cloud provider config file](https://github.com/kubernetes/cloud-provider-azure/blob/master/docs/cloud-provider-config.md), usually it's `/etc/kubernetes/azure.json` on all kubernetes nodes deployed by [AKS](https://docs.microsoft.com/en-us/azure/aks/) or [aks-engine](https://github.com/Azure/aks-engine), here is [azure.json example](./deploy/example/azure.json).
+ - The driver depends on [cloud provider config file](https://kubernetes-sigs.github.io/cloud-provider-azure/install/configs/#setting-azure-cloud-provider-from-kubernetes-secrets), usually it's `/etc/kubernetes/azure.json` on all kubernetes nodes deployed by [AKS](https://docs.microsoft.com/en-us/azure/aks/) or [aks-engine](https://github.com/Azure/aks-engine), here is [azure.json example](./deploy/example/azure.json).
  > To specify a different cloud provider config file, create `azure-cred-file` configmap before driver installation, e.g. for OpenShift, it's `/etc/kubernetes/cloud.conf` (make sure config file path is in the `volumeMounts.mountPath`)
  > ```console
  > kubectl create configmap azure-cred-file --from-literal=path="/etc/kubernetes/cloud.conf" --from-literal=path-windows="C:\\k\\cloud.conf" -n kube-system
@@ -27,8 +27,9 @@ Please refer to [`disk.csi.azure.com` driver parameters](./docs/driver-parameter
  - This driver also supports [read cloud config from kuberenetes secret](./docs/read-from-secret.md).
  - If cluster identity is [Managed Service Identity(MSI)](https://docs.microsoft.com/en-us/azure/aks/use-managed-identity), make sure user assigned identity has `Contributor` role on node resource group
 
-### Install azuredisk CSI driver on a Kubernetes cluster
-Please refer to [install azuredisk csi driver](./docs/install-azuredisk-csi-driver.md)
+### Install driver on a Kubernetes cluster
+ - install via [kubectl](./docs/install-azuredisk-csi-driver.md) on public Azure (please use helm for other cloud environments, e.g. Azure Stack)
+ - install via [helm charts](./charts) on public Azure and Azure Stack
 
 ### Examples
  - [Basic usage](./deploy/example/e2e_usage.md)
@@ -42,17 +43,25 @@ Please refer to [install azuredisk csi driver](./docs/install-azuredisk-csi-driv
  - [Windows](./deploy/example/windows)
  - [Shared Disk](./deploy/example/sharedisk)
  - [Volume Limits](./deploy/example/volumelimits)
- 
+
 ### Troubleshooting
  - [CSI driver troubleshooting guide](./docs/csi-debug.md)
+ 
+### Support
+ - Please see our [support policy][support-policy]
+
+### Limitations
+ - Please refer to [Azure Disk CSI Driver Limitations](./docs/limitations.md)
 
 ## Kubernetes Development
-Please refer to [development guide](./docs/csi-dev.md)
+ - Please refer to [development guide](./docs/csi-dev.md)
 
 ### View CI Results
-Check testgrid [provider-azure-azuredisk-csi-driver](https://testgrid.k8s.io/provider-azure-azuredisk-csi-driver) dashboard.
+ - Check testgrid [provider-azure-azuredisk-csi-driver](https://testgrid.k8s.io/provider-azure-azuredisk-csi-driver) dashboard.
 
 ### Links
  - [Kubernetes CSI Documentation](https://kubernetes-csi.github.io/docs/)
  - [CSI Drivers](https://github.com/kubernetes-csi/drivers)
  - [Container Storage Interface (CSI) Specification](https://github.com/container-storage-interface/spec)
+
+[support-policy]: support.md

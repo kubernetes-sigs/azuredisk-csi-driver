@@ -97,12 +97,16 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 
 	testDriver = driver.InitAzureDiskDriver()
 	ginkgo.It("should create a volume on demand with mount options [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func() {
+		pvcSize := "10Gi"
+		if isMultiZone {
+			pvcSize = "1000Gi"
+		}
 		pods := []testsuites.PodDetails{
 			{
 				Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
 				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
-						ClaimSize: "10Gi",
+						ClaimSize: pvcSize,
 						MountOptions: []string{
 							"barrier=1",
 							"acl",
@@ -120,6 +124,16 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			CSIDriver:              testDriver,
 			Pods:                   pods,
 			StorageClassParameters: map[string]string{"skuName": "Standard_LRS"},
+		}
+
+		if isMultiZone && !isUsingInTreeVolumePlugin {
+			test.StorageClassParameters = map[string]string{
+				"skuName":           "UltraSSD_LRS",
+				"cachingmode":       "None",
+				"diskIopsReadWrite": "2000",
+				"diskMbpsReadWrite": "320",
+				"logicalSectorSize": "512",
+			}
 		}
 		test.Run(cs, ns)
 	})
@@ -150,6 +164,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			CSIDriver:              testDriver,
 			Pods:                   pods,
 			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
+		}
+		if isAzureStackCloud {
+			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}
 		}
 		test.Run(cs, ns)
 	})
@@ -203,6 +220,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			CSIDriver:              testDriver,
 			Pods:                   pods,
 			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
+		}
+		if isAzureStackCloud {
+			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}
 		}
 		test.Run(cs, ns)
 	})
@@ -262,14 +282,6 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	})
 
 	ginkgo.It("should create a deployment object, write and read to it, delete the pod and write and read to it again [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func() {
-		skipIfTestingInWindowsCluster()
-		if isWindowsCluster {
-			// waiting for fix(https://github.com/kubernetes/kubernetes/pull/95456) in CSI driver
-			if !isUsingInTreeVolumePlugin || isTestingMigration {
-				ginkgo.Skip("test case is only available for in-tree driver now")
-			}
-		}
-
 		pod := testsuites.PodDetails{
 			Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
 			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
@@ -283,7 +295,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 				},
 			}, isMultiZone),
 			IsWindows: isWindowsCluster,
-			UseCMD:    true,
+			UseCMD:    false,
 		}
 
 		podCheckCmd := []string{"cat", "/mnt/test-1/data"}
@@ -344,9 +356,8 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	ginkgo.It("should clone a volume from an existing volume and read from it [disk.csi.azure.com]", func() {
 		skipIfTestingInWindowsCluster()
 		skipIfUsingInTreeVolumePlugin()
-		if !isMultiZone {
-			// todo: remove this when single-az tests are runnong on 1.16
-			ginkgo.Skip("test case not supported by single-az test since it's running on 1.15")
+		if isMultiZone {
+			ginkgo.Skip("test case not supported running in multi zone cluster")
 		}
 
 		pod := testsuites.PodDetails{
@@ -369,6 +380,44 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			CSIDriver:           testDriver,
 			Pod:                 pod,
 			PodWithClonedVolume: podWithClonedVolume,
+			StorageClassParameters: map[string]string{
+				"skuName": "Standard_LRS",
+				"fsType":  "xfs",
+			},
+		}
+		test.Run(cs, ns)
+	})
+
+	ginkgo.It("should clone a volume of larger size than the source volume and make sure the filesystem is appropriately adjusted [disk.csi.azure.com]", func() {
+		skipIfTestingInWindowsCluster()
+		skipIfUsingInTreeVolumePlugin()
+		if isMultiZone {
+			ginkgo.Skip("test case not supported running in multi zone cluster")
+		}
+
+		pod := testsuites.PodDetails{
+			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+				{
+					FSType:    "ext4",
+					ClaimSize: "10Gi",
+					VolumeMount: testsuites.VolumeMountDetails{
+						NameGenerate:      "test-volume-",
+						MountPathGenerate: "/mnt/test-",
+					},
+				},
+			}, isMultiZone),
+		}
+		clonedVolumeSize := "20Gi"
+
+		podWithClonedVolume := testsuites.PodDetails{
+			Cmd: "df -h | grep /mnt/test- | awk '{print $2}' | grep 20.0G",
+		}
+
+		test := testsuites.DynamicallyProvisionedVolumeCloningTest{
+			CSIDriver:           testDriver,
+			Pod:                 pod,
+			PodWithClonedVolume: podWithClonedVolume,
+			ClonedVolumeSize:    clonedVolumeSize,
 			StorageClassParameters: map[string]string{
 				"skuName": "Standard_LRS",
 				"fsType":  "xfs",
@@ -414,6 +463,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			CSIDriver:              testDriver,
 			Pods:                   pods,
 			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
+		}
+		if isAzureStackCloud {
+			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}
 		}
 		test.Run(cs, ns)
 	})
@@ -477,8 +529,52 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		test := testsuites.DynamicallyProvisionedVolumeSnapshotTest{
 			CSIDriver:              testDriver,
 			Pod:                    pod,
+			ShouldOverwrite:        false,
 			PodWithSnapshot:        podWithSnapshot,
 			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
+		}
+		if isAzureStackCloud {
+			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}
+		}
+		test.Run(cs, snapshotrcs, ns)
+	})
+
+	ginkgo.It("should create a pod, write to its pv, take a volume snapshot, overwrite data in original pv, create another pod from the snapshot, and read unaltered original data from original pv[disk.csi.azure.com]", func() {
+		skipIfTestingInWindowsCluster()
+		skipIfUsingInTreeVolumePlugin()
+
+		pod := testsuites.PodDetails{
+			Cmd: "echo 'hello world' > /mnt/test-1/data",
+			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+				{
+					FSType:    "ext4",
+					ClaimSize: "10Gi",
+					VolumeMount: testsuites.VolumeMountDetails{
+						NameGenerate:      "test-volume-",
+						MountPathGenerate: "/mnt/test-",
+					},
+				},
+			}, isMultiZone),
+		}
+
+		podOverwrite := testsuites.PodDetails{
+			Cmd: "echo 'overwrite' > /mnt/test-1/data",
+		}
+
+		podWithSnapshot := testsuites.PodDetails{
+			Cmd: "grep 'hello world' /mnt/test-1/data",
+		}
+
+		test := testsuites.DynamicallyProvisionedVolumeSnapshotTest{
+			CSIDriver:              testDriver,
+			Pod:                    pod,
+			ShouldOverwrite:        true,
+			PodOverwrite:           podOverwrite,
+			PodWithSnapshot:        podWithSnapshot,
+			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
+		}
+		if isAzureStackCloud {
+			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}
 		}
 		test.Run(cs, snapshotrcs, ns)
 	})
@@ -586,7 +682,6 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	})
 
 	ginkgo.It("should create a statefulset object, write and read to it, delete the pod and write and read to it again [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func() {
-		skipIfTestingInWindowsCluster()
 		pod := testsuites.PodDetails{
 			Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
 			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
@@ -600,7 +695,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 				},
 			}, isMultiZone),
 			IsWindows: isWindowsCluster,
-			UseCMD:    true,
+			UseCMD:    false,
 		}
 
 		podCheckCmd := []string{"cat", "/mnt/test-1/data"}

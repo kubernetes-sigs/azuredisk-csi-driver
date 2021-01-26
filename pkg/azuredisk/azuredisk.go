@@ -24,18 +24,21 @@ import (
 	"strings"
 	"unicode"
 
-	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
-
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-12-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-06-30/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/pborman/uuid"
+
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/volume/util"
-	"k8s.io/legacy-cloud-providers/azure"
-	"k8s.io/utils/mount"
+	"k8s.io/mount-utils"
+
+	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
+	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
+	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
 const (
@@ -80,21 +83,21 @@ const (
 	tagsField               = "tags"
 	maxSharesField          = "maxshares"
 	incrementalField        = "incremental"
+	logicalSectorSizeField  = "logicalsectorsize"
 )
 
 var (
 	managedDiskPathRE       = regexp.MustCompile(`(?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/disks/(.+)`)
-	unmanagedDiskPathRE     = regexp.MustCompile(`http(?:.*)://(?:.*)/vhds/(.+)`)
 	diskSnapshotPathRE      = regexp.MustCompile(`(?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/snapshots/(.+)`)
 	diskURISupportedManaged = []string{"/subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id}"}
-	diskURISupportedBlob    = []string{"https://{account-name}.blob.core.windows.net/{container-name}/{disk-name}.vhd"}
 )
 
 // Driver implements all interfaces of CSI drivers
 type Driver struct {
 	csicommon.CSIDriver
-	cloud   *azure.Cloud
-	mounter *mount.SafeFormatAndMount
+	cloud       *azure.Cloud
+	mounter     *mount.SafeFormatAndMount
+	volumeLocks *volumehelper.VolumeLocks
 }
 
 // NewDriver Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
@@ -104,6 +107,7 @@ func NewDriver(nodeID string) *Driver {
 	driver.Name = DriverName
 	driver.Version = driverVersion
 	driver.NodeID = nodeID
+	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	return &driver
 }
 
@@ -140,6 +144,8 @@ func (d *Driver) Run(endpoint, kubeconfig string, testBool bool) {
 			csi.ControllerServiceCapability_RPC_LIST_SNAPSHOTS,
 			csi.ControllerServiceCapability_RPC_CLONE_VOLUME,
 			csi.ControllerServiceCapability_RPC_EXPAND_VOLUME,
+			csi.ControllerServiceCapability_RPC_LIST_VOLUMES,
+			csi.ControllerServiceCapability_RPC_LIST_VOLUMES_PUBLISHED_NODES,
 		})
 	d.AddVolumeCapabilityAccessModes([]csi.VolumeCapability_AccessMode_Mode{csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER})
 	d.AddNodeServiceCapabilities([]csi.NodeServiceCapability_RPC_Type{
@@ -154,22 +160,10 @@ func (d *Driver) Run(endpoint, kubeconfig string, testBool bool) {
 	s.Wait()
 }
 
-func isManagedDisk(diskURI string) bool {
-	if len(diskURI) > 4 && strings.ToLower(diskURI[:4]) == "http" {
-		return false
-	}
-	return true
-}
-
 func GetDiskName(diskURI string) (string, error) {
-	diskPathRE := managedDiskPathRE
-	if !isManagedDisk(diskURI) {
-		diskPathRE = unmanagedDiskPathRE
-	}
-
-	matches := diskPathRE.FindStringSubmatch(diskURI)
+	matches := managedDiskPathRE.FindStringSubmatch(diskURI)
 	if len(matches) != 2 {
-		return "", fmt.Errorf("could not get disk name from %s, correct format: %s", diskURI, diskPathRE)
+		return "", fmt.Errorf("could not get disk name from %s, correct format: %s", diskURI, managedDiskPathRE)
 	}
 	return matches[1], nil
 }
@@ -221,17 +215,9 @@ func (d *Driver) checkDiskCapacity(ctx context.Context, resourceGroup, diskName 
 }
 
 func isValidDiskURI(diskURI string) error {
-	uri := strings.ToLower(diskURI)
-	if isManagedDisk(uri) {
-		if strings.Index(uri, "/subscriptions/") != 0 {
-			return fmt.Errorf("Inavlid DiskURI: %v, correct format: %v", diskURI, diskURISupportedManaged)
-		}
-	} else {
-		if strings.Index(uri, "https://") != 0 {
-			return fmt.Errorf("Inavlid DiskURI: %v, correct format: %v", diskURI, diskURISupportedBlob)
-		}
+	if strings.Index(strings.ToLower(diskURI), "/subscriptions/") != 0 {
+		return fmt.Errorf("Inavlid DiskURI: %v, correct format: %v", diskURI, diskURISupportedManaged)
 	}
-
 	return nil
 }
 

@@ -23,8 +23,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-03-01/compute"
-	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2018-08-01/network"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-06-30/compute"
+	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2019-06-01/network"
 	"github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2018-05-01/resources"
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/adal"
@@ -74,6 +74,9 @@ func (az *Client) EnsureResourceGroup(ctx context.Context, name, location string
 		tags = group.Tags
 	} else {
 		tags = make(map[string]*string)
+	}
+	if managedBy == nil {
+		managedBy = group.ManagedBy
 	}
 	// Tags for correlating resource groups with prow jobs on testgrid
 	tags["buildID"] = stringPointer(os.Getenv("BUILD_ID"))

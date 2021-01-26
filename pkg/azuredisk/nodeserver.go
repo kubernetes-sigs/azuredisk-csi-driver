@@ -42,9 +42,10 @@ import (
 )
 
 const (
-	defaultLinuxFsType      = "ext4"
-	defaultWindowsFsType    = "ntfs"
-	defaultAzureVolumeLimit = 16
+	defaultLinuxFsType              = "ext4"
+	defaultWindowsFsType            = "ntfs"
+	defaultAzureVolumeLimit         = 16
+	volumeOperationAlreadyExistsFmt = "An operation with the given Volume ID %s already exists"
 )
 
 func getDefaultFsType() string {
@@ -76,6 +77,11 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		return nil, status.Error(codes.InvalidArgument, "Volume capability not supported")
 	}
 
+	if acquired := d.volumeLocks.TryAcquire(diskURI); !acquired {
+		return nil, status.Errorf(codes.Aborted, volumeOperationAlreadyExistsFmt, diskURI)
+	}
+	defer d.volumeLocks.Release(diskURI)
+
 	// If the access type is block, do nothing for stage
 	switch req.GetVolumeCapability().GetAccessType().(type) {
 	case *csi.VolumeCapability_Block:
@@ -87,8 +93,13 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		return nil, status.Error(codes.InvalidArgument, "lun not provided")
 	}
 
-	if err := d.ensureMountPoint(target); err != nil {
+	mnt, err := d.ensureMountPoint(target)
+	if err != nil {
 		return nil, status.Errorf(codes.Internal, "Could not mount target %q: %v", target, err)
+	}
+	if mnt {
+		klog.V(2).Infof("NodeStageVolume: already mounted on target %s", target)
+		return &csi.NodeStageVolumeResponse{}, nil
 	}
 
 	// Get fsType and mountOptions that the volume will be formatted and mounted with
@@ -126,6 +137,21 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	}
 	klog.V(2).Infof("NodeStageVolume: format %s and mounting at %s successfully.", source, target)
 
+	// if resize is required, resize filesystem
+	if required, ok := req.GetVolumeContext()[resizeRequired]; ok && required == "true" {
+		klog.V(2).Infof("NodeStageVolume: fs resize initiating on target(%s) volumeid(%s)", target, diskURI)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "NodeStageVolume: Could not get volume path for %s: %v", target, err)
+		}
+
+		resizer := resizefs.NewResizeFs(d.mounter)
+		if _, err := resizer.Resize(source, target); err != nil {
+			return nil, status.Errorf(codes.Internal, "NodeStageVolume: Could not resize volume %q (%q):  %v", diskURI, source, err)
+		}
+
+		klog.V(2).Infof("NodeStageVolume: fs resize successful on target(%s) volumeid(%s).", target, diskURI)
+	}
+
 	return &csi.NodeStageVolumeResponse{}, nil
 }
 
@@ -141,6 +167,11 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 		return nil, status.Error(codes.InvalidArgument, "Staging target not provided")
 	}
 
+	if acquired := d.volumeLocks.TryAcquire(volumeID); !acquired {
+		return nil, status.Errorf(codes.Aborted, volumeOperationAlreadyExistsFmt, volumeID)
+	}
+	defer d.volumeLocks.Release(volumeID)
+
 	klog.V(2).Infof("NodeUnstageVolume: unmounting %s", stagingTargetPath)
 	err := CleanupMountPoint(stagingTargetPath, d.mounter, false)
 	if err != nil {
@@ -153,10 +184,11 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 
 // NodePublishVolume mount the volume from staging to target path
 func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
+	volumeID := req.GetVolumeId()
 	if req.GetVolumeCapability() == nil {
 		return nil, status.Error(codes.InvalidArgument, "Volume capability missing in request")
 	}
-	if len(req.GetVolumeId()) == 0 {
+	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in request")
 	}
 
@@ -174,6 +206,11 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Target path could not be prepared: %v", err))
 	}
+
+	if acquired := d.volumeLocks.TryAcquire(volumeID); !acquired {
+		return nil, status.Errorf(codes.Aborted, volumeOperationAlreadyExistsFmt, volumeID)
+	}
+	defer d.volumeLocks.Release(volumeID)
 
 	mountOptions := []string{"bind"}
 	if req.GetReadonly() {
@@ -197,8 +234,13 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 			return nil, err
 		}
 	case *csi.VolumeCapability_Mount:
-		if err := d.ensureMountPoint(target); err != nil {
+		mnt, err := d.ensureMountPoint(target)
+		if err != nil {
 			return nil, status.Errorf(codes.Internal, "Could not mount target %q: %v", target, err)
+		}
+		if mnt {
+			klog.V(2).Infof("NodePublishVolume: already mounted on target %s", target)
+			return &csi.NodePublishVolumeResponse{}, nil
 		}
 	}
 
@@ -206,6 +248,7 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 	if err := d.mounter.Mount(source, target, "", mountOptions); err != nil {
 		return nil, status.Errorf(codes.Internal, "Could not mount %q at %q: %v", source, target, err)
 	}
+
 	klog.V(2).Infof("NodePublishVolume: mount %s at %s successfully", source, target)
 
 	return &csi.NodePublishVolumeResponse{}, nil
@@ -213,20 +256,27 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 
 // NodeUnpublishVolume unmount the volume from the target path
 func (d *Driver) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
-	if len(req.GetVolumeId()) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in request")
-	}
-	if len(req.GetTargetPath()) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "Target path missing in request")
-	}
 	targetPath := req.GetTargetPath()
 	volumeID := req.GetVolumeId()
+
+	if len(volumeID) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in request")
+	}
+	if len(targetPath) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "Target path missing in request")
+	}
 
 	klog.V(2).Infof("NodeUnpublishVolume: unmounting volume %s on %s", volumeID, targetPath)
 	err := CleanupMountPoint(targetPath, d.mounter, false)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to unmount target %q: %v", targetPath, err)
 	}
+
+	if acquired := d.volumeLocks.TryAcquire(volumeID); !acquired {
+		return nil, status.Errorf(codes.Aborted, volumeOperationAlreadyExistsFmt, volumeID)
+	}
+	defer d.volumeLocks.Release(volumeID)
+
 	klog.V(2).Infof("NodeUnpublishVolume: unmount volume %s on %s successfully", volumeID, targetPath)
 
 	return &csi.NodeUnpublishVolumeResponse{}, nil
@@ -387,7 +437,7 @@ func (d *Driver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolume
 
 	isBlock, err := hostutil.NewHostUtil().PathIsDevice(volumePath)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to determine device path for volumePath [%v]: %v", volumePath, err)
+		return nil, status.Errorf(codes.NotFound, "failed to determine device path for volumePath [%v]: %v", volumePath, err)
 	}
 	if isBlock {
 		// Noop for Block NodeExpandVolume
@@ -399,10 +449,9 @@ func (d *Driver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolume
 	// In kubernetes 1.19 above, it will be passed by kubelet.
 	devicePath := req.GetStagingTargetPath()
 	if devicePath == "" {
-		args := []string{"-o", "source", "--noheadings", "--mountpoint", volumePath}
-		output, err := d.mounter.Exec.Command("findmnt", args...).Output()
+		output, err := d.getDevicePathWithMountPath(volumePath)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "Could not determine device path: %v", err)
+			return nil, status.Errorf(codes.NotFound, err.Error())
 		}
 
 		devicePath = strings.TrimSpace(string(output))
@@ -459,16 +508,16 @@ func getFStype(attributes map[string]string) string {
 	return ""
 }
 
-// ensureMountPoint: ensure mount point to be valid.
-// If it is not existed, it will be created.
-func (d *Driver) ensureMountPoint(target string) error {
+// ensureMountPoint: create mount point if not exists
+// return <true, nil> if it's already a mounted point otherwise return <false, nil>
+func (d *Driver) ensureMountPoint(target string) (bool, error) {
 	notMnt, err := d.mounter.IsLikelyNotMountPoint(target)
 	if err != nil && !os.IsNotExist(err) {
 		if IsCorruptedDir(target) {
 			notMnt = false
 			klog.Warningf("detected corrupted mount for targetPath [%s]", target)
 		} else {
-			return err
+			return !notMnt, err
 		}
 	}
 
@@ -476,27 +525,28 @@ func (d *Driver) ensureMountPoint(target string) error {
 		// testing original mount point, make sure the mount link is valid
 		_, err := ioutil.ReadDir(target)
 		if err == nil {
-			klog.V(2).Infof("azureDisk - already mounted to target %s", target)
-			return nil
+			klog.V(2).Infof("already mounted to target %s", target)
+			return !notMnt, nil
 		}
 		// mount link is invalid, now unmount and remount later
-		klog.Warningf("azureDisk - ReadDir %s failed with %v, unmount this directory", target, err)
+		klog.Warningf("ReadDir %s failed with %v, unmount this directory", target, err)
 		if err := d.mounter.Unmount(target); err != nil {
-			klog.Errorf("azureDisk - Unmount directory %s failed with %v", target, err)
-			return err
+			klog.Errorf("Unmount directory %s failed with %v", target, err)
+			return !notMnt, err
 		}
-		// notMnt = true
+		notMnt = true
+		return !notMnt, err
 	}
 
 	if runtime.GOOS != "windows" {
 		// in windows, we will use mklink to mount, will MkdirAll in Mount func
 		if err := volumehelper.MakeDir(target); err != nil {
-			klog.Errorf("azureDisk - mkdir failed on target: %s (%v)", target, err)
-			return err
+			klog.Errorf("mkdir failed on target: %s (%v)", target, err)
+			return !notMnt, err
 		}
 	}
 
-	return nil
+	return !notMnt, nil
 }
 
 func (d *Driver) formatAndMount(source, target, fstype string, options []string) error {
@@ -532,6 +582,21 @@ func (d *Driver) getDevicePathWithLUN(lunStr string) (string, error) {
 	return newDevicePath, err
 }
 
+func (d *Driver) getDevicePathWithMountPath(mountPath string) (string, error) {
+	args := []string{"-o", "source", "--noheadings", "--mountpoint", mountPath}
+	output, err := d.mounter.Exec.Command("findmnt", args...).Output()
+	if err != nil {
+		return "", fmt.Errorf("could not determine device path(%s), error: %v", mountPath, err)
+	}
+
+	devicePath := strings.TrimSpace(string(output))
+	if len(devicePath) == 0 {
+		return "", fmt.Errorf("could not get valid device for mount path: %q", mountPath)
+	}
+
+	return devicePath, nil
+}
+
 func (d *Driver) getBlockSizeBytes(devicePath string) (int64, error) {
 	output, err := d.mounter.Exec.Command("blockdev", "--getsize64", devicePath).Output()
 	if err != nil {
@@ -548,7 +613,7 @@ func (d *Driver) getBlockSizeBytes(devicePath string) (int64, error) {
 func (d *Driver) ensureBlockTargetFile(target string) error {
 	// Since the block device target path is file, its parent directory should be ensured to be valid.
 	parentDir := filepath.Dir(target)
-	if err := d.ensureMountPoint(parentDir); err != nil {
+	if _, err := d.ensureMountPoint(parentDir); err != nil {
 		return status.Errorf(codes.Internal, "Could not mount target %q: %v", parentDir, err)
 	}
 	// Create the mount point as a file since bind mount device node requires it to be a file

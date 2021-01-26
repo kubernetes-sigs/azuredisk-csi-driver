@@ -24,9 +24,7 @@ import (
 	"testing"
 	"time"
 
-	api "k8s.io/kubernetes/pkg/apis/core"
-
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-12-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-06-30/compute"
 	"github.com/stretchr/testify/assert"
 
 	v1 "k8s.io/api/core/v1"
@@ -139,79 +137,65 @@ func TestIoHandler(t *testing.T) {
 	}
 }
 
-func TestNormalizeKind(t *testing.T) {
-	tests := []struct {
-		desc          string
-		req           string
-		expectedErr   error
-		expectedValue v1.AzureDataDiskKind
-	}{
-		{
-			desc:          "CachingMode not exist",
-			req:           "",
-			expectedErr:   nil,
-			expectedValue: "Managed",
-		},
-		{
-			desc:          "Not supported CachingMode",
-			req:           "WriteOnly",
-			expectedErr:   fmt.Errorf("azureDisk - WriteOnly is not supported disk kind. Supported values are [Dedicated Managed Shared]"),
-			expectedValue: "",
-		},
-		{
-			desc:          "Valid CachingMode",
-			req:           string(api.AzureDedicatedBlobDisk),
-			expectedErr:   nil,
-			expectedValue: "Dedicated",
-		},
-	}
-	for _, test := range tests {
-		value, err := normalizeKind(test.req)
-		assert.Equal(t, value, test.expectedValue)
-		assert.Equal(t, err, test.expectedErr, fmt.Sprintf("error msg: %v", err))
-	}
-}
-
 func TestNormalizeStorageAccountType(t *testing.T) {
 	tests := []struct {
+		cloud               string
 		storageAccountType  string
 		expectedAccountType compute.DiskStorageAccountTypes
 		expectError         bool
 	}{
 		{
+			cloud:               "AZUREPUBLICCLOUD",
 			storageAccountType:  "",
 			expectedAccountType: compute.StandardSSDLRS,
 			expectError:         false,
 		},
 		{
+			cloud:               "AZURESTACKCLOUD",
+			storageAccountType:  "",
+			expectedAccountType: compute.StandardLRS,
+			expectError:         false,
+		},
+		{
+			cloud:               "AZUREPUBLICCLOUD",
 			storageAccountType:  "NOT_EXISTING",
 			expectedAccountType: "",
 			expectError:         true,
 		},
 		{
+			cloud:               "AZUREPUBLICCLOUD",
 			storageAccountType:  "Standard_LRS",
 			expectedAccountType: compute.StandardLRS,
 			expectError:         false,
 		},
 		{
+			cloud:               "AZUREPUBLICCLOUD",
 			storageAccountType:  "Premium_LRS",
 			expectedAccountType: compute.PremiumLRS,
 			expectError:         false,
 		},
 		{
+			cloud:               "AZUREPUBLICCLOUD",
 			storageAccountType:  "StandardSSD_LRS",
 			expectedAccountType: compute.StandardSSDLRS,
 			expectError:         false,
 		},
 		{
+			cloud:               "AZUREPUBLICCLOUD",
 			storageAccountType:  "UltraSSD_LRS",
 			expectedAccountType: compute.UltraSSDLRS,
 			expectError:         false,
 		},
+		{
+			cloud:               "AZURESTACKCLOUD",
+			storageAccountType:  "UltraSSD_LRS",
+			expectedAccountType: "",
+			expectError:         true,
+		},
 	}
 
 	for _, test := range tests {
-		result, err := normalizeStorageAccountType(test.storageAccountType)
+		result, err := normalizeStorageAccountType(test.storageAccountType, test.cloud)
 		assert.Equal(t, result, test.expectedAccountType)
 		assert.Equal(t, err != nil, test.expectError, fmt.Sprintf("error msg: %v", err))
 	}

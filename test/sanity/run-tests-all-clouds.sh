@@ -18,12 +18,17 @@ set -euo pipefail
 
 function install_csi_sanity_bin {
   echo 'Installing CSI sanity test binary...'
-  git clone https://github.com/kubernetes-csi/csi-test.git -b v2.2.0
+  mkdir -p $GOPATH/src/github.com/kubernetes-csi
+  pushd $GOPATH/src/github.com/kubernetes-csi
+  export GO111MODULE=off
+  git clone https://github.com/kubernetes-csi/csi-test.git -b v4.0.2
   pushd csi-test/cmd/csi-sanity
-  make
+  make install
+  popd
   popd
 }
 
-apt update && apt install cifs-utils procps -y
-install_csi_sanity_bin
+if [[ -z "$(command -v csi-sanity)" ]]; then
+	install_csi_sanity_bin
+fi
 test/sanity/run-test.sh "$nodeid"
