@@ -89,6 +89,11 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		return nil, status.Error(codes.InvalidArgument, "CreateVolume Volume capabilities must be provided")
 	}
 
+	if acquired := d.volumeLocks.TryAcquire(name); !acquired {
+		return nil, status.Errorf(codes.Aborted, volumeOperationAlreadyExistsFmt, name)
+	}
+	defer d.volumeLocks.Release(name)
+
 	capacityBytes := req.GetCapacityRange().GetRequiredBytes()
 	volSizeBytes := int64(capacityBytes)
 	requestGiB := int(volumehelper.RoundUpGiB(volSizeBytes))
@@ -163,7 +168,6 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			//return nil, fmt.Errorf("AzureDisk - invalid option %s in storage class", k)
 		}
 	}
-	parameters[resizeRequired] = strconv.FormatBool(false)
 
 	if IsAzureStackCloud(d.cloud.Config.Cloud) {
 		if maxShares > 1 {
@@ -220,18 +224,12 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	klog.V(2).Infof("begin to create azure disk(%s) account type(%s) rg(%s) location(%s) size(%d) selectedAvailabilityZone(%v) maxShares(%d)",
 		diskName, skuName, resourceGroup, location, requestGiB, selectedAvailabilityZone, maxShares)
 
-	diskURI := ""
 	tags := make(map[string]string)
 	contentSource := &csi.VolumeContentSource{}
 	for k, v := range customTagsMap {
 		tags[k] = v
 	}
 	tags[CreatedForPVNameKey] = name
-	/* todo: check where are the tags in CSI
-	if p.options.CloudTags != nil {
-		tags = *(p.options.CloudTags)
-	}
-	*/
 
 	if strings.EqualFold(writeAcceleratorEnabled, "true") {
 		tags[azure.WriteAcceleratorEnabled] = "true"
@@ -285,7 +283,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		MaxShares:           int32(maxShares),
 		LogicalSectorSize:   int32(logicalSectorSize),
 	}
-	diskURI, err = d.cloud.CreateManagedDisk(volumeOptions)
+	diskURI, err := d.cloud.CreateManagedDisk(volumeOptions)
 	if err != nil {
 		if strings.Contains(err.Error(), NotFound) {
 			return nil, status.Error(codes.NotFound, err.Error())
@@ -295,16 +293,6 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 
 	isOperationSucceeded = true
 	klog.V(2).Infof("create azure disk(%s) account type(%s) rg(%s) location(%s) size(%d) tags(%s) successfully", diskName, skuName, resourceGroup, location, requestGiB, tags)
-
-	/*  todo: block volume support
-	if utilfeature.DefaultFeatureGate.Enabled(features.BlockVolume) {
-		volumeMode = p.options.PVC.Spec.VolumeMode
-		if volumeMode != nil && *volumeMode == v1.PersistentVolumeBlock {
-			// Block volumes should not have any FSType
-			fsType = ""
-		}
-	}
-	*/
 
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
@@ -323,19 +311,25 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 
 // DeleteVolume delete an azure disk
 func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
-	if len(req.GetVolumeId()) == 0 {
+	volumeID := req.GetVolumeId()
+	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in request")
 	}
 
 	if err := d.ValidateControllerServiceRequest(csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME); err != nil {
 		return nil, fmt.Errorf("invalid delete volume req: %v", req)
 	}
-	diskURI := req.VolumeId
+	diskURI := volumeID
 
 	if err := isValidDiskURI(diskURI); err != nil {
 		klog.Errorf("validateDiskURI(%s) in DeleteVolume failed with error: %v", diskURI, err)
 		return &csi.DeleteVolumeResponse{}, nil
 	}
+
+	if acquired := d.volumeLocks.TryAcquire(volumeID); !acquired {
+		return nil, status.Errorf(codes.Aborted, volumeOperationAlreadyExistsFmt, volumeID)
+	}
+	defer d.volumeLocks.Release(volumeID)
 
 	mc := metrics.NewMetricContext(azureDiskCSIDriverName, "controller_delete_volume", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
 	isOperationSucceeded := false
@@ -647,8 +641,6 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 
 // CreateSnapshot create a snapshot
 func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
-	klog.V(2).Infof("CreateSnapshot called with request %v", *req)
-
 	sourceVolumeID := req.GetSourceVolumeId()
 	if len(sourceVolumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "CreateSnapshot Source Volume ID must be provided")
@@ -657,6 +649,11 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	if len(snapshotName) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "snapshot name must be provided")
 	}
+
+	if acquired := d.volumeLocks.TryAcquire(sourceVolumeID); !acquired {
+		return nil, status.Errorf(codes.Aborted, volumeOperationAlreadyExistsFmt, sourceVolumeID)
+	}
+	defer d.volumeLocks.Release(sourceVolumeID)
 
 	snapshotName = getValidDiskName(snapshotName)
 
@@ -746,8 +743,6 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 
 // DeleteSnapshot delete a snapshot
 func (d *Driver) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
-	klog.V(2).Infof("DeleteSnapshot called with request %v", *req)
-
 	snapshotID := req.SnapshotId
 	if len(snapshotID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Snapshot ID must be provided")
