@@ -34,8 +34,8 @@ fi
 if [[ "$1" == "windows" ]]; then
     kubectl apply -f deploy/example/windows/deployment.yaml
     kubectl apply -f deploy/example/windows/statefulset.yaml
-    echo "sleep 240s for Windows ..."
-    sleep 240
+    echo "sleep 300s for Windows ..."
+    sleep 300
 fi
 
 echo "begin to check pod status ..."
