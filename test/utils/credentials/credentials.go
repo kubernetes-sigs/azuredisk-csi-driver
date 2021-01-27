@@ -41,9 +41,11 @@ const (
     "aadClientId": "{{.AADClientID}}",
     "aadClientSecret": "{{.AADClientSecret}}",
     "resourceGroup": "{{.ResourceGroup}}",
-    "location": "{{.Location}}"
+    "location": "{{.Location}}",
+    "vmType": "{{.VMType}}"
 }`
 	defaultAzurePublicCloudLocation = "eastus2"
+	defaultAzurePublicCloudVMType   = "vmss"
 
 	// Env vars
 	cloudNameEnvVar       = "AZURE_CLOUD_NAME"
@@ -53,6 +55,7 @@ const (
 	aadClientSecretEnvVar = "AZURE_CLIENT_SECRET"
 	resourceGroupEnvVar   = "AZURE_RESOURCE_GROUP"
 	locationEnvVar        = "AZURE_LOCATION"
+	vmTypeEnvVar          = "AZURE_VM_TYPE"
 )
 
 // Config is used in Prow to store Azure credentials
@@ -81,13 +84,14 @@ type Credentials struct {
 	AADClientSecret string
 	ResourceGroup   string
 	Location        string
+	VMType          string
 }
 
 // CreateAzureCredentialFile creates a temporary Azure credential file for
 // Azure Disk CSI driver tests and returns the credentials
 func CreateAzureCredentialFile() (*Credentials, error) {
 	// Search credentials through env vars first
-	var cloud, tenantID, subscriptionID, aadClientID, aadClientSecret, resourceGroup, location string
+	var cloud, tenantID, subscriptionID, aadClientID, aadClientSecret, resourceGroup, location, vmType string
 	cloud = os.Getenv(cloudNameEnvVar)
 	if cloud == "" {
 		cloud = AzurePublicCloud
@@ -98,6 +102,7 @@ func CreateAzureCredentialFile() (*Credentials, error) {
 	aadClientSecret = os.Getenv(aadClientSecretEnvVar)
 	resourceGroup = os.Getenv(resourceGroupEnvVar)
 	location = os.Getenv(locationEnvVar)
+	vmType = os.Getenv(vmTypeEnvVar)
 
 	if resourceGroup == "" {
 		resourceGroup = ResourceGroupPrefix + uuid.NewUUID().String()
@@ -107,9 +112,13 @@ func CreateAzureCredentialFile() (*Credentials, error) {
 		location = defaultAzurePublicCloudLocation
 	}
 
+	if vmType == "" {
+		vmType = defaultAzurePublicCloudVMType
+	}
+
 	// Running test locally
 	if tenantID != "" && subscriptionID != "" && aadClientID != "" && aadClientSecret != "" {
-		return parseAndExecuteTemplate(cloud, tenantID, subscriptionID, aadClientID, aadClientSecret, resourceGroup, location)
+		return parseAndExecuteTemplate(cloud, tenantID, subscriptionID, aadClientID, aadClientSecret, resourceGroup, location, vmType)
 	}
 
 	// If the tests are being run in Prow, credentials are not supplied through env vars. Instead, it is supplied
@@ -120,7 +129,7 @@ func CreateAzureCredentialFile() (*Credentials, error) {
 		if err != nil {
 			return nil, err
 		}
-		return parseAndExecuteTemplate(cloud, c.TenantID, c.SubscriptionID, c.ClientID, c.ClientSecret, resourceGroup, location)
+		return parseAndExecuteTemplate(cloud, c.TenantID, c.SubscriptionID, c.ClientID, c.ClientSecret, resourceGroup, location, vmType)
 	}
 
 	return nil, fmt.Errorf("If you are running tests locally, you will need to set the following env vars: $%s, $%s, $%s, $%s, $%s, $%s",
@@ -154,7 +163,7 @@ func getCredentialsFromAzureCredentials(azureCredentialsPath string) (*FromProw,
 }
 
 // parseAndExecuteTemplate replaces credential placeholders in azureCredentialFileTemplate with actual credentials
-func parseAndExecuteTemplate(cloud, tenantID, subscriptionID, aadClientID, aadClientSecret, resourceGroup, location string) (*Credentials, error) {
+func parseAndExecuteTemplate(cloud, tenantID, subscriptionID, aadClientID, aadClientSecret, resourceGroup, location, vmType string) (*Credentials, error) {
 	t := template.New("AzureCredentialFileTemplate")
 	t, err := t.Parse(azureCredentialFileTemplate)
 	if err != nil {
@@ -175,6 +184,7 @@ func parseAndExecuteTemplate(cloud, tenantID, subscriptionID, aadClientID, aadCl
 		aadClientSecret,
 		resourceGroup,
 		location,
+		vmType,
 	}
 	err = t.Execute(f, c)
 	if err != nil {
