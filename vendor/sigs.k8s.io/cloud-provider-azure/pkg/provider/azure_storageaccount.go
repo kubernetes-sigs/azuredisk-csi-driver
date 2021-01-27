@@ -22,9 +22,13 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2019-06-01/storage"
 	"github.com/Azure/go-autorest/autorest/to"
+	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
 
 	"k8s.io/klog/v2"
 )
+
+// SkipMatchingTag skip account matching tag
+const SkipMatchingTag = "skip-matching"
 
 // AccountOptions contains the fields which are used to create storage account.
 type AccountOptions struct {
@@ -32,6 +36,8 @@ type AccountOptions struct {
 	EnableHTTPSTrafficOnly                    bool
 	Tags                                      map[string]string
 	VirtualNetworkResourceIDs                 []string
+	// indicate whether create new account when Name is empty
+	CreateAccount bool
 }
 
 type accountWithLocation struct {
@@ -40,6 +46,9 @@ type accountWithLocation struct {
 
 // getStorageAccounts get matching storage accounts
 func (az *Cloud) getStorageAccounts(accountOptions *AccountOptions) ([]accountWithLocation, error) {
+	if az.StorageAccountClient == nil {
+		return nil, fmt.Errorf("StorageAccountClient is nil")
+	}
 	ctx, cancel := getContextWithCancel()
 	defer cancel()
 	result, rerr := az.StorageAccountClient.ListByResourceGroup(ctx, accountOptions.ResourceGroup)
@@ -84,6 +93,13 @@ func (az *Cloud) getStorageAccounts(accountOptions *AccountOptions) ([]accountWi
 				}
 			}
 
+			if acct.Tags != nil {
+				// skip account with SkipMatchingTag tag
+				if _, ok := acct.Tags[SkipMatchingTag]; ok {
+					klog.V(2).Infof("found %s tag for account %s, skip matching", SkipMatchingTag, acct.Name)
+					continue
+				}
+			}
 			accounts = append(accounts, accountWithLocation{Name: *acct.Name, StorageType: storageType, Location: location})
 		}
 	}
@@ -93,9 +109,12 @@ func (az *Cloud) getStorageAccounts(accountOptions *AccountOptions) ([]accountWi
 
 // GetStorageAccesskey gets the storage account access key
 func (az *Cloud) GetStorageAccesskey(account, resourceGroup string) (string, error) {
+	if az.StorageAccountClient == nil {
+		return "", fmt.Errorf("StorageAccountClient is nil")
+	}
+
 	ctx, cancel := getContextWithCancel()
 	defer cancel()
-
 	result, rerr := az.StorageAccountClient.ListKeys(ctx, resourceGroup, account)
 	if rerr != nil {
 		return "", rerr.Error()
@@ -129,15 +148,17 @@ func (az *Cloud) EnsureStorageAccount(accountOptions *AccountOptions, genAccount
 	enableHTTPSTrafficOnly := accountOptions.EnableHTTPSTrafficOnly
 
 	if len(accountName) == 0 {
-		// find a storage account that matches accountType
-		accounts, err := az.getStorageAccounts(accountOptions)
-		if err != nil {
-			return "", "", fmt.Errorf("could not list storage accounts for account type %s: %v", accountType, err)
-		}
+		if !accountOptions.CreateAccount {
+			// find a storage account that matches accountType
+			accounts, err := az.getStorageAccounts(accountOptions)
+			if err != nil {
+				return "", "", fmt.Errorf("could not list storage accounts for account type %s: %v", accountType, err)
+			}
 
-		if len(accounts) > 0 {
-			accountName = accounts[0].Name
-			klog.V(4).Infof("found a matching account %s type %s location %s", accounts[0].Name, accounts[0].StorageType, accounts[0].Location)
+			if len(accounts) > 0 {
+				accountName = accounts[0].Name
+				klog.V(4).Infof("found a matching account %s type %s location %s", accounts[0].Name, accounts[0].StorageType, accounts[0].Location)
+			}
 		}
 
 		if len(accountName) == 0 {
@@ -192,6 +213,9 @@ func (az *Cloud) EnsureStorageAccount(accountOptions *AccountOptions, genAccount
 				Tags:     tags,
 				Location: &location}
 
+			if az.StorageAccountClient == nil {
+				return "", "", fmt.Errorf("StorageAccountClient is nil")
+			}
 			ctx, cancel := getContextWithCancel()
 			defer cancel()
 			rerr := az.StorageAccountClient.Create(ctx, resourceGroup, accountName, cp)
@@ -208,4 +232,55 @@ func (az *Cloud) EnsureStorageAccount(accountOptions *AccountOptions, genAccount
 	}
 
 	return accountName, accountKey, nil
+}
+
+// AddStorageAccountTags add tags to storage account
+func (az *Cloud) AddStorageAccountTags(resourceGroup, account string, tags map[string]*string) *retry.Error {
+	if az.StorageAccountClient == nil {
+		return retry.NewError(false, fmt.Errorf("StorageAccountClient is nil"))
+	}
+	ctx, cancel := getContextWithCancel()
+	defer cancel()
+	result, rerr := az.StorageAccountClient.GetProperties(ctx, resourceGroup, account)
+	if rerr != nil {
+		return rerr
+	}
+
+	newTags := result.Tags
+	if newTags == nil {
+		newTags = make(map[string]*string)
+	}
+
+	// merge two tag map
+	for k, v := range tags {
+		newTags[k] = v
+	}
+
+	updateParams := storage.AccountUpdateParameters{Tags: newTags}
+	return az.StorageAccountClient.Update(ctx, resourceGroup, account, updateParams)
+}
+
+// RemoveStorageAccountTag remove tag from storage account
+func (az *Cloud) RemoveStorageAccountTag(resourceGroup, account, key string) *retry.Error {
+	if az.StorageAccountClient == nil {
+		return retry.NewError(false, fmt.Errorf("StorageAccountClient is nil"))
+	}
+	ctx, cancel := getContextWithCancel()
+	defer cancel()
+	result, rerr := az.StorageAccountClient.GetProperties(ctx, resourceGroup, account)
+	if rerr != nil {
+		return rerr
+	}
+
+	if len(result.Tags) == 0 {
+		return nil
+	}
+
+	originalLen := len(result.Tags)
+	delete(result.Tags, key)
+	if originalLen != len(result.Tags) {
+		updateParams := storage.AccountUpdateParameters{Tags: result.Tags}
+		return az.StorageAccountClient.Update(ctx, resourceGroup, account, updateParams)
+	}
+	return nil
 }
