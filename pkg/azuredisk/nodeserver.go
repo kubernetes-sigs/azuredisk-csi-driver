@@ -284,8 +284,6 @@ func (d *Driver) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublish
 
 // NodeGetCapabilities return the capabilities of the Node plugin
 func (d *Driver) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapabilitiesRequest) (*csi.NodeGetCapabilitiesResponse, error) {
-	klog.V(2).Infof("Using default NodeGetCapabilities")
-
 	return &csi.NodeGetCapabilitiesResponse{
 		Capabilities: d.NSCap,
 	}, nil
