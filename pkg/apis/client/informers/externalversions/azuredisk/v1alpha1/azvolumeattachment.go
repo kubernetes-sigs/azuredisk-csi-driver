@@ -22,14 +22,14 @@ import (
 	"context"
 	time "time"
 
-	azurediskv1alpha1 "github.com/abhisheksinghbaghel/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
-	versioned "github.com/abhisheksinghbaghel/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
-	internalinterfaces "github.com/abhisheksinghbaghel/azuredisk-csi-driver/pkg/apis/client/informers/externalversions/internalinterfaces"
-	v1alpha1 "github.com/abhisheksinghbaghel/azuredisk-csi-driver/pkg/apis/client/listers/azuredisk/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
 	cache "k8s.io/client-go/tools/cache"
+	azurediskv1alpha1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
+	versioned "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	internalinterfaces "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions/internalinterfaces"
+	v1alpha1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/listers/azuredisk/v1alpha1"
 )
 
 // AzVolumeAttachmentInformer provides access to a shared informer and lister for

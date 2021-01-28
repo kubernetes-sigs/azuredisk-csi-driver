@@ -19,9 +19,9 @@ limitations under the License.
 package v1alpha1
 
 import (
-	v1alpha1 "github.com/abhisheksinghbaghel/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
-	"github.com/abhisheksinghbaghel/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/scheme"
 	rest "k8s.io/client-go/rest"
+	v1alpha1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/scheme"
 )
 
 type DiskV1alpha1Interface interface {

@@ -3,8 +3,8 @@ package main
 import (
 	"os"
 	"os/signal"
-	"syscall"
 	"strings"
+	"syscall"
 
 	log "github.com/sirupsen/logrus"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -13,8 +13,8 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/workqueue"
 
-	azVolumeClientSet "github.com/abhisheksinghbaghel/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
-	azVolumeInformerV1Alpha1 "github.com/abhisheksinghbaghel/azuredisk-csi-driver/pkg/apis/client/informers/externalversions/azuredisk/v1alpha1"
+	azVolumeClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	azVolumeInformerV1Alpha1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions/azuredisk/v1alpha1"
 )
 
 // retrieve the Kubernetes cluster client from outside of the cluster
@@ -60,7 +60,6 @@ func main() {
 	)
 
 	queue := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
-
 
 	volumeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {

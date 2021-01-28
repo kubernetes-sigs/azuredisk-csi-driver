@@ -19,8 +19,8 @@ limitations under the License.
 package azuredisk
 
 import (
-	v1alpha1 "github.com/abhisheksinghbaghel/azuredisk-csi-driver/pkg/apis/client/informers/externalversions/azuredisk/v1alpha1"
-	internalinterfaces "github.com/abhisheksinghbaghel/azuredisk-csi-driver/pkg/apis/client/informers/externalversions/internalinterfaces"
+	v1alpha1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions/azuredisk/v1alpha1"
+	internalinterfaces "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions/internalinterfaces"
 )
 
 // Interface provides access to each of this group's versions.

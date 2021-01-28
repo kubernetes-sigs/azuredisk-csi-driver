@@ -22,7 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	azuredisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk"
-	// azuredisk "github.com/abhisheksinghbaghel/azuredisk-csi-driver/pkg/apis/azuredisk"
+	// azuredisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk"
 )
 
 // SchemeGroupVersion is group version used to register these objects

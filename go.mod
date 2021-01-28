@@ -8,7 +8,6 @@ require (
 	github.com/Azure/go-autorest/autorest/adal v0.9.5
 	github.com/Azure/go-autorest/autorest/date v0.3.0
 	github.com/Azure/go-autorest/autorest/to v0.2.0
-	github.com/abhisheksinghbaghel/azuredisk-csi-driver v0.0.0-00010101000000-000000000000 // indirect
 	github.com/container-storage-interface/spec v1.3.0
 	github.com/golang/mock v1.4.3
 	github.com/golang/protobuf v1.4.3
@@ -19,6 +18,7 @@ require (
 	github.com/onsi/gomega v1.8.1
 	github.com/pborman/uuid v1.2.0
 	github.com/pelletier/go-toml v1.2.0
+	github.com/sirupsen/logrus v1.6.0
 	github.com/stretchr/testify v1.6.1
 	golang.org/x/net v0.0.0-20201110031124-69a78807bb2b
 	google.golang.org/grpc v1.28.0
@@ -26,10 +26,10 @@ require (
 	k8s.io/apimachinery v0.20.0
 	k8s.io/client-go v0.20.0
 	k8s.io/cloud-provider v0.20.0
+	k8s.io/code-generator v0.20.0
 	k8s.io/component-base v0.20.0
 	k8s.io/klog/v2 v2.4.0
 	k8s.io/kube-scheduler v0.20.0
-	k8s.io/legacy-cloud-providers v0.0.0
 	k8s.io/kubernetes v1.21.0-alpha.0.0.20201210005053-f58c4d8cd725
 	k8s.io/mount-utils v0.0.0
 	k8s.io/utils v0.0.0-20201110183641-67b214c5f920
@@ -38,7 +38,6 @@ require (
 )
 
 replace (
-	github.com/abhisheksinghbaghel/azuredisk-csi-driver => /home/azureuser/go/src/github.com/abhisheksinghbaghel/azuredisk-csi-driver
 	github.com/container-storage-interface/spec => github.com/container-storage-interface/spec v1.3.0
 	github.com/prometheus/client_golang => github.com/prometheus/client_golang v1.7.1
 	go.etcd.io/etcd => go.etcd.io/etcd v0.0.0-20200410171415-59f5fb25a533
@@ -70,8 +69,8 @@ replace (
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.20.0
 	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.20.0
 	k8s.io/sample-controller => k8s.io/sample-controller v0.20.0
+	sigs.k8s.io/azuredisk-csi-driver => ./
 	sigs.k8s.io/cloud-provider-azure => sigs.k8s.io/cloud-provider-azure v0.6.1-0.20210108101253-ff7b2e61fb1b
-	sigs.k8s.io/azuredisk-csi-driver => /home/azureuser/go/src/github.com/abhisheksinghbaghel/azuredisk-csi-driver
 )
 
 replace github.com/niemeyer/pretty => github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e

@@ -19,15 +19,17 @@ limitations under the License.
 package v1alpha1
 
 import (
-	v1alpha1 "github.com/abhisheksinghbaghel/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/cache"
+	v1alpha1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 )
 
 // AzVolumeLister helps list AzVolumes.
+// All objects returned here must be treated as read-only.
 type AzVolumeLister interface {
 	// List lists all AzVolumes in the indexer.
+	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1alpha1.AzVolume, err error)
 	// AzVolumes returns an object that can list and get AzVolumes.
 	AzVolumes(namespace string) AzVolumeNamespaceLister
@@ -58,10 +60,13 @@ func (s *azVolumeLister) AzVolumes(namespace string) AzVolumeNamespaceLister {
 }
 
 // AzVolumeNamespaceLister helps list and get AzVolumes.
+// All objects returned here must be treated as read-only.
 type AzVolumeNamespaceLister interface {
 	// List lists all AzVolumes in the indexer for a given namespace.
+	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1alpha1.AzVolume, err error)
 	// Get retrieves the AzVolume from the indexer for a given namespace and name.
+	// Objects returned here must be treated as read-only.
 	Get(name string) (*v1alpha1.AzVolume, error)
 	AzVolumeNamespaceListerExpansion
 }
