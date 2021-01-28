@@ -27,6 +27,7 @@ override IMAGE_VERSION := e2e-$(GIT_COMMIT)
 endif
 endif
 IMAGE_TAG ?= $(REGISTRY)/$(IMAGE_NAME):$(IMAGE_VERSION)
+RELEASE_TAG ?= $(REGISTRY)/$(IMAGE_NAME):$(IMAGE_VERSION)
 IMAGE_TAG_LATEST = $(REGISTRY)/$(IMAGE_NAME):latest
 REV = $(shell git describe --long --tags --dirty)
 BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -151,25 +152,32 @@ endif
 		OSVERSION=$${osversion} $(MAKE) container-windows; \
 	done
 
-.PHONY: push-manifest
-push-manifest:
-	docker manifest create --amend $(IMAGE_TAG) $(foreach osarch, $(ALL_OS_ARCH), $(IMAGE_TAG)-${osarch})
+.PHONY: push-manifest-for-release
+push-manifest-for-release:
+	docker manifest create --amend $(RELEASE_TAG) $(foreach osarch, $(ALL_OS_ARCH), $(IMAGE_TAG)-${osarch})
 	# add "os.version" field to windows images (based on https://github.com/kubernetes/kubernetes/blob/master/build/pause/Makefile)
 	set -x; \
 	registry_prefix=$(shell (echo ${REGISTRY} | grep -Eq ".*[\/\.].*") && echo "" || echo "docker.io/"); \
+	manifest_folder=`echo "$${registry_prefix}${RELEASE_TAG}" | sed "s|/|_|g" | sed "s/:/-/"`; \
 	manifest_image_folder=`echo "$${registry_prefix}${IMAGE_TAG}" | sed "s|/|_|g" | sed "s/:/-/"`; \
 	for arch in $(ALL_ARCH.windows); do \
 		for osversion in $(ALL_OSVERSIONS.windows); do \
+			docker manifest annotate --os windows --arch $${arch} ${RELEASE_TAG} ${IMAGE_TAG}-windows-$${osversion}-$${arch}; \
 			BASEIMAGE=mcr.microsoft.com/windows/nanoserver:$${osversion}; \
 			full_version=`docker manifest inspect $${BASEIMAGE} | jq -r '.manifests[0].platform["os.version"]'`; \
-			sed -i -r "s/(\"os\"\:\"windows\")/\0,\"os.version\":\"$${full_version}\"/" "${HOME}/.docker/manifests/$${manifest_image_folder}/$${manifest_image_folder}-windows-$${osversion}-$${arch}"; \
+			sed -i -r "s/(\"os\"\:\"windows\")/\0,\"os.version\":\"$${full_version}\"/" "${HOME}/.docker/manifests/$${manifest_folder}/$${manifest_image_folder}-windows-$${osversion}-$${arch}"; \
 		done; \
 	done
-	docker manifest push --purge $(IMAGE_TAG)
-	docker manifest inspect $(IMAGE_TAG)
+	docker manifest push --purge $(RELEASE_TAG)
+	docker manifest inspect $(RELEASE_TAG)
+
+.PHONY: push-manifest
+push-manifest:
 ifdef PUBLISH
-	docker manifest create $(IMAGE_TAG_LATEST) $(foreach osarch, $(ALL_OS_ARCH), $(IMAGE_TAG)-${osarch})
-	docker manifest inspect $(IMAGE_TAG_LATEST)
+	$(MAKE) push-manifest-for-release
+	RELEASE_TAG=$(IMAGE_TAG_LATEST) $(MAKE) push-manifest-for-release
+else
+	$(MAKE) push-manifest-for-release
 endif
 
 .PHONY: push-latest
