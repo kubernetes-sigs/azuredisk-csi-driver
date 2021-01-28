@@ -18,19 +18,20 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
-	"encoding/json"
 	"math/rand"
 	"net"
 	"net/http"
 	"os"
 	"strings"
+	"time"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/klog/v2"
 	schedulerapi "k8s.io/kube-scheduler/extender/v1"
-	"time"
 )
 
 func init() {
@@ -38,20 +39,20 @@ func init() {
 }
 
 var (
-	metricsAddress = flag.String("metrics-address", "0.0.0.0:29604", "export the metrics")
-	azDiskSchedulerExtenderPort = flag.String("port", "8080", "port used by az scheduler extender")	
+	metricsAddress              = flag.String("metrics-address", "0.0.0.0:29604", "export the metrics")
+	azDiskSchedulerExtenderPort = flag.String("port", "8080", "port used by az scheduler extender")
 )
 
 const (
-	metricsRequestStr = "/metrics"
-	apiPrefix = "/azdiskschedulerextender"
+	metricsRequestStr    = "/metrics"
+	apiPrefix            = "/azdiskschedulerextender"
 	filterRequestStr     = apiPrefix + "/filter"
 	prioritizeRequestStr = apiPrefix + "/prioritize"
-	pingRequestStr = "/ping"
+	pingRequestStr       = "/ping"
 )
 
 func main() {
-	flag.Parse();
+	flag.Parse()
 	exportMetrics()
 
 	azDiskSchedulerExtenderEndpoint := fmt.Sprintf("%s%s", ":", *azDiskSchedulerExtenderPort)
@@ -72,23 +73,23 @@ func main() {
 
 func handleUnknownRequest(response http.ResponseWriter, request *http.Request) {
 	klog.Errorf("handleUnknownRequest: Not implemented request received. Request: %s . Status: %v", request.URL.Path, http.StatusNotImplemented)
-	http.Error(response, "Not implemented request received. Request: " + request.URL.Path, http.StatusNotImplemented)
+	http.Error(response, "Not implemented request received. Request: "+request.URL.Path, http.StatusNotImplemented)
 }
 
 func handlePingRequest(response http.ResponseWriter, request *http.Request) {
 	// TODO: Return an error code based on resource metrics
 	// ex. CPU\Memory usage
 	started := time.Now()
-	duration := time.Now().Sub(started)
-    if duration.Seconds() > 10 {
-        response.WriteHeader(500)
-		response.Write([]byte(fmt.Sprintf("error: %v", duration.Seconds())))
+	duration := time.Since(started)
+	if duration.Seconds() > 10 {
+		response.WriteHeader(500)
+		_, _ = response.Write([]byte(fmt.Sprintf("error: %v", duration.Seconds())))
 		klog.V(2).Infof("handlePingRequest: Received ping request. Responding with 500.")
-    } else {
-        response.WriteHeader(200)
-        response.Write([]byte("ok"))
+	} else {
+		response.WriteHeader(200)
+		_, _ = response.Write([]byte("ok"))
 		klog.V(2).Infof("handlePingRequest: Received ping request. Responding with 200.")
-    }
+	}
 }
 
 func handleFilterRequest(response http.ResponseWriter, request *http.Request) {
@@ -125,7 +126,7 @@ func handleFilterRequest(response http.ResponseWriter, request *http.Request) {
 
 func handlePrioritizeRequest(response http.ResponseWriter, request *http.Request) {
 	decoder := json.NewDecoder(request.Body)
-	
+
 	defer func() {
 		if err := request.Body.Close(); err != nil {
 			klog.Warningf("handlePrioritizeRequest: Error closing decoder: %v", err)
@@ -140,7 +141,7 @@ func handlePrioritizeRequest(response http.ResponseWriter, request *http.Request
 		http.Error(response, "Decode error", http.StatusBadRequest)
 		return
 	}
-	
+
 	respList := schedulerapi.HostPriorityList{}
 	rand.Seed(time.Now().UnixNano())
 	for _, node := range args.Nodes.Items {
