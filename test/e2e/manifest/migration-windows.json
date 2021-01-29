@@ -7,6 +7,7 @@
             "orchestratorRelease": "1.17",
             "kubernetesConfig": {
                 "networkPlugin": "azure",
+                "containerRuntime": "containerd",
                 "cloudProviderRateLimitQPS": 6,
                 "cloudProviderRateLimitBucket": 20,
                 "controllerManagerConfig": {
@@ -44,8 +45,8 @@
             "sshEnabled": true,
             "windowsPublisher": "microsoft-aks",
             "windowsOffer": "aks-windows",
-            "windowsSku": "2019-datacenter-core-smalldisk-2008",
-            "imageVersion": "17763.1397.200820"
+            "windowsSku": "aks-2019-datacenter-core-smalldisk-2101",
+            "imageVersion": "17763.1697.210113"
         },        
         "linuxProfile": {
             "adminUsername": "azureuser",
