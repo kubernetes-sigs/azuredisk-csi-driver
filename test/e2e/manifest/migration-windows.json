@@ -7,7 +7,6 @@
             "orchestratorRelease": "1.17",
             "kubernetesConfig": {
                 "networkPlugin": "azure",
-                "containerRuntime": "containerd",
                 "cloudProviderRateLimitQPS": 6,
                 "cloudProviderRateLimitBucket": 20,
                 "controllerManagerConfig": {
