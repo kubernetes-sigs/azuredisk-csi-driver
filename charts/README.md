@@ -9,6 +9,11 @@ helm repo add azuredisk-csi-driver https://raw.githubusercontent.com/kubernetes-
 helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system
 ```
 
+## install on Azure Stack
+```console
+helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --set cloud=AzureStackCloud
+```
+
 ### install a specific version
 ```console
 helm repo add azuredisk-csi-driver https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts
