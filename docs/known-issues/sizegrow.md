@@ -90,7 +90,7 @@ Filesystem      Size  Used Avail Use% Mounted on
 
  - Workaround
  
- If disk size does not change inside agent node while its size is acutally expanded by Azure, run following command on agent node to workaround:
+ If disk size does not change inside agent node while its size is actually expanded by Azure, run following command on agent node to workaround:
  ```console
  resize2fs /dev/sdX
  ```
