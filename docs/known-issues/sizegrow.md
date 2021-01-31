@@ -18,7 +18,7 @@ allowVolumeExpansion: true
 
 **Make sure the only pod is terminated from the agent node and disk is in unattached state, otherwise may hit `VolumeResizeFailed` when edit disk PVC**
 
-Now run `kubectl edit pvc pvc-azuredisk` to change azuredisk PVC size from 6GB to 10GB
+Now run `kubectl edit pvc pvc-azuredisk` to change azuredisk PVC size(`spec.resources.requests.storage`) from 6GB to 10GB
   
 ```yaml
 # Please edit the object below. Lines beginning with a '#' will be ignored,
