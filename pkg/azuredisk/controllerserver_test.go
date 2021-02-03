@@ -25,6 +25,7 @@ import (
 	"github.com/Azure/go-autorest/autorest/date"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/stretchr/testify/assert"
+	v1 "k8s.io/api/core/v1"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-06-30/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -33,6 +34,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockcorev1"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockkubeclient"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockpersistentvolume"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/diskclient/mockdiskclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/snapshotclient/mocksnapshotclient"
@@ -1481,12 +1485,33 @@ func TestGetCapacity(t *testing.T) {
 }
 
 func TestListVolumes(t *testing.T) {
+	volume1 := v1.PersistentVolume{
+		Spec: v1.PersistentVolumeSpec{
+			PersistentVolumeSource: v1.PersistentVolumeSource{
+				CSI: &v1.CSIPersistentVolumeSource{
+					Driver:       "disk.csi.azure.com",
+					VolumeHandle: "/subscriptions/test-subscription/resourceGroups/test_resourcegroup-1/providers/Microsoft.Compute/disks/test-pv-1",
+				},
+			},
+		},
+	}
+	volume2 := v1.PersistentVolume{
+		Spec: v1.PersistentVolumeSpec{
+			PersistentVolumeSource: v1.PersistentVolumeSource{
+				CSI: &v1.CSIPersistentVolumeSource{
+					Driver:       "disk.csi.azure.com",
+					VolumeHandle: "/subscriptions/test-subscription/resourceGroups/test_resourcegroup-2/providers/Microsoft.Compute/disks/test-pv-2",
+				},
+			},
+		},
+	}
+
 	testCases := []struct {
 		name     string
 		testFunc func(t *testing.T)
 	}{
 		{
-			name: "Valid list without max_entries or starting_token",
+			name: "When no KubeClient exists, Valid list without max_entries or starting_token",
 			testFunc: func(t *testing.T) {
 				req := csi.ListVolumesRequest{}
 				d, _ := NewFakeDriver(t)
@@ -1494,8 +1519,6 @@ func TestListVolumes(t *testing.T) {
 				disk := compute.Disk{ID: &fakeVolumeID}
 				disks := []compute.Disk{}
 				disks = append(disks, disk)
-				ctrl := gomock.NewController(t)
-				defer ctrl.Finish()
 				d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().ListByResourceGroup(gomock.Any(), gomock.Any()).Return(disks, nil).AnyTimes()
 				expectedErr := error(nil)
 				listVolumesResponse, err := d.ListVolumes(context.TODO(), &req)
@@ -1508,7 +1531,7 @@ func TestListVolumes(t *testing.T) {
 			},
 		},
 		{
-			name: "Valid list with max_entries",
+			name: "When no KubeClient exists, Valid list with max_entries",
 			testFunc: func(t *testing.T) {
 				req := csi.ListVolumesRequest{
 					MaxEntries: 1,
@@ -1518,8 +1541,6 @@ func TestListVolumes(t *testing.T) {
 				disk1, disk2 := compute.Disk{ID: &fakeVolumeID}, compute.Disk{ID: &fakeVolumeID}
 				disks := []compute.Disk{}
 				disks = append(disks, disk1, disk2)
-				ctrl := gomock.NewController(t)
-				defer ctrl.Finish()
 				d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().ListByResourceGroup(gomock.Any(), gomock.Any()).Return(disks, nil).AnyTimes()
 				expectedErr := error(nil)
 				listVolumesResponse, err := d.ListVolumes(context.TODO(), &req)
@@ -1535,7 +1556,7 @@ func TestListVolumes(t *testing.T) {
 			},
 		},
 		{
-			name: "Valid list with max_entries and starting_token",
+			name: "When no KubeClient exists, Valid list with max_entries and starting_token",
 			testFunc: func(t *testing.T) {
 				req := csi.ListVolumesRequest{
 					StartingToken: "1",
@@ -1546,8 +1567,6 @@ func TestListVolumes(t *testing.T) {
 				disk1, disk2 := compute.Disk{ID: &fakeVolumeID1}, compute.Disk{ID: &fakeVolumeID12}
 				disks := []compute.Disk{}
 				disks = append(disks, disk1, disk2)
-				ctrl := gomock.NewController(t)
-				defer ctrl.Finish()
 				d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().ListByResourceGroup(gomock.Any(), gomock.Any()).Return(disks, nil).AnyTimes()
 				expectedErr := error(nil)
 				listVolumesResponse, err := d.ListVolumes(context.TODO(), &req)
@@ -1566,16 +1585,133 @@ func TestListVolumes(t *testing.T) {
 			},
 		},
 		{
-			name: "ListVolumes request with starting token but no entries in response",
+			name: "When no KubeClient exists, ListVolumes request with starting token but no entries in response",
 			testFunc: func(t *testing.T) {
 				req := csi.ListVolumesRequest{
 					StartingToken: "1",
 				}
 				d, _ := NewFakeDriver(t)
 				disks := []compute.Disk{}
-				ctrl := gomock.NewController(t)
-				defer ctrl.Finish()
 				d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().ListByResourceGroup(gomock.Any(), gomock.Any()).Return(disks, nil).AnyTimes()
+				expectedErr := status.Error(codes.FailedPrecondition, "ListVolumes starting token(1) on rg(rg) is greater than total number of volumes")
+				_, err := d.ListVolumes(context.TODO(), &req)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "When no KubeClient exists, ListVolumes list resource error",
+			testFunc: func(t *testing.T) {
+				req := csi.ListVolumesRequest{
+					StartingToken: "1",
+				}
+				d, _ := NewFakeDriver(t)
+				disks := []compute.Disk{}
+				rerr := &retry.Error{
+					RawError: fmt.Errorf("test"),
+				}
+				d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().ListByResourceGroup(gomock.Any(), gomock.Any()).Return(disks, rerr).AnyTimes()
+				expectedErr := status.Error(codes.Internal, "ListVolumes on rg(rg) failed with error: Retriable: false, RetryAfter: 0s, HTTPStatusCode: 0, RawError: test")
+				_, err := d.ListVolumes(context.TODO(), &req)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "When KubeClient exists, Valid list without max_entries or starting_token",
+			testFunc: func(t *testing.T) {
+				req := csi.ListVolumesRequest{}
+				fakeVolumeID := "/subscriptions/test-subscription/resourceGroups/test_resourcegroup-1/providers/Microsoft.Compute/disks/test-pv-1"
+				d := getFakeDriverWithKubeClient(t)
+				pvList := v1.PersistentVolumeList{
+					Items: []v1.PersistentVolume{volume1},
+				}
+				d.cloud.KubeClient.CoreV1().PersistentVolumes().(*mockpersistentvolume.MockInterface).EXPECT().List(gomock.Any(), gomock.Any()).Return(&pvList, nil)
+				disk1 := compute.Disk{ID: &fakeVolumeID}
+				d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().ListByResourceGroup(gomock.Any(), gomock.Any()).Return([]compute.Disk{disk1}, nil)
+				expectedErr := error(nil)
+				listVolumesResponse, err := d.ListVolumes(context.TODO(), &req)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+				if listVolumesResponse.NextToken != "" {
+					t.Errorf("actualNextToken: (%v), expectedNextToken: (%v)", listVolumesResponse.NextToken, "")
+				}
+			},
+		},
+		{
+			name: "When KubeClient exists, Valid list with max_entries",
+			testFunc: func(t *testing.T) {
+				req := csi.ListVolumesRequest{
+					MaxEntries: 1,
+				}
+				d := getFakeDriverWithKubeClient(t)
+				fakeVolumeID := "/subscriptions/test-subscription/resourceGroups/test_resourcegroup-1/providers/Microsoft.Compute/disks/test-pv-1"
+				disk1, disk2 := compute.Disk{ID: &fakeVolumeID}, compute.Disk{ID: &fakeVolumeID}
+				pvList := v1.PersistentVolumeList{
+					Items: []v1.PersistentVolume{volume1, volume2},
+				}
+				d.cloud.KubeClient.CoreV1().PersistentVolumes().(*mockpersistentvolume.MockInterface).EXPECT().List(gomock.Any(), gomock.Any()).Return(&pvList, nil)
+				d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().ListByResourceGroup(gomock.Any(), gomock.Any()).Return([]compute.Disk{disk1}, nil)
+				d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().ListByResourceGroup(gomock.Any(), gomock.Any()).Return([]compute.Disk{disk2}, nil)
+				expectedErr := error(nil)
+				listVolumesResponse, err := d.ListVolumes(context.TODO(), &req)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+				if len(listVolumesResponse.Entries) != int(req.MaxEntries) {
+					t.Errorf("Actual number of entries: (%v), Expected number of entries: (%v)", len(listVolumesResponse.Entries), req.MaxEntries)
+				}
+				if listVolumesResponse.NextToken != "1" {
+					t.Errorf("actualNextToken: (%v), expectedNextToken: (%v)", listVolumesResponse.NextToken, "1")
+				}
+			},
+		},
+		{
+			name: "When KubeClient exists, Valid list with max_entries and starting_token",
+			testFunc: func(t *testing.T) {
+				req := csi.ListVolumesRequest{
+					StartingToken: "1",
+					MaxEntries:    1,
+				}
+				d := getFakeDriverWithKubeClient(t)
+				pvList := v1.PersistentVolumeList{
+					Items: []v1.PersistentVolume{volume1, volume2},
+				}
+				fakeVolumeID11, fakeVolumeID12 := "/subscriptions/test-subscription/resourceGroups/test_resourcegroup-1/providers/Microsoft.Compute/disks/test-pv-1", "/subscriptions/test-subscription/resourceGroups/test_resourcegroup-2/providers/Microsoft.Compute/disks/test-pv-2"
+				disk1, disk2 := compute.Disk{ID: &fakeVolumeID11}, compute.Disk{ID: &fakeVolumeID12}
+				d.cloud.KubeClient.CoreV1().PersistentVolumes().(*mockpersistentvolume.MockInterface).EXPECT().List(gomock.Any(), gomock.Any()).Return(&pvList, nil)
+				d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().ListByResourceGroup(gomock.Any(), gomock.Any()).Return([]compute.Disk{disk1}, nil)
+				d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().ListByResourceGroup(gomock.Any(), gomock.Any()).Return([]compute.Disk{disk2}, nil)
+				expectedErr := error(nil)
+				listVolumesResponse, err := d.ListVolumes(context.TODO(), &req)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+				if len(listVolumesResponse.Entries) != int(req.MaxEntries) {
+					t.Errorf("Actual number of entries: (%v), Expected number of entries: (%v)", len(listVolumesResponse.Entries), req.MaxEntries)
+				}
+				if listVolumesResponse.NextToken != "" {
+					t.Errorf("actualNextToken: (%v), expectedNextToken: (%v)", listVolumesResponse.NextToken, "")
+				}
+				if listVolumesResponse.Entries[0].Volume.VolumeId != fakeVolumeID12 {
+					t.Errorf("actualVolumeId: (%v), expectedVolumeId: (%v)", listVolumesResponse.Entries[0].Volume.VolumeId, fakeVolumeID12)
+				}
+			},
+		},
+		{
+			name: "When KubeClient exists, ListVolumes request with starting token but no entries in response",
+			testFunc: func(t *testing.T) {
+				req := csi.ListVolumesRequest{
+					StartingToken: "1",
+				}
+				d := getFakeDriverWithKubeClient(t)
+				pvList := v1.PersistentVolumeList{
+					Items: []v1.PersistentVolume{},
+				}
+				d.cloud.KubeClient.CoreV1().PersistentVolumes().(*mockpersistentvolume.MockInterface).EXPECT().List(gomock.Any(), gomock.Any()).Return(&pvList, nil)
 				expectedErr := status.Error(codes.Aborted, "ListVolumes starting token(1) on rg(rg) is greater than total number of volumes")
 				_, err := d.ListVolumes(context.TODO(), &req)
 				if !reflect.DeepEqual(err, expectedErr) {
@@ -1584,20 +1720,15 @@ func TestListVolumes(t *testing.T) {
 			},
 		},
 		{
-			name: "ListVolumes list resource error",
+			name: "When KubeClient exists, ListVolumes list pv error",
 			testFunc: func(t *testing.T) {
 				req := csi.ListVolumesRequest{
 					StartingToken: "1",
 				}
-				d, _ := NewFakeDriver(t)
-				disks := []compute.Disk{}
-				ctrl := gomock.NewController(t)
-				defer ctrl.Finish()
-				rerr := &retry.Error{
-					RawError: fmt.Errorf("test"),
-				}
-				d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().ListByResourceGroup(gomock.Any(), gomock.Any()).Return(disks, rerr).AnyTimes()
-				expectedErr := status.Error(codes.Internal, "ListVolumes on rg(rg) failed with error: Retriable: false, RetryAfter: 0s, HTTPStatusCode: 0, RawError: test")
+				d := getFakeDriverWithKubeClient(t)
+				rerr := fmt.Errorf("test")
+				d.cloud.KubeClient.CoreV1().PersistentVolumes().(*mockpersistentvolume.MockInterface).EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, rerr)
+				expectedErr := status.Error(codes.Internal, "ListVolumes failed while fetching PersistentVolumes List with error: test")
 				_, err := d.ListVolumes(context.TODO(), &req)
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
@@ -1885,4 +2016,16 @@ func TestGetSourceDiskSize(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, tc.testFunc)
 	}
+}
+
+func getFakeDriverWithKubeClient(t *testing.T) *Driver {
+	d, _ := NewFakeDriver(t)
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	corev1 := mockcorev1.NewMockInterface(ctrl)
+	persistentvolume := mockpersistentvolume.NewMockInterface(ctrl)
+	d.cloud.KubeClient = mockkubeclient.NewMockInterface(ctrl)
+	d.cloud.KubeClient.(*mockkubeclient.MockInterface).EXPECT().CoreV1().Return(corev1).AnyTimes()
+	d.cloud.KubeClient.CoreV1().(*mockcorev1.MockInterface).EXPECT().PersistentVolumes().Return(persistentvolume).AnyTimes()
+	return d
 }

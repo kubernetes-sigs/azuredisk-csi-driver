@@ -63,6 +63,9 @@ echo "Got volume id: $volumeid"
 
 "$CSC_BIN" controller validate-volume-capabilities --endpoint "$endpoint" --cap 1,block "$volumeid"
 
+echo 'Expand volume test'
+"$CSC_BIN" controller expand-volume --endpoint "$endpoint" --req-bytes 21474836480 --cap 1,block "$volumeid"
+
 echo 'Attach volume test:'
 "$CSC_BIN" controller publish --endpoint "$endpoint" --node-id "$node" --cap 1,block "$volumeid"
 sleep 20
