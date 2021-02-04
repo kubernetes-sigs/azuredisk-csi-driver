@@ -743,7 +743,7 @@ func TestNodeExpandVolume(t *testing.T) {
 				VolumeId:          "test",
 				StagingTargetPath: "test",
 			},
-			expectedErr: blockSizeErr,
+			expectedErr: devicePathErr,
 		},
 	}
 	for _, test := range tests {
