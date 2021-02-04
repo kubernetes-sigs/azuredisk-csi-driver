@@ -443,21 +443,6 @@ func (d *Driver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolume
 		return &csi.NodeExpandVolumeResponse{}, nil
 	}
 
-	// Hopefully devicePath was passed from req
-	// In kubernetes 1.19 above, it will be passed by kubelet.
-	devicePath := req.GetStagingTargetPath()
-	if devicePath == "" {
-		output, err := d.getDevicePathWithMountPath(volumePath)
-		if err != nil {
-			return nil, status.Errorf(codes.NotFound, err.Error())
-		}
-
-		devicePath = strings.TrimSpace(string(output))
-		if len(devicePath) == 0 {
-			return nil, status.Errorf(codes.Internal, "Could not get valid device for mount path: %q", volumePath)
-		}
-	}
-
 	volumeCapability := req.GetVolumeCapability()
 	if volumeCapability != nil {
 		// VolumeCapability is optional, if specified, validate it
@@ -472,6 +457,16 @@ func (d *Driver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolume
 			klog.Warningf("NodeExpandVolume succeeded on %v to %s, capability is block but block check failed to identify it", volumeID, volumePath)
 			return &csi.NodeExpandVolumeResponse{}, nil
 		}
+	}
+
+	output, err := d.getDevicePathWithMountPath(volumePath)
+	if err != nil {
+		return nil, status.Errorf(codes.NotFound, err.Error())
+	}
+
+	devicePath := strings.TrimSpace(string(output))
+	if len(devicePath) == 0 {
+		return nil, status.Errorf(codes.Internal, "Could not get valid device for mount path: %q", volumePath)
 	}
 
 	resizer := resizefs.NewResizeFs(d.mounter)
