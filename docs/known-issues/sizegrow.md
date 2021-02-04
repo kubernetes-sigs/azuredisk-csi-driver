@@ -16,9 +16,9 @@ allowVolumeExpansion: true
    - option#1: change the replica count to 0, this will terminate the pod and detach the disk
    - option#2: cordon all nodes and then delete the original pod, this will make the pod in pending state
 
-**Make sure the only pod is terminated from the agent node, otherwise may hit `VolumeResizeFailed` when edit disk PVC**
+**Make sure the only pod is terminated from the agent node and disk is in unattached state, otherwise may hit `VolumeResizeFailed` when edit disk PVC**
 
-Now run `kubectl edit pvc pvc-azuredisk` to change azuredisk PVC size from 6GB to 10GB
+Now run `kubectl edit pvc pvc-azuredisk` to change azuredisk PVC size(`spec.resources.requests.storage`) from 6GB to 10GB
   
 ```yaml
 # Please edit the object below. Lines beginning with a '#' will be ignored,
@@ -87,3 +87,10 @@ Filesystem      Size  Used Avail Use% Mounted on
 /dev/sdf        9.8G   16M  9.3G   1% /mnt/disk
 ...
 ```
+
+ - Workaround
+ 
+ If disk size does not change inside agent node while its size is actually expanded by Azure, run following command on agent node to workaround:
+ ```console
+ resize2fs /dev/sdX
+ ```

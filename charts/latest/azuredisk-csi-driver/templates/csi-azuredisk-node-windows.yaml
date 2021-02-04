@@ -121,8 +121,6 @@ spec:
               value: C:\k\azurestackcloud.json
             {{- end }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          securityContext:
-            privileged: true
           volumeMounts:
             - name: kubelet-dir
               mountPath: "C:\\var\\lib\\kubelet"

@@ -32,9 +32,13 @@ import (
 
 const (
 	nodeid = "sanity-test-node"
+	vmType = "standard"
 )
 
 func TestSanity(t *testing.T) {
+	// Set necessary env vars for creating azure credential file
+	os.Setenv("AZURE_VM_TYPE", vmType)
+
 	creds, err := credentials.CreateAzureCredentialFile()
 	defer func() {
 		err := credentials.DeleteAzureCredentialFile()

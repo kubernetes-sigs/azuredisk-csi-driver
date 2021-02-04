@@ -214,6 +214,50 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			}
 			test.Run(cs, ns)
 		})
+
+		ginkgo.It("should succeed when reattaching a disk to a new node on DanglingAttachError [disk.csi.azure.com]", func() {
+			skipIfUsingInTreeVolumePlugin()
+			skipIfOnAzureStackCloud()
+			req := makeCreateVolumeReq("reattach-disk-multiple-nodes", defaultDiskSize)
+			req.Parameters = map[string]string{
+				"skuName":     "Premium_LRS",
+				"cachingMode": "None",
+			}
+			req.VolumeCapabilities[0].AccessType = &csi.VolumeCapability_Block{
+				Block: &csi.VolumeCapability_BlockVolume{},
+			}
+			resp, err := azurediskDriver.CreateVolume(context.Background(), req)
+			if err != nil {
+				ginkgo.Fail(fmt.Sprintf("create volume error: %v", err))
+			}
+			volumeID = resp.Volume.VolumeId
+			ginkgo.By(fmt.Sprintf("Successfully provisioned a shared disk volume: %q\n", volumeID))
+
+			diskSize := fmt.Sprintf("%dGi", defaultDiskSize)
+
+			pod := testsuites.PodDetails{
+				Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
+				Volumes: []testsuites.VolumeDetails{
+					{
+						VolumeID:  volumeID,
+						ClaimSize: diskSize,
+						VolumeMount: testsuites.VolumeMountDetails{
+							NameGenerate:      "test-volume-",
+							MountPathGenerate: "/mnt/test-",
+						},
+					},
+				},
+				IsWindows: isWindowsCluster,
+			}
+
+			test := testsuites.PreProvisionedDanglingAttachVolumeTest{
+				CSIDriver:       testDriver,
+				AzureDiskDriver: azurediskDriver,
+				Pod:             pod,
+				VolumeContext:   resp.Volume.VolumeContext,
+			}
+			test.Run(cs, ns)
+		})
 	})
 })
 

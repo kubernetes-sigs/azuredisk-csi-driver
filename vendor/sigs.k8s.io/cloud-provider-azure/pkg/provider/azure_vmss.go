@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package azure
+package provider
 
 import (
 	"errors"
@@ -25,7 +25,7 @@ import (
 	"sync"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-06-30/compute"
-	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2019-06-01/network"
+	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2020-07-01/network"
 	"github.com/Azure/go-autorest/autorest/to"
 
 	v1 "k8s.io/api/core/v1"
@@ -1421,10 +1421,15 @@ func (ss *scaleSet) ensureBackendPoolDeletedFromVMSS(service *v1.Service, backen
 		vmssNamesMap[vmSetName] = true
 	}
 
+	vmssUpdaters := make([]func() error, 0, len(vmssNamesMap))
+	errors := make([]error, 0, len(vmssNamesMap))
 	for vmssName := range vmssNamesMap {
+		vmssName := vmssName
 		vmss, err := ss.getVMSS(vmssName, azcache.CacheReadTypeDefault)
 		if err != nil {
-			return err
+			klog.Errorf("ensureBackendPoolDeletedFromVMSS: failed to get VMSS %s: %v", vmssName, err)
+			errors = append(errors, err)
+			continue
 		}
 
 		// When vmss is being deleted, CreateOrUpdate API would report "the vmss is being deleted" error.
@@ -1440,11 +1445,15 @@ func (ss *scaleSet) ensureBackendPoolDeletedFromVMSS(service *v1.Service, backen
 		vmssNIC := *vmss.VirtualMachineProfile.NetworkProfile.NetworkInterfaceConfigurations
 		primaryNIC, err := ss.getPrimaryNetworkInterfaceConfigurationForScaleSet(vmssNIC, vmssName)
 		if err != nil {
-			return err
+			klog.Errorf("ensureBackendPoolDeletedFromVMSS: failed to get the primary network interface config of the VMSS %s: %v", vmssName, err)
+			errors = append(errors, err)
+			continue
 		}
 		primaryIPConfig, err := getPrimaryIPConfigFromVMSSNetworkConfig(primaryNIC)
 		if err != nil {
-			return err
+			klog.Errorf("ensureBackendPoolDeletedFromVMSS: failed to the primary IP config from the VMSS %s's network config : %v", vmssName, err)
+			errors = append(errors, err)
+			continue
 		}
 		loadBalancerBackendAddressPools := []compute.SubResource{}
 		if primaryIPConfig.LoadBalancerBackendAddressPools != nil {
@@ -1465,26 +1474,39 @@ func (ss *scaleSet) ensureBackendPoolDeletedFromVMSS(service *v1.Service, backen
 			continue
 		}
 
-		// Compose a new vmss with added backendPoolID.
-		primaryIPConfig.LoadBalancerBackendAddressPools = &newBackendPools
-		newVMSS := compute.VirtualMachineScaleSet{
-			Sku:      vmss.Sku,
-			Location: vmss.Location,
-			VirtualMachineScaleSetProperties: &compute.VirtualMachineScaleSetProperties{
-				VirtualMachineProfile: &compute.VirtualMachineScaleSetVMProfile{
-					NetworkProfile: &compute.VirtualMachineScaleSetNetworkProfile{
-						NetworkInterfaceConfigurations: &vmssNIC,
+		vmssUpdaters = append(vmssUpdaters, func() error {
+			// Compose a new vmss with added backendPoolID.
+			primaryIPConfig.LoadBalancerBackendAddressPools = &newBackendPools
+			newVMSS := compute.VirtualMachineScaleSet{
+				Sku:      vmss.Sku,
+				Location: vmss.Location,
+				VirtualMachineScaleSetProperties: &compute.VirtualMachineScaleSetProperties{
+					VirtualMachineProfile: &compute.VirtualMachineScaleSetVMProfile{
+						NetworkProfile: &compute.VirtualMachineScaleSetNetworkProfile{
+							NetworkInterfaceConfigurations: &vmssNIC,
+						},
 					},
 				},
-			},
-		}
+			}
 
-		klog.V(2).Infof("ensureBackendPoolDeletedFromVMSS begins to update vmss(%s) with backendPoolID %s", vmssName, backendPoolID)
-		rerr := ss.CreateOrUpdateVMSS(ss.ResourceGroup, vmssName, newVMSS)
-		if rerr != nil {
-			klog.Errorf("ensureBackendPoolDeletedFromVMSS CreateOrUpdateVMSS(%s) with new backendPoolID %s, err: %v", vmssName, backendPoolID, err)
-			return rerr.Error()
-		}
+			klog.V(2).Infof("ensureBackendPoolDeletedFromVMSS begins to update vmss(%s) with backendPoolID %s", vmssName, backendPoolID)
+			rerr := ss.CreateOrUpdateVMSS(ss.ResourceGroup, vmssName, newVMSS)
+			if rerr != nil {
+				klog.Errorf("ensureBackendPoolDeletedFromVMSS CreateOrUpdateVMSS(%s) with new backendPoolID %s, err: %v", vmssName, backendPoolID, rerr)
+				return rerr.Error()
+			}
+
+			return nil
+		})
+	}
+
+	errs := utilerrors.AggregateGoroutines(vmssUpdaters...)
+	if errs != nil {
+		return utilerrors.Flatten(errs)
+	}
+	// Fail if there are other errors.
+	if len(errors) > 0 {
+		return utilerrors.Flatten(utilerrors.NewAggregate(errors))
 	}
 
 	return nil

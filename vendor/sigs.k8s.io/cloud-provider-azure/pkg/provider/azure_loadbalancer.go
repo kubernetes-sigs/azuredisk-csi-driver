@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package azure
+package provider
 
 import (
 	"context"
@@ -25,7 +25,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2019-06-01/network"
+	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2020-07-01/network"
 	"github.com/Azure/go-autorest/autorest/to"
 
 	v1 "k8s.io/api/core/v1"
@@ -89,6 +89,10 @@ const (
 	// to specify a list of allowed service tags separated by comma
 	// Refer https://docs.microsoft.com/en-us/azure/virtual-network/security-overview#service-tags for all supported service tags.
 	ServiceAnnotationAllowedServiceTag = "service.beta.kubernetes.io/azure-allowed-service-tags"
+
+	// ServiceAnnotationDenyAllExceptLoadBalancerSourceRanges  denies all traffic to the load balancer except those
+	// within the service.Spec.LoadBalancerSourceRanges. Ref: https://github.com/kubernetes-sigs/cloud-provider-azure/issues/374.
+	ServiceAnnotationDenyAllExceptLoadBalancerSourceRanges = "service.beta.kubernetes.io/azure-deny-all-except-load-balancer-source-ranges"
 
 	// ServiceAnnotationLoadBalancerIdleTimeout is the annotation used on the service
 	// to specify the idle timeout for connections on the load balancer in minutes.
@@ -1552,7 +1556,7 @@ func (az *Cloud) reconcileLoadBalancer(clusterName string, service *v1.Service, 
 		if lb.FrontendIPConfigurations == nil || len(*lb.FrontendIPConfigurations) == 0 {
 			err := az.cleanOrphanedLoadBalancer(lb, service, clusterName)
 			if err != nil {
-				klog.V(2).Infof("reconcileLoadBalancer for service(%s): lb(%s) - failed to cleanOrphanedLoadBalancer: %v", serviceName, lbName)
+				klog.V(2).Infof("reconcileLoadBalancer for service(%s): lb(%s) - failed to cleanOrphanedLoadBalancer: %v", serviceName, lbName, err)
 				return nil, err
 			}
 		} else {
@@ -1907,6 +1911,34 @@ func (az *Cloud) reconcileSecurityGroup(clusterName string, service *v1.Service,
 						Direction:                network.SecurityRuleDirectionInbound,
 					},
 				}
+			}
+		}
+
+		shouldAddDenyRule := false
+		if len(sourceRanges) > 0 && !servicehelpers.IsAllowAll(sourceRanges) {
+			if v, ok := service.Annotations[ServiceAnnotationDenyAllExceptLoadBalancerSourceRanges]; ok && strings.EqualFold(v, "true") {
+				shouldAddDenyRule = true
+			}
+		}
+		if shouldAddDenyRule {
+			for _, port := range ports {
+				_, securityProto, _, err := getProtocolsFromKubernetesProtocol(port.Protocol)
+				if err != nil {
+					return nil, err
+				}
+				securityRuleName := az.getSecurityRuleName(service, port, "deny_all")
+				expectedSecurityRules = append(expectedSecurityRules, network.SecurityRule{
+					Name: to.StringPtr(securityRuleName),
+					SecurityRulePropertiesFormat: &network.SecurityRulePropertiesFormat{
+						Protocol:                 *securityProto,
+						SourcePortRange:          to.StringPtr("*"),
+						DestinationPortRange:     to.StringPtr(strconv.Itoa(int(port.Port))),
+						SourceAddressPrefix:      to.StringPtr("*"),
+						DestinationAddressPrefix: to.StringPtr(destinationIPAddress),
+						Access:                   network.SecurityRuleAccessDeny,
+						Direction:                network.SecurityRuleDirectionInbound,
+					},
+				})
 			}
 		}
 	}

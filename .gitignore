@@ -71,6 +71,3 @@ cscope.*
 
 # golangci-lint
 /bin/*
-
-# helm packaged chart
-/charts/*/*.tgz

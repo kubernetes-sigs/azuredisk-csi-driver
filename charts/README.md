@@ -1,48 +1,38 @@
-# Installation with Helm 3
-
-Quick start instructions for the setup and configuration of azuredisk CSI driver using Helm.
+# Install CSI driver with Helm 3
 
 ## Prerequisites
-
  - [install Helm](https://helm.sh/docs/intro/quickstart/#install-helm)
 
-## Install latest AzureDisk CSI Driver via `helm install`
-
+## install latest version
 ```console
-$ cd $GOPATH/src/sigs.k8s.io/azuredisk-csi-driver/charts/latest
-$ helm package azuredisk-csi-driver
-$ helm install azuredisk-csi-driver azuredisk-csi-driver-latest.tgz --namespace kube-system
-```
-  
-## Install latest AzureDisk CSI Driver on Azure Stack via `helm install`
-
-```console
-$ cd $GOPATH/src/sigs.k8s.io/azuredisk-csi-driver/charts/latest
-$ helm package azuredisk-csi-driver
-$ helm install azuredisk-csi-driver azuredisk-csi-driver-latest.tgz --namespace kube-system --set cloud=AzureStackCloud
+helm repo add azuredisk-csi-driver https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts
+helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system
 ```
 
-## Install CSI Driver released version using Helm repository
-
+## install on Azure Stack
 ```console
-$ helm repo add azuredisk-csi-driver https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts
-$ helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v0.10.0
-```    
-
-### Search for different chart versions
-```console
-$ helm search repo -l azuredisk-csi-driver/
-```  
-
-## Uninstall
-
-```console
-$ helm uninstall azuredisk-csi-driver -n kube-system
+helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --set cloud=AzureStackCloud
 ```
 
-## Latest Helm Chart Configuration
+### install a specific version
+```console
+helm repo add azuredisk-csi-driver https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts
+helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v0.10.0
+```
 
-The following table lists the configurable parameters of the latest Azure Disk CSI Driver chart and their default values.
+### search for all available chart versions
+```console
+helm search repo -l azuredisk-csi-driver
+```
+
+## uninstall CSI driver
+```console
+helm uninstall azuredisk-csi-driver -n kube-system
+```
+
+## latest chart configuration
+
+The following table lists the configurable parameters of the latest Azure Disk CSI Driver chart and default values.
 
 | Parameter                                         | Description                                                | Default                                                      |
 | ------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------ |
@@ -93,6 +83,6 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `kubelet.windowsPath`                             | configure the kubelet path for Windows node                | `'C:\var\lib\kubelet'`                                            |
 | `cloud`                                           | the cloud environment the driver is running on             | AzurePublicCloud                                                  |
 
-## Troubleshooting
+## troubleshooting
  - Add `--wait -v=5 --debug` in `helm install` command to get detailed error
  - Use `kubectl describe` to get more info
