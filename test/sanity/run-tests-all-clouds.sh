@@ -31,4 +31,4 @@ function install_csi_sanity_bin {
 if [[ -z "$(command -v csi-sanity)" ]]; then
 	install_csi_sanity_bin
 fi
-test/sanity/run-test.sh "$nodeid"
+test/sanity/run-test.sh "$nodeid" $*

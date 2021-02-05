@@ -42,7 +42,11 @@ fi
 echo "Begin to run integration test on $cloud..."
 
 # Run CSI driver as a background service
-_output/azurediskplugin --endpoint "$endpoint" --nodeid "$node" -v=5 &
+if [[ $# -lt 4 || "$4" != "v2" ]]; then
+  _output/azurediskplugin --endpoint "$endpoint" --nodeid "$node" -v=5 &
+else
+  _output/azurediskpluginv2 --endpoint "$endpoint" --nodeid "$node" -v=5 --temp-use-driver-v2 &
+fi
 trap cleanup EXIT
 
 if [[ "$cloud" == 'AzureChinaCloud' ]]; then

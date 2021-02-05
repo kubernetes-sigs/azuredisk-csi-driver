@@ -18,6 +18,7 @@ package integration
 
 import (
 	"context"
+	"flag"
 	"log"
 	"os"
 	"os/exec"
@@ -33,6 +34,8 @@ import (
 const (
 	nodeid = "integration-test-node"
 )
+
+var useDriverV2 = flag.Bool("temp-use-driver-v2", false, "A temporary flag to enable early test and development of Azure Disk CSI Driver V2. This will be removed in the future.")
 
 func TestIntegrationOnAzurePublicCloud(t *testing.T) {
 	// Test on AzurePublicCloud
@@ -82,7 +85,12 @@ func TestIntegrationOnAzurePublicCloud(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, strings.HasSuffix(cwd, "azuredisk-csi-driver"))
 
-	cmd := exec.Command("./test/integration/run-tests-all-clouds.sh", creds.Cloud)
+	args := []string{creds.Cloud}
+	if *useDriverV2 {
+		args = append(args, "v2")
+	}
+
+	cmd := exec.Command("./test/integration/run-tests-all-clouds.sh", args...)
 	cmd.Dir = cwd
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

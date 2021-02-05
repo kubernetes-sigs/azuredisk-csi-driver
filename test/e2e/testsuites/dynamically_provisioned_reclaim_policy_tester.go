@@ -30,7 +30,7 @@ import (
 type DynamicallyProvisionedReclaimPolicyTest struct {
 	CSIDriver              driver.DynamicPVTestDriver
 	Volumes                []VolumeDetails
-	Azuredisk              *azuredisk.Driver
+	Azuredisk              azuredisk.CSIDriver
 	StorageClassParameters map[string]string
 }
 

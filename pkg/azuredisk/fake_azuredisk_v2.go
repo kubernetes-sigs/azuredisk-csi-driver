@@ -1,3 +1,5 @@
+// +build azurediskv2
+
 /*
 Copyright 2020 The Kubernetes Authors.
 
@@ -17,70 +19,34 @@ limitations under the License.
 package azuredisk
 
 import (
-	"context"
 	"testing"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
-	"k8s.io/mount-utils"
-
+	"k8s.io/klog/v2"
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
-	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
-const (
-	fakeDriverName    = "fake.disk.csi.azure.com"
-	fakeNodeID        = "fakeNodeID"
-	fakeDriverVersion = "fakeDriverVersion"
-)
+// NewFakeDriver returns a driver implementation suitable for use in unit tests.
+func NewFakeDriver(t *testing.T) (FakeDriver, error) {
+	var d FakeDriver
+	var err error
 
-var (
-	stdVolumeCapability = &csi.VolumeCapability{
-		AccessType: &csi.VolumeCapability_Mount{
-			Mount: &csi.VolumeCapability_MountVolume{},
-		},
-		AccessMode: &csi.VolumeCapability_AccessMode{
-			Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
-		},
+	if !*useDriverV2 {
+		d, err = newFakeDriverV1(t)
+	} else {
+		d, err = newFakeDriverV2(t)
 	}
-	stdVolumeCapabilities = []*csi.VolumeCapability{
-		stdVolumeCapability,
-	}
-	stdCapacityRange = &csi.CapacityRange{
-		RequiredBytes: volumehelper.GiBToBytes(10),
-		LimitBytes:    volumehelper.GiBToBytes(15),
-	}
-)
 
-// FakeDriver defines an interface unit tests use to test either the v1 or v2 implementation of the Azure Disk CSI Driver.
-type FakeDriver interface {
-	CSIDriver
-
-	GetSourceDiskSize(ctx context.Context, resourceGroup, diskName string, curDepth, maxDepth int) (*int32, error)
-
-	setControllerCapabilities([]*csi.ControllerServiceCapability)
-	setNodeCapabilities([]*csi.NodeServiceCapability)
-	setName(string)
-	setNodeID(string)
-	setVersion(version string)
-	getCloud() *provider.Cloud
-	setCloud(*provider.Cloud)
-	getMounter() *mount.SafeFormatAndMount
-	setMounter(*mount.SafeFormatAndMount)
-
-	checkDiskCapacity(context.Context, string, string, int) (bool, error)
-	getSnapshotInfo(string) (string, string, error)
-	getSnapshotByID(context.Context, string, string, string) (*csi.Snapshot, error)
-	ensureMountPoint(string) (bool, error)
-	ensureBlockTargetFile(string) error
-	getDevicePathWithLUN(lunStr string) (string, error)
+	return d, err
 }
 
-func newFakeDriverV1(t *testing.T) (*Driver, error) {
-	driver := Driver{}
+func newFakeDriverV2(t *testing.T) (*DriverV2, error) {
+	klog.Warning("Using DriverV2")
+	driver := DriverV2{}
 	driver.Name = fakeDriverName
 	driver.Version = fakeDriverVersion
 	driver.NodeID = fakeNodeID
@@ -116,21 +82,4 @@ func newFakeDriverV1(t *testing.T) (*Driver, error) {
 	})
 
 	return &driver, nil
-}
-
-func createVolumeCapabilities(accessMode csi.VolumeCapability_AccessMode_Mode) []*csi.VolumeCapability {
-	return []*csi.VolumeCapability{
-		createVolumeCapability(accessMode),
-	}
-}
-
-func createVolumeCapability(accessMode csi.VolumeCapability_AccessMode_Mode) *csi.VolumeCapability {
-	return &csi.VolumeCapability{
-		AccessType: &csi.VolumeCapability_Mount{
-			Mount: &csi.VolumeCapability_MountVolume{},
-		},
-		AccessMode: &csi.VolumeCapability_AccessMode{
-			Mode: accessMode,
-		},
-	}
 }

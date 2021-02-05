@@ -51,7 +51,7 @@ const (
 )
 
 var (
-	azurediskDriver           *azuredisk.Driver
+	azurediskDriver           azuredisk.CSIDriver
 	isUsingInTreeVolumePlugin = os.Getenv(driver.AzureDriverNameVar) == inTreeStorageClass
 	isTestingMigration        = os.Getenv(testMigrationEnvVar) != ""
 	isWindowsCluster          = os.Getenv(testWindowsEnvVar) != ""

@@ -34,7 +34,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 )
 
@@ -70,7 +69,7 @@ func TestNodeGetCapabilities(t *testing.T) {
 	capList := []*csi.NodeServiceCapability{{
 		Type: capType,
 	}}
-	d.NSCap = capList
+	d.setNodeCapabilities(capList)
 	// Test valid request
 	req := csi.NodeGetCapabilitiesRequest{}
 	resp, err := d.NodeGetCapabilities(context.Background(), &req)
@@ -199,7 +198,7 @@ func TestEnsureMountPoint(t *testing.T) {
 	d, _ := NewFakeDriver(t)
 	fakeMounter, err := NewFakeMounter()
 	assert.NoError(t, err)
-	d.mounter = fakeMounter
+	d.setMounter(fakeMounter)
 
 	for _, test := range tests {
 		if !(runtime.GOOS == "windows" && test.skipOnWindows) {
@@ -344,7 +343,10 @@ func TestNodeStageVolume(t *testing.T) {
 	_ = makeDir(sourceTest)
 	_ = makeDir(targetTest)
 	d, _ := NewFakeDriver(t)
-	d.mounter, _ = mounter.NewSafeMounter()
+	fakeMounter, err := NewFakeMounter()
+	assert.NoError(t, err)
+	d.setMounter(fakeMounter)
+
 	for _, test := range tests {
 		if !(test.skipOnDarwin && runtime.GOOS == "darwin") {
 			_, err := d.NodeStageVolume(context.Background(), &test.req)
@@ -357,7 +359,7 @@ func TestNodeStageVolume(t *testing.T) {
 	}
 
 	// Clean up
-	err := os.RemoveAll(sourceTest)
+	err = os.RemoveAll(sourceTest)
 	assert.NoError(t, err)
 	err = os.RemoveAll(targetTest)
 	assert.NoError(t, err)
@@ -412,7 +414,7 @@ func TestNodeUnstageVolume(t *testing.T) {
 	d, _ := NewFakeDriver(t)
 	fakeMounter, err := NewFakeMounter()
 	assert.NoError(t, err)
-	d.mounter = fakeMounter
+	d.setMounter(fakeMounter)
 
 	for _, test := range tests {
 		if !(runtime.GOOS == "windows" && test.skipOnWindows) &&
@@ -569,7 +571,7 @@ func TestNodePublishVolume(t *testing.T) {
 	assert.NoError(t, err)
 	fakeMounter, err := NewFakeMounter()
 	assert.NoError(t, err)
-	d.mounter = fakeMounter
+	d.setMounter(fakeMounter)
 
 	for _, test := range tests {
 		if !(test.skipOnWindows && runtime.GOOS == "windows") {
@@ -635,7 +637,7 @@ func TestNodeUnpublishVolume(t *testing.T) {
 	d, _ := NewFakeDriver(t)
 	fakeMounter, err := NewFakeMounter()
 	assert.NoError(t, err)
-	d.mounter = fakeMounter
+	d.setMounter(fakeMounter)
 
 	for _, test := range tests {
 		if !(test.skipOnWindows && runtime.GOOS == "windows") &&
@@ -799,7 +801,7 @@ func TestGetBlockSizeBytes(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		_, err := getBlockSizeBytes(test.req, d.mounter)
+		_, err := getBlockSizeBytes(test.req, d.getMounter())
 		if !testutil.AssertError(&test.expectedErr, err) {
 			t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr.Error())
 		}
@@ -934,7 +936,7 @@ func TestGetDevicePathWithMountPath(t *testing.T) {
 
 	for _, test := range tests {
 		if !(test.skipOnDarwin && runtime.GOOS == "darwin") && !(test.skipOnWindows && runtime.GOOS == "windows") {
-			_, err := getDevicePathWithMountPath(test.req, d.mounter)
+			_, err := getDevicePathWithMountPath(test.req, d.getMounter())
 			if !reflect.DeepEqual(err, test.expectedErr) {
 				t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
 			}

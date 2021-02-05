@@ -53,11 +53,11 @@ func TestMount(t *testing.T) {
 
 	d, _ := NewFakeDriver(t)
 	fakeMounter := &fakeMounter{}
-	d.mounter = &mount.SafeFormatAndMount{
+	d.setMounter(&mount.SafeFormatAndMount{
 		Interface: fakeMounter,
-	}
+	})
 	for _, test := range tests {
-		err := d.mounter.Mount(test.source, test.target, "", nil)
+		err := d.getMounter().Mount(test.source, test.target, "", nil)
 		if !reflect.DeepEqual(err, test.expectedErr) {
 			t.Errorf("Unexpected error: %v", err)
 		}
@@ -93,11 +93,11 @@ func TestMountSensitive(t *testing.T) {
 
 	d, _ := NewFakeDriver(t)
 	fakeMounter := &fakeMounter{}
-	d.mounter = &mount.SafeFormatAndMount{
+	d.setMounter(&mount.SafeFormatAndMount{
 		Interface: fakeMounter,
-	}
+	})
 	for _, test := range tests {
-		err := d.mounter.MountSensitive(test.source, test.target, "", nil, nil)
+		err := d.getMounter().MountSensitive(test.source, test.target, "", nil, nil)
 		if !reflect.DeepEqual(err, test.expectedErr) {
 			t.Errorf("Unexpected error: %v", err)
 		}
@@ -128,11 +128,11 @@ func TestIsLikelyNotMountPoint(t *testing.T) {
 
 	d, _ := NewFakeDriver(t)
 	fakeMounter := &fakeMounter{}
-	d.mounter = &mount.SafeFormatAndMount{
+	d.setMounter(&mount.SafeFormatAndMount{
 		Interface: fakeMounter,
-	}
+	})
 	for _, test := range tests {
-		_, err := d.mounter.IsLikelyNotMountPoint(test.file)
+		_, err := d.getMounter().IsLikelyNotMountPoint(test.file)
 		if !reflect.DeepEqual(err, test.expectedErr) {
 			t.Errorf("Unexpected error: %v", err)
 		}
