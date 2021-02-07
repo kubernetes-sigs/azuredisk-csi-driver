@@ -34,10 +34,12 @@ controller:
   replicas: 2
   metricsPort: 29604
   runOnMaster: false
+  logLevel: 5
 
 node:
   metricsPort: 29605
-  
+  logLevel: 5
+
 snapshot:
   enabled: false
   image:
@@ -68,7 +70,7 @@ windows:
       repository: mcr.microsoft.com/oss/kubernetes-csi/csi-node-driver-registrar
       tag: v2.0.1
       pullPolicy: IfNotPresent
-    
+
 kubelet:
   windowsPath: 'C:\var\lib\kubelet'
   linuxPath: /var/lib/kubelet
