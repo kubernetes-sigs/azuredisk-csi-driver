@@ -83,7 +83,8 @@ func NewNodeServiceCapability(cap csi.NodeServiceCapability_RPC_Type) *csi.NodeS
 func getLogLevel(method string) int32 {
 	if method == "/csi.v1.Identity/Probe" ||
 		method == "/csi.v1.Node/NodeGetCapabilities" ||
-		method == "/csi.v1.Node/NodeGetVolumeStats" {
+		method == "/csi.v1.Node/NodeGetVolumeStats" ||
+		method == "/csi.v1.Controller/ListVolumes" {
 		return 10
 	}
 	return 2
