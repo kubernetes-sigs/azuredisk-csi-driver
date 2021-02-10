@@ -85,7 +85,7 @@ func getLogLevel(method string) int32 {
 		method == "/csi.v1.Node/NodeGetCapabilities" ||
 		method == "/csi.v1.Node/NodeGetVolumeStats" ||
 		method == "/csi.v1.Controller/ListVolumes" {
-		return 10
+		return 8
 	}
 	return 2
 }
