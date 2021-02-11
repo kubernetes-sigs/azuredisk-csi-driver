@@ -60,7 +60,9 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `controller.replicas`                             | the replicas of csi-azuredisk-controller                   | 2                                                            |
 | `controller.metricsPort`                          | metrics port of csi-azuredisk-controller                   |29604                                                        |
 | `controller.runOnMaster`                          | run csi-azuredisk-controller on master node                | false                                                        |
+| `controller.logLevel`                             | controller driver log level                                                          |`5`                                                           |
 | `node.metricsPort`                                | metrics port of csi-azuredisk-node                         |29605                                                        |
+| `node.logLevel`                                   | node driver log level                                                          |`5`                                                           |
 | `snapshot.enabled`                                | whether enable snapshot feature                            | false                                                        |
 | `snapshot.image.csiSnapshotter.repository`        | csi-snapshotter docker image                               | mcr.microsoft.com/oss/kubernetes-csi/csi-snapshotter         |
 | `snapshot.image.csiSnapshotter.tag`               | csi-snapshotter docker image tag                           | v2.0.1                                                       |
