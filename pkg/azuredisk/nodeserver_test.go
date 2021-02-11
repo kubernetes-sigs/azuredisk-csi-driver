@@ -893,3 +893,40 @@ func TestGetDevicePathWithLUN(t *testing.T) {
 		}
 	}
 }
+
+func TestGetDevicePathWithMountPath(t *testing.T) {
+	d, _ := NewFakeDriver(t)
+	err := "exit status 1"
+
+	if runtime.GOOS == "darwin" {
+		err = "executable file not found in $PATH"
+	}
+
+	tests := []struct {
+		desc         string
+		req          string
+		skipOnDarwin bool
+		expectedErr  error
+	}{
+		{
+			desc:        "Invalid device path",
+			req:         "unit-test",
+			expectedErr: fmt.Errorf("could not determine device path(unit-test), error: %v", err),
+		},
+		{
+			desc:         "[Success] Valid device path",
+			req:          "/sys",
+			skipOnDarwin: true,
+			expectedErr:  nil,
+		},
+	}
+
+	for _, test := range tests {
+		if !(test.skipOnDarwin && runtime.GOOS == "darwin") {
+			_, err := d.getDevicePathWithMountPath(test.req)
+			if !reflect.DeepEqual(err, test.expectedErr) {
+				t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
+			}
+		}
+	}
+}
