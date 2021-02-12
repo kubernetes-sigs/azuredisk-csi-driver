@@ -15,6 +15,10 @@ spec:
         app: csi-azuredisk-node-win
     spec:
       serviceAccountName: csi-azuredisk-node-sa
+      tolerations:
+        - key: "node.kubernetes.io/os"
+          operator: "Exists"
+          effect: "NoSchedule"
       nodeSelector:
         kubernetes.io/os: windows
       affinity:
