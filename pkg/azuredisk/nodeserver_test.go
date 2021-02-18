@@ -186,10 +186,11 @@ func TestEnsureMountPoint(t *testing.T) {
 			expectedMnt: false,
 		},
 		{
-			desc:        "[Success] Already existing mount",
-			target:      alreadyExistTarget,
-			expectedErr: testutil.TestError{},
-			expectedMnt: true,
+			desc:          "[Success] Already existing mount",
+			target:        alreadyExistTarget,
+			skipOnWindows: true, // not consistent result between Linux and Windows
+			expectedErr:   testutil.TestError{},
+			expectedMnt:   true,
 		},
 	}
 
@@ -664,13 +665,14 @@ func TestNodeExpandVolume(t *testing.T) {
 
 	invalidPathErr := testutil.TestError{
 		DefaultError: status.Error(codes.NotFound, "failed to determine device path for volumePath [./test]: path \"./test\" does not exist"),
-		WindowsError: status.Error(codes.NotFound, "Could not determine device path: executable file not found in %PATH%"),
+		WindowsError: status.Error(codes.NotFound, "could not determine device path(./test), error: executable file not found in %!P(MISSING)ATH%!(NOVERB)"),
 	}
 	volumeCapacityErr := testutil.TestError{
 		DefaultError: status.Error(codes.InvalidArgument, "VolumeCapability is invalid."),
 	}
 	devicePathErr := testutil.TestError{
 		DefaultError: status.Errorf(codes.NotFound, "could not determine device path(%s), error: %v", targetTest, notFoundErr),
+		WindowsError: status.Errorf(codes.NotFound, "could not determine device path(%s), error: %s", targetTest, "executable file not found in %!P(MISSING)ATH%!(NOVERB)"),
 	}
 	blockSizeErr := testutil.TestError{
 		DefaultError: status.Error(codes.Internal, "Could not get size of block volume at path test: error when getting size of block volume at path test: output: , err: exit status 1"),
@@ -765,6 +767,8 @@ func TestGetBlockSizeBytes(t *testing.T) {
 	// exception in darwin
 	if runtime.GOOS == "darwin" {
 		notFoundErr = "executable file not found in $PATH"
+	} else if runtime.GOOS == "windows" {
+		notFoundErr = "executable file not found in %PATH%"
 	}
 
 	tests := []struct {
@@ -900,13 +904,16 @@ func TestGetDevicePathWithMountPath(t *testing.T) {
 
 	if runtime.GOOS == "darwin" {
 		err = "executable file not found in $PATH"
+	} else if runtime.GOOS == "windows" {
+		err = "executable file not found in %PATH%"
 	}
 
 	tests := []struct {
-		desc         string
-		req          string
-		skipOnDarwin bool
-		expectedErr  error
+		desc          string
+		req           string
+		skipOnDarwin  bool
+		skipOnWindows bool
+		expectedErr   error
 	}{
 		{
 			desc:        "Invalid device path",
@@ -914,15 +921,16 @@ func TestGetDevicePathWithMountPath(t *testing.T) {
 			expectedErr: fmt.Errorf("could not determine device path(unit-test), error: %v", err),
 		},
 		{
-			desc:         "[Success] Valid device path",
-			req:          "/sys",
-			skipOnDarwin: true,
-			expectedErr:  nil,
+			desc:          "[Success] Valid device path",
+			req:           "/sys",
+			skipOnDarwin:  true,
+			skipOnWindows: true,
+			expectedErr:   nil,
 		},
 	}
 
 	for _, test := range tests {
-		if !(test.skipOnDarwin && runtime.GOOS == "darwin") {
+		if !(test.skipOnDarwin && runtime.GOOS == "darwin") && !(test.skipOnWindows && runtime.GOOS == "windows") {
 			_, err := d.getDevicePathWithMountPath(test.req)
 			if !reflect.DeepEqual(err, test.expectedErr) {
 				t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
