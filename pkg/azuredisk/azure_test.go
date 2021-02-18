@@ -23,6 +23,8 @@ import (
 	"reflect"
 	"runtime"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func skipIfTestingOnWindows(t *testing.T) {
@@ -154,4 +156,38 @@ func createTestFile(path string) error {
 	defer f.Close()
 
 	return nil
+}
+
+func TestIsAzureStackCloud(t *testing.T) {
+	tests := []struct {
+		cloud             string
+		supportAzureStack bool
+		expectedResult    bool
+	}{
+		{
+			cloud:             "AzurePublicCloud",
+			supportAzureStack: true,
+			expectedResult:    false,
+		},
+		{
+			cloud:             "",
+			supportAzureStack: false,
+			expectedResult:    false,
+		},
+		{
+			cloud:             "AZURESTACKCLOUD",
+			supportAzureStack: true,
+			expectedResult:    true,
+		},
+		{
+			cloud:             "AZURESTACKCLOUD",
+			supportAzureStack: false,
+			expectedResult:    false,
+		},
+	}
+
+	for i, test := range tests {
+		result := IsAzureStackCloud(test.cloud, test.supportAzureStack)
+		assert.Equal(t, test.expectedResult, result, "TestCase[%d]", i)
+	}
 }

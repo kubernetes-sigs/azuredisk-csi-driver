@@ -600,7 +600,8 @@ func TestNewDriver(t *testing.T) {
 	driver.Version = driverVersion
 	driver.NodeID = nodeid
 	driver.volumeLocks = util.NewVolumeLocks()
-	newdriver := NewDriver(nodeid)
+	driver.supportAzureStack = true
+	newdriver := NewDriver(nodeid, true)
 	assert.Equal(t, driver, *newdriver)
 }
 

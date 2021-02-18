@@ -17,6 +17,7 @@
 set -euo pipefail
 
 echo "begin to verify chart tgz files ..."
+git config core.filemode false
 
 # verify whether chart config has changed
 diff=`git diff`

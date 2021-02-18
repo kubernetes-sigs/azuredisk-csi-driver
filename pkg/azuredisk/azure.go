@@ -37,8 +37,8 @@ var (
 )
 
 // IsAzureStackCloud decides whether the driver is running on Azure Stack Cloud.
-func IsAzureStackCloud(cloud string) bool {
-	return strings.EqualFold(cloud, "AZURESTACKCLOUD")
+func IsAzureStackCloud(cloud string, supportAzureStack bool) bool {
+	return supportAzureStack && strings.EqualFold(cloud, "AZURESTACKCLOUD")
 }
 
 // GetCloudProvider get Azure Cloud Provider

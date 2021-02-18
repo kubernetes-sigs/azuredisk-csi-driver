@@ -46,9 +46,9 @@ var (
 	lunPathRE = regexp.MustCompile(`/dev(?:.*)/disk/azure/scsi(?:.*)/lun(.+)`)
 )
 
-func normalizeStorageAccountType(storageAccountType, cloud string) (compute.DiskStorageAccountTypes, error) {
+func normalizeStorageAccountType(storageAccountType, cloud string, supportAzureStack bool) (compute.DiskStorageAccountTypes, error) {
 	if storageAccountType == "" {
-		if IsAzureStackCloud(cloud) {
+		if IsAzureStackCloud(cloud, supportAzureStack) {
 			return azureStackCloudDefaultStorageAccountType, nil
 		}
 		return azurePublicCloudDefaultStorageAccountType, nil
@@ -56,7 +56,7 @@ func normalizeStorageAccountType(storageAccountType, cloud string) (compute.Disk
 
 	sku := compute.DiskStorageAccountTypes(storageAccountType)
 	supportedSkuNames := compute.PossibleDiskStorageAccountTypesValues()
-	if IsAzureStackCloud(cloud) {
+	if IsAzureStackCloud(cloud, supportAzureStack) {
 		supportedSkuNames = []compute.DiskStorageAccountTypes{compute.StandardLRS, compute.PremiumLRS}
 	}
 	for _, s := range supportedSkuNames {
