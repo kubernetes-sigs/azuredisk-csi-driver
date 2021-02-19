@@ -47,3 +47,9 @@ if [[ -n "${diff}" ]]; then
 fi
 
 echo "chart tgz files verified."
+
+echo "verify helm chart index ..."
+curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash
+helm repo add azuredisk-csi-driver https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts
+helm search repo -l azuredisk-csi-driver
+echo "helm chart index verified."
