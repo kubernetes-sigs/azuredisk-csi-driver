@@ -1712,7 +1712,7 @@ func TestListVolumes(t *testing.T) {
 					Items: []v1.PersistentVolume{},
 				}
 				d.cloud.KubeClient.CoreV1().PersistentVolumes().(*mockpersistentvolume.MockInterface).EXPECT().List(gomock.Any(), gomock.Any()).Return(&pvList, nil)
-				expectedErr := status.Error(codes.Aborted, "ListVolumes starting token(1) on rg(rg) is greater than total number of volumes")
+				expectedErr := status.Error(codes.FailedPrecondition, "ListVolumes starting token(1) is greater than total number of disks")
 				_, err := d.ListVolumes(context.TODO(), &req)
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)

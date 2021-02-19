@@ -74,9 +74,10 @@ const (
 	sourceDiskSearchMaxDepth = 10
 )
 
+// listVolumeStatus explains the return status of `listVolumesByResourceGroup`
 type listVolumeStatus struct {
-	numVisited    int
-	isCompleteRun bool
+	numVisited    int  // the number of iterated azure disks
+	isCompleteRun bool // isCompleteRun is flagged true if the function iterated through all azure disks
 	entries       []*csi.ListVolumesResponse_Entry
 	err           error
 }
@@ -529,7 +530,7 @@ func (d *Driver) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest) (
 		klog.V(6).Infof("List Volumes in Cluster:")
 		return d.listVolumesInCluster(ctx, start, int(req.MaxEntries))
 	}
-	klog.V(6).Infof("List Volumes in Node Resource Group:")
+	klog.V(6).Infof("List Volumes in Node Resource Group: %s", d.cloud.ResourceGroup)
 	return d.listVolumesInNodeResourceGroup(ctx, start, int(req.MaxEntries))
 }
 
@@ -555,6 +556,7 @@ func (d *Driver) listVolumesInCluster(ctx context.Context, start, maxEntries int
 				klog.Warningf("failed to get resource group from disk uri (%s) with error(%v)", diskURI, err)
 				continue
 			}
+			rg, diskURI = strings.ToLower(rg), strings.ToLower(diskURI)
 			volSet[diskURI] = true
 			if _, visited := rgMap[rg]; visited {
 				continue
@@ -563,9 +565,6 @@ func (d *Driver) listVolumesInCluster(ctx context.Context, start, maxEntries int
 		}
 	}
 
-	if start != 0 && start > len(volSet) {
-		return nil, status.Errorf(codes.Aborted, "ListVolumes starting token(%d) on rg(%s) is greater than total number of volumes", start, d.cloud.ResourceGroup)
-	}
 	resourceGroups := make([]string, len(rgMap))
 	i := 0
 	for rg := range rgMap {
@@ -587,7 +586,7 @@ func (d *Driver) listVolumesInCluster(ctx context.Context, start, maxEntries int
 		if startFound {
 			localStart = 0
 		}
-		listStatus := d.listVolumesByResourceGroup(ctx, resourceGroup, entries, localStart, maxEntries-len(entries), &volSet)
+		listStatus := d.listVolumesByResourceGroup(ctx, resourceGroup, entries, localStart, maxEntries-len(entries), volSet)
 		numVisited += listStatus.numVisited
 		if listStatus.err != nil {
 			if status.Code(listStatus.err) == codes.FailedPrecondition {
@@ -599,6 +598,11 @@ func (d *Driver) listVolumesInCluster(ctx context.Context, start, maxEntries int
 		entries = listStatus.entries
 		isCompleteRun = isCompleteRun && listStatus.isCompleteRun
 	}
+	// if start was not found, start token was greater than total number of disks
+	if !startFound {
+		return nil, status.Errorf(codes.FailedPrecondition, "ListVolumes starting token(%d) is greater than total number of disks", start)
+	}
+
 	nextTokenString := ""
 	if !isCompleteRun {
 		nextTokenString = strconv.Itoa(start + numVisited)
@@ -634,10 +638,18 @@ func (d *Driver) listVolumesInNodeResourceGroup(ctx context.Context, start, maxE
 }
 
 // listVolumesByResourceGroup is a helper function that updates the ListVolumeResponse_Entry slice and returns number of total visited volumes, number of volumes that needs to be visited and an error if found
-func (d *Driver) listVolumesByResourceGroup(ctx context.Context, resourceGroup string, entries []*csi.ListVolumesResponse_Entry, start, maxEntries int, volSet *map[string]bool) listVolumeStatus {
+func (d *Driver) listVolumesByResourceGroup(ctx context.Context, resourceGroup string, entries []*csi.ListVolumesResponse_Entry, start, maxEntries int, volSet map[string]bool) listVolumeStatus {
 	disks, derr := d.cloud.DisksClient.ListByResourceGroup(ctx, resourceGroup)
 	if derr != nil {
 		return listVolumeStatus{err: status.Errorf(codes.Internal, "ListVolumes on rg(%s) failed with error: %v", resourceGroup, derr.Error())}
+	}
+	// if volSet is initialized but is empty, return
+	if volSet != nil && len(volSet) == 0 {
+		return listVolumeStatus{
+			numVisited:    len(disks),
+			isCompleteRun: true,
+			entries:       entries,
+		}
 	}
 	if start > 0 && start >= len(disks) {
 		return listVolumeStatus{
@@ -659,7 +671,7 @@ func (d *Driver) listVolumesByResourceGroup(ctx context.Context, resourceGroup s
 
 		disk := disks[i]
 		// if given a set of volumes from KubeClient, only continue if the disk can be found in the set
-		if volSet != nil && !(*volSet)[*disk.ID] {
+		if volSet != nil && !volSet[strings.ToLower(*disk.ID)] {
 			continue
 		}
 		// HyperVGeneration property is only setup for os disks. Only the non os disks should be included in the list
