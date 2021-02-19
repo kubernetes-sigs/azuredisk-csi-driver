@@ -546,8 +546,8 @@ func NewTestStatefulset(c clientset.Interface, ns *v1.Namespace, command string,
 	generateName := "azuredisk-volume-tester-"
 	selectorValue := fmt.Sprintf("%s%d", generateName, rand.Int())
 	replicas := int32(1)
-	var volumeClainTest []v1.PersistentVolumeClaim
-	volumeClainTest = append(volumeClainTest, *pvc)
+	var volumeClaimTest []v1.PersistentVolumeClaim
+	volumeClaimTest = append(volumeClaimTest, *pvc)
 	testStatefulset := &TestStatefulset{
 		client:    c,
 		namespace: ns,
@@ -584,7 +584,7 @@ func NewTestStatefulset(c clientset.Interface, ns *v1.Namespace, command string,
 						RestartPolicy: v1.RestartPolicyAlways,
 					},
 				},
-				VolumeClaimTemplates: volumeClainTest,
+				VolumeClaimTemplates: volumeClaimTest,
 			},
 		},
 	}
