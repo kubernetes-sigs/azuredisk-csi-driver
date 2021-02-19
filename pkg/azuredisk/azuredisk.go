@@ -95,19 +95,21 @@ var (
 // Driver implements all interfaces of CSI drivers
 type Driver struct {
 	csicommon.CSIDriver
-	cloud       *azure.Cloud
-	mounter     *mount.SafeFormatAndMount
-	volumeLocks *volumehelper.VolumeLocks
+	cloud             *azure.Cloud
+	supportAzureStack bool
+	mounter           *mount.SafeFormatAndMount
+	volumeLocks       *volumehelper.VolumeLocks
 }
 
 // NewDriver Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
 // does not support optional driver plugin info manifest field. Refer to CSI spec for more details.
-func NewDriver(nodeID string) *Driver {
+func NewDriver(nodeID string, supportAzureStack bool) *Driver {
 	driver := Driver{}
 	driver.Name = DriverName
 	driver.Version = driverVersion
 	driver.NodeID = nodeID
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
+	driver.supportAzureStack = supportAzureStack
 	return &driver
 }
 
