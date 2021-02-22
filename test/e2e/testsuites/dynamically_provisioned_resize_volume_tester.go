@@ -25,8 +25,8 @@ import (
 	"github.com/onsi/ginkgo"
 	"github.com/onsi/gomega"
 
+	scale "k8s.io/api/autoscaling/v1"
 	v1 "k8s.io/api/core/v1"
-	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -45,24 +45,52 @@ import (
 type DynamicallyProvisionedResizeVolumeTest struct {
 	CSIDriver              driver.DynamicPVTestDriver
 	StorageClassParameters map[string]string
+	Pod                    PodDetails
 	Volume                 VolumeDetails
 }
 
 func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface, namespace *v1.Namespace) {
-	// Force volume binding mode to immediate so the PV can be provisioned without a pod
-	volumeBindingMode := storagev1.VolumeBindingImmediate
-	t.Volume.VolumeBindingMode = &volumeBindingMode
-	tpvc, _ := t.Volume.SetupDynamicPersistentVolumeClaim(client, namespace, t.CSIDriver, t.StorageClassParameters)
+	tStatefulSet, cleanup := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver)
+	// Defer must be called here for resources not get removed before using them
+	for i := range cleanup {
+		i := i
+		defer cleanup[i]()
+	}
 
-	pvcName := tpvc.persistentVolumeClaim.Name
+	ginkgo.By("deploying the statefulset")
+	tStatefulSet.Create()
+
+	ginkgo.By("checking that the pod for statefulset is running")
+	tStatefulSet.WaitForPodReady()
+
+	//Get diskURI from statefulset information
+	pvcName := fmt.Sprintf("pvc-%s-%d", tStatefulSet.statefulset.ObjectMeta.Name, 0)
+
 	pvc, err := client.CoreV1().PersistentVolumeClaims(namespace.Name).Get(context.TODO(), pvcName, metav1.GetOptions{})
 	if err != nil {
 		framework.ExpectNoError(err, fmt.Sprintf("fail to get original pvc(%s): %v", pvcName, err))
 	}
 
+	// Define a new scale for statefulset
+	newScale := &scale.Scale{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      tStatefulSet.statefulset.Name,
+			Namespace: tStatefulSet.namespace.Name,
+		},
+		Spec: scale.ScaleSpec{
+			Replicas: int32(0)}}
+
+	// Scale statefulset to 0
+	_, err = client.AppsV1().StatefulSets(tStatefulSet.namespace.Name).UpdateScale(context.TODO(), tStatefulSet.statefulset.Name, newScale, metav1.UpdateOptions{})
+	framework.ExpectNoError(err)
+
+	ginkgo.By("sleep 120s waiting for disk to detach from node")
+	time.Sleep(120 * time.Second)
+
+	// Get the original requested size of the pvs and increase it by 10GB
 	originalSize := pvc.Spec.Resources.Requests["storage"]
 	delta := resource.Quantity{}
-	delta.Set(volumehelper.GiBToBytes(1))
+	delta.Set(volumehelper.GiBToBytes(10))
 	originalSize.Add(delta)
 	pvc.Spec.Resources.Requests["storage"] = originalSize
 
@@ -111,7 +139,7 @@ func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface,
 	azureClient, err := azure.GetAzureClient(creds.Cloud, creds.SubscriptionID, creds.AADClientID, creds.TenantID, creds.AADClientSecret)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-	//get disk information
+	// Get disk information
 	disksClient, err := azureClient.GetAzureDisksClient()
 	framework.ExpectNoError(err, fmt.Sprintf("Error getting client for azuredisk %v", err))
 	disktest, err := disksClient.Get(context.Background(), resourceGroup, diskName)
@@ -121,12 +149,12 @@ func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface,
 		framework.Failf("newPVCSize(%+v) is not equal to new azurediskSize(%+v)", newSize.String(), newdiskSize)
 	}
 
-	// will delete the PVC
-	// will also wait for PV to be deleted when reclaimPolicy=Delete
-	tpvc.Cleanup()
-	// first check PV stills exists, then manually delete it
-	if tpvc.ReclaimPolicy() == v1.PersistentVolumeReclaimRetain {
-		tpvc.WaitForPersistentVolumePhase(v1.VolumeReleased)
-		tpvc.DeleteBoundPersistentVolume()
-	}
+	// Scale the stateful set back to 1 pod
+	newScale.Spec.Replicas = int32(1)
+
+	_, err = client.AppsV1().StatefulSets(tStatefulSet.namespace.Name).UpdateScale(context.TODO(), tStatefulSet.statefulset.Name, newScale, metav1.UpdateOptions{})
+	framework.ExpectNoError(err)
+
+	ginkgo.By("checking that the pod for statefulset is running")
+	tStatefulSet.WaitForPodReady()
 }

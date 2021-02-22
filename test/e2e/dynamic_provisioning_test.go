@@ -606,7 +606,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		test.Run(cs, ns)
 	})
 
-	ginkgo.It("should create a volume on demand and resize it  [disk.csi.azure.com] [Windows]", func() {
+	ginkgo.It("should create a volume on demand and resize it  [disk.csi.azure.com] ", func() {
+		skipIfTestingInWindowsCluster()
+
 		volume := testsuites.VolumeDetails{
 			ClaimSize: "10Gi",
 			VolumeMount: testsuites.VolumeMountDetails{
@@ -614,9 +616,24 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 				MountPathGenerate: "/mnt/test-",
 			},
 		}
+		pod := testsuites.PodDetails{
+			Cmd: convertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
+			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+				{
+					ClaimSize: volume.ClaimSize,
+					MountOptions: []string{
+						"barrier=1",
+						"acl",
+					},
+					VolumeMount: volume.VolumeMount,
+				},
+			}, isMultiZone),
+		}
+
 		test := testsuites.DynamicallyProvisionedResizeVolumeTest{
 			CSIDriver:              testDriver,
 			Volume:                 volume,
+			Pod:                    pod,
 			StorageClassParameters: map[string]string{"skuName": "Standard_LRS"},
 		}
 		test.Run(cs, ns)
