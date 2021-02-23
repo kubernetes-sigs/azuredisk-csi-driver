@@ -13,4 +13,4 @@ jobs:
               uses: golangci/golangci-lint-action@v2
               with:
                   version: v1.29
-                  args: -E=gofmt --timeout=30m0s
+                  args: -E=gofmt --timeout=30m0s -E=deadcode -E=unused -E=varcheck -E=ineffassign
