@@ -142,8 +142,15 @@ func (mounter *CSIProxyMounter) DeviceOpened(pathname string) (bool, error) {
 	return false, fmt.Errorf("DeviceOpened not implemented for CSIProxyMounter")
 }
 
+// GetDeviceNameFromMount returns the volume ID for a mount path.
 func (mounter *CSIProxyMounter) GetDeviceNameFromMount(mountPath, pluginMountDir string) (string, error) {
-	return "", fmt.Errorf("GetDeviceNameFromMount not implemented for CSIProxyMounter")
+	req := &volume.VolumeIDFromMountRequest{Mount: normalizeWindowsPath(mountPath)}
+	resp, err := mounter.VolumeClient.GetVolumeIDFromMount(context.Background(), req)
+	if err != nil {
+		return "", err
+	}
+
+	return resp.VolumeId, nil
 }
 
 func (mounter *CSIProxyMounter) MakeRShared(path string) error {
@@ -292,6 +299,30 @@ func (mounter *CSIProxyMounter) FormatAndMount(source string, target string, fst
 		return err
 	}
 	return nil
+}
+
+// ResizeVolume resizes the volume to the maximum available size.
+func (mounter *CSIProxyMounter) ResizeVolume(devicePath string) error {
+	req := &volume.ResizeVolumeRequest{VolumeId: devicePath, Size: 0}
+
+	_, err := mounter.VolumeClient.ResizeVolume(context.Background(), req)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// GetVolumeSizeInBytes returns the size of the volume in bytes.
+func (mounter *CSIProxyMounter) GetVolumeSizeInBytes(devicePath string) (int64, error) {
+	req := &volume.VolumeStatsRequest{VolumeId: devicePath}
+
+	resp, err := mounter.VolumeClient.VolumeStats(context.Background(), req)
+	if err != nil {
+		return -1, err
+	}
+
+	return resp.VolumeSize, nil
 }
 
 // NewCSIProxyMounter - creates a new CSI Proxy mounter struct which encompassed all the

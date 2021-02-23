@@ -23,7 +23,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"time"
 
@@ -355,7 +354,7 @@ func (d *Driver) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeS
 		return nil, status.Errorf(codes.NotFound, "failed to determine whether %s is block device: %v", req.VolumePath, err)
 	}
 	if isBlock {
-		bcap, err := d.getBlockSizeBytes(req.VolumePath)
+		bcap, err := getBlockSizeBytes(req.VolumePath, d.mounter)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to get block capacity on path %s: %v", req.VolumePath, err)
 		}
@@ -459,22 +458,16 @@ func (d *Driver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolume
 		}
 	}
 
-	output, err := d.getDevicePathWithMountPath(volumePath)
+	devicePath, err := getDevicePathWithMountPath(volumePath, d.mounter)
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, err.Error())
 	}
 
-	devicePath := strings.TrimSpace(string(output))
-	if len(devicePath) == 0 {
-		return nil, status.Errorf(codes.Internal, "Could not get valid device for mount path: %q", volumePath)
-	}
-
-	resizer := resizefs.NewResizeFs(d.mounter)
-	if _, err := resizer.Resize(devicePath, volumePath); err != nil {
+	if err := resizeVolume(devicePath, volumePath, d.mounter); err != nil {
 		return nil, status.Errorf(codes.Internal, "Could not resize volume %q (%q):  %v", volumeID, devicePath, err)
 	}
 
-	gotBlockSizeBytes, err := d.getBlockSizeBytes(devicePath)
+	gotBlockSizeBytes, err := getBlockSizeBytes(devicePath, d.mounter)
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Could not get size of block volume at path %s: %v", devicePath, err))
 	}
@@ -573,34 +566,6 @@ func (d *Driver) getDevicePathWithLUN(lunStr string) (string, error) {
 		err = fmt.Errorf("azureDisk - findDiskByLun(%v) failed within timeout", lun)
 	}
 	return newDevicePath, err
-}
-
-func (d *Driver) getDevicePathWithMountPath(mountPath string) (string, error) {
-	args := []string{"-o", "source", "--noheadings", "--mountpoint", mountPath}
-	output, err := d.mounter.Exec.Command("findmnt", args...).Output()
-	if err != nil {
-		return "", fmt.Errorf("could not determine device path(%s), error: %v", mountPath, err)
-	}
-
-	devicePath := strings.TrimSpace(string(output))
-	if len(devicePath) == 0 {
-		return "", fmt.Errorf("could not get valid device for mount path: %q", mountPath)
-	}
-
-	return devicePath, nil
-}
-
-func (d *Driver) getBlockSizeBytes(devicePath string) (int64, error) {
-	output, err := d.mounter.Exec.Command("blockdev", "--getsize64", devicePath).Output()
-	if err != nil {
-		return -1, fmt.Errorf("error when getting size of block volume at path %s: output: %s, err: %v", devicePath, string(output), err)
-	}
-	strOut := strings.TrimSpace(string(output))
-	gotSizeBytes, err := strconv.ParseInt(strOut, 10, 64)
-	if err != nil {
-		return -1, fmt.Errorf("failed to parse size %s into int a size", strOut)
-	}
-	return gotSizeBytes, nil
 }
 
 func (d *Driver) ensureBlockTargetFile(target string) error {

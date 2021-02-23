@@ -606,9 +606,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		test.Run(cs, ns)
 	})
 
-	ginkgo.It("should create a volume on demand and resize it  [disk.csi.azure.com] ", func() {
-		skipIfTestingInWindowsCluster()
-
+	ginkgo.It("should create a volume on demand and resize it  [disk.csi.azure.com] [Windows]", func() {
 		volume := testsuites.VolumeDetails{
 			ClaimSize: "10Gi",
 			VolumeMount: testsuites.VolumeMountDetails{
@@ -628,6 +626,8 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 					VolumeMount: volume.VolumeMount,
 				},
 			}, isMultiZone),
+			IsWindows: isWindowsCluster,
+			UseCMD:    false,
 		}
 
 		test := testsuites.DynamicallyProvisionedResizeVolumeTest{
