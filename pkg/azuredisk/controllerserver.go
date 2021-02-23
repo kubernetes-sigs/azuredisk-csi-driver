@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -29,9 +30,9 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	cloudprovider "k8s.io/cloud-provider"
 	volerr "k8s.io/cloud-provider/volume/errors"
@@ -72,6 +73,14 @@ const (
 	resizeRequired           = "resizeRequired"
 	sourceDiskSearchMaxDepth = 10
 )
+
+// listVolumeStatus explains the return status of `listVolumesByResourceGroup`
+type listVolumeStatus struct {
+	numVisited    int  // the number of iterated azure disks
+	isCompleteRun bool // isCompleteRun is flagged true if the function iterated through all azure disks
+	entries       []*csi.ListVolumesResponse_Entry
+	err           error
+}
 
 // CreateVolume provisions an azure disk
 func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
@@ -506,9 +515,9 @@ func (d *Driver) GetCapacity(ctx context.Context, req *csi.GetCapacityRequest) (
 
 // ListVolumes return all available volumes
 func (d *Driver) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest) (*csi.ListVolumesResponse, error) {
-	var err error
 	start := 0
 	if req.StartingToken != "" {
+		var err error
 		start, err = strconv.Atoi(req.StartingToken)
 		if err != nil {
 			return nil, status.Errorf(codes.Aborted, "ListVolumes starting token(%s) parsing with error: %v", req.StartingToken, err)
@@ -517,52 +526,86 @@ func (d *Driver) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest) (
 			return nil, status.Errorf(codes.Aborted, "ListVolumes starting token(%d) can not be negative", start)
 		}
 	}
+	if d.cloud.KubeClient != nil && d.cloud.KubeClient.CoreV1() != nil && d.cloud.KubeClient.CoreV1().PersistentVolumes() != nil {
+		klog.V(6).Infof("List Volumes in Cluster:")
+		return d.listVolumesInCluster(ctx, start, int(req.MaxEntries))
+	}
+	klog.V(6).Infof("List Volumes in Node Resource Group: %s", d.cloud.ResourceGroup)
+	return d.listVolumesInNodeResourceGroup(ctx, start, int(req.MaxEntries))
+}
 
-	disks, derr := d.cloud.DisksClient.ListByResourceGroup(ctx, d.cloud.ResourceGroup)
-	if derr != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("ListVolumes on rg(%s) failed with error: %v", d.cloud.ResourceGroup, derr.Error()))
+// listVolumesInCluster is a helper function for ListVolumes used for when there is an available kubeclient
+func (d *Driver) listVolumesInCluster(ctx context.Context, start, maxEntries int) (*csi.ListVolumesResponse, error) {
+	pvList, err := d.cloud.KubeClient.CoreV1().PersistentVolumes().List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "ListVolumes failed while fetching PersistentVolumes List with error: %v", err.Error())
 	}
 
-	if start != 0 && start >= len(disks) {
-		return nil, status.Errorf(codes.Aborted, "ListVolumes starting token(%d) on rg(%s) is greater than total number of volumes", start, d.cloud.ResourceGroup)
-	}
-
-	maxEntries := len(disks) - start
-	if req.MaxEntries > 0 && int(req.MaxEntries) < maxEntries {
-		maxEntries = int(req.MaxEntries)
-	}
-	pageEnd := start + maxEntries
-
-	vmSet := d.cloud.VMSet
-	entries := []*csi.ListVolumesResponse_Entry{}
-	for i := start; i < pageEnd; i++ {
-		d := disks[i]
-		nodeList := []string{}
-
-		// HyperVGeneration property is only setup for os disks. Only the non os disks should be included in the list
-		if d.DiskProperties == nil || d.DiskProperties.HyperVGeneration == "" {
-			if d.ManagedBy != nil {
-				attachedNode, err := vmSet.GetNodeNameByProviderID(*d.ManagedBy)
-				if err != nil {
-					return nil, err
-				}
-				nodeList = append(nodeList, string(attachedNode))
+	// get all resource groups and put them into a sorted slice
+	rgMap := make(map[string]bool)
+	volSet := make(map[string]bool)
+	for _, pv := range pvList.Items {
+		if pv.Spec.CSI != nil && pv.Spec.CSI.Driver == DriverName {
+			diskURI := pv.Spec.CSI.VolumeHandle
+			if err := isValidDiskURI(diskURI); err != nil {
+				klog.Warningf("invalid disk uri (%s) with error(%v)", diskURI, err)
+				continue
 			}
-
-			entries = append(entries, &csi.ListVolumesResponse_Entry{
-				Volume: &csi.Volume{
-					VolumeId: *d.ID,
-				},
-				Status: &csi.ListVolumesResponse_VolumeStatus{
-					PublishedNodeIds: nodeList,
-				},
-			})
+			rg, err := GetResourceGroupFromURI(diskURI)
+			if err != nil {
+				klog.Warningf("failed to get resource group from disk uri (%s) with error(%v)", diskURI, err)
+				continue
+			}
+			rg, diskURI = strings.ToLower(rg), strings.ToLower(diskURI)
+			volSet[diskURI] = true
+			if _, visited := rgMap[rg]; visited {
+				continue
+			}
+			rgMap[rg] = true
 		}
 	}
 
+	resourceGroups := make([]string, len(rgMap))
+	i := 0
+	for rg := range rgMap {
+		resourceGroups[i] = rg
+		i++
+	}
+	sort.Strings(resourceGroups)
+
+	// loop through each resourceGroup to get disk lists
+	entries := []*csi.ListVolumesResponse_Entry{}
+	numVisited := 0
+	isCompleteRun, startFound := true, false
+	for _, resourceGroup := range resourceGroups {
+		if !isCompleteRun || (maxEntries > 0 && len(entries) >= maxEntries) {
+			isCompleteRun = false
+			break
+		}
+		localStart := start - numVisited
+		if startFound {
+			localStart = 0
+		}
+		listStatus := d.listVolumesByResourceGroup(ctx, resourceGroup, entries, localStart, maxEntries-len(entries), volSet)
+		numVisited += listStatus.numVisited
+		if listStatus.err != nil {
+			if status.Code(listStatus.err) == codes.FailedPrecondition {
+				continue
+			}
+			return nil, listStatus.err
+		}
+		startFound = true
+		entries = listStatus.entries
+		isCompleteRun = isCompleteRun && listStatus.isCompleteRun
+	}
+	// if start was not found, start token was greater than total number of disks
+	if !startFound {
+		return nil, status.Errorf(codes.FailedPrecondition, "ListVolumes starting token(%d) is greater than total number of disks", start)
+	}
+
 	nextTokenString := ""
-	if pageEnd < len(disks) {
-		nextTokenString = strconv.Itoa(pageEnd)
+	if !isCompleteRun {
+		nextTokenString = strconv.Itoa(start + numVisited)
 	}
 
 	listVolumesResp := &csi.ListVolumesResponse{
@@ -571,6 +614,93 @@ func (d *Driver) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest) (
 	}
 
 	return listVolumesResp, nil
+}
+
+// listVolumesInNodeResourceGroup is a helper function for ListVolumes used for when there is no available kubeclient
+func (d *Driver) listVolumesInNodeResourceGroup(ctx context.Context, start, maxEntries int) (*csi.ListVolumesResponse, error) {
+	entries := []*csi.ListVolumesResponse_Entry{}
+	listStatus := d.listVolumesByResourceGroup(ctx, d.cloud.ResourceGroup, entries, start, maxEntries, nil)
+	if listStatus.err != nil {
+		return nil, listStatus.err
+	}
+
+	nextTokenString := ""
+	if !listStatus.isCompleteRun {
+		nextTokenString = strconv.Itoa(listStatus.numVisited)
+	}
+
+	listVolumesResp := &csi.ListVolumesResponse{
+		Entries:   listStatus.entries,
+		NextToken: nextTokenString,
+	}
+
+	return listVolumesResp, nil
+}
+
+// listVolumesByResourceGroup is a helper function that updates the ListVolumeResponse_Entry slice and returns number of total visited volumes, number of volumes that needs to be visited and an error if found
+func (d *Driver) listVolumesByResourceGroup(ctx context.Context, resourceGroup string, entries []*csi.ListVolumesResponse_Entry, start, maxEntries int, volSet map[string]bool) listVolumeStatus {
+	disks, derr := d.cloud.DisksClient.ListByResourceGroup(ctx, resourceGroup)
+	if derr != nil {
+		return listVolumeStatus{err: status.Errorf(codes.Internal, "ListVolumes on rg(%s) failed with error: %v", resourceGroup, derr.Error())}
+	}
+	// if volSet is initialized but is empty, return
+	if volSet != nil && len(volSet) == 0 {
+		return listVolumeStatus{
+			numVisited:    len(disks),
+			isCompleteRun: true,
+			entries:       entries,
+		}
+	}
+	if start > 0 && start >= len(disks) {
+		return listVolumeStatus{
+			numVisited: len(disks),
+			err:        status.Errorf(codes.FailedPrecondition, "ListVolumes starting token(%d) on rg(%s) is greater than total number of volumes", start, d.cloud.ResourceGroup),
+		}
+	}
+	if start < 0 {
+		start = 0
+	}
+	i := start
+	isCompleteRun := true
+	// Loop until
+	for ; i < len(disks); i++ {
+		if maxEntries > 0 && len(entries) >= maxEntries {
+			isCompleteRun = false
+			break
+		}
+
+		disk := disks[i]
+		// if given a set of volumes from KubeClient, only continue if the disk can be found in the set
+		if volSet != nil && !volSet[strings.ToLower(*disk.ID)] {
+			continue
+		}
+		// HyperVGeneration property is only setup for os disks. Only the non os disks should be included in the list
+		if disk.DiskProperties == nil || disk.DiskProperties.HyperVGeneration == "" {
+			nodeList := []string{}
+
+			if disk.ManagedBy != nil {
+				attachedNode, err := d.cloud.VMSet.GetNodeNameByProviderID(*disk.ManagedBy)
+				if err != nil {
+					return listVolumeStatus{err: err}
+				}
+				nodeList = append(nodeList, string(attachedNode))
+			}
+
+			entries = append(entries, &csi.ListVolumesResponse_Entry{
+				Volume: &csi.Volume{
+					VolumeId: *disk.ID,
+				},
+				Status: &csi.ListVolumesResponse_VolumeStatus{
+					PublishedNodeIds: nodeList,
+				},
+			})
+		}
+	}
+	return listVolumeStatus{
+		numVisited:    i - start,
+		isCompleteRun: isCompleteRun,
+		entries:       entries,
+	}
 }
 
 // ControllerExpandVolume controller expand volume
