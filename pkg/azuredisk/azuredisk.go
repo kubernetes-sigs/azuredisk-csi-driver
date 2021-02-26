@@ -38,6 +38,7 @@ import (
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
+	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
@@ -92,18 +93,32 @@ var (
 	diskURISupportedManaged = []string{"/subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id}"}
 )
 
-// Driver implements all interfaces of CSI drivers
-type Driver struct {
-	csicommon.CSIDriver
-	cloud             *azure.Cloud
-	supportAzureStack bool
-	mounter           *mount.SafeFormatAndMount
-	volumeLocks       *volumehelper.VolumeLocks
+// CSIDriver defines the interface for a CSI driver.
+type CSIDriver interface {
+	csi.ControllerServer
+	csi.NodeServer
+	csi.IdentityServer
+
+	Run(endpoint, kubeconfig string, testMode bool)
 }
 
-// NewDriver Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
+// DriverCore contains fields common to both the V1 and V2 driver, and implements all interfaces of CSI drivers
+type DriverCore struct {
+	csicommon.CSIDriver
+	cloud   *azure.Cloud
+	mounter *mount.SafeFormatAndMount
+}
+
+// Driver is the v1 implementation of the Azure Disk CSI Driver.
+type Driver struct {
+	DriverCore
+	volumeLocks       *volumehelper.VolumeLocks
+	supportAzureStack bool
+}
+
+// newDriverV1 Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
 // does not support optional driver plugin info manifest field. Refer to CSI spec for more details.
-func NewDriver(nodeID string, supportAzureStack bool) *Driver {
+func newDriverV1(nodeID string, supportAzureStack bool) *Driver {
 	driver := Driver{}
 	driver.Name = DriverName
 	driver.Version = driverVersion
@@ -324,4 +339,49 @@ func IsCorruptedDir(dir string) bool {
 	_, pathErr := mount.PathExists(dir)
 	fmt.Printf("IsCorruptedDir(%s) returned with error: %v", dir, pathErr)
 	return pathErr != nil && mount.IsCorruptedMnt(pathErr)
+}
+
+// setControllerCapabilities sets the controller capabilities field. It is intended for use with unit tests.
+func (d *DriverCore) setControllerCapabilities(caps []*csi.ControllerServiceCapability) {
+	d.Cap = caps
+}
+
+// setNodeCapabilities sets the node capabilities field. It is intended for use with unit tests.
+func (d *DriverCore) setNodeCapabilities(nodeCaps []*csi.NodeServiceCapability) {
+	d.NSCap = nodeCaps
+}
+
+// setName sets the Name field. It is intended for use with unit tests.
+func (d *DriverCore) setName(name string) {
+	d.Name = name
+}
+
+// setName sets the NodeId field. It is intended for use with unit tests.
+func (d *DriverCore) setNodeID(nodeID string) {
+	d.NodeID = nodeID
+}
+
+// setName sets the Version field. It is intended for use with unit tests.
+func (d *DriverCore) setVersion(version string) {
+	d.Version = version
+}
+
+// getCloud returns the value of the cloud field. It is intended for use with unit tests.
+func (d *DriverCore) getCloud() *provider.Cloud {
+	return d.cloud
+}
+
+// setCloud sets the cloud field. It is intended for use with unit tests.
+func (d *DriverCore) setCloud(cloud *provider.Cloud) {
+	d.cloud = cloud
+}
+
+// getMounter returns the value of the mounter field. It is intended for use with unit tests.
+func (d *DriverCore) getMounter() *mount.SafeFormatAndMount {
+	return d.mounter
+}
+
+// setMounter sets the mounter field. It is intended for use with unit tests.
+func (d *DriverCore) setMounter(mounter *mount.SafeFormatAndMount) {
+	d.mounter = mounter
 }

@@ -24,4 +24,9 @@ if [[ "$#" -gt 0 ]]; then
   cloud="$1"
 fi
 
-test/integration/run-test.sh 'tcp://127.0.0.1:10000' "$nodeid" "$cloud"
+version='v1'
+if [[ "$#" -gt 1 ]]; then
+  version="$2"
+fi
+
+test/integration/run-test.sh 'tcp://127.0.0.1:10000' "$nodeid" "$cloud" "$version"

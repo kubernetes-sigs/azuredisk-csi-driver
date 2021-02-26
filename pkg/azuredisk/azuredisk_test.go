@@ -31,7 +31,6 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/diskclient/mockdiskclient"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
@@ -593,18 +592,6 @@ func TestIsCorruptedDir(t *testing.T) {
 	}
 }
 
-func TestNewDriver(t *testing.T) {
-	nodeid := "test"
-	driver := Driver{}
-	driver.Name = DriverName
-	driver.Version = driverVersion
-	driver.NodeID = nodeid
-	driver.volumeLocks = util.NewVolumeLocks()
-	driver.supportAzureStack = true
-	newdriver := NewDriver(nodeid, true)
-	assert.Equal(t, driver, *newdriver)
-}
-
 func TestCheckDiskExists(t *testing.T) {
 	diskName := "-"
 	assert.Equal(t, false, checkDiskName(diskName))
@@ -622,7 +609,7 @@ func TestCheckDiskCapacity(t *testing.T) {
 			DiskSizeGB: &size,
 		},
 	}
-	d.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+	d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
 	flag, err := d.checkDiskCapacity(context.TODO(), resourceGroup, diskName, 10)
 	assert.Equal(t, flag, true)
 	assert.Nil(t, err)
@@ -696,8 +683,8 @@ func TestRun(t *testing.T) {
 				os.Setenv(DefaultAzureCredentialFileEnv, fakeCredFile)
 
 				d, _ := NewFakeDriver(t)
-				d.cloud = &azure.Cloud{}
-				d.NodeID = ""
+				d.setCloud(&azure.Cloud{})
+				d.setNodeID("")
 				d.Run("tcp://127.0.0.1:0", "", true)
 			},
 		},
