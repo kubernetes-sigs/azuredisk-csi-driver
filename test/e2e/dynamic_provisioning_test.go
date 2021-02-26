@@ -614,9 +614,26 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 				MountPathGenerate: "/mnt/test-",
 			},
 		}
+		pod := testsuites.PodDetails{
+			Cmd: convertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
+			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+				{
+					ClaimSize: volume.ClaimSize,
+					MountOptions: []string{
+						"barrier=1",
+						"acl",
+					},
+					VolumeMount: volume.VolumeMount,
+				},
+			}, isMultiZone),
+			IsWindows: isWindowsCluster,
+			UseCMD:    false,
+		}
+
 		test := testsuites.DynamicallyProvisionedResizeVolumeTest{
 			CSIDriver:              testDriver,
 			Volume:                 volume,
+			Pod:                    pod,
 			StorageClassParameters: map[string]string{"skuName": "Standard_LRS"},
 		}
 		test.Run(cs, ns)

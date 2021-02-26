@@ -19,7 +19,7 @@ REGISTRY_NAME ?= $(shell echo $(REGISTRY) | sed "s/.azurecr.io//g")
 DRIVER_NAME = disk.csi.azure.com
 IMAGE_NAME ?= azuredisk-csi
 SCHEDULER_EXTENDER_IMAGE_NAME ?= azdiskschedulerextender-csi
-IMAGE_VERSION ?= v1.0.0
+IMAGE_VERSION ?= v1.2.0
 CLOUD ?= AzurePublicCloud
 # Use a custom version for E2E tests if we are testing in CI
 ifdef CI
@@ -76,16 +76,31 @@ verify: unit-test
 	go vet ./pkg/...
 
 .PHONY: unit-test
-unit-test:
+unit-test: unit-test-v1 unit-test-v2
+
+.PHONY: unit-test-v1
+unit-test-v1:
 	go test -v -cover ./pkg/... ./test/utils/credentials
+
+.PHONY: unit-test-v2
+unit-test-v2:
+	go test -v -cover -tags azurediskv2 ./pkg/azuredisk --temp-use-driver-v2
 
 .PHONY: sanity-test
 sanity-test: azuredisk
 	go test -v -timeout=30m ./test/sanity
 
+.PHONY: sanity-test-v2
+sanity-test-v2: azuredisk-v2
+	go test -v -timeout=30m ./test/sanity --temp-use-driver-v2
+
 .PHONY: integration-test
 integration-test: azuredisk
 	go test -v -timeout=30m ./test/integration
+
+.PHONY: integration-test-v2
+integration-test-v2: azuredisk-v2
+	go test -v -timeout=30m ./test/integration --temp-use-driver-v2
 
 .PHONY: e2e-test
 e2e-test:
@@ -101,6 +116,8 @@ ifdef TEST_WINDOWS
 		--set linux.enabled=false \
 		--set controller.runOnMaster=true \
 		--set controller.replicas=1 \
+		--set controller.logLevel=6 \
+		--set node.logLevel=6
 		--set cloud=$(CLOUD)
 else
 	helm install azuredisk-csi-driver charts/latest/azuredisk-csi-driver --namespace kube-system --wait --timeout=15m -v=5 --debug \
@@ -120,6 +137,10 @@ e2e-teardown:
 .PHONY: azuredisk
 azuredisk:
 	CGO_ENABLED=0 GOOS=linux go build -a -ldflags ${LDFLAGS} -mod vendor -o _output/azurediskplugin ./pkg/azurediskplugin
+
+.PHONY: azuredisk-v2
+azuredisk-v2:
+	CGO_ENABLED=0 GOOS=linux go build -a -ldflags ${LDFLAGS} -mod vendor -tags azurediskv2 -o _output/azurediskpluginv2 ./pkg/azurediskplugin
 
 .PHONY: azuredisk-windows
 azuredisk-windows:

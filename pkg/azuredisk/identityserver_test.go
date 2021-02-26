@@ -18,9 +18,10 @@ package azuredisk
 
 import (
 	"context"
+	"testing"
+
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 const (
@@ -39,7 +40,7 @@ func TestGetPluginInfo(t *testing.T) {
 
 	//Check error when driver name is empty
 	d, _ = NewFakeDriver(t)
-	d.Name = ""
+	d.setName("")
 	req = csi.GetPluginInfoRequest{}
 	resp, err = d.GetPluginInfo(context.Background(), &req)
 	assert.Error(t, err)
@@ -47,7 +48,7 @@ func TestGetPluginInfo(t *testing.T) {
 
 	//Check error when version is empty
 	d, _ = NewFakeDriver(t)
-	d.Version = ""
+	d.setVersion("")
 	req = csi.GetPluginInfoRequest{}
 	resp, err = d.GetPluginInfo(context.Background(), &req)
 	assert.Error(t, err)

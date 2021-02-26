@@ -51,7 +51,7 @@ const (
 )
 
 var (
-	azurediskDriver           *azuredisk.Driver
+	azurediskDriver           azuredisk.CSIDriver
 	isUsingInTreeVolumePlugin = os.Getenv(driver.AzureDriverNameVar) == inTreeStorageClass
 	isTestingMigration        = os.Getenv(testMigrationEnvVar) != ""
 	isWindowsCluster          = os.Getenv(testWindowsEnvVar) != ""
@@ -102,7 +102,7 @@ var _ = ginkgo.BeforeSuite(func() {
 		execTestCmd([]testCmd{e2eBootstrap, createMetricsSVC})
 
 		nodeid := os.Getenv("nodeid")
-		azurediskDriver = azuredisk.NewDriver(nodeid)
+		azurediskDriver = azuredisk.NewDriver(nodeid, true)
 		kubeconfig := os.Getenv(kubeconfigEnvVar)
 		go func() {
 			os.Setenv("AZURE_CREDENTIAL_FILE", credentials.TempAzureCredentialFilePath)

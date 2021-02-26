@@ -37,8 +37,8 @@ var (
 )
 
 // IsAzureStackCloud decides whether the driver is running on Azure Stack Cloud.
-func IsAzureStackCloud(cloud string) bool {
-	return strings.EqualFold(cloud, "AZURESTACKCLOUD")
+func IsAzureStackCloud(cloud string, supportAzureStack bool) bool {
+	return supportAzureStack && strings.EqualFold(cloud, "AZURESTACKCLOUD")
 }
 
 // GetCloudProvider get Azure Cloud Provider
@@ -58,7 +58,7 @@ func GetCloudProvider(kubeconfig string) (*azure.Cloud, error) {
 		az.InitializeCloudFromSecret()
 	}
 
-	if az.TenantID == "" || az.SubscriptionID == "" {
+	if az.TenantID == "" || az.SubscriptionID == "" || az.ResourceGroup == "" {
 		klog.V(2).Infof("could not read cloud config from secret")
 		credFile, ok := os.LookupEnv(DefaultAzureCredentialFileEnv)
 		if ok && strings.TrimSpace(credFile) != "" {
@@ -81,10 +81,15 @@ func GetCloudProvider(kubeconfig string) (*azure.Cloud, error) {
 		defer f.Close()
 
 		klog.V(2).Infof("read cloud config from file: %s successfully", credFile)
-		return azure.NewCloudWithoutFeatureGates(f)
+		if az, err = azure.NewCloudWithoutFeatureGates(f); err != nil {
+			return az, err
+		}
 	}
 
-	klog.V(2).Infof("read cloud config from secret successfully")
+	// reassign kubeClient
+	if kubeClient != nil && az.KubeClient == nil {
+		az.KubeClient = kubeClient
+	}
 	return az, nil
 }
 

@@ -31,7 +31,11 @@ if [[ "$#" -gt 0 ]] && [[ -n "$1" ]]; then
   nodeid="$1"
 fi
 
-_output/azurediskplugin --endpoint "$endpoint" --nodeid "$nodeid" -v=5 &
+if [[ "$#" -lt 2 || "$2" != "v2" ]]; then
+  _output/azurediskplugin --endpoint "$endpoint" --nodeid "$nodeid" -v=5 &
+else
+  _output/azurediskpluginv2 --endpoint "$endpoint" --nodeid "$nodeid" -v=5 --temp-use-driver-v2 &
+fi
 
 echo 'Begin to run sanity test...'
 readonly CSI_SANITY_BIN='csi-sanity'

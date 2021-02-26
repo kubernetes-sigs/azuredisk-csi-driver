@@ -4,15 +4,18 @@
 [![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fkubernetes-sigs%2Fazuredisk-csi-driver.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2Fkubernetes-sigs%2Fazuredisk-csi-driver?ref=badge_shield)
 
 ### About
-This driver allows Kubernetes to use [Azure disk](https://azure.microsoft.com/en-us/services/storage/disks/) volume, csi plugin name: `disk.csi.azure.com`
+This driver allows Kubernetes to use [Azure Disk](https://azure.microsoft.com/en-us/services/storage/disks/) volume, csi plugin name: `disk.csi.azure.com`
+
+### Project status: GA
 
 ### Container Images & Kubernetes Compatibility
-|Driver Version  |Image                                           | 1.15+ |
-|----------------|------------------------------------------------|-------|
-|master branch   |mcr.microsoft.com/k8s/csi/azuredisk-csi:latest  | yes   |
-|v0.10.0         |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.10.0 | yes   |
-|v0.9.0          |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.9.0  | yes   |
-|v0.8.0          |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.8.0  | yes   |
+|Driver Version  |Image                                           | supported k8s version |
+|----------------|------------------------------------------------|-----------------------|
+|master branch   |mcr.microsoft.com/k8s/csi/azuredisk-csi:latest  | 1.16+                 |
+|v1.1.0          |mcr.microsoft.com/k8s/csi/azuredisk-csi:v1.1.0  | 1.16+                 |
+|v1.0.0          |mcr.microsoft.com/k8s/csi/azuredisk-csi:v1.0.0  | 1.16+                 |
+|v0.10.0         |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.10.0 | 1.16+                 |
+|v0.9.0          |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.9.0  | 1.16+                 |
 
 ### Driver parameters
 Please refer to [`disk.csi.azure.com` driver parameters](./docs/driver-parameters.md)
@@ -26,6 +29,7 @@ Please refer to [`disk.csi.azure.com` driver parameters](./docs/driver-parameter
  > ```
  - This driver also supports [read cloud config from kuberenetes secret](./docs/read-from-secret.md).
  - If cluster identity is [Managed Service Identity(MSI)](https://docs.microsoft.com/en-us/azure/aks/use-managed-identity), make sure user assigned identity has `Contributor` role on node resource group
+ - [How to set up CSI driver on Azure RedHat OpenShift(ARO)](https://github.com/ezYakaEagle442/aro-pub-storage/blob/master/setup-store-CSI-driver-azure-disk.md)
 
 ### Install driver on a Kubernetes cluster
  - install via [kubectl](./docs/install-azuredisk-csi-driver.md) on public Azure (please use helm for other cloud environments, e.g. Azure Stack)

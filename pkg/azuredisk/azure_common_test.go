@@ -141,61 +141,77 @@ func TestNormalizeStorageAccountType(t *testing.T) {
 	tests := []struct {
 		cloud               string
 		storageAccountType  string
+		supportAzureStack   bool
 		expectedAccountType compute.DiskStorageAccountTypes
 		expectError         bool
 	}{
 		{
 			cloud:               "AZUREPUBLICCLOUD",
 			storageAccountType:  "",
+			supportAzureStack:   true,
 			expectedAccountType: compute.StandardSSDLRS,
 			expectError:         false,
 		},
 		{
 			cloud:               "AZURESTACKCLOUD",
 			storageAccountType:  "",
+			supportAzureStack:   true,
 			expectedAccountType: compute.StandardLRS,
 			expectError:         false,
 		},
 		{
 			cloud:               "AZUREPUBLICCLOUD",
 			storageAccountType:  "NOT_EXISTING",
+			supportAzureStack:   true,
 			expectedAccountType: "",
 			expectError:         true,
 		},
 		{
 			cloud:               "AZUREPUBLICCLOUD",
 			storageAccountType:  "Standard_LRS",
+			supportAzureStack:   true,
 			expectedAccountType: compute.StandardLRS,
 			expectError:         false,
 		},
 		{
 			cloud:               "AZUREPUBLICCLOUD",
 			storageAccountType:  "Premium_LRS",
+			supportAzureStack:   true,
 			expectedAccountType: compute.PremiumLRS,
 			expectError:         false,
 		},
 		{
 			cloud:               "AZUREPUBLICCLOUD",
 			storageAccountType:  "StandardSSD_LRS",
+			supportAzureStack:   true,
 			expectedAccountType: compute.StandardSSDLRS,
 			expectError:         false,
 		},
 		{
 			cloud:               "AZUREPUBLICCLOUD",
 			storageAccountType:  "UltraSSD_LRS",
+			supportAzureStack:   true,
 			expectedAccountType: compute.UltraSSDLRS,
 			expectError:         false,
 		},
 		{
 			cloud:               "AZURESTACKCLOUD",
 			storageAccountType:  "UltraSSD_LRS",
+			supportAzureStack:   true,
 			expectedAccountType: "",
 			expectError:         true,
+		},
+		{
+			cloud:               "AZURESTACKCLOUD",
+			storageAccountType:  "UltraSSD_LRS",
+			supportAzureStack:   false,
+			expectedAccountType: compute.UltraSSDLRS,
+			expectError:         false,
 		},
 	}
 
 	for _, test := range tests {
-		result, err := normalizeStorageAccountType(test.storageAccountType, test.cloud)
+		result, err := normalizeStorageAccountType(test.storageAccountType, test.cloud, test.supportAzureStack)
 		assert.Equal(t, result, test.expectedAccountType)
 		assert.Equal(t, err != nil, test.expectError, fmt.Sprintf("error msg: %v", err))
 	}

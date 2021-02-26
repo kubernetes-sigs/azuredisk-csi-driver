@@ -33,7 +33,7 @@ import (
 // Testing that a volume could be reattached to a different node on DanglingAttachError
 type PreProvisionedDanglingAttachVolumeTest struct {
 	CSIDriver       driver.PreProvisionedVolumeTestDriver
-	AzureDiskDriver *azuredisk.Driver
+	AzureDiskDriver azuredisk.CSIDriver
 	Pod             PodDetails
 	VolumeContext   map[string]string
 }
