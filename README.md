@@ -9,13 +9,13 @@ This driver allows Kubernetes to use [Azure disk](https://azure.microsoft.com/en
 ### Project status: GA
 
 ### Container Images & Kubernetes Compatibility
-|Driver Version  |Image                                           | 1.16+ |
-|----------------|------------------------------------------------|-------|
-|master branch   |mcr.microsoft.com/k8s/csi/azuredisk-csi:latest  | yes   |
-|v1.1.0          |mcr.microsoft.com/k8s/csi/azuredisk-csi:v1.1.0  | yes   |
-|v1.0.0          |mcr.microsoft.com/k8s/csi/azuredisk-csi:v1.0.0  | yes   |
-|v0.10.0         |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.10.0 | yes   |
-|v0.9.0          |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.9.0  | yes   |
+|Driver Version  |Image                                           | supported k8s version |
+|----------------|------------------------------------------------|-----------------------|
+|master branch   |mcr.microsoft.com/k8s/csi/azuredisk-csi:latest  | 1.16+                 |
+|v1.1.0          |mcr.microsoft.com/k8s/csi/azuredisk-csi:v1.1.0  | 1.16+                 |
+|v1.0.0          |mcr.microsoft.com/k8s/csi/azuredisk-csi:v1.0.0  | 1.16+                 |
+|v0.10.0         |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.10.0 | 1.16+                 |
+|v0.9.0          |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.9.0  | 1.16+                 |
 
 ### Driver parameters
 Please refer to [`disk.csi.azure.com` driver parameters](./docs/driver-parameters.md)
@@ -29,6 +29,7 @@ Please refer to [`disk.csi.azure.com` driver parameters](./docs/driver-parameter
  > ```
  - This driver also supports [read cloud config from kuberenetes secret](./docs/read-from-secret.md).
  - If cluster identity is [Managed Service Identity(MSI)](https://docs.microsoft.com/en-us/azure/aks/use-managed-identity), make sure user assigned identity has `Contributor` role on node resource group
+ - [How to set up CSI driver on Azure RedHat OpenShift(ARO)](https://github.com/ezYakaEagle442/aro-pub-storage/blob/master/setup-store-CSI-driver-azure-disk.md)
 
 ### Install driver on a Kubernetes cluster
  - install via [kubectl](./docs/install-azuredisk-csi-driver.md) on public Azure (please use helm for other cloud environments, e.g. Azure Stack)
