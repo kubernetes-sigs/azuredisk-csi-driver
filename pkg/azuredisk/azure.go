@@ -38,7 +38,7 @@ var (
 
 // IsAzureStackCloud decides whether the driver is running on Azure Stack Cloud.
 func IsAzureStackCloud(cloud string, disableAzureStackCloud bool) bool {
-	return !disableAzureStackCloud && strings.EqualFold(cloud, "AZURESTACKCLOUD")
+	return !disableAzureStackCloud && strings.EqualFold(cloud, azureStackCloud)
 }
 
 // GetCloudProvider get Azure Cloud Provider

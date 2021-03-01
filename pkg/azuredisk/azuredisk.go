@@ -44,7 +44,9 @@ import (
 
 const (
 	// DriverName driver name
-	DriverName = "disk.csi.azure.com"
+	DriverName       = "disk.csi.azure.com"
+	azurePublicCloud = "AZUREPUBLICCLOUD"
+	azureStackCloud  = "AZURESTACKCLOUD"
 
 	errDiskNotFound = "not found"
 	// default IOPS Caps & Throughput Cap (MBps) per https://docs.microsoft.com/en-us/azure/virtual-machines/linux/disks-ultra-ssd

@@ -175,12 +175,12 @@ func TestIsAzureStackCloud(t *testing.T) {
 			expectedResult:         false,
 		},
 		{
-			cloud:                  "AZURESTACKCLOUD",
+			cloud:                  azureStackCloud,
 			disableAzureStackCloud: false,
 			expectedResult:         true,
 		},
 		{
-			cloud:                  "AZURESTACKCLOUD",
+			cloud:                  azureStackCloud,
 			disableAzureStackCloud: true,
 			expectedResult:         false,
 		},
