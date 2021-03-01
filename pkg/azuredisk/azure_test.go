@@ -160,34 +160,34 @@ func createTestFile(path string) error {
 
 func TestIsAzureStackCloud(t *testing.T) {
 	tests := []struct {
-		cloud             string
-		supportAzureStack bool
-		expectedResult    bool
+		cloud                  string
+		disableAzureStackCloud bool
+		expectedResult         bool
 	}{
 		{
-			cloud:             "AzurePublicCloud",
-			supportAzureStack: true,
-			expectedResult:    false,
+			cloud:                  "AzurePublicCloud",
+			disableAzureStackCloud: false,
+			expectedResult:         false,
 		},
 		{
-			cloud:             "",
-			supportAzureStack: false,
-			expectedResult:    false,
+			cloud:                  "",
+			disableAzureStackCloud: true,
+			expectedResult:         false,
 		},
 		{
-			cloud:             "AZURESTACKCLOUD",
-			supportAzureStack: true,
-			expectedResult:    true,
+			cloud:                  "AZURESTACKCLOUD",
+			disableAzureStackCloud: false,
+			expectedResult:         true,
 		},
 		{
-			cloud:             "AZURESTACKCLOUD",
-			supportAzureStack: false,
-			expectedResult:    false,
+			cloud:                  "AZURESTACKCLOUD",
+			disableAzureStackCloud: true,
+			expectedResult:         false,
 		},
 	}
 
 	for i, test := range tests {
-		result := IsAzureStackCloud(test.cloud, test.supportAzureStack)
+		result := IsAzureStackCloud(test.cloud, test.disableAzureStackCloud)
 		assert.Equal(t, test.expectedResult, result, "TestCase[%d]", i)
 	}
 }
