@@ -44,7 +44,9 @@ import (
 
 const (
 	// DriverName driver name
-	DriverName = "disk.csi.azure.com"
+	DriverName       = "disk.csi.azure.com"
+	azurePublicCloud = "AZUREPUBLICCLOUD"
+	azureStackCloud  = "AZURESTACKCLOUD"
 
 	errDiskNotFound = "not found"
 	// default IOPS Caps & Throughput Cap (MBps) per https://docs.microsoft.com/en-us/azure/virtual-machines/linux/disks-ultra-ssd
@@ -112,19 +114,17 @@ type DriverCore struct {
 // Driver is the v1 implementation of the Azure Disk CSI Driver.
 type Driver struct {
 	DriverCore
-	volumeLocks       *volumehelper.VolumeLocks
-	supportAzureStack bool
+	volumeLocks *volumehelper.VolumeLocks
 }
 
 // newDriverV1 Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
 // does not support optional driver plugin info manifest field. Refer to CSI spec for more details.
-func newDriverV1(nodeID string, supportAzureStack bool) *Driver {
+func newDriverV1(nodeID string) *Driver {
 	driver := Driver{}
 	driver.Name = DriverName
 	driver.Version = driverVersion
 	driver.NodeID = nodeID
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
-	driver.supportAzureStack = supportAzureStack
 	return &driver
 }
 
