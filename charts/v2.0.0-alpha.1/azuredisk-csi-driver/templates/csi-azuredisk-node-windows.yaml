@@ -91,7 +91,7 @@ spec:
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--nodeid=$(KUBE_NODE_NAME)"
             - "--metrics-address=0.0.0.0:{{ .Values.node.metricsPort }}"
-            - "--temp-use-driver-v2"
+            - "--temp-use-driver-v2={{ .Values.azuredisk.useV2Driver }}"
           ports:
             - containerPort: 29603
               name: healthz

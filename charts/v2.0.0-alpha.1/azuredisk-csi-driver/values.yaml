@@ -30,6 +30,9 @@ serviceAccount:
 rbac:
   create: true
 
+azuredisk:
+  useV2Driver: true
+
 controller:
   replicas: 2
   metricsPort: 29604
