@@ -102,7 +102,7 @@ var _ = ginkgo.BeforeSuite(func() {
 		execTestCmd([]testCmd{e2eBootstrap, createMetricsSVC})
 
 		nodeid := os.Getenv("nodeid")
-		azurediskDriver = azuredisk.NewDriver(nodeid, true)
+		azurediskDriver = azuredisk.NewDriver(nodeid)
 		kubeconfig := os.Getenv(kubeconfigEnvVar)
 		go func() {
 			os.Setenv("AZURE_CREDENTIAL_FILE", credentials.TempAzureCredentialFilePath)

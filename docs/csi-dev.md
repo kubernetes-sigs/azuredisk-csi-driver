@@ -13,6 +13,12 @@ $ cd $GOPATH/src/sigs.k8s.io/azuredisk-csi-driver
 $ make azuredisk
 ```
 
+ - Build CSI driver v2
+```console
+$ cd $GOPATH/src/sigs.k8s.io/azuredisk-csi-driver
+$ BUILD_V2=1 make azuredisk
+```
+
  - Run verification before sending PR
 ```console
 $ make verify

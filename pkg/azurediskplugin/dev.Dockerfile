@@ -17,5 +17,6 @@ RUN apt-get update && apt-get install -y util-linux e2fsprogs mount ca-certifica
 LABEL maintainers="andyzhangx"
 LABEL description="Azure Disk CSI Driver"
 
-COPY ./_output/azurediskplugin /azurediskplugin
+ARG PLUGIN_NAME=azurediskplugin
+COPY ./_output/${PLUGIN_NAME} /azurediskplugin
 ENTRYPOINT ["/azurediskplugin"]

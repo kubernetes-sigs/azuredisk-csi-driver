@@ -41,18 +41,17 @@ var useDriverV2 = flag.Bool("temp-use-driver-v2", false, "A temporary flag to en
 // DriverV2 implements all interfaces of CSI drivers
 type DriverV2 struct {
 	DriverCore
-	volumeLocks       *volumehelper.VolumeLocks
-	supportAzureStack bool
+	volumeLocks *volumehelper.VolumeLocks
 }
 
 // NewDriver creates a Driver or DriverV2 object depending on the --temp-use-driver-v2 flag.
-func NewDriver(nodeID string, supportAzureStack bool) CSIDriver {
+func NewDriver(nodeID string) CSIDriver {
 	var d CSIDriver
 
 	if !*useDriverV2 {
-		d = newDriverV1(nodeID, supportAzureStack)
+		d = newDriverV1(nodeID)
 	} else {
-		d = newDriverV2(nodeID, supportAzureStack)
+		d = newDriverV2(nodeID)
 	}
 
 	return d
@@ -60,14 +59,13 @@ func NewDriver(nodeID string, supportAzureStack bool) CSIDriver {
 
 // newDriverV2 Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
 // does not support optional driver plugin info manifest field. Refer to CSI spec for more details.
-func newDriverV2(nodeID string, supportAzureStack bool) *DriverV2 {
+func newDriverV2(nodeID string) *DriverV2 {
 	klog.Warning("Using DriverV2")
 	driver := DriverV2{}
 	driver.Name = DriverName
 	driver.Version = driverVersion
 	driver.NodeID = nodeID
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
-	driver.supportAzureStack = supportAzureStack
 	return &driver
 }
 

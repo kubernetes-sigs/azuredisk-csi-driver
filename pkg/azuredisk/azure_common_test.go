@@ -139,79 +139,79 @@ func TestIoHandler(t *testing.T) {
 
 func TestNormalizeStorageAccountType(t *testing.T) {
 	tests := []struct {
-		cloud               string
-		storageAccountType  string
-		supportAzureStack   bool
-		expectedAccountType compute.DiskStorageAccountTypes
-		expectError         bool
+		cloud                  string
+		storageAccountType     string
+		disableAzureStackCloud bool
+		expectedAccountType    compute.DiskStorageAccountTypes
+		expectError            bool
 	}{
 		{
-			cloud:               "AZUREPUBLICCLOUD",
-			storageAccountType:  "",
-			supportAzureStack:   true,
-			expectedAccountType: compute.StandardSSDLRS,
-			expectError:         false,
+			cloud:                  azurePublicCloud,
+			storageAccountType:     "",
+			disableAzureStackCloud: false,
+			expectedAccountType:    compute.StandardSSDLRS,
+			expectError:            false,
 		},
 		{
-			cloud:               "AZURESTACKCLOUD",
-			storageAccountType:  "",
-			supportAzureStack:   true,
-			expectedAccountType: compute.StandardLRS,
-			expectError:         false,
+			cloud:                  azureStackCloud,
+			storageAccountType:     "",
+			disableAzureStackCloud: false,
+			expectedAccountType:    compute.StandardLRS,
+			expectError:            false,
 		},
 		{
-			cloud:               "AZUREPUBLICCLOUD",
-			storageAccountType:  "NOT_EXISTING",
-			supportAzureStack:   true,
-			expectedAccountType: "",
-			expectError:         true,
+			cloud:                  azurePublicCloud,
+			storageAccountType:     "NOT_EXISTING",
+			disableAzureStackCloud: false,
+			expectedAccountType:    "",
+			expectError:            true,
 		},
 		{
-			cloud:               "AZUREPUBLICCLOUD",
-			storageAccountType:  "Standard_LRS",
-			supportAzureStack:   true,
-			expectedAccountType: compute.StandardLRS,
-			expectError:         false,
+			cloud:                  azurePublicCloud,
+			storageAccountType:     "Standard_LRS",
+			disableAzureStackCloud: false,
+			expectedAccountType:    compute.StandardLRS,
+			expectError:            false,
 		},
 		{
-			cloud:               "AZUREPUBLICCLOUD",
-			storageAccountType:  "Premium_LRS",
-			supportAzureStack:   true,
-			expectedAccountType: compute.PremiumLRS,
-			expectError:         false,
+			cloud:                  azurePublicCloud,
+			storageAccountType:     "Premium_LRS",
+			disableAzureStackCloud: false,
+			expectedAccountType:    compute.PremiumLRS,
+			expectError:            false,
 		},
 		{
-			cloud:               "AZUREPUBLICCLOUD",
-			storageAccountType:  "StandardSSD_LRS",
-			supportAzureStack:   true,
-			expectedAccountType: compute.StandardSSDLRS,
-			expectError:         false,
+			cloud:                  azurePublicCloud,
+			storageAccountType:     "StandardSSD_LRS",
+			disableAzureStackCloud: false,
+			expectedAccountType:    compute.StandardSSDLRS,
+			expectError:            false,
 		},
 		{
-			cloud:               "AZUREPUBLICCLOUD",
-			storageAccountType:  "UltraSSD_LRS",
-			supportAzureStack:   true,
-			expectedAccountType: compute.UltraSSDLRS,
-			expectError:         false,
+			cloud:                  azurePublicCloud,
+			storageAccountType:     "UltraSSD_LRS",
+			disableAzureStackCloud: false,
+			expectedAccountType:    compute.UltraSSDLRS,
+			expectError:            false,
 		},
 		{
-			cloud:               "AZURESTACKCLOUD",
-			storageAccountType:  "UltraSSD_LRS",
-			supportAzureStack:   true,
-			expectedAccountType: "",
-			expectError:         true,
+			cloud:                  azureStackCloud,
+			storageAccountType:     "UltraSSD_LRS",
+			disableAzureStackCloud: false,
+			expectedAccountType:    "",
+			expectError:            true,
 		},
 		{
-			cloud:               "AZURESTACKCLOUD",
-			storageAccountType:  "UltraSSD_LRS",
-			supportAzureStack:   false,
-			expectedAccountType: compute.UltraSSDLRS,
-			expectError:         false,
+			cloud:                  azureStackCloud,
+			storageAccountType:     "UltraSSD_LRS",
+			disableAzureStackCloud: true,
+			expectedAccountType:    compute.UltraSSDLRS,
+			expectError:            false,
 		},
 	}
 
 	for _, test := range tests {
-		result, err := normalizeStorageAccountType(test.storageAccountType, test.cloud, test.supportAzureStack)
+		result, err := normalizeStorageAccountType(test.storageAccountType, test.cloud, test.disableAzureStackCloud)
 		assert.Equal(t, result, test.expectedAccountType)
 		assert.Equal(t, err != nil, test.expectError, fmt.Sprintf("error msg: %v", err))
 	}

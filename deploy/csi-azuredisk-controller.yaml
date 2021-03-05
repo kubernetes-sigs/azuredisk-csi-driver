@@ -102,7 +102,7 @@ spec:
           resources:
             limits:
               cpu: 100m
-              memory: 100Mi
+              memory: 200Mi
             requests:
               cpu: 10m
               memory: 20Mi
@@ -130,7 +130,6 @@ spec:
             - "--v=5"
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--metrics-address=0.0.0.0:29604"
-            - "--support-azure-stack=true"
           ports:
             - containerPort: 29602
               name: healthz
