@@ -155,6 +155,9 @@ func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface,
 	_, err = client.AppsV1().StatefulSets(tStatefulSet.namespace.Name).UpdateScale(context.TODO(), tStatefulSet.statefulset.Name, newScale, metav1.UpdateOptions{})
 	framework.ExpectNoError(err)
 
+	ginkgo.By("sleep 30s waiting for statefulset update complete")
+	time.Sleep(30 * time.Second)
+
 	ginkgo.By("checking that the pod for statefulset is running")
 	tStatefulSet.WaitForPodReady()
 }
