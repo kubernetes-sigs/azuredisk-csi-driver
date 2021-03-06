@@ -122,7 +122,7 @@ ifdef TEST_WINDOWS
 		--set controller.runOnMaster=true \
 		--set controller.replicas=1 \
 		--set controller.logLevel=6 \
-		--set node.logLevel=6
+		--set node.logLevel=6 \
 		--set cloud=$(CLOUD)
 else
 	helm install azuredisk-csi-driver charts/${CHART_VERSION}/azuredisk-csi-driver --namespace kube-system --wait --timeout=15m -v=5 --debug \
