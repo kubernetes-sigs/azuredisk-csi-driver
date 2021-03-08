@@ -96,7 +96,7 @@ func (az *Cloud) getStorageAccounts(accountOptions *AccountOptions) ([]accountWi
 			if acct.Tags != nil {
 				// skip account with SkipMatchingTag tag
 				if _, ok := acct.Tags[SkipMatchingTag]; ok {
-					klog.V(2).Infof("found %s tag for account %s, skip matching", SkipMatchingTag, acct.Name)
+					klog.V(2).Infof("found %s tag for account %s, skip matching", SkipMatchingTag, *acct.Name)
 					continue
 				}
 			}
@@ -165,9 +165,9 @@ func (az *Cloud) EnsureStorageAccount(accountOptions *AccountOptions, genAccount
 			// set network rules for storage account
 			var networkRuleSet *storage.NetworkRuleSet
 			virtualNetworkRules := []storage.VirtualNetworkRule{}
-			for _, subnetID := range accountOptions.VirtualNetworkResourceIDs {
+			for i, subnetID := range accountOptions.VirtualNetworkResourceIDs {
 				vnetRule := storage.VirtualNetworkRule{
-					VirtualNetworkResourceID: &subnetID,
+					VirtualNetworkResourceID: &accountOptions.VirtualNetworkResourceIDs[i],
 					Action:                   storage.Allow,
 				}
 				virtualNetworkRules = append(virtualNetworkRules, vnetRule)
