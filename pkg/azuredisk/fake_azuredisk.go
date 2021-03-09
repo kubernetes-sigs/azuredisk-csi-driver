@@ -23,6 +23,7 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
 	"k8s.io/mount-utils"
+	testingexec "k8s.io/utils/exec/testing"
 
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
@@ -61,6 +62,7 @@ type FakeDriver interface {
 
 	GetSourceDiskSize(ctx context.Context, resourceGroup, diskName string, curDepth, maxDepth int) (*int32, error)
 
+	setNextCommandOutputScripts(scripts ...testingexec.FakeAction)
 	setControllerCapabilities([]*csi.ControllerServiceCapability)
 	setNodeCapabilities([]*csi.NodeServiceCapability)
 	setName(string)
@@ -79,8 +81,12 @@ type FakeDriver interface {
 	getDevicePathWithLUN(lunStr string) (string, error)
 }
 
-func newFakeDriverV1(t *testing.T) (*Driver, error) {
-	driver := Driver{}
+type fakeDriverV1 struct {
+	Driver
+}
+
+func newFakeDriverV1(t *testing.T) (*fakeDriverV1, error) {
+	driver := fakeDriverV1{}
 	driver.Name = fakeDriverName
 	driver.Version = fakeDriverVersion
 	driver.NodeID = fakeNodeID
@@ -91,7 +97,7 @@ func newFakeDriverV1(t *testing.T) (*Driver, error) {
 	defer ctrl.Finish()
 
 	driver.cloud = azure.GetTestCloud(ctrl)
-	mounter, err := mounter.NewSafeMounter()
+	mounter, err := mounter.NewFakeSafeMounter()
 	if err != nil {
 		return nil, err
 	}
@@ -133,4 +139,8 @@ func createVolumeCapability(accessMode csi.VolumeCapability_AccessMode_Mode) *cs
 			Mode: accessMode,
 		},
 	}
+}
+
+func (d *fakeDriverV1) setNextCommandOutputScripts(scripts ...testingexec.FakeAction) {
+	d.mounter.Exec.(*mounter.FakeSafeMounter).SetNextCommandOutputScripts(scripts...)
 }

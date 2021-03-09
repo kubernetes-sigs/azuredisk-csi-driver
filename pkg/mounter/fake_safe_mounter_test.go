@@ -14,15 +14,43 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package azuredisk
+package mounter
 
 import (
 	"fmt"
+	"io/ioutil"
+	"log"
+	"os"
 	"reflect"
 	"testing"
 
-	"k8s.io/mount-utils"
+	"github.com/stretchr/testify/assert"
 )
+
+var (
+	sourceTest string
+	targetTest string
+)
+
+func TestMain(m *testing.M) {
+	var err error
+	sourceTest, err = ioutil.TempDir(os.TempDir(), "source_test")
+	if err != nil {
+		log.Printf("failed to get source test path: %v\n", err)
+		os.Exit(1)
+	}
+	defer os.RemoveAll(sourceTest)
+
+	targetTest, err = ioutil.TempDir(os.TempDir(), "target_test")
+	if err != nil {
+		log.Printf("failed to get target test path: %v\n", err)
+		os.Exit(1)
+	}
+	defer os.RemoveAll(targetTest)
+
+	_ = m.Run()
+
+}
 
 func TestMount(t *testing.T) {
 	tests := []struct {
@@ -51,13 +79,11 @@ func TestMount(t *testing.T) {
 		},
 	}
 
-	d, _ := NewFakeDriver(t)
-	fakeMounter := &fakeMounter{}
-	d.setMounter(&mount.SafeFormatAndMount{
-		Interface: fakeMounter,
-	})
+	fakeSafeMounter, err := NewFakeSafeMounter()
+	assert.NoError(t, err)
+
 	for _, test := range tests {
-		err := d.getMounter().Mount(test.source, test.target, "", nil)
+		err := fakeSafeMounter.Mount(test.source, test.target, "", nil)
 		if !reflect.DeepEqual(err, test.expectedErr) {
 			t.Errorf("Unexpected error: %v", err)
 		}
@@ -91,13 +117,11 @@ func TestMountSensitive(t *testing.T) {
 		},
 	}
 
-	d, _ := NewFakeDriver(t)
-	fakeMounter := &fakeMounter{}
-	d.setMounter(&mount.SafeFormatAndMount{
-		Interface: fakeMounter,
-	})
+	fakeSafeMounter, err := NewFakeSafeMounter()
+	assert.NoError(t, err)
+
 	for _, test := range tests {
-		err := d.getMounter().MountSensitive(test.source, test.target, "", nil, nil)
+		err := fakeSafeMounter.MountSensitive(test.source, test.target, "", nil, nil)
 		if !reflect.DeepEqual(err, test.expectedErr) {
 			t.Errorf("Unexpected error: %v", err)
 		}
@@ -115,7 +139,8 @@ func TestIsLikelyNotMountPoint(t *testing.T) {
 			file:        "./error_is_likely_target",
 			expectedErr: fmt.Errorf("fake IsLikelyNotMountPoint: fake error"),
 		},
-		{desc: "[Success] Successful run",
+		{
+			desc:        "[Success] Successful run",
 			file:        targetTest,
 			expectedErr: nil,
 		},
@@ -126,13 +151,14 @@ func TestIsLikelyNotMountPoint(t *testing.T) {
 		},
 	}
 
-	d, _ := NewFakeDriver(t)
-	fakeMounter := &fakeMounter{}
-	d.setMounter(&mount.SafeFormatAndMount{
-		Interface: fakeMounter,
-	})
+	fakeSafeMounter, err := NewFakeSafeMounter()
+	assert.NoError(t, err)
+
+	err = fakeSafeMounter.Mount(sourceTest, targetTest, "ext4", []string{})
+	assert.NoError(t, err)
+
 	for _, test := range tests {
-		_, err := d.getMounter().IsLikelyNotMountPoint(test.file)
+		_, err := fakeSafeMounter.IsLikelyNotMountPoint(test.file)
 		if !reflect.DeepEqual(err, test.expectedErr) {
 			t.Errorf("Unexpected error: %v", err)
 		}
