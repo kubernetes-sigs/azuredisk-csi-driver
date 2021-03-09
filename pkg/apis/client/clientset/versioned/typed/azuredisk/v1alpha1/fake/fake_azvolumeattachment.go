@@ -102,6 +102,18 @@ func (c *FakeAzVolumeAttachments) Update(ctx context.Context, azVolumeAttachment
 	return obj.(*v1alpha1.AzVolumeAttachment), err
 }
 
+// UpdateStatus was generated because the type contains a Status member.
+// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
+func (c *FakeAzVolumeAttachments) UpdateStatus(ctx context.Context, azVolumeAttachment *v1alpha1.AzVolumeAttachment, opts v1.UpdateOptions) (*v1alpha1.AzVolumeAttachment, error) {
+	obj, err := c.Fake.
+		Invokes(testing.NewUpdateSubresourceAction(azvolumeattachmentsResource, "status", c.ns, azVolumeAttachment), &v1alpha1.AzVolumeAttachment{})
+
+	if obj == nil {
+		return nil, err
+	}
+	return obj.(*v1alpha1.AzVolumeAttachment), err
+}
+
 // Delete takes name of the azVolumeAttachment and deletes it. Returns an error if one occurs.
 func (c *FakeAzVolumeAttachments) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.

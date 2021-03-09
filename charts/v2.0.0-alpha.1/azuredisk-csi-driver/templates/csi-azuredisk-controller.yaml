@@ -136,6 +136,7 @@ spec:
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--metrics-address=0.0.0.0:{{ .Values.controller.metricsPort }}"
             - "--temp-use-driver-v2={{ .Values.azuredisk.useV2Driver }}"
+            - "--is-controller-plugin={{ .Values.azuredisk.useV2Driver }}"
           ports:
             - containerPort: 29602
               name: healthz

@@ -48,6 +48,7 @@ const (
 	cloudNameEnvVar     = "AZURE_CLOUD_NAME"
 	defaultReportDir    = "/workspace/_artifacts"
 	inTreeStorageClass  = "kubernetes.io/azure-disk"
+	buildV2Driver       = "BUILD_V2"
 )
 
 var (
@@ -55,7 +56,9 @@ var (
 	isUsingInTreeVolumePlugin = os.Getenv(driver.AzureDriverNameVar) == inTreeStorageClass
 	isTestingMigration        = os.Getenv(testMigrationEnvVar) != ""
 	isWindowsCluster          = os.Getenv(testWindowsEnvVar) != ""
+	isUsingCSIDriverV2        = os.Getenv(buildV2Driver) != ""
 	isAzureStackCloud         = strings.EqualFold(os.Getenv(cloudNameEnvVar), "AZURESTACKCLOUD")
+	skipClusterBootstrap      = flag.Bool("skip-cluster-bootstrap", false, "flag to indicate that we can skip cluster bootstrap.")
 )
 
 type testCmd struct {
@@ -99,7 +102,9 @@ var _ = ginkgo.BeforeSuite(func() {
 			startLog: "create metrics service ...",
 			endLog:   "metrics service created",
 		}
-		execTestCmd([]testCmd{e2eBootstrap, createMetricsSVC})
+		if *skipClusterBootstrap == false {
+			execTestCmd([]testCmd{e2eBootstrap, createMetricsSVC})
+		}
 
 		nodeid := os.Getenv("nodeid")
 		azurediskDriver = azuredisk.NewDriver(nodeid)
@@ -169,7 +174,12 @@ var _ = ginkgo.AfterSuite(func() {
 			startLog: "Uninstalling Azure Disk CSI Driver...",
 			endLog:   "Azure Disk CSI Driver uninstalled",
 		}
-		execTestCmd([]testCmd{azurediskLog, deleteMetricsSVC, e2eTeardown})
+
+		if *skipClusterBootstrap {
+			execTestCmd([]testCmd{azurediskLog})
+		} else {
+			execTestCmd([]testCmd{azurediskLog, deleteMetricsSVC, e2eTeardown})
+		}
 
 		// install/uninstall Azure Disk CSI Driver deployment scripts test
 		installDriver := testCmd{
@@ -234,6 +244,12 @@ func skipIfTestingInWindowsCluster() {
 func skipIfUsingInTreeVolumePlugin() {
 	if isUsingInTreeVolumePlugin {
 		ginkgo.Skip("test case is only available for CSI drivers")
+	}
+}
+
+func skipIfNotUsingCSIDriverV2() {
+	if !isUsingCSIDriverV2 {
+		ginkgo.Skip("test case is only available for CSI driver version v2")
 	}
 }
 

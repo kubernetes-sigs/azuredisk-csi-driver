@@ -1,0 +1,13 @@
+{{- if .Values.azuredisk.useV2Driver}}
+---
+{
+  "apiVersion": "v1",
+  "kind": "Namespace",
+  "metadata": {
+    "name": "azure-disk-csi",
+    "labels": {
+      "name": "azure-disk-csi"
+    }
+  }
+}
+{{- end }}

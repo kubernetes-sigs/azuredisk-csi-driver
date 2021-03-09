@@ -40,6 +40,7 @@ type AzVolumeAttachmentsGetter interface {
 type AzVolumeAttachmentInterface interface {
 	Create(ctx context.Context, azVolumeAttachment *v1alpha1.AzVolumeAttachment, opts v1.CreateOptions) (*v1alpha1.AzVolumeAttachment, error)
 	Update(ctx context.Context, azVolumeAttachment *v1alpha1.AzVolumeAttachment, opts v1.UpdateOptions) (*v1alpha1.AzVolumeAttachment, error)
+	UpdateStatus(ctx context.Context, azVolumeAttachment *v1alpha1.AzVolumeAttachment, opts v1.UpdateOptions) (*v1alpha1.AzVolumeAttachment, error)
 	Delete(ctx context.Context, name string, opts v1.DeleteOptions) error
 	DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error
 	Get(ctx context.Context, name string, opts v1.GetOptions) (*v1alpha1.AzVolumeAttachment, error)
@@ -128,6 +129,22 @@ func (c *azVolumeAttachments) Update(ctx context.Context, azVolumeAttachment *v1
 		Namespace(c.ns).
 		Resource("azvolumeattachments").
 		Name(azVolumeAttachment.Name).
+		VersionedParams(&opts, scheme.ParameterCodec).
+		Body(azVolumeAttachment).
+		Do(ctx).
+		Into(result)
+	return
+}
+
+// UpdateStatus was generated because the type contains a Status member.
+// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
+func (c *azVolumeAttachments) UpdateStatus(ctx context.Context, azVolumeAttachment *v1alpha1.AzVolumeAttachment, opts v1.UpdateOptions) (result *v1alpha1.AzVolumeAttachment, err error) {
+	result = &v1alpha1.AzVolumeAttachment{}
+	err = c.client.Put().
+		Namespace(c.ns).
+		Resource("azvolumeattachments").
+		Name(azVolumeAttachment.Name).
+		SubResource("status").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Body(azVolumeAttachment).
 		Do(ctx).

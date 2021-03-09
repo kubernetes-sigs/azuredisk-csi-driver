@@ -31,6 +31,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/volume/util"
 	"k8s.io/mount-utils"
@@ -135,7 +136,18 @@ func (d *Driver) Run(endpoint, kubeconfig string, testBool bool) {
 		klog.Fatalf("%v", err)
 	}
 	klog.Infof("\nDRIVER INFORMATION:\n-------------------\n%s\n\nStreaming logs below:", versionMeta)
-	cloud, err := GetCloudProvider(kubeconfig)
+
+	config, err := GetKubeConfig(kubeconfig)
+	if err != nil || config == nil {
+		klog.Fatalf("failed to get kube config, error: %v", err)
+	}
+
+	kubeClient, err := clientset.NewForConfig(config)
+	if err != nil || kubeClient == nil {
+		klog.Fatalf("failed to get kubeclient with kubeconfig (%s), error: %v", kubeconfig, err)
+	}
+
+	cloud, err := GetCloudProvider(kubeClient)
 	if err != nil || cloud.TenantID == "" || cloud.SubscriptionID == "" {
 		klog.Fatalf("failed to get Azure Cloud Provider, error: %v", err)
 	}
@@ -177,6 +189,7 @@ func (d *Driver) Run(endpoint, kubeconfig string, testBool bool) {
 	s.Wait()
 }
 
+// GetDiskName returns disk name from disk URI
 func GetDiskName(diskURI string) (string, error) {
 	matches := managedDiskPathRE.FindStringSubmatch(diskURI)
 	if len(matches) != 2 {
@@ -193,6 +206,7 @@ func getSnapshotName(snapshotURI string) (string, error) {
 	return matches[1], nil
 }
 
+// GetResourceGroupFromURI returns resource groupd from URI
 func GetResourceGroupFromURI(diskURI string) (string, error) {
 	fields := strings.Split(diskURI, "/")
 	if len(fields) != 9 || strings.ToLower(fields[3]) != "resourcegroups" {
@@ -335,6 +349,7 @@ func isAvailabilityZone(zone, region string) bool {
 	return strings.HasPrefix(zone, fmt.Sprintf("%s-", region))
 }
 
+// IsCorruptedDir checks if the dir is corrupted
 func IsCorruptedDir(dir string) bool {
 	_, pathErr := mount.PathExists(dir)
 	fmt.Printf("IsCorruptedDir(%s) returned with error: %v", dir, pathErr)

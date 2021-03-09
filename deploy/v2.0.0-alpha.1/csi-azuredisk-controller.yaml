@@ -131,6 +131,7 @@ spec:
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--metrics-address=0.0.0.0:29604"
             - "--temp-use-driver-v2"
+            - "--is-controller-plugin=true"
           ports:
             - containerPort: 29602
               name: healthz
