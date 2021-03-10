@@ -19,8 +19,6 @@ package fileclient
 import (
 	"context"
 	"fmt"
-	"net/http"
-	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2019-06-01/storage"
 
@@ -31,7 +29,8 @@ import (
 
 // Client implements the azure file client interface
 type Client struct {
-	fileSharesClient storage.FileSharesClient
+	fileSharesClient   storage.FileSharesClient
+	fileServicesClient storage.FileServicesClient
 }
 
 // ShareOptions contains the fields which are used to create file share.
@@ -43,11 +42,14 @@ type ShareOptions struct {
 
 // New creates a azure file client
 func New(config *azclients.ClientConfig) *Client {
-	client := storage.NewFileSharesClientWithBaseURI(config.ResourceManagerEndpoint, config.SubscriptionID)
-	client.Authorizer = config.Authorizer
+	fileSharesClient := storage.NewFileSharesClientWithBaseURI(config.ResourceManagerEndpoint, config.SubscriptionID)
+	fileSharesClient.Authorizer = config.Authorizer
 
+	fileServicesClient := storage.NewFileServicesClientWithBaseURI(config.ResourceManagerEndpoint, config.SubscriptionID)
+	fileServicesClient.Authorizer = config.Authorizer
 	return &Client{
-		fileSharesClient: client,
+		fileSharesClient:   fileSharesClient,
+		fileServicesClient: fileServicesClient,
 	}
 }
 
@@ -56,14 +58,6 @@ func (c *Client) CreateFileShare(resourceGroupName, accountName string, shareOpt
 	if shareOptions == nil {
 		return fmt.Errorf("share options is nil")
 	}
-	result, err := c.GetFileShare(resourceGroupName, accountName, shareOptions.Name)
-	if err == nil {
-		klog.V(2).Infof("file share(%s) under account(%s) rg(%s) already exists", shareOptions.Name, accountName, resourceGroupName)
-		return nil
-	} else if result.Response.Response == nil || (err != nil && result.Response.Response.StatusCode != http.StatusNotFound && !strings.Contains(err.Error(), "ShareNotFound")) {
-		return fmt.Errorf("failed to get file share(%s), err: %w", shareOptions.Name, err)
-	}
-
 	quota := int32(shareOptions.RequestGiB)
 	fileShareProperties := &storage.FileShareProperties{
 		ShareQuota: &quota,
@@ -75,15 +69,13 @@ func (c *Client) CreateFileShare(resourceGroupName, accountName string, shareOpt
 		Name:                &shareOptions.Name,
 		FileShareProperties: fileShareProperties,
 	}
-	_, err = c.fileSharesClient.Create(context.Background(), resourceGroupName, accountName, shareOptions.Name, fileShare)
-
+	_, err := c.fileSharesClient.Create(context.Background(), resourceGroupName, accountName, shareOptions.Name, fileShare)
 	return err
 }
 
 // DeleteFileShare deletes a file share
 func (c *Client) DeleteFileShare(resourceGroupName, accountName, name string) error {
 	_, err := c.fileSharesClient.Delete(context.Background(), resourceGroupName, accountName, name)
-
 	return err
 }
 
@@ -116,4 +108,14 @@ func (c *Client) ResizeFileShare(resourceGroupName, accountName, name string, si
 // GetFileShare gets a file share
 func (c *Client) GetFileShare(resourceGroupName, accountName, name string) (storage.FileShare, error) {
 	return c.fileSharesClient.Get(context.Background(), resourceGroupName, accountName, name, storage.Stats)
+}
+
+// GetServiceProperties get service properties
+func (c *Client) GetServiceProperties(resourceGroupName, accountName string) (storage.FileServiceProperties, error) {
+	return c.fileServicesClient.GetServiceProperties(context.Background(), resourceGroupName, accountName)
+}
+
+// SetServiceProperties set service properties
+func (c *Client) SetServiceProperties(resourceGroupName, accountName string, parameters storage.FileServiceProperties) (storage.FileServiceProperties, error) {
+	return c.fileServicesClient.SetServiceProperties(context.Background(), resourceGroupName, accountName, parameters)
 }

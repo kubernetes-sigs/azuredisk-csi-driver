@@ -26,7 +26,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-06-30/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
 	"github.com/stretchr/testify/assert"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"

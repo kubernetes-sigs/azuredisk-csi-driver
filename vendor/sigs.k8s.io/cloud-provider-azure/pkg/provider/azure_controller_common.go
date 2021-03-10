@@ -27,7 +27,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-06-30/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
 
 	"k8s.io/apimachinery/pkg/types"
 	kwait "k8s.io/apimachinery/pkg/util/wait"
@@ -98,12 +98,12 @@ type controllerCommon struct {
 
 // AttachDiskOptions attach disk options
 type AttachDiskOptions struct {
-	lun                     int32
-	isManagedDisk           bool
-	diskName                string
 	cachingMode             compute.CachingTypes
+	diskName                string
 	diskEncryptionSetID     string
+	isManagedDisk           bool
 	writeAcceleratorEnabled bool
+	lun                     int32
 }
 
 // getNodeVMSet gets the VMSet interface based on config.VMType and the real virtual machine type.
