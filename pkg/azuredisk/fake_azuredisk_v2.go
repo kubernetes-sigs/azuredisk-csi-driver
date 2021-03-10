@@ -26,7 +26,7 @@ import (
 	"k8s.io/klog/v2"
 	testingexec "k8s.io/utils/exec/testing"
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/provisioner"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
@@ -62,12 +62,12 @@ func newFakeDriverV2(t *testing.T) (*fakeDriverV2, error) {
 	defer ctrl.Finish()
 
 	driver.cloud = azure.GetTestCloud(ctrl)
-	mounter, err := mounter.NewFakeSafeMounter()
+	nodeProvisioner, err := provisioner.NewFakeNodeProvisioner()
 	if err != nil {
 		return nil, err
 	}
 
-	driver.mounter = mounter
+	driver.nodeProvisioner = nodeProvisioner
 
 	driver.AddControllerServiceCapabilities(
 		[]csi.ControllerServiceCapability_RPC_Type{
@@ -90,5 +90,19 @@ func newFakeDriverV2(t *testing.T) (*fakeDriverV2, error) {
 }
 
 func (d *fakeDriverV2) setNextCommandOutputScripts(scripts ...testingexec.FakeAction) {
-	d.mounter.Exec.(*mounter.FakeSafeMounter).SetNextCommandOutputScripts(scripts...)
+	d.nodeProvisioner.(*provisioner.FakeNodeProvisioner).SetNextCommandOutputScripts(scripts...)
+}
+
+func (d *fakeDriverV2) setIsBlockDevicePathError(path string, isDevice bool, result error) {
+	d.nodeProvisioner.(*provisioner.FakeNodeProvisioner).SetIsBlockDevicePathResult(path, isDevice, result)
+}
+
+func skipIfTestingDriverV2(t *testing.T) {
+	if *useDriverV2 {
+		t.Skip("Skipping test on DriverV2")
+	}
+}
+
+func isTestingDriverV2() bool {
+	return *useDriverV2
 }

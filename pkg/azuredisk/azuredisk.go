@@ -108,13 +108,13 @@ type CSIDriver interface {
 // DriverCore contains fields common to both the V1 and V2 driver, and implements all interfaces of CSI drivers
 type DriverCore struct {
 	csicommon.CSIDriver
-	cloud   *azure.Cloud
-	mounter *mount.SafeFormatAndMount
+	cloud *azure.Cloud
 }
 
 // Driver is the v1 implementation of the Azure Disk CSI Driver.
 type Driver struct {
 	DriverCore
+	mounter     *mount.SafeFormatAndMount
 	volumeLocks *volumehelper.VolumeLocks
 }
 
@@ -389,14 +389,4 @@ func (d *DriverCore) getCloud() *provider.Cloud {
 // setCloud sets the cloud field. It is intended for use with unit tests.
 func (d *DriverCore) setCloud(cloud *provider.Cloud) {
 	d.cloud = cloud
-}
-
-// getMounter returns the value of the mounter field. It is intended for use with unit tests.
-func (d *DriverCore) getMounter() *mount.SafeFormatAndMount {
-	return d.mounter
-}
-
-// setMounter sets the mounter field. It is intended for use with unit tests.
-func (d *DriverCore) setMounter(mounter *mount.SafeFormatAndMount) {
-	d.mounter = mounter
 }

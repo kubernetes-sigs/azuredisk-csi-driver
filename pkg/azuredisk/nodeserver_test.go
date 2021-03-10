@@ -148,6 +148,8 @@ func TestGetMaxDataDiskCount(t *testing.T) {
 }
 
 func TestEnsureMountPoint(t *testing.T) {
+	skipIfTestingDriverV2(t)
+
 	errorTarget, err := testutil.GetWorkDirPath("error_is_likely_target")
 	assert.NoError(t, err)
 	alreadyExistTarget, err := testutil.GetWorkDirPath("false_is_likely_exist_target")
@@ -196,7 +198,7 @@ func TestEnsureMountPoint(t *testing.T) {
 
 	// Setup
 	_ = makeDir(alreadyExistTarget)
-	d, err := NewFakeDriver(t)
+	d, err := newFakeDriverV1(t)
 	assert.NoError(t, err)
 
 	for _, test := range tests {
@@ -755,6 +757,8 @@ func TestNodeExpandVolume(t *testing.T) {
 			return []byte{}, []byte{}, errors.New("path \"./test\" does not exist")
 		}
 		tests[1].outputScripts = []testingexec.FakeAction{winNotFoundErrAction}
+	} else if isTestingDriverV2() {
+		d.setIsBlockDevicePathError("./test", false, errors.New("path \"./test\" does not exist"))
 	}
 
 	for _, test := range tests {
@@ -769,71 +773,11 @@ func TestNodeExpandVolume(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestGetBlockSizeBytes(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Skipping test on Windows")
-	}
-	d, _ := NewFakeDriver(t)
-	testTarget, err := testutil.GetWorkDirPath("test")
-	assert.NoError(t, err)
-
-	notFoundErr := "exit status 1"
-	// exception in darwin
-	if runtime.GOOS == "darwin" {
-		notFoundErr = "executable file not found in $PATH"
-	} else if runtime.GOOS == "windows" {
-		notFoundErr = "executable file not found in %PATH%"
-	}
-
-	notFoundErrAction := func() ([]byte, []byte, error) {
-		return []byte{}, []byte{}, errors.New(notFoundErr)
-	}
-
-	tests := []struct {
-		desc         string
-		req          string
-		outputScript testingexec.FakeAction
-		expectedErr  testutil.TestError
-	}{
-		{
-			desc:         "no exist path",
-			req:          "testpath",
-			outputScript: notFoundErrAction,
-			expectedErr: testutil.TestError{
-				DefaultError: fmt.Errorf("error when getting size of block volume at path testpath: output: , err: %s", notFoundErr),
-				WindowsError: fmt.Errorf("error when getting size of block volume at path testpath: output: , err: %s", notFoundErr),
-			},
-		},
-		{
-			desc:         "invalid path",
-			req:          testTarget,
-			outputScript: notFoundErrAction,
-			expectedErr: testutil.TestError{
-				DefaultError: fmt.Errorf("error when getting size of block volume at path %s: "+
-					"output: , err: %s", testTarget, notFoundErr),
-				WindowsError: fmt.Errorf("error when getting size of block volume at path %s: "+
-					"output: , err: %s", testTarget, notFoundErr),
-			},
-		},
-	}
-	for _, test := range tests {
-		d.setNextCommandOutputScripts(test.outputScript)
-
-		_, err := getBlockSizeBytes(test.req, d.getMounter())
-		if !testutil.AssertError(&test.expectedErr, err) {
-			t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr.Error())
-		}
-	}
-	//Setup
-	_ = makeDir(testTarget)
-
-	err = os.RemoveAll(testTarget)
-	assert.NoError(t, err)
-}
-
 func TestEnsureBlockTargetFile(t *testing.T) {
-	// sip this test because `util/mount` not supported
-	// on darwin
+	// This functionality has moved to the provisioner package in DriverV2.
+	skipIfTestingDriverV2(t)
+
+	// Skip this test because `util/mount` not supported on darwin
 	if runtime.GOOS == "darwin" {
 		t.Skip("Skipping tests on darwin")
 	}
@@ -841,7 +785,7 @@ func TestEnsureBlockTargetFile(t *testing.T) {
 	assert.NoError(t, err)
 	testPath, err := testutil.GetWorkDirPath(fmt.Sprintf("test%ctest", os.PathSeparator))
 	assert.NoError(t, err)
-	d, err := NewFakeDriver(t)
+	d, err := newFakeDriverV1(t)
 	assert.NoError(t, err)
 
 	tests := []struct {
@@ -901,7 +845,8 @@ func TestMakeDir(t *testing.T) {
 }
 
 func TestGetDevicePathWithLUN(t *testing.T) {
-	d, _ := NewFakeDriver(t)
+	skipIfTestingDriverV2(t)
+	d, _ := newFakeDriverV1(t)
 	tests := []struct {
 		desc        string
 		req         string
@@ -910,60 +855,13 @@ func TestGetDevicePathWithLUN(t *testing.T) {
 		{
 			desc:        "valid test",
 			req:         "unit-test",
-			expectedErr: fmt.Errorf("cannot parse deviceInfo: unit-test"),
+			expectedErr: errors.New("cannot parse deviceInfo: unit-test"),
 		},
 	}
 	for _, test := range tests {
 		_, err := d.getDevicePathWithLUN(test.req)
 		if !reflect.DeepEqual(err, test.expectedErr) {
 			t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
-		}
-	}
-}
-
-func TestGetDevicePathWithMountPath(t *testing.T) {
-	d, _ := NewFakeDriver(t)
-	err := errors.New("exit status 1")
-
-	tests := []struct {
-		desc          string
-		req           string
-		skipOnDarwin  bool
-		skipOnWindows bool
-		expectedErr   error
-		outputScript  testingexec.FakeAction
-	}{
-		{
-			desc:        "Invalid device path",
-			req:         "unit-test",
-			expectedErr: fmt.Errorf("could not determine device path(unit-test), error: %v", err),
-			// Skip negative tests on Windows because error messages from csi-proxy are not easily predictable.
-			skipOnWindows: true,
-			outputScript: func() ([]byte, []byte, error) {
-				return []byte{}, []byte{}, err
-			},
-		},
-		{
-			desc:          "[Success] Valid device path",
-			req:           "/sys",
-			skipOnDarwin:  true,
-			skipOnWindows: true,
-			expectedErr:   nil,
-			outputScript: func() ([]byte, []byte, error) {
-				return []byte("/sys"), []byte{}, nil
-			},
-		},
-	}
-
-	for _, test := range tests {
-		if !(test.skipOnDarwin && runtime.GOOS == "darwin") && !(test.skipOnWindows && runtime.GOOS == "windows") {
-			if test.outputScript != nil {
-				d.setNextCommandOutputScripts(test.outputScript)
-			}
-			_, err := getDevicePathWithMountPath(test.req, d.getMounter())
-			if !reflect.DeepEqual(err, test.expectedErr) {
-				t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
-			}
 		}
 	}
 }

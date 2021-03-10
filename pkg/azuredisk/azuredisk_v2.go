@@ -30,33 +30,33 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"k8s.io/klog/klogr"
 	klogv1 "k8s.io/klog"
+	"k8s.io/klog/klogr"
 	"k8s.io/klog/v2"
-	
+
 	azuredisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller"
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/provisioner"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
+
 var isControllerPlugin = flag.Bool("is-controller-plugin", false, "Boolean flag to indicate this instance is running as controller.")
 var isNodePlugin = flag.Bool("is-node-plugin", false, "Boolean flag to indicate this instance is running as node daemon.")
-var driverObjectNamespace    = flag.String("driver-object-namespace", "azure-disk-csi", "namespace where driver related custom resources are created.")
+var driverObjectNamespace = flag.String("driver-object-namespace", "azure-disk-csi", "namespace where driver related custom resources are created.")
 var useDriverV2 = flag.Bool("temp-use-driver-v2", false, "A temporary flag to enable early test and development of Azure Disk CSI Driver V2. This will be removed in the future.")
 var heartbeatFrequencyInSec = flag.Int("heartbeat-frequency-in-sec", 30, "Frequency in seconds at which node driver sends heartbeat.")
 var controllerLeaseDurationInSec = flag.Int("lease-duration-in-sec", 30, "Frequency in seconds at which node driver sends heartbeat.")
 var controllerLeaseRenewDeadlineInSec = flag.Int("lease-renew-deadline-in-sec", 24, "Frequency in seconds at which node driver sends heartbeat.")
 var controllerLeaseRetryPeriodInSec = flag.Int("lease-retry-period-in-sec", 30, "Frequency in seconds at which node driver sends heartbeat.")
-var partitionLabel  = "azdrivernodes.disk.csi.azure.com/partition"
+var partitionLabel = "azdrivernodes.disk.csi.azure.com/partition"
 
 // OutputCallDepth is the stack depth where we can find the origin of this call
 const OutputCallDepth = 6
@@ -68,17 +68,18 @@ const DefaultPrefixLength = 30
 // DriverV2 implements all interfaces of CSI drivers
 type DriverV2 struct {
 	DriverCore
-	volumeLocks       *volumehelper.VolumeLocks
-	objectNamespace string
-	nodePartition string
-	controllerPartition string
-	heartbeatFrequencyInSec int
-	controllerLeaseDurationInSec int
+	nodeProvisioner                   NodeProvisioner
+	volumeLocks                       *volumehelper.VolumeLocks
+	objectNamespace                   string
+	nodePartition                     string
+	controllerPartition               string
+	heartbeatFrequencyInSec           int
+	controllerLeaseDurationInSec      int
 	controllerLeaseRenewDeadlineInSec int
-	controllerLeaseRetryPeriodInSec int
-	kubeConfig *rest.Config
-	kubeClient clientset.Interface
-	azDiskClient azDiskClientSet.Interface
+	controllerLeaseRetryPeriodInSec   int
+	kubeConfig                        *rest.Config
+	kubeClient                        clientset.Interface
+	azDiskClient                      azDiskClientSet.Interface
 }
 
 // NewDriver creates a Driver or DriverV2 object depending on the --temp-use-driver-v2 flag.
@@ -97,13 +98,13 @@ func NewDriver(nodeID string) CSIDriver {
 // newDriverV2 Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
 // does not support optional driver plugin info manifest field. Refer to CSI spec for more details.
 func newDriverV2(nodeID string,
-	 driverObjectNamespace string,
-	  nodePartition string,
-	   controllerPartition string,
-	    heartbeatFrequency int,
-	    leaseDurationInSec int,
-	    leaseRenewDeadlineInSec int,
-	    leaseRetryPeriodInSec int) *DriverV2 {
+	driverObjectNamespace string,
+	nodePartition string,
+	controllerPartition string,
+	heartbeatFrequency int,
+	leaseDurationInSec int,
+	leaseRenewDeadlineInSec int,
+	leaseRetryPeriodInSec int) *DriverV2 {
 	klog.Warning("Using DriverV2")
 	driver := DriverV2{}
 	driver.Name = DriverName
@@ -127,7 +128,7 @@ func (d *DriverV2) Run(endpoint, kubeConfigPath string, testBool bool) {
 		klog.Fatalf("%v", err)
 	}
 	klog.Infof("\nDRIVER INFORMATION:\n-------------------\n%s\n\nStreaming logs below:", versionMeta)
-	
+
 	d.kubeConfig, err = GetKubeConfig(kubeConfigPath)
 	if err != nil || d.kubeConfig == nil {
 		klog.Fatalf("failed to get kube config (%s), error: %v. Exiting application...", kubeConfigPath, err)
@@ -156,9 +157,9 @@ func (d *DriverV2) Run(endpoint, kubeConfigPath string, testBool bool) {
 		d.cloud.Config.UseInstanceMetadata = false
 	}
 
-	d.mounter, err = mounter.NewSafeMounter()
+	d.nodeProvisioner, err = provisioner.NewNodeProvisioner()
 	if err != nil {
-		klog.Fatalf("Failed to get safe mounter. Error: %v", err)
+		klog.Fatalf("Failed to get node provisioner. Error: %v", err)
 	}
 
 	d.AddControllerServiceCapabilities(
@@ -246,7 +247,7 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 	// More details @ https://github.com/kubernetes/klog/blob/master/examples/coexist_klog_v1_and_v2/coexist_klog_v1_and_v2.go
 	var klogv1Flags flag.FlagSet
 	klogv1.InitFlags(&klogv1Flags)
-	klogv1Flags.Set("logtostderr", "false")     // By default klog v1 logs to stderr, switch that off
+	klogv1Flags.Set("logtostderr", "false") // By default klog v1 logs to stderr, switch that off
 	klogv1.SetOutputBySeverity("INFO", klogWriter{})
 	klogv1.SetOutputBySeverity("ERROR", klogWriter{})
 	klogv1.SetOutputBySeverity("WARNING", klogWriter{})
@@ -260,16 +261,16 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 	// Setup a Manager
 	klog.V(2).Info("Setting up controller manager")
 	mgr, err := manager.New(d.kubeConfig, manager.Options{
-		Logger: log,
-		LeaderElection: true,
-		LeaderElectionResourceLock: "leases",
-		LeaderElectionNamespace: d.objectNamespace,
-		LeaderElectionID: d.controllerPartition,
-		LeaseDuration: &leaseDuration,
-		RenewDeadline: &renewDeadline,
-		RetryPeriod: &retryPeriod,
+		Logger:                        log,
+		LeaderElection:                true,
+		LeaderElectionResourceLock:    "leases",
+		LeaderElectionNamespace:       d.objectNamespace,
+		LeaderElectionID:              d.controllerPartition,
+		LeaseDuration:                 &leaseDuration,
+		RenewDeadline:                 &renewDeadline,
+		RetryPeriod:                   &retryPeriod,
 		LeaderElectionReleaseOnCancel: true,
-		Namespace: d.objectNamespace})
+		Namespace:                     d.objectNamespace})
 	if err != nil {
 		klog.Errorf("Unable to set up overall controller manager. Error (%v). Exiting application...", err)
 		os.Exit(1)
@@ -305,7 +306,7 @@ func (d *DriverV2) RegisterAzDriverNodeOrDie(ctx context.Context) {
 }
 
 // RegisterAzDriverNode creates custom resource for this driverNode
-func (d *DriverV2) RegisterAzDriverNode(ctx context.Context) (error) {
+func (d *DriverV2) RegisterAzDriverNode(ctx context.Context) error {
 
 	if d.NodeID == "" {
 		klog.Errorf("NodeID is nil, can not initialize AzDriverNode")
@@ -343,7 +344,7 @@ func (d *DriverV2) RegisterAzDriverNode(ctx context.Context) (error) {
 		}
 		azDriverNodeNew.Labels[partitionLabel] = d.nodePartition
 		klog.V(2).Infof("Creating AzDriverNode with details (%v)", azDriverNodeNew)
-		azDriverNodeCreated, err := azN.Create(ctx, azDriverNodeNew, metav1.CreateOptions{});
+		azDriverNodeCreated, err := azN.Create(ctx, azDriverNodeNew, metav1.CreateOptions{})
 		if err != nil || azDriverNodeCreated == nil {
 			klog.Errorf("Failed to create/update azdrivernode resource for node (%s), error: (%v)", d.NodeID, err)
 			return err
@@ -371,7 +372,7 @@ func (d *DriverV2) RegisterAzDriverNode(ctx context.Context) (error) {
 		return err
 	}
 
-	return nil;
+	return nil
 }
 
 // RunAzDriverNodeHeartbeatLoop runs a loop to send heartbeat from the node
@@ -397,7 +398,7 @@ func (d *DriverV2) RunAzDriverNodeHeartbeatLoop(ctx context.Context) {
 			if err != nil || cachedAzDriverNode == nil {
 				klog.Errorf("Failed to get AzDriverNode resource from the api server. Error (%v)", err)
 				time.Sleep(heartbeatFrequency)
-				cachedAzDriverNode = nil;
+				cachedAzDriverNode = nil
 
 				continue
 			}
@@ -419,18 +420,18 @@ func (d *DriverV2) RunAzDriverNodeHeartbeatLoop(ctx context.Context) {
 		cachedAzDriverNode, err = azN.UpdateStatus(ctx, azDriverNodeToUpdate, metav1.UpdateOptions{})
 		if err != nil {
 			klog.Errorf("Failed to update heartbeat for AzDriverNode resource. Error (%v)", err)
-			cachedAzDriverNode = nil;
-		}	
-		
+			cachedAzDriverNode = nil
+		}
+
 		// If context is cancelled just return
 		select {
-			case <-ctx.Done():
-				klog.Errorf("Context cancelled, stopped sending heartbeat.")
-				return
-			default:
-				// sleep
-				time.Sleep(heartbeatFrequency)
-				continue
+		case <-ctx.Done():
+			klog.Errorf("Context cancelled, stopped sending heartbeat.")
+			return
+		default:
+			// sleep
+			time.Sleep(heartbeatFrequency)
+			continue
 		}
 	}
 }

@@ -64,7 +64,11 @@ func (fake *FakeSafeMounter) Rescan() error {
 
 // FindDiskByLun returns the disk for the specified LUN.
 func (fake *FakeSafeMounter) FindDiskByLun(lun string) (string, error) {
-	return "", nil
+	if lun == "1" {
+		return "1", nil
+	}
+
+	return "", fmt.Errorf("could not find disk id for lun: %s", lun)
 }
 
 // GetDeviceNameFromMount returns the volume ID for a mount path.

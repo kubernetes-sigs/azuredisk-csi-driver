@@ -22,7 +22,7 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
-	"k8s.io/mount-utils"
+	"k8s.io/klog/v2"
 	testingexec "k8s.io/utils/exec/testing"
 
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
@@ -63,6 +63,8 @@ type FakeDriver interface {
 	GetSourceDiskSize(ctx context.Context, resourceGroup, diskName string, curDepth, maxDepth int) (*int32, error)
 
 	setNextCommandOutputScripts(scripts ...testingexec.FakeAction)
+	setIsBlockDevicePathError(string, bool, error)
+
 	setControllerCapabilities([]*csi.ControllerServiceCapability)
 	setNodeCapabilities([]*csi.NodeServiceCapability)
 	setName(string)
@@ -70,15 +72,11 @@ type FakeDriver interface {
 	setVersion(version string)
 	getCloud() *provider.Cloud
 	setCloud(*provider.Cloud)
-	getMounter() *mount.SafeFormatAndMount
-	setMounter(*mount.SafeFormatAndMount)
 
 	checkDiskCapacity(context.Context, string, string, int) (bool, error)
 	getSnapshotInfo(string) (string, string, error)
 	getSnapshotByID(context.Context, string, string, string) (*csi.Snapshot, error)
 	ensureMountPoint(string) (bool, error)
-	ensureBlockTargetFile(string) error
-	getDevicePathWithLUN(lunStr string) (string, error)
 }
 
 type fakeDriverV1 struct {
@@ -124,6 +122,14 @@ func newFakeDriverV1(t *testing.T) (*fakeDriverV1, error) {
 	return &driver, nil
 }
 
+func (d *fakeDriverV1) setNextCommandOutputScripts(scripts ...testingexec.FakeAction) {
+	d.mounter.Exec.(*mounter.FakeSafeMounter).SetNextCommandOutputScripts(scripts...)
+}
+
+func (d *fakeDriverV1) setIsBlockDevicePathError(path string, isDevice bool, result error) {
+	klog.Warning("setIsBlockDevicePathError ignored for driver v1")
+}
+
 func createVolumeCapabilities(accessMode csi.VolumeCapability_AccessMode_Mode) []*csi.VolumeCapability {
 	return []*csi.VolumeCapability{
 		createVolumeCapability(accessMode),
@@ -139,8 +145,4 @@ func createVolumeCapability(accessMode csi.VolumeCapability_AccessMode_Mode) *cs
 			Mode: accessMode,
 		},
 	}
-}
-
-func (d *fakeDriverV1) setNextCommandOutputScripts(scripts ...testingexec.FakeAction) {
-	d.mounter.Exec.(*mounter.FakeSafeMounter).SetNextCommandOutputScripts(scripts...)
 }
