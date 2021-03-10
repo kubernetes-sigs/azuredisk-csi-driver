@@ -5,3 +5,6 @@ reviewers:
 approvers:
 - andyzhangx
 - feiskyer
+
+component: "Storage"
+subcomponent: "Operators"
