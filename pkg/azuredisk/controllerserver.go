@@ -599,7 +599,7 @@ func (d *Driver) listVolumesInCluster(ctx context.Context, start, maxEntries int
 		isCompleteRun = isCompleteRun && listStatus.isCompleteRun
 	}
 	// if start was not found, start token was greater than total number of disks
-	if !startFound {
+	if start > 0 && !startFound {
 		return nil, status.Errorf(codes.FailedPrecondition, "ListVolumes starting token(%d) is greater than total number of disks", start)
 	}
 

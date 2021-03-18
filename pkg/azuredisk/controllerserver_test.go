@@ -1620,6 +1620,23 @@ func TestListVolumes(t *testing.T) {
 			},
 		},
 		{
+			name: "When KubeClient exists, Empty list without start token should not return error",
+			testFunc: func(t *testing.T) {
+				req := csi.ListVolumesRequest{}
+				d := getFakeDriverWithKubeClient(t)
+				pvList := v1.PersistentVolumeList{
+					Items: []v1.PersistentVolume{},
+				}
+				d.getCloud().KubeClient.CoreV1().PersistentVolumes().(*mockpersistentvolume.MockInterface).EXPECT().List(gomock.Any(), gomock.Any()).Return(&pvList, nil)
+				d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().ListByResourceGroup(gomock.Any(), gomock.Any()).Return([]compute.Disk{}, nil)
+				expectedErr := error(nil)
+				_, err := d.ListVolumes(context.TODO(), &req)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
 			name: "When KubeClient exists, Valid list without max_entries or starting_token",
 			testFunc: func(t *testing.T) {
 				req := csi.ListVolumesRequest{}
