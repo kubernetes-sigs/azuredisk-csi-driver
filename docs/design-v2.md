@@ -1,6 +1,6 @@
 # Azure Disk CSI Driver V2 (Project Mandalay)
 
-Project Mandalay enchances the Azure Disk CSI Driver to improve scalability and reduce pod 
+Project Mandalay enhances the Azure Disk CSI Driver to improve scalability and reduce pod 
 failover latency. It uses shared disks to provision attachment replicas on multiple cluster 
 nodes and integrates with the pod scheduler to ensure a node with a attachment replica is 
 chosen on pod failover.
