@@ -21,14 +21,12 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"math/rand"
 	"net"
 	"net/http"
 	"os"
 	"strings"
 	"time"
 
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/klog/v2"
 	schedulerapi "k8s.io/kube-scheduler/extender/v1"
@@ -67,6 +65,8 @@ func main() {
 	if err := server.ListenAndServe(); err != http.ErrServerClosed {
 		klog.Fatalf("Exiting. Error starting extender server: %v", err)
 	}
+
+	initSchedulerExtender()
 	klog.V(2).Infof("Exiting azdiskschedulerextender ...")
 	os.Exit(0)
 }
@@ -93,77 +93,61 @@ func handlePingRequest(response http.ResponseWriter, request *http.Request) {
 }
 
 func handleFilterRequest(response http.ResponseWriter, request *http.Request) {
+	var args schedulerapi.ExtenderArgs
+
 	decoder := json.NewDecoder(request.Body)
-	defer func() {
-		if err := request.Body.Close(); err != nil {
-			klog.Errorf("handleFilterRequest: Error closing decoder: %v", err)
-		}
-	}()
 	encoder := json.NewEncoder(response)
 
-	var args schedulerapi.ExtenderArgs
 	if err := decoder.Decode(&args); err != nil {
 		klog.Errorf("handleFilterRequest: Error decoding filter request: %v", err)
 		http.Error(response, "Decode error", http.StatusBadRequest)
 		return
 	}
 
-	filteredNodes := args.Nodes.Items
+	allNodes := args.Nodes.Items
+	if len(allNodes) == 0 {
+		klog.Errorf("handleFilterRequest: No nodes received in filter request")
+		http.Error(response, "Bad request", http.StatusBadRequest)
+		return
+	}
 
-	// TODO: Filter the nodes based on node heartbeat and AzDiverNode CRI status
-	for _, node := range filteredNodes {
-		klog.V(2).Infof("handleFilterRequest: %v %+v", node.Name, node.Status.Addresses)
+	responseBody, err := filter(request.Context(), args)
+	if err != nil {
+		klog.Errorf("handleFilterRequest: Failed to filter: %v", err)
+		http.Error(response, "Service Unavailable", http.StatusServiceUnavailable)
+		return
 	}
-	responseNodes := &schedulerapi.ExtenderFilterResult{
-		Nodes: &v1.NodeList{
-			Items: filteredNodes,
-		},
-	}
-	if err := encoder.Encode(responseNodes); err != nil {
-		klog.Errorf("handleFilterRequest: Error encoding filter response: %+v : %v", responseNodes, err)
+
+	if err := encoder.Encode(responseBody); err != nil {
+		klog.Errorf("handleFilterRequest: Error encoding filter response: %+v : %v", responseBody, err)
+		http.Error(response, "Internal Server Error", http.StatusInternalServerError)
+		return
 	}
 }
 
 func handlePrioritizeRequest(response http.ResponseWriter, request *http.Request) {
-	decoder := json.NewDecoder(request.Body)
-
-	defer func() {
-		if err := request.Body.Close(); err != nil {
-			klog.Warningf("handlePrioritizeRequest: Error closing decoder: %v", err)
-		}
-	}()
-
-	encoder := json.NewEncoder(response)
-
 	var args schedulerapi.ExtenderArgs
+
+	decoder := json.NewDecoder(request.Body)
+	encoder := json.NewEncoder(response)
 	if err := decoder.Decode(&args); err != nil {
-		klog.Errorf("handlePrioritizeRequest: Error decoding filter request: %v", err)
+		klog.Errorf("handlePrioritizeRequest: Error decoding prioritize request: %v", err)
 		http.Error(response, "Decode error", http.StatusBadRequest)
 		return
 	}
 
-	respList := schedulerapi.HostPriorityList{}
-	rand.Seed(time.Now().UnixNano())
-	for _, node := range args.Nodes.Items {
-		score := getNodeScore(&node)
-		hostPriority := schedulerapi.HostPriority{Host: node.Name, Score: score}
-		respList = append(respList, hostPriority)
+	responseBody, err := prioritize(request.Context(), args)
+	if err != nil {
+		klog.Errorf("handlePrioritizeRequest: Failed to prioritize: %v", err)
+		http.Error(response, "Service Unavailable", http.StatusServiceUnavailable)
+		return
 	}
 
-	klog.V(2).Infof("handlePrioritizeRequest: Nodes for pod %+v in response:", args.Pod)
-	for _, node := range respList {
-		klog.V(2).Infof("handlePrioritizeRequest: %+v", node)
-	}
-
-	if err := encoder.Encode(respList); err != nil {
+	if err := encoder.Encode(responseBody); err != nil {
 		klog.Errorf("handlePrioritizeRequest: Failed to encode response: %v", err)
+		http.Error(response, "Internal Server Error", http.StatusInternalServerError)
+		return
 	}
-}
-
-// TODO: Populate the node score based on number of disks already attached.
-func getNodeScore(node *v1.Node) int64 {
-	score := rand.Int63()
-	return score
 }
 
 func exportMetrics() {

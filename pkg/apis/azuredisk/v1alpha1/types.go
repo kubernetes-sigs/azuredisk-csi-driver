@@ -39,7 +39,7 @@ type AzVolumeSpec struct {
 
 // AzVolumeStatus is the status for a AzVolume resource
 type AzVolumeStatus struct {
-	UnderlyingVolume int32 `json:"underlyingVolume"`
+	State string `json:"state,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -67,11 +67,13 @@ type AzVolumeAttachment struct {
 // AzVolumeAttachmentSpec is the spec for a AzVolumeAttachment resource
 type AzVolumeAttachmentSpec struct {
 	UnderlyingVolume string `json:"underlyingVolume"`
+	NodeName         string `json:"NodeName"`
+	Partition        int32  `json:"partition"`
 }
 
 // AzVolumeAttachmentStatus is the status for a AzVolumeAttachment resource
 type AzVolumeAttachmentStatus struct {
-	UnderlyingVolume int32 `json:"underlyingVolume"`
+	State string `json:"state,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
