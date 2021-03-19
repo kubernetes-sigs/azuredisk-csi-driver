@@ -36,8 +36,7 @@ spec:
             - "--csi-address=$(ADDRESS)"
             - "--v=2"
             - "--timeout=15s"
-            - "--enable-leader-election"
-            - "--leader-election-type=leases"
+            - "--leader-election"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -108,7 +107,7 @@ spec:
           resources:
             limits:
               cpu: 100m
-              memory: 200Mi
+              memory: 300Mi
             requests:
               cpu: 10m
               memory: 20Mi
