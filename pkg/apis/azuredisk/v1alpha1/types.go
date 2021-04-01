@@ -25,21 +25,31 @@ import (
 
 // AzVolume is a specification for a AzVolume resource
 type AzVolume struct {
+	// spec defines the desired state of a AzVolumeAttachment.
+	// Required.
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
+	// status represents the current state of AzVolumeAttachment.
+	// Nil status indicates that the underlying volume of AzVolumeAttachment has not yet been attached to the specified node
+	// +optional
 	Spec   AzVolumeSpec   `json:"spec"`
-	Status AzVolumeStatus `json:"status"`
+	Status AzVolumeStatus `json:"status,omitempty"`
 }
 
 // AzVolumeSpec is the spec for a AzVolume resource
 type AzVolumeSpec struct {
-	UnderlyingVolume string `json:"underlyingVolume"`
+	UnderlyingVolume 	 string `json:"underlyingVolume"`
+	MaxMountReplicaCount int 	`json:"maxMountReplicaCount"`
+	Name				 string `json:"name"`
+	VolumeCapability	 string `json:"volumeCapability"`
+	Parameters			 string `json:"parameters"`
 }
 
 // AzVolumeStatus is the status for a AzVolume resource
 type AzVolumeStatus struct {
 	State string `json:"state,omitempty"`
+	UnderlyingVolume 	 string `json:"underlyingVolume"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

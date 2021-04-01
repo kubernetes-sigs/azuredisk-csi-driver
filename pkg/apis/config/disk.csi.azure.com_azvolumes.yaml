@@ -36,19 +36,36 @@ spec:
           spec:
             description: AzVolumeSpec is the spec for a AzVolume resource
             properties:
+              name:
+                description: The suggested name for the storage space
+                type: string
+              volumeCapability:
+                description: The capabilities that the volume MUST have
+                type: string              
               underlyingVolume:
+                format: int32
+                type: integer
+              maxMountReplicaCount:
+                type: integer
+              parameters:
                 type: string
             required:
             - underlyingVolume
+            - name
+            - volumeCapability
             type: object
           status:
-            description: AzVolumeStatus is the status for a AzVolume resource
+            status:
+            description: AzVolumeStatus is the status for a AzVolume resource. Nil indicates that the underlying volume of AzVolumeAttachment has not yet been attached to the specific node
             properties:
+              state:
+                description: Indicates the current state
+                type: string
               underlyingVolume:
                 format: int32
                 type: integer
             required:
-            - underlyingVolume
+            - state
             type: object
         required:
         - spec

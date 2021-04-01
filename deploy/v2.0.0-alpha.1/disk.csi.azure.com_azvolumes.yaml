@@ -30,19 +30,35 @@ spec:
           spec:
             description: AzVolumeSpec is the spec for a AzVolume resource
             properties:
-              underlyingVolume:
+              name:
+                description: The suggested name for the storage space
                 type: string
+              volumeCapability:
+                description: The capabilities that the volume MUST have
+                type: object              
+              underlyingVolume:
+                format: int32
+                type: integer
+              maxMountReplicaCount:
+                type: integer
+              parameters:
+                type: object
             required:
             - underlyingVolume
+            - name
+            - volumeCapability
             type: object
           status:
             description: AzVolumeStatus is the status for a AzVolume resource
             properties:
+              state:
+                description: Indicates the current state
+                type: string
               underlyingVolume:
                 format: int32
                 type: integer
             required:
-            - underlyingVolume
+            - state
             type: object
         required:
         - spec
