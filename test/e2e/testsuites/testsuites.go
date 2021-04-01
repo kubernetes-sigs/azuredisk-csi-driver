@@ -31,6 +31,7 @@ import (
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -49,7 +50,10 @@ import (
 	testutil "k8s.io/kubernetes/test/utils"
 	imageutils "k8s.io/kubernetes/test/utils/image"
 
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
+	v1alpha1Client "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1alpha1"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
+	controller "sigs.k8s.io/azuredisk-csi-driver/pkg/controller"
 )
 
 const (
@@ -896,4 +900,247 @@ func waitForPersistentVolumeClaimDeleted(c clientset.Interface, ns string, pvcNa
 		}
 	}
 	return fmt.Errorf("PersistentVolumeClaim %s is not removed from the system within %v", pvcName, timeout)
+}
+
+type TestAzVolumeAttachment struct {
+	azclient             v1alpha1Client.DiskV1alpha1Interface
+	namespace            string
+	underlyingVolume     string
+	primaryNodeName      string
+	replicaNodeNames     []string
+	maxMountReplicaCount int
+}
+
+func NewTestAzVolumeAttachment(azclient v1alpha1Client.DiskV1alpha1Interface, namespace, underlyingVolume, primaryNodeName string, replicaNodeNames []string, maxMountReplicaCount int) *TestAzVolumeAttachment {
+	return &TestAzVolumeAttachment{
+		azclient:             azclient,
+		namespace:            namespace,
+		underlyingVolume:     underlyingVolume,
+		primaryNodeName:      primaryNodeName,
+		replicaNodeNames:     replicaNodeNames,
+		maxMountReplicaCount: maxMountReplicaCount,
+	}
+}
+
+func (t *TestAzVolumeAttachment) Create() *v1alpha1.AzVolumeAttachment {
+	azVol := t.azclient.AzVolumes(t.namespace)
+
+	// if test volume object already exists delete the object
+	if _, err := azVol.Get(context.Background(), t.underlyingVolume, metav1.GetOptions{}); err == nil {
+		err := azVol.Delete(context.Background(), t.underlyingVolume, metav1.DeleteOptions{})
+		framework.ExpectNoError(err)
+	}
+	_, err := azVol.Create(context.Background(), &v1alpha1.AzVolume{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: t.underlyingVolume,
+		},
+		Spec: v1alpha1.AzVolumeSpec{
+			UnderlyingVolume:     t.underlyingVolume,
+			MaxMountReplicaCount: t.maxMountReplicaCount,
+		},
+	}, metav1.CreateOptions{})
+	framework.ExpectNoError(err)
+
+	// create test az node
+	azNode := t.azclient.AzDriverNodes(t.namespace)
+	if _, err := azNode.Get(context.Background(), t.primaryNodeName, metav1.GetOptions{}); err == nil {
+		err := azNode.Delete(context.Background(), t.primaryNodeName, metav1.DeleteOptions{})
+		framework.ExpectNoError(err)
+	}
+	_, err = azNode.Create(context.Background(), &v1alpha1.AzDriverNode{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: t.primaryNodeName,
+		},
+		Spec: v1alpha1.AzDriverNodeSpec{
+			NodeName: t.primaryNodeName,
+		},
+	}, metav1.CreateOptions{})
+	framework.ExpectNoError(err)
+
+	for _, replicaNodeName := range t.replicaNodeNames {
+		if _, err := azNode.Get(context.Background(), replicaNodeName, metav1.GetOptions{}); err == nil {
+			err := azNode.Delete(context.Background(), replicaNodeName, metav1.DeleteOptions{})
+			framework.ExpectNoError(err)
+		}
+		_, err = azNode.Create(context.Background(), &v1alpha1.AzDriverNode{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: replicaNodeName,
+			},
+			Spec: v1alpha1.AzDriverNodeSpec{
+				NodeName: replicaNodeName,
+			},
+		}, metav1.CreateOptions{})
+		framework.ExpectNoError(err)
+	}
+
+	// create test az volume attachment
+	azAtt := t.azclient.AzVolumeAttachments(t.namespace)
+	attName := GetAzVolumeAttachmentName(t.underlyingVolume, t.primaryNodeName)
+	// if test attachment object already exists delete the object
+	if _, err := azAtt.Get(context.Background(), attName, metav1.GetOptions{}); err == nil {
+		err := azAtt.Delete(context.Background(), attName, metav1.DeleteOptions{})
+		framework.ExpectNoError(err)
+	}
+
+	att, err := azAtt.Create(context.Background(), &v1alpha1.AzVolumeAttachment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: attName,
+		},
+		Spec: v1alpha1.AzVolumeAttachmentSpec{
+			NodeName:         t.primaryNodeName,
+			UnderlyingVolume: t.underlyingVolume,
+			RequestedRole:    v1alpha1.PrimaryRole,
+		},
+	}, metav1.CreateOptions{})
+	framework.ExpectNoError(err)
+
+	return att
+}
+
+func (t *TestAzVolumeAttachment) Cleanup() {
+	klog.Info("cleaning up")
+	err := t.azclient.AzVolumes(t.namespace).Delete(context.Background(), t.underlyingVolume, metav1.DeleteOptions{})
+	if !apierrs.IsNotFound(err) {
+		framework.ExpectNoError(err)
+	}
+
+	time.Sleep(time.Duration(1) * time.Minute)
+	nodeNames, err := t.azclient.AzDriverNodes(t.namespace).List(context.Background(), metav1.ListOptions{})
+	framework.ExpectNoError(err)
+	for _, nodeName := range nodeNames.Items {
+		klog.Infof("node name: %s", nodeName.Name)
+		err = t.azclient.AzVolumeAttachments(t.namespace).Delete(context.Background(), GetAzVolumeAttachmentName(t.underlyingVolume, nodeName.Name), metav1.DeleteOptions{})
+		if !apierrs.IsNotFound(err) {
+			framework.ExpectNoError(err)
+		}
+	}
+	err = t.azclient.AzDriverNodes(t.namespace).Delete(context.Background(), t.primaryNodeName, metav1.DeleteOptions{})
+	if !apierrs.IsNotFound(err) {
+		framework.ExpectNoError(err)
+	}
+	for _, replicaNodeName := range t.replicaNodeNames {
+		err = t.azclient.AzDriverNodes(t.namespace).Delete(context.Background(), replicaNodeName, metav1.DeleteOptions{})
+		if !apierrs.IsNotFound(err) {
+			framework.ExpectNoError(err)
+		}
+	}
+}
+
+func GetAzVolumeAttachmentName(underlyingVolume, nodeName string) string {
+	return fmt.Sprintf("%s-%s-attachment", underlyingVolume, nodeName)
+}
+
+// Wait for the azVolumeAttachment object update
+func WaitForAttach(c v1alpha1Client.AzVolumeAttachmentInterface, ns, name string, timeout time.Duration) error {
+	conditionFunc := func() (bool, error) {
+		att, err := c.Get(context.TODO(), name, metav1.GetOptions{})
+		if err != nil {
+			return false, err
+		}
+		if att.Status != nil {
+			klog.Infof("volume (%s) attached to node (%s)", att.Spec.UnderlyingVolume, att.Spec.NodeName)
+			return true, nil
+		}
+		return false, nil
+	}
+	return wait.PollImmediate(time.Duration(15)*time.Second, timeout, conditionFunc)
+}
+
+// Wait for the azVolumeAttachment object update
+func WaitForFinalizer(c v1alpha1Client.AzVolumeAttachmentInterface, ns, name string, timeout time.Duration) error {
+	conditionFunc := func() (bool, error) {
+		att, err := c.Get(context.TODO(), name, metav1.GetOptions{})
+		if err != nil {
+			return false, err
+		}
+		if att.ObjectMeta.Finalizers == nil {
+			return false, nil
+		}
+		for _, finalizer := range att.ObjectMeta.Finalizers {
+			if finalizer == controller.AzVolumeAttachmentFinalizer {
+				klog.Infof("finalizer (%s) found on AzVolumeAttachment object (%s)", controller.AzVolumeAttachmentFinalizer, att.Name)
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+	return wait.PollImmediate(time.Duration(15)*time.Second, timeout, conditionFunc)
+}
+
+// Wait for the azVolumeAttachment object update
+func WaitForLabels(c v1alpha1Client.AzVolumeAttachmentInterface, ns, name string, timeout time.Duration) error {
+	conditionFunc := func() (bool, error) {
+		att, err := c.Get(context.TODO(), name, metav1.GetOptions{})
+		if err != nil {
+			return false, err
+		}
+		if att.Labels == nil {
+			return false, nil
+		}
+		if _, ok := att.Labels["node-name"]; !ok {
+			return false, nil
+		}
+		if _, ok := att.Labels["volume-name"]; !ok {
+			return false, nil
+		}
+		return true, nil
+	}
+	return wait.PollImmediate(time.Duration(15)*time.Second, timeout, conditionFunc)
+}
+
+// Wait for the azVolumeAttachment object update
+func WaitForDelete(c v1alpha1Client.AzVolumeAttachmentInterface, ns, name string, timeout time.Duration) error {
+	conditionFunc := func() (bool, error) {
+		_, err := c.Get(context.TODO(), name, metav1.GetOptions{})
+		if errors.IsNotFound(err) {
+			klog.Infof("azVolumeAttachment %s deleted.", name)
+			return true, nil
+		} else if err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+	return wait.PollImmediate(time.Duration(15)*time.Second, timeout, conditionFunc)
+}
+
+// Wait for the azVolumeAttachment object update
+func WaitForPrimary(c v1alpha1Client.AzVolumeAttachmentInterface, ns, volName string, timeout time.Duration) error {
+	conditionFunc := func() (bool, error) {
+		attachments, err := c.List(context.TODO(), metav1.ListOptions{})
+		if err != nil {
+			return false, err
+		}
+		for _, attachment := range attachments.Items {
+			if attachment.Status == nil {
+				continue
+			}
+			if attachment.Spec.UnderlyingVolume == volName && attachment.Spec.RequestedRole == v1alpha1.PrimaryRole && attachment.Status.Role == v1alpha1.PrimaryRole {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+	return wait.PollImmediate(time.Duration(15)*time.Second, timeout, conditionFunc)
+}
+
+// Wait for the azVolumeAttachment object update
+func WaitForReplicas(c v1alpha1Client.AzVolumeAttachmentInterface, ns, volName string, numReplica int, timeout time.Duration) error {
+	conditionFunc := func() (bool, error) {
+		attachments, err := c.List(context.TODO(), metav1.ListOptions{})
+		if err != nil {
+			return false, err
+		}
+		counter := 0
+		for _, attachment := range attachments.Items {
+			if attachment.Status == nil {
+				continue
+			}
+			if attachment.Spec.UnderlyingVolume == volName && attachment.Status.Role == v1alpha1.ReplicaRole {
+				counter++
+			}
+		}
+		klog.Infof("%d replica found for volume %s", counter, volName)
+		return counter == numReplica, nil
+	}
+	return wait.PollImmediate(time.Duration(15)*time.Second, timeout, conditionFunc)
 }

@@ -22,7 +22,9 @@ import (
 	"context"
 	"flag"
 	"os"
+	"os/signal"
 	"reflect"
+	"syscall"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
@@ -33,12 +35,15 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	apiRuntime "k8s.io/apimachinery/pkg/runtime"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	klogv1 "k8s.io/klog"
 	"k8s.io/klog/klogr"
 	"k8s.io/klog/v2"
 
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	azuredisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller"
@@ -53,9 +58,9 @@ var isNodePlugin = flag.Bool("is-node-plugin", false, "Boolean flag to indicate 
 var driverObjectNamespace = flag.String("driver-object-namespace", "azure-disk-csi", "namespace where driver related custom resources are created.")
 var useDriverV2 = flag.Bool("temp-use-driver-v2", false, "A temporary flag to enable early test and development of Azure Disk CSI Driver V2. This will be removed in the future.")
 var heartbeatFrequencyInSec = flag.Int("heartbeat-frequency-in-sec", 30, "Frequency in seconds at which node driver sends heartbeat.")
-var controllerLeaseDurationInSec = flag.Int("lease-duration-in-sec", 30, "Frequency in seconds at which node driver sends heartbeat.")
-var controllerLeaseRenewDeadlineInSec = flag.Int("lease-renew-deadline-in-sec", 24, "Frequency in seconds at which node driver sends heartbeat.")
-var controllerLeaseRetryPeriodInSec = flag.Int("lease-retry-period-in-sec", 30, "Frequency in seconds at which node driver sends heartbeat.")
+var controllerLeaseDurationInSec = flag.Int("lease-duration-in-sec", 15, "The duration that non-leader candidates will wait to force acquire leadership")
+var controllerLeaseRenewDeadlineInSec = flag.Int("lease-renew-deadline-in-sec", 10, "The duration that the acting controlplane will retry refreshing leadership before giving up.")
+var controllerLeaseRetryPeriodInSec = flag.Int("lease-retry-period-in-sec", 2, "The duration the LeaderElector clients should wait between tries of actions.")
 var partitionLabel = "azdrivernodes.disk.csi.azure.com/partition"
 
 // OutputCallDepth is the stack depth where we can find the origin of this call
@@ -180,7 +185,15 @@ func (d *DriverV2) Run(endpoint, kubeConfigPath string, testBool bool) {
 		csi.NodeServiceCapability_RPC_GET_VOLUME_STATS,
 	})
 
+	// cancel the context the controller manager will be running under, if receive SIGTERM or SIGINT
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c := make(chan os.Signal, 2)
+	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-c
+		cancel()
+	}()
 
 	// Start the controllers if this is a controller plug-in
 	if *isControllerPlugin {
@@ -204,9 +217,6 @@ func (d *DriverV2) Run(endpoint, kubeConfigPath string, testBool bool) {
 
 	// Wait for the GRPC Server to exit
 	s.Wait()
-
-	// cancel the context so that go-routines exit
-	cancel()
 }
 
 func (d *DriverV2) checkDiskExists(ctx context.Context, diskURI string) error {
@@ -257,13 +267,17 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 	leaseDuration := time.Duration(d.controllerLeaseDurationInSec) * time.Second
 	renewDeadline := time.Duration(d.controllerLeaseRenewDeadlineInSec) * time.Second
 	retryPeriod := time.Duration(d.controllerLeaseRetryPeriodInSec) * time.Second
+	scheme := apiRuntime.NewScheme()
+	clientgoscheme.AddToScheme(scheme)
+	azuredisk.AddToScheme(scheme)
 
 	// Setup a Manager
 	klog.V(2).Info("Setting up controller manager")
 	mgr, err := manager.New(d.kubeConfig, manager.Options{
+		Scheme:                        scheme,
 		Logger:                        log,
 		LeaderElection:                true,
-		LeaderElectionResourceLock:    "leases",
+		LeaderElectionResourceLock:    resourcelock.LeasesResourceLock,
 		LeaderElectionNamespace:       d.objectNamespace,
 		LeaderElectionID:              d.controllerPartition,
 		LeaseDuration:                 &leaseDuration,
@@ -272,7 +286,7 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 		LeaderElectionReleaseOnCancel: true,
 		Namespace:                     d.objectNamespace})
 	if err != nil {
-		klog.Errorf("Unable to set up overall controller manager. Error (%v). Exiting application...", err)
+		klog.Errorf("Unable to set up overall controller manager. Error: %v. Exiting application...", err)
 		os.Exit(1)
 	}
 
@@ -281,13 +295,19 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 	klog.V(2).Info("Initializing AzDriverNode controller")
 	err = controller.InitializeAzDriverNodeController(mgr, &d.azDiskClient, d.objectNamespace)
 	if err != nil {
-		klog.Errorf("Failed to initialize AzDriverNodeController. Error (%v). Exiting application...", err)
+		klog.Errorf("Failed to initialize AzDriverNodeController. Error: %v. Exiting application...", err)
+		os.Exit(1)
+	}
+	klog.V(2).Info("Initializing AzVolumeAttachment controller")
+	err = controller.NewAzVolumeAttachmentController(ctx, mgr, &d.azDiskClient, d.objectNamespace)
+	if err != nil {
+		klog.Errorf("Failed to initialize AzVolumeAttachment. Error: %v. Exiting application...", err)
 		os.Exit(1)
 	}
 
 	klog.V(2).Info("Starting controller manager")
 	if err := mgr.Start(ctx); err != nil {
-		klog.Errorf("Controller manager exited.")
+		klog.Errorf("Controller manager exited: %v", err)
 		os.Exit(1)
 	}
 	// If manager exits, exit the application
@@ -301,7 +321,7 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 func (d *DriverV2) RegisterAzDriverNodeOrDie(ctx context.Context) {
 	err := d.RegisterAzDriverNode(ctx)
 	if err != nil {
-		klog.Fatalf("Failed to register AzDriverNode, error: (%v). Exiting process...", err)
+		klog.Fatalf("Failed to register AzDriverNode, error: %v. Exiting process...", err)
 	}
 }
 
@@ -316,7 +336,7 @@ func (d *DriverV2) RegisterAzDriverNode(ctx context.Context) error {
 	klog.V(2).Infof("Registering AzDriverNode for node (%s)", d.NodeID)
 	node, err := d.kubeClient.CoreV1().Nodes().Get(ctx, d.NodeID, metav1.GetOptions{})
 	if err != nil || node == nil {
-		klog.Errorf("Failed to get node (%s), error: (%v)", node, err)
+		klog.Errorf("Failed to get node (%s), error: %v", node, err)
 		return errors.NewBadRequest("Failed to get node or node not found, can not register the plugin.")
 	}
 
@@ -330,7 +350,7 @@ func (d *DriverV2) RegisterAzDriverNode(ctx context.Context) error {
 		azDriverNodeUpdate = azDriverNodeFromCache.DeepCopy()
 	} else if errors.IsNotFound(err) {
 		// If AzDriverNode object is not there create it
-		klog.Errorf("AzDriverNode is not registered yet, will create. error (%v)", err)
+		klog.Errorf("AzDriverNode is not registered yet, will create. error: %v", err)
 		azDriverNodeNew := &azuredisk.AzDriverNode{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: d.NodeID,
@@ -346,12 +366,12 @@ func (d *DriverV2) RegisterAzDriverNode(ctx context.Context) error {
 		klog.V(2).Infof("Creating AzDriverNode with details (%v)", azDriverNodeNew)
 		azDriverNodeCreated, err := azN.Create(ctx, azDriverNodeNew, metav1.CreateOptions{})
 		if err != nil || azDriverNodeCreated == nil {
-			klog.Errorf("Failed to create/update azdrivernode resource for node (%s), error: (%v)", d.NodeID, err)
+			klog.Errorf("Failed to create/update azdrivernode resource for node (%s), error: %v", d.NodeID, err)
 			return err
 		}
 		azDriverNodeUpdate = azDriverNodeCreated.DeepCopy()
 	} else {
-		klog.Errorf("Failed to get AzDriverNode for node (%s), error: (%v)", node, err)
+		klog.Errorf("Failed to get AzDriverNode for node (%s), error: %v", node, err)
 		return errors.NewBadRequest("Failed to get AzDriverNode or node not found, can not register the plugin.")
 	}
 
@@ -368,7 +388,7 @@ func (d *DriverV2) RegisterAzDriverNode(ctx context.Context) error {
 	klog.V(2).Infof("Updating status for AzDriverNode Status=(%v)", azDriverNodeUpdate)
 	_, err = azN.UpdateStatus(ctx, azDriverNodeUpdate, metav1.UpdateOptions{})
 	if err != nil {
-		klog.Errorf("Failed to update status of azdrivernode resource for node (%s), error: (%v)", d.NodeID, err)
+		klog.Errorf("Failed to update status of azdrivernode resource for node (%s), error: %v", d.NodeID, err)
 		return err
 	}
 
@@ -396,7 +416,7 @@ func (d *DriverV2) RunAzDriverNodeHeartbeatLoop(ctx context.Context) {
 			// Scheduler will stop scheduling nodes here
 			// An external process should take action to recover this node
 			if err != nil || cachedAzDriverNode == nil {
-				klog.Errorf("Failed to get AzDriverNode resource from the api server. Error (%v)", err)
+				klog.Errorf("Failed to get AzDriverNode resource from the api server. Error: %v", err)
 				time.Sleep(heartbeatFrequency)
 				cachedAzDriverNode = nil
 
@@ -419,7 +439,7 @@ func (d *DriverV2) RunAzDriverNodeHeartbeatLoop(ctx context.Context) {
 		klog.V(2).Info("Sending heartbeat ReadyForVolumeAllocation=(%v) LastHeartbeatTime=(%v)", *azDriverNodeToUpdate.Status.ReadyForVolumeAllocation, *azDriverNodeToUpdate.Status.LastHeartbeatTime)
 		cachedAzDriverNode, err = azN.UpdateStatus(ctx, azDriverNodeToUpdate, metav1.UpdateOptions{})
 		if err != nil {
-			klog.Errorf("Failed to update heartbeat for AzDriverNode resource. Error (%v)", err)
+			klog.Errorf("Failed to update heartbeat for AzDriverNode resource. Error: %v", err)
 			cachedAzDriverNode = nil
 		}
 
