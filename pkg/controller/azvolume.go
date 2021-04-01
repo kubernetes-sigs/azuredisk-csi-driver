@@ -62,41 +62,16 @@ func (r *reconcileAzVolume) Reconcile(ctx context.Context, request reconcile.Req
 		}
 
 	} else if !azVolume.ObjectMeta.DeletionTimestamp.IsZero() {
-		if err := r.DeleteAzVolume(ctx , azVolume.Name); err != nil {
+		if err := r.TriggerDelete(ctx , azVolume.Name); err != nil {
 			//If delete failed, requeue request
 			return reconcile.Result{Requeue: true}, err
 		}
 	}
 
-	return reconcile.Result{Requeue: true}, nil}
+	return reconcile.Result{Requeue: true}, nil
+}
  
 
-func NewAzVolumeController (mgr manager.Manager,  azVolumeClient *azVolumeClientSet.Interface, namespace string) error {
-	logger := mgr.GetLogger().WithValues("controller", "azvolume")
-
-	c, err := controller.New("azvolume-controller", mgr, controller.Options{
-		MaxConcurrentReconciles: 10,
-		Reconciler:              &reconcileAzDriverNode{client: mgr.GetClient(), azVolumeClient: *azVolumeClient, namespace: namespace},
-		Log:                     logger,
-	})
-
-
-	if err != nil {
-		klog.Errorf("Failed to create azvolume controller. Error: (%v)", err)
-		return err
-	}
-	
-	klog.V(2).Info("Starting to watch cluster nodes.")
-
-	// Watch for CRUD events on azVolume objects
-	err = c.Watch(&source.Kind{Type: &v1alpha1.AzVolume}, &handler.EnqueueRequestForObject{})
-	if err != nil {
-		klog.Errorf("Failed to watch nodes. Error: (%v)", err)
-		return err
-	}
-	klog.V(2).Info("Controller set-up successfull.")
-	return err
-}
 func (r * reconcileAzVolume) TriggerCreate (ctx context.Context, volumeName string) error {
 	var azVolume v1alpha1.AzVolume
 	if err := r.client.Get(ctx, types.NamespacedName{Namespace: r.namespace, Name: volumeName}, &azVolume); err != nil {
@@ -118,6 +93,28 @@ func (r * reconcileAzVolume) TriggerCreate (ctx context.Context, volumeName stri
 	return nil
 
 }
+
+func (r * reconcileAzVolume) TriggerDelete (ctx context.Context, volumeName string) error {
+	var azVolume v1alpha1.AzVolume
+	if err := r.client.Get(ctx, types.NamespacedName{Namespace: r.namespace, Name: volumeName}, &azVolume); err != nil {
+		klog.Errorf("failed to get AzVolume (%s): %v", volumeName, err)
+		return err
+	}
+
+	if err := r.DeleteAzVolume(ctx, azVolume); err != nil {
+		klog.Errorf("failed to delete volume %s: %v", azVolume.Spec.UnderlyingVolume, err)
+		return err
+	}
+
+	// Update status of the object
+	//TODO: how to handle status after deletion?  
+	if err := r.UpdateStatus(ctx, azVolume.Name); err != nil {
+		return err
+	}
+	klog.Infof("successfully deleted volume (%s)and update status of AzVolume (%s)", azVolumeAttachment.Spec.UnderlyingVolume, azVolumeAttachment.Name)
+	return nil
+}
+
 
 func (r *reconcileAzVolumeAttachment) UpdateStatus(ctx context.Context, volumeName string) error {
 	var azVolume v1alpha1.AzVolume
@@ -149,7 +146,7 @@ func (r * reconcileAzVolume) CreateAzVolume(ctx Context, azVolume *AzVolume)  {
 
 	name := azVolume.Spec.Name
 	
-	requiredBytes := azVolume.Spec.RequiredBytes //Need to get requiredBytes from VolumeCapability
+	requiredBytes := azVolume.Spec.VolumeCapability //Need to get requiredBytes from VolumeCapability
 	volSizeBytes := int64(requiredBytes)
 
 	var (
@@ -217,10 +214,25 @@ func (r * reconcileAzVolume) CreateAzVolume(ctx Context, azVolume *AzVolume)  {
 	}
 
 	//TODO: validate the parameters
-
+	volumeOptions := &azure.ManagedDiskOptions{
+		DiskName:            diskName,
+		StorageAccountType:  skuName,
+		ResourceGroup:       resourceGroup,
+		PVCName:             "",
+		SizeGB:              requestGiB,
+		Tags:                tags,
+		AvailabilityZone:    selectedAvailabilityZone,
+		DiskIOPSReadWrite:   diskIopsReadWrite,
+		DiskMBpsReadWrite:   diskMbpsReadWrite,
+		SourceResourceID:    sourceID,
+		SourceType:          sourceType,
+		DiskEncryptionSetID: diskEncryptionSetID,
+		MaxShares:           int32(maxShares),
+		LogicalSectorSize:   int32(logicalSectorSize),
+	}
 
 	// TODO: azCreateManagedDisk(volumeOptions)
-	//TODO: update diskURI / azVolume.Spec.underlyingVolume ?
+	//TODO: update diskURI / azVolume.Spec.underlyingVolume ? 
 
 
 	/*if err != nil {
@@ -234,8 +246,7 @@ func (r * reconcileAzVolume) CreateAzVolume(ctx Context, azVolume *AzVolume)  {
 }
 
 func (r * reconcileAzVolume) DeleteAzVolume (ctx context.Context, azVolume *v1alpha1.AzVolume) error {
-	//TODO: Does this need a TriggerDelete function as well that updates the status? 
-	
+
 	volumeID := azVolume.Spec.UnderlyingVolume
 	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID missing")
@@ -255,3 +266,30 @@ func (r * reconcileAzVolume) DeleteAzVolume (ctx context.Context, azVolume *v1al
 	return err
 }
 
+
+func NewAzVolumeController (mgr manager.Manager,  azVolumeClient *azVolumeClientSet.Interface, namespace string) error {
+	logger := mgr.GetLogger().WithValues("controller", "azvolume")
+
+	c, err := controller.New("azvolume-controller", mgr, controller.Options{
+		MaxConcurrentReconciles: 10,
+		Reconciler:              &reconcileAzDriverNode{client: mgr.GetClient(), azVolumeClient: *azVolumeClient, namespace: namespace},
+		Log:                     logger,
+	})
+
+
+	if err != nil {
+		klog.Errorf("Failed to create azvolume controller. Error: (%v)", err)
+		return err
+	}
+	
+	klog.V(2).Info("Starting to watch cluster nodes.")
+
+	// Watch for CRUD events on azVolume objects
+	err = c.Watch(&source.Kind{Type: &v1alpha1.AzVolume}, &handler.EnqueueRequestForObject{})
+	if err != nil {
+		klog.Errorf("Failed to watch nodes. Error: (%v)", err)
+		return err
+	}
+	klog.V(2).Info("Controller set-up successfull.")
+	return err
+}
