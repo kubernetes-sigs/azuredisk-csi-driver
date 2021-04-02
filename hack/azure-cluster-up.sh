@@ -37,7 +37,8 @@ Options:
                                   --client-id is used.
   -r, --resource-group          : The resource group name. Defaults to 
                                   <name>-rg
-  -t, --template                : The cluster template. Defaults to single-az.
+  -t, --template                : The cluster template name or URL. Defaults
+                                  to single-az.
   -v, --k8s-version             : The Kubernetes version. Defaults to 1.17 for
                                   Linux and 1.18 for Windows.
 EOF
@@ -194,7 +195,8 @@ if [[ -z ${AZURE_CLUSTER_TEMPLATE:-} ]]; then
   AZURE_CLUSTER_TEMPLATE="single-az"
 fi
 
-IS_WINDOWS_CLUSTER=$(expr `expr "$AZURE_CLUSTER_TEMPLATE" : ".*-windows"` != 0 || true)
+IS_AZURE_CLUSTER_TEMPLATE_URI=$(expr `expr "$AZURE_CLUSTER_TEMPLATE" : "https://\|http://"` != 0 || true)
+IS_WINDOWS_CLUSTER=$(expr `expr "$AZURE_CLUSTER_TEMPLATE" : ".*-windows\|.*/windows-testing/.*"` != 0 || true)
 
 if [[ -z ${AZURE_K8S_VERSION:-} ]]; then
   if [[ ${IS_WINDOWS_CLUSTER} -eq 0 ]]; then
@@ -207,14 +209,19 @@ fi
 GIT_ROOT=$(git rev-parse --show-toplevel)
 GIT_COMMIT=$(git rev-parse --short HEAD)
 
-AZURE_CLUSTER_TEMPLATE_ROOT=$GIT_ROOT/test/e2e/manifest
-AZURE_CLUSTER_TEMPLATE_FILE=${AZURE_CLUSTER_TEMPLATE_ROOT}/${AZURE_CLUSTER_TEMPLATE}.json
+if [[ ${IS_AZURE_CLUSTER_TEMPLATE_URI} -eq 0 ]]; then
+  AZURE_CLUSTER_TEMPLATE_ROOT=$GIT_ROOT/test/e2e/manifest
+  AZURE_CLUSTER_TEMPLATE_FILE=${AZURE_CLUSTER_TEMPLATE_ROOT}/${AZURE_CLUSTER_TEMPLATE}.json
 
-if [[ ! -f "$AZURE_CLUSTER_TEMPLATE_FILE" ]]; then
-  AZURE_CLUSTER_VALID_TEMPLATES=$(ls -x1 "$AZURE_CLUSTER_TEMPLATE_ROOT" | awk '{split($1,f,"."); printf (NR>1?", ":"") f[1]}')
-  echoerr "ERROR: The template '$AZURE_CLUSTER_TEMPLATE' is not known. Select one of the following values: $AZURE_CLUSTER_VALID_TEMPLATES."
-  printhelp
-  exit 1
+  if [[ ! -f "$AZURE_CLUSTER_TEMPLATE_FILE" ]]; then
+    AZURE_CLUSTER_VALID_TEMPLATES=$(ls -x1 "$AZURE_CLUSTER_TEMPLATE_ROOT" | awk '{split($1,f,"."); printf (NR>1?", ":"") f[1]}')
+    echoerr "ERROR: The template '$AZURE_CLUSTER_TEMPLATE' is not known. Select one of the following values: $AZURE_CLUSTER_VALID_TEMPLATES."
+    printhelp
+    exit 1
+  fi
+else
+  AZURE_CLUSTER_TEMPLATE_FILE=$(mktemp -t "aks-engine-model-XXX.json")
+  curl -sSfL "$AZURE_CLUSTER_TEMPLATE" -o "$AZURE_CLUSTER_TEMPLATE_FILE"
 fi
 
 if [[ -z ${AZURE_CLUSTER_DNS_NAME:-} ]]; then
@@ -367,6 +374,7 @@ retry 30 10 kubectl --kubeconfig="$AZURE_CLUSTER_KUBECONFIG_FILE" get nodes 1> /
 #
 SETUP_FILE="$OUTPUT_DIR/e2e-setup.sh"
 >$SETUP_FILE cat <<EOF
+export ARTIFACTS="$OUTPUT_DIR/artifacts"
 export AZURE_TENANT_ID="$AZURE_TENANT_ID"
 export AZURE_SUBSCRIPTION_ID="$AZURE_SUBSCRIPTION_ID"
 export AZURE_CLIENT_ID="$AZURE_CLIENT_ID"
@@ -375,6 +383,11 @@ export AZURE_RESOURCE_GROUP="$AZURE_RESOURCE_GROUP"
 export AZURE_LOCATION="$AZURE_LOCATION"
 export KUBECONFIG="$AZURE_CLUSTER_KUBECONFIG_FILE"
 EOF
+
+if [[ ${IS_WINDOWS_CLUSTER} -ne 0 ]]; then
+  >>$SETUP_FILE echo "export TEST_WINDOWS=\"true\""
+fi
+
 chmod +x "$SETUP_FILE"
 
 CLEANUP_FILE="$OUTPUT_DIR/cluster-down.sh"
