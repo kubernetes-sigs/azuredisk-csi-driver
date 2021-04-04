@@ -25,31 +25,43 @@ import (
 
 // AzVolume is a specification for a AzVolume resource
 type AzVolume struct {
-	// spec defines the desired state of a AzVolumeAttachment.
-	// Required.
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-
-	// status represents the current state of AzVolumeAttachment.
-	// Nil status indicates that the underlying volume of AzVolumeAttachment has not yet been attached to the specified node
-	// +optional
+	
+	// spec defines the desired state of an AzVolume.
+	// Required.
 	Spec   AzVolumeSpec   `json:"spec"`
+	// status represents the current state of AzVolume.
+	// Nil status indicates that the underlying volume has not yet been provisioned
+	// +optional
 	Status AzVolumeStatus `json:"status,omitempty"`
 }
 
 // AzVolumeSpec is the spec for a AzVolume resource
 type AzVolumeSpec struct {
-	UnderlyingVolume 	 string `json:"underlyingVolume"`
+
+	UnderlyingVolume     string `json:"underlyingVolume"`
+	
 	MaxMountReplicaCount int 	`json:"maxMountReplicaCount"`
-	Name				 string `json:"name"`
-	VolumeCapability	 string `json:"volumeCapability"`
-	Parameters			 string `json:"parameters"`
+	//The suggested name for the storage space
+	Name                 string `json:"name"`
+	//The capabilities that the volume MUST have
+	VolumeCapability     *VolumeCapability `json:"volumeCapability"`
+	//The capacity of the storage
+	CapacityRange        *CapacityRange `json:"capacityRange"`
+	//Parameters for the volume
+	//+optional
+	Parameters           map[string]string `json:"parameters,omitempty"`
 }
 
 // AzVolumeStatus is the status for a AzVolume resource
 type AzVolumeStatus struct {
-	State string `json:"state,omitempty"`
-	UnderlyingVolume 	 string `json:"underlyingVolume"`
+	//Current state of the AzVolume
+	//+optional
+	State                string `json:"state,omitempty"`
+	//Current volume ID for the underlying volume
+	//+optional
+	UnderlyingVolume     string `json:"underlyingVolume"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -209,4 +221,84 @@ type AzDriverNodeList struct {
 	metav1.ListMeta `json:"metadata"`
 
 	Items []AzDriverNode `json:"items"`
+}
+
+
+type VolumeCapability struct {
+	// Specifies what API the volume will be accessed using. One of the
+	// following fields MUST be specified.
+	//
+	// Types that are valid to be assigned to AccessType:
+	//	*VolumeCapability_Block
+	//	*VolumeCapability_Mount
+	//TODO: figure out how to update the crd with this interface
+	AccessType isVolumeCapability_AccessType `json:"access_type"`
+	// This is a REQUIRED field.
+
+	AccessMode *VolumeCapability_AccessMode `json:"access_mode,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}                     `json:"-"`
+	XXX_unrecognized     []byte                       `json:"-"`
+	XXX_sizecache        int32                        `json:"-"`
+}
+
+//Specify how a volume can be accessed
+// +k8s:deepcopy-gen=false
+type VolumeCapability_AccessMode struct {
+	Mode VolumeCapability_AccessMode_Mode `json:"mode,omitempty"`
+}
+
+type VolumeCapability_AccessMode_Mode int32
+
+type isVolumeCapability_AccessType interface {
+	isVolumeCapability_AccessType()
+}
+
+func (*VolumeCapability_Block) isVolumeCapability_AccessType() {}
+func (*VolumeCapability_Mount) isVolumeCapability_AccessType() {} 
+
+type VolumeCapability_Mount struct {
+	Mount *VolumeCapability_MountVolume `json:"mount"` 	
+}
+type VolumeCapability_Block struct {
+	Block *VolumeCapability_BlockVolume `json:"block"`
+}
+
+type VolumeCapability_MountVolume struct {
+	// The filesystem type. This field is OPTIONAL.
+	// An empty string is equal to an unspecified field value.
+	FsType string `protobuf:"bytes,1,opt,name=fs_type,json=fsType,proto3" json:"fs_type,omitempty"`
+	// The mount options that can be used for the volume. This field is
+	// OPTIONAL. `mount_flags` MAY contain sensitive information.
+	// Therefore, the CO and the Plugin MUST NOT leak this information
+	// to untrusted entities. The total size of this repeated field
+	// SHALL NOT exceed 4 KiB.
+	MountFlags           []string `protobuf:"bytes,2,rep,name=mount_flags,json=mountFlags,proto3" json:"mount_flags,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+// Indicate that the volume will be accessed via the block device API.
+type VolumeCapability_BlockVolume struct {
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+} 
+
+
+// The capacity of the storage space in bytes. To specify an exact size,
+// `required_bytes` and `limit_bytes` SHALL be set to the same value. At
+// least one of the these fields MUST be specified.
+type CapacityRange struct {
+	// Volume MUST be at least this big. This field is OPTIONAL.
+	// A value of 0 is equal to an unspecified field value.
+	// The value of this field MUST NOT be negative.
+	RequiredBytes int64 `protobuf:"varint,1,opt,name=required_bytes,json=requiredBytes,proto3" json:"required_bytes,omitempty"`
+	// Volume MUST not be bigger than this. This field is OPTIONAL.
+	// A value of 0 is equal to an unspecified field value.
+	// The value of this field MUST NOT be negative.
+	LimitBytes           int64    `protobuf:"varint,2,opt,name=limit_bytes,json=limitBytes,proto3" json:"limit_bytes,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
 }
