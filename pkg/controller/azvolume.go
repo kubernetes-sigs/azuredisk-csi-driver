@@ -308,7 +308,7 @@ func NewAzVolumeController(mgr manager.Manager, azVolumeClient *azVolumeClientSe
 		return err
 	}
 
-	klog.V(2).Info("Starting to watch cluster nodes.")
+	klog.V(2).Info("Starting to watch cluster AzVolumes.")
 
 	// Watch for CRUD events on azVolume objects
 	err = c.Watch(&source.Kind{Type: &v1alpha1.AzVolume{}}, &handler.EnqueueRequestForObject{})
