@@ -54,9 +54,6 @@ spec:
                 type: object
               maxMountReplicaCount:
                 type: integer
-              name:
-                description: The suggested name for the storage space
-                type: string
               parameters:
                 additionalProperties:
                   type: string
@@ -78,8 +75,6 @@ spec:
             required:
             - capacityRange
             - maxMountReplicaCount
-            - name
-            - underlyingVolume
             - volumeCapability
             type: object
           status:

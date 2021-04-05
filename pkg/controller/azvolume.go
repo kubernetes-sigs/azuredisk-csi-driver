@@ -174,7 +174,7 @@ func (r *reconcileAzVolume) UpdateStatus(ctx context.Context, volumeName string,
 func (r *reconcileAzVolume) CreateAzVolume(ctx context.Context, azVolume *v1alpha1.AzVolume) error {
 	/* //TODO uncomment this function when able to access cloud provider */
 	/*
-		name := azVolume.Spec.Name
+		name := azVolume.Name
 
 		requiredBytes := azVolume.Spec.CapacityRange.RequiredBytes
 		volSizeBytes := int64(requiredBytes)

@@ -39,11 +39,9 @@ type AzVolume struct {
 
 // AzVolumeSpec is the spec for an AzVolume resource
 type AzVolumeSpec struct {
-	UnderlyingVolume string `json:"underlyingVolume"`
-
-	MaxMountReplicaCount int `json:"maxMountReplicaCount"`
-	//The suggested name for the storage space
-	Name string `json:"name"`
+	//+optional
+	UnderlyingVolume     string `json:"underlyingVolume"`
+	MaxMountReplicaCount int    `json:"maxMountReplicaCount"`
 	//The capabilities that the volume MUST have
 	VolumeCapability *VolumeCapability `json:"volumeCapability"`
 	//The capacity of the storage
