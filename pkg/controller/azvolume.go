@@ -155,14 +155,14 @@ func (r *reconcileAzVolume) UpdateStatus(ctx context.Context, volumeName string,
 			klog.Errorf("failed to delete finalizer %s for azVolume %s: %v", AzVolumeFinalizer, azVolume.Name, err)
 			return err
 		}
+		return nil
 	}
 
 	updated := azVolume.DeepCopy()
 	if updated.Status == nil {
 		updated.Status = &v1alpha1.AzVolumeStatus{}
 	}
-	updated.Status.UnderlyingVolume = azVolume.Spec.UnderlyingVolume
-
+	//TODO: update azVolume with volume ID
 	if err := r.client.Status().Update(ctx, updated, &client.UpdateOptions{}); err != nil {
 		klog.Errorf("failed to update status of AzVolume (%s): %v", volumeName, err)
 		return err
@@ -313,7 +313,7 @@ func NewAzVolumeController(mgr manager.Manager, azVolumeClient *azVolumeClientSe
 	// Watch for CRUD events on azVolume objects
 	err = c.Watch(&source.Kind{Type: &v1alpha1.AzVolume{}}, &handler.EnqueueRequestForObject{})
 	if err != nil {
-		klog.Errorf("Failed to watch nodes. Error: (%v)", err)
+		klog.Errorf("Failed to watch AzVolume. Error: %v", err)
 		return err
 	}
 	klog.V(2).Info("Controller set-up successfull.")
