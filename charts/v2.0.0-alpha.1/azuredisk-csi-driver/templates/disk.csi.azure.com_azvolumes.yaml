@@ -1,4 +1,5 @@
 {{- if .Values.azuredisk.useV2Driver -}}
+
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
@@ -59,8 +60,6 @@ spec:
                   type: string
                 description: Parameters for the volume
                 type: object
-              underlyingVolume:
-                type: string
               volumeCapability:
                 description: The capabilities that the volume MUST have
                 properties:
@@ -72,10 +71,14 @@ spec:
                         type: integer
                     type: object
                 type: object
+              volumeID:
+                description: VolumeID is the disk URI of the underlying volume
+                type: string
             required:
             - capacityRange
             - maxMountReplicaCount
             - volumeCapability
+            - volumeID
             type: object
           status:
             description: status represents the current state of AzVolume. Nil status
@@ -83,9 +86,6 @@ spec:
             properties:
               state:
                 description: Current state of the AzVolume
-                type: string
-              underlyingVolume:
-                description: Current volume ID for the underlying volume
                 type: string
             type: object
         required:
@@ -99,3 +99,4 @@ status:
     plural: ""
   conditions: []
   storedVersions: []
+{{- end -}}

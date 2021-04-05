@@ -110,7 +110,7 @@ func (r *reconcileAzVolume) TriggerCreate(ctx context.Context, volumeName string
 	}
 
 	if err := r.CreateAzVolume(ctx, &azVolume); err != nil {
-		klog.Errorf("failed to create volume %s: %v", azVolume.Spec.UnderlyingVolume, err)
+		klog.Errorf("failed to create volume %s: %v", azVolume.Spec.VolumeID, err)
 		return err
 	}
 
@@ -118,7 +118,7 @@ func (r *reconcileAzVolume) TriggerCreate(ctx context.Context, volumeName string
 	if err := r.UpdateStatus(ctx, azVolume.Name, false); err != nil {
 		return err
 	}
-	klog.Infof("successfully created volume (%s)and update status of AzVolume (%s)", azVolume.Spec.UnderlyingVolume, azVolume.Name)
+	klog.Infof("successfully created volume (%s)and update status of AzVolume (%s)", azVolume.Spec.VolumeID, azVolume.Name)
 	return nil
 
 }
@@ -131,7 +131,7 @@ func (r *reconcileAzVolume) TriggerDelete(ctx context.Context, volumeName string
 	}
 
 	if err := r.DeleteAzVolume(ctx, &azVolume); err != nil {
-		klog.Errorf("failed to delete volume %s: %v", azVolume.Spec.UnderlyingVolume, err)
+		klog.Errorf("failed to delete volume %s: %v", azVolume.Spec.VolumeID, err)
 		return err
 	}
 
@@ -139,7 +139,7 @@ func (r *reconcileAzVolume) TriggerDelete(ctx context.Context, volumeName string
 	if err := r.UpdateStatus(ctx, azVolume.Name, true); err != nil {
 		return err
 	}
-	klog.Infof("successfully deleted volume (%s)and update status of AzVolume (%s)", azVolume.Spec.UnderlyingVolume, azVolume.Name)
+	klog.Infof("successfully deleted volume (%s)and update status of AzVolume (%s)", azVolume.Spec.VolumeID, azVolume.Name)
 	return nil
 }
 
@@ -162,7 +162,6 @@ func (r *reconcileAzVolume) UpdateStatus(ctx context.Context, volumeName string,
 	if updated.Status == nil {
 		updated.Status = &v1alpha1.AzVolumeStatus{}
 	}
-	//TODO: update azVolume with volume ID
 	if err := r.client.Status().Update(ctx, updated, &client.UpdateOptions{}); err != nil {
 		klog.Errorf("failed to update status of AzVolume (%s): %v", volumeName, err)
 		return err
@@ -262,7 +261,6 @@ func (r *reconcileAzVolume) CreateAzVolume(ctx context.Context, azVolume *v1alph
 		}
 
 		//diskURI, err := azure.CreateManagedDisk(volumeOptions)
-		//TODO: update diskURI / azVolume.Spec.underlyingVolume ?
 
 		/*if err != nil {
 			if strings.Contains(err.Error(), NotFound) {
@@ -274,7 +272,7 @@ func (r *reconcileAzVolume) CreateAzVolume(ctx context.Context, azVolume *v1alph
 
 func (r *reconcileAzVolume) DeleteAzVolume(ctx context.Context, azVolume *v1alpha1.AzVolume) error {
 
-	volumeID := azVolume.Spec.UnderlyingVolume
+	volumeID := azVolume.Spec.VolumeID
 	if len(volumeID) == 0 {
 		return errors.NewBadRequest("Volume ID Missing")
 	}

@@ -39,8 +39,8 @@ type AzVolume struct {
 
 // AzVolumeSpec is the spec for an AzVolume resource
 type AzVolumeSpec struct {
-	//+optional
-	UnderlyingVolume     string `json:"underlyingVolume"`
+	//VolumeID is the disk URI of the underlying volume
+	VolumeID             string `json:"volumeID"`
 	MaxMountReplicaCount int    `json:"maxMountReplicaCount"`
 	//The capabilities that the volume MUST have
 	VolumeCapability *VolumeCapability `json:"volumeCapability"`
@@ -56,9 +56,6 @@ type AzVolumeStatus struct {
 	//Current state of the AzVolume
 	//+optional
 	State string `json:"state,omitempty"`
-	//Current volume ID for the underlying volume
-	//+optional
-	UnderlyingVolume string `json:"underlyingVolume"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -223,18 +220,13 @@ type AzDriverNodeList struct {
 type VolumeCapability struct {
 	// Specifies what API the volume will be accessed using. One of the
 	// following fields MUST be specified.
-	//
+
 	// Types that are valid to be assigned to AccessType:
 	//	*VolumeCapability_Block
 	//	*VolumeCapability_Mount
-	//TODO: figure out how to update the crd with this interface
-	AccessType isVolumeCapability_AccessType `json:"access_type"`
 	// This is a REQUIRED field.
 
-	AccessMode           *VolumeCapability_AccessMode `json:"access_mode,omitempty"`
-	XXX_NoUnkeyedLiteral struct{}                     `json:"-"`
-	XXX_unrecognized     []byte                       `json:"-"`
-	XXX_sizecache        int32                        `json:"-"`
+	AccessMode *VolumeCapability_AccessMode `json:"access_mode,omitempty"`
 }
 
 //Specify how a volume can be accessed
@@ -244,42 +236,6 @@ type VolumeCapability_AccessMode struct {
 }
 
 type VolumeCapability_AccessMode_Mode int32
-
-type isVolumeCapability_AccessType interface {
-	isVolumeCapability_AccessType()
-}
-
-func (*VolumeCapability_Block) isVolumeCapability_AccessType() {}
-func (*VolumeCapability_Mount) isVolumeCapability_AccessType() {}
-
-type VolumeCapability_Mount struct {
-	Mount *VolumeCapability_MountVolume `json:"mount"`
-}
-type VolumeCapability_Block struct {
-	Block *VolumeCapability_BlockVolume `json:"block"`
-}
-
-type VolumeCapability_MountVolume struct {
-	// The filesystem type. This field is OPTIONAL.
-	// An empty string is equal to an unspecified field value.
-	FsType string `protobuf:"bytes,1,opt,name=fs_type,json=fsType,proto3" json:"fs_type,omitempty"`
-	// The mount options that can be used for the volume. This field is
-	// OPTIONAL. `mount_flags` MAY contain sensitive information.
-	// Therefore, the CO and the Plugin MUST NOT leak this information
-	// to untrusted entities. The total size of this repeated field
-	// SHALL NOT exceed 4 KiB.
-	MountFlags           []string `protobuf:"bytes,2,rep,name=mount_flags,json=mountFlags,proto3" json:"mount_flags,omitempty"`
-	XXX_NoUnkeyedLiteral struct{} `json:"-"`
-	XXX_unrecognized     []byte   `json:"-"`
-	XXX_sizecache        int32    `json:"-"`
-}
-
-// Indicate that the volume will be accessed via the block device API.
-type VolumeCapability_BlockVolume struct {
-	XXX_NoUnkeyedLiteral struct{} `json:"-"`
-	XXX_unrecognized     []byte   `json:"-"`
-	XXX_sizecache        int32    `json:"-"`
-}
 
 // The capacity of the storage space in bytes. To specify an exact size,
 // `required_bytes` and `limit_bytes` SHALL be set to the same value. At
@@ -292,8 +248,5 @@ type CapacityRange struct {
 	// Volume MUST not be bigger than this. This field is OPTIONAL.
 	// A value of 0 is equal to an unspecified field value.
 	// The value of this field MUST NOT be negative.
-	LimitBytes           int64    `protobuf:"varint,2,opt,name=limit_bytes,json=limitBytes,proto3" json:"limit_bytes,omitempty"`
-	XXX_NoUnkeyedLiteral struct{} `json:"-"`
-	XXX_unrecognized     []byte   `json:"-"`
-	XXX_sizecache        int32    `json:"-"`
+	LimitBytes int64 `protobuf:"varint,2,opt,name=limit_bytes,json=limitBytes,proto3" json:"limit_bytes,omitempty"`
 }
