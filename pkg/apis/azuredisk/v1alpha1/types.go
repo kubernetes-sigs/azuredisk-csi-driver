@@ -23,45 +23,44 @@ import (
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// AzVolume is a specification for a AzVolume resource
+// AzVolume is a specification for an AzVolume resource
 type AzVolume struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-	
+
 	// spec defines the desired state of an AzVolume.
 	// Required.
-	Spec   AzVolumeSpec   `json:"spec"`
+	Spec AzVolumeSpec `json:"spec"`
 	// status represents the current state of AzVolume.
 	// Nil status indicates that the underlying volume has not yet been provisioned
 	// +optional
-	Status AzVolumeStatus `json:"status,omitempty"`
+	Status *AzVolumeStatus `json:"status,omitempty"`
 }
 
-// AzVolumeSpec is the spec for a AzVolume resource
+// AzVolumeSpec is the spec for an AzVolume resource
 type AzVolumeSpec struct {
+	UnderlyingVolume string `json:"underlyingVolume"`
 
-	UnderlyingVolume     string `json:"underlyingVolume"`
-	
-	MaxMountReplicaCount int 	`json:"maxMountReplicaCount"`
+	MaxMountReplicaCount int `json:"maxMountReplicaCount"`
 	//The suggested name for the storage space
-	Name                 string `json:"name"`
+	Name string `json:"name"`
 	//The capabilities that the volume MUST have
-	VolumeCapability     *VolumeCapability `json:"volumeCapability"`
+	VolumeCapability *VolumeCapability `json:"volumeCapability"`
 	//The capacity of the storage
-	CapacityRange        *CapacityRange `json:"capacityRange"`
+	CapacityRange *CapacityRange `json:"capacityRange"`
 	//Parameters for the volume
 	//+optional
-	Parameters           map[string]string `json:"parameters,omitempty"`
+	Parameters map[string]string `json:"parameters,omitempty"`
 }
 
-// AzVolumeStatus is the status for a AzVolume resource
+// AzVolumeStatus is the status for an AzVolume resource
 type AzVolumeStatus struct {
 	//Current state of the AzVolume
 	//+optional
-	State                string `json:"state,omitempty"`
+	State string `json:"state,omitempty"`
 	//Current volume ID for the underlying volume
 	//+optional
-	UnderlyingVolume     string `json:"underlyingVolume"`
+	UnderlyingVolume string `json:"underlyingVolume"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -223,7 +222,6 @@ type AzDriverNodeList struct {
 	Items []AzDriverNode `json:"items"`
 }
 
-
 type VolumeCapability struct {
 	// Specifies what API the volume will be accessed using. One of the
 	// following fields MUST be specified.
@@ -232,10 +230,10 @@ type VolumeCapability struct {
 	//	*VolumeCapability_Block
 	//	*VolumeCapability_Mount
 	//TODO: figure out how to update the crd with this interface
-	AccessType isVolumeCapability_AccessType `json:"access_type"`
+	//AccessType isVolumeCapability_AccessType `json:"access_type"`
 	// This is a REQUIRED field.
 
-	AccessMode *VolumeCapability_AccessMode `json:"access_mode,omitempty"`
+	AccessMode           *VolumeCapability_AccessMode `json:"access_mode,omitempty"`
 	XXX_NoUnkeyedLiteral struct{}                     `json:"-"`
 	XXX_unrecognized     []byte                       `json:"-"`
 	XXX_sizecache        int32                        `json:"-"`
@@ -254,10 +252,10 @@ type isVolumeCapability_AccessType interface {
 }
 
 func (*VolumeCapability_Block) isVolumeCapability_AccessType() {}
-func (*VolumeCapability_Mount) isVolumeCapability_AccessType() {} 
+func (*VolumeCapability_Mount) isVolumeCapability_AccessType() {}
 
 type VolumeCapability_Mount struct {
-	Mount *VolumeCapability_MountVolume `json:"mount"` 	
+	Mount *VolumeCapability_MountVolume `json:"mount"`
 }
 type VolumeCapability_Block struct {
 	Block *VolumeCapability_BlockVolume `json:"block"`
@@ -283,8 +281,7 @@ type VolumeCapability_BlockVolume struct {
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
 	XXX_sizecache        int32    `json:"-"`
-} 
-
+}
 
 // The capacity of the storage space in bytes. To specify an exact size,
 // `required_bytes` and `limit_bytes` SHALL be set to the same value. At
