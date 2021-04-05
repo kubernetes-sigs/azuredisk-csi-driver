@@ -34,6 +34,7 @@ import (
 )
 
 const (
+	/* commenting out until CreateVolume is done , for the golint
 	cachingModeField        = "cachingmode"
 	storageAccountTypeField = "storageaccounttype"
 	storageAccountField     = "storageaccount"
@@ -48,14 +49,14 @@ const (
 	maxSharesField          = "maxshares"
 	incrementalField        = "incremental"
 	logicalSectorSizeField  = "logicalsectorsize"
-	AzVolumeFinalizer       = "disk.csi.azure.com/azvolume-finalizer"
+	*/
+	AzVolumeFinalizer = "disk.csi.azure.com/azvolume-finalizer"
 )
 
 //Struct for the reconciler
 type reconcileAzVolume struct {
-	client         client.Client
-	azVolumeClient azVolumeClientSet.Interface
-	namespace      string
+	client    client.Client
+	namespace string
 }
 
 // Implement reconcile.Reconciler so the controller can reconcile objects

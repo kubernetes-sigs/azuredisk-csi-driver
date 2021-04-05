@@ -230,7 +230,7 @@ type VolumeCapability struct {
 	//	*VolumeCapability_Block
 	//	*VolumeCapability_Mount
 	//TODO: figure out how to update the crd with this interface
-	//AccessType isVolumeCapability_AccessType `json:"access_type"`
+	AccessType isVolumeCapability_AccessType `json:"access_type"`
 	// This is a REQUIRED field.
 
 	AccessMode           *VolumeCapability_AccessMode `json:"access_mode,omitempty"`
