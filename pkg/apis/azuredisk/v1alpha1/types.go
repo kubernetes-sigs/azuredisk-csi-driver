@@ -220,22 +220,12 @@ type AzDriverNodeList struct {
 type VolumeCapability struct {
 	// Specifies what API the volume will be accessed using. One of the
 	// following fields MUST be specified.
-
-	// Types that are valid to be assigned to AccessType:
-	//	*VolumeCapability_Block
-	//	*VolumeCapability_Mount
+	//
+	// Types that are valid to be assigned to AccessType: block, mount
+	AccessType int32 `json:"access_type"`
 	// This is a REQUIRED field.
-
-	AccessMode *VolumeCapability_AccessMode `json:"access_mode,omitempty"`
+	AccessMode int32 `json:"access_mode,omitempty"`
 }
-
-//Specify how a volume can be accessed
-// +k8s:deepcopy-gen=false
-type VolumeCapability_AccessMode struct {
-	Mode VolumeCapability_AccessMode_Mode `json:"mode,omitempty"`
-}
-
-type VolumeCapability_AccessMode_Mode int32
 
 // The capacity of the storage space in bytes. To specify an exact size,
 // `required_bytes` and `limit_bytes` SHALL be set to the same value. At

@@ -55,16 +55,15 @@ const (
 
 //Struct for the reconciler
 type reconcileAzVolume struct {
-	client    client.Client
-	namespace string
+	client         client.Client
+	azVolumeClient azVolumeClientSet.Interface
+	namespace      string
 }
 
 // Implement reconcile.Reconciler so the controller can reconcile objects
 var _ reconcile.Reconciler = &reconcileAzVolume{}
 
 func (r *reconcileAzVolume) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
-	_ = context.Background()
-
 	var azVolume v1alpha1.AzVolume
 
 	err := r.client.Get(ctx, request.NamespacedName, &azVolume)
@@ -297,7 +296,7 @@ func NewAzVolumeController(mgr manager.Manager, azVolumeClient *azVolumeClientSe
 
 	c, err := controller.New("azvolume-controller", mgr, controller.Options{
 		MaxConcurrentReconciles: 10,
-		Reconciler:              &reconcileAzDriverNode{client: mgr.GetClient(), azVolumeClient: *azVolumeClient, namespace: namespace},
+		Reconciler:              &reconcileAzVolume{client: mgr.GetClient(), azVolumeClient: *azVolumeClient, namespace: namespace},
 		Log:                     logger,
 	})
 
