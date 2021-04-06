@@ -305,7 +305,6 @@ func TestCreateVolume(t *testing.T) {
 				mp[maxSharesField] = "1"
 				mp[skuNameField] = "ut"
 				mp[locationField] = "ut"
-				mp[storageAccountField] = "ut"
 				mp[storageAccountTypeField] = "ut"
 				mp[resourceGroupField] = "ut"
 				mp[diskIOPSReadWriteField] = "ut"
@@ -424,7 +423,6 @@ func TestCreateVolume(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				d, _ := NewFakeDriver(t)
 				mp := make(map[string]string)
-				mp["unit-test"] = "unit=test"
 				volumeContentSourceSnapshotSource := &csi.VolumeContentSource_Snapshot{}
 				volumecontensource := csi.VolumeContentSource{
 					Type: volumeContentSourceSnapshotSource,
@@ -451,7 +449,7 @@ func TestCreateVolume(t *testing.T) {
 			},
 		},
 		{
-			name: "valid request ",
+			name: "valid request",
 			testFunc: func(t *testing.T) {
 				d, _ := NewFakeDriver(t)
 				stdCapacityRangetest := &csi.CapacityRange{
@@ -478,6 +476,27 @@ func TestCreateVolume(t *testing.T) {
 				d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 				_, err := d.CreateVolume(context.Background(), req)
 				expectedErr := error(nil)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "invalid parameter",
+			testFunc: func(t *testing.T) {
+				d, _ := NewFakeDriver(t)
+				stdCapacityRangetest := &csi.CapacityRange{
+					RequiredBytes: volumehelper.GiBToBytes(10),
+					LimitBytes:    volumehelper.GiBToBytes(15),
+				}
+				req := &csi.CreateVolumeRequest{
+					Name:               testVolumeName,
+					VolumeCapabilities: stdVolumeCapabilities,
+					CapacityRange:      stdCapacityRangetest,
+					Parameters:         map[string]string{"invalidparameter": "value"},
+				}
+				_, err := d.CreateVolume(context.Background(), req)
+				expectedErr := fmt.Errorf("invalid parameter %s in storage class", "invalidparameter")
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}

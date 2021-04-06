@@ -75,7 +75,6 @@ const (
 
 	cachingModeField        = "cachingmode"
 	storageAccountTypeField = "storageaccounttype"
-	storageAccountField     = "storageaccount"
 	skuNameField            = "skuname"
 	locationField           = "location"
 	resourceGroupField      = "resourcegroup"
@@ -87,6 +86,8 @@ const (
 	maxSharesField          = "maxshares"
 	incrementalField        = "incremental"
 	logicalSectorSizeField  = "logicalsectorsize"
+	fsTypeField             = "fstype"
+	kindField               = "kind"
 )
 
 var (

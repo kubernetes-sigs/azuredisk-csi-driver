@@ -486,7 +486,7 @@ func (d *Driver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolume
 func getFStype(attributes map[string]string) string {
 	for k, v := range attributes {
 		switch strings.ToLower(k) {
-		case "fstype":
+		case fsTypeField:
 			return strings.ToLower(v)
 		}
 	}
