@@ -778,11 +778,6 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 		return nil, status.Error(codes.InvalidArgument, "snapshot name must be provided")
 	}
 
-	if acquired := d.volumeLocks.TryAcquire(sourceVolumeID); !acquired {
-		return nil, status.Errorf(codes.Aborted, volumeOperationAlreadyExistsFmt, sourceVolumeID)
-	}
-	defer d.volumeLocks.Release(sourceVolumeID)
-
 	snapshotName = getValidDiskName(snapshotName)
 
 	var customTags string
@@ -808,7 +803,7 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	}
 
 	if IsAzureStackCloud(d.cloud.Config.Cloud, d.cloud.Config.DisableAzureStackCloud) {
-		klog.V(2).Info("Use full snapshot instead as Azure Stack does not incremental snapshot.")
+		klog.V(2).Info("Use full snapshot instead as Azure Stack does not support incremental snapshot.")
 		incremental = false
 	}
 
