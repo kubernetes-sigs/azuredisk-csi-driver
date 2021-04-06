@@ -100,8 +100,8 @@ sanity-test: azuredisk
 	go test -v -timeout=30m ./test/sanity
 
 .PHONY: sanity-test-v2
-sanity-test-v2: azuredisk-v2
-	go test -v -timeout=30m ./test/sanity --temp-use-driver-v2
+sanity-test-v2: container-v2
+	 go test -v -timeout=30m ./test/sanity --temp-use-driver-v2 --image-tag ${IMAGE_TAG}
 
 .PHONY: integration-test
 integration-test: azuredisk
@@ -178,6 +178,10 @@ azdiskschedulerextender-darwin:
 .PHONY: container
 container: azuredisk
 	docker build --no-cache -t $(IMAGE_TAG) -f ./pkg/azurediskplugin/dev.Dockerfile .
+
+.PHONY: container-v2
+container-v2: azuredisk-v2
+	BUILD_V2=1 docker build --no-cache -t $(IMAGE_TAG) --build-arg PLUGIN_NAME=${PLUGIN_NAME} -f ./pkg/azurediskplugin/dev.Dockerfile .
 
 .PHONY: container-linux
 container-linux:

@@ -57,6 +57,7 @@ var controllerLeaseDurationInSec = flag.Int("lease-duration-in-sec", 30, "Freque
 var controllerLeaseRenewDeadlineInSec = flag.Int("lease-renew-deadline-in-sec", 24, "Frequency in seconds at which node driver sends heartbeat.")
 var controllerLeaseRetryPeriodInSec = flag.Int("lease-retry-period-in-sec", 30, "Frequency in seconds at which node driver sends heartbeat.")
 var partitionLabel = "azdrivernodes.disk.csi.azure.com/partition"
+var isTestRun = flag.Bool("is-test-run", false, "Boolean flag to indicate whether this instanceis being used for sanity or integration tests")
 
 // OutputCallDepth is the stack depth where we can find the origin of this call
 const OutputCallDepth = 6
@@ -315,7 +316,7 @@ func (d *DriverV2) RegisterAzDriverNode(ctx context.Context) error {
 
 	klog.V(2).Infof("Registering AzDriverNode for node (%s)", d.NodeID)
 	node, err := d.kubeClient.CoreV1().Nodes().Get(ctx, d.NodeID, metav1.GetOptions{})
-	if err != nil || node == nil {
+	if !*isTestRun && (err != nil || node == nil) {
 		klog.Errorf("Failed to get node (%s), error: (%v)", node, err)
 		return errors.NewBadRequest("Failed to get node or node not found, can not register the plugin.")
 	}
