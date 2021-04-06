@@ -177,7 +177,7 @@ azdiskschedulerextender-darwin:
 
 .PHONY: container
 container: azuredisk
-	docker build --no-cache -t $(IMAGE_TAG) -f ./pkg/azurediskplugin/dev.Dockerfile .
+	docker build --no-cache -t $(IMAGE_TAG) --build-arg PLUGIN_NAME=${PLUGIN_NAME} -f ./pkg/azurediskplugin/dev.Dockerfile .
 
 .PHONY: container-v2
 container-v2: azuredisk-v2
