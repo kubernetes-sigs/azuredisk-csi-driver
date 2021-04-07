@@ -37,8 +37,8 @@ func init() {
 }
 
 var (
-	metricsAddress              = flag.String("metrics-address", "0.0.0.0:29604", "export the metrics")
-	azDiskSchedulerExtenderPort = flag.String("port", "8080", "port used by az scheduler extender")
+	metricsAddress              = flag.String("metrics-address", "0.0.0.0:29606", "export the metrics")
+	azDiskSchedulerExtenderPort = flag.String("port", "8888", "port used by az scheduler extender")
 )
 
 const (
@@ -62,11 +62,12 @@ func main() {
 	http.HandleFunc(pingRequestStr, handlePingRequest)
 	http.HandleFunc("/", handleUnknownRequest)
 
+	initSchedulerExtender()
+
 	if err := server.ListenAndServe(); err != http.ErrServerClosed {
 		klog.Fatalf("Exiting. Error starting extender server: %v", err)
 	}
 
-	initSchedulerExtender()
 	klog.V(2).Infof("Exiting azdiskschedulerextender ...")
 	os.Exit(0)
 }

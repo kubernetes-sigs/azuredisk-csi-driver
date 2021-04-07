@@ -23,6 +23,10 @@ image:
     repository: mcr.microsoft.com/oss/kubernetes-csi/csi-node-driver-registrar
     tag: v2.0.1
     pullPolicy: IfNotPresent
+  schedulerExtender:
+    repository: mcr.microsoft.com/k8s/csi/azdiskschedulerextender-csi
+    tag: v2.0.1-alpha.1
+    pullPolicy: IfNotPresent
 
 serviceAccount:
   create: true
@@ -42,6 +46,10 @@ controller:
 node:
   metricsPort: 29605
   logLevel: 5
+
+schedulerExtender: 
+  metricsPort: 29606
+  servicePort: 8888
 
 snapshot:
   enabled: false

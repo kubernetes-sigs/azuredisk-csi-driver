@@ -65,14 +65,14 @@ func initSchedulerExtender() {
 func filter(context context.Context, schedulerExtenderArgs schedulerapi.ExtenderArgs) (*schedulerapi.ExtenderFilterResult, error) {
 	var (
 		filteredNodes     []v1.Node
-		filteredNodeNames []string
+		filteredNodeNames *[]string
 		failedNodes       map[string]string
 	)
 
 	defer duration(track("Filter"))
 
 	requestedVolumes := schedulerExtenderArgs.Pod.Spec.Volumes
-
+	klog.V(2).Infof("Pod %s has requested %d volume/s.", schedulerExtenderArgs.Pod.Name, len(requestedVolumes))
 	//TODO add RWM volume case here
 	// if no volumes are requested, return assigning 0 score to all nodes
 	if len(requestedVolumes) != 0 {
@@ -84,8 +84,8 @@ func filter(context context.Context, schedulerExtenderArgs schedulerapi.Extender
 		azDriverNodesMeta := <-nodesChan
 		if azDriverNodesMeta.err != nil {
 			filteredNodes = schedulerExtenderArgs.Nodes.Items
-			filteredNodeNames = *schedulerExtenderArgs.NodeNames
-			klog.V(2).Infof("Failed to get the list of azDriverNodes: %v", azDriverNodesMeta.err)
+			filteredNodeNames = schedulerExtenderArgs.NodeNames
+			klog.Warningf("Failed to get the list of azDriverNodes: %v", azDriverNodesMeta.err)
 
 			return formatFilterResult(filteredNodes, filteredNodeNames, failedNodes, ""), nil
 		}
@@ -93,22 +93,28 @@ func filter(context context.Context, schedulerExtenderArgs schedulerapi.Extender
 		// map node name to azDriverNode state
 		nodeNameToStatusMap := make(map[string]bool)
 		for _, azDriverNode := range azDriverNodesMeta.nodes.Items {
-			nodeNameToStatusMap[azDriverNode.Spec.NodeName] = *azDriverNode.Status.ReadyForVolumeAllocation
+			if azDriverNode.Status != nil {
+				nodeNameToStatusMap[azDriverNode.Spec.NodeName] = *azDriverNode.Status.ReadyForVolumeAllocation
+			}
 		}
 
 		// Filter the nodes based on AzDiverNode status
 		failedNodes = make(map[string]string)
+		var storeFilteredNodeNames []string
 		for _, node := range allNodes {
 			ready, ok := nodeNameToStatusMap[node.Name]
 			if ok && ready {
 				filteredNodes = append(filteredNodes, node)
-				filteredNodeNames = append(filteredNodeNames, node.Name)
+				storeFilteredNodeNames = append(storeFilteredNodeNames, node.Name)
 			} else {
 				failedNodes[node.Name] = fmt.Sprintf("AzDriverNode for %s is not ready.", node.Name)
 			}
-			klog.V(2).Infof("handleFilterRequest: %v %+v", node.Name, node.Status.Addresses)
 		}
+		filteredNodeNames = &storeFilteredNodeNames
 	}
+
+	klog.V(2).Infof("Request to Filter completed with the following filter and failed node lists. Filtered nodes: %+v. Failed nodes: %+v.", filteredNodes, failedNodes)
+
 	return formatFilterResult(filteredNodes, filteredNodeNames, failedNodes, ""), nil
 }
 
@@ -140,20 +146,22 @@ func prioritize(context context.Context, schedulerExtenderArgs schedulerapi.Exte
 		azDriverNodesMeta := <-nodesChan
 		if azDriverNodesMeta.err != nil {
 			priorityList = setNodeSocresToZero(availableNodes)
-			klog.V(2).Infof("Failed to get the list of azDriverNodes: %v", azDriverNodesMeta.err)
+			klog.Warningf("Failed to get the list of azDriverNodes: %v", azDriverNodesMeta.err)
 			return
 		}
 
 		// map azDriverNode name to its heartbeat
 		for _, azDriverNode := range azDriverNodesMeta.nodes.Items {
-			nodeNameToHeartbeatMap[azDriverNode.Spec.NodeName] = *azDriverNode.Status.LastHeartbeatTime
+			if azDriverNode.Status != nil {
+				nodeNameToHeartbeatMap[azDriverNode.Spec.NodeName] = *azDriverNode.Status.LastHeartbeatTime
+			}
 		}
 
 		// get all azVolumeAttachments running in the cluster
 		azVolumeAttachmentsMeta := <-volumesChan
 		if azVolumeAttachmentsMeta.err != nil {
 			priorityList = setNodeSocresToZero(availableNodes)
-			klog.V(2).Infof("Failed to get the list of azVolumeAttachments: %v", azVolumeAttachmentsMeta.err)
+			klog.Warningf("Failed to get the list of azVolumeAttachments: %v", azVolumeAttachmentsMeta.err)
 			return
 		}
 
@@ -166,14 +174,14 @@ func prioritize(context context.Context, schedulerExtenderArgs schedulerapi.Exte
 		}
 
 		// score nodes based in how many azVolumeAttchments are appended to its name
-		klog.V(2).Infof("Scoring nodes for pod %+v.", schedulerExtenderArgs.Pod)
+		klog.V(2).Infof("Scoring nodes for pod %+v.", schedulerExtenderArgs.Pod.Name)
 		for _, node := range availableNodes {
-			score := getNodeScore(len(nodeNameToVolumeMap[node.Name]), nodeNameToHeartbeatMap[node.Name])
+			score := getNodeScore(len(nodeNameToVolumeMap[node.Name]), nodeNameToHeartbeatMap[node.Name], node.Name)
 			hostPriority := schedulerapi.HostPriority{Host: node.Name, Score: score}
 			priorityList = append(priorityList, hostPriority)
-			klog.V(2).Infof("Score for %+v is %d.", node, score)
 		}
 	}
+	klog.V(2).Infof("Request to Prioritize completed with the following priority list: %+v", priorityList)
 	return
 }
 
@@ -228,15 +236,18 @@ func getKubernetesExtensionClientsets() (azKubeExtensionClientset *clientSet.Dis
 // 	return kubeClient, nil
 // }
 
-func getNodeScore(volumeAttachments int, heartbeat int64) int64 {
+func getNodeScore(volumeAttachments int, heartbeat int64, nodeName string) int64 {
 	// TODO: prioritize disks with low additional volume attachments
 	now := time.Now()
 	latestHeartbeatWas := time.Unix(0, heartbeat)
-
 	latestHeartbeatCanBe := now.Add(-2 * time.Minute)
-	klog.V(2).Infof("Latest node heartbeat was: %s. Latest accepted heartbeat can be: %s", heartbeat, latestHeartbeatCanBe.Format(time.UnixDate))
 
 	if latestHeartbeatWas.Before(latestHeartbeatCanBe) {
+		klog.Warningf(
+			"Node is unresponsive. Latest node heartbeat for %v was: %v. Latest accepted heartbeat could be: %s",
+			nodeName,
+			latestHeartbeatWas.Format(time.UnixDate),
+			latestHeartbeatCanBe.Format(time.UnixDate))
 		return 0
 	}
 
@@ -258,12 +269,12 @@ func getAzVolumeAttachments(context context.Context, out chan azVolumeAttachment
 	out <- activeVolumeAttachments
 }
 
-func formatFilterResult(filteredNodes []v1.Node, nodeNames []string, failedNodes map[string]string, errorMessage string) *schedulerapi.ExtenderFilterResult {
+func formatFilterResult(filteredNodes []v1.Node, nodeNames *[]string, failedNodes map[string]string, errorMessage string) *schedulerapi.ExtenderFilterResult {
 	return &schedulerapi.ExtenderFilterResult{
 		Nodes: &v1.NodeList{
 			Items: filteredNodes,
 		},
-		NodeNames:   &nodeNames,
+		NodeNames:   nodeNames,
 		FailedNodes: failedNodes,
 		Error:       errorMessage,
 	}
@@ -282,6 +293,6 @@ func track(functionName string) (string, time.Time) {
 }
 
 func duration(functionName string, start time.Time) {
-	duration := time.Since(start)
-	klog.V(2).Infof("Call to %v took: %v \n", functionName, duration.Nanoseconds)
+	requestDuration := time.Since(start)
+	klog.V(2).Infof("Call to %v took: %d ms\n", functionName, requestDuration.Milliseconds())
 }

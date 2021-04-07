@@ -37,21 +37,24 @@ import (
 
 var _ = ginkgo.Describe("Dynamic Provisioning", func() {
 	t := dynamicProvisioningTestSuite{}
+	schedulers := getListOfSchedulers()
+	for _, scheduler := range schedulers {
+		scheduler := scheduler
+		ginkgo.Context("[single-az]", func() {
+			t.defineTests(false, scheduler)
+		})
 
-	ginkgo.Context("[single-az]", func() {
-		t.defineTests(false)
-	})
-
-	ginkgo.Context("[multi-az]", func() {
-		t.defineTests(true)
-	})
+		ginkgo.Context("[multi-az]", func() {
+			t.defineTests(true, scheduler)
+		})
+	}
 })
 
 type dynamicProvisioningTestSuite struct {
 	allowedTopologyValues []string
 }
 
-func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
+func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerName string) {
 	f := framework.NewDefaultFramework("azuredisk")
 
 	var (
@@ -96,7 +99,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	})
 
 	testDriver = driver.InitAzureDiskDriver()
-	ginkgo.It("should create a volume on demand with mount options [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func() {
+	ginkgo.It(fmt.Sprintf("should create a volume on demand with mount options [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows] [%s]", schedulerName), func() {
 		pvcSize := "10Gi"
 		if isMultiZone {
 			pvcSize = "1000Gi"
@@ -135,10 +138,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 				"logicalSectorSize": "512",
 			}
 		}
-		test.Run(cs, ns)
+		test.Run(cs, ns, schedulerName)
 	})
 
-	ginkgo.It("should receive FailedMount event with invalid mount options [kubernetes.io/azure-disk] [disk.csi.azure.com]", func() {
+	ginkgo.It(fmt.Sprintf("should receive FailedMount event with invalid mount options [kubernetes.io/azure-disk] [disk.csi.azure.com] [%s]", schedulerName), func() {
 		skipIfTestingInWindowsCluster()
 
 		pods := []testsuites.PodDetails{
@@ -168,10 +171,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		if isAzureStackCloud {
 			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}
 		}
-		test.Run(cs, ns)
+		test.Run(cs, ns, schedulerName)
 	})
 
-	ginkgo.It("should create a raw block volume on demand [kubernetes.io/azure-disk] [disk.csi.azure.com]", func() {
+	ginkgo.It(fmt.Sprintf("should create a raw block volume on demand [kubernetes.io/azure-disk] [disk.csi.azure.com] [%s]", schedulerName), func() {
 		skipIfTestingInWindowsCluster()
 
 		pods := []testsuites.PodDetails{
@@ -194,11 +197,11 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			Pods:                   pods,
 			StorageClassParameters: map[string]string{"skuName": "Premium_LRS"},
 		}
-		test.Run(cs, ns)
+		test.Run(cs, ns, schedulerName)
 	})
 
 	// Track issue https://github.com/kubernetes/kubernetes/issues/70505
-	ginkgo.It("should create a volume on demand and mount it as readOnly in a pod [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func() {
+	ginkgo.It(fmt.Sprintf("should create a volume on demand and mount it as readOnly in a pod [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows] [%s]", schedulerName), func() {
 		pods := []testsuites.PodDetails{
 			{
 				Cmd: convertToPowershellorCmdCommandIfNecessary("touch /mnt/test-1/data"),
@@ -224,10 +227,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		if isAzureStackCloud {
 			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}
 		}
-		test.Run(cs, ns)
+		test.Run(cs, ns, schedulerName)
 	})
 
-	ginkgo.It("should create multiple PV objects, bind to PVCs and attach all to different pods on the same node [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func() {
+	ginkgo.It(fmt.Sprintf("should create multiple PV objects, bind to PVCs and attach all to different pods on the same node [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows] [%s]", schedulerName), func() {
 		pods := []testsuites.PodDetails{
 			{
 				Cmd: convertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
@@ -278,10 +281,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			ColocatePods:           true,
 			StorageClassParameters: map[string]string{"skuName": "Premium_LRS"},
 		}
-		test.Run(cs, ns)
+		test.Run(cs, ns, schedulerName)
 	})
 
-	ginkgo.It("should create a deployment object, write and read to it, delete the pod and write and read to it again [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func() {
+	ginkgo.It(fmt.Sprintf("should create a deployment object, write and read to it, delete the pod and write and read to it again [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows] [%s]", schedulerName), func() {
 		pod := testsuites.PodDetails{
 			Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
 			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
@@ -312,7 +315,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 				ExpectedString: expectedString, // pod will be restarted so expect to see 2 instances of string
 			},
 		}
-		test.Run(cs, ns)
+		test.Run(cs, ns, schedulerName)
 	})
 
 	ginkgo.It(fmt.Sprintf("should delete PV with reclaimPolicy %q [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", v1.PersistentVolumeReclaimDelete), func() {
@@ -353,7 +356,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		test.Run(cs, ns)
 	})
 
-	ginkgo.It("should clone a volume from an existing volume and read from it [disk.csi.azure.com]", func() {
+	ginkgo.It(fmt.Sprintf("should clone a volume from an existing volume and read from it [disk.csi.azure.com] [%s]", schedulerName), func() {
 		skipIfTestingInWindowsCluster()
 		skipIfUsingInTreeVolumePlugin()
 		if isMultiZone {
@@ -385,10 +388,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 				"fsType":  "xfs",
 			},
 		}
-		test.Run(cs, ns)
+		test.Run(cs, ns, schedulerName)
 	})
 
-	ginkgo.It("should clone a volume of larger size than the source volume and make sure the filesystem is appropriately adjusted [disk.csi.azure.com]", func() {
+	ginkgo.It(fmt.Sprintf("should clone a volume of larger size than the source volume and make sure the filesystem is appropriately adjusted [disk.csi.azure.com] [%s]", schedulerName), func() {
 		skipIfTestingInWindowsCluster()
 		skipIfUsingInTreeVolumePlugin()
 		if isMultiZone {
@@ -423,10 +426,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 				"fsType":  "xfs",
 			},
 		}
-		test.Run(cs, ns)
+		test.Run(cs, ns, schedulerName)
 	})
 
-	ginkgo.It("should create multiple PV objects, bind to PVCs and attach all to a single pod [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func() {
+	ginkgo.It(fmt.Sprintf("should create multiple PV objects, bind to PVCs and attach all to a single pod [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows] [%s]", schedulerName), func() {
 		pods := []testsuites.PodDetails{
 			{
 				Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && echo 'hello world' > /mnt/test-2/data && echo 'hello world' > /mnt/test-3/data && grep 'hello world' /mnt/test-1/data && grep 'hello world' /mnt/test-2/data && grep 'hello world' /mnt/test-3/data"),
@@ -467,10 +470,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		if isAzureStackCloud {
 			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}
 		}
-		test.Run(cs, ns)
+		test.Run(cs, ns, schedulerName)
 	})
 
-	ginkgo.It("should create a raw block volume and a filesystem volume on demand and bind to the same pod [kubernetes.io/azure-disk] [disk.csi.azure.com]", func() {
+	ginkgo.It(fmt.Sprintf("should create a raw block volume and a filesystem volume on demand and bind to the same pod [kubernetes.io/azure-disk] [disk.csi.azure.com] [%s]", schedulerName), func() {
 		skipIfTestingInWindowsCluster()
 
 		pods := []testsuites.PodDetails{
@@ -503,10 +506,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			Pods:                   pods,
 			StorageClassParameters: map[string]string{"skuName": "Premium_LRS"},
 		}
-		test.Run(cs, ns)
+		test.Run(cs, ns, schedulerName)
 	})
 
-	ginkgo.It("should create a pod, write and read to it, take a volume snapshot, and create another pod from the snapshot [disk.csi.azure.com]", func() {
+	ginkgo.It(fmt.Sprintf("should create a pod, write and read to it, take a volume snapshot, and create another pod from the snapshot [disk.csi.azure.com] [%s]", schedulerName), func() {
 		skipIfTestingInWindowsCluster()
 		skipIfUsingInTreeVolumePlugin()
 
@@ -536,10 +539,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		if isAzureStackCloud {
 			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}
 		}
-		test.Run(cs, snapshotrcs, ns)
+		test.Run(cs, snapshotrcs, ns, schedulerName)
 	})
 
-	ginkgo.It("should create a pod, write to its pv, take a volume snapshot, overwrite data in original pv, create another pod from the snapshot, and read unaltered original data from original pv[disk.csi.azure.com]", func() {
+	ginkgo.It(fmt.Sprintf("should create a pod, write to its pv, take a volume snapshot, overwrite data in original pv, create another pod from the snapshot, and read unaltered original data from original pv[disk.csi.azure.com] [%s]", schedulerName), func() {
 		skipIfTestingInWindowsCluster()
 		skipIfUsingInTreeVolumePlugin()
 
@@ -576,10 +579,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		if isAzureStackCloud {
 			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}
 		}
-		test.Run(cs, snapshotrcs, ns)
+		test.Run(cs, snapshotrcs, ns, schedulerName)
 	})
 
-	ginkgo.It("should create a pod with multiple volumes [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func() {
+	ginkgo.It(fmt.Sprintf("should create a pod with multiple volumes [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows] [%s]", schedulerName), func() {
 		volumes := []testsuites.VolumeDetails{}
 		for i := 1; i <= 3; i++ {
 			volume := testsuites.VolumeDetails{
@@ -603,10 +606,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			CSIDriver: testDriver,
 			Pods:      pods,
 		}
-		test.Run(cs, ns)
+		test.Run(cs, ns, schedulerName)
 	})
 
-	ginkgo.It("should create a volume on demand and resize it [disk.csi.azure.com] [Windows]", func() {
+	ginkgo.It(fmt.Sprintf("should create a volume on demand and resize it [disk.csi.azure.com] [Windows] [%s]", schedulerName), func() {
 		skipIfUsingInTreeVolumePlugin()
 		volume := testsuites.VolumeDetails{
 			ClaimSize: "10Gi",
@@ -637,10 +640,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			Pod:                    pod,
 			StorageClassParameters: map[string]string{"skuName": "Standard_LRS"},
 		}
-		test.Run(cs, ns)
+		test.Run(cs, ns, schedulerName)
 	})
 
-	ginkgo.It("should create a volume azuredisk with tag  [disk.csi.azure.com] [Windows]", func() {
+	ginkgo.It(fmt.Sprintf("should create a volume azuredisk with tag  [disk.csi.azure.com] [Windows] [%s]", schedulerName), func() {
 		skipIfUsingInTreeVolumePlugin()
 		pods := []testsuites.PodDetails{
 			{
@@ -668,10 +671,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			StorageClassParameters: map[string]string{"skuName": "Standard_LRS", "tags": tags},
 			Tags:                   tags,
 		}
-		test.Run(cs, ns)
+		test.Run(cs, ns, schedulerName)
 	})
 
-	ginkgo.It("should detach disk after pod deleted [disk.csi.azure.com] [Windows]", func() {
+	ginkgo.It(fmt.Sprintf("should detach disk after pod deleted [disk.csi.azure.com] [Windows] [%s]", schedulerName), func() {
 		pods := []testsuites.PodDetails{
 			{
 				Cmd: convertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
@@ -696,10 +699,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			Pods:                   pods,
 			StorageClassParameters: map[string]string{"skuName": "Standard_LRS"},
 		}
-		test.Run(cs, ns)
+		test.Run(cs, ns, schedulerName)
 	})
 
-	ginkgo.It("should create a statefulset object, write and read to it, delete the pod and write and read to it again [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func() {
+	ginkgo.It(fmt.Sprintf("should create a statefulset object, write and read to it, delete the pod and write and read to it again [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows] [%s]", schedulerName), func() {
 		pod := testsuites.PodDetails{
 			Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
 			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
@@ -730,7 +733,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 				ExpectedString: expectedString, // pod will be restarted so expect to see 2 instances of string
 			},
 		}
-		test.Run(cs, ns)
+		test.Run(cs, ns, schedulerName)
 	})
 }
 

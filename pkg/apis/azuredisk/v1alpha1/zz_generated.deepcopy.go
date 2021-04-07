@@ -167,7 +167,11 @@ func (in *AzVolume) DeepCopyInto(out *AzVolume) {
 	out.TypeMeta = in.TypeMeta
 	in.ObjectMeta.DeepCopyInto(&out.ObjectMeta)
 	out.Spec = in.Spec
-	out.Status = in.Status
+	if in.Status != nil {
+		in, out := &in.Status, &out.Status
+		*out = new(AzVolumeStatus)
+		**out = **in
+	}
 	return
 }
 
@@ -195,7 +199,11 @@ func (in *AzVolumeAttachment) DeepCopyInto(out *AzVolumeAttachment) {
 	out.TypeMeta = in.TypeMeta
 	in.ObjectMeta.DeepCopyInto(&out.ObjectMeta)
 	out.Spec = in.Spec
-	out.Status = in.Status
+	if in.Status != nil {
+		in, out := &in.Status, &out.Status
+		*out = new(AzVolumeAttachmentStatus)
+		**out = **in
+	}
 	return
 }
 

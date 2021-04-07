@@ -191,7 +191,7 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 				FailedNodes: make(map[string]string),
 				Error:       "",
 			},
-			expectedPrioritizeResult: schedulerapi.HostPriorityList{schedulerapi.HostPriority{Host: "node", Score: getNodeScore(1, time.Now().UnixNano())}},
+			expectedPrioritizeResult: schedulerapi.HostPriorityList{schedulerapi.HostPriority{Host: "node", Score: getNodeScore(1, time.Now().UnixNano(), "node")}},
 		},
 		{
 			name: "Test simple case of pod/node/volume with pending azDriverNode",
@@ -225,7 +225,7 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 				FailedNodes: map[string]string{"node": "AzDriverNode for node is not ready."},
 				Error:       "",
 			},
-			expectedPrioritizeResult: schedulerapi.HostPriorityList{schedulerapi.HostPriority{Host: "node", Score: getNodeScore(1, time.Now().UnixNano())}},
+			expectedPrioritizeResult: schedulerapi.HostPriorityList{schedulerapi.HostPriority{Host: "node", Score: getNodeScore(1, time.Now().UnixNano(), "node")}},
 		},
 		{
 			name: "Test simple case of single node/volume with no pod volume requests",
@@ -253,7 +253,7 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 				FailedNodes: nil,
 				Error:       "",
 			},
-			expectedPrioritizeResult: schedulerapi.HostPriorityList{schedulerapi.HostPriority{Host: "node", Score: getNodeScore(0, time.Now().UnixNano())}},
+			expectedPrioritizeResult: schedulerapi.HostPriorityList{schedulerapi.HostPriority{Host: "node", Score: getNodeScore(0, time.Now().UnixNano(), "node")}},
 		},
 		{
 			name: "Test case with 2 nodes and one pod/volume",
@@ -301,8 +301,8 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 				Error:       "",
 			},
 			expectedPrioritizeResult: schedulerapi.HostPriorityList{
-				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(1, time.Now().UnixNano())},
-				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(0, time.Now().UnixNano())},
+				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(1, time.Now().UnixNano(), "node0")},
+				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(0, time.Now().UnixNano(), "node1")},
 			},
 		},
 		{
@@ -350,8 +350,8 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 				Error:       "",
 			},
 			expectedPrioritizeResult: schedulerapi.HostPriorityList{
-				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(0, time.Now().UnixNano())},
-				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(1, time.Now().UnixNano())},
+				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(0, time.Now().UnixNano(), "node0")},
+				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(1, time.Now().UnixNano(), "node1")},
 			},
 		},
 		{
@@ -401,8 +401,8 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 				Error:       "",
 			},
 			expectedPrioritizeResult: schedulerapi.HostPriorityList{
-				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(2, time.Now().UnixNano())},
-				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(0, time.Now().UnixNano())},
+				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(2, time.Now().UnixNano(), "node0")},
+				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(0, time.Now().UnixNano(), "node1")},
 			},
 		},
 		{
@@ -452,9 +452,9 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 				Error:       "",
 			},
 			expectedPrioritizeResult: schedulerapi.HostPriorityList{
-				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(2, time.Now().UnixNano())},
-				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(3, time.Now().UnixNano())},
-				schedulerapi.HostPriority{Host: "node2", Score: getNodeScore(1, time.Now().UnixNano())},
+				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(2, time.Now().UnixNano(), "node0")},
+				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(3, time.Now().UnixNano(), "node1")},
+				schedulerapi.HostPriority{Host: "node2", Score: getNodeScore(1, time.Now().UnixNano(), "node2")},
 			},
 		},
 		{
@@ -507,9 +507,9 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 				Error:       "",
 			},
 			expectedPrioritizeResult: schedulerapi.HostPriorityList{
-				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(2, time.Now().UnixNano())},
-				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(3, time.Now().UnixNano())},
-				schedulerapi.HostPriority{Host: "node2", Score: getNodeScore(0, time.Now().UnixNano())},
+				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(2, time.Now().UnixNano(), "node0")},
+				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(3, time.Now().UnixNano(), "node1")},
+				schedulerapi.HostPriority{Host: "node2", Score: getNodeScore(0, time.Now().UnixNano(), "node2")},
 			},
 		},
 		{
@@ -559,9 +559,9 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 				Error:       "",
 			},
 			expectedPrioritizeResult: schedulerapi.HostPriorityList{
-				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(2, time.Now().UnixNano())},
-				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(2, time.Now().UnixNano())},
-				schedulerapi.HostPriority{Host: "node2", Score: getNodeScore(0, time.Now().UnixNano())},
+				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(2, time.Now().UnixNano(), "node0")},
+				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(2, time.Now().UnixNano(), "node1")},
+				schedulerapi.HostPriority{Host: "node2", Score: getNodeScore(0, time.Now().UnixNano(), "node2")},
 			},
 		},
 	}
