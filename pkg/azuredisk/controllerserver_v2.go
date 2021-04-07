@@ -134,9 +134,12 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 			if maxShares < 1 {
 				return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("parse %s returned with invalid value: %d", v, maxShares))
 			}
+		case fsTypeField:
+			// no op, only used in NodeStageVolume
+		case kindField:
+			// no op, only for compatibility
 		default:
-			//don't return error here since there are some parameters(e.g. fsType) used in disk mount process
-			//return nil, fmt.Errorf("AzureDisk - invalid option %s in storage class", k)
+			return nil, fmt.Errorf("invalid parameter %s in storage class", k)
 		}
 	}
 
