@@ -14,29 +14,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-set -euo pipefail
-
-function install_csi_sanity_bin {
-  echo 'Installing CSI sanity test binary...'
-  mkdir -p $GOPATH/src/github.com/kubernetes-csi
-  pushd $GOPATH/src/github.com/kubernetes-csi
-  export GO111MODULE=off
-  git clone https://github.com/kubernetes-csi/csi-test.git -b v4.0.2
-  pushd csi-test/cmd/csi-sanity
-  make install
-  popd
-  popd
+function cleanup {
+  echo 'pkill -f azurediskplugin'
+  pkill -f azurediskplugin
 }
 
-if [[ -z "$(command -v csi-sanity)" ]]; then
-	install_csi_sanity_bin
+trap cleanup EXIT
+
+endpoint='tcp://127.0.0.1:10000'
+if [[ "$#" -gt 0 ]]; then
+  endpoint="$1"
 fi
 
-if [[ "$#" -ge 2 && "$1" == "v2" ]]; 
-then
-echo 'Running v2 sanity tests'
-test/sanity/run-test-v2.sh "$nodeid" $*
-else
-echo 'Running v1 sanity tests'
-test/sanity/run-test.sh "$nodeid" $*
-fi
+_output/azurediskplugin --endpoint "$endpoint" --nodeid "$node" -v=5 &
+
+echo "Begin to run integration test on $cloud..."
+
+test/integration/run-test.sh "$endpoint" "$nodeid" "$cloud" "$version"

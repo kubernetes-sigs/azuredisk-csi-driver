@@ -101,15 +101,15 @@ sanity-test: azuredisk
 
 .PHONY: sanity-test-v2
 sanity-test-v2: container-v2
-	 go test -v -timeout=30m ./test/sanity --temp-use-driver-v2 --image-tag ${IMAGE_TAG}
+	go test -v -timeout=30m ./test/sanity --temp-use-driver-v2 --image-tag ${IMAGE_TAG}
 
 .PHONY: integration-test
-integration-test: azuredisk
+integration-test:
 	go test -v -timeout=30m ./test/integration
 
 .PHONY: integration-test-v2
-integration-test-v2: azuredisk-v2
-	go test -v -timeout=30m ./test/integration --temp-use-driver-v2
+integration-test-v2: container-v2
+	go test -v -timeout=30m ./test/integration --temp-use-driver-v2 --image-tag ${IMAGE_TAG}
 
 .PHONY: e2e-test
 e2e-test:

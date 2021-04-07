@@ -1,6 +1,6 @@
 image:
   azuredisk:
-    tag: andyzhangx/azuredisk-csi:v2.0.0-alpha.1
+    tag: mcr.microsoft.com/k8s/csi/azuredisk-csi:v2.0.0-alpha.1
   pullPolicy: IfNotPresent
 
 serviceAccount:
@@ -11,17 +11,13 @@ rbac:
 
 azuredisk:
   useV2Driver: true
-  csiEndpoint: tcp://127.0.0.1:32000
+  csiEndpoint: tcp://127.0.0.1:10000
   isTestRun: true
 
 controller:
   replicas: 1
   metricsPort: 29604
   runOnMaster: false
-  logLevel: 5
-
-node:
-  metricsPort: 29605
   logLevel: 5
 
 snapshot:
