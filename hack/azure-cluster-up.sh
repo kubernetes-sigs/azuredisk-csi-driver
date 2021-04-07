@@ -25,21 +25,23 @@ azure-cluster-up.sh: Creates a Kubernetes cluster in the Azure cloud.
 Options:
   -l, --location     [Required] : The region.
   -s, --subscription [Required] : The subscription identifier.
-  -c, --client-id               : The service principal identifier. Default to
+  -b, --enable-bastion          : If present, enable Azure Bastion for access
+                                  to the cluster nodes.
+  -c, --client-id string        : The service principal identifier. Default to
                                   <name>-sp.
-  -e, --client-tenant           : The client tenant. Required if --client-id
+  -e, --client-tenant string    : The client tenant. Required if --client-id
                                   is used.
-  -n, --name                    : The Kubernetes cluster DNS name. Defaults to
+  -n, --name string             : The Kubernetes cluster DNS name. Defaults to
                                   k8s-<git-commit>-<template>.
-  -o, --output                  : The output directory. Defaults to
+  -o, --output string           : The output directory. Defaults to
                                   ./_output/<name>.
-  -p, --client-secret           : The service principal password.  Required if
+  -p, --client-secret string    : The service principal password.  Required if
                                   --client-id is used.
-  -r, --resource-group          : The resource group name. Defaults to 
+  -r, --resource-group string   : The resource group name. Defaults to 
                                   <name>-rg
-  -t, --template                : The cluster template name or URL. Defaults
+  -t, --template string         : The cluster template name or URL. Defaults
                                   to single-az.
-  -v, --k8s-version             : The Kubernetes version. Defaults to 1.17 for
+  -v, --k8s-version string      : The Kubernetes version. Defaults to 1.17 for
                                   Linux and 1.18 for Windows.
 EOF
 }
@@ -82,6 +84,7 @@ unset AZURE_LOCATION
 unset AZURE_RESOURCE_GROUP
 unset AZURE_SUBSCRIPTION_ID
 unset AZURE_TENANT_ID
+unset ENABLE_AZURE_BASTION
 unset OUTPUT_DIR
 POSITIONAL=()
 
@@ -89,6 +92,11 @@ while [[ $# -gt 0 ]]
 do
   ARG="$1"
   case $ARG in
+    -b|--enable-bastion)
+      ENABLE_AZURE_BASTION="true"
+      shift
+      ;;
+
     -c|--client-id)
       AZURE_CLIENT_ID="$2"
       shift 2 # skip the option arguments
@@ -364,6 +372,15 @@ aks-engine deploy \
   --output-directory="$OUTPUT_DIR" \
   --force-overwrite \
   "${AKS_ENGINE_OVERRIDES[@]}"
+
+# Set up Bastion access if requested
+if [[ ${ENABLE_AZURE_BASTION:-false} == "true" ]]; then
+  ${GIT_ROOT}/hack/enable-azure-bastion.sh \
+    --subscription "$AZURE_SUBSCRIPTION_ID" \
+    --resource-group "$AZURE_RESOURCE_GROUP" \
+    --location "$AZURE_LOCATION" \
+    --name "$AZURE_CLUSTER_DNS_NAME"
+fi
 
 AZURE_CLUSTER_KUBECONFIG_FILE="$OUTPUT_DIR/kubeconfig/kubeconfig.$AZURE_LOCATION.json"
 echo "Waiting for cluster to become available"
