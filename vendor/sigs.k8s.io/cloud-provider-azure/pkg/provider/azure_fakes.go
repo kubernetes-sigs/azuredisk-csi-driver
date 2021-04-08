@@ -98,7 +98,7 @@ func GetTestCloud(ctrl *gomock.Controller) (az *Cloud) {
 	az.VirtualMachineScaleSetsClient = mockvmssclient.NewMockInterface(ctrl)
 	az.VirtualMachineScaleSetVMsClient = mockvmssvmclient.NewMockInterface(ctrl)
 	az.VirtualMachinesClient = mockvmclient.NewMockInterface(ctrl)
-	az.VMSet = newAvailabilitySet(az)
+	az.VMSet, _ = newAvailabilitySet(az)
 	az.vmCache, _ = az.newVMCache()
 	az.lbCache, _ = az.newLBCache()
 	az.nsgCache, _ = az.newNSGCache()
@@ -107,6 +107,7 @@ func GetTestCloud(ctrl *gomock.Controller) (az *Cloud) {
 	common := &controllerCommon{cloud: az, resourceGroup: "rg", location: "westus"}
 	az.controllerCommon = common
 	az.ManagedDiskController = &ManagedDiskController{common: common}
+	az.regionZonesMap = map[string][]string{az.Location: {"1", "2", "3"}}
 
 	return az
 }
@@ -116,5 +117,9 @@ func GetTestCloudWithExtendedLocation(ctrl *gomock.Controller) (az *Cloud) {
 	az = GetTestCloud(ctrl)
 	az.Config.ExtendedLocationName = "microsoftlosangeles1"
 	az.Config.ExtendedLocationType = "EdgeZone"
+	az.controllerCommon.extendedLocation = &ExtendedLocation{
+		Name: az.Config.ExtendedLocationName,
+		Type: az.Config.ExtendedLocationType,
+	}
 	return az
 }
