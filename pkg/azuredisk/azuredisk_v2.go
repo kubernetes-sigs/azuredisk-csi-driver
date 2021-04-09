@@ -147,3 +147,7 @@ func (d *DriverV2) checkDiskCapacity(ctx context.Context, resourceGroup, diskNam
 	}
 	return true, nil
 }
+
+func (d *DriverV2) getVolumeLocks() *volumehelper.VolumeLocks {
+	return d.volumeLocks
+}

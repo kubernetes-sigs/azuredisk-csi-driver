@@ -232,6 +232,10 @@ func (d *Driver) checkDiskCapacity(ctx context.Context, resourceGroup, diskName 
 	return true, nil
 }
 
+func (d *Driver) getVolumeLocks() *volumehelper.VolumeLocks {
+	return d.volumeLocks
+}
+
 func isValidDiskURI(diskURI string) error {
 	if strings.Index(strings.ToLower(diskURI), "/subscriptions/") != 0 {
 		return fmt.Errorf("Inavlid DiskURI: %v, correct format: %v", diskURI, diskURISupportedManaged)
