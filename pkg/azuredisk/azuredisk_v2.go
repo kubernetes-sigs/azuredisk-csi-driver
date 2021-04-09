@@ -333,10 +333,10 @@ func (d *DriverV2) RegisterAzDriverNode(ctx context.Context) error {
 		klog.Errorf("NodeID is nil, can not initialize AzDriverNode")
 		return errors.NewBadRequest("NodeID is nil, can not register the plugin.")
 	}
-
+	if !*isTestRun {
 	klog.V(2).Infof("Registering AzDriverNode for node (%s)", d.NodeID)
 	node, err := d.kubeClient.CoreV1().Nodes().Get(ctx, d.NodeID, metav1.GetOptions{})
-	if !*isTestRun && (err != nil || node == nil) {
+	 if err != nil || node == nil {
 		klog.Errorf("Failed to get node (%s), error: %v", node, err)
 		return errors.NewBadRequest("Failed to get node or node not found, can not register the plugin.")
 	}

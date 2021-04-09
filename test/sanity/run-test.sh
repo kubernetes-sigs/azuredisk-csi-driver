@@ -17,6 +17,8 @@
 set -euo pipefail
 
 function cleanup {
+  set +e
+
   echo 'pkill -f azurediskplugin'
   pkill -f azurediskplugin
   echo 'Deleting CSI sanity test binary'

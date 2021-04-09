@@ -16,12 +16,17 @@
 
 set -euo pipefail
 
+readonly image=$3
+echo image
+
 function cleanup {
+  set +e
+
   echo 'Unistalling helm chart'
   helm uninstall azuredisk-csi-driver --namespace kube-system
 
   echo 'Cleaning up the minikube cache'
-  minikube cache delete $3
+  minikube cache delete $image
 
   echo 'Stopping minikube'
   minikube stop
@@ -44,11 +49,11 @@ echo 'Start minikube'
 minikube start --driver=none
 
 echo 'Load the image to minikube'
-minikube cache add $3
+minikube cache add $image
 
 echo 'Installing helm charts'
 curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash
-helm install azuredisk-csi-driver charts/test-v2/azuredisk-csi-driver -n kube-system --wait --timeout=15m -v=5 --debug --set image.azuredisk.tag=$3
+helm install azuredisk-csi-driver charts/test-v2/azuredisk-csi-driver -n kube-system --wait --timeout=15m -v=5 --debug --set image.azuredisk.tag=$image
 
 echo 'Begin to run sanity test v2'
 readonly CSI_SANITY_BIN='csi-sanity'

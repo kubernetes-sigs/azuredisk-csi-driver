@@ -14,12 +14,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+set -euo pipefail
+
+image=$7
+
 function cleanup {
+  set +e
+
   echo 'Unistalling helm chart'
   helm uninstall azuredisk-csi-driver --namespace kube-system
 
   echo 'Cleaning up the minikube cache'
-  minikube cache delete $7
+  minikube cache delete $image
 
   echo 'Stopping minikube'
   minikube stop
@@ -39,11 +45,11 @@ echo 'Starting minikube'
 minikube start --driver=none
 
 echo 'Load the image to minikube'
-minikube cache add $7
+minikube cache add $image
 
 echo 'Installing helm charts'
 curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash
-helm install azuredisk-csi-driver charts/test-v2/azuredisk-csi-driver -n kube-system --wait --timeout=15m -v=5 --debug --set image.azuredisk.tag=$7
+helm install azuredisk-csi-driver charts/test-v2/azuredisk-csi-driver -n kube-system --wait --timeout=15m -v=5 --debug --set image.azuredisk.tag=$image
 
 test/integration/run-test.sh $*
 
