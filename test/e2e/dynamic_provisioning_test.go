@@ -19,7 +19,9 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"os"
 
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/testsuites"
 
@@ -746,13 +748,20 @@ func (t *dynamicProvisioningTestSuite) normalizeVolumes(volumes []testsuites.Vol
 }
 
 func (t *dynamicProvisioningTestSuite) normalizeVolume(volume testsuites.VolumeDetails, isMultiZone bool) testsuites.VolumeDetails {
-	if !isMultiZone {
-		return volume
+	driverName := os.Getenv(driver.AzureDriverNameVar)
+	switch driverName {
+	case "kubernetes.io/azure-disk":
+		volumeBindingMode := storagev1.VolumeBindingWaitForFirstConsumer
+		volume.VolumeBindingMode = &volumeBindingMode
+	case "", azuredisk.DriverName:
+		if !isMultiZone {
+			return volume
+		}
+		volume.AllowedTopologyValues = t.allowedTopologyValues
+		volumeBindingMode := storagev1.VolumeBindingWaitForFirstConsumer
+		volume.VolumeBindingMode = &volumeBindingMode
 	}
 
-	volume.AllowedTopologyValues = t.allowedTopologyValues
-	volumeBindingMode := storagev1.VolumeBindingWaitForFirstConsumer
-	volume.VolumeBindingMode = &volumeBindingMode
 	return volume
 }
 
