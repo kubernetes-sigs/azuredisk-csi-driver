@@ -23,7 +23,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2020-07-01/network"
+	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2020-08-01/network"
 	"github.com/Azure/go-autorest/autorest/to"
 
 	"k8s.io/apimachinery/pkg/types"
@@ -150,7 +150,7 @@ func (d *delayedRouteUpdater) updateRoutes() {
 	// reconcile routes.
 	dirty := false
 	routes := []network.Route{}
-	if routeTable.Routes != nil {
+	if routeTable.RouteTablePropertiesFormat != nil && routeTable.RouteTablePropertiesFormat.Routes != nil {
 		routes = *routeTable.Routes
 	}
 	onlyUpdateTags := true
@@ -357,7 +357,7 @@ func (az *Cloud) CreateRoute(ctx context.Context, clusterName string, nameHint s
 		return nil
 	}
 
-	CIDRv6 := utilnet.IsIPv6CIDRString(string(kubeRoute.DestinationCIDR))
+	CIDRv6 := utilnet.IsIPv6CIDRString(kubeRoute.DestinationCIDR)
 	// if single stack IPv4 then get the IP for the primary ip config
 	// single stack IPv6 is supported on dual stack host. So the IPv6 IP is secondary IP for both single stack IPv6 and dual stack
 	// Get all private IPs for the machine and find the first one that matches the IPv6 family
@@ -382,7 +382,7 @@ func (az *Cloud) CreateRoute(ctx context.Context, clusterName string, nameHint s
 			return err
 		}
 	}
-	routeName := mapNodeNameToRouteName(az.ipv6DualStackEnabled, kubeRoute.TargetNode, string(kubeRoute.DestinationCIDR))
+	routeName := mapNodeNameToRouteName(az.ipv6DualStackEnabled, kubeRoute.TargetNode, kubeRoute.DestinationCIDR)
 	route := network.Route{
 		Name: to.StringPtr(routeName),
 		RoutePropertiesFormat: &network.RoutePropertiesFormat{
@@ -437,7 +437,7 @@ func (az *Cloud) DeleteRoute(ctx context.Context, clusterName string, kubeRoute 
 
 	klog.V(2).Infof("DeleteRoute: deleting route. clusterName=%q instance=%q cidr=%q", clusterName, kubeRoute.TargetNode, kubeRoute.DestinationCIDR)
 
-	routeName := mapNodeNameToRouteName(az.ipv6DualStackEnabled, kubeRoute.TargetNode, string(kubeRoute.DestinationCIDR))
+	routeName := mapNodeNameToRouteName(az.ipv6DualStackEnabled, kubeRoute.TargetNode, kubeRoute.DestinationCIDR)
 	route := network.Route{
 		Name:                  to.StringPtr(routeName),
 		RoutePropertiesFormat: &network.RoutePropertiesFormat{},
@@ -505,21 +505,18 @@ func cidrtoRfc1035(cidr string) string {
 	return cidr
 }
 
-//  ensureRouteTableTagged ensures the route table is tagged as configured
+// ensureRouteTableTagged ensures the route table is tagged as configured
 func (az *Cloud) ensureRouteTableTagged(rt *network.RouteTable) (map[string]*string, bool) {
 	if az.Tags == "" {
 		return nil, false
 	}
-	changed := false
 	tags := parseTags(az.Tags)
 	if rt.Tags == nil {
 		rt.Tags = make(map[string]*string)
 	}
-	for k, v := range tags {
-		if vv, ok := rt.Tags[k]; !ok || !strings.EqualFold(to.String(v), to.String(vv)) {
-			rt.Tags[k] = v
-			changed = true
-		}
-	}
+
+	tags, changed := az.reconcileTags(rt.Tags, tags)
+	rt.Tags = tags
+
 	return rt.Tags, changed
 }

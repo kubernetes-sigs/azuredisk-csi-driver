@@ -66,7 +66,7 @@ replace (
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.20.0
 	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.20.0
 	k8s.io/sample-controller => k8s.io/sample-controller v0.20.0
-	sigs.k8s.io/cloud-provider-azure => sigs.k8s.io/cloud-provider-azure v0.7.1-0.20210318024319-cd36edb7c0ee
+	sigs.k8s.io/cloud-provider-azure => sigs.k8s.io/cloud-provider-azure v0.7.1-0.20210408024941-32afd35fea52
 )
 
 replace github.com/niemeyer/pretty => github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e

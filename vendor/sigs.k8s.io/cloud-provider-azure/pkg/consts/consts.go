@@ -115,6 +115,36 @@ const (
 	VMSetCIDRIPV4TagKey = "kubernetesNodeCIDRMaskIPV4"
 	// VMSetCIDRIPV6TagKey specifies the node ipv6 CIDR mask of the instances on the VMSS or VMAS
 	VMSetCIDRIPV6TagKey = "kubernetesNodeCIDRMaskIPV6"
+
+	// TagsDelimiter is the delimiter of tags
+	TagsDelimiter = ","
+	// TagKeyValueDelimiter is the delimiter between keys and values in tagas
+	TagKeyValueDelimiter = "="
+	// VMSetNamesSharingPrimarySLBDelimiter is the delimiter of vmSet names sharing the primary SLB
+	VMSetNamesSharingPrimarySLBDelimiter = ","
+)
+
+// cache
+const (
+	// VMSSNameSeparator is the separator of the vmss names
+	VMSSNameSeparator = "_"
+	// VMSSKey is the key when querying vmss cache
+	VMSSKey = "k8svmssKey"
+	// VMASKey is the key when querying vmss cache
+	VMASKey = "k8svmasKey"
+	// AvailabilitySetNodesKey is the availability set nodes key
+	AvailabilitySetNodesKey = "k8sAvailabilitySetNodesKey"
+	// AvailabilitySetNodesCacheTTLDefaultInSeconds is the TTL of the availabilitySet node cache
+	AvailabilitySetNodesCacheTTLDefaultInSeconds = 900
+	// VMSSCacheTTLDefaultInSeconds is the TTL of the vmss cache
+	VMSSCacheTTLDefaultInSeconds = 600
+	// VMSSVirtualMachinesCacheTTLDefaultInSeconds is the TTL of the vmss vm cache
+	VMSSVirtualMachinesCacheTTLDefaultInSeconds = 600
+	// VMASCacheTTLDefaultInSeconds is the TTL of the vmas cache
+	VMASCacheTTLDefaultInSeconds = 600
+
+	// ZoneFetchingInterval defines the interval of performing zoneClient.GetZones
+	ZoneFetchingInterval = 30 * time.Minute
 )
 
 // azure cloud config

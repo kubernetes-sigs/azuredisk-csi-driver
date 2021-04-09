@@ -56,10 +56,12 @@ import (
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/snapshotclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/storageaccountclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/subnetclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmasclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmsizeclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmssclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmssvmclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/zoneclient"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
 	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
@@ -100,10 +102,10 @@ type Config struct {
 	// The location of the resource group that the cluster is deployed in
 	Location string `json:"location,omitempty" yaml:"location,omitempty"`
 	// The name of site where the cluster will be deployed to that is more granular than the region specified by the "location" field.
-	// Currently only public ip and load balancer support this.
+	// Currently only public ip, load balancer and managed disks support this.
 	ExtendedLocationName string `json:"extendedLocationName,omitempty" yaml:"extendedLocationName,omitempty"`
 	// The type of site that is being targeted.
-	// Currently only public ip and load balancer support this.
+	// Currently only public ip, load balancer and managed disks support this.
 	ExtendedLocationType string `json:"extendedLocationType,omitempty" yaml:"extendedLocationType,omitempty"`
 	// The name of the VNet that the cluster is deployed in
 	VnetName string `json:"vnetName,omitempty" yaml:"vnetName,omitempty"`
@@ -138,6 +140,10 @@ type Config struct {
 	// includes load balancer, security group and route table. The supported format is `a=b,c=d,...`. After updated
 	// this config, the old tags would be replaced by the new ones.
 	Tags string `json:"tags,omitempty" yaml:"tags,omitempty"`
+	// SystemTags determines the tag keys managed by cloud provider. If it is not set, no tags would be deleted if
+	// the `Tags` is changed. However, the old tags would be deleted if they are neither included in `Tags` nor
+	// in `SystemTags` after the update of `Tags`.
+	SystemTags string `json:"systemTags,omitempty" yaml:"systemTags,omitempty"`
 	// Sku of Load Balancer and Public IP. Candidate values are: basic and standard.
 	// If not set, it will be default to basic.
 	LoadBalancerSku string `json:"loadBalancerSku,omitempty" yaml:"loadBalancerSku,omitempty"`
@@ -165,12 +171,16 @@ type Config struct {
 	CloudProviderBackoff bool `json:"cloudProviderBackoff,omitempty" yaml:"cloudProviderBackoff,omitempty"`
 	// Use instance metadata service where possible
 	UseInstanceMetadata bool `json:"useInstanceMetadata,omitempty" yaml:"useInstanceMetadata,omitempty"`
+
 	// EnableMultipleStandardLoadBalancers determines the behavior of the standard load balancer. If set to true
 	// there would be one standard load balancer per VMAS or VMSS, which is similar with the behavior of the basic
 	// load balancer. Users could select the specific standard load balancer for their service by the service
 	// annotation `service.beta.kubernetes.io/azure-load-balancer-mode`, If set to false, the same standard load balancer
 	// would be shared by all services in the cluster. In this case, the mode selection annotation would be ignored.
 	EnableMultipleStandardLoadBalancers bool `json:"enableMultipleStandardLoadBalancers,omitempty" yaml:"enableMultipleStandardLoadBalancers,omitempty"`
+	// NodePoolsWithoutDedicatedSLB stores the VMAS/VMSS names that share the primary standard load balancer instead
+	// of having a dedicated one. This is useful only when EnableMultipleStandardLoadBalancers is set to true.
+	NodePoolsWithoutDedicatedSLB string `json:"nodePoolsWithoutDedicatedSLB,omitempty" yaml:"nodePoolsWithoutDedicatedSLB,omitempty"`
 
 	// Backoff exponent
 	CloudProviderBackoffExponent float64 `json:"cloudProviderBackoffExponent,omitempty" yaml:"cloudProviderBackoffExponent,omitempty"`
@@ -205,6 +215,8 @@ type Config struct {
 	NsgCacheTTLInSeconds int `json:"nsgCacheTTLInSeconds,omitempty" yaml:"nsgCacheTTLInSeconds,omitempty"`
 	// RouteTableCacheTTLInSeconds sets the cache TTL for route table
 	RouteTableCacheTTLInSeconds int `json:"routeTableCacheTTLInSeconds,omitempty" yaml:"routeTableCacheTTLInSeconds,omitempty"`
+	// AvailabilitySetsCacheTTLInSeconds sets the cache TTL for VMAS
+	AvailabilitySetsCacheTTLInSeconds int `json:"availabilitySetsCacheTTLInSeconds,omitempty" yaml:"availabilitySetsCacheTTLInSeconds,omitempty"`
 	// RouteUpdateWaitingInSeconds is the delay time for waiting route updates to take effect. This waiting delay is added
 	// because the routes are not taken effect when the async route updating operation returns success. Default is 30 seconds.
 	RouteUpdateWaitingInSeconds int `json:"routeUpdateWaitingInSeconds,omitempty" yaml:"routeUpdateWaitingInSeconds,omitempty"`
@@ -244,6 +256,8 @@ type Cloud struct {
 	VirtualMachineScaleSetsClient   vmssclient.Interface
 	VirtualMachineScaleSetVMsClient vmssvmclient.Interface
 	VirtualMachineSizesClient       vmsizeclient.Interface
+	AvailabilitySetsClient          vmasclient.Interface
+	ZoneClient                      zoneclient.Interface
 
 	ResourceRequestBackoff wait.Backoff
 	metadata               *InstanceMetadataService
@@ -251,6 +265,8 @@ type Cloud struct {
 
 	// ipv6DualStack allows overriding for unit testing.  It's normally initialized from featuregates
 	ipv6DualStackEnabled bool
+	// isSHaredLoadBalancerSynced indicates if the reconcileSharedLoadBalancer has been run
+	isSharedLoadBalancerSynced bool
 	// Lock for access to node caches, includes nodeZones, nodeResourceGroups, and unmanagedNodes.
 	nodeCachesLock sync.RWMutex
 	// nodeNames holds current nodes for tracking added nodes in VM caches.
@@ -269,6 +285,10 @@ type Cloud struct {
 	routeCIDRsLock sync.Mutex
 	// routeCIDRs holds cache for route CIDRs.
 	routeCIDRs map[string]string
+
+	// regionZonesMap stores all available zones for the subscription by region
+	regionZonesMap   map[string][]string
+	refreshZonesLock sync.RWMutex
 
 	KubeClient       clientset.Interface
 	eventBroadcaster record.EventBroadcaster
@@ -446,7 +466,10 @@ func (az *Cloud) InitializeCloudFromConfig(config *Config, fromSecret bool) erro
 			return err
 		}
 	} else {
-		az.VMSet = newAvailabilitySet(az)
+		az.VMSet, err = newAvailabilitySet(az)
+		if err != nil {
+			return err
+		}
 	}
 
 	az.vmCache, err = az.newVMCache()
@@ -476,6 +499,8 @@ func (az *Cloud) InitializeCloudFromConfig(config *Config, fromSecret bool) erro
 	// start delayed route updater.
 	az.routeUpdater = newDelayedRouteUpdater(az, routeUpdateInterval)
 	go az.routeUpdater.run()
+
+	go az.refreshZones(az.syncRegionZonesMap)
 
 	return nil
 }
@@ -584,13 +609,16 @@ func (az *Cloud) configAzureClients(
 	publicIPClientConfig := azClientConfig.WithRateLimiter(az.Config.PublicIPAddressRateLimit)
 	// TODO(ZeroMagic): add azurefileRateLimit
 	fileClientConfig := azClientConfig.WithRateLimiter(nil)
+	vmasClientConfig := azClientConfig.WithRateLimiter(az.Config.AvailabilitySetRateLimit)
+	zoneClientConfig := azClientConfig.WithRateLimiter(nil)
 
-	// If uses network resources in different AAD Tenant, update Authorizer for VM/VMSS client config
+	// If uses network resources in different AAD Tenant, update Authorizer for VM/VMSS/VMAS client config
 	if multiTenantServicePrincipalToken != nil {
 		multiTenantServicePrincipalTokenAuthorizer := autorest.NewMultiTenantServicePrincipalTokenAuthorizer(multiTenantServicePrincipalToken)
 		vmClientConfig.Authorizer = multiTenantServicePrincipalTokenAuthorizer
 		vmssClientConfig.Authorizer = multiTenantServicePrincipalTokenAuthorizer
 		vmssVMClientConfig.Authorizer = multiTenantServicePrincipalTokenAuthorizer
+		vmasClientConfig.Authorizer = multiTenantServicePrincipalTokenAuthorizer
 	}
 
 	// If uses network resources in different AAD Tenant, update SubscriptionID and Authorizer for network resources client config
@@ -627,6 +655,8 @@ func (az *Cloud) configAzureClients(
 	az.SecurityGroupsClient = securitygroupclient.New(securityGroupClientConfig)
 	az.PublicIPAddressesClient = publicipclient.New(publicIPClientConfig)
 	az.FileClient = fileclient.New(fileClientConfig)
+	az.AvailabilitySetsClient = vmasclient.New(vmasClientConfig)
+	az.ZoneClient = zoneclient.New(zoneClientConfig)
 }
 
 func (az *Cloud) getAzureClientConfig(servicePrincipalToken *adal.ServicePrincipalToken) *azclients.ClientConfig {
@@ -646,6 +676,13 @@ func (az *Cloud) getAzureClientConfig(servicePrincipalToken *adal.ServicePrincip
 			Factor:   az.Config.CloudProviderBackoffExponent,
 			Duration: time.Duration(az.Config.CloudProviderBackoffDuration) * time.Second,
 			Jitter:   az.Config.CloudProviderBackoffJitter,
+		}
+	}
+
+	if az.Config.HasExtendedLocation() {
+		azClientConfig.ExtendedLocation = &azclients.ExtendedLocation{
+			Name: az.Config.ExtendedLocationName,
+			Type: az.Config.ExtendedLocationType,
 		}
 	}
 
@@ -735,6 +772,13 @@ func initDiskControllers(az *Cloud) error {
 		subscriptionID:        az.SubscriptionID,
 		cloud:                 az,
 		lockMap:               newLockMap(),
+	}
+
+	if az.HasExtendedLocation() {
+		common.extendedLocation = &ExtendedLocation{
+			Name: az.ExtendedLocationName,
+			Type: az.ExtendedLocationName,
+		}
 	}
 
 	az.BlobDiskController = &BlobDiskController{common: common}
