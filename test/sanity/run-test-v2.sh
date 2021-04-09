@@ -53,7 +53,7 @@ minikube cache add $image
 
 echo 'Installing helm charts'
 curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash
-helm install azuredisk-csi-driver test/v2.0.0-alpha.1/azuredisk-csi-driver -n kube-system --wait --timeout=15m -v=5 --debug --set image.azuredisk.tag=$image
+helm install azuredisk-csi-driver test/latest/azuredisk-csi-driver -n kube-system --wait --timeout=15m -v=5 --debug --set image.azuredisk.tag=$image
 
 echo 'Begin to run sanity test v2'
 readonly CSI_SANITY_BIN='csi-sanity'
