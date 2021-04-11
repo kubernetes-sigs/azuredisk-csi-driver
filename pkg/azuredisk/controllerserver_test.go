@@ -1935,6 +1935,50 @@ func TestPickAvailabilityZone(t *testing.T) {
 			},
 		},
 		{
+			name: "valid get preferred - WellKnownTopologyKey",
+			testFunc: func(t *testing.T) {
+				expectedresponse := "test-02"
+				region := "test"
+				mp := make(map[string]string)
+				mp["N/A"] = "test-01"
+				mp[WellKnownTopologyKey] = "test-02"
+				topology := &csi.Topology{
+					Segments: mp,
+				}
+				topologies := []*csi.Topology{}
+				topologies = append(topologies, topology)
+				req := &csi.TopologyRequirement{
+					Preferred: topologies,
+				}
+				actualresponse := pickAvailabilityZone(req, region)
+				if !reflect.DeepEqual(expectedresponse, actualresponse) {
+					t.Errorf("actualresponse: (%v), expectedresponse: (%v)", actualresponse, expectedresponse)
+				}
+			},
+		},
+		{
+			name: "valid get requisite - WellKnownTopologyKey",
+			testFunc: func(t *testing.T) {
+				expectedresponse := "test-02"
+				region := "test"
+				mp := make(map[string]string)
+				mp["N/A"] = "test-01"
+				mp[WellKnownTopologyKey] = "test-02"
+				topology := &csi.Topology{
+					Segments: mp,
+				}
+				topologies := []*csi.Topology{}
+				topologies = append(topologies, topology)
+				req := &csi.TopologyRequirement{
+					Requisite: topologies,
+				}
+				actualresponse := pickAvailabilityZone(req, region)
+				if !reflect.DeepEqual(expectedresponse, actualresponse) {
+					t.Errorf("actualresponse: (%v), expectedresponse: (%v)", actualresponse, expectedresponse)
+				}
+			},
+		},
+		{
 			name: "empty request ",
 			testFunc: func(t *testing.T) {
 				req := &csi.TopologyRequirement{}
