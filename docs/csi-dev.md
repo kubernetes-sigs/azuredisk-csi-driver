@@ -24,6 +24,11 @@ $ BUILD_V2=1 make azuredisk
 $ make verify
 ```
 
+ - If there is config file changed under `charts` directory, run following command to update chart file
+```console
+helm package charts/latest/azuredisk-csi-driver -d charts/latest/
+```
+
 ## How to test CSI driver in local environment
 - Install `csc` tool according to https://github.com/rexray/gocsi/tree/master/csc
 ```console
