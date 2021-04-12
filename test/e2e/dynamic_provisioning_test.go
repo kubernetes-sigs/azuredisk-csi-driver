@@ -358,9 +358,6 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	ginkgo.It("should clone a volume from an existing volume and read from it [disk.csi.azure.com]", func() {
 		skipIfTestingInWindowsCluster()
 		skipIfUsingInTreeVolumePlugin()
-		if isMultiZone {
-			ginkgo.Skip("test case not supported running in multi zone cluster")
-		}
 
 		pod := testsuites.PodDetails{
 			Cmd: "echo 'hello world' > /mnt/test-1/data",
@@ -393,9 +390,6 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	ginkgo.It("should clone a volume of larger size than the source volume and make sure the filesystem is appropriately adjusted [disk.csi.azure.com]", func() {
 		skipIfTestingInWindowsCluster()
 		skipIfUsingInTreeVolumePlugin()
-		if isMultiZone {
-			ginkgo.Skip("test case not supported running in multi zone cluster")
-		}
 
 		pod := testsuites.PodDetails{
 			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
