@@ -32,8 +32,8 @@ type DynamicallyProvisionedStatefulSetTest struct {
 	PodCheck  *PodExecCheck
 }
 
-func (t *DynamicallyProvisionedStatefulSetTest) Run(client clientset.Interface, namespace *v1.Namespace) {
-	tStatefulSet, cleanup := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver)
+func (t *DynamicallyProvisionedStatefulSetTest) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
+	tStatefulSet, cleanup := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, schedulerName)
 	// defer must be called here for resources not get removed before using them
 	for i := range cleanup {
 		defer cleanup[i]()

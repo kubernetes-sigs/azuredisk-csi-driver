@@ -38,16 +38,16 @@ type PreProvisionedDanglingAttachVolumeTest struct {
 	VolumeContext   map[string]string
 }
 
-func (t *PreProvisionedDanglingAttachVolumeTest) Run(client clientset.Interface, namespace *v1.Namespace) {
+func (t *PreProvisionedDanglingAttachVolumeTest) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
 	// Setup required PV(s) and PVC(s) corresponding to PodDetails that will be shared among two pods
-	tpod, cleanup := t.Pod.SetupWithPreProvisionedVolumes(client, namespace, t.CSIDriver, t.VolumeContext)
+	tpod, cleanup := t.Pod.SetupWithPreProvisionedVolumes(client, namespace, t.CSIDriver, t.VolumeContext, schedulerName)
 	// Defer must be called here for PV(s) and PVC(s) to be removed after the test completion and not earlier
 	for i := range cleanup {
 		defer cleanup[i]()
 	}
 
 	// Get the list of available nodes for scheduling the pod
-	nodes := tpod.ListNodes()
+	nodes := ListNodeNames(client)
 	if len(nodes) < 2 {
 		ginkgo.Skip("need at least 2 nodes to verify the test case. Current node count is %d", len(nodes))
 	}

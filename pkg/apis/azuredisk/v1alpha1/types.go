@@ -24,6 +24,9 @@ import (
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // AzVolume is a specification for an AzVolume resource
+// +kubebuilder:object:root=true
+// +kubebuilder:resource:scope=Namespaced
+// +kubebuilder:subresource:status
 type AzVolume struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -39,13 +42,15 @@ type AzVolume struct {
 
 // AzVolumeSpec is the spec for an AzVolume resource
 type AzVolumeSpec struct {
-	//VolumeID is the disk URI of the underlying volume
-	VolumeID             string `json:"volumeID"`
+	//the disk URI of the underlying volume
+	UnderlyingVolume             string `json:"underlyingVolume"`
 	MaxMountReplicaCount int    `json:"maxMountReplicaCount"`
 	//The capabilities that the volume MUST have
-	VolumeCapability *VolumeCapability `json:"volumeCapability"`
+	//+optional
+	VolumeCapability *VolumeCapability `json:"volumeCapability,omitempty"`
 	//The capacity of the storage
-	CapacityRange *CapacityRange `json:"capacityRange"`
+	//+optional
+	CapacityRange *CapacityRange `json:"capacityRange,omitempty"`
 	//Parameters for the volume
 	//+optional
 	Parameters map[string]string `json:"parameters,omitempty"`
@@ -72,24 +77,50 @@ type AzVolumeList struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // AzVolumeAttachment is a specification for a AzVolumeAttachment resource
+// +kubebuilder:object:root=true
+// +kubebuilder:resource:scope=Namespaced
+// +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="NodeName",type=string,JSONPath=`.spec.nodeName`,description="Name of the Node which this AzVolumeAttachment object is attached to"
+// +kubebuilder:printcolumn:name="UnderlyingVolume",type=string,JSONPath=`.spec.underlyingVolume`,description="Name of the Volume which this AzVolumeAttachment object references"
+// +kubebuilder:printcolumn:name="RequestedRole",type=string,JSONPath=`.spec.role`,description="Indicates if the volume attachment should be primary attachment or not"
+// +kubebuilder:printcolumn:name="Role",type=string,JSONPath=`.status.role`,description="Indicates if the volume attachment is primary attachment or not"
 type AzVolumeAttachment struct {
-	metav1.TypeMeta   `json:",inline"`
+	metav1.TypeMeta `json:",inline"`
+	// Standard object's metadata.
+	// More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#metadata
+	// +optional
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   AzVolumeAttachmentSpec   `json:"spec"`
-	Status AzVolumeAttachmentStatus `json:"status"`
+	// spec defines the desired state of a AzVolumeAttachment.
+	// Required.
+	Spec AzVolumeAttachmentSpec `json:"spec"`
+
+	// status represents the current state of AzVolumeAttachment.
+	// Nil status indicates that the underlying volume of AzVolumeAttachment has not yet been attached to the specified node
+	// +optional
+	Status *AzVolumeAttachmentStatus `json:"status,omitempty"`
 }
 
 // AzVolumeAttachmentSpec is the spec for a AzVolumeAttachment resource
 type AzVolumeAttachmentSpec struct {
 	UnderlyingVolume string `json:"underlyingVolume"`
-	NodeName         string `json:"NodeName"`
-	Partition        int32  `json:"partition"`
+	NodeName         string `json:"nodeName"`
+	RequestedRole    Role   `json:"role"`
 }
+
+// Role indicates if the volume attachment is replica attachment or not
+type Role string
+
+const (
+	// Primary indicates that the specified node the volume is attached to is where the pod is currently running on
+	PrimaryRole Role = "Primary"
+	// Replica indicates that the specified node the volume is attached to is one of replicas that pod can failover to if the primary node fails
+	ReplicaRole Role = "Replica"
+)
 
 // AzVolumeAttachmentStatus is the status for a AzVolumeAttachment resource
 type AzVolumeAttachmentStatus struct {
-	State string `json:"state,omitempty"`
+	Role Role `json:"role"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

@@ -87,7 +87,7 @@ spec:
         - name: azdiskschedulerextender-config
           mountPath: /azdiskschedulerextender
       - name: azdiskschedulerextender-ctr
-        image: mcr.microsoft.com/k8s/csi/azdiskschedulerextender-csi:latest
+        image: mcr.microsoft.com/k8s/csi/azdiskschedulerextender-csi:v2.0.0-alpha.1 
         imagePullPolicy: Always
         args:
         - "--port=8888"

@@ -32,9 +32,9 @@ type DynamicallyProvisionedPodWithMultiplePVsTest struct {
 	Pods      []PodDetails
 }
 
-func (t *DynamicallyProvisionedPodWithMultiplePVsTest) Run(client clientset.Interface, namespace *v1.Namespace) {
+func (t *DynamicallyProvisionedPodWithMultiplePVsTest) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
 	for _, pod := range t.Pods {
-		tpod, cleanup := pod.SetupWithDynamicMultipleVolumes(client, namespace, t.CSIDriver)
+		tpod, cleanup := pod.SetupWithDynamicMultipleVolumes(client, namespace, t.CSIDriver, schedulerName)
 		// defer must be called here for resources not get removed before using them
 		for i := range cleanup {
 			defer cleanup[i]()

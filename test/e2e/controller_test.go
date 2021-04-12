@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/onsi/ginkgo"
 
@@ -27,7 +28,9 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
 
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/testsuites"
 )
 
 const (
@@ -87,4 +90,130 @@ var _ = ginkgo.Describe("Controller", func() {
 			}
 		})
 	})
+
+	ginkgo.Context("AzVolumeAttachment", func() {
+		ginkgo.It("Should initialize AzVolumeAttachment object's status and append finalizer and create labels", func() {
+			skipIfUsingInTreeVolumePlugin()
+			skipIfNotUsingCSIDriverV2()
+			testAzAtt := testsuites.SetupTestAzVolumeAttachment(azDiskClient.DiskV1alpha1(), namespace, "test-volume", "test-node", nil, 0)
+			defer testAzAtt.Cleanup()
+			_ = testAzAtt.Create()
+
+			err = testAzAtt.WaitForAttach(time.Duration(5) * time.Minute)
+			framework.ExpectNoError(err)
+
+			err = testAzAtt.WaitForFinalizer(time.Duration(5) * time.Minute)
+			framework.ExpectNoError(err)
+
+			err = testAzAtt.WaitForLabels(time.Duration(5) * time.Minute)
+			framework.ExpectNoError(err)
+		})
+
+		ginkgo.It("Should delete AzVolumeAttachment object properly", func() {
+			skipIfUsingInTreeVolumePlugin()
+			skipIfNotUsingCSIDriverV2()
+			testAzAtt := testsuites.SetupTestAzVolumeAttachment(azDiskClient.DiskV1alpha1(), namespace, "test-volume", "test-node", nil, 0)
+			defer testAzAtt.Cleanup()
+			att := testAzAtt.Create()
+
+			err = testAzAtt.WaitForFinalizer(time.Duration(5) * time.Minute)
+			framework.ExpectNoError(err)
+
+			err = azDiskClient.DiskV1alpha1().AzDriverNodes(namespace).Delete(context.Background(), "test-node", metav1.DeleteOptions{})
+			framework.ExpectNoError(err)
+
+			err = azDiskClient.DiskV1alpha1().AzVolumeAttachments(namespace).Delete(context.Background(), att.Name, metav1.DeleteOptions{})
+			framework.ExpectNoError(err)
+
+			err = testAzAtt.WaitForDelete(time.Duration(5) * time.Minute)
+			framework.ExpectNoError(err)
+		})
+
+		ginkgo.It("Should create replica azVolumeAttachment object when maxShares > 1", func() {
+			skipIfUsingInTreeVolumePlugin()
+			skipIfNotUsingCSIDriverV2()
+			testAzAtt := testsuites.SetupTestAzVolumeAttachment(azDiskClient.DiskV1alpha1(), namespace, "test-volume", "test-node", []string{"test-node-2"}, 1)
+			defer testAzAtt.Cleanup()
+			_ = testAzAtt.Create()
+			// check if the second attachment object was created and marked attached.
+			err = testAzAtt.WaitForReplicas(1, time.Duration(5)*time.Minute)
+			framework.ExpectNoError(err)
+
+		})
+
+		ginkgo.It("If failover happens, should turn replica to primary and create an additional replica for replacment", func() {
+			skipIfUsingInTreeVolumePlugin()
+			skipIfNotUsingCSIDriverV2()
+			volName := "test-volume"
+			testAzAtt := testsuites.SetupTestAzVolumeAttachment(azDiskClient.DiskV1alpha1(), namespace, volName, "test-node", []string{"test-node-2", "test-node-3"}, 1)
+			defer testAzAtt.Cleanup()
+			_ = testAzAtt.Create()
+			err := testAzAtt.WaitForReplicas(1, time.Duration(5)*time.Minute)
+			framework.ExpectNoError(err)
+			attachments, err := azDiskClient.DiskV1alpha1().AzVolumeAttachments(namespace).List(context.Background(), metav1.ListOptions{})
+			framework.ExpectNoError(err)
+
+			// fail primary attachment
+			err = azDiskClient.DiskV1alpha1().AzDriverNodes(namespace).Delete(context.Background(), "test-node", metav1.DeleteOptions{})
+			framework.ExpectNoError(err)
+			err = azDiskClient.DiskV1alpha1().AzVolumeAttachments(namespace).Delete(context.Background(), testsuites.GetAzVolumeAttachmentName(volName, "test-node"), metav1.DeleteOptions{})
+			framework.ExpectNoError(err)
+			err = testAzAtt.WaitForDelete(time.Duration(5) * time.Minute)
+			framework.ExpectNoError(err)
+
+			// failover to one of replicas
+			var replica *v1alpha1.AzVolumeAttachment
+			for _, attachment := range attachments.Items {
+				if attachment.Status != nil && attachment.Status.Role == v1alpha1.ReplicaRole {
+					replica = &attachment
+					break
+				}
+			}
+			promoted := replica.DeepCopy()
+			promoted.Spec.RequestedRole = v1alpha1.PrimaryRole
+			_, err = azDiskClient.DiskV1alpha1().AzVolumeAttachments(namespace).Update(context.Background(), promoted, metav1.UpdateOptions{})
+			framework.ExpectNoError(err)
+
+			// check if a new primary has been created
+			err = testAzAtt.WaitForPrimary(time.Duration(5) * time.Minute)
+			framework.ExpectNoError(err)
+			// check if the second attachment object was created and marked attached.
+			err = testAzAtt.WaitForReplicas(1, time.Duration(5)*time.Minute)
+			framework.ExpectNoError(err)
+		})
+
+		// this test can fail occasionally  as it waits for the deletion of replica attachment if the test attachment is made on non-test nodes
+		ginkgo.It("If a replica is deleted, should create another replica to replace the previous one", func() {
+			skipIfUsingInTreeVolumePlugin()
+			skipIfNotUsingCSIDriverV2()
+			volName := "test-volume"
+			testAzAtt := testsuites.SetupTestAzVolumeAttachment(azDiskClient.DiskV1alpha1(), namespace, volName, "test-node", []string{"test-node-2", "test-node-3"}, 1)
+			defer testAzAtt.Cleanup()
+			_ = testAzAtt.Create()
+			err := testAzAtt.WaitForReplicas(1, time.Duration(5)*time.Minute)
+			framework.ExpectNoError(err)
+			attachments, err := azDiskClient.DiskV1alpha1().AzVolumeAttachments(namespace).List(context.Background(), metav1.ListOptions{})
+			framework.ExpectNoError(err)
+
+			// fail replica attachment
+			var replica *v1alpha1.AzVolumeAttachment
+			for _, attachment := range attachments.Items {
+				if attachment.Status != nil && attachment.Status.Role == v1alpha1.ReplicaRole {
+					replica = &attachment
+					break
+				}
+			}
+			err = azDiskClient.DiskV1alpha1().AzVolumeAttachments(namespace).Delete(context.Background(), replica.Name, metav1.DeleteOptions{})
+			framework.ExpectNoError(err)
+			// below will be commented out until the controller test uses AzureDiskDriver_v2 running on a separate dedicated namespace for testing
+			// err = testsuites.WaitForDelete(azDiskClient.DiskV1alpha1().AzVolumeAttachments(namespace), att.Namespace, replica.Name, time.Duration(5)*time.Minute)
+			// framework.ExpectNoError(err)
+			time.Sleep(time.Duration(30) * time.Second)
+
+			// check if a new replica has been created
+			err = testAzAtt.WaitForReplicas(1, time.Duration(5)*time.Minute)
+			framework.ExpectNoError(err)
+		})
+	})
+
 })

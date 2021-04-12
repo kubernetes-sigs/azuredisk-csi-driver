@@ -50,8 +50,8 @@ type DynamicallyProvisionedVolumeSnapshotTest struct {
 	StorageClassParameters map[string]string
 }
 
-func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interface, restclient restclientset.Interface, namespace *v1.Namespace) {
-	tpod := NewTestPod(client, namespace, t.Pod.Cmd, t.Pod.IsWindows)
+func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interface, restclient restclientset.Interface, namespace *v1.Namespace, schedulerName string) {
+	tpod := NewTestPod(client, namespace, t.Pod.Cmd, schedulerName, t.Pod.IsWindows)
 	volume := t.Pod.Volumes[0]
 	tpvc, pvcCleanup := volume.SetupDynamicPersistentVolumeClaim(client, namespace, t.CSIDriver, t.StorageClassParameters)
 	for i := range pvcCleanup {
@@ -105,7 +105,7 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interfac
 	snapshot := tvsc.CreateSnapshot(tpvc.persistentVolumeClaim)
 
 	if t.ShouldOverwrite {
-		tpod = NewTestPod(client, namespace, t.PodOverwrite.Cmd, t.PodOverwrite.IsWindows)
+		tpod = NewTestPod(client, namespace, t.PodOverwrite.Cmd, schedulerName, t.PodOverwrite.IsWindows)
 
 		tpod.SetupVolume(tpvc.persistentVolumeClaim, volume.VolumeMount.NameGenerate+"1", volume.VolumeMount.MountPathGenerate+"1", volume.VolumeMount.ReadOnly)
 		ginkgo.By("deploying a new pod to overwrite pv data")
@@ -124,7 +124,7 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interfac
 		Name: snapshot.Name,
 	}
 	t.PodWithSnapshot.Volumes = []VolumeDetails{snapshotVolume}
-	tPodWithSnapshot, tPodWithSnapshotCleanup := t.PodWithSnapshot.SetupWithDynamicVolumes(client, namespace, t.CSIDriver, t.StorageClassParameters)
+	tPodWithSnapshot, tPodWithSnapshotCleanup := t.PodWithSnapshot.SetupWithDynamicVolumes(client, namespace, t.CSIDriver, t.StorageClassParameters, schedulerName)
 	for i := range tPodWithSnapshotCleanup {
 		defer tPodWithSnapshotCleanup[i]()
 	}

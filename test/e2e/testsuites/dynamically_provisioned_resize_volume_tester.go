@@ -49,8 +49,8 @@ type DynamicallyProvisionedResizeVolumeTest struct {
 	Volume                 VolumeDetails
 }
 
-func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface, namespace *v1.Namespace) {
-	tStatefulSet, cleanup := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver)
+func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
+	tStatefulSet, cleanup := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, schedulerName)
 	// Defer must be called here for resources not get removed before using them
 	for i := range cleanup {
 		i := i

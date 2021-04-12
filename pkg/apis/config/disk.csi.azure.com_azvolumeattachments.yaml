@@ -4,7 +4,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.2.5
+    controller-gen.kubebuilder.io/version: v0.5.0
   creationTimestamp: null
   name: azvolumeattachments.disk.csi.azure.com
 spec:
@@ -16,49 +16,67 @@ spec:
     singular: azvolumeattachment
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - description: Name of the Node which this AzVolumeAttachment object is attached to
+      jsonPath: .spec.nodeName
+      name: NodeName
+      type: string
+    - description: Name of the Volume which this AzVolumeAttachment object references
+      jsonPath: .spec.underlyingVolume
+      name: UnderlyingVolume
+      type: string
+    - description: Indicates if the volume attachment should be primary attachment or not
+      jsonPath: .spec.role
+      name: RequestedRole
+      type: string
+    - description: Indicates if the volume attachment is primary attachment or not
+      jsonPath: .status.role
+      name: Role
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: AzVolumeAttachment is a specification for a AzVolumeAttachment
-          resource
+        description: AzVolumeAttachment is a specification for a AzVolumeAttachment resource
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation
-              of an object. Servers should convert recognized schemas to the latest
-              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this
-              object represents. Servers may infer this from the endpoint the client
-              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
             type: string
           metadata:
             type: object
           spec:
-            description: AzVolumeAttachmentSpec is the spec for a AzVolumeAttachment
-              resource
+            description: spec defines the desired state of a AzVolumeAttachment. Required.
             properties:
+              nodeName:
+                type: string
+              role:
+                description: Role indicates if the volume attachment is replica attachment or not
+                type: string
               underlyingVolume:
                 type: string
             required:
+            - nodeName
+            - role
             - underlyingVolume
             type: object
           status:
-            description: AzVolumeAttachmentStatus is the status for a AzVolumeAttachment
-              resource
+            description: status represents the current state of AzVolumeAttachment. Nil status indicates that the underlying volume of AzVolumeAttachment has not yet been attached to the specified node
             properties:
-              underlyingVolume:
-                format: int32
-                type: integer
+              role:
+                description: Role indicates if the volume attachment is replica attachment or not
+                type: string
             required:
-            - underlyingVolume
+            - role
             type: object
         required:
         - spec
-        - status
         type: object
     served: true
     storage: true
+    subresources:
+      status: {}
 status:
   acceptedNames:
     kind: ""

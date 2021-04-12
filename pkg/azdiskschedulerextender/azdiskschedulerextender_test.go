@@ -32,10 +32,12 @@ import (
 	"time"
 
 	crypto "crypto/rand"
+
 	v1 "k8s.io/api/core/v1"
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 	schedulerapi "k8s.io/kube-scheduler/extender/v1"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	v1alpha1Client "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	fakeClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
 )
@@ -109,7 +111,7 @@ func TestFilterAndPrioritizeRequestResponseCode(t *testing.T) {
 		testClientSet := fakeClientSet.NewSimpleClientset(
 			&v1alpha1Client.AzVolumeAttachmentList{
 				Items: []v1alpha1Client.AzVolumeAttachment{
-					getVolumeAttachment("volumeAttachment", ns, "vol", "node", "Ready"),
+					getVolumeAttachment("volumeAttachment", ns, "vol", "node"),
 				},
 			},
 			&v1alpha1Client.AzDriverNodeList{
@@ -162,7 +164,7 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 			testClientSet: fakeClientSet.NewSimpleClientset(
 				&v1alpha1Client.AzVolumeAttachmentList{
 					Items: []v1alpha1Client.AzVolumeAttachment{
-						getVolumeAttachment("volumeAttachment", ns, "vol", "node", "Ready"),
+						getVolumeAttachment("volumeAttachment", ns, "vol", "node"),
 					},
 				},
 				&v1alpha1Client.AzDriverNodeList{
@@ -189,14 +191,14 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 				FailedNodes: make(map[string]string),
 				Error:       "",
 			},
-			expectedPrioritizeResult: schedulerapi.HostPriorityList{schedulerapi.HostPriority{Host: "node", Score: getNodeScore(1, time.Now().UnixNano())}},
+			expectedPrioritizeResult: schedulerapi.HostPriorityList{schedulerapi.HostPriority{Host: "node", Score: getNodeScore(1, time.Now().UnixNano(), "node")}},
 		},
 		{
 			name: "Test simple case of pod/node/volume with pending azDriverNode",
 			testClientSet: fakeClientSet.NewSimpleClientset(
 				&v1alpha1Client.AzVolumeAttachmentList{
 					Items: []v1alpha1Client.AzVolumeAttachment{
-						getVolumeAttachment("volumeAttachment", ns, "vol", "node", "Ready"),
+						getVolumeAttachment("volumeAttachment", ns, "vol", "node"),
 					},
 				},
 				&v1alpha1Client.AzDriverNodeList{
@@ -223,14 +225,14 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 				FailedNodes: map[string]string{"node": "AzDriverNode for node is not ready."},
 				Error:       "",
 			},
-			expectedPrioritizeResult: schedulerapi.HostPriorityList{schedulerapi.HostPriority{Host: "node", Score: getNodeScore(1, time.Now().UnixNano())}},
+			expectedPrioritizeResult: schedulerapi.HostPriorityList{schedulerapi.HostPriority{Host: "node", Score: getNodeScore(1, time.Now().UnixNano(), "node")}},
 		},
 		{
 			name: "Test simple case of single node/volume with no pod volume requests",
 			testClientSet: fakeClientSet.NewSimpleClientset(
 				&v1alpha1Client.AzVolumeAttachmentList{
 					Items: []v1alpha1Client.AzVolumeAttachment{
-						getVolumeAttachment("volumeAttachment", ns, "vol", "node", "Ready"),
+						getVolumeAttachment("volumeAttachment", ns, "vol", "node"),
 					},
 				},
 				&v1alpha1Client.AzDriverNodeList{
@@ -251,14 +253,14 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 				FailedNodes: nil,
 				Error:       "",
 			},
-			expectedPrioritizeResult: schedulerapi.HostPriorityList{schedulerapi.HostPriority{Host: "node", Score: getNodeScore(0, time.Now().UnixNano())}},
+			expectedPrioritizeResult: schedulerapi.HostPriorityList{schedulerapi.HostPriority{Host: "node", Score: getNodeScore(0, time.Now().UnixNano(), "node")}},
 		},
 		{
 			name: "Test case with 2 nodes and one pod/volume",
 			testClientSet: fakeClientSet.NewSimpleClientset(
 				&v1alpha1Client.AzVolumeAttachmentList{
 					Items: []v1alpha1Client.AzVolumeAttachment{
-						getVolumeAttachment("volumeAttachment", ns, "vol", "node0", "Ready"),
+						getVolumeAttachment("volumeAttachment", ns, "vol", "node0"),
 					},
 				},
 				&v1alpha1Client.AzDriverNodeList{
@@ -299,8 +301,8 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 				Error:       "",
 			},
 			expectedPrioritizeResult: schedulerapi.HostPriorityList{
-				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(1, time.Now().UnixNano())},
-				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(0, time.Now().UnixNano())},
+				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(1, time.Now().UnixNano(), "node0")},
+				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(0, time.Now().UnixNano(), "node1")},
 			},
 		},
 		{
@@ -308,7 +310,7 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 			testClientSet: fakeClientSet.NewSimpleClientset(
 				&v1alpha1Client.AzVolumeAttachmentList{
 					Items: []v1alpha1Client.AzVolumeAttachment{
-						getVolumeAttachment("volumeAttachment", ns, "vol", "node1", "Ready"),
+						getVolumeAttachment("volumeAttachment", ns, "vol", "node1"),
 					},
 				},
 				&v1alpha1Client.AzDriverNodeList{
@@ -348,8 +350,8 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 				Error:       "",
 			},
 			expectedPrioritizeResult: schedulerapi.HostPriorityList{
-				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(0, time.Now().UnixNano())},
-				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(1, time.Now().UnixNano())},
+				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(0, time.Now().UnixNano(), "node0")},
+				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(1, time.Now().UnixNano(), "node1")},
 			},
 		},
 		{
@@ -357,8 +359,8 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 			testClientSet: fakeClientSet.NewSimpleClientset(
 				&v1alpha1Client.AzVolumeAttachmentList{
 					Items: []v1alpha1Client.AzVolumeAttachment{
-						getVolumeAttachment("volumeAttachment0", ns, "vol", "node0", "Ready"),
-						getVolumeAttachment("volumeAttachment1", ns, "vol", "node0", "Ready"),
+						getVolumeAttachment("volumeAttachment0", ns, "vol", "node0"),
+						getVolumeAttachment("volumeAttachment1", ns, "vol", "node0"),
 					},
 				},
 				&v1alpha1Client.AzDriverNodeList{
@@ -399,8 +401,8 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 				Error:       "",
 			},
 			expectedPrioritizeResult: schedulerapi.HostPriorityList{
-				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(2, time.Now().UnixNano())},
-				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(0, time.Now().UnixNano())},
+				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(2, time.Now().UnixNano(), "node0")},
+				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(0, time.Now().UnixNano(), "node1")},
 			},
 		},
 		{
@@ -408,12 +410,12 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 			testClientSet: fakeClientSet.NewSimpleClientset(
 				&v1alpha1Client.AzVolumeAttachmentList{
 					Items: []v1alpha1Client.AzVolumeAttachment{
-						getVolumeAttachment("volumeAttachment0", ns, "vol", "node2", "Ready"),
-						getVolumeAttachment("volumeAttachment1", ns, "vol", "node0", "Ready"),
-						getVolumeAttachment("volumeAttachment2", ns, "vol", "node1", "Ready"),
-						getVolumeAttachment("volumeAttachment3", ns, "vol", "node1", "Ready"),
-						getVolumeAttachment("volumeAttachment4", ns, "vol", "node1", "Ready"),
-						getVolumeAttachment("volumeAttachment5", ns, "vol", "node0", "Ready"),
+						getVolumeAttachment("volumeAttachment0", ns, "vol", "node2"),
+						getVolumeAttachment("volumeAttachment1", ns, "vol", "node0"),
+						getVolumeAttachment("volumeAttachment2", ns, "vol", "node1"),
+						getVolumeAttachment("volumeAttachment3", ns, "vol", "node1"),
+						getVolumeAttachment("volumeAttachment4", ns, "vol", "node1"),
+						getVolumeAttachment("volumeAttachment5", ns, "vol", "node0"),
 					},
 				},
 				&v1alpha1Client.AzDriverNodeList{
@@ -450,9 +452,9 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 				Error:       "",
 			},
 			expectedPrioritizeResult: schedulerapi.HostPriorityList{
-				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(2, time.Now().UnixNano())},
-				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(3, time.Now().UnixNano())},
-				schedulerapi.HostPriority{Host: "node2", Score: getNodeScore(1, time.Now().UnixNano())},
+				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(2, time.Now().UnixNano(), "node0")},
+				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(3, time.Now().UnixNano(), "node1")},
+				schedulerapi.HostPriority{Host: "node2", Score: getNodeScore(1, time.Now().UnixNano(), "node2")},
 			},
 		},
 		{
@@ -460,12 +462,12 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 			testClientSet: fakeClientSet.NewSimpleClientset(
 				&v1alpha1Client.AzVolumeAttachmentList{
 					Items: []v1alpha1Client.AzVolumeAttachment{
-						getVolumeAttachment("volumeAttachment0", ns, "vol2", "node2", "Ready"),
-						getVolumeAttachment("volumeAttachment1", ns, "vol", "node0", "Ready"),
-						getVolumeAttachment("volumeAttachment2", ns, "vol1", "node1", "Ready"),
-						getVolumeAttachment("volumeAttachment3", ns, "vol", "node1", "Ready"),
-						getVolumeAttachment("volumeAttachment4", ns, "vol", "node1", "Ready"),
-						getVolumeAttachment("volumeAttachment5", ns, "vol", "node0", "Ready"),
+						getVolumeAttachment("volumeAttachment0", ns, "vol2", "node2"),
+						getVolumeAttachment("volumeAttachment1", ns, "vol", "node0"),
+						getVolumeAttachment("volumeAttachment2", ns, "vol1", "node1"),
+						getVolumeAttachment("volumeAttachment3", ns, "vol", "node1"),
+						getVolumeAttachment("volumeAttachment4", ns, "vol", "node1"),
+						getVolumeAttachment("volumeAttachment5", ns, "vol", "node0"),
 					},
 				},
 				&v1alpha1Client.AzDriverNodeList{
@@ -505,9 +507,9 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 				Error:       "",
 			},
 			expectedPrioritizeResult: schedulerapi.HostPriorityList{
-				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(2, time.Now().UnixNano())},
-				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(3, time.Now().UnixNano())},
-				schedulerapi.HostPriority{Host: "node2", Score: getNodeScore(0, time.Now().UnixNano())},
+				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(2, time.Now().UnixNano(), "node0")},
+				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(3, time.Now().UnixNano(), "node1")},
+				schedulerapi.HostPriority{Host: "node2", Score: getNodeScore(0, time.Now().UnixNano(), "node2")},
 			},
 		},
 		{
@@ -515,12 +517,12 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 			testClientSet: fakeClientSet.NewSimpleClientset(
 				&v1alpha1Client.AzVolumeAttachmentList{
 					Items: []v1alpha1Client.AzVolumeAttachment{
-						getVolumeAttachment("volumeAttachment0", ns, "vol2", "node2", "Ready"),
-						getVolumeAttachment("volumeAttachment1", ns, "vol", "node0", "Ready"),
-						getVolumeAttachment("volumeAttachment2", ns, "vol1", "node1", "Ready"),
-						getVolumeAttachment("volumeAttachment3", ns, "vol", "node1", "Ready"),
-						getVolumeAttachment("volumeAttachment4", ns, "vol", "node1", "Ready"),
-						getVolumeAttachment("volumeAttachment5", ns, "vol", "node0", "Ready"),
+						getVolumeAttachment("volumeAttachment0", ns, "vol2", "node2"),
+						getVolumeAttachment("volumeAttachment1", ns, "vol", "node0"),
+						getVolumeAttachment("volumeAttachment2", ns, "vol1", "node1"),
+						getVolumeAttachment("volumeAttachment3", ns, "vol", "node1"),
+						getVolumeAttachment("volumeAttachment4", ns, "vol", "node1"),
+						getVolumeAttachment("volumeAttachment5", ns, "vol", "node0"),
 					},
 				},
 				&v1alpha1Client.AzDriverNodeList{
@@ -557,9 +559,9 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 				Error:       "",
 			},
 			expectedPrioritizeResult: schedulerapi.HostPriorityList{
-				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(2, time.Now().UnixNano())},
-				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(2, time.Now().UnixNano())},
-				schedulerapi.HostPriority{Host: "node2", Score: getNodeScore(0, time.Now().UnixNano())},
+				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(2, time.Now().UnixNano(), "node0")},
+				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(2, time.Now().UnixNano(), "node1")},
+				schedulerapi.HostPriority{Host: "node2", Score: getNodeScore(0, time.Now().UnixNano(), "node2")},
 			},
 		},
 	}
@@ -671,7 +673,7 @@ func TestFilterAndPrioritizeInRandomizedLargeCluster(t *testing.T) {
 
 			// generate volumes and assign to nodes
 			for i := 0; i < numberOfClusterVolumes; i++ {
-				clusterVolumes = append(clusterVolumes, getVolumeAttachment(fmt.Sprintf("volumeAttachment%d", i), ns, fmt.Sprintf("vol%d", i), fmt.Sprintf("node%d", rand.Intn(5000)), "Ready"))
+				clusterVolumes = append(clusterVolumes, getVolumeAttachment(fmt.Sprintf("volumeAttachment%d", i), ns, fmt.Sprintf("vol%d", i), fmt.Sprintf("node%d", rand.Intn(5000))))
 			}
 
 			testClientSet := fakeClientSet.NewSimpleClientset(
@@ -807,7 +809,7 @@ func gotExpectedPrioritizeList(got, want schedulerapi.HostPriorityList) bool {
 	return true
 }
 
-func getVolumeAttachment(attachmentName, ns, volumeName, nodeName, state string) v1alpha1Client.AzVolumeAttachment {
+func getVolumeAttachment(attachmentName, ns, volumeName, nodeName string) v1alpha1Client.AzVolumeAttachment {
 	return v1alpha1Client.AzVolumeAttachment{
 		ObjectMeta: meta.ObjectMeta{
 			Name:      attachmentName,
@@ -816,10 +818,10 @@ func getVolumeAttachment(attachmentName, ns, volumeName, nodeName, state string)
 		Spec: v1alpha1Client.AzVolumeAttachmentSpec{
 			UnderlyingVolume: volumeName,
 			NodeName:         nodeName,
-			Partition:        1,
+			RequestedRole:    v1alpha1.PrimaryRole,
 		},
-		Status: v1alpha1Client.AzVolumeAttachmentStatus{
-			State: state,
+		Status: &v1alpha1Client.AzVolumeAttachmentStatus{
+			Role: v1alpha1.PrimaryRole,
 		},
 	}
 }

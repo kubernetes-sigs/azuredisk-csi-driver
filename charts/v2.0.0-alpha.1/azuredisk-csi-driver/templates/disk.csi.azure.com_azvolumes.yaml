@@ -59,6 +59,9 @@ spec:
                   type: string
                 description: Parameters for the volume
                 type: object
+              underlyingVolume:
+                description: the disk URI of the underlying volume
+                type: string
               volumeCapability:
                 description: The capabilities that the volume MUST have
                 properties:
@@ -75,14 +78,9 @@ spec:
                 required:
                 - access_type
                 type: object
-              volumeID:
-                description: VolumeID is the disk URI of the underlying volume
-                type: string
             required:
-            - capacityRange
             - maxMountReplicaCount
-            - volumeCapability
-            - volumeID
+            - underlyingVolume
             type: object
           status:
             description: status represents the current state of AzVolume. Nil status
@@ -97,6 +95,8 @@ spec:
         type: object
     served: true
     storage: true
+    subresources:
+      status: {}
 status:
   acceptedNames:
     kind: ""

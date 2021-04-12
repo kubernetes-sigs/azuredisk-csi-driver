@@ -41,24 +41,26 @@ import (
 )
 
 const (
-	kubeconfigEnvVar    = "KUBECONFIG"
-	reportDirEnvVar     = "ARTIFACTS"
-	testMigrationEnvVar = "TEST_MIGRATION"
-	testWindowsEnvVar   = "TEST_WINDOWS"
-	cloudNameEnvVar     = "AZURE_CLOUD_NAME"
-	defaultReportDir    = "/workspace/_artifacts"
-	inTreeStorageClass  = "kubernetes.io/azure-disk"
-	buildV2Driver       = "BUILD_V2"
+	kubeconfigEnvVar        = "KUBECONFIG"
+	reportDirEnvVar         = "ARTIFACTS"
+	testMigrationEnvVar     = "TEST_MIGRATION"
+	testWindowsEnvVar       = "TEST_WINDOWS"
+	cloudNameEnvVar         = "AZURE_CLOUD_NAME"
+	defaultReportDir        = "/workspace/_artifacts"
+	inTreeStorageClass      = "kubernetes.io/azure-disk"
+	buildV2Driver           = "BUILD_V2"
+	useOnlyDefaultScheduler = "USE_ONLY_DEFAULT_SCHEDULER"
 )
 
 var (
-	azurediskDriver           azuredisk.CSIDriver
-	isUsingInTreeVolumePlugin = os.Getenv(driver.AzureDriverNameVar) == inTreeStorageClass
-	isTestingMigration        = os.Getenv(testMigrationEnvVar) != ""
-	isWindowsCluster          = os.Getenv(testWindowsEnvVar) != ""
-	isUsingCSIDriverV2        = os.Getenv(buildV2Driver) != ""
-	isAzureStackCloud         = strings.EqualFold(os.Getenv(cloudNameEnvVar), "AZURESTACKCLOUD")
-	skipClusterBootstrap      = flag.Bool("skip-cluster-bootstrap", false, "flag to indicate that we can skip cluster bootstrap.")
+	azurediskDriver             azuredisk.CSIDriver
+	isUsingInTreeVolumePlugin   = os.Getenv(driver.AzureDriverNameVar) == inTreeStorageClass
+	isTestingMigration          = os.Getenv(testMigrationEnvVar) != ""
+	isWindowsCluster            = os.Getenv(testWindowsEnvVar) != ""
+	isUsingCSIDriverV2          = os.Getenv(buildV2Driver) != ""
+	isUsingOnlyDefaultScheduler = os.Getenv(useOnlyDefaultScheduler) != ""
+	isAzureStackCloud           = strings.EqualFold(os.Getenv(cloudNameEnvVar), "AZURESTACKCLOUD")
+	skipClusterBootstrap        = flag.Bool("skip-cluster-bootstrap", false, "flag to indicate that we can skip cluster bootstrap.")
 )
 
 type testCmd struct {
@@ -257,6 +259,13 @@ func skipIfOnAzureStackCloud() {
 	if isAzureStackCloud {
 		ginkgo.Skip("test case not supported on Azure Stack Cloud")
 	}
+}
+
+func getListOfSchedulers() []string {
+	if isUsingOnlyDefaultScheduler {
+		return []string{"default-scheduler"}
+	}
+	return []string{"default-scheduler", "azdiskschedulerextender"}
 }
 
 func convertToPowershellorCmdCommandIfNecessary(command string) string {
