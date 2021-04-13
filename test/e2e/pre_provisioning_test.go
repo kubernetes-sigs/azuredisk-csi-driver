@@ -258,6 +258,47 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			}
 			test.Run(cs, ns)
 		})
+
+		ginkgo.It("should create an inline volume by in-tree driver [kubernetes.io/azure-disk]", func() {
+			if !isUsingInTreeVolumePlugin {
+				ginkgo.Skip("test case is only available for in-tree driver")
+			}
+
+			skipManuallyDeletingVolume = true
+			req := makeCreateVolumeReq("pre-provisioned-inline-volume", defaultDiskSize)
+			resp, err := azurediskDriver.CreateVolume(context.Background(), req)
+			if err != nil {
+				ginkgo.Fail(fmt.Sprintf("create volume error: %v", err))
+			}
+			volumeID = resp.Volume.VolumeId
+			ginkgo.By(fmt.Sprintf("Successfully provisioned AzureDisk volume: %q\n", volumeID))
+
+			diskSize := fmt.Sprintf("%dGi", defaultDiskSize)
+			pods := []testsuites.PodDetails{
+				{
+					Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
+					Volumes: []testsuites.VolumeDetails{
+						{
+							VolumeID:  volumeID,
+							ClaimSize: diskSize,
+							VolumeMount: testsuites.VolumeMountDetails{
+								NameGenerate:      "test-volume-",
+								MountPathGenerate: "/mnt/test-",
+							},
+						},
+					},
+					IsWindows: isWindowsCluster,
+				},
+			}
+
+			test := testsuites.PreProvisionedInlineVolumeTest{
+				CSIDriver: testDriver,
+				Pods:      pods,
+				DiskURI:   volumeID,
+				ReadOnly:  false,
+			}
+			test.Run(cs, ns)
+		})
 	})
 })
 
