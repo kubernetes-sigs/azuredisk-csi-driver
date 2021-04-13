@@ -23,24 +23,43 @@ import (
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// AzVolume is a specification for a AzVolume resource
+// AzVolume is a specification for an AzVolume resource
+// +kubebuilder:object:root=true
+// +kubebuilder:resource:scope=Namespaced
+// +kubebuilder:subresource:status
 type AzVolume struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
+	// spec defines the desired state of an AzVolume.
+	// Required.
 	Spec AzVolumeSpec `json:"spec"`
+	// status represents the current state of AzVolume.
+	// Nil status indicates that the underlying volume has not yet been provisioned
 	// +optional
 	Status *AzVolumeStatus `json:"status,omitempty"`
 }
 
-// AzVolumeSpec is the spec for a AzVolume resource
+// AzVolumeSpec is the spec for an AzVolume resource
 type AzVolumeSpec struct {
+	//the disk URI of the underlying volume
 	UnderlyingVolume     string `json:"underlyingVolume"`
 	MaxMountReplicaCount int    `json:"maxMountReplicaCount"`
+	//The capabilities that the volume MUST have
+	//+optional
+	VolumeCapability *VolumeCapability `json:"volumeCapability,omitempty"`
+	//The capacity of the storage
+	//+optional
+	CapacityRange *CapacityRange `json:"capacityRange,omitempty"`
+	//Parameters for the volume
+	//+optional
+	Parameters map[string]string `json:"parameters,omitempty"`
 }
 
-// AzVolumeStatus is the status for a AzVolume resource
+// AzVolumeStatus is the status for an AzVolume resource
 type AzVolumeStatus struct {
+	//Current state of the AzVolume
+	//+optional
 	State string `json:"state,omitempty"`
 }
 
@@ -227,4 +246,28 @@ type AzDriverNodeList struct {
 	metav1.ListMeta `json:"metadata"`
 
 	Items []AzDriverNode `json:"items"`
+}
+
+type VolumeCapability struct {
+	// Specifies what API the volume will be accessed using. One of the
+	// following fields MUST be specified.
+	//
+	// Types that are valid to be assigned to AccessType: block, mount
+	AccessType int32 `json:"access_type"`
+	// This is a REQUIRED field.
+	AccessMode int32 `json:"access_mode,omitempty"`
+}
+
+// The capacity of the storage space in bytes. To specify an exact size,
+// `required_bytes` and `limit_bytes` SHALL be set to the same value. At
+// least one of the these fields MUST be specified.
+type CapacityRange struct {
+	// Volume MUST be at least this big. This field is OPTIONAL.
+	// A value of 0 is equal to an unspecified field value.
+	// The value of this field MUST NOT be negative.
+	RequiredBytes int64 `protobuf:"varint,1,opt,name=required_bytes,json=requiredBytes,proto3" json:"required_bytes,omitempty"`
+	// Volume MUST not be bigger than this. This field is OPTIONAL.
+	// A value of 0 is equal to an unspecified field value.
+	// The value of this field MUST NOT be negative.
+	LimitBytes int64 `protobuf:"varint,2,opt,name=limit_bytes,json=limitBytes,proto3" json:"limit_bytes,omitempty"`
 }

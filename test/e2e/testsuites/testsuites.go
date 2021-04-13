@@ -1164,3 +1164,75 @@ func (t *TestAzVolumeAttachment) WaitForReplicas(numReplica int, timeout time.Du
 	}
 	return wait.PollImmediate(time.Duration(15)*time.Second, timeout, conditionFunc)
 }
+
+type TestAzVolume struct {
+	azclient             v1alpha1ClientSet.DiskV1alpha1Interface
+	namespace            string
+	underlyingVolume     string
+	maxMountReplicaCount int
+}
+
+func SetupTestAzVolume(azclient v1alpha1ClientSet.DiskV1alpha1Interface, namespace string, underlyingVolume string, maxMountReplicaCount int) *TestAzVolume {
+	return &TestAzVolume{
+		azclient:             azclient,
+		namespace:            namespace,
+		underlyingVolume:     underlyingVolume,
+		maxMountReplicaCount: maxMountReplicaCount,
+	}
+}
+
+func (t *TestAzVolume) Create() *v1alpha1.AzVolume {
+	// create test az volume
+	azVolClient := t.azclient.AzVolumes(t.namespace)
+	azVolume := NewTestAzVolume(azVolClient, t.underlyingVolume, t.maxMountReplicaCount)
+
+	return azVolume
+}
+
+//Cleanup after TestAzVolume was created
+func (t *TestAzVolume) Cleanup() {
+	klog.Info("cleaning up TestAzVolume")
+	err := t.azclient.AzVolumes(t.namespace).Delete(context.Background(), t.underlyingVolume, metav1.DeleteOptions{})
+	if !apierrs.IsNotFound(err) {
+		framework.ExpectNoError(err)
+	}
+	time.Sleep(time.Duration(1) * time.Minute)
+
+}
+
+// Wait for the azVolume object update
+func (t *TestAzVolume) WaitForFinalizer(timeout time.Duration) error {
+	conditionFunc := func() (bool, error) {
+		azVolume, err := t.azclient.AzVolumes(t.namespace).Get(context.TODO(), t.underlyingVolume, metav1.GetOptions{})
+		if err != nil {
+			return false, err
+		}
+		if azVolume.ObjectMeta.Finalizers == nil {
+			return false, nil
+		}
+		for _, finalizer := range azVolume.ObjectMeta.Finalizers {
+			if finalizer == controller.AzVolumeFinalizer {
+				klog.Infof("finalizer (%s) found on AzVolume object (%s)", controller.AzVolumeFinalizer, azVolume.Name)
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+	return wait.PollImmediate(time.Duration(15)*time.Second, timeout, conditionFunc)
+}
+
+// Wait for the azVolume object update
+func (t *TestAzVolume) WaitForDelete(timeout time.Duration) error {
+	klog.Infof("Waiting for delete azVolume object")
+	conditionFunc := func() (bool, error) {
+		_, err := t.azclient.AzVolumes(t.namespace).Get(context.TODO(), t.underlyingVolume, metav1.GetOptions{})
+		if errors.IsNotFound(err) {
+			klog.Infof("azVolume %s deleted.", t.underlyingVolume)
+			return true, nil
+		} else if err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+	return wait.PollImmediate(time.Duration(15)*time.Second, timeout, conditionFunc)
+}

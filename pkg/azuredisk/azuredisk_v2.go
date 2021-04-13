@@ -305,6 +305,13 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 		os.Exit(1)
 	}
 
+	klog.V(2).Info("Initializing AzVolume controller")
+	err = controller.NewAzVolumeController(mgr, &d.azDiskClient, d.objectNamespace)
+	if err != nil {
+		klog.Errorf("Failed to initialize AzVolume. Error: %v. Exiting application...", err)
+		os.Exit(1)
+	}
+
 	klog.V(2).Info("Starting controller manager")
 	if err := mgr.Start(ctx); err != nil {
 		klog.Errorf("Controller manager exited: %v", err)
