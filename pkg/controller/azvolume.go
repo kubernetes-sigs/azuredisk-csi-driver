@@ -20,6 +20,7 @@ import (
 	"context"
 
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
@@ -86,7 +87,8 @@ func (r *reconcileAzVolume) Reconcile(ctx context.Context, request reconcile.Req
 			return reconcile.Result{Requeue: true}, err
 		}
 
-	} else if !azVolume.ObjectMeta.DeletionTimestamp.IsZero() {
+	} else if now := metav1.Now(); azVolume.ObjectMeta.DeletionTimestamp.Before(&now) {
+		klog.Infof("Beginning deletion of AzVolume object")
 		if err := r.TriggerDelete(ctx, azVolume.Name); err != nil {
 			//If delete failed, requeue request
 			return reconcile.Result{Requeue: true}, err
@@ -109,7 +111,7 @@ func (r *reconcileAzVolume) TriggerCreate(ctx context.Context, volumeName string
 	}
 
 	if err := r.CreateAzVolume(ctx, &azVolume); err != nil {
-		klog.Errorf("failed to create volume %s: %v", azVolume.Spec.VolumeID, err)
+		klog.Errorf("failed to create volume %s: %v", azVolume.Spec.UnderlyingVolume, err)
 		return err
 	}
 
@@ -117,7 +119,7 @@ func (r *reconcileAzVolume) TriggerCreate(ctx context.Context, volumeName string
 	if err := r.UpdateStatus(ctx, azVolume.Name, false); err != nil {
 		return err
 	}
-	klog.Infof("successfully created volume (%s)and update status of AzVolume (%s)", azVolume.Spec.VolumeID, azVolume.Name)
+	klog.Infof("successfully created volume (%s)and update status of AzVolume (%s)", azVolume.Spec.UnderlyingVolume, azVolume.Name)
 	return nil
 
 }
@@ -130,7 +132,7 @@ func (r *reconcileAzVolume) TriggerDelete(ctx context.Context, volumeName string
 	}
 
 	if err := r.DeleteAzVolume(ctx, &azVolume); err != nil {
-		klog.Errorf("failed to delete volume %s: %v", azVolume.Spec.VolumeID, err)
+		klog.Errorf("failed to delete volume %s: %v", azVolume.Spec.UnderlyingVolume, err)
 		return err
 	}
 
@@ -138,7 +140,7 @@ func (r *reconcileAzVolume) TriggerDelete(ctx context.Context, volumeName string
 	if err := r.UpdateStatus(ctx, azVolume.Name, true); err != nil {
 		return err
 	}
-	klog.Infof("successfully deleted volume (%s)and update status of AzVolume (%s)", azVolume.Spec.VolumeID, azVolume.Name)
+	klog.Infof("successfully deleted volume (%s)and update status of AzVolume (%s)", azVolume.Spec.UnderlyingVolume, azVolume.Name)
 	return nil
 }
 
@@ -271,7 +273,7 @@ func (r *reconcileAzVolume) CreateAzVolume(ctx context.Context, azVolume *v1alph
 
 func (r *reconcileAzVolume) DeleteAzVolume(ctx context.Context, azVolume *v1alpha1.AzVolume) error {
 
-	volumeID := azVolume.Spec.VolumeID
+	volumeID := azVolume.Spec.UnderlyingVolume
 	if len(volumeID) == 0 {
 		return errors.NewBadRequest("Volume ID Missing")
 	}
@@ -318,7 +320,7 @@ func NewAzVolumeController(mgr manager.Manager, azVolumeClient *azVolumeClientSe
 }
 
 // Helper functions to check if finalizer exists
-func finalizerExists(azVolume v1alpha1.AzVolume, finalizerName string) bool {
+func volumeFinalizerExists(azVolume v1alpha1.AzVolume, finalizerName string) bool {
 	if azVolume.ObjectMeta.Finalizers != nil {
 		for _, finalizer := range azVolume.ObjectMeta.Finalizers {
 			if finalizer == finalizerName {
@@ -336,7 +338,7 @@ func (r *reconcileAzVolume) InitializeMeta(ctx context.Context, volumeName strin
 		return err
 	}
 
-	if finalizerExists(azVolume, AzVolumeFinalizer) {
+	if volumeFinalizerExists(azVolume, AzVolumeFinalizer) {
 		return nil
 	}
 
@@ -347,7 +349,7 @@ func (r *reconcileAzVolume) InitializeMeta(ctx context.Context, volumeName strin
 		patched.ObjectMeta.Finalizers = []string{}
 	}
 
-	if !finalizerExists(azVolume, AzVolumeFinalizer) {
+	if !volumeFinalizerExists(azVolume, AzVolumeFinalizer) {
 		patched.ObjectMeta.Finalizers = append(patched.ObjectMeta.Finalizers, AzVolumeFinalizer)
 	}
 

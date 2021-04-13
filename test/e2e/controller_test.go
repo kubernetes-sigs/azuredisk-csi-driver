@@ -216,4 +216,32 @@ var _ = ginkgo.Describe("Controller", func() {
 		})
 	})
 
+	ginkgo.Context("AzVolume", func() {
+		ginkgo.It("Should initialize AzVolume object", func() {
+			skipIfUsingInTreeVolumePlugin()
+			skipIfNotUsingCSIDriverV2()
+			testAzVolume := testsuites.SetupTestAzVolume(azDiskClient.DiskV1alpha1(), namespace, "test-volume", 0)
+			defer testAzVolume.Cleanup()
+			_ = testAzVolume.Create()
+
+			err = testAzVolume.WaitForFinalizer(time.Duration(5) * time.Minute)
+			framework.ExpectNoError(err)
+		})
+
+		ginkgo.It("Should delete AzVolume object", func() {
+			skipIfUsingInTreeVolumePlugin()
+			skipIfNotUsingCSIDriverV2()
+			testAzVolume := testsuites.SetupTestAzVolume(azDiskClient.DiskV1alpha1(), namespace, "test-volume-delete", 0)
+			defer testAzVolume.Cleanup()
+			volume := testAzVolume.Create()
+
+			err = testAzVolume.WaitForFinalizer(time.Duration(5) * time.Minute)
+			framework.ExpectNoError(err)
+			err = azDiskClient.DiskV1alpha1().AzVolumes(namespace).Delete(context.Background(), volume.Name, metav1.DeleteOptions{})
+			framework.ExpectNoError(err)
+
+			err = testAzVolume.WaitForDelete(time.Duration(3) * time.Minute)
+			framework.ExpectNoError(err)
+		})
+	})
 })
