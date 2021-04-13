@@ -1009,6 +1009,11 @@ func pickAvailabilityZone(requirement *csi.TopologyRequirement, region string) s
 		return ""
 	}
 	for _, topology := range requirement.GetPreferred() {
+		if zone, exists := topology.GetSegments()[WellKnownTopologyKey]; exists {
+			if isAvailabilityZone(zone, region) {
+				return zone
+			}
+		}
 		if zone, exists := topology.GetSegments()[topologyKey]; exists {
 			if isAvailabilityZone(zone, region) {
 				return zone
@@ -1016,6 +1021,11 @@ func pickAvailabilityZone(requirement *csi.TopologyRequirement, region string) s
 		}
 	}
 	for _, topology := range requirement.GetRequisite() {
+		if zone, exists := topology.GetSegments()[WellKnownTopologyKey]; exists {
+			if isAvailabilityZone(zone, region) {
+				return zone
+			}
+		}
 		if zone, exists := topology.GetSegments()[topologyKey]; exists {
 			if isAvailabilityZone(zone, region) {
 				return zone

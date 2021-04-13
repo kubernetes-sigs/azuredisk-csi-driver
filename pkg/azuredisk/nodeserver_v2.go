@@ -296,6 +296,7 @@ func (d *DriverV2) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest)
 	} else {
 		if isAvailabilityZone(zone.FailureDomain, d.cloud.Location) {
 			topology.Segments[topologyKey] = zone.FailureDomain
+			topology.Segments[WellKnownTopologyKey] = zone.FailureDomain
 			klog.V(2).Infof("NodeGetInfo, nodeName: %v, zone: %v", d.NodeID, zone.FailureDomain)
 		}
 	}
