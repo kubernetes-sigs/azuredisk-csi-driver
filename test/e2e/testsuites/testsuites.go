@@ -795,6 +795,30 @@ func (t *TestPod) SetupVolume(pvc *v1.PersistentVolumeClaim, name, mountPath str
 	t.pod.Spec.Volumes = append(t.pod.Spec.Volumes, volume)
 }
 
+func (t *TestPod) SetupInlineVolume(name, mountPath, diskURI string, readOnly bool) {
+	volumeMount := v1.VolumeMount{
+		Name:      name,
+		MountPath: mountPath,
+		ReadOnly:  readOnly,
+	}
+	t.pod.Spec.Containers[0].VolumeMounts = append(t.pod.Spec.Containers[0].VolumeMounts, volumeMount)
+
+	kind := v1.AzureDataDiskKind("Managed")
+	diskName, _ := azuredisk.GetDiskName(diskURI)
+	volume := v1.Volume{
+		Name: name,
+		VolumeSource: v1.VolumeSource{
+			AzureDisk: &v1.AzureDiskVolumeSource{
+				DiskName:    diskName,
+				DataDiskURI: diskURI,
+				ReadOnly:    &readOnly,
+				Kind:        &kind,
+			},
+		},
+	}
+	t.pod.Spec.Volumes = append(t.pod.Spec.Volumes, volume)
+}
+
 func (t *TestPod) SetupRawBlockVolume(pvc *v1.PersistentVolumeClaim, name, devicePath string) {
 	volumeDevice := v1.VolumeDevice{
 		Name:       name,
