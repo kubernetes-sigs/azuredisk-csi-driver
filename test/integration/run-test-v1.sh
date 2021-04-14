@@ -25,13 +25,8 @@ function cleanup {
 
 trap cleanup EXIT
 
-endpoint='tcp://127.0.0.1:10000'
-if [[ "$#" -gt 0 ]]; then
-  endpoint="$1"
-fi
+_output/azurediskplugin --endpoint  $1 --nodeid $2 -v=5 &
 
-_output/azurediskplugin --endpoint "$endpoint" --nodeid "$node" -v=5 &
+echo "Begin to run integration test on $3..."
 
-echo "Begin to run integration test on $cloud..."
-
-test/integration/run-test.sh "$endpoint" "$nodeid" "$cloud" "$version"
+test/integration/run-test.sh $*
