@@ -19,6 +19,7 @@ limitations under the License.
 package azuredisk
 
 import (
+	"context"
 	"testing"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -28,7 +29,7 @@ import (
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/provisioner"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
-	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
+	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
 type fakeDriverV2 struct {
@@ -61,7 +62,13 @@ func newFakeDriverV2(t *testing.T) (*fakeDriverV2, error) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	driver.cloud = azure.GetTestCloud(ctrl)
+	cloudProvisioner, err := provisioner.NewFakeCloudProvisioner(ctrl)
+	if err != nil {
+		return nil, err
+	}
+
+	driver.cloudProvisioner = cloudProvisioner
+
 	nodeProvisioner, err := provisioner.NewFakeNodeProvisioner()
 	if err != nil {
 		return nil, err
@@ -95,6 +102,30 @@ func (d *fakeDriverV2) setNextCommandOutputScripts(scripts ...testingexec.FakeAc
 
 func (d *fakeDriverV2) setIsBlockDevicePathError(path string, isDevice bool, result error) {
 	d.nodeProvisioner.(*provisioner.FakeNodeProvisioner).SetIsBlockDevicePathResult(path, isDevice, result)
+}
+
+func (d *fakeDriverV2) getCloud() *provider.Cloud {
+	return d.cloudProvisioner.(*provisioner.FakeCloudProvisioner).GetCloud()
+}
+
+func (d *fakeDriverV2) setCloud(cloud *provider.Cloud) {
+	d.cloudProvisioner.(*provisioner.FakeCloudProvisioner).SetCloud(cloud)
+}
+
+func (d *fakeDriverV2) checkDiskCapacity(ctx context.Context, resourceGroup, diskName string, requestGiB int) (bool, error) {
+	return d.cloudProvisioner.(*provisioner.FakeCloudProvisioner).CheckDiskCapacity(ctx, resourceGroup, diskName, requestGiB)
+}
+
+func (d *fakeDriverV2) getSnapshotInfo(snapshotID string) (string, string, error) {
+	return d.cloudProvisioner.(*provisioner.FakeCloudProvisioner).GetSnapshotAndResourceNameFromSnapshotID(snapshotID)
+}
+
+func (d *fakeDriverV2) getSnapshotByID(ctx context.Context, resourceGroup string, snapshotName string, sourceVolumeID string) (*csi.Snapshot, error) {
+	return d.cloudProvisioner.(*provisioner.FakeCloudProvisioner).GetSnapshotByID(ctx, resourceGroup, snapshotName, sourceVolumeID)
+}
+
+func (d *fakeDriverV2) GetSourceDiskSize(ctx context.Context, resourceGroup, diskName string, curDepth, maxDepth int) (*int32, error) {
+	return d.cloudProvisioner.(*provisioner.FakeCloudProvisioner).GetSourceDiskSize(ctx, resourceGroup, diskName, curDepth, maxDepth)
 }
 
 func skipIfTestingDriverV2(t *testing.T) {

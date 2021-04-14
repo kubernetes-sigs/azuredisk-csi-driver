@@ -130,6 +130,14 @@ func (d *fakeDriverV1) setIsBlockDevicePathError(path string, isDevice bool, res
 	klog.Warning("setIsBlockDevicePathError ignored for driver v1")
 }
 
+func (d *fakeDriverV1) getCloud() *provider.Cloud {
+	return d.cloud
+}
+
+func (d *fakeDriverV1) setCloud(cloud *provider.Cloud) {
+	d.cloud = cloud
+}
+
 func createVolumeCapabilities(accessMode csi.VolumeCapability_AccessMode_Mode) []*csi.VolumeCapability {
 	return []*csi.VolumeCapability{
 		createVolumeCapability(accessMode),

@@ -297,7 +297,7 @@ func (d *DriverV2) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapa
 
 // NodeGetInfo return info of the node on which this plugin is running
 func (d *DriverV2) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
-	instances, ok := d.cloud.Instances()
+	instances, ok := d.cloudProvisioner.GetCloud().Instances()
 	if !ok {
 		return nil, status.Error(codes.Internal, "Failed to get instances from cloud provider")
 	}
@@ -311,11 +311,11 @@ func (d *DriverV2) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest)
 	topology := &csi.Topology{
 		Segments: map[string]string{topologyKey: ""},
 	}
-	zone, err := d.cloud.GetZone(ctx)
+	zone, err := d.cloudProvisioner.GetCloud().GetZone(ctx)
 	if err != nil {
 		klog.Warningf("Failed to get zone from Azure cloud provider, nodeName: %v, error: %v", d.NodeID, err)
 	} else {
-		if isAvailabilityZone(zone.FailureDomain, d.cloud.Location) {
+		if isAvailabilityZone(zone.FailureDomain, d.cloudProvisioner.GetCloud().Location) {
 			topology.Segments[topologyKey] = zone.FailureDomain
 			klog.V(2).Infof("NodeGetInfo, nodeName: %v, zone: %v", d.NodeID, zone.FailureDomain)
 		}
