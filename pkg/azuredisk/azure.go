@@ -41,6 +41,11 @@ func IsAzureStackCloud(cloud string, disableAzureStackCloud bool) bool {
 	return !disableAzureStackCloud && strings.EqualFold(cloud, azureStackCloud)
 }
 
+// IsWindowsOS decides whether the driver is running on windows OS.
+func IsWindowsOS() bool {
+	return strings.EqualFold(runtime.GOOS, "windows")
+}
+
 // GetCloudProvider get Azure Cloud Provider
 func GetCloudProvider(kubeconfig string) (*azure.Cloud, error) {
 	kubeClient, err := getKubeClient(kubeconfig)
@@ -66,7 +71,7 @@ func GetCloudProvider(kubeconfig string) (*azure.Cloud, error) {
 		if ok && strings.TrimSpace(credFile) != "" {
 			klog.V(2).Infof("%s env var set as %v", DefaultAzureCredentialFileEnv, credFile)
 		} else {
-			if runtime.GOOS == "windows" {
+			if IsWindowsOS() {
 				credFile = DefaultCredFilePathWindows
 			} else {
 				credFile = DefaultCredFilePathLinux

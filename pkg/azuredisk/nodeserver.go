@@ -81,15 +81,31 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	}
 	defer d.volumeLocks.Release(diskURI)
 
+	lun, ok := req.PublishContext[LUN]
+	if !ok {
+		return nil, status.Error(codes.InvalidArgument, "lun not provided")
+	}
+
+	source, err := d.getDevicePathWithLUN(lun)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "Failed to find disk on lun %s. %v", lun, err)
+	}
+
+	// If perf optimizations are enabled
+	// tweak device settings to enhance performance
+	if d.getPerfOptimizationEnabled() {
+		err = d.getDeviceHelper().OptimizeDevicePerformance(d.getNodeInfo(), d.getDiskSkuInfoMap(), source, req.GetVolumeContext())
+		// In the beginning, do not fail because of perf optimization related error
+		// TODO: revisit this decision after getting some test runs
+		if err != nil {
+			klog.Errorf("NodeStageVolume: Failed to optimize device performance for target(%s) error(%s)", source, err)
+		}
+	}
+
 	// If the access type is block, do nothing for stage
 	switch req.GetVolumeCapability().GetAccessType().(type) {
 	case *csi.VolumeCapability_Block:
 		return &csi.NodeStageVolumeResponse{}, nil
-	}
-
-	lun, ok := req.PublishContext[LUN]
-	if !ok {
-		return nil, status.Error(codes.InvalidArgument, "lun not provided")
 	}
 
 	mnt, err := d.ensureMountPoint(target)
@@ -115,11 +131,6 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	if volContextFSType != "" {
 		// respect "fstype" setting in storage class parameters
 		fstype = volContextFSType
-	}
-
-	source, err := d.getDevicePathWithLUN(lun)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Failed to find disk on lun %s. %v", lun, err)
 	}
 
 	// If partition is specified, should mount it only instead of the entire disk.

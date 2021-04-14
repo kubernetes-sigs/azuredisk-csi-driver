@@ -88,6 +88,7 @@ spec:
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--nodeid=$(KUBE_NODE_NAME)"
             - "--metrics-address=0.0.0.0:{{ .Values.node.metricsPort }}"
+            - "--enable-perf-optimization=true"
           ports:
             - containerPort: 29603
               name: healthz
@@ -141,6 +142,8 @@ spec:
               name: sys-devices-dir
             - mountPath: /sys/class/scsi_host/
               name: scsi-host-dir
+            - mountPath: /etc/skus
+              name: skus-configmap
             {{- if eq .Values.cloud "AzureStackCloud" }}
             - name: ssl
               mountPath: /etc/ssl/certs
@@ -192,7 +195,10 @@ spec:
         - hostPath:
             path: /sys/class/scsi_host/
             type: Directory
-          name: scsi-host-dir
+          name: scsi-host-dir        
+        - configMap:
+            name: skus-configmap
+          name: skus-configmap
         {{- if eq .Values.cloud "AzureStackCloud" }}
         - name: ssl
           hostPath:

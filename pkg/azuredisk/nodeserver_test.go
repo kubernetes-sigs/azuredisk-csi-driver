@@ -330,12 +330,6 @@ func TestNodeStageVolume(t *testing.T) {
 			},
 		},
 		{
-			desc: "Access type is block",
-			req: csi.NodeStageVolumeRequest{VolumeId: "vol_1", StagingTargetPath: sourceTest, VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap,
-				AccessType: stdVolCapBlock}},
-			expectedErr: nil,
-		},
-		{
 			desc: "Lun not provided",
 			req: csi.NodeStageVolumeRequest{VolumeId: "vol_1", StagingTargetPath: sourceTest, VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap,
 				AccessType: stdVolCap}},

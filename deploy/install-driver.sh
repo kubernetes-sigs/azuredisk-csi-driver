@@ -34,6 +34,7 @@ if [ $ver != "master" ]; then
 fi
 
 echo "Installing Azure Disk CSI driver, version: $ver ..."
+kubectl create -f $repo/csi-azuredisk-skus.yaml || kubectl replace -f $repo/csi-azuredisk-skus.yaml
 kubectl apply -f $repo/csi-azuredisk-driver.yaml
 kubectl apply -f $repo/rbac-csi-azuredisk-controller.yaml
 kubectl apply -f $repo/rbac-csi-azuredisk-node.yaml

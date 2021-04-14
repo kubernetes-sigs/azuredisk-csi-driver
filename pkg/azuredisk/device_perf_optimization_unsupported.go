@@ -1,7 +1,7 @@
-// +build !azurediskv2
+// +build !linux
 
 /*
-Copyright 2017 The Kubernetes Authors.
+Copyright 2021 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,8 +18,9 @@ limitations under the License.
 
 package azuredisk
 
-// NewDriver Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
-// does not support optional driver plugin info manifest field. Refer to CSI spec for more details.
-func NewDriver(nodeID string, enablePerfOptimization bool) CSIDriver {
-	return newDriverV1(nodeID, enablePerfOptimization)
+type DeviceHelper struct{}
+
+func (deviceHelper *DeviceHelper) OptimizeDevicePerformance(nodeInfo *NodeInfo, diskSkus map[string]map[string]DiskSkuInfo, devicePath string, attributes map[string]string) error {
+	// Don't fail if we are in an unsupported platform
+	return nil
 }
