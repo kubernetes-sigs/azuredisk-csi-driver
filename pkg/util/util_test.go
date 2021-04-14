@@ -141,7 +141,7 @@ func TestMakeDir(t *testing.T) {
 		{
 			desc: "should not return error if path already exists",
 			setup: func() {
-				os.Mkdir("./target_test", os.FileMode(0755))
+				_ = os.Mkdir("./target_test", os.FileMode(0755))
 			},
 			targetDir:     "./target_test",
 			expectedError: false,
@@ -149,12 +149,12 @@ func TestMakeDir(t *testing.T) {
 		{
 			desc: "[Error] existing file in target path",
 			setup: func() {
-				os.Create("file_exists")
+				_, _ = os.Create("file_exists")
 			},
 			targetDir:     "./file_exists",
 			expectedError: true,
 			cleanup: func() {
-				os.Remove("./file_exists")
+				_ = os.Remove("./file_exists")
 			},
 		},
 	}
