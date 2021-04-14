@@ -62,6 +62,10 @@ spec:
             - "--v=2"
             - "--csi-address=$(CSI_ENDPOINT)"
             - "--kubelet-registration-path=C:\\var\\lib\\kubelet\\plugins\\disk.csi.azure.com\\csi.sock"
+          lifecycle:
+            preStop:
+              exec:
+                command: ["cmd", "/c", "del /f C:\\registration\\disk.csi.azure.com-reg.sock C:\\csi\\disk.csi.azure.com\\csi.sock"]
           env:
             - name: CSI_ENDPOINT
               value: unix://C:\\csi\\csi.sock
