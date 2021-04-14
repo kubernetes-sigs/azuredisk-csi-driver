@@ -17,6 +17,7 @@ limitations under the License.
 package util
 
 import (
+	"fmt"
 	"os"
 	"reflect"
 	"testing"
@@ -125,23 +126,137 @@ func TestConvertTagsToMap(t *testing.T) {
 }
 
 func TestMakeDir(t *testing.T) {
-	targetTest := "./target_test"
-	//Successfully create directory
-	err := MakeDir(targetTest)
-	assert.NoError(t, err)
-
-	// Remove the directory created
-	err = os.RemoveAll(targetTest)
-	assert.NoError(t, err)
+	testCases := []struct {
+		desc          string
+		setup         func()
+		targetDir     string
+		expectedError bool
+		cleanup       func()
+	}{
+		{
+			desc:          "should create directory",
+			targetDir:     "./target_test",
+			expectedError: false,
+		},
+		{
+			desc: "should not return error if path already exists",
+			setup: func() {
+				os.Mkdir("./target_test", os.FileMode(0755))
+			},
+			targetDir:     "./target_test",
+			expectedError: false,
+		},
+		{
+			desc: "[Error] existing file in target path",
+			setup: func() {
+				os.Create("file_exists")
+			},
+			targetDir:     "./file_exists",
+			expectedError: true,
+			cleanup: func() {
+				os.Remove("./file_exists")
+			},
+		},
+	}
+	for i, testCase := range testCases {
+		if testCase.setup != nil {
+			testCase.setup()
+		}
+		err := MakeDir(testCase.targetDir)
+		if testCase.expectedError {
+			fmt.Print(err)
+			assert.NotNil(t, err, "TestCase[%d]: %s", i, testCase.desc)
+		} else {
+			assert.Nil(t, err, "TestCase[%d]: %s", i, testCase.desc)
+			err = os.RemoveAll(testCase.targetDir)
+			assert.NoError(t, err)
+		}
+		if testCase.cleanup != nil {
+			testCase.cleanup()
+		}
+	}
 }
 
 func TestMakeFile(t *testing.T) {
-	targetTest := "./target_test"
-	//Successfully create directory
-	err := MakeFile(targetTest)
-	assert.NoError(t, err)
+	testCases := []struct {
+		desc          string
+		setup         func()
+		targetFile    string
+		expectedError bool
+		cleanup       func()
+	}{
+		{
+			desc:          "should create a file",
+			targetFile:    "./target_test",
+			expectedError: false,
+		},
+		{
+			desc: "[Error] directory exists with the target file name",
+			setup: func() {
+				os.Mkdir("./target_test", os.FileMode(0755))
+			},
+			targetFile:    "./target_test",
+			expectedError: true,
+			cleanup: func() {
+				os.Remove("./target_test")
+			},
+		},
+	}
+	for i, testCase := range testCases {
+		if testCase.setup != nil {
+			testCase.setup()
+		}
+		err := MakeFile(testCase.targetFile)
+		if testCase.expectedError {
+			fmt.Print(err)
+			assert.NotNil(t, err, "TestCase[%d]: %s", i, testCase.desc)
+		} else {
+			assert.Nil(t, err, "TestCase[%d]: %s", i, testCase.desc)
+			err = os.RemoveAll(testCase.targetFile)
+			assert.NoError(t, err)
+		}
+		if testCase.cleanup != nil {
+			testCase.cleanup()
+		}
+	}
+}
 
-	// Remove the directory created
-	err = os.RemoveAll(targetTest)
-	assert.NoError(t, err)
+func TestVolumeLock(t *testing.T) {
+	volumeLocks := NewVolumeLocks()
+	testCases := []struct {
+		desc           string
+		setup          func()
+		targetID       string
+		expectedOutput bool
+		cleanup        func()
+	}{
+		{
+			desc:           "should acquire lock",
+			targetID:       "test-lock",
+			expectedOutput: true,
+		},
+		{
+			desc: "should fail to acquire lock if lock is held by someone else",
+			setup: func() {
+				volumeLocks.TryAcquire("test-lock")
+			},
+			targetID:       "test-lock",
+			expectedOutput: false,
+		},
+	}
+	for i, testCase := range testCases {
+		if testCase.setup != nil {
+			testCase.setup()
+		}
+		output := volumeLocks.TryAcquire(testCase.targetID)
+		if testCase.expectedOutput {
+			assert.True(t, output, "TestCase[%d]: %s", i, testCase.desc)
+		} else {
+			assert.False(t, output, "TestCase[%d]: %s", i, testCase.desc)
+		}
+		volumeLocks.Release(testCase.targetID)
+		if testCase.cleanup != nil {
+			testCase.cleanup()
+		}
+	}
 }
