@@ -21,8 +21,9 @@ package azuredisk
 import (
 	"context"
 	"fmt"
-	"github.com/container-storage-interface/spec/lib/go/csi"
 	"strconv"
+
+	"github.com/container-storage-interface/spec/lib/go/csi"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -77,13 +78,17 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 		parameters = make(map[string]string)
 	}
 
+	// Delete parameters used only during node publish/stage and not understood or used by the cloud provisioner.
+	delete(parameters, fsTypeField)
+	delete(parameters, kindField)
+
 	mc := metrics.NewMetricContext(d.cloudProvisioner.GetMetricPrefix(), "controller_create_volume", d.cloudProvisioner.GetCloud().ResourceGroup, d.cloudProvisioner.GetCloud().SubscriptionID, d.Name)
 	isOperationSucceeded := false
 	defer func() {
 		mc.ObserveOperationWithResult(isOperationSucceeded)
 	}()
 
-	response, err := d.cloudProvisioner.CreateVolume(ctx, name, req.GetCapacityRange(), volCaps, req.GetParameters(), req.GetSecrets(), req.GetVolumeContentSource(), req.GetAccessibilityRequirements())
+	response, err := d.cloudProvisioner.CreateVolume(ctx, name, req.GetCapacityRange(), volCaps, parameters, req.GetSecrets(), req.GetVolumeContentSource(), req.GetAccessibilityRequirements())
 
 	if err != nil {
 		return nil, err
@@ -316,12 +321,6 @@ func (d *DriverV2) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRe
 		return nil, status.Error(codes.InvalidArgument, "snapshot name must be provided")
 	}
 
-	if acquired := d.volumeLocks.TryAcquire(sourceVolumeID); !acquired {
-		return nil, status.Errorf(codes.Aborted, volumeOperationAlreadyExistsFmt, sourceVolumeID)
-	}
-	defer d.volumeLocks.Release(sourceVolumeID)
-
-
 	mc := metrics.NewMetricContext(d.cloudProvisioner.GetMetricPrefix(), "controller_create_snapshot", d.cloudProvisioner.GetCloud().ResourceGroup, d.cloudProvisioner.GetCloud().SubscriptionID, d.Name)
 	isOperationSucceeded := false
 	defer func() {
@@ -348,7 +347,6 @@ func (d *DriverV2) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRe
 	if len(snapshotID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Snapshot ID must be provided")
 	}
-
 
 	mc := metrics.NewMetricContext(d.cloudProvisioner.GetMetricPrefix(), "controller_delete_snapshot", d.cloudProvisioner.GetCloud().ResourceGroup, d.cloudProvisioner.GetCloud().SubscriptionID, d.Name)
 	isOperationSucceeded := false

@@ -100,7 +100,7 @@ func (c *ManagedDiskController) CreateManagedDisk(options *ManagedDiskOptions) (
 	}
 
 	diskSizeGB := int32(options.SizeGB)
-	diskSku := compute.DiskStorageAccountTypes(options.StorageAccountType)
+	diskSku := options.StorageAccountType
 
 	creationData, err := getValidCreationData(c.common.subscriptionID, options.ResourceGroup, options.SourceResourceID, options.SourceType)
 	if err != nil {
@@ -169,6 +169,13 @@ func (c *ManagedDiskController) CreateManagedDisk(options *ManagedDiskOptions) (
 			Name: diskSku,
 		},
 		DiskProperties: &diskProperties,
+	}
+
+	if el := c.common.extendedLocation; el != nil {
+		model.ExtendedLocation = &compute.ExtendedLocation{
+			Name: to.StringPtr(el.Name),
+			Type: compute.ExtendedLocationTypes(el.Type),
+		}
 	}
 
 	if len(createZones) > 0 {

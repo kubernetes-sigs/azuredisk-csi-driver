@@ -75,7 +75,6 @@ const (
 
 	cachingModeField        = "cachingmode"
 	storageAccountTypeField = "storageaccounttype"
-	storageAccountField     = "storageaccount"
 	skuNameField            = "skuname"
 	locationField           = "location"
 	resourceGroupField      = "resourcegroup"
@@ -87,6 +86,10 @@ const (
 	maxSharesField          = "maxshares"
 	incrementalField        = "incremental"
 	logicalSectorSizeField  = "logicalsectorsize"
+	fsTypeField             = "fstype"
+	kindField               = "kind"
+
+	WellKnownTopologyKey = "topology.kubernetes.io/zone"
 )
 
 var (
@@ -242,6 +245,10 @@ func (d *Driver) checkDiskCapacity(ctx context.Context, resourceGroup, diskName 
 		}
 	}
 	return true, nil
+}
+
+func (d *Driver) getVolumeLocks() *volumehelper.VolumeLocks {
+	return d.volumeLocks
 }
 
 func isValidDiskURI(diskURI string) error {

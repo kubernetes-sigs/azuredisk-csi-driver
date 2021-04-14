@@ -1,9 +1,9 @@
-# github.com/Azure/azure-sdk-for-go v51.2.0+incompatible
+# github.com/Azure/azure-sdk-for-go v53.1.0+incompatible
 ## explicit
 github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute
 github.com/Azure/azure-sdk-for-go/services/containerservice/mgmt/2020-04-01/containerservice
 github.com/Azure/azure-sdk-for-go/services/network/mgmt/2019-06-01/network
-github.com/Azure/azure-sdk-for-go/services/network/mgmt/2020-07-01/network
+github.com/Azure/azure-sdk-for-go/services/network/mgmt/2020-08-01/network
 github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2017-05-10/resources
 github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2018-05-01/resources
 github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2019-06-01/storage
@@ -99,6 +99,8 @@ github.com/go-openapi/jsonreference
 github.com/go-openapi/spec
 # github.com/go-openapi/swag v0.19.5
 github.com/go-openapi/swag
+# github.com/gofrs/uuid v4.0.0+incompatible
+github.com/gofrs/uuid
 # github.com/gogo/protobuf v1.3.1
 github.com/gogo/protobuf/proto
 github.com/gogo/protobuf/sortkeys
@@ -243,8 +245,6 @@ github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
 # github.com/rubiojr/go-vhd v0.0.0-20200706105327-02e210299021
 github.com/rubiojr/go-vhd/vhd
-# github.com/satori/go.uuid v1.2.0
-github.com/satori/go.uuid
 # github.com/sirupsen/logrus v1.6.0
 ## explicit
 github.com/sirupsen/logrus
@@ -927,7 +927,7 @@ k8s.io/utils/trace
 # sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.0.14
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/client
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/proto/client
-# sigs.k8s.io/cloud-provider-azure v0.0.0 => sigs.k8s.io/cloud-provider-azure v0.7.1-0.20210318024319-cd36edb7c0ee
+# sigs.k8s.io/cloud-provider-azure v0.0.0 => sigs.k8s.io/cloud-provider-azure v0.7.1-0.20210413085451-98803e04dc83
 ## explicit
 sigs.k8s.io/cloud-provider-azure/pkg/auth
 sigs.k8s.io/cloud-provider-azure/pkg/azureclients
@@ -954,6 +954,7 @@ sigs.k8s.io/cloud-provider-azure/pkg/azureclients/snapshotclient/mocksnapshotcli
 sigs.k8s.io/cloud-provider-azure/pkg/azureclients/storageaccountclient
 sigs.k8s.io/cloud-provider-azure/pkg/azureclients/subnetclient
 sigs.k8s.io/cloud-provider-azure/pkg/azureclients/subnetclient/mocksubnetclient
+sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmasclient
 sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmclient
 sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmclient/mockvmclient
 sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmsizeclient
@@ -961,6 +962,7 @@ sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmssclient
 sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmssclient/mockvmssclient
 sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmssvmclient
 sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmssvmclient/mockvmssvmclient
+sigs.k8s.io/cloud-provider-azure/pkg/azureclients/zoneclient
 sigs.k8s.io/cloud-provider-azure/pkg/cache
 sigs.k8s.io/cloud-provider-azure/pkg/consts
 sigs.k8s.io/cloud-provider-azure/pkg/metrics
@@ -1036,5 +1038,5 @@ sigs.k8s.io/yaml
 # k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.20.0
 # k8s.io/sample-controller => k8s.io/sample-controller v0.20.0
 # sigs.k8s.io/azuredisk-csi-driver => ./
-# sigs.k8s.io/cloud-provider-azure => sigs.k8s.io/cloud-provider-azure v0.7.1-0.20210318024319-cd36edb7c0ee
+# sigs.k8s.io/cloud-provider-azure => sigs.k8s.io/cloud-provider-azure v0.7.1-0.20210413085451-98803e04dc83
 # github.com/niemeyer/pretty => github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e

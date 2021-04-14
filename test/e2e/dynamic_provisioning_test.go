@@ -19,7 +19,9 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"os"
 
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/testsuites"
 
@@ -359,9 +361,6 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	ginkgo.It(fmt.Sprintf("should clone a volume from an existing volume and read from it [disk.csi.azure.com] [%s]", schedulerName), func() {
 		skipIfTestingInWindowsCluster()
 		skipIfUsingInTreeVolumePlugin()
-		if isMultiZone {
-			ginkgo.Skip("test case not supported running in multi zone cluster")
-		}
 
 		pod := testsuites.PodDetails{
 			Cmd: "echo 'hello world' > /mnt/test-1/data",
@@ -394,9 +393,6 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	ginkgo.It(fmt.Sprintf("should clone a volume of larger size than the source volume and make sure the filesystem is appropriately adjusted [disk.csi.azure.com] [%s]", schedulerName), func() {
 		skipIfTestingInWindowsCluster()
 		skipIfUsingInTreeVolumePlugin()
-		if isMultiZone {
-			ginkgo.Skip("test case not supported running in multi zone cluster")
-		}
 
 		pod := testsuites.PodDetails{
 			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
@@ -703,6 +699,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	})
 
 	ginkgo.It(fmt.Sprintf("should create a statefulset object, write and read to it, delete the pod and write and read to it again [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows] [%s]", schedulerName), func() {
+		if isWindowsCluster && isUsingInTreeVolumePlugin {
+			ginkgo.Skip("test case has been disabled for Windows in-tree driver")
+		}
 		pod := testsuites.PodDetails{
 			Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
 			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
@@ -746,13 +745,20 @@ func (t *dynamicProvisioningTestSuite) normalizeVolumes(volumes []testsuites.Vol
 }
 
 func (t *dynamicProvisioningTestSuite) normalizeVolume(volume testsuites.VolumeDetails, isMultiZone bool) testsuites.VolumeDetails {
-	if !isMultiZone {
-		return volume
+	driverName := os.Getenv(driver.AzureDriverNameVar)
+	switch driverName {
+	case "kubernetes.io/azure-disk":
+		volumeBindingMode := storagev1.VolumeBindingWaitForFirstConsumer
+		volume.VolumeBindingMode = &volumeBindingMode
+	case "", azuredisk.DriverName:
+		if !isMultiZone {
+			return volume
+		}
+		volume.AllowedTopologyValues = t.allowedTopologyValues
+		volumeBindingMode := storagev1.VolumeBindingWaitForFirstConsumer
+		volume.VolumeBindingMode = &volumeBindingMode
 	}
 
-	volume.AllowedTopologyValues = t.allowedTopologyValues
-	volumeBindingMode := storagev1.VolumeBindingWaitForFirstConsumer
-	volume.VolumeBindingMode = &volumeBindingMode
 	return volume
 }
 

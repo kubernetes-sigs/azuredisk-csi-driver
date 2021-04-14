@@ -310,6 +310,7 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 	} else {
 		if isAvailabilityZone(zone.FailureDomain, d.cloud.Location) {
 			topology.Segments[topologyKey] = zone.FailureDomain
+			topology.Segments[WellKnownTopologyKey] = zone.FailureDomain
 			klog.V(2).Infof("NodeGetInfo, nodeName: %v, zone: %v", d.NodeID, zone.FailureDomain)
 		}
 	}
@@ -486,7 +487,7 @@ func (d *Driver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolume
 func getFStype(attributes map[string]string) string {
 	for k, v := range attributes {
 		switch strings.ToLower(k) {
-		case "fstype":
+		case fsTypeField:
 			return strings.ToLower(v)
 		}
 	}

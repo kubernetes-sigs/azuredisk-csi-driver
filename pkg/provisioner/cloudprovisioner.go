@@ -148,8 +148,7 @@ func (c *CloudProvisioner) CreateVolume(
 				return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("parse %s returned with invalid value: %d", v, maxShares))
 			}
 		default:
-			//don't return error here since there are some parameters(e.g. fsType) used in disk mount process
-			//return nil, fmt.Errorf("AzureDisk - invalid option %s in storage class", k)
+			return nil, fmt.Errorf("invalid parameter %s in storage class", k)
 		}
 	}
 
@@ -468,7 +467,10 @@ func (c *CloudProvisioner) CreateSnapshot(
 		}
 	}
 
-	incremental = c.getIncrementalValueForCreateSnapshot()
+	if azureutils.IsAzureStackCloud(c.cloud.Config.Cloud, c.cloud.Config.DisableAzureStackCloud) {
+		klog.V(2).Info("Use full snapshot instead as Azure Stack does not support incremental snapshot.")
+		incremental = false
+	}
 
 	if resourceGroup == "" {
 		resourceGroup, err = azureutils.GetResourceGroupFromAzureManagedDiskURI(sourceVolumeID)
@@ -503,7 +505,7 @@ func (c *CloudProvisioner) CreateSnapshot(
 	rerr := c.cloud.SnapshotsClient.CreateOrUpdate(ctx, resourceGroup, snapshotName, snapshot)
 	if rerr != nil {
 		if strings.Contains(rerr.Error().Error(), "existing disk") {
-			return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("request snapshot(%s) under rg(%s) already exists, but the SourceVolumeID is different, error details: %v", snapshotName, resourceGroup, rerr.Error()))
+			return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("request snapshot(%s) under rg(%s) already exists, but the SourceVolumeId is different, error details: %v", snapshotName, resourceGroup, rerr.Error()))
 		}
 
 		return nil, status.Error(codes.Internal, fmt.Sprintf("create snapshot error: %v", rerr.Error()))
@@ -765,6 +767,7 @@ func (c *CloudProvisioner) validateCreateVolumeRequestParams(
 			break
 		}
 	}
+
 	if azureutils.IsAzureStackCloud(c.cloud.Config.Cloud, c.cloud.Config.DisableAzureStackCloud) {
 		if maxShares > 1 {
 			return status.Error(codes.InvalidArgument, fmt.Sprintf("Invalid maxShares value: %d as Azure Stack does not support shared disk.", maxShares))
@@ -782,16 +785,6 @@ func (c *CloudProvisioner) validateCreateVolumeRequestParams(
 	}
 
 	return nil
-}
-
-func (c *CloudProvisioner) getIncrementalValueForCreateSnapshot() bool {
-	incremental := true
-	if azureutils.IsAzureStackCloud(c.cloud.Config.Cloud, c.cloud.Config.DisableAzureStackCloud) {
-		klog.V(2).Info("Use full snapshot instead as Azure Stack does not incremental snapshot.")
-		incremental = false
-	}
-
-	return incremental
 }
 
 // listVolumesInCluster is a helper function for ListVolumes used for when there is an available kubeclient

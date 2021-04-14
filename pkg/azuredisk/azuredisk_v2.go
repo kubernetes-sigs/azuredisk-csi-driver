@@ -443,3 +443,7 @@ func (kw klogWriter) Write(p []byte) (n int, err error) {
 	}
 	return len(p), nil
 }
+
+func (d *DriverV2) getVolumeLocks() *volumehelper.VolumeLocks {
+	return d.volumeLocks
+}

@@ -172,9 +172,12 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			if maxShares < 1 {
 				return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("parse %s returned with invalid value: %d", v, maxShares))
 			}
+		case fsTypeField:
+			// no op, only used in NodeStageVolume
+		case kindField:
+			// no op, only for compatibility
 		default:
-			//don't return error here since there are some parameters(e.g. fsType) used in disk mount process
-			//return nil, fmt.Errorf("AzureDisk - invalid option %s in storage class", k)
+			return nil, fmt.Errorf("invalid parameter %s in storage class", k)
 		}
 	}
 
@@ -778,11 +781,6 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 		return nil, status.Error(codes.InvalidArgument, "snapshot name must be provided")
 	}
 
-	if acquired := d.volumeLocks.TryAcquire(sourceVolumeID); !acquired {
-		return nil, status.Errorf(codes.Aborted, volumeOperationAlreadyExistsFmt, sourceVolumeID)
-	}
-	defer d.volumeLocks.Release(sourceVolumeID)
-
 	snapshotName = getValidDiskName(snapshotName)
 
 	var customTags string
@@ -808,7 +806,7 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	}
 
 	if IsAzureStackCloud(d.cloud.Config.Cloud, d.cloud.Config.DisableAzureStackCloud) {
-		klog.V(2).Info("Use full snapshot instead as Azure Stack does not incremental snapshot.")
+		klog.V(2).Info("Use full snapshot instead as Azure Stack does not support incremental snapshot.")
 		incremental = false
 	}
 
@@ -1011,6 +1009,11 @@ func pickAvailabilityZone(requirement *csi.TopologyRequirement, region string) s
 		return ""
 	}
 	for _, topology := range requirement.GetPreferred() {
+		if zone, exists := topology.GetSegments()[WellKnownTopologyKey]; exists {
+			if isAvailabilityZone(zone, region) {
+				return zone
+			}
+		}
 		if zone, exists := topology.GetSegments()[topologyKey]; exists {
 			if isAvailabilityZone(zone, region) {
 				return zone
@@ -1018,6 +1021,11 @@ func pickAvailabilityZone(requirement *csi.TopologyRequirement, region string) s
 		}
 	}
 	for _, topology := range requirement.GetRequisite() {
+		if zone, exists := topology.GetSegments()[WellKnownTopologyKey]; exists {
+			if isAvailabilityZone(zone, region) {
+				return zone
+			}
+		}
 		if zone, exists := topology.GetSegments()[topologyKey]; exists {
 			if isAvailabilityZone(zone, region) {
 				return zone
