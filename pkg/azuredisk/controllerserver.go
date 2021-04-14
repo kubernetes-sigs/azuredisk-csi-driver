@@ -216,7 +216,25 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		return nil, err
 	}
 
-	selectedAvailabilityZone := pickAvailabilityZone(req.GetAccessibilityRequirements(), d.cloud.Location)
+	diskZone := pickAvailabilityZone(req.GetAccessibilityRequirements(), d.cloud.Location)
+	accessibleTopology := []*csi.Topology{}
+	if skuName == compute.StandardSSDZRS || skuName == compute.PremiumZRS {
+		klog.V(2).Infof("diskZone(%s) is reset as empty since disk(%s) is ZRS(%s)", diskZone, diskName, skuName)
+		diskZone = ""
+		// make volume scheduled on all 3 availability zones
+		for i := 1; i <= 3; i++ {
+			topology := &csi.Topology{
+				Segments: map[string]string{topologyKey: fmt.Sprintf("%s-%d", d.cloud.Location, i)},
+			}
+			accessibleTopology = append(accessibleTopology, topology)
+		}
+	} else {
+		accessibleTopology = []*csi.Topology{
+			{
+				Segments: map[string]string{topologyKey: diskZone},
+			},
+		}
+	}
 
 	if ok, err := d.checkDiskCapacity(ctx, resourceGroup, diskName, requestGiB); !ok {
 		return nil, err
@@ -233,8 +251,8 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		mc.ObserveOperationWithResult(isOperationSucceeded)
 	}()
 
-	klog.V(2).Infof("begin to create azure disk(%s) account type(%s) rg(%s) location(%s) size(%d) selectedAvailabilityZone(%v) maxShares(%d)",
-		diskName, skuName, resourceGroup, location, requestGiB, selectedAvailabilityZone, maxShares)
+	klog.V(2).Infof("begin to create azure disk(%s) account type(%s) rg(%s) location(%s) size(%d) diskZone(%v) maxShares(%d)",
+		diskName, skuName, resourceGroup, location, requestGiB, diskZone, maxShares)
 
 	tags := make(map[string]string)
 	contentSource := &csi.VolumeContentSource{}
@@ -286,7 +304,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		PVCName:             "",
 		SizeGB:              requestGiB,
 		Tags:                tags,
-		AvailabilityZone:    selectedAvailabilityZone,
+		AvailabilityZone:    diskZone,
 		DiskIOPSReadWrite:   diskIopsReadWrite,
 		DiskMBpsReadWrite:   diskMbpsReadWrite,
 		SourceResourceID:    sourceID,
@@ -308,15 +326,11 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
-			VolumeId:      diskURI,
-			CapacityBytes: capacityBytes,
-			VolumeContext: parameters,
-			ContentSource: contentSource,
-			AccessibleTopology: []*csi.Topology{
-				{
-					Segments: map[string]string{topologyKey: selectedAvailabilityZone},
-				},
-			},
+			VolumeId:           diskURI,
+			CapacityBytes:      capacityBytes,
+			VolumeContext:      parameters,
+			ContentSource:      contentSource,
+			AccessibleTopology: accessibleTopology,
 		},
 	}, nil
 }
