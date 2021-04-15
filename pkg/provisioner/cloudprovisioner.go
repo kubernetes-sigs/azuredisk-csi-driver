@@ -147,6 +147,17 @@ func (c *CloudProvisioner) CreateVolume(
 			if maxShares < 1 {
 				return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("parse %s returned with invalid value: %d", v, maxShares))
 			}
+
+		// The following parameter is not used by the cloud provisioner, but must be present in the VolumeContext
+		// returned to the caller so that it is included in the parameters passed to Node{Publish|Stage}Volume.
+		case azureutils.FSTypeField:
+			// no-op
+
+		// The following parameter is ignored, but included for backward compatibility with the in-tree azuredisk
+		// driver.
+		case azureutils.KindField:
+			// no-op
+
 		default:
 			return nil, fmt.Errorf("invalid parameter %s in storage class", k)
 		}

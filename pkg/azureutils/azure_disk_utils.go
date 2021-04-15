@@ -86,6 +86,8 @@ const (
 	MaxSharesField           = "maxshares"
 	IncrementalField         = "incremental"
 	LogicalSectorSizeField   = "logicalsectorsize"
+	FSTypeField              = "fstype"
+	KindField                = "kind"
 )
 
 var (
@@ -249,10 +251,8 @@ func GetCachingMode(attributes map[string]string) (compute.CachingTypes, error) 
 		err         error
 	)
 
-	cachingModeField := "cachingModeField"
-
 	for k, v := range attributes {
-		if strings.EqualFold(k, cachingModeField) {
+		if strings.EqualFold(k, CachingModeField) {
 			cachingMode = v1.AzureDataDiskCachingMode(v)
 			break
 		}
