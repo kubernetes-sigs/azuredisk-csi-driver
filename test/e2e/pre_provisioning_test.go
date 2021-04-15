@@ -260,8 +260,8 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 		})
 
 		ginkgo.It("should create an inline volume by in-tree driver [kubernetes.io/azure-disk]", func() {
-			if !isUsingInTreeVolumePlugin {
-				ginkgo.Skip("test case is only available for in-tree driver")
+			if !isUsingInTreeVolumePlugin && !isTestingMigration {
+				ginkgo.Skip("test case is only available for csi driver migration test")
 			}
 
 			skipManuallyDeletingVolume = true
