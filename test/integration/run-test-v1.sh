@@ -16,27 +16,17 @@
 
 set -euo pipefail
 
-function install_csi_sanity_bin {
-  echo 'Installing CSI sanity test binary...'
-  mkdir -p $GOPATH/src/github.com/kubernetes-csi
-  pushd $GOPATH/src/github.com/kubernetes-csi
-  export GO111MODULE=off
-  git clone https://github.com/kubernetes-csi/csi-test.git -b v4.0.2
-  pushd csi-test/cmd/csi-sanity
-  make install
-  popd
-  popd
+function cleanup {
+  set +e
+
+  echo 'pkill -f azurediskplugin'
+  pkill -f azurediskplugin
 }
 
-if [[ -z "$(command -v csi-sanity)" ]]; then
-	install_csi_sanity_bin
-fi
+trap cleanup EXIT
 
-if [[ "$#" -ge 2 && "$1" == "v2" ]]; 
-then
-echo 'Running v2 sanity tests'
-test/sanity/run-test-v2.sh "$nodeid" $*
-else
-echo 'Running v1 sanity tests'
-test/sanity/run-test.sh "$nodeid" $*
-fi
+_output/azurediskplugin --endpoint  $1 --nodeid $2 -v=5 &
+
+echo "Begin to run integration test on $3..."
+
+test/integration/run-test.sh $*

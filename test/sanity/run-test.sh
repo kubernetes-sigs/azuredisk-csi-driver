@@ -17,6 +17,8 @@
 set -euo pipefail
 
 function cleanup {
+  set +e
+
   echo 'pkill -f azurediskplugin'
   pkill -f azurediskplugin
   echo 'Deleting CSI sanity test binary'
@@ -31,11 +33,7 @@ if [[ "$#" -gt 0 ]] && [[ -n "$1" ]]; then
   nodeid="$1"
 fi
 
-if [[ "$#" -lt 2 || "$2" != "v2" ]]; then
-  _output/azurediskplugin --endpoint "$endpoint" --nodeid "$nodeid" -v=5 &
-else
-  _output/azurediskpluginv2 --endpoint "$endpoint" --nodeid "$nodeid" -v=5 --temp-use-driver-v2 &
-fi
+ _output/azurediskpluginv2 --endpoint "$endpoint" --nodeid "$nodeid" -v=5 &
 
 echo 'Begin to run sanity test...'
 readonly CSI_SANITY_BIN='csi-sanity'

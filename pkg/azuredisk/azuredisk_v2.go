@@ -56,6 +56,7 @@ var controllerLeaseDurationInSec = flag.Int("lease-duration-in-sec", 15, "The du
 var controllerLeaseRenewDeadlineInSec = flag.Int("lease-renew-deadline-in-sec", 10, "The duration that the acting controlplane will retry refreshing leadership before giving up.")
 var controllerLeaseRetryPeriodInSec = flag.Int("lease-retry-period-in-sec", 2, "The duration the LeaderElector clients should wait between tries of actions.")
 var partitionLabel = "azdrivernodes.disk.csi.azure.com/partition"
+var isTestRun = flag.Bool("is-test-run", false, "Boolean flag to indicate whether this instance is being used for sanity or integration tests")
 
 // OutputCallDepth is the stack depth where we can find the origin of this call
 const OutputCallDepth = 6
@@ -297,12 +298,13 @@ func (d *DriverV2) RegisterAzDriverNode(ctx context.Context) error {
 		klog.Errorf("NodeID is nil, can not initialize AzDriverNode")
 		return errors.NewBadRequest("NodeID is nil, can not register the plugin.")
 	}
-
-	klog.V(2).Infof("Registering AzDriverNode for node (%s)", d.NodeID)
-	node, err := d.kubeClient.CoreV1().Nodes().Get(ctx, d.NodeID, metav1.GetOptions{})
-	if err != nil || node == nil {
-		klog.Errorf("Failed to get node (%s), error: %v", node, err)
-		return errors.NewBadRequest("Failed to get node or node not found, can not register the plugin.")
+	if !*isTestRun {
+		klog.V(2).Infof("Registering AzDriverNode for node (%s)", d.NodeID)
+		node, err := d.kubeClient.CoreV1().Nodes().Get(ctx, d.NodeID, metav1.GetOptions{})
+		if err != nil || node == nil {
+			klog.Errorf("Failed to get node (%s), error: %v", node, err)
+			return errors.NewBadRequest("Failed to get node or node not found, can not register the plugin.")
+		}
 	}
 
 	azN := d.cloudProvisioner.GetDiskClientSet().DiskV1alpha1().AzDriverNodes(d.objectNamespace)
@@ -336,7 +338,7 @@ func (d *DriverV2) RegisterAzDriverNode(ctx context.Context) error {
 		}
 		azDriverNodeUpdate = azDriverNodeCreated.DeepCopy()
 	} else {
-		klog.Errorf("Failed to get AzDriverNode for node (%s), error: %v", node, err)
+		klog.Errorf("Failed to get AzDriverNode for node (%s), error: %v", d.NodeID, err)
 		return errors.NewBadRequest("Failed to get AzDriverNode or node not found, can not register the plugin.")
 	}
 
