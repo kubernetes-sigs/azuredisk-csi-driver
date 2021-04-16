@@ -423,6 +423,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 
 	if err == nil {
 		if vmState != nil && strings.ToLower(*vmState) == "failed" {
+			klog.Warningf("VM(%q) is in failed state, update VM first", nodeName)
 			if err := d.cloud.UpdateVM(nodeName); err != nil {
 				return nil, fmt.Errorf("update instance %q failed with %v", nodeName, err)
 			}
