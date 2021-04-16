@@ -35,6 +35,17 @@ const (
 )
 
 var _ = ginkgo.Describe("AzDiskSchedulerExtender", func() {
+
+	ginkgo.Context("[single-az]", func() {
+		schedulerExtenderTests(false)
+	})
+
+	ginkgo.Context("[multi-az]", func() {
+		schedulerExtenderTests(true)
+	})
+})
+
+func schedulerExtenderTests(isMultiZone bool) {
 	f := framework.NewDefaultFramework("azuredisk")
 
 	var (
@@ -53,64 +64,113 @@ var _ = ginkgo.Describe("AzDiskSchedulerExtender", func() {
 		}
 		azDiskClientV1alpha1 = azDiskClient.DiskV1alpha1()
 		testDriver = driver.InitAzureDiskDriver()
+
+		// ensure AzDriverNode exists for each node
+		nodes := testsuites.ListNodeNames(cs)
+		for _, node := range nodes {
+			testsuites.NewTestAzDriverNode(azDiskClientV1alpha1.AzDriverNodes(namespace), node)
+		}
 	})
 
-	// AzDiskSchedulerExtender only queries instances of azDriverNode and azVolumeAttachment,
-	// thus, currently, AzDiskSchedulerExtender tests only create those objects, ignoring all the
-	// intermediate ones.
-	ginkgo.Context("AzDiskSchedulerExtender", func() {
-		ginkgo.It("Should schedule and start a pod with no persistent volume requests.", func() {
-			skipIfUsingInTreeVolumePlugin()
-			skipIfNotUsingCSIDriverV2()
+	ginkgo.AfterEach(func() {
+		// ensure AzDriverNodes are deleted
+		nodes := testsuites.ListNodeNames(cs)
+		for _, node := range nodes {
+			testsuites.DeleteTestAzDriverNode(azDiskClientV1alpha1.AzDriverNodes(namespace), node)
+		}
+	})
 
-			pod := testsuites.PodDetails{
-				Cmd:     convertToPowershellorCmdCommandIfNecessary("echo 'hello world'"),
-				Volumes: []testsuites.VolumeDetails{},
-			}
-			test := testsuites.AzDiskSchedulerExtenderSimplePodSchedulingTest{
-				CSIDriver:       testDriver,
-				Pod:             pod,
-				AzDiskClientSet: azDiskClientV1alpha1,
-				AzNamespace:     namespace,
-			}
-			test.Run(cs, ns, schedulerName)
-		})
+	ginkgo.It("Should schedule and start a pod with no persistent volume requests.", func() {
+		skipIfUsingInTreeVolumePlugin()
+		skipIfNotUsingCSIDriverV2()
 
-		ginkgo.It("Should schedule and start a pod with a persistent volume requests.", func() {
-			skipIfUsingInTreeVolumePlugin()
-			skipIfNotUsingCSIDriverV2()
+		pod := testsuites.PodDetails{
+			Cmd:     convertToPowershellorCmdCommandIfNecessary("echo 'hello world'"),
+			Volumes: []testsuites.VolumeDetails{},
+		}
+		test := testsuites.AzDiskSchedulerExtenderSimplePodSchedulingTest{
+			CSIDriver:       testDriver,
+			Pod:             pod,
+			AzDiskClientSet: azDiskClientV1alpha1,
+			AzNamespace:     namespace,
+		}
+		test.Run(cs, ns, schedulerName)
+	})
 
-			t := dynamicProvisioningTestSuite{}
-			pod := testsuites.PodDetails{
-				Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"), //"echo 'hello world' > /mnt/test-1/data",
-				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
-					{
-						FSType:    "ext4",
-						ClaimSize: "10Gi",
-						VolumeMount: testsuites.VolumeMountDetails{
-							NameGenerate:      "test-volume-",
-							MountPathGenerate: "/mnt/test-",
-						},
+	ginkgo.It("Should schedule and start a pod with a persistent volume requests.", func() {
+		skipIfUsingInTreeVolumePlugin()
+		skipIfNotUsingCSIDriverV2()
+
+		t := dynamicProvisioningTestSuite{}
+		pod := testsuites.PodDetails{
+			Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
+			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+				{
+					FSType:    "ext4",
+					ClaimSize: "10Gi",
+					VolumeMount: testsuites.VolumeMountDetails{
+						NameGenerate:      "test-volume-",
+						MountPathGenerate: "/mnt/test-",
 					},
-				}, false),
-			}
+				},
+			}, isMultiZone),
+		}
 
-			test := testsuites.AzDiskSchedulerExtenderPodSchedulingWithPVTest{
-				CSIDriver:              testDriver,
-				Pod:                    pod,
-				AzDiskClientSet:        azDiskClientV1alpha1,
-				AzNamespace:            namespace,
-				StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
-			}
-			test.Run(cs, ns, schedulerName)
-		})
+		test := testsuites.AzDiskSchedulerExtenderPodSchedulingWithPVTest{
+			CSIDriver:              testDriver,
+			Pod:                    pod,
+			AzDiskClientSet:        azDiskClientV1alpha1,
+			AzNamespace:            namespace,
+			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
+		}
+		test.Run(cs, ns, schedulerName)
+	})
 
-		ginkgo.It("Should schedule and rescheduler a pod with a persistent volume request on failover.", func() {
-			skipIfUsingInTreeVolumePlugin()
-			skipIfNotUsingCSIDriverV2()
+	ginkgo.It("Should schedule and rescheduler a pod with a persistent volume request on failover.", func() {
+		skipIfUsingInTreeVolumePlugin()
+		skipIfNotUsingCSIDriverV2()
 
-			t := dynamicProvisioningTestSuite{}
+		t := dynamicProvisioningTestSuite{}
 
+		volume := testsuites.VolumeDetails{
+			ClaimSize: "10Gi",
+			VolumeMount: testsuites.VolumeMountDetails{
+				NameGenerate:      "test-volume-",
+				MountPathGenerate: "/mnt/test-",
+			},
+		}
+		pod := testsuites.PodDetails{
+			Cmd: convertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
+			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+				{
+					ClaimSize: volume.ClaimSize,
+					MountOptions: []string{
+						"barrier=1",
+						"acl",
+					},
+					VolumeMount: volume.VolumeMount,
+				},
+			}, isMultiZone),
+			IsWindows: isWindowsCluster,
+			UseCMD:    false,
+		}
+
+		test := testsuites.AzDiskSchedulerExtenderPodSchedulingOnFailover{
+			CSIDriver:              testDriver,
+			Pod:                    pod,
+			Volume:                 volume,
+			AzDiskClientSet:        azDiskClientV1alpha1,
+			AzNamespace:            namespace,
+			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
+		}
+		test.Run(cs, ns, schedulerName)
+	})
+
+	ginkgo.It("Should schedule and start a pod with multiple persistent volume requests.", func() {
+		volumes := []testsuites.VolumeDetails{}
+		t := dynamicProvisioningTestSuite{}
+
+		for i := 1; i <= 3; i++ {
 			volume := testsuites.VolumeDetails{
 				ClaimSize: "10Gi",
 				VolumeMount: testsuites.VolumeMountDetails{
@@ -118,60 +178,20 @@ var _ = ginkgo.Describe("AzDiskSchedulerExtender", func() {
 					MountPathGenerate: "/mnt/test-",
 				},
 			}
-			pod := testsuites.PodDetails{
-				Cmd: convertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
-				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
-					{
-						ClaimSize: volume.ClaimSize,
-						MountOptions: []string{
-							"barrier=1",
-							"acl",
-						},
-						VolumeMount: volume.VolumeMount,
-					},
-				}, false),
-				IsWindows: isWindowsCluster,
-				UseCMD:    false,
-			}
+			volumes = append(volumes, volume)
+		}
 
-			test := testsuites.AzDiskSchedulerExtenderPodSchedulingOnFailover{
-				CSIDriver:              testDriver,
-				Pod:                    pod,
-				Volume:                 volume,
-				AzDiskClientSet:        azDiskClientV1alpha1,
-				AzNamespace:            namespace,
-				StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
-			}
-			test.Run(cs, ns, schedulerName)
-		})
-
-		ginkgo.It("Should schedule and start a pod with multiple persistent volume requests.", func() {
-			volumes := []testsuites.VolumeDetails{}
-			t := dynamicProvisioningTestSuite{}
-
-			for i := 1; i <= 3; i++ {
-				volume := testsuites.VolumeDetails{
-					ClaimSize: "10Gi",
-					VolumeMount: testsuites.VolumeMountDetails{
-						NameGenerate:      "test-volume-",
-						MountPathGenerate: "/mnt/test-",
-					},
-				}
-				volumes = append(volumes, volume)
-			}
-
-			pod := testsuites.PodDetails{
-				Cmd:       convertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
-				Volumes:   t.normalizeVolumes(volumes, false),
-				IsWindows: isWindowsCluster,
-			}
-			test := testsuites.AzDiskSchedulerExtenderPodSchedulingWithMultiplePVTest{
-				CSIDriver:       testDriver,
-				Pod:             pod,
-				AzDiskClientSet: azDiskClientV1alpha1,
-				AzNamespace:     namespace,
-			}
-			test.Run(cs, ns, schedulerName)
-		})
+		pod := testsuites.PodDetails{
+			Cmd:       convertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
+			Volumes:   t.normalizeVolumes(volumes, isMultiZone),
+			IsWindows: isWindowsCluster,
+		}
+		test := testsuites.AzDiskSchedulerExtenderPodSchedulingWithMultiplePVTest{
+			CSIDriver:       testDriver,
+			Pod:             pod,
+			AzDiskClientSet: azDiskClientV1alpha1,
+			AzNamespace:     namespace,
+		}
+		test.Run(cs, ns, schedulerName)
 	})
-})
+}

@@ -38,7 +38,7 @@ type AzDiskSchedulerExtenderPodSchedulingWithMultiplePVTest struct {
 }
 
 func (t *AzDiskSchedulerExtenderPodSchedulingWithMultiplePVTest) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
-	tpod, cleanup := t.Pod.SetupWithDynamicMultipleVolumes(client, namespace, t.CSIDriver, schedulerName) //"default-scheduler")
+	tpod, cleanup := t.Pod.SetupWithDynamicMultipleVolumes(client, namespace, t.CSIDriver, schedulerName)
 	// defer must be called here for resources not get removed before using them
 	for i := range cleanup {
 		i := i

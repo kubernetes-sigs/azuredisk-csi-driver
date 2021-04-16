@@ -115,6 +115,10 @@ integration-test-v2: container-v2
 e2e-test:
 	go test -v -timeout=0 ./test/e2e ${GINKGO_FLAGS}
 
+.PHONY: e2e-test-v2
+e2e-test-v2:
+	BUILD_V2=1 go test -v -timeout=0 -tags azurediskv2 ./test/e2e --temp-use-driver-v2
+
 .PHONY: e2e-bootstrap
 e2e-bootstrap: install-helm
 	docker pull $(IMAGE_TAG) || make container-all push-manifest
