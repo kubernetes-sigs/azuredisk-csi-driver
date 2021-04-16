@@ -141,7 +141,8 @@ func TestMakeDir(t *testing.T) {
 		{
 			desc: "should not return error if path already exists",
 			setup: func() {
-				_ = os.Mkdir("./target_test", os.FileMode(0755))
+				err := os.Mkdir("./target_test", os.FileMode(0755))
+				assert.NoError(t, err, "Failed in setup: %v", err)
 			},
 			targetDir:     "./target_test",
 			expectedError: false,
@@ -149,12 +150,14 @@ func TestMakeDir(t *testing.T) {
 		{
 			desc: "[Error] existing file in target path",
 			setup: func() {
-				_, _ = os.Create("file_exists")
+				_, err := os.Create("file_exists")
+				assert.NoError(t, err, "Failed in setup: %v", err)
 			},
 			targetDir:     "./file_exists",
 			expectedError: true,
 			cleanup: func() {
-				_ = os.Remove("./file_exists")
+				err := os.Remove("./file_exists")
+				assert.NoError(t, err, "Failed in cleanup: %v", err)
 			},
 		},
 	}
@@ -193,12 +196,14 @@ func TestMakeFile(t *testing.T) {
 		{
 			desc: "[Error] directory exists with the target file name",
 			setup: func() {
-				os.Mkdir("./target_test", os.FileMode(0755))
+				err := os.Mkdir("./target_test", os.FileMode(0755))
+				assert.NoError(t, err, "Failed in setup: %v", err)
 			},
 			targetFile:    "./target_test",
 			expectedError: true,
 			cleanup: func() {
-				os.Remove("./target_test")
+				err := os.Remove("./target_test")
+				assert.NoError(t, err, "Failed in cleanup: %v", err)
 			},
 		},
 	}
@@ -238,7 +243,8 @@ func TestVolumeLock(t *testing.T) {
 		{
 			desc: "should fail to acquire lock if lock is held by someone else",
 			setup: func() {
-				volumeLocks.TryAcquire("test-lock")
+				acquired := volumeLocks.TryAcquire("test-lock")
+				assert.True(t, acquired)
 			},
 			targetID:       "test-lock",
 			expectedOutput: false,
