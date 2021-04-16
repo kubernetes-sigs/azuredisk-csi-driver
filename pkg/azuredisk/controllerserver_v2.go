@@ -364,12 +364,17 @@ func (d *DriverV2) ControllerPublishVolume(ctx context.Context, req *csi.Control
 
 	klog.V(2).Infof("GetDiskLun returned: %v. Initiating attaching volume %q to node %q.", err, diskURI, nodeName)
 
-	lun, err := d.cloud.GetDiskLun(diskName, diskURI, nodeName)
+	lun, vmState, err := d.cloud.GetDiskLun(diskName, diskURI, nodeName)
 	if err == cloudprovider.InstanceNotFound {
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("failed to get azure instance id for node %q (%v)", nodeName, err))
 	}
 
 	if err == nil {
+		if vmState != nil && strings.ToLower(*vmState) == "failed" {
+			if err := d.cloud.UpdateVM(nodeName); err != nil {
+				return nil, fmt.Errorf("update instance %q failed with %v", nodeName, err)
+			}
+		}
 		// Volume is already attached to node.
 		klog.V(2).Infof("Attach operation is successful. volume %q is already attached to node %q at lun %d.", diskURI, nodeName, lun)
 	} else {
