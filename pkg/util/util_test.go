@@ -150,7 +150,7 @@ func TestMakeDir(t *testing.T) {
 		{
 			desc: "[Error] existing file in target path",
 			setup: func() {
-				_, err := os.Create("file_exists")
+				_, err := os.Create("./file_exists")
 				assert.NoError(t, err, "Failed in setup: %v", err)
 			},
 			targetDir:     "./file_exists",
