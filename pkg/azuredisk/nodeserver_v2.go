@@ -431,6 +431,19 @@ func (d *DriverV2) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolu
 			klog.Warningf("NodeExpandVolume succeeded on %v to %s, capability is block but block check failed to identify it", volumeID, volumePath)
 			return &csi.NodeExpandVolumeResponse{}, nil
 		}
+	} else {
+		isBlock, err := isBlockDevice(volumePath)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to determine device path for volumePath [%v]: %v", volumePath, err)
+		}
+		if isBlock {
+			capacityBytes, err := getBlockSizeBytes(volumePath, d.mounter)
+			if err != nil {
+				return nil, status.Errorf(codes.Internal, "failed to get block capacity on path %s: %v", req.VolumePath, err)
+			}
+			klog.V(4).Infof("NodeExpandVolume called for %v at block device %s, ignoring...", volumeID, volumePath)
+			return &csi.NodeExpandVolumeResponse{CapacityBytes: capacityBytes}, nil
+		}
 	}
 
 	devicePath, err := getDevicePathWithMountPath(volumePath, d.mounter)

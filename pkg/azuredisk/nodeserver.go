@@ -26,6 +26,7 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/sys/unix"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -433,15 +434,15 @@ func (d *Driver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolume
 		return nil, status.Error(codes.InvalidArgument, "volume path must be provided")
 	}
 
-	isBlock, err := hostutil.NewHostUtil().PathIsDevice(volumePath)
-	if err != nil {
-		return nil, status.Errorf(codes.NotFound, "failed to determine device path for volumePath [%v]: %v", volumePath, err)
-	}
-	if isBlock {
-		// Noop for Block NodeExpandVolume
-		klog.V(4).Infof("NodeExpandVolume succeeded on %v to %s, path check is block so this is a no-op", volumeID, volumePath)
-		return &csi.NodeExpandVolumeResponse{}, nil
-	}
+	// isBlock, err := hostutil.NewHostUtil().PathIsDevice(volumePath)
+	// if err != nil {
+	// 	return nil, status.Errorf(codes.NotFound, "failed to determine device path for volumePath [%v]: %v", volumePath, err)
+	// }
+	// if isBlock {
+	// 	// Noop for Block NodeExpandVolume
+	// 	klog.V(4).Infof("NodeExpandVolume succeeded on %v to %s, path check is block so this is a no-op", volumeID, volumePath)
+	// 	return &csi.NodeExpandVolumeResponse{}, nil
+	// }
 
 	volumeCapability := req.GetVolumeCapability()
 	if volumeCapability != nil {
@@ -456,6 +457,19 @@ func (d *Driver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolume
 			// This should not be executed but if somehow it is set to Block we should be cautious
 			klog.Warningf("NodeExpandVolume succeeded on %v to %s, capability is block but block check failed to identify it", volumeID, volumePath)
 			return &csi.NodeExpandVolumeResponse{}, nil
+		}
+	} else {
+		isBlock, err := isBlockDevice(volumePath)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to determine device path for volumePath [%v]: %v", volumePath, err)
+		}
+		if isBlock {
+			capacityBytes, err := getBlockSizeBytes(volumePath, d.mounter)
+			if err != nil {
+				return nil, status.Errorf(codes.Internal, "failed to get block capacity on path %s: %v", req.VolumePath, err)
+			}
+			klog.V(4).Infof("NodeExpandVolume called for %v at block device %s, ignoring...", volumeID, volumePath)
+			return &csi.NodeExpandVolumeResponse{CapacityBytes: capacityBytes}, nil
 		}
 	}
 
@@ -482,6 +496,16 @@ func (d *Driver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolume
 	return &csi.NodeExpandVolumeResponse{
 		CapacityBytes: gotBlockSizeBytes,
 	}, nil
+}
+
+func isBlockDevice(fullPath string) (bool, error) {
+	var st unix.Stat_t
+	err := unix.Stat(fullPath, &st)
+	if err != nil {
+		return false, err
+	}
+
+	return (st.Mode & unix.S_IFMT) == unix.S_IFBLK, nil
 }
 
 func getFStype(attributes map[string]string) string {
