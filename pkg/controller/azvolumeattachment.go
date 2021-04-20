@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"sort"
 	"sync"
-	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -44,9 +43,9 @@ const (
 	AzVolumeAttachmentFinalizer = "disk.csi.azure.com/azvolumeattachment-finalizer"
 	NodeNameLabel               = "node-name"
 	VolumeNameLabel             = "volume-name"
-	// sync interval in seconds
-	defaultSyncInterval   = 120
-	defaultNumSyncWorkers = 10
+	defaultNumSyncWorkers       = 10
+	// defaultMaxReplicaUpdateCount refers to the maximum number of creation or deletion of AzVolumeAttachment objects in a single ManageReplica call
+	defaultMaxReplicaUpdateCount = 1
 )
 
 type reconcileAzVolumeAttachment struct {
@@ -224,7 +223,7 @@ func (r *reconcileAzVolumeAttachment) SyncVolume(ctx context.Context, azVolume v
 
 	if desiredAttachmentCount > currentAttachmentCount {
 		klog.Infof("Create %d more replicas for volume (%s)", desiredAttachmentCount-currentAttachmentCount, azVolume.Spec.UnderlyingVolume)
-		if err = r.CreateReplicas(ctx, desiredAttachmentCount-currentAttachmentCount, azVolume.Spec.UnderlyingVolume, useCache); err != nil {
+		if err = r.CreateReplicas(ctx, min(defaultMaxReplicaUpdateCount, desiredAttachmentCount-currentAttachmentCount), azVolume.Spec.UnderlyingVolume, useCache); err != nil {
 			klog.Errorf("failed to create %d replicas for volume (%s): %v", desiredAttachmentCount-currentAttachmentCount, azVolume.Spec.UnderlyingVolume, err)
 			return err
 		}
@@ -232,10 +231,9 @@ func (r *reconcileAzVolumeAttachment) SyncVolume(ctx context.Context, azVolume v
 		klog.Infof("Delete %d replicas for volume (%s)", currentAttachmentCount-desiredAttachmentCount, azVolume.Spec.UnderlyingVolume)
 		i := 0
 		for _, azVolumeAttachment := range azVolumeAttachments.Items {
-			if i >= currentAttachmentCount-desiredAttachmentCount {
+			if i >= min(defaultMaxReplicaUpdateCount, currentAttachmentCount-desiredAttachmentCount) {
 				break
 			}
-
 			// if the volume has not yet been attached to any node or is a primary node, skip
 			if azVolumeAttachment.Spec.RequestedRole == v1alpha1.PrimaryRole || azVolumeAttachment.Status == nil {
 				continue
@@ -254,6 +252,11 @@ func (r *reconcileAzVolumeAttachment) SyncVolume(ctx context.Context, azVolume v
 func (r *reconcileAzVolumeAttachment) ManageReplicas(ctx context.Context, underlyingVolume string) error {
 	var azVolume v1alpha1.AzVolume
 	if err := r.client.Get(ctx, types.NamespacedName{Namespace: r.namespace, Name: underlyingVolume}, &azVolume); err != nil {
+		// if AzVolume is not found, the volume is deleted, so do not requeue and do not return error
+		// AzVolumeAttachment objects for the volume will be triggered to be deleted.
+		if errors.IsNotFound(err) {
+			return nil
+		}
 		klog.Errorf("failed to get AzVolume (%s): %v", underlyingVolume, err)
 		return err
 	}
@@ -497,13 +500,10 @@ func (r *reconcileAzVolumeAttachment) TriggerAttach(ctx context.Context, attachm
 		return err
 	}
 
-	// if it is a primary attachment, get maxReplicaCount, and create that many replica attachments if possible
-	if azVolumeAttachment.Spec.RequestedRole == v1alpha1.PrimaryRole {
-		// create replicas
-		if err := r.ManageReplicas(ctx, azVolumeAttachment.Spec.UnderlyingVolume); err != nil {
-			klog.Errorf("failed creating replicas for AzVolume (%s): %v")
-			return err
-		}
+	// Create replica if necessary
+	if err := r.ManageReplicas(ctx, azVolumeAttachment.Spec.UnderlyingVolume); err != nil {
+		klog.Errorf("failed creating replicas for AzVolume (%s): %v")
+		return err
 	}
 
 	// Update status of the object
@@ -684,17 +684,19 @@ func NewAzVolumeAttachmentController(ctx context.Context, mgr manager.Manager, a
 		return err
 	}
 
-	// call SyncAll regularly to keep replica count consistent
-	go func() {
-		for {
-			err := reconciler.SyncAll(ctx)
-			if err != nil {
-				klog.Warningf("%v", err)
-			}
-			time.Sleep(time.Duration(defaultSyncInterval) * time.Second)
-		}
-	}()
+	// initial sync
+	err = reconciler.SyncAll(ctx)
+	if err != nil {
+		klog.Warningf("failed to complete initial AzVolumeAttachment sync: %v", err)
+	}
 
 	klog.V(2).Info("AzVolumeAttachment Controller successfully initialized.")
 	return nil
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

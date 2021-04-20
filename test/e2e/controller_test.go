@@ -224,7 +224,7 @@ var _ = ginkgo.Describe("Controller", func() {
 			volName := "test-volume"
 			testAzAtt := testsuites.SetupTestAzVolumeAttachment(azDiskClient.DiskV1alpha1(), namespace, volName, nodes[0], []string{nodes[1], nodes[2]}, 1)
 			defer testAzAtt.Cleanup()
-			_ = testAzAtt.Create()
+			testAzAtt.Create()
 			err := testAzAtt.WaitForReplicas(1, time.Duration(5)*time.Minute)
 			framework.ExpectNoError(err)
 			attachments, err := azDiskClient.DiskV1alpha1().AzVolumeAttachments(namespace).List(context.Background(), metav1.ListOptions{})
@@ -249,6 +249,44 @@ var _ = ginkgo.Describe("Controller", func() {
 			err = testAzAtt.WaitForReplicas(1, time.Duration(5)*time.Minute)
 			framework.ExpectNoError(err)
 		})
+
+		// this is a convergeance test to check if number of replicas per volume correctly converges to the right value under certain circumstances (e.g. multiple deletion)
+		ginkgo.It("number of replicas should converge to assigned maxMountReplicaCount value", func() {
+			skipIfUsingInTreeVolumePlugin()
+			skipIfNotUsingCSIDriverV2()
+			volName := "test-volume"
+			replicaCount := 3
+			testAzAtt := testsuites.SetupTestAzVolumeAttachment(azDiskClient.DiskV1alpha1(), namespace, volName, "test-node", []string{"test-node-2", "test-node-3", "test-node-4",
+				"test-node-5"}, replicaCount)
+			testAzAtt.Create()
+			defer testAzAtt.Cleanup()
+			err := testAzAtt.WaitForReplicas(replicaCount, time.Duration(5)*time.Minute)
+			framework.ExpectNoError(err)
+			attachments, err := azDiskClient.DiskV1alpha1().AzVolumeAttachments(namespace).List(context.Background(), metav1.ListOptions{})
+			framework.ExpectNoError(err)
+
+			// fail replica attachments
+			i := 0
+			for _, attachment := range attachments.Items {
+				if attachment.Status != nil && attachment.Status.Role == v1alpha1.ReplicaRole {
+					err = azDiskClient.DiskV1alpha1().AzVolumeAttachments(namespace).Delete(context.Background(), attachment.Name, metav1.DeleteOptions{})
+					framework.ExpectNoError(err)
+					// below will be commented out until the controller test uses AzureDiskDriver_v2 running on a separate dedicated namespace for testing
+					// err = testsuites.WaitForDelete(azDiskClient.DiskV1alpha1().AzVolumeAttachments(namespace), att.Namespace, replica.Name, time.Duration(5)*time.Minute)
+					// framework.ExpectNoError(err)
+					i++
+				}
+				if i >= replicaCount {
+					break
+				}
+			}
+			time.Sleep(time.Duration(30) * time.Second)
+
+			// check if the number of replicas have properly converged
+			err = testAzAtt.WaitForReplicas(replicaCount, time.Duration(5)*time.Minute)
+			framework.ExpectNoError(err)
+		})
+
 	})
 
 	ginkgo.Context("AzVolume", func() {
