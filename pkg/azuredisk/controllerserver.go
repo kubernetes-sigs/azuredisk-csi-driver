@@ -228,6 +228,11 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			}
 			accessibleTopology = append(accessibleTopology, topology)
 		}
+		// make volume scheduled on all non-zone nodes
+		topology := &csi.Topology{
+			Segments: map[string]string{topologyKey: ""},
+		}
+		accessibleTopology = append(accessibleTopology, topology)
 	} else {
 		accessibleTopology = []*csi.Topology{
 			{

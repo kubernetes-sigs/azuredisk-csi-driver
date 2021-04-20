@@ -1,6 +1,6 @@
 # Topology(Availability Zone)
 
-Topology is a beta feature since Kubernetes v1.14, refer to [CSI Topology Feature](https://kubernetes-csi.github.io/docs/topology.html) for more details.
+Topology is a GA feature since Kubernetes v1.17, refer to [CSI Topology Feature](https://kubernetes-csi.github.io/docs/topology.html) for more details.
 
 ### Check node topology after driver installation
 
@@ -20,9 +20,18 @@ metadata:
   name: managed-csi
 provisioner: disk.csi.azure.com
 parameters:
-  skuname: StandardSSD_LRS  # available values: Standard_LRS, Premium_LRS, StandardSSD_LRS, UltraSSD_LRS
+  skuname: StandardSSD_LRS  # available values: Standard_LRS, Premium_LRS, StandardSSD_LRS, UltraSSD_LRS, Premium_ZRS, StandardSSD_ZRS
 reclaimPolicy: Delete
 volumeBindingMode: WaitForFirstConsumer  # make sure `volumeBindingMode` is set as `WaitForFirstConsumer`
+```
+
+#### ZRS support (preview)
+ - [Zone-redundant storage for managed disks](https://docs.microsoft.com/en-us/azure/virtual-machines/disks-redundancy#zone-redundant-storage-for-managed-disks-preview)
+ - Register ZRS on supported regions
+```console
+az feature register --name SsdZrsManagedDisks --namespace Microsoft.Compute
+az feature list -o table --query "[?contains(name, 'Microsoft.Compute/SsdZrsManagedDisks')].{Name:name,State:properties.state}"
+az provider register --namespace Microsoft.Compute
 ```
 
 ### Follow azure disk dynamic provisioning
