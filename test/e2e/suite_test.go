@@ -262,6 +262,9 @@ func skipIfOnAzureStackCloud() {
 }
 
 func getListOfSchedulers() []string {
+	if !isUsingCSIDriverV2 {
+		return []string{"default-scheduler"}
+	}
 	if isUsingOnlyDefaultScheduler {
 		return []string{"default-scheduler"}
 	}

@@ -64,20 +64,6 @@ func schedulerExtenderTests(isMultiZone bool) {
 		}
 		azDiskClientV1alpha1 = azDiskClient.DiskV1alpha1()
 		testDriver = driver.InitAzureDiskDriver()
-
-		// ensure AzDriverNode exists for each node
-		nodes := testsuites.ListNodeNames(cs)
-		for _, node := range nodes {
-			testsuites.NewTestAzDriverNode(azDiskClientV1alpha1.AzDriverNodes(namespace), node)
-		}
-	})
-
-	ginkgo.AfterEach(func() {
-		// ensure AzDriverNodes are deleted
-		nodes := testsuites.ListNodeNames(cs)
-		for _, node := range nodes {
-			testsuites.DeleteTestAzDriverNode(azDiskClientV1alpha1.AzDriverNodes(namespace), node)
-		}
 	})
 
 	ginkgo.It("Should schedule and start a pod with no persistent volume requests.", func() {
@@ -167,6 +153,8 @@ func schedulerExtenderTests(isMultiZone bool) {
 	})
 
 	ginkgo.It("Should schedule and start a pod with multiple persistent volume requests.", func() {
+		skipIfUsingInTreeVolumePlugin()
+		skipIfNotUsingCSIDriverV2()
 		volumes := []testsuites.VolumeDetails{}
 		t := dynamicProvisioningTestSuite{}
 

@@ -52,20 +52,6 @@ var _ = ginkgo.Describe("Controller", func() {
 		if err != nil {
 			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		}
-
-		// ensure AzDriverNodes for each node exist
-		nodes := testsuites.ListNodeNames(cs)
-		for _, node := range nodes {
-			testsuites.NewTestAzDriverNode(azDiskClient.DiskV1alpha1().AzDriverNodes("azure-disk-csi"), node)
-		}
-	})
-
-	ginkgo.AfterEach(func() {
-		// ensure AzDriverNodes are deleted
-		nodes := testsuites.ListNodeNames(cs)
-		for _, node := range nodes {
-			testsuites.DeleteTestAzDriverNode(azDiskClient.DiskV1alpha1().AzDriverNodes("azure-disk-csi"), node)
-		}
 	})
 
 	ginkgo.Context("AzDriverNode [single-az]", func() {
@@ -143,6 +129,8 @@ var _ = ginkgo.Describe("Controller", func() {
 
 			err = azDiskClient.DiskV1alpha1().AzDriverNodes(namespace).Delete(context.Background(), nodes[0], metav1.DeleteOptions{})
 			framework.ExpectNoError(err)
+			// re-create the node after test execution
+			defer testsuites.NewTestAzDriverNode(azDiskClient.DiskV1alpha1().AzDriverNodes(namespace), nodes[0])
 
 			err = azDiskClient.DiskV1alpha1().AzVolumeAttachments(namespace).Delete(context.Background(), att.Name, metav1.DeleteOptions{})
 			framework.ExpectNoError(err)
@@ -187,6 +175,8 @@ var _ = ginkgo.Describe("Controller", func() {
 			// fail primary attachment
 			err = azDiskClient.DiskV1alpha1().AzDriverNodes(namespace).Delete(context.Background(), primaryNode, metav1.DeleteOptions{})
 			framework.ExpectNoError(err)
+			// re-create the node after test execution
+			defer testsuites.NewTestAzDriverNode(azDiskClient.DiskV1alpha1().AzDriverNodes(namespace), nodes[0])
 			err = azDiskClient.DiskV1alpha1().AzVolumeAttachments(namespace).Delete(context.Background(), testsuites.GetAzVolumeAttachmentName(volName, primaryNode), metav1.DeleteOptions{})
 			framework.ExpectNoError(err)
 			err = testAzAtt.WaitForDelete(time.Duration(5) * time.Minute)
