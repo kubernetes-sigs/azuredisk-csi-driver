@@ -55,7 +55,7 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailover) Run(client clientset.In
 	}
 
 	volumeName := t.Volume.VolumeMount.NameGenerate + "1"
-	testAzAtt := SetupTestAzVolumeAttachment(t.AzDiskClientSet, t.AzNamespace, volumeName, nodes[0], nodes[1:], 0)
+	testAzAtt := SetupTestAzVolumeAttachment(t.AzDiskClientSet, t.AzNamespace, volumeName, nodes[0], 0)
 	defer testAzAtt.Cleanup()
 	_ = testAzAtt.Create()
 

@@ -54,7 +54,7 @@ func (t *AzDiskSchedulerExtenderPodSchedulingWithPVTest) Run(client clientset.In
 		ginkgo.Skip("need at least 1 nodes to verify the test case. Current node count is %d", len(nodeNames))
 	}
 
-	testAzAtt := SetupTestAzVolumeAttachment(t.AzDiskClientSet, t.AzNamespace, volumeName, nodeNames[0], nodeNames[1:], 0)
+	testAzAtt := SetupTestAzVolumeAttachment(t.AzDiskClientSet, t.AzNamespace, volumeName, nodeNames[0], 0)
 	defer testAzAtt.Cleanup()
 	_ = testAzAtt.Create()
 

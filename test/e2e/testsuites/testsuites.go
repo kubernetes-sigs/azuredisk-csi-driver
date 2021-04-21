@@ -955,7 +955,6 @@ type TestAzVolumeAttachment struct {
 	namespace            string
 	underlyingVolume     string
 	primaryNodeName      string
-	replicaNodeNames     []string
 	maxMountReplicaCount int
 }
 
@@ -1032,13 +1031,12 @@ func NewTestAzVolume(azVolume v1alpha1ClientSet.AzVolumeInterface, underlyingVol
 	return newAzVolume
 }
 
-func SetupTestAzVolumeAttachment(azclient v1alpha1ClientSet.DiskV1alpha1Interface, namespace, underlyingVolume, primaryNodeName string, replicaNodeNames []string, maxMountReplicaCount int) *TestAzVolumeAttachment {
+func SetupTestAzVolumeAttachment(azclient v1alpha1ClientSet.DiskV1alpha1Interface, namespace, underlyingVolume, primaryNodeName string, maxMountReplicaCount int) *TestAzVolumeAttachment {
 	return &TestAzVolumeAttachment{
 		azclient:             azclient,
 		namespace:            namespace,
 		underlyingVolume:     underlyingVolume,
 		primaryNodeName:      primaryNodeName,
-		replicaNodeNames:     replicaNodeNames,
 		maxMountReplicaCount: maxMountReplicaCount,
 	}
 }
@@ -1063,23 +1061,16 @@ func (t *TestAzVolumeAttachment) Cleanup() {
 		framework.ExpectNoError(err)
 	}
 
-	// Delete Primary AzVolumeAttachments
+	// Delete All AzVolumeAttachments for t.underlyingVolume
 	err = t.azclient.AzVolumeAttachments(t.namespace).Delete(context.Background(), GetAzVolumeAttachmentName(t.underlyingVolume, t.primaryNodeName), metav1.DeleteOptions{})
 	if !apierrs.IsNotFound(err) {
 		framework.ExpectNoError(err)
 	}
 
-	// Delete Replica AzVolumeAttachments
-	for _, replicaNodeName := range t.replicaNodeNames {
-		err = t.azclient.AzVolumeAttachments(t.namespace).Delete(context.Background(), GetAzVolumeAttachmentName(t.underlyingVolume, replicaNodeName), metav1.DeleteOptions{})
-		if !apierrs.IsNotFound(err) {
-			framework.ExpectNoError(err)
-		}
-	}
-
 	nodes, err := t.azclient.AzDriverNodes(t.namespace).List(context.Background(), metav1.ListOptions{})
-	framework.ExpectNoError(err)
-	// Delete Replica AzVolumeAttachments that possibly got attached to any other az nodes in the cluster
+	if !apierrs.IsNotFound(err) {
+		framework.ExpectNoError(err)
+	}
 	for _, node := range nodes.Items {
 		err = t.azclient.AzVolumeAttachments(t.namespace).Delete(context.Background(), GetAzVolumeAttachmentName(t.underlyingVolume, node.Name), metav1.DeleteOptions{})
 		if !apierrs.IsNotFound(err) {
@@ -1151,8 +1142,8 @@ func (t *TestAzVolumeAttachment) WaitForLabels(timeout time.Duration) error {
 }
 
 // Wait for the azVolumeAttachment object update
-func (t *TestAzVolumeAttachment) WaitForDelete(timeout time.Duration) error {
-	attName := GetAzVolumeAttachmentName(t.underlyingVolume, t.primaryNodeName)
+func (t *TestAzVolumeAttachment) WaitForDelete(nodeName string, timeout time.Duration) error {
+	attName := GetAzVolumeAttachmentName(t.underlyingVolume, nodeName)
 	conditionFunc := func() (bool, error) {
 		_, err := t.azclient.AzVolumeAttachments(t.namespace).Get(context.TODO(), attName, metav1.GetOptions{})
 		if errors.IsNotFound(err) {

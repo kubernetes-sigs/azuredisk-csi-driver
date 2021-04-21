@@ -17,13 +17,14 @@ limitations under the License.
 package testsuites
 
 import (
+	"time"
+
 	"github.com/onsi/ginkgo"
 	v1 "k8s.io/api/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
 	v1alpha1ClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1alpha1"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
-	"time"
 )
 
 // AzDiskSchedulerExtenderSimplePodSchedulingTest will provision required PV(s), PVC(s) and Pod(s)
@@ -45,7 +46,7 @@ func (t *AzDiskSchedulerExtenderSimplePodSchedulingTest) Run(client clientset.In
 		ginkgo.Skip("need at least 1 nodes to verify the test case. Current node count is %d", len(nodeNames))
 	}
 
-	testAzAtt := SetupTestAzVolumeAttachment(t.AzDiskClientSet, t.AzNamespace, "test-vol", nodeNames[0], nodeNames[1:], 0)
+	testAzAtt := SetupTestAzVolumeAttachment(t.AzDiskClientSet, t.AzNamespace, "test-vol", nodeNames[0], 0)
 	defer testAzAtt.Cleanup()
 	_ = testAzAtt.Create()
 

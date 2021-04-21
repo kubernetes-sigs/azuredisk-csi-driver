@@ -54,7 +54,7 @@ func (t *AzDiskSchedulerExtenderPodSchedulingWithMultiplePVTest) Run(client clie
 	// create instances of azDriverNode and azVolumeAttachment attached to node0
 	for i, volume := range t.Pod.Volumes {
 		volumeName := fmt.Sprintf("%s%d", volume.VolumeMount.NameGenerate, i+1)
-		testAzAtt := SetupTestAzVolumeAttachment(t.AzDiskClientSet, t.AzNamespace, volumeName, nodeNames[0], nodeNames[1:], 0)
+		testAzAtt := SetupTestAzVolumeAttachment(t.AzDiskClientSet, t.AzNamespace, volumeName, nodeNames[0], 0)
 		defer testAzAtt.Cleanup()
 		_ = testAzAtt.Create()
 
