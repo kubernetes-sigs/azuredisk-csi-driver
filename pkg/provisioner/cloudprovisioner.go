@@ -333,7 +333,7 @@ func (c *CloudProvisioner) PublishVolume(
 		return nil, err
 	}
 
-	lun, err := c.cloud.GetDiskLun(diskName, volumeID, nodeName)
+	lun, vmState, err := c.cloud.GetDiskLun(diskName, volumeID, nodeName)
 	if err == cloudprovider.InstanceNotFound {
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("failed to get azure instance id for node %q (%v)", nodeName, err))
 	}
@@ -341,6 +341,12 @@ func (c *CloudProvisioner) PublishVolume(
 	klog.V(2).Infof("GetDiskLun returned: %v. Initiating attaching volume %q to node %q.", lun, volumeID, nodeName)
 
 	if err == nil {
+		if vmState != nil && strings.ToLower(*vmState) == "failed" {
+			klog.Warningf("VM(%q) is in failed state, update VM first", nodeName)
+			if err := c.cloud.UpdateVM(nodeName); err != nil {
+				return nil, fmt.Errorf("update instance %q failed with %v", nodeName, err)
+			}
+		}
 		// Volume is already attached to node.
 		klog.V(2).Infof("Attach operation is successful. volume %q is already attached to node %q at lun %d.", volumeID, nodeName, lun)
 	} else {

@@ -272,7 +272,8 @@ func TestNodeGetVolumeStats(t *testing.T) {
 }
 
 func TestNodeStageVolume(t *testing.T) {
-	d, _ := NewFakeDriver(t)
+	d, err := NewFakeDriver(t)
+	assert.NoError(t, err)
 
 	stdVolCap := &csi.VolumeCapability_Mount{
 		Mount: &csi.VolumeCapability_MountVolume{
@@ -360,8 +361,6 @@ func TestNodeStageVolume(t *testing.T) {
 	// Setup
 	_ = makeDir(sourceTest)
 	_ = makeDir(targetTest)
-	d, err := NewFakeDriver(t)
-	assert.NoError(t, err)
 
 	for _, test := range tests {
 		if test.setup != nil {

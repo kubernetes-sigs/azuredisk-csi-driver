@@ -216,7 +216,35 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		return nil, err
 	}
 
-	selectedAvailabilityZone := pickAvailabilityZone(req.GetAccessibilityRequirements(), d.cloud.Location)
+	requirement := req.GetAccessibilityRequirements()
+	diskZone := pickAvailabilityZone(requirement, d.cloud.Location)
+	accessibleTopology := []*csi.Topology{}
+	if skuName == compute.StandardSSDZRS || skuName == compute.PremiumZRS {
+		klog.V(2).Infof("diskZone(%s) is reset as empty since disk(%s) is ZRS(%s)", diskZone, diskName, skuName)
+		diskZone = ""
+		if len(requirement.GetRequisite()) > 0 {
+			accessibleTopology = append(accessibleTopology, requirement.GetRequisite()...)
+		} else {
+			// make volume scheduled on all 3 availability zones
+			for i := 1; i <= 3; i++ {
+				topology := &csi.Topology{
+					Segments: map[string]string{topologyKey: fmt.Sprintf("%s-%d", d.cloud.Location, i)},
+				}
+				accessibleTopology = append(accessibleTopology, topology)
+			}
+			// make volume scheduled on all non-zone nodes
+			topology := &csi.Topology{
+				Segments: map[string]string{topologyKey: ""},
+			}
+			accessibleTopology = append(accessibleTopology, topology)
+		}
+	} else {
+		accessibleTopology = []*csi.Topology{
+			{
+				Segments: map[string]string{topologyKey: diskZone},
+			},
+		}
+	}
 
 	if ok, err := d.checkDiskCapacity(ctx, resourceGroup, diskName, requestGiB); !ok {
 		return nil, err
@@ -233,8 +261,8 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		mc.ObserveOperationWithResult(isOperationSucceeded)
 	}()
 
-	klog.V(2).Infof("begin to create azure disk(%s) account type(%s) rg(%s) location(%s) size(%d) selectedAvailabilityZone(%v) maxShares(%d)",
-		diskName, skuName, resourceGroup, location, requestGiB, selectedAvailabilityZone, maxShares)
+	klog.V(2).Infof("begin to create azure disk(%s) account type(%s) rg(%s) location(%s) size(%d) diskZone(%v) maxShares(%d)",
+		diskName, skuName, resourceGroup, location, requestGiB, diskZone, maxShares)
 
 	tags := make(map[string]string)
 	contentSource := &csi.VolumeContentSource{}
@@ -286,7 +314,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		PVCName:             "",
 		SizeGB:              requestGiB,
 		Tags:                tags,
-		AvailabilityZone:    selectedAvailabilityZone,
+		AvailabilityZone:    diskZone,
 		DiskIOPSReadWrite:   diskIopsReadWrite,
 		DiskMBpsReadWrite:   diskMbpsReadWrite,
 		SourceResourceID:    sourceID,
@@ -308,15 +336,11 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
-			VolumeId:      diskURI,
-			CapacityBytes: capacityBytes,
-			VolumeContext: parameters,
-			ContentSource: contentSource,
-			AccessibleTopology: []*csi.Topology{
-				{
-					Segments: map[string]string{topologyKey: selectedAvailabilityZone},
-				},
-			},
+			VolumeId:           diskURI,
+			CapacityBytes:      capacityBytes,
+			VolumeContext:      parameters,
+			ContentSource:      contentSource,
+			AccessibleTopology: accessibleTopology,
 		},
 	}, nil
 }
@@ -402,12 +426,18 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 
 	klog.V(2).Infof("GetDiskLun returned: %v. Initiating attaching volume %q to node %q.", err, diskURI, nodeName)
 
-	lun, err := d.cloud.GetDiskLun(diskName, diskURI, nodeName)
+	lun, vmState, err := d.cloud.GetDiskLun(diskName, diskURI, nodeName)
 	if err == cloudprovider.InstanceNotFound {
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("failed to get azure instance id for node %q (%v)", nodeName, err))
 	}
 
 	if err == nil {
+		if vmState != nil && strings.ToLower(*vmState) == "failed" {
+			klog.Warningf("VM(%q) is in failed state, update VM first", nodeName)
+			if err := d.cloud.UpdateVM(nodeName); err != nil {
+				return nil, fmt.Errorf("update instance %q failed with %v", nodeName, err)
+			}
+		}
 		// Volume is already attached to node.
 		klog.V(2).Infof("Attach operation is successful. volume %q is already attached to node %q at lun %d.", diskURI, nodeName, lun)
 	} else {
