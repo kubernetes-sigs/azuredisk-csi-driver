@@ -88,6 +88,8 @@ const (
 	LogicalSectorSizeField   = "logicalsectorsize"
 	FSTypeField              = "fstype"
 	KindField                = "kind"
+
+	WellKnownTopologyKey = "topology.kubernetes.io/zone"
 )
 
 var (

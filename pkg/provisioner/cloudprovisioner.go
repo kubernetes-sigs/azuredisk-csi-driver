@@ -183,6 +183,33 @@ func (c *CloudProvisioner) CreateVolume(
 	}
 
 	selectedAvailabilityZone := pickAvailabilityZone(accessibilityRequirements, c.GetCloud().Location)
+	accessibleTopology := []*csi.Topology{}
+	if skuName == compute.StandardSSDZRS || skuName == compute.PremiumZRS {
+		klog.V(2).Infof("diskZone(%s) is reset as empty since disk(%s) is ZRS(%s)", selectedAvailabilityZone, diskName, skuName)
+		selectedAvailabilityZone = ""
+		if len(accessibilityRequirements.GetRequisite()) > 0 {
+			accessibleTopology = append(accessibleTopology, accessibilityRequirements.GetRequisite()...)
+		} else {
+			// make volume scheduled on all 3 availability zones
+			for i := 1; i <= 3; i++ {
+				topology := &csi.Topology{
+					Segments: map[string]string{topologyKeyStr: fmt.Sprintf("%s-%d", c.cloud.Location, i)},
+				}
+				accessibleTopology = append(accessibleTopology, topology)
+			}
+			// make volume scheduled on all non-zone nodes
+			topology := &csi.Topology{
+				Segments: map[string]string{topologyKeyStr: ""},
+			}
+			accessibleTopology = append(accessibleTopology, topology)
+		}
+	} else {
+		accessibleTopology = []*csi.Topology{
+			{
+				Segments: map[string]string{topologyKeyStr: selectedAvailabilityZone},
+			},
+		}
+	}
 
 	volSizeBytes := int64(capacityRange.GetRequiredBytes())
 	requestGiB := int(volumehelper.RoundUpGiB(volSizeBytes))
@@ -275,15 +302,11 @@ func (c *CloudProvisioner) CreateVolume(
 
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
-			VolumeId:      diskURI,
-			CapacityBytes: capacityRange.GetRequiredBytes(),
-			VolumeContext: parameters,
-			ContentSource: contentSource,
-			AccessibleTopology: []*csi.Topology{
-				{
-					Segments: map[string]string{topologyKeyStr: selectedAvailabilityZone},
-				},
-			},
+			VolumeId:           diskURI,
+			CapacityBytes:      capacityRange.GetRequiredBytes(),
+			VolumeContext:      parameters,
+			ContentSource:      contentSource,
+			AccessibleTopology: accessibleTopology,
 		},
 	}, nil
 }
@@ -981,14 +1004,26 @@ func pickAvailabilityZone(requirement *csi.TopologyRequirement, region string) s
 		return ""
 	}
 	for _, topology := range requirement.GetPreferred() {
-		if zone, exists := topology.GetSegments()[topologyKeyStr]; exists {
+		topologySegments := topology.GetSegments()
+		if zone, exists := topologySegments[azureutils.WellKnownTopologyKey]; exists {
+			if azureutils.IsValidAvailabilityZone(zone, region) {
+				return zone
+			}
+		}
+		if zone, exists := topologySegments[topologyKeyStr]; exists {
 			if azureutils.IsValidAvailabilityZone(zone, region) {
 				return zone
 			}
 		}
 	}
 	for _, topology := range requirement.GetRequisite() {
-		if zone, exists := topology.GetSegments()[topologyKeyStr]; exists {
+		topologySegments := topology.GetSegments()
+		if zone, exists := topologySegments[azureutils.WellKnownTopologyKey]; exists {
+			if azureutils.IsValidAvailabilityZone(zone, region) {
+				return zone
+			}
+		}
+		if zone, exists := topologySegments[topologyKeyStr]; exists {
 			if azureutils.IsValidAvailabilityZone(zone, region) {
 				return zone
 			}
