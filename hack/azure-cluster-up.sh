@@ -240,7 +240,8 @@ if [[ -z ${AZURE_RESOURCE_GROUP:-} ]]; then
   AZURE_RESOURCE_GROUP=${AZURE_CLUSTER_DNS_NAME}-rg
 fi
 
-AZURE_RESOURCE_GROUP_URI="/subscriptions/${AZURE_SUBSCRIPTION_ID}/resourceGroups/${AZURE_RESOURCE_GROUP}"
+AZURE_SUBSCRIPTION_URI="/subscriptions/${AZURE_SUBSCRIPTION_ID}"
+AZURE_RESOURCE_GROUP_URI="${AZURE_SUBSCRIPTION_URI}/resourceGroups/${AZURE_RESOURCE_GROUP}"
 
 if [[ -z ${OUTPUT_DIR:-} ]]; then
   OUTPUT_DIR="$GIT_ROOT/_output/$AZURE_CLUSTER_DNS_NAME"
@@ -304,8 +305,8 @@ if [[ -z ${AZURE_CLIENT_ID:-} ]]; then
     echo "Creating service principal $AZURE_CLIENT_NAME..."
     AZURE_CLIENT_INFO=($(az ad sp create-for-rbac \
       --name="http://$AZURE_CLIENT_NAME" \
-      --role="Owner" \
-      --scopes="$AZURE_RESOURCE_GROUP_URI" \
+      --role="Contributor" \
+      --scopes="$AZURE_SUBSCRIPTION_URI" \
       --output=tsv \
       --query="[tenant,appId,password]"))
     AZURE_TENANT_ID=${AZURE_CLIENT_INFO[0]}
@@ -352,6 +353,7 @@ cat "$AZURE_CLUSTER_TEMPLATE_FILE" | \
 
 AKS_ENGINE_OVERRIDES=(\
   --set orchestratorProfile.orchestratorRelease="$AZURE_K8S_VERSION" \
+  --set orchestratorProfile.kubernetesConfig.useManagedIdentity=false \
   --set masterProfile.dnsPrefix="$AZURE_CLUSTER_DNS_NAME" \
   --set linuxProfile.ssh.publicKeys[0].keyData="$AZURE_ADMIN_PUBLIC_KEY" \
   --set servicePrincipalProfile.clientID="$AZURE_CLIENT_ID" \
