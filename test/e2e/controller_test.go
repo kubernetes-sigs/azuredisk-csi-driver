@@ -262,9 +262,12 @@ var _ = ginkgo.Describe("Controller", func() {
 			skipIfUsingInTreeVolumePlugin()
 			skipIfNotUsingCSIDriverV2()
 			volName := "test-volume"
-			replicaCount := 3
-			testAzAtt := testsuites.SetupTestAzVolumeAttachment(azDiskClient.DiskV1alpha1(), namespace, volName, "test-node", []string{"test-node-2", "test-node-3", "test-node-4",
-				"test-node-5"}, replicaCount)
+			nodes := testsuites.ListNodeNames(cs)
+			if len(nodes) < 3 {
+				ginkgo.Skip("need at least 3 nodes to verify the test case. Current node count is %d", len(nodes))
+			}
+			replicaCount := 2
+			testAzAtt := testsuites.SetupTestAzVolumeAttachment(azDiskClient.DiskV1alpha1(), namespace, volName, "test-node", replicaCount)
 			testAzAtt.Create()
 			defer testAzAtt.Cleanup()
 			err := testAzAtt.WaitForReplicas(replicaCount, time.Duration(5)*time.Minute)
