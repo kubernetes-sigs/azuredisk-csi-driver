@@ -33,7 +33,7 @@ if [[ "$#" -gt 0 ]] && [[ -n "$1" ]]; then
   nodeid="$1"
 fi
 
- _output/azurediskpluginv2 --endpoint "$endpoint" --nodeid "$nodeid" -v=5 &
+ _output/azurediskplugin --endpoint "$endpoint" --nodeid "$nodeid" -v=5 &
 
 echo 'Begin to run sanity test...'
 readonly CSI_SANITY_BIN='csi-sanity'
