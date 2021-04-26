@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM k8s.gcr.io/build-image/debian-base-amd64:v2.1.3
+ARG ARCH
+
+FROM k8s.gcr.io/build-image/debian-base-${ARCH}:v2.1.3
 RUN clean-install util-linux e2fsprogs mount ca-certificates udev xfsprogs
 
 LABEL maintainers="andyzhangx"

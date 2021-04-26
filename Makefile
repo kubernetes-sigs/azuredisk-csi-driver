@@ -57,7 +57,7 @@ export GOPATH GOBIN GO111MODULE DOCKER_CLI_EXPERIMENTAL
 
 # Generate all combination of all OS, ARCH, and OSVERSIONS for iteration
 ALL_OS = linux windows
-ALL_ARCH.linux = amd64
+ALL_ARCH.linux = amd64 arm64
 ALL_OS_ARCH.linux = $(foreach arch, ${ALL_ARCH.linux}, linux-$(arch))
 ALL_ARCH.windows = amd64
 ALL_OSVERSIONS.windows := 1809 1903 1909 2004
@@ -166,7 +166,7 @@ container: azuredisk
 .PHONY: container-linux
 container-linux:
 	docker buildx build --pull --output=type=$(OUTPUT_TYPE) --platform="linux/$(ARCH)" --build-arg PLUGIN_NAME=${PLUGIN_NAME} \
-		-t $(IMAGE_TAG)-linux-$(ARCH) -f ./pkg/azurediskplugin/Dockerfile .
+		-t $(IMAGE_TAG)-linux-$(ARCH) --build-arg ARCH=$(ARCH) -f ./pkg/azurediskplugin/Dockerfile .
 
 .PHONY: container-windows
 container-windows:
@@ -180,7 +180,12 @@ container-all: azuredisk azuredisk-windows
 ifeq ($(CLOUD), AzureStackCloud)
 	docker run --privileged --name buildx_buildkit_container-builder0 -d --mount type=bind,src=/etc/ssl/certs,dst=/etc/ssl/certs moby/buildkit:latest || true
 endif
-	$(MAKE) container-linux
+	# enable qemu for arm64 build
+	docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+	for arch in $(ALL_ARCH.linux); do \
+		ARCH=$${arch} $(MAKE) azurefile; \
+		ARCH=$${arch} $(MAKE) container-linux; \
+	done
 	for osversion in $(ALL_OSVERSIONS.windows); do \
 		OSVERSION=$${osversion} $(MAKE) container-windows; \
 	done
