@@ -181,7 +181,9 @@ ifeq ($(CLOUD), AzureStackCloud)
 	docker run --privileged --name buildx_buildkit_container-builder0 -d --mount type=bind,src=/etc/ssl/certs,dst=/etc/ssl/certs moby/buildkit:latest || true
 endif
 	# enable qemu for arm64 build
-	docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+	# https://github.com/docker/buildx/issues/464#issuecomment-741507760
+	docker run --privileged --rm tonistiigi/binfmt --uninstall qemu-aarch64
+	docker run --rm --privileged tonistiigi/binfmt --install all
 	for arch in $(ALL_ARCH.linux); do \
 		ARCH=$${arch} $(MAKE) azurefile; \
 		ARCH=$${arch} $(MAKE) container-linux; \
