@@ -27,7 +27,7 @@ volumeBindingMode: WaitForFirstConsumer  # make sure `volumeBindingMode` is set 
 
 #### ZRS support (preview)
 
-ZRS(`Premium_ZRS`, `StandardSSD_ZRS`) disk could be sheduled on all zone and non-zone agent nodes, without the restriction that disk volume should be co-located in the same zone as a given node.
+ZRS(`Premium_ZRS`, `StandardSSD_ZRS`) disk could be scheduled on all zone and non-zone agent nodes, without the restriction that disk volume should be co-located in the same zone as a given node.
 
  - Register ZRS disk feature
 ```console
