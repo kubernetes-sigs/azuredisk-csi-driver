@@ -16,6 +16,8 @@
 
 # Ensure that we have the desired version of the ginkgo test runner.
 
+set -xe
+
 PROJECT_ROOT=$(git rev-parse --show-toplevel)
 
 install_ginkgo () {
@@ -35,13 +37,17 @@ setup_e2e_binaries() {
     make create-metrics-svc
 }
 
+print_logs() {
+    echo "print out driver logs ..."
+    bash ./test/utils/azuredisk_log.sh
+}
+
+
 install_ginkgo
 setup_e2e_binaries
+trap print_logs EXIT
 
 ginkgo -p --progress --v -focus='External.Storage.*disk.csi.azure.com' \
        -skip='\[Disruptive\]|\[Slow\]|\[Feature:VolumeSnapshotDataSource\]' kubernetes/test/bin/e2e.test -- \
        -storage.testdriver=$PROJECT_ROOT/test/external-e2e/manifest/testdriver.yaml \
        --kubeconfig=$KUBECONFIG
-
-echo "print out driver logs ..."
-bash ./test/utils/azuredisk_log.sh
