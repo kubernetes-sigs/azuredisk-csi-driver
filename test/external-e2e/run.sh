@@ -32,6 +32,7 @@ setup_e2e_binaries() {
 
     # install the azuredisk-csi-driver driver
     make e2e-bootstrap
+    make create-metrics-svc
 }
 
 install_ginkgo
