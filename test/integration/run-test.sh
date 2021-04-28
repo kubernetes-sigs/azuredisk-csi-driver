@@ -41,11 +41,16 @@ fi
 
 echo "Begin to run integration test on $cloud..."
 
+ARCH=$(uname -p)
+if [[ "${ARCH}" == "x86_64" || ${ARCH} == "unknown" ]]; then
+  ARCH="amd64"
+fi
+
 # Run CSI driver as a background service
 if [[ $# -lt 4 || "$4" != "v2" ]]; then
-  _output/azurediskplugin --endpoint "$endpoint" --nodeid "$node" -v=5 &
+  _output/${ARCH}/azurediskplugin --endpoint "$endpoint" --nodeid "$node" -v=5 &
 else
-  _output/azurediskpluginv2 --endpoint "$endpoint" --nodeid "$node" -v=5 --temp-use-driver-v2 &
+  _output/${ARCH}/azurediskpluginv2 --endpoint "$endpoint" --nodeid "$node" -v=5 --temp-use-driver-v2 &
 fi
 trap cleanup EXIT
 
