@@ -61,7 +61,7 @@ export GOPATH GOBIN GO111MODULE DOCKER_CLI_EXPERIMENTAL
 
 # Generate all combination of all OS, ARCH, and OSVERSIONS for iteration
 ALL_OS = linux windows
-ALL_ARCH.linux = amd64
+ALL_ARCH.linux = amd64 arm64
 ALL_OS_ARCH.linux = $(foreach arch, ${ALL_ARCH.linux}, linux-$(arch))
 ALL_ARCH.windows = amd64
 ALL_OSVERSIONS.windows := 1809 1903 1909 2004
@@ -110,14 +110,6 @@ integration-test:
 .PHONY: integration-test-v2
 integration-test-v2: container-v2
 	go test -v -timeout=30m ./test/integration --temp-use-driver-v2 --image-tag ${IMAGE_TAG}
-
-.PHONY: e2e-test
-e2e-test:
-	go test -v -timeout=0 ./test/e2e ${GINKGO_FLAGS}
-
-.PHONY: e2e-test-v2
-e2e-test-v2:
-	BUILD_V2=1 go test -v -timeout=0 -tags azurediskv2 ./test/e2e --temp-use-driver-v2
 
 .PHONY: e2e-bootstrap
 e2e-bootstrap: install-helm
@@ -191,7 +183,7 @@ container-v2: azuredisk-v2
 .PHONY: container-linux
 container-linux:
 	docker buildx build --pull --output=type=$(OUTPUT_TYPE) --platform="linux/$(ARCH)" --build-arg PLUGIN_NAME=${PLUGIN_NAME} \
-		-t $(IMAGE_TAG)-linux-$(ARCH) -f ./pkg/azurediskplugin/Dockerfile .
+		-t $(IMAGE_TAG)-linux-$(ARCH) --build-arg ARCH=$(ARCH) -f ./pkg/azurediskplugin/Dockerfile .
 
 .PHONY: container-windows
 container-windows:
@@ -231,7 +223,14 @@ container-all: azuredisk azuredisk-windows
 ifeq ($(CLOUD), AzureStackCloud)
 	docker run --privileged --name buildx_buildkit_container-builder0 -d --mount type=bind,src=/etc/ssl/certs,dst=/etc/ssl/certs moby/buildkit:latest || true
 endif
-	$(MAKE) container-linux
+	# enable qemu for arm64 build
+	# https://github.com/docker/buildx/issues/464#issuecomment-741507760
+	docker run --privileged --rm tonistiigi/binfmt --uninstall qemu-aarch64
+	docker run --rm --privileged tonistiigi/binfmt --install all
+	for arch in $(ALL_ARCH.linux); do \
+		ARCH=$${arch} $(MAKE) azurefile; \
+		ARCH=$${arch} $(MAKE) container-linux; \
+	done
 	for osversion in $(ALL_OSVERSIONS.windows); do \
 		OSVERSION=$${osversion} $(MAKE) container-windows; \
 	done
@@ -307,3 +306,14 @@ create-metrics-svc:
 delete-metrics-svc:
 	kubectl delete -f deploy/example/metrics/csi-azuredisk-controller-svc.yaml --ignore-not-found
 
+.PHONY: e2e-test
+e2e-test:
+	if [ ! -z "$(EXTERNAL_E2E_TEST)" ]; then \
+		bash ./test/external-e2e/run.sh;\
+	else \
+		go test -v -timeout=0 ./test/e2e ${GINKGO_FLAGS};\
+	fi
+
+.PHONY: e2e-test-v2
+e2e-test-v2:
+	BUILD_V2=1 go test -v -timeout=0 -tags azurediskv2 ./test/e2e --temp-use-driver-v2

@@ -6,3 +6,12 @@ DriverInfo:
     Name: disk.csi.azure.com
     Capabilities:
         persistence: true
+        multipods: true
+        exec: true
+        block: true
+        fsGroup: true
+        topology: true
+        controllerExpansion: false
+        nodeExpansion: false
+        volumeLimits: true
+        snapshotDataSource: false
