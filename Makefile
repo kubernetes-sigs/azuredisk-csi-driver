@@ -107,10 +107,6 @@ integration-test: azuredisk
 integration-test-v2: azuredisk-v2
 	go test -v -timeout=30m ./test/integration --temp-use-driver-v2
 
-.PHONY: e2e-test
-e2e-test:
-	go test -v -timeout=0 ./test/e2e ${GINKGO_FLAGS}
-
 .PHONY: e2e-bootstrap
 e2e-bootstrap: install-helm
 	docker pull $(IMAGE_TAG) || make container-all push-manifest
@@ -234,3 +230,10 @@ create-metrics-svc:
 delete-metrics-svc:
 	kubectl delete -f deploy/example/metrics/csi-azuredisk-controller-svc.yaml --ignore-not-found
 
+.PHONY: e2e-test
+e2e-test:
+	if [ ! -z "$(EXTERNAL_E2E_TEST)" ]; then \
+		bash ./test/external-e2e/run.sh;\
+	else \
+		go test -v -timeout=0 ./test/e2e ${GINKGO_FLAGS};\
+	fi
