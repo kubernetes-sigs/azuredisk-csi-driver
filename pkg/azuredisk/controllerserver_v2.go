@@ -29,28 +29,9 @@ import (
 	"google.golang.org/grpc/status"
 	"k8s.io/klog/v2"
 
-	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	"sigs.k8s.io/cloud-provider-azure/pkg/metrics"
-	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
-
-// TODO: Make CloudProvisioner independent of csi types.
-type CloudProvisioner interface {
-	CreateVolume(ctx context.Context, volumeName string, capacityRange *csi.CapacityRange, volumeCapabilities []*csi.VolumeCapability, parameters map[string]string, secrets map[string]string, volumeContentSource *csi.VolumeContentSource, accessibilityRequirements *csi.TopologyRequirement) (*csi.CreateVolumeResponse, error)
-	DeleteVolume(ctx context.Context, volumeID string, secrets map[string]string) error
-	ListVolumes(ctx context.Context, maxEntries int32, startingToken string) (*csi.ListVolumesResponse, error)
-	PublishVolume(ctx context.Context, volumeID string, nodeID string, volumeCapability *csi.VolumeCapability, readOnly bool, secrets map[string]string, volumeContext map[string]string) (*csi.ControllerPublishVolumeResponse, error)
-	UnpublishVolume(ctx context.Context, volumeID string, nodeID string, secrets map[string]string) (*csi.ControllerUnpublishVolumeResponse, error)
-	ExpandVolume(ctx context.Context, volumeID string, capacityRange *csi.CapacityRange, secrets map[string]string) (*csi.ControllerExpandVolumeResponse, error)
-	CreateSnapshot(ctx context.Context, sourceVolumeID string, snapshotName string, secrets map[string]string, parameters map[string]string) (*csi.CreateSnapshotResponse, error)
-	ListSnapshots(ctx context.Context, maxEntries int32, startingToken string, sourceVolumeID string, snapshotID string, secrets map[string]string) (*csi.ListSnapshotsResponse, error)
-	DeleteSnapshot(ctx context.Context, snapshotID string, secrets map[string]string) (*csi.DeleteSnapshotResponse, error)
-	CheckDiskExists(ctx context.Context, diskURI string) error
-	GetDiskClientSet() azDiskClientSet.Interface
-	GetDiskClientSetAddr() *azDiskClientSet.Interface
-	GetCloud() *azure.Cloud
-	GetMetricPrefix() string
-}
 
 // CreateVolume provisions an azure disk
 func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
@@ -63,8 +44,8 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 	if len(name) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "CreateVolume Name must be provided")
 	}
-	volCaps := req.GetVolumeCapabilities()
-	if len(volCaps) == 0 {
+	volumeCaps := req.GetVolumeCapabilities()
+	if len(volumeCaps) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "CreateVolume Volume capabilities must be provided")
 	}
 
@@ -88,7 +69,56 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 		mc.ObserveOperationWithResult(isOperationSucceeded)
 	}()
 
-	response, err := d.cloudProvisioner.CreateVolume(ctx, name, req.GetCapacityRange(), volCaps, parameters, req.GetSecrets(), req.GetVolumeContentSource(), req.GetAccessibilityRequirements())
+	capRange := &v1alpha1.CapacityRange{
+		RequiredBytes: req.GetCapacityRange().GetRequiredBytes(),
+		LimitBytes:    req.GetCapacityRange().GetLimitBytes(),
+	}
+
+	volCaps := []v1alpha1.VolumeCapability{}
+
+	for _, v := range volumeCaps {
+		volCap := generateV1Alpha1VolumeCapability(v)
+		volCaps = append(volCaps, volCap)
+	}
+
+	contentVolSource := &v1alpha1.ContentVolumeSource{}
+	reqVolumeContentSource := req.GetVolumeContentSource()
+	if reqVolumeContentSource.GetSnapshot() != nil {
+		contentVolSource.ContentSource = v1alpha1.ContentVolumeSourceTypeSnapshot
+		contentVolSource.ContentSourceID = reqVolumeContentSource.GetSnapshot().GetSnapshotId()
+	} else if reqVolumeContentSource.GetVolume() != nil {
+		contentVolSource.ContentSource = v1alpha1.ContentVolumeSourceTypeVolume
+		contentVolSource.ContentSourceID = reqVolumeContentSource.GetVolume().GetVolumeId()
+	} else {
+		// error
+		return nil, status.Error(codes.InvalidArgument, "VolumeContentSource type is neither Snapshot nor Volume")
+	}
+
+	preferredTopology, requisiteTopology := []v1alpha1.Topology{}, []v1alpha1.Topology{}
+	accessibilityReqs := req.GetAccessibilityRequirements()
+
+	for _, requisite := range accessibilityReqs.GetRequisite() {
+		reqTopology := v1alpha1.Topology{
+			Segments: requisite.GetSegments(),
+		}
+
+		requisiteTopology = append(requisiteTopology, reqTopology)
+	}
+
+	for _, preferred := range accessibilityReqs.GetPreferred() {
+		prefTopology := v1alpha1.Topology{
+			Segments: preferred.GetSegments(),
+		}
+
+		preferredTopology = append(preferredTopology, prefTopology)
+	}
+
+	accessibilityRequirement := &v1alpha1.TopologyRequirement{
+		Requisite: requisiteTopology,
+		Preferred: preferredTopology,
+	}
+
+	response, err := d.crdProvisioner.CreateVolume(ctx, name, capRange, volCaps, parameters, req.GetSecrets(), contentVolSource, accessibilityRequirement)
 
 	if err != nil {
 		return nil, err
@@ -100,7 +130,42 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 
 	isOperationSucceeded = true
 
-	return response, nil
+	responseVolumeContentSource := &csi.VolumeContentSource{}
+
+	if response.ContentSource != nil {
+		if response.ContentSource.ContentSource == v1alpha1.ContentVolumeSourceTypeSnapshot {
+			responseVolumeContentSource.Type = &csi.VolumeContentSource_Snapshot{
+				Snapshot: &csi.VolumeContentSource_SnapshotSource{
+					SnapshotId: response.ContentSource.ContentSourceID,
+				},
+			}
+		} else {
+			responseVolumeContentSource.Type = &csi.VolumeContentSource_Volume{
+				Volume: &csi.VolumeContentSource_VolumeSource{
+					VolumeId: response.ContentSource.ContentSourceID,
+				},
+			}
+		}
+	}
+
+	responseAccessibleTopology := []*csi.Topology{}
+	for _, t := range response.AccessibleTopology {
+		topology := &csi.Topology{
+			Segments: t.Segments,
+		}
+
+		responseAccessibleTopology = append(responseAccessibleTopology, topology)
+	}
+
+	return &csi.CreateVolumeResponse{
+		Volume: &csi.Volume{
+			VolumeId:           response.VolumeID,
+			CapacityBytes:      response.CapacityBytes,
+			VolumeContext:      response.VolumeContext,
+			ContentSource:      responseVolumeContentSource,
+			AccessibleTopology: responseAccessibleTopology,
+		},
+	}, nil
 }
 
 // DeleteVolume delete an azure disk
@@ -126,7 +191,7 @@ func (d *DriverV2) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeReques
 	}()
 
 	klog.V(2).Infof("deleting disk(%s)", volumeID)
-	err := d.cloudProvisioner.DeleteVolume(ctx, volumeID, req.GetSecrets())
+	err := d.crdProvisioner.DeleteVolume(ctx, volumeID, req.GetSecrets())
 	klog.V(2).Infof("delete disk(%s) returned with %v", volumeID, err)
 	isOperationSucceeded = (err == nil)
 	return &csi.DeleteVolumeResponse{}, err
@@ -165,7 +230,9 @@ func (d *DriverV2) ControllerPublishVolume(ctx context.Context, req *csi.Control
 		mc.ObserveOperationWithResult(isOperationSucceeded)
 	}()
 
-	response, err := d.cloudProvisioner.PublishVolume(ctx, diskURI, nodeID, volCap, req.GetReadonly(), req.GetSecrets(), req.GetVolumeContext())
+	volumeCapability := generateV1Alpha1VolumeCapability(volCap)
+
+	response, err := d.crdProvisioner.PublishVolume(ctx, diskURI, nodeID, &volumeCapability, req.GetReadonly(), req.GetSecrets(), req.GetVolumeContext())
 
 	if err != nil {
 		return nil, err
@@ -176,7 +243,9 @@ func (d *DriverV2) ControllerPublishVolume(ctx context.Context, req *csi.Control
 	}
 
 	isOperationSucceeded = true
-	return response, nil
+	return &csi.ControllerPublishVolumeResponse{
+		PublishContext: response,
+	}, nil
 }
 
 // ControllerUnpublishVolume detach an azure disk from a required node
@@ -197,19 +266,15 @@ func (d *DriverV2) ControllerUnpublishVolume(ctx context.Context, req *csi.Contr
 		mc.ObserveOperationWithResult(isOperationSucceeded)
 	}()
 
-	response, err := d.cloudProvisioner.UnpublishVolume(ctx, diskURI, nodeID, req.GetSecrets())
+	err := d.crdProvisioner.UnpublishVolume(ctx, diskURI, nodeID, req.GetSecrets())
 
 	if err != nil {
 		return nil, err
 	}
 
-	if response == nil {
-		return nil, status.Error(codes.Unknown, "Error unpublishing volume")
-	}
-
 	isOperationSucceeded = true
 
-	return response, nil
+	return &csi.ControllerUnpublishVolumeResponse{}, nil
 }
 
 // ValidateVolumeCapabilities return the capabilities of the volume
@@ -296,7 +361,12 @@ func (d *DriverV2) ControllerExpandVolume(ctx context.Context, req *csi.Controll
 		mc.ObserveOperationWithResult(isOperationSucceeded)
 	}()
 
-	response, err := d.cloudProvisioner.ExpandVolume(ctx, diskURI, req.GetCapacityRange(), req.GetSecrets())
+	capacityRange := &v1alpha1.CapacityRange{
+		RequiredBytes: req.GetCapacityRange().GetRequiredBytes(),
+		LimitBytes:    req.GetCapacityRange().GetLimitBytes(),
+	}
+
+	response, err := d.crdProvisioner.ExpandVolume(ctx, diskURI, capacityRange, req.GetSecrets())
 
 	if err != nil {
 		return nil, err
@@ -307,7 +377,10 @@ func (d *DriverV2) ControllerExpandVolume(ctx context.Context, req *csi.Controll
 	}
 
 	isOperationSucceeded = true
-	return response, nil
+	return &csi.ControllerExpandVolumeResponse{
+		CapacityBytes:         response.CapacityBytes,
+		NodeExpansionRequired: response.NodeExpansionRequired,
+	}, nil
 }
 
 // CreateSnapshot create a snapshot
@@ -371,4 +444,20 @@ func (d *DriverV2) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRe
 // ListSnapshots list all snapshots
 func (d *DriverV2) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
 	return d.cloudProvisioner.ListSnapshots(ctx, req.GetMaxEntries(), req.GetStartingToken(), req.GetSourceVolumeId(), req.GetSnapshotId(), req.GetSecrets())
+}
+
+func generateV1Alpha1VolumeCapability(volumeCapability *csi.VolumeCapability) v1alpha1.VolumeCapability {
+	volCap := v1alpha1.VolumeCapability{
+		AccessMode: v1alpha1.VolumeCapabilityAccessMode(volumeCapability.GetAccessMode().GetMode()),
+	}
+
+	if volumeCapability.GetMount() != nil {
+		volCap.AccessDetails.AccessType = v1alpha1.VolumeCapabilityAccessMount
+		volCap.AccessDetails.FsType = volumeCapability.GetMount().GetFsType()
+		volCap.AccessDetails.MountFlags = volumeCapability.GetMount().GetMountFlags()
+	} else if volumeCapability.GetBlock() != nil {
+		volCap.AccessDetails.AccessType = v1alpha1.VolumeCapabilityAccessBlock
+	}
+
+	return volCap
 }

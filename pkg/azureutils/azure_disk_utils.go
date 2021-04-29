@@ -89,6 +89,11 @@ const (
 	FSTypeField              = "fstype"
 	KindField                = "kind"
 
+	// CRDs specific constants
+	PartitionLabel    = "azdrivernodes.disk.csi.azure.com/partition"
+	AzVolumeFinalizer = "disk.csi.azure.com/azvolume-finalizer"
+
+	// ZRS specific constants
 	WellKnownTopologyKey = "topology.kubernetes.io/zone"
 )
 
@@ -273,6 +278,10 @@ func IsARMResourceID(resourceID string) bool {
 // isAvailabilityZone returns true if the zone is in format of <region>-<zone-id>.
 func IsValidAvailabilityZone(zone, region string) bool {
 	return strings.HasPrefix(zone, fmt.Sprintf("%s-", region))
+}
+
+func GetAzVolumeAttachmentName(volumeName string, nodeName string) string {
+	return fmt.Sprintf("%s-%s-attachment", volumeName, nodeName)
 }
 
 func checkDiskName(diskName string) bool {

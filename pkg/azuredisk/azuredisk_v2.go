@@ -29,6 +29,7 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 
 	"k8s.io/apimachinery/pkg/api/errors"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	apiRuntime "k8s.io/apimachinery/pkg/runtime"
 	clientset "k8s.io/client-go/kubernetes"
@@ -40,6 +41,7 @@ import (
 
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	azuredisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
+	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller"
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/provisioner"
@@ -55,7 +57,6 @@ var heartbeatFrequencyInSec = flag.Int("heartbeat-frequency-in-sec", 30, "Freque
 var controllerLeaseDurationInSec = flag.Int("lease-duration-in-sec", 15, "The duration that non-leader candidates will wait to force acquire leadership")
 var controllerLeaseRenewDeadlineInSec = flag.Int("lease-renew-deadline-in-sec", 10, "The duration that the acting controlplane will retry refreshing leadership before giving up.")
 var controllerLeaseRetryPeriodInSec = flag.Int("lease-retry-period-in-sec", 2, "The duration the LeaderElector clients should wait between tries of actions.")
-var partitionLabel = "azdrivernodes.disk.csi.azure.com/partition"
 var isTestRun = flag.Bool("is-test-run", false, "Boolean flag to indicate whether this instance is being used for sanity or integration tests")
 
 // OutputCallDepth is the stack depth where we can find the origin of this call
@@ -69,7 +70,8 @@ const DefaultPrefixLength = 30
 type DriverV2 struct {
 	DriverCore
 	nodeProvisioner                   NodeProvisioner
-	cloudProvisioner                  CloudProvisioner
+	cloudProvisioner                  controller.CloudProvisioner
+	crdProvisioner                    CrdProvisioner
 	volumeLocks                       *volumehelper.VolumeLocks
 	objectNamespace                   string
 	nodePartition                     string
@@ -80,6 +82,21 @@ type DriverV2 struct {
 	controllerLeaseRetryPeriodInSec   int
 	kubeConfig                        *rest.Config
 	kubeClient                        clientset.Interface
+}
+
+type CrdProvisioner interface {
+	RegisterDriverNode(ctx context.Context, node *v1.Node, nodePartition string, nodeID string) error
+	CreateVolume(ctx context.Context, volumeName string, capacityRange *azuredisk.CapacityRange, 
+		volumeCapabilities []azuredisk.VolumeCapability, parameters map[string]string,
+		secrets map[string]string, volumeContentSource *azuredisk.ContentVolumeSource,
+		accessibilityReq *azuredisk.TopologyRequirement) (*azuredisk.AzVolumeStatusParams, error)
+	DeleteVolume(ctx context.Context, volumeID string, secrets map[string]string) error
+	PublishVolume(ctx context.Context, volumeID string, nodeID string, volumeCapability *azuredisk.VolumeCapability,
+		readOnly bool, secrets map[string]string, volumeContext map[string]string) (map[string]string, error)
+	UnpublishVolume(ctx context.Context, volumeID string, nodeID string, secrets map[string]string) error
+	ExpandVolume(ctx context.Context, volumeID string, capacityRange *azuredisk.CapacityRange, secrets map[string]string) (*azuredisk.AzVolumeStatusParams, error)
+	GetDiskClientSet() azDiskClientSet.Interface
+	GetDiskClientSetAddr() *azDiskClientSet.Interface
 }
 
 // NewDriver creates a Driver or DriverV2 object depending on the --temp-use-driver-v2 flag.
@@ -139,7 +156,12 @@ func (d *DriverV2) Run(endpoint, kubeConfigPath string, testBool bool) {
 		klog.Fatalf("failed to get kubeclient with kubeconfig (%s), error: %v. Exiting application...", kubeConfigPath, err)
 	}
 
-	d.cloudProvisioner, err = provisioner.NewCloudProvisioner(d.kubeConfig, d.kubeClient, topologyKey)
+	d.crdProvisioner, err = provisioner.NewCrdProvisioner(d.kubeConfig, d.objectNamespace)
+	if err != nil {
+		klog.Fatalf("Failed to get crd provisioner. Error: %v", err)
+	}
+
+	d.cloudProvisioner, err = provisioner.NewCloudProvisioner(d.kubeClient, topologyKey)
 	if err != nil {
 		klog.Fatalf("Failed to get controller provisioner. Error: %v", err)
 	}
@@ -252,20 +274,20 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 	// Setup a new controller to clean-up AzDriverNodes
 	// objects for the nodes which get deleted
 	klog.V(2).Info("Initializing AzDriverNode controller")
-	err = controller.InitializeAzDriverNodeController(mgr, d.cloudProvisioner.GetDiskClientSetAddr(), d.objectNamespace)
+	err = controller.InitializeAzDriverNodeController(mgr, d.crdProvisioner.GetDiskClientSetAddr(), d.objectNamespace)
 	if err != nil {
 		klog.Errorf("Failed to initialize AzDriverNodeController. Error: %v. Exiting application...", err)
 		os.Exit(1)
 	}
 	klog.V(2).Info("Initializing AzVolumeAttachment controller")
-	err = controller.NewAzVolumeAttachmentController(ctx, mgr, d.cloudProvisioner.GetDiskClientSetAddr(), d.objectNamespace)
+	err = controller.NewAzVolumeAttachmentController(ctx, mgr, d.crdProvisioner.GetDiskClientSetAddr(), d.objectNamespace, d.cloudProvisioner)
 	if err != nil {
 		klog.Errorf("Failed to initialize AzVolumeAttachment. Error: %v. Exiting application...", err)
 		os.Exit(1)
 	}
 
 	klog.V(2).Info("Initializing AzVolume controller")
-	err = controller.NewAzVolumeController(mgr, d.cloudProvisioner.GetDiskClientSetAddr(), d.objectNamespace)
+	err = controller.NewAzVolumeController(mgr, d.crdProvisioner.GetDiskClientSetAddr(), d.objectNamespace, d.cloudProvisioner)
 	if err != nil {
 		klog.Errorf("Failed to initialize AzVolume. Error: %v. Exiting application...", err)
 		os.Exit(1)
@@ -285,81 +307,28 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 
 // RegisterAzDriverNodeOrDie creates custom resource for this driverNode
 func (d *DriverV2) RegisterAzDriverNodeOrDie(ctx context.Context) {
-	err := d.RegisterAzDriverNode(ctx)
-	if err != nil {
-		klog.Fatalf("Failed to register AzDriverNode, error: %v. Exiting process...", err)
-	}
-}
-
-// RegisterAzDriverNode creates custom resource for this driverNode
-func (d *DriverV2) RegisterAzDriverNode(ctx context.Context) error {
-
+	var node *v1.Node
+	var err error
 	if d.NodeID == "" {
 		klog.Errorf("NodeID is nil, can not initialize AzDriverNode")
-		return errors.NewBadRequest("NodeID is nil, can not register the plugin.")
 	}
+
 	if !*isTestRun {
 		klog.V(2).Infof("Registering AzDriverNode for node (%s)", d.NodeID)
 		node, err := d.kubeClient.CoreV1().Nodes().Get(ctx, d.NodeID, metav1.GetOptions{})
 		if err != nil || node == nil {
 			klog.Errorf("Failed to get node (%s), error: %v", node, err)
-			return errors.NewBadRequest("Failed to get node or node not found, can not register the plugin.")
+			err = errors.NewBadRequest("Failed to get node or node not found, can not register the plugin.")
 		}
 	}
 
-	azN := d.cloudProvisioner.GetDiskClientSet().DiskV1alpha1().AzDriverNodes(d.objectNamespace)
-	azDriverNodeFromCache, err := azN.Get(ctx, d.NodeID, metav1.GetOptions{})
-	azDriverNodeUpdate := &azuredisk.AzDriverNode{}
-
-	if err == nil && azDriverNodeFromCache != nil {
-		// We found that the object already exists.
-		klog.V(2).Infof("AzDriverNode exists, will update status. azDriverNodeFromCache=(%v)", azDriverNodeFromCache)
-		azDriverNodeUpdate = azDriverNodeFromCache.DeepCopy()
-	} else if errors.IsNotFound(err) {
-		// If AzDriverNode object is not there create it
-		klog.Errorf("AzDriverNode is not registered yet, will create. error: %v", err)
-		azDriverNodeNew := &azuredisk.AzDriverNode{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: d.NodeID,
-			},
-			Spec: azuredisk.AzDriverNodeSpec{
-				NodeName: d.NodeID,
-			},
-		}
-		if azDriverNodeNew.Labels == nil {
-			azDriverNodeNew.Labels = make(map[string]string)
-		}
-		azDriverNodeNew.Labels[partitionLabel] = d.nodePartition
-		klog.V(2).Infof("Creating AzDriverNode with details (%v)", azDriverNodeNew)
-		azDriverNodeCreated, err := azN.Create(ctx, azDriverNodeNew, metav1.CreateOptions{})
-		if err != nil || azDriverNodeCreated == nil {
-			klog.Errorf("Failed to create/update azdrivernode resource for node (%s), error: %v", d.NodeID, err)
-			return err
-		}
-		azDriverNodeUpdate = azDriverNodeCreated.DeepCopy()
-	} else {
-		klog.Errorf("Failed to get AzDriverNode for node (%s), error: %v", d.NodeID, err)
-		return errors.NewBadRequest("Failed to get AzDriverNode or node not found, can not register the plugin.")
+	if err == nil {
+		err = d.crdProvisioner.RegisterDriverNode(ctx, node, d.nodePartition, d.NodeID)
 	}
 
-	// Do an initial update to AzDriverNode status
-	if azDriverNodeUpdate.Status == nil {
-		azDriverNodeUpdate.Status = &azuredisk.AzDriverNodeStatus{}
-	}
-	readyForAllocation := false
-	timestamp := time.Now().UnixNano()
-	statusMessage := "Driver node initializing."
-	azDriverNodeUpdate.Status.ReadyForVolumeAllocation = &readyForAllocation
-	azDriverNodeUpdate.Status.LastHeartbeatTime = &timestamp
-	azDriverNodeUpdate.Status.StatusMessage = &statusMessage
-	klog.V(2).Infof("Updating status for AzDriverNode Status=(%v)", azDriverNodeUpdate)
-	_, err = azN.UpdateStatus(ctx, azDriverNodeUpdate, metav1.UpdateOptions{})
 	if err != nil {
-		klog.Errorf("Failed to update status of azdrivernode resource for node (%s), error: %v", d.NodeID, err)
-		return err
+		klog.Fatalf("Failed to register AzDriverNode, error: %v. Exiting process...", err)
 	}
-
-	return nil
 }
 
 // RunAzDriverNodeHeartbeatLoop runs a loop to send heartbeat from the node
@@ -367,7 +336,7 @@ func (d *DriverV2) RunAzDriverNodeHeartbeatLoop(ctx context.Context) {
 
 	var err error
 	var cachedAzDriverNode *azuredisk.AzDriverNode
-	azN := d.cloudProvisioner.GetDiskClientSet().DiskV1alpha1().AzDriverNodes(d.objectNamespace)
+	azN := d.crdProvisioner.GetDiskClientSet().DiskV1alpha1().AzDriverNodes(d.objectNamespace)
 	heartbeatFrequency := time.Duration(d.heartbeatFrequencyInSec) * time.Second
 	klog.V(1).Info("Starting heartbeat loop with frequency (%v)", heartbeatFrequency)
 	for {

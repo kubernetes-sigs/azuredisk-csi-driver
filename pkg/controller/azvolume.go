@@ -25,6 +25,7 @@ import (
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azVolumeClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -34,31 +35,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
-const (
-	/* commenting out until CreateVolume is done , for the golint
-	cachingModeField        = "cachingmode"
-	storageAccountTypeField = "storageaccounttype"
-	storageAccountField     = "storageaccount"
-	skuNameField            = "skuname"
-	locationField           = "location"
-	resourceGroupField      = "resourcegroup"
-	diskIOPSReadWriteField  = "diskiopsreadwrite"
-	diskMBPSReadWriteField  = "diskmbpsreadwrite"
-	diskNameField           = "diskname"
-	desIDField              = "diskencryptionsetid"
-	tagsField               = "tags"
-	maxSharesField          = "maxshares"
-	incrementalField        = "incremental"
-	logicalSectorSizeField  = "logicalsectorsize"
-	*/
-	AzVolumeFinalizer = "disk.csi.azure.com/azvolume-finalizer"
-)
-
 //Struct for the reconciler
 type reconcileAzVolume struct {
-	client         client.Client
-	azVolumeClient azVolumeClientSet.Interface
-	namespace      string
+	client           client.Client
+	azVolumeClient   azVolumeClientSet.Interface
+	namespace        string
+	cloudProvisioner CloudProvisioner
 }
 
 // Implement reconcile.Reconciler so the controller can reconcile objects
@@ -82,23 +64,50 @@ func (r *reconcileAzVolume) Reconcile(ctx context.Context, request reconcile.Req
 
 	//azVolume creation
 	if azVolume.Status == nil {
-		if err := r.TriggerCreate(ctx, azVolume.Name); err != nil {
+		if err := r.triggerCreate(ctx, azVolume.Name); err != nil {
 			klog.Errorf("failed to create AzVolume (%s): %v", azVolume.Name, err)
 			return reconcile.Result{Requeue: true}, err
 		}
-
 	} else if now := metav1.Now(); azVolume.ObjectMeta.DeletionTimestamp.Before(&now) {
+		// azVolume deletion
 		klog.Infof("Beginning deletion of AzVolume object")
-		if err := r.TriggerDelete(ctx, azVolume.Name); err != nil {
+		if err := r.triggerDelete(ctx, azVolume.Name); err != nil {
 			//If delete failed, requeue request
+			return reconcile.Result{Requeue: true}, err
+		}
+	} else {
+		// azVolume update
+		if err := r.triggerUpdate(ctx, azVolume.Name); err != nil {
+			klog.Errorf("failed to update AzVolume (%s): %v", azVolume.Name, err)
 			return reconcile.Result{Requeue: true}, err
 		}
 	}
 
-	return reconcile.Result{Requeue: true}, nil
+	return reconcile.Result{}, nil
 }
 
-func (r *reconcileAzVolume) TriggerCreate(ctx context.Context, volumeName string) error {
+func (r *reconcileAzVolume) triggerUpdate(ctx context.Context, volumeName string) error {
+	var azVolume v1alpha1.AzVolume
+	if err := r.client.Get(ctx, types.NamespacedName{Namespace: r.namespace, Name: volumeName}, &azVolume); err != nil {
+		klog.Errorf("failed to get AzVolume (%s): %v", volumeName, err)
+		return err
+	}
+
+	response, err := r.expandVolume(ctx, &azVolume)
+	if err != nil {
+		klog.Errorf("failed to update volume %s: %v", azVolume.Spec.UnderlyingVolume, err)
+		return err
+	}
+
+	// Update status of the object
+	if err := r.UpdateStatus(ctx, azVolume.Name, false, response); err != nil {
+		return err
+	}
+	klog.Infof("successfully updated volume (%s)and update status of AzVolume (%s)", azVolume.Spec.UnderlyingVolume, azVolume.Name)
+	return nil
+}
+
+func (r *reconcileAzVolume) triggerCreate(ctx context.Context, volumeName string) error {
 	var azVolume v1alpha1.AzVolume
 	if err := r.client.Get(ctx, types.NamespacedName{Namespace: r.namespace, Name: volumeName}, &azVolume); err != nil {
 		klog.Errorf("failed to get AzVolume (%s): %v", volumeName, err)
@@ -110,41 +119,41 @@ func (r *reconcileAzVolume) TriggerCreate(ctx context.Context, volumeName string
 		return err
 	}
 
-	if err := r.CreateAzVolume(ctx, &azVolume); err != nil {
+	response, err := r.createVolume(ctx, &azVolume)
+	if err != nil {
 		klog.Errorf("failed to create volume %s: %v", azVolume.Spec.UnderlyingVolume, err)
 		return err
 	}
 
 	// Update status of the object
-	if err := r.UpdateStatus(ctx, azVolume.Name, false); err != nil {
+	if err := r.UpdateStatus(ctx, azVolume.Name, false, response); err != nil {
 		return err
 	}
 	klog.Infof("successfully created volume (%s)and update status of AzVolume (%s)", azVolume.Spec.UnderlyingVolume, azVolume.Name)
 	return nil
-
 }
 
-func (r *reconcileAzVolume) TriggerDelete(ctx context.Context, volumeName string) error {
+func (r *reconcileAzVolume) triggerDelete(ctx context.Context, volumeName string) error {
 	var azVolume v1alpha1.AzVolume
 	if err := r.client.Get(ctx, types.NamespacedName{Namespace: r.namespace, Name: volumeName}, &azVolume); err != nil {
 		klog.Errorf("failed to get AzVolume (%s): %v", volumeName, err)
 		return err
 	}
 
-	if err := r.DeleteAzVolume(ctx, &azVolume); err != nil {
+	if err := r.deleteVolume(ctx, &azVolume); err != nil {
 		klog.Errorf("failed to delete volume %s: %v", azVolume.Spec.UnderlyingVolume, err)
 		return err
 	}
 
 	// Update status of the object
-	if err := r.UpdateStatus(ctx, azVolume.Name, true); err != nil {
+	if err := r.UpdateStatus(ctx, azVolume.Name, true, nil); err != nil {
 		return err
 	}
 	klog.Infof("successfully deleted volume (%s)and update status of AzVolume (%s)", azVolume.Spec.UnderlyingVolume, azVolume.Name)
 	return nil
 }
 
-func (r *reconcileAzVolume) UpdateStatus(ctx context.Context, volumeName string, isDeleted bool) error {
+func (r *reconcileAzVolume) UpdateStatus(ctx context.Context, volumeName string, isDeleted bool, status *v1alpha1.AzVolumeStatusParams) error {
 	var azVolume v1alpha1.AzVolume
 	if err := r.client.Get(ctx, types.NamespacedName{Namespace: r.namespace, Name: volumeName}, &azVolume); err != nil {
 		klog.Errorf("failed to get AzVolume (%s): %v", volumeName, err)
@@ -153,7 +162,7 @@ func (r *reconcileAzVolume) UpdateStatus(ctx context.Context, volumeName string,
 
 	if isDeleted {
 		if err := r.DeleteFinalizer(ctx, volumeName); err != nil {
-			klog.Errorf("failed to delete finalizer %s for azVolume %s: %v", AzVolumeFinalizer, azVolume.Name, err)
+			klog.Errorf("failed to delete finalizer %s for azVolume %s: %v", azureutils.AzVolumeFinalizer, azVolume.Name, err)
 			return err
 		}
 		return nil
@@ -161,8 +170,21 @@ func (r *reconcileAzVolume) UpdateStatus(ctx context.Context, volumeName string,
 
 	updated := azVolume.DeepCopy()
 	if updated.Status == nil {
-		updated.Status = &v1alpha1.AzVolumeStatus{}
+		if status != nil {
+			updated.Status = &v1alpha1.AzVolumeStatus{
+				ResponseObject: status,
+			}
+		}
+	} else {
+		// Updating status after update operation
+		if status != nil {
+			updated.Status.ResponseObject.CapacityBytes = status.CapacityBytes
+			updated.Status.ResponseObject.NodeExpansionRequired = status.NodeExpansionRequired
+		} else {
+			updated.Status.ResponseObject = nil
+		}
 	}
+
 	if err := r.client.Status().Update(ctx, updated, &client.UpdateOptions{}); err != nil {
 		klog.Errorf("failed to update status of AzVolume (%s): %v", volumeName, err)
 		return err
@@ -171,134 +193,25 @@ func (r *reconcileAzVolume) UpdateStatus(ctx context.Context, volumeName string,
 	return nil
 }
 
-func (r *reconcileAzVolume) CreateAzVolume(ctx context.Context, azVolume *v1alpha1.AzVolume) error {
-	/* //TODO uncomment this function when able to access cloud provider */
-	/*
-		name := azVolume.Name
-
-		requiredBytes := azVolume.Spec.CapacityRange.RequiredBytes
-		volSizeBytes := int64(requiredBytes)
-
-		var (
-			location                string
-			storageAccountType      string
-			//cachingMode             v1.AzureDataDiskCachingMode
-			err                     error
-			resourceGroup           string
-			diskIopsReadWrite       string
-			diskMbpsReadWrite       string
-			logicalSectorSize       int
-			diskName                string
-			diskEncryptionSetID     string
-			customTags              string
-			writeAcceleratorEnabled string
-			maxShares               int
-		)
-
-		parameters := azVolume.Spec.Parameters
-
-		if parameters == nil {
-			parameters = make(map[string]string)
-		}
-		for k, v := range parameters {
-			switch strings.ToLower(k) {
-			case skuNameField:
-				storageAccountType = v
-			case locationField:
-				location = v
-			case storageAccountTypeField:
-				storageAccountType = v
-			case cachingModeField:
-				//cachingMode = v1.AzureDataDiskCachingMode(v)
-			case resourceGroupField:
-				resourceGroup = v
-			case diskIOPSReadWriteField:
-				diskIopsReadWrite = v
-			case diskMBPSReadWriteField:
-				diskMbpsReadWrite = v
-			case logicalSectorSizeField:
-				logicalSectorSize, err = strconv.Atoi(v)
-				if err != nil {
-					return errors.NewBadRequest(fmt.Sprintf("parse %s failed with error: %v", v, err)) //status.Error(codes.InvalidArgument, fmt.Sprintf("parse %s failed with error: %v", v, err))
-				}
-			case diskNameField:
-				diskName = v
-			case desIDField:
-				diskEncryptionSetID = v
-			case tagsField:
-				customTags = v
-			case azure.WriteAcceleratorEnabled:
-				writeAcceleratorEnabled = v
-			case maxSharesField:
-				maxShares, err = strconv.Atoi(v)
-				if err != nil {
-					return errors.NewBadRequest(fmt.Sprintf("parse %s failed with error: %v", v, err))
-				}
-				if maxShares < 1 {
-					return errors.NewBadRequest(fmt.Sprintf("parse %s returned with invalid value: %d", v, maxShares))
-				}
-			default:
-				//don't return error here since there are some parameters(e.g. fsType) used in disk mount process
-				//return nil, fmt.Errorf("AzureDisk - invalid option %s in storage class", k)
-			}
-		}
-		//TODO: validate parameters
-
-		volumeOptions := &azure.ManagedDiskOptions{
-			DiskName:            diskName,
-			StorageAccountType:  skuName,
-			ResourceGroup:       resourceGroup,
-			PVCName:             "",
-			SizeGB:              requestGiB,
-			Tags:                tags,
-			AvailabilityZone:    selectedAvailabilityZone,
-			DiskIOPSReadWrite:   diskIopsReadWrite,
-			DiskMBpsReadWrite:   diskMbpsReadWrite,
-			SourceResourceID:    sourceID,
-			SourceType:          sourceType,
-			DiskEncryptionSetID: diskEncryptionSetID,
-			MaxShares:           int32(maxShares),
-			LogicalSectorSize:   int32(logicalSectorSize),
-		}
-
-		//diskURI, err := azure.CreateManagedDisk(volumeOptions)
-
-		/*if err != nil {
-			if strings.Contains(err.Error(), NotFound) {
-				return nil, status.Error(codes.NotFound, err.Error())
-			} // */
-
-	return nil
+func (r *reconcileAzVolume) expandVolume(ctx context.Context, azVolume *v1alpha1.AzVolume) (*v1alpha1.AzVolumeStatusParams, error) {
+	return r.cloudProvisioner.ExpandVolume(ctx, azVolume.Spec.UnderlyingVolume, azVolume.Spec.CapacityRange, azVolume.Spec.Secrets)
 }
 
-func (r *reconcileAzVolume) DeleteAzVolume(ctx context.Context, azVolume *v1alpha1.AzVolume) error {
+func (r *reconcileAzVolume) createVolume(ctx context.Context, azVolume *v1alpha1.AzVolume) (*v1alpha1.AzVolumeStatusParams, error) {
+	return r.cloudProvisioner.CreateVolume(ctx, azVolume.Spec.UnderlyingVolume, azVolume.Spec.CapacityRange, azVolume.Spec.VolumeCapability, azVolume.Spec.Parameters, azVolume.Spec.Secrets, azVolume.Spec.ContentVolumeSource, azVolume.Spec.AccessibilityRequirements)
+}
 
-	volumeID := azVolume.Spec.UnderlyingVolume
-	if len(volumeID) == 0 {
-		return errors.NewBadRequest("Volume ID Missing")
-	}
-
-	diskURI := volumeID
-	//TODO: isValidDiskURI
-
-	//isOperationSucceeded := false
-
-	klog.V(2).Infof("deleting azure disk(%s)", diskURI)
-	/* uncomment when deletion operation available
-	//TODO err:= azDeleteManagedDisk(diskURI)
-	//klog.V(2).Infof("delete azure disk(%s) returned with %v", diskURI, err)
-	//isOperationSucceeded = (err == nil)
+func (r *reconcileAzVolume) deleteVolume(ctx context.Context, azVolume *v1alpha1.AzVolume) error {
+	err := r.cloudProvisioner.DeleteVolume(ctx, azVolume.Spec.UnderlyingVolume, azVolume.Spec.Secrets)
 	return err
-	*/
-	return nil
 }
 
-func NewAzVolumeController(mgr manager.Manager, azVolumeClient *azVolumeClientSet.Interface, namespace string) error {
+func NewAzVolumeController(mgr manager.Manager, azVolumeClient *azVolumeClientSet.Interface, namespace string, cloudProvisioner CloudProvisioner) error {
 	logger := mgr.GetLogger().WithValues("controller", "azvolume")
 
 	c, err := controller.New("azvolume-controller", mgr, controller.Options{
 		MaxConcurrentReconciles: 10,
-		Reconciler:              &reconcileAzVolume{client: mgr.GetClient(), azVolumeClient: *azVolumeClient, namespace: namespace},
+		Reconciler:              &reconcileAzVolume{client: mgr.GetClient(), azVolumeClient: *azVolumeClient, namespace: namespace, cloudProvisioner: cloudProvisioner},
 		Log:                     logger,
 	})
 
@@ -338,7 +251,7 @@ func (r *reconcileAzVolume) InitializeMeta(ctx context.Context, volumeName strin
 		return err
 	}
 
-	if volumeFinalizerExists(azVolume, AzVolumeFinalizer) {
+	if volumeFinalizerExists(azVolume, azureutils.AzVolumeFinalizer) {
 		return nil
 	}
 
@@ -349,16 +262,16 @@ func (r *reconcileAzVolume) InitializeMeta(ctx context.Context, volumeName strin
 		patched.ObjectMeta.Finalizers = []string{}
 	}
 
-	if !volumeFinalizerExists(azVolume, AzVolumeFinalizer) {
-		patched.ObjectMeta.Finalizers = append(patched.ObjectMeta.Finalizers, AzVolumeFinalizer)
+	if !volumeFinalizerExists(azVolume, azureutils.AzVolumeFinalizer) {
+		patched.ObjectMeta.Finalizers = append(patched.ObjectMeta.Finalizers, azureutils.AzVolumeFinalizer)
 	}
 
 	if err := r.client.Patch(ctx, patched, client.MergeFrom(&azVolume)); err != nil {
-		klog.Errorf("failed to initialize finalizer (%s) for AzVolume (%s): %v", AzVolumeFinalizer, patched.Name, err)
+		klog.Errorf("failed to initialize finalizer (%s) for AzVolume (%s): %v", azureutils.AzVolumeFinalizer, patched.Name, err)
 		return err
 	}
 
-	klog.Infof("successfully added finalizer (%s) to AzVolume (%s)", AzVolumeFinalizer, volumeName)
+	klog.Infof("successfully added finalizer (%s) to AzVolume (%s)", azureutils.AzVolumeFinalizer, volumeName)
 	return nil
 }
 
@@ -375,16 +288,16 @@ func (r *reconcileAzVolume) DeleteFinalizer(ctx context.Context, volumeName stri
 
 	finalizers := []string{}
 	for _, finalizer := range updated.ObjectMeta.Finalizers {
-		if finalizer == AzVolumeFinalizer {
+		if finalizer == azureutils.AzVolumeFinalizer {
 			continue
 		}
 		finalizers = append(finalizers, finalizer)
 	}
 	updated.ObjectMeta.Finalizers = finalizers
 	if err := r.client.Update(ctx, updated, &client.UpdateOptions{}); err != nil {
-		klog.Errorf("failed to delete finalizer (%s) for AzVolume (%s): %v", AzVolumeFinalizer, updated.Name, err)
+		klog.Errorf("failed to delete finalizer (%s) for AzVolume (%s): %v", azureutils.AzVolumeFinalizer, updated.Name, err)
 		return err
 	}
-	klog.Infof("successfully deleted finalizer (%s) from AzVolume (%s)", AzVolumeFinalizer, volumeName)
+	klog.Infof("successfully deleted finalizer (%s) from AzVolume (%s)", azureutils.AzVolumeFinalizer, volumeName)
 	return nil
 }

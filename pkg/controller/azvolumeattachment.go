@@ -30,6 +30,7 @@ import (
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azVolumeClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -52,9 +53,9 @@ type reconcileAzVolumeAttachment struct {
 	client         client.Client
 	azVolumeClient azVolumeClientSet.Interface
 	namespace      string
-	/*
-		controllerProvisioner	ControllerProvisioner
-	*/
+
+	cloudProvisioner CloudProvisioner
+
 	// syncMutex is used to prevent other syncVolume calls to be performed during SyncAll routine
 	syncMutex sync.RWMutex
 	// muteMap maps volume name to mutex, it is used to guarantee that only one sync call is made at a time per volume
@@ -109,14 +110,14 @@ func (r *reconcileAzVolumeAttachment) HandleAzVolumeAttachmentEvent(ctx context.
 	if azVolumeAttachment.Status == nil {
 		// attach the volume to the specified node
 		klog.Infof("Initiating Attach operation for AzVolumeAttachment (%s)", azVolumeAttachment.Name)
-		if err := r.TriggerAttach(ctx, azVolumeAttachment.Name); err != nil {
+		if err := r.triggerAttach(ctx, azVolumeAttachment.Name); err != nil {
 			klog.Errorf("failed to attach AzVolumeAttachment (%s): %v", azVolumeAttachment.Name, err)
 			return reconcile.Result{Requeue: true}, err
 		}
 		// if the azVolumeAttachment's deletion timestamp has been set, and is before the current time, detach the disk from the node and delete the finalizer
 	} else if now := metav1.Now(); azVolumeAttachment.ObjectMeta.DeletionTimestamp.Before(&now) {
 		klog.Infof("Initiating Detach operation for AzVolumeAttachment (%s)", azVolumeAttachment.Name)
-		if err := r.TriggerDetach(ctx, azVolumeAttachment.Name); err != nil {
+		if err := r.triggerDetach(ctx, azVolumeAttachment.Name); err != nil {
 			// if detach failed, requeue the request
 			klog.Errorf("failed to delete AzVolumeAttachment (%s): %v", azVolumeAttachment.Name, err)
 			return reconcile.Result{Requeue: true}, err
@@ -124,11 +125,12 @@ func (r *reconcileAzVolumeAttachment) HandleAzVolumeAttachmentEvent(ctx context.
 		// if the role in status and spec are different, it is an update event where replica should be turned into a primary
 	} else if azVolumeAttachment.Spec.RequestedRole != azVolumeAttachment.Status.Role {
 		klog.Infof("Promoting AzVolumeAttachment (%s) from replica to primary", azVolumeAttachment.Name)
-		if err := r.UpdateStatus(ctx, azVolumeAttachment.Name); err != nil {
+		if err := r.UpdateStatus(ctx, azVolumeAttachment.Name, azVolumeAttachment.Status.PublishContext); err != nil {
 			klog.Errorf("failed to promote AzVolumeAttachment (%s) from replica to primary: %v", azVolumeAttachment.Name, err)
+			return reconcile.Result{Requeue: true}, err
 		}
 	}
-	return reconcile.Result{Requeue: true}, nil
+	return reconcile.Result{}, nil
 }
 
 func (r *reconcileAzVolumeAttachment) GetReplicaCount(ctx context.Context, underlyingVolume string) (int, error) {
@@ -473,14 +475,15 @@ func labelExists(azVolumeAttachment v1alpha1.AzVolumeAttachment, label string) b
 	return false
 }
 
-func (r *reconcileAzVolumeAttachment) TriggerAttach(ctx context.Context, attachmentName string) error {
+func (r *reconcileAzVolumeAttachment) triggerAttach(ctx context.Context, attachmentName string) error {
 	var azVolumeAttachment v1alpha1.AzVolumeAttachment
 	if err := r.client.Get(ctx, types.NamespacedName{Namespace: r.namespace, Name: attachmentName}, &azVolumeAttachment); err != nil {
 		klog.Errorf("failed to get AzVolumeAttachment (%s): %v", attachmentName, err)
 		return err
 	}
 
-	if err := r.AttachVolume(ctx, azVolumeAttachment.Spec.UnderlyingVolume, azVolumeAttachment.Spec.NodeName); err != nil {
+	response, err := r.attachVolume(ctx, azVolumeAttachment.Spec.UnderlyingVolume, azVolumeAttachment.Spec.NodeName, azVolumeAttachment.Spec.VolumeContext)
+	if err != nil {
 		klog.Errorf("failed to attach volume %s to node %s: %v", azVolumeAttachment.Spec.UnderlyingVolume, azVolumeAttachment.Spec.NodeName, err)
 		return err
 	}
@@ -507,21 +510,21 @@ func (r *reconcileAzVolumeAttachment) TriggerAttach(ctx context.Context, attachm
 	}
 
 	// Update status of the object
-	if err := r.UpdateStatus(ctx, azVolumeAttachment.Name); err != nil {
+	if err := r.UpdateStatus(ctx, azVolumeAttachment.Name, response); err != nil {
 		return err
 	}
 	klog.Infof("successfully attached volume (%s) to node (%s) and update status of AzVolumeAttachment (%s)", azVolumeAttachment.Spec.UnderlyingVolume, azVolumeAttachment.Spec.NodeName, azVolumeAttachment.Name)
 	return nil
 }
 
-func (r *reconcileAzVolumeAttachment) TriggerDetach(ctx context.Context, attachmentName string) error {
+func (r *reconcileAzVolumeAttachment) triggerDetach(ctx context.Context, attachmentName string) error {
 	var azVolumeAttachment v1alpha1.AzVolumeAttachment
 	if err := r.client.Get(ctx, types.NamespacedName{Namespace: r.namespace, Name: attachmentName}, &azVolumeAttachment); err != nil {
 		klog.Errorf("failed to get AzVolumeAttachment (%s): %v", attachmentName, err)
 		return err
 	}
 
-	if err := r.DetachVolume(ctx, azVolumeAttachment.Spec.UnderlyingVolume, azVolumeAttachment.Spec.NodeName); err != nil {
+	if err := r.detachVolume(ctx, azVolumeAttachment.Spec.UnderlyingVolume, azVolumeAttachment.Spec.NodeName); err != nil {
 		klog.Errorf("failed to detach volume %s from node %s: %v", azVolumeAttachment.Spec.UnderlyingVolume, azVolumeAttachment.Spec.NodeName, err)
 		return err
 	}
@@ -548,7 +551,7 @@ func (r *reconcileAzVolumeAttachment) TriggerDetach(ctx context.Context, attachm
 	return nil
 }
 
-func (r *reconcileAzVolumeAttachment) UpdateStatus(ctx context.Context, attachmentName string) error {
+func (r *reconcileAzVolumeAttachment) UpdateStatus(ctx context.Context, attachmentName string, status map[string]string) error {
 	var azVolumeAttachment v1alpha1.AzVolumeAttachment
 	if err := r.client.Get(ctx, types.NamespacedName{Namespace: r.namespace, Name: attachmentName}, &azVolumeAttachment); err != nil {
 		klog.Errorf("failed to get AzVolumeAttachment (%s): %v", attachmentName, err)
@@ -561,6 +564,7 @@ func (r *reconcileAzVolumeAttachment) UpdateStatus(ctx context.Context, attachme
 		updated.Status = &v1alpha1.AzVolumeAttachmentStatus{}
 	}
 	updated.Status.Role = azVolumeAttachment.Spec.RequestedRole
+	updated.Status.PublishContext = status
 
 	if err := r.client.Status().Update(ctx, updated, &client.UpdateOptions{}); err != nil {
 		klog.Errorf("failed to update status of AzVolumeAttachment (%s): %v", attachmentName, err)
@@ -569,51 +573,12 @@ func (r *reconcileAzVolumeAttachment) UpdateStatus(ctx context.Context, attachme
 	return nil
 }
 
-func (r *reconcileAzVolumeAttachment) AttachVolume(ctx context.Context, volume, node string) error {
-	// TODO uncomment below when controller provisioner PR is merged
-	/*
-		diskURI, diskName, err := r.GetDiskInfo(ctx, volume)
-		if err != nil {
-			return err
-		}
-
-		attachOption := provisioner.AttachDetachDiskOptions {
-			IsManagedDisk: true,
-			DiskName: diskName,
-			DiskURI: diskURI,
-			NodeName: node,
-			CachineMode: compute.CachingTypesNone
-		}
-
-		_, err := controllerProvisioner.AttachDisk(attachOption)
-
-		return err
-	*/
-
-	return nil
+func (r *reconcileAzVolumeAttachment) attachVolume(ctx context.Context, volume, node string, volumeContext map[string]string) (map[string]string, error) {
+	return r.cloudProvisioner.PublishVolume(ctx, volume, node, volumeContext)
 }
 
-func (r *reconcileAzVolumeAttachment) DetachVolume(ctx context.Context, volume, node string) error {
-	// TODO uncomment below when controller provisioner PR is merged
-	/*
-		diskURI, diskName, err := r.GetDiskInfo(ctx, volume)
-		if err != nil {
-			return err
-		}
-
-		detachOption := provisioner.AttachDetachDiskOptions {
-			IsManagedDisk: true,
-			DiskName: diskName,
-			DiskURI: diskURI,
-			NodeName: node,
-			CachineMode: compute.CachingTypesNone
-		}
-
-		_, err := controllerProvisioner.DetachDisk(attachOption)
-
-		return err
-	*/
-	return nil
+func (r *reconcileAzVolumeAttachment) detachVolume(ctx context.Context, volume, node string) error {
+	return r.cloudProvisioner.UnpublishVolume(ctx, volume, node)
 }
 
 func (r *reconcileAzVolumeAttachment) GetDiskInfo(ctx context.Context, volume string) (diskURI, diskName string, err error) {
@@ -624,7 +589,7 @@ func (r *reconcileAzVolumeAttachment) GetDiskInfo(ctx context.Context, volume st
 		klog.Errorf("failed to find a pv (%s): %v", volume)
 		return
 	}
-	if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != DriverName {
+	if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != azureutils.DriverName {
 		err = status.Errorf(codes.InvalidArgument, "pv (%s) needs to be a azure disk CSI driver", volume)
 		klog.Errorf("%v", err)
 		return
@@ -649,16 +614,17 @@ func (r *reconcileAzVolumeAttachment) GetDiskInfo(ctx context.Context, volume st
 	return
 }
 
-func NewAzVolumeAttachmentController(ctx context.Context, mgr manager.Manager, azVolumeClient *azVolumeClientSet.Interface, namespace string) error {
+func NewAzVolumeAttachmentController(ctx context.Context, mgr manager.Manager, azVolumeClient *azVolumeClientSet.Interface, namespace string, cloudProvisioner CloudProvisioner) error {
 	reconciler := reconcileAzVolumeAttachment{
-		client:         mgr.GetClient(),
-		azVolumeClient: *azVolumeClient,
-		namespace:      namespace,
-		syncMutex:      sync.RWMutex{},
-		mutexMap:       make(map[string]*sync.Mutex),
-		mutexMapMutex:  sync.RWMutex{},
-		volumeMap:      make(map[string]string),
-		volumeMapMutex: sync.RWMutex{},
+		client:           mgr.GetClient(),
+		azVolumeClient:   *azVolumeClient,
+		namespace:        namespace,
+		syncMutex:        sync.RWMutex{},
+		mutexMap:         make(map[string]*sync.Mutex),
+		mutexMapMutex:    sync.RWMutex{},
+		volumeMap:        make(map[string]string),
+		volumeMapMutex:   sync.RWMutex{},
+		cloudProvisioner: cloudProvisioner,
 	}
 
 	c, err := controller.New("azvolumeattachment-controller", mgr, controller.Options{

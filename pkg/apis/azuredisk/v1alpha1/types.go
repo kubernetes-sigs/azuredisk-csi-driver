@@ -47,20 +47,37 @@ type AzVolumeSpec struct {
 	MaxMountReplicaCount int    `json:"maxMountReplicaCount"`
 	//The capabilities that the volume MUST have
 	//+optional
-	VolumeCapability *VolumeCapability `json:"volumeCapability,omitempty"`
+	VolumeCapability []VolumeCapability `json:"volumeCapability,omitempty"`
 	//The capacity of the storage
 	//+optional
 	CapacityRange *CapacityRange `json:"capacityRange,omitempty"`
 	//Parameters for the volume
 	//+optional
 	Parameters map[string]string `json:"parameters,omitempty"`
+	//Secrets for the volume
+	//+optional
+	Secrets map[string]string `json:"secrets,omitempty"`
+	//ContentVolumeSource for the volume
+	//+optional
+	ContentVolumeSource *ContentVolumeSource `json:"contentVolumeSource,omitempty"`
+	//Specifies where the provisioned volume should be accessible
+	//+optional
+	AccessibilityRequirements *TopologyRequirement `json:"accessibilityRequirements"`
 }
 
 // AzVolumeStatus is the status for an AzVolume resource
 type AzVolumeStatus struct {
-	//Current state of the AzVolume
-	//+optional
-	State string `json:"state,omitempty"`
+	//Current status of the AzVolume
+	ResponseObject *AzVolumeStatusParams `json:"status"`
+}
+
+type AzVolumeStatusParams struct {
+	VolumeID              string               `json:"volume_id"`
+	VolumeContext         map[string]string    `json:"parameters"`
+	CapacityBytes         int64                `json:"capacity_bytes"`
+	ContentSource         *ContentVolumeSource `json:"content_source"`
+	AccessibleTopology    []Topology           `json:"accessible_topology"`
+	NodeExpansionRequired bool                 `json:"node_expansion_required"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -103,9 +120,10 @@ type AzVolumeAttachment struct {
 
 // AzVolumeAttachmentSpec is the spec for a AzVolumeAttachment resource
 type AzVolumeAttachmentSpec struct {
-	UnderlyingVolume string `json:"underlyingVolume"`
-	NodeName         string `json:"nodeName"`
-	RequestedRole    Role   `json:"role"`
+	UnderlyingVolume string            `json:"underlyingVolume"`
+	NodeName         string            `json:"nodeName"`
+	VolumeContext    map[string]string `json:"volume_context"`
+	RequestedRole    Role              `json:"role"`
 }
 
 // Role indicates if the volume attachment is replica attachment or not
@@ -120,7 +138,8 @@ const (
 
 // AzVolumeAttachmentStatus is the status for a AzVolumeAttachment resource
 type AzVolumeAttachmentStatus struct {
-	Role Role `json:"role"`
+	Role           Role              `json:"role"`
+	PublishContext map[string]string `json:"publish_context"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -248,14 +267,38 @@ type AzDriverNodeList struct {
 	Items []AzDriverNode `json:"items"`
 }
 
+type VolumeCapabilityAccessMode int
+
+const (
+	VolumeCapabilityAccessModeUnknown VolumeCapabilityAccessMode = iota
+	VolumeCapabilityAccessModeSingleNodeWriter
+	VolumeCapabilityAccessModeSingleNodeReaderOnly
+	VolumeCapabilityAccessModeMultiNodeReaderOnly
+	VolumeCapabilityAccessModeMultiNodeSingleWriter
+	VolumeCapabilityAccessModeMultiNodeMultiWriter
+)
+
+type VolumeCapabilityAccess int
+
+const (
+	VolumeCapabilityAccessBlock VolumeCapabilityAccess = iota
+	VolumeCapabilityAccessMount
+)
+
+type VolumeCapabilityAccessDetails struct {
+	AccessType VolumeCapabilityAccess `json:"access_type"`
+	FsType     string                 `json:"fs_type"`
+	MountFlags []string               `json:"mount_flags"`
+}
+
 type VolumeCapability struct {
 	// Specifies what API the volume will be accessed using. One of the
 	// following fields MUST be specified.
 	//
 	// Types that are valid to be assigned to AccessType: block, mount
-	AccessType int32 `json:"access_type"`
+	AccessDetails VolumeCapabilityAccessDetails `json:"access_details"`
 	// This is a REQUIRED field.
-	AccessMode int32 `json:"access_mode,omitempty"`
+	AccessMode VolumeCapabilityAccessMode `json:"access_mode"`
 }
 
 // The capacity of the storage space in bytes. To specify an exact size,
@@ -270,4 +313,25 @@ type CapacityRange struct {
 	// A value of 0 is equal to an unspecified field value.
 	// The value of this field MUST NOT be negative.
 	LimitBytes int64 `protobuf:"varint,2,opt,name=limit_bytes,json=limitBytes,proto3" json:"limit_bytes,omitempty"`
+}
+
+type ContentVolumeSourceType int
+
+const (
+	ContentVolumeSourceTypeVolume ContentVolumeSourceType = iota
+	ContentVolumeSourceTypeSnapshot
+)
+
+type ContentVolumeSource struct {
+	ContentSource   ContentVolumeSourceType `json:"content_source"`
+	ContentSourceID string                  `json:"content_source_id"`
+}
+
+type TopologyRequirement struct {
+	Requisite []Topology `json:"requisite,omitempty"`
+	Preferred []Topology `json:"preferred,omitempty"`
+}
+
+type Topology struct {
+	Segments map[string]string `json:"segments,omitempty"`
 }

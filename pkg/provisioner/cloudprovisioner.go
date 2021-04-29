@@ -35,11 +35,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	clientset "k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 	cloudprovider "k8s.io/cloud-provider"
 	volerr "k8s.io/cloud-provider/volume/errors"
 	"k8s.io/klog/v2"
-	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
@@ -50,8 +49,7 @@ var (
 )
 
 type CloudProvisioner struct {
-	cloud        *azure.Cloud
-	azDiskClient azDiskClientSet.Interface
+	cloud *azure.Cloud
 }
 
 // listVolumeStatus explains the return status of `listVolumesByResourceGroup`
@@ -62,12 +60,7 @@ type listVolumeStatus struct {
 	err           error
 }
 
-func NewCloudProvisioner(kubeConfig *rest.Config, kubeClient clientset.Interface, topologyKey string) (*CloudProvisioner, error) {
-	diskClient, err := azureutils.GetAzDiskClient(kubeConfig)
-	if err != nil {
-		return nil, err
-	}
-
+func NewCloudProvisioner(kubeClient clientset.Interface, topologyKey string) (*CloudProvisioner, error) {
 	azCloud, err := azureutils.GetAzureCloudProvider(kubeClient)
 	if err != nil {
 		return nil, err
@@ -76,20 +69,19 @@ func NewCloudProvisioner(kubeConfig *rest.Config, kubeClient clientset.Interface
 	topologyKeyStr = topologyKey
 
 	return &CloudProvisioner{
-		azDiskClient: diskClient,
-		cloud:        azCloud,
+		cloud: azCloud,
 	}, nil
 }
 
 func (c *CloudProvisioner) CreateVolume(
 	ctx context.Context,
 	volumeName string,
-	capacityRange *csi.CapacityRange,
-	volumeCapabilities []*csi.VolumeCapability,
+	capacityRange *v1alpha1.CapacityRange,
+	volumeCapabilities []v1alpha1.VolumeCapability,
 	parameters map[string]string,
 	secrets map[string]string,
-	volumeContentSource *csi.VolumeContentSource,
-	accessibilityRequirements *csi.TopologyRequirement) (*csi.CreateVolumeResponse, error) {
+	volumeContentSource *v1alpha1.ContentVolumeSource,
+	accessibilityRequirements *v1alpha1.TopologyRequirement) (*v1alpha1.AzVolumeStatusParams, error) {
 	err := c.validateCreateVolumeRequestParams(capacityRange, volumeCapabilities, parameters)
 	if err != nil {
 		return nil, err
@@ -183,35 +175,35 @@ func (c *CloudProvisioner) CreateVolume(
 	}
 
 	selectedAvailabilityZone := pickAvailabilityZone(accessibilityRequirements, c.GetCloud().Location)
-	accessibleTopology := []*csi.Topology{}
+	accessibleTopology := []v1alpha1.Topology{}
 	if skuName == compute.StandardSSDZRS || skuName == compute.PremiumZRS {
 		klog.V(2).Infof("diskZone(%s) is reset as empty since disk(%s) is ZRS(%s)", selectedAvailabilityZone, diskName, skuName)
 		selectedAvailabilityZone = ""
-		if len(accessibilityRequirements.GetRequisite()) > 0 {
-			accessibleTopology = append(accessibleTopology, accessibilityRequirements.GetRequisite()...)
+		if len(accessibilityRequirements.Requisite) > 0 {
+			accessibleTopology = append(accessibleTopology, accessibilityRequirements.Requisite...)
 		} else {
 			// make volume scheduled on all 3 availability zones
 			for i := 1; i <= 3; i++ {
-				topology := &csi.Topology{
+				topology := v1alpha1.Topology{
 					Segments: map[string]string{topologyKeyStr: fmt.Sprintf("%s-%d", c.cloud.Location, i)},
 				}
 				accessibleTopology = append(accessibleTopology, topology)
 			}
 			// make volume scheduled on all non-zone nodes
-			topology := &csi.Topology{
+			topology := v1alpha1.Topology{
 				Segments: map[string]string{topologyKeyStr: ""},
 			}
 			accessibleTopology = append(accessibleTopology, topology)
 		}
 	} else {
-		accessibleTopology = []*csi.Topology{
+		accessibleTopology = []v1alpha1.Topology{
 			{
 				Segments: map[string]string{topologyKeyStr: selectedAvailabilityZone},
 			},
 		}
 	}
 
-	volSizeBytes := int64(capacityRange.GetRequiredBytes())
+	volSizeBytes := int64(capacityRange.RequiredBytes)
 	requestGiB := int(volumehelper.RoundUpGiB(volSizeBytes))
 	if requestGiB < azureutils.MinimumDiskSizeGiB {
 		requestGiB = azureutils.MinimumDiskSizeGiB
@@ -230,7 +222,6 @@ func (c *CloudProvisioner) CreateVolume(
 		diskName, skuName, resourceGroup, location, requestGiB, selectedAvailabilityZone, maxShares)
 
 	tags := make(map[string]string)
-	contentSource := &csi.VolumeContentSource{}
 	for k, v := range customTagsMap {
 		tags[k] = v
 	}
@@ -242,27 +233,14 @@ func (c *CloudProvisioner) CreateVolume(
 	sourceID := ""
 	sourceType := ""
 
+	contentSource := &v1alpha1.ContentVolumeSource{}
 	if volumeContentSource != nil {
-		if volumeContentSource.GetSnapshot() != nil {
-			sourceID = volumeContentSource.GetSnapshot().GetSnapshotId()
-			sourceType = azureutils.SourceSnapshot
-			contentSource = &csi.VolumeContentSource{
-				Type: &csi.VolumeContentSource_Snapshot{
-					Snapshot: &csi.VolumeContentSource_SnapshotSource{
-						SnapshotId: sourceID,
-					},
-				},
-			}
-		} else {
-			sourceID = volumeContentSource.GetVolume().GetVolumeId()
+		sourceID = volumeContentSource.ContentSourceID
+		contentSource.ContentSource = volumeContentSource.ContentSource
+		contentSource.ContentSourceID = volumeContentSource.ContentSourceID
+		sourceType = azureutils.SourceSnapshot
+		if volumeContentSource.ContentSource == v1alpha1.ContentVolumeSourceTypeVolume {
 			sourceType = azureutils.SourceVolume
-			contentSource = &csi.VolumeContentSource{
-				Type: &csi.VolumeContentSource_Volume{
-					Volume: &csi.VolumeContentSource_VolumeSource{
-						VolumeId: sourceID,
-					},
-				},
-			}
 
 			ctx, cancel := context.WithCancel(context.Background())
 			if sourceGiB, _ := c.GetSourceDiskSize(ctx, resourceGroup, path.Base(sourceID), 0, azureutils.SourceDiskSearchMaxDepth); sourceGiB != nil && *sourceGiB < int32(requestGiB) {
@@ -300,14 +278,12 @@ func (c *CloudProvisioner) CreateVolume(
 
 	klog.V(2).Infof("create disk(%s) account type(%s) rg(%s) location(%s) size(%d) tags(%s) successfully", diskName, skuName, resourceGroup, location, requestGiB, tags)
 
-	return &csi.CreateVolumeResponse{
-		Volume: &csi.Volume{
-			VolumeId:           diskURI,
-			CapacityBytes:      capacityRange.GetRequiredBytes(),
-			VolumeContext:      parameters,
-			ContentSource:      contentSource,
-			AccessibleTopology: accessibleTopology,
-		},
+	return &v1alpha1.AzVolumeStatusParams{
+		VolumeID:           diskURI,
+		CapacityBytes:      capacityRange.RequiredBytes,
+		VolumeContext:      parameters,
+		ContentSource:      contentSource,
+		AccessibleTopology: accessibleTopology,
 	}, nil
 }
 
@@ -341,10 +317,7 @@ func (c *CloudProvisioner) PublishVolume(
 	ctx context.Context,
 	volumeID string,
 	nodeID string,
-	volumeCapability *csi.VolumeCapability,
-	readOnly bool,
-	secrets map[string]string,
-	volumeContext map[string]string) (*csi.ControllerPublishVolumeResponse, error) {
+	volumeContext map[string]string) (map[string]string, error) {
 	err := c.CheckDiskExists(ctx, volumeID)
 	if err != nil {
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume not found, failed with error: %v", err))
@@ -401,19 +374,18 @@ func (c *CloudProvisioner) PublishVolume(
 	}
 
 	pvInfo := map[string]string{"LUN": strconv.Itoa(int(lun))}
-	return &csi.ControllerPublishVolumeResponse{PublishContext: pvInfo}, nil
+	return pvInfo, nil
 }
 
 func (c *CloudProvisioner) UnpublishVolume(
 	ctx context.Context,
 	volumeID string,
-	nodeID string,
-	secrets map[string]string) (*csi.ControllerUnpublishVolumeResponse, error) {
+	nodeID string) error {
 	nodeName := types.NodeName(nodeID)
 
 	diskName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(volumeID)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	klog.V(2).Infof("Trying to detach volume %s from node %s", volumeID, nodeID)
@@ -422,20 +394,20 @@ func (c *CloudProvisioner) UnpublishVolume(
 		if strings.Contains(err.Error(), azureutils.ErrDiskNotFound) {
 			klog.Warningf("volume %s already detached from node %s", volumeID, nodeID)
 		} else {
-			return nil, status.Errorf(codes.Internal, "Could not detach volume %q from node %q: %v", volumeID, nodeID, err)
+			return status.Errorf(codes.Internal, "Could not detach volume %q from node %q: %v", volumeID, nodeID, err)
 		}
 	}
 	klog.V(2).Infof("detach volume %s from node %s successfully", volumeID, nodeID)
 
-	return &csi.ControllerUnpublishVolumeResponse{}, nil
+	return nil
 }
 
 func (c *CloudProvisioner) ExpandVolume(
 	ctx context.Context,
 	volumeID string,
-	capacityRange *csi.CapacityRange,
-	secrets map[string]string) (*csi.ControllerExpandVolumeResponse, error) {
-	requestSize := *resource.NewQuantity(capacityRange.GetRequiredBytes(), resource.BinarySI)
+	capacityRange *v1alpha1.CapacityRange,
+	secrets map[string]string) (*v1alpha1.AzVolumeStatusParams, error) {
+	requestSize := *resource.NewQuantity(capacityRange.RequiredBytes, resource.BinarySI)
 
 	if err := azureutils.IsValidDiskURI(volumeID); err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "disk URI(%s) is not valid: %v", volumeID, err)
@@ -472,7 +444,7 @@ func (c *CloudProvisioner) ExpandVolume(
 
 	klog.V(2).Infof("expand azure disk(%s) successfully, currentSize(%d)", volumeID, currentSize)
 
-	return &csi.ControllerExpandVolumeResponse{
+	return &v1alpha1.AzVolumeStatusParams{
 		CapacityBytes:         currentSize,
 		NodeExpansionRequired: true,
 	}, nil
@@ -691,14 +663,6 @@ func (c *CloudProvisioner) GetCloud() *azure.Cloud {
 	return c.cloud
 }
 
-func (c *CloudProvisioner) GetDiskClientSet() azDiskClientSet.Interface {
-	return c.azDiskClient
-}
-
-func (c *CloudProvisioner) GetDiskClientSetAddr() *azDiskClientSet.Interface {
-	return &c.azDiskClient
-}
-
 func (c *CloudProvisioner) GetMetricPrefix() string {
 	return azureutils.CSIDriverMetricPrefix
 }
@@ -776,17 +740,17 @@ func (c *CloudProvisioner) GetSnapshotByID(ctx context.Context, resourceGroup st
 }
 
 func (c *CloudProvisioner) validateCreateVolumeRequestParams(
-	capacityRange *csi.CapacityRange,
-	volumeCaps []*csi.VolumeCapability,
+	capacityRange *v1alpha1.CapacityRange,
+	volumeCaps []v1alpha1.VolumeCapability,
 	params map[string]string) error {
-	capacityBytes := capacityRange.GetRequiredBytes()
+	capacityBytes := capacityRange.RequiredBytes
 	volSizeBytes := int64(capacityBytes)
 	requestGiB := int(volumehelper.RoundUpGiB(volSizeBytes))
 	if requestGiB < azureutils.MinimumDiskSizeGiB {
 		requestGiB = azureutils.MinimumDiskSizeGiB
 	}
 
-	maxVolSize := int(volumehelper.RoundUpGiB(capacityRange.GetLimitBytes()))
+	maxVolSize := int(volumehelper.RoundUpGiB(capacityRange.LimitBytes))
 	if (maxVolSize > 0) && (maxVolSize < requestGiB) {
 		return status.Error(codes.InvalidArgument, "After round-up, volume size exceeds the limit specified")
 	}
@@ -816,9 +780,9 @@ func (c *CloudProvisioner) validateCreateVolumeRequestParams(
 
 	if maxShares < 2 {
 		for _, c := range volumeCaps {
-			mode := c.GetAccessMode().Mode
-			if mode != csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER &&
-				mode != csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY {
+			mode := c.AccessMode
+			if mode != v1alpha1.VolumeCapabilityAccessModeSingleNodeWriter &&
+				mode != v1alpha1.VolumeCapabilityAccessModeSingleNodeReaderOnly {
 				return status.Error(codes.InvalidArgument, fmt.Sprintf("Volume capability(%v) not supported", mode))
 			}
 		}
@@ -999,12 +963,13 @@ func (c *CloudProvisioner) listVolumesByResourceGroup(ctx context.Context, resou
 
 // pickAvailabilityZone selects 1 zone given topology requirement.
 // if not found or topology requirement is not zone format, empty string is returned.
-func pickAvailabilityZone(requirement *csi.TopologyRequirement, region string) string {
+func pickAvailabilityZone(requirement *v1alpha1.TopologyRequirement, region string) string {
 	if requirement == nil {
 		return ""
 	}
-	for _, topology := range requirement.GetPreferred() {
-		topologySegments := topology.GetSegments()
+
+	for _, topology := range requirement.Preferred {
+		topologySegments := topology.Segments
 		if zone, exists := topologySegments[azureutils.WellKnownTopologyKey]; exists {
 			if azureutils.IsValidAvailabilityZone(zone, region) {
 				return zone
@@ -1016,8 +981,9 @@ func pickAvailabilityZone(requirement *csi.TopologyRequirement, region string) s
 			}
 		}
 	}
-	for _, topology := range requirement.GetRequisite() {
-		topologySegments := topology.GetSegments()
+
+	for _, topology := range requirement.Requisite {
+		topologySegments := topology.Segments
 		if zone, exists := topologySegments[azureutils.WellKnownTopologyKey]; exists {
 			if azureutils.IsValidAvailabilityZone(zone, region) {
 				return zone
