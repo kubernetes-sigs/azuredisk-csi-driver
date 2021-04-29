@@ -25,7 +25,12 @@ function cleanup {
 
 trap cleanup EXIT
 
-_output/azurediskplugin --endpoint  $1 --nodeid $2 -v=5 &
+ARCH=$(uname -p)
+if [[ "${ARCH}" == "x86_64" || ${ARCH} == "unknown" ]]; then
+  ARCH="amd64"
+fi
+
+_output/${ARCH}/azurediskplugin --endpoint  $1 --nodeid $2 -v=5 &
 
 echo "Begin to run integration test on $3..."
 

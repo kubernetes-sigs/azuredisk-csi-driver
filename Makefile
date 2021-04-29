@@ -142,7 +142,7 @@ e2e-teardown:
 
 .PHONY: azuredisk
 azuredisk:
-	CGO_ENABLED=0 GOOS=linux go build -a -ldflags ${LDFLAGS} -mod vendor -o _output/${PLUGIN_NAME} ./pkg/azurediskplugin
+	CGO_ENABLED=0 GOOS=linux go build -a -ldflags ${LDFLAGS} -mod vendor -o _output/${ARCH}/${PLUGIN_NAME} ./pkg/azurediskplugin
 
 .PHONY: azuredisk-v2
 azuredisk-v2:
@@ -150,7 +150,7 @@ azuredisk-v2:
 
 .PHONY: azuredisk-windows
 azuredisk-windows:
-	CGO_ENABLED=0 GOOS=windows go build -a -ldflags ${LDFLAGS} -mod vendor -o _output/${PLUGIN_NAME}.exe ./pkg/azurediskplugin
+	CGO_ENABLED=0 GOOS=windows go build -a -ldflags ${LDFLAGS} -mod vendor -o _output/${ARCH}/${PLUGIN_NAME}.exe ./pkg/azurediskplugin
 
 .PHONY: azuredisk-windows-v2
 azuredisk-windows-v2:
@@ -158,7 +158,7 @@ azuredisk-windows-v2:
 
 .PHONY: azuredisk-darwin
 azuredisk-darwin:
-	CGO_ENABLED=0 GOOS=darwin go build -a -ldflags ${LDFLAGS} -mod vendor -o _output/azurediskplugin ./pkg/azurediskplugin
+	CGO_ENABLED=0 GOOS=darwin go build -a -ldflags ${LDFLAGS} -mod vendor -o _output/${ARCH}/${PLUGIN_NAME}.exe ./pkg/azurediskplugin
 
 .PHONY: azdiskschedulerextender
 azdiskschedulerextender:
@@ -182,13 +182,26 @@ container-v2: azuredisk-v2
 
 .PHONY: container-linux
 container-linux:
-	docker buildx build --pull --output=type=$(OUTPUT_TYPE) --platform="linux/$(ARCH)" --build-arg PLUGIN_NAME=${PLUGIN_NAME} \
-		-t $(IMAGE_TAG)-linux-$(ARCH) --build-arg ARCH=$(ARCH) -f ./pkg/azurediskplugin/Dockerfile .
+	docker buildx build . \
+		--pull \
+		--output=type=$(OUTPUT_TYPE) \
+		--tag $(IMAGE_TAG)-linux-$(ARCH) \
+		--file ./pkg/azurediskplugin/Dockerfile \
+		--platform="linux/$(ARCH)" \
+		--build-arg ARCH=${ARCH} \
+		--build-arg PLUGIN_NAME=${PLUGIN_NAME}
 
 .PHONY: container-windows
 container-windows:
-	docker buildx build --pull --output=type=$(OUTPUT_TYPE) --platform="windows/$(ARCH)" --build-arg PLUGIN_NAME=${PLUGIN_NAME} \
-		 -t $(IMAGE_TAG)-windows-$(OSVERSION)-$(ARCH) --build-arg OSVERSION=$(OSVERSION) -f ./pkg/azurediskplugin/Windows.Dockerfile .
+	docker buildx build . \
+		--pull \
+		--output=type=$(OUTPUT_TYPE) \
+		--platform="windows/$(ARCH)" \
+		--tag $(IMAGE_TAG)-windows-$(OSVERSION)-$(ARCH) \
+		--file ./pkg/azurediskplugin/Windows.Dockerfile \
+		--build-arg ARCH=${ARCH} \
+		--build-arg PLUGIN_NAME=${PLUGIN_NAME} \
+		--build-arg OSVERSION=$(OSVERSION) 
 
 .PHONY: azdiskschedulerextender-container
 azdiskschedulerextender-container: azdiskschedulerextender
@@ -217,7 +230,7 @@ endif
 	done
 	
 .PHONY: container-all
-container-all: azuredisk azuredisk-windows
+container-all: azuredisk-windows
 	docker buildx rm container-builder || true
 	docker buildx create --use --name=container-builder
 ifeq ($(CLOUD), AzureStackCloud)
@@ -228,7 +241,7 @@ endif
 	docker run --privileged --rm tonistiigi/binfmt --uninstall qemu-aarch64
 	docker run --rm --privileged tonistiigi/binfmt --install all
 	for arch in $(ALL_ARCH.linux); do \
-		ARCH=$${arch} $(MAKE) azurefile; \
+		ARCH=$${arch} $(MAKE) azuredisk; \
 		ARCH=$${arch} $(MAKE) container-linux; \
 	done
 	for osversion in $(ALL_OSVERSIONS.windows); do \
