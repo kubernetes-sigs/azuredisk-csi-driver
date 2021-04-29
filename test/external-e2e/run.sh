@@ -48,6 +48,6 @@ setup_e2e_binaries
 trap print_logs EXIT
 
 ginkgo -p --progress --v -focus='External.Storage.*disk.csi.azure.com' \
-       -skip='\[Disruptive\]|\[Slow\]|\[Feature:VolumeSnapshotDataSource\]' kubernetes/test/bin/e2e.test -- \
+       -skip='\[Disruptive\]|\[Slow\]' kubernetes/test/bin/e2e.test -- \
        -storage.testdriver=$PROJECT_ROOT/test/external-e2e/manifest/testdriver.yaml \
        --kubeconfig=$KUBECONFIG
