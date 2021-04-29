@@ -13,13 +13,13 @@
 # limitations under the License.
 
 ARG ARCH
-
 FROM k8s.gcr.io/build-image/debian-base-${ARCH}:v2.1.3
 RUN clean-install util-linux e2fsprogs mount ca-certificates udev xfsprogs
 
 LABEL maintainers="andyzhangx"
 LABEL description="Azure Disk CSI Driver"
 
+ARG ARCH
 ARG PLUGIN_NAME=azurediskplugin
-COPY ./_output/${PLUGIN_NAME} /azurediskplugin
+COPY ./_output/${ARCH}/${PLUGIN_NAME} /azurediskplugin
 ENTRYPOINT ["/azurediskplugin"]
