@@ -23,8 +23,7 @@ import (
 	"strconv"
 	"strings"
 
-	"k8s.io/kubernetes/pkg/util/resizefs"
-	"k8s.io/mount-utils"
+	mount "k8s.io/mount-utils"
 )
 
 func getDevicePathWithMountPath(mountPath string, m *mount.SafeFormatAndMount) (string, error) {
@@ -56,7 +55,7 @@ func getBlockSizeBytes(devicePath string, m *mount.SafeFormatAndMount) (int64, e
 }
 
 func resizeVolume(devicePath, volumePath string, m *mount.SafeFormatAndMount) error {
-	resizer := resizefs.NewResizeFs(m)
+	resizer := mount.NewResizeFs(m.Exec)
 	if _, err := resizer.Resize(devicePath, volumePath); err != nil {
 		return err
 	}
