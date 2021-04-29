@@ -738,6 +738,10 @@ func TestNodeUnpublishVolume(t *testing.T) {
 }
 
 func TestNodeExpandVolume(t *testing.T) {
+	if isTestingDriverV2() && runtime.GOOS == "windows" {
+		t.Skip("Skipping V2 tests on Windows")
+	}
+
 	d, _ := NewFakeDriver(t)
 	_ = makeDir(targetTest)
 	notFoundErr := errors.New("exit status 1")

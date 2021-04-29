@@ -1,4 +1,4 @@
-name: Linux Build & Unit Tests
+name: Linux Build & Unit Tests V2
 on:
     pull_request: {}
     push: {}
@@ -18,10 +18,12 @@ jobs:
       uses: actions/checkout@v2
 
     - name: Build Test
+      env:
+        BUILD_V2: true
       run: make azuredisk
 
     - name: Run Linux Unit Tests
-      run: sudo go test -covermode=count -coverprofile=profile.cov ./pkg/...
+      run: sudo go test -covermode=count -coverprofile=profile.cov -tags azurediskv2 ./pkg/azuredisk --temp-use-driver-v2
 
     - name: Send coverage
       env:
