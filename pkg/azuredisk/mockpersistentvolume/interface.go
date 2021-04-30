@@ -22,9 +22,12 @@ import (
 
 	gomock "github.com/golang/mock/gomock"
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v10 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
+	corev1 "k8s.io/client-go/applyconfigurations/core/v1"
+
 	v11 "k8s.io/client-go/kubernetes/typed/core/v1"
 )
 
@@ -224,4 +227,24 @@ func (mr *MockInterfaceMockRecorder) Patch(ctx, name, pt, data, opts interface{}
 	mr.mock.ctrl.T.Helper()
 	varargs := append([]interface{}{ctx, name, pt, data, opts}, subresources...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Patch", reflect.TypeOf((*MockInterface)(nil).Patch), varargs...)
+}
+
+// Apply mocks base method
+func (m *MockInterface) Apply(ctx context.Context, persistentVolume *corev1.PersistentVolumeApplyConfiguration, opts metav1.ApplyOptions) (result *v1.PersistentVolume, err error) {
+	m.ctrl.T.Helper()
+	varargs := []interface{}{ctx, persistentVolume, opts}
+	ret := m.ctrl.Call(m, "Apply", varargs...)
+	ret0, _ := ret[0].(*v1.PersistentVolume)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ApplyStatus mocks base method
+func (m *MockInterface) ApplyStatus(ctx context.Context, persistentVolume *corev1.PersistentVolumeApplyConfiguration, opts metav1.ApplyOptions) (result *v1.PersistentVolume, err error) {
+	m.ctrl.T.Helper()
+	varargs := []interface{}{ctx, persistentVolume, opts}
+	ret := m.ctrl.Call(m, "ApplyStatus", varargs...)
+	ret0, _ := ret[0].(*v1.PersistentVolume)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
