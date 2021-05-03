@@ -271,7 +271,7 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
 			VolumeId:      diskURI,
-			CapacityBytes: capacityBytes,
+			CapacityBytes: volumehelper.GiBToBytes(int64(requestGiB)),
 			VolumeContext: parameters,
 			ContentSource: contentSource,
 			AccessibleTopology: []*csi.Topology{
