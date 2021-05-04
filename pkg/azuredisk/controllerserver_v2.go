@@ -83,15 +83,14 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 
 	contentVolSource := &v1alpha1.ContentVolumeSource{}
 	reqVolumeContentSource := req.GetVolumeContentSource()
-	if reqVolumeContentSource.GetSnapshot() != nil {
-		contentVolSource.ContentSource = v1alpha1.ContentVolumeSourceTypeSnapshot
-		contentVolSource.ContentSourceID = reqVolumeContentSource.GetSnapshot().GetSnapshotId()
-	} else if reqVolumeContentSource.GetVolume() != nil {
-		contentVolSource.ContentSource = v1alpha1.ContentVolumeSourceTypeVolume
-		contentVolSource.ContentSourceID = reqVolumeContentSource.GetVolume().GetVolumeId()
-	} else {
-		// error
-		return nil, status.Error(codes.InvalidArgument, "VolumeContentSource type is neither Snapshot nor Volume")
+	if reqVolumeContentSource != nil {
+		if reqVolumeContentSource.GetSnapshot() != nil {
+			contentVolSource.ContentSource = v1alpha1.ContentVolumeSourceTypeSnapshot
+			contentVolSource.ContentSourceID = reqVolumeContentSource.GetSnapshot().GetSnapshotId()
+		} else if reqVolumeContentSource.GetVolume() != nil {
+			contentVolSource.ContentSource = v1alpha1.ContentVolumeSourceTypeVolume
+			contentVolSource.ContentSourceID = reqVolumeContentSource.GetVolume().GetVolumeId()
+		}
 	}
 
 	preferredTopology, requisiteTopology := []v1alpha1.Topology{}, []v1alpha1.Topology{}
