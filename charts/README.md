@@ -84,6 +84,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `kubelet.linuxPath`                               | configure the kubelet path for Linux node                  | `/var/lib/kubelet`                                                |
 | `kubelet.windowsPath`                             | configure the kubelet path for Windows node                | `'C:\var\lib\kubelet'`                                            |
 | `cloud`                                           | the cloud environment the driver is running on             | AzurePublicCloud                                                  |
+| `node.livenessProbe.healthPort `                  | the health check port for liveness probe                   | `29603` |
 
 ## troubleshooting
  - Add `--wait -v=5 --debug` in `helm install` command to get detailed error
