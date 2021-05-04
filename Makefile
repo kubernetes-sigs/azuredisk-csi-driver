@@ -162,15 +162,15 @@ azuredisk-darwin:
 
 .PHONY: azdiskschedulerextender
 azdiskschedulerextender:
-	CGO_ENABLED=0 GOOS=linux go build -a -ldflags ${SCHEDULER_EXTENDER_LDFLAGS} -mod vendor -o _output/azdiskschedulerextender ./pkg/azdiskschedulerextender
+	CGO_ENABLED=0 GOOS=linux go build -a -ldflags ${SCHEDULER_EXTENDER_LDFLAGS} -mod vendor -o _output/${ARCH}/azdiskschedulerextender ./pkg/azdiskschedulerextender
 
 .PHONY: azdiskschedulerextender-windows
 azdiskschedulerextender-windows:
-	CGO_ENABLED=0 GOOS=windows go build -a -ldflags ${SCHEDULER_EXTENDER_LDFLAGS} -mod vendor -o _output/azdiskschedulerextender.exe ./pkg/azdiskschedulerextender
+	CGO_ENABLED=0 GOOS=windows go build -a -ldflags ${SCHEDULER_EXTENDER_LDFLAGS} -mod vendor -o _output/${ARCH}/azdiskschedulerextender.exe ./pkg/azdiskschedulerextender
 
 .PHONY: azdiskschedulerextender-darwin
 azdiskschedulerextender-darwin:
-	CGO_ENABLED=0 GOOS=darwin go build -a -ldflags ${SCHEDULER_EXTENDER_LDFLAGS} -mod vendor -o _output/azdiskschedulerextender ./pkg/azdiskschedulerextender
+	CGO_ENABLED=0 GOOS=darwin go build -a -ldflags ${SCHEDULER_EXTENDER_LDFLAGS} -mod vendor -o _output/${ARCH}/azdiskschedulerextender ./pkg/azdiskschedulerextender
 
 .PHONY: container
 container: azuredisk
@@ -209,28 +209,27 @@ azdiskschedulerextender-container: azdiskschedulerextender
 
 .PHONY: azdiskschedulerextender-container-linux
 azdiskschedulerextender-container-linux:
-	docker buildx build --pull --output=type=$(OUTPUT_TYPE) --platform="linux/$(ARCH)" \
-		-t $(AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG)-linux-$(ARCH) -f ./pkg/azdiskschedulerextender/Dockerfile .
+	docker buildx build . \
+		--pull \
+		--output=type=$(OUTPUT_TYPE) \
+		--platform="linux/$(ARCH)" \
+		--tag $(AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG)-linux-$(ARCH) \
+		--file ./pkg/azdiskschedulerextender/Dockerfile \
+		--build-arg ARCH=${ARCH}
 
 .PHONY: azdiskschedulerextender-container-windows
 azdiskschedulerextender-container-windows:
-	docker buildx build --pull --output=type=$(OUTPUT_TYPE) --platform="windows/$(ARCH)" \
-		 -t $(AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG)-windows-$(OSVERSION)-$(ARCH) --build-arg OSVERSION=$(OSVERSION) -f ./pkg/azdiskschedulerextender/Windows.Dockerfile .
+	docker buildx build . \
+		--pull \
+		--output=type=$(OUTPUT_TYPE) \
+		--platform="windows/$(ARCH)" \
+		--tag $(AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG)-windows-$(OSVERSION)-$(ARCH) \
+		--file ./pkg/azdiskschedulerextender/Windows.Dockerfile \
+		--build-arg ARCH=${ARCH} \
+		--build-arg OSVERSION=$(OSVERSION)
 
-.PHONY: azdiskschedulerextender-all
-azdiskschedulerextender-all: azdiskschedulerextender azdiskschedulerextender-windows
-	docker buildx rm container-builder || true
-	docker buildx create --use --name=container-builder
-ifeq ($(CLOUD), AzureStackCloud)
-	docker run --privileged --name buildx_buildkit_container-builder0 -d --mount type=bind,src=/etc/ssl/certs,dst=/etc/ssl/certs moby/buildkit:latest || true
-endif
-	$(MAKE) azdiskschedulerextender-container-linux
-	for osversion in $(ALL_OSVERSIONS.windows); do \
-		OSVERSION=$${osversion} $(MAKE) azdiskschedulerextender-container-windows; \
-	done
-	
-.PHONY: container-all
-container-all: azuredisk-windows
+.PHONY: container-setup
+container-setup:
 	docker buildx rm container-builder || true
 	docker buildx create --use --name=container-builder
 ifeq ($(CLOUD), AzureStackCloud)
@@ -240,6 +239,19 @@ endif
 	# https://github.com/docker/buildx/issues/464#issuecomment-741507760
 	docker run --privileged --rm tonistiigi/binfmt --uninstall qemu-aarch64
 	docker run --rm --privileged tonistiigi/binfmt --install all
+
+.PHONY: azdiskschedulerextender-all
+azdiskschedulerextender-all: azdiskschedulerextender-windows container-setup
+	for arch in $(ALL_ARCH.linux); do \
+		ARCH=$${arch} $(MAKE) azdiskschedulerextender; \
+		ARCH=$${arch} $(MAKE) azdiskschedulerextender-container-linux; \
+	done
+	for osversion in $(ALL_OSVERSIONS.windows); do \
+		OSVERSION=$${osversion} $(MAKE) azdiskschedulerextender-container-windows; \
+	done
+	
+.PHONY: container-all
+container-all: azuredisk-windows container-setup
 	for arch in $(ALL_ARCH.linux); do \
 		ARCH=$${arch} $(MAKE) azuredisk; \
 		ARCH=$${arch} $(MAKE) container-linux; \

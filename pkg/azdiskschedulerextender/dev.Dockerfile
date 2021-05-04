@@ -17,5 +17,6 @@ RUN apt-get update && apt-get install -y util-linux e2fsprogs mount ca-certifica
 LABEL maintainers="andyzhangx"
 LABEL description="Scheduler extender for the Azure Disk CSI Driver"
 
-COPY ./_output/azdiskschedulerextender /azdiskschedulerextender
+ARG ARCH=amd64
+COPY ./_output/${ARCH}/azdiskschedulerextender /azdiskschedulerextender
 ENTRYPOINT ["/azdiskschedulerextender"]
