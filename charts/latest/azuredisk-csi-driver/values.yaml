@@ -39,6 +39,8 @@ controller:
 node:
   metricsPort: 29605
   logLevel: 5
+  livenessProbe:
+    healthPort: 29603
 
 snapshot:
   enabled: false
