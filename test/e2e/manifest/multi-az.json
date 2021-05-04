@@ -15,7 +15,6 @@
                     "--feature-gates": "CSIInlineVolume=true,LocalStorageCapacityIsolation=true,ServiceNodeExclusion=true"
                 },
                 "apiServerConfig": {
-                    "--feature-gates": "VolumeSnapshotDataSource=true",
                     "--enable-admission-plugins": "NamespaceLifecycle,LimitRanger,ServiceAccount,DefaultStorageClass,ResourceQuota,AlwaysPullImages"
                 },
                 "outboundRuleIdleTimeoutInMinutes": 30,
