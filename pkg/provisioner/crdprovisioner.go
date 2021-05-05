@@ -40,8 +40,9 @@ type CrdProvisioner struct {
 }
 
 const (
+	// TODO: Figure out good interval and timeout values, and make them configurable.
 	interval = time.Duration(1) * time.Second
-	timeout  = time.Duration(15) * time.Second
+	timeout  = time.Duration(120) * time.Second
 )
 
 func NewCrdProvisioner(kubeConfig *rest.Config, objNamespace string) (*CrdProvisioner, error) {
@@ -156,16 +157,18 @@ func (c *CrdProvisioner) CreateVolume(
 		if err != nil {
 			return false, err
 		}
-		if azVolumeCreated == nil || azVolumeCreated.Status == nil {
-			return false, status.Error(codes.Internal, fmt.Sprintf("Unable to fetch status of volume created for volume name (%s)", volumeName))
+		if azVolumeCreated.Status != nil {
+			return true, nil
 		}
-
-		return true, nil
+		return false, nil
 	}
 
 	err = wait.PollImmediate(interval, timeout, conditionFunc)
 	if err != nil {
 		return nil, err
+	}
+	if azVolumeCreated == nil || azVolumeCreated.Status == nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Unable to fetch status of volume created for volume name (%s)", volumeName))
 	}
 
 	return azVolumeCreated.Status.ResponseObject, nil
@@ -173,26 +176,37 @@ func (c *CrdProvisioner) CreateVolume(
 
 func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secrets map[string]string) error {
 	azV := c.azDiskClient.DiskV1alpha1().AzVolumes(c.namespace)
-	err := azV.Delete(ctx, volumeID, metav1.DeleteOptions{})
+
+	// TODO: Since the CRD provisioner needs to the AzVolume name and not the ARM disk URI, it should really
+	// return the AzVolume name to the caller as the volume ID. To make this work, we would need to implement
+	// snapshot APIs through the CRD provisioner.
+	volumeName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(volumeID)
+	if err != nil {
+		return err
+	}
+
+	err = azV.Delete(ctx, volumeName, metav1.DeleteOptions{})
 	if errors.IsNotFound(err) {
-		klog.Info("Could not find the volume name (%s). Deletion succedded", volumeID)
+		klog.Info("Could not find the volume name (%s). Deletion succeeded", volumeName)
 		return nil
 	}
 
 	if err != nil {
-		klog.Error("Failed to delete azvolume resource for volume id (%s), error: %v", volumeID, err)
+		klog.Error("Failed to delete azvolume resource for volume id (%s), error: %v", volumeName, err)
 		return err
 	}
 
 	conditionFunc := func() (bool, error) {
 		// Verify if the azVolume is deleted
-		_, err := azV.Get(ctx, volumeID, metav1.GetOptions{})
-
+		_, err := azV.Get(ctx, volumeName, metav1.GetOptions{})
+		if err == nil {
+			return false, nil
+		}
 		if errors.IsNotFound(err) {
 			return true, nil
 		}
 
-		return false, status.Error(codes.Internal, fmt.Sprintf("Failed to delete azvolume resource for volume id (%s)", volumeID))
+		return false, status.Error(codes.Internal, fmt.Sprintf("Failed to delete azvolume resource for volume name (%s)", volumeName))
 	}
 
 	return wait.PollImmediate(interval, timeout, conditionFunc)
@@ -244,17 +258,21 @@ func (c *CrdProvisioner) PublishVolume(
 
 	conditionFunc := func() (bool, error) {
 		attachmentCreated, err = azVA.Get(ctx, azureutils.GetAzVolumeAttachmentName(volumeID, nodeID), metav1.GetOptions{})
-		if attachmentCreated.Status == nil {
-			return false, status.Error(codes.Internal, fmt.Sprintf("Failed to attach azvolume attachment resource for volume id (%s) to node (%s)", volumeID, nodeID))
+		if err != nil {
+			return false, err
 		}
-
-		return true, nil
+		if attachmentCreated.Status != nil {
+			return true, nil
+		}
+		return false, nil
 	}
 
 	err = wait.PollImmediate(interval, timeout, conditionFunc)
-
 	if err != nil {
 		return nil, err
+	}
+	if attachmentCreated.Status == nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to attach azvolume attachment resource for volume id (%s) to node (%s)", volumeID, nodeID))
 	}
 
 	return attachmentCreated.Status.PublishContext, nil
@@ -280,6 +298,9 @@ func (c *CrdProvisioner) UnpublishVolume(
 	conditionFunc := func() (bool, error) {
 		// Verify if the azVolume is deleted
 		_, err = azVA.Get(ctx, azureutils.GetAzVolumeAttachmentName(volumeID, nodeID), metav1.GetOptions{})
+		if err == nil {
+			return false, nil
+		}
 		if errors.IsNotFound(err) {
 			return true, nil
 		}
@@ -315,16 +336,19 @@ func (c *CrdProvisioner) ExpandVolume(
 			return false, err
 		}
 		// Checking that the status is updated with the required capacityRange
-		if azVolumeUpdated != nil && azVolumeUpdated.Status != nil && azVolumeUpdated.Status.DeepCopy().ResponseObject.CapacityBytes == capacityRange.RequiredBytes {
+		if azVolumeUpdated.Status != nil && azVolumeUpdated.Status.ResponseObject.CapacityBytes == capacityRange.RequiredBytes {
 			return true, nil
 		}
 
-		return false, status.Error(codes.Internal, fmt.Sprintf("AzVolume status not updated with the new capacity for volume name (%s)", volumeID))
+		return false, nil
 	}
 
 	err = wait.PollImmediate(interval, timeout, conditionFunc)
 	if err != nil {
 		return nil, err
+	}
+	if azVolumeUpdated.Status.ResponseObject.CapacityBytes != capacityRange.RequiredBytes {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("AzVolume status not updated with the new capacity for volume name (%s)", volumeID))
 	}
 
 	return azVolumeUpdated.Status.ResponseObject, nil

@@ -194,7 +194,7 @@ func (r *reconcileAzVolume) UpdateStatus(ctx context.Context, volumeName string,
 }
 
 func (r *reconcileAzVolume) expandVolume(ctx context.Context, azVolume *v1alpha1.AzVolume) (*v1alpha1.AzVolumeStatusParams, error) {
-	return r.cloudProvisioner.ExpandVolume(ctx, azVolume.Spec.UnderlyingVolume, azVolume.Spec.CapacityRange, azVolume.Spec.Secrets)
+	return r.cloudProvisioner.ExpandVolume(ctx, azVolume.Status.ResponseObject.VolumeID, azVolume.Spec.CapacityRange, azVolume.Spec.Secrets)
 }
 
 func (r *reconcileAzVolume) createVolume(ctx context.Context, azVolume *v1alpha1.AzVolume) (*v1alpha1.AzVolumeStatusParams, error) {
@@ -202,7 +202,7 @@ func (r *reconcileAzVolume) createVolume(ctx context.Context, azVolume *v1alpha1
 }
 
 func (r *reconcileAzVolume) deleteVolume(ctx context.Context, azVolume *v1alpha1.AzVolume) error {
-	err := r.cloudProvisioner.DeleteVolume(ctx, azVolume.Spec.UnderlyingVolume, azVolume.Spec.Secrets)
+	err := r.cloudProvisioner.DeleteVolume(ctx, azVolume.Status.ResponseObject.VolumeID, azVolume.Spec.Secrets)
 	return err
 }
 

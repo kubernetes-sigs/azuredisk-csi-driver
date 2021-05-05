@@ -46,8 +46,7 @@ type AzVolumeSpec struct {
 	UnderlyingVolume     string `json:"underlyingVolume"`
 	MaxMountReplicaCount int    `json:"maxMountReplicaCount"`
 	//The capabilities that the volume MUST have
-	//+optional
-	VolumeCapability []VolumeCapability `json:"volumeCapability,omitempty"`
+	VolumeCapability []VolumeCapability `json:"volumeCapability"`
 	//The capacity of the storage
 	//+optional
 	CapacityRange *CapacityRange `json:"capacityRange,omitempty"`
@@ -286,9 +285,19 @@ const (
 )
 
 type VolumeCapabilityAccessDetails struct {
+	// Specifies the access type for the volume.
 	AccessType VolumeCapabilityAccess `json:"access_type"`
-	FsType     string                 `json:"fs_type"`
-	MountFlags []string               `json:"mount_flags"`
+	// The filesystem type. This field is OPTIONAL.
+	// An empty string is equal to an unspecified field value.
+	// +optional
+	FsType string `json:"fs_type"`
+	// The mount options that can be used for the volume. This field is
+	// OPTIONAL. `mount_flags` MAY contain sensitive information.
+	// Therefore, the CO and the Plugin MUST NOT leak this information
+	// to untrusted entities. The total size of this repeated field
+	// SHALL NOT exceed 4 KiB.
+	// +optional
+	MountFlags []string `json:"mount_flags,omitempty"`
 }
 
 type VolumeCapability struct {

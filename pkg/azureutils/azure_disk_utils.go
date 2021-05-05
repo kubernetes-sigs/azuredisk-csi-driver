@@ -230,7 +230,7 @@ func GetAzureCloudProvider(kubeClient clientset.Interface) (*azure.Cloud, error)
 
 func IsValidDiskURI(diskURI string) error {
 	if strings.Index(strings.ToLower(diskURI), "/subscriptions/") != 0 {
-		return fmt.Errorf("Inavlid DiskURI: %v, correct format: %v", diskURI, diskURISupportedManaged)
+		return fmt.Errorf("Invalid DiskURI: %v, correct format: %v", diskURI, diskURISupportedManaged)
 	}
 	return nil
 }

@@ -28,8 +28,8 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 
-	"k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	apiRuntime "k8s.io/apimachinery/pkg/runtime"
 	clientset "k8s.io/client-go/kubernetes"
@@ -86,7 +86,7 @@ type DriverV2 struct {
 
 type CrdProvisioner interface {
 	RegisterDriverNode(ctx context.Context, node *v1.Node, nodePartition string, nodeID string) error
-	CreateVolume(ctx context.Context, volumeName string, capacityRange *azuredisk.CapacityRange, 
+	CreateVolume(ctx context.Context, volumeName string, capacityRange *azuredisk.CapacityRange,
 		volumeCapabilities []azuredisk.VolumeCapability, parameters map[string]string,
 		secrets map[string]string, volumeContentSource *azuredisk.ContentVolumeSource,
 		accessibilityReq *azuredisk.TopologyRequirement) (*azuredisk.AzVolumeStatusParams, error)
