@@ -41,6 +41,8 @@ import (
 )
 
 const (
+	// 1. AzVolumeAttachmentFinalizer for AzVolumeAttachment objects handles deletion of AzVolumeAttachment CRIs
+	// 2. AzVolumeAttachmentFinalizer for AzVolume prevents AzVolume CRI from being deleted before all AzVolumeAttachments attached to that volume is deleted as well
 	AzVolumeAttachmentFinalizer = "disk.csi.azure.com/azvolumeattachment-finalizer"
 	NodeNameLabel               = "node-name"
 	VolumeNameLabel             = "volume-name"
@@ -223,7 +225,18 @@ func (r *reconcileAzVolumeAttachment) SyncVolume(ctx context.Context, azVolume v
 	desiredAttachmentCount, currentAttachmentCount := azVolume.Spec.MaxMountReplicaCount+1, len(azVolumeAttachments.Items)
 	klog.Infof("control number of attachments for volume (%s): desired=%d,\tcurrent:%d", azVolume.Spec.UnderlyingVolume, desiredAttachmentCount, currentAttachmentCount)
 
-	if desiredAttachmentCount > currentAttachmentCount {
+	// if there is no AzVolumeAttachment object for the specified underlying volume, remove AzVolumeAttachment finalizer from AzVolume
+	if currentAttachmentCount == 0 {
+		if err := r.DeleteFinalizerFromAzVolume(ctx, azVolume.Name); err != nil {
+			return err
+		}
+	}
+
+	// if the azVolume is marked deleted, do not create more azvolume attachment objects
+	now := metav1.Now()
+	azVolumeDeleted := azVolume.DeletionTimestamp.Before(&now)
+
+	if !azVolumeDeleted && desiredAttachmentCount > currentAttachmentCount {
 		klog.Infof("Create %d more replicas for volume (%s)", desiredAttachmentCount-currentAttachmentCount, azVolume.Spec.UnderlyingVolume)
 		if err = r.CreateReplicas(ctx, min(defaultMaxReplicaUpdateCount, desiredAttachmentCount-currentAttachmentCount), azVolume.Spec.UnderlyingVolume, useCache); err != nil {
 			klog.Errorf("failed to create %d replicas for volume (%s): %v", desiredAttachmentCount-currentAttachmentCount, azVolume.Spec.UnderlyingVolume, err)
@@ -398,7 +411,7 @@ func (r *reconcileAzVolumeAttachment) InitializeMeta(ctx context.Context, attach
 	}
 
 	// if the required metadata already exists return
-	if finalizerExists(azVolumeAttachment, AzVolumeAttachmentFinalizer) && labelExists(azVolumeAttachment, NodeNameLabel) && labelExists(azVolumeAttachment, VolumeNameLabel) {
+	if finalizerExists(azVolumeAttachment.Finalizers, AzVolumeAttachmentFinalizer) && labelExists(azVolumeAttachment.Labels, NodeNameLabel) && labelExists(azVolumeAttachment.Labels, VolumeNameLabel) {
 		return nil
 	}
 
@@ -409,7 +422,7 @@ func (r *reconcileAzVolumeAttachment) InitializeMeta(ctx context.Context, attach
 		patched.Finalizers = []string{}
 	}
 
-	if !finalizerExists(azVolumeAttachment, AzVolumeAttachmentFinalizer) {
+	if !finalizerExists(azVolumeAttachment.Finalizers, AzVolumeAttachmentFinalizer) {
 		patched.Finalizers = append(patched.Finalizers, AzVolumeAttachmentFinalizer)
 	}
 
@@ -456,20 +469,73 @@ func (r *reconcileAzVolumeAttachment) DeleteFinalizer(ctx context.Context, attac
 	return nil
 }
 
-func finalizerExists(azVolumeAttachment v1alpha1.AzVolumeAttachment, finalizerName string) bool {
-	if azVolumeAttachment.Finalizers != nil {
-		for _, finalizer := range azVolumeAttachment.Finalizers {
-			if finalizer == finalizerName {
-				return true
-			}
+func (r *reconcileAzVolumeAttachment) AddFinalizerToAzVolume(ctx context.Context, volumeName string) error {
+	var azVolume v1alpha1.AzVolume
+	if err := r.client.Get(ctx, types.NamespacedName{Namespace: r.namespace, Name: volumeName}, &azVolume); err != nil {
+		klog.Errorf("failed to get AzVolume (%s): %v", volumeName, err)
+		return err
+	}
+
+	updated := azVolume.DeepCopy()
+
+	if updated.Finalizers == nil {
+		updated.Finalizers = []string{}
+	}
+
+	if finalizerExists(updated.Finalizers, AzVolumeAttachmentFinalizer) {
+		return nil
+	}
+
+	updated.Finalizers = append(updated.Finalizers, AzVolumeAttachmentFinalizer)
+	if err := r.client.Update(ctx, updated, &client.UpdateOptions{}); err != nil {
+		klog.Errorf("failed to add finalizer (%s) to AzVolume(%s): %v", AzVolumeAttachmentFinalizer, updated.Name, err)
+		return err
+	}
+	klog.Infof("successfully added finalizer (%s) to AzVolume (%s)", AzVolumeAttachmentFinalizer, updated.Name)
+	return nil
+}
+
+func (r *reconcileAzVolumeAttachment) DeleteFinalizerFromAzVolume(ctx context.Context, volumeName string) error {
+	var azVolume v1alpha1.AzVolume
+	if err := r.client.Get(ctx, types.NamespacedName{Namespace: r.namespace, Name: volumeName}, &azVolume); err != nil {
+		if errors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to get AzVolume (%s): %v", volumeName, err)
+		return err
+	}
+
+	updated := azVolume.DeepCopy()
+	updatedFinalizers := []string{}
+
+	for _, finalizer := range updated.Finalizers {
+		if finalizer == AzVolumeAttachmentFinalizer {
+			continue
+		}
+		updatedFinalizers = append(updatedFinalizers, finalizer)
+	}
+	updated.Finalizers = updatedFinalizers
+
+	if err := r.client.Update(ctx, updated, &client.UpdateOptions{}); err != nil {
+		klog.Errorf("failed to delete finalizer (%s) from AzVolume(%s): %v", AzVolumeAttachmentFinalizer, updated.Name, err)
+		return err
+	}
+	klog.Infof("successfully deleted finalizer (%s) from AzVolume (%s)", AzVolumeAttachmentFinalizer, updated.Name)
+	return nil
+}
+
+func finalizerExists(finalizers []string, finalizerName string) bool {
+	for _, finalizer := range finalizers {
+		if finalizer == finalizerName {
+			return true
 		}
 	}
 	return false
 }
 
-func labelExists(azVolumeAttachment v1alpha1.AzVolumeAttachment, label string) bool {
-	if azVolumeAttachment.Labels != nil {
-		_, ok := azVolumeAttachment.Labels[label]
+func labelExists(labels map[string]string, label string) bool {
+	if labels != nil {
+		_, ok := labels[label]
 		return ok
 	}
 	return false
@@ -500,6 +566,10 @@ func (r *reconcileAzVolumeAttachment) triggerAttach(ctx context.Context, attachm
 
 	// Initialize finalizer and add label to the object
 	if err := r.InitializeMeta(ctx, azVolumeAttachment.Name); err != nil {
+		return err
+	}
+
+	if err := r.AddFinalizerToAzVolume(ctx, azVolumeAttachment.Spec.UnderlyingVolume); err != nil {
 		return err
 	}
 

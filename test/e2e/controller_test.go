@@ -299,7 +299,7 @@ var _ = ginkgo.Describe("Controller", func() {
 
 	})
 
-	ginkgo.Context("AzVolume", func() {
+	ginkgo.Context("AzVolumes", func() {
 		ginkgo.It("Should initialize AzVolume object", func() {
 			skipIfUsingInTreeVolumePlugin()
 			skipIfNotUsingCSIDriverV2()
@@ -324,6 +324,30 @@ var _ = ginkgo.Describe("Controller", func() {
 			framework.ExpectNoError(err)
 
 			err = testAzVolume.WaitForDelete(time.Duration(3) * time.Minute)
+			framework.ExpectNoError(err)
+		})
+
+		ginkgo.It("Should delete AzVolumeAttachment objects with deletion of AzVolume", func() {
+			skipIfUsingInTreeVolumePlugin()
+			skipIfNotUsingCSIDriverV2()
+			nodes := testsuites.ListNodeNames(cs)
+			volName := "test-volume-delete"
+			if len(nodes) < 1 {
+				ginkgo.Skip("need at least 1 nodes to verify the test case. Current node count is %d", len(nodes))
+			}
+			testAzAtt := testsuites.SetupTestAzVolumeAttachment(azDiskClient.DiskV1alpha1(), namespace, volName, nodes[0], 0)
+			_ = testAzAtt.Create()
+			defer testAzAtt.Cleanup()
+
+			err = testAzAtt.WaitForAttach(time.Duration(5) * time.Minute)
+			framework.ExpectNoError(err)
+			time.Sleep(time.Duration(3) * time.Minute)
+
+			// If AzVolume is deleted, AzVolumeAttachment referring to the deleted AzVolume should also be deleted.
+			err = azDiskClient.DiskV1alpha1().AzVolumes(namespace).Delete(context.Background(), volName, metav1.DeleteOptions{})
+			framework.ExpectNoError(err)
+
+			err = testAzAtt.WaitForDelete(nodes[0], time.Duration(5)*time.Minute)
 			framework.ExpectNoError(err)
 		})
 	})

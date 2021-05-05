@@ -21,6 +21,8 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
@@ -139,6 +141,24 @@ func (r *reconcileAzVolume) triggerDelete(ctx context.Context, volumeName string
 		klog.Errorf("failed to get AzVolume (%s): %v", volumeName, err)
 		return err
 	}
+	// Delete all AzVolumeAttachment objects bound to the deleted AzVolume
+	volRequirement, _ := labels.NewRequirement(VolumeNameLabel, selection.Equals, []string{azVolume.Spec.UnderlyingVolume})
+	labelSelector := labels.NewSelector().Add(*volRequirement)
+
+	attachments, err := r.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(r.namespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})
+	if err != nil && !errors.IsNotFound(err) {
+		klog.Errorf("failed to get AzVolumeAttachments: %v", err)
+		return err
+	}
+
+	klog.V(5).Infof("number of attachments found: %d", len(attachments.Items))
+	for _, attachment := range attachments.Items {
+		if err = r.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(r.namespace).Delete(ctx, attachment.Name, metav1.DeleteOptions{}); err != nil {
+			klog.Errorf("failed to delete AzVolumeAttachment (%s): %v", attachment.Name, err)
+			return err
+		}
+		klog.V(5).Infof("Set deletion timestamp for AzVolumeAttachment (%s)", attachment.Name)
+	}
 
 	if err := r.deleteVolume(ctx, &azVolume); err != nil {
 		klog.Errorf("failed to delete volume %s: %v", azVolume.Spec.UnderlyingVolume, err)
@@ -149,7 +169,8 @@ func (r *reconcileAzVolume) triggerDelete(ctx context.Context, volumeName string
 	if err := r.UpdateStatus(ctx, azVolume.Name, true, nil); err != nil {
 		return err
 	}
-	klog.Infof("successfully deleted volume (%s)and update status of AzVolume (%s)", azVolume.Spec.UnderlyingVolume, azVolume.Name)
+
+	klog.Infof("successfully deleted volume (%s) and its attachments and update status of AzVolume (%s)", azVolume.Spec.UnderlyingVolume, azVolume.Name)
 	return nil
 }
 
