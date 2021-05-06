@@ -35,11 +35,16 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	schedulerapi "k8s.io/kube-scheduler/extender/v1"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	v1alpha1Client "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	versionedClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	fakeClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
+	informers "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions"
 )
 
 var (
@@ -65,6 +70,7 @@ var (
     - name: clusterUser_foo-rg_foo-cluster
       user:
 `
+	noResyncPeriodFunc = func() time.Duration { return 0 }
 )
 
 func TestMain(m *testing.M) {
@@ -98,30 +104,21 @@ func TestFilterAndPrioritizeRequestResponseCode(t *testing.T) {
 		},
 	}
 
-	for _, test := range tests {
-		//save original clients
-		savedAzVolumeAttachmentExtensionClient := azVolumeAttachmentExtensionClient
-		savedAzDriverNodeExtensionClient := azDriverNodeExtensionClient
-		defer func() {
-			azVolumeAttachmentExtensionClient = savedAzVolumeAttachmentExtensionClient
-			azDriverNodeExtensionClient = savedAzDriverNodeExtensionClient
-		}()
+	// save original client
+	savedKubeExtensionClientset := kubeExtensionClientset
+	defer func() {
+		kubeExtensionClientset = savedKubeExtensionClientset
+	}()
 
-		// continue with fake clients
-		testClientSet := fakeClientSet.NewSimpleClientset(
-			&v1alpha1Client.AzVolumeAttachmentList{
-				Items: []v1alpha1Client.AzVolumeAttachment{
-					getVolumeAttachment("volumeAttachment", ns, "vol", "node"),
-				},
-			},
-			&v1alpha1Client.AzDriverNodeList{
-				Items: []v1alpha1Client.AzDriverNode{
-					getDriverNode("driverNode", ns, "node", true),
-				},
-			},
+	for _, test := range tests {
+		// create fake clients
+		var testClientSet versionedClientSet.Interface = fakeClientSet.NewSimpleClientset(
+			getVolumeAttachment("volumeAttachment", ns, "vol", "node"),
+			getDriverNode("driverNode", ns, "node", true),
 		)
-		azVolumeAttachmentExtensionClient = testClientSet.DiskV1alpha1().AzVolumeAttachments(ns)
-		azDriverNodeExtensionClient = testClientSet.DiskV1alpha1().AzDriverNodes(ns)
+
+		// continue with fake client
+		kubeExtensionClientset = testClientSet
 
 		response := httptest.NewRecorder()
 		requestArgs, err := json.Marshal(test.inputArgs)
@@ -154,7 +151,7 @@ func TestFilterAndPrioritizeRequestResponseCode(t *testing.T) {
 func TestFilterAndPrioritizeResponses(t *testing.T) {
 	tests := []struct {
 		name                     string
-		testClientSet            *fakeClientSet.Clientset
+		testClientSet            versionedClientSet.Interface
 		schedulerArgs            schedulerapi.ExtenderArgs
 		expectedFilterResult     schedulerapi.ExtenderFilterResult
 		expectedPrioritizeResult schedulerapi.HostPriorityList
@@ -162,16 +159,9 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 		{
 			name: "Test simple case of one pod/node/volume",
 			testClientSet: fakeClientSet.NewSimpleClientset(
-				&v1alpha1Client.AzVolumeAttachmentList{
-					Items: []v1alpha1Client.AzVolumeAttachment{
-						getVolumeAttachment("volumeAttachment", ns, "vol", "node"),
-					},
-				},
-				&v1alpha1Client.AzDriverNodeList{
-					Items: []v1alpha1Client.AzDriverNode{
-						getDriverNode("driverNode", ns, "node", true),
-					},
-				},
+				getVolumeAttachment("volumeAttachment", ns, "vol", "node"),
+
+				getDriverNode("driverNode", ns, "node", true),
 			),
 			schedulerArgs: schedulerapi.ExtenderArgs{
 				Pod: &v1.Pod{
@@ -196,16 +186,9 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 		{
 			name: "Test simple case of pod/node/volume with pending azDriverNode",
 			testClientSet: fakeClientSet.NewSimpleClientset(
-				&v1alpha1Client.AzVolumeAttachmentList{
-					Items: []v1alpha1Client.AzVolumeAttachment{
-						getVolumeAttachment("volumeAttachment", ns, "vol", "node"),
-					},
-				},
-				&v1alpha1Client.AzDriverNodeList{
-					Items: []v1alpha1Client.AzDriverNode{
-						getDriverNode("driverNode", ns, "node", false),
-					},
-				},
+
+				getVolumeAttachment("volumeAttachment", ns, "vol", "node"),
+				getDriverNode("driverNode", ns, "node", false),
 			),
 			schedulerArgs: schedulerapi.ExtenderArgs{
 				Pod: &v1.Pod{
@@ -230,16 +213,8 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 		{
 			name: "Test simple case of single node/volume with no pod volume requests",
 			testClientSet: fakeClientSet.NewSimpleClientset(
-				&v1alpha1Client.AzVolumeAttachmentList{
-					Items: []v1alpha1Client.AzVolumeAttachment{
-						getVolumeAttachment("volumeAttachment", ns, "vol", "node"),
-					},
-				},
-				&v1alpha1Client.AzDriverNodeList{
-					Items: []v1alpha1Client.AzDriverNode{
-						getDriverNode("driverNode", ns, "node", true),
-					},
-				},
+				getVolumeAttachment("volumeAttachment", ns, "vol", "node"),
+				getDriverNode("driverNode", ns, "node", true),
 			),
 			schedulerArgs: schedulerapi.ExtenderArgs{
 				Pod: &v1.Pod{
@@ -258,17 +233,9 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 		{
 			name: "Test case with 2 nodes and one pod/volume",
 			testClientSet: fakeClientSet.NewSimpleClientset(
-				&v1alpha1Client.AzVolumeAttachmentList{
-					Items: []v1alpha1Client.AzVolumeAttachment{
-						getVolumeAttachment("volumeAttachment", ns, "vol", "node0"),
-					},
-				},
-				&v1alpha1Client.AzDriverNodeList{
-					Items: []v1alpha1Client.AzDriverNode{
-						getDriverNode("driverNode0", ns, "node0", true),
-						getDriverNode("driverNode1", ns, "node1", true),
-					},
-				},
+				getVolumeAttachment("volumeAttachment", ns, "vol", "node0"),
+				getDriverNode("driverNode0", ns, "node0", true),
+				getDriverNode("driverNode1", ns, "node1", true),
 			),
 			schedulerArgs: schedulerapi.ExtenderArgs{
 				Pod: &v1.Pod{
@@ -308,17 +275,9 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 		{
 			name: "Test case with 1 ready and 1 pending nodes and one pod/volume",
 			testClientSet: fakeClientSet.NewSimpleClientset(
-				&v1alpha1Client.AzVolumeAttachmentList{
-					Items: []v1alpha1Client.AzVolumeAttachment{
-						getVolumeAttachment("volumeAttachment", ns, "vol", "node1"),
-					},
-				},
-				&v1alpha1Client.AzDriverNodeList{
-					Items: []v1alpha1Client.AzDriverNode{
-						getDriverNode("driverNode0", ns, "node0", false),
-						getDriverNode("driverNode1", ns, "node1", true),
-					},
-				},
+				getVolumeAttachment("volumeAttachment", ns, "vol", "node1"),
+				getDriverNode("driverNode0", ns, "node0", false),
+				getDriverNode("driverNode1", ns, "node1", true),
 			),
 			schedulerArgs: schedulerapi.ExtenderArgs{
 				Pod: &v1.Pod{
@@ -357,18 +316,10 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 		{
 			name: "Test case with 2 nodes/volumes attached to one node",
 			testClientSet: fakeClientSet.NewSimpleClientset(
-				&v1alpha1Client.AzVolumeAttachmentList{
-					Items: []v1alpha1Client.AzVolumeAttachment{
-						getVolumeAttachment("volumeAttachment0", ns, "vol", "node0"),
-						getVolumeAttachment("volumeAttachment1", ns, "vol", "node0"),
-					},
-				},
-				&v1alpha1Client.AzDriverNodeList{
-					Items: []v1alpha1Client.AzDriverNode{
-						getDriverNode("driverNode0", ns, "node0", true),
-						getDriverNode("driverNode1", ns, "node1", true),
-					},
-				},
+				getVolumeAttachment("volumeAttachment0", ns, "vol", "node0"),
+				getVolumeAttachment("volumeAttachment1", ns, "vol", "node0"),
+				getDriverNode("driverNode0", ns, "node0", true),
+				getDriverNode("driverNode1", ns, "node1", true),
 			),
 			schedulerArgs: schedulerapi.ExtenderArgs{
 				Pod: &v1.Pod{
@@ -408,23 +359,15 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 		{
 			name: "Test case with 3 nodes and 6 volumes attached to multiple nodes",
 			testClientSet: fakeClientSet.NewSimpleClientset(
-				&v1alpha1Client.AzVolumeAttachmentList{
-					Items: []v1alpha1Client.AzVolumeAttachment{
-						getVolumeAttachment("volumeAttachment0", ns, "vol", "node2"),
-						getVolumeAttachment("volumeAttachment1", ns, "vol", "node0"),
-						getVolumeAttachment("volumeAttachment2", ns, "vol", "node1"),
-						getVolumeAttachment("volumeAttachment3", ns, "vol", "node1"),
-						getVolumeAttachment("volumeAttachment4", ns, "vol", "node1"),
-						getVolumeAttachment("volumeAttachment5", ns, "vol", "node0"),
-					},
-				},
-				&v1alpha1Client.AzDriverNodeList{
-					Items: []v1alpha1Client.AzDriverNode{
-						getDriverNode("driverNode0", ns, "node0", true),
-						getDriverNode("driverNode1", ns, "node1", true),
-						getDriverNode("driverNode2", ns, "node2", true),
-					},
-				},
+				getVolumeAttachment("volumeAttachment0", ns, "vol", "node2"),
+				getVolumeAttachment("volumeAttachment1", ns, "vol", "node0"),
+				getVolumeAttachment("volumeAttachment2", ns, "vol", "node1"),
+				getVolumeAttachment("volumeAttachment3", ns, "vol", "node1"),
+				getVolumeAttachment("volumeAttachment4", ns, "vol", "node1"),
+				getVolumeAttachment("volumeAttachment5", ns, "vol", "node0"),
+				getDriverNode("driverNode0", ns, "node0", true),
+				getDriverNode("driverNode1", ns, "node1", true),
+				getDriverNode("driverNode2", ns, "node2", true),
 			),
 			schedulerArgs: schedulerapi.ExtenderArgs{
 				Pod: &v1.Pod{
@@ -460,23 +403,15 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 		{
 			name: "Test case with 3 nodes, extra volumes and pod with 2 volume requests",
 			testClientSet: fakeClientSet.NewSimpleClientset(
-				&v1alpha1Client.AzVolumeAttachmentList{
-					Items: []v1alpha1Client.AzVolumeAttachment{
-						getVolumeAttachment("volumeAttachment0", ns, "vol2", "node2"),
-						getVolumeAttachment("volumeAttachment1", ns, "vol", "node0"),
-						getVolumeAttachment("volumeAttachment2", ns, "vol1", "node1"),
-						getVolumeAttachment("volumeAttachment3", ns, "vol", "node1"),
-						getVolumeAttachment("volumeAttachment4", ns, "vol", "node1"),
-						getVolumeAttachment("volumeAttachment5", ns, "vol", "node0"),
-					},
-				},
-				&v1alpha1Client.AzDriverNodeList{
-					Items: []v1alpha1Client.AzDriverNode{
-						getDriverNode("driverNode0", ns, "node0", true),
-						getDriverNode("driverNode1", ns, "node1", true),
-						getDriverNode("driverNode2", ns, "node2", true),
-					},
-				},
+				getVolumeAttachment("volumeAttachment0", ns, "vol2", "node2"),
+				getVolumeAttachment("volumeAttachment1", ns, "vol", "node0"),
+				getVolumeAttachment("volumeAttachment2", ns, "vol1", "node1"),
+				getVolumeAttachment("volumeAttachment3", ns, "vol", "node1"),
+				getVolumeAttachment("volumeAttachment4", ns, "vol", "node1"),
+				getVolumeAttachment("volumeAttachment5", ns, "vol", "node0"),
+				getDriverNode("driverNode0", ns, "node0", true),
+				getDriverNode("driverNode1", ns, "node1", true),
+				getDriverNode("driverNode2", ns, "node2", true),
 			),
 			schedulerArgs: schedulerapi.ExtenderArgs{
 				Pod: &v1.Pod{
@@ -515,23 +450,15 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 		{
 			name: "Test case with 3 nodes and extra volumes attached to multiple nodes",
 			testClientSet: fakeClientSet.NewSimpleClientset(
-				&v1alpha1Client.AzVolumeAttachmentList{
-					Items: []v1alpha1Client.AzVolumeAttachment{
-						getVolumeAttachment("volumeAttachment0", ns, "vol2", "node2"),
-						getVolumeAttachment("volumeAttachment1", ns, "vol", "node0"),
-						getVolumeAttachment("volumeAttachment2", ns, "vol1", "node1"),
-						getVolumeAttachment("volumeAttachment3", ns, "vol", "node1"),
-						getVolumeAttachment("volumeAttachment4", ns, "vol", "node1"),
-						getVolumeAttachment("volumeAttachment5", ns, "vol", "node0"),
-					},
-				},
-				&v1alpha1Client.AzDriverNodeList{
-					Items: []v1alpha1Client.AzDriverNode{
-						getDriverNode("driverNode0", ns, "node0", true),
-						getDriverNode("driverNode1", ns, "node1", true),
-						getDriverNode("driverNode2", ns, "node2", true),
-					},
-				},
+				getVolumeAttachment("volumeAttachment0", ns, "vol2", "node2"),
+				getVolumeAttachment("volumeAttachment1", ns, "vol", "node0"),
+				getVolumeAttachment("volumeAttachment2", ns, "vol1", "node1"),
+				getVolumeAttachment("volumeAttachment3", ns, "vol", "node1"),
+				getVolumeAttachment("volumeAttachment4", ns, "vol", "node1"),
+				getVolumeAttachment("volumeAttachment5", ns, "vol", "node0"),
+				getDriverNode("driverNode0", ns, "node0", true),
+				getDriverNode("driverNode1", ns, "node1", true),
+				getDriverNode("driverNode2", ns, "node2", true),
 			),
 			schedulerArgs: schedulerapi.ExtenderArgs{
 				Pod: &v1.Pod{
@@ -566,19 +493,17 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 		},
 	}
 
+	//save original client
+	savedKubeExtensionClientset := kubeExtensionClientset
+	defer func() {
+		kubeExtensionClientset = savedKubeExtensionClientset
+	}()
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			//save original clients
-			savedAzVolumeAttachmentExtensionClient := azVolumeAttachmentExtensionClient
-			savedAzDriverNodeExtensionClient := azDriverNodeExtensionClient
-			defer func() {
-				azVolumeAttachmentExtensionClient = savedAzVolumeAttachmentExtensionClient
-				azDriverNodeExtensionClient = savedAzDriverNodeExtensionClient
-			}()
-
 			// continue with fake clients
-			azVolumeAttachmentExtensionClient = test.testClientSet.DiskV1alpha1().AzVolumeAttachments(ns)
-			azDriverNodeExtensionClient = test.testClientSet.DiskV1alpha1().AzDriverNodes(ns)
+			kubeExtensionClientset = test.testClientSet
+			setupTestInformers(kubeExtensionClientset)
 
 			// encode scheduler arguments
 			requestArgs, err := json.Marshal(&test.schedulerArgs)
@@ -645,20 +570,17 @@ func TestFilterAndPrioritizeInRandomizedLargeCluster(t *testing.T) {
 		"high": {5000, 30000, 100},
 	}
 
-	//save original clients
-	savedAzVolumeAttachmentExtensionClient := azVolumeAttachmentExtensionClient
-	savedAzDriverNodeExtensionClient := azDriverNodeExtensionClient
+	//save original client
+	savedKubeExtensionClientset := kubeExtensionClientset
 	defer func() {
-		azVolumeAttachmentExtensionClient = savedAzVolumeAttachmentExtensionClient
-		azDriverNodeExtensionClient = savedAzDriverNodeExtensionClient
+		kubeExtensionClientset = savedKubeExtensionClientset
 	}()
 
 	for _, setupParams := range stressTestSetupParams {
 		t.Run("Stress test", func(t *testing.T) {
 			var tokens = make(chan struct{}, 20)
 			var wg sync.WaitGroup
-			var clusterNodes []v1alpha1Client.AzDriverNode
-			var clusterVolumes []v1alpha1Client.AzVolumeAttachment
+			var clusterResourses []runtime.Object
 			numberOfClusterNodes := setupParams.numberOfNodes
 			numberOfClusterVolumes := setupParams.numberOfVolumes
 			numberOfPodsToSchedule := setupParams.numberOfPods
@@ -666,27 +588,23 @@ func TestFilterAndPrioritizeInRandomizedLargeCluster(t *testing.T) {
 			// generate large number of nodes
 			for i := 0; i < numberOfClusterNodes; i++ {
 				nodeName := fmt.Sprintf("node%d", i)
-				clusterNodes = append(clusterNodes, getDriverNode(fmt.Sprintf("driverNode%d", i), ns, nodeName, true))
 				nodes = append(nodes, v1.Node{ObjectMeta: meta.ObjectMeta{Name: nodeName}})
 				nodeNames = append(nodeNames, nodeName)
+				clusterResourses = append(clusterResourses, getDriverNode(fmt.Sprintf("driverNode%d", i), ns, nodeName, true))
 			}
 
 			// generate volumes and assign to nodes
 			for i := 0; i < numberOfClusterVolumes; i++ {
-				clusterVolumes = append(clusterVolumes, getVolumeAttachment(fmt.Sprintf("volumeAttachment%d", i), ns, fmt.Sprintf("vol%d", i), fmt.Sprintf("node%d", rand.Intn(5000))))
+				clusterResourses = append(clusterResourses, getVolumeAttachment(fmt.Sprintf("volumeAttachment%d", i), ns, fmt.Sprintf("vol%d", i), fmt.Sprintf("node%d", rand.Intn(5000))))
 			}
 
-			testClientSet := fakeClientSet.NewSimpleClientset(
-				&v1alpha1Client.AzVolumeAttachmentList{
-					Items: clusterVolumes,
-				},
-				&v1alpha1Client.AzDriverNodeList{
-					Items: clusterNodes,
-				})
+			var testClientSet versionedClientSet.Interface = fakeClientSet.NewSimpleClientset(
+				clusterResourses...,
+			)
 
 			// continue with fake clients
-			azVolumeAttachmentExtensionClient = testClientSet.DiskV1alpha1().AzVolumeAttachments(ns)
-			azDriverNodeExtensionClient = testClientSet.DiskV1alpha1().AzDriverNodes(ns)
+			kubeExtensionClientset = testClientSet
+			setupTestInformers(kubeExtensionClientset)
 
 			var errorChan = make(chan error, numberOfPodsToSchedule)
 			for j := 0; j < numberOfPodsToSchedule; j++ {
@@ -809,8 +727,8 @@ func gotExpectedPrioritizeList(got, want schedulerapi.HostPriorityList) bool {
 	return true
 }
 
-func getVolumeAttachment(attachmentName, ns, volumeName, nodeName string) v1alpha1Client.AzVolumeAttachment {
-	return v1alpha1Client.AzVolumeAttachment{
+func getVolumeAttachment(attachmentName, ns, volumeName, nodeName string) *v1alpha1Client.AzVolumeAttachment {
+	return &v1alpha1Client.AzVolumeAttachment{
 		ObjectMeta: meta.ObjectMeta{
 			Name:      attachmentName,
 			Namespace: ns,
@@ -826,9 +744,9 @@ func getVolumeAttachment(attachmentName, ns, volumeName, nodeName string) v1alph
 	}
 }
 
-func getDriverNode(driverNodeName, ns, nodeName string, ready bool) v1alpha1Client.AzDriverNode {
+func getDriverNode(driverNodeName, ns, nodeName string, ready bool) *v1alpha1Client.AzDriverNode {
 	heartbeat := time.Now().UnixNano()
-	return v1alpha1Client.AzDriverNode{
+	return &v1alpha1Client.AzDriverNode{
 		ObjectMeta: meta.ObjectMeta{
 			Name:      driverNodeName,
 			Namespace: ns,
@@ -890,4 +808,16 @@ func createConfigFileAndSetEnv(path string, content string, envVariableName stri
 func cleanConfigAndRestoreEnv(path string, envVariableName string, envValue string) {
 	defer os.Setenv(envVariableName, envValue)
 	os.Remove(path)
+}
+
+func setupTestInformers(kubeExtensionClientset versioned.Interface) {
+	informerFactory := informers.NewSharedInformerFactory(kubeExtensionClientset, noResyncPeriodFunc())
+	azVolumeAttachmentInformer = informerFactory.Disk().V1alpha1().AzVolumeAttachments()
+	azDriverNodeInformer = informerFactory.Disk().V1alpha1().AzDriverNodes()
+
+	stopper := make(chan struct{})
+	defer close(stopper)
+	go azVolumeAttachmentInformer.Informer().Run(stopper)
+	go azDriverNodeInformer.Informer().Run(stopper)
+	cache.WaitForCacheSync(stopper, azVolumeAttachmentInformer.Informer().HasSynced, azDriverNodeInformer.Informer().HasSynced)
 }

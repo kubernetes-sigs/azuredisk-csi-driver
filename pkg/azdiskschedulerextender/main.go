@@ -51,7 +51,8 @@ const (
 
 func main() {
 	flag.Parse()
-	exportMetrics()
+	ctxroot := context.Background()
+	exportMetrics(ctxroot)
 
 	azDiskSchedulerExtenderEndpoint := fmt.Sprintf("%s%s", ":", *azDiskSchedulerExtenderPort)
 	klog.V(2).Infof("Starting azdiskschedulerextender on address %s ...", azDiskSchedulerExtenderEndpoint)
@@ -62,7 +63,10 @@ func main() {
 	http.HandleFunc(pingRequestStr, handlePingRequest)
 	http.HandleFunc("/", handleUnknownRequest)
 
-	initSchedulerExtender()
+	ctx, cancel := context.WithCancel(ctxroot)
+	defer cancel()
+
+	initSchedulerExtender(ctx)
 
 	if err := server.ListenAndServe(); err != http.ErrServerClosed {
 		klog.Fatalf("Exiting. Error starting extender server: %v", err)
@@ -151,13 +155,13 @@ func handlePrioritizeRequest(response http.ResponseWriter, request *http.Request
 	}
 }
 
-func exportMetrics() {
+func exportMetrics(ctx context.Context) {
 	l, err := net.Listen("tcp", *metricsAddress)
 	if err != nil {
 		klog.Warningf("failed to get listener for metrics endpoint: %v", err)
 		return
 	}
-	serve(context.Background(), l, serveMetrics)
+	serve(ctx, l, serveMetrics)
 }
 
 func serve(ctx context.Context, l net.Listener, serveFunc func(net.Listener) error) {
