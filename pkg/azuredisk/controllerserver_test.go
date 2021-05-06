@@ -318,9 +318,11 @@ func TestCreateVolume(t *testing.T) {
 					Parameters:         mp,
 				}
 				_, err := d.CreateVolume(context.Background(), req)
-				expectedErr := status.Error(codes.InvalidArgument, "Volume capability(MULTI_NODE_READER_ONLY) not supported")
-				if !reflect.DeepEqual(err, expectedErr) {
-					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				expectedErrV1 := status.Error(codes.InvalidArgument, "Volume capability(MULTI_NODE_READER_ONLY) not supported")
+				expectedErrV2 := status.Error(codes.InvalidArgument, "Volume capability(3) not supported")
+				if !reflect.DeepEqual(err, expectedErrV1) &&
+					!reflect.DeepEqual(err, expectedErrV2) {
+					t.Errorf("actualErr: (%v), expectedErrV1: (%v) or expectedErrV2:(%v)", err, expectedErrV1, expectedErrV2)
 				}
 			},
 		},

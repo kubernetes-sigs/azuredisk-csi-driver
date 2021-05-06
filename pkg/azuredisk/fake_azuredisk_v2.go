@@ -32,6 +32,10 @@ import (
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
+const (
+	fakeObjNamespace = "azure-disk-csi"
+)
+
 type fakeDriverV2 struct {
 	DriverV2
 }
@@ -58,6 +62,7 @@ func newFakeDriverV2(t *testing.T) (*fakeDriverV2, error) {
 	driver.NodeID = fakeNodeID
 	driver.CSIDriver = *csicommon.NewFakeCSIDriver()
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
+	driver.objectNamespace = fakeObjNamespace
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -75,6 +80,13 @@ func newFakeDriverV2(t *testing.T) (*fakeDriverV2, error) {
 	}
 
 	driver.nodeProvisioner = nodeProvisioner
+
+	crdProvisioner, err := provisioner.NewFakeCrdProvisioner(driver.cloudProvisioner.(*provisioner.FakeCloudProvisioner))
+	if err != nil {
+		return nil, err
+	}
+
+	driver.crdProvisioner = crdProvisioner
 
 	driver.AddControllerServiceCapabilities(
 		[]csi.ControllerServiceCapability_RPC_Type{
