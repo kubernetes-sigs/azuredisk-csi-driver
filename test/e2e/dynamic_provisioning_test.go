@@ -45,11 +45,12 @@ var _ = ginkgo.Describe("Dynamic Provisioning", func() {
 		ginkgo.Context("[single-az]", func() {
 			t.defineTests(false, scheduler)
 		})
-
-		ginkgo.Context("[multi-az]", func() {
-			t.defineTests(true, scheduler)
-		})
 	}
+
+	//TODO add support for scheduler extender
+	ginkgo.Context("[multi-az]", func() {
+		t.defineTests(true, "default-scheduler")
+	})
 })
 
 type dynamicProvisioningTestSuite struct {

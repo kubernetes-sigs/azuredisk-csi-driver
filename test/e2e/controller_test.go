@@ -52,20 +52,6 @@ var _ = ginkgo.Describe("Controller", func() {
 		if err != nil {
 			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		}
-
-		// ensure AzDriverNodes for each node exist
-		nodes := testsuites.ListNodeNames(cs)
-		for _, node := range nodes {
-			testsuites.NewTestAzDriverNode(azDiskClient.DiskV1alpha1().AzDriverNodes("azure-disk-csi"), node)
-		}
-	})
-
-	ginkgo.AfterEach(func() {
-		// ensure AzDriverNodes are deleted
-		nodes := testsuites.ListNodeNames(cs)
-		for _, node := range nodes {
-			testsuites.DeleteTestAzDriverNode(azDiskClient.DiskV1alpha1().AzDriverNodes("azure-disk-csi"), node)
-		}
 	})
 
 	ginkgo.Context("AzDriverNode [single-az]", func() {

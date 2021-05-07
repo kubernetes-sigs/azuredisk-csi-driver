@@ -341,4 +341,4 @@ e2e-test:
 
 .PHONY: e2e-test-v2
 e2e-test-v2:
-	BUILD_V2=1 go test -v -timeout=0 -tags azurediskv2 ./test/e2e --temp-use-driver-v2
+	BUILD_V2=1 go test -v -timeout=0 -tags azurediskv2 ./test/e2e --temp-use-driver-v2 ${GINKGO_FLAGS}
