@@ -36,11 +36,12 @@ func init() {
 }
 
 var (
-	endpoint       = flag.String("endpoint", "unix://tmp/csi.sock", "CSI endpoint")
-	nodeID         = flag.String("nodeid", "", "node id")
-	version        = flag.Bool("version", false, "Print the version and exit.")
-	metricsAddress = flag.String("metrics-address", "0.0.0.0:29604", "export the metrics")
-	kubeconfig     = flag.String("kubeconfig", "", "Absolute path to the kubeconfig file. Required only when running out of cluster.")
+	endpoint          = flag.String("endpoint", "unix://tmp/csi.sock", "CSI endpoint")
+	nodeID            = flag.String("nodeid", "", "node id")
+	version           = flag.Bool("version", false, "Print the version and exit.")
+	metricsAddress    = flag.String("metrics-address", "0.0.0.0:29604", "export the metrics")
+	kubeconfig        = flag.String("kubeconfig", "", "Absolute path to the kubeconfig file. Required only when running out of cluster.")
+	disableAVSetNodes = flag.Bool("disable-avset-nodes", true, "disable DisableAvailabilitySetNodes in cloud config for controller")
 )
 
 func main() {
@@ -69,7 +70,8 @@ func handle() {
 	if driver == nil {
 		klog.Fatalln("Failed to initialize azuredisk CSI Driver")
 	}
-	driver.Run(*endpoint, *kubeconfig, false)
+	testingMock := false
+	driver.Run(*endpoint, *kubeconfig, *disableAVSetNodes, testingMock)
 }
 
 func exportMetrics() {

@@ -34,6 +34,7 @@ import (
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
+	consts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
 )
 
 var useDriverV2 = flag.Bool("temp-use-driver-v2", false, "A temporary flag to enable early test and development of Azure Disk CSI Driver V2. This will be removed in the future.")
@@ -70,7 +71,7 @@ func newDriverV2(nodeID string) *DriverV2 {
 }
 
 // Run driver initialization
-func (d *DriverV2) Run(endpoint, kubeconfig string, testBool bool) {
+func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock bool) {
 	versionMeta, err := GetVersionYAML()
 	if err != nil {
 		klog.Fatalf("%v", err)
@@ -87,6 +88,11 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, testBool bool) {
 		// https://github.com/kubernetes-sigs/azuredisk-csi-driver/issues/168
 		klog.Infoln("disable UseInstanceMetadata for controller")
 		d.cloud.Config.UseInstanceMetadata = false
+
+		if disableAVSetNodes && d.cloud.VMType == consts.VMTypeVMSS {
+			klog.V(2).Infof("DisableAvailabilitySetNodes for controller since current VMType is vmss")
+			d.cloud.DisableAvailabilitySetNodes = true
+		}
 	}
 
 	d.mounter, err = mounter.NewSafeMounter()
@@ -114,7 +120,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, testBool bool) {
 
 	s := csicommon.NewNonBlockingGRPCServer()
 	// Driver d act as IdentityServer, ControllerServer and NodeServer
-	s.Start(endpoint, d, d, d, testBool)
+	s.Start(endpoint, d, d, d, testingMock)
 	s.Wait()
 }
 
