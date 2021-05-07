@@ -658,7 +658,7 @@ func TestRun(t *testing.T) {
 				os.Setenv(DefaultAzureCredentialFileEnv, fakeCredFile)
 
 				d, _ := NewFakeDriver(t)
-				d.Run("tcp://127.0.0.1:0", "", true)
+				d.Run("tcp://127.0.0.1:0", "", true, true)
 			},
 		},
 		{
@@ -685,7 +685,7 @@ func TestRun(t *testing.T) {
 				d, _ := NewFakeDriver(t)
 				d.setCloud(&azure.Cloud{})
 				d.setNodeID("")
-				d.Run("tcp://127.0.0.1:0", "", true)
+				d.Run("tcp://127.0.0.1:0", "", true, true)
 			},
 		},
 	}

@@ -142,6 +142,7 @@ spec:
             - "--v={{ .Values.controller.logLevel }}"
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--metrics-address=0.0.0.0:{{ .Values.controller.metricsPort }}"
+            - "--disable-avset-nodes={{ .Values.controller.disableAvailabilitySetNodes }}"
           ports:
             - containerPort: 29602
               name: healthz

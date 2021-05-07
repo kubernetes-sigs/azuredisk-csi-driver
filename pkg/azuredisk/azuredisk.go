@@ -38,6 +38,7 @@ import (
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
+	consts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
@@ -104,7 +105,7 @@ type CSIDriver interface {
 	csi.NodeServer
 	csi.IdentityServer
 
-	Run(endpoint, kubeconfig string, testMode bool)
+	Run(endpoint, kubeconfig string, disableAVSetNodes, testMode bool)
 }
 
 // DriverCore contains fields common to both the V1 and V2 driver, and implements all interfaces of CSI drivers
@@ -132,7 +133,7 @@ func newDriverV1(nodeID string) *Driver {
 }
 
 // Run driver initialization
-func (d *Driver) Run(endpoint, kubeconfig string, testBool bool) {
+func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock bool) {
 	versionMeta, err := GetVersionYAML()
 	if err != nil {
 		klog.Fatalf("%v", err)
@@ -147,8 +148,17 @@ func (d *Driver) Run(endpoint, kubeconfig string, testBool bool) {
 	if d.NodeID == "" {
 		// Disable UseInstanceMetadata for controller to mitigate a timeout issue using IMDS
 		// https://github.com/kubernetes-sigs/azuredisk-csi-driver/issues/168
-		klog.Infoln("disable UseInstanceMetadata for controller")
+		klog.V(2).Infof("disable UseInstanceMetadata for controller")
 		d.cloud.Config.UseInstanceMetadata = false
+
+		if d.cloud.VMType == consts.VMTypeVMSS && !d.cloud.DisableAvailabilitySetNodes {
+			if disableAVSetNodes {
+				klog.V(2).Infof("DisableAvailabilitySetNodes for controller since current VMType is vmss")
+				d.cloud.DisableAvailabilitySetNodes = true
+			} else {
+				klog.Warningf("DisableAvailabilitySetNodes for controller is set as false while current VMType is vmss")
+			}
+		}
 	}
 
 	d.mounter, err = mounter.NewSafeMounter()
@@ -176,7 +186,7 @@ func (d *Driver) Run(endpoint, kubeconfig string, testBool bool) {
 
 	s := csicommon.NewNonBlockingGRPCServer()
 	// Driver d act as IdentityServer, ControllerServer and NodeServer
-	s.Start(endpoint, d, d, d, testBool)
+	s.Start(endpoint, d, d, d, testingMock)
 	s.Wait()
 }
 

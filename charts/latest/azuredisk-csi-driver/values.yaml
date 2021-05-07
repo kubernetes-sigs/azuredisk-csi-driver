@@ -34,6 +34,7 @@ controller:
   replicas: 2
   metricsPort: 29604
   runOnMaster: false
+  disableAvailabilitySetNodes: true
   logLevel: 5
 
 node:
