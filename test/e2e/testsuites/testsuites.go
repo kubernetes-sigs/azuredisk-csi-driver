@@ -1148,7 +1148,7 @@ func (t *TestAzVolumeAttachment) WaitForDelete(nodeName string, timeout time.Dur
 	conditionFunc := func() (bool, error) {
 		_, err := t.azclient.AzVolumeAttachments(t.namespace).Get(context.TODO(), attName, metav1.GetOptions{})
 		if errors.IsNotFound(err) {
-			klog.Infof("azVolumeAttachment %s deleted.", attName)
+			klog.Infof("azVolumeAttachment %s not found.", attName)
 			return true, nil
 		} else if err != nil {
 			return false, err

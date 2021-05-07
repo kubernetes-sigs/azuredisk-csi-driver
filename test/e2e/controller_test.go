@@ -215,7 +215,7 @@ var _ = ginkgo.Describe("Controller", func() {
 			volName := "test-volume"
 			testAzAtt := testsuites.SetupTestAzVolumeAttachment(azDiskClient.DiskV1alpha1(), namespace, volName, nodes[0], 1)
 			defer testAzAtt.Cleanup()
-			testAzAtt.Create()
+			_ = testAzAtt.Create()
 			err := testAzAtt.WaitForReplicas(1, time.Duration(5)*time.Minute)
 			framework.ExpectNoError(err)
 			attachments, err := azDiskClient.DiskV1alpha1().AzVolumeAttachments(namespace).List(context.Background(), metav1.ListOptions{})
@@ -253,8 +253,9 @@ var _ = ginkgo.Describe("Controller", func() {
 				ginkgo.Skip("need at least 3 nodes to verify the test case. Current node count is %d", len(nodes))
 			}
 			replicaCount := 2
-			testAzAtt := testsuites.SetupTestAzVolumeAttachment(azDiskClient.DiskV1alpha1(), namespace, volName, "test-node", replicaCount)
-			testAzAtt.Create()
+			primaryNode := nodes[0]
+			testAzAtt := testsuites.SetupTestAzVolumeAttachment(azDiskClient.DiskV1alpha1(), namespace, volName, primaryNode, replicaCount)
+			_ = testAzAtt.Create()
 			defer testAzAtt.Cleanup()
 			err := testAzAtt.WaitForReplicas(replicaCount, time.Duration(5)*time.Minute)
 			framework.ExpectNoError(err)
@@ -283,6 +284,96 @@ var _ = ginkgo.Describe("Controller", func() {
 			framework.ExpectNoError(err)
 		})
 
+		ginkgo.It("should garbage collect replica AzVolumeAttachment if no promotion or new primary creation happens in a given period of time", func() {
+			skipIfUsingInTreeVolumePlugin()
+			skipIfNotUsingCSIDriverV2()
+			volName := "test-volume"
+			nodes := testsuites.ListNodeNames(cs)
+			if len(nodes) < 2 {
+				ginkgo.Skip("need at least 2 nodes to verify the test case. Current node count is %d", len(nodes))
+			}
+			replicaCount := 1
+			primaryNode := nodes[0]
+			testAzAtt := testsuites.SetupTestAzVolumeAttachment(azDiskClient.DiskV1alpha1(), namespace, volName, primaryNode, replicaCount)
+			primary := testAzAtt.Create()
+			defer testAzAtt.Cleanup()
+			err := testAzAtt.WaitForReplicas(replicaCount, time.Duration(5)*time.Minute)
+			framework.ExpectNoError(err)
+
+			// fail primary attachment
+			testsuites.DeleteTestAzDriverNode(azDiskClient.DiskV1alpha1().AzDriverNodes(namespace), primaryNode)
+			defer testsuites.NewTestAzDriverNode(azDiskClient.DiskV1alpha1().AzDriverNodes(namespace), primaryNode)
+			framework.ExpectNoError(err)
+
+			err = azDiskClient.DiskV1alpha1().AzVolumeAttachments(namespace).Delete(context.Background(), primary.Name, metav1.DeleteOptions{})
+			framework.ExpectNoError(err)
+			err = testAzAtt.WaitForDelete(primaryNode, time.Duration(5)*time.Minute)
+			framework.ExpectNoError(err)
+			time.Sleep(time.Duration(5) * time.Minute)
+
+			// check if the replicas and primary had been properly deleted
+			for _, node := range nodes {
+				err = testAzAtt.WaitForDelete(node, time.Duration(5)*time.Minute)
+				framework.ExpectNoError(err)
+			}
+		})
+
+		ginkgo.It("should not delete replica AzVolumeAttachment if new primary creation happens within a given period of time after primary failure", func() {
+			skipIfUsingInTreeVolumePlugin()
+			skipIfNotUsingCSIDriverV2()
+			volName := "test-volume"
+			nodes := testsuites.ListNodeNames(cs)
+			if len(nodes) < 2 {
+				ginkgo.Skip("need at least 2 nodes to verify the test case. Current node count is %d", len(nodes))
+			}
+			replicaCount := 1
+			primaryNode := nodes[0]
+			testAzAtt := testsuites.SetupTestAzVolumeAttachment(azDiskClient.DiskV1alpha1(), namespace, volName, primaryNode, replicaCount)
+			_ = testAzAtt.Create()
+			defer testAzAtt.Cleanup()
+			err := testAzAtt.WaitForReplicas(replicaCount, time.Duration(5)*time.Minute)
+			framework.ExpectNoError(err)
+
+			// fail primary attachment
+			testsuites.DeleteTestAzDriverNode(azDiskClient.DiskV1alpha1().AzDriverNodes(namespace), primaryNode)
+			defer testsuites.NewTestAzDriverNode(azDiskClient.DiskV1alpha1().AzDriverNodes(namespace), primaryNode)
+			framework.ExpectNoError(err)
+
+			err = azDiskClient.DiskV1alpha1().AzVolumeAttachments(namespace).Delete(context.Background(), testsuites.GetAzVolumeAttachmentName(volName, primaryNode), metav1.DeleteOptions{})
+			framework.ExpectNoError(err)
+			err = testAzAtt.WaitForDelete(primaryNode, time.Duration(5)*time.Minute)
+			framework.ExpectNoError(err)
+
+			// failover to one of replicas
+			attachments, err := azDiskClient.DiskV1alpha1().AzVolumeAttachments(namespace).List(context.Background(), metav1.ListOptions{})
+			framework.ExpectNoError(err)
+
+			var replica *v1alpha1.AzVolumeAttachment
+			for _, attachment := range attachments.Items {
+				if attachment.Status != nil && attachment.Status.Role == v1alpha1.ReplicaRole {
+					replica = &attachment
+					break
+				}
+			}
+
+			promoted := replica.DeepCopy()
+			promoted.Spec.RequestedRole = v1alpha1.PrimaryRole
+			_, err = azDiskClient.DiskV1alpha1().AzVolumeAttachments(namespace).Update(context.Background(), promoted, metav1.UpdateOptions{})
+			framework.ExpectNoError(err)
+
+			// check if a new primary has been created
+			err = testAzAtt.WaitForPrimary(time.Duration(5) * time.Minute)
+			framework.ExpectNoError(err)
+
+			// check if the second attachment object was created and marked attached.
+			err = testAzAtt.WaitForReplicas(1, time.Duration(5)*time.Minute)
+			framework.ExpectNoError(err)
+
+			// sleep for 5 minutes to make sure the replica did not get garbage collected
+			time.Sleep(time.Minute * time.Duration(5))
+			err = testAzAtt.WaitForReplicas(1, time.Duration(5)*time.Minute)
+			framework.ExpectNoError(err)
+		})
 	})
 
 	ginkgo.Context("AzVolumes", func() {

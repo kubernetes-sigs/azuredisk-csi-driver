@@ -40,6 +40,14 @@ type AzVolume struct {
 	Status *AzVolumeStatus `json:"status,omitempty"`
 }
 
+type AzVolumePhase string
+
+const (
+	VolumeBound     AzVolumePhase = "Bound"
+	VolumeReleased  AzVolumePhase = "Released"
+	VolumeAvailable AzVolumePhase = "Available"
+)
+
 // AzVolumeSpec is the spec for an AzVolume resource
 type AzVolumeSpec struct {
 	//the disk URI of the underlying volume
@@ -68,6 +76,9 @@ type AzVolumeSpec struct {
 type AzVolumeStatus struct {
 	//Current status of the AzVolume
 	ResponseObject *AzVolumeStatusParams `json:"status"`
+	//Current phase of the underlying PV
+	//+optional
+	Phase AzVolumePhase `json:"phase,omitempty"`
 }
 
 type AzVolumeStatusParams struct {

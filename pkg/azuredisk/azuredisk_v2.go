@@ -282,14 +282,21 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 	klog.V(2).Info("Initializing AzVolumeAttachment controller")
 	err = controller.NewAzVolumeAttachmentController(ctx, mgr, d.crdProvisioner.GetDiskClientSetAddr(), d.objectNamespace, d.cloudProvisioner)
 	if err != nil {
-		klog.Errorf("Failed to initialize AzVolumeAttachment. Error: %v. Exiting application...", err)
+		klog.Errorf("Failed to initialize AzVolumeAttachmentController. Error: %v. Exiting application...", err)
 		os.Exit(1)
 	}
 
 	klog.V(2).Info("Initializing AzVolume controller")
 	err = controller.NewAzVolumeController(mgr, d.crdProvisioner.GetDiskClientSetAddr(), d.objectNamespace, d.cloudProvisioner)
 	if err != nil {
-		klog.Errorf("Failed to initialize AzVolume. Error: %v. Exiting application...", err)
+		klog.Errorf("Failed to initialize AzVolumeController. Error: %v. Exiting application...", err)
+		os.Exit(1)
+	}
+
+	klog.V(2).Info("Initializing PV controller")
+	err = controller.NewPVController(mgr, d.crdProvisioner.GetDiskClientSetAddr(), d.objectNamespace)
+	if err != nil {
+		klog.Errorf("Failed to initialize PVController. Error: %v. Exiting application...", err)
 		os.Exit(1)
 	}
 
