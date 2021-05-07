@@ -35,6 +35,7 @@ controller:
   metricsPort: 29604
   runOnMaster: false
   disableAvailabilitySetNodes: true
+  attacherWorkerThreads: 100
   logLevel: 5
 
 node:
