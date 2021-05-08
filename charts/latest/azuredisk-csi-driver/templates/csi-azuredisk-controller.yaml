@@ -65,6 +65,7 @@ spec:
             - "-csi-address=$(ADDRESS)"
             - "-timeout=120s"
             - "-leader-election"
+            - "-worker-threads={{ .Values.controller.attacherWorkerThreads }}"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
