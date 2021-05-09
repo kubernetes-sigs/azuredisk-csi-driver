@@ -11,7 +11,7 @@ This driver allows Kubernetes to use [Azure Disk](https://azure.microsoft.com/en
 ### Container Images & Kubernetes Compatibility
 |Driver Version  |Image                                           | supported k8s version |
 |----------------|------------------------------------------------|-----------------------|
-|master branch   |mcr.microsoft.com/k8s/csi/azuredisk-csi:latest  | 1.17+                 |
+|master branch   |mcr.microsoft.com/k8s/csi/azuredisk-csi:latest  | 1.18+                 |
 |v1.2.0          |mcr.microsoft.com/k8s/csi/azuredisk-csi:v1.2.0  | 1.17+                 |
 |v1.1.1          |mcr.microsoft.com/k8s/csi/azuredisk-csi:v1.1.1  | 1.16+                 |
 |v1.0.0          |mcr.microsoft.com/k8s/csi/azuredisk-csi:v1.0.0  | 1.16+                 |
