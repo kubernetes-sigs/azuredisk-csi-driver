@@ -170,16 +170,25 @@ func (c *controllerCommon) AttachDisk(isManagedDisk bool, diskName, diskURI stri
 		}
 
 		if disk.ManagedBy != nil && (disk.MaxShares == nil || *disk.MaxShares <= 1) {
-			attachErr := fmt.Sprintf(
-				"disk(%s) already attached to node(%s), could not be attached to node(%s)",
-				diskURI, *disk.ManagedBy, nodeName)
 			attachedNode, err := vmset.GetNodeNameByProviderID(*disk.ManagedBy)
 			if err != nil {
 				return -1, err
 			}
-			klog.V(2).Infof("found dangling volume %s attached to node %s", diskURI, attachedNode)
-			danglingErr := volerr.NewDanglingError(attachErr, attachedNode, "")
-			return -1, danglingErr
+			if strings.EqualFold(string(nodeName), string(attachedNode)) {
+				err := fmt.Errorf("volume %q is actually attached to current node %q, invalidate vm cache and return error", diskURI, nodeName)
+				klog.Warningf("%v", err)
+				// update VM(invalidate vm cache)
+				if errUpdate := c.UpdateVM(nodeName); errUpdate != nil {
+					return -1, errUpdate
+				}
+				return -1, err
+			}
+
+			attachErr := fmt.Sprintf(
+				"disk(%s) already attached to node(%s), could not be attached to node(%s)",
+				diskURI, *disk.ManagedBy, nodeName)
+			klog.V(2).Infof("found dangling volume %s attached to node %s, could not be attached to node(%s)", diskURI, attachedNode, nodeName)
+			return -1, volerr.NewDanglingError(attachErr, attachedNode, "")
 		}
 
 		if disk.DiskProperties != nil {
@@ -440,7 +449,7 @@ func (c *controllerCommon) GetDiskLun(diskName, diskURI string, nodeName types.N
 // SetDiskLun find unused luns and allocate lun for every disk in diskMap.
 // Return lun of diskURI, -1 if all luns are used.
 func (c *controllerCommon) SetDiskLun(nodeName types.NodeName, diskURI string, diskMap map[string]*AttachDiskOptions) (int32, error) {
-	disks, _, err := c.getNodeDataDisks(nodeName, azcache.CacheReadTypeForceRefresh)
+	disks, _, err := c.getNodeDataDisks(nodeName, azcache.CacheReadTypeDefault)
 	if err != nil {
 		klog.Errorf("error of getting data disks for node %q: %v", nodeName, err)
 		return -1, err

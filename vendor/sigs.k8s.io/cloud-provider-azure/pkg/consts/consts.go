@@ -83,6 +83,10 @@ const (
 
 	// NodeLabelRole specifies the role of a node
 	NodeLabelRole = "kubernetes.io/role"
+	// MasterNodeRoleLabel specifies is the master node label for a node
+	MasterNodeRoleLabel = "node-role.kubernetes.io/master"
+	// ControlPlaneNodeRoleLabel specifies is the control-plane node label for a node
+	ControlPlaneNodeRoleLabel = "node-role.kubernetes.io/control-plane"
 
 	// NicFailedState is the failed state of a nic
 	NicFailedState = "Failed"
@@ -165,13 +169,6 @@ const (
 	BackoffDurationDefault = 5 // in seconds
 	// BackoffJitterDefault is the default value of the backoff jitter
 	BackoffJitterDefault = 1.0
-
-	// CloudConfigNamespace is the namespace of the cloud config secret
-	CloudConfigNamespace = "kube-system"
-	// CloudConfigKey is the name of the cloud config key
-	CloudConfigKey = "cloud-config"
-	// CloudConfigSecName is the name of the cloud config secret
-	CloudConfigSecName = "azure-cloud-provider"
 )
 
 // load balancer

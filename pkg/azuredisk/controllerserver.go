@@ -452,6 +452,11 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 			klog.V(2).Infof("Attach operation successful: volume %q attached to node %q.", diskURI, nodeName)
 		} else {
 			if derr, ok := err.(*volerr.DanglingAttachError); ok {
+				if strings.EqualFold(string(nodeName), string(derr.CurrentNode)) {
+					err := fmt.Errorf("volume %q is actually attached to current node %q, return error", diskURI, nodeName)
+					klog.Warningf("%v", err)
+					return nil, err
+				}
 				klog.Warningf("volume %q is already attached to node %q, try detach first", diskURI, derr.CurrentNode)
 				if err = d.cloud.DetachDisk(diskName, diskURI, derr.CurrentNode); err != nil {
 					return nil, status.Errorf(codes.Internal, "Could not detach volume %q from node %q: %v", diskURI, derr.CurrentNode, err)
