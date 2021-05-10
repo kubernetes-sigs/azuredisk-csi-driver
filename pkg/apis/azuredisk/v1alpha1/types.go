@@ -79,6 +79,9 @@ type AzVolumeStatus struct {
 	//Current phase of the underlying PV
 	//+optional
 	Phase AzVolumePhase `json:"phase,omitempty"`
+	//Error occured during creation/deletion of volume
+	//+optional
+	AzVolumeError *AzVolumeError `json:"azVolumeError,omitempty"`
 }
 
 type AzVolumeStatusParams struct {
@@ -151,6 +154,9 @@ const (
 type AzVolumeAttachmentStatus struct {
 	Role           Role              `json:"role"`
 	PublishContext map[string]string `json:"publish_context"`
+	//Error occured during creation/deletion of volume
+	//+optional
+	AzVolumeError *AzVolumeError `json:"azVolumeError,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -161,6 +167,11 @@ type AzVolumeAttachmentList struct {
 	metav1.ListMeta `json:"metadata"`
 
 	Items []AzVolumeAttachment `json:"items"`
+}
+
+type AzVolumeError struct {
+	ErrorCode    string `json:"errorCode"`
+	ErrorMessage string `json:"errorMessage"`
 }
 
 // +genclient
