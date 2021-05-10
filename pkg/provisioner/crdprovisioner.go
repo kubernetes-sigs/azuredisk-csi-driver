@@ -180,6 +180,7 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 	// TODO: Since the CRD provisioner needs to the AzVolume name and not the ARM disk URI, it should really
 	// return the AzVolume name to the caller as the volume ID. To make this work, we would need to implement
 	// snapshot APIs through the CRD provisioner.
+	// Replace them in all instances in this file.
 	volumeName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(volumeID)
 	if err != nil {
 		return err
@@ -187,12 +188,12 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 
 	err = azV.Delete(ctx, volumeName, metav1.DeleteOptions{})
 	if errors.IsNotFound(err) {
-		klog.Info("Could not find the volume name (%s). Deletion succeeded", volumeName)
+		klog.Infof("Could not find the volume name (%s). Deletion succeeded", volumeName)
 		return nil
 	}
 
 	if err != nil {
-		klog.Error("Failed to delete azvolume resource for volume id (%s), error: %v", volumeName, err)
+		klog.Errorf("Failed to delete azvolume resource for volume id (%s), error: %v", volumeName, err)
 		return err
 	}
 
@@ -221,8 +222,16 @@ func (c *CrdProvisioner) PublishVolume(
 	secrets map[string]string,
 	volumeContext map[string]string) (map[string]string, error) {
 	azVA := c.azDiskClient.DiskV1alpha1().AzVolumeAttachments(c.namespace)
-	azVolumeAttachment, _ := azVA.Get(ctx, azureutils.GetAzVolumeAttachmentName(volumeID, nodeID), metav1.GetOptions{})
-	if azVolumeAttachment != nil {
+	volumeName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(volumeID)
+	if err != nil {
+		return nil, err
+	}
+
+	attachmentName := azureutils.GetAzVolumeAttachmentName(volumeName, nodeID)
+
+	azVolumeAttachment, err := azVA.Get(ctx, attachmentName, metav1.GetOptions{})
+	if err == nil {
+
 		// If there exists an attachment, we are trying to update
 		// the AzVolumeAttachment role from Replica to Primary
 		azVolumeAttachment.Spec.RequestedRole = v1alpha1.PrimaryRole
@@ -232,18 +241,21 @@ func (c *CrdProvisioner) PublishVolume(
 		}
 
 		return azVolumeAttachment.Status.PublishContext, nil
+	} else if !errors.IsNotFound(err) {
+		return nil, err
 	}
 
 	azVolumeAttachment = &v1alpha1.AzVolumeAttachment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: azureutils.GetAzVolumeAttachmentName(volumeID, nodeID),
+			Name: attachmentName,
 			Labels: map[string]string{
 				"node-name":   nodeID,
-				"volume-name": volumeID,
+				"volume-name": volumeName,
 			},
 		},
 		Spec: v1alpha1.AzVolumeAttachmentSpec{
-			UnderlyingVolume: volumeID,
+			UnderlyingVolume: volumeName,
+			VolumeID:         volumeID,
 			NodeName:         nodeID,
 			VolumeContext:    volumeContext,
 			RequestedRole:    v1alpha1.PrimaryRole,
@@ -252,12 +264,12 @@ func (c *CrdProvisioner) PublishVolume(
 
 	attachmentCreated, err := azVA.Create(ctx, azVolumeAttachment, metav1.CreateOptions{})
 	if err != nil {
-		klog.Error("Error creating azvolume attachment for volume id (%s) to node id (%s) error : %v", volumeID, nodeID, err)
+		klog.Errorf("Error creating azvolume attachment for volume id (%s) to node id (%s) error : %v", volumeID, nodeID, err)
 		return nil, err
 	}
 
 	conditionFunc := func() (bool, error) {
-		attachmentCreated, err = azVA.Get(ctx, azureutils.GetAzVolumeAttachmentName(volumeID, nodeID), metav1.GetOptions{})
+		attachmentCreated, err = azVA.Get(ctx, attachmentName, metav1.GetOptions{})
 		if err != nil {
 			return false, err
 		}
@@ -284,20 +296,28 @@ func (c *CrdProvisioner) UnpublishVolume(
 	nodeID string,
 	secrets map[string]string) error {
 	azVA := c.azDiskClient.DiskV1alpha1().AzVolumeAttachments(c.namespace)
-	err := azVA.Delete(ctx, azureutils.GetAzVolumeAttachmentName(volumeID, nodeID), metav1.DeleteOptions{})
+
+	volumeName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(volumeID)
+	if err != nil {
+		return err
+	}
+
+	attachmentName := azureutils.GetAzVolumeAttachmentName(volumeName, nodeID)
+
+	err = azVA.Delete(ctx, attachmentName, metav1.DeleteOptions{})
 	if errors.IsNotFound(err) {
-		klog.Info("Could not find the volume attachment (%s). Deletion succedded", volumeID)
+		klog.Infof("Could not find the volume attachment (%s). Deletion succedded", volumeID)
 		return nil
 	}
 
 	if err != nil {
-		klog.Error("Failed to delete azvolume attachment resource for volume id (%s) to node (%s), error: %v", volumeID, nodeID, err)
+		klog.Errorf("Failed to delete azvolume attachment resource for volume id (%s) to node (%s), error: %v", volumeID, nodeID, err)
 		return err
 	}
 
 	conditionFunc := func() (bool, error) {
 		// Verify if the azVolume is deleted
-		_, err = azVA.Get(ctx, azureutils.GetAzVolumeAttachmentName(volumeID, nodeID), metav1.GetOptions{})
+		_, err = azVA.Get(ctx, attachmentName, metav1.GetOptions{})
 		if err == nil {
 			return false, nil
 		}
@@ -317,7 +337,13 @@ func (c *CrdProvisioner) ExpandVolume(
 	capacityRange *v1alpha1.CapacityRange,
 	secrets map[string]string) (*v1alpha1.AzVolumeStatusParams, error) {
 	azV := c.azDiskClient.DiskV1alpha1().AzVolumes(c.namespace)
-	azVolume, err := azV.Get(ctx, volumeID, metav1.GetOptions{})
+
+	volumeName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(volumeID)
+	if err != nil {
+		return nil, err
+	}
+
+	azVolume, err := azV.Get(ctx, volumeName, metav1.GetOptions{})
 	if err != nil || azVolume == nil {
 		klog.Errorf("Failed to retrieve existing volume id (%s)", volumeID)
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to retrieve volume id (%s), error: %v", volumeID, err))

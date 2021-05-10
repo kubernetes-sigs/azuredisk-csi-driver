@@ -131,6 +131,7 @@ type AzVolumeAttachment struct {
 // AzVolumeAttachmentSpec is the spec for a AzVolumeAttachment resource
 type AzVolumeAttachmentSpec struct {
 	UnderlyingVolume string            `json:"underlyingVolume"`
+	VolumeID         string            `json:"volume_id"`
 	NodeName         string            `json:"nodeName"`
 	VolumeContext    map[string]string `json:"volume_context"`
 	RequestedRole    Role              `json:"role"`

@@ -605,7 +605,7 @@ func (r *reconcileAzVolumeAttachment) triggerAttach(ctx context.Context, attachm
 		return err
 	}
 
-	response, err := r.attachVolume(ctx, azVolumeAttachment.Spec.UnderlyingVolume, azVolumeAttachment.Spec.NodeName, azVolumeAttachment.Spec.VolumeContext)
+	response, err := r.attachVolume(ctx, azVolumeAttachment.Spec.VolumeID, azVolumeAttachment.Spec.NodeName, azVolumeAttachment.Spec.VolumeContext)
 	if err != nil {
 		klog.Errorf("failed to attach volume %s to node %s: %v", azVolumeAttachment.Spec.UnderlyingVolume, azVolumeAttachment.Spec.NodeName, err)
 		return err
@@ -645,7 +645,7 @@ func (r *reconcileAzVolumeAttachment) triggerDetach(ctx context.Context, attachm
 		return err
 	}
 
-	if err := r.detachVolume(ctx, azVolumeAttachment.Spec.UnderlyingVolume, azVolumeAttachment.Spec.NodeName); err != nil {
+	if err := r.detachVolume(ctx, azVolumeAttachment.Spec.VolumeID, azVolumeAttachment.Spec.NodeName); err != nil {
 		klog.Errorf("failed to detach volume %s from node %s: %v", azVolumeAttachment.Spec.UnderlyingVolume, azVolumeAttachment.Spec.NodeName, err)
 		return err
 	}

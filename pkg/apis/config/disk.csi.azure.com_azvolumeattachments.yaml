@@ -69,11 +69,14 @@ spec:
                 additionalProperties:
                   type: string
                 type: object
+              volume_id:
+                type: string
             required:
             - nodeName
             - role
             - underlyingVolume
             - volume_context
+            - volume_id
             type: object
           status:
             description: status represents the current state of AzVolumeAttachment.

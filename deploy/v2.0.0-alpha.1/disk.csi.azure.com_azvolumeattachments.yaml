@@ -3,6 +3,9 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.4.0
+  creationTimestamp: null
   name: azvolumeattachments.disk.csi.azure.com
 spec:
   group: disk.csi.azure.com
@@ -14,7 +17,8 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - description: Name of the Node which this AzVolumeAttachment object is attached to
+    - description: Name of the Node which this AzVolumeAttachment object is attached
+        to
       jsonPath: .spec.nodeName
       name: NodeName
       type: string
@@ -22,7 +26,8 @@ spec:
       jsonPath: .spec.underlyingVolume
       name: UnderlyingVolume
       type: string
-    - description: Indicates if the volume attachment should be primary attachment or not
+    - description: Indicates if the volume attachment should be primary attachment
+        or not
       jsonPath: .spec.role
       name: RequestedRole
       type: string
@@ -33,13 +38,18 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: AzVolumeAttachment is a specification for a AzVolumeAttachment resource
+        description: AzVolumeAttachment is a specification for a AzVolumeAttachment
+          resource
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
             type: string
           metadata:
             type: object
@@ -49,22 +59,39 @@ spec:
               nodeName:
                 type: string
               role:
-                description: Role indicates if the volume attachment is replica attachment or not
+                description: Role indicates if the volume attachment is replica attachment
+                  or not
                 type: string
               underlyingVolume:
+                type: string
+              volume_context:
+                additionalProperties:
+                  type: string
+                type: object
+              volume_id:
                 type: string
             required:
             - nodeName
             - role
             - underlyingVolume
+            - volume_context
+            - volume_id
             type: object
           status:
-            description: status represents the current state of AzVolumeAttachment. Nil status indicates that the underlying volume of AzVolumeAttachment has not yet been attached to the specified node
+            description: status represents the current state of AzVolumeAttachment.
+              Nil status indicates that the underlying volume of AzVolumeAttachment
+              has not yet been attached to the specified node
             properties:
+              publish_context:
+                additionalProperties:
+                  type: string
+                type: object
               role:
-                description: Role indicates if the volume attachment is replica attachment or not
+                description: Role indicates if the volume attachment is replica attachment
+                  or not
                 type: string
             required:
+            - publish_context
             - role
             type: object
         required:

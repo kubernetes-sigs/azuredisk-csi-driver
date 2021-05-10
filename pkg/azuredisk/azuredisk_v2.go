@@ -345,7 +345,7 @@ func (d *DriverV2) RunAzDriverNodeHeartbeatLoop(ctx context.Context) {
 	var cachedAzDriverNode *azuredisk.AzDriverNode
 	azN := d.crdProvisioner.GetDiskClientSet().DiskV1alpha1().AzDriverNodes(d.objectNamespace)
 	heartbeatFrequency := time.Duration(d.heartbeatFrequencyInSec) * time.Second
-	klog.V(1).Info("Starting heartbeat loop with frequency (%v)", heartbeatFrequency)
+	klog.V(1).Infof("Starting heartbeat loop with frequency (%v)", heartbeatFrequency)
 	for {
 
 		// Check if we have a cached copy of the
@@ -372,14 +372,14 @@ func (d *DriverV2) RunAzDriverNodeHeartbeatLoop(ctx context.Context) {
 		timestamp := time.Now().UnixNano()
 		readyForAllocation := true
 		statusMessage := "Driver node healthy."
-		klog.V(2).Info("Updating status for (%v)", azDriverNodeToUpdate)
+		klog.V(2).Infof("Updating status for (%v)", azDriverNodeToUpdate)
 		if azDriverNodeToUpdate.Status == nil {
 			azDriverNodeToUpdate.Status = &azuredisk.AzDriverNodeStatus{}
 		}
 		azDriverNodeToUpdate.Status.ReadyForVolumeAllocation = &readyForAllocation
 		azDriverNodeToUpdate.Status.LastHeartbeatTime = &timestamp
 		azDriverNodeToUpdate.Status.StatusMessage = &statusMessage
-		klog.V(2).Info("Sending heartbeat ReadyForVolumeAllocation=(%v) LastHeartbeatTime=(%v)", *azDriverNodeToUpdate.Status.ReadyForVolumeAllocation, *azDriverNodeToUpdate.Status.LastHeartbeatTime)
+		klog.V(2).Infof("Sending heartbeat ReadyForVolumeAllocation=(%v) LastHeartbeatTime=(%v)", *azDriverNodeToUpdate.Status.ReadyForVolumeAllocation, *azDriverNodeToUpdate.Status.LastHeartbeatTime)
 		cachedAzDriverNode, err = azN.UpdateStatus(ctx, azDriverNodeToUpdate, metav1.UpdateOptions{})
 		if err != nil {
 			klog.Errorf("Failed to update heartbeat for AzDriverNode resource. Error: %v", err)

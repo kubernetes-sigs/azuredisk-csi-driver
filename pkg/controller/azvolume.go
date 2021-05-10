@@ -88,7 +88,7 @@ func (r *reconcileAzVolume) Reconcile(ctx context.Context, request reconcile.Req
 			klog.Errorf("failed to update status of AzVolume (%s): %v", azVolume.Name, err)
 			return reconcile.Result{Requeue: true}, err
 		}
-	} else {
+	} else if azVolume.Spec.CapacityRange.RequiredBytes != azVolume.Status.ResponseObject.CapacityBytes {
 		// azVolume update
 		if err := r.triggerUpdate(ctx, azVolume.Name); err != nil {
 			klog.Errorf("failed to update AzVolume (%s): %v", azVolume.Name, err)
