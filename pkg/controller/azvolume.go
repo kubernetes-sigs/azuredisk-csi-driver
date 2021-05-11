@@ -19,6 +19,8 @@ package controller
 import (
 	"context"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -135,6 +137,11 @@ func (r *reconcileAzVolume) triggerCreate(ctx context.Context, volumeName string
 	response, err := r.createVolume(ctx, &azVolume)
 	if err != nil {
 		klog.Errorf("failed to create volume %s: %v", azVolume.Spec.UnderlyingVolume, err)
+		errorCode := status.Code(err)
+		if errorCode == codes.InvalidArgument || errorCode == codes.NotFound {
+			azVolume.Status.AzVolumeError.ErrorCode = errorCode.String()
+			azVolume.Status.AzVolumeError.ErrorMessage = err.Error()
+		}
 		return err
 	}
 
@@ -185,7 +192,7 @@ func (r *reconcileAzVolume) triggerDelete(ctx context.Context, volumeName string
 	return nil
 }
 
-func (r *reconcileAzVolume) UpdateStatus(ctx context.Context, volumeName string, phase v1alpha1.AzVolumePhase, isDeleted bool, status *v1alpha1.AzVolumeStatusParams) error {
+func (r *reconcileAzVolume) UpdateStatus(ctx context.Context, volumeName string, phase v1alpha1.AzVolumePhase, isDeleted bool, status *v1alpha1.AzVolumeStatusParams, error *v1alpha1.AzVolumeError) error {
 	var azVolume v1alpha1.AzVolume
 	if err := r.client.Get(ctx, types.NamespacedName{Namespace: r.namespace, Name: volumeName}, &azVolume); err != nil {
 		klog.Errorf("failed to get AzVolume (%s): %v", volumeName, err)
@@ -252,7 +259,7 @@ func (r *reconcileAzVolume) CleanUpAzVolumeAttachment(ctx context.Context, azVol
 	labelSelector := labels.NewSelector().Add(*volRequirement)
 
 	attachments, err := r.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(r.namespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})
-	if err != nil && !errors.IsNotFound(err) {
+	if err != nil && !errors.IsBadRequest(err) {
 		klog.Errorf("failed to get AzVolumeAttachments: %v", err)
 		return err
 	}
