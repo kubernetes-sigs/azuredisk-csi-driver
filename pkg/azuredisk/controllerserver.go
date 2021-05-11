@@ -323,6 +323,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		MaxShares:           int32(maxShares),
 		LogicalSectorSize:   int32(logicalSectorSize),
 	}
+	volumeOptions.SkipGetDiskOperation = d.isGetDiskThrottled()
 	diskURI, err := d.cloud.CreateManagedDisk(volumeOptions)
 	if err != nil {
 		if strings.Contains(err.Error(), NotFound) {
