@@ -284,11 +284,13 @@ mkdir -p $OUTPUT_DIR
 
 # If no service principal was specified, create a new one or use the one from a previous
 # run of this script.
+DELETE_SERVICE_PRINCIPAL=false
 if [[ -z ${AZURE_CLIENT_ID:-} ]]; then
   AZURE_CLIENT_NAME=${AZURE_CLUSTER_DNS_NAME}-sp
   AZURE_CLIENT_ID_FILE="$OUTPUT_DIR/$AZURE_CLIENT_NAME.id"
   AZURE_CLIENT_TENANT_FILE="$OUTPUT_DIR/$AZURE_CLIENT_NAME.tenant"
   AZURE_CLIENT_SECRET_FILE="$OUTPUT_DIR/$AZURE_CLIENT_NAME"
+  DELETE_SERVICE_PRINCIPAL=true
 
   if [[ -e "$AZURE_CLIENT_ID_FILE" ]] && [[ -e "$AZURE_CLIENT_SECRET_FILE" ]]; then
     echo "Using existing service principal $AZURE_CLIENT_NAME..."
@@ -421,8 +423,11 @@ if [[ -z \$AZURE_ACTIVE_SUBSCRIPTION_ID ]]; then
 fi
 set -x
 az group delete --subscription="$AZURE_SUBSCRIPTION_ID" --resource-group="$AZURE_RESOURCE_GROUP" --yes
-az ad sp delete --id="$AZURE_CLIENT_ID"
 EOF
+
+if ["$DELETE_SERVICE_PRINCIPAL" = true];then
+echo "az ad sp delete --id=$AZURE_CLIENT_ID" >> CLEANUP_FILE
+fi
 chmod +x "$CLEANUP_FILE"
 
 echo
