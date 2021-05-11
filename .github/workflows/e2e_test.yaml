@@ -33,10 +33,11 @@ jobs:
       run: sudo apt install conntrack
 
     - name: Login to DockerHub
-      uses: docker/login-action@v1 
+      uses: azure/docker-login@v1
       with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
+        login-server: e2etest.azurecr.io
+        username: $AZURE_CLIENT_ID
+        password: $AZURE_CLIENT_SECRET
 
     - name: Login to Azure
       run: |
