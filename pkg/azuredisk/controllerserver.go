@@ -323,6 +323,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		MaxShares:           int32(maxShares),
 		LogicalSectorSize:   int32(logicalSectorSize),
 	}
+	volumeOptions.SkipGetDiskOperation = d.isGetDiskThrottled()
 	diskURI, err := d.cloud.CreateManagedDisk(volumeOptions)
 	if err != nil {
 		if strings.Contains(err.Error(), NotFound) {
@@ -402,8 +403,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		return nil, status.Error(codes.InvalidArgument, "Volume capability not supported")
 	}
 
-	err := d.checkDiskExists(ctx, diskURI)
-	if err != nil {
+	if err := d.checkDiskExists(ctx, diskURI); err != nil {
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume not found, failed with error: %v", err))
 	}
 
