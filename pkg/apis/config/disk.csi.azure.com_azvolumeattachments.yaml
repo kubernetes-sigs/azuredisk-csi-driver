@@ -84,7 +84,7 @@ spec:
               has not yet been attached to the specified node
             properties:
               azVolumeError:
-                description: Error occured during creation/deletion of volume
+                description: Error occured during attach/detach of volume
                 properties:
                   errorCode:
                     type: string

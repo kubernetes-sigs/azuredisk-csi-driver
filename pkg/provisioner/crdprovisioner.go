@@ -32,6 +32,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 )
 
 type CrdProvisioner struct {
@@ -158,6 +159,10 @@ func (c *CrdProvisioner) CreateVolume(
 			return false, err
 		}
 		if azVolumeCreated.Status != nil {
+			if azVolume.Status.AzVolumeError != nil {
+				azVolumeError := status.Error(util.GetErrorCodeFromString(azVolume.Status.AzVolumeError.ErrorCode), azVolume.Status.AzVolumeError.ErrorMessage)
+				return true, azVolumeError
+			}
 			return true, nil
 		}
 		return false, nil

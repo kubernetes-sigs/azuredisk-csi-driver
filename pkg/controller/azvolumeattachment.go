@@ -32,6 +32,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azVolumeClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	util "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -608,7 +609,7 @@ func (r *reconcileAzVolumeAttachment) triggerAttach(ctx context.Context, attachm
 	response, err := r.attachVolume(ctx, azVolumeAttachment.Spec.VolumeID, azVolumeAttachment.Spec.NodeName, azVolumeAttachment.Spec.VolumeContext)
 	if err != nil {
 		klog.Errorf("failed to attach volume %s to node %s: %v", azVolumeAttachment.Spec.UnderlyingVolume, azVolumeAttachment.Spec.NodeName, err)
-		return err
+		return r.UpdateStatusWithError(ctx, azVolumeAttachment.Name, err)
 	}
 
 	r.mutexMapMutex.RLock()
@@ -647,7 +648,7 @@ func (r *reconcileAzVolumeAttachment) triggerDetach(ctx context.Context, attachm
 
 	if err := r.detachVolume(ctx, azVolumeAttachment.Spec.VolumeID, azVolumeAttachment.Spec.NodeName); err != nil {
 		klog.Errorf("failed to detach volume %s from node %s: %v", azVolumeAttachment.Spec.UnderlyingVolume, azVolumeAttachment.Spec.NodeName, err)
-		return err
+		return r.UpdateStatusWithError(ctx, azVolumeAttachment.Name, err)
 	}
 
 	if err := r.ManageReplicas(ctx, azVolumeAttachment.Spec.UnderlyingVolume, DetachEvent, azVolumeAttachment.Spec.RequestedRole == v1alpha1.PrimaryRole); err != nil {
@@ -696,6 +697,40 @@ func (r *reconcileAzVolumeAttachment) UpdateStatus(ctx context.Context, attachme
 		return err
 	}
 
+	return nil
+}
+
+func (r *reconcileAzVolumeAttachment) UpdateStatusWithError(ctx context.Context, attachmentName string, err error) error {
+	var azVolumeAttachment v1alpha1.AzVolumeAttachment
+	if err := r.client.Get(ctx, types.NamespacedName{Namespace: r.namespace, Name: attachmentName}, &azVolumeAttachment); err != nil {
+		klog.Errorf("failed to get AzVolumeAttachment (%s): %v", attachmentName, err)
+		return err
+	}
+
+	updated := azVolumeAttachment.DeepCopy()
+
+	if err != nil {
+		azVolumeAttachmentError := &v1alpha1.AzError{
+			ErrorCode:    util.GetStringValueForErrorCode(status.Code(err)),
+			ErrorMessage: err.Error(),
+		}
+
+		if updated.Status == nil {
+			updated.Status = &v1alpha1.AzVolumeAttachmentStatus{
+				AzVolumeAttachmentError: azVolumeAttachmentError,
+			}
+		} else if updated.Status.AzVolumeAttachmentError == nil {
+			updated.Status.AzVolumeAttachmentError = azVolumeAttachmentError
+		} else {
+			updated.Status.AzVolumeAttachmentError.ErrorCode = azVolumeAttachmentError.ErrorCode
+			updated.Status.AzVolumeAttachmentError.ErrorMessage = azVolumeAttachmentError.ErrorMessage
+		}
+
+		if err := r.client.Status().Update(ctx, updated, &client.UpdateOptions{}); err != nil {
+			klog.Errorf("failed to update error status of AzVolumeAttachment (%s): %v", attachmentName, err)
+			return err
+		}
+	}
 	return nil
 }
 

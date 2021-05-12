@@ -81,7 +81,7 @@ type AzVolumeStatus struct {
 	Phase AzVolumePhase `json:"phase,omitempty"`
 	//Error occured during creation/deletion of volume
 	//+optional
-	AzVolumeError *AzVolumeError `json:"azVolumeError,omitempty"`
+	AzVolumeError *AzError `json:"azVolumeError,omitempty"`
 }
 
 type AzVolumeStatusParams struct {
@@ -154,9 +154,9 @@ const (
 type AzVolumeAttachmentStatus struct {
 	Role           Role              `json:"role"`
 	PublishContext map[string]string `json:"publish_context"`
-	//Error occured during creation/deletion of volume
+	//Error occured during attach/detach of volume
 	//+optional
-	AzVolumeError *AzVolumeError `json:"azVolumeError,omitempty"`
+	AzVolumeAttachmentError *AzError `json:"azVolumeAttachmentError,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -169,7 +169,7 @@ type AzVolumeAttachmentList struct {
 	Items []AzVolumeAttachment `json:"items"`
 }
 
-type AzVolumeError struct {
+type AzError struct {
 	ErrorCode    string `json:"errorCode"`
 	ErrorMessage string `json:"errorMessage"`
 }
