@@ -37,6 +37,7 @@ spec:
             - "--v=2"
             - "--timeout=15s"
             - "--leader-election"
+            - "-worker-threads=40"
           env:
             - name: ADDRESS
               value: /csi/csi.sock

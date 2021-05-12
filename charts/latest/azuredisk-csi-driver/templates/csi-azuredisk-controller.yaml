@@ -45,6 +45,7 @@ spec:
             - "--v=2"
             - "--timeout=15s"
             - "--leader-election"
+            - "--worker-threads={{ .Values.controller.provisionerWorkerThreads }}"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
