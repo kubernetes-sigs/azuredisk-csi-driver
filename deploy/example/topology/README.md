@@ -26,6 +26,7 @@ volumeBindingMode: WaitForFirstConsumer  # make sure `volumeBindingMode` is set 
 ```
 
 #### ZRS support (preview)
+ - available version: v1.2.0+
 
 ZRS(`Premium_ZRS`, `StandardSSD_ZRS`) disk could be scheduled on all zone and non-zone agent nodes, without the restriction that disk volume should be co-located in the same zone as a given node.
 
