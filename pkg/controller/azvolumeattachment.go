@@ -609,7 +609,7 @@ func (r *reconcileAzVolumeAttachment) triggerAttach(ctx context.Context, attachm
 	response, err := r.attachVolume(ctx, azVolumeAttachment.Spec.VolumeID, azVolumeAttachment.Spec.NodeName, azVolumeAttachment.Spec.VolumeContext)
 	if err != nil {
 		klog.Errorf("failed to attach volume %s to node %s: %v", azVolumeAttachment.Spec.UnderlyingVolume, azVolumeAttachment.Spec.NodeName, err)
-		return r.UpdateStatusWithError(ctx, azVolumeAttachment.Name, err)
+		return r.updateStatusWithError(ctx, azVolumeAttachment.Name, err)
 	}
 
 	r.mutexMapMutex.RLock()
@@ -648,7 +648,7 @@ func (r *reconcileAzVolumeAttachment) triggerDetach(ctx context.Context, attachm
 
 	if err := r.detachVolume(ctx, azVolumeAttachment.Spec.VolumeID, azVolumeAttachment.Spec.NodeName); err != nil {
 		klog.Errorf("failed to detach volume %s from node %s: %v", azVolumeAttachment.Spec.UnderlyingVolume, azVolumeAttachment.Spec.NodeName, err)
-		return r.UpdateStatusWithError(ctx, azVolumeAttachment.Name, err)
+		return r.updateStatusWithError(ctx, azVolumeAttachment.Name, err)
 	}
 
 	if err := r.ManageReplicas(ctx, azVolumeAttachment.Spec.UnderlyingVolume, DetachEvent, azVolumeAttachment.Spec.RequestedRole == v1alpha1.PrimaryRole); err != nil {
@@ -700,7 +700,7 @@ func (r *reconcileAzVolumeAttachment) UpdateStatus(ctx context.Context, attachme
 	return nil
 }
 
-func (r *reconcileAzVolumeAttachment) UpdateStatusWithError(ctx context.Context, attachmentName string, err error) error {
+func (r *reconcileAzVolumeAttachment) updateStatusWithError(ctx context.Context, attachmentName string, err error) error {
 	var azVolumeAttachment v1alpha1.AzVolumeAttachment
 	if err := r.client.Get(ctx, types.NamespacedName{Namespace: r.namespace, Name: attachmentName}, &azVolumeAttachment); err != nil {
 		klog.Errorf("failed to get AzVolumeAttachment (%s): %v", attachmentName, err)

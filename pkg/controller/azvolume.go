@@ -111,7 +111,7 @@ func (r *reconcileAzVolume) triggerUpdate(ctx context.Context, volumeName string
 	response, err := r.expandVolume(ctx, &azVolume)
 	if err != nil {
 		klog.Errorf("failed to update volume %s: %v", azVolume.Spec.UnderlyingVolume, err)
-		return r.UpdateStatusWithError(ctx, azVolume.Name, err)
+		return r.updateStatusWithError(ctx, azVolume.Name, err)
 	}
 
 	// Update status of the object
@@ -137,7 +137,7 @@ func (r *reconcileAzVolume) triggerCreate(ctx context.Context, volumeName string
 	response, err := r.createVolume(ctx, &azVolume)
 	if err != nil {
 		klog.Errorf("failed to create volume %s: %v", azVolume.Spec.UnderlyingVolume, err)
-		return r.UpdateStatusWithError(ctx, azVolume.Name, err)
+		return r.updateStatusWithError(ctx, azVolume.Name, err)
 	}
 
 	// Update status of the object
@@ -175,7 +175,7 @@ func (r *reconcileAzVolume) triggerDelete(ctx context.Context, volumeName string
 
 	if err := r.deleteVolume(ctx, &azVolume); err != nil {
 		klog.Errorf("failed to delete volume %s: %v", azVolume.Spec.UnderlyingVolume, err)
-		return r.UpdateStatusWithError(ctx, azVolume.Name, err)
+		return r.updateStatusWithError(ctx, azVolume.Name, err)
 	}
 
 	// Update status of the object
@@ -229,7 +229,7 @@ func (r *reconcileAzVolume) UpdateStatus(ctx context.Context, volumeName string,
 	return nil
 }
 
-func (r *reconcileAzVolume) UpdateStatusWithError(ctx context.Context, volumeName string, err error) error {
+func (r *reconcileAzVolume) updateStatusWithError(ctx context.Context, volumeName string, err error) error {
 	var azVolume v1alpha1.AzVolume
 	if err := r.client.Get(ctx, types.NamespacedName{Namespace: r.namespace, Name: volumeName}, &azVolume); err != nil {
 		klog.Errorf("failed to get AzVolume (%s): %v", volumeName, err)
