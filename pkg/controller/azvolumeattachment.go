@@ -717,13 +717,13 @@ func (r *reconcileAzVolumeAttachment) updateStatusWithError(ctx context.Context,
 
 		if updated.Status == nil {
 			updated.Status = &v1alpha1.AzVolumeAttachmentStatus{
-				AzVolumeAttachmentError: azVolumeAttachmentError,
+				Error: azVolumeAttachmentError,
 			}
-		} else if updated.Status.AzVolumeAttachmentError == nil {
-			updated.Status.AzVolumeAttachmentError = azVolumeAttachmentError
+		} else if updated.Status.Error == nil {
+			updated.Status.Error = azVolumeAttachmentError
 		} else {
-			updated.Status.AzVolumeAttachmentError.ErrorCode = azVolumeAttachmentError.ErrorCode
-			updated.Status.AzVolumeAttachmentError.ErrorMessage = azVolumeAttachmentError.ErrorMessage
+			updated.Status.Error.ErrorCode = azVolumeAttachmentError.ErrorCode
+			updated.Status.Error.ErrorMessage = azVolumeAttachmentError.ErrorMessage
 		}
 
 		if err := r.client.Status().Update(ctx, updated, &client.UpdateOptions{}); err != nil {

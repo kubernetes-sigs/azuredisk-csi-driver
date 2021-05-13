@@ -146,7 +146,7 @@ spec:
             description: status represents the current state of AzVolume. Nil status
               indicates that the underlying volume has not yet been provisioned
             properties:
-              azVolumeError:
+              error:
                 description: Error occured during creation/deletion of volume
                 properties:
                   errorCode:

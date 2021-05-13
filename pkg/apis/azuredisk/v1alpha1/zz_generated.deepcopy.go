@@ -307,8 +307,8 @@ func (in *AzVolumeAttachmentStatus) DeepCopyInto(out *AzVolumeAttachmentStatus) 
 			(*out)[key] = val
 		}
 	}
-	if in.AzVolumeAttachmentError != nil {
-		in, out := &in.AzVolumeAttachmentError, &out.AzVolumeAttachmentError
+	if in.Error != nil {
+		in, out := &in.Error, &out.Error
 		*out = new(AzError)
 		**out = **in
 	}
@@ -418,8 +418,8 @@ func (in *AzVolumeStatus) DeepCopyInto(out *AzVolumeStatus) {
 		*out = new(AzVolumeStatusParams)
 		(*in).DeepCopyInto(*out)
 	}
-	if in.AzVolumeError != nil {
-		in, out := &in.AzVolumeError, &out.AzVolumeError
+	if in.Error != nil {
+		in, out := &in.Error, &out.Error
 		*out = new(AzError)
 		**out = **in
 	}

@@ -245,13 +245,13 @@ func (r *reconcileAzVolume) updateStatusWithError(ctx context.Context, volumeNam
 
 		if updated.Status == nil {
 			updated.Status = &v1alpha1.AzVolumeStatus{
-				AzVolumeError: azVolumeError,
+				Error: azVolumeError,
 			}
-		} else if updated.Status.AzVolumeError == nil {
-			updated.Status.AzVolumeError = azVolumeError
+		} else if updated.Status.Error == nil {
+			updated.Status.Error = azVolumeError
 		} else {
-			updated.Status.AzVolumeError.ErrorCode = azVolumeError.ErrorCode
-			updated.Status.AzVolumeError.ErrorMessage = azVolumeError.ErrorMessage
+			updated.Status.Error.ErrorCode = azVolumeError.ErrorCode
+			updated.Status.Error.ErrorMessage = azVolumeError.ErrorMessage
 		}
 
 		if err := r.client.Status().Update(ctx, updated, &client.UpdateOptions{}); err != nil {
