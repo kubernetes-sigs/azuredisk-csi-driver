@@ -159,8 +159,8 @@ func (c *CrdProvisioner) CreateVolume(
 			return false, err
 		}
 		if azVolumeCreated.Status != nil {
-			if azVolume.Status.Error != nil {
-				azVolumeError := status.Error(util.GetErrorCodeFromString(azVolume.Status.Error.ErrorCode), azVolume.Status.Error.ErrorMessage)
+			if azVolumeCreated.Status.Error != nil {
+				azVolumeError := status.Error(util.GetErrorCodeFromString(azVolumeCreated.Status.Error.ErrorCode), azVolumeCreated.Status.Error.ErrorMessage)
 				return true, azVolumeError
 			}
 			return true, nil
