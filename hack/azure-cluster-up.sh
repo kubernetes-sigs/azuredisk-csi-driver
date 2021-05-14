@@ -425,8 +425,8 @@ set -x
 az group delete --subscription="$AZURE_SUBSCRIPTION_ID" --resource-group="$AZURE_RESOURCE_GROUP" --yes
 EOF
 
-if ["$DELETE_SERVICE_PRINCIPAL" = true];then
-echo "az ad sp delete --id=$AZURE_CLIENT_ID" >> CLEANUP_FILE
+if [[ ${DELETE_SERVICE_PRINCIPAL:-false} == "true" ]]; then
+  echo "az ad sp delete --id=$AZURE_CLIENT_ID" >> CLEANUP_FILE
 fi
 chmod +x "$CLEANUP_FILE"
 
