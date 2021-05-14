@@ -19,7 +19,7 @@ package consts
 import (
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2019-06-01/storage"
+	"github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2021-02-01/storage"
 
 	"k8s.io/component-base/featuregate"
 )
@@ -95,9 +95,9 @@ const (
 	StorageAccountNameMaxLength = 24
 
 	// DefaultStorageAccountType is the default storage account type
-	DefaultStorageAccountType = string(storage.StandardLRS)
+	DefaultStorageAccountType = string(storage.SkuNameStandardLRS)
 	// DefaultStorageAccountKind is the default storage account kind
-	DefaultStorageAccountKind = storage.StorageV2
+	DefaultStorageAccountKind = storage.KindStorageV2
 	// FileShareAccountNamePrefix is the file share account name prefix
 	FileShareAccountNamePrefix = "f"
 	// SharedDiskAccountNamePrefix is the shared disk account name prefix
@@ -250,11 +250,6 @@ const (
 	// ServiceAnnotationLoadBalancerEnableHighAvailabilityPorts is the annotation used on the service
 	// to enable the high availability ports on the standard internal load balancer.
 	ServiceAnnotationLoadBalancerEnableHighAvailabilityPorts = "service.beta.kubernetes.io/azure-load-balancer-enable-high-availability-ports"
-
-	// ServiceAnnotationLoadBalancerDisableTCPReset is the annotation used on the service
-	// to set enableTcpReset to false in load balancer rule. This only works for Azure standard load balancer backed service.
-	// TODO(feiskyer): disable-tcp-reset annotations has been deprecated since v1.18, it would removed on v1.20.
-	ServiceAnnotationLoadBalancerDisableTCPReset = "service.beta.kubernetes.io/azure-load-balancer-disable-tcp-reset"
 
 	// ServiceAnnotationLoadBalancerHealthProbeProtocol determines the network protocol that the load balancer health probe use.
 	// If not set, the local service would use the HTTP and the cluster service would use the TCP by default.
