@@ -56,6 +56,7 @@ var (
 	isTestingMigration        = os.Getenv(testMigrationEnvVar) != ""
 	isWindowsCluster          = os.Getenv(testWindowsEnvVar) != ""
 	isAzureStackCloud         = strings.EqualFold(os.Getenv(cloudNameEnvVar), "AZURESTACKCLOUD")
+	location                  string
 )
 
 type testCmd struct {
@@ -84,6 +85,8 @@ var _ = ginkgo.BeforeSuite(func() {
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		_, err = azureClient.EnsureResourceGroup(context.Background(), creds.ResourceGroup, creds.Location, nil)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+		location = creds.Location
 
 		// Install Azure Disk CSI Driver on cluster from project root
 		e2eBootstrap := testCmd{
