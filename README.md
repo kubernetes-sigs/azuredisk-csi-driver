@@ -39,6 +39,7 @@ Please refer to [`disk.csi.azure.com` driver parameters](./docs/driver-parameter
  
 ### Features
  - [Topology(Availability Zone)](./deploy/example/topology)
+   - [ZRS disk support(Preview)](./deploy/example/topology#zrs-disk-support)
  - [Snapshot](./deploy/example/snapshot)
  - [Volume Cloning](./deploy/example/cloning)
  - [Volume Expansion](./deploy/example/resize) 
