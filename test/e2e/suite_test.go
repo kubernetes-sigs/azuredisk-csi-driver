@@ -174,20 +174,34 @@ var _ = ginkgo.AfterSuite(func() {
 		}
 		execTestCmd([]testCmd{azurediskLog, deleteMetricsSVC, e2eTeardown})
 
-		// install/uninstall Azure Disk CSI Driver deployment scripts test
-		installDriver := testCmd{
-			command:  "bash",
-			args:     []string{"deploy/install-driver.sh", "master", "windows,snapshot,local"},
-			startLog: "===================install Azure Disk CSI Driver deployment scripts test===================",
-			endLog:   "===================================================",
+		if !isTestingMigration {
+			// install Azure Disk CSI Driver deployment scripts test
+			installDriver := testCmd{
+				command:  "bash",
+				args:     []string{"deploy/install-driver.sh", "master", "windows,snapshot,local"},
+				startLog: "===================install Azure Disk CSI Driver deployment scripts test===================",
+				endLog:   "===================================================",
+			}
+			execTestCmd([]testCmd{installDriver})
+
+			// run example deployment again
+			createExampleDeployment := testCmd{
+				command:  "bash",
+				args:     []string{"hack/verify-examples.sh", os, cloud},
+				startLog: "create example deployments#2",
+				endLog:   "example deployments#2 created",
+			}
+			execTestCmd([]testCmd{createExampleDeployment})
+
+			// uninstall Azure Disk CSI Driver deployment scripts test
+			uninstallDriver := testCmd{
+				command:  "bash",
+				args:     []string{"deploy/uninstall-driver.sh", "master", "windows,snapshot,local"},
+				startLog: "===================uninstall Azure Disk CSI Driver deployment scripts test===================",
+				endLog:   "===================================================",
+			}
+			execTestCmd([]testCmd{uninstallDriver})
 		}
-		uninstallDriver := testCmd{
-			command:  "bash",
-			args:     []string{"deploy/uninstall-driver.sh", "master", "windows,snapshot,local"},
-			startLog: "===================uninstall Azure Disk CSI Driver deployment scripts test===================",
-			endLog:   "===================================================",
-		}
-		execTestCmd([]testCmd{installDriver, uninstallDriver})
 
 		err := credentials.DeleteAzureCredentialFile()
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
