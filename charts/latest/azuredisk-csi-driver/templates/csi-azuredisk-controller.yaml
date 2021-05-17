@@ -187,6 +187,11 @@ spec:
               mountPath: /etc/ssl/certs
               readOnly: true
             {{- end }}
+            {{- if eq .Values.linux.distro "fedora" }}
+            - name: ssl-pki
+              mountPath: /etc/pki/ca-trust/extracted
+              readOnly: true
+            {{- end }}
           resources:
             limits:
               cpu: 200m
@@ -208,4 +213,9 @@ spec:
         - name: ssl
           hostPath:
             path: /etc/ssl/certs
+        {{- end }}
+        {{- if eq .Values.linux.distro "fedora" }}
+        - name: ssl-pki
+          hostPath:
+            path: /etc/pki/ca-trust/extracted
         {{- end }}

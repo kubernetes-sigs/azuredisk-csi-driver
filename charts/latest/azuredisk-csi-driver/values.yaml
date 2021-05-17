@@ -64,6 +64,7 @@ snapshot:
 linux:
   enabled: true
   kubelet: /var/lib/kubelet
+  distro: debian
 
 windows:
   enabled: true
