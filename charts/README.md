@@ -9,15 +9,20 @@ helm repo add azuredisk-csi-driver https://raw.githubusercontent.com/kubernetes-
 helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system
 ```
 
-## install on Azure Stack
-```console
-helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --set cloud=AzureStackCloud
-```
-
 ### install a specific version
 ```console
 helm repo add azuredisk-csi-driver https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts
 helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v1.2.0
+```
+
+### install on Azure Stack
+```console
+helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --set cloud=AzureStackCloud
+```
+
+### install on RedHat/CentOS
+```console
+helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --set linux.distro=fedora
 ```
 
 ### search for all available chart versions
