@@ -167,7 +167,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			framework.ExpectError(err)
 		})
 
-		ginkgo.It("should succeed when creating a shared disk with multiple pods [disk.csi.azure.com][shared disk]", func() {
+		ginkgo.It("should succeed when creating a shared disk with single pod [disk.csi.azure.com][shared disk]", func() {
 			skipIfUsingInTreeVolumePlugin()
 			skipIfOnAzureStackCloud()
 			sharedDiskSize := int64(1024)
@@ -189,7 +189,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 
 			diskSize := fmt.Sprintf("%dGi", sharedDiskSize)
 			pods := []testsuites.PodDetails{}
-			for i := 1; i <= 5; i++ {
+			for i := 1; i <= 1; i++ {
 				pod := testsuites.PodDetails{
 					Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
 					Volumes: []testsuites.VolumeDetails{
