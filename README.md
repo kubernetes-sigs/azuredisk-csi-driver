@@ -31,8 +31,8 @@ Please refer to [`disk.csi.azure.com` driver parameters](./docs/driver-parameter
  - [How to set up CSI driver on Azure RedHat OpenShift(ARO)](https://github.com/ezYakaEagle442/aro-pub-storage/blob/master/setup-store-CSI-driver-azure-disk.md)
 
 ### Install driver on a Kubernetes cluster
- - install via [kubectl](./docs/install-azuredisk-csi-driver.md) on public Azure (please use helm for other cloud environments, e.g. Azure Stack)
- - install via [helm charts](./charts) on public Azure and Azure Stack
+ - install via [kubectl](./docs/install-azuredisk-csi-driver.md) on public Azure (please use helm for Azure Stack, RedHat/CentOS)
+ - install via [helm charts](./charts) on public Azure, Azure Stack, RedHat/CentOS
 
 ### Examples
  - [Basic usage](./deploy/example/e2e_usage.md)
