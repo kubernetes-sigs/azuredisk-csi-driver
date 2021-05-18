@@ -945,3 +945,13 @@ func waitForPersistentVolumeClaimDeleted(c clientset.Interface, ns string, pvcNa
 	}
 	return fmt.Errorf("PersistentVolumeClaim %s is not removed from the system within %v", pvcName, timeout)
 }
+
+func ListNodeNames(c clientset.Interface) []string {
+	var nodeNames []string
+	nodes, err := c.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+	framework.ExpectNoError(err)
+	for _, item := range nodes.Items {
+		nodeNames = append(nodeNames, item.ObjectMeta.Name)
+	}
+	return nodeNames
+}
