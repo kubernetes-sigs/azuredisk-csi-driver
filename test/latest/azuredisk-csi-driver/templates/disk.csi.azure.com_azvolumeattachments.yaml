@@ -82,6 +82,17 @@ spec:
               Nil status indicates that the underlying volume of AzVolumeAttachment
               has not yet been attached to the specified node
             properties:
+              error:
+                description: Error occured during attach/detach of volume
+                properties:
+                  errorCode:
+                    type: string
+                  errorMessage:
+                    type: string
+                required:
+                - errorCode
+                - errorMessage
+                type: object
               publish_context:
                 additionalProperties:
                   type: string
@@ -91,7 +102,6 @@ spec:
                   or not
                 type: string
             required:
-            - publish_context
             - role
             type: object
         required:
