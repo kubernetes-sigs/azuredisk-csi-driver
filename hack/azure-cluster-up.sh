@@ -72,6 +72,33 @@ retry() {
   done
 }
 
+choose() { echo ${1:RANDOM%${#1}:1} $RANDOM; }
+
+genpwd() {
+  PWD_SYMBOLS='~!@#$%^&*_-+=`|\(){}[]:;<>.?/'
+  PWD_DIGITS='0123456789'
+  PWD_LOWERCASE='abcdefghijklmnopqrstuvwxyz'
+  PWD_UPPERCASE='ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+  PWD_ALL_CHARS="${PWD_DIGITS}${PWD_LOWERCASE}${PWD_UPPERCASE}${PWD_SYMBOLS}"
+
+  {
+      if [[ $1 -lt 4 ]]; then
+          echoerr "ERROR: Password length must be at least 4"
+          exit 1
+      fi
+      choose "${PWD_SYMBOLS}"
+      choose "${PWD_DIGITS}"
+      choose "${PWD_LOWERCASE}"
+      choose "${PWD_UPPERCASE}"
+      for i in $( seq 4 $1 )
+      do
+          choose "${PWD_ALL_CHARS}"
+      done
+
+  } | sort -R | awk '{printf "%s",$1}'
+  echo ""
+}
+
 #
 # Process the command line arguments.
 #
@@ -337,7 +364,7 @@ AZURE_ADMIN_PUBLIC_KEY_FILE="$AZURE_ADMIN_PRIVATE_KEY_FILE.pub"
 
 if [[ $IS_WINDOWS_CLUSTER -ne 0 ]] && [[ ! -e "$AZURE_ADMIN_PASSWORD_FILE" ]]; then
   echo "Creating Windows administrator password..."
-  (tr -cd '[:alnum:]' < /dev/urandom | fold -w16 | head -n 1) > "$AZURE_ADMIN_PASSWORD_FILE" || true
+  genpwd 16 > "$AZURE_ADMIN_PASSWORD_FILE" || true
 fi
 
 if [[ ! -e "$AZURE_ADMIN_PUBLIC_KEY_FILE" ]]; then
