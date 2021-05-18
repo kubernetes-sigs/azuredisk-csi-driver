@@ -3,6 +3,9 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.4.0
+  creationTimestamp: null
   name: azvolumes.disk.csi.azure.com
 spec:
   group: disk.csi.azure.com
@@ -16,7 +19,7 @@ spec:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: AzVolume is a specification for a AzVolume resource
+        description: AzVolume is a specification for an AzVolume resource
         properties:
           apiVersion:
             description: 'APIVersion defines the versioned schema of this representation
@@ -28,29 +31,175 @@ spec:
               object represents. Servers may infer this from the endpoint the client
               submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
             type: string
+          metadata:
+            type: object
           spec:
-            description: AzVolumeSpec is the spec for a AzVolume resource
+            description: spec defines the desired state of an AzVolume. Required.
             properties:
+              accessibilityRequirements:
+                description: Specifies where the provisioned volume should be accessible
+                properties:
+                  preferred:
+                    items:
+                      properties:
+                        segments:
+                          additionalProperties:
+                            type: string
+                          type: object
+                      type: object
+                    type: array
+                  requisite:
+                    items:
+                      properties:
+                        segments:
+                          additionalProperties:
+                            type: string
+                          type: object
+                      type: object
+                    type: array
+                type: object
+              capacityRange:
+                description: The capacity of the storage
+                properties:
+                  limit_bytes:
+                    description: Volume MUST not be bigger than this. This field is
+                      OPTIONAL. A value of 0 is equal to an unspecified field value.
+                      The value of this field MUST NOT be negative.
+                    format: int64
+                    type: integer
+                  required_bytes:
+                    description: Volume MUST be at least this big. This field is OPTIONAL.
+                      A value of 0 is equal to an unspecified field value. The value
+                      of this field MUST NOT be negative.
+                    format: int64
+                    type: integer
+                type: object
+              contentVolumeSource:
+                description: ContentVolumeSource for the volume
+                properties:
+                  content_source:
+                    type: integer
+                  content_source_id:
+                    type: string
+                required:
+                - content_source
+                - content_source_id
+                type: object
+              maxMountReplicaCount:
+                type: integer
+              parameters:
+                additionalProperties:
+                  type: string
+                description: Parameters for the volume
+                type: object
+              secrets:
+                additionalProperties:
+                  type: string
+                description: Secrets for the volume
+                type: object
               underlyingVolume:
+                description: the disk URI of the underlying volume
                 type: string
+              volumeCapability:
+                description: The capabilities that the volume MUST have
+                items:
+                  properties:
+                    access_details:
+                      description: "Specifies what API the volume will be accessed
+                        using. One of the following fields MUST be specified. \n Types
+                        that are valid to be assigned to AccessType: block, mount"
+                      properties:
+                        access_type:
+                          description: Specifies the access type for the volume.
+                          type: integer
+                        fs_type:
+                          description: The filesystem type. This field is OPTIONAL.
+                            An empty string is equal to an unspecified field value.
+                          type: string
+                        mount_flags:
+                          description: The mount options that can be used for the
+                            volume. This field is OPTIONAL. `mount_flags` MAY contain
+                            sensitive information. Therefore, the CO and the Plugin
+                            MUST NOT leak this information to untrusted entities.
+                            The total size of this repeated field SHALL NOT exceed
+                            4 KiB.
+                          items:
+                            type: string
+                          type: array
+                      required:
+                      - access_type
+                      type: object
+                    access_mode:
+                      description: This is a REQUIRED field.
+                      type: integer
+                  required:
+                  - access_details
+                  - access_mode
+                  type: object
+                type: array
             required:
+            - maxMountReplicaCount
             - underlyingVolume
+            - volumeCapability
             type: object
           status:
-            description: AzVolumeStatus is the status for a AzVolume resource
+            description: status represents the current state of AzVolume. Nil status
+              indicates that the underlying volume has not yet been provisioned
             properties:
-              underlyingVolume:
-                format: int32
-                type: integer
+              phase:
+                description: Current phase of the underlying PV
+                type: string
+              status:
+                description: Current status of the AzVolume
+                properties:
+                  accessible_topology:
+                    items:
+                      properties:
+                        segments:
+                          additionalProperties:
+                            type: string
+                          type: object
+                      type: object
+                    type: array
+                  capacity_bytes:
+                    format: int64
+                    type: integer
+                  content_source:
+                    properties:
+                      content_source:
+                        type: integer
+                      content_source_id:
+                        type: string
+                    required:
+                    - content_source
+                    - content_source_id
+                    type: object
+                  node_expansion_required:
+                    type: boolean
+                  parameters:
+                    additionalProperties:
+                      type: string
+                    type: object
+                  volume_id:
+                    type: string
+                required:
+                - accessible_topology
+                - capacity_bytes
+                - content_source
+                - node_expansion_required
+                - parameters
+                - volume_id
+                type: object
             required:
-            - underlyingVolume
+            - status
             type: object
         required:
         - spec
-        - status
         type: object
     served: true
     storage: true
+    subresources:
+      status: {}
 status:
   acceptedNames:
     kind: ""
