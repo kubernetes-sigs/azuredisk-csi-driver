@@ -22,6 +22,7 @@ import (
 	"strings"
 	"sync"
 
+	"google.golang.org/grpc/codes"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 
@@ -30,6 +31,46 @@ const (
 	TagsDelimiter        = ","
 	TagKeyValueDelimiter = "="
 )
+
+var strToCode = map[string]codes.Code{
+	"OK":                  codes.OK,
+	"CANCELLED":           codes.Canceled,
+	"UNKNOWN":             codes.Unknown,
+	"INVALID_ARGUMENT":    codes.InvalidArgument,
+	"DEADLINE_EXCEEDED":   codes.DeadlineExceeded,
+	"NOT_FOUND":           codes.NotFound,
+	"ALREADY_EXISTS":      codes.AlreadyExists,
+	"PERMISSION_DENIED":   codes.PermissionDenied,
+	"RESOURCE_EXHAUSTED":  codes.ResourceExhausted,
+	"FAILED_PRECONDITION": codes.FailedPrecondition,
+	"ABORTED":             codes.Aborted,
+	"OUT_OF_RANGE":        codes.OutOfRange,
+	"UNIMPLEMENTED":       codes.Unimplemented,
+	"INTERNAL":            codes.Internal,
+	"UNAVAILABLE":         codes.Unavailable,
+	"DATA_LOSS":           codes.DataLoss,
+	"UNAUTHENTICATED":     codes.Unauthenticated,
+}
+
+var codeToStr = map[codes.Code]string{
+	codes.OK:                 "OK",
+	codes.Canceled:           "CANCELLED",
+	codes.Unknown:            "UNKNOWN",
+	codes.InvalidArgument:    "INVALID_ARGUMENT",
+	codes.DeadlineExceeded:   "DEADLINE_EXCEEDED",
+	codes.NotFound:           "NOT_FOUND",
+	codes.AlreadyExists:      "ALREADY_EXISTS",
+	codes.PermissionDenied:   "PERMISSION_DENIED",
+	codes.ResourceExhausted:  "RESOURCE_EXHAUSTED",
+	codes.FailedPrecondition: "FAILED_PRECONDITION",
+	codes.Aborted:            "ABORTED",
+	codes.OutOfRange:         "OUT_OF_RANGE",
+	codes.Unimplemented:      "UNIMPLEMENTED",
+	codes.Internal:           "INTERNAL",
+	codes.Unavailable:        "UNAVAILABLE",
+	codes.DataLoss:           "DATA_LOSS",
+	codes.Unauthenticated:    "UNAUTHENTICATED",
+}
 
 // RoundUpBytes rounds up the volume size in bytes upto multiplications of GiB
 // in the unit of Bytes
@@ -137,4 +178,18 @@ func (vl *VolumeLocks) Release(volumeID string) {
 	vl.mux.Lock()
 	defer vl.mux.Unlock()
 	vl.locks.Delete(volumeID)
+}
+
+func GetStringValueForErrorCode(c codes.Code) string {
+	if val, ok := codeToStr[c]; ok {
+		return val
+	}
+	return "UNKNOWN"
+}
+
+func GetErrorCodeFromString(errorCode string) codes.Code {
+	if val, ok := strToCode[errorCode]; ok {
+		return val
+	}
+	return codes.Unknown
 }

@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 
+	"google.golang.org/grpc/status"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -29,6 +30,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azVolumeClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	util "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -88,7 +90,7 @@ func (r *reconcileAzVolume) Reconcile(ctx context.Context, request reconcile.Req
 			klog.Errorf("failed to update status of AzVolume (%s): %v", azVolume.Name, err)
 			return reconcile.Result{Requeue: true}, err
 		}
-	} else if azVolume.Spec.CapacityRange.RequiredBytes != azVolume.Status.ResponseObject.CapacityBytes {
+	} else if azVolume.Status.ResponseObject != nil && azVolume.Spec.CapacityRange.RequiredBytes != azVolume.Status.ResponseObject.CapacityBytes {
 		// azVolume update
 		if err := r.triggerUpdate(ctx, azVolume.Name); err != nil {
 			klog.Errorf("failed to update AzVolume (%s): %v", azVolume.Name, err)
@@ -109,7 +111,7 @@ func (r *reconcileAzVolume) triggerUpdate(ctx context.Context, volumeName string
 	response, err := r.expandVolume(ctx, &azVolume)
 	if err != nil {
 		klog.Errorf("failed to update volume %s: %v", azVolume.Spec.UnderlyingVolume, err)
-		return err
+		return r.updateStatusWithError(ctx, azVolume.Name, err)
 	}
 
 	// Update status of the object
@@ -135,7 +137,7 @@ func (r *reconcileAzVolume) triggerCreate(ctx context.Context, volumeName string
 	response, err := r.createVolume(ctx, &azVolume)
 	if err != nil {
 		klog.Errorf("failed to create volume %s: %v", azVolume.Spec.UnderlyingVolume, err)
-		return err
+		return r.updateStatusWithError(ctx, azVolume.Name, err)
 	}
 
 	// Update status of the object
@@ -171,11 +173,12 @@ func (r *reconcileAzVolume) triggerDelete(ctx context.Context, volumeName string
 		klog.V(5).Infof("Set deletion timestamp for AzVolumeAttachment (%s)", attachment.Name)
 	}
 
-	if err := r.deleteVolume(ctx, &azVolume); err != nil {
-		klog.Errorf("failed to delete volume %s: %v", azVolume.Spec.UnderlyingVolume, err)
-		return err
+	if azVolume.Status.ResponseObject != nil {
+		if err := r.deleteVolume(ctx, &azVolume); err != nil {
+			klog.Errorf("failed to delete volume %s: %v", azVolume.Spec.UnderlyingVolume, err)
+			return r.updateStatusWithError(ctx, azVolume.Name, err)
+		}
 	}
-
 	// Update status of the object
 	if err := r.UpdateStatus(ctx, azVolume.Name, azVolume.Status.Phase, true, nil); err != nil {
 		return err
@@ -224,6 +227,39 @@ func (r *reconcileAzVolume) UpdateStatus(ctx context.Context, volumeName string,
 		return err
 	}
 
+	return nil
+}
+
+func (r *reconcileAzVolume) updateStatusWithError(ctx context.Context, volumeName string, err error) error {
+	var azVolume v1alpha1.AzVolume
+	if err := r.client.Get(ctx, types.NamespacedName{Namespace: r.namespace, Name: volumeName}, &azVolume); err != nil {
+		klog.Errorf("failed to get AzVolume (%s): %v", volumeName, err)
+		return err
+	}
+
+	if err != nil {
+		azVolumeError := &v1alpha1.AzError{
+			ErrorCode:    util.GetStringValueForErrorCode(status.Code(err)),
+			ErrorMessage: err.Error(),
+		}
+		updated := azVolume.DeepCopy()
+
+		if updated.Status == nil {
+			updated.Status = &v1alpha1.AzVolumeStatus{
+				Error: azVolumeError,
+			}
+		} else if updated.Status.Error == nil {
+			updated.Status.Error = azVolumeError
+		} else {
+			updated.Status.Error.ErrorCode = azVolumeError.ErrorCode
+			updated.Status.Error.ErrorMessage = azVolumeError.ErrorMessage
+		}
+
+		if err := r.client.Status().Update(ctx, updated, &client.UpdateOptions{}); err != nil {
+			klog.Errorf("failed to update error status of AzVolume (%s): %v", volumeName, err)
+			return err
+		}
+	}
 	return nil
 }
 
