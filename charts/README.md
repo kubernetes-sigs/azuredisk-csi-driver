@@ -74,7 +74,8 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `snapshot.snapshotController.serviceAccount`      | whether create service account of snapshot-controller      | true                                                         |
 | `snapshot.snapshotController.rbac`                | whether create rbac of snapshot-controller                 | true                                                         |
 | `linux.enabled`                                   | whether enable linux feature                               | true                                                         |
-| `linux.kubelet`                                   | configure kubelet directory path on Linux agent node node                  | `/var/lib/kubelet`                                                |
+| `linux.kubelet`                                   | configure kubelet directory path on Linux agent node                  | `/var/lib/kubelet`                                                |
+| `linux.distro`                                   | configure ssl certificates for different Linux distribution(available values: `debian`, `fedora`)                  | `debian`                                                |
 | `windows.enabled`                                 | whether enable windows feature                             | true                                                        |
 | `windows.kubelet`                                 | configure kubelet directory path on Windows agent node                | `'C:\var\lib\kubelet'`                                            |
 | `windows.image.livenessProbe.repository`          | windows liveness-probe docker image                        | mcr.microsoft.com/oss/kubernetes-csi/livenessprobe           |
