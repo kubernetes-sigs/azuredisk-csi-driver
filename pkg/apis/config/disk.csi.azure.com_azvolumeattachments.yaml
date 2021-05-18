@@ -103,7 +103,6 @@ spec:
                   or not
                 type: string
             required:
-            - publish_context
             - role
             type: object
         required:

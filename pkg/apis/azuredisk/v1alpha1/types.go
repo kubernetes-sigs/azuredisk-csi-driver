@@ -75,7 +75,7 @@ type AzVolumeSpec struct {
 // AzVolumeStatus is the status for an AzVolume resource
 type AzVolumeStatus struct {
 	//Current status of the AzVolume
-	ResponseObject *AzVolumeStatusParams `json:"status"`
+	ResponseObject *AzVolumeStatusParams `json:"status,omitempty"`
 	//Current phase of the underlying PV
 	//+optional
 	Phase AzVolumePhase `json:"phase,omitempty"`
@@ -153,7 +153,7 @@ const (
 // AzVolumeAttachmentStatus is the status for a AzVolumeAttachment resource
 type AzVolumeAttachmentStatus struct {
 	Role           Role              `json:"role"`
-	PublishContext map[string]string `json:"publish_context"`
+	PublishContext map[string]string `json:"publish_context,omitempty"`
 	//Error occured during attach/detach of volume
 	//+optional
 	Error *AzError `json:"error,omitempty"`

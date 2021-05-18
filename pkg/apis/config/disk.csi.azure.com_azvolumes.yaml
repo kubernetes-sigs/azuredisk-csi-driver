@@ -201,8 +201,6 @@ spec:
                 - parameters
                 - volume_id
                 type: object
-            required:
-            - status
             type: object
         required:
         - spec

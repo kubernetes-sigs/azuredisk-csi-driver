@@ -90,7 +90,7 @@ func (r *reconcileAzVolume) Reconcile(ctx context.Context, request reconcile.Req
 			klog.Errorf("failed to update status of AzVolume (%s): %v", azVolume.Name, err)
 			return reconcile.Result{Requeue: true}, err
 		}
-	} else if azVolume.Spec.CapacityRange.RequiredBytes != azVolume.Status.ResponseObject.CapacityBytes {
+	} else if azVolume.Status.ResponseObject != nil && azVolume.Spec.CapacityRange.RequiredBytes != azVolume.Status.ResponseObject.CapacityBytes {
 		// azVolume update
 		if err := r.triggerUpdate(ctx, azVolume.Name); err != nil {
 			klog.Errorf("failed to update AzVolume (%s): %v", azVolume.Name, err)
@@ -173,11 +173,12 @@ func (r *reconcileAzVolume) triggerDelete(ctx context.Context, volumeName string
 		klog.V(5).Infof("Set deletion timestamp for AzVolumeAttachment (%s)", attachment.Name)
 	}
 
-	if err := r.deleteVolume(ctx, &azVolume); err != nil {
-		klog.Errorf("failed to delete volume %s: %v", azVolume.Spec.UnderlyingVolume, err)
-		return r.updateStatusWithError(ctx, azVolume.Name, err)
+	if azVolume.Status.ResponseObject != nil {
+		if err := r.deleteVolume(ctx, &azVolume); err != nil {
+			klog.Errorf("failed to delete volume %s: %v", azVolume.Spec.UnderlyingVolume, err)
+			return r.updateStatusWithError(ctx, azVolume.Name, err)
+		}
 	}
-
 	// Update status of the object
 	if err := r.UpdateStatus(ctx, azVolume.Name, azVolume.Status.Phase, true, nil); err != nil {
 		return err
