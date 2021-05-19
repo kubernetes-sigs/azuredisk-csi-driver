@@ -50,6 +50,12 @@ echoerr() {
   printf "%s\n\n" "$*" >&2
 }
 
+trap_push() {
+  local SIGNAL="${2:?Signal required}"
+  HANDLERS="$( trap -p ${SIGNAL} | cut -f2 -d \' )";
+  trap "${1:?Handler required}${HANDLERS:+;}${HANDLERS}" "${SIGNAL}"
+}
+
 retry() {
   local MAX_ATTEMPTS=$1
   local SLEEP_INTERVAL=$2
@@ -97,6 +103,14 @@ genpwd() {
 
   } | sort -R | awk '{printf "%s",$1}'
   echo ""
+}
+
+print_cleanup_command() {
+  cat <<EOF
+To delete the cluster, run the following commmand:
+
+$ $1
+EOF
 }
 
 #
@@ -274,6 +288,9 @@ if [[ -z ${OUTPUT_DIR:-} ]]; then
   OUTPUT_DIR="$GIT_ROOT/_output/$AZURE_CLUSTER_DNS_NAME"
 fi
 
+# Ensure the output directory exsits.
+mkdir -p $OUTPUT_DIR
+
 #
 # Install required tools if necessary.
 #
@@ -306,18 +323,28 @@ if [[ "$(az group exists --resource-group $AZURE_RESOURCE_GROUP)" != "true" ]]; 
   az group create --name $AZURE_RESOURCE_GROUP --location $AZURE_LOCATION 1> /dev/null
 fi
 
-# Ensure the output directory exsits.
-mkdir -p $OUTPUT_DIR
+CLEANUP_FILE="$OUTPUT_DIR/cluster-down.sh"
+>$CLEANUP_FILE cat <<EOF
+set -euo pipefail
+AZURE_ACTIVE_SUBSCRIPTION_ID=\$(az account list --query="[?isDefault].id | [0]" --output=tsv)
+if [[ -z \$AZURE_ACTIVE_SUBSCRIPTION_ID ]]; then
+  echo "Logging in to Azure..."
+  az login 1> /dev/null
+fi
+set -x
+az group delete --subscription="$AZURE_SUBSCRIPTION_ID" --resource-group="$AZURE_RESOURCE_GROUP" --yes
+EOF
+chmod +x "$CLEANUP_FILE"
+
+trap_push "print_cleanup_command \"${CLEANUP_FILE}\"" exit
 
 # If no service principal was specified, create a new one or use the one from a previous
 # run of this script.
-DELETE_SERVICE_PRINCIPAL=false
 if [[ -z ${AZURE_CLIENT_ID:-} ]]; then
   AZURE_CLIENT_NAME=${AZURE_CLUSTER_DNS_NAME}-sp
   AZURE_CLIENT_ID_FILE="$OUTPUT_DIR/$AZURE_CLIENT_NAME.id"
   AZURE_CLIENT_TENANT_FILE="$OUTPUT_DIR/$AZURE_CLIENT_NAME.tenant"
   AZURE_CLIENT_SECRET_FILE="$OUTPUT_DIR/$AZURE_CLIENT_NAME"
-  DELETE_SERVICE_PRINCIPAL=true
 
   if [[ -e "$AZURE_CLIENT_ID_FILE" ]] && [[ -e "$AZURE_CLIENT_SECRET_FILE" ]]; then
     echo "Using existing service principal $AZURE_CLIENT_NAME..."
@@ -348,8 +375,11 @@ if [[ -z ${AZURE_CLIENT_ID:-} ]]; then
     echo "$AZURE_CLIENT_SECRET" > "$AZURE_CLIENT_SECRET_FILE"
   fi
 
+  # Add removal of the service principal to the cleanup script.
+  echo "az ad sp delete --id=$AZURE_CLIENT_ID" >> CLEANUP_FILE
+
   echo "Waiting for service principal to become available in directory..."
-  trap 'az logout &> /dev/null' err exit
+  trap_push 'az logout &> /dev/null' exit
   retry 5 60 az login \
       --service-principal \
       --tenant="$AZURE_TENANT_ID" \
@@ -440,23 +470,6 @@ chmod +x "$SETUP_FILE"
 
 mkdir -p "$OUTPUT_DIR/artifacts"
 
-CLEANUP_FILE="$OUTPUT_DIR/cluster-down.sh"
->$CLEANUP_FILE cat <<EOF
-set -euo pipefail
-AZURE_ACTIVE_SUBSCRIPTION_ID=\$(az account list --query="[?isDefault].id | [0]" --output=tsv)
-if [[ -z \$AZURE_ACTIVE_SUBSCRIPTION_ID ]]; then
-  echo "Logging in to Azure..."
-  az login 1> /dev/null
-fi
-set -x
-az group delete --subscription="$AZURE_SUBSCRIPTION_ID" --resource-group="$AZURE_RESOURCE_GROUP" --yes
-EOF
-
-if [[ ${DELETE_SERVICE_PRINCIPAL:-false} == "true" ]]; then
-  echo "az ad sp delete --id=$AZURE_CLIENT_ID" >> CLEANUP_FILE
-fi
-chmod +x "$CLEANUP_FILE"
-
 echo
 echo "To use the $AZURE_CLUSTER_DNS_NAME cluster, set KUBECONFIG to the following:"
 echo
@@ -465,8 +478,4 @@ echo
 echo "To setup for e2e tests, run the following command:"
 echo
 echo "$ source \"$SETUP_FILE\""
-echo
-echo "To delete the cluster, run the following commmand:"
-echo
-echo "$ $CLEANUP_FILE"
 echo
