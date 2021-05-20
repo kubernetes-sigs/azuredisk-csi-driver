@@ -1,0 +1,88 @@
+image:
+  azuredisk:
+    repository: mcr.microsoft.com/k8s/csi/azuredisk-csi
+    tag: v1.3.0
+    pullPolicy: IfNotPresent
+  csiProvisioner:
+    repository: mcr.microsoft.com/oss/kubernetes-csi/csi-provisioner
+    tag: v2.1.1
+    pullPolicy: IfNotPresent
+  csiAttacher:
+    repository: mcr.microsoft.com/oss/kubernetes-csi/csi-attacher
+    tag: v3.1.0
+    pullPolicy: IfNotPresent
+  csiResizer:
+    repository: mcr.microsoft.com/oss/kubernetes-csi/csi-resizer
+    tag: v1.1.0
+    pullPolicy: IfNotPresent
+  livenessProbe:
+    repository: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe
+    tag: v2.2.0
+    pullPolicy: IfNotPresent
+  nodeDriverRegistrar:
+    repository: mcr.microsoft.com/oss/kubernetes-csi/csi-node-driver-registrar
+    tag: v2.1.0
+    pullPolicy: IfNotPresent
+
+serviceAccount:
+  create: true
+
+rbac:
+  create: true
+
+controller:
+  replicas: 2
+  metricsPort: 29604
+  runOnMaster: false
+  disableAvailabilitySetNodes: true
+  provisionerWorkerThreads: 40
+  attacherWorkerThreads: 500
+  logLevel: 5
+
+node:
+  metricsPort: 29605
+  logLevel: 5
+  livenessProbe:
+    healthPort: 29603
+
+snapshot:
+  enabled: false
+  image:
+    csiSnapshotter:
+      repository: mcr.microsoft.com/oss/kubernetes-csi/csi-snapshotter
+      tag: v3.0.3
+      pullPolicy: IfNotPresent
+    csiSnapshotController:
+      repository: mcr.microsoft.com/oss/kubernetes-csi/snapshot-controller
+      tag: v3.0.3
+      pullPolicy: IfNotPresent
+  snapshotController:
+    replicas: 1
+    serviceAccount: true
+    rbac: true
+
+linux:
+  enabled: true
+  kubelet: /var/lib/kubelet
+  distro: debian
+
+windows:
+  enabled: true
+  kubelet: 'C:\var\lib\kubelet'
+  image:
+    livenessProbe:
+      repository: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe
+      tag: v2.2.0
+      pullPolicy: IfNotPresent
+    nodeDriverRegistrar:
+      repository: mcr.microsoft.com/oss/kubernetes-csi/csi-node-driver-registrar
+      tag: v2.0.1
+      pullPolicy: IfNotPresent
+
+cloud: AzurePublicCloud
+
+## Reference to one or more secrets to be used when pulling images
+## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+##
+imagePullSecrets: []
+# - name: "image-pull-secret"
