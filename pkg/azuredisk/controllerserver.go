@@ -103,16 +103,20 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	}
 	defer d.volumeLocks.Release(name)
 
-	capacityBytes := req.GetCapacityRange().GetRequiredBytes()
-	volSizeBytes := int64(capacityBytes)
-	requestGiB := int(volumehelper.RoundUpGiB(volSizeBytes))
-	if requestGiB < minimumDiskSizeGiB {
-		requestGiB = minimumDiskSizeGiB
-	}
+	requestGiB := minimumDiskSizeGiB
+	volSizeBytes := volumehelper.GiBToBytes(int64(requestGiB))
 
-	maxVolSize := int(volumehelper.RoundUpGiB(req.GetCapacityRange().GetLimitBytes()))
-	if (maxVolSize > 0) && (maxVolSize < requestGiB) {
-		return nil, status.Error(codes.InvalidArgument, "After round-up, volume size exceeds the limit specified")
+	if req.GetCapacityRange() != nil {
+		volSizeBytes = req.GetCapacityRange().GetRequiredBytes()
+		requestGiB = int(volumehelper.RoundUpGiB(volSizeBytes))
+		if requestGiB < minimumDiskSizeGiB {
+			requestGiB = minimumDiskSizeGiB
+		}
+
+		maxVolSize := int(volumehelper.RoundUpGiB(req.GetCapacityRange().GetLimitBytes()))
+		if (maxVolSize > 0) && (maxVolSize < requestGiB) {
+			return nil, status.Error(codes.InvalidArgument, "After round-up, volume size exceeds the limit specified")
+		}
 	}
 
 	var (
@@ -337,7 +341,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
 			VolumeId:           diskURI,
-			CapacityBytes:      capacityBytes,
+			CapacityBytes:      volSizeBytes,
 			VolumeContext:      parameters,
 			ContentSource:      contentSource,
 			AccessibleTopology: accessibleTopology,

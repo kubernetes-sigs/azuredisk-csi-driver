@@ -35,6 +35,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	cloudprovider "k8s.io/cloud-provider"
 	volerr "k8s.io/cloud-provider/volume/errors"
 	"k8s.io/klog/v2"
@@ -60,7 +61,7 @@ type listVolumeStatus struct {
 	err           error
 }
 
-func NewCloudProvisioner(kubeClient clientset.Interface, topologyKey string) (*CloudProvisioner, error) {
+func NewCloudProvisioner(kubeConfig *rest.Config, kubeClient clientset.Interface, topologyKey string, namespace string) (*CloudProvisioner, error) {
 	azCloud, err := azureutils.GetAzureCloudProvider(kubeClient)
 	if err != nil {
 		return nil, err
@@ -101,6 +102,10 @@ func (c *CloudProvisioner) CreateVolume(
 		writeAcceleratorEnabled string
 		maxShares               int
 	)
+
+	if parameters == nil {
+		parameters = make(map[string]string)
+	}
 
 	for k, v := range parameters {
 		switch strings.ToLower(k) {
@@ -203,10 +208,16 @@ func (c *CloudProvisioner) CreateVolume(
 		}
 	}
 
-	volSizeBytes := int64(capacityRange.RequiredBytes)
-	requestGiB := int(volumehelper.RoundUpGiB(volSizeBytes))
-	if requestGiB < azureutils.MinimumDiskSizeGiB {
-		requestGiB = azureutils.MinimumDiskSizeGiB
+	requestGiB := azureutils.MinimumDiskSizeGiB
+	volSizeBytes := volumehelper.GiBToBytes(int64(requestGiB))
+
+	if capacityRange != nil {
+		volSizeBytes = int64(capacityRange.RequiredBytes)
+		requestGiB = int(volumehelper.RoundUpGiB(volSizeBytes))
+		if requestGiB < azureutils.MinimumDiskSizeGiB {
+			requestGiB = azureutils.MinimumDiskSizeGiB
+			volSizeBytes = volumehelper.GiBToBytes(int64(requestGiB))
+		}
 	}
 
 	if ok, err := c.CheckDiskCapacity(ctx, resourceGroup, diskName, requestGiB); !ok {
@@ -280,7 +291,7 @@ func (c *CloudProvisioner) CreateVolume(
 
 	return &v1alpha1.AzVolumeStatusParams{
 		VolumeID:           diskURI,
-		CapacityBytes:      capacityRange.RequiredBytes,
+		CapacityBytes:      volSizeBytes,
 		VolumeContext:      parameters,
 		ContentSource:      contentSource,
 		AccessibleTopology: accessibleTopology,
@@ -357,13 +368,7 @@ func (c *CloudProvisioner) PublishVolume(
 			klog.V(2).Infof("Attach operation successful: volume %q attached to node %q.", volumeID, nodeName)
 		} else {
 			if derr, ok := err.(*volerr.DanglingAttachError); ok {
-				klog.Warningf("volume %q is already attached to node %q, try detach first", volumeID, derr.CurrentNode)
-
-				if err = c.cloud.DetachDisk(diskName, volumeID, nodeName); err != nil {
-					return nil, status.Errorf(codes.Internal, "Could not detach volume %q from node %q: %v", volumeID, derr.CurrentNode, err)
-				}
-				klog.V(2).Infof("Trying to attach volume %q to node %q again", volumeID, nodeName)
-				lun, err = c.cloud.AttachDisk(true, diskName, volumeID, nodeName, cachingMode)
+				return nil, derr
 			}
 			if err != nil {
 				klog.Errorf("Attach volume %q to instance %q failed with %v", volumeID, nodeName, err)
@@ -743,23 +748,24 @@ func (c *CloudProvisioner) validateCreateVolumeRequestParams(
 	capacityRange *v1alpha1.CapacityRange,
 	volumeCaps []v1alpha1.VolumeCapability,
 	params map[string]string) error {
-	capacityBytes := capacityRange.RequiredBytes
-	volSizeBytes := int64(capacityBytes)
-	requestGiB := int(volumehelper.RoundUpGiB(volSizeBytes))
-	if requestGiB < azureutils.MinimumDiskSizeGiB {
-		requestGiB = azureutils.MinimumDiskSizeGiB
+	if capacityRange != nil {
+		capacityBytes := capacityRange.RequiredBytes
+		volSizeBytes := int64(capacityBytes)
+		requestGiB := int(volumehelper.RoundUpGiB(volSizeBytes))
+		if requestGiB < azureutils.MinimumDiskSizeGiB {
+			requestGiB = azureutils.MinimumDiskSizeGiB
+		}
+
+		maxVolSize := int(volumehelper.RoundUpGiB(capacityRange.LimitBytes))
+		if (maxVolSize > 0) && (maxVolSize < requestGiB) {
+			return status.Error(codes.InvalidArgument, "After round-up, volume size exceeds the limit specified")
+		}
 	}
 
-	maxVolSize := int(volumehelper.RoundUpGiB(capacityRange.LimitBytes))
-	if (maxVolSize > 0) && (maxVolSize < requestGiB) {
-		return status.Error(codes.InvalidArgument, "After round-up, volume size exceeds the limit specified")
-	}
-
-	maxSharesField := "maxSharesField"
 	var maxShares int
 	var err error
 	for k, v := range params {
-		if strings.EqualFold(maxSharesField, k) {
+		if strings.EqualFold(azureutils.MaxSharesField, k) {
 			maxShares, err = strconv.Atoi(v)
 			if err != nil {
 				return status.Error(codes.InvalidArgument, fmt.Sprintf("parse %s failed with error: %v", v, err))

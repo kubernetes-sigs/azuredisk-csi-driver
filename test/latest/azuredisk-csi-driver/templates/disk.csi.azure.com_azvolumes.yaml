@@ -160,7 +160,7 @@ spec:
               phase:
                 description: Current phase of the underlying PV
                 type: string
-              status:
+              response_object:
                 description: Current status of the AzVolume
                 properties:
                   accessible_topology:

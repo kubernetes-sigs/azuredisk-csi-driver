@@ -25,6 +25,7 @@ import (
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azVolumeClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -61,9 +62,15 @@ func (r *reconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 	}
 
 	var azVolume v1alpha1.AzVolume
-	if err := r.client.Get(ctx, types.NamespacedName{Namespace: r.namespace, Name: pv.Name}, &azVolume); err != nil {
+	diskName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(pv.Spec.CSI.VolumeHandle)
+	if err != nil {
+		klog.Errorf("failed to extract proper diskName from pv(%s)'s volume handle (%s): %v", pv.Name, pv.Spec.CSI.VolumeHandle, err)
+		// if disk name cannot be extracted from volumehandle, there is no point of requeueing
+		return reconcile.Result{}, err
+	}
+	if err := r.client.Get(ctx, types.NamespacedName{Namespace: r.namespace, Name: diskName}, &azVolume); err != nil {
 		// if underlying PV was found but AzVolume was not. Might be due to stale cache
-		klog.V(5).Infof("failed to get AzVolume (%s): %v", pv.Name, err)
+		klog.V(5).Infof("failed to get AzVolume (%s): %v", diskName, err)
 		return reconcile.Result{}, nil
 	}
 

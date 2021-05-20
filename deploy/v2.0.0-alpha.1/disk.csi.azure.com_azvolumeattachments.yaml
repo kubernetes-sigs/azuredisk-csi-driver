@@ -4,7 +4,6 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.4.0
   creationTimestamp: null
   name: azvolumeattachments.disk.csi.azure.com
 spec:
@@ -17,8 +16,7 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - description: Name of the Node which this AzVolumeAttachment object is attached
-        to
+    - description: Name of the Node which this AzVolumeAttachment object is attached to
       jsonPath: .spec.nodeName
       name: NodeName
       type: string
@@ -26,8 +24,7 @@ spec:
       jsonPath: .spec.underlyingVolume
       name: UnderlyingVolume
       type: string
-    - description: Indicates if the volume attachment should be primary attachment
-        or not
+    - description: Indicates if the volume attachment should be primary attachment or not
       jsonPath: .spec.role
       name: RequestedRole
       type: string
@@ -38,18 +35,13 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: AzVolumeAttachment is a specification for a AzVolumeAttachment
-          resource
+        description: AzVolumeAttachment is a specification for a AzVolumeAttachment resource
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation
-              of an object. Servers should convert recognized schemas to the latest
-              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this
-              object represents. Servers may infer this from the endpoint the client
-              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
             type: string
           metadata:
             type: object
@@ -59,8 +51,7 @@ spec:
               nodeName:
                 type: string
               role:
-                description: Role indicates if the volume attachment is replica attachment
-                  or not
+                description: Role indicates if the volume attachment is replica attachment or not
                 type: string
               underlyingVolume:
                 type: string
@@ -78,18 +69,23 @@ spec:
             - volume_id
             type: object
           status:
-            description: status represents the current state of AzVolumeAttachment.
-              Nil status indicates that the underlying volume of AzVolumeAttachment
-              has not yet been attached to the specified node
+            description: status represents the current state of AzVolumeAttachment. Nil status indicates that the underlying volume of AzVolumeAttachment has not yet been attached to the specified node
             properties:
               error:
                 description: Error occured during attach/detach of volume
                 properties:
+                  currentNode:
+                    description: "NodeName is a type that holds a api.Node's Name identifier. Being a type captures intent and helps make sure that the node name is not confused with similar concepts (the hostname, the cloud provider id, the cloud provider name etc) \n To clarify the various types: \n * Node.Name is the Name field of the Node in the API.  This should be stored in a NodeName.   Unfortunately, because Name is part of ObjectMeta, we can't store it as a NodeName at the API level. \n * Hostname is the hostname of the local machine (from uname -n).   However, some components allow the user to pass in a --hostname-override flag,   which will override this in most places. In the absence of anything more meaningful,   kubelet will use Hostname as the Node.Name when it creates the Node. \n * The cloudproviders have the own names: GCE has InstanceName, AWS has InstanceId. \n   For GCE, InstanceName is the Name of an Instance object in the GCE API.  On GCE, Instance.Name becomes the   Hostname, and thus it makes sense also to use it as the Node.Name.  But that is GCE specific, and it is up   to the cloudprovider how to do this mapping. \n   For AWS, the InstanceID is not yet suitable for use as a Node.Name, so we actually use the   PrivateDnsName for the Node.Name.  And this is _not_ always the same as the hostname: if   we are using a custom DHCP domain it won't be."
+                    type: string
+                  devicePath:
+                    type: string
                   errorCode:
                     type: string
                   errorMessage:
                     type: string
                 required:
+                - currentNode
+                - devicePath
                 - errorCode
                 - errorMessage
                 type: object
@@ -98,8 +94,7 @@ spec:
                   type: string
                 type: object
               role:
-                description: Role indicates if the volume attachment is replica attachment
-                  or not
+                description: Role indicates if the volume attachment is replica attachment or not
                 type: string
             required:
             - role

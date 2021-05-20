@@ -54,14 +54,6 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailover) Run(client clientset.In
 		ginkgo.Skip("need at least 1 nodes to verify the test case. Current node count is %d", len(nodes))
 	}
 
-	volumeName := t.Volume.VolumeMount.NameGenerate + "1"
-	testAzAtt := SetupTestAzVolumeAttachment(t.AzDiskClientSet, t.AzNamespace, volumeName, nodes[0], 0)
-	defer testAzAtt.Cleanup()
-	_ = testAzAtt.Create()
-
-	err := testAzAtt.WaitForAttach(time.Duration(5) * time.Minute)
-	framework.ExpectNoError(err)
-
 	ginkgo.By("deploying the statefulset")
 	tStatefulSet.Create()
 
@@ -78,7 +70,7 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailover) Run(client clientset.In
 			Replicas: int32(0)}}
 
 	// Scale statefulset to 0
-	_, err = client.AppsV1().StatefulSets(tStatefulSet.namespace.Name).UpdateScale(context.TODO(), tStatefulSet.statefulset.Name, newScale, metav1.UpdateOptions{})
+	_, err := client.AppsV1().StatefulSets(tStatefulSet.namespace.Name).UpdateScale(context.TODO(), tStatefulSet.statefulset.Name, newScale, metav1.UpdateOptions{})
 	framework.ExpectNoError(err)
 
 	ginkgo.By("sleep 240s waiting for statefulset update to complete and disk to detach")

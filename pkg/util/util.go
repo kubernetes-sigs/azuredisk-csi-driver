@@ -27,9 +27,10 @@ import (
 )
 
 const (
-	GiB                  = 1024 * 1024 * 1024
-	TagsDelimiter        = ","
-	TagKeyValueDelimiter = "="
+	GiB                     = 1024 * 1024 * 1024
+	TagsDelimiter           = ","
+	TagKeyValueDelimiter    = "="
+	DanglingAttachErrorCode = "DANGLING_ATTACH"
 )
 
 var strToCode = map[string]codes.Code{

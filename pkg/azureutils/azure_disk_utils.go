@@ -43,7 +43,7 @@ const (
 
 	azurePublicCloudDefaultStorageAccountType = compute.StandardSSDLRS
 	azureStackCloudDefaultStorageAccountType  = compute.StandardLRS
-	defaultAzureDataDiskCachingMode           = v1.AzureDataDiskCachingReadOnly
+	defaultAzureDataDiskCachingMode           = v1.AzureDataDiskCachingNone
 
 	// default IOPS Caps & Throughput Cap (MBps) per https://docs.microsoft.com/en-us/azure/virtual-machines/linux/disks-ultra-ssd
 	// see https://docs.microsoft.com/en-us/rest/api/compute/disks/createorupdate#uri-parameters
@@ -63,31 +63,32 @@ const (
 	DefaultCredFilePathWindows = "C:\\k\\azure.json"
 
 	// String constants used by CloudProvisioner
-	ResourceNotFound         = "ResourceNotFound"
-	ErrDiskNotFound          = "not found"
-	SourceSnapshot           = "snapshot"
-	SourceVolume             = "volume"
-	DriverName               = "disk.csi.azure.com"
-	CSIDriverMetricPrefix    = "azuredisk_csi_driver"
-	CreatedForPVNameKey      = "kubernetes.io-created-for-pv-name"
-	ResizeRequired           = "resizeRequired"
-	SourceDiskSearchMaxDepth = 10
-	CachingModeField         = "cachingmode"
-	StorageAccountTypeField  = "storageaccounttype"
-	StorageAccountField      = "storageaccount"
-	SkuNameField             = "skuname"
-	LocationField            = "location"
-	ResourceGroupField       = "resourcegroup"
-	DiskIOPSReadWriteField   = "diskiopsreadwrite"
-	DiskMBPSReadWriteField   = "diskmbpsreadwrite"
-	DiskNameField            = "diskname"
-	DesIDField               = "diskencryptionsetid"
-	TagsField                = "tags"
-	MaxSharesField           = "maxshares"
-	IncrementalField         = "incremental"
-	LogicalSectorSizeField   = "logicalsectorsize"
-	FSTypeField              = "fstype"
-	KindField                = "kind"
+	ResourceNotFound          = "ResourceNotFound"
+	ErrDiskNotFound           = "not found"
+	SourceSnapshot            = "snapshot"
+	SourceVolume              = "volume"
+	DriverName                = "disk.csi.azure.com"
+	CSIDriverMetricPrefix     = "azuredisk_csi_driver"
+	CreatedForPVNameKey       = "kubernetes.io-created-for-pv-name"
+	ResizeRequired            = "resizeRequired"
+	SourceDiskSearchMaxDepth  = 10
+	CachingModeField          = "cachingmode"
+	StorageAccountTypeField   = "storageaccounttype"
+	StorageAccountField       = "storageaccount"
+	SkuNameField              = "skuname"
+	LocationField             = "location"
+	ResourceGroupField        = "resourcegroup"
+	DiskIOPSReadWriteField    = "diskiopsreadwrite"
+	DiskMBPSReadWriteField    = "diskmbpsreadwrite"
+	DiskNameField             = "diskname"
+	DesIDField                = "diskencryptionsetid"
+	TagsField                 = "tags"
+	MaxSharesField            = "maxshares"
+	MaxMountReplicaCountField = "maxmountreplicacount"
+	IncrementalField          = "incremental"
+	LogicalSectorSizeField    = "logicalsectorsize"
+	FSTypeField               = "fstype"
+	KindField                 = "kind"
 
 	// CRDs specific constants
 	PartitionLabel    = "azdrivernodes.disk.csi.azure.com/partition"
@@ -281,7 +282,7 @@ func IsValidAvailabilityZone(zone, region string) bool {
 }
 
 func GetAzVolumeAttachmentName(volumeName string, nodeName string) string {
-	return fmt.Sprintf("%s-%s-attachment", volumeName, nodeName)
+	return fmt.Sprintf("%s-%s-attachment", strings.ToLower(volumeName), strings.ToLower(nodeName))
 }
 
 func checkDiskName(diskName string) bool {

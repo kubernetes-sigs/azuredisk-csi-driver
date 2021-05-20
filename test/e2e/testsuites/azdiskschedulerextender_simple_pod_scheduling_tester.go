@@ -17,12 +17,9 @@ limitations under the License.
 package testsuites
 
 import (
-	"time"
-
 	"github.com/onsi/ginkgo"
 	v1 "k8s.io/api/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
-	"k8s.io/kubernetes/test/e2e/framework"
 	v1alpha1ClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1alpha1"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 )
@@ -45,13 +42,6 @@ func (t *AzDiskSchedulerExtenderSimplePodSchedulingTest) Run(client clientset.In
 	if len(nodeNames) < 1 {
 		ginkgo.Skip("need at least 1 nodes to verify the test case. Current node count is %d", len(nodeNames))
 	}
-
-	testAzAtt := SetupTestAzVolumeAttachment(t.AzDiskClientSet, t.AzNamespace, "test-vol", nodeNames[0], 0)
-	defer testAzAtt.Cleanup()
-	_ = testAzAtt.Create()
-
-	err := testAzAtt.WaitForAttach(time.Duration(5) * time.Minute)
-	framework.ExpectNoError(err)
 
 	ginkgo.By("deploying the pod")
 	tpod.Create()

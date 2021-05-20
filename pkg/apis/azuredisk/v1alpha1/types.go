@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8stypes "k8s.io/apimachinery/pkg/types"
 )
 
 // +genclient
@@ -69,12 +70,13 @@ type AzVolumeSpec struct {
 	ContentVolumeSource *ContentVolumeSource `json:"contentVolumeSource,omitempty"`
 	//Specifies where the provisioned volume should be accessible
 	//+optional
-	AccessibilityRequirements *TopologyRequirement `json:"accessibilityRequirements"`
+	AccessibilityRequirements *TopologyRequirement `json:"accessibilityRequirements,omitempty"`
 }
 
 // AzVolumeStatus is the status for an AzVolume resource
 type AzVolumeStatus struct {
 	//Current status of the AzVolume
+	//+optional
 	ResponseObject *AzVolumeStatusParams `json:"status,omitempty"`
 	//Current phase of the underlying PV
 	//+optional
@@ -85,12 +87,15 @@ type AzVolumeStatus struct {
 }
 
 type AzVolumeStatusParams struct {
-	VolumeID              string               `json:"volume_id"`
-	VolumeContext         map[string]string    `json:"parameters"`
-	CapacityBytes         int64                `json:"capacity_bytes"`
-	ContentSource         *ContentVolumeSource `json:"content_source"`
-	AccessibleTopology    []Topology           `json:"accessible_topology"`
-	NodeExpansionRequired bool                 `json:"node_expansion_required"`
+	VolumeID string `json:"volume_id"`
+	// +optional
+	VolumeContext map[string]string `json:"parameters,omitempty"`
+	CapacityBytes int64             `json:"capacity_bytes"`
+	// +optional
+	ContentSource *ContentVolumeSource `json:"content_source,omitempty"`
+	// +optional
+	AccessibleTopology    []Topology `json:"accessible_topology,omitempty"`
+	NodeExpansionRequired bool       `json:"node_expansion_required"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -152,7 +157,8 @@ const (
 
 // AzVolumeAttachmentStatus is the status for a AzVolumeAttachment resource
 type AzVolumeAttachmentStatus struct {
-	Role           Role              `json:"role"`
+	Role Role `json:"role"`
+	//+optional
 	PublishContext map[string]string `json:"publish_context,omitempty"`
 	//Error occured during attach/detach of volume
 	//+optional
@@ -170,8 +176,10 @@ type AzVolumeAttachmentList struct {
 }
 
 type AzError struct {
-	ErrorCode    string `json:"errorCode"`
-	ErrorMessage string `json:"errorMessage"`
+	ErrorCode    string            `json:"errorCode"`
+	ErrorMessage string            `json:"errorMessage"`
+	CurrentNode  k8stypes.NodeName `json:"currentNode"`
+	DevicePath   string            `json:"devicePath"`
 }
 
 // +genclient

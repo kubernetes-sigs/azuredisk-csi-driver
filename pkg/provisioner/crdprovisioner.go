@@ -19,12 +19,17 @@ package provisioner
 import (
 	"context"
 	"fmt"
+	"reflect"
+	"strconv"
+	"strings"
 	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	volerr "k8s.io/cloud-provider/volume/errors"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/rest"
@@ -64,7 +69,7 @@ func (c *CrdProvisioner) RegisterDriverNode(
 	nodePartition string,
 	nodeID string) error {
 	azN := c.azDiskClient.DiskV1alpha1().AzDriverNodes(c.namespace)
-	azDriverNodeFromCache, err := azN.Get(ctx, nodeID, metav1.GetOptions{})
+	azDriverNodeFromCache, err := azN.Get(ctx, strings.ToLower(nodeID), metav1.GetOptions{})
 	var azDriverNodeUpdate *v1alpha1.AzDriverNode
 
 	if err == nil && azDriverNodeFromCache != nil {
@@ -76,7 +81,7 @@ func (c *CrdProvisioner) RegisterDriverNode(
 		klog.Errorf("AzDriverNode is not registered yet, will create. error: %v", err)
 		azDriverNodeNew := &v1alpha1.AzDriverNode{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: nodeID,
+				Name: strings.ToLower(nodeID),
 			},
 			Spec: v1alpha1.AzDriverNodeSpec{
 				NodeName: nodeID,
@@ -118,6 +123,9 @@ func (c *CrdProvisioner) RegisterDriverNode(
 	return nil
 }
 
+/*
+CreateVolume creates AzVolume CRI to correspond with the given CSI request.
+*/
 func (c *CrdProvisioner) CreateVolume(
 	ctx context.Context,
 	volumeName string,
@@ -127,26 +135,83 @@ func (c *CrdProvisioner) CreateVolume(
 	secrets map[string]string,
 	volumeContentSource *v1alpha1.ContentVolumeSource,
 	accessibilityReq *v1alpha1.TopologyRequirement) (*v1alpha1.AzVolumeStatusParams, error) {
-	azV := c.azDiskClient.DiskV1alpha1().AzVolumes(c.namespace)
-	azVolumeInstance, err := azV.Get(ctx, volumeName, metav1.GetOptions{})
+	maxShares := 1
+	maxMountReplicaCount := 0
 
-	if err == nil && azVolumeInstance.Status != nil && azVolumeInstance.Status.Error != nil {
-		// If the CreateVolume call is being retried after erroring out previously, set
-		// the status to nil to retrigger volume creation
-		azVolumeInstance.Status = nil
-		azVolumeUpdated, err := azV.UpdateStatus(ctx, azVolumeInstance, metav1.UpdateOptions{})
-		if err != nil || azVolumeUpdated == nil || azVolumeUpdated.Status != nil {
-			klog.Errorf("Failed to update azvolume resource for volume name (%s), error: %v", volumeName, err)
-			return nil, err
+	var err error
+	for parameter, value := range parameters {
+		if strings.EqualFold(azureutils.MaxSharesField, parameter) {
+			maxShares, err = strconv.Atoi(value)
+			if err != nil {
+				return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("parse %s failed with error: %v", value, err))
+			}
+			if maxShares < 1 {
+				return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("parse %s returned with invalid value: %d", value, maxShares))
+			}
+		} else if strings.EqualFold(azureutils.MaxMountReplicaCountField, parameter) {
+			maxMountReplicaCount, err = strconv.Atoi(value)
+			if err != nil {
+				klog.Warningf("setting default value derived from MaxShares: unable to parse MaxMountReplicaCount (%s): %v", value, err)
+			}
 		}
-	} else {
+	}
 
+	// If maxMountReplicaCount > maxShares - 1, its value will be adjusted to maxShares - 1 by defeault
+	if maxMountReplicaCount < maxShares-1 {
+		maxMountReplicaCount = maxShares - 1
+	}
+
+	// Getting the validVolumeName here since after volume
+	// creation the diskURI will consist of the validVolumeName
+	validVolumeName := azureutils.GetValidDiskName(volumeName)
+
+	azV := c.azDiskClient.DiskV1alpha1().AzVolumes(c.namespace)
+
+	azVolumeInstance, err := azV.Get(ctx, strings.ToLower(validVolumeName), metav1.GetOptions{})
+
+	if err == nil {
+		if azVolumeInstance.Status != nil {
+			if azVolumeInstance.Status.Error != nil {
+				updatedInstance := azVolumeInstance.DeepCopy()
+				// If the CreateVolume call is being retried after erroring out previously, set
+				// the status to nil to retrigger volume creation
+				updatedInstance.Status = nil
+				azVolumeUpdated, err := azV.UpdateStatus(ctx, updatedInstance, metav1.UpdateOptions{})
+				if err != nil || azVolumeUpdated == nil || azVolumeUpdated.Status != nil {
+					klog.Errorf("Failed to update azvolume resource for volume name (%s), error: %v", volumeName, err)
+					return nil, err
+				}
+
+				if updateAzVolumeSpec(azVolumeUpdated, maxMountReplicaCount, capacityRange, parameters, secrets, volumeContentSource, accessibilityReq) {
+					// Updating the spec fields to keep it up to date with the request
+					azVolumeUpdated.Spec.MaxMountReplicaCount = maxMountReplicaCount
+					azVolumeUpdated.Spec.CapacityRange = capacityRange
+					azVolumeUpdated.Spec.Parameters = parameters
+					azVolumeUpdated.Spec.Secrets = secrets
+					azVolumeUpdated.Spec.ContentVolumeSource = volumeContentSource
+					azVolumeUpdated.Spec.AccessibilityRequirements = accessibilityReq
+					_, err = azV.Update(ctx, azVolumeUpdated, metav1.UpdateOptions{})
+					if err != nil {
+						return nil, err
+					}
+				}
+			} else {
+				// The volume creation was successful previously,
+				// Returning the response object from the status
+				return azVolumeInstance.Status.ResponseObject, nil
+			}
+		}
+		// if the error was caused by errors other than IsNotFound, return failure
+	} else if !errors.IsNotFound(err) {
+		return nil, err
+	} else {
 		azVolume := &v1alpha1.AzVolume{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: volumeName,
+				Name: strings.ToLower(validVolumeName),
 			},
 			Spec: v1alpha1.AzVolumeSpec{
-				UnderlyingVolume:          volumeName,
+				MaxMountReplicaCount:      maxMountReplicaCount,
+				UnderlyingVolume:          validVolumeName,
 				VolumeCapability:          volumeCapabilities,
 				CapacityRange:             capacityRange,
 				Parameters:                parameters,
@@ -168,7 +233,8 @@ func (c *CrdProvisioner) CreateVolume(
 	}
 
 	conditionFunc := func() (bool, error) {
-		azVolumeInstance, err = azV.Get(ctx, volumeName, metav1.GetOptions{})
+		azVolumeInstance, err = azV.Get(ctx, strings.ToLower(validVolumeName), metav1.GetOptions{})
+
 		if err != nil {
 			return true, err
 		}
@@ -218,7 +284,7 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 
 	conditionFunc := func() (bool, error) {
 		// Verify if the azVolume is deleted
-		azVolume, err := azV.Get(ctx, volumeName, metav1.GetOptions{})
+		azVolume, err := azV.Get(ctx, strings.ToLower(volumeName), metav1.GetOptions{})
 		if err != nil {
 			if errors.IsNotFound(err) {
 				return true, nil
@@ -250,49 +316,55 @@ func (c *CrdProvisioner) PublishVolume(
 
 	attachmentName := azureutils.GetAzVolumeAttachmentName(volumeName, nodeID)
 
+	if volumeContext == nil {
+		volumeContext = map[string]string{}
+	}
 	azVolumeAttachmentInstance, err := azVA.Get(ctx, attachmentName, metav1.GetOptions{})
 	if err == nil {
-		if azVolumeAttachmentInstance.Status != nil && azVolumeAttachmentInstance.Status.Error != nil {
-			azVolumeAttachmentInstance.Status = nil
-			azVolumeAttachmentUpdated, err := azVA.UpdateStatus(ctx, azVolumeAttachmentInstance, metav1.UpdateOptions{})
-			if err != nil || azVolumeAttachmentUpdated == nil || azVolumeAttachmentUpdated.Status != nil {
-				klog.Errorf("Failed to update azVolumeAttachment resource for volume name (%s), error: %v", volumeName, err)
+		updated := azVolumeAttachmentInstance.DeepCopy()
+		if updated.Status != nil && updated.Status.Error != nil {
+			updated.Status = nil
+			updated, err = azVA.UpdateStatus(ctx, updated, metav1.UpdateOptions{})
+			if err != nil || updated == nil || updated.Status != nil {
+				klog.Errorf("Failed to update azVolumeAttachment resource status for volume name (%s), error: %v", volumeName, err)
 				return nil, err
 			}
-		} else {
-
-			// If there exists an attachment, we are trying to update
-			// the AzVolumeAttachment role from Replica to Primary
-			azVolumeAttachmentInstance.Spec.RequestedRole = v1alpha1.PrimaryRole
-			_, err := azVA.Update(ctx, azVolumeAttachmentInstance, metav1.UpdateOptions{})
-			if err != nil {
-				return nil, err
-			}
-			return azVolumeAttachmentInstance.Status.PublishContext, nil
 		}
-	}
 
-	azVolumeAttachment := &v1alpha1.AzVolumeAttachment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: attachmentName,
-			Labels: map[string]string{
-				"node-name":   nodeID,
-				"volume-name": volumeName,
-			},
-		},
-		Spec: v1alpha1.AzVolumeAttachmentSpec{
-			UnderlyingVolume: volumeName,
-			VolumeID:         volumeID,
-			NodeName:         nodeID,
-			VolumeContext:    volumeContext,
-			RequestedRole:    v1alpha1.PrimaryRole,
-		},
-	}
-
-	azVolumeAttachmentInstance, err = azVA.Create(ctx, azVolumeAttachment, metav1.CreateOptions{})
-	if err != nil {
-		klog.Errorf("Error creating azvolume attachment for volume id (%s) to node id (%s) error : %v", volumeID, nodeID, err)
+		// If there exists an attachment, we are trying to update
+		// the AzVolumeAttachment role from Replica to Primary
+		updated.Spec.RequestedRole = v1alpha1.PrimaryRole
+		// Keeping the spec fields up to date with the request parameters
+		updated.Spec.VolumeContext = volumeContext
+		_, err := azVA.Update(ctx, updated, metav1.UpdateOptions{})
+		if err != nil {
+			return nil, err
+		}
+	} else if !errors.IsNotFound(err) {
 		return nil, err
+	} else {
+		azVolumeAttachment := &v1alpha1.AzVolumeAttachment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: attachmentName,
+				Labels: map[string]string{
+					"node-name":   nodeID,
+					"volume-name": volumeName,
+				},
+			},
+			Spec: v1alpha1.AzVolumeAttachmentSpec{
+				UnderlyingVolume: volumeName,
+				VolumeID:         volumeID,
+				NodeName:         nodeID,
+				VolumeContext:    volumeContext,
+				RequestedRole:    v1alpha1.PrimaryRole,
+			},
+		}
+
+		azVolumeAttachmentInstance, err = azVA.Create(ctx, azVolumeAttachment, metav1.CreateOptions{})
+		if err != nil {
+			klog.Errorf("Error creating azvolume attachment for volume id (%s) to node id (%s) error : %v", volumeID, nodeID, err)
+			return nil, err
+		}
 	}
 
 	conditionFunc := func() (bool, error) {
@@ -302,6 +374,11 @@ func (c *CrdProvisioner) PublishVolume(
 		}
 		if azVolumeAttachmentInstance.Status != nil {
 			if azVolumeAttachmentInstance.Status.Error != nil {
+				// if dangling attach error
+				if azVolumeAttachmentInstance.Status.Error.ErrorCode == util.DanglingAttachErrorCode {
+					klog.Errorf("dangling error found from AzVolumeAttachment (%s): %v", attachmentName, azVolumeAttachmentInstance.Status.Error)
+					return true, volerr.NewDanglingError(azVolumeAttachmentInstance.Status.Error.ErrorMessage, azVolumeAttachmentInstance.Status.Error.CurrentNode, azVolumeAttachmentInstance.Status.Error.DevicePath)
+				}
 				azVolumeAttachmentError := status.Error(util.GetErrorCodeFromString(azVolumeAttachmentInstance.Status.Error.ErrorCode), azVolumeAttachmentInstance.Status.Error.ErrorMessage)
 				return true, azVolumeAttachmentError
 			}
@@ -312,8 +389,10 @@ func (c *CrdProvisioner) PublishVolume(
 
 	err = wait.PollImmediate(interval, timeout, conditionFunc)
 	if err != nil {
+		klog.Errorf("attachment failed: %v", err)
 		return nil, err
 	}
+
 	if azVolumeAttachmentInstance.Status == nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to attach azvolume attachment resource for volume id (%s) to node (%s)", volumeID, nodeID))
 	}
@@ -376,7 +455,7 @@ func (c *CrdProvisioner) ExpandVolume(
 		return nil, err
 	}
 
-	azVolume, err := azV.Get(ctx, volumeName, metav1.GetOptions{})
+	azVolume, err := azV.Get(ctx, strings.ToLower(volumeName), metav1.GetOptions{})
 	if err != nil || azVolume == nil {
 		klog.Errorf("Failed to retrieve existing volume id (%s)", volumeID)
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to retrieve volume id (%s), error: %v", volumeID, err))
@@ -390,7 +469,7 @@ func (c *CrdProvisioner) ExpandVolume(
 	}
 
 	conditionFunc := func() (bool, error) {
-		azVolumeUpdated, err = azV.Get(ctx, volumeID, metav1.GetOptions{})
+		azVolumeUpdated, err = azV.Get(ctx, strings.ToLower(volumeName), metav1.GetOptions{})
 		if err != nil {
 			return true, err
 		}
@@ -424,4 +503,23 @@ func (c *CrdProvisioner) GetDiskClientSet() azDiskClientSet.Interface {
 
 func (c *CrdProvisioner) GetDiskClientSetAddr() *azDiskClientSet.Interface {
 	return &c.azDiskClient
+}
+
+func updateAzVolumeSpec(defaultAzVolume *v1alpha1.AzVolume,
+	maxMountReplicaCount int,
+	capacityRange *v1alpha1.CapacityRange,
+	parameters map[string]string,
+	secrets map[string]string,
+	volumeContentSource *v1alpha1.ContentVolumeSource,
+	accessibilityReq *v1alpha1.TopologyRequirement) bool {
+	if defaultAzVolume.Spec.MaxMountReplicaCount != maxMountReplicaCount ||
+		!reflect.DeepEqual(defaultAzVolume.Spec.CapacityRange, capacityRange) ||
+		!reflect.DeepEqual(defaultAzVolume.Spec.Parameters, parameters) ||
+		!reflect.DeepEqual(defaultAzVolume.Spec.Secrets, secrets) ||
+		!reflect.DeepEqual(defaultAzVolume.Spec.ContentVolumeSource, volumeContentSource) ||
+		!reflect.DeepEqual(defaultAzVolume.Spec.AccessibilityRequirements, accessibilityReq) {
+		return true
+	}
+
+	return false
 }

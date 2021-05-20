@@ -46,7 +46,7 @@ jobs:
 
     - name: Run e2e tests
       run: |
-        REGISTRY=e2etest.azurecr.io/mandalay BUILD_V2=1 make e2e-test
+        REGISTRY=e2etest.azurecr.io/mandalay make e2e-test-v2
         
     - name: Cleanup 
       if: ${{ always() }}

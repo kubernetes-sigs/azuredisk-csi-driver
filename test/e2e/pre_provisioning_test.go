@@ -74,7 +74,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 				// Skip these tests until above is fixed.
 				skipIfUsingInTreeVolumePlugin()
 
-				req := makeCreateVolumeReq("pre-provisioned-readOnly", defaultDiskSize)
+				req := makeCreateVolumeReq("pre-provisioned-read-only", defaultDiskSize)
 				resp, err := azurediskDriver.CreateVolume(context.Background(), req)
 				if err != nil {
 					ginkgo.Fail(fmt.Sprintf("create volume error: %v", err))
@@ -247,7 +247,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			// Skip these tests until above is fixed.
 			skipIfUsingInTreeVolumePlugin()
 
-			req := makeCreateVolumeReq("pre-provisioned-retain-reclaimPolicy", defaultDiskSize)
+			req := makeCreateVolumeReq("pre-provisioned-retain-reclaim-policy", defaultDiskSize)
 			resp, err := azurediskDriver.CreateVolume(context.Background(), req)
 			if err != nil {
 				ginkgo.Fail(fmt.Sprintf("create volume error: %v", err))
@@ -299,7 +299,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			skipIfUsingInTreeVolumePlugin()
 
 			skipManuallyDeletingVolume = true
-			req := makeCreateVolumeReq("invalid-maxShares", 256)
+			req := makeCreateVolumeReq("invalid-max-shares", 256)
 			req.Parameters = map[string]string{"maxShares": "0"}
 			_, err := azurediskDriver.CreateVolume(context.Background(), req)
 			framework.ExpectError(err)

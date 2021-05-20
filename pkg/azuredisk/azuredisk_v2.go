@@ -23,6 +23,7 @@ import (
 	"flag"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -161,7 +162,7 @@ func (d *DriverV2) Run(endpoint, kubeConfigPath string, testBool bool) {
 		klog.Fatalf("Failed to get crd provisioner. Error: %v", err)
 	}
 
-	d.cloudProvisioner, err = provisioner.NewCloudProvisioner(d.kubeClient, topologyKey)
+	d.cloudProvisioner, err = provisioner.NewCloudProvisioner(d.kubeConfig, d.kubeClient, topologyKey, d.objectNamespace)
 	if err != nil {
 		klog.Fatalf("Failed to get controller provisioner. Error: %v", err)
 	}
@@ -243,7 +244,7 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 	klogv1.SetOutputBySeverity("ERROR", klogWriter{})
 	klogv1.SetOutputBySeverity("WARNING", klogWriter{})
 	klogv1.SetOutputBySeverity("FATAL", klogWriter{})
-	log := klogr.New().WithName("AzDiskControllerManager").WithValues("namepace", d.objectNamespace).WithValues("partition", d.controllerPartition)
+	log := klogr.New().WithName("AzDiskControllerManager").WithValues("namespace", d.objectNamespace).WithValues("partition", d.controllerPartition)
 
 	leaseDuration := time.Duration(d.controllerLeaseDurationInSec) * time.Second
 	renewDeadline := time.Duration(d.controllerLeaseRenewDeadlineInSec) * time.Second
@@ -352,7 +353,7 @@ func (d *DriverV2) RunAzDriverNodeHeartbeatLoop(ctx context.Context) {
 		// If not then get it
 		if cachedAzDriverNode == nil {
 			klog.V(2).Info("Don't have current AzDriverNodeStatus. Getting current AzDriverNodes status.")
-			cachedAzDriverNode, err = azN.Get(context.Background(), d.NodeID, metav1.GetOptions{})
+			cachedAzDriverNode, err = azN.Get(context.Background(), strings.ToLower(d.NodeID), metav1.GetOptions{})
 			// If we are not able to get the AzDriverNode, just wait and retry
 			// In heartbeat loop we don't try to create the AzDriverNode object
 			// If the object is deleted, the heartbeat for the node will become stale
