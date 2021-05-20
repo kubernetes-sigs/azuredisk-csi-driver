@@ -83,3 +83,6 @@ func newFakeDriverV2(t *testing.T) (*DriverV2, error) {
 
 	return &driver, nil
 }
+
+func (d *DriverV2) setDiskThrottlingCache(key string, value string) {
+}

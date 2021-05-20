@@ -67,7 +67,8 @@ func newDriverV2(nodeID string, enablePerfOptimization bool) *DriverV2 {
 	driver.Version = driverVersion
 	driver.NodeID = nodeID
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
-	driver.enablePerfOptimization = enablePerfOptimization
+	driver.perfOptimizationEnabled = enablePerfOptimization
+	driver.skusFilePath = SkusFilePath
 	return &driver
 }
 
@@ -99,7 +100,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 	d.deviceHelper = NewSafeDeviceHelper()
 
 	if d.getPerfOptimizationEnabled() {
-		err = PopulateNodeAndSkuInfo(d)
+		err = PopulateNodeAndSkuInfo(d.DriverCore)
 		if err != nil {
 			klog.Fatalf("Failed to get node info. Error: %v", err)
 		}

@@ -14,7 +14,7 @@
 
 ## Summary
 
-Persistent volumes in kubernetes are used for wide variety of statefull workloads.
+Persistent volumes in kubernetes are used for wide variety of stateful workloads.
 These workloads have different runtime/IO characterstics, certain device level config settings
 on the data disk can make a huge difference in performance of the application.
 
@@ -79,6 +79,7 @@ In this iteration we will only enable the feature for StandardSSD and Premium di
 ## Limitations
 
 - This feature is not supported for HDD or UltraDisk right now.
+- The current implementation only optimizes the disks which use the storVsc linux disk driver.
 - No `manual` perftuningmode available today.
 - Only `Default` perfprofile is available today, which would provide balanced IO and throughput performance.
 
@@ -86,5 +87,7 @@ In this iteration we will only enable the feature for StandardSSD and Premium di
 
 - We will consider a `manual` perf tuning mode where users will be able to define their own perf profile by means
 of a CRD or a ConfigMap.
-- We will consider to expose more perf profiles for `Auto` perf tuning mode, tailor made for different IO characterstics.
-- We will consider to expand perf optimization for HDD and UltraDisks.
+- We will consider exposing more perf profiles for `Auto` perf tuning mode, tailor made for different IO characterstics.
+- We will consider expanding perf optimization for HDD and UltraDisks.
+- We will consider expanding perf optimization for other disk drivers such as NVME etc.
+- We will consider expanding perf optimization for other OS' such as Windows.

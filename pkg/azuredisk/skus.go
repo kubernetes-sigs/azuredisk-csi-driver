@@ -34,7 +34,6 @@ import (
 )
 
 var (
-	SkusFilePathLinux                    = "/etc/skus/skus.json"
 	MaxValueOfMaxSharesCapability        = "maxvalueofmaxshares"
 	MaxBurstIopsCapability               = "maxburstiops"
 	MaxIOpsCapability                    = "maxiops"
@@ -150,7 +149,7 @@ type DiskSkuInfo struct {
 
 // PopulateNodeAndSkuInfo populates Node and Sku related
 // information in memory
-func PopulateNodeAndSkuInfo(d *Driver) error {
+func PopulateNodeAndSkuInfo(d DriverCore) error {
 	d.nodeInfo = &NodeInfo{}
 
 	instances, ok := d.cloud.Instances()
@@ -174,7 +173,7 @@ func PopulateNodeAndSkuInfo(d *Driver) error {
 	d.nodeInfo.zone = &zone.FailureDomain
 	d.nodeInfo.region = &zone.Region
 
-	err = populateSkuMap(d, SkusFilePathLinux)
+	err = populateSkuMap(d)
 	if err != nil {
 		klog.Errorf("Could populate sku information. Error: %v", err)
 		return err
@@ -184,11 +183,11 @@ func PopulateNodeAndSkuInfo(d *Driver) error {
 }
 
 // populateSkuMap populates the sku map from the sku json file
-func populateSkuMap(d *Driver, skusFilePath string) (err error) {
+func populateSkuMap(d DriverCore) (err error) {
 	var skus []SkuInfo
-	diskSkusFullJSON, err := os.Open(skusFilePath)
+	diskSkusFullJSON, err := os.Open(d.skusFilePath)
 	if err != nil {
-		klog.Errorf("Could read file. Error: %v, FilePath: %s", err, skusFilePath)
+		klog.Errorf("Could read file. Error: %v, FilePath: %s", err, d.skusFilePath)
 		return err
 	}
 	defer diskSkusFullJSON.Close()
@@ -197,7 +196,7 @@ func populateSkuMap(d *Driver, skusFilePath string) (err error) {
 
 	err = json.Unmarshal([]byte(byteValue), &skus)
 	if err != nil {
-		klog.Errorf("Could unmarshal json file. Error: %v, FilePath: %s", err, skusFilePath)
+		klog.Errorf("Could unmarshal json file. Error: %v, FilePath: %s", err, d.skusFilePath)
 		return err
 	}
 

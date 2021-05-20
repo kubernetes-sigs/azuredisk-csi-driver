@@ -63,13 +63,15 @@ func Test_populateSkuMap(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tempFile, err := ioutil.TempFile("", "skusTemp.json")
 			assert.NoError(t, err)
+			tt.driver.setSkusFilePath(tempFile.Name())
 			if tt.cleanUpFn != nil {
-				defer tt.cleanUpFn(tempFile.Name())
+				defer tt.cleanUpFn(tt.driver.skusFilePath)
 			}
 			if tt.setUpFn != nil {
-				assert.NoError(t, tt.setUpFn(tempFile.Name()))
+				assert.NoError(t, tt.setUpFn(tt.driver.skusFilePath))
 			}
-			if err = populateSkuMap(tt.driver, tempFile.Name()); (err != nil) != tt.wantErr {
+
+			if err = populateSkuMap(tt.driver.DriverCore); (err != nil) != tt.wantErr {
 				t.Errorf("populateSkuMap() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})

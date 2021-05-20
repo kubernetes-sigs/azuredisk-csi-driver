@@ -23,11 +23,8 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strconv"
-	"strings"
 	"time"
 
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
@@ -152,124 +149,6 @@ func (d *DriverV2) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolume
 	}
 
 	return &csi.NodeStageVolumeResponse{}, nil
-}
-
-func getPerformanceProfile(attributes map[string]string) (perfOptimizationEnabled bool, perfProfile string) {
-
-	if pStr, ok := attributes[perfOptimizationEnabledField]; ok {
-		klog.V(2).Infof("getPerformanceProfile: perfOptimizationEnabled %s", pStr)
-		p, err := strconv.ParseBool(pStr)
-		if err != nil {
-			perfOptimizationEnabled = false
-		} else {
-			perfOptimizationEnabled = p
-		}
-	} else {
-		klog.V(2).Infof("getPerformanceProfile: Cant read perfOptimizationEnabled")
-	}
-
-	if profileStr, ok := attributes[perfProfileField]; ok {
-		perfProfile = profileStr
-	}
-	klog.V(2).Infof("getPerformanceProfile: perfOptimizationEnabled %s perfProfile %s",
-		perfOptimizationEnabled,
-		perfProfile)
-
-	return perfOptimizationEnabled, perfProfile
-}
-
-func getDeviceName(lunPath string) (deviceName string, err error) {
-	devicePath, err := filepath.EvalSymlinks(lunPath)
-	if err != nil {
-		klog.Errorf("Path %s is not a symlink. Error: %v", lunPath, err)
-		return "", err
-	}
-
-	return filepath.Base(devicePath), nil
-}
-
-func echoToFile(content string, filePath string) (err error) {
-	klog.V(2).Infof("Echoing %s to %s", content, filePath)
-	cmd := exec.Command("echo", content)
-	outfile, err := os.Create(filePath)
-	if err != nil {
-		return err
-	}
-	defer outfile.Close()
-
-	cmd.Stdout = outfile
-
-	err = cmd.Start()
-	if err != nil {
-		return err
-	}
-	err = cmd.Wait()
-	if err != nil {
-		klog.Errorf("Could not make the set %s to file %s. Error: %v", content, filePath, err)
-	}
-	return err
-}
-
-func tuneDeviceSettings(devicePath string, attributes map[string]string) {
-
-	klog.V(2).Infof("Tuning settings for %s", devicePath)
-	enabled, profile := getPerformanceProfile(attributes)
-	if !enabled {
-		klog.Warningf("tuneDeviceSettings: Perf tuning not enabled for %s", devicePath)
-		return
-	}
-	queueDepth, nrRequests, scheduler, maxSectorsKb, readAheadKb := getPerfAttributes(profile, profile)
-
-	deviceName, err := getDeviceName(devicePath)
-	if err != nil {
-		klog.Errorf("Could not get deviceName for %s. Error: %v", devicePath, err)
-		return
-	}
-
-	klog.V(2).Infof("Tuning settings for devicePath %s, deviceName %s, profile %s queueDepth %s nrRequests %s scheduler %s maxSectorsKb %s readAheadKb %s",
-		devicePath,
-		deviceName,
-		profile,
-		queueDepth,
-		nrRequests,
-		scheduler,
-		maxSectorsKb,
-		readAheadKb)
-
-	err = echoToFile(queueDepth, filepath.Join("/sys/block", deviceName, "device/queue_depth"))
-	if err != nil {
-		klog.Warningf("Could not set queue_depth for device %s. Error: %v", deviceName, err)
-	}
-
-	err = echoToFile(nrRequests, filepath.Join("/sys/block", deviceName, "queue/nr_requests"))
-	if err != nil {
-		klog.Warningf("Could not set nr_requests for device %s. Error: %v", deviceName, err)
-	}
-
-	err = echoToFile(scheduler, filepath.Join("/sys/block", deviceName, "queue/scheduler"))
-	if err != nil {
-		klog.Warningf("Could not set scheduler for device %s. Error: %v", deviceName, err)
-	}
-
-	err = echoToFile(maxSectorsKb, filepath.Join("/sys/block", deviceName, "queue/max_sectors_kb"))
-	if err != nil {
-		klog.Warningf("Could not set max_sectors_kb for device %s. Error: %v", deviceName, err)
-	}
-
-	err = echoToFile(readAheadKb, filepath.Join("/sys/block", deviceName, "queue/read_ahead_kb"))
-	if err != nil {
-		klog.Warningf("Could not set max_sectors_kb for device %s. Error: %v", deviceName, err)
-	}
-
-	err = echoToFile("0", filepath.Join("/sys/block", deviceName, "queue/wbt_lat_usec"))
-	if err != nil {
-		klog.Warningf("Could not set max_sectors_kb for device %s. Error: %v", deviceName, err)
-	}
-
-	err = echoToFile("0", filepath.Join("/sys/block", deviceName, "queue/rotational"))
-	if err != nil {
-		klog.Warningf("Could not set max_sectors_kb for device %s. Error: %v", deviceName, err)
-	}
 }
 
 // NodeUnstageVolume unmount disk device from a staging path
