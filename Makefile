@@ -20,7 +20,7 @@ DRIVER_NAME = disk.csi.azure.com
 IMAGE_NAME ?= azuredisk-csi
 ifndef BUILD_V2
 PLUGIN_NAME = azurediskplugin
-IMAGE_VERSION ?= v1.3.0
+IMAGE_VERSION ?= v1.4.0
 CHART_VERSION ?= latest
 else
 PLUGIN_NAME = azurediskpluginv2
