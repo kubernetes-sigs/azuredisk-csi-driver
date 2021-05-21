@@ -95,7 +95,25 @@ func (t *DynamicallyProvisionedAzureDiskWithTag) Run(client clientset.Interface,
 				framework.ExpectEqual(*disktest.Tags[k], v)
 			}
 		}
-		_, ok := disktest.Tags[azuredisk.CreatedForPVNameKey]
+		tag, ok := disktest.Tags["kubernetes.io-created-for-pv-name"]
 		framework.ExpectEqual(ok, true)
+		framework.ExpectEqual(tag != nil, true)
+		if tag != nil {
+			ginkgo.By(fmt.Sprintf("kubernetes.io-created-for-pv-name: %s", *tag))
+		}
+
+		tag, ok = disktest.Tags["kubernetes.io-created-for-pvc-name"]
+		framework.ExpectEqual(ok, true)
+		framework.ExpectEqual(tag != nil, true)
+		if tag != nil {
+			ginkgo.By(fmt.Sprintf("kubernetes.io-created-for-pvc-name: %s", *tag))
+		}
+
+		tag, ok = disktest.Tags["kubernetes.io-created-for-pvc-namespace"]
+		framework.ExpectEqual(ok, true)
+		framework.ExpectEqual(tag != nil, true)
+		if tag != nil {
+			ginkgo.By(fmt.Sprintf("kubernetes.io-created-for-pvc-namespace: %s", *tag))
+		}
 	}
 }

@@ -38,6 +38,7 @@ spec:
             - "--timeout=15s"
             - "--leader-election"
             - "--worker-threads=40"
+            - "--extra-create-metadata=true"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
