@@ -32,12 +32,12 @@ jobs:
     - name: Install conntrack
       run: sudo apt install conntrack
 
-    - name: Login to Azure Container Registry
-      run: docker login e2etest.azurecr.io --username $AZURE_CLIENT_ID --password $AZURE_CLIENT_SECRET
-
     - name: Login to Azure
       run: |
         az login --service-principal -u $AZURE_CLIENT_ID -p $AZURE_CLIENT_SECRET --tenant $AZURE_TENANT_ID
+
+    - name: Login to Azure Container Registry
+      run: az acr login --name e2etest
 
     - name: Create an aks cluster
       run: |  
