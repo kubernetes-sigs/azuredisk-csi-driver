@@ -213,6 +213,9 @@ func (r *reconcileAzVolume) UpdateStatus(ctx context.Context, volumeName string,
 	} else {
 		// Updating status after update operation
 		if status != nil {
+			if updated.Status.ResponseObject == nil {
+				updated.Status.ResponseObject = &v1alpha1.AzVolumeStatusParams{}
+			}
 			updated.Status.ResponseObject.CapacityBytes = status.CapacityBytes
 			updated.Status.ResponseObject.NodeExpansionRequired = status.NodeExpansionRequired
 		} else {
