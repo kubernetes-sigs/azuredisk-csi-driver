@@ -19,6 +19,16 @@ tags | Azure disk [tags](https://docs.microsoft.com/en-us/azure/azure-resource-m
 diskEncryptionSetID | ResourceId of the disk encryption set to use for [enabling encryption at rest](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/disk-encryption) | format: `/subscriptions/{subs-id}/resourceGroups/{rg-name}/providers/Microsoft.Compute/diskEncryptionSets/{diskEncryptionSet-name}` | No | ""
 writeAcceleratorEnabled | [Write Accelerator on Azure Disks](https://docs.microsoft.com/azure/virtual-machines/windows/how-to-enable-write-accelerator) | `true`, `false` | No | ""
 
+ - disk created by dynamic provisioning
+   - disk name format: `kubernetes-dynamic-pvc-e132d37f-9e8f-434a-b599-15a4ab211b39`
+   - tags format:
+```
+created-by: kubernetes-azure-dd
+kubernetes.io-created-for-pv-name: pvc-e132d37f-9e8f-434a-b599-15a4ab211b39
+kubernetes.io-created-for-pvc-name: pvc-azuredisk
+kubernetes.io-created-for-pvc-namespace: default
+```
+
 ### Static Provisioning(bring your own disk)
 
 Name | Meaning | Available Value | Mandatory | Default value
