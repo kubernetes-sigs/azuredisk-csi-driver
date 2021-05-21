@@ -95,6 +95,13 @@ const (
 
 	WellKnownTopologyKey = "topology.kubernetes.io/zone"
 	throttlingKey        = "throttlingKey"
+
+	pvcNameKey      = "csi.storage.k8s.io/pvc/name"
+	pvcNamespaceKey = "csi.storage.k8s.io/pvc/namespace"
+	pvNameKey       = "csi.storage.k8s.io/pv/name"
+	pvcNameTag      = "kubernetes.io-created-for-pvc-name"
+	pvcNamespaceTag = "kubernetes.io-created-for-pvc-namespace"
+	pvNameTag       = "kubernetes.io-created-for-pv-name"
 )
 
 var (

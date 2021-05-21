@@ -69,7 +69,6 @@ const (
 	sourceVolume             = "volume"
 	azureDiskCSIDriverName   = "azuredisk_csi_driver"
 	NotFound                 = "NotFound"
-	CreatedForPVNameKey      = "kubernetes.io-created-for-pv-name"
 	resizeRequired           = "resizeRequired"
 	sourceDiskSearchMaxDepth = 10
 )
@@ -131,6 +130,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		maxShares               int
 	)
 
+	tags := make(map[string]string)
 	parameters := req.GetParameters()
 	if parameters == nil {
 		parameters = make(map[string]string)
@@ -172,6 +172,12 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			if maxShares < 1 {
 				return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("parse %s returned with invalid value: %d", v, maxShares))
 			}
+		case pvcNameKey:
+			tags[pvcNameTag] = v
+		case pvcNamespaceKey:
+			tags[pvcNamespaceTag] = v
+		case pvNameKey:
+			tags[pvNameTag] = v
 		case fsTypeField:
 			// no op, only used in NodeStageVolume
 		case kindField:
@@ -264,12 +270,10 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	klog.V(2).Infof("begin to create azure disk(%s) account type(%s) rg(%s) location(%s) size(%d) diskZone(%v) maxShares(%d)",
 		diskName, skuName, resourceGroup, location, requestGiB, diskZone, maxShares)
 
-	tags := make(map[string]string)
 	contentSource := &csi.VolumeContentSource{}
 	for k, v := range customTagsMap {
 		tags[k] = v
 	}
-	tags[CreatedForPVNameKey] = name
 
 	if strings.EqualFold(writeAcceleratorEnabled, "true") {
 		tags[azure.WriteAcceleratorEnabled] = "true"
