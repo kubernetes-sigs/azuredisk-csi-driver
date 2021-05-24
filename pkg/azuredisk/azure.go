@@ -46,6 +46,11 @@ func IsWindowsOS() bool {
 	return strings.EqualFold(runtime.GOOS, "windows")
 }
 
+// IsLinuxOS decides whether the driver is running on linux OS.
+func IsLinuxOS() bool {
+	return strings.EqualFold(runtime.GOOS, "linux")
+}
+
 // GetCloudProvider get Azure Cloud Provider
 func GetCloudProvider(kubeconfig string) (*azure.Cloud, error) {
 	kubeClient, err := getKubeClient(kubeconfig)

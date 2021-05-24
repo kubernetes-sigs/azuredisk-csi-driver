@@ -53,7 +53,7 @@ func TestSafeDeviceHelper_DeviceSupportsPerfOptimization(t *testing.T) {
 			name:            "valid profile and account should return true",
 			diskPerfProfile: "Default",
 			diskAccountType: "Premium_lrs",
-			want:            true,
+			want:            IsLinuxOS(),
 		},
 	}
 	for _, tt := range tests {
