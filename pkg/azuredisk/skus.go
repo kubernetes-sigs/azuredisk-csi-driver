@@ -18,47 +18,15 @@ package azuredisk
 
 import (
 	"context"
-	"encoding/json"
-	"io/ioutil"
-	"os"
-	"strconv"
+	"fmt"
 	"strings"
-
-	compute "github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
-
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/klog/v2"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-)
 
-var (
-	MaxValueOfMaxSharesCapability        = "maxvalueofmaxshares"
-	MaxBurstIopsCapability               = "maxburstiops"
-	MaxIOpsCapability                    = "maxiops"
-	MaxBandwidthMBpsCapability           = "maxbandwidthmbps"
-	MaxBurstBandwidthMBpsCapability      = "maxburstbandwidthmbps"
-	MaxSizeGiBCapability                 = "maxsizegib"
-	UncachedDiskIOPSCapability           = "uncacheddiskiops"
-	UncachedDiskBytesPerSecondCapability = "uncacheddiskbytespersecond"
-	MaxDataDiskCountCapability           = "maxdatadiskcount"
-	VCPUsCapability                      = "vcpus"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/klog/v2"
 )
-
-// ResourceSku describes an available  SKU.
-type SkuInfo struct {
-	// ResourceType - READ-ONLY; The type of resource the SKU applies to.
-	ResourceType *string `json:"resourceType,omitempty"`
-	// Name - READ-ONLY; The name of SKU.
-	Name *string `json:"name,omitempty"`
-	// Tier - READ-ONLY; Specifies the tier of virtual machines in a scale set.<br /><br /> Possible Values:<br /><br /> **Standard**<br /><br /> **Basic**
-	Tier *string `json:"tier,omitempty"`
-	// Size - READ-ONLY; The Size of the SKU.
-	Size *string `json:"size,omitempty"`
-	// Capabilities - READ-ONLY; A name value pair to describe the capability.
-	Capabilities *[]compute.ResourceSkuCapabilities `json:"capabilities,omitempty"`
-}
 
 // NodeInfo stores VM/Node specific static information
 // VM information is present in sku.json in below format
@@ -91,15 +59,15 @@ type SkuInfo struct {
 // 	]
 // }
 type NodeInfo struct {
-	skuName          *string
-	zone             *string
-	region           *string
-	maxDataDiskCount int
-	vcpus            int
-	maxBurstIops     int
-	maxIops          int
-	maxBwMbps        int
-	maxBurstBwMbps   int
+	SkuName          string
+	Zone             string
+	Region           string
+	MaxDataDiskCount int
+	VCpus            int
+	MaxBurstIops     int
+	MaxIops          int
+	MaxBwMbps        int
+	MaxBurstBwMbps   int
 }
 
 // DiskSkuInfo stores disk sku information
@@ -136,228 +104,107 @@ type NodeInfo struct {
 // 	]
 //}
 type DiskSkuInfo struct {
-	storageAccountType *string
-	storageTier        *string
-	diskSize           *string
-	maxAllowedShares   int
-	maxBurstIops       int
-	maxIops            int
-	maxBwMbps          int
-	maxBurstBwMbps     int
-	maxSizeGiB         int
+	StorageAccountType string
+	StorageTier        string
+	DiskSize           string
+	MaxAllowedShares   int
+	MaxBurstIops       int
+	MaxIops            int
+	MaxBwMbps          int
+	MaxBurstBwMbps     int
+	MaxSizeGiB         int
 }
 
-// PopulateNodeAndSkuInfo populates Node and Sku related
-// information in memory
+// PopulateNodeAndSkuInfo populates Node and Sku related information in memory
 func PopulateNodeAndSkuInfo(d DriverCore) error {
-	d.nodeInfo = &NodeInfo{}
+	klog.V(2).Infof("PopulateNodeAndSkuInfo: Starting to populate node and disk sku information.")
 
 	instances, ok := d.cloud.Instances()
 	if !ok {
-		return status.Error(codes.Internal, "Failed to get instances from cloud provider")
+		return status.Error(codes.Internal, "PopulateNodeAndSkuInfo: Failed to get instances from cloud provider")
 	}
 
 	instanceType, err := instances.InstanceType(context.TODO(), types.NodeName(d.NodeID))
 	if err != nil {
-		klog.Errorf("Failed to get instance type from Azure cloud provider, nodeName: %v, error: %v", d.NodeID, err)
-		return err
+		return fmt.Errorf("PopulateNodeAndSkuInfo: Failed to get instance type from Azure cloud provider, nodeName: %v, error: %v", d.NodeID, err)
 	}
-
-	d.nodeInfo.skuName = &instanceType
 
 	zone, err := d.cloud.GetZone(context.TODO())
 	if err != nil {
-		klog.Errorf("Failed to get zone from Azure cloud provider, nodeName: %v, error: %v", d.NodeID, err)
-		return err
+		return fmt.Errorf("PopulateNodeAndSkuInfo: Failed to get zone from Azure cloud provider, nodeName: %v, error: %v", d.NodeID, err)
 	}
-	d.nodeInfo.zone = &zone.FailureDomain
-	d.nodeInfo.region = &zone.Region
 
-	err = populateSkuMap(d)
+	return populateNodeAndSkuInfoInternal(d, instanceType, zone.FailureDomain, zone.Region)
+}
+
+// populateNodeAndSkuInfoInternal populates Node and Sku related in memory
+func populateNodeAndSkuInfoInternal(d DriverCore, instance string, zone string, region string) error {
+	d.nodeInfo = &NodeInfo{}
+	d.nodeInfo.SkuName = instance
+	d.nodeInfo.Zone = zone
+	d.nodeInfo.Region = region
+
+	err := populateSkuMap(d)
 	if err != nil {
-		klog.Errorf("Could populate sku information. Error: %v", err)
-		return err
+		return fmt.Errorf("PopulateNodeAndSkuInfo: Could populate sku information. Error: %v", err)
 	}
+
+	klog.V(2).Infof("PopulateNodeAndSkuInfo: Populated node and disk sku information. NodeInfo=%v", d.nodeInfo)
 
 	return nil
 }
 
 // populateSkuMap populates the sku map from the sku json file
 func populateSkuMap(d DriverCore) (err error) {
-	var skus []SkuInfo
-	diskSkusFullJSON, err := os.Open(d.skusFilePath)
-	if err != nil {
-		klog.Errorf("Could read file. Error: %v, FilePath: %s", err, d.skusFilePath)
-		return err
-	}
-	defer diskSkusFullJSON.Close()
+	d.diskSkuInfoMap = DiskSkuMap
 
-	byteValue, _ := ioutil.ReadAll(diskSkusFullJSON)
-
-	err = json.Unmarshal([]byte(byteValue), &skus)
-	if err != nil {
-		klog.Errorf("Could unmarshal json file. Error: %v, FilePath: %s", err, d.skusFilePath)
-		return err
-	}
-
-	d.diskSkuInfoMap = map[string]map[string]DiskSkuInfo{}
-	for _, sku := range skus {
-		resType := strings.ToLower(*sku.ResourceType)
-		if resType == "disks" {
-			account := strings.ToLower(*sku.Name)
-			diskSize := strings.ToLower(*sku.Size)
-			if _, ok := d.diskSkuInfoMap[account]; !ok {
-				d.diskSkuInfoMap[account] = map[string]DiskSkuInfo{}
-			}
-			d.diskSkuInfoMap[account][diskSize], err = sku.GetDiskCapabilities()
-			if err != nil {
-				klog.Errorf("Failed to get disk capabilities for disk %s %s %s. Error: %v", sku.Name, sku.Size, sku.Tier, err)
-				return err
-			}
-		} else if resType == "virtualmachines" {
-			if strings.EqualFold(*d.nodeInfo.skuName, *sku.Name) {
-				err = sku.PopulateNodeCapabilities(d.nodeInfo)
-				if err != nil {
-					klog.Errorf("Failed to populate node capabilities. Error: %v", err)
-					return err
-				}
-			}
-		}
-	}
-	return nil
-}
-
-// populateNodeCapabilities populates node capabilities from SkuInfo
-func (sku *SkuInfo) PopulateNodeCapabilities(nodeInfo *NodeInfo) (err error) {
-
-	if sku.Capabilities != nil {
-		for _, capability := range *sku.Capabilities {
-			err = nil
-			if capability.Name != nil {
-				switch strings.ToLower(*capability.Name) {
-				case UncachedDiskIOPSCapability:
-					nodeInfo.maxIops, err = strconv.Atoi(*capability.Value)
-				case UncachedDiskBytesPerSecondCapability:
-					bw, err := strconv.Atoi(*capability.Value)
-					nodeInfo.maxBwMbps = bw / (1024 * 1024)
-					if err != nil {
-						klog.Errorf("Failed to parse node capability %s. Error: %v", capability.Name, err)
-						return err
-					}
-				case MaxDataDiskCountCapability:
-					nodeInfo.maxDataDiskCount, err = strconv.Atoi(*capability.Value)
-				case VCPUsCapability:
-					nodeInfo.vcpus, err = strconv.Atoi(*capability.Value)
-				default:
-					continue
-				}
-			}
-
-			if err != nil {
-				klog.Errorf("Failed to parse node capability %s. Error: %v", capability.Name, err)
-				return err
-			}
-		}
-	}
-
-	// If node doesn't support burst capabilities.
-	// Set the burst limits as regular limits
-	if nodeInfo.maxBurstIops < nodeInfo.maxIops {
-		nodeInfo.maxBurstIops = nodeInfo.maxIops
-	}
-
-	if nodeInfo.maxBurstBwMbps < nodeInfo.maxBwMbps {
-		nodeInfo.maxBurstBwMbps = nodeInfo.maxBwMbps
+	nodeSkuNameLower := strings.ToLower(d.nodeInfo.SkuName)
+	if vmSku, ok := NodeInfoMap[nodeSkuNameLower]; ok {
+		d.nodeInfo.MaxBurstBwMbps = vmSku.MaxBurstBwMbps
+		d.nodeInfo.MaxBurstIops = vmSku.MaxBurstIops
+		d.nodeInfo.MaxBwMbps = vmSku.MaxBwMbps
+		d.nodeInfo.MaxIops = vmSku.MaxIops
+		d.nodeInfo.MaxDataDiskCount = vmSku.MaxDataDiskCount
+		d.nodeInfo.VCpus = vmSku.VCpus
+	} else {
+		return fmt.Errorf("populateSkuMap: Could not find SKU %s in the sku map", nodeSkuNameLower)
 	}
 
 	return nil
 }
 
-// getDiskCapabilities gets disk capabilities from SkuInfo
-func (sku *SkuInfo) GetDiskCapabilities() (diskSku DiskSkuInfo, err error) {
-	diskSku = DiskSkuInfo{}
-	diskSku.storageAccountType = sku.Name
-	diskSku.storageTier = sku.Tier
-	diskSku.diskSize = sku.Size
-
-	if sku.Capabilities != nil {
-		for _, capability := range *sku.Capabilities {
-			err = nil
-			if capability.Name != nil {
-				switch strings.ToLower(*capability.Name) {
-				case MaxValueOfMaxSharesCapability:
-					diskSku.maxAllowedShares, err = strconv.Atoi(*capability.Value)
-				case MaxBurstIopsCapability:
-					diskSku.maxBurstIops, err = strconv.Atoi(*capability.Value)
-				case MaxIOpsCapability:
-					diskSku.maxIops, err = strconv.Atoi(*capability.Value)
-				case MaxBandwidthMBpsCapability:
-					diskSku.maxBwMbps, err = strconv.Atoi(*capability.Value)
-				case MaxBurstBandwidthMBpsCapability:
-					diskSku.maxBurstBwMbps, err = strconv.Atoi(*capability.Value)
-				case MaxSizeGiBCapability:
-					diskSku.maxSizeGiB, err = strconv.Atoi(*capability.Value)
-				default:
-					continue
-				}
-			}
-
-			if err != nil {
-				klog.Errorf("Failed to parse disk capability %s. Error: %v", capability.Name, err)
-				return diskSku, err
-			}
-
-		}
-	}
-
-	// If disk doesn't support burst capabilities.
-	// Set the burst limits as regular limits
-	if diskSku.maxBurstIops < diskSku.maxIops {
-		diskSku.maxBurstIops = diskSku.maxIops
-	}
-
-	if diskSku.maxBurstBwMbps < diskSku.maxBwMbps {
-		diskSku.maxBurstBwMbps = diskSku.maxBwMbps
-	}
-
-	return diskSku, nil
-}
-
+// GetRandomIOLatencyInSec gets the estimated random IP latency for a small write for a disk size
+// These latencies are manually calculated and stored
+// ToDo: Make this estimation dynamic
 func (sku *DiskSkuInfo) GetRandomIOLatencyInSec() float64 {
-
-	if sku.maxSizeGiB <= 4096 {
-
+	if sku.MaxSizeGiB <= 4096 {
 		return 0.0022
 	}
 
-	if sku.maxSizeGiB <= 8192 {
-
+	if sku.MaxSizeGiB <= 8192 {
 		return 0.0028
 	}
 
-	if sku.maxSizeGiB <= 16384 {
-
+	if sku.MaxSizeGiB <= 16384 {
 		return 0.0034
 	}
 
 	return 0.004
-
 }
 
+// GetSequentialOLatencyInSec gets the estimated sequential IO latency for a disk size
+// These latencies are manually calculated and stored
+// ToDo: Make this estimation dynamic
 func (sku *DiskSkuInfo) GetSequentialOLatencyInSec() float64 {
-
-	if sku.maxSizeGiB <= 4096 {
-
+	if sku.MaxSizeGiB <= 4096 {
 		return 0.0033
 	}
 
-	if sku.maxSizeGiB <= 8192 {
-
+	if sku.MaxSizeGiB <= 8192 {
 		return 0.0041
 	}
 
-	if sku.maxSizeGiB <= 16384 {
-
+	if sku.MaxSizeGiB <= 16384 {
 		return 0.0046
 	}
 

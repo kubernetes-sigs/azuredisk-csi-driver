@@ -146,12 +146,9 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 		case kindField:
 			// no op, only for compatibility
 		case perfProfileField:
-			// no op, only used in NodeStageVolume
-		case perfTuningModeField:
-			if !IsValidPerfTuningMode(v) {
-				return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Perf tuning mode %s is not supported. Supported tuning modes are none and auto.", v))
+			if !isValidPerfProfile(v) {
+				return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Perf profile %s is not supported. Supported tuning modes are none and default.", v))
 			}
-			// no op, osnly used in NodeStageVolume
 		default:
 			return nil, fmt.Errorf("invalid parameter %s in storage class", k)
 		}

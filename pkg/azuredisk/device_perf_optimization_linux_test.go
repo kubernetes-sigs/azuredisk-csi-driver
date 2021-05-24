@@ -24,26 +24,24 @@ import (
 )
 
 func Test_getOptimalDeviceSettings(t *testing.T) {
-
 	accountType := "Premium_LRS"
 	tier := "Premium"
 	sizeP20 := "P20"
 	sizeP30 := "P30"
 	diskSkus := make(map[string]map[string]DiskSkuInfo)
 	diskSkus[strings.ToLower(accountType)] = map[string]DiskSkuInfo{}
-	diskSkus[strings.ToLower(accountType)][strings.ToLower(sizeP20)] = DiskSkuInfo{storageAccountType: &accountType, storageTier: &tier, diskSize: &sizeP20, maxIops: 100, maxBurstIops: 100, maxBwMbps: 500, maxBurstBwMbps: 500, maxSizeGiB: 1024}
-	diskSkus[strings.ToLower(accountType)][strings.ToLower(sizeP30)] = DiskSkuInfo{storageAccountType: &accountType, storageTier: &tier, diskSize: &sizeP30, maxIops: 200, maxBurstIops: 200, maxBwMbps: 1000, maxBurstBwMbps: 1000, maxSizeGiB: 4096}
+	diskSkus[strings.ToLower(accountType)][strings.ToLower(sizeP20)] = DiskSkuInfo{StorageAccountType: accountType, StorageTier: tier, DiskSize: sizeP20, MaxIops: 100, MaxBurstIops: 100, MaxBwMbps: 500, MaxBurstBwMbps: 500, MaxSizeGiB: 1024}
+	diskSkus[strings.ToLower(accountType)][strings.ToLower(sizeP30)] = DiskSkuInfo{StorageAccountType: accountType, StorageTier: tier, DiskSize: sizeP30, MaxIops: 200, MaxBurstIops: 200, MaxBwMbps: 1000, MaxBurstBwMbps: 1000, MaxSizeGiB: 4096}
 	skuName := "Standard_DS14"
 	zone := "1"
 	region := "eastus"
-	nodeInfo := &NodeInfo{skuName: &skuName, zone: &zone, region: &region, maxBurstIops: 51200, maxIops: 51200, maxBwMbps: 512, maxBurstBwMbps: 512}
+	nodeInfo := &NodeInfo{SkuName: skuName, Zone: zone, Region: region, MaxBurstIops: 51200, MaxIops: 51200, MaxBwMbps: 512, MaxBurstBwMbps: 512}
 
 	tests := []struct {
 		name             string
-		tuningMode       string
 		perfProfile      string
 		accountType      string
-		diskSizeGibStr   string
+		DiskSizeGibStr   string
 		diskIopsStr      string
 		diskBwMbpsStr    string
 		wantQueueDepth   string
@@ -55,10 +53,9 @@ func Test_getOptimalDeviceSettings(t *testing.T) {
 	}{
 		{
 			name:           "Should return valid disk perf settings",
-			tuningMode:     "auto",
 			perfProfile:    "default",
 			accountType:    "Premium_LRS",
-			diskSizeGibStr: "512",
+			DiskSizeGibStr: "512",
 			diskIopsStr:    "100",
 			diskBwMbpsStr:  "100",
 			wantScheduler:  "mq-deadline",
@@ -66,10 +63,9 @@ func Test_getOptimalDeviceSettings(t *testing.T) {
 		},
 		{
 			name:           "Should return error if matching disk sku is not found",
-			tuningMode:     "auto",
 			perfProfile:    "default",
 			accountType:    "Premium_LRS",
-			diskSizeGibStr: "512123123123123213123",
+			DiskSizeGibStr: "512123123123123213123",
 			diskIopsStr:    "100",
 			diskBwMbpsStr:  "100",
 			wantScheduler:  "mq-deadline",
@@ -78,7 +74,7 @@ func Test_getOptimalDeviceSettings(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotQueueDepth, gotNrRequests, gotScheduler, gotMaxSectorsKb, gotReadAheadKb, err := getOptimalDeviceSettings(nodeInfo, diskSkus, tt.tuningMode, tt.perfProfile, tt.accountType, tt.diskSizeGibStr, tt.diskIopsStr, tt.diskBwMbpsStr)
+			gotQueueDepth, gotNrRequests, gotScheduler, gotMaxSectorsKb, gotReadAheadKb, err := getOptimalDeviceSettings(nodeInfo, diskSkus, tt.perfProfile, tt.accountType, tt.DiskSizeGibStr, tt.diskIopsStr, tt.diskBwMbpsStr)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("getOptimalDeviceSettings() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -110,13 +106,13 @@ func Test_getMatchingDiskSku(t *testing.T) {
 	sizeP30 := "P30"
 	diskSkus := make(map[string]map[string]DiskSkuInfo)
 	diskSkus[strings.ToLower(accountType)] = map[string]DiskSkuInfo{}
-	diskSkus[strings.ToLower(accountType)][strings.ToLower(sizeP20)] = DiskSkuInfo{storageAccountType: &accountType, storageTier: &tier, diskSize: &sizeP20, maxIops: 100, maxBurstIops: 100, maxBwMbps: 500, maxBurstBwMbps: 500, maxSizeGiB: 1024}
-	diskSkus[strings.ToLower(accountType)][strings.ToLower(sizeP30)] = DiskSkuInfo{storageAccountType: &accountType, storageTier: &tier, diskSize: &sizeP30, maxIops: 200, maxBurstIops: 200, maxBwMbps: 1000, maxBurstBwMbps: 1000, maxSizeGiB: 4096}
+	diskSkus[strings.ToLower(accountType)][strings.ToLower(sizeP20)] = DiskSkuInfo{StorageAccountType: accountType, StorageTier: tier, DiskSize: sizeP20, MaxIops: 100, MaxBurstIops: 100, MaxBwMbps: 500, MaxBurstBwMbps: 500, MaxSizeGiB: 1024}
+	diskSkus[strings.ToLower(accountType)][strings.ToLower(sizeP30)] = DiskSkuInfo{StorageAccountType: accountType, StorageTier: tier, DiskSize: sizeP30, MaxIops: 200, MaxBurstIops: 200, MaxBwMbps: 1000, MaxBurstBwMbps: 1000, MaxSizeGiB: 4096}
 
 	tests := []struct {
 		name           string
 		accountType    string
-		diskSizeGibStr string
+		DiskSizeGibStr string
 		diskIopsStr    string
 		diskBwMbpsStr  string
 		wantDiskSize   string
@@ -126,7 +122,7 @@ func Test_getMatchingDiskSku(t *testing.T) {
 		{
 			name:           "Should get matching sku when request is less that sku size",
 			accountType:    "Premium_LRS",
-			diskSizeGibStr: "1500",
+			DiskSizeGibStr: "1500",
 			diskIopsStr:    "150",
 			diskBwMbpsStr:  "750",
 			wantDiskSize:   sizeP30,
@@ -136,7 +132,7 @@ func Test_getMatchingDiskSku(t *testing.T) {
 		{
 			name:           "Should get smaller sku when multiple skus match",
 			accountType:    "Premium_LRS",
-			diskSizeGibStr: "500",
+			DiskSizeGibStr: "500",
 			diskIopsStr:    "50",
 			diskBwMbpsStr:  "50",
 			wantDiskSize:   sizeP20,
@@ -146,7 +142,7 @@ func Test_getMatchingDiskSku(t *testing.T) {
 		{
 			name:           "Should get error if disk size is invalid",
 			accountType:    "Premium_LRS",
-			diskSizeGibStr: "Gib",
+			DiskSizeGibStr: "Gib",
 			diskIopsStr:    "50",
 			diskBwMbpsStr:  "50",
 			wantDiskSize:   sizeP20,
@@ -156,7 +152,7 @@ func Test_getMatchingDiskSku(t *testing.T) {
 		{
 			name:           "Should get smatching sku if iops and bw are not provided",
 			accountType:    "Premium_LRS",
-			diskSizeGibStr: "500",
+			DiskSizeGibStr: "500",
 			diskIopsStr:    "blah",
 			diskBwMbpsStr:  "blah",
 			wantDiskSize:   sizeP20,
@@ -166,7 +162,7 @@ func Test_getMatchingDiskSku(t *testing.T) {
 		{
 			name:           "Should get error when no skus are passed.",
 			accountType:    "Premium_LRS",
-			diskSizeGibStr: "500",
+			DiskSizeGibStr: "500",
 			diskIopsStr:    "blah",
 			diskBwMbpsStr:  "blah", wantDiskSize: sizeP20,
 			wantErr: true,
@@ -175,28 +171,27 @@ func Test_getMatchingDiskSku(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotMatchingSku, err := getMatchingDiskSku(tt.skus, tt.accountType, tt.diskSizeGibStr, tt.diskIopsStr, tt.diskBwMbpsStr)
+			gotMatchingSku, err := getMatchingDiskSku(tt.skus, tt.accountType, tt.DiskSizeGibStr, tt.diskIopsStr, tt.diskBwMbpsStr)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("getMatchingDiskSku() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 
-			if !tt.wantErr && !strings.EqualFold(*gotMatchingSku.diskSize, tt.wantDiskSize) {
-				t.Errorf("getMatchingDiskSku() = %s, want %s", *gotMatchingSku.diskSize, tt.wantDiskSize)
+			if !tt.wantErr && !strings.EqualFold(gotMatchingSku.DiskSize, tt.wantDiskSize) {
+				t.Errorf("getMatchingDiskSku() = %s, want %s", gotMatchingSku.DiskSize, tt.wantDiskSize)
 			}
 		})
 	}
 }
 
 func Test_meetsRequest(t *testing.T) {
-
 	accountType := "Premium_LRS"
 	tier := "Premium"
 	size := "P20"
 
 	tests := []struct {
 		name       string
-		diskSizeGb int
+		DiskSizeGb int
 		diskIops   int
 		diskBwMbps int
 		want       bool
@@ -204,32 +199,32 @@ func Test_meetsRequest(t *testing.T) {
 	}{
 		{
 			name:       "Sku should match demand which is same as limits",
-			diskSizeGb: 1023,
+			DiskSizeGb: 1023,
 			diskIops:   99,
 			diskBwMbps: 499,
 			want:       true,
-			sku:        &DiskSkuInfo{storageAccountType: &accountType, storageTier: &tier, diskSize: &size, maxIops: 100, maxBwMbps: 500, maxSizeGiB: 1024},
+			sku:        &DiskSkuInfo{StorageAccountType: accountType, StorageTier: tier, DiskSize: size, MaxIops: 100, MaxBwMbps: 500, MaxSizeGiB: 1024},
 		},
 		{
 			name:       "Sku should match demand which is less than limits",
-			diskSizeGb: 1024,
+			DiskSizeGb: 1024,
 			diskIops:   100,
 			diskBwMbps: 500,
 			want:       true,
-			sku:        &DiskSkuInfo{storageAccountType: &accountType, storageTier: &tier, diskSize: &size, maxIops: 100, maxBwMbps: 500, maxSizeGiB: 1024},
+			sku:        &DiskSkuInfo{StorageAccountType: accountType, StorageTier: tier, DiskSize: size, MaxIops: 100, MaxBwMbps: 500, MaxSizeGiB: 1024},
 		},
 		{
 			name:       "Sku should  not match demand which is more than limits",
-			diskSizeGb: 1025,
+			DiskSizeGb: 1025,
 			diskIops:   101,
 			diskBwMbps: 501,
 			want:       false,
-			sku:        &DiskSkuInfo{storageAccountType: &accountType, storageTier: &tier, diskSize: &size, maxIops: 100, maxBwMbps: 500, maxSizeGiB: 1024},
+			sku:        &DiskSkuInfo{StorageAccountType: accountType, StorageTier: tier, DiskSize: size, MaxIops: 100, MaxBwMbps: 500, MaxSizeGiB: 1024},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := meetsRequest(tt.sku, tt.diskSizeGb, tt.diskIops, tt.diskBwMbps); got != tt.want {
+			if got := meetsRequest(tt.sku, tt.DiskSizeGb, tt.diskIops, tt.diskBwMbps); got != tt.want {
 				t.Errorf("meetsRequest() = %v, want %v", got, tt.want)
 			}
 		})

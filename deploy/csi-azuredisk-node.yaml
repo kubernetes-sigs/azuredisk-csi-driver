@@ -132,8 +132,6 @@ spec:
               name: sys-devices-dir
             - mountPath: /sys/class/scsi_host/
               name: scsi-host-dir
-            - mountPath: /etc/skus
-              name: skus-configmap
           resources:
             limits:
               cpu: 200m
@@ -173,7 +171,4 @@ spec:
             path: /sys/class/scsi_host/
             type: Directory
           name: scsi-host-dir
-        - configMap:
-            name: skus-configmap
-          name: skus-configmap
 ---

@@ -17,64 +17,42 @@ limitations under the License.
 package azuredisk
 
 import (
+	"fmt"
 	"strings"
-
-	"k8s.io/klog/v2"
 )
 
 const (
-	PerfTuningModeNone       = "none"
-	PerfTuningModeAuto       = "auto"
+	PerfProfileNone          = "none"
 	PerfProfileDefault       = "default"
 	PremiumAccountPrefix     = "premium"
 	StandardSsdAccountPrefix = "standardssd"
 )
 
-// IsValidPerfTuningMode Checks to see if perf tuning mode passed is correct
-// Right now we only support auto perf tuning mode
-// Manual mode to come later
-func IsValidPerfTuningMode(mode string) bool {
-
-	switch strings.ToLower(mode) {
-	case PerfTuningModeNone, PerfTuningModeAuto:
-		return true
-	default:
-		return false
-	}
-}
-
-// IsValidPerfProfile Checks to see if perf profile passed is correct
+// isValidPerfProfile Checks to see if perf profile passed is correct
 // Right now we are only supporing default profile
 // Other advanced profiles to come later
-func IsValidPerfProfile(mode string, profile string) bool {
-
-	if strings.EqualFold(mode, PerfTuningModeNone) {
-		return true
-	}
-
-	return strings.EqualFold(profile, PerfProfileDefault)
+func isValidPerfProfile(profile string) bool {
+	return strings.EqualFold(profile, PerfProfileDefault) || strings.EqualFold(profile, PerfProfileNone)
 }
 
-// IsPerfTuningEnabled checks to see if perf tuning is enabled
-func IsPerfTuningEnabled(mode string) bool {
-
-	switch strings.ToLower(mode) {
-	case PerfTuningModeAuto:
+// isPerfTuningEnabled checks to see if perf tuning is enabled
+func isPerfTuningEnabled(profile string) bool {
+	switch strings.ToLower(profile) {
+	case PerfProfileDefault:
 		return true
 	default:
 		return false
 	}
 }
 
-// GetPerfTuningModeAndProfile gets the per tuning mode and profile set in attributes
-func GetDiskPerfAttributes(attributes map[string]string) (mode string, profile string, accountType string, diskSizeGibStr string, diskIopsStr string, diskBwMbpsStr string) {
-
+// getDiskPerfAttributes gets the per tuning mode and profile set in attributes
+func getDiskPerfAttributes(attributes map[string]string) (profile *string, accountType string, diskSizeGibStr string, diskIopsStr string, diskBwMbpsStr string, err error) {
+	profile = nil
 	for k, v := range attributes {
 		switch strings.ToLower(k) {
-		case perfTuningModeField:
-			mode = v
 		case perfProfileField:
-			profile = v
+			profileTemp := v
+			profile = &profileTemp
 		case skuNameField:
 			accountType = v
 		case requestedSizeGib:
@@ -88,23 +66,20 @@ func GetDiskPerfAttributes(attributes map[string]string) (mode string, profile s
 		}
 	}
 
-	// If perf tuning mode is not valid, set it to none
-	if !IsValidPerfTuningMode(mode) {
-		klog.Warningf("Invalid perf tuning mode %s. Defaulting to: %s", mode, PerfTuningModeNone)
-		mode = PerfTuningModeNone
+	// if no perfProfile parameter was provided in the attributes
+	// set it to 'None'. Which means no optimization will be done.
+	if profile == nil {
+		nonePerfProfileTemp := PerfProfileNone
+		profile = &nonePerfProfileTemp
+	} else if !isValidPerfProfile(*profile) {
+		return profile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr, fmt.Errorf("Perf profile %s is invalid", *profile)
 	}
 
-	// If profile is not valid, set it to default
-	if !IsValidPerfProfile(mode, profile) {
-		klog.Warningf("Invalid perf profile %s for mode %s. Defaulting to: %s", profile, mode, PerfProfileDefault)
-		profile = PerfProfileDefault
-	}
-
-	return mode, profile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr
+	return profile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr, nil
 }
 
-func AccountSupportsPerfOptimization(accountType string) bool {
-
+// accountSupportsPerfOptimization checks to see if account type supports perf optimization
+func accountSupportsPerfOptimization(accountType string) bool {
 	accountTypeLower := strings.ToLower(accountType)
 	if strings.HasPrefix(accountTypeLower, "premium") || strings.HasPrefix(accountTypeLower, "standardssd") {
 		return true

@@ -94,11 +94,19 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	// If perf optimizations are enabled
 	// tweak device settings to enhance performance
 	if d.getPerfOptimizationEnabled() {
-		err = d.getDeviceHelper().OptimizeDevicePerformance(d.getNodeInfo(), d.getDiskSkuInfoMap(), source, req.GetVolumeContext())
-		// In the beginning, do not fail because of perf optimization related error
-		// TODO: revisit this decision after getting some test runs
+		profile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr, err := getDiskPerfAttributes(req.GetVolumeContext())
 		if err != nil {
-			klog.Errorf("NodeStageVolume: Failed to optimize device performance for target(%s) error(%s)", source, err)
+			return nil, status.Errorf(codes.Internal, "Failed to get perf attributes for %s. Error: %v", source, err)
+		}
+
+		if d.getDeviceHelper().DiskSupportsPerfOptimization(*profile, accountType) {
+			err = d.getDeviceHelper().OptimizeDiskPerformance(d.getNodeInfo(), d.getDiskSkuInfoMap(), source, *profile, accountType,
+				diskSizeGibStr, diskIopsStr, diskBwMbpsStr)
+			if err != nil {
+				return nil, status.Errorf(codes.Internal, "Failed to optimize device performance for target(%s) error(%s)", source, err)
+			}
+		} else {
+			klog.V(2).Infof("NodeStageVolume: perf optimization is disabld for %s. perfProfile %s accountType %s", source, *profile, accountType)
 		}
 	}
 

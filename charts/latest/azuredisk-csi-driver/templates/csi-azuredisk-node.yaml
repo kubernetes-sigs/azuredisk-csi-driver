@@ -142,8 +142,6 @@ spec:
               name: sys-devices-dir
             - mountPath: /sys/class/scsi_host/
               name: scsi-host-dir
-            - mountPath: /etc/skus
-              name: skus-configmap
             {{- if eq .Values.cloud "AzureStackCloud" }}
             - name: ssl
               mountPath: /etc/ssl/certs
@@ -195,10 +193,7 @@ spec:
         - hostPath:
             path: /sys/class/scsi_host/
             type: Directory
-          name: scsi-host-dir        
-        - configMap:
-            name: skus-configmap
-          name: skus-configmap
+          name: scsi-host-dir
         {{- if eq .Values.cloud "AzureStackCloud" }}
         - name: ssl
           hostPath:

@@ -46,9 +46,6 @@ import (
 )
 
 const (
-	// path to skus file
-	SkusFilePath = "/etc/skus/skus.json"
-
 	// DriverName driver name
 	DriverName       = "disk.csi.azure.com"
 	azurePublicCloud = "AZUREPUBLICCLOUD"
@@ -95,7 +92,6 @@ const (
 	logicalSectorSizeField  = "logicalsectorsize"
 	fsTypeField             = "fstype"
 	kindField               = "kind"
-	perfTuningModeField     = "perftuningmode"
 	perfProfileField        = "perfprofile"
 
 	WellKnownTopologyKey = "topology.kubernetes.io/zone"
@@ -128,7 +124,6 @@ type CSIDriver interface {
 type DriverCore struct {
 	csicommon.CSIDriver
 	perfOptimizationEnabled bool
-	skusFilePath            string
 	diskSkuInfoMap          map[string]map[string]DiskSkuInfo
 	cloud                   *azure.Cloud
 	mounter                 *mount.SafeFormatAndMount
@@ -141,7 +136,7 @@ type Driver struct {
 	DriverCore
 	volumeLocks *volumehelper.VolumeLocks
 	// a timed cache GetDisk throttling
-	diskThrottlingCache *azcache.TimedCache
+	getDiskThrottlingCache *azcache.TimedCache
 }
 
 // newDriverV1 Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
@@ -159,9 +154,8 @@ func newDriverV1(nodeID string, enablePerfOptimization bool) *Driver {
 	if err != nil {
 		klog.Fatalf("%v", err)
 	}
-	driver.diskThrottlingCache = cache
+	driver.getDiskThrottlingCache = cache
 	driver.perfOptimizationEnabled = enablePerfOptimization
-	driver.skusFilePath = SkusFilePath
 	return &driver
 }
 
@@ -197,8 +191,7 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 	d.deviceHelper = NewSafeDeviceHelper()
 
 	if d.getPerfOptimizationEnabled() {
-		err = PopulateNodeAndSkuInfo(d.DriverCore)
-		if err != nil {
+		if err = PopulateNodeAndSkuInfo(d.DriverCore); err != nil {
 			klog.Fatalf("Failed to get node info. Error: %v", err)
 		}
 	}
@@ -257,9 +250,9 @@ func GetResourceGroupFromURI(diskURI string) (string, error) {
 }
 
 func (d *Driver) isGetDiskThrottled() bool {
-	cache, err := d.diskThrottlingCache.Get(throttlingKey, azcache.CacheReadTypeDefault)
+	cache, err := d.getDiskThrottlingCache.Get(throttlingKey, azcache.CacheReadTypeDefault)
 	if err != nil {
-		klog.Warningf("diskThrottlingCache(%s) return with error: %s", throttlingKey, err)
+		klog.Warningf("getDiskThrottlingCache(%s) return with error: %s", throttlingKey, err)
 		return false
 	}
 	return cache != nil
@@ -284,7 +277,7 @@ func (d *Driver) checkDiskExists(ctx context.Context, diskURI string) error {
 	if _, rerr := d.cloud.DisksClient.Get(ctx, resourceGroup, diskName); rerr != nil {
 		if strings.Contains(rerr.RawError.Error(), rateLimited) {
 			klog.Warningf("checkDiskExists(%s) is throttled with error: %v", diskURI, rerr.Error())
-			d.diskThrottlingCache.Set(throttlingKey, "")
+			d.getDiskThrottlingCache.Set(throttlingKey, "")
 			return nil
 		}
 		return rerr.Error()
@@ -309,7 +302,7 @@ func (d *Driver) checkDiskCapacity(ctx context.Context, resourceGroup, diskName 
 	} else {
 		if strings.Contains(rerr.RawError.Error(), rateLimited) {
 			klog.Warningf("checkDiskCapacity(%s, %s) is throttled with error: %v", resourceGroup, diskName, rerr.Error())
-			d.diskThrottlingCache.Set(throttlingKey, "")
+			d.getDiskThrottlingCache.Set(throttlingKey, "")
 		}
 	}
 	return true, nil
@@ -492,9 +485,4 @@ func (d *DriverCore) getDeviceHelper() *SafeDeviceHelper {
 // getNodeInfo returns the value of the nodeInfo field. It is intended for use with unit tests.
 func (d *DriverCore) getNodeInfo() *NodeInfo {
 	return d.nodeInfo
-}
-
-// setSkusFilePath returns the skus file path. It is intended for use with unit tests.
-func (d *DriverCore) setSkusFilePath(filePath string) {
-	d.skusFilePath = filePath
 }

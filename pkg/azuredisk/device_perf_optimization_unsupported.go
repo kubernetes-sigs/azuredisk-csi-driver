@@ -20,7 +20,13 @@ package azuredisk
 
 type DeviceHelper struct{}
 
-func (deviceHelper *DeviceHelper) OptimizeDevicePerformance(nodeInfo *NodeInfo, diskSkus map[string]map[string]DiskSkuInfo, devicePath string, attributes map[string]string) error {
+func (deviceHelper *DeviceHelper) DiskSupportsPerfOptimization(diskPerfProfile string, diskAccountType string) bool {
+	// return false on unsupported platforms
+	return false
+}
+
+func (deviceHelper *DeviceHelper) OptimizeDiskPerformance(nodeInfo *NodeInfo, diskSkus map[string]map[string]DiskSkuInfo, devicePath string,
+	perfProfile string, accountType string, diskSizeGibStr string, diskIopsStr string, diskBwMbpsStr string) (err error) {
 	// Don't fail if we are in an unsupported platform
 	return nil
 }

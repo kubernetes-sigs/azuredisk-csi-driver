@@ -17,237 +17,102 @@ limitations under the License.
 package azuredisk
 
 import (
-	"fmt"
-	"io/ioutil"
-	"os"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
 func Test_populateSkuMap(t *testing.T) {
 	skuName := "Standard_DS14"
 	zone := "1"
 	region := "eastus"
-	nodeInfo := &NodeInfo{skuName: &skuName, zone: &zone, region: &region}
+	nodeInfo := &NodeInfo{SkuName: skuName, Zone: zone, Region: region}
+	nodeInfoInvalid := &NodeInfo{SkuName: "blah", Zone: zone, Region: region}
 	tests := []struct {
-		name      string
-		driver    *Driver
-		wantErr   bool
-		setUpFn   SetUpFn
-		cleanUpFn CleanUpFn
+		name    string
+		driver  *Driver
+		wantErr bool
 	}{
 		{
-			name:      "Invalid skus file path",
-			driver:    &Driver{DriverCore: DriverCore{nodeInfo: nodeInfo}},
-			wantErr:   true,
-			setUpFn:   nil,
-			cleanUpFn: nil,
+			name:    "Invalid sku should return error",
+			driver:  &Driver{DriverCore: DriverCore{nodeInfo: nodeInfoInvalid}},
+			wantErr: true,
 		},
 		{
-			name:      "Invalid json in skus file",
-			driver:    &Driver{DriverCore: DriverCore{nodeInfo: nodeInfo}},
-			wantErr:   true,
-			setUpFn:   createInValidSkuFile,
-			cleanUpFn: deleteSkuFile,
-		},
-		{
-			name:      "Valid json in skus file",
-			driver:    &Driver{DriverCore: DriverCore{nodeInfo: nodeInfo}},
-			wantErr:   false,
-			setUpFn:   createValidSkuFile,
-			cleanUpFn: deleteSkuFile,
+			name:    "Valid sku should return success",
+			driver:  &Driver{DriverCore: DriverCore{nodeInfo: nodeInfo}},
+			wantErr: false,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tempFile, err := ioutil.TempFile("", "skusTemp.json")
-			assert.NoError(t, err)
-			tt.driver.setSkusFilePath(tempFile.Name())
-			if tt.cleanUpFn != nil {
-				defer tt.cleanUpFn(tt.driver.skusFilePath)
-			}
-			if tt.setUpFn != nil {
-				assert.NoError(t, tt.setUpFn(tt.driver.skusFilePath))
-			}
-
-			if err = populateSkuMap(tt.driver.DriverCore); (err != nil) != tt.wantErr {
+			if err := populateSkuMap(tt.driver.DriverCore); (err != nil) != tt.wantErr {
 				t.Errorf("populateSkuMap() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
 }
 
-type SetUpFn func(string) error
-type CleanUpFn func(string)
-
-const skuString string = `[
-	{
-	 "resourceType": "virtualmachines",
-	 "name": "Standard_DS14",
-	 "tier": "Standard",
-	 "size": "DS14",
-	 "capabilities": [
-	  {
-	   "name": "MaxResourceVolumeMB",
-	   "value": "229376"
-	  },
-	  {
-	   "name": "OSVhdSizeMB",
-	   "value": "1047552"
-	  },
-	  {
-	   "name": "vCPUs",
-	   "value": "16"
-	  },
-	  {
-	   "name": "HyperVGenerations",
-	   "value": "V1,V2"
-	  },
-	  {
-	   "name": "MemoryGB",
-	   "value": "112"
-	  },
-	  {
-	   "name": "MaxDataDiskCount",
-	   "value": "64"
-	  },
-	  {
-	   "name": "LowPriorityCapable",
-	   "value": "True"
-	  },
-	  {
-	   "name": "PremiumIO",
-	   "value": "True"
-	  },
-	  {
-	   "name": "VMDeploymentTypes",
-	   "value": "IaaS"
-	  },
-	  {
-	   "name": "vCPUsAvailable",
-	   "value": "8"
-	  },
-	  {
-	   "name": "ACUs",
-	   "value": "160"
-	  },
-	  {
-	   "name": "vCPUsPerCore",
-	   "value": "1"
-	  },
-	  {
-	   "name": "CombinedTempDiskAndCachedIOPS",
-	   "value": "64000"
-	  },
-	  {
-	   "name": "CombinedTempDiskAndCachedReadBytesPerSecond",
-	   "value": "536870912"
-	  },
-	  {
-	   "name": "CombinedTempDiskAndCachedWriteBytesPerSecond",
-	   "value": "536870912"
-	  },
-	  {
-	   "name": "CachedDiskBytes",
-	   "value": "618475290624"
-	  },
-	  {
-	   "name": "UncachedDiskIOPS",
-	   "value": "51200"
-	  },
-	  {
-	   "name": "UncachedDiskBytesPerSecond",
-	   "value": "536870912"
-	  },
-	  {
-	   "name": "EphemeralOSDiskSupported",
-	   "value": "True"
-	  },
-	  {
-	   "name": "EncryptionAtHostSupported",
-	   "value": "True"
-	  },
-	  {
-	   "name": "CapacityReservationSupported",
-	   "value": "False"
-	  },
-	  {
-	   "name": "AcceleratedNetworkingEnabled",
-	   "value": "False"
-	  },
-	  {
-	   "name": "RdmaEnabled",
-	   "value": "False"
-	  },
-	  {
-	   "name": "MaxNetworkInterfaces",
-	   "value": "8"
-	  }
-	 ]
-	},
-	{
-	 "resourceType": "disks",
-	 "name": "Premium_LRS",
-	 "tier": "Premium",
-	 "size": "P50",
-	 "capabilities": [
-	  {
-	   "name": "MaxSizeGiB",
-	   "value": "4096"
-	  },
-	  {
-	   "name": "MinSizeGiB",
-	   "value": "2048"
-	  },
-	  {
-	   "name": "MaxIOps",
-	   "value": "7500"
-	  },
-	  {
-	   "name": "MinIOps",
-	   "value": "7500"
-	  },
-	  {
-	   "name": "MaxBandwidthMBps",
-	   "value": "250"
-	  },
-	  {
-	   "name": "MinBandwidthMBps",
-	   "value": "250"
-	  },
-	  {
-	   "name": "MaxValueOfMaxShares",
-	   "value": "5"
-	  }
-	 ]
+func TestDiskSkuInfo_GetLatencyTest(t *testing.T) {
+	for _, skuInfo := range DiskSkuMap["premium_lrs"] {
+		t.Run(skuInfo.StorageTier, func(t *testing.T) {
+			if got := skuInfo.GetRandomIOLatencyInSec(); got <= 0 {
+				t.Errorf("DiskSkuInfo.GetRandomIOLatencyInSec() = %v, want > 0", got)
+			}
+			if got := skuInfo.GetSequentialOLatencyInSec(); got <= 0 {
+				t.Errorf("DiskSkuInfo.GetSequentialOLatencyInSec() = %v, want > 0", got)
+			}
+		})
 	}
-   ]`
-
-func createFile(filePath string, content string) error {
-	fmt.Println("creating: " + filePath)
-
-	data := []byte(content)
-
-	err := ioutil.WriteFile(filePath, data, 0)
-
-	if err != nil {
-		return err
+	for _, skuInfo := range DiskSkuMap["standardssd_lrs"] {
+		t.Run(skuInfo.StorageTier, func(t *testing.T) {
+			if got := skuInfo.GetRandomIOLatencyInSec(); got <= 0 {
+				t.Errorf("DiskSkuInfo.GetRandomIOLatencyInSec() = %v, want > 0", got)
+			}
+			if got := skuInfo.GetSequentialOLatencyInSec(); got <= 0 {
+				t.Errorf("DiskSkuInfo.GetSequentialOLatencyInSec() = %v, want > 0", got)
+			}
+		})
 	}
-
-	fmt.Println("done")
-
-	return nil
 }
 
-func createValidSkuFile(filePath string) error {
-	return createFile(filePath, skuString)
+func TestPopulateNodeAndSkuInfo(t *testing.T) {
+	d := DriverCore{}
+	d.cloud = &azure.Cloud{}
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("PopulateNodeAndSkuInfo did not panic when cloud was not initialized.")
+		}
+	}()
+
+	_ = PopulateNodeAndSkuInfo(d)
 }
 
-func createInValidSkuFile(filePath string) error {
-	return createFile(filePath, "gibberish")
-}
-
-func deleteSkuFile(filePath string) {
-	os.Remove(filePath)
+func Test_populateNodeAndSkuInfoInternal(t *testing.T) {
+	d, _ := NewFakeDriver(t)
+	dCore := d.getDriverCore()
+	tests := []struct {
+		name     string
+		instance string
+		wantErr  bool
+	}{
+		{
+			name:     "Should be able to populate valid VM sku",
+			instance: "Standard_DS14",
+			wantErr:  false,
+		},
+		{
+			name:     "Should fail to populate valid VM sku",
+			instance: "blah",
+			wantErr:  true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := populateNodeAndSkuInfoInternal(dCore, tt.instance, "testZone", "testRegion"); (err != nil) != tt.wantErr {
+				t.Errorf("populateNodeAndSkuInfoInternal() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
 }

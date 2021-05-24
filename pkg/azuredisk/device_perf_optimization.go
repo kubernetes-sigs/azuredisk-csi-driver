@@ -18,7 +18,9 @@ package azuredisk
 
 // This is the interface for DeviceHelper
 type Interface interface {
-	OptimizeDevicePerformance(nodeInfo *NodeInfo, diskSkus map[string]map[string]DiskSkuInfo, devicePath string, attributes map[string]string) error
+	DiskSupportsPerfOptimization(diskPerfProfile string, diskAccountType string) bool
+	OptimizeDiskPerformance(nodeInfo *NodeInfo, diskSkus map[string]map[string]DiskSkuInfo, devicePath string,
+		perfProfile string, accountType string, diskSizeGibStr string, diskIopsStr string, diskBwMbpsStr string) error
 }
 
 // Compile-time check to ensure all Mounter DeviceHelper satisfy
@@ -36,6 +38,11 @@ type SafeDeviceHelper struct {
 	Interface
 }
 
-func (dh *SafeDeviceHelper) OptimizeDevicePerformance(nodeInfo *NodeInfo, diskSkus map[string]map[string]DiskSkuInfo, devicePath string, attributes map[string]string) error {
-	return dh.Interface.OptimizeDevicePerformance(nodeInfo, diskSkus, devicePath, attributes)
+func (dh *SafeDeviceHelper) DeviceSupportsPerfOptimization(diskPerfProfile string, diskAccountType string) bool {
+	return dh.Interface.DiskSupportsPerfOptimization(diskPerfProfile, diskAccountType)
+}
+
+func (dh *SafeDeviceHelper) OptimizeDiskPerformance(nodeInfo *NodeInfo, diskSkus map[string]map[string]DiskSkuInfo, devicePath string,
+	perfProfile string, accountType string, diskSizeGibStr string, diskIopsStr string, diskBwMbpsStr string) error {
+	return dh.Interface.OptimizeDiskPerformance(nodeInfo, diskSkus, devicePath, perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr)
 }

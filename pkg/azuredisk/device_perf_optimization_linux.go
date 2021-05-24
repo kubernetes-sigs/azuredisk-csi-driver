@@ -32,109 +32,90 @@ import (
 
 type DeviceHelper struct{}
 
-func (deviceHelper *DeviceHelper) OptimizeDevicePerformance(nodeInfo *NodeInfo, diskSkus map[string]map[string]DiskSkuInfo, devicePath string, attributes map[string]string) (err error) {
+const (
+	blockDeviceRootPath = "/sys/block"
+)
 
-	klog.V(2).Infof("OptimizeDevicePerformance: Tuning settings for %s", devicePath)
+func (deviceHelper *DeviceHelper) DiskSupportsPerfOptimization(diskPerfProfile string, diskAccountType string) bool {
+	return isPerfTuningEnabled(diskPerfProfile) && accountSupportsPerfOptimization(diskAccountType)
+}
+
+// OptimizeDiskPerformance optimizes device performance by setting tuning block device settings
+func (deviceHelper *DeviceHelper) OptimizeDiskPerformance(nodeInfo *NodeInfo, diskSkus map[string]map[string]DiskSkuInfo, devicePath string,
+	perfProfile string, accountType string, diskSizeGibStr string, diskIopsStr string, diskBwMbpsStr string) (err error) {
+	klog.V(2).Infof("OptimizeDiskPerformance: Tuning settings for %s", devicePath)
 
 	if nodeInfo == nil {
-		err = fmt.Errorf("Node info is not provided. Error: invalid parameter")
-		klog.Errorf("Error: %s", err)
-		return err
+		return fmt.Errorf("OptimizeDiskPerformance: Node info is not provided. Error: invalid parameter")
 	}
 
 	if diskSkus == nil {
-		err = fmt.Errorf("Disk SKUs are not provided. Error: invalid parameter")
-		klog.Errorf("Error: %s", err)
-		return err
-
+		return fmt.Errorf("OptimizeDiskPerformance: Disk SKUs are not provided. Error: invalid parameter")
 	}
 
-	mode, profile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr := GetDiskPerfAttributes(attributes)
-
-	if !IsPerfTuningEnabled(mode) {
-		klog.Warningf("OptimizeDevicePerformance: Perf tuning not enabled for mode %s devicepath %s", mode, devicePath)
-		return nil
-	}
-
-	if !AccountSupportsPerfOptimization(accountType) {
-		klog.Warningf("OptimizeDevicePerformance: Perf tuning not enabled for accountType %s devicepath %s", accountType, devicePath)
-		return nil
-	}
-
-	queueDepth, nrRequests, scheduler, maxSectorsKb, readAheadKb, err := getOptimalDeviceSettings(nodeInfo, diskSkus, mode, profile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr)
+	queueDepth, nrRequests, scheduler, maxSectorsKb, readAheadKb, err := getOptimalDeviceSettings(nodeInfo, diskSkus, perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr)
 	if err != nil {
-		klog.Errorf("OptimizeDevicePerformance: Failed to get optimal settings for mode %s profile %s accountType %s device %s Error: %s", mode, profile, accountType, devicePath, err)
-		return err
+		return fmt.Errorf("OptimizeDiskPerformance: Failed to get optimal settings for profile %s accountType %s device %s Error: %v", perfProfile, accountType, devicePath, err)
 	}
 
 	deviceName, err := getDeviceName(devicePath)
 	if err != nil {
-		klog.Errorf("OptimizeDevicePerformance: Could not get deviceName for %s. Error: %s", devicePath, err)
-		return err
+		return fmt.Errorf("OptimizeDiskPerformance: Could not get deviceName for %s. Error: %v", devicePath, err)
 	}
 
-	klog.V(2).Infof("OptimizeDevicePerformance: Tuning settings for devicePath %s, deviceName %s, profile %s queueDepth %s nrRequests %s scheduler %s maxSectorsKb %s readAheadKb %s",
+	klog.V(2).Infof("OptimizeDiskPerformance: Tuning settings for devicePath %s, deviceName %s, profile %s queueDepth %s nrRequests %s scheduler %s maxSectorsKb %s readAheadKb %s",
 		devicePath,
 		deviceName,
-		profile,
+		perfProfile,
 		queueDepth,
 		nrRequests,
 		scheduler,
 		maxSectorsKb,
 		readAheadKb)
 
-	err = echoToFile(maxSectorsKb, filepath.Join("/sys/block", deviceName, "queue/max_sectors_kb"))
+	err = echoToFile(maxSectorsKb, filepath.Join(blockDeviceRootPath, deviceName, "queue/max_sectors_kb"))
 	if err != nil {
-		klog.Errorf("OptimizeDevicePerformance: Could not set max_sectors_kb for device %s. Error: %v", deviceName, err)
-		return err
+		return fmt.Errorf("OptimizeDiskPerformance: Could not set max_sectors_kb for device %s. Error: %v", deviceName, err)
 	}
 
-	err = echoToFile(scheduler, filepath.Join("/sys/block", deviceName, "queue/scheduler"))
+	err = echoToFile(scheduler, filepath.Join(blockDeviceRootPath, deviceName, "queue/scheduler"))
 	if err != nil {
-		klog.Errorf("OptimizeDevicePerformance: Could not set scheduler for device %s. Error: %v", deviceName, err)
-		return err
+		return fmt.Errorf("OptimizeDiskPerformance: Could not set queue/scheduler for device %s. Error: %v", deviceName, err)
 	}
 
-	err = echoToFile("1", filepath.Join("/sys/block", deviceName, "queue/iosched/fifo_batch"))
+	err = echoToFile("1", filepath.Join(blockDeviceRootPath, deviceName, "queue/iosched/fifo_batch"))
 	if err != nil {
-		klog.Errorf("OptimizeDevicePerformance: Could not set scheduler for device %s. Error: %v", deviceName, err)
-		return err
+		return fmt.Errorf("OptimizeDiskPerformance: Could not set queue/iosched/fifo_batch for device %s. Error: %v", deviceName, err)
 	}
 
-	err = echoToFile("1", filepath.Join("/sys/block", deviceName, "queue/iosched/writes_starved"))
+	err = echoToFile("1", filepath.Join(blockDeviceRootPath, deviceName, "queue/iosched/writes_starved"))
 	if err != nil {
-		klog.Errorf("OptimizeDevicePerformance: Could not set scheduler for device %s. Error: %v", deviceName, err)
-		return err
+		return fmt.Errorf("OptimizeDiskPerformance: Could not set queue/iosched/writes_starved for device %s. Error: %v", deviceName, err)
 	}
 
-	err = echoToFile(queueDepth, filepath.Join("/sys/block", deviceName, "device/queue_depth"))
+	err = echoToFile(queueDepth, filepath.Join(blockDeviceRootPath, deviceName, "device/queue_depth"))
 	if err != nil {
-		klog.Errorf("OptimizeDevicePerformance: Could not set queue_depth for device %s. Error: %v", deviceName, err)
-		return err
+		return fmt.Errorf("OptimizeDiskPerformance: Could not set queue/queue_depth for device %s. Error: %v", deviceName, err)
 	}
 
-	err = echoToFile(nrRequests, filepath.Join("/sys/block", deviceName, "queue/nr_requests"))
+	err = echoToFile(nrRequests, filepath.Join(blockDeviceRootPath, deviceName, "queue/nr_requests"))
 	if err != nil {
-		klog.Errorf("OptimizeDevicePerformance: Could not set nr_requests for device %s. Error: %v", deviceName, err)
-		return err
+		return fmt.Errorf("OptimizeDiskPerformance: Could not set queue/nr_requests for device %s. Error: %v", deviceName, err)
 	}
 
-	err = echoToFile(readAheadKb, filepath.Join("/sys/block", deviceName, "queue/read_ahead_kb"))
+	err = echoToFile(readAheadKb, filepath.Join(blockDeviceRootPath, deviceName, "queue/read_ahead_kb"))
 	if err != nil {
-		klog.Errorf("OptimizeDevicePerformance: Could not set max_sectors_kb for device %s. Error: %v", deviceName, err)
-		return err
+		return fmt.Errorf("OptimizeDiskPerformance: Could not set queue/read_ahead_kb for device %s. Error: %v", deviceName, err)
 	}
 
-	err = echoToFile("0", filepath.Join("/sys/block", deviceName, "queue/wbt_lat_usec"))
+	err = echoToFile("0", filepath.Join(blockDeviceRootPath, deviceName, "queue/wbt_lat_usec"))
 	if err != nil {
-		klog.Errorf("OptimizeDevicePerformance: Could not set max_sectors_kb for device %s. Error: %v", deviceName, err)
-		return err
+		return fmt.Errorf("OptimizeDiskPerformance: Could not set queue/wbt_lat_usec for device %s. Error: %v", deviceName, err)
 	}
 
-	err = echoToFile("0", filepath.Join("/sys/block", deviceName, "queue/rotational"))
+	err = echoToFile("0", filepath.Join(blockDeviceRootPath, deviceName, "queue/rotational"))
 	if err != nil {
-		klog.Errorf("OptimizeDevicePerformance: Could not set max_sectors_kb for device %s. Error: %v", deviceName, err)
-		return err
+		return fmt.Errorf("OptimizeDiskPerformance: Could not set queue/rotational for device %s. Error: %v", deviceName, err)
 	}
 
 	return err
@@ -145,8 +126,7 @@ func (deviceHelper *DeviceHelper) OptimizeDevicePerformance(nodeInfo *NodeInfo, 
 func getDeviceName(lunPath string) (deviceName string, err error) {
 	devicePath, err := filepath.EvalSymlinks(lunPath)
 	if err != nil {
-		klog.Errorf("Path %s is not a symlink. Error: %v", lunPath, err)
-		return "", err
+		return "", fmt.Errorf("Path %s is not a symlink. Error: %v", lunPath, err)
 	}
 
 	return filepath.Base(devicePath), nil
@@ -169,14 +149,11 @@ func echoToFile(content string, filePath string) (err error) {
 		return err
 	}
 	err = cmd.Wait()
-	if err != nil {
-		klog.Errorf("Could not make the set %s to file %s. Error: %v", content, filePath, err)
-	}
 	return err
 }
 
-func getOptimalDeviceSettings(nodeInfo *NodeInfo, diskSkus map[string]map[string]DiskSkuInfo, tuningMode string, perfProfile string, accountType string, diskSizeGibStr string, diskIopsStr string, diskBwMbpsStr string) (queueDepth string, nrRequests string, scheduler string, maxSectorsKb string, readAheadKb string, err error) {
-	klog.V(2).Infof("Calculating perf optimizations for mode %s profile %s accountType %s diskSize", tuningMode, perfProfile, accountType, diskSizeGibStr)
+func getOptimalDeviceSettings(nodeInfo *NodeInfo, diskSkus map[string]map[string]DiskSkuInfo, perfProfile string, accountType string, diskSizeGibStr string, diskIopsStr string, diskBwMbpsStr string) (queueDepth string, nrRequests string, scheduler string, maxSectorsKb string, readAheadKb string, err error) {
+	klog.V(2).Infof("Calculating perf optimizations for rofile %s accountType %s diskSize", perfProfile, accountType, diskSizeGibStr)
 
 	err = nil
 
@@ -188,15 +165,27 @@ func getOptimalDeviceSettings(nodeInfo *NodeInfo, diskSkus map[string]map[string
 	diskSku, err := getMatchingDiskSku(diskSkus, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr)
 
 	if err != nil || diskSku == nil {
-		err = fmt.Errorf("Could not find sku for account %s size %s. Error: sku not found", accountType, diskSizeGibStr)
-		klog.Errorf("Error: %s", err)
-		return queueDepth, nrRequests, scheduler, maxSectorsKb, readAheadKb, err
+		return queueDepth, nrRequests, scheduler, maxSectorsKb, readAheadKb, fmt.Errorf("Could not find sku for account %s size %s. Error: sku not found", accountType, diskSizeGibStr)
 	}
 
-	maxBurstIops := math.Min(float64(diskSku.maxBurstIops), float64(nodeInfo.maxBurstIops))
+	diskIopsFloat := float64(diskSku.MaxBurstIops)
+	maxBurstIops := math.Min(diskIopsFloat, float64(nodeInfo.MaxBurstIops))
 
+	// Some VM SKUs don't have IOPS published
+	// for such VMs set the properties based on disk IOPs limits
+	if maxBurstIops <= 0 {
+		maxBurstIops = diskIopsFloat
+	}
+
+	diskBwFloat := float64(diskSku.MaxBurstBwMbps)
 	// unless otherwise specified, BW Units are in kB (not KB) which is 1000 bytes
-	maxBurstBw := math.Min(float64(diskSku.maxBurstBwMbps), float64(nodeInfo.maxBurstBwMbps)) * 1000
+	maxBurstBw := math.Min(diskBwFloat, float64(nodeInfo.MaxBurstBwMbps)) * 1000
+
+	// Some VM SKUs don't have BW published
+	// for such VMs set the properties based on disk BW limits
+	if maxBurstBw <= 0 {
+		maxBurstBw = diskBwFloat
+	}
 
 	// Adjusted burst IOs possible
 	iopsSeqIo := maxBurstIops * (1 - iopsHeadRoom)
@@ -223,8 +212,7 @@ func getOptimalDeviceSettings(nodeInfo *NodeInfo, diskSkus map[string]map[string
 
 	readAheadKb = fmt.Sprintf("%g", math.Ceil(qdMaxSeqBw*rsMinSeqIo))
 
-	klog.V(2).Infof("Returning perf attributes for tuningMode %s perfProfile %s accountType %s queueDepth %s nrRequests %s scheduler %s maxSectorsKb %s readAheadKb %s",
-		tuningMode,
+	klog.V(2).Infof("Returning perf attributes for perfProfile %s accountType %s queueDepth %s nrRequests %s scheduler %s maxSectorsKb %s readAheadKb %s",
 		perfProfile,
 		accountType,
 		queueDepth,
@@ -238,23 +226,18 @@ func getOptimalDeviceSettings(nodeInfo *NodeInfo, diskSkus map[string]map[string
 // getMatchingDiskSku gets the smallest SKU which matches the size, io and bw requirement
 // TODO: Query the disk size (e.g. P10, P30 etc) and use that to find the sku
 func getMatchingDiskSku(diskSkus map[string]map[string]DiskSkuInfo, accountType string, diskSizeGibStr string, diskIopsStr string, diskBwMbpsStr string) (matchingSku *DiskSkuInfo, err error) {
-
 	err = nil
 	matchingSku = nil
 	accountTypeLower := strings.ToLower(accountType)
 	skus, ok := diskSkus[accountTypeLower]
 
 	if !ok || skus == nil || len(diskSkus[accountTypeLower]) <= 0 {
-		err = fmt.Errorf("Could not find sku for account %s. Error: sku not found", accountType)
-		klog.Errorf("Error: %s", err)
-		return nil, err
+		return nil, fmt.Errorf("Could not find sku for account %s. Error: sku not found", accountType)
 	}
 
 	diskSizeGb, err := strconv.Atoi(diskSizeGibStr)
 	if err != nil {
-		err = fmt.Errorf("Could not parse disk size %s. Error: incorrect sku size", diskSizeGibStr)
-		klog.Errorf("Error: %s", err)
-		return nil, err
+		return nil, fmt.Errorf("Could not parse disk size %s. Error: incorrect sku size", diskSizeGibStr)
 	}
 
 	// Treating these as non required field, as they come as part of the provisioned size
@@ -271,7 +254,7 @@ func getMatchingDiskSku(diskSkus map[string]map[string]DiskSkuInfo, accountType 
 	for _, sku := range diskSkus[accountTypeLower] {
 		// Use the smallest sku size which can fulfil Size, IOs and BW requirements
 		if meetsRequest(&sku, diskSizeGb, diskIops, diskBwMbps) {
-			if matchingSku == nil || sku.maxSizeGiB < matchingSku.maxSizeGiB {
+			if matchingSku == nil || sku.MaxSizeGiB < matchingSku.MaxSizeGiB {
 				tempSku := sku
 				matchingSku = &tempSku
 			}
@@ -283,12 +266,11 @@ func getMatchingDiskSku(diskSkus map[string]map[string]DiskSkuInfo, accountType 
 
 // meetsRequest checks to see if given SKU meets\has enough size, iops and bw limits
 func meetsRequest(sku *DiskSkuInfo, diskSizeGb int, diskIops int, diskBwMbps int) bool {
-
 	if sku == nil {
 		return false
 	}
 
-	if sku.maxSizeGiB >= diskSizeGb && sku.maxBwMbps >= diskBwMbps && sku.maxIops >= diskIops {
+	if sku.MaxSizeGiB >= diskSizeGb && sku.MaxBwMbps >= diskBwMbps && sku.MaxIops >= diskIops {
 		return true
 	}
 

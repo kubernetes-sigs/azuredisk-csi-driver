@@ -68,7 +68,6 @@ func newDriverV2(nodeID string, enablePerfOptimization bool) *DriverV2 {
 	driver.NodeID = nodeID
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.perfOptimizationEnabled = enablePerfOptimization
-	driver.skusFilePath = SkusFilePath
 	return &driver
 }
 

@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"reflect"
@@ -271,14 +270,7 @@ func TestNodeGetVolumeStats(t *testing.T) {
 }
 
 func TestNodeStageVolume(t *testing.T) {
-	tempFile, err := ioutil.TempFile("", "skusTemp.json")
-	assert.NoError(t, err)
-
 	d, _ := NewFakeDriver(t)
-	d.setSkusFilePath(tempFile.Name())
-	err = createValidSkuFile(tempFile.Name())
-	assert.NoError(t, err)
-	defer deleteSkuFile(tempFile.Name())
 
 	nodeInfo := d.getNodeInfo()
 	assert.NotEqual(t, nil, nodeInfo)

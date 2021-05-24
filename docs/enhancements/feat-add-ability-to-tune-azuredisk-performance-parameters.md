@@ -6,7 +6,7 @@
 - [Summary](#summary)
 - [Motivation](#motivation)
 - [Proposal](#proposal)
-  - [Tuning Mode And Profile](#tuning-mode-and-profile)
+  - [Perf Profile](#perf-profile)
   - [Scope Of the Change](#scope-of-the-change)
 - [Limitations](#limitations)
 - [Future Considerations](#future-considerations)
@@ -45,17 +45,15 @@ any existing applications/configurations.
 
 ## Proposal
 
-Azure Disk CSI driver will read two extra flags from the storageclass, perftuningmode and perfProfile.
+Azure Disk CSI driver will read one extra parameter from the storageclass, `perfProfile`.
 
-- *perftuningmode*: Can be set to `Auto` or `None`. In `Auto` mode, CSI driver will automatically
-calculate the optimal configuration for the disk. Users will be able to control some characterstics of the
-optimization by selecting different `perfprofile`. The driver defaults to `None`, which means no optimization
-is done. Please read the limitations to fully understand the options available today.
 - *perfprofile*: Users will be able to select a certain performance profile for their device to match their
-workload needs. For ex: we will expose different profile options to let users configure the disks for balanced
-IO, high throughput or high IOPS etc. Please read the limitations to fully understand the options available today.
+workload needs. In the beginning we will expose `Default` profile which sets the disks for balanaced IO and throughput
+workloads. If users want to keep this feature disabled they can skip adding `perfProfile` parameter in the storage class
+or set `perfProfile` to `None`. If `perfProfile` is set to an unknown value, it will result in CreateVolume failure.
+Please read the limitations to fully understand the options available today.
 
-### Tuning Mode And Profile
+### Perf Profile
 
 ```yaml
 apiVersion: storage.k8s.io/v1
@@ -64,9 +62,8 @@ metadata:
   name: sc-kubestone-perf-optimized-premium-ssd-csi
 provisioner: disk.csi.azure.com
 parameters:
-  skuname: Premium_LRS
-  perftuningmode: Auto
-  perfprofile: Default
+  skuName: Premium_LRS
+  perfProfile: Default
 reclaimPolicy: Delete
 volumeBindingMode: Immediate
 allowVolumeExpansion: true
@@ -80,14 +77,13 @@ In this iteration we will only enable the feature for StandardSSD and Premium di
 
 - This feature is not supported for HDD or UltraDisk right now.
 - The current implementation only optimizes the disks which use the storVsc linux disk driver.
-- No `manual` perftuningmode available today.
-- Only `Default` perfprofile is available today, which would provide balanced IO and throughput performance.
+- Only `Default` `perfProfile` is available today, which would provide balanced IO and throughput performance.
 
 ## Future Considerations
 
-- We will consider a `manual` perf tuning mode where users will be able to define their own perf profile by means
-of a CRD or a ConfigMap.
-- We will consider exposing more perf profiles for `Auto` perf tuning mode, tailor made for different IO characterstics.
+- We will consider exposing more perf profiles, tailor made for different IO characterstics.
+- We will consider allowing users to create their own perf profile and express the workloads characterstics for
+the storage class using CRD or some other configuration.
 - We will consider expanding perf optimization for HDD and UltraDisks.
 - We will consider expanding perf optimization for other disk drivers such as NVME etc.
 - We will consider expanding perf optimization for other OS' such as Windows.
