@@ -116,7 +116,7 @@ type DiskSkuInfo struct {
 }
 
 // PopulateNodeAndSkuInfo populates Node and Sku related information in memory
-func PopulateNodeAndSkuInfo(d DriverCore) error {
+func PopulateNodeAndSkuInfo(d *DriverCore) error {
 	klog.V(2).Infof("PopulateNodeAndSkuInfo: Starting to populate node and disk sku information.")
 
 	instances, ok := d.cloud.Instances()
@@ -134,11 +134,15 @@ func PopulateNodeAndSkuInfo(d DriverCore) error {
 		return fmt.Errorf("PopulateNodeAndSkuInfo: Failed to get zone from Azure cloud provider, nodeName: %v, error: %v", d.NodeID, err)
 	}
 
-	return populateNodeAndSkuInfoInternal(d, instanceType, zone.FailureDomain, zone.Region)
+	err = populateNodeAndSkuInfoInternal(d, instanceType, zone.FailureDomain, zone.Region)
+
+	klog.V(2).Infof("PopulateNodeAndSkuInfo: Populated node and disk sku information. NodeInfo=%v", d.getNodeInfo())
+
+	return err
 }
 
 // populateNodeAndSkuInfoInternal populates Node and Sku related in memory
-func populateNodeAndSkuInfoInternal(d DriverCore, instance string, zone string, region string) error {
+func populateNodeAndSkuInfoInternal(d *DriverCore, instance string, zone string, region string) error {
 	d.nodeInfo = &NodeInfo{}
 	d.nodeInfo.SkuName = instance
 	d.nodeInfo.Zone = zone
@@ -149,13 +153,11 @@ func populateNodeAndSkuInfoInternal(d DriverCore, instance string, zone string, 
 		return fmt.Errorf("PopulateNodeAndSkuInfo: Could populate sku information. Error: %v", err)
 	}
 
-	klog.V(2).Infof("PopulateNodeAndSkuInfo: Populated node and disk sku information. NodeInfo=%v", d.nodeInfo)
-
 	return nil
 }
 
 // populateSkuMap populates the sku map from the sku json file
-func populateSkuMap(d DriverCore) (err error) {
+func populateSkuMap(d *DriverCore) (err error) {
 	d.diskSkuInfoMap = DiskSkuMap
 
 	nodeSkuNameLower := strings.ToLower(d.nodeInfo.SkuName)

@@ -46,8 +46,13 @@ func Test_populateSkuMap(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := populateSkuMap(tt.driver.DriverCore); (err != nil) != tt.wantErr {
+			err := populateSkuMap(&tt.driver.DriverCore)
+			if (err != nil) != tt.wantErr {
 				t.Errorf("populateSkuMap() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			if !tt.wantErr && tt.driver.getNodeInfo() == nil {
+				t.Errorf("populateSkuMap() getNodeInfo() returns nil")
 			}
 		})
 	}
@@ -77,7 +82,7 @@ func TestDiskSkuInfo_GetLatencyTest(t *testing.T) {
 }
 
 func TestPopulateNodeAndSkuInfo(t *testing.T) {
-	d := DriverCore{}
+	d := &DriverCore{}
 	d.cloud = &azure.Cloud{}
 
 	defer func() {
@@ -110,7 +115,8 @@ func Test_populateNodeAndSkuInfoInternal(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := populateNodeAndSkuInfoInternal(dCore, tt.instance, "testZone", "testRegion"); (err != nil) != tt.wantErr {
+			err := populateNodeAndSkuInfoInternal(&dCore, tt.instance, "testZone", "testRegion")
+			if (err != nil) != tt.wantErr {
 				t.Errorf("populateNodeAndSkuInfoInternal() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})

@@ -16,8 +16,10 @@
 
 set -euo pipefail
 
-kubectl delete -f /home/azureuser/go/src/sigs.k8s.io/azuredisk-csi-driver/test/performance/kubestone-benchmarks.yaml --ignore-not-found
-kubectl delete -f /home/azureuser/go/src/sigs.k8s.io/azuredisk-csi-driver/test/performance/kubestone-storageclass.yaml --ignore-not-found
+readonly PKG_ROOT="$(git rev-parse --show-toplevel)"
+
+kubectl delete -f "${PKG_ROOT}/test/performance/kubestone-benchmarks.yaml" --ignore-not-found
+kubectl delete -f "${PKG_ROOT}/test/performance/kubestone-storageclass.yaml" --ignore-not-found
 
 kubectl delete namespace kubestone --ignore-not-found
 kustomize build github.com/xridge/kubestone/config/default?ref=v0.5.0 | sed "s/kubestone:latest/kubestone:v0.5.0/" | kubectl delete --ignore-not-found -f -
