@@ -19,6 +19,7 @@ limitations under the License.
 package azuredisk
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -36,6 +37,7 @@ func Test_getOptimalDeviceSettings(t *testing.T) {
 	zone := "1"
 	region := "eastus"
 	nodeInfo := &NodeInfo{SkuName: skuName, Zone: zone, Region: region, MaxBurstIops: 51200, MaxIops: 51200, MaxBwMbps: 512, MaxBurstBwMbps: 512}
+	nodeInfoNoCapabilityVM := &NodeInfo{SkuName: skuName, Zone: zone, Region: region, MaxBurstIops: 0, MaxIops: 0, MaxBwMbps: 0, MaxBurstBwMbps: 0}
 
 	tests := []struct {
 		name             string
@@ -50,6 +52,7 @@ func Test_getOptimalDeviceSettings(t *testing.T) {
 		wantMaxSectorsKb string
 		wantReadAheadKb  string
 		wantErr          bool
+		node             *NodeInfo
 	}{
 		{
 			name:           "Should return valid disk perf settings",
@@ -60,6 +63,18 @@ func Test_getOptimalDeviceSettings(t *testing.T) {
 			diskBwMbpsStr:  "100",
 			wantScheduler:  "mq-deadline",
 			wantErr:        false,
+			node:           nodeInfo,
+		},
+		{
+			name:           "Should return valid disk perf settings with no capability published VM",
+			perfProfile:    "default",
+			accountType:    "Premium_LRS",
+			DiskSizeGibStr: "512",
+			diskIopsStr:    "100",
+			diskBwMbpsStr:  "100",
+			wantScheduler:  "mq-deadline",
+			wantErr:        false,
+			node:           nodeInfoNoCapabilityVM,
 		},
 		{
 			name:           "Should return error if matching disk sku is not found",
@@ -70,29 +85,30 @@ func Test_getOptimalDeviceSettings(t *testing.T) {
 			diskBwMbpsStr:  "100",
 			wantScheduler:  "mq-deadline",
 			wantErr:        true,
+			node:           nodeInfo,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotQueueDepth, gotNrRequests, gotScheduler, gotMaxSectorsKb, gotReadAheadKb, err := getOptimalDeviceSettings(nodeInfo, diskSkus, tt.perfProfile, tt.accountType, tt.DiskSizeGibStr, tt.diskIopsStr, tt.diskBwMbpsStr)
+			gotQueueDepth, gotNrRequests, gotScheduler, gotMaxSectorsKb, gotReadAheadKb, err := getOptimalDeviceSettings(tt.node, diskSkus, tt.perfProfile, tt.accountType, tt.DiskSizeGibStr, tt.diskIopsStr, tt.diskBwMbpsStr)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("getOptimalDeviceSettings() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			} else if !tt.wantErr {
 				if gotQueueDepth == "" {
-					t.Errorf("getOptimalDeviceSettings() gotQueueDepth")
+					t.Errorf("getOptimalDeviceSettings() failed for gotQueueDepth")
 				}
 				if gotNrRequests == "" {
-					t.Errorf("getOptimalDeviceSettings() gotNrRequests")
+					t.Errorf("getOptimalDeviceSettings() failed for gotNrRequests")
 				}
 				if gotScheduler != tt.wantScheduler {
-					t.Errorf("getOptimalDeviceSettings() gotScheduler = %v", gotScheduler)
+					t.Errorf("getOptimalDeviceSettings() failed for gotScheduler = %v", gotScheduler)
 				}
 				if gotMaxSectorsKb == "" {
-					t.Errorf("getOptimalDeviceSettings() gotMaxSectorsKb")
+					t.Errorf("getOptimalDeviceSettings() failed for gotMaxSectorsKb")
 				}
 				if gotReadAheadKb == "" {
-					t.Errorf("getOptimalDeviceSettings() gotReadAheadKb")
+					t.Errorf("getOptimalDeviceSettings() failed for gotReadAheadKb")
 				}
 			}
 		})
@@ -221,11 +237,67 @@ func Test_meetsRequest(t *testing.T) {
 			want:       false,
 			sku:        &DiskSkuInfo{StorageAccountType: accountType, StorageTier: tier, DiskSize: size, MaxIops: 100, MaxBwMbps: 500, MaxSizeGiB: 1024},
 		},
+		{
+			name:       "nil Sku should return false",
+			DiskSizeGb: 1025,
+			diskIops:   101,
+			diskBwMbps: 501,
+			want:       false,
+			sku:        nil,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := meetsRequest(tt.sku, tt.DiskSizeGb, tt.diskIops, tt.diskBwMbps); got != tt.want {
 				t.Errorf("meetsRequest() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_getDeviceName(t *testing.T) {
+	tests := []struct {
+		name    string
+		lunPath string
+		wantErr bool
+	}{
+		{
+			name:    "return error for invalid file",
+			lunPath: "blah",
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := getDeviceName(tt.lunPath)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("getDeviceName() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+		})
+	}
+}
+
+func Test_echoToFile(t *testing.T) {
+	filePath := "fake-echo-file"
+	defer os.Remove(filePath)
+	tests := []struct {
+		name     string
+		content  string
+		filePath string
+		wantErr  bool
+	}{
+		{
+			name:     "echo should succeed",
+			content:  "10",
+			filePath: filePath,
+			wantErr:  false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := echoToFile(tt.content, tt.filePath); (err != nil) != tt.wantErr {
+				t.Errorf("echoToFile() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}

@@ -65,3 +65,65 @@ func TestSafeDeviceHelper_DeviceSupportsPerfOptimization(t *testing.T) {
 		})
 	}
 }
+
+func TestDeviceHelper_OptimizeDiskPerformance(t *testing.T) {
+	deviceHelper := NewSafeDeviceHelper()
+	tests := []struct {
+		name           string
+		nodeInfo       *NodeInfo
+		diskSkus       map[string]map[string]DiskSkuInfo
+		devicePath     string
+		perfProfile    string
+		accountType    string
+		diskSizeGibStr string
+		diskIopsStr    string
+		diskBwMbpsStr  string
+		wantErr        bool
+	}{
+		{
+			name:           "nil disk map should through error",
+			nodeInfo:       nil,
+			diskSkus:       nil,
+			devicePath:     "blah",
+			perfProfile:    "default",
+			accountType:    "standardssd_lrs",
+			diskSizeGibStr: "100",
+			diskIopsStr:    "100",
+			diskBwMbpsStr:  "100",
+			wantErr:        true,
+		},
+		{
+			name:           "nil node info should through error",
+			nodeInfo:       &NodeInfo{},
+			diskSkus:       nil,
+			devicePath:     "blah",
+			perfProfile:    "default",
+			accountType:    "standardssd_lrs",
+			diskSizeGibStr: "100",
+			diskIopsStr:    "100",
+			diskBwMbpsStr:  "100",
+			wantErr:        true,
+		},
+		{
+			name:           "invalid sku spec should through error",
+			nodeInfo:       &NodeInfo{},
+			diskSkus:       DiskSkuMap,
+			devicePath:     "blah",
+			perfProfile:    "default",
+			accountType:    "standardssd_lrs",
+			diskSizeGibStr: "twenty",
+			diskIopsStr:    "100",
+			diskBwMbpsStr:  "100",
+			wantErr:        true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if deviceHelper.DiskSupportsPerfOptimization(tt.perfProfile, tt.accountType) {
+				if err := deviceHelper.OptimizeDiskPerformance(tt.nodeInfo, tt.diskSkus, tt.devicePath, tt.perfProfile, tt.accountType, tt.diskSizeGibStr, tt.diskIopsStr, tt.diskBwMbpsStr); (err != nil) != tt.wantErr {
+					t.Errorf("DeviceHelper.OptimizeDiskPerformance() error = %v, wantErr %v", err, tt.wantErr)
+				}
+			}
+		})
+	}
+}
