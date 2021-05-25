@@ -7,7 +7,6 @@ metadata:
 provisioner: disk.csi.azure.com
 parameters:
   skuname: Premium_LRS
-  perftuningmode: Auto
   perfProfile: Default
 reclaimPolicy: Delete
 volumeBindingMode: Immediate
@@ -20,8 +19,6 @@ metadata:
 provisioner: disk.csi.azure.com
 parameters:
   skuname: Premium_LRS
-  perftuningmode: None
-  perfProfile: Default
 reclaimPolicy: Delete
 volumeBindingMode: Immediate
 allowVolumeExpansion: true

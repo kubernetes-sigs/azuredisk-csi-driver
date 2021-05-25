@@ -176,6 +176,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 				"skuName":     "Premium_LRS",
 				"maxShares":   "5",
 				"cachingMode": "None",
+				"perfProfile": "Default",
 			}
 			req.VolumeCapabilities[0].AccessType = &csi.VolumeCapability_Block{
 				Block: &csi.VolumeCapability_BlockVolume{},
