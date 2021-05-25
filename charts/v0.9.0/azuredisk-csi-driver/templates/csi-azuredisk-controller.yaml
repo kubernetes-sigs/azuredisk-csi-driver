@@ -155,7 +155,7 @@ spec:
                   optional: true
             - name: CSI_ENDPOINT
               value: unix:///csi/csi.sock
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          imagePullPolicy: {{ .Values.image.azuredisk.pullPolicy }}
           volumeMounts:
             - mountPath: /csi
               name: socket-dir

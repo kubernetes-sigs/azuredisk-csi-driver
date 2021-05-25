@@ -91,7 +91,7 @@ spec:
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--nodeid=$(KUBE_NODE_NAME)"
             - "--metrics-address=0.0.0.0:{{ .Values.node.metricsPort }}"
-            - "--temp-use-driver-v2"
+            - "--temp-use-driver-v2={{ .Values.azuredisk.useV2Driver }}"
           ports:
             - containerPort: 29603
               name: healthz
@@ -125,7 +125,7 @@ spec:
             - name: AZURE_ENVIRONMENT_FILEPATH
               value: C:\k\azurestackcloud.json
             {{- end }}
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          imagePullPolicy: {{ .Values.image.azuredisk.pullPolicy }}
           volumeMounts:
             - name: kubelet-dir
               mountPath: "C:\\var\\lib\\kubelet"

@@ -160,7 +160,7 @@ spec:
               value: unix:///csi/csi.sock
             - name: AZURE_ENVIRONMENT_FILEPATH  # For Azure Stack Cloud
               value: /etc/kubernetes/azurestackcloud.json
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          imagePullPolicy: {{ .Values.image.azuredisk.pullPolicy }}
           volumeMounts:
             - mountPath: /csi
               name: socket-dir

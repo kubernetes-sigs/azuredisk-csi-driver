@@ -3,110 +3,146 @@ entries:
   azuredisk-csi-driver:
   - apiVersion: v1
     appVersion: v2.0.0-alpha.1
-    created: "2021-05-26T21:40:58.6554752Z"
+    created: "2021-05-27T13:02:27.2727224Z"
     description: Azure disk Container Storage Interface (CSI) Storage Plugin
-    digest: 78489f4429e68903d79e59bbba2a0d2d284164ac26068b96176f6da77da5fd6a
+    digest: 587db966c5ffdcdab0e30a121e4a114f2798265113dc75b9b63480b3500ef143
     name: azuredisk-csi-driver
     urls:
     - https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts/v2.0.0-alpha.1/azuredisk-csi-driver-v2.0.0-alpha.1.tgz
     version: v2.0.0-alpha.1
   - apiVersion: v1
     appVersion: latest
-    created: "2021-05-26T21:40:58.6358679Z"
+    created: "2021-05-27T13:02:27.2589695Z"
     description: Azure disk Container Storage Interface (CSI) Storage Plugin
-    digest: c15e1d2a29a77fece047ccf708be578b5a068fc4cfb124941f5543eaa8de839d
+    digest: 75efd58c4f8b4ebb4f4507441c648930a0e89bbb55e3e4943a4b1c220d923c99
     name: azuredisk-csi-driver
     urls:
     - https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts/latest/azuredisk-csi-driver-v1.4.0.tgz
     version: v1.4.0
   - apiVersion: v1
     appVersion: v1.3.0
-    created: "2021-05-26T21:40:58.6545028Z"
+    created: "2021-05-27T13:02:27.2718312Z"
     description: Azure disk Container Storage Interface (CSI) Storage Plugin
-    digest: 2665483e922a577feb8539ca7f774bc70c945ce490294fd3378f098c2d244dde
+    digest: a83935663340f40a3e65d83ce7ec4394c2e85ee8f27db8275e8f2dc2a03a46f2
     name: azuredisk-csi-driver
     urls:
     - https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts/v1.3.0/azuredisk-csi-driver-v1.3.0.tgz
     version: v1.3.0
   - apiVersion: v1
     appVersion: v1.2.0
-    created: "2021-05-26T21:40:58.6534629Z"
+    created: "2021-05-27T13:02:27.2708233Z"
     description: Azure disk Container Storage Interface (CSI) Storage Plugin
-    digest: 2bbfe2f9d080f1b3ff10590c7168d05ce026c5a73332b4d48014610a52337808
+    digest: 83cdb199eb4deae41baba6d621ceb06c099cc69272deefcc0da7e421ae36d068
     name: azuredisk-csi-driver
     urls:
     - https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts/v1.2.0/azuredisk-csi-driver-v1.2.0.tgz
     version: v1.2.0
   - apiVersion: v1
     appVersion: v1.1.1
-    created: "2021-05-26T21:40:58.651938Z"
+    created: "2021-05-27T13:02:27.2698283Z"
     description: Azure disk Container Storage Interface (CSI) Storage Plugin
-    digest: dd7066be8f499f6c1a396ab27c0013c09f5a8d8319cc04fbdd480d31107bb851
+    digest: a486059e574cba660c5e6b425d6d4e648eb1b0a1d229c5ac984b59c57468b512
     name: azuredisk-csi-driver
     urls:
     - https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts/v1.1.1/azuredisk-csi-driver-v1.1.1.tgz
     version: v1.1.1
   - apiVersion: v1
     appVersion: v1.1.0
-    created: "2021-05-26T21:40:58.6494581Z"
+    created: "2021-05-27T13:02:27.2690241Z"
     description: Azure disk Container Storage Interface (CSI) Storage Plugin
-    digest: 3d2a5189416dd6a43bd3e2097bbe23a8db347b6e1a36c6a43fd59cc9c9633ff3
+    digest: 414f63db4d7395cfa407042f5956fd9b3e76809ad981bb0c2776062a9a747cfa
     name: azuredisk-csi-driver
     urls:
     - https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts/v1.1.0/azuredisk-csi-driver-v1.1.0.tgz
     version: v1.1.0
   - apiVersion: v1
     appVersion: v1.0.0
-    created: "2021-05-26T21:40:58.646755Z"
+    created: "2021-05-27T13:02:27.2681516Z"
     description: Azure disk Container Storage Interface (CSI) Storage Plugin
-    digest: d179bc6f338518859b6efdc3b3bed8d06513313e8047563eb4b654b2d417c81e
+    digest: b473908de4d2a2cf752ab90e13fdc8a18da874c96da990ce2704415d9b1672e5
     name: azuredisk-csi-driver
     urls:
     - https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts/v1.0.0/azuredisk-csi-driver-v1.0.0.tgz
     version: v1.0.0
   - apiVersion: v1
     appVersion: v0.10.0
-    created: "2021-05-26T21:40:58.6368514Z"
+    created: "2021-05-27T13:02:27.2607497Z"
     description: Azure disk Container Storage Interface (CSI) Storage Plugin
-    digest: 3dbbaca098fe8316de079236598253b5831e8e85fd88b390231d828157d62206
+    digest: 6025f186de40cb42b9c90013945e5c853199bfb22daea83d012c81a71bf2cc32
     name: azuredisk-csi-driver
     urls:
     - https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts/v0.10.0/azuredisk-csi-driver-v0.10.0.tgz
     version: v0.10.0
   - apiVersion: v1
     appVersion: v0.9.0
-    created: "2021-05-26T21:40:58.6420196Z"
+    created: "2021-05-27T13:02:27.2672502Z"
     description: Azure disk Container Storage Interface (CSI) Storage Plugin
-    digest: a978f3e6ef5d678c3b6512bd8a63277cb4ce40d3f3e34b80370f0c37298824f2
+    digest: 25a01eaa051130c654b14bee44a6b7a6bfe24dabe56e1350d1e3496f1f5fe074
     name: azuredisk-csi-driver
     urls:
     - https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts/v0.9.0/azuredisk-csi-driver-v0.9.0.tgz
     version: v0.9.0
   - apiVersion: v1
     appVersion: v0.8.0
-    created: "2021-05-26T21:40:58.6409807Z"
+    created: "2021-05-27T13:02:27.2656855Z"
     description: Azure disk Container Storage Interface (CSI) Storage Plugin
-    digest: 1762b832389b4f7a5eab9748127fa6dbb85131485d67bc3fe485bbe86c468128
+    digest: 29be6a8a55567b7fdca9794f87e34130a1e1f07158e6e31e47e81164dc58dbbb
     name: azuredisk-csi-driver
     urls:
     - https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts/v0.8.0/azuredisk-csi-driver-v0.8.0.tgz
     version: v0.8.0
   - apiVersion: v1
     appVersion: v0.7.0
-    created: "2021-05-26T21:40:58.6393335Z"
+    created: "2021-05-27T13:02:27.2649068Z"
     description: Azure disk Container Storage Interface (CSI) Storage Plugin
-    digest: 29e21f686814f46c1edaaaa95ce2d25579ff1aad270c58b774bdb5a89858b8bf
+    digest: e71d8eec46cdc7c7bcd8242508210a971c72c2e3e51a64bfca57029c002ca9d2
     name: azuredisk-csi-driver
     urls:
     - https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts/v0.7.0/azuredisk-csi-driver-v0.7.0.tgz
     version: v0.7.0
   - apiVersion: v1
     appVersion: v0.6.0
-    created: "2021-05-26T21:40:58.6375025Z"
+    created: "2021-05-27T13:02:27.2640986Z"
     description: Azure disk Container Storage Interface (CSI) Storage Plugin
-    digest: b11d8dfee371ca7c63a1448ba27c1fd1f032ea33575fefeeb16927fc95d1eeb7
+    digest: be52e27df43cc2449dacd241a7f9bf8f81d477dbeb166211ad53c318c426d79c
     name: azuredisk-csi-driver
     urls:
     - https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts/v0.6.0/azuredisk-csi-driver-v0.6.0.tgz
     version: v0.6.0
-generated: "2021-05-26T21:40:58.6347071Z"
+  - apiVersion: v1
+    appVersion: 0.5.0
+    created: "2021-05-27T13:02:27.2633069Z"
+    description: Azure disk Container Storage Interface (CSI) Storage Plugin
+    digest: e50741121471f8aaac50e776b8326702bd4967e26b7911e2bb62b94986c0d9f2
+    name: azuredisk-csi-driver
+    urls:
+    - https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts/v0.5.0/azuredisk-csi-driver-0.5.0.tgz
+    version: 0.5.0
+  - apiVersion: v1
+    appVersion: 0.4.0
+    created: "2021-05-27T13:02:27.2621443Z"
+    description: Azure disk Container Storage Interface (CSI) Storage Plugin
+    digest: e3bb8f0474168a9e30cfb8f54bc8ca7fe1b333d856e7dedda6ae40937d53a71d
+    name: azuredisk-csi-driver
+    urls:
+    - https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts/v0.4.0/azuredisk-csi-driver-0.4.0.tgz
+    version: 0.4.0
+  - apiVersion: v1
+    appVersion: 0.3.0
+    created: "2021-05-27T13:02:27.2617031Z"
+    description: Azure disk Container Storage Interface (CSI) Storage Plugin
+    digest: 281ae55f0f0d422eded5498c28c8e15faddea1d2bef1f91f888faf10cc04e41a
+    name: azuredisk-csi-driver
+    urls:
+    - https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts/v0.3.0/azuredisk-csi-driver-0.3.0.tgz
+    version: 0.3.0
+  - apiVersion: v1
+    appVersion: 0.2.0
+    created: "2021-05-27T13:02:27.2612605Z"
+    description: Azure disk Container Storage Interface (CSI) Storage Plugin
+    digest: 6fea2590520300a5aa93090b70908bf2cb15f210811aedce72a211ab5e60b1a7
+    name: azuredisk-csi-driver
+    urls:
+    - https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts/v0.2.0/azuredisk-csi-driver-0.2.0.tgz
+    version: 0.2.0
+generated: "2021-05-27T13:02:27.2578972Z"

@@ -106,7 +106,7 @@ spec:
                 fieldRef:
                   apiVersion: v1
                   fieldPath: spec.nodeName
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          imagePullPolicy: {{ .Values.image.azuredisk.pullPolicy }}
           securityContext:
             privileged: true
           volumeMounts:

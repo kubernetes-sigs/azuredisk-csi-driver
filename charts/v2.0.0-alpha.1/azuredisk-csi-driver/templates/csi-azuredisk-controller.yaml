@@ -135,7 +135,8 @@ spec:
             - "--v={{ .Values.controller.logLevel }}"
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--metrics-address=0.0.0.0:{{ .Values.controller.metricsPort }}"
-            - "--temp-use-driver-v2"
+            - "--temp-use-driver-v2={{ .Values.azuredisk.useV2Driver }}"
+            - "--is-controller-plugin={{ .Values.azuredisk.useV2Driver }}"
           ports:
             - containerPort: 29602
               name: healthz
@@ -164,7 +165,7 @@ spec:
             - name: AZURE_ENVIRONMENT_FILEPATH
               value: /etc/kubernetes/azurestackcloud.json
             {{- end }}
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          imagePullPolicy: {{ .Values.image.azuredisk.pullPolicy }}
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
