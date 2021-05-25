@@ -182,7 +182,7 @@ func (c *CrdProvisioner) CreateVolume(
 					return nil, err
 				}
 
-				if updateAzVolumeSpec(azVolumeUpdated, maxMountReplicaCount, capacityRange, parameters, secrets, volumeContentSource, accessibilityReq) {
+				if !isAzVolumeSpecSameAsRequestParams(azVolumeUpdated, maxMountReplicaCount, capacityRange, parameters, secrets, volumeContentSource, accessibilityReq) {
 					// Updating the spec fields to keep it up to date with the request
 					azVolumeUpdated.Spec.MaxMountReplicaCount = maxMountReplicaCount
 					azVolumeUpdated.Spec.CapacityRange = capacityRange
@@ -196,6 +196,10 @@ func (c *CrdProvisioner) CreateVolume(
 					}
 				}
 			} else {
+				// If current request has different specifications than the existing volume, return error.
+				if !isAzVolumeSpecSameAsRequestParams(azVolumeInstance, maxMountReplicaCount, capacityRange, parameters, secrets, volumeContentSource, accessibilityReq) {
+					return nil, status.Errorf(codes.AlreadyExists, "Volume with name (%s) already exists with different specifications", volumeName)
+				}
 				// The volume creation was successful previously,
 				// Returning the response object from the status
 				return azVolumeInstance.Status.ResponseObject, nil
@@ -268,10 +272,11 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 	// Replace them in all instances in this file.
 	volumeName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(volumeID)
 	if err != nil {
-		return err
+		klog.Errorf("Invalid diskURI (%s) for DeleteVolume operation. Error : (%v)", volumeID, err)
+		return nil
 	}
 
-	err = azV.Delete(ctx, volumeName, metav1.DeleteOptions{})
+	err = azV.Delete(ctx, strings.ToLower(volumeName), metav1.DeleteOptions{})
 	if errors.IsNotFound(err) {
 		klog.Infof("Could not find the volume name (%s). Deletion succeeded", volumeName)
 		return nil
@@ -311,7 +316,7 @@ func (c *CrdProvisioner) PublishVolume(
 	azVA := c.azDiskClient.DiskV1alpha1().AzVolumeAttachments(c.namespace)
 	volumeName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(volumeID)
 	if err != nil {
-		return nil, err
+		return nil, status.Errorf(codes.NotFound, fmt.Sprintf("Error finding volume : %v", err))
 	}
 
 	attachmentName := azureutils.GetAzVolumeAttachmentName(volumeName, nodeID)
@@ -505,21 +510,44 @@ func (c *CrdProvisioner) GetDiskClientSetAddr() *azDiskClientSet.Interface {
 	return &c.azDiskClient
 }
 
-func updateAzVolumeSpec(defaultAzVolume *v1alpha1.AzVolume,
+// Compares the fields in the AzVolumeSpec with the other parameters.
+// Returns true if they are equal, false otherwise.
+func isAzVolumeSpecSameAsRequestParams(defaultAzVolume *v1alpha1.AzVolume,
 	maxMountReplicaCount int,
 	capacityRange *v1alpha1.CapacityRange,
 	parameters map[string]string,
 	secrets map[string]string,
 	volumeContentSource *v1alpha1.ContentVolumeSource,
 	accessibilityReq *v1alpha1.TopologyRequirement) bool {
-	if defaultAzVolume.Spec.MaxMountReplicaCount != maxMountReplicaCount ||
-		!reflect.DeepEqual(defaultAzVolume.Spec.CapacityRange, capacityRange) ||
-		!reflect.DeepEqual(defaultAzVolume.Spec.Parameters, parameters) ||
-		!reflect.DeepEqual(defaultAzVolume.Spec.Secrets, secrets) ||
-		!reflect.DeepEqual(defaultAzVolume.Spec.ContentVolumeSource, volumeContentSource) ||
-		!reflect.DeepEqual(defaultAzVolume.Spec.AccessibilityRequirements, accessibilityReq) {
-		return true
+	// Since, reflect.DeepEqual doesnt treat nil and empty map/array as equal.
+	// For comparison purpose, we want nil and empty map/array as equal.
+	// Thus, modifyng the nil values to empty map/array for desired result.
+	defaultParams := defaultAzVolume.Spec.Parameters
+	defaultSecret := defaultAzVolume.Spec.Secrets
+	defaultAccReq := defaultAzVolume.Spec.AccessibilityRequirements
+	if defaultParams == nil {
+		defaultParams = make(map[string]string)
+	}
+	if parameters == nil {
+		parameters = make(map[string]string)
+	}
+	if defaultSecret == nil {
+		defaultSecret = make(map[string]string)
+	}
+	if secrets == nil {
+		secrets = make(map[string]string)
+	}
+	if defaultAccReq.Preferred == nil {
+		defaultAccReq.Preferred = []v1alpha1.Topology{}
+	}
+	if defaultAccReq.Requisite == nil {
+		defaultAccReq.Requisite = []v1alpha1.Topology{}
 	}
 
-	return false
+	return (defaultAzVolume.Spec.MaxMountReplicaCount == maxMountReplicaCount &&
+		reflect.DeepEqual(defaultAzVolume.Spec.CapacityRange, capacityRange) &&
+		reflect.DeepEqual(defaultParams, parameters) &&
+		reflect.DeepEqual(defaultSecret, secrets) &&
+		reflect.DeepEqual(defaultAzVolume.Spec.ContentVolumeSource, volumeContentSource) &&
+		reflect.DeepEqual(defaultAccReq, accessibilityReq))
 }

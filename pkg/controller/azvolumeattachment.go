@@ -224,10 +224,16 @@ func (r *reconcileAzVolumeAttachment) SyncVolume(ctx context.Context, azVolume v
 	}
 
 	// fetch AzVolumeAttachment with AzVolume
-	volRequirement, _ := labels.NewRequirement(VolumeNameLabel, selection.Equals, []string{azVolume.Spec.UnderlyingVolume})
+	volRequirement, err := labels.NewRequirement(VolumeNameLabel, selection.Equals, []string{azVolume.Spec.UnderlyingVolume})
+	if err != nil {
+		return err
+	}
+	if volRequirement == nil {
+		return status.Error(codes.Internal, fmt.Sprintf("Unable to create Requirement to for label key : (%s) and label value: (%s)", VolumeNameLabel, azVolume.Spec.UnderlyingVolume))
+	}
+
 	labelSelector := labels.NewSelector().Add(*volRequirement)
 	var azVolumeAttachments *v1alpha1.AzVolumeAttachmentList
-	var err error
 
 	if useCache {
 		azVolumeAttachments = &v1alpha1.AzVolumeAttachmentList{}
@@ -398,8 +404,26 @@ func (r *reconcileAzVolumeAttachment) GetNodesForReplica(ctx context.Context, nu
 		for _, node := range nodes.Items {
 			// filter out attachments labeled with specified node and volume
 			var attachmentList v1alpha1.AzVolumeAttachmentList
-			volRequirement, _ := labels.NewRequirement(VolumeNameLabel, selection.Equals, []string{underlyingVolume})
-			nodeRequirement, _ := labels.NewRequirement(NodeNameLabel, selection.Equals, []string{string(node.Name)})
+			volRequirement, err := labels.NewRequirement(VolumeNameLabel, selection.Equals, []string{underlyingVolume})
+			if err != nil {
+				klog.Errorf("Encountered error while creating Requirement: %+v", err)
+				continue
+			}
+			if volRequirement == nil {
+				klog.Errorf("Unable to create Requirement to for label key : (%s) and label value: (%s)", VolumeNameLabel, underlyingVolume)
+				continue
+			}
+
+			nodeRequirement, err := labels.NewRequirement(NodeNameLabel, selection.Equals, []string{string(node.Name)})
+			if err != nil {
+				klog.Errorf("Encountered error while creating Requrement: %+v", err)
+				continue
+			}
+			if nodeRequirement == nil {
+				klog.Errorf("Unable to create Requirement to for label key : (%s) and label value: (%s)", NodeNameLabel, node.Name)
+				continue
+			}
+
 			labelSelector := labels.NewSelector().Add(*nodeRequirement).Add(*volRequirement)
 			if err := r.client.List(ctx, &attachmentList, &client.ListOptions{LabelSelector: labelSelector}); err != nil {
 				klog.Warningf("failed to get AzVolumeAttachmentList labeled with volume (%s) and node (%s): %v", underlyingVolume, node.Name, err)
@@ -761,7 +785,14 @@ func (r *reconcileAzVolumeAttachment) CleanUpAzVolumeAttachment(ctx context.Cont
 		return err
 	}
 
-	volRequirement, _ := labels.NewRequirement(VolumeNameLabel, selection.Equals, []string{azVolume.Spec.UnderlyingVolume})
+	volRequirement, err := labels.NewRequirement(VolumeNameLabel, selection.Equals, []string{azVolume.Spec.UnderlyingVolume})
+	if err != nil {
+		return err
+	}
+	if volRequirement == nil {
+		return status.Error(codes.Internal, fmt.Sprintf("Unable to create Requirement to for label key : (%s) and label value: (%s)", VolumeNameLabel, azVolume.Spec.UnderlyingVolume))
+	}
+
 	labelSelector := labels.NewSelector().Add(*volRequirement)
 
 	attachments, err := r.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(r.namespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})

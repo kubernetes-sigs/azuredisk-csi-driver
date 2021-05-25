@@ -18,7 +18,9 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -155,7 +157,14 @@ func (r *reconcileAzVolume) triggerDelete(ctx context.Context, volumeName string
 		return err
 	}
 	// Delete all AzVolumeAttachment objects bound to the deleted AzVolume
-	volRequirement, _ := labels.NewRequirement(VolumeNameLabel, selection.Equals, []string{azVolume.Spec.UnderlyingVolume})
+	volRequirement, err := labels.NewRequirement(VolumeNameLabel, selection.Equals, []string{azVolume.Spec.UnderlyingVolume})
+	if err != nil {
+		return err
+	}
+	if volRequirement == nil {
+		return status.Error(codes.Internal, fmt.Sprintf("Unable to create Requirement to for label key : (%s) and label value: (%s)", VolumeNameLabel, azVolume.Spec.UnderlyingVolume))
+	}
+
 	labelSelector := labels.NewSelector().Add(*volRequirement)
 
 	attachments, err := r.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(r.namespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})
@@ -287,7 +296,14 @@ func (r *reconcileAzVolume) CleanUpAzVolumeAttachment(ctx context.Context, azVol
 		return err
 	}
 
-	volRequirement, _ := labels.NewRequirement(VolumeNameLabel, selection.Equals, []string{azVolume.Spec.UnderlyingVolume})
+	volRequirement, err := labels.NewRequirement(VolumeNameLabel, selection.Equals, []string{azVolume.Spec.UnderlyingVolume})
+	if err != nil {
+		return err
+	}
+	if volRequirement == nil {
+		return status.Error(codes.Internal, fmt.Sprintf("Unable to create Requirement to for label key : (%s) and label value: (%s)", VolumeNameLabel, azVolume.Spec.UnderlyingVolume))
+	}
+
 	labelSelector := labels.NewSelector().Add(*volRequirement)
 
 	attachments, err := r.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(r.namespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})

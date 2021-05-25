@@ -48,9 +48,12 @@ const (
 	// default IOPS Caps & Throughput Cap (MBps) per https://docs.microsoft.com/en-us/azure/virtual-machines/linux/disks-ultra-ssd
 	// see https://docs.microsoft.com/en-us/rest/api/compute/disks/createorupdate#uri-parameters
 	diskNameMinLength = 1
-	diskNameMaxLength = 80
-	// maxLength = 80 - (4 for ".vhd") = 76
-	diskNameGenerateMaxLength = 76
+	// Reseting max length to 63 since the disk name is used in the label "volume-name"
+	// of the kubernetes object and a label cannot have length greater than 63.
+	// https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
+	diskNameMaxLength = 63
+	// maxLength = 63 - (4 for ".vhd") = 59
+	diskNameGenerateMaxLength = 59
 
 	// minimum disk size is 1GiB
 	MinimumDiskSizeGiB = 1
