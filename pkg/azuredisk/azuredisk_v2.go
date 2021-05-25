@@ -99,7 +99,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 	d.deviceHelper = NewSafeDeviceHelper()
 
 	if d.getPerfOptimizationEnabled() {
-		err = PopulateNodeAndSkuInfo(d.DriverCore)
+		err = PopulateNodeAndSkuInfo(&d.DriverCore)
 		if err != nil {
 			klog.Fatalf("Failed to get node info. Error: %v", err)
 		}
