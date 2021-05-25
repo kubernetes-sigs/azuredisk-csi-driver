@@ -174,11 +174,10 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			req := makeCreateVolumeReq("shared-disk-multiple-pods", sharedDiskSize)
 			diskSize := fmt.Sprintf("%dGi", sharedDiskSize)
 			req.Parameters = map[string]string{
-				"skuName":          "Premium_LRS",
-				"maxShares":        "5",
-				"cachingMode":      "None",
-				"perfProfile":      "Default",
-				"requestedsizegib": diskSize,
+				"skuName":     "Premium_LRS",
+				"maxShares":   "5",
+				"cachingMode": "None",
+				"perfProfile": "None",
 			}
 			req.VolumeCapabilities[0].AccessType = &csi.VolumeCapability_Block{
 				Block: &csi.VolumeCapability_BlockVolume{},

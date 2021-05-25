@@ -513,7 +513,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		skipIfUsingInTreeVolumePlugin()
 		pods := []testsuites.PodDetails{
 			{
-				Cmd: "dd if=/dev/zero of=/dev/xvda bs=1024k count=100 && echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data",
+				Cmd: "echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data",
 				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
 						FSType:    "ext4",
@@ -542,7 +542,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		skipIfUsingInTreeVolumePlugin()
 		pods := []testsuites.PodDetails{
 			{
-				Cmd: "dd if=/dev/zero of=/dev/xvda bs=1024k count=100 && echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data",
+				Cmd: "echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data",
 				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
 						FSType:    "ext4",
@@ -560,7 +560,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			Pods:      pods,
 			StorageClassParameters: map[string]string{
 				"skuName":     "Premium_LRS",
-				"perfProfile": "none",
+				"perfProfile": "None",
 			},
 		}
 		test.Run(cs, ns)
