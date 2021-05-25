@@ -11,11 +11,10 @@ This driver allows Kubernetes to use [Azure Disk](https://azure.microsoft.com/en
 ### Container Images & Kubernetes Compatibility
 |Driver Version  |Image                                           | supported k8s version |
 |----------------|------------------------------------------------|-----------------------|
-|master branch   |mcr.microsoft.com/k8s/csi/azuredisk-csi:latest  | 1.17+                 |
+|master branch   |mcr.microsoft.com/k8s/csi/azuredisk-csi:latest  | 1.18+                 |
+|v1.3.0          |mcr.microsoft.com/k8s/csi/azuredisk-csi:v1.3.0  | 1.18+                 |
+|v1.2.0          |mcr.microsoft.com/k8s/csi/azuredisk-csi:v1.2.0  | 1.17+                 |
 |v1.1.1          |mcr.microsoft.com/k8s/csi/azuredisk-csi:v1.1.1  | 1.16+                 |
-|v1.0.0          |mcr.microsoft.com/k8s/csi/azuredisk-csi:v1.0.0  | 1.16+                 |
-|v0.10.0         |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.10.0 | 1.16+                 |
-|v0.9.0          |mcr.microsoft.com/k8s/csi/azuredisk-csi:v0.9.0  | 1.16+                 |
 
 ### Driver parameters
 Please refer to [`disk.csi.azure.com` driver parameters](./docs/driver-parameters.md)
@@ -32,14 +31,15 @@ Please refer to [`disk.csi.azure.com` driver parameters](./docs/driver-parameter
  - [How to set up CSI driver on Azure RedHat OpenShift(ARO)](https://github.com/ezYakaEagle442/aro-pub-storage/blob/master/setup-store-CSI-driver-azure-disk.md)
 
 ### Install driver on a Kubernetes cluster
- - install via [kubectl](./docs/install-azuredisk-csi-driver.md) on public Azure (please use helm for other cloud environments, e.g. Azure Stack)
- - install via [helm charts](./charts) on public Azure and Azure Stack
+ - install via [kubectl](./docs/install-azuredisk-csi-driver.md) on public Azure (please use helm for Azure Stack, RedHat/CentOS)
+ - install via [helm charts](./charts) on public Azure, Azure Stack, RedHat/CentOS
 
 ### Examples
  - [Basic usage](./deploy/example/e2e_usage.md)
  
 ### Features
  - [Topology(Availability Zone)](./deploy/example/topology)
+   - [ZRS disk support(Preview)](./deploy/example/topology#zrs-disk-support)
  - [Snapshot](./deploy/example/snapshot)
  - [Volume Cloning](./deploy/example/cloning)
  - [Volume Expansion](./deploy/example/resize) 

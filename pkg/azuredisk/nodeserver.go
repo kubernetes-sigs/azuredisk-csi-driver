@@ -35,9 +35,9 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
-	"k8s.io/kubernetes/pkg/util/resizefs"
 	"k8s.io/kubernetes/pkg/volume"
 	"k8s.io/kubernetes/pkg/volume/util/hostutil"
+	mount "k8s.io/mount-utils"
 )
 
 const (
@@ -143,7 +143,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 			return nil, status.Errorf(codes.Internal, "NodeStageVolume: Could not get volume path for %s: %v", target, err)
 		}
 
-		resizer := resizefs.NewResizeFs(d.mounter)
+		resizer := mount.NewResizeFs(d.mounter.Exec)
 		if _, err := resizer.Resize(source, target); err != nil {
 			return nil, status.Errorf(codes.Internal, "NodeStageVolume: Could not resize volume %q (%q):  %v", diskURI, source, err)
 		}
@@ -206,11 +206,6 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Target path could not be prepared: %v", err))
 	}
 
-	if acquired := d.volumeLocks.TryAcquire(volumeID); !acquired {
-		return nil, status.Errorf(codes.Aborted, volumeOperationAlreadyExistsFmt, volumeID)
-	}
-	defer d.volumeLocks.Release(volumeID)
-
 	mountOptions := []string{"bind"}
 	if req.GetReadonly() {
 		mountOptions = append(mountOptions, "ro")
@@ -270,11 +265,6 @@ func (d *Driver) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublish
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to unmount target %q: %v", targetPath, err)
 	}
-
-	if acquired := d.volumeLocks.TryAcquire(volumeID); !acquired {
-		return nil, status.Errorf(codes.Aborted, volumeOperationAlreadyExistsFmt, volumeID)
-	}
-	defer d.volumeLocks.Release(volumeID)
 
 	klog.V(2).Infof("NodeUnpublishVolume: unmount volume %s on %s successfully", volumeID, targetPath)
 

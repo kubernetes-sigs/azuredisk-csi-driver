@@ -13,12 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-set -euo pipefail
+set -e
 
 echo "begin to create deployment examples ..."
 
 if [[ "$2" == "azurestackcloud" ]]; then
-	kubectl apply -f deploy/example/storageclass-azuredisk-csi-azurestack.yaml
+    kubectl apply -f deploy/example/storageclass-azuredisk-csi-azurestack.yaml
 else
     kubectl apply -f deploy/example/storageclass-azuredisk-csi.yaml
 fi

@@ -28,9 +28,8 @@ import (
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
-	"k8s.io/kubernetes/pkg/util/resizefs"
 	"k8s.io/kubernetes/pkg/volume/util/hostutil"
-	"k8s.io/mount-utils"
+	mount "k8s.io/mount-utils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 )
@@ -201,7 +200,7 @@ func (p *NodeProvisioner) Unmount(target string) error {
 
 // Resize resizes the filesystem of the specified volume.
 func (p *NodeProvisioner) Resize(source, target string) error {
-	resizer := resizefs.NewResizeFs(p.mounter)
+	resizer := mount.NewResizeFs(p.mounter.Exec)
 
 	if _, err := resizer.Resize(source, target); err != nil {
 		return err

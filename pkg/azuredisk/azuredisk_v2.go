@@ -140,21 +140,21 @@ func newDriverV2(nodeID string,
 }
 
 // Run driver initialization
-func (d *DriverV2) Run(endpoint, kubeConfigPath string, testBool bool) {
+func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock bool) {
 	versionMeta, err := GetVersionYAML()
 	if err != nil {
 		klog.Fatalf("%v", err)
 	}
 	klog.Infof("\nDRIVER INFORMATION:\n-------------------\n%s\n\nStreaming logs below:", versionMeta)
 
-	d.kubeConfig, err = GetKubeConfig(kubeConfigPath)
+	d.kubeConfig, err = GetKubeConfig(kubeconfig)
 	if err != nil || d.kubeConfig == nil {
-		klog.Fatalf("failed to get kube config (%s), error: %v. Exiting application...", kubeConfigPath, err)
+		klog.Fatalf("failed to get kube config (%s), error: %v. Exiting application...", kubeconfig, err)
 	}
 
 	d.kubeClient, err = clientset.NewForConfig(d.kubeConfig)
 	if err != nil || d.kubeClient == nil {
-		klog.Fatalf("failed to get kubeclient with kubeconfig (%s), error: %v. Exiting application...", kubeConfigPath, err)
+		klog.Fatalf("failed to get kubeclient with kubeconfig (%s), error: %v. Exiting application...", kubeconfig, err)
 	}
 
 	d.crdProvisioner, err = provisioner.NewCrdProvisioner(d.kubeConfig, d.objectNamespace)
@@ -220,7 +220,7 @@ func (d *DriverV2) Run(endpoint, kubeConfigPath string, testBool bool) {
 	// Start the CSI endpoint/server
 	s := csicommon.NewNonBlockingGRPCServer()
 	// Driver d acts as IdentityServer, ControllerServer and NodeServer
-	s.Start(endpoint, d, d, d, testBool)
+	s.Start(endpoint, d, d, d, testingMock)
 
 	// Start sending hearbeat and mark node as ready
 	if *isNodePlugin {

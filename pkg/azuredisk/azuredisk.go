@@ -22,6 +22,7 @@ import (
 	"reflect"
 	"regexp"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
@@ -39,6 +40,8 @@ import (
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
+	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
+	consts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
@@ -60,6 +63,7 @@ const (
 	minimumDiskSizeGiB = 1
 
 	resourceNotFound = "ResourceNotFound"
+	rateLimited      = "rate limited"
 
 	// VolumeAttributes for Partition
 	volumeAttributePartition = "partition"
@@ -90,6 +94,14 @@ const (
 	kindField               = "kind"
 
 	WellKnownTopologyKey = "topology.kubernetes.io/zone"
+	throttlingKey        = "throttlingKey"
+
+	pvcNameKey      = "csi.storage.k8s.io/pvc/name"
+	pvcNamespaceKey = "csi.storage.k8s.io/pvc/namespace"
+	pvNameKey       = "csi.storage.k8s.io/pv/name"
+	pvcNameTag      = "kubernetes.io-created-for-pvc-name"
+	pvcNamespaceTag = "kubernetes.io-created-for-pvc-namespace"
+	pvNameTag       = "kubernetes.io-created-for-pv-name"
 )
 
 var (
@@ -104,7 +116,7 @@ type CSIDriver interface {
 	csi.NodeServer
 	csi.IdentityServer
 
-	Run(endpoint, kubeconfig string, testMode bool)
+	Run(endpoint, kubeconfig string, disableAVSetNodes, testMode bool)
 }
 
 // DriverCore contains fields common to both the V1 and V2 driver, and implements all interfaces of CSI drivers
@@ -118,6 +130,8 @@ type Driver struct {
 	cloud       *azure.Cloud
 	mounter     *mount.SafeFormatAndMount
 	volumeLocks *volumehelper.VolumeLocks
+	// a timed cache GetDisk throttling
+	getDiskThrottlingCache *azcache.TimedCache
 }
 
 // newDriverV1 Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
@@ -128,11 +142,19 @@ func newDriverV1(nodeID string) *Driver {
 	driver.Version = driverVersion
 	driver.NodeID = nodeID
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
+
+	cache, err := azcache.NewTimedcache(5*time.Minute, func(key string) (interface{}, error) {
+		return nil, nil
+	})
+	if err != nil {
+		klog.Fatalf("%v", err)
+	}
+	driver.getDiskThrottlingCache = cache
 	return &driver
 }
 
 // Run driver initialization
-func (d *Driver) Run(endpoint, kubeconfig string, testBool bool) {
+func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock bool) {
 	versionMeta, err := GetVersionYAML()
 	if err != nil {
 		klog.Fatalf("%v", err)
@@ -158,8 +180,17 @@ func (d *Driver) Run(endpoint, kubeconfig string, testBool bool) {
 	if d.NodeID == "" {
 		// Disable UseInstanceMetadata for controller to mitigate a timeout issue using IMDS
 		// https://github.com/kubernetes-sigs/azuredisk-csi-driver/issues/168
-		klog.Infoln("disable UseInstanceMetadata for controller")
+		klog.V(2).Infof("disable UseInstanceMetadata for controller")
 		d.cloud.Config.UseInstanceMetadata = false
+
+		if d.cloud.VMType == consts.VMTypeVMSS && !d.cloud.DisableAvailabilitySetNodes {
+			if disableAVSetNodes {
+				klog.V(2).Infof("DisableAvailabilitySetNodes for controller since current VMType is vmss")
+				d.cloud.DisableAvailabilitySetNodes = true
+			} else {
+				klog.Warningf("DisableAvailabilitySetNodes for controller is set as false while current VMType is vmss")
+			}
+		}
 	}
 
 	d.mounter, err = mounter.NewSafeMounter()
@@ -187,7 +218,7 @@ func (d *Driver) Run(endpoint, kubeconfig string, testBool bool) {
 
 	s := csicommon.NewNonBlockingGRPCServer()
 	// Driver d act as IdentityServer, ControllerServer and NodeServer
-	s.Start(endpoint, d, d, d, testBool)
+	s.Start(endpoint, d, d, d, testingMock)
 	s.Wait()
 }
 
@@ -217,6 +248,15 @@ func GetResourceGroupFromURI(diskURI string) (string, error) {
 	return fields[4], nil
 }
 
+func (d *Driver) isGetDiskThrottled() bool {
+	cache, err := d.getDiskThrottlingCache.Get(throttlingKey, azcache.CacheReadTypeDefault)
+	if err != nil {
+		klog.Warningf("getDiskThrottlingCache(%s) return with error: %s", throttlingKey, err)
+		return false
+	}
+	return cache != nil
+}
+
 func (d *Driver) checkDiskExists(ctx context.Context, diskURI string) error {
 	diskName, err := GetDiskName(diskURI)
 	if err != nil {
@@ -228,7 +268,17 @@ func (d *Driver) checkDiskExists(ctx context.Context, diskURI string) error {
 		return err
 	}
 
+	if d.isGetDiskThrottled() {
+		klog.Warningf("skip checkDiskExists(%s) since it's still in throttling", diskURI)
+		return nil
+	}
+
 	if _, rerr := d.cloud.DisksClient.Get(ctx, resourceGroup, diskName); rerr != nil {
+		if strings.Contains(rerr.RawError.Error(), rateLimited) {
+			klog.Warningf("checkDiskExists(%s) is throttled with error: %v", diskURI, rerr.Error())
+			d.getDiskThrottlingCache.Set(throttlingKey, "")
+			return nil
+		}
 		return rerr.Error()
 	}
 
@@ -236,12 +286,22 @@ func (d *Driver) checkDiskExists(ctx context.Context, diskURI string) error {
 }
 
 func (d *Driver) checkDiskCapacity(ctx context.Context, resourceGroup, diskName string, requestGiB int) (bool, error) {
-	disk, err := d.cloud.DisksClient.Get(ctx, resourceGroup, diskName)
+	if d.isGetDiskThrottled() {
+		klog.Warningf("skip checkDiskCapacity((%s, %s) since it's still in throttling", resourceGroup, diskName)
+		return true, nil
+	}
+
+	disk, rerr := d.cloud.DisksClient.Get(ctx, resourceGroup, diskName)
 	// Because we can not judge the reason of the error. Maybe the disk does not exist.
 	// So here we do not handle the error.
-	if err == nil {
+	if rerr == nil {
 		if !reflect.DeepEqual(disk, compute.Disk{}) && disk.DiskSizeGB != nil && int(*disk.DiskSizeGB) != requestGiB {
 			return false, status.Errorf(codes.AlreadyExists, "the request volume already exists, but its capacity(%v) is different from (%v)", *disk.DiskProperties.DiskSizeGB, requestGiB)
+		}
+	} else {
+		if strings.Contains(rerr.RawError.Error(), rateLimited) {
+			klog.Warningf("checkDiskCapacity(%s, %s) is throttled with error: %v", resourceGroup, diskName, rerr.Error())
+			d.getDiskThrottlingCache.Set(throttlingKey, "")
 		}
 	}
 	return true, nil

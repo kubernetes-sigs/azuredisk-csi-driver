@@ -9,15 +9,20 @@ helm repo add azuredisk-csi-driver https://raw.githubusercontent.com/kubernetes-
 helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system
 ```
 
-## install on Azure Stack
+### install a specific version
+```console
+helm repo add azuredisk-csi-driver https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts
+helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v1.3.0
+```
+
+### install on Azure Stack
 ```console
 helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --set cloud=AzureStackCloud
 ```
 
-### install a specific version
+### install on RedHat/CentOS
 ```console
-helm repo add azuredisk-csi-driver https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts
-helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v1.1.1
+helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --set linux.distro=fedora
 ```
 
 ### search for all available chart versions
@@ -49,10 +54,10 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `image.csiResizer.tag`                            | csi-resizer docker image tag                               | v0.5.0                                                       |
 | `image.csiResizer.pullPolicy`                     | csi-resizer image pull policy                              | IfNotPresent                                                 |
 | `image.livenessProbe.repository`                  | liveness-probe docker image                                | mcr.microsoft.com/oss/kubernetes-csi/livenessprobe           |
-| `image.livenessProbe.tag`                         | liveness-probe docker image tag                            | v1.1.0                                                       |
+| `image.livenessProbe.tag`                         | liveness-probe docker image tag                            | v2.3.0                                                       |
 | `image.livenessProbe.pullPolicy`                  | liveness-probe image pull policy                           | IfNotPresent                                                 |
 | `image.nodeDriverRegistrar.repository`            | csi-node-driver-registrar docker image                     | mcr.microsoft.com/oss/kubernetes-csi/csi-node-driver-registrar |
-| `image.nodeDriverRegistrar.tag`                   | csi-node-driver-registrar docker image tag                 | v1.2.0                                                       |
+| `image.nodeDriverRegistrar.tag`                   | csi-node-driver-registrar docker image tag                 | v2.2.0                                                       |
 | `image.nodeDriverRegistrar.pullPolicy`            | csi-node-driver-registrar image pull policy                | IfNotPresent                                                 |
 | `imagePullSecrets`                                | Specify docker-registry secret names as an array           | [] (does not add image pull secrets to deployed pods)        |                                       |
 | `serviceAccount.create`                           | whether create service account of csi-azuredisk-controller | true                                                         |
@@ -74,16 +79,18 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `snapshot.snapshotController.serviceAccount`      | whether create service account of snapshot-controller      | true                                                         |
 | `snapshot.snapshotController.rbac`                | whether create rbac of snapshot-controller                 | true                                                         |
 | `linux.enabled`                                   | whether enable linux feature                               | true                                                         |
+| `linux.kubelet`                                   | configure kubelet directory path on Linux agent node                  | `/var/lib/kubelet`                                                |
+| `linux.distro`                                   | configure ssl certificates for different Linux distribution(available values: `debian`, `fedora`)                  | `debian`                                                |
 | `windows.enabled`                                 | whether enable windows feature                             | true                                                        |
+| `windows.kubelet`                                 | configure kubelet directory path on Windows agent node                | `'C:\var\lib\kubelet'`                                            |
 | `windows.image.livenessProbe.repository`          | windows liveness-probe docker image                        | mcr.microsoft.com/oss/kubernetes-csi/livenessprobe           |
-| `windows.image.livenessProbe.tag`                 | windows liveness-probe docker image tag                    | v2.0.1-alpha.1-windows-1809-amd64                            |
+| `windows.image.livenessProbe.tag`                 | windows liveness-probe docker image tag                    | v2.3.0                           |
 | `windows.image.livenessProbe.pullPolicy`          | windows liveness-probe image pull policy                   | IfNotPresent                                                 |
 | `windows.image.nodeDriverRegistrar.repository`    | windows csi-node-driver-registrar docker image             | mcr.microsoft.com/oss/kubernetes-csi/csi-node-driver-registrar |
-| `windows.image.nodeDriverRegistrar.tag`           | windows csi-node-driver-registrar docker image tag         | v1.2.1-alpha.1-windows-1809-amd64                            |
+| `windows.image.nodeDriverRegistrar.tag`           | windows csi-node-driver-registrar docker image tag         | v2.2.0                          |
 | `windows.image.nodeDriverRegistrar.pullPolicy`    | windows csi-node-driver-registrar image pull policy        | IfNotPresent                                                 |
-| `kubelet.linuxPath`                               | configure the kubelet path for Linux node                  | `/var/lib/kubelet`                                                |
-| `kubelet.windowsPath`                             | configure the kubelet path for Windows node                | `'C:\var\lib\kubelet'`                                            |
 | `cloud`                                           | the cloud environment the driver is running on             | AzurePublicCloud                                                  |
+| `node.livenessProbe.healthPort `                  | the health check port for liveness probe                   | `29603` |
 
 ## troubleshooting
  - Add `--wait -v=5 --debug` in `helm install` command to get detailed error

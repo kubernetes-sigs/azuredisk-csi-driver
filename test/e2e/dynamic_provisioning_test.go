@@ -171,6 +171,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			Pods:                   pods,
 			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
 		}
+		if !isUsingInTreeVolumePlugin && (location == "westus2" || location == "westeurope") {
+			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
+		}
 		if isAzureStackCloud {
 			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}
 		}
@@ -226,6 +229,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			CSIDriver:              testDriver,
 			Pods:                   pods,
 			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
+		}
+		if !isUsingInTreeVolumePlugin && (location == "westus2" || location == "westeurope") {
+			test.StorageClassParameters = map[string]string{"skuName": "Premium_ZRS"}
 		}
 		if isAzureStackCloud {
 			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}
@@ -640,7 +646,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		test.Run(cs, ns, schedulerName)
 	})
 
-	ginkgo.It(fmt.Sprintf("should create a volume azuredisk with tag  [disk.csi.azure.com] [Windows] [%s]", schedulerName), func() {
+	ginkgo.It(fmt.Sprintf("should create a volume azuredisk with tag [disk.csi.azure.com] [Windows] [%s]", schedulerName), func() {
 		skipIfUsingInTreeVolumePlugin()
 		pods := []testsuites.PodDetails{
 			{

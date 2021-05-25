@@ -20,7 +20,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2019-06-01/storage"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2021-02-01/storage"
 	"github.com/Azure/go-autorest/autorest/to"
 
 	"k8s.io/klog/v2"
@@ -38,7 +39,10 @@ type AccountOptions struct {
 	// indicate whether create new account when Name is empty
 	EnableHTTPSTrafficOnly                  bool
 	CreateAccount                           bool
+	EnableLargeFileShare                    bool
 	DisableFileServiceDeleteRetentionPolicy bool
+	IsHnsEnabled                            *bool
+	EnableNfsV3                             *bool
 	Tags                                    map[string]string
 	VirtualNetworkResourceIDs               []string
 }
@@ -85,7 +89,7 @@ func (az *Cloud) getStorageAccounts(accountOptions *AccountOptions) ([]accountWi
 				found := false
 				for _, subnetID := range accountOptions.VirtualNetworkResourceIDs {
 					for _, rule := range *acct.AccountProperties.NetworkRuleSet.VirtualNetworkRules {
-						if strings.EqualFold(to.String(rule.VirtualNetworkResourceID), subnetID) && rule.Action == storage.Allow {
+						if strings.EqualFold(to.String(rule.VirtualNetworkResourceID), subnetID) && rule.Action == storage.ActionAllow {
 							found = true
 							break
 						}
@@ -96,12 +100,24 @@ func (az *Cloud) getStorageAccounts(accountOptions *AccountOptions) ([]accountWi
 				}
 			}
 
+			if acct.Sku.Tier != storage.SkuTier(compute.PremiumLRS) && accountOptions.EnableLargeFileShare && (len(acct.LargeFileSharesState) == 0 || acct.LargeFileSharesState == storage.LargeFileSharesStateDisabled) {
+				continue
+			}
+
 			if acct.Tags != nil {
 				// skip account with SkipMatchingTag tag
 				if _, ok := acct.Tags[SkipMatchingTag]; ok {
 					klog.V(2).Infof("found %s tag for account %s, skip matching", SkipMatchingTag, *acct.Name)
 					continue
 				}
+			}
+
+			if to.Bool(acct.IsHnsEnabled) != to.Bool(accountOptions.IsHnsEnabled) {
+				continue
+			}
+
+			if to.Bool(acct.EnableNfsV3) != to.Bool(accountOptions.EnableNfsV3) {
+				continue
 			}
 			accounts = append(accounts, accountWithLocation{Name: *acct.Name, StorageType: storageType, Location: location})
 		}
@@ -171,7 +187,7 @@ func (az *Cloud) EnsureStorageAccount(accountOptions *AccountOptions, genAccount
 			for i, subnetID := range accountOptions.VirtualNetworkResourceIDs {
 				vnetRule := storage.VirtualNetworkRule{
 					VirtualNetworkResourceID: &accountOptions.VirtualNetworkResourceIDs[i],
-					Action:                   storage.Allow,
+					Action:                   storage.ActionAllow,
 				}
 				virtualNetworkRules = append(virtualNetworkRules, vnetRule)
 				klog.V(4).Infof("subnetID(%s) has been set", subnetID)
@@ -212,10 +228,16 @@ func (az *Cloud) EnsureStorageAccount(accountOptions *AccountOptions, genAccount
 				AccountPropertiesCreateParameters: &storage.AccountPropertiesCreateParameters{
 					EnableHTTPSTrafficOnly: &enableHTTPSTrafficOnly,
 					NetworkRuleSet:         networkRuleSet,
+					IsHnsEnabled:           accountOptions.IsHnsEnabled,
+					EnableNfsV3:            accountOptions.EnableNfsV3,
 				},
 				Tags:     tags,
 				Location: &location}
 
+			if accountOptions.EnableLargeFileShare {
+				klog.V(2).Infof("Enabling LargeFileShare for the storage account")
+				cp.AccountPropertiesCreateParameters.LargeFileSharesState = storage.LargeFileSharesStateEnabled
+			}
 			if az.StorageAccountClient == nil {
 				return "", "", fmt.Errorf("StorageAccountClient is nil")
 			}

@@ -108,6 +108,54 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 				test.Run(cs, ns, schedulerName)
 			})
 
+			ginkgo.It(fmt.Sprintf("should succeed when creating a shared disk with single pod [disk.csi.azure.com][shared disk][%s]", schedulerName), func() {
+				skipIfUsingInTreeVolumePlugin()
+				skipIfOnAzureStackCloud()
+				sharedDiskSize := int64(1024)
+				req := makeCreateVolumeReq("shared-disk-multiple-pods", sharedDiskSize)
+				req.Parameters = map[string]string{
+					"skuName":     "Premium_LRS",
+					"maxShares":   "5",
+					"cachingMode": "None",
+				}
+				req.VolumeCapabilities[0].AccessType = &csi.VolumeCapability_Block{
+					Block: &csi.VolumeCapability_BlockVolume{},
+				}
+				resp, err := azurediskDriver.CreateVolume(context.Background(), req)
+				if err != nil {
+					ginkgo.Fail(fmt.Sprintf("create volume error: %v", err))
+				}
+				volumeID = resp.Volume.VolumeId
+				ginkgo.By(fmt.Sprintf("Successfully provisioned a shared disk volume: %q\n", volumeID))
+
+				diskSize := fmt.Sprintf("%dGi", sharedDiskSize)
+				pods := []testsuites.PodDetails{}
+				for i := 1; i <= 1; i++ {
+					pod := testsuites.PodDetails{
+						Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
+						Volumes: []testsuites.VolumeDetails{
+							{
+								VolumeID:  volumeID,
+								ClaimSize: diskSize,
+								VolumeMount: testsuites.VolumeMountDetails{
+									NameGenerate:      "test-volume-",
+									MountPathGenerate: "/mnt/test-",
+								},
+							},
+						},
+						IsWindows: isWindowsCluster,
+					}
+					pods = append(pods, pod)
+				}
+
+				test := testsuites.PreProvisionedMultiplePodsTest{
+					CSIDriver:     testDriver,
+					Pods:          pods,
+					VolumeContext: resp.Volume.VolumeContext,
+				}
+				test.Run(cs, ns, schedulerName)
+			})
+
 			ginkgo.It(fmt.Sprintf("should succeed when creating a shared disk with multiple pods [disk.csi.azure.com][shared disk][%s]", schedulerName), func() {
 				skipIfUsingInTreeVolumePlugin()
 				skipIfOnAzureStackCloud()

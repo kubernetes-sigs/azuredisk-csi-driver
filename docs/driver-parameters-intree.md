@@ -15,9 +15,19 @@ location | specify the Azure location in which azure disk will be created | `eas
 resourceGroup | specify the resource group in which azure disk will be created | existing resource group name | No | if empty, driver will use the same resource group name as current k8s cluster
 DiskIOPSReadWrite | [UltraSSD disk](https://docs.microsoft.com/en-us/azure/virtual-machines/linux/disks-ultra-ssd) IOPS Capability (minimum: 2 IOPS/GiB ) | 100~160000 | No | `500`
 DiskMBpsReadWrite | [UltraSSD disk](https://docs.microsoft.com/en-us/azure/virtual-machines/linux/disks-ultra-ssd) Throughput Capability(minimum: 0.032/GiB) | 1~2000 | No | `100`
-tags | azure disk [tags](https://docs.microsoft.com/en-us/azure/azure-resource-manager/management/tag-resources) | tag format: `key1=val1,key2=val2` | No | ""
+tags | Azure disk [tags](https://docs.microsoft.com/en-us/azure/azure-resource-manager/management/tag-resources), available from k8s v1.19.0 | tag format: `key1=val1,key2=val2` | No | ""
 diskEncryptionSetID | ResourceId of the disk encryption set to use for [enabling encryption at rest](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/disk-encryption) | format: `/subscriptions/{subs-id}/resourceGroups/{rg-name}/providers/Microsoft.Compute/diskEncryptionSets/{diskEncryptionSet-name}` | No | ""
 writeAcceleratorEnabled | [Write Accelerator on Azure Disks](https://docs.microsoft.com/azure/virtual-machines/windows/how-to-enable-write-accelerator) | `true`, `false` | No | ""
+
+ - disk created by dynamic provisioning
+   - disk name format(example): `kubernetes-dynamic-pvc-e132d37f-9e8f-434a-b599-15a4ab211b39`
+   - tags format(example):
+```
+created-by: kubernetes-azure-dd
+kubernetes.io-created-for-pv-name: pvc-e132d37f-9e8f-434a-b599-15a4ab211b39
+kubernetes.io-created-for-pvc-name: pvc-azuredisk
+kubernetes.io-created-for-pvc-namespace: default
+```
 
 ### Static Provisioning(bring your own disk)
 

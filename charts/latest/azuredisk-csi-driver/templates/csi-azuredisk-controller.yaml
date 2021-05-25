@@ -14,6 +14,10 @@ spec:
 {{ include "azuredisk.labels" . | indent 6 }}
         app: csi-azuredisk-controller
     spec:
+      {{- if .Values.imagePullSecrets }}
+      imagePullSecrets:
+{{ toYaml .Values.imagePullSecrets | indent 8 }}
+      {{- end }}
       hostNetwork: true
       serviceAccountName: csi-azuredisk-controller-sa
       nodeSelector:
@@ -41,6 +45,8 @@ spec:
             - "--v=2"
             - "--timeout=15s"
             - "--leader-election"
+            - "--worker-threads={{ .Values.controller.provisionerWorkerThreads }}"
+            - "--extra-create-metadata=true"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -61,6 +67,7 @@ spec:
             - "-csi-address=$(ADDRESS)"
             - "-timeout=120s"
             - "-leader-election"
+            - "-worker-threads={{ .Values.controller.attacherWorkerThreads }}"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -138,6 +145,7 @@ spec:
             - "--v={{ .Values.controller.logLevel }}"
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--metrics-address=0.0.0.0:{{ .Values.controller.metricsPort }}"
+            - "--disable-avset-nodes={{ .Values.controller.disableAvailabilitySetNodes }}"
           ports:
             - containerPort: 29602
               name: healthz
@@ -180,6 +188,14 @@ spec:
               mountPath: /etc/ssl/certs
               readOnly: true
             {{- end }}
+            {{- if eq .Values.linux.distro "fedora" }}
+            - name: ssl
+              mountPath: /etc/ssl/certs
+              readOnly: true
+            - name: ssl-pki
+              mountPath: /etc/pki/ca-trust/extracted
+              readOnly: true
+            {{- end }}
           resources:
             limits:
               cpu: 200m
@@ -201,4 +217,12 @@ spec:
         - name: ssl
           hostPath:
             path: /etc/ssl/certs
+        {{- end }}
+        {{- if eq .Values.linux.distro "fedora" }}
+        - name: ssl
+          hostPath:
+            path: /etc/ssl/certs
+        - name: ssl-pki
+          hostPath:
+            path: /etc/pki/ca-trust/extracted
         {{- end }}

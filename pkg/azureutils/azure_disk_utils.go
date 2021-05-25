@@ -69,7 +69,6 @@ const (
 	SourceVolume              = "volume"
 	DriverName                = "disk.csi.azure.com"
 	CSIDriverMetricPrefix     = "azuredisk_csi_driver"
-	CreatedForPVNameKey       = "kubernetes.io-created-for-pv-name"
 	ResizeRequired            = "resizeRequired"
 	SourceDiskSearchMaxDepth  = 10
 	CachingModeField          = "cachingmode"
@@ -96,6 +95,14 @@ const (
 
 	// ZRS specific constants
 	WellKnownTopologyKey = "topology.kubernetes.io/zone"
+
+	PVCNameKey      = "csi.storage.k8s.io/pvc/name"
+	PVCNamespaceKey = "csi.storage.k8s.io/pvc/namespace"
+	PVNameKey       = "csi.storage.k8s.io/pv/name"
+
+	PVCNameTag      = "kubernetes.io-created-for-pvc-name"
+	PVCNamespaceTag = "kubernetes.io-created-for-pvc-namespace"
+	PVNameTag       = "kubernetes.io-created-for-pv-name"
 )
 
 var (
@@ -191,7 +198,9 @@ func GetAzureCloudProvider(kubeClient clientset.Interface) (*azure.Cloud, error)
 	if kubeClient != nil {
 		klog.V(2).Infof("reading cloud config from secret")
 		az.KubeClient = kubeClient
-		az.InitializeCloudFromSecret()
+		if err := az.InitializeCloudFromSecret(); err != nil {
+			klog.V(2).Infof("InitializeCloudFromSecret failed with error: %v", err)
+		}
 	}
 
 	if az.TenantID == "" || az.SubscriptionID == "" || az.ResourceGroup == "" {

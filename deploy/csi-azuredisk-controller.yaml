@@ -37,6 +37,8 @@ spec:
             - "--v=2"
             - "--timeout=15s"
             - "--leader-election"
+            - "--worker-threads=40"
+            - "--extra-create-metadata=true"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -57,6 +59,7 @@ spec:
             - "-csi-address=$(ADDRESS)"
             - "-timeout=120s"
             - "-leader-election"
+            - "-worker-threads=500"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -110,7 +113,7 @@ spec:
               cpu: 10m
               memory: 20Mi
         - name: liveness-probe
-          image: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe:v2.2.0
+          image: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe:v2.3.0
           args:
             - --csi-address=/csi/csi.sock
             - --probe-timeout=3s

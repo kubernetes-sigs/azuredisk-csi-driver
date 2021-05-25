@@ -19,6 +19,7 @@ package azuredisk
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
@@ -28,6 +29,7 @@ import (
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
+	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
@@ -102,6 +104,14 @@ func newFakeDriverV1(t *testing.T) (*fakeDriverV1, error) {
 	}
 
 	driver.mounter = mounter
+
+	cache, err := azcache.NewTimedcache(time.Minute, func(key string) (interface{}, error) {
+		return nil, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	driver.getDiskThrottlingCache = cache
 
 	driver.AddControllerServiceCapabilities(
 		[]csi.ControllerServiceCapability_RPC_Type{

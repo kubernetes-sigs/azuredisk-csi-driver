@@ -17,7 +17,6 @@
                     "--feature-gates": "CSIMigration=true,CSIMigrationAzureDisk=true,CSIMigrationAzureDiskComplete=true"
                 },
                 "apiServerConfig": {
-                    "--feature-gates": "VolumeSnapshotDataSource=true",
                     "--enable-admission-plugins": "NamespaceLifecycle,LimitRanger,ServiceAccount,DefaultStorageClass,ResourceQuota,AlwaysPullImages"
                 }
             }

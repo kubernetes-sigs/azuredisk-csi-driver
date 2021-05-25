@@ -69,7 +69,6 @@ const (
 	sourceVolume             = "volume"
 	azureDiskCSIDriverName   = "azuredisk_csi_driver"
 	NotFound                 = "NotFound"
-	CreatedForPVNameKey      = "kubernetes.io-created-for-pv-name"
 	resizeRequired           = "resizeRequired"
 	sourceDiskSearchMaxDepth = 10
 )
@@ -104,10 +103,9 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	defer d.volumeLocks.Release(name)
 
 	requestGiB := minimumDiskSizeGiB
-	volSizeBytes := volumehelper.GiBToBytes(int64(requestGiB))
 
 	if req.GetCapacityRange() != nil {
-		volSizeBytes = req.GetCapacityRange().GetRequiredBytes()
+		volSizeBytes := req.GetCapacityRange().GetRequiredBytes()
 		requestGiB = int(volumehelper.RoundUpGiB(volSizeBytes))
 		if requestGiB < minimumDiskSizeGiB {
 			requestGiB = minimumDiskSizeGiB
@@ -135,6 +133,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		maxShares               int
 	)
 
+	tags := make(map[string]string)
 	parameters := req.GetParameters()
 	if parameters == nil {
 		parameters = make(map[string]string)
@@ -176,6 +175,12 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			if maxShares < 1 {
 				return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("parse %s returned with invalid value: %d", v, maxShares))
 			}
+		case pvcNameKey:
+			tags[pvcNameTag] = v
+		case pvcNamespaceKey:
+			tags[pvcNamespaceTag] = v
+		case pvNameKey:
+			tags[pvNameTag] = v
 		case fsTypeField:
 			// no op, only used in NodeStageVolume
 		case kindField:
@@ -268,12 +273,10 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	klog.V(2).Infof("begin to create azure disk(%s) account type(%s) rg(%s) location(%s) size(%d) diskZone(%v) maxShares(%d)",
 		diskName, skuName, resourceGroup, location, requestGiB, diskZone, maxShares)
 
-	tags := make(map[string]string)
 	contentSource := &csi.VolumeContentSource{}
 	for k, v := range customTagsMap {
 		tags[k] = v
 	}
-	tags[CreatedForPVNameKey] = name
 
 	if strings.EqualFold(writeAcceleratorEnabled, "true") {
 		tags[azure.WriteAcceleratorEnabled] = "true"
@@ -327,6 +330,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		MaxShares:           int32(maxShares),
 		LogicalSectorSize:   int32(logicalSectorSize),
 	}
+	volumeOptions.SkipGetDiskOperation = d.isGetDiskThrottled()
 	diskURI, err := d.cloud.CreateManagedDisk(volumeOptions)
 	if err != nil {
 		if strings.Contains(err.Error(), NotFound) {
@@ -341,7 +345,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
 			VolumeId:           diskURI,
-			CapacityBytes:      volSizeBytes,
+			CapacityBytes:      volumehelper.GiBToBytes(int64(requestGiB)),
 			VolumeContext:      parameters,
 			ContentSource:      contentSource,
 			AccessibleTopology: accessibleTopology,
@@ -406,8 +410,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		return nil, status.Error(codes.InvalidArgument, "Volume capability not supported")
 	}
 
-	err := d.checkDiskExists(ctx, diskURI)
-	if err != nil {
+	if err := d.checkDiskExists(ctx, diskURI); err != nil {
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume not found, failed with error: %v", err))
 	}
 
@@ -456,6 +459,11 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 			klog.V(2).Infof("Attach operation successful: volume %q attached to node %q.", diskURI, nodeName)
 		} else {
 			if derr, ok := err.(*volerr.DanglingAttachError); ok {
+				if strings.EqualFold(string(nodeName), string(derr.CurrentNode)) {
+					err := fmt.Errorf("volume %q is actually attached to current node %q, return error", diskURI, nodeName)
+					klog.Warningf("%v", err)
+					return nil, err
+				}
 				klog.Warningf("volume %q is already attached to node %q, try detach first", diskURI, derr.CurrentNode)
 				if err = d.cloud.DetachDisk(diskName, diskURI, derr.CurrentNode); err != nil {
 					return nil, status.Errorf(codes.Internal, "Could not detach volume %q from node %q: %v", diskURI, derr.CurrentNode, err)

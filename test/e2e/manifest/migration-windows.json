@@ -16,7 +16,6 @@
                     "--feature-gates": "CSIMigration=true,CSIMigrationAzureDisk=true,CSIMigrationAzureDiskComplete=true"
                 },
                 "apiServerConfig": {
-                    "--feature-gates": "VolumeSnapshotDataSource=true",
                     "--enable-admission-plugins": "NamespaceLifecycle,LimitRanger,ServiceAccount,DefaultStorageClass,ResourceQuota,AlwaysPullImages"
                 }
             }
@@ -46,7 +45,7 @@
             "windowsOffer": "aks-windows",
             "windowsSku": "aks-2019-datacenter-core-smalldisk-2101",
             "imageVersion": "17763.1697.210113"
-        },        
+        },
         "linuxProfile": {
             "adminUsername": "azureuser",
             "ssh": {

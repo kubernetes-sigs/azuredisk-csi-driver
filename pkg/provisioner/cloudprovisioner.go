@@ -103,6 +103,7 @@ func (c *CloudProvisioner) CreateVolume(
 		maxShares               int
 	)
 
+	tags := make(map[string]string)
 	if parameters == nil {
 		parameters = make(map[string]string)
 	}
@@ -144,6 +145,12 @@ func (c *CloudProvisioner) CreateVolume(
 			if maxShares < 1 {
 				return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("parse %s returned with invalid value: %d", v, maxShares))
 			}
+		case azureutils.PVCNameKey:
+			tags[azureutils.PVCNameTag] = v
+		case azureutils.PVCNamespaceKey:
+			tags[azureutils.PVCNamespaceTag] = v
+		case azureutils.PVNameKey:
+			tags[azureutils.PVNameTag] = v
 
 		// The following parameter is not used by the cloud provisioner, but must be present in the VolumeContext
 		// returned to the caller so that it is included in the parameters passed to Node{Publish|Stage}Volume.
@@ -232,11 +239,9 @@ func (c *CloudProvisioner) CreateVolume(
 	klog.V(2).Infof("begin to create disk(%s) account type(%s) rg(%s) location(%s) size(%d) selectedAvailabilityZone(%v) maxShares(%d)",
 		diskName, skuName, resourceGroup, location, requestGiB, selectedAvailabilityZone, maxShares)
 
-	tags := make(map[string]string)
 	for k, v := range customTagsMap {
 		tags[k] = v
 	}
-	tags[azureutils.CreatedForPVNameKey] = volumeName
 
 	if strings.EqualFold(writeAcceleratorEnabled, "true") {
 		tags[azure.WriteAcceleratorEnabled] = "true"
