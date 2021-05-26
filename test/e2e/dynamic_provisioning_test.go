@@ -140,6 +140,66 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		test.Run(cs, ns)
 	})
 
+	ginkgo.It("Should create and attach a volume with default perfProfile [disk.csi.azure.com] [Windows]", func() {
+		skipIfOnAzureStackCloud()
+		skipIfUsingInTreeVolumePlugin()
+		pods := []testsuites.PodDetails{
+			{
+				Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
+				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+					{
+						FSType:    "ext4",
+						ClaimSize: "10Gi",
+						VolumeMount: testsuites.VolumeMountDetails{
+							NameGenerate:      "test-volume-",
+							MountPathGenerate: "/mnt/test-",
+						},
+					},
+				}, isMultiZone),
+				IsWindows: isWindowsCluster,
+			},
+		}
+		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
+			CSIDriver: testDriver,
+			Pods:      pods,
+			StorageClassParameters: map[string]string{
+				"skuName":     "Premium_LRS",
+				"perfProfile": "Default",
+			},
+		}
+		test.Run(cs, ns)
+	})
+
+	ginkgo.It("Should create and attach a volume with none perfProfile [disk.csi.azure.com] [Windows]", func() {
+		skipIfOnAzureStackCloud()
+		skipIfUsingInTreeVolumePlugin()
+		pods := []testsuites.PodDetails{
+			{
+				Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
+				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+					{
+						FSType:    "ext4",
+						ClaimSize: "10Gi",
+						VolumeMount: testsuites.VolumeMountDetails{
+							NameGenerate:      "test-volume-",
+							MountPathGenerate: "/mnt/test-",
+						},
+					},
+				}, isMultiZone),
+				IsWindows: isWindowsCluster,
+			},
+		}
+		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
+			CSIDriver: testDriver,
+			Pods:      pods,
+			StorageClassParameters: map[string]string{
+				"skuName":     "Premium_LRS",
+				"perfProfile": "None",
+			},
+		}
+		test.Run(cs, ns)
+	})
+
 	ginkgo.It("should receive FailedMount event with invalid mount options [kubernetes.io/azure-disk] [disk.csi.azure.com]", func() {
 		skipIfTestingInWindowsCluster()
 
@@ -504,66 +564,6 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			CSIDriver:              testDriver,
 			Pods:                   pods,
 			StorageClassParameters: map[string]string{"skuName": "Premium_LRS"},
-		}
-		test.Run(cs, ns)
-	})
-
-	ginkgo.It("Should create and attach a volume with default perfProfile [disk.csi.azure.com] [Windows]", func() {
-		skipIfOnAzureStackCloud()
-		skipIfUsingInTreeVolumePlugin()
-		pods := []testsuites.PodDetails{
-			{
-				Cmd: "echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data",
-				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
-					{
-						FSType:    "ext4",
-						ClaimSize: "10Gi",
-						VolumeMount: testsuites.VolumeMountDetails{
-							NameGenerate:      "test-volume-",
-							MountPathGenerate: "/mnt/test-",
-						},
-					},
-				}, isMultiZone),
-				IsWindows: isWindowsCluster,
-			},
-		}
-		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
-			CSIDriver: testDriver,
-			Pods:      pods,
-			StorageClassParameters: map[string]string{
-				"skuName":     "Premium_LRS",
-				"perfProfile": "Default",
-			},
-		}
-		test.Run(cs, ns)
-	})
-
-	ginkgo.It("Should create and attach a volume with none perfProfile [disk.csi.azure.com] [Windows]", func() {
-		skipIfOnAzureStackCloud()
-		skipIfUsingInTreeVolumePlugin()
-		pods := []testsuites.PodDetails{
-			{
-				Cmd: "echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data",
-				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
-					{
-						FSType:    "ext4",
-						ClaimSize: "10Gi",
-						VolumeMount: testsuites.VolumeMountDetails{
-							NameGenerate:      "test-volume-",
-							MountPathGenerate: "/mnt/test-",
-						},
-					},
-				}, isMultiZone),
-				IsWindows: isWindowsCluster,
-			},
-		}
-		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
-			CSIDriver: testDriver,
-			Pods:      pods,
-			StorageClassParameters: map[string]string{
-				"skuName":     "Premium_LRS",
-				"perfProfile": "None",
-			},
 		}
 		test.Run(cs, ns)
 	})
