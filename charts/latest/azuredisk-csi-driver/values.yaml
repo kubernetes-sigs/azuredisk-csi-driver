@@ -41,7 +41,6 @@ controller:
 
 node:
   metricsPort: 29605
-  enablePerfOptimization: true
   logLevel: 5
   livenessProbe:
     healthPort: 29603
@@ -66,6 +65,7 @@ linux:
   enabled: true
   kubelet: /var/lib/kubelet
   distro: debian
+  enablePerfOptimization: true
 
 windows:
   enabled: true

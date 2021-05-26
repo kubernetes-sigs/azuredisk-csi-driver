@@ -88,9 +88,8 @@ import (
 	skuMap := map[string]bool{}
 
 	var resources []compute.ResourceSku
-	err := getAllSkus(skusFullfilePath)
 
-	if err != nil {
+	if err := getAllSkus(skusFullfilePath); err != nil {
 		klog.Errorf("Could not get skus. Error: %v", err)
 	}
 

@@ -48,7 +48,7 @@ any existing applications/configurations.
 Azure Disk CSI driver will read one extra parameter from the storageclass, `perfProfile`.
 
 - *perfprofile*: Users will be able to select a certain performance profile for their device to match their
-workload needs. In the beginning we will expose `Default` profile which sets the disks for balanaced IO and throughput
+workload needs. In the beginning we will expose `Basic` profile which sets the disks for balanaced IO and throughput
 workloads. If users want to keep this feature disabled they can skip adding `perfProfile` parameter in the storage class
 or set `perfProfile` to `None`. If `perfProfile` is set to an unknown value, it will result in CreateVolume failure.
 Please read the limitations to fully understand the options available today.
@@ -63,7 +63,7 @@ metadata:
 provisioner: disk.csi.azure.com
 parameters:
   skuName: Premium_LRS
-  perfProfile: Default
+  perfProfile: Basic # available values: None(by default), Basic. These are case insensitive.
 reclaimPolicy: Delete
 volumeBindingMode: Immediate
 allowVolumeExpansion: true
@@ -77,7 +77,7 @@ In this iteration we will only enable the feature for StandardSSD and Premium di
 
 - This feature is not supported for HDD or UltraDisk right now.
 - The current implementation only optimizes the disks which use the storVsc linux disk driver.
-- Only `Default` `perfProfile` is available today, which would provide balanced IO and throughput performance.
+- Only `Basic` `perfProfile` is available today, which would provide balanced IO and throughput performance.
 
 ## Future Considerations
 

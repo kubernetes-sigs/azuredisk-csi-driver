@@ -23,22 +23,22 @@ import (
 
 const (
 	PerfProfileNone          = "none"
-	PerfProfileDefault       = "default"
+	PerfProfileBasic         = "basic"
 	PremiumAccountPrefix     = "premium"
 	StandardSsdAccountPrefix = "standardssd"
 )
 
 // isValidPerfProfile Checks to see if perf profile passed is correct
-// Right now we are only supporing default profile
+// Right now we are only supporing basic profile
 // Other advanced profiles to come later
 func isValidPerfProfile(profile string) bool {
-	return strings.EqualFold(profile, PerfProfileDefault) || strings.EqualFold(profile, PerfProfileNone)
+	return strings.EqualFold(profile, PerfProfileBasic) || strings.EqualFold(profile, PerfProfileNone)
 }
 
 // isPerfTuningEnabled checks to see if perf tuning is enabled
 func isPerfTuningEnabled(profile string) bool {
 	switch strings.ToLower(profile) {
-	case PerfProfileDefault:
+	case PerfProfileBasic:
 		return true
 	default:
 		return false
@@ -46,13 +46,13 @@ func isPerfTuningEnabled(profile string) bool {
 }
 
 // getDiskPerfAttributes gets the per tuning mode and profile set in attributes
-func getDiskPerfAttributes(attributes map[string]string) (profile *string, accountType string, diskSizeGibStr string, diskIopsStr string, diskBwMbpsStr string, err error) {
-	profile = nil
+func getDiskPerfAttributes(attributes map[string]string) (profile string, accountType string, diskSizeGibStr string, diskIopsStr string, diskBwMbpsStr string, err error) {
+	perfProfilePresent := false
 	for k, v := range attributes {
 		switch strings.ToLower(k) {
 		case perfProfileField:
-			profileTemp := v
-			profile = &profileTemp
+			perfProfilePresent = true
+			profile = v
 		case skuNameField:
 			accountType = v
 		case requestedSizeGib:
@@ -66,13 +66,16 @@ func getDiskPerfAttributes(attributes map[string]string) (profile *string, accou
 		}
 	}
 
-	// if no perfProfile parameter was provided in the attributes
-	// set it to 'None'. Which means no optimization will be done.
-	if profile == nil {
-		nonePerfProfileTemp := PerfProfileNone
-		profile = &nonePerfProfileTemp
-	} else if !isValidPerfProfile(*profile) {
-		return profile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr, fmt.Errorf("Perf profile %s is invalid", *profile)
+	// If perfProfile was present in the volume attributes, use it
+	if perfProfilePresent {
+		// Make sure it's a valid perf profile
+		if !isValidPerfProfile(profile) {
+			return profile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr, fmt.Errorf("Perf profile %s is invalid", profile)
+		}
+	} else {
+		// if perfProfile parameter was not provided in the attributes
+		// set it to 'None'. Which means no optimization will be done.
+		profile = PerfProfileNone
 	}
 
 	return profile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr, nil

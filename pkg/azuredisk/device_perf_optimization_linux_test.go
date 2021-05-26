@@ -56,7 +56,7 @@ func Test_getOptimalDeviceSettings(t *testing.T) {
 	}{
 		{
 			name:           "Should return valid disk perf settings",
-			perfProfile:    "default",
+			perfProfile:    "basic",
 			accountType:    "Premium_LRS",
 			DiskSizeGibStr: "512",
 			diskIopsStr:    "100",
@@ -67,7 +67,7 @@ func Test_getOptimalDeviceSettings(t *testing.T) {
 		},
 		{
 			name:           "Should return valid disk perf settings with no capability published VM",
-			perfProfile:    "default",
+			perfProfile:    "basic",
 			accountType:    "Premium_LRS",
 			DiskSizeGibStr: "512",
 			diskIopsStr:    "100",
@@ -78,7 +78,7 @@ func Test_getOptimalDeviceSettings(t *testing.T) {
 		},
 		{
 			name:           "Should return error if matching disk sku is not found",
-			perfProfile:    "default",
+			perfProfile:    "basic",
 			accountType:    "Premium_LRS",
 			DiskSizeGibStr: "512123123123123213123",
 			diskIopsStr:    "100",

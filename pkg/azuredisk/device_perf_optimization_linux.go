@@ -134,7 +134,6 @@ func getDeviceName(lunPath string) (deviceName string, err error) {
 
 // echoToFile echos setting value to the file
 func echoToFile(content string, filePath string) (err error) {
-	klog.V(2).Infof("Echoing %s to %s", content, filePath)
 	cmd := exec.Command("echo", content)
 	outfile, err := os.Create(filePath)
 	if err != nil {

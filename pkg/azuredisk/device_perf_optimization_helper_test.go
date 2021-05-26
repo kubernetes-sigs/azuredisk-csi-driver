@@ -38,7 +38,7 @@ func TestIsValidPerfProfile(t *testing.T) {
 		},
 		{
 			name:    "default profile should return true",
-			profile: "default",
+			profile: "basic",
 			want:    true,
 		},
 	}
@@ -64,7 +64,7 @@ func TestIsPerfTuningEnabled(t *testing.T) {
 		},
 		{
 			name:    "default profile should return true",
-			profile: "default",
+			profile: "basic",
 			want:    true,
 		},
 		{
@@ -96,13 +96,13 @@ func TestGetDiskPerfAttributes(t *testing.T) {
 	}{
 		{
 			name:               "valid attributes should return all values",
-			wantProfile:        "default",
+			wantProfile:        "basic",
 			wantAccountType:    "Premium_LRS",
 			wantDiskSizeGibStr: "1024",
 			wantDiskIopsStr:    "100",
 			wantDiskBwMbpsStr:  "500",
 			wantErr:            false,
-			inAttributes:       map[string]string{perfProfileField: "default", skuNameField: "Premium_LRS", requestedSizeGib: "1024", diskIOPSReadWriteField: "100", diskMBPSReadWriteField: "500"},
+			inAttributes:       map[string]string{perfProfileField: "basic", skuNameField: "Premium_LRS", requestedSizeGib: "1024", diskIOPSReadWriteField: "100", diskMBPSReadWriteField: "500"},
 		},
 		{
 			name:               "incorrect profile should return error",
@@ -135,7 +135,7 @@ func TestGetDiskPerfAttributes(t *testing.T) {
 			}
 
 			if !tt.wantErr {
-				if *gotProfile != tt.wantProfile {
+				if gotProfile != tt.wantProfile {
 					t.Errorf("GetDiskPerfAttributes() gotProfile = %v, want %v", gotProfile, tt.wantProfile)
 				}
 				if gotAccountType != tt.wantAccountType {
