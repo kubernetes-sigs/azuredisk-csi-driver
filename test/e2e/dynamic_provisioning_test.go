@@ -140,7 +140,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		test.Run(cs, ns)
 	})
 
-	ginkgo.It("Should create and attach a volume with default perfProfile [disk.csi.azure.com] [Windows]", func() {
+	ginkgo.It("Should create and attach a volume with basic perfProfile [disk.csi.azure.com] [Windows]", func() {
 		skipIfOnAzureStackCloud()
 		skipIfUsingInTreeVolumePlugin()
 		pods := []testsuites.PodDetails{
@@ -164,7 +164,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			Pods:      pods,
 			StorageClassParameters: map[string]string{
 				"skuName":     "Premium_LRS",
-				"perfProfile": "Default",
+				"perfProfile": "Basic",
 			},
 		}
 		test.Run(cs, ns)
