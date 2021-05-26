@@ -38,6 +38,7 @@ spec:
             - "--timeout=15s"
             - "--enable-leader-election"
             - "--leader-election-type=leases"
+            - "--extra-create-metadata=true"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
