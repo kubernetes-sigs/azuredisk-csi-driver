@@ -309,7 +309,7 @@ func TestCreateVolume(t *testing.T) {
 					Parameters:         mp,
 				}
 				_, err := d.CreateVolume(context.Background(), req)
-				expectedErr := status.Error(codes.InvalidArgument, "Perf profile blah is not supported. Supported tuning modes are none and default.")
+				expectedErr := status.Error(codes.InvalidArgument, "Perf profile blah is not supported. Supported tuning modes are none and basic.")
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
