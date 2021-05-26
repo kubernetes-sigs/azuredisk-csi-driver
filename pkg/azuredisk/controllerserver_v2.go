@@ -147,7 +147,7 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 			// no op, only for compatibility
 		case perfProfileField:
 			if !isValidPerfProfile(v) {
-				return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Perf profile %s is not supported. Supported tuning modes are none and default.", v))
+				return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Perf profile %s is not supported. Supported tuning modes are none and basic.", v))
 			}
 		default:
 			return nil, fmt.Errorf("invalid parameter %s in storage class", k)
