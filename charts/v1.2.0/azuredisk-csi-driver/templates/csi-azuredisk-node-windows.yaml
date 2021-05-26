@@ -128,7 +128,7 @@ spec:
             - name: AZURE_ENVIRONMENT_FILEPATH
               value: C:\k\azurestackcloud.json
             {{- end }}
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          imagePullPolicy: {{ .Values.image.azuredisk.pullPolicy }}
           volumeMounts:
             - name: kubelet-dir
               mountPath: "C:\\var\\lib\\kubelet"
