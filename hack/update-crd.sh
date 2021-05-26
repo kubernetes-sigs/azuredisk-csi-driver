@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright 2019 The Kubernetes Authors.
+# Copyright 2021 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,31 +14,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-#set -o errexit
-set -o nounset
-set -o pipefail
+set -euo pipefail
 
 SCRIPT_ROOT_RELATIVE=$(dirname "${BASH_SOURCE}")/..
-
 SCRIPT_ROOT=$(realpath "${SCRIPT_ROOT_RELATIVE}")
+CONTROLLERTOOLS_PKG=${CONTROLLERTOOLS_PKG:-$(cd "${SCRIPT_ROOT}"; ls -d -1 ./vendor/sigs.k8s.io/controller-tools 2>/dev/null || echo ../code-controller-tools)}
 
 # find or download controller-gen
-CONTROLLER_GEN=$(which controller-gen)
-
-if [ "$CONTROLLER_GEN" = "" ]
-then
-  TMP_DIR=$(mktemp -d);
-  cd $TMP_DIR;
-  go mod init tmp;
-  go get sigs.k8s.io/controller-tools/cmd/controller-gen@v0.4.0;
-  rm -rf $TMP_DIR;
-  CONTROLLER_GEN=$(which controller-gen)
-fi
-
-if [ "$CONTROLLER_GEN" = "" ]
-then
-  echo "ERROR: failed to get controller-gen";
-  exit 1;
-fi
-
-$CONTROLLER_GEN crd:crdVersions=v1,trivialVersions=false paths=${SCRIPT_ROOT}/pkg/apis/azuredisk/v1alpha1 output:crd:dir=${SCRIPT_ROOT}/pkg/apis/config
+pushd ${CONTROLLERTOOLS_PKG}
+trap popd exit
+go run -v ./cmd/controller-gen crd:crdVersions=v1,trivialVersions=false paths=${SCRIPT_ROOT}/pkg/apis/azuredisk/v1alpha1 output:crd:dir=${SCRIPT_ROOT}/pkg/apis/config
