@@ -524,6 +524,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 						},
 					},
 				}, isMultiZone),
+				IsWindows: isWindowsCluster,
 			},
 		}
 		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
@@ -553,6 +554,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 						},
 					},
 				}, isMultiZone),
+				IsWindows: isWindowsCluster,
 			},
 		}
 		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
