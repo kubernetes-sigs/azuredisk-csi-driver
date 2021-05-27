@@ -46,7 +46,7 @@ func isPerfTuningEnabled(profile string) bool {
 }
 
 // getDiskPerfAttributes gets the per tuning mode and profile set in attributes
-func getDiskPerfAttributes(attributes map[string]string) (profile string, accountType string, diskSizeGibStr string, diskIopsStr string, diskBwMbpsStr string, err error) {
+func getDiskPerfAttributes(attributes map[string]string) (profile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr string, err error) {
 	perfProfilePresent := false
 	for k, v := range attributes {
 		switch strings.ToLower(k) {
