@@ -26,7 +26,6 @@ import (
 	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
-	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -57,7 +56,7 @@ type CloudProvisioner struct {
 type listVolumeStatus struct {
 	numVisited    int  // the number of iterated azure disks
 	isCompleteRun bool // isCompleteRun is flagged true if the function iterated through all azure disks
-	entries       []*csi.ListVolumesResponse_Entry
+	entries       []v1alpha1.VolumeEntry
 	err           error
 }
 
@@ -318,7 +317,7 @@ func (c *CloudProvisioner) DeleteVolume(
 func (c *CloudProvisioner) ListVolumes(
 	ctx context.Context,
 	maxEntries int32,
-	startingToken string) (*csi.ListVolumesResponse, error) {
+	startingToken string) (*v1alpha1.ListVolumesResult, error) {
 	start, _ := strconv.Atoi(startingToken)
 	kubeClient := c.cloud.KubeClient
 	if kubeClient != nil && kubeClient.CoreV1() != nil && kubeClient.CoreV1().PersistentVolumes() != nil {
@@ -465,7 +464,7 @@ func (c *CloudProvisioner) CreateSnapshot(
 	sourceVolumeID string,
 	snapshotName string,
 	secrets map[string]string,
-	parameters map[string]string) (*csi.CreateSnapshotResponse, error) {
+	parameters map[string]string) (*v1alpha1.Snapshot, error) {
 	snapshotName = azureutils.GetValidDiskName(snapshotName)
 
 	var customTags string
@@ -534,14 +533,12 @@ func (c *CloudProvisioner) CreateSnapshot(
 	}
 	klog.V(2).Infof("create snapshot(%s) under rg(%s) successfully", snapshotName, resourceGroup)
 
-	csiSnapshot, err := c.GetSnapshotByID(ctx, resourceGroup, snapshotName, sourceVolumeID)
+	snapshotObj, err := c.GetSnapshotByID(ctx, resourceGroup, snapshotName, sourceVolumeID)
 	if err != nil {
 		return nil, err
 	}
 
-	return &csi.CreateSnapshotResponse{
-		Snapshot: csiSnapshot,
-	}, nil
+	return snapshotObj, nil
 }
 
 func (c *CloudProvisioner) ListSnapshots(
@@ -550,22 +547,19 @@ func (c *CloudProvisioner) ListSnapshots(
 	startingToken string,
 	sourceVolumeID string,
 	snapshotID string,
-	secrets map[string]string) (*csi.ListSnapshotsResponse, error) {
+	secrets map[string]string) (*v1alpha1.ListSnapshotsResult, error) {
 	// SnapshotID is not empty, return snapshot that match the snapshot id.
 	if len(snapshotID) != 0 {
 		snapshot, err := c.GetSnapshotByID(ctx, c.cloud.ResourceGroup, snapshotID, sourceVolumeID)
 		if err != nil {
 			if strings.Contains(err.Error(), azureutils.ResourceNotFound) {
-				return &csi.ListSnapshotsResponse{}, nil
+				return &v1alpha1.ListSnapshotsResult{}, nil
 			}
 			return nil, err
 		}
-		entries := []*csi.ListSnapshotsResponse_Entry{
-			{
-				Snapshot: snapshot,
-			},
-		}
-		listSnapshotResp := &csi.ListSnapshotsResponse{
+		entries := []v1alpha1.Snapshot{*snapshot}
+
+		listSnapshotResp := &v1alpha1.ListSnapshotsResult{
 			Entries: entries,
 		}
 		return listSnapshotResp, nil
@@ -602,14 +596,14 @@ func (c *CloudProvisioner) ListSnapshots(
 	if maxEntries > 0 && int(maxEntries) < maxAvailableEntries {
 		totalEntries = int(maxEntries)
 	}
-	entries := []*csi.ListSnapshotsResponse_Entry{}
+	entries := []v1alpha1.Snapshot{}
 	for count := 0; start < len(snapshots) && count < totalEntries; start++ {
 		if (sourceVolumeID != "" && sourceVolumeID == azureutils.GetSnapshotSourceVolumeID(&snapshots[start])) || sourceVolumeID == "" {
-			csiSnapshot, err := azureutils.GenerateCSISnapshot(sourceVolumeID, &snapshots[start])
+			snapshotObj, err := azureutils.NewAzureDiskSnapshot(sourceVolumeID, &snapshots[start])
 			if err != nil {
 				return nil, fmt.Errorf("failed to generate snapshot entry: %v", err)
 			}
-			entries = append(entries, &csi.ListSnapshotsResponse_Entry{Snapshot: csiSnapshot})
+			entries = append(entries, *snapshotObj)
 			count++
 		}
 	}
@@ -619,7 +613,7 @@ func (c *CloudProvisioner) ListSnapshots(
 		nextToken = start
 	}
 
-	listSnapshotResp := &csi.ListSnapshotsResponse{
+	listSnapshotResp := &v1alpha1.ListSnapshotsResult{
 		Entries:   entries,
 		NextToken: strconv.Itoa(nextToken),
 	}
@@ -630,10 +624,10 @@ func (c *CloudProvisioner) ListSnapshots(
 func (c *CloudProvisioner) DeleteSnapshot(
 	ctx context.Context,
 	snapshotID string,
-	secrets map[string]string) (*csi.DeleteSnapshotResponse, error) {
+	secrets map[string]string) error {
 	snapshotName, resourceGroup, err := c.GetSnapshotAndResourceNameFromSnapshotID(snapshotID)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	if snapshotName == "" && resourceGroup == "" {
@@ -644,11 +638,11 @@ func (c *CloudProvisioner) DeleteSnapshot(
 	klog.V(2).Infof("begin to delete snapshot(%s) under rg(%s)", snapshotName, resourceGroup)
 	rerr := c.cloud.SnapshotsClient.Delete(ctx, resourceGroup, snapshotName)
 	if rerr != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("delete snapshot error: %v", rerr.Error()))
+		return status.Error(codes.Internal, fmt.Sprintf("delete snapshot error: %v", rerr.Error()))
 	}
 	klog.V(2).Infof("delete snapshot(%s) under rg(%s) successfully", snapshotName, resourceGroup)
 
-	return &csi.DeleteSnapshotResponse{}, nil
+	return nil
 }
 
 func (c *CloudProvisioner) CheckDiskExists(ctx context.Context, diskURI string) error {
@@ -730,7 +724,7 @@ func (c *CloudProvisioner) GetSnapshotAndResourceNameFromSnapshotID(snapshotID s
 	return snapshotName, resourceGroup, err
 }
 
-func (c *CloudProvisioner) GetSnapshotByID(ctx context.Context, resourceGroup string, snapshotName string, sourceVolumeID string) (*csi.Snapshot, error) {
+func (c *CloudProvisioner) GetSnapshotByID(ctx context.Context, resourceGroup string, snapshotName string, sourceVolumeID string) (*v1alpha1.Snapshot, error) {
 	snapshotNameVal, resourceGroupName, err := c.GetSnapshotAndResourceNameFromSnapshotID(snapshotName)
 	if err != nil {
 		return nil, err
@@ -746,7 +740,7 @@ func (c *CloudProvisioner) GetSnapshotByID(ctx context.Context, resourceGroup st
 		return nil, status.Error(codes.Internal, fmt.Sprintf("get snapshot %s from rg(%s) error: %v", snapshotNameVal, resourceGroupName, rerr.Error()))
 	}
 
-	return azureutils.GenerateCSISnapshot(sourceVolumeID, &snapshot)
+	return azureutils.NewAzureDiskSnapshot(sourceVolumeID, &snapshot)
 }
 
 func (c *CloudProvisioner) validateCreateVolumeRequestParams(
@@ -803,7 +797,7 @@ func (c *CloudProvisioner) validateCreateVolumeRequestParams(
 }
 
 // listVolumesInCluster is a helper function for ListVolumes used for when there is an available kubeclient
-func (c *CloudProvisioner) listVolumesInCluster(ctx context.Context, start, maxEntries int) (*csi.ListVolumesResponse, error) {
+func (c *CloudProvisioner) listVolumesInCluster(ctx context.Context, start, maxEntries int) (*v1alpha1.ListVolumesResult, error) {
 	kubeClient := c.cloud.KubeClient
 	pvList, err := kubeClient.CoreV1().PersistentVolumes().List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
@@ -843,7 +837,7 @@ func (c *CloudProvisioner) listVolumesInCluster(ctx context.Context, start, maxE
 	sort.Strings(resourceGroups)
 
 	// loop through each resourceGroup to get disk lists
-	entries := []*csi.ListVolumesResponse_Entry{}
+	entries := []v1alpha1.VolumeEntry{}
 	numVisited := 0
 	isCompleteRun, startFound := true, false
 	for _, resourceGroup := range resourceGroups {
@@ -877,7 +871,7 @@ func (c *CloudProvisioner) listVolumesInCluster(ctx context.Context, start, maxE
 		nextTokenString = strconv.Itoa(start + numVisited)
 	}
 
-	listVolumesResp := &csi.ListVolumesResponse{
+	listVolumesResp := &v1alpha1.ListVolumesResult{
 		Entries:   entries,
 		NextToken: nextTokenString,
 	}
@@ -886,8 +880,8 @@ func (c *CloudProvisioner) listVolumesInCluster(ctx context.Context, start, maxE
 }
 
 // listVolumesInNodeResourceGroup is a helper function for ListVolumes used for when there is no available kubeclient
-func (c *CloudProvisioner) listVolumesInNodeResourceGroup(ctx context.Context, start, maxEntries int) (*csi.ListVolumesResponse, error) {
-	entries := []*csi.ListVolumesResponse_Entry{}
+func (c *CloudProvisioner) listVolumesInNodeResourceGroup(ctx context.Context, start, maxEntries int) (*v1alpha1.ListVolumesResult, error) {
+	entries := []v1alpha1.VolumeEntry{}
 	listStatus := c.listVolumesByResourceGroup(ctx, c.cloud.ResourceGroup, entries, start, maxEntries, nil)
 	if listStatus.err != nil {
 		return nil, listStatus.err
@@ -898,7 +892,7 @@ func (c *CloudProvisioner) listVolumesInNodeResourceGroup(ctx context.Context, s
 		nextTokenString = strconv.Itoa(listStatus.numVisited)
 	}
 
-	listVolumesResp := &csi.ListVolumesResponse{
+	listVolumesResp := &v1alpha1.ListVolumesResult{
 		Entries:   listStatus.entries,
 		NextToken: nextTokenString,
 	}
@@ -907,7 +901,7 @@ func (c *CloudProvisioner) listVolumesInNodeResourceGroup(ctx context.Context, s
 }
 
 // listVolumesByResourceGroup is a helper function that updates the ListVolumeResponse_Entry slice and returns number of total visited volumes, number of volumes that needs to be visited and an error if found
-func (c *CloudProvisioner) listVolumesByResourceGroup(ctx context.Context, resourceGroup string, entries []*csi.ListVolumesResponse_Entry, start, maxEntries int, volSet map[string]bool) listVolumeStatus {
+func (c *CloudProvisioner) listVolumesByResourceGroup(ctx context.Context, resourceGroup string, entries []v1alpha1.VolumeEntry, start, maxEntries int, volSet map[string]bool) listVolumeStatus {
 	disks, derr := c.cloud.DisksClient.ListByResourceGroup(ctx, resourceGroup)
 	if derr != nil {
 		return listVolumeStatus{err: status.Errorf(codes.Internal, "ListVolumes on rg(%s) failed with error: %v", resourceGroup, derr.Error())}
@@ -955,11 +949,11 @@ func (c *CloudProvisioner) listVolumesByResourceGroup(ctx context.Context, resou
 				nodeList = append(nodeList, string(attachedNode))
 			}
 
-			entries = append(entries, &csi.ListVolumesResponse_Entry{
-				Volume: &csi.Volume{
-					VolumeId: *disk.ID,
+			entries = append(entries, v1alpha1.VolumeEntry{
+				Details: &v1alpha1.VolumeDetails{
+					VolumeID: *disk.ID,
 				},
-				Status: &csi.ListVolumesResponse_VolumeStatus{
+				Status: &v1alpha1.VolumeStatus{
 					PublishedNodeIds: nodeList,
 				},
 			})

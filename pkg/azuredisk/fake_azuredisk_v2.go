@@ -20,10 +20,12 @@ package azuredisk
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
+	"github.com/golang/protobuf/ptypes"
 	"k8s.io/klog/v2"
 	testingexec "k8s.io/utils/exec/testing"
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
@@ -133,7 +135,23 @@ func (d *fakeDriverV2) getSnapshotInfo(snapshotID string) (string, string, error
 }
 
 func (d *fakeDriverV2) getSnapshotByID(ctx context.Context, resourceGroup string, snapshotName string, sourceVolumeID string) (*csi.Snapshot, error) {
-	return d.cloudProvisioner.(*provisioner.FakeCloudProvisioner).GetSnapshotByID(ctx, resourceGroup, snapshotName, sourceVolumeID)
+	snapshot, err := d.cloudProvisioner.(*provisioner.FakeCloudProvisioner).GetSnapshotByID(ctx, resourceGroup, snapshotName, sourceVolumeID)
+	if err != nil {
+		return nil, err
+	}
+
+	tp, err := ptypes.TimestampProto(snapshot.CreationTime.Time)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to covert creation timestamp: %v", err)
+	}
+
+	return &csi.Snapshot{
+		SnapshotId:     snapshot.SnapshotID,
+		SourceVolumeId: snapshot.SourceVolumeID,
+		CreationTime:   tp,
+		ReadyToUse:     snapshot.ReadyToUse,
+		SizeBytes:      snapshot.SizeBytes,
+	}, nil
 }
 
 func (d *fakeDriverV2) GetSourceDiskSize(ctx context.Context, resourceGroup, diskName string, curDepth, maxDepth int) (*int32, error) {

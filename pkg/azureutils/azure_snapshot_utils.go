@@ -21,8 +21,8 @@ import (
 	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
-	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/golang/protobuf/ptypes"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 )
 
@@ -37,16 +37,13 @@ func GetSnapshotAndResourceNameFromSnapshotID(snapshotID string) (snapshotName, 
 	return snapshotName, resourceGroup, err
 }
 
-func GenerateCSISnapshot(sourceVolumeID string, snapshot *compute.Snapshot) (*csi.Snapshot, error) {
+func NewAzureDiskSnapshot(sourceVolumeID string, snapshot *compute.Snapshot) (*v1alpha1.Snapshot, error) {
 	if snapshot == nil || snapshot.SnapshotProperties == nil {
 		return nil, fmt.Errorf("snapshot property is nil")
 	}
 
-	tp, err := ptypes.TimestampProto(snapshot.SnapshotProperties.TimeCreated.ToTime())
-	if err != nil {
-		return nil, fmt.Errorf("Failed to covert creation timestamp: %v", err)
-	}
-	ready, _ := isCSISnapshotReady(*snapshot.SnapshotProperties.ProvisioningState)
+	tp := metav1.NewTime(snapshot.SnapshotProperties.TimeCreated.ToTime())
+	ready, _ := isSnapshotReady(*snapshot.SnapshotProperties.ProvisioningState)
 
 	if snapshot.SnapshotProperties.DiskSizeGB == nil {
 		return nil, fmt.Errorf("diskSizeGB of snapshot property is nil")
@@ -56,10 +53,10 @@ func GenerateCSISnapshot(sourceVolumeID string, snapshot *compute.Snapshot) (*cs
 		sourceVolumeID = GetSnapshotSourceVolumeID(snapshot)
 	}
 
-	return &csi.Snapshot{
+	return &v1alpha1.Snapshot{
 		SizeBytes:      volumehelper.GiBToBytes(int64(*snapshot.SnapshotProperties.DiskSizeGB)),
-		SnapshotId:     *snapshot.ID,
-		SourceVolumeId: sourceVolumeID,
+		SnapshotID:     *snapshot.ID,
+		SourceVolumeID: sourceVolumeID,
 		CreationTime:   tp,
 		ReadyToUse:     ready,
 	}, nil
@@ -75,7 +72,7 @@ func GetSnapshotSourceVolumeID(snapshot *compute.Snapshot) string {
 	return ""
 }
 
-func isCSISnapshotReady(state string) (bool, error) {
+func isSnapshotReady(state string) (bool, error) {
 	switch strings.ToLower(state) {
 	case "succeeded":
 		return true, nil

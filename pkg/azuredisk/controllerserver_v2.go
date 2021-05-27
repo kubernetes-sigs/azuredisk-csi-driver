@@ -25,6 +25,7 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 
+	"github.com/golang/protobuf/ptypes"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	volerr "k8s.io/cloud-provider/volume/errors"
@@ -342,14 +343,84 @@ func (d *DriverV2) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest)
 		}
 	}
 
-	response, err := d.cloudProvisioner.ListVolumes(ctx, req.GetMaxEntries(), startingToken)
+	mc := metrics.NewMetricContext(d.cloudProvisioner.GetMetricPrefix(), "controller_list_volumes", d.cloudProvisioner.GetCloud().ResourceGroup, d.cloudProvisioner.GetCloud().SubscriptionID, d.Name)
+	isOperationSucceeded := false
+	defer func() {
+		mc.ObserveOperationWithResult(isOperationSucceeded)
+	}()
+
+	result, err := d.cloudProvisioner.ListVolumes(ctx, req.GetMaxEntries(), startingToken)
 
 	if err != nil {
 		return nil, err
 	}
 
-	if response == nil {
+	if result == nil {
 		return nil, status.Error(codes.Unknown, "Error listing volumes")
+	}
+
+	responseEntries := []*csi.ListVolumesResponse_Entry{}
+
+	for _, resultEntry := range result.Entries {
+		resultVolumeDetail := resultEntry.Details
+		responseContentSource := &csi.VolumeContentSource{}
+
+		if resultVolumeDetail.ContentSource != nil {
+			if resultVolumeDetail.ContentSource.ContentSource == v1alpha1.ContentVolumeSourceTypeSnapshot {
+				responseContentSource.Type = &csi.VolumeContentSource_Snapshot{
+					Snapshot: &csi.VolumeContentSource_SnapshotSource{
+						SnapshotId: resultVolumeDetail.ContentSource.ContentSourceID,
+					},
+				}
+			} else {
+				responseContentSource.Type = &csi.VolumeContentSource_Volume{
+					Volume: &csi.VolumeContentSource_VolumeSource{
+						VolumeId: resultVolumeDetail.ContentSource.ContentSourceID,
+					},
+				}
+			}
+		}
+
+		responseAccessibleTopology := []*csi.Topology{}
+		for _, t := range resultVolumeDetail.AccessibleTopology {
+			topology := &csi.Topology{
+				Segments: t.Segments,
+			}
+
+			responseAccessibleTopology = append(responseAccessibleTopology, topology)
+		}
+
+		responseVolumeStatus := &csi.ListVolumesResponse_VolumeStatus{}
+
+		if resultEntry.Status != nil {
+			responseVolumeStatus.PublishedNodeIds = resultEntry.Status.PublishedNodeIds
+			if resultEntry.Status.Condition != nil {
+				condition := &csi.VolumeCondition{
+					Abnormal: resultEntry.Status.Condition.Abnormal,
+					Message:  resultEntry.Status.Condition.Message,
+				}
+
+				responseVolumeStatus.VolumeCondition = condition
+			}
+		}
+
+		responseEntries = append(responseEntries, &csi.ListVolumesResponse_Entry{
+			Volume: &csi.Volume{
+				VolumeId:           resultVolumeDetail.VolumeID,
+				CapacityBytes:      resultVolumeDetail.CapacityBytes,
+				VolumeContext:      resultVolumeDetail.VolumeContext,
+				ContentSource:      responseContentSource,
+				AccessibleTopology: responseAccessibleTopology,
+			},
+			Status: responseVolumeStatus,
+		})
+	}
+
+	isOperationSucceeded = true
+
+	response := &csi.ListVolumesResponse{
+		Entries:   responseEntries,
+		NextToken: result.NextToken,
 	}
 
 	return response, nil
@@ -415,18 +486,31 @@ func (d *DriverV2) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRe
 		mc.ObserveOperationWithResult(isOperationSucceeded)
 	}()
 
-	response, err := d.cloudProvisioner.CreateSnapshot(ctx, sourceVolumeID, snapshotName, req.GetSecrets(), req.GetParameters())
+	snapshot, err := d.cloudProvisioner.CreateSnapshot(ctx, sourceVolumeID, snapshotName, req.GetSecrets(), req.GetParameters())
 
 	if err != nil {
 		return nil, err
 	}
 
-	if response == nil {
+	if snapshot == nil {
 		return nil, status.Error(codes.Unknown, "Error creating snapshot")
 	}
 
+	tp, err := ptypes.TimestampProto(snapshot.CreationTime.Time)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to covert creation timestamp: %v", err)
+	}
+
 	isOperationSucceeded = true
-	return response, nil
+	return &csi.CreateSnapshotResponse{
+		Snapshot: &csi.Snapshot{
+			SnapshotId:     snapshot.SnapshotID,
+			SourceVolumeId: snapshot.SourceVolumeID,
+			CreationTime:   tp,
+			ReadyToUse:     snapshot.ReadyToUse,
+			SizeBytes:      snapshot.SizeBytes,
+		},
+	}, nil
 }
 
 // DeleteSnapshot delete a snapshot
@@ -442,23 +526,57 @@ func (d *DriverV2) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRe
 		mc.ObserveOperationWithResult(isOperationSucceeded)
 	}()
 
-	response, err := d.cloudProvisioner.DeleteSnapshot(ctx, snapshotID, req.GetSecrets())
+	err := d.cloudProvisioner.DeleteSnapshot(ctx, snapshotID, req.GetSecrets())
 
 	if err != nil {
 		return nil, err
 	}
 
-	if response == nil {
-		return nil, status.Error(codes.Unknown, "Error deleting snapshot")
-	}
-
 	isOperationSucceeded = true
-	return response, nil
+	return &csi.DeleteSnapshotResponse{}, nil
 }
 
 // ListSnapshots list all snapshots
 func (d *DriverV2) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
-	return d.cloudProvisioner.ListSnapshots(ctx, req.GetMaxEntries(), req.GetStartingToken(), req.GetSourceVolumeId(), req.GetSnapshotId(), req.GetSecrets())
+	mc := metrics.NewMetricContext(d.cloudProvisioner.GetMetricPrefix(), "controller_list_snapshots", d.cloudProvisioner.GetCloud().ResourceGroup, d.cloudProvisioner.GetCloud().SubscriptionID, d.Name)
+	isOperationSucceeded := false
+	defer func() {
+		mc.ObserveOperationWithResult(isOperationSucceeded)
+	}()
+
+	result, err := d.cloudProvisioner.ListSnapshots(ctx, req.GetMaxEntries(), req.GetStartingToken(), req.GetSourceVolumeId(), req.GetSnapshotId(), req.GetSecrets())
+	if err != nil {
+		return nil, err
+	}
+
+	if result == nil {
+		return nil, status.Error(codes.Unknown, "Error listing volumes")
+	}
+
+	responseEntries := []*csi.ListSnapshotsResponse_Entry{}
+
+	for _, resultEntry := range result.Entries {
+		tp, err := ptypes.TimestampProto(resultEntry.CreationTime.Time)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to covert creation timestamp: %v", err)
+		}
+		responseEntries = append(responseEntries, &csi.ListSnapshotsResponse_Entry{
+			Snapshot: &csi.Snapshot{
+				SnapshotId:     resultEntry.SnapshotID,
+				SourceVolumeId: resultEntry.SourceVolumeID,
+				CreationTime:   tp,
+				ReadyToUse:     resultEntry.ReadyToUse,
+				SizeBytes:      resultEntry.SizeBytes,
+			},
+		})
+	}
+
+	isOperationSucceeded = true
+
+	return &csi.ListSnapshotsResponse{
+		Entries:   responseEntries,
+		NextToken: result.NextToken,
+	}, nil
 }
 
 func generateV1Alpha1VolumeCapability(volumeCapability *csi.VolumeCapability) v1alpha1.VolumeCapability {

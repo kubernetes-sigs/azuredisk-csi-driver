@@ -16,7 +16,6 @@ package controller
 import (
 	"context"
 
-	"github.com/container-storage-interface/spec/lib/go/csi"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -44,10 +43,10 @@ type CloudProvisioner interface {
 	PublishVolume(ctx context.Context, volumeID string, nodeID string, volumeContext map[string]string) (map[string]string, error)
 	UnpublishVolume(ctx context.Context, volumeID string, nodeID string) error
 	ExpandVolume(ctx context.Context, volumeID string, capacityRange *v1alpha1.CapacityRange, secrets map[string]string) (*v1alpha1.AzVolumeStatusParams, error)
-	ListVolumes(ctx context.Context, maxEntries int32, startingToken string) (*csi.ListVolumesResponse, error)
-	CreateSnapshot(ctx context.Context, sourceVolumeID string, snapshotName string, secrets map[string]string, parameters map[string]string) (*csi.CreateSnapshotResponse, error)
-	ListSnapshots(ctx context.Context, maxEntries int32, startingToken string, sourceVolumeID string, snapshotID string, secrets map[string]string) (*csi.ListSnapshotsResponse, error)
-	DeleteSnapshot(ctx context.Context, snapshotID string, secrets map[string]string) (*csi.DeleteSnapshotResponse, error)
+	ListVolumes(ctx context.Context, maxEntries int32, startingToken string) (*v1alpha1.ListVolumesResult, error)
+	CreateSnapshot(ctx context.Context, sourceVolumeID string, snapshotName string, secrets map[string]string, parameters map[string]string) (*v1alpha1.Snapshot, error)
+	ListSnapshots(ctx context.Context, maxEntries int32, startingToken string, sourceVolumeID string, snapshotID string, secrets map[string]string) (*v1alpha1.ListSnapshotsResult, error)
+	DeleteSnapshot(ctx context.Context, snapshotID string, secrets map[string]string) error
 	CheckDiskExists(ctx context.Context, diskURI string) error
 	GetCloud() *provider.Cloud
 	GetMetricPrefix() string

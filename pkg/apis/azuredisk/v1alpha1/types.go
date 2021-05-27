@@ -375,3 +375,54 @@ type TopologyRequirement struct {
 type Topology struct {
 	Segments map[string]string `json:"segments,omitempty"`
 }
+
+type Snapshot struct {
+	SnapshotID     string      `json:"snapshot_id"`
+	SourceVolumeID string      `json:"source_volume_id"`
+	CreationTime   metav1.Time `json:"creation_time"`
+	ReadyToUse     bool        `json:"ready_to_use"`
+	// +optional
+	SizeBytes int64 `json:"size_bytes,omitempty"`
+}
+
+type VolumeDetails struct {
+	VolumeID string `json:"volume_id"`
+	// +optional
+	CapacityBytes int64 `json:"capacity_bytes,omitempty"`
+	// +optional
+	VolumeContext map[string]string `json:"volume_context,omitempty"`
+	// +optional
+	ContentSource *ContentVolumeSource `json:"content_source,omitempty"`
+	// +optional
+	AccessibleTopology []Topology `json:"accessible_topology,omitempty"`
+}
+
+type VolumeCondition struct {
+	Abnormal bool   `json:"abnormal"`
+	Message  string `json:"message"`
+}
+
+type VolumeStatus struct {
+	// +optional
+	PublishedNodeIds []string `json:"published_node_ids,omitempty"`
+	// +optional
+	Condition *VolumeCondition `json:"condition,omitempty"`
+}
+
+type VolumeEntry struct {
+	Details *VolumeDetails `json:"details,omitempty"`
+	// +optional
+	Status *VolumeStatus `json:"status,omitempty"`
+}
+
+type ListVolumesResult struct {
+	Entries []VolumeEntry `json:"entries"`
+	// +optional
+	NextToken string `json:"next_token,omitempty"`
+}
+
+type ListSnapshotsResult struct {
+	Entries []Snapshot `json:"entries"`
+	// +optional
+	NextToken string `json:"next_token,omitempty"`
+}
