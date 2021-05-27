@@ -65,6 +65,7 @@ linux:
   enabled: true
   kubelet: /var/lib/kubelet
   distro: debian
+  enablePerfOptimization: true
 
 windows:
   enabled: true

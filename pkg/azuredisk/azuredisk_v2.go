@@ -46,13 +46,13 @@ type DriverV2 struct {
 }
 
 // NewDriver creates a Driver or DriverV2 object depending on the --temp-use-driver-v2 flag.
-func NewDriver(nodeID string) CSIDriver {
+func NewDriver(nodeID string, enablePerfOptimization bool) CSIDriver {
 	var d CSIDriver
 
 	if !*useDriverV2 {
-		d = newDriverV1(nodeID)
+		d = newDriverV1(nodeID, enablePerfOptimization)
 	} else {
-		d = newDriverV2(nodeID)
+		d = newDriverV2(nodeID, enablePerfOptimization)
 	}
 
 	return d
@@ -60,13 +60,14 @@ func NewDriver(nodeID string) CSIDriver {
 
 // newDriverV2 Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
 // does not support optional driver plugin info manifest field. Refer to CSI spec for more details.
-func newDriverV2(nodeID string) *DriverV2 {
+func newDriverV2(nodeID string, enablePerfOptimization bool) *DriverV2 {
 	klog.Warning("Using DriverV2")
 	driver := DriverV2{}
 	driver.Name = DriverName
 	driver.Version = driverVersion
 	driver.NodeID = nodeID
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
+	driver.perfOptimizationEnabled = enablePerfOptimization
 	return &driver
 }
 
@@ -92,6 +93,15 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 		if disableAVSetNodes && d.cloud.VMType == consts.VMTypeVMSS {
 			klog.V(2).Infof("DisableAvailabilitySetNodes for controller since current VMType is vmss")
 			d.cloud.DisableAvailabilitySetNodes = true
+		}
+	}
+
+	d.deviceHelper = NewSafeDeviceHelper()
+
+	if d.getPerfOptimizationEnabled() {
+		err = PopulateNodeAndSkuInfo(&d.DriverCore)
+		if err != nil {
+			klog.Fatalf("Failed to get node info. Error: %v", err)
 		}
 	}
 

@@ -1,0 +1,24 @@
+
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: sc-kubestone-perf-optimized-premium-ssd-csi
+provisioner: disk.csi.azure.com
+parameters:
+  skuname: Premium_LRS
+  perfProfile: Default
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+allowVolumeExpansion: true
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: sc-kubestone-premium-ssd-csi
+provisioner: disk.csi.azure.com
+parameters:
+  skuname: Premium_LRS
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+allowVolumeExpansion: true

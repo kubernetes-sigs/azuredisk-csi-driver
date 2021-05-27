@@ -81,15 +81,39 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	}
 	defer d.volumeLocks.Release(diskURI)
 
+	lun, ok := req.PublishContext[LUN]
+	if !ok {
+		return nil, status.Error(codes.InvalidArgument, "lun not provided")
+	}
+
+	source, err := d.getDevicePathWithLUN(lun)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "Failed to find disk on lun %s. %v", lun, err)
+	}
+
+	// If perf optimizations are enabled
+	// tweak device settings to enhance performance
+	if d.getPerfOptimizationEnabled() {
+		profile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr, err := getDiskPerfAttributes(req.GetVolumeContext())
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "Failed to get perf attributes for %s. Error: %v", source, err)
+		}
+
+		if d.getDeviceHelper().DiskSupportsPerfOptimization(profile, accountType) {
+			err = d.getDeviceHelper().OptimizeDiskPerformance(d.getNodeInfo(), d.getDiskSkuInfoMap(), source, profile, accountType,
+				diskSizeGibStr, diskIopsStr, diskBwMbpsStr)
+			if err != nil {
+				return nil, status.Errorf(codes.Internal, "Failed to optimize device performance for target(%s) error(%s)", source, err)
+			}
+		} else {
+			klog.V(2).Infof("NodeStageVolume: perf optimization is disabled for %s. perfProfile %s accountType %s", source, profile, accountType)
+		}
+	}
+
 	// If the access type is block, do nothing for stage
 	switch req.GetVolumeCapability().GetAccessType().(type) {
 	case *csi.VolumeCapability_Block:
 		return &csi.NodeStageVolumeResponse{}, nil
-	}
-
-	lun, ok := req.PublishContext[LUN]
-	if !ok {
-		return nil, status.Error(codes.InvalidArgument, "lun not provided")
 	}
 
 	mnt, err := d.ensureMountPoint(target)
@@ -115,11 +139,6 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	if volContextFSType != "" {
 		// respect "fstype" setting in storage class parameters
 		fstype = volContextFSType
-	}
-
-	source, err := d.getDevicePathWithLUN(lun)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Failed to find disk on lun %s. %v", lun, err)
 	}
 
 	// If partition is specified, should mount it only instead of the entire disk.

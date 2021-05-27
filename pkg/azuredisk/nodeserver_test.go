@@ -272,6 +272,13 @@ func TestNodeGetVolumeStats(t *testing.T) {
 func TestNodeStageVolume(t *testing.T) {
 	d, _ := NewFakeDriver(t)
 
+	nodeInfo := d.getNodeInfo()
+	assert.NotEqual(t, nil, nodeInfo)
+	dh := d.getDeviceHelper()
+	assert.NotEqual(t, nil, dh)
+	sku := d.getDiskSkuInfoMap()
+	assert.NotEqual(t, nil, sku)
+
 	stdVolCap := &csi.VolumeCapability_Mount{
 		Mount: &csi.VolumeCapability_MountVolume{
 			FsType: defaultLinuxFsType,
@@ -328,12 +335,6 @@ func TestNodeStageVolume(t *testing.T) {
 			cleanup: func() {
 				d.getVolumeLocks().Release("vol_1")
 			},
-		},
-		{
-			desc: "Access type is block",
-			req: csi.NodeStageVolumeRequest{VolumeId: "vol_1", StagingTargetPath: sourceTest, VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap,
-				AccessType: stdVolCapBlock}},
-			expectedErr: nil,
 		},
 		{
 			desc: "Lun not provided",

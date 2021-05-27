@@ -75,11 +75,17 @@ type FakeDriver interface {
 	setMounter(*mount.SafeFormatAndMount)
 
 	checkDiskCapacity(context.Context, string, string, int) (bool, error)
+	checkDiskExists(ctx context.Context, diskURI string) error
 	getSnapshotInfo(string) (string, string, error)
 	getSnapshotByID(context.Context, string, string, string) (*csi.Snapshot, error)
 	ensureMountPoint(string) (bool, error)
 	ensureBlockTargetFile(string) error
 	getDevicePathWithLUN(lunStr string) (string, error)
+	setDiskThrottlingCache(key string, value string)
+	getNodeInfo() *NodeInfo
+	getDeviceHelper() *SafeDeviceHelper
+	getDiskSkuInfoMap() map[string]map[string]DiskSkuInfo
+	getDriverCore() DriverCore
 }
 
 func newFakeDriverV1(t *testing.T) (*Driver, error) {
@@ -89,6 +95,7 @@ func newFakeDriverV1(t *testing.T) (*Driver, error) {
 	driver.NodeID = fakeNodeID
 	driver.CSIDriver = *csicommon.NewFakeCSIDriver()
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
+	driver.perfOptimizationEnabled = false
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -108,6 +115,7 @@ func newFakeDriverV1(t *testing.T) (*Driver, error) {
 		return nil, err
 	}
 	driver.getDiskThrottlingCache = cache
+	driver.deviceHelper = NewSafeDeviceHelper()
 
 	driver.AddControllerServiceCapabilities(
 		[]csi.ControllerServiceCapability_RPC_Type{
@@ -144,4 +152,12 @@ func createVolumeCapability(accessMode csi.VolumeCapability_AccessMode_Mode) *cs
 			Mode: accessMode,
 		},
 	}
+}
+
+func (d *Driver) setDiskThrottlingCache(key string, value string) {
+	d.getDiskThrottlingCache.Set(key, value)
+}
+
+func (d *Driver) getDriverCore() DriverCore {
+	return d.DriverCore
 }
