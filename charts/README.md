@@ -3,6 +3,10 @@
 ## Prerequisites
  - [install Helm](https://helm.sh/docs/intro/quickstart/#install-helm)
 
+### Tips
+ - `--set controller.runOnMaster=true` could make csi-azuredisk-controller only run on master node
+ - `--set controller.replicas=1` could set replica of csi-azuredisk-controller as `1`
+
 ## install latest version
 ```console
 helm repo add azuredisk-csi-driver https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts
