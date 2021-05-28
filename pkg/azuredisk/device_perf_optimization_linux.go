@@ -41,8 +41,8 @@ func (deviceHelper *DeviceHelper) DiskSupportsPerfOptimization(diskPerfProfile s
 }
 
 // OptimizeDiskPerformance optimizes device performance by setting tuning block device settings
-func (deviceHelper *DeviceHelper) OptimizeDiskPerformance(nodeInfo *NodeInfo, diskSkus map[string]map[string]DiskSkuInfo, devicePath string,
-	perfProfile string, accountType string, diskSizeGibStr string, diskIopsStr string, diskBwMbpsStr string) (err error) {
+func (deviceHelper *DeviceHelper) OptimizeDiskPerformance(nodeInfo *NodeInfo, diskSkus map[string]map[string]DiskSkuInfo, devicePath,
+	perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr string) (err error) {
 	klog.V(2).Infof("OptimizeDiskPerformance: Tuning settings for %s", devicePath)
 
 	if nodeInfo == nil {
@@ -134,24 +134,21 @@ func getDeviceName(lunPath string) (deviceName string, err error) {
 
 // echoToFile echos setting value to the file
 func echoToFile(content string, filePath string) (err error) {
-	cmd := exec.Command("echo", content)
 	outfile, err := os.Create(filePath)
 	if err != nil {
 		return err
 	}
 	defer outfile.Close()
 
+	cmd := exec.Command("echo", content)
 	cmd.Stdout = outfile
-
-	err = cmd.Start()
-	if err != nil {
+	if err := cmd.Start(); err != nil {
 		return err
 	}
-	err = cmd.Wait()
-	return err
+	return cmd.Wait()
 }
 
-func getOptimalDeviceSettings(nodeInfo *NodeInfo, diskSkus map[string]map[string]DiskSkuInfo, perfProfile string, accountType string, diskSizeGibStr string, diskIopsStr string, diskBwMbpsStr string) (queueDepth string, nrRequests string, scheduler string, maxSectorsKb string, readAheadKb string, err error) {
+func getOptimalDeviceSettings(nodeInfo *NodeInfo, diskSkus map[string]map[string]DiskSkuInfo, perfProfile string, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr string) (queueDepth, nrRequests, scheduler, maxSectorsKb, readAheadKb string, err error) {
 	klog.V(2).Infof("Calculating perf optimizations for rofile %s accountType %s diskSize", perfProfile, accountType, diskSizeGibStr)
 
 	err = nil
@@ -224,7 +221,7 @@ func getOptimalDeviceSettings(nodeInfo *NodeInfo, diskSkus map[string]map[string
 
 // getMatchingDiskSku gets the smallest SKU which matches the size, io and bw requirement
 // TODO: Query the disk size (e.g. P10, P30 etc) and use that to find the sku
-func getMatchingDiskSku(diskSkus map[string]map[string]DiskSkuInfo, accountType string, diskSizeGibStr string, diskIopsStr string, diskBwMbpsStr string) (matchingSku *DiskSkuInfo, err error) {
+func getMatchingDiskSku(diskSkus map[string]map[string]DiskSkuInfo, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr string) (matchingSku *DiskSkuInfo, err error) {
 	err = nil
 	matchingSku = nil
 	accountTypeLower := strings.ToLower(accountType)
@@ -264,7 +261,7 @@ func getMatchingDiskSku(diskSkus map[string]map[string]DiskSkuInfo, accountType 
 }
 
 // meetsRequest checks to see if given SKU meets\has enough size, iops and bw limits
-func meetsRequest(sku *DiskSkuInfo, diskSizeGb int, diskIops int, diskBwMbps int) bool {
+func meetsRequest(sku *DiskSkuInfo, diskSizeGb, diskIops, diskBwMbps int) bool {
 	if sku == nil {
 		return false
 	}
