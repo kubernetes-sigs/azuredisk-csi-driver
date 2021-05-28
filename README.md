@@ -47,6 +47,7 @@ Please refer to [`disk.csi.azure.com` driver parameters](./docs/driver-parameter
  - [Windows](./deploy/example/windows)
  - [Shared Disk](./deploy/example/sharedisk)
  - [Volume Limits](./deploy/example/volumelimits)
+ - [fsGroupPolicy](./deploy/example/fsgroup)
 
 ### Troubleshooting
  - [CSI driver troubleshooting guide](./docs/csi-debug.md)
