@@ -43,6 +43,7 @@ TOPOLOGY_KEY = topology.$(DRIVER_NAME)/zone
 ENABLE_TOPOLOGY ?= false
 LDFLAGS ?= "-X ${PKG}/pkg/azuredisk.driverVersion=${IMAGE_VERSION} -X ${PKG}/pkg/azuredisk.gitCommit=${GIT_COMMIT} -X ${PKG}/pkg/azuredisk.buildDate=${BUILD_DATE} -X ${PKG}/pkg/azuredisk.DriverName=${DRIVER_NAME} -X ${PKG}/pkg/azuredisk.topologyKey=${TOPOLOGY_KEY} -extldflags "-static"" ${GOTAGS}
 E2E_HELM_OPTIONS ?= --set image.azuredisk.repository=$(REGISTRY)/$(IMAGE_NAME) --set image.azuredisk.tag=$(IMAGE_VERSION) --set image.azuredisk.pullPolicy=Always
+E2E_HELM_OPTIONS += ${EXTRA_HELM_OPTIONS}
 GINKGO_FLAGS = -ginkgo.v
 ifeq ($(ENABLE_TOPOLOGY), true)
 GINKGO_FLAGS += -ginkgo.focus="\[multi-az\]"

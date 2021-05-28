@@ -32,6 +32,8 @@ setup_e2e_binaries() {
     curl -sL https://storage.googleapis.com/kubernetes-release/release/v1.21.0/kubernetes-test-linux-amd64.tar.gz --output e2e-tests.tar.gz
     tar -xvf e2e-tests.tar.gz && rm e2e-tests.tar.gz
 
+    # enable fsGroupPolicy (only available from k8s 1.20)
+    export EXTRA_HELM_OPTIONS="--set feature.enableFSGroupPolicy=true"
     # install the azuredisk-csi-driver driver
     make e2e-bootstrap
     make create-metrics-svc
