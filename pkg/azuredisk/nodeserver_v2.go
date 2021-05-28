@@ -85,14 +85,16 @@ func (d *DriverV2) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolume
 			return nil, status.Errorf(codes.Internal, "Failed to get perf attributes for %s. Error: %v", source, err)
 		}
 
-		if d.getDeviceHelper().DiskSupportsPerfOptimization(profile, accountType) {
-			err = d.getDeviceHelper().OptimizeDiskPerformance(d.getNodeInfo(), d.getDiskSkuInfoMap(), source, profile, accountType,
-				diskSizeGibStr, diskIopsStr, diskBwMbpsStr)
-			if err != nil {
-				return nil, status.Errorf(codes.Internal, "Failed to optimize device performance for target(%s) error(%s)", source, err)
+		if isPerfTuningEnabled(profile) {
+			// save one logging since perfTuning is disabled by default
+			if d.getDeviceHelper().DiskSupportsPerfOptimization(profile, accountType) {
+				if err := d.getDeviceHelper().OptimizeDiskPerformance(d.getNodeInfo(), d.getDiskSkuInfoMap(), source, profile, accountType,
+					diskSizeGibStr, diskIopsStr, diskBwMbpsStr); err != nil {
+					return nil, status.Errorf(codes.Internal, "Failed to optimize device performance for target(%s) error(%s)", source, err)
+				}
+			} else {
+				klog.V(2).Infof("NodeStageVolume: perf optimization is disabled for %s. perfProfile %s accountType %s", source, profile, accountType)
 			}
-		} else {
-			klog.V(2).Infof("NodeStageVolume: perf optimization is disabled for %s. perfProfile %s accountType %s", source, profile, accountType)
 		}
 	}
 

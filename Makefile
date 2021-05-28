@@ -79,6 +79,7 @@ all: azuredisk
 verify: unit-test
 	hack/verify-all.sh
 	go vet ./pkg/...
+	go build ./pkg/tool/
 
 .PHONY: unit-test
 unit-test: unit-test-v1 unit-test-v2
