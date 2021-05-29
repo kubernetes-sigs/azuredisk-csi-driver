@@ -87,6 +87,5 @@ func accountSupportsPerfOptimization(accountType string) bool {
 	if strings.HasPrefix(accountTypeLower, "premium") || strings.HasPrefix(accountTypeLower, "standardssd") {
 		return true
 	}
-
 	return false
 }

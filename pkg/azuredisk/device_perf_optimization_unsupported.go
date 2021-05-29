@@ -18,15 +18,16 @@ limitations under the License.
 
 package azuredisk
 
+import "fmt"
+
 type DeviceHelper struct{}
 
-func (deviceHelper *DeviceHelper) DiskSupportsPerfOptimization(diskPerfProfile string, diskAccountType string) bool {
+func (deviceHelper *DeviceHelper) DiskSupportsPerfOptimization(diskPerfProfile, diskAccountType string) bool {
 	// return false on unsupported platforms
 	return false
 }
 
 func (deviceHelper *DeviceHelper) OptimizeDiskPerformance(nodeInfo *NodeInfo, diskSkus map[string]map[string]DiskSkuInfo, devicePath string,
-	perfProfile string, accountType string, diskSizeGibStr string, diskIopsStr string, diskBwMbpsStr string) (err error) {
-	// Don't fail if we are in an unsupported platform
-	return nil
+	perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr string) (err error) {
+	return fmt.Errorf("OptimizeDiskPerformance not implemented")
 }

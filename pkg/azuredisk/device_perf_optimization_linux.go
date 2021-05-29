@@ -36,7 +36,7 @@ const (
 	blockDeviceRootPath = "/sys/block"
 )
 
-func (deviceHelper *DeviceHelper) DiskSupportsPerfOptimization(diskPerfProfile string, diskAccountType string) bool {
+func (deviceHelper *DeviceHelper) DiskSupportsPerfOptimization(diskPerfProfile, diskAccountType string) bool {
 	return isPerfTuningEnabled(diskPerfProfile) && accountSupportsPerfOptimization(diskAccountType)
 }
 
@@ -133,7 +133,7 @@ func getDeviceName(lunPath string) (deviceName string, err error) {
 }
 
 // echoToFile echos setting value to the file
-func echoToFile(content string, filePath string) (err error) {
+func echoToFile(content, filePath string) (err error) {
 	outfile, err := os.Create(filePath)
 	if err != nil {
 		return err
@@ -148,11 +148,8 @@ func echoToFile(content string, filePath string) (err error) {
 	return cmd.Wait()
 }
 
-func getOptimalDeviceSettings(nodeInfo *NodeInfo, diskSkus map[string]map[string]DiskSkuInfo, perfProfile string, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr string) (queueDepth, nrRequests, scheduler, maxSectorsKb, readAheadKb string, err error) {
-	klog.V(2).Infof("Calculating perf optimizations for rofile %s accountType %s diskSize", perfProfile, accountType, diskSizeGibStr)
-
-	err = nil
-
+func getOptimalDeviceSettings(nodeInfo *NodeInfo, diskSkus map[string]map[string]DiskSkuInfo, perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr string) (queueDepth, nrRequests, scheduler, maxSectorsKb, readAheadKb string, err error) {
+	klog.V(12).Infof("Calculating perf optimizations for rofile %s accountType %s diskSize", perfProfile, accountType, diskSizeGibStr)
 	iopsHeadRoom := .25
 	maxHwSectorsKb := 512.0
 
@@ -222,8 +219,6 @@ func getOptimalDeviceSettings(nodeInfo *NodeInfo, diskSkus map[string]map[string
 // getMatchingDiskSku gets the smallest SKU which matches the size, io and bw requirement
 // TODO: Query the disk size (e.g. P10, P30 etc) and use that to find the sku
 func getMatchingDiskSku(diskSkus map[string]map[string]DiskSkuInfo, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr string) (matchingSku *DiskSkuInfo, err error) {
-	err = nil
-	matchingSku = nil
 	accountTypeLower := strings.ToLower(accountType)
 	skus, ok := diskSkus[accountTypeLower]
 

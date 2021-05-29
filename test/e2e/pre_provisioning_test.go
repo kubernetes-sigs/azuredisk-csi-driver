@@ -138,7 +138,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 		ginkgo.It("should succeed when creating a shared disk [disk.csi.azure.com][windows]", func() {
 			skipIfUsingInTreeVolumePlugin()
 			skipIfOnAzureStackCloud()
-			req := makeCreateVolumeReq("single-shared-disk", 256)
+			req := makeCreateVolumeReq("single-shared-disk", 512)
 			req.Parameters = map[string]string{
 				"skuName":     "Premium_LRS",
 				"maxShares":   "2",
