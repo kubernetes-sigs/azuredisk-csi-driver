@@ -9,7 +9,6 @@
   - [Perf Profile](#perf-profile)
   - [Scope Of the Change](#scope-of-the-change)
 - [Limitations](#limitations)
-- [Future Considerations](#future-considerations)
 <!-- /toc -->
 
 ## Summary
@@ -76,14 +75,6 @@ In this iteration we will only enable the feature for StandardSSD and Premium di
 ## Limitations
 
 - This feature is not supported for HDD or UltraDisk right now.
+- This feature only optimizes data disks (PVs). Local/temp disks on the VM are not optimized by this feature.
 - The current implementation only optimizes the disks which use the storVsc linux disk driver.
 - Only `Basic` `perfProfile` is available today, which would provide balanced IO and throughput performance.
-
-## Future Considerations
-
-- We will consider exposing more perf profiles, tailor made for different IO characterstics.
-- We will consider allowing users to create their own perf profile and express the workloads characterstics for
-the storage class using CRD or some other configuration.
-- We will consider expanding perf optimization for HDD and UltraDisks.
-- We will consider expanding perf optimization for other disk drivers such as NVME etc.
-- We will consider expanding perf optimization for other OS' such as Windows.
