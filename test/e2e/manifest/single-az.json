@@ -39,7 +39,7 @@
             {
                 "name": "agentpool1",
                 "count": 2,
-                "vmSize": "Standard_DS2_v2",
+                "vmSize": "Standard_DS3_v2",
                 "availabilityProfile": "AvailabilitySet",
                 "distro": "aks-ubuntu-18.04"
             }
