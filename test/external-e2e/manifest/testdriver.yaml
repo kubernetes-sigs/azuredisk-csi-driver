@@ -14,4 +14,4 @@ DriverInfo:
         controllerExpansion: false
         nodeExpansion: false
         volumeLimits: true
-        snapshotDataSource: false
+        snapshotDataSource: true
