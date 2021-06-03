@@ -123,6 +123,7 @@ ifdef TEST_WINDOWS
 		--set controller.runOnMaster=true \
 		--set controller.replicas=1 \
 		--set controller.logLevel=6 \
+		--set schedulerExtender.replicas=1 \
 		--set node.logLevel=6 \
 		--set cloud=$(CLOUD)
 else
