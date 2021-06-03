@@ -57,6 +57,7 @@ var (
 	isWindowsCluster          = os.Getenv(testWindowsEnvVar) != ""
 	isAzureStackCloud         = strings.EqualFold(os.Getenv(cloudNameEnvVar), "AZURESTACKCLOUD")
 	location                  string
+	supportsZRS               bool
 )
 
 type testCmd struct {
@@ -87,6 +88,10 @@ var _ = ginkgo.BeforeSuite(func() {
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		location = creds.Location
+
+		if location == "westus2" || location == "westeurope" {
+			supportsZRS = true
+		}
 
 		// Install Azure Disk CSI Driver on cluster from project root
 		e2eBootstrap := testCmd{

@@ -35,7 +35,7 @@ type DynamicallyProvisionedStatefulSetTest struct {
 }
 
 func (t *DynamicallyProvisionedStatefulSetTest) Run(client clientset.Interface, namespace *v1.Namespace) {
-	tStatefulSet, cleanup := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver)
+	tStatefulSet, cleanup := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, driver.GetParameters())
 	// defer must be called here for resources not get removed before using them
 	for i := range cleanup {
 		defer cleanup[i]()
