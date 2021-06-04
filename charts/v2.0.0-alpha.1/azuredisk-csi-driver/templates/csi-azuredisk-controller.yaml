@@ -14,6 +14,10 @@ spec:
 {{ include "azuredisk.labels" . | indent 6 }}
         app: csi-azuredisk-controller
     spec:
+      {{- if .Values.imagePullSecrets }}
+      imagePullSecrets:
+{{ toYaml .Values.imagePullSecrets | indent 8 }}
+      {{- end }}
       hostNetwork: true
       serviceAccountName: csi-azuredisk-controller-sa
       nodeSelector:
@@ -27,6 +31,10 @@ spec:
           operator: "Equal"
           value: "true"
           effect: "NoSchedule"
+        - key: "node-role.kubernetes.io/controlplane"
+          operator: "Equal"
+          value: "true"
+          effect: "NoSchedule"
       {{- include "azuredisk.pullSecrets" . | indent 6 }}
       containers:
         - name: csi-provisioner
@@ -36,8 +44,8 @@ spec:
             - "--csi-address=$(ADDRESS)"
             - "--v=2"
             - "--timeout=15s"
-            - "--enable-leader-election"
-            - "--leader-election-type=leases"
+            - "--leader-election"
+            - "--worker-threads={{ .Values.controller.provisionerWorkerThreads }}"
             - "--extra-create-metadata=true"
           env:
             - name: ADDRESS
@@ -48,7 +56,7 @@ spec:
           resources:
             limits:
               cpu: 100m
-              memory: 100Mi
+              memory: 300Mi
             requests:
               cpu: 10m
               memory: 20Mi
@@ -59,16 +67,17 @@ spec:
             - "-csi-address=$(ADDRESS)"
             - "-timeout=120s"
             - "-leader-election"
+            - "-worker-threads={{ .Values.controller.attacherWorkerThreads }}"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
           volumeMounts:
-          - mountPath: /csi
-            name: socket-dir
+            - mountPath: /csi
+              name: socket-dir
           resources:
             limits:
               cpu: 100m
-              memory: 100Mi
+              memory: 400Mi
             requests:
               cpu: 10m
               memory: 20Mi
@@ -109,7 +118,7 @@ spec:
           resources:
             limits:
               cpu: 100m
-              memory: 200Mi
+              memory: 300Mi
             requests:
               cpu: 10m
               memory: 20Mi
@@ -138,6 +147,7 @@ spec:
             - "--metrics-address=0.0.0.0:{{ .Values.controller.metricsPort }}"
             - "--temp-use-driver-v2={{ .Values.azuredisk.useV2Driver }}"
             - "--is-controller-plugin={{ .Values.azuredisk.useV2Driver }}"
+            - "--disable-avset-nodes={{ .Values.controller.disableAvailabilitySetNodes }}"
           ports:
             - containerPort: 29602
               name: healthz
@@ -180,10 +190,18 @@ spec:
               mountPath: /etc/ssl/certs
               readOnly: true
             {{- end }}
+            {{- if eq .Values.linux.distro "fedora" }}
+            - name: ssl
+              mountPath: /etc/ssl/certs
+              readOnly: true
+            - name: ssl-pki
+              mountPath: /etc/pki/ca-trust/extracted
+              readOnly: true
+            {{- end }}
           resources:
             limits:
               cpu: 200m
-              memory: 200Mi
+              memory: 300Mi
             requests:
               cpu: 10m
               memory: 20Mi
@@ -201,4 +219,12 @@ spec:
         - name: ssl
           hostPath:
             path: /etc/ssl/certs
+        {{- end }}
+        {{- if eq .Values.linux.distro "fedora" }}
+        - name: ssl
+          hostPath:
+            path: /etc/ssl/certs
+        - name: ssl-pki
+          hostPath:
+            path: /etc/pki/ca-trust/extracted
         {{- end }}

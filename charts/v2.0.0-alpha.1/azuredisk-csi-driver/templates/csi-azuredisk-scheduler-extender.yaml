@@ -61,7 +61,7 @@ metadata:
   labels:
     app: azdiskschedulerextender
 spec:
-  replicas: 2
+  replicas: {{ .Values.schedulerExtender.replicas }}
   selector:
     matchLabels:
       app: azdiskschedulerextender
@@ -70,7 +70,26 @@ spec:
       labels:
         app: azdiskschedulerextender
     spec:
+      {{- if .Values.imagePullSecrets }}
+      imagePullSecrets:
+{{ toYaml .Values.imagePullSecrets | indent 8 }}
+      {{- end }}
       serviceAccountName: azdiskschedulerextender
+      nodeSelector:
+        kubernetes.io/os: linux
+        {{- if .Values.controller.runOnMaster}}
+        kubernetes.io/role: master
+        {{- end}}
+      priorityClassName: system-cluster-critical
+      tolerations:
+        - key: "node-role.kubernetes.io/master"
+          operator: "Equal"
+          value: "true"
+          effect: "NoSchedule"
+        - key: "node-role.kubernetes.io/controlplane"
+          operator: "Equal"
+          value: "true"
+          effect: "NoSchedule"
       volumes:
       - name: azdiskschedulerextender-config
         configMap:

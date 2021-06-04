@@ -35,7 +35,7 @@ spec:
           volumeMounts:
             - mountPath: C:\csi
               name: plugin-dir
-          image: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe:v2.2.0
+          image: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe:v2.3.0
           args:
             - "--csi-address=$(CSI_ENDPOINT)"
             - "--probe-timeout=3s"
@@ -52,11 +52,15 @@ spec:
               cpu: 10m
               memory: 20Mi
         - name: node-driver-registrar
-          image: mcr.microsoft.com/oss/kubernetes-csi/csi-node-driver-registrar:v2.0.1
+          image: mcr.microsoft.com/oss/kubernetes-csi/csi-node-driver-registrar:v2.2.0
           args:
             - "--v=2"
             - "--csi-address=$(CSI_ENDPOINT)"
             - "--kubelet-registration-path=C:\\var\\lib\\kubelet\\plugins\\disk.csi.azure.com\\csi.sock"
+          lifecycle:
+            preStop:
+              exec:
+                command: ["cmd", "/c", "del /f C:\\registration\\disk.csi.azure.com-reg.sock C:\\csi\\disk.csi.azure.com\\csi.sock"]
           env:
             - name: CSI_ENDPOINT
               value: unix://C:\\csi\\csi.sock

@@ -14,6 +14,10 @@ spec:
 {{ include "azuredisk.labels" . | indent 6 }}
         app: csi-azuredisk-node
     spec:
+      {{- if .Values.imagePullSecrets }}
+      imagePullSecrets:
+{{ toYaml .Values.imagePullSecrets | indent 8 }}
+      {{- end }}
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
       serviceAccountName: csi-azuredisk-node-sa
@@ -41,7 +45,7 @@ spec:
           args:
             - --csi-address=/csi/csi.sock
             - --probe-timeout=3s
-            - --health-port=29603
+            - --health-port={{ .Values.node.livenessProbe.healthPort }}
             - --v=2
           resources:
             limits:
@@ -64,7 +68,7 @@ spec:
             - name: ADDRESS
               value: /csi/csi.sock
             - name: DRIVER_REG_SOCK_PATH
-              value: {{ .Values.kubelet.linuxPath }}/plugins/disk.csi.azure.com/csi.sock
+              value: {{ .Values.linux.kubelet }}/plugins/disk.csi.azure.com/csi.sock
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
@@ -125,7 +129,7 @@ spec:
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
-            - mountPath: {{ .Values.kubelet.linuxPath }}/
+            - mountPath: {{ .Values.linux.kubelet }}/
               mountPropagation: Bidirectional
               name: mountpoint-dir
             - mountPath: /etc/kubernetes/
@@ -144,6 +148,14 @@ spec:
               mountPath: /etc/ssl/certs
               readOnly: true
             {{- end }}
+            {{- if eq .Values.linux.distro "fedora" }}
+            - name: ssl
+              mountPath: /etc/ssl/certs
+              readOnly: true
+            - name: ssl-pki
+              mountPath: /etc/pki/ca-trust/extracted
+              readOnly: true
+            {{- end }}
           resources:
             limits:
               cpu: 200m
@@ -153,15 +165,15 @@ spec:
               memory: 20Mi
       volumes:
         - hostPath:
-            path: {{ .Values.kubelet.linuxPath }}/plugins/disk.csi.azure.com
+            path: {{ .Values.linux.kubelet }}/plugins/disk.csi.azure.com
             type: DirectoryOrCreate
           name: socket-dir
         - hostPath:
-            path: {{ .Values.kubelet.linuxPath }}/
+            path: {{ .Values.linux.kubelet }}/
             type: DirectoryOrCreate
           name: mountpoint-dir
         - hostPath:
-            path: {{ .Values.kubelet.linuxPath }}/plugins_registry/
+            path: {{ .Values.linux.kubelet }}/plugins_registry/
             type: DirectoryOrCreate
           name: registration-dir
         - hostPath:
@@ -187,5 +199,13 @@ spec:
         - name: ssl
           hostPath:
             path: /etc/ssl/certs
+        {{- end }}
+        {{- if eq .Values.linux.distro "fedora" }}
+        - name: ssl
+          hostPath:
+            path: /etc/ssl/certs
+        - name: ssl-pki
+          hostPath:
+            path: /etc/pki/ca-trust/extracted
         {{- end }}
 {{- end -}}
