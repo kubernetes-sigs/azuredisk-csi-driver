@@ -61,10 +61,6 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 		parameters = make(map[string]string)
 	}
 
-	// Delete parameters used only during node publish/stage and not understood or used by the cloud provisioner.
-	delete(parameters, fsTypeField)
-	delete(parameters, kindField)
-
 	mc := metrics.NewMetricContext(d.cloudProvisioner.GetMetricPrefix(), "controller_create_volume", d.cloudProvisioner.GetCloud().ResourceGroup, d.cloudProvisioner.GetCloud().SubscriptionID, d.Name)
 	isOperationSucceeded := false
 	defer func() {

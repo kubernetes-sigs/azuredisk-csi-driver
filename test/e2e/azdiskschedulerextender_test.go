@@ -67,13 +67,14 @@ func schedulerExtenderTests(isMultiZone bool) {
 		testDriver = driver.InitAzureDiskDriver()
 	})
 
-	ginkgo.It("Should schedule and start a pod with no persistent volume requests.", func() {
+	ginkgo.It("Should schedule and start a pod with no persistent volume requests. [Windows]", func() {
 		skipIfUsingInTreeVolumePlugin()
 		skipIfNotUsingCSIDriverV2()
 
 		pod := testsuites.PodDetails{
-			Cmd:     convertToPowershellorCmdCommandIfNecessary("echo 'hello world'"),
-			Volumes: []testsuites.VolumeDetails{},
+			Cmd:       convertToPowershellorCmdCommandIfNecessary("echo 'hello world'"),
+			Volumes:   []testsuites.VolumeDetails{},
+			IsWindows: isWindowsCluster,
 		}
 		test := testsuites.AzDiskSchedulerExtenderSimplePodSchedulingTest{
 			CSIDriver:       testDriver,
@@ -84,7 +85,7 @@ func schedulerExtenderTests(isMultiZone bool) {
 		test.Run(cs, ns, schedulerName)
 	})
 
-	ginkgo.It("Should schedule and start a pod with a persistent volume requests.", func() {
+	ginkgo.It("Should schedule and start a pod with a persistent volume requests. [Windows]", func() {
 		skipIfUsingInTreeVolumePlugin()
 		skipIfNotUsingCSIDriverV2()
 
@@ -101,6 +102,7 @@ func schedulerExtenderTests(isMultiZone bool) {
 					},
 				},
 			}, isMultiZone),
+			IsWindows: isWindowsCluster,
 		}
 
 		test := testsuites.AzDiskSchedulerExtenderPodSchedulingWithPVTest{
@@ -113,7 +115,7 @@ func schedulerExtenderTests(isMultiZone bool) {
 		test.Run(cs, ns, schedulerName)
 	})
 
-	ginkgo.It("Should schedule and reschedule a pod with a persistent volume request on failover.", func() {
+	ginkgo.It("Should schedule and reschedule a pod with a persistent volume request on failover. [Windows]", func() {
 		skipIfUsingInTreeVolumePlugin()
 		skipIfNotUsingCSIDriverV2()
 
@@ -153,7 +155,7 @@ func schedulerExtenderTests(isMultiZone bool) {
 		test.Run(cs, ns, schedulerName)
 	})
 
-	ginkgo.It("Should schedule and start a pod with multiple persistent volume requests.", func() {
+	ginkgo.It("Should schedule and start a pod with multiple persistent volume requests. [Windows]", func() {
 		skipIfUsingInTreeVolumePlugin()
 		skipIfNotUsingCSIDriverV2()
 		volumes := []testsuites.VolumeDetails{}
