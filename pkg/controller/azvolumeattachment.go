@@ -1,9 +1,12 @@
 /*
 Copyright 2021 The Kubernetes Authors.
+
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
+
     http://www.apache.org/licenses/LICENSE-2.0
+
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -164,7 +167,7 @@ func (r *reconcileAzVolumeAttachment) getRoleCount(ctx context.Context, azVolume
 	return roleCount
 }
 
-// ManageAttachmentsForVolume will be runing on a separate channel
+// ManageAttachmentsForVolume will be running on a separate channel
 func (r *reconcileAzVolumeAttachment) SyncAll(ctx context.Context) error {
 	r.syncMutex.Lock()
 	defer r.syncMutex.Unlock()
@@ -416,7 +419,7 @@ func (r *reconcileAzVolumeAttachment) GetNodesForReplica(ctx context.Context, nu
 
 			nodeRequirement, err := labels.NewRequirement(NodeNameLabel, selection.Equals, []string{string(node.Name)})
 			if err != nil {
-				klog.Errorf("Encountered error while creating Requrement: %+v", err)
+				klog.Errorf("Encountered error while creating Requirement: %+v", err)
 				continue
 			}
 			if nodeRequirement == nil {

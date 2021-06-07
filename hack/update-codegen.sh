@@ -23,4 +23,4 @@ bash "${CODEGEN_PKG}"/generate-groups.sh "deepcopy,client,informer,lister" \
   sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client \
   sigs.k8s.io/azuredisk-csi-driver/pkg/apis \
   azuredisk:v1alpha1 \
-  --go-header-file "${SCRIPT_ROOT}"/hack/boilerplate/boilerplate.go.txt
+  --go-header-file "${SCRIPT_ROOT}"/hack/boilerplate/boilerplate.generatego.txt

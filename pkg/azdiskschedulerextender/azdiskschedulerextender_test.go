@@ -554,7 +554,7 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 	}
 }
 
-//TODO test only checks the repsonse code. add check for response body
+//TODO test only checks the response code. add check for response body
 func TestFilterAndPrioritizeInRandomizedLargeCluster(t *testing.T) {
 	var nodes []v1.Node
 	var nodeNames []string

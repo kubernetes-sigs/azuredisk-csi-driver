@@ -364,7 +364,7 @@ func NewAzVolumeController(mgr manager.Manager, azVolumeClient *azVolumeClientSe
 		return err
 	}
 
-	klog.V(2).Info("Controller set-up successfull.")
+	klog.V(2).Info("Controller set-up successful.")
 	return nil
 }
 

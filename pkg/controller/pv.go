@@ -126,6 +126,6 @@ func NewPVController(mgr manager.Manager, azVolumeClient *azVolumeClientSet.Inte
 		return err
 	}
 
-	klog.V(2).Info("Controller set-up successfull.")
+	klog.V(2).Info("Controller set-up successful.")
 	return nil
 }

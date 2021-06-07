@@ -115,7 +115,7 @@ spec:
                   fieldPath: spec.nodeName
             - name: AZURE_ENVIRONMENT_FILEPATH  # For Azure Stack Cloud
               value: /etc/kubernetes/azurestackcloud.json
-          imagePullPolicy: {{ .Values.image.azuredisk.pullPolicy }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:
             privileged: true
           volumeMounts:

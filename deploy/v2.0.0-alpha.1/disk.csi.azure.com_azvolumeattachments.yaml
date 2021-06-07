@@ -83,7 +83,7 @@ spec:
               has not yet been attached to the specified node
             properties:
               error:
-                description: Error occured during attach/detach of volume
+                description: Error occurred during attach/detach of volume
                 properties:
                   currentNode:
                     description: "NodeName is a type that holds a api.Node's Name

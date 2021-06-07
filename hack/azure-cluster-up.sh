@@ -107,7 +107,7 @@ genpwd() {
 
 print_cleanup_command() {
   cat <<EOF
-To delete the cluster, run the following commmand:
+To delete the cluster, run the following command:
 
 $ $1
 EOF

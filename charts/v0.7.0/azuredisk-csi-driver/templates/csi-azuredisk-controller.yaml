@@ -151,7 +151,7 @@ spec:
               value: "/etc/kubernetes/azure.json"
             - name: CSI_ENDPOINT
               value: unix:///csi/csi.sock
-          imagePullPolicy: {{ .Values.image.azuredisk.pullPolicy }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
           volumeMounts:
             - mountPath: /csi
               name: socket-dir

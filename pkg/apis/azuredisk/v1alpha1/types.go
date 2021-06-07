@@ -81,7 +81,7 @@ type AzVolumeStatus struct {
 	//Current phase of the underlying PV
 	//+optional
 	Phase AzVolumePhase `json:"phase,omitempty"`
-	//Error occured during creation/deletion of volume
+	//Error occurred during creation/deletion of volume
 	//+optional
 	Error *AzError `json:"error,omitempty"`
 }
@@ -160,7 +160,7 @@ type AzVolumeAttachmentStatus struct {
 	Role Role `json:"role"`
 	//+optional
 	PublishContext map[string]string `json:"publish_context,omitempty"`
-	//Error occured during attach/detach of volume
+	//Error occurred during attach/detach of volume
 	//+optional
 	Error *AzError `json:"error,omitempty"`
 }

@@ -140,6 +140,6 @@ func InitializeAzDriverNodeController(mgr manager.Manager, azVolumeClient *azVol
 		klog.Errorf("Failed to watch nodes. Error: %v", err)
 		return err
 	}
-	klog.V(2).Info("Controller set-up successfull.")
+	klog.V(2).Info("Controller set-up successful.")
 	return err
 }

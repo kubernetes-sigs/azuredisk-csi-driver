@@ -117,7 +117,7 @@ spec:
             - name: AZURE_ENVIRONMENT_FILEPATH
               value: /etc/kubernetes/azurestackcloud.json
             {{- end }}
-          imagePullPolicy: {{ .Values.image.azuredisk.pullPolicy }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:
             privileged: true
           volumeMounts:
