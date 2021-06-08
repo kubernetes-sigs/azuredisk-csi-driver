@@ -37,8 +37,8 @@
         "agentPoolProfiles": [
             {
                 "name": "agentpool1",
-                "count": 4,
-                "vmSize": "Standard_DS4_v2",
+                "count": 2,
+                "vmSize": "Standard_DS5_v2",
                 "distro": "aks-ubuntu-18.04"
             }
         ],
