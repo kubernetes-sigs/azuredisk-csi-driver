@@ -66,10 +66,13 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `image.nodeDriverRegistrar.tag`                   | csi-node-driver-registrar docker image tag                 | v2.2.0                                                       |
 | `image.nodeDriverRegistrar.pullPolicy`            | csi-node-driver-registrar image pull policy                | IfNotPresent                                                 |
 | `imagePullSecrets`                                | Specify docker-registry secret names as an array           | [] (does not add image pull secrets to deployed pods)        |                                       |
-| `serviceAccount.create`                           | whether create service account of csi-azuredisk-controller | true                                                         |
+| `serviceAccount.create`                           | whether create service account of csi-azuredisk-controller, csi-azuredisk-node, and snapshot-controller| true                                                    |
+| `serviceAccount.controller`                       | name of service account for csi-azuredisk-controller       | csi-azuredisk-controller-sa                                  |
+| `serviceAccount.node`                             | name of service account for csi-azuredisk-node             | csi-azuredisk-node-sa                                        |
+| `serviceAccount.snapshotController`               | name of service account for csi-snapshot-controller        | csi-snapshot-controller-sa                                   |
 | `rbac.create`                                     | whether create rbac of csi-azuredisk-controller            | true                                                         |
 | `controller.replicas`                             | the replicas of csi-azuredisk-controller                   | 2                                                            |
-| `controller.metricsPort`                          | metrics port of csi-azuredisk-controller                   |29604                                                        |
+| `controller.metricsPort`                          | metrics port of csi-azuredisk-controller                   | 29604                                                        |
 | `controller.runOnMaster`                          | run csi-azuredisk-controller on master node                | false                                                        |
 | `controller.logLevel`                             | controller driver log level                                                          |`5`                                                           |
 | `node.metricsPort`                                | metrics port of csi-azuredisk-node                         |29605                                                        |
@@ -82,8 +85,6 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `snapshot.image.csiSnapshotController.tag`        | snapshot-controller docker image tag                       | v3.0.3                                                      |
 | `snapshot.image.csiSnapshotController.pullPolicy` | snapshot-controller image pull policy                      | IfNotPresent                                                 |
 | `snapshot.snapshotController.replicas`            | the replicas of snapshot-controller                        | 1                                                            |
-| `snapshot.snapshotController.serviceAccount`      | whether create service account of snapshot-controller      | true                                                         |
-| `snapshot.snapshotController.rbac`                | whether create rbac of snapshot-controller                 | true                                                         |
 | `linux.enabled`                                   | whether enable linux feature                               | true                                                         |
 | `linux.kubelet`                                   | configure kubelet directory path on Linux agent node                  | `/var/lib/kubelet`                                                |
 | `linux.distro`                                   | configure ssl certificates for different Linux distribution(available values: `debian`, `fedora`)                  | `debian`                                                |

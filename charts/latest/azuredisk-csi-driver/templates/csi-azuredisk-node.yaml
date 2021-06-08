@@ -20,7 +20,7 @@ spec:
       {{- end }}
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
-      serviceAccountName: csi-azuredisk-node-sa
+      serviceAccountName: {{ .Values.serviceAccount.node }}
       nodeSelector:
         kubernetes.io/os: linux
       affinity:
