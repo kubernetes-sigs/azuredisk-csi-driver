@@ -28,6 +28,7 @@ PLUGIN_NAME = azurediskpluginv2
 IMAGE_VERSION ?= v2.0.0-alpha.1
 CHART_VERSION ?= v2.0.0-alpha.1
 GOTAGS += -tags azurediskv2
+E2E_TEST_ARGS=--temp-use-driver-v2
 endif
 CLOUD ?= AzurePublicCloud
 # Use a custom version for E2E tests if we are testing in CI
@@ -337,9 +338,9 @@ e2e-test:
 	if [ ! -z "$(EXTERNAL_E2E_TEST)" ]; then \
 		bash ./test/external-e2e/run.sh;\
 	else \
-		go test -v -timeout=0 ./test/e2e ${GINKGO_FLAGS};\
+		go test -v -timeout=0 ${GOTAGS} ./test/e2e ${E2E_TEST_ARGS} ${GINKGO_FLAGS};\
 	fi
 
 .PHONY: e2e-test-v2
 e2e-test-v2:
-	BUILD_V2=1 go test -v -timeout=0 -tags azurediskv2 ./test/e2e --temp-use-driver-v2 ${GINKGO_FLAGS}
+	BUILD_V2=1 make e2e-test
