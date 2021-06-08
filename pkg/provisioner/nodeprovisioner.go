@@ -20,8 +20,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -105,23 +103,6 @@ func (p *NodeProvisioner) GetDevicePathWithLUN(lun int) (string, error) {
 	return newDevicePath, err
 }
 
-// GetDevicePathWithMountPath returns the device path for the specified mount point/
-func (p *NodeProvisioner) GetDevicePathWithMountPath(mountPath string) (string, error) {
-	args := []string{"-o", "source", "--noheadings", "--mountpoint", mountPath}
-	output, err := p.mounter.Exec.Command("findmnt", args...).Output()
-
-	if err != nil {
-		return "", fmt.Errorf("could not determine device path(%s), error: %v", mountPath, err)
-	}
-
-	devicePath := strings.TrimSpace(string(output))
-	if len(devicePath) == 0 {
-		return "", fmt.Errorf("could not get valid device for mount path: %q", mountPath)
-	}
-
-	return devicePath, nil
-}
-
 // IsBlockDevicePath return whether the path references a block device.
 func (p *NodeProvisioner) IsBlockDevicePath(path string) (bool, error) {
 	return p.host.PathIsDevice(path)
@@ -196,33 +177,6 @@ func (p *NodeProvisioner) Mount(source, target, fstype string, options []string)
 // Unmount unmounts a volume previously mounted using the Mount method.
 func (p *NodeProvisioner) Unmount(target string) error {
 	return p.mounter.Unmount(target)
-}
-
-// Resize resizes the filesystem of the specified volume.
-func (p *NodeProvisioner) Resize(source, target string) error {
-	resizer := mount.NewResizeFs(p.mounter.Exec)
-
-	if _, err := resizer.Resize(source, target); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// GetBlockSizeBytes returns the block size, in bytes, of the block device at the specified path.
-func (p *NodeProvisioner) GetBlockSizeBytes(devicePath string) (int64, error) {
-	output, err := p.mounter.Exec.Command("blockdev", "--getsize64", devicePath).Output()
-	if err != nil {
-		return -1, fmt.Errorf("error when getting size of block volume at path %s: output: %s, err: %v", devicePath, string(output), err)
-	}
-
-	strOut := strings.TrimSpace(string(output))
-	gotSizeBytes, err := strconv.ParseInt(strOut, 10, 64)
-	if err != nil {
-		return -1, fmt.Errorf("failed to parse size %s into a valid size", strOut)
-	}
-
-	return gotSizeBytes, nil
 }
 
 func isCorruptedMount(target string) bool {

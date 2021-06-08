@@ -22,9 +22,28 @@ import (
 	"fmt"
 	"strconv"
 
+	"google.golang.org/grpc/status"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
 )
+
+// GetDevicePathWithMountPath returns the device path for the specified mount point/
+func (p *NodeProvisioner) GetDevicePathWithMountPath(mountPath string) (string, error) {
+	proxy, ok := p.mounter.Interface.(mounter.CSIProxyMounter)
+	if !ok {
+		return "", fmt.Errorf("could not cast to csi proxy class")
+	}
+
+	devicePath, err := proxy.GetDeviceNameFromMount(mountPath, "")
+	if err != nil {
+		if sts, ok := status.FromError(err); ok {
+			return "", fmt.Errorf(sts.Message())
+		}
+		return "", err
+	}
+
+	return devicePath, nil
+}
 
 // FormatAndMount formats the volume and mounts it at the specified path.
 func (p *NodeProvisioner) FormatAndMount(source, target, fstype string, options []string) error {
@@ -68,6 +87,41 @@ func (p *NodeProvisioner) CleanupMountPoint(path string, extensiveCheck bool) er
 	// CSI proxy alpha does not support fixing the corrupted directory. So we will
 	// just do the unmount for now.
 	return p.mounter.Unmount(path)
+}
+
+// Resize resizes the filesystem of the specified volume.
+func (p *NodeProvisioner) Resize(source, target string) error {
+	proxy, ok := p.mounter.Interface.(mounter.CSIProxyMounter)
+	if !ok {
+		return fmt.Errorf("could not cast to csi proxy class")
+	}
+
+	if err := proxy.ResizeVolume(source); err != nil {
+		if sts, ok := status.FromError(err); ok {
+			return fmt.Errorf(sts.Message())
+		}
+		return err
+	}
+
+	return nil
+}
+
+// GetBlockSizeBytes returns the block size, in bytes, of the block device at the specified path.
+func (p *NodeProvisioner) GetBlockSizeBytes(devicePath string) (int64, error) {
+	proxy, ok := p.mounter.Interface.(mounter.CSIProxyMounter)
+	if !ok {
+		return -1, fmt.Errorf("could not cast to csi proxy class")
+	}
+
+	sizeInBytes, err := proxy.GetVolumeSizeInBytes(devicePath)
+	if err != nil {
+		if sts, ok := status.FromError(err); ok {
+			return -1, fmt.Errorf(sts.Message())
+		}
+		return -1, err
+	}
+
+	return sizeInBytes, nil
 }
 
 // readyMountPoint readies the mount point for mount.

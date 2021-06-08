@@ -186,6 +186,9 @@ func TestEnsureBlockTargetFile(t *testing.T) {
 }
 
 func TestGetBlockSizeBytes(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping test on Windows")
+	}
 	notFoundErr := "exit status 1"
 	unexpectedOutput := "Block size is 723327"
 
