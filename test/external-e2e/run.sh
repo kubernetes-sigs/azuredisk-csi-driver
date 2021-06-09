@@ -40,6 +40,7 @@ setup_e2e_binaries() {
 }
 
 print_logs() {
+    bash ./hack/verify-examples.sh linux
     echo "print out driver logs ..."
     bash ./test/utils/azuredisk_log.sh
 }
