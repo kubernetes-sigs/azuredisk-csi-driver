@@ -186,7 +186,8 @@ var _ = ginkgo.AfterSuite(func() {
 			execTestCmd([]testCmd{azurediskLog, deleteMetricsSVC, e2eTeardown})
 		}
 
-		if !isTestingMigration {
+		if !isTestingMigration && !isUsingCSIDriverV2 {
+
 			// install Azure Disk CSI Driver deployment scripts test
 			installDriver := testCmd{
 				command:  "bash",
