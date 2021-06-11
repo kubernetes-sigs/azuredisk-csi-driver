@@ -85,15 +85,16 @@ func GetCloudProvider(kubeconfig string) (*azure.Cloud, error) {
 			klog.V(2).Infof("use default %s env var: %v", DefaultAzureCredentialFileEnv, credFile)
 		}
 
-		f, err := os.Open(credFile)
+		var config *os.File
+		config, err = os.Open(credFile)
 		if err != nil {
-			klog.Errorf("Failed to load config from file: %s", credFile)
-			return nil, fmt.Errorf("Failed to load config from file: %s, cloud not get azure cloud provider", credFile)
+			klog.Errorf("load azure config from file(%s) failed with %v", credFile, err)
+			return nil, fmt.Errorf("load azure config from file(%s) failed with %v", credFile, err)
 		}
-		defer f.Close()
+		defer config.Close()
 
 		klog.V(2).Infof("read cloud config from file: %s successfully", credFile)
-		if az, err = azure.NewCloudWithoutFeatureGates(f); err != nil {
+		if az, err = azure.NewCloudWithoutFeatureGates(config, false); err != nil {
 			return az, err
 		}
 	}
