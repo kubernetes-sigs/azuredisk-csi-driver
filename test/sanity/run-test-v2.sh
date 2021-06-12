@@ -31,22 +31,19 @@ function cleanup {
   echo 'Stopping minikube'
   minikube stop
 
-  echo 'Deleting minikube'
-  minikube delete
-  rm -r ~/.minikube
-
   echo 'Deleting CSI sanity test binary'
   rm -rf csi-test
 }
 
 trap cleanup EXIT
 
-echo 'Creating minikube'
+echo 'Installing minikube'
+sudo mkdir -p /usr/local/bin/
 curl -Lo minikube https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64 \
-  && chmod +x minikube
+  && sudo chmod +x /usr/local/bin/minikube
 
 echo 'Start minikube'
-minikube start --driver=none
+minikube start --driver=none --force-systemd --force
 
 echo 'Load the image to minikube'
 minikube cache add $image
