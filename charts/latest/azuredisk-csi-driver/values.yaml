@@ -25,11 +25,14 @@ image:
     pullPolicy: IfNotPresent
 
 serviceAccount:
-  create: true
+  create: true # When true, service accounts will be created for you. Set to false if you want to use your own.
+  controller: csi-azuredisk-controller-sa # Name of Service Account to be created or used
+  node: csi-azuredisk-node-sa # Name of Service Account to be created or used
+  snapshotController: csi-snapshot-controller-sa # Name of Service Account to be created or used
 
 rbac:
   create: true
-
+  
 controller:
   replicas: 2
   metricsPort: 29604
@@ -59,8 +62,6 @@ snapshot:
       pullPolicy: IfNotPresent
   snapshotController:
     replicas: 1
-    serviceAccount: true
-    rbac: true
 
 feature:
   enableFSGroupPolicy: false

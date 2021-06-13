@@ -15,7 +15,7 @@ spec:
 {{ include "azuredisk.labels" . | indent 6 }}
         app: csi-snapshot-controller
     spec:
-      serviceAccountName: csi-snapshot-controller-sa
+      serviceAccountName: {{ .Values.serviceAccount.snapshotController }}
       nodeSelector:
         kubernetes.io/os: linux
       priorityClassName: system-cluster-critical

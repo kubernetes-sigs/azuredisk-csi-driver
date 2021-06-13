@@ -14,7 +14,7 @@ spec:
 {{ include "azuredisk.labels" . | indent 6 }}
         app: csi-azuredisk-node-win
     spec:
-      serviceAccountName: csi-azuredisk-node-sa
+      serviceAccountName: {{ .Values.serviceAccount.node }}
       tolerations:
         - key: "node.kubernetes.io/os"
           operator: "Exists"
