@@ -15,10 +15,10 @@ spec:
         app: csi-azuredisk-node-win
     spec:
       serviceAccountName: {{ .Values.serviceAccount.node }}
+{{- with .Values.windows.tolerations }}
       tolerations:
-        - key: "node.kubernetes.io/os"
-          operator: "Exists"
-          effect: "NoSchedule"
+{{ toYaml . | indent 8 }}
+{{- end }}
       nodeSelector:
         kubernetes.io/os: windows
       affinity:

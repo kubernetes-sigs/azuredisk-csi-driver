@@ -75,6 +75,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `controller.metricsPort`                          | metrics port of csi-azuredisk-controller                   | 29604                                                        |
 | `controller.runOnMaster`                          | run csi-azuredisk-controller on master node                | false                                                        |
 | `controller.logLevel`                             | controller driver log level                                                          |`5`                                                           |
+| `controller.tolerations`                              | controller pod tolerations                            |                                                              |
 | `node.metricsPort`                                | metrics port of csi-azuredisk-node                         |29605                                                        |
 | `node.logLevel`                                   | node driver log level                                                          |`5`                                                           |
 | `snapshot.enabled`                                | whether enable snapshot feature                            | false                                                        |
@@ -88,6 +89,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `linux.enabled`                                   | whether enable linux feature                               | true                                                         |
 | `linux.kubelet`                                   | configure kubelet directory path on Linux agent node                  | `/var/lib/kubelet`                                                |
 | `linux.distro`                                   | configure ssl certificates for different Linux distribution(available values: `debian`, `fedora`)                  | `debian`                                                |
+| `linux.tolerations`                              | linux node driver tolerations                            |                                                              |
 | `windows.enabled`                                 | whether enable windows feature                             | true                                                        |
 | `windows.kubelet`                                 | configure kubelet directory path on Windows agent node                | `'C:\var\lib\kubelet'`                                            |
 | `windows.image.livenessProbe.repository`          | windows liveness-probe docker image                        | mcr.microsoft.com/oss/kubernetes-csi/livenessprobe           |
@@ -96,6 +98,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `windows.image.nodeDriverRegistrar.repository`    | windows csi-node-driver-registrar docker image             | mcr.microsoft.com/oss/kubernetes-csi/csi-node-driver-registrar |
 | `windows.image.nodeDriverRegistrar.tag`           | windows csi-node-driver-registrar docker image tag         | v2.2.0                          |
 | `windows.image.nodeDriverRegistrar.pullPolicy`    | windows csi-node-driver-registrar image pull policy        | IfNotPresent                                                 |
+| `windows.tolerations`                              | windows node driver tolerations                            |                                                              |
 | `cloud`                                           | the cloud environment the driver is running on             | AzurePublicCloud                                                  |
 | `node.livenessProbe.healthPort `                  | the health check port for liveness probe                   | `29603` |
 
