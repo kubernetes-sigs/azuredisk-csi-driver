@@ -320,10 +320,10 @@ func generatePVC(namespace, storageClassName, claimSize string, volumeMode v1.Pe
 	}
 }
 
-func generateStatefulSetPVC(namespace, storageClassName, claimSize string, volumeMode v1.PersistentVolumeMode, dataSource *v1.TypedLocalObjectReference) *v1.PersistentVolumeClaim {
+func generateStatefulSetPVC(namespace, name, storageClassName, claimSize string, volumeMode v1.PersistentVolumeMode, dataSource *v1.TypedLocalObjectReference) *v1.PersistentVolumeClaim {
 	return &v1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "pvc",
+			Name:      name,
 			Namespace: namespace,
 		},
 		Spec: v1.PersistentVolumeClaimSpec{
@@ -544,15 +544,15 @@ type TestStatefulset struct {
 	client      clientset.Interface
 	statefulset *apps.StatefulSet
 	namespace   *v1.Namespace
-	podName     string
+	podNames    []string
 }
 
-func NewTestStatefulset(c clientset.Interface, ns *v1.Namespace, command string, pvc *v1.PersistentVolumeClaim, volumeName, mountPath string, readOnly, isWindows, useCMD bool, schedulerName string) *TestStatefulset {
+func NewTestStatefulset(c clientset.Interface, ns *v1.Namespace, command string, pvc []v1.PersistentVolumeClaim, volumeMount []v1.VolumeMount, isWindows, useCMD bool, schedulerName string, replicaCount int) *TestStatefulset {
 	generateName := "azuredisk-volume-tester-"
 	selectorValue := fmt.Sprintf("%s%d", generateName, rand.Int())
-	replicas := int32(1)
+	replicas := int32(replicaCount)
 	var volumeClaimTest []v1.PersistentVolumeClaim
-	volumeClaimTest = append(volumeClaimTest, *pvc)
+	volumeClaimTest = append(volumeClaimTest, pvc...)
 	testStatefulset := &TestStatefulset{
 		client:    c,
 		namespace: ns,
@@ -574,17 +574,11 @@ func NewTestStatefulset(c clientset.Interface, ns *v1.Namespace, command string,
 						NodeSelector:  map[string]string{"kubernetes.io/os": "linux"},
 						Containers: []v1.Container{
 							{
-								Name:    "volume-tester",
-								Image:   imageutils.GetE2EImage(imageutils.BusyBox),
-								Command: []string{"/bin/sh"},
-								Args:    []string{"-c", command},
-								VolumeMounts: []v1.VolumeMount{
-									{
-										Name:      volumeName,
-										MountPath: mountPath,
-										ReadOnly:  readOnly,
-									},
-								},
+								Name:         "volume-tester",
+								Image:        imageutils.GetE2EImage(imageutils.BusyBox),
+								Command:      []string{"/bin/sh"},
+								Args:         []string{"-c", command},
+								VolumeMounts: volumeMount,
 							},
 						},
 						RestartPolicy: v1.RestartPolicyAlways,
@@ -624,7 +618,9 @@ func (t *TestStatefulset) Create() {
 	statefulSetPods, err := t.client.CoreV1().Pods(t.namespace.Name).List(context.TODO(), options)
 	framework.ExpectNoError(err)
 	// always get first pod as there should only be one
-	t.podName = statefulSetPods.Items[0].Name
+	for _, pod := range statefulSetPods.Items {
+		t.podNames = append(t.podNames, pod.Name)
+	}
 }
 
 func (t *TestStatefulset) WaitForPodReady() {
@@ -633,28 +629,48 @@ func (t *TestStatefulset) WaitForPodReady() {
 	options := metav1.ListOptions{LabelSelector: selector.String()}
 	statefulSetPods, err := t.client.CoreV1().Pods(t.namespace.Name).List(context.TODO(), options)
 	framework.ExpectNoError(err)
-	// always get first pod as there should only be one
-	pod := statefulSetPods.Items[0]
-	t.podName = pod.Name
-	err = e2epod.WaitForPodRunningInNamespace(t.client, &pod)
-	framework.ExpectNoError(err)
+
+	ch := make(chan error, len(statefulSetPods.Items))
+	for _, pod := range statefulSetPods.Items {
+		go func(client clientset.Interface, pod *v1.Pod) {
+			err = e2epod.WaitForPodRunningInNamespace(client, pod)
+			ch <- err
+		}(t.client, &pod)
+	}
+	// Wait on all goroutines to report on pod running
+	for range statefulSetPods.Items {
+		err := <-ch
+		framework.ExpectNoError(err)
+	}
 }
 
 func (t *TestStatefulset) Exec(command []string, expectedString string) {
-	_, err := framework.LookForStringInPodExec(t.namespace.Name, t.podName, command, expectedString, execTimeout)
-	framework.ExpectNoError(err)
+	for _, podName := range t.podNames {
+		_, err := framework.LookForStringInPodExec(t.namespace.Name, podName, command, expectedString, execTimeout)
+		framework.ExpectNoError(err)
+	}
 }
 
 func (t *TestStatefulset) DeletePodAndWait() {
-	e2elog.Logf("Deleting pod %q in namespace %q", t.podName, t.namespace.Name)
-	err := t.client.CoreV1().Pods(t.namespace.Name).Delete(context.TODO(), t.podName, metav1.DeleteOptions{})
-	if err != nil {
-		if !apierrs.IsNotFound(err) {
-			framework.ExpectNoError(fmt.Errorf("pod %q Delete API error: %v", t.podName, err))
-		}
-		return
+	ch := make(chan error, len(t.podNames))
+	for _, podName := range t.podNames {
+		e2elog.Logf("Deleting pod %q in namespace %q", podName, t.namespace.Name)
+		go func(client clientset.Interface, ns, podName string) {
+			err := client.CoreV1().Pods(ns).Delete(context.TODO(), podName, metav1.DeleteOptions{})
+			ch <- err
+		}(t.client, t.namespace.Name, podName)
 	}
-	//sleep ensure waitForPodready will not be passed before old pod is deleted.
+
+	// Wait on all goroutines to report on pod delete
+	for range t.podNames {
+		err := <-ch
+		if err != nil {
+			if !apierrs.IsNotFound(err) {
+				framework.ExpectNoError(err)
+			}
+		}
+	}
+	//sleep ensure waitForPodready will not pass before old pod is deleted.
 	time.Sleep(60 * time.Second)
 }
 
@@ -662,17 +678,27 @@ func (t *TestStatefulset) Cleanup() {
 	e2elog.Logf("deleting StatefulSet %q/%q", t.namespace.Name, t.statefulset.Name)
 	body, err := t.Logs()
 	if err != nil {
-		e2elog.Logf("Error getting logs for pod %s: %v", t.podName, err)
+		e2elog.Logf("Error getting logs for pod %s: %v", t.statefulset.Name, err)
 	} else {
-		e2elog.Logf("Pod %s has the following logs: %s", t.podName, body)
+		for i, logs := range body {
+			e2elog.Logf("Pod %s has the following logs: %s", t.podNames[i], logs)
+		}
 	}
 	err = t.client.AppsV1().StatefulSets(t.namespace.Name).Delete(context.TODO(), t.statefulset.Name, metav1.DeleteOptions{})
 	framework.ExpectNoError(err)
 }
 
-func (t *TestStatefulset) Logs() ([]byte, error) {
-	return podLogs(t.client, t.podName, t.namespace.Name)
+func (t *TestStatefulset) Logs() (logs [][]byte, err error) {
+	for _, name := range t.podNames {
+		log, err := podLogs(t.client, name, t.namespace.Name)
+		if err != nil {
+			return nil, err
+		}
+		logs = append(logs, log)
+	}
+	return
 }
+
 func waitForStatefulSetComplete(cs clientset.Interface, ns *v1.Namespace, ss *apps.StatefulSet) error {
 	err := wait.PollImmediate(poll, pollTimeout, func() (bool, error) {
 		var err error

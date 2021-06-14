@@ -328,10 +328,14 @@ clean:
 .PHONY: create-metrics-svc
 create-metrics-svc:
 	kubectl create -f deploy/example/metrics/csi-azuredisk-controller-svc.yaml
+ifdef BUILD_V2
+	kubectl create -f deploy/example/metrics/csi-azuredisk-scheduler-extender-svc.yaml
+endif
 
 .PHONY: delete-metrics-svc
 delete-metrics-svc:
 	kubectl delete -f deploy/example/metrics/csi-azuredisk-controller-svc.yaml --ignore-not-found
+	kubectl delete -f deploy/example/metrics/csi-azuredisk-scheduler-extender-svc.yaml --ignore-not-found
 
 .PHONY: e2e-test
 e2e-test:

@@ -94,7 +94,7 @@ func schedulerExtenderTests(isMultiZone bool) {
 			Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
 			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 				{
-					FSType:    "ext4",
+					FSType:    "ext3",
 					ClaimSize: "10Gi",
 					VolumeMount: testsuites.VolumeMountDetails{
 						NameGenerate:      "test-volume-",
@@ -122,6 +122,7 @@ func schedulerExtenderTests(isMultiZone bool) {
 		t := dynamicProvisioningTestSuite{}
 
 		volume := testsuites.VolumeDetails{
+			FSType:    "ext3",
 			ClaimSize: "10Gi",
 			VolumeMount: testsuites.VolumeMountDetails{
 				NameGenerate:      "test-volume-",
@@ -163,6 +164,7 @@ func schedulerExtenderTests(isMultiZone bool) {
 
 		for i := 1; i <= 3; i++ {
 			volume := testsuites.VolumeDetails{
+				FSType:    "ext3",
 				ClaimSize: "10Gi",
 				VolumeMount: testsuites.VolumeMountDetails{
 					NameGenerate:      "test-volume-",
@@ -178,6 +180,37 @@ func schedulerExtenderTests(isMultiZone bool) {
 			IsWindows: isWindowsCluster,
 		}
 		test := testsuites.AzDiskSchedulerExtenderPodSchedulingWithMultiplePVTest{
+			CSIDriver:       testDriver,
+			Pod:             pod,
+			AzDiskClientSet: azDiskClientV1alpha1,
+			AzNamespace:     namespace,
+		}
+		test.Run(cs, ns, schedulerName)
+	})
+
+	ginkgo.It("Should schedule and start a pod with multiple persistent volume requests and reschedule on failover.", func() {
+		skipIfUsingInTreeVolumePlugin()
+		volumes := []testsuites.VolumeDetails{}
+		t := dynamicProvisioningTestSuite{}
+
+		for i := 1; i <= 3; i++ {
+			volume := testsuites.VolumeDetails{
+				FSType:    "ext3",
+				ClaimSize: "10Gi",
+				VolumeMount: testsuites.VolumeMountDetails{
+					NameGenerate:      "test-volume-",
+					MountPathGenerate: "/mnt/test-",
+				},
+			}
+			volumes = append(volumes, volume)
+		}
+
+		pod := testsuites.PodDetails{
+			Cmd:       convertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
+			Volumes:   t.normalizeVolumes(volumes, isMultiZone),
+			IsWindows: isWindowsCluster,
+		}
+		test := testsuites.AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV{
 			CSIDriver:       testDriver,
 			Pod:             pod,
 			AzDiskClientSet: azDiskClientV1alpha1,

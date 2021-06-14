@@ -17,22 +17,18 @@ limitations under the License.
 package testsuites
 
 import (
-	"context"
 	"time"
 
 	"github.com/onsi/ginkgo"
-	scale "k8s.io/api/autoscaling/v1"
 	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
-	"k8s.io/kubernetes/test/e2e/framework"
 	v1alpha1ClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1alpha1"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 )
 
-// AzDiskSchedulerExtenderPodSchedulingOnFailover will provision required PV(s), PVC(s) and Pod(s)
+// AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV will provision required PV(s), PVC(s) and Pod(s)
 // Pod should successfully be re-scheduled on failover/scaling in a cluster with AzDriverNode and AzVolumeAttachment resources
-type AzDiskSchedulerExtenderPodSchedulingOnFailover struct {
+type AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV struct {
 	CSIDriver              driver.DynamicPVTestDriver
 	AzDiskClientSet        v1alpha1ClientSet.DiskV1alpha1Interface
 	AzNamespace            string
@@ -41,8 +37,9 @@ type AzDiskSchedulerExtenderPodSchedulingOnFailover struct {
 	StorageClassParameters map[string]string
 }
 
-func (t *AzDiskSchedulerExtenderPodSchedulingOnFailover) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
-	tStatefulSet, cleanup := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, schedulerName, 1)
+func (t *AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
+	replicaCount := 3
+	tStatefulSet, cleanup := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, schedulerName, replicaCount)
 	for i := range cleanup {
 		i := i
 		defer cleanup[i]()
@@ -60,30 +57,10 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailover) Run(client clientset.In
 	ginkgo.By("checking that the pod for statefulset is running")
 	tStatefulSet.WaitForPodReady()
 
-	// Define a new scale for statefulset
-	newScale := &scale.Scale{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      tStatefulSet.statefulset.Name,
-			Namespace: tStatefulSet.namespace.Name,
-		},
-		Spec: scale.ScaleSpec{
-			Replicas: int32(0)}}
+	tStatefulSet.DeletePodAndWait()
 
-	// Scale statefulset to 0
-	_, err := client.AppsV1().StatefulSets(tStatefulSet.namespace.Name).UpdateScale(context.TODO(), tStatefulSet.statefulset.Name, newScale, metav1.UpdateOptions{})
-	framework.ExpectNoError(err)
-
-	ginkgo.By("sleep 240s waiting for statefulset update to complete and disk to detach")
-	time.Sleep(240 * time.Second)
-
-	// Scale the stateful set back to 1 pod
-	newScale.Spec.Replicas = int32(1)
-
-	_, err = client.AppsV1().StatefulSets(tStatefulSet.namespace.Name).UpdateScale(context.TODO(), tStatefulSet.statefulset.Name, newScale, metav1.UpdateOptions{})
-	framework.ExpectNoError(err)
-
-	ginkgo.By("sleep 30s waiting for statefulset update to complete")
-	time.Sleep(30 * time.Second)
+	ginkgo.By("sleep 120s waiting for statefulset to recreate the replicas")
+	time.Sleep(120 * time.Second)
 
 	ginkgo.By("checking that the pod for statefulset is running")
 	tStatefulSet.WaitForPodReady()
