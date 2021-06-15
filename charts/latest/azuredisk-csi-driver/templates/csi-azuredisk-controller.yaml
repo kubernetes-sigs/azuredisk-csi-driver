@@ -42,6 +42,7 @@ spec:
             - "--leader-election"
             - "--worker-threads={{ .Values.controller.provisionerWorkerThreads }}"
             - "--extra-create-metadata=true"
+            - "--strict-topology=true"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
