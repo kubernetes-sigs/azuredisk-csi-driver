@@ -74,6 +74,9 @@ snapshot:
     serviceAccount: true
     rbac: true
 
+csiMigration:
+  enabled: false
+
 linux:
   enabled: true
   kubelet: /var/lib/kubelet

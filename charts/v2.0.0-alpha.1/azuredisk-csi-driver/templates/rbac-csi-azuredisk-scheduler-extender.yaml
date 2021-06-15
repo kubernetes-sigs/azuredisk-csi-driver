@@ -1,4 +1,5 @@
 {{- if .Values.rbac.create -}}
+---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -57,7 +58,14 @@ rules:
     resources: ["poddisruptionbudgets"]
     verbs: ["get", "list", "watch"]
   - apiGroups: [""]
-    resources: ["persistentvolumeclaims", "persistentvolumes"]
+    resources: ["persistentvolumeclaims"]
+    {{- if not .Values.csiMigration.enabled }}
+    verbs: ["get", "list", "watch"]
+    {{- else }}
+    verbs: ["get", "list", "watch", "patch", "update"]
+    {{- end }}
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
     verbs: ["get", "list", "watch"]
   - apiGroups: ["storage.k8s.io"]
     resources: ["storageclasses", "csinodes"]
@@ -67,7 +75,7 @@ rules:
     verbs: ["get", "update", "create"]
   - apiGroups: ["events.k8s.io"]
     resources: ["events"]
-    verbs: ["create"]
+    verbs: ["create", "patch", "update"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

@@ -76,6 +76,12 @@ spec:
         - kube-scheduler
         - --config=/azdiskschedulerextender/config.yaml
         - --v=5
+        - --feature-gates
+        {{- if not .Values.csiMigration.enabled }}
+        - CSIInlineVolume=true,LocalStorageCapacityIsolation=true,ServiceNodeExclusion=true
+        {{- else }}
+        - CSIInlineVolume=true,LocalStorageCapacityIsolation=true,ServiceNodeExclusion=true,CSIMigration=true,CSIMigrationAzureDisk=true,CSIMigrationAzureDiskComplete=true
+        {{- end }}
         volumeMounts:
         - name: azdiskschedulerextender-config
           mountPath: /azdiskschedulerextender
