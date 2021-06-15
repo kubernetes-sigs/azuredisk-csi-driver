@@ -270,7 +270,11 @@ else
 fi
 
 if [[ -z ${AZURE_CLUSTER_DNS_NAME:-} ]]; then
-  AZURE_CLUSTER_DNS_NAME=k8s-${GIT_COMMIT}-${AZURE_CLUSTER_TEMPLATE}
+  CLUSTER_PREFIX=$(whoami)
+  if [[ ${CLUSTER_PREFIX:-root} == "root" ]]; then
+    CLUSTER_PREFIX=k8s
+  fi
+  AZURE_CLUSTER_DNS_NAME=$(basename "$(mktemp -t "${CLUSTER_PREFIX}-${AZURE_CLUSTER_TEMPLATE}-${GIT_COMMIT}-XXX")")
 fi
 
 if [[ -z ${AZURE_RESOURCE_GROUP:-} ]]; then
@@ -372,7 +376,7 @@ if [[ -z ${AZURE_CLIENT_ID:-} ]]; then
   fi
 
   # Add removal of the service principal to the cleanup script.
-  echo "az ad sp delete --id=$AZURE_CLIENT_ID" >> CLEANUP_FILE
+  echo "az ad sp delete --id=$AZURE_CLIENT_ID" >> $CLEANUP_FILE
 
   echo "Waiting for service principal to become available in directory..."
   trap_push 'az logout &> /dev/null' exit
