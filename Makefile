@@ -144,6 +144,11 @@ install-helm:
 .PHONY: e2e-teardown
 e2e-teardown:
 	helm delete azuredisk-csi-driver --namespace kube-system
+	kubectl wait --namespace=kube-system --for=delete pod --selector app=csi-azuredisk-controller --timeout 5m || true
+	kubectl wait --namespace=kube-system --for=delete pod --selector app=csi-azuredisk-node --timeout 5m || true
+ifdef BUILD_V2
+	kubectl wait --namespace=kube-system --for=delete pod --selector app=azdiskschedulerextender --timeout 5m || true
+endif
 
 .PHONY: azuredisk
 azuredisk:
