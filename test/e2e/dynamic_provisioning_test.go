@@ -767,6 +767,104 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		}
 		test.Run(cs, ns)
 	})
+
+	ginkgo.It("Should test pod failover with cordoning a node", func() {
+		skipIfUsingInTreeVolumePlugin()
+		if isMultiZone {
+			ginkgo.Skip("test case does not apply to multi az case")
+		}
+
+		volume := testsuites.VolumeDetails{
+			ClaimSize: "10Gi",
+			VolumeMount: testsuites.VolumeMountDetails{
+				NameGenerate:      "test-volume-",
+				MountPathGenerate: "/mnt/test-",
+			},
+		}
+		pod := testsuites.PodDetails{
+			Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
+			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+				{
+					ClaimSize: volume.ClaimSize,
+					MountOptions: []string{
+						"barrier=1",
+						"acl",
+					},
+					VolumeMount: volume.VolumeMount,
+				},
+			}, false),
+			IsWindows: isWindowsCluster,
+			UseCMD:    false,
+		}
+		podCheckCmd := []string{"cat", "/mnt/test-1/data"}
+		expectedString := "hello world\n"
+		if isWindowsCluster {
+			podCheckCmd = []string{"cmd", "/c", "type C:\\mnt\\test-1\\data.txt"}
+			expectedString = "hello world\r\n"
+		}
+
+		storageClassParameters := map[string]string{"skuName": "StandardSSD_LRS"}
+
+		test := testsuites.PodFailover{
+			CSIDriver: testDriver,
+			Pod:       pod,
+			Volume:    volume,
+			PodCheck: &testsuites.PodExecCheck{
+				Cmd:            podCheckCmd,
+				ExpectedString: expectedString, // pod will be restarted so expect to see 2 instances of string
+			},
+			StorageClassParameters: storageClassParameters,
+		}
+		test.Run(cs, ns)
+	})
+
+	ginkgo.It("Should test pod failover with cordoning a node using ZRS", func() {
+		skipIfUsingInTreeVolumePlugin()
+		skipIfNotZRSSupported()
+
+		volume := testsuites.VolumeDetails{
+			ClaimSize: "10Gi",
+			VolumeMount: testsuites.VolumeMountDetails{
+				NameGenerate:      "test-volume-",
+				MountPathGenerate: "/mnt/test-",
+			},
+		}
+		pod := testsuites.PodDetails{
+			Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
+			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+				{
+					ClaimSize: volume.ClaimSize,
+					MountOptions: []string{
+						"barrier=1",
+						"acl",
+					},
+					VolumeMount: volume.VolumeMount,
+				},
+			}, false),
+			IsWindows: isWindowsCluster,
+			UseCMD:    false,
+		}
+		podCheckCmd := []string{"cat", "/mnt/test-1/data"}
+		expectedString := "hello world\n"
+		if isWindowsCluster {
+			podCheckCmd = []string{"cmd", "/c", "type C:\\mnt\\test-1\\data.txt"}
+			expectedString = "hello world\r\n"
+		}
+
+		storageClassParameters := map[string]string{"skuName": "StandardSSD_ZRS"}
+
+		test := testsuites.PodFailover{
+			CSIDriver: testDriver,
+			Pod:       pod,
+			Volume:    volume,
+			PodCheck: &testsuites.PodExecCheck{
+				Cmd:            podCheckCmd,
+				ExpectedString: expectedString, // pod will be restarted so expect to see 2 instances of string
+			},
+			StorageClassParameters: storageClassParameters,
+		}
+		test.Run(cs, ns)
+	})
 }
 
 // Normalize volumes by adding allowed topology values and WaitForFirstConsumer binding mode if we are testing in a multi-az cluster

@@ -260,6 +260,12 @@ func skipIfOnAzureStackCloud() {
 	}
 }
 
+func skipIfNotZRSSupported() {
+	if !(location == "westus2" || location == "westeurope") {
+		ginkgo.Skip("test case not supported on regions without ZRS")
+	}
+}
+
 func convertToPowershellorCmdCommandIfNecessary(command string) string {
 	if !isWindowsCluster {
 		return command
