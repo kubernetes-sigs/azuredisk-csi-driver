@@ -2,10 +2,10 @@
 kind: Pod
 apiVersion: v1
 metadata:
-  name: nginx-azuredisk-inline
+  name: nginx-azuredisk-ephemeral
 spec:
   containers:
-    - name: nginx-azuredisk-inline
+    - name: nginx-azuredisk-ephemeral
       image: mcr.microsoft.com/oss/nginx/nginx:1.17.3-alpine
       command:
         - "/bin/sh"

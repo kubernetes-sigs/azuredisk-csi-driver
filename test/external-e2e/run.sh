@@ -40,7 +40,7 @@ setup_e2e_binaries() {
 }
 
 print_logs() {
-    bash ./hack/verify-examples.sh linux azurepubliccloud
+    bash ./hack/verify-examples.sh linux azurepubliccloud ephemeral
     echo "print out driver logs ..."
     bash ./test/utils/azuredisk_log.sh
 }
