@@ -268,14 +268,6 @@ func (t *TestPersistentVolumeClaim) ValidateProvisionedPersistentVolume() {
 			gomega.Expect(t.persistentVolume.Spec.NodeAffinity.Required.NodeSelectorTerms[0].MatchExpressions[0].Values).
 				To(gomega.HaveLen(1))
 		}
-		if len(t.storageClass.AllowedTopologies) > 0 {
-			gomega.Expect(t.persistentVolume.Spec.NodeAffinity.Required.NodeSelectorTerms[0].MatchExpressions[0].Key).
-				To(gomega.Equal(t.storageClass.AllowedTopologies[0].MatchLabelExpressions[0].Key))
-			for _, v := range t.persistentVolume.Spec.NodeAffinity.Required.NodeSelectorTerms[0].MatchExpressions[0].Values {
-				gomega.Expect(t.storageClass.AllowedTopologies[0].MatchLabelExpressions[0].Values).To(gomega.ContainElement(v))
-			}
-
-		}
 	}
 }
 
