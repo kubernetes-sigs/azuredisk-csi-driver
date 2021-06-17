@@ -2,15 +2,15 @@
 kind: DaemonSet
 apiVersion: apps/v1
 metadata:
-  name: daemonset-azuredisk2
+  name: daemonset-azuredisk-ephemeral
 spec:
   selector:
     matchLabels:
-      app: daemonset-azuredisk2
+      app: daemonset-azuredisk-ephemeral
   template:
     metadata:
       labels:
-        app: daemonset-azuredisk2
+        app: daemonset-azuredisk-ephemeral
     spec:
       nodeSelector:
         kubernetes.io/os: linux
