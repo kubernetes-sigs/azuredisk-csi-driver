@@ -11,11 +11,12 @@ rbac:
 
 azuredisk:
   useV2Driver: true
-  csiEndpoint: tcp://127.0.0.1:10000
   isTestRun: true
+  cloudConfig: invalid
 
 controller:
   replicas: 1
+  port: 10000
   metricsPort: 29604
   runOnMaster: false
   logLevel: 5

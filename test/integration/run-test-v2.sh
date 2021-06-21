@@ -16,7 +16,11 @@
 
 set -euo pipefail
 
+endpoint=$1
 image=$7
+
+CONTROLLER_LISTEN_ADDRESS=$(echo $endpoint | awk -F ':' '{printf $2}' | sed -e 's/\/\///')
+CONTROLLER_PORT=$(echo $endpoint | awk -F ':' '{printf $3}')
 
 function cleanup {
   set +e
@@ -24,29 +28,41 @@ function cleanup {
   echo 'Unistalling helm chart'
   helm uninstall azuredisk-csi-driver --namespace kube-system
 
-  echo 'Cleaning up the minikube cache'
-  minikube cache delete $image
-
-  echo 'Stopping minikube'
-  minikube stop
+  echo 'Stopping kind cluster'
+  ./bin/kind delete cluster
 }
 
 trap cleanup EXIT
 
-echo 'Installing minikube'
-sudo mkdir -p /usr/local/bin/
-curl -Lo /usr/local/bin/minikube https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64 \
-  && sudo chmod +x /usr/local/bin/minikube
+echo 'Installing kind'
+mkdir -p ./bin/
+curl -Lo ./bin/kind https://kind.sigs.k8s.io/dl/v0.11.1/kind-linux-amd64
+chmod +x ./bin/kind
 
-echo 'Starting minikube'
-minikube start --driver=none --force-systemd --force
+echo 'Starting kind'
+KIND_CONFIG=$(cat <<EOF
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+- role: control-plane
+  extraPortMappings:
+  - containerPort: ${CONTROLLER_PORT}
+    hostPort: ${CONTROLLER_PORT}
+    listenAddress: ${CONTROLLER_LISTEN_ADDRESS}
+    protocol: TCP
+EOF
+)
 
-echo 'Load the image to minikube'
-minikube cache add $image
+echo "$KIND_CONFIG" | ./bin/kind create cluster --config -
+./bin/kind load docker-image $image
 
 echo 'Installing helm charts'
 curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash
-helm install azuredisk-csi-driver test/latest/azuredisk-csi-driver -n kube-system --wait --timeout=15m -v=5 --debug --set image.azuredisk.tag=$image
+helm install azuredisk-csi-driver test/latest/azuredisk-csi-driver -n kube-system --wait --timeout=15m -v=5 --debug \
+  --set image.azuredisk.tag=$image \
+  --set azuredisk.cloudConfig="$(cat "${AZURE_CREDENTIAL_FILE}" | base64 | awk '{printf $0}'; echo)" \
+  --set controller.port="${CONTROLLER_PORT}" \
+  > /dev/null
 
 test/integration/run-test.sh $*
 

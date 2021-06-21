@@ -47,11 +47,14 @@ spec:
             - containerPort: {{ .Values.controller.metricsPort }}
               name: metrics
               protocol: TCP
+            - containerPort: {{ .Values.controller.port }}
+              name: controller
+              protocol: TCP
           env:
             - name: AZURE_CREDENTIAL_FILE
               value: /tmp/azure.json
             - name: CSI_ENDPOINT
-              value: {{ .Values.azuredisk.csiEndpoint }}
+              value: tcp://0.0.0.0:{{ .Values.controller.port }}
             {{- if eq .Values.cloud "AzureStackCloud" }}
             - name: AZURE_ENVIRONMENT_FILEPATH
               value: /etc/kubernetes/azurestackcloud.json

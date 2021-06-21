@@ -16,8 +16,7 @@
 
 set -euo pipefail
 
-readonly image=$3
-echo image
+image=$3
 
 function cleanup {
   set +e
@@ -25,32 +24,41 @@ function cleanup {
   echo 'Unistalling helm chart'
   helm uninstall azuredisk-csi-driver --namespace kube-system
 
-  echo 'Cleaning up the minikube cache'
-  minikube cache delete $image
-
-  echo 'Stopping minikube'
-  minikube stop
-
-  echo 'Deleting CSI sanity test binary'
-  rm -rf csi-test
+  echo 'Stopping kind cluster'
+  ./bin/kind delete cluster
 }
 
 trap cleanup EXIT
 
-echo 'Installing minikube'
-sudo mkdir -p /usr/local/bin/
-curl -Lo /usr/local/bin/minikube https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64 \
-  && sudo chmod +x /usr/local/bin/minikube
+echo 'Installing kind'
+mkdir -p ./bin/
+curl -Lo ./bin/kind https://kind.sigs.k8s.io/dl/v0.11.1/kind-linux-amd64
+chmod +x ./bin/kind
 
-echo 'Start minikube'
-minikube start --driver=none --force-systemd --force
+echo 'Starting kind'
+KIND_CONFIG=$(cat <<EOF
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+- role: control-plane
+  extraPortMappings:
+  - containerPort: 10000
+    hostPort: 10000
+    listenAddress: 127.0.0.1
+    protocol: TCP
+EOF
+)
 
-echo 'Load the image to minikube'
-minikube cache add $image
+echo "$KIND_CONFIG" | ./bin/kind create cluster --config -
+./bin/kind load docker-image $image
 
 echo 'Installing helm charts'
 curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash
-helm install azuredisk-csi-driver test/latest/azuredisk-csi-driver -n kube-system --wait --timeout=15m -v=5 --debug --set image.azuredisk.tag=$image
+helm install azuredisk-csi-driver test/latest/azuredisk-csi-driver -n kube-system --wait --timeout=15m -v=5 --debug \
+  --set image.azuredisk.tag=$image \
+  --set azuredisk.cloudConfig="$(cat "${AZURE_CREDENTIAL_FILE}" | base64 | awk '{printf $0}'; echo)" \
+  --set controller.port="10000" \
+  > /dev/null
 
 echo 'Begin to run sanity test v2'
 readonly CSI_SANITY_BIN='csi-sanity'
