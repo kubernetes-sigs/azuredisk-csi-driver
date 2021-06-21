@@ -47,7 +47,13 @@ func IsAzureStackCloud(cloud string, disableAzureStackCloud bool) bool {
 
 // GetCloudProvider get Azure Cloud Provider
 func GetCloudProvider(kubeClient clientSet.Interface) (*azure.Cloud, error) {
-	az := &azure.Cloud{}
+	az := &azure.Cloud{
+		InitSecretConfig: azure.InitSecretConfig{
+			SecretName:      "azure-cloud-provider",
+			SecretNamespace: "kube-system",
+			CloudConfigKey:  "cloud-config",
+		},
+	}
 	if kubeClient != nil {
 		klog.V(2).Infof("reading cloud config from secret")
 		az.KubeClient = kubeClient
