@@ -318,9 +318,11 @@ func TestCreateVolume(t *testing.T) {
 					Parameters:         mp,
 				}
 				_, err := d.CreateVolume(context.Background(), req)
-				expectedErr := status.Error(codes.InvalidArgument, "Volume capability(MULTI_NODE_READER_ONLY) not supported")
-				if !reflect.DeepEqual(err, expectedErr) {
-					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				expectedErrV1 := status.Error(codes.InvalidArgument, "Volume capability(MULTI_NODE_READER_ONLY) not supported")
+				expectedErrV2 := status.Error(codes.InvalidArgument, "Volume capability(3) not supported")
+				if !reflect.DeepEqual(err, expectedErrV1) &&
+					!reflect.DeepEqual(err, expectedErrV2) {
+					t.Errorf("actualErr: (%v), expectedErrV1: (%v) or expectedErrV2:(%v)", err, expectedErrV1, expectedErrV2)
 				}
 			},
 		},
@@ -687,6 +689,7 @@ func TestControllerPublishVolume(t *testing.T) {
 			req: &csi.ControllerPublishVolumeRequest{
 				VolumeId:         "vol_1",
 				VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap},
+				NodeId:           "test_node",
 			},
 			expectedErr: status.Error(codes.NotFound, "Volume not found, failed with error: could not get disk name from vol_1, correct format: (?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/disks/(.+)"),
 		},
@@ -867,7 +870,7 @@ func TestControllerExpandVolume(t *testing.T) {
 				ctx := context.Background()
 				d, _ := NewFakeDriver(t)
 
-				expectedErr := status.Error(codes.InvalidArgument, "disk URI(httptest) is not valid: Inavlid DiskURI: httptest, correct format: [/subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id}]")
+				expectedErr := status.Error(codes.InvalidArgument, "disk URI(httptest) is not valid: Invalid DiskURI: httptest, correct format: [/subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id}]")
 				_, err := d.ControllerExpandVolume(ctx, req)
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("Unexpected error: %v", err)
@@ -885,7 +888,7 @@ func TestControllerExpandVolume(t *testing.T) {
 				ctx := context.Background()
 				d, _ := NewFakeDriver(t)
 
-				expectedErr := status.Errorf(codes.InvalidArgument, "disk URI(vol_1) is not valid: Inavlid DiskURI: vol_1, correct format: [/subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id}]")
+				expectedErr := status.Errorf(codes.InvalidArgument, "disk URI(vol_1) is not valid: Invalid DiskURI: vol_1, correct format: [/subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id}]")
 				_, err := d.ControllerExpandVolume(ctx, req)
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)

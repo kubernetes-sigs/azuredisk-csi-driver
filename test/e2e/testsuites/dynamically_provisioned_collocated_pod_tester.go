@@ -34,10 +34,10 @@ type DynamicallyProvisionedCollocatedPodTest struct {
 	StorageClassParameters map[string]string
 }
 
-func (t *DynamicallyProvisionedCollocatedPodTest) Run(client clientset.Interface, namespace *v1.Namespace) {
+func (t *DynamicallyProvisionedCollocatedPodTest) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
 	nodeName := ""
 	for _, pod := range t.Pods {
-		tpod, cleanup := pod.SetupWithDynamicVolumes(client, namespace, t.CSIDriver, t.StorageClassParameters)
+		tpod, cleanup := pod.SetupWithDynamicVolumes(client, namespace, t.CSIDriver, t.StorageClassParameters, schedulerName)
 		if t.ColocatePods && nodeName != "" {
 			tpod.SetNodeSelector(map[string]string{"name": nodeName})
 		}

@@ -62,6 +62,10 @@ spec:
             - "--v=2"
             - "--csi-address=$(CSI_ENDPOINT)"
             - "--kubelet-registration-path=C:\\var\\lib\\kubelet\\plugins\\disk.csi.azure.com\\csi.sock"
+          lifecycle:
+            preStop:
+              exec:
+                command: ["cmd", "/c", "del /f C:\\registration\\disk.csi.azure.com-reg.sock C:\\csi\\disk.csi.azure.com\\csi.sock"]
           env:
             - name: CSI_ENDPOINT
               value: unix://C:\\csi\\csi.sock
@@ -91,7 +95,8 @@ spec:
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--nodeid=$(KUBE_NODE_NAME)"
             - "--metrics-address=0.0.0.0:{{ .Values.node.metricsPort }}"
-            - "--temp-use-driver-v2"
+            - "--temp-use-driver-v2={{ .Values.azuredisk.useV2Driver }}"
+            - "--is-node-plugin={{ .Values.azuredisk.useV2Driver }}"
           ports:
             - containerPort: 29603
               name: healthz
@@ -125,7 +130,7 @@ spec:
             - name: AZURE_ENVIRONMENT_FILEPATH
               value: C:\k\azurestackcloud.json
             {{- end }}
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          imagePullPolicy: {{ .Values.image.azuredisk.pullPolicy }}
           volumeMounts:
             - name: kubelet-dir
               mountPath: "C:\\var\\lib\\kubelet"
@@ -161,15 +166,15 @@ spec:
             type: ""
         - name: registration-dir
           hostPath:
-            path: {{ .Values.kubelet.windowsPath }}\plugins_registry\
+            path: {{ .Values.windows.kubelet }}\plugins_registry\
             type: Directory
         - name: kubelet-dir
           hostPath:
-            path: {{ .Values.kubelet.windowsPath }}\
+            path: {{ .Values.windows.kubelet }}\
             type: Directory
         - name: plugin-dir
           hostPath:
-            path: {{ .Values.kubelet.windowsPath }}\plugins\disk.csi.azure.com\
+            path: {{ .Values.windows.kubelet }}\plugins\disk.csi.azure.com\
             type: DirectoryOrCreate
         - name: azure-config
           hostPath:

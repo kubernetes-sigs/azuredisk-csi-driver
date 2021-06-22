@@ -34,14 +34,14 @@ type DynamicallyProvisionedVolumeCloningTest struct {
 	StorageClassParameters map[string]string
 }
 
-func (t *DynamicallyProvisionedVolumeCloningTest) Run(client clientset.Interface, namespace *v1.Namespace) {
+func (t *DynamicallyProvisionedVolumeCloningTest) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
 	// create the storageClass
 	tsc, tscCleanup := t.Pod.Volumes[0].CreateStorageClass(client, namespace, t.CSIDriver, t.StorageClassParameters)
 	defer tscCleanup()
 
 	// create the pod
 	t.Pod.Volumes[0].StorageClass = tsc.storageClass
-	tpod, cleanups := t.Pod.SetupWithDynamicVolumes(client, namespace, t.CSIDriver, t.StorageClassParameters)
+	tpod, cleanups := t.Pod.SetupWithDynamicVolumes(client, namespace, t.CSIDriver, t.StorageClassParameters, schedulerName)
 	for i := range cleanups {
 		defer cleanups[i]()
 	}
@@ -67,7 +67,7 @@ func (t *DynamicallyProvisionedVolumeCloningTest) Run(client clientset.Interface
 	zone := tpod.GetZoneForVolume(0)
 
 	t.PodWithClonedVolume.Volumes = []VolumeDetails{clonedVolume}
-	tpod, cleanups = t.PodWithClonedVolume.SetupWithDynamicVolumes(client, namespace, t.CSIDriver, t.StorageClassParameters)
+	tpod, cleanups = t.PodWithClonedVolume.SetupWithDynamicVolumes(client, namespace, t.CSIDriver, t.StorageClassParameters, schedulerName)
 	for i := range cleanups {
 		defer cleanups[i]()
 	}

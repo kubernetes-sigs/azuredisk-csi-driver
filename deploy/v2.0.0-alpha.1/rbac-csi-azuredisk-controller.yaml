@@ -38,6 +38,12 @@ rules:
   - apiGroups: ["snapshot.storage.k8s.io"]
     resources: ["volumesnapshotcontents"]
     verbs: ["get", "list"]
+  - apiGroups: ["disk.csi.azure.com"]
+    resources: ["azdrivernodes", "azvolumeattachments", "azvolumes"]
+    verbs: ["create", "get", "list", "watch", "patch", "update", "delete"]
+  - apiGroups: ["disk.csi.azure.com"]
+    resources: ["azdrivernodes/status", "azvolumeattachments/status", "azvolumes/status"]
+    verbs: ["get", "patch", "update"]
 ---
 
 kind: ClusterRoleBinding
@@ -71,6 +77,9 @@ rules:
     verbs: ["get", "list", "watch"]
   - apiGroups: ["storage.k8s.io"]
     resources: ["volumeattachments"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["volumeattachments/status"]
     verbs: ["get", "list", "watch", "update", "patch"]
   - apiGroups: ["coordination.k8s.io"]
     resources: ["leases"]
@@ -187,7 +196,6 @@ kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: csi-azuredisk-controller-secret-binding
-  namespace: kube-system
 subjects:
   - kind: ServiceAccount
     name: csi-azuredisk-controller-sa

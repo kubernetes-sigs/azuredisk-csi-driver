@@ -46,9 +46,9 @@ type DynamicallyProvisionedAzureDiskDetach struct {
 	StorageClassParameters map[string]string
 }
 
-func (t *DynamicallyProvisionedAzureDiskDetach) Run(client clientset.Interface, namespace *v1.Namespace) {
+func (t *DynamicallyProvisionedAzureDiskDetach) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
 	for _, pod := range t.Pods {
-		tpod, cleanup := pod.SetupWithDynamicVolumes(client, namespace, t.CSIDriver, t.StorageClassParameters)
+		tpod, cleanup := pod.SetupWithDynamicVolumes(client, namespace, t.CSIDriver, t.StorageClassParameters, schedulerName)
 
 		ginkgo.By("deploying the pod")
 		tpod.Create()

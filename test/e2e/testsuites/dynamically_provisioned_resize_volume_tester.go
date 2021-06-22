@@ -49,8 +49,8 @@ type DynamicallyProvisionedResizeVolumeTest struct {
 	Volume                 VolumeDetails
 }
 
-func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface, namespace *v1.Namespace) {
-	tStatefulSet, cleanup := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver)
+func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
+	tStatefulSet, cleanup := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, schedulerName, 1)
 	// Defer must be called here for resources not get removed before using them
 	for i := range cleanup {
 		i := i
@@ -63,15 +63,15 @@ func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface,
 	ginkgo.By("checking that the pod for statefulset is running")
 	tStatefulSet.WaitForPodReady()
 
-	//Get diskURI from statefulset information
-	pvcName := fmt.Sprintf("pvc-%s-%d", tStatefulSet.statefulset.ObjectMeta.Name, 0)
+	ginkgo.By("get PersistentVolumeClaim for statefulset")
+	pvcName := fmt.Sprintf("%s-%s-%d", tStatefulSet.statefulset.Spec.VolumeClaimTemplates[0].Name, tStatefulSet.statefulset.ObjectMeta.Name, 0)
 
 	pvc, err := client.CoreV1().PersistentVolumeClaims(namespace.Name).Get(context.TODO(), pvcName, metav1.GetOptions{})
 	if err != nil {
 		framework.ExpectNoError(err, fmt.Sprintf("fail to get original pvc(%s): %v", pvcName, err))
 	}
 
-	// Define a new scale for statefulset
+	ginkgo.By("scale statefulset to zero pods to detach disk")
 	newScale := &scale.Scale{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      tStatefulSet.statefulset.Name,

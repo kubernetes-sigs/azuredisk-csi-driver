@@ -1,0 +1,11 @@
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: azuredisk-csi-premum-lrs-shared
+provisioner: disk.csi.azure.com
+parameters:
+  skuname: Premium_LRS  # Currently shared disk only available with premium SSD
+  maxShares: "3"
+  cachingMode: None  # ReadOnly cache is not available for premium SSD with maxShares>1
+reclaimPolicy: Delete

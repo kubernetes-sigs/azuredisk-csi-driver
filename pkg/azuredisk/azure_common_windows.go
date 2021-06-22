@@ -30,7 +30,7 @@ import (
 )
 
 func formatAndMount(source, target, fstype string, options []string, m *mount.SafeFormatAndMount) error {
-	proxy, ok := m.Interface.(*mounter.CSIProxyMounter)
+	proxy, ok := m.Interface.(mounter.CSIProxyMounter)
 	if !ok {
 		return fmt.Errorf("could not cast to csi proxy class")
 	}
@@ -38,7 +38,7 @@ func formatAndMount(source, target, fstype string, options []string, m *mount.Sa
 }
 
 func scsiHostRescan(io ioHandler, m *mount.SafeFormatAndMount) {
-	proxy, ok := m.Interface.(*mounter.CSIProxyMounter)
+	proxy, ok := m.Interface.(mounter.CSIProxyMounter)
 	if !ok {
 		klog.Errorf("could not cast to csi proxy class")
 		return
@@ -51,7 +51,7 @@ func scsiHostRescan(io ioHandler, m *mount.SafeFormatAndMount) {
 
 // search Windows disk number by LUN
 func findDiskByLun(lun int, iohandler ioHandler, m *mount.SafeFormatAndMount) (string, error) {
-	proxy, ok := m.Interface.(*mounter.CSIProxyMounter)
+	proxy, ok := m.Interface.(mounter.CSIProxyMounter)
 	if !ok {
 		return "", fmt.Errorf("could not cast to csi proxy class")
 	}
@@ -67,7 +67,7 @@ func findDiskByLun(lun int, iohandler ioHandler, m *mount.SafeFormatAndMount) (s
 // from global stage path to the publish path. But kubelet creates the directory in advance.
 // We work around this issue by deleting the publish path then recreating the link.
 func preparePublishPath(path string, m *mount.SafeFormatAndMount) error {
-	proxy, ok := m.Interface.(*mounter.CSIProxyMounter)
+	proxy, ok := m.Interface.(mounter.CSIProxyMounter)
 	if !ok {
 		return fmt.Errorf("could not cast to csi proxy class")
 	}
@@ -93,7 +93,7 @@ func CleanupMountPoint(path string, m *mount.SafeFormatAndMount, extensiveCheck 
 }
 
 func getDevicePathWithMountPath(mountPath string, m *mount.SafeFormatAndMount) (string, error) {
-	proxy, ok := m.Interface.(*mounter.CSIProxyMounter)
+	proxy, ok := m.Interface.(mounter.CSIProxyMounter)
 	if !ok {
 		return "", fmt.Errorf("could not cast to csi proxy class")
 	}
@@ -110,7 +110,7 @@ func getDevicePathWithMountPath(mountPath string, m *mount.SafeFormatAndMount) (
 }
 
 func getBlockSizeBytes(devicePath string, m *mount.SafeFormatAndMount) (int64, error) {
-	proxy, ok := m.Interface.(*mounter.CSIProxyMounter)
+	proxy, ok := m.Interface.(mounter.CSIProxyMounter)
 	if !ok {
 		return -1, fmt.Errorf("could not cast to csi proxy class")
 	}
@@ -127,7 +127,7 @@ func getBlockSizeBytes(devicePath string, m *mount.SafeFormatAndMount) (int64, e
 }
 
 func resizeVolume(devicePath, volumePath string, m *mount.SafeFormatAndMount) error {
-	proxy, ok := m.Interface.(*mounter.CSIProxyMounter)
+	proxy, ok := m.Interface.(mounter.CSIProxyMounter)
 	if !ok {
 		return fmt.Errorf("could not cast to csi proxy class")
 	}

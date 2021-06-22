@@ -37,13 +37,13 @@ type DynamicallyProvisionedReadOnlyVolumeTest struct {
 	StorageClassParameters map[string]string
 }
 
-func (t *DynamicallyProvisionedReadOnlyVolumeTest) Run(client clientset.Interface, namespace *v1.Namespace) {
+func (t *DynamicallyProvisionedReadOnlyVolumeTest) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
 	for _, pod := range t.Pods {
 		expectedReadOnlyLog := "Read-only file system"
 		if pod.IsWindows {
 			expectedReadOnlyLog = "FileOpenFailure"
 		}
-		tpod, cleanup := pod.SetupWithDynamicVolumes(client, namespace, t.CSIDriver, t.StorageClassParameters)
+		tpod, cleanup := pod.SetupWithDynamicVolumes(client, namespace, t.CSIDriver, t.StorageClassParameters, schedulerName)
 		// defer must be called here for resources not get removed before using them
 		for i := range cleanup {
 			defer cleanup[i]()

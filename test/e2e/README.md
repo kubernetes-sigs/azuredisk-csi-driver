@@ -13,6 +13,9 @@ make e2e-test
 # run e2e tests against CSI Driver v2
 BUILD_V2=1 make e2e-test
 
+# run e2e tests against CSI Driver V1 on the V2 build
+BUILD_V2="true" ADDITIONAL_E2E_HELM_OPTIONS="--set azuredisk.useV2Driver=false" make e2e-test
+
 # Run Windows e2e tests
 export TEST_WINDOWS="true"
 make e2e-test

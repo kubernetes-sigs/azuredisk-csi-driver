@@ -41,22 +41,27 @@ import (
 )
 
 const (
-	kubeconfigEnvVar    = "KUBECONFIG"
-	reportDirEnvVar     = "ARTIFACTS"
-	testMigrationEnvVar = "TEST_MIGRATION"
-	testWindowsEnvVar   = "TEST_WINDOWS"
-	cloudNameEnvVar     = "AZURE_CLOUD_NAME"
-	defaultReportDir    = "/workspace/_artifacts"
-	inTreeStorageClass  = "kubernetes.io/azure-disk"
+	kubeconfigEnvVar        = "KUBECONFIG"
+	reportDirEnvVar         = "ARTIFACTS"
+	testMigrationEnvVar     = "TEST_MIGRATION"
+	testWindowsEnvVar       = "TEST_WINDOWS"
+	cloudNameEnvVar         = "AZURE_CLOUD_NAME"
+	defaultReportDir        = "/workspace/_artifacts"
+	inTreeStorageClass      = "kubernetes.io/azure-disk"
+	buildV2Driver           = "BUILD_V2"
+	useOnlyDefaultScheduler = "USE_ONLY_DEFAULT_SCHEDULER"
 )
 
 var (
-	azurediskDriver           azuredisk.CSIDriver
-	isUsingInTreeVolumePlugin = os.Getenv(driver.AzureDriverNameVar) == inTreeStorageClass
-	isTestingMigration        = os.Getenv(testMigrationEnvVar) != ""
-	isWindowsCluster          = os.Getenv(testWindowsEnvVar) != ""
-	isAzureStackCloud         = strings.EqualFold(os.Getenv(cloudNameEnvVar), "AZURESTACKCLOUD")
-	location                  string
+	azurediskDriver             azuredisk.CSIDriver
+	isUsingInTreeVolumePlugin   = os.Getenv(driver.AzureDriverNameVar) == inTreeStorageClass
+	isTestingMigration          = os.Getenv(testMigrationEnvVar) != ""
+	isWindowsCluster            = os.Getenv(testWindowsEnvVar) != ""
+	isUsingCSIDriverV2          = os.Getenv(buildV2Driver) != ""
+	isUsingOnlyDefaultScheduler = os.Getenv(useOnlyDefaultScheduler) != ""
+	isAzureStackCloud           = strings.EqualFold(os.Getenv(cloudNameEnvVar), "AZURESTACKCLOUD")
+	skipClusterBootstrap        = flag.Bool("skip-cluster-bootstrap", false, "flag to indicate that we can skip cluster bootstrap.")
+	location                    string
 )
 
 type testCmd struct {
@@ -102,7 +107,9 @@ var _ = ginkgo.BeforeSuite(func() {
 			startLog: "create metrics service ...",
 			endLog:   "metrics service created",
 		}
-		execTestCmd([]testCmd{e2eBootstrap, createMetricsSVC})
+		if *skipClusterBootstrap == false {
+			execTestCmd([]testCmd{e2eBootstrap, createMetricsSVC})
+		}
 
 		nodeid := os.Getenv("nodeid")
 		azurediskDriver = azuredisk.NewDriver(nodeid)
@@ -172,9 +179,15 @@ var _ = ginkgo.AfterSuite(func() {
 			startLog: "Uninstalling Azure Disk CSI Driver...",
 			endLog:   "Azure Disk CSI Driver uninstalled",
 		}
-		execTestCmd([]testCmd{azurediskLog, deleteMetricsSVC, e2eTeardown})
 
-		if !isTestingMigration {
+		if *skipClusterBootstrap {
+			execTestCmd([]testCmd{azurediskLog})
+		} else {
+			execTestCmd([]testCmd{azurediskLog, deleteMetricsSVC, e2eTeardown})
+		}
+
+		if !isTestingMigration && !isUsingCSIDriverV2 {
+
 			// install Azure Disk CSI Driver deployment scripts test
 			installDriver := testCmd{
 				command:  "bash",
@@ -254,10 +267,26 @@ func skipIfUsingInTreeVolumePlugin() {
 	}
 }
 
+func skipIfNotUsingCSIDriverV2() {
+	if !isUsingCSIDriverV2 {
+		ginkgo.Skip("test case is only available for CSI driver version v2")
+	}
+}
+
 func skipIfOnAzureStackCloud() {
 	if isAzureStackCloud {
 		ginkgo.Skip("test case not supported on Azure Stack Cloud")
 	}
+}
+
+func getListOfSchedulers() []string {
+	if !isUsingCSIDriverV2 {
+		return []string{"default-scheduler"}
+	}
+	if isUsingOnlyDefaultScheduler {
+		return []string{"default-scheduler"}
+	}
+	return []string{"default-scheduler", "azdiskschedulerextender"}
 }
 
 func convertToPowershellorCmdCommandIfNecessary(command string) string {

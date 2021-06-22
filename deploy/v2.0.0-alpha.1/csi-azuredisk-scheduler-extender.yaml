@@ -1,0 +1,96 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: azdiskschedulerextender-config
+  namespace: kube-system
+data:
+  config.yaml: |
+    apiVersion: kubescheduler.config.k8s.io/v1alpha2
+    kind: KubeSchedulerConfiguration
+    leaderElection:
+      leaderElect: true
+      leaseDuration: "15s"
+      renewDeadline: "10s"
+      retryPeriod: "2s"
+      resourceLock: leases
+      resourceName: azdiskschedulerextender
+      resourceNamespace: kube-system
+    profiles:
+    - schedulerName: azdiskschedulerextender
+    extenders:
+    - urlPrefix: "http://localhost:8888/azdiskschedulerextender"
+      filterVerb: "filter"
+      prioritizeVerb: "prioritize"
+      weight: 1
+      enableHttps: false
+      nodeCacheCapable: false
+      ignorable: true
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: azdiskschedulerextender
+  namespace: kube-system
+  labels:
+    app: azdiskschedulerextender
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: azdiskschedulerextender
+  template:
+    metadata:
+      labels:
+        app: azdiskschedulerextender
+    spec:
+      serviceAccountName: azdiskschedulerextender
+      volumes:
+      - name: azdiskschedulerextender-config
+        configMap:
+          name: azdiskschedulerextender-config
+      containers:
+      - name: azdiskscheduler-ctr
+        image: k8s.gcr.io/kube-scheduler:v1.18.6
+        imagePullPolicy: IfNotPresent
+        args:
+        - kube-scheduler
+        - --config=/azdiskschedulerextender/config.yaml
+        - --v=5
+        - --feature-gates
+        - CSIInlineVolume=true,LocalStorageCapacityIsolation=true,ServiceNodeExclusion=true # Add CSIMigration=true,CSIMigrationAzureDisk=true,CSIMigrationAzureDiskComplete=true for CSI Migration support
+        volumeMounts:
+        - name: azdiskschedulerextender-config
+          mountPath: /azdiskschedulerextender
+      - name: azdiskschedulerextender-ctr
+        image: mcr.microsoft.com/k8s/csi/azdiskschedulerextender-csi:v2.0.0-alpha.1 
+        imagePullPolicy: Always
+        args:
+        - "--port=8888"
+        - "--metrics-address=0.0.0.0:29606"
+        - "--v=5"
+        livenessProbe:
+          httpGet:
+            path: /ping
+            port: extender-port
+          failureThreshold: 2
+          periodSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /ping
+            port: extender-port
+          failureThreshold: 3
+          periodSeconds: 10
+        startupProbe:
+          httpGet:
+            path: /ping
+            port: extender-port
+          failureThreshold: 20
+          periodSeconds: 3
+        ports:
+          - name: extender-port
+            containerPort: 8888
+            hostPort: 8888
+          - name: metrics-port
+            containerPort: 29606
+            protocol: TCP

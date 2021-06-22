@@ -115,7 +115,7 @@ func strFirstLetterToUpper(str string) string {
 }
 
 // getDiskLUN : deviceInfo could be a LUN number or a device path, e.g. /dev/disk/azure/scsi1/lun2
-func getDiskLUN(deviceInfo string) (int32, error) {
+func getDiskLUN(deviceInfo string) (int, error) {
 	var diskLUN string
 	if len(deviceInfo) <= 2 {
 		diskLUN = deviceInfo
@@ -133,5 +133,5 @@ func getDiskLUN(deviceInfo string) (int32, error) {
 	if err != nil {
 		return -1, err
 	}
-	return int32(lun), nil
+	return lun, nil
 }

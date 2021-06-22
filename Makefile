@@ -18,6 +18,7 @@ REGISTRY ?= andyzhangx
 REGISTRY_NAME ?= $(shell echo $(REGISTRY) | sed "s/.azurecr.io//g")
 DRIVER_NAME = disk.csi.azure.com
 IMAGE_NAME ?= azuredisk-csi
+SCHEDULER_EXTENDER_IMAGE_NAME ?= azdiskschedulerextender-csi
 ifndef BUILD_V2
 PLUGIN_NAME = azurediskplugin
 IMAGE_VERSION ?= v1.4.0
@@ -27,6 +28,7 @@ PLUGIN_NAME = azurediskpluginv2
 IMAGE_VERSION ?= v2.0.0-alpha.1
 CHART_VERSION ?= v2.0.0-alpha.1
 GOTAGS += -tags azurediskv2
+E2E_TEST_ARGS=--temp-use-driver-v2
 endif
 CLOUD ?= AzurePublicCloud
 # Use a custom version for E2E tests if we are testing in CI
@@ -37,12 +39,18 @@ endif
 endif
 IMAGE_TAG ?= $(REGISTRY)/$(IMAGE_NAME):$(IMAGE_VERSION)
 IMAGE_TAG_LATEST = $(REGISTRY)/$(IMAGE_NAME):latest
+AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG ?= $(REGISTRY)/$(SCHEDULER_EXTENDER_IMAGE_NAME):$(IMAGE_VERSION)
+AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG_LATEST = $(REGISTRY)/$(SCHEDULER_EXTENDER_IMAGE_NAME):latest
 REV = $(shell git describe --long --tags --dirty)
 BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 TOPOLOGY_KEY = topology.$(DRIVER_NAME)/zone
 ENABLE_TOPOLOGY ?= false
+SCHEDULER_EXTENDER_LDFLAGS ?= "-X ${PKG}/pkg/azuredisk.schedulerVersion=${IMAGE_VERSION} -X ${PKG}/pkg/azuredisk.gitCommit=${GIT_COMMIT} -X ${PKG}/pkg/azuredisk.buildDate=${BUILD_DATE} -X ${PKG}/pkg/azuredisk.DriverName=${DRIVER_NAME} -extldflags "-static""
 LDFLAGS ?= "-X ${PKG}/pkg/azuredisk.driverVersion=${IMAGE_VERSION} -X ${PKG}/pkg/azuredisk.gitCommit=${GIT_COMMIT} -X ${PKG}/pkg/azuredisk.buildDate=${BUILD_DATE} -X ${PKG}/pkg/azuredisk.DriverName=${DRIVER_NAME} -X ${PKG}/pkg/azuredisk.topologyKey=${TOPOLOGY_KEY} -extldflags "-static"" ${GOTAGS}
-E2E_HELM_OPTIONS ?= --set image.azuredisk.repository=$(REGISTRY)/$(IMAGE_NAME) --set image.azuredisk.tag=$(IMAGE_VERSION) --set image.azuredisk.pullPolicy=Always
+E2E_HELM_OPTIONS ?= --set image.azuredisk.repository=$(REGISTRY)/$(IMAGE_NAME) --set image.azuredisk.tag=$(IMAGE_VERSION) --set image.azuredisk.pullPolicy=Always --set image.schedulerExtender.repository=$(REGISTRY)/$(SCHEDULER_EXTENDER_IMAGE_NAME) --set image.schedulerExtender.tag=$(IMAGE_VERSION) --set image.schedulerExtender.pullPolicy=Always ${ADDITIONAL_E2E_HELM_OPTIONS}
+ifeq ($(TEST_MIGRATION), true)
+E2E_HELM_OPTIONS += --set csiMigration.enabled=true
+endif
 GINKGO_FLAGS = -ginkgo.v
 ifeq ($(ENABLE_TOPOLOGY), true)
 GINKGO_FLAGS += -ginkgo.focus="\[multi-az\]"
@@ -96,20 +104,21 @@ sanity-test: azuredisk
 	go test -v -timeout=30m ./test/sanity
 
 .PHONY: sanity-test-v2
-sanity-test-v2: azuredisk-v2
-	go test -v -timeout=30m ./test/sanity --temp-use-driver-v2
+sanity-test-v2: container-v2
+	go test -v -timeout=30m ./test/sanity --temp-use-driver-v2 --image-tag ${IMAGE_TAG}
 
 .PHONY: integration-test
-integration-test: azuredisk
+integration-test:
 	go test -v -timeout=30m ./test/integration
 
 .PHONY: integration-test-v2
-integration-test-v2: azuredisk-v2
-	go test -v -timeout=30m ./test/integration --temp-use-driver-v2
+integration-test-v2: container-v2
+	go test -v -timeout=30m ./test/integration --temp-use-driver-v2 --image-tag ${IMAGE_TAG}
 
 .PHONY: e2e-bootstrap
 e2e-bootstrap: install-helm
 	docker pull $(IMAGE_TAG) || make container-all push-manifest
+	docker pull $(AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG) || make azdiskschedulerextender-all push-manifest-azdiskschedulerextender
 ifdef TEST_WINDOWS
 	helm install azuredisk-csi-driver charts/${CHART_VERSION}/azuredisk-csi-driver --namespace kube-system --wait --timeout=15m -v=5 --debug \
 		${E2E_HELM_OPTIONS} \
@@ -118,6 +127,7 @@ ifdef TEST_WINDOWS
 		--set controller.runOnMaster=true \
 		--set controller.replicas=1 \
 		--set controller.logLevel=6 \
+		--set schedulerExtender.replicas=1 \
 		--set node.logLevel=6 \
 		--set cloud=$(CLOUD)
 else
@@ -134,6 +144,11 @@ install-helm:
 .PHONY: e2e-teardown
 e2e-teardown:
 	helm delete azuredisk-csi-driver --namespace kube-system
+	kubectl wait --namespace=kube-system --for=delete pod --selector app=csi-azuredisk-controller --timeout 5m || true
+	kubectl wait --namespace=kube-system --for=delete pod --selector app=csi-azuredisk-node --timeout 5m || true
+ifdef BUILD_V2
+	kubectl wait --namespace=kube-system --for=delete pod --selector app=azdiskschedulerextender --timeout 5m || true
+endif
 
 .PHONY: azuredisk
 azuredisk:
@@ -155,9 +170,25 @@ azuredisk-windows-v2:
 azuredisk-darwin:
 	CGO_ENABLED=0 GOOS=darwin go build -a -ldflags ${LDFLAGS} -mod vendor -o _output/${ARCH}/${PLUGIN_NAME}.exe ./pkg/azurediskplugin
 
+.PHONY: azdiskschedulerextender
+azdiskschedulerextender:
+	CGO_ENABLED=0 GOOS=linux go build -a -ldflags ${SCHEDULER_EXTENDER_LDFLAGS} -mod vendor -o _output/${ARCH}/azdiskschedulerextender ./pkg/azdiskschedulerextender
+
+.PHONY: azdiskschedulerextender-windows
+azdiskschedulerextender-windows:
+	CGO_ENABLED=0 GOOS=windows go build -a -ldflags ${SCHEDULER_EXTENDER_LDFLAGS} -mod vendor -o _output/${ARCH}/azdiskschedulerextender.exe ./pkg/azdiskschedulerextender
+
+.PHONY: azdiskschedulerextender-darwin
+azdiskschedulerextender-darwin:
+	CGO_ENABLED=0 GOOS=darwin go build -a -ldflags ${SCHEDULER_EXTENDER_LDFLAGS} -mod vendor -o _output/${ARCH}/azdiskschedulerextender ./pkg/azdiskschedulerextender
+
 .PHONY: container
 container: azuredisk
-	docker build --no-cache -t $(IMAGE_TAG) -f ./pkg/azurediskplugin/dev.Dockerfile .
+	docker build --no-cache -t $(IMAGE_TAG) --build-arg PLUGIN_NAME=${PLUGIN_NAME} -f ./pkg/azurediskplugin/dev.Dockerfile .
+
+.PHONY: container-v2
+container-v2: azuredisk-v2
+	docker build --no-cache -t $(IMAGE_TAG) --build-arg PLUGIN_NAME=${PLUGIN_NAME} -f ./pkg/azurediskplugin/dev.Dockerfile .
 
 .PHONY: container-linux
 container-linux:
@@ -182,8 +213,33 @@ container-windows:
 		--build-arg PLUGIN_NAME=${PLUGIN_NAME} \
 		--build-arg OSVERSION=$(OSVERSION) 
 
-.PHONY: container-all
-container-all: azuredisk-windows
+.PHONY: azdiskschedulerextender-container
+azdiskschedulerextender-container: azdiskschedulerextender
+	docker build --no-cache -t $(AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG) -f ./pkg/azdiskschedulerextender/dev.Dockerfile .
+
+.PHONY: azdiskschedulerextender-container-linux
+azdiskschedulerextender-container-linux:
+	docker buildx build . \
+		--pull \
+		--output=type=$(OUTPUT_TYPE) \
+		--platform="linux/$(ARCH)" \
+		--tag $(AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG)-linux-$(ARCH) \
+		--file ./pkg/azdiskschedulerextender/Dockerfile \
+		--build-arg ARCH=${ARCH}
+
+.PHONY: azdiskschedulerextender-container-windows
+azdiskschedulerextender-container-windows:
+	docker buildx build . \
+		--pull \
+		--output=type=$(OUTPUT_TYPE) \
+		--platform="windows/$(ARCH)" \
+		--tag $(AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG)-windows-$(OSVERSION)-$(ARCH) \
+		--file ./pkg/azdiskschedulerextender/Windows.Dockerfile \
+		--build-arg ARCH=${ARCH} \
+		--build-arg OSVERSION=$(OSVERSION)
+
+.PHONY: container-setup
+container-setup:
 	docker buildx rm container-builder || true
 	docker buildx create --use --name=container-builder
 ifeq ($(CLOUD), AzureStackCloud)
@@ -193,6 +249,19 @@ endif
 	# https://github.com/docker/buildx/issues/464#issuecomment-741507760
 	docker run --privileged --rm tonistiigi/binfmt --uninstall qemu-aarch64
 	docker run --rm --privileged tonistiigi/binfmt --install all
+
+.PHONY: azdiskschedulerextender-all
+azdiskschedulerextender-all: azdiskschedulerextender-windows container-setup
+	for arch in $(ALL_ARCH.linux); do \
+		ARCH=$${arch} $(MAKE) azdiskschedulerextender; \
+		ARCH=$${arch} $(MAKE) azdiskschedulerextender-container-linux; \
+	done
+	for osversion in $(ALL_OSVERSIONS.windows); do \
+		OSVERSION=$${osversion} $(MAKE) azdiskschedulerextender-container-windows; \
+	done
+	
+.PHONY: container-all
+container-all: azuredisk-windows container-setup
 	for arch in $(ALL_ARCH.linux); do \
 		ARCH=$${arch} $(MAKE) azuredisk; \
 		ARCH=$${arch} $(MAKE) container-linux; \
@@ -203,7 +272,7 @@ endif
 
 .PHONY: push-manifest
 push-manifest:
-	docker manifest create --amend $(IMAGE_TAG) $(foreach osarch, $(ALL_OS_ARCH), $(IMAGE_TAG)-${osarch})
+	docker manifest create --amend $(IMAGE_TAG) $(foreach osarch, $(ALL_OS_ARCH), $(IMAGE_TAG)-${osarch}) 
 	# add "os.version" field to windows images (based on https://github.com/kubernetes/kubernetes/blob/master/build/pause/Makefile)
 	set -x; \
 	registry_prefix=$(shell (echo ${REGISTRY} | grep -Eq ".*[\/\.].*") && echo "" || echo "docker.io/"); \
@@ -230,6 +299,35 @@ else
 	docker push $(IMAGE_TAG_LATEST)
 endif
 
+.PHONY: push-manifest-azdiskschedulerextender
+push-manifest-azdiskschedulerextender:
+	docker manifest create --amend $(AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG) $(foreach osarch, $(ALL_OS_ARCH), $(AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG)-${osarch})
+	# add "os.version" field to windows images (based on https://github.com/kubernetes/kubernetes/blob/master/build/pause/Makefile)
+	set -x; \
+	registry_prefix=$(shell (echo ${REGISTRY} | grep -Eq ".*[\/\.].*") && echo "" || echo "docker.io/"); \
+	manifest_image_folder_azdisk_schedulerextender=`echo "$${registry_prefix}${AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG}" | sed "s|/|_|g" | sed "s/:/-/"`; \
+	for arch in $(ALL_ARCH.windows); do \
+		for osversion in $(ALL_OSVERSIONS.windows); do \
+			BASEIMAGE=mcr.microsoft.com/windows/nanoserver:$${osversion}; \
+			full_version=`docker manifest inspect $${BASEIMAGE} | jq -r '.manifests[0].platform["os.version"]'`; \
+			sed -i -r "s/(\"os\"\:\"windows\")/\0,\"os.version\":\"$${full_version}\"/" "${HOME}/.docker/manifests/$${manifest_image_folder_azdisk_schedulerextender}/$${manifest_image_folder_azdisk_schedulerextender}-windows-$${osversion}-$${arch}"; \
+		done; \
+	done
+	docker manifest push --purge $(AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG)
+	docker manifest inspect $(AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG)
+ifdef PUBLISH
+	docker manifest create $(AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG_LATEST) $(foreach osarch, $(ALL_OS_ARCH), $(AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG)-${osarch})
+	docker manifest inspect $(AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG_LATEST)
+endif
+
+.PHONY: push-latest-azdiskschedulerextender
+push-latest-azdiskschedulerextender:
+ifdef CI
+	docker manifest push --purge $(AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG_LATEST)
+else
+	docker push $(AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG)
+endif
+
 .PHONY: clean
 clean:
 	go clean -r -x
@@ -238,15 +336,23 @@ clean:
 .PHONY: create-metrics-svc
 create-metrics-svc:
 	kubectl create -f deploy/example/metrics/csi-azuredisk-controller-svc.yaml
+ifdef BUILD_V2
+	kubectl create -f deploy/example/metrics/csi-azuredisk-scheduler-extender-svc.yaml
+endif
 
 .PHONY: delete-metrics-svc
 delete-metrics-svc:
 	kubectl delete -f deploy/example/metrics/csi-azuredisk-controller-svc.yaml --ignore-not-found
+	kubectl delete -f deploy/example/metrics/csi-azuredisk-scheduler-extender-svc.yaml --ignore-not-found
 
 .PHONY: e2e-test
 e2e-test:
 	if [ ! -z "$(EXTERNAL_E2E_TEST)" ]; then \
 		bash ./test/external-e2e/run.sh;\
 	else \
-		go test -v -timeout=0 ./test/e2e ${GINKGO_FLAGS};\
+		go test -v -timeout=0 ${GOTAGS} ./test/e2e ${E2E_TEST_ARGS} ${GINKGO_FLAGS};\
 	fi
+
+.PHONY: e2e-test-v2
+e2e-test-v2:
+	BUILD_V2=1 make e2e-test

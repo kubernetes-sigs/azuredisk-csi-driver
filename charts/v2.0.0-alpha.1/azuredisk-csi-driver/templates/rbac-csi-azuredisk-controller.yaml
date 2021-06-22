@@ -32,6 +32,14 @@ rules:
   - apiGroups: ["snapshot.storage.k8s.io"]
     resources: ["volumesnapshotcontents"]
     verbs: ["get", "list"]
+    {{- if .Values.azuredisk.useV2Driver}}
+  - apiGroups: ["disk.csi.azure.com"]
+    resources: ["azdrivernodes", "azvolumeattachments", "azvolumes"]
+    verbs: ["create", "get", "list", "watch", "patch", "update", "delete"]
+  - apiGroups: ["disk.csi.azure.com"]
+    resources: ["azdrivernodes/status", "azvolumeattachments/status", "azvolumes/status"]
+    verbs: ["get", "patch", "update"]
+    {{- end }}
 
 ---
 
@@ -69,6 +77,9 @@ rules:
     verbs: ["get", "list", "watch"]
   - apiGroups: ["storage.k8s.io"]
     resources: ["volumeattachments"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["volumeattachments/status"]
     verbs: ["get", "list", "watch", "update", "patch"]
   - apiGroups: ["coordination.k8s.io"]
     resources: ["leases"]

@@ -36,8 +36,10 @@ const (
 )
 
 var useDriverV2 = flag.Bool("temp-use-driver-v2", false, "A temporary flag to enable early test and development of Azure Disk CSI Driver V2. This will be removed in the future.")
+var imageTag = flag.String("image-tag", "", "A flag to get the docker image tag")
 
 func TestIntegrationOnAzurePublicCloud(t *testing.T) {
+	flag.Parse()
 	// Test on AzurePublicCloud
 	creds, err := credentials.CreateAzureCredentialFile()
 	defer func() {
@@ -88,6 +90,7 @@ func TestIntegrationOnAzurePublicCloud(t *testing.T) {
 	args := []string{creds.Cloud}
 	if *useDriverV2 {
 		args = append(args, "v2")
+		args = append(args, *imageTag)
 	}
 
 	cmd := exec.Command("./test/integration/run-tests-all-clouds.sh", args...)

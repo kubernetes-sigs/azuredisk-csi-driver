@@ -15,13 +15,20 @@ rules:
   - apiGroups: [""]
     resources: ["secrets"]
     verbs: ["get", "list"]
-
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["disk.csi.azure.com"]
+    resources: ["azdrivernodes"]
+    verbs: ["create", "get", "patch", "update"]
+  - apiGroups: ["disk.csi.azure.com"]
+    resources: ["azdrivernodes/status"]
+    verbs: ["get", "patch", "update"]
 ---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: csi-azuredisk-node-secret-binding
-  namespace: kube-system
 subjects:
   - kind: ServiceAccount
     name: csi-azuredisk-node-sa

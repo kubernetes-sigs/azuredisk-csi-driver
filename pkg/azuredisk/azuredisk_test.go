@@ -35,6 +35,10 @@ import (
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
+var (
+	KubeConfigFileEnvVar = "KUBECONFIG"
+)
+
 func TestGetDiskName(t *testing.T) {
 	mDiskPathRE := managedDiskPathRE
 	tests := []struct {
@@ -174,19 +178,19 @@ func TestIsValidDiskURI(t *testing.T) {
 		},
 		{
 			diskURI:     "resourceGroups/test-resource/providers/Microsoft.Compute/disks/pvc-disk-dynamic-9e102c53",
-			expectError: fmt.Errorf("Inavlid DiskURI: resourceGroups/test-resource/providers/Microsoft.Compute/disks/pvc-disk-dynamic-9e102c53, correct format: %v", supportedManagedDiskURI),
+			expectError: fmt.Errorf("Invalid DiskURI: resourceGroups/test-resource/providers/Microsoft.Compute/disks/pvc-disk-dynamic-9e102c53, correct format: %v", supportedManagedDiskURI),
 		},
 		{
 			diskURI:     "https://test-saccount.blob.core.windows.net/container/pvc-disk-dynamic-9e102c53-593d-11e9-934e-705a0f18a318.vhd",
-			expectError: fmt.Errorf("Inavlid DiskURI: https://test-saccount.blob.core.windows.net/container/pvc-disk-dynamic-9e102c53-593d-11e9-934e-705a0f18a318.vhd, correct format: %v", supportedManagedDiskURI),
+			expectError: fmt.Errorf("Invalid DiskURI: https://test-saccount.blob.core.windows.net/container/pvc-disk-dynamic-9e102c53-593d-11e9-934e-705a0f18a318.vhd, correct format: %v", supportedManagedDiskURI),
 		},
 		{
 			diskURI:     "test.com",
-			expectError: fmt.Errorf("Inavlid DiskURI: test.com, correct format: %v", supportedManagedDiskURI),
+			expectError: fmt.Errorf("Invalid DiskURI: test.com, correct format: %v", supportedManagedDiskURI),
 		},
 		{
 			diskURI:     "http://test-saccount.blob.core.windows.net/container/pvc-disk-dynamic-9e102c53-593d-11e9-934e-705a0f18a318.vhd",
-			expectError: fmt.Errorf("Inavlid DiskURI: http://test-saccount.blob.core.windows.net/container/pvc-disk-dynamic-9e102c53-593d-11e9-934e-705a0f18a318.vhd, correct format: %v", supportedManagedDiskURI),
+			expectError: fmt.Errorf("Invalid DiskURI: http://test-saccount.blob.core.windows.net/container/pvc-disk-dynamic-9e102c53-593d-11e9-934e-705a0f18a318.vhd, correct format: %v", supportedManagedDiskURI),
 		},
 	}
 
@@ -632,6 +636,26 @@ func TestRun(t *testing.T) {
     "location": "loc"
 }`
 
+	validKubeConfigPath := "valid-Kube-Config-Path"
+	validKubeConfigContent := `
+    apiVersion: v1
+    clusters:
+    - cluster:
+        server: https://foo-cluster-dns-57e0bda1.hcp.westus2.azmk8s.io:443
+      name: foo-cluster
+    contexts:
+    - context:
+        cluster: foo-cluster
+        user: clusterUser_abhib-resources_foo-cluster
+      name: foo-cluster
+    current-context: foo-cluster
+    kind: Config
+    preferences: {}
+    users:
+    - name: clusterUser_abhib-resources_foo-cluster
+      user:
+`
+
 	testCases := []struct {
 		name     string
 		testFunc func(t *testing.T)
@@ -656,6 +680,14 @@ func TestRun(t *testing.T) {
 					defer os.Unsetenv(DefaultAzureCredentialFileEnv)
 				}
 				os.Setenv(DefaultAzureCredentialFileEnv, fakeCredFile)
+
+				existingConfigPath, err := createConfigFileAndSetEnv(validKubeConfigPath, validKubeConfigContent, KubeConfigFileEnvVar)
+				if len(existingConfigPath) > 0 {
+					defer cleanConfigAndRestoreEnv(validKubeConfigPath, KubeConfigFileEnvVar, existingConfigPath)
+				}
+				if err != nil {
+					t.Error(err)
+				}
 
 				d, _ := NewFakeDriver(t)
 				d.Run("tcp://127.0.0.1:0", "", true, true)
@@ -682,6 +714,14 @@ func TestRun(t *testing.T) {
 				}
 				os.Setenv(DefaultAzureCredentialFileEnv, fakeCredFile)
 
+				existingConfigPath, err := createConfigFileAndSetEnv(validKubeConfigPath, validKubeConfigContent, KubeConfigFileEnvVar)
+				if len(existingConfigPath) > 0 {
+					defer cleanConfigAndRestoreEnv(validKubeConfigPath, KubeConfigFileEnvVar, existingConfigPath)
+				}
+				if err != nil {
+					t.Error(err)
+				}
+
 				d, _ := NewFakeDriver(t)
 				d.setCloud(&azure.Cloud{})
 				d.setNodeID("")
@@ -693,4 +733,33 @@ func TestRun(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, tc.testFunc)
 	}
+}
+
+func createConfigFileAndSetEnv(path string, content string, envVariableName string) (string, error) {
+	f, err := os.Create(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	if err != nil {
+		return "", err
+	}
+
+	if err := ioutil.WriteFile(path, []byte(content), 0666); err != nil {
+		return "", err
+	}
+
+	envValue, _ := os.LookupEnv(envVariableName)
+	err = os.Setenv(envVariableName, path)
+	if err != nil {
+		return "", fmt.Errorf("Failed to set env variable")
+	}
+
+	return envValue, err
+}
+
+func cleanConfigAndRestoreEnv(path string, envVariableName string, envValue string) {
+	defer os.Setenv(envVariableName, envValue)
+	os.Remove(path)
 }
