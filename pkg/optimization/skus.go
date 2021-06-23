@@ -25,9 +25,8 @@ import (
 	"google.golang.org/grpc/status"
 
 	"k8s.io/apimachinery/pkg/types"
+	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
-
-	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
 // NodeInfo stores VM/Node specific static information
@@ -118,12 +117,12 @@ type DiskSkuInfo struct {
 }
 
 // NewNodeInfo populates Node and Sku related information in memory
-func NewNodeInfo(cloud *azure.Cloud, nodeID string) (*NodeInfo, error) {
+func NewNodeInfo(cloud cloudprovider.Interface, nodeID string) (*NodeInfo, error) {
 	klog.V(2).Infof("NewNodeInfo: Starting to populate node and disk sku information.")
 
 	instances, ok := cloud.Instances()
 	if !ok {
-		return nil, status.Error(codes.Internal, "NewNodeInfo: Failed to get instances from cloud provider")
+		return nil, status.Error(codes.Internal, "NewNodeInfo: Failed to get instances from Azure cloud provider")
 	}
 
 	instanceType, err := instances.InstanceType(context.TODO(), types.NodeName(nodeID))
@@ -131,26 +130,25 @@ func NewNodeInfo(cloud *azure.Cloud, nodeID string) (*NodeInfo, error) {
 		return nil, fmt.Errorf("NewNodeInfo: Failed to get instance type from Azure cloud provider, nodeName: %v, error: %v", nodeID, err)
 	}
 
-	zone, err := cloud.GetZone(context.TODO())
+	zones, ok := cloud.Zones()
+	if !ok {
+		return nil, status.Error(codes.Internal, "NewNodeInfo: Failed to get zones from Azure cloud provider.")
+	}
+	zone, err := zones.GetZone(context.TODO())
 	if err != nil {
 		return nil, fmt.Errorf("NewNodeInfo: Failed to get zone from Azure cloud provider, nodeName: %v, error: %v", nodeID, err)
 	}
 
-	return newNodeInfoInternal(instanceType, zone.FailureDomain, zone.Region)
-}
-
-// newNodeInfoInternal populates NodeInfo with SKU related information
-func newNodeInfoInternal(instance string, zone string, region string) (*NodeInfo, error) {
 	nodeInfo := &NodeInfo{}
-	nodeInfo.SkuName = instance
-	nodeInfo.Zone = zone
-	nodeInfo.Region = region
+	nodeInfo.SkuName = instanceType
+	nodeInfo.Zone = zone.FailureDomain
+	nodeInfo.Region = zone.Region
 
 	nodeSkuNameLower := strings.ToLower(nodeInfo.SkuName)
 
 	vmSku, ok := NodeInfoMap[nodeSkuNameLower]
 	if !ok {
-		return nil, fmt.Errorf("newNodeInfoInternal: Could not find SKU %s in the sku map", nodeSkuNameLower)
+		return nil, fmt.Errorf("NewNodeInfo: Could not find SKU %s in the sku map", nodeSkuNameLower)
 	}
 
 	nodeInfo.MaxBurstBwMbps = vmSku.MaxBurstBwMbps

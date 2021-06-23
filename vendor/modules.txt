@@ -753,6 +753,7 @@ k8s.io/client-go/util/workqueue
 # k8s.io/cloud-provider v0.21.0 => k8s.io/cloud-provider v0.21.0
 ## explicit
 k8s.io/cloud-provider
+k8s.io/cloud-provider/fake
 k8s.io/cloud-provider/service/helpers
 k8s.io/cloud-provider/volume
 k8s.io/cloud-provider/volume/errors

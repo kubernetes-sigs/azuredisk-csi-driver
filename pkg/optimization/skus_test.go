@@ -17,10 +17,27 @@ limitations under the License.
 package optimization
 
 import (
+	"context"
+	"errors"
 	"testing"
 
-	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
+	"github.com/stretchr/testify/assert"
+	"k8s.io/apimachinery/pkg/types"
+	cloudprovider "k8s.io/cloud-provider"
+	fakecloud "k8s.io/cloud-provider/fake"
 )
+
+type fakeCloud struct {
+	fakecloud.Cloud
+}
+
+func (fake *fakeCloud) InstanceType(ctx context.Context, nodeName types.NodeName) (string, error) {
+	if instanceType, ok := fake.InstanceTypes[nodeName]; ok {
+		return instanceType, nil
+	}
+
+	return "", errors.New("Not found")
+}
 
 func TestDiskSkuInfo_GetLatencyTest(t *testing.T) {
 	for _, skuInfo := range DiskSkuMap["premium_lrs"] {
@@ -46,39 +63,74 @@ func TestDiskSkuInfo_GetLatencyTest(t *testing.T) {
 }
 
 func TestNewNodeInfo(t *testing.T) {
-	cloud := &azure.Cloud{}
+	instanceType := "Standard_DS14"
+	cloud := &fakeCloud{
+		fakecloud.Cloud{
+			InstanceTypes: map[types.NodeName]string{
+				types.NodeName("existing-node"): instanceType,
+				types.NodeName("unknown-sku"):   "unknown",
+			},
+			Zone: cloudprovider.Zone{
+				FailureDomain: "0",
+				Region:        "test",
+			},
+		},
+	}
 
-	defer func() {
-		if r := recover(); r == nil {
-			t.Errorf("NewNodeInfo did not panic when cloud was not initialized.")
-		}
-	}()
-
-	_, _ = NewNodeInfo(cloud, "test")
-}
-
-func Test_newNodeInfoInternal(t *testing.T) {
 	tests := []struct {
-		name     string
-		instance string
-		wantErr  bool
+		description      string
+		nodeID           string
+		disableInstances bool
+		disableZones     bool
+		wantErr          bool
 	}{
 		{
-			name:     "Should be able to populate valid VM sku",
-			instance: "Standard_DS14",
-			wantErr:  false,
+			description: "[Success] Should succeed for an existing node.",
+			nodeID:      "existing-node",
+			wantErr:     false,
 		},
 		{
-			name:     "Should fail to populate an invalid VM sku",
-			instance: "blah",
-			wantErr:  true,
+			description:      "[Failure] Should return an error if Instances interface not supported by cloud provider.",
+			nodeID:           "existing-node",
+			disableInstances: true,
+			wantErr:          true,
+		},
+		{
+			description:  "[Failure] Should return an error if Zones interface not supported by cloud provider.",
+			nodeID:       "existing-node",
+			disableZones: true,
+			wantErr:      true,
+		},
+		{
+			description: "[Failure] Should return an error for a non-existing node.",
+			nodeID:      "non-existing node",
+			wantErr:     true,
+		},
+		{
+			description: "[Failure] Should return an error for a unknown SKU.",
+			nodeID:      "unknown-sku",
+			wantErr:     true,
 		},
 	}
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := newNodeInfoInternal(tt.instance, "testZone", "testRegion")
+		t.Run(tt.description, func(t *testing.T) {
+			cloud.DisableInstances = tt.disableInstances
+			cloud.DisableZones = tt.disableZones
+			nodeInfo, err := NewNodeInfo(cloud, tt.nodeID)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewNodeInfoInternal() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if err == nil {
+				assert.NotNil(t, nodeInfo)
+				assert.Equal(t, instanceType, nodeInfo.SkuName)
+				assert.Equal(t, cloud.Zone.FailureDomain, nodeInfo.Zone)
+				assert.Equal(t, cloud.Zone.Region, nodeInfo.Region)
+				assert.NotEqual(t, 0, nodeInfo.MaxBurstBwMbps)
+				assert.NotEqual(t, 0, nodeInfo.MaxBurstIops)
+				assert.NotEqual(t, 0, nodeInfo.MaxBwMbps)
+				assert.NotEqual(t, 0, nodeInfo.MaxIops)
+				assert.NotEqual(t, 0, nodeInfo.MaxDataDiskCount)
+				assert.NotEqual(t, 0, nodeInfo.VCpus)
 			}
 		})
 	}
