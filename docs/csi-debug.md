@@ -26,3 +26,13 @@ csi-azuredisk-node-dr4s4                       3/3     Running   0          7m4s
 ```console
 $ kubectl logs csi-azuredisk-node-cvgbs -c azuredisk -n kube-system > csi-azuredisk-node.log
 ```
+
+#### Update driver version quickly by editting driver deployment directly
+```console
+kubectl edit deployment csi-azuredisk-controller -n kube-system
+```
+and then change below deployment config, e.g.
+```console
+        image: mcr.microsoft.com/k8s/csi/azuredisk-csi:v1.5.0
+        imagePullPolicy: Always
+```
