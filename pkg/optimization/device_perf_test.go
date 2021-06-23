@@ -14,9 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package azuredisk
+package optimization
 
-import "testing"
+import (
+	"testing"
+
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
+)
 
 func TestSafeDeviceHelper_DeviceSupportsPerfOptimization(t *testing.T) {
 	tests := []struct {
@@ -53,7 +57,7 @@ func TestSafeDeviceHelper_DeviceSupportsPerfOptimization(t *testing.T) {
 			name:            "valid profile and account should return true",
 			diskPerfProfile: "basic",
 			diskAccountType: "Premium_lrs",
-			want:            IsLinuxOS(),
+			want:            util.IsLinuxOS(),
 		},
 	}
 	for _, tt := range tests {
@@ -71,7 +75,6 @@ func TestDeviceHelper_OptimizeDiskPerformance(t *testing.T) {
 	tests := []struct {
 		name           string
 		nodeInfo       *NodeInfo
-		diskSkus       map[string]map[string]DiskSkuInfo
 		devicePath     string
 		perfProfile    string
 		accountType    string
@@ -81,33 +84,19 @@ func TestDeviceHelper_OptimizeDiskPerformance(t *testing.T) {
 		wantErr        bool
 	}{
 		{
-			name:           "nil disk map should through error",
+			name:           "nil node should return error",
 			nodeInfo:       nil,
-			diskSkus:       nil,
 			devicePath:     "blah",
 			perfProfile:    "basic",
 			accountType:    "standardssd_lrs",
-			diskSizeGibStr: "100",
+			diskSizeGibStr: "twenty",
 			diskIopsStr:    "100",
 			diskBwMbpsStr:  "100",
 			wantErr:        true,
 		},
 		{
-			name:           "nil node info should through error",
+			name:           "invalid sku spec should return error",
 			nodeInfo:       &NodeInfo{},
-			diskSkus:       nil,
-			devicePath:     "blah",
-			perfProfile:    "basic",
-			accountType:    "standardssd_lrs",
-			diskSizeGibStr: "100",
-			diskIopsStr:    "100",
-			diskBwMbpsStr:  "100",
-			wantErr:        true,
-		},
-		{
-			name:           "invalid sku spec should through error",
-			nodeInfo:       &NodeInfo{},
-			diskSkus:       DiskSkuMap,
 			devicePath:     "blah",
 			perfProfile:    "basic",
 			accountType:    "standardssd_lrs",
@@ -120,7 +109,7 @@ func TestDeviceHelper_OptimizeDiskPerformance(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if deviceHelper.DiskSupportsPerfOptimization(tt.perfProfile, tt.accountType) {
-				if err := deviceHelper.OptimizeDiskPerformance(tt.nodeInfo, tt.diskSkus, tt.devicePath, tt.perfProfile, tt.accountType, tt.diskSizeGibStr, tt.diskIopsStr, tt.diskBwMbpsStr); (err != nil) != tt.wantErr {
+				if err := deviceHelper.OptimizeDiskPerformance(tt.nodeInfo, tt.devicePath, tt.perfProfile, tt.accountType, tt.diskSizeGibStr, tt.diskIopsStr, tt.diskBwMbpsStr); (err != nil) != tt.wantErr {
 					t.Errorf("DeviceHelper.OptimizeDiskPerformance() error = %v, wantErr %v", err, tt.wantErr)
 				}
 			}

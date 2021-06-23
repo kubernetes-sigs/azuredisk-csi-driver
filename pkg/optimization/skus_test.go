@@ -14,49 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package azuredisk
+package optimization
 
 import (
 	"testing"
 
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
-
-func Test_populateSkuMap(t *testing.T) {
-	skuName := "Standard_DS14"
-	zone := "1"
-	region := "eastus"
-	nodeInfo := &NodeInfo{SkuName: skuName, Zone: zone, Region: region}
-	nodeInfoInvalid := &NodeInfo{SkuName: "blah", Zone: zone, Region: region}
-	tests := []struct {
-		name    string
-		driver  *Driver
-		wantErr bool
-	}{
-		{
-			name:    "Invalid sku should return error",
-			driver:  &Driver{DriverCore: DriverCore{nodeInfo: nodeInfoInvalid}},
-			wantErr: true,
-		},
-		{
-			name:    "Valid sku should return success",
-			driver:  &Driver{DriverCore: DriverCore{nodeInfo: nodeInfo}},
-			wantErr: false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := populateSkuMap(&tt.driver.DriverCore)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("populateSkuMap() error = %v, wantErr %v", err, tt.wantErr)
-			}
-
-			if !tt.wantErr && tt.driver.getNodeInfo() == nil {
-				t.Errorf("populateSkuMap() getNodeInfo() returns nil")
-			}
-		})
-	}
-}
 
 func TestDiskSkuInfo_GetLatencyTest(t *testing.T) {
 	for _, skuInfo := range DiskSkuMap["premium_lrs"] {
@@ -81,22 +45,19 @@ func TestDiskSkuInfo_GetLatencyTest(t *testing.T) {
 	}
 }
 
-func TestPopulateNodeAndSkuInfo(t *testing.T) {
-	d := &DriverCore{}
-	d.cloud = &azure.Cloud{}
+func TestNewNodeInfo(t *testing.T) {
+	cloud := &azure.Cloud{}
 
 	defer func() {
 		if r := recover(); r == nil {
-			t.Errorf("PopulateNodeAndSkuInfo did not panic when cloud was not initialized.")
+			t.Errorf("NewNodeInfo did not panic when cloud was not initialized.")
 		}
 	}()
 
-	_ = PopulateNodeAndSkuInfo(d)
+	_, _ = NewNodeInfo(cloud, "test")
 }
 
-func Test_populateNodeAndSkuInfoInternal(t *testing.T) {
-	d, _ := NewFakeDriver(t)
-	dCore := d.getDriverCore()
+func Test_newNodeInfoInternal(t *testing.T) {
 	tests := []struct {
 		name     string
 		instance string
@@ -108,16 +69,16 @@ func Test_populateNodeAndSkuInfoInternal(t *testing.T) {
 			wantErr:  false,
 		},
 		{
-			name:     "Should fail to populate valid VM sku",
+			name:     "Should fail to populate an invalid VM sku",
 			instance: "blah",
 			wantErr:  true,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := populateNodeAndSkuInfoInternal(&dCore, tt.instance, "testZone", "testRegion")
+			_, err := newNodeInfoInternal(tt.instance, "testZone", "testRegion")
 			if (err != nil) != tt.wantErr {
-				t.Errorf("populateNodeAndSkuInfoInternal() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("NewNodeInfoInternal() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}

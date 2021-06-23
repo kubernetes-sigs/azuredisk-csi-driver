@@ -14,13 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package azuredisk
+package optimization
 
 // This is the interface for DeviceHelper
 type Interface interface {
 	DiskSupportsPerfOptimization(diskPerfProfile, diskAccountType string) bool
-	OptimizeDiskPerformance(nodeInfo *NodeInfo, diskSkus map[string]map[string]DiskSkuInfo, devicePath,
-		perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr string) error
+	OptimizeDiskPerformance(nodeInfo *NodeInfo,
+		devicePath, perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr string) error
 }
 
 // Compile-time check to ensure all Mounter DeviceHelper satisfy
@@ -42,7 +42,7 @@ func (dh *SafeDeviceHelper) DeviceSupportsPerfOptimization(diskPerfProfile, disk
 	return dh.Interface.DiskSupportsPerfOptimization(diskPerfProfile, diskAccountType)
 }
 
-func (dh *SafeDeviceHelper) OptimizeDiskPerformance(nodeInfo *NodeInfo, diskSkus map[string]map[string]DiskSkuInfo, devicePath,
-	perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr string) error {
-	return dh.Interface.OptimizeDiskPerformance(nodeInfo, diskSkus, devicePath, perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr)
+func (dh *SafeDeviceHelper) OptimizeDiskPerformance(nodeInfo *NodeInfo,
+	devicePath, perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr string) error {
+	return dh.Interface.OptimizeDiskPerformance(nodeInfo, devicePath, perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr)
 }

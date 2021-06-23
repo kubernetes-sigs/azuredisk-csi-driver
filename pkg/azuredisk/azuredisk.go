@@ -38,6 +38,7 @@ import (
 
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	consts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
@@ -124,11 +125,10 @@ type CSIDriver interface {
 type DriverCore struct {
 	csicommon.CSIDriver
 	perfOptimizationEnabled bool
-	diskSkuInfoMap          map[string]map[string]DiskSkuInfo
 	cloud                   *azure.Cloud
 	mounter                 *mount.SafeFormatAndMount
-	deviceHelper            *SafeDeviceHelper
-	nodeInfo                *NodeInfo
+	deviceHelper            *optimization.SafeDeviceHelper
+	nodeInfo                *optimization.NodeInfo
 }
 
 // Driver is the v1 implementation of the Azure Disk CSI Driver.
@@ -188,10 +188,11 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 		}
 	}
 
-	d.deviceHelper = NewSafeDeviceHelper()
+	d.deviceHelper = optimization.NewSafeDeviceHelper()
 
 	if d.getPerfOptimizationEnabled() {
-		if err = PopulateNodeAndSkuInfo(&d.DriverCore); err != nil {
+		d.nodeInfo, err = optimization.NewNodeInfo(d.getCloud(), d.NodeID)
+		if err != nil {
 			klog.Fatalf("Failed to get node info. Error: %v", err)
 		}
 	}
@@ -472,17 +473,12 @@ func (d *DriverCore) getPerfOptimizationEnabled() bool {
 	return d.perfOptimizationEnabled
 }
 
-// getDiskSkuInfoMap returns the value of the diskSkuInfoMap field. It is intended for use with unit tests.
-func (d *DriverCore) getDiskSkuInfoMap() map[string]map[string]DiskSkuInfo {
-	return d.diskSkuInfoMap
-}
-
 // getDeviceHelper returns the value of the deviceHelper field. It is intended for use with unit tests.
-func (d *DriverCore) getDeviceHelper() *SafeDeviceHelper {
+func (d *DriverCore) getDeviceHelper() *optimization.SafeDeviceHelper {
 	return d.deviceHelper
 }
 
 // getNodeInfo returns the value of the nodeInfo field. It is intended for use with unit tests.
-func (d *DriverCore) getNodeInfo() *NodeInfo {
+func (d *DriverCore) getNodeInfo() *optimization.NodeInfo {
 	return d.nodeInfo
 }

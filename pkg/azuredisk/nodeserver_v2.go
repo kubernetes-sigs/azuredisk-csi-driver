@@ -86,7 +86,7 @@ func (d *DriverV2) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolume
 		}
 
 		if d.getDeviceHelper().DiskSupportsPerfOptimization(profile, accountType) {
-			if err := d.getDeviceHelper().OptimizeDiskPerformance(d.getNodeInfo(), d.getDiskSkuInfoMap(), source, profile, accountType,
+			if err := d.getDeviceHelper().OptimizeDiskPerformance(d.getNodeInfo(), source, profile, accountType,
 				diskSizeGibStr, diskIopsStr, diskBwMbpsStr); err != nil {
 				return nil, status.Errorf(codes.Internal, "Failed to optimize device performance for target(%s) error(%s)", source, err)
 			}

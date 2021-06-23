@@ -19,7 +19,6 @@ package azuredisk
 import (
 	"fmt"
 	"os"
-	"runtime"
 	"strings"
 
 	"k8s.io/client-go/kubernetes"
@@ -27,6 +26,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
@@ -39,16 +39,6 @@ var (
 // IsAzureStackCloud decides whether the driver is running on Azure Stack Cloud.
 func IsAzureStackCloud(cloud string, disableAzureStackCloud bool) bool {
 	return !disableAzureStackCloud && strings.EqualFold(cloud, azureStackCloud)
-}
-
-// IsWindowsOS decides whether the driver is running on windows OS.
-func IsWindowsOS() bool {
-	return strings.EqualFold(runtime.GOOS, "windows")
-}
-
-// IsLinuxOS decides whether the driver is running on linux OS.
-func IsLinuxOS() bool {
-	return strings.EqualFold(runtime.GOOS, "linux")
 }
 
 // GetCloudProvider get Azure Cloud Provider
@@ -82,7 +72,7 @@ func GetCloudProvider(kubeconfig string) (*azure.Cloud, error) {
 		if ok && strings.TrimSpace(credFile) != "" {
 			klog.V(2).Infof("%s env var set as %v", DefaultAzureCredentialFileEnv, credFile)
 		} else {
-			if IsWindowsOS() {
+			if util.IsWindowsOS() {
 				credFile = DefaultCredFilePathWindows
 			} else {
 				credFile = DefaultCredFilePathLinux

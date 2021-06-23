@@ -19,6 +19,7 @@ package util
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 
@@ -30,6 +31,16 @@ const (
 	TagsDelimiter        = ","
 	TagKeyValueDelimiter = "="
 )
+
+// IsWindowsOS decides whether the driver is running on windows OS.
+func IsWindowsOS() bool {
+	return strings.EqualFold(runtime.GOOS, "windows")
+}
+
+// IsLinuxOS decides whether the driver is running on linux OS.
+func IsLinuxOS() bool {
+	return strings.EqualFold(runtime.GOOS, "linux")
+}
 
 // RoundUpBytes rounds up the volume size in bytes upto multiplications of GiB
 // in the unit of Bytes

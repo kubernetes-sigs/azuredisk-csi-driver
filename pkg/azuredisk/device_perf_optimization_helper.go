@@ -19,31 +19,9 @@ package azuredisk
 import (
 	"fmt"
 	"strings"
+
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 )
-
-const (
-	PerfProfileNone          = "none"
-	PerfProfileBasic         = "basic"
-	PremiumAccountPrefix     = "premium"
-	StandardSsdAccountPrefix = "standardssd"
-)
-
-// isValidPerfProfile Checks to see if perf profile passed is correct
-// Right now we are only supporing basic profile
-// Other advanced profiles to come later
-func isValidPerfProfile(profile string) bool {
-	return strings.EqualFold(profile, PerfProfileBasic) || strings.EqualFold(profile, PerfProfileNone)
-}
-
-// isPerfTuningEnabled checks to see if perf tuning is enabled
-func isPerfTuningEnabled(profile string) bool {
-	switch strings.ToLower(profile) {
-	case PerfProfileBasic:
-		return true
-	default:
-		return false
-	}
-}
 
 // getDiskPerfAttributes gets the per tuning mode and profile set in attributes
 func getDiskPerfAttributes(attributes map[string]string) (profile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr string, err error) {
@@ -69,23 +47,14 @@ func getDiskPerfAttributes(attributes map[string]string) (profile, accountType, 
 	// If perfProfile was present in the volume attributes, use it
 	if perfProfilePresent {
 		// Make sure it's a valid perf profile
-		if !isValidPerfProfile(profile) {
+		if !optimization.IsValidPerfProfile(profile) {
 			return profile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr, fmt.Errorf("Perf profile %s is invalid", profile)
 		}
 	} else {
 		// if perfProfile parameter was not provided in the attributes
 		// set it to 'None'. Which means no optimization will be done.
-		profile = PerfProfileNone
+		profile = optimization.PerfProfileNone
 	}
 
 	return profile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr, nil
-}
-
-// accountSupportsPerfOptimization checks to see if account type supports perf optimization
-func accountSupportsPerfOptimization(accountType string) bool {
-	accountTypeLower := strings.ToLower(accountType)
-	if strings.HasPrefix(accountTypeLower, "premium") || strings.HasPrefix(accountTypeLower, "standardssd") {
-		return true
-	}
-	return false
 }

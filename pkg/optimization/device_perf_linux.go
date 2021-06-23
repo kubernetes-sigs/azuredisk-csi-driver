@@ -16,7 +16,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package azuredisk
+package optimization
 
 import (
 	"fmt"
@@ -41,7 +41,7 @@ func (deviceHelper *DeviceHelper) DiskSupportsPerfOptimization(diskPerfProfile, 
 }
 
 // OptimizeDiskPerformance optimizes device performance by setting tuning block device settings
-func (deviceHelper *DeviceHelper) OptimizeDiskPerformance(nodeInfo *NodeInfo, diskSkus map[string]map[string]DiskSkuInfo, devicePath,
+func (deviceHelper *DeviceHelper) OptimizeDiskPerformance(nodeInfo *NodeInfo, devicePath,
 	perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr string) (err error) {
 	klog.V(2).Infof("OptimizeDiskPerformance: Tuning settings for %s", devicePath)
 
@@ -49,11 +49,7 @@ func (deviceHelper *DeviceHelper) OptimizeDiskPerformance(nodeInfo *NodeInfo, di
 		return fmt.Errorf("OptimizeDiskPerformance: Node info is not provided. Error: invalid parameter")
 	}
 
-	if diskSkus == nil {
-		return fmt.Errorf("OptimizeDiskPerformance: Disk SKUs are not provided. Error: invalid parameter")
-	}
-
-	queueDepth, nrRequests, scheduler, maxSectorsKb, readAheadKb, err := getOptimalDeviceSettings(nodeInfo, diskSkus, perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr)
+	queueDepth, nrRequests, scheduler, maxSectorsKb, readAheadKb, err := getOptimalDeviceSettings(nodeInfo, DiskSkuMap, perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr)
 	if err != nil {
 		return fmt.Errorf("OptimizeDiskPerformance: Failed to get optimal settings for profile %s accountType %s device %s Error: %v", perfProfile, accountType, devicePath, err)
 	}
@@ -126,7 +122,7 @@ func (deviceHelper *DeviceHelper) OptimizeDiskPerformance(nodeInfo *NodeInfo, di
 func getDeviceName(lunPath string) (deviceName string, err error) {
 	devicePath, err := filepath.EvalSymlinks(lunPath)
 	if err != nil {
-		return "", fmt.Errorf("Path %s is not a symlink. Error: %v", lunPath, err)
+		return "", fmt.Errorf("path %s is not a symlink. Error: %v", lunPath, err)
 	}
 
 	return filepath.Base(devicePath), nil
@@ -158,7 +154,7 @@ func getOptimalDeviceSettings(nodeInfo *NodeInfo, diskSkus map[string]map[string
 	diskSku, err := getMatchingDiskSku(diskSkus, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr)
 
 	if err != nil || diskSku == nil {
-		return queueDepth, nrRequests, scheduler, maxSectorsKb, readAheadKb, fmt.Errorf("Could not find sku for account %s size %s. Error: sku not found", accountType, diskSizeGibStr)
+		return queueDepth, nrRequests, scheduler, maxSectorsKb, readAheadKb, fmt.Errorf("could not find sku for account %s size %s. Error: sku not found", accountType, diskSizeGibStr)
 	}
 
 	diskIopsFloat := float64(diskSku.MaxBurstIops)
@@ -223,12 +219,12 @@ func getMatchingDiskSku(diskSkus map[string]map[string]DiskSkuInfo, accountType,
 	skus, ok := diskSkus[accountTypeLower]
 
 	if !ok || skus == nil || len(diskSkus[accountTypeLower]) <= 0 {
-		return nil, fmt.Errorf("Could not find sku for account %s. Error: sku not found", accountType)
+		return nil, fmt.Errorf("could not find sku for account %s. Error: sku not found", accountType)
 	}
 
 	diskSizeGb, err := strconv.Atoi(diskSizeGibStr)
 	if err != nil {
-		return nil, fmt.Errorf("Could not parse disk size %s. Error: incorrect sku size", diskSizeGibStr)
+		return nil, fmt.Errorf("could not parse disk size %s. Error: incorrect sku size", diskSizeGibStr)
 	}
 
 	// Treating these as non required field, as they come as part of the provisioned size
