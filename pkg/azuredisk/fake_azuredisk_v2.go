@@ -23,6 +23,7 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
+	"github.com/stretchr/testify/assert"
 	"k8s.io/klog/v2"
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
@@ -81,12 +82,13 @@ func newFakeDriverV2(t *testing.T) (*DriverV2, error) {
 		csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
 	})
 
+	nodeInfo := driver.getNodeInfo()
+	assert.NotEqual(t, nil, nodeInfo)
+	dh := driver.getDeviceHelper()
+	assert.NotEqual(t, nil, dh)
+
 	return &driver, nil
 }
 
 func (d *DriverV2) setDiskThrottlingCache(key string, value string) {
-}
-
-func (d *DriverV2) getDriverCore() DriverCore {
-	return d.DriverCore
 }

@@ -272,13 +272,6 @@ func TestNodeGetVolumeStats(t *testing.T) {
 func TestNodeStageVolume(t *testing.T) {
 	d, _ := NewFakeDriver(t)
 
-	nodeInfo := d.getNodeInfo()
-	assert.NotEqual(t, nil, nodeInfo)
-	dh := d.getDeviceHelper()
-	assert.NotEqual(t, nil, dh)
-	sku := d.getDiskSkuInfoMap()
-	assert.NotEqual(t, nil, sku)
-
 	stdVolCap := &csi.VolumeCapability_Mount{
 		Mount: &csi.VolumeCapability_MountVolume{
 			FsType: defaultLinuxFsType,

@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package azuredisk
+package optimization
 
 import (
 	"context"
@@ -25,6 +25,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"k8s.io/apimachinery/pkg/types"
+	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
 )
 
@@ -115,64 +116,53 @@ type DiskSkuInfo struct {
 	MaxSizeGiB         int
 }
 
-// PopulateNodeAndSkuInfo populates Node and Sku related information in memory
-func PopulateNodeAndSkuInfo(d *DriverCore) error {
-	klog.V(2).Infof("PopulateNodeAndSkuInfo: Starting to populate node and disk sku information.")
+// NewNodeInfo populates Node and Sku related information in memory
+func NewNodeInfo(cloud cloudprovider.Interface, nodeID string) (*NodeInfo, error) {
+	klog.V(2).Infof("NewNodeInfo: Starting to populate node and disk sku information.")
 
-	instances, ok := d.cloud.Instances()
+	instances, ok := cloud.Instances()
 	if !ok {
-		return status.Error(codes.Internal, "PopulateNodeAndSkuInfo: Failed to get instances from cloud provider")
+		return nil, status.Error(codes.Internal, "NewNodeInfo: Failed to get instances from Azure cloud provider")
 	}
 
-	instanceType, err := instances.InstanceType(context.TODO(), types.NodeName(d.NodeID))
+	instanceType, err := instances.InstanceType(context.TODO(), types.NodeName(nodeID))
 	if err != nil {
-		return fmt.Errorf("PopulateNodeAndSkuInfo: Failed to get instance type from Azure cloud provider, nodeName: %v, error: %v", d.NodeID, err)
+		return nil, fmt.Errorf("NewNodeInfo: Failed to get instance type from Azure cloud provider, nodeName: %v, error: %v", nodeID, err)
 	}
 
-	zone, err := d.cloud.GetZone(context.TODO())
+	zones, ok := cloud.Zones()
+	if !ok {
+		return nil, status.Error(codes.Internal, "NewNodeInfo: Failed to get zones from Azure cloud provider.")
+	}
+	zone, err := zones.GetZone(context.TODO())
 	if err != nil {
-		return fmt.Errorf("PopulateNodeAndSkuInfo: Failed to get zone from Azure cloud provider, nodeName: %v, error: %v", d.NodeID, err)
+		return nil, fmt.Errorf("NewNodeInfo: Failed to get zone from Azure cloud provider, nodeName: %v, error: %v", nodeID, err)
 	}
 
-	err = populateNodeAndSkuInfoInternal(d, instanceType, zone.FailureDomain, zone.Region)
+	nodeInfo := &NodeInfo{}
+	nodeInfo.SkuName = instanceType
+	nodeInfo.Zone = zone.FailureDomain
+	nodeInfo.Region = zone.Region
 
-	klog.V(2).Infof("PopulateNodeAndSkuInfo: Populated node and disk sku information. NodeInfo=%v", d.getNodeInfo())
+	nodeSkuNameLower := strings.ToLower(nodeInfo.SkuName)
 
-	return err
+	vmSku, ok := NodeInfoMap[nodeSkuNameLower]
+	if !ok {
+		return nil, fmt.Errorf("NewNodeInfo: Could not find SKU %s in the sku map", nodeSkuNameLower)
+	}
+
+	nodeInfo.MaxBurstBwMbps = vmSku.MaxBurstBwMbps
+	nodeInfo.MaxBurstIops = vmSku.MaxBurstIops
+	nodeInfo.MaxBwMbps = vmSku.MaxBwMbps
+	nodeInfo.MaxIops = vmSku.MaxIops
+	nodeInfo.MaxDataDiskCount = vmSku.MaxDataDiskCount
+	nodeInfo.VCpus = vmSku.VCpus
+
+	return nodeInfo, nil
 }
 
-// populateNodeAndSkuInfoInternal populates Node and Sku related in memory
-func populateNodeAndSkuInfoInternal(d *DriverCore, instance string, zone string, region string) error {
-	d.nodeInfo = &NodeInfo{}
-	d.nodeInfo.SkuName = instance
-	d.nodeInfo.Zone = zone
-	d.nodeInfo.Region = region
-
-	err := populateSkuMap(d)
-	if err != nil {
-		return fmt.Errorf("PopulateNodeAndSkuInfo: Could populate sku information. Error: %v", err)
-	}
-
-	return nil
-}
-
-// populateSkuMap populates the sku map from the sku json file
-func populateSkuMap(d *DriverCore) (err error) {
-	d.diskSkuInfoMap = DiskSkuMap
-
-	nodeSkuNameLower := strings.ToLower(d.nodeInfo.SkuName)
-	if vmSku, ok := NodeInfoMap[nodeSkuNameLower]; ok {
-		d.nodeInfo.MaxBurstBwMbps = vmSku.MaxBurstBwMbps
-		d.nodeInfo.MaxBurstIops = vmSku.MaxBurstIops
-		d.nodeInfo.MaxBwMbps = vmSku.MaxBwMbps
-		d.nodeInfo.MaxIops = vmSku.MaxIops
-		d.nodeInfo.MaxDataDiskCount = vmSku.MaxDataDiskCount
-		d.nodeInfo.VCpus = vmSku.VCpus
-	} else {
-		return fmt.Errorf("populateSkuMap: Could not find SKU %s in the sku map", nodeSkuNameLower)
-	}
-
-	return nil
+func GetDiskSkuInfoMap() map[string]map[string]DiskSkuInfo {
+	return DiskSkuMap
 }
 
 // GetRandomIOLatencyInSec gets the estimated random IP latency for a small write for a disk size

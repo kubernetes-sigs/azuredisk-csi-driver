@@ -33,6 +33,7 @@ import (
 
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	consts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
 )
@@ -96,10 +97,10 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 		}
 	}
 
-	d.deviceHelper = NewSafeDeviceHelper()
+	d.deviceHelper = optimization.NewSafeDeviceHelper()
 
 	if d.getPerfOptimizationEnabled() {
-		err = PopulateNodeAndSkuInfo(&d.DriverCore)
+		d.nodeInfo, err = optimization.NewNodeInfo(d.getCloud(), d.NodeID)
 		if err != nil {
 			klog.Fatalf("Failed to get node info. Error: %v", err)
 		}

@@ -23,10 +23,12 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
+	"github.com/stretchr/testify/assert"
 	"k8s.io/mount-utils"
 
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
@@ -82,10 +84,6 @@ type FakeDriver interface {
 	ensureBlockTargetFile(string) error
 	getDevicePathWithLUN(lunStr string) (string, error)
 	setDiskThrottlingCache(key string, value string)
-	getNodeInfo() *NodeInfo
-	getDeviceHelper() *SafeDeviceHelper
-	getDiskSkuInfoMap() map[string]map[string]DiskSkuInfo
-	getDriverCore() DriverCore
 }
 
 func newFakeDriverV1(t *testing.T) (*Driver, error) {
@@ -115,7 +113,7 @@ func newFakeDriverV1(t *testing.T) (*Driver, error) {
 		return nil, err
 	}
 	driver.getDiskThrottlingCache = cache
-	driver.deviceHelper = NewSafeDeviceHelper()
+	driver.deviceHelper = optimization.NewSafeDeviceHelper()
 
 	driver.AddControllerServiceCapabilities(
 		[]csi.ControllerServiceCapability_RPC_Type{
@@ -133,6 +131,11 @@ func newFakeDriverV1(t *testing.T) (*Driver, error) {
 		csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
 		csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
 	})
+
+	nodeInfo := driver.getNodeInfo()
+	assert.NotEqual(t, nil, nodeInfo)
+	dh := driver.getDeviceHelper()
+	assert.NotEqual(t, nil, dh)
 
 	return &driver, nil
 }
@@ -156,8 +159,4 @@ func createVolumeCapability(accessMode csi.VolumeCapability_AccessMode_Mode) *cs
 
 func (d *Driver) setDiskThrottlingCache(key string, value string) {
 	d.getDiskThrottlingCache.Set(key, value)
-}
-
-func (d *Driver) getDriverCore() DriverCore {
-	return d.DriverCore
 }

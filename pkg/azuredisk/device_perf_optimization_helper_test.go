@@ -20,68 +20,6 @@ import (
 	"testing"
 )
 
-func TestIsValidPerfProfile(t *testing.T) {
-	tests := []struct {
-		name    string
-		profile string
-		want    bool
-	}{
-		{
-			name:    "none profile should return true",
-			profile: "none",
-			want:    true,
-		},
-		{
-			name:    "incorrect profile should return false",
-			profile: "asdas",
-			want:    false,
-		},
-		{
-			name:    "default profile should return true",
-			profile: "basic",
-			want:    true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := isValidPerfProfile(tt.profile); got != tt.want {
-				t.Errorf("IsValidPerfProfile() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestIsPerfTuningEnabled(t *testing.T) {
-	tests := []struct {
-		name    string
-		profile string
-		want    bool
-	}{
-		{
-			name:    "none profile should return false",
-			profile: "none",
-			want:    false,
-		},
-		{
-			name:    "default profile should return true",
-			profile: "basic",
-			want:    true,
-		},
-		{
-			name:    "incorrect profile should return false",
-			profile: "blah",
-			want:    false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := isPerfTuningEnabled(tt.profile); got != tt.want {
-				t.Errorf("IsPerfTuningEnabled() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
 func TestGetDiskPerfAttributes(t *testing.T) {
 	tests := []struct {
 		name               string
@@ -150,47 +88,6 @@ func TestGetDiskPerfAttributes(t *testing.T) {
 				if gotDiskBwMbpsStr != tt.wantDiskBwMbpsStr {
 					t.Errorf("GetDiskPerfAttributes() gotDiskBwMbpsStr = %v, want %v", gotDiskBwMbpsStr, tt.wantDiskBwMbpsStr)
 				}
-			}
-		})
-	}
-}
-
-func TestAccountSupportsPerfOptimization(t *testing.T) {
-	tests := []struct {
-		name        string
-		accountType string
-		want        bool
-	}{
-		{
-			name:        "Premium_LRS supports optimization",
-			accountType: "Premium_LRS",
-			want:        true,
-		},
-		{
-			name:        "StandardSSD_LRS supports optimization",
-			accountType: "StandardSSD_LRS",
-			want:        true,
-		},
-		{
-			name:        "UltraSSD_LRS doesnt supports optimization",
-			accountType: "UltraSSD_LRS",
-			want:        false,
-		},
-		{
-			name:        "Standard_LRS doesnt supports optimization",
-			accountType: "Standard_LRS",
-			want:        false,
-		},
-		{
-			name:        "invalid account doesnt supports optimization",
-			accountType: "asdad",
-			want:        false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := accountSupportsPerfOptimization(tt.accountType); got != tt.want {
-				t.Errorf("AccountSupportsPerfOptimization() = %v, want %v", got, tt.want)
 			}
 		})
 	}

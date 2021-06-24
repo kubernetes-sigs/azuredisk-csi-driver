@@ -20,15 +20,16 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	compute "github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
 	"io/ioutil"
-	"k8s.io/klog/v2"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
 
-	azuredisk "sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
+	compute "github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
+	"k8s.io/klog/v2"
+
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 )
 
 var (
@@ -108,8 +109,8 @@ import (
 		return
 	}
 
-	diskSkuInfoMap := map[string]map[string]azuredisk.DiskSkuInfo{}
-	vmSkuInfoMap := map[string]azuredisk.NodeInfo{}
+	diskSkuInfoMap := map[string]map[string]optimization.DiskSkuInfo{}
+	vmSkuInfoMap := map[string]optimization.NodeInfo{}
 
 	for _, sku := range resources {
 		resType := strings.ToLower(*sku.ResourceType)
@@ -131,7 +132,7 @@ import (
 			account := strings.ToLower(*sku.Name)
 			diskSize := strings.ToLower(*sku.Size)
 			if _, ok := diskSkuInfoMap[account]; !ok {
-				diskSkuInfoMap[account] = map[string]azuredisk.DiskSkuInfo{}
+				diskSkuInfoMap[account] = map[string]optimization.DiskSkuInfo{}
 			}
 			diskSkuInfoMap[account][diskSize], err = getDiskCapabilities(&sku)
 			if err != nil {
@@ -140,7 +141,7 @@ import (
 			}
 		} else if resType == "virtualmachines" {
 
-			nodeInfo := azuredisk.NodeInfo{}
+			nodeInfo := optimization.NodeInfo{}
 			nodeInfo.SkuName = *sku.Name
 			err = populateNodeCapabilities(&sku, &nodeInfo)
 			if err != nil {
@@ -235,7 +236,7 @@ func getAllSkus(filePath string) (err error) {
 }
 
 // populateNodeCapabilities populates node capabilities from SkuInfo
-func populateNodeCapabilities(sku *compute.ResourceSku, nodeInfo *azuredisk.NodeInfo) (err error) {
+func populateNodeCapabilities(sku *compute.ResourceSku, nodeInfo *optimization.NodeInfo) (err error) {
 	if sku.Capabilities != nil {
 		for _, capability := range *sku.Capabilities {
 			err = nil
@@ -278,8 +279,8 @@ func populateNodeCapabilities(sku *compute.ResourceSku, nodeInfo *azuredisk.Node
 }
 
 // getDiskCapabilities gets disk capabilities from SkuInfo
-func getDiskCapabilities(sku *compute.ResourceSku) (diskSku azuredisk.DiskSkuInfo, err error) {
-	diskSku = azuredisk.DiskSkuInfo{}
+func getDiskCapabilities(sku *compute.ResourceSku) (diskSku optimization.DiskSkuInfo, err error) {
+	diskSku = optimization.DiskSkuInfo{}
 	diskSku.StorageAccountType = *sku.Name
 	diskSku.StorageTier = *sku.Tier
 	diskSku.DiskSize = *sku.Size

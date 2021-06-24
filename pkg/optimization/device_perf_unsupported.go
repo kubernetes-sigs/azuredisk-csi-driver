@@ -16,7 +16,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package azuredisk
+package optimization
 
 import "fmt"
 
@@ -27,7 +27,7 @@ func (deviceHelper *DeviceHelper) DiskSupportsPerfOptimization(diskPerfProfile, 
 	return false
 }
 
-func (deviceHelper *DeviceHelper) OptimizeDiskPerformance(nodeInfo *NodeInfo, diskSkus map[string]map[string]DiskSkuInfo, devicePath string,
-	perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr string) (err error) {
+func (deviceHelper *DeviceHelper) OptimizeDiskPerformance(nodeInfo *NodeInfo,
+	devicePath, perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr string) (err error) {
 	return fmt.Errorf("OptimizeDiskPerformance not implemented")
 }
