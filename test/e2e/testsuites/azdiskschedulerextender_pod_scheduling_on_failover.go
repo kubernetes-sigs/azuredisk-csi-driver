@@ -42,7 +42,7 @@ type AzDiskSchedulerExtenderPodSchedulingOnFailover struct {
 }
 
 func (t *AzDiskSchedulerExtenderPodSchedulingOnFailover) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
-	tStatefulSet, cleanup := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, schedulerName, 1)
+	tStatefulSet, cleanup := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, driver.GetParameters(), schedulerName, 1)
 	for i := range cleanup {
 		i := i
 		defer cleanup[i]()

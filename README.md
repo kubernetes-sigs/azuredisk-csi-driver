@@ -12,13 +12,17 @@ This driver allows Kubernetes to use [Azure Disk](https://azure.microsoft.com/en
 |Driver Version  |Image                                           | supported k8s version |
 |----------------|------------------------------------------------|-----------------------|
 |master branch   |mcr.microsoft.com/k8s/csi/azuredisk-csi:latest  | 1.18+                 |
-|v1.3.0          |mcr.microsoft.com/k8s/csi/azuredisk-csi:v1.3.0  | 1.18+                 |
+|v1.4.0          |mcr.microsoft.com/k8s/csi/azuredisk-csi:v1.4.0  | 1.18+                 |
 |v1.2.0          |mcr.microsoft.com/k8s/csi/azuredisk-csi:v1.2.0  | 1.17+                 |
 |v1.1.1          |mcr.microsoft.com/k8s/csi/azuredisk-csi:v1.1.1  | 1.16+                 |
 
 ### Driver parameters
 Please refer to [`disk.csi.azure.com` driver parameters](./docs/driver-parameters.md)
  > storage class `disk.csi.azure.com` parameters are compatible with built-in [azuredisk](https://kubernetes.io/docs/concepts/storage/volumes/#azuredisk) plugin
+
+### Set up CSI driver on AKS cluster (only for AKS users)
+
+follow guide [here](./docs/install-driver-on-aks.md)
 
 ### Prerequisite
  - The driver depends on [cloud provider config file](https://kubernetes-sigs.github.io/cloud-provider-azure/install/configs/#setting-azure-cloud-provider-from-kubernetes-secrets), usually it's `/etc/kubernetes/azure.json` on all kubernetes nodes deployed by [AKS](https://docs.microsoft.com/en-us/azure/aks/) or [aks-engine](https://github.com/Azure/aks-engine), here is [azure.json example](./deploy/example/azure.json).
@@ -28,7 +32,7 @@ Please refer to [`disk.csi.azure.com` driver parameters](./docs/driver-parameter
  > ```
  - This driver also supports [read cloud config from kuberenetes secret](./docs/read-from-secret.md).
  - If cluster identity is [Managed Service Identity(MSI)](https://docs.microsoft.com/en-us/azure/aks/use-managed-identity), make sure user assigned identity has `Contributor` role on node resource group
- - [How to set up CSI driver on Azure RedHat OpenShift(ARO)](https://github.com/ezYakaEagle442/aro-pub-storage/blob/master/setup-store-CSI-driver-azure-disk.md)
+ - [Set up CSI driver on Azure RedHat OpenShift(ARO)](https://github.com/ezYakaEagle442/aro-pub-storage/blob/master/setup-store-CSI-driver-azure-disk.md)
 
 ### Install driver on a Kubernetes cluster
  - install via [kubectl](./docs/install-azuredisk-csi-driver.md) on public Azure (please use helm for Azure Stack, RedHat/CentOS)
@@ -47,6 +51,7 @@ Please refer to [`disk.csi.azure.com` driver parameters](./docs/driver-parameter
  - [Windows](./deploy/example/windows)
  - [Shared Disk](./deploy/example/sharedisk)
  - [Volume Limits](./deploy/example/volumelimits)
+ - [fsGroupPolicy](./deploy/example/fsgroup)
 
 ### Troubleshooting
  - [CSI driver troubleshooting guide](./docs/csi-debug.md)

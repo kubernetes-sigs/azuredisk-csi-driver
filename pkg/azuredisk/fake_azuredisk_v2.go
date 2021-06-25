@@ -26,6 +26,7 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
 	"github.com/golang/protobuf/ptypes"
+	"github.com/stretchr/testify/assert"
 	"k8s.io/klog/v2"
 	testingexec "k8s.io/utils/exec/testing"
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
@@ -106,6 +107,11 @@ func newFakeDriverV2(t *testing.T) (*fakeDriverV2, error) {
 		csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
 		csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
 	})
+
+	nodeInfo := driver.getNodeInfo()
+	assert.NotEqual(t, nil, nodeInfo)
+	dh := driver.getDeviceHelper()
+	assert.NotEqual(t, nil, dh)
 
 	return &driver, nil
 }

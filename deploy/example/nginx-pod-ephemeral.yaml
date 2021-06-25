@@ -1,0 +1,27 @@
+---
+kind: Pod
+apiVersion: v1
+metadata:
+  name: nginx-azuredisk-ephemeral
+spec:
+  containers:
+    - name: nginx-azuredisk-ephemeral
+      image: mcr.microsoft.com/oss/nginx/nginx:1.17.3-alpine
+      command:
+        - "/bin/sh"
+        - "-c"
+        - while true; do echo $(date) >> /mnt/azuredisk/outfile; sleep 1; done
+      volumeMounts:
+        - mountPath: "/mnt/azuredisk"
+          name: azuredisk01
+  volumes:
+    - name: azuredisk01
+      ephemeral:
+        volumeClaimTemplate:
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 10Gi
+            storageClassName: managed-csi

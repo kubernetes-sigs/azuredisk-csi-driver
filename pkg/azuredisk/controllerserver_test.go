@@ -298,6 +298,24 @@ func TestCreateVolume(t *testing.T) {
 			},
 		},
 		{
+			name: "invalid perf profile",
+			testFunc: func(t *testing.T) {
+				d, _ := NewFakeDriver(t)
+				mp := make(map[string]string)
+				mp[perfProfileField] = "blah"
+				req := &csi.CreateVolumeRequest{
+					Name:               "unit-test",
+					VolumeCapabilities: stdVolumeCapabilities,
+					Parameters:         mp,
+				}
+				_, err := d.CreateVolume(context.Background(), req)
+				expectedErr := status.Error(codes.InvalidArgument, "Perf profile blah is not supported. Supported tuning modes are none and basic.")
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
 			name: "Volume capability not supported ",
 			testFunc: func(t *testing.T) {
 				d, _ := NewFakeDriver(t)

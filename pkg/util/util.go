@@ -19,6 +19,7 @@ package util
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 
@@ -71,6 +72,16 @@ var codeToStr = map[codes.Code]string{
 	codes.Unavailable:        "UNAVAILABLE",
 	codes.DataLoss:           "DATA_LOSS",
 	codes.Unauthenticated:    "UNAUTHENTICATED",
+}
+
+// IsWindowsOS decides whether the driver is running on windows OS.
+func IsWindowsOS() bool {
+	return strings.EqualFold(runtime.GOOS, "windows")
+}
+
+// IsLinuxOS decides whether the driver is running on linux OS.
+func IsLinuxOS() bool {
+	return strings.EqualFold(runtime.GOOS, "linux")
 }
 
 // RoundUpBytes rounds up the volume size in bytes upto multiplications of GiB

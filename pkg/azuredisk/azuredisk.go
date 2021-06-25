@@ -39,6 +39,7 @@ import (
 
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	consts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
@@ -92,6 +93,7 @@ const (
 	logicalSectorSizeField  = "logicalsectorsize"
 	fsTypeField             = "fstype"
 	kindField               = "kind"
+	perfProfileField        = "perfprofile"
 
 	WellKnownTopologyKey = "topology.kubernetes.io/zone"
 	throttlingKey        = "throttlingKey"
@@ -122,6 +124,9 @@ type CSIDriver interface {
 // DriverCore contains fields common to both the V1 and V2 driver, and implements all interfaces of CSI drivers
 type DriverCore struct {
 	csicommon.CSIDriver
+	perfOptimizationEnabled bool
+	deviceHelper            *optimization.SafeDeviceHelper
+	nodeInfo                *optimization.NodeInfo
 }
 
 // Driver is the v1 implementation of the Azure Disk CSI Driver.
@@ -136,7 +141,7 @@ type Driver struct {
 
 // newDriverV1 Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
 // does not support optional driver plugin info manifest field. Refer to CSI spec for more details.
-func newDriverV1(nodeID string) *Driver {
+func newDriverV1(nodeID string, enablePerfOptimization bool) *Driver {
 	driver := Driver{}
 	driver.Name = DriverName
 	driver.Version = driverVersion
@@ -150,6 +155,7 @@ func newDriverV1(nodeID string) *Driver {
 		klog.Fatalf("%v", err)
 	}
 	driver.getDiskThrottlingCache = cache
+	driver.perfOptimizationEnabled = enablePerfOptimization
 	return &driver
 }
 
@@ -190,6 +196,15 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 			} else {
 				klog.Warningf("DisableAvailabilitySetNodes for controller is set as false while current VMType is vmss")
 			}
+		}
+	}
+
+	d.deviceHelper = optimization.NewSafeDeviceHelper()
+
+	if d.getPerfOptimizationEnabled() {
+		d.nodeInfo, err = optimization.NewNodeInfo(d.cloud, d.NodeID)
+		if err != nil {
+			klog.Fatalf("Failed to get node info. Error: %v", err)
 		}
 	}
 
@@ -445,4 +460,19 @@ func (d *DriverCore) setNodeID(nodeID string) {
 // setName sets the Version field. It is intended for use with unit tests.
 func (d *DriverCore) setVersion(version string) {
 	d.Version = version
+}
+
+// getPerfOptimizationEnabled returns the value of the perfOptimizationEnabled field. It is intended for use with unit tests.
+func (d *DriverCore) getPerfOptimizationEnabled() bool {
+	return d.perfOptimizationEnabled
+}
+
+// getDeviceHelper returns the value of the deviceHelper field. It is intended for use with unit tests.
+func (d *DriverCore) getDeviceHelper() *optimization.SafeDeviceHelper {
+	return d.deviceHelper
+}
+
+// getNodeInfo returns the value of the nodeInfo field. It is intended for use with unit tests.
+func (d *DriverCore) getNodeInfo() *optimization.NodeInfo {
+	return d.nodeInfo
 }

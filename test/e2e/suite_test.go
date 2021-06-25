@@ -62,6 +62,7 @@ var (
 	isAzureStackCloud           = strings.EqualFold(os.Getenv(cloudNameEnvVar), "AZURESTACKCLOUD")
 	skipClusterBootstrap        = flag.Bool("skip-cluster-bootstrap", false, "flag to indicate that we can skip cluster bootstrap.")
 	location                    string
+	supportsZRS                 bool
 )
 
 type testCmd struct {
@@ -93,6 +94,10 @@ var _ = ginkgo.BeforeSuite(func() {
 
 		location = creds.Location
 
+		if location == "westus2" || location == "westeurope" {
+			supportsZRS = true
+		}
+
 		// Install Azure Disk CSI Driver on cluster from project root
 		e2eBootstrap := testCmd{
 			command:  "make",
@@ -112,7 +117,7 @@ var _ = ginkgo.BeforeSuite(func() {
 		}
 
 		nodeid := os.Getenv("nodeid")
-		azurediskDriver = azuredisk.NewDriver(nodeid)
+		azurediskDriver = azuredisk.NewDriver(nodeid, false)
 		kubeconfig := os.Getenv(kubeconfigEnvVar)
 		go func() {
 			os.Setenv("AZURE_CREDENTIAL_FILE", credentials.TempAzureCredentialFilePath)
@@ -287,6 +292,12 @@ func getListOfSchedulers() []string {
 		return []string{"default-scheduler"}
 	}
 	return []string{"default-scheduler", "azdiskschedulerextender"}
+}
+
+func skipIfNotZRSSupported() {
+	if !(location == "westus2" || location == "westeurope") {
+		ginkgo.Skip("test case not supported on regions without ZRS")
+	}
 }
 
 func convertToPowershellorCmdCommandIfNecessary(command string) string {

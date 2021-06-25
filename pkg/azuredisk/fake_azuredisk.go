@@ -23,11 +23,13 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
+	"github.com/stretchr/testify/assert"
 	"k8s.io/klog/v2"
 	testingexec "k8s.io/utils/exec/testing"
 
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
@@ -77,6 +79,7 @@ type FakeDriver interface {
 	setCloud(*provider.Cloud)
 
 	checkDiskCapacity(context.Context, string, string, int) (bool, error)
+	checkDiskExists(ctx context.Context, diskURI string) error
 	getSnapshotInfo(string) (string, string, error)
 	getSnapshotByID(context.Context, string, string, string) (*csi.Snapshot, error)
 	ensureMountPoint(string) (bool, error)
@@ -93,6 +96,7 @@ func newFakeDriverV1(t *testing.T) (*fakeDriverV1, error) {
 	driver.NodeID = fakeNodeID
 	driver.CSIDriver = *csicommon.NewFakeCSIDriver()
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
+	driver.perfOptimizationEnabled = false
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -112,6 +116,7 @@ func newFakeDriverV1(t *testing.T) (*fakeDriverV1, error) {
 		return nil, err
 	}
 	driver.getDiskThrottlingCache = cache
+	driver.deviceHelper = optimization.NewSafeDeviceHelper()
 
 	driver.AddControllerServiceCapabilities(
 		[]csi.ControllerServiceCapability_RPC_Type{
@@ -129,6 +134,11 @@ func newFakeDriverV1(t *testing.T) (*fakeDriverV1, error) {
 		csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
 		csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
 	})
+
+	nodeInfo := driver.getNodeInfo()
+	assert.NotEqual(t, nil, nodeInfo)
+	dh := driver.getDeviceHelper()
+	assert.NotEqual(t, nil, dh)
 
 	return &driver, nil
 }
@@ -164,4 +174,8 @@ func createVolumeCapability(accessMode csi.VolumeCapability_AccessMode_Mode) *cs
 			Mode: accessMode,
 		},
 	}
+}
+
+func (d *Driver) setDiskThrottlingCache(key string, value string) {
+	d.getDiskThrottlingCache.Set(key, value)
 }

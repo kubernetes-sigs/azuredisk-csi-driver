@@ -9,9 +9,9 @@ DriverInfo:
         multipods: true
         exec: true
         block: true
-        fsGroup: false
+        fsGroup: true
         topology: true
         controllerExpansion: false
         nodeExpansion: false
         volumeLimits: true
-        snapshotDataSource: false
+        snapshotDataSource: true

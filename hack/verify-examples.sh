@@ -13,11 +13,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-set -e
+set -euo pipefail
+
+if [[ "$#" -eq 0 ]]; then
+    echo "./verify-examples.sh requires at least 1 parameter"
+    exit 1
+fi
 
 echo "begin to create deployment examples ..."
 
-if [[ "$2" == "azurestackcloud" ]]; then
+if [[ "$#" -gt 1 ]]&&[[ "$2" == "azurestackcloud" ]]; then
     kubectl apply -f deploy/example/storageclass-azuredisk-csi-azurestack.yaml
 else
     kubectl apply -f deploy/example/storageclass-azuredisk-csi.yaml
@@ -27,6 +32,10 @@ if [[ "$1" == "linux" ]]; then
     kubectl apply -f deploy/example/deployment.yaml
     kubectl apply -f deploy/example/statefulset.yaml
     kubectl apply -f deploy/example/statefulset-nonroot.yaml
+    if [[ "$#" -gt 2 ]]&&[[ "$3" == *"ephemeral"* ]]; then
+        kubectl apply -f deploy/example/nginx-pod-ephemeral.yaml
+        kubectl apply -f deploy/example/daemonset-azuredisk-ephemeral.yaml
+    fi
     echo "sleep 180s for Linux ..."
     sleep 180
 fi
@@ -45,6 +54,10 @@ if [[ "$1" == "linux" ]]; then
     kubectl get pods --field-selector status.phase=Running | grep deployment-azuredisk
     kubectl get pods --field-selector status.phase=Running | grep statefulset-azuredisk-0
     kubectl get pods --field-selector status.phase=Running | grep statefulset-azuredisk-nonroot-0
+    if [[ "$#" -gt 2 ]]&&[[ "$3" == *"ephemeral"* ]]; then
+        kubectl get pods --field-selector status.phase=Running | grep nginx-azuredisk-ephemeral
+        kubectl get pods --field-selector status.phase=Running | grep daemonset-azuredisk
+    fi
 fi
 
 if [[ "$1" == "windows" ]]; then

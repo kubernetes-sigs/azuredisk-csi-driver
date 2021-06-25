@@ -1,22 +1,10 @@
 # Volume Resizing Example
 
-## Enable Volume Resize Feature Gate
-
-> Resize Feature Status
-> Kubernetes 1.14, 1.15: alpha
-> Kubernetes 1.16:  beta
-
-In Kubernetes 1.14 and 1.15, CSI volume resizing is still alpha. Currently, Azure Disk CSI Driver just supports the **offline** scenario(Volume is currently not published or available on a node). So the following feature gate is needed to be enabled.
-
-```
---feature-gates=ExpandCSIVolumes=true
-```
-
-In Kuberntest 1.16, the feature has been beta. The feature gate is enabled by default.
+Currently, Azure Disk CSI Driver only supports resizing unattached disk.
 
 ## Example
 
-1. Set `allowVolumeExpansion` field as true in the storageclass manifest.  
+1. Set `allowVolumeExpansion` field as true in the storage class.
 
 ```yaml
 apiVersion: storage.k8s.io/v1
@@ -27,7 +15,6 @@ provisioner: disk.csi.azure.com
 allowVolumeExpansion: true
 parameters:
   skuname: Standard_LRS
-  kind: managed
   cachingMode: ReadOnly
 reclaimPolicy: Delete
 volumeBindingMode: Immediate

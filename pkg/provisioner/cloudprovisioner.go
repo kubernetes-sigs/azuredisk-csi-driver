@@ -40,6 +40,7 @@ import (
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
@@ -150,6 +151,11 @@ func (c *CloudProvisioner) CreateVolume(
 			tags[azureutils.PVCNamespaceTag] = v
 		case azureutils.PVNameKey:
 			tags[azureutils.PVNameTag] = v
+
+		case azureutils.PerfProfileField:
+			if !optimization.IsValidPerfProfile(v) {
+				return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Perf profile %s is not supported. Supported tuning modes are none and basic.", v))
+			}
 
 		// The following parameter is not used by the cloud provisioner, but must be present in the VolumeContext
 		// returned to the caller so that it is included in the parameters passed to Node{Publish|Stage}Volume.

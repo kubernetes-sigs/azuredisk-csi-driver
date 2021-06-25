@@ -23,11 +23,15 @@ import (
 	"flag"
 	"os"
 	"os/signal"
+	"reflect"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -45,6 +49,7 @@ import (
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller"
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/provisioner"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -101,13 +106,13 @@ type CrdProvisioner interface {
 }
 
 // NewDriver creates a Driver or DriverV2 object depending on the --temp-use-driver-v2 flag.
-func NewDriver(nodeID string) CSIDriver {
+func NewDriver(nodeID string, enablePerfOptimization bool) CSIDriver {
 	var d CSIDriver
 
 	if !*useDriverV2 {
-		d = newDriverV1(nodeID)
+		d = newDriverV1(nodeID, enablePerfOptimization)
 	} else {
-		d = newDriverV2(nodeID, *driverObjectNamespace, "default", "default", *heartbeatFrequencyInSec, *controllerLeaseDurationInSec, *controllerLeaseRenewDeadlineInSec, *controllerLeaseRetryPeriodInSec)
+		d = newDriverV2(nodeID, enablePerfOptimization, *driverObjectNamespace, "default", "default", *heartbeatFrequencyInSec, *controllerLeaseDurationInSec, *controllerLeaseRenewDeadlineInSec, *controllerLeaseRetryPeriodInSec)
 	}
 
 	return d
@@ -116,6 +121,7 @@ func NewDriver(nodeID string) CSIDriver {
 // newDriverV2 Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
 // does not support optional driver plugin info manifest field. Refer to CSI spec for more details.
 func newDriverV2(nodeID string,
+	enablePerfOptimization bool,
 	driverObjectNamespace string,
 	nodePartition string,
 	controllerPartition string,
@@ -128,6 +134,7 @@ func newDriverV2(nodeID string,
 	driver.Name = DriverName
 	driver.Version = driverVersion
 	driver.NodeID = nodeID
+	driver.perfOptimizationEnabled = enablePerfOptimization
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.objectNamespace = driverObjectNamespace
 	driver.nodePartition = nodePartition
@@ -172,6 +179,15 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 		// https://github.com/kubernetes-sigs/azuredisk-csi-driver/issues/168
 		klog.Infoln("disable UseInstanceMetadata for controller")
 		d.cloudProvisioner.GetCloud().Config.UseInstanceMetadata = false
+	}
+
+	d.deviceHelper = optimization.NewSafeDeviceHelper()
+
+	if d.getPerfOptimizationEnabled() {
+		d.nodeInfo, err = optimization.NewNodeInfo(d.cloudProvisioner.GetCloud(), d.NodeID)
+		if err != nil {
+			klog.Fatalf("Failed to get node info. Error: %v", err)
+		}
 	}
 
 	d.nodeProvisioner, err = provisioner.NewNodeProvisioner()
@@ -421,6 +437,36 @@ func (kw klogWriter) Write(p []byte) (n int, err error) {
 		klog.InfoDepth(OutputCallDepth, string(p[DefaultPrefixLength:]))
 	}
 	return len(p), nil
+}
+
+func (d *DriverV2) checkDiskExists(ctx context.Context, diskURI string) error {
+	diskName, err := GetDiskName(diskURI)
+	if err != nil {
+		return err
+	}
+
+	resourceGroup, err := GetResourceGroupFromURI(diskURI)
+	if err != nil {
+		return err
+	}
+
+	if _, rerr := d.cloudProvisioner.GetCloud().DisksClient.Get(ctx, resourceGroup, diskName); rerr != nil {
+		return rerr.Error()
+	}
+
+	return nil
+}
+
+func (d *DriverV2) checkDiskCapacity(ctx context.Context, resourceGroup, diskName string, requestGiB int) (bool, error) {
+	disk, err := d.cloudProvisioner.GetCloud().DisksClient.Get(ctx, resourceGroup, diskName)
+	// Because we can not judge the reason of the error. Maybe the disk does not exist.
+	// So here we do not handle the error.
+	if err == nil {
+		if !reflect.DeepEqual(disk, compute.Disk{}) && disk.DiskSizeGB != nil && int(*disk.DiskSizeGB) != requestGiB {
+			return false, status.Errorf(codes.AlreadyExists, "the request volume already exists, but its capacity(%v) is different from (%v)", *disk.DiskProperties.DiskSizeGB, requestGiB)
+		}
+	}
+	return true, nil
 }
 
 func (d *DriverV2) getVolumeLocks() *volumehelper.VolumeLocks {

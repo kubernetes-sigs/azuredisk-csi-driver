@@ -32,12 +32,15 @@ setup_e2e_binaries() {
     curl -sL https://storage.googleapis.com/kubernetes-release/release/v1.21.0/kubernetes-test-linux-amd64.tar.gz --output e2e-tests.tar.gz
     tar -xvf e2e-tests.tar.gz && rm e2e-tests.tar.gz
 
+    # enable fsGroupPolicy (only available from k8s 1.20)
+    export EXTRA_HELM_OPTIONS="--set feature.enableFSGroupPolicy=true --set snapshot.image.csiSnapshotter.tag=v4.0.0 --set snapshot.image.csiSnapshotController.tag=v4.0.0 --set snapshot.apiVersion=ga"
     # install the azuredisk-csi-driver driver
     make e2e-bootstrap
     make create-metrics-svc
 }
 
 print_logs() {
+    bash ./hack/verify-examples.sh linux azurepubliccloud ephemeral
     echo "print out driver logs ..."
     bash ./test/utils/azuredisk_log.sh
 }
@@ -48,6 +51,6 @@ setup_e2e_binaries
 trap print_logs EXIT
 
 ginkgo -p --progress --v -focus='External.Storage.*disk.csi.azure.com' \
-       -skip='\[Disruptive\]|\[Slow\]|\[Feature:VolumeSnapshotDataSource\]' kubernetes/test/bin/e2e.test -- \
+       -skip='\[Disruptive\]|\[Slow\]|should check snapshot fields, check restore correctly works after modifying source data, check deletion' kubernetes/test/bin/e2e.test -- \
        -storage.testdriver=$PROJECT_ROOT/test/external-e2e/manifest/testdriver.yaml \
        --kubeconfig=$KUBECONFIG
