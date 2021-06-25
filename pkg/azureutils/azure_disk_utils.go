@@ -89,6 +89,7 @@ const (
 	MaxMountReplicaCountField = "maxmountreplicacount"
 	IncrementalField          = "incremental"
 	LogicalSectorSizeField    = "logicalsectorsize"
+	PerfProfileField          = "perfprofile"
 	FSTypeField               = "fstype"
 	KindField                 = "kind"
 
@@ -235,7 +236,7 @@ func GetAzureCloudProvider(kubeClient clientset.Interface) (*azure.Cloud, error)
 		defer f.Close()
 
 		klog.V(2).Infof("read cloud config from file: %s successfully", credFile)
-		if az, err = azure.NewCloudWithoutFeatureGates(f); err != nil {
+		if az, err = azure.NewCloudWithoutFeatureGates(f, false); err != nil {
 			return az, err
 		}
 	}

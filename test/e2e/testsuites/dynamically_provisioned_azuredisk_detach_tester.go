@@ -27,6 +27,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
 
@@ -87,18 +88,23 @@ func (t *DynamicallyProvisionedAzureDiskDetach) Run(client clientset.Interface, 
 		framework.ExpectNoError(err, fmt.Sprintf("Error getting disk for azuredisk %v", err))
 		framework.ExpectEqual(compute.Attached, disktest.DiskState)
 
-		ginkgo.By("begin to delete the pod ")
+		ginkgo.By("begin to delete the pod")
 		tpod.Cleanup()
-		// 90s is not enough in Windows disk detach test
-		time.Sleep(300 * time.Second)
-		//get disk information after pod delete.
-		disktest, err = disksClient.Get(context.Background(), resourceGroup, diskName)
-		framework.ExpectNoError(err, fmt.Sprintf("Error getting disk for azuredisk %v", err))
-		framework.ExpectEqual(compute.Unattached, disktest.DiskState)
 
+		err = wait.Poll(15*time.Second, 10*time.Minute, func() (bool, error) {
+			disktest, err := disksClient.Get(context.Background(), resourceGroup, diskName)
+			if err != nil {
+				return false, fmt.Errorf("Error getting disk for azuredisk %v", err)
+			}
+			if disktest.DiskState == compute.Unattached {
+				return true, nil
+			}
+			ginkgo.By(fmt.Sprintf("current disk state(%v) is not in unattached state, wait and recheck", disktest.DiskState))
+			return false, nil
+		})
+		framework.ExpectNoError(err, fmt.Sprintf("waiting for disk detach complete returned with error: %v", err))
 		for i := range cleanup {
 			cleanup[i]()
 		}
-
 	}
 }

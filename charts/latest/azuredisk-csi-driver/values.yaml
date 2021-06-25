@@ -25,11 +25,14 @@ image:
     pullPolicy: IfNotPresent
 
 serviceAccount:
-  create: true
+  create: true # When true, service accounts will be created for you. Set to false if you want to use your own.
+  controller: csi-azuredisk-controller-sa # Name of Service Account to be created or used
+  node: csi-azuredisk-node-sa # Name of Service Account to be created or used
+  snapshotController: csi-snapshot-controller-sa # Name of Service Account to be created or used
 
 rbac:
   create: true
-
+  
 controller:
   replicas: 2
   metricsPort: 29604
@@ -38,6 +41,15 @@ controller:
   provisionerWorkerThreads: 40
   attacherWorkerThreads: 500
   logLevel: 5
+  tolerations:
+    - key: "node-role.kubernetes.io/master"
+      operator: "Equal"
+      value: "true"
+      effect: "NoSchedule"
+    - key: "node-role.kubernetes.io/controlplane"
+      operator: "Equal"
+      value: "true"
+      effect: "NoSchedule"
 
 node:
   metricsPort: 29605
@@ -47,6 +59,7 @@ node:
 
 snapshot:
   enabled: false
+  apiVersion: beta # available values: beta, ga
   image:
     csiSnapshotter:
       repository: mcr.microsoft.com/oss/kubernetes-csi/csi-snapshotter
@@ -58,13 +71,17 @@ snapshot:
       pullPolicy: IfNotPresent
   snapshotController:
     replicas: 1
-    serviceAccount: true
-    rbac: true
+
+feature:
+  enableFSGroupPolicy: false
 
 linux:
   enabled: true
   kubelet: /var/lib/kubelet
-  distro: debian
+  distro: debian # available values: debian, fedora
+  enablePerfOptimization: true
+  tolerations:
+    - operator: "Exists"
 
 windows:
   enabled: true
@@ -78,6 +95,10 @@ windows:
       repository: mcr.microsoft.com/oss/kubernetes-csi/csi-node-driver-registrar
       tag: v2.2.0
       pullPolicy: IfNotPresent
+  tolerations:
+    - key: "node.kubernetes.io/os"
+      operator: "Exists"
+      effect: "NoSchedule"
 
 cloud: AzurePublicCloud
 
