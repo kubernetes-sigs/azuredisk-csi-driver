@@ -28,41 +28,49 @@ else
     kubectl apply -f deploy/example/storageclass-azuredisk-csi.yaml
 fi
 
-if [[ "$1" == "linux" ]]; then
-    kubectl apply -f deploy/example/deployment.yaml
-    kubectl apply -f deploy/example/statefulset.yaml
-    kubectl apply -f deploy/example/statefulset-nonroot.yaml
-    if [[ "$#" -gt 2 ]]&&[[ "$3" == *"ephemeral"* ]]; then
-        kubectl apply -f deploy/example/nginx-pod-ephemeral.yaml
-        kubectl apply -f deploy/example/daemonset-azuredisk-ephemeral.yaml
+rollout_and_wait() {
+    echo "Applying config \"$1\""
+    trap "echo \"Failed to apply config \\\"$1\\\"\" >&2" err
+
+    APPNAME=$(kubectl apply -f $1 | grep -E "^(:?daemonset|deployment|statefulset|pod)" | awk '{printf $1}')
+    if [[ -n $(expr "${APPNAME}" : "\(daemonset\|deployment\|statefulset\)" || true) ]]; then
+        kubectl rollout status $APPNAME --watch --timeout=5m
+    else
+        kubectl wait "${APPNAME}" --for condition=ready --timeout=5m
     fi
-    echo "sleep 180s for Linux ..."
-    sleep 180
+}
+
+FSGROUP_SUPPORT_ENABLED=$(expr "$(kubectl get CSIDriver disk.csi.azure.com --output jsonpath='{$.spec.fsGroupPolicy}')" : "File" != 0 || true)
+
+EXAMPLES=()
+
+if [[ "$1" == "linux" ]]; then
+    EXAMPLES+=(\
+        deploy/example/deployment.yaml \
+        deploy/example/statefulset.yaml \
+        )
+
+    if [[ ${FSGROUP_SUPPORT_ENABLED} -eq 1 ]]; then
+        EXAMPLES+=(deploy/example/statefulset-nonroot.yaml)
+    fi
+
+    if [[ "$#" -gt 2 ]]&&[[ "$3" == *"ephemeral"* ]]; then
+        EXAMPLES+=(\
+            deploy/example/nginx-pod-ephemeral.yaml \
+            deploy/example/daemonset-azuredisk-ephemeral.yaml \
+            )
+    fi
 fi
 
 if [[ "$1" == "windows" ]]; then
-    kubectl apply -f deploy/example/windows/deployment.yaml
-    kubectl apply -f deploy/example/windows/statefulset.yaml
-    echo "sleep 300s for Windows ..."
-    sleep 300
+    EXAMPLES+=(\
+    deploy/example/windows/deployment.yaml \
+    deploy/example/windows/statefulset.yaml \
+    )
 fi
 
-echo "begin to check pod status ..."
-kubectl get pods -o wide
-
-if [[ "$1" == "linux" ]]; then
-    kubectl get pods --field-selector status.phase=Running | grep deployment-azuredisk
-    kubectl get pods --field-selector status.phase=Running | grep statefulset-azuredisk-0
-    kubectl get pods --field-selector status.phase=Running | grep statefulset-azuredisk-nonroot-0
-    if [[ "$#" -gt 2 ]]&&[[ "$3" == *"ephemeral"* ]]; then
-        kubectl get pods --field-selector status.phase=Running | grep nginx-azuredisk-ephemeral
-        kubectl get pods --field-selector status.phase=Running | grep daemonset-azuredisk
-    fi
-fi
-
-if [[ "$1" == "windows" ]]; then
-    kubectl get pods --field-selector status.phase=Running | grep deployment-azuredisk-win
-    kubectl get pods --field-selector status.phase=Running | grep statefulset-azuredisk-win-0
-fi
+for EXAMPLE in "${EXAMPLES[@]}"; do
+    rollout_and_wait $EXAMPLE
+done
 
 echo "deployment examples running completed."
