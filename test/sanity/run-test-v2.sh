@@ -21,6 +21,10 @@ image=$3
 function cleanup {
   set +e
 
+  echo 'Uninstalling CRD'
+  kubectl delete crd azvolumes.disk.csi.azure.com
+  kubectl delete crd azvolumeattachments.disk.csi.azure.com
+
   echo 'Unistalling helm chart'
   helm uninstall azuredisk-csi-driver --namespace kube-system
 

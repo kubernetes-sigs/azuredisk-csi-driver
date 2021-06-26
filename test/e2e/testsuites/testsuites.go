@@ -1027,9 +1027,12 @@ func NewTestAzVolumeAttachment(azVolumeAttachment v1alpha1ClientSet.AzVolumeAtta
 				"partition":  "default",
 			},
 		},
-		Status: &v1alpha1.AzVolumeAttachmentStatus{
-			Role:           v1alpha1.PrimaryRole,
-			PublishContext: map[string]string{},
+		Status: v1alpha1.AzVolumeAttachmentStatus{
+			Detail: &v1alpha1.AzVolumeAttachmentStatusDetail{
+				Role:           v1alpha1.PrimaryRole,
+				PublishContext: map[string]string{},
+			},
+			State: v1alpha1.Attached,
 		},
 	}, metav1.CreateOptions{})
 	framework.ExpectNoError(err)
@@ -1069,6 +1072,9 @@ func NewTestAzVolume(azVolume v1alpha1ClientSet.AzVolumeInterface, underlyingVol
 				LimitBytes:    0,
 			},
 			AccessibilityRequirements: &v1alpha1.TopologyRequirement{},
+		},
+		Status: v1alpha1.AzVolumeStatus{
+			State: v1alpha1.VolumeOperationPending,
 		},
 	}, metav1.CreateOptions{})
 	framework.ExpectNoError(err)
@@ -1139,7 +1145,7 @@ func (t *TestAzVolumeAttachment) WaitForAttach(timeout time.Duration) error {
 		if err != nil {
 			return false, err
 		}
-		if att.Status != nil {
+		if att.Status.Detail != nil {
 			klog.Infof("volume (%s) attached to node (%s)", att.Spec.UnderlyingVolume, att.Spec.NodeName)
 			return true, nil
 		}
@@ -1218,10 +1224,10 @@ func (t *TestAzVolumeAttachment) WaitForPrimary(timeout time.Duration) error {
 			return false, err
 		}
 		for _, attachment := range attachments.Items {
-			if attachment.Status == nil {
+			if attachment.Status.Detail == nil {
 				continue
 			}
-			if attachment.Spec.UnderlyingVolume == t.underlyingVolume && attachment.Spec.RequestedRole == v1alpha1.PrimaryRole && attachment.Status.Role == v1alpha1.PrimaryRole {
+			if attachment.Spec.UnderlyingVolume == t.underlyingVolume && attachment.Spec.RequestedRole == v1alpha1.PrimaryRole && attachment.Status.Detail.Role == v1alpha1.PrimaryRole {
 				return true, nil
 			}
 		}
@@ -1240,10 +1246,10 @@ func (t *TestAzVolumeAttachment) WaitForReplicas(numReplica int, timeout time.Du
 		}
 		counter := 0
 		for _, attachment := range attachments.Items {
-			if attachment.Status == nil {
+			if attachment.Status.Detail == nil {
 				continue
 			}
-			if attachment.Spec.UnderlyingVolume == t.underlyingVolume && attachment.Status.Role == v1alpha1.ReplicaRole {
+			if attachment.Spec.UnderlyingVolume == t.underlyingVolume && attachment.Status.Detail.Role == v1alpha1.ReplicaRole {
 				counter++
 			}
 		}

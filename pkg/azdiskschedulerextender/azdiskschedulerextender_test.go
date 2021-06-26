@@ -738,8 +738,11 @@ func getVolumeAttachment(attachmentName, ns, volumeName, nodeName string) *v1alp
 			NodeName:         nodeName,
 			RequestedRole:    v1alpha1.PrimaryRole,
 		},
-		Status: &v1alpha1Client.AzVolumeAttachmentStatus{
-			Role: v1alpha1.PrimaryRole,
+		Status: v1alpha1Client.AzVolumeAttachmentStatus{
+			Detail: &v1alpha1Client.AzVolumeAttachmentStatusDetail{
+				Role: v1alpha1.PrimaryRole,
+			},
+			State: v1alpha1Client.Attached,
 		},
 	}
 }

@@ -79,9 +79,24 @@ spec:
             type: object
           status:
             description: status represents the current state of AzVolumeAttachment.
-              Nil status indicates that the underlying volume of AzVolumeAttachment
-              has not yet been attached to the specified node
+              includes error, state, and attachment status Required
             properties:
+              detail:
+                description: Status summarizes the current attachment state of the
+                  volume attachment Nil Status indicates that the volume has not yet
+                  been attached to the node
+                properties:
+                  publish_context:
+                    additionalProperties:
+                      type: string
+                    type: object
+                  role:
+                    description: Role indicates if the volume attachment is replica
+                      attachment or not
+                    type: string
+                required:
+                - role
+                type: object
               error:
                 description: Error occurred during attach/detach of volume
                 properties:
@@ -121,24 +136,17 @@ spec:
                 - errorCode
                 - errorMessage
                 type: object
-              publish_context:
-                additionalProperties:
-                  type: string
-                type: object
-              role:
-                description: Role indicates if the volume attachment is replica attachment
-                  or not
+              state:
+                description: State shows the current attachment state (whether operations
+                  are in progress or not)
                 type: string
-            required:
-            - role
             type: object
         required:
         - spec
         type: object
     served: true
     storage: true
-    subresources:
-      status: {}
+    subresources: {}
 status:
   acceptedNames:
     kind: ""

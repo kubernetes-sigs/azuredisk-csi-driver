@@ -22,10 +22,8 @@ import (
 	"context"
 	"flag"
 	"os"
-	"os/signal"
 	"reflect"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
@@ -214,14 +212,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 	})
 
 	// cancel the context the controller manager will be running under, if receive SIGTERM or SIGINT
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	c := make(chan os.Signal, 2)
-	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		<-c
-		cancel()
-	}()
+	ctx := context.Background()
 
 	// Start the controllers if this is a controller plug-in
 	if *isControllerPlugin {
@@ -291,20 +282,21 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 	// Setup a new controller to clean-up AzDriverNodes
 	// objects for the nodes which get deleted
 	klog.V(2).Info("Initializing AzDriverNode controller")
-	err = controller.InitializeAzDriverNodeController(mgr, d.crdProvisioner.GetDiskClientSetAddr(), d.objectNamespace)
+	_, err = controller.NewAzDriverNodeController(mgr, d.crdProvisioner.GetDiskClientSetAddr(), d.objectNamespace)
 	if err != nil {
 		klog.Errorf("Failed to initialize AzDriverNodeController. Error: %v. Exiting application...", err)
 		os.Exit(1)
 	}
+
 	klog.V(2).Info("Initializing AzVolumeAttachment controller")
-	err = controller.NewAzVolumeAttachmentController(ctx, mgr, d.crdProvisioner.GetDiskClientSetAddr(), d.objectNamespace, d.cloudProvisioner)
+	azvaReconciler, err := controller.NewAzVolumeAttachmentController(mgr, d.crdProvisioner.GetDiskClientSetAddr(), &d.kubeClient, d.objectNamespace, d.cloudProvisioner)
 	if err != nil {
 		klog.Errorf("Failed to initialize AzVolumeAttachmentController. Error: %v. Exiting application...", err)
 		os.Exit(1)
 	}
 
 	klog.V(2).Info("Initializing AzVolume controller")
-	err = controller.NewAzVolumeController(mgr, d.crdProvisioner.GetDiskClientSetAddr(), d.objectNamespace, d.cloudProvisioner)
+	azvReconciler, err := controller.NewAzVolumeController(mgr, d.crdProvisioner.GetDiskClientSetAddr(), &d.kubeClient, d.objectNamespace, d.cloudProvisioner)
 	if err != nil {
 		klog.Errorf("Failed to initialize AzVolumeController. Error: %v. Exiting application...", err)
 		os.Exit(1)
@@ -316,6 +308,29 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 		klog.Errorf("Failed to initialize PVController. Error: %v. Exiting application...", err)
 		os.Exit(1)
 	}
+
+	klog.V(2).Info("Initializing VolumeAttachment controller")
+	vaReconciler, err := controller.NewVolumeAttachmentController(ctx, mgr, d.crdProvisioner.GetDiskClientSetAddr(), &d.kubeClient, d.objectNamespace)
+	if err != nil {
+		klog.Errorf("Failed to initialize VolumeAttachmentController. Error: %v. Exiting application...", err)
+		os.Exit(1)
+	}
+	// This goroutine is preserved for leader controller manager
+	// Leader controller manager should recover CRI if possible and clean them up before exiting.
+	go func() {
+		<-mgr.Elected()
+		// recover lost states if necessary
+		klog.Infof("Elected as leader; initiating CRI recovery...")
+		if err := azvReconciler.Recover(ctx); err != nil {
+			klog.Warningf("Failed to recover AzVolume: %v", err)
+		}
+		if err := azvaReconciler.Recover(ctx); err != nil {
+			klog.Warningf("Failed to recover AzVolumeAttachments: %v.", err)
+		}
+		if err := vaReconciler.Recover(ctx); err != nil {
+			klog.Warningf("Failed to update AzVolumeAttachments with necessary VolumeAttachments Annotations: %v.", err)
+		}
+	}()
 
 	klog.V(2).Info("Starting controller manager")
 	if err := mgr.Start(ctx); err != nil {
@@ -471,4 +486,24 @@ func (d *DriverV2) checkDiskCapacity(ctx context.Context, resourceGroup, diskNam
 
 func (d *DriverV2) getVolumeLocks() *volumehelper.VolumeLocks {
 	return d.volumeLocks
+}
+
+func (d *DriverV2) addControllerFinalizer(finalizers []string, finalizerToAdd string) []string {
+	for _, finalizer := range finalizers {
+		if finalizer == finalizerToAdd {
+			return finalizers
+		}
+	}
+	finalizers = append(finalizers, finalizerToAdd)
+	return finalizers
+}
+
+func (d *DriverV2) removeControllerFinalizer(finalizers []string, finalizerToRemove string) []string {
+	removed := []string{}
+	for _, finalizer := range finalizers {
+		if finalizer != finalizerToRemove {
+			removed = append(removed, finalizer)
+		}
+	}
+	return removed
 }

@@ -36,8 +36,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
-// reconcileAzDriverNode reconciles AzDriverNode
-type reconcileAzDriverNode struct {
+// ReconcileAzDriverNode reconciles AzDriverNode
+type ReconcileAzDriverNode struct {
 	client client.Client
 
 	azVolumeClient azVolumeClientSet.Interface
@@ -46,9 +46,9 @@ type reconcileAzDriverNode struct {
 }
 
 // Implement reconcile.Reconciler so the controller can reconcile objects
-var _ reconcile.Reconciler = &reconcileAzDriverNode{}
+var _ reconcile.Reconciler = &ReconcileAzDriverNode{}
 
-func (r *reconcileAzDriverNode) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
+func (r *ReconcileAzDriverNode) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
 	klog.V(2).Info("Checking to see if node (%v) exists.", request.NamespacedName)
 	n := &corev1.Node{}
 	err := r.client.Get(ctx, request.NamespacedName, n)
@@ -75,7 +75,7 @@ func (r *reconcileAzDriverNode) Reconcile(ctx context.Context, request reconcile
 		}
 
 		// Delete all volumeAttachments attached to this node, if failed, requeue
-		if err = r.DeleteAzVolumeAttachments(ctx, request.Name); err != nil {
+		if err = cleanUpAzVolumeAttachmentByNode(ctx, r.client, r.azVolumeClient, r.namespace, request.Name, all); err != nil {
 			return reconcile.Result{Requeue: true}, nil
 		}
 		return reconcile.Result{}, nil
@@ -86,35 +86,19 @@ func (r *reconcileAzDriverNode) Reconcile(ctx context.Context, request reconcile
 	return reconcile.Result{Requeue: true}, err
 }
 
-func (r *reconcileAzDriverNode) DeleteAzVolumeAttachments(ctx context.Context, nodeName string) error {
-	attachments, err := r.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(r.namespace).List(ctx, metav1.ListOptions{})
-	if err != nil {
-		klog.Errorf("failed to retrieve list of azVolumeAttachment objects for node %s: %v", err)
-		return err
-	}
-	for _, attachment := range attachments.Items {
-		if attachment.Spec.NodeName == nodeName {
-			if err := r.client.Delete(ctx, &attachment, &client.DeleteOptions{}); err != nil {
-				klog.Errorf("failed to delete AzVolumeAttachment (%s): %v", attachment.Name, err)
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-// InitializeAzDriverNodeController initializes azdrivernode-controller
-func InitializeAzDriverNodeController(mgr manager.Manager, azVolumeClient *azVolumeClientSet.Interface, namespace string) error {
+// NewAzDriverNodeController initializes azdrivernode-controller
+func NewAzDriverNodeController(mgr manager.Manager, azVolumeClient *azVolumeClientSet.Interface, namespace string) (*ReconcileAzDriverNode, error) {
 	logger := mgr.GetLogger().WithValues("controller", "azdrivernode")
+	reconciler := ReconcileAzDriverNode{client: mgr.GetClient(), azVolumeClient: *azVolumeClient, namespace: namespace}
 	c, err := controller.New("azdrivernode-controller", mgr, controller.Options{
 		MaxConcurrentReconciles: 10,
-		Reconciler:              &reconcileAzDriverNode{client: mgr.GetClient(), azVolumeClient: *azVolumeClient, namespace: namespace},
+		Reconciler:              &reconciler,
 		Log:                     logger,
 	})
 
 	if err != nil {
 		klog.Errorf("Failed to create azdrivernode controller. Error: %v", err)
-		return err
+		return nil, err
 	}
 
 	// Predicate to only reconcile deleted nodes
@@ -138,8 +122,9 @@ func InitializeAzDriverNodeController(mgr manager.Manager, azVolumeClient *azVol
 	err = c.Watch(&source.Kind{Type: &corev1.Node{}}, &handler.EnqueueRequestForObject{}, p)
 	if err != nil {
 		klog.Errorf("Failed to watch nodes. Error: %v", err)
-		return err
+		return nil, err
 	}
 	klog.V(2).Info("Controller set-up successful.")
-	return err
+
+	return &reconciler, err
 }

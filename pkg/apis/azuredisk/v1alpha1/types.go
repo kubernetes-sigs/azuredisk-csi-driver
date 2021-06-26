@@ -27,7 +27,6 @@ import (
 // AzVolume is a specification for an AzVolume resource
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Namespaced
-// +kubebuilder:subresource:status
 type AzVolume struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -36,17 +35,19 @@ type AzVolume struct {
 	// Required.
 	Spec AzVolumeSpec `json:"spec"`
 	// status represents the current state of AzVolume.
-	// Nil status indicates that the underlying volume has not yet been provisioned
-	// +optional
-	Status *AzVolumeStatus `json:"status,omitempty"`
+	// includes error, state, and volume status
+	// +required
+	Status AzVolumeStatus `json:"status"`
 }
 
 type AzVolumePhase string
 
 const (
+	VolumePending   AzVolumePhase = "Pending"
 	VolumeBound     AzVolumePhase = "Bound"
 	VolumeReleased  AzVolumePhase = "Released"
 	VolumeAvailable AzVolumePhase = "Available"
+	VolumeFailed    AzVolumePhase = "Failed"
 )
 
 // AzVolumeSpec is the spec for an AzVolume resource
@@ -73,17 +74,42 @@ type AzVolumeSpec struct {
 	AccessibilityRequirements *TopologyRequirement `json:"accessibilityRequirements,omitempty"`
 }
 
+type AzVolumeState string
+
+const (
+	VolumeOperationPending AzVolumeState = "Pending"
+	VolumeCreating         AzVolumeState = "Creating"
+	VolumeCreationFailed   AzVolumeState = "CreationFailed"
+	VolumeCreated          AzVolumeState = "Created"
+	VolumeDeleting         AzVolumeState = "Deleting"
+	VolumeDeletionFailed   AzVolumeState = "DeletionFailed"
+	VolumeDeleted          AzVolumeState = "Deleted"
+)
+
 // AzVolumeStatus is the status for an AzVolume resource
 type AzVolumeStatus struct {
+	//Current status detail of the AzVolume
+	//Nil detail indicates that the volume has not been created
+	//+optional
+	Detail *AzVolumeStatusDetail `json:"detail,omitempty"`
+
+	//Current state of underlying volume
+	//+required
+	State AzVolumeState `json:"state"`
+
+	//Error occurred during creation/deletion of volume
+	//+optional
+	Error *AzError `json:"error,omitempty"`
+}
+
+// AzVolumeStatusDetail is the status of the underlying Volume resource
+type AzVolumeStatusDetail struct {
 	//Current status of the AzVolume
 	//+optional
 	ResponseObject *AzVolumeStatusParams `json:"status,omitempty"`
 	//Current phase of the underlying PV
 	//+optional
 	Phase AzVolumePhase `json:"phase,omitempty"`
-	//Error occurred during creation/deletion of volume
-	//+optional
-	Error *AzError `json:"error,omitempty"`
 }
 
 type AzVolumeStatusParams struct {
@@ -114,7 +140,6 @@ type AzVolumeList struct {
 // AzVolumeAttachment is a specification for a AzVolumeAttachment resource
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Namespaced
-// +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="NodeName",type=string,JSONPath=`.spec.nodeName`,description="Name of the Node which this AzVolumeAttachment object is attached to"
 // +kubebuilder:printcolumn:name="UnderlyingVolume",type=string,JSONPath=`.spec.underlyingVolume`,description="Name of the Volume which this AzVolumeAttachment object references"
 // +kubebuilder:printcolumn:name="RequestedRole",type=string,JSONPath=`.spec.role`,description="Indicates if the volume attachment should be primary attachment or not"
@@ -131,9 +156,9 @@ type AzVolumeAttachment struct {
 	Spec AzVolumeAttachmentSpec `json:"spec"`
 
 	// status represents the current state of AzVolumeAttachment.
-	// Nil status indicates that the underlying volume of AzVolumeAttachment has not yet been attached to the specified node
-	// +optional
-	Status *AzVolumeAttachmentStatus `json:"status,omitempty"`
+	// includes error, state, and attachment status
+	// Required
+	Status AzVolumeAttachmentStatus `json:"status,omitempty"`
 }
 
 // AzVolumeAttachmentSpec is the spec for a AzVolumeAttachment resource
@@ -155,14 +180,45 @@ const (
 	ReplicaRole Role = "Replica"
 )
 
+// AzVolumeAttachmentAttachmentState indicates the current attachment state of the underlying volume and node
+type AzVolumeAttachmentAttachmentState string
+
+const (
+	// Pending indicates a state where no operation has been initated
+	AttachmentPending = "Pending"
+	// AttachmentInProgress indicates that node to volume attachment is in progress
+	Attaching = "Attaching"
+	// Attached indicates that the volume has been successfully attached to node
+	Attached = "Attached"
+	// AttachmentFailed indicates that the volume attachment has failed
+	AttachmentFailed = "AttachmentFailed"
+	// Detaching indicates that the node to volume detachment is in progress
+	Detaching = "Detaching"
+	// Detached indicates that the volume has been successfully detached from the volume
+	Detached = "Detached"
+	// DetachmentFailed indicates that the volume detachment has failed
+	DetachmentFailed = "DetachmentFailed"
+)
+
 // AzVolumeAttachmentStatus is the status for a AzVolumeAttachment resource
 type AzVolumeAttachmentStatus struct {
-	Role Role `json:"role"`
+	//Status summarizes the current attachment state of the volume attachment
+	//Nil Status indicates that the volume has not yet been attached to the node
 	//+optional
-	PublishContext map[string]string `json:"publish_context,omitempty"`
+	Detail *AzVolumeAttachmentStatusDetail `json:"detail,omitempty"`
+	//State shows the current attachment state (whether operations are in progress or not)
+	//+required
+	State AzVolumeAttachmentAttachmentState `json:"state,omitempty"`
 	//Error occurred during attach/detach of volume
 	//+optional
 	Error *AzError `json:"error,omitempty"`
+}
+
+// AzVolumeAttachmentStatusDetail is the status of the attachment between specified node and volume.
+type AzVolumeAttachmentStatusDetail struct {
+	Role Role `json:"role"`
+	//+optional
+	PublishContext map[string]string `json:"publish_context,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

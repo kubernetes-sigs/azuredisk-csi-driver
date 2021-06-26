@@ -1,0 +1,33 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: csi-azuredisk-controller-cleanup
+  annotations:
+    "helm.sh/hook": pre-delete
+    "helm.sh/hook-delete-policy": hook-succeeded
+spec:
+  template:
+    spec:
+      serviceAccountName: csi-azuredisk-controller-sa
+      restartPolicy: Never
+      containers:
+        - name: delete-azvolume
+          image: {{ .Values.cleanup.image.curl.repository }}:{{ .Values.cleanup.image.curl.tag }}
+          imagePullPolicy: {{ .Values.cleanup.image.curl.pullPolicy }}
+          command:
+            - "/bin/sh"
+            - "-c"
+            - "curl --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
+          --header \"Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)\" \
+          -X DELETE https://kubernetes.default.svc/apis/apiextensions.k8s.io/v1/customresourcedefinitions/azvolumes.disk.csi.azure.com;\
+          until curl -v --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
+          --header \"Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)\" \
+          https://kubernetes.default.svc/apis/apiextensions.k8s.io/v1/customresourcedefinitions/azvolumes.disk.csi.azure.com 2>&1 | grep NotFound; do echo Waiting for AzVolume CRIs to be fully deleted; sleep 15;\
+          done;\
+          curl --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
+          --header \"Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)\" \
+          -X DELETE https://kubernetes.default.svc/apis/apiextensions.k8s.io/v1/customresourcedefinitions/azvolumeattachments.disk.csi.azure.com;\
+          until curl -v --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
+          --header \"Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)\" \
+          https://kubernetes.default.svc/apis/apiextensions.k8s.io/v1/customresourcedefinitions/azvolumeattachments.disk.csi.azure.com 2>&1 | grep NotFound; do echo Waiting for AzVolumeAttachment CRIs to be fully deleted; sleep 15;\
+          done;"

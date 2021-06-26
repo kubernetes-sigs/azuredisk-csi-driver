@@ -77,6 +77,13 @@ snapshot:
 csiMigration:
   enabled: false
 
+cleanup:
+  image:
+    curl:
+      repository: docker.io/curlimages/curl
+      tag: latest
+      pullPolicy: IfNotPresent
+
 linux:
   enabled: true
   kubelet: /var/lib/kubelet

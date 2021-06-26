@@ -18,6 +18,8 @@ package controller
 
 import (
 	"context"
+	"strings"
+	"sync"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -41,7 +43,10 @@ import (
 type reconcilePV struct {
 	client         client.Client
 	azVolumeClient azVolumeClientSet.Interface
-	namespace      string
+	// retryMap allows volumeAttachment controller to retry Get operation for AzVolume in case the CRI has not been created yet
+	retryMap   map[string]int
+	retryMutex sync.RWMutex
+	namespace  string
 }
 
 // Implement reconcile.Reconciler so the controller can reconcile objects
@@ -51,33 +56,61 @@ func (r *reconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 	var pv corev1.PersistentVolume
 	if err := r.client.Get(ctx, request.NamespacedName, &pv); err != nil {
 		if errors.IsNotFound(err) {
-			return reconcile.Result{}, err
+			return reconcile.Result{}, nil
 		}
 		klog.Errorf("failed to get PV (%s): %v", request.Name, err)
 		return reconcile.Result{Requeue: true}, err
 	}
 
-	if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != DriverName {
+	if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != azureutils.DriverName {
 		return reconcile.Result{}, nil
 	}
 
 	var azVolume v1alpha1.AzVolume
 	diskName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(pv.Spec.CSI.VolumeHandle)
+	azVolumeName := strings.ToLower(diskName)
 	if err != nil {
 		klog.Errorf("failed to extract proper diskName from pv(%s)'s volume handle (%s): %v", pv.Name, pv.Spec.CSI.VolumeHandle, err)
 		// if disk name cannot be extracted from volumehandle, there is no point of requeueing
 		return reconcile.Result{}, err
 	}
-	if err := r.client.Get(ctx, types.NamespacedName{Namespace: r.namespace, Name: diskName}, &azVolume); err != nil {
-		// if underlying PV was found but AzVolume was not. Might be due to stale cache
-		klog.V(5).Infof("failed to get AzVolume (%s): %v", diskName, err)
+	if err := r.client.Get(ctx, types.NamespacedName{Namespace: r.namespace, Name: azVolumeName}, &azVolume); err != nil {
+		// if underlying PV was found but AzVolume was not. Might be due to stale cache, so try until found, or maxTry Reached
+		if !errors.IsNotFound(err) {
+			klog.V(5).Infof("failed to get AzVolume (%s): %v", diskName, err)
+			return reconcile.Result{Requeue: true}, err
+		}
+		r.retryMutex.RLock()
+		numRetry, ok := r.retryMap[azVolumeName]
+		r.retryMutex.RUnlock()
+		if !ok {
+			r.retryMutex.Lock()
+			if _, ok = r.retryMap[azVolumeName]; !ok {
+				r.retryMap[azVolumeName] = 0
+				numRetry = 0
+			}
+			r.retryMutex.Unlock()
+		}
+
+		if numRetry <= maxRetry {
+			klog.V(5).Infof("Waiting for AzVolume (%s) to be created...", azVolumeName)
+			r.retryMutex.Lock()
+			r.retryMap[azVolumeName]++
+			r.retryMutex.Unlock()
+			return reconcile.Result{Requeue: true}, nil
+		}
+
+		klog.V(5).Infof("Max Retry (%d) for Get AzVolume (%s) exceeded. The CRI is probably deleted.", maxRetry, azVolumeName)
+		r.retryMutex.Lock()
+		delete(r.retryMap, azVolumeName)
+		r.retryMutex.Unlock()
 		return reconcile.Result{}, nil
 	}
 
-	if azVolume.Status != nil {
-		if pv.Status.Phase == corev1.VolumeReleased && azVolume.Status.Phase == v1alpha1.VolumeBound {
+	if azVolume.Status.Detail != nil {
+		if pv.Status.Phase == corev1.VolumeReleased && azVolume.Status.Detail.Phase == v1alpha1.VolumeBound {
 			updated := azVolume.DeepCopy()
-			updated.Status.Phase = v1alpha1.VolumeReleased
+			updated.Status.Detail.Phase = v1alpha1.VolumeReleased
 
 			if err := r.client.Update(ctx, updated, &client.UpdateOptions{}); err != nil {
 				klog.Errorf("failed to update AzVolume (%s): %v", pv.Name, err)
@@ -93,7 +126,7 @@ func NewPVController(mgr manager.Manager, azVolumeClient *azVolumeClientSet.Inte
 
 	c, err := controller.New("pv-controller", mgr, controller.Options{
 		MaxConcurrentReconciles: 10,
-		Reconciler:              &reconcilePV{client: mgr.GetClient(), azVolumeClient: *azVolumeClient, namespace: namespace},
+		Reconciler:              &reconcilePV{client: mgr.GetClient(), retryMap: map[string]int{}, retryMutex: sync.RWMutex{}, azVolumeClient: *azVolumeClient, namespace: namespace},
 		Log:                     logger,
 	})
 

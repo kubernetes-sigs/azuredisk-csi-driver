@@ -17,16 +17,21 @@ limitations under the License.
 package azureutils
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"unicode"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
 	"github.com/pborman/uuid"
 	v1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -34,8 +39,10 @@ import (
 	api "k8s.io/kubernetes/pkg/apis/core"
 	"k8s.io/kubernetes/pkg/volume/util"
 
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
@@ -96,6 +103,12 @@ const (
 	// CRDs specific constants
 	PartitionLabel    = "azdrivernodes.disk.csi.azure.com/partition"
 	AzVolumeFinalizer = "disk.csi.azure.com/azvolume-finalizer"
+	// ControllerFinalizer is a finalizer added to the pod running Azuredisk driver controller
+	// to prevent the pod deletion until clean up is completed
+	ControllerFinalizer              = "disk.csi.azure.com/azuredisk-finalizer"
+	VolumeAttachmentExistsAnnotation = "disk.csi.azure.com/volume-attachment"
+	VolumeDetachRequestAnnotation    = "disk.csi.azure.com/volume-detach-request"
+	VolumeDeleteRequestAnnotation    = "disk.csi.azure.com/volume-delete-request"
 
 	// ZRS specific constants
 	WellKnownTopologyKey = "topology.kubernetes.io/zone"
@@ -107,6 +120,12 @@ const (
 	PVCNameTag      = "kubernetes.io-created-for-pvc-name"
 	PVCNamespaceTag = "kubernetes.io-created-for-pvc-namespace"
 	PVNameTag       = "kubernetes.io-created-for-pv-name"
+
+	ControllerServiceAccountName      = "csi-azuredisk-controller-sa"
+	ControllerClusterRoleName         = "azuredisk-external-provisioner-role"
+	ControllerClusterRoleBindingName  = "azuredisk-csi-provisioner-binding"
+	ReleaseNamespace                  = "kube-system"
+	ControllerServiceAccountFinalizer = "disk.csi.azure.com/azuredisk-controller"
 )
 
 var (
@@ -316,4 +335,96 @@ func checkDiskName(diskName string) bool {
 	}
 
 	return true
+}
+
+func GetMaxSharesAndMaxMountReplicaCount(parameters map[string]string) (int, int) {
+	maxShares := 1
+	maxMountReplicaCount := 0
+	for param, value := range parameters {
+		if strings.EqualFold(param, MaxSharesField) {
+			parsed, err := strconv.Atoi(value)
+			if err != nil {
+				klog.Warningf("failed to parse maxShares value (%s) to int, defaulting to 1: %v", value, err)
+			} else {
+				maxShares = parsed
+			}
+		} else if strings.EqualFold(param, MaxMountReplicaCountField) {
+			parsed, err := strconv.Atoi(value)
+			if err != nil {
+				klog.Warningf("failed to parse maxMountReplica value (%s) to int, defaulting to 0: %v", value, err)
+			} else {
+				maxMountReplicaCount = parsed
+			}
+		}
+	}
+
+	if maxShares-1 < maxMountReplicaCount {
+		klog.Warningf("maxMountReplicaCount cannot be larger than maxShares - 1: defaulting to maxShares - 1")
+		maxMountReplicaCount = maxShares - 1
+	}
+	return maxShares, maxMountReplicaCount
+}
+
+func GetAzVolumePhase(phase v1.PersistentVolumePhase) v1alpha1.AzVolumePhase {
+	return v1alpha1.AzVolumePhase(phase)
+}
+
+func GetAzVolume(ctx context.Context, client client.Client, azDiskClient azDiskClientSet.Interface, azVolumeName, namespace string, useCache bool) (*v1alpha1.AzVolume, error) {
+	var azVolume *v1alpha1.AzVolume
+	var err error
+	if useCache {
+		azVolume = &v1alpha1.AzVolume{}
+		err = client.Get(ctx, types.NamespacedName{Name: azVolumeName, Namespace: namespace}, azVolume)
+	} else {
+		azVolume, err = azDiskClient.DiskV1alpha1().AzVolumes(namespace).Get(ctx, azVolumeName, metav1.GetOptions{})
+	}
+	return azVolume, err
+}
+
+func ListAzVolumes(ctx context.Context, client client.Client, azDiskClient azDiskClientSet.Interface, namespace string, useCache bool) (v1alpha1.AzVolumeList, error) {
+	var azVolumeList *v1alpha1.AzVolumeList
+	var err error
+	if useCache {
+		azVolumeList = &v1alpha1.AzVolumeList{}
+		err = client.List(ctx, azVolumeList)
+	} else {
+		azVolumeList, err = azDiskClient.DiskV1alpha1().AzVolumes(namespace).List(ctx, metav1.ListOptions{})
+	}
+	return *azVolumeList, err
+}
+
+func GetAzVolumeAttachment(ctx context.Context, client client.Client, azDiskClient azDiskClientSet.Interface, azVolumeAttachmentName, namespace string, useCache bool) (*v1alpha1.AzVolumeAttachment, error) {
+	var azVolumeAttachment *v1alpha1.AzVolumeAttachment
+	var err error
+	if useCache {
+		azVolumeAttachment = &v1alpha1.AzVolumeAttachment{}
+		err = client.Get(ctx, types.NamespacedName{Name: azVolumeAttachmentName, Namespace: namespace}, azVolumeAttachment)
+	} else {
+		azVolumeAttachment, err = azDiskClient.DiskV1alpha1().AzVolumeAttachments(namespace).Get(ctx, azVolumeAttachmentName, metav1.GetOptions{})
+	}
+	return azVolumeAttachment, err
+}
+
+func ListAzVolumeAttachments(ctx context.Context, client client.Client, azDiskClient azDiskClientSet.Interface, namespace string, useCache bool) (v1alpha1.AzVolumeAttachmentList, error) {
+	var azVolumeAttachmentList *v1alpha1.AzVolumeAttachmentList
+	var err error
+	if useCache {
+		azVolumeAttachmentList = &v1alpha1.AzVolumeAttachmentList{}
+		err = client.List(ctx, azVolumeAttachmentList)
+	} else {
+		azVolumeAttachmentList, err = azDiskClient.DiskV1alpha1().AzVolumeAttachments(namespace).List(ctx, metav1.ListOptions{})
+	}
+	return *azVolumeAttachmentList, err
+}
+
+func GetAzVolumeAttachmentState(volumeAttachmentStatus storagev1.VolumeAttachmentStatus) v1alpha1.AzVolumeAttachmentAttachmentState {
+	if volumeAttachmentStatus.Attached {
+		return v1alpha1.Attached
+	} else if volumeAttachmentStatus.AttachError != nil {
+		return v1alpha1.AttachmentFailed
+	} else if volumeAttachmentStatus.DetachError != nil {
+		return v1alpha1.DetachmentFailed
+	} else {
+		return v1alpha1.AttachmentPending
+	}
 }
