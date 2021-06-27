@@ -135,22 +135,23 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 	s.Wait()
 }
 
-func (d *DriverV2) checkDiskExists(ctx context.Context, diskURI string) error {
+func (d *DriverV2) checkDiskExists(ctx context.Context, diskURI string) (*compute.Disk, error) {
 	diskName, err := GetDiskName(diskURI)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	resourceGroup, err := GetResourceGroupFromURI(diskURI)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	if _, rerr := d.cloud.DisksClient.Get(ctx, resourceGroup, diskName); rerr != nil {
-		return rerr.Error()
+	disk, rerr := d.cloud.DisksClient.Get(ctx, resourceGroup, diskName)
+	if rerr != nil {
+		return nil, rerr.Error()
 	}
 
-	return nil
+	return &disk, nil
 }
 
 func (d *DriverV2) checkDiskCapacity(ctx context.Context, resourceGroup, diskName string, requestGiB int) (bool, error) {
