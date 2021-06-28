@@ -234,22 +234,18 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	if skuName == compute.StandardSSDZRS || skuName == compute.PremiumZRS {
 		klog.V(2).Infof("diskZone(%s) is reset as empty since disk(%s) is ZRS(%s)", diskZone, diskName, skuName)
 		diskZone = ""
-		if len(requirement.GetRequisite()) > 0 {
-			accessibleTopology = append(accessibleTopology, requirement.GetRequisite()...)
-		} else {
-			// make volume scheduled on all 3 availability zones
-			for i := 1; i <= 3; i++ {
-				topology := &csi.Topology{
-					Segments: map[string]string{topologyKey: fmt.Sprintf("%s-%d", d.cloud.Location, i)},
-				}
-				accessibleTopology = append(accessibleTopology, topology)
-			}
-			// make volume scheduled on all non-zone nodes
+		// make volume scheduled on all 3 availability zones
+		for i := 1; i <= 3; i++ {
 			topology := &csi.Topology{
-				Segments: map[string]string{topologyKey: ""},
+				Segments: map[string]string{topologyKey: fmt.Sprintf("%s-%d", d.cloud.Location, i)},
 			}
 			accessibleTopology = append(accessibleTopology, topology)
 		}
+		// make volume scheduled on all non-zone nodes
+		topology := &csi.Topology{
+			Segments: map[string]string{topologyKey: ""},
+		}
+		accessibleTopology = append(accessibleTopology, topology)
 	} else {
 		accessibleTopology = []*csi.Topology{
 			{
