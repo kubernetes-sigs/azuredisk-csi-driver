@@ -695,6 +695,6 @@ func TestRun(t *testing.T) {
 
 func TestDriver_checkDiskExists(t *testing.T) {
 	d, _ := NewFakeDriver(t)
-	err := d.checkDiskExists(context.TODO(), "testurl/subscriptions/12/providers/Microsoft.Compute/disks/name")
+	_, err := d.checkDiskExists(context.TODO(), "testurl/subscriptions/12/providers/Microsoft.Compute/disks/name")
 	assert.NotEqual(t, err, nil)
 }
