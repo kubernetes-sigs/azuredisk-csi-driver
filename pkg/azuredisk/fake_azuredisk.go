@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
@@ -79,7 +80,7 @@ type FakeDriver interface {
 	setCloud(*provider.Cloud)
 
 	checkDiskCapacity(context.Context, string, string, int) (bool, error)
-	checkDiskExists(ctx context.Context, diskURI string) error
+	checkDiskExists(ctx context.Context, diskURI string) (*compute.Disk, error)
 	getSnapshotInfo(string) (string, string, error)
 	getSnapshotByID(context.Context, string, string, string) (*csi.Snapshot, error)
 	ensureMountPoint(string) (bool, error)
