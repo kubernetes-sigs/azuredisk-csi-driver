@@ -761,9 +761,3 @@ func cleanConfigAndRestoreEnv(path string, envVariableName string, envValue stri
 	defer os.Setenv(envVariableName, envValue)
 	os.Remove(path)
 }
-
-func TestDriver_checkDiskExists(t *testing.T) {
-	d, _ := NewFakeDriver(t)
-	_, err := d.checkDiskExists(context.TODO(), "testurl/subscriptions/12/providers/Microsoft.Compute/disks/name")
-	assert.NotEqual(t, err, nil)
-}
