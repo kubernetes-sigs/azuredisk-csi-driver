@@ -31,7 +31,7 @@ import (
 
 const (
 	namespace     = "azure-disk-csi"
-	schedulerName = "azdiskschedulerextender"
+	schedulerName = "csi-azuredisk-scheduler-extender"
 )
 
 var _ = ginkgo.Describe("AzDiskSchedulerExtender", func() {

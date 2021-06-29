@@ -291,7 +291,7 @@ func getListOfSchedulers() []string {
 	if isUsingOnlyDefaultScheduler {
 		return []string{"default-scheduler"}
 	}
-	return []string{"default-scheduler", "azdiskschedulerextender"}
+	return []string{"default-scheduler", "csi-azuredisk-scheduler-extender"}
 }
 
 func skipIfNotZRSSupported() {

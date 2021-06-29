@@ -773,7 +773,7 @@ func getDriverNode(driverNodeName, ns, nodeName string, ready bool) *v1alpha1Cli
 // 			Namespace: ns,
 // 		},
 // 		Spec: v1.PodSpec{
-// 			SchedulerName: "azdiskschedulerextender",
+// 			SchedulerName: "csi-azuredisk-scheduler-extender",
 // 			Containers: []v1.Container{
 // 				v1.Container{
 // 					Name:  containerName,

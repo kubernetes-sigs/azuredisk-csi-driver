@@ -80,6 +80,7 @@ const (
 	DriverName                = "disk.csi.azure.com"
 	CSIDriverMetricPrefix     = "azuredisk_csi_driver"
 	ResizeRequired            = "resizeRequired"
+	RequestedSizeGiB          = "requestedsizegib"
 	SourceDiskSearchMaxDepth  = 10
 	CachingModeField          = "cachingmode"
 	StorageAccountTypeField   = "storageaccounttype"

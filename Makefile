@@ -49,7 +49,7 @@ SCHEDULER_EXTENDER_LDFLAGS ?= "-X ${PKG}/pkg/azuredisk.schedulerVersion=${IMAGE_
 LDFLAGS ?= "-X ${PKG}/pkg/azuredisk.driverVersion=${IMAGE_VERSION} -X ${PKG}/pkg/azuredisk.gitCommit=${GIT_COMMIT} -X ${PKG}/pkg/azuredisk.buildDate=${BUILD_DATE} -X ${PKG}/pkg/azuredisk.DriverName=${DRIVER_NAME} -X ${PKG}/pkg/azuredisk.topologyKey=${TOPOLOGY_KEY} -extldflags "-static"" ${GOTAGS}
 E2E_HELM_OPTIONS ?= --set image.azuredisk.repository=$(REGISTRY)/$(IMAGE_NAME) --set image.azuredisk.tag=$(IMAGE_VERSION) --set image.azuredisk.pullPolicy=Always --set image.schedulerExtender.repository=$(REGISTRY)/$(SCHEDULER_EXTENDER_IMAGE_NAME) --set image.schedulerExtender.tag=$(IMAGE_VERSION) --set image.schedulerExtender.pullPolicy=Always
 ifeq ($(TEST_MIGRATION), true)
-E2E_HELM_OPTIONS += --set csiMigration.enabled=true
+E2E_HELM_OPTIONS += --set feature.enableCSIMigration=true
 endif
 E2E_HELM_OPTIONS += ${EXTRA_HELM_OPTIONS}
 GINKGO_FLAGS = -ginkgo.v

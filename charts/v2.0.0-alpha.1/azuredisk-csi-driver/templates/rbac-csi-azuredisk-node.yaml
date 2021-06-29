@@ -3,7 +3,6 @@
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  namespace: {{ .Release.Namespace }}
   name: csi-azuredisk-node-secret-role
 rules:
   - apiGroups: [""]
@@ -30,7 +29,7 @@ metadata:
   name: csi-azuredisk-node-secret-binding
 subjects:
   - kind: ServiceAccount
-    name: csi-azuredisk-node-sa
+    name: {{ .Values.serviceAccount.node }}
     namespace: {{ .Release.Namespace }}
 roleRef:
   kind: ClusterRole

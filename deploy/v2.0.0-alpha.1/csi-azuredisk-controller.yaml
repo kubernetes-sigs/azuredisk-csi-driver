@@ -39,6 +39,7 @@ spec:
             - "--leader-election"
             - "--worker-threads=40"
             - "--extra-create-metadata=true"
+            - "--strict-topology=true"
           env:
             - name: ADDRESS
               value: /csi/csi.sock

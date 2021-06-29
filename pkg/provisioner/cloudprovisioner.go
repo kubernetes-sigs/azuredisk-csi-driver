@@ -271,6 +271,7 @@ func (c *CloudProvisioner) CreateVolume(
 		}
 	}
 
+	parameters[azureutils.RequestedSizeGiB] = strconv.Itoa(requestGiB)
 	volumeOptions := &azure.ManagedDiskOptions{
 		DiskName:            diskName,
 		StorageAccountType:  skuName,
