@@ -58,7 +58,7 @@ spec:
           args:
             - "-v=2"
             - "-csi-address=$(ADDRESS)"
-            - "-timeout=120s"
+            - "-timeout=600s"
             - "-leader-election"
             - "-worker-threads=500"
           env:
