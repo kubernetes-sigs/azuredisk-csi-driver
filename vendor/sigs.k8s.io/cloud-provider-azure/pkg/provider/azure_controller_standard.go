@@ -27,7 +27,6 @@ import (
 	"k8s.io/klog/v2"
 
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
-	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
 )
 
 // AttachDisk attaches a disk to vm
@@ -158,11 +157,7 @@ func (as *availabilitySet) DetachDisk(nodeName types.NodeName, diskMap map[strin
 				(disk.ManagedDisk != nil && diskURI != "" && strings.EqualFold(*disk.ManagedDisk.ID, diskURI)) {
 				// found the disk
 				klog.V(2).Infof("azureDisk - detach disk: name %q uri %q", diskName, diskURI)
-				if strings.EqualFold(as.cloud.Environment.Name, consts.AzureStackCloudName) && !as.Config.DisableAzureStackCloud {
-					disks = append(disks[:i], disks[i+1:]...)
-				} else {
-					disks[i].ToBeDetached = to.BoolPtr(true)
-				}
+				disks = append(disks[:i], disks[i+1:]...)
 				bFoundDisk = true
 			}
 		}
