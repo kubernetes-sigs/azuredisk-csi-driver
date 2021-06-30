@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -61,7 +62,7 @@ type CloudProvisioner interface {
 	CreateSnapshot(ctx context.Context, sourceVolumeID string, snapshotName string, secrets map[string]string, parameters map[string]string) (*v1alpha1.Snapshot, error)
 	ListSnapshots(ctx context.Context, maxEntries int32, startingToken string, sourceVolumeID string, snapshotID string, secrets map[string]string) (*v1alpha1.ListSnapshotsResult, error)
 	DeleteSnapshot(ctx context.Context, snapshotID string, secrets map[string]string) error
-	CheckDiskExists(ctx context.Context, diskURI string) error
+	CheckDiskExists(ctx context.Context, diskURI string) (*compute.Disk, error)
 	GetCloud() *provider.Cloud
 	GetMetricPrefix() string
 }

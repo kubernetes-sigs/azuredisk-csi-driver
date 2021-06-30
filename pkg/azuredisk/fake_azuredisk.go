@@ -79,7 +79,6 @@ type FakeDriver interface {
 	setCloud(*provider.Cloud)
 
 	checkDiskCapacity(context.Context, string, string, int) (bool, error)
-	checkDiskExists(ctx context.Context, diskURI string) error
 	getSnapshotInfo(string) (string, string, error)
 	getSnapshotByID(context.Context, string, string, string) (*csi.Snapshot, error)
 	ensureMountPoint(string) (bool, error)

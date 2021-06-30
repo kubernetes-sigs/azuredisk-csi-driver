@@ -340,7 +340,7 @@ func (c *CloudProvisioner) PublishVolume(
 	volumeID string,
 	nodeID string,
 	volumeContext map[string]string) (map[string]string, error) {
-	err := c.CheckDiskExists(ctx, volumeID)
+	disk, err := c.CheckDiskExists(ctx, volumeID)
 	if err != nil {
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume not found, failed with error: %v", err))
 	}
@@ -374,7 +374,7 @@ func (c *CloudProvisioner) PublishVolume(
 		}
 		klog.V(2).Infof("Trying to attach volume %q to node %q", volumeID, nodeName)
 
-		lun, err = c.cloud.AttachDisk(true, diskName, volumeID, nodeName, cachingMode)
+		lun, err = c.cloud.AttachDisk(true, diskName, volumeID, nodeName, cachingMode, disk)
 		if err == nil {
 			klog.V(2).Infof("Attach operation successful: volume %q attached to node %q.", volumeID, nodeName)
 		} else {
@@ -652,22 +652,23 @@ func (c *CloudProvisioner) DeleteSnapshot(
 	return nil
 }
 
-func (c *CloudProvisioner) CheckDiskExists(ctx context.Context, diskURI string) error {
+func (c *CloudProvisioner) CheckDiskExists(ctx context.Context, diskURI string) (*compute.Disk, error) {
 	diskName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(diskURI)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	resourceGroup, err := azureutils.GetResourceGroupFromAzureManagedDiskURI(diskURI)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	if _, rerr := c.cloud.DisksClient.Get(ctx, resourceGroup, diskName); rerr != nil {
-		return rerr.Error()
+	disk, rerr := c.cloud.DisksClient.Get(ctx, resourceGroup, diskName)
+	if rerr != nil {
+		return nil, rerr.Error()
 	}
 
-	return nil
+	return &disk, nil
 }
 
 func (c *CloudProvisioner) GetCloud() *azure.Cloud {

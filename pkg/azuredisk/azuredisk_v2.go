@@ -454,24 +454,6 @@ func (kw klogWriter) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
-func (d *DriverV2) checkDiskExists(ctx context.Context, diskURI string) error {
-	diskName, err := GetDiskName(diskURI)
-	if err != nil {
-		return err
-	}
-
-	resourceGroup, err := GetResourceGroupFromURI(diskURI)
-	if err != nil {
-		return err
-	}
-
-	if _, rerr := d.cloudProvisioner.GetCloud().DisksClient.Get(ctx, resourceGroup, diskName); rerr != nil {
-		return rerr.Error()
-	}
-
-	return nil
-}
-
 func (d *DriverV2) checkDiskCapacity(ctx context.Context, resourceGroup, diskName string, requestGiB int) (bool, error) {
 	disk, err := d.cloudProvisioner.GetCloud().DisksClient.Get(ctx, resourceGroup, diskName)
 	// Because we can not judge the reason of the error. Maybe the disk does not exist.

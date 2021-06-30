@@ -237,22 +237,18 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	if skuName == compute.StandardSSDZRS || skuName == compute.PremiumZRS {
 		klog.V(2).Infof("diskZone(%s) is reset as empty since disk(%s) is ZRS(%s)", diskZone, diskName, skuName)
 		diskZone = ""
-		if len(requirement.GetRequisite()) > 0 {
-			accessibleTopology = append(accessibleTopology, requirement.GetRequisite()...)
-		} else {
-			// make volume scheduled on all 3 availability zones
-			for i := 1; i <= 3; i++ {
-				topology := &csi.Topology{
-					Segments: map[string]string{topologyKey: fmt.Sprintf("%s-%d", d.cloud.Location, i)},
-				}
-				accessibleTopology = append(accessibleTopology, topology)
-			}
-			// make volume scheduled on all non-zone nodes
+		// make volume scheduled on all 3 availability zones
+		for i := 1; i <= 3; i++ {
 			topology := &csi.Topology{
-				Segments: map[string]string{topologyKey: ""},
+				Segments: map[string]string{topologyKey: fmt.Sprintf("%s-%d", d.cloud.Location, i)},
 			}
 			accessibleTopology = append(accessibleTopology, topology)
 		}
+		// make volume scheduled on all non-zone nodes
+		topology := &csi.Topology{
+			Segments: map[string]string{topologyKey: ""},
+		}
+		accessibleTopology = append(accessibleTopology, topology)
 	} else {
 		accessibleTopology = []*csi.Topology{
 			{
@@ -417,7 +413,8 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		return nil, status.Error(codes.InvalidArgument, "Volume capability not supported")
 	}
 
-	if err := d.checkDiskExists(ctx, diskURI); err != nil {
+	disk, err := d.checkDiskExists(ctx, diskURI)
+	if err != nil {
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume not found, failed with error: %v", err))
 	}
 
@@ -461,7 +458,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		}
 		klog.V(2).Infof("Trying to attach volume %q to node %q", diskURI, nodeName)
 
-		lun, err = d.cloud.AttachDisk(true, diskName, diskURI, nodeName, cachingMode)
+		lun, err = d.cloud.AttachDisk(true, diskName, diskURI, nodeName, cachingMode, disk)
 		if err == nil {
 			klog.V(2).Infof("Attach operation successful: volume %q attached to node %q.", diskURI, nodeName)
 		} else {
@@ -476,7 +473,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 					return nil, status.Errorf(codes.Internal, "Could not detach volume %q from node %q: %v", diskURI, derr.CurrentNode, err)
 				}
 				klog.V(2).Infof("Trying to attach volume %q to node %q again", diskURI, nodeName)
-				lun, err = d.cloud.AttachDisk(true, diskName, diskURI, nodeName, cachingMode)
+				lun, err = d.cloud.AttachDisk(true, diskName, diskURI, nodeName, cachingMode, disk)
 			}
 			if err != nil {
 				klog.Errorf("Attach volume %q to instance %q failed with %v", diskURI, nodeName, err)
@@ -540,8 +537,7 @@ func (d *Driver) ValidateVolumeCapabilities(ctx context.Context, req *csi.Valida
 		return nil, status.Error(codes.InvalidArgument, "Volume capabilities missing in request")
 	}
 
-	err := d.checkDiskExists(ctx, diskURI)
-	if err != nil {
+	if _, err := d.checkDiskExists(ctx, diskURI); err != nil {
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume not found, failed with error: %v", err))
 	}
 

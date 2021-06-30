@@ -48,6 +48,6 @@ func TestCheckDiskCapacity_V1(t *testing.T) {
 func TestDriver_checkDiskExists_V1(t *testing.T) {
 	d, _ := newFakeDriverV1(t)
 	d.setDiskThrottlingCache(throttlingKey, "")
-	err := d.checkDiskExists(context.TODO(), "testurl/subscriptions/12/resourceGroups/23/providers/Microsoft.Compute/disks/name")
+	_, err := d.checkDiskExists(context.TODO(), "testurl/subscriptions/12/resourceGroups/23/providers/Microsoft.Compute/disks/name")
 	assert.Equal(t, err, nil)
 }

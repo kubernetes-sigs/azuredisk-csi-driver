@@ -272,32 +272,33 @@ func (d *Driver) isGetDiskThrottled() bool {
 	return cache != nil
 }
 
-func (d *Driver) checkDiskExists(ctx context.Context, diskURI string) error {
+func (d *Driver) checkDiskExists(ctx context.Context, diskURI string) (*compute.Disk, error) {
 	diskName, err := GetDiskName(diskURI)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	resourceGroup, err := GetResourceGroupFromURI(diskURI)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if d.isGetDiskThrottled() {
 		klog.Warningf("skip checkDiskExists(%s) since it's still in throttling", diskURI)
-		return nil
+		return nil, nil
 	}
 
-	if _, rerr := d.cloud.DisksClient.Get(ctx, resourceGroup, diskName); rerr != nil {
+	disk, rerr := d.cloud.DisksClient.Get(ctx, resourceGroup, diskName)
+	if rerr != nil {
 		if strings.Contains(rerr.RawError.Error(), rateLimited) {
 			klog.Warningf("checkDiskExists(%s) is throttled with error: %v", diskURI, rerr.Error())
 			d.getDiskThrottlingCache.Set(throttlingKey, "")
-			return nil
+			return &disk, nil
 		}
-		return rerr.Error()
+		return nil, rerr.Error()
 	}
 
-	return nil
+	return &disk, nil
 }
 
 func (d *Driver) checkDiskCapacity(ctx context.Context, resourceGroup, diskName string, requestGiB int) (bool, error) {

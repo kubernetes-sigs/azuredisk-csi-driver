@@ -299,8 +299,7 @@ func (d *DriverV2) ValidateVolumeCapabilities(ctx context.Context, req *csi.Vali
 		return nil, status.Error(codes.InvalidArgument, "Volume capabilities missing in request")
 	}
 
-	err := d.cloudProvisioner.CheckDiskExists(ctx, diskURI)
-	if err != nil {
+	if _, err := d.cloudProvisioner.CheckDiskExists(ctx, diskURI); err != nil {
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume not found, failed with error: %v", err))
 	}
 
