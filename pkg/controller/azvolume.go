@@ -349,11 +349,15 @@ func (r *ReconcileAzVolume) expandVolume(ctx context.Context, azVolume *v1alpha1
 		klog.Errorf("skipping expandVolume operation for AzVolume (%s): %v", azVolume.Name, err)
 		return nil, err
 	}
-	return r.cloudProvisioner.ExpandVolume(ctx, azVolume.Status.Detail.ResponseObject.VolumeID, azVolume.Spec.CapacityRange, azVolume.Spec.Secrets)
+	// use deep-copied version of the azVolume CRI to prevent any unwanted update to the object
+	copied := azVolume.DeepCopy()
+	return r.cloudProvisioner.ExpandVolume(ctx, copied.Status.Detail.ResponseObject.VolumeID, copied.Spec.CapacityRange, copied.Spec.Secrets)
 }
 
 func (r *ReconcileAzVolume) createVolume(ctx context.Context, azVolume *v1alpha1.AzVolume) (*v1alpha1.AzVolumeStatusParams, error) {
-	return r.cloudProvisioner.CreateVolume(ctx, azVolume.Spec.UnderlyingVolume, azVolume.Spec.CapacityRange, azVolume.Spec.VolumeCapability, azVolume.Spec.Parameters, azVolume.Spec.Secrets, azVolume.Spec.ContentVolumeSource, azVolume.Spec.AccessibilityRequirements)
+	// use deep-copied version of the azVolume CRI to prevent any unwanted update to the object
+	copied := azVolume.DeepCopy()
+	return r.cloudProvisioner.CreateVolume(ctx, copied.Spec.UnderlyingVolume, copied.Spec.CapacityRange, copied.Spec.VolumeCapability, copied.Spec.Parameters, copied.Spec.Secrets, copied.Spec.ContentVolumeSource, copied.Spec.AccessibilityRequirements)
 }
 
 func (r *ReconcileAzVolume) deleteVolume(ctx context.Context, azVolume *v1alpha1.AzVolume) error {
@@ -361,7 +365,9 @@ func (r *ReconcileAzVolume) deleteVolume(ctx context.Context, azVolume *v1alpha1
 		klog.Infof("skipping deleteVolume operation for AzVolume (%s): No volume to delete for AzVolume (%s)", azVolume.Name, azVolume.Name)
 		return nil
 	}
-	err := r.cloudProvisioner.DeleteVolume(ctx, azVolume.Status.Detail.ResponseObject.VolumeID, azVolume.Spec.Secrets)
+	// use deep-copied version of the azVolume CRI to prevent any unwanted update to the object
+	copied := azVolume.DeepCopy()
+	err := r.cloudProvisioner.DeleteVolume(ctx, copied.Status.Detail.ResponseObject.VolumeID, copied.Spec.Secrets)
 	return err
 }
 

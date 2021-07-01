@@ -501,6 +501,9 @@ func (r *ReconcileAzVolumeAttachment) createReplicas(ctx context.Context, numRep
 				RequestedRole:    v1alpha1.ReplicaRole,
 				VolumeContext:    map[string]string{},
 			},
+			Status: v1alpha1.AzVolumeAttachmentStatus{
+				State: v1alpha1.AttachmentPending,
+			},
 		}, &client.CreateOptions{})
 
 		if err != nil {

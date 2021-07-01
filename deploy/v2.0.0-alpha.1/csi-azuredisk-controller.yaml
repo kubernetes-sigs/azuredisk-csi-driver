@@ -35,7 +35,7 @@ spec:
             - "--feature-gates=Topology=true"
             - "--csi-address=$(ADDRESS)"
             - "--v=2"
-            - "--timeout=15s"
+            - "--timeout=30s"
             - "--leader-election"
             - "--worker-threads=40"
             - "--extra-create-metadata=true"

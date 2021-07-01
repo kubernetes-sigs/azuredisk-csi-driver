@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"strconv"
 	"strings"
 	"time"
 
@@ -47,8 +46,9 @@ type CrdProvisioner struct {
 
 const (
 	// TODO: Figure out good interval and timeout values, and make them configurable.
-	interval = time.Duration(1) * time.Second
-	timeout  = time.Duration(120) * time.Second
+	interval         = time.Duration(1) * time.Second
+	provisionTimeout = time.Duration(15) * time.Second
+	attachTimeout    = time.Duration(5) * time.Minute
 )
 
 func NewCrdProvisioner(kubeConfig *rest.Config, objNamespace string) (*CrdProvisioner, error) {
@@ -135,31 +135,7 @@ func (c *CrdProvisioner) CreateVolume(
 	secrets map[string]string,
 	volumeContentSource *v1alpha1.ContentVolumeSource,
 	accessibilityReq *v1alpha1.TopologyRequirement) (*v1alpha1.AzVolumeStatusParams, error) {
-	maxShares := 1
-	maxMountReplicaCount := 0
-
-	var err error
-	for parameter, value := range parameters {
-		if strings.EqualFold(azureutils.MaxSharesField, parameter) {
-			maxShares, err = strconv.Atoi(value)
-			if err != nil {
-				return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("parse %s failed with error: %v", value, err))
-			}
-			if maxShares < 1 {
-				return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("parse %s returned with invalid value: %d", value, maxShares))
-			}
-		} else if strings.EqualFold(azureutils.MaxMountReplicaCountField, parameter) {
-			maxMountReplicaCount, err = strconv.Atoi(value)
-			if err != nil {
-				klog.Warningf("setting default value derived from MaxShares: unable to parse MaxMountReplicaCount (%s): %v", value, err)
-			}
-		}
-	}
-
-	// If maxMountReplicaCount > maxShares - 1, its value will be adjusted to maxShares - 1 by defeault
-	if maxMountReplicaCount < maxShares-1 {
-		maxMountReplicaCount = maxShares - 1
-	}
+	_, maxMountReplicaCount := azureutils.GetMaxSharesAndMaxMountReplicaCount(parameters)
 
 	// Getting the validVolumeName here since after volume
 	// creation the diskURI will consist of the validVolumeName
@@ -251,7 +227,7 @@ func (c *CrdProvisioner) CreateVolume(
 		return false, nil
 	}
 
-	err = wait.PollImmediate(interval, timeout, conditionFunc)
+	err = wait.PollImmediate(interval, provisionTimeout, conditionFunc)
 	if err != nil {
 		return nil, err
 	}
@@ -322,7 +298,7 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 		return false, nil
 	}
 
-	return wait.PollImmediate(interval, timeout, conditionFunc)
+	return wait.PollImmediate(interval, provisionTimeout, conditionFunc)
 }
 
 func (c *CrdProvisioner) PublishVolume(
@@ -417,7 +393,7 @@ func (c *CrdProvisioner) PublishVolume(
 		return false, nil
 	}
 
-	err = wait.PollImmediate(interval, timeout, conditionFunc)
+	err = wait.PollImmediate(interval, attachTimeout, conditionFunc)
 	if err != nil {
 		klog.Errorf("attachment failed: %v", err)
 		return nil, err
@@ -493,7 +469,7 @@ func (c *CrdProvisioner) UnpublishVolume(
 		return false, nil
 	}
 
-	return wait.PollImmediate(interval, timeout, conditionFunc)
+	return wait.PollImmediate(interval, attachTimeout, conditionFunc)
 }
 
 func (c *CrdProvisioner) ExpandVolume(
@@ -539,7 +515,7 @@ func (c *CrdProvisioner) ExpandVolume(
 		return false, nil
 	}
 
-	err = wait.PollImmediate(interval, timeout, conditionFunc)
+	err = wait.PollImmediate(interval, provisionTimeout, conditionFunc)
 	if err != nil {
 		return nil, err
 	}
