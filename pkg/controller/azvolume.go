@@ -63,7 +63,6 @@ func (r *ReconcileAzVolume) Reconcile(ctx context.Context, request reconcile.Req
 	azVolume, err := azureutils.GetAzVolume(ctx, r.client, r.azVolumeClient, request.Name, request.Namespace, true)
 
 	if err != nil {
-
 		if errors.IsNotFound(err) {
 			return reconcile.Result{}, nil
 		}
@@ -345,7 +344,7 @@ func (r *ReconcileAzVolume) updateStatusWithError(ctx context.Context, volumeNam
 }
 
 func (r *ReconcileAzVolume) expandVolume(ctx context.Context, azVolume *v1alpha1.AzVolume) (*v1alpha1.AzVolumeStatusParams, error) {
-	if azVolume.Status.Detail == nil {
+	if azVolume.Status.Detail == nil || azVolume.Status.Detail.ResponseObject == nil {
 		err := status.Error(codes.Internal, fmt.Sprintf("Disk for expansion does not exist for AzVolume (%s).", azVolume.Name))
 		klog.Errorf("skipping expandVolume operation for AzVolume (%s): %v", azVolume.Name, err)
 		return nil, err
@@ -358,7 +357,7 @@ func (r *ReconcileAzVolume) createVolume(ctx context.Context, azVolume *v1alpha1
 }
 
 func (r *ReconcileAzVolume) deleteVolume(ctx context.Context, azVolume *v1alpha1.AzVolume) error {
-	if azVolume.Status.Detail == nil {
+	if azVolume.Status.Detail == nil || azVolume.Status.Detail.ResponseObject == nil {
 		klog.Infof("skipping deleteVolume operation for AzVolume (%s): No volume to delete for AzVolume (%s)", azVolume.Name, azVolume.Name)
 		return nil
 	}
@@ -394,7 +393,6 @@ func (r *ReconcileAzVolume) recoverAzVolumes(ctx context.Context) error {
 				}
 				_, maxMountReplicaCount = azureutils.GetMaxSharesAndMaxMountReplicaCount(storageClass.Parameters)
 			}
-			// phase := azureutils.GetAzVolumePhase(pv.Status.Phase)
 			if _, err := r.azVolumeClient.DiskV1alpha1().AzVolumes(r.namespace).Create(ctx, &v1alpha1.AzVolume{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:       strings.ToLower(diskName),

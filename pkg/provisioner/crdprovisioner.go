@@ -170,7 +170,7 @@ func (c *CrdProvisioner) CreateVolume(
 	azVolumeInstance, err := azV.Get(ctx, strings.ToLower(validVolumeName), metav1.GetOptions{})
 
 	if err == nil {
-		if azVolumeInstance.Status.Detail != nil {
+		if azVolumeInstance.Status.Detail != nil && azVolumeInstance.Status.Detail.ResponseObject != nil {
 			// If current request has different specifications than the existing volume, return error.
 			if !isAzVolumeSpecSameAsRequestParams(azVolumeInstance, maxMountReplicaCount, capacityRange, parameters, secrets, volumeContentSource, accessibilityReq) {
 				return nil, status.Errorf(codes.AlreadyExists, "Volume with name (%s) already exists with different specifications", volumeName)
@@ -353,7 +353,12 @@ func (c *CrdProvisioner) PublishVolume(
 			updated.Status.Error = nil
 			updated.Status.State = v1alpha1.AttachmentPending
 		}
-		// If there exists an attachment, we are trying to update
+		// If there already exists a primary attachment with populated responseObject return
+		if updated.Status.Detail != nil && updated.Status.Detail.PublishContext != nil && updated.Status.Detail.Role == v1alpha1.PrimaryRole {
+			return updated.Status.Detail.PublishContext, nil
+		}
+
+		// Otherwise, we are trying to update
 		// the AzVolumeAttachment role from Replica to Primary
 		updated.Spec.RequestedRole = v1alpha1.PrimaryRole
 		// Keeping the spec fields up to date with the request parameters
