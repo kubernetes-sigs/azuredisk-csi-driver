@@ -20,6 +20,7 @@ import (
 	"context"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -44,7 +45,7 @@ type reconcilePV struct {
 	client         client.Client
 	azVolumeClient azVolumeClientSet.Interface
 	// retryMap allows volumeAttachment controller to retry Get operation for AzVolume in case the CRI has not been created yet
-	retryMap   map[string]int
+	retryMap   map[string]*uint32
 	retryMutex sync.RWMutex
 	namespace  string
 }
@@ -86,17 +87,16 @@ func (r *reconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 		if !ok {
 			r.retryMutex.Lock()
 			if _, ok = r.retryMap[azVolumeName]; !ok {
-				r.retryMap[azVolumeName] = 0
-				numRetry = 0
+				var zero uint32
+				r.retryMap[azVolumeName] = &zero
+				numRetry = &zero
 			}
 			r.retryMutex.Unlock()
 		}
 
-		if numRetry <= maxRetry {
+		if *numRetry < maxRetry {
 			klog.V(5).Infof("Waiting for AzVolume (%s) to be created...", azVolumeName)
-			r.retryMutex.Lock()
-			r.retryMap[azVolumeName]++
-			r.retryMutex.Unlock()
+			atomic.AddUint32(numRetry, 1)
 			return reconcile.Result{Requeue: true}, nil
 		}
 
@@ -126,7 +126,7 @@ func NewPVController(mgr manager.Manager, azVolumeClient *azVolumeClientSet.Inte
 
 	c, err := controller.New("pv-controller", mgr, controller.Options{
 		MaxConcurrentReconciles: 10,
-		Reconciler:              &reconcilePV{client: mgr.GetClient(), retryMap: map[string]int{}, retryMutex: sync.RWMutex{}, azVolumeClient: *azVolumeClient, namespace: namespace},
+		Reconciler:              &reconcilePV{client: mgr.GetClient(), retryMap: map[string]*uint32{}, retryMutex: sync.RWMutex{}, azVolumeClient: *azVolumeClient, namespace: namespace},
 		Log:                     logger,
 	})
 

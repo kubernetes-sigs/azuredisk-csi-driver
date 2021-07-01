@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -49,7 +50,7 @@ type ReconcileVolumeAttachment struct {
 	azVolumeClient azVolumeClientSet.Interface
 	kubeClient     kubeClientSet.Interface
 	// retryMap allows volumeAttachment controller to retry Get operation for AzVolumeAttachment in case the CRI has not been created yet
-	retryMap   map[string]int
+	retryMap   map[string]*uint32
 	retryMutex sync.RWMutex
 	namespace  string
 }
@@ -114,16 +115,15 @@ func (r *ReconcileVolumeAttachment) AnnotateAzVolumeAttachment(ctx context.Conte
 		if !ok {
 			r.retryMutex.Lock()
 			if _, ok = r.retryMap[azVolumeAttachmentName]; !ok {
-				r.retryMap[azVolumeAttachmentName] = 0
-				numRetry = 0
+				var zero uint32
+				r.retryMap[azVolumeAttachmentName] = &zero
+				numRetry = &zero
 			}
 			r.retryMutex.Unlock()
 		}
 
-		if numRetry <= maxRetry {
-			r.retryMutex.Lock()
-			r.retryMap[azVolumeAttachmentName]++
-			r.retryMutex.Unlock()
+		if *numRetry < maxRetry {
+			_ = atomic.AddUint32(numRetry, 1)
 			klog.V(5).Infof("Waiting for AzVolumeAttachment (%s) to be created...", azVolumeAttachmentName)
 			return reconcile.Result{Requeue: true}, nil
 		}
@@ -225,7 +225,7 @@ func NewVolumeAttachmentController(ctx context.Context, mgr manager.Manager, azV
 		client:         mgr.GetClient(),
 		namespace:      namespace,
 		azVolumeClient: *azVolumeClient,
-		retryMap:       map[string]int{},
+		retryMap:       map[string]*uint32{},
 		retryMutex:     sync.RWMutex{},
 		kubeClient:     *kubeClient,
 	}
