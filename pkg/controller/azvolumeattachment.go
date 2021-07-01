@@ -144,8 +144,16 @@ func (r *ReconcileAzVolumeAttachment) handleAzVolumeAttachmentEvent(ctx context.
 		return reconcile.Result{}, nil
 	}
 
-	// this is a creation event
-	if azVolumeAttachment.Status.Detail == nil {
+	// if the azVolumeAttachment's deletion timestamp has been set, and is before the current time, detach the disk from the node and delete the finalizer
+	if now := metav1.Now(); azVolumeAttachment.ObjectMeta.DeletionTimestamp.Before(&now) {
+		klog.Infof("Initiating Detach operation for AzVolumeAttachment (%s)", azVolumeAttachment.Name)
+		if err := r.triggerDetach(ctx, azVolumeAttachment.Name, true); err != nil {
+			// if detach failed, requeue the request
+			klog.Errorf("failed to delete AzVolumeAttachment (%s): %v", azVolumeAttachment.Name, err)
+			return reconcile.Result{Requeue: true}, err
+		}
+		// this is a creation event
+	} else if azVolumeAttachment.Status.Detail == nil {
 		if azVolumeAttachment.Status.Error == nil {
 			// attach the volume to the specified node and only proceed if the current attachmen
 			klog.Infof("Initiating Attach operation for AzVolumeAttachment (%s)", azVolumeAttachment.Name)
@@ -153,14 +161,6 @@ func (r *ReconcileAzVolumeAttachment) handleAzVolumeAttachmentEvent(ctx context.
 				klog.Errorf("failed to attach AzVolumeAttachment (%s): %v", azVolumeAttachment.Name, err)
 				return reconcile.Result{Requeue: true}, err
 			}
-		}
-		// if the azVolumeAttachment's deletion timestamp has been set, and is before the current time, detach the disk from the node and delete the finalizer
-	} else if now := metav1.Now(); azVolumeAttachment.ObjectMeta.DeletionTimestamp.Before(&now) {
-		klog.Infof("Initiating Detach operation for AzVolumeAttachment (%s)", azVolumeAttachment.Name)
-		if err := r.triggerDetach(ctx, azVolumeAttachment.Name, true); err != nil {
-			// if detach failed, requeue the request
-			klog.Errorf("failed to delete AzVolumeAttachment (%s): %v", azVolumeAttachment.Name, err)
-			return reconcile.Result{Requeue: true}, err
 		}
 		// if the role in status and spec are different, it is an update event where replica should be turned into a primary
 	} else if azVolumeAttachment.Spec.RequestedRole != azVolumeAttachment.Status.Detail.Role {

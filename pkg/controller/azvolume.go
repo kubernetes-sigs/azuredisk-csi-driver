@@ -72,21 +72,21 @@ func (r *ReconcileAzVolume) Reconcile(ctx context.Context, request reconcile.Req
 		return reconcile.Result{Requeue: true}, err
 	}
 
-	//azVolume creation
-	if azVolume.Status.Detail == nil {
+	if now := metav1.Now(); azVolume.ObjectMeta.DeletionTimestamp.Before(&now) {
+		// azVolume deletion
+		klog.Infof("Beginning deletion of AzVolume object")
+		if err := r.triggerDelete(ctx, azVolume.Name); err != nil {
+			//If delete failed, requeue request
+			return reconcile.Result{Requeue: true}, err
+		}
+		//azVolume creation
+	} else if azVolume.Status.Detail == nil {
 		if azVolume.Status.Error == nil {
 			klog.Infof("Creating Volume (%s)...", azVolume.Spec.UnderlyingVolume)
 			if err := r.triggerCreate(ctx, azVolume.Name); err != nil {
 				klog.Errorf("failed to create AzVolume (%s): %v", azVolume.Name, err)
 				return reconcile.Result{Requeue: true}, err
 			}
-		}
-	} else if now := metav1.Now(); azVolume.ObjectMeta.DeletionTimestamp.Before(&now) {
-		// azVolume deletion
-		klog.Infof("Beginning deletion of AzVolume object")
-		if err := r.triggerDelete(ctx, azVolume.Name); err != nil {
-			//If delete failed, requeue request
-			return reconcile.Result{Requeue: true}, err
 		}
 		// azVolume released, so clean up replica Attachments (primary Attachment should be deleted via UnpublishVolume request to avoid race condition)
 	} else if azVolume.Status.Detail.Phase == v1alpha1.VolumeReleased {
