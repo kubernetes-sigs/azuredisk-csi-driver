@@ -48,9 +48,9 @@ import (
 
 const (
 	// DriverName driver name
-	DriverName       = "disk.csi.azure.com"
-	azurePublicCloud = "AZUREPUBLICCLOUD"
-	azureStackCloud  = "AZURESTACKCLOUD"
+	DefaultDriverName = "disk.csi.azure.com"
+	azurePublicCloud  = "AZUREPUBLICCLOUD"
+	azureStackCloud   = "AZURESTACKCLOUD"
 
 	errDiskNotFound = "not found"
 	// default IOPS Caps & Throughput Cap (MBps) per https://docs.microsoft.com/en-us/azure/virtual-machines/linux/disks-ultra-ssd
@@ -141,12 +141,14 @@ type Driver struct {
 
 // newDriverV1 Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
 // does not support optional driver plugin info manifest field. Refer to CSI spec for more details.
-func newDriverV1(nodeID string, enablePerfOptimization bool) *Driver {
+func newDriverV1(nodeID, driverName string, enablePerfOptimization bool) *Driver {
 	driver := Driver{}
-	driver.Name = DriverName
+	driver.Name = driverName
 	driver.Version = driverVersion
 	driver.NodeID = nodeID
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
+
+	topologyKey = fmt.Sprintf("topology.%s/zone", driver.Name)
 
 	cache, err := azcache.NewTimedcache(5*time.Minute, func(key string) (interface{}, error) {
 		return nil, nil
@@ -161,7 +163,7 @@ func newDriverV1(nodeID string, enablePerfOptimization bool) *Driver {
 
 // Run driver initialization
 func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock bool) {
-	versionMeta, err := GetVersionYAML()
+	versionMeta, err := GetVersionYAML(d.Name)
 	if err != nil {
 		klog.Fatalf("%v", err)
 	}
