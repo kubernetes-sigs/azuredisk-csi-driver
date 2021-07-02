@@ -921,7 +921,7 @@ func (t *dynamicProvisioningTestSuite) normalizeVolume(volume testsuites.VolumeD
 	case "kubernetes.io/azure-disk":
 		volumeBindingMode := storagev1.VolumeBindingWaitForFirstConsumer
 		volume.VolumeBindingMode = &volumeBindingMode
-	case "", azuredisk.DriverName:
+	case "", azuredisk.DefaultDriverName:
 		if !isMultiZone {
 			return volume
 		}

@@ -593,7 +593,7 @@ func (d *Driver) listVolumesInCluster(ctx context.Context, start, maxEntries int
 	rgMap := make(map[string]bool)
 	volSet := make(map[string]bool)
 	for _, pv := range pvList.Items {
-		if pv.Spec.CSI != nil && pv.Spec.CSI.Driver == DriverName {
+		if pv.Spec.CSI != nil && pv.Spec.CSI.Driver == d.Name {
 			diskURI := pv.Spec.CSI.VolumeHandle
 			if err := isValidDiskURI(diskURI); err != nil {
 				klog.Warningf("invalid disk uri (%s) with error(%v)", diskURI, err)

@@ -21,6 +21,7 @@ package azuredisk
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
 	"reflect"
 	"strings"
@@ -104,13 +105,13 @@ type CrdProvisioner interface {
 }
 
 // NewDriver creates a Driver or DriverV2 object depending on the --temp-use-driver-v2 flag.
-func NewDriver(nodeID string, enablePerfOptimization bool) CSIDriver {
+func NewDriver(nodeID, driverName string, enablePerfOptimization bool) CSIDriver {
 	var d CSIDriver
 
 	if !*useDriverV2 {
-		d = newDriverV1(nodeID, enablePerfOptimization)
+		d = newDriverV1(nodeID, driverName, enablePerfOptimization)
 	} else {
-		d = newDriverV2(nodeID, enablePerfOptimization, *driverObjectNamespace, "default", "default", *heartbeatFrequencyInSec, *controllerLeaseDurationInSec, *controllerLeaseRenewDeadlineInSec, *controllerLeaseRetryPeriodInSec)
+		d = newDriverV2(nodeID, driverName, enablePerfOptimization, *driverObjectNamespace, "default", "default", *heartbeatFrequencyInSec, *controllerLeaseDurationInSec, *controllerLeaseRenewDeadlineInSec, *controllerLeaseRetryPeriodInSec)
 	}
 
 	return d
@@ -119,6 +120,7 @@ func NewDriver(nodeID string, enablePerfOptimization bool) CSIDriver {
 // newDriverV2 Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
 // does not support optional driver plugin info manifest field. Refer to CSI spec for more details.
 func newDriverV2(nodeID string,
+	driverName string,
 	enablePerfOptimization bool,
 	driverObjectNamespace string,
 	nodePartition string,
@@ -129,7 +131,7 @@ func newDriverV2(nodeID string,
 	leaseRetryPeriodInSec int) *DriverV2 {
 	klog.Warning("Using DriverV2")
 	driver := DriverV2{}
-	driver.Name = DriverName
+	driver.Name = driverName
 	driver.Version = driverVersion
 	driver.NodeID = nodeID
 	driver.perfOptimizationEnabled = enablePerfOptimization
@@ -141,12 +143,14 @@ func newDriverV2(nodeID string,
 	driver.controllerLeaseDurationInSec = leaseDurationInSec
 	driver.controllerLeaseRenewDeadlineInSec = leaseRenewDeadlineInSec
 	driver.controllerLeaseRetryPeriodInSec = leaseRetryPeriodInSec
+
+	topologyKey = fmt.Sprintf("topology.%s/zone", driver.Name)
 	return &driver
 }
 
 // Run driver initialization
 func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock bool) {
-	versionMeta, err := GetVersionYAML()
+	versionMeta, err := GetVersionYAML(d.Name)
 	if err != nil {
 		klog.Fatalf("%v", err)
 	}
