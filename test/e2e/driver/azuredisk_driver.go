@@ -51,7 +51,7 @@ func normalizeProvisioner(provisioner string) string {
 func InitAzureDiskDriver() PVTestDriver {
 	driverName := os.Getenv(AzureDriverNameVar)
 	if driverName == "" {
-		driverName = azuredisk.DriverName
+		driverName = azuredisk.DefaultDriverName
 	}
 
 	klog.Infof("Using azure disk driver: %s", driverName)

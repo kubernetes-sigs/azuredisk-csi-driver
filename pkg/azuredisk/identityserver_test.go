@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	fakeCSIDriverName = "fake"
+	fakeCSIDriverName = "disk.csi.azure.com"
 	vendorVersion     = "0.3.0"
 )
 
