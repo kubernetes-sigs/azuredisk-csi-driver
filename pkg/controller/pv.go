@@ -121,12 +121,12 @@ func (r *reconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 	return reconcile.Result{}, nil
 }
 
-func NewPVController(mgr manager.Manager, azVolumeClient *azVolumeClientSet.Interface, namespace string) error {
+func NewPVController(mgr manager.Manager, azVolumeClient azVolumeClientSet.Interface, namespace string) error {
 	logger := mgr.GetLogger().WithValues("controller", "azvolume")
 
 	c, err := controller.New("pv-controller", mgr, controller.Options{
 		MaxConcurrentReconciles: 10,
-		Reconciler:              &reconcilePV{client: mgr.GetClient(), retryMap: map[string]*uint32{}, retryMutex: sync.RWMutex{}, azVolumeClient: *azVolumeClient, namespace: namespace},
+		Reconciler:              &reconcilePV{client: mgr.GetClient(), retryMap: map[string]*uint32{}, retryMutex: sync.RWMutex{}, azVolumeClient: azVolumeClient, namespace: namespace},
 		Log:                     logger,
 	})
 

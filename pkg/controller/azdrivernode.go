@@ -87,9 +87,9 @@ func (r *ReconcileAzDriverNode) Reconcile(ctx context.Context, request reconcile
 }
 
 // NewAzDriverNodeController initializes azdrivernode-controller
-func NewAzDriverNodeController(mgr manager.Manager, azVolumeClient *azVolumeClientSet.Interface, namespace string) (*ReconcileAzDriverNode, error) {
+func NewAzDriverNodeController(mgr manager.Manager, azVolumeClient azVolumeClientSet.Interface, namespace string) (*ReconcileAzDriverNode, error) {
 	logger := mgr.GetLogger().WithValues("controller", "azdrivernode")
-	reconciler := ReconcileAzDriverNode{client: mgr.GetClient(), azVolumeClient: *azVolumeClient, namespace: namespace}
+	reconciler := ReconcileAzDriverNode{client: mgr.GetClient(), azVolumeClient: azVolumeClient, namespace: namespace}
 	c, err := controller.New("azdrivernode-controller", mgr, controller.Options{
 		MaxConcurrentReconciles: 10,
 		Reconciler:              &reconciler,

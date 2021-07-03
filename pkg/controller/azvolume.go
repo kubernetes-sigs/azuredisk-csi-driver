@@ -433,11 +433,11 @@ func (r *ReconcileAzVolume) Recover(ctx context.Context) error {
 	return nil
 }
 
-func NewAzVolumeController(mgr manager.Manager, azVolumeClient *azVolumeClientSet.Interface, kubeClient *kubeClientSet.Interface, namespace string, cloudProvisioner CloudProvisioner) (*ReconcileAzVolume, error) {
+func NewAzVolumeController(mgr manager.Manager, azVolumeClient azVolumeClientSet.Interface, kubeClient kubeClientSet.Interface, namespace string, cloudProvisioner CloudProvisioner) (*ReconcileAzVolume, error) {
 	reconciler := ReconcileAzVolume{
 		client:           mgr.GetClient(),
-		azVolumeClient:   *azVolumeClient,
-		kubeClient:       *kubeClient,
+		azVolumeClient:   azVolumeClient,
+		kubeClient:       kubeClient,
 		mutexMap:         map[string]*sync.Mutex{},
 		mutexMapMutex:    sync.RWMutex{},
 		namespace:        namespace,

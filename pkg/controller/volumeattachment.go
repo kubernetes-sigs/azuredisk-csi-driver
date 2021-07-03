@@ -220,14 +220,14 @@ func (r *ReconcileVolumeAttachment) Recover(ctx context.Context) error {
 	return nil
 }
 
-func NewVolumeAttachmentController(ctx context.Context, mgr manager.Manager, azVolumeClient *azVolumeClientSet.Interface, kubeClient *kubeClientSet.Interface, namespace string) (*ReconcileVolumeAttachment, error) {
+func NewVolumeAttachmentController(ctx context.Context, mgr manager.Manager, azVolumeClient azVolumeClientSet.Interface, kubeClient kubeClientSet.Interface, namespace string) (*ReconcileVolumeAttachment, error) {
 	reconciler := ReconcileVolumeAttachment{
 		client:         mgr.GetClient(),
 		namespace:      namespace,
-		azVolumeClient: *azVolumeClient,
+		azVolumeClient: azVolumeClient,
 		retryMap:       map[string]*uint32{},
 		retryMutex:     sync.RWMutex{},
-		kubeClient:     *kubeClient,
+		kubeClient:     kubeClient,
 	}
 
 	c, err := controller.New("volumeattachment-controller", mgr, controller.Options{

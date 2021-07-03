@@ -101,7 +101,6 @@ type CrdProvisioner interface {
 	UnpublishVolume(ctx context.Context, volumeID string, nodeID string, secrets map[string]string) error
 	ExpandVolume(ctx context.Context, volumeID string, capacityRange *azuredisk.CapacityRange, secrets map[string]string) (*azuredisk.AzVolumeStatusParams, error)
 	GetDiskClientSet() azDiskClientSet.Interface
-	GetDiskClientSetAddr() *azDiskClientSet.Interface
 }
 
 // NewDriver creates a Driver or DriverV2 object depending on the --temp-use-driver-v2 flag.
@@ -286,35 +285,35 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 	// Setup a new controller to clean-up AzDriverNodes
 	// objects for the nodes which get deleted
 	klog.V(2).Info("Initializing AzDriverNode controller")
-	_, err = controller.NewAzDriverNodeController(mgr, d.crdProvisioner.GetDiskClientSetAddr(), d.objectNamespace)
+	_, err = controller.NewAzDriverNodeController(mgr, d.crdProvisioner.GetDiskClientSet(), d.objectNamespace)
 	if err != nil {
 		klog.Errorf("Failed to initialize AzDriverNodeController. Error: %v. Exiting application...", err)
 		os.Exit(1)
 	}
 
 	klog.V(2).Info("Initializing AzVolumeAttachment controller")
-	azvaReconciler, err := controller.NewAzVolumeAttachmentController(mgr, d.crdProvisioner.GetDiskClientSetAddr(), &d.kubeClient, d.objectNamespace, d.cloudProvisioner)
+	azvaReconciler, err := controller.NewAzVolumeAttachmentController(mgr, d.crdProvisioner.GetDiskClientSet(), d.kubeClient, d.objectNamespace, d.cloudProvisioner)
 	if err != nil {
 		klog.Errorf("Failed to initialize AzVolumeAttachmentController. Error: %v. Exiting application...", err)
 		os.Exit(1)
 	}
 
 	klog.V(2).Info("Initializing AzVolume controller")
-	azvReconciler, err := controller.NewAzVolumeController(mgr, d.crdProvisioner.GetDiskClientSetAddr(), &d.kubeClient, d.objectNamespace, d.cloudProvisioner)
+	azvReconciler, err := controller.NewAzVolumeController(mgr, d.crdProvisioner.GetDiskClientSet(), d.kubeClient, d.objectNamespace, d.cloudProvisioner)
 	if err != nil {
 		klog.Errorf("Failed to initialize AzVolumeController. Error: %v. Exiting application...", err)
 		os.Exit(1)
 	}
 
 	klog.V(2).Info("Initializing PV controller")
-	err = controller.NewPVController(mgr, d.crdProvisioner.GetDiskClientSetAddr(), d.objectNamespace)
+	err = controller.NewPVController(mgr, d.crdProvisioner.GetDiskClientSet(), d.objectNamespace)
 	if err != nil {
 		klog.Errorf("Failed to initialize PVController. Error: %v. Exiting application...", err)
 		os.Exit(1)
 	}
 
 	klog.V(2).Info("Initializing VolumeAttachment controller")
-	vaReconciler, err := controller.NewVolumeAttachmentController(ctx, mgr, d.crdProvisioner.GetDiskClientSetAddr(), &d.kubeClient, d.objectNamespace)
+	vaReconciler, err := controller.NewVolumeAttachmentController(ctx, mgr, d.crdProvisioner.GetDiskClientSet(), d.kubeClient, d.objectNamespace)
 	if err != nil {
 		klog.Errorf("Failed to initialize VolumeAttachmentController. Error: %v. Exiting application...", err)
 		os.Exit(1)

@@ -976,11 +976,11 @@ func (r *ReconcileAzVolumeAttachment) Recover(ctx context.Context) error {
 	return nil
 }
 
-func NewAzVolumeAttachmentController(mgr manager.Manager, azVolumeClient *azVolumeClientSet.Interface, kubeClient *kubeClientSet.Interface, namespace string, cloudProvisioner CloudProvisioner) (*ReconcileAzVolumeAttachment, error) {
+func NewAzVolumeAttachmentController(mgr manager.Manager, azVolumeClient azVolumeClientSet.Interface, kubeClient kubeClientSet.Interface, namespace string, cloudProvisioner CloudProvisioner) (*ReconcileAzVolumeAttachment, error) {
 	reconciler := ReconcileAzVolumeAttachment{
 		client:           mgr.GetClient(),
-		azVolumeClient:   *azVolumeClient,
-		kubeClient:       *kubeClient,
+		azVolumeClient:   azVolumeClient,
+		kubeClient:       kubeClient,
 		syncMutex:        sync.RWMutex{},
 		namespace:        namespace,
 		mutexMap:         make(map[string]*sync.Mutex),

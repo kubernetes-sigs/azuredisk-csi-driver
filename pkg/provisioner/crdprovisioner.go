@@ -530,10 +530,6 @@ func (c *CrdProvisioner) GetDiskClientSet() azDiskClientSet.Interface {
 	return c.azDiskClient
 }
 
-func (c *CrdProvisioner) GetDiskClientSetAddr() *azDiskClientSet.Interface {
-	return &c.azDiskClient
-}
-
 // Compares the fields in the AzVolumeSpec with the other parameters.
 // Returns true if they are equal, false otherwise.
 func isAzVolumeSpecSameAsRequestParams(defaultAzVolume *v1alpha1.AzVolume,
