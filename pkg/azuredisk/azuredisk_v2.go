@@ -48,13 +48,13 @@ type DriverV2 struct {
 }
 
 // NewDriver creates a Driver or DriverV2 object depending on the --temp-use-driver-v2 flag.
-func NewDriver(nodeID, driverName string, enablePerfOptimization bool) CSIDriver {
+func NewDriver(nodeID, driverName string, volumeAttachLimit int64, enablePerfOptimization bool) CSIDriver {
 	var d CSIDriver
 
 	if !*useDriverV2 {
-		d = newDriverV1(nodeID, driverName, enablePerfOptimization)
+		d = newDriverV1(nodeID, driverName, volumeAttachLimit, enablePerfOptimization)
 	} else {
-		d = newDriverV2(nodeID, driverName, enablePerfOptimization)
+		d = newDriverV2(nodeID, driverName, volumeAttachLimit, enablePerfOptimization)
 	}
 
 	return d
@@ -62,12 +62,13 @@ func NewDriver(nodeID, driverName string, enablePerfOptimization bool) CSIDriver
 
 // newDriverV2 Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
 // does not support optional driver plugin info manifest field. Refer to CSI spec for more details.
-func newDriverV2(nodeID, driverName string, enablePerfOptimization bool) *DriverV2 {
+func newDriverV2(nodeID, driverName string, volumeAttachLimit int64, enablePerfOptimization bool) *DriverV2 {
 	klog.Warning("Using DriverV2")
 	driver := DriverV2{}
 	driver.Name = driverName
 	driver.Version = driverVersion
 	driver.NodeID = nodeID
+	driver.VolumeAttachLimit = volumeAttachLimit
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.perfOptimizationEnabled = enablePerfOptimization
 

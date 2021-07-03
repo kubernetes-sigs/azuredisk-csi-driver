@@ -92,6 +92,7 @@ spec:
             - "--metrics-address=0.0.0.0:{{ .Values.node.metricsPort }}"
             - "--enable-perf-optimization={{ .Values.linux.enablePerfOptimization }}"
             - "--drivername={{ .Values.driver.name }}"
+            - "--volume-attach-limit={{ .Values.driver.volumeAttachLimit }}"
           ports:
             - containerPort: 29603
               name: healthz
