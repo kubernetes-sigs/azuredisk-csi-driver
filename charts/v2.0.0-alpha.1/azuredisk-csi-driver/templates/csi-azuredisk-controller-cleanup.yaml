@@ -2,13 +2,30 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: csi-azuredisk-controller-cleanup
+  namespace: {{ .Release.Namespace }}
+{{ include "azuredisk.labels" . | indent 2 }}
   annotations:
     "helm.sh/hook": pre-delete
     "helm.sh/hook-delete-policy": hook-succeeded
 spec:
   template:
     spec:
-      serviceAccountName: csi-azuredisk-controller-sa
+      {{- if .Values.imagePullSecrets }}
+      imagePullSecrets:
+{{ toYaml .Values.imagePullSecrets | indent 8 }}
+      {{- end }}
+      serviceAccountName: {{ .Values.serviceAccount.controller }}
+      nodeSelector:
+        kubernetes.io/os: linux
+        {{- if .Values.controller.runOnMaster}}
+        kubernetes.io/role: master
+        {{- end}}
+      priorityClassName: system-cluster-critical
+{{- with .Values.controller.tolerations }}
+      tolerations:
+{{ toYaml . | indent 8 }}
+{{- end }}
+      {{- include "azuredisk.pullSecrets" . | indent 6 }}
       restartPolicy: Never
       containers:
         - name: delete-azvolume
