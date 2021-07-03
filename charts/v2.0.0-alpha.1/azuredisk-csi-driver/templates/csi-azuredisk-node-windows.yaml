@@ -59,11 +59,11 @@ spec:
           args:
             - "--v=2"
             - "--csi-address=$(CSI_ENDPOINT)"
-            - "--kubelet-registration-path=C:\\var\\lib\\kubelet\\plugins\\disk.csi.azure.com\\csi.sock"
+            - "--kubelet-registration-path=C:\\var\\lib\\kubelet\\plugins\\{{ .Values.driver.name }}\\csi.sock"
           lifecycle:
             preStop:
               exec:
-                command: ["cmd", "/c", "del /f C:\\registration\\disk.csi.azure.com-reg.sock C:\\csi\\disk.csi.azure.com\\csi.sock"]
+                command: ["cmd", "/c", "del /f C:\\registration\\{{ .Values.driver.name }}-reg.sock C:\\csi\\{{ .Values.driver.name }}\\csi.sock"]
           env:
             - name: CSI_ENDPOINT
               value: unix://C:\\csi\\csi.sock
@@ -95,6 +95,7 @@ spec:
             - "--metrics-address=0.0.0.0:{{ .Values.node.metricsPort }}"
             - "--temp-use-driver-v2={{ .Values.azuredisk.useV2Driver }}"
             - "--is-node-plugin={{ .Values.azuredisk.useV2Driver }}"
+            - "--drivername={{ .Values.driver.name }}"
           ports:
             - containerPort: 29603
               name: healthz

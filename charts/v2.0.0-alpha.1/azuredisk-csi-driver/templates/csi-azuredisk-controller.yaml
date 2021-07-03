@@ -144,6 +144,7 @@ spec:
             - "--temp-use-driver-v2={{ .Values.azuredisk.useV2Driver }}"
             - "--is-controller-plugin={{ .Values.azuredisk.useV2Driver }}"
             - "--disable-avset-nodes={{ .Values.controller.disableAvailabilitySetNodes }}"
+            - "--drivername={{ .Values.driver.name }}"
           ports:
             - containerPort: 29602
               name: healthz

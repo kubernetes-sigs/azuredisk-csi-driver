@@ -41,6 +41,7 @@ var (
 	version                = flag.Bool("version", false, "Print the version and exit.")
 	metricsAddress         = flag.String("metrics-address", "0.0.0.0:29604", "export the metrics")
 	kubeconfig             = flag.String("kubeconfig", "", "Absolute path to the kubeconfig file. Required only when running out of cluster.")
+	driverName             = flag.String("drivername", azuredisk.DefaultDriverName, "name of the driver")
 	disableAVSetNodes      = flag.Bool("disable-avset-nodes", true, "disable DisableAvailabilitySetNodes in cloud config for controller")
 	enablePerfOptimization = flag.Bool("enable-perf-optimization", false, "boolean flag to enable disk perf optimization")
 )
@@ -48,7 +49,7 @@ var (
 func main() {
 	flag.Parse()
 	if *version {
-		info, err := azuredisk.GetVersionYAML()
+		info, err := azuredisk.GetVersionYAML(*driverName)
 		if err != nil {
 			klog.Fatalln(err)
 		}
@@ -67,7 +68,7 @@ func main() {
 }
 
 func handle() {
-	driver := azuredisk.NewDriver(*nodeID, *enablePerfOptimization)
+	driver := azuredisk.NewDriver(*nodeID, *driverName, *enablePerfOptimization)
 	if driver == nil {
 		klog.Fatalln("Failed to initialize azuredisk CSI Driver")
 	}

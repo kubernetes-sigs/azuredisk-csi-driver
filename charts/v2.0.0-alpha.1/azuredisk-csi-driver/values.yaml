@@ -92,6 +92,9 @@ feature:
   enableFSGroupPolicy: false
   enableCSIMigration: false
 
+driver:
+  name: disk.csi.azure.com
+
 cleanup:
   image:
     curl:
