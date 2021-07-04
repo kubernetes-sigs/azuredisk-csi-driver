@@ -140,7 +140,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		if !isUsingInTreeVolumePlugin && supportsZRS {
 			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
 		}
-
+		if isUsingInTreeVolumePlugin {
+			// cover case: https://github.com/kubernetes/kubernetes/issues/103433
+			test.StorageClassParameters["Kind"] = "managed"
+		}
 		test.Run(cs, ns)
 	})
 
