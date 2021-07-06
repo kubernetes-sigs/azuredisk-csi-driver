@@ -37,6 +37,8 @@ controller:
   name: csi-azuredisk-controller
   replicas: 2
   metricsPort: 29604
+  livenessProbe:
+    healthPort: 29602
   runOnMaster: false
   disableAvailabilitySetNodes: true
   provisionerWorkerThreads: 40

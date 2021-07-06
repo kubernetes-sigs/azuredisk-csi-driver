@@ -94,7 +94,7 @@ spec:
             - "--drivername={{ .Values.driver.name }}"
             - "--volume-attach-limit={{ .Values.driver.volumeAttachLimit }}"
           ports:
-            - containerPort: 29603
+            - containerPort: {{ .Values.node.livenessProbe.healthPort }}
               name: healthz
               protocol: TCP
             - containerPort: {{ .Values.node.metricsPort }}
