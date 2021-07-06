@@ -23,14 +23,10 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"reflect"
 	"strings"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -455,18 +451,6 @@ func (kw klogWriter) Write(p []byte) (n int, err error) {
 		klog.InfoDepth(OutputCallDepth, string(p[DefaultPrefixLength:]))
 	}
 	return len(p), nil
-}
-
-func (d *DriverV2) checkDiskCapacity(ctx context.Context, resourceGroup, diskName string, requestGiB int) (bool, error) {
-	disk, err := d.cloudProvisioner.GetCloud().DisksClient.Get(ctx, resourceGroup, diskName)
-	// Because we can not judge the reason of the error. Maybe the disk does not exist.
-	// So here we do not handle the error.
-	if err == nil {
-		if !reflect.DeepEqual(disk, compute.Disk{}) && disk.DiskSizeGB != nil && int(*disk.DiskSizeGB) != requestGiB {
-			return false, status.Errorf(codes.AlreadyExists, "the request volume already exists, but its capacity(%v) is different from (%v)", *disk.DiskProperties.DiskSizeGB, requestGiB)
-		}
-	}
-	return true, nil
 }
 
 func (d *DriverV2) getVolumeLocks() *volumehelper.VolumeLocks {

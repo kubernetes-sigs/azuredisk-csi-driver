@@ -674,7 +674,7 @@ func (d *Driver) listVolumesInNodeResourceGroup(ctx context.Context, start, maxE
 
 	nextTokenString := ""
 	if !listStatus.isCompleteRun {
-		nextTokenString = strconv.Itoa(listStatus.numVisited)
+		nextTokenString = strconv.Itoa(start + listStatus.numVisited)
 	}
 
 	listVolumesResp := &csi.ListVolumesResponse{

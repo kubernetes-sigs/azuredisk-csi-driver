@@ -17,7 +17,6 @@ limitations under the License.
 package azuredisk
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -64,8 +63,6 @@ var (
 type FakeDriver interface {
 	CSIDriver
 
-	GetSourceDiskSize(ctx context.Context, resourceGroup, diskName string, curDepth, maxDepth int) (*int32, error)
-
 	setNextCommandOutputScripts(scripts ...testingexec.FakeAction)
 	setIsBlockDevicePathError(string, bool, error)
 
@@ -78,9 +75,7 @@ type FakeDriver interface {
 	getCloud() *provider.Cloud
 	setCloud(*provider.Cloud)
 
-	checkDiskCapacity(context.Context, string, string, int) (bool, error)
 	getSnapshotInfo(string) (string, string, error)
-	getSnapshotByID(context.Context, string, string, string) (*csi.Snapshot, error)
 	ensureMountPoint(string) (bool, error)
 }
 
