@@ -123,7 +123,7 @@ spec:
           args:
             - --csi-address=/csi/csi.sock
             - --probe-timeout=3s
-            - --health-port=29602
+            - --health-port={{ .Values.controller.livenessProbe.healthPort }}
             - --v=2
           volumeMounts:
             - name: socket-dir
@@ -144,7 +144,7 @@ spec:
             - "--disable-avset-nodes={{ .Values.controller.disableAvailabilitySetNodes }}"
             - "--drivername={{ .Values.driver.name }}"
           ports:
-            - containerPort: 29602
+            - containerPort: {{ .Values.controller.livenessProbe.healthPort }}
               name: healthz
               protocol: TCP
             - containerPort: {{ .Values.controller.metricsPort }}
