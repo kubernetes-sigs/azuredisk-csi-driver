@@ -60,6 +60,7 @@ node:
 
 snapshot:
   enabled: false
+  name: csi-snapshot-controller
   apiVersion: beta # available values: beta, ga
   image:
     csiSnapshotter:
@@ -71,6 +72,7 @@ snapshot:
       tag: v3.0.3
       pullPolicy: IfNotPresent
   snapshotController:
+    name: csi-snapshot-controller
     replicas: 1
 
 feature:

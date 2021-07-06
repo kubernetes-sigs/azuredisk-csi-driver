@@ -88,6 +88,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `snapshot.image.csiSnapshotController.repository` | snapshot-controller docker image                           | mcr.microsoft.com/oss/kubernetes-csi/snapshot-controller     |
 | `snapshot.image.csiSnapshotController.tag`        | snapshot-controller docker image tag                       | v3.0.3                                                      |
 | `snapshot.image.csiSnapshotController.pullPolicy` | snapshot-controller image pull policy                      | IfNotPresent                                                 |
+| `snapshot.snapshotController.name`                | snapshot controller name | `csi-snapshot-controller`                                                           |
 | `snapshot.snapshotController.replicas`            | the replicas of snapshot-controller                        | 1                                                            |
 | `linux.enabled`                                   | whether enable linux feature                               | true                                                         |
 | `linux.dsName`                                    | name of driver daemonset on linux                             |`csi-azuredisk-node`                                                         |
