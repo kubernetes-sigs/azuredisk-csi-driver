@@ -34,6 +34,7 @@ rbac:
   create: true
   
 controller:
+  name: csi-azuredisk-controller
   replicas: 2
   metricsPort: 29604
   runOnMaster: false
@@ -83,6 +84,7 @@ driver:
 
 linux:
   enabled: true
+  dsName: csi-azuredisk-node # daemonset name
   kubelet: /var/lib/kubelet
   distro: debian # available values: debian, fedora
   enablePerfOptimization: true
@@ -91,6 +93,7 @@ linux:
 
 windows:
   enabled: true
+  dsName: csi-azuredisk-node-win # daemonset name
   kubelet: 'C:\var\lib\kubelet'
   image:
     livenessProbe:
