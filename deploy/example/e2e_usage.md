@@ -14,13 +14,14 @@ kubectl create -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-cs
 
  - Execute `df -h` command in the container
 ```console
-# kubectl exec -it statefulset-azuredisk-0 sh
-# df -h
+kubectl exec -it statefulset-azuredisk-0 sh -- df -h
+```
+<pre>
 Filesystem      Size  Used Avail Use% Mounted on
 ...
 /dev/sdc         98G   62M   98G   1% /mnt/azuredisk
 ...
-```
+</pre>
 
 ### Azuredisk Static Provisioning(use an existing azure disk)
  - Create an azuredisk CSI PV, download `pv-azuredisk-csi.yaml` file and edit `diskName`, `diskURI` in `volumeAttributes`
@@ -47,10 +48,12 @@ kubectl create -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-cs
 
  - Execute `df -h` command in the container
 ```
-$ kubectl exec -it nginx-azuredisk -- bash
+kubectl exec -it nginx-azuredisk -- df -h
+```
+<pre>
 Filesystem      Size  Used Avail Use% Mounted on
 ...
 /dev/sdc         98G   62M   98G   1% /mnt/azuredisk
 ...
-```
+</pre>
 In the above example, there is a `/mnt/azuredisk` directory mounted as disk filesystem.
