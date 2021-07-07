@@ -2,7 +2,7 @@
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: azuredisk-external-provisioner-role
+  name: {{ .Values.rbac.name }}-external-provisioner-role
 {{ include "azuredisk.labels" . | indent 2 }}
 rules:
   - apiGroups: [""]
@@ -38,7 +38,7 @@ rules:
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: azuredisk-csi-provisioner-binding
+  name: {{ .Values.rbac.name }}-csi-provisioner-binding
 {{ include "azuredisk.labels" . | indent 2 }}
 subjects:
   - kind: ServiceAccount
@@ -80,7 +80,7 @@ rules:
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: azuredisk-csi-attacher-binding
+  name: {{ .Values.rbac.name }}-csi-attacher-binding
 {{ include "azuredisk.labels" . | indent 2 }}
 subjects:
   - kind: ServiceAccount
@@ -125,7 +125,7 @@ rules:
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: azuredisk-csi-snapshotter-binding
+  name: {{ .Values.rbac.name }}-csi-snapshotter-binding
 {{ include "azuredisk.labels" . | indent 2 }}
 subjects:
   - kind: ServiceAccount
@@ -165,7 +165,7 @@ rules:
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: azuredisk-csi-resizer-role
+  name: {{ .Values.rbac.name }}-csi-resizer-role
 {{ include "azuredisk.labels" . | indent 2 }}
 subjects:
   - kind: ServiceAccount
