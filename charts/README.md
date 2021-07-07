@@ -73,7 +73,8 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `serviceAccount.node`                             | name of service account for csi-azuredisk-node             | csi-azuredisk-node-sa                                        |
 | `serviceAccount.snapshotController`               | name of service account for csi-snapshot-controller        | csi-snapshot-controller-sa                                   |
 | `rbac.create`                                     | whether create rbac of csi-azuredisk-controller            | true                                                         |
-| `controller.name`                                 | name of driver deployment                  | `csi-azuredisk-controller`
+| `rbac.name`                                       | driver name in rbac role                | true                                                         |
+| `controller.name`                                 | name of driver deployment               | `csi-azuredisk-controller`
 | `controller.replicas`                             | the replicas of csi-azuredisk-controller                   | 2                                                            |
 | `controller.metricsPort`                          | metrics port of csi-azuredisk-controller                   | 29604                                                        |
 | `controller.runOnMaster`                          | run csi-azuredisk-controller on master node                | false                                                        |

@@ -32,7 +32,8 @@ serviceAccount:
 
 rbac:
   create: true
-  
+  name: azuredisk
+
 controller:
   name: csi-azuredisk-controller
   replicas: 2
