@@ -190,7 +190,7 @@ subjects:
     namespace: {{ .Release.Namespace }}
 roleRef:
   kind: ClusterRole
-  name: {{ .Values.rbac.name }}-external-resizer-role
+  name: {{ .Values.rbac.name }}-csi-resizer-role
   apiGroup: rbac.authorization.k8s.io
 
 ---

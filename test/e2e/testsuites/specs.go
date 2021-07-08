@@ -133,8 +133,8 @@ func (pod *PodDetails) SetupWithDynamicMultipleVolumes(client clientset.Interfac
 	return tpod, cleanupFuncs
 }
 
-func (pod *PodDetails) SetupWithDynamicVolumesWithSubpath(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.DynamicPVTestDriver, storageClassParameters map[string]string) (*TestPod, []func()) {
-	tpod := NewTestPod(client, namespace, pod.Cmd, pod.IsWindows)
+func (pod *PodDetails) SetupWithDynamicVolumesWithSubpath(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.DynamicPVTestDriver, storageClassParameters map[string]string, schedulerName string) (*TestPod, []func()) {
+	tpod := NewTestPod(client, namespace, pod.Cmd, schedulerName, pod.IsWindows)
 	cleanupFuncs := make([]func(), 0)
 	for n, v := range pod.Volumes {
 		tpvc, funcs := v.SetupDynamicPersistentVolumeClaim(client, namespace, csiDriver, storageClassParameters)

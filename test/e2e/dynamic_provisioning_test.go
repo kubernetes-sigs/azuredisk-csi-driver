@@ -178,7 +178,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			Pods:                   pods,
 			StorageClassParameters: scParameters,
 		}
-		test.Run(cs, ns)
+		test.Run(cs, ns, schedulerName)
 	})
 
 	ginkgo.It("Should create and attach a volume with basic perfProfile [disk.csi.azure.com] [Windows]", func() {
