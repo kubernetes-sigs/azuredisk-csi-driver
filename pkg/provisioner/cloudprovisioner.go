@@ -162,10 +162,9 @@ func (c *CloudProvisioner) CreateVolume(
 		case azureutils.FSTypeField:
 			// no-op
 
-		// The following parameter is ignored, but included for backward compatibility with the in-tree azuredisk
-		// driver.
 		case azureutils.KindField:
-			// no-op
+			// fix csi migration issue: https://github.com/kubernetes/kubernetes/issues/103433
+			parameters[azureutils.KindField] = string(v1.AzureManagedDisk)
 
 		default:
 			return nil, fmt.Errorf("invalid parameter %s in storage class", k)

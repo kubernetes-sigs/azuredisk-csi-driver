@@ -334,7 +334,7 @@ func getAzDriverNodes(context context.Context, out chan azDriverNodesMeta) {
 	// get all nodes that have azDriverNode running
 	var activeDriverNodes azDriverNodesMeta
 	activeDriverNodes.nodes, activeDriverNodes.err = azDriverNodeInformer.Lister().AzDriverNodes(ns).List(labels.Everything())
-	klog.Info("AzDriverNodes: %v", activeDriverNodes.nodes)
+	klog.Infof("AzDriverNodes: %v", activeDriverNodes.nodes)
 	out <- activeDriverNodes
 }
 
@@ -344,7 +344,7 @@ func getAzVolumeAttachments(context context.Context, out chan azVolumeAttachment
 	// get all azVolumeAttachments running in the cluster
 	var activeVolumeAttachments azVolumeAttachmentsMeta
 	activeVolumeAttachments.volumes, activeVolumeAttachments.err = azVolumeAttachmentInformer.Lister().AzVolumeAttachments(ns).List(labels.Everything())
-	klog.Info("AzVolumeAttachments: %v", len(activeVolumeAttachments.volumes))
+	klog.Infof("AzVolumeAttachments: %v", len(activeVolumeAttachments.volumes))
 	out <- activeVolumeAttachments
 }
 
@@ -370,7 +370,7 @@ func setNodeScoresToZero(nodes []v1.Node) (priorityList schedulerapi.HostPriorit
 func onPvcUpdate(obj interface{}, newObj interface{}) {
 	// Cast the obj to pvc
 	pvc := newObj.(*v1.PersistentVolumeClaim)
-	klog.Info("Updating pvcToPv map cache.PVC: %s PV: %s, AccessMode: %v", pvc.Name, pvc.Spec.VolumeName, pvc.Spec.AccessModes)
+	klog.Infof("Updating pvcToPv map cache.PVC: %s PV: %s, AccessMode: %v", pvc.Name, pvc.Spec.VolumeName, pvc.Spec.AccessModes)
 	cacheValue := cacheEntry{VolumeName: pvc.Spec.VolumeName, AccessMode: fmt.Sprintf("%v", pvc.Spec.AccessModes[0])}
 	pvcToPvMapCache.AddOrUpdate(pvc.Name, &cacheValue)
 }
@@ -378,6 +378,6 @@ func onPvcUpdate(obj interface{}, newObj interface{}) {
 func onPvcDelete(obj interface{}) {
 	// Cast the obj to pvc
 	pvc := obj.(*v1.PersistentVolumeClaim)
-	klog.Info("Deleting pvcToPv map cache entry. PVC: %s PV: %s", pvc.Name, pvc.Spec.VolumeName)
+	klog.Infof("Deleting pvcToPv map cache entry. PVC: %s PV: %s", pvc.Name, pvc.Spec.VolumeName)
 	pvcToPvMapCache.Delete(pvc.Name)
 }
