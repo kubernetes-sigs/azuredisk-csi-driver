@@ -13,8 +13,6 @@ spec:
       labels:
         app: csi-azuredisk-node
     spec:
-      hostNetwork: true
-      dnsPolicy: ClusterFirstWithHostNet
       serviceAccountName: csi-azuredisk-node-sa
       nodeSelector:
         kubernetes.io/os: linux
