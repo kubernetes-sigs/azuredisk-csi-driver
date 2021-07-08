@@ -340,9 +340,14 @@ func (d *DriverV2) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest)
 		}
 	}
 
+	maxDataDiskCount := d.VolumeAttachLimit
+	if maxDataDiskCount < 0 {
+		maxDataDiskCount = getMaxDataDiskCount(instanceType)
+	}
+
 	return &csi.NodeGetInfoResponse{
 		NodeId:             d.NodeID,
-		MaxVolumesPerNode:  getMaxDataDiskCount(instanceType),
+		MaxVolumesPerNode:  maxDataDiskCount,
 		AccessibleTopology: topology,
 	}, nil
 }

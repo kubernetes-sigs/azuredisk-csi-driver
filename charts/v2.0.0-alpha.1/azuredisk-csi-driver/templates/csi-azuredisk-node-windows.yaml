@@ -96,6 +96,7 @@ spec:
             - "--temp-use-driver-v2={{ .Values.azuredisk.useV2Driver }}"
             - "--is-node-plugin={{ .Values.azuredisk.useV2Driver }}"
             - "--drivername={{ .Values.driver.name }}"
+            - "--volume-attach-limit={{ .Values.driver.volumeAttachLimit }}"
           ports:
             - containerPort: 29603
               name: healthz

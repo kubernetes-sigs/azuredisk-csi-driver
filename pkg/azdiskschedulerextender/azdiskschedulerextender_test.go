@@ -565,9 +565,9 @@ func TestFilterAndPrioritizeInRandomizedLargeCluster(t *testing.T) {
 		numberOfVolumes int
 		numberOfPods    int
 	}{
-		"low":  {500, 5000, 100},
-		"avg":  {1000, 10000, 100},
-		"high": {5000, 30000, 100},
+		"low":  {50, 500, 10},
+		"avg":  {100, 1000, 10},
+		"high": {500, 3000, 10},
 	}
 
 	//save original client
