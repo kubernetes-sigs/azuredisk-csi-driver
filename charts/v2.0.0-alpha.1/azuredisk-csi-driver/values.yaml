@@ -38,13 +38,17 @@ serviceAccount:
 
 rbac:
   create: true
+  name: azuredisk
 
 azuredisk:
   useV2Driver: true
 
 controller:
+  name: csi-azuredisk-controller
   replicas: 2
   metricsPort: 29604
+  livenessProbe:
+    healthPort: 29602
   runOnMaster: false
   disableAvailabilitySetNodes: true
   provisionerWorkerThreads: 40
@@ -73,6 +77,7 @@ schedulerExtender:
 
 snapshot:
   enabled: false
+  name: csi-snapshot-controller
   apiVersion: beta # available values: beta, ga
   image:
     csiSnapshotter:
@@ -84,6 +89,7 @@ snapshot:
       tag: v3.0.3
       pullPolicy: IfNotPresent
   snapshotController:
+    name: csi-snapshot-controller
     replicas: 1
     serviceAccount: true
     rbac: true
@@ -107,6 +113,7 @@ cleanup:
 
 linux:
   enabled: true
+  dsName: csi-azuredisk-node # daemonset name
   kubelet: /var/lib/kubelet
   distro: debian # available values: debian, fedora
   enablePerfOptimization: true
@@ -115,6 +122,7 @@ linux:
 
 windows:
   enabled: true
+  dsName: csi-azuredisk-node-win # daemonset name
   kubelet: 'C:\var\lib\kubelet'
   image:
     livenessProbe:
