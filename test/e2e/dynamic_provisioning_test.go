@@ -144,12 +144,41 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		if !isUsingInTreeVolumePlugin && supportsZRS {
 			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
 		}
-
 		if isUsingInTreeVolumePlugin {
 			// cover case: https://github.com/kubernetes/kubernetes/issues/103433
 			test.StorageClassParameters = map[string]string{"Kind": "managed"}
 		}
 		test.Run(cs, ns, schedulerName)
+	})
+
+	ginkgo.It("should create a pod with volume mount subpath [disk.csi.azure.com] [Windows]", func() {
+		skipIfUsingInTreeVolumePlugin()
+
+		pods := []testsuites.PodDetails{
+			{
+				Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
+				Volumes: []testsuites.VolumeDetails{
+					{
+						ClaimSize: "10Gi",
+						VolumeMount: testsuites.VolumeMountDetails{
+							NameGenerate:      "test-volume-",
+							MountPathGenerate: "/mnt/test-",
+						},
+					},
+				},
+				IsWindows: isWindowsCluster,
+			},
+		}
+
+		scParameters := map[string]string{
+			"skuName": "Standard_LRS",
+		}
+		test := testsuites.DynamicallyProvisionedVolumeSubpathTester{
+			CSIDriver:              testDriver,
+			Pods:                   pods,
+			StorageClassParameters: scParameters,
+		}
+		test.Run(cs, ns)
 	})
 
 	ginkgo.It("Should create and attach a volume with basic perfProfile [disk.csi.azure.com] [Windows]", func() {

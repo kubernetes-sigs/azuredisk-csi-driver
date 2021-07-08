@@ -1,18 +1,18 @@
 kind: Deployment
 apiVersion: apps/v1
 metadata:
-  name: csi-azuredisk-controller
+  name: {{ .Values.controller.name }}
   namespace: {{ .Release.Namespace }}
 {{ include "azuredisk.labels" . | indent 2 }}
 spec:
   replicas: {{ .Values.controller.replicas }}
   selector:
     matchLabels:
-      app: csi-azuredisk-controller
+      app: {{ .Values.controller.name }}
   template:
     metadata:
 {{ include "azuredisk.labels" . | indent 6 }}
-        app: csi-azuredisk-controller
+        app: {{ .Values.controller.name }}
     spec:
       {{- if .Values.imagePullSecrets }}
       imagePullSecrets:
@@ -123,7 +123,7 @@ spec:
           args:
             - --csi-address=/csi/csi.sock
             - --probe-timeout=3s
-            - --health-port=29602
+            - --health-port={{ .Values.controller.livenessProbe.healthPort }}
             - --v=2
           volumeMounts:
             - name: socket-dir
@@ -144,7 +144,7 @@ spec:
             - "--disable-avset-nodes={{ .Values.controller.disableAvailabilitySetNodes }}"
             - "--drivername={{ .Values.driver.name }}"
           ports:
-            - containerPort: 29602
+            - containerPort: {{ .Values.controller.livenessProbe.healthPort }}
               name: healthz
               protocol: TCP
             - containerPort: {{ .Values.controller.metricsPort }}

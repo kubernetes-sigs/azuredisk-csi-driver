@@ -19,6 +19,8 @@ LogicalSectorSize | Logical sector size in bytes for Ultra disk. Supported value
 tags | azure disk [tags](https://docs.microsoft.com/en-us/azure/azure-resource-manager/management/tag-resources) | tag format: `key1=val1,key2=val2` | No | ""
 diskEncryptionSetID | ResourceId of the disk encryption set to use for [enabling encryption at rest](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/disk-encryption) | format: `/subscriptions/{subs-id}/resourceGroups/{rg-name}/providers/Microsoft.Compute/diskEncryptionSets/{diskEncryptionSet-name}` | No | ""
 writeAcceleratorEnabled | [Write Accelerator on Azure Disks](https://docs.microsoft.com/azure/virtual-machines/windows/how-to-enable-write-accelerator) | `true`, `false` | No | ""
+perfProfile | [disk device performance profile](../docs/enhancements/feat-add-ability-to-tune-azuredisk-performance-parameters.md) | `none`, `basic` | No | `none`
+
 
  - disk created by dynamic provisioning
    - disk name format(example): `pvc-e132d37f-9e8f-434a-b599-15a4ab211b39`
