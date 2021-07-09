@@ -76,7 +76,7 @@ func (fake *FakeSafeMounter) GetDeviceNameFromMount(mountPath, pluginMountDir st
 	cmd := fmt.Sprintf("(Get-Item -Path %s).Target", mountPath)
 	output, err := fake.Command("powershell", cmd).Output()
 	if err != nil {
-		return "", fmt.Errorf("Forward to GetVolumeIDFromTargetPath failed, err=error getting the volume for the mount %s, internal error error getting volume from mount. cmd: (Get-Item -Path %s).Target, output: , error: <nil>", mountPath, cmd, string(output), err)
+		return "", fmt.Errorf("Forward to GetVolumeIDFromTargetPath failed, err=error getting the volume for the mount %s, internal error error getting volume from mount. cmd: (Get-Item -Path %s).Target, output: , error: <nil>", mountPath, mountPath)
 	}
 
 	return string(output), nil
