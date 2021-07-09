@@ -47,12 +47,10 @@ controller:
   logLevel: 5
   tolerations:
     - key: "node-role.kubernetes.io/master"
-      operator: "Equal"
-      value: "true"
+      operator: "Exists"
       effect: "NoSchedule"
     - key: "node-role.kubernetes.io/controlplane"
-      operator: "Equal"
-      value: "true"
+      operator: "Exists"
       effect: "NoSchedule"
 
 node:
