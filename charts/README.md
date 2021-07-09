@@ -4,9 +4,9 @@
  - [install Helm](https://helm.sh/docs/intro/quickstart/#install-helm)
 
 ### Tips
- - `--set controller.runOnMaster=true` could make csi-azuredisk-controller only run on master node
- - `--set feature.enableFSGroupPolicy=true` could enable `fsGroupPolicy` on a k8s 1.20+ cluster
- - `--set controller.replicas=1` could set replica of csi-azuredisk-controller as `1`
+ - make controller only run on master node: `--set controller.runOnMaster=true`
+ - enable `fsGroupPolicy` on a k8s 1.20+ cluster: `--set feature.enableFSGroupPolicy=true`
+ - set replica of controller as `1`: `--set controller.replicas=1`
 
 ## install latest version
 ```console
@@ -28,6 +28,13 @@ helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --na
 ### install on RedHat/CentOS
 ```console
 helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --set linux.distro=fedora
+```
+
+### install driver with customized driver name, deployment name
+> only supported from `v1.5.0`+
+ - following example would install a driver with name `disk2`
+```console
+helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --set driver.name="disk2.csi.azure.com" --set controller.name="csi-azuredisk2-controller" --set rbac.name=azuredisk2 --set serviceAccount.controller=csi-azuredisk2-controller-sa --set serviceAccount.node=csi-azuredisk2-node-sa --set linux.dsName=csi-azuredisk2-node --set windows.dsName=csi-azuredisk2-node-win --set node.livenessProbe.healthPort=39705
 ```
 
 ### search for all available chart versions
