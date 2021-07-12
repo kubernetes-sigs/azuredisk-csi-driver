@@ -132,7 +132,6 @@ func newDriverV2(nodeID string,
 	driver.Version = driverVersion
 	driver.NodeID = nodeID
 	driver.VolumeAttachLimit = volumeAttachLimit
-	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.perfOptimizationEnabled = enablePerfOptimization
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.objectNamespace = driverObjectNamespace
