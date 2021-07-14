@@ -13,6 +13,9 @@ spec:
     metadata:
 {{ include "azuredisk.labels" . | indent 6 }}
         app: {{ .Values.controller.name }}
+{{- with .Values.controller.podLabels }}
+{{ toYaml . | indent 8 }}
+{{- end }}
     spec:
       {{- if .Values.imagePullSecrets }}
       imagePullSecrets:
@@ -77,7 +80,6 @@ spec:
             requests:
               cpu: 10m
               memory: 20Mi
-        {{- if .Values.snapshot.enabled}}
         - name: csi-snapshotter
           image: "{{ .Values.snapshot.image.csiSnapshotter.repository }}:{{ .Values.snapshot.image.csiSnapshotter.tag }}"
           args:
@@ -97,7 +99,6 @@ spec:
             requests:
               cpu: 10m
               memory: 20Mi
-        {{- end}}
         - name: csi-resizer
           image: "{{ .Values.image.csiResizer.repository }}:{{ .Values.image.csiResizer.tag }}"
           args:
