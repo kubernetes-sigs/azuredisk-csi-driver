@@ -44,47 +44,47 @@ func TestIntegrationOnAzurePublicCloud(t *testing.T) {
 	creds, err := credentials.CreateAzureCredentialFile()
 	defer func() {
 		err := credentials.DeleteAzureCredentialFile()
-		assert.NoError(t, err)
+		azure.AssertNoError(t, err, 1)
 	}()
-	assert.NoError(t, err)
-	assert.NotNil(t, creds)
+	azure.AssertNoError(t, err, 1)
+	azure.AssertNotNil(t, creds, 1)
 
 	// Set necessary env vars for sanity test
 	os.Setenv("AZURE_CREDENTIAL_FILE", credentials.TempAzureCredentialFilePath)
 	os.Setenv("nodeid", nodeid)
 
 	azureClient, err := azure.GetAzureClient(creds.Cloud, creds.SubscriptionID, creds.AADClientID, creds.TenantID, creds.AADClientSecret)
-	assert.NoError(t, err)
+	azure.AssertNoError(t, err, 1)
 
 	ctx := context.Background()
 	// Create an empty resource group for integration test
 	log.Printf("Creating resource group %s in %s", creds.ResourceGroup, creds.Cloud)
 	_, err = azureClient.EnsureResourceGroup(ctx, creds.ResourceGroup, creds.Location, nil)
-	assert.NoError(t, err)
+	azure.AssertNoError(t, err, 1)
 	defer func() {
 		// Only delete resource group the test created
 		if strings.HasPrefix(creds.ResourceGroup, credentials.ResourceGroupPrefix) {
 			log.Printf("Deleting resource group %s", creds.ResourceGroup)
 			err := azureClient.DeleteResourceGroup(ctx, creds.ResourceGroup)
-			assert.NoError(t, err)
+			azure.AssertNoError(t, err, 1)
 		}
 	}()
 
 	log.Printf("Creating a VM in %s", creds.ResourceGroup)
 	_, err = azureClient.EnsureVirtualMachine(ctx, creds.ResourceGroup, creds.Location, nodeid)
-	assert.NoError(t, err)
+	azure.AssertNoError(t, err, 1)
 
 	// Execute the script from project root
 	err = os.Chdir("../..")
-	assert.NoError(t, err)
+	azure.AssertNoError(t, err, 1)
 	// Change directory back to test/integration in preparation for next test
 	defer func() {
 		err := os.Chdir("test/integration")
-		assert.NoError(t, err)
+		azure.AssertNoError(t, err, 1)
 	}()
 
 	cwd, err := os.Getwd()
-	assert.NoError(t, err)
+	azure.AssertNoError(t, err, 1)
 	assert.True(t, strings.HasSuffix(cwd, "azuredisk-csi-driver"))
 
 	args := []string{creds.Cloud}

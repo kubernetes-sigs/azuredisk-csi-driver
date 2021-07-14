@@ -3,7 +3,7 @@ StorageClass:
 SnapshotClass:
     FromName: true
 DriverInfo:
-    Name: disk.csi.azure.com
+    Name: test.csi.azure.com
     Capabilities:
         persistence: true
         multipods: true

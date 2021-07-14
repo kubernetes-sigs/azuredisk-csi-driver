@@ -28,6 +28,11 @@ else
     kubectl apply -f deploy/example/storageclass-azuredisk-csi.yaml
 fi
 
+DRIVER=disk
+if [[ "$#" -gt 3 ]]; then
+    DRIVER=$4
+fi
+
 rollout_and_wait() {
     echo "Applying config \"$1\""
     trap "echo \"Failed to apply config \\\"$1\\\"\" >&2" err
@@ -40,7 +45,7 @@ rollout_and_wait() {
     fi
 }
 
-FSGROUP_SUPPORT_ENABLED=$(expr "$(kubectl get CSIDriver disk.csi.azure.com --output jsonpath='{$.spec.fsGroupPolicy}')" : "File" != 0 || true)
+FSGROUP_SUPPORT_ENABLED=$(expr "$(kubectl get CSIDriver $DRIVER.csi.azure.com --output jsonpath='{$.spec.fsGroupPolicy}')" : "File" != 0 || true)
 
 EXAMPLES=()
 

@@ -2,17 +2,17 @@
 kind: DaemonSet
 apiVersion: apps/v1
 metadata:
-  name: csi-azuredisk-node
+  name: {{ .Values.linux.dsName }}
   namespace: {{ .Release.Namespace }}
 {{ include "azuredisk.labels" . | indent 2 }}
 spec:
   selector:
     matchLabels:
-      app: csi-azuredisk-node
+      app: {{ .Values.linux.dsName }}
   template:
     metadata:
 {{ include "azuredisk.labels" . | indent 6 }}
-        app: csi-azuredisk-node
+        app: {{ .Values.linux.dsName }}
     spec:
       {{- if .Values.imagePullSecrets }}
       imagePullSecrets:
@@ -96,11 +96,8 @@ spec:
             - "--drivername={{ .Values.driver.name }}"
             - "--volume-attach-limit={{ .Values.driver.volumeAttachLimit }}"
           ports:
-            - containerPort: 29603
+            - containerPort: {{ .Values.node.livenessProbe.healthPort }}
               name: healthz
-              protocol: TCP
-            - containerPort: {{ .Values.node.metricsPort }}
-              name: metrics
               protocol: TCP
           livenessProbe:
             failureThreshold: 5
