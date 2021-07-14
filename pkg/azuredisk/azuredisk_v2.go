@@ -275,6 +275,7 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 		RenewDeadline:                 &renewDeadline,
 		RetryPeriod:                   &retryPeriod,
 		LeaderElectionReleaseOnCancel: true,
+		MetricsBindAddress:            ":8090",
 		Namespace:                     d.objectNamespace})
 	if err != nil {
 		klog.Errorf("Unable to set up overall controller manager. Error: %v. Exiting application...", err)

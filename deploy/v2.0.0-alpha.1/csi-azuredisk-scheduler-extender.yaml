@@ -19,7 +19,7 @@ data:
     profiles:
     - schedulerName: csi-azuredisk-scheduler-extender
     extenders:
-    - urlPrefix: "http://localhost:8888/azdiskschedulerextender"
+    - urlPrefix: "http://localhost:8889/azdiskschedulerextender"
       filterVerb: "filter"
       prioritizeVerb: "prioritize"
       weight: 1
@@ -66,7 +66,7 @@ spec:
         image: mcr.microsoft.com/k8s/csi/azdiskschedulerextender-csi:v2.0.0-alpha.1 
         imagePullPolicy: Always
         args:
-        - "--port=8888"
+        - "--port=8889"
         - "--metrics-address=0.0.0.0:29606"
         - "--v=5"
         livenessProbe:
@@ -89,8 +89,8 @@ spec:
           periodSeconds: 3
         ports:
           - name: extender-port
-            containerPort: 8888
-            hostPort: 8888
+            containerPort: 8889
+            hostPort: 8889
           - name: metrics-port
             containerPort: 29606
             protocol: TCP
