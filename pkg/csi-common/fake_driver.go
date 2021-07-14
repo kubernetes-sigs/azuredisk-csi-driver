@@ -17,7 +17,7 @@ limitations under the License.
 package csicommon
 
 const (
-	fakeCSIDriverName = "fake"
+	fakeCSIDriverName = "disk.csi.azure.com"
 	fakeNodeID        = "fakeNodeID"
 )
 

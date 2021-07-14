@@ -21,13 +21,16 @@ package azuredisk
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
-	"os/signal"
+	"reflect"
 	"strings"
-	"syscall"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -45,6 +48,7 @@ import (
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller"
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/provisioner"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -97,17 +101,16 @@ type CrdProvisioner interface {
 	UnpublishVolume(ctx context.Context, volumeID string, nodeID string, secrets map[string]string) error
 	ExpandVolume(ctx context.Context, volumeID string, capacityRange *azuredisk.CapacityRange, secrets map[string]string) (*azuredisk.AzVolumeStatusParams, error)
 	GetDiskClientSet() azDiskClientSet.Interface
-	GetDiskClientSetAddr() *azDiskClientSet.Interface
 }
 
 // NewDriver creates a Driver or DriverV2 object depending on the --temp-use-driver-v2 flag.
-func NewDriver(nodeID string) CSIDriver {
+func NewDriver(nodeID, driverName string, enablePerfOptimization bool) CSIDriver {
 	var d CSIDriver
 
 	if !*useDriverV2 {
-		d = newDriverV1(nodeID)
+		d = newDriverV1(nodeID, driverName, enablePerfOptimization)
 	} else {
-		d = newDriverV2(nodeID, *driverObjectNamespace, "default", "default", *heartbeatFrequencyInSec, *controllerLeaseDurationInSec, *controllerLeaseRenewDeadlineInSec, *controllerLeaseRetryPeriodInSec)
+		d = newDriverV2(nodeID, driverName, enablePerfOptimization, *driverObjectNamespace, "default", "default", *heartbeatFrequencyInSec, *controllerLeaseDurationInSec, *controllerLeaseRenewDeadlineInSec, *controllerLeaseRetryPeriodInSec)
 	}
 
 	return d
@@ -116,6 +119,8 @@ func NewDriver(nodeID string) CSIDriver {
 // newDriverV2 Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
 // does not support optional driver plugin info manifest field. Refer to CSI spec for more details.
 func newDriverV2(nodeID string,
+	driverName string,
+	enablePerfOptimization bool,
 	driverObjectNamespace string,
 	nodePartition string,
 	controllerPartition string,
@@ -125,9 +130,10 @@ func newDriverV2(nodeID string,
 	leaseRetryPeriodInSec int) *DriverV2 {
 	klog.Warning("Using DriverV2")
 	driver := DriverV2{}
-	driver.Name = DriverName
+	driver.Name = driverName
 	driver.Version = driverVersion
 	driver.NodeID = nodeID
+	driver.perfOptimizationEnabled = enablePerfOptimization
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.objectNamespace = driverObjectNamespace
 	driver.nodePartition = nodePartition
@@ -136,12 +142,14 @@ func newDriverV2(nodeID string,
 	driver.controllerLeaseDurationInSec = leaseDurationInSec
 	driver.controllerLeaseRenewDeadlineInSec = leaseRenewDeadlineInSec
 	driver.controllerLeaseRetryPeriodInSec = leaseRetryPeriodInSec
+
+	topologyKey = fmt.Sprintf("topology.%s/zone", driver.Name)
 	return &driver
 }
 
 // Run driver initialization
 func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock bool) {
-	versionMeta, err := GetVersionYAML()
+	versionMeta, err := GetVersionYAML(d.Name)
 	if err != nil {
 		klog.Fatalf("%v", err)
 	}
@@ -174,6 +182,15 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 		d.cloudProvisioner.GetCloud().Config.UseInstanceMetadata = false
 	}
 
+	d.deviceHelper = optimization.NewSafeDeviceHelper()
+
+	if d.getPerfOptimizationEnabled() {
+		d.nodeInfo, err = optimization.NewNodeInfo(d.cloudProvisioner.GetCloud(), d.NodeID)
+		if err != nil {
+			klog.Fatalf("Failed to get node info. Error: %v", err)
+		}
+	}
+
 	d.nodeProvisioner, err = provisioner.NewNodeProvisioner()
 	if err != nil {
 		klog.Fatalf("Failed to get node provisioner. Error: %v", err)
@@ -198,14 +215,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 	})
 
 	// cancel the context the controller manager will be running under, if receive SIGTERM or SIGINT
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	c := make(chan os.Signal, 2)
-	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		<-c
-		cancel()
-	}()
+	ctx := context.Background()
 
 	// Start the controllers if this is a controller plug-in
 	if *isControllerPlugin {
@@ -275,31 +285,55 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 	// Setup a new controller to clean-up AzDriverNodes
 	// objects for the nodes which get deleted
 	klog.V(2).Info("Initializing AzDriverNode controller")
-	err = controller.InitializeAzDriverNodeController(mgr, d.crdProvisioner.GetDiskClientSetAddr(), d.objectNamespace)
+	_, err = controller.NewAzDriverNodeController(mgr, d.crdProvisioner.GetDiskClientSet(), d.objectNamespace)
 	if err != nil {
 		klog.Errorf("Failed to initialize AzDriverNodeController. Error: %v. Exiting application...", err)
 		os.Exit(1)
 	}
+
 	klog.V(2).Info("Initializing AzVolumeAttachment controller")
-	err = controller.NewAzVolumeAttachmentController(ctx, mgr, d.crdProvisioner.GetDiskClientSetAddr(), d.objectNamespace, d.cloudProvisioner)
+	azvaReconciler, err := controller.NewAzVolumeAttachmentController(mgr, d.crdProvisioner.GetDiskClientSet(), d.kubeClient, d.objectNamespace, d.cloudProvisioner)
 	if err != nil {
 		klog.Errorf("Failed to initialize AzVolumeAttachmentController. Error: %v. Exiting application...", err)
 		os.Exit(1)
 	}
 
 	klog.V(2).Info("Initializing AzVolume controller")
-	err = controller.NewAzVolumeController(mgr, d.crdProvisioner.GetDiskClientSetAddr(), d.objectNamespace, d.cloudProvisioner)
+	azvReconciler, err := controller.NewAzVolumeController(mgr, d.crdProvisioner.GetDiskClientSet(), d.kubeClient, d.objectNamespace, d.cloudProvisioner)
 	if err != nil {
 		klog.Errorf("Failed to initialize AzVolumeController. Error: %v. Exiting application...", err)
 		os.Exit(1)
 	}
 
 	klog.V(2).Info("Initializing PV controller")
-	err = controller.NewPVController(mgr, d.crdProvisioner.GetDiskClientSetAddr(), d.objectNamespace)
+	err = controller.NewPVController(mgr, d.crdProvisioner.GetDiskClientSet(), d.objectNamespace)
 	if err != nil {
 		klog.Errorf("Failed to initialize PVController. Error: %v. Exiting application...", err)
 		os.Exit(1)
 	}
+
+	klog.V(2).Info("Initializing VolumeAttachment controller")
+	vaReconciler, err := controller.NewVolumeAttachmentController(ctx, mgr, d.crdProvisioner.GetDiskClientSet(), d.kubeClient, d.objectNamespace)
+	if err != nil {
+		klog.Errorf("Failed to initialize VolumeAttachmentController. Error: %v. Exiting application...", err)
+		os.Exit(1)
+	}
+	// This goroutine is preserved for leader controller manager
+	// Leader controller manager should recover CRI if possible and clean them up before exiting.
+	go func() {
+		<-mgr.Elected()
+		// recover lost states if necessary
+		klog.Infof("Elected as leader; initiating CRI recovery...")
+		if err := azvReconciler.Recover(ctx); err != nil {
+			klog.Warningf("Failed to recover AzVolume: %v", err)
+		}
+		if err := azvaReconciler.Recover(ctx); err != nil {
+			klog.Warningf("Failed to recover AzVolumeAttachments: %v.", err)
+		}
+		if err := vaReconciler.Recover(ctx); err != nil {
+			klog.Warningf("Failed to update AzVolumeAttachments with necessary VolumeAttachments Annotations: %v.", err)
+		}
+	}()
 
 	klog.V(2).Info("Starting controller manager")
 	if err := mgr.Start(ctx); err != nil {
@@ -423,6 +457,38 @@ func (kw klogWriter) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
+func (d *DriverV2) checkDiskCapacity(ctx context.Context, resourceGroup, diskName string, requestGiB int) (bool, error) {
+	disk, err := d.cloudProvisioner.GetCloud().DisksClient.Get(ctx, resourceGroup, diskName)
+	// Because we can not judge the reason of the error. Maybe the disk does not exist.
+	// So here we do not handle the error.
+	if err == nil {
+		if !reflect.DeepEqual(disk, compute.Disk{}) && disk.DiskSizeGB != nil && int(*disk.DiskSizeGB) != requestGiB {
+			return false, status.Errorf(codes.AlreadyExists, "the request volume already exists, but its capacity(%v) is different from (%v)", *disk.DiskProperties.DiskSizeGB, requestGiB)
+		}
+	}
+	return true, nil
+}
+
 func (d *DriverV2) getVolumeLocks() *volumehelper.VolumeLocks {
 	return d.volumeLocks
+}
+
+func (d *DriverV2) addControllerFinalizer(finalizers []string, finalizerToAdd string) []string {
+	for _, finalizer := range finalizers {
+		if finalizer == finalizerToAdd {
+			return finalizers
+		}
+	}
+	finalizers = append(finalizers, finalizerToAdd)
+	return finalizers
+}
+
+func (d *DriverV2) removeControllerFinalizer(finalizers []string, finalizerToRemove string) []string {
+	removed := []string{}
+	for _, finalizer := range finalizers {
+		if finalizer != finalizerToRemove {
+			removed = append(removed, finalizer)
+		}
+	}
+	return removed
 }

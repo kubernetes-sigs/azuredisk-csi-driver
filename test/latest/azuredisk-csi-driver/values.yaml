@@ -40,6 +40,13 @@ snapshot:
 linux:
   enabled: true
 
+cleanup:
+  image:
+    curl:
+      repository: docker.io/curlimages/curl
+      tag: latest
+      pullPolicy: IfNotPresent
+
 windows:
   enabled: true
   image:

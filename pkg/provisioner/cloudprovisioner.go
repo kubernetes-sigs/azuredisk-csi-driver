@@ -40,6 +40,7 @@ import (
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
@@ -150,6 +151,11 @@ func (c *CloudProvisioner) CreateVolume(
 			tags[azureutils.PVCNamespaceTag] = v
 		case azureutils.PVNameKey:
 			tags[azureutils.PVNameTag] = v
+
+		case azureutils.PerfProfileField:
+			if !optimization.IsValidPerfProfile(v) {
+				return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Perf profile %s is not supported. Supported tuning modes are none and basic.", v))
+			}
 
 		// The following parameter is not used by the cloud provisioner, but must be present in the VolumeContext
 		// returned to the caller so that it is included in the parameters passed to Node{Publish|Stage}Volume.
@@ -265,6 +271,7 @@ func (c *CloudProvisioner) CreateVolume(
 		}
 	}
 
+	parameters[azureutils.RequestedSizeGiB] = strconv.Itoa(requestGiB)
 	volumeOptions := &azure.ManagedDiskOptions{
 		DiskName:            diskName,
 		StorageAccountType:  skuName,
@@ -333,7 +340,7 @@ func (c *CloudProvisioner) PublishVolume(
 	volumeID string,
 	nodeID string,
 	volumeContext map[string]string) (map[string]string, error) {
-	err := c.CheckDiskExists(ctx, volumeID)
+	disk, err := c.CheckDiskExists(ctx, volumeID)
 	if err != nil {
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume not found, failed with error: %v", err))
 	}
@@ -367,7 +374,7 @@ func (c *CloudProvisioner) PublishVolume(
 		}
 		klog.V(2).Infof("Trying to attach volume %q to node %q", volumeID, nodeName)
 
-		lun, err = c.cloud.AttachDisk(true, diskName, volumeID, nodeName, cachingMode)
+		lun, err = c.cloud.AttachDisk(true, diskName, volumeID, nodeName, cachingMode, disk)
 		if err == nil {
 			klog.V(2).Infof("Attach operation successful: volume %q attached to node %q.", volumeID, nodeName)
 		} else {
@@ -645,22 +652,23 @@ func (c *CloudProvisioner) DeleteSnapshot(
 	return nil
 }
 
-func (c *CloudProvisioner) CheckDiskExists(ctx context.Context, diskURI string) error {
+func (c *CloudProvisioner) CheckDiskExists(ctx context.Context, diskURI string) (*compute.Disk, error) {
 	diskName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(diskURI)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	resourceGroup, err := azureutils.GetResourceGroupFromAzureManagedDiskURI(diskURI)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	if _, rerr := c.cloud.DisksClient.Get(ctx, resourceGroup, diskName); rerr != nil {
-		return rerr.Error()
+	disk, rerr := c.cloud.DisksClient.Get(ctx, resourceGroup, diskName)
+	if rerr != nil {
+		return nil, rerr.Error()
 	}
 
-	return nil
+	return &disk, nil
 }
 
 func (c *CloudProvisioner) GetCloud() *azure.Cloud {

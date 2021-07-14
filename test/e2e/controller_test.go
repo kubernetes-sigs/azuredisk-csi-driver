@@ -186,7 +186,7 @@ var _ = ginkgo.Describe("Controller", func() {
 			// failover to one of replicas
 			var replica *v1alpha1.AzVolumeAttachment
 			for _, attachment := range attachments.Items {
-				if attachment.Status != nil && attachment.Status.Role == v1alpha1.ReplicaRole {
+				if attachment.Status.Detail != nil && attachment.Status.Detail.Role == v1alpha1.ReplicaRole {
 					replica = &attachment
 					break
 				}
@@ -224,7 +224,7 @@ var _ = ginkgo.Describe("Controller", func() {
 			// fail replica attachment
 			var replica *v1alpha1.AzVolumeAttachment
 			for _, attachment := range attachments.Items {
-				if attachment.Status != nil && attachment.Status.Role == v1alpha1.ReplicaRole {
+				if attachment.Status.Detail != nil && attachment.Status.Detail.Role == v1alpha1.ReplicaRole {
 					replica = &attachment
 					break
 				}
@@ -265,7 +265,7 @@ var _ = ginkgo.Describe("Controller", func() {
 			// fail replica attachments
 			i := 0
 			for _, attachment := range attachments.Items {
-				if attachment.Status != nil && attachment.Status.Role == v1alpha1.ReplicaRole {
+				if attachment.Status.Detail != nil && attachment.Status.Detail.Role == v1alpha1.ReplicaRole {
 					err = azDiskClient.DiskV1alpha1().AzVolumeAttachments(namespace).Delete(context.Background(), attachment.Name, metav1.DeleteOptions{})
 					framework.ExpectNoError(err)
 					// below will be commented out until the controller test uses AzureDiskDriver_v2 running on a separate dedicated namespace for testing
@@ -350,7 +350,7 @@ var _ = ginkgo.Describe("Controller", func() {
 
 			var replica *v1alpha1.AzVolumeAttachment
 			for _, attachment := range attachments.Items {
-				if attachment.Status != nil && attachment.Status.Role == v1alpha1.ReplicaRole {
+				if attachment.Status.Detail != nil && attachment.Status.Detail.Role == v1alpha1.ReplicaRole {
 					replica = &attachment
 					break
 				}

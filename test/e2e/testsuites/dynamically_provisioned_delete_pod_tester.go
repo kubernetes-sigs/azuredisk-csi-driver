@@ -41,7 +41,7 @@ type PodExecCheck struct {
 }
 
 func (t *DynamicallyProvisionedDeletePodTest) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
-	tDeployment, cleanup := t.Pod.SetupDeployment(client, namespace, t.CSIDriver, schedulerName)
+	tDeployment, cleanup := t.Pod.SetupDeployment(client, namespace, t.CSIDriver, driver.GetParameters(), schedulerName)
 	// defer must be called here for resources not get removed before using them
 	for i := range cleanup {
 		defer cleanup[i]()

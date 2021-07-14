@@ -20,7 +20,7 @@ spec:
       {{- end }}
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
-      serviceAccountName: csi-azuredisk-node-sa
+      serviceAccountName: {{ .Values.serviceAccount.node }}
       nodeSelector:
         kubernetes.io/os: linux
       affinity:
@@ -33,8 +33,10 @@ spec:
                     values:
                       - virtual-kubelet
       priorityClassName: system-node-critical
+{{- with .Values.linux.tolerations }}
       tolerations:
-        - operator: "Exists"
+{{ toYaml . | indent 8 }}
+{{- end }}
       {{- include "azuredisk.pullSecrets" . | indent 6 }}
       containers:
         - name: liveness-probe
@@ -63,12 +65,12 @@ spec:
           lifecycle:
             preStop:
               exec:
-                command: ["/bin/sh", "-c", "rm -rf /registration/disk.csi.azure.com-reg.sock /csi/csi.sock"]
+                command: ["/bin/sh", "-c", "rm -rf /registration/{{ .Values.driver.name }}-reg.sock /csi/csi.sock"]
           env:
             - name: ADDRESS
               value: /csi/csi.sock
             - name: DRIVER_REG_SOCK_PATH
-              value: {{ .Values.linux.kubelet }}/plugins/disk.csi.azure.com/csi.sock
+              value: {{ .Values.linux.kubelet }}/plugins/{{ .Values.driver.name }}/csi.sock
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
@@ -88,6 +90,8 @@ spec:
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--nodeid=$(KUBE_NODE_NAME)"
             - "--metrics-address=0.0.0.0:{{ .Values.node.metricsPort }}"
+            - "--enable-perf-optimization={{ .Values.linux.enablePerfOptimization }}"
+            - "--drivername={{ .Values.driver.name }}"
           ports:
             - containerPort: 29603
               name: healthz
@@ -121,7 +125,7 @@ spec:
             - name: AZURE_ENVIRONMENT_FILEPATH
               value: /etc/kubernetes/azurestackcloud.json
             {{- end }}
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          imagePullPolicy: {{ .Values.image.azuredisk.pullPolicy }}
           securityContext:
             privileged: true
           volumeMounts:
@@ -163,7 +167,7 @@ spec:
               memory: 20Mi
       volumes:
         - hostPath:
-            path: {{ .Values.linux.kubelet }}/plugins/disk.csi.azure.com
+            path: {{ .Values.linux.kubelet }}/plugins/{{ .Values.driver.name }}
             type: DirectoryOrCreate
           name: socket-dir
         - hostPath:

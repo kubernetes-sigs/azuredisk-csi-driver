@@ -23,12 +23,17 @@ import (
 
 	"k8s.io/apimachinery/pkg/util/sets"
 
+	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2021-02-01/network"
 	"github.com/Azure/go-autorest/autorest/to"
 
 	"k8s.io/klog/v2"
 
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
 )
+
+var strToExtendedLocationType = map[string]network.ExtendedLocationTypes{
+	"edgezone": network.ExtendedLocationTypesEdgeZone,
+}
 
 // lockMap used to lock on entries
 type lockMap struct {
@@ -110,22 +115,40 @@ func parseTags(tags string) map[string]*string {
 	return formatted
 }
 
+func findKeyInMapCaseInsensitive(targetMap map[string]*string, key string) (bool, string) {
+	for k := range targetMap {
+		if strings.EqualFold(k, key) {
+			return true, k
+		}
+	}
+
+	return false, ""
+}
+
 func (az *Cloud) reconcileTags(currentTagsOnResource, newTags map[string]*string) (reconciledTags map[string]*string, changed bool) {
 	var systemTags []string
-	var systemTagsMap sets.String
+	systemTagsMap := make(map[string]*string)
 
 	if az.SystemTags != "" {
 		systemTags = strings.Split(az.SystemTags, consts.TagsDelimiter)
 		for i := 0; i < len(systemTags); i++ {
 			systemTags[i] = strings.TrimSpace(systemTags[i])
 		}
-		systemTagsMap = sets.NewString(systemTags...)
+
+		for _, systemTag := range systemTags {
+			systemTagsMap[systemTag] = to.StringPtr("")
+		}
 	}
 
 	// if the systemTags is not set, just add/update new currentTagsOnResource and not delete old currentTagsOnResource
 	for k, v := range newTags {
-		if vv, ok := currentTagsOnResource[k]; !ok || !strings.EqualFold(to.String(v), to.String(vv)) {
+		found, key := findKeyInMapCaseInsensitive(currentTagsOnResource, k)
+
+		if !found {
 			currentTagsOnResource[k] = v
+			changed = true
+		} else if !strings.EqualFold(to.String(v), to.String(currentTagsOnResource[key])) {
+			currentTagsOnResource[key] = v
 			changed = true
 		}
 	}
@@ -133,9 +156,11 @@ func (az *Cloud) reconcileTags(currentTagsOnResource, newTags map[string]*string
 	// if the systemTags is set, delete the old currentTagsOnResource
 	if len(systemTagsMap) > 0 {
 		for k := range currentTagsOnResource {
-			if _, ok := newTags[k]; !ok && !systemTagsMap.Has(k) {
-				delete(currentTagsOnResource, k)
-				changed = true
+			if _, ok := newTags[k]; !ok {
+				if found, _ := findKeyInMapCaseInsensitive(systemTagsMap, k); !found {
+					delete(currentTagsOnResource, k)
+					changed = true
+				}
 			}
 		}
 	}
@@ -153,4 +178,12 @@ func (az *Cloud) getVMSetNamesSharingPrimarySLB() sets.String {
 	}
 
 	return sets.NewString(vmSetNames...)
+}
+
+func getExtendedLocationTypeFromString(extendedLocationType string) network.ExtendedLocationTypes {
+	extendedLocationType = strings.ToLower(extendedLocationType)
+	if val, ok := strToExtendedLocationType[extendedLocationType]; ok {
+		return val
+	}
+	return network.ExtendedLocationTypesEdgeZone
 }

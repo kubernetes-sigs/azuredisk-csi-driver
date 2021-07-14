@@ -143,9 +143,55 @@ spec:
             - volumeCapability
             type: object
           status:
-            description: status represents the current state of AzVolume. Nil status
-              indicates that the underlying volume has not yet been provisioned
+            description: status represents the current state of AzVolume. includes
+              error, state, and volume status
             properties:
+              detail:
+                description: Current status detail of the AzVolume Nil detail indicates
+                  that the volume has not been created
+                properties:
+                  phase:
+                    description: Current phase of the underlying PV
+                    type: string
+                  status:
+                    description: Current status of the AzVolume
+                    properties:
+                      accessible_topology:
+                        items:
+                          properties:
+                            segments:
+                              additionalProperties:
+                                type: string
+                              type: object
+                          type: object
+                        type: array
+                      capacity_bytes:
+                        format: int64
+                        type: integer
+                      content_source:
+                        properties:
+                          content_source:
+                            type: integer
+                          content_source_id:
+                            type: string
+                        required:
+                        - content_source
+                        - content_source_id
+                        type: object
+                      node_expansion_required:
+                        type: boolean
+                      parameters:
+                        additionalProperties:
+                          type: string
+                        type: object
+                      volume_id:
+                        type: string
+                    required:
+                    - capacity_bytes
+                    - node_expansion_required
+                    - volume_id
+                    type: object
+                type: object
               error:
                 description: Error occurred during creation/deletion of volume
                 properties:
@@ -185,55 +231,18 @@ spec:
                 - errorCode
                 - errorMessage
                 type: object
-              phase:
-                description: Current phase of the underlying PV
+              state:
+                description: Current state of underlying volume
                 type: string
-              status:
-                description: Current status of the AzVolume
-                properties:
-                  accessible_topology:
-                    items:
-                      properties:
-                        segments:
-                          additionalProperties:
-                            type: string
-                          type: object
-                      type: object
-                    type: array
-                  capacity_bytes:
-                    format: int64
-                    type: integer
-                  content_source:
-                    properties:
-                      content_source:
-                        type: integer
-                      content_source_id:
-                        type: string
-                    required:
-                    - content_source
-                    - content_source_id
-                    type: object
-                  node_expansion_required:
-                    type: boolean
-                  parameters:
-                    additionalProperties:
-                      type: string
-                    type: object
-                  volume_id:
-                    type: string
-                required:
-                - capacity_bytes
-                - node_expansion_required
-                - volume_id
-                type: object
+            required:
+            - state
             type: object
         required:
         - spec
+        - status
         type: object
     served: true
     storage: true
-    subresources:
-      status: {}
 status:
   acceptedNames:
     kind: ""

@@ -1,15 +1,9 @@
 {{- if .Values.rbac.create -}}
 ---
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: azdiskschedulerextender
-  namespace: {{ .Release.Namespace }}
----
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: azdiskschedulerextender-role
+  name: csi-azuredisk-scheduler-extender-role
 rules:
   - apiGroups: [""]
     resources: ["endpoints"]
@@ -59,7 +53,7 @@ rules:
     verbs: ["get", "list", "watch"]
   - apiGroups: [""]
     resources: ["persistentvolumeclaims"]
-    {{- if not .Values.csiMigration.enabled }}
+    {{- if not .Values.feature.enableCSIMigration }}
     verbs: ["get", "list", "watch"]
     {{- else }}
     verbs: ["get", "list", "watch", "patch", "update"]
@@ -80,13 +74,13 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: azdiskschedulerextender-role-binding
+  name: csi-azuredisk-scheduler-extender-role-binding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: azdiskschedulerextender-role
+  name: csi-azuredisk-scheduler-extender-role
 subjects:
   - kind: ServiceAccount
+    name: {{ .Values.serviceAccount.schedulerExtender }}
     namespace: {{ .Release.Namespace }}
-    name: azdiskschedulerextender
 {{ end }}

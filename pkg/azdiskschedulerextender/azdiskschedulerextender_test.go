@@ -738,8 +738,11 @@ func getVolumeAttachment(attachmentName, ns, volumeName, nodeName string) *v1alp
 			NodeName:         nodeName,
 			RequestedRole:    v1alpha1.PrimaryRole,
 		},
-		Status: &v1alpha1Client.AzVolumeAttachmentStatus{
-			Role: v1alpha1.PrimaryRole,
+		Status: v1alpha1Client.AzVolumeAttachmentStatus{
+			Detail: &v1alpha1Client.AzVolumeAttachmentStatusDetail{
+				Role: v1alpha1.PrimaryRole,
+			},
+			State: v1alpha1Client.Attached,
 		},
 	}
 }
@@ -770,7 +773,7 @@ func getDriverNode(driverNodeName, ns, nodeName string, ready bool) *v1alpha1Cli
 // 			Namespace: ns,
 // 		},
 // 		Spec: v1.PodSpec{
-// 			SchedulerName: "azdiskschedulerextender",
+// 			SchedulerName: "csi-azuredisk-scheduler-extender",
 // 			Containers: []v1.Container{
 // 				v1.Container{
 // 					Name:  containerName,

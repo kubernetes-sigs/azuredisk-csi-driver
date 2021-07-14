@@ -39,7 +39,7 @@ type AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV struct {
 
 func (t *AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
 	replicaCount := 3
-	tStatefulSet, cleanup := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, schedulerName, replicaCount)
+	tStatefulSet, cleanup := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, driver.GetParameters(), schedulerName, replicaCount)
 	for i := range cleanup {
 		i := i
 		defer cleanup[i]()
