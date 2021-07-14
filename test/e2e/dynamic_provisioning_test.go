@@ -123,9 +123,11 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			},
 		}
 		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
-			CSIDriver:              testDriver,
-			Pods:                   pods,
-			StorageClassParameters: map[string]string{"skuName": "Standard_LRS"},
+			CSIDriver: testDriver,
+			Pods:      pods,
+			StorageClassParameters: map[string]string{
+				"skuName": "Standard_LRS",
+			},
 		}
 
 		if isMultiZone && !isUsingInTreeVolumePlugin {
@@ -138,7 +140,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			}
 		}
 		if !isUsingInTreeVolumePlugin && supportsZRS {
-			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
+			test.StorageClassParameters = map[string]string{
+				"skuName":             "StandardSSD_ZRS",
+				"networkAccessPolicy": "AllowAll",
+			}
 		}
 		if isUsingInTreeVolumePlugin {
 			// cover case: https://github.com/kubernetes/kubernetes/issues/103433
@@ -167,7 +172,8 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		}
 
 		scParameters := map[string]string{
-			"skuName": "Standard_LRS",
+			"skuName":             "Standard_LRS",
+			"networkAccessPolicy": "DenyAll",
 		}
 		test := testsuites.DynamicallyProvisionedVolumeSubpathTester{
 			CSIDriver:              testDriver,
@@ -466,7 +472,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			},
 		}
 		if !isUsingInTreeVolumePlugin && supportsZRS {
-			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
+			test.StorageClassParameters = map[string]string{
+				"skuName":             "StandardSSD_ZRS",
+				"networkAccessPolicy": "DenyAll",
+			}
 		}
 		test.Run(cs, ns)
 	})
@@ -504,7 +513,11 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			},
 		}
 		if !isUsingInTreeVolumePlugin && supportsZRS {
-			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS", "fsType": "xfs"}
+			test.StorageClassParameters = map[string]string{
+				"skuName":             "StandardSSD_ZRS",
+				"fsType":              "xfs",
+				"networkAccessPolicy": "DenyAll",
+			}
 		}
 		test.Run(cs, ns)
 	})

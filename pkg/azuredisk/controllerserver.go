@@ -129,6 +129,8 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		diskEncryptionSetID     string
 		customTags              string
 		writeAcceleratorEnabled string
+		netAccessPolicy         string
+		diskAccessID            string
 		maxShares               int
 	)
 
@@ -189,6 +191,10 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			if !optimization.IsValidPerfProfile(v) {
 				return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Perf profile %s is not supported. Supported tuning modes are none and basic.", v))
 			}
+		case networkAccessPolicyField:
+			netAccessPolicy = v
+		case diskAccessIDField:
+			diskAccessID = v
 		default:
 			return nil, fmt.Errorf("invalid parameter %s in storage class", k)
 		}
@@ -226,6 +232,11 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	}
 
 	if _, err = normalizeCachingMode(cachingMode); err != nil {
+		return nil, err
+	}
+
+	networkAccessPolicy, err := normalizeNetworkAccessPolicy(netAccessPolicy)
+	if err != nil {
 		return nil, err
 	}
 
@@ -330,8 +341,12 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		DiskEncryptionSetID: diskEncryptionSetID,
 		MaxShares:           int32(maxShares),
 		LogicalSectorSize:   int32(logicalSectorSize),
+		NetworkAccessPolicy: networkAccessPolicy,
 	}
 	volumeOptions.SkipGetDiskOperation = d.isGetDiskThrottled()
+	if diskAccessID != "" {
+		volumeOptions.DiskAccessID = &diskAccessID
+	}
 	diskURI, err := d.cloud.CreateManagedDisk(volumeOptions)
 	if err != nil {
 		if strings.Contains(err.Error(), NotFound) {
