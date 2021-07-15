@@ -1,3 +1,5 @@
+// +build azurediskv2
+
 /*
 Copyright 2019 The Kubernetes Authors.
 
