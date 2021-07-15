@@ -186,7 +186,8 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		case fsTypeField:
 			// no op, only used in NodeStageVolume
 		case kindField:
-			// no op, only for compatibility
+			// fix csi migration issue: https://github.com/kubernetes/kubernetes/issues/103433
+			parameters[kindField] = string(v1.AzureManagedDisk)
 		case perfProfileField:
 			if !optimization.IsValidPerfProfile(v) {
 				return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Perf profile %s is not supported. Supported tuning modes are none and basic.", v))
@@ -674,7 +675,7 @@ func (d *Driver) listVolumesInNodeResourceGroup(ctx context.Context, start, maxE
 
 	nextTokenString := ""
 	if !listStatus.isCompleteRun {
-		nextTokenString = strconv.Itoa(listStatus.numVisited)
+		nextTokenString = strconv.Itoa(start + listStatus.numVisited)
 	}
 
 	listVolumesResp := &csi.ListVolumesResponse{

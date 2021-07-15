@@ -17,7 +17,6 @@ limitations under the License.
 package azuredisk
 
 import (
-	"context"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -26,10 +25,7 @@ import (
 	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
-	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
-	"google.golang.org/grpc/status"
-	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/diskclient/mockdiskclient"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
@@ -600,27 +596,6 @@ func TestIsCorruptedDir(t *testing.T) {
 		isCorruptedDir := IsCorruptedDir(test.dir)
 		assert.Equal(t, test.expectedResult, isCorruptedDir, "TestCase[%d]: %s", i, test.desc)
 	}
-}
-
-func TestCheckDiskCapacity(t *testing.T) {
-	d, _ := NewFakeDriver(t)
-	size := int32(10)
-	diskName := "unit-test"
-	resourceGroup := "unit-test"
-	disk := compute.Disk{
-		DiskProperties: &compute.DiskProperties{
-			DiskSizeGB: &size,
-		},
-	}
-	d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
-	flag, err := d.checkDiskCapacity(context.TODO(), resourceGroup, diskName, 10)
-	assert.Equal(t, flag, true)
-	assert.Nil(t, err)
-
-	flag, err = d.checkDiskCapacity(context.TODO(), resourceGroup, diskName, 11)
-	assert.Equal(t, flag, false)
-	expectedErr := status.Errorf(6, "the request volume already exists, but its capacity(10) is different from (11)")
-	assert.Equal(t, err, expectedErr)
 }
 
 func TestRun(t *testing.T) {

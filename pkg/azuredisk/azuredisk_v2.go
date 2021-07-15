@@ -23,14 +23,10 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"reflect"
 	"strings"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -104,13 +100,13 @@ type CrdProvisioner interface {
 }
 
 // NewDriver creates a Driver or DriverV2 object depending on the --temp-use-driver-v2 flag.
-func NewDriver(nodeID, driverName string, enablePerfOptimization bool) CSIDriver {
+func NewDriver(nodeID, driverName string, volumeAttachLimit int64, enablePerfOptimization bool) CSIDriver {
 	var d CSIDriver
 
 	if !*useDriverV2 {
-		d = newDriverV1(nodeID, driverName, enablePerfOptimization)
+		d = newDriverV1(nodeID, driverName, volumeAttachLimit, enablePerfOptimization)
 	} else {
-		d = newDriverV2(nodeID, driverName, enablePerfOptimization, *driverObjectNamespace, "default", "default", *heartbeatFrequencyInSec, *controllerLeaseDurationInSec, *controllerLeaseRenewDeadlineInSec, *controllerLeaseRetryPeriodInSec)
+		d = newDriverV2(nodeID, driverName, volumeAttachLimit, enablePerfOptimization, *driverObjectNamespace, "default", "default", *heartbeatFrequencyInSec, *controllerLeaseDurationInSec, *controllerLeaseRenewDeadlineInSec, *controllerLeaseRetryPeriodInSec)
 	}
 
 	return d
@@ -120,6 +116,7 @@ func NewDriver(nodeID, driverName string, enablePerfOptimization bool) CSIDriver
 // does not support optional driver plugin info manifest field. Refer to CSI spec for more details.
 func newDriverV2(nodeID string,
 	driverName string,
+	volumeAttachLimit int64,
 	enablePerfOptimization bool,
 	driverObjectNamespace string,
 	nodePartition string,
@@ -128,11 +125,13 @@ func newDriverV2(nodeID string,
 	leaseDurationInSec int,
 	leaseRenewDeadlineInSec int,
 	leaseRetryPeriodInSec int) *DriverV2 {
+
 	klog.Warning("Using DriverV2")
 	driver := DriverV2{}
 	driver.Name = driverName
 	driver.Version = driverVersion
 	driver.NodeID = nodeID
+	driver.VolumeAttachLimit = volumeAttachLimit
 	driver.perfOptimizationEnabled = enablePerfOptimization
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.objectNamespace = driverObjectNamespace
@@ -276,6 +275,7 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 		RenewDeadline:                 &renewDeadline,
 		RetryPeriod:                   &retryPeriod,
 		LeaderElectionReleaseOnCancel: true,
+		MetricsBindAddress:            ":8090",
 		Namespace:                     d.objectNamespace})
 	if err != nil {
 		klog.Errorf("Unable to set up overall controller manager. Error: %v. Exiting application...", err)
@@ -455,18 +455,6 @@ func (kw klogWriter) Write(p []byte) (n int, err error) {
 		klog.InfoDepth(OutputCallDepth, string(p[DefaultPrefixLength:]))
 	}
 	return len(p), nil
-}
-
-func (d *DriverV2) checkDiskCapacity(ctx context.Context, resourceGroup, diskName string, requestGiB int) (bool, error) {
-	disk, err := d.cloudProvisioner.GetCloud().DisksClient.Get(ctx, resourceGroup, diskName)
-	// Because we can not judge the reason of the error. Maybe the disk does not exist.
-	// So here we do not handle the error.
-	if err == nil {
-		if !reflect.DeepEqual(disk, compute.Disk{}) && disk.DiskSizeGB != nil && int(*disk.DiskSizeGB) != requestGiB {
-			return false, status.Errorf(codes.AlreadyExists, "the request volume already exists, but its capacity(%v) is different from (%v)", *disk.DiskProperties.DiskSizeGB, requestGiB)
-		}
-	}
-	return true, nil
 }
 
 func (d *DriverV2) getVolumeLocks() *volumehelper.VolumeLocks {

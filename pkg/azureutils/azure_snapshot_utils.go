@@ -42,7 +42,16 @@ func NewAzureDiskSnapshot(sourceVolumeID string, snapshot *compute.Snapshot) (*v
 		return nil, fmt.Errorf("snapshot property is nil")
 	}
 
-	tp := metav1.NewTime(snapshot.SnapshotProperties.TimeCreated.ToTime())
+	if snapshot.SnapshotProperties.TimeCreated == nil {
+		return nil, fmt.Errorf("timeCreated of snapshot property is nil")
+	}
+
+	creationTime := metav1.NewTime(snapshot.SnapshotProperties.TimeCreated.ToTime())
+
+	if snapshot.SnapshotProperties.ProvisioningState == nil {
+		return nil, fmt.Errorf("provisioningState of snapshot property is nil")
+	}
+
 	ready, _ := isSnapshotReady(*snapshot.SnapshotProperties.ProvisioningState)
 
 	if snapshot.SnapshotProperties.DiskSizeGB == nil {
@@ -57,7 +66,7 @@ func NewAzureDiskSnapshot(sourceVolumeID string, snapshot *compute.Snapshot) (*v
 		SizeBytes:      volumehelper.GiBToBytes(int64(*snapshot.SnapshotProperties.DiskSizeGB)),
 		SnapshotID:     *snapshot.ID,
 		SourceVolumeID: sourceVolumeID,
-		CreationTime:   tp,
+		CreationTime:   creationTime,
 		ReadyToUse:     ready,
 	}, nil
 }

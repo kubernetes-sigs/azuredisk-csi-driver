@@ -90,9 +90,6 @@ spec:
             - containerPort: 29603
               name: healthz
               protocol: TCP
-            - containerPort: 29605
-              name: metrics
-              protocol: TCP
           livenessProbe:
             failureThreshold: 5
             httpGet:

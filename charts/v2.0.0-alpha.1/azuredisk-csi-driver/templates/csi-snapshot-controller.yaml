@@ -2,18 +2,18 @@
 kind: Deployment
 apiVersion: apps/v1
 metadata:
-  name: csi-snapshot-controller
+  name: {{ .Values.snapshot.snapshotController.name }}
   namespace: {{ .Release.Namespace }}
 {{ include "azuredisk.labels" . | indent 2 }}
 spec:
   replicas: {{ .Values.snapshot.snapshotController.replicas }}
   selector:
     matchLabels:
-      app: csi-snapshot-controller
+      app: {{ .Values.snapshot.snapshotController.name }}
   template:
     metadata:
 {{ include "azuredisk.labels" . | indent 6 }}
-        app: csi-snapshot-controller
+        app: {{ .Values.snapshot.snapshotController.name }}
     spec:
       serviceAccountName: {{ .Values.serviceAccount.snapshotController }}
       nodeSelector:
@@ -25,7 +25,7 @@ spec:
 {{- end }}
       {{- include "azuredisk.pullSecrets" . | indent 6 }}
       containers:
-        - name: csi-snapshot-controller
+        - name: {{ .Values.snapshot.snapshotController.name }}
           image: "{{ .Values.snapshot.image.csiSnapshotController.repository }}:{{ .Values.snapshot.image.csiSnapshotController.tag }}"
           args:
             - "--v=2"

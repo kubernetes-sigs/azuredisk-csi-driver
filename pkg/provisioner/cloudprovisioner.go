@@ -162,10 +162,9 @@ func (c *CloudProvisioner) CreateVolume(
 		case azureutils.FSTypeField:
 			// no-op
 
-		// The following parameter is ignored, but included for backward compatibility with the in-tree azuredisk
-		// driver.
 		case azureutils.KindField:
-			// no-op
+			// fix csi migration issue: https://github.com/kubernetes/kubernetes/issues/103433
+			parameters[azureutils.KindField] = string(v1.AzureManagedDisk)
 
 		default:
 			return nil, fmt.Errorf("invalid parameter %s in storage class", k)
@@ -196,7 +195,7 @@ func (c *CloudProvisioner) CreateVolume(
 	if skuName == compute.StandardSSDZRS || skuName == compute.PremiumZRS {
 		klog.V(2).Infof("diskZone(%s) is reset as empty since disk(%s) is ZRS(%s)", selectedAvailabilityZone, diskName, skuName)
 		selectedAvailabilityZone = ""
-		if len(accessibilityRequirements.Requisite) > 0 {
+		if accessibilityRequirements != nil && len(accessibilityRequirements.Requisite) > 0 {
 			accessibleTopology = append(accessibleTopology, accessibilityRequirements.Requisite...)
 		} else {
 			// make volume scheduled on all 3 availability zones
@@ -540,7 +539,7 @@ func (c *CloudProvisioner) CreateSnapshot(
 	}
 	klog.V(2).Infof("create snapshot(%s) under rg(%s) successfully", snapshotName, resourceGroup)
 
-	snapshotObj, err := c.GetSnapshotByID(ctx, resourceGroup, snapshotName, sourceVolumeID)
+	snapshotObj, err := c.getSnapshotByID(ctx, resourceGroup, snapshotName, sourceVolumeID)
 	if err != nil {
 		return nil, err
 	}
@@ -557,7 +556,7 @@ func (c *CloudProvisioner) ListSnapshots(
 	secrets map[string]string) (*v1alpha1.ListSnapshotsResult, error) {
 	// SnapshotID is not empty, return snapshot that match the snapshot id.
 	if len(snapshotID) != 0 {
-		snapshot, err := c.GetSnapshotByID(ctx, c.cloud.ResourceGroup, snapshotID, sourceVolumeID)
+		snapshot, err := c.getSnapshotByID(ctx, c.cloud.ResourceGroup, snapshotID, sourceVolumeID)
 		if err != nil {
 			if strings.Contains(err.Error(), azureutils.ResourceNotFound) {
 				return &v1alpha1.ListSnapshotsResult{}, nil
@@ -585,7 +584,8 @@ func (c *CloudProvisioner) ListSnapshots(
 	// 4. StartingToken is not null, and MaxEntries is not null. Return `MaxEntries` snapshots from `StartingToken`.
 	start := 0
 	if startingToken != "" {
-		start, err := strconv.Atoi(startingToken)
+		var err error
+		start, err = strconv.Atoi(startingToken)
 		if err != nil {
 			return nil, status.Errorf(codes.Aborted, "ListSnapshots starting token(%s) parsing with error: %v", startingToken, err)
 
@@ -732,7 +732,7 @@ func (c *CloudProvisioner) GetSnapshotAndResourceNameFromSnapshotID(snapshotID s
 	return snapshotName, resourceGroup, err
 }
 
-func (c *CloudProvisioner) GetSnapshotByID(ctx context.Context, resourceGroup string, snapshotName string, sourceVolumeID string) (*v1alpha1.Snapshot, error) {
+func (c *CloudProvisioner) getSnapshotByID(ctx context.Context, resourceGroup string, snapshotName string, sourceVolumeID string) (*v1alpha1.Snapshot, error) {
 	snapshotNameVal, resourceGroupName, err := c.GetSnapshotAndResourceNameFromSnapshotID(snapshotName)
 	if err != nil {
 		return nil, err
@@ -897,7 +897,7 @@ func (c *CloudProvisioner) listVolumesInNodeResourceGroup(ctx context.Context, s
 
 	nextTokenString := ""
 	if !listStatus.isCompleteRun {
-		nextTokenString = strconv.Itoa(listStatus.numVisited)
+		nextTokenString = strconv.Itoa(start + listStatus.numVisited)
 	}
 
 	listVolumesResp := &v1alpha1.ListVolumesResult{

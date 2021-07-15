@@ -847,7 +847,22 @@ func (az *Cloud) getServiceLoadBalancerStatus(service *v1.Service, lb *network.L
 			}
 
 			klog.V(2).Infof("getServiceLoadBalancerStatus gets ingress IP %q from frontendIPConfiguration %q for service %q", to.String(lbIP), to.String(ipConfiguration.Name), serviceName)
-			return &v1.LoadBalancerStatus{Ingress: []v1.LoadBalancerIngress{{IP: to.String(lbIP)}}}, &ipConfiguration, nil
+
+			// set additional public IPs to LoadBalancerStatus, so that kube-proxy would create their iptables rules.
+			lbIngress := []v1.LoadBalancerIngress{{IP: to.String(lbIP)}}
+			additionalIPs, err := getServiceAdditionalPublicIPs(service)
+			if err != nil {
+				return &v1.LoadBalancerStatus{Ingress: lbIngress}, &ipConfiguration, err
+			}
+			if len(additionalIPs) > 0 {
+				for _, pip := range additionalIPs {
+					lbIngress = append(lbIngress, v1.LoadBalancerIngress{
+						IP: pip,
+					})
+				}
+			}
+
+			return &v1.LoadBalancerStatus{Ingress: lbIngress}, &ipConfiguration, nil
 		}
 	}
 
@@ -1004,11 +1019,15 @@ func (az *Cloud) ensurePublicIPExists(service *v1.Service, pipName string, domai
 			pip.PublicIPAddressPropertiesFormat = &network.PublicIPAddressPropertiesFormat{
 				PublicIPAllocationMethod: network.IPAllocationMethodStatic,
 			}
+			changed = true
 		}
 	} else {
 		if shouldPIPExisted {
 			return nil, fmt.Errorf("PublicIP from annotation azure-pip-name=%s for service %s doesn't exist", pipName, serviceName)
 		}
+
+		changed = true
+
 		pip.Name = to.StringPtr(pipName)
 		pip.Location = to.StringPtr(az.Location)
 		if az.HasExtendedLocation() {
@@ -1045,37 +1064,35 @@ func (az *Cloud) ensurePublicIPExists(service *v1.Service, pipName string, domai
 		}
 		klog.V(2).Infof("ensurePublicIPExists for service(%s): pip(%s) - creating", serviceName, *pip.Name)
 	}
+
 	if foundDNSLabelAnnotation {
-		err = reconcileDNSSettings(&pip, domainNameLabel, serviceName, pipName)
+		updatedDNSSettings, err := reconcileDNSSettings(&pip, domainNameLabel, serviceName, pipName)
 		if err != nil {
 			return nil, fmt.Errorf("ensurePublicIPExists for service(%s): failed to reconcileDNSSettings: %w", serviceName, err)
+		}
+
+		if updatedDNSSettings {
+			changed = true
 		}
 	}
 
 	// use the same family as the clusterIP as we support IPv6 single stack as well
 	// as dual-stack clusters
-	ipv6 := utilnet.IsIPv6String(service.Spec.ClusterIP)
-	if ipv6 {
-		pip.PublicIPAddressVersion = network.IPVersionIPv6
-		klog.V(2).Infof("service(%s): pip(%s) - creating as ipv6 for clusterIP:%v", serviceName, *pip.Name, service.Spec.ClusterIP)
+	updatedIPSettings := az.reconcileIPSettings(&pip, service)
+	if updatedIPSettings {
+		changed = true
+	}
 
-		pip.PublicIPAddressPropertiesFormat.PublicIPAllocationMethod = network.IPAllocationMethodDynamic
-		if az.useStandardLoadBalancer() {
-			// standard sku must have static allocation method for ipv6
-			pip.PublicIPAddressPropertiesFormat.PublicIPAllocationMethod = network.IPAllocationMethodStatic
+	if changed {
+		klog.V(2).Infof("CreateOrUpdatePIP(%s, %q): start", pipResourceGroup, *pip.Name)
+		err = az.CreateOrUpdatePIP(service, pipResourceGroup, pip)
+		if err != nil {
+			klog.V(2).Infof("ensure(%s) abort backoff: pip(%s)", serviceName, *pip.Name)
+			return nil, err
 		}
-	} else {
-		pip.PublicIPAddressVersion = network.IPVersionIPv4
-		klog.V(2).Infof("service(%s): pip(%s) - creating as ipv4 for clusterIP:%v", serviceName, *pip.Name, service.Spec.ClusterIP)
-	}
 
-	klog.V(2).Infof("CreateOrUpdatePIP(%s, %q): start", pipResourceGroup, *pip.Name)
-	err = az.CreateOrUpdatePIP(service, pipResourceGroup, pip)
-	if err != nil {
-		klog.V(2).Infof("ensure(%s) abort backoff: pip(%s)", serviceName, *pip.Name)
-		return nil, err
+		klog.V(10).Infof("CreateOrUpdatePIP(%s, %q): end", pipResourceGroup, *pip.Name)
 	}
-	klog.V(10).Infof("CreateOrUpdatePIP(%s, %q): end", pipResourceGroup, *pip.Name)
 
 	ctx, cancel := getContextWithCancel()
 	defer cancel()
@@ -1086,15 +1103,55 @@ func (az *Cloud) ensurePublicIPExists(service *v1.Service, pipName string, domai
 	return &pip, nil
 }
 
-func reconcileDNSSettings(pip *network.PublicIPAddress, domainNameLabel, serviceName, pipName string) error {
+func (az *Cloud) reconcileIPSettings(pip *network.PublicIPAddress, service *v1.Service) bool {
+	var changed bool
+
+	serviceName := getServiceName(service)
+	ipv6 := utilnet.IsIPv6String(service.Spec.ClusterIP)
+	if ipv6 {
+		klog.V(2).Infof("service(%s): pip(%s) - creating as ipv6 for clusterIP:%v", serviceName, *pip.Name, service.Spec.ClusterIP)
+
+		if !strings.EqualFold(string(pip.PublicIPAddressVersion), string(network.IPVersionIPv6)) {
+			pip.PublicIPAddressVersion = network.IPVersionIPv6
+			changed = true
+		}
+
+		if az.useStandardLoadBalancer() {
+			// standard sku must have static allocation method for ipv6
+			if !strings.EqualFold(string(pip.PublicIPAddressPropertiesFormat.PublicIPAllocationMethod), string(network.IPAllocationMethodStatic)) {
+				pip.PublicIPAddressPropertiesFormat.PublicIPAllocationMethod = network.IPAllocationMethodStatic
+				changed = true
+			}
+		} else if !strings.EqualFold(string(pip.PublicIPAddressPropertiesFormat.PublicIPAllocationMethod), string(network.IPAllocationMethodDynamic)) {
+			pip.PublicIPAddressPropertiesFormat.PublicIPAllocationMethod = network.IPAllocationMethodDynamic
+			changed = true
+		}
+	} else {
+		klog.V(2).Infof("service(%s): pip(%s) - creating as ipv4 for clusterIP:%v", serviceName, *pip.Name, service.Spec.ClusterIP)
+
+		if !strings.EqualFold(string(pip.PublicIPAddressVersion), string(network.IPVersionIPv6)) {
+			pip.PublicIPAddressVersion = network.IPVersionIPv4
+			changed = true
+		}
+	}
+
+	return changed
+}
+
+func reconcileDNSSettings(pip *network.PublicIPAddress, domainNameLabel, serviceName, pipName string) (bool, error) {
+	var changed bool
+
 	if existingServiceName, ok := pip.Tags[consts.ServiceUsingDNSKey]; ok {
 		if !strings.EqualFold(to.String(existingServiceName), serviceName) {
-			return fmt.Errorf("ensurePublicIPExists for service(%s): pip(%s) - there is an existing service %s consuming the DNS label on the public IP, so the service cannot set the DNS label annotation with this value", serviceName, pipName, *existingServiceName)
+			return false, fmt.Errorf("ensurePublicIPExists for service(%s): pip(%s) - there is an existing service %s consuming the DNS label on the public IP, so the service cannot set the DNS label annotation with this value", serviceName, pipName, *existingServiceName)
 		}
 	}
 
 	if len(domainNameLabel) == 0 {
-		pip.PublicIPAddressPropertiesFormat.DNSSettings = nil
+		if pip.PublicIPAddressPropertiesFormat.DNSSettings != nil {
+			pip.PublicIPAddressPropertiesFormat.DNSSettings = nil
+			changed = true
+		}
 	} else {
 		if pip.PublicIPAddressPropertiesFormat.DNSSettings == nil ||
 			pip.PublicIPAddressPropertiesFormat.DNSSettings.DomainNameLabel == nil {
@@ -1102,16 +1159,22 @@ func reconcileDNSSettings(pip *network.PublicIPAddress, domainNameLabel, service
 			pip.PublicIPAddressPropertiesFormat.DNSSettings = &network.PublicIPAddressDNSSettings{
 				DomainNameLabel: &domainNameLabel,
 			}
+			changed = true
 		} else {
 			existingDNSLabel := pip.PublicIPAddressPropertiesFormat.DNSSettings.DomainNameLabel
 			if !strings.EqualFold(to.String(existingDNSLabel), domainNameLabel) {
-				return fmt.Errorf("ensurePublicIPExists for service(%s): pip(%s) - there is an existing DNS label %s on the public IP", serviceName, pipName, *existingDNSLabel)
+				return false, fmt.Errorf("ensurePublicIPExists for service(%s): pip(%s) - there is an existing DNS label %s on the public IP", serviceName, pipName, *existingDNSLabel)
 			}
 		}
-		pip.Tags[consts.ServiceUsingDNSKey] = &serviceName
+
+		if svc, ok := pip.Tags[consts.ServiceUsingDNSKey]; !ok ||
+			!strings.EqualFold(to.String(svc), serviceName) {
+			pip.Tags[consts.ServiceUsingDNSKey] = &serviceName
+			changed = true
+		}
 	}
 
-	return nil
+	return changed, nil
 }
 
 type serviceIPTagRequest struct {
@@ -2046,7 +2109,9 @@ func (az *Cloud) getExpectedLBRules(
 			if probeProtocol == "" {
 				probeProtocol = string(network.ProbeProtocolHTTP)
 			}
-			if requestPath == "" {
+
+			needRequestPath := strings.EqualFold(probeProtocol, string(network.ProbeProtocolHTTP)) || strings.EqualFold(probeProtocol, string(network.ProbeProtocolHTTPS))
+			if requestPath == "" && needRequestPath {
 				requestPath = podPresencePath
 			}
 
@@ -2168,6 +2233,16 @@ func (az *Cloud) reconcileSecurityGroup(clusterName string, service *v1.Service,
 		destinationIPAddress = "*"
 	}
 
+	additionalIPs, err := getServiceAdditionalPublicIPs(service)
+	if err != nil {
+		return nil, fmt.Errorf("unable to get additional public IPs, error=%v", err)
+	}
+
+	destinationIPAddresses := []string{destinationIPAddress}
+	if destinationIPAddress != "*" {
+		destinationIPAddresses = append(destinationIPAddresses, additionalIPs...)
+	}
+
 	sourceRanges, err := servicehelpers.GetLoadBalancerSourceRanges(service)
 	if err != nil {
 		return nil, err
@@ -2189,13 +2264,13 @@ func (az *Cloud) reconcileSecurityGroup(clusterName string, service *v1.Service,
 		sourceAddressPrefixes = append(sourceAddressPrefixes, serviceTags...)
 	}
 
-	expectedSecurityRules, err := az.getExpectedSecurityRules(wantLb, ports, sourceAddressPrefixes, service, destinationIPAddress, sourceRanges)
+	expectedSecurityRules, err := az.getExpectedSecurityRules(wantLb, ports, sourceAddressPrefixes, service, destinationIPAddresses, sourceRanges)
 	if err != nil {
 		return nil, err
 	}
 
 	// update security rules
-	dirtySg, updatedRules, err := az.reconcileSecurityRules(sg, service, serviceName, wantLb, expectedSecurityRules, ports, sourceAddressPrefixes, destinationIPAddress)
+	dirtySg, updatedRules, err := az.reconcileSecurityRules(sg, service, serviceName, wantLb, expectedSecurityRules, ports, sourceAddressPrefixes, destinationIPAddresses)
 	if err != nil {
 		return nil, err
 	}
@@ -2220,7 +2295,7 @@ func (az *Cloud) reconcileSecurityGroup(clusterName string, service *v1.Service,
 	return &sg, nil
 }
 
-func (az *Cloud) reconcileSecurityRules(sg network.SecurityGroup, service *v1.Service, serviceName string, wantLb bool, expectedSecurityRules []network.SecurityRule, ports []v1.ServicePort, sourceAddressPrefixes []string, destinationIPAddress string) (bool, []network.SecurityRule, error) {
+func (az *Cloud) reconcileSecurityRules(sg network.SecurityGroup, service *v1.Service, serviceName string, wantLb bool, expectedSecurityRules []network.SecurityRule, ports []v1.ServicePort, sourceAddressPrefixes []string, destinationIPAddresses []string) (bool, []network.SecurityRule, error) {
 	dirtySg := false
 	var updatedRules []network.SecurityRule
 	if sg.SecurityGroupPropertiesFormat != nil && sg.SecurityGroupPropertiesFormat.SecurityRules != nil {
@@ -2266,19 +2341,22 @@ func (az *Cloud) reconcileSecurityRules(sg network.SecurityGroup, service *v1.Se
 					return false, nil, fmt.Errorf("expected to have array of destinations in shared rule for service %s being deleted, but did not", service.Name)
 				}
 				existingPrefixes := *sharedRule.DestinationAddressPrefixes
-				addressIndex, found := findIndex(existingPrefixes, destinationIPAddress)
-				if !found {
-					klog.V(4).Infof("Expected to find destination address %s in shared rule %s for service %s being deleted, but did not", destinationIPAddress, sharedRuleName, service.Name)
-					return false, nil, fmt.Errorf("expected to find destination address %s in shared rule %s for service %s being deleted, but did not", destinationIPAddress, sharedRuleName, service.Name)
+				for _, destinationIPAddress := range destinationIPAddresses {
+					addressIndex, found := findIndex(existingPrefixes, destinationIPAddress)
+					if !found {
+						klog.Warningf("Expected to find destination address %v in shared rule %s for service %s being deleted, but did not", destinationIPAddress, sharedRuleName, service.Name)
+						continue
+					}
+					if len(existingPrefixes) == 1 {
+						updatedRules = append(updatedRules[:sharedIndex], updatedRules[sharedIndex+1:]...)
+					} else {
+						newDestinations := append(existingPrefixes[:addressIndex], existingPrefixes[addressIndex+1:]...)
+						sharedRule.DestinationAddressPrefixes = &newDestinations
+						updatedRules[sharedIndex] = sharedRule
+					}
+					dirtySg = true
 				}
-				if len(existingPrefixes) == 1 {
-					updatedRules = append(updatedRules[:sharedIndex], updatedRules[sharedIndex+1:]...)
-				} else {
-					newDestinations := append(existingPrefixes[:addressIndex], existingPrefixes[addressIndex+1:]...)
-					sharedRule.DestinationAddressPrefixes = &newDestinations
-					updatedRules[sharedIndex] = sharedRule
-				}
-				dirtySg = true
+
 			}
 		}
 	}
@@ -2326,7 +2404,7 @@ func (az *Cloud) reconcileSecurityRules(sg network.SecurityGroup, service *v1.Se
 	return dirtySg, updatedRules, nil
 }
 
-func (az *Cloud) getExpectedSecurityRules(wantLb bool, ports []v1.ServicePort, sourceAddressPrefixes []string, service *v1.Service, destinationIPAddress string, sourceRanges utilnet.IPNetSet) ([]network.SecurityRule, error) {
+func (az *Cloud) getExpectedSecurityRules(wantLb bool, ports []v1.ServicePort, sourceAddressPrefixes []string, service *v1.Service, destinationIPAddresses []string, sourceRanges utilnet.IPNetSet) ([]network.SecurityRule, error) {
 	expectedSecurityRules := []network.SecurityRule{}
 
 	if wantLb {
@@ -2340,18 +2418,24 @@ func (az *Cloud) getExpectedSecurityRules(wantLb bool, ports []v1.ServicePort, s
 			for j := range sourceAddressPrefixes {
 				ix := i*len(sourceAddressPrefixes) + j
 				securityRuleName := az.getSecurityRuleName(service, port, sourceAddressPrefixes[j])
-				expectedSecurityRules[ix] = network.SecurityRule{
+				nsgRule := network.SecurityRule{
 					Name: to.StringPtr(securityRuleName),
 					SecurityRulePropertiesFormat: &network.SecurityRulePropertiesFormat{
-						Protocol:                 *securityProto,
-						SourcePortRange:          to.StringPtr("*"),
-						DestinationPortRange:     to.StringPtr(strconv.Itoa(int(port.Port))),
-						SourceAddressPrefix:      to.StringPtr(sourceAddressPrefixes[j]),
-						DestinationAddressPrefix: to.StringPtr(destinationIPAddress),
-						Access:                   network.SecurityRuleAccessAllow,
-						Direction:                network.SecurityRuleDirectionInbound,
+						Protocol:             *securityProto,
+						SourcePortRange:      to.StringPtr("*"),
+						DestinationPortRange: to.StringPtr(strconv.Itoa(int(port.Port))),
+						SourceAddressPrefix:  to.StringPtr(sourceAddressPrefixes[j]),
+						Access:               network.SecurityRuleAccessAllow,
+						Direction:            network.SecurityRuleDirectionInbound,
 					},
 				}
+				if len(destinationIPAddresses) == 1 {
+					// continue to use DestinationAddressPrefix to avoid NSG updates for existing rules.
+					nsgRule.DestinationAddressPrefix = to.StringPtr(destinationIPAddresses[0])
+				} else {
+					nsgRule.DestinationAddressPrefixes = to.StringSlicePtr(destinationIPAddresses)
+				}
+				expectedSecurityRules[ix] = nsgRule
 			}
 		}
 
@@ -2368,24 +2452,30 @@ func (az *Cloud) getExpectedSecurityRules(wantLb bool, ports []v1.ServicePort, s
 					return nil, err
 				}
 				securityRuleName := az.getSecurityRuleName(service, port, "deny_all")
-				expectedSecurityRules = append(expectedSecurityRules, network.SecurityRule{
+				nsgRule := network.SecurityRule{
 					Name: to.StringPtr(securityRuleName),
 					SecurityRulePropertiesFormat: &network.SecurityRulePropertiesFormat{
-						Protocol:                 *securityProto,
-						SourcePortRange:          to.StringPtr("*"),
-						DestinationPortRange:     to.StringPtr(strconv.Itoa(int(port.Port))),
-						SourceAddressPrefix:      to.StringPtr("*"),
-						DestinationAddressPrefix: to.StringPtr(destinationIPAddress),
-						Access:                   network.SecurityRuleAccessDeny,
-						Direction:                network.SecurityRuleDirectionInbound,
+						Protocol:             *securityProto,
+						SourcePortRange:      to.StringPtr("*"),
+						DestinationPortRange: to.StringPtr(strconv.Itoa(int(port.Port))),
+						SourceAddressPrefix:  to.StringPtr("*"),
+						Access:               network.SecurityRuleAccessDeny,
+						Direction:            network.SecurityRuleDirectionInbound,
 					},
-				})
+				}
+				if len(destinationIPAddresses) == 1 {
+					// continue to use DestinationAddressPrefix to avoid NSG updates for existing rules.
+					nsgRule.DestinationAddressPrefix = to.StringPtr(destinationIPAddresses[0])
+				} else {
+					nsgRule.DestinationAddressPrefixes = to.StringSlicePtr(destinationIPAddresses)
+				}
+				expectedSecurityRules = append(expectedSecurityRules, nsgRule)
 			}
 		}
 	}
 
 	for _, r := range expectedSecurityRules {
-		klog.V(10).Infof("Expecting security rule for %s: %s:%s -> %s:%s", service.Name, *r.SourceAddressPrefix, *r.SourcePortRange, *r.DestinationAddressPrefix, *r.DestinationPortRange)
+		klog.V(10).Infof("Expecting security rule for %s: %s:%s -> %v %v :%s", service.Name, to.String(r.SourceAddressPrefix), to.String(r.SourcePortRange), to.String(r.DestinationAddressPrefix), to.StringSlice(r.DestinationAddressPrefixes), to.String(r.DestinationPortRange))
 	}
 	return expectedSecurityRules, nil
 }
@@ -2891,6 +2981,9 @@ func findSecurityRule(rules []network.SecurityRule, rule network.SecurityRule) b
 		}
 		if !allowsConsolidation(existingRule) && !allowsConsolidation(rule) {
 			if !strings.EqualFold(to.String(existingRule.DestinationAddressPrefix), to.String(rule.DestinationAddressPrefix)) {
+				continue
+			}
+			if !reflect.DeepEqual(to.StringSlice(existingRule.DestinationAddressPrefixes), to.StringSlice(rule.DestinationAddressPrefixes)) {
 				continue
 			}
 		}

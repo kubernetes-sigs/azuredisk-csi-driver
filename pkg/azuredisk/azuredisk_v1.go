@@ -20,6 +20,6 @@ package azuredisk
 
 // NewDriver Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
 // does not support optional driver plugin info manifest field. Refer to CSI spec for more details.
-func NewDriver(nodeID, driverName string, enablePerfOptimization bool) CSIDriver {
-	return newDriverV1(nodeID, driverName, enablePerfOptimization)
+func NewDriver(nodeID, driverName string, volumeAttachLimit int64, enablePerfOptimization bool) CSIDriver {
+	return newDriverV1(nodeID, driverName, volumeAttachLimit, enablePerfOptimization)
 }
