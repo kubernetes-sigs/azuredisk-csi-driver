@@ -183,7 +183,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		test.Run(cs, ns)
 	})
 
-	ginkgo.It("Should create and attach a volume with basic perfProfile [disk.csi.azure.com] [Windows]", func() {
+	ginkgo.It("Should create and attach a volume with basic perfProfile [enableBursting][disk.csi.azure.com] [Windows]", func() {
 		skipIfOnAzureStackCloud()
 		skipIfUsingInTreeVolumePlugin()
 		pods := []testsuites.PodDetails{
@@ -192,7 +192,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
 						FSType:    "ext4",
-						ClaimSize: "10Gi",
+						ClaimSize: "1Ti",
 						VolumeMount: testsuites.VolumeMountDetails{
 							NameGenerate:      "test-volume-",
 							MountPathGenerate: "/mnt/test-",
@@ -208,6 +208,8 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			StorageClassParameters: map[string]string{
 				"skuName":     "Premium_LRS",
 				"perfProfile": "Basic",
+				// enableBursting can only be applied to Premium disk, disk size > 512GB, Ultra & shared disk is not supported.
+				"enableBursting": "true",
 			},
 		}
 		test.Run(cs, ns)

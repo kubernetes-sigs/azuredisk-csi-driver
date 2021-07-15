@@ -78,6 +78,7 @@ const (
 	// LUN lun number
 	LUN = "LUN"
 
+	trueValue                = "true"
 	cachingModeField         = "cachingmode"
 	storageAccountTypeField  = "storageaccounttype"
 	skuNameField             = "skuname"
@@ -96,6 +97,7 @@ const (
 	perfProfileField         = "perfprofile"
 	networkAccessPolicyField = "networkaccesspolicy"
 	diskAccessIDField        = "diskaccessid"
+	enableBurstingField      = "enablebursting"
 
 	WellKnownTopologyKey = "topology.kubernetes.io/zone"
 	throttlingKey        = "throttlingKey"

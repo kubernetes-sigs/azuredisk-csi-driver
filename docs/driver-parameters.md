@@ -22,6 +22,7 @@ writeAcceleratorEnabled | [Write Accelerator on Azure Disks](https://docs.micros
 perfProfile | [disk device performance profile](../docs/enhancements/feat-add-ability-to-tune-azuredisk-performance-parameters.md) | `none`, `basic` | No | `none`
 networkAccessPolicy | NetworkAccessPolicy property to prevent anybody from generating the SAS URI for a disk or a snapshot | `AllowAll`, `DenyAll`, `AllowPrivate` | No | `AllowAll`
 diskAccessID | ARM id of the DiskAccess resource for using private endpoints on disks | | No  | ``
+enableBursting | [enable bursting](https://docs.microsoft.com/en-us/azure/virtual-machines/disk-bursting) beyond the provisioned performance target of the disk. Bursting only be applied to Premium disk, disk size > 512GB, Ultra & shared disk is not supported. Bursting is disabled by default. | `true`, `false` | No | `false`
 
  - disk created by dynamic provisioning
    - disk name format(example): `pvc-e132d37f-9e8f-434a-b599-15a4ab211b39`
