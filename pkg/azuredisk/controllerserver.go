@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
+	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/protobuf/ptypes"
 
@@ -132,6 +133,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		netAccessPolicy         string
 		diskAccessID            string
 		maxShares               int
+		enableBursting          *bool
 	)
 
 	tags := make(map[string]string)
@@ -195,6 +197,10 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			netAccessPolicy = v
 		case diskAccessIDField:
 			diskAccessID = v
+		case enableBurstingField:
+			if strings.EqualFold(v, trueValue) {
+				enableBursting = to.BoolPtr(true)
+			}
 		default:
 			return nil, fmt.Errorf("invalid parameter %s in storage class", k)
 		}
@@ -289,8 +295,8 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		tags[k] = v
 	}
 
-	if strings.EqualFold(writeAcceleratorEnabled, "true") {
-		tags[azure.WriteAcceleratorEnabled] = "true"
+	if strings.EqualFold(writeAcceleratorEnabled, trueValue) {
+		tags[azure.WriteAcceleratorEnabled] = trueValue
 	}
 	sourceID := ""
 	sourceType := ""
@@ -342,6 +348,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		MaxShares:           int32(maxShares),
 		LogicalSectorSize:   int32(logicalSectorSize),
 		NetworkAccessPolicy: networkAccessPolicy,
+		BurstingEnabled:     enableBursting,
 	}
 	volumeOptions.SkipGetDiskOperation = d.isGetDiskThrottled()
 	if diskAccessID != "" {
