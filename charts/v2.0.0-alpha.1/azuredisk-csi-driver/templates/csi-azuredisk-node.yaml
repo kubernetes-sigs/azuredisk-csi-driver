@@ -21,7 +21,7 @@ spec:
       imagePullSecrets:
 {{ toYaml .Values.imagePullSecrets | indent 8 }}
       {{- end }}
-      hostNetwork: true
+      hostNetwork: {{ .Values.linux.hostNetwork }}
       dnsPolicy: ClusterFirstWithHostNet
       serviceAccountName: {{ .Values.serviceAccount.node }}
       nodeSelector:
