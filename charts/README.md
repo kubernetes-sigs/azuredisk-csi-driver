@@ -88,6 +88,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `controller.runOnMaster`                          | run csi-azuredisk-controller on master node                | `false`                                                        |
 | `controller.logLevel`                             | controller driver log level                                                          |`5`                                                           |
 | `controller.tolerations`                          | controller pod tolerations                            |                                                              |
+| `controller.hostNetwork`                          | `hostNetwork` setting on controller driver(could be disabled if controller does not depend on MSI setting)                            | `true`                                                            | `true`, `false`
 | `node.metricsPort`                                | metrics port of csi-azuredisk-node                         |`29605`                                                        |
 | `node.livenessProbe.healthPort `                  | health check port for liveness probe                   | `29603` |
 | `node.logLevel`                                   | node driver log level                                                          |`5`                                                           |
@@ -105,6 +106,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `linux.kubelet`                                   | configure kubelet directory path on Linux agent node                  | `/var/lib/kubelet`                                                |
 | `linux.distro`                                    | configure ssl certificates for different Linux distribution(available values: `debian`, `fedora`)                  | `debian`                                                |
 | `linux.tolerations`                               | linux node driver tolerations                            |                                                              |
+| `linux.hostNetwork`                               | `hostNetwork` setting on linux node driver(could be disabled if perfProfile is `none`)                            | `true`                                                            | `true`, `false`
 | `windows.enabled`                                 | whether enable windows feature                             | `true`                                                        |
 | `windows.dsName`                                  | name of driver daemonset on windows                             |`csi-azuredisk-node-win`                                                         |
 | `windows.kubelet`                                 | configure kubelet directory path on Windows agent node                | `'C:\var\lib\kubelet'`                                            |

@@ -127,9 +127,11 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			},
 		}
 		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
-			CSIDriver:              testDriver,
-			Pods:                   pods,
-			StorageClassParameters: map[string]string{"skuName": "Standard_LRS"},
+			CSIDriver: testDriver,
+			Pods:      pods,
+			StorageClassParameters: map[string]string{
+				"skuName": "Standard_LRS",
+			},
 		}
 
 		if isMultiZone && !isUsingInTreeVolumePlugin {
@@ -142,7 +144,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			}
 		}
 		if !isUsingInTreeVolumePlugin && supportsZRS {
-			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
+			test.StorageClassParameters = map[string]string{
+				"skuName":             "StandardSSD_ZRS",
+				"networkAccessPolicy": "AllowAll",
+			}
 		}
 		if isUsingInTreeVolumePlugin {
 			// cover case: https://github.com/kubernetes/kubernetes/issues/103433
@@ -171,7 +176,8 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		}
 
 		scParameters := map[string]string{
-			"skuName": "Standard_LRS",
+			"skuName":             "Standard_LRS",
+			"networkAccessPolicy": "DenyAll",
 		}
 		test := testsuites.DynamicallyProvisionedVolumeSubpathTester{
 			CSIDriver:              testDriver,
@@ -181,7 +187,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		test.Run(cs, ns, schedulerName)
 	})
 
-	ginkgo.It("Should create and attach a volume with basic perfProfile [disk.csi.azure.com] [Windows]", func() {
+	ginkgo.It("Should create and attach a volume with basic perfProfile [enableBursting][disk.csi.azure.com] [Windows]", func() {
 		skipIfOnAzureStackCloud()
 		skipIfUsingInTreeVolumePlugin()
 		pods := []testsuites.PodDetails{
@@ -190,7 +196,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
 						FSType:    "ext4",
-						ClaimSize: "10Gi",
+						ClaimSize: "1Ti",
 						VolumeMount: testsuites.VolumeMountDetails{
 							NameGenerate:      "test-volume-",
 							MountPathGenerate: "/mnt/test-",
@@ -206,6 +212,8 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			StorageClassParameters: map[string]string{
 				"skuName":     "Premium_LRS",
 				"perfProfile": "Basic",
+				// enableBursting can only be applied to Premium disk, disk size > 512GB, Ultra & shared disk is not supported.
+				"enableBursting": "true",
 			},
 		}
 		test.Run(cs, ns, schedulerName)
@@ -470,7 +478,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			},
 		}
 		if !isUsingInTreeVolumePlugin && supportsZRS {
-			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
+			test.StorageClassParameters = map[string]string{
+				"skuName":             "StandardSSD_ZRS",
+				"networkAccessPolicy": "DenyAll",
+			}
 		}
 		test.Run(cs, ns, schedulerName)
 	})
@@ -508,7 +519,11 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			},
 		}
 		if !isUsingInTreeVolumePlugin && supportsZRS {
-			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS", "fsType": "xfs"}
+			test.StorageClassParameters = map[string]string{
+				"skuName":             "StandardSSD_ZRS",
+				"fsType":              "xfs",
+				"networkAccessPolicy": "DenyAll",
+			}
 		}
 		test.Run(cs, ns, schedulerName)
 	})

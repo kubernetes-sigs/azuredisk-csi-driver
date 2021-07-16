@@ -25,10 +25,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
+	"github.com/Azure/go-autorest/autorest/to"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -83,8 +84,7 @@ func (c *CloudProvisioner) CreateVolume(
 	secrets map[string]string,
 	volumeContentSource *v1alpha1.ContentVolumeSource,
 	accessibilityRequirements *v1alpha1.TopologyRequirement) (*v1alpha1.AzVolumeStatusParams, error) {
-	err := c.validateCreateVolumeRequestParams(capacityRange, volumeCapabilities, parameters)
-	if err != nil {
+	if err := c.validateCreateVolumeRequestParams(capacityRange, volumeCapabilities, parameters); err != nil {
 		return nil, err
 	}
 
@@ -92,6 +92,7 @@ func (c *CloudProvisioner) CreateVolume(
 		location                string
 		storageAccountType      string
 		cachingMode             v1.AzureDataDiskCachingMode
+		err                     error
 		resourceGroup           string
 		diskIopsReadWrite       string
 		diskMbpsReadWrite       string
@@ -100,7 +101,10 @@ func (c *CloudProvisioner) CreateVolume(
 		diskEncryptionSetID     string
 		customTags              string
 		writeAcceleratorEnabled string
+		netAccessPolicy         string
+		diskAccessID            string
 		maxShares               int
+		enableBursting          *bool
 	)
 
 	tags := make(map[string]string)
@@ -165,7 +169,14 @@ func (c *CloudProvisioner) CreateVolume(
 		case azureutils.KindField:
 			// fix csi migration issue: https://github.com/kubernetes/kubernetes/issues/103433
 			parameters[azureutils.KindField] = string(v1.AzureManagedDisk)
-
+		case azureutils.NetworkAccessPolicyField:
+			netAccessPolicy = v
+		case azureutils.DiskAccessIDField:
+			diskAccessID = v
+		case azureutils.EnableBurstingField:
+			if strings.EqualFold(v, azureutils.TrueValue) {
+				enableBursting = to.BoolPtr(true)
+			}
 		default:
 			return nil, fmt.Errorf("invalid parameter %s in storage class", k)
 		}
@@ -187,6 +198,11 @@ func (c *CloudProvisioner) CreateVolume(
 	}
 
 	if _, err = azureutils.NormalizeAzureDataDiskCachingMode(cachingMode); err != nil {
+		return nil, err
+	}
+
+	networkAccessPolicy, err := azureutils.NormalizeNetworkAccessPolicy(netAccessPolicy)
+	if err != nil {
 		return nil, err
 	}
 
@@ -247,12 +263,11 @@ func (c *CloudProvisioner) CreateVolume(
 		tags[k] = v
 	}
 
-	if strings.EqualFold(writeAcceleratorEnabled, "true") {
-		tags[azure.WriteAcceleratorEnabled] = "true"
+	if strings.EqualFold(writeAcceleratorEnabled, azureutils.TrueValue) {
+		tags[azure.WriteAcceleratorEnabled] = azureutils.TrueValue
 	}
 	sourceID := ""
 	sourceType := ""
-
 	contentSource := &v1alpha1.ContentVolumeSource{}
 	if volumeContentSource != nil {
 		sourceID = volumeContentSource.ContentSourceID
@@ -286,8 +301,12 @@ func (c *CloudProvisioner) CreateVolume(
 		DiskEncryptionSetID: diskEncryptionSetID,
 		MaxShares:           int32(maxShares),
 		LogicalSectorSize:   int32(logicalSectorSize),
+		NetworkAccessPolicy: networkAccessPolicy,
+		BurstingEnabled:     enableBursting,
 	}
-
+	if diskAccessID != "" {
+		volumeOptions.DiskAccessID = &diskAccessID
+	}
 	diskURI, err := c.cloud.CreateManagedDisk(volumeOptions)
 
 	if err != nil {
