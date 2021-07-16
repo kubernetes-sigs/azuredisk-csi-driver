@@ -47,13 +47,12 @@ controller:
   logLevel: 5
   tolerations:
     - key: "node-role.kubernetes.io/master"
-      operator: "Equal"
-      value: "true"
+      operator: "Exists"
       effect: "NoSchedule"
     - key: "node-role.kubernetes.io/controlplane"
-      operator: "Equal"
-      value: "true"
+      operator: "Exists"
       effect: "NoSchedule"
+  podLabels: {}
 
 node:
   metricsPort: 29605
@@ -77,6 +76,7 @@ snapshot:
   snapshotController:
     name: csi-snapshot-controller
     replicas: 1
+    podLabels: {}
 
 feature:
   enableFSGroupPolicy: false
@@ -95,6 +95,7 @@ linux:
   enablePerfOptimization: true
   tolerations:
     - operator: "Exists"
+  podLabels: {}
 
 windows:
   enabled: true
@@ -113,6 +114,7 @@ windows:
     - key: "node.kubernetes.io/os"
       operator: "Exists"
       effect: "NoSchedule"
+  podLabels: {}
 
 cloud: AzurePublicCloud
 
