@@ -172,15 +172,15 @@ azuredisk-darwin:
 
 .PHONY: azdiskschedulerextender
 azdiskschedulerextender:
-	CGO_ENABLED=0 GOOS=linux go build -a -ldflags ${SCHEDULER_EXTENDER_LDFLAGS} -mod vendor -o _output/${ARCH}/azdiskschedulerextender ./pkg/azdiskschedulerextender
+	CGO_ENABLED=0 GOOS=linux go build -a -ldflags ${SCHEDULER_EXTENDER_LDFLAGS} -tags azurediskv2 -mod vendor -o _output/${ARCH}/azdiskschedulerextender ./pkg/azdiskschedulerextender
 
 .PHONY: azdiskschedulerextender-windows
 azdiskschedulerextender-windows:
-	CGO_ENABLED=0 GOOS=windows go build -a -ldflags ${SCHEDULER_EXTENDER_LDFLAGS} -mod vendor -o _output/${ARCH}/azdiskschedulerextender.exe ./pkg/azdiskschedulerextender
+	CGO_ENABLED=0 GOOS=windows go build -a -ldflags ${SCHEDULER_EXTENDER_LDFLAGS} -tags azurediskv2 -mod vendor -o _output/${ARCH}/azdiskschedulerextender.exe ./pkg/azdiskschedulerextender
 
 .PHONY: azdiskschedulerextender-darwin
 azdiskschedulerextender-darwin:
-	CGO_ENABLED=0 GOOS=darwin go build -a -ldflags ${SCHEDULER_EXTENDER_LDFLAGS} -mod vendor -o _output/${ARCH}/azdiskschedulerextender ./pkg/azdiskschedulerextender
+	CGO_ENABLED=0 GOOS=darwin go build -a -ldflags ${SCHEDULER_EXTENDER_LDFLAGS} -tags azurediskv2 -mod vendor -o _output/${ARCH}/azdiskschedulerextender ./pkg/azdiskschedulerextender
 
 .PHONY: container
 container: azuredisk

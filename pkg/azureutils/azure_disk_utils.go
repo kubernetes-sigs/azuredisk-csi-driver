@@ -100,6 +100,10 @@ const (
 	PerfProfileField          = "perfprofile"
 	FSTypeField               = "fstype"
 	KindField                 = "kind"
+	NetworkAccessPolicyField  = "networkaccesspolicy"
+	DiskAccessIDField         = "diskaccessid"
+	EnableBurstingField       = "enablebursting"
+	TrueValue                 = "true"
 
 	// CRDs specific constants
 	PartitionLabel    = "azdrivernodes.disk.csi.azure.com/partition"
@@ -189,6 +193,19 @@ func NormalizeAzureDataDiskCachingMode(cachingMode v1.AzureDataDiskCachingMode) 
 	}
 
 	return cachingMode, nil
+}
+
+func NormalizeNetworkAccessPolicy(networkAccessPolicy string) (compute.NetworkAccessPolicy, error) {
+	if networkAccessPolicy == "" {
+		return compute.AllowAll, nil
+	}
+	policy := compute.NetworkAccessPolicy(networkAccessPolicy)
+	for _, s := range compute.PossibleNetworkAccessPolicyValues() {
+		if policy == s {
+			return policy, nil
+		}
+	}
+	return "", fmt.Errorf("azureDisk - %s is not supported NetworkAccessPolicy. Supported values are %s", networkAccessPolicy, compute.PossibleNetworkAccessPolicyValues())
 }
 
 // Disk name must begin with a letter or number, end with a letter, number or underscore,

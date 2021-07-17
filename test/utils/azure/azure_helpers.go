@@ -280,16 +280,16 @@ func (az *Client) GetVirtualNetworkSubnet(ctx context.Context, groupName, vnetNa
 }
 
 // AssertNoError asserts no error and exits with error upon seeing one
-func AssertNoError(t *testing.T, err error, exitCode int, msgsAndArgs ...interface{}) {
+func AssertNoError(t *testing.T, err error, msgsAndArgs ...interface{}) {
 	if !assert.NoError(t, err, msgsAndArgs) {
-		os.Exit(exitCode)
+		t.Fatalf("Exiting... assertion failed: expected no error but received %v", err)
 	}
 }
 
 // AssertNotNil asserts non-nil object and exits with error upon seeing one
-func AssertNotNil(t *testing.T, obj interface{}, exitCode int, msgsAndArgs ...interface{}) {
+func AssertNotNil(t *testing.T, obj interface{}, msgsAndArgs ...interface{}) {
 	if !assert.NotNil(t, obj, msgsAndArgs) {
-		os.Exit(exitCode)
+		t.Fatalf("Exiting... assertion failed: expected non-nil object but received nil.")
 	}
 }
 

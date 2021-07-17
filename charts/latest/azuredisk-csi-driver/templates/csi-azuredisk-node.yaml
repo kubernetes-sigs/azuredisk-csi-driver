@@ -13,12 +13,15 @@ spec:
     metadata:
 {{ include "azuredisk.labels" . | indent 6 }}
         app: {{ .Values.linux.dsName }}
+{{- with .Values.linux.podLabels }}
+{{ toYaml . | indent 8 }}
+{{- end }}
     spec:
       {{- if .Values.imagePullSecrets }}
       imagePullSecrets:
 {{ toYaml .Values.imagePullSecrets | indent 8 }}
       {{- end }}
-      hostNetwork: true
+      hostNetwork: {{ .Values.linux.hostNetwork }}
       dnsPolicy: ClusterFirstWithHostNet
       serviceAccountName: {{ .Values.serviceAccount.node }}
       nodeSelector:

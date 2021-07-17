@@ -25,3 +25,4 @@ jobs:
       - name: Run Windows Unit Tests
         run: |
           go test -v -race -tags azurediskv2 ./pkg/azuredisk --temp-use-driver-v2
+          go test -v -race -tags azurediskv2 ./pkg/azdiskschedulerextender
