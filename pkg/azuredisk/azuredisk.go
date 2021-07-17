@@ -116,6 +116,14 @@ var (
 	diskURISupportedManaged = []string{"/subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id}"}
 )
 
+// DriverOptions defines driver parameters specified in driver deployment
+type DriverOptions struct {
+	NodeID                 string
+	DriverName             string
+	VolumeAttachLimit      int64
+	EnablePerfOptimization bool
+}
+
 // CSIDriver defines the interface for a CSI driver.
 type CSIDriver interface {
 	csi.ControllerServer
@@ -145,12 +153,12 @@ type Driver struct {
 
 // newDriverV1 Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
 // does not support optional driver plugin info manifest field. Refer to CSI spec for more details.
-func newDriverV1(nodeID, driverName string, volumeAttachLimit int64, enablePerfOptimization bool) *Driver {
+func newDriverV1(options *DriverOptions) *Driver {
 	driver := Driver{}
-	driver.Name = driverName
+	driver.Name = options.DriverName
 	driver.Version = driverVersion
-	driver.NodeID = nodeID
-	driver.VolumeAttachLimit = volumeAttachLimit
+	driver.NodeID = options.NodeID
+	driver.VolumeAttachLimit = options.VolumeAttachLimit
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 
 	topologyKey = fmt.Sprintf("topology.%s/zone", driver.Name)
@@ -162,7 +170,7 @@ func newDriverV1(nodeID, driverName string, volumeAttachLimit int64, enablePerfO
 		klog.Fatalf("%v", err)
 	}
 	driver.getDiskThrottlingCache = cache
-	driver.perfOptimizationEnabled = enablePerfOptimization
+	driver.perfOptimizationEnabled = options.EnablePerfOptimization
 	return &driver
 }
 
