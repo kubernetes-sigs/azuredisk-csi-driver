@@ -4,5 +4,6 @@ run:
 linters:
   disable:
   - typecheck
+  - structcheck
   enable:
   - golint

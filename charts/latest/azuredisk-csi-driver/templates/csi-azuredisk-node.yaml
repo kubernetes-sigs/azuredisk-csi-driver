@@ -96,6 +96,8 @@ spec:
             - "--enable-perf-optimization={{ .Values.linux.enablePerfOptimization }}"
             - "--drivername={{ .Values.driver.name }}"
             - "--volume-attach-limit={{ .Values.driver.volumeAttachLimit }}"
+            - "--cloud-config-secret-name={{ .Values.node.cloudConfigSecretName }}"
+            - "--cloud-config-secret-namespace={{ .Values.node.cloudConfigSecretNamespace }}"
           ports:
             - containerPort: {{ .Values.node.livenessProbe.healthPort }}
               name: healthz
