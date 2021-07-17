@@ -61,6 +61,7 @@ controller:
     - key: "node-role.kubernetes.io/controlplane"
       operator: "Exists"
       effect: "NoSchedule"
+  hostNetwork: true # this setting could be disabled if controller does not depend on MSI setting
   podLabels: {}
 
 node:
@@ -119,6 +120,7 @@ linux:
   enablePerfOptimization: true
   tolerations:
     - operator: "Exists"
+  hostNetwork: true # this setting could be disabled if perfProfile is `none`
   podLabels: {}
 
 windows:
