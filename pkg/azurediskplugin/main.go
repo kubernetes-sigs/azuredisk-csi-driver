@@ -69,7 +69,13 @@ func main() {
 }
 
 func handle() {
-	driver := azuredisk.NewDriver(*nodeID, *driverName, *volumeAttachLimit, *enablePerfOptimization)
+	driverOptions := azuredisk.DriverOptions{
+		NodeID:                 *nodeID,
+		DriverName:             *driverName,
+		VolumeAttachLimit:      *volumeAttachLimit,
+		EnablePerfOptimization: *enablePerfOptimization,
+	}
+	driver := azuredisk.NewDriver(&driverOptions)
 	if driver == nil {
 		klog.Fatalln("Failed to initialize azuredisk CSI Driver")
 	}
