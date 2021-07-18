@@ -67,6 +67,8 @@ func newDriverV2(options *DriverOptions) *DriverV2 {
 	driver.VolumeAttachLimit = options.VolumeAttachLimit
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.perfOptimizationEnabled = options.EnablePerfOptimization
+	driver.cloudConfigSecretName = options.CloudConfigSecretName
+	driver.cloudConfigSecretNamespace = options.CloudConfigSecretNamespace
 
 	topologyKey = fmt.Sprintf("topology.%s/zone", driver.Name)
 	return &driver
@@ -79,7 +81,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 		klog.Fatalf("%v", err)
 	}
 	klog.Infof("\nDRIVER INFORMATION:\n-------------------\n%s\n\nStreaming logs below:", versionMeta)
-	cloud, err := GetCloudProvider(kubeconfig)
+	cloud, err := GetCloudProvider(kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace)
 	if err != nil || cloud.TenantID == "" || cloud.SubscriptionID == "" {
 		klog.Fatalf("failed to get Azure Cloud Provider, error: %v", err)
 	}

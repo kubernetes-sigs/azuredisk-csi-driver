@@ -118,10 +118,12 @@ var (
 
 // DriverOptions defines driver parameters specified in driver deployment
 type DriverOptions struct {
-	NodeID                 string
-	DriverName             string
-	VolumeAttachLimit      int64
-	EnablePerfOptimization bool
+	NodeID                     string
+	DriverName                 string
+	VolumeAttachLimit          int64
+	EnablePerfOptimization     bool
+	CloudConfigSecretName      string
+	CloudConfigSecretNamespace string
 }
 
 // CSIDriver defines the interface for a CSI driver.
@@ -136,11 +138,13 @@ type CSIDriver interface {
 // DriverCore contains fields common to both the V1 and V2 driver, and implements all interfaces of CSI drivers
 type DriverCore struct {
 	csicommon.CSIDriver
-	perfOptimizationEnabled bool
-	cloud                   *azure.Cloud
-	mounter                 *mount.SafeFormatAndMount
-	deviceHelper            *optimization.SafeDeviceHelper
-	nodeInfo                *optimization.NodeInfo
+	perfOptimizationEnabled    bool
+	cloudConfigSecretName      string
+	cloudConfigSecretNamespace string
+	cloud                      *azure.Cloud
+	mounter                    *mount.SafeFormatAndMount
+	deviceHelper               *optimization.SafeDeviceHelper
+	nodeInfo                   *optimization.NodeInfo
 }
 
 // Driver is the v1 implementation of the Azure Disk CSI Driver.
@@ -159,6 +163,9 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.Version = driverVersion
 	driver.NodeID = options.NodeID
 	driver.VolumeAttachLimit = options.VolumeAttachLimit
+	driver.perfOptimizationEnabled = options.EnablePerfOptimization
+	driver.cloudConfigSecretName = options.CloudConfigSecretName
+	driver.cloudConfigSecretNamespace = options.CloudConfigSecretNamespace
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 
 	topologyKey = fmt.Sprintf("topology.%s/zone", driver.Name)
@@ -170,7 +177,6 @@ func newDriverV1(options *DriverOptions) *Driver {
 		klog.Fatalf("%v", err)
 	}
 	driver.getDiskThrottlingCache = cache
-	driver.perfOptimizationEnabled = options.EnablePerfOptimization
 	return &driver
 }
 
@@ -181,7 +187,7 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 		klog.Fatalf("%v", err)
 	}
 	klog.Infof("\nDRIVER INFORMATION:\n-------------------\n%s\n\nStreaming logs below:", versionMeta)
-	cloud, err := GetCloudProvider(kubeconfig)
+	cloud, err := GetCloudProvider(kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace)
 	if err != nil || cloud.TenantID == "" || cloud.SubscriptionID == "" {
 		klog.Fatalf("failed to get Azure Cloud Provider, error: %v", err)
 	}
