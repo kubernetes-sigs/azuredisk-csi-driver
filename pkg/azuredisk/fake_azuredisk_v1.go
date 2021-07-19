@@ -21,6 +21,6 @@ package azuredisk
 import "testing"
 
 // NewFakeDriver returns a driver implementation suitable for use in unit tests.
-func NewFakeDriver(t *testing.T) (FakeDriver, error) {
+func NewFakeDriver(t *testing.T) (*Driver, error) {
 	return newFakeDriverV1(t)
 }

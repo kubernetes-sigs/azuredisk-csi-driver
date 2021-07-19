@@ -298,6 +298,25 @@ func TestCreateVolume(t *testing.T) {
 			},
 		},
 		{
+			name: "disable volume creation in csi migration",
+			testFunc: func(t *testing.T) {
+				d, _ := NewFakeDriver(t)
+				d.DisableCreateVolumeInMigration = true
+				mp := make(map[string]string)
+				mp[csiMigrationField] = trueValue
+				req := &csi.CreateVolumeRequest{
+					Name:               "unit-test",
+					VolumeCapabilities: stdVolumeCapabilities,
+					Parameters:         mp,
+				}
+				_, err := d.CreateVolume(context.Background(), req)
+				expectedErr := fmt.Errorf("CreateVolume is disabled in CSI migration")
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
 			name: "invalid perf profile",
 			testFunc: func(t *testing.T) {
 				d, _ := NewFakeDriver(t)
@@ -478,6 +497,7 @@ func TestCreateVolume(t *testing.T) {
 					Name:               testVolumeName,
 					VolumeCapabilities: stdVolumeCapabilities,
 					CapacityRange:      stdCapacityRangetest,
+					Parameters:         map[string]string{csiMigrationField: trueValue},
 				}
 				size := int32(volumehelper.BytesToGiB(req.CapacityRange.RequiredBytes))
 				id := fmt.Sprintf(managedDiskPath, "subs", "rg", testVolumeName)

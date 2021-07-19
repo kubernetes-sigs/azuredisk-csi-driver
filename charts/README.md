@@ -56,6 +56,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `driver.name`                                     | alternative driver name                        | `disk.csi.azure.com` |
 | `driver.volumeAttachLimit`                        | maximum number of attachable volumes per node maximum number is defined according to node instance type by default(`-1`)                        | `-1` |
 | `feature.enableFSGroupPolicy`                     | enable `fsGroupPolicy` on a k8s 1.20+ cluster           | `false`                      |
+| `feature.disableCreateVolumeInMigration`          | disable CreateVolume in CSI migration           | `false`                      |
 | `image.azuredisk.repository`                      | azuredisk-csi-driver docker image                          | `mcr.microsoft.com/k8s/csi/azuredisk-csi`                      |
 | `image.azuredisk.tag`                             | azuredisk-csi-driver docker image tag                      | `latest`                                                       |
 | `image.azuredisk.pullPolicy`                      | azuredisk-csi-driver image pull policy                     | `IfNotPresent`                                                 |

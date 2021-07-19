@@ -98,6 +98,7 @@ const (
 	networkAccessPolicyField = "networkaccesspolicy"
 	diskAccessIDField        = "diskaccessid"
 	enableBurstingField      = "enablebursting"
+	csiMigrationField        = "csi-migration"
 
 	WellKnownTopologyKey = "topology.kubernetes.io/zone"
 	throttlingKey        = "throttlingKey"
@@ -118,12 +119,13 @@ var (
 
 // DriverOptions defines driver parameters specified in driver deployment
 type DriverOptions struct {
-	NodeID                     string
-	DriverName                 string
-	VolumeAttachLimit          int64
-	EnablePerfOptimization     bool
-	CloudConfigSecretName      string
-	CloudConfigSecretNamespace string
+	NodeID                         string
+	DriverName                     string
+	VolumeAttachLimit              int64
+	EnablePerfOptimization         bool
+	CloudConfigSecretName          string
+	CloudConfigSecretNamespace     string
+	DisableCreateVolumeInMigration bool
 }
 
 // CSIDriver defines the interface for a CSI driver.
@@ -138,13 +140,14 @@ type CSIDriver interface {
 // DriverCore contains fields common to both the V1 and V2 driver, and implements all interfaces of CSI drivers
 type DriverCore struct {
 	csicommon.CSIDriver
-	perfOptimizationEnabled    bool
-	cloudConfigSecretName      string
-	cloudConfigSecretNamespace string
-	cloud                      *azure.Cloud
-	mounter                    *mount.SafeFormatAndMount
-	deviceHelper               *optimization.SafeDeviceHelper
-	nodeInfo                   *optimization.NodeInfo
+	DisableCreateVolumeInMigration bool
+	perfOptimizationEnabled        bool
+	cloudConfigSecretName          string
+	cloudConfigSecretNamespace     string
+	cloud                          *azure.Cloud
+	mounter                        *mount.SafeFormatAndMount
+	deviceHelper                   *optimization.SafeDeviceHelper
+	nodeInfo                       *optimization.NodeInfo
 }
 
 // Driver is the v1 implementation of the Azure Disk CSI Driver.
@@ -166,6 +169,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.perfOptimizationEnabled = options.EnablePerfOptimization
 	driver.cloudConfigSecretName = options.CloudConfigSecretName
 	driver.cloudConfigSecretNamespace = options.CloudConfigSecretNamespace
+	driver.DisableCreateVolumeInMigration = options.DisableCreateVolumeInMigration
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 
 	topologyKey = fmt.Sprintf("topology.%s/zone", driver.Name)

@@ -146,6 +146,7 @@ spec:
             - "--drivername={{ .Values.driver.name }}"
             - "--cloud-config-secret-name={{ .Values.controller.cloudConfigSecretName }}"
             - "--cloud-config-secret-namespace={{ .Values.controller.cloudConfigSecretNamespace }}"
+            - "--disable-create-volume-in-migration={{ .Values.feature.disableCreateVolumeInMigration }}"
           ports:
             - containerPort: {{ .Values.controller.livenessProbe.healthPort }}
               name: healthz

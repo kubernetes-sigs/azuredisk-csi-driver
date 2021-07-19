@@ -85,6 +85,7 @@ snapshot:
 
 feature:
   enableFSGroupPolicy: false
+  disableCreateVolumeInMigration: false
 
 driver:
   name: disk.csi.azure.com

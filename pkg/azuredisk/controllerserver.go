@@ -201,6 +201,10 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			if strings.EqualFold(v, trueValue) {
 				enableBursting = to.BoolPtr(true)
 			}
+		case csiMigrationField:
+			if d.DisableCreateVolumeInMigration {
+				return nil, fmt.Errorf("CreateVolume is disabled in CSI migration")
+			}
 		default:
 			return nil, fmt.Errorf("invalid parameter %s in storage class", k)
 		}

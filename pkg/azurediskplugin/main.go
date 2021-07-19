@@ -36,17 +36,18 @@ func init() {
 }
 
 var (
-	endpoint                   = flag.String("endpoint", "unix://tmp/csi.sock", "CSI endpoint")
-	nodeID                     = flag.String("nodeid", "", "node id")
-	version                    = flag.Bool("version", false, "Print the version and exit.")
-	metricsAddress             = flag.String("metrics-address", "0.0.0.0:29604", "export the metrics")
-	kubeconfig                 = flag.String("kubeconfig", "", "Absolute path to the kubeconfig file. Required only when running out of cluster.")
-	driverName                 = flag.String("drivername", azuredisk.DefaultDriverName, "name of the driver")
-	volumeAttachLimit          = flag.Int64("volume-attach-limit", -1, "maximum number of attachable volumes per node")
-	disableAVSetNodes          = flag.Bool("disable-avset-nodes", true, "disable DisableAvailabilitySetNodes in cloud config for controller")
-	enablePerfOptimization     = flag.Bool("enable-perf-optimization", false, "boolean flag to enable disk perf optimization")
-	cloudConfigSecretName      = flag.String("cloud-config-secret-name", "azure-cloud-provider", "cloud config secret name")
-	cloudConfigSecretNamespace = flag.String("cloud-config-secret-namespace", "kube-system", "cloud config secret namespace")
+	endpoint                       = flag.String("endpoint", "unix://tmp/csi.sock", "CSI endpoint")
+	nodeID                         = flag.String("nodeid", "", "node id")
+	version                        = flag.Bool("version", false, "Print the version and exit.")
+	metricsAddress                 = flag.String("metrics-address", "0.0.0.0:29604", "export the metrics")
+	kubeconfig                     = flag.String("kubeconfig", "", "Absolute path to the kubeconfig file. Required only when running out of cluster.")
+	driverName                     = flag.String("drivername", azuredisk.DefaultDriverName, "name of the driver")
+	volumeAttachLimit              = flag.Int64("volume-attach-limit", -1, "maximum number of attachable volumes per node")
+	disableAVSetNodes              = flag.Bool("disable-avset-nodes", true, "disable DisableAvailabilitySetNodes in cloud config for controller")
+	enablePerfOptimization         = flag.Bool("enable-perf-optimization", false, "boolean flag to enable disk perf optimization")
+	cloudConfigSecretName          = flag.String("cloud-config-secret-name", "azure-cloud-provider", "cloud config secret name")
+	cloudConfigSecretNamespace     = flag.String("cloud-config-secret-namespace", "kube-system", "cloud config secret namespace")
+	disableCreateVolumeInMigration = flag.Bool("disable-create-volume-in-migration", false, "disable CreateVolume in CSI migration")
 )
 
 func main() {
@@ -72,12 +73,13 @@ func main() {
 
 func handle() {
 	driverOptions := azuredisk.DriverOptions{
-		NodeID:                     *nodeID,
-		DriverName:                 *driverName,
-		VolumeAttachLimit:          *volumeAttachLimit,
-		EnablePerfOptimization:     *enablePerfOptimization,
-		CloudConfigSecretName:      *cloudConfigSecretName,
-		CloudConfigSecretNamespace: *cloudConfigSecretNamespace,
+		NodeID:                         *nodeID,
+		DriverName:                     *driverName,
+		VolumeAttachLimit:              *volumeAttachLimit,
+		EnablePerfOptimization:         *enablePerfOptimization,
+		CloudConfigSecretName:          *cloudConfigSecretName,
+		CloudConfigSecretNamespace:     *cloudConfigSecretNamespace,
+		DisableCreateVolumeInMigration: *disableCreateVolumeInMigration,
 	}
 	driver := azuredisk.NewDriver(&driverOptions)
 	if driver == nil {

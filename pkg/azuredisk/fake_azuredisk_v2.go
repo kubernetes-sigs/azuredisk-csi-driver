@@ -20,6 +20,7 @@ package azuredisk
 
 import (
 	"testing"
+	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
@@ -27,13 +28,15 @@ import (
 	"k8s.io/klog/v2"
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
+	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
 // NewFakeDriver returns a driver implementation suitable for use in unit tests.
-func NewFakeDriver(t *testing.T) (FakeDriver, error) {
-	var d FakeDriver
+func NewFakeDriver(t *testing.T) (*Driver, error) {
+	var d *Driver
 	var err error
 
 	if !*useDriverV2 {
@@ -45,14 +48,15 @@ func NewFakeDriver(t *testing.T) (FakeDriver, error) {
 	return d, err
 }
 
-func newFakeDriverV2(t *testing.T) (*DriverV2, error) {
+func newFakeDriverV2(t *testing.T) (*Driver, error) {
 	klog.Warning("Using DriverV2")
-	driver := DriverV2{}
+	driver := Driver{}
 	driver.Name = fakeDriverName
 	driver.Version = fakeDriverVersion
 	driver.NodeID = fakeNodeID
 	driver.CSIDriver = *csicommon.NewFakeCSIDriver()
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
+	driver.perfOptimizationEnabled = false
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -64,6 +68,15 @@ func newFakeDriverV2(t *testing.T) (*DriverV2, error) {
 	}
 
 	driver.mounter = mounter
+
+	cache, err := azcache.NewTimedcache(time.Minute, func(key string) (interface{}, error) {
+		return nil, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	driver.getDiskThrottlingCache = cache
+	driver.deviceHelper = optimization.NewSafeDeviceHelper()
 
 	driver.AddControllerServiceCapabilities(
 		[]csi.ControllerServiceCapability_RPC_Type{
