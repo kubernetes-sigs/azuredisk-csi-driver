@@ -23,8 +23,9 @@ jobs:
       run: make azuredisk
 
     - name: Run Linux Unit Tests
-      run: sudo go test -covermode=count -coverprofile=profile.cov -tags azurediskv2 ./pkg/azuredisk --temp-use-driver-v2
-      sudo go test -covermode=count -coverprofile=profile.cov -tags azurediskv2 ./pkg/azdiskschedulerextender
+      run: |
+        sudo go test -covermode=count -coverprofile=profile.cov -tags azurediskv2 ./pkg/azuredisk --temp-use-driver-v2
+        sudo go test -covermode=count -coverprofile=profile.cov -tags azurediskv2 ./pkg/azdiskschedulerextender
 
     - name: Send coverage
       env:
