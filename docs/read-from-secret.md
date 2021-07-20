@@ -1,6 +1,6 @@
 # Read cloud config from Kubernetes secrets
 
-- Available driver version: `v0.7.0` or above
+- available driver version: `v0.7.0` or above
 
 This driver also supports [reading the cloud config from Kubernetes secrets](https://github.com/kubernetes-sigs/cloud-provider-azure/blob/master/docs/cloud-provider-config.md#setting-azure-cloud-provider-from-kubernetes-secrets). The secret is a serialized version of `azure.json` file with key cloud-config. The secret should be put in `kube-system` namespace and its name should be `azure-cloud-provider`.
 
@@ -30,4 +30,16 @@ type: Opaque
 
 ```
 kubectl create -f azure-cloud-provider.yaml
+```
+
+### specify different cloud config secret in driver deployment
+- available driver version: `v1.5.0` or above
+- set `cloudConfigSecretName`, `cloudConfigSecretNamesapce` in driver deployment, follow [helm chart guide](../charts/README.md#tips)
+```yaml
+        - name: azuredisk
+          ...
+          args:
+            ...
+            - "--cloud-config-secret-name={{cloudConfigSecretName}}"
+            - "--cloud-config-secret-namespace={{cloudConfigSecretNamespace}}"
 ```
