@@ -1,23 +1,27 @@
----
+{{- if .Values.windows.enabled}}
 kind: DaemonSet
 apiVersion: apps/v1
 metadata:
-  name: csi-azuredisk-node-win
-  namespace: kube-system
+  name: {{ .Values.windows.dsName }}
+  namespace: {{ .Release.Namespace }}
+{{ include "azuredisk.labels" . | indent 2 }}
 spec:
   selector:
     matchLabels:
-      app: csi-azuredisk-node-win
+      app: {{ .Values.windows.dsName }}
   template:
     metadata:
-      labels:
-        app: csi-azuredisk-node-win
+{{ include "azuredisk.labels" . | indent 6 }}
+        app: {{ .Values.windows.dsName }}
+{{- with .Values.windows.podLabels }}
+{{ toYaml . | indent 8 }}
+{{- end }}
     spec:
-      serviceAccountName: csi-azuredisk-node-sa
+      serviceAccountName: {{ .Values.serviceAccount.node }}
+{{- with .Values.windows.tolerations }}
       tolerations:
-        - key: "node.kubernetes.io/os"
-          operator: "Exists"
-          effect: "NoSchedule"
+{{ toYaml . | indent 8 }}
+{{- end }}
       nodeSelector:
         kubernetes.io/os: windows
       affinity:
@@ -30,20 +34,22 @@ spec:
                     values:
                       - virtual-kubelet
       priorityClassName: system-node-critical
+      {{- include "azuredisk.pullSecrets" . | indent 6 }}
       containers:
         - name: liveness-probe
           volumeMounts:
             - mountPath: C:\csi
               name: plugin-dir
-          image: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe:v2.3.0
+          image: "{{ .Values.windows.image.livenessProbe.repository }}:{{ .Values.windows.image.livenessProbe.tag }}"
           args:
             - "--csi-address=$(CSI_ENDPOINT)"
             - "--probe-timeout=3s"
-            - "--health-port=29603"
+            - "--health-port={{ .Values.node.livenessProbe.healthPort }}"
             - "--v=2"
           env:
             - name: CSI_ENDPOINT
               value: unix://C:\\csi\\csi.sock
+          imagePullPolicy: {{ .Values.windows.image.livenessProbe.pullPolicy }}
           resources:
             limits:
               cpu: 200m
@@ -52,15 +58,15 @@ spec:
               cpu: 10m
               memory: 20Mi
         - name: node-driver-registrar
-          image: mcr.microsoft.com/oss/kubernetes-csi/csi-node-driver-registrar:v2.2.0
+          image: "{{ .Values.windows.image.nodeDriverRegistrar.repository }}:{{ .Values.windows.image.nodeDriverRegistrar.tag }}"
           args:
             - "--v=2"
             - "--csi-address=$(CSI_ENDPOINT)"
-            - "--kubelet-registration-path=C:\\var\\lib\\kubelet\\plugins\\disk.csi.azure.com\\csi.sock"
+            - "--kubelet-registration-path=C:\\var\\lib\\kubelet\\plugins\\{{ .Values.driver.name }}\\csi.sock"
           lifecycle:
             preStop:
               exec:
-                command: ["cmd", "/c", "del /f C:\\registration\\disk.csi.azure.com-reg.sock C:\\csi\\disk.csi.azure.com\\csi.sock"]
+                command: ["cmd", "/c", "del /f C:\\registration\\{{ .Values.driver.name }}-reg.sock C:\\csi\\{{ .Values.driver.name }}\\csi.sock"]
           env:
             - name: CSI_ENDPOINT
               value: unix://C:\\csi\\csi.sock
@@ -68,6 +74,7 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+          imagePullPolicy: {{ .Values.windows.image.nodeDriverRegistrar.pullPolicy }}
           volumeMounts:
             - name: kubelet-dir
               mountPath: "C:\\var\\lib\\kubelet"
@@ -83,15 +90,18 @@ spec:
               cpu: 10m
               memory: 20Mi
         - name: azuredisk
-          image: mcr.microsoft.com/k8s/csi/azuredisk-csi:v1.5.0
-          imagePullPolicy: IfNotPresent
+          image: "{{ .Values.image.azuredisk.repository }}:{{ .Values.image.azuredisk.tag }}"
           args:
-            - "--v=5"
+            - "--v={{ .Values.node.logLevel }}"
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--nodeid=$(KUBE_NODE_NAME)"
-            - "--metrics-address=0.0.0.0:29605"
+            - "--metrics-address=0.0.0.0:{{ .Values.node.metricsPort }}"
+            - "--drivername={{ .Values.driver.name }}"
+            - "--volume-attach-limit={{ .Values.driver.volumeAttachLimit }}"
+            - "--cloud-config-secret-name={{ .Values.node.cloudConfigSecretName }}"
+            - "--cloud-config-secret-namespace={{ .Values.node.cloudConfigSecretNamespace }}"
           ports:
-            - containerPort: 29603
+            - containerPort: {{ .Values.node.livenessProbe.healthPort }}
               name: healthz
               protocol: TCP
           livenessProbe:
@@ -116,6 +126,11 @@ spec:
                 fieldRef:
                   apiVersion: v1
                   fieldPath: spec.nodeName
+            {{- if eq .Values.cloud "AzureStackCloud" }}
+            - name: AZURE_ENVIRONMENT_FILEPATH
+              value: C:\k\azurestackcloud.json
+            {{- end }}
+          imagePullPolicy: {{ .Values.image.azuredisk.pullPolicy }}
           volumeMounts:
             - name: kubelet-dir
               mountPath: "C:\\var\\lib\\kubelet"
@@ -151,17 +166,18 @@ spec:
             type: ""
         - name: registration-dir
           hostPath:
-            path: C:\var\lib\kubelet\plugins_registry\
+            path: {{ .Values.windows.kubelet }}\plugins_registry\
             type: Directory
         - name: kubelet-dir
           hostPath:
-            path: C:\var\lib\kubelet\
+            path: {{ .Values.windows.kubelet }}\
             type: Directory
         - name: plugin-dir
           hostPath:
-            path: C:\var\lib\kubelet\plugins\disk.csi.azure.com\
+            path: {{ .Values.windows.kubelet }}\plugins\{{ .Values.driver.name }}\
             type: DirectoryOrCreate
         - name: azure-config
           hostPath:
             path: C:\k
             type: Directory
+{{- end -}}
