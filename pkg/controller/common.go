@@ -27,6 +27,7 @@ import (
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -68,7 +69,7 @@ type CloudProvisioner interface {
 }
 
 func cleanUpAzVolumeAttachmentByVolume(ctx context.Context, client client.Client, azClient azClientSet.Interface, namespace, azVolumeName string, mode cleanUpMode) error {
-	volRequirement, _ := labels.NewRequirement(VolumeNameLabel, selection.Equals, []string{azVolumeName})
+	volRequirement, _ := labels.NewRequirement(azureutils.VolumeNameLabel, selection.Equals, []string{azVolumeName})
 	labelSelector := labels.NewSelector().Add(*volRequirement)
 
 	attachments, err := azClient.DiskV1alpha1().AzVolumeAttachments(namespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})
@@ -95,7 +96,7 @@ func cleanUpAzVolumeAttachmentByVolume(ctx context.Context, client client.Client
 }
 
 func cleanUpAzVolumeAttachmentByNode(ctx context.Context, client client.Client, azClient azClientSet.Interface, namespace, azDriverNodeName string, mode cleanUpMode) error {
-	nodeRequirement, _ := labels.NewRequirement(NodeNameLabel, selection.Equals, []string{azDriverNodeName})
+	nodeRequirement, _ := labels.NewRequirement(azureutils.NodeNameLabel, selection.Equals, []string{azDriverNodeName})
 	labelSelector := labels.NewSelector().Add(*nodeRequirement)
 
 	attachments, err := azClient.DiskV1alpha1().AzVolumeAttachments(namespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})

@@ -273,7 +273,7 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 
 	_, err = azV.Update(ctx, updated, metav1.UpdateOptions{})
 	if err != nil {
-		klog.Infof("failed to update AzVolume (%s) with annotation (%s): %v", volumeName, azureutils.VolumeDeleteRequestAnnotation)
+		klog.Infof("failed to update AzVolume (%s) with annotation (%s): %v", volumeName, azureutils.VolumeDeleteRequestAnnotation, err)
 		return err
 	}
 
@@ -350,8 +350,9 @@ func (c *CrdProvisioner) PublishVolume(
 			ObjectMeta: metav1.ObjectMeta{
 				Name: attachmentName,
 				Labels: map[string]string{
-					"node-name":   nodeID,
-					"volume-name": volumeName,
+					azureutils.NodeNameLabel:   nodeID,
+					azureutils.VolumeNameLabel: volumeName,
+					azureutils.RoleLabel:       string(v1alpha1.PrimaryRole),
 				},
 			},
 			Spec: v1alpha1.AzVolumeAttachmentSpec{

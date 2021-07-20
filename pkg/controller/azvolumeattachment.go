@@ -49,16 +49,10 @@ import (
 )
 
 const (
-	// 1. AzVolumeAttachmentFinalizer for AzVolumeAttachment objects handles deletion of AzVolumeAttachment CRIs
-	// 2. AzVolumeAttachmentFinalizer for AzVolume prevents AzVolume CRI from being deleted before all AzVolumeAttachments attached to that volume is deleted as well
-	AzVolumeAttachmentFinalizer = "disk.csi.azure.com/azvolumeattachment-finalizer"
-	NodeNameLabel               = "node-name"
-	VolumeNameLabel             = "volume-name"
-	RoleLabel                   = "requested-role"
-	defaultNumSyncWorkers       = 10
+	defaultNumSyncWorkers = 10
 	// defaultMaxReplicaUpdateCount refers to the maximum number of creation or deletion of AzVolumeAttachment objects in a single ManageReplica call
 	defaultMaxReplicaUpdateCount = 1
-	defaultTimeUntilDeletion     = time.Duration(5) * time.Minute
+	DefaultTimeUntilDeletion     = time.Duration(5) * time.Minute
 )
 
 type Event int
@@ -249,8 +243,8 @@ func (r *ReconcileAzVolumeAttachment) syncAll(ctx context.Context, syncedVolumeA
 					ObjectMeta: metav1.ObjectMeta{
 						Name: azVolumeAttachmentName,
 						Labels: map[string]string{
-							NodeNameLabel:   nodeName,
-							VolumeNameLabel: *volumeName,
+							azureutils.NodeNameLabel:   nodeName,
+							azureutils.VolumeNameLabel: *volumeName,
 						},
 					},
 					Spec: v1alpha1.AzVolumeAttachmentSpec{
@@ -350,12 +344,12 @@ func (r *ReconcileAzVolumeAttachment) syncVolume(ctx context.Context, volume str
 	}
 
 	// fetch AzVolumeAttachment with AzVolume
-	volRequirement, err := labels.NewRequirement(VolumeNameLabel, selection.Equals, []string{azVolume.Spec.UnderlyingVolume})
+	volRequirement, err := labels.NewRequirement(azureutils.VolumeNameLabel, selection.Equals, []string{azVolume.Spec.UnderlyingVolume})
 	if err != nil {
 		return err
 	}
 	if volRequirement == nil {
-		return status.Error(codes.Internal, fmt.Sprintf("Unable to create Requirement to for label key : (%s) and label value: (%s)", VolumeNameLabel, azVolume.Spec.UnderlyingVolume))
+		return status.Error(codes.Internal, fmt.Sprintf("Unable to create Requirement to for label key : (%s) and label value: (%s)", azureutils.VolumeNameLabel, azVolume.Spec.UnderlyingVolume))
 	}
 
 	labelSelector := labels.NewSelector().Add(*volRequirement)
@@ -407,16 +401,17 @@ func (r *ReconcileAzVolumeAttachment) syncVolume(ctx context.Context, volume str
 
 			go func(ctx context.Context) {
 				// Sleep
-				time.Sleep(defaultTimeUntilDeletion)
+				time.Sleep(DefaultTimeUntilDeletion)
 				_ = cleanUpAzVolumeAttachmentByVolume(ctx, r.client, r.azVolumeClient, r.namespace, azVolume.Name, all)
 			}(deletionCtx)
 		}
 		return nil
-	} else {
+		// for all other events, no need to manage replicas
+	} else if eventType != DeleteEvent {
 		return nil
 	}
 
-	// if the azVolume is marked deleted, do not create more azvolumeattachment objects
+	// if the azVolume is marked deleted, do no create more azvolumeattachment objects
 	if azVolume.DeletionTimestamp == nil && desiredReplicaCount > currentReplicaCount {
 		klog.Infof("Create %d more replicas for volume (%s)", desiredReplicaCount-currentReplicaCount, azVolume.Spec.UnderlyingVolume)
 		if azVolume.Status.Detail == nil || azVolume.Status.State == v1alpha1.VolumeDeleting || azVolume.Status.State == v1alpha1.VolumeDeleted || azVolume.Status.Detail.ResponseObject == nil {
@@ -489,9 +484,9 @@ func (r *ReconcileAzVolumeAttachment) createReplicas(ctx context.Context, numRep
 				Name:      fmt.Sprintf("%s-%s-attachment", underlyingVolume, node.azDriverNode.Spec.NodeName),
 				Namespace: r.namespace,
 				Labels: map[string]string{
-					NodeNameLabel:   node.azDriverNode.Name,
-					VolumeNameLabel: underlyingVolume,
-					RoleLabel:       string(v1alpha1.ReplicaRole),
+					azureutils.NodeNameLabel:   node.azDriverNode.Name,
+					azureutils.VolumeNameLabel: underlyingVolume,
+					azureutils.RoleLabel:       string(v1alpha1.ReplicaRole),
 				},
 			},
 			Spec: v1alpha1.AzVolumeAttachmentSpec{
@@ -533,23 +528,23 @@ func (r *ReconcileAzVolumeAttachment) getNodesForReplica(ctx context.Context, nu
 		for _, node := range nodes.Items {
 			// filter out attachments labeled with specified node and volume
 			var attachmentList v1alpha1.AzVolumeAttachmentList
-			volRequirement, err := labels.NewRequirement(VolumeNameLabel, selection.Equals, []string{underlyingVolume})
+			volRequirement, err := labels.NewRequirement(azureutils.VolumeNameLabel, selection.Equals, []string{underlyingVolume})
 			if err != nil {
 				klog.Errorf("Encountered error while creating Requirement: %+v", err)
 				continue
 			}
 			if volRequirement == nil {
-				klog.Errorf("Unable to create Requirement to for label key : (%s) and label value: (%s)", VolumeNameLabel, underlyingVolume)
+				klog.Errorf("Unable to create Requirement to for label key : (%s) and label value: (%s)", azureutils.VolumeNameLabel, underlyingVolume)
 				continue
 			}
 
-			nodeRequirement, err := labels.NewRequirement(NodeNameLabel, selection.Equals, []string{string(node.Name)})
+			nodeRequirement, err := labels.NewRequirement(azureutils.NodeNameLabel, selection.Equals, []string{string(node.Name)})
 			if err != nil {
 				klog.Errorf("Encountered error while creating Requirement: %+v", err)
 				continue
 			}
 			if nodeRequirement == nil {
-				klog.Errorf("Unable to create Requirement to for label key : (%s) and label value: (%s)", NodeNameLabel, node.Name)
+				klog.Errorf("Unable to create Requirement to for label key : (%s) and label value: (%s)", azureutils.NodeNameLabel, node.Name)
 				continue
 			}
 
@@ -599,7 +594,7 @@ func (r *ReconcileAzVolumeAttachment) initializeMeta(ctx context.Context, attach
 	}
 
 	// if the required metadata already exists return
-	if finalizerExists(azVolumeAttachment.Finalizers, AzVolumeAttachmentFinalizer) && labelExists(azVolumeAttachment.Labels, NodeNameLabel) && labelExists(azVolumeAttachment.Labels, VolumeNameLabel) {
+	if finalizerExists(azVolumeAttachment.Finalizers, azureutils.AzVolumeAttachmentFinalizer) && labelExists(azVolumeAttachment.Labels, azureutils.NodeNameLabel) && labelExists(azVolumeAttachment.Labels, azureutils.VolumeNameLabel) {
 		return azVolumeAttachment, nil
 	}
 
@@ -610,23 +605,24 @@ func (r *ReconcileAzVolumeAttachment) initializeMeta(ctx context.Context, attach
 		patched.Finalizers = []string{}
 	}
 
-	if !finalizerExists(azVolumeAttachment.Finalizers, AzVolumeAttachmentFinalizer) {
-		patched.Finalizers = append(patched.Finalizers, AzVolumeAttachmentFinalizer)
+	if !finalizerExists(azVolumeAttachment.Finalizers, azureutils.AzVolumeAttachmentFinalizer) {
+		patched.Finalizers = append(patched.Finalizers, azureutils.AzVolumeAttachmentFinalizer)
 	}
 
 	// add label
 	if patched.Labels == nil {
 		patched.Labels = make(map[string]string)
 	}
-	patched.Labels[NodeNameLabel] = azVolumeAttachment.Spec.NodeName
-	patched.Labels[VolumeNameLabel] = azVolumeAttachment.Spec.UnderlyingVolume
+	patched.Labels[azureutils.NodeNameLabel] = azVolumeAttachment.Spec.NodeName
+	patched.Labels[azureutils.VolumeNameLabel] = azVolumeAttachment.Spec.UnderlyingVolume
+	patched.Labels[azureutils.RoleLabel] = string(azVolumeAttachment.Spec.RequestedRole)
 
 	if err = r.client.Patch(ctx, patched, client.MergeFrom(azVolumeAttachment)); err != nil {
-		klog.Errorf("failed to initialize finalizer (%s) for AzVolumeAttachment (%s): %v", AzVolumeAttachmentFinalizer, patched.Name, err)
+		klog.Errorf("failed to initialize finalizer (%s) for AzVolumeAttachment (%s): %v", azureutils.AzVolumeAttachmentFinalizer, patched.Name, err)
 		return nil, err
 	}
 
-	klog.Infof("successfully added finalizer (%s) to AzVolumeAttachment (%s)", AzVolumeAttachmentFinalizer, attachmentName)
+	klog.Infof("successfully added finalizer (%s) to AzVolumeAttachment (%s)", azureutils.AzVolumeAttachmentFinalizer, attachmentName)
 	return patched, nil
 }
 
@@ -647,17 +643,17 @@ func (r *ReconcileAzVolumeAttachment) deleteFinalizer(ctx context.Context, attac
 
 	finalizers := []string{}
 	for _, finalizer := range updated.ObjectMeta.Finalizers {
-		if finalizer == AzVolumeAttachmentFinalizer {
+		if finalizer == azureutils.AzVolumeAttachmentFinalizer {
 			continue
 		}
 		finalizers = append(finalizers, finalizer)
 	}
 	updated.ObjectMeta.Finalizers = finalizers
 	if err := r.client.Update(ctx, updated, &client.UpdateOptions{}); err != nil {
-		klog.Errorf("failed to delete finalizer (%s) for AzVolumeAttachment (%s): %v", AzVolumeAttachmentFinalizer, updated.Name, err)
+		klog.Errorf("failed to delete finalizer (%s) for AzVolumeAttachment (%s): %v", azureutils.AzVolumeAttachmentFinalizer, updated.Name, err)
 		return nil, err
 	}
-	klog.Infof("successfully deleted finalizer (%s) from AzVolumeAttachment (%s)", AzVolumeAttachmentFinalizer, attachmentName)
+	klog.Infof("successfully deleted finalizer (%s) from AzVolumeAttachment (%s)", azureutils.AzVolumeAttachmentFinalizer, attachmentName)
 	return updated, nil
 }
 
@@ -675,16 +671,16 @@ func (r *ReconcileAzVolumeAttachment) addFinalizerToAzVolume(ctx context.Context
 		updated.Finalizers = []string{}
 	}
 
-	if finalizerExists(updated.Finalizers, AzVolumeAttachmentFinalizer) {
+	if finalizerExists(updated.Finalizers, azureutils.AzVolumeAttachmentFinalizer) {
 		return nil
 	}
 
-	updated.Finalizers = append(updated.Finalizers, AzVolumeAttachmentFinalizer)
+	updated.Finalizers = append(updated.Finalizers, azureutils.AzVolumeAttachmentFinalizer)
 	if err := r.client.Update(ctx, updated, &client.UpdateOptions{}); err != nil {
-		klog.Errorf("failed to add finalizer (%s) to AzVolume(%s): %v", AzVolumeAttachmentFinalizer, updated.Name, err)
+		klog.Errorf("failed to add finalizer (%s) to AzVolume(%s): %v", azureutils.AzVolumeAttachmentFinalizer, updated.Name, err)
 		return err
 	}
-	klog.Infof("successfully added finalizer (%s) to AzVolume (%s)", AzVolumeAttachmentFinalizer, updated.Name)
+	klog.Infof("successfully added finalizer (%s) to AzVolume (%s)", azureutils.AzVolumeAttachmentFinalizer, updated.Name)
 	return nil
 }
 
@@ -703,7 +699,7 @@ func (r *ReconcileAzVolumeAttachment) deleteFinalizerFromAzVolume(ctx context.Co
 	updatedFinalizers := []string{}
 
 	for _, finalizer := range updated.Finalizers {
-		if finalizer == AzVolumeAttachmentFinalizer {
+		if finalizer == azureutils.AzVolumeAttachmentFinalizer {
 			continue
 		}
 		updatedFinalizers = append(updatedFinalizers, finalizer)
@@ -711,10 +707,10 @@ func (r *ReconcileAzVolumeAttachment) deleteFinalizerFromAzVolume(ctx context.Co
 	updated.Finalizers = updatedFinalizers
 
 	if err := r.client.Update(ctx, updated, &client.UpdateOptions{}); err != nil {
-		klog.Errorf("failed to delete finalizer (%s) from AzVolume(%s): %v", AzVolumeAttachmentFinalizer, updated.Name, err)
+		klog.Errorf("failed to delete finalizer (%s) from AzVolume(%s): %v", azureutils.AzVolumeAttachmentFinalizer, updated.Name, err)
 		return err
 	}
-	klog.Infof("successfully deleted finalizer (%s) from AzVolume (%s)", AzVolumeAttachmentFinalizer, updated.Name)
+	klog.Infof("successfully deleted finalizer (%s) from AzVolume (%s)", azureutils.AzVolumeAttachmentFinalizer, updated.Name)
 	return nil
 }
 
@@ -744,6 +740,15 @@ func (r *ReconcileAzVolumeAttachment) triggerAttach(ctx context.Context, attachm
 		return err
 	}
 
+	// Initialize finalizer and add label to the object
+	if azVolumeAttachment, err = r.initializeMeta(ctx, azVolumeAttachment.Name, azVolumeAttachment, true); err != nil {
+		return err
+	}
+
+	if err := r.addFinalizerToAzVolume(ctx, strings.ToLower(azVolumeAttachment.Spec.UnderlyingVolume)); err != nil {
+		return err
+	}
+
 	if azVolumeAttachment.Status.State == v1alpha1.AttachmentPending || azVolumeAttachment.Status.State == v1alpha1.Attaching || azVolumeAttachment.Status.State == v1alpha1.AttachmentFailed || azVolumeAttachment.Status.State == v1alpha1.Attached {
 		if azVolumeAttachment, err = r.updateState(ctx, attachmentName, azVolumeAttachment, v1alpha1.Attaching); err != nil {
 			return err
@@ -769,15 +774,6 @@ func (r *ReconcileAzVolumeAttachment) triggerAttach(ctx context.Context, attachm
 			r.mutexMapMutex.Lock()
 			r.mutexMap[azVolumeAttachment.Spec.UnderlyingVolume] = &sync.Mutex{}
 			r.mutexMapMutex.Unlock()
-		}
-
-		// Initialize finalizer and add label to the object
-		if azVolumeAttachment, err = r.initializeMeta(ctx, azVolumeAttachment.Name, azVolumeAttachment, true); err != nil {
-			return err
-		}
-
-		if err := r.addFinalizerToAzVolume(ctx, strings.ToLower(azVolumeAttachment.Spec.UnderlyingVolume)); err != nil {
-			return err
 		}
 
 		if azVolumeAttachment, err = r.updateState(ctx, attachmentName, azVolumeAttachment, v1alpha1.Attached); err != nil {
@@ -846,7 +842,7 @@ func (r *ReconcileAzVolumeAttachment) triggerDetach(ctx context.Context, attachm
 
 		// If above procedures were successful, remove finalizer from the object
 		if azVolumeAttachment, err = r.deleteFinalizer(ctx, attachmentName, azVolumeAttachment, true); err != nil {
-			klog.Errorf("failed to delete finalizer %s for azvolumeattachment %s: %v", AzVolumeAttachmentFinalizer, attachmentName, err)
+			klog.Errorf("failed to delete finalizer %s for azvolumeattachment %s: %v", azureutils.AzVolumeAttachmentFinalizer, attachmentName, err)
 			return err
 		}
 

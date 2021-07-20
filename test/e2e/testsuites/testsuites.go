@@ -53,7 +53,6 @@ import (
 	v1alpha1ClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1alpha1"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
-	controller "sigs.k8s.io/azuredisk-csi-driver/pkg/controller"
 )
 
 const (
@@ -1188,8 +1187,8 @@ func (t *TestAzVolumeAttachment) WaitForFinalizer(timeout time.Duration) error {
 			return false, nil
 		}
 		for _, finalizer := range att.ObjectMeta.Finalizers {
-			if finalizer == controller.AzVolumeAttachmentFinalizer {
-				klog.Infof("finalizer (%s) found on AzVolumeAttachment object (%s)", controller.AzVolumeAttachmentFinalizer, att.Name)
+			if finalizer == azureutils.AzVolumeAttachmentFinalizer {
+				klog.Infof("finalizer (%s) found on AzVolumeAttachment object (%s)", azureutils.AzVolumeAttachmentFinalizer, att.Name)
 				return true, nil
 			}
 		}
