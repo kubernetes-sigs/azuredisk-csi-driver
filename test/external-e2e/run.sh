@@ -34,7 +34,7 @@ setup_e2e_binaries() {
     tar -xvf e2e-tests.tar.gz && rm e2e-tests.tar.gz
 
     # enable fsGroupPolicy (only available from k8s 1.20)
-    export EXTRA_HELM_OPTIONS="--set feature.enableFSGroupPolicy=true --set snapshot.image.csiSnapshotter.tag=v4.0.0 --set snapshot.image.csiSnapshotController.tag=v4.0.0 --set snapshot.apiVersion=ga"
+    export EXTRA_HELM_OPTIONS="--set snapshot.image.csiSnapshotter.tag=v4.0.0 --set snapshot.image.csiSnapshotController.tag=v4.0.0 --set snapshot.apiVersion=ga"
     # test on alternative driver name
     EXTRA_HELM_OPTIONS=$EXTRA_HELM_OPTIONS" --set driver.name=$DRIVER.csi.azure.com --set controller.name=csi-$DRIVER-controller --set linux.dsName=csi-$DRIVER-node --set windows.dsName=csi-$DRIVER-node-win"
     # install the azuredisk-csi-driver driver
@@ -56,6 +56,6 @@ setup_e2e_binaries
 trap print_logs EXIT
 
 ginkgo -p --progress --v -focus="External.Storage.*$DRIVER.csi.azure.com" \
-       -skip='\[Disruptive\]|\[Slow\]|should check snapshot fields, check restore correctly works after modifying source data, check deletion' kubernetes/test/bin/e2e.test -- \
+       -skip='\[Disruptive\]|\[Slow\]' kubernetes/test/bin/e2e.test -- \
        -storage.testdriver=$PROJECT_ROOT/test/external-e2e/manifest/testdriver.yaml \
        --kubeconfig=$KUBECONFIG

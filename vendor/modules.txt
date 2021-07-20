@@ -100,7 +100,7 @@ github.com/golang/protobuf/ptypes/any
 github.com/golang/protobuf/ptypes/duration
 github.com/golang/protobuf/ptypes/timestamp
 github.com/golang/protobuf/ptypes/wrappers
-# github.com/google/go-cmp v0.5.2
+# github.com/google/go-cmp v0.5.4
 github.com/google/go-cmp/cmp
 github.com/google/go-cmp/cmp/internal/diff
 github.com/google/go-cmp/cmp/internal/flags
@@ -255,7 +255,7 @@ golang.org/x/net/trace
 # golang.org/x/oauth2 v0.0.0-20200107190931-bf48bf16ab8d
 golang.org/x/oauth2
 golang.org/x/oauth2/internal
-# golang.org/x/sys v0.0.0-20210225134936-a50acf3fe073
+# golang.org/x/sys v0.0.0-20210426230700-d19ff857e887
 golang.org/x/sys/cpu
 golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/plan9
@@ -782,7 +782,7 @@ k8s.io/kubectl/pkg/scale
 k8s.io/kubectl/pkg/util/podutils
 # k8s.io/kubelet v0.0.0 => k8s.io/kubelet v0.21.0
 k8s.io/kubelet/pkg/apis/stats/v1alpha1
-# k8s.io/kubernetes v1.21.0
+# k8s.io/kubernetes v1.21.3
 ## explicit
 k8s.io/kubernetes/pkg/api/legacyscheme
 k8s.io/kubernetes/pkg/api/service
@@ -913,7 +913,7 @@ sigs.k8s.io/cloud-provider-azure/pkg/consts
 sigs.k8s.io/cloud-provider-azure/pkg/metrics
 sigs.k8s.io/cloud-provider-azure/pkg/provider
 sigs.k8s.io/cloud-provider-azure/pkg/retry
-# sigs.k8s.io/structured-merge-diff/v4 v4.1.1
+# sigs.k8s.io/structured-merge-diff/v4 v4.1.2
 sigs.k8s.io/structured-merge-diff/v4/fieldpath
 sigs.k8s.io/structured-merge-diff/v4/schema
 sigs.k8s.io/structured-merge-diff/v4/typed
