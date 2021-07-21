@@ -46,6 +46,19 @@ var (
 	lunPathRE = regexp.MustCompile(`/dev(?:.*)/disk/azure/scsi(?:.*)/lun(.+)`)
 )
 
+func normalizeNetworkAccessPolicy(networkAccessPolicy string) (compute.NetworkAccessPolicy, error) {
+	if networkAccessPolicy == "" {
+		return compute.AllowAll, nil
+	}
+	policy := compute.NetworkAccessPolicy(networkAccessPolicy)
+	for _, s := range compute.PossibleNetworkAccessPolicyValues() {
+		if policy == s {
+			return policy, nil
+		}
+	}
+	return "", fmt.Errorf("azureDisk - %s is not supported NetworkAccessPolicy. Supported values are %s", networkAccessPolicy, compute.PossibleNetworkAccessPolicyValues())
+}
+
 func normalizeStorageAccountType(storageAccountType, cloud string, disableAzureStackCloud bool) (compute.DiskStorageAccountTypes, error) {
 	if storageAccountType == "" {
 		if IsAzureStackCloud(cloud, disableAzureStackCloud) {
