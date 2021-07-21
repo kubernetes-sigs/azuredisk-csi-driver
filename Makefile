@@ -113,7 +113,7 @@ integration-test:
 
 .PHONY: integration-test-v2
 integration-test-v2: container-v2
-	go test -v -timeout=30m ./test/integration --temp-use-driver-v2 --image-tag ${IMAGE_TAG}
+	go test -v -timeout=45m ./test/integration --temp-use-driver-v2 --image-tag ${IMAGE_TAG}
 
 .PHONY: e2e-bootstrap
 e2e-bootstrap: install-helm

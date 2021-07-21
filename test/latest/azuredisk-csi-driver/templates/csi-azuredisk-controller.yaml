@@ -38,7 +38,7 @@ spec:
             - "--temp-use-driver-v2={{ .Values.azuredisk.useV2Driver }}"
             - "--is-controller-plugin={{ .Values.azuredisk.useV2Driver }}"
             - "--is-node-plugin={{ .Values.azuredisk.useV2Driver }}"
-            - "--nodeid=sanity-test-node"
+            - "--nodeid={{ .Values.azuredisk.nodeId }}"
             - "--is-test-run={{ .Values.azuredisk.isTestRun }}"
           ports:
             - containerPort: 29602

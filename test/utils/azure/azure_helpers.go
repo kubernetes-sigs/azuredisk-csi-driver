@@ -134,7 +134,7 @@ func (az *Client) EnsureVirtualMachine(ctx context.Context, groupName, location,
 		return vm, err
 	}
 
-	publicKey, err := az.EnsureSSHPublicKey(ctx, az.subscriptionID, groupName, location, "test-key")
+	publicKey, err := az.EnsureSSHPublicKey(ctx, az.subscriptionID, groupName, location, fmt.Sprintf("%s-test-key", vmName))
 	if err != nil {
 		return vm, err
 	}
