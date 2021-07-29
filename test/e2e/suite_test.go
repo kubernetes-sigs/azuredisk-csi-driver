@@ -278,6 +278,12 @@ func skipIfNotUsingCSIDriverV2() {
 	}
 }
 
+func skipIfUsingCSIDriverV2() {
+	if isUsingCSIDriverV2 {
+		ginkgo.Skip("test case is not available for CSI driver version v2")
+	}
+}
+
 func skipIfOnAzureStackCloud() {
 	if isAzureStackCloud {
 		ginkgo.Skip("test case not supported on Azure Stack Cloud")
