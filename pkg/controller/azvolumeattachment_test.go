@@ -23,57 +23,19 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
-	storagev1 "k8s.io/api/storage/v1"
-	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types"
 	fakev1 "k8s.io/client-go/kubernetes/fake"
 	diskv1alpha1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	diskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
-	diskv1alpha1scheme "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/scheme"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller/mockattachmentprovisioner"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller/mockclient"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
-var (
-	testPrimaryAzVolumeAttachmentRequest = reconcile.Request{
-		NamespacedName: types.NamespacedName{
-			Name:      testPrimaryAzVolumeAttachmentByVolume.Name,
-			Namespace: testPrimaryAzVolumeAttachmentByVolume.Namespace,
-		},
-	}
-
-	testVolumeAttachmentName = "test-attachment"
-
-	testVolumeAttachment = storagev1.VolumeAttachment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: testVolumeAttachmentName,
-		},
-		Spec: storagev1.VolumeAttachmentSpec{
-			Attacher: azureutils.DriverName,
-			NodeName: testNode0Name,
-			Source: storagev1.VolumeAttachmentSource{
-				PersistentVolumeName: &testPersistentVolume0.Name,
-			},
-		},
-	}
-)
-
 func NewTestAzVolumeAttachmentController(controller *gomock.Controller, namespace string, objects ...runtime.Object) *ReconcileAzVolumeAttachment {
-	diskv1alpha1Objs := make([]runtime.Object, 0)
-	kubeObjs := make([]runtime.Object, 0)
-	for _, obj := range objects {
-		if _, _, err := diskv1alpha1scheme.Scheme.ObjectKinds(obj); err == nil {
-			diskv1alpha1Objs = append(diskv1alpha1Objs, obj)
-		} else {
-			kubeObjs = append(kubeObjs, obj)
-		}
-	}
+	diskv1alpha1Objs, kubeObjs := splitObjects(objects...)
+
 	return &ReconcileAzVolumeAttachment{
 		client:                mockclient.NewMockClient(controller),
 		azVolumeClient:        diskfakes.NewSimpleClientset(diskv1alpha1Objs...),
@@ -91,114 +53,7 @@ func NewTestAzVolumeAttachmentController(controller *gomock.Controller, namespac
 }
 
 func mockClientsAndAttachmentProvisioner(controller *ReconcileAzVolumeAttachment) {
-	controller.client.(*mockclient.MockClient).EXPECT().
-		Get(gomock.Any(), gomock.Any(), gomock.Any()).
-		DoAndReturn(func(ctx context.Context, key types.NamespacedName, obj runtime.Object) error {
-			switch target := obj.(type) {
-			case *diskv1alpha1.AzVolume:
-				azVolume, err := controller.azVolumeClient.DiskV1alpha1().AzVolumes(key.Namespace).Get(ctx, key.Name, metav1.GetOptions{})
-				if err != nil {
-					return err
-				}
-
-				azVolume.DeepCopyInto(target)
-
-			case *diskv1alpha1.AzVolumeAttachment:
-				azVolumeAttachment, err := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(key.Namespace).Get(ctx, key.Name, metav1.GetOptions{})
-				if err != nil {
-					return err
-				}
-
-				azVolumeAttachment.DeepCopyInto(target)
-
-			default:
-				gr := schema.GroupResource{
-					Group:    target.GetObjectKind().GroupVersionKind().Group,
-					Resource: target.GetObjectKind().GroupVersionKind().Kind,
-				}
-				return k8serrors.NewNotFound(gr, key.Name)
-			}
-
-			return nil
-		}).
-		AnyTimes()
-	controller.client.(*mockclient.MockClient).EXPECT().
-		Patch(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-		DoAndReturn(func(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOptions) error {
-			data, err := patch.Data(obj)
-			if err != nil {
-				return err
-			}
-
-			switch target := obj.(type) {
-			case *diskv1alpha1.AzVolume:
-				_, err := controller.azVolumeClient.DiskV1alpha1().AzVolumes(obj.GetNamespace()).Patch(ctx, obj.GetName(), patch.Type(), data, metav1.PatchOptions{})
-				if err != nil {
-					return err
-				}
-
-			case *diskv1alpha1.AzVolumeAttachment:
-				_, err := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(obj.GetNamespace()).Patch(ctx, obj.GetName(), patch.Type(), data, metav1.PatchOptions{})
-				if err != nil {
-					return err
-				}
-
-			default:
-				gr := schema.GroupResource{
-					Group:    target.GetObjectKind().GroupVersionKind().Group,
-					Resource: target.GetObjectKind().GroupVersionKind().Kind,
-				}
-				return k8serrors.NewNotFound(gr, obj.GetName())
-			}
-
-			return nil
-		}).
-		AnyTimes()
-	controller.client.(*mockclient.MockClient).EXPECT().
-		Update(gomock.Any(), gomock.Any(), gomock.Any()).
-		DoAndReturn(func(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error {
-			switch target := obj.(type) {
-			case *diskv1alpha1.AzVolume:
-				_, err := controller.azVolumeClient.DiskV1alpha1().AzVolumes(obj.GetNamespace()).Update(ctx, target, metav1.UpdateOptions{})
-				if err != nil {
-					return err
-				}
-
-			case *diskv1alpha1.AzVolumeAttachment:
-				_, err := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(obj.GetNamespace()).Update(ctx, target, metav1.UpdateOptions{})
-				if err != nil {
-					return err
-				}
-
-			default:
-				gr := schema.GroupResource{
-					Group:    target.GetObjectKind().GroupVersionKind().Group,
-					Resource: target.GetObjectKind().GroupVersionKind().Kind,
-				}
-				return k8serrors.NewNotFound(gr, obj.GetName())
-			}
-
-			return nil
-		}).
-		AnyTimes()
-	controller.client.(*mockclient.MockClient).EXPECT().
-		List(gomock.Any(), gomock.Any(), gomock.Any()).
-		DoAndReturn(func(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
-			options := client.ListOptions{}
-			options.ApplyOptions(opts)
-
-			switch target := list.(type) {
-			case *diskv1alpha1.AzVolumeAttachmentList:
-				azVolumeAttachments, err := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testNamespace).List(ctx, *options.AsListOptions())
-				if err != nil {
-					return err
-				}
-
-				azVolumeAttachments.DeepCopyInto(target)
-			}
-
-			return nil
-		})
+	mockClients(controller.client.(*mockclient.MockClient), controller.azVolumeClient, controller.kubeClient)
 
 	controller.attachmentProvisioner.(*mockattachmentprovisioner.MockAttachmentProvisioner).EXPECT().
 		PublishVolume(gomock.Any(), testManagedDiskURI, gomock.Any(), gomock.Any()).
@@ -225,13 +80,13 @@ func TestAzVolumeAttachmentControllerReconcile(t *testing.T) {
 			description: "[Success] Should attach volume when new primary AzVolumeAttachment is created.",
 			request:     testPrimaryAzVolumeAttachmentRequest,
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAzVolumeAttachment {
-				newAttachment := testPrimaryAzVolumeAttachmentByVolume.DeepCopy()
+				newAttachment := testPrimaryAzVolumeAttachment.DeepCopy()
 				newAttachment.Status.State = diskv1alpha1.AttachmentPending
 
 				controller := NewTestAzVolumeAttachmentController(
 					mockCtl,
 					testNamespace,
-					&testAzVolume,
+					&testAzVolume0,
 					newAttachment)
 
 				mockClientsAndAttachmentProvisioner(controller)
@@ -242,7 +97,7 @@ func TestAzVolumeAttachmentControllerReconcile(t *testing.T) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
 
-				azVolumeAttachment, localError := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testPrimaryAzVolumeAttachmentByVolume.Namespace).Get(context.TODO(), testPrimaryAzVolumeAttachmentByVolume.Name, metav1.GetOptions{})
+				azVolumeAttachment, localError := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testPrimaryAzVolumeAttachment.Namespace).Get(context.TODO(), testPrimaryAzVolumeAttachment.Name, metav1.GetOptions{})
 				require.NoError(t, localError)
 				require.Equal(t, diskv1alpha1.Attached, azVolumeAttachment.Status.State)
 			},
@@ -251,7 +106,7 @@ func TestAzVolumeAttachmentControllerReconcile(t *testing.T) {
 			description: "[Success] Should detach volume when new primary AzVolumeAttachment is deleted.",
 			request:     testPrimaryAzVolumeAttachmentRequest,
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAzVolumeAttachment {
-				newAttachment := testPrimaryAzVolumeAttachmentByVolume.DeepCopy()
+				newAttachment := testPrimaryAzVolumeAttachment.DeepCopy()
 				newAttachment.Status.State = diskv1alpha1.Attached
 				now := metav1.Time{Time: metav1.Now().Add(-1000)}
 				newAttachment.DeletionTimestamp = &now
@@ -259,7 +114,7 @@ func TestAzVolumeAttachmentControllerReconcile(t *testing.T) {
 				controller := NewTestAzVolumeAttachmentController(
 					mockCtl,
 					testNamespace,
-					&testAzVolume,
+					&testAzVolume0,
 					newAttachment)
 
 				mockClientsAndAttachmentProvisioner(controller)
@@ -270,7 +125,7 @@ func TestAzVolumeAttachmentControllerReconcile(t *testing.T) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
 
-				azVolumeAttachment, localError := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testPrimaryAzVolumeAttachmentByVolume.Namespace).Get(context.TODO(), testPrimaryAzVolumeAttachmentByVolume.Name, metav1.GetOptions{})
+				azVolumeAttachment, localError := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testPrimaryAzVolumeAttachment.Namespace).Get(context.TODO(), testPrimaryAzVolumeAttachment.Name, metav1.GetOptions{})
 				require.NoError(t, localError)
 				require.Equal(t, diskv1alpha1.Detached, azVolumeAttachment.Status.State)
 			},

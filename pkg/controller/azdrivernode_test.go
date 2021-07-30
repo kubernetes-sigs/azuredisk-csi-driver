@@ -22,77 +22,14 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
-	v1 "k8s.io/api/core/v1"
-	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/selection"
-	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller/mockclient"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-)
-
-var (
-	testNamespace = "test-namespace"
-
-	testNode0Name = "node-0"
-	testNode1Name = "node-1"
-
-	testNode1Request = reconcile.Request{
-		NamespacedName: types.NamespacedName{
-			Name:      testNode1Name,
-			Namespace: testNamespace,
-		},
-	}
-
-	testNode1NotFoundError      = k8serrors.NewNotFound(v1.Resource("nodes"), testNode1Name)
-	testNode1ServerTimeoutError = k8serrors.NewServerTimeout(v1.Resource("nodes"), testNode1Name, 1)
-
-	testAzDriverNode0 = v1alpha1.AzDriverNode{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      testNode0Name,
-			Namespace: testNamespace,
-		},
-	}
-
-	testAzDriverNode1 = v1alpha1.AzDriverNode{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      testNode1Name,
-			Namespace: testNamespace,
-		},
-	}
-
-	testAzDriverNode1NotFoundError = k8serrors.NewNotFound(v1alpha1.Resource("azdrivernodes"), testNode1Name)
-
-	testPrimaryAzVolumeAttachment = v1alpha1.AzVolumeAttachment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "primary-attachment",
-			Namespace: testNamespace,
-			Labels: map[string]string{
-				azureutils.NodeNameLabel: testNode1Name,
-			},
-		},
-		Spec: v1alpha1.AzVolumeAttachmentSpec{
-			RequestedRole: v1alpha1.PrimaryRole,
-		},
-	}
-
-	testReplicaAzVolumeAttachment = v1alpha1.AzVolumeAttachment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "replica-attachment",
-			Namespace: testNamespace,
-			Labels: map[string]string{
-				azureutils.NodeNameLabel: testNode1Name,
-			},
-		},
-		Spec: v1alpha1.AzVolumeAttachmentSpec{
-			RequestedRole: v1alpha1.ReplicaRole,
-		},
-	}
 )
 
 func NewTestAzDriverNodeController(controller *gomock.Controller, namespace string, objects ...runtime.Object) *ReconcileAzDriverNode {

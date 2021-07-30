@@ -18,157 +18,26 @@ package controller
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	v1 "k8s.io/api/core/v1"
-	storagev1 "k8s.io/api/storage/v1"
-	k8serrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types"
 	fakev1 "k8s.io/client-go/kubernetes/fake"
 	diskv1alpha1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	diskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
-	diskv1alpha1scheme "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/scheme"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller/mockclient"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller/mockvolumeprovisioner"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
-var (
-	computeDiskURIFormat = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s"
-
-	testSubscription  = "12345678-90ab-cedf-1234-567890abcdef"
-	testResourceGroup = "test-rg"
-
-	testManagedDiskURI = fmt.Sprintf(computeDiskURIFormat, testSubscription, testResourceGroup, testAzVolumeName)
-
-	testAzVolumeName = "test-volume"
-
-	testAzVolume = diskv1alpha1.AzVolume{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      testAzVolumeName,
-			Namespace: testNamespace,
-		},
-		Spec: diskv1alpha1.AzVolumeSpec{
-			UnderlyingVolume: testAzVolumeName,
-			CapacityRange: &diskv1alpha1.CapacityRange{
-				RequiredBytes: util.GiBToBytes(10),
-			},
-		},
-	}
-
-	testAzVolumeRequest = reconcile.Request{
-		NamespacedName: types.NamespacedName{
-			Name:      testAzVolumeName,
-			Namespace: testNamespace,
-		},
-	}
-
-	testPrimaryAzVolumeAttachmentByVolume = diskv1alpha1.AzVolumeAttachment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "primary-attachment-by-volume",
-			Namespace: testNamespace,
-			Labels: map[string]string{
-				azureutils.VolumeNameLabel: testAzVolumeName,
-			},
-		},
-		Spec: diskv1alpha1.AzVolumeAttachmentSpec{
-			RequestedRole:    diskv1alpha1.PrimaryRole,
-			UnderlyingVolume: testAzVolumeName,
-			VolumeID:         testManagedDiskURI,
-		},
-	}
-
-	testReplicaAzVolumeAttachmentByVolume = diskv1alpha1.AzVolumeAttachment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "replica-attachment-by-volume",
-			Namespace: testNamespace,
-			Labels: map[string]string{
-				azureutils.VolumeNameLabel: testAzVolumeName,
-			},
-		},
-		Spec: diskv1alpha1.AzVolumeAttachmentSpec{
-			RequestedRole:    diskv1alpha1.ReplicaRole,
-			UnderlyingVolume: testAzVolumeName,
-			VolumeID:         testManagedDiskURI,
-		},
-	}
-
-	testStorageClassName = "test-storage-class"
-
-	testStorageClass = storagev1.StorageClass{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: testStorageClassName,
-		},
-		Provisioner: azureutils.DriverName,
-		Parameters: map[string]string{
-			azureutils.MaxSharesField:            "2",
-			azureutils.MaxMountReplicaCountField: "1",
-		},
-	}
-
-	testPersistentVolume0Name = "test-pv-0"
-
-	testPersistentVolume0 = v1.PersistentVolume{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: testPersistentVolume0Name,
-		},
-		Spec: v1.PersistentVolumeSpec{
-			PersistentVolumeSource: v1.PersistentVolumeSource{
-				CSI: &v1.CSIPersistentVolumeSource{
-					Driver:       azureutils.DriverName,
-					VolumeHandle: fmt.Sprintf(computeDiskURIFormat, testSubscription, testResourceGroup, testPersistentVolume0Name),
-				},
-			},
-			Capacity: v1.ResourceList{
-				v1.ResourceStorage: *resource.NewQuantity(util.GiBToBytes(10), resource.DecimalSI),
-			},
-			StorageClassName: "",
-		},
-	}
-
-	testPersistentVolume1Name = "test-pv-1"
-
-	testPersistentVolume1 = v1.PersistentVolume{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: testPersistentVolume1Name,
-		},
-		Spec: v1.PersistentVolumeSpec{
-			PersistentVolumeSource: v1.PersistentVolumeSource{
-				CSI: &v1.CSIPersistentVolumeSource{
-					Driver:       azureutils.DriverName,
-					VolumeHandle: fmt.Sprintf(computeDiskURIFormat, testSubscription, testResourceGroup, testPersistentVolume1Name),
-				},
-			},
-			Capacity: v1.ResourceList{
-				v1.ResourceStorage: *resource.NewQuantity(util.GiBToBytes(10), resource.DecimalSI),
-			},
-			StorageClassName: testStorageClassName,
-		},
-	}
-)
-
 func NewTestAzVolumeController(controller *gomock.Controller, namespace string, objects ...runtime.Object) *ReconcileAzVolume {
-	diskv1alpha1Objs := make([]runtime.Object, 0)
-	kubeObjs := make([]runtime.Object, 0)
-	for _, obj := range objects {
-		if _, _, err := diskv1alpha1scheme.Scheme.ObjectKinds(obj); err == nil {
-			diskv1alpha1Objs = append(diskv1alpha1Objs, obj)
-		} else {
-			kubeObjs = append(kubeObjs, obj)
-		}
-	}
+	diskv1alpha1Objs, kubeObjs := splitObjects(objects...)
+
 	return &ReconcileAzVolume{
 		client:            mockclient.NewMockClient(controller),
 		azVolumeClient:    diskfakes.NewSimpleClientset(diskv1alpha1Objs...),
@@ -178,76 +47,11 @@ func NewTestAzVolumeController(controller *gomock.Controller, namespace string, 
 	}
 }
 
-func mockAzVolume(controller *ReconcileAzVolume) {
-	controller.client.(*mockclient.MockClient).EXPECT().
-		Get(gomock.Any(), gomock.Any(), gomock.Any()).
-		DoAndReturn(func(ctx context.Context, key types.NamespacedName, obj runtime.Object) error {
-			if target, ok := obj.(*diskv1alpha1.AzVolume); ok {
-				azVolume, err := controller.azVolumeClient.DiskV1alpha1().AzVolumes(key.Namespace).Get(ctx, key.Name, metav1.GetOptions{})
-				if err != nil {
-					return err
-				}
+func mockClientsAndVolumeProvisioner(controller *ReconcileAzVolume) {
+	mockClients(controller.client.(*mockclient.MockClient), controller.azVolumeClient, controller.kubeClient)
 
-				azVolume.DeepCopyInto(target)
-
-				return nil
-			}
-
-			gr := schema.GroupResource{
-				Group:    obj.GetObjectKind().GroupVersionKind().Group,
-				Resource: obj.GetObjectKind().GroupVersionKind().Kind,
-			}
-			return k8serrors.NewNotFound(gr, testNode1Name)
-		}).
-		AnyTimes()
-	controller.client.(*mockclient.MockClient).EXPECT().
-		Patch(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-		DoAndReturn(func(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
-			if _, ok := obj.(*diskv1alpha1.AzVolume); ok {
-				data, err := patch.Data(obj)
-				if err != nil {
-					return err
-				}
-				options := client.PatchOptions{}
-				options.ApplyOptions(opts)
-				_, err = controller.azVolumeClient.DiskV1alpha1().AzVolumes(obj.GetNamespace()).Patch(ctx, obj.GetName(), patch.Type(), data, *options.AsPatchOptions())
-				if err != nil {
-					return err
-				}
-
-				return nil
-			}
-
-			gr := schema.GroupResource{
-				Group:    obj.GetObjectKind().GroupVersionKind().Group,
-				Resource: obj.GetObjectKind().GroupVersionKind().Kind,
-			}
-			return k8serrors.NewNotFound(gr, testNode1Name)
-		}).
-		AnyTimes()
-	controller.client.(*mockclient.MockClient).EXPECT().
-		Update(gomock.Any(), gomock.Any(), gomock.Any()).
-		DoAndReturn(func(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error {
-			if updated, ok := obj.(*diskv1alpha1.AzVolume); ok {
-				options := client.UpdateOptions{}
-				options.ApplyOptions(opts)
-				_, err := controller.azVolumeClient.DiskV1alpha1().AzVolumes(obj.GetNamespace()).Update(ctx, updated, *options.AsUpdateOptions())
-				if err != nil {
-					return err
-				}
-
-				return nil
-			}
-
-			gr := schema.GroupResource{
-				Group:    obj.GetObjectKind().GroupVersionKind().Group,
-				Resource: obj.GetObjectKind().GroupVersionKind().Kind,
-			}
-			return k8serrors.NewNotFound(gr, testNode1Name)
-		}).
-		AnyTimes()
 	controller.volumeProvisioner.(*mockvolumeprovisioner.MockVolumeProvisioner).EXPECT().
-		CreateVolume(gomock.Any(), testAzVolumeName, gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		CreateVolume(gomock.Any(), testPersistentVolume0Name, gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		DoAndReturn(func(
 			ctx context.Context,
 			volumeName string,
@@ -302,9 +106,9 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 	}{
 		{
 			description: "[Success] Should create a volume when a new AzVolume instance is created.",
-			request:     testAzVolumeRequest,
+			request:     testAzVolume0Request,
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAzVolume {
-				azVolume := testAzVolume.DeepCopy()
+				azVolume := testAzVolume0.DeepCopy()
 
 				azVolume.Status.State = diskv1alpha1.VolumeOperationPending
 
@@ -313,23 +117,23 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 					testNamespace,
 					azVolume)
 
-				mockAzVolume(controller)
+				mockClientsAndVolumeProvisioner(controller)
 
 				return controller
 			},
 			verifyFunc: func(t *testing.T, controller *ReconcileAzVolume, result reconcile.Result, err error) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
-				azVolume, err := controller.azVolumeClient.DiskV1alpha1().AzVolumes(testNamespace).Get(context.TODO(), testAzVolumeName, metav1.GetOptions{})
+				azVolume, err := controller.azVolumeClient.DiskV1alpha1().AzVolumes(testNamespace).Get(context.TODO(), testPersistentVolume0Name, metav1.GetOptions{})
 				require.NoError(t, err)
 				require.Equal(t, diskv1alpha1.VolumeCreated, azVolume.Status.State)
 			},
 		},
 		{
 			description: "[Success] Should expand a volume when a AzVolume Spec and Status report different sizes.",
-			request:     testAzVolumeRequest,
+			request:     testAzVolume0Request,
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAzVolume {
-				azVolume := testAzVolume.DeepCopy()
+				azVolume := testAzVolume0.DeepCopy()
 
 				azVolume.Status.Detail = &diskv1alpha1.AzVolumeStatusDetail{
 					ResponseObject: &diskv1alpha1.AzVolumeStatusParams{
@@ -345,23 +149,23 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 					testNamespace,
 					azVolume)
 
-				mockAzVolume(controller)
+				mockClientsAndVolumeProvisioner(controller)
 
 				return controller
 			},
 			verifyFunc: func(t *testing.T, controller *ReconcileAzVolume, result reconcile.Result, err error) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
-				azVolume, err := controller.azVolumeClient.DiskV1alpha1().AzVolumes(testNamespace).Get(context.TODO(), testAzVolumeName, metav1.GetOptions{})
+				azVolume, err := controller.azVolumeClient.DiskV1alpha1().AzVolumes(testNamespace).Get(context.TODO(), testPersistentVolume0Name, metav1.GetOptions{})
 				require.NoError(t, err)
 				require.Equal(t, azVolume.Spec.CapacityRange.RequiredBytes, azVolume.Status.Detail.ResponseObject.CapacityBytes)
 			},
 		},
 		{
 			description: "[Success] Should delete a volume when a AzVolume is marked for deletion.",
-			request:     testAzVolumeRequest,
+			request:     testAzVolume0Request,
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAzVolume {
-				azVolume := testAzVolume.DeepCopy()
+				azVolume := testAzVolume0.DeepCopy()
 
 				azVolume.Annotations = map[string]string{
 					azureutils.VolumeDeleteRequestAnnotation: "cloud-delete-volume",
@@ -382,23 +186,23 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 					testNamespace,
 					azVolume)
 
-				mockAzVolume(controller)
+				mockClientsAndVolumeProvisioner(controller)
 
 				return controller
 			},
 			verifyFunc: func(t *testing.T, controller *ReconcileAzVolume, result reconcile.Result, err error) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
-				azVolume, err := controller.azVolumeClient.DiskV1alpha1().AzVolumes(testNamespace).Get(context.TODO(), testAzVolumeName, metav1.GetOptions{})
+				azVolume, err := controller.azVolumeClient.DiskV1alpha1().AzVolumes(testNamespace).Get(context.TODO(), testPersistentVolume0Name, metav1.GetOptions{})
 				require.NoError(t, err)
 				require.Equal(t, diskv1alpha1.VolumeDeleted, azVolume.Status.State)
 			},
 		},
 		{
 			description: "[Success] Should release replica attachments when AzVolume is released.",
-			request:     testAzVolumeRequest,
+			request:     testAzVolume0Request,
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAzVolume {
-				azVolume := testAzVolume.DeepCopy()
+				azVolume := testAzVolume0.DeepCopy()
 
 				azVolume.Status.Detail = &diskv1alpha1.AzVolumeStatusDetail{
 					Phase: diskv1alpha1.VolumeReleased,
@@ -413,14 +217,14 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 					mockCtl,
 					testNamespace,
 					azVolume,
-					&testReplicaAzVolumeAttachmentByVolume)
+					&testReplicaAzVolumeAttachment)
 
-				mockAzVolume(controller)
+				mockClientsAndVolumeProvisioner(controller)
 
 				return controller
 			},
 			verifyFunc: func(t *testing.T, controller *ReconcileAzVolume, result reconcile.Result, err error) {
-				_, localErr := controller.azVolumeClient.DiskV1alpha1().AzVolumes(testNamespace).Get(context.TODO(), testAzVolumeName, metav1.GetOptions{})
+				_, localErr := controller.azVolumeClient.DiskV1alpha1().AzVolumes(testNamespace).Get(context.TODO(), testPersistentVolume0Name, metav1.GetOptions{})
 				require.NoError(t, localErr)
 				azVolumeAttachments, _ := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{})
 				require.Len(t, azVolumeAttachments.Items, 0)
@@ -428,9 +232,9 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 		},
 		{
 			description: "[Failure] Should delete volume attachments and requeue when AzVolume is marked for deletion.",
-			request:     testAzVolumeRequest,
+			request:     testAzVolume0Request,
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAzVolume {
-				azVolume := testAzVolume.DeepCopy()
+				azVolume := testAzVolume0.DeepCopy()
 
 				azVolume.Annotations = map[string]string{
 					azureutils.VolumeDeleteRequestAnnotation: "cloud-delete-volume",
@@ -450,10 +254,10 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 					mockCtl,
 					testNamespace,
 					azVolume,
-					&testPrimaryAzVolumeAttachmentByVolume,
-					&testReplicaAzVolumeAttachmentByVolume)
+					&testPrimaryAzVolumeAttachment,
+					&testReplicaAzVolumeAttachment)
 
-				mockAzVolume(controller)
+				mockClientsAndVolumeProvisioner(controller)
 
 				return controller
 			},
@@ -461,7 +265,7 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 				require.Equal(t, status.Errorf(codes.Aborted, "volume deletion requeued until attached azVolumeAttachments are entirely detached..."), err)
 				require.True(t, result.Requeue)
 
-				azVolume, err := controller.azVolumeClient.DiskV1alpha1().AzVolumes(testNamespace).Get(context.TODO(), testAzVolumeName, metav1.GetOptions{})
+				azVolume, err := controller.azVolumeClient.DiskV1alpha1().AzVolumes(testNamespace).Get(context.TODO(), testPersistentVolume0Name, metav1.GetOptions{})
 				require.NoError(t, err)
 				require.Equal(t, diskv1alpha1.VolumeCreated, azVolume.Status.State)
 
@@ -492,7 +296,7 @@ func TestAzVolumeControllerRecover(t *testing.T) {
 		{
 			description: "[Success] Should create AzVolume instances for PersistentVolumes using Azure Disk CSI Driver.",
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAzVolume {
-				azVolume := testAzVolume.DeepCopy()
+				azVolume := testAzVolume0.DeepCopy()
 
 				azVolume.Status.State = diskv1alpha1.VolumeOperationPending
 
