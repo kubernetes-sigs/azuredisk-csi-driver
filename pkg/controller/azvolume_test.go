@@ -84,7 +84,9 @@ var (
 			},
 		},
 		Spec: diskv1alpha1.AzVolumeAttachmentSpec{
-			RequestedRole: diskv1alpha1.PrimaryRole,
+			RequestedRole:    diskv1alpha1.PrimaryRole,
+			UnderlyingVolume: testAzVolumeName,
+			VolumeID:         testManagedDiskURI,
 		},
 	}
 
@@ -97,7 +99,9 @@ var (
 			},
 		},
 		Spec: diskv1alpha1.AzVolumeAttachmentSpec{
-			RequestedRole: diskv1alpha1.ReplicaRole,
+			RequestedRole:    diskv1alpha1.ReplicaRole,
+			UnderlyingVolume: testAzVolumeName,
+			VolumeID:         testManagedDiskURI,
 		},
 	}
 
@@ -118,8 +122,7 @@ var (
 
 	testPersistentVolume0 = v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      testPersistentVolume0Name,
-			Namespace: testNamespace,
+			Name: testPersistentVolume0Name,
 		},
 		Spec: v1.PersistentVolumeSpec{
 			PersistentVolumeSource: v1.PersistentVolumeSource{
@@ -139,8 +142,7 @@ var (
 
 	testPersistentVolume1 = v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      testPersistentVolume1Name,
-			Namespace: testNamespace,
+			Name: testPersistentVolume1Name,
 		},
 		Spec: v1.PersistentVolumeSpec{
 			PersistentVolumeSource: v1.PersistentVolumeSource{
@@ -484,13 +486,11 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 func TestAzVolumeControllerRecover(t *testing.T) {
 	tests := []struct {
 		description string
-		request     reconcile.Request
 		setupFunc   func(*testing.T, *gomock.Controller) *ReconcileAzVolume
 		verifyFunc  func(*testing.T, *ReconcileAzVolume, error)
 	}{
 		{
 			description: "[Success] Should create AzVolume instances for PersistentVolumes using Azure Disk CSI Driver.",
-			request:     testAzVolumeRequest,
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAzVolume {
 				azVolume := testAzVolume.DeepCopy()
 

@@ -55,6 +55,11 @@ const (
 	DefaultTimeUntilDeletion     = time.Duration(5) * time.Minute
 )
 
+type AttachmentProvisioner interface {
+	PublishVolume(ctx context.Context, volumeID string, nodeID string, volumeContext map[string]string) (map[string]string, error)
+	UnpublishVolume(ctx context.Context, volumeID string, nodeID string) error
+}
+
 type Event int
 
 const (
@@ -71,7 +76,7 @@ type ReconcileAzVolumeAttachment struct {
 	kubeClient     kubeClientSet.Interface
 	namespace      string
 
-	cloudProvisioner CloudProvisioner
+	attachmentProvisioner AttachmentProvisioner
 
 	// syncMutex is used to prevent other syncVolume calls to be performed during syncAll routine
 	syncMutex sync.RWMutex
@@ -945,11 +950,11 @@ func (r *ReconcileAzVolumeAttachment) updateState(ctx context.Context, attachmen
 }
 
 func (r *ReconcileAzVolumeAttachment) attachVolume(ctx context.Context, volumeID, node string, volumeContext map[string]string) (map[string]string, error) {
-	return r.cloudProvisioner.PublishVolume(ctx, volumeID, node, volumeContext)
+	return r.attachmentProvisioner.PublishVolume(ctx, volumeID, node, volumeContext)
 }
 
 func (r *ReconcileAzVolumeAttachment) detachVolume(ctx context.Context, volumeID, node string) error {
-	return r.cloudProvisioner.UnpublishVolume(ctx, volumeID, node)
+	return r.attachmentProvisioner.UnpublishVolume(ctx, volumeID, node)
 }
 
 func (r *ReconcileAzVolumeAttachment) Recover(ctx context.Context) error {
@@ -972,20 +977,20 @@ func (r *ReconcileAzVolumeAttachment) Recover(ctx context.Context) error {
 	return nil
 }
 
-func NewAzVolumeAttachmentController(mgr manager.Manager, azVolumeClient azVolumeClientSet.Interface, kubeClient kubeClientSet.Interface, namespace string, cloudProvisioner CloudProvisioner) (*ReconcileAzVolumeAttachment, error) {
+func NewAzVolumeAttachmentController(mgr manager.Manager, azVolumeClient azVolumeClientSet.Interface, kubeClient kubeClientSet.Interface, namespace string, attachmentProvisioner AttachmentProvisioner) (*ReconcileAzVolumeAttachment, error) {
 	reconciler := ReconcileAzVolumeAttachment{
-		client:           mgr.GetClient(),
-		azVolumeClient:   azVolumeClient,
-		kubeClient:       kubeClient,
-		syncMutex:        sync.RWMutex{},
-		namespace:        namespace,
-		mutexMap:         make(map[string]*sync.Mutex),
-		mutexMapMutex:    sync.RWMutex{},
-		volumeMap:        make(map[string]string),
-		volumeMapMutex:   sync.RWMutex{},
-		cleanUpMap:       make(map[string]context.CancelFunc),
-		cleanUpMapMutex:  sync.RWMutex{},
-		cloudProvisioner: cloudProvisioner,
+		client:                mgr.GetClient(),
+		azVolumeClient:        azVolumeClient,
+		kubeClient:            kubeClient,
+		syncMutex:             sync.RWMutex{},
+		namespace:             namespace,
+		mutexMap:              make(map[string]*sync.Mutex),
+		mutexMapMutex:         sync.RWMutex{},
+		volumeMap:             make(map[string]string),
+		volumeMapMutex:        sync.RWMutex{},
+		cleanUpMap:            make(map[string]context.CancelFunc),
+		cleanUpMapMutex:       sync.RWMutex{},
+		attachmentProvisioner: attachmentProvisioner,
 	}
 
 	c, err := controller.New("azvolumeattachment-controller", mgr, controller.Options{
