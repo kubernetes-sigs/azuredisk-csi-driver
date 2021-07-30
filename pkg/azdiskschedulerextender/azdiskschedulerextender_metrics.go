@@ -19,11 +19,10 @@ limitations under the License.
 package main
 
 import (
-	"time"
-
 	"k8s.io/component-base/metrics"
 	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/klog/v2"
+	"time"
 )
 
 const (
@@ -51,14 +50,12 @@ var (
 		},
 		[]string{"filter"})
 
-	// TODO add with more advanced caching
-	// CacheSize = metrics.NewGaugeVec(
-	// 	&metrics.GaugeOpts{
-	// 		Namespace:      scheduler,
-	// 		Name:           "extender_cache_size",
-	// 		Help:           "Number of azDrivers and azVolumeAttachments in the cache.",
-	// 		StabilityLevel: metrics.ALPHA,
-	// 	}, []string{"type"})
+	SchedulerExtenderRequestCount = metrics.NewCounter(
+		&metrics.CounterOpts{
+			Namespace: scheduler,
+			Name:      "extender_requests_total",
+			Help:      "Total extender request.",
+		})
 
 	Goroutines = metrics.NewGaugeVec(
 		&metrics.GaugeOpts{
@@ -71,8 +68,8 @@ var (
 	metricsList = []metrics.Registerable{
 		FilterNodesDuration,
 		PrioritizeNodesDuration,
+		SchedulerExtenderRequestCount,
 		Goroutines,
-		//CacheSize,
 	}
 )
 

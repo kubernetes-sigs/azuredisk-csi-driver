@@ -6,7 +6,7 @@ metadata:
   namespace: kube-system
 spec:
   selector:
-    app: azdiskschedulerextender
+    app: csi-azuredisk-scheduler-extender
   ports:
     - port: 29606
       targetPort: 29606

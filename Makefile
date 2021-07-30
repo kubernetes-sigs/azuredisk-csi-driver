@@ -147,7 +147,7 @@ e2e-teardown:
 	kubectl wait --namespace=kube-system --for=delete pod --selector app=csi-azuredisk-controller --timeout 5m || true
 	kubectl wait --namespace=kube-system --for=delete pod --selector app=csi-azuredisk-node --timeout 5m || true
 ifdef BUILD_V2
-	kubectl wait --namespace=kube-system --for=delete pod --selector app=azdiskschedulerextender --timeout 5m || true
+	kubectl wait --namespace=kube-system --for=delete pod --selector app=csi-azuredisk-scheduler-extender --timeout 5m || true
 endif
 
 .PHONY: azuredisk

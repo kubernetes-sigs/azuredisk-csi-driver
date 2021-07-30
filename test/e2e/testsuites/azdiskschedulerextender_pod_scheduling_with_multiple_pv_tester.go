@@ -20,17 +20,14 @@ import (
 	"github.com/onsi/ginkgo"
 	v1 "k8s.io/api/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
-	v1alpha1ClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1alpha1"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 )
 
 // AzDiskSchedulerExtenderPodSchedulingWithMultiplePVTest will provision required PV(s), PVC(s) and Pod(s)
 // Pod with multiple PVs should successfully be scheduled in a cluster with AzDriverNode and AzVolumeAttachment resources
 type AzDiskSchedulerExtenderPodSchedulingWithMultiplePVTest struct {
-	CSIDriver       driver.DynamicPVTestDriver
-	AzDiskClientSet v1alpha1ClientSet.DiskV1alpha1Interface
-	AzNamespace     string
-	Pod             PodDetails
+	CSIDriver driver.DynamicPVTestDriver
+	Pod       PodDetails
 }
 
 func (t *AzDiskSchedulerExtenderPodSchedulingWithMultiplePVTest) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {

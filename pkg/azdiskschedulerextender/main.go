@@ -40,7 +40,7 @@ func init() {
 
 var (
 	metricsAddress              = flag.String("metrics-address", "0.0.0.0:29606", "export the metrics")
-	azDiskSchedulerExtenderPort = flag.String("port", "8888", "port used by az scheduler extender")
+	azDiskSchedulerExtenderPort = flag.String("port", "8889", "port used by az scheduler extender")
 )
 
 const (
@@ -84,6 +84,7 @@ func handleUnknownRequest(response http.ResponseWriter, request *http.Request) {
 }
 
 func handlePingRequest(response http.ResponseWriter, request *http.Request) {
+	SchedulerExtenderRequestCount.Inc()
 	// TODO: Return an error code based on resource metrics
 	// ex. CPU\Memory usage
 	started := time.Now()
@@ -100,6 +101,7 @@ func handlePingRequest(response http.ResponseWriter, request *http.Request) {
 }
 
 func handleFilterRequest(response http.ResponseWriter, request *http.Request) {
+	SchedulerExtenderRequestCount.Inc()
 	var args schedulerapi.ExtenderArgs
 
 	decoder := json.NewDecoder(request.Body)

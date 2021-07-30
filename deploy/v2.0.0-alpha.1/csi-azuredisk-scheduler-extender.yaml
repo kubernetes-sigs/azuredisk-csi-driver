@@ -62,7 +62,7 @@ spec:
         volumeMounts:
         - name: csi-azuredisk-scheduler-extender-config
           mountPath: /azdiskschedulerextender
-      - name: csi-azuredisk-scheduler-extender-ctr
+      - name: csi-azuredisk-scheduler-extender
         image: mcr.microsoft.com/k8s/csi/azdiskschedulerextender-csi:v2.0.0-alpha.1 
         imagePullPolicy: Always
         args:

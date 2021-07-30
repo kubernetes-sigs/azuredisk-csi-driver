@@ -73,7 +73,7 @@ node:
 schedulerExtender:
   replicas: 2
   metricsPort: 29606
-  servicePort: 8888
+  servicePort: 8889
 
 snapshot:
   enabled: false

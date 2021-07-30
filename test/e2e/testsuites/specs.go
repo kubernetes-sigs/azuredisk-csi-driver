@@ -169,30 +169,50 @@ func (pod *PodDetails) SetupWithPreProvisionedVolumes(client clientset.Interface
 	return tpod, cleanupFuncs
 }
 
-func (pod *PodDetails) SetupDeployment(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.DynamicPVTestDriver, storageClassParameters map[string]string, schedulerName string) (*TestDeployment, []func()) {
+func (pod *PodDetails) SetupDeployment(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.DynamicPVTestDriver, schedulerName string, podReplicas int, storageClassParameters map[string]string) (*TestDeployment, []func()) {
 	cleanupFuncs := make([]func(), 0)
-	volume := pod.Volumes[0]
-	ginkgo.By("setting up the StorageClass")
-	storageClass := csiDriver.GetDynamicProvisionStorageClass(storageClassParameters, volume.MountOptions, volume.ReclaimPolicy, volume.VolumeBindingMode, volume.AllowedTopologyValues, namespace.Name)
-	tsc := NewTestStorageClass(client, namespace, storageClass)
-	createdStorageClass := tsc.Create()
-	cleanupFuncs = append(cleanupFuncs, tsc.Cleanup)
-	ginkgo.By("setting up the PVC")
-	tpvc := NewTestPersistentVolumeClaim(client, namespace, volume.ClaimSize, volume.VolumeMode, &createdStorageClass)
-	tpvc.Create()
-	if volume.VolumeBindingMode == nil || *volume.VolumeBindingMode == storagev1.VolumeBindingImmediate {
-		tpvc.WaitForBound()
-		tpvc.ValidateProvisionedPersistentVolume()
+	var volumes []v1.Volume
+	var volumeMounts []v1.VolumeMount
+	for n, volume := range pod.Volumes {
+		ginkgo.By("setting up the StorageClass")
+		storageClass := csiDriver.GetDynamicProvisionStorageClass(storageClassParameters, volume.MountOptions, volume.ReclaimPolicy, volume.VolumeBindingMode, volume.AllowedTopologyValues, namespace.Name)
+		tsc := NewTestStorageClass(client, namespace, storageClass)
+		createdStorageClass := tsc.Create()
+		cleanupFuncs = append(cleanupFuncs, tsc.Cleanup)
+		ginkgo.By("setting up the PVC")
+		tpvc := NewTestPersistentVolumeClaim(client, namespace, volume.ClaimSize, volume.VolumeMode, &createdStorageClass)
+		tpvc.Create()
+		if volume.VolumeBindingMode == nil || *volume.VolumeBindingMode == storagev1.VolumeBindingImmediate {
+			tpvc.WaitForBound()
+			tpvc.ValidateProvisionedPersistentVolume()
+		}
+		cleanupFuncs = append(cleanupFuncs, tpvc.Cleanup)
+		ginkgo.By("setting up the Deployment")
+		newVolumeName := fmt.Sprintf("%s%d", volume.VolumeMount.NameGenerate, n+1)
+		newVolume := v1.Volume{
+			Name: newVolumeName,
+			VolumeSource: v1.VolumeSource{
+				PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+					ClaimName: tpvc.persistentVolumeClaim.Name,
+				},
+			},
+		}
+		volumes = append(volumes, newVolume)
+
+		newVolumeMount := v1.VolumeMount{
+			Name:      newVolumeName,
+			MountPath: fmt.Sprintf("%s%d", volume.VolumeMount.MountPathGenerate, n+1),
+			ReadOnly:  volume.VolumeMount.ReadOnly,
+		}
+		volumeMounts = append(volumeMounts, newVolumeMount)
 	}
-	cleanupFuncs = append(cleanupFuncs, tpvc.Cleanup)
-	ginkgo.By("setting up the Deployment")
-	tDeployment := NewTestDeployment(client, namespace, pod.Cmd, tpvc.persistentVolumeClaim, fmt.Sprintf("%s%d", volume.VolumeMount.NameGenerate, 1), fmt.Sprintf("%s%d", volume.VolumeMount.MountPathGenerate, 1), volume.VolumeMount.ReadOnly, pod.IsWindows, pod.UseCMD, schedulerName)
+	tDeployment := NewTestDeployment(client, namespace, pod.Cmd, volumeMounts, volumes, podReplicas, pod.IsWindows, pod.UseCMD, schedulerName)
 
 	cleanupFuncs = append(cleanupFuncs, tDeployment.Cleanup)
 	return tDeployment, cleanupFuncs
 }
 
-func (pod *PodDetails) SetupStatefulset(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.DynamicPVTestDriver, storageClassParameters map[string]string, schedulerName string, replicaCount int) (*TestStatefulset, []func()) {
+func (pod *PodDetails) SetupStatefulset(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.DynamicPVTestDriver, schedulerName string, replicaCount int, storageClassParameters map[string]string) (*TestStatefulset, []func()) {
 	cleanupFuncs := make([]func(), 0)
 	var pvcs []v1.PersistentVolumeClaim
 	var volumeMounts []v1.VolumeMount
