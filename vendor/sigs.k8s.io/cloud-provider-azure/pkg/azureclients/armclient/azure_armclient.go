@@ -19,10 +19,12 @@ package armclient
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httputil"
 	"strings"
 	"sync"
@@ -39,6 +41,29 @@ import (
 )
 
 var _ Interface = &Client{}
+
+// Singleton transport for all connections to ARM.
+var commTransport *http.Transport
+
+func init() {
+	// Use behaviour compatible with DefaultTransport, but override MaxIdleConns and MaxIdleConns
+	const maxIdleConns = 64
+	const maxIdleConnsPerHost = 64
+	defaultTransport := http.DefaultTransport.(*http.Transport)
+	commTransport = &http.Transport{
+		Proxy:                 defaultTransport.Proxy,
+		DialContext:           defaultTransport.DialContext,
+		MaxIdleConns:          maxIdleConns,
+		MaxIdleConnsPerHost:   maxIdleConnsPerHost,
+		IdleConnTimeout:       defaultTransport.IdleConnTimeout,
+		TLSHandshakeTimeout:   defaultTransport.TLSHandshakeTimeout,
+		ExpectContinueTimeout: defaultTransport.ExpectContinueTimeout,
+		TLSClientConfig: &tls.Config{
+			MinVersion:    tls.VersionTLS12,
+			Renegotiation: tls.RenegotiateNever,
+		},
+	}
+}
 
 // Client implements ARM client Interface.
 type Client struct {
@@ -57,6 +82,8 @@ func New(authorizer autorest.Authorizer, baseURI, userAgent, apiVersion, clientR
 	restClient.RetryAttempts = 3
 	restClient.RetryDuration = time.Second * 1
 	restClient.Authorizer = authorizer
+	restClient.Sender = getSender()
+	restClient.Sender = autorest.DecorateSender(restClient.Sender, autorest.DoCloseIfError())
 
 	if userAgent == "" {
 		restClient.UserAgent = GetUserAgent(restClient)
@@ -78,6 +105,13 @@ func New(authorizer autorest.Authorizer, baseURI, userAgent, apiVersion, clientR
 		apiVersion:   apiVersion,
 		clientRegion: NormalizeAzureRegion(clientRegion),
 	}
+}
+
+func getSender() autorest.Sender {
+	// Setup sender with singleton transport so that connections to ARM are shared.
+	// Refer https://github.com/Azure/go-autorest/blob/master/autorest/sender.go#L128 for how the sender is created.
+	j, _ := cookiejar.New(nil)
+	return &http.Client{Jar: j, Transport: commTransport}
 }
 
 // GetUserAgent gets the autorest client with a user agent that
@@ -517,6 +551,28 @@ func (c *Client) PatchResource(ctx context.Context, resourceID string, parameter
 	}
 
 	return response, nil
+}
+
+// PatchResourceAsync patches a resource by resource ID asynchronously
+func (c *Client) PatchResourceAsync(ctx context.Context, resourceID string, parameters interface{}) (*azure.Future, *retry.Error) {
+	decorators := []autorest.PrepareDecorator{
+		autorest.WithPathParameters("{resourceID}", map[string]interface{}{"resourceID": resourceID}),
+		autorest.WithJSON(parameters),
+	}
+
+	request, err := c.PreparePatchRequest(ctx, decorators...)
+	if err != nil {
+		klog.V(5).Infof("Received error in %s: resourceID: %s, error: %s", "patch.prepare", resourceID, err)
+		return nil, retry.NewError(false, err)
+	}
+
+	future, resp, clientErr := c.SendAsync(ctx, request)
+	defer c.CloseResponse(ctx, resp)
+	if clientErr != nil {
+		klog.V(5).Infof("Received error in %s: resourceID: %s, error: %s", "patch.send", resourceID, clientErr.Error())
+		return nil, clientErr
+	}
+	return future, clientErr
 }
 
 // PutResourceAsync puts a resource by resource ID in async mode

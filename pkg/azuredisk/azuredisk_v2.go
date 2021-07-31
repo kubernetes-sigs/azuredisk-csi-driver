@@ -100,24 +100,17 @@ type CrdProvisioner interface {
 }
 
 // NewDriver creates a Driver or DriverV2 object depending on the --temp-use-driver-v2 flag.
-func NewDriver(nodeID, driverName string, volumeAttachLimit int64, enablePerfOptimization bool) CSIDriver {
-	var d CSIDriver
-
+func NewDriver(options *DriverOptions) CSIDriver {
 	if !*useDriverV2 {
-		d = newDriverV1(nodeID, driverName, volumeAttachLimit, enablePerfOptimization)
+		return newDriverV1(options)
 	} else {
-		d = newDriverV2(nodeID, driverName, volumeAttachLimit, enablePerfOptimization, *driverObjectNamespace, "default", "default", *heartbeatFrequencyInSec, *controllerLeaseDurationInSec, *controllerLeaseRenewDeadlineInSec, *controllerLeaseRetryPeriodInSec)
+		return newDriverV2(options, *driverObjectNamespace, "default", "default", *heartbeatFrequencyInSec, *controllerLeaseDurationInSec, *controllerLeaseRenewDeadlineInSec, *controllerLeaseRetryPeriodInSec)
 	}
-
-	return d
 }
 
 // newDriverV2 Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
 // does not support optional driver plugin info manifest field. Refer to CSI spec for more details.
-func newDriverV2(nodeID string,
-	driverName string,
-	volumeAttachLimit int64,
-	enablePerfOptimization bool,
+func newDriverV2(options *DriverOptions,
 	driverObjectNamespace string,
 	nodePartition string,
 	controllerPartition string,
@@ -128,12 +121,8 @@ func newDriverV2(nodeID string,
 
 	klog.Warning("Using DriverV2")
 	driver := DriverV2{}
-	driver.Name = driverName
+	driver.Name = options.DriverName
 	driver.Version = driverVersion
-	driver.NodeID = nodeID
-	driver.VolumeAttachLimit = volumeAttachLimit
-	driver.perfOptimizationEnabled = enablePerfOptimization
-	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.objectNamespace = driverObjectNamespace
 	driver.nodePartition = nodePartition
 	driver.controllerPartition = controllerPartition
@@ -141,6 +130,12 @@ func newDriverV2(nodeID string,
 	driver.controllerLeaseDurationInSec = leaseDurationInSec
 	driver.controllerLeaseRenewDeadlineInSec = leaseRenewDeadlineInSec
 	driver.controllerLeaseRetryPeriodInSec = leaseRetryPeriodInSec
+	driver.NodeID = options.NodeID
+	driver.VolumeAttachLimit = options.VolumeAttachLimit
+	driver.volumeLocks = volumehelper.NewVolumeLocks()
+	driver.perfOptimizationEnabled = options.EnablePerfOptimization
+	driver.cloudConfigSecretName = options.CloudConfigSecretName
+	driver.cloudConfigSecretNamespace = options.CloudConfigSecretNamespace
 
 	topologyKey = fmt.Sprintf("topology.%s/zone", driver.Name)
 	return &driver
@@ -159,7 +154,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 		klog.Fatalf("failed to get kube config (%s), error: %v. Exiting application...", kubeconfig, err)
 	}
 
-	d.kubeClient, err = clientset.NewForConfig(d.kubeConfig)
+	d.kubeClient, err = getKubeClient(kubeconfig)
 	if err != nil || d.kubeClient == nil {
 		klog.Fatalf("failed to get kubeclient with kubeconfig (%s), error: %v. Exiting application...", kubeconfig, err)
 	}
@@ -169,7 +164,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 		klog.Fatalf("Failed to get crd provisioner. Error: %v", err)
 	}
 
-	d.cloudProvisioner, err = provisioner.NewCloudProvisioner(d.kubeConfig, d.kubeClient, topologyKey, d.objectNamespace)
+	d.cloudProvisioner, err = provisioner.NewCloudProvisioner(d.kubeClient, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, topologyKey)
 	if err != nil {
 		klog.Fatalf("Failed to get controller provisioner. Error: %v", err)
 	}

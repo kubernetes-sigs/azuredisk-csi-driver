@@ -35,7 +35,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	clientset "k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 	cloudprovider "k8s.io/cloud-provider"
 	volerr "k8s.io/cloud-provider/volume/errors"
 	"k8s.io/klog/v2"
@@ -62,9 +61,14 @@ type listVolumeStatus struct {
 	err           error
 }
 
-func NewCloudProvisioner(kubeConfig *rest.Config, kubeClient clientset.Interface, topologyKey string, namespace string) (*CloudProvisioner, error) {
-	azCloud, err := azureutils.GetAzureCloudProvider(kubeClient)
-	if err != nil {
+func NewCloudProvisioner(
+	kubeClient clientset.Interface,
+	cloudConfigSecretName string,
+	cloudConfigSecretNamespace string,
+	topologyKey string) (*CloudProvisioner, error) {
+	azCloud, err := azureutils.GetAzureCloudProvider(kubeClient, cloudConfigSecretName, cloudConfigSecretNamespace)
+	if err != nil || azCloud.TenantID == "" || azCloud.SubscriptionID == "" {
+		klog.Fatalf("failed to get Azure Cloud Provider, error: %v", err)
 		return nil, err
 	}
 
@@ -101,9 +105,9 @@ func (c *CloudProvisioner) CreateVolume(
 		diskEncryptionSetID     string
 		customTags              string
 		writeAcceleratorEnabled string
+		maxShares               int
 		netAccessPolicy         string
 		diskAccessID            string
-		maxShares               int
 		enableBursting          *bool
 	)
 
@@ -160,15 +164,6 @@ func (c *CloudProvisioner) CreateVolume(
 			if !optimization.IsValidPerfProfile(v) {
 				return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Perf profile %s is not supported. Supported tuning modes are none and basic.", v))
 			}
-
-		// The following parameter is not used by the cloud provisioner, but must be present in the VolumeContext
-		// returned to the caller so that it is included in the parameters passed to Node{Publish|Stage}Volume.
-		case azureutils.FSTypeField:
-			// no-op
-
-		case azureutils.KindField:
-			// fix csi migration issue: https://github.com/kubernetes/kubernetes/issues/103433
-			parameters[azureutils.KindField] = string(v1.AzureManagedDisk)
 		case azureutils.NetworkAccessPolicyField:
 			netAccessPolicy = v
 		case azureutils.DiskAccessIDField:
@@ -177,6 +172,14 @@ func (c *CloudProvisioner) CreateVolume(
 			if strings.EqualFold(v, azureutils.TrueValue) {
 				enableBursting = to.BoolPtr(true)
 			}
+		// The following parameter is not used by the cloud provisioner, but must be present in the VolumeContext
+		// returned to the caller so that it is included in the parameters passed to Node{Publish|Stage}Volume.
+		case azureutils.FSTypeField:
+			// no-op
+
+		case azureutils.KindField:
+			// fix csi migration issue: https://github.com/kubernetes/kubernetes/issues/103433
+			parameters[azureutils.KindField] = string(v1.AzureManagedDisk)
 		default:
 			return nil, fmt.Errorf("invalid parameter %s in storage class", k)
 		}

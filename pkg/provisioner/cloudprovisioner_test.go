@@ -591,6 +591,14 @@ func TestPublishVolume(t *testing.T) {
 		Update(gomock.Any(), testResourceGroup, testVMName, gomock.Any(), gomock.Any()).
 		Return(nil).
 		AnyTimes()
+	provisioner.GetCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
+		UpdateAsync(gomock.Any(), testResourceGroup, testVMName, gomock.Any(), gomock.Any()).
+		Return(nil, nil).
+		AnyTimes()
+	provisioner.GetCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
+		WaitForUpdateResult(gomock.Any(), gomock.Any(), testResourceGroup, gomock.Any()).
+		Return(nil).
+		AnyTimes()
 
 	provisioner.GetCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
 		Get(gomock.Any(), testResourceGroup, missingVMName, gomock.Any()).
@@ -657,6 +665,14 @@ func TestUnpublishVolume(t *testing.T) {
 		AnyTimes()
 	provisioner.GetCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
 		Update(gomock.Any(), testResourceGroup, testVMName, gomock.Any(), gomock.Any()).
+		Return(nil).
+		AnyTimes()
+	provisioner.GetCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
+		UpdateAsync(gomock.Any(), testResourceGroup, testVMName, gomock.Any(), gomock.Any()).
+		Return(nil, nil).
+		AnyTimes()
+	provisioner.GetCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
+		WaitForUpdateResult(gomock.Any(), gomock.Any(), testResourceGroup, gomock.Any()).
 		Return(nil).
 		AnyTimes()
 

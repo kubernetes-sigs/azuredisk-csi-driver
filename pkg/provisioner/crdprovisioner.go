@@ -546,6 +546,7 @@ func isAzVolumeSpecSameAsRequestParams(defaultAzVolume *v1alpha1.AzVolume,
 	defaultParams := defaultAzVolume.Spec.Parameters
 	defaultSecret := defaultAzVolume.Spec.Secrets
 	defaultAccReq := defaultAzVolume.Spec.AccessibilityRequirements
+	defaultVolContentSource := defaultAzVolume.Spec.ContentVolumeSource
 	if defaultParams == nil {
 		defaultParams = make(map[string]string)
 	}
@@ -558,17 +559,23 @@ func isAzVolumeSpecSameAsRequestParams(defaultAzVolume *v1alpha1.AzVolume,
 	if secrets == nil {
 		secrets = make(map[string]string)
 	}
+	if defaultAccReq == nil {
+		defaultAccReq = &v1alpha1.TopologyRequirement{}
+	}
 	if defaultAccReq.Preferred == nil {
 		defaultAccReq.Preferred = []v1alpha1.Topology{}
 	}
 	if defaultAccReq.Requisite == nil {
 		defaultAccReq.Requisite = []v1alpha1.Topology{}
 	}
+	if defaultVolContentSource == nil {
+		defaultVolContentSource = &v1alpha1.ContentVolumeSource{}
+	}
 
 	return (defaultAzVolume.Spec.MaxMountReplicaCount == maxMountReplicaCount &&
 		reflect.DeepEqual(defaultAzVolume.Spec.CapacityRange, capacityRange) &&
 		reflect.DeepEqual(defaultParams, parameters) &&
 		reflect.DeepEqual(defaultSecret, secrets) &&
-		reflect.DeepEqual(defaultAzVolume.Spec.ContentVolumeSource, volumeContentSource) &&
+		reflect.DeepEqual(defaultVolContentSource, volumeContentSource) &&
 		reflect.DeepEqual(defaultAccReq, accessibilityReq))
 }

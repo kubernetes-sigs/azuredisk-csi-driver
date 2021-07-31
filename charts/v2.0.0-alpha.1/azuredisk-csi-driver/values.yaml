@@ -45,6 +45,8 @@ azuredisk:
 
 controller:
   name: csi-azuredisk-controller
+  cloudConfigSecretName: azure-cloud-provider
+  cloudConfigSecretNamespace: kube-system
   replicas: 2
   metricsPort: 29604
   livenessProbe:
@@ -65,6 +67,8 @@ controller:
   podLabels: {}
 
 node:
+  cloudConfigSecretName: azure-cloud-provider
+  cloudConfigSecretNamespace: kube-system
   metricsPort: 29605
   logLevel: 5
   livenessProbe:

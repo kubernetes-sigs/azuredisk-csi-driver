@@ -240,11 +240,11 @@ func GetValidDiskName(volumeName string) string {
 }
 
 // GetCloudProvider get Azure Cloud Provider
-func GetAzureCloudProvider(kubeClient clientset.Interface) (*azure.Cloud, error) {
+func GetAzureCloudProvider(kubeClient clientset.Interface, secretName string, secretNamespace string) (*azure.Cloud, error) {
 	az := &azure.Cloud{
 		InitSecretConfig: azure.InitSecretConfig{
-			SecretName:      "azure-cloud-provider",
-			SecretNamespace: "kube-system",
+			SecretName:      secretName,
+			SecretNamespace: secretNamespace,
 			CloudConfigKey:  "cloud-config",
 		},
 	}

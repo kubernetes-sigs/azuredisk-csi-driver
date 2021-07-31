@@ -131,7 +131,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		if mnt.FsType != "" {
 			fstype = mnt.FsType
 		}
-		options = append(options, mnt.MountFlags...)
+		options = append(options, collectMountOptions(fstype, mnt.MountFlags)...)
 	}
 
 	volContextFSType := getFStype(req.GetVolumeContext())
@@ -599,4 +599,16 @@ func (d *Driver) ensureBlockTargetFile(target string) error {
 	}
 
 	return nil
+}
+
+func collectMountOptions(fsType string, mntFlags []string) []string {
+	var options []string
+	options = append(options, mntFlags...)
+
+	// By default, xfs does not allow mounting of two volumes with the same filesystem uuid.
+	// Force ignore this uuid to be able to mount volume + its clone / restored snapshot on the same node.
+	if fsType == "xfs" {
+		options = append(options, "nouuid")
+	}
+	return options
 }
