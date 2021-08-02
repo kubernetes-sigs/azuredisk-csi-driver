@@ -78,7 +78,7 @@ func (r *ReconcileVolumeAttachment) Reconcile(ctx context.Context, request recon
 	}
 
 	var pv corev1.PersistentVolume
-	if err := r.client.Get(ctx, request.NamespacedName, &pv); err != nil {
+	if err := r.client.Get(ctx, types.NamespacedName{Name: *volumeName}, &pv); err != nil {
 		if !errors.IsNotFound(err) {
 			klog.Errorf("failed to get PersistentVolume (%s): %v", volumeName, err)
 			return reconcile.Result{Requeue: true}, err

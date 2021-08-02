@@ -104,7 +104,7 @@ var (
 		},
 	}
 
-	testPrimaryAzVolumeAttachmentName = "primary-attachment-by-volume"
+	testPrimaryAzVolumeAttachmentName = azureutils.GetAzVolumeAttachmentName(testPersistentVolume0Name, testNode0Name)
 
 	testPrimaryAzVolumeAttachment = diskv1alpha1.AzVolumeAttachment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -129,7 +129,7 @@ var (
 		},
 	}
 
-	testReplicaAzVolumeAttachmentName = "replica-attachment-by-volume"
+	testReplicaAzVolumeAttachmentName = azureutils.GetAzVolumeAttachmentName(testPersistentVolume0Name, testNode1Name)
 
 	testReplicaAzVolumeAttachment = diskv1alpha1.AzVolumeAttachment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -172,6 +172,12 @@ var (
 			Source: storagev1.VolumeAttachmentSource{
 				PersistentVolumeName: &testPersistentVolume0.Name,
 			},
+		},
+	}
+
+	testVolumeAttachmentRequest = reconcile.Request{
+		NamespacedName: types.NamespacedName{
+			Name: testVolumeAttachmentName,
 		},
 	}
 
@@ -260,6 +266,14 @@ func mockClients(mockClient *mockclient.MockClient, azVolumeClient azVolumeClien
 				}
 
 				pv.DeepCopyInto(target)
+
+			case *storagev1.VolumeAttachment:
+				volumeAttachment, err := kubeClient.StorageV1().VolumeAttachments().Get(ctx, key.Name, metav1.GetOptions{})
+				if err != nil {
+					return err
+				}
+
+				volumeAttachment.DeepCopyInto(target)
 
 			default:
 				gr := schema.GroupResource{
