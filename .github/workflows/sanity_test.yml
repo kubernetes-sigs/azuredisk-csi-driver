@@ -11,8 +11,13 @@ jobs:
       AZURE_CLIENT_ID: ${{ secrets.ClientId }}
       AZURE_CLIENT_SECRET: ${{ secrets.ClientSecret }}
       AZURE_LOCATION: ${{ secrets.SanityLocation }}
-    
+ 
     steps:
+    - name: Cancel Previous Runs
+      uses: styfle/cancel-workflow-action@0.9.1
+      with:
+        access_token: ${{ github.token }}
+
     - name: Set up Go 1.x
       uses: actions/setup-go@v2
       with:
