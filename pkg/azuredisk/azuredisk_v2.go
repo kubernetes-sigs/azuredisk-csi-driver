@@ -159,14 +159,20 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 		klog.Fatalf("failed to get kubeclient with kubeconfig (%s), error: %v. Exiting application...", kubeconfig, err)
 	}
 
-	d.crdProvisioner, err = provisioner.NewCrdProvisioner(d.kubeConfig, d.objectNamespace)
-	if err != nil {
-		klog.Fatalf("Failed to get crd provisioner. Error: %v", err)
+	// d.crdProvisioner is set by NewFakeDriver for unit tests.
+	if d.crdProvisioner == nil {
+		d.crdProvisioner, err = provisioner.NewCrdProvisioner(d.kubeConfig, d.objectNamespace)
+		if err != nil {
+			klog.Fatalf("Failed to get crd provisioner. Error: %v", err)
+		}
 	}
 
-	d.cloudProvisioner, err = provisioner.NewCloudProvisioner(d.kubeClient, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, topologyKey)
-	if err != nil {
-		klog.Fatalf("Failed to get controller provisioner. Error: %v", err)
+	// d.cloudProvisioner is set by NewFakeDriver for unit tests.
+	if d.cloudProvisioner == nil {
+		d.cloudProvisioner, err = provisioner.NewCloudProvisioner(d.kubeClient, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, topologyKey)
+		if err != nil {
+			klog.Fatalf("Failed to get controller provisioner. Error: %v", err)
+		}
 	}
 
 	if d.NodeID == "" {
@@ -185,9 +191,12 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 		}
 	}
 
-	d.nodeProvisioner, err = provisioner.NewNodeProvisioner()
-	if err != nil {
-		klog.Fatalf("Failed to get node provisioner. Error: %v", err)
+	// d.nodeProvisioner is set by NewFakeDriver for unit tests.
+	if d.nodeProvisioner == nil {
+		d.nodeProvisioner, err = provisioner.NewNodeProvisioner()
+		if err != nil {
+			klog.Fatalf("Failed to get node provisioner. Error: %v", err)
+		}
 	}
 
 	d.AddControllerServiceCapabilities(
