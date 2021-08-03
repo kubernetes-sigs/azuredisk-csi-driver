@@ -10,7 +10,7 @@ jobs:
       AZURE_SUBSCRIPTION_ID: ${{ secrets.SubscriptionId }}
       AZURE_CLIENT_ID: ${{ secrets.ClientId }}
       AZURE_CLIENT_SECRET: ${{ secrets.ClientSecret }}
-      AZURE_LOCATION: ${{ secrets.Location }}
+      AZURE_LOCATION: ${{ secrets.E2ELocation }}
 
     steps:
     - name: Set UUID
