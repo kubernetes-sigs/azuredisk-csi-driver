@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -43,17 +42,28 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
+// VolumeProvisioner defines the subset of Cloud Provisioner functions used by the AzVolume controller.
+type VolumeProvisioner interface {
+	CreateVolume(
+		ctx context.Context,
+		volumeName string,
+		capacityRange *v1alpha1.CapacityRange,
+		volumeCapabilities []v1alpha1.VolumeCapability,
+		parameters map[string]string,
+		secrets map[string]string,
+		volumeContentSource *v1alpha1.ContentVolumeSource,
+		accessibilityTopology *v1alpha1.TopologyRequirement) (*v1alpha1.AzVolumeStatusParams, error)
+	DeleteVolume(ctx context.Context, volumeID string, secrets map[string]string) error
+	ExpandVolume(ctx context.Context, volumeID string, capacityRange *v1alpha1.CapacityRange, secrets map[string]string) (*v1alpha1.AzVolumeStatusParams, error)
+}
+
 //Struct for the reconciler
 type ReconcileAzVolume struct {
-	client         client.Client
-	azVolumeClient azVolumeClientSet.Interface
-	kubeClient     kubeClientSet.Interface
-	// muteMap maps volume name to mutex, it is used to guarantee that only one sync call is made at a time per volume
-	mutexMap map[string]*sync.Mutex
-	// muteMapMutex is used when updating or reading the mutexMap
-	mutexMapMutex    sync.RWMutex
-	namespace        string
-	cloudProvisioner CloudProvisioner
+	client            client.Client
+	azVolumeClient    azVolumeClientSet.Interface
+	kubeClient        kubeClientSet.Interface
+	namespace         string
+	volumeProvisioner VolumeProvisioner
 }
 
 // Implement reconcile.Reconciler so the controller can reconcile objects
@@ -138,8 +148,13 @@ func (r *ReconcileAzVolume) triggerCreate(ctx context.Context, volumeName string
 		klog.Errorf("failed to get AzVolume (%s): %v", volumeName, err)
 		return err
 	}
-	var response *v1alpha1.AzVolumeStatusParams
 
+	//Register finalizer
+	if azVolume, err = r.initializeMeta(ctx, volumeName, azVolume, true); err != nil {
+		return err
+	}
+
+	var response *v1alpha1.AzVolumeStatusParams
 	if azVolume.Status.State == v1alpha1.VolumeOperationPending || azVolume.Status.State == v1alpha1.VolumeCreating || azVolume.Status.State == v1alpha1.VolumeCreated {
 		if azVolume.Status.State == v1alpha1.VolumeOperationPending {
 			if azVolume, err = r.updateState(ctx, volumeName, azVolume, v1alpha1.VolumeCreating); err != nil {
@@ -155,11 +170,6 @@ func (r *ReconcileAzVolume) triggerCreate(ctx context.Context, volumeName string
 				return derr
 			}
 			_, err = r.updateStatusWithError(ctx, volumeName, azVolume, err)
-			return err
-		}
-
-		//Register finalizer
-		if azVolume, err = r.initializeMeta(ctx, volumeName, azVolume, true); err != nil {
 			return err
 		}
 
@@ -183,12 +193,12 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, volumeName string
 	}
 
 	// Delete all AzVolumeAttachment objects bound to the deleted AzVolume
-	volRequirement, err := labels.NewRequirement(VolumeNameLabel, selection.Equals, []string{azVolume.Spec.UnderlyingVolume})
+	volRequirement, err := labels.NewRequirement(azureutils.VolumeNameLabel, selection.Equals, []string{azVolume.Spec.UnderlyingVolume})
 	if err != nil {
 		return err
 	}
 	if volRequirement == nil {
-		return status.Error(codes.Internal, fmt.Sprintf("Unable to create Requirement to for label key : (%s) and label value: (%s)", VolumeNameLabel, azVolume.Spec.UnderlyingVolume))
+		return status.Error(codes.Internal, fmt.Sprintf("Unable to create Requirement to for label key : (%s) and label value: (%s)", azureutils.VolumeNameLabel, azVolume.Spec.UnderlyingVolume))
 	}
 
 	labelSelector := labels.NewSelector().Add(*volRequirement)
@@ -201,18 +211,25 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, volumeName string
 
 	klog.V(5).Infof("number of attachments found: %d", len(attachments.Items))
 	for _, attachment := range attachments.Items {
-		if err = r.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(r.namespace).Delete(ctx, attachment.Name, metav1.DeleteOptions{}); err != nil && !errors.IsNotFound(err) {
-			klog.Errorf("failed to delete AzVolumeAttachment (%s): %v", attachment.Name, err)
-			return err
+		if attachment.DeletionTimestamp == nil {
+			if err = r.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(r.namespace).Delete(ctx, attachment.Name, metav1.DeleteOptions{}); err != nil && !errors.IsNotFound(err) {
+				klog.Errorf("failed to delete AzVolumeAttachment (%s): %v", attachment.Name, err)
+				return err
+			}
+			klog.V(5).Infof("Set deletion timestamp for AzVolumeAttachment (%s)", attachment.Name)
 		}
-		klog.V(5).Infof("Set deletion timestamp for AzVolumeAttachment (%s)", attachment.Name)
+	}
+
+	if len(attachments.Items) > 0 {
+		return status.Errorf(codes.Aborted, "volume deletion requeued until attached azVolumeAttachments are entirely detached...")
 	}
 
 	// only try deleting underlying volume 1) if volume creation was successful and 2) volumeDeleteRequestAnnotation is present
 	// if the annotation is not present, only delete the CRI and not the underlying volume
 	if azVolume.Annotations != nil {
 		if _, ok := azVolume.Annotations[azureutils.VolumeDeleteRequestAnnotation]; ok &&
-			(azVolume.Status.State == v1alpha1.VolumeCreated || azVolume.Status.State == v1alpha1.VolumeCreationFailed || azVolume.Status.State == v1alpha1.VolumeDeleting) {
+			azVolume.Status.State == v1alpha1.VolumeCreating || azVolume.Status.State == v1alpha1.VolumeCreated || azVolume.Status.State == v1alpha1.VolumeDeleting || azVolume.Status.State == v1alpha1.VolumeDeletionFailed {
+
 			if azVolume, err = r.updateState(ctx, volumeName, azVolume, v1alpha1.VolumeDeleting); err != nil {
 				return err
 			}
@@ -237,7 +254,7 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, volumeName string
 	}
 
 	// Update status of the object
-	if _, err = r.updateStatus(ctx, azVolume.Name, azVolume, azVolume.Status.Detail.Phase, true, nil); err != nil {
+	if _, err = r.updateStatus(ctx, azVolume.Name, azVolume, v1alpha1.VolumeReleased, true, nil); err != nil {
 		return err
 	}
 
@@ -351,13 +368,16 @@ func (r *ReconcileAzVolume) expandVolume(ctx context.Context, azVolume *v1alpha1
 	}
 	// use deep-copied version of the azVolume CRI to prevent any unwanted update to the object
 	copied := azVolume.DeepCopy()
-	return r.cloudProvisioner.ExpandVolume(ctx, copied.Status.Detail.ResponseObject.VolumeID, copied.Spec.CapacityRange, copied.Spec.Secrets)
+	return r.volumeProvisioner.ExpandVolume(ctx, copied.Status.Detail.ResponseObject.VolumeID, copied.Spec.CapacityRange, copied.Spec.Secrets)
 }
 
 func (r *ReconcileAzVolume) createVolume(ctx context.Context, azVolume *v1alpha1.AzVolume) (*v1alpha1.AzVolumeStatusParams, error) {
+	if azVolume.Status.Detail != nil && azVolume.Status.Detail.ResponseObject != nil {
+		return azVolume.Status.Detail.ResponseObject, nil
+	}
 	// use deep-copied version of the azVolume CRI to prevent any unwanted update to the object
 	copied := azVolume.DeepCopy()
-	return r.cloudProvisioner.CreateVolume(ctx, copied.Spec.UnderlyingVolume, copied.Spec.CapacityRange, copied.Spec.VolumeCapability, copied.Spec.Parameters, copied.Spec.Secrets, copied.Spec.ContentVolumeSource, copied.Spec.AccessibilityRequirements)
+	return r.volumeProvisioner.CreateVolume(ctx, copied.Spec.UnderlyingVolume, copied.Spec.CapacityRange, copied.Spec.VolumeCapability, copied.Spec.Parameters, copied.Spec.Secrets, copied.Spec.ContentVolumeSource, copied.Spec.AccessibilityRequirements)
 }
 
 func (r *ReconcileAzVolume) deleteVolume(ctx context.Context, azVolume *v1alpha1.AzVolume) error {
@@ -367,7 +387,7 @@ func (r *ReconcileAzVolume) deleteVolume(ctx context.Context, azVolume *v1alpha1
 	}
 	// use deep-copied version of the azVolume CRI to prevent any unwanted update to the object
 	copied := azVolume.DeepCopy()
-	err := r.cloudProvisioner.DeleteVolume(ctx, copied.Status.Detail.ResponseObject.VolumeID, copied.Spec.Secrets)
+	err := r.volumeProvisioner.DeleteVolume(ctx, copied.Status.Detail.ResponseObject.VolumeID, copied.Spec.Secrets)
 	return err
 }
 
@@ -433,15 +453,13 @@ func (r *ReconcileAzVolume) Recover(ctx context.Context) error {
 	return nil
 }
 
-func NewAzVolumeController(mgr manager.Manager, azVolumeClient azVolumeClientSet.Interface, kubeClient kubeClientSet.Interface, namespace string, cloudProvisioner CloudProvisioner) (*ReconcileAzVolume, error) {
+func NewAzVolumeController(mgr manager.Manager, azVolumeClient azVolumeClientSet.Interface, kubeClient kubeClientSet.Interface, namespace string, volumeProvisioner VolumeProvisioner) (*ReconcileAzVolume, error) {
 	reconciler := ReconcileAzVolume{
-		client:           mgr.GetClient(),
-		azVolumeClient:   azVolumeClient,
-		kubeClient:       kubeClient,
-		mutexMap:         map[string]*sync.Mutex{},
-		mutexMapMutex:    sync.RWMutex{},
-		namespace:        namespace,
-		cloudProvisioner: cloudProvisioner,
+		client:            mgr.GetClient(),
+		azVolumeClient:    azVolumeClient,
+		kubeClient:        kubeClient,
+		namespace:         namespace,
+		volumeProvisioner: volumeProvisioner,
 	}
 	logger := mgr.GetLogger().WithValues("controller", "azvolume")
 

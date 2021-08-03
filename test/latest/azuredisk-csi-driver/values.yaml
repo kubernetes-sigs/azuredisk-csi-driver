@@ -12,6 +12,7 @@ rbac:
 azuredisk:
   useV2Driver: true
   isTestRun: true
+  nodeId: sanity-test-node
   cloudConfig: invalid
 
 controller:

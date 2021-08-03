@@ -185,19 +185,19 @@ type AzVolumeAttachmentAttachmentState string
 
 const (
 	// Pending indicates a state where no operation has been initated
-	AttachmentPending = "Pending"
+	AttachmentPending AzVolumeAttachmentAttachmentState = "Pending"
 	// AttachmentInProgress indicates that node to volume attachment is in progress
-	Attaching = "Attaching"
+	Attaching AzVolumeAttachmentAttachmentState = "Attaching"
 	// Attached indicates that the volume has been successfully attached to node
-	Attached = "Attached"
+	Attached AzVolumeAttachmentAttachmentState = "Attached"
 	// AttachmentFailed indicates that the volume attachment has failed
-	AttachmentFailed = "AttachmentFailed"
+	AttachmentFailed AzVolumeAttachmentAttachmentState = "AttachmentFailed"
 	// Detaching indicates that the node to volume detachment is in progress
-	Detaching = "Detaching"
+	Detaching AzVolumeAttachmentAttachmentState = "Detaching"
 	// Detached indicates that the volume has been successfully detached from the volume
-	Detached = "Detached"
+	Detached AzVolumeAttachmentAttachmentState = "Detached"
 	// DetachmentFailed indicates that the volume detachment has failed
-	DetachmentFailed = "DetachmentFailed"
+	DetachmentFailed AzVolumeAttachmentAttachmentState = "DetachmentFailed"
 )
 
 // AzVolumeAttachmentStatus is the status for a AzVolumeAttachment resource

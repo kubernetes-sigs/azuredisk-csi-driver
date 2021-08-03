@@ -46,11 +46,19 @@ func IsAzureStackCloud(cloud string, disableAzureStackCloud bool) bool {
 }
 
 // GetCloudProvider get Azure Cloud Provider
-func GetCloudProvider(kubeClient clientSet.Interface) (*azure.Cloud, error) {
+func GetCloudProvider(kubeconfig, secretName, secretNamespace string) (*azure.Cloud, error) {
+	kubeClient, err := getKubeClient(kubeconfig)
+	if err != nil {
+		klog.Warningf("get kubeconfig(%s) failed with error: %v", kubeconfig, err)
+		if !os.IsNotExist(err) && err != rest.ErrNotInCluster {
+			return nil, fmt.Errorf("failed to get KubeClient: %v", err)
+		}
+	}
+
 	az := &azure.Cloud{
 		InitSecretConfig: azure.InitSecretConfig{
-			SecretName:      "azure-cloud-provider",
-			SecretNamespace: "kube-system",
+			SecretName:      secretName,
+			SecretNamespace: secretNamespace,
 			CloudConfigKey:  "cloud-config",
 		},
 	}
@@ -120,4 +128,13 @@ func GetKubeConfig(kubeconfig string) (config *rest.Config, err error) {
 	config, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
 
 	return config, err
+}
+
+func getKubeClient(kubeconfig string) (*clientSet.Clientset, error) {
+	config, err := GetKubeConfig(kubeconfig)
+	if err != nil {
+		return nil, err
+	}
+
+	return clientSet.NewForConfig(config)
 }

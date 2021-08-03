@@ -32,7 +32,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/volume/util"
 	"k8s.io/mount-utils"
@@ -116,6 +115,16 @@ var (
 	diskURISupportedManaged = []string{"/subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id}"}
 )
 
+// DriverOptions defines driver parameters specified in driver deployment
+type DriverOptions struct {
+	NodeID                     string
+	DriverName                 string
+	VolumeAttachLimit          int64
+	EnablePerfOptimization     bool
+	CloudConfigSecretName      string
+	CloudConfigSecretNamespace string
+}
+
 // CSIDriver defines the interface for a CSI driver.
 type CSIDriver interface {
 	csi.ControllerServer
@@ -128,9 +137,11 @@ type CSIDriver interface {
 // DriverCore contains fields common to both the V1 and V2 driver, and implements all interfaces of CSI drivers
 type DriverCore struct {
 	csicommon.CSIDriver
-	perfOptimizationEnabled bool
-	deviceHelper            *optimization.SafeDeviceHelper
-	nodeInfo                *optimization.NodeInfo
+	perfOptimizationEnabled    bool
+	cloudConfigSecretName      string
+	cloudConfigSecretNamespace string
+	deviceHelper               *optimization.SafeDeviceHelper
+	nodeInfo                   *optimization.NodeInfo
 }
 
 // Driver is the v1 implementation of the Azure Disk CSI Driver.
@@ -145,12 +156,15 @@ type Driver struct {
 
 // newDriverV1 Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
 // does not support optional driver plugin info manifest field. Refer to CSI spec for more details.
-func newDriverV1(nodeID, driverName string, volumeAttachLimit int64, enablePerfOptimization bool) *Driver {
+func newDriverV1(options *DriverOptions) *Driver {
 	driver := Driver{}
-	driver.Name = driverName
+	driver.Name = options.DriverName
 	driver.Version = driverVersion
-	driver.NodeID = nodeID
-	driver.VolumeAttachLimit = volumeAttachLimit
+	driver.NodeID = options.NodeID
+	driver.VolumeAttachLimit = options.VolumeAttachLimit
+	driver.perfOptimizationEnabled = options.EnablePerfOptimization
+	driver.cloudConfigSecretName = options.CloudConfigSecretName
+	driver.cloudConfigSecretNamespace = options.CloudConfigSecretNamespace
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 
 	topologyKey = fmt.Sprintf("topology.%s/zone", driver.Name)
@@ -162,7 +176,6 @@ func newDriverV1(nodeID, driverName string, volumeAttachLimit int64, enablePerfO
 		klog.Fatalf("%v", err)
 	}
 	driver.getDiskThrottlingCache = cache
-	driver.perfOptimizationEnabled = enablePerfOptimization
 	return &driver
 }
 
@@ -174,17 +187,7 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 	}
 	klog.Infof("\nDRIVER INFORMATION:\n-------------------\n%s\n\nStreaming logs below:", versionMeta)
 
-	config, err := GetKubeConfig(kubeconfig)
-	if err != nil || config == nil {
-		klog.Fatalf("failed to get kube config, error: %v", err)
-	}
-
-	kubeClient, err := clientset.NewForConfig(config)
-	if err != nil || kubeClient == nil {
-		klog.Fatalf("failed to get kubeclient with kubeconfig (%s), error: %v", kubeconfig, err)
-	}
-
-	cloud, err := GetCloudProvider(kubeClient)
+	cloud, err := GetCloudProvider(kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace)
 	if err != nil || cloud.TenantID == "" || cloud.SubscriptionID == "" {
 		klog.Fatalf("failed to get Azure Cloud Provider, error: %v", err)
 	}

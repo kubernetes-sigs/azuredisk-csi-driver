@@ -116,8 +116,13 @@ var _ = ginkgo.BeforeSuite(func() {
 			execTestCmd([]testCmd{e2eBootstrap, createMetricsSVC})
 		}
 
-		nodeid := os.Getenv("nodeid")
-		azurediskDriver = azuredisk.NewDriver(nodeid, azuredisk.DefaultDriverName, 16, false)
+		driverOptions := azuredisk.DriverOptions{
+			NodeID:                 os.Getenv("nodeid"),
+			DriverName:             azuredisk.DefaultDriverName,
+			VolumeAttachLimit:      16,
+			EnablePerfOptimization: false,
+		}
+		azurediskDriver = azuredisk.NewDriver(&driverOptions)
 		kubeconfig := os.Getenv(kubeconfigEnvVar)
 		go func() {
 			os.Setenv("AZURE_CREDENTIAL_FILE", credentials.TempAzureCredentialFilePath)
@@ -275,6 +280,12 @@ func skipIfUsingInTreeVolumePlugin() {
 func skipIfNotUsingCSIDriverV2() {
 	if !isUsingCSIDriverV2 {
 		ginkgo.Skip("test case is only available for CSI driver version v2")
+	}
+}
+
+func skipIfUsingCSIDriverV2() {
+	if isUsingCSIDriverV2 {
+		ginkgo.Skip("test case is not available for CSI driver version v2")
 	}
 }
 

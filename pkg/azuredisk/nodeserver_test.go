@@ -718,7 +718,7 @@ func TestNodeExpandVolume(t *testing.T) {
 
 	invalidPathErr := testutil.TestError{
 		DefaultError: status.Error(codes.NotFound, "failed to determine device path for volumePath [./test]: path \"./test\" does not exist"),
-		WindowsError: status.Errorf(codes.NotFound, "Forward to GetVolumeIDFromTargetPath failed, err=error getting the volume for the mount .\\test, internal error error getting volume from mount. cmd: (Get-Item -Path .\\test).Target, output: , error: <nil>"),
+		WindowsError: status.Error(codes.NotFound, "Forward to GetVolumeIDFromTargetPath failed, err=error getting the volume for the mount .\\test, internal error error getting volume from mount. cmd: (Get-Item -Path .\\test).Target, output: , error: <nil>"),
 	}
 	volumeCapacityErr := testutil.TestError{
 		DefaultError: status.Error(codes.InvalidArgument, "VolumeCapability is invalid."),

@@ -66,7 +66,15 @@ helm install azuredisk-csi-driver test/latest/azuredisk-csi-driver -n kube-syste
   --set image.azuredisk.tag=$image \
   --set azuredisk.cloudConfig="$(cat "${AZURE_CREDENTIAL_FILE}" | base64 | awk '{printf $0}'; echo)" \
   --set controller.port="${CONTROLLER_PORT}" \
+  --set azuredisk.nodeId="${nodeid_0}" \
   > /dev/null
 
+echo "Registering AzDriverNode for ${nodeid_1} and ${nodeid_2}"
+test/integration/register-azdrivernode.sh $nodeid_1
+test/integration/register-azdrivernode.sh $nodeid_2
+
+echo "Starting integration test"
 test/integration/run-test.sh $*
+echo "Run controller test"
+go test -v -timeout=45m ./test/integration/controller --temp-use-driver-v2
 

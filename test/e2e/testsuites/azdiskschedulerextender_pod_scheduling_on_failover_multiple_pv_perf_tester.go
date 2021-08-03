@@ -17,33 +17,42 @@ limitations under the License.
 package testsuites
 
 import (
-	"time"
-
 	"github.com/onsi/ginkgo"
 	v1 "k8s.io/api/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
-	v1alpha1ClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1alpha1"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
+	"sync"
 )
 
 // AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV will provision required PV(s), PVC(s) and Pod(s)
 // Pod should successfully be re-scheduled on failover/scaling in a cluster with AzDriverNode and AzVolumeAttachment resources
 type AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV struct {
 	CSIDriver              driver.DynamicPVTestDriver
-	AzDiskClientSet        v1alpha1ClientSet.DiskV1alpha1Interface
-	AzNamespace            string
 	Pod                    PodDetails
-	Volume                 VolumeDetails
+	Replicas               int
 	StorageClassParameters map[string]string
 }
 
 func (t *AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
-	replicaCount := 3
-	tStatefulSet, cleanup := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, driver.GetParameters(), schedulerName, replicaCount)
-	for i := range cleanup {
-		i := i
-		defer cleanup[i]()
+	var tStatefulSets []*TestStatefulset
+	var wg sync.WaitGroup
+	var tokens = make(chan struct{}, 20) // avoid too many concurrent requests
+	for i := 0; i < 2; i++ {
+		tStatefulSet, cleanupStatefulSet := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, schedulerName, t.Replicas, t.StorageClassParameters)
+		tStatefulSets = append(tStatefulSets, tStatefulSet)
+		for i := range cleanupStatefulSet {
+			i := i
+			defer cleanupStatefulSet[i]()
+		}
+		wg.Add(1)
+		go func(ss *TestStatefulset) {
+			defer wg.Done()
+			tokens <- struct{}{} // acquire a token
+			ss.Create()
+			<-tokens // release the token
+		}(tStatefulSet)
 	}
+	wg.Wait()
 
 	// Get the list of available nodes for scheduling the pod
 	nodes := ListNodeNames(client)
@@ -51,17 +60,15 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV) Run(client cl
 		ginkgo.Skip("need at least 1 nodes to verify the test case. Current node count is %d", len(nodes))
 	}
 
-	ginkgo.By("deploying the statefulset")
-	tStatefulSet.Create()
-
-	ginkgo.By("checking that the pod for statefulset is running")
-	tStatefulSet.WaitForPodReady()
-
-	tStatefulSet.DeletePodAndWait()
-
-	ginkgo.By("sleep 120s waiting for statefulset to recreate the replicas")
-	time.Sleep(120 * time.Second)
-
-	ginkgo.By("checking that the pod for statefulset is running")
-	tStatefulSet.WaitForPodReady()
+	for i := 0; i < 3; i++ {
+		DeleteAllPodsWithMatchingLabel(client, namespace, map[string]string{"app": "azuredisk-volume-tester"})
+		for _, tStatefulSet := range tStatefulSets {
+			wg.Add(1)
+			go func(ss *TestStatefulset) {
+				defer wg.Done()
+				ss.WaitForPodReady()
+			}(tStatefulSet)
+		}
+		wg.Wait()
+	}
 }

@@ -106,14 +106,20 @@ const (
 	TrueValue                 = "true"
 
 	// CRDs specific constants
-	PartitionLabel    = "azdrivernodes.disk.csi.azure.com/partition"
-	AzVolumeFinalizer = "disk.csi.azure.com/azvolume-finalizer"
+	PartitionLabel = "azdrivernodes.disk.csi.azure.com/partition"
+	// 1. AzVolumeAttachmentFinalizer for AzVolumeAttachment objects handles deletion of AzVolumeAttachment CRIs
+	// 2. AzVolumeAttachmentFinalizer for AzVolume prevents AzVolume CRI from being deleted before all AzVolumeAttachments attached to that volume is deleted as well
+	AzVolumeAttachmentFinalizer = "disk.csi.azure.com/azvolumeattachment-finalizer"
+	AzVolumeFinalizer           = "disk.csi.azure.com/azvolume-finalizer"
 	// ControllerFinalizer is a finalizer added to the pod running Azuredisk driver controller
 	// to prevent the pod deletion until clean up is completed
 	ControllerFinalizer              = "disk.csi.azure.com/azuredisk-finalizer"
 	VolumeAttachmentExistsAnnotation = "disk.csi.azure.com/volume-attachment"
 	VolumeDetachRequestAnnotation    = "disk.csi.azure.com/volume-detach-request"
 	VolumeDeleteRequestAnnotation    = "disk.csi.azure.com/volume-delete-request"
+	NodeNameLabel                    = "node-name"
+	VolumeNameLabel                  = "volume-name"
+	RoleLabel                        = "requested-role"
 
 	// ZRS specific constants
 	WellKnownTopologyKey = "topology.kubernetes.io/zone"
@@ -234,11 +240,11 @@ func GetValidDiskName(volumeName string) string {
 }
 
 // GetCloudProvider get Azure Cloud Provider
-func GetAzureCloudProvider(kubeClient clientset.Interface) (*azure.Cloud, error) {
+func GetAzureCloudProvider(kubeClient clientset.Interface, secretName string, secretNamespace string) (*azure.Cloud, error) {
 	az := &azure.Cloud{
 		InitSecretConfig: azure.InitSecretConfig{
-			SecretName:      "azure-cloud-provider",
-			SecretNamespace: "kube-system",
+			SecretName:      secretName,
+			SecretNamespace: secretNamespace,
 			CloudConfigKey:  "cloud-config",
 		},
 	}
@@ -357,7 +363,7 @@ func checkDiskName(diskName string) bool {
 
 func GetMaxSharesAndMaxMountReplicaCount(parameters map[string]string) (int, int) {
 	maxShares := 1
-	maxMountReplicaCount := 0
+	maxMountReplicaCount := -1
 	for param, value := range parameters {
 		if strings.EqualFold(param, MaxSharesField) {
 			parsed, err := strconv.Atoi(value)
@@ -376,10 +382,17 @@ func GetMaxSharesAndMaxMountReplicaCount(parameters map[string]string) (int, int
 		}
 	}
 
+	if maxShares <= 0 {
+		klog.Warningf("maxShares cannot be set smaller than 1... Defaulting current maxShares (%d) value to 1", maxShares)
+		maxShares = 1
+	}
 	if maxShares-1 < maxMountReplicaCount {
-		klog.Warningf("maxMountReplicaCount cannot be larger than maxShares - 1: defaulting to maxShares - 1")
+		klog.Warningf("maxMountReplicaCount cannot be set larger than maxShares - 1... Defaulting current maxMountReplicaCount (%d) value to (%d)", maxMountReplicaCount, maxShares-1)
+		maxMountReplicaCount = maxShares - 1
+	} else if maxMountReplicaCount < 0 {
 		maxMountReplicaCount = maxShares - 1
 	}
+
 	return maxShares, maxMountReplicaCount
 }
 

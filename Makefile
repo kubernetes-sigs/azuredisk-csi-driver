@@ -20,7 +20,7 @@ IMAGE_NAME ?= azuredisk-csi
 SCHEDULER_EXTENDER_IMAGE_NAME ?= azdiskschedulerextender-csi
 ifndef BUILD_V2
 PLUGIN_NAME = azurediskplugin
-IMAGE_VERSION ?= v1.5.0
+IMAGE_VERSION ?= v1.6.0
 CHART_VERSION ?= latest
 else
 PLUGIN_NAME = azurediskpluginv2
@@ -113,7 +113,7 @@ integration-test:
 
 .PHONY: integration-test-v2
 integration-test-v2: container-v2
-	go test -v -timeout=30m ./test/integration --temp-use-driver-v2 --image-tag ${IMAGE_TAG}
+	go test -v -timeout=45m ./test/integration --temp-use-driver-v2 --image-tag ${IMAGE_TAG}
 
 .PHONY: e2e-bootstrap
 e2e-bootstrap: install-helm
@@ -147,7 +147,7 @@ e2e-teardown:
 	kubectl wait --namespace=kube-system --for=delete pod --selector app=csi-azuredisk-controller --timeout 5m || true
 	kubectl wait --namespace=kube-system --for=delete pod --selector app=csi-azuredisk-node --timeout 5m || true
 ifdef BUILD_V2
-	kubectl wait --namespace=kube-system --for=delete pod --selector app=azdiskschedulerextender --timeout 5m || true
+	kubectl wait --namespace=kube-system --for=delete pod --selector app=csi-azuredisk-scheduler-extender --timeout 5m || true
 endif
 
 .PHONY: azuredisk
@@ -275,19 +275,25 @@ push-manifest:
 	docker manifest create --amend $(IMAGE_TAG) $(foreach osarch, $(ALL_OS_ARCH), $(IMAGE_TAG)-${osarch}) 
 	# add "os.version" field to windows images (based on https://github.com/kubernetes/kubernetes/blob/master/build/pause/Makefile)
 	set -x; \
-	registry_prefix=$(shell (echo ${REGISTRY} | grep -Eq ".*[\/\.].*") && echo "" || echo "docker.io/"); \
-	manifest_image_folder=`echo "$${registry_prefix}${IMAGE_TAG}" | sed "s|/|_|g" | sed "s/:/-/"`; \
 	for arch in $(ALL_ARCH.windows); do \
 		for osversion in $(ALL_OSVERSIONS.windows); do \
 			BASEIMAGE=mcr.microsoft.com/windows/nanoserver:$${osversion}; \
 			full_version=`docker manifest inspect $${BASEIMAGE} | jq -r '.manifests[0].platform["os.version"]'`; \
-			sed -i -r "s/(\"os\"\:\"windows\")/\0,\"os.version\":\"$${full_version}\"/" "${HOME}/.docker/manifests/$${manifest_image_folder}/$${manifest_image_folder}-windows-$${osversion}-$${arch}"; \
+			docker manifest annotate --os windows --arch $${arch} --os-version $${full_version} $(IMAGE_TAG) $(IMAGE_TAG)-windows-$${osversion}-$${arch}; \
 		done; \
 	done
 	docker manifest push --purge $(IMAGE_TAG)
 	docker manifest inspect $(IMAGE_TAG)
 ifdef PUBLISH
 	docker manifest create $(IMAGE_TAG_LATEST) $(foreach osarch, $(ALL_OS_ARCH), $(IMAGE_TAG)-${osarch})
+	set -x; \
+	for arch in $(ALL_ARCH.windows); do \
+		for osversion in $(ALL_OSVERSIONS.windows); do \
+			BASEIMAGE=mcr.microsoft.com/windows/nanoserver:$${osversion}; \
+			full_version=`docker manifest inspect $${BASEIMAGE} | jq -r '.manifests[0].platform["os.version"]'`; \
+			docker manifest annotate --os windows --arch $${arch} --os-version $${full_version} $(IMAGE_TAG_LATEST) $(IMAGE_TAG)-windows-$${osversion}-$${arch}; \
+		done; \
+	done
 	docker manifest inspect $(IMAGE_TAG_LATEST)
 endif
 

@@ -273,7 +273,7 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 
 	_, err = azV.Update(ctx, updated, metav1.UpdateOptions{})
 	if err != nil {
-		klog.Infof("failed to update AzVolume (%s) with annotation (%s): %v", volumeName, azureutils.VolumeDeleteRequestAnnotation)
+		klog.Infof("failed to update AzVolume (%s) with annotation (%s): %v", volumeName, azureutils.VolumeDeleteRequestAnnotation, err)
 		return err
 	}
 
@@ -350,8 +350,9 @@ func (c *CrdProvisioner) PublishVolume(
 			ObjectMeta: metav1.ObjectMeta{
 				Name: attachmentName,
 				Labels: map[string]string{
-					"node-name":   nodeID,
-					"volume-name": volumeName,
+					azureutils.NodeNameLabel:   nodeID,
+					azureutils.VolumeNameLabel: volumeName,
+					azureutils.RoleLabel:       string(v1alpha1.PrimaryRole),
 				},
 			},
 			Spec: v1alpha1.AzVolumeAttachmentSpec{
@@ -545,6 +546,7 @@ func isAzVolumeSpecSameAsRequestParams(defaultAzVolume *v1alpha1.AzVolume,
 	defaultParams := defaultAzVolume.Spec.Parameters
 	defaultSecret := defaultAzVolume.Spec.Secrets
 	defaultAccReq := defaultAzVolume.Spec.AccessibilityRequirements
+	defaultVolContentSource := defaultAzVolume.Spec.ContentVolumeSource
 	if defaultParams == nil {
 		defaultParams = make(map[string]string)
 	}
@@ -557,17 +559,23 @@ func isAzVolumeSpecSameAsRequestParams(defaultAzVolume *v1alpha1.AzVolume,
 	if secrets == nil {
 		secrets = make(map[string]string)
 	}
+	if defaultAccReq == nil {
+		defaultAccReq = &v1alpha1.TopologyRequirement{}
+	}
 	if defaultAccReq.Preferred == nil {
 		defaultAccReq.Preferred = []v1alpha1.Topology{}
 	}
 	if defaultAccReq.Requisite == nil {
 		defaultAccReq.Requisite = []v1alpha1.Topology{}
 	}
+	if defaultVolContentSource == nil {
+		defaultVolContentSource = &v1alpha1.ContentVolumeSource{}
+	}
 
 	return (defaultAzVolume.Spec.MaxMountReplicaCount == maxMountReplicaCount &&
 		reflect.DeepEqual(defaultAzVolume.Spec.CapacityRange, capacityRange) &&
 		reflect.DeepEqual(defaultParams, parameters) &&
 		reflect.DeepEqual(defaultSecret, secrets) &&
-		reflect.DeepEqual(defaultAzVolume.Spec.ContentVolumeSource, volumeContentSource) &&
+		reflect.DeepEqual(defaultVolContentSource, volumeContentSource) &&
 		reflect.DeepEqual(defaultAccReq, accessibilityReq))
 }

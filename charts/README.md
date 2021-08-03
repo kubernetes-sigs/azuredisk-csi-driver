@@ -7,6 +7,11 @@
  - make controller only run on master node: `--set controller.runOnMaster=true`
  - enable `fsGroupPolicy` on a k8s 1.20+ cluster: `--set feature.enableFSGroupPolicy=true`
  - set replica of controller as `1`: `--set controller.replicas=1`
+ - specify different cloud config secret for the driver:
+   - `--set controller.cloudConfigSecretName`
+   - `--set controller.cloudConfigSecretNamesapce`
+   - `--set node.cloudConfigSecretName`
+   - `--set node.cloudConfigSecretNamesapce`
 
 ## install latest version
 ```console
@@ -17,7 +22,7 @@ helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --na
 ### install a specific version
 ```console
 helm repo add azuredisk-csi-driver https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts
-helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v1.4.0
+helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v1.5.0
 ```
 
 ### install on Azure Stack
@@ -82,6 +87,8 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `rbac.create`                                     | whether create rbac of csi-azuredisk-controller            | `true`                                                         |
 | `rbac.name`                                       | driver name in rbac role                | `true`                                                         |
 | `controller.name`                                 | name of driver deployment               | `csi-azuredisk-controller`
+| `controller.cloudConfigSecretName`                | cloud config secret name of controller driver               | `azure-cloud-provider`
+| `controller.cloudConfigSecretNamespace`           | cloud config secret namespace of controller driver          | `kube-system`
 | `controller.replicas`                             | the replicas of csi-azuredisk-controller                   | `2`                                                            |
 | `controller.metricsPort`                          | metrics port of csi-azuredisk-controller                   | `29604`                                                        |
 | `controller.livenessProbe.healthPort `            | health check port for liveness probe                   | `29602` |
@@ -89,6 +96,8 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `controller.logLevel`                             | controller driver log level                                                          |`5`                                                           |
 | `controller.tolerations`                          | controller pod tolerations                            |                                                              |
 | `controller.hostNetwork`                          | `hostNetwork` setting on controller driver(could be disabled if controller does not depend on MSI setting)                            | `true`                                                            | `true`, `false`
+| `node.cloudConfigSecretName`                      | cloud config secret name of node driver               | `azure-cloud-provider`
+| `node.cloudConfigSecretNamespace`                 | cloud config secret namespace of node driver          | `kube-system`
 | `node.metricsPort`                                | metrics port of csi-azuredisk-node                         |`29605`                                                        |
 | `node.livenessProbe.healthPort `                  | health check port for liveness probe                   | `29603` |
 | `node.logLevel`                                   | node driver log level                                                          |`5`                                                           |

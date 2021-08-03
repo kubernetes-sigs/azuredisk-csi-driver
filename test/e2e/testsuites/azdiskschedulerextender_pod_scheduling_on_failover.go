@@ -26,7 +26,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
-	v1alpha1ClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1alpha1"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 )
 
@@ -34,15 +33,12 @@ import (
 // Pod should successfully be re-scheduled on failover/scaling in a cluster with AzDriverNode and AzVolumeAttachment resources
 type AzDiskSchedulerExtenderPodSchedulingOnFailover struct {
 	CSIDriver              driver.DynamicPVTestDriver
-	AzDiskClientSet        v1alpha1ClientSet.DiskV1alpha1Interface
-	AzNamespace            string
 	Pod                    PodDetails
-	Volume                 VolumeDetails
 	StorageClassParameters map[string]string
 }
 
 func (t *AzDiskSchedulerExtenderPodSchedulingOnFailover) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
-	tStatefulSet, cleanup := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, driver.GetParameters(), schedulerName, 1)
+	tStatefulSet, cleanup := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, schedulerName, 1, t.StorageClassParameters)
 	for i := range cleanup {
 		i := i
 		defer cleanup[i]()
