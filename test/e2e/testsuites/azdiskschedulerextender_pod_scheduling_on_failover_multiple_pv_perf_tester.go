@@ -17,11 +17,12 @@ limitations under the License.
 package testsuites
 
 import (
+	"sync"
+
 	"github.com/onsi/ginkgo"
 	v1 "k8s.io/api/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
-	"sync"
 )
 
 // AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV will provision required PV(s), PVC(s) and Pod(s)
@@ -47,6 +48,7 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV) Run(client cl
 		wg.Add(1)
 		go func(ss *TestStatefulset) {
 			defer wg.Done()
+			defer ginkgo.GinkgoRecover()
 			tokens <- struct{}{} // acquire a token
 			ss.Create()
 			<-tokens // release the token
@@ -66,6 +68,7 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV) Run(client cl
 			wg.Add(1)
 			go func(ss *TestStatefulset) {
 				defer wg.Done()
+				defer ginkgo.GinkgoRecover()
 				ss.WaitForPodReady()
 			}(tStatefulSet)
 		}
