@@ -49,7 +49,7 @@ jobs:
     - name: Create an aks cluster
       run: |  
         ./hack/azure-cluster-up.sh --subscription $AZURE_SUBSCRIPTION_ID --location $AZURE_LOCATION --output e2eTestOutput --client-id $AZURE_CLIENT_ID --client-tenant $AZURE_TENANT_ID --client-secret $AZURE_CLIENT_SECRET --resource-group $AZURE_RESOURCE_GROUP --template migration
-        echo "KUBECONFIG=$GITHUB_WORKSPACE/e2eTestOutput/kubeconfig/kubeconfig.${{ secrets.Location }}.json" >> $GITHUB_ENV
+        echo "KUBECONFIG=$GITHUB_WORKSPACE/e2eTestOutput/kubeconfig/kubeconfig.${AZURE_LOCATION}.json" >> $GITHUB_ENV
 
     - name: Run e2e tests
       run: |
