@@ -98,6 +98,7 @@ const (
 	networkAccessPolicyField = "networkaccesspolicy"
 	diskAccessIDField        = "diskaccessid"
 	enableBurstingField      = "enablebursting"
+	userAgentField           = "useragent"
 
 	WellKnownTopologyKey = "topology.kubernetes.io/zone"
 	throttlingKey        = "throttlingKey"

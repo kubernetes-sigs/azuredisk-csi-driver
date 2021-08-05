@@ -17,8 +17,13 @@ limitations under the License.
 package azuredisk
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"io/ioutil"
+	"os"
 	"path"
 	"sort"
 	"strconv"
@@ -40,6 +45,7 @@ import (
 	"k8s.io/klog/v2"
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/cloud-provider-azure/pkg/metrics"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
@@ -293,6 +299,14 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	contentSource := &csi.VolumeContentSource{}
 	for k, v := range customTagsMap {
 		tags[k] = v
+		if k == userAgentField {
+			temp := d.cloud
+			d.cloud, err = SetupNewUserAgentCloud(v, d.cloud)
+			if err != nil {
+				klog.V(2).Infof("Unable to create new cloud for UserAgent, err: (%s)", err)
+			}
+			d.cloud = temp
+		}
 	}
 
 	if strings.EqualFold(writeAcceleratorEnabled, trueValue) {
@@ -1218,4 +1232,79 @@ func getEntriesAndNextToken(req *csi.ListSnapshotsRequest, snapshots []compute.S
 	}
 
 	return listSnapshotResp, nil
+}
+
+/// Creates a new cloud to configure the Useragent property of DiskClient
+func SetupNewUserAgentCloud(userAgent string, currentAz *azure.Cloud) (*azure.Cloud, error) {
+	//TODO
+	az := &azure.Cloud{
+		InitSecretConfig: currentAz.InitSecretConfig,
+	}
+
+	//TODO how to check the kubeconfig to see if it is from secret or not?
+
+	credFile, ok := os.LookupEnv(DefaultAzureCredentialFileEnv)
+	if ok && strings.TrimSpace(credFile) != "" {
+		klog.V(2).Infof("%s env var set as %v", DefaultAzureCredentialFileEnv, credFile)
+	} else {
+		if util.IsWindowsOS() {
+			credFile = DefaultCredFilePathWindows
+		} else {
+			credFile = DefaultCredFilePathLinux
+		}
+
+		klog.V(2).Infof("use default %s env var: %v", DefaultAzureCredentialFileEnv, credFile)
+	}
+
+	var config io.Reader
+
+	config, err := UpdateConfigUserAgent(userAgent, credFile)
+	if err != nil {
+		klog.Errorf("updating azure config file(%s) with useragent(%s) failed with %v", credFile, userAgent, err)
+		return nil, fmt.Errorf("updating azure config file(%s) with useragent(%s) failed with %v", credFile, userAgent, err)
+	}
+
+	klog.V(2).Infof("read cloud config from file: %s and set useragent: %s successfully", credFile, userAgent)
+	if az, err = azure.NewCloudWithoutFeatureGates(config, false); err != nil {
+		return az, err
+	}
+
+	return az, nil
+}
+
+func UpdateConfigUserAgent(userAgent string, credFile string) (io.Reader, error) {
+	var configReader *os.File
+	configReader, err := os.Open(credFile)
+	if err != nil {
+		klog.Errorf("load azure config from file(%s) failed with %v", credFile, err)
+		return nil, err
+	}
+	var config azure.Config
+	if configReader == nil {
+		return nil, nil
+	}
+
+	configContents, err := ioutil.ReadAll(configReader)
+	if err != nil {
+		return nil, err
+	}
+
+	err = json.Unmarshal(configContents, &config)
+	if err != nil {
+		return nil, err
+	}
+
+	config.UserAgent = userAgent
+	newConfig, err := json.Marshal(config)
+	if err != nil {
+		return nil, err
+	}
+
+	var newReader io.Reader
+	buf := bytes.NewBuffer(newConfig)
+	newReader = buf
+
+	configReader.Close()
+
+	return newReader, nil
 }
