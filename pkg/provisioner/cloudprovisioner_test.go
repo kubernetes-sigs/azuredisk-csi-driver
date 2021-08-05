@@ -189,7 +189,6 @@ func NewTestCloudProvisioner(controller *gomock.Controller) *CloudProvisioner {
 	cloud := provider.GetTestCloud(controller)
 	cloud.SubscriptionID = testSubscription
 	cloud.ResourceGroup = testResourceGroup
-	cloud.SnapshotsClient = mocksnapshotclient.NewMockInterface(controller)
 	return &CloudProvisioner{
 		cloud: cloud,
 	}

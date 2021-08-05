@@ -23,7 +23,6 @@ import (
 	"testing"
 
 	"github.com/Azure/go-autorest/autorest/date"
-	"github.com/golang/protobuf/ptypes"
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 
@@ -33,6 +32,7 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockcorev1"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockkubeclient"
@@ -1145,7 +1145,7 @@ func TestCreateSnapshot(t *testing.T) {
 				mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).AnyTimes()
 				actualresponse, err := d.CreateSnapshot(context.Background(), req)
-				tp, _ := ptypes.TimestampProto(snapshot.SnapshotProperties.TimeCreated.ToTime())
+				tp := timestamppb.New(snapshot.SnapshotProperties.TimeCreated.ToTime())
 				ready := true
 				expectedresponse := &csi.CreateSnapshotResponse{
 					Snapshot: &csi.Snapshot{
@@ -1303,7 +1303,7 @@ func TestGenerateCSISnapshot(t *testing.T) {
 				}
 				sourceVolumeID := "unit-test"
 				response, err := generateCSISnapshot(sourceVolumeID, &snapshot)
-				tp, _ := ptypes.TimestampProto(snapshot.SnapshotProperties.TimeCreated.ToTime())
+				tp := timestamppb.New(snapshot.SnapshotProperties.TimeCreated.ToTime())
 				ready := true
 				expectedresponse := &csi.Snapshot{
 					SizeBytes:      volumehelper.GiBToBytes(int64(*snapshot.SnapshotProperties.DiskSizeGB)),
