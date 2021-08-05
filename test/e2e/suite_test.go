@@ -295,14 +295,14 @@ func skipIfOnAzureStackCloud() {
 	}
 }
 
-func getListOfSchedulers() []string {
+func getSchedulerForE2E() string {
 	if !isUsingCSIDriverV2 {
-		return []string{"default-scheduler"}
+		return "default-scheduler"
 	}
 	if isUsingOnlyDefaultScheduler {
-		return []string{"default-scheduler"}
+		return "default-scheduler"
 	}
-	return []string{"default-scheduler", "csi-azuredisk-scheduler-extender"}
+	return "csi-azuredisk-scheduler-extender"
 }
 
 func skipIfNotZRSSupported() {

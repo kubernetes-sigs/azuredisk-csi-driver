@@ -54,7 +54,7 @@ rules:
   - apiGroups: [""]
     resources: ["persistentvolumeclaims"]
     {{- if not .Values.feature.enableCSIMigration }}
-    verbs: ["get", "list", "watch"]
+    verbs: ["get", "list", "watch", "update"]
     {{- else }}
     verbs: ["get", "list", "watch", "patch", "update"]
     {{- end }}
