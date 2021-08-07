@@ -140,6 +140,8 @@ type DriverCore struct {
 	perfOptimizationEnabled    bool
 	cloudConfigSecretName      string
 	cloudConfigSecretNamespace string
+	cloud                      *azure.Cloud
+	mounter                    *mount.SafeFormatAndMount
 	deviceHelper               *optimization.SafeDeviceHelper
 	nodeInfo                   *optimization.NodeInfo
 }

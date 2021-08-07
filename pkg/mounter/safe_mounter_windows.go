@@ -338,6 +338,16 @@ func (mounter *csiProxyMounter) GetVolumeSizeInBytes(devicePath string) (int64, 
 }
 
 // GetAPIVersions returns the versions of the client APIs this mounter is using.
+func (mounter *CSIProxyMounter) GetAPIVersions() string {
+	return fmt.Sprintf(
+		"API Versions filesystem: %s, disk: %s, volume: %s",
+		fsclient.Version,
+		diskclient.Version,
+		volumeclient.Version,
+	)
+}
+
+// GetAPIVersions returns the versions of the client APIs this mounter is using.
 func (mounter *csiProxyMounter) GetAPIVersions() string {
 	return fmt.Sprintf(
 		"API Versions filesystem: %s, disk: %s, volume: %s",
