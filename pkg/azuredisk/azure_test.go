@@ -206,6 +206,7 @@ func TestGetCloudProvider(t *testing.T) {
 			}
 			os.Setenv(DefaultAzureCredentialFileEnv, fakeCredFile)
 		}
+
 		_, err := GetCloudProvider(test.kubeconfig, "", "")
 		if !reflect.DeepEqual(err, test.expectedErr) {
 			t.Errorf("desc: %s,\n input: %q, GetCloudProvider err: %v, expectedErr: %v", test.desc, test.kubeconfig, err, test.expectedErr)
