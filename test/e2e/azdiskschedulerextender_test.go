@@ -202,6 +202,7 @@ func schedulerExtenderTests(isMultiZone bool) {
 
 	ginkgo.It("Should schedule and start a pod with multiple persistent volume requests with replicas and reschedule on deletion.", func() {
 		skipIfUsingInTreeVolumePlugin()
+		ginkgo.Skip("Temporarily disabling this test until it is stable.")
 		volumes := []testsuites.VolumeDetails{}
 		t := dynamicProvisioningTestSuite{}
 
