@@ -101,6 +101,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `node.metricsPort`                                | metrics port of csi-azuredisk-node                         |`29605`                                                        |
 | `node.livenessProbe.healthPort `                  | health check port for liveness probe                   | `29603` |
 | `node.logLevel`                                   | node driver log level                                                          |`5`                                                           |
+| `snapshot.apiVersion`                             | when using Snapshot, specify `ga` for K8s >= 1.20            | `beta`                                                        |
 | `snapshot.enabled`                                | whether enable snapshot feature                            | `false`                                                        |
 | `snapshot.image.csiSnapshotter.repository`        | csi-snapshotter docker image                               | `mcr.microsoft.com/oss/kubernetes-csi/csi-snapshotter`         |
 | `snapshot.image.csiSnapshotter.tag`               | csi-snapshotter docker image tag                           | `v3.0.3`                                                       |
