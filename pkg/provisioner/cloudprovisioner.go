@@ -304,14 +304,18 @@ func (c *CloudProvisioner) CreateVolume(
 		DiskEncryptionSetID: diskEncryptionSetID,
 		MaxShares:           int32(maxShares),
 		LogicalSectorSize:   int32(logicalSectorSize),
-		NetworkAccessPolicy: networkAccessPolicy,
 		BurstingEnabled:     enableBursting,
 	}
-	if diskAccessID != "" {
-		volumeOptions.DiskAccessID = &diskAccessID
-	}
-	diskURI, err := c.cloud.CreateManagedDisk(volumeOptions)
 
+	// Azure Stack Cloud does not support NetworkAccessPolicy
+	if !azureutils.IsAzureStackCloud(c.cloud.Config.Cloud, c.cloud.Config.DisableAzureStackCloud) {
+		volumeOptions.NetworkAccessPolicy = networkAccessPolicy
+		if diskAccessID != "" {
+			volumeOptions.DiskAccessID = &diskAccessID
+		}
+	}
+
+	diskURI, err := c.cloud.CreateManagedDisk(volumeOptions)
 	if err != nil {
 		if strings.Contains(err.Error(), "NotFound") {
 			return nil, status.Error(codes.NotFound, err.Error())

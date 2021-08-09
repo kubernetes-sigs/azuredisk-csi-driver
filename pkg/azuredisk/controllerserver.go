@@ -350,12 +350,15 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		DiskEncryptionSetID: diskEncryptionSetID,
 		MaxShares:           int32(maxShares),
 		LogicalSectorSize:   int32(logicalSectorSize),
-		NetworkAccessPolicy: networkAccessPolicy,
 		BurstingEnabled:     enableBursting,
 	}
 	volumeOptions.SkipGetDiskOperation = d.isGetDiskThrottled()
-	if diskAccessID != "" {
-		volumeOptions.DiskAccessID = &diskAccessID
+	// Azure Stack Cloud does not support NetworkAccessPolicy
+	if !IsAzureStackCloud(d.cloud.Config.Cloud, d.cloud.Config.DisableAzureStackCloud) {
+		volumeOptions.NetworkAccessPolicy = networkAccessPolicy
+		if diskAccessID != "" {
+			volumeOptions.DiskAccessID = &diskAccessID
+		}
 	}
 	diskURI, err := d.cloud.CreateManagedDisk(volumeOptions)
 	if err != nil {
