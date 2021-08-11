@@ -202,7 +202,6 @@ func schedulerExtenderTests(isMultiZone bool) {
 
 	ginkgo.It("Should schedule and start a pod with multiple persistent volume requests with replicas and reschedule on deletion.", func() {
 		skipIfUsingInTreeVolumePlugin()
-		ginkgo.Skip("Temporarily disabling this test until it is stable.")
 		volumes := []testsuites.VolumeDetails{}
 		t := dynamicProvisioningTestSuite{}
 
@@ -226,7 +225,7 @@ func schedulerExtenderTests(isMultiZone bool) {
 		test := testsuites.AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV{
 			CSIDriver:              testDriver,
 			Pod:                    pod,
-			Replicas:               2,
+			Replicas:               1,
 			StorageClassParameters: map[string]string{"skuName": "Premium_LRS", "maxShares": "2"},
 		}
 		test.Run(cs, ns, schedulerName)

@@ -58,8 +58,8 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV) Run(client cl
 
 	// Get the list of available nodes for scheduling the pod
 	nodes := ListNodeNames(client)
-	if len(nodes) < 1 {
-		ginkgo.Skip("need at least 1 nodes to verify the test case. Current node count is %d", len(nodes))
+	if len(nodes) < 2 {
+		ginkgo.Skip("need at least 2 nodes to verify the test case. Current node count is %d", len(nodes))
 	}
 
 	for i := 0; i < 3; i++ {
