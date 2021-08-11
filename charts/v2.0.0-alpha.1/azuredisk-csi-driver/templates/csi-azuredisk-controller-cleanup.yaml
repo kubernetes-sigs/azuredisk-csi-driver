@@ -3,7 +3,8 @@ kind: Job
 metadata:
   name: csi-azuredisk-controller-cleanup
   namespace: {{ .Release.Namespace }}
-{{ include "azuredisk.labels" . | indent 2 }}
+  labels: 
+{{ include "azuredisk.labels" . | indent 4 }}
   annotations:
     "helm.sh/hook": pre-delete
     "helm.sh/hook-delete-policy": hook-succeeded

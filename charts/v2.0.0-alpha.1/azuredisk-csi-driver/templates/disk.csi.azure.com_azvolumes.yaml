@@ -6,6 +6,8 @@ metadata:
   annotations:
   creationTimestamp: null
   name: azvolumes.disk.csi.azure.com
+  labels:
+{{ include "azuredisk.labels" . | indent 4 }}
 spec:
   group: disk.csi.azure.com
   names:

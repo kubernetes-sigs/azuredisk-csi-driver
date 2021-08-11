@@ -4,14 +4,16 @@ apiVersion: apps/v1
 metadata:
   name: {{ .Values.windows.dsName }}
   namespace: {{ .Release.Namespace }}
-{{ include "azuredisk.labels" . | indent 2 }}
+  labels:
+{{ include "azuredisk.labels" . | indent 4 }}
 spec:
   selector:
     matchLabels:
       app: {{ .Values.windows.dsName }}
   template:
     metadata:
-{{ include "azuredisk.labels" . | indent 6 }}
+      labels: 
+{{ include "azuredisk.labels" . | indent 8 }}
         app: {{ .Values.windows.dsName }}
 {{- with .Values.windows.podLabels }}
 {{ toYaml . | indent 8 }}

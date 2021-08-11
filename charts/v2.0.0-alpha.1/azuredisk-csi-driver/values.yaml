@@ -75,6 +75,7 @@ node:
     healthPort: 29603
 
 schedulerExtender:
+  name: csi-azuredisk-scheduler-extender
   replicas: 2
   metricsPort: 29606
   servicePort: 8889
