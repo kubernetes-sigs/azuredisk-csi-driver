@@ -450,7 +450,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		skipIfUsingInTreeVolumePlugin()
 
 		pod := testsuites.PodDetails{
-			Cmd: "echo 'hello world' > /mnt/test-1/data",
+			Cmd: "echo 'hello world' > /mnt/test-1/data && fsync /mnt/test-1/data",
 			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 				{
 					FSType:    "ext4",
