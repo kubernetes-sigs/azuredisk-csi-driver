@@ -60,6 +60,7 @@ controller:
 node:
   cloudConfigSecretName: azure-cloud-provider
   cloudConfigSecretNamespace: kube-system
+  maxUnavailable: 1
   metricsPort: 29605
   logLevel: 5
   livenessProbe:

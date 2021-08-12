@@ -98,6 +98,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `controller.hostNetwork`                          | `hostNetwork` setting on controller driver(could be disabled if controller does not depend on MSI setting)                            | `true`                                                            | `true`, `false`
 | `node.cloudConfigSecretName`                      | cloud config secret name of node driver               | `azure-cloud-provider`
 | `node.cloudConfigSecretNamespace`                 | cloud config secret namespace of node driver          | `kube-system`
+| `node.maxUnavailable`                             | `maxUnavailable` value of driver node daemonset                            | `1`
 | `node.metricsPort`                                | metrics port of csi-azuredisk-node                         |`29605`                                                        |
 | `node.livenessProbe.healthPort `                  | health check port for liveness probe                   | `29603` |
 | `node.logLevel`                                   | node driver log level                                                          |`5`                                                           |
