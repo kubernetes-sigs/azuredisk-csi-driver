@@ -23,18 +23,18 @@ require (
 	golang.org/x/net v0.0.0-20210428140749-89ef3d95e781
 	google.golang.org/grpc v1.38.0
 	google.golang.org/protobuf v1.26.0
-	k8s.io/api v0.21.0
-	k8s.io/apimachinery v0.22.0-alpha.0.0.20210417144234-8daf28983e6e
-	k8s.io/client-go v0.21.0
-	k8s.io/cloud-provider v0.21.0
+	k8s.io/api v0.22.0
+	k8s.io/apimachinery v0.22.0
+	k8s.io/client-go v0.22.0
+	k8s.io/cloud-provider v0.22.0
 	k8s.io/code-generator v0.21.0
-	k8s.io/component-base v0.21.0
-	k8s.io/klog v1.0.0
-	k8s.io/klog/v2 v2.8.0
+	k8s.io/component-base v0.22.0
 	k8s.io/kube-scheduler v0.21.0
+	k8s.io/klog v1.0.0
+	k8s.io/klog/v2 v2.10.0
 	k8s.io/kubernetes v1.21.0
 	k8s.io/mount-utils v0.0.0
-	k8s.io/utils v0.0.0-20210111153108-fddb29f9d009
+	k8s.io/utils v0.0.0-20210707171843-4b05e18ac7d9
 	sigs.k8s.io/cloud-provider-azure v0.7.4
 	sigs.k8s.io/controller-runtime v0.9.0-beta.5
 	sigs.k8s.io/controller-tools v0.5.0
@@ -75,5 +75,5 @@ replace (
 	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.21.0
 	k8s.io/sample-controller => k8s.io/sample-controller v0.21.0
 
-	sigs.k8s.io/cloud-provider-azure => sigs.k8s.io/cloud-provider-azure v0.7.4-0.20210804150324-0443bd214196
+	sigs.k8s.io/cloud-provider-azure => sigs.k8s.io/cloud-provider-azure v0.7.4-0.20210809074930-0a68438a5d9b
 )

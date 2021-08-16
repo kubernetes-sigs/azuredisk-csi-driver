@@ -1129,6 +1129,11 @@ func generateCSISnapshot(sourceVolumeID string, snapshot *compute.Snapshot) (*cs
 	}
 
 	tp := timestamppb.New(snapshot.SnapshotProperties.TimeCreated.ToTime())
+
+	if tp == nil {
+		return nil, fmt.Errorf("Failed to covert timestamp(%v)", snapshot.SnapshotProperties.TimeCreated.ToTime())
+	}
+
 	ready, _ := isCSISnapshotReady(*snapshot.SnapshotProperties.ProvisioningState)
 
 	if snapshot.SnapshotProperties.DiskSizeGB == nil {

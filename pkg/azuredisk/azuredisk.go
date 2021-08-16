@@ -187,14 +187,14 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 	}
 	klog.Infof("\nDRIVER INFORMATION:\n-------------------\n%s\n\nStreaming logs below:", versionMeta)
 
-	// d.cloud is set by NewFakeDriver for unit tests.
-	if d.cloud == nil {
-		cloud, err := GetCloudProvider(kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace)
-		if err != nil || cloud.TenantID == "" || cloud.SubscriptionID == "" {
-			klog.Fatalf("failed to get Azure Cloud Provider, error: %v", err)
-		}
-		d.cloud = cloud
+	userAgent := GetUserAgent(d.Name)
+	klog.V(2).Infof("driver userAgent: %s", userAgent)
+
+	cloud, err := GetCloudProvider(kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, userAgent)
+	if err != nil || cloud.TenantID == "" || cloud.SubscriptionID == "" {
+		klog.Fatalf("failed to get Azure Cloud Provider, error: %v", err)
 	}
+	d.cloud = cloud
 
 	if d.NodeID == "" {
 		// Disable UseInstanceMetadata for controller to mitigate a timeout issue using IMDS
