@@ -29,6 +29,8 @@ import (
 	"strconv"
 	"strings"
 
+	"sigs.k8s.io/yaml"
+
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -140,6 +142,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		diskAccessID            string
 		maxShares               int
 		enableBursting          *bool
+		nonUserAgentCloud       *azure.Cloud
 	)
 
 	tags := make(map[string]string)
@@ -206,6 +209,15 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		case enableBurstingField:
 			if strings.EqualFold(v, trueValue) {
 				enableBursting = to.BoolPtr(true)
+			}
+		case userAgentField:
+			nonUserAgentCloud = d.cloud
+			newUserAgent := v
+			d.cloud, err = SetupNewUserAgentCloud(newUserAgent, d.cloud)
+			if err != nil {
+				klog.V(2).Infof("Unable to create new cloud for UserAgent, err: (%s)", err)
+				d.cloud = nonUserAgentCloud
+				nonUserAgentCloud = nil
 			}
 		default:
 			return nil, fmt.Errorf("invalid parameter %s in storage class", k)
@@ -299,14 +311,6 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	contentSource := &csi.VolumeContentSource{}
 	for k, v := range customTagsMap {
 		tags[k] = v
-		if k == userAgentField {
-			temp := d.cloud
-			d.cloud, err = SetupNewUserAgentCloud(v, d.cloud)
-			if err != nil {
-				klog.V(2).Infof("Unable to create new cloud for UserAgent, err: (%s)", err)
-			}
-			d.cloud = temp
-		}
 	}
 
 	if strings.EqualFold(writeAcceleratorEnabled, trueValue) {
@@ -374,6 +378,10 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			return nil, status.Error(codes.NotFound, err.Error())
 		}
 		return nil, err
+	}
+
+	if nonUserAgentCloud != nil {
+		d.cloud = nonUserAgentCloud
 	}
 
 	isOperationSucceeded = true
@@ -1234,44 +1242,53 @@ func getEntriesAndNextToken(req *csi.ListSnapshotsRequest, snapshots []compute.S
 	return listSnapshotResp, nil
 }
 
-/// Creates a new cloud to configure the Useragent property of DiskClient
+// Creates a new cloud during CreateVolume call to configure the Useragent property of DiskClient
 func SetupNewUserAgentCloud(userAgent string, currentAz *azure.Cloud) (*azure.Cloud, error) {
-	//TODO
+	kubeClient := currentAz.KubeClient
 	az := &azure.Cloud{
 		InitSecretConfig: currentAz.InitSecretConfig,
 	}
-
-	//TODO how to check the kubeconfig to see if it is from secret or not?
-
-	credFile, ok := os.LookupEnv(DefaultAzureCredentialFileEnv)
-	if ok && strings.TrimSpace(credFile) != "" {
-		klog.V(2).Infof("%s env var set as %v", DefaultAzureCredentialFileEnv, credFile)
-	} else {
-		if util.IsWindowsOS() {
-			credFile = DefaultCredFilePathWindows
+	if kubeClient != nil {
+		klog.V(2).Infof("reading cloud config from secret")
+		az.KubeClient = kubeClient
+		if err := InitializeCloudFromSecretWithUserAgent(az, userAgent); err != nil {
+			klog.V(2).Infof("InitializeCloudFromSecret with useragent %s failed with error: %v", userAgent, err)
+		}
+	}
+	if az.TenantID == "" || az.SubscriptionID == "" || az.ResourceGroup == "" {
+		klog.V(2).Infof("could not read cloud config from secret")
+		credFile, ok := os.LookupEnv(DefaultAzureCredentialFileEnv)
+		if ok && strings.TrimSpace(credFile) != "" {
+			klog.V(2).Infof("%s env var set as %v", DefaultAzureCredentialFileEnv, credFile)
 		} else {
-			credFile = DefaultCredFilePathLinux
+			if util.IsWindowsOS() {
+				credFile = DefaultCredFilePathWindows
+			} else {
+				credFile = DefaultCredFilePathLinux
+			}
+			klog.V(2).Infof("use default %s env var: %v", DefaultAzureCredentialFileEnv, credFile)
+		}
+		var config io.Reader
+
+		config, err := UpdateConfigUserAgent(userAgent, credFile)
+		if err != nil {
+			klog.Errorf("creating azure config from file(%s) with useragent(%s) failed with %v", credFile, userAgent, err)
+			return nil, fmt.Errorf("creating azure config from file(%s) with useragent(%s) failed with %v", credFile, userAgent, err)
 		}
 
-		klog.V(2).Infof("use default %s env var: %v", DefaultAzureCredentialFileEnv, credFile)
+		klog.V(2).Infof("created azure cloud config from file: %s and set useragent: %s successfully", credFile, userAgent)
+		if az, err = azure.NewCloudWithoutFeatureGates(config, false); err != nil {
+			return az, err
+		}
 	}
-
-	var config io.Reader
-
-	config, err := UpdateConfigUserAgent(userAgent, credFile)
-	if err != nil {
-		klog.Errorf("updating azure config file(%s) with useragent(%s) failed with %v", credFile, userAgent, err)
-		return nil, fmt.Errorf("updating azure config file(%s) with useragent(%s) failed with %v", credFile, userAgent, err)
+	// reassign kubeClient
+	if kubeClient != nil && az.KubeClient == nil {
+		az.KubeClient = kubeClient
 	}
-
-	klog.V(2).Infof("read cloud config from file: %s and set useragent: %s successfully", credFile, userAgent)
-	if az, err = azure.NewCloudWithoutFeatureGates(config, false); err != nil {
-		return az, err
-	}
-
 	return az, nil
 }
 
+// Creates a config buffer that includes a useragent to be used for cloud creation
 func UpdateConfigUserAgent(userAgent string, credFile string) (io.Reader, error) {
 	var configReader *os.File
 	configReader, err := os.Open(credFile)
@@ -1307,4 +1324,56 @@ func UpdateConfigUserAgent(userAgent string, credFile string) (io.Reader, error)
 	configReader.Close()
 
 	return newReader, nil
+}
+
+// InitializeCloudFromSecret initializes Azure cloud provider from Kubernetes secret.
+func InitializeCloudFromSecretWithUserAgent(az *azure.Cloud, userAgent string) error {
+	config, err := getConfigFromSecretWithUserAgent(az, userAgent)
+	if err != nil {
+		klog.Errorf("Failed to get cloud-config from secret: %v", err)
+		return fmt.Errorf("InitializeCloudFromSecret: failed to get cloud config from secret %s/%s: %w", az.SecretNamespace, az.SecretName, err)
+	}
+
+	if config == nil {
+		// Skip re-initialization if the config is not override.
+		return nil
+	}
+
+	if err := az.InitializeCloudFromConfig(config, true, true); err != nil {
+		klog.Errorf("Failed to initialize Azure cloud provider: %v with useragent", err, userAgent)
+		return fmt.Errorf("InitializeCloudFromSecret: failed to initialize Azure cloud provider: %w with useragent: %s", err, userAgent)
+	}
+
+	return nil
+}
+
+func getConfigFromSecretWithUserAgent(az *azure.Cloud, userAgent string) (*azure.Config, error) {
+	// Read config from file and no override, return nil.
+	if az.Config.CloudConfigType == "file" {
+		return nil, nil
+	}
+
+	secret, err := az.KubeClient.CoreV1().Secrets(az.SecretNamespace).Get(context.TODO(), az.SecretName, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get secret %s/%s: %w", az.SecretNamespace, az.SecretName, err)
+	}
+
+	cloudConfigData, ok := secret.Data[az.CloudConfigKey]
+	if !ok {
+		return nil, fmt.Errorf("cloud-config is not set in the secret (%s/%s)", az.SecretNamespace, az.SecretName)
+	}
+
+	config := azure.Config{}
+	if az.Config.CloudConfigType == "" || az.Config.CloudConfigType == "merge" {
+		// Merge cloud config, set default value to existing config.
+		config = az.Config
+	}
+
+	err = yaml.Unmarshal(cloudConfigData, &config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse Azure cloud-config: %w", err)
+	}
+	config.UserAgent = userAgent
+
+	return &config, nil
 }
