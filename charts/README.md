@@ -22,7 +22,7 @@ helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --na
 ### install a specific version
 ```console
 helm repo add azuredisk-csi-driver https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts
-helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v1.5.0
+helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v1.5.1
 ```
 
 ### install on Azure Stack
@@ -98,6 +98,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `controller.hostNetwork`                          | `hostNetwork` setting on controller driver(could be disabled if controller does not depend on MSI setting)                            | `true`                                                            | `true`, `false`
 | `node.cloudConfigSecretName`                      | cloud config secret name of node driver               | `azure-cloud-provider`
 | `node.cloudConfigSecretNamespace`                 | cloud config secret namespace of node driver          | `kube-system`
+| `node.maxUnavailable`                             | `maxUnavailable` value of driver node daemonset                            | `1`
 | `node.metricsPort`                                | metrics port of csi-azuredisk-node                         |`29605`                                                        |
 | `node.livenessProbe.healthPort `                  | health check port for liveness probe                   | `29603` |
 | `node.logLevel`                                   | node driver log level                                                          |`5`                                                           |
@@ -124,7 +125,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `windows.image.livenessProbe.tag`                 | windows liveness-probe docker image tag                    | `v2.3.0`                           |
 | `windows.image.livenessProbe.pullPolicy`          | windows liveness-probe image pull policy                   | `IfNotPresent`                                                 |
 | `windows.image.nodeDriverRegistrar.repository`    | windows csi-node-driver-registrar docker image             | `mcr.microsoft.com/oss/kubernetes-csi/csi-node-driver-registrar` |
-| `windows.image.nodeDriverRegistrar.tag`           | windows csi-node-driver-registrar docker image tag         | `v2.2.0`                          |
+| `windows.image.nodeDriverRegistrar.tag`           | windows csi-node-driver-registrar docker image tag         | `v2.3.0`                          |
 | `windows.image.nodeDriverRegistrar.pullPolicy`    | windows csi-node-driver-registrar image pull policy        | `IfNotPresent`                                                 |
 | `windows.tolerations`                             | windows node driver tolerations                            |                                                              |
 | `cloud`                                           | cloud environment driver is running on             | `AzurePublicCloud`                                                  |

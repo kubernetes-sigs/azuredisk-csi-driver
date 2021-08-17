@@ -169,7 +169,10 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 
 	// d.cloudProvisioner is set by NewFakeDriver for unit tests.
 	if d.cloudProvisioner == nil {
-		d.cloudProvisioner, err = provisioner.NewCloudProvisioner(d.kubeClient, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, topologyKey)
+		userAgent := GetUserAgent(d.Name)
+		klog.V(2).Infof("driver userAgent: %s", userAgent)
+
+		d.cloudProvisioner, err = provisioner.NewCloudProvisioner(d.kubeClient, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, topologyKey, userAgent)
 		if err != nil {
 			klog.Fatalf("Failed to get controller provisioner. Error: %v", err)
 		}

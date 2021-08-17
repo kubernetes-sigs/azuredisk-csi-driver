@@ -46,7 +46,7 @@ func IsAzureStackCloud(cloud string, disableAzureStackCloud bool) bool {
 }
 
 // GetCloudProvider get Azure Cloud Provider
-func GetCloudProvider(kubeconfig, secretName, secretNamespace string) (*azure.Cloud, error) {
+func GetCloudProvider(kubeconfig, secretName, secretNamespace, userAgent string) (*azure.Cloud, error) {
 	kubeClient, err := getKubeClient(kubeconfig)
 	if err != nil {
 		klog.Warningf("get kubeconfig(%s) failed with error: %v", kubeconfig, err)
