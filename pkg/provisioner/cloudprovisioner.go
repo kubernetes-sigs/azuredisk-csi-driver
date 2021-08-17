@@ -62,11 +62,11 @@ type listVolumeStatus struct {
 }
 
 func NewCloudProvisioner(
-	userAgent string,
 	kubeClient clientset.Interface,
 	cloudConfigSecretName string,
 	cloudConfigSecretNamespace string,
-	topologyKey string) (*CloudProvisioner, error) {
+	topologyKey string,
+	userAgent string) (*CloudProvisioner, error) {
 	azCloud, err := azureutils.GetAzureCloudProvider(kubeClient, cloudConfigSecretName, cloudConfigSecretNamespace, userAgent)
 	if err != nil || azCloud.TenantID == "" || azCloud.SubscriptionID == "" {
 		klog.Fatalf("failed to get Azure Cloud Provider, error: %v", err)
