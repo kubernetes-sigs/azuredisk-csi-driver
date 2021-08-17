@@ -881,7 +881,7 @@ k8s.io/cloud-provider/service/helpers
 k8s.io/cloud-provider/volume
 k8s.io/cloud-provider/volume/errors
 k8s.io/cloud-provider/volume/helpers
-# k8s.io/code-generator v0.21.0 => k8s.io/code-generator v0.21.0
+# k8s.io/code-generator v0.22.0 => k8s.io/code-generator v0.21.0
 ## explicit
 k8s.io/code-generator
 k8s.io/code-generator/cmd/client-gen
@@ -955,7 +955,7 @@ k8s.io/kube-openapi/pkg/generators
 k8s.io/kube-openapi/pkg/generators/rules
 k8s.io/kube-openapi/pkg/util/proto
 k8s.io/kube-openapi/pkg/util/sets
-# k8s.io/kube-scheduler v0.21.0 => k8s.io/kube-scheduler v0.21.0
+# k8s.io/kube-scheduler v0.22.0 => k8s.io/kube-scheduler v0.21.0
 ## explicit
 k8s.io/kube-scheduler/extender/v1
 # k8s.io/kubectl v0.0.0 => k8s.io/kubectl v0.21.0
