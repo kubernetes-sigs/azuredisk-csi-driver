@@ -13,7 +13,7 @@ jobs:
       AZURE_LOCATION: ${{ secrets.Location }}
       TEST_MIGRATION: true
       AZURE_STORAGE_DRIVER: kubernetes.io/azure-disk
- 
+
     steps:
     - name: Set UUID
       id: generate-uuid

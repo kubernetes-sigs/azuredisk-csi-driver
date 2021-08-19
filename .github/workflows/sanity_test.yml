@@ -11,7 +11,7 @@ jobs:
       AZURE_CLIENT_ID: ${{ secrets.ClientId }}
       AZURE_CLIENT_SECRET: ${{ secrets.ClientSecret }}
       AZURE_LOCATION: ${{ secrets.Location }}
- 
+   
     steps:
     - name: Set up Go 1.x
       uses: actions/setup-go@v2
