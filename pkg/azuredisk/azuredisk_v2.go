@@ -289,6 +289,8 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 		os.Exit(1)
 	}
 
+	sharedState := controller.NewSharedState()
+
 	// Setup a new controller to clean-up AzDriverNodes
 	// objects for the nodes which get deleted
 	klog.V(2).Info("Initializing AzDriverNode controller")
@@ -299,9 +301,23 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 	}
 
 	klog.V(2).Info("Initializing AzVolumeAttachment controller")
-	azvaReconciler, err := controller.NewAzVolumeAttachmentController(mgr, d.crdProvisioner.GetDiskClientSet(), d.kubeClient, d.objectNamespace, d.cloudProvisioner)
+	attachReconciler, err := controller.NewAttachDetachController(mgr, d.crdProvisioner.GetDiskClientSet(), d.kubeClient, d.objectNamespace, d.cloudProvisioner)
 	if err != nil {
 		klog.Errorf("Failed to initialize AzVolumeAttachmentController. Error: %v. Exiting application...", err)
+		os.Exit(1)
+	}
+
+	klog.V(2).Info("Initializing Pod controller")
+	podReconciler, err := controller.NewPodController(mgr, d.crdProvisioner.GetDiskClientSet(), d.kubeClient, sharedState)
+	if err != nil {
+		klog.Errorf("Failed to initialize PodController. Error: %v. Exiting application...", err)
+		os.Exit(1)
+	}
+
+	klog.V(2).Info("Initializing Replica controller")
+	_, err = controller.NewReplicaController(mgr, d.crdProvisioner.GetDiskClientSet(), d.kubeClient, sharedState)
+	if err != nil {
+		klog.Errorf("Failed to initialize ReplicaController. Error: %v. Exiting application...", err)
 		os.Exit(1)
 	}
 
@@ -313,7 +329,7 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 	}
 
 	klog.V(2).Info("Initializing PV controller")
-	err = controller.NewPVController(mgr, d.crdProvisioner.GetDiskClientSet(), d.objectNamespace)
+	pvReconciler, err := controller.NewPVController(mgr, d.crdProvisioner.GetDiskClientSet(), d.kubeClient, d.objectNamespace, sharedState)
 	if err != nil {
 		klog.Errorf("Failed to initialize PVController. Error: %v. Exiting application...", err)
 		os.Exit(1)
@@ -334,11 +350,17 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 		if err := azvReconciler.Recover(ctx); err != nil {
 			klog.Warningf("Failed to recover AzVolume: %v", err)
 		}
-		if err := azvaReconciler.Recover(ctx); err != nil {
+		if err := attachReconciler.Recover(ctx); err != nil {
 			klog.Warningf("Failed to recover AzVolumeAttachments: %v.", err)
 		}
 		if err := vaReconciler.Recover(ctx); err != nil {
 			klog.Warningf("Failed to update AzVolumeAttachments with necessary VolumeAttachments Annotations: %v.", err)
+		}
+		if err := pvReconciler.Recover(ctx); err != nil {
+			klog.Warningf("Failed to restore shared claimToVolumeMap and volumeToClaimMap: %v.", err)
+		}
+		if err := podReconciler.Recover(ctx); err != nil {
+			klog.Warningf("Failed to recover replica AzVolumeAttachments: %v.", err)
 		}
 	}()
 

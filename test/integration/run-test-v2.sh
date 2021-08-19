@@ -76,5 +76,6 @@ test/integration/register-azdrivernode.sh $nodeid_2
 echo "Starting integration test"
 test/integration/run-test.sh $*
 echo "Run controller test"
-go test -v -timeout=45m ./test/integration/controller --temp-use-driver-v2
+# temporarily disable integration controller test
+# go test -v -timeout=45m ./test/integration/controller --temp-use-driver-v2
 

@@ -24,6 +24,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 
+	azClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	azVolumeClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -75,7 +76,7 @@ func (r *ReconcileAzDriverNode) Reconcile(ctx context.Context, request reconcile
 		}
 
 		// Delete all volumeAttachments attached to this node, if failed, requeue
-		if err = cleanUpAzVolumeAttachmentByNode(ctx, r.client, r.azVolumeClient, r.namespace, request.Name, all); err != nil {
+		if _, err = cleanUpAzVolumeAttachmentByNode(ctx, r, request.Name, all); err != nil {
 			return reconcile.Result{Requeue: true}, nil
 		}
 		return reconcile.Result{}, nil
@@ -127,4 +128,16 @@ func NewAzDriverNodeController(mgr manager.Manager, azVolumeClient azVolumeClien
 	klog.V(2).Info("Controller set-up successful.")
 
 	return &reconciler, err
+}
+
+func (r *ReconcileAzDriverNode) getClient() client.Client {
+	return r.client
+}
+
+func (r *ReconcileAzDriverNode) getAzClient() azClientSet.Interface {
+	return r.azVolumeClient
+}
+
+func (r *ReconcileAzDriverNode) getNamespace() string {
+	return r.namespace
 }

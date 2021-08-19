@@ -62,7 +62,7 @@ func mockClientsAndVolumeProvisioner(controller *ReconcileAzVolume) {
 			volumeContentSource *diskv1alpha1.ContentVolumeSource,
 			accessibilityTopology *diskv1alpha1.TopologyRequirement) (*diskv1alpha1.AzVolumeStatusParams, error) {
 			return &diskv1alpha1.AzVolumeStatusParams{
-				VolumeID:      testManagedDiskURI,
+				VolumeID:      testManagedDiskURI0,
 				VolumeContext: parameters,
 				CapacityBytes: capacityRange.RequiredBytes,
 				ContentSource: volumeContentSource,
@@ -70,11 +70,11 @@ func mockClientsAndVolumeProvisioner(controller *ReconcileAzVolume) {
 		}).
 		MaxTimes(1)
 	controller.volumeProvisioner.(*mockvolumeprovisioner.MockVolumeProvisioner).EXPECT().
-		DeleteVolume(gomock.Any(), testManagedDiskURI, gomock.Any()).
+		DeleteVolume(gomock.Any(), testManagedDiskURI0, gomock.Any()).
 		Return(nil).
 		MaxTimes(1)
 	controller.volumeProvisioner.(*mockvolumeprovisioner.MockVolumeProvisioner).EXPECT().
-		ExpandVolume(gomock.Any(), testManagedDiskURI, gomock.Any(), gomock.Any()).
+		ExpandVolume(gomock.Any(), testManagedDiskURI0, gomock.Any(), gomock.Any()).
 		DoAndReturn(func(
 			ctx context.Context,
 			volumeID string,
@@ -137,7 +137,7 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 
 				azVolume.Status.Detail = &diskv1alpha1.AzVolumeStatusDetail{
 					ResponseObject: &diskv1alpha1.AzVolumeStatusParams{
-						VolumeID:      testManagedDiskURI,
+						VolumeID:      testManagedDiskURI0,
 						CapacityBytes: azVolume.Spec.CapacityRange.RequiredBytes,
 					},
 				}
@@ -173,7 +173,7 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 				azVolume.Finalizers = []string{azureutils.AzVolumeFinalizer}
 				azVolume.Status.Detail = &diskv1alpha1.AzVolumeStatusDetail{
 					ResponseObject: &diskv1alpha1.AzVolumeStatusParams{
-						VolumeID:      testManagedDiskURI,
+						VolumeID:      testManagedDiskURI0,
 						CapacityBytes: azVolume.Spec.CapacityRange.RequiredBytes,
 					},
 				}
@@ -207,7 +207,7 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 				azVolume.Status.Detail = &diskv1alpha1.AzVolumeStatusDetail{
 					Phase: diskv1alpha1.VolumeReleased,
 					ResponseObject: &diskv1alpha1.AzVolumeStatusParams{
-						VolumeID:      testManagedDiskURI,
+						VolumeID:      testManagedDiskURI0,
 						CapacityBytes: azVolume.Spec.CapacityRange.RequiredBytes,
 					},
 				}
@@ -242,7 +242,7 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 				azVolume.Finalizers = []string{azureutils.AzVolumeFinalizer}
 				azVolume.Status.Detail = &diskv1alpha1.AzVolumeStatusDetail{
 					ResponseObject: &diskv1alpha1.AzVolumeStatusParams{
-						VolumeID:      testManagedDiskURI,
+						VolumeID:      testManagedDiskURI0,
 						CapacityBytes: azVolume.Spec.CapacityRange.RequiredBytes,
 					},
 				}
@@ -254,7 +254,7 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 					mockCtl,
 					testNamespace,
 					azVolume,
-					&testPrimaryAzVolumeAttachment,
+					&testPrimaryAzVolumeAttachment0,
 					&testReplicaAzVolumeAttachment)
 
 				mockClientsAndVolumeProvisioner(controller)

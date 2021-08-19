@@ -35,20 +35,21 @@ import (
 )
 
 type testReconcilePV struct {
-	reconcilePV
+	ReconcilePV
 	kubeClient kubernetes.Interface
 }
 
 func newTestPVController(controller *gomock.Controller, namespace string, objects ...runtime.Object) *testReconcilePV {
 	diskv1alpha1Objs, kubeObjs := splitObjects(objects...)
+	controllerSharedState := initState(objects...)
 
 	return &testReconcilePV{
-		reconcilePV: reconcilePV{
-			client:         mockclient.NewMockClient(controller),
-			azVolumeClient: diskfakes.NewSimpleClientset(diskv1alpha1Objs...),
-			retryMap:       make(map[string]*uint32),
-			retryMutex:     sync.RWMutex{},
-			namespace:      namespace,
+		ReconcilePV: ReconcilePV{
+			client:                mockclient.NewMockClient(controller),
+			azVolumeClient:        diskfakes.NewSimpleClientset(diskv1alpha1Objs...),
+			retryMap:              sync.Map{},
+			namespace:             namespace,
+			controllerSharedState: controllerSharedState,
 		},
 		kubeClient: fakev1.NewSimpleClientset(kubeObjs...),
 	}
@@ -58,13 +59,13 @@ func TestPVControllerReconcile(t *testing.T) {
 	tests := []struct {
 		description string
 		request     reconcile.Request
-		setupFunc   func(*testing.T, *gomock.Controller) *reconcilePV
-		verifyFunc  func(*testing.T, *reconcilePV, reconcile.Result, error)
+		setupFunc   func(*testing.T, *gomock.Controller) *ReconcilePV
+		verifyFunc  func(*testing.T, *ReconcilePV, reconcile.Result, error)
 	}{
 		{
 			description: "[Success] Should release AzVolume when PV is released.",
 			request:     testPersistentVolume0Request,
-			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *reconcilePV {
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcilePV {
 				azVolume := testAzVolume0.DeepCopy()
 				azVolume.Status.Detail = &diskv1alpha1.AzVolumeStatusDetail{
 					Phase: diskv1alpha1.VolumeBound,
@@ -81,9 +82,9 @@ func TestPVControllerReconcile(t *testing.T) {
 
 				mockClients(controller.client.(*mockclient.MockClient), controller.azVolumeClient, controller.kubeClient)
 
-				return &controller.reconcilePV
+				return &controller.ReconcilePV
 			},
-			verifyFunc: func(t *testing.T, controller *reconcilePV, result reconcile.Result, err error) {
+			verifyFunc: func(t *testing.T, controller *ReconcilePV, result reconcile.Result, err error) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
 
@@ -95,7 +96,7 @@ func TestPVControllerReconcile(t *testing.T) {
 		{
 			description: "[Success] Should requeue when PV is released but AzVolume does not exist.",
 			request:     testPersistentVolume0Request,
-			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *reconcilePV {
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcilePV {
 				pv := testPersistentVolume0.DeepCopy()
 				pv.Status.Phase = corev1.VolumeReleased
 
@@ -106,9 +107,9 @@ func TestPVControllerReconcile(t *testing.T) {
 
 				mockClients(controller.client.(*mockclient.MockClient), controller.azVolumeClient, controller.kubeClient)
 
-				return &controller.reconcilePV
+				return &controller.ReconcilePV
 			},
-			verifyFunc: func(t *testing.T, controller *reconcilePV, result reconcile.Result, err error) {
+			verifyFunc: func(t *testing.T, controller *ReconcilePV, result reconcile.Result, err error) {
 				require.NoError(t, err)
 				require.True(t, result.Requeue)
 			},

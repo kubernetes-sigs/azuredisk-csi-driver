@@ -643,8 +643,8 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{
 						Name: azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
 						Labels: map[string]string{
-							"node-name":   testNodeName,
-							"volume-name": testDiskURI,
+							azureutils.NodeNameLabel:   testNodeName,
+							azureutils.VolumeNameLabel: testDiskURI,
 						},
 						Namespace: provisioner.namespace,
 					},
@@ -676,8 +676,8 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{
 						Name: azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
 						Labels: map[string]string{
-							"node-name":   testNodeName,
-							"volume-name": testDiskURI,
+							azureutils.NodeNameLabel:   testNodeName,
+							azureutils.VolumeNameLabel: testDiskURI,
 						},
 						Namespace: provisioner.namespace,
 					},
@@ -709,8 +709,8 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{
 						Name: azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
 						Labels: map[string]string{
-							"node-name":   testNodeName,
-							"volume-name": testDiskURI,
+							azureutils.NodeNameLabel:   testNodeName,
+							azureutils.VolumeNameLabel: testDiskURI,
 						},
 						Namespace: provisioner.namespace,
 					},
@@ -833,8 +833,8 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{
 						Name: azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
 						Labels: map[string]string{
-							"node-name":   testNodeName,
-							"volume-name": testDiskURI,
+							azureutils.NodeNameLabel:   testNodeName,
+							azureutils.VolumeNameLabel: testDiskURI,
 						},
 						Namespace: provisioner.namespace,
 					},
@@ -866,8 +866,8 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{
 						Name: azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
 						Labels: map[string]string{
-							"node-name":   testNodeName,
-							"volume-name": testDiskURI,
+							azureutils.NodeNameLabel:   testNodeName,
+							azureutils.VolumeNameLabel: testDiskURI,
 						},
 						Namespace: provisioner.namespace,
 					},

@@ -1234,10 +1234,10 @@ func (t *TestAzVolumeAttachment) WaitForLabels(timeout time.Duration) error {
 		if att.Labels == nil {
 			return false, nil
 		}
-		if _, ok := att.Labels["node-name"]; !ok {
+		if _, ok := att.Labels[azureutils.NodeNameLabel]; !ok {
 			return false, nil
 		}
-		if _, ok := att.Labels["volume-name"]; !ok {
+		if _, ok := att.Labels[azureutils.VolumeNameLabel]; !ok {
 			return false, nil
 		}
 		return true, nil

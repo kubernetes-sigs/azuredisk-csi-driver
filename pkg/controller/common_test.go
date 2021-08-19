@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/golang/mock/gomock"
 	corev1 "k8s.io/api/core/v1"
@@ -48,7 +49,8 @@ var (
 	testSubscription  = "12345678-90ab-cedf-1234-567890abcdef"
 	testResourceGroup = "test-rg"
 
-	testManagedDiskURI = fmt.Sprintf(computeDiskURIFormat, testSubscription, testResourceGroup, testPersistentVolume0Name)
+	testManagedDiskURI0 = getTestDiskURI(testPersistentVolume0Name)
+	testManagedDiskURI1 = getTestDiskURI(testPersistentVolume1Name)
 
 	testNamespace = "test-namespace"
 
@@ -72,80 +74,41 @@ var (
 		},
 	}
 
-	testNode1Request = reconcile.Request{
-		NamespacedName: types.NamespacedName{
-			Name:      testNode1Name,
-			Namespace: testNamespace,
-		},
-	}
+	testNode1Request = createReconcileRequest(testNamespace, testNode1Name)
 
 	testAzDriverNode1NotFoundError = k8serrors.NewNotFound(v1alpha1.Resource("azdrivernodes"), testNode1Name)
 
 	testPersistentVolume0Name = "test-volume-0"
-	testPersistentVolume1Name = "test-pv-1"
+	testPersistentVolume1Name = "test-volume-1"
 
-	testAzVolume0 = diskv1alpha1.AzVolume{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      testPersistentVolume0Name,
-			Namespace: testNamespace,
-		},
-		Spec: diskv1alpha1.AzVolumeSpec{
-			UnderlyingVolume: testPersistentVolume0Name,
-			CapacityRange: &diskv1alpha1.CapacityRange{
-				RequiredBytes: util.GiBToBytes(10),
-			},
-		},
-	}
+	testPersistentVolumeClaim0Name = "test-pvc-0"
+	testPersistentVolumeClaim1Name = "test-pvc-1"
 
-	testAzVolume0Request = reconcile.Request{
-		NamespacedName: types.NamespacedName{
-			Name:      testPersistentVolume0Name,
-			Namespace: testNamespace,
-		},
-	}
+	testPod0Name = "test-pod-0"
+	testPod1Name = "test-pod-1"
 
-	testPrimaryAzVolumeAttachmentName = azureutils.GetAzVolumeAttachmentName(testPersistentVolume0Name, testNode0Name)
+	testAzVolume0 = createAzVolume(testPersistentVolume0Name, 1)
+	testAzVolume1 = createAzVolume(testPersistentVolume1Name, 1)
 
-	testPrimaryAzVolumeAttachment = diskv1alpha1.AzVolumeAttachment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      testPrimaryAzVolumeAttachmentName,
-			Namespace: testNamespace,
-			Labels: map[string]string{
-				azureutils.NodeNameLabel:   testNode0Name,
-				azureutils.VolumeNameLabel: testPersistentVolume0Name,
-			},
-		},
-		Spec: diskv1alpha1.AzVolumeAttachmentSpec{
-			RequestedRole:    diskv1alpha1.PrimaryRole,
-			UnderlyingVolume: testPersistentVolume0Name,
-			VolumeID:         testManagedDiskURI,
-		},
-	}
+	testAzVolume0Request = createReconcileRequest(testNamespace, testPersistentVolume0Name)
+	testAzVolume1Request = createReconcileRequest(testNamespace, testPersistentVolume1Name)
 
-	testPrimaryAzVolumeAttachmentRequest = reconcile.Request{
-		NamespacedName: types.NamespacedName{
-			Name:      testPrimaryAzVolumeAttachmentName,
-			Namespace: testNamespace,
-		},
-	}
+	testPrimaryAzVolumeAttachment0Name = azureutils.GetAzVolumeAttachmentName(testPersistentVolume0Name, testNode0Name)
+	testPrimaryAzVolumeAttachment1Name = azureutils.GetAzVolumeAttachmentName(testPersistentVolume1Name, testNode0Name)
+
+	testPrimaryAzVolumeAttachment0 = createAzVolumeAttachment(testPersistentVolume0Name, testNode0Name, diskv1alpha1.PrimaryRole)
+
+	testPrimaryAzVolumeAttachment0Request = createReconcileRequest(testNamespace, testPrimaryAzVolumeAttachment0Name)
+
+	testPrimaryAzVolumeAttachment1 = createAzVolumeAttachment(testPersistentVolume1Name, testNode0Name, diskv1alpha1.PrimaryRole)
+
+	testPrimaryAzVolumeAttachment1Request = createReconcileRequest(testNamespace, testPrimaryAzVolumeAttachment1Name)
 
 	testReplicaAzVolumeAttachmentName = azureutils.GetAzVolumeAttachmentName(testPersistentVolume0Name, testNode1Name)
 
-	testReplicaAzVolumeAttachment = diskv1alpha1.AzVolumeAttachment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      testReplicaAzVolumeAttachmentName,
-			Namespace: testNamespace,
-			Labels: map[string]string{
-				azureutils.NodeNameLabel:   testNode1Name,
-				azureutils.VolumeNameLabel: testPersistentVolume0Name,
-			},
-		},
-		Spec: diskv1alpha1.AzVolumeAttachmentSpec{
-			RequestedRole:    diskv1alpha1.ReplicaRole,
-			UnderlyingVolume: testPersistentVolume0Name,
-			VolumeID:         testManagedDiskURI,
-		},
-	}
+	testReplicaAzVolumeAttachment = createAzVolumeAttachment(testPersistentVolume0Name, testNode1Name, diskv1alpha1.ReplicaRole)
+
+	testReplicaAzVolumeAttachmentRequest = createReconcileRequest(testNamespace, testReplicaAzVolumeAttachmentName)
 
 	testStorageClassName = "test-storage-class"
 
@@ -195,6 +158,10 @@ var (
 			Capacity: v1.ResourceList{
 				v1.ResourceStorage: *resource.NewQuantity(util.GiBToBytes(10), resource.DecimalSI),
 			},
+			ClaimRef: &v1.ObjectReference{
+				Namespace: testNamespace,
+				Name:      testPersistentVolumeClaim0Name,
+			},
 			StorageClassName: "",
 		},
 	}
@@ -219,10 +186,152 @@ var (
 			Capacity: v1.ResourceList{
 				v1.ResourceStorage: *resource.NewQuantity(util.GiBToBytes(10), resource.DecimalSI),
 			},
+			ClaimRef: &v1.ObjectReference{
+				Namespace: testNamespace,
+				Name:      testPersistentVolumeClaim1Name,
+			},
 			StorageClassName: testStorageClassName,
 		},
 	}
+
+	testPod0 = createPod(testNamespace, testPod0Name, []string{testPersistentVolumeClaim0Name})
+
+	testPod0Request = createReconcileRequest(testNamespace, testPod0Name)
+
+	testPod1 = createPod(testNamespace, testPod1Name, []string{testPersistentVolumeClaim0Name, testPersistentVolumeClaim1Name})
+
+	testPod1Request = createReconcileRequest(testNamespace, testPod1Name)
+
+	// dead code that could potentially be used in future unit tests
+	_ = testAzVolume1Request
+	_ = testPrimaryAzVolumeAttachment1Request
 )
+
+func getTestDiskURI(pvName string) string {
+	return fmt.Sprintf(computeDiskURIFormat, testSubscription, testResourceGroup, pvName)
+}
+
+func createReconcileRequest(namespace, name string) reconcile.Request {
+	return reconcile.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: name}}
+}
+
+func createAzVolume(pvName string, maxMountReplicaCount int) diskv1alpha1.AzVolume {
+	azVolume := diskv1alpha1.AzVolume{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      pvName,
+			Namespace: testNamespace,
+		},
+		Spec: diskv1alpha1.AzVolumeSpec{
+			UnderlyingVolume: pvName,
+			CapacityRange: &diskv1alpha1.CapacityRange{
+				RequiredBytes: util.GiBToBytes(10),
+			},
+			MaxMountReplicaCount: maxMountReplicaCount,
+		},
+	}
+
+	return azVolume
+}
+
+func createAzVolumeAttachment(pvName, nodeName string, role diskv1alpha1.Role) diskv1alpha1.AzVolumeAttachment {
+	volumeID := getTestDiskURI(pvName)
+	azVolumeAttachment := diskv1alpha1.AzVolumeAttachment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      azureutils.GetAzVolumeAttachmentName(pvName, nodeName),
+			Namespace: testNamespace,
+			Labels: map[string]string{
+				azureutils.NodeNameLabel:   nodeName,
+				azureutils.VolumeNameLabel: strings.ToLower(pvName),
+				azureutils.RoleLabel:       string(role),
+			},
+		},
+		Spec: diskv1alpha1.AzVolumeAttachmentSpec{
+			RequestedRole:    role,
+			UnderlyingVolume: strings.ToLower(pvName),
+			VolumeID:         volumeID,
+			NodeName:         nodeName,
+		},
+	}
+	return azVolumeAttachment
+}
+
+func createPod(podNamespace, podName string, pvcs []string) corev1.Pod {
+	volumes := []v1.Volume{}
+	for _, pvc := range pvcs {
+		volumes = append(volumes, v1.Volume{
+			VolumeSource: v1.VolumeSource{
+				CSI: &v1.CSIVolumeSource{
+					Driver: azureutils.DriverName,
+				},
+				PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+					ClaimName: pvc,
+				},
+			},
+		})
+	}
+
+	testPod := v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: podNamespace,
+			Name:      podName,
+		},
+		Spec: v1.PodSpec{
+			Volumes: volumes,
+		},
+		Status: v1.PodStatus{
+			Phase: v1.PodPending,
+		},
+	}
+
+	return testPod
+}
+
+func initState(objs ...runtime.Object) (c *SharedState) {
+	c = NewSharedState()
+
+	for _, obj := range objs {
+		switch target := obj.(type) {
+		case *corev1.Pod:
+			claims := []string{}
+			podKey := getQualifiedName(target.Namespace, target.Name)
+			for _, volume := range target.Spec.Volumes {
+				if volume.CSI == nil || volume.CSI.Driver != azureutils.DriverName {
+					continue
+				}
+				namespacedClaimName := getQualifiedName(target.Namespace, volume.PersistentVolumeClaim.ClaimName)
+				claims = append(claims, namespacedClaimName)
+				v, ok := c.claimToPodsMap.Load(namespacedClaimName)
+				var pods []string
+				if !ok {
+					pods = []string{}
+				} else {
+					pods = v.([]string)
+				}
+				podExist := false
+				for _, pod := range pods {
+					if pod == podKey {
+						podExist = true
+						break
+					}
+				}
+				if !podExist {
+					pods = append(pods, podKey)
+				}
+				c.claimToPodsMap.Store(namespacedClaimName, pods)
+			}
+			c.podToClaimsMap.Store(podKey, claims)
+		case *corev1.PersistentVolume:
+			diskName, _ := azureutils.GetDiskNameFromAzureManagedDiskURI(target.Spec.CSI.VolumeHandle)
+			azVolumeName := strings.ToLower(diskName)
+			claimName := getQualifiedName(target.Spec.ClaimRef.Namespace, target.Spec.ClaimRef.Name)
+			c.volumeToClaimMap.Store(azVolumeName, claimName)
+			c.claimToVolumeMap.Store(claimName, azVolumeName)
+		default:
+			continue
+		}
+	}
+	return
+}
 
 func splitObjects(objs ...runtime.Object) (diskv1alpha1Objs, kubeObjs []runtime.Object) {
 	diskv1alpha1Objs = make([]runtime.Object, 0)
@@ -274,6 +383,14 @@ func mockClients(mockClient *mockclient.MockClient, azVolumeClient azVolumeClien
 				}
 
 				volumeAttachment.DeepCopyInto(target)
+
+			case *v1.Pod:
+				pod, err := kubeClient.CoreV1().Pods(key.Namespace).Get(ctx, key.Name, metav1.GetOptions{})
+				if err != nil {
+					return err
+				}
+
+				pod.DeepCopyInto(target)
 
 			default:
 				gr := schema.GroupResource{
@@ -359,6 +476,21 @@ func mockClients(mockClient *mockclient.MockClient, azVolumeClient azVolumeClien
 				}
 
 				azVolumeAttachments.DeepCopyInto(target)
+			case *diskv1alpha1.AzDriverNodeList:
+				azDriverNodes, err := azVolumeClient.DiskV1alpha1().AzDriverNodes(testNamespace).List(ctx, *options.AsListOptions())
+				if err != nil {
+					return err
+				}
+
+				azDriverNodes.DeepCopyInto(target)
+
+			case *corev1.PodList:
+				pods, err := kubeClient.CoreV1().Pods("").List(ctx, *options.AsListOptions())
+				if err != nil {
+					return err
+				}
+
+				pods.DeepCopyInto(target)
 			}
 
 			return nil

@@ -338,6 +338,11 @@ func (c *CrdProvisioner) PublishVolume(
 		updated.Spec.RequestedRole = v1alpha1.PrimaryRole
 		// Keeping the spec fields up to date with the request parameters
 		updated.Spec.VolumeContext = volumeContext
+		// Update the label of the AzVolumeAttachment
+		if updated.Labels == nil {
+			updated.Labels = map[string]string{}
+		}
+		updated.Labels[azureutils.RoleLabel] = string(v1alpha1.PrimaryRole)
 		_, err := azVA.Update(ctx, updated, metav1.UpdateOptions{})
 		if err != nil {
 			return nil, err
