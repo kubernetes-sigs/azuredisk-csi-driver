@@ -77,17 +77,18 @@ users:
 	tests := []struct {
 		desc        string
 		kubeconfig  string
+		userAgent   string
 		expectedErr error
 	}{
 		{
 			desc:        "[failure] out of cluster, no kubeconfig, no credential file",
 			kubeconfig:  "",
-			expectedErr: fmt.Errorf("load azure config from file(%s) failed with open %s: no such file or directory", DefaultCredFilePathLinux, DefaultCredFilePathLinux),
+			expectedErr: nil,
 		},
 		{
 			desc:        "[failure] out of cluster & in cluster, specify a non-exist kubeconfig, no credential file",
 			kubeconfig:  "/tmp/non-exist.json",
-			expectedErr: fmt.Errorf("load azure config from file(%s) failed with open %s: no such file or directory", DefaultCredFilePathLinux, DefaultCredFilePathLinux),
+			expectedErr: nil,
 		},
 		{
 			desc:        "[failure] out of cluster & in cluster, specify a empty kubeconfig, no credential file",
@@ -97,11 +98,12 @@ users:
 		{
 			desc:        "[failure] out of cluster & in cluster, specify a fake kubeconfig, no credential file",
 			kubeconfig:  fakeKubeConfig,
-			expectedErr: fmt.Errorf("load azure config from file(%s) failed with open %s: no such file or directory", DefaultCredFilePathLinux, DefaultCredFilePathLinux),
+			expectedErr: nil,
 		},
 		{
 			desc:        "[success] out of cluster & in cluster, no kubeconfig, a fake credential file",
 			kubeconfig:  "",
+			userAgent:   "useragent",
 			expectedErr: nil,
 		},
 	}
@@ -141,9 +143,14 @@ users:
 			}
 			os.Setenv(DefaultAzureCredentialFileEnv, fakeCredFile)
 		}
-		_, err := GetCloudProvider(test.kubeconfig, "", "", "")
+		cloud, err := GetCloudProvider(test.kubeconfig, "", "", test.userAgent)
 		if !reflect.DeepEqual(err, test.expectedErr) {
 			t.Errorf("desc: %s,\n input: %q, GetCloudProvider err: %v, expectedErr: %v", test.desc, test.kubeconfig, err, test.expectedErr)
+		}
+		if cloud == nil {
+			t.Errorf("return value of getCloudProvider should not be nil even there is error")
+		} else {
+			assert.Equal(t, cloud.UserAgent, test.userAgent)
 		}
 	}
 }

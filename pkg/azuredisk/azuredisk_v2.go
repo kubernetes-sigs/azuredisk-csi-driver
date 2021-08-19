@@ -86,7 +86,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 	klog.V(2).Infof("driver userAgent: %s", userAgent)
 
 	cloud, err := GetCloudProvider(kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, userAgent)
-	if err != nil || cloud.TenantID == "" || cloud.SubscriptionID == "" {
+	if err != nil {
 		klog.Fatalf("failed to get Azure Cloud Provider, error: %v", err)
 	}
 	d.cloud = cloud
