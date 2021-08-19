@@ -124,6 +124,8 @@ type DriverOptions struct {
 	EnablePerfOptimization     bool
 	CloudConfigSecretName      string
 	CloudConfigSecretNamespace string
+	CustomUserAgent            string
+	UserAgentSuffix            string
 }
 
 // CSIDriver defines the interface for a CSI driver.
@@ -141,6 +143,8 @@ type DriverCore struct {
 	perfOptimizationEnabled    bool
 	cloudConfigSecretName      string
 	cloudConfigSecretNamespace string
+	customUserAgent            string
+	userAgentSuffix            string
 	cloud                      *azure.Cloud
 	mounter                    *mount.SafeFormatAndMount
 	deviceHelper               *optimization.SafeDeviceHelper
@@ -166,6 +170,8 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.perfOptimizationEnabled = options.EnablePerfOptimization
 	driver.cloudConfigSecretName = options.CloudConfigSecretName
 	driver.cloudConfigSecretNamespace = options.CloudConfigSecretNamespace
+	driver.customUserAgent = options.CustomUserAgent
+	driver.userAgentSuffix = options.UserAgentSuffix
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 
 	topologyKey = fmt.Sprintf("topology.%s/zone", driver.Name)
@@ -188,7 +194,7 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 	}
 	klog.Infof("\nDRIVER INFORMATION:\n-------------------\n%s\n\nStreaming logs below:", versionMeta)
 
-	userAgent := GetUserAgent(d.Name)
+	userAgent := GetUserAgent(d.Name, d.customUserAgent, d.userAgentSuffix)
 	klog.V(2).Infof("driver userAgent: %s", userAgent)
 
 	cloud, err := GetCloudProvider(kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, userAgent)
