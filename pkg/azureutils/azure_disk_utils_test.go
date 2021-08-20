@@ -216,6 +216,7 @@ users:
 	tests := []struct {
 		desc        string
 		kubeconfig  string
+		userAgent   string
 		expectedErr error
 	}{
 		{
@@ -241,6 +242,7 @@ users:
 		{
 			desc:        "[success] out of cluster & in cluster, no kubeconfig, a fake credential file",
 			kubeconfig:  "",
+			userAgent:   "useragent",
 			expectedErr: nil,
 		},
 	}
@@ -280,9 +282,14 @@ users:
 			}
 			os.Setenv(DefaultAzureCredentialFileEnv, fakeCredFile)
 		}
-		_, err := GetCloudProvider(test.kubeconfig, "", "", "")
+		cloud, err := GetCloudProvider(test.kubeconfig, "", "", test.userAgent)
 		if !reflect.DeepEqual(err, test.expectedErr) {
 			t.Errorf("desc: %s,\n input: %q, GetCloudProvider err: %v, expectedErr: %v", test.desc, test.kubeconfig, err, test.expectedErr)
+		}
+		if cloud == nil {
+			t.Errorf("return value of getCloudProvider should not be nil even there is error")
+		} else {
+			assert.Equal(t, cloud.UserAgent, test.userAgent)
 		}
 	}
 }
