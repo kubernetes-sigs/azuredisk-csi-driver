@@ -48,6 +48,8 @@ var (
 	enablePerfOptimization     = flag.Bool("enable-perf-optimization", false, "boolean flag to enable disk perf optimization")
 	cloudConfigSecretName      = flag.String("cloud-config-secret-name", "azure-cloud-provider", "cloud config secret name")
 	cloudConfigSecretNamespace = flag.String("cloud-config-secret-namespace", "kube-system", "cloud config secret namespace")
+	customUserAgent            = flag.String("custom-user-agent", "", "custom userAgent")
+	userAgentSuffix            = flag.String("user-agent-suffix", "", "userAgent suffix")
 )
 
 func main() {
@@ -79,6 +81,8 @@ func handle() {
 		EnablePerfOptimization:     *enablePerfOptimization,
 		CloudConfigSecretName:      *cloudConfigSecretName,
 		CloudConfigSecretNamespace: *cloudConfigSecretNamespace,
+		CustomUserAgent:            *customUserAgent,
+		UserAgentSuffix:            *userAgentSuffix,
 	}
 	driver := azuredisk.NewDriver(&driverOptions)
 	if driver == nil {

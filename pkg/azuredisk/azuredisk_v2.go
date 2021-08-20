@@ -70,6 +70,8 @@ func newDriverV2(options *DriverOptions) *DriverV2 {
 	driver.perfOptimizationEnabled = options.EnablePerfOptimization
 	driver.cloudConfigSecretName = options.CloudConfigSecretName
 	driver.cloudConfigSecretNamespace = options.CloudConfigSecretNamespace
+	driver.customUserAgent = options.CustomUserAgent
+	driver.userAgentSuffix = options.UserAgentSuffix
 
 	topologyKey = fmt.Sprintf("topology.%s/zone", driver.Name)
 	return &driver
@@ -83,7 +85,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 	}
 	klog.Infof("\nDRIVER INFORMATION:\n-------------------\n%s\n\nStreaming logs below:", versionMeta)
 
-	userAgent := GetUserAgent(d.Name)
+	userAgent := GetUserAgent(d.Name, d.customUserAgent, d.userAgentSuffix)
 	klog.V(2).Infof("driver userAgent: %s", userAgent)
 
 	cloud, err := azureutils.GetCloudProvider(kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, userAgent)
