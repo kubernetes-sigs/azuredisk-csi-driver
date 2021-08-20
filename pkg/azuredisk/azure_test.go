@@ -180,8 +180,24 @@ func TestGetCloudProvider(t *testing.T) {
 		expectedErr error
 	}{
 		{
+			desc:        "[failure] out of cluster, no kubeconfig, no credential file",
+			kubeconfig:  "",
+			expectedErr: nil,
+		},
+		{
+			desc:        "[failure] out of cluster & in cluster, specify a non-exist kubeconfig, no credential file",
+			kubeconfig:  "/tmp/non-exist.json",
+			expectedErr: nil,
+		},
+		{
+			desc:        "[failure] out of cluster & in cluster, specify a fake kubeconfig, no credential file",
+			kubeconfig:  fakeKubeConfig,
+			expectedErr: nil,
+		},
+		{
 			desc:        "[success] out of cluster & in cluster, no kubeconfig, a fake credential file",
 			kubeconfig:  "",
+			userAgent:   "useragent",
 			expectedErr: nil,
 		},
 	}
@@ -206,10 +222,14 @@ func TestGetCloudProvider(t *testing.T) {
 			}
 			os.Setenv(DefaultAzureCredentialFileEnv, fakeCredFile)
 		}
-
-		_, err := GetCloudProvider(test.kubeconfig, "", "", "")
+		cloud, err := GetCloudProvider(test.kubeconfig, "", "", test.userAgent)
 		if !reflect.DeepEqual(err, test.expectedErr) {
 			t.Errorf("desc: %s,\n input: %q, GetCloudProvider err: %v, expectedErr: %v", test.desc, test.kubeconfig, err, test.expectedErr)
+		}
+		if cloud == nil {
+			t.Errorf("return value of getCloudProvider should not be nil even there is error")
+		} else {
+			assert.Equal(t, cloud.UserAgent, test.userAgent)
 		}
 	}
 }
