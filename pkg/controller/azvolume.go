@@ -70,8 +70,8 @@ var _ reconcile.Reconciler = &ReconcileAzVolume{}
 
 func (r *ReconcileAzVolume) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
 	azVolume, err := azureutils.GetAzVolume(ctx, r.client, r.azVolumeClient, request.Name, request.Namespace, true)
-
 	if err != nil {
+		// ignore not found error as they will not be fixed with a requeue
 		if errors.IsNotFound(err) {
 			return reconcile.Result{}, nil
 		}
@@ -81,11 +81,11 @@ func (r *ReconcileAzVolume) Reconcile(ctx context.Context, request reconcile.Req
 		return reconcile.Result{Requeue: true}, err
 	}
 
-	if now := metav1.Now(); azVolume.ObjectMeta.DeletionTimestamp.Before(&now) {
+	if !azVolume.ObjectMeta.DeletionTimestamp.IsZero() {
 		// azVolume deletion
 		klog.Infof("Beginning deletion of AzVolume object")
 		if err := r.triggerDelete(ctx, azVolume.Name); err != nil {
-			//If delete failed, requeue request
+			// if delete failed, requeue request
 			return reconcile.Result{Requeue: true}, err
 		}
 		//azVolume creation

@@ -758,7 +758,7 @@ func TestExpandVolume(t *testing.T) {
 				RequiredBytes: util.GiBToBytes(int64(testDiskSizeGiB * 2)),
 				LimitBytes:    util.GiBToBytes(int64(testDiskSizeGiB * 2)),
 			},
-			expectedError: status.Errorf(codes.InvalidArgument, "disk URI(invalid URI) is not valid: Invalid DiskURI: invalid URI, correct format: [/subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id}]"),
+			expectedError: status.Errorf(codes.InvalidArgument, "disk URI(invalid URI) is not valid: invalid DiskURI: invalid URI, correct format: [/subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id}]"),
 		},
 	}
 

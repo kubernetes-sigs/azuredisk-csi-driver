@@ -26,6 +26,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
 	"github.com/stretchr/testify/assert"
+	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
@@ -74,7 +75,7 @@ func TestGetDiskName(t *testing.T) {
 
 	for _, test := range tests {
 		result1, result2 := GetDiskName(test.options)
-		if !reflect.DeepEqual(result1, test.expected1) || !reflect.DeepEqual(result2, test.expected2) {
+		if !reflect.DeepEqual(result1, test.expected1) || !testutil.IsErrorEquivalent(result2, test.expected2) {
 			t.Errorf("input: %q, getDiskName result1: %q, expected1: %q, result2: %q, expected2: %q", test.options, result1, test.expected1,
 				result2, test.expected2)
 		}
@@ -106,7 +107,7 @@ func TestGetSnapshotName(t *testing.T) {
 
 	for _, test := range tests {
 		result1, result2 := getSnapshotName(test.options)
-		if !reflect.DeepEqual(result1, test.expected1) || !reflect.DeepEqual(result2, test.expected2) {
+		if !reflect.DeepEqual(result1, test.expected1) || !testutil.IsErrorEquivalent(result2, test.expected2) {
 			t.Errorf("input: %q, getSnapshotName result1: %q, expected1: %q, result2: %q, expected2: %q", test.options, result1, test.expected1,
 				result2, test.expected2)
 		}
@@ -172,25 +173,25 @@ func TestIsValidDiskURI(t *testing.T) {
 		},
 		{
 			diskURI:     "resourceGroups/test-resource/providers/Microsoft.Compute/disks/pvc-disk-dynamic-9e102c53",
-			expectError: fmt.Errorf("Invalid DiskURI: resourceGroups/test-resource/providers/Microsoft.Compute/disks/pvc-disk-dynamic-9e102c53, correct format: %v", supportedManagedDiskURI),
+			expectError: fmt.Errorf("invalid DiskURI: resourceGroups/test-resource/providers/Microsoft.Compute/disks/pvc-disk-dynamic-9e102c53, correct format: %v", supportedManagedDiskURI),
 		},
 		{
 			diskURI:     "https://test-saccount.blob.core.windows.net/container/pvc-disk-dynamic-9e102c53-593d-11e9-934e-705a0f18a318.vhd",
-			expectError: fmt.Errorf("Invalid DiskURI: https://test-saccount.blob.core.windows.net/container/pvc-disk-dynamic-9e102c53-593d-11e9-934e-705a0f18a318.vhd, correct format: %v", supportedManagedDiskURI),
+			expectError: fmt.Errorf("invalid DiskURI: https://test-saccount.blob.core.windows.net/container/pvc-disk-dynamic-9e102c53-593d-11e9-934e-705a0f18a318.vhd, correct format: %v", supportedManagedDiskURI),
 		},
 		{
 			diskURI:     "test.com",
-			expectError: fmt.Errorf("Invalid DiskURI: test.com, correct format: %v", supportedManagedDiskURI),
+			expectError: fmt.Errorf("invalid DiskURI: test.com, correct format: %v", supportedManagedDiskURI),
 		},
 		{
 			diskURI:     "http://test-saccount.blob.core.windows.net/container/pvc-disk-dynamic-9e102c53-593d-11e9-934e-705a0f18a318.vhd",
-			expectError: fmt.Errorf("Invalid DiskURI: http://test-saccount.blob.core.windows.net/container/pvc-disk-dynamic-9e102c53-593d-11e9-934e-705a0f18a318.vhd, correct format: %v", supportedManagedDiskURI),
+			expectError: fmt.Errorf("invalid DiskURI: http://test-saccount.blob.core.windows.net/container/pvc-disk-dynamic-9e102c53-593d-11e9-934e-705a0f18a318.vhd, correct format: %v", supportedManagedDiskURI),
 		},
 	}
 
 	for _, test := range tests {
 		err := isValidDiskURI(test.diskURI)
-		if !reflect.DeepEqual(err, test.expectError) {
+		if !testutil.IsErrorEquivalent(err, test.expectError) {
 			t.Errorf("DiskURI: %q, isValidDiskURI err: %q, expected1: %q", test.diskURI, err, test.expectError)
 		}
 	}
@@ -534,7 +535,7 @@ func TestGetValidCreationData(t *testing.T) {
 
 	for _, test := range tests {
 		result, err := getValidCreationData(test.subscriptionID, test.resourceGroup, test.sourceResourceID, test.sourceType)
-		if !reflect.DeepEqual(result, test.expected1) || !reflect.DeepEqual(err, test.expected2) {
+		if !reflect.DeepEqual(result, test.expected1) || !testutil.IsErrorEquivalent(err, test.expected2) {
 			t.Errorf("input sourceResourceID: %v, sourceType: %v, getValidCreationData result: %v, expected1 : %v, err: %v, expected2: %v", test.sourceResourceID, test.sourceType, result, test.expected1, err, test.expected2)
 		}
 	}

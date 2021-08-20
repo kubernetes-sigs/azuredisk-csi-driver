@@ -345,7 +345,7 @@ func (d *Driver) getVolumeLocks() *volumehelper.VolumeLocks {
 
 func isValidDiskURI(diskURI string) error {
 	if strings.Index(strings.ToLower(diskURI), "/subscriptions/") != 0 {
-		return fmt.Errorf("Invalid DiskURI: %v, correct format: %v", diskURI, diskURISupportedManaged)
+		return fmt.Errorf("invalid DiskURI: %v, correct format: %v", diskURI, diskURISupportedManaged)
 	}
 	return nil
 }

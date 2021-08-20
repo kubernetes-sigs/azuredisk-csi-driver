@@ -20,7 +20,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -480,7 +479,7 @@ func TestGetDevicePathWithMountPath(t *testing.T) {
 				fakeMounter.Exec.(*mounter.FakeSafeMounter).SetNextCommandOutputScripts(test.outputScript)
 			}
 			_, err := getDevicePathWithMountPath(test.req, fakeMounter)
-			if !reflect.DeepEqual(err, test.expectedErr) {
+			if !testutil.IsErrorEquivalent(err, test.expectedErr) {
 				t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
 			}
 		}

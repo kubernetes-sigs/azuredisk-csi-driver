@@ -409,7 +409,7 @@ func (c *CloudProvisioner) PublishVolume(
 			}
 			if err != nil {
 				klog.Errorf("Attach volume %q to instance %q failed with %v", volumeID, nodeName, err)
-				return nil, fmt.Errorf("Attach volume %q to instance %q failed with %v", volumeID, nodeName, err)
+				return nil, fmt.Errorf("attach volume %q to instance %q failed with %v", volumeID, nodeName, err)
 			}
 		}
 		klog.V(2).Infof("attach volume %q to node %q successfully", volumeID, nodeName)

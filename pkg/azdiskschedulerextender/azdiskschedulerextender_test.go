@@ -43,7 +43,6 @@ import (
 	schedulerapi "k8s.io/kube-scheduler/extender/v1"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	v1alpha1Client "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	versionedClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	fakeClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
 	informers "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions"
@@ -767,25 +766,6 @@ func getDriverNode(driverNodeName, ns, nodeName string, ready bool) *v1alpha1Cli
 
 }
 
-// TODO add back with integration tests
-// func getPod(podName, ns, containerName, containerImage string) *v1.Pod {
-// 	return &v1.Pod{
-// 		ObjectMeta: meta.ObjectMeta{
-// 			Name:      podName,
-// 			Namespace: ns,
-// 		},
-// 		Spec: v1.PodSpec{
-// 			SchedulerName: "csi-azuredisk-scheduler-extender",
-// 			Containers: []v1.Container{
-// 				v1.Container{
-// 					Name:  containerName,
-// 					Image: containerImage,
-// 				},
-// 			},
-// 		},
-// 	}
-// }
-
 func createConfigFileAndSetEnv(path string, content string, envVariableName string) (string, error) {
 	f, err := os.Create(path)
 	if err != nil {
@@ -815,7 +795,7 @@ func cleanConfigAndRestoreEnv(path string, envVariableName string, envValue stri
 	os.Remove(path)
 }
 
-func setupTestInformers(kubeExtensionClientset versioned.Interface) {
+func setupTestInformers(kubeExtensionClientset versionedClientSet.Interface) {
 	informerFactory := informers.NewSharedInformerFactory(kubeExtensionClientset, noResyncPeriodFunc())
 	azVolumeAttachmentInformer = informerFactory.Disk().V1alpha1().AzVolumeAttachments()
 	azDriverNodeInformer = informerFactory.Disk().V1alpha1().AzDriverNodes()

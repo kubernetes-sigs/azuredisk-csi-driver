@@ -232,10 +232,9 @@ func prioritize(context context.Context, schedulerExtenderArgs schedulerapi.Exte
 		// for every volume the pod needs, append its azVolumeAttachment name to the node name
 		for _, attachedVolume := range azVolumeAttachmentsMeta.volumes {
 			klog.V(2).Infof(
-				"Volume attachment in consideration: Name: %s, Volume: %s. AzVolAtt: %s.",
+				"Volume attachment in consideration: Name: %s, Volume: %s.",
 				attachedVolume.Name,
 				attachedVolume.Spec.UnderlyingVolume,
-				attachedVolume.Spec.VolumeContext["csi.storage.k8s.io/pvc/name"],
 			)
 			completeNodeNameToVolumeMap[attachedVolume.Spec.NodeName] = append(completeNodeNameToVolumeMap[attachedVolume.Spec.NodeName], attachedVolume.Spec.UnderlyingVolume)
 			_, needs := volumesPodNeeds[attachedVolume.Spec.UnderlyingVolume]

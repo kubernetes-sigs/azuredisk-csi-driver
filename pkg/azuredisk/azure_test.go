@@ -19,11 +19,11 @@ package azuredisk
 import (
 	"io/ioutil"
 	"os"
-	"reflect"
 	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
 )
 
 func skipIfTestingOnWindows(t *testing.T) {
@@ -208,7 +208,7 @@ func TestGetCloudProvider(t *testing.T) {
 		}
 
 		_, err := GetCloudProvider(test.kubeconfig, "", "", "")
-		if !reflect.DeepEqual(err, test.expectedErr) {
+		if !testutil.IsErrorEquivalent(err, test.expectedErr) {
 			t.Errorf("desc: %s,\n input: %q, GetCloudProvider err: %v, expectedErr: %v", test.desc, test.kubeconfig, err, test.expectedErr)
 		}
 	}

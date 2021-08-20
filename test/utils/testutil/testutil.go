@@ -51,14 +51,20 @@ func (t TestError) Error() string {
 
 // AssertError checks if the TestError matches with the actual error
 // on the basis of the platform on which it is running
-func AssertError(actual *TestError, expected error) bool {
+func AssertError(expected *TestError, actual error) bool {
 	if isWindows() {
-		if actual.WindowsError == nil {
-			return reflect.DeepEqual(actual.DefaultError, expected)
+		if expected.WindowsError == nil {
+			return reflect.DeepEqual(expected.DefaultError, actual)
 		}
-		return reflect.DeepEqual(actual.WindowsError, expected)
+		return reflect.DeepEqual(expected.WindowsError, actual)
 	}
-	return reflect.DeepEqual(actual.DefaultError, expected)
+	return reflect.DeepEqual(expected.DefaultError, actual)
+}
+
+// IsErrorEquivalent checks for error equivalence
+// TODO Update to check for error equivalence instead of equality
+func IsErrorEquivalent(actual, expected error) bool {
+	return reflect.DeepEqual(expected, actual)
 }
 
 // GetWorkDirPath returns the path to the current working directory

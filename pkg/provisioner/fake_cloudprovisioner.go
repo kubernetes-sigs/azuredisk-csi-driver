@@ -19,7 +19,6 @@ package provisioner
 import (
 	"github.com/golang/mock/gomock"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
-	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
 type FakeCloudProvisioner struct {
@@ -27,7 +26,7 @@ type FakeCloudProvisioner struct {
 }
 
 func NewFakeCloudProvisioner(ctrl *gomock.Controller) (*FakeCloudProvisioner, error) {
-	fakeCloud := azure.GetTestCloud(ctrl)
+	fakeCloud := provider.GetTestCloud(ctrl)
 
 	return &FakeCloudProvisioner{
 		CloudProvisioner: CloudProvisioner{cloud: fakeCloud},

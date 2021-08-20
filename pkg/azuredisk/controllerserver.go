@@ -503,7 +503,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 			}
 			if err != nil {
 				klog.Errorf("Attach volume %q to instance %q failed with %v", diskURI, nodeName, err)
-				return nil, fmt.Errorf("Attach volume %q to instance %q failed with %v", diskURI, nodeName, err)
+				return nil, fmt.Errorf("attach volume %q to instance %q failed with %v", diskURI, nodeName, err)
 			}
 		}
 		klog.V(2).Infof("attach volume %q to node %q successfully", diskURI, nodeName)
