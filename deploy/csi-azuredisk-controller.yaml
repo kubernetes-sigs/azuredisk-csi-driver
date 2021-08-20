@@ -135,6 +135,7 @@ spec:
             - "--v=5"
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--metrics-address=0.0.0.0:29604"
+            - "--user-agent-suffix=OSS-kubectl"
           ports:
             - containerPort: 29602
               name: healthz
