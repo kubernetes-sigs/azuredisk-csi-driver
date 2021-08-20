@@ -311,7 +311,7 @@ func (d *Driver) checkDiskExists(ctx context.Context, diskURI string) (*compute.
 		if strings.Contains(rerr.RawError.Error(), rateLimited) {
 			klog.Warningf("checkDiskExists(%s) is throttled with error: %v", diskURI, rerr.Error())
 			d.getDiskThrottlingCache.Set(throttlingKey, "")
-			return &disk, nil
+			return nil, nil
 		}
 		return nil, rerr.Error()
 	}
