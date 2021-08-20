@@ -37,6 +37,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockcorev1"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockkubeclient"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockpersistentvolume"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/diskclient/mockdiskclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/snapshotclient/mocksnapshotclient"
@@ -46,7 +47,7 @@ import (
 
 var (
 	testVolumeName = "unit-test-volume"
-	testVolumeID   = fmt.Sprintf(managedDiskPath, "subs", "rg", testVolumeName)
+	testVolumeID   = fmt.Sprintf(azureutils.ManagedDiskPath, "subs", "rg", testVolumeName)
 )
 
 func checkTestError(t *testing.T, expectedErrCode codes.Code, err error) {
@@ -56,143 +57,6 @@ func checkTestError(t *testing.T, expectedErrCode codes.Code, err error) {
 	}
 	if s.Code() != expectedErrCode {
 		t.Errorf("expected error code: %v, actual: %v, err: %v", expectedErrCode, s.Code(), err)
-	}
-}
-
-func TestGetCachingMode(t *testing.T) {
-	tests := []struct {
-		options             map[string]string
-		expectedCachingMode compute.CachingTypes
-		expectedError       bool
-	}{
-		{
-			nil,
-			compute.CachingTypes(defaultAzureDataDiskCachingMode),
-			false,
-		},
-		{
-			map[string]string{},
-			compute.CachingTypes(defaultAzureDataDiskCachingMode),
-			false,
-		},
-		{
-			map[string]string{cachingModeField: ""},
-			compute.CachingTypes(defaultAzureDataDiskCachingMode),
-			false,
-		},
-		{
-			map[string]string{cachingModeField: "None"},
-			compute.CachingTypes("None"),
-			false,
-		},
-		{
-			map[string]string{cachingModeField: "ReadOnly"},
-			compute.CachingTypes("ReadOnly"),
-			false,
-		},
-		{
-			map[string]string{cachingModeField: "ReadWrite"},
-			compute.CachingTypes("ReadWrite"),
-			false,
-		},
-		{
-			map[string]string{cachingModeField: "WriteOnly"},
-			compute.CachingTypes(""),
-			true,
-		},
-	}
-
-	for _, test := range tests {
-		resultCachingMode, resultError := getCachingMode(test.options)
-		if resultCachingMode != test.expectedCachingMode || (resultError != nil) != test.expectedError {
-			t.Errorf("input: %s, getCachingMode resultCachingMode: %s, expectedCachingMode: %s, resultError: %s, expectedError: %t", test.options, resultCachingMode, test.expectedCachingMode, resultError, test.expectedError)
-		}
-	}
-}
-
-func TestGetEntriesAndNextToken(t *testing.T) {
-	provisioningState := "succeeded"
-	DiskSize := int32(10)
-	snapshotID := "test"
-	sourceVolumeID := "unit-test"
-	creationdate := compute.CreationData{
-		SourceResourceID: &sourceVolumeID,
-	}
-	snapshot := compute.Snapshot{
-		SnapshotProperties: &compute.SnapshotProperties{
-			TimeCreated:       &date.Time{},
-			ProvisioningState: &provisioningState,
-			DiskSizeGB:        &DiskSize,
-			CreationData:      &creationdate,
-		},
-		ID: &snapshotID,
-	}
-	snapshots := []compute.Snapshot{}
-	snapshots = append(snapshots, snapshot)
-	entries := []*csi.ListSnapshotsResponse_Entry{}
-	csiSnapshot, _ := generateCSISnapshot(sourceVolumeID, &snapshot)
-	entries = append(entries, &csi.ListSnapshotsResponse_Entry{Snapshot: csiSnapshot})
-	tests := []struct {
-		request          *csi.ListSnapshotsRequest
-		snapshots        []compute.Snapshot
-		expectedResponse *csi.ListSnapshotsResponse
-		expectedError    error
-	}{
-		{
-			&csi.ListSnapshotsRequest{
-				MaxEntries:    2,
-				StartingToken: "a",
-			},
-			[]compute.Snapshot{},
-			nil,
-			status.Errorf(codes.Aborted, "ListSnapshots starting token(a) parsing with error: strconv.Atoi: parsing \"a\": invalid syntax"),
-		},
-		{
-			&csi.ListSnapshotsRequest{
-				MaxEntries:    2,
-				StartingToken: "01",
-			},
-			[]compute.Snapshot{},
-			nil,
-			status.Errorf(codes.Aborted, "ListSnapshots starting token(1) is greater than total number of snapshots"),
-		},
-		{
-			&csi.ListSnapshotsRequest{
-				MaxEntries:    2,
-				StartingToken: "0",
-			},
-			[]compute.Snapshot{},
-			nil,
-			status.Errorf(codes.Aborted, "ListSnapshots starting token(0) is greater than total number of snapshots"),
-		},
-		{
-			&csi.ListSnapshotsRequest{
-				MaxEntries:    2,
-				StartingToken: "-1",
-			},
-			[]compute.Snapshot{},
-			nil,
-			status.Errorf(codes.Aborted, "ListSnapshots starting token(-1) can not be negative"),
-		},
-		{
-			&csi.ListSnapshotsRequest{
-				MaxEntries:     2,
-				SourceVolumeId: sourceVolumeID,
-			},
-			snapshots,
-			&csi.ListSnapshotsResponse{
-				Entries:   entries,
-				NextToken: "1",
-			},
-			error(nil),
-		},
-	}
-
-	for _, test := range tests {
-		resultResponse, resultError := getEntriesAndNextToken(test.request, test.snapshots)
-		if !reflect.DeepEqual(resultResponse, test.expectedResponse) || (!reflect.DeepEqual(resultError, test.expectedError)) {
-			t.Errorf("request: %v, snapshotListPage: %v, resultResponse: %v, expectedResponse: %v, resultError: %v, expectedError: %v", test.request, test.snapshots, resultResponse, test.expectedResponse, resultError, test.expectedError)
-		}
 	}
 }
 
@@ -266,7 +130,7 @@ func TestCreateVolume(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				d, _ := NewFakeDriver(t)
 				mp := make(map[string]string)
-				mp[maxSharesField] = "aaa"
+				mp[azureutils.MaxSharesField] = "aaa"
 				req := &csi.CreateVolumeRequest{
 					Name:               "unit-test",
 					VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
@@ -284,7 +148,7 @@ func TestCreateVolume(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				d, _ := NewFakeDriver(t)
 				mp := make(map[string]string)
-				mp[maxSharesField] = "0"
+				mp[azureutils.MaxSharesField] = "0"
 				req := &csi.CreateVolumeRequest{
 					Name:               "unit-test",
 					VolumeCapabilities: stdVolumeCapabilities,
@@ -302,7 +166,7 @@ func TestCreateVolume(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				d, _ := NewFakeDriver(t)
 				mp := make(map[string]string)
-				mp[perfProfileField] = "blah"
+				mp[azureutils.PerfProfileField] = "blah"
 				req := &csi.CreateVolumeRequest{
 					Name:               "unit-test",
 					VolumeCapabilities: stdVolumeCapabilities,
@@ -320,16 +184,16 @@ func TestCreateVolume(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				d, _ := NewFakeDriver(t)
 				mp := make(map[string]string)
-				mp[maxSharesField] = "1"
-				mp[skuNameField] = "ut"
-				mp[locationField] = "ut"
-				mp[storageAccountTypeField] = "ut"
-				mp[resourceGroupField] = "ut"
-				mp[diskIOPSReadWriteField] = "ut"
-				mp[diskMBPSReadWriteField] = "ut"
-				mp[diskNameField] = "ut"
-				mp["diskencryptionsetid"] = "ut"
-				mp["writeacceleratorenabled"] = "ut"
+				mp[azureutils.MaxSharesField] = "1"
+				mp[azureutils.SkuNameField] = "ut"
+				mp[azureutils.LocationField] = "ut"
+				mp[azureutils.StorageAccountTypeField] = "ut"
+				mp[azureutils.ResourceGroupField] = "ut"
+				mp[azureutils.DiskIOPSReadWriteField] = "ut"
+				mp[azureutils.DiskMBPSReadWriteField] = "ut"
+				mp[azureutils.DiskNameField] = "ut"
+				mp[azureutils.DiskEncryptionSetId] = "ut"
+				mp[azureutils.WriteAcceleratorEnabled] = "ut"
 				req := &csi.CreateVolumeRequest{
 					Name:               "unit-test",
 					VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY),
@@ -347,7 +211,7 @@ func TestCreateVolume(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				d, _ := NewFakeDriver(t)
 				mp := make(map[string]string)
-				mp[storageAccountTypeField] = "NOT_EXISTING"
+				mp[azureutils.StorageAccountTypeField] = "NOT_EXISTING"
 				req := &csi.CreateVolumeRequest{
 					Name:               "unit-test",
 					VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
@@ -365,7 +229,7 @@ func TestCreateVolume(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				d, _ := NewFakeDriver(t)
 				mp := make(map[string]string)
-				mp[cachingModeField] = "WriteOnly"
+				mp[azureutils.CachingModeField] = "WriteOnly"
 				req := &csi.CreateVolumeRequest{
 					Name:               "unit-test",
 					VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
@@ -456,7 +320,7 @@ func TestCreateVolume(t *testing.T) {
 				}
 				d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
 				rerr := &retry.Error{
-					RawError: fmt.Errorf(NotFound),
+					RawError: fmt.Errorf(azureutils.NotFound),
 				}
 				d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rerr).AnyTimes()
 				_, err := d.CreateVolume(context.Background(), req)
@@ -480,7 +344,7 @@ func TestCreateVolume(t *testing.T) {
 					CapacityRange:      stdCapacityRangetest,
 				}
 				size := int32(volumehelper.BytesToGiB(req.CapacityRange.RequiredBytes))
-				id := fmt.Sprintf(managedDiskPath, "subs", "rg", testVolumeName)
+				id := fmt.Sprintf(azureutils.ManagedDiskPath, "subs", "rg", testVolumeName)
 				state := string(compute.ProvisioningStateSucceeded)
 				disk := compute.Disk{
 					ID:   &id,
@@ -593,34 +457,6 @@ func TestControllerGetVolume(t *testing.T) {
 	assert.Nil(t, resp)
 	if !reflect.DeepEqual(err, status.Error(codes.Unimplemented, "")) {
 		t.Errorf("Unexpected error: %v", err)
-	}
-}
-
-func TestIsCSISnapshotReady(t *testing.T) {
-	tests := []struct {
-		state        string
-		expectedResp bool
-	}{
-		{
-			state:        "Succeeded",
-			expectedResp: true,
-		},
-		{
-			state:        "succeeded",
-			expectedResp: true,
-		},
-		{
-			state:        "fail",
-			expectedResp: false,
-		},
-	}
-	for _, test := range tests {
-		flag, err := isCSISnapshotReady(test.state)
-
-		if flag != test.expectedResp {
-			t.Errorf("testdesc: %v \n expected result:%t \n actual result:%t", test.state, test.expectedResp, flag)
-		}
-		assert.Nil(t, err)
 	}
 }
 
@@ -803,7 +639,7 @@ func TestIsValidVolumeCapabilities(t *testing.T) {
 		},
 	}
 	caps = append(caps, &stdVolCap)
-	if !isValidVolumeCapabilities(caps) {
+	if !azureutils.IsValidVolumeCapabilities(caps) {
 		t.Errorf("Unexpected error")
 	}
 	stdVolCap1 := csi.VolumeCapability{
@@ -812,7 +648,7 @@ func TestIsValidVolumeCapabilities(t *testing.T) {
 		},
 	}
 	caps = append(caps, &stdVolCap1)
-	if isValidVolumeCapabilities(caps) {
+	if azureutils.IsValidVolumeCapabilities(caps) {
 		t.Errorf("Unexpected error")
 	}
 }
@@ -1015,8 +851,8 @@ func TestCreateSnapshot(t *testing.T) {
 				d.setCloud(&azure.Cloud{})
 				parameter := make(map[string]string)
 				parameter["tags"] = "unit-test"
-				parameter[incrementalField] = "false"
-				parameter[resourceGroupField] = "test"
+				parameter[azureutils.IncrementalField] = "false"
+				parameter[azureutils.ResourceGroupField] = "test"
 				req := &csi.CreateSnapshotRequest{
 					SourceVolumeId: testVolumeID,
 					Name:           "snapname",
@@ -1243,84 +1079,6 @@ func TestDeleteSnapshot(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, tc.testFunc)
 	}
-}
-
-func TestGenerateCSISnapshot(t *testing.T) {
-	testCases := []struct {
-		name     string
-		testFunc func(t *testing.T)
-	}{
-		{
-			name: "snap shot property not exist",
-			testFunc: func(t *testing.T) {
-				d, _ := NewFakeDriver(t)
-				d.setCloud(&azure.Cloud{})
-				snapshot := compute.Snapshot{}
-				sourceVolumeID := "unit-test"
-				_, err := generateCSISnapshot(sourceVolumeID, &snapshot)
-				expectedErr := fmt.Errorf("snapshot property is nil")
-				if !reflect.DeepEqual(err, expectedErr) {
-					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
-				}
-			},
-		},
-		{
-			name: "diskSizeGB of snapshot property is nil",
-			testFunc: func(t *testing.T) {
-				d, _ := NewFakeDriver(t)
-				d.setCloud(&azure.Cloud{})
-				provisioningState := "true"
-				snapshot := compute.Snapshot{
-					SnapshotProperties: &compute.SnapshotProperties{
-						TimeCreated:       &date.Time{},
-						ProvisioningState: &provisioningState,
-					},
-				}
-				sourceVolumeID := "unit-test"
-				_, err := generateCSISnapshot(sourceVolumeID, &snapshot)
-				expectedErr := fmt.Errorf("diskSizeGB of snapshot property is nil")
-				if !reflect.DeepEqual(err, expectedErr) {
-					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
-				}
-			},
-		},
-		{
-			name: "valid request",
-			testFunc: func(t *testing.T) {
-				provisioningState := "succeeded"
-				DiskSize := int32(10)
-				snapshotID := "test"
-				snapshot := compute.Snapshot{
-					SnapshotProperties: &compute.SnapshotProperties{
-						TimeCreated:       &date.Time{},
-						ProvisioningState: &provisioningState,
-						DiskSizeGB:        &DiskSize,
-					},
-					ID: &snapshotID,
-				}
-				sourceVolumeID := "unit-test"
-				response, err := generateCSISnapshot(sourceVolumeID, &snapshot)
-				tp := timestamppb.New(snapshot.SnapshotProperties.TimeCreated.ToTime())
-				ready := true
-				expectedresponse := &csi.Snapshot{
-					SizeBytes:      volumehelper.GiBToBytes(int64(*snapshot.SnapshotProperties.DiskSizeGB)),
-					SnapshotId:     *snapshot.ID,
-					SourceVolumeId: sourceVolumeID,
-					CreationTime:   tp,
-					ReadyToUse:     ready,
-				}
-				if !reflect.DeepEqual(expectedresponse, response) || err != nil {
-					t.Errorf("actualresponse: (%+v), expectedresponse: (%+v)\n", response, expectedresponse)
-					t.Errorf("err:%v", err)
-				}
-			},
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, tc.testFunc)
-	}
-
 }
 
 func TestGetSnapshotByID(t *testing.T) {
@@ -1885,126 +1643,6 @@ func TestValidateVolumeCapabilities(t *testing.T) {
 				_, err := d.ValidateVolumeCapabilities(context.TODO(), &req)
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
-				}
-			},
-		},
-	}
-	for _, tc := range testCases {
-		t.Run(tc.name, tc.testFunc)
-	}
-}
-
-func TestPickAvailabilityZone(t *testing.T) {
-	testCases := []struct {
-		name     string
-		testFunc func(t *testing.T)
-	}{
-		{
-			name: "requirement missing ",
-			testFunc: func(t *testing.T) {
-				expectedresponse := ""
-				region := "test"
-				actualresponse := pickAvailabilityZone(nil, region)
-				if !reflect.DeepEqual(expectedresponse, actualresponse) {
-					t.Errorf("actualresponse: (%v), expectedresponse: (%v)", actualresponse, expectedresponse)
-				}
-			},
-		},
-		{
-			name: "valid get preferred",
-			testFunc: func(t *testing.T) {
-				expectedresponse := "test-01"
-				region := "test"
-				mp := make(map[string]string)
-				mp["N/A"] = "test-01"
-				topology := &csi.Topology{
-					Segments: mp,
-				}
-				topologies := []*csi.Topology{}
-				topologies = append(topologies, topology)
-				req := &csi.TopologyRequirement{
-					Preferred: topologies,
-				}
-				actualresponse := pickAvailabilityZone(req, region)
-				if !reflect.DeepEqual(expectedresponse, actualresponse) {
-					t.Errorf("actualresponse: (%v), expectedresponse: (%v)", actualresponse, expectedresponse)
-				}
-			},
-		},
-		{
-			name: "valid get requisite",
-			testFunc: func(t *testing.T) {
-				expectedresponse := "test-01"
-				region := "test"
-				mp := make(map[string]string)
-				mp["N/A"] = "test-01"
-				topology := &csi.Topology{
-					Segments: mp,
-				}
-				topologies := []*csi.Topology{}
-				topologies = append(topologies, topology)
-				req := &csi.TopologyRequirement{
-					Requisite: topologies,
-				}
-				actualresponse := pickAvailabilityZone(req, region)
-				if !reflect.DeepEqual(expectedresponse, actualresponse) {
-					t.Errorf("actualresponse: (%v), expectedresponse: (%v)", actualresponse, expectedresponse)
-				}
-			},
-		},
-		{
-			name: "valid get preferred - WellKnownTopologyKey",
-			testFunc: func(t *testing.T) {
-				expectedresponse := "test-02"
-				region := "test"
-				mp := make(map[string]string)
-				mp["N/A"] = "test-01"
-				mp[WellKnownTopologyKey] = "test-02"
-				topology := &csi.Topology{
-					Segments: mp,
-				}
-				topologies := []*csi.Topology{}
-				topologies = append(topologies, topology)
-				req := &csi.TopologyRequirement{
-					Preferred: topologies,
-				}
-				actualresponse := pickAvailabilityZone(req, region)
-				if !reflect.DeepEqual(expectedresponse, actualresponse) {
-					t.Errorf("actualresponse: (%v), expectedresponse: (%v)", actualresponse, expectedresponse)
-				}
-			},
-		},
-		{
-			name: "valid get requisite - WellKnownTopologyKey",
-			testFunc: func(t *testing.T) {
-				expectedresponse := "test-02"
-				region := "test"
-				mp := make(map[string]string)
-				mp["N/A"] = "test-01"
-				mp[WellKnownTopologyKey] = "test-02"
-				topology := &csi.Topology{
-					Segments: mp,
-				}
-				topologies := []*csi.Topology{}
-				topologies = append(topologies, topology)
-				req := &csi.TopologyRequirement{
-					Requisite: topologies,
-				}
-				actualresponse := pickAvailabilityZone(req, region)
-				if !reflect.DeepEqual(expectedresponse, actualresponse) {
-					t.Errorf("actualresponse: (%v), expectedresponse: (%v)", actualresponse, expectedresponse)
-				}
-			},
-		},
-		{
-			name: "empty request ",
-			testFunc: func(t *testing.T) {
-				req := &csi.TopologyRequirement{}
-				expectedresponse := ""
-				region := "test"
-				actualresponse := pickAvailabilityZone(req, region)
-				if !reflect.DeepEqual(expectedresponse, actualresponse) {
-					t.Errorf("actualresponse: (%v), expectedresponse: (%v)", actualresponse, expectedresponse)
 				}
 			},
 		},

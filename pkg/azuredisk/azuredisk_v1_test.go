@@ -25,6 +25,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/diskclient/mockdiskclient"
 )
 
@@ -40,14 +41,14 @@ func TestCheckDiskCapacity_V1(t *testing.T) {
 	}
 	d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
 
-	d.setDiskThrottlingCache(throttlingKey, "")
+	d.setDiskThrottlingCache(azureutils.ThrottlingKey, "")
 	flag, _ := d.checkDiskCapacity(context.TODO(), resourceGroup, diskName, 11)
 	assert.Equal(t, flag, true)
 }
 
 func TestDriver_checkDiskExists_V1(t *testing.T) {
 	d, _ := NewFakeDriver(t)
-	d.setDiskThrottlingCache(throttlingKey, "")
+	d.setDiskThrottlingCache(azureutils.ThrottlingKey, "")
 	_, err := d.checkDiskExists(context.TODO(), "testurl/subscriptions/12/resourceGroups/23/providers/Microsoft.Compute/disks/name")
 	assert.Equal(t, err, nil)
 }

@@ -31,7 +31,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
 
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/azure"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/credentials"
@@ -71,9 +71,9 @@ func (t *DynamicallyProvisionedAzureDiskDetach) Run(client clientset.Interface, 
 		} else if pv.Spec.PersistentVolumeSource.AzureDisk != nil {
 			diskURI = pv.Spec.PersistentVolumeSource.AzureDisk.DataDiskURI
 		}
-		diskName, err := azuredisk.GetDiskName(diskURI)
+		diskName, err := azureutils.GetDiskName(diskURI)
 		framework.ExpectNoError(err, fmt.Sprintf("Error getting diskName for azuredisk %v", err))
-		resourceGroup, err := azuredisk.GetResourceGroupFromURI(diskURI)
+		resourceGroup, err := azureutils.GetResourceGroupFromURI(diskURI)
 		framework.ExpectNoError(err, fmt.Sprintf("Error getting resourceGroup for azuredisk %v", err))
 
 		creds, err := credentials.CreateAzureCredentialFile()
