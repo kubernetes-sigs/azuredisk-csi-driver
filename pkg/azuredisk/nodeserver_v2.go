@@ -39,6 +39,7 @@ import (
 	"k8s.io/kubernetes/pkg/volume"
 	"k8s.io/kubernetes/pkg/volume/util/hostutil"
 	mount "k8s.io/mount-utils"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 )
 
 // NodeStageVolume mount disk device to a staging path
@@ -58,7 +59,7 @@ func (d *DriverV2) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolume
 		return nil, status.Error(codes.InvalidArgument, "Volume capability not provided")
 	}
 
-	if !isValidVolumeCapabilities([]*csi.VolumeCapability{volumeCapability}) {
+	if !azureutils.IsValidVolumeCapabilities([]*csi.VolumeCapability{volumeCapability}) {
 		return nil, status.Error(codes.InvalidArgument, "Volume capability not supported")
 	}
 
@@ -67,7 +68,7 @@ func (d *DriverV2) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolume
 	}
 	defer d.volumeLocks.Release(diskURI)
 
-	lun, ok := req.PublishContext[LUN]
+	lun, ok := req.PublishContext[azureutils.LUN]
 	if !ok {
 		return nil, status.Error(codes.InvalidArgument, "lun not provided")
 	}
@@ -127,7 +128,7 @@ func (d *DriverV2) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolume
 	}
 
 	// If partition is specified, should mount it only instead of the entire disk.
-	if partition, ok := req.GetVolumeContext()[volumeAttributePartition]; ok {
+	if partition, ok := req.GetVolumeContext()[azureutils.VolumeAttributePartition]; ok {
 		source = source + "-part" + partition
 	}
 
@@ -141,7 +142,7 @@ func (d *DriverV2) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolume
 	klog.V(2).Infof("NodeStageVolume: format %s and mounting at %s successfully.", source, target)
 
 	// if resize is required, resize filesystem
-	if required, ok := req.GetVolumeContext()[resizeRequired]; ok && required == "true" {
+	if required, ok := req.GetVolumeContext()[azureutils.ResizeRequired]; ok && required == "true" {
 		klog.V(2).Infof("NodeStageVolume: fs resize initiating on target(%s) volumeid(%s)", target, diskURI)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "NodeStageVolume: Could not get volume path for %s: %v", target, err)
@@ -222,7 +223,7 @@ func (d *DriverV2) NodePublishVolume(ctx context.Context, req *csi.NodePublishVo
 
 	switch req.GetVolumeCapability().GetAccessType().(type) {
 	case *csi.VolumeCapability_Block:
-		lun, ok := req.PublishContext[LUN]
+		lun, ok := req.PublishContext[azureutils.LUN]
 		if !ok {
 			return nil, status.Error(codes.InvalidArgument, "lun not provided")
 		}
@@ -312,9 +313,9 @@ func (d *DriverV2) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest)
 	if err != nil {
 		klog.Warningf("Failed to get zone from Azure cloud provider, nodeName: %v, error: %v", d.NodeID, err)
 	} else {
-		if isAvailabilityZone(zone.FailureDomain, d.cloud.Location) {
+		if azureutils.IsValidAvailabilityZone(zone.FailureDomain, d.cloud.Location) {
 			topology.Segments[topologyKey] = zone.FailureDomain
-			topology.Segments[WellKnownTopologyKey] = zone.FailureDomain
+			topology.Segments[azureutils.WellKnownTopologyKey] = zone.FailureDomain
 			klog.V(2).Infof("NodeGetInfo, nodeName: %v, zone: %v", d.NodeID, zone.FailureDomain)
 		}
 	}
@@ -444,7 +445,7 @@ func (d *DriverV2) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolu
 	if volumeCapability != nil {
 		// VolumeCapability is optional, if specified, validate it
 		caps := []*csi.VolumeCapability{volumeCapability}
-		if !isValidVolumeCapabilities(caps) {
+		if !azureutils.IsValidVolumeCapabilities(caps) {
 			return nil, status.Error(codes.InvalidArgument, "VolumeCapability is invalid.")
 		}
 
@@ -486,7 +487,7 @@ func (d *DriverV2) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolu
 func (d *DriverV2) ensureMountPoint(target string) (bool, error) {
 	notMnt, err := d.mounter.IsLikelyNotMountPoint(target)
 	if err != nil && !os.IsNotExist(err) {
-		if IsCorruptedDir(target) {
+		if azureutils.IsCorruptedDir(target) {
 			notMnt = false
 			klog.Warningf("detected corrupted mount for targetPath [%s]", target)
 		} else {
@@ -527,7 +528,7 @@ func (d *DriverV2) formatAndMount(source, target, fstype string, options []strin
 }
 
 func (d *DriverV2) getDevicePathWithLUN(lunStr string) (string, error) {
-	lun, err := getDiskLUN(lunStr)
+	lun, err := azureutils.GetDiskLUN(lunStr)
 	if err != nil {
 		return "", err
 	}

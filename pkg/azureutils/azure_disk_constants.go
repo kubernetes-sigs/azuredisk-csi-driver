@@ -29,7 +29,7 @@ const (
 	DefaultDriverName             = "disk.csi.azure.com"
 	DesIDField                    = "diskencryptionsetid"
 	DiskAccessIDField             = "diskaccessid"
-	DiskEncryptionSetId           = "diskencryptionsetid"
+	DiskEncryptionSetID           = "diskencryptionsetid"
 	DiskIOPSReadWriteField        = "diskiopsreadwrite"
 	DiskMBPSReadWriteField        = "diskmbpsreadwrite"
 	DiskNameField                 = "diskname"
@@ -71,7 +71,7 @@ const (
 )
 
 var (
-	// see https://docs.microsoft.com/en-us/rest/api/compute/disks/createorupdate#create-a-managed-disk-from-an-existing-managed-disk-in-the-same-or-different-subscription.
+	// ManagedDiskPath is described here: https://docs.microsoft.com/en-us/rest/api/compute/disks/createorupdate#create-a-managed-disk-from-an-existing-managed-disk-in-the-same-or-different-subscription.
 	ManagedDiskPath   = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s"
 	ManagedDiskPathRE = regexp.MustCompile(`(?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/disks/(.+)`)
 )

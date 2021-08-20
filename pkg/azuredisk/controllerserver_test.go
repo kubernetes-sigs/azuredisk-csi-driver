@@ -192,7 +192,7 @@ func TestCreateVolume(t *testing.T) {
 				mp[azureutils.DiskIOPSReadWriteField] = "ut"
 				mp[azureutils.DiskMBPSReadWriteField] = "ut"
 				mp[azureutils.DiskNameField] = "ut"
-				mp[azureutils.DiskEncryptionSetId] = "ut"
+				mp[azureutils.DiskEncryptionSetID] = "ut"
 				mp[azureutils.WriteAcceleratorEnabled] = "ut"
 				req := &csi.CreateVolumeRequest{
 					Name:               "unit-test",
@@ -721,7 +721,7 @@ func TestControllerExpandVolume(t *testing.T) {
 				ctx := context.Background()
 				d, _ := NewFakeDriver(t)
 
-				expectedErr := status.Error(codes.InvalidArgument, "disk URI(httptest) is not valid: Inavlid DiskURI: httptest, correct format: [/subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id}]")
+				expectedErr := status.Error(codes.InvalidArgument, "disk URI(httptest) is not valid: inavlid DiskURI: httptest, correct format: [/subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id}]")
 				_, err := d.ControllerExpandVolume(ctx, req)
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("Unexpected error: %v", err)
@@ -739,7 +739,7 @@ func TestControllerExpandVolume(t *testing.T) {
 				ctx := context.Background()
 				d, _ := NewFakeDriver(t)
 
-				expectedErr := status.Errorf(codes.InvalidArgument, "disk URI(vol_1) is not valid: Inavlid DiskURI: vol_1, correct format: [/subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id}]")
+				expectedErr := status.Errorf(codes.InvalidArgument, "disk URI(vol_1) is not valid: inavlid DiskURI: vol_1, correct format: [/subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id}]")
 				_, err := d.ControllerExpandVolume(ctx, req)
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)

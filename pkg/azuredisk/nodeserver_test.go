@@ -152,7 +152,7 @@ func TestEnsureMountPoint(t *testing.T) {
 	assert.NoError(t, err)
 	alreadyExistTarget, err := testutil.GetWorkDirPath("false_is_likely_exist_target")
 	assert.NoError(t, err)
-	azuredisk, err := testutil.GetWorkDirPath("azure.go")
+	azuredisk, err := testutil.GetWorkDirPath("azuredisk.go")
 	assert.NoError(t, err)
 
 	tests := []struct {
@@ -482,7 +482,7 @@ func TestNodePublishVolume(t *testing.T) {
 
 	azurediskPath := "azuredisk.go"
 
-	// ".\azure.go will get deleted on Windows"
+	// ".\azuredisk.go will get deleted on Windows"
 	if runtime.GOOS == "windows" {
 		azurediskPath = "testfiles\\azuredisk.go"
 	}

@@ -45,8 +45,6 @@ import (
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
-var ()
-
 // listVolumeStatus explains the return status of `listVolumesByResourceGroup`
 type listVolumeStatus struct {
 	numVisited    int  // the number of iterated azure disks

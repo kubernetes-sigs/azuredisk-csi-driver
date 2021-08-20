@@ -20,16 +20,6 @@ import (
 	"io/ioutil"
 	"os"
 	"strings"
-
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
-
-	v1 "k8s.io/api/core/v1"
-)
-
-const (
-	azurePublicCloudDefaultStorageAccountType = compute.StandardSSDLRS
-	azureStackCloudDefaultStorageAccountType  = compute.StandardLRS
-	defaultAzureDataDiskCachingMode           = v1.AzureDataDiskCachingReadOnly
 )
 
 type ioHandler interface {
