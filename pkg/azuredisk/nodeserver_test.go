@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"reflect"
 	"runtime"
 	"syscall"
 	"testing"
@@ -260,7 +259,7 @@ func TestNodeGetVolumeStats(t *testing.T) {
 	for _, test := range tests {
 		if !(test.skipOnDarwin && runtime.GOOS == "darwin") {
 			_, err := d.NodeGetVolumeStats(context.Background(), &test.req)
-			if !reflect.DeepEqual(err, test.expectedErr) {
+			if !testutil.IsErrorEquivalent(err, test.expectedErr) {
 				t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
 			}
 		}
@@ -364,7 +363,7 @@ func TestNodeStageVolume(t *testing.T) {
 			_, err := d.NodeStageVolume(context.Background(), &test.req)
 			if test.desc == "Failed volume mount" {
 				assert.Error(t, err)
-			} else if !reflect.DeepEqual(err, test.expectedErr) {
+			} else if !testutil.IsErrorEquivalent(err, test.expectedErr) {
 				t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
 			}
 		}
@@ -918,7 +917,7 @@ func TestGetDevicePathWithLUN(t *testing.T) {
 	}
 	for _, test := range tests {
 		_, err := d.getDevicePathWithLUN(test.req)
-		if !reflect.DeepEqual(err, test.expectedErr) {
+		if !testutil.IsErrorEquivalent(test.expectedErr, err) {
 			t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
 		}
 	}

@@ -23,7 +23,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	libstrings "strings"
 
 	"k8s.io/klog/v2"
 	"k8s.io/mount-utils"
@@ -129,7 +128,7 @@ func (p *NodeProvisioner) listAzureDiskPath() []string {
 				name := f.Name()
 				diskPath := filepath.Join(azureDiskPath, name)
 				if link, linkErr := p.ioHandler.Readlink(diskPath); linkErr == nil {
-					sd := link[(libstrings.LastIndex(link, "/") + 1):]
+					sd := link[(strings.LastIndex(link, "/") + 1):]
 					azureDiskList = append(azureDiskList, sd)
 				}
 			}
@@ -156,7 +155,7 @@ func (p *NodeProvisioner) findDiskByLunWithConstraint(lun int, azureDisks []stri
 		for _, f := range dirs {
 			name := f.Name()
 			// look for path like /sys/bus/scsi/devices/3:0:0:1
-			arr := libstrings.Split(name, ":")
+			arr := strings.Split(name, ":")
 
 			if len(arr) < 4 {
 				continue
@@ -195,9 +194,9 @@ func (p *NodeProvisioner) findDiskByLunWithConstraint(lun int, azureDisks []stri
 					continue
 				}
 
-				vendor := libstrings.TrimSpace(string(vendorBytes))
+				vendor := strings.TrimSpace(string(vendorBytes))
 
-				if libstrings.ToUpper(vendor) != "MSFT" {
+				if strings.ToUpper(vendor) != "MSFT" {
 					klog.V(4).Infof("vendor doesn't match VHD, got %s", vendor)
 					continue
 				}
@@ -210,9 +209,9 @@ func (p *NodeProvisioner) findDiskByLunWithConstraint(lun int, azureDisks []stri
 					continue
 				}
 
-				model := libstrings.TrimSpace(string(modelBytes))
+				model := strings.TrimSpace(string(modelBytes))
 
-				if libstrings.ToUpper(model) != "VIRTUAL DISK" {
+				if strings.ToUpper(model) != "VIRTUAL DISK" {
 					klog.V(4).Infof("model doesn't match VHD, got %s", model)
 					continue
 				}
@@ -273,7 +272,7 @@ func (p *NodeProvisioner) getDiskLinkByDevName(devLinkPath, devName string) (str
 				continue
 			}
 
-			if libstrings.HasSuffix(link, devName) {
+			if strings.HasSuffix(link, devName) {
 				return diskPath, nil
 			}
 		}
