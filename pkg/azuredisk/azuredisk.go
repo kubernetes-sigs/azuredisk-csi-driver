@@ -144,8 +144,6 @@ type DriverCore struct {
 	cloudConfigSecretNamespace string
 	customUserAgent            string
 	userAgentSuffix            string
-	cloud                      *azure.Cloud
-	mounter                    *mount.SafeFormatAndMount
 	deviceHelper               *optimization.SafeDeviceHelper
 	nodeInfo                   *optimization.NodeInfo
 }

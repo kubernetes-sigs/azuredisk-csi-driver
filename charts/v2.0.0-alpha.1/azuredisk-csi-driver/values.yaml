@@ -110,6 +110,8 @@ driver:
   # maximum number of attachable volumes per node,
   # maximum number is defined according to node instance type by default(-1)
   volumeAttachLimit: -1
+  customUserAgent: ""
+  userAgentSuffix: "OSS-helm"
 
 cleanup:
   image:

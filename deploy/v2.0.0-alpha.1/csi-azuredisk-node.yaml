@@ -95,6 +95,7 @@ spec:
             - "--nodeid=$(KUBE_NODE_NAME)"
             - "--metrics-address=0.0.0.0:29605"
             - "--enable-perf-optimization=true"
+            - "--user-agent-suffix=OSS-kubectl"
             - "--temp-use-driver-v2=true"
             - "--is-node-plugin=true"
           ports:

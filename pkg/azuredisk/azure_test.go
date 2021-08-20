@@ -17,6 +17,7 @@ limitations under the License.
 package azuredisk
 
 import (
+	"fmt"
 	"io/ioutil"
 	"os"
 	"runtime"
@@ -162,7 +163,32 @@ func TestGetCloudProvider(t *testing.T) {
 	// skip for now as this is very flaky on Windows
 	skipIfTestingOnWindows(t)
 	fakeCredFile := "fake-cred-file.json"
+	fakeKubeConfig := "fake-kube-config"
 	emptyKubeConfig := "empty-kube-config"
+	fakeContent := `
+apiVersion: v1
+clusters:
+- cluster:
+    server: https://localhost:8080
+  name: foo-cluster
+contexts:
+- context:
+    cluster: foo-cluster
+    user: foo-user
+    namespace: bar
+  name: foo-context
+current-context: foo-context
+kind: Config
+users:
+- name: foo-user
+  user:
+    exec:
+      apiVersion: client.authentication.k8s.io/v1alpha1
+      args:
+      - arg-1
+      - arg-2
+      command: foo-command
+`
 
 	err := createTestFile(emptyKubeConfig)
 	if err != nil {
@@ -177,6 +203,7 @@ func TestGetCloudProvider(t *testing.T) {
 	tests := []struct {
 		desc        string
 		kubeconfig  string
+		userAgent   string
 		expectedErr error
 	}{
 		{
@@ -188,6 +215,11 @@ func TestGetCloudProvider(t *testing.T) {
 			desc:        "[failure] out of cluster & in cluster, specify a non-exist kubeconfig, no credential file",
 			kubeconfig:  "/tmp/non-exist.json",
 			expectedErr: nil,
+		},
+		{
+			desc:        "[failure] out of cluster & in cluster, specify a empty kubeconfig, no credential file",
+			kubeconfig:  emptyKubeConfig,
+			expectedErr: fmt.Errorf("failed to get KubeClient: invalid configuration: no configuration has been provided, try setting KUBERNETES_MASTER environment variable"),
 		},
 		{
 			desc:        "[failure] out of cluster & in cluster, specify a fake kubeconfig, no credential file",
@@ -203,6 +235,21 @@ func TestGetCloudProvider(t *testing.T) {
 	}
 
 	for _, test := range tests {
+		if test.desc == "[failure] out of cluster & in cluster, specify a fake kubeconfig, no credential file" {
+			err := createTestFile(fakeKubeConfig)
+			if err != nil {
+				t.Error(err)
+			}
+			defer func() {
+				if err := os.Remove(fakeKubeConfig); err != nil {
+					t.Error(err)
+				}
+			}()
+
+			if err := ioutil.WriteFile(fakeKubeConfig, []byte(fakeContent), 0666); err != nil {
+				t.Error(err)
+			}
+		}
 		if test.desc == "[success] out of cluster & in cluster, no kubeconfig, a fake credential file" {
 			err := createTestFile(fakeCredFile)
 			if err != nil {
@@ -223,7 +270,7 @@ func TestGetCloudProvider(t *testing.T) {
 			os.Setenv(DefaultAzureCredentialFileEnv, fakeCredFile)
 		}
 
-		_, err := GetCloudProvider(test.kubeconfig, "", "", "")
+		cloud, err := GetCloudProvider(test.kubeconfig, "", "", test.userAgent)
 		if !testutil.IsErrorEquivalent(err, test.expectedErr) {
 			t.Errorf("desc: %s,\n input: %q, GetCloudProvider err: %v, expectedErr: %v", test.desc, test.kubeconfig, err, test.expectedErr)
 		}
