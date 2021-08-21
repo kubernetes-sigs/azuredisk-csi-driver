@@ -408,7 +408,7 @@ func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest)
 	}()
 
 	klog.V(2).Infof("deleting azure disk(%s)", diskURI)
-	err := d.cloud.DeleteManagedDisk(diskURI)
+	err := d.cloud.DeleteManagedDisk(ctx, diskURI)
 	klog.V(2).Infof("delete azure disk(%s) returned with %v", diskURI, err)
 	isOperationSucceeded = (err == nil)
 	return &csi.DeleteVolumeResponse{}, err
