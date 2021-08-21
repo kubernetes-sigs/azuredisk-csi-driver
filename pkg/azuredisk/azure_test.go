@@ -151,6 +151,8 @@ users:
 			t.Errorf("return value of getCloudProvider should not be nil even there is error")
 		} else {
 			assert.Equal(t, cloud.UserAgent, test.userAgent)
+			assert.Equal(t, cloud.DiskRateLimit != nil && cloud.DiskRateLimit.CloudProviderRateLimit, false)
+			assert.Equal(t, cloud.SnapshotRateLimit != nil && cloud.SnapshotRateLimit.CloudProviderRateLimit, false)
 		}
 	}
 }

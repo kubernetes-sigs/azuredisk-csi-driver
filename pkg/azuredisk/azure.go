@@ -27,6 +27,7 @@ import (
 	"k8s.io/klog/v2"
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
+	azclients "sigs.k8s.io/cloud-provider-azure/pkg/azureclients"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
@@ -105,6 +106,13 @@ func GetCloudProvider(kubeconfig, secretName, secretNamespace, userAgent string)
 		klog.V(2).Infof("no cloud config provided, error: %v, driver will run without cloud config", err)
 	} else {
 		config.UserAgent = userAgent
+		// disable disk related rate limit
+		config.DiskRateLimit = &azclients.RateLimitConfig{
+			CloudProviderRateLimit: false,
+		}
+		config.SnapshotRateLimit = &azclients.RateLimitConfig{
+			CloudProviderRateLimit: false,
+		}
 		if err = az.InitializeCloudFromConfig(config, fromSecret, false); err != nil {
 			klog.Warningf("InitializeCloudFromConfig failed with error: %v", err)
 		}
