@@ -17,7 +17,7 @@ kubectl logs csi-azuredisk-controller-56bfddd689-dh5tk -c azuredisk -n kube-syst
 ```
 > Note: there could be multiple controller pods, if there are no helpful logs, try to get logs from other controller pods
 
- - get csi driver logs using scripts (only works for one driver replica)
+ - get csi driver logs using scripts (only works when replica of driver controller is `1`)
 ```console
 diskControllerName=`kubectl get po -n kube-system | grep csi-azuredisk-controller | cut -d ' ' -f1`
 kubectl describe $diskControllerName -n kube-system > $diskControllerName-description.log
