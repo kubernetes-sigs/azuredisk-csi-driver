@@ -9,12 +9,20 @@ NAME                                           READY   STATUS    RESTARTS   AGE 
 csi-azuredisk-controller-56bfddd689-dh5tk      5/5     Running   0          35s     10.240.0.19    k8s-agentpool-22533604-0
 csi-azuredisk-controller-56bfddd689-sl4ll      5/5     Running   0          35s     10.240.0.23    k8s-agentpool-22533604-1
 </pre>
+
  - get csi driver logs
 ```console
+kubectl describe pod csi-azuredisk-controller-56bfddd689-dh5tk -n kube-system > csi-azuredisk-controller-description.log
 kubectl logs csi-azuredisk-controller-56bfddd689-dh5tk -c azuredisk -n kube-system > csi-azuredisk-controller.log
-kubectl logs `kubectl get po -n kube-system | grep csi-azuredisk-controller | cut -d ' ' -f1` -n kube-system -c azuredisk > csi-azuredisk-controller.log
 ```
-> note: there could be multiple controller pods, if there are no helpful logs, try to get logs from other controller pods
+> Note: there could be multiple controller pods, if there are no helpful logs, try to get logs from other controller pods
+
+ - get csi driver logs using scripts (only works for one driver replica)
+```console
+diskControllerName=`kubectl get po -n kube-system | grep csi-azuredisk-controller | cut -d ' ' -f1`
+kubectl describe $diskControllerName -n kube-system > $diskControllerName-description.log
+kubectl logs $diskControllerName -n kube-system -c azuredisk > $diskControllerName.log
+```
 
 ### Case#2: volume mount/unmount failed
  - locate csi driver pod and make sure which pod do tha actual volume mount/unmount
