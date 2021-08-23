@@ -19,7 +19,7 @@ package azuredisk
 import (
 	"testing"
 
-	constants "sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
 func TestGetDiskPerfAttributes(t *testing.T) {
@@ -42,7 +42,7 @@ func TestGetDiskPerfAttributes(t *testing.T) {
 			wantDiskIopsStr:    "100",
 			wantDiskBwMbpsStr:  "500",
 			wantErr:            false,
-			inAttributes:       map[string]string{constants.PerfProfileField: "basic", constants.SkuNameField: "Premium_LRS", constants.RequestedSizeGib: "1024", constants.DiskIOPSReadWriteField: "100", constants.DiskMBPSReadWriteField: "500"},
+			inAttributes:       map[string]string{consts.PerfProfileField: "basic", consts.SkuNameField: "Premium_LRS", consts.RequestedSizeGib: "1024", consts.DiskIOPSReadWriteField: "100", consts.DiskMBPSReadWriteField: "500"},
 		},
 		{
 			name:               "incorrect profile should return error",
@@ -52,7 +52,7 @@ func TestGetDiskPerfAttributes(t *testing.T) {
 			wantDiskIopsStr:    "100",
 			wantDiskBwMbpsStr:  "500",
 			wantErr:            true,
-			inAttributes:       map[string]string{constants.PerfProfileField: "blah", constants.SkuNameField: "Premium_LRS", constants.RequestedSizeGib: "1024", constants.DiskIOPSReadWriteField: "100", constants.DiskMBPSReadWriteField: "500"},
+			inAttributes:       map[string]string{consts.PerfProfileField: "blah", consts.SkuNameField: "Premium_LRS", consts.RequestedSizeGib: "1024", consts.DiskIOPSReadWriteField: "100", consts.DiskMBPSReadWriteField: "500"},
 		},
 		{
 			name:               "No profile specified should return none profile",
@@ -62,7 +62,7 @@ func TestGetDiskPerfAttributes(t *testing.T) {
 			wantDiskIopsStr:    "100",
 			wantDiskBwMbpsStr:  "500",
 			wantErr:            false,
-			inAttributes:       map[string]string{constants.SkuNameField: "Premium_LRS", constants.RequestedSizeGib: "1024", constants.DiskIOPSReadWriteField: "100", constants.DiskMBPSReadWriteField: "500"},
+			inAttributes:       map[string]string{consts.SkuNameField: "Premium_LRS", consts.RequestedSizeGib: "1024", consts.DiskIOPSReadWriteField: "100", consts.DiskMBPSReadWriteField: "500"},
 		},
 	}
 

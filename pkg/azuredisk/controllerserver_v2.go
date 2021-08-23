@@ -40,6 +40,7 @@ import (
 	volerr "k8s.io/cloud-provider/volume/errors"
 	"k8s.io/klog/v2"
 
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
@@ -71,8 +72,8 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 	capacityBytes := req.GetCapacityRange().GetRequiredBytes()
 	volSizeBytes := int64(capacityBytes)
 	requestGiB := int(volumehelper.RoundUpGiB(volSizeBytes))
-	if requestGiB < azureutils.MinimumDiskSizeGiB {
-		requestGiB = azureutils.MinimumDiskSizeGiB
+	if requestGiB < consts.MinimumDiskSizeGiB {
+		requestGiB = consts.MinimumDiskSizeGiB
 	}
 
 	maxVolSize := int(volumehelper.RoundUpGiB(req.GetCapacityRange().GetLimitBytes()))
@@ -106,34 +107,34 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 	}
 	for k, v := range parameters {
 		switch strings.ToLower(k) {
-		case azureutils.SkuNameField:
+		case consts.SkuNameField:
 			storageAccountType = v
-		case azureutils.LocationField:
+		case consts.LocationField:
 			location = v
-		case azureutils.StorageAccountTypeField:
+		case consts.StorageAccountTypeField:
 			storageAccountType = v
-		case azureutils.CachingModeField:
+		case consts.CachingModeField:
 			cachingMode = v1.AzureDataDiskCachingMode(v)
-		case azureutils.ResourceGroupField:
+		case consts.ResourceGroupField:
 			resourceGroup = v
-		case azureutils.DiskIOPSReadWriteField:
+		case consts.DiskIOPSReadWriteField:
 			diskIopsReadWrite = v
-		case azureutils.DiskMBPSReadWriteField:
+		case consts.DiskMBPSReadWriteField:
 			diskMbpsReadWrite = v
-		case azureutils.LogicalSectorSizeField:
+		case consts.LogicalSectorSizeField:
 			logicalSectorSize, err = strconv.Atoi(v)
 			if err != nil {
 				return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("parse %s failed with error: %v", v, err))
 			}
-		case azureutils.DiskNameField:
+		case consts.DiskNameField:
 			diskName = v
-		case azureutils.DesIDField:
+		case consts.DesIDField:
 			diskEncryptionSetID = v
-		case azureutils.TagsField:
+		case consts.TagsField:
 			customTags = v
 		case azure.WriteAcceleratorEnabled:
 			writeAcceleratorEnabled = v
-		case azureutils.MaxSharesField:
+		case consts.MaxSharesField:
 			maxShares, err = strconv.Atoi(v)
 			if err != nil {
 				return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("parse %s failed with error: %v", v, err))
@@ -141,27 +142,27 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 			if maxShares < 1 {
 				return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("parse %s returned with invalid value: %d", v, maxShares))
 			}
-		case azureutils.PvcNameKey:
-			tags[azureutils.PvcNameTag] = v
-		case azureutils.PvcNamespaceKey:
-			tags[azureutils.PvcNamespaceTag] = v
-		case azureutils.PvNameKey:
-			tags[azureutils.PvNameTag] = v
-		case azureutils.FsTypeField:
+		case consts.PvcNameKey:
+			tags[consts.PvcNameTag] = v
+		case consts.PvcNamespaceKey:
+			tags[consts.PvcNamespaceTag] = v
+		case consts.PvNameKey:
+			tags[consts.PvNameTag] = v
+		case consts.FsTypeField:
 			// no op, only used in NodeStageVolume
-		case azureutils.KindField:
+		case consts.KindField:
 			// fix csi migration issue: https://github.com/kubernetes/kubernetes/issues/103433
-			parameters[azureutils.KindField] = string(v1.AzureManagedDisk)
-		case azureutils.PerfProfileField:
+			parameters[consts.KindField] = string(v1.AzureManagedDisk)
+		case consts.PerfProfileField:
 			if !optimization.IsValidPerfProfile(v) {
 				return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Perf profile %s is not supported. Supported tuning modes are none and basic.", v))
 			}
-		case azureutils.NetworkAccessPolicyField:
+		case consts.NetworkAccessPolicyField:
 			netAccessPolicy = v
-		case azureutils.DiskAccessIDField:
+		case consts.DiskAccessIDField:
 			diskAccessID = v
-		case azureutils.EnableBurstingField:
-			if strings.EqualFold(v, azureutils.TrueValue) {
+		case consts.EnableBurstingField:
+			if strings.EqualFold(v, consts.TrueValue) {
 				enableBursting = to.BoolPtr(true)
 			}
 		default:
@@ -220,7 +221,7 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 		return nil, err
 	}
 
-	mc := metrics.NewMetricContext(azureutils.AzureDiskCSIDriverName, "controller_create_volume", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
+	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_create_volume", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
 	isOperationSucceeded := false
 	defer func() {
 		mc.ObserveOperationWithResult(isOperationSucceeded)
@@ -234,8 +235,8 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 		tags[k] = v
 	}
 
-	if strings.EqualFold(writeAcceleratorEnabled, azureutils.TrueValue) {
-		tags[azure.WriteAcceleratorEnabled] = azureutils.TrueValue
+	if strings.EqualFold(writeAcceleratorEnabled, consts.TrueValue) {
+		tags[azure.WriteAcceleratorEnabled] = consts.TrueValue
 	}
 	sourceID := ""
 	sourceType := ""
@@ -243,7 +244,7 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 	if content != nil {
 		if content.GetSnapshot() != nil {
 			sourceID = content.GetSnapshot().GetSnapshotId()
-			sourceType = azureutils.SourceSnapshot
+			sourceType = consts.SourceSnapshot
 			contentSource = &csi.VolumeContentSource{
 				Type: &csi.VolumeContentSource_Snapshot{
 					Snapshot: &csi.VolumeContentSource_SnapshotSource{
@@ -253,7 +254,7 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 			}
 		} else {
 			sourceID = content.GetVolume().GetVolumeId()
-			sourceType = azureutils.SourceVolume
+			sourceType = consts.SourceVolume
 			contentSource = &csi.VolumeContentSource{
 				Type: &csi.VolumeContentSource_Volume{
 					Volume: &csi.VolumeContentSource_VolumeSource{
@@ -263,14 +264,14 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 			}
 
 			ctx, cancel := context.WithCancel(context.Background())
-			if sourceGiB, _ := d.GetSourceDiskSize(ctx, resourceGroup, path.Base(sourceID), 0, azureutils.SourceDiskSearchMaxDepth); sourceGiB != nil && *sourceGiB < int32(requestGiB) {
-				parameters[azureutils.ResizeRequired] = strconv.FormatBool(true)
+			if sourceGiB, _ := d.GetSourceDiskSize(ctx, resourceGroup, path.Base(sourceID), 0, consts.SourceDiskSearchMaxDepth); sourceGiB != nil && *sourceGiB < int32(requestGiB) {
+				parameters[consts.ResizeRequired] = strconv.FormatBool(true)
 			}
 			cancel()
 		}
 	}
 
-	parameters[azureutils.RequestedSizeGib] = strconv.Itoa(requestGiB)
+	parameters[consts.RequestedSizeGib] = strconv.Itoa(requestGiB)
 	volumeOptions := &azure.ManagedDiskOptions{
 		DiskName:            diskName,
 		StorageAccountType:  skuName,
@@ -297,7 +298,7 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 	}
 	diskURI, err := d.cloud.CreateManagedDisk(volumeOptions)
 	if err != nil {
-		if strings.Contains(err.Error(), azureutils.NotFound) {
+		if strings.Contains(err.Error(), consts.NotFound) {
 			return nil, status.Error(codes.NotFound, err.Error())
 		}
 		return nil, err
@@ -343,7 +344,7 @@ func (d *DriverV2) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeReques
 	}
 	defer d.volumeLocks.Release(volumeID)
 
-	mc := metrics.NewMetricContext(azureutils.AzureDiskCSIDriverName, "controller_delete_volume", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
+	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_delete_volume", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
 	isOperationSucceeded := false
 	defer func() {
 		mc.ObserveOperationWithResult(isOperationSucceeded)
@@ -394,7 +395,7 @@ func (d *DriverV2) ControllerPublishVolume(ctx context.Context, req *csi.Control
 		return nil, err
 	}
 
-	mc := metrics.NewMetricContext(azureutils.AzureDiskCSIDriverName, "controller_publish_volume", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
+	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_publish_volume", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
 	isOperationSucceeded := false
 	defer func() {
 		mc.ObserveOperationWithResult(isOperationSucceeded)
@@ -443,7 +444,7 @@ func (d *DriverV2) ControllerPublishVolume(ctx context.Context, req *csi.Control
 		klog.V(2).Infof("attach volume %q to node %q successfully", diskURI, nodeName)
 	}
 
-	pvInfo := map[string]string{azureutils.LUN: strconv.Itoa(int(lun))}
+	pvInfo := map[string]string{consts.LUN: strconv.Itoa(int(lun))}
 	isOperationSucceeded = true
 	return &csi.ControllerPublishVolumeResponse{PublishContext: pvInfo}, nil
 }
@@ -466,7 +467,7 @@ func (d *DriverV2) ControllerUnpublishVolume(ctx context.Context, req *csi.Contr
 		return nil, err
 	}
 
-	mc := metrics.NewMetricContext(azureutils.AzureDiskCSIDriverName, "controller_unpublish_volume", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
+	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_unpublish_volume", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
 	isOperationSucceeded := false
 	defer func() {
 		mc.ObserveOperationWithResult(isOperationSucceeded)
@@ -475,7 +476,7 @@ func (d *DriverV2) ControllerUnpublishVolume(ctx context.Context, req *csi.Contr
 	klog.V(2).Infof("Trying to detach volume %s from node %s", diskURI, nodeID)
 
 	if err := d.cloud.DetachDisk(diskName, diskURI, nodeName); err != nil {
-		if strings.Contains(err.Error(), azureutils.ErrDiskNotFound) {
+		if strings.Contains(err.Error(), consts.ErrDiskNotFound) {
 			klog.Warningf("volume %s already detached from node %s", diskURI, nodeID)
 		} else {
 			return nil, status.Errorf(codes.Internal, "Could not detach volume %q from node %q: %v", diskURI, nodeID, err)
@@ -740,7 +741,7 @@ func (d *DriverV2) ControllerExpandVolume(ctx context.Context, req *csi.Controll
 		return nil, status.Errorf(codes.Internal, "could not get resource group from diskURI(%s) with error(%v)", diskURI, err)
 	}
 
-	mc := metrics.NewMetricContext(azureutils.AzureDiskCSIDriverName, "controller_expand_volume", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
+	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_expand_volume", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
 	isOperationSucceeded := false
 	defer func() {
 		mc.ObserveOperationWithResult(isOperationSucceeded)
@@ -797,13 +798,13 @@ func (d *DriverV2) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRe
 	parameters := req.GetParameters()
 	for k, v := range parameters {
 		switch strings.ToLower(k) {
-		case azureutils.TagsField:
+		case consts.TagsField:
 			customTags = v
-		case azureutils.IncrementalField:
+		case consts.IncrementalField:
 			if v == "false" {
 				incremental = false
 			}
-		case azureutils.ResourceGroupField:
+		case consts.ResourceGroupField:
 			resourceGroup = v
 		default:
 			return nil, fmt.Errorf("AzureDisk - invalid option %s in VolumeSnapshotClass", k)
@@ -843,7 +844,7 @@ func (d *DriverV2) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRe
 		Tags:     tags,
 	}
 
-	mc := metrics.NewMetricContext(azureutils.AzureDiskCSIDriverName, "controller_create_snapshot", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
+	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_create_snapshot", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
 	isOperationSucceeded := false
 	defer func() {
 		mc.ObserveOperationWithResult(isOperationSucceeded)
@@ -890,7 +891,7 @@ func (d *DriverV2) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRe
 		}
 	}
 
-	mc := metrics.NewMetricContext(azureutils.AzureDiskCSIDriverName, "controller_delete_snapshot", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
+	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_delete_snapshot", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
 	isOperationSucceeded := false
 	defer func() {
 		mc.ObserveOperationWithResult(isOperationSucceeded)
@@ -912,7 +913,7 @@ func (d *DriverV2) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsRequ
 	if len(req.GetSnapshotId()) != 0 {
 		snapshot, err := d.getSnapshotByID(ctx, d.cloud.ResourceGroup, req.GetSnapshotId(), req.SourceVolumeId)
 		if err != nil {
-			if strings.Contains(err.Error(), azureutils.ResourceNotFound) {
+			if strings.Contains(err.Error(), consts.ResourceNotFound) {
 				return &csi.ListSnapshotsResponse{}, nil
 			}
 			return nil, err

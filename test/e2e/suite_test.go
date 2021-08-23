@@ -34,8 +34,8 @@ import (
 	"github.com/pborman/uuid"
 	"k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/config"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
-	constants "sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/azure"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/credentials"
@@ -112,7 +112,7 @@ var _ = ginkgo.BeforeSuite(func() {
 
 		driverOptions := azuredisk.DriverOptions{
 			NodeID:                 os.Getenv("nodeid"),
-			DriverName:             constants.DefaultDriverName,
+			DriverName:             consts.DefaultDriverName,
 			VolumeAttachLimit:      16,
 			EnablePerfOptimization: false,
 		}

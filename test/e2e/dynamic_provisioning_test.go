@@ -34,7 +34,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	restclientset "k8s.io/client-go/rest"
 	"k8s.io/kubernetes/test/e2e/framework"
-	constants "sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
 var _ = ginkgo.Describe("Dynamic Provisioning", func() {
@@ -965,7 +965,7 @@ func (t *dynamicProvisioningTestSuite) normalizeVolume(volume testsuites.VolumeD
 	case "kubernetes.io/azure-disk":
 		volumeBindingMode := storagev1.VolumeBindingWaitForFirstConsumer
 		volume.VolumeBindingMode = &volumeBindingMode
-	case "", constants.DefaultDriverName:
+	case "", consts.DefaultDriverName:
 		if !isMultiZone {
 			return volume
 		}

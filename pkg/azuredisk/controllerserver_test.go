@@ -34,6 +34,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockcorev1"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockkubeclient"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockpersistentvolume"
@@ -47,7 +48,7 @@ import (
 
 var (
 	testVolumeName = "unit-test-volume"
-	testVolumeID   = fmt.Sprintf(azureutils.ManagedDiskPath, "subs", "rg", testVolumeName)
+	testVolumeID   = fmt.Sprintf(consts.ManagedDiskPath, "subs", "rg", testVolumeName)
 )
 
 func checkTestError(t *testing.T, expectedErrCode codes.Code, err error) {
@@ -130,7 +131,7 @@ func TestCreateVolume(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				d, _ := NewFakeDriver(t)
 				mp := make(map[string]string)
-				mp[azureutils.MaxSharesField] = "aaa"
+				mp[consts.MaxSharesField] = "aaa"
 				req := &csi.CreateVolumeRequest{
 					Name:               "unit-test",
 					VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
@@ -148,7 +149,7 @@ func TestCreateVolume(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				d, _ := NewFakeDriver(t)
 				mp := make(map[string]string)
-				mp[azureutils.MaxSharesField] = "0"
+				mp[consts.MaxSharesField] = "0"
 				req := &csi.CreateVolumeRequest{
 					Name:               "unit-test",
 					VolumeCapabilities: stdVolumeCapabilities,
@@ -166,7 +167,7 @@ func TestCreateVolume(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				d, _ := NewFakeDriver(t)
 				mp := make(map[string]string)
-				mp[azureutils.PerfProfileField] = "blah"
+				mp[consts.PerfProfileField] = "blah"
 				req := &csi.CreateVolumeRequest{
 					Name:               "unit-test",
 					VolumeCapabilities: stdVolumeCapabilities,
@@ -184,16 +185,16 @@ func TestCreateVolume(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				d, _ := NewFakeDriver(t)
 				mp := make(map[string]string)
-				mp[azureutils.MaxSharesField] = "1"
-				mp[azureutils.SkuNameField] = "ut"
-				mp[azureutils.LocationField] = "ut"
-				mp[azureutils.StorageAccountTypeField] = "ut"
-				mp[azureutils.ResourceGroupField] = "ut"
-				mp[azureutils.DiskIOPSReadWriteField] = "ut"
-				mp[azureutils.DiskMBPSReadWriteField] = "ut"
-				mp[azureutils.DiskNameField] = "ut"
-				mp[azureutils.DiskEncryptionSetID] = "ut"
-				mp[azureutils.WriteAcceleratorEnabled] = "ut"
+				mp[consts.MaxSharesField] = "1"
+				mp[consts.SkuNameField] = "ut"
+				mp[consts.LocationField] = "ut"
+				mp[consts.StorageAccountTypeField] = "ut"
+				mp[consts.ResourceGroupField] = "ut"
+				mp[consts.DiskIOPSReadWriteField] = "ut"
+				mp[consts.DiskMBPSReadWriteField] = "ut"
+				mp[consts.DiskNameField] = "ut"
+				mp[consts.DiskEncryptionSetID] = "ut"
+				mp[consts.WriteAcceleratorEnabled] = "ut"
 				req := &csi.CreateVolumeRequest{
 					Name:               "unit-test",
 					VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY),
@@ -211,7 +212,7 @@ func TestCreateVolume(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				d, _ := NewFakeDriver(t)
 				mp := make(map[string]string)
-				mp[azureutils.StorageAccountTypeField] = "NOT_EXISTING"
+				mp[consts.StorageAccountTypeField] = "NOT_EXISTING"
 				req := &csi.CreateVolumeRequest{
 					Name:               "unit-test",
 					VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
@@ -229,7 +230,7 @@ func TestCreateVolume(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				d, _ := NewFakeDriver(t)
 				mp := make(map[string]string)
-				mp[azureutils.CachingModeField] = "WriteOnly"
+				mp[consts.CachingModeField] = "WriteOnly"
 				req := &csi.CreateVolumeRequest{
 					Name:               "unit-test",
 					VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
@@ -320,7 +321,7 @@ func TestCreateVolume(t *testing.T) {
 				}
 				d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
 				rerr := &retry.Error{
-					RawError: fmt.Errorf(azureutils.NotFound),
+					RawError: fmt.Errorf(consts.NotFound),
 				}
 				d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rerr).AnyTimes()
 				_, err := d.CreateVolume(context.Background(), req)
@@ -344,7 +345,7 @@ func TestCreateVolume(t *testing.T) {
 					CapacityRange:      stdCapacityRangetest,
 				}
 				size := int32(volumehelper.BytesToGiB(req.CapacityRange.RequiredBytes))
-				id := fmt.Sprintf(azureutils.ManagedDiskPath, "subs", "rg", testVolumeName)
+				id := fmt.Sprintf(consts.ManagedDiskPath, "subs", "rg", testVolumeName)
 				state := string(compute.ProvisioningStateSucceeded)
 				disk := compute.Disk{
 					ID:   &id,
@@ -851,8 +852,8 @@ func TestCreateSnapshot(t *testing.T) {
 				d.setCloud(&azure.Cloud{})
 				parameter := make(map[string]string)
 				parameter["tags"] = "unit-test"
-				parameter[azureutils.IncrementalField] = "false"
-				parameter[azureutils.ResourceGroupField] = "test"
+				parameter[consts.IncrementalField] = "false"
+				parameter[consts.ResourceGroupField] = "test"
 				req := &csi.CreateSnapshotRequest{
 					SourceVolumeId: testVolumeID,
 					Name:           "snapname",

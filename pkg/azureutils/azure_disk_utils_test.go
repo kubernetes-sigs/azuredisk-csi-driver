@@ -28,6 +28,7 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
 func TestCheckDiskName(t *testing.T) {
@@ -138,27 +139,27 @@ func TestGetCachingMode(t *testing.T) {
 			false,
 		},
 		{
-			map[string]string{CachingModeField: ""},
+			map[string]string{consts.CachingModeField: ""},
 			compute.CachingTypes(defaultAzureDataDiskCachingMode),
 			false,
 		},
 		{
-			map[string]string{CachingModeField: "None"},
+			map[string]string{consts.CachingModeField: "None"},
 			compute.CachingTypes("None"),
 			false,
 		},
 		{
-			map[string]string{CachingModeField: "ReadOnly"},
+			map[string]string{consts.CachingModeField: "ReadOnly"},
 			compute.CachingTypes("ReadOnly"),
 			false,
 		},
 		{
-			map[string]string{CachingModeField: "ReadWrite"},
+			map[string]string{consts.CachingModeField: "ReadWrite"},
 			compute.CachingTypes("ReadWrite"),
 			false,
 		},
 		{
-			map[string]string{CachingModeField: "WriteOnly"},
+			map[string]string{consts.CachingModeField: "WriteOnly"},
 			compute.CachingTypes(""),
 			true,
 		},
@@ -274,13 +275,13 @@ users:
 				}
 			}()
 
-			originalCredFile, ok := os.LookupEnv(DefaultAzureCredentialFileEnv)
+			originalCredFile, ok := os.LookupEnv(consts.DefaultAzureCredentialFileEnv)
 			if ok {
-				defer os.Setenv(DefaultAzureCredentialFileEnv, originalCredFile)
+				defer os.Setenv(consts.DefaultAzureCredentialFileEnv, originalCredFile)
 			} else {
-				defer os.Unsetenv(DefaultAzureCredentialFileEnv)
+				defer os.Unsetenv(consts.DefaultAzureCredentialFileEnv)
 			}
-			os.Setenv(DefaultAzureCredentialFileEnv, fakeCredFile)
+			os.Setenv(consts.DefaultAzureCredentialFileEnv, fakeCredFile)
 		}
 		cloud, err := GetCloudProvider(test.kubeconfig, "", "", test.userAgent)
 		if !reflect.DeepEqual(err, test.expectedErr) {
@@ -357,7 +358,7 @@ func TestGetDiskLUN(t *testing.T) {
 }
 
 func TestGetDiskName(t *testing.T) {
-	mDiskPathRE := ManagedDiskPathRE
+	mDiskPathRE := consts.ManagedDiskPathRE
 	tests := []struct {
 		options   string
 		expected1 string
@@ -521,7 +522,7 @@ func TestGetValidCreationData(t *testing.T) {
 			subscriptionID:   "",
 			resourceGroup:    "",
 			sourceResourceID: "/subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/snapshots/xxx",
-			sourceType:       SourceSnapshot,
+			sourceType:       consts.SourceSnapshot,
 			expected1: compute.CreationData{
 				CreateOption:     compute.Copy,
 				SourceResourceID: &sourceResourceSnapshotID,
@@ -532,7 +533,7 @@ func TestGetValidCreationData(t *testing.T) {
 			subscriptionID:   "xxx",
 			resourceGroup:    "xxx",
 			sourceResourceID: "xxx",
-			sourceType:       SourceSnapshot,
+			sourceType:       consts.SourceSnapshot,
 			expected1: compute.CreationData{
 				CreateOption:     compute.Copy,
 				SourceResourceID: &sourceResourceSnapshotID,
@@ -543,7 +544,7 @@ func TestGetValidCreationData(t *testing.T) {
 			subscriptionID:   "",
 			resourceGroup:    "",
 			sourceResourceID: "/subscriptions/23/providers/Microsoft.Compute/disks/name",
-			sourceType:       SourceSnapshot,
+			sourceType:       consts.SourceSnapshot,
 			expected1:        compute.CreationData{},
 			expected2:        fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", "/subscriptions//resourceGroups//providers/Microsoft.Compute/snapshots//subscriptions/23/providers/Microsoft.Compute/disks/name", diskSnapshotPathRE),
 		},
@@ -551,7 +552,7 @@ func TestGetValidCreationData(t *testing.T) {
 			subscriptionID:   "",
 			resourceGroup:    "",
 			sourceResourceID: "http://test.com/vhds/name",
-			sourceType:       SourceSnapshot,
+			sourceType:       consts.SourceSnapshot,
 			expected1:        compute.CreationData{},
 			expected2:        fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", "/subscriptions//resourceGroups//providers/Microsoft.Compute/snapshots/http://test.com/vhds/name", diskSnapshotPathRE),
 		},
@@ -559,7 +560,7 @@ func TestGetValidCreationData(t *testing.T) {
 			subscriptionID:   "",
 			resourceGroup:    "",
 			sourceResourceID: "/subscriptions/xxx/snapshots/xxx",
-			sourceType:       SourceSnapshot,
+			sourceType:       consts.SourceSnapshot,
 			expected1:        compute.CreationData{},
 			expected2:        fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", "/subscriptions//resourceGroups//providers/Microsoft.Compute/snapshots//subscriptions/xxx/snapshots/xxx", diskSnapshotPathRE),
 		},
@@ -567,7 +568,7 @@ func TestGetValidCreationData(t *testing.T) {
 			subscriptionID:   "",
 			resourceGroup:    "",
 			sourceResourceID: "/subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/snapshots/xxx/snapshots/xxx/snapshots/xxx",
-			sourceType:       SourceSnapshot,
+			sourceType:       consts.SourceSnapshot,
 			expected1:        compute.CreationData{},
 			expected2:        fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", "/subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/snapshots/xxx/snapshots/xxx/snapshots/xxx", diskSnapshotPathRE),
 		},
@@ -585,7 +586,7 @@ func TestGetValidCreationData(t *testing.T) {
 			subscriptionID:   "",
 			resourceGroup:    "",
 			sourceResourceID: "/subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/disks/xxx",
-			sourceType:       SourceVolume,
+			sourceType:       consts.SourceVolume,
 			expected1: compute.CreationData{
 				CreateOption:     compute.Copy,
 				SourceResourceID: &sourceResourceVolumeID,
@@ -596,7 +597,7 @@ func TestGetValidCreationData(t *testing.T) {
 			subscriptionID:   "xxx",
 			resourceGroup:    "xxx",
 			sourceResourceID: "xxx",
-			sourceType:       SourceVolume,
+			sourceType:       consts.SourceVolume,
 			expected1: compute.CreationData{
 				CreateOption:     compute.Copy,
 				SourceResourceID: &sourceResourceVolumeID,
@@ -607,9 +608,9 @@ func TestGetValidCreationData(t *testing.T) {
 			subscriptionID:   "",
 			resourceGroup:    "",
 			sourceResourceID: "/subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/snapshots/xxx",
-			sourceType:       SourceVolume,
+			sourceType:       consts.SourceVolume,
 			expected1:        compute.CreationData{},
-			expected2:        fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", "/subscriptions//resourceGroups//providers/Microsoft.Compute/disks//subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/snapshots/xxx", ManagedDiskPathRE),
+			expected2:        fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", "/subscriptions//resourceGroups//providers/Microsoft.Compute/disks//subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/snapshots/xxx", consts.ManagedDiskPathRE),
 		},
 	}
 
@@ -1017,7 +1018,7 @@ func TestPickAvailabilityZone(t *testing.T) {
 				region := "test"
 				mp := make(map[string]string)
 				mp["N/A"] = "test-01"
-				mp[WellKnownTopologyKey] = "test-02"
+				mp[consts.WellKnownTopologyKey] = "test-02"
 				topology := &csi.Topology{
 					Segments: mp,
 				}
@@ -1039,7 +1040,7 @@ func TestPickAvailabilityZone(t *testing.T) {
 				region := "test"
 				mp := make(map[string]string)
 				mp["N/A"] = "test-01"
-				mp[WellKnownTopologyKey] = "test-02"
+				mp[consts.WellKnownTopologyKey] = "test-02"
 				topology := &csi.Topology{
 					Segments: mp,
 				}

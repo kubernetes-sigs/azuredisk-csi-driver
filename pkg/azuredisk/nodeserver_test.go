@@ -34,7 +34,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 )
 
@@ -287,7 +287,7 @@ func TestNodeStageVolume(t *testing.T) {
 	volumeCap := csi.VolumeCapability_AccessMode{Mode: 2}
 	volumeCapWrong := csi.VolumeCapability_AccessMode{Mode: 10}
 	publishContext := map[string]string{
-		azureutils.LUN: "/dev/01",
+		consts.LUN: "/dev/01",
 	}
 
 	tests := []struct {
@@ -473,7 +473,7 @@ func TestNodePublishVolume(t *testing.T) {
 
 	volumeCap := csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER}
 	publishContext := map[string]string{
-		azureutils.LUN: "/dev/01",
+		consts.LUN: "/dev/01",
 	}
 	errorMountSource, err := testutil.GetWorkDirPath("error_mount_source")
 	assert.NoError(t, err)

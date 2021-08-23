@@ -26,7 +26,7 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/status"
-	constants "sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/diskclient/mockdiskclient"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
@@ -80,13 +80,13 @@ func TestRun(t *testing.T) {
 					}
 				}()
 
-				originalCredFile, ok := os.LookupEnv(constants.DefaultAzureCredentialFileEnv)
+				originalCredFile, ok := os.LookupEnv(consts.DefaultAzureCredentialFileEnv)
 				if ok {
-					defer os.Setenv(constants.DefaultAzureCredentialFileEnv, originalCredFile)
+					defer os.Setenv(consts.DefaultAzureCredentialFileEnv, originalCredFile)
 				} else {
-					defer os.Unsetenv(constants.DefaultAzureCredentialFileEnv)
+					defer os.Unsetenv(consts.DefaultAzureCredentialFileEnv)
 				}
-				os.Setenv(constants.DefaultAzureCredentialFileEnv, fakeCredFile)
+				os.Setenv(consts.DefaultAzureCredentialFileEnv, fakeCredFile)
 
 				d, _ := NewFakeDriver(t)
 				d.Run("tcp://127.0.0.1:0", "", true, true)
@@ -105,13 +105,13 @@ func TestRun(t *testing.T) {
 					}
 				}()
 
-				originalCredFile, ok := os.LookupEnv(constants.DefaultAzureCredentialFileEnv)
+				originalCredFile, ok := os.LookupEnv(consts.DefaultAzureCredentialFileEnv)
 				if ok {
-					defer os.Setenv(constants.DefaultAzureCredentialFileEnv, originalCredFile)
+					defer os.Setenv(consts.DefaultAzureCredentialFileEnv, originalCredFile)
 				} else {
-					defer os.Unsetenv(constants.DefaultAzureCredentialFileEnv)
+					defer os.Unsetenv(consts.DefaultAzureCredentialFileEnv)
 				}
-				os.Setenv(constants.DefaultAzureCredentialFileEnv, fakeCredFile)
+				os.Setenv(consts.DefaultAzureCredentialFileEnv, fakeCredFile)
 
 				d, _ := NewFakeDriver(t)
 				d.setCloud(&azure.Cloud{})

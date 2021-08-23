@@ -38,6 +38,7 @@ import (
 	"k8s.io/kubernetes/pkg/volume"
 	"k8s.io/kubernetes/pkg/volume/util/hostutil"
 	mount "k8s.io/mount-utils"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 )
 
@@ -82,7 +83,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	}
 	defer d.volumeLocks.Release(diskURI)
 
-	lun, ok := req.PublishContext[azureutils.LUN]
+	lun, ok := req.PublishContext[consts.LUN]
 	if !ok {
 		return nil, status.Error(codes.InvalidArgument, "lun not provided")
 	}
@@ -142,7 +143,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	}
 
 	// If partition is specified, should mount it only instead of the entire disk.
-	if partition, ok := req.GetVolumeContext()[azureutils.VolumeAttributePartition]; ok {
+	if partition, ok := req.GetVolumeContext()[consts.VolumeAttributePartition]; ok {
 		source = source + "-part" + partition
 	}
 
@@ -156,7 +157,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	klog.V(2).Infof("NodeStageVolume: format %s and mounting at %s successfully.", source, target)
 
 	// if resize is required, resize filesystem
-	if required, ok := req.GetVolumeContext()[azureutils.ResizeRequired]; ok && required == "true" {
+	if required, ok := req.GetVolumeContext()[consts.ResizeRequired]; ok && required == "true" {
 		klog.V(2).Infof("NodeStageVolume: fs resize initiating on target(%s) volumeid(%s)", target, diskURI)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "NodeStageVolume: Could not get volume path for %s: %v", target, err)
@@ -232,7 +233,7 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 
 	switch req.GetVolumeCapability().GetAccessType().(type) {
 	case *csi.VolumeCapability_Block:
-		lun, ok := req.PublishContext[azureutils.LUN]
+		lun, ok := req.PublishContext[consts.LUN]
 		if !ok {
 			return nil, status.Error(codes.InvalidArgument, "lun not provided")
 		}
@@ -319,7 +320,7 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 	} else {
 		if azureutils.IsValidAvailabilityZone(zone.FailureDomain, d.cloud.Location) {
 			topology.Segments[topologyKey] = zone.FailureDomain
-			topology.Segments[azureutils.WellKnownTopologyKey] = zone.FailureDomain
+			topology.Segments[consts.WellKnownTopologyKey] = zone.FailureDomain
 			klog.V(2).Infof("NodeGetInfo, nodeName: %v, zone: %v", d.NodeID, zone.FailureDomain)
 		}
 	}
@@ -501,7 +502,7 @@ func (d *Driver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolume
 func getFStype(attributes map[string]string) string {
 	for k, v := range attributes {
 		switch strings.ToLower(k) {
-		case azureutils.FsTypeField:
+		case consts.FsTypeField:
 			return strings.ToLower(v)
 		}
 	}

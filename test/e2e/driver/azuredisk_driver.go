@@ -27,7 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
-	constants "sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
 const (
@@ -50,7 +50,7 @@ func normalizeProvisioner(provisioner string) string {
 func InitAzureDiskDriver() PVTestDriver {
 	driverName := os.Getenv(AzureDriverNameVar)
 	if driverName == "" {
-		driverName = constants.DefaultDriverName
+		driverName = consts.DefaultDriverName
 	}
 
 	klog.Infof("Using azure disk driver: %s", driverName)

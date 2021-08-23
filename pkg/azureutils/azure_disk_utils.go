@@ -37,7 +37,9 @@ import (
 
 	api "k8s.io/kubernetes/pkg/apis/core"
 	volumeUtil "k8s.io/kubernetes/pkg/volume/util"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
+	azclients "sigs.k8s.io/cloud-provider-azure/pkg/azureclients"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
@@ -93,7 +95,7 @@ func GetCachingMode(attributes map[string]string) (compute.CachingTypes, error) 
 	)
 
 	for k, v := range attributes {
-		if strings.EqualFold(k, CachingModeField) {
+		if strings.EqualFold(k, consts.CachingModeField) {
 			cachingMode = v1.AzureDataDiskCachingMode(v)
 			break
 		}
@@ -139,16 +141,16 @@ func GetCloudProvider(kubeconfig, secretName, secretNamespace, userAgent string)
 
 	if config == nil {
 		klog.V(2).Infof("could not read cloud config from secret %s/%s", az.SecretNamespace, az.SecretName)
-		credFile, ok := os.LookupEnv(DefaultAzureCredentialFileEnv)
+		credFile, ok := os.LookupEnv(consts.DefaultAzureCredentialFileEnv)
 		if ok && strings.TrimSpace(credFile) != "" {
-			klog.V(2).Infof("%s env var set as %v", DefaultAzureCredentialFileEnv, credFile)
+			klog.V(2).Infof("%s env var set as %v", consts.DefaultAzureCredentialFileEnv, credFile)
 		} else {
 			if util.IsWindowsOS() {
-				credFile = DefaultCredFilePathWindows
+				credFile = consts.DefaultCredFilePathWindows
 			} else {
-				credFile = DefaultCredFilePathLinux
+				credFile = consts.DefaultCredFilePathLinux
 			}
-			klog.V(2).Infof("use default %s env var: %v", DefaultAzureCredentialFileEnv, credFile)
+			klog.V(2).Infof("use default %s env var: %v", consts.DefaultAzureCredentialFileEnv, credFile)
 		}
 
 		credFileConfig, err := os.Open(credFile)
@@ -166,6 +168,13 @@ func GetCloudProvider(kubeconfig, secretName, secretNamespace, userAgent string)
 	if config == nil {
 		klog.V(2).Infof("no cloud config provided, error: %v, driver will run without cloud config", err)
 	} else {
+		// disable disk related rate limit
+		config.DiskRateLimit = &azclients.RateLimitConfig{
+			CloudProviderRateLimit: false,
+		}
+		config.SnapshotRateLimit = &azclients.RateLimitConfig{
+			CloudProviderRateLimit: false,
+		}
 		config.UserAgent = userAgent
 		if err = az.InitializeCloudFromConfig(config, fromSecret, false); err != nil {
 			klog.Warningf("InitializeCloudFromConfig failed with error: %v", err)
@@ -202,9 +211,9 @@ func GetDiskLUN(deviceInfo string) (int32, error) {
 }
 
 func GetDiskName(diskURI string) (string, error) {
-	matches := ManagedDiskPathRE.FindStringSubmatch(diskURI)
+	matches := consts.ManagedDiskPathRE.FindStringSubmatch(diskURI)
 	if len(matches) != 2 {
-		return "", fmt.Errorf("could not get disk name from %s, correct format: %s", diskURI, ManagedDiskPathRE)
+		return "", fmt.Errorf("could not get disk name from %s, correct format: %s", diskURI, consts.ManagedDiskPathRE)
 	}
 	return matches[1], nil
 }
@@ -250,14 +259,14 @@ func GetValidCreationData(subscriptionID, resourceGroup, sourceResourceID, sourc
 	}
 
 	switch sourceType {
-	case SourceSnapshot:
+	case consts.SourceSnapshot:
 		if match := diskSnapshotPathRE.FindString(sourceResourceID); match == "" {
 			sourceResourceID = fmt.Sprintf(diskSnapshotPath, subscriptionID, resourceGroup, sourceResourceID)
 		}
 
-	case SourceVolume:
-		if match := ManagedDiskPathRE.FindString(sourceResourceID); match == "" {
-			sourceResourceID = fmt.Sprintf(ManagedDiskPath, subscriptionID, resourceGroup, sourceResourceID)
+	case consts.SourceVolume:
+		if match := consts.ManagedDiskPathRE.FindString(sourceResourceID); match == "" {
+			sourceResourceID = fmt.Sprintf(consts.ManagedDiskPath, subscriptionID, resourceGroup, sourceResourceID)
 		}
 	default:
 		return compute.CreationData{
@@ -267,11 +276,11 @@ func GetValidCreationData(subscriptionID, resourceGroup, sourceResourceID, sourc
 
 	splits := strings.Split(sourceResourceID, "/")
 	if len(splits) > 9 {
-		if sourceType == SourceSnapshot {
+		if sourceType == consts.SourceSnapshot {
 			return compute.CreationData{}, fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", sourceResourceID, diskSnapshotPathRE)
 		}
 
-		return compute.CreationData{}, fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", sourceResourceID, ManagedDiskPathRE)
+		return compute.CreationData{}, fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", sourceResourceID, consts.ManagedDiskPathRE)
 	}
 	return compute.CreationData{
 		CreateOption:     compute.Copy,
@@ -387,7 +396,7 @@ func PickAvailabilityZone(requirement *csi.TopologyRequirement, region, topology
 		return ""
 	}
 	for _, topology := range requirement.GetPreferred() {
-		if zone, exists := topology.GetSegments()[WellKnownTopologyKey]; exists {
+		if zone, exists := topology.GetSegments()[consts.WellKnownTopologyKey]; exists {
 			if IsValidAvailabilityZone(zone, region) {
 				return zone
 			}
@@ -399,7 +408,7 @@ func PickAvailabilityZone(requirement *csi.TopologyRequirement, region, topology
 		}
 	}
 	for _, topology := range requirement.GetRequisite() {
-		if zone, exists := topology.GetSegments()[WellKnownTopologyKey]; exists {
+		if zone, exists := topology.GetSegments()[consts.WellKnownTopologyKey]; exists {
 			if IsValidAvailabilityZone(zone, region) {
 				return zone
 			}
