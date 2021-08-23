@@ -1,49 +1,41 @@
+---
 kind: Deployment
 apiVersion: apps/v1
 metadata:
-  name: {{ .Values.controller.name }}
-  namespace: {{ .Release.Namespace }}
-{{ include "azuredisk.labels" . | indent 2 }}
+  name: csi-azuredisk-controller
+  namespace: kube-system
 spec:
-  replicas: {{ .Values.controller.replicas }}
+  replicas: 2
   selector:
     matchLabels:
-      app: {{ .Values.controller.name }}
+      app: csi-azuredisk-controller
   template:
     metadata:
-{{ include "azuredisk.labels" . | indent 6 }}
-        app: {{ .Values.controller.name }}
-{{- with .Values.controller.podLabels }}
-{{ toYaml . | indent 8 }}
-{{- end }}
+      labels:
+        app: csi-azuredisk-controller
     spec:
-      {{- if .Values.imagePullSecrets }}
-      imagePullSecrets:
-{{ toYaml .Values.imagePullSecrets | indent 8 }}
-      {{- end }}
-      hostNetwork: {{ .Values.controller.hostNetwork }}
-      serviceAccountName: {{ .Values.serviceAccount.controller }}
+      hostNetwork: true
+      serviceAccountName: csi-azuredisk-controller-sa
       nodeSelector:
-        kubernetes.io/os: linux
-        {{- if .Values.controller.runOnMaster}}
-        kubernetes.io/role: master
-        {{- end}}
+        kubernetes.io/os: linux  # add "kubernetes.io/role: master" to run controller on master node
       priorityClassName: system-cluster-critical
-{{- with .Values.controller.tolerations }}
       tolerations:
-{{ toYaml . | indent 8 }}
-{{- end }}
-      {{- include "azuredisk.pullSecrets" . | indent 6 }}
+        - key: "node-role.kubernetes.io/master"
+          operator: "Exists"
+          effect: "NoSchedule"
+        - key: "node-role.kubernetes.io/controlplane"
+          operator: "Exists"
+          effect: "NoSchedule"
       containers:
         - name: csi-provisioner
-          image: "{{ .Values.image.csiProvisioner.repository }}:{{ .Values.image.csiProvisioner.tag }}"
+          image: mcr.microsoft.com/oss/kubernetes-csi/csi-provisioner:v2.1.1
           args:
             - "--feature-gates=Topology=true"
             - "--csi-address=$(ADDRESS)"
             - "--v=2"
             - "--timeout=15s"
             - "--leader-election"
-            - "--worker-threads={{ .Values.controller.provisionerWorkerThreads }}"
+            - "--worker-threads=40"
             - "--extra-create-metadata=true"
             - "--strict-topology=true"
           env:
@@ -60,19 +52,19 @@ spec:
               cpu: 10m
               memory: 20Mi
         - name: csi-attacher
-          image: "{{ .Values.image.csiAttacher.repository }}:{{ .Values.image.csiAttacher.tag }}"
+          image: mcr.microsoft.com/oss/kubernetes-csi/csi-attacher:v3.1.0
           args:
             - "-v=2"
             - "-csi-address=$(ADDRESS)"
             - "-timeout=600s"
             - "-leader-election"
-            - "-worker-threads={{ .Values.controller.attacherWorkerThreads }}"
+            - "-worker-threads=500"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
           volumeMounts:
-          - mountPath: /csi
-            name: socket-dir
+            - mountPath: /csi
+              name: socket-dir
           resources:
             limits:
               cpu: 100m
@@ -81,15 +73,11 @@ spec:
               cpu: 10m
               memory: 20Mi
         - name: csi-snapshotter
-{{- if eq .Values.snapshot.apiVersion "beta" }}
-          image: "{{ .Values.snapshot.image.csiSnapshotter.repository }}:{{ .Values.snapshot.image.csiSnapshotter.tag }}"
-{{- else }}
-          image: "{{ .Values.snapshot.image.csiSnapshotter.repository }}:{{ .Values.snapshot.image.csiSnapshotter.gaTag }}"
-{{- end }}
+          image: mcr.microsoft.com/oss/kubernetes-csi/csi-snapshotter:v3.0.3
           args:
             - "-csi-address=$(ADDRESS)"
             - "-leader-election"
-            - "-v=2"
+            - "--v=2"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -104,7 +92,7 @@ spec:
               cpu: 10m
               memory: 20Mi
         - name: csi-resizer
-          image: "{{ .Values.image.csiResizer.repository }}:{{ .Values.image.csiResizer.tag }}"
+          image: mcr.microsoft.com/oss/kubernetes-csi/csi-resizer:v1.1.0
           args:
             - "-csi-address=$(ADDRESS)"
             - "-v=2"
@@ -124,11 +112,11 @@ spec:
               cpu: 10m
               memory: 20Mi
         - name: liveness-probe
-          image: "{{ .Values.image.livenessProbe.repository }}:{{ .Values.image.livenessProbe.tag }}"
+          image: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe:v2.3.0
           args:
             - --csi-address=/csi/csi.sock
             - --probe-timeout=3s
-            - --health-port={{ .Values.controller.livenessProbe.healthPort }}
+            - --health-port=29602
             - --v=2
           volumeMounts:
             - name: socket-dir
@@ -141,22 +129,18 @@ spec:
               cpu: 10m
               memory: 20Mi
         - name: azuredisk
-          image: "{{ .Values.image.azuredisk.repository }}:{{ .Values.image.azuredisk.tag }}"
+          image: mcr.microsoft.com/k8s/csi/azuredisk-csi:v1.6.0
+          imagePullPolicy: IfNotPresent
           args:
-            - "--v={{ .Values.controller.logLevel }}"
+            - "--v=5"
             - "--endpoint=$(CSI_ENDPOINT)"
-            - "--metrics-address=0.0.0.0:{{ .Values.controller.metricsPort }}"
-            - "--disable-avset-nodes={{ .Values.controller.disableAvailabilitySetNodes }}"
-            - "--drivername={{ .Values.driver.name }}"
-            - "--cloud-config-secret-name={{ .Values.controller.cloudConfigSecretName }}"
-            - "--cloud-config-secret-namespace={{ .Values.controller.cloudConfigSecretNamespace }}"
-            - "--custom-user-agent={{ .Values.driver.customUserAgent }}"
-            - "--user-agent-suffix={{ .Values.driver.userAgentSuffix }}"
+            - "--metrics-address=0.0.0.0:29604"
+            - "--user-agent-suffix=OSS-kubectl"
           ports:
-            - containerPort: {{ .Values.controller.livenessProbe.healthPort }}
+            - containerPort: 29602
               name: healthz
               protocol: TCP
-            - containerPort: {{ .Values.controller.metricsPort }}
+            - containerPort: 29604
               name: metrics
               protocol: TCP
           livenessProbe:
@@ -176,11 +160,6 @@ spec:
                   optional: true
             - name: CSI_ENDPOINT
               value: unix:///csi/csi.sock
-            {{- if eq .Values.cloud "AzureStackCloud" }}
-            - name: AZURE_ENVIRONMENT_FILEPATH
-              value: /etc/kubernetes/azurestackcloud.json
-            {{- end }}
-          imagePullPolicy: {{ .Values.image.azuredisk.pullPolicy }}
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
@@ -189,19 +168,6 @@ spec:
             - mountPath: /var/lib/waagent/ManagedIdentity-Settings
               readOnly: true
               name: msi
-            {{- if eq .Values.cloud "AzureStackCloud" }}
-            - name: ssl
-              mountPath: /etc/ssl/certs
-              readOnly: true
-            {{- end }}
-            {{- if eq .Values.linux.distro "fedora" }}
-            - name: ssl
-              mountPath: /etc/ssl/certs
-              readOnly: true
-            - name: ssl-pki
-              mountPath: /etc/pki/ca-trust/extracted
-              readOnly: true
-            {{- end }}
           resources:
             limits:
               cpu: 200m
@@ -219,16 +185,3 @@ spec:
         - name: msi
           hostPath:
             path: /var/lib/waagent/ManagedIdentity-Settings
-        {{- if eq .Values.cloud "AzureStackCloud" }}
-        - name: ssl
-          hostPath:
-            path: /etc/ssl/certs
-        {{- end }}
-        {{- if eq .Values.linux.distro "fedora" }}
-        - name: ssl
-          hostPath:
-            path: /etc/ssl/certs
-        - name: ssl-pki
-          hostPath:
-            path: /etc/pki/ca-trust/extracted
-        {{- end }}

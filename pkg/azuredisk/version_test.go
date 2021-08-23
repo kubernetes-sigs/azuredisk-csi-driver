@@ -74,7 +74,7 @@ func TestGetUserAgent(t *testing.T) {
 			driverName:      "",
 			customUserAgent: "",
 			userAgentSuffix: "",
-			expectedResult:  fmt.Sprintf("%s/%s %s/%s (%s-%s) %s/%s", "", driverVersion, runtime.Compiler, runtime.Version(), runtime.GOARCH, runtime.GOOS, gitCommit, buildDate),
+			expectedResult:  fmt.Sprintf("%s/%s %s/%s (%s-%s)", "", driverVersion, runtime.Compiler, runtime.Version(), runtime.GOARCH, runtime.GOOS),
 		},
 		{
 			driverName:      "",
@@ -86,7 +86,7 @@ func TestGetUserAgent(t *testing.T) {
 			driverName:      "drivername",
 			customUserAgent: "",
 			userAgentSuffix: "suffix",
-			expectedResult:  fmt.Sprintf("%s/%s %s/%s (%s-%s) %s/%s suffix", "drivername", driverVersion, runtime.Compiler, runtime.Version(), runtime.GOARCH, runtime.GOOS, gitCommit, buildDate),
+			expectedResult:  fmt.Sprintf("%s/%s %s/%s (%s-%s) suffix", "drivername", driverVersion, runtime.Compiler, runtime.Version(), runtime.GOARCH, runtime.GOOS),
 		},
 	}
 
