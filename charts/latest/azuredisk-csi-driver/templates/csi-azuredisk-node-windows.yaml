@@ -44,7 +44,11 @@ spec:
           volumeMounts:
             - mountPath: C:\csi
               name: plugin-dir
+{{- if hasPrefix "/" .Values.image.livenessProbe.repository }}
+          image: "{{ .Values.image.baseRepo }}{{ .Values.windows.image.livenessProbe.repository }}:{{ .Values.windows.image.livenessProbe.tag }}"
+{{- else }}
           image: "{{ .Values.windows.image.livenessProbe.repository }}:{{ .Values.windows.image.livenessProbe.tag }}"
+{{- end }}
           args:
             - "--csi-address=$(CSI_ENDPOINT)"
             - "--probe-timeout=3s"
@@ -62,7 +66,11 @@ spec:
               cpu: 10m
               memory: 20Mi
         - name: node-driver-registrar
+{{- if hasPrefix "/" .Values.image.nodeDriverRegistrar.repository }}
+          image: "{{ .Values.image.baseRepo }}{{ .Values.windows.image.nodeDriverRegistrar.repository }}:{{ .Values.windows.image.nodeDriverRegistrar.tag }}"
+{{- else }}
           image: "{{ .Values.windows.image.nodeDriverRegistrar.repository }}:{{ .Values.windows.image.nodeDriverRegistrar.tag }}"
+{{- end }}
           args:
             - "--v=2"
             - "--csi-address=$(CSI_ENDPOINT)"
@@ -103,7 +111,11 @@ spec:
               cpu: 10m
               memory: 20Mi
         - name: azuredisk
+{{- if hasPrefix "/" .Values.image.azuredisk.repository }}
+          image: "{{ .Values.image.baseRepo }}{{ .Values.image.azuredisk.repository }}:{{ .Values.image.azuredisk.tag }}"
+{{- else }}
           image: "{{ .Values.image.azuredisk.repository }}:{{ .Values.image.azuredisk.tag }}"
+{{- end }}
           args:
             - "--v={{ .Values.node.logLevel }}"
             - "--endpoint=$(CSI_ENDPOINT)"
