@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/Azure/go-autorest/autorest/date"
+	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 
@@ -40,6 +41,7 @@ import (
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/diskclient/mockdiskclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/snapshotclient/mocksnapshotclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmclient/mockvmclient"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
 )
@@ -262,6 +264,24 @@ func TestCreateVolume(t *testing.T) {
 			},
 		},
 		{
+			name: "logical sector size parse error",
+			testFunc: func(t *testing.T) {
+				d, _ := NewFakeDriver(t)
+				mp := make(map[string]string)
+				mp[logicalSectorSizeField] = "aaa"
+				req := &csi.CreateVolumeRequest{
+					Name:               "unit-test",
+					VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
+					Parameters:         mp,
+				}
+				_, err := d.CreateVolume(context.Background(), req)
+				expectedErr := status.Error(codes.InvalidArgument, "parse aaa failed with error: strconv.Atoi: parsing \"aaa\": invalid syntax")
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
 			name: "maxshare parse error ",
 			testFunc: func(t *testing.T) {
 				d, _ := NewFakeDriver(t)
@@ -461,6 +481,42 @@ func TestCreateVolume(t *testing.T) {
 				d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rerr).AnyTimes()
 				_, err := d.CreateVolume(context.Background(), req)
 				expectedErr := status.Error(codes.NotFound, "Retriable: false, RetryAfter: 0s, HTTPStatusCode: 0, RawError: NotFound")
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "valid request ZRS",
+			testFunc: func(t *testing.T) {
+				d, _ := NewFakeDriver(t)
+				mp := make(map[string]string)
+				mp[skuNameField] = "StandardSSD_ZRS"
+				stdCapacityRangetest := &csi.CapacityRange{
+					RequiredBytes: volumehelper.GiBToBytes(10),
+					LimitBytes:    volumehelper.GiBToBytes(15),
+				}
+				req := &csi.CreateVolumeRequest{
+					Name:               testVolumeName,
+					VolumeCapabilities: stdVolumeCapabilities,
+					CapacityRange:      stdCapacityRangetest,
+					Parameters:         mp,
+				}
+				size := int32(volumehelper.BytesToGiB(req.CapacityRange.RequiredBytes))
+				id := fmt.Sprintf(managedDiskPath, "subs", "rg", testVolumeName)
+				state := string(compute.ProvisioningStateSucceeded)
+				disk := compute.Disk{
+					ID:   &id,
+					Name: &testVolumeName,
+					DiskProperties: &compute.DiskProperties{
+						DiskSizeGB:        &size,
+						ProvisioningState: &state,
+					},
+				}
+				d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+				d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+				_, err := d.CreateVolume(context.Background(), req)
+				expectedErr := error(nil)
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
@@ -668,71 +724,267 @@ func TestGetSnapshotInfo(t *testing.T) {
 }
 
 func TestControllerPublishVolume(t *testing.T) {
+	volumeCap := csi.VolumeCapability_AccessMode{Mode: 2}
+	volumeCapWrong := csi.VolumeCapability_AccessMode{Mode: 10}
 	d, err := NewFakeDriver(t)
-	d.setCloud(&azure.Cloud{})
+	nodeName := "unit-test-node"
+	//d.setCloud(&azure.Cloud{})
 	if err != nil {
 		t.Fatalf("Error getting driver: %v", err)
 	}
-	volumeCap := csi.VolumeCapability_AccessMode{Mode: 2}
-	volumeCapWrong := csi.VolumeCapability_AccessMode{Mode: 10}
-	tests := []struct {
-		desc        string
-		req         *csi.ControllerPublishVolumeRequest
-		expectedErr error
+	testCases := []struct {
+		name     string
+		testFunc func(t *testing.T)
 	}{
 		{
-			desc:        "Volume ID missing",
-			req:         &csi.ControllerPublishVolumeRequest{},
-			expectedErr: status.Error(codes.InvalidArgument, "Volume ID not provided"),
+			name: "Volume ID missing",
+			testFunc: func(t *testing.T) {
+				d, _ := NewFakeDriver(t)
+				req := &csi.ControllerPublishVolumeRequest{}
+				expectedErr := status.Error(codes.InvalidArgument, "Volume ID not provided")
+				_, err := d.ControllerPublishVolume(context.Background(), req)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
 		},
 		{
-			desc: "Volume capability missing",
-			req: &csi.ControllerPublishVolumeRequest{
-				VolumeId: "vol_1",
+			name: "Volume capability missing",
+			testFunc: func(t *testing.T) {
+				d, _ := NewFakeDriver(t)
+				req := &csi.ControllerPublishVolumeRequest{
+					VolumeId: "vol_1",
+				}
+				expectedErr := status.Error(codes.InvalidArgument, "Volume capability not provided")
+				_, err := d.ControllerPublishVolume(context.Background(), req)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
 			},
-			expectedErr: status.Error(codes.InvalidArgument, "Volume capability not provided"),
 		},
 		{
-			desc: "Volume capability not supported",
-			req: &csi.ControllerPublishVolumeRequest{
-				VolumeId:         "vol_1",
-				VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCapWrong},
+			name: "Volume capability not supported",
+			testFunc: func(t *testing.T) {
+				d, _ := NewFakeDriver(t)
+				req := &csi.ControllerPublishVolumeRequest{
+					VolumeId:         "vol_1",
+					VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCapWrong},
+				}
+				expectedErr := status.Error(codes.InvalidArgument, "Volume capability not supported")
+				_, err := d.ControllerPublishVolume(context.Background(), req)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
 			},
-			expectedErr: status.Error(codes.InvalidArgument, "Volume capability not supported"),
 		},
 		{
-			desc: "diskName error",
-			req: &csi.ControllerPublishVolumeRequest{
-				VolumeId:         "vol_1",
-				VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap},
+			name: "diskName error",
+			testFunc: func(t *testing.T) {
+				req := &csi.ControllerPublishVolumeRequest{
+					VolumeId:         "vol_1",
+					VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap},
+				}
+				expectedErr := status.Error(codes.NotFound, "Volume not found, failed with error: could not get disk name from vol_1, correct format: (?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/disks/(.+)")
+				_, err := d.ControllerPublishVolume(context.Background(), req)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
 			},
-			expectedErr: status.Error(codes.NotFound, "Volume not found, failed with error: could not get disk name from vol_1, correct format: (?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/disks/(.+)"),
 		},
 		{
-			desc: "NodeID missing",
-			req: &csi.ControllerPublishVolumeRequest{
-				VolumeId:         testVolumeID,
-				VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap},
+			name: "NodeID missing",
+			testFunc: func(t *testing.T) {
+				req := &csi.ControllerPublishVolumeRequest{
+					VolumeId:         testVolumeID,
+					VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap},
+				}
+				id := req.VolumeId
+				disk := compute.Disk{
+					ID: &id,
+				}
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				mockDiskClient := mockdiskclient.NewMockInterface(ctrl)
+				d.getCloud().DisksClient = mockDiskClient
+				mockDiskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+
+				expectedErr := status.Error(codes.InvalidArgument, "Node ID not provided")
+				_, err := d.ControllerPublishVolume(context.Background(), req)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
 			},
-			expectedErr: status.Error(codes.InvalidArgument, "Node ID not provided"),
+		},
+		{
+			name: "failed provisioning state",
+			testFunc: func(t *testing.T) {
+				req := &csi.ControllerPublishVolumeRequest{
+					VolumeId:         testVolumeID,
+					VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap},
+					NodeId:           nodeName,
+				}
+				id := req.VolumeId
+				disk := compute.Disk{
+					ID: &id,
+				}
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				mockDiskClient := mockdiskclient.NewMockInterface(ctrl)
+				d.getCloud().DisksClient = mockDiskClient
+				mockDiskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+				instanceID := fmt.Sprintf("/subscriptions/subscription/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/%s", nodeName)
+				vm := compute.VirtualMachine{
+					Name:     &nodeName,
+					ID:       &instanceID,
+					Location: &d.getCloud().Location,
+				}
+				vmstatus := []compute.InstanceViewStatus{
+					{
+						Code: to.StringPtr("PowerState/Running"),
+					},
+					{
+						Code: to.StringPtr("ProvisioningState/succeeded"),
+					},
+				}
+				vm.VirtualMachineProperties = &compute.VirtualMachineProperties{
+					ProvisioningState: to.StringPtr(string(compute.ProvisioningStateFailed)),
+					HardwareProfile: &compute.HardwareProfile{
+						VMSize: compute.StandardA0,
+					},
+					InstanceView: &compute.VirtualMachineInstanceView{
+						Statuses: &vmstatus,
+					},
+					StorageProfile: &compute.StorageProfile{
+						DataDisks: &[]compute.DataDisk{},
+					},
+				}
+				dataDisks := make([]compute.DataDisk, 1)
+				dataDisks[0] = compute.DataDisk{Lun: to.Int32Ptr(int32(0)), Name: &testVolumeName}
+				vm.StorageProfile.DataDisks = &dataDisks
+				mockVMsClient := d.getCloud().VirtualMachinesClient.(*mockvmclient.MockInterface)
+				mockVMsClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(vm, nil).AnyTimes()
+				mockVMsClient.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&retry.Error{RawError: fmt.Errorf("error")}).AnyTimes()
+				expectedErr := fmt.Errorf("update instance \"unit-test-node\" failed with Retriable: false, RetryAfter: 0s, HTTPStatusCode: 0, RawError: error")
+				_, err := d.ControllerPublishVolume(context.Background(), req)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "Volume already attached success",
+			testFunc: func(t *testing.T) {
+				d, err = NewFakeDriver(t)
+				req := &csi.ControllerPublishVolumeRequest{
+					VolumeId:         testVolumeID,
+					VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap},
+					NodeId:           nodeName,
+				}
+				id := req.VolumeId
+				disk := compute.Disk{
+					ID: &id,
+				}
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				mockDiskClient := mockdiskclient.NewMockInterface(ctrl)
+				d.getCloud().DisksClient = mockDiskClient
+				mockDiskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+				instanceID := fmt.Sprintf("/subscriptions/subscription/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/%s", nodeName)
+				vm := compute.VirtualMachine{
+					Name:     &nodeName,
+					ID:       &instanceID,
+					Location: &d.getCloud().Location,
+				}
+				vmstatus := []compute.InstanceViewStatus{
+					{
+						Code: to.StringPtr("PowerState/Running"),
+					},
+					{
+						Code: to.StringPtr("ProvisioningState/succeeded"),
+					},
+				}
+				vm.VirtualMachineProperties = &compute.VirtualMachineProperties{
+					ProvisioningState: to.StringPtr(string(compute.ProvisioningStateSucceeded)),
+					HardwareProfile: &compute.HardwareProfile{
+						VMSize: compute.StandardA0,
+					},
+					InstanceView: &compute.VirtualMachineInstanceView{
+						Statuses: &vmstatus,
+					},
+					StorageProfile: &compute.StorageProfile{
+						DataDisks: &[]compute.DataDisk{},
+					},
+				}
+				dataDisks := make([]compute.DataDisk, 1)
+				dataDisks[0] = compute.DataDisk{Lun: to.Int32Ptr(int32(0)), Name: &testVolumeName}
+				vm.StorageProfile.DataDisks = &dataDisks
+				mockVMsClient := d.getCloud().VirtualMachinesClient.(*mockvmclient.MockInterface)
+				mockVMsClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(vm, nil).AnyTimes()
+				_, err := d.ControllerPublishVolume(context.Background(), req)
+				if !reflect.DeepEqual(err, nil) {
+					t.Errorf("actualErr: (%v), expectedErr: (<nil>)", err)
+				}
+			},
+		},
+		{
+			name: "CachingMode Error",
+			testFunc: func(t *testing.T) {
+				d, err = NewFakeDriver(t)
+				volumeContext := make(map[string]string)
+				volumeContext[cachingModeField] = "badmode"
+				req := &csi.ControllerPublishVolumeRequest{
+					VolumeId:         testVolumeID,
+					VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap},
+					NodeId:           nodeName,
+					VolumeContext:    volumeContext,
+				}
+				id := req.VolumeId
+				disk := compute.Disk{
+					ID: &id,
+				}
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				mockDiskClient := mockdiskclient.NewMockInterface(ctrl)
+				d.getCloud().DisksClient = mockDiskClient
+				mockDiskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+				instanceID := fmt.Sprintf("/subscriptions/subscription/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/%s", nodeName)
+				vm := compute.VirtualMachine{
+					Name:     &nodeName,
+					ID:       &instanceID,
+					Location: &d.getCloud().Location,
+				}
+				vmstatus := []compute.InstanceViewStatus{
+					{
+						Code: to.StringPtr("PowerState/Running"),
+					},
+					{
+						Code: to.StringPtr("ProvisioningState/succeeded"),
+					},
+				}
+				vm.VirtualMachineProperties = &compute.VirtualMachineProperties{
+					ProvisioningState: to.StringPtr(string(compute.ProvisioningStateSucceeded)),
+					HardwareProfile: &compute.HardwareProfile{
+						VMSize: compute.StandardA0,
+					},
+					InstanceView: &compute.VirtualMachineInstanceView{
+						Statuses: &vmstatus,
+					},
+					StorageProfile: &compute.StorageProfile{
+						DataDisks: &[]compute.DataDisk{},
+					},
+				}
+				mockVMsClient := d.getCloud().VirtualMachinesClient.(*mockvmclient.MockInterface)
+				mockVMsClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(vm, nil).AnyTimes()
+				expectedErr := fmt.Errorf("azureDisk - badmode is not supported cachingmode. Supported values are [None ReadOnly ReadWrite]")
+				_, err := d.ControllerPublishVolume(context.Background(), req)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (<nil>)", err)
+				}
+			},
 		},
 	}
-
-	for _, test := range tests {
-		id := test.req.VolumeId
-		disk := compute.Disk{
-			ID: &id,
-		}
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-		mockDiskClient := mockdiskclient.NewMockInterface(ctrl)
-		d.setCloud(&azure.Cloud{})
-		d.getCloud().DisksClient = mockDiskClient
-		mockDiskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
-		_, err := d.ControllerPublishVolume(context.Background(), test.req)
-		if !reflect.DeepEqual(err, test.expectedErr) {
-			t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
-		}
+	for _, tc := range testCases {
+		t.Run(tc.name, tc.testFunc)
 	}
 }
 
