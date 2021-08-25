@@ -12,7 +12,7 @@
    - `--set controller.cloudConfigSecretNamesapce`
    - `--set node.cloudConfigSecretName`
    - `--set node.cloudConfigSecretNamesapce`
- - switch to `mcr.azk8s.cn` repository in Azure China
+ - switch to `mcr.azk8s.cn` repository in Azure China: `--set image.baseRepo=mcr.azk8s.cn`
 
 ## install latest version
 ```console
