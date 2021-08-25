@@ -133,7 +133,7 @@ func TestCreateVolume(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				d, _ := NewFakeDriver(t)
 				mp := make(map[string]string)
-				mp[logicalSectorSizeField] = "aaa"
+				mp[consts.LogicalSectorSizeField] = "aaa"
 				req := &csi.CreateVolumeRequest{
 					Name:               "unit-test",
 					VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
@@ -356,7 +356,7 @@ func TestCreateVolume(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				d, _ := NewFakeDriver(t)
 				mp := make(map[string]string)
-				mp[skuNameField] = "StandardSSD_ZRS"
+				mp[consts.SkuNameField] = "StandardSSD_ZRS"
 				stdCapacityRangetest := &csi.CapacityRange{
 					RequiredBytes: volumehelper.GiBToBytes(10),
 					LimitBytes:    volumehelper.GiBToBytes(15),
@@ -368,7 +368,7 @@ func TestCreateVolume(t *testing.T) {
 					Parameters:         mp,
 				}
 				size := int32(volumehelper.BytesToGiB(req.CapacityRange.RequiredBytes))
-				id := fmt.Sprintf(managedDiskPath, "subs", "rg", testVolumeName)
+				id := fmt.Sprintf(consts.ManagedDiskPath, "subs", "rg", testVolumeName)
 				state := string(compute.ProvisioningStateSucceeded)
 				disk := compute.Disk{
 					ID:   &id,
@@ -768,7 +768,7 @@ func TestControllerPublishVolume(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				d, err = NewFakeDriver(t)
 				volumeContext := make(map[string]string)
-				volumeContext[cachingModeField] = "badmode"
+				volumeContext[consts.CachingModeField] = "badmode"
 				req := &csi.ControllerPublishVolumeRequest{
 					VolumeId:         testVolumeID,
 					VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap},

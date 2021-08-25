@@ -32,14 +32,14 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/mount-utils"
 
-	azureconsts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
-	consts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
+	azurecloudconsts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
@@ -137,7 +137,7 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 		klog.V(2).Infof("disable UseInstanceMetadata for controller")
 		d.cloud.Config.UseInstanceMetadata = false
 
-		if d.cloud.VMType == consts.VMTypeVMSS && !d.cloud.DisableAvailabilitySetNodes {
+		if d.cloud.VMType == azurecloudconsts.VMTypeVMSS && !d.cloud.DisableAvailabilitySetNodes {
 			if disableAVSetNodes {
 				klog.V(2).Infof("DisableAvailabilitySetNodes for controller since current VMType is vmss")
 				d.cloud.DisableAvailabilitySetNodes = true
@@ -186,9 +186,9 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 }
 
 func (d *Driver) isGetDiskThrottled() bool {
-	cache, err := d.getDiskThrottlingCache.Get(azureconsts.ThrottlingKey, azcache.CacheReadTypeDefault)
+	cache, err := d.getDiskThrottlingCache.Get(consts.ThrottlingKey, azcache.CacheReadTypeDefault)
 	if err != nil {
-		klog.Warningf("getDiskThrottlingCache(%s) return with error: %s", azureconsts.ThrottlingKey, err)
+		klog.Warningf("getDiskThrottlingCache(%s) return with error: %s", consts.ThrottlingKey, err)
 		return false
 	}
 	return cache != nil
@@ -212,9 +212,9 @@ func (d *Driver) checkDiskExists(ctx context.Context, diskURI string) (*compute.
 
 	disk, rerr := d.cloud.DisksClient.Get(ctx, resourceGroup, diskName)
 	if rerr != nil {
-		if strings.Contains(rerr.RawError.Error(), azureconsts.RateLimited) {
+		if strings.Contains(rerr.RawError.Error(), consts.RateLimited) {
 			klog.Warningf("checkDiskExists(%s) is throttled with error: %v", diskURI, rerr.Error())
-			d.getDiskThrottlingCache.Set(azureconsts.ThrottlingKey, "")
+			d.getDiskThrottlingCache.Set(consts.ThrottlingKey, "")
 			return nil, nil
 		}
 		return nil, rerr.Error()
@@ -237,9 +237,9 @@ func (d *Driver) checkDiskCapacity(ctx context.Context, resourceGroup, diskName 
 			return false, status.Errorf(codes.AlreadyExists, "the request volume already exists, but its capacity(%v) is different from (%v)", *disk.DiskProperties.DiskSizeGB, requestGiB)
 		}
 	} else {
-		if strings.Contains(rerr.RawError.Error(), azureconsts.RateLimited) {
+		if strings.Contains(rerr.RawError.Error(), consts.RateLimited) {
 			klog.Warningf("checkDiskCapacity(%s, %s) is throttled with error: %v", resourceGroup, diskName, rerr.Error())
-			d.getDiskThrottlingCache.Set(azureconsts.ThrottlingKey, "")
+			d.getDiskThrottlingCache.Set(consts.ThrottlingKey, "")
 		}
 	}
 	return true, nil
