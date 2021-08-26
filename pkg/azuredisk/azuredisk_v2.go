@@ -1,3 +1,4 @@
+//go:build azurediskv2
 // +build azurediskv2
 
 /*
@@ -32,6 +33,7 @@ import (
 
 	"k8s.io/klog/v2"
 
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
@@ -87,7 +89,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 	userAgent := GetUserAgent(d.Name, d.customUserAgent, d.userAgentSuffix)
 	klog.V(2).Infof("driver userAgent: %s", userAgent)
 
-	cloud, err := GetCloudProvider(kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, userAgent)
+	cloud, err := azureutils.GetCloudProvider(kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, userAgent)
 	if err != nil {
 		klog.Fatalf("failed to get Azure Cloud Provider, error: %v", err)
 	}
@@ -144,12 +146,12 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 }
 
 func (d *DriverV2) checkDiskExists(ctx context.Context, diskURI string) (*compute.Disk, error) {
-	diskName, err := GetDiskName(diskURI)
+	diskName, err := azureutils.GetDiskName(diskURI)
 	if err != nil {
 		return nil, err
 	}
 
-	resourceGroup, err := GetResourceGroupFromURI(diskURI)
+	resourceGroup, err := azureutils.GetResourceGroupFromURI(diskURI)
 	if err != nil {
 		return nil, err
 	}

@@ -23,14 +23,15 @@ import (
 	"strings"
 	"testing"
 
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/yaml"
 )
 
 func TestGetVersion(t *testing.T) {
-	version := GetVersion(DefaultDriverName)
+	version := GetVersion(consts.DefaultDriverName)
 
 	expected := VersionInfo{
-		DriverName:    DefaultDriverName,
+		DriverName:    consts.DefaultDriverName,
 		DriverVersion: "N/A",
 		GitCommit:     "N/A",
 		BuildDate:     "N/A",

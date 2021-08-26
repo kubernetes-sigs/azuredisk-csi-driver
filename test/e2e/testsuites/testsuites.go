@@ -50,6 +50,7 @@ import (
 	imageutils "k8s.io/kubernetes/test/utils/image"
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 )
 
 const (
@@ -796,7 +797,7 @@ func (t *TestPod) SetupInlineVolume(name, mountPath, diskURI string, readOnly bo
 	t.pod.Spec.Containers[0].VolumeMounts = append(t.pod.Spec.Containers[0].VolumeMounts, volumeMount)
 
 	kind := v1.AzureDataDiskKind("Managed")
-	diskName, _ := azuredisk.GetDiskName(diskURI)
+	diskName, _ := azureutils.GetDiskName(diskURI)
 	volume := v1.Volume{
 		Name: name,
 		VolumeSource: v1.VolumeSource{

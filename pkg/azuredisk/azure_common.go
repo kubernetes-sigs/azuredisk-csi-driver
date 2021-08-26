@@ -17,81 +17,10 @@ limitations under the License.
 package azuredisk
 
 import (
-	"fmt"
 	"io/ioutil"
 	"os"
-	"regexp"
-	"strconv"
-	libstrings "strings"
-
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
-
-	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/util/sets"
-	api "k8s.io/kubernetes/pkg/apis/core"
+	"strings"
 )
-
-const (
-	azurePublicCloudDefaultStorageAccountType = compute.StandardSSDLRS
-	azureStackCloudDefaultStorageAccountType  = compute.StandardLRS
-	defaultAzureDataDiskCachingMode           = v1.AzureDataDiskCachingReadOnly
-)
-
-var (
-	supportedCachingModes = sets.NewString(
-		string(api.AzureDataDiskCachingNone),
-		string(api.AzureDataDiskCachingReadOnly),
-		string(api.AzureDataDiskCachingReadWrite))
-
-	lunPathRE = regexp.MustCompile(`/dev(?:.*)/disk/azure/scsi(?:.*)/lun(.+)`)
-)
-
-func normalizeNetworkAccessPolicy(networkAccessPolicy string) (compute.NetworkAccessPolicy, error) {
-	if networkAccessPolicy == "" {
-		return compute.AllowAll, nil
-	}
-	policy := compute.NetworkAccessPolicy(networkAccessPolicy)
-	for _, s := range compute.PossibleNetworkAccessPolicyValues() {
-		if policy == s {
-			return policy, nil
-		}
-	}
-	return "", fmt.Errorf("azureDisk - %s is not supported NetworkAccessPolicy. Supported values are %s", networkAccessPolicy, compute.PossibleNetworkAccessPolicyValues())
-}
-
-func normalizeStorageAccountType(storageAccountType, cloud string, disableAzureStackCloud bool) (compute.DiskStorageAccountTypes, error) {
-	if storageAccountType == "" {
-		if IsAzureStackCloud(cloud, disableAzureStackCloud) {
-			return azureStackCloudDefaultStorageAccountType, nil
-		}
-		return azurePublicCloudDefaultStorageAccountType, nil
-	}
-
-	sku := compute.DiskStorageAccountTypes(storageAccountType)
-	supportedSkuNames := compute.PossibleDiskStorageAccountTypesValues()
-	if IsAzureStackCloud(cloud, disableAzureStackCloud) {
-		supportedSkuNames = []compute.DiskStorageAccountTypes{compute.StandardLRS, compute.PremiumLRS}
-	}
-	for _, s := range supportedSkuNames {
-		if sku == s {
-			return sku, nil
-		}
-	}
-
-	return "", fmt.Errorf("azureDisk - %s is not supported sku/storageaccounttype. Supported values are %s", storageAccountType, supportedSkuNames)
-}
-
-func normalizeCachingMode(cachingMode v1.AzureDataDiskCachingMode) (v1.AzureDataDiskCachingMode, error) {
-	if cachingMode == "" {
-		return defaultAzureDataDiskCachingMode, nil
-	}
-
-	if !supportedCachingModes.Has(string(cachingMode)) {
-		return "", fmt.Errorf("azureDisk - %s is not supported cachingmode. Supported values are %s", cachingMode, supportedCachingModes.List())
-	}
-
-	return cachingMode, nil
-}
 
 type ioHandler interface {
 	ReadDir(dirname string) ([]os.FileInfo, error)
@@ -124,27 +53,5 @@ func strFirstLetterToUpper(str string) string {
 	if len(str) < 2 {
 		return str
 	}
-	return libstrings.ToUpper(string(str[0])) + str[1:]
-}
-
-// getDiskLUN : deviceInfo could be a LUN number or a device path, e.g. /dev/disk/azure/scsi1/lun2
-func getDiskLUN(deviceInfo string) (int32, error) {
-	var diskLUN string
-	if len(deviceInfo) <= 2 {
-		diskLUN = deviceInfo
-	} else {
-		// extract the LUN num from a device path
-		matches := lunPathRE.FindStringSubmatch(deviceInfo)
-		if len(matches) == 2 {
-			diskLUN = matches[1]
-		} else {
-			return -1, fmt.Errorf("cannot parse deviceInfo: %s", deviceInfo)
-		}
-	}
-
-	lun, err := strconv.Atoi(diskLUN)
-	if err != nil {
-		return -1, err
-	}
-	return int32(lun), nil
+	return strings.ToUpper(string(str[0])) + str[1:]
 }
