@@ -125,12 +125,6 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `windows.enabled`                                 | whether enable windows feature                             | `true`                                                        |
 | `windows.dsName`                                  | name of driver daemonset on windows                             |`csi-azuredisk-node-win`                                                         |
 | `windows.kubelet`                                 | configure kubelet directory path on Windows agent node                | `'C:\var\lib\kubelet'`                                            |
-| `windows.image.livenessProbe.repository`          | windows liveness-probe docker image                        | `/oss/kubernetes-csi/livenessprobe`           |
-| `windows.image.livenessProbe.tag`                 | windows liveness-probe docker image tag                    | `v2.3.0`                           |
-| `windows.image.livenessProbe.pullPolicy`          | windows liveness-probe image pull policy                   | `IfNotPresent`                                                 |
-| `windows.image.nodeDriverRegistrar.repository`    | windows csi-node-driver-registrar docker image             | `/oss/kubernetes-csi/csi-node-driver-registrar` |
-| `windows.image.nodeDriverRegistrar.tag`           | windows csi-node-driver-registrar docker image tag         | `v2.3.0`                          |
-| `windows.image.nodeDriverRegistrar.pullPolicy`    | windows csi-node-driver-registrar image pull policy        | `IfNotPresent`                                                 |
 | `windows.tolerations`                             | windows node driver tolerations                            |                                                              |
 | `cloud`                                           | cloud environment driver is running on             | `AzurePublicCloud`                                                  |
 
