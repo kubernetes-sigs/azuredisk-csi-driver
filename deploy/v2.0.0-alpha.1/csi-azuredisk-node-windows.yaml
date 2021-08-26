@@ -5,6 +5,10 @@ metadata:
   name: csi-azuredisk-node-win
   namespace: kube-system
 spec:
+  updateStrategy:
+    rollingUpdate:
+      maxUnavailable: 1
+    type: RollingUpdate
   selector:
     matchLabels:
       app: csi-azuredisk-node-win
@@ -56,14 +60,23 @@ spec:
           args:
             - "--v=2"
             - "--csi-address=$(CSI_ENDPOINT)"
-            - "--kubelet-registration-path=C:\\var\\lib\\kubelet\\plugins\\disk.csi.azure.com\\csi.sock"
+            - "--kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)"
           lifecycle:
             preStop:
               exec:
                 command: ["cmd", "/c", "del /f C:\\registration\\disk.csi.azure.com-reg.sock C:\\csi\\disk.csi.azure.com\\csi.sock"]
+          livenessProbe:
+            exec:
+              command:
+                - /csi-node-driver-registrar.exe
+                - --kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)
+                - --mode=kubelet-registration-probe
+            initialDelaySeconds: 3
           env:
             - name: CSI_ENDPOINT
               value: unix://C:\\csi\\csi.sock
+            - name: DRIVER_REG_SOCK_PATH
+              value: C:\\var\\lib\\kubelet\\plugins\\disk.csi.azure.com\\csi.sock
             - name: KUBE_NODE_NAME
               valueFrom:
                 fieldRef:

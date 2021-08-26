@@ -7,6 +7,8 @@ metadata:
     controller-gen.kubebuilder.io/version: v0.4.0
   creationTimestamp: null
   name: azdrivernodes.disk.csi.azure.com
+  labels:
+{{ include "azuredisk.labels" . | indent 4 }}
 spec:
   group: disk.csi.azure.com
   names:

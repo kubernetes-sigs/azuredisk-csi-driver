@@ -174,14 +174,6 @@ azuredisk-darwin:
 azdiskschedulerextender:
 	CGO_ENABLED=0 GOOS=linux go build -a -ldflags ${SCHEDULER_EXTENDER_LDFLAGS} -tags azurediskv2 -mod vendor -o _output/${ARCH}/azdiskschedulerextender ./pkg/azdiskschedulerextender
 
-.PHONY: azdiskschedulerextender-windows
-azdiskschedulerextender-windows:
-	CGO_ENABLED=0 GOOS=windows go build -a -ldflags ${SCHEDULER_EXTENDER_LDFLAGS} -tags azurediskv2 -mod vendor -o _output/${ARCH}/azdiskschedulerextender.exe ./pkg/azdiskschedulerextender
-
-.PHONY: azdiskschedulerextender-darwin
-azdiskschedulerextender-darwin:
-	CGO_ENABLED=0 GOOS=darwin go build -a -ldflags ${SCHEDULER_EXTENDER_LDFLAGS} -tags azurediskv2 -mod vendor -o _output/${ARCH}/azdiskschedulerextender ./pkg/azdiskschedulerextender
-
 .PHONY: container
 container: azuredisk
 	docker build --no-cache -t $(IMAGE_TAG) --build-arg PLUGIN_NAME=${PLUGIN_NAME} -f ./pkg/azurediskplugin/dev.Dockerfile .
@@ -227,17 +219,6 @@ azdiskschedulerextender-container-linux:
 		--file ./pkg/azdiskschedulerextender/Dockerfile \
 		--build-arg ARCH=${ARCH}
 
-.PHONY: azdiskschedulerextender-container-windows
-azdiskschedulerextender-container-windows:
-	docker buildx build . \
-		--pull \
-		--output=type=$(OUTPUT_TYPE) \
-		--platform="windows/$(ARCH)" \
-		--tag $(AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG)-windows-$(OSVERSION)-$(ARCH) \
-		--file ./pkg/azdiskschedulerextender/Windows.Dockerfile \
-		--build-arg ARCH=${ARCH} \
-		--build-arg OSVERSION=$(OSVERSION)
-
 .PHONY: container-setup
 container-setup:
 	docker buildx rm container-builder || true
@@ -251,13 +232,10 @@ endif
 	docker run --rm --privileged tonistiigi/binfmt --install all
 
 .PHONY: azdiskschedulerextender-all
-azdiskschedulerextender-all: azdiskschedulerextender-windows container-setup
+azdiskschedulerextender-all: container-setup
 	for arch in $(ALL_ARCH.linux); do \
 		ARCH=$${arch} $(MAKE) azdiskschedulerextender; \
 		ARCH=$${arch} $(MAKE) azdiskschedulerextender-container-linux; \
-	done
-	for osversion in $(ALL_OSVERSIONS.windows); do \
-		OSVERSION=$${osversion} $(MAKE) azdiskschedulerextender-container-windows; \
 	done
 	
 .PHONY: container-all
@@ -307,22 +285,11 @@ endif
 
 .PHONY: push-manifest-azdiskschedulerextender
 push-manifest-azdiskschedulerextender:
-	docker manifest create --amend $(AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG) $(foreach osarch, $(ALL_OS_ARCH), $(AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG)-${osarch})
-	# add "os.version" field to windows images (based on https://github.com/kubernetes/kubernetes/blob/master/build/pause/Makefile)
-	set -x; \
-	registry_prefix=$(shell (echo ${REGISTRY} | grep -Eq ".*[\/\.].*") && echo "" || echo "docker.io/"); \
-	manifest_image_folder_azdisk_schedulerextender=`echo "$${registry_prefix}${AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG}" | sed "s|/|_|g" | sed "s/:/-/"`; \
-	for arch in $(ALL_ARCH.windows); do \
-		for osversion in $(ALL_OSVERSIONS.windows); do \
-			BASEIMAGE=mcr.microsoft.com/windows/nanoserver:$${osversion}; \
-			full_version=`docker manifest inspect $${BASEIMAGE} | jq -r '.manifests[0].platform["os.version"]'`; \
-			sed -i -r "s/(\"os\"\:\"windows\")/\0,\"os.version\":\"$${full_version}\"/" "${HOME}/.docker/manifests/$${manifest_image_folder_azdisk_schedulerextender}/$${manifest_image_folder_azdisk_schedulerextender}-windows-$${osversion}-$${arch}"; \
-		done; \
-	done
+	docker manifest create --amend $(AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG) $(foreach osarch, $(ALL_OS_ARCH.linux), $(AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG)-${osarch})
 	docker manifest push --purge $(AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG)
 	docker manifest inspect $(AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG)
 ifdef PUBLISH
-	docker manifest create $(AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG_LATEST) $(foreach osarch, $(ALL_OS_ARCH), $(AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG)-${osarch})
+	docker manifest create $(AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG_LATEST) $(foreach osarch, $(ALL_OS_ARCH.linux), $(AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG)-${osarch})
 	docker manifest inspect $(AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG_LATEST)
 endif
 

@@ -4,6 +4,8 @@ kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: csi-azuredisk-scheduler-extender-role
+  labels:
+{{ include "azuredisk.labels" . | indent 4 }}
 rules:
   - apiGroups: [""]
     resources: ["endpoints"]
@@ -54,7 +56,7 @@ rules:
   - apiGroups: [""]
     resources: ["persistentvolumeclaims"]
     {{- if not .Values.feature.enableCSIMigration }}
-    verbs: ["get", "list", "watch"]
+    verbs: ["get", "list", "watch", "update"]
     {{- else }}
     verbs: ["get", "list", "watch", "patch", "update"]
     {{- end }}
@@ -75,6 +77,8 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: csi-azuredisk-scheduler-extender-role-binding
+  labels:
+{{ include "azuredisk.labels" . | indent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole

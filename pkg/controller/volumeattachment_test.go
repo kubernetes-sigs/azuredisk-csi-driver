@@ -39,8 +39,7 @@ func newTestVolumeAttachmentController(controller *gomock.Controller, namespace 
 		client:         mockclient.NewMockClient(controller),
 		azVolumeClient: diskfakes.NewSimpleClientset(diskv1alpha1Objs...),
 		kubeClient:     fakev1.NewSimpleClientset(kubeObjs...),
-		retryMap:       make(map[string]*uint32),
-		retryMutex:     sync.RWMutex{},
+		retryMap:       sync.Map{},
 		namespace:      namespace,
 	}
 }
@@ -61,7 +60,7 @@ func TestVolumeAttachmentControllerReconcile(t *testing.T) {
 					testNamespace,
 					&testVolumeAttachment,
 					&testPersistentVolume0,
-					&testPrimaryAzVolumeAttachment)
+					&testPrimaryAzVolumeAttachment0)
 
 				mockClients(controller.client.(*mockclient.MockClient), controller.azVolumeClient, controller.kubeClient)
 
@@ -71,7 +70,7 @@ func TestVolumeAttachmentControllerReconcile(t *testing.T) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
 
-				azVolumeAttachment, localErr := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testNamespace).Get(context.TODO(), testPrimaryAzVolumeAttachmentName, metav1.GetOptions{})
+				azVolumeAttachment, localErr := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testNamespace).Get(context.TODO(), testPrimaryAzVolumeAttachment0Name, metav1.GetOptions{})
 				require.NoError(t, localErr)
 				require.Contains(t, azVolumeAttachment.Annotations, azureutils.VolumeAttachmentExistsAnnotation)
 			},
@@ -84,7 +83,7 @@ func TestVolumeAttachmentControllerReconcile(t *testing.T) {
 				now := metav1.Time{Time: metav1.Now().Add(-1000)}
 				deletedVolumeAttachment.DeletionTimestamp = &now
 
-				annotatedAzVolumeAttachment := testPrimaryAzVolumeAttachment.DeepCopy()
+				annotatedAzVolumeAttachment := testPrimaryAzVolumeAttachment0.DeepCopy()
 				annotatedAzVolumeAttachment.Annotations = map[string]string{
 					azureutils.VolumeAttachmentExistsAnnotation: deletedVolumeAttachment.Name,
 				}
@@ -104,7 +103,7 @@ func TestVolumeAttachmentControllerReconcile(t *testing.T) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
 
-				azVolumeAttachment, localErr := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testNamespace).Get(context.TODO(), testPrimaryAzVolumeAttachmentName, metav1.GetOptions{})
+				azVolumeAttachment, localErr := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testNamespace).Get(context.TODO(), testPrimaryAzVolumeAttachment0Name, metav1.GetOptions{})
 				require.NoError(t, localErr)
 				require.NotContains(t, azVolumeAttachment.Annotations, azureutils.VolumeAttachmentExistsAnnotation)
 			},
@@ -137,7 +136,7 @@ func TestVolumeAttachmentControllerRecover(t *testing.T) {
 					testNamespace,
 					&testVolumeAttachment,
 					&testPersistentVolume0,
-					&testPrimaryAzVolumeAttachment)
+					&testPrimaryAzVolumeAttachment0)
 
 				mockClients(controller.client.(*mockclient.MockClient), controller.azVolumeClient, controller.kubeClient)
 
@@ -146,7 +145,7 @@ func TestVolumeAttachmentControllerRecover(t *testing.T) {
 			verifyFunc: func(t *testing.T, controller *ReconcileVolumeAttachment, err error) {
 				require.NoError(t, err)
 
-				azVolumeAttachment, localErr := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testNamespace).Get(context.TODO(), testPrimaryAzVolumeAttachmentName, metav1.GetOptions{})
+				azVolumeAttachment, localErr := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testNamespace).Get(context.TODO(), testPrimaryAzVolumeAttachment0Name, metav1.GetOptions{})
 				require.NoError(t, localErr)
 				require.Contains(t, azVolumeAttachment.Annotations, azureutils.VolumeAttachmentExistsAnnotation)
 			},

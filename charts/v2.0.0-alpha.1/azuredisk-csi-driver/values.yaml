@@ -21,7 +21,7 @@ image:
     pullPolicy: IfNotPresent
   nodeDriverRegistrar:
     repository: mcr.microsoft.com/oss/kubernetes-csi/csi-node-driver-registrar
-    tag: v2.2.0
+    tag: v2.3.0
     pullPolicy: IfNotPresent
   schedulerExtender:
     repository: mcr.microsoft.com/k8s/csi/azdiskschedulerextender-csi
@@ -69,12 +69,14 @@ controller:
 node:
   cloudConfigSecretName: azure-cloud-provider
   cloudConfigSecretNamespace: kube-system
+  maxUnavailable: 1
   metricsPort: 29605
   logLevel: 5
   livenessProbe:
     healthPort: 29603
 
 schedulerExtender:
+  name: csi-azuredisk-scheduler-extender
   replicas: 2
   metricsPort: 29606
   servicePort: 8889

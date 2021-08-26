@@ -51,7 +51,7 @@ rules:
     verbs: ["get", "list", "watch"]
   - apiGroups: [""]
     resources: ["persistentvolumeclaims"]
-    verbs: ["get", "list", "watch"] # Add ["patch", "update"] for CSIMigration support
+    verbs: ["get", "list", "watch", "update"] # Add ["patch"] for CSIMigration support
   - apiGroups: [""]
     resources: ["persistentvolumes"]
     verbs: ["get", "list", "watch"]

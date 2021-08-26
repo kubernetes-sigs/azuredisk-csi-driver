@@ -12,9 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-ARG ARCH
-FROM k8s.gcr.io/build-image/debian-base:buster-v1.6.0
-RUN clean-install util-linux e2fsprogs mount ca-certificates udev xfsprogs
+FROM alpine:3.14.1
+RUN apk add --no-cache util-linux e2fsprogs e2fsprogs-extra ca-certificates udev xfsprogs xfsprogs-extra
 
 LABEL maintainers="andyzhangx"
 LABEL description="Azure Disk CSI Driver"

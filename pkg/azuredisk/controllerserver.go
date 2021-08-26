@@ -27,10 +27,10 @@ import (
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/golang/protobuf/ptypes"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -350,12 +350,15 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		DiskEncryptionSetID: diskEncryptionSetID,
 		MaxShares:           int32(maxShares),
 		LogicalSectorSize:   int32(logicalSectorSize),
-		NetworkAccessPolicy: networkAccessPolicy,
 		BurstingEnabled:     enableBursting,
 	}
 	volumeOptions.SkipGetDiskOperation = d.isGetDiskThrottled()
-	if diskAccessID != "" {
-		volumeOptions.DiskAccessID = &diskAccessID
+	// Azure Stack Cloud does not support NetworkAccessPolicy
+	if !IsAzureStackCloud(d.cloud.Config.Cloud, d.cloud.Config.DisableAzureStackCloud) {
+		volumeOptions.NetworkAccessPolicy = networkAccessPolicy
+		if diskAccessID != "" {
+			volumeOptions.DiskAccessID = &diskAccessID
+		}
 	}
 	diskURI, err := d.cloud.CreateManagedDisk(volumeOptions)
 	if err != nil {
@@ -1125,10 +1128,12 @@ func generateCSISnapshot(sourceVolumeID string, snapshot *compute.Snapshot) (*cs
 		return nil, fmt.Errorf("snapshot property is nil")
 	}
 
-	tp, err := ptypes.TimestampProto(snapshot.SnapshotProperties.TimeCreated.ToTime())
-	if err != nil {
-		return nil, fmt.Errorf("Failed to covert creation timestamp: %v", err)
+	tp := timestamppb.New(snapshot.SnapshotProperties.TimeCreated.ToTime())
+
+	if tp == nil {
+		return nil, fmt.Errorf("Failed to covert timestamp(%v)", snapshot.SnapshotProperties.TimeCreated.ToTime())
 	}
+
 	ready, _ := isCSISnapshotReady(*snapshot.SnapshotProperties.ProvisioningState)
 
 	if snapshot.SnapshotProperties.DiskSizeGB == nil {

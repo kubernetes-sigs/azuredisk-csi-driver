@@ -324,14 +324,13 @@ func (c *CrdProvisioner) PublishVolume(
 	if err == nil {
 		updated := azVolumeAttachmentInstance.DeepCopy()
 
-		// reset error and state field of the AzVolumeAttachment so that the reconciler can retry attachment
-		if updated.Status.Error != nil {
-			updated.Status.Error = nil
-			updated.Status.State = v1alpha1.AttachmentPending
-		}
 		// If there already exists a primary attachment with populated responseObject return
 		if updated.Status.Detail != nil && updated.Status.Detail.PublishContext != nil && updated.Status.Detail.Role == v1alpha1.PrimaryRole {
 			return updated.Status.Detail.PublishContext, nil
+		} else if updated.Status.Error != nil {
+			// reset error and state field of the AzVolumeAttachment so that the reconciler can retry attachment
+			updated.Status.Error = nil
+			updated.Status.State = v1alpha1.AttachmentPending
 		}
 
 		// Otherwise, we are trying to update
@@ -339,6 +338,11 @@ func (c *CrdProvisioner) PublishVolume(
 		updated.Spec.RequestedRole = v1alpha1.PrimaryRole
 		// Keeping the spec fields up to date with the request parameters
 		updated.Spec.VolumeContext = volumeContext
+		// Update the label of the AzVolumeAttachment
+		if updated.Labels == nil {
+			updated.Labels = map[string]string{}
+		}
+		updated.Labels[azureutils.RoleLabel] = string(v1alpha1.PrimaryRole)
 		_, err := azVA.Update(ctx, updated, metav1.UpdateOptions{})
 		if err != nil {
 			return nil, err
@@ -547,6 +551,7 @@ func isAzVolumeSpecSameAsRequestParams(defaultAzVolume *v1alpha1.AzVolume,
 	defaultSecret := defaultAzVolume.Spec.Secrets
 	defaultAccReq := defaultAzVolume.Spec.AccessibilityRequirements
 	defaultVolContentSource := defaultAzVolume.Spec.ContentVolumeSource
+	defaultCapRange := defaultAzVolume.Spec.CapacityRange
 	if defaultParams == nil {
 		defaultParams = make(map[string]string)
 	}
@@ -568,12 +573,30 @@ func isAzVolumeSpecSameAsRequestParams(defaultAzVolume *v1alpha1.AzVolume,
 	if defaultAccReq.Requisite == nil {
 		defaultAccReq.Requisite = []v1alpha1.Topology{}
 	}
+	if accessibilityReq == nil {
+		accessibilityReq = &v1alpha1.TopologyRequirement{}
+	}
+	if accessibilityReq.Preferred == nil {
+		accessibilityReq.Preferred = []v1alpha1.Topology{}
+	}
+	if accessibilityReq.Requisite == nil {
+		accessibilityReq.Requisite = []v1alpha1.Topology{}
+	}
 	if defaultVolContentSource == nil {
 		defaultVolContentSource = &v1alpha1.ContentVolumeSource{}
 	}
+	if volumeContentSource == nil {
+		volumeContentSource = &v1alpha1.ContentVolumeSource{}
+	}
+	if defaultCapRange == nil {
+		defaultCapRange = &v1alpha1.CapacityRange{}
+	}
+	if capacityRange == nil {
+		capacityRange = &v1alpha1.CapacityRange{}
+	}
 
 	return (defaultAzVolume.Spec.MaxMountReplicaCount == maxMountReplicaCount &&
-		reflect.DeepEqual(defaultAzVolume.Spec.CapacityRange, capacityRange) &&
+		reflect.DeepEqual(defaultCapRange, capacityRange) &&
 		reflect.DeepEqual(defaultParams, parameters) &&
 		reflect.DeepEqual(defaultSecret, secrets) &&
 		reflect.DeepEqual(defaultVolContentSource, volumeContentSource) &&

@@ -50,9 +50,8 @@ type ReconcileVolumeAttachment struct {
 	azVolumeClient azVolumeClientSet.Interface
 	kubeClient     kubeClientSet.Interface
 	// retryMap allows volumeAttachment controller to retry Get operation for AzVolumeAttachment in case the CRI has not been created yet
-	retryMap   map[string]*uint32
-	retryMutex sync.RWMutex
-	namespace  string
+	retryMap  sync.Map
+	namespace string
 }
 
 var _ reconcile.Reconciler = &ReconcileVolumeAttachment{}
@@ -93,7 +92,7 @@ func (r *ReconcileVolumeAttachment) Reconcile(ctx context.Context, request recon
 	diskName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(pv.Spec.CSI.VolumeHandle)
 	if err != nil {
 		klog.Errorf("failed to extract disk name from volume handle (%s): %v", pv.Spec.CSI.VolumeHandle, err)
-		return reconcile.Result{}, err
+		return reconcile.Result{Requeue: false}, err
 	}
 
 	azVolumeName := strings.ToLower(diskName)
@@ -109,18 +108,9 @@ func (r *ReconcileVolumeAttachment) AnnotateAzVolumeAttachment(ctx context.Conte
 			return reconcile.Result{Requeue: true}, err
 		}
 
-		r.retryMutex.RLock()
-		numRetry, ok := r.retryMap[azVolumeAttachmentName]
-		r.retryMutex.RUnlock()
-		if !ok {
-			r.retryMutex.Lock()
-			if _, ok = r.retryMap[azVolumeAttachmentName]; !ok {
-				var zero uint32
-				r.retryMap[azVolumeAttachmentName] = &zero
-				numRetry = &zero
-			}
-			r.retryMutex.Unlock()
-		}
+		var zero uint32
+		v, _ := r.retryMap.LoadOrStore(azVolumeAttachmentName, &zero)
+		numRetry := v.(*uint32)
 
 		if *numRetry < maxRetry {
 			_ = atomic.AddUint32(numRetry, 1)
@@ -129,9 +119,7 @@ func (r *ReconcileVolumeAttachment) AnnotateAzVolumeAttachment(ctx context.Conte
 		}
 
 		klog.V(5).Infof("Max Retry (%d) for Get AzVolumeAttachment (%s) exceeded. The CRI is probably deleted.", maxRetry, azVolumeAttachmentName)
-		r.retryMutex.Lock()
-		delete(r.retryMap, azVolumeAttachmentName)
-		r.retryMutex.Unlock()
+		r.retryMap.Delete(azVolumeAttachmentName)
 		return reconcile.Result{}, nil
 	}
 
@@ -225,8 +213,7 @@ func NewVolumeAttachmentController(ctx context.Context, mgr manager.Manager, azV
 		client:         mgr.GetClient(),
 		namespace:      namespace,
 		azVolumeClient: azVolumeClient,
-		retryMap:       map[string]*uint32{},
-		retryMutex:     sync.RWMutex{},
+		retryMap:       sync.Map{},
 		kubeClient:     kubeClient,
 	}
 

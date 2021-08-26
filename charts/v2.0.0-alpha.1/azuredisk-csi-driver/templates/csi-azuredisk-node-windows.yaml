@@ -4,14 +4,20 @@ apiVersion: apps/v1
 metadata:
   name: {{ .Values.windows.dsName }}
   namespace: {{ .Release.Namespace }}
-{{ include "azuredisk.labels" . | indent 2 }}
+  labels:
+{{ include "azuredisk.labels" . | indent 4 }}
 spec:
+  updateStrategy:
+    rollingUpdate:
+      maxUnavailable: {{ .Values.node.maxUnavailable }}
+    type: RollingUpdate
   selector:
     matchLabels:
       app: {{ .Values.windows.dsName }}
   template:
     metadata:
-{{ include "azuredisk.labels" . | indent 6 }}
+      labels: 
+{{ include "azuredisk.labels" . | indent 8 }}
         app: {{ .Values.windows.dsName }}
 {{- with .Values.windows.podLabels }}
 {{ toYaml . | indent 8 }}
@@ -62,14 +68,23 @@ spec:
           args:
             - "--v=2"
             - "--csi-address=$(CSI_ENDPOINT)"
-            - "--kubelet-registration-path=C:\\var\\lib\\kubelet\\plugins\\{{ .Values.driver.name }}\\csi.sock"
+            - "--kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)"
           lifecycle:
             preStop:
               exec:
                 command: ["cmd", "/c", "del /f C:\\registration\\{{ .Values.driver.name }}-reg.sock C:\\csi\\{{ .Values.driver.name }}\\csi.sock"]
+          livenessProbe:
+            exec:
+              command:
+                - /csi-node-driver-registrar.exe
+                - --kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)
+                - --mode=kubelet-registration-probe
+            initialDelaySeconds: 3
           env:
             - name: CSI_ENDPOINT
               value: unix://C:\\csi\\csi.sock
+            - name: DRIVER_REG_SOCK_PATH
+              value: C:\\var\\lib\\kubelet\\plugins\\{{ .Values.driver.name }}\\csi.sock
             - name: KUBE_NODE_NAME
               valueFrom:
                 fieldRef:

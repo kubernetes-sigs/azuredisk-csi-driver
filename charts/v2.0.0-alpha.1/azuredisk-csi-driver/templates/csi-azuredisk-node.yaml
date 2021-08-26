@@ -4,14 +4,20 @@ apiVersion: apps/v1
 metadata:
   name: {{ .Values.linux.dsName }}
   namespace: {{ .Release.Namespace }}
-{{ include "azuredisk.labels" . | indent 2 }}
+  labels:
+{{ include "azuredisk.labels" . | indent 4 }}
 spec:
+  updateStrategy:
+    rollingUpdate:
+      maxUnavailable: {{ .Values.node.maxUnavailable }}
+    type: RollingUpdate
   selector:
     matchLabels:
       app: {{ .Values.linux.dsName }}
   template:
     metadata:
-{{ include "azuredisk.labels" . | indent 6 }}
+      labels:
+{{ include "azuredisk.labels" . | indent 8 }}
         app: {{ .Values.linux.dsName }}
 {{- with .Values.windows.podLabels }}
 {{ toYaml . | indent 8 }}
@@ -69,6 +75,13 @@ spec:
             preStop:
               exec:
                 command: ["/bin/sh", "-c", "rm -rf /registration/{{ .Values.driver.name }}-reg.sock /csi/csi.sock"]
+          livenessProbe:
+            exec:
+              command:
+                - /csi-node-driver-registrar
+                - --kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)
+                - --mode=kubelet-registration-probe
+            initialDelaySeconds: 3
           env:
             - name: ADDRESS
               value: /csi/csi.sock

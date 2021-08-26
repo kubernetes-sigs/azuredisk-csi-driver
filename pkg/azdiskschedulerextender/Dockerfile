@@ -12,9 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-ARG ARCH
-FROM k8s.gcr.io/build-image/debian-base-${ARCH}:v2.1.3
-RUN clean-install util-linux e2fsprogs mount ca-certificates udev xfsprogs
+FROM gcr.io/distroless/static:latest
 
 LABEL maintainers="andyzhangx"
 LABEL description="Scheduler extender for the Azure Disk CSI Driver"

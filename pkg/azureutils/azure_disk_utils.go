@@ -115,11 +115,12 @@ const (
 	// to prevent the pod deletion until clean up is completed
 	ControllerFinalizer              = "disk.csi.azure.com/azuredisk-finalizer"
 	VolumeAttachmentExistsAnnotation = "disk.csi.azure.com/volume-attachment"
+	CleanUpAnnotation                = "disk.csi.azure.com/clean-up"
 	VolumeDetachRequestAnnotation    = "disk.csi.azure.com/volume-detach-request"
 	VolumeDeleteRequestAnnotation    = "disk.csi.azure.com/volume-delete-request"
-	NodeNameLabel                    = "node-name"
-	VolumeNameLabel                  = "volume-name"
-	RoleLabel                        = "requested-role"
+	NodeNameLabel                    = "disk.csi.azure.com/node-name"
+	VolumeNameLabel                  = "disk.csi.azure.com/volume-name"
+	RoleLabel                        = "disk.csi.azure.com/requested-role"
 
 	// ZRS specific constants
 	WellKnownTopologyKey = "topology.kubernetes.io/zone"
@@ -148,6 +149,13 @@ var (
 	managedDiskPathRE       = regexp.MustCompile(`(?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/disks/(.+)`)
 	diskURISupportedManaged = []string{"/subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id}"}
 	diskSnapshotPathRE      = regexp.MustCompile(`(?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/snapshots/(.+)`)
+)
+
+type ClientOperationMode int
+
+const (
+	Cached ClientOperationMode = iota
+	Uncached
 )
 
 func IsAzureStackCloud(cloud string, disableAzureStackCloud bool) bool {
@@ -240,7 +248,7 @@ func GetValidDiskName(volumeName string) string {
 }
 
 // GetCloudProvider get Azure Cloud Provider
-func GetAzureCloudProvider(kubeClient clientset.Interface, secretName string, secretNamespace string) (*azure.Cloud, error) {
+func GetAzureCloudProvider(kubeClient clientset.Interface, secretName string, secretNamespace string, userAgent string) (*azure.Cloud, error) {
 	az := &azure.Cloud{
 		InitSecretConfig: azure.InitSecretConfig{
 			SecretName:      secretName,

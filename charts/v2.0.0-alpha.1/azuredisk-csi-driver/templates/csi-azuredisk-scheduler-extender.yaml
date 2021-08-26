@@ -30,19 +30,21 @@ data:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: csi-azuredisk-scheduler-extender
+  name: {{ .Values.schedulerExtender.name }}
   namespace: {{ .Release.Namespace }}
-  labels:
-    app: csi-azuredisk-scheduler-extender
+  labels: 
+{{ include "azuredisk.labels" . | indent 4 }}
+    app: {{ .Values.schedulerExtender.name }}
 spec:
   replicas: {{ .Values.schedulerExtender.replicas }}
   selector:
     matchLabels:
-      app: csi-azuredisk-scheduler-extender
+      app: {{ .Values.schedulerExtender.name }}
   template:
     metadata:
       labels:
-        app: csi-azuredisk-scheduler-extender
+{{ include "azuredisk.labels" . | indent 8}}
+        app: {{ .Values.schedulerExtender.name }}
     spec:
       {{- if .Values.imagePullSecrets }}
       imagePullSecrets:

@@ -39,17 +39,14 @@ import (
 
 var _ = ginkgo.Describe("Dynamic Provisioning", func() {
 	t := dynamicProvisioningTestSuite{}
-	schedulers := getListOfSchedulers()
-	for _, scheduler := range schedulers {
-		scheduler := scheduler
-		ginkgo.Context("[single-az]", func() {
-			t.defineTests(false, scheduler)
-		})
-	}
+	scheduler := getSchedulerForE2E()
 
-	//TODO add support for scheduler extender
+	ginkgo.Context("[single-az]", func() {
+		t.defineTests(false, scheduler)
+	})
+
 	ginkgo.Context("[multi-az]", func() {
-		t.defineTests(true, "default-scheduler")
+		t.defineTests(true, scheduler)
 	})
 })
 
@@ -453,7 +450,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		skipIfUsingInTreeVolumePlugin()
 
 		pod := testsuites.PodDetails{
-			Cmd: "echo 'hello world' > /mnt/test-1/data",
+			Cmd: "echo 'hello world' > /mnt/test-1/data && fsync /mnt/test-1/data",
 			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 				{
 					FSType:    "ext4",

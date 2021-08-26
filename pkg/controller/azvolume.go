@@ -25,11 +25,10 @@ import (
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/selection"
 	kubeClientSet "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
+	azClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	azVolumeClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	util "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
@@ -101,7 +100,7 @@ func (r *ReconcileAzVolume) Reconcile(ctx context.Context, request reconcile.Req
 		// azVolume released, so clean up replica Attachments (primary Attachment should be deleted via UnpublishVolume request to avoid race condition)
 	} else if azVolume.Status.Detail.Phase == v1alpha1.VolumeReleased {
 		klog.Infof("Volume released: Initiating AzVolumeAttachment Clean-up")
-		if err := cleanUpAzVolumeAttachmentByVolume(ctx, r.client, r.azVolumeClient, r.namespace, azVolume.Name, replicaOnly); err != nil {
+		if _, err := cleanUpAzVolumeAttachmentByVolume(ctx, r, azVolume.Name, replicaOnly); err != nil {
 			return reconcile.Result{Requeue: true}, err
 		}
 		if _, err := r.updateStatus(ctx, azVolume.Name, nil, v1alpha1.VolumeAvailable, false, azVolume.Status.Detail.ResponseObject); err != nil {
@@ -193,31 +192,9 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, volumeName string
 	}
 
 	// Delete all AzVolumeAttachment objects bound to the deleted AzVolume
-	volRequirement, err := labels.NewRequirement(azureutils.VolumeNameLabel, selection.Equals, []string{azVolume.Spec.UnderlyingVolume})
+	attachments, err := cleanUpAzVolumeAttachmentByVolume(ctx, r, volumeName, all)
 	if err != nil {
 		return err
-	}
-	if volRequirement == nil {
-		return status.Error(codes.Internal, fmt.Sprintf("Unable to create Requirement to for label key : (%s) and label value: (%s)", azureutils.VolumeNameLabel, azVolume.Spec.UnderlyingVolume))
-	}
-
-	labelSelector := labels.NewSelector().Add(*volRequirement)
-
-	attachments, err := r.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(r.namespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})
-	if err != nil && !errors.IsNotFound(err) {
-		klog.Errorf("failed to get AzVolumeAttachments: %v", err)
-		return err
-	}
-
-	klog.V(5).Infof("number of attachments found: %d", len(attachments.Items))
-	for _, attachment := range attachments.Items {
-		if attachment.DeletionTimestamp == nil {
-			if err = r.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(r.namespace).Delete(ctx, attachment.Name, metav1.DeleteOptions{}); err != nil && !errors.IsNotFound(err) {
-				klog.Errorf("failed to delete AzVolumeAttachment (%s): %v", attachment.Name, err)
-				return err
-			}
-			klog.V(5).Infof("Set deletion timestamp for AzVolumeAttachment (%s)", attachment.Name)
-		}
 	}
 
 	if len(attachments.Items) > 0 {
@@ -405,7 +382,8 @@ func (r *ReconcileAzVolume) recoverAzVolumes(ctx context.Context) error {
 				klog.Warningf("skipping restoration, failed to extract diskName from volume handle (%s): %v", pv.Spec.CSI.VolumeHandle, err)
 				continue
 			}
-			klog.Infof("Recovering AzVolume (%s)", diskName)
+			azVolumeName := strings.ToLower(diskName)
+			klog.Infof("Recovering AzVolume (%s)", azVolumeName)
 			requiredBytes, _ := pv.Spec.Capacity.Storage().AsInt64()
 			storageClassName := pv.Spec.StorageClassName
 			maxMountReplicaCount := 0
@@ -421,12 +399,12 @@ func (r *ReconcileAzVolume) recoverAzVolumes(ctx context.Context) error {
 			}
 			if _, err := r.azVolumeClient.DiskV1alpha1().AzVolumes(r.namespace).Create(ctx, &v1alpha1.AzVolume{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:       strings.ToLower(diskName),
+					Name:       azVolumeName,
 					Finalizers: []string{azureutils.AzVolumeFinalizer},
 				},
 				Spec: v1alpha1.AzVolumeSpec{
 					MaxMountReplicaCount: maxMountReplicaCount,
-					UnderlyingVolume:     pv.Name,
+					UnderlyingVolume:     diskName,
 					CapacityRange: &v1alpha1.CapacityRange{
 						RequiredBytes: requiredBytes,
 					},
@@ -435,6 +413,9 @@ func (r *ReconcileAzVolume) recoverAzVolumes(ctx context.Context) error {
 				Status: v1alpha1.AzVolumeStatus{
 					Detail: &v1alpha1.AzVolumeStatusDetail{
 						Phase: azureutils.GetAzVolumePhase(pv.Status.Phase),
+						ResponseObject: &v1alpha1.AzVolumeStatusParams{
+							VolumeID: pv.Spec.CSI.VolumeHandle,
+						},
 					},
 					State: v1alpha1.VolumeCreated,
 				},
@@ -563,4 +544,16 @@ func (r *ReconcileAzVolume) deleteFinalizer(ctx context.Context, volumeName stri
 	}
 	klog.Infof("successfully deleted finalizer (%s) from AzVolume (%s)", azureutils.AzVolumeFinalizer, volumeName)
 	return updated, nil
+}
+
+func (r *ReconcileAzVolume) getClient() client.Client {
+	return r.client
+}
+
+func (r *ReconcileAzVolume) getAzClient() azClientSet.Interface {
+	return r.azVolumeClient
+}
+
+func (r *ReconcileAzVolume) getNamespace() string {
+	return r.namespace
 }

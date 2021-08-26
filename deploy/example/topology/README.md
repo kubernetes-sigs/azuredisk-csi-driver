@@ -22,7 +22,7 @@ provisioner: disk.csi.azure.com
 parameters:
   skuname: StandardSSD_LRS  # available values: Standard_LRS, Premium_LRS, StandardSSD_LRS, UltraSSD_LRS, Premium_ZRS, StandardSSD_ZRS
 reclaimPolicy: Delete
-volumeBindingMode: WaitForFirstConsumer  # make sure `volumeBindingMode` is set as `WaitForFirstConsumer`
+volumeBindingMode: Immediate
 ```
 
 ### Follow azure disk dynamic provisioning

@@ -25,7 +25,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/selection"
 	azfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller/mockclient"
@@ -80,13 +79,15 @@ func TestAzDriverNodeControllerReconcile(t *testing.T) {
 					testNamespace,
 					&testAzDriverNode0,
 					&testAzDriverNode1,
-					&testPrimaryAzVolumeAttachment,
+					&testPrimaryAzVolumeAttachment0,
 					&testReplicaAzVolumeAttachment)
 
 				controller.client.(*mockclient.MockClient).EXPECT().
 					Get(gomock.Any(), testNode1Request.NamespacedName, gomock.Any()).
 					Return(testNode1NotFoundError).
 					AnyTimes()
+
+				mockClients(controller.client.(*mockclient.MockClient), controller.azVolumeClient, nil)
 
 				return controller
 			},
@@ -97,7 +98,7 @@ func TestAzDriverNodeControllerReconcile(t *testing.T) {
 				_, err2 := controller.azVolumeClient.DiskV1alpha1().AzDriverNodes(testNamespace).Get(context.TODO(), testNode1Name, metav1.GetOptions{})
 				require.EqualValues(t, testAzDriverNode1NotFoundError, err2)
 
-				nodeRequirement, _ := labels.NewRequirement(azureutils.NodeNameLabel, selection.Equals, []string{testNode1Name})
+				nodeRequirement, _ := createLabelRequirements(azureutils.NodeNameLabel, testNode1Name)
 				labelSelector := labels.NewSelector().Add(*nodeRequirement)
 				attachments, _ := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
 				require.Len(t, attachments.Items, 0)

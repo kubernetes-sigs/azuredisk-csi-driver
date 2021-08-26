@@ -187,7 +187,10 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 	}
 	klog.Infof("\nDRIVER INFORMATION:\n-------------------\n%s\n\nStreaming logs below:", versionMeta)
 
-	cloud, err := GetCloudProvider(kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace)
+	userAgent := GetUserAgent(d.Name)
+	klog.V(2).Infof("driver userAgent: %s", userAgent)
+
+	cloud, err := GetCloudProvider(kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, userAgent)
 	if err != nil || cloud.TenantID == "" || cloud.SubscriptionID == "" {
 		klog.Fatalf("failed to get Azure Cloud Provider, error: %v", err)
 	}
@@ -218,9 +221,12 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 		}
 	}
 
-	d.mounter, err = mounter.NewSafeMounter()
-	if err != nil {
-		klog.Fatalf("Failed to get safe mounter. Error: %v", err)
+	// d.mounter is set by NewFakeDriver for unit tests.
+	if d.mounter == nil {
+		d.mounter, err = mounter.NewSafeMounter()
+		if err != nil {
+			klog.Fatalf("Failed to get safe mounter. Error: %v", err)
+		}
 	}
 
 	d.AddControllerServiceCapabilities(

@@ -225,7 +225,7 @@ func schedulerExtenderTests(isMultiZone bool) {
 		test := testsuites.AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV{
 			CSIDriver:              testDriver,
 			Pod:                    pod,
-			Replicas:               2,
+			Replicas:               1,
 			StorageClassParameters: map[string]string{"skuName": "Premium_LRS", "maxShares": "2"},
 		}
 		test.Run(cs, ns, schedulerName)
