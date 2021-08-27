@@ -110,7 +110,7 @@ func TestReplicaReconcile(t *testing.T) {
 					require.NotNil(t, replicas)
 					return len(replicas.Items) == 1, nil
 				}
-				err = wait.PollImmediate(updateAttemptInterval, updateTimeout, conditionFunc)
+				err = wait.PollImmediate(azureutils.CRIUpdateAttemptInterval, azureutils.CRIUpdateTimeout, conditionFunc)
 				require.NoError(t, err)
 			},
 		},

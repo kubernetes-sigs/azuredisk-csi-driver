@@ -140,10 +140,11 @@ func (c *CrdProvisioner) CreateVolume(
 	// Getting the validVolumeName here since after volume
 	// creation the diskURI will consist of the validVolumeName
 	validVolumeName := azureutils.GetValidDiskName(volumeName)
+	azVolumeName := strings.ToLower(validVolumeName)
 
 	azV := c.azDiskClient.DiskV1alpha1().AzVolumes(c.namespace)
 
-	azVolumeInstance, err := azV.Get(ctx, strings.ToLower(validVolumeName), metav1.GetOptions{})
+	azVolumeInstance, err := azV.Get(ctx, azVolumeName, metav1.GetOptions{})
 
 	if err == nil {
 		if azVolumeInstance.Status.Detail != nil && azVolumeInstance.Status.Detail.ResponseObject != nil {
@@ -155,34 +156,36 @@ func (c *CrdProvisioner) CreateVolume(
 			// Returning the response object from the status
 			return azVolumeInstance.Status.Detail.ResponseObject, nil
 		} else if azVolumeInstance.Status.Error != nil {
-			updatedInstance := azVolumeInstance.DeepCopy()
-			updatedInstance.Status.Error = nil
-			updatedInstance.Status.State = v1alpha1.VolumeOperationPending
+			updateFunc := func(obj interface{}) {
+				updateInstance := obj.(*v1alpha1.AzVolume)
+				updateInstance.Status.Error = nil
+				updateInstance.Status.State = v1alpha1.VolumeOperationPending
 
-			if !isAzVolumeSpecSameAsRequestParams(updatedInstance, maxMountReplicaCount, capacityRange, parameters, secrets, volumeContentSource, accessibilityReq) {
-				// Updating the spec fields to keep it up to date with the request
-				updatedInstance.Spec.MaxMountReplicaCount = maxMountReplicaCount
-				updatedInstance.Spec.CapacityRange = capacityRange
-				updatedInstance.Spec.Parameters = parameters
-				updatedInstance.Spec.Secrets = secrets
-				updatedInstance.Spec.ContentVolumeSource = volumeContentSource
-				updatedInstance.Spec.AccessibilityRequirements = accessibilityReq
+				if !isAzVolumeSpecSameAsRequestParams(updateInstance, maxMountReplicaCount, capacityRange, parameters, secrets, volumeContentSource, accessibilityReq) {
+					// Updating the spec fields to keep it up to date with the request
+					updateInstance.Spec.MaxMountReplicaCount = maxMountReplicaCount
+					updateInstance.Spec.CapacityRange = capacityRange
+					updateInstance.Spec.Parameters = parameters
+					updateInstance.Spec.Secrets = secrets
+					updateInstance.Spec.ContentVolumeSource = volumeContentSource
+					updateInstance.Spec.AccessibilityRequirements = accessibilityReq
+				}
 			}
 
-			_, err = azV.Update(ctx, updatedInstance, metav1.UpdateOptions{})
-			if err != nil {
+			if err = azureutils.UpdateCRIWithRetry(ctx, c.azDiskClient, azVolumeInstance, updateFunc); err != nil {
+				klog.Errorf("failed to update AzVolume (%s) with updated spec: %v", azVolumeName, err)
 				return nil, err
 			}
 		}
 		// if the error was caused by errors other than IsNotFound, return failure
 	} else if !errors.IsNotFound(err) {
-		klog.Error("failed to get AzVolume (%s): %v", strings.ToLower(validVolumeName), err)
+		klog.Error("failed to get AzVolume (%s): %v", azVolumeName, err)
 		return nil, err
 	} else {
-		klog.Infof("Creating a new AzVolume CRI (%s)...", strings.ToLower(validVolumeName))
+		klog.Infof("Creating a new AzVolume CRI (%s)...", azVolumeName)
 		azVolume := &v1alpha1.AzVolume{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: strings.ToLower(validVolumeName),
+				Name: azVolumeName,
 			},
 			Spec: v1alpha1.AzVolumeSpec{
 				MaxMountReplicaCount:      maxMountReplicaCount,
@@ -209,11 +212,11 @@ func (c *CrdProvisioner) CreateVolume(
 			return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to create azvolume resource volume name (%s)", volumeName))
 		}
 
-		klog.Infof("Successfully created AzVolume CRI (%s)...", strings.ToLower(validVolumeName))
+		klog.Infof("Successfully created AzVolume CRI (%s)...", azVolumeName)
 	}
 
 	conditionFunc := func() (bool, error) {
-		azVolumeInstance, err = azV.Get(ctx, strings.ToLower(validVolumeName), metav1.GetOptions{})
+		azVolumeInstance, err = azV.Get(ctx, azVolumeName, metav1.GetOptions{})
 
 		if err != nil {
 			return true, err
@@ -263,22 +266,21 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 		return err
 	}
 
-	// update azVolume with delete annotation
-	updated := azVolume.DeepCopy()
+	updateFunc := func(obj interface{}) {
+		updateInstance := obj.(*v1alpha1.AzVolume)
+		if updateInstance.Annotations == nil {
+			updateInstance.Annotations = map[string]string{}
+		}
+		updateInstance.Annotations[azureutils.VolumeDeleteRequestAnnotation] = "cloud-delete-volume"
 
-	if updated.Annotations == nil {
-		updated.Annotations = map[string]string{}
+		// remove deletion failure error from AzVolume CRI to retrigger deletion
+		updateInstance.Status.Error = nil
+		// revert volume deletion state to avoid confusion
+		updateInstance.Status.State = v1alpha1.VolumeCreated
 	}
-	updated.Annotations[azureutils.VolumeDeleteRequestAnnotation] = "cloud-delete-volume"
 
-	// remove deletion failure error from AzVolume CRI to retrigger deletion
-	updated.Status.Error = nil
-	// revert volume deletion state to avoid confusion
-	updated.Status.State = v1alpha1.VolumeCreated
-
-	_, err = azV.Update(ctx, updated, metav1.UpdateOptions{})
-	if err != nil {
-		klog.Infof("failed to update AzVolume (%s) with annotation (%s): %v", volumeName, azureutils.VolumeDeleteRequestAnnotation, err)
+	// update AzVolume CRI with annotation and resetted state with retry upon conflict
+	if err := azureutils.UpdateCRIWithRetry(ctx, c.azDiskClient, azVolume, updateFunc); err != nil {
 		return err
 	}
 
@@ -327,29 +329,31 @@ func (c *CrdProvisioner) PublishVolume(
 	}
 	azVolumeAttachmentInstance, err := azVA.Get(ctx, attachmentName, metav1.GetOptions{})
 	if err == nil {
-		updated := azVolumeAttachmentInstance.DeepCopy()
-
 		// If there already exists a primary attachment with populated responseObject return
-		if updated.Status.Detail != nil && updated.Status.Detail.PublishContext != nil && updated.Status.Detail.Role == v1alpha1.PrimaryRole {
-			return updated.Status.Detail.PublishContext, nil
-		} else if updated.Status.Error != nil {
-			// reset error and state field of the AzVolumeAttachment so that the reconciler can retry attachment
-			updated.Status.Error = nil
-			updated.Status.State = v1alpha1.AttachmentPending
+		if azVolumeAttachmentInstance.Status.Detail != nil && azVolumeAttachmentInstance.Status.Detail.PublishContext != nil && azVolumeAttachmentInstance.Status.Detail.Role == v1alpha1.PrimaryRole {
+			return azVolumeAttachmentInstance.Status.Detail.PublishContext, nil
+		}
+		updateFunc := func(obj interface{}) {
+			updateInstance := obj.(*v1alpha1.AzVolumeAttachment)
+			if updateInstance.Status.Error != nil {
+				// reset error and state field of the AzVolumeAttachment so that the reconciler can retry attachment
+				updateInstance.Status.Error = nil
+				updateInstance.Status.State = v1alpha1.AttachmentPending
+			}
+
+			// Otherwise, we are trying to update
+			// the updateInstanceolumeAttachment role from Replica to Primary
+			updateInstance.Spec.RequestedRole = v1alpha1.PrimaryRole
+			// Keeping the spec fields up to date with the request parameters
+			updateInstance.Spec.VolumeContext = volumeContext
+			// Update the label of the AzVolumeAttachment
+			if updateInstance.Labels == nil {
+				updateInstance.Labels = map[string]string{}
+			}
+			updateInstance.Labels[azureutils.RoleLabel] = string(v1alpha1.PrimaryRole)
 		}
 
-		// Otherwise, we are trying to update
-		// the AzVolumeAttachment role from Replica to Primary
-		updated.Spec.RequestedRole = v1alpha1.PrimaryRole
-		// Keeping the spec fields up to date with the request parameters
-		updated.Spec.VolumeContext = volumeContext
-		// Update the label of the AzVolumeAttachment
-		if updated.Labels == nil {
-			updated.Labels = map[string]string{}
-		}
-		updated.Labels[azureutils.RoleLabel] = string(v1alpha1.PrimaryRole)
-		_, err := azVA.Update(ctx, updated, metav1.UpdateOptions{})
-		if err != nil {
+		if err := azureutils.UpdateCRIWithRetry(ctx, c.azDiskClient, azVolumeAttachmentInstance, updateFunc); err != nil {
 			return nil, err
 		}
 	} else if !errors.IsNotFound(err) {
@@ -442,12 +446,14 @@ func (c *CrdProvisioner) UnpublishVolume(
 
 	// if AzVolumeAttachment instance indicates that previous attachment request was successful, annotate the CRI with detach request so that the underlying volume attachment can be properly detached.
 	if azVolumeAttachment.Status.Detail != nil {
-		updated := azVolumeAttachment.DeepCopy()
-		if updated.Annotations == nil {
-			updated.Annotations = map[string]string{}
+		updateFunc := func(obj interface{}) {
+			updateInstance := obj.(*v1alpha1.AzVolumeAttachment)
+			if updateInstance.Annotations == nil {
+				updateInstance.Annotations = map[string]string{}
+			}
+			updateInstance.Annotations[azureutils.VolumeDetachRequestAnnotation] = "cloud-detach-volume"
 		}
-		updated.Annotations[azureutils.VolumeDetachRequestAnnotation] = "cloud-detach-volume"
-		if _, err = azVA.Update(ctx, updated, metav1.UpdateOptions{}); err != nil {
+		if err = azureutils.UpdateCRIWithRetry(ctx, c.azDiskClient, azVolumeAttachment, updateFunc); err != nil {
 			klog.Errorf("failed to update AzVolumeAttachment (%s) with Annotation (%s): %v", attachmentName, azureutils.VolumeDetachRequestAnnotation, err)
 			return err
 		}
@@ -493,33 +499,37 @@ func (c *CrdProvisioner) ExpandVolume(
 	if err != nil {
 		return nil, err
 	}
+	volumeName = strings.ToLower(volumeName)
 
-	azVolume, err := azV.Get(ctx, strings.ToLower(volumeName), metav1.GetOptions{})
+	azVolume, err := azV.Get(ctx, volumeName, metav1.GetOptions{})
 	if err != nil || azVolume == nil {
 		klog.Errorf("Failed to retrieve existing volume id (%s)", volumeID)
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to retrieve volume id (%s), error: %v", volumeID, err))
 	}
 
-	azVolume.Spec.CapacityRange = capacityRange
-	azVolumeUpdated, err := azV.Update(ctx, azVolume, metav1.UpdateOptions{})
-	if err != nil || azVolumeUpdated == nil {
-		klog.Errorf("Failed to update azvolume resource for volume name (%s), error: %v", volumeID, err)
+	updateFunc := func(obj interface{}) {
+		udpateInstance := obj.(*v1alpha1.AzVolume)
+		udpateInstance.Spec.CapacityRange = capacityRange
+	}
+
+	if err := azureutils.UpdateCRIWithRetry(ctx, c.azDiskClient, azVolume, updateFunc); err != nil {
+		klog.Errorf("Failed to update AzVolume capacity range for volume (%s), error: %v", volumeID, err)
 		return nil, err
 	}
 
 	conditionFunc := func() (bool, error) {
-		azVolumeUpdated, err = azV.Get(ctx, strings.ToLower(volumeName), metav1.GetOptions{})
+		azVolume, err = azV.Get(ctx, volumeName, metav1.GetOptions{})
 		if err != nil {
 			return true, err
 		}
 		// Checking that the status is updated with the required capacityRange
-		if azVolumeUpdated.Status.Detail != nil {
-			if azVolumeUpdated.Status.Detail.ResponseObject != nil && azVolumeUpdated.Status.Detail.ResponseObject.CapacityBytes == capacityRange.RequiredBytes {
+		if azVolume.Status.Detail != nil {
+			if azVolume.Status.Detail.ResponseObject != nil && azVolume.Status.Detail.ResponseObject.CapacityBytes == capacityRange.RequiredBytes {
 				return true, nil
 			}
 		}
-		if azVolumeUpdated.Status.Error != nil {
-			azVolumeError := status.Error(util.GetErrorCodeFromString(azVolumeUpdated.Status.Error.ErrorCode), azVolumeUpdated.Status.Error.ErrorMessage)
+		if azVolume.Status.Error != nil {
+			azVolumeError := status.Error(util.GetErrorCodeFromString(azVolume.Status.Error.ErrorCode), azVolume.Status.Error.ErrorMessage)
 			return true, azVolumeError
 		}
 		return false, nil
@@ -529,11 +539,11 @@ func (c *CrdProvisioner) ExpandVolume(
 	if err != nil {
 		return nil, err
 	}
-	if azVolumeUpdated.Status.Detail.ResponseObject.CapacityBytes != capacityRange.RequiredBytes {
+	if azVolume.Status.Detail.ResponseObject.CapacityBytes != capacityRange.RequiredBytes {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("AzVolume status not updated with the new capacity for volume name (%s)", volumeID))
 	}
 
-	return azVolumeUpdated.Status.Detail.ResponseObject, nil
+	return azVolume.Status.Detail.ResponseObject, nil
 }
 
 func (c *CrdProvisioner) GetDiskClientSet() azDiskClientSet.Interface {

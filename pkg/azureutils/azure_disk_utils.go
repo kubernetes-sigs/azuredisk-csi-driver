@@ -20,19 +20,25 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"reflect"
 	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
 	"github.com/pborman/uuid"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog"
@@ -121,6 +127,9 @@ const (
 	NodeNameLabel                    = "disk.csi.azure.com/node-name"
 	VolumeNameLabel                  = "disk.csi.azure.com/volume-name"
 	RoleLabel                        = "disk.csi.azure.com/requested-role"
+
+	CRIUpdateAttemptInterval = time.Duration(1) * time.Second
+	CRIUpdateTimeout         = time.Duration(1) * time.Minute
 
 	// ZRS specific constants
 	WellKnownTopologyKey = "topology.kubernetes.io/zone"
@@ -466,4 +475,45 @@ func GetAzVolumeAttachmentState(volumeAttachmentStatus storagev1.VolumeAttachmen
 	} else {
 		return v1alpha1.AttachmentPending
 	}
+}
+
+func UpdateCRIWithRetry(ctx context.Context, azDiskClient azDiskClientSet.Interface, obj interface{}, updateFunc func(interface{})) error {
+	conditionFunc := func() (bool, error) {
+		var err error
+		switch target := obj.(type) {
+		case *v1alpha1.AzVolume:
+			target, err = azDiskClient.DiskV1alpha1().AzVolumes(target.Namespace).Get(ctx, target.Name, metav1.GetOptions{})
+			obj = target.DeepCopy()
+		case *v1alpha1.AzVolumeAttachment:
+			target, err = azDiskClient.DiskV1alpha1().AzVolumeAttachments(target.Namespace).Get(ctx, target.Name, metav1.GetOptions{})
+			obj = target.DeepCopy()
+		default:
+			return false, status.Errorf(codes.Internal, "object (%v) not supported.", reflect.TypeOf(target))
+		}
+
+		if err != nil {
+			klog.Errorf("failed to get obj (%s): %v", obj.(client.Object).GetName(), err)
+			return false, err
+		}
+
+		updateFunc(obj)
+
+		switch target := obj.(type) {
+		case *v1alpha1.AzVolume:
+			_, err = azDiskClient.DiskV1alpha1().AzVolumes(target.Namespace).Update(ctx, target, metav1.UpdateOptions{})
+		case *v1alpha1.AzVolumeAttachment:
+			_, err = azDiskClient.DiskV1alpha1().AzVolumeAttachments(target.Namespace).Update(ctx, target, metav1.UpdateOptions{})
+		}
+
+		if err != nil {
+			// retry update upon conflict
+			if errors.IsConflict(err) {
+				return false, nil
+			}
+			// if not return err
+			return false, err
+		}
+		return true, nil
+	}
+	return wait.PollImmediate(CRIUpdateAttemptInterval, CRIUpdateTimeout, conditionFunc)
 }
