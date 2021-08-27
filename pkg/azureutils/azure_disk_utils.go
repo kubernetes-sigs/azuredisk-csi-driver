@@ -453,3 +453,34 @@ func getKubeClient(kubeconfig string) (*kubernetes.Clientset, error) {
 
 	return kubernetes.NewForConfig(config)
 }
+
+// InsertDiskProperties: insert disk properties to map
+func InsertDiskProperties(disk *compute.Disk, publishConext map[string]string) {
+	if disk == nil || publishConext == nil {
+		return
+	}
+
+	if disk.Sku != nil {
+		publishConext[consts.SkuNameField] = string(disk.Sku.Name)
+	}
+	prop := disk.DiskProperties
+	if prop != nil {
+		publishConext[consts.NetworkAccessPolicyField] = string(prop.NetworkAccessPolicy)
+		if prop.DiskIOPSReadWrite != nil {
+			publishConext[consts.DiskIOPSReadWriteField] = strconv.Itoa(int(*prop.DiskIOPSReadWrite))
+		}
+		if prop.DiskMBpsReadWrite != nil {
+			publishConext[consts.DiskMBPSReadWriteField] = strconv.Itoa(int(*prop.DiskMBpsReadWrite))
+		}
+		if prop.CreationData != nil && prop.CreationData.LogicalSectorSize != nil {
+			publishConext[consts.LogicalSectorSizeField] = strconv.Itoa(int(*prop.CreationData.LogicalSectorSize))
+		}
+		if prop.Encryption != nil &&
+			prop.Encryption.DiskEncryptionSetID != nil {
+			publishConext[consts.DesIDField] = *prop.Encryption.DiskEncryptionSetID
+		}
+		if prop.MaxShares != nil {
+			publishConext[consts.MaxSharesField] = strconv.Itoa(int(*prop.MaxShares))
+		}
+	}
+}

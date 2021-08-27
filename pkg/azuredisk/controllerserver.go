@@ -293,11 +293,9 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 				},
 			}
 
-			ctx, cancel := context.WithCancel(context.Background())
 			if sourceGiB, _ := d.GetSourceDiskSize(ctx, resourceGroup, path.Base(sourceID), 0, consts.SourceDiskSearchMaxDepth); sourceGiB != nil && *sourceGiB < int32(requestGiB) {
 				parameters[consts.ResizeRequired] = strconv.FormatBool(true)
 			}
-			cancel()
 		}
 	}
 
@@ -476,9 +474,16 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		klog.V(2).Infof("attach volume %q to node %q successfully", diskURI, nodeName)
 	}
 
-	pvInfo := map[string]string{consts.LUN: strconv.Itoa(int(lun))}
+	publishContext := map[string]string{consts.LUN: strconv.Itoa(int(lun))}
+	volumeContext := req.VolumeContext
+	if disk != nil && volumeContext != nil {
+		if _, ok := volumeContext[consts.RequestedSizeGib]; !ok {
+			klog.V(2).Infof("found static PV(%s), insert disk properties to volumeattachments", diskURI)
+			azureutils.InsertDiskProperties(disk, publishContext)
+		}
+	}
 	isOperationSucceeded = true
-	return &csi.ControllerPublishVolumeResponse{PublishContext: pvInfo}, nil
+	return &csi.ControllerPublishVolumeResponse{PublishContext: publishContext}, nil
 }
 
 // ControllerUnpublishVolume detach an azure disk from a required node
