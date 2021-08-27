@@ -27,11 +27,12 @@ import (
 
 	"k8s.io/klog/v2"
 	"k8s.io/mount-utils"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 )
 
 // exclude those used by azure as resource and OS root in /dev/disk/azure, /dev/disk/azure/scsi0
 // "/dev/disk/azure/scsi0" dir is populated in Standard_DC4s/DC2s on Ubuntu 18.04
-func listAzureDiskPath(io ioHandler) []string {
+func listAzureDiskPath(io azureutils.IOHandler) []string {
 	var azureDiskList []string
 	azureResourcePaths := []string{"/dev/disk/azure/", "/dev/disk/azure/scsi0/"}
 	for _, azureDiskPath := range azureResourcePaths {
@@ -51,7 +52,7 @@ func listAzureDiskPath(io ioHandler) []string {
 }
 
 // getDiskLinkByDevName get disk link by device name from devLinkPath, e.g. /dev/disk/azure/, /dev/disk/by-id/
-func getDiskLinkByDevName(io ioHandler, devLinkPath, devName string) (string, error) {
+func getDiskLinkByDevName(io azureutils.IOHandler, devLinkPath, devName string) (string, error) {
 	dirs, err := io.ReadDir(devLinkPath)
 	klog.V(12).Infof("azureDisk - begin to find %s from %s", devName, devLinkPath)
 	if err == nil {
@@ -72,7 +73,7 @@ func getDiskLinkByDevName(io ioHandler, devLinkPath, devName string) (string, er
 	return "", fmt.Errorf("read %s error: %v", devLinkPath, err)
 }
 
-func scsiHostRescan(io ioHandler, m *mount.SafeFormatAndMount) {
+func scsiHostRescan(io azureutils.IOHandler, m *mount.SafeFormatAndMount) {
 	scsiPath := "/sys/class/scsi_host/"
 	if dirs, err := io.ReadDir(scsiPath); err == nil {
 		for _, f := range dirs {
@@ -87,7 +88,7 @@ func scsiHostRescan(io ioHandler, m *mount.SafeFormatAndMount) {
 	}
 }
 
-func findDiskByLun(lun int, io ioHandler, m *mount.SafeFormatAndMount) (string, error) {
+func findDiskByLun(lun int, io azureutils.IOHandler, m *mount.SafeFormatAndMount) (string, error) {
 	azureDisks := listAzureDiskPath(io)
 	return findDiskByLunWithConstraint(lun, io, azureDisks)
 }
@@ -97,7 +98,7 @@ func formatAndMount(source, target, fstype string, options []string, m *mount.Sa
 }
 
 // finds a device mounted to "current" node
-func findDiskByLunWithConstraint(lun int, io ioHandler, azureDisks []string) (string, error) {
+func findDiskByLunWithConstraint(lun int, io azureutils.IOHandler, azureDisks []string) (string, error) {
 	var err error
 	sysPath := "/sys/bus/scsi/devices"
 	if dirs, err := io.ReadDir(sysPath); err == nil {

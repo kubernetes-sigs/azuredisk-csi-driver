@@ -30,6 +30,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"k8s.io/klog/v2"
+	"k8s.io/kubernetes/pkg/volume/util/hostutil"
 	"k8s.io/mount-utils"
 
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
@@ -65,6 +66,10 @@ type CSIDriver interface {
 	Run(endpoint, kubeconfig string, disableAVSetNodes, testMode bool)
 }
 
+type hostUtil interface {
+	PathIsDevice(string) (bool, error)
+}
+
 // DriverCore contains fields common to both the V1 and V2 driver, and implements all interfaces of CSI drivers
 type DriverCore struct {
 	csicommon.CSIDriver
@@ -75,8 +80,10 @@ type DriverCore struct {
 	userAgentSuffix            string
 	cloud                      *azure.Cloud
 	mounter                    *mount.SafeFormatAndMount
-	deviceHelper               *optimization.SafeDeviceHelper
+	deviceHelper               optimization.Interface
 	nodeInfo                   *optimization.NodeInfo
+	ioHandler                  azureutils.IOHandler
+	hostUtil                   hostUtil
 }
 
 // Driver is the v1 implementation of the Azure Disk CSI Driver.
@@ -101,6 +108,8 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.customUserAgent = options.CustomUserAgent
 	driver.userAgentSuffix = options.UserAgentSuffix
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
+	driver.ioHandler = azureutils.NewOSIOHandler()
+	driver.hostUtil = hostutil.NewHostUtil()
 
 	topologyKey = fmt.Sprintf("topology.%s/zone", driver.Name)
 
@@ -299,12 +308,21 @@ func (d *DriverCore) getPerfOptimizationEnabled() bool {
 	return d.perfOptimizationEnabled
 }
 
+// setPerfOptimizationEnabled sets the value of the perfOptimizationEnabled field. It is intended for use with unit tests.
+func (d *DriverCore) setPerfOptimizationEnabled(enabled bool) {
+	d.perfOptimizationEnabled = enabled
+}
+
 // getDeviceHelper returns the value of the deviceHelper field. It is intended for use with unit tests.
-func (d *DriverCore) getDeviceHelper() *optimization.SafeDeviceHelper {
+func (d *DriverCore) getDeviceHelper() optimization.Interface {
 	return d.deviceHelper
 }
 
 // getNodeInfo returns the value of the nodeInfo field. It is intended for use with unit tests.
 func (d *DriverCore) getNodeInfo() *optimization.NodeInfo {
 	return d.nodeInfo
+}
+
+func (d *DriverCore) getHostUtil() hostUtil {
+	return d.hostUtil
 }
