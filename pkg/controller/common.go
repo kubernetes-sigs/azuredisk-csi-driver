@@ -528,6 +528,14 @@ func getQualifiedName(namespace, name string) string {
 	return fmt.Sprintf("%s/%s", namespace, name)
 }
 
+func formatUpdateStateError(objectType, fromState string, possibleStates ...string) string {
+	length := len(possibleStates)
+	if length > 1 {
+		possibleStates[length-1] = fmt.Sprintf("or %s", possibleStates[length-1])
+	}
+	return fmt.Sprintf("%s's state '%s' can only be updated to %s", objectType, fromState, strings.Join(possibleStates, ", "))
+}
+
 func min(a, b int) int {
 	if a < b {
 		return a

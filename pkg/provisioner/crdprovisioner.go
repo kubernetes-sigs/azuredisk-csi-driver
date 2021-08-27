@@ -156,7 +156,7 @@ func (c *CrdProvisioner) CreateVolume(
 			// Returning the response object from the status
 			return azVolumeInstance.Status.Detail.ResponseObject, nil
 		} else if azVolumeInstance.Status.Error != nil {
-			updateFunc := func(obj interface{}) {
+			updateFunc := func(obj interface{}) error {
 				updateInstance := obj.(*v1alpha1.AzVolume)
 				updateInstance.Status.Error = nil
 				updateInstance.Status.State = v1alpha1.VolumeOperationPending
@@ -170,6 +170,8 @@ func (c *CrdProvisioner) CreateVolume(
 					updateInstance.Spec.ContentVolumeSource = volumeContentSource
 					updateInstance.Spec.AccessibilityRequirements = accessibilityReq
 				}
+
+				return nil
 			}
 
 			if err = azureutils.UpdateCRIWithRetry(ctx, c.azDiskClient, azVolumeInstance, updateFunc); err != nil {
@@ -231,11 +233,21 @@ func (c *CrdProvisioner) CreateVolume(
 	}
 
 	err = wait.PollImmediate(interval, provisionTimeout, conditionFunc)
+	// if volume creation was unsuccessful, delete the AzVolume CRI and return error
 	if err != nil {
+		go func() {
+			conditionFunc := func() (bool, error) {
+				if err := azV.Delete(ctx, azVolumeName, metav1.DeleteOptions{}); err != nil {
+					klog.Errorf("failed to delete AzVolume (%s): %v", azVolumeName, err)
+					return false, nil
+				}
+				return true, nil
+			}
+			if err := wait.PollImmediateInfinite(interval, conditionFunc); err != nil {
+				klog.Errorf("failed to complete AzVolume (%s) deletion: %v", azVolumeName, err)
+			}
+		}()
 		return nil, err
-	}
-	if azVolumeInstance == nil || azVolumeInstance.Status.Detail == nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Unable to fetch status of volume created for volume name (%s)", volumeName))
 	}
 
 	return azVolumeInstance.Status.Detail.ResponseObject, nil
@@ -266,7 +278,7 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 		return err
 	}
 
-	updateFunc := func(obj interface{}) {
+	updateFunc := func(obj interface{}) error {
 		updateInstance := obj.(*v1alpha1.AzVolume)
 		if updateInstance.Annotations == nil {
 			updateInstance.Annotations = map[string]string{}
@@ -277,6 +289,8 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 		updateInstance.Status.Error = nil
 		// revert volume deletion state to avoid confusion
 		updateInstance.Status.State = v1alpha1.VolumeCreated
+
+		return nil
 	}
 
 	// update AzVolume CRI with annotation and resetted state with retry upon conflict
@@ -333,7 +347,7 @@ func (c *CrdProvisioner) PublishVolume(
 		if azVolumeAttachmentInstance.Status.Detail != nil && azVolumeAttachmentInstance.Status.Detail.PublishContext != nil && azVolumeAttachmentInstance.Status.Detail.Role == v1alpha1.PrimaryRole {
 			return azVolumeAttachmentInstance.Status.Detail.PublishContext, nil
 		}
-		updateFunc := func(obj interface{}) {
+		updateFunc := func(obj interface{}) error {
 			updateInstance := obj.(*v1alpha1.AzVolumeAttachment)
 			if updateInstance.Status.Error != nil {
 				// reset error and state field of the AzVolumeAttachment so that the reconciler can retry attachment
@@ -351,6 +365,8 @@ func (c *CrdProvisioner) PublishVolume(
 				updateInstance.Labels = map[string]string{}
 			}
 			updateInstance.Labels[azureutils.RoleLabel] = string(v1alpha1.PrimaryRole)
+
+			return nil
 		}
 
 		if err := azureutils.UpdateCRIWithRetry(ctx, c.azDiskClient, azVolumeAttachmentInstance, updateFunc); err != nil {
@@ -446,12 +462,14 @@ func (c *CrdProvisioner) UnpublishVolume(
 
 	// if AzVolumeAttachment instance indicates that previous attachment request was successful, annotate the CRI with detach request so that the underlying volume attachment can be properly detached.
 	if azVolumeAttachment.Status.Detail != nil {
-		updateFunc := func(obj interface{}) {
+		updateFunc := func(obj interface{}) error {
 			updateInstance := obj.(*v1alpha1.AzVolumeAttachment)
 			if updateInstance.Annotations == nil {
 				updateInstance.Annotations = map[string]string{}
 			}
 			updateInstance.Annotations[azureutils.VolumeDetachRequestAnnotation] = "cloud-detach-volume"
+
+			return nil
 		}
 		if err = azureutils.UpdateCRIWithRetry(ctx, c.azDiskClient, azVolumeAttachment, updateFunc); err != nil {
 			klog.Errorf("failed to update AzVolumeAttachment (%s) with Annotation (%s): %v", attachmentName, azureutils.VolumeDetachRequestAnnotation, err)
@@ -507,9 +525,10 @@ func (c *CrdProvisioner) ExpandVolume(
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to retrieve volume id (%s), error: %v", volumeID, err))
 	}
 
-	updateFunc := func(obj interface{}) {
+	updateFunc := func(obj interface{}) error {
 		udpateInstance := obj.(*v1alpha1.AzVolume)
 		udpateInstance.Spec.CapacityRange = capacityRange
+		return nil
 	}
 
 	if err := azureutils.UpdateCRIWithRetry(ctx, c.azDiskClient, azVolume, updateFunc); err != nil {

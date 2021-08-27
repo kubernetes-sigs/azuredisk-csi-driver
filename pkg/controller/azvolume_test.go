@@ -26,6 +26,7 @@ import (
 	"google.golang.org/grpc/status"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/wait"
 	fakev1 "k8s.io/client-go/kubernetes/fake"
 	diskv1alpha1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	diskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
@@ -124,9 +125,16 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 			verifyFunc: func(t *testing.T, controller *ReconcileAzVolume, result reconcile.Result, err error) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
-				azVolume, err := controller.azVolumeClient.DiskV1alpha1().AzVolumes(testNamespace).Get(context.TODO(), testPersistentVolume0Name, metav1.GetOptions{})
-				require.NoError(t, err)
-				require.Equal(t, diskv1alpha1.VolumeCreated, azVolume.Status.State)
+
+				conditionFunc := func() (bool, error) {
+					azVolume, localError := controller.azVolumeClient.DiskV1alpha1().AzVolumes(testAzVolume0.Namespace).Get(context.TODO(), testAzVolume0.Name, metav1.GetOptions{})
+					if localError != nil {
+						return false, nil
+					}
+					return azVolume.Status.State == diskv1alpha1.VolumeCreated, nil
+				}
+				conditionError := wait.PollImmediate(azureutils.CRIUpdateAttemptInterval, azureutils.CRIUpdateTimeout, conditionFunc)
+				require.NoError(t, conditionError)
 			},
 		},
 		{
@@ -156,9 +164,15 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 			verifyFunc: func(t *testing.T, controller *ReconcileAzVolume, result reconcile.Result, err error) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
-				azVolume, err := controller.azVolumeClient.DiskV1alpha1().AzVolumes(testNamespace).Get(context.TODO(), testPersistentVolume0Name, metav1.GetOptions{})
-				require.NoError(t, err)
-				require.Equal(t, azVolume.Spec.CapacityRange.RequiredBytes, azVolume.Status.Detail.ResponseObject.CapacityBytes)
+				conditionFunc := func() (bool, error) {
+					azVolume, localError := controller.azVolumeClient.DiskV1alpha1().AzVolumes(testAzVolume0.Namespace).Get(context.TODO(), testAzVolume0.Name, metav1.GetOptions{})
+					if localError != nil {
+						return false, nil
+					}
+					return azVolume.Status.Detail.ResponseObject.CapacityBytes == azVolume.Spec.CapacityRange.RequiredBytes, nil
+				}
+				conditionError := wait.PollImmediate(azureutils.CRIUpdateAttemptInterval, azureutils.CRIUpdateTimeout, conditionFunc)
+				require.NoError(t, conditionError)
 			},
 		},
 		{
@@ -193,9 +207,15 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 			verifyFunc: func(t *testing.T, controller *ReconcileAzVolume, result reconcile.Result, err error) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
-				azVolume, err := controller.azVolumeClient.DiskV1alpha1().AzVolumes(testNamespace).Get(context.TODO(), testPersistentVolume0Name, metav1.GetOptions{})
-				require.NoError(t, err)
-				require.Equal(t, diskv1alpha1.VolumeDeleted, azVolume.Status.State)
+				conditionFunc := func() (bool, error) {
+					azVolume, localError := controller.azVolumeClient.DiskV1alpha1().AzVolumes(testAzVolume0.Namespace).Get(context.TODO(), testAzVolume0.Name, metav1.GetOptions{})
+					if localError != nil {
+						return false, nil
+					}
+					return azVolume.Status.State == diskv1alpha1.VolumeDeleted, nil
+				}
+				conditionError := wait.PollImmediate(azureutils.CRIUpdateAttemptInterval, azureutils.CRIUpdateTimeout, conditionFunc)
+				require.NoError(t, conditionError)
 			},
 		},
 		{

@@ -477,7 +477,7 @@ func GetAzVolumeAttachmentState(volumeAttachmentStatus storagev1.VolumeAttachmen
 	}
 }
 
-func UpdateCRIWithRetry(ctx context.Context, azDiskClient azDiskClientSet.Interface, obj interface{}, updateFunc func(interface{})) error {
+func UpdateCRIWithRetry(ctx context.Context, azDiskClient azDiskClientSet.Interface, obj interface{}, updateFunc func(interface{}) error) error {
 	conditionFunc := func() (bool, error) {
 		var err error
 		switch target := obj.(type) {
@@ -496,7 +496,9 @@ func UpdateCRIWithRetry(ctx context.Context, azDiskClient azDiskClientSet.Interf
 			return false, err
 		}
 
-		updateFunc(obj)
+		if err = updateFunc(obj); err != nil {
+			return false, err
+		}
 
 		switch target := obj.(type) {
 		case *v1alpha1.AzVolume:
