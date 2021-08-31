@@ -451,7 +451,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		}
 		klog.V(2).Infof("Trying to attach volume %q to node %q", diskURI, nodeName)
 
-		lun, err = d.cloud.AttachDisk(true, diskName, diskURI, nodeName, cachingMode, disk)
+		lun, err = d.cloud.AttachDisk(ctx, true, diskName, diskURI, nodeName, cachingMode, disk)
 		if err == nil {
 			klog.V(2).Infof("Attach operation successful: volume %q attached to node %q.", diskURI, nodeName)
 		} else {
@@ -462,11 +462,11 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 					return nil, err
 				}
 				klog.Warningf("volume %q is already attached to node %q, try detach first", diskURI, derr.CurrentNode)
-				if err = d.cloud.DetachDisk(diskName, diskURI, derr.CurrentNode); err != nil {
+				if err = d.cloud.DetachDisk(ctx, diskName, diskURI, derr.CurrentNode); err != nil {
 					return nil, status.Errorf(codes.Internal, "Could not detach volume %q from node %q: %v", diskURI, derr.CurrentNode, err)
 				}
 				klog.V(2).Infof("Trying to attach volume %q to node %q again", diskURI, nodeName)
-				lun, err = d.cloud.AttachDisk(true, diskName, diskURI, nodeName, cachingMode, disk)
+				lun, err = d.cloud.AttachDisk(ctx, true, diskName, diskURI, nodeName, cachingMode, disk)
 			}
 			if err != nil {
 				klog.Errorf("Attach volume %q to instance %q failed with %v", diskURI, nodeName, err)
@@ -507,7 +507,7 @@ func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.Control
 
 	klog.V(2).Infof("Trying to detach volume %s from node %s", diskURI, nodeID)
 
-	if err := d.cloud.DetachDisk(diskName, diskURI, nodeName); err != nil {
+	if err := d.cloud.DetachDisk(ctx, diskName, diskURI, nodeName); err != nil {
 		if strings.Contains(err.Error(), consts.ErrDiskNotFound) {
 			klog.Warningf("volume %s already detached from node %s", diskURI, nodeID)
 		} else {

@@ -58,13 +58,6 @@ if [[ "$1" == "linux" ]]; then
     if [[ ${FSGROUP_SUPPORT_ENABLED} -eq 1 ]]; then
         EXAMPLES+=(deploy/example/statefulset-nonroot.yaml)
     fi
-
-    if [[ "$#" -gt 2 ]]&&[[ "$3" == *"ephemeral"* ]]; then
-        EXAMPLES+=(\
-            deploy/example/nginx-pod-ephemeral.yaml \
-            deploy/example/daemonset-azuredisk-ephemeral.yaml \
-            )
-    fi
 fi
 
 if [[ "$1" == "windows" ]]; then
