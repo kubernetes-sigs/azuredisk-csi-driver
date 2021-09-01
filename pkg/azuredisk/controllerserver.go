@@ -104,8 +104,10 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		diskAccessID            string
 		maxShares               int
 		enableBursting          *bool
+		localCloud              *azure.Cloud
 	)
 
+	localCloud = d.cloud
 	tags := make(map[string]string)
 	parameters := req.GetParameters()
 	if parameters == nil {
@@ -171,12 +173,19 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			if strings.EqualFold(v, consts.TrueValue) {
 				enableBursting = to.BoolPtr(true)
 			}
+		case consts.UserAgentField:
+			newUserAgent := v
+			localCloud, err = azureutils.GetCloudProvider(d.kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, newUserAgent)
+			if err != nil {
+				klog.V(2).Infof("Unable to create new cloud for UserAgent, err: (%s)", err)
+				localCloud = d.cloud
+			}
 		default:
 			return nil, fmt.Errorf("invalid parameter %s in storage class", k)
 		}
 	}
 
-	if azureutils.IsAzureStackCloud(d.cloud.Config.Cloud, d.cloud.Config.DisableAzureStackCloud) {
+	if azureutils.IsAzureStackCloud(localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud) {
 		if maxShares > 1 {
 			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Invalid maxShares value: %d as Azure Stack does not support shared disk.", maxShares))
 		}
@@ -198,11 +207,11 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	diskName = azureutils.CreateValidDiskName(diskName)
 
 	if resourceGroup == "" {
-		resourceGroup = d.cloud.ResourceGroup
+		resourceGroup = localCloud.ResourceGroup
 	}
 
 	// normalize values
-	skuName, err := azureutils.NormalizeStorageAccountType(storageAccountType, d.cloud.Config.Cloud, d.cloud.Config.DisableAzureStackCloud)
+	skuName, err := azureutils.NormalizeStorageAccountType(storageAccountType, localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud)
 	if err != nil {
 		return nil, err
 	}
@@ -217,7 +226,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	}
 
 	requirement := req.GetAccessibilityRequirements()
-	diskZone := azureutils.PickAvailabilityZone(requirement, d.cloud.Location, topologyKey)
+	diskZone := azureutils.PickAvailabilityZone(requirement, localCloud.Location, topologyKey)
 	accessibleTopology := []*csi.Topology{}
 	if skuName == compute.StandardSSDZRS || skuName == compute.PremiumZRS {
 		klog.V(2).Infof("diskZone(%s) is reset as empty since disk(%s) is ZRS(%s)", diskZone, diskName, skuName)
@@ -251,7 +260,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		return nil, err
 	}
 
-	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_create_volume", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
+	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_create_volume", localCloud.ResourceGroup, localCloud.SubscriptionID, d.Name)
 	isOperationSucceeded := false
 	defer func() {
 		mc.ObserveOperationWithResult(isOperationSucceeded)
@@ -321,13 +330,13 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	}
 	volumeOptions.SkipGetDiskOperation = d.isGetDiskThrottled()
 	// Azure Stack Cloud does not support NetworkAccessPolicy
-	if !azureutils.IsAzureStackCloud(d.cloud.Config.Cloud, d.cloud.Config.DisableAzureStackCloud) {
+	if !azureutils.IsAzureStackCloud(localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud) {
 		volumeOptions.NetworkAccessPolicy = networkAccessPolicy
 		if diskAccessID != "" {
 			volumeOptions.DiskAccessID = &diskAccessID
 		}
 	}
-	diskURI, err := d.cloud.CreateManagedDisk(volumeOptions)
+	diskURI, err := localCloud.CreateManagedDisk(volumeOptions)
 	if err != nil {
 		if strings.Contains(err.Error(), consts.NotFound) {
 			return nil, status.Error(codes.NotFound, err.Error())

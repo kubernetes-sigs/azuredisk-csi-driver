@@ -73,6 +73,7 @@ type DriverCore struct {
 	cloudConfigSecretNamespace string
 	customUserAgent            string
 	userAgentSuffix            string
+	kubeconfig                 string
 	cloud                      *azure.Cloud
 	mounter                    *mount.SafeFormatAndMount
 	deviceHelper               *optimization.SafeDeviceHelper
@@ -130,6 +131,7 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 		klog.Fatalf("failed to get Azure Cloud Provider, error: %v", err)
 	}
 	d.cloud = cloud
+	d.kubeconfig = kubeconfig
 
 	if d.NodeID == "" {
 		// Disable UseInstanceMetadata for controller to mitigate a timeout issue using IMDS

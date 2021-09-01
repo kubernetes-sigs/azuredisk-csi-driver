@@ -22,6 +22,8 @@ perfProfile | [disk device performance profile](../docs/enhancements/feat-add-ab
 networkAccessPolicy | NetworkAccessPolicy property to prevent anybody from generating the SAS URI for a disk or a snapshot | `AllowAll`, `DenyAll`, `AllowPrivate` | No | `AllowAll`
 diskAccessID | ARM id of the DiskAccess resource for using private endpoints on disks | | No  | ``
 enableBursting | [enable on-demand bursting](https://docs.microsoft.com/en-us/azure/virtual-machines/disk-bursting) beyond the provisioned performance target of the disk. On-demand bursting only be applied to Premium disk, disk size > 512GB, Ultra & shared disk is not supported. Bursting is disabled by default. | `true`, `false` | No | `false`
+useragent | Useragent that can be set to allow for customer attribution | | No  | Generated Useragent formatted `driverName/driverVersion compiler/version (GOARCH-GOOS) gitCommit/buildDate` 
+
 
  - disk created by dynamic provisioning
    - disk name format(example): `pvc-e132d37f-9e8f-434a-b599-15a4ab211b39`
