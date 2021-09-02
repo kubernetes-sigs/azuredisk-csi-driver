@@ -311,7 +311,7 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 			if errors.IsNotFound(err) {
 				return true, nil
 			}
-			return true, status.Error(codes.Internal, fmt.Sprintf("Failed to delete azvolume resource for volume name (%s)", volumeName))
+			return true, status.Error(codes.Internal, fmt.Sprintf("failed to delete azvolume resource for volume name (%s)", volumeName))
 		} else if azVolume.Status.Error != nil {
 			azVolumeError := status.Error(util.GetErrorCodeFromString(azVolume.Status.Error.ErrorCode), azVolume.Status.Error.ErrorMessage)
 			return true, azVolumeError

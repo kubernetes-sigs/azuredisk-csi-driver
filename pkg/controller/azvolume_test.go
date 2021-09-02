@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/golang/mock/gomock"
@@ -45,6 +46,7 @@ func NewTestAzVolumeController(controller *gomock.Controller, namespace string, 
 		kubeClient:        fakev1.NewSimpleClientset(kubeObjs...),
 		namespace:         namespace,
 		volumeProvisioner: mockvolumeprovisioner.NewMockVolumeProvisioner(controller),
+		stateLock:         &sync.Map{},
 	}
 }
 

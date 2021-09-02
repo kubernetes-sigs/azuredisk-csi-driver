@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"sync"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -63,9 +64,19 @@ type ReconcileAttachDetach struct {
 	kubeClient            kubeClientSet.Interface
 	namespace             string
 	attachmentProvisioner AttachmentProvisioner
+	stateLock             *sync.Map
 }
 
 var _ reconcile.Reconciler = &ReconcileAttachDetach{}
+
+var allowedTargetAttachmentStates = map[string][]string{
+	string(v1alpha1.AttachmentPending): {string(v1alpha1.Attaching), string(v1alpha1.Detaching)},
+	string(v1alpha1.Attaching):         {string(v1alpha1.Attached), string(v1alpha1.AttachmentFailed)},
+	string(v1alpha1.Detaching):         {string(v1alpha1.Detached), string(v1alpha1.DetachmentFailed)},
+	string(v1alpha1.Attached):          {string(v1alpha1.Detaching)},
+	string(v1alpha1.AttachmentFailed):  {string(v1alpha1.Attaching), string(v1alpha1.Detaching)},
+	string(v1alpha1.DetachmentFailed):  {string(v1alpha1.Detaching)},
+}
 
 func (r *ReconcileAttachDetach) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
 	azVolumeAttachment, err := azureutils.GetAzVolumeAttachment(ctx, r.client, r.azVolumeClient, request.Name, request.Namespace, true)
@@ -76,30 +87,41 @@ func (r *ReconcileAttachDetach) Reconcile(ctx context.Context, request reconcile
 		return reconcile.Result{Requeue: true}, err
 	}
 
+	// if underlying cloud operation already in process, skip until operation is completed
+	if isOperationInProcess(azVolumeAttachment) {
+		return reconcile.Result{}, err
+	}
+
 	// detachment request
 	if deletionRequested(&azVolumeAttachment.ObjectMeta) {
 		if azVolumeAttachment.Status.State == v1alpha1.AttachmentPending || azVolumeAttachment.Status.State == v1alpha1.Attached || azVolumeAttachment.Status.State == v1alpha1.AttachmentFailed || azVolumeAttachment.Status.State == v1alpha1.DetachmentFailed {
 			if err := r.triggerDetach(ctx, azVolumeAttachment); err != nil {
-				return reconcile.Result{Requeue: true}, err
+				return reconcileReturnOnError(azVolumeAttachment, "detach", err)
 			}
 		}
 		// attachment request
 	} else if azVolumeAttachment.Status.Detail == nil {
 		if azVolumeAttachment.Status.State == v1alpha1.AttachmentPending || azVolumeAttachment.Status.State == v1alpha1.AttachmentFailed {
 			if err := r.triggerAttach(ctx, azVolumeAttachment); err != nil {
-				return reconcile.Result{Requeue: true}, err
+				return reconcileReturnOnError(azVolumeAttachment, "attach", err)
 			}
 		}
 		// promotion request
 	} else if azVolumeAttachment.Spec.RequestedRole != azVolumeAttachment.Status.Detail.Role {
 		if err := r.promote(ctx, azVolumeAttachment); err != nil {
-			return reconcile.Result{Requeue: true}, err
+			return reconcileReturnOnError(azVolumeAttachment, "promote", err)
 		}
 	}
 	return reconcile.Result{}, nil
 }
 
 func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttachment *v1alpha1.AzVolumeAttachment) error {
+	// requeue if AzVolumeAttachment's state is being updated by a different worker
+	if _, ok := r.stateLock.LoadOrStore(azVolumeAttachment.Name, nil); ok {
+		return getOperationRequeueError("attach", azVolumeAttachment)
+	}
+	defer r.stateLock.Delete(azVolumeAttachment.Name)
+
 	// initialize metadata and update status block
 	updateFunc := func(obj interface{}) error {
 		azv := obj.(*v1alpha1.AzVolumeAttachment)
@@ -111,6 +133,8 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 	if err := azureutils.UpdateCRIWithRetry(ctx, r.azVolumeClient, azVolumeAttachment, updateFunc); err != nil {
 		return err
 	}
+
+	klog.Infof("Attaching volume (%s) to node (%s)", azVolumeAttachment.Spec.VolumeID, azVolumeAttachment.Spec.NodeName)
 
 	// TODO reassess if adding additional finalizer to AzVolume CRI is necessary
 	// // add finalizer to the bound AzVolume CRI
@@ -176,6 +200,11 @@ func (r *ReconcileAttachDetach) triggerDetach(ctx context.Context, azVolumeAttac
 	detachmentRequested = detachmentRequested || metav1.HasAnnotation(azVolumeAttachment.ObjectMeta, azureutils.VolumeDetachRequestAnnotation)
 
 	if detachmentRequested {
+		if _, ok := r.stateLock.LoadOrStore(azVolumeAttachment.Name, nil); ok {
+			return getOperationRequeueError("detach", azVolumeAttachment)
+		}
+		defer r.stateLock.Delete(azVolumeAttachment.Name)
+
 		updateFunc := func(obj interface{}) error {
 			azv := obj.(*v1alpha1.AzVolumeAttachment)
 			// Update state to detaching
@@ -185,6 +214,8 @@ func (r *ReconcileAttachDetach) triggerDetach(ctx context.Context, azVolumeAttac
 		if err := azureutils.UpdateCRIWithRetry(ctx, r.azVolumeClient, azVolumeAttachment, updateFunc); err != nil {
 			return err
 		}
+
+		klog.Infof("Detaching volume (%s) from node (%s)", azVolumeAttachment.Spec.VolumeID, azVolumeAttachment.Spec.NodeName)
 
 		go func() {
 			var updateFunc func(obj interface{}) error
@@ -403,31 +434,9 @@ func (r *ReconcileAttachDetach) updateState(ctx context.Context, azVolumeAttachm
 	if azVolumeAttachment == nil {
 		return nil, status.Errorf(codes.FailedPrecondition, "function `updateState` requires non-nil AzVolumeAttachment object.")
 	}
-	switch azVolumeAttachment.Status.State {
-	case v1alpha1.AttachmentPending:
-		if state != v1alpha1.Attaching && state != v1alpha1.Detaching {
-			err = status.Errorf(codes.FailedPrecondition, formatUpdateStateError("azVolumeAttachment", string(v1alpha1.AttachmentPending), string(v1alpha1.Attaching), string(v1alpha1.Detaching)))
-		}
-	case v1alpha1.Attaching:
-		if state != v1alpha1.Attached && state != v1alpha1.AttachmentFailed {
-			err = status.Errorf(codes.FailedPrecondition, formatUpdateStateError("azVolumeAttachment", string(v1alpha1.Attaching), string(v1alpha1.Attached), string(v1alpha1.AttachmentFailed)))
-		}
-	case v1alpha1.Detaching:
-		if state != v1alpha1.Detached && state != v1alpha1.DetachmentFailed {
-			err = status.Errorf(codes.FailedPrecondition, formatUpdateStateError("azVolumeAttachment", string(v1alpha1.Detaching), string(v1alpha1.Detached), string(v1alpha1.DetachmentFailed)))
-		}
-	case v1alpha1.Attached:
-		if state != v1alpha1.Detaching {
-			err = status.Errorf(codes.FailedPrecondition, formatUpdateStateError("azVolumeAttachment", string(v1alpha1.Attached), string(v1alpha1.Detaching)))
-		}
-	case v1alpha1.AttachmentFailed:
-		if state != v1alpha1.Attaching && state != v1alpha1.Detaching {
-			err = status.Errorf(codes.FailedPrecondition, formatUpdateStateError("azVolumeAttachment", string(v1alpha1.AttachmentFailed), string(v1alpha1.Attaching), string(v1alpha1.Detaching)))
-		}
-	case v1alpha1.DetachmentFailed:
-		if state != v1alpha1.Detaching {
-			err = status.Errorf(codes.FailedPrecondition, formatUpdateStateError("azVolumeAttachment", string(v1alpha1.DetachmentFailed), string(v1alpha1.Detaching)))
-		}
+	expectedStates := allowedTargetAttachmentStates[string(azVolumeAttachment.Status.State)]
+	if !containsString(string(state), expectedStates) {
+		err = status.Error(codes.FailedPrecondition, formatUpdateStateError("azVolume", string(azVolumeAttachment.Status.State), string(state), expectedStates...))
 	}
 	if err == nil {
 		azVolumeAttachment.Status.State = state
@@ -578,6 +587,7 @@ func NewAttachDetachController(mgr manager.Manager, azVolumeClient azVolumeClien
 		kubeClient:            kubeClient,
 		namespace:             namespace,
 		attachmentProvisioner: attachmentProvisioner,
+		stateLock:             &sync.Map{},
 	}
 
 	c, err := controller.New("azvolumeattachment-controller", mgr, controller.Options{

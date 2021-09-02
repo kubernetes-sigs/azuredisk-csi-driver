@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -39,6 +40,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 const (
@@ -528,12 +530,41 @@ func getQualifiedName(namespace, name string) string {
 	return fmt.Sprintf("%s/%s", namespace, name)
 }
 
-func formatUpdateStateError(objectType, fromState string, possibleStates ...string) string {
-	length := len(possibleStates)
-	if length > 1 {
-		possibleStates[length-1] = fmt.Sprintf("or %s", possibleStates[length-1])
+func formatUpdateStateError(objectType, fromState, toState string, expectedStates ...string) string {
+	return fmt.Sprintf("%s's state '%s' cannot be updated to %s. %s can only be updated to %s", objectType, fromState, toState, fromState, strings.Join(expectedStates, ", "))
+}
+
+func getOperationRequeueError(desired string, obj client.Object) error {
+	return status.Errorf(codes.Aborted, "requeueing %s operation because another operation is already pending on %v (%s)", desired, reflect.TypeOf(obj), obj.GetName())
+}
+
+func reconcileReturnOnError(obj interface{}, operationType string, err error) (reconcile.Result, error) {
+	var errMsg string
+	if obj != nil {
+		var objName string
+		switch target := obj.(type) {
+		case *v1alpha1.AzVolume:
+			objName = target.Name
+		case *v1alpha1.AzVolumeAttachment:
+			objName = target.Name
+		}
+		errMsg = fmt.Sprintf("failed to %s %v (%s): %v", operationType, reflect.TypeOf(obj), objName, err)
 	}
-	return fmt.Sprintf("%s's state '%s' can only be updated to %s", objectType, fromState, strings.Join(possibleStates, ", "))
+	klog.Error(errMsg)
+	if status.Code(err) == codes.FailedPrecondition {
+		return reconcile.Result{Requeue: false}, nil
+	}
+	return reconcile.Result{Requeue: true}, err
+}
+
+func isOperationInProcess(obj interface{}) bool {
+	switch target := obj.(type) {
+	case *v1alpha1.AzVolume:
+		return target.Status.State == v1alpha1.VolumeCreating || target.Status.State == v1alpha1.VolumeDeleting || target.Status.State == v1alpha1.VolumeUpdating
+	case *v1alpha1.AzVolumeAttachment:
+		return target.Status.State == v1alpha1.Attaching || target.Status.State == v1alpha1.Detaching
+	}
+	return false
 }
 
 func min(a, b int) int {
@@ -548,4 +579,13 @@ func max(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func containsString(key string, items []string) bool {
+	for _, item := range items {
+		if item == key {
+			return true
+		}
+	}
+	return false
 }

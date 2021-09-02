@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/golang/mock/gomock"
@@ -43,6 +44,7 @@ func NewTestAttachDetachController(controller *gomock.Controller, namespace stri
 		kubeClient:            fakev1.NewSimpleClientset(kubeObjs...),
 		namespace:             namespace,
 		attachmentProvisioner: mockattachmentprovisioner.NewMockAttachmentProvisioner(controller),
+		stateLock:             &sync.Map{},
 	}
 }
 

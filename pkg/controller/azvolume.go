@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -63,10 +64,21 @@ type ReconcileAzVolume struct {
 	kubeClient        kubeClientSet.Interface
 	namespace         string
 	volumeProvisioner VolumeProvisioner
+	// stateLock prevents concurrent cloud operation for same volume to be executed due to state update race
+	stateLock *sync.Map
 }
 
 // Implement reconcile.Reconciler so the controller can reconcile objects
 var _ reconcile.Reconciler = &ReconcileAzVolume{}
+
+var allowedTargetVolumeStates = map[string][]string{
+	string(v1alpha1.VolumeOperationPending): {string(v1alpha1.VolumeCreating), string(v1alpha1.VolumeDeleting)},
+	string(v1alpha1.VolumeCreating):         {string(v1alpha1.VolumeCreated), string(v1alpha1.VolumeCreationFailed)},
+	string(v1alpha1.VolumeDeleting):         {string(v1alpha1.VolumeDeleted), string(v1alpha1.VolumeDeletionFailed)},
+	string(v1alpha1.VolumeUpdating):         {string(v1alpha1.VolumeUpdated), string(v1alpha1.VolumeUpdateFailed)},
+	string(v1alpha1.VolumeCreated):          {string(v1alpha1.VolumeUpdating), string(v1alpha1.VolumeDeleting)},
+	string(v1alpha1.VolumeUpdated):          {string(v1alpha1.VolumeUpdating), string(v1alpha1.VolumeDeleting)},
+}
 
 func (r *ReconcileAzVolume) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
 	azVolume, err := azureutils.GetAzVolume(ctx, r.client, r.azVolumeClient, request.Name, request.Namespace, true)
@@ -81,39 +93,34 @@ func (r *ReconcileAzVolume) Reconcile(ctx context.Context, request reconcile.Req
 		return reconcile.Result{Requeue: true}, err
 	}
 
+	// if underlying cloud operation already in process, skip until operation is completed
+	if isOperationInProcess(azVolume) {
+		return reconcile.Result{}, nil
+	}
+
 	// azVolume deletion
 	if deletionRequested(&azVolume.ObjectMeta) {
-		if azVolume.Status.State == v1alpha1.VolumeCreated || azVolume.Status.State == v1alpha1.VolumeCreationFailed || azVolume.Status.State == v1alpha1.VolumeUpdated || azVolume.Status.State == v1alpha1.VolumeUpdateFailed || azVolume.Status.State == v1alpha1.VolumeOperationPending {
-			klog.Infof("Deleting Volume (%s)...", azVolume.Spec.UnderlyingVolume)
-			if err := r.triggerDelete(ctx, azVolume); err != nil {
-				//If delete failed, requeue request
-				return reconcile.Result{Requeue: true}, err
-			}
+		if err := r.triggerDelete(ctx, azVolume); err != nil {
+			//If delete failed, requeue request
+			return reconcileReturnOnError(azVolume, "delete", err)
 		}
 		//azVolume creation
 	} else if azVolume.Status.Detail == nil {
-		if azVolume.Status.State == v1alpha1.VolumeOperationPending || azVolume.Status.State == v1alpha1.VolumeCreationFailed {
-			klog.Infof("Creating Volume (%s)...", azVolume.Spec.UnderlyingVolume)
-			if err := r.triggerCreate(ctx, azVolume); err != nil {
-				klog.Errorf("failed to create AzVolume (%s): %v", azVolume.Name, err)
-				return reconcile.Result{Requeue: true}, err
-			}
+		if err := r.triggerCreate(ctx, azVolume); err != nil {
+			klog.Errorf("failed to create volume (%s): %v", azVolume.Spec.UnderlyingVolume, err)
+			return reconcileReturnOnError(azVolume, "create", err)
 		}
 		// azVolume update
 	} else if azVolume.Status.Detail.ResponseObject != nil && azVolume.Spec.CapacityRange.RequiredBytes != azVolume.Status.Detail.ResponseObject.CapacityBytes {
-		if azVolume.Status.State == v1alpha1.VolumeCreated || azVolume.Status.State == v1alpha1.VolumeUpdated {
-			klog.Infof("Updating Volume (%s)...", azVolume.Spec.UnderlyingVolume)
-			if err := r.triggerUpdate(ctx, azVolume); err != nil {
-				klog.Errorf("failed to update AzVolume (%s): %v", azVolume.Name, err)
-				return reconcile.Result{Requeue: true}, err
-			}
+		if err := r.triggerUpdate(ctx, azVolume); err != nil {
+			klog.Errorf("failed to update volume (%s): %v", azVolume.Spec.UnderlyingVolume, err)
+			return reconcileReturnOnError(azVolume, "update", err)
 		}
 		// azVolume released, so clean up replica Attachments (primary Attachment should be deleted via UnpublishVolume request to avoid race condition)
 	} else if azVolume.Status.Detail.Phase == v1alpha1.VolumeReleased {
-		klog.Infof("Volume released: Initiating AzVolumeAttachment Clean-up")
 		if err := r.triggerRelease(ctx, azVolume); err != nil {
-			klog.Errorf("failed to relase AzVolume (%s): %v", azVolume.Name, err)
-			return reconcile.Result{Requeue: true}, err
+			klog.Errorf("failed to release AzVolume and clean up all attachments (%s): %v", azVolume.Name, err)
+			return reconcileReturnOnError(azVolume, "release", err)
 		}
 	}
 
@@ -121,7 +128,13 @@ func (r *ReconcileAzVolume) Reconcile(ctx context.Context, request reconcile.Req
 }
 
 func (r *ReconcileAzVolume) triggerCreate(ctx context.Context, azVolume *v1alpha1.AzVolume) error {
-	// add finalizer
+	// requeue if AzVolume's state is being updated by a different worker
+	if _, ok := r.stateLock.LoadOrStore(azVolume.Name, nil); ok {
+		return getOperationRequeueError("create", azVolume)
+	}
+	defer r.stateLock.Delete(azVolume.Name)
+
+	// add finalizer and update state
 	updateFunc := func(obj interface{}) error {
 		azv := obj.(*v1alpha1.AzVolume)
 		azv = r.initializeMeta(ctx, azv)
@@ -131,6 +144,8 @@ func (r *ReconcileAzVolume) triggerCreate(ctx context.Context, azVolume *v1alpha
 	if err := azureutils.UpdateCRIWithRetry(ctx, r.azVolumeClient, azVolume, updateFunc); err != nil {
 		return err
 	}
+
+	klog.Infof("Creating Volume (%s)...", azVolume.Spec.UnderlyingVolume)
 
 	// create volume
 	go func() {
@@ -181,11 +196,19 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *v1alpha
 	// only try deleting underlying volume 1) if volume creation was successful and 2) volumeDeleteRequestAnnotation is present
 	// if the annotation is not present, only delete the CRI and not the underlying volume
 	if isCreated(azVolume) && azVolume.Annotations != nil && metav1.HasAnnotation(azVolume.ObjectMeta, azureutils.VolumeDeleteRequestAnnotation) {
+		// requeue if AzVolume's state is being updated by a different worker
+		if _, ok := r.stateLock.LoadOrStore(azVolume.Name, nil); ok {
+			return getOperationRequeueError("delete", azVolume)
+		}
+		defer r.stateLock.Delete(azVolume.Name)
 		updateFunc := func(obj interface{}) error {
 			azv := obj.(*v1alpha1.AzVolume)
 			_, derr := r.updateState(ctx, azv, v1alpha1.VolumeDeleting)
 			return derr
 		}
+
+		klog.Infof("Deleting Volume (%s)...", azVolume.Spec.UnderlyingVolume)
+
 		if err := azureutils.UpdateCRIWithRetry(ctx, r.azVolumeClient, azVolume, updateFunc); err != nil {
 			return err
 		}
@@ -230,6 +253,11 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *v1alpha
 }
 
 func (r *ReconcileAzVolume) triggerUpdate(ctx context.Context, azVolume *v1alpha1.AzVolume) error {
+	// requeue if AzVolume's state is being updated by a different worker
+	if _, ok := r.stateLock.LoadOrStore(azVolume.Name, nil); ok {
+		return getOperationRequeueError("update", azVolume)
+	}
+	defer r.stateLock.Delete(azVolume.Name)
 	updateFunc := func(obj interface{}) error {
 		azv := obj.(*v1alpha1.AzVolume)
 		_, derr := r.updateState(ctx, azv, v1alpha1.VolumeUpdating)
@@ -238,6 +266,8 @@ func (r *ReconcileAzVolume) triggerUpdate(ctx context.Context, azVolume *v1alpha
 	if err := azureutils.UpdateCRIWithRetry(ctx, r.azVolumeClient, azVolume, updateFunc); err != nil {
 		return err
 	}
+
+	klog.Infof("Updating Volume (%s)...", azVolume.Spec.UnderlyingVolume)
 
 	go func() {
 		var updateFunc func(interface{}) error
@@ -273,6 +303,8 @@ func (r *ReconcileAzVolume) triggerUpdate(ctx context.Context, azVolume *v1alpha
 }
 
 func (r *ReconcileAzVolume) triggerRelease(ctx context.Context, azVolume *v1alpha1.AzVolume) error {
+	klog.Infof("Volume released: Initiating AzVolumeAttachment Clean-up")
+
 	if _, err := cleanUpAzVolumeAttachmentByVolume(ctx, r, azVolume.Name, replicaOnly); err != nil {
 		return err
 	}
@@ -330,37 +362,13 @@ func (r *ReconcileAzVolume) updateState(ctx context.Context, azVolume *v1alpha1.
 	if azVolume == nil {
 		return nil, status.Errorf(codes.FailedPrecondition, "function `updateState` requires non-nil AzVolume object.")
 	}
-	switch azVolume.Status.State {
-	case v1alpha1.VolumeOperationPending:
-		if state != v1alpha1.VolumeCreating && state != v1alpha1.VolumeDeleting {
-			err = status.Errorf(codes.FailedPrecondition, "azvolume state 'VolumeOperationPending' can only be updated to 'VolumeCreating' or 'VolumeDeleting' state")
-		}
-	case v1alpha1.VolumeCreating:
-		if state != v1alpha1.VolumeCreated && state != v1alpha1.VolumeCreationFailed {
-			err = status.Errorf(codes.FailedPrecondition, "azvolume state 'VolumeCreating' can only be updated to 'VolumeCreated' or 'VolumeCreationFailed' state")
-		}
-	case v1alpha1.VolumeDeleting:
-		if state != v1alpha1.VolumeDeleted && state != v1alpha1.VolumeDeletionFailed {
-			err = status.Errorf(codes.FailedPrecondition, "azvolume state 'VolumeDeleting' can only be updated to 'VolumeDeleted' or 'VolumeDeletionFailed' state")
-		}
-	case v1alpha1.VolumeUpdating:
-		if state != v1alpha1.VolumeUpdated && state != v1alpha1.VolumeUpdateFailed {
-			err = status.Errorf(codes.FailedPrecondition, "azvolume state 'VolumeUpdating' can only be updated to 'VolumeUpdated' or 'VolumeUpdateFailed' state")
-		}
-	case v1alpha1.VolumeCreated:
-		if state != v1alpha1.VolumeUpdating && state != v1alpha1.VolumeDeleting {
-			err = status.Errorf(codes.FailedPrecondition, "azvolume state 'VolumeCreated' can only be updated to 'VolumeUpdating' or 'VolumeDeleting' state")
-		}
-	case v1alpha1.VolumeUpdated:
-		if state != v1alpha1.VolumeUpdating && state != v1alpha1.VolumeDeleting {
-			err = status.Errorf(codes.FailedPrecondition, "azvolume state 'VolumeUpdated' can only be updated to 'VolumeUpdating' or 'VolumeDeleting' state")
-		}
+	expectedStates := allowedTargetVolumeStates[string(azVolume.Status.State)]
+	if !containsString(string(state), expectedStates) {
+		err = status.Error(codes.FailedPrecondition, formatUpdateStateError("azVolume", string(azVolume.Status.State), string(state), expectedStates...))
 	}
-
 	if err == nil {
 		azVolume.Status.State = state
 	}
-
 	return azVolume, err
 }
 
@@ -509,6 +517,7 @@ func NewAzVolumeController(mgr manager.Manager, azVolumeClient azVolumeClientSet
 		kubeClient:        kubeClient,
 		namespace:         namespace,
 		volumeProvisioner: volumeProvisioner,
+		stateLock:         &sync.Map{},
 	}
 	logger := mgr.GetLogger().WithValues("controller", "azvolume")
 
