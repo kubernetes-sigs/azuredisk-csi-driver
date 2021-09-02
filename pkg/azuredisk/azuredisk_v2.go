@@ -32,6 +32,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"k8s.io/klog/v2"
+	"k8s.io/kubernetes/pkg/volume/util/hostutil"
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
@@ -73,6 +74,8 @@ func newDriverV2(options *DriverOptions) *DriverV2 {
 	driver.cloudConfigSecretNamespace = options.CloudConfigSecretNamespace
 	driver.customUserAgent = options.CustomUserAgent
 	driver.userAgentSuffix = options.UserAgentSuffix
+	driver.ioHandler = azureutils.NewOSIOHandler()
+	driver.hostUtil = hostutil.NewHostUtil()
 
 	topologyKey = fmt.Sprintf("topology.%s/zone", driver.Name)
 	return &driver
