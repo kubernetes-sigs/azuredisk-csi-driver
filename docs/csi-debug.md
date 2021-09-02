@@ -49,6 +49,12 @@ kubectl exec -it csi-azuredisk-node-j796x -n kube-system -c azuredisk -- mount |
 /dev/sdc on /var/lib/kubelet/pods/75351f5a-b2ce-4fab-bb90-250aaa010298/volumes/kubernetes.io~csi/pvc-e4c14592-2a79-423e-846f-4b25fe393d6c/mount type ext4 (rw,relatime)
 </pre>
 
+ - check domain name resolution issue inside driver
+```console
+apt update && apt install curl -y
+curl https://apiserver-fqdn -k -v 2>&1
+```
+
 #### Update driver version quickly by editting driver deployment directly
  - update controller deployment
 ```console
