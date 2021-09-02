@@ -104,10 +104,9 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		diskAccessID            string
 		maxShares               int
 		enableBursting          *bool
-		localCloud              *azure.Cloud
 	)
 
-	localCloud = d.cloud
+	localCloud := d.cloud
 	tags := make(map[string]string)
 	parameters := req.GetParameters()
 	if parameters == nil {
@@ -177,8 +176,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			newUserAgent := v
 			localCloud, err = azureutils.GetCloudProvider(d.kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, newUserAgent)
 			if err != nil {
-				klog.V(2).Infof("Unable to create new cloud for UserAgent, err: (%s)", err)
-				localCloud = d.cloud
+				return nil, fmt.Errorf("create cloud with UserAgent(%s) failed with: (%s)", newUserAgent, err)
 			}
 		default:
 			return nil, fmt.Errorf("invalid parameter %s in storage class", k)
@@ -207,7 +205,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	diskName = azureutils.CreateValidDiskName(diskName)
 
 	if resourceGroup == "" {
-		resourceGroup = localCloud.ResourceGroup
+		resourceGroup = d.cloud.ResourceGroup
 	}
 
 	// normalize values
@@ -226,7 +224,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	}
 
 	requirement := req.GetAccessibilityRequirements()
-	diskZone := azureutils.PickAvailabilityZone(requirement, localCloud.Location, topologyKey)
+	diskZone := azureutils.PickAvailabilityZone(requirement, d.cloud.Location, topologyKey)
 	accessibleTopology := []*csi.Topology{}
 	if skuName == compute.StandardSSDZRS || skuName == compute.PremiumZRS {
 		klog.V(2).Infof("diskZone(%s) is reset as empty since disk(%s) is ZRS(%s)", diskZone, diskName, skuName)
@@ -260,7 +258,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		return nil, err
 	}
 
-	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_create_volume", localCloud.ResourceGroup, localCloud.SubscriptionID, d.Name)
+	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_create_volume", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
 	isOperationSucceeded := false
 	defer func() {
 		mc.ObserveOperationWithResult(isOperationSucceeded)
@@ -835,6 +833,7 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	incremental := true
 	var resourceGroup string
 	var err error
+	localCloud := d.cloud
 
 	parameters := req.GetParameters()
 	for k, v := range parameters {
@@ -847,12 +846,19 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 			}
 		case consts.ResourceGroupField:
 			resourceGroup = v
+		case consts.UserAgentField:
+			newUserAgent := v
+			localCloud, err = azureutils.GetCloudProvider(d.kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, newUserAgent)
+			if err != nil {
+				return nil, fmt.Errorf("create cloud with UserAgent(%s) failed with: (%s)", newUserAgent, err)
+
+			}
 		default:
 			return nil, fmt.Errorf("AzureDisk - invalid option %s in VolumeSnapshotClass", k)
 		}
 	}
 
-	if azureutils.IsAzureStackCloud(d.cloud.Config.Cloud, d.cloud.Config.DisableAzureStackCloud) {
+	if azureutils.IsAzureStackCloud(localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud) {
 		klog.V(2).Info("Use full snapshot instead as Azure Stack does not support incremental snapshot.")
 		incremental = false
 	}
@@ -892,7 +898,7 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	}()
 
 	klog.V(2).Infof("begin to create snapshot(%s, incremental: %v) under rg(%s)", snapshotName, incremental, resourceGroup)
-	rerr := d.cloud.SnapshotsClient.CreateOrUpdate(ctx, resourceGroup, snapshotName, snapshot)
+	rerr := localCloud.SnapshotsClient.CreateOrUpdate(ctx, resourceGroup, snapshotName, snapshot)
 	if rerr != nil {
 		if strings.Contains(rerr.Error().Error(), "existing disk") {
 			return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("request snapshot(%s) under rg(%s) already exists, but the SourceVolumeId is different, error details: %v", snapshotName, resourceGroup, rerr.Error()))
