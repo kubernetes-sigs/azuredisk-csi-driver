@@ -115,7 +115,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 	if d.getPerfOptimizationEnabled() {
 		d.nodeInfo, err = optimization.NewNodeInfo(d.getCloud(), d.NodeID)
 		if err != nil {
-			klog.Fatalf("Failed to get node info. Error: %v", err)
+			klog.Errorf("Failed to get node info. Error: %v", err)
 		}
 	}
 
