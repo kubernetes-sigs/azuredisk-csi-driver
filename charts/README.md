@@ -69,16 +69,16 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `image.azuredisk.tag`                             | azuredisk-csi-driver docker image tag                      | `latest`                                                       |
 | `image.azuredisk.pullPolicy`                      | azuredisk-csi-driver image pull policy                     | `IfNotPresent`                                                 |
 | `image.csiProvisioner.repository`                 | csi-provisioner docker image                               | `/oss/kubernetes-csi/csi-provisioner`         |
-| `image.csiProvisioner.tag`                        | csi-provisioner docker image tag                           | `v1.5.0`                                                       |
+| `image.csiProvisioner.tag`                        | csi-provisioner docker image tag                           | `v2.2.2`                                                       |
 | `image.csiProvisioner.pullPolicy`                 | csi-provisioner image pull policy                          | `IfNotPresent`                                                 |
 | `image.csiAttacher.repository`                    | csi-attacher docker image                                  | `/oss/kubernetes-csi/csi-attacher`            |
-| `image.csiAttacher.tag`                           | csi-attacher docker image tag                              | `v2.2.0`                                                       |
+| `image.csiAttacher.tag`                           | csi-attacher docker image tag                              | `v3.3.0`                                                       |
 | `image.csiAttacher.pullPolicy`                    | csi-attacher image pull policy                             | `IfNotPresent`                                                 |
 | `image.csiResizer.repository`                     | csi-resizer docker image                                   | `/oss/kubernetes-csi/csi-resizer`             |
-| `image.csiResizer.tag`                            | csi-resizer docker image tag                               | `v0.5.0`                                                       |
+| `image.csiResizer.tag`                            | csi-resizer docker image tag                               | `v1.3.0`                                                       |
 | `image.csiResizer.pullPolicy`                     | csi-resizer image pull policy                              | `IfNotPresent`                                                 |
 | `image.livenessProbe.repository`                  | liveness-probe docker image                                | `/oss/kubernetes-csi/livenessprobe`           |
-| `image.livenessProbe.tag`                         | liveness-probe docker image tag                            | `v2.3.0`                                                       |
+| `image.livenessProbe.tag`                         | liveness-probe docker image tag                            | `v2.4.0`                                                       |
 | `image.livenessProbe.pullPolicy`                  | liveness-probe image pull policy                           | `IfNotPresent`                                                 |
 | `image.nodeDriverRegistrar.repository`            | csi-node-driver-registrar docker image                     | `/oss/kubernetes-csi/csi-node-driver-registrar` |
 | `image.nodeDriverRegistrar.tag`                   | csi-node-driver-registrar docker image tag                 | `v2.2.0`                                                       |
