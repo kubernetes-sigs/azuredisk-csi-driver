@@ -36,6 +36,7 @@ import (
 	kfake "k8s.io/client-go/kubernetes/fake"
 	cloudprovider "k8s.io/cloud-provider"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/diskclient/mockdiskclient"
@@ -56,7 +57,7 @@ var (
 	notFoundError = &retry.Error{
 		Retriable:      false,
 		HTTPStatusCode: http.StatusNotFound,
-		RawError:       errors.New(azureutils.ResourceNotFound),
+		RawError:       errors.New(azureconstants.ResourceNotFound),
 	}
 	existingDiskError = &retry.Error{
 		Retriable:      false,
@@ -267,7 +268,7 @@ func mockPeristentVolumesList(provisioner *CloudProvisioner, pvCount int32) {
 			Spec: corev1.PersistentVolumeSpec{
 				PersistentVolumeSource: corev1.PersistentVolumeSource{
 					CSI: &corev1.CSIPersistentVolumeSource{
-						Driver:       azureutils.DriverName,
+						Driver:       azureconstants.DefaultDriverName,
 						VolumeHandle: diskURI,
 					},
 				},

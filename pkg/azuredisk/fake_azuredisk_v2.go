@@ -1,3 +1,4 @@
+//go:build azurediskv2
 // +build azurediskv2
 
 /*
@@ -19,8 +20,10 @@ limitations under the License.
 package azuredisk
 
 import (
+	"context"
 	"testing"
 
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
@@ -131,6 +134,17 @@ func (d *fakeDriverV2) setCloud(cloud *provider.Cloud) {
 
 func (d *fakeDriverV2) getSnapshotInfo(snapshotID string) (string, string, error) {
 	return d.cloudProvisioner.(*provisioner.FakeCloudProvisioner).GetSnapshotAndResourceNameFromSnapshotID(snapshotID)
+}
+
+func (d *fakeDriverV2) checkDiskCapacity(ctx context.Context, resourceGroup, diskName string, requestGiB int) (bool, error) {
+	return false, nil
+}
+
+func (d *fakeDriverV2) checkDiskExists(ctx context.Context, diskURI string) (*compute.Disk, error) {
+	return &compute.Disk{}, nil
+}
+
+func (d *DriverV2) setDiskThrottlingCache(key string, value string) {
 }
 
 func skipIfTestingDriverV2(t *testing.T) {

@@ -21,11 +21,9 @@ import (
 	"fmt"
 	"os"
 	"reflect"
-	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
-	"time"
 	"unicode"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
@@ -37,16 +35,15 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog"
-	api "k8s.io/kubernetes/pkg/apis/core"
 	"k8s.io/kubernetes/pkg/volume/util"
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -68,49 +65,6 @@ const (
 	// maxLength = 63 - (4 for ".vhd") = 59
 	diskNameGenerateMaxLength = 59
 
-	// minimum disk size is 1GiB
-	MinimumDiskSizeGiB = 1
-
-	// DefaultAzureCredentialFileEnv is the default azure credentials file env variable
-	DefaultAzureCredentialFileEnv = "AZURE_CREDENTIAL_FILE"
-	// DefaultCredFilePathLinux is default creds file for linux machine
-	DefaultCredFilePathLinux = "/etc/kubernetes/azure.json"
-	// DefaultCredFilePathWindows is default creds file for windows machine
-	DefaultCredFilePathWindows = "C:\\k\\azure.json"
-
-	// String constants used by CloudProvisioner
-	ResourceNotFound          = "ResourceNotFound"
-	ErrDiskNotFound           = "not found"
-	SourceSnapshot            = "snapshot"
-	SourceVolume              = "volume"
-	DriverName                = "disk.csi.azure.com"
-	CSIDriverMetricPrefix     = "azuredisk_csi_driver"
-	ResizeRequired            = "resizeRequired"
-	RequestedSizeGiB          = "requestedsizegib"
-	SourceDiskSearchMaxDepth  = 10
-	CachingModeField          = "cachingmode"
-	StorageAccountTypeField   = "storageaccounttype"
-	StorageAccountField       = "storageaccount"
-	SkuNameField              = "skuname"
-	LocationField             = "location"
-	ResourceGroupField        = "resourcegroup"
-	DiskIOPSReadWriteField    = "diskiopsreadwrite"
-	DiskMBPSReadWriteField    = "diskmbpsreadwrite"
-	DiskNameField             = "diskname"
-	DesIDField                = "diskencryptionsetid"
-	TagsField                 = "tags"
-	MaxSharesField            = "maxshares"
-	MaxMountReplicaCountField = "maxmountreplicacount"
-	IncrementalField          = "incremental"
-	LogicalSectorSizeField    = "logicalsectorsize"
-	PerfProfileField          = "perfprofile"
-	FSTypeField               = "fstype"
-	KindField                 = "kind"
-	NetworkAccessPolicyField  = "networkaccesspolicy"
-	DiskAccessIDField         = "diskaccessid"
-	EnableBurstingField       = "enablebursting"
-	TrueValue                 = "true"
-
 	// CRDs specific constants
 	PartitionLabel = "azdrivernodes.disk.csi.azure.com/partition"
 	// 1. AzVolumeAttachmentFinalizer for AzVolumeAttachment objects handles deletion of AzVolumeAttachment CRIs
@@ -128,36 +82,11 @@ const (
 	VolumeNameLabel                  = "disk.csi.azure.com/volume-name"
 	RoleLabel                        = "disk.csi.azure.com/requested-role"
 
-	CRIUpdateAttemptInterval = time.Duration(1) * time.Second
-	CRIUpdateTimeout         = time.Duration(1) * time.Minute
-
-	// ZRS specific constants
-	WellKnownTopologyKey = "topology.kubernetes.io/zone"
-
-	PVCNameKey      = "csi.storage.k8s.io/pvc/name"
-	PVCNamespaceKey = "csi.storage.k8s.io/pvc/namespace"
-	PVNameKey       = "csi.storage.k8s.io/pv/name"
-
-	PVCNameTag      = "kubernetes.io-created-for-pvc-name"
-	PVCNamespaceTag = "kubernetes.io-created-for-pvc-namespace"
-	PVNameTag       = "kubernetes.io-created-for-pv-name"
-
 	ControllerServiceAccountName      = "csi-azuredisk-controller-sa"
 	ControllerClusterRoleName         = "azuredisk-external-provisioner-role"
 	ControllerClusterRoleBindingName  = "azuredisk-csi-provisioner-binding"
 	ReleaseNamespace                  = "kube-system"
 	ControllerServiceAccountFinalizer = "disk.csi.azure.com/azuredisk-controller"
-)
-
-var (
-	supportedCachingModes = sets.NewString(
-		string(api.AzureDataDiskCachingNone),
-		string(api.AzureDataDiskCachingReadOnly),
-		string(api.AzureDataDiskCachingReadWrite))
-
-	managedDiskPathRE       = regexp.MustCompile(`(?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/disks/(.+)`)
-	diskURISupportedManaged = []string{"/subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id}"}
-	diskSnapshotPathRE      = regexp.MustCompile(`(?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/snapshots/(.+)`)
 )
 
 type ClientOperationMode int
@@ -211,8 +140,8 @@ func NormalizeAzureDataDiskCachingMode(cachingMode v1.AzureDataDiskCachingMode) 
 		return defaultAzureDataDiskCachingMode, nil
 	}
 
-	if !supportedCachingModes.Has(string(cachingMode)) {
-		return "", fmt.Errorf("azureDisk - %s is not supported cachingmode. Supported values are %s", cachingMode, supportedCachingModes.List())
+	if !consts.SupportedCachingModes.Has(string(cachingMode)) {
+		return "", fmt.Errorf("azureDisk - %s is not supported cachingmode. Supported values are %s", cachingMode, consts.SupportedCachingModes.List())
 	}
 
 	return cachingMode, nil
@@ -275,17 +204,17 @@ func GetAzureCloudProvider(kubeClient clientset.Interface, secretName string, se
 
 	if az.TenantID == "" || az.SubscriptionID == "" || az.ResourceGroup == "" {
 		klog.V(2).Infof("could not read cloud config from secret")
-		credFile, ok := os.LookupEnv(DefaultAzureCredentialFileEnv)
+		credFile, ok := os.LookupEnv(consts.DefaultAzureCredentialFileEnv)
 		if ok && strings.TrimSpace(credFile) != "" {
-			klog.V(2).Infof("%s env var set as %v", DefaultAzureCredentialFileEnv, credFile)
+			klog.V(2).Infof("%s env var set as %v", consts.DefaultAzureCredentialFileEnv, credFile)
 		} else {
 			if runtime.GOOS == "windows" {
-				credFile = DefaultCredFilePathWindows
+				credFile = consts.DefaultCredFilePathWindows
 			} else {
-				credFile = DefaultCredFilePathLinux
+				credFile = consts.DefaultCredFilePathLinux
 			}
 
-			klog.V(2).Infof("use default %s env var: %v", DefaultAzureCredentialFileEnv, credFile)
+			klog.V(2).Infof("use default %s env var: %v", consts.DefaultAzureCredentialFileEnv, credFile)
 		}
 
 		f, err := os.Open(credFile)
@@ -310,15 +239,15 @@ func GetAzureCloudProvider(kubeClient clientset.Interface, secretName string, se
 
 func IsValidDiskURI(diskURI string) error {
 	if strings.Index(strings.ToLower(diskURI), "/subscriptions/") != 0 {
-		return fmt.Errorf("invalid DiskURI: %v, correct format: %v", diskURI, diskURISupportedManaged)
+		return fmt.Errorf("invalid DiskURI: %v, correct format: %v", diskURI, consts.DiskURISupportedManaged)
 	}
 	return nil
 }
 
 func GetDiskNameFromAzureManagedDiskURI(diskURI string) (string, error) {
-	matches := managedDiskPathRE.FindStringSubmatch(diskURI)
+	matches := consts.ManagedDiskPathRE.FindStringSubmatch(diskURI)
 	if len(matches) != 2 {
-		return "", fmt.Errorf("could not get disk name from %s, correct format: %s", diskURI, managedDiskPathRE)
+		return "", fmt.Errorf("could not get disk name from %s, correct format: %s", diskURI, consts.ManagedDiskPathRE)
 	}
 	return matches[1], nil
 }
@@ -339,7 +268,7 @@ func GetCachingMode(attributes map[string]string) (compute.CachingTypes, error) 
 	)
 
 	for k, v := range attributes {
-		if strings.EqualFold(k, CachingModeField) {
+		if strings.EqualFold(k, consts.CachingModeField) {
 			cachingMode = v1.AzureDataDiskCachingMode(v)
 			break
 		}
@@ -382,14 +311,14 @@ func GetMaxSharesAndMaxMountReplicaCount(parameters map[string]string) (int, int
 	maxShares := 1
 	maxMountReplicaCount := -1
 	for param, value := range parameters {
-		if strings.EqualFold(param, MaxSharesField) {
+		if strings.EqualFold(param, consts.MaxSharesField) {
 			parsed, err := strconv.Atoi(value)
 			if err != nil {
 				klog.Warningf("failed to parse maxShares value (%s) to int, defaulting to 1: %v", value, err)
 			} else {
 				maxShares = parsed
 			}
-		} else if strings.EqualFold(param, MaxMountReplicaCountField) {
+		} else if strings.EqualFold(param, consts.MaxMountReplicaCountField) {
 			parsed, err := strconv.Atoi(value)
 			if err != nil {
 				klog.Warningf("failed to parse maxMountReplica value (%s) to int, defaulting to 0: %v", value, err)
@@ -517,5 +446,5 @@ func UpdateCRIWithRetry(ctx context.Context, azDiskClient azDiskClientSet.Interf
 		}
 		return true, nil
 	}
-	return wait.PollImmediate(CRIUpdateAttemptInterval, CRIUpdateTimeout, conditionFunc)
+	return wait.PollImmediate(consts.CRIUpdateAttemptInterval, consts.CRIUpdateTimeout, conditionFunc)
 }

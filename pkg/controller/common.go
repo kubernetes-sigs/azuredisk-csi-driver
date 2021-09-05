@@ -36,6 +36,7 @@ import (
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -233,7 +234,7 @@ func (c *SharedState) addPod(pod *corev1.Pod, updateOption updateWithLock) (podL
 
 	claims := []string{}
 	for _, volume := range pod.Spec.Volumes {
-		if volume.CSI == nil || volume.CSI.Driver != azureutils.DriverName {
+		if volume.CSI == nil || volume.CSI.Driver != azureconstants.DefaultDriverName {
 			continue
 		}
 		namespacedClaimName := getQualifiedName(pod.Namespace, volume.PersistentVolumeClaim.ClaimName)

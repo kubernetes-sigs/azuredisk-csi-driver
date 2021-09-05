@@ -31,6 +31,7 @@ import (
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azVolumeClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -67,7 +68,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 		return reconcile.Result{Requeue: true}, err
 	}
 
-	if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != azureutils.DriverName {
+	if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != azureconstants.DefaultDriverName {
 		return reconcile.Result{}, nil
 	}
 
@@ -129,7 +130,7 @@ func (r *ReconcilePV) Recover(ctx context.Context) error {
 		return err
 	}
 	for _, volume := range volumes.Items {
-		if volume.Spec.CSI == nil || volume.Spec.CSI.Driver != azureutils.DriverName {
+		if volume.Spec.CSI == nil || volume.Spec.CSI.Driver != azureconstants.DefaultDriverName {
 			continue
 		}
 		diskName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(volume.Spec.CSI.VolumeHandle)

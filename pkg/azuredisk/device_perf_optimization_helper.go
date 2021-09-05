@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"strings"
 
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 )
 
@@ -28,16 +29,16 @@ func getDiskPerfAttributes(attributes map[string]string) (profile, accountType, 
 	perfProfilePresent := false
 	for k, v := range attributes {
 		switch strings.ToLower(k) {
-		case perfProfileField:
+		case consts.PerfProfileField:
 			perfProfilePresent = true
 			profile = v
-		case skuNameField:
+		case consts.SkuNameField:
 			accountType = v
-		case requestedSizeGib:
+		case consts.RequestedSizeGib:
 			diskSizeGibStr = v
-		case diskIOPSReadWriteField:
+		case consts.DiskIOPSReadWriteField:
 			diskIopsStr = v
-		case diskMBPSReadWriteField:
+		case consts.DiskMBPSReadWriteField:
 			diskBwMbpsStr = v
 		default:
 			continue

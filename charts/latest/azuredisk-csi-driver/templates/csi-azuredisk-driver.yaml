@@ -2,6 +2,13 @@ apiVersion: storage.k8s.io/v1
 kind: CSIDriver
 metadata:
   name: {{ .Values.driver.name }}
+  annotations:
+    csiDriver: "{{ .Values.image.azuredisk.tag }}"
+{{- if eq .Values.snapshot.apiVersion "beta" }}
+    snapshot: "{{ .Values.snapshot.image.csiSnapshotter.tag }}"
+{{- else }}
+    snapshot: "{{ .Values.snapshot.image.csiSnapshotter.gaTag }}"
+{{- end }}
 spec:
   attachRequired: true
   podInfoOnMount: false
