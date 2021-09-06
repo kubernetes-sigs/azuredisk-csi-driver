@@ -32,6 +32,7 @@ import (
 	"k8s.io/klog/v2"
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/cloud-provider-azure/pkg/metrics"
 )
 
@@ -212,7 +213,7 @@ func (d *DriverV2) ControllerPublishVolume(ctx context.Context, req *csi.Control
 	}
 
 	caps := []*csi.VolumeCapability{volCap}
-	if !isValidVolumeCapabilities(caps) {
+	if !azureutils.IsValidVolumeCapabilities(caps) {
 		return nil, status.Error(codes.InvalidArgument, "Volume capability not supported")
 	}
 
