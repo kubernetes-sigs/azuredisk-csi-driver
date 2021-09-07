@@ -44,7 +44,7 @@ controller:
   livenessProbe:
     healthPort: 29602
   runOnMaster: false
-  disableAvailabilitySetNodes: true
+  disableAvailabilitySetNodes: false
   provisionerWorkerThreads: 40
   attacherWorkerThreads: 500
   logLevel: 5
