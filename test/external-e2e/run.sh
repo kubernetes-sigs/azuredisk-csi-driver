@@ -34,7 +34,7 @@ setup_e2e_binaries() {
     tar -xvf e2e-tests.tar.gz && rm e2e-tests.tar.gz
 
     # enable fsGroupPolicy (only available from k8s 1.20)
-    export EXTRA_HELM_OPTIONS="--set feature.enableFSGroupPolicy=true --set snapshot.image.csiSnapshotter.tag=v4.0.0 --set snapshot.image.csiSnapshotController.tag=v4.0.0 --set snapshot.apiVersion=ga"
+    export EXTRA_HELM_OPTIONS="--set feature.enableFSGroupPolicy=true --set image.csiProvisioner.tag=v3.0.0 --set snapshot.apiVersion=ga"
     # test on alternative driver name
     EXTRA_HELM_OPTIONS=$EXTRA_HELM_OPTIONS" --set driver.name=$DRIVER.csi.azure.com --set controller.name=csi-$DRIVER-controller --set linux.dsName=csi-$DRIVER-node --set windows.dsName=csi-$DRIVER-node-win"
     # install the azuredisk-csi-driver driver
