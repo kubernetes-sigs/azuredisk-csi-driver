@@ -43,6 +43,7 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	azuredisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller"
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
@@ -53,7 +54,7 @@ import (
 
 var isControllerPlugin = flag.Bool("is-controller-plugin", false, "Boolean flag to indicate this instance is running as controller.")
 var isNodePlugin = flag.Bool("is-node-plugin", false, "Boolean flag to indicate this instance is running as node daemon.")
-var driverObjectNamespace = flag.String("driver-object-namespace", "azure-disk-csi", "namespace where driver related custom resources are created.")
+var driverObjectNamespace = flag.String("driver-object-namespace", consts.AzureDiskCrdNamespace, "namespace where driver related custom resources are created.")
 var useDriverV2 = flag.Bool("temp-use-driver-v2", false, "A temporary flag to enable early test and development of Azure Disk CSI Driver V2. This will be removed in the future.")
 var heartbeatFrequencyInSec = flag.Int("heartbeat-frequency-in-sec", 30, "Frequency in seconds at which node driver sends heartbeat.")
 var controllerLeaseDurationInSec = flag.Int("lease-duration-in-sec", 15, "The duration that non-leader candidates will wait to force acquire leadership")
@@ -285,8 +286,7 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 		RenewDeadline:                 &renewDeadline,
 		RetryPeriod:                   &retryPeriod,
 		LeaderElectionReleaseOnCancel: true,
-		MetricsBindAddress:            ":8090",
-		Namespace:                     d.objectNamespace})
+		MetricsBindAddress:            ":8090"})
 	if err != nil {
 		klog.Errorf("Unable to set up overall controller manager. Error: %v. Exiting application...", err)
 		os.Exit(1)

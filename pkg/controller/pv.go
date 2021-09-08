@@ -139,8 +139,7 @@ func (r *ReconcilePV) Recover(ctx context.Context) error {
 		}
 		azVolumeName := strings.ToLower(diskName)
 		pvClaimName := getQualifiedName(volume.Spec.ClaimRef.Namespace, volume.Spec.ClaimRef.Name)
-		r.controllerSharedState.volumeToClaimMap.Store(azVolumeName, pvClaimName)
-		r.controllerSharedState.claimToVolumeMap.Store(pvClaimName, azVolumeName)
+		r.controllerSharedState.addVolumeAndClaim(azVolumeName, pvClaimName)
 	}
 	return nil
 }

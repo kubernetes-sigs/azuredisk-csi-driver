@@ -39,6 +39,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	azurediskInformers "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions"
 	azurediskInformerTypes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions/azuredisk/v1alpha1"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
 var (
@@ -47,7 +48,7 @@ var (
 	pvcInformer                kubeInformerTypes.PersistentVolumeClaimInformer
 	kubeClientset              *kubernetes.Clientset
 	kubeExtensionClientset     versioned.Interface
-	ns                         = "azure-disk-csi"
+	ns                         = consts.AzureDiskCrdNamespace
 	pvcToPvMapCache            cachedMapping
 )
 

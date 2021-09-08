@@ -35,6 +35,7 @@ import (
 	"k8s.io/klog"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azVolumeClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/provisioner"
@@ -44,7 +45,7 @@ import (
 )
 
 const (
-	namespace = "azure-disk-csi"
+	namespace = consts.AzureDiskCrdNamespace
 	interval  = time.Duration(15) * time.Second
 	timeout   = time.Duration(15) * time.Minute
 	maxRetry  = 5
@@ -94,7 +95,7 @@ func setUpProvisioner() error {
 			return err
 		}
 	}
-	crdProvisioner, err = provisioner.NewCrdProvisioner(config, "azure-disk-csi")
+	crdProvisioner, err = provisioner.NewCrdProvisioner(config, namespace)
 	return err
 }
 

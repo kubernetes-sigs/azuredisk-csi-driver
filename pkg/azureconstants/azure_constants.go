@@ -26,6 +26,7 @@ import (
 )
 
 const (
+	AzureDiskCrdNamespace         = "azure-disk-csi"
 	AzureDiskCSIDriverName        = "azuredisk_csi_driver"
 	CachingModeField              = "cachingmode"
 	DefaultAzureCredentialFileEnv = "AZURE_CREDENTIAL_FILE"

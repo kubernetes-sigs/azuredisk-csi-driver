@@ -554,7 +554,3 @@ func (r *ReconcileAzVolume) getClient() client.Client {
 func (r *ReconcileAzVolume) getAzClient() azClientSet.Interface {
 	return r.azVolumeClient
 }
-
-func (r *ReconcileAzVolume) getNamespace() string {
-	return r.namespace
-}

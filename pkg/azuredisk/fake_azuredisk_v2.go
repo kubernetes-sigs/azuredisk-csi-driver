@@ -29,6 +29,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"k8s.io/klog/v2"
 	testingexec "k8s.io/utils/exec/testing"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/provisioner"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
@@ -36,7 +37,7 @@ import (
 )
 
 const (
-	fakeObjNamespace = "azure-disk-csi"
+	fakeObjNamespace = consts.AzureDiskCrdNamespace
 )
 
 type fakeDriverV2 struct {
