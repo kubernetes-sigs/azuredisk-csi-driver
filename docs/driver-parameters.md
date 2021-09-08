@@ -29,7 +29,7 @@ useragent | User agent used for [customer usage attribution](https://docs.micros
    - disk name format(example): `pvc-e132d37f-9e8f-434a-b599-15a4ab211b39`
    - tags format(example):
 ```
-created-by: kubernetes-azure-dd
+k8s-azure-created-by: kubernetes-azure-dd
 kubernetes.io-created-for-pv-name: pvc-e132d37f-9e8f-434a-b599-15a4ab211b39
 kubernetes.io-created-for-pvc-name: pvc-azuredisk
 kubernetes.io-created-for-pvc-namespace: default
