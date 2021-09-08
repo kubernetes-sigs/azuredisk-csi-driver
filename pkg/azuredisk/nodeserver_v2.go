@@ -1,3 +1,4 @@
+//go:build azurediskv2
 // +build azurediskv2
 
 /*
@@ -32,6 +33,9 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/volume"
+
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 )
 
 // NodeProvisioner defines the methods required to manage staging and publishing of mount points.
@@ -67,7 +71,7 @@ func (d *DriverV2) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolume
 		return nil, status.Error(codes.InvalidArgument, "Volume capability not provided")
 	}
 
-	if !isValidVolumeCapabilities([]*csi.VolumeCapability{volumeCapability}) {
+	if !azureutils.IsValidVolumeCapabilities([]*csi.VolumeCapability{volumeCapability}) {
 		return nil, status.Error(codes.InvalidArgument, "Volume capability not supported")
 	}
 
@@ -76,17 +80,17 @@ func (d *DriverV2) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolume
 	}
 	defer d.volumeLocks.Release(diskURI)
 
-	lunStr, ok := req.PublishContext[LUN]
+	lunStr, ok := req.PublishContext[consts.LUN]
 	if !ok {
 		return nil, status.Error(codes.InvalidArgument, "lun not provided")
 	}
 
-	lun, err := getDiskLUN(lunStr)
+	lun, err := azureutils.GetDiskLUN(lunStr)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "Failed to find disk on lun %s. %v", lunStr, err)
 	}
 
-	source, err := d.nodeProvisioner.GetDevicePathWithLUN(lun)
+	source, err := d.nodeProvisioner.GetDevicePathWithLUN(int(lun))
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "Failed to find disk on lun %v. %v", lun, err)
 	}
@@ -141,7 +145,7 @@ func (d *DriverV2) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolume
 	}
 
 	// If partition is specified, should mount it only instead of the entire disk.
-	if partition, ok := req.GetVolumeContext()[volumeAttributePartition]; ok {
+	if partition, ok := req.GetVolumeContext()[consts.VolumeAttributePartition]; ok {
 		source = source + "-part" + partition
 	}
 
@@ -155,7 +159,7 @@ func (d *DriverV2) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolume
 	klog.V(2).Infof("NodeStageVolume: format %s and mounting at %s successfully.", source, target)
 
 	// if resize is required, resize filesystem
-	if required, ok := req.GetVolumeContext()[resizeRequired]; ok && required == "true" {
+	if required, ok := req.GetVolumeContext()[consts.ResizeRequired]; ok && required == "true" {
 		klog.V(2).Infof("NodeStageVolume: fs resize initiating on target(%s) volumeid(%s)", target, diskURI)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "NodeStageVolume: Could not get volume path for %s: %v", target, err)
@@ -235,17 +239,17 @@ func (d *DriverV2) NodePublishVolume(ctx context.Context, req *csi.NodePublishVo
 
 	switch req.GetVolumeCapability().GetAccessType().(type) {
 	case *csi.VolumeCapability_Block:
-		lunStr, ok := req.PublishContext[LUN]
+		lunStr, ok := req.PublishContext[consts.LUN]
 		if !ok {
 			return nil, status.Error(codes.InvalidArgument, "lun not provided")
 		}
 
-		lun, err := getDiskLUN(lunStr)
+		lun, err := azureutils.GetDiskLUN(lunStr)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "Failed to find device path with lun %s. %v", lunStr, err)
 		}
 
-		source, err = d.nodeProvisioner.GetDevicePathWithLUN(lun)
+		source, err = d.nodeProvisioner.GetDevicePathWithLUN(int(lun))
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "Failed to find device path with lun %v. %v", lun, err)
 		}
@@ -333,9 +337,9 @@ func (d *DriverV2) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest)
 	if err != nil {
 		klog.Warningf("Failed to get zone from Azure cloud provider, nodeName: %v, error: %v", d.NodeID, err)
 	} else {
-		if isAvailabilityZone(zone.FailureDomain, d.cloudProvisioner.GetCloud().Location) {
+		if azureutils.IsValidAvailabilityZone(zone.FailureDomain, d.cloudProvisioner.GetCloud().Location) {
 			topology.Segments[topologyKey] = zone.FailureDomain
-			topology.Segments[WellKnownTopologyKey] = zone.FailureDomain
+			topology.Segments[consts.WellKnownTopologyKey] = zone.FailureDomain
 			klog.V(2).Infof("NodeGetInfo, nodeName: %v, zone: %v", d.NodeID, zone.FailureDomain)
 		}
 	}
@@ -465,7 +469,7 @@ func (d *DriverV2) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolu
 	if volumeCapability != nil {
 		// VolumeCapability is optional, if specified, validate it
 		caps := []*csi.VolumeCapability{volumeCapability}
-		if !isValidVolumeCapabilities(caps) {
+		if !azureutils.IsValidVolumeCapabilities(caps) {
 			return nil, status.Error(codes.InvalidArgument, "VolumeCapability is invalid.")
 		}
 

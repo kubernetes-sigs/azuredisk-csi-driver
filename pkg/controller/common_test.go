@@ -22,7 +22,7 @@ import (
 	"strings"
 
 	"github.com/golang/mock/gomock"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -34,6 +34,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azVolumeClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	diskv1alpha1scheme "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/scheme"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller/mockclient"
 	util "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
@@ -114,10 +115,10 @@ var (
 		ObjectMeta: metav1.ObjectMeta{
 			Name: testStorageClassName,
 		},
-		Provisioner: azureutils.DriverName,
+		Provisioner: azureconstants.DefaultDriverName,
 		Parameters: map[string]string{
-			azureutils.MaxSharesField:            "2",
-			azureutils.MaxMountReplicaCountField: "1",
+			azureconstants.MaxSharesField:            "2",
+			azureconstants.MaxMountReplicaCountField: "1",
 		},
 	}
 
@@ -128,7 +129,7 @@ var (
 			Name: testVolumeAttachmentName,
 		},
 		Spec: storagev1.VolumeAttachmentSpec{
-			Attacher: azureutils.DriverName,
+			Attacher: azureconstants.DefaultDriverName,
 			NodeName: testNode0Name,
 			Source: storagev1.VolumeAttachmentSource{
 				PersistentVolumeName: &testPersistentVolume0.Name,
@@ -149,7 +150,7 @@ var (
 		Spec: v1.PersistentVolumeSpec{
 			PersistentVolumeSource: v1.PersistentVolumeSource{
 				CSI: &v1.CSIPersistentVolumeSource{
-					Driver:       azureutils.DriverName,
+					Driver:       azureconstants.DefaultDriverName,
 					VolumeHandle: fmt.Sprintf(computeDiskURIFormat, testSubscription, testResourceGroup, testPersistentVolume0Name),
 				},
 			},
@@ -177,7 +178,7 @@ var (
 		Spec: v1.PersistentVolumeSpec{
 			PersistentVolumeSource: v1.PersistentVolumeSource{
 				CSI: &v1.CSIPersistentVolumeSource{
-					Driver:       azureutils.DriverName,
+					Driver:       azureconstants.DefaultDriverName,
 					VolumeHandle: fmt.Sprintf(computeDiskURIFormat, testSubscription, testResourceGroup, testPersistentVolume1Name),
 				},
 			},
@@ -259,7 +260,7 @@ func createPod(podNamespace, podName string, pvcs []string) v1.Pod {
 		volumes = append(volumes, v1.Volume{
 			VolumeSource: v1.VolumeSource{
 				CSI: &v1.CSIVolumeSource{
-					Driver: azureutils.DriverName,
+					Driver: azureconstants.DefaultDriverName,
 				},
 				PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
 					ClaimName: pvc,
@@ -293,7 +294,7 @@ func initState(objs ...runtime.Object) (c *SharedState) {
 			claims := []string{}
 			podKey := getQualifiedName(target.Namespace, target.Name)
 			for _, volume := range target.Spec.Volumes {
-				if volume.CSI == nil || volume.CSI.Driver != azureutils.DriverName {
+				if volume.CSI == nil || volume.CSI.Driver != azureconstants.DefaultDriverName {
 					continue
 				}
 				namespacedClaimName := getQualifiedName(target.Namespace, volume.PersistentVolumeClaim.ClaimName)

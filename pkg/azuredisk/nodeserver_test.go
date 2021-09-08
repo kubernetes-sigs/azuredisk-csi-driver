@@ -34,6 +34,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 )
 
@@ -153,7 +154,7 @@ func TestEnsureMountPoint(t *testing.T) {
 	assert.NoError(t, err)
 	alreadyExistTarget, err := testutil.GetWorkDirPath("false_is_likely_exist_target")
 	assert.NoError(t, err)
-	azuredisk, err := testutil.GetWorkDirPath("azure.go")
+	azuredisk, err := testutil.GetWorkDirPath("azuredisk.go")
 	assert.NoError(t, err)
 
 	tests := []struct {
@@ -288,7 +289,7 @@ func TestNodeStageVolume(t *testing.T) {
 	volumeCap := csi.VolumeCapability_AccessMode{Mode: 2}
 	volumeCapWrong := csi.VolumeCapability_AccessMode{Mode: 10}
 	publishContext := map[string]string{
-		LUN: "/dev/01",
+		consts.LUN: "/dev/01",
 	}
 
 	tests := []struct {
@@ -470,18 +471,18 @@ func TestNodePublishVolume(t *testing.T) {
 
 	volumeCap := csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER}
 	publishContext := map[string]string{
-		LUN: "/dev/01",
+		consts.LUN: "/dev/01",
 	}
 	errorMountSource, err := testutil.GetWorkDirPath("error_mount_source")
 	assert.NoError(t, err)
 	alreadyMountedTarget, err := testutil.GetWorkDirPath("false_is_likely_exist_target")
 	assert.NoError(t, err)
 
-	azurediskPath := "azure.go"
+	azurediskPath := "azuredisk.go"
 
-	// ".\azure.go will get deleted on Windows"
+	// ".\azuredisk.go will get deleted on Windows"
 	if runtime.GOOS == "windows" {
-		azurediskPath = "testfiles\\azure.go"
+		azurediskPath = "testfiles\\azuredisk.go"
 	}
 	azuredisk, err := testutil.GetWorkDirPath(azurediskPath)
 	assert.NoError(t, err)
@@ -890,7 +891,7 @@ func TestMakeDir(t *testing.T) {
 	assert.NoError(t, err)
 
 	//Failed case
-	err = makeDir("./azure.go")
+	err = makeDir("./azuredisk.go")
 	var e *os.PathError
 	if !errors.As(err, &e) {
 		t.Errorf("Unexpected Error: %v", err)

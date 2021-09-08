@@ -21,14 +21,13 @@ import (
 	"os"
 	"strings"
 
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
-
 	"github.com/kubernetes-csi/external-snapshotter/v2/pkg/apis/volumesnapshot/v1beta1"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
 const (
@@ -51,7 +50,7 @@ func normalizeProvisioner(provisioner string) string {
 func InitAzureDiskDriver() PVTestDriver {
 	driverName := os.Getenv(AzureDriverNameVar)
 	if driverName == "" {
-		driverName = azuredisk.DefaultDriverName
+		driverName = consts.DefaultDriverName
 	}
 
 	klog.Infof("Using azure disk driver: %s", driverName)

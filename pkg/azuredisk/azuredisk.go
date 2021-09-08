@@ -20,99 +20,27 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"regexp"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/pborman/uuid"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	"k8s.io/klog/v2"
-	"k8s.io/kubernetes/pkg/volume/util"
 	"k8s.io/mount-utils"
 
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
-	consts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
+	azurecloudconsts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
-)
-
-const (
-	// DriverName driver name
-	DefaultDriverName = "disk.csi.azure.com"
-	azurePublicCloud  = "AZUREPUBLICCLOUD"
-	azureStackCloud   = "AZURESTACKCLOUD"
-
-	errDiskNotFound = "not found"
-	// default IOPS Caps & Throughput Cap (MBps) per https://docs.microsoft.com/en-us/azure/virtual-machines/linux/disks-ultra-ssd
-	// see https://docs.microsoft.com/en-us/rest/api/compute/disks/createorupdate#uri-parameters
-	diskNameMinLength = 1
-	diskNameMaxLength = 80
-	// maxLength = 80 - (4 for ".vhd") = 76
-	diskNameGenerateMaxLength = 76
-
-	// minimum disk size is 1 GiB
-	minimumDiskSizeGiB = 1
-
-	resourceNotFound = "ResourceNotFound"
-	rateLimited      = "rate limited"
-
-	// VolumeAttributes for Partition
-	volumeAttributePartition = "partition"
-
-	// see https://docs.microsoft.com/en-us/rest/api/compute/disks/createorupdate#create-a-managed-disk-by-copying-a-snapshot.
-	diskSnapshotPath = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/snapshots/%s"
-
-	// see https://docs.microsoft.com/en-us/rest/api/compute/disks/createorupdate#create-a-managed-disk-from-an-existing-managed-disk-in-the-same-or-different-subscription.
-	managedDiskPath = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s"
-
-	// LUN lun number
-	LUN = "LUN"
-
-	trueValue                = "true"
-	cachingModeField         = "cachingmode"
-	storageAccountTypeField  = "storageaccounttype"
-	skuNameField             = "skuname"
-	locationField            = "location"
-	resourceGroupField       = "resourcegroup"
-	diskIOPSReadWriteField   = "diskiopsreadwrite"
-	diskMBPSReadWriteField   = "diskmbpsreadwrite"
-	diskNameField            = "diskname"
-	desIDField               = "diskencryptionsetid"
-	tagsField                = "tags"
-	maxSharesField           = "maxshares"
-	incrementalField         = "incremental"
-	logicalSectorSizeField   = "logicalsectorsize"
-	fsTypeField              = "fstype"
-	kindField                = "kind"
-	perfProfileField         = "perfprofile"
-	networkAccessPolicyField = "networkaccesspolicy"
-	diskAccessIDField        = "diskaccessid"
-	enableBurstingField      = "enablebursting"
-
-	WellKnownTopologyKey = "topology.kubernetes.io/zone"
-	throttlingKey        = "throttlingKey"
-
-	pvcNameKey      = "csi.storage.k8s.io/pvc/name"
-	pvcNamespaceKey = "csi.storage.k8s.io/pvc/namespace"
-	pvNameKey       = "csi.storage.k8s.io/pv/name"
-	pvcNameTag      = "kubernetes.io-created-for-pvc-name"
-	pvcNamespaceTag = "kubernetes.io-created-for-pvc-namespace"
-	pvNameTag       = "kubernetes.io-created-for-pv-name"
-)
-
-var (
-	managedDiskPathRE       = regexp.MustCompile(`(?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/disks/(.+)`)
-	diskSnapshotPathRE      = regexp.MustCompile(`(?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/snapshots/(.+)`)
-	diskURISupportedManaged = []string{"/subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id}"}
 )
 
 // DriverOptions defines driver parameters specified in driver deployment
@@ -196,8 +124,8 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 	userAgent := GetUserAgent(d.Name, d.customUserAgent, d.userAgentSuffix)
 	klog.V(2).Infof("driver userAgent: %s", userAgent)
 
-	cloud, err := GetCloudProvider(kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, userAgent)
-	if err != nil || cloud.TenantID == "" || cloud.SubscriptionID == "" {
+	cloud, err := azureutils.GetCloudProvider(kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, userAgent)
+	if err != nil {
 		klog.Fatalf("failed to get Azure Cloud Provider, error: %v", err)
 	}
 	d.cloud = cloud
@@ -208,7 +136,7 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 		klog.V(2).Infof("disable UseInstanceMetadata for controller")
 		d.cloud.Config.UseInstanceMetadata = false
 
-		if d.cloud.VMType == consts.VMTypeVMSS && !d.cloud.DisableAvailabilitySetNodes {
+		if d.cloud.VMType == azurecloudconsts.VMTypeVMSS && !d.cloud.DisableAvailabilitySetNodes {
 			if disableAVSetNodes {
 				klog.V(2).Infof("DisableAvailabilitySetNodes for controller since current VMType is vmss")
 				d.cloud.DisableAvailabilitySetNodes = true
@@ -259,48 +187,22 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 	s.Wait()
 }
 
-// GetDiskName returns disk name from disk URI
-func GetDiskName(diskURI string) (string, error) {
-	matches := managedDiskPathRE.FindStringSubmatch(diskURI)
-	if len(matches) != 2 {
-		return "", fmt.Errorf("could not get disk name from %s, correct format: %s", diskURI, managedDiskPathRE)
-	}
-	return matches[1], nil
-}
-
-func getSnapshotName(snapshotURI string) (string, error) {
-	matches := diskSnapshotPathRE.FindStringSubmatch(snapshotURI)
-	if len(matches) != 2 {
-		return "", fmt.Errorf("could not get snapshot name from %s, correct format: %s", snapshotURI, diskSnapshotPathRE)
-	}
-	return matches[1], nil
-}
-
-// GetResourceGroupFromURI returns resource groupd from URI
-func GetResourceGroupFromURI(diskURI string) (string, error) {
-	fields := strings.Split(diskURI, "/")
-	if len(fields) != 9 || strings.ToLower(fields[3]) != "resourcegroups" {
-		return "", fmt.Errorf("invalid disk URI: %s", diskURI)
-	}
-	return fields[4], nil
-}
-
 func (d *Driver) isGetDiskThrottled() bool {
-	cache, err := d.getDiskThrottlingCache.Get(throttlingKey, azcache.CacheReadTypeDefault)
+	cache, err := d.getDiskThrottlingCache.Get(consts.ThrottlingKey, azcache.CacheReadTypeDefault)
 	if err != nil {
-		klog.Warningf("getDiskThrottlingCache(%s) return with error: %s", throttlingKey, err)
+		klog.Warningf("getDiskThrottlingCache(%s) return with error: %s", consts.ThrottlingKey, err)
 		return false
 	}
 	return cache != nil
 }
 
 func (d *Driver) checkDiskExists(ctx context.Context, diskURI string) (*compute.Disk, error) {
-	diskName, err := GetDiskName(diskURI)
+	diskName, err := azureutils.GetDiskName(diskURI)
 	if err != nil {
 		return nil, err
 	}
 
-	resourceGroup, err := GetResourceGroupFromURI(diskURI)
+	resourceGroup, err := azureutils.GetResourceGroupFromURI(diskURI)
 	if err != nil {
 		return nil, err
 	}
@@ -312,9 +214,9 @@ func (d *Driver) checkDiskExists(ctx context.Context, diskURI string) (*compute.
 
 	disk, rerr := d.cloud.DisksClient.Get(ctx, resourceGroup, diskName)
 	if rerr != nil {
-		if strings.Contains(rerr.RawError.Error(), rateLimited) {
+		if strings.Contains(rerr.RawError.Error(), consts.RateLimited) {
 			klog.Warningf("checkDiskExists(%s) is throttled with error: %v", diskURI, rerr.Error())
-			d.getDiskThrottlingCache.Set(throttlingKey, "")
+			d.getDiskThrottlingCache.Set(consts.ThrottlingKey, "")
 			return nil, nil
 		}
 		return nil, rerr.Error()
@@ -337,9 +239,9 @@ func (d *Driver) checkDiskCapacity(ctx context.Context, resourceGroup, diskName 
 			return false, status.Errorf(codes.AlreadyExists, "the request volume already exists, but its capacity(%v) is different from (%v)", *disk.DiskProperties.DiskSizeGB, requestGiB)
 		}
 	} else {
-		if strings.Contains(rerr.RawError.Error(), rateLimited) {
+		if strings.Contains(rerr.RawError.Error(), consts.RateLimited) {
 			klog.Warningf("checkDiskCapacity(%s, %s) is throttled with error: %v", resourceGroup, diskName, rerr.Error())
-			d.getDiskThrottlingCache.Set(throttlingKey, "")
+			d.getDiskThrottlingCache.Set(consts.ThrottlingKey, "")
 		}
 	}
 	return true, nil
@@ -347,117 +249,6 @@ func (d *Driver) checkDiskCapacity(ctx context.Context, resourceGroup, diskName 
 
 func (d *Driver) getVolumeLocks() *volumehelper.VolumeLocks {
 	return d.volumeLocks
-}
-
-func isValidDiskURI(diskURI string) error {
-	if strings.Index(strings.ToLower(diskURI), "/subscriptions/") != 0 {
-		return fmt.Errorf("invalid DiskURI: %v, correct format: %v", diskURI, diskURISupportedManaged)
-	}
-	return nil
-}
-
-// isARMResourceID check whether resourceID is an ARM ResourceID
-func isARMResourceID(resourceID string) bool {
-	id := strings.ToLower(resourceID)
-	return strings.Contains(id, "/subscriptions/")
-}
-
-// Disk name must begin with a letter or number, end with a letter, number or underscore,
-// and may contain only letters, numbers, underscores, periods, or hyphens.
-// See https://docs.microsoft.com/en-us/rest/api/compute/disks/createorupdate#uri-parameters
-//
-//
-// Snapshot name must begin with a letter or number, end with a letter, number or underscore,
-// and may contain only letters, numbers, underscores, periods, or hyphens.
-// See https://docs.microsoft.com/en-us/rest/api/compute/snapshots/createorupdate#uri-parameters
-//
-// Since the naming rule of disk is same with snapshot's, here we use the same function to handle disks and snapshots.
-func getValidDiskName(volumeName string) string {
-	diskName := volumeName
-	if len(diskName) > diskNameMaxLength {
-		diskName = diskName[0:diskNameMaxLength]
-		klog.Warningf("since the maximum volume name length is %d, so it is truncated as (%q)", diskNameMaxLength, diskName)
-	}
-	if !checkDiskName(diskName) || len(diskName) < diskNameMinLength {
-		// todo: get cluster name
-		diskName = util.GenerateVolumeName("pvc-disk", uuid.NewUUID().String(), diskNameGenerateMaxLength)
-		klog.Warningf("the requested volume name (%q) is invalid, so it is regenerated as (%q)", volumeName, diskName)
-	}
-
-	return diskName
-}
-
-func checkDiskName(diskName string) bool {
-	length := len(diskName)
-
-	for i, v := range diskName {
-		if !(unicode.IsLetter(v) || unicode.IsDigit(v) || v == '_' || v == '.' || v == '-') ||
-			(i == 0 && !(unicode.IsLetter(v) || unicode.IsDigit(v))) ||
-			(i == length-1 && !(unicode.IsLetter(v) || unicode.IsDigit(v) || v == '_')) {
-			return false
-		}
-	}
-
-	return true
-}
-
-func getSourceVolumeID(snapshot *compute.Snapshot) string {
-	if snapshot != nil &&
-		snapshot.SnapshotProperties != nil &&
-		snapshot.SnapshotProperties.CreationData != nil &&
-		snapshot.SnapshotProperties.CreationData.SourceResourceID != nil {
-		return *snapshot.SnapshotProperties.CreationData.SourceResourceID
-	}
-	return ""
-}
-
-func getValidCreationData(subscriptionID, resourceGroup, sourceResourceID, sourceType string) (compute.CreationData, error) {
-	if sourceResourceID == "" {
-		return compute.CreationData{
-			CreateOption: compute.Empty,
-		}, nil
-	}
-
-	switch sourceType {
-	case sourceSnapshot:
-		if match := diskSnapshotPathRE.FindString(sourceResourceID); match == "" {
-			sourceResourceID = fmt.Sprintf(diskSnapshotPath, subscriptionID, resourceGroup, sourceResourceID)
-		}
-
-	case sourceVolume:
-		if match := managedDiskPathRE.FindString(sourceResourceID); match == "" {
-			sourceResourceID = fmt.Sprintf(managedDiskPath, subscriptionID, resourceGroup, sourceResourceID)
-		}
-	default:
-		return compute.CreationData{
-			CreateOption: compute.Empty,
-		}, nil
-	}
-
-	splits := strings.Split(sourceResourceID, "/")
-	if len(splits) > 9 {
-		if sourceType == sourceSnapshot {
-			return compute.CreationData{}, fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", sourceResourceID, diskSnapshotPathRE)
-		}
-
-		return compute.CreationData{}, fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", sourceResourceID, managedDiskPathRE)
-	}
-	return compute.CreationData{
-		CreateOption:     compute.Copy,
-		SourceResourceID: &sourceResourceID,
-	}, nil
-}
-
-// isAvailabilityZone returns true if the zone is in format of <region>-<zone-id>.
-func isAvailabilityZone(zone, region string) bool {
-	return strings.HasPrefix(zone, fmt.Sprintf("%s-", region))
-}
-
-// IsCorruptedDir checks if the dir is corrupted
-func IsCorruptedDir(dir string) bool {
-	_, pathErr := mount.PathExists(dir)
-	fmt.Printf("IsCorruptedDir(%s) returned with error: %v", dir, pathErr)
-	return pathErr != nil && mount.IsCorruptedMnt(pathErr)
 }
 
 // setControllerCapabilities sets the controller capabilities field. It is intended for use with unit tests.

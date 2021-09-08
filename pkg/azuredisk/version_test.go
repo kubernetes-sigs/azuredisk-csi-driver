@@ -23,14 +23,15 @@ import (
 	"strings"
 	"testing"
 
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/yaml"
 )
 
 func TestGetVersion(t *testing.T) {
-	version := GetVersion(DefaultDriverName)
+	version := GetVersion(consts.DefaultDriverName)
 
 	expected := VersionInfo{
-		DriverName:    DefaultDriverName,
+		DriverName:    consts.DefaultDriverName,
 		DriverVersion: "N/A",
 		GitCommit:     "N/A",
 		BuildDate:     "N/A",
@@ -73,7 +74,7 @@ func TestGetUserAgent(t *testing.T) {
 			driverName:      "",
 			customUserAgent: "",
 			userAgentSuffix: "",
-			expectedResult:  fmt.Sprintf("%s/%s %s/%s (%s-%s) %s/%s", "", driverVersion, runtime.Compiler, runtime.Version(), runtime.GOARCH, runtime.GOOS, gitCommit, buildDate),
+			expectedResult:  fmt.Sprintf("%s/%s %s/%s (%s-%s)", "", driverVersion, runtime.Compiler, runtime.Version(), runtime.GOARCH, runtime.GOOS),
 		},
 		{
 			driverName:      "",
@@ -85,7 +86,7 @@ func TestGetUserAgent(t *testing.T) {
 			driverName:      "drivername",
 			customUserAgent: "",
 			userAgentSuffix: "suffix",
-			expectedResult:  fmt.Sprintf("%s/%s %s/%s (%s-%s) %s/%s suffix", "drivername", driverVersion, runtime.Compiler, runtime.Version(), runtime.GOARCH, runtime.GOOS, gitCommit, buildDate),
+			expectedResult:  fmt.Sprintf("%s/%s %s/%s (%s-%s) suffix", "drivername", driverVersion, runtime.Compiler, runtime.Version(), runtime.GOARCH, runtime.GOOS),
 		},
 	}
 

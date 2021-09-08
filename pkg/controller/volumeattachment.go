@@ -35,6 +35,7 @@ import (
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azVolumeClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -85,7 +86,7 @@ func (r *ReconcileVolumeAttachment) Reconcile(ctx context.Context, request recon
 		return reconcile.Result{}, nil
 	}
 
-	if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != azureutils.DriverName {
+	if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != azureconstants.DefaultDriverName {
 		return reconcile.Result{}, nil
 	}
 
@@ -159,7 +160,7 @@ func (r *ReconcileVolumeAttachment) Recover(ctx context.Context) error {
 
 	// Loop through volumeAttachments and create Primary AzVolumeAttachments in correspondence
 	for _, volumeAttachment := range volumeAttachments.Items {
-		if volumeAttachment.Spec.Attacher == azureutils.DriverName {
+		if volumeAttachment.Spec.Attacher == azureconstants.DefaultDriverName {
 			volumeName := volumeAttachment.Spec.Source.PersistentVolumeName
 			if volumeName == nil {
 				continue
@@ -171,7 +172,7 @@ func (r *ReconcileVolumeAttachment) Recover(ctx context.Context) error {
 				return err
 			}
 
-			if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != azureutils.DriverName {
+			if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != azureconstants.DefaultDriverName {
 				continue
 			}
 

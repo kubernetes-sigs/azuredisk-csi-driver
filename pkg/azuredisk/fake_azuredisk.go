@@ -17,9 +17,11 @@ limitations under the License.
 package azuredisk
 
 import (
+	"context"
 	"testing"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
@@ -77,6 +79,10 @@ type FakeDriver interface {
 
 	getSnapshotInfo(string) (string, string, error)
 	ensureMountPoint(string) (bool, error)
+
+	checkDiskCapacity(context.Context, string, string, int) (bool, error)
+	checkDiskExists(ctx context.Context, diskURI string) (*compute.Disk, error)
+	setDiskThrottlingCache(key string, value string)
 }
 
 type fakeDriverV1 struct {

@@ -1,3 +1,4 @@
+//go:build azurediskv2
 // +build azurediskv2
 
 /*
@@ -151,12 +152,12 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 	}
 	klog.Infof("\nDRIVER INFORMATION:\n-------------------\n%s\n\nStreaming logs below:", versionMeta)
 
-	d.kubeConfig, err = GetKubeConfig(kubeconfig)
+	d.kubeConfig, err = csicommon.GetKubeConfig(kubeconfig)
 	if err != nil || d.kubeConfig == nil {
 		klog.Fatalf("failed to get kube config (%s), error: %v. Exiting application...", kubeconfig, err)
 	}
 
-	d.kubeClient, err = getKubeClient(kubeconfig)
+	d.kubeClient, err = csicommon.GetKubeClient(kubeconfig)
 	if err != nil || d.kubeClient == nil {
 		klog.Fatalf("failed to get kubeclient with kubeconfig (%s), error: %v. Exiting application...", kubeconfig, err)
 	}
@@ -249,7 +250,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 	s.Wait()
 }
 
-//StartControllersAndDieOnExit starts all the controllers for a certain object partition
+// StartControllersAndDieOnExit starts all the controllers for a certain object partition
 func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 	// Version of klogr used here has a dependency on klog v1
 	// The klogr -> klogv1 dependency is chained so we can't update klogr to a newer version right now

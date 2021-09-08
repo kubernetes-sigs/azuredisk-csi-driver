@@ -20,6 +20,9 @@ import (
 	"bytes"
 	"context"
 	"flag"
+	"io/ioutil"
+	"os"
+	"runtime"
 	"testing"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -256,4 +259,146 @@ func TestGetLogLevel(t *testing.T) {
 			t.Errorf("returned level: (%v), expected level: (%v)", level, test.level)
 		}
 	}
+}
+
+func skipIfTestingOnWindows(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping tests on Windows")
+	}
+}
+
+func TestGetKubeConfig(t *testing.T) {
+	// skip for now as this is very flaky on Windows
+	skipIfTestingOnWindows(t)
+	kubeConfigEnvVariable := "KUBECONFIG"
+	emptyKubeConfig := "empty-Kube-Config"
+	validKubeConfig := "valid-Kube-Config"
+	fakeContent := `
+apiVersion: v1
+clusters:
+- cluster:
+    server: https://localhost:8080
+  name: foo-cluster
+contexts:
+- context:
+    cluster: foo-cluster
+    user: foo-user
+    namespace: bar
+  name: foo-context
+current-context: foo-context
+kind: Config
+users:
+- name: foo-user
+  user:
+    exec:
+      apiVersion: client.authentication.k8s.io/v1alpha1
+      args:
+      - arg-1
+      - arg-2
+      command: foo-command
+`
+
+	err := createTestFile(emptyKubeConfig)
+	if err != nil {
+		t.Error(err)
+	}
+	defer func() {
+		if err := os.Remove(emptyKubeConfig); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	err = createTestFile(validKubeConfig)
+	if err != nil {
+		t.Error(err)
+	}
+	defer func() {
+		if err := os.Remove(validKubeConfig); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	if err := ioutil.WriteFile(validKubeConfig, []byte(fakeContent), 0666); err != nil {
+		t.Error(err)
+	}
+
+	tests := []struct {
+		desc                     string
+		kubeconfig               string
+		expectError              bool
+		envVariableHasConfig     bool
+		envVariableConfigIsValid bool
+	}{
+		{
+			desc:                     "[success] valid kube config passed",
+			kubeconfig:               validKubeConfig,
+			expectError:              false,
+			envVariableHasConfig:     false,
+			envVariableConfigIsValid: false,
+		},
+		{
+			desc:                     "[failure] invalid kube config passed",
+			kubeconfig:               emptyKubeConfig,
+			expectError:              true,
+			envVariableHasConfig:     false,
+			envVariableConfigIsValid: false,
+		},
+		{
+			desc:                     "[failure] no config passed, invalid config in env.",
+			kubeconfig:               "",
+			expectError:              true,
+			envVariableHasConfig:     true,
+			envVariableConfigIsValid: false,
+		},
+		{
+			desc:                     "[success] no config passed, valid config in env.",
+			kubeconfig:               "",
+			expectError:              false,
+			envVariableHasConfig:     true,
+			envVariableConfigIsValid: true,
+		},
+	}
+
+	kubeConfigPathInEnv, ok := os.LookupEnv(kubeConfigEnvVariable)
+	if ok {
+		defer func() {
+			if err := os.Setenv(kubeConfigEnvVariable, kubeConfigPathInEnv); err != nil {
+				t.Error(ok)
+			}
+		}()
+	}
+
+	for _, test := range tests {
+		if test.envVariableHasConfig {
+			if test.envVariableConfigIsValid {
+				if err := os.Setenv(kubeConfigEnvVariable, validKubeConfig); err != nil {
+					t.Error(ok)
+				}
+			} else {
+				if err := os.Setenv(kubeConfigEnvVariable, emptyKubeConfig); err != nil {
+					t.Error(ok)
+				}
+			}
+
+		} else {
+			if err := os.Setenv(kubeConfigEnvVariable, ""); err != nil {
+				t.Error(ok)
+			}
+		}
+		_, err := GetKubeConfig(test.kubeconfig)
+		receiveError := (err != nil)
+		if test.expectError != receiveError {
+			t.Errorf("desc: %s,\n input: %q, GetCloudProvider err: %v, expectErr: %v", test.desc, test.kubeconfig, err, test.expectError)
+		}
+	}
+}
+
+func createTestFile(path string) error {
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	return nil
 }

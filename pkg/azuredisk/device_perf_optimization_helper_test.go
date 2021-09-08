@@ -18,6 +18,8 @@ package azuredisk
 
 import (
 	"testing"
+
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
 func TestGetDiskPerfAttributes(t *testing.T) {
@@ -40,7 +42,7 @@ func TestGetDiskPerfAttributes(t *testing.T) {
 			wantDiskIopsStr:    "100",
 			wantDiskBwMbpsStr:  "500",
 			wantErr:            false,
-			inAttributes:       map[string]string{perfProfileField: "basic", skuNameField: "Premium_LRS", requestedSizeGib: "1024", diskIOPSReadWriteField: "100", diskMBPSReadWriteField: "500"},
+			inAttributes:       map[string]string{consts.PerfProfileField: "basic", consts.SkuNameField: "Premium_LRS", consts.RequestedSizeGib: "1024", consts.DiskIOPSReadWriteField: "100", consts.DiskMBPSReadWriteField: "500"},
 		},
 		{
 			name:               "incorrect profile should return error",
@@ -50,7 +52,7 @@ func TestGetDiskPerfAttributes(t *testing.T) {
 			wantDiskIopsStr:    "100",
 			wantDiskBwMbpsStr:  "500",
 			wantErr:            true,
-			inAttributes:       map[string]string{perfProfileField: "blah", skuNameField: "Premium_LRS", requestedSizeGib: "1024", diskIOPSReadWriteField: "100", diskMBPSReadWriteField: "500"},
+			inAttributes:       map[string]string{consts.PerfProfileField: "blah", consts.SkuNameField: "Premium_LRS", consts.RequestedSizeGib: "1024", consts.DiskIOPSReadWriteField: "100", consts.DiskMBPSReadWriteField: "500"},
 		},
 		{
 			name:               "No profile specified should return none profile",
@@ -60,7 +62,7 @@ func TestGetDiskPerfAttributes(t *testing.T) {
 			wantDiskIopsStr:    "100",
 			wantDiskBwMbpsStr:  "500",
 			wantErr:            false,
-			inAttributes:       map[string]string{skuNameField: "Premium_LRS", requestedSizeGib: "1024", diskIOPSReadWriteField: "100", diskMBPSReadWriteField: "500"},
+			inAttributes:       map[string]string{consts.SkuNameField: "Premium_LRS", consts.RequestedSizeGib: "1024", consts.DiskIOPSReadWriteField: "100", consts.DiskMBPSReadWriteField: "500"},
 		},
 	}
 

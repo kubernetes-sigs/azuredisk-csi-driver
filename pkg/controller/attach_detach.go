@@ -31,6 +31,7 @@ import (
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azVolumeClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 
@@ -500,7 +501,7 @@ func (r *ReconcileAttachDetach) syncAll(ctx context.Context, syncedVolumeAttachm
 		if syncedVolumeAttachments[volumeAttachment.Name] {
 			continue
 		}
-		if volumeAttachment.Spec.Attacher == azureutils.DriverName {
+		if volumeAttachment.Spec.Attacher == azureconstants.DefaultDriverName {
 			volumeName := volumeAttachment.Spec.Source.PersistentVolumeName
 			if volumeName == nil {
 				continue
@@ -512,7 +513,7 @@ func (r *ReconcileAttachDetach) syncAll(ctx context.Context, syncedVolumeAttachm
 				return true, syncedVolumeAttachments, volumesToSync, err
 			}
 
-			if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != azureutils.DriverName {
+			if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != azureconstants.DefaultDriverName {
 				continue
 			}
 			volumesToSync[pv.Spec.CSI.VolumeHandle] = true
