@@ -18,6 +18,8 @@ package optimization
 
 import (
 	"testing"
+
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
 func TestIsValidPerfProfile(t *testing.T) {
@@ -51,6 +53,78 @@ func TestIsValidPerfProfile(t *testing.T) {
 	}
 }
 
+func TestGetDiskPerfAttributes(t *testing.T) {
+	tests := []struct {
+		name               string
+		wantMode           string
+		wantProfile        string
+		wantAccountType    string
+		wantDiskSizeGibStr string
+		wantDiskIopsStr    string
+		wantDiskBwMbpsStr  string
+		wantErr            bool
+		inAttributes       map[string]string
+	}{
+		{
+			name:               "valid attributes should return all values",
+			wantProfile:        "basic",
+			wantAccountType:    "Premium_LRS",
+			wantDiskSizeGibStr: "1024",
+			wantDiskIopsStr:    "100",
+			wantDiskBwMbpsStr:  "500",
+			wantErr:            false,
+			inAttributes:       map[string]string{consts.PerfProfileField: "basic", consts.SkuNameField: "Premium_LRS", consts.RequestedSizeGib: "1024", consts.DiskIOPSReadWriteField: "100", consts.DiskMBPSReadWriteField: "500"},
+		},
+		{
+			name:               "incorrect profile should return error",
+			wantProfile:        "",
+			wantAccountType:    "Premium_LRS",
+			wantDiskSizeGibStr: "1024",
+			wantDiskIopsStr:    "100",
+			wantDiskBwMbpsStr:  "500",
+			wantErr:            true,
+			inAttributes:       map[string]string{consts.PerfProfileField: "blah", consts.SkuNameField: "Premium_LRS", consts.RequestedSizeGib: "1024", consts.DiskIOPSReadWriteField: "100", consts.DiskMBPSReadWriteField: "500"},
+		},
+		{
+			name:               "No profile specified should return none profile",
+			wantProfile:        "none",
+			wantAccountType:    "Premium_LRS",
+			wantDiskSizeGibStr: "1024",
+			wantDiskIopsStr:    "100",
+			wantDiskBwMbpsStr:  "500",
+			wantErr:            false,
+			inAttributes:       map[string]string{consts.SkuNameField: "Premium_LRS", consts.RequestedSizeGib: "1024", consts.DiskIOPSReadWriteField: "100", consts.DiskMBPSReadWriteField: "500"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotProfile, gotAccountType, gotDiskSizeGibStr, gotDiskIopsStr, gotDiskBwMbpsStr, gotErr := GetDiskPerfAttributes(tt.inAttributes)
+
+			if (gotErr != nil) != tt.wantErr {
+				t.Errorf("GetDiskPerfAttributes() gotErr = %v, want %v", gotErr, tt.wantErr)
+			}
+
+			if !tt.wantErr {
+				if gotProfile != tt.wantProfile {
+					t.Errorf("GetDiskPerfAttributes() gotProfile = %v, want %v", gotProfile, tt.wantProfile)
+				}
+				if gotAccountType != tt.wantAccountType {
+					t.Errorf("GetDiskPerfAttributes() gotAccountType = %v, want %v", gotAccountType, tt.wantAccountType)
+				}
+				if gotDiskSizeGibStr != tt.wantDiskSizeGibStr {
+					t.Errorf("GetDiskPerfAttributes() gotDiskSizeGibStr = %v, want %v", gotDiskSizeGibStr, tt.wantDiskSizeGibStr)
+				}
+				if gotDiskIopsStr != tt.wantDiskIopsStr {
+					t.Errorf("GetDiskPerfAttributes() gotDiskIopsStr = %v, want %v", gotDiskIopsStr, tt.wantDiskIopsStr)
+				}
+				if gotDiskBwMbpsStr != tt.wantDiskBwMbpsStr {
+					t.Errorf("GetDiskPerfAttributes() gotDiskBwMbpsStr = %v, want %v", gotDiskBwMbpsStr, tt.wantDiskBwMbpsStr)
+				}
+			}
+		})
+	}
+}
 func TestIsPerfTuningEnabled(t *testing.T) {
 	tests := []struct {
 		name    string
