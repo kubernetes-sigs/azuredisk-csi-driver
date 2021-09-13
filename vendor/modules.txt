@@ -16,7 +16,7 @@ github.com/Azure/go-autorest
 ## explicit
 github.com/Azure/go-autorest/autorest
 github.com/Azure/go-autorest/autorest/azure
-# github.com/Azure/go-autorest/autorest/adal v0.9.15
+# github.com/Azure/go-autorest/autorest/adal v0.9.16
 ## explicit
 github.com/Azure/go-autorest/autorest/adal
 # github.com/Azure/go-autorest/autorest/date v0.3.0
@@ -187,7 +187,7 @@ github.com/onsi/ginkgo/reporters/stenographer
 github.com/onsi/ginkgo/reporters/stenographer/support/go-colorable
 github.com/onsi/ginkgo/reporters/stenographer/support/go-isatty
 github.com/onsi/ginkgo/types
-# github.com/onsi/gomega v1.15.0
+# github.com/onsi/gomega v1.16.0
 ## explicit
 github.com/onsi/gomega
 github.com/onsi/gomega/format
@@ -871,7 +871,7 @@ k8s.io/utils/trace
 # sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.0.15
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/client
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/proto/client
-# sigs.k8s.io/cloud-provider-azure v0.7.4 => sigs.k8s.io/cloud-provider-azure v0.7.4-0.20210908075721-13c8062485f8
+# sigs.k8s.io/cloud-provider-azure v0.7.4 => sigs.k8s.io/cloud-provider-azure v0.7.4-0.20210913090406-47c4f2ee9fdf
 ## explicit
 sigs.k8s.io/cloud-provider-azure/pkg/auth
 sigs.k8s.io/cloud-provider-azure/pkg/azureclients
@@ -956,4 +956,4 @@ sigs.k8s.io/yaml
 # k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.21.0
 # k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.21.0
 # k8s.io/sample-controller => k8s.io/sample-controller v0.21.0
-# sigs.k8s.io/cloud-provider-azure => sigs.k8s.io/cloud-provider-azure v0.7.4-0.20210908075721-13c8062485f8
+# sigs.k8s.io/cloud-provider-azure => sigs.k8s.io/cloud-provider-azure v0.7.4-0.20210913090406-47c4f2ee9fdf
