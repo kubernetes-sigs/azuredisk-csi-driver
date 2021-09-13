@@ -33,6 +33,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
@@ -44,9 +45,13 @@ import (
 )
 
 const (
-	maxRetry = 10
 	// DefaultTimeUntilDeletion = time.Duration(5) * time.Minute
 	DefaultTimeUntilDeletion = time.Duration(30) * time.Second
+
+	maxRetry             = 10
+	defaultRetryDuration = time.Duration(1) * time.Second
+	defaultRetryFactor   = 5.0
+	defaultRetrySteps    = 5
 )
 
 type roleMode int
@@ -96,6 +101,40 @@ type CloudProvisioner interface {
 type azReconciler interface {
 	getClient() client.Client
 	getAzClient() azClientSet.Interface
+}
+
+type retryInfoEntry struct {
+	backoff   *wait.Backoff
+	retryLock *sync.Mutex
+}
+
+type retryInfo struct {
+	retryMap *sync.Map
+}
+
+func newRetryInfo() *retryInfo {
+	return &retryInfo{
+		retryMap: &sync.Map{},
+	}
+}
+
+func newRetryEntry() *retryInfoEntry {
+	return &retryInfoEntry{
+		retryLock: &sync.Mutex{},
+		backoff:   &wait.Backoff{Duration: defaultRetryDuration, Factor: defaultRetryFactor, Steps: defaultRetrySteps},
+	}
+}
+
+func (r *retryInfo) nextRequeue(objectName string) time.Duration {
+	v, _ := r.retryMap.LoadOrStore(objectName, newRetryEntry())
+	entry := v.(*retryInfoEntry)
+	entry.retryLock.Lock()
+	defer entry.retryLock.Unlock()
+	return entry.backoff.Step()
+}
+
+func (r *retryInfo) deleteEntry(objectName string) {
+	r.retryMap.Delete(objectName)
 }
 
 type SharedState struct {

@@ -31,7 +31,6 @@ import (
 	fakev1 "k8s.io/client-go/kubernetes/fake"
 	diskv1alpha1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	diskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller/mockclient"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller/mockvolumeprovisioner"
@@ -136,7 +135,7 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 					}
 					return azVolume.Status.State == diskv1alpha1.VolumeCreated, nil
 				}
-				conditionError := wait.PollImmediate(azureconstants.CRIUpdateAttemptInterval, azureconstants.CRIUpdateTimeout, conditionFunc)
+				conditionError := wait.PollImmediate(verifyCRIInterval, verifyCRITimeout, conditionFunc)
 				require.NoError(t, conditionError)
 			},
 		},
@@ -174,7 +173,7 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 					}
 					return azVolume.Status.Detail.ResponseObject.CapacityBytes == azVolume.Spec.CapacityRange.RequiredBytes, nil
 				}
-				conditionError := wait.PollImmediate(azureconstants.CRIUpdateAttemptInterval, azureconstants.CRIUpdateTimeout, conditionFunc)
+				conditionError := wait.PollImmediate(verifyCRIInterval, verifyCRITimeout, conditionFunc)
 				require.NoError(t, conditionError)
 			},
 		},
@@ -217,7 +216,7 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 					}
 					return azVolume.Status.State == diskv1alpha1.VolumeDeleted, nil
 				}
-				conditionError := wait.PollImmediate(azureconstants.CRIUpdateAttemptInterval, azureconstants.CRIUpdateTimeout, conditionFunc)
+				conditionError := wait.PollImmediate(verifyCRIInterval, verifyCRITimeout, conditionFunc)
 				require.NoError(t, conditionError)
 			},
 		},

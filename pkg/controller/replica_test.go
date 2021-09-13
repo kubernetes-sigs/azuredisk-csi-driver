@@ -32,7 +32,6 @@ import (
 	fakev1 "k8s.io/client-go/kubernetes/fake"
 	diskv1alpha1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	diskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller/mockclient"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -111,7 +110,7 @@ func TestReplicaReconcile(t *testing.T) {
 					require.NotNil(t, replicas)
 					return len(replicas.Items) == 1, nil
 				}
-				err = wait.PollImmediate(azureconstants.CRIUpdateAttemptInterval, azureconstants.CRIUpdateTimeout, conditionFunc)
+				err = wait.PollImmediate(verifyCRIInterval, verifyCRITimeout, conditionFunc)
 				require.NoError(t, err)
 			},
 		},

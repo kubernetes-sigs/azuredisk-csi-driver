@@ -75,10 +75,11 @@ const (
 	WellKnownTopologyKey          = "topology.kubernetes.io/zone"
 	WriteAcceleratorEnabled       = "writeacceleratorenabled"
 
-	// V2 specific consts
-	CRIUpdateAttemptInterval  = time.Duration(1) * time.Second
-	CRIUpdateTimeout          = time.Duration(1) * time.Minute
 	MaxMountReplicaCountField = "maxmountreplicacount"
+
+	CRIUpdateRetryDuration = time.Duration(1) * time.Second
+	CRIUpdateRetryFactor   = 3.0
+	CRIUpdateRetryStep     = 5
 )
 
 var (

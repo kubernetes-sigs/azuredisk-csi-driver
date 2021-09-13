@@ -30,7 +30,6 @@ import (
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
-	azVolumeClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -48,7 +47,7 @@ const (
 
 type ReconcileReplica struct {
 	client                client.Client
-	azVolumeClient        azVolumeClientSet.Interface
+	azVolumeClient        azClientSet.Interface
 	kubeClient            kubeClientSet.Interface
 	namespace             string
 	controllerSharedState *SharedState
@@ -90,6 +89,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 		if deletionRequested(&azVolumeAttachment.ObjectMeta) {
 			if azVolumeAttachment.Annotations == nil || !metav1.HasAnnotation(azVolumeAttachment.ObjectMeta, azureutils.CleanUpAnnotation) {
 				go func() {
+					// wait for replica AzVolumeAttachment deletion
 					conditionFunc := func() (bool, error) {
 						var tmp v1alpha1.AzVolumeAttachment
 						err := r.client.Get(ctx, request.NamespacedName, &tmp)
@@ -101,11 +101,12 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 					}
 					_ = wait.PollImmediateInfinite(deletionPollingInterval, conditionFunc)
 
-					for i := 0; i < maxRetry; i++ {
-						if err := r.manageReplicas(ctx, azVolumeAttachment.Spec.UnderlyingVolume); err == nil {
-							break
-						}
+					// retry replica management with exponential backoff until success
+					conditionFunc = func() (bool, error) {
+						err := r.manageReplicas(ctx, azVolumeAttachment.Spec.UnderlyingVolume)
+						return true, err
 					}
+					_ = wait.ExponentialBackoffWithContext(ctx, wait.Backoff{Duration: defaultRetryDuration, Factor: defaultRetryFactor, Steps: defaultRetrySteps}, conditionFunc)
 				}()
 			}
 		}

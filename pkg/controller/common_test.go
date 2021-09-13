@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/golang/mock/gomock"
 	v1 "k8s.io/api/core/v1"
@@ -40,6 +41,11 @@ import (
 	util "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+)
+
+const (
+	verifyCRITimeout  = time.Duration(5) * time.Minute
+	verifyCRIInterval = time.Duration(1) * time.Second
 )
 
 var (

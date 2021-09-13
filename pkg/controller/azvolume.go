@@ -30,7 +30,6 @@ import (
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
-	azVolumeClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	util "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
@@ -61,7 +60,7 @@ type VolumeProvisioner interface {
 //Struct for the reconciler
 type ReconcileAzVolume struct {
 	client            client.Client
-	azVolumeClient    azVolumeClientSet.Interface
+	azVolumeClient    azClientSet.Interface
 	kubeClient        kubeClientSet.Interface
 	namespace         string
 	volumeProvisioner VolumeProvisioner
@@ -96,6 +95,7 @@ func (r *ReconcileAzVolume) Reconcile(ctx context.Context, request reconcile.Req
 
 	// if underlying cloud operation already in process, skip until operation is completed
 	if isOperationInProcess(azVolume) {
+		klog.V(5).Infof("Another operation (%s) is already in process for the AzVolume (%s). Will be requeued once complete", azVolume.Name, azVolume.Status.State)
 		return reconcile.Result{}, nil
 	}
 
@@ -130,10 +130,10 @@ func (r *ReconcileAzVolume) Reconcile(ctx context.Context, request reconcile.Req
 
 func (r *ReconcileAzVolume) triggerCreate(ctx context.Context, azVolume *v1alpha1.AzVolume) error {
 	// requeue if AzVolume's state is being updated by a different worker
+	defer r.stateLock.Delete(azVolume.Name)
 	if _, ok := r.stateLock.LoadOrStore(azVolume.Name, nil); ok {
 		return getOperationRequeueError("create", azVolume)
 	}
-	defer r.stateLock.Delete(azVolume.Name)
 
 	// add finalizer and update state
 	updateFunc := func(obj interface{}) error {
@@ -142,7 +142,7 @@ func (r *ReconcileAzVolume) triggerCreate(ctx context.Context, azVolume *v1alpha
 		_, err := r.updateState(ctx, azv, v1alpha1.VolumeCreating)
 		return err
 	}
-	if err := azureutils.UpdateCRIWithRetry(ctx, r.azVolumeClient, azVolume, updateFunc); err != nil {
+	if err := azureutils.UpdateCRIWithRetry(ctx, r.client, r.azVolumeClient, azVolume, updateFunc); err != nil {
 		return err
 	}
 
@@ -173,7 +173,7 @@ func (r *ReconcileAzVolume) triggerCreate(ctx context.Context, azVolume *v1alpha
 				return derr
 			}
 		}
-		if err := azureutils.UpdateCRIWithRetry(ctx, r.azVolumeClient, azVolume, updateFunc); err != nil {
+		if err := azureutils.UpdateCRIWithRetry(ctx, r.client, r.azVolumeClient, azVolume, updateFunc); err != nil {
 			klog.Errorf("failed to update AzVolume (%s) with volume creation result (response: %v, error: %v)", azVolume.Name, response, err)
 		} else {
 			klog.Infof("successfully created volume (%s) with volume creation result (response: %v, error: %v)", azVolume.Spec.UnderlyingVolume, response, err)
@@ -198,10 +198,10 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *v1alpha
 	// if the annotation is not present, only delete the CRI and not the underlying volume
 	if isCreated(azVolume) && azVolume.Annotations != nil && metav1.HasAnnotation(azVolume.ObjectMeta, azureutils.VolumeDeleteRequestAnnotation) {
 		// requeue if AzVolume's state is being updated by a different worker
+		defer r.stateLock.Delete(azVolume.Name)
 		if _, ok := r.stateLock.LoadOrStore(azVolume.Name, nil); ok {
 			return getOperationRequeueError("delete", azVolume)
 		}
-		defer r.stateLock.Delete(azVolume.Name)
 		updateFunc := func(obj interface{}) error {
 			azv := obj.(*v1alpha1.AzVolume)
 			_, derr := r.updateState(ctx, azv, v1alpha1.VolumeDeleting)
@@ -210,7 +210,7 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *v1alpha
 
 		klog.Infof("Deleting Volume (%s)...", azVolume.Spec.UnderlyingVolume)
 
-		if err := azureutils.UpdateCRIWithRetry(ctx, r.azVolumeClient, azVolume, updateFunc); err != nil {
+		if err := azureutils.UpdateCRIWithRetry(ctx, r.client, r.azVolumeClient, azVolume, updateFunc); err != nil {
 			return err
 		}
 
@@ -234,7 +234,7 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *v1alpha
 					return derr
 				}
 			}
-			if err := azureutils.UpdateCRIWithRetry(ctx, r.azVolumeClient, azVolume, updateFunc); err != nil {
+			if err := azureutils.UpdateCRIWithRetry(ctx, r.client, r.azVolumeClient, azVolume, updateFunc); err != nil {
 				klog.Errorf("failed to update AzVolume (%s) with volume deletion result: %v", azVolume.Name, err)
 			} else {
 				klog.Infof("successfully updated AzVolume (%s) with volume deletion result", azVolume.Name)
@@ -246,7 +246,7 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *v1alpha
 			_ = r.deleteFinalizer(ctx, azv, map[string]bool{azureutils.AzVolumeFinalizer: true})
 			return nil
 		}
-		if err := azureutils.UpdateCRIWithRetry(ctx, r.azVolumeClient, azVolume, updateFunc); err != nil {
+		if err := azureutils.UpdateCRIWithRetry(ctx, r.client, r.azVolumeClient, azVolume, updateFunc); err != nil {
 			return err
 		}
 	}
@@ -255,16 +255,16 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *v1alpha
 
 func (r *ReconcileAzVolume) triggerUpdate(ctx context.Context, azVolume *v1alpha1.AzVolume) error {
 	// requeue if AzVolume's state is being updated by a different worker
+	defer r.stateLock.Delete(azVolume.Name)
 	if _, ok := r.stateLock.LoadOrStore(azVolume.Name, nil); ok {
 		return getOperationRequeueError("update", azVolume)
 	}
-	defer r.stateLock.Delete(azVolume.Name)
 	updateFunc := func(obj interface{}) error {
 		azv := obj.(*v1alpha1.AzVolume)
 		_, derr := r.updateState(ctx, azv, v1alpha1.VolumeUpdating)
 		return derr
 	}
-	if err := azureutils.UpdateCRIWithRetry(ctx, r.azVolumeClient, azVolume, updateFunc); err != nil {
+	if err := azureutils.UpdateCRIWithRetry(ctx, r.client, r.azVolumeClient, azVolume, updateFunc); err != nil {
 		return err
 	}
 
@@ -293,7 +293,7 @@ func (r *ReconcileAzVolume) triggerUpdate(ctx context.Context, azVolume *v1alpha
 				return derr
 			}
 		}
-		if err := azureutils.UpdateCRIWithRetry(ctx, r.azVolumeClient, azVolume, updateFunc); err != nil {
+		if err := azureutils.UpdateCRIWithRetry(ctx, r.client, r.azVolumeClient, azVolume, updateFunc); err != nil {
 			klog.Errorf("failed to update AzVolume (%s) with volume update result (response: %v, error: %v)", azVolume.Name, response, err)
 		} else {
 			klog.Infof("successfully created volume (%s) with volume update result (response: %v, error: %v)", azVolume.Spec.UnderlyingVolume, response, err)
@@ -315,7 +315,7 @@ func (r *ReconcileAzVolume) triggerRelease(ctx context.Context, azVolume *v1alph
 		return nil
 	}
 
-	if err := azureutils.UpdateCRIWithRetry(ctx, r.azVolumeClient, azVolume, updateFunc); err != nil {
+	if err := azureutils.UpdateCRIWithRetry(ctx, r.client, r.azVolumeClient, azVolume, updateFunc); err != nil {
 		return err
 	}
 
@@ -511,7 +511,7 @@ func (r *ReconcileAzVolume) Recover(ctx context.Context) error {
 	return nil
 }
 
-func NewAzVolumeController(mgr manager.Manager, azVolumeClient azVolumeClientSet.Interface, kubeClient kubeClientSet.Interface, namespace string, volumeProvisioner VolumeProvisioner) (*ReconcileAzVolume, error) {
+func NewAzVolumeController(mgr manager.Manager, azVolumeClient azClientSet.Interface, kubeClient kubeClientSet.Interface, namespace string, volumeProvisioner VolumeProvisioner) (*ReconcileAzVolume, error) {
 	reconciler := ReconcileAzVolume{
 		client:            mgr.GetClient(),
 		azVolumeClient:    azVolumeClient,

@@ -38,6 +38,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/volume/util"
 
@@ -346,48 +347,48 @@ func GetAzVolumePhase(phase v1.PersistentVolumePhase) v1alpha1.AzVolumePhase {
 	return v1alpha1.AzVolumePhase(phase)
 }
 
-func GetAzVolume(ctx context.Context, client client.Client, azDiskClient azDiskClientSet.Interface, azVolumeName, namespace string, useCache bool) (*v1alpha1.AzVolume, error) {
+func GetAzVolume(ctx context.Context, cachedClient client.Client, azDiskClient azDiskClientSet.Interface, azVolumeName, namespace string, useCache bool) (*v1alpha1.AzVolume, error) {
 	var azVolume *v1alpha1.AzVolume
 	var err error
 	if useCache {
 		azVolume = &v1alpha1.AzVolume{}
-		err = client.Get(ctx, types.NamespacedName{Name: azVolumeName, Namespace: namespace}, azVolume)
+		err = cachedClient.Get(ctx, types.NamespacedName{Name: azVolumeName, Namespace: namespace}, azVolume)
 	} else {
 		azVolume, err = azDiskClient.DiskV1alpha1().AzVolumes(namespace).Get(ctx, azVolumeName, metav1.GetOptions{})
 	}
 	return azVolume, err
 }
 
-func ListAzVolumes(ctx context.Context, client client.Client, azDiskClient azDiskClientSet.Interface, namespace string, useCache bool) (v1alpha1.AzVolumeList, error) {
+func ListAzVolumes(ctx context.Context, cachedClient client.Client, azDiskClient azDiskClientSet.Interface, namespace string, useCache bool) (v1alpha1.AzVolumeList, error) {
 	var azVolumeList *v1alpha1.AzVolumeList
 	var err error
 	if useCache {
 		azVolumeList = &v1alpha1.AzVolumeList{}
-		err = client.List(ctx, azVolumeList)
+		err = cachedClient.List(ctx, azVolumeList)
 	} else {
 		azVolumeList, err = azDiskClient.DiskV1alpha1().AzVolumes(namespace).List(ctx, metav1.ListOptions{})
 	}
 	return *azVolumeList, err
 }
 
-func GetAzVolumeAttachment(ctx context.Context, client client.Client, azDiskClient azDiskClientSet.Interface, azVolumeAttachmentName, namespace string, useCache bool) (*v1alpha1.AzVolumeAttachment, error) {
+func GetAzVolumeAttachment(ctx context.Context, cachedClient client.Client, azDiskClient azDiskClientSet.Interface, azVolumeAttachmentName, namespace string, useCache bool) (*v1alpha1.AzVolumeAttachment, error) {
 	var azVolumeAttachment *v1alpha1.AzVolumeAttachment
 	var err error
 	if useCache {
 		azVolumeAttachment = &v1alpha1.AzVolumeAttachment{}
-		err = client.Get(ctx, types.NamespacedName{Name: azVolumeAttachmentName, Namespace: namespace}, azVolumeAttachment)
+		err = cachedClient.Get(ctx, types.NamespacedName{Name: azVolumeAttachmentName, Namespace: namespace}, azVolumeAttachment)
 	} else {
 		azVolumeAttachment, err = azDiskClient.DiskV1alpha1().AzVolumeAttachments(namespace).Get(ctx, azVolumeAttachmentName, metav1.GetOptions{})
 	}
 	return azVolumeAttachment, err
 }
 
-func ListAzVolumeAttachments(ctx context.Context, client client.Client, azDiskClient azDiskClientSet.Interface, namespace string, useCache bool) (v1alpha1.AzVolumeAttachmentList, error) {
+func ListAzVolumeAttachments(ctx context.Context, cachedClient client.Client, azDiskClient azDiskClientSet.Interface, namespace string, useCache bool) (v1alpha1.AzVolumeAttachmentList, error) {
 	var azVolumeAttachmentList *v1alpha1.AzVolumeAttachmentList
 	var err error
 	if useCache {
 		azVolumeAttachmentList = &v1alpha1.AzVolumeAttachmentList{}
-		err = client.List(ctx, azVolumeAttachmentList)
+		err = cachedClient.List(ctx, azVolumeAttachmentList)
 	} else {
 		azVolumeAttachmentList, err = azDiskClient.DiskV1alpha1().AzVolumeAttachments(namespace).List(ctx, metav1.ListOptions{})
 	}
@@ -406,45 +407,68 @@ func GetAzVolumeAttachmentState(volumeAttachmentStatus storagev1.VolumeAttachmen
 	}
 }
 
-func UpdateCRIWithRetry(ctx context.Context, azDiskClient azDiskClientSet.Interface, obj interface{}, updateFunc func(interface{}) error) error {
-	conditionFunc := func() (bool, error) {
+func UpdateCRIWithRetry(ctx context.Context, cachedClient client.Client, azDiskClient azDiskClientSet.Interface, obj interface{}, updateFunc func(interface{}) error) error {
+	conditionFunc := func() error {
 		var err error
 		switch target := obj.(type) {
 		case *v1alpha1.AzVolume:
-			target, err = azDiskClient.DiskV1alpha1().AzVolumes(target.Namespace).Get(ctx, target.Name, metav1.GetOptions{})
+			if cachedClient == nil {
+				target, err = azDiskClient.DiskV1alpha1().AzVolumes(target.Namespace).Get(ctx, target.Name, metav1.GetOptions{})
+			} else {
+				err = cachedClient.Get(ctx, types.NamespacedName{Namespace: target.Namespace, Name: target.Name}, target)
+			}
 			obj = target.DeepCopy()
 		case *v1alpha1.AzVolumeAttachment:
-			target, err = azDiskClient.DiskV1alpha1().AzVolumeAttachments(target.Namespace).Get(ctx, target.Name, metav1.GetOptions{})
+			if cachedClient == nil {
+				target, err = azDiskClient.DiskV1alpha1().AzVolumeAttachments(target.Namespace).Get(ctx, target.Name, metav1.GetOptions{})
+			} else {
+				err = cachedClient.Get(ctx, types.NamespacedName{Namespace: target.Namespace, Name: target.Name}, target)
+			}
 			obj = target.DeepCopy()
 		default:
-			return false, status.Errorf(codes.Internal, "object (%v) not supported.", reflect.TypeOf(target))
+			return status.Errorf(codes.Internal, "object (%v) not supported.", reflect.TypeOf(target))
 		}
 
+		klog.Infof("Initiating update with retry for %v (%s)", reflect.TypeOf(obj), obj.(client.Object).GetName())
+
 		if err != nil {
-			klog.Errorf("failed to get obj (%s): %v", obj.(client.Object).GetName(), err)
-			return false, err
+			klog.Errorf("failed to get %v (%s): %v", reflect.TypeOf(obj), obj.(client.Object).GetName(), err)
+			return err
 		}
 
 		if err = updateFunc(obj); err != nil {
-			return false, err
+			return err
 		}
 
 		switch target := obj.(type) {
 		case *v1alpha1.AzVolume:
-			_, err = azDiskClient.DiskV1alpha1().AzVolumes(target.Namespace).Update(ctx, target, metav1.UpdateOptions{})
+			if cachedClient == nil {
+				_, err = azDiskClient.DiskV1alpha1().AzVolumes(target.Namespace).Update(ctx, target, metav1.UpdateOptions{})
+			} else {
+				err = cachedClient.Update(ctx, target)
+			}
 		case *v1alpha1.AzVolumeAttachment:
-			_, err = azDiskClient.DiskV1alpha1().AzVolumeAttachments(target.Namespace).Update(ctx, target, metav1.UpdateOptions{})
+			if cachedClient == nil {
+				_, err = azDiskClient.DiskV1alpha1().AzVolumeAttachments(target.Namespace).Update(ctx, target, metav1.UpdateOptions{})
+			} else {
+				err = cachedClient.Update(ctx, target)
+			}
 		}
 
-		if err != nil {
-			// retry update upon conflict
-			if errors.IsConflict(err) {
-				return false, nil
-			}
-			// if not return err
-			return false, err
+		// log unrecoverable error
+		if err != nil && !errors.IsConflict(err) {
+			klog.Errorf("failed to update %v (%s): %v", reflect.TypeOf(obj), obj.(client.Object).GetName(), err)
 		}
-		return true, nil
+
+		return err
 	}
-	return wait.PollImmediate(consts.CRIUpdateAttemptInterval, consts.CRIUpdateTimeout, conditionFunc)
+
+	return retry.RetryOnConflict(
+		wait.Backoff{
+			Duration: consts.CRIUpdateRetryDuration,
+			Factor:   consts.CRIUpdateRetryFactor,
+			Steps:    consts.CRIUpdateRetryStep,
+		},
+		conditionFunc,
+	)
 }

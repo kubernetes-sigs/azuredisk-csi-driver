@@ -20,8 +20,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -47,12 +45,11 @@ import (
 )
 
 type ReconcileVolumeAttachment struct {
-	client         client.Client
-	azVolumeClient azVolumeClientSet.Interface
-	kubeClient     kubeClientSet.Interface
-	// retryMap allows volumeAttachment controller to retry Get operation for AzVolumeAttachment in case the CRI has not been created yet
-	retryMap  sync.Map
-	namespace string
+	client              client.Client
+	azVolumeClient      azVolumeClientSet.Interface
+	kubeClient          kubeClientSet.Interface
+	controllerRetryInfo *retryInfo
+	namespace           string
 }
 
 var _ reconcile.Reconciler = &ReconcileVolumeAttachment{}
@@ -109,27 +106,23 @@ func (r *ReconcileVolumeAttachment) AnnotateAzVolumeAttachment(ctx context.Conte
 			return reconcile.Result{Requeue: true}, err
 		}
 
-		var zero uint32
-		v, _ := r.retryMap.LoadOrStore(azVolumeAttachmentName, &zero)
-		numRetry := v.(*uint32)
+		// if azVolumeAttachment is not found, retry with exponential back off
+		nextRequeue := newRetryInfo().nextRequeue(azVolumeAttachmentName)
+		klog.Infof("AzVolumeAttachment (%s) not found... reconciliation will be requeued after %f seconds", azVolumeAttachmentName, nextRequeue.Seconds())
 
-		if *numRetry < maxRetry {
-			_ = atomic.AddUint32(numRetry, 1)
-			klog.V(5).Infof("Waiting for AzVolumeAttachment (%s) to be created...", azVolumeAttachmentName)
-			return reconcile.Result{Requeue: true}, nil
-		}
-
-		klog.V(5).Infof("Max Retry (%d) for Get AzVolumeAttachment (%s) exceeded. The CRI is probably deleted.", maxRetry, azVolumeAttachmentName)
-		r.retryMap.Delete(azVolumeAttachmentName)
-		return reconcile.Result{}, nil
+		return reconcile.Result{Requeue: true, RequeueAfter: nextRequeue}, nil
 	}
+	//if azVolumeAttachment is found, remove entry from the retryMap and retryLocks
+	r.controllerRetryInfo.deleteEntry(azVolumeAttachmentName)
 
+	// then annotate AzVolumeAttachment CRI with VolumeAttachmentExsistsAnnotation
 	patched := azVolumeAttachment.DeepCopy()
 	if patched.Annotations == nil {
 		patched.Annotations = make(map[string]string)
 	}
 
 	_, ok := patched.Annotations[azureutils.VolumeAttachmentExistsAnnotation]
+	opType := "added to"
 	if volumeAttachmentExists {
 		if ok {
 			return reconcile.Result{}, nil
@@ -139,14 +132,15 @@ func (r *ReconcileVolumeAttachment) AnnotateAzVolumeAttachment(ctx context.Conte
 		if !ok {
 			return reconcile.Result{}, nil
 		}
+		opType = "deleted from"
 		delete(patched.Annotations, azureutils.VolumeAttachmentExistsAnnotation)
 	}
 
 	if err := r.client.Patch(ctx, patched, client.MergeFrom(&azVolumeAttachment)); err != nil {
-		klog.Errorf("failed to update AzVolumeAttachment (%s): %v", azVolumeAttachmentName, err)
+		klog.Errorf("failed to patch AzVolumeAttachment (%s): %v", azVolumeAttachmentName, err)
 		return reconcile.Result{Requeue: true}, err
 	}
-	klog.V(2).Infof("successfully updated AzVolumeAttachment (%s) with annotation (%s)", azVolumeAttachmentName, azureutils.VolumeAttachmentExistsAnnotation)
+	klog.V(2).Infof("Successfully %s AzVolumeAttachment (%s) annotation (%s)", opType, azVolumeAttachmentName, azureutils.VolumeAttachmentExistsAnnotation)
 	return reconcile.Result{}, nil
 }
 
@@ -211,11 +205,11 @@ func (r *ReconcileVolumeAttachment) Recover(ctx context.Context) error {
 
 func NewVolumeAttachmentController(ctx context.Context, mgr manager.Manager, azVolumeClient azVolumeClientSet.Interface, kubeClient kubeClientSet.Interface, namespace string) (*ReconcileVolumeAttachment, error) {
 	reconciler := ReconcileVolumeAttachment{
-		client:         mgr.GetClient(),
-		namespace:      namespace,
-		azVolumeClient: azVolumeClient,
-		retryMap:       sync.Map{},
-		kubeClient:     kubeClient,
+		client:              mgr.GetClient(),
+		namespace:           namespace,
+		azVolumeClient:      azVolumeClient,
+		controllerRetryInfo: newRetryInfo(),
+		kubeClient:          kubeClient,
 	}
 
 	c, err := controller.New("volumeattachment-controller", mgr, controller.Options{
