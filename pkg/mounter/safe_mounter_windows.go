@@ -40,9 +40,24 @@ import (
 	utilexec "k8s.io/utils/exec"
 )
 
-var _ mount.Interface = &CSIProxyMounter{}
+// CSIProxyMounter extends the mount.Interface interface with CSI Proxy methods.
+type CSIProxyMounter interface {
+	mount.Interface
 
-type CSIProxyMounter struct {
+	FormatAndMount(source, target, fstype string, options []string) error
+	ExistsPath(path string) (bool, error)
+	Rmdir(path string) error
+	Rescan() error
+	FindDiskByLun(lun string) (string, error)
+	GetDeviceNameFromMount(mountPath, pluginMountDir string) (string, error)
+	GetVolumeSizeInBytes(devicePath string) (int64, error)
+	ResizeVolume(devicePath string) error
+	GetAPIVersions() string
+}
+
+var _ CSIProxyMounter = &csiProxyMounter{}
+
+type csiProxyMounter struct {
 	FsClient     *fsclient.Client
 	DiskClient   *diskclient.Client
 	VolumeClient *volumeclient.Client
@@ -57,7 +72,7 @@ func normalizeWindowsPath(path string) string {
 }
 
 // Mount just creates a soft link at target pointing to source.
-func (mounter *CSIProxyMounter) Mount(source string, target string, fstype string, options []string) error {
+func (mounter *csiProxyMounter) Mount(source string, target string, fstype string, options []string) error {
 	// Mount is called after the format is done.
 	// TODO: Confirm that fstype is empty.
 	linkRequest := &fs.CreateSymlinkRequest{
@@ -75,7 +90,7 @@ func (mounter *CSIProxyMounter) Mount(source string, target string, fstype strin
 // TODO: Call separate rmdir for pod context and plugin context. v1alpha1 for CSI
 //       proxy does a relaxed check for prefix as c:\var\lib\kubelet, so we can do
 //       rmdir with either pod or plugin context.
-func (mounter *CSIProxyMounter) Rmdir(path string) error {
+func (mounter *csiProxyMounter) Rmdir(path string) error {
 	rmdirRequest := &fs.RmdirRequest{
 		Path:  normalizeWindowsPath(path),
 		Force: true,
@@ -88,7 +103,7 @@ func (mounter *CSIProxyMounter) Rmdir(path string) error {
 }
 
 // Unmount - Removes the directory - equivalent to unmount on Linux.
-func (mounter *CSIProxyMounter) Unmount(target string) error {
+func (mounter *csiProxyMounter) Unmount(target string) error {
 	// WriteVolumeCache before unmount
 	response, err := mounter.VolumeClient.GetVolumeIDFromTargetPath(context.Background(), &volume.GetVolumeIDFromTargetPathRequest{TargetPath: target})
 	if err != nil || response == nil {
@@ -104,18 +119,18 @@ func (mounter *CSIProxyMounter) Unmount(target string) error {
 	return mounter.Rmdir(target)
 }
 
-func (mounter *CSIProxyMounter) List() ([]mount.MountPoint, error) {
-	return []mount.MountPoint{}, fmt.Errorf("List not implemented for CSIProxyMounter")
+func (mounter *csiProxyMounter) List() ([]mount.MountPoint, error) {
+	return []mount.MountPoint{}, fmt.Errorf("List not implemented for csiProxyMounter")
 }
 
-func (mounter *CSIProxyMounter) IsMountPointMatch(mp mount.MountPoint, dir string) bool {
+func (mounter *csiProxyMounter) IsMountPointMatch(mp mount.MountPoint, dir string) bool {
 	return mp.Path == dir
 }
 
 // IsLikelyMountPoint - If the directory does not exists, the function will return os.ErrNotExist error.
 //   If the path exists, call to CSI proxy will check if its a link, if its a link then existence of target
 //   path is checked.
-func (mounter *CSIProxyMounter) IsLikelyNotMountPoint(path string) (bool, error) {
+func (mounter *csiProxyMounter) IsLikelyNotMountPoint(path string) (bool, error) {
 	isExists, err := mounter.ExistsPath(path)
 	if err != nil {
 		return false, err
@@ -135,16 +150,16 @@ func (mounter *CSIProxyMounter) IsLikelyNotMountPoint(path string) (bool, error)
 	return !response.IsSymlink, nil
 }
 
-func (mounter *CSIProxyMounter) PathIsDevice(pathname string) (bool, error) {
-	return false, fmt.Errorf("PathIsDevice not implemented for CSIProxyMounter")
+func (mounter *csiProxyMounter) PathIsDevice(pathname string) (bool, error) {
+	return false, fmt.Errorf("PathIsDevice not implemented for csiProxyMounter")
 }
 
-func (mounter *CSIProxyMounter) DeviceOpened(pathname string) (bool, error) {
-	return false, fmt.Errorf("DeviceOpened not implemented for CSIProxyMounter")
+func (mounter *csiProxyMounter) DeviceOpened(pathname string) (bool, error) {
+	return false, fmt.Errorf("DeviceOpened not implemented for csiProxyMounter")
 }
 
 // GetDeviceNameFromMount returns the volume ID for a mount path.
-func (mounter *CSIProxyMounter) GetDeviceNameFromMount(mountPath, pluginMountDir string) (string, error) {
+func (mounter *csiProxyMounter) GetDeviceNameFromMount(mountPath, pluginMountDir string) (string, error) {
 	req := &volume.GetVolumeIDFromTargetPathRequest{TargetPath: normalizeWindowsPath(mountPath)}
 	resp, err := mounter.VolumeClient.GetVolumeIDFromTargetPath(context.Background(), req)
 	if err != nil {
@@ -154,18 +169,18 @@ func (mounter *CSIProxyMounter) GetDeviceNameFromMount(mountPath, pluginMountDir
 	return resp.VolumeId, nil
 }
 
-func (mounter *CSIProxyMounter) MakeRShared(path string) error {
-	return fmt.Errorf("MakeRShared not implemented for CSIProxyMounter")
+func (mounter *csiProxyMounter) MakeRShared(path string) error {
+	return fmt.Errorf("MakeRShared not implemented for csiProxyMounter")
 }
 
-func (mounter *CSIProxyMounter) MakeFile(pathname string) error {
-	return fmt.Errorf("MakeFile not implemented for CSIProxyMounter")
+func (mounter *csiProxyMounter) MakeFile(pathname string) error {
+	return fmt.Errorf("MakeFile not implemented for csiProxyMounter")
 }
 
 // MakeDir - Creates a directory. The CSI proxy takes in context information.
 // Currently the make dir is only used from the staging code path, hence we call it
 // with Plugin context..
-func (mounter *CSIProxyMounter) MakeDir(pathname string) error {
+func (mounter *csiProxyMounter) MakeDir(pathname string) error {
 	mkdirReq := &fs.MkdirRequest{
 		Path: normalizeWindowsPath(pathname),
 	}
@@ -179,7 +194,7 @@ func (mounter *CSIProxyMounter) MakeDir(pathname string) error {
 }
 
 // ExistsPath - Checks if a path exists. Unlike util ExistsPath, this call does not perform follow link.
-func (mounter *CSIProxyMounter) ExistsPath(path string) (bool, error) {
+func (mounter *csiProxyMounter) ExistsPath(path string) (bool, error) {
 	isExistsResponse, err := mounter.FsClient.PathExists(context.Background(),
 		&fs.PathExistsRequest{
 			Path: normalizeWindowsPath(path),
@@ -190,36 +205,36 @@ func (mounter *CSIProxyMounter) ExistsPath(path string) (bool, error) {
 	return isExistsResponse.Exists, err
 }
 
-func (mounter *CSIProxyMounter) EvalHostSymlinks(pathname string) (string, error) {
-	return "", fmt.Errorf("EvalHostSymlinks is not implemented for CSIProxyMounter")
+func (mounter *csiProxyMounter) EvalHostSymlinks(pathname string) (string, error) {
+	return "", fmt.Errorf("EvalHostSymlinks is not implemented for csiProxyMounter")
 }
 
-func (mounter *CSIProxyMounter) GetMountRefs(pathname string) ([]string, error) {
-	return []string{}, fmt.Errorf("GetMountRefs is not implemented for CSIProxyMounter")
+func (mounter *csiProxyMounter) GetMountRefs(pathname string) ([]string, error) {
+	return []string{}, fmt.Errorf("GetMountRefs is not implemented for csiProxyMounter")
 }
 
-func (mounter *CSIProxyMounter) GetFSGroup(pathname string) (int64, error) {
-	return -1, fmt.Errorf("GetFSGroup is not implemented for CSIProxyMounter")
+func (mounter *csiProxyMounter) GetFSGroup(pathname string) (int64, error) {
+	return -1, fmt.Errorf("GetFSGroup is not implemented for csiProxyMounter")
 }
 
-func (mounter *CSIProxyMounter) GetSELinuxSupport(pathname string) (bool, error) {
-	return false, fmt.Errorf("GetSELinuxSupport is not implemented for CSIProxyMounter")
+func (mounter *csiProxyMounter) GetSELinuxSupport(pathname string) (bool, error) {
+	return false, fmt.Errorf("GetSELinuxSupport is not implemented for csiProxyMounter")
 }
 
-func (mounter *CSIProxyMounter) GetMode(pathname string) (os.FileMode, error) {
-	return 0, fmt.Errorf("GetMode is not implemented for CSIProxyMounter")
+func (mounter *csiProxyMounter) GetMode(pathname string) (os.FileMode, error) {
+	return 0, fmt.Errorf("GetMode is not implemented for csiProxyMounter")
 }
 
-func (mounter *CSIProxyMounter) MountSensitive(source string, target string, fstype string, options []string, sensitiveOptions []string) error {
-	return fmt.Errorf("MountSensitive is not implemented for CSIProxyMounter")
+func (mounter *csiProxyMounter) MountSensitive(source string, target string, fstype string, options []string, sensitiveOptions []string) error {
+	return fmt.Errorf("MountSensitive is not implemented for csiProxyMounter")
 }
 
-func (mounter *CSIProxyMounter) MountSensitiveWithoutSystemd(source string, target string, fstype string, options []string, sensitiveOptions []string) error {
-	return fmt.Errorf("MountSensitiveWithoutSystemd is not implemented for CSIProxyMounter")
+func (mounter *csiProxyMounter) MountSensitiveWithoutSystemd(source string, target string, fstype string, options []string, sensitiveOptions []string) error {
+	return fmt.Errorf("MountSensitiveWithoutSystemd is not implemented for csiProxyMounter")
 }
 
 // Rescan would trigger an update storage cache via the CSI proxy.
-func (mounter *CSIProxyMounter) Rescan() error {
+func (mounter *csiProxyMounter) Rescan() error {
 	// Call Rescan from disk APIs of CSI Proxy.
 	if _, err := mounter.DiskClient.Rescan(context.Background(), &disk.RescanRequest{}); err != nil {
 		return err
@@ -228,7 +243,7 @@ func (mounter *CSIProxyMounter) Rescan() error {
 }
 
 // FindDiskByLun - given a lun number, find out the corresponding disk
-func (mounter *CSIProxyMounter) FindDiskByLun(lun string) (diskNum string, err error) {
+func (mounter *csiProxyMounter) FindDiskByLun(lun string) (diskNum string, err error) {
 	findDiskByLunResponse, err := mounter.DiskClient.ListDiskLocations(context.Background(), &disk.ListDiskLocationsRequest{})
 	if err != nil {
 		return "", err
@@ -245,7 +260,7 @@ func (mounter *CSIProxyMounter) FindDiskByLun(lun string) (diskNum string, err e
 }
 
 // FormatAndMount - accepts the source disk number, target path to mount, the fstype to format with and options to be used.
-func (mounter *CSIProxyMounter) FormatAndMount(source string, target string, fstype string, options []string) error {
+func (mounter *csiProxyMounter) FormatAndMount(source string, target string, fstype string, options []string) error {
 	diskNum, err := strconv.Atoi(source)
 	if err != nil {
 		return fmt.Errorf("parse %s failed with error: %v", source, err)
@@ -306,14 +321,14 @@ func (mounter *CSIProxyMounter) FormatAndMount(source string, target string, fst
 }
 
 // ResizeVolume resizes the volume to the maximum available size.
-func (mounter *CSIProxyMounter) ResizeVolume(devicePath string) error {
+func (mounter *csiProxyMounter) ResizeVolume(devicePath string) error {
 	req := &volume.ResizeVolumeRequest{VolumeId: devicePath, SizeBytes: 0}
 	_, err := mounter.VolumeClient.ResizeVolume(context.Background(), req)
 	return err
 }
 
 // GetVolumeSizeInBytes returns the size of the volume in bytes.
-func (mounter *CSIProxyMounter) GetVolumeSizeInBytes(devicePath string) (int64, error) {
+func (mounter *csiProxyMounter) GetVolumeSizeInBytes(devicePath string) (int64, error) {
 	req := &volume.GetVolumeStatsRequest{VolumeId: devicePath}
 
 	resp, err := mounter.VolumeClient.GetVolumeStats(context.Background(), req)
@@ -325,7 +340,7 @@ func (mounter *CSIProxyMounter) GetVolumeSizeInBytes(devicePath string) (int64, 
 }
 
 // GetAPIVersions returns the versions of the client APIs this mounter is using.
-func (mounter *CSIProxyMounter) GetAPIVersions() string {
+func (mounter *csiProxyMounter) GetAPIVersions() string {
 	return fmt.Sprintf(
 		"API Versions filesystem: %s, disk: %s, volume: %s",
 		fsclient.Version,
@@ -334,9 +349,9 @@ func (mounter *CSIProxyMounter) GetAPIVersions() string {
 	)
 }
 
-// NewCSIProxyMounter - creates a new CSI Proxy mounter struct which encompassed all the
+// newCSIProxyMounter - creates a new CSI Proxy mounter struct which encompassed all the
 // clients to the CSI proxy - filesystem, disk and volume clients.
-func NewCSIProxyMounter() (*CSIProxyMounter, error) {
+func newCSIProxyMounter() (*csiProxyMounter, error) {
 	fsClient, err := fsclient.NewClient()
 	if err != nil {
 		return nil, err
@@ -349,7 +364,7 @@ func NewCSIProxyMounter() (*CSIProxyMounter, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &CSIProxyMounter{
+	return &csiProxyMounter{
 		FsClient:     fsClient,
 		DiskClient:   diskClient,
 		VolumeClient: volumeClient,
@@ -357,7 +372,7 @@ func NewCSIProxyMounter() (*CSIProxyMounter, error) {
 }
 
 func NewSafeMounter() (*mount.SafeFormatAndMount, error) {
-	csiProxyMounter, err := NewCSIProxyMounter()
+	csiProxyMounter, err := newCSIProxyMounter()
 	if err == nil {
 		klog.V(2).Infof("using CSIProxyMounterV1, %s", csiProxyMounter.GetAPIVersions())
 		return &mount.SafeFormatAndMount{
@@ -367,7 +382,7 @@ func NewSafeMounter() (*mount.SafeFormatAndMount, error) {
 	}
 
 	klog.V(2).Infof("failed to connect to csi-proxy v1 with error: %v, will try with v1Beta", err)
-	csiProxyMounterV1Beta, err := NewCSIProxyMounterV1Beta()
+	csiProxyMounterV1Beta, err := newCSIProxyMounterV1Beta()
 	if err == nil {
 		klog.V(2).Infof("using CSIProxyMounterV1beta, %s", csiProxyMounterV1Beta.GetAPIVersions())
 		return &mount.SafeFormatAndMount{
