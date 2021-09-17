@@ -36,7 +36,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/volume"
-	"k8s.io/kubernetes/pkg/volume/util/hostutil"
 	mount "k8s.io/mount-utils"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
@@ -365,7 +364,7 @@ func (d *Driver) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeS
 		return nil, status.Errorf(codes.Internal, "failed to stat file %s: %v", req.VolumePath, err)
 	}
 
-	isBlock, err := hostutil.NewHostUtil().PathIsDevice(req.VolumePath)
+	isBlock, err := d.getHostUtil().PathIsDevice(req.VolumePath)
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "failed to determine whether %s is block device: %v", req.VolumePath, err)
 	}
@@ -448,7 +447,7 @@ func (d *Driver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolume
 		return nil, status.Error(codes.InvalidArgument, "volume path must be provided")
 	}
 
-	isBlock, err := hostutil.NewHostUtil().PathIsDevice(volumePath)
+	isBlock, err := d.getHostUtil().PathIsDevice(volumePath)
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "failed to determine device path for volumePath [%v]: %v", volumePath, err)
 	}
@@ -561,13 +560,12 @@ func (d *Driver) getDevicePathWithLUN(lunStr string) (string, error) {
 		return "", err
 	}
 
-	io := &osIOHandler{}
-	scsiHostRescan(io, d.mounter)
+	scsiHostRescan(d.ioHandler, d.mounter)
 
 	newDevicePath := ""
 	err = wait.PollImmediate(1*time.Second, 2*time.Minute, func() (bool, error) {
 		var err error
-		if newDevicePath, err = findDiskByLun(int(lun), io, d.mounter); err != nil {
+		if newDevicePath, err = findDiskByLun(int(lun), d.ioHandler, d.mounter); err != nil {
 			return false, fmt.Errorf("azureDisk - findDiskByLun(%v) failed with error(%s)", lun, err)
 		}
 

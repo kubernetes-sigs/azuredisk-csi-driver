@@ -1,5 +1,5 @@
 /*
-Copyright 2017 The Kubernetes Authors.
+Copyright 2021 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,16 +14,5 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package azuredisk
-
-import (
-	"strings"
-)
-
-func strFirstLetterToUpper(str string) string {
-	if len(str) < 2 {
-		return str
-	}
-
-	return strings.ToUpper(string(str[0])) + str[1:]
-}
+// Package mockpersistentvolume implements mocks for the optimization package.
+package mockoptimization // import "sigs.k8s.io/azure-csi-driver/pkg/azuredisk/optimization/mockoptimization"

@@ -39,11 +39,13 @@ import (
 	klogv1 "k8s.io/klog"
 	"k8s.io/klog/klogr"
 	"k8s.io/klog/v2"
+	"k8s.io/kubernetes/pkg/volume/util/hostutil"
 
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	azuredisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller"
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
@@ -140,6 +142,8 @@ func newDriverV2(options *DriverOptions,
 	driver.cloudConfigSecretNamespace = options.CloudConfigSecretNamespace
 	driver.customUserAgent = options.CustomUserAgent
 	driver.userAgentSuffix = options.UserAgentSuffix
+	driver.ioHandler = azureutils.NewOSIOHandler()
+	driver.hostUtil = hostutil.NewHostUtil()
 
 	topologyKey = fmt.Sprintf("topology.%s/zone", driver.Name)
 	return &driver
@@ -194,7 +198,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 	if d.getPerfOptimizationEnabled() {
 		d.nodeInfo, err = optimization.NewNodeInfo(d.cloudProvisioner.GetCloud(), d.NodeID)
 		if err != nil {
-			klog.Fatalf("Failed to get node info. Error: %v", err)
+			klog.Errorf("Failed to get node info. Error: %v", err)
 		}
 	}
 

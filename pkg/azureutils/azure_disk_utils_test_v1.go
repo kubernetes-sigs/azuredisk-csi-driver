@@ -25,6 +25,7 @@ import (
 	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
+	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
@@ -1086,5 +1087,67 @@ func createTestFile(path string) error {
 func skipIfTestingOnWindows(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Skipping tests on Windows")
+	}
+}
+
+func TestInsertDiskProperties(t *testing.T) {
+	tests := []struct {
+		desc        string
+		disk        *compute.Disk
+		inputMap    map[string]string
+		expectedMap map[string]string
+	}{
+		{
+			desc: "nil pointer",
+		},
+		{
+			desc:        "empty",
+			disk:        &compute.Disk{},
+			inputMap:    map[string]string{},
+			expectedMap: map[string]string{},
+		},
+		{
+			desc: "skuName",
+			disk: &compute.Disk{
+				Sku: &compute.DiskSku{Name: compute.PremiumLRS},
+			},
+			inputMap:    map[string]string{},
+			expectedMap: map[string]string{"skuname": string(compute.PremiumLRS)},
+		},
+		{
+			desc: "DiskProperties",
+			disk: &compute.Disk{
+				Sku: &compute.DiskSku{Name: compute.StandardSSDLRS},
+				DiskProperties: &compute.DiskProperties{
+					NetworkAccessPolicy: compute.AllowPrivate,
+					DiskIOPSReadWrite:   to.Int64Ptr(6400),
+					DiskMBpsReadWrite:   to.Int64Ptr(100),
+					CreationData: &compute.CreationData{
+						LogicalSectorSize: to.Int32Ptr(512),
+					},
+					Encryption: &compute.Encryption{DiskEncryptionSetID: to.StringPtr("/subs/DiskEncryptionSetID")},
+					MaxShares:  to.Int32Ptr(3),
+				},
+			},
+			inputMap: map[string]string{},
+			expectedMap: map[string]string{
+				consts.SkuNameField:             string(compute.StandardSSDLRS),
+				consts.NetworkAccessPolicyField: string(compute.AllowPrivate),
+				consts.DiskIOPSReadWriteField:   "6400",
+				consts.DiskMBPSReadWriteField:   "100",
+				consts.LogicalSectorSizeField:   "512",
+				consts.DesIDField:               "/subs/DiskEncryptionSetID",
+				consts.MaxSharesField:           "3",
+			},
+		},
+	}
+
+	for _, test := range tests {
+		InsertDiskProperties(test.disk, test.inputMap)
+		for k, v := range test.inputMap {
+			if test.expectedMap[k] != v {
+				t.Errorf("test [%q] get unexpected result: (%v, %v) != (%v, %v)", test.desc, k, v, k, test.expectedMap[k])
+			}
+		}
 	}
 }

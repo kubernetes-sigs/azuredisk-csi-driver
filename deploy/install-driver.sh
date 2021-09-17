@@ -34,6 +34,14 @@ if [ $ver != "master" ]; then
 fi
 
 echo "Installing Azure Disk CSI driver, version: $ver ..."
+
+if [[ "$#" -gt 1 ]]; then
+  if [[ "$2" == *"enable-avset"* ]]; then
+    echo "set disable-avset-nodes as false ..."
+    sed -i 's/disable-avset-nodes=true/disable-avset-nodes=false/g' $repo/csi-azuredisk-controller.yaml
+  fi
+fi
+
 kubectl apply -f $repo/csi-azuredisk-driver.yaml
 kubectl apply -f $repo/rbac-csi-azuredisk-controller.yaml
 kubectl apply -f $repo/rbac-csi-azuredisk-node.yaml

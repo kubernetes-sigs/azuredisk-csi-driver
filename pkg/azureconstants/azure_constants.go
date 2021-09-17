@@ -71,6 +71,7 @@ const (
 	TagsField                     = "tags"
 	ThrottlingKey                 = "throttlingKey"
 	TrueValue                     = "true"
+	UserAgentField                = "useragent"
 	VolumeAttributePartition      = "partition"
 	WellKnownTopologyKey          = "topology.kubernetes.io/zone"
 	WriteAcceleratorEnabled       = "writeacceleratorenabled"

@@ -51,7 +51,10 @@ var (
 )
 
 type CloudProvisioner struct {
-	cloud *azure.Cloud
+	cloud                      *azure.Cloud
+	kubeClient                 clientset.Interface
+	cloudConfigSecretName      string
+	cloudConfigSecretNamespace string
 }
 
 // listVolumeStatus explains the return status of `listVolumesByResourceGroup`
@@ -77,7 +80,10 @@ func NewCloudProvisioner(
 	topologyKeyStr = topologyKey
 
 	return &CloudProvisioner{
-		cloud: azCloud,
+		cloud:                      azCloud,
+		kubeClient:                 kubeClient,
+		cloudConfigSecretName:      cloudConfigSecretName,
+		cloudConfigSecretNamespace: cloudConfigSecretNamespace,
 	}, nil
 }
 
@@ -113,6 +119,7 @@ func (c *CloudProvisioner) CreateVolume(
 		enableBursting          *bool
 	)
 
+	localCloud := c.cloud
 	tags := make(map[string]string)
 	if parameters == nil {
 		parameters = make(map[string]string)
@@ -174,6 +181,12 @@ func (c *CloudProvisioner) CreateVolume(
 			if strings.EqualFold(v, azureconstants.TrueValue) {
 				enableBursting = to.BoolPtr(true)
 			}
+		case azureconstants.UserAgentField:
+			newUserAgent := v
+			localCloud, err = azureutils.GetAzureCloudProvider(c.kubeClient, c.cloudConfigSecretName, c.cloudConfigSecretNamespace, newUserAgent)
+			if err != nil {
+				return nil, fmt.Errorf("create cloud with UserAgent(%s) failed with: (%s)", newUserAgent, err)
+			}
 		// The following parameter is not used by the cloud provisioner, but must be present in the VolumeContext
 		// returned to the caller so that it is included in the parameters passed to Node{Publish|Stage}Volume.
 		case azureconstants.FsTypeField:
@@ -197,7 +210,7 @@ func (c *CloudProvisioner) CreateVolume(
 	}
 
 	// normalize values
-	skuName, err := azureutils.NormalizeAzureStorageAccountType(storageAccountType, c.cloud.Config.Cloud, c.cloud.Config.DisableAzureStackCloud)
+	skuName, err := azureutils.NormalizeAzureStorageAccountType(storageAccountType, localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud)
 	if err != nil {
 		return nil, err
 	}
@@ -310,14 +323,14 @@ func (c *CloudProvisioner) CreateVolume(
 	}
 
 	// Azure Stack Cloud does not support NetworkAccessPolicy
-	if !azureutils.IsAzureStackCloud(c.cloud.Config.Cloud, c.cloud.Config.DisableAzureStackCloud) {
+	if !azureutils.IsAzureStackCloud(localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud) {
 		volumeOptions.NetworkAccessPolicy = networkAccessPolicy
 		if diskAccessID != "" {
 			volumeOptions.DiskAccessID = &diskAccessID
 		}
 	}
 
-	diskURI, err := c.cloud.CreateManagedDisk(volumeOptions)
+	diskURI, err := localCloud.CreateManagedDisk(volumeOptions)
 	if err != nil {
 		if strings.Contains(err.Error(), "NotFound") {
 			return nil, status.Error(codes.NotFound, err.Error())
@@ -506,6 +519,7 @@ func (c *CloudProvisioner) CreateSnapshot(
 	incremental := true
 	var resourceGroup string
 	var err error
+	localCloud := c.cloud
 
 	for k, v := range parameters {
 		switch strings.ToLower(k) {
@@ -517,12 +531,18 @@ func (c *CloudProvisioner) CreateSnapshot(
 			}
 		case azureconstants.ResourceGroupField:
 			resourceGroup = v
+		case azureconstants.UserAgentField:
+			newUserAgent := v
+			localCloud, err = azureutils.GetAzureCloudProvider(c.kubeClient, c.cloudConfigSecretName, c.cloudConfigSecretNamespace, newUserAgent)
+			if err != nil {
+				return nil, fmt.Errorf("create cloud with UserAgent(%s) failed with: (%s)", newUserAgent, err)
+			}
 		default:
 			return nil, fmt.Errorf("AzureDisk - invalid option %s in VolumeSnapshotClass", k)
 		}
 	}
 
-	if azureutils.IsAzureStackCloud(c.cloud.Config.Cloud, c.cloud.Config.DisableAzureStackCloud) {
+	if azureutils.IsAzureStackCloud(localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud) {
 		klog.V(2).Info("Use full snapshot instead as Azure Stack does not support incremental snapshot.")
 		incremental = false
 	}
@@ -557,7 +577,7 @@ func (c *CloudProvisioner) CreateSnapshot(
 
 	klog.V(2).Infof("begin to create snapshot(%s, incremental: %v) under rg(%s)", snapshotName, incremental, resourceGroup)
 
-	rerr := c.cloud.SnapshotsClient.CreateOrUpdate(ctx, resourceGroup, snapshotName, snapshot)
+	rerr := localCloud.SnapshotsClient.CreateOrUpdate(ctx, resourceGroup, snapshotName, snapshot)
 	if rerr != nil {
 		if strings.Contains(rerr.Error().Error(), "existing disk") {
 			return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("request snapshot(%s) under rg(%s) already exists, but the SourceVolumeId is different, error details: %v", snapshotName, resourceGroup, rerr.Error()))

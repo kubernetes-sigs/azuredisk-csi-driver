@@ -109,6 +109,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		enableBursting          *bool
 	)
 
+	localCloud := d.cloud
 	tags := make(map[string]string)
 	parameters := req.GetParameters()
 	if parameters == nil {
@@ -174,12 +175,18 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			if strings.EqualFold(v, consts.TrueValue) {
 				enableBursting = to.BoolPtr(true)
 			}
+		case consts.UserAgentField:
+			newUserAgent := v
+			localCloud, err = azureutils.GetCloudProvider(d.kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, newUserAgent)
+			if err != nil {
+				return nil, fmt.Errorf("create cloud with UserAgent(%s) failed with: (%s)", newUserAgent, err)
+			}
 		default:
 			return nil, fmt.Errorf("invalid parameter %s in storage class", k)
 		}
 	}
 
-	if azureutils.IsAzureStackCloud(d.cloud.Config.Cloud, d.cloud.Config.DisableAzureStackCloud) {
+	if azureutils.IsAzureStackCloud(localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud) {
 		if maxShares > 1 {
 			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Invalid maxShares value: %d as Azure Stack does not support shared disk.", maxShares))
 		}
@@ -205,7 +212,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	}
 
 	// normalize values
-	skuName, err := azureutils.NormalizeStorageAccountType(storageAccountType, d.cloud.Config.Cloud, d.cloud.Config.DisableAzureStackCloud)
+	skuName, err := azureutils.NormalizeStorageAccountType(storageAccountType, localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud)
 	if err != nil {
 		return nil, err
 	}
@@ -296,11 +303,9 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 				},
 			}
 
-			ctx, cancel := context.WithCancel(context.Background())
 			if sourceGiB, _ := d.GetSourceDiskSize(ctx, resourceGroup, path.Base(sourceID), 0, consts.SourceDiskSearchMaxDepth); sourceGiB != nil && *sourceGiB < int32(requestGiB) {
 				parameters[consts.ResizeRequired] = strconv.FormatBool(true)
 			}
-			cancel()
 		}
 	}
 
@@ -324,13 +329,13 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	}
 	volumeOptions.SkipGetDiskOperation = d.isGetDiskThrottled()
 	// Azure Stack Cloud does not support NetworkAccessPolicy
-	if !azureutils.IsAzureStackCloud(d.cloud.Config.Cloud, d.cloud.Config.DisableAzureStackCloud) {
+	if !azureutils.IsAzureStackCloud(localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud) {
 		volumeOptions.NetworkAccessPolicy = networkAccessPolicy
 		if diskAccessID != "" {
 			volumeOptions.DiskAccessID = &diskAccessID
 		}
 	}
-	diskURI, err := d.cloud.CreateManagedDisk(volumeOptions)
+	diskURI, err := localCloud.CreateManagedDisk(volumeOptions)
 	if err != nil {
 		if strings.Contains(err.Error(), consts.NotFound) {
 			return nil, status.Error(codes.NotFound, err.Error())
@@ -479,9 +484,16 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		klog.V(2).Infof("attach volume %q to node %q successfully", diskURI, nodeName)
 	}
 
-	pvInfo := map[string]string{consts.LUN: strconv.Itoa(int(lun))}
+	publishContext := map[string]string{consts.LUN: strconv.Itoa(int(lun))}
+	volumeContext := req.VolumeContext
+	if disk != nil && volumeContext != nil {
+		if _, ok := volumeContext[consts.RequestedSizeGib]; !ok {
+			klog.V(2).Infof("found static PV(%s), insert disk properties to volumeattachments", diskURI)
+			azureutils.InsertDiskProperties(disk, publishContext)
+		}
+	}
 	isOperationSucceeded = true
-	return &csi.ControllerPublishVolumeResponse{PublishContext: pvInfo}, nil
+	return &csi.ControllerPublishVolumeResponse{PublishContext: publishContext}, nil
 }
 
 // ControllerUnpublishVolume detach an azure disk from a required node
@@ -829,6 +841,7 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	incremental := true
 	var resourceGroup string
 	var err error
+	localCloud := d.cloud
 
 	parameters := req.GetParameters()
 	for k, v := range parameters {
@@ -841,12 +854,19 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 			}
 		case consts.ResourceGroupField:
 			resourceGroup = v
+		case consts.UserAgentField:
+			newUserAgent := v
+			localCloud, err = azureutils.GetCloudProvider(d.kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, newUserAgent)
+			if err != nil {
+				return nil, fmt.Errorf("create cloud with UserAgent(%s) failed with: (%s)", newUserAgent, err)
+
+			}
 		default:
 			return nil, fmt.Errorf("AzureDisk - invalid option %s in VolumeSnapshotClass", k)
 		}
 	}
 
-	if azureutils.IsAzureStackCloud(d.cloud.Config.Cloud, d.cloud.Config.DisableAzureStackCloud) {
+	if azureutils.IsAzureStackCloud(localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud) {
 		klog.V(2).Info("Use full snapshot instead as Azure Stack does not support incremental snapshot.")
 		incremental = false
 	}
@@ -886,7 +906,7 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	}()
 
 	klog.V(2).Infof("begin to create snapshot(%s, incremental: %v) under rg(%s)", snapshotName, incremental, resourceGroup)
-	rerr := d.cloud.SnapshotsClient.CreateOrUpdate(ctx, resourceGroup, snapshotName, snapshot)
+	rerr := localCloud.SnapshotsClient.CreateOrUpdate(ctx, resourceGroup, snapshotName, snapshot)
 	if rerr != nil {
 		if strings.Contains(rerr.Error().Error(), "existing disk") {
 			return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("request snapshot(%s) under rg(%s) already exists, but the SourceVolumeId is different, error details: %v", snapshotName, resourceGroup, rerr.Error()))

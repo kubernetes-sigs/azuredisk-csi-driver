@@ -28,9 +28,12 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"k8s.io/klog/v2"
+	mount "k8s.io/mount-utils"
 	testingexec "k8s.io/utils/exec/testing"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization/mockoptimization"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/provisioner"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
@@ -68,6 +71,10 @@ func newFakeDriverV2(t *testing.T) (*fakeDriverV2, error) {
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.objectNamespace = fakeObjNamespace
 
+	driver.VolumeAttachLimit = -1
+	driver.ioHandler = azureutils.NewFakeIOHandler()
+	driver.hostUtil = azureutils.NewFakeHostUtil()
+
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -91,6 +98,8 @@ func newFakeDriverV2(t *testing.T) (*fakeDriverV2, error) {
 	}
 
 	driver.crdProvisioner = crdProvisioner
+
+	driver.deviceHelper = mockoptimization.NewMockInterface(ctrl)
 
 	driver.AddControllerServiceCapabilities(
 		[]csi.ControllerServiceCapability_RPC_Type{
@@ -143,6 +152,13 @@ func (d *fakeDriverV2) checkDiskCapacity(ctx context.Context, resourceGroup, dis
 
 func (d *fakeDriverV2) checkDiskExists(ctx context.Context, diskURI string) (*compute.Disk, error) {
 	return &compute.Disk{}, nil
+}
+
+func (d *fakeDriverV2) setMounter(mounter *mount.SafeFormatAndMount) {
+}
+
+func (d *fakeDriverV2) setPathIsDeviceResult(path string, isDevice bool, err error) {
+	d.nodeProvisioner.(*provisioner.FakeNodeProvisioner).SetIsBlockDevicePathResult(path, isDevice, err)
 }
 
 func (d *DriverV2) setDiskThrottlingCache(key string, value string) {

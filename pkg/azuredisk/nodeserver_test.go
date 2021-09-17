@@ -21,26 +21,64 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"runtime"
+	"strings"
 	"syscall"
 	"testing"
 
-	testingexec "k8s.io/utils/exec/testing"
-	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
-
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-
+	testingexec "k8s.io/utils/exec/testing"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization/mockoptimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
+	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmclient/mockvmclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
+)
+
+const (
+	virtualMachineURIFormat = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/virtualMachines/%s"
 )
 
 var (
 	sourceTest string
 	targetTest string
+
+	testSubscription  = "01234567-89ab-cdef-0123-456789abcdef"
+	testResourceGroup = "rg"
+
+	provisioningStateSucceeded = "Succeeded"
+
+	testVMName     = fakeNodeID
+	testVMURI      = fmt.Sprint(virtualMachineURIFormat, testSubscription, testResourceGroup, testVMName)
+	testVMSize     = compute.StandardD3V2
+	testVMLocation = "westus"
+	testVMZones    = []string{"1"}
+	testVM         = compute.VirtualMachine{
+		Name:     &testVMName,
+		ID:       &testVMURI,
+		Location: &testVMLocation,
+		Zones:    &testVMZones,
+		VirtualMachineProperties: &compute.VirtualMachineProperties{
+			ProvisioningState: &provisioningStateSucceeded,
+			HardwareProfile: &compute.HardwareProfile{
+				VMSize: testVMSize,
+			},
+			StorageProfile: &compute.StorageProfile{
+				DataDisks: new([]compute.DataDisk),
+			},
+		},
+	}
 )
 
 func TestMain(m *testing.M) {
@@ -198,7 +236,8 @@ func TestEnsureMountPoint(t *testing.T) {
 
 	// Setup
 	_ = makeDir(alreadyExistTarget)
-	d, err := newFakeDriverV1(t)
+	d, _ := NewFakeDriver(t)
+	_, err = mounter.NewFakeSafeMounter()
 	assert.NoError(t, err)
 
 	for _, test := range tests {
@@ -220,14 +259,102 @@ func TestEnsureMountPoint(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func TestNodeGetInfo(t *testing.T) {
+	notFoundErr := &retry.Error{
+		HTTPStatusCode: http.StatusNotFound,
+		RawError:       errors.New("not found"),
+	}
+
+	tests := []struct {
+		desc         string
+		expectedErr  error
+		skipOnDarwin bool
+		setupFunc    func(t *testing.T, d FakeDriver)
+		validateFunc func(t *testing.T, resp *csi.NodeGetInfoResponse)
+	}{
+		{
+			desc:         "[Success] Get node information for existing VM",
+			expectedErr:  nil,
+			skipOnDarwin: true,
+			setupFunc: func(t *testing.T, d FakeDriver) {
+				d.getCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
+					Get(gomock.Any(), testResourceGroup, testVMName, gomock.Any()).
+					Return(testVM, nil).
+					AnyTimes()
+
+				// cloud-provider-azure's GetZone function assumes the host is a VM and returns it zones.
+				// We therefore mock a return of the testVM if the hostname is used.
+				hostname, err := os.Hostname()
+				require.NoError(t, err)
+
+				// cloud-provider-azure's GetZone function always deals with lower case.
+				hostname = strings.ToLower(hostname)
+
+				d.getCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
+					Get(gomock.Any(), testResourceGroup, hostname, gomock.Any()).
+					Return(testVM, nil).
+					AnyTimes()
+				d.getCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
+					Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(compute.VirtualMachine{}, notFoundErr).
+					AnyTimes()
+			},
+			validateFunc: func(t *testing.T, resp *csi.NodeGetInfoResponse) {
+				assert.Equal(t, testVMName, resp.NodeId)
+				assert.Equal(t, getMaxDataDiskCount(string(testVMSize)), resp.MaxVolumesPerNode)
+				assert.Len(t, resp.AccessibleTopology.Segments, 2)
+			},
+		},
+		{
+			desc:        "[Failure] Get node information for non-existing VM",
+			expectedErr: nil,
+			setupFunc: func(t *testing.T, d FakeDriver) {
+				d.getCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
+					Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(compute.VirtualMachine{}, notFoundErr).
+					AnyTimes()
+			},
+			validateFunc: func(t *testing.T, resp *csi.NodeGetInfoResponse) {
+				assert.Equal(t, testVMName, resp.NodeId)
+				assert.Equal(t, int64(defaultAzureVolumeLimit), resp.MaxVolumesPerNode)
+			},
+		},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.desc, func(t *testing.T) {
+			if test.skipOnDarwin && runtime.GOOS == "darwin" {
+				t.Skip("Skip test case on Darwin")
+			}
+			d, err := NewFakeDriver(t)
+			require.NoError(t, err)
+
+			test.setupFunc(t, d)
+
+			resp, err := d.NodeGetInfo(context.TODO(), &csi.NodeGetInfoRequest{})
+			require.Equal(t, test.expectedErr, err)
+			if err == nil {
+				test.validateFunc(t, resp)
+			}
+		})
+	}
+}
+
 func TestNodeGetVolumeStats(t *testing.T) {
 	nonexistedPath := "/not/a/real/directory"
 	fakePath := "/tmp/fake-volume-path"
+	blockVolumePath := "/tmp/block-volume-path"
+	blockdevAction := func() ([]byte, []byte, error) {
+		return []byte(fmt.Sprintf("%d", stdCapacityRange.RequiredBytes)), []byte{}, nil
+	}
 	tests := []struct {
-		desc         string
-		req          csi.NodeGetVolumeStatsRequest
-		expectedErr  error
-		skipOnDarwin bool
+		desc          string
+		setupFunc     func(*testing.T, FakeDriver)
+		req           csi.NodeGetVolumeStatsRequest
+		expectedErr   error
+		skipOnDarwin  bool
+		skipOnWindows bool
 	}{
 		{
 			desc:        "Volume ID missing",
@@ -245,6 +372,17 @@ func TestNodeGetVolumeStats(t *testing.T) {
 			expectedErr: status.Errorf(codes.NotFound, "path /not/a/real/directory does not exist"),
 		},
 		{
+			desc: "Block volume path success",
+			setupFunc: func(t *testing.T, d FakeDriver) {
+				d.getHostUtil().(*azureutils.FakeHostUtil).SetPathIsDeviceResult(blockVolumePath, true, nil)
+				d.setNextCommandOutputScripts(blockdevAction)
+			},
+			req:           csi.NodeGetVolumeStatsRequest{VolumePath: blockVolumePath, VolumeId: "vol_1"},
+			skipOnDarwin:  true,
+			skipOnWindows: true,
+			expectedErr:   nil,
+		},
+		{
 			desc:         "standard success",
 			req:          csi.NodeGetVolumeStatsRequest{VolumePath: fakePath, VolumeId: "vol_1"},
 			skipOnDarwin: true,
@@ -254,11 +392,17 @@ func TestNodeGetVolumeStats(t *testing.T) {
 
 	// Setup
 	_ = makeDir(fakePath)
-	d, err := NewFakeDriver(t)
+	_ = makeDir(blockVolumePath)
+	d, _ := NewFakeDriver(t)
+	mounter, err := mounter.NewFakeSafeMounter()
 	assert.NoError(t, err)
+	d.setMounter(mounter)
 
 	for _, test := range tests {
-		if !(test.skipOnDarwin && runtime.GOOS == "darwin") {
+		if !(test.skipOnDarwin && runtime.GOOS == "darwin") && !(test.skipOnWindows && runtime.GOOS == "windows") {
+			if test.setupFunc != nil {
+				test.setupFunc(t, d)
+			}
 			_, err := d.NodeGetVolumeStats(context.Background(), &test.req)
 			if !testutil.IsErrorEquivalent(err, test.expectedErr) {
 				t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
@@ -268,6 +412,8 @@ func TestNodeGetVolumeStats(t *testing.T) {
 
 	// Clean up
 	err = os.RemoveAll(fakePath)
+	assert.NoError(t, err)
+	err = os.RemoveAll(blockVolumePath)
 	assert.NoError(t, err)
 }
 
@@ -280,25 +426,44 @@ func TestNodeStageVolume(t *testing.T) {
 			FsType: defaultLinuxFsType,
 		},
 	}
-	mp := make(map[string]string)
-	mp["fstype"] = defaultLinuxFsType
+	volumeContext := map[string]string{
+		consts.FsTypeField: defaultLinuxFsType,
+	}
+	volumeContextWithResize := map[string]string{
+		consts.ResizeRequired: "true",
+	}
+
 	stdVolCapBlock := &csi.VolumeCapability_Block{
 		Block: &csi.VolumeCapability_BlockVolume{},
 	}
 
 	volumeCap := csi.VolumeCapability_AccessMode{Mode: 2}
 	volumeCapWrong := csi.VolumeCapability_AccessMode{Mode: 10}
-	publishContext := map[string]string{
+	invalidLUN := map[string]string{
 		consts.LUN: "/dev/01",
+	}
+	publishContext := map[string]string{
+		consts.LUN: "/dev/disk/azure/scsi1/lun1",
+	}
+
+	blkidAction := func() ([]byte, []byte, error) {
+		return []byte("DEVICE=/dev/sdd\nTYPE=ext4"), []byte{}, nil
+	}
+	fsckAction := func() ([]byte, []byte, error) {
+		return []byte{}, []byte{}, nil
+	}
+	resize2fsAction := func() ([]byte, []byte, error) {
+		return []byte{}, []byte{}, nil
 	}
 
 	tests := []struct {
-		desc         string
-		setup        func()
-		req          csi.NodeStageVolumeRequest
-		expectedErr  error
-		skipOnDarwin bool
-		cleanup      func()
+		desc          string
+		setupFunc     func(*testing.T, FakeDriver)
+		req           csi.NodeStageVolumeRequest
+		expectedErr   error
+		skipOnDarwin  bool
+		skipOnWindows bool
+		cleanupFunc   func(*testing.T, FakeDriver)
 	}{
 		{
 			desc:        "Volume ID missing",
@@ -322,13 +487,13 @@ func TestNodeStageVolume(t *testing.T) {
 		},
 		{
 			desc: "Volume operation in progress",
-			setup: func() {
+			setupFunc: func(t *testing.T, d FakeDriver) {
 				d.getVolumeLocks().TryAcquire("vol_1")
 			},
 			req: csi.NodeStageVolumeRequest{VolumeId: "vol_1", StagingTargetPath: sourceTest, VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap,
 				AccessType: stdVolCapBlock}},
 			expectedErr: status.Error(codes.Aborted, fmt.Sprintf(volumeOperationAlreadyExistsFmt, "vol_1")),
-			cleanup: func() {
+			cleanupFunc: func(t *testing.T, d FakeDriver) {
 				d.getVolumeLocks().Release("vol_1")
 			},
 		},
@@ -344,32 +509,95 @@ func TestNodeStageVolume(t *testing.T) {
 			req: csi.NodeStageVolumeRequest{VolumeId: "vol_1", StagingTargetPath: sourceTest,
 				VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap,
 					AccessType: stdVolCap},
-				PublishContext: publishContext,
-				VolumeContext:  mp,
+				PublishContext: invalidLUN,
+				VolumeContext:  volumeContext,
 			},
 
 			expectedErr: status.Error(codes.Internal, "Failed to find disk on lun /dev/01. cannot parse deviceInfo: /dev/01"),
+		},
+		{
+			desc:          "Successfully staged",
+			skipOnDarwin:  true,
+			skipOnWindows: true,
+			setupFunc: func(t *testing.T, d FakeDriver) {
+				d.setNextCommandOutputScripts(blkidAction, fsckAction)
+			},
+			req: csi.NodeStageVolumeRequest{VolumeId: "vol_1", StagingTargetPath: sourceTest,
+				VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap,
+					AccessType: stdVolCap},
+				PublishContext: publishContext,
+				VolumeContext:  volumeContext,
+			},
+
+			expectedErr: nil,
+		},
+		{
+			desc:          "Successfully with resize",
+			skipOnDarwin:  true,
+			skipOnWindows: true,
+			setupFunc: func(t *testing.T, d FakeDriver) {
+				d.setNextCommandOutputScripts(blkidAction, fsckAction, blkidAction, resize2fsAction)
+			},
+			req: csi.NodeStageVolumeRequest{VolumeId: "vol_1", StagingTargetPath: sourceTest,
+				VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap,
+					AccessType: stdVolCap},
+				PublishContext: publishContext,
+				VolumeContext:  volumeContextWithResize,
+			},
+
+			expectedErr: nil,
+		},
+		{
+			desc:          "Successfully staged with performance optimizations",
+			skipOnDarwin:  true,
+			skipOnWindows: true,
+			setupFunc: func(t *testing.T, d FakeDriver) {
+				d.setPerfOptimizationEnabled(true)
+				mockoptimization := d.getDeviceHelper().(*mockoptimization.MockInterface)
+				diskSupportsPerfOptimizationCall := mockoptimization.EXPECT().
+					DiskSupportsPerfOptimization(gomock.Any(), gomock.Any()).
+					Return(true)
+				mockoptimization.EXPECT().
+					OptimizeDiskPerformance(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(nil).
+					After(diskSupportsPerfOptimizationCall)
+
+				d.setNextCommandOutputScripts(blkidAction, fsckAction)
+			},
+			req: csi.NodeStageVolumeRequest{VolumeId: "vol_1", StagingTargetPath: sourceTest,
+				VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap,
+					AccessType: stdVolCap},
+				PublishContext: publishContext,
+				VolumeContext:  volumeContext,
+			},
+			cleanupFunc: func(t *testing.T, d FakeDriver) {
+				d.setPerfOptimizationEnabled(false)
+			},
+			expectedErr: nil,
 		},
 	}
 
 	// Setup
 	_ = makeDir(sourceTest)
 	_ = makeDir(targetTest)
+	fakeMounter, err := mounter.NewFakeSafeMounter()
+	assert.NoError(t, err)
+	d.setMounter(fakeMounter)
 
 	for _, test := range tests {
-		if test.setup != nil {
-			test.setup()
-		}
-		if !(test.skipOnDarwin && runtime.GOOS == "darwin") {
+		if !(test.skipOnDarwin && runtime.GOOS == "darwin") && !(test.skipOnWindows && runtime.GOOS == "windows") {
+			if test.setupFunc != nil {
+				test.setupFunc(t, d)
+			}
 			_, err := d.NodeStageVolume(context.Background(), &test.req)
 			if test.desc == "Failed volume mount" {
 				assert.Error(t, err)
 			} else if !testutil.IsErrorEquivalent(err, test.expectedErr) {
 				t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
 			}
-		}
-		if test.cleanup != nil {
-			test.cleanup()
+			if test.cleanupFunc != nil {
+				test.cleanupFunc(t, d)
+			}
 		}
 	}
 
@@ -443,6 +671,9 @@ func TestNodeUnstageVolume(t *testing.T) {
 
 	//Setup
 	_ = makeDir(errorTarget)
+	fakeMounter, err := mounter.NewFakeSafeMounter()
+	assert.NoError(t, err)
+	d.setMounter(fakeMounter)
 
 	for _, test := range tests {
 		if test.setup != nil {
@@ -606,6 +837,10 @@ func TestNodePublishVolume(t *testing.T) {
 
 	// Setup
 	_ = makeDir(alreadyMountedTarget)
+	assert.NoError(t, err)
+	fakeMounter, err := mounter.NewFakeSafeMounter()
+	assert.NoError(t, err)
+	d.setMounter(fakeMounter)
 
 	for _, test := range tests {
 		if test.setup != nil {
@@ -679,6 +914,9 @@ func TestNodeUnpublishVolume(t *testing.T) {
 
 	// Setup
 	_ = makeDir(errorTarget)
+	fakeMounter, err := mounter.NewFakeSafeMounter()
+	assert.NoError(t, err)
+	d.setMounter(fakeMounter)
 
 	for _, test := range tests {
 		if test.setup != nil {
@@ -707,6 +945,11 @@ func TestNodeExpandVolume(t *testing.T) {
 	}
 
 	d, _ := NewFakeDriver(t)
+	fakeMounter, err := mounter.NewFakeSafeMounter()
+	assert.NoError(t, err)
+	d.setMounter(fakeMounter)
+	blockVolumePath := "/tmp/block-volume-path"
+	_ = makeDir(blockVolumePath)
 	_ = makeDir(targetTest)
 	notFoundErr := errors.New("exit status 1")
 	volumeCapWrong := csi.VolumeCapability_AccessMode{Mode: 10}
@@ -718,7 +961,6 @@ func TestNodeExpandVolume(t *testing.T) {
 
 	invalidPathErr := testutil.TestError{
 		DefaultError: status.Error(codes.NotFound, "failed to determine device path for volumePath [./test]: path \"./test\" does not exist"),
-		WindowsError: status.Error(codes.NotFound, "Forward to GetVolumeIDFromTargetPath failed, err=error getting the volume for the mount .\\test, internal error error getting volume from mount. cmd: (Get-Item -Path .\\test).Target, output: , error: <nil>"),
 	}
 	volumeCapacityErr := testutil.TestError{
 		DefaultError: status.Error(codes.InvalidArgument, "VolumeCapability is invalid."),
@@ -729,23 +971,45 @@ func TestNodeExpandVolume(t *testing.T) {
 	}
 	blockSizeErr := testutil.TestError{
 		DefaultError: status.Error(codes.Internal, "Could not get size of block volume at path test: error when getting size of block volume at path test: output: , err: exit status 1"),
+		WindowsError: status.Errorf(codes.NotFound, "Forward to GetVolumeIDFromTargetPath failed, err=error getting the volume for the mount %s, internal error error getting volume from mount. cmd: (Get-Item -Path %s).Target, output: , error: <nil>", targetTest, targetTest),
 	}
-
-	if runtime.GOOS == "darwin" {
-		invalidPathErr.DefaultError = status.Error(codes.NotFound, "failed to determine device path for volumePath [./test]: volume/util/hostutil on this platform is not supported")
-		volumeCapacityErr.DefaultError = status.Errorf(codes.NotFound, "failed to determine device path for volumePath [%s]: volume/util/hostutil on this platform is not supported", targetTest)
-		devicePathErr.DefaultError = status.Errorf(codes.NotFound, "failed to determine device path for volumePath [%s]: volume/util/hostutil on this platform is not supported", targetTest)
-		blockSizeErr.DefaultError = status.Errorf(codes.NotFound, "failed to determine device path for volumePath [%s]: volume/util/hostutil on this platform is not supported", targetTest)
+	resizeErr := testutil.TestError{
+		DefaultError: status.Errorf(codes.Internal, "Could not resize volume \"test\" (\"test\"):  resize of device test failed: %v. resize2fs output: ", notFoundErr),
+		WindowsError: status.Errorf(codes.Internal, "Could not get size of block volume at path test: GetVolumeSizeInBytes error"),
+	}
+	sizeTooSmallErr := testutil.TestError{
+		DefaultError: status.Errorf(codes.Internal, "resize requested for %v, but after resizing volume size was %v", volumehelper.RoundUpGiB(stdCapacityRange.RequiredBytes), volumehelper.RoundUpGiB(stdCapacityRange.RequiredBytes/2)),
+		WindowsError: status.Errorf(codes.Internal, "Could not get size of block volume at path DEVICE=test\nTYPE=ext4: GetVolumeSizeInBytes error"),
 	}
 
 	notFoundErrAction := func() ([]byte, []byte, error) {
 		return []byte{}, []byte{}, notFoundErr
+	}
+	findmntAction := func() ([]byte, []byte, error) {
+		return []byte("test"), []byte{}, nil
+	}
+	blkidAction := func() ([]byte, []byte, error) {
+		return []byte("DEVICE=test\nTYPE=ext4"), []byte{}, nil
+	}
+	resize2fsFailedAction := func() ([]byte, []byte, error) {
+		return []byte{}, []byte{}, notFoundErr
+	}
+	resize2fsAction := func() ([]byte, []byte, error) {
+		return []byte{}, []byte{}, nil
+	}
+	blockdevSizeTooSmallAction := func() ([]byte, []byte, error) {
+		return []byte(fmt.Sprintf("%d", stdCapacityRange.RequiredBytes/2)), []byte{}, nil
+	}
+	blockdevAction := func() ([]byte, []byte, error) {
+		return []byte(fmt.Sprintf("%d", stdCapacityRange.RequiredBytes)), []byte{}, nil
 	}
 
 	tests := []struct {
 		desc          string
 		req           csi.NodeExpandVolumeRequest
 		expectedErr   testutil.TestError
+		skipOnDarwin  bool
+		skipOnWindows bool
 		outputScripts []testingexec.FakeAction
 	}{
 		{
@@ -805,10 +1069,75 @@ func TestNodeExpandVolume(t *testing.T) {
 				VolumeId:          "test",
 				StagingTargetPath: "test",
 			},
-			expectedErr:   devicePathErr,
-			outputScripts: []testingexec.FakeAction{notFoundErrAction},
+			expectedErr:   blockSizeErr,
+			skipOnDarwin:  true, // ResizeFs not supported on Darwin
+			outputScripts: []testingexec.FakeAction{findmntAction, blkidAction, resize2fsAction, notFoundErrAction},
+		},
+		{
+			desc: "Resize failure",
+			req: csi.NodeExpandVolumeRequest{
+				CapacityRange:     stdCapacityRange,
+				VolumePath:        targetTest,
+				VolumeId:          "test",
+				StagingTargetPath: "test",
+			},
+			expectedErr:   resizeErr,
+			skipOnDarwin:  true, // ResizeFs not supported on Darwin
+			outputScripts: []testingexec.FakeAction{findmntAction, blkidAction, resize2fsFailedAction},
+		},
+		{
+			desc: "Resize too small failure",
+			req: csi.NodeExpandVolumeRequest{
+				CapacityRange:     stdCapacityRange,
+				VolumePath:        targetTest,
+				VolumeId:          "test",
+				StagingTargetPath: "test",
+			},
+			expectedErr:   sizeTooSmallErr,
+			skipOnDarwin:  true, // ResizeFs not supported on Darwin
+			outputScripts: []testingexec.FakeAction{findmntAction, blkidAction, resize2fsAction, blockdevSizeTooSmallAction},
+		},
+		{
+			desc: "Successfully expanded",
+			req: csi.NodeExpandVolumeRequest{
+				CapacityRange:     stdCapacityRange,
+				VolumePath:        targetTest,
+				VolumeId:          "test",
+				StagingTargetPath: "test",
+			},
+			skipOnWindows: true,
+			skipOnDarwin:  true, // ResizeFs not supported on Darwin
+			outputScripts: []testingexec.FakeAction{findmntAction, blkidAction, resize2fsAction, blockdevAction},
+		},
+		{
+			desc: "Block volume expansion",
+			req: csi.NodeExpandVolumeRequest{
+				CapacityRange:     stdCapacityRange,
+				VolumePath:        blockVolumePath,
+				VolumeId:          "test",
+				StagingTargetPath: "test",
+			},
+		},
+		{
+			desc: "Volume capability access type mismatch",
+			req: csi.NodeExpandVolumeRequest{
+				CapacityRange:     stdCapacityRange,
+				VolumePath:        targetTest,
+				VolumeId:          "test",
+				StagingTargetPath: "test",
+				VolumeCapability: &csi.VolumeCapability{
+					AccessMode: &csi.VolumeCapability_AccessMode{
+						Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+					},
+					AccessType: &csi.VolumeCapability_Block{
+						Block: &csi.VolumeCapability_BlockVolume{},
+					},
+				},
+			},
 		},
 	}
+
+	d.setPathIsDeviceResult(blockVolumePath, true, nil)
 
 	if runtime.GOOS == "windows" {
 		winNotFoundErrAction := func() ([]byte, []byte, error) {
@@ -820,6 +1149,10 @@ func TestNodeExpandVolume(t *testing.T) {
 	}
 
 	for _, test := range tests {
+		if (test.skipOnDarwin && runtime.GOOS == "darwin") || (test.skipOnWindows && runtime.GOOS == "windows") {
+			continue
+		}
+
 		d.setNextCommandOutputScripts(test.outputScripts...)
 
 		_, err := d.NodeExpandVolume(context.Background(), &test.req)
@@ -827,7 +1160,9 @@ func TestNodeExpandVolume(t *testing.T) {
 			t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr.Error())
 		}
 	}
-	err := os.RemoveAll(targetTest)
+	err = os.RemoveAll(targetTest)
+	assert.NoError(t, err)
+	err = os.RemoveAll(blockVolumePath)
 	assert.NoError(t, err)
 }
 

@@ -19,7 +19,7 @@ metadata:
   name: managed-csi
 provisioner: disk.csi.azure.com
 parameters:
-  skuname: Premium_LRS  # Currently shared disk only available with premium SSD
+  skuname: Premium_LRS
   maxShares: "2"
   cachingMode: None  # ReadOnly cache is not available for premium SSD with maxShares>1
 reclaimPolicy: Delete
