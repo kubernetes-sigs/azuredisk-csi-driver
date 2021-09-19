@@ -37,10 +37,9 @@ var _ = ginkgo.Describe("AzDiskSchedulerExtender", func() {
 		schedulerExtenderTests(false)
 	})
 
-	// TODO add support for multi-az
-	// ginkgo.Context("[multi-az]", func() {
-	// 	schedulerExtenderTests(true)
-	// })
+	ginkgo.Context("[multi-az]", func() {
+		schedulerExtenderTests(true)
+	})
 })
 
 func schedulerExtenderTests(isMultiZone bool) {

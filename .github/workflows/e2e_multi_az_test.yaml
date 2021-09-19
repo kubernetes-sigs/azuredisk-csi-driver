@@ -1,0 +1,58 @@
+name: Run e2e multi-az tests
+on:
+    pull_request: {}
+jobs:
+  test:
+    name: Run e2e multi-az tests
+    runs-on: ubuntu-latest
+    env:
+      AZURE_TENANT_ID: ${{ secrets.TenantId }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.SubscriptionId }}
+      AZURE_CLIENT_ID: ${{ secrets.ClientId }}
+      AZURE_CLIENT_SECRET: ${{ secrets.ClientSecret }}
+      AZURE_LOCATION: westus2
+
+    steps:
+    - name: Cancel Previous Runs
+      uses: styfle/cancel-workflow-action@0.9.1
+      with:
+        access_token: ${{ github.token }}
+
+    - name: Set UUID
+      id: generate-uuid
+      uses: filipstefansson/uuid-action@v1
+
+    - name: Set Azure resource group
+      run: |
+        echo "AZURE_RESOURCE_GROUP=k8s-e2eTest-${{ steps.generate-uuid.outputs.uuid }}-rg" >> $GITHUB_ENV
+    - name: Set up Go 1.x
+      uses: actions/setup-go@v2
+      with:
+        go-version: ^1.16
+      id: go
+
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@v2
+
+    - name: Install conntrack
+      run: sudo apt install conntrack
+
+    - name: Login to Azure
+      run: |
+        az login --service-principal -u $AZURE_CLIENT_ID -p $AZURE_CLIENT_SECRET --tenant $AZURE_TENANT_ID
+
+    - name: Login to Azure Container Registry
+      run: az acr login --name e2etest
+
+    - name: Create an aks cluster
+      run: |  
+        ./hack/azure-cluster-up.sh --subscription $AZURE_SUBSCRIPTION_ID --location $AZURE_LOCATION --output e2eTestOutput --client-id $AZURE_CLIENT_ID --client-tenant $AZURE_TENANT_ID --client-secret $AZURE_CLIENT_SECRET --resource-group $AZURE_RESOURCE_GROUP --template multi-az
+        echo "KUBECONFIG=$GITHUB_WORKSPACE/e2eTestOutput/kubeconfig/kubeconfig.${AZURE_LOCATION}.json" >> $GITHUB_ENV
+
+    - name: Run e2e tests
+      run: |
+        REGISTRY=e2etest.azurecr.io/mandalay ENABLE_TOPOLOGY=true make e2e-test-v2
+        
+    - name: Cleanup 
+      if: ${{ always() }}
+      run: ./e2eTestOutput/cluster-down.sh
