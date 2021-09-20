@@ -86,7 +86,7 @@ func (t *DynamicallyProvisionedAzureDiskWithTag) Run(client clientset.Interface,
 		framework.ExpectNoError(err, fmt.Sprintf("Error getting disk for azuredisk %v", err))
 		test, err := util.ConvertTagsToMap(t.Tags)
 		framework.ExpectNoError(err, fmt.Sprintf("Error getting tag %v", err))
-		test["created-by"] = "kubernetes-azure-dd"
+		test["k8s-azure-created-by"] = "kubernetes-azure-dd"
 
 		for k, v := range test {
 			_, ok := disktest.Tags[k]

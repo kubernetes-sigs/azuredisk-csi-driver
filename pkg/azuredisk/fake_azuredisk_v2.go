@@ -35,6 +35,7 @@ import (
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization/mockoptimization"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/provisioner"
+
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
@@ -98,6 +99,8 @@ func newFakeDriverV2(t *testing.T) (*fakeDriverV2, error) {
 	}
 
 	driver.crdProvisioner = crdProvisioner
+
+	driver.deviceHelper = mockoptimization.NewMockInterface(ctrl)
 
 	driver.deviceHelper = mockoptimization.NewMockInterface(ctrl)
 

@@ -116,7 +116,7 @@ spec:
         - spec
         type: object
     served: true
-    storage: false
+    storage: true
     subresources:
       status: {}
   - additionalPrinterColumns:
@@ -152,6 +152,11 @@ spec:
       name: Age
       type: date
     name: v1beta1
+    # This indicates the v1beta1 version of the custom resource is deprecated.
+    # API requests to this version receive a warning in the server response.
+    deprecated: true
+    # This overrides the default warning returned to clients making v1beta1 API requests.
+    deprecationWarning: "snapshot.storage.k8s.io/v1beta1 VolumeSnapshot is deprecated; use snapshot.storage.k8s.io/v1 VolumeSnapshot"
     schema:
       openAPIV3Schema:
         description: VolumeSnapshot is a user's request for either creating a point-in-time snapshot of a persistent volume, or binding to a pre-existing snapshot.
@@ -215,7 +220,7 @@ spec:
         - spec
         type: object
     served: true
-    storage: true
+    storage: false
     subresources:
       status: {}
 status:
@@ -284,7 +289,7 @@ spec:
         - driver
         type: object
     served: true
-    storage: false
+    storage: true
     subresources: {}
   - additionalPrinterColumns:
     - jsonPath: .driver
@@ -298,6 +303,11 @@ spec:
       name: Age
       type: date
     name: v1beta1
+    # This indicates the v1beta1 version of the custom resource is deprecated.
+    # API requests to this version receive a warning in the server response.
+    deprecated: true
+    # This overrides the default warning returned to clients making v1beta1 API requests.
+    deprecationWarning: "snapshot.storage.k8s.io/v1beta1 VolumeSnapshotClass is deprecated; use snapshot.storage.k8s.io/v1 VolumeSnapshotClass"
     schema:
       openAPIV3Schema:
         description: VolumeSnapshotClass specifies parameters that a underlying storage system uses when creating a volume snapshot. A specific VolumeSnapshotClass is used by specifying its name in a VolumeSnapshot object. VolumeSnapshotClasses are non-namespaced
@@ -327,7 +337,7 @@ spec:
         - driver
         type: object
     served: true
-    storage: true
+    storage: false
     subresources: {}
 status:
   acceptedNames:
@@ -378,6 +388,10 @@ spec:
     - description: Name of the VolumeSnapshot object to which this VolumeSnapshotContent object is bound.
       jsonPath: .spec.volumeSnapshotRef.name
       name: VolumeSnapshot
+      type: string
+    - description: Namespace of the VolumeSnapshot object to which this VolumeSnapshotContent object is bound.
+      jsonPath: .spec.volumeSnapshotRef.namespace
+      name: VolumeSnapshotNamespace
       type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
@@ -486,7 +500,7 @@ spec:
         - spec
         type: object
     served: true
-    storage: false
+    storage: true
     subresources:
       status: {}
   - additionalPrinterColumns:
@@ -514,10 +528,19 @@ spec:
       jsonPath: .spec.volumeSnapshotRef.name
       name: VolumeSnapshot
       type: string
+    - description: Namespace of the VolumeSnapshot object to which this VolumeSnapshotContent object is bound.
+      jsonPath: .spec.volumeSnapshotRef.namespace
+      name: VolumeSnapshotNamespace
+      type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
     name: v1beta1
+    # This indicates the v1beta1 version of the custom resource is deprecated.
+    # API requests to this version receive a warning in the server response.
+    deprecated: true
+    # This overrides the default warning returned to clients making v1beta1 API requests.
+    deprecationWarning: "snapshot.storage.k8s.io/v1beta1 VolumeSnapshotContent is deprecated; use snapshot.storage.k8s.io/v1 VolumeSnapshotContent"
     schema:
       openAPIV3Schema:
         description: VolumeSnapshotContent represents the actual "on-disk" snapshot object in the underlying storage system
@@ -618,7 +641,7 @@ spec:
         - spec
         type: object
     served: true
-    storage: true
+    storage: false
     subresources:
       status: {}
 status:
