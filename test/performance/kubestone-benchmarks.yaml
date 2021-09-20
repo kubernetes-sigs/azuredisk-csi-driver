@@ -118,3 +118,363 @@ spec:
     volumeSource:
       persistentVolumeClaim:
         claimName: GENERATED
+---
+apiVersion: perf.kubestone.xridge.io/v1alpha1
+kind: Fio
+metadata:
+  name: fio-read-iops
+spec:
+  cmdLineArgs: --name=fio-read-iops --ioengine sync --rw read --filesize 1GB --overwrite=1 --direct=1 --bs=4k --time_based=1 --ramp_time 10 --runtime=120 --numjobs=1 --iodepth 16 --output-format=json
+  image:
+    name: xridge/fio:3.13
+  volume:
+    persistentVolumeClaimSpec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 1024Gi
+      storageClassName: sc-replicas-premium-ssd-csi
+    volumeSource:
+      persistentVolumeClaim:
+        claimName: GENERATED
+---
+apiVersion: perf.kubestone.xridge.io/v1alpha1
+kind: Fio
+metadata:
+  name: fio-write-iops
+spec:
+  cmdLineArgs: --name=fio-write-iops --ioengine sync --rw write --filesize 1GB --overwrite=1 --direct=1 --bs=4k --time_based=1 --ramp_time 10 --runtime=120 --numjobs=1 --iodepth 16 --output-format=json
+  image:
+    name: xridge/fio:3.13
+  volume:
+    persistentVolumeClaimSpec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 1024Gi
+      storageClassName: sc-replicas-premium-ssd-csi
+    volumeSource:
+      persistentVolumeClaim:
+        claimName: GENERATED
+---
+apiVersion: perf.kubestone.xridge.io/v1alpha1
+kind: Fio
+metadata:
+  name: fio-read-bw
+spec:
+  cmdLineArgs: --name=fio-read-bw --ioengine sync --rw read --filesize 1GB --overwrite=1 --direct=1 --bs=128k --time_based=1 --ramp_time 10 --runtime=120 --numjobs=1 --iodepth 16 --output-format=json
+  image:
+    name: xridge/fio:3.13
+  volume:
+    persistentVolumeClaimSpec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 1024Gi
+      storageClassName: sc-replicas-premium-ssd-csi
+    volumeSource:
+      persistentVolumeClaim:
+        claimName: GENERATED
+---
+apiVersion: perf.kubestone.xridge.io/v1alpha1
+kind: Fio
+metadata:
+  name: fio-write-bw
+spec:
+  cmdLineArgs: --name=fio-write-bw --ioengine sync --rw write --filesize 1GB --overwrite=1 --direct=1 --bs=128k --time_based=1 --ramp_time 10 --runtime=120 --numjobs=1 --iodepth 16 --output-format=json
+  image:
+    name: xridge/fio:3.13
+  volume:
+    persistentVolumeClaimSpec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 1024Gi
+      storageClassName: sc-replicas-premium-ssd-csi
+    volumeSource:
+      persistentVolumeClaim:
+        claimName: GENERATED
+---
+apiVersion: perf.kubestone.xridge.io/v1alpha1
+kind: Fio
+metadata:
+  name: fio-read-latency
+spec:
+  cmdLineArgs: --name=fio-read-latency --ioengine sync --rw read --filesize 1GB --overwrite=1 --direct=1 --bs=4k --time_based=1 --ramp_time 10 --runtime=120 --numjobs=1 --iodepth 4 --output-format=json
+  image:
+    name: xridge/fio:3.13
+  volume:
+    persistentVolumeClaimSpec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 1024Gi
+      storageClassName: sc-replicas-premium-ssd-csi
+    volumeSource:
+      persistentVolumeClaim:
+        claimName: GENERATED
+---
+apiVersion: perf.kubestone.xridge.io/v1alpha1
+kind: Fio
+metadata:
+  name: fio-write-latency
+spec:
+  cmdLineArgs: --name=fio-write-latency --ioengine sync --rw write --filesize 1GB --overwrite=1 --direct=1 --bs=4k --time_based=1 --ramp_time 10 --runtime=120 --numjobs=1 --iodepth 4 --output-format=json
+  image:
+    name: xridge/fio:3.13
+  volume:
+    persistentVolumeClaimSpec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 1024Gi
+      storageClassName: sc-replicas-premium-ssd-csi
+    volumeSource:
+      persistentVolumeClaim:
+        claimName: GENERATED
+---
+apiVersion: perf.kubestone.xridge.io/v1alpha1
+kind: Fio
+metadata:
+  name: fio-read-sequential
+spec:
+  cmdLineArgs: --name=fio-read-sequential --ioengine sync --rw read --filesize 1GB --overwrite=1 --direct=1 --bs=1M --time_based=1 --ramp_time 10 --runtime=120 --numjobs=1 --iodepth 16 --output-format=json
+  image:
+    name: xridge/fio:3.13
+  volume:
+    persistentVolumeClaimSpec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 1024Gi
+      storageClassName: sc-replicas-premium-ssd-csi
+    volumeSource:
+      persistentVolumeClaim:
+        claimName: GENERATED
+---
+apiVersion: perf.kubestone.xridge.io/v1alpha1
+kind: Fio
+metadata:
+  name: fio-write-sequential
+spec:
+  cmdLineArgs: --name=fio-write-sequential --ioengine sync --rw write --filesize 1GB --overwrite=1 --direct=1 --bs=1M --time_based=1 --ramp_time 10 --runtime=120 --numjobs=1 --iodepth 16 --output-format=json
+  image:
+    name: xridge/fio:3.13
+  volume:
+    persistentVolumeClaimSpec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 1024Gi
+      storageClassName: sc-replicas-premium-ssd-csi
+    volumeSource:
+      persistentVolumeClaim:
+        claimName: GENERATED
+---
+apiVersion: perf.kubestone.xridge.io/v1alpha1
+kind: Fio
+metadata:
+  name: fio-mixed-rw
+spec:
+  cmdLineArgs: --name=fio-mixed-rw --ioengine sync --rw randrw --filesize 1GB --overwrite=1 --direct=1 --bs=4k --time_based=1 --ramp_time 10 --runtime=120 --numjobs=1 --iodepth 16 --output-format=json
+  image:
+    name: xridge/fio:3.13
+  volume:
+    persistentVolumeClaimSpec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 1024Gi
+      storageClassName: sc-replicas-premium-ssd-csi
+    volumeSource:
+      persistentVolumeClaim:
+        claimName: GENERATED
+---
+apiVersion: perf.kubestone.xridge.io/v1alpha1
+kind: Fio
+metadata:
+  name: fio-read-iops-noreplica
+spec:
+  cmdLineArgs: --name=fio-read-iops-noreplica --ioengine sync --rw read --filesize 1GB --overwrite=1 --direct=1 --bs=4k --time_based=1 --ramp_time 10 --runtime=120 --numjobs=1 --iodepth 16 --output-format=json
+  image:
+    name: xridge/fio:3.13
+  volume:
+    persistentVolumeClaimSpec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 1024Gi
+      storageClassName: sc-kubestone-premium-ssd-csi
+    volumeSource:
+      persistentVolumeClaim:
+        claimName: GENERATED
+---
+apiVersion: perf.kubestone.xridge.io/v1alpha1
+kind: Fio
+metadata:
+  name: fio-write-iops-noreplica
+spec:
+  cmdLineArgs: --name=fio-write-iops-noreplica --ioengine sync --rw write --filesize 1GB --overwrite=1 --direct=1 --bs=4k --time_based=1 --ramp_time 10 --runtime=120 --numjobs=1 --iodepth 16 --output-format=json
+  image:
+    name: xridge/fio:3.13
+  volume:
+    persistentVolumeClaimSpec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 1024Gi
+      storageClassName: sc-kubestone-premium-ssd-csi
+    volumeSource:
+      persistentVolumeClaim:
+        claimName: GENERATED
+---
+apiVersion: perf.kubestone.xridge.io/v1alpha1
+kind: Fio
+metadata:
+  name: fio-read-bw-noreplica
+spec:
+  cmdLineArgs: --name=fio-read-bw-noreplica --ioengine sync --rw read --filesize 1GB --overwrite=1 --direct=1 --bs=128k --time_based=1 --ramp_time 10 --runtime=120 --numjobs=1 --iodepth 16 --output-format=json
+  image:
+    name: xridge/fio:3.13
+  volume:
+    persistentVolumeClaimSpec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 1024Gi
+      storageClassName: sc-kubestone-premium-ssd-csi
+    volumeSource:
+      persistentVolumeClaim:
+        claimName: GENERATED
+---
+apiVersion: perf.kubestone.xridge.io/v1alpha1
+kind: Fio
+metadata:
+  name: fio-write-bw-noreplica
+spec:
+  cmdLineArgs: --name=fio-write-bw-noreplica --ioengine sync --rw write --filesize 1GB --overwrite=1 --direct=1 --bs=128k --time_based=1 --ramp_time 10 --runtime=120 --numjobs=1 --iodepth 16 --output-format=json
+  image:
+    name: xridge/fio:3.13
+  volume:
+    persistentVolumeClaimSpec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 1024Gi
+      storageClassName: sc-kubestone-premium-ssd-csi
+    volumeSource:
+      persistentVolumeClaim:
+        claimName: GENERATED
+---
+apiVersion: perf.kubestone.xridge.io/v1alpha1
+kind: Fio
+metadata:
+  name: fio-read-latency-noreplica
+spec:
+  cmdLineArgs: --name=fio-read-latency-noreplica --ioengine sync --rw read --filesize 1GB --overwrite=1 --direct=1 --bs=4k --time_based=1 --ramp_time 10 --runtime=120 --numjobs=1 --iodepth 4 --output-format=json
+  image:
+    name: xridge/fio:3.13
+  volume:
+    persistentVolumeClaimSpec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 1024Gi
+      storageClassName: sc-kubestone-premium-ssd-csi
+    volumeSource:
+      persistentVolumeClaim:
+        claimName: GENERATED
+---
+apiVersion: perf.kubestone.xridge.io/v1alpha1
+kind: Fio
+metadata:
+  name: fio-write-latency-noreplica
+spec:
+  cmdLineArgs: --name=fio-write-latency-noreplica --ioengine sync --rw write --filesize 1GB --overwrite=1 --direct=1 --bs=4k --time_based=1 --ramp_time 10 --runtime=120 --numjobs=1 --iodepth 4 --output-format=json
+  image:
+    name: xridge/fio:3.13
+  volume:
+    persistentVolumeClaimSpec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 1024Gi
+      storageClassName: sc-kubestone-premium-ssd-csi
+    volumeSource:
+      persistentVolumeClaim:
+        claimName: GENERATED
+---
+apiVersion: perf.kubestone.xridge.io/v1alpha1
+kind: Fio
+metadata:
+  name: fio-read-sequential-noreplica
+spec:
+  cmdLineArgs: --name=fio-read-sequential-noreplica --ioengine sync --rw read --filesize 1GB --overwrite=1 --direct=1 --bs=1M --time_based=1 --ramp_time 10 --runtime=120 --numjobs=1 --iodepth 16 --output-format=json
+  image:
+    name: xridge/fio:3.13
+  volume:
+    persistentVolumeClaimSpec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 1024Gi
+      storageClassName: sc-kubestone-premium-ssd-csi
+    volumeSource:
+      persistentVolumeClaim:
+        claimName: GENERATED
+---
+apiVersion: perf.kubestone.xridge.io/v1alpha1
+kind: Fio
+metadata:
+  name: fio-write-sequential-noreplica
+spec:
+  cmdLineArgs: --name=fio-write-sequential-noreplica --ioengine sync --rw write --filesize 1GB --overwrite=1 --direct=1 --bs=1M --time_based=1 --ramp_time 10 --runtime=120 --numjobs=1 --iodepth 16 --output-format=json
+  image:
+    name: xridge/fio:3.13
+  volume:
+    persistentVolumeClaimSpec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 1024Gi
+      storageClassName: sc-kubestone-premium-ssd-csi
+    volumeSource:
+      persistentVolumeClaim:
+        claimName: GENERATED
+---
+apiVersion: perf.kubestone.xridge.io/v1alpha1
+kind: Fio
+metadata:
+  name: fio-mixed-rw-noreplica
+spec:
+  cmdLineArgs: --name=fio-mixed-rw-noreplica --ioengine sync --rw randrw --filesize 1GB --overwrite=1 --direct=1 --bs=4k --time_based=1 --ramp_time 10 --runtime=120 --numjobs=1 --iodepth 16 --output-format=json
+  image:
+    name: xridge/fio:3.13
+  volume:
+    persistentVolumeClaimSpec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 1024Gi
+      storageClassName: sc-kubestone-premium-ssd-csi
+    volumeSource:
+      persistentVolumeClaim:
+        claimName: GENERATED
