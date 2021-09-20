@@ -71,8 +71,6 @@ type FakeDriver interface {
 	setNextCommandOutputScripts(scripts ...testingexec.FakeAction)
 	setIsBlockDevicePathError(string, bool, error)
 
-	setNextCommandOutputScripts(scripts ...testingexec.FakeAction)
-
 	getVolumeLocks() *volumehelper.VolumeLocks
 	setControllerCapabilities([]*csi.ControllerServiceCapability)
 	setNodeCapabilities([]*csi.NodeServiceCapability)
