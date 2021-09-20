@@ -93,3 +93,7 @@ func (fake *FakeSafeMounter) GetVolumeSizeInBytes(devicePath string) (int64, err
 func (fake *FakeSafeMounter) ResizeVolume(devicePath string) error {
 	return nil
 }
+
+func (fake *FakeSafeMounter) GetAPIVersions() string {
+	return ""
+}
