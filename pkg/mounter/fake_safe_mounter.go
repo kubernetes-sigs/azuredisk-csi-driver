@@ -18,7 +18,6 @@ package mounter
 
 import (
 	"fmt"
-	"runtime"
 	"strings"
 
 	"k8s.io/mount-utils"
