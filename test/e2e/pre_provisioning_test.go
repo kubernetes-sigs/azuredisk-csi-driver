@@ -43,7 +43,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 		ns         *v1.Namespace
 		testDriver driver.PreProvisionedVolumeTestDriver
 		volumeID   string
-		// Set to true if the volume should be not deleted automatically after test
+		// Set to true if the volume should not be deleted automatically after test
 		skipVolumeDeletion bool
 	)
 
