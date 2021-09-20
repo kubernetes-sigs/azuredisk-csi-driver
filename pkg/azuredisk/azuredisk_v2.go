@@ -221,7 +221,13 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 			csi.ControllerServiceCapability_RPC_LIST_VOLUMES,
 			csi.ControllerServiceCapability_RPC_LIST_VOLUMES_PUBLISHED_NODES,
 		})
-	d.AddVolumeCapabilityAccessModes([]csi.VolumeCapability_AccessMode_Mode{csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER})
+	d.AddVolumeCapabilityAccessModes(
+		[]csi.VolumeCapability_AccessMode_Mode{
+			csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+			csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY,
+			csi.VolumeCapability_AccessMode_SINGLE_NODE_SINGLE_WRITER,
+			csi.VolumeCapability_AccessMode_SINGLE_NODE_MULTI_WRITER,
+		})
 	d.AddNodeServiceCapabilities([]csi.NodeServiceCapability_RPC_Type{
 		csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
 		csi.NodeServiceCapability_RPC_EXPAND_VOLUME,

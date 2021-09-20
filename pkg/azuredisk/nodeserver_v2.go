@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"os"
 
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -33,7 +34,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/volume"
-
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 )
@@ -98,7 +98,7 @@ func (d *DriverV2) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolume
 	// If perf optimizations are enabled
 	// tweak device settings to enhance performance
 	if d.getPerfOptimizationEnabled() {
-		profile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr, err := getDiskPerfAttributes(req.GetVolumeContext())
+		profile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr, err := optimization.GetDiskPerfAttributes(req.GetVolumeContext())
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "Failed to get perf attributes for %s. Error: %v", source, err)
 		}

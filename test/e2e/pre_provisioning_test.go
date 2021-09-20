@@ -43,18 +43,20 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 		ns         *v1.Namespace
 		testDriver driver.PreProvisionedVolumeTestDriver
 		volumeID   string
-		// Set to true if the volume should be deleted automatically after test
-		skipManuallyDeletingVolume bool
+		// Set to true if the volume should not be deleted automatically after test
+		skipVolumeDeletion bool
 	)
 
 	ginkgo.BeforeEach(func() {
 		cs = f.ClientSet
 		ns = f.Namespace
 		testDriver = driver.InitAzureDiskDriver()
+		// reset value to false to default to volume clean up after test unless specified otherwise
+		skipVolumeDeletion = false
 	})
 
 	ginkgo.AfterEach(func() {
-		if !skipManuallyDeletingVolume {
+		if !skipVolumeDeletion {
 			req := &csi.DeleteVolumeRequest{
 				VolumeId: volumeID,
 			}
@@ -302,7 +304,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			// Skip these tests until above is fixed.
 			skipIfUsingInTreeVolumePlugin()
 
-			skipManuallyDeletingVolume = true
+			skipVolumeDeletion = true
 			req := makeCreateVolumeReq("invalid-max-shares", 256)
 			req.Parameters = map[string]string{"maxShares": "0"}
 			_, err := azurediskDriver.CreateVolume(context.Background(), req)
@@ -409,7 +411,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 				ginkgo.Skip("test case is only available for migration test")
 			}
 
-			skipManuallyDeletingVolume = true
+			skipVolumeDeletion = true
 			req := makeCreateVolumeReq("pre-provisioned-inline-volume", defaultDiskSize)
 			resp, err := azurediskDriver.CreateVolume(context.Background(), req)
 			if err != nil {

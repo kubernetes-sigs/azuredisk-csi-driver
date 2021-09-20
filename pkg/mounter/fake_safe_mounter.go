@@ -34,8 +34,8 @@ type FakeSafeMounter struct {
 // NewFakeSafeMounter creates a mount.SafeFormatAndMount instance suitable for use in unit tests.
 func NewFakeSafeMounter() (*mount.SafeFormatAndMount, error) {
 	fakeSafeMounter := FakeSafeMounter{}
-	fakeSafeMounter.MountCheckErrors = make(map[string]error)
 	fakeSafeMounter.ExactOrder = true
+	fakeSafeMounter.MountCheckErrors = make(map[string]error)
 
 	return &mount.SafeFormatAndMount{
 		Interface: &fakeSafeMounter,
@@ -85,10 +85,10 @@ func (f *FakeSafeMounter) MountSensitive(source, target, fstype string, options,
 func (f *FakeSafeMounter) IsLikelyNotMountPoint(file string) (bool, error) {
 	if strings.Contains(file, "error_is_likely") {
 		return false, fmt.Errorf("fake IsLikelyNotMountPoint: fake error")
-	} else if strings.Contains(file, "false_is_likely") {
+	}
+	if strings.Contains(file, "false_is_likely") {
 		return false, nil
 	}
-
 	return f.FakeMounter.IsLikelyNotMountPoint(file)
 }
 
