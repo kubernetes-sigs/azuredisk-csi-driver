@@ -20,7 +20,7 @@ IMAGE_NAME ?= azuredisk-csi
 SCHEDULER_EXTENDER_IMAGE_NAME ?= azdiskschedulerextender-csi
 ifndef BUILD_V2
 PLUGIN_NAME = azurediskplugin
-IMAGE_VERSION ?= v1.7.0
+IMAGE_VERSION ?= v1.8.0
 CHART_VERSION ?= latest
 else
 PLUGIN_NAME = azurediskpluginv2

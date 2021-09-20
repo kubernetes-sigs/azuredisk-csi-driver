@@ -28,6 +28,7 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"k8s.io/klog/v2"
+<<<<<<< HEAD
 	mount "k8s.io/mount-utils"
 	testingexec "k8s.io/utils/exec/testing"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
@@ -35,6 +36,13 @@ import (
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization/mockoptimization"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/provisioner"
+=======
+	testingexec "k8s.io/utils/exec/testing"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization/mockoptimization"
+>>>>>>> upstream_local_copy
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
@@ -98,6 +106,8 @@ func newFakeDriverV2(t *testing.T) (*fakeDriverV2, error) {
 	}
 
 	driver.crdProvisioner = crdProvisioner
+
+	driver.deviceHelper = mockoptimization.NewMockInterface(ctrl)
 
 	driver.deviceHelper = mockoptimization.NewMockInterface(ctrl)
 

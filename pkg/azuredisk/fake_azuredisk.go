@@ -71,6 +71,8 @@ type FakeDriver interface {
 	setNextCommandOutputScripts(scripts ...testingexec.FakeAction)
 	setIsBlockDevicePathError(string, bool, error)
 
+	setNextCommandOutputScripts(scripts ...testingexec.FakeAction)
+
 	getVolumeLocks() *volumehelper.VolumeLocks
 	setControllerCapabilities([]*csi.ControllerServiceCapability)
 	setNodeCapabilities([]*csi.NodeServiceCapability)
@@ -105,7 +107,9 @@ func newFakeDriverV1(t *testing.T) (*fakeDriverV1, error) {
 	driver.NodeID = fakeNodeID
 	driver.CSIDriver = *csicommon.NewFakeCSIDriver()
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
-	driver.perfOptimizationEnabled = false
+	driver.VolumeAttachLimit = -1
+	driver.ioHandler = azureutils.NewFakeIOHandler()
+	driver.hostUtil = azureutils.NewFakeHostUtil()
 
 	driver.VolumeAttachLimit = -1
 	driver.ioHandler = azureutils.NewFakeIOHandler()
@@ -129,6 +133,7 @@ func newFakeDriverV1(t *testing.T) (*fakeDriverV1, error) {
 		return nil, err
 	}
 	driver.getDiskThrottlingCache = cache
+
 	mockDeviceHelper := mockoptimization.NewMockInterface(ctrl)
 	driver.deviceHelper = mockDeviceHelper
 
@@ -177,6 +182,10 @@ func (d *Driver) setPathIsDeviceResult(path string, isDevice bool, err error) {
 	d.getHostUtil().(*azureutils.FakeHostUtil).SetPathIsDeviceResult(path, isDevice, err)
 }
 
+func (d *fakeDriverV1) setDiskThrottlingCache(key string, value string) {
+	d.getDiskThrottlingCache.Set(key, value)
+}
+
 func createVolumeCapabilities(accessMode csi.VolumeCapability_AccessMode_Mode) []*csi.VolumeCapability {
 	return []*csi.VolumeCapability{
 		createVolumeCapability(accessMode),
@@ -192,10 +201,6 @@ func createVolumeCapability(accessMode csi.VolumeCapability_AccessMode_Mode) *cs
 			Mode: accessMode,
 		},
 	}
-}
-
-func (d *Driver) setDiskThrottlingCache(key string, value string) {
-	d.getDiskThrottlingCache.Set(key, value)
 }
 
 func (d *Driver) setMounter(mounter *mount.SafeFormatAndMount) {

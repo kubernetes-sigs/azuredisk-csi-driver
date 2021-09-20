@@ -23,7 +23,6 @@ import (
 	"os"
 	"reflect"
 	"testing"
-
 	"github.com/stretchr/testify/assert"
 )
 

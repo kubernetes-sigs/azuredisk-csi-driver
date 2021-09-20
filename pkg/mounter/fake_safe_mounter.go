@@ -18,6 +18,7 @@ package mounter
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 
 	"k8s.io/mount-utils"
@@ -33,8 +34,11 @@ type FakeSafeMounter struct {
 
 // NewFakeSafeMounter creates a mount.SafeFormatAndMount instance suitable for use in unit tests.
 func NewFakeSafeMounter() (*mount.SafeFormatAndMount, error) {
+	if runtime.GOOS == "windows" {
+		return NewSafeMounter()
+	}
+
 	fakeSafeMounter := FakeSafeMounter{}
-	fakeSafeMounter.MountCheckErrors = make(map[string]error)
 	fakeSafeMounter.ExactOrder = true
 
 	return &mount.SafeFormatAndMount{
@@ -51,15 +55,7 @@ func (f *FakeSafeMounter) Mount(source, target, fstype string, options []string)
 		return fmt.Errorf("fake Mount: target error")
 	}
 
-	if err, ok := f.MountCheckErrors[source]; ok {
-		return err
-	}
-
-	if err, ok := f.MountCheckErrors[target]; ok {
-		return err
-	}
-
-	return f.FakeMounter.Mount(source, target, fstype, options)
+	return nil
 }
 
 // MountSensitive overrides mount.FakeMounter.MountSensitive.
@@ -70,26 +66,18 @@ func (f *FakeSafeMounter) MountSensitive(source, target, fstype string, options,
 		return fmt.Errorf("fake MountSensitive: target error")
 	}
 
-	if err, ok := f.MountCheckErrors[source]; ok {
-		return err
-	}
-
-	if err, ok := f.MountCheckErrors[target]; ok {
-		return err
-	}
-
-	return f.FakeMounter.MountSensitive(source, target, fstype, options, sensitiveOptions)
+	return nil
 }
 
 // IsLikelyNotMountPoint overrides mount.FakeMounter.IsLikelyNotMountPoint.
 func (f *FakeSafeMounter) IsLikelyNotMountPoint(file string) (bool, error) {
 	if strings.Contains(file, "error_is_likely") {
 		return false, fmt.Errorf("fake IsLikelyNotMountPoint: fake error")
-	} else if strings.Contains(file, "false_is_likely") {
+	}
+	if strings.Contains(file, "false_is_likely") {
 		return false, nil
 	}
-
-	return f.FakeMounter.IsLikelyNotMountPoint(file)
+	return true, nil
 }
 
 // SetNextCommandOutputScripts sets the output scripts for the next sequence of command invocations.
@@ -106,9 +94,4 @@ func (f *FakeSafeMounter) SetNextCommandOutputScripts(scripts ...testingexec.Fak
 
 		f.CommandScript = append(f.CommandScript, fakeCmdAction)
 	}
-}
-
-// SetMountCheckError sets an error result returned by the IsLikelyNotMountPoint method.
-func (f *FakeSafeMounter) SetMountCheckError(target string, err error) {
-	f.MountCheckErrors[target] = err
 }
