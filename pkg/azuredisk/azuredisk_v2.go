@@ -220,6 +220,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 			csi.ControllerServiceCapability_RPC_EXPAND_VOLUME,
 			csi.ControllerServiceCapability_RPC_LIST_VOLUMES,
 			csi.ControllerServiceCapability_RPC_LIST_VOLUMES_PUBLISHED_NODES,
+			csi.ControllerServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER,
 		})
 	d.AddVolumeCapabilityAccessModes(
 		[]csi.VolumeCapability_AccessMode_Mode{
@@ -232,6 +233,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 		csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
 		csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
 		csi.NodeServiceCapability_RPC_GET_VOLUME_STATS,
+		csi.NodeServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER,
 	})
 
 	// cancel the context the controller manager will be running under, if receive SIGTERM or SIGINT
