@@ -193,7 +193,9 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		for _, c := range volCaps {
 			mode := c.GetAccessMode().Mode
 			if mode != csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER &&
-				mode != csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY {
+				mode != csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY &&
+				mode != csi.VolumeCapability_AccessMode_SINGLE_NODE_SINGLE_WRITER &&
+				mode != csi.VolumeCapability_AccessMode_SINGLE_NODE_MULTI_WRITER {
 				return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Volume capability(%v) not supported", mode))
 			}
 		}
