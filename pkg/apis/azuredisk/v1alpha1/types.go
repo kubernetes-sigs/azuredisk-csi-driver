@@ -143,10 +143,11 @@ type AzVolumeList struct {
 // AzVolumeAttachment is a specification for a AzVolumeAttachment resource
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Namespaced
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp",description="The age of the attachment"
 // +kubebuilder:printcolumn:name="NodeName",type=string,JSONPath=`.spec.nodeName`,description="Name of the Node which this AzVolumeAttachment object is attached to"
 // +kubebuilder:printcolumn:name="UnderlyingVolume",type=string,JSONPath=`.spec.underlyingVolume`,description="Name of the Volume which this AzVolumeAttachment object references"
 // +kubebuilder:printcolumn:name="RequestedRole",type=string,JSONPath=`.spec.role`,description="Indicates if the volume attachment should be primary attachment or not"
-// +kubebuilder:printcolumn:name="Role",type=string,JSONPath=`.status.role`,description="Indicates if the volume attachment is primary attachment or not"
+// +kubebuilder:printcolumn:name="Role",type=string,JSONPath=`.status.detail.role`,description="Indicates if the volume attachment is primary attachment or not"
 type AzVolumeAttachment struct {
 	metav1.TypeMeta `json:",inline"`
 	// Standard object's metadata.

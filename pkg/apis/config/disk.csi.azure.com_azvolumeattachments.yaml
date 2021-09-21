@@ -17,6 +17,10 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
+    - description: The age of the attachment
+      jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
     - description: Name of the Node which this AzVolumeAttachment object is attached
         to
       jsonPath: .spec.nodeName
@@ -32,7 +36,7 @@ spec:
       name: RequestedRole
       type: string
     - description: Indicates if the volume attachment is primary attachment or not
-      jsonPath: .status.role
+      jsonPath: .status.detail.role
       name: Role
       type: string
     name: v1alpha1
