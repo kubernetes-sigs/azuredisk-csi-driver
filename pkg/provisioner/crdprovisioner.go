@@ -155,29 +155,34 @@ func (c *CrdProvisioner) CreateVolume(
 			// The volume creation was successful previously,
 			// Returning the response object from the status
 			return azVolumeInstance.Status.Detail.ResponseObject, nil
-		} else if azVolumeInstance.Status.Error != nil {
-			updateFunc := func(obj interface{}) error {
-				updateInstance := obj.(*v1alpha1.AzVolume)
-				updateInstance.Status.Error = nil
-				updateInstance.Status.State = v1alpha1.VolumeOperationPending
+		}
+		// return if volume creation is already in process to prevent duplicate request
+		if azVolumeInstance.Status.State == v1alpha1.VolumeCreating {
+			return nil, status.Errorf(codes.Aborted, "creation still in process for volume (%s)", volumeName)
+		}
 
-				if !isAzVolumeSpecSameAsRequestParams(updateInstance, maxMountReplicaCount, capacityRange, parameters, secrets, volumeContentSource, accessibilityReq) {
-					// Updating the spec fields to keep it up to date with the request
-					updateInstance.Spec.MaxMountReplicaCount = maxMountReplicaCount
-					updateInstance.Spec.CapacityRange = capacityRange
-					updateInstance.Spec.Parameters = parameters
-					updateInstance.Spec.Secrets = secrets
-					updateInstance.Spec.ContentVolumeSource = volumeContentSource
-					updateInstance.Spec.AccessibilityRequirements = accessibilityReq
-				}
+		// otherwise requeue operation
+		updateFunc := func(obj interface{}) error {
+			updateInstance := obj.(*v1alpha1.AzVolume)
+			updateInstance.Status.Error = nil
+			updateInstance.Status.State = v1alpha1.VolumeOperationPending
 
-				return nil
+			if !isAzVolumeSpecSameAsRequestParams(updateInstance, maxMountReplicaCount, capacityRange, parameters, secrets, volumeContentSource, accessibilityReq) {
+				// Updating the spec fields to keep it up to date with the request
+				updateInstance.Spec.MaxMountReplicaCount = maxMountReplicaCount
+				updateInstance.Spec.CapacityRange = capacityRange
+				updateInstance.Spec.Parameters = parameters
+				updateInstance.Spec.Secrets = secrets
+				updateInstance.Spec.ContentVolumeSource = volumeContentSource
+				updateInstance.Spec.AccessibilityRequirements = accessibilityReq
 			}
 
-			if err = azureutils.UpdateCRIWithRetry(ctx, nil, c.azDiskClient, azVolumeInstance, updateFunc); err != nil {
-				klog.Errorf("failed to update AzVolume (%s) with updated spec: %v", azVolumeName, err)
-				return nil, err
-			}
+			return nil
+		}
+
+		if err = azureutils.UpdateCRIWithRetry(ctx, nil, c.azDiskClient, azVolumeInstance, updateFunc); err != nil {
+			klog.Errorf("failed to update AzVolume (%s) with updated spec: %v", azVolumeName, err)
+			return nil, err
 		}
 		// if the error was caused by errors other than IsNotFound, return failure
 	} else if !errors.IsNotFound(err) {
@@ -278,6 +283,12 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 		return err
 	}
 
+	// if volume deletion already in process, return to prevent duplicate request
+	if azVolume.Status.State == v1alpha1.VolumeDeleting {
+		return status.Errorf(codes.Aborted, "deletion still in process for volume (%s)", volumeName)
+	}
+
+	// otherwise requeue deletion
 	updateFunc := func(obj interface{}) error {
 		updateInstance := obj.(*v1alpha1.AzVolume)
 		if updateInstance.Annotations == nil {
@@ -343,10 +354,18 @@ func (c *CrdProvisioner) PublishVolume(
 	}
 	azVolumeAttachmentInstance, err := azVA.Get(ctx, attachmentName, metav1.GetOptions{})
 	if err == nil {
+		// if CRI is scheduled for deletion, retry until operations are complete
+		if azVolumeAttachmentInstance.DeletionTimestamp != nil {
+			return nil, status.Errorf(codes.Aborted, "need to wait until attachment is fully deleted for volume (%s) and node (%s) before attaching", volumeName, nodeID)
+		}
 		// If there already exists a primary attachment with populated responseObject return
 		if azVolumeAttachmentInstance.Status.Detail != nil && azVolumeAttachmentInstance.Status.Detail.PublishContext != nil && azVolumeAttachmentInstance.Status.Detail.Role == v1alpha1.PrimaryRole {
 			return azVolumeAttachmentInstance.Status.Detail.PublishContext, nil
+			// if attachment is pending return error to prevent redundant attachment request
+		} else if azVolumeAttachmentInstance.Status.State == v1alpha1.Attaching {
+			return nil, status.Errorf(codes.Aborted, "attachment still in process for volume (%s) and node (%s)", volumeName, nodeID)
 		}
+
 		updateFunc := func(obj interface{}) error {
 			updateInstance := obj.(*v1alpha1.AzVolumeAttachment)
 			if updateInstance.Status.Error != nil {
@@ -462,6 +481,11 @@ func (c *CrdProvisioner) UnpublishVolume(
 
 	// if AzVolumeAttachment instance indicates that previous attachment request was successful, annotate the CRI with detach request so that the underlying volume attachment can be properly detached.
 	if azVolumeAttachment.Status.Detail != nil {
+		// if detachment is pending, return to prevent duplicate request
+		if azVolumeAttachment.Status.State == v1alpha1.Detaching {
+			return status.Errorf(codes.Aborted, "detachment still in process for volume (%s) and node (%s)", volumeName, nodeID)
+		}
+
 		updateFunc := func(obj interface{}) error {
 			updateInstance := obj.(*v1alpha1.AzVolumeAttachment)
 			if updateInstance.Annotations == nil {
