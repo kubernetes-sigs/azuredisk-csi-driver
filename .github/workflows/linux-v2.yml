@@ -27,9 +27,9 @@ jobs:
         sudo go test -covermode=count -coverprofile=profile.cov -tags azurediskv2 ./pkg/azuredisk --temp-use-driver-v2
         sudo go test -covermode=count -coverprofile=profile.cov -tags azurediskv2 ./pkg/azdiskschedulerextender
 
-    # - name: Send coverage
-    #   env:
-    #     COVERALLS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    #   run: |
-    #     GO111MODULE=off go get github.com/mattn/goveralls
-    #     $(go env GOPATH)/bin/goveralls -coverprofile=profile.cov -service=github
+    - name: Send coverage
+      env:
+        COVERALLS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        GO111MODULE=off go get github.com/mattn/goveralls
+        $(go env GOPATH)/bin/goveralls -coverprofile=profile.cov -service=github
