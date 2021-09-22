@@ -11,8 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-FROM mcr.microsoft.com/aks/fundamental/base-ubuntu:v0.0.5
-RUN apt-get update && apt-get install -y util-linux e2fsprogs mount ca-certificates udev xfsprogs
+
+FROM k8s.gcr.io/build-image/debian-base:bullseye-v1.0.0
+
+RUN apt update && apt-mark unhold libcap2
+RUN clean-install util-linux e2fsprogs mount ca-certificates udev xfsprogs libssl1.1
+
 LABEL maintainers="andyzhangx"
 LABEL description="Azure Disk CSI Driver"
 
