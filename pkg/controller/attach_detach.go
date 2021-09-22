@@ -27,7 +27,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	kubeClientSet "k8s.io/client-go/kubernetes"
-	volerr "k8s.io/cloud-provider/volume/errors"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azVolumeClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
@@ -152,16 +151,16 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 
 	// initiate goroutine to attach volume
 	go func() {
-		response, err := r.attachVolume(ctx, azVolumeAttachment.Spec.VolumeID, azVolumeAttachment.Spec.NodeName, azVolumeAttachment.Spec.VolumeContext)
+		response, attachErr := r.attachVolume(ctx, azVolumeAttachment.Spec.VolumeID, azVolumeAttachment.Spec.NodeName, azVolumeAttachment.Spec.VolumeContext)
 		var updateFunc func(interface{}) error
-		if err != nil {
-			klog.Errorf("failed to attach volume %s to node %s: %v", azVolumeAttachment.Spec.UnderlyingVolume, azVolumeAttachment.Spec.NodeName, err)
+		if attachErr != nil {
+			klog.Errorf("failed to attach volume %s to node %s: %v", azVolumeAttachment.Spec.UnderlyingVolume, azVolumeAttachment.Spec.NodeName, attachErr)
 
 			updateFunc = func(obj interface{}) error {
 				azv := obj.(*v1alpha1.AzVolumeAttachment)
-				azv = r.updateError(ctx, azv, err)
-				_, err = r.updateState(ctx, azv, v1alpha1.AttachmentFailed)
-				return err
+				azv = r.updateError(ctx, azv, attachErr)
+				_, uerr := r.updateState(ctx, azv, v1alpha1.AttachmentFailed)
+				return uerr
 			}
 		} else {
 			klog.Infof("successfully attached volume (%s) to node (%s) and update status of AzVolumeAttachment (%s)", azVolumeAttachment.Spec.UnderlyingVolume, azVolumeAttachment.Spec.NodeName, azVolumeAttachment.Name)
@@ -169,14 +168,14 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 			updateFunc = func(obj interface{}) error {
 				azv := obj.(*v1alpha1.AzVolumeAttachment)
 				azv = r.updateStatusDetail(ctx, azv, response)
-				_, err := r.updateState(ctx, azv, v1alpha1.Attached)
-				return err
+				_, uerr := r.updateState(ctx, azv, v1alpha1.Attached)
+				return uerr
 			}
 		}
 		if derr := azureutils.UpdateCRIWithRetry(ctx, r.client, r.azVolumeClient, azVolumeAttachment, updateFunc); derr != nil {
-			klog.Errorf("failed to update AzVolumeAttachment (%s) with attachVolume result (response: %v, error: %v): %v", azVolumeAttachment.Name, response, err, derr)
+			klog.Errorf("failed to update AzVolumeAttachment (%s) with attachVolume result (response: %v, error: %v): %v", azVolumeAttachment.Name, response, attachErr, derr)
 		} else {
-			klog.Infof("Successfully updated AzVolumeAttachment (%s) with attachVolume result (response: %v, error: %v)", azVolumeAttachment.Name, response, err)
+			klog.Infof("Successfully updated AzVolumeAttachment (%s) with attachVolume result (response: %v, error: %v)", azVolumeAttachment.Name, response, attachErr)
 		}
 	}()
 
@@ -416,17 +415,7 @@ func (r *ReconcileAttachDetach) updateError(ctx context.Context, azVolumeAttachm
 	}
 
 	if err != nil {
-		azVolumeAttachmentError := &v1alpha1.AzError{
-			ErrorCode:    util.GetStringValueForErrorCode(status.Code(err)),
-			ErrorMessage: err.Error(),
-		}
-		if derr, ok := err.(*volerr.DanglingAttachError); ok {
-			azVolumeAttachmentError.ErrorCode = util.DanglingAttachErrorCode
-			azVolumeAttachmentError.CurrentNode = derr.CurrentNode
-			azVolumeAttachmentError.DevicePath = derr.DevicePath
-		}
-
-		azVolumeAttachment.Status.Error = azVolumeAttachmentError
+		azVolumeAttachment.Status.Error = util.NewAzError(err)
 	}
 
 	return azVolumeAttachment

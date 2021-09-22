@@ -18,7 +18,6 @@ package provisioner
 
 import (
 	"context"
-	"fmt"
 	"reflect"
 	"strings"
 	"time"
@@ -27,7 +26,6 @@ import (
 	"google.golang.org/grpc/status"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	volerr "k8s.io/cloud-provider/volume/errors"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -216,7 +214,7 @@ func (c *CrdProvisioner) CreateVolume(
 		}
 
 		if azVolumeInstance == nil {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to create azvolume resource volume name (%s)", volumeName))
+			return nil, status.Errorf(codes.Internal, "Failed to create azvolume resource volume name (%s)", volumeName)
 		}
 
 		klog.Infof("Successfully created AzVolume CRI (%s)...", azVolumeName)
@@ -231,8 +229,7 @@ func (c *CrdProvisioner) CreateVolume(
 		if azVolumeInstance.Status.Detail != nil {
 			return true, nil
 		} else if azVolumeInstance.Status.Error != nil {
-			azVolumeError := status.Error(util.GetErrorCodeFromString(azVolumeInstance.Status.Error.ErrorCode), azVolumeInstance.Status.Error.ErrorMessage)
-			return true, azVolumeError
+			return true, util.ErrorFromAzError(azVolumeInstance.Status.Error)
 		}
 		return false, nil
 	}
@@ -322,10 +319,9 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 			if errors.IsNotFound(err) {
 				return true, nil
 			}
-			return true, status.Error(codes.Internal, fmt.Sprintf("failed to delete azvolume resource for volume name (%s)", volumeName))
+			return true, status.Errorf(codes.Internal, "failed to delete azvolume resource for volume name (%s)", volumeName)
 		} else if azVolume.Status.Error != nil {
-			azVolumeError := status.Error(util.GetErrorCodeFromString(azVolume.Status.Error.ErrorCode), azVolume.Status.Error.ErrorMessage)
-			return true, azVolumeError
+			return true, util.ErrorFromAzError(azVolume.Status.Error)
 		}
 		return false, nil
 	}
@@ -344,7 +340,7 @@ func (c *CrdProvisioner) PublishVolume(
 	azVA := c.azDiskClient.DiskV1alpha1().AzVolumeAttachments(c.namespace)
 	volumeName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(volumeID)
 	if err != nil {
-		return nil, status.Errorf(codes.NotFound, fmt.Sprintf("Error finding volume : %v", err))
+		return nil, status.Errorf(codes.NotFound, "Error finding volume : %v", err)
 	}
 
 	attachmentName := azureutils.GetAzVolumeAttachmentName(volumeName, nodeID)
@@ -431,13 +427,7 @@ func (c *CrdProvisioner) PublishVolume(
 			return true, nil
 		}
 		if azVolumeAttachmentInstance.Status.Error != nil {
-			// if dangling attach error
-			if azVolumeAttachmentInstance.Status.Error.ErrorCode == util.DanglingAttachErrorCode {
-				klog.Errorf("dangling error found from AzVolumeAttachment (%s): %v", attachmentName, azVolumeAttachmentInstance.Status.Error)
-				return true, volerr.NewDanglingError(azVolumeAttachmentInstance.Status.Error.ErrorMessage, azVolumeAttachmentInstance.Status.Error.CurrentNode, azVolumeAttachmentInstance.Status.Error.DevicePath)
-			}
-			azVolumeAttachmentError := status.Error(util.GetErrorCodeFromString(azVolumeAttachmentInstance.Status.Error.ErrorCode), azVolumeAttachmentInstance.Status.Error.ErrorMessage)
-			return true, azVolumeAttachmentError
+			return true, util.ErrorFromAzError(azVolumeAttachmentInstance.Status.Error)
 		}
 		return false, nil
 	}
@@ -449,7 +439,7 @@ func (c *CrdProvisioner) PublishVolume(
 	}
 
 	if azVolumeAttachmentInstance.Status.Detail == nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to attach azvolume attachment resource for volume id (%s) to node (%s)", volumeID, nodeID))
+		return nil, status.Errorf(codes.Internal, "Failed to attach azvolume attachment resource for volume id (%s) to node (%s)", volumeID, nodeID)
 	}
 
 	return azVolumeAttachmentInstance.Status.Detail.PublishContext, nil
@@ -524,10 +514,9 @@ func (c *CrdProvisioner) UnpublishVolume(
 			if errors.IsNotFound(err) {
 				return true, nil
 			}
-			return true, status.Error(codes.Internal, fmt.Sprintf("Failed to delete azvolume resource attachment for volume name (%s) to node (%s)", volumeID, nodeID))
+			return true, status.Errorf(codes.Internal, "Failed to delete azvolume resource attachment for volume name (%s) to node (%s)", volumeID, nodeID)
 		} else if azVolumeAttachment.Status.Error != nil {
-			azVolumeAttachmentError := status.Error(util.GetErrorCodeFromString(azVolumeAttachment.Status.Error.ErrorCode), azVolumeAttachment.Status.Error.ErrorMessage)
-			return true, azVolumeAttachmentError
+			return true, util.ErrorFromAzError(azVolumeAttachment.Status.Error)
 		}
 		return false, nil
 	}
@@ -551,7 +540,7 @@ func (c *CrdProvisioner) ExpandVolume(
 	azVolume, err := azV.Get(ctx, volumeName, metav1.GetOptions{})
 	if err != nil || azVolume == nil {
 		klog.Errorf("Failed to retrieve existing volume id (%s)", volumeID)
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to retrieve volume id (%s), error: %v", volumeID, err))
+		return nil, status.Errorf(codes.Internal, "Failed to retrieve volume id (%s), error: %v", volumeID, err)
 	}
 
 	updateFunc := func(obj interface{}) error {
@@ -577,8 +566,7 @@ func (c *CrdProvisioner) ExpandVolume(
 			}
 		}
 		if azVolume.Status.Error != nil {
-			azVolumeError := status.Error(util.GetErrorCodeFromString(azVolume.Status.Error.ErrorCode), azVolume.Status.Error.ErrorMessage)
-			return true, azVolumeError
+			return true, util.ErrorFromAzError(azVolume.Status.Error)
 		}
 		return false, nil
 	}
@@ -588,7 +576,7 @@ func (c *CrdProvisioner) ExpandVolume(
 		return nil, err
 	}
 	if azVolume.Status.Detail.ResponseObject.CapacityBytes != capacityRange.RequiredBytes {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("AzVolume status not updated with the new capacity for volume name (%s)", volumeID))
+		return nil, status.Errorf(codes.Internal, "AzVolume status not updated with the new capacity for volume name (%s)", volumeID)
 	}
 
 	return azVolume.Status.Detail.ResponseObject, nil
