@@ -18,7 +18,7 @@ RUN apk add --no-cache util-linux e2fsprogs e2fsprogs-extra ca-certificates udev
 LABEL maintainers="andyzhangx"
 LABEL description="Azure Disk CSI Driver"
 
-ARG ARCH
+ARG ARCH=amd64
 ARG PLUGIN_NAME=azurediskplugin
 COPY ./_output/${ARCH}/${PLUGIN_NAME} /azurediskplugin
 ENTRYPOINT ["/azurediskplugin"]
