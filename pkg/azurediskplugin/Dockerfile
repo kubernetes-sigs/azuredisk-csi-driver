@@ -20,7 +20,7 @@ RUN clean-install util-linux e2fsprogs mount ca-certificates udev xfsprogs libss
 LABEL maintainers="andyzhangx"
 LABEL description="Azure Disk CSI Driver"
 
-ARG ARCH
+ARG ARCH=amd64
 ARG PLUGIN_NAME=azurediskplugin
 COPY ./_output/${ARCH}/${PLUGIN_NAME} /azurediskplugin
 ENTRYPOINT ["/azurediskplugin"]
