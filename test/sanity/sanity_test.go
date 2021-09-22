@@ -22,6 +22,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strings"
 	"testing"
 
@@ -59,7 +60,9 @@ func TestSanity(t *testing.T) {
 	azureClient, err := azure.GetAzureClient(creds.Cloud, creds.SubscriptionID, creds.AADClientID, creds.TenantID, creds.AADClientSecret)
 	azure.AssertNoError(t, err)
 
-	ctx := context.Background()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
 	// Create a resource group with a VM for sanity test
 	log.Printf("Creating resource group %s in %s", creds.ResourceGroup, creds.Cloud)
 	_, err = azureClient.EnsureResourceGroup(ctx, creds.ResourceGroup, creds.Location, nil)
@@ -68,7 +71,7 @@ func TestSanity(t *testing.T) {
 		// Only delete resource group the test created
 		if strings.HasPrefix(creds.ResourceGroup, credentials.ResourceGroupPrefix) {
 			log.Printf("Deleting resource group %s", creds.ResourceGroup)
-			err := azureClient.DeleteResourceGroup(ctx, creds.ResourceGroup)
+			err := azureClient.DeleteResourceGroup(context.Background(), creds.ResourceGroup)
 			azure.AssertNoError(t, err)
 		}
 	}()
@@ -96,7 +99,7 @@ func TestSanity(t *testing.T) {
 		args = append(args, *imageTag)
 	}
 
-	cmd := exec.Command("./test/sanity/run-tests-all-clouds.sh", args...)
+	cmd := exec.CommandContext(ctx, "./test/sanity/run-tests-all-clouds.sh", args...)
 	cmd.Dir = projectRoot
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

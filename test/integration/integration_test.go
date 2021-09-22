@@ -22,6 +22,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strings"
 	"testing"
 
@@ -61,7 +62,9 @@ func TestIntegrationOnAzurePublicCloud(t *testing.T) {
 	azureClient, err := azure.GetAzureClient(creds.Cloud, creds.SubscriptionID, creds.AADClientID, creds.TenantID, creds.AADClientSecret)
 	azure.AssertNoError(t, err)
 
-	ctx := context.Background()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
 	// Create an empty resource group for integration test
 	log.Printf("Creating resource group %s in %s", creds.ResourceGroup, creds.Cloud)
 	_, err = azureClient.EnsureResourceGroup(ctx, creds.ResourceGroup, creds.Location, nil)
@@ -70,7 +73,7 @@ func TestIntegrationOnAzurePublicCloud(t *testing.T) {
 		// Only delete resource group the test created
 		if strings.HasPrefix(creds.ResourceGroup, credentials.ResourceGroupPrefix) {
 			log.Printf("Deleting resource group %s", creds.ResourceGroup)
-			err := azureClient.DeleteResourceGroup(ctx, creds.ResourceGroup)
+			err := azureClient.DeleteResourceGroup(context.Background(), creds.ResourceGroup)
 			azure.AssertNoError(t, err)
 		}
 	}()
@@ -105,7 +108,7 @@ func TestIntegrationOnAzurePublicCloud(t *testing.T) {
 		args = append(args, *imageTag)
 	}
 
-	cmd := exec.Command("./test/integration/run-tests-all-clouds.sh", args...)
+	cmd := exec.CommandContext(ctx, "./test/integration/run-tests-all-clouds.sh", args...)
 	cmd.Dir = cwd
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
