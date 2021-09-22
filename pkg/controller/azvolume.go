@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"sync"
 
@@ -406,17 +405,15 @@ func (r *ReconcileAzVolume) updateError(ctx context.Context, azVolume *v1alpha1.
 	if azVolume == nil {
 		return nil
 	}
-	azVolumeError := &v1alpha1.AzError{
-		ErrorCode:    util.GetStringValueForErrorCode(status.Code(err)),
-		ErrorMessage: err.Error(),
-	}
-	azVolume.Status.Error = azVolumeError
+
+	azVolume.Status.Error = util.NewAzError(err)
+
 	return azVolume
 }
 
 func (r *ReconcileAzVolume) expandVolume(ctx context.Context, azVolume *v1alpha1.AzVolume) (*v1alpha1.AzVolumeStatusParams, error) {
 	if azVolume.Status.Detail == nil || azVolume.Status.Detail.ResponseObject == nil {
-		err := status.Error(codes.Internal, fmt.Sprintf("Disk for expansion does not exist for AzVolume (%s).", azVolume.Name))
+		err := status.Errorf(codes.Internal, "Disk for expansion does not exist for AzVolume (%s).", azVolume.Name)
 		klog.Errorf("skipping expandVolume operation for AzVolume (%s): %v", azVolume.Name, err)
 		return nil, err
 	}

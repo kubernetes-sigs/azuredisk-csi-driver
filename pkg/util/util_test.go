@@ -17,12 +17,21 @@ limitations under the License.
 package util
 
 import (
+	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	k8stypes "k8s.io/apimachinery/pkg/types"
+	volerr "k8s.io/cloud-provider/volume/errors"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
+	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
 )
 
 func TestRoundUpBytes(t *testing.T) {
@@ -265,5 +274,90 @@ func TestVolumeLock(t *testing.T) {
 		if testCase.cleanup != nil {
 			testCase.cleanup()
 		}
+	}
+}
+
+func TestNewAzError(t *testing.T) {
+	currentNode := k8stypes.NodeName("test-node")
+	devicePath := "/dev/sda"
+
+	tests := []struct {
+		description  string
+		sourceError  error
+		expectedCode string
+	}{
+		{
+			description:  "Dangling attach error",
+			sourceError:  volerr.NewDanglingError("dangling attach", currentNode, devicePath),
+			expectedCode: danglingAttachErrorCode,
+		},
+		{
+			description:  "GRPC status error",
+			sourceError:  status.Error(codes.NotFound, "not found"),
+			expectedCode: getStringValueForErrorCode(codes.NotFound),
+		},
+		{
+			description:  "Azure retry non-retriable error",
+			sourceError:  (&retry.Error{Retriable: false, HTTPStatusCode: http.StatusBadRequest, RawError: errors.New("bad request")}).Error(),
+			expectedCode: getStringValueForErrorCode(codes.FailedPrecondition),
+		},
+		{
+			description:  "Azure retry conflict error",
+			sourceError:  (&retry.Error{Retriable: true, HTTPStatusCode: http.StatusConflict, RawError: errors.New("conflict")}).Error(),
+			expectedCode: getStringValueForErrorCode(codes.Aborted),
+		},
+		{
+			description:  "Azure retry retriable error",
+			sourceError:  (&retry.Error{Retriable: true, HTTPStatusCode: http.StatusTooManyRequests, RawError: errors.New("too many requests")}).Error(),
+			expectedCode: getStringValueForErrorCode(codes.Unavailable),
+		},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.description, func(t *testing.T) {
+			azError := NewAzError(test.sourceError)
+			require.NotNil(t, azError)
+			assert.Equal(t, test.expectedCode, azError.ErrorCode)
+			assert.Equal(t, test.sourceError.Error(), azError.ErrorMessage)
+
+			if derr, ok := test.sourceError.(*volerr.DanglingAttachError); ok {
+				assert.Equal(t, derr.CurrentNode, azError.CurrentNode)
+				assert.Equal(t, derr.DevicePath, azError.DevicePath)
+			} else {
+				assert.Empty(t, azError.CurrentNode)
+				assert.Empty(t, azError.DevicePath)
+			}
+		})
+	}
+}
+
+func TestErrorFromAzError(t *testing.T) {
+	currentNode := k8stypes.NodeName("test-node")
+	devicePath := "/dev/sda"
+
+	tests := []struct {
+		description   string
+		sourceAzError *v1alpha1.AzError
+		expectedError error
+	}{
+		{
+			description:   "Dangling attach error",
+			sourceAzError: &v1alpha1.AzError{ErrorCode: danglingAttachErrorCode, ErrorMessage: "dangling attach", CurrentNode: currentNode, DevicePath: devicePath},
+			expectedError: volerr.NewDanglingError("dangling attach", currentNode, devicePath),
+		},
+		{
+			description:   "GRPC status error",
+			sourceAzError: &v1alpha1.AzError{ErrorCode: "NOT_FOUND", ErrorMessage: "not found"},
+			expectedError: status.Error(codes.NotFound, "not found"),
+		},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.description, func(t *testing.T) {
+			err := ErrorFromAzError(test.sourceAzError)
+			require.Equal(t, err, test.expectedError)
+		})
 	}
 }

@@ -18,61 +18,81 @@ package util
 
 import (
 	"fmt"
+	"net/http"
 	"os"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
 
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	k8stypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
+	volerr "k8s.io/cloud-provider/volume/errors"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 )
 
 const (
-	GiB                     = 1024 * 1024 * 1024
-	TagsDelimiter           = ","
-	TagKeyValueDelimiter    = "="
-	DanglingAttachErrorCode = "DANGLING_ATTACH"
+	GiB                  = 1024 * 1024 * 1024
+	TagsDelimiter        = ","
+	TagKeyValueDelimiter = "="
+
+	danglingAttachErrorCode = "DANGLING_ATTACH"
 )
 
-var strToCode = map[string]codes.Code{
-	"OK":                  codes.OK,
-	"CANCELLED":           codes.Canceled,
-	"UNKNOWN":             codes.Unknown,
-	"INVALID_ARGUMENT":    codes.InvalidArgument,
-	"DEADLINE_EXCEEDED":   codes.DeadlineExceeded,
-	"NOT_FOUND":           codes.NotFound,
-	"ALREADY_EXISTS":      codes.AlreadyExists,
-	"PERMISSION_DENIED":   codes.PermissionDenied,
-	"RESOURCE_EXHAUSTED":  codes.ResourceExhausted,
-	"FAILED_PRECONDITION": codes.FailedPrecondition,
-	"ABORTED":             codes.Aborted,
-	"OUT_OF_RANGE":        codes.OutOfRange,
-	"UNIMPLEMENTED":       codes.Unimplemented,
-	"INTERNAL":            codes.Internal,
-	"UNAVAILABLE":         codes.Unavailable,
-	"DATA_LOSS":           codes.DataLoss,
-	"UNAUTHENTICATED":     codes.Unauthenticated,
-}
+var (
+	strToCode = map[string]codes.Code{
+		"OK":                  codes.OK,
+		"CANCELLED":           codes.Canceled,
+		"UNKNOWN":             codes.Unknown,
+		"INVALID_ARGUMENT":    codes.InvalidArgument,
+		"DEADLINE_EXCEEDED":   codes.DeadlineExceeded,
+		"NOT_FOUND":           codes.NotFound,
+		"ALREADY_EXISTS":      codes.AlreadyExists,
+		"PERMISSION_DENIED":   codes.PermissionDenied,
+		"RESOURCE_EXHAUSTED":  codes.ResourceExhausted,
+		"FAILED_PRECONDITION": codes.FailedPrecondition,
+		"ABORTED":             codes.Aborted,
+		"OUT_OF_RANGE":        codes.OutOfRange,
+		"UNIMPLEMENTED":       codes.Unimplemented,
+		"INTERNAL":            codes.Internal,
+		"UNAVAILABLE":         codes.Unavailable,
+		"DATA_LOSS":           codes.DataLoss,
+		"UNAUTHENTICATED":     codes.Unauthenticated,
+	}
 
-var codeToStr = map[codes.Code]string{
-	codes.OK:                 "OK",
-	codes.Canceled:           "CANCELLED",
-	codes.Unknown:            "UNKNOWN",
-	codes.InvalidArgument:    "INVALID_ARGUMENT",
-	codes.DeadlineExceeded:   "DEADLINE_EXCEEDED",
-	codes.NotFound:           "NOT_FOUND",
-	codes.AlreadyExists:      "ALREADY_EXISTS",
-	codes.PermissionDenied:   "PERMISSION_DENIED",
-	codes.ResourceExhausted:  "RESOURCE_EXHAUSTED",
-	codes.FailedPrecondition: "FAILED_PRECONDITION",
-	codes.Aborted:            "ABORTED",
-	codes.OutOfRange:         "OUT_OF_RANGE",
-	codes.Unimplemented:      "UNIMPLEMENTED",
-	codes.Internal:           "INTERNAL",
-	codes.Unavailable:        "UNAVAILABLE",
-	codes.DataLoss:           "DATA_LOSS",
-	codes.Unauthenticated:    "UNAUTHENTICATED",
-}
+	codeToStr = map[codes.Code]string{
+		codes.OK:                 "OK",
+		codes.Canceled:           "CANCELLED",
+		codes.Unknown:            "UNKNOWN",
+		codes.InvalidArgument:    "INVALID_ARGUMENT",
+		codes.DeadlineExceeded:   "DEADLINE_EXCEEDED",
+		codes.NotFound:           "NOT_FOUND",
+		codes.AlreadyExists:      "ALREADY_EXISTS",
+		codes.PermissionDenied:   "PERMISSION_DENIED",
+		codes.ResourceExhausted:  "RESOURCE_EXHAUSTED",
+		codes.FailedPrecondition: "FAILED_PRECONDITION",
+		codes.Aborted:            "ABORTED",
+		codes.OutOfRange:         "OUT_OF_RANGE",
+		codes.Unimplemented:      "UNIMPLEMENTED",
+		codes.Internal:           "INTERNAL",
+		codes.Unavailable:        "UNAVAILABLE",
+		codes.DataLoss:           "DATA_LOSS",
+		codes.Unauthenticated:    "UNAUTHENTICATED",
+	}
+
+	azureRetryErrorRegEx     = regexp.MustCompile("Retriable: (true|false), RetryAfter: ([0-9]+)s, HTTPStatusCode: ([0-9]+), RawError: ")
+	httpConflictStatusString = fmt.Sprintf("%d", http.StatusConflict)
+)
+
+const (
+	_ int = iota // Full match index - unused.
+	retriableValueIndex
+	_ // Retry after value index - unused.
+	httpStatusCodeValueIndex
+	azureRetryErrorValueCount
+)
 
 // IsWindowsOS decides whether the driver is running on windows OS.
 func IsWindowsOS() bool {
@@ -192,16 +212,68 @@ func (vl *VolumeLocks) Release(volumeID string) {
 	vl.locks.Delete(volumeID)
 }
 
-func GetStringValueForErrorCode(c codes.Code) string {
+func getStringValueForErrorCode(c codes.Code) string {
 	if val, ok := codeToStr[c]; ok {
 		return val
 	}
 	return "UNKNOWN"
 }
 
-func GetErrorCodeFromString(errorCode string) codes.Code {
+func getErrorCodeFromString(errorCode string) codes.Code {
 	if val, ok := strToCode[errorCode]; ok {
 		return val
 	}
 	return codes.Unknown
+}
+
+// NewAzError returns a new v1alpha1.AzError object representing the specified error.
+func NewAzError(err error) *v1alpha1.AzError {
+	var (
+		errorCode    string
+		errorMessage = err.Error()
+		currentNode  = k8stypes.NodeName("")
+		devicePath   = ""
+	)
+
+	if derr, ok := err.(*volerr.DanglingAttachError); ok {
+		errorCode = danglingAttachErrorCode
+		currentNode = derr.CurrentNode
+		devicePath = derr.DevicePath
+	} else {
+		code := status.Code(err)
+
+		if code == codes.Unknown {
+			if values := azureRetryErrorRegEx.FindStringSubmatch(errorMessage); len(values) == azureRetryErrorValueCount {
+				if strings.EqualFold(values[retriableValueIndex], "false") {
+					code = codes.FailedPrecondition
+				} else if strings.EqualFold(values[httpStatusCodeValueIndex], httpConflictStatusString) {
+					code = codes.Aborted
+				} else {
+					code = codes.Unavailable
+				}
+			}
+		}
+
+		errorCode = getStringValueForErrorCode(code)
+	}
+
+	return &v1alpha1.AzError{
+		ErrorCode:    errorCode,
+		ErrorMessage: errorMessage,
+		CurrentNode:  currentNode,
+		DevicePath:   devicePath,
+	}
+}
+
+// ErrorFromAzError returns an error object for the specified v1alpha1.AzError instance.
+func ErrorFromAzError(azError *v1alpha1.AzError) error {
+	if azError == nil {
+		return nil
+	}
+
+	if azError.ErrorCode == danglingAttachErrorCode {
+		return volerr.NewDanglingError(azError.ErrorMessage, azError.CurrentNode, azError.DevicePath)
+	}
+
+	return status.Error(getErrorCodeFromString(azError.ErrorCode), azError.ErrorMessage)
 }
