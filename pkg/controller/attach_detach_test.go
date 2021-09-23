@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/golang/mock/gomock"
@@ -43,6 +44,7 @@ func NewTestAttachDetachController(controller *gomock.Controller, namespace stri
 		kubeClient:            fakev1.NewSimpleClientset(kubeObjs...),
 		namespace:             namespace,
 		attachmentProvisioner: mockattachmentprovisioner.NewMockAttachmentProvisioner(controller),
+		stateLock:             &sync.Map{},
 	}
 }
 
@@ -99,7 +101,7 @@ func TestAttachDetachReconcile(t *testing.T) {
 					return azVolumeAttachment.Status.State == diskv1alpha1.Attached, nil
 				}
 
-				conditionError := wait.PollImmediate(updateAttemptInterval, updateTimeout, conditionFunc)
+				conditionError := wait.PollImmediate(verifyCRIInterval, verifyCRITimeout, conditionFunc)
 				require.NoError(t, conditionError)
 			},
 		},
@@ -134,7 +136,7 @@ func TestAttachDetachReconcile(t *testing.T) {
 					return azVolumeAttachment.Status.State == diskv1alpha1.Detached, nil
 				}
 
-				conditionError := wait.PollImmediate(updateAttemptInterval, updateTimeout, conditionFunc)
+				conditionError := wait.PollImmediate(verifyCRIInterval, verifyCRITimeout, conditionFunc)
 				require.NoError(t, conditionError)
 			},
 		},

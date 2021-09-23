@@ -1,3 +1,4 @@
+//go:build azurediskv2
 // +build azurediskv2
 
 /*
@@ -39,6 +40,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	azurediskInformers "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions"
 	azurediskInformerTypes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions/azuredisk/v1alpha1"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
 var (
@@ -47,7 +49,7 @@ var (
 	pvcInformer                kubeInformerTypes.PersistentVolumeClaimInformer
 	kubeClientset              *kubernetes.Clientset
 	kubeExtensionClientset     versioned.Interface
-	ns                         = "azure-disk-csi"
+	ns                         = consts.AzureDiskCrdNamespace
 	pvcToPvMapCache            cachedMapping
 )
 
@@ -232,10 +234,9 @@ func prioritize(context context.Context, schedulerExtenderArgs schedulerapi.Exte
 		// for every volume the pod needs, append its azVolumeAttachment name to the node name
 		for _, attachedVolume := range azVolumeAttachmentsMeta.volumes {
 			klog.V(2).Infof(
-				"Volume attachment in consideration: Name: %s, Volume: %s. AzVolAtt: %s.",
+				"Volume attachment in consideration: Name: %s, Volume: %s.",
 				attachedVolume.Name,
 				attachedVolume.Spec.UnderlyingVolume,
-				attachedVolume.Spec.VolumeContext["csi.storage.k8s.io/pvc/name"],
 			)
 			completeNodeNameToVolumeMap[attachedVolume.Spec.NodeName] = append(completeNodeNameToVolumeMap[attachedVolume.Spec.NodeName], attachedVolume.Spec.UnderlyingVolume)
 			_, needs := volumesPodNeeds[attachedVolume.Spec.UnderlyingVolume]

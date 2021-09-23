@@ -17,18 +17,23 @@ limitations under the License.
 package azuredisk
 
 import (
+	"context"
 	"testing"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"k8s.io/klog/v2"
+	"k8s.io/mount-utils"
 	testingexec "k8s.io/utils/exec/testing"
 
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization/mockoptimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
@@ -75,8 +80,18 @@ type FakeDriver interface {
 	getCloud() *provider.Cloud
 	setCloud(*provider.Cloud)
 
+	getDeviceHelper() optimization.Interface
+	getHostUtil() hostUtil
+	setPerfOptimizationEnabled(bool)
+	setMounter(*mount.SafeFormatAndMount)
+	setPathIsDeviceResult(path string, isDevice bool, err error)
+
 	getSnapshotInfo(string) (string, string, error)
 	ensureMountPoint(string) (bool, error)
+
+	checkDiskCapacity(context.Context, string, string, int) (bool, error)
+	checkDiskExists(ctx context.Context, diskURI string) (*compute.Disk, error)
+	setDiskThrottlingCache(key string, value string)
 }
 
 type fakeDriverV1 struct {
@@ -90,7 +105,13 @@ func newFakeDriverV1(t *testing.T) (*fakeDriverV1, error) {
 	driver.NodeID = fakeNodeID
 	driver.CSIDriver = *csicommon.NewFakeCSIDriver()
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
-	driver.perfOptimizationEnabled = false
+	driver.VolumeAttachLimit = -1
+	driver.ioHandler = azureutils.NewFakeIOHandler()
+	driver.hostUtil = azureutils.NewFakeHostUtil()
+
+	driver.VolumeAttachLimit = -1
+	driver.ioHandler = azureutils.NewFakeIOHandler()
+	driver.hostUtil = azureutils.NewFakeHostUtil()
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -110,7 +131,9 @@ func newFakeDriverV1(t *testing.T) (*fakeDriverV1, error) {
 		return nil, err
 	}
 	driver.getDiskThrottlingCache = cache
-	driver.deviceHelper = optimization.NewSafeDeviceHelper()
+
+	mockDeviceHelper := mockoptimization.NewMockInterface(ctrl)
+	driver.deviceHelper = mockDeviceHelper
 
 	driver.AddControllerServiceCapabilities(
 		[]csi.ControllerServiceCapability_RPC_Type{
@@ -153,6 +176,14 @@ func (d *fakeDriverV1) setCloud(cloud *provider.Cloud) {
 	d.cloud = cloud
 }
 
+func (d *Driver) setPathIsDeviceResult(path string, isDevice bool, err error) {
+	d.getHostUtil().(*azureutils.FakeHostUtil).SetPathIsDeviceResult(path, isDevice, err)
+}
+
+func (d *fakeDriverV1) setDiskThrottlingCache(key string, value string) {
+	d.getDiskThrottlingCache.Set(key, value)
+}
+
 func createVolumeCapabilities(accessMode csi.VolumeCapability_AccessMode_Mode) []*csi.VolumeCapability {
 	return []*csi.VolumeCapability{
 		createVolumeCapability(accessMode),
@@ -170,6 +201,6 @@ func createVolumeCapability(accessMode csi.VolumeCapability_AccessMode_Mode) *cs
 	}
 }
 
-func (d *Driver) setDiskThrottlingCache(key string, value string) {
-	d.getDiskThrottlingCache.Set(key, value)
+func (d *Driver) setMounter(mounter *mount.SafeFormatAndMount) {
+	d.mounter = mounter
 }

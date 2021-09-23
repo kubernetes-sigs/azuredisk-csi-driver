@@ -23,6 +23,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 )
 
@@ -91,9 +92,9 @@ func isSnapshotReady(state string) (bool, error) {
 }
 
 func getSnapshotNameFromURI(snapshotURI string) (string, error) {
-	matches := diskSnapshotPathRE.FindStringSubmatch(snapshotURI)
+	matches := consts.DiskSnapshotPathRE.FindStringSubmatch(snapshotURI)
 	if len(matches) != 2 {
-		return "", fmt.Errorf("could not get snapshot name from %s, correct format: %s", snapshotURI, diskSnapshotPathRE)
+		return "", fmt.Errorf("could not get snapshot name from %s, correct format: %s", snapshotURI, consts.DiskSnapshotPathRE)
 	}
 	return matches[1], nil
 }

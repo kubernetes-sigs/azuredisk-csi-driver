@@ -80,7 +80,7 @@ func (c *BlobDiskController) initStorageAccounts() {
 // CreateVolume creates a VHD blob in a storage account that has storageType and location using the given storage account.
 // If no storage account is given, search all the storage accounts associated with the resource group and pick one that
 // fits storage type and location.
-func (c *BlobDiskController) CreateVolume(blobName, accountName, accountType, location string, requestGB int) (string, string, int, error) {
+func (c *BlobDiskController) CreateVolume(ctx context.Context, blobName, accountName, accountType, location string, requestGB int) (string, string, int, error) {
 	accountOptions := &AccountOptions{
 		Name:                   accountName,
 		Type:                   accountType,
@@ -89,7 +89,7 @@ func (c *BlobDiskController) CreateVolume(blobName, accountName, accountType, lo
 		Location:               location,
 		EnableHTTPSTrafficOnly: true,
 	}
-	account, key, err := c.common.cloud.EnsureStorageAccount(accountOptions, consts.DedicatedDiskAccountNamePrefix)
+	account, key, err := c.common.cloud.EnsureStorageAccount(ctx, accountOptions, consts.DedicatedDiskAccountNamePrefix)
 	if err != nil {
 		return "", "", 0, fmt.Errorf("could not get storage key for storage account %s: %w", accountName, err)
 	}
@@ -111,13 +111,13 @@ func (c *BlobDiskController) CreateVolume(blobName, accountName, accountType, lo
 }
 
 // DeleteVolume deletes a VHD blob
-func (c *BlobDiskController) DeleteVolume(diskURI string) error {
+func (c *BlobDiskController) DeleteVolume(ctx context.Context, diskURI string) error {
 	klog.V(4).Infof("azureDisk - begin to delete volume %s", diskURI)
 	accountName, blob, err := c.common.cloud.getBlobNameAndAccountFromURI(diskURI)
 	if err != nil {
 		return fmt.Errorf("failed to parse vhd URI %w", err)
 	}
-	key, err := c.common.cloud.GetStorageAccesskey(accountName, c.common.resourceGroup)
+	key, err := c.common.cloud.GetStorageAccesskey(ctx, accountName, c.common.resourceGroup)
 	if err != nil {
 		return fmt.Errorf("no key for storage account %s, err %w", accountName, err)
 	}
@@ -249,7 +249,7 @@ func (c *BlobDiskController) CreateBlobDisk(dataDiskName string, storageAccountT
 }
 
 //DeleteBlobDisk : delete a blob disk from a node
-func (c *BlobDiskController) DeleteBlobDisk(diskURI string) error {
+func (c *BlobDiskController) DeleteBlobDisk(ctx context.Context, diskURI string) error {
 	storageAccountName, vhdName, err := diskNameAndSANameFromURI(diskURI)
 	if err != nil {
 		return err
@@ -259,7 +259,7 @@ func (c *BlobDiskController) DeleteBlobDisk(diskURI string) error {
 	if !ok {
 		// the storage account is specified by user
 		klog.V(4).Infof("azureDisk - deleting volume %s", diskURI)
-		return c.DeleteVolume(diskURI)
+		return c.DeleteVolume(ctx, diskURI)
 	}
 
 	blobSvc, err := c.getBlobSvcClient(storageAccountName)

@@ -1,3 +1,4 @@
+//go:build windows
 // +build windows
 
 /*
@@ -19,7 +20,6 @@ limitations under the License.
 package mounter
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -86,10 +86,14 @@ func (fake *FakeSafeMounter) GetDeviceNameFromMount(mountPath, pluginMountDir st
 
 // GetVolumeSizeInBytes returns the size of the volume in bytes.
 func (fake *FakeSafeMounter) GetVolumeSizeInBytes(devicePath string) (int64, error) {
-	return -1, errors.New("Not implemented")
+	return -1, fmt.Errorf("GetVolumeSizeInBytes error")
 }
 
 // ResizeVolume resizes the volume to the maximum available size.
 func (fake *FakeSafeMounter) ResizeVolume(devicePath string) error {
 	return nil
+}
+
+func (fake *FakeSafeMounter) GetAPIVersions() string {
+	return ""
 }

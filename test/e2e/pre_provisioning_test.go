@@ -43,18 +43,20 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 		ns         *v1.Namespace
 		testDriver driver.PreProvisionedVolumeTestDriver
 		volumeID   string
-		// Set to true if the volume should be deleted automatically after test
-		skipManuallyDeletingVolume bool
+		// Set to true if the volume should not be deleted automatically after test
+		skipVolumeDeletion bool
 	)
 
 	ginkgo.BeforeEach(func() {
 		cs = f.ClientSet
 		ns = f.Namespace
 		testDriver = driver.InitAzureDiskDriver()
+		// reset value to false to default to volume clean up after test unless specified otherwise
+		skipVolumeDeletion = false
 	})
 
 	ginkgo.AfterEach(func() {
-		if !skipManuallyDeletingVolume {
+		if !skipVolumeDeletion {
 			req := &csi.DeleteVolumeRequest{
 				VolumeId: volumeID,
 			}
@@ -109,7 +111,6 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 		ginkgo.It(fmt.Sprintf("should succeed when creating a shared disk with single pod [disk.csi.azure.com][shared disk][%s]", scheduler), func() {
 			skipIfUsingInTreeVolumePlugin()
 			skipIfOnAzureStackCloud()
-			skipIfUsingCSIDriverV2()
 			sharedDiskSize := int64(1024)
 			req := makeCreateVolumeReq("shared-disk-multiple-pods", sharedDiskSize)
 			req.Parameters = map[string]string{
@@ -158,7 +159,6 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 		ginkgo.It(fmt.Sprintf("should succeed when creating a shared disk with multiple pods [disk.csi.azure.com][shared disk][%s]", scheduler), func() {
 			skipIfUsingInTreeVolumePlugin()
 			skipIfOnAzureStackCloud()
-			skipIfUsingCSIDriverV2()
 			sharedDiskSize := int64(1024)
 			req := makeCreateVolumeReq("shared-disk-multiple-pods", sharedDiskSize)
 			req.Parameters = map[string]string{
@@ -248,47 +248,6 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			test.Run(cs, ns, schedulerName)
 		})
 
-		ginkgo.It(fmt.Sprintf("should create an inline volume by in-tree driver [kubernetes.io/azure-disk][%s]", scheduler), func() {
-			if !isUsingInTreeVolumePlugin {
-				ginkgo.Skip("test case is only available for in-tree driver")
-			}
-
-			skipManuallyDeletingVolume = true
-			req := makeCreateVolumeReq("pre-provisioned-inline-volume", defaultDiskSize)
-			resp, err := azurediskDriver.CreateVolume(context.Background(), req)
-			if err != nil {
-				ginkgo.Fail(fmt.Sprintf("create volume error: %v", err))
-			}
-			volumeID = resp.Volume.VolumeId
-			ginkgo.By(fmt.Sprintf("Successfully provisioned AzureDisk volume: %q\n", volumeID))
-
-			diskSize := fmt.Sprintf("%dGi", defaultDiskSize)
-			pods := []testsuites.PodDetails{
-				{
-					Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
-					Volumes: []testsuites.VolumeDetails{
-						{
-							VolumeID:  volumeID,
-							ClaimSize: diskSize,
-							VolumeMount: testsuites.VolumeMountDetails{
-								NameGenerate:      "test-volume-",
-								MountPathGenerate: "/mnt/test-",
-							},
-						},
-					},
-					IsWindows: isWindowsCluster,
-				},
-			}
-
-			test := testsuites.PreProvisionedInlineVolumeTest{
-				CSIDriver: testDriver,
-				Pods:      pods,
-				DiskURI:   volumeID,
-				ReadOnly:  false,
-			}
-			test.Run(cs, ns, schedulerName)
-		})
-
 		ginkgo.It(fmt.Sprintf("should use a pre-provisioned volume and retain PV with reclaimPolicy %q [disk.csi.azure.com][windows]", v1.PersistentVolumeReclaimRetain), func() {
 			// Az tests need to be changed to pass the right parameters for in-tree driver.
 			// Skip these tests until above is fixed.
@@ -323,7 +282,6 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 		ginkgo.It("should succeed when creating a shared disk [disk.csi.azure.com][windows]", func() {
 			skipIfUsingInTreeVolumePlugin()
 			skipIfOnAzureStackCloud()
-			skipIfUsingCSIDriverV2()
 			req := makeCreateVolumeReq("single-shared-disk", 512)
 			req.Parameters = map[string]string{
 				"skuName":     "Premium_LRS",
@@ -346,7 +304,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			// Skip these tests until above is fixed.
 			skipIfUsingInTreeVolumePlugin()
 
-			skipManuallyDeletingVolume = true
+			skipVolumeDeletion = true
 			req := makeCreateVolumeReq("invalid-max-shares", 256)
 			req.Parameters = map[string]string{"maxShares": "0"}
 			_, err := azurediskDriver.CreateVolume(context.Background(), req)
@@ -356,7 +314,6 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 		ginkgo.It("should succeed when creating a shared disk with single pod [disk.csi.azure.com][shared disk]", func() {
 			skipIfUsingInTreeVolumePlugin()
 			skipIfOnAzureStackCloud()
-			skipIfUsingCSIDriverV2()
 			sharedDiskSize := int64(1024)
 			req := makeCreateVolumeReq("shared-disk-multiple-pods", sharedDiskSize)
 			diskSize := fmt.Sprintf("%dGi", sharedDiskSize)
@@ -454,7 +411,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 				ginkgo.Skip("test case is only available for migration test")
 			}
 
-			skipManuallyDeletingVolume = true
+			skipVolumeDeletion = true
 			req := makeCreateVolumeReq("pre-provisioned-inline-volume", defaultDiskSize)
 			resp, err := azurediskDriver.CreateVolume(context.Background(), req)
 			if err != nil {

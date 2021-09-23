@@ -64,7 +64,7 @@ var _ = ginkgo.Describe("Controller", func() {
 
 			for _, pod := range pods.Items {
 				if strings.Contains(pod.Spec.NodeName, "csi-azuredisk-node") {
-					azN := azDiskClient.DiskV1alpha1().AzDriverNodes("azure-disk-csi")
+					azN := azDiskClient.DiskV1alpha1().AzDriverNodes(namespace)
 					dNode, err := azN.Get(context.Background(), pod.Spec.NodeName, metav1.GetOptions{})
 					framework.ExpectNoError(err)
 					ginkgo.By("Checking AzDriverNode/Staus")

@@ -28,7 +28,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
 
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/azure"
@@ -69,9 +69,9 @@ func (t *DynamicallyProvisionedAzureDiskWithTag) Run(client clientset.Interface,
 		pvname := pvc.Spec.VolumeName
 		pv, _ := client.CoreV1().PersistentVolumes().Get(context.Background(), pvname, metav1.GetOptions{})
 		diskURI := pv.Spec.PersistentVolumeSource.CSI.VolumeHandle
-		diskName, err := azuredisk.GetDiskName(diskURI)
+		diskName, err := azureutils.GetDiskName(diskURI)
 		framework.ExpectNoError(err, fmt.Sprintf("Error getting diskName for azuredisk %v", err))
-		resourceGroup, err := azuredisk.GetResourceGroupFromURI(diskURI)
+		resourceGroup, err := azureutils.GetResourceGroupFromURI(diskURI)
 		framework.ExpectNoError(err, fmt.Sprintf("Error getting resourceGroup for azuredisk %v", err))
 
 		creds, err := credentials.CreateAzureCredentialFile()
@@ -86,7 +86,7 @@ func (t *DynamicallyProvisionedAzureDiskWithTag) Run(client clientset.Interface,
 		framework.ExpectNoError(err, fmt.Sprintf("Error getting disk for azuredisk %v", err))
 		test, err := util.ConvertTagsToMap(t.Tags)
 		framework.ExpectNoError(err, fmt.Sprintf("Error getting tag %v", err))
-		test["created-by"] = "kubernetes-azure-dd"
+		test["k8s-azure-created-by"] = "kubernetes-azure-dd"
 
 		for k, v := range test {
 			_, ok := disktest.Tags[k]

@@ -1,3 +1,4 @@
+//go:build windows
 // +build windows
 
 /*
@@ -26,6 +27,7 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/mount-utils"
 
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
 )
 
@@ -36,7 +38,7 @@ func formatAndMount(source, target, fstype string, options []string, m *mount.Sa
 	return fmt.Errorf("could not cast to csi proxy class")
 }
 
-func scsiHostRescan(io ioHandler, m *mount.SafeFormatAndMount) {
+func scsiHostRescan(io azureutils.IOHandler, m *mount.SafeFormatAndMount) {
 	var err error
 	if proxy, ok := m.Interface.(mounter.CSIProxyMounter); ok {
 		err = proxy.Rescan()
@@ -50,7 +52,7 @@ func scsiHostRescan(io ioHandler, m *mount.SafeFormatAndMount) {
 }
 
 // search Windows disk number by LUN
-func findDiskByLun(lun int, iohandler ioHandler, m *mount.SafeFormatAndMount) (string, error) {
+func findDiskByLun(lun int, iohandler azureutils.IOHandler, m *mount.SafeFormatAndMount) (string, error) {
 	if proxy, ok := m.Interface.(mounter.CSIProxyMounter); ok {
 		return proxy.FindDiskByLun(strconv.Itoa(lun))
 	}

@@ -23,7 +23,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"reflect"
 	"runtime"
 	"syscall"
 	"testing"
@@ -317,7 +316,7 @@ func TestGetDevicePathWithMountPath(t *testing.T) {
 				nodeProvisioner.SetNextCommandOutputScripts(test.outputScript)
 			}
 			_, err := nodeProvisioner.GetDevicePathWithMountPath(test.req)
-			if !reflect.DeepEqual(err, test.expectedErr) {
+			if !testutil.IsErrorEquivalent(test.expectedErr, err) {
 				t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
 			}
 		}

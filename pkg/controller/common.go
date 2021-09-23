@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -27,33 +28,44 @@ import (
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	corev1 "k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
-	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 const (
-	maxRetry = 10
 	// DefaultTimeUntilDeletion = time.Duration(5) * time.Minute
 	DefaultTimeUntilDeletion = time.Duration(30) * time.Second
+
+	maxRetry             = 10
+	defaultRetryDuration = time.Duration(1) * time.Second
+	defaultRetryFactor   = 5.0
+	defaultRetrySteps    = 5
 )
 
-type cleanUpMode int
+type roleMode int
 
 const (
-	primaryOnly cleanUpMode = iota
+	primaryOnly roleMode = iota
 	replicaOnly
 	all
 )
+
+var roles = map[roleMode]string{
+	primaryOnly: string(v1alpha1.PrimaryRole),
+	replicaOnly: string(v1alpha1.ReplicaRole),
+}
 
 type updateWithLock bool
 
@@ -89,7 +101,40 @@ type CloudProvisioner interface {
 type azReconciler interface {
 	getClient() client.Client
 	getAzClient() azClientSet.Interface
-	getNamespace() string
+}
+
+type retryInfoEntry struct {
+	backoff   *wait.Backoff
+	retryLock *sync.Mutex
+}
+
+type retryInfo struct {
+	retryMap *sync.Map
+}
+
+func newRetryInfo() *retryInfo {
+	return &retryInfo{
+		retryMap: &sync.Map{},
+	}
+}
+
+func newRetryEntry() *retryInfoEntry {
+	return &retryInfoEntry{
+		retryLock: &sync.Mutex{},
+		backoff:   &wait.Backoff{Duration: defaultRetryDuration, Factor: defaultRetryFactor, Steps: defaultRetrySteps},
+	}
+}
+
+func (r *retryInfo) nextRequeue(objectName string) time.Duration {
+	v, _ := r.retryMap.LoadOrStore(objectName, newRetryEntry())
+	entry := v.(*retryInfoEntry)
+	entry.retryLock.Lock()
+	defer entry.retryLock.Unlock()
+	return entry.backoff.Step()
+}
+
+func (r *retryInfo) deleteEntry(objectName string) {
+	r.retryMap.Delete(objectName)
 }
 
 type SharedState struct {
@@ -112,6 +157,7 @@ func NewSharedState() *SharedState {
 
 func (c *SharedState) getVolumesFromPod(podName string) ([]string, error) {
 	var claims []string
+	klog.V(5).Infof("Getting requested volumes for pod %s.", podName)
 	value, ok := c.podToClaimsMap.Load(podName)
 	if !ok {
 		return nil, status.Errorf(codes.NotFound, "unable to find an entry for pod (%s) in podToClaims map", podName)
@@ -126,13 +172,16 @@ func (c *SharedState) getVolumesFromPod(podName string) ([]string, error) {
 		value, ok := c.claimToVolumeMap.Load(claim)
 		if !ok {
 			// the pvc entry is not an azure resource
+			klog.V(5).Infof("Requested volume %s for pod %s is not an azure resource", value, podName)
 			continue
 		}
 		volume, ok := value.(string)
+		klog.V(5).Infof("Requested volume %s for pod %s is an azure resource", value, podName)
 		if !ok {
 			return nil, status.Errorf(codes.Internal, "wrong output type: expected string")
 		}
 		volumes = append(volumes, volume)
+		klog.V(5).Infof("Requested volumes for pod %s are now the following: Volumes: %v, Len: %d", podName, volumes, len(volumes))
 	}
 	return volumes, nil
 }
@@ -158,60 +207,66 @@ func (c *SharedState) getPodsFromVolume(volumeName string) ([]string, error) {
 	return pods, nil
 }
 
-func (c *SharedState) getNodesForReplica(ctx context.Context, azr azReconciler, volumes []string, pods ...string) ([]string, error) {
-	if volumes == nil {
-		volumes = []string{}
-		for _, pod := range pods {
-			podVolumes, err := c.getVolumesFromPod(pod)
-			if err != nil {
-				return nil, err
-			}
-			volumes = append(volumes, podVolumes...)
-		}
-	}
-
-	numReplica := 0
-	for _, volume := range volumes {
-		var azVolume v1alpha1.AzVolume
-		if err := azr.getClient().Get(ctx, types.NamespacedName{Namespace: azr.getNamespace(), Name: volume}, &azVolume); err != nil {
+func (c *SharedState) getVolumesForPods(pods ...string) ([]string, error) {
+	volumes := []string{}
+	for _, pod := range pods {
+		podVolumes, err := c.getVolumesFromPod(pod)
+		if err != nil {
 			return nil, err
 		}
-		numReplica = max(numReplica, azVolume.Spec.MaxMountReplicaCount)
+		volumes = append(volumes, podVolumes...)
 	}
+	return volumes, nil
+}
 
+func getRankedNodesForReplicaAttachments(ctx context.Context, azr azReconciler, volumes []string) ([]string, error) {
+	klog.V(5).Info("Getting ranked list of nodes for creating AzVolumeAttachments")
+	numReplica := 0
 	nodes := []string{}
 	nodeScores := map[string]int{}
 	primaryNode := ""
+
 	for _, volume := range volumes {
-		volReq, err := createLabelRequirements(azureutils.VolumeNameLabel, volume)
+		azVolume, err := azureutils.GetAzVolume(ctx, azr.getClient(), azr.getAzClient(), volume, consts.AzureDiskCrdNamespace, true)
 		if err != nil {
-			return nil, err
-		}
-		labelSelector := labels.NewSelector().Add(*volReq)
-		azVolumeAttachments := &v1alpha1.AzVolumeAttachmentList{}
-		err = azr.getClient().List(ctx, azVolumeAttachments, &client.ListOptions{LabelSelector: labelSelector})
-		if err != nil {
+			klog.V(5).Infof("AzVolume for volume %s is not found.", volume)
 			return nil, err
 		}
 
-		for _, azVolumeAttachment := range azVolumeAttachments.Items {
+		numReplica = max(numReplica, azVolume.Spec.MaxMountReplicaCount)
+		klog.V(5).Infof("Number of requested replicas for azvolume %s is: %d. Max replica count is: %d.",
+			volume, numReplica, azVolume.Spec.MaxMountReplicaCount)
+
+		azVolumeAttachments, err := getAzVolumeAttachmentsForVolume(ctx, azr.getClient(), volume, all)
+		if err != nil {
+			klog.V(5).Infof("Error listing AzVolumeAttachments for azvolume %s. Error: %v.", volume, err)
+		}
+
+		klog.V(5).Infof("Found %d AzVolumeAttachments for volume %s. AzVolumeAttachments: %v.", len(azVolumeAttachments), volume, azVolumeAttachments)
+		for _, azVolumeAttachment := range azVolumeAttachments {
 			if azVolumeAttachment.Spec.RequestedRole == v1alpha1.PrimaryRole {
+				klog.V(5).Infof("AzVolumeAttachments %s for volume %s is primary on node %s.", azVolumeAttachment.Name, volume, azVolumeAttachment.Spec.NodeName)
 				if primaryNode == "" {
 					primaryNode = azVolumeAttachment.Spec.NodeName
 				}
-				continue
+			} else {
+				klog.V(5).Infof("Azvolumeattachment %s is not primary. Scoring node %s with replica attachment. Current score array is %v. Len: %d.", azVolumeAttachment.Name, azVolumeAttachment.Spec.NodeName, nodeScores, len(nodeScores))
+				if _, ok := nodeScores[azVolumeAttachment.Spec.NodeName]; !ok {
+					// Node is not in the array. Adding node to the array with score 0.
+					nodeScores[azVolumeAttachment.Spec.NodeName] = 0
+					nodes = append(nodes, azVolumeAttachment.Spec.NodeName)
+				}
+				nodeScores[azVolumeAttachment.Spec.NodeName]++
+				klog.V(5).Infof("New score for node %s is %d. Updated score array is %v. Len: %d.", azVolumeAttachment.Spec.NodeName, nodeScores[azVolumeAttachment.Spec.NodeName], nodeScores, len(nodeScores))
 			}
-			if _, ok := nodeScores[azVolumeAttachment.Spec.NodeName]; !ok {
-				nodeScores[azVolumeAttachment.Spec.NodeName] = 0
-				nodes = append(nodes, azVolumeAttachment.Spec.NodeName)
-			}
-			nodeScores[azVolumeAttachment.Spec.NodeName]++
 		}
 	}
+	// sorting nodes array per their score in nodeScore array
 	sort.Slice(nodes[:], func(i, j int) bool {
 		return nodeScores[nodes[i]] > nodeScores[nodes[j]]
 	})
 
+	// select at least as many nodes as requested replicas
 	if len(nodes) < numReplica {
 		selected, err := selectNodes(ctx, azr, numReplica-len(nodes), primaryNode, nodeScores)
 		if err != nil {
@@ -222,28 +277,39 @@ func (c *SharedState) getNodesForReplica(ctx context.Context, azr azReconciler, 
 	return nodes[:min(len(nodes), numReplica)], nil
 }
 
-func (c *SharedState) addPod(pod *corev1.Pod, updateOption updateWithLock) (podLock *sync.Mutex) {
-	podKey := getQualifiedName(pod.Namespace, pod.Name)
+func (c *SharedState) addPod(pod *v1.Pod, updateOption updateWithLock) {
 
+	podKey := getQualifiedName(pod.Namespace, pod.Name)
+	klog.V(5).Infof("Adding pod %s to shared map with keyName %s.", pod.Name, podKey)
 	v, _ := c.podLocks.LoadOrStore(podKey, &sync.Mutex{})
-	podLock = v.(*sync.Mutex)
+
+	podLock := v.(*sync.Mutex)
 	if updateOption == acquireLock {
 		podLock.Lock()
+		defer podLock.Unlock()
 	}
-
+	klog.V(5).Infof("Pod spec of pod %s is: %v. With volumes: %v", pod.Name, pod.Spec, pod.Spec.Volumes)
 	claims := []string{}
 	for _, volume := range pod.Spec.Volumes {
-		if volume.CSI == nil || volume.CSI.Driver != azureutils.DriverName {
+		if volume.PersistentVolumeClaim == nil {
+			klog.V(5).Infof("Pod %s: Skipping Volume %s. No persistent volume exists.", pod.Name, volume)
 			continue
 		}
 		namespacedClaimName := getQualifiedName(pod.Namespace, volume.PersistentVolumeClaim.ClaimName)
+		if _, ok := c.claimToVolumeMap.Load(namespacedClaimName); !ok {
+			klog.Infof("Skipping Pod %s. Volume %v not csi. Driver: %s", pod.Name, volume, volume.CSI)
+			continue
+		}
+		klog.V(5).Infof("Pod %s. Volume %v is csi.", pod.Name, volume)
 		claims = append(claims, namespacedClaimName)
 		v, _ := c.claimToPodsMap.LoadOrStore(namespacedClaimName, []string{})
 
 		pods := v.([]string)
 		podExist := false
 		for _, pod := range pods {
+			klog.V(5).Infof("Looking for pod %s with podkey %s.", pod, podKey)
 			if pod == podKey {
+				klog.V(5).Infof("Found pod %s with podkey %s.", pod, podKey)
 				podExist = true
 				break
 			}
@@ -251,10 +317,11 @@ func (c *SharedState) addPod(pod *corev1.Pod, updateOption updateWithLock) (podL
 		if !podExist {
 			pods = append(pods, podKey)
 		}
+		klog.V(5).Infof("Storing pod %s and claim %s to claimToPodsMap map.", pod.Name, namespacedClaimName)
 		c.claimToPodsMap.Store(namespacedClaimName, pods)
 	}
+	klog.V(5).Infof("Storing pod %s and claim %s to podToClaimsMap map.", pod.Name, claims)
 	c.podToClaimsMap.Store(podKey, claims)
-	return
 }
 
 func (c *SharedState) deletePod(podKey string) {
@@ -294,7 +361,7 @@ func selectNodes(ctx context.Context, azr azReconciler, numNodes int, primaryNod
 	// List all AzDriverNodes
 	nodes = &v1alpha1.AzDriverNodeList{}
 	if err = azr.getClient().List(ctx, nodes, &client.ListOptions{}); err != nil {
-		klog.Errorf("failed to retrieve azDriverNode List for namespace %s: %v", azr.getNamespace(), err)
+		klog.Errorf("failed to retrieve azDriverNode List for namespace %s: %v", consts.AzureDiskCrdNamespace, err)
 		return filteredNodes, err
 	}
 
@@ -337,42 +404,36 @@ func selectNodes(ctx context.Context, azr azReconciler, numNodes int, primaryNod
 }
 
 func getNodesWithReplica(ctx context.Context, azr azReconciler, volumeName string) ([]string, error) {
-	// get all replica attachments for the given volume
-	volReq, err := createLabelRequirements(azureutils.VolumeNameLabel, volumeName)
+	klog.V(5).Infof("Getting nodes with replica AzVolumeAttachments for volume %s.", volumeName)
+	azVolumeAttachments, err := getAzVolumeAttachmentsForVolume(ctx, azr.getClient(), volumeName, replicaOnly)
 	if err != nil {
-		return nil, err
-	}
-	roleReq, err := createLabelRequirements(azureutils.RoleLabel, string(v1alpha1.ReplicaRole))
-	if err != nil {
-		return nil, err
-	}
-	labelSelector := labels.NewSelector().Add(*volReq, *roleReq)
-	azVolumeAttachments := &v1alpha1.AzVolumeAttachmentList{}
-	err = azr.getClient().List(ctx, azVolumeAttachments, &client.ListOptions{LabelSelector: labelSelector})
-	if err != nil {
+		klog.V(5).Infof("Error getting AzVolumeAttachments for volume %s. Error: %v", volumeName, err)
 		return nil, err
 	}
 
 	nodes := []string{}
-	for _, azVolumeAttachment := range azVolumeAttachments.Items {
+	for _, azVolumeAttachment := range azVolumeAttachments {
 		nodes = append(nodes, azVolumeAttachment.Spec.NodeName)
 	}
-
+	klog.V(5).Infof("Nodes with AzVolumeAttachments for volume %s are: %v, Len: %d", volumeName, nodes, len(nodes))
 	return nodes, nil
 }
 
-func createReplica(ctx context.Context, azr azReconciler, volumeID, node string) error {
+func createReplicaAzVolumeAttachment(ctx context.Context, azr azReconciler, volumeID, node string) error {
+	klog.V(5).Infof("Creating replica AzVolumeAttachments for volumeId %s on node %s. ", volumeID, node)
 	diskName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(volumeID)
 	if err != nil {
+		klog.Warningf("Error getting Diskname for replica AzVolumeAttachments for volumeId %s on node %s. Error: %v. ", volumeID, node, err)
 		return err
 	}
+
+	// creating azvolumeattachment
 	volumeName := strings.ToLower(diskName)
 	replicaName := azureutils.GetAzVolumeAttachmentName(volumeName, node)
-
-	_, err = azr.getAzClient().DiskV1alpha1().AzVolumeAttachments(azr.getNamespace()).Create(ctx, &v1alpha1.AzVolumeAttachment{
+	_, err = azr.getAzClient().DiskV1alpha1().AzVolumeAttachments(consts.AzureDiskCrdNamespace).Create(ctx, &v1alpha1.AzVolumeAttachment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      replicaName,
-			Namespace: azr.getNamespace(),
+			Namespace: consts.AzureDiskCrdNamespace,
 			Labels: map[string]string{
 				azureutils.NodeNameLabel:   node,
 				azureutils.VolumeNameLabel: volumeName,
@@ -390,21 +451,22 @@ func createReplica(ctx context.Context, azr azReconciler, volumeID, node string)
 			State: v1alpha1.AttachmentPending,
 		},
 	}, metav1.CreateOptions{})
-
 	if err != nil {
-		klog.Infof("Replica AzVolumeAttachment (%s) has been successfully created.", replicaName)
+		klog.Warning("Failed creating replica AzVolumeAttachment %s. Error: %v", replicaName, err)
+		return err
 	}
-	return err
+	klog.V(5).Infof("Replica AzVolumeAttachment %s has been successfully created.", replicaName)
+	return nil
 }
 
-func cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azr azReconciler, azVolumeName string, mode cleanUpMode) (*v1alpha1.AzVolumeAttachmentList, error) {
+func cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azr azReconciler, azVolumeName string, mode roleMode) (*v1alpha1.AzVolumeAttachmentList, error) {
 	volRequirement, err := createLabelRequirements(azureutils.VolumeNameLabel, azVolumeName)
 	if err != nil {
 		return nil, err
 	}
 	labelSelector := labels.NewSelector().Add(*volRequirement)
 
-	attachments, err := azr.getAzClient().DiskV1alpha1().AzVolumeAttachments(azr.getNamespace()).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})
+	attachments, err := azr.getAzClient().DiskV1alpha1().AzVolumeAttachments(consts.AzureDiskCrdNamespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return nil, nil
@@ -427,14 +489,14 @@ func cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azr azReconciler, az
 	return attachments, nil
 }
 
-func cleanUpAzVolumeAttachmentByNode(ctx context.Context, azr azReconciler, azDriverNodeName string, mode cleanUpMode) (*v1alpha1.AzVolumeAttachmentList, error) {
+func cleanUpAzVolumeAttachmentByNode(ctx context.Context, azr azReconciler, azDriverNodeName string, mode roleMode) (*v1alpha1.AzVolumeAttachmentList, error) {
 	nodeRequirement, err := createLabelRequirements(azureutils.NodeNameLabel, azDriverNodeName)
 	if err != nil {
 		return nil, err
 	}
 	labelSelector := labels.NewSelector().Add(*nodeRequirement)
 
-	attachments, err := azr.getAzClient().DiskV1alpha1().AzVolumeAttachments(azr.getNamespace()).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})
+	attachments, err := azr.getAzClient().DiskV1alpha1().AzVolumeAttachments(consts.AzureDiskCrdNamespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return attachments, nil
@@ -468,7 +530,7 @@ func cleanUpAzVolumeAttachments(ctx context.Context, azr azReconciler, attachmen
 			klog.Errorf("failed to delete AzVolumeAttachment (%s): %v", attachment.Name, err)
 			return err
 		}
-		if err := azr.getAzClient().DiskV1alpha1().AzVolumeAttachments(azr.getNamespace()).Delete(ctx, attachment.Name, metav1.DeleteOptions{}); err != nil {
+		if err := azr.getAzClient().DiskV1alpha1().AzVolumeAttachments(consts.AzureDiskCrdNamespace).Delete(ctx, attachment.Name, metav1.DeleteOptions{}); err != nil {
 			klog.Errorf("failed to delete AzVolumeAttachment (%s): %v", attachment.Name, err)
 			return err
 		}
@@ -477,7 +539,36 @@ func cleanUpAzVolumeAttachments(ctx context.Context, azr azReconciler, attachmen
 	return nil
 }
 
-func shouldCleanUp(attachment v1alpha1.AzVolumeAttachment, mode cleanUpMode) bool {
+func getAzVolumeAttachmentsForVolume(ctx context.Context, azclient client.Client, volumeName string, azVolumeAttachmentRole roleMode) (attachments []v1alpha1.AzVolumeAttachment, err error) {
+	klog.V(5).Infof("Getting the list of AzVolumeAttachments for %s.", volumeName)
+	labelSelector := labels.NewSelector()
+	volReq, err := createLabelRequirements(azureutils.VolumeNameLabel, volumeName)
+	if err != nil {
+		klog.V(5).Infof("Failed to create volume based label for listing AzVolumeAttachments for %s. Error: %v", volumeName, err)
+		return
+	}
+	// filter by role if a role is specified
+	if azVolumeAttachmentRole != all {
+		roleReq, err := createLabelRequirements(azureutils.RoleLabel, roles[azVolumeAttachmentRole])
+		if err != nil {
+			klog.V(5).Infof("Failed to create role based label for listing AzVolumeAttachments for %s. Error: %v", volumeName, err)
+			return nil, err
+		}
+		labelSelector = labelSelector.Add(*roleReq)
+	}
+	labelSelector = labelSelector.Add(*volReq)
+	klog.V(5).Infof("Label selector for AzVolumeAttachments for volume %s is: %v.", volumeName, labelSelector)
+	azVolumeAttachments := &v1alpha1.AzVolumeAttachmentList{}
+	err = azclient.List(ctx, azVolumeAttachments, &client.ListOptions{LabelSelector: labelSelector})
+	if err != nil {
+		klog.V(5).Infof("Error retrieving AzVolumeAttachments azvolume %s. Error: %v", volumeName, err)
+		return
+	}
+	attachments = azVolumeAttachments.Items
+	return
+}
+
+func shouldCleanUp(attachment v1alpha1.AzVolumeAttachment, mode roleMode) bool {
 	return mode == all || (attachment.Spec.RequestedRole == v1alpha1.PrimaryRole && mode == primaryOnly) || (attachment.Spec.RequestedRole == v1alpha1.ReplicaRole && mode == replicaOnly)
 }
 
@@ -528,6 +619,43 @@ func getQualifiedName(namespace, name string) string {
 	return fmt.Sprintf("%s/%s", namespace, name)
 }
 
+func formatUpdateStateError(objectType, fromState, toState string, expectedStates ...string) string {
+	return fmt.Sprintf("%s's state '%s' cannot be updated to %s. %s can only be updated to %s", objectType, fromState, toState, fromState, strings.Join(expectedStates, ", "))
+}
+
+func getOperationRequeueError(desired string, obj client.Object) error {
+	return status.Errorf(codes.Aborted, "requeueing %s operation because another operation is already pending on %v (%s)", desired, reflect.TypeOf(obj), obj.GetName())
+}
+
+func reconcileReturnOnError(obj interface{}, operationType string, err error) (reconcile.Result, error) {
+	var errMsg string
+	if obj != nil {
+		var objName string
+		switch target := obj.(type) {
+		case *v1alpha1.AzVolume:
+			objName = target.Name
+		case *v1alpha1.AzVolumeAttachment:
+			objName = target.Name
+		}
+		errMsg = fmt.Sprintf("failed to %s %v (%s): %v", operationType, reflect.TypeOf(obj), objName, err)
+	}
+	klog.Error(errMsg)
+	if status.Code(err) == codes.FailedPrecondition {
+		return reconcile.Result{Requeue: false}, nil
+	}
+	return reconcile.Result{Requeue: true}, err
+}
+
+func isOperationInProcess(obj interface{}) bool {
+	switch target := obj.(type) {
+	case *v1alpha1.AzVolume:
+		return target.Status.State == v1alpha1.VolumeCreating || target.Status.State == v1alpha1.VolumeDeleting || target.Status.State == v1alpha1.VolumeUpdating
+	case *v1alpha1.AzVolumeAttachment:
+		return target.Status.State == v1alpha1.Attaching || target.Status.State == v1alpha1.Detaching
+	}
+	return false
+}
+
 func min(a, b int) int {
 	if a < b {
 		return a
@@ -540,4 +668,13 @@ func max(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func containsString(key string, items []string) bool {
+	for _, item := range items {
+		if item == key {
+			return true
+		}
+	}
+	return false
 }

@@ -1,3 +1,4 @@
+//go:build windows
 // +build windows
 
 /*
@@ -51,6 +52,8 @@ type CSIProxyMounter interface {
 	GetDeviceNameFromMount(mountPath, pluginMountDir string) (string, error)
 	GetVolumeSizeInBytes(devicePath string) (int64, error)
 	ResizeVolume(devicePath string) error
+
+	GetAPIVersions() string
 }
 
 var _ CSIProxyMounter = &csiProxyMounter{}

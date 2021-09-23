@@ -1,3 +1,4 @@
+//go:build windows
 // +build windows
 
 /*
@@ -37,7 +38,7 @@ import (
 	"k8s.io/mount-utils"
 )
 
-var _ CSIProxyMounter = &csiProxyMounterV1Beta{}
+var _ mount.Interface = &csiProxyMounterV1Beta{}
 
 type csiProxyMounterV1Beta struct {
 	FsClient     *fsclient.Client

@@ -26,6 +26,7 @@ import (
 	"strings"
 	"time"
 
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -36,8 +37,9 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/volume"
-	"k8s.io/kubernetes/pkg/volume/util/hostutil"
 	mount "k8s.io/mount-utils"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 )
 
 const (
@@ -72,7 +74,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		return nil, status.Error(codes.InvalidArgument, "Volume capability not provided")
 	}
 
-	if !isValidVolumeCapabilities([]*csi.VolumeCapability{volumeCapability}) {
+	if !azureutils.IsValidVolumeCapabilities([]*csi.VolumeCapability{volumeCapability}) {
 		return nil, status.Error(codes.InvalidArgument, "Volume capability not supported")
 	}
 
@@ -81,7 +83,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	}
 	defer d.volumeLocks.Release(diskURI)
 
-	lun, ok := req.PublishContext[LUN]
+	lun, ok := req.PublishContext[consts.LUN]
 	if !ok {
 		return nil, status.Error(codes.InvalidArgument, "lun not provided")
 	}
@@ -94,7 +96,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	// If perf optimizations are enabled
 	// tweak device settings to enhance performance
 	if d.getPerfOptimizationEnabled() {
-		profile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr, err := getDiskPerfAttributes(req.GetVolumeContext())
+		profile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr, err := optimization.GetDiskPerfAttributes(req.GetVolumeContext())
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "Failed to get perf attributes for %s. Error: %v", source, err)
 		}
@@ -141,7 +143,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	}
 
 	// If partition is specified, should mount it only instead of the entire disk.
-	if partition, ok := req.GetVolumeContext()[volumeAttributePartition]; ok {
+	if partition, ok := req.GetVolumeContext()[consts.VolumeAttributePartition]; ok {
 		source = source + "-part" + partition
 	}
 
@@ -155,7 +157,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	klog.V(2).Infof("NodeStageVolume: format %s and mounting at %s successfully.", source, target)
 
 	// if resize is required, resize filesystem
-	if required, ok := req.GetVolumeContext()[resizeRequired]; ok && required == "true" {
+	if required, ok := req.GetVolumeContext()[consts.ResizeRequired]; ok && required == "true" {
 		klog.V(2).Infof("NodeStageVolume: fs resize initiating on target(%s) volumeid(%s)", target, diskURI)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "NodeStageVolume: Could not get volume path for %s: %v", target, err)
@@ -231,7 +233,7 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 
 	switch req.GetVolumeCapability().GetAccessType().(type) {
 	case *csi.VolumeCapability_Block:
-		lun, ok := req.PublishContext[LUN]
+		lun, ok := req.PublishContext[consts.LUN]
 		if !ok {
 			return nil, status.Error(codes.InvalidArgument, "lun not provided")
 		}
@@ -316,9 +318,9 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 	if err != nil {
 		klog.Warningf("Failed to get zone from Azure cloud provider, nodeName: %v, error: %v", d.NodeID, err)
 	} else {
-		if isAvailabilityZone(zone.FailureDomain, d.cloud.Location) {
+		if azureutils.IsValidAvailabilityZone(zone.FailureDomain, d.cloud.Location) {
 			topology.Segments[topologyKey] = zone.FailureDomain
-			topology.Segments[WellKnownTopologyKey] = zone.FailureDomain
+			topology.Segments[consts.WellKnownTopologyKey] = zone.FailureDomain
 			klog.V(2).Infof("NodeGetInfo, nodeName: %v, zone: %v", d.NodeID, zone.FailureDomain)
 		}
 	}
@@ -363,7 +365,7 @@ func (d *Driver) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeS
 		return nil, status.Errorf(codes.Internal, "failed to stat file %s: %v", req.VolumePath, err)
 	}
 
-	isBlock, err := hostutil.NewHostUtil().PathIsDevice(req.VolumePath)
+	isBlock, err := d.getHostUtil().PathIsDevice(req.VolumePath)
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "failed to determine whether %s is block device: %v", req.VolumePath, err)
 	}
@@ -446,7 +448,7 @@ func (d *Driver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolume
 		return nil, status.Error(codes.InvalidArgument, "volume path must be provided")
 	}
 
-	isBlock, err := hostutil.NewHostUtil().PathIsDevice(volumePath)
+	isBlock, err := d.getHostUtil().PathIsDevice(volumePath)
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "failed to determine device path for volumePath [%v]: %v", volumePath, err)
 	}
@@ -460,7 +462,7 @@ func (d *Driver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolume
 	if volumeCapability != nil {
 		// VolumeCapability is optional, if specified, validate it
 		caps := []*csi.VolumeCapability{volumeCapability}
-		if !isValidVolumeCapabilities(caps) {
+		if !azureutils.IsValidVolumeCapabilities(caps) {
 			return nil, status.Error(codes.InvalidArgument, "VolumeCapability is invalid.")
 		}
 
@@ -500,7 +502,7 @@ func (d *Driver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolume
 func getFStype(attributes map[string]string) string {
 	for k, v := range attributes {
 		switch strings.ToLower(k) {
-		case fsTypeField:
+		case consts.FsTypeField:
 			return strings.ToLower(v)
 		}
 	}
@@ -513,7 +515,7 @@ func getFStype(attributes map[string]string) string {
 func (d *Driver) ensureMountPoint(target string) (bool, error) {
 	notMnt, err := d.mounter.IsLikelyNotMountPoint(target)
 	if err != nil && !os.IsNotExist(err) {
-		if IsCorruptedDir(target) {
+		if azureutils.IsCorruptedDir(target) {
 			notMnt = false
 			klog.Warningf("detected corrupted mount for targetPath [%s]", target)
 		} else {
@@ -554,18 +556,17 @@ func (d *Driver) formatAndMount(source, target, fstype string, options []string)
 }
 
 func (d *Driver) getDevicePathWithLUN(lunStr string) (string, error) {
-	lun, err := getDiskLUN(lunStr)
+	lun, err := azureutils.GetDiskLUN(lunStr)
 	if err != nil {
 		return "", err
 	}
 
-	io := &osIOHandler{}
-	scsiHostRescan(io, d.mounter)
+	scsiHostRescan(d.ioHandler, d.mounter)
 
 	newDevicePath := ""
 	err = wait.PollImmediate(1*time.Second, 2*time.Minute, func() (bool, error) {
 		var err error
-		if newDevicePath, err = findDiskByLun(int(lun), io, d.mounter); err != nil {
+		if newDevicePath, err = findDiskByLun(int(lun), d.ioHandler, d.mounter); err != nil {
 			return false, fmt.Errorf("azureDisk - findDiskByLun(%v) failed with error(%s)", lun, err)
 		}
 

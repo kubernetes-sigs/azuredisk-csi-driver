@@ -137,7 +137,3 @@ func (r *ReconcileAzDriverNode) getClient() client.Client {
 func (r *ReconcileAzDriverNode) getAzClient() azClientSet.Interface {
 	return r.azVolumeClient
 }
-
-func (r *ReconcileAzDriverNode) getNamespace() string {
-	return r.namespace
-}

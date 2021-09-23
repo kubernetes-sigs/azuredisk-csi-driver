@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"os"
 
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/testsuites"
 
@@ -35,6 +34,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	restclientset "k8s.io/client-go/rest"
 	"k8s.io/kubernetes/test/e2e/framework"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
 var _ = ginkgo.Describe("Dynamic Provisioning", func() {
@@ -175,6 +175,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		scParameters := map[string]string{
 			"skuName":             "Standard_LRS",
 			"networkAccessPolicy": "DenyAll",
+			"userAgent":           "azuredisk-e2e-test",
 		}
 		test := testsuites.DynamicallyProvisionedVolumeSubpathTester{
 			CSIDriver:              testDriver,
@@ -211,6 +212,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 				"perfProfile": "Basic",
 				// enableBursting can only be applied to Premium disk, disk size > 512GB, Ultra & shared disk is not supported.
 				"enableBursting": "true",
+				"userAgent":      "azuredisk-e2e-test",
 			},
 		}
 		test.Run(cs, ns, schedulerName)
@@ -966,7 +968,7 @@ func (t *dynamicProvisioningTestSuite) normalizeVolume(volume testsuites.VolumeD
 	case "kubernetes.io/azure-disk":
 		volumeBindingMode := storagev1.VolumeBindingWaitForFirstConsumer
 		volume.VolumeBindingMode = &volumeBindingMode
-	case "", azuredisk.DefaultDriverName:
+	case "", consts.DefaultDriverName:
 		if !isMultiZone {
 			return volume
 		}

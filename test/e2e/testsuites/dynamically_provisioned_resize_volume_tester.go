@@ -32,7 +32,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
 
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/azure"
@@ -129,9 +129,9 @@ func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface,
 		diskURI = newPv.Spec.PersistentVolumeSource.AzureDisk.DataDiskURI
 	}
 	ginkgo.By(fmt.Sprintf("got DiskURI: %v", diskURI))
-	diskName, err := azuredisk.GetDiskName(diskURI)
+	diskName, err := azureutils.GetDiskName(diskURI)
 	framework.ExpectNoError(err, fmt.Sprintf("Error getting diskName for azuredisk %v", err))
-	resourceGroup, err := azuredisk.GetResourceGroupFromURI(diskURI)
+	resourceGroup, err := azureutils.GetResourceGroupFromURI(diskURI)
 	framework.ExpectNoError(err, fmt.Sprintf("Error getting resourceGroup for azuredisk %v", err))
 
 	creds, err := credentials.CreateAzureCredentialFile()

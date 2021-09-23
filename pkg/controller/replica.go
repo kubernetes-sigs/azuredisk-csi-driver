@@ -25,13 +25,11 @@ import (
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/wait"
 	kubeClientSet "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
-	azVolumeClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -49,7 +47,7 @@ const (
 
 type ReconcileReplica struct {
 	client                client.Client
-	azVolumeClient        azVolumeClientSet.Interface
+	azVolumeClient        azClientSet.Interface
 	kubeClient            kubeClientSet.Interface
 	namespace             string
 	controllerSharedState *SharedState
@@ -91,6 +89,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 		if deletionRequested(&azVolumeAttachment.ObjectMeta) {
 			if azVolumeAttachment.Annotations == nil || !metav1.HasAnnotation(azVolumeAttachment.ObjectMeta, azureutils.CleanUpAnnotation) {
 				go func() {
+					// wait for replica AzVolumeAttachment deletion
 					conditionFunc := func() (bool, error) {
 						var tmp v1alpha1.AzVolumeAttachment
 						err := r.client.Get(ctx, request.NamespacedName, &tmp)
@@ -102,11 +101,12 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 					}
 					_ = wait.PollImmediateInfinite(deletionPollingInterval, conditionFunc)
 
-					for i := 0; i < maxRetry; i++ {
-						if err := r.manageReplicas(ctx, azVolumeAttachment.Spec.UnderlyingVolume); err == nil {
-							break
-						}
+					// retry replica management with exponential backoff until success
+					conditionFunc = func() (bool, error) {
+						err := r.manageReplicas(ctx, azVolumeAttachment.Spec.UnderlyingVolume)
+						return true, err
 					}
+					_ = wait.ExponentialBackoffWithContext(ctx, wait.Backoff{Duration: defaultRetryDuration, Factor: defaultRetryFactor, Steps: defaultRetrySteps}, conditionFunc)
 				}()
 			}
 		}
@@ -161,24 +161,13 @@ func (r *ReconcileReplica) manageReplicas(ctx context.Context, volumeName string
 		return status.Errorf(codes.Aborted, "azVolume (%s) has no underlying volume object", azVolume.Name)
 	}
 
-	// get all replica attachments for the given volume
-	volReq, err := createLabelRequirements(azureutils.VolumeNameLabel, volumeName)
-	if err != nil {
-		return err
-	}
-	roleReq, err := createLabelRequirements(azureutils.RoleLabel, string(v1alpha1.ReplicaRole))
-	if err != nil {
-		return err
-	}
-	labelSelector := labels.NewSelector().Add(*volReq, *roleReq)
-	azVolumeAttachments := &v1alpha1.AzVolumeAttachmentList{}
-	err = r.client.List(ctx, azVolumeAttachments, &client.ListOptions{LabelSelector: labelSelector})
+	azVolumeAttachments, err := getAzVolumeAttachmentsForVolume(ctx, r.client, volumeName, replicaOnly)
 	if err != nil {
 		klog.Errorf("failed to list AzVolumeAttachment: %v", err)
 		return err
 	}
 
-	desiredReplicaCount, currentReplicaCount := azVolume.Spec.MaxMountReplicaCount, len(azVolumeAttachments.Items)
+	desiredReplicaCount, currentReplicaCount := azVolume.Spec.MaxMountReplicaCount, len(azVolumeAttachments)
 	klog.Infof("control number of replicas for volume (%s): desired=%d,\tcurrent:%d", azVolume.Spec.UnderlyingVolume, desiredReplicaCount, currentReplicaCount)
 
 	// if the azVolume is marked deleted, do no create more azvolumeattachment objects
@@ -205,7 +194,12 @@ func (r *ReconcileReplica) getNodesForReplica(ctx context.Context, volumeName st
 		}
 	}
 
-	nodes, err := r.controllerSharedState.getNodesForReplica(ctx, r, nil, pods...)
+	volumes, err := r.controllerSharedState.getVolumesForPods(pods...)
+	if err != nil {
+		return nil, err
+	}
+
+	nodes, err := getRankedNodesForReplicaAttachments(ctx, r, volumes)
 	if err != nil {
 		return nil, err
 	}
@@ -263,8 +257,8 @@ func (r *ReconcileReplica) createReplicas(ctx context.Context, numReplica int, v
 	}
 
 	for _, node := range nodes {
-		if err := createReplica(ctx, r, volumeID, node); err != nil {
-			klog.Errorf("failed to create replica azVolumeAttachment for volume %s: %v", volumeName, err)
+		if err := createReplicaAzVolumeAttachment(ctx, r, volumeID, node); err != nil {
+			klog.Errorf("failed to create replica AzVolumeAttachment for volume %s: %v", volumeName, err)
 			return err
 		}
 	}
@@ -334,8 +328,4 @@ func (r *ReconcileReplica) getClient() client.Client {
 
 func (r *ReconcileReplica) getAzClient() azClientSet.Interface {
 	return r.azVolumeClient
-}
-
-func (r *ReconcileReplica) getNamespace() string {
-	return r.namespace
 }

@@ -20,8 +20,6 @@ import (
 	"context"
 	"reflect"
 	"strings"
-	"sync"
-	"sync/atomic"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -31,6 +29,7 @@ import (
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azVolumeClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -49,7 +48,7 @@ type ReconcilePV struct {
 	azVolumeClient azVolumeClientSet.Interface
 	kubeClient     kubeClientSet.Interface
 	// retryMap allows volumeAttachment controller to retry Get operation for AzVolume in case the CRI has not been created yet
-	retryMap              sync.Map
+	controllerRetryInfo   *retryInfo
 	controllerSharedState *SharedState
 	namespace             string
 }
@@ -67,7 +66,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 		return reconcile.Result{Requeue: true}, err
 	}
 
-	if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != azureutils.DriverName {
+	if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != azureconstants.DefaultDriverName {
 		return reconcile.Result{}, nil
 	}
 
@@ -80,26 +79,20 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 		return reconcile.Result{}, err
 	}
 	if err := r.client.Get(ctx, types.NamespacedName{Namespace: r.namespace, Name: azVolumeName}, &azVolume); err != nil {
-		// if underlying PV was found but AzVolume was not. Might be due to stale cache, so try until found, or maxTry Reached
+		// if underlying PV was found but AzVolume was not. Might be due to stale cache, so try until found
 		if !errors.IsNotFound(err) {
 			klog.V(5).Infof("failed to get AzVolume (%s): %v", diskName, err)
 			return reconcile.Result{Requeue: true}, err
 		}
 
-		var zero uint32
-		v, _ := r.retryMap.LoadOrStore(azVolumeName, &zero)
-		numRetry := v.(*uint32)
+		// if AzVolume is not found, retry with exponential back off
+		nextRequeue := r.controllerRetryInfo.nextRequeue(azVolumeName)
 
-		if *numRetry < maxRetry {
-			klog.V(5).Infof("Waiting for AzVolume (%s) to be created...", azVolumeName)
-			atomic.AddUint32(numRetry, 1)
-			return reconcile.Result{Requeue: true}, nil
-		}
-
-		klog.V(5).Infof("Max Retry (%d) for Get AzVolume (%s) exceeded. The CRI is probably deleted.", maxRetry, azVolumeName)
-		r.retryMap.Delete(azVolumeName)
-		return reconcile.Result{}, nil
+		klog.Infof("AzVolume (%s) not found... reconciliation will be requeued after %f seconds", azVolumeName, nextRequeue.Seconds())
+		return reconcile.Result{Requeue: true, RequeueAfter: nextRequeue}, nil
 	}
+	// if AzVolume is found, remove entry from retryMap and retryLocks
+	r.controllerRetryInfo.deleteEntry(azVolumeName)
 
 	if azVolume.Status.Detail != nil {
 		updated := azVolume.DeepCopy()
@@ -129,7 +122,7 @@ func (r *ReconcilePV) Recover(ctx context.Context) error {
 		return err
 	}
 	for _, volume := range volumes.Items {
-		if volume.Spec.CSI == nil || volume.Spec.CSI.Driver != azureutils.DriverName {
+		if volume.Spec.CSI == nil || volume.Spec.CSI.Driver != azureconstants.DefaultDriverName {
 			continue
 		}
 		diskName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(volume.Spec.CSI.VolumeHandle)
@@ -138,8 +131,7 @@ func (r *ReconcilePV) Recover(ctx context.Context) error {
 		}
 		azVolumeName := strings.ToLower(diskName)
 		pvClaimName := getQualifiedName(volume.Spec.ClaimRef.Namespace, volume.Spec.ClaimRef.Name)
-		r.controllerSharedState.volumeToClaimMap.Store(azVolumeName, pvClaimName)
-		r.controllerSharedState.claimToVolumeMap.Store(pvClaimName, azVolumeName)
+		r.controllerSharedState.addVolumeAndClaim(azVolumeName, pvClaimName)
 	}
 	return nil
 }
@@ -149,7 +141,7 @@ func NewPVController(mgr manager.Manager, azVolumeClient azVolumeClientSet.Inter
 	reconciler := ReconcilePV{
 		client:                mgr.GetClient(),
 		kubeClient:            kubeClient,
-		retryMap:              sync.Map{},
+		controllerRetryInfo:   newRetryInfo(),
 		azVolumeClient:        azVolumeClient,
 		namespace:             namespace,
 		controllerSharedState: controllerSharedState,

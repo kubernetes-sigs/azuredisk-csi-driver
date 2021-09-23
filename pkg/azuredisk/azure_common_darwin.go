@@ -1,3 +1,4 @@
+//go:build darwin
 // +build darwin
 
 /*
@@ -22,17 +23,19 @@ import (
 	"fmt"
 
 	"k8s.io/mount-utils"
+
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 )
 
 // Note: This file is added only to ensure that the UTs can be run from MacOS.
-func scsiHostRescan(io ioHandler, m *mount.SafeFormatAndMount) {
+func scsiHostRescan(io azureutils.IOHandler, m *mount.SafeFormatAndMount) {
 }
 
 func formatAndMount(source, target, fstype string, options []string, m *mount.SafeFormatAndMount) error {
 	return nil
 }
 
-func findDiskByLun(lun int, io ioHandler, m *mount.SafeFormatAndMount) (string, error) {
+func findDiskByLun(lun int, io azureutils.IOHandler, m *mount.SafeFormatAndMount) (string, error) {
 	return "", fmt.Errorf("findDiskByLun not implemented")
 }
 

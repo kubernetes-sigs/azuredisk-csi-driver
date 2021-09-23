@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"sync"
 	"testing"
 
 	"github.com/golang/mock/gomock"
@@ -36,11 +35,11 @@ func newTestVolumeAttachmentController(controller *gomock.Controller, namespace 
 	diskv1alpha1Objs, kubeObjs := splitObjects(objects...)
 
 	return &ReconcileVolumeAttachment{
-		client:         mockclient.NewMockClient(controller),
-		azVolumeClient: diskfakes.NewSimpleClientset(diskv1alpha1Objs...),
-		kubeClient:     fakev1.NewSimpleClientset(kubeObjs...),
-		retryMap:       sync.Map{},
-		namespace:      namespace,
+		client:              mockclient.NewMockClient(controller),
+		azVolumeClient:      diskfakes.NewSimpleClientset(diskv1alpha1Objs...),
+		kubeClient:          fakev1.NewSimpleClientset(kubeObjs...),
+		controllerRetryInfo: newRetryInfo(),
+		namespace:           namespace,
 	}
 }
 

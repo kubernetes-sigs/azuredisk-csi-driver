@@ -21,12 +21,13 @@ import (
 	v1 "k8s.io/api/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/testsuites"
 )
 
 const (
-	namespace     = "azure-disk-csi"
+	namespace     = consts.AzureDiskCrdNamespace
 	schedulerName = "csi-azuredisk-scheduler-extender"
 )
 
@@ -36,10 +37,9 @@ var _ = ginkgo.Describe("AzDiskSchedulerExtender", func() {
 		schedulerExtenderTests(false)
 	})
 
-	// TODO add support for multi-az
-	// ginkgo.Context("[multi-az]", func() {
-	// 	schedulerExtenderTests(true)
-	// })
+	ginkgo.Context("[multi-az]", func() {
+		schedulerExtenderTests(true)
+	})
 })
 
 func schedulerExtenderTests(isMultiZone bool) {
@@ -226,7 +226,7 @@ func schedulerExtenderTests(isMultiZone bool) {
 			CSIDriver:              testDriver,
 			Pod:                    pod,
 			Replicas:               1,
-			StorageClassParameters: map[string]string{"skuName": "Premium_LRS", "maxShares": "2"},
+			StorageClassParameters: map[string]string{"skuName": "Premium_LRS", "maxShares": "2", "cachingmode": "None"},
 		}
 		test.Run(cs, ns, schedulerName)
 	})

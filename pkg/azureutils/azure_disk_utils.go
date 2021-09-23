@@ -20,7 +20,7 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"regexp"
+	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
@@ -28,19 +28,23 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
 	"github.com/pborman/uuid"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/klog"
-	api "k8s.io/kubernetes/pkg/apis/core"
 	"k8s.io/kubernetes/pkg/volume/util"
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -62,49 +66,6 @@ const (
 	// maxLength = 63 - (4 for ".vhd") = 59
 	diskNameGenerateMaxLength = 59
 
-	// minimum disk size is 1GiB
-	MinimumDiskSizeGiB = 1
-
-	// DefaultAzureCredentialFileEnv is the default azure credentials file env variable
-	DefaultAzureCredentialFileEnv = "AZURE_CREDENTIAL_FILE"
-	// DefaultCredFilePathLinux is default creds file for linux machine
-	DefaultCredFilePathLinux = "/etc/kubernetes/azure.json"
-	// DefaultCredFilePathWindows is default creds file for windows machine
-	DefaultCredFilePathWindows = "C:\\k\\azure.json"
-
-	// String constants used by CloudProvisioner
-	ResourceNotFound          = "ResourceNotFound"
-	ErrDiskNotFound           = "not found"
-	SourceSnapshot            = "snapshot"
-	SourceVolume              = "volume"
-	DriverName                = "disk.csi.azure.com"
-	CSIDriverMetricPrefix     = "azuredisk_csi_driver"
-	ResizeRequired            = "resizeRequired"
-	RequestedSizeGiB          = "requestedsizegib"
-	SourceDiskSearchMaxDepth  = 10
-	CachingModeField          = "cachingmode"
-	StorageAccountTypeField   = "storageaccounttype"
-	StorageAccountField       = "storageaccount"
-	SkuNameField              = "skuname"
-	LocationField             = "location"
-	ResourceGroupField        = "resourcegroup"
-	DiskIOPSReadWriteField    = "diskiopsreadwrite"
-	DiskMBPSReadWriteField    = "diskmbpsreadwrite"
-	DiskNameField             = "diskname"
-	DesIDField                = "diskencryptionsetid"
-	TagsField                 = "tags"
-	MaxSharesField            = "maxshares"
-	MaxMountReplicaCountField = "maxmountreplicacount"
-	IncrementalField          = "incremental"
-	LogicalSectorSizeField    = "logicalsectorsize"
-	PerfProfileField          = "perfprofile"
-	FSTypeField               = "fstype"
-	KindField                 = "kind"
-	NetworkAccessPolicyField  = "networkaccesspolicy"
-	DiskAccessIDField         = "diskaccessid"
-	EnableBurstingField       = "enablebursting"
-	TrueValue                 = "true"
-
 	// CRDs specific constants
 	PartitionLabel = "azdrivernodes.disk.csi.azure.com/partition"
 	// 1. AzVolumeAttachmentFinalizer for AzVolumeAttachment objects handles deletion of AzVolumeAttachment CRIs
@@ -122,33 +83,11 @@ const (
 	VolumeNameLabel                  = "disk.csi.azure.com/volume-name"
 	RoleLabel                        = "disk.csi.azure.com/requested-role"
 
-	// ZRS specific constants
-	WellKnownTopologyKey = "topology.kubernetes.io/zone"
-
-	PVCNameKey      = "csi.storage.k8s.io/pvc/name"
-	PVCNamespaceKey = "csi.storage.k8s.io/pvc/namespace"
-	PVNameKey       = "csi.storage.k8s.io/pv/name"
-
-	PVCNameTag      = "kubernetes.io-created-for-pvc-name"
-	PVCNamespaceTag = "kubernetes.io-created-for-pvc-namespace"
-	PVNameTag       = "kubernetes.io-created-for-pv-name"
-
 	ControllerServiceAccountName      = "csi-azuredisk-controller-sa"
 	ControllerClusterRoleName         = "azuredisk-external-provisioner-role"
 	ControllerClusterRoleBindingName  = "azuredisk-csi-provisioner-binding"
 	ReleaseNamespace                  = "kube-system"
 	ControllerServiceAccountFinalizer = "disk.csi.azure.com/azuredisk-controller"
-)
-
-var (
-	supportedCachingModes = sets.NewString(
-		string(api.AzureDataDiskCachingNone),
-		string(api.AzureDataDiskCachingReadOnly),
-		string(api.AzureDataDiskCachingReadWrite))
-
-	managedDiskPathRE       = regexp.MustCompile(`(?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/disks/(.+)`)
-	diskURISupportedManaged = []string{"/subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id}"}
-	diskSnapshotPathRE      = regexp.MustCompile(`(?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/snapshots/(.+)`)
 )
 
 type ClientOperationMode int
@@ -202,8 +141,8 @@ func NormalizeAzureDataDiskCachingMode(cachingMode v1.AzureDataDiskCachingMode) 
 		return defaultAzureDataDiskCachingMode, nil
 	}
 
-	if !supportedCachingModes.Has(string(cachingMode)) {
-		return "", fmt.Errorf("azureDisk - %s is not supported cachingmode. Supported values are %s", cachingMode, supportedCachingModes.List())
+	if !consts.SupportedCachingModes.Has(string(cachingMode)) {
+		return "", fmt.Errorf("azureDisk - %s is not supported cachingmode. Supported values are %s", cachingMode, consts.SupportedCachingModes.List())
 	}
 
 	return cachingMode, nil
@@ -266,17 +205,17 @@ func GetAzureCloudProvider(kubeClient clientset.Interface, secretName string, se
 
 	if az.TenantID == "" || az.SubscriptionID == "" || az.ResourceGroup == "" {
 		klog.V(2).Infof("could not read cloud config from secret")
-		credFile, ok := os.LookupEnv(DefaultAzureCredentialFileEnv)
+		credFile, ok := os.LookupEnv(consts.DefaultAzureCredentialFileEnv)
 		if ok && strings.TrimSpace(credFile) != "" {
-			klog.V(2).Infof("%s env var set as %v", DefaultAzureCredentialFileEnv, credFile)
+			klog.V(2).Infof("%s env var set as %v", consts.DefaultAzureCredentialFileEnv, credFile)
 		} else {
 			if runtime.GOOS == "windows" {
-				credFile = DefaultCredFilePathWindows
+				credFile = consts.DefaultCredFilePathWindows
 			} else {
-				credFile = DefaultCredFilePathLinux
+				credFile = consts.DefaultCredFilePathLinux
 			}
 
-			klog.V(2).Infof("use default %s env var: %v", DefaultAzureCredentialFileEnv, credFile)
+			klog.V(2).Infof("use default %s env var: %v", consts.DefaultAzureCredentialFileEnv, credFile)
 		}
 
 		f, err := os.Open(credFile)
@@ -301,15 +240,15 @@ func GetAzureCloudProvider(kubeClient clientset.Interface, secretName string, se
 
 func IsValidDiskURI(diskURI string) error {
 	if strings.Index(strings.ToLower(diskURI), "/subscriptions/") != 0 {
-		return fmt.Errorf("Invalid DiskURI: %v, correct format: %v", diskURI, diskURISupportedManaged)
+		return fmt.Errorf("invalid DiskURI: %v, correct format: %v", diskURI, consts.DiskURISupportedManaged)
 	}
 	return nil
 }
 
 func GetDiskNameFromAzureManagedDiskURI(diskURI string) (string, error) {
-	matches := managedDiskPathRE.FindStringSubmatch(diskURI)
+	matches := consts.ManagedDiskPathRE.FindStringSubmatch(diskURI)
 	if len(matches) != 2 {
-		return "", fmt.Errorf("could not get disk name from %s, correct format: %s", diskURI, managedDiskPathRE)
+		return "", fmt.Errorf("could not get disk name from %s, correct format: %s", diskURI, consts.ManagedDiskPathRE)
 	}
 	return matches[1], nil
 }
@@ -330,7 +269,7 @@ func GetCachingMode(attributes map[string]string) (compute.CachingTypes, error) 
 	)
 
 	for k, v := range attributes {
-		if strings.EqualFold(k, CachingModeField) {
+		if strings.EqualFold(k, consts.CachingModeField) {
 			cachingMode = v1.AzureDataDiskCachingMode(v)
 			break
 		}
@@ -373,14 +312,14 @@ func GetMaxSharesAndMaxMountReplicaCount(parameters map[string]string) (int, int
 	maxShares := 1
 	maxMountReplicaCount := -1
 	for param, value := range parameters {
-		if strings.EqualFold(param, MaxSharesField) {
+		if strings.EqualFold(param, consts.MaxSharesField) {
 			parsed, err := strconv.Atoi(value)
 			if err != nil {
 				klog.Warningf("failed to parse maxShares value (%s) to int, defaulting to 1: %v", value, err)
 			} else {
 				maxShares = parsed
 			}
-		} else if strings.EqualFold(param, MaxMountReplicaCountField) {
+		} else if strings.EqualFold(param, consts.MaxMountReplicaCountField) {
 			parsed, err := strconv.Atoi(value)
 			if err != nil {
 				klog.Warningf("failed to parse maxMountReplica value (%s) to int, defaulting to 0: %v", value, err)
@@ -408,48 +347,48 @@ func GetAzVolumePhase(phase v1.PersistentVolumePhase) v1alpha1.AzVolumePhase {
 	return v1alpha1.AzVolumePhase(phase)
 }
 
-func GetAzVolume(ctx context.Context, client client.Client, azDiskClient azDiskClientSet.Interface, azVolumeName, namespace string, useCache bool) (*v1alpha1.AzVolume, error) {
+func GetAzVolume(ctx context.Context, cachedClient client.Client, azDiskClient azDiskClientSet.Interface, azVolumeName, namespace string, useCache bool) (*v1alpha1.AzVolume, error) {
 	var azVolume *v1alpha1.AzVolume
 	var err error
 	if useCache {
 		azVolume = &v1alpha1.AzVolume{}
-		err = client.Get(ctx, types.NamespacedName{Name: azVolumeName, Namespace: namespace}, azVolume)
+		err = cachedClient.Get(ctx, types.NamespacedName{Name: azVolumeName, Namespace: namespace}, azVolume)
 	} else {
 		azVolume, err = azDiskClient.DiskV1alpha1().AzVolumes(namespace).Get(ctx, azVolumeName, metav1.GetOptions{})
 	}
 	return azVolume, err
 }
 
-func ListAzVolumes(ctx context.Context, client client.Client, azDiskClient azDiskClientSet.Interface, namespace string, useCache bool) (v1alpha1.AzVolumeList, error) {
+func ListAzVolumes(ctx context.Context, cachedClient client.Client, azDiskClient azDiskClientSet.Interface, namespace string, useCache bool) (v1alpha1.AzVolumeList, error) {
 	var azVolumeList *v1alpha1.AzVolumeList
 	var err error
 	if useCache {
 		azVolumeList = &v1alpha1.AzVolumeList{}
-		err = client.List(ctx, azVolumeList)
+		err = cachedClient.List(ctx, azVolumeList)
 	} else {
 		azVolumeList, err = azDiskClient.DiskV1alpha1().AzVolumes(namespace).List(ctx, metav1.ListOptions{})
 	}
 	return *azVolumeList, err
 }
 
-func GetAzVolumeAttachment(ctx context.Context, client client.Client, azDiskClient azDiskClientSet.Interface, azVolumeAttachmentName, namespace string, useCache bool) (*v1alpha1.AzVolumeAttachment, error) {
+func GetAzVolumeAttachment(ctx context.Context, cachedClient client.Client, azDiskClient azDiskClientSet.Interface, azVolumeAttachmentName, namespace string, useCache bool) (*v1alpha1.AzVolumeAttachment, error) {
 	var azVolumeAttachment *v1alpha1.AzVolumeAttachment
 	var err error
 	if useCache {
 		azVolumeAttachment = &v1alpha1.AzVolumeAttachment{}
-		err = client.Get(ctx, types.NamespacedName{Name: azVolumeAttachmentName, Namespace: namespace}, azVolumeAttachment)
+		err = cachedClient.Get(ctx, types.NamespacedName{Name: azVolumeAttachmentName, Namespace: namespace}, azVolumeAttachment)
 	} else {
 		azVolumeAttachment, err = azDiskClient.DiskV1alpha1().AzVolumeAttachments(namespace).Get(ctx, azVolumeAttachmentName, metav1.GetOptions{})
 	}
 	return azVolumeAttachment, err
 }
 
-func ListAzVolumeAttachments(ctx context.Context, client client.Client, azDiskClient azDiskClientSet.Interface, namespace string, useCache bool) (v1alpha1.AzVolumeAttachmentList, error) {
+func ListAzVolumeAttachments(ctx context.Context, cachedClient client.Client, azDiskClient azDiskClientSet.Interface, namespace string, useCache bool) (v1alpha1.AzVolumeAttachmentList, error) {
 	var azVolumeAttachmentList *v1alpha1.AzVolumeAttachmentList
 	var err error
 	if useCache {
 		azVolumeAttachmentList = &v1alpha1.AzVolumeAttachmentList{}
-		err = client.List(ctx, azVolumeAttachmentList)
+		err = cachedClient.List(ctx, azVolumeAttachmentList)
 	} else {
 		azVolumeAttachmentList, err = azDiskClient.DiskV1alpha1().AzVolumeAttachments(namespace).List(ctx, metav1.ListOptions{})
 	}
@@ -465,5 +404,102 @@ func GetAzVolumeAttachmentState(volumeAttachmentStatus storagev1.VolumeAttachmen
 		return v1alpha1.DetachmentFailed
 	} else {
 		return v1alpha1.AttachmentPending
+	}
+}
+
+func UpdateCRIWithRetry(ctx context.Context, cachedClient client.Client, azDiskClient azDiskClientSet.Interface, obj interface{}, updateFunc func(interface{}) error) error {
+	conditionFunc := func() error {
+		var err error
+		switch target := obj.(type) {
+		case *v1alpha1.AzVolume:
+			if cachedClient == nil {
+				target, err = azDiskClient.DiskV1alpha1().AzVolumes(target.Namespace).Get(ctx, target.Name, metav1.GetOptions{})
+			} else {
+				err = cachedClient.Get(ctx, types.NamespacedName{Namespace: target.Namespace, Name: target.Name}, target)
+			}
+			obj = target.DeepCopy()
+		case *v1alpha1.AzVolumeAttachment:
+			if cachedClient == nil {
+				target, err = azDiskClient.DiskV1alpha1().AzVolumeAttachments(target.Namespace).Get(ctx, target.Name, metav1.GetOptions{})
+			} else {
+				err = cachedClient.Get(ctx, types.NamespacedName{Namespace: target.Namespace, Name: target.Name}, target)
+			}
+			obj = target.DeepCopy()
+		default:
+			return status.Errorf(codes.Internal, "object (%v) not supported.", reflect.TypeOf(target))
+		}
+
+		klog.Infof("Initiating update with retry for %v (%s)", reflect.TypeOf(obj), obj.(client.Object).GetName())
+
+		if err != nil {
+			klog.Errorf("failed to get %v (%s): %v", reflect.TypeOf(obj), obj.(client.Object).GetName(), err)
+			return err
+		}
+
+		if err = updateFunc(obj); err != nil {
+			return err
+		}
+
+		switch target := obj.(type) {
+		case *v1alpha1.AzVolume:
+			if cachedClient == nil {
+				_, err = azDiskClient.DiskV1alpha1().AzVolumes(target.Namespace).Update(ctx, target, metav1.UpdateOptions{})
+			} else {
+				err = cachedClient.Update(ctx, target)
+			}
+		case *v1alpha1.AzVolumeAttachment:
+			if cachedClient == nil {
+				_, err = azDiskClient.DiskV1alpha1().AzVolumeAttachments(target.Namespace).Update(ctx, target, metav1.UpdateOptions{})
+			} else {
+				err = cachedClient.Update(ctx, target)
+			}
+		}
+
+		// log unrecoverable error
+		if err != nil && !errors.IsConflict(err) {
+			klog.Errorf("failed to update %v (%s): %v", reflect.TypeOf(obj), obj.(client.Object).GetName(), err)
+		}
+
+		return err
+	}
+
+	return retry.RetryOnConflict(
+		wait.Backoff{
+			Duration: consts.CRIUpdateRetryDuration,
+			Factor:   consts.CRIUpdateRetryFactor,
+			Steps:    consts.CRIUpdateRetryStep,
+		},
+		conditionFunc,
+	)
+}
+
+// InsertDiskProperties: insert disk properties to map
+func InsertDiskProperties(disk *compute.Disk, publishConext map[string]string) {
+	if disk == nil || publishConext == nil {
+		return
+	}
+
+	if disk.Sku != nil {
+		publishConext[consts.SkuNameField] = string(disk.Sku.Name)
+	}
+	prop := disk.DiskProperties
+	if prop != nil {
+		publishConext[consts.NetworkAccessPolicyField] = string(prop.NetworkAccessPolicy)
+		if prop.DiskIOPSReadWrite != nil {
+			publishConext[consts.DiskIOPSReadWriteField] = strconv.Itoa(int(*prop.DiskIOPSReadWrite))
+		}
+		if prop.DiskMBpsReadWrite != nil {
+			publishConext[consts.DiskMBPSReadWriteField] = strconv.Itoa(int(*prop.DiskMBpsReadWrite))
+		}
+		if prop.CreationData != nil && prop.CreationData.LogicalSectorSize != nil {
+			publishConext[consts.LogicalSectorSizeField] = strconv.Itoa(int(*prop.CreationData.LogicalSectorSize))
+		}
+		if prop.Encryption != nil &&
+			prop.Encryption.DiskEncryptionSetID != nil {
+			publishConext[consts.DesIDField] = *prop.Encryption.DiskEncryptionSetID
+		}
+		if prop.MaxShares != nil {
+			publishConext[consts.MaxSharesField] = strconv.Itoa(int(*prop.MaxShares))
+		}
 	}
 }

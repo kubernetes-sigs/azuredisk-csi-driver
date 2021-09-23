@@ -1,3 +1,4 @@
+//go:build azurediskv2
 // +build azurediskv2
 
 /*
@@ -38,10 +39,13 @@ import (
 	klogv1 "k8s.io/klog"
 	"k8s.io/klog/klogr"
 	"k8s.io/klog/v2"
+	"k8s.io/kubernetes/pkg/volume/util/hostutil"
 
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	azuredisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller"
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
@@ -52,7 +56,7 @@ import (
 
 var isControllerPlugin = flag.Bool("is-controller-plugin", false, "Boolean flag to indicate this instance is running as controller.")
 var isNodePlugin = flag.Bool("is-node-plugin", false, "Boolean flag to indicate this instance is running as node daemon.")
-var driverObjectNamespace = flag.String("driver-object-namespace", "azure-disk-csi", "namespace where driver related custom resources are created.")
+var driverObjectNamespace = flag.String("driver-object-namespace", consts.AzureDiskCrdNamespace, "namespace where driver related custom resources are created.")
 var useDriverV2 = flag.Bool("temp-use-driver-v2", false, "A temporary flag to enable early test and development of Azure Disk CSI Driver V2. This will be removed in the future.")
 var heartbeatFrequencyInSec = flag.Int("heartbeat-frequency-in-sec", 30, "Frequency in seconds at which node driver sends heartbeat.")
 var controllerLeaseDurationInSec = flag.Int("lease-duration-in-sec", 15, "The duration that non-leader candidates will wait to force acquire leadership")
@@ -136,6 +140,10 @@ func newDriverV2(options *DriverOptions,
 	driver.perfOptimizationEnabled = options.EnablePerfOptimization
 	driver.cloudConfigSecretName = options.CloudConfigSecretName
 	driver.cloudConfigSecretNamespace = options.CloudConfigSecretNamespace
+	driver.customUserAgent = options.CustomUserAgent
+	driver.userAgentSuffix = options.UserAgentSuffix
+	driver.ioHandler = azureutils.NewOSIOHandler()
+	driver.hostUtil = hostutil.NewHostUtil()
 
 	topologyKey = fmt.Sprintf("topology.%s/zone", driver.Name)
 	return &driver
@@ -149,12 +157,12 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 	}
 	klog.Infof("\nDRIVER INFORMATION:\n-------------------\n%s\n\nStreaming logs below:", versionMeta)
 
-	d.kubeConfig, err = GetKubeConfig(kubeconfig)
+	d.kubeConfig, err = csicommon.GetKubeConfig(kubeconfig)
 	if err != nil || d.kubeConfig == nil {
 		klog.Fatalf("failed to get kube config (%s), error: %v. Exiting application...", kubeconfig, err)
 	}
 
-	d.kubeClient, err = getKubeClient(kubeconfig)
+	d.kubeClient, err = csicommon.GetKubeClient(kubeconfig)
 	if err != nil || d.kubeClient == nil {
 		klog.Fatalf("failed to get kubeclient with kubeconfig (%s), error: %v. Exiting application...", kubeconfig, err)
 	}
@@ -169,7 +177,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 
 	// d.cloudProvisioner is set by NewFakeDriver for unit tests.
 	if d.cloudProvisioner == nil {
-		userAgent := GetUserAgent(d.Name)
+		userAgent := GetUserAgent(d.Name, d.customUserAgent, d.userAgentSuffix)
 		klog.V(2).Infof("driver userAgent: %s", userAgent)
 
 		d.cloudProvisioner, err = provisioner.NewCloudProvisioner(d.kubeClient, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, topologyKey, userAgent)
@@ -190,7 +198,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 	if d.getPerfOptimizationEnabled() {
 		d.nodeInfo, err = optimization.NewNodeInfo(d.cloudProvisioner.GetCloud(), d.NodeID)
 		if err != nil {
-			klog.Fatalf("Failed to get node info. Error: %v", err)
+			klog.Errorf("Failed to get node info. Error: %v", err)
 		}
 	}
 
@@ -213,7 +221,13 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 			csi.ControllerServiceCapability_RPC_LIST_VOLUMES,
 			csi.ControllerServiceCapability_RPC_LIST_VOLUMES_PUBLISHED_NODES,
 		})
-	d.AddVolumeCapabilityAccessModes([]csi.VolumeCapability_AccessMode_Mode{csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER})
+	d.AddVolumeCapabilityAccessModes(
+		[]csi.VolumeCapability_AccessMode_Mode{
+			csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+			csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY,
+			csi.VolumeCapability_AccessMode_SINGLE_NODE_SINGLE_WRITER,
+			csi.VolumeCapability_AccessMode_SINGLE_NODE_MULTI_WRITER,
+		})
 	d.AddNodeServiceCapabilities([]csi.NodeServiceCapability_RPC_Type{
 		csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
 		csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
@@ -247,7 +261,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 	s.Wait()
 }
 
-//StartControllersAndDieOnExit starts all the controllers for a certain object partition
+// StartControllersAndDieOnExit starts all the controllers for a certain object partition
 func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 	// Version of klogr used here has a dependency on klog v1
 	// The klogr -> klogv1 dependency is chained so we can't update klogr to a newer version right now
@@ -282,8 +296,7 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 		RenewDeadline:                 &renewDeadline,
 		RetryPeriod:                   &retryPeriod,
 		LeaderElectionReleaseOnCancel: true,
-		MetricsBindAddress:            ":8090",
-		Namespace:                     d.objectNamespace})
+		MetricsBindAddress:            ":8090"})
 	if err != nil {
 		klog.Errorf("Unable to set up overall controller manager. Error: %v. Exiting application...", err)
 		os.Exit(1)

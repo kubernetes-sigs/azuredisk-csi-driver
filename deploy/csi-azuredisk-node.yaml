@@ -18,7 +18,7 @@ spec:
         app: csi-azuredisk-node
     spec:
       hostNetwork: true
-      dnsPolicy: ClusterFirstWithHostNet
+      dnsPolicy: Default
       serviceAccountName: csi-azuredisk-node-sa
       nodeSelector:
         kubernetes.io/os: linux
@@ -39,7 +39,7 @@ spec:
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
-          image: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe:v2.3.0
+          image: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe:v2.4.0
           args:
             - --csi-address=/csi/csi.sock
             - --probe-timeout=3s

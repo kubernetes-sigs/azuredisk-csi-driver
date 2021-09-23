@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"sync"
 	"testing"
 
 	"github.com/golang/mock/gomock"
@@ -47,7 +46,7 @@ func newTestPVController(controller *gomock.Controller, namespace string, object
 		ReconcilePV: ReconcilePV{
 			client:                mockclient.NewMockClient(controller),
 			azVolumeClient:        diskfakes.NewSimpleClientset(diskv1alpha1Objs...),
-			retryMap:              sync.Map{},
+			controllerRetryInfo:   newRetryInfo(),
 			namespace:             namespace,
 			controllerSharedState: controllerSharedState,
 		},
