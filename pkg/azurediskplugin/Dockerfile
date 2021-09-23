@@ -12,14 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-ARG ARCH
-FROM k8s.gcr.io/build-image/debian-base:buster-v1.6.0
-RUN clean-install util-linux e2fsprogs mount ca-certificates udev xfsprogs
+FROM k8s.gcr.io/build-image/debian-base:bullseye-v1.0.0
+
+RUN apt update && apt-mark unhold libcap2
+RUN clean-install util-linux e2fsprogs mount ca-certificates udev xfsprogs libssl1.1
 
 LABEL maintainers="andyzhangx"
 LABEL description="Azure Disk CSI Driver"
 
-ARG ARCH
+ARG ARCH=amd64
 ARG PLUGIN_NAME=azurediskplugin
 COPY ./_output/${ARCH}/${PLUGIN_NAME} /azurediskplugin
 ENTRYPOINT ["/azurediskplugin"]
