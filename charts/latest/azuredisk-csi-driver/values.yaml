@@ -108,6 +108,14 @@ linux:
     - operator: "Exists"
   hostNetwork: true # this setting could be disabled if perfProfile is `none`
   podLabels: {}
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: type
+              operator: NotIn
+              values:
+                - virtual-kubelet
 
 windows:
   enabled: true
@@ -118,6 +126,14 @@ windows:
       operator: "Exists"
       effect: "NoSchedule"
   podLabels: {}
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: type
+              operator: NotIn
+              values:
+                - virtual-kubelet
 
 cloud: AzurePublicCloud
 
