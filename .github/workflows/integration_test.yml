@@ -1,6 +1,8 @@
 name: Run integration test
 on:
     pull_request: {}
+    schedule:
+    - cron: "0 13 * * *"
 jobs:
   test:
     name: Run integration test

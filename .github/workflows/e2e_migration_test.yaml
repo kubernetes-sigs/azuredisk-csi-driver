@@ -1,6 +1,8 @@
 name: Run e2e migration tests
 on:
     pull_request: {}
+    schedule:
+    - cron: "0 13 * * *"
 jobs:
   test:
     name: Run e2e migration tests
