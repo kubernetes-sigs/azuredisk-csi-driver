@@ -17,7 +17,16 @@ spec:
     singular: azvolume
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - description: Indicates the state of the volume
+      jsonPath: .status.state
+      name: State
+      type: string
+    - description: Indicates the phase of the underlying persistent volume
+      jsonPath: .status.detail.phase
+      name: Phase
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: AzVolume is a specification for an AzVolume resource
@@ -244,6 +253,7 @@ spec:
         type: object
     served: true
     storage: true
+    subresources: {}
 status:
   acceptedNames:
     kind: ""

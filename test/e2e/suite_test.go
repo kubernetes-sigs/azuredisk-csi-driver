@@ -170,9 +170,14 @@ var _ = ginkgo.AfterSuite(func() {
 		}
 		execTestCmd([]testCmd{createExampleDeployment})
 
+		azurediskLogArgs := []string{"test/utils/azuredisk_log.sh", "azuredisk"}
+		if isUsingCSIDriverV2 {
+			azurediskLogArgs = append(azurediskLogArgs, "v2")
+		}
+
 		azurediskLog := testCmd{
 			command:  "bash",
-			args:     []string{"test/utils/azuredisk_log.sh"},
+			args:     azurediskLogArgs,
 			startLog: "===================azuredisk log===================",
 			endLog:   "===================================================",
 		}

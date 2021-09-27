@@ -27,6 +27,8 @@ import (
 // AzVolume is a specification for an AzVolume resource
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Namespaced
+// +kubebuilder:printcolumn:name="State",type="string",JSONPath=`.status.state`,description="Indicates the state of the volume"
+// +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=`.status.detail.phase`,description="Indicates the phase of the underlying persistent volume"
 type AzVolume struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
