@@ -72,11 +72,11 @@ func (c *CrdProvisioner) RegisterDriverNode(
 
 	if err == nil && azDriverNodeFromCache != nil {
 		// We found that the object already exists.
-		klog.V(2).Infof("AzDriverNode exists, will update status. azDriverNodeFromCache=(%v)", azDriverNodeFromCache)
+		klog.V(2).Infof("AzDriverNode (%s) exists, will update status. azDriverNodeFromCache=(%v)", nodeID, azDriverNodeFromCache)
 		azDriverNodeUpdate = azDriverNodeFromCache.DeepCopy()
 	} else if errors.IsNotFound(err) {
 		// If AzDriverNode object is not there create it
-		klog.Errorf("AzDriverNode is not registered yet, will create. error: %v", err)
+		klog.V(2).Infof("AzDriverNode (%s) is not registered yet, will create.", nodeID)
 		azDriverNodeNew := &v1alpha1.AzDriverNode{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: strings.ToLower(nodeID),
