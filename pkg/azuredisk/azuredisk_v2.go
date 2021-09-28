@@ -401,7 +401,7 @@ func (d *DriverV2) RegisterAzDriverNodeOrDie(ctx context.Context) {
 		klog.V(2).Infof("Registering AzDriverNode for node (%s)", d.NodeID)
 		node, err := d.kubeClient.CoreV1().Nodes().Get(ctx, d.NodeID, metav1.GetOptions{})
 		if err != nil || node == nil {
-			klog.Errorf("Failed to get node (%s), error: %v", node, err)
+			klog.Errorf("Failed to get node (%s), error: %v", d.NodeID, err)
 			err = errors.NewBadRequest("Failed to get node or node not found, can not register the plugin.")
 		}
 	}
