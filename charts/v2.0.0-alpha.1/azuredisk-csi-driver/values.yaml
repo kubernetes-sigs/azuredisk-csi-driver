@@ -1,30 +1,35 @@
 image:
+  baseRepo: mcr.microsoft.com
   azuredisk:
-    repository: mcr.microsoft.com/k8s/csi/azuredisk-csi
+    repository: /k8s/csi/azuredisk-csi
     tag: v2.0.0-alpha.1
     pullPolicy: IfNotPresent
   csiProvisioner:
-    repository: mcr.microsoft.com/oss/kubernetes-csi/csi-provisioner
+    repository: /oss/kubernetes-csi/csi-provisioner
     tag: v2.2.2
     pullPolicy: IfNotPresent
   csiAttacher:
-    repository: mcr.microsoft.com/oss/kubernetes-csi/csi-attacher
+    repository: /oss/kubernetes-csi/csi-attacher
     tag: v3.3.0
     pullPolicy: IfNotPresent
   csiResizer:
-    repository: mcr.microsoft.com/oss/kubernetes-csi/csi-resizer
+    repository: /oss/kubernetes-csi/csi-resizer
     tag: v1.3.0
     pullPolicy: IfNotPresent
+  curl:
+    repository: docker.io/curlimages/curl
+    tag: latest
+    pullPolicy: IfNotPresent
   livenessProbe:
-    repository: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe
+    repository: /oss/kubernetes-csi/livenessprobe
     tag: v2.4.0
     pullPolicy: IfNotPresent
   nodeDriverRegistrar:
-    repository: mcr.microsoft.com/oss/kubernetes-csi/csi-node-driver-registrar
+    repository: /oss/kubernetes-csi/csi-node-driver-registrar
     tag: v2.3.0
     pullPolicy: IfNotPresent
   schedulerExtender:
-    repository: mcr.microsoft.com/k8s/csi/azdiskschedulerextender-csi
+    repository: /k8s/csi/azdiskschedulerextender-csi
     tag: v2.0.1-alpha.1
     pullPolicy: IfNotPresent
     imageVersion: v1.18.6
@@ -39,9 +44,6 @@ serviceAccount:
 rbac:
   create: true
   name: azuredisk
-
-azuredisk:
-  useV2Driver: true
 
 controller:
   name: csi-azuredisk-controller
@@ -87,21 +89,22 @@ snapshot:
   apiVersion: beta # available values: beta, ga
   image:
     csiSnapshotter:
-      repository: mcr.microsoft.com/oss/kubernetes-csi/csi-snapshotter
+      repository: /oss/kubernetes-csi/csi-snapshotter
       tag: v3.0.3
+      gaTag: v4.2.1
       pullPolicy: IfNotPresent
     csiSnapshotController:
-      repository: mcr.microsoft.com/oss/kubernetes-csi/snapshot-controller
+      repository: /oss/kubernetes-csi/snapshot-controller
       tag: v3.0.3
+      gaTag: v4.2.1
       pullPolicy: IfNotPresent
   snapshotController:
     name: csi-snapshot-controller
     replicas: 1
     podLabels: {}
-    serviceAccount: true
-    rbac: true
 
 feature:
+  useV2Driver: true
   enableFSGroupPolicy: false
   enableCSIMigration: false
 
@@ -112,13 +115,6 @@ driver:
   volumeAttachLimit: -1
   customUserAgent: ""
   userAgentSuffix: "OSS-helm"
-
-cleanup:
-  image:
-    curl:
-      repository: docker.io/curlimages/curl
-      tag: latest
-      pullPolicy: IfNotPresent
 
 linux:
   enabled: true
@@ -135,15 +131,6 @@ windows:
   enabled: true
   dsName: csi-azuredisk-node-win # daemonset name
   kubelet: 'C:\var\lib\kubelet'
-  image:
-    livenessProbe:
-      repository: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe
-      tag: v2.3.0
-      pullPolicy: IfNotPresent
-    nodeDriverRegistrar:
-      repository: mcr.microsoft.com/oss/kubernetes-csi/csi-node-driver-registrar
-      tag: v2.2.0
-      pullPolicy: IfNotPresent
   tolerations:
     - key: "node.kubernetes.io/os"
       operator: "Exists"

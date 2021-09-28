@@ -3,8 +3,7 @@ kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: {{ .Values.rbac.name }}-external-provisioner-role
-  labels: 
-{{ include "azuredisk.labels" . | indent 4 }}
+{{ include "azuredisk.labels" . | indent 2 }}
 rules:
   - apiGroups: [""]
     resources: ["persistentvolumes"]
@@ -33,7 +32,7 @@ rules:
   - apiGroups: ["snapshot.storage.k8s.io"]
     resources: ["volumesnapshotcontents"]
     verbs: ["get", "list"]
-    {{- if .Values.azuredisk.useV2Driver}}
+    {{- if .Values.feature.useV2Driver}}
   - apiGroups: ["disk.csi.azure.com"]
     resources: ["azdrivernodes", "azvolumeattachments", "azvolumes"]
     verbs: ["create", "get", "list", "watch", "patch", "update", "delete"]
@@ -57,8 +56,7 @@ kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: {{ .Values.rbac.name }}-csi-provisioner-binding
-  labels: 
-{{ include "azuredisk.labels" . | indent 4 }}
+{{ include "azuredisk.labels" . | indent 2 }}
 subjects:
   - kind: ServiceAccount
     name: {{ .Values.serviceAccount.controller }}
@@ -74,8 +72,7 @@ kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: {{ .Values.rbac.name }}-external-attacher-role
-  labels: 
-{{ include "azuredisk.labels" . | indent 4 }}
+{{ include "azuredisk.labels" . | indent 2 }}
 rules:
   - apiGroups: [""]
     resources: ["persistentvolumes"]
@@ -101,8 +98,7 @@ kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: {{ .Values.rbac.name }}-csi-attacher-binding
-  labels: 
-{{ include "azuredisk.labels" . | indent 4 }}
+{{ include "azuredisk.labels" . | indent 2 }}
 subjects:
   - kind: ServiceAccount
     name: {{ .Values.serviceAccount.controller }}
@@ -118,8 +114,7 @@ kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: {{ .Values.rbac.name }}-external-snapshotter-role
-  labels: 
-{{ include "azuredisk.labels" . | indent 4 }}
+{{ include "azuredisk.labels" . | indent 2 }}
 rules:
   - apiGroups: [""]
     resources: ["events"]
@@ -148,8 +143,7 @@ kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: {{ .Values.rbac.name }}-csi-snapshotter-binding
-  labels: 
-{{ include "azuredisk.labels" . | indent 4 }}
+{{ include "azuredisk.labels" . | indent 2 }}
 subjects:
   - kind: ServiceAccount
     name: {{ .Values.serviceAccount.controller }}
@@ -164,8 +158,7 @@ kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: {{ .Values.rbac.name }}-external-resizer-role
-  labels: 
-{{ include "azuredisk.labels" . | indent 4 }}
+{{ include "azuredisk.labels" . | indent 2 }}
 rules:
   - apiGroups: [""]
     resources: ["persistentvolumes"]
@@ -190,8 +183,7 @@ kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: {{ .Values.rbac.name }}-csi-resizer-role
-  labels: 
-{{ include "azuredisk.labels" . | indent 4 }}
+{{ include "azuredisk.labels" . | indent 2 }}
 subjects:
   - kind: ServiceAccount
     name: {{ .Values.serviceAccount.controller }}
@@ -206,6 +198,7 @@ kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: csi-{{ .Values.rbac.name }}-controller-secret-role
+{{ include "azuredisk.labels" . | indent 2 }}
 rules:
   - apiGroups: [""]
     resources: ["secrets"]
@@ -216,6 +209,7 @@ kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: csi-{{ .Values.rbac.name }}-controller-secret-binding
+{{ include "azuredisk.labels" . | indent 2 }}
 subjects:
   - kind: ServiceAccount
     name: {{ .Values.serviceAccount.controller }}
