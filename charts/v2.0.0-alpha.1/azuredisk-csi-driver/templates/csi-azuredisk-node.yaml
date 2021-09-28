@@ -4,8 +4,7 @@ apiVersion: apps/v1
 metadata:
   name: {{ .Values.linux.dsName }}
   namespace: {{ .Release.Namespace }}
-  labels:
-{{ include "azuredisk.labels" . | indent 4 }}
+{{ include "azuredisk.labels" . | indent 2 }}
 spec:
   updateStrategy:
     rollingUpdate:
@@ -16,10 +15,9 @@ spec:
       app: {{ .Values.linux.dsName }}
   template:
     metadata:
-      labels:
-{{ include "azuredisk.labels" . | indent 8 }}
+{{ include "azuredisk.labels" . | indent 6 }}
         app: {{ .Values.linux.dsName }}
-{{- with .Values.windows.podLabels }}
+{{- with .Values.linux.podLabels }}
 {{ toYaml . | indent 8 }}
 {{- end }}
     spec:
@@ -28,7 +26,7 @@ spec:
 {{ toYaml .Values.imagePullSecrets | indent 8 }}
       {{- end }}
       hostNetwork: {{ .Values.linux.hostNetwork }}
-      dnsPolicy: ClusterFirstWithHostNet
+      dnsPolicy: Default
       serviceAccountName: {{ .Values.serviceAccount.node }}
       nodeSelector:
         kubernetes.io/os: linux
@@ -52,7 +50,11 @@ spec:
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
+{{- if hasPrefix "/" .Values.image.livenessProbe.repository }}
+          image: "{{ .Values.image.baseRepo }}{{ .Values.image.livenessProbe.repository }}:{{ .Values.image.livenessProbe.tag }}"
+{{- else }}
           image: "{{ .Values.image.livenessProbe.repository }}:{{ .Values.image.livenessProbe.tag }}"
+{{- end }}
           args:
             - --csi-address=/csi/csi.sock
             - --probe-timeout=3s
@@ -66,7 +68,11 @@ spec:
               cpu: 10m
               memory: 20Mi
         - name: node-driver-registrar
+{{- if hasPrefix "/" .Values.image.nodeDriverRegistrar.repository }}
+          image: "{{ .Values.image.baseRepo }}{{ .Values.image.nodeDriverRegistrar.repository }}:{{ .Values.image.nodeDriverRegistrar.tag }}"
+{{- else }}
           image: "{{ .Values.image.nodeDriverRegistrar.repository }}:{{ .Values.image.nodeDriverRegistrar.tag }}"
+{{- end }}
           args:
             - --csi-address=$(ADDRESS)
             - --kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)
@@ -100,15 +106,19 @@ spec:
               cpu: 10m
               memory: 20Mi
         - name: azuredisk
+{{- if hasPrefix "/" .Values.image.azuredisk.repository }}
+          image: "{{ .Values.image.baseRepo }}{{ .Values.image.azuredisk.repository }}:{{ .Values.image.azuredisk.tag }}"
+{{- else }}
           image: "{{ .Values.image.azuredisk.repository }}:{{ .Values.image.azuredisk.tag }}"
+{{- end }}
           args:
             - "--v={{ .Values.node.logLevel }}"
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--nodeid=$(KUBE_NODE_NAME)"
             - "--metrics-address=0.0.0.0:{{ .Values.node.metricsPort }}"
             - "--enable-perf-optimization={{ .Values.linux.enablePerfOptimization }}"
-            - "--temp-use-driver-v2={{ .Values.azuredisk.useV2Driver }}"
-            - "--is-node-plugin={{ .Values.azuredisk.useV2Driver }}"
+            - "--temp-use-driver-v2={{ .Values.feature.useV2Driver }}"
+            - "--is-node-plugin={{ .Values.feature.useV2Driver }}"
             - "--drivername={{ .Values.driver.name }}"
             - "--volume-attach-limit={{ .Values.driver.volumeAttachLimit }}"
             - "--cloud-config-secret-name={{ .Values.node.cloudConfigSecretName }}"

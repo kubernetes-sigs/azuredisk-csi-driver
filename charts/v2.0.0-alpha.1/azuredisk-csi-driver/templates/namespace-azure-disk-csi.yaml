@@ -1,4 +1,4 @@
-{{- if .Values.azuredisk.useV2Driver}}
+{{- if .Values.feature.useV2Driver}}
 ---
 {
   "apiVersion": "v1",

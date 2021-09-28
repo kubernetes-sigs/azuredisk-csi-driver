@@ -4,8 +4,7 @@ apiVersion: apps/v1
 metadata:
   name: {{ .Values.windows.dsName }}
   namespace: {{ .Release.Namespace }}
-  labels:
-{{ include "azuredisk.labels" . | indent 4 }}
+{{ include "azuredisk.labels" . | indent 2 }}
 spec:
   updateStrategy:
     rollingUpdate:
@@ -16,8 +15,7 @@ spec:
       app: {{ .Values.windows.dsName }}
   template:
     metadata:
-      labels: 
-{{ include "azuredisk.labels" . | indent 8 }}
+{{ include "azuredisk.labels" . | indent 6 }}
         app: {{ .Values.windows.dsName }}
 {{- with .Values.windows.podLabels }}
 {{ toYaml . | indent 8 }}
@@ -46,7 +44,11 @@ spec:
           volumeMounts:
             - mountPath: C:\csi
               name: plugin-dir
-          image: "{{ .Values.windows.image.livenessProbe.repository }}:{{ .Values.windows.image.livenessProbe.tag }}"
+{{- if hasPrefix "/" .Values.image.livenessProbe.repository }}
+          image: "{{ .Values.image.baseRepo }}{{ .Values.image.livenessProbe.repository }}:{{ .Values.image.livenessProbe.tag }}"
+{{- else }}
+          image: "{{ .Values.image.livenessProbe.repository }}:{{ .Values.image.livenessProbe.tag }}"
+{{- end }}
           args:
             - "--csi-address=$(CSI_ENDPOINT)"
             - "--probe-timeout=3s"
@@ -55,7 +57,7 @@ spec:
           env:
             - name: CSI_ENDPOINT
               value: unix://C:\\csi\\csi.sock
-          imagePullPolicy: {{ .Values.windows.image.livenessProbe.pullPolicy }}
+          imagePullPolicy: {{ .Values.image.livenessProbe.pullPolicy }}
           resources:
             limits:
               cpu: 200m
@@ -64,7 +66,11 @@ spec:
               cpu: 10m
               memory: 20Mi
         - name: node-driver-registrar
-          image: "{{ .Values.windows.image.nodeDriverRegistrar.repository }}:{{ .Values.windows.image.nodeDriverRegistrar.tag }}"
+{{- if hasPrefix "/" .Values.image.nodeDriverRegistrar.repository }}
+          image: "{{ .Values.image.baseRepo }}{{ .Values.image.nodeDriverRegistrar.repository }}:{{ .Values.image.nodeDriverRegistrar.tag }}"
+{{- else }}
+          image: "{{ .Values.image.nodeDriverRegistrar.repository }}:{{ .Values.image.nodeDriverRegistrar.tag }}"
+{{- end }}
           args:
             - "--v=2"
             - "--csi-address=$(CSI_ENDPOINT)"
@@ -89,7 +95,7 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
-          imagePullPolicy: {{ .Values.windows.image.nodeDriverRegistrar.pullPolicy }}
+          imagePullPolicy: {{ .Values.image.nodeDriverRegistrar.pullPolicy }}
           volumeMounts:
             - name: kubelet-dir
               mountPath: "C:\\var\\lib\\kubelet"
@@ -105,14 +111,18 @@ spec:
               cpu: 10m
               memory: 20Mi
         - name: azuredisk
+{{- if hasPrefix "/" .Values.image.azuredisk.repository }}
+          image: "{{ .Values.image.baseRepo }}{{ .Values.image.azuredisk.repository }}:{{ .Values.image.azuredisk.tag }}"
+{{- else }}
           image: "{{ .Values.image.azuredisk.repository }}:{{ .Values.image.azuredisk.tag }}"
+{{- end }}
           args:
             - "--v={{ .Values.node.logLevel }}"
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--nodeid=$(KUBE_NODE_NAME)"
             - "--metrics-address=0.0.0.0:{{ .Values.node.metricsPort }}"
-            - "--temp-use-driver-v2={{ .Values.azuredisk.useV2Driver }}"
-            - "--is-node-plugin={{ .Values.azuredisk.useV2Driver }}"
+            - "--temp-use-driver-v2={{ .Values.feature.useV2Driver }}"
+            - "--is-node-plugin={{ .Values.feature.useV2Driver }}"
             - "--drivername={{ .Values.driver.name }}"
             - "--volume-attach-limit={{ .Values.driver.volumeAttachLimit }}"
             - "--cloud-config-secret-name={{ .Values.node.cloudConfigSecretName }}"
@@ -178,7 +188,6 @@ spec:
             requests:
               cpu: 10m
               memory: 20Mi
-      volumes:
       volumes:
         - name: csi-proxy-fs-pipe-v1
           hostPath:

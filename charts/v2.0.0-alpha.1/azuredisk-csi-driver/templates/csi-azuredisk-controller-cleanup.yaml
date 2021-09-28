@@ -3,11 +3,10 @@ kind: Job
 metadata:
   name: csi-azuredisk-controller-cleanup
   namespace: {{ .Release.Namespace }}
-  labels: 
-{{ include "azuredisk.labels" . | indent 4 }}
   annotations:
     "helm.sh/hook": pre-delete
     "helm.sh/hook-delete-policy": hook-succeeded
+{{ include "azuredisk.labels" . | indent 2 }}
 spec:
   template:
     spec:
@@ -30,8 +29,12 @@ spec:
       restartPolicy: Never
       containers:
         - name: delete-azvolume
-          image: {{ .Values.cleanup.image.curl.repository }}:{{ .Values.cleanup.image.curl.tag }}
-          imagePullPolicy: {{ .Values.cleanup.image.curl.pullPolicy }}
+{{- if hasPrefix "/" .Values.image.curl.repository }}
+          image: {{ .Values.image.baseRepo }}{{ .Values.image.curl.repository }}:{{ .Values.image.curl.tag }}
+{{- else }}
+          image: {{ .Values.image.curl.repository }}:{{ .Values.image.curl.tag }}
+{{- end }}
+          imagePullPolicy: {{ .Values.image.curl.pullPolicy }}
           command:
             - "/bin/sh"
             - "-c"
