@@ -24,6 +24,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -43,6 +44,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
+	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
@@ -55,6 +57,8 @@ type CloudProvisioner struct {
 	kubeClient                 clientset.Interface
 	cloudConfigSecretName      string
 	cloudConfigSecretNamespace string
+	// a timed cache GetDisk throttling
+	getDiskThrottlingCache *azcache.TimedCache
 }
 
 // listVolumeStatus explains the return status of `listVolumesByResourceGroup`
@@ -79,11 +83,19 @@ func NewCloudProvisioner(
 
 	topologyKeyStr = topologyKey
 
+	cache, err := azcache.NewTimedcache(5*time.Minute, func(key string) (interface{}, error) {
+		return nil, nil
+	})
+	if err != nil {
+		klog.Fatalf("failed to create disk throttling cache: %v", err)
+	}
+
 	return &CloudProvisioner{
 		cloud:                      azCloud,
 		kubeClient:                 kubeClient,
 		cloudConfigSecretName:      cloudConfigSecretName,
 		cloudConfigSecretNamespace: cloudConfigSecretNamespace,
+		getDiskThrottlingCache:     cache,
 	}, nil
 }
 
@@ -321,6 +333,8 @@ func (c *CloudProvisioner) CreateVolume(
 		LogicalSectorSize:   int32(logicalSectorSize),
 		BurstingEnabled:     enableBursting,
 	}
+
+	volumeOptions.SkipGetDiskOperation = c.isGetDiskThrottled()
 
 	// Azure Stack Cloud does not support NetworkAccessPolicy
 	if !azureutils.IsAzureStackCloud(localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud) {
@@ -711,8 +725,18 @@ func (c *CloudProvisioner) CheckDiskExists(ctx context.Context, diskURI string) 
 		return nil, err
 	}
 
+	if c.isGetDiskThrottled() {
+		klog.Warningf("skip checkDiskExists(%s) since it's still in throttling", diskURI)
+		return nil, nil
+	}
+
 	disk, rerr := c.cloud.DisksClient.Get(ctx, resourceGroup, diskName)
 	if rerr != nil {
+		if strings.Contains(rerr.RawError.Error(), azureconstants.RateLimited) {
+			klog.Warningf("checkDiskExists(%s) is throttled with error: %v", diskURI, rerr.Error())
+			c.getDiskThrottlingCache.Set(azureconstants.ThrottlingKey, "")
+			return nil, nil
+		}
 		return nil, rerr.Error()
 	}
 
@@ -755,12 +779,22 @@ func (c *CloudProvisioner) GetSourceDiskSize(ctx context.Context, resourceGroup,
 }
 
 func (c *CloudProvisioner) CheckDiskCapacity(ctx context.Context, resourceGroup, diskName string, requestGiB int) (bool, error) {
-	disk, err := c.cloud.DisksClient.Get(ctx, resourceGroup, diskName)
+	if c.isGetDiskThrottled() {
+		klog.Warningf("skip checkDiskCapacity((%s, %s) since it's still in throttling", resourceGroup, diskName)
+		return true, nil
+	}
+
+	disk, rerr := c.cloud.DisksClient.Get(ctx, resourceGroup, diskName)
 	// Because we can not judge the reason of the error. Maybe the disk does not exist.
 	// So here we do not handle the error.
-	if err == nil {
+	if rerr == nil {
 		if !reflect.DeepEqual(disk, compute.Disk{}) && disk.DiskSizeGB != nil && int(*disk.DiskSizeGB) != requestGiB {
 			return false, status.Errorf(codes.AlreadyExists, "the request volume already exists, but its capacity(%v) is different from (%v)", *disk.DiskProperties.DiskSizeGB, requestGiB)
+		}
+	} else {
+		if strings.Contains(rerr.RawError.Error(), azureconstants.RateLimited) {
+			klog.Warningf("checkDiskCapacity(%s, %s) is throttled with error: %v", resourceGroup, diskName, rerr.Error())
+			c.getDiskThrottlingCache.Set(azureconstants.ThrottlingKey, "")
 		}
 	}
 	return true, nil
@@ -797,6 +831,15 @@ func (c *CloudProvisioner) getSnapshotByID(ctx context.Context, resourceGroup st
 	}
 
 	return azureutils.NewAzureDiskSnapshot(sourceVolumeID, &snapshot)
+}
+
+func (c *CloudProvisioner) isGetDiskThrottled() bool {
+	cache, err := c.getDiskThrottlingCache.Get(azureconstants.ThrottlingKey, azcache.CacheReadTypeDefault)
+	if err != nil {
+		klog.Warningf("getDiskThrottlingCache(%s) return with error: %s", azureconstants.ThrottlingKey, err)
+		return false
+	}
+	return cache != nil
 }
 
 func (c *CloudProvisioner) validateCreateVolumeRequestParams(
