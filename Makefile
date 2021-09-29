@@ -329,3 +329,12 @@ e2e-test:
 .PHONY: e2e-test-v2
 e2e-test-v2:
 	BUILD_V2=1 make e2e-test
+
+.PHONY: pod-failover-test-containers
+pod-failover-test-containers:
+	go build -a -mod vendor -o _output/${ARCH}/workloadPod ./test/podFailover/workload 
+	go build -a -mod vendor -o _output/${ARCH}/controllerPod ./test/podFailover/controller
+	docker build -t $(REGISTRY)/workloadpod:latest -f ./test/podFailover/workload/Dockerfile .
+	docker build -t $(REGISTRY)/controllerpod:latest -f ./test/podFailover/controller/Dockerfile .
+	docker push $(REGISTRY)/workloadpod:latest
+	docker push $(REGISTRY)/controllerpod:latest
