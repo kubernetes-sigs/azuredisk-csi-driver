@@ -125,6 +125,7 @@ func newDriverV2(options *DriverOptions,
 	driver.cloudConfigSecretNamespace = options.CloudConfigSecretNamespace
 	driver.customUserAgent = options.CustomUserAgent
 	driver.userAgentSuffix = options.UserAgentSuffix
+	driver.useCSIProxyGAInterface = options.UseCSIProxyGAInterface
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
 	driver.deviceChecker = deviceChecker{lock: sync.RWMutex{}, entry: nil}
