@@ -37,7 +37,7 @@ func main() {
 	//Register prometheus metrics
 	containerStoppedTimeMetric := prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: "default",
-		Name:      "failover_testing_container_stop_time",
+		Name:      "failover_testing_workload_downtime",
 		Help:      "Downtime seen by the workload pod after failing",
 	})
 
