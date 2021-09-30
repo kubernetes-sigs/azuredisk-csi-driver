@@ -66,4 +66,4 @@ helm install azuredisk-csi-driver test/latest/azuredisk-csi-driver -n kube-syste
 
 echo 'Begin to run sanity test v2'
 readonly CSI_SANITY_BIN='csi-sanity'
-"$CSI_SANITY_BIN" --ginkgo.v --csi.endpoint="127.0.0.1:10000" --ginkgo.skip='should work|should fail when volume does not exist on the specified path|should be idempotent|pagination should detect volumes added between pages and accept tokens when the last volume from a page is deleted|should return next token when a limited number of entries are requested|check the presence of new volumes and absence of deleted ones in the volume list|should remove target path'
+"$CSI_SANITY_BIN" --ginkgo.v --csi.endpoint="127.0.0.1:10000" --ginkgo.skip='should work|should fail when volume does not exist on the specified path|should be idempotent|pagination should detect volumes added between pages and accept tokens when the last volume from a page is deleted|should return next token when a limited number of entries are requested|check the presence of new volumes and absence of deleted ones in the volume list|should remove target path|should return appropriate capabilities'
