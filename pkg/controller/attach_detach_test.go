@@ -45,6 +45,7 @@ func NewTestAttachDetachController(controller *gomock.Controller, namespace stri
 		namespace:             namespace,
 		attachmentProvisioner: mockattachmentprovisioner.NewMockAttachmentProvisioner(controller),
 		stateLock:             &sync.Map{},
+		retryInfo:             newRetryInfo(),
 	}
 }
 
