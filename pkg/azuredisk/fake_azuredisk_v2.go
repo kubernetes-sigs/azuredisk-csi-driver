@@ -64,12 +64,13 @@ func newFakeDriverV2(t *testing.T) (*fakeDriverV2, error) {
 	driver.VolumeAttachLimit = -1
 	driver.ioHandler = azureutils.NewFakeIOHandler()
 	driver.hostUtil = azureutils.NewFakeHostUtil()
+	driver.useCSIProxyGAInterface = true
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
 	driver.cloud = azure.GetTestCloud(ctrl)
-	mounter, err := mounter.NewSafeMounter()
+	mounter, err := mounter.NewSafeMounter(driver.useCSIProxyGAInterface)
 	if err != nil {
 		return nil, err
 	}

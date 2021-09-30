@@ -74,6 +74,7 @@ func newDriverV2(options *DriverOptions) *DriverV2 {
 	driver.cloudConfigSecretNamespace = options.CloudConfigSecretNamespace
 	driver.customUserAgent = options.CustomUserAgent
 	driver.userAgentSuffix = options.UserAgentSuffix
+	driver.useCSIProxyGAInterface = options.UseCSIProxyGAInterface
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
 
@@ -119,7 +120,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 		}
 	}
 
-	d.mounter, err = mounter.NewSafeMounter()
+	d.mounter, err = mounter.NewSafeMounter(d.useCSIProxyGAInterface)
 	if err != nil {
 		klog.Fatalf("Failed to get safe mounter. Error: %v", err)
 	}
