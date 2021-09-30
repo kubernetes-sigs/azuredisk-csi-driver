@@ -20,3 +20,4 @@ ARG ARCH=amd64
 ARG PLUGIN_NAME=azurediskplugin
 COPY ./_output/${ARCH}/${PLUGIN_NAME} /azurediskplugin
 ENTRYPOINT ["/azurediskplugin"]
+
