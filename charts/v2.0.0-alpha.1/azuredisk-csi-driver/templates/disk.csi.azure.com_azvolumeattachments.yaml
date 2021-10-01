@@ -25,10 +25,12 @@ spec:
         to
       jsonPath: .spec.nodeName
       name: NodeName
+      priority: 10
       type: string
     - description: Name of the Volume which this AzVolumeAttachment object references
       jsonPath: .spec.underlyingVolume
       name: UnderlyingVolume
+      priority: 10
       type: string
     - description: Indicates if the volume attachment should be primary attachment
         or not
@@ -38,6 +40,10 @@ spec:
     - description: Indicates if the volume attachment is primary attachment or not
       jsonPath: .status.detail.role
       name: Role
+      type: string
+    - description: Indicates the state of the volume attachment
+      jsonPath: .status.state
+      name: State
       type: string
     name: v1alpha1
     schema:
