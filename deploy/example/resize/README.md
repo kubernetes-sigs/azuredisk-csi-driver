@@ -14,7 +14,7 @@ metadata:
 provisioner: disk.csi.azure.com
 allowVolumeExpansion: true
 parameters:
-  skuname: Standard_LRS
+  skuName: Standard_LRS
   cachingMode: ReadOnly
 reclaimPolicy: Delete
 volumeBindingMode: Immediate
