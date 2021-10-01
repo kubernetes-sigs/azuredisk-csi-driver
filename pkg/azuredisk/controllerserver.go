@@ -178,6 +178,8 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			if err != nil {
 				return nil, fmt.Errorf("create cloud with UserAgent(%s) failed with: (%s)", newUserAgent, err)
 			}
+		case consts.ZonedField:
+			// no op, only for backward compatibility with in-tree driver
 		default:
 			return nil, fmt.Errorf("invalid parameter %s in storage class", k)
 		}

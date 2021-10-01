@@ -73,6 +73,7 @@ const (
 	VolumeAttributePartition      = "partition"
 	WellKnownTopologyKey          = "topology.kubernetes.io/zone"
 	WriteAcceleratorEnabled       = "writeacceleratorenabled"
+	ZonedField                    = "zoned"
 )
 
 var (
