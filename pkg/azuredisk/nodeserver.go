@@ -28,6 +28,7 @@ import (
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
+	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
@@ -300,15 +301,24 @@ func (d *Driver) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapabi
 
 // NodeGetInfo return info of the node on which this plugin is running
 func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
-	instances, ok := d.cloud.Instances()
-	if !ok {
-		return nil, status.Error(codes.Internal, "Failed to get instances from cloud provider")
-	}
-
-	instanceType, err := instances.InstanceType(context.TODO(), types.NodeName(d.NodeID))
-	if err != nil {
-		klog.Warningf("Failed to get instance type from Azure cloud provider, nodeName: %v, error: %v", d.NodeID, err)
-		instanceType = ""
+	var instanceType string
+	if runtime.GOOS == "windows" && d.cloud.UseInstanceMetadata && d.cloud.Metadata != nil {
+		metadata, err := d.cloud.Metadata.GetMetadata(azcache.CacheReadTypeDefault)
+		if err == nil && metadata.Compute != nil {
+			instanceType = metadata.Compute.VMSize
+			klog.V(5).Infof("NodeGetInfo: nodeName(%s), VM Size(%s)", d.NodeID, instanceType)
+		} else {
+			klog.Warningf("get instance type(%s) failed with: %v", d.NodeID, err)
+		}
+	} else {
+		instances, ok := d.cloud.Instances()
+		if !ok {
+			return nil, status.Error(codes.Internal, "Failed to get instances from cloud provider")
+		}
+		var err error
+		if instanceType, err = instances.InstanceType(ctx, types.NodeName(d.NodeID)); err != nil {
+			klog.Warningf("get instance type(%s) failed with: %v", d.NodeID, err)
+		}
 	}
 
 	topology := &csi.Topology{
@@ -316,7 +326,7 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 	}
 	zone, err := d.cloud.GetZone(ctx)
 	if err != nil {
-		klog.Warningf("Failed to get zone from Azure cloud provider, nodeName: %v, error: %v", d.NodeID, err)
+		klog.Warningf("get zone(%s) failed with: %v", d.NodeID, err)
 	} else {
 		if azureutils.IsValidAvailabilityZone(zone.FailureDomain, d.cloud.Location) {
 			topology.Segments[topologyKey] = zone.FailureDomain
