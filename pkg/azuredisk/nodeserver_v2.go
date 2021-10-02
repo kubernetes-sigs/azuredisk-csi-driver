@@ -349,7 +349,7 @@ func (d *DriverV2) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest)
 		return nil, status.Error(codes.Internal, "Failed to get instances from cloud provider")
 	}
 
-	instanceType, err := instances.InstanceType(context.TODO(), types.NodeName(d.NodeID))
+	instanceType, err := instances.InstanceType(ctx, types.NodeName(d.NodeID))
 	if err != nil {
 		klog.Warningf("Failed to get instance type from Azure cloud provider, nodeName: %v, error: %v", d.NodeID, err)
 		instanceType = ""
