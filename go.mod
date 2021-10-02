@@ -26,7 +26,7 @@ require (
 	k8s.io/api v0.22.2
 	k8s.io/apimachinery v0.22.2
 	k8s.io/client-go v0.22.2
-	k8s.io/cloud-provider v0.22.1
+	k8s.io/cloud-provider v0.22.2
 	k8s.io/code-generator v0.22.1
 	k8s.io/component-base v0.22.2
 	k8s.io/klog v1.0.0
@@ -73,5 +73,5 @@ replace (
 	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.21.0
 	k8s.io/sample-controller => k8s.io/sample-controller v0.21.0
 
-	sigs.k8s.io/cloud-provider-azure => sigs.k8s.io/cloud-provider-azure v0.7.4-0.20210913090406-47c4f2ee9fdf
+	sigs.k8s.io/cloud-provider-azure => sigs.k8s.io/cloud-provider-azure v0.7.4-0.20211002135523-bef1aaee06b5
 )
