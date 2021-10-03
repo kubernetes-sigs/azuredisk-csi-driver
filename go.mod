@@ -22,15 +22,15 @@ require (
 	golang.org/x/net v0.0.0-20210428140749-89ef3d95e781
 	google.golang.org/grpc v1.38.0
 	google.golang.org/protobuf v1.26.0
-	k8s.io/api v0.22.1
-	k8s.io/apimachinery v0.22.1
-	k8s.io/client-go v0.22.1
-	k8s.io/cloud-provider v0.22.1
-	k8s.io/component-base v0.22.1
+	k8s.io/api v0.22.2
+	k8s.io/apimachinery v0.22.2
+	k8s.io/client-go v0.22.2
+	k8s.io/cloud-provider v0.22.2
+	k8s.io/component-base v0.22.2
 	k8s.io/klog/v2 v2.10.0
 	k8s.io/kubernetes v1.21.0
 	k8s.io/mount-utils v0.0.0
-	k8s.io/utils v0.0.0-20210707171843-4b05e18ac7d9
+	k8s.io/utils v0.0.0-20210819203725-bdf08cb9a70a
 	sigs.k8s.io/cloud-provider-azure v0.7.4
 	sigs.k8s.io/yaml v1.2.0
 )
@@ -68,5 +68,5 @@ replace (
 	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.21.0
 	k8s.io/sample-controller => k8s.io/sample-controller v0.21.0
 
-	sigs.k8s.io/cloud-provider-azure => sigs.k8s.io/cloud-provider-azure v0.7.4-0.20210913090406-47c4f2ee9fdf
+	sigs.k8s.io/cloud-provider-azure => sigs.k8s.io/cloud-provider-azure v0.7.4-0.20211002135523-bef1aaee06b5
 )

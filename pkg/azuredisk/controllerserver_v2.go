@@ -555,7 +555,7 @@ func (d *DriverV2) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest)
 
 // listVolumesInCluster is a helper function for ListVolumes used for when there is an available kubeclient
 func (d *DriverV2) listVolumesInCluster(ctx context.Context, start, maxEntries int) (*csi.ListVolumesResponse, error) {
-	pvList, err := d.cloud.KubeClient.CoreV1().PersistentVolumes().List(context.TODO(), metav1.ListOptions{})
+	pvList, err := d.cloud.KubeClient.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "ListVolumes failed while fetching PersistentVolumes List with error: %v", err.Error())
 	}
