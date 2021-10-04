@@ -23,27 +23,26 @@ require (
 	golang.org/x/net v0.0.0-20210428140749-89ef3d95e781
 	google.golang.org/grpc v1.38.0
 	google.golang.org/protobuf v1.26.0
-	k8s.io/api v0.22.1
-	k8s.io/apimachinery v0.22.1
-	k8s.io/client-go v0.22.1
+	k8s.io/api v0.22.2
+	k8s.io/apimachinery v0.22.2
+	k8s.io/client-go v0.22.2
 	k8s.io/cloud-provider v0.22.1
 	k8s.io/code-generator v0.22.1
-	k8s.io/component-base v0.22.1
+	k8s.io/component-base v0.22.2
 	k8s.io/klog v1.0.0
 	k8s.io/klog/v2 v2.10.0
-	k8s.io/kube-scheduler v0.22.0
+	k8s.io/kube-scheduler v0.22.1
 	k8s.io/kubernetes v1.21.0
 	k8s.io/mount-utils v0.0.0
-	k8s.io/utils v0.0.0-20210707171843-4b05e18ac7d9
+	k8s.io/utils v0.0.0-20210819203725-bdf08cb9a70a
 	sigs.k8s.io/cloud-provider-azure v0.7.4
-	sigs.k8s.io/controller-runtime v0.9.0-beta.5
+	sigs.k8s.io/controller-runtime v0.10.1
 	sigs.k8s.io/controller-tools v0.5.0
 	sigs.k8s.io/yaml v1.2.0
 )
 
 replace (
 	github.com/niemeyer/pretty => github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e
-	github.com/prometheus/client_golang => github.com/prometheus/client_golang v1.7.1
 	go.etcd.io/etcd => go.etcd.io/etcd v0.0.0-20200410171415-59f5fb25a533
 	google.golang.org/grpc => google.golang.org/grpc v1.27.0
 	k8s.io/api => k8s.io/api v0.21.0

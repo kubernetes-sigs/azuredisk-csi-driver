@@ -44,6 +44,7 @@ import (
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	azurediskInformers "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -407,22 +408,26 @@ func GetAzVolumeAttachmentState(volumeAttachmentStatus storagev1.VolumeAttachmen
 	}
 }
 
-func UpdateCRIWithRetry(ctx context.Context, cachedClient client.Client, azDiskClient azDiskClientSet.Interface, obj interface{}, updateFunc func(interface{}) error) error {
+func UpdateCRIWithRetry(ctx context.Context, informerFactory azurediskInformers.SharedInformerFactory, cachedClient client.Client, azDiskClient azDiskClientSet.Interface, obj interface{}, updateFunc func(interface{}) error) error {
 	conditionFunc := func() error {
 		var err error
 		switch target := obj.(type) {
 		case *v1alpha1.AzVolume:
-			if cachedClient == nil {
-				target, err = azDiskClient.DiskV1alpha1().AzVolumes(target.Namespace).Get(ctx, target.Name, metav1.GetOptions{})
-			} else {
+			if informerFactory != nil {
+				target, err = informerFactory.Disk().V1alpha1().AzVolumes().Lister().AzVolumes(target.Namespace).Get(target.Name)
+			} else if cachedClient != nil {
 				err = cachedClient.Get(ctx, types.NamespacedName{Namespace: target.Namespace, Name: target.Name}, target)
+			} else {
+				target, err = azDiskClient.DiskV1alpha1().AzVolumes(target.Namespace).Get(ctx, target.Name, metav1.GetOptions{})
 			}
 			obj = target.DeepCopy()
 		case *v1alpha1.AzVolumeAttachment:
-			if cachedClient == nil {
-				target, err = azDiskClient.DiskV1alpha1().AzVolumeAttachments(target.Namespace).Get(ctx, target.Name, metav1.GetOptions{})
-			} else {
+			if informerFactory != nil {
+				target, err = informerFactory.Disk().V1alpha1().AzVolumeAttachments().Lister().AzVolumeAttachments(target.Namespace).Get(target.Name)
+			} else if cachedClient != nil {
 				err = cachedClient.Get(ctx, types.NamespacedName{Namespace: target.Namespace, Name: target.Name}, target)
+			} else {
+				target, err = azDiskClient.DiskV1alpha1().AzVolumeAttachments(target.Namespace).Get(ctx, target.Name, metav1.GetOptions{})
 			}
 			obj = target.DeepCopy()
 		default:

@@ -30,8 +30,10 @@ import (
 	"google.golang.org/grpc/status"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
@@ -627,23 +629,33 @@ func getOperationRequeueError(desired string, obj client.Object) error {
 	return status.Errorf(codes.Aborted, "requeueing %s operation because another operation is already pending on %v (%s)", desired, reflect.TypeOf(obj), obj.GetName())
 }
 
-func reconcileReturnOnError(obj interface{}, operationType string, err error) (reconcile.Result, error) {
-	var errMsg string
-	if obj != nil {
-		var objName string
-		switch target := obj.(type) {
-		case *v1alpha1.AzVolume:
-			objName = target.Name
-		case *v1alpha1.AzVolumeAttachment:
-			objName = target.Name
+func reconcileReturnOnSuccess(objectName string, retryInfo *retryInfo) (reconcile.Result, error) {
+	retryInfo.deleteEntry(objectName)
+	return reconcile.Result{}, nil
+}
+
+func reconcileReturnOnError(obj runtime.Object, operationType string, err error, retryInfo *retryInfo) (reconcile.Result, error) {
+	var (
+		requeue    bool = status.Code(err) != codes.FailedPrecondition
+		retryAfter time.Duration
+	)
+
+	if meta, metaErr := meta.Accessor(obj); metaErr == nil {
+		objectName := meta.GetName()
+		objectType := reflect.TypeOf(obj)
+		if !requeue {
+			klog.Errorf("failed to %s %v (%s) with no retry: %v", operationType, objectType, objectName, err)
+			retryInfo.deleteEntry(objectName)
+		} else {
+			retryAfter = retryInfo.nextRequeue(objectName)
+			klog.Errorf("failed to %s %v (%s) with retry after %v: %v", operationType, objectType, objectName, retryAfter, err)
 		}
-		errMsg = fmt.Sprintf("failed to %s %v (%s): %v", operationType, reflect.TypeOf(obj), objName, err)
 	}
-	klog.Error(errMsg)
-	if status.Code(err) == codes.FailedPrecondition {
-		return reconcile.Result{Requeue: false}, nil
-	}
-	return reconcile.Result{Requeue: true}, err
+
+	return reconcile.Result{
+		Requeue:      requeue,
+		RequeueAfter: retryAfter,
+	}, nil
 }
 
 func isOperationInProcess(obj interface{}) bool {

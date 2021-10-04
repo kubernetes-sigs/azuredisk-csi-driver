@@ -20,11 +20,10 @@ import (
 	"context"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -47,6 +46,7 @@ func NewTestAzVolumeController(controller *gomock.Controller, namespace string, 
 		namespace:         namespace,
 		volumeProvisioner: mockvolumeprovisioner.NewMockVolumeProvisioner(controller),
 		stateLock:         &sync.Map{},
+		retryInfo:         newRetryInfo(),
 	}
 }
 
@@ -284,8 +284,8 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 				return controller
 			},
 			verifyFunc: func(t *testing.T, controller *ReconcileAzVolume, result reconcile.Result, err error) {
-				require.Equal(t, status.Errorf(codes.Aborted, "volume deletion requeued until attached azVolumeAttachments are entirely detached..."), err)
-				require.True(t, result.Requeue)
+				require.NoError(t, err)
+				require.Greater(t, result.RequeueAfter, time.Duration(0))
 
 				azVolume, err := controller.azVolumeClient.DiskV1alpha1().AzVolumes(testNamespace).Get(context.TODO(), testPersistentVolume0Name, metav1.GetOptions{})
 				require.NoError(t, err)
