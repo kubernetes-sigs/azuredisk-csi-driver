@@ -15,9 +15,6 @@
 FROM alpine:3.14.1
 RUN apk add --no-cache util-linux e2fsprogs e2fsprogs-extra ca-certificates udev xfsprogs xfsprogs-extra
 
-RUN apt update && apt-mark unhold libcap2
-RUN clean-install util-linux e2fsprogs mount ca-certificates udev xfsprogs libssl1.1
-
 LABEL maintainers="andyzhangx"
 LABEL description="Azure Disk CSI Driver"
 
