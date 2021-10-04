@@ -87,6 +87,15 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 	} else {
 		// create a replacement replica if replica attachment failed or promoted
 		if deletionRequested(&azVolumeAttachment.ObjectMeta) {
+			if azVolumeAttachment.Status.State == v1alpha1.DetachmentFailed {
+				if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, azVolumeAttachment, func(obj interface{}) error {
+					azVolumeAttachment := obj.(*v1alpha1.AzVolumeAttachment)
+					_, err = updateState(ctx, azVolumeAttachment, v1alpha1.ForceDetachPending)
+					return err
+				}); err != nil {
+					return reconcile.Result{Requeue: true}, err
+				}
+			}
 			if azVolumeAttachment.Annotations == nil || !metav1.HasAnnotation(azVolumeAttachment.ObjectMeta, azureutils.CleanUpAnnotation) {
 				go func() {
 					// wait for replica AzVolumeAttachment deletion
@@ -108,6 +117,11 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 					}
 					_ = wait.ExponentialBackoffWithContext(ctx, wait.Backoff{Duration: defaultRetryDuration, Factor: defaultRetryFactor, Steps: defaultRetrySteps}, conditionFunc)
 				}()
+			}
+		} else if azVolumeAttachment.Status.State == v1alpha1.AttachmentFailed {
+			// if attachment failed for replica AzVolumeAttachment, delete the CRI so that replace replica AzVolumeAttachment can be created.
+			if err := r.client.Delete(ctx, azVolumeAttachment); err != nil {
+				return reconcile.Result{Requeue: true}, err
 			}
 		}
 	}
