@@ -21,6 +21,9 @@ image=$3
 function cleanup {
   set +e
 
+  echo 'Print out controller logs'
+  ./test/utils/azuredisk_log.sh
+
   echo 'Uninstalling CRD'
   kubectl delete crd azvolumes.disk.csi.azure.com
   kubectl delete crd azvolumeattachments.disk.csi.azure.com

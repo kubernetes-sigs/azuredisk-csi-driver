@@ -205,6 +205,8 @@ const (
 	Detached AzVolumeAttachmentAttachmentState = "Detached"
 	// DetachmentFailed indicates that the volume detachment has failed
 	DetachmentFailed AzVolumeAttachmentAttachmentState = "DetachmentFailed"
+	// ForceDetachPending allows controller to retry on failed replica detachment
+	ForceDetachPending AzVolumeAttachmentAttachmentState = "ForceDetachPending"
 )
 
 // AzVolumeAttachmentStatus is the status for a AzVolumeAttachment resource
