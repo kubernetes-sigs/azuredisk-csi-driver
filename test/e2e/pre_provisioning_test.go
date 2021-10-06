@@ -19,7 +19,10 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/testsuites"
 
@@ -31,7 +34,8 @@ import (
 )
 
 const (
-	defaultDiskSize = int64(10)
+	defaultDiskSize     = int64(10)
+	createVolumeTimeout = 5 * time.Minute
 )
 
 var _ = ginkgo.Describe("Pre-Provisioned", func() {
@@ -75,10 +79,15 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			skipIfUsingInTreeVolumePlugin()
 
 			req := makeCreateVolumeReq("pre-provisioned-read-only", defaultDiskSize)
-			resp, err := azurediskDriver.CreateVolume(context.Background(), req)
+
+			ctx, cancel := context.WithTimeout(context.Background(), createVolumeTimeout)
+			defer cancel()
+
+			resp, err := azurediskDriver.CreateVolume(ctx, req)
 			if err != nil {
 				ginkgo.Fail(fmt.Sprintf("create volume error: %v", err))
 			}
+
 			volumeID = resp.Volume.VolumeId
 			ginkgo.By(fmt.Sprintf("Successfully provisioned AzureDisk volume: %q\n", volumeID))
 
@@ -121,10 +130,15 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			req.VolumeCapabilities[0].AccessType = &csi.VolumeCapability_Block{
 				Block: &csi.VolumeCapability_BlockVolume{},
 			}
-			resp, err := azurediskDriver.CreateVolume(context.Background(), req)
+
+			ctx, cancel := context.WithTimeout(context.Background(), createVolumeTimeout)
+			defer cancel()
+
+			resp, err := azurediskDriver.CreateVolume(ctx, req)
 			if err != nil {
 				ginkgo.Fail(fmt.Sprintf("create volume error: %v", err))
 			}
+
 			volumeID = resp.Volume.VolumeId
 			ginkgo.By(fmt.Sprintf("Successfully provisioned a shared disk volume: %q\n", volumeID))
 
@@ -169,10 +183,15 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			req.VolumeCapabilities[0].AccessType = &csi.VolumeCapability_Block{
 				Block: &csi.VolumeCapability_BlockVolume{},
 			}
-			resp, err := azurediskDriver.CreateVolume(context.Background(), req)
+
+			ctx, cancel := context.WithTimeout(context.Background(), createVolumeTimeout)
+			defer cancel()
+
+			resp, err := azurediskDriver.CreateVolume(ctx, req)
 			if err != nil {
 				ginkgo.Fail(fmt.Sprintf("create volume error: %v", err))
 			}
+
 			volumeID = resp.Volume.VolumeId
 			ginkgo.By(fmt.Sprintf("Successfully provisioned a shared disk volume: %q\n", volumeID))
 
@@ -215,10 +234,15 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			req.VolumeCapabilities[0].AccessType = &csi.VolumeCapability_Block{
 				Block: &csi.VolumeCapability_BlockVolume{},
 			}
-			resp, err := azurediskDriver.CreateVolume(context.Background(), req)
+
+			ctx, cancel := context.WithTimeout(context.Background(), createVolumeTimeout)
+			defer cancel()
+
+			resp, err := azurediskDriver.CreateVolume(ctx, req)
 			if err != nil {
 				ginkgo.Fail(fmt.Sprintf("create volume error: %v", err))
 			}
+
 			volumeID = resp.Volume.VolumeId
 			ginkgo.By(fmt.Sprintf("Successfully provisioned a shared disk volume: %q\n", volumeID))
 
@@ -254,10 +278,15 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			skipIfUsingInTreeVolumePlugin()
 
 			req := makeCreateVolumeReq("pre-provisioned-retain-reclaim-policy", defaultDiskSize)
-			resp, err := azurediskDriver.CreateVolume(context.Background(), req)
+
+			ctx, cancel := context.WithTimeout(context.Background(), createVolumeTimeout)
+			defer cancel()
+
+			resp, err := azurediskDriver.CreateVolume(ctx, req)
 			if err != nil {
 				ginkgo.Fail(fmt.Sprintf("create volume error: %v", err))
 			}
+
 			volumeID = resp.Volume.VolumeId
 			ginkgo.By(fmt.Sprintf("Successfully provisioned AzureDisk volume: %q\n", volumeID))
 
@@ -291,10 +320,15 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			req.VolumeCapabilities[0].AccessType = &csi.VolumeCapability_Block{
 				Block: &csi.VolumeCapability_BlockVolume{},
 			}
-			resp, err := azurediskDriver.CreateVolume(context.Background(), req)
+
+			ctx, cancel := context.WithTimeout(context.Background(), createVolumeTimeout)
+			defer cancel()
+
+			resp, err := azurediskDriver.CreateVolume(ctx, req)
 			if err != nil {
 				ginkgo.Fail(fmt.Sprintf("create volume error: %v", err))
 			}
+
 			volumeID = resp.Volume.VolumeId
 			ginkgo.By(fmt.Sprintf("Successfully provisioned a shared disk volume: %q\n", volumeID))
 		})
@@ -307,7 +341,15 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			skipVolumeDeletion = true
 			req := makeCreateVolumeReq("invalid-max-shares", 256)
 			req.Parameters = map[string]string{"maxShares": "0"}
-			_, err := azurediskDriver.CreateVolume(context.Background(), req)
+
+			ctx, cancel := context.WithTimeout(context.Background(), createVolumeTimeout)
+			defer cancel()
+
+			_, err := azurediskDriver.CreateVolume(ctx, req)
+			if err != nil && status.Code(err) == codes.DeadlineExceeded {
+				ginkgo.Fail(fmt.Sprintf("create volume error: %v", err))
+			}
+
 			framework.ExpectError(err)
 		})
 
@@ -326,10 +368,15 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			req.VolumeCapabilities[0].AccessType = &csi.VolumeCapability_Block{
 				Block: &csi.VolumeCapability_BlockVolume{},
 			}
-			resp, err := azurediskDriver.CreateVolume(context.Background(), req)
+
+			ctx, cancel := context.WithTimeout(context.Background(), createVolumeTimeout)
+			defer cancel()
+
+			resp, err := azurediskDriver.CreateVolume(ctx, req)
 			if err != nil {
 				ginkgo.Fail(fmt.Sprintf("create volume error: %v", err))
 			}
+
 			volumeID = resp.Volume.VolumeId
 			ginkgo.By(fmt.Sprintf("Successfully provisioned a shared disk volume: %q\n", volumeID))
 			pods := []testsuites.PodDetails{}
@@ -370,10 +417,15 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			req.VolumeCapabilities[0].AccessType = &csi.VolumeCapability_Block{
 				Block: &csi.VolumeCapability_BlockVolume{},
 			}
-			resp, err := azurediskDriver.CreateVolume(context.Background(), req)
+
+			ctx, cancel := context.WithTimeout(context.Background(), createVolumeTimeout)
+			defer cancel()
+
+			resp, err := azurediskDriver.CreateVolume(ctx, req)
 			if err != nil {
 				ginkgo.Fail(fmt.Sprintf("create volume error: %v", err))
 			}
+
 			volumeID = resp.Volume.VolumeId
 			ginkgo.By(fmt.Sprintf("Successfully provisioned a shared disk volume: %q\n", volumeID))
 
@@ -413,10 +465,15 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 
 			skipVolumeDeletion = true
 			req := makeCreateVolumeReq("pre-provisioned-inline-volume", defaultDiskSize)
-			resp, err := azurediskDriver.CreateVolume(context.Background(), req)
+
+			ctx, cancel := context.WithTimeout(context.Background(), createVolumeTimeout)
+			defer cancel()
+
+			resp, err := azurediskDriver.CreateVolume(ctx, req)
 			if err != nil {
 				ginkgo.Fail(fmt.Sprintf("create volume error: %v", err))
 			}
+
 			volumeID = resp.Volume.VolumeId
 			ginkgo.By(fmt.Sprintf("Successfully provisioned AzureDisk volume: %q\n", volumeID))
 
