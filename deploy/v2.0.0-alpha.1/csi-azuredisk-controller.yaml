@@ -137,7 +137,6 @@ spec:
             - "--metrics-address=0.0.0.0:29604"
             - "--user-agent-suffix=OSS-kubectl"
             - "--disable-avset-nodes=true"
-            - "--temp-use-driver-v2=true"
             - "--is-controller-plugin=true"
           ports:
             - containerPort: 29602

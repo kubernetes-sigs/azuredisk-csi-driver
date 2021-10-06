@@ -9,7 +9,6 @@ rules:
   - apiGroups: [""]
     resources: ["secrets"]
     verbs: ["get", "list"]
-    {{- if .Values.feature.useV2Driver}}
   - apiGroups: ["storage.k8s.io"]
     resources: ["storageclasses"]
     verbs: ["get", "list", "watch"]
@@ -22,7 +21,6 @@ rules:
   - apiGroups: ["disk.csi.azure.com"]
     resources: ["azdrivernodes/status", "azvolumeattachments/status", "azvolumes/status"]
     verbs: ["get", "patch", "update"]
-    {{- end }}
 ---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1

@@ -32,11 +32,16 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+const (
+	driverV1 = "v1"
+	driverV2 = "v2"
+)
+
 var (
 	nodeids = []string{"integration-test-node-0", "integration-test-node-1", "integration-test-node-2"}
 )
 
-var useDriverV2 = flag.Bool("temp-use-driver-v2", false, "A temporary flag to enable early test and development of Azure Disk CSI Driver V2. This will be removed in the future.")
+var testDriverVersion = flag.String("test-driver-version", driverV1, "The version of the driver to be tested. Valid values are \"v1\" or \"v2\".")
 var imageTag = flag.String("image-tag", "", "A flag to get the docker image tag")
 
 func TestIntegrationOnAzurePublicCloud(t *testing.T) {
@@ -53,7 +58,9 @@ func TestIntegrationOnAzurePublicCloud(t *testing.T) {
 	// Set necessary env vars for sanity test
 	os.Setenv("AZURE_CREDENTIAL_FILE", credentials.TempAzureCredentialFilePath)
 
-	if *useDriverV2 {
+	useDriverV2 := strings.EqualFold(*testDriverVersion, driverV2)
+
+	if useDriverV2 {
 		os.Setenv("nodeid_0", nodeids[0])
 		os.Setenv("nodeid_1", nodeids[1])
 		os.Setenv("nodeid_2", nodeids[2])
@@ -80,7 +87,7 @@ func TestIntegrationOnAzurePublicCloud(t *testing.T) {
 
 	// for v2 driver testing, we need multiple VMs for testing AzVolumeAttachment where maxShares > 1
 	numVM := 1
-	if *useDriverV2 {
+	if useDriverV2 {
 		numVM = 3
 	}
 	for i := 0; i < numVM; i++ {
@@ -103,7 +110,7 @@ func TestIntegrationOnAzurePublicCloud(t *testing.T) {
 	assert.True(t, strings.HasSuffix(cwd, "azuredisk-csi-driver"))
 
 	args := []string{creds.Cloud}
-	if *useDriverV2 {
+	if useDriverV2 {
 		args = append(args, "v2")
 		args = append(args, *imageTag)
 	}

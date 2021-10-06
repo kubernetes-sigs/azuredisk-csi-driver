@@ -104,7 +104,6 @@ snapshot:
     podLabels: {}
 
 feature:
-  useV2Driver: true
   enableFSGroupPolicy: false
   enableCSIMigration: false
 
