@@ -165,6 +165,7 @@ func TestReplicaReconcile(t *testing.T) {
 				primaryAttachment := testPrimaryAzVolumeAttachment0.DeepCopy()
 				now := metav1.Time{Time: metav1.Now().Add(-1000)}
 				primaryAttachment.DeletionTimestamp = &now
+				primaryAttachment.Annotations = map[string]string{azureutils.VolumeDetachRequestAnnotation: "true"}
 
 				newVolume := testAzVolume0.DeepCopy()
 				newVolume.Status.Detail = &diskv1alpha1.AzVolumeStatusDetail{

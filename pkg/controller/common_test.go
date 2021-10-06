@@ -143,12 +143,6 @@ var (
 		},
 	}
 
-	testVolumeAttachmentRequest = reconcile.Request{
-		NamespacedName: types.NamespacedName{
-			Name: testVolumeAttachmentName,
-		},
-	}
-
 	testPersistentVolume0 = v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: testPersistentVolume0Name,

@@ -56,6 +56,13 @@ const (
 	defaultRetrySteps    = 5
 )
 
+type cleanUpMode int
+
+const (
+	deleteCRIOnly cleanUpMode = iota
+	detachAndDeleteCRI
+)
+
 type roleMode int
 
 const (
@@ -461,7 +468,8 @@ func createReplicaAzVolumeAttachment(ctx context.Context, azr azReconciler, volu
 	return nil
 }
 
-func cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azr azReconciler, azVolumeName string, mode roleMode) (*v1alpha1.AzVolumeAttachmentList, error) {
+func cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azr azReconciler, azVolumeName, caller string, role roleMode, deleteMode cleanUpMode) (*v1alpha1.AzVolumeAttachmentList, error) {
+	klog.Infof("AzVolumeAttachment clean up requested by %s for AzVolume (%s)", caller, azVolumeName)
 	volRequirement, err := createLabelRequirements(azureutils.VolumeNameLabel, azVolumeName)
 	if err != nil {
 		return nil, err
@@ -479,19 +487,20 @@ func cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azr azReconciler, az
 
 	cleanUps := []v1alpha1.AzVolumeAttachment{}
 	for _, attachment := range attachments.Items {
-		if shouldCleanUp(attachment, mode) {
+		if shouldCleanUp(attachment, role) {
 			cleanUps = append(cleanUps, attachment)
 		}
 	}
 
-	if err := cleanUpAzVolumeAttachments(ctx, azr, cleanUps); err != nil {
+	if err := cleanUpAzVolumeAttachments(ctx, azr, cleanUps, deleteMode, caller); err != nil {
 		return attachments, err
 	}
 	klog.Infof("successfully requested deletion of AzVolumeAttachments for AzVolume (%s)", azVolumeName)
 	return attachments, nil
 }
 
-func cleanUpAzVolumeAttachmentByNode(ctx context.Context, azr azReconciler, azDriverNodeName string, mode roleMode) (*v1alpha1.AzVolumeAttachmentList, error) {
+func cleanUpAzVolumeAttachmentByNode(ctx context.Context, azr azReconciler, azDriverNodeName, caller string, role roleMode, deleteMode cleanUpMode) (*v1alpha1.AzVolumeAttachmentList, error) {
+	klog.Infof("AzVolumeAttachment clean up requested by %s for AzDriverNode (%s)", caller, azDriverNodeName)
 	nodeRequirement, err := createLabelRequirements(azureutils.NodeNameLabel, azDriverNodeName)
 	if err != nil {
 		return nil, err
@@ -509,25 +518,29 @@ func cleanUpAzVolumeAttachmentByNode(ctx context.Context, azr azReconciler, azDr
 
 	cleanUps := []v1alpha1.AzVolumeAttachment{}
 	for _, attachment := range attachments.Items {
-		if shouldCleanUp(attachment, mode) {
+		if shouldCleanUp(attachment, role) {
 			cleanUps = append(cleanUps, attachment)
 		}
 	}
 
-	if err := cleanUpAzVolumeAttachments(ctx, azr, cleanUps); err != nil {
+	if err := cleanUpAzVolumeAttachments(ctx, azr, cleanUps, deleteMode, caller); err != nil {
 		return attachments, err
 	}
 	klog.Infof("successfully requested deletion of AzVolumeAttachments for AzDriverNode (%s)", azDriverNodeName)
 	return attachments, nil
 }
 
-func cleanUpAzVolumeAttachments(ctx context.Context, azr azReconciler, attachments []v1alpha1.AzVolumeAttachment) error {
+func cleanUpAzVolumeAttachments(ctx context.Context, azr azReconciler, attachments []v1alpha1.AzVolumeAttachment, cleanUp cleanUpMode, caller string) error {
 	for _, attachment := range attachments {
 		patched := attachment.DeepCopy()
 		if patched.Annotations == nil {
 			patched.Annotations = map[string]string{}
 		}
 		patched.Annotations[azureutils.CleanUpAnnotation] = "true"
+		// replica attachments should always be detached regardless of the cleanup mode
+		if cleanUp == detachAndDeleteCRI || patched.Spec.RequestedRole == v1alpha1.ReplicaRole {
+			patched.Annotations[azureutils.VolumeDetachRequestAnnotation] = caller
+		}
 		if err := azr.getClient().Patch(ctx, patched, client.MergeFrom(&attachment)); err != nil {
 			klog.Errorf("failed to delete AzVolumeAttachment (%s): %v", attachment.Name, err)
 			return err
@@ -582,11 +595,19 @@ func isCreated(volume *v1alpha1.AzVolume) bool {
 	return volume != nil && volume.Status.Detail != nil && volume.Status.Detail.ResponseObject != nil
 }
 
-func deletionRequested(objectMeta *metav1.ObjectMeta) bool {
+func criDeletionRequested(objectMeta *metav1.ObjectMeta) bool {
 	if objectMeta == nil {
 		return false
 	}
 	return !objectMeta.DeletionTimestamp.IsZero() && objectMeta.DeletionTimestamp.Time.Before(time.Now())
+}
+
+func volumeDetachRequested(attachment *v1alpha1.AzVolumeAttachment) bool {
+	return attachment != nil && attachment.Annotations != nil && metav1.HasAnnotation(attachment.ObjectMeta, azureutils.VolumeDetachRequestAnnotation)
+}
+
+func volumeDeleteRequested(volume *v1alpha1.AzVolume) bool {
+	return volume != nil && volume.Annotations != nil && metav1.HasAnnotation(volume.ObjectMeta, azureutils.VolumeDeleteRequestAnnotation)
 }
 
 func finalizerExists(finalizers []string, finalizerName string) bool {

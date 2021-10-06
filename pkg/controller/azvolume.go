@@ -102,7 +102,7 @@ func (r *ReconcileAzVolume) Reconcile(ctx context.Context, request reconcile.Req
 	}
 
 	// azVolume deletion
-	if deletionRequested(&azVolume.ObjectMeta) {
+	if criDeletionRequested(&azVolume.ObjectMeta) {
 		if err := r.triggerDelete(ctx, azVolume); err != nil {
 			//If delete failed, requeue request
 			return reconcileReturnOnError(azVolume, "delete", err, r.retryInfo)
@@ -186,8 +186,16 @@ func (r *ReconcileAzVolume) triggerCreate(ctx context.Context, azVolume *v1alpha
 }
 
 func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *v1alpha1.AzVolume) error {
+	// Determine if this is a controller server requested deletion or driver clean up
+	volumeDeleteRequested := volumeDeleteRequested(azVolume)
+
+	mode := deleteCRIOnly
+	if volumeDeleteRequested {
+		mode = detachAndDeleteCRI
+	}
+
 	// Delete all AzVolumeAttachment objects bound to the deleted AzVolume
-	attachments, err := cleanUpAzVolumeAttachmentByVolume(ctx, r, azVolume.Name, all)
+	attachments, err := cleanUpAzVolumeAttachmentByVolume(ctx, r, azVolume.Name, "azVolumeController", all, mode)
 	if err != nil {
 		return err
 	}
@@ -198,7 +206,7 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *v1alpha
 
 	// only try deleting underlying volume 1) if volume creation was successful and 2) volumeDeleteRequestAnnotation is present
 	// if the annotation is not present, only delete the CRI and not the underlying volume
-	if isCreated(azVolume) && azVolume.Annotations != nil && metav1.HasAnnotation(azVolume.ObjectMeta, azureutils.VolumeDeleteRequestAnnotation) {
+	if isCreated(azVolume) && volumeDeleteRequested {
 		// requeue if AzVolume's state is being updated by a different worker
 		defer r.stateLock.Delete(azVolume.Name)
 		if _, ok := r.stateLock.LoadOrStore(azVolume.Name, nil); ok {
@@ -308,7 +316,7 @@ func (r *ReconcileAzVolume) triggerUpdate(ctx context.Context, azVolume *v1alpha
 func (r *ReconcileAzVolume) triggerRelease(ctx context.Context, azVolume *v1alpha1.AzVolume) error {
 	klog.Infof("Volume released: Initiating AzVolumeAttachment Clean-up")
 
-	if _, err := cleanUpAzVolumeAttachmentByVolume(ctx, r, azVolume.Name, replicaOnly); err != nil {
+	if _, err := cleanUpAzVolumeAttachmentByVolume(ctx, r, azVolume.Name, "azVolumeController", replicaOnly, detachAndDeleteCRI); err != nil {
 		return err
 	}
 	updateFunc := func(obj interface{}) error {

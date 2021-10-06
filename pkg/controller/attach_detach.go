@@ -22,10 +22,8 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	kubeClientSet "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
@@ -97,7 +95,7 @@ func (r *ReconcileAttachDetach) Reconcile(ctx context.Context, request reconcile
 	}
 
 	// detachment request
-	if deletionRequested(&azVolumeAttachment.ObjectMeta) {
+	if criDeletionRequested(&azVolumeAttachment.ObjectMeta) {
 		if azVolumeAttachment.Status.State == v1alpha1.AttachmentPending || azVolumeAttachment.Status.State == v1alpha1.Attached || azVolumeAttachment.Status.State == v1alpha1.AttachmentFailed || azVolumeAttachment.Status.State == v1alpha1.DetachmentFailed {
 			if err := r.triggerDetach(ctx, azVolumeAttachment); err != nil {
 				return reconcileReturnOnError(azVolumeAttachment, "detach", err, r.retryInfo)
@@ -187,22 +185,8 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 }
 
 func (r *ReconcileAttachDetach) triggerDetach(ctx context.Context, azVolumeAttachment *v1alpha1.AzVolumeAttachment) error {
-	// only detach if
-	// 1) detachment request was made for underling volume attachment object
-	// 2) volume attachment is marked for deletion or does not exist
-	// 3) no annotation has been set (in this case, this is a replica that can safely be detached)
-	detachmentRequested := true
-	if azVolumeAttachment.Annotations != nil && metav1.HasAnnotation(azVolumeAttachment.ObjectMeta, azureutils.VolumeAttachmentExistsAnnotation) {
-		vaName := azVolumeAttachment.Annotations[azureutils.VolumeAttachmentExistsAnnotation]
-		var volumeAttachment storagev1.VolumeAttachment
-		err := r.client.Get(ctx, types.NamespacedName{Name: vaName}, &volumeAttachment)
-		if err != nil && !errors.IsNotFound(err) {
-			klog.Errorf("failed to get volumeAttachment (%s): %v", vaName, err)
-			return err
-		}
-		detachmentRequested = errors.IsNotFound(err) || volumeAttachment.DeletionTimestamp != nil
-	}
-	detachmentRequested = detachmentRequested || metav1.HasAnnotation(azVolumeAttachment.ObjectMeta, azureutils.VolumeDetachRequestAnnotation)
+	// only detach if detachment request was made for underlying volume attachment object
+	detachmentRequested := volumeDetachRequested(azVolumeAttachment)
 
 	if detachmentRequested {
 		defer r.stateLock.Delete(azVolumeAttachment.Name)
