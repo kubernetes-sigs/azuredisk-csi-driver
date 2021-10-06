@@ -75,14 +75,13 @@ const (
 	AzVolumeFinalizer           = "disk.csi.azure.com/azvolume-finalizer"
 	// ControllerFinalizer is a finalizer added to the pod running Azuredisk driver controller
 	// to prevent the pod deletion until clean up is completed
-	ControllerFinalizer              = "disk.csi.azure.com/azuredisk-finalizer"
-	VolumeAttachmentExistsAnnotation = "disk.csi.azure.com/volume-attachment"
-	CleanUpAnnotation                = "disk.csi.azure.com/clean-up"
-	VolumeDetachRequestAnnotation    = "disk.csi.azure.com/volume-detach-request"
-	VolumeDeleteRequestAnnotation    = "disk.csi.azure.com/volume-delete-request"
-	NodeNameLabel                    = "disk.csi.azure.com/node-name"
-	VolumeNameLabel                  = "disk.csi.azure.com/volume-name"
-	RoleLabel                        = "disk.csi.azure.com/requested-role"
+	ControllerFinalizer           = "disk.csi.azure.com/azuredisk-finalizer"
+	CleanUpAnnotation             = "disk.csi.azure.com/clean-up"
+	VolumeDetachRequestAnnotation = "disk.csi.azure.com/volume-detach-request" // annotation value should be the name of the component that requests the detach (for clarity)
+	VolumeDeleteRequestAnnotation = "disk.csi.azure.com/volume-delete-request"
+	NodeNameLabel                 = "disk.csi.azure.com/node-name"
+	VolumeNameLabel               = "disk.csi.azure.com/volume-name"
+	RoleLabel                     = "disk.csi.azure.com/requested-role"
 
 	ControllerServiceAccountName      = "csi-azuredisk-controller-sa"
 	ControllerClusterRoleName         = "azuredisk-external-provisioner-role"

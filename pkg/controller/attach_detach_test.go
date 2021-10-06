@@ -112,6 +112,7 @@ func TestAttachDetachReconcile(t *testing.T) {
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAttachDetach {
 				newAttachment := testPrimaryAzVolumeAttachment0.DeepCopy()
 				newAttachment.Status.State = diskv1alpha1.Attached
+				newAttachment.ObjectMeta.Annotations = map[string]string{azureutils.VolumeDetachRequestAnnotation: "crdProvisioner"}
 				now := metav1.Time{Time: metav1.Now().Add(-1000)}
 				newAttachment.DeletionTimestamp = &now
 

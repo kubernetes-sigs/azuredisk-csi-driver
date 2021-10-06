@@ -25,7 +25,6 @@ import (
 	"k8s.io/klog/v2"
 
 	azClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
-	azVolumeClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -41,7 +40,7 @@ import (
 type ReconcileAzDriverNode struct {
 	client client.Client
 
-	azVolumeClient azVolumeClientSet.Interface
+	azVolumeClient azClientSet.Interface
 
 	namespace string
 }
@@ -76,7 +75,7 @@ func (r *ReconcileAzDriverNode) Reconcile(ctx context.Context, request reconcile
 		}
 
 		// Delete all volumeAttachments attached to this node, if failed, requeue
-		if _, err = cleanUpAzVolumeAttachmentByNode(ctx, r, request.Name, all); err != nil {
+		if _, err = cleanUpAzVolumeAttachmentByNode(ctx, r, request.Name, "azDriverNodeController", all, detachAndDeleteCRI); err != nil {
 			return reconcile.Result{Requeue: true}, nil
 		}
 		return reconcile.Result{}, nil
@@ -88,7 +87,7 @@ func (r *ReconcileAzDriverNode) Reconcile(ctx context.Context, request reconcile
 }
 
 // NewAzDriverNodeController initializes azdrivernode-controller
-func NewAzDriverNodeController(mgr manager.Manager, azVolumeClient azVolumeClientSet.Interface, namespace string) (*ReconcileAzDriverNode, error) {
+func NewAzDriverNodeController(mgr manager.Manager, azVolumeClient azClientSet.Interface, namespace string) (*ReconcileAzDriverNode, error) {
 	logger := mgr.GetLogger().WithValues("controller", "azdrivernode")
 	reconciler := ReconcileAzDriverNode{client: mgr.GetClient(), azVolumeClient: azVolumeClient, namespace: namespace}
 	c, err := controller.New("azdrivernode-controller", mgr, controller.Options{

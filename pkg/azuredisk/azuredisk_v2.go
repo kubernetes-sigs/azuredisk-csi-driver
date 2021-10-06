@@ -350,12 +350,6 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 		os.Exit(1)
 	}
 
-	klog.V(2).Info("Initializing VolumeAttachment controller")
-	vaReconciler, err := controller.NewVolumeAttachmentController(ctx, mgr, d.crdProvisioner.GetDiskClientSet(), d.kubeClient, d.objectNamespace)
-	if err != nil {
-		klog.Errorf("Failed to initialize VolumeAttachmentController. Error: %v. Exiting application...", err)
-		os.Exit(1)
-	}
 	// This goroutine is preserved for leader controller manager
 	// Leader controller manager should recover CRI if possible and clean them up before exiting.
 	go func() {
@@ -367,9 +361,6 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 		}
 		if err := attachReconciler.Recover(ctx); err != nil {
 			klog.Warningf("Failed to recover AzVolumeAttachments: %v.", err)
-		}
-		if err := vaReconciler.Recover(ctx); err != nil {
-			klog.Warningf("Failed to update AzVolumeAttachments with necessary VolumeAttachments Annotations: %v.", err)
 		}
 		if err := pvReconciler.Recover(ctx); err != nil {
 			klog.Warningf("Failed to restore shared claimToVolumeMap and volumeToClaimMap: %v.", err)

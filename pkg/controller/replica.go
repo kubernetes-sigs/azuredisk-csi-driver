@@ -70,7 +70,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 
 	if azVolumeAttachment.Spec.RequestedRole == v1alpha1.PrimaryRole {
 		// Deletion Event
-		if deletionRequested(&azVolumeAttachment.ObjectMeta) {
+		if criDeletionRequested(&azVolumeAttachment.ObjectMeta) && volumeDetachRequested(azVolumeAttachment) {
 			// If primary attachment is marked for deletion, queue garbage collection for replica attachments
 			r.triggerGarbageCollection(azVolumeAttachment.Spec.UnderlyingVolume)
 		} else {
@@ -86,7 +86,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 		}
 	} else {
 		// create a replacement replica if replica attachment failed or promoted
-		if deletionRequested(&azVolumeAttachment.ObjectMeta) {
+		if criDeletionRequested(&azVolumeAttachment.ObjectMeta) {
 			if azVolumeAttachment.Status.State == v1alpha1.DetachmentFailed {
 				if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, azVolumeAttachment, func(obj interface{}) error {
 					azVolumeAttachment := obj.(*v1alpha1.AzVolumeAttachment)
@@ -142,7 +142,8 @@ func (r *ReconcileReplica) triggerGarbageCollection(volumeName string) {
 			klog.Infof("garbage collection for AzVolume (%s) cancelled", volumeName)
 			return
 		default:
-			_, _ = cleanUpAzVolumeAttachmentByVolume(ctx, r, volumeName, all)
+			klog.Infof("Initiating garbage collection for AzVolume (%s)", volumeName)
+			_, _ = cleanUpAzVolumeAttachmentByVolume(ctx, r, volumeName, "replicaController", all, detachAndDeleteCRI)
 			r.mutexLocks.Delete(volumeName)
 		}
 	}(deletionCtx)

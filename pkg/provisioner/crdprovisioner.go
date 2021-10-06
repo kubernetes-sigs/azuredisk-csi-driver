@@ -530,7 +530,7 @@ func (c *CrdProvisioner) UnpublishVolume(
 			if updateInstance.Annotations == nil {
 				updateInstance.Annotations = map[string]string{}
 			}
-			updateInstance.Annotations[azureutils.VolumeDetachRequestAnnotation] = "cloud-detach-volume"
+			updateInstance.Annotations[azureutils.VolumeDetachRequestAnnotation] = "crdProvisioner"
 
 			// remove detachment failure error from AzVolumeAttachment CRI to retrigger detachment
 			updateInstance.Status.Error = nil
