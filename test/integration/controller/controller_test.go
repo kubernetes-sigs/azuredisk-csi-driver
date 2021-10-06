@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -56,8 +55,6 @@ var (
 	config         *rest.Config
 	azVolumeClient azVolumeClientSet.Interface
 )
-
-var useDriverV2 = flag.Bool("temp-use-driver-v2", false, "A temporary flag to enable early test and development of Azure Disk CSI Driver V2. This will be removed in the future.")
 
 func setUpConfig() error {
 	var err error
@@ -153,10 +150,6 @@ func checkReplicaCount(volumeName string, desiredNumReplica int) (bool, error) {
 }
 
 func TestAzVolume(t *testing.T) {
-	if !*useDriverV2 {
-		t.Skip("Skipping controller test... supported only for v2 driver")
-	}
-
 	err := testBootstrap()
 	require.NoError(t, err)
 
@@ -364,10 +357,6 @@ func TestAzVolume(t *testing.T) {
 }
 
 func TestAzVolumeAttachment(t *testing.T) {
-	if !*useDriverV2 {
-		t.Skip("Skipping controller test... supported only for v2 driver")
-	}
-
 	err := testBootstrap()
 	require.NoError(t, err)
 

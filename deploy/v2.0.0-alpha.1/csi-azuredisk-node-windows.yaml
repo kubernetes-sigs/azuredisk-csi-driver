@@ -104,7 +104,6 @@ spec:
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--nodeid=$(KUBE_NODE_NAME)"
             - "--metrics-address=0.0.0.0:29605"
-            - "--temp-use-driver-v2"
             - "--is-node-plugin=true"
           ports:
             - containerPort: 29603

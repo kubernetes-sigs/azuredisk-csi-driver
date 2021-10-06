@@ -57,7 +57,6 @@ import (
 var isControllerPlugin = flag.Bool("is-controller-plugin", false, "Boolean flag to indicate this instance is running as controller.")
 var isNodePlugin = flag.Bool("is-node-plugin", false, "Boolean flag to indicate this instance is running as node daemon.")
 var driverObjectNamespace = flag.String("driver-object-namespace", consts.AzureDiskCrdNamespace, "namespace where driver related custom resources are created.")
-var useDriverV2 = flag.Bool("temp-use-driver-v2", false, "A temporary flag to enable early test and development of Azure Disk CSI Driver V2. This will be removed in the future.")
 var heartbeatFrequencyInSec = flag.Int("heartbeat-frequency-in-sec", 30, "Frequency in seconds at which node driver sends heartbeat.")
 var controllerLeaseDurationInSec = flag.Int("lease-duration-in-sec", 15, "The duration that non-leader candidates will wait to force acquire leadership")
 var controllerLeaseRenewDeadlineInSec = flag.Int("lease-renew-deadline-in-sec", 10, "The duration that the acting controlplane will retry refreshing leadership before giving up.")
@@ -103,13 +102,9 @@ type CrdProvisioner interface {
 	GetDiskClientSet() azDiskClientSet.Interface
 }
 
-// NewDriver creates a Driver or DriverV2 object depending on the --temp-use-driver-v2 flag.
+// NewDriver creates a driver object.
 func NewDriver(options *DriverOptions) CSIDriver {
-	if !*useDriverV2 {
-		return newDriverV1(options)
-	} else {
-		return newDriverV2(options, *driverObjectNamespace, "default", "default", *heartbeatFrequencyInSec, *controllerLeaseDurationInSec, *controllerLeaseRenewDeadlineInSec, *controllerLeaseRetryPeriodInSec)
-	}
+	return newDriverV2(options, *driverObjectNamespace, "default", "default", *heartbeatFrequencyInSec, *controllerLeaseDurationInSec, *controllerLeaseRenewDeadlineInSec, *controllerLeaseRetryPeriodInSec)
 }
 
 // newDriverV2 Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &

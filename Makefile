@@ -27,7 +27,6 @@ PLUGIN_NAME = azurediskpluginv2
 IMAGE_VERSION ?= v2.0.0-alpha.1
 CHART_VERSION ?= v2.0.0-alpha.1
 GOTAGS += -tags azurediskv2
-E2E_TEST_ARGS=--temp-use-driver-v2
 endif
 CLOUD ?= AzurePublicCloud
 # Use a custom version for E2E tests if we are testing in CI
@@ -97,7 +96,7 @@ unit-test-v1:
 
 .PHONY: unit-test-v2
 unit-test-v2:
-	go test -v -cover -tags azurediskv2 ./pkg/azuredisk --temp-use-driver-v2
+	go test -v -cover -tags azurediskv2 ./pkg/azuredisk
 
 .PHONY: sanity-test
 sanity-test: azuredisk
@@ -105,7 +104,7 @@ sanity-test: azuredisk
 
 .PHONY: sanity-test-v2
 sanity-test-v2: container-v2
-	go test -v -timeout=30m ./test/sanity --temp-use-driver-v2 --image-tag ${IMAGE_TAG}
+	go test -v -timeout=30m ./test/sanity --test-driver-version=v2 --image-tag ${IMAGE_TAG}
 
 .PHONY: integration-test
 integration-test:
@@ -113,7 +112,7 @@ integration-test:
 
 .PHONY: integration-test-v2
 integration-test-v2: container-v2
-	go test -v -timeout=45m ./test/integration --temp-use-driver-v2 --image-tag ${IMAGE_TAG}
+	go test -v -timeout=45m ./test/integration --test-driver-version=v2 --image-tag ${IMAGE_TAG}
 
 .PHONY: e2e-bootstrap
 e2e-bootstrap: install-helm
@@ -323,7 +322,7 @@ e2e-test:
 	if [ ! -z "$(EXTERNAL_E2E_TEST)" ]; then \
 		bash ./test/external-e2e/run.sh;\
 	else \
-		go test -v -timeout=0 ${GOTAGS} ./test/e2e ${E2E_TEST_ARGS} ${GINKGO_FLAGS};\
+		go test -v -timeout=0 ${GOTAGS} ./test/e2e ${GINKGO_FLAGS};\
 	fi
 
 .PHONY: e2e-test-v2
