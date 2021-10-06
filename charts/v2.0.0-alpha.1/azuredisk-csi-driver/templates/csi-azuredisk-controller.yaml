@@ -33,6 +33,10 @@ spec:
       tolerations:
 {{ toYaml . | indent 8 }}
 {{- end }}
+{{- with .Values.controller.affinity }}
+      affinity:
+{{ toYaml . | indent 8 }}
+{{- end }}
       {{- include "azuredisk.pullSecrets" . | indent 6 }}
       containers:
         - name: csi-provisioner
@@ -245,7 +249,7 @@ spec:
         - name: azure-cred
           hostPath:
             path: /etc/kubernetes/
-            type: Directory
+            type: DirectoryOrCreate
         - name: msi
           hostPath:
             path: /var/lib/waagent/ManagedIdentity-Settings

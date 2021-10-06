@@ -886,7 +886,9 @@ func (c *CloudProvisioner) validateCreateVolumeRequestParams(
 		for _, c := range volumeCaps {
 			mode := c.AccessMode
 			if mode != v1alpha1.VolumeCapabilityAccessModeSingleNodeWriter &&
-				mode != v1alpha1.VolumeCapabilityAccessModeSingleNodeReaderOnly {
+				mode != v1alpha1.VolumeCapabilityAccessModeSingleNodeReaderOnly &&
+				mode != v1alpha1.VolumeCapabilityAccessModeSingleNodeSingleWriter &&
+				mode != v1alpha1.VolumeCapabilityAccessModeSingleNodeMultiWriter {
 				return status.Error(codes.InvalidArgument, fmt.Sprintf("Volume capability(%v) not supported", mode))
 			}
 		}

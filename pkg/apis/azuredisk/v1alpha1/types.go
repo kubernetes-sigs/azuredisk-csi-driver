@@ -371,6 +371,8 @@ const (
 	VolumeCapabilityAccessModeMultiNodeReaderOnly
 	VolumeCapabilityAccessModeMultiNodeSingleWriter
 	VolumeCapabilityAccessModeMultiNodeMultiWriter
+	VolumeCapabilityAccessModeSingleNodeSingleWriter
+	VolumeCapabilityAccessModeSingleNodeMultiWriter
 )
 
 type VolumeCapabilityAccess int
