@@ -130,7 +130,7 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 		azv := obj.(*v1alpha1.AzVolumeAttachment)
 		// Update state to attaching, Initialize finalizer and add label to the object
 		azv = r.initializeMeta(ctx, azv)
-		_, derr := updateState(ctx, azv, v1alpha1.Attaching)
+		_, derr := updateState(ctx, azv, v1alpha1.Attaching, normalUpdate)
 		return derr
 	}
 	if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, azVolumeAttachment, updateFunc); err != nil {
@@ -161,7 +161,7 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 			updateFunc = func(obj interface{}) error {
 				azv := obj.(*v1alpha1.AzVolumeAttachment)
 				azv = updateError(ctx, azv, attachErr)
-				_, uerr := updateState(ctx, azv, v1alpha1.AttachmentFailed)
+				_, uerr := updateState(ctx, azv, v1alpha1.AttachmentFailed, forceUpdate)
 				return uerr
 			}
 		} else {
@@ -170,7 +170,7 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 			updateFunc = func(obj interface{}) error {
 				azv := obj.(*v1alpha1.AzVolumeAttachment)
 				azv = updateStatusDetail(ctx, azv, response)
-				_, uerr := updateState(ctx, azv, v1alpha1.Attached)
+				_, uerr := updateState(ctx, azv, v1alpha1.Attached, forceUpdate)
 				return uerr
 			}
 		}
@@ -197,7 +197,7 @@ func (r *ReconcileAttachDetach) triggerDetach(ctx context.Context, azVolumeAttac
 		updateFunc := func(obj interface{}) error {
 			azv := obj.(*v1alpha1.AzVolumeAttachment)
 			// Update state to detaching
-			_, derr := updateState(ctx, azv, v1alpha1.Detaching)
+			_, derr := updateState(ctx, azv, v1alpha1.Detaching, normalUpdate)
 			return derr
 		}
 		if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, azVolumeAttachment, updateFunc); err != nil {
@@ -213,14 +213,14 @@ func (r *ReconcileAttachDetach) triggerDetach(ctx context.Context, azVolumeAttac
 				updateFunc = func(obj interface{}) error {
 					azv := obj.(*v1alpha1.AzVolumeAttachment)
 					azv = updateError(ctx, azv, err)
-					_, derr := updateState(ctx, azv, v1alpha1.DetachmentFailed)
+					_, derr := updateState(ctx, azv, v1alpha1.DetachmentFailed, forceUpdate)
 					return derr
 				}
 			} else {
 				updateFunc = func(obj interface{}) error {
 					azv := obj.(*v1alpha1.AzVolumeAttachment)
 					azv = r.deleteFinalizer(ctx, azv)
-					_, derr := updateState(ctx, azv, v1alpha1.Detached)
+					_, derr := updateState(ctx, azv, v1alpha1.Detached, forceUpdate)
 					return derr
 				}
 			}
@@ -444,14 +444,16 @@ func updateError(ctx context.Context, azVolumeAttachment *v1alpha1.AzVolumeAttac
 	return azVolumeAttachment
 }
 
-func updateState(ctx context.Context, azVolumeAttachment *v1alpha1.AzVolumeAttachment, state v1alpha1.AzVolumeAttachmentAttachmentState) (*v1alpha1.AzVolumeAttachment, error) {
+func updateState(ctx context.Context, azVolumeAttachment *v1alpha1.AzVolumeAttachment, state v1alpha1.AzVolumeAttachmentAttachmentState, mode updateMode) (*v1alpha1.AzVolumeAttachment, error) {
 	var err error
 	if azVolumeAttachment == nil {
 		return nil, status.Errorf(codes.FailedPrecondition, "function `updateState` requires non-nil AzVolumeAttachment object.")
 	}
-	expectedStates := allowedTargetAttachmentStates[string(azVolumeAttachment.Status.State)]
-	if !containsString(string(state), expectedStates) {
-		err = status.Error(codes.FailedPrecondition, formatUpdateStateError("azVolume", string(azVolumeAttachment.Status.State), string(state), expectedStates...))
+	if mode == normalUpdate {
+		expectedStates := allowedTargetAttachmentStates[string(azVolumeAttachment.Status.State)]
+		if !containsString(string(state), expectedStates) {
+			err = status.Error(codes.FailedPrecondition, formatUpdateStateError("azVolume", string(azVolumeAttachment.Status.State), string(state), expectedStates...))
+		}
 	}
 	if err == nil {
 		azVolumeAttachment.Status.State = state

@@ -71,6 +71,13 @@ const (
 	all
 )
 
+type updateMode int
+
+const (
+	normalUpdate updateMode = iota
+	forceUpdate
+)
+
 var roles = map[roleMode]string{
 	primaryOnly: string(v1alpha1.PrimaryRole),
 	replicaOnly: string(v1alpha1.ReplicaRole),

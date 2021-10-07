@@ -141,7 +141,7 @@ func (r *ReconcileAzVolume) triggerCreate(ctx context.Context, azVolume *v1alpha
 	updateFunc := func(obj interface{}) error {
 		azv := obj.(*v1alpha1.AzVolume)
 		azv = r.initializeMeta(ctx, azv)
-		_, err := r.updateState(ctx, azv, v1alpha1.VolumeCreating)
+		_, err := r.updateState(ctx, azv, v1alpha1.VolumeCreating, normalUpdate)
 		return err
 	}
 	if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, azVolume, updateFunc); err != nil {
@@ -159,7 +159,7 @@ func (r *ReconcileAzVolume) triggerCreate(ctx context.Context, azVolume *v1alpha
 			updateFunc = func(obj interface{}) error {
 				azv := obj.(*v1alpha1.AzVolume)
 				azv = r.updateError(ctx, azv, err)
-				_, derr := r.updateState(ctx, azv, v1alpha1.VolumeCreationFailed)
+				_, derr := r.updateState(ctx, azv, v1alpha1.VolumeCreationFailed, forceUpdate)
 				return derr
 			}
 		} else {
@@ -171,7 +171,7 @@ func (r *ReconcileAzVolume) triggerCreate(ctx context.Context, azVolume *v1alpha
 				}
 				azv = r.updateStatusDetail(ctx, azv, response, response.CapacityBytes, response.NodeExpansionRequired)
 				azv = r.updateStatusPhase(ctx, azv, v1alpha1.VolumeBound)
-				_, derr := r.updateState(ctx, azv, v1alpha1.VolumeCreated)
+				_, derr := r.updateState(ctx, azv, v1alpha1.VolumeCreated, forceUpdate)
 				return derr
 			}
 		}
@@ -214,7 +214,7 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *v1alpha
 		}
 		updateFunc := func(obj interface{}) error {
 			azv := obj.(*v1alpha1.AzVolume)
-			_, derr := r.updateState(ctx, azv, v1alpha1.VolumeDeleting)
+			_, derr := r.updateState(ctx, azv, v1alpha1.VolumeDeleting, normalUpdate)
 			return derr
 		}
 
@@ -232,7 +232,7 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *v1alpha
 				updateFunc = func(obj interface{}) error {
 					azv := obj.(*v1alpha1.AzVolume)
 					azv = r.updateError(ctx, azv, err)
-					_, derr := r.updateState(ctx, azv, v1alpha1.VolumeDeletionFailed)
+					_, derr := r.updateState(ctx, azv, v1alpha1.VolumeDeletionFailed, forceUpdate)
 					return derr
 				}
 			} else {
@@ -240,7 +240,7 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *v1alpha
 				updateFunc = func(obj interface{}) error {
 					azv := obj.(*v1alpha1.AzVolume)
 					azv = r.deleteFinalizer(ctx, azv, map[string]bool{azureutils.AzVolumeFinalizer: true})
-					_, derr := r.updateState(ctx, azv, v1alpha1.VolumeDeleted)
+					_, derr := r.updateState(ctx, azv, v1alpha1.VolumeDeleted, forceUpdate)
 					return derr
 				}
 			}
@@ -271,7 +271,7 @@ func (r *ReconcileAzVolume) triggerUpdate(ctx context.Context, azVolume *v1alpha
 	}
 	updateFunc := func(obj interface{}) error {
 		azv := obj.(*v1alpha1.AzVolume)
-		_, derr := r.updateState(ctx, azv, v1alpha1.VolumeUpdating)
+		_, derr := r.updateState(ctx, azv, v1alpha1.VolumeUpdating, normalUpdate)
 		return derr
 	}
 	if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, azVolume, updateFunc); err != nil {
@@ -288,7 +288,7 @@ func (r *ReconcileAzVolume) triggerUpdate(ctx context.Context, azVolume *v1alpha
 			updateFunc = func(obj interface{}) error {
 				azv := obj.(*v1alpha1.AzVolume)
 				azv = r.updateError(ctx, azv, err)
-				_, derr := r.updateState(ctx, azv, v1alpha1.VolumeUpdateFailed)
+				_, derr := r.updateState(ctx, azv, v1alpha1.VolumeUpdateFailed, forceUpdate)
 				return derr
 			}
 		} else {
@@ -299,7 +299,7 @@ func (r *ReconcileAzVolume) triggerUpdate(ctx context.Context, azVolume *v1alpha
 					return status.Errorf(codes.Internal, "non-nil AzVolumeStatusParams expected but nil given")
 				}
 				azv = r.updateStatusDetail(ctx, azv, response, response.CapacityBytes, response.NodeExpansionRequired)
-				_, derr := r.updateState(ctx, azv, v1alpha1.VolumeUpdated)
+				_, derr := r.updateState(ctx, azv, v1alpha1.VolumeUpdated, forceUpdate)
 				return derr
 			}
 		}
@@ -368,14 +368,16 @@ func (r *ReconcileAzVolume) deleteFinalizer(ctx context.Context, azVolume *v1alp
 	return azVolume
 }
 
-func (r *ReconcileAzVolume) updateState(ctx context.Context, azVolume *v1alpha1.AzVolume, state v1alpha1.AzVolumeState) (*v1alpha1.AzVolume, error) {
+func (r *ReconcileAzVolume) updateState(ctx context.Context, azVolume *v1alpha1.AzVolume, state v1alpha1.AzVolumeState, mode updateMode) (*v1alpha1.AzVolume, error) {
 	var err error
 	if azVolume == nil {
 		return nil, status.Errorf(codes.FailedPrecondition, "function `updateState` requires non-nil AzVolume object.")
 	}
-	expectedStates := allowedTargetVolumeStates[string(azVolume.Status.State)]
-	if !containsString(string(state), expectedStates) {
-		err = status.Error(codes.FailedPrecondition, formatUpdateStateError("azVolume", string(azVolume.Status.State), string(state), expectedStates...))
+	if mode == normalUpdate {
+		expectedStates := allowedTargetVolumeStates[string(azVolume.Status.State)]
+		if !containsString(string(state), expectedStates) {
+			err = status.Error(codes.FailedPrecondition, formatUpdateStateError("azVolume", string(azVolume.Status.State), string(state), expectedStates...))
+		}
 	}
 	if err == nil {
 		azVolume.Status.State = state
