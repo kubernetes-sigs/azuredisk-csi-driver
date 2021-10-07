@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"os"
 
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 
@@ -92,6 +93,22 @@ func (d *DriverV2) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolume
 
 	source, err := d.nodeProvisioner.GetDevicePathWithLUN(int(lun))
 	if err != nil {
+		// check if AzVolumeAttachment reports attached
+		if state, getErr := d.crdProvisioner.GetAzVolumeAttachmentState(ctx, diskURI, d.NodeID); state == nil || getErr != nil {
+			getErr = status.Errorf(codes.Internal, "failed to get current attachment state for volume (%s) and node (%s): %v", diskURI, d.NodeID, getErr)
+			klog.Error(getErr)
+			return nil, getErr
+		} else {
+			if *state != v1alpha1.Attached {
+				getErr = status.Errorf(codes.Internal, "volume (%s) is not yet attached to node (%s)", diskURI, d.NodeID)
+				return nil, getErr
+			}
+		}
+		// when lun is available but device path cannot be found, try recovery by detaching the volume from node
+		// and reattaching it, which is triggered by the difference in world states (listVolume result vs. volumeattachment list)
+		if detachErr := d.crdProvisioner.UnpublishVolume(ctx, diskURI, d.NodeID, nil); detachErr != nil {
+			klog.Errorf("failed to unpublishVolume volume (%s) from node (%s): %v", diskURI, d.NodeID, detachErr)
+		}
 		return nil, status.Errorf(codes.Internal, "Failed to find disk on lun %v. %v", lun, err)
 	}
 

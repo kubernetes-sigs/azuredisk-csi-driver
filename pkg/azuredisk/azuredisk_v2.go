@@ -42,6 +42,7 @@ import (
 	"k8s.io/kubernetes/pkg/volume/util/hostutil"
 
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azuredisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
@@ -98,6 +99,7 @@ type CrdProvisioner interface {
 	PublishVolume(ctx context.Context, volumeID string, nodeID string, volumeCapability *azuredisk.VolumeCapability,
 		readOnly bool, secrets map[string]string, volumeContext map[string]string) (map[string]string, error)
 	UnpublishVolume(ctx context.Context, volumeID string, nodeID string, secrets map[string]string) error
+	GetAzVolumeAttachmentState(ctx context.Context, volumeID string, nodeID string) (*v1alpha1.AzVolumeAttachmentAttachmentState, error)
 	ExpandVolume(ctx context.Context, volumeID string, capacityRange *azuredisk.CapacityRange, secrets map[string]string) (*azuredisk.AzVolumeStatusParams, error)
 	GetDiskClientSet() azDiskClientSet.Interface
 }
