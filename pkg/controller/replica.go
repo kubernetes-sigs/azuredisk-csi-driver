@@ -90,7 +90,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 			if azVolumeAttachment.Status.State == v1alpha1.DetachmentFailed {
 				if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, azVolumeAttachment, func(obj interface{}) error {
 					azVolumeAttachment := obj.(*v1alpha1.AzVolumeAttachment)
-					_, err = updateState(ctx, azVolumeAttachment, v1alpha1.ForceDetachPending)
+					_, err = updateState(ctx, azVolumeAttachment, v1alpha1.ForceDetachPending, normalUpdate)
 					return err
 				}); err != nil {
 					return reconcile.Result{Requeue: true}, err
