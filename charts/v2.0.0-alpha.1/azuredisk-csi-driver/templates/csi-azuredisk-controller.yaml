@@ -219,9 +219,6 @@ spec:
               name: socket-dir
             - mountPath: /etc/kubernetes/
               name: azure-cred
-            - mountPath: /var/lib/waagent/ManagedIdentity-Settings
-              readOnly: true
-              name: msi
             {{- if eq .Values.cloud "AzureStackCloud" }}
             - name: ssl
               mountPath: /etc/ssl/certs
@@ -249,9 +246,6 @@ spec:
           hostPath:
             path: /etc/kubernetes/
             type: DirectoryOrCreate
-        - name: msi
-          hostPath:
-            path: /var/lib/waagent/ManagedIdentity-Settings
         {{- if eq .Values.cloud "AzureStackCloud" }}
         - name: ssl
           hostPath:
