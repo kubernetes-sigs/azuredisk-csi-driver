@@ -900,7 +900,7 @@ func (c *CloudProvisioner) validateCreateVolumeRequestParams(
 // listVolumesInCluster is a helper function for ListVolumes used for when there is an available kubeclient
 func (c *CloudProvisioner) listVolumesInCluster(ctx context.Context, start, maxEntries int) (*v1alpha1.ListVolumesResult, error) {
 	kubeClient := c.cloud.KubeClient
-	pvList, err := kubeClient.CoreV1().PersistentVolumes().List(context.TODO(), metav1.ListOptions{})
+	pvList, err := kubeClient.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "ListVolumes failed while fetching PersistentVolumes List with error: %v", err.Error())
 	}

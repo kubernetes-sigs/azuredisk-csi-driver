@@ -54,6 +54,7 @@ type DriverOptions struct {
 	CloudConfigSecretNamespace string
 	CustomUserAgent            string
 	UserAgentSuffix            string
+	UseCSIProxyGAInterface     bool
 }
 
 // CSIDriver defines the interface for a CSI driver.
@@ -81,6 +82,7 @@ type DriverCore struct {
 	nodeInfo                   *optimization.NodeInfo
 	ioHandler                  azureutils.IOHandler
 	hostUtil                   hostUtil
+	useCSIProxyGAInterface     bool
 }
 
 // Driver is the v1 implementation of the Azure Disk CSI Driver.
@@ -107,6 +109,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.cloudConfigSecretNamespace = options.CloudConfigSecretNamespace
 	driver.customUserAgent = options.CustomUserAgent
 	driver.userAgentSuffix = options.UserAgentSuffix
+	driver.useCSIProxyGAInterface = options.UseCSIProxyGAInterface
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
@@ -166,12 +169,9 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 		}
 	}
 
-	// d.mounter is set by NewFakeDriver for unit tests.
-	if d.mounter == nil {
-		d.mounter, err = mounter.NewSafeMounter()
-		if err != nil {
-			klog.Fatalf("Failed to get safe mounter. Error: %v", err)
-		}
+	d.mounter, err = mounter.NewSafeMounter(d.useCSIProxyGAInterface)
+	if err != nil {
+		klog.Fatalf("Failed to get safe mounter. Error: %v", err)
 	}
 
 	d.AddControllerServiceCapabilities(

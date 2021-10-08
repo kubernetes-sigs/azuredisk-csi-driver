@@ -85,6 +85,7 @@ const (
 	CRIUpdateRetryDuration = time.Duration(1) * time.Second
 	CRIUpdateRetryFactor   = 3.0
 	CRIUpdateRetryStep     = 5
+	ZonedField             = "zoned"
 )
 
 var (
