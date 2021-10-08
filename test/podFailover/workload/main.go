@@ -1,21 +1,26 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"net/http"
 	"os"
 	"strconv"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"k8s.io/klog"
 )
 
-const filePath = "/mnt/azuredisk/outfile"
+const metricsServiceURL = "metrics-publisher-service.default"
+const metricsServiceEndpoint = "/podDowntime"
+
+var mountPath = flag.String("mount-path", "", "The path of the file where timestamps will be logged")
 
 func main() {
 
+	flag.Parse()
+	filePath := *mountPath + "/outfile"
+	klog.Infof("The file path is %s", filePath)
 	fi, err := os.Stat(filePath)
 	if os.IsNotExist(err) {
 		os.Create(filePath)
@@ -27,6 +32,20 @@ func main() {
 	if fi.Size() > 0 {
 		timeDifference = time.Now().Unix() - fileModTime.Unix()
 		klog.Infof("The downtime seen by the pod is %d", timeDifference)
+		//Make a request to the metrics service
+		req, err := http.NewRequest("GET", "http://20.150.156.25:9091/podDowntime", nil)
+		if err != nil {
+			klog.Errorf("Error occured while creating the get http request: %v", err)
+		}
+		query := req.URL.Query()
+		query.Add("value", strconv.Itoa(int(timeDifference)))
+		req.URL.RawQuery = query.Encode()
+		client := &http.Client{}
+
+		_, err = client.Do(req)
+		if err != nil {
+			klog.Infof("Error occured while making the http call to metrics publisher: %v", err)
+		}
 	}
 
 	file, err := os.OpenFile(filePath, os.O_RDWR, os.ModeAppend)
@@ -34,32 +53,13 @@ func main() {
 	go logTimestamp(file)
 	defer file.Close()
 
-	//Register prometheus metrics
-	containerStoppedTimeMetric := prometheus.NewGauge(prometheus.GaugeOpts{
-		Namespace: "default",
-		Name:      "failover_testing_workload_downtime",
-		Help:      "Downtime seen by the workload pod after failing",
-	})
-
-	r := prometheus.NewRegistry()
-	r.MustRegister(containerStoppedTimeMetric)
-
-	if timeDifference > 0 {
-		containerStoppedTimeMetric.Set(float64(timeDifference))
-	}
-
-	mux := http.NewServeMux()
-	mux.Handle("/metrics", promhttp.HandlerFor(r, promhttp.HandlerOpts{}))
-	srv := &http.Server{Addr: ":9090", Handler: mux}
-
 	preStopMux := http.NewServeMux()
 	preStopMux.HandleFunc("/cleanup", func(w http.ResponseWriter, r *http.Request) {
 		file.Close()
 	})
-	srv2 := &http.Server{Addr: ":9091", Handler: preStopMux}
+	srv := &http.Server{Addr: ":9091", Handler: preStopMux}
 
-	go func() { log.Fatal(srv.ListenAndServe()) }()
-	func() { log.Fatal(srv2.ListenAndServe()) }()
+	func() { log.Fatal(srv.ListenAndServe()) }()
 
 }
 
@@ -67,7 +67,7 @@ func logTimestamp(file *os.File) {
 	for {
 		_, err := file.WriteString(strconv.Itoa(int(time.Now().Unix())))
 		if err != nil {
-			klog.Errorf("File write on file: %s failed with err: %v", filePath, err)
+			klog.Errorf("File write on file: %s failed with err: %v", file.Name(), err)
 		}
 		time.Sleep(1 * time.Second)
 	}

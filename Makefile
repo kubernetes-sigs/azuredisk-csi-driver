@@ -14,7 +14,7 @@
 
 PKG = sigs.k8s.io/azuredisk-csi-driver
 GIT_COMMIT ?= $(shell git rev-parse HEAD)
-REGISTRY ?= andyzhangx
+REGISTRY ?= nearora4
 REGISTRY_NAME ?= $(shell echo $(REGISTRY) | sed "s/.azurecr.io//g")
 IMAGE_NAME ?= azuredisk-csi
 SCHEDULER_EXTENDER_IMAGE_NAME ?= azdiskschedulerextender-csi
@@ -334,7 +334,9 @@ e2e-test-v2:
 pod-failover-test-containers:
 	go build -a -mod vendor -o _output/${ARCH}/workloadPod ./test/podFailover/workload 
 	go build -a -mod vendor -o _output/${ARCH}/controllerPod ./test/podFailover/controller
+	go build  -o _output/${ARCH}/metricsPod ./test/podFailover/metrics
 	docker build -t $(REGISTRY)/workloadpod:latest -f ./test/podFailover/workload/Dockerfile .
 	docker build -t $(REGISTRY)/controllerpod:latest -f ./test/podFailover/controller/Dockerfile .
+	docker build -t $(REGISTRY)/metricspod:latest -f ./test/podFailover/metrics/Dockerfile .
 	docker push $(REGISTRY)/workloadpod:latest
 	docker push $(REGISTRY)/controllerpod:latest

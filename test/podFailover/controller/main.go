@@ -4,9 +4,11 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"time"
 
 	apps "k8s.io/api/apps/v1"
@@ -29,10 +31,12 @@ const (
 )
 
 var (
-	driverVersion = flag.String("driver-version", "v2", "Specify whether the azuredisk csi driver being tested is v1 or v2")
+	driverVersion = flag.String("driver-version", "v1", "Specify whether the azuredisk csi driver being tested is v1 or v2")
 	maxShares     = flag.Int("maxshares", 3, "Specify the maxshares value for the storage class")
 	duration      = flag.Int("duration", 60, "Duration for which the test should run in minutes")
-	workloadImage = flag.String("workload-image", "", "Image of the workload pod that will be deployed by the controller")
+	workloadImage = flag.String("workload-image", "nearora4/workloadpod:latest", "Image of the workload pod that will be deployed by the controller")
+	podCount      = flag.Int("pod-count", 3, "The number of pods that should be created for a deployment")
+	pvcPerPod     = flag.Int("pvc-per-pod", 3, "Number of pvcs that should be created per pod")
 )
 
 func main() {
@@ -48,6 +52,11 @@ func main() {
 	}
 
 	clientset, _ := kubernetes.NewForConfig(config)
+	//makeNodeUnschedulable("aks-nodepool1-28591986-vmss000003", false, clientset)
+	//makeNodeUnschedulable("aks-nodepool1-28591986-vmss000007", false, clientset)
+	// makeNodeUnschedulable("aks-nodepool1-28591986-vmss000002", false, clientset)
+	// makeNodeUnschedulable("aks-nodepool1-28591986-vmss000003", false, clientset)
+
 	ctx := context.Background()
 	if err := createTestNamespace(ctx, clientset); err != nil {
 		klog.Errorf("Error occured while creating namespace %s, err: %v", podFailoverNamespace, err)
@@ -62,16 +71,35 @@ func main() {
 	}
 	defer deleteStorageClass(ctx, clientset, scName)
 
-	pvcName, err := createPVC(ctx, clientset, &scName)
-	if err != nil {
-		klog.Errorf("Error occured while creating pvc: %v", err)
-		return
+	numPods := *podCount
+	numPvcsPerPod := *pvcPerPod
+	totalPvcCount := numPods * numPvcsPerPod
+
+	var pvcCreatedList []string
+	for count := 0; count < totalPvcCount; count++ {
+		pvcName, err := createPVC(ctx, clientset, &scName)
+
+		if err != nil {
+			klog.Errorf("Error occured while creating pvc: %v", err)
+			return
+		}
+
+		pvcCreatedList = append(pvcCreatedList, pvcName)
 	}
 
-	deployment, err := createDeployment(ctx, clientset, pvcName)
-	if err != nil {
-		klog.Errorf("Error occured while creating deployment: %v", err)
-		return
+	var deployments []*apps.Deployment
+	nextPVC := 0
+	for count := 0; count < numPods; count++ {
+
+		deployment, err := createDeployment(ctx, clientset, pvcCreatedList, nextPVC, numPvcsPerPod)
+
+		if err != nil {
+			klog.Errorf("Error occured while creating deployment: %v", err)
+			return
+		}
+		deployments = append(deployments, deployment)
+		nextPVC = nextPVC + numPvcsPerPod
+
 	}
 
 	// Run workload pod for a given duration
@@ -83,7 +111,7 @@ func main() {
 		close(stopCh)
 	}()
 
-	RunWorkloadPod(ctx, clientset, deployment, stopCh)
+	RunWorkloadPods(ctx, clientset, deployments, stopCh)
 
 }
 
@@ -163,30 +191,38 @@ func createPVC(ctx context.Context, clientset *kubernetes.Clientset, scName *str
 	return pvcCreated.Name, err
 }
 
-func createDeployment(ctx context.Context, clientset *kubernetes.Clientset, pvcName string) (*apps.Deployment, error) {
+func createDeployment(ctx context.Context, clientset *kubernetes.Clientset, pvcList []string, start int, countOfPvc int) (*apps.Deployment, error) {
 	var podReplicas int32 = 1
 
-	volumes := []v1.Volume{
-		{
-			Name: "azuredisk",
+	var volumes []v1.Volume
+	var volumeMounts []v1.VolumeMount
+	for index := 0; index < countOfPvc; index++ {
+		pvcListIndex := strconv.Itoa(start + index)
+		volume := v1.Volume{
+			Name: "azuredisk-" + pvcListIndex,
 			VolumeSource: v1.VolumeSource{
 				PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
-					ClaimName: pvcName,
+					ClaimName: pvcList[start+index],
 				},
 			},
-		},
+		}
+
+		volumeMount := v1.VolumeMount{
+			Name:      "azuredisk-" + pvcListIndex,
+			MountPath: "/mnt/azuredisk-" + pvcListIndex,
+			ReadOnly:  false,
+		}
+
+		volumes = append(volumes, volume)
+		volumeMounts = append(volumeMounts, volumeMount)
 	}
 
-	volumeMounts := []v1.VolumeMount{
-		{Name: "azuredisk",
-			MountPath: "/mnt/azuredisk",
-			ReadOnly:  false,
-		},
-	}
+	mountPath := volumeMounts[0].MountPath
+	deploymentName := "azuredisk-pod-failover-tester-" + strconv.Itoa(start/countOfPvc)
 
 	deployment := &apps.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "azuredisk-pod-failover-tester",
+			Name: deploymentName,
 		},
 		Spec: apps.DeploymentSpec{
 			Replicas: &podReplicas,
@@ -201,12 +237,9 @@ func createDeployment(ctx context.Context, clientset *kubernetes.Clientset, pvcN
 					NodeSelector: map[string]string{"kubernetes.io/os": "linux"},
 					Containers: []v1.Container{
 						{
-							Name:         "volume-tester",
-							Image:        *workloadImage,
-							VolumeMounts: volumeMounts,
-							Ports: []v1.ContainerPort{
-								{Name: "metrics", ContainerPort: 9090},
-							},
+							Name:            "volume-tester",
+							Image:           *workloadImage,
+							VolumeMounts:    volumeMounts,
 							ImagePullPolicy: v1.PullAlways,
 							Lifecycle: &v1.Lifecycle{
 								PreStop: &v1.Handler{
@@ -216,6 +249,7 @@ func createDeployment(ctx context.Context, clientset *kubernetes.Clientset, pvcN
 									},
 								},
 							},
+							Args: []string{"--mount-path=" + mountPath},
 						},
 					},
 					RestartPolicy: v1.RestartPolicyAlways,
@@ -251,24 +285,47 @@ func waitForDeploymentToComplete(ctx context.Context, namespace string, clientse
 	return nil
 }
 
-func RunWorkloadPod(ctx context.Context, clientset *kubernetes.Clientset, deployment *apps.Deployment, stopCh <-chan struct{}) {
+func RunWorkloadPods(ctx context.Context, clientset *kubernetes.Clientset, deployments []*apps.Deployment, stopCh <-chan struct{}) {
 
 	for {
 		select {
 		case <-stopCh:
 			return
 		default:
-			podList, _ := getPodsForDeployment(clientset, deployment)
+			//n := rand.Intn(len(deployments))
+			//selectedDeployment := deployments[n]
+			//podList, _ := getPodsForDeployment(clientset, selectedDeployment)
+			//podList, _ := clientset.CoreV1().Pods(podFailoverNamespace).List(context.TODO(), metav1.ListOptions{})
+			n1 := rand.Intn(len(deployments))
+			n2 := rand.Intn(len(deployments))
 
-			for _, pod := range podList.Items {
-				nodeName := pod.Spec.NodeName
-				makeNodeUnschedulable(nodeName, true, clientset)
-				clientset.CoreV1().Pods(podFailoverNamespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
-
-				// wait for the pod to come back up
-				waitForDeploymentToComplete(ctx, podFailoverNamespace, clientset, deployment)
-				makeNodeUnschedulable(nodeName, false, clientset)
+			for n1 == n2 {
+				n2 = rand.Intn(len(deployments))
 			}
+
+			var wg sync.WaitGroup
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				deleteAndReschedulePod(ctx, clientset, deployments[n1])
+			}()
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				deleteAndReschedulePod(ctx, clientset, deployments[n2])
+			}()
+
+			wg.Wait()
+
+			// for _, pod := range podList.Items {
+			// 	nodeName := pod.Spec.NodeName
+			// 	makeNodeUnschedulable(nodeName, true, clientset)
+			// 	clientset.CoreV1().Pods(podFailoverNamespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
+
+			// 	// wait for the pod to come back up
+			// 	waitForDeploymentToComplete(ctx, podFailoverNamespace, clientset, selectedDeployment)
+			// 	makeNodeUnschedulable(nodeName, false, clientset)
+			// }
 
 		}
 	}
@@ -302,4 +359,17 @@ func getPodsForDeployment(client *kubernetes.Clientset, deployment *apps.Deploym
 		return nil, fmt.Errorf("Failed to list Pods of Deployment %q: %v", deployment.Name, err)
 	}
 	return podList, nil
+}
+
+func deleteAndReschedulePod(ctx context.Context, clientset *kubernetes.Clientset, deployment *apps.Deployment) {
+	podList, _ := getPodsForDeployment(clientset, deployment)
+	for _, pod := range podList.Items {
+		nodeName := pod.Spec.NodeName
+		makeNodeUnschedulable(nodeName, true, clientset)
+		clientset.CoreV1().Pods(podFailoverNamespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
+
+		// wait for the pod to come back up
+		waitForDeploymentToComplete(ctx, podFailoverNamespace, clientset, deployment)
+		makeNodeUnschedulable(nodeName, false, clientset)
+	}
 }
