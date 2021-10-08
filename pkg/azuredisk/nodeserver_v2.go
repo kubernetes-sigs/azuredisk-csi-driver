@@ -326,16 +326,29 @@ func (d *DriverV2) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapa
 
 // NodeGetInfo return info of the node on which this plugin is running
 func (d *DriverV2) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
+	var instanceType string
+
+	if runtime.GOOS == "windows" && d.cloud.UseInstanceMetadata && d.cloud.Metadata != nil {
+		metadata, err := d.cloud.Metadata.GetMetadata(azcache.CacheReadTypeDefault)
+		if err == nil && metadata.Compute != nil {
+			instanceType = metadata.Compute.VMSize
+			klog.V(5).Infof("NodeGetInfo: nodeName(%s), VM Size(%s)", d.NodeID, instanceType)
+		} else {
+			klog.Warningf("get instance type(%s) failed with: %v", d.NodeID, err)
+		}
+	}
+	else{
 	instances, ok := d.cloudProvisioner.GetCloud().Instances()
 	if !ok {
 		return nil, status.Error(codes.Internal, "Failed to get instances from cloud provider")
 	}
 
+	var err error
 	instanceType, err := instances.InstanceType(ctx, types.NodeName(d.NodeID))
 	if err != nil {
-		klog.Warningf("Failed to get instance type from Azure cloud provider, nodeName: %v, error: %v", d.NodeID, err)
-		instanceType = ""
+		klog.Warningf("get zone(%s) failed with: %v", d.NodeID, err)
 	}
+}
 
 	topology := &csi.Topology{
 		Segments: map[string]string{topologyKey: ""},

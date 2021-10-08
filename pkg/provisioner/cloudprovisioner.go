@@ -201,6 +201,8 @@ func (c *CloudProvisioner) CreateVolume(
 			}
 		// The following parameter is not used by the cloud provisioner, but must be present in the VolumeContext
 		// returned to the caller so that it is included in the parameters passed to Node{Publish|Stage}Volume.
+		case azureconstants.ZonedField:
+			// no op, only for backward compatibility with in-tree driver
 		case azureconstants.FsTypeField:
 			// no-op
 
