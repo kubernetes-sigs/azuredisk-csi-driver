@@ -77,8 +77,9 @@ Keep in mind that if you are creating your own storage class to utilize the V2 d
 4. Create mysql statefulset using volumes provisioned by the V2 driver 
 - This deployment is based on [this guide](https://kubernetes.io/docs/tasks/run-application/run-replicated-stateful-application/)
 - The statefulset was modified to use the csi-v2 class and scheduler extender
+- The config map and service deployments can be taken straight from the guide
 <details>
-  <summary> Statefulset yaml </summary>
+  <summary> Statefulset YAML Details </summary>
 
   ```yaml
 apiVersion: apps/v1
@@ -327,7 +328,7 @@ kubectl drain aks-nodepool1-20996793-vmss000001
 
 ```
 
-## At this moment our statefulset should try to restart in a different node in a new zone. With the v1 driver, the pod should be up in just over a minute. 
+6. At this moment our statefulset should try to restart in a different node in a new zone. With the v1 driver, the pod should be up in just over a minute. 
 
 ```shell 
 kubectl get pods -l app=mysql --watch -o wide
