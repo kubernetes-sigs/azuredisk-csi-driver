@@ -11,13 +11,13 @@
                 "cloudProviderRateLimitQPS": 6,
                 "cloudProviderRateLimitBucket": 20,
                 "controllerManagerConfig": {
-                    "--feature-gates": "CSIMigration=true,CSIMigrationAzureDisk=true,CSIMigrationAzureDiskComplete=true"
+                    "--feature-gates": "CSIMigration=true,CSIMigrationAzureDisk=true"
                 },
                 "kubeletConfig": {
-                    "--feature-gates": "CSIMigration=true,CSIMigrationAzureDisk=true,CSIMigrationAzureDiskComplete=true"
+                    "--feature-gates": "CSIMigration=true,CSIMigrationAzureDisk=true"
                 },
                 "schedulerConfig": {
-                    "--feature-gates": "CSIMigration=true,CSIMigrationAzureDisk=true,CSIMigrationAzureDiskComplete=true"
+                    "--feature-gates": "CSIMigration=true,CSIMigrationAzureDisk=true"
                 },
                 "apiServerConfig": {
                     "--enable-admission-plugins": "NamespaceLifecycle,LimitRanger,ServiceAccount,DefaultStorageClass,ResourceQuota,AlwaysPullImages"
