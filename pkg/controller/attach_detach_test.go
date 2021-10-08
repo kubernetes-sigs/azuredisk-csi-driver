@@ -29,7 +29,7 @@ import (
 	fakev1 "k8s.io/client-go/kubernetes/fake"
 	diskv1alpha1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	diskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller/mockattachmentprovisioner"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller/mockclient"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -112,7 +112,7 @@ func TestAttachDetachReconcile(t *testing.T) {
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAttachDetach {
 				newAttachment := testPrimaryAzVolumeAttachment0.DeepCopy()
 				newAttachment.Status.State = diskv1alpha1.Attached
-				newAttachment.ObjectMeta.Annotations = map[string]string{azureutils.VolumeDetachRequestAnnotation: "crdProvisioner"}
+				newAttachment.ObjectMeta.Annotations = map[string]string{consts.VolumeDetachRequestAnnotation: "crdProvisioner"}
 				now := metav1.Time{Time: metav1.Now().Add(-1000)}
 				newAttachment.DeletionTimestamp = &now
 
@@ -175,8 +175,8 @@ func TestAttachDetachReconcile(t *testing.T) {
 				require.Equal(t, azVolumeAttachment.Status.Detail.Role, diskv1alpha1.PrimaryRole)
 
 				// check role label
-				require.Contains(t, azVolumeAttachment.Labels, azureutils.RoleLabel)
-				require.Equal(t, string(diskv1alpha1.PrimaryRole), azVolumeAttachment.Labels[azureutils.RoleLabel])
+				require.Contains(t, azVolumeAttachment.Labels, consts.RoleLabel)
+				require.Equal(t, string(diskv1alpha1.PrimaryRole), azVolumeAttachment.Labels[consts.RoleLabel])
 			},
 		},
 	}

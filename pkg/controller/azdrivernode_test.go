@@ -26,7 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	azfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller/mockclient"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
@@ -98,7 +98,7 @@ func TestAzDriverNodeControllerReconcile(t *testing.T) {
 				_, err2 := controller.azVolumeClient.DiskV1alpha1().AzDriverNodes(testNamespace).Get(context.TODO(), testNode1Name, metav1.GetOptions{})
 				require.EqualValues(t, testAzDriverNode1NotFoundError, err2)
 
-				nodeRequirement, _ := createLabelRequirements(azureutils.NodeNameLabel, testNode1Name)
+				nodeRequirement, _ := createLabelRequirements(consts.NodeNameLabel, testNode1Name)
 				labelSelector := labels.NewSelector().Add(*nodeRequirement)
 				attachments, _ := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
 				require.Len(t, attachments.Items, 0)

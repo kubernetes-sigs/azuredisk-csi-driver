@@ -47,6 +47,7 @@ const (
 	LocationField                 = "location"
 	LogicalSectorSizeField        = "logicalsectorsize"
 	LUN                           = "LUN"
+	MaxMountReplicaCountField     = "maxmountreplicacount"
 	MaxSharesField                = "maxshares"
 	MinimumDiskSizeGiB            = 1
 	NetworkAccessPolicyField      = "networkaccesspolicy"
@@ -80,7 +81,27 @@ const (
 	WellKnownTopologyKey          = "topology.kubernetes.io/zone"
 	WriteAcceleratorEnabled       = "writeacceleratorenabled"
 
-	MaxMountReplicaCountField = "maxmountreplicacount"
+	// CRDs specific constants
+	// 1. AzVolumeAttachmentFinalizer for AzVolumeAttachment objects handles deletion of AzVolumeAttachment CRIs
+	// 2. AzVolumeAttachmentFinalizer for AzVolume prevents AzVolume CRI from being deleted before all AzVolumeAttachments attached to that volume is deleted as well
+	AzVolumeAttachmentFinalizer = "disk.csi.azure.com/azvolumeattachment-finalizer"
+	AzVolumeFinalizer           = "disk.csi.azure.com/azvolume-finalizer"
+	// ControllerFinalizer is a finalizer added to the pod running Azuredisk driver controller
+	// to prevent the pod deletion until clean up is completed
+	ControllerFinalizer           = "disk.csi.azure.com/azuredisk-finalizer"
+	CleanUpAnnotation             = "disk.csi.azure.com/clean-up"
+	NodeNameLabel                 = "disk.csi.azure.com/node-name"
+	PartitionLabel                = "azdrivernodes.disk.csi.azure.com/partition"
+	RoleLabel                     = "disk.csi.azure.com/requested-role"
+	VolumeDeleteRequestAnnotation = "disk.csi.azure.com/volume-delete-request"
+	VolumeDetachRequestAnnotation = "disk.csi.azure.com/volume-detach-request"
+	VolumeNameLabel               = "disk.csi.azure.com/volume-name"
+
+	ControllerClusterRoleName         = "azuredisk-external-provisioner-role"
+	ControllerClusterRoleBindingName  = "azuredisk-csi-provisioner-binding"
+	ControllerServiceAccountName      = "csi-azuredisk-controller-sa"
+	ControllerServiceAccountFinalizer = "disk.csi.azure.com/azuredisk-controller"
+	ReleaseNamespace                  = "kube-system"
 
 	CRIUpdateRetryDuration = time.Duration(1) * time.Second
 	CRIUpdateRetryFactor   = 3.0
