@@ -79,6 +79,7 @@ Keep in mind that if you are creating your own storage class to utilize the V2 d
 - The statefulset was modified to use the csi-v2 class and scheduler extender
 <details>
   <summary> Statefulset yaml </summary>
+
   ```yaml
 apiVersion: apps/v1
 kind: StatefulSet
@@ -326,7 +327,7 @@ kubectl drain aks-nodepool1-20996793-vmss000001
 
 ```
 
-##At this moment our statefulset should try to restart in a different node in a new zone. With the v1 driver, the pod should be up in just over a minute. 
+## At this moment our statefulset should try to restart in a different node in a new zone. With the v1 driver, the pod should be up in just over a minute. 
 
 ```shell 
 kubectl get pods -l app=mysql --watch -o wide
