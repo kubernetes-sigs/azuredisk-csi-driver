@@ -215,19 +215,19 @@ func (c *CloudProvisioner) CreateVolume(
 	if diskName == "" {
 		diskName = volumeName
 	}
-	diskName = azureutils.GetValidDiskName(diskName)
+	diskName = azureutils.CreateValidDiskName(diskName, true)
 
 	if resourceGroup == "" {
 		resourceGroup = c.cloud.ResourceGroup
 	}
 
 	// normalize values
-	skuName, err := azureutils.NormalizeAzureStorageAccountType(storageAccountType, localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud)
+	skuName, err := azureutils.NormalizeStorageAccountType(storageAccountType, localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud)
 	if err != nil {
 		return nil, err
 	}
 
-	if _, err = azureutils.NormalizeAzureDataDiskCachingMode(cachingMode); err != nil {
+	if _, err = azureutils.NormalizeCachingMode(cachingMode); err != nil {
 		return nil, err
 	}
 
@@ -400,7 +400,7 @@ func (c *CloudProvisioner) PublishVolume(
 	}
 
 	nodeName := types.NodeName(nodeID)
-	diskName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(volumeID)
+	diskName, err := azureutils.GetDiskName(volumeID)
 	if err != nil {
 		return nil, err
 	}
@@ -453,7 +453,7 @@ func (c *CloudProvisioner) UnpublishVolume(
 	nodeID string) error {
 	nodeName := types.NodeName(nodeID)
 
-	diskName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(volumeID)
+	diskName, err := azureutils.GetDiskName(volumeID)
 	if err != nil {
 		return err
 	}
@@ -483,11 +483,11 @@ func (c *CloudProvisioner) ExpandVolume(
 		return nil, status.Errorf(codes.InvalidArgument, "disk URI(%s) is not valid: %v", volumeID, err)
 	}
 
-	diskName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(volumeID)
+	diskName, err := azureutils.GetDiskName(volumeID)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "could not get disk name from diskURI(%s) with error(%v)", volumeID, err)
 	}
-	resourceGroup, err := azureutils.GetResourceGroupFromAzureManagedDiskURI(volumeID)
+	resourceGroup, err := azureutils.GetResourceGroupFromURI(volumeID)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "could not get resource group from diskURI(%s) with error(%v)", volumeID, err)
 	}
@@ -526,7 +526,7 @@ func (c *CloudProvisioner) CreateSnapshot(
 	snapshotName string,
 	secrets map[string]string,
 	parameters map[string]string) (*v1alpha1.Snapshot, error) {
-	snapshotName = azureutils.GetValidDiskName(snapshotName)
+	snapshotName = azureutils.CreateValidDiskName(snapshotName, true)
 
 	var customTags string
 	// set incremental snapshot as true by default
@@ -562,7 +562,7 @@ func (c *CloudProvisioner) CreateSnapshot(
 	}
 
 	if resourceGroup == "" {
-		resourceGroup, err = azureutils.GetResourceGroupFromAzureManagedDiskURI(sourceVolumeID)
+		resourceGroup, err = azureutils.GetResourceGroupFromURI(sourceVolumeID)
 		if err != nil {
 			return nil, status.Errorf(codes.InvalidArgument, "could not get resource group from diskURI(%s) with error(%v)", sourceVolumeID, err)
 		}
@@ -667,7 +667,7 @@ func (c *CloudProvisioner) ListSnapshots(
 	}
 	entries := []v1alpha1.Snapshot{}
 	for count := 0; start < len(snapshots) && count < totalEntries; start++ {
-		if (sourceVolumeID != "" && sourceVolumeID == azureutils.GetSnapshotSourceVolumeID(&snapshots[start])) || sourceVolumeID == "" {
+		if (sourceVolumeID != "" && sourceVolumeID == azureutils.GetSourceVolumeID(&snapshots[start])) || sourceVolumeID == "" {
 			snapshotObj, err := azureutils.NewAzureDiskSnapshot(sourceVolumeID, &snapshots[start])
 			if err != nil {
 				return nil, fmt.Errorf("failed to generate snapshot entry: %v", err)
@@ -715,12 +715,12 @@ func (c *CloudProvisioner) DeleteSnapshot(
 }
 
 func (c *CloudProvisioner) CheckDiskExists(ctx context.Context, diskURI string) (*compute.Disk, error) {
-	diskName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(diskURI)
+	diskName, err := azureutils.GetDiskName(diskURI)
 	if err != nil {
 		return nil, err
 	}
 
-	resourceGroup, err := azureutils.GetResourceGroupFromAzureManagedDiskURI(diskURI)
+	resourceGroup, err := azureutils.GetResourceGroupFromURI(diskURI)
 	if err != nil {
 		return nil, err
 	}
@@ -767,7 +767,7 @@ func (c *CloudProvisioner) GetSourceDiskSize(ctx context.Context, resourceGroup,
 	if result.DiskProperties.CreationData != nil && (*result.DiskProperties.CreationData).CreateOption == "Copy" {
 		klog.V(2).Infof("Clone source disk has a parent source")
 		sourceResourceID := *result.DiskProperties.CreationData.SourceResourceID
-		parentResourceGroup, _ := azureutils.GetResourceGroupFromAzureManagedDiskURI(sourceResourceID)
+		parentResourceGroup, _ := azureutils.GetResourceGroupFromURI(sourceResourceID)
 		parentDiskName := path.Base(sourceResourceID)
 		return c.GetSourceDiskSize(ctx, parentResourceGroup, parentDiskName, curDepth+1, maxDepth)
 	}
@@ -913,7 +913,7 @@ func (c *CloudProvisioner) listVolumesInCluster(ctx context.Context, start, maxE
 				klog.Warningf("invalid disk uri (%s) with error(%v)", diskURI, err)
 				continue
 			}
-			rg, err := azureutils.GetResourceGroupFromAzureManagedDiskURI(diskURI)
+			rg, err := azureutils.GetResourceGroupFromURI(diskURI)
 			if err != nil {
 				klog.Warningf("failed to get resource group from disk uri (%s) with error(%v)", diskURI, err)
 				continue

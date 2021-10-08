@@ -71,7 +71,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 	}
 
 	var azVolume v1alpha1.AzVolume
-	diskName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(pv.Spec.CSI.VolumeHandle)
+	diskName, err := azureutils.GetDiskName(pv.Spec.CSI.VolumeHandle)
 	azVolumeName := strings.ToLower(diskName)
 	if err != nil {
 		klog.Errorf("failed to extract proper diskName from pv(%s)'s volume handle (%s): %v", pv.Name, pv.Spec.CSI.VolumeHandle, err)
@@ -125,7 +125,7 @@ func (r *ReconcilePV) Recover(ctx context.Context) error {
 		if volume.Spec.CSI == nil || volume.Spec.CSI.Driver != azureconstants.DefaultDriverName {
 			continue
 		}
-		diskName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(volume.Spec.CSI.VolumeHandle)
+		diskName, err := azureutils.GetDiskName(volume.Spec.CSI.VolumeHandle)
 		if err != nil {
 			return err
 		}

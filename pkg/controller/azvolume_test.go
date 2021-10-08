@@ -30,6 +30,7 @@ import (
 	fakev1 "k8s.io/client-go/kubernetes/fake"
 	diskv1alpha1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	diskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller/mockclient"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller/mockvolumeprovisioner"
@@ -83,7 +84,7 @@ func mockClientsAndVolumeProvisioner(controller *ReconcileAzVolume) {
 			volumeID string,
 			capacityRange *diskv1alpha1.CapacityRange,
 			secrets map[string]string) (*diskv1alpha1.AzVolumeStatusParams, error) {
-			volumeName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(volumeID)
+			volumeName, err := azureutils.GetDiskName(volumeID)
 			if err != nil {
 				return nil, err
 			}
@@ -184,9 +185,9 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 				azVolume := testAzVolume0.DeepCopy()
 
 				azVolume.Annotations = map[string]string{
-					azureutils.VolumeDeleteRequestAnnotation: "cloud-delete-volume",
+					consts.VolumeDeleteRequestAnnotation: "cloud-delete-volume",
 				}
-				azVolume.Finalizers = []string{azureutils.AzVolumeFinalizer}
+				azVolume.Finalizers = []string{consts.AzVolumeFinalizer}
 				azVolume.Status.Detail = &diskv1alpha1.AzVolumeStatusDetail{
 					ResponseObject: &diskv1alpha1.AzVolumeStatusParams{
 						VolumeID:      testManagedDiskURI0,
@@ -259,9 +260,9 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 				azVolume := testAzVolume0.DeepCopy()
 
 				azVolume.Annotations = map[string]string{
-					azureutils.VolumeDeleteRequestAnnotation: "cloud-delete-volume",
+					consts.VolumeDeleteRequestAnnotation: "cloud-delete-volume",
 				}
-				azVolume.Finalizers = []string{azureutils.AzVolumeFinalizer}
+				azVolume.Finalizers = []string{consts.AzVolumeFinalizer}
 				azVolume.Status.Detail = &diskv1alpha1.AzVolumeStatusDetail{
 					ResponseObject: &diskv1alpha1.AzVolumeStatusParams{
 						VolumeID:      testManagedDiskURI0,

@@ -33,6 +33,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	util "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -239,7 +240,7 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *v1alpha
 				klog.Infof("successfully deleted volume (%s)", azVolume.Spec.UnderlyingVolume)
 				updateFunc = func(obj interface{}) error {
 					azv := obj.(*v1alpha1.AzVolume)
-					azv = r.deleteFinalizer(ctx, azv, map[string]bool{azureutils.AzVolumeFinalizer: true})
+					azv = r.deleteFinalizer(ctx, azv, map[string]bool{consts.AzVolumeFinalizer: true})
 					_, derr := r.updateState(ctx, azv, v1alpha1.VolumeDeleted, forceUpdate)
 					return derr
 				}
@@ -253,7 +254,7 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *v1alpha
 	} else {
 		updateFunc := func(obj interface{}) error {
 			azv := obj.(*v1alpha1.AzVolume)
-			_ = r.deleteFinalizer(ctx, azv, map[string]bool{azureutils.AzVolumeFinalizer: true})
+			_ = r.deleteFinalizer(ctx, azv, map[string]bool{consts.AzVolumeFinalizer: true})
 			return nil
 		}
 		if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, azVolume, updateFunc); err != nil {
@@ -336,14 +337,14 @@ func (r *ReconcileAzVolume) initializeMeta(ctx context.Context, azVolume *v1alph
 	if azVolume == nil {
 		return nil
 	}
-	if finalizerExists(azVolume.Finalizers, azureutils.AzVolumeFinalizer) {
+	if finalizerExists(azVolume.Finalizers, consts.AzVolumeFinalizer) {
 		return azVolume
 	}
 	// add finalizer
 	if azVolume.ObjectMeta.Finalizers == nil {
 		azVolume.ObjectMeta.Finalizers = []string{}
 	}
-	azVolume.ObjectMeta.Finalizers = append(azVolume.ObjectMeta.Finalizers, azureutils.AzVolumeFinalizer)
+	azVolume.ObjectMeta.Finalizers = append(azVolume.ObjectMeta.Finalizers, consts.AzVolumeFinalizer)
 
 	return azVolume
 }
@@ -464,7 +465,7 @@ func (r *ReconcileAzVolume) recoverAzVolumes(ctx context.Context) error {
 
 	for _, pv := range pvs.Items {
 		if pv.Spec.CSI != nil && pv.Spec.CSI.Driver == azureconstants.DefaultDriverName {
-			diskName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(pv.Spec.CSI.VolumeHandle)
+			diskName, err := azureutils.GetDiskName(pv.Spec.CSI.VolumeHandle)
 			if err != nil {
 				klog.Warningf("skipping restoration, failed to extract diskName from volume handle (%s): %v", pv.Spec.CSI.VolumeHandle, err)
 				continue
@@ -487,7 +488,7 @@ func (r *ReconcileAzVolume) recoverAzVolumes(ctx context.Context) error {
 			if _, err := r.azVolumeClient.DiskV1alpha1().AzVolumes(r.namespace).Create(ctx, &v1alpha1.AzVolume{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:       azVolumeName,
-					Finalizers: []string{azureutils.AzVolumeFinalizer},
+					Finalizers: []string{consts.AzVolumeFinalizer},
 				},
 				Spec: v1alpha1.AzVolumeSpec{
 					MaxMountReplicaCount: maxMountReplicaCount,

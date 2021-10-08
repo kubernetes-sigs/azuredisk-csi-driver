@@ -28,7 +28,7 @@ import (
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azVolumeClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 
@@ -260,10 +260,10 @@ func (r *ReconcileAttachDetach) initializeMeta(ctx context.Context, azVolumeAtta
 	}
 
 	// if the required metadata already exists return
-	if finalizerExists(azVolumeAttachment.Finalizers, azureutils.AzVolumeAttachmentFinalizer) &&
-		labelExists(azVolumeAttachment.Labels, azureutils.NodeNameLabel) &&
-		labelExists(azVolumeAttachment.Labels, azureutils.VolumeNameLabel) &&
-		labelExists(azVolumeAttachment.Labels, azureutils.RoleLabel) {
+	if finalizerExists(azVolumeAttachment.Finalizers, consts.AzVolumeAttachmentFinalizer) &&
+		labelExists(azVolumeAttachment.Labels, consts.NodeNameLabel) &&
+		labelExists(azVolumeAttachment.Labels, consts.VolumeNameLabel) &&
+		labelExists(azVolumeAttachment.Labels, consts.RoleLabel) {
 		return azVolumeAttachment
 	}
 
@@ -272,17 +272,17 @@ func (r *ReconcileAttachDetach) initializeMeta(ctx context.Context, azVolumeAtta
 		azVolumeAttachment.Finalizers = []string{}
 	}
 
-	if !finalizerExists(azVolumeAttachment.Finalizers, azureutils.AzVolumeAttachmentFinalizer) {
-		azVolumeAttachment.Finalizers = append(azVolumeAttachment.Finalizers, azureutils.AzVolumeAttachmentFinalizer)
+	if !finalizerExists(azVolumeAttachment.Finalizers, consts.AzVolumeAttachmentFinalizer) {
+		azVolumeAttachment.Finalizers = append(azVolumeAttachment.Finalizers, consts.AzVolumeAttachmentFinalizer)
 	}
 
 	// add label
 	if azVolumeAttachment.Labels == nil {
 		azVolumeAttachment.Labels = make(map[string]string)
 	}
-	azVolumeAttachment.Labels[azureutils.NodeNameLabel] = azVolumeAttachment.Spec.NodeName
-	azVolumeAttachment.Labels[azureutils.VolumeNameLabel] = azVolumeAttachment.Spec.UnderlyingVolume
-	azVolumeAttachment.Labels[azureutils.RoleLabel] = string(azVolumeAttachment.Spec.RequestedRole)
+	azVolumeAttachment.Labels[consts.NodeNameLabel] = azVolumeAttachment.Spec.NodeName
+	azVolumeAttachment.Labels[consts.VolumeNameLabel] = azVolumeAttachment.Spec.UnderlyingVolume
+	azVolumeAttachment.Labels[consts.RoleLabel] = string(azVolumeAttachment.Spec.RequestedRole)
 
 	return azVolumeAttachment
 }
@@ -298,7 +298,7 @@ func (r *ReconcileAttachDetach) deleteFinalizer(ctx context.Context, azVolumeAtt
 
 	finalizers := []string{}
 	for _, finalizer := range azVolumeAttachment.ObjectMeta.Finalizers {
-		if finalizer == azureutils.AzVolumeAttachmentFinalizer {
+		if finalizer == consts.AzVolumeAttachmentFinalizer {
 			continue
 		}
 		finalizers = append(finalizers, finalizer)
@@ -408,7 +408,7 @@ func updateRole(ctx context.Context, azVolumeAttachment *v1alpha1.AzVolumeAttach
 	if azVolumeAttachment.Labels == nil {
 		azVolumeAttachment.Labels = map[string]string{}
 	}
-	azVolumeAttachment.Labels[azureutils.RoleLabel] = string(role)
+	azVolumeAttachment.Labels[consts.RoleLabel] = string(role)
 
 	if azVolumeAttachment.Status.Detail == nil {
 		return azVolumeAttachment
@@ -482,7 +482,7 @@ func (r *ReconcileAttachDetach) syncAll(ctx context.Context, syncedVolumeAttachm
 		if syncedVolumeAttachments[volumeAttachment.Name] {
 			continue
 		}
-		if volumeAttachment.Spec.Attacher == azureconstants.DefaultDriverName {
+		if volumeAttachment.Spec.Attacher == consts.DefaultDriverName {
 			volumeName := volumeAttachment.Spec.Source.PersistentVolumeName
 			if volumeName == nil {
 				continue
@@ -494,12 +494,12 @@ func (r *ReconcileAttachDetach) syncAll(ctx context.Context, syncedVolumeAttachm
 				return true, syncedVolumeAttachments, volumesToSync, err
 			}
 
-			if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != azureconstants.DefaultDriverName {
+			if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != consts.DefaultDriverName {
 				continue
 			}
 			volumesToSync[pv.Spec.CSI.VolumeHandle] = true
 
-			diskName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(pv.Spec.CSI.VolumeHandle)
+			diskName, err := azureutils.GetDiskName(pv.Spec.CSI.VolumeHandle)
 			if err != nil {
 				klog.Warningf("failed to extract disk name from volumehandle (%s): %v", pv.Spec.CSI.VolumeHandle, err)
 				delete(volumesToSync, pv.Spec.CSI.VolumeHandle)
@@ -525,10 +525,10 @@ func (r *ReconcileAttachDetach) syncAll(ctx context.Context, syncedVolumeAttachm
 					ObjectMeta: metav1.ObjectMeta{
 						Name: azVolumeAttachmentName,
 						Labels: map[string]string{
-							azureutils.NodeNameLabel:   nodeName,
-							azureutils.VolumeNameLabel: *volumeName,
+							consts.NodeNameLabel:   nodeName,
+							consts.VolumeNameLabel: *volumeName,
 						},
-						Finalizers: []string{azureutils.AzVolumeAttachmentFinalizer},
+						Finalizers: []string{consts.AzVolumeAttachmentFinalizer},
 					},
 					Spec: v1alpha1.AzVolumeAttachmentSpec{
 						UnderlyingVolume: *volumeName,

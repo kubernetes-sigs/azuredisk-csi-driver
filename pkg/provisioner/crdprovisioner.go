@@ -34,6 +34,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	azurediskInformers "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 )
@@ -92,7 +93,7 @@ func (c *CrdProvisioner) RegisterDriverNode(
 		if azDriverNodeNew.Labels == nil {
 			azDriverNodeNew.Labels = make(map[string]string)
 		}
-		azDriverNodeNew.Labels[azureutils.PartitionLabel] = nodePartition
+		azDriverNodeNew.Labels[consts.PartitionLabel] = nodePartition
 		klog.V(2).Infof("Creating AzDriverNode with details (%v)", azDriverNodeNew)
 		azDriverNodeCreated, err := azN.Create(ctx, azDriverNodeNew, metav1.CreateOptions{})
 		if err != nil || azDriverNodeCreated == nil {
@@ -145,7 +146,7 @@ func (c *CrdProvisioner) CreateVolume(
 
 	// Getting the validVolumeName here since after volume
 	// creation the diskURI will consist of the validVolumeName
-	volumeName = azureutils.GetValidDiskName(volumeName)
+	volumeName = azureutils.CreateValidDiskName(volumeName, true)
 	azVolumeName := strings.ToLower(volumeName)
 
 	waiter, err := c.conditionWatcher.newConditionWaiter(ctx, azVolumeType, azVolumeName, func(obj interface{}, _ bool) (bool, error) {
@@ -278,7 +279,7 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 	lister := c.conditionWatcher.informerFactory.Disk().V1alpha1().AzVolumes().Lister().AzVolumes(c.namespace)
 	azVolumeClient := c.azDiskClient.DiskV1alpha1().AzVolumes(c.namespace)
 
-	volumeName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(volumeID)
+	volumeName, err := azureutils.GetDiskName(volumeID)
 	if err != nil {
 		klog.Errorf("Error finding volume : %v", err)
 		return nil
@@ -325,7 +326,7 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 		if updateInstance.Annotations == nil {
 			updateInstance.Annotations = map[string]string{}
 		}
-		updateInstance.Annotations[azureutils.VolumeDeleteRequestAnnotation] = "cloud-delete-volume"
+		updateInstance.Annotations[consts.VolumeDeleteRequestAnnotation] = "cloud-delete-volume"
 
 		// remove deletion failure error from AzVolume CRI to retrigger deletion
 		updateInstance.Status.Error = nil
@@ -362,7 +363,7 @@ func (c *CrdProvisioner) PublishVolume(
 	lister := c.conditionWatcher.informerFactory.Disk().V1alpha1().AzVolumeAttachments().Lister().AzVolumeAttachments(c.namespace)
 	azVAClient := c.azDiskClient.DiskV1alpha1().AzVolumeAttachments(c.namespace)
 
-	volumeName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(volumeID)
+	volumeName, err := azureutils.GetDiskName(volumeID)
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "Error finding volume : %v", err)
 	}
@@ -422,7 +423,7 @@ func (c *CrdProvisioner) PublishVolume(
 			if updateInstance.Labels == nil {
 				updateInstance.Labels = map[string]string{}
 			}
-			updateInstance.Labels[azureutils.RoleLabel] = string(v1alpha1.PrimaryRole)
+			updateInstance.Labels[consts.RoleLabel] = string(v1alpha1.PrimaryRole)
 
 			return nil
 		}
@@ -437,9 +438,9 @@ func (c *CrdProvisioner) PublishVolume(
 			ObjectMeta: metav1.ObjectMeta{
 				Name: attachmentName,
 				Labels: map[string]string{
-					azureutils.NodeNameLabel:   nodeID,
-					azureutils.VolumeNameLabel: volumeName,
-					azureutils.RoleLabel:       string(v1alpha1.PrimaryRole),
+					consts.NodeNameLabel:   nodeID,
+					consts.VolumeNameLabel: volumeName,
+					consts.RoleLabel:       string(v1alpha1.PrimaryRole),
 				},
 			},
 			Spec: v1alpha1.AzVolumeAttachmentSpec{
@@ -485,7 +486,7 @@ func (c *CrdProvisioner) UnpublishVolume(
 	azVAClient := c.azDiskClient.DiskV1alpha1().AzVolumeAttachments(c.namespace)
 	lister := c.conditionWatcher.informerFactory.Disk().V1alpha1().AzVolumeAttachments().Lister().AzVolumeAttachments(c.namespace)
 
-	volumeName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(volumeID)
+	volumeName, err := azureutils.GetDiskName(volumeID)
 	if err != nil {
 		return err
 	}
@@ -530,7 +531,7 @@ func (c *CrdProvisioner) UnpublishVolume(
 			if updateInstance.Annotations == nil {
 				updateInstance.Annotations = map[string]string{}
 			}
-			updateInstance.Annotations[azureutils.VolumeDetachRequestAnnotation] = "crdProvisioner"
+			updateInstance.Annotations[consts.VolumeDetachRequestAnnotation] = "crdProvisioner"
 
 			// remove detachment failure error from AzVolumeAttachment CRI to retrigger detachment
 			updateInstance.Status.Error = nil
@@ -540,7 +541,7 @@ func (c *CrdProvisioner) UnpublishVolume(
 			return nil
 		}
 		if err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.informerFactory, nil, c.azDiskClient, azVolumeAttachmentInstance, updateFunc); err != nil {
-			klog.Errorf("failed to update AzVolumeAttachment (%s) with Annotation (%s): %v", attachmentName, azureutils.VolumeDetachRequestAnnotation, err)
+			klog.Errorf("failed to update AzVolumeAttachment (%s) with Annotation (%s): %v", attachmentName, consts.VolumeDetachRequestAnnotation, err)
 			return err
 		}
 	}
@@ -566,7 +567,7 @@ func (c *CrdProvisioner) ExpandVolume(
 
 	lister := c.conditionWatcher.informerFactory.Disk().V1alpha1().AzVolumes().Lister().AzVolumes(c.namespace)
 
-	volumeName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(volumeID)
+	volumeName, err := azureutils.GetDiskName(volumeID)
 	if err != nil {
 		return nil, err
 	}
@@ -629,7 +630,7 @@ func (c *CrdProvisioner) ExpandVolume(
 }
 
 func (c *CrdProvisioner) GetAzVolumeAttachmentState(ctx context.Context, volumeID string, nodeID string) (*v1alpha1.AzVolumeAttachmentAttachmentState, error) {
-	diskName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(volumeID)
+	diskName, err := azureutils.GetDiskName(volumeID)
 	if err != nil {
 		return nil, err
 	}
