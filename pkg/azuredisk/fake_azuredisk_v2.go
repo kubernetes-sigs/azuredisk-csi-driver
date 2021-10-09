@@ -60,6 +60,7 @@ func newFakeDriverV2(t *testing.T) (*fakeDriverV2, error) {
 	driver.Version = fakeDriverVersion
 	driver.NodeID = fakeNodeID
 	driver.CSIDriver = *csicommon.NewFakeCSIDriver()
+	driver.ready = make(chan struct{})
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.objectNamespace = fakeObjNamespace
 

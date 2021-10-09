@@ -63,6 +63,9 @@ type CSIDriver interface {
 	csi.IdentityServer
 
 	Run(endpoint, kubeconfig string, disableAVSetNodes, testMode bool)
+
+	// Ready returns a closed channel when the driver's Run function has completed initialization
+	Ready() <-chan struct{}
 }
 
 type hostUtil interface {
@@ -72,6 +75,7 @@ type hostUtil interface {
 // DriverCore contains fields common to both the V1 and V2 driver, and implements all interfaces of CSI drivers
 type DriverCore struct {
 	csicommon.CSIDriver
+	ready                      chan struct{}
 	perfOptimizationEnabled    bool
 	cloudConfigSecretName      string
 	cloudConfigSecretNamespace string
@@ -102,6 +106,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.Version = driverVersion
 	driver.NodeID = options.NodeID
 	driver.VolumeAttachLimit = options.VolumeAttachLimit
+	driver.ready = make(chan struct{})
 	driver.perfOptimizationEnabled = options.EnablePerfOptimization
 	driver.cloudConfigSecretName = options.CloudConfigSecretName
 	driver.cloudConfigSecretNamespace = options.CloudConfigSecretNamespace
@@ -203,6 +208,11 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 	s := csicommon.NewNonBlockingGRPCServer()
 	// Driver d act as IdentityServer, ControllerServer and NodeServer
 	s.Start(endpoint, d, d, d, testingMock)
+
+	// Signal that the driver is ready.
+	d.signalReady()
+
+	// Wait for the GRPC Server to exit
 	s.Wait()
 }
 
@@ -268,6 +278,14 @@ func (d *Driver) checkDiskCapacity(ctx context.Context, resourceGroup, diskName 
 
 func (d *Driver) getVolumeLocks() *volumehelper.VolumeLocks {
 	return d.volumeLocks
+}
+
+func (d *DriverCore) Ready() <-chan struct{} {
+	return d.ready
+}
+
+func (d *DriverCore) signalReady() {
+	close(d.ready)
 }
 
 // setControllerCapabilities sets the controller capabilities field. It is intended for use with unit tests.

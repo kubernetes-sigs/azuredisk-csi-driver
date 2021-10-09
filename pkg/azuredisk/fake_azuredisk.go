@@ -104,6 +104,7 @@ func newFakeDriverV1(t *testing.T) (*fakeDriverV1, error) {
 	driver.Version = fakeDriverVersion
 	driver.NodeID = fakeNodeID
 	driver.CSIDriver = *csicommon.NewFakeCSIDriver()
+	driver.ready = make(chan struct{})
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.VolumeAttachLimit = -1
 	driver.ioHandler = azureutils.NewFakeIOHandler()

@@ -134,6 +134,7 @@ func newDriverV2(options *DriverOptions,
 	driver.NodeID = options.NodeID
 	driver.VolumeAttachLimit = options.VolumeAttachLimit
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
+	driver.ready = make(chan struct{})
 	driver.perfOptimizationEnabled = options.EnablePerfOptimization
 	driver.cloudConfigSecretName = options.CloudConfigSecretName
 	driver.cloudConfigSecretNamespace = options.CloudConfigSecretNamespace
@@ -255,6 +256,9 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 	if *isNodePlugin {
 		go d.RunAzDriverNodeHeartbeatLoop(ctx)
 	}
+
+	// Signal that the driver is ready.
+	d.signalReady()
 
 	// Wait for the GRPC Server to exit
 	s.Wait()
