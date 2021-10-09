@@ -302,11 +302,7 @@ func (d *Driver) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapabi
 
 // NodeGetInfo return info of the node on which this plugin is running
 func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
-	var (
-		instanceType string
-		zone         cloudprovider.Zone
-		zoneError    error
-	)
+	var instanceType string
 	topology := &csi.Topology{
 		Segments: map[string]string{topologyKey: ""},
 	}
@@ -319,7 +315,6 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 		} else {
 			klog.Warningf("get instance type(%s) failed with: %v", d.NodeID, err)
 		}
-		zone, zoneError = d.cloud.GetZone(ctx)
 	} else {
 		instances, ok := d.cloud.Instances()
 		if !ok {
@@ -329,8 +324,18 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 		if instanceType, err = instances.InstanceType(ctx, types.NodeName(d.NodeID)); err != nil {
 			klog.Warningf("get instance type(%s) failed with: %v", d.NodeID, err)
 		}
-		zone, zoneError = d.cloud.VMSet.GetZoneByNodeName(d.NodeID)
 	}
+
+	var (
+		zone      cloudprovider.Zone
+		zoneError error
+	)
+	if runtime.GOOS == "windows" && (!d.cloud.UseInstanceMetadata || d.cloud.Metadata == nil) {
+		zone, zoneError = d.cloud.VMSet.GetZoneByNodeName(d.NodeID)
+	} else {
+		zone, zoneError = d.cloud.GetZone(ctx)
+	}
+
 	if zoneError != nil {
 		klog.Warningf("get zone(%s) failed with: %v", d.NodeID, zoneError)
 	} else {
