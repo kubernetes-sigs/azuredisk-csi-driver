@@ -33,10 +33,6 @@ type FakeSafeMounter struct {
 
 // NewFakeSafeMounter creates a mount.SafeFormatAndMount instance suitable for use in unit tests.
 func NewFakeSafeMounter() (*mount.SafeFormatAndMount, error) {
-	if runtime.GOOS == "windows" {
-		return NewSafeMounter(true)
-	}
-
 	fakeSafeMounter := FakeSafeMounter{}
 	fakeSafeMounter.ExactOrder = true
 	fakeSafeMounter.MountCheckErrors = make(map[string]error)
