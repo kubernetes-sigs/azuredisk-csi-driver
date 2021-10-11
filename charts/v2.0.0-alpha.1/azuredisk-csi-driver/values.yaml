@@ -36,23 +36,23 @@ image:
 
 serviceAccount:
   create: true # When true, service accounts will be created for you. Set to false if you want to use your own.
-  controller: csi-azuredisk2-controller-sa # Name of Service Account to be created or used
-  node: csi-azuredisk2-node-sa # Name of Service Account to be created or used
+  controller: csi-azuredisk-controller-sa # Name of Service Account to be created or used
+  node: csi-azuredisk-node-sa # Name of Service Account to be created or used
   snapshotController: csi-snapshot-controller-sa # Name of Service Account to be created or used
   schedulerExtender: csi-azuredisk-scheduler-extender-sa # Name of Service Account to be created or used
 
 rbac:
   create: true
-  name: azuredisk2
+  name: azuredisk
 
 controller:
-  name: csi-azuredisk2-controller
+  name: csi-azuredisk-controller
   cloudConfigSecretName: azure-cloud-provider
   cloudConfigSecretNamespace: kube-system
   replicas: 2
-  metricsPort: 29624
+  metricsPort: 29604
   livenessProbe:
-    healthPort: 29622
+    healthPort: 29602
   runOnMaster: false
   disableAvailabilitySetNodes: true
   provisionerWorkerThreads: 40
@@ -72,19 +72,20 @@ node:
   cloudConfigSecretName: azure-cloud-provider
   cloudConfigSecretNamespace: kube-system
   maxUnavailable: 1
-  metricsPort: 29625
+  metricsPort: 29605
   logLevel: 5
   livenessProbe:
-    healthPort: 29623
+    healthPort: 29603
 
 schedulerExtender:
   name: csi-azuredisk-scheduler-extender
   replicas: 2
-  metricsPort: 29616
-  servicePort: 8899
+  metricsPort: 29606
+  servicePort: 8889
 
 snapshot:
   enabled: false
+  createCRDs: true
   name: csi-snapshot-controller
   apiVersion: beta # available values: beta, ga
   image:
@@ -108,7 +109,7 @@ feature:
   enableCSIMigration: false
 
 driver:
-  name: disk2.csi.azure.com
+  name: disk.csi.azure.com
   # maximum number of attachable volumes per node,
   # maximum number is defined according to node instance type by default(-1)
   volumeAttachLimit: -1
@@ -117,7 +118,7 @@ driver:
 
 linux:
   enabled: true
-  dsName: csi-azuredisk2-node # daemonset name
+  dsName: csi-azuredisk-node # daemonset name
   kubelet: /var/lib/kubelet
   distro: debian # available values: debian, fedora
   enablePerfOptimization: true
@@ -136,7 +137,7 @@ linux:
 
 windows:
   enabled: true
-  dsName: csi-azuredisk2-node-win # daemonset name
+  dsName: csi-azuredisk-node-win # daemonset name
   kubelet: 'C:\var\lib\kubelet'
   tolerations:
     - key: "node.kubernetes.io/os"
@@ -154,9 +155,18 @@ windows:
 
 cloud: AzurePublicCloud
 
-storageClass:
+storageClasses:
   create: true
-  name: csi-v2
+  enableZRS: false
+  enableUltraSSD: false
+  storageClassNames:
+    standardLRS: "azuredisk-standard-hdd-lrs"
+    standardSSDLRS: "azuredisk-standard-ssd-lrs"
+    standardSSDZRS: "azuredisk-standard-ssd-zrs"
+    premiumLRS: "azuredisk-premium-ssd-lrs"
+    premiumZRS: "azuredisk-premium-ssd-zrs"
+    ultraSSDLRS: "azuredisk-ultra-ssd-lrs"
+
 
 ## Reference to one or more secrets to be used when pulling images
 ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
