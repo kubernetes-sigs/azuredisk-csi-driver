@@ -22,13 +22,4 @@ jobs:
           make azuredisk-windows
       - name: Run Windows Unit Tests
         run: |
-          # start the CSI Proxy before running tests on windows
-          Start-Job -Name CSIProxy -ScriptBlock {
-            Invoke-WebRequest https://acs-mirror.azureedge.net/csi-proxy/v1.0.0/binaries/csi-proxy-v1.0.0.tar.gz -OutFile csi-proxy.tar.gz;
-            tar -xvf csi-proxy.tar.gz
-            .\bin\csi-proxy.exe --kubelet-path $pwd
-          };
-          Start-Sleep -Seconds 30;
-          Write-Output "getting named pipes"
-          [System.IO.Directory]::GetFiles("\\.\\pipe\\")
           go test -v -race ./pkg/...
