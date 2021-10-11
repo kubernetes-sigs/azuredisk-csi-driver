@@ -61,7 +61,7 @@ spec:
       name: controller
       imagePullPolicy: Always
       args:
-      - "--driver-version=v1"
+      - "--driver-version=v2"
       - "--maxshares=3"
       - "--duration=120"
       - "--workload-image=nearora4/workloadpod:latest"

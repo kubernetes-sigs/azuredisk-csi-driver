@@ -4,11 +4,9 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"math/rand"
 	"os"
 	"path/filepath"
 	"strconv"
-	"sync"
 	"time"
 
 	apps "k8s.io/api/apps/v1"
@@ -31,11 +29,11 @@ const (
 )
 
 var (
-	driverVersion = flag.String("driver-version", "v1", "Specify whether the azuredisk csi driver being tested is v1 or v2")
+	driverVersion = flag.String("driver-version", "v2", "Specify whether the azuredisk csi driver being tested is v1 or v2")
 	maxShares     = flag.Int("maxshares", 3, "Specify the maxshares value for the storage class")
 	duration      = flag.Int("duration", 60, "Duration for which the test should run in minutes")
 	workloadImage = flag.String("workload-image", "nearora4/workloadpod:latest", "Image of the workload pod that will be deployed by the controller")
-	podCount      = flag.Int("pod-count", 3, "The number of pods that should be created for a deployment")
+	podCount      = flag.Int("pod-count", 1, "The number of pods that should be created for a deployment")
 	pvcPerPod     = flag.Int("pvc-per-pod", 3, "Number of pvcs that should be created per pod")
 )
 
@@ -294,38 +292,39 @@ func RunWorkloadPods(ctx context.Context, clientset *kubernetes.Clientset, deplo
 		default:
 			//n := rand.Intn(len(deployments))
 			//selectedDeployment := deployments[n]
-			//podList, _ := getPodsForDeployment(clientset, selectedDeployment)
+			selectedDeployment := deployments[0]
+			podList, _ := getPodsForDeployment(clientset, selectedDeployment)
 			//podList, _ := clientset.CoreV1().Pods(podFailoverNamespace).List(context.TODO(), metav1.ListOptions{})
-			n1 := rand.Intn(len(deployments))
-			n2 := rand.Intn(len(deployments))
+			//n1 := rand.Intn(len(deployments))
+			//n2 := rand.Intn(len(deployments))
 
-			for n1 == n2 {
-				n2 = rand.Intn(len(deployments))
-			}
-
-			var wg sync.WaitGroup
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				deleteAndReschedulePod(ctx, clientset, deployments[n1])
-			}()
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				deleteAndReschedulePod(ctx, clientset, deployments[n2])
-			}()
-
-			wg.Wait()
-
-			// for _, pod := range podList.Items {
-			// 	nodeName := pod.Spec.NodeName
-			// 	makeNodeUnschedulable(nodeName, true, clientset)
-			// 	clientset.CoreV1().Pods(podFailoverNamespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
-
-			// 	// wait for the pod to come back up
-			// 	waitForDeploymentToComplete(ctx, podFailoverNamespace, clientset, selectedDeployment)
-			// 	makeNodeUnschedulable(nodeName, false, clientset)
+			// for n1 == n2 {
+			// 	n2 = rand.Intn(len(deployments))
 			// }
+
+			// var wg sync.WaitGroup
+			// wg.Add(1)
+			// go func() {
+			// 	defer wg.Done()
+			// 	deleteAndReschedulePod(ctx, clientset, deployments[n1])
+			// }()
+			// wg.Add(1)
+			// go func() {
+			// 	defer wg.Done()
+			// 	deleteAndReschedulePod(ctx, clientset, deployments[n2])
+			// }()
+
+			// wg.Wait()
+
+			for _, pod := range podList.Items {
+				nodeName := pod.Spec.NodeName
+				makeNodeUnschedulable(nodeName, true, clientset)
+				clientset.CoreV1().Pods(podFailoverNamespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
+
+				// wait for the pod to come back up
+				waitForDeploymentToComplete(ctx, podFailoverNamespace, clientset, selectedDeployment)
+				makeNodeUnschedulable(nodeName, false, clientset)
+			}
 
 		}
 	}
