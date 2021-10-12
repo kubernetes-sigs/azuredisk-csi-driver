@@ -57,7 +57,7 @@ jobs:
           --client-tenant $AZURE_TENANT_ID \
           --client-secret $AZURE_CLIENT_SECRET \
           --resource-group $AZURE_RESOURCE_GROUP \
-          --template "https://raw.githubusercontent.com/kubernetes-sigs/windows-testing/master/job-templates/kubernetes_csi_proxy.json"
+          --template windows
         echo "KUBECONFIG=$GITHUB_WORKSPACE/e2eTestOutput/kubeconfig/kubeconfig.${AZURE_LOCATION}.json" >> $GITHUB_ENV
 
     - name: Run e2e tests

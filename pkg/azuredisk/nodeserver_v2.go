@@ -23,6 +23,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sync"
+	"sync/atomic"
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
@@ -39,20 +41,28 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 )
 
-// NodeProvisioner defines the methods required to manage staging and publishing of mount points.
-type NodeProvisioner interface {
-	GetDevicePathWithLUN(lun int) (string, error)
-	GetDevicePathWithMountPath(mountPath string) (string, error)
-	IsBlockDevicePath(path string) (bool, error)
-	PreparePublishPath(target string) error
-	EnsureMountPointReady(target string) (bool, error)
-	EnsureBlockTargetReady(target string) error
-	FormatAndMount(source, target, fstype string, options []string) error
-	Mount(source, target, fstype string, options []string) error
-	Unmount(target string) error
-	CleanupMountPoint(path string, extensiveCheck bool) error
-	Resize(source, target string) error
-	GetBlockSizeBytes(devicePath string) (int64, error)
+const (
+	detachNotFound  int32 = -1
+	detachInProcess int32 = 0
+	detachCompleted int32 = 1
+	detachFailed    int32 = 2
+)
+
+type deviceCheckerEntry struct {
+	diskURI     string
+	detachState int32
+}
+
+type deviceChecker struct {
+	lock  sync.RWMutex
+	entry *deviceCheckerEntry
+}
+
+func newDeviceCheckerEntry(diskURI string) *deviceCheckerEntry {
+	return &deviceCheckerEntry{
+		diskURI:     diskURI,
+		detachState: detachInProcess,
+	}
 }
 
 // NodeStageVolume mount disk device to a staging path
@@ -91,25 +101,33 @@ func (d *DriverV2) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolume
 		return nil, status.Errorf(codes.Internal, "Failed to find disk on lun %s. %v", lunStr, err)
 	}
 
-	source, err := d.nodeProvisioner.GetDevicePathWithLUN(int(lun))
-	if err != nil {
-		// check if AzVolumeAttachment reports attached
-		if state, getErr := d.crdProvisioner.GetAzVolumeAttachmentState(ctx, diskURI, d.NodeID); state == nil || getErr != nil {
-			getErr = status.Errorf(codes.Internal, "failed to get current attachment state for volume (%s) and node (%s): %v", diskURI, d.NodeID, getErr)
-			klog.Error(getErr)
-			return nil, getErr
-		} else {
-			if *state != v1alpha1.Attached {
-				getErr = status.Errorf(codes.Internal, "volume (%s) is not yet attached to node (%s)", diskURI, d.NodeID)
-				return nil, getErr
+	// check if AzVolumeattachment is in Attached state if recovery is in process for the specified volume and is not in process of detaching
+	d.deviceChecker.lock.RLock()
+	_, diskURIMatches := d.isRecoveryInProcess(diskURI)
+	d.deviceChecker.lock.RUnlock()
+	if diskURIMatches {
+		detachState := d.getDetachState(diskURI)
+		switch detachState {
+		case detachInProcess:
+			return nil, status.Errorf(codes.Internal, "recovery for volume (%s) is still in process", diskURI)
+		case detachCompleted:
+			state, getErr := d.crdProvisioner.GetAzVolumeAttachmentState(ctx, diskURI, d.NodeID)
+			if getErr != nil {
+				return nil, status.Errorf(codes.Internal, "failed to get current attachment state for volume (%s) and node (%s): %v", diskURI, d.NodeID, getErr)
+			}
+			if state != v1alpha1.Attached {
+				return nil, status.Errorf(codes.Internal, "volume (%s) is not yet attached to node (%s)", diskURI, d.NodeID)
 			}
 		}
-		// when lun is available but device path cannot be found, try recovery by detaching the volume from node
-		// and reattaching it, which is triggered by the difference in world states (listVolume result vs. volumeattachment list)
-		if detachErr := d.crdProvisioner.UnpublishVolume(ctx, diskURI, d.NodeID, nil); detachErr != nil {
-			klog.Errorf("failed to unpublishVolume volume (%s) from node (%s): %v", diskURI, d.NodeID, detachErr)
-		}
-		return nil, status.Errorf(codes.Internal, "Failed to find disk on lun %v. %v", lun, err)
+	}
+
+	source, err := d.nodeProvisioner.GetDevicePathWithLUN(ctx, int(lun))
+	if err == nil {
+		d.markRecoveryCompleteIfInProcess(diskURI)
+	} else {
+		err = status.Errorf(codes.Internal, "Failed to find disk on lun %v. %v", lun, err)
+		go d.recoverMount(diskURI)
+		return nil, err
 	}
 
 	// If perf optimizations are enabled
@@ -261,7 +279,7 @@ func (d *DriverV2) NodePublishVolume(ctx context.Context, req *csi.NodePublishVo
 			return nil, status.Errorf(codes.Internal, "Failed to find device path with lun %s. %v", lunStr, err)
 		}
 
-		source, err = d.nodeProvisioner.GetDevicePathWithLUN(int(lun))
+		source, err = d.nodeProvisioner.GetDevicePathWithLUN(ctx, int(lun))
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "Failed to find device path with lun %v. %v", lun, err)
 		}
@@ -521,4 +539,78 @@ func (d *DriverV2) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolu
 func (d *DriverV2) ensureMountPoint(target string) (bool, error) {
 	klog.Warning("ensureMountPoint method is deprecated.")
 	return d.nodeProvisioner.EnsureMountPointReady(target)
+}
+
+func (d *DriverV2) recoverMount(diskURI string) {
+	if d.shouldStartRecovery(diskURI) {
+		klog.Warningf("Starting mount recovery: detaching the volume (%s) from node (%s)...", diskURI, d.NodeID)
+		recoveryCtx := context.Background()
+
+		// When the device path cannot be found for the specified LUN, try to recover by detaching and re-attaching the disk.
+		// We only need to perform the detach. The CSI infrastructure will re-attach the disk when it notices a difference in
+		// world states (ListVolumes result doesn't match VolumeAttachment list).
+		detachErr := d.crdProvisioner.UnpublishVolume(recoveryCtx, diskURI, d.NodeID, nil)
+		if detachErr != nil {
+			klog.Errorf("failed to unpublishVolume volume (%s) from node (%s): %v", diskURI, d.NodeID, detachErr)
+			d.markDetachState(diskURI, detachFailed)
+		} else {
+			klog.Infof("Detached volume (%s) from node (%s) successfully...", diskURI, d.NodeID)
+			d.markDetachState(diskURI, detachCompleted)
+		}
+	}
+}
+
+func (d *DriverV2) shouldStartRecovery(diskURI string) bool {
+	d.deviceChecker.lock.Lock()
+	defer d.deviceChecker.lock.Unlock()
+
+	recoveryInProcess, diskURIMatches := d.isRecoveryInProcess(diskURI)
+	if !recoveryInProcess {
+		d.deviceChecker.entry = newDeviceCheckerEntry(diskURI)
+		return true
+	}
+	// if there already is another recovery in process for different volume, no need to start recovery because recovery for that other volume will likely fix the problem for this volume
+	return diskURIMatches
+}
+
+// isRecoveryInProcess assumes that lock has been acquire and should be used only AFTER ACQUIRING THE LOCK
+func (d *DriverV2) isRecoveryInProcess(diskURI string) (recoveryInProcess, diskURIMatches bool) {
+	if d.deviceChecker.entry != nil {
+		recoveryInProcess = true
+		diskURIMatches = d.deviceChecker.entry.diskURI == diskURI
+	}
+	return
+}
+
+func (d *DriverV2) getDetachState(diskURI string) int32 {
+	d.deviceChecker.lock.RLock()
+	defer d.deviceChecker.lock.RUnlock()
+
+	if recoveryInProcess, diskURIMatches := d.isRecoveryInProcess(diskURI); !recoveryInProcess || !diskURIMatches {
+		return detachNotFound
+	}
+
+	return atomic.LoadInt32(&d.deviceChecker.entry.detachState)
+}
+
+func (d *DriverV2) markDetachState(diskURI string, detachState int32) {
+	d.deviceChecker.lock.Lock()
+	defer d.deviceChecker.lock.Unlock()
+
+	if recoveryInProcess, diskURIMatches := d.isRecoveryInProcess(diskURI); !recoveryInProcess || !diskURIMatches {
+		return
+	}
+
+	d.deviceChecker.entry.detachState = detachState
+}
+
+func (d *DriverV2) markRecoveryCompleteIfInProcess(diskURI string) {
+	d.deviceChecker.lock.Lock()
+	defer d.deviceChecker.lock.Unlock()
+
+	if recoveryInProcess, diskURIMatches := d.isRecoveryInProcess(diskURI); !recoveryInProcess || !diskURIMatches {
+		return
+	}
+
+	d.deviceChecker.entry = nil
 }

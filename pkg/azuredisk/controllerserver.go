@@ -209,7 +209,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	if diskName == "" {
 		diskName = name
 	}
-	diskName = azureutils.CreateValidDiskName(diskName)
+	diskName = azureutils.CreateValidDiskName(diskName, false)
 
 	if resourceGroup == "" {
 		resourceGroup = d.cloud.ResourceGroup
@@ -838,7 +838,7 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 		return nil, status.Error(codes.InvalidArgument, "snapshot name must be provided")
 	}
 
-	snapshotName = azureutils.CreateValidDiskName(snapshotName)
+	snapshotName = azureutils.CreateValidDiskName(snapshotName, false)
 
 	var customTags string
 	// set incremental snapshot as true by default
