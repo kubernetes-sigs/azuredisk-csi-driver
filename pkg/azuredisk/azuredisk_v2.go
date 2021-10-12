@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -42,9 +43,7 @@ import (
 	"k8s.io/kubernetes/pkg/volume/util/hostutil"
 
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azuredisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
-	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller"
@@ -87,21 +86,7 @@ type DriverV2 struct {
 	controllerLeaseRetryPeriodInSec   int
 	kubeConfig                        *rest.Config
 	kubeClient                        clientset.Interface
-}
-
-type CrdProvisioner interface {
-	RegisterDriverNode(ctx context.Context, node *v1.Node, nodePartition string, nodeID string) error
-	CreateVolume(ctx context.Context, volumeName string, capacityRange *azuredisk.CapacityRange,
-		volumeCapabilities []azuredisk.VolumeCapability, parameters map[string]string,
-		secrets map[string]string, volumeContentSource *azuredisk.ContentVolumeSource,
-		accessibilityReq *azuredisk.TopologyRequirement) (*azuredisk.AzVolumeStatusParams, error)
-	DeleteVolume(ctx context.Context, volumeID string, secrets map[string]string) error
-	PublishVolume(ctx context.Context, volumeID string, nodeID string, volumeCapability *azuredisk.VolumeCapability,
-		readOnly bool, secrets map[string]string, volumeContext map[string]string) (map[string]string, error)
-	UnpublishVolume(ctx context.Context, volumeID string, nodeID string, secrets map[string]string) error
-	GetAzVolumeAttachmentState(ctx context.Context, volumeID string, nodeID string) (*v1alpha1.AzVolumeAttachmentAttachmentState, error)
-	ExpandVolume(ctx context.Context, volumeID string, capacityRange *azuredisk.CapacityRange, secrets map[string]string) (*azuredisk.AzVolumeStatusParams, error)
-	GetDiskClientSet() azDiskClientSet.Interface
+	deviceChecker                     deviceChecker
 }
 
 // NewDriver creates a driver object.
@@ -142,6 +127,7 @@ func newDriverV2(options *DriverOptions,
 	driver.userAgentSuffix = options.UserAgentSuffix
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
+	driver.deviceChecker = deviceChecker{lock: sync.RWMutex{}, entry: nil}
 
 	topologyKey = fmt.Sprintf("topology.%s/zone", driver.Name)
 	return &driver
