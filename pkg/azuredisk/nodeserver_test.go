@@ -1154,8 +1154,9 @@ func TestNodeExpandVolume(t *testing.T) {
 			continue
 		}
 
-		d.setNextCommandOutputScripts(test.outputScripts...)
-
+		if runtime.GOOS != "windows" {
+			d.setNextCommandOutputScripts(test.outputScripts...)
+		}
 		_, err := d.NodeExpandVolume(context.Background(), &test.req)
 		if !testutil.AssertError(&test.expectedErr, err) {
 			t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr.Error())
