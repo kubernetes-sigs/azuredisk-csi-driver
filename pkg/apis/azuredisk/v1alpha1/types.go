@@ -191,6 +191,8 @@ const (
 type AzVolumeAttachmentAttachmentState string
 
 const (
+	// Unknown state is used in crdProvsioner.GetAzVolumeAttachmentState when the attachment does not exist.
+	AttachmentStateUnknown AzVolumeAttachmentAttachmentState = "Unknown"
 	// Pending indicates a state where no operation has been initated
 	AttachmentPending AzVolumeAttachmentAttachmentState = "Pending"
 	// AttachmentInProgress indicates that node to volume attachment is in progress

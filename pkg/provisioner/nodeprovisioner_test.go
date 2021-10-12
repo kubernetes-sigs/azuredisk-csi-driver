@@ -17,6 +17,7 @@ limitations under the License.
 package provisioner
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -267,7 +268,7 @@ func TestGetDevicePathWithLUN(t *testing.T) {
 	nodeProvisioner.SetDevicePollParameters(1*time.Second, 2*time.Second)
 
 	for _, test := range tests {
-		_, err := nodeProvisioner.GetDevicePathWithLUN(test.req)
+		_, err := nodeProvisioner.GetDevicePathWithLUN(context.Background(), test.req)
 		if !testutil.AssertError(&test.expectedErr, err) {
 			t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
 		}

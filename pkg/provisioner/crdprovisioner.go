@@ -629,25 +629,19 @@ func (c *CrdProvisioner) ExpandVolume(
 	return azVolumeInstance.Status.Detail.ResponseObject, nil
 }
 
-func (c *CrdProvisioner) GetAzVolumeAttachmentState(ctx context.Context, volumeID string, nodeID string) (*v1alpha1.AzVolumeAttachmentAttachmentState, error) {
+func (c *CrdProvisioner) GetAzVolumeAttachmentState(ctx context.Context, volumeID string, nodeID string) (v1alpha1.AzVolumeAttachmentAttachmentState, error) {
 	diskName, err := azureutils.GetDiskName(volumeID)
 	if err != nil {
-		return nil, err
+		return v1alpha1.AttachmentStateUnknown, err
 	}
 	azVolumeAttachmentName := azureutils.GetAzVolumeAttachmentName(diskName, nodeID)
 	var azVolumeAttachment *v1alpha1.AzVolumeAttachment
 
-	if c.conditionWatcher == nil || c.conditionWatcher.informerFactory == nil {
-		if azVolumeAttachment, err = c.azDiskClient.DiskV1alpha1().AzVolumeAttachments(c.namespace).Get(ctx, azVolumeAttachmentName, metav1.GetOptions{}); err != nil {
-			return nil, err
-		}
-	} else {
-		if azVolumeAttachment, err = c.conditionWatcher.informerFactory.Disk().V1alpha1().AzVolumeAttachments().Lister().AzVolumeAttachments(c.namespace).Get(azVolumeAttachmentName); err != nil {
-			return nil, err
-		}
+	if azVolumeAttachment, err = c.conditionWatcher.informerFactory.Disk().V1alpha1().AzVolumeAttachments().Lister().AzVolumeAttachments(c.namespace).Get(azVolumeAttachmentName); err != nil {
+		return v1alpha1.AttachmentStateUnknown, err
 	}
 
-	return &azVolumeAttachment.Status.State, nil
+	return azVolumeAttachment.Status.State, nil
 }
 
 func (c *CrdProvisioner) GetDiskClientSet() azDiskClientSet.Interface {
