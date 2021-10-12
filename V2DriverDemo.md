@@ -1,9 +1,9 @@
 # Azure Disk CSI Driver V2
 
-The Azure Disk CSI Driver V2 enhances the Azure Disk CSI Driver to improve scalability and reduce pod failover latency. It uses shared disks to provision attachment replicas on multiple cluster nodes and integrates with the pod scheduler to ensure a node with a attachment replica is chosen on pod failover. It is beneficial for both single zone use case as well as multi zone use case that uses [Zone Redundant Disks](https://docs.microsoft.com/en-us/azure/virtual-machines/disks-redundancy#zone-redundant-storage-for-managed-disks). This demo is based off [this guide](https://github.com/mohmdnofal/aks-best-practices/blob/master/stateful_workloads/zrs/README.md)
+The Azure Disk CSI Driver V2 enhances the Azure Disk CSI Driver to improve scalability and reduce pod failover latency. It uses shared disks to provision attachment replicas on multiple cluster nodes and integrates with the pod scheduler to ensure a node with a attachment replica is chosen on pod failover. It is beneficial for both single zone use case as well as multi zone use case that uses [Zone Redundant Disks](https://docs.microsoft.com/en-us/azure/virtual-machines/disks-redundancy#zone-redundant-storage-for-managed-disks). This demo is based on [this guide](https://github.com/mohmdnofal/aks-best-practices/blob/master/stateful_workloads/zrs/README.md)
 
 # Azure Disk CSI Driver V2 with ZRS Demo Introduction 
-In this demo we will create a 3 nodes cluster distributed across 3 availability zones, we will deploy a single mysql pod, ingest some data there, and then drain the node hosing the pod, triggering a failover. This means that we took one node offline, triggering the scheduler to migrate your pod to another node. 
+In this demo we will create a 3 node cluster distributed across 3 availability zones, deploy a single mysql pod, ingest some data there, and then drain the node hosing the pod. This means that we took one node offline, triggering the scheduler to migrate your pod to another node. 
 
 # Demo
 
@@ -36,7 +36,7 @@ az aks create \
 
 az aks get-credentials -n $AKS_CLUSTER_NAME -g $RG
 
-## test
+## verify access to the cluster
 
 kubectl get nodes  
 
@@ -48,14 +48,35 @@ aks-nodepool1-20996793-vmss000002   Ready    agent   79s   v1.21.2
 
 2. Install the Azure Disk CSI Driver v2
 
-As of K8s 1.21 CSI became the default in storage drivers, same in AKS, you can see the default storage class now pointing to v1 azure disk CSI driver. To demonstrate the Azure Disk CSI Driver V2, first we will install it such that it runs side by side with the V1 driver. Tips for troubleshooting helm installation [here](https://github.com/kubernetes-sigs/azuredisk-csi-driver/blob/668a54a797fd90f015ce2b89ff2fbac2d0a4600b/charts/README.md).
+As of K8s 1.21, you can see the default storage class now pointing to the Azure Disk CSI Driver V1. To demonstrate the Azure Disk CSI Driver V2, we will install it side-by-side with the V1 driver. Tips for troubleshooting helm installation [here](https://github.com/kubernetes-sigs/azuredisk-csi-driver/blob/668a54a797fd90f015ce2b89ff2fbac2d0a4600b/charts/README.md).
 
 ```shell
-helm install azuredisk-csi-driver-v2 charts/v2.0.0-alpha.1/azuredisk-csi-driver --namespace kube-system --wait --timeout=15m -v=5 
+helm install azuredisk-csi-driver-v2 charts/v2.0.0-alpha.1/azuredisk-csi-driver --namespace kube-system --wait --timeout=15m -v=5 \
+        --set snapshot.enabled=true \
+        --set snapshot.createCRDs=false \
+        --set snapshot.name="csi-azuredisk2-snapshot-controller" \
+        --set snapshot.snapshotController.name="csi-azuredisk2-snapshot-controller" \
+        --set driver.name="disk2.csi.azure.com" \
+        --set controller.name="csi-azuredisk2-controller" \
+        --set rbac.name=azuredisk2 \
+        --set serviceAccount.controller=csi-azuredisk2-controller-sa \
+        --set serviceAccount.node=csi-azuredisk2-node-sa \
+        --set linux.dsName=csi-azuredisk2-node \
+        --set windows.dsName=csi-azuredisk2-node-win \
+        --set serviceAccount.snapshotController="csi2-snapshot-controller-sa" \
+        --set image.azuredisk.pullPolicy=Always \
+        --set image.schedulerExtender.pullPolicy=Always \
+        --set storageClasses.enableZRS=true \
+        --set controller.metricsPort=29614 \
+        --set controller.livenessProbe.healthPort=29612 \
+        --set node.metricsPort=29615 \
+        --set node.livenessProbe.healthPort=29613 \
+        --set schedulerExtender.metricsPort=29616 \
+        --set schedulerExtender.servicePort=8899
 ```
 
 
-Verify that the new storage class was created
+Verify that the new storage classes were created
 ```shell
 
 kubectl get storageclasses.storage.k8s.io 
@@ -72,7 +93,22 @@ managed-csi-premium     disk.csi.azure.com         Delete          WaitForFirstC
 managed-premium         kubernetes.io/azure-disk   Delete          WaitForFirstConsumer   true                   2m30s
 ```
 
-Keep in mind that if you are creating your own storage class to utilize the V2 driver, the parameter for `maxShares` must be > 1 for there to be replicas
+To benefit from the faster pod failover through replica mount feature of the Azure Disk CSI V2 driver, we will create a new storage class that sets the parameter for `maxShares`. 
+
+```yaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: azuredisk-standard-ssd-zrs-replicas
+parameters:
+  cachingmode: None
+  skuName: StandardSSD_ZRS
+  maxShares: "2"
+provisioner: disk.csi.azure.com
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+allowVolumeExpansion: true
+```
 
 4. Create mysql statefulset using volumes provisioned by the V2 driver 
 - This deployment is based on [this guide](https://kubernetes.io/docs/tasks/run-application/run-replicated-stateful-application/)
