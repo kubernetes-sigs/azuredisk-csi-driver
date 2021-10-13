@@ -95,11 +95,10 @@ func TestEnsureMountPoint(t *testing.T) {
 		expectedErr   testutil.TestError
 	}{
 		{
-			desc:          "[Error] Mocked by IsLikelyNotMountPoint",
-			target:        errorTargetPath,
-			skipOnWindows: true,
-			expectedErr:   testutil.TestError{DefaultError: errorTargetError},
-			expectedMnt:   false,
+			desc:        "[Error] Mocked by IsLikelyNotMountPoint",
+			target:      errorTargetPath,
+			expectedErr: testutil.TestError{DefaultError: errorTargetError},
+			expectedMnt: false,
 		},
 		{
 			desc:          "[Error] Not a directory",
@@ -110,18 +109,16 @@ func TestEnsureMountPoint(t *testing.T) {
 			},
 		},
 		{
-			desc:          "[Success] Successful run",
-			target:        targetTestDirPath,
-			skipOnWindows: true,
-			expectedErr:   testutil.TestError{},
-			expectedMnt:   false,
+			desc:        "[Success] Successful run",
+			target:      targetTestDirPath,
+			expectedErr: testutil.TestError{},
+			expectedMnt: false,
 		},
 		{
-			desc:          "[Success] Already existing mount",
-			target:        existingMountPointPath,
-			skipOnWindows: true,
-			expectedErr:   testutil.TestError{},
-			expectedMnt:   true,
+			desc:        "[Success] Already existing mount",
+			target:      existingMountPointPath,
+			expectedErr: testutil.TestError{},
+			expectedMnt: true,
 		},
 	}
 
