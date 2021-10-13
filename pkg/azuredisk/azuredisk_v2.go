@@ -317,7 +317,7 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 	}
 
 	klog.V(2).Info("Initializing Replica controller")
-	_, err = controller.NewReplicaController(mgr, d.crdProvisioner.GetDiskClientSet(), d.kubeClient, sharedState)
+	_, err = controller.NewReplicaController(mgr, d.crdProvisioner.GetDiskClientSet(), d.kubeClient, d.objectNamespace, sharedState)
 	if err != nil {
 		klog.Errorf("Failed to initialize ReplicaController. Error: %v. Exiting application...", err)
 		os.Exit(1)

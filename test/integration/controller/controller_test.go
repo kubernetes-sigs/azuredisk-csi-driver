@@ -664,8 +664,8 @@ func TestAzVolumeAttachment(t *testing.T) {
 				require.NoError(t, err)
 
 				// sleep and wait for the replica garbage collection to happen
-				klog.Infof("Sleeping for %.2f seconds allowing AzVolumeAttachment garbage collection to happen for AzVolume (%s)", controller.DefaultTimeUntilDeletion.Seconds(), volumeName)
-				time.Sleep(controller.DefaultTimeUntilDeletion)
+				klog.Infof("Sleeping for %.2f seconds allowing AzVolumeAttachment garbage collection to happen for AzVolume (%s)", controller.DefaultTimeUntilGarbageCollection.Seconds(), volumeName)
+				time.Sleep(controller.DefaultTimeUntilGarbageCollection)
 
 				labelSelector := fmt.Sprintf("%s=%s", consts.VolumeNameLabel, diskName)
 				conditionFunc = func() (bool, error) {
@@ -713,9 +713,9 @@ func TestAzVolumeAttachment(t *testing.T) {
 				err = crdProvisioner.UnpublishVolume(context.Background(), volumeID, nodeName, nil)
 				require.NoError(t, err)
 
-				klog.Infof("Sleeping for %.2f seconds... AzVolumeAttachment garbage collection for AzVolume (%s) should not have happened yet.", (controller.DefaultTimeUntilDeletion / 2).Seconds(), volumeName)
+				klog.Infof("Sleeping for %.2f seconds... AzVolumeAttachment garbage collection for AzVolume (%s) should not have happened yet.", (controller.DefaultTimeUntilGarbageCollection / 2).Seconds(), volumeName)
 				// sleep only half the amount of garbage collection wait time and make publishVolume call
-				time.Sleep(controller.DefaultTimeUntilDeletion / 2)
+				time.Sleep(controller.DefaultTimeUntilGarbageCollection / 2)
 
 				klog.Infof("Publishing volume (%s) to node (%s)", volumeID, nodeName)
 				response, err := crdProvisioner.PublishVolume(context.Background(), volumeID, nodeName, &v1alpha1.VolumeCapability{}, false, nil, nil)
