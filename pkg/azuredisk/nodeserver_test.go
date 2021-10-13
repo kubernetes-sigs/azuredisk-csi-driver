@@ -1138,7 +1138,7 @@ func TestNodeExpandVolume(t *testing.T) {
 		},
 	}
 
-	d.setPathIsDeviceResult(blockVolumePath, true, nil)
+	d.getHostUtil().(*azureutils.FakeHostUtil).SetPathIsDeviceResult(blockVolumePath, true, nil)
 
 	if runtime.GOOS == "windows" {
 		winNotFoundErrAction := func() ([]byte, []byte, error) {
