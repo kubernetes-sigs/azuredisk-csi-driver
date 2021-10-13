@@ -59,9 +59,10 @@ import (
 const (
 	azureStackCloud = "AZURESTACKCLOUD"
 
-	azurePublicCloudDefaultStorageAccountType = compute.StandardSSDLRS
-	azureStackCloudDefaultStorageAccountType  = compute.StandardLRS
-	defaultAzureDataDiskCachingMode           = v1.AzureDataDiskCachingNone
+	azurePublicCloudDefaultStorageAccountType     = compute.StandardSSDLRS
+	azureStackCloudDefaultStorageAccountType      = compute.StandardLRS
+	defaultAzureDataDiskCachingMode               = v1.AzureDataDiskCachingReadOnly
+	defaultAzureDataDiskCachingModeForSharedDisks = v1.AzureDataDiskCachingNone
 
 	// default IOPS Caps & Throughput Cap (MBps) per https://docs.microsoft.com/en-us/azure/virtual-machines/linux/disks-ultra-ssd
 	// see https://docs.microsoft.com/en-us/rest/api/compute/disks/createorupdate#uri-parameters
@@ -145,8 +146,11 @@ func NormalizeStorageAccountType(storageAccountType, cloud string, disableAzureS
 	return "", fmt.Errorf("azureDisk - %s is not supported sku/storageaccounttype. Supported values are %s", storageAccountType, supportedSkuNames)
 }
 
-func NormalizeCachingMode(cachingMode v1.AzureDataDiskCachingMode) (v1.AzureDataDiskCachingMode, error) {
+func NormalizeCachingMode(cachingMode v1.AzureDataDiskCachingMode, maxShares int) (v1.AzureDataDiskCachingMode, error) {
 	if cachingMode == "" {
+		if maxShares > 1 {
+			return defaultAzureDataDiskCachingModeForSharedDisks, nil
+		}
 		return defaultAzureDataDiskCachingMode, nil
 	}
 
@@ -365,6 +369,7 @@ func GetResourceGroupFromURI(diskURI string) (string, error) {
 func GetCachingMode(attributes map[string]string) (compute.CachingTypes, error) {
 	var (
 		cachingMode v1.AzureDataDiskCachingMode
+		maxShares   int
 		err         error
 	)
 
@@ -373,9 +378,16 @@ func GetCachingMode(attributes map[string]string) (compute.CachingTypes, error) 
 			cachingMode = v1.AzureDataDiskCachingMode(v)
 			break
 		}
+		// Check if disk is shared
+		if strings.EqualFold(k, consts.MaxSharesField) {
+			maxShares, err = strconv.Atoi(v)
+			if err != nil || maxShares < 1 {
+				maxShares = 1
+			}
+		}
 	}
 
-	cachingMode, err = NormalizeCachingMode(cachingMode)
+	cachingMode, err = NormalizeCachingMode(cachingMode, maxShares)
 	return compute.CachingTypes(cachingMode), err
 }
 

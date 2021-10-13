@@ -449,7 +449,7 @@ func getNodesWithReplica(ctx context.Context, azr azReconciler, volumeName strin
 	return nodes, nil
 }
 
-func createReplicaAzVolumeAttachment(ctx context.Context, azr azReconciler, volumeID, node string) error {
+func createReplicaAzVolumeAttachment(ctx context.Context, azr azReconciler, volumeID, node string, volumeContext map[string]string) error {
 	klog.V(5).Infof("Creating replica AzVolumeAttachments for volumeId %s on node %s. ", volumeID, node)
 	diskName, err := azureutils.GetDiskName(volumeID)
 	if err != nil {
@@ -475,7 +475,7 @@ func createReplicaAzVolumeAttachment(ctx context.Context, azr azReconciler, volu
 			VolumeID:         volumeID,
 			UnderlyingVolume: volumeName,
 			RequestedRole:    v1alpha1.ReplicaRole,
-			VolumeContext:    map[string]string{},
+			VolumeContext:    volumeContext,
 		},
 		Status: v1alpha1.AzVolumeAttachmentStatus{
 			State: v1alpha1.AttachmentPending,

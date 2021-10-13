@@ -219,7 +219,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		return nil, err
 	}
 
-	if _, err = azureutils.NormalizeCachingMode(cachingMode); err != nil {
+	if _, err = azureutils.NormalizeCachingMode(cachingMode, maxShares); err != nil {
 		return nil, err
 	}
 
