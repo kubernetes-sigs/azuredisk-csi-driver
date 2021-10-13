@@ -46,12 +46,14 @@ aks-nodepool1-20996793-vmss000001   Ready    agent   72s   v1.21.2
 aks-nodepool1-20996793-vmss000002   Ready    agent   79s   v1.21.2
 ```
 
-2. Install the Azure Disk CSI Driver v2
+2. Install the Azure Disk CSI Driver V2
 
 As of K8s 1.21, you can see the default storage class now pointing to the Azure Disk CSI Driver V1. To demonstrate the Azure Disk CSI Driver V2, we will install it side-by-side with the V1 driver. Tips for troubleshooting helm installation [here](https://github.com/kubernetes-sigs/azuredisk-csi-driver/blob/668a54a797fd90f015ce2b89ff2fbac2d0a4600b/charts/README.md).
 
 ```shell
-helm install azuredisk-csi-driver-v2 charts/v2.0.0-alpha.1/azuredisk-csi-driver --namespace kube-system --wait --timeout=15m -v=5 \
+helm repo add azuredisk-csi-driver https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts
+
+helm install azuredisk-csi-driver-v2  azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v2.0.0-alpha.1 \
         --set snapshot.enabled=true \
         --set snapshot.createCRDs=false \
         --set snapshot.name="csi-azuredisk2-snapshot-controller" \
@@ -82,19 +84,22 @@ Verify that the new storage classes were created
 kubectl get storageclasses.storage.k8s.io 
 
 NAME                    PROVISIONER                RECLAIMPOLICY   VOLUMEBINDINGMODE      ALLOWVOLUMEEXPANSION   AGE
-azurefile               kubernetes.io/azure-file   Delete          Immediate              true                   2m30s
-azurefile-csi           file.csi.azure.com         Delete          Immediate              true                   2m30s
-azurefile-csi-premium   file.csi.azure.com         Delete          Immediate              true                   2m30s
-azurefile-premium       kubernetes.io/azure-file   Delete          Immediate              true                   2m30s
-csi-v2                  disk2.csi.azure.com        Delete          Immediate              true                   1m30s
-default (default)       disk.csi.azure.com         Delete          WaitForFirstConsumer   true                   2m30s
-managed                 kubernetes.io/azure-disk   Delete          WaitForFirstConsumer   true                   2m30s
-managed-csi-premium     disk.csi.azure.com         Delete          WaitForFirstConsumer   true                   2m30s
-managed-premium         kubernetes.io/azure-disk   Delete          WaitForFirstConsumer   true                   2m30s
+azuredisk-premium-ssd-lrs      disk2.csi.azure.com        Delete          WaitForFirstConsumer   true                   2m20s
+azuredisk-premium-ssd-zrs      disk2.csi.azure.com        Delete          Immediate              true                   2m20s
+azuredisk-standard-hdd-lrs     disk2.csi.azure.com        Delete          WaitForFirstConsumer   true                   2m20s
+azuredisk-standard-ssd-lrs     disk2.csi.azure.com        Delete          WaitForFirstConsumer   true                   2m20s
+azuredisk-standard-ssd-zrs     disk2.csi.azure.com        Delete          Immediate              true                   2m20s
+azurefile                      kubernetes.io/azure-file   Delete          Immediate              true                   2m30s
+azurefile-csi                  file.csi.azure.com         Delete          Immediate              true                   2m30s
+azurefile-csi-premium          file.csi.azure.com         Delete          Immediate              true                   2m30s
+azurefile-premium              kubernetes.io/azure-file   Delete          Immediate              true                   2m30s
+default (default)              disk.csi.azure.com         Delete          WaitForFirstConsumer   true                   2m30s
+managed                        kubernetes.io/azure-disk   Delete          WaitForFirstConsumer   true                   2m30s
+managed-csi-premium            disk.csi.azure.com         Delete          WaitForFirstConsumer   true                   2m30s
+managed-premium                kubernetes.io/azure-disk   Delete          WaitForFirstConsumer   true                   2m30s
 ```
 
-To benefit from the faster pod failover through replica mount feature of the Azure Disk CSI V2 driver, we will create a new storage class that sets the parameter for `maxShares`. 
-
+To achieve faster pod failover and benefit from the replica mount feature of the Azure Disk CSI V2 driver, create a new storage class that sets the parameter for `maxShares` > 1. 
 ```yaml
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
@@ -110,10 +115,17 @@ volumeBindingMode: Immediate
 allowVolumeExpansion: true
 ```
 
-4. Create mysql statefulset using volumes provisioned by the V2 driver 
-- This deployment is based on [this guide](https://kubernetes.io/docs/tasks/run-application/run-replicated-stateful-application/)
-- The statefulset was modified to use the csi-v2 class and scheduler extender
-- The config map and service deployments can be taken straight from the guide
+```shell
+## Create ZRS storage class 
+kubectl apply -f zrs-replicas-storageclass.yaml
+##validate that it was created
+kubectl get sc | grep azuredisk
+```
+
+4. Create mysql statefulset using volumes provisioned by the Azure Disk CSI Driver V2 driver 
+- This deployment is based on [this guide](https://kubernetes.io/docs/tasks/run-application/run-replicated-stateful-application/).
+- The statefulset  modified to use the azuredisk-standard-ssd-zrs-replicas StorageClass and Azure Disk CSI Driver V2 scheduler extender.
+- The config map and service deployments can be taken straight from the guide.
 <details>
   <summary> Statefulset YAML Details </summary>
 
@@ -282,7 +294,7 @@ spec:
       name: data
     spec:
       accessModes: ["ReadWriteOnce"]
-      storageClassName: csi-v2
+      storageClassName: azuredisk-standard-ssd-zrs-replicas
       resources:
         requests:
           storage: 256Gi
@@ -364,7 +376,7 @@ kubectl drain aks-nodepool1-20996793-vmss000001
 
 ```
 
-6. At this moment our statefulset should try to restart in a different node in a new zone. With the v1 driver, the pod should be up in just over a minute. 
+6. At this moment our statefulset should try to restart in a different node in a new zone. With the Azure Disk CSI Driver V2, the pod should be up in just over a minute. 
 
 ```shell 
 kubectl get pods -l app=mysql --watch -o wide
@@ -372,7 +384,7 @@ kubectl get pods -l app=mysql --watch -o wide
 NAME      READY   STATUS    RESTARTS   AGE   IP           NODE                                NOMINATED NODE   READINESS GATES
 mysql-0   2/2     Running   0          10m   10.244.0.7   aks-nodepool1-20996793-vmss000002   <none>           <none>
 
-## now that the pods started, lets validate the ZRS magic, we should see the data we injected originally in the pod
+## Now that the pod failover is complete, lets validate that the client can access the server. We should see the data we wrote earlier
 kubectl run mysql-client --image=mysql:5.7 -i -t --rm --restart=Never --\
   mysql -h mysql-read -e "SELECT * FROM v2test.messages"
 
@@ -384,5 +396,5 @@ kubectl run mysql-client --image=mysql:5.7 -i -t --rm --restart=Never --\
 +----------------+
 pod "mysql-client" deleted
 
-## This showcases the speed at which the v2 can facilitate pod failover
+## This showcases the speed at which the Azure Disk CSI Driver V2 can facilitate pod failover
 ```
