@@ -237,8 +237,9 @@ func TestEnsureMountPoint(t *testing.T) {
 	// Setup
 	_ = makeDir(alreadyExistTarget)
 	d, _ := NewFakeDriver(t)
-	_, err = mounter.NewFakeSafeMounter()
+	fakeMounter, err := mounter.NewFakeSafeMounter()
 	assert.NoError(t, err)
+	d.setMounter(fakeMounter)
 
 	for _, test := range tests {
 		if !(runtime.GOOS == "windows" && test.skipOnWindows) {

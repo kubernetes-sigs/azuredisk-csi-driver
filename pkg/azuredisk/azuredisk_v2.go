@@ -125,6 +125,7 @@ func newDriverV2(options *DriverOptions,
 	driver.cloudConfigSecretNamespace = options.CloudConfigSecretNamespace
 	driver.customUserAgent = options.CustomUserAgent
 	driver.userAgentSuffix = options.UserAgentSuffix
+	driver.useCSIProxyGAInterface = options.UseCSIProxyGAInterface
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
 	driver.deviceChecker = deviceChecker{lock: sync.RWMutex{}, entry: nil}
@@ -188,7 +189,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 
 	// d.nodeProvisioner is set by NewFakeDriver for unit tests.
 	if d.nodeProvisioner == nil {
-		d.nodeProvisioner, err = provisioner.NewNodeProvisioner()
+		d.nodeProvisioner, err = provisioner.NewNodeProvisioner(d.useCSIProxyGAInterface)
 		if err != nil {
 			klog.Fatalf("Failed to get node provisioner. Error: %v", err)
 		}

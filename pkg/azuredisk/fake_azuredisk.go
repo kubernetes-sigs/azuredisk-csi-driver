@@ -108,6 +108,7 @@ func newFakeDriverV1(t *testing.T) (*fakeDriverV1, error) {
 	driver.VolumeAttachLimit = -1
 	driver.ioHandler = azureutils.NewFakeIOHandler()
 	driver.hostUtil = azureutils.NewFakeHostUtil()
+	driver.useCSIProxyGAInterface = true
 
 	driver.VolumeAttachLimit = -1
 	driver.ioHandler = azureutils.NewFakeIOHandler()
