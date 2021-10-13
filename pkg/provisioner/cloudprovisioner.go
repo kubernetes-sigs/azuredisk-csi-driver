@@ -227,7 +227,7 @@ func (c *CloudProvisioner) CreateVolume(
 		return nil, err
 	}
 
-	if _, err = azureutils.NormalizeCachingMode(cachingMode); err != nil {
+	if _, err = azureutils.NormalizeCachingMode(cachingMode, maxShares); err != nil {
 		return nil, err
 	}
 
@@ -422,11 +422,11 @@ func (c *CloudProvisioner) PublishVolume(
 		// Volume is already attached to node.
 		klog.V(2).Infof("Attach operation is successful. volume %q is already attached to node %q at lun %d.", volumeID, nodeName, lun)
 	} else {
+		klog.V(2).Infof("Trying to attach volume %q to node %q.", volumeID, nodeName)
 		var cachingMode compute.CachingTypes
 		if cachingMode, err = azureutils.GetCachingMode(volumeContext); err != nil {
 			return nil, err
 		}
-		klog.V(2).Infof("Trying to attach volume %q to node %q", volumeID, nodeName)
 
 		lun, err = c.cloud.AttachDisk(ctx, true, diskName, volumeID, nodeName, cachingMode, disk)
 		if err == nil {

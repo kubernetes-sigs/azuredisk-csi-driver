@@ -197,7 +197,7 @@ func (r *ReconcileReplica) manageReplicas(ctx context.Context, volumeName string
 			// underlying volume does not exist, so volume attachment cannot be made
 			return nil
 		}
-		if err = r.createReplicas(ctx, min(defaultMaxReplicaUpdateCount, desiredReplicaCount-currentReplicaCount), azVolume.Name, azVolume.Status.Detail.ResponseObject.VolumeID); err != nil {
+		if err = r.createReplicas(ctx, min(defaultMaxReplicaUpdateCount, desiredReplicaCount-currentReplicaCount), azVolume.Name, azVolume.Status.Detail.ResponseObject.VolumeID, azVolume.Spec.Parameters); err != nil {
 			klog.Errorf("failed to create %d replicas for volume (%s): %v", desiredReplicaCount-currentReplicaCount, azVolume.Spec.UnderlyingVolume, err)
 			return err
 		}
@@ -250,7 +250,7 @@ func (r *ReconcileReplica) getNodesForReplica(ctx context.Context, volumeName st
 	return filtered, nil
 }
 
-func (r *ReconcileReplica) createReplicas(ctx context.Context, numReplica int, volumeName, volumeID string) error {
+func (r *ReconcileReplica) createReplicas(ctx context.Context, numReplica int, volumeName, volumeID string, volumeContext map[string]string) error {
 	// if volume is scheduled for clean up, skip replica creation
 	if _, cleanUpScheduled := r.cleanUpMap.Load(volumeName); cleanUpScheduled {
 		return nil
@@ -277,7 +277,7 @@ func (r *ReconcileReplica) createReplicas(ctx context.Context, numReplica int, v
 	}
 
 	for _, node := range nodes {
-		if err := createReplicaAzVolumeAttachment(ctx, r, volumeID, node); err != nil {
+		if err := createReplicaAzVolumeAttachment(ctx, r, volumeID, node, volumeContext); err != nil {
 			klog.Errorf("failed to create replica AzVolumeAttachment for volume %s: %v", volumeName, err)
 			return err
 		}

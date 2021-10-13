@@ -670,35 +670,51 @@ func TestIsValidDiskURI(t *testing.T) {
 		}
 	}
 }
+
 func TestNormalizeCachingMode(t *testing.T) {
 	tests := []struct {
-		desc          string
-		req           v1.AzureDataDiskCachingMode
-		expectedErr   error
-		expectedValue v1.AzureDataDiskCachingMode
+		desc                        string
+		req                         v1.AzureDataDiskCachingMode
+		expectedErr                 error
+		expectedValue               v1.AzureDataDiskCachingMode
+		expectedValueForSharedDisks v1.AzureDataDiskCachingMode
 	}{
 		{
-			desc:          "CachingMode not exist",
-			req:           "",
-			expectedErr:   nil,
-			expectedValue: v1.AzureDataDiskCachingNone,
+			desc:                        "CachingMode not exist",
+			req:                         "",
+			expectedErr:                 nil,
+			expectedValue:               v1.AzureDataDiskCachingReadOnly,
+			expectedValueForSharedDisks: v1.AzureDataDiskCachingNone,
 		},
 		{
-			desc:          "Not supported CachingMode",
-			req:           "WriteOnly",
-			expectedErr:   fmt.Errorf("azureDisk - WriteOnly is not supported cachingmode. Supported values are [None ReadOnly ReadWrite]"),
-			expectedValue: "",
+			desc:                        "Not supported CachingMode",
+			req:                         "WriteOnly",
+			expectedErr:                 fmt.Errorf("azureDisk - WriteOnly is not supported cachingmode. Supported values are [None ReadOnly ReadWrite]"),
+			expectedValue:               "",
+			expectedValueForSharedDisks: "",
 		},
 		{
-			desc:          "Valid CachingMode",
-			req:           "ReadOnly",
-			expectedErr:   nil,
-			expectedValue: "ReadOnly",
+			desc:                        "Valid CachingMode - ReadOnly",
+			req:                         v1.AzureDataDiskCachingReadOnly,
+			expectedErr:                 nil,
+			expectedValue:               v1.AzureDataDiskCachingReadOnly,
+			expectedValueForSharedDisks: v1.AzureDataDiskCachingReadOnly,
+		},
+		{
+			desc:                        "Valid CachingMode - None",
+			req:                         v1.AzureDataDiskCachingNone,
+			expectedErr:                 nil,
+			expectedValue:               v1.AzureDataDiskCachingNone,
+			expectedValueForSharedDisks: v1.AzureDataDiskCachingNone,
 		},
 	}
 	for _, test := range tests {
-		value, err := NormalizeCachingMode(test.req)
+		value, err := NormalizeCachingMode(test.req, 1)
 		assert.Equal(t, value, test.expectedValue)
+		assert.Equal(t, err, test.expectedErr, fmt.Sprintf("error msg: %v", err))
+
+		value, err = NormalizeCachingMode(test.req, 2)
+		assert.Equal(t, value, test.expectedValueForSharedDisks)
 		assert.Equal(t, err, test.expectedErr, fmt.Sprintf("error msg: %v", err))
 	}
 }

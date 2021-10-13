@@ -115,7 +115,7 @@ func (r *ReconcilePod) createReplicas(ctx context.Context, podKey string) error 
 			if numCreated >= azVolume.Spec.MaxMountReplicaCount {
 				break
 			}
-			if err := createReplicaAzVolumeAttachment(ctx, r, azVolume.Status.Detail.ResponseObject.VolumeID, node); err != nil {
+			if err := createReplicaAzVolumeAttachment(ctx, r, azVolume.Status.Detail.ResponseObject.VolumeID, node, azVolume.Spec.Parameters); err != nil {
 				klog.Warningf("Error creating %d/%d replicas azvolumeattachment for pod %s and volume %s on node %s. Error: %v", azVolume.Spec.MaxMountReplicaCount, numCreated, podKey, volume, node, err)
 				return err
 			}
