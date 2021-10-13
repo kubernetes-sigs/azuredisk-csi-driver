@@ -47,8 +47,7 @@ import (
 )
 
 const (
-	// DefaultTimeUntilDeletion = time.Duration(5) * time.Minute
-	DefaultTimeUntilDeletion = time.Duration(30) * time.Second
+	DefaultTimeUntilGarbageCollection = time.Duration(5) * time.Minute
 
 	maxRetry             = 10
 	defaultRetryDuration = time.Duration(1) * time.Second
@@ -159,6 +158,7 @@ type SharedState struct {
 	volumeToClaimMap *sync.Map
 	claimToVolumeMap *sync.Map
 	podLocks         *sync.Map
+	visitedVolumes   *sync.Map
 }
 
 func NewSharedState() *SharedState {
@@ -168,6 +168,7 @@ func NewSharedState() *SharedState {
 		volumeToClaimMap: &sync.Map{},
 		claimToVolumeMap: &sync.Map{},
 		podLocks:         &sync.Map{},
+		visitedVolumes:   &sync.Map{},
 	}
 }
 
@@ -364,6 +365,19 @@ func (c *SharedState) deleteVolumeAndClaim(azVolumeName string) {
 		pvClaimName := v.(string)
 		c.claimToVolumeMap.Delete(pvClaimName)
 	}
+}
+
+func (c *SharedState) markVolumeVisited(azVolumeName string) {
+	c.visitedVolumes.Store(azVolumeName, struct{}{})
+}
+
+func (c *SharedState) unmarkVolumeVisited(azVolumeName string) {
+	c.visitedVolumes.Delete(azVolumeName)
+}
+
+func (c *SharedState) isVolumeVisited(azVolumeName string) bool {
+	_, visited := c.visitedVolumes.Load(azVolumeName)
+	return visited
 }
 
 func selectNodes(ctx context.Context, azr azReconciler, numNodes int, primaryNode string, exceptionNodes map[string]int) ([]string, error) {

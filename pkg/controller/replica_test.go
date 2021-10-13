@@ -37,19 +37,24 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
+const (
+	testTimeUntilGarbageCollection = time.Duration(30) * time.Second
+)
+
 func NewTestReplicaController(controller *gomock.Controller, namespace string, objects ...runtime.Object) *ReconcileReplica {
 	diskv1alpha1Objs, kubeObjs := splitObjects(objects...)
 	controllerSharedState := initState(objects...)
 
 	return &ReconcileReplica{
-		client:                mockclient.NewMockClient(controller),
-		azVolumeClient:        diskfakes.NewSimpleClientset(diskv1alpha1Objs...),
-		kubeClient:            fakev1.NewSimpleClientset(kubeObjs...),
-		namespace:             namespace,
-		mutexLocks:            sync.Map{},
-		cleanUpMap:            sync.Map{},
-		deletionMap:           sync.Map{},
-		controllerSharedState: controllerSharedState,
+		client:                     mockclient.NewMockClient(controller),
+		azVolumeClient:             diskfakes.NewSimpleClientset(diskv1alpha1Objs...),
+		kubeClient:                 fakev1.NewSimpleClientset(kubeObjs...),
+		namespace:                  namespace,
+		mutexLocks:                 sync.Map{},
+		cleanUpMap:                 sync.Map{},
+		deletionMap:                sync.Map{},
+		controllerSharedState:      controllerSharedState,
+		timeUntilGarbageCollection: testTimeUntilGarbageCollection,
 	}
 }
 
@@ -192,7 +197,7 @@ func TestReplicaReconcile(t *testing.T) {
 				require.False(t, result.Requeue)
 
 				// wait for the garbage collection to queue
-				time.Sleep(DefaultTimeUntilDeletion + time.Minute)
+				time.Sleep(controller.timeUntilGarbageCollection + time.Minute)
 				roleReq, _ := createLabelRequirements(consts.RoleLabel, string(diskv1alpha1.ReplicaRole))
 				labelSelector := labels.NewSelector().Add(*roleReq)
 				replicas, localError := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
@@ -257,7 +262,7 @@ func TestReplicaReconcile(t *testing.T) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
 
-				time.Sleep(DefaultTimeUntilDeletion + time.Minute)
+				time.Sleep(controller.timeUntilGarbageCollection + time.Minute)
 				roleReq, _ := createLabelRequirements(consts.RoleLabel, string(diskv1alpha1.ReplicaRole))
 				labelSelector := labels.NewSelector().Add(*roleReq)
 				replicas, localError := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})

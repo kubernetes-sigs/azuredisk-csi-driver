@@ -47,14 +47,15 @@ const (
 )
 
 type ReconcileReplica struct {
-	client                client.Client
-	azVolumeClient        azClientSet.Interface
-	kubeClient            kubeClientSet.Interface
-	namespace             string
-	controllerSharedState *SharedState
-	deletionMap           sync.Map
-	cleanUpMap            sync.Map
-	mutexLocks            sync.Map
+	client                     client.Client
+	azVolumeClient             azClientSet.Interface
+	kubeClient                 kubeClientSet.Interface
+	namespace                  string
+	controllerSharedState      *SharedState
+	deletionMap                sync.Map
+	cleanUpMap                 sync.Map
+	mutexLocks                 sync.Map
+	timeUntilGarbageCollection time.Duration
 }
 
 var _ reconcile.Reconciler = &ReconcileReplica{}
@@ -133,19 +134,22 @@ func (r *ReconcileReplica) triggerGarbageCollection(volumeName string) {
 	emptyCtx := context.TODO()
 	deletionCtx, cancelFunc := context.WithCancel(emptyCtx)
 	_, _ = r.cleanUpMap.LoadOrStore(volumeName, cancelFunc)
-	klog.Infof("garbage collection of AzVolumeAttachments for AzVolume (%s) scheduled in %s.", volumeName, DefaultTimeUntilDeletion.String())
+	klog.Infof("garbage collection of AzVolumeAttachments for AzVolume (%s) scheduled in %s.", volumeName, DefaultTimeUntilGarbageCollection.String())
 
 	go func(ctx context.Context) {
-		// Sleep
-		time.Sleep(DefaultTimeUntilDeletion)
 		select {
 		case <-ctx.Done():
 			klog.Infof("garbage collection for AzVolume (%s) cancelled", volumeName)
 			return
-		default:
+		case <-time.After(r.timeUntilGarbageCollection):
 			klog.Infof("Initiating garbage collection for AzVolume (%s)", volumeName)
+			v, _ := r.mutexLocks.LoadOrStore(volumeName, &sync.RWMutex{})
+			volumeLock := v.(*sync.RWMutex)
+			volumeLock.Lock()
 			_, _ = cleanUpAzVolumeAttachmentByVolume(ctx, r, volumeName, "replicaController", all, detachAndDeleteCRI)
+			volumeLock.Unlock()
 			r.mutexLocks.Delete(volumeName)
+			r.controllerSharedState.unmarkVolumeVisited(volumeName)
 		}
 	}(deletionCtx)
 }
@@ -281,16 +285,18 @@ func (r *ReconcileReplica) createReplicas(ctx context.Context, numReplica int, v
 	return nil
 }
 
-func NewReplicaController(mgr manager.Manager, azVolumeClient azClientSet.Interface, kubeClient kubeClientSet.Interface, controllerSharedState *SharedState) (*ReconcileReplica, error) {
+func NewReplicaController(mgr manager.Manager, azVolumeClient azClientSet.Interface, kubeClient kubeClientSet.Interface, namespace string, controllerSharedState *SharedState) (*ReconcileReplica, error) {
 	logger := mgr.GetLogger().WithValues("controller", "replica")
 	reconciler := ReconcileReplica{
-		client:                mgr.GetClient(),
-		azVolumeClient:        azVolumeClient,
-		kubeClient:            kubeClient,
-		controllerSharedState: controllerSharedState,
-		deletionMap:           sync.Map{},
-		cleanUpMap:            sync.Map{},
-		mutexLocks:            sync.Map{},
+		client:                     mgr.GetClient(),
+		azVolumeClient:             azVolumeClient,
+		kubeClient:                 kubeClient,
+		namespace:                  namespace,
+		controllerSharedState:      controllerSharedState,
+		deletionMap:                sync.Map{},
+		cleanUpMap:                 sync.Map{},
+		mutexLocks:                 sync.Map{},
+		timeUntilGarbageCollection: DefaultTimeUntilGarbageCollection,
 	}
 	c, err := controller.New("replica-controller", mgr, controller.Options{
 		MaxConcurrentReconciles: 10,
@@ -314,13 +320,7 @@ func NewReplicaController(mgr manager.Manager, azVolumeClient azClientSet.Interf
 			return false
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			// enqueue AzVolumeAttachment promotion events
-			old, oldOk := e.ObjectOld.(*v1alpha1.AzVolumeAttachment)
-			new, newOk := e.ObjectNew.(*v1alpha1.AzVolumeAttachment)
-			if oldOk && newOk && old.Spec.RequestedRole != new.Spec.RequestedRole {
-				return true
-			}
-			return false
+			return true
 		},
 		GenericFunc: func(e event.GenericEvent) bool {
 			return false
