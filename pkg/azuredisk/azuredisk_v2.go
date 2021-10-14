@@ -189,7 +189,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 
 	// d.nodeProvisioner is set by NewFakeDriver for unit tests.
 	if d.nodeProvisioner == nil {
-		d.nodeProvisioner, err = provisioner.NewNodeProvisioner()
+		d.nodeProvisioner, err = provisioner.NewNodeProvisioner(d.useCSIProxyGAInterface)
 		if err != nil {
 			klog.Fatalf("Failed to get node provisioner. Error: %v", err)
 		}

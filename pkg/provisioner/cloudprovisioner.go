@@ -887,7 +887,9 @@ func (c *CloudProvisioner) validateCreateVolumeRequestParams(
 		for _, c := range volumeCaps {
 			mode := c.AccessMode
 			if mode != v1alpha1.VolumeCapabilityAccessModeSingleNodeWriter &&
-				mode != v1alpha1.VolumeCapabilityAccessModeSingleNodeReaderOnly {
+				mode != v1alpha1.VolumeCapabilityAccessModeSingleNodeReaderOnly &&
+				mode != v1alpha1.VolumeCapabilityAccessModeSingleNodeSingleWriter &&
+				mode != v1alpha1.VolumeCapabilityAccessModeSingleNodeMultiWriter {
 				return status.Error(codes.InvalidArgument, fmt.Sprintf("Volume capability(%v) not supported", mode))
 			}
 		}
@@ -899,7 +901,7 @@ func (c *CloudProvisioner) validateCreateVolumeRequestParams(
 // listVolumesInCluster is a helper function for ListVolumes used for when there is an available kubeclient
 func (c *CloudProvisioner) listVolumesInCluster(ctx context.Context, start, maxEntries int) (*v1alpha1.ListVolumesResult, error) {
 	kubeClient := c.cloud.KubeClient
-	pvList, err := kubeClient.CoreV1().PersistentVolumes().List(context.TODO(), metav1.ListOptions{})
+	pvList, err := kubeClient.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "ListVolumes failed while fetching PersistentVolumes List with error: %v", err.Error())
 	}

@@ -174,18 +174,9 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 		}
 	}
 
-<<<<<<< HEAD
-	// d.mounter is set by NewFakeDriver for unit tests.
-	if d.mounter == nil {
-		d.mounter, err = mounter.NewSafeMounter()
-		if err != nil {
-			klog.Fatalf("Failed to get safe mounter. Error: %v", err)
-		}
-=======
 	d.mounter, err = mounter.NewSafeMounter(d.useCSIProxyGAInterface)
 	if err != nil {
 		klog.Fatalf("Failed to get safe mounter. Error: %v", err)
->>>>>>> bcc170472 (feat: switch back to csi-proxy v1beta interface on Windows)
 	}
 
 	d.AddControllerServiceCapabilities(

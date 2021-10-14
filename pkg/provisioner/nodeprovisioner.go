@@ -55,8 +55,8 @@ type NodeProvisioner struct {
 }
 
 // NewNodeProvisioner creates a new NodeProvisioner to handle node-specific provisioning tasks.
-func NewNodeProvisioner() (*NodeProvisioner, error) {
-	m, err := mounter.NewSafeMounter()
+func NewNodeProvisioner(useCSIProxyGAInterface bool) (*NodeProvisioner, error) {
+	m, err := mounter.NewSafeMounter(useCSIProxyGAInterface)
 	if err != nil {
 		return nil, err
 	}
