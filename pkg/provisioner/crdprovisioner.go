@@ -202,7 +202,7 @@ func (c *CrdProvisioner) CreateVolume(
 			return nil
 		}
 
-		if err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.informerFactory, nil, c.azDiskClient, azVolumeInstance, updateFunc); err != nil {
+		if err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.informerFactory, nil, c.azDiskClient, azVolumeInstance, updateFunc, consts.CRIDefaultMaxNetRetry); err != nil {
 			klog.Errorf("failed to update AzVolume (%s) with updated spec: %v", azVolumeName, err)
 			return nil, err
 		}
@@ -337,7 +337,7 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 	}
 
 	// update AzVolume CRI with annotation and resetted state with retry upon conflict
-	if err := azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.informerFactory, nil, c.azDiskClient, azVolumeInstance, updateFunc); err != nil {
+	if err := azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.informerFactory, nil, c.azDiskClient, azVolumeInstance, updateFunc, consts.CRIDefaultMaxNetRetry); err != nil {
 		return err
 	}
 
@@ -428,7 +428,7 @@ func (c *CrdProvisioner) PublishVolume(
 			return nil
 		}
 
-		if err := azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.informerFactory, nil, c.azDiskClient, azVolumeAttachmentInstance, updateFunc); err != nil {
+		if err := azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.informerFactory, nil, c.azDiskClient, azVolumeAttachmentInstance, updateFunc, consts.CRIDefaultMaxNetRetry); err != nil {
 			return nil, err
 		}
 	} else if !errors.IsNotFound(err) {
@@ -540,7 +540,7 @@ func (c *CrdProvisioner) UnpublishVolume(
 
 			return nil
 		}
-		if err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.informerFactory, nil, c.azDiskClient, azVolumeAttachmentInstance, updateFunc); err != nil {
+		if err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.informerFactory, nil, c.azDiskClient, azVolumeAttachmentInstance, updateFunc, consts.CRIDefaultMaxNetRetry); err != nil {
 			klog.Errorf("failed to update AzVolumeAttachment (%s) with Annotation (%s): %v", attachmentName, consts.VolumeDetachRequestAnnotation, err)
 			return err
 		}
@@ -607,7 +607,7 @@ func (c *CrdProvisioner) ExpandVolume(
 		return nil
 	}
 
-	if err := azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.informerFactory, nil, c.azDiskClient, azVolume, updateFunc); err != nil {
+	if err := azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.informerFactory, nil, c.azDiskClient, azVolume, updateFunc, consts.CRIDefaultMaxNetRetry); err != nil {
 		klog.Errorf("Failed to update AzVolume capacity range for volume (%s), error: %v", volumeID, err)
 		return nil, err
 	}

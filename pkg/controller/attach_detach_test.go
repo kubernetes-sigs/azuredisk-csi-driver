@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	fakev1 "k8s.io/client-go/kubernetes/fake"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	diskv1alpha1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	diskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
@@ -209,6 +210,8 @@ func TestAttachDetachRecover(t *testing.T) {
 					&testVolumeAttachment,
 					&testPersistentVolume0)
 
+				mockClientsAndAttachmentProvisioner(controller)
+
 				return controller
 			},
 			verifyFunc: func(t *testing.T, controller *ReconcileAttachDetach, err error) {
@@ -217,6 +220,39 @@ func TestAttachDetachRecover(t *testing.T) {
 				azVolumeAttachments, localErr := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{})
 				require.NoError(t, localErr)
 				require.Len(t, azVolumeAttachments.Items, 1)
+			},
+		},
+		{
+			description: "[Success] Should update AzVolumeAttachment CRIs to right state",
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAttachDetach {
+				newAzVolumeAttachment0 := testPrimaryAzVolumeAttachment0.DeepCopy()
+				newAzVolumeAttachment0.Status.State = v1alpha1.Attaching
+
+				newAzVolumeAttachment1 := testPrimaryAzVolumeAttachment1.DeepCopy()
+				newAzVolumeAttachment1.Status.State = v1alpha1.Detaching
+
+				controller := NewTestAttachDetachController(
+					mockCtl,
+					testNamespace,
+					newAzVolumeAttachment0,
+					newAzVolumeAttachment1)
+
+				mockClientsAndAttachmentProvisioner(controller)
+
+				return controller
+			},
+			verifyFunc: func(t *testing.T, controller *ReconcileAttachDetach, err error) {
+				require.NoError(t, err)
+
+				azVolumeAttachment, localErr := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testNamespace).Get(context.TODO(), testPrimaryAzVolumeAttachment0Name, metav1.GetOptions{})
+				require.NoError(t, localErr)
+				require.Equal(t, azVolumeAttachment.Status.State, v1alpha1.AttachmentPending)
+				require.Contains(t, azVolumeAttachment.ObjectMeta.Annotations, consts.RecoverAnnotation)
+
+				azVolumeAttachment, localErr = controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testNamespace).Get(context.TODO(), testPrimaryAzVolumeAttachment1Name, metav1.GetOptions{})
+				require.NoError(t, localErr)
+				require.Equal(t, azVolumeAttachment.Status.State, v1alpha1.Attached)
+				require.Contains(t, azVolumeAttachment.ObjectMeta.Annotations, consts.RecoverAnnotation)
 			},
 		},
 	}

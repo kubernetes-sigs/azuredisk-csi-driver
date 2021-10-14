@@ -95,6 +95,7 @@ const (
 	RoleLabel                     = "disk.csi.azure.com/requested-role"
 	VolumeDeleteRequestAnnotation = "disk.csi.azure.com/volume-delete-request"
 	VolumeDetachRequestAnnotation = "disk.csi.azure.com/volume-detach-request"
+	RecoverAnnotation             = "disk.csi.azure.com/recovery" // used to ensure reconciliation is triggered for recovering CRIs
 	VolumeNameLabel               = "disk.csi.azure.com/volume-name"
 
 	ControllerClusterRoleName         = "azuredisk-external-provisioner-role"
@@ -103,10 +104,12 @@ const (
 	ControllerServiceAccountFinalizer = "disk.csi.azure.com/azuredisk-controller"
 	ReleaseNamespace                  = "kube-system"
 
-	CRIUpdateRetryDuration = time.Duration(1) * time.Second
-	CRIUpdateRetryFactor   = 3.0
-	CRIUpdateRetryStep     = 5
-	ZonedField             = "zoned"
+	CRIUpdateRetryDuration  = time.Duration(1) * time.Second
+	CRIUpdateRetryFactor    = 3.0
+	CRIUpdateRetryStep      = 5
+	ZonedField              = "zoned"
+	CRIDefaultMaxNetRetry   = 0
+	CRITransientMaxNetRetry = 5
 )
 
 var (
