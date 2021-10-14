@@ -117,7 +117,7 @@ func newFakeDriverV1(t *testing.T) (*fakeDriverV1, error) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	driver.cloud = azure.GetTestCloud(ctrl)
+	driver.cloud = provider.GetTestCloud(ctrl)
 	mounter, err := mounter.NewSafeMounter(driver.useCSIProxyGAInterface)
 	if err != nil {
 		return nil, err
