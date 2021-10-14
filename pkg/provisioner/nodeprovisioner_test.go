@@ -33,6 +33,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	testingexec "k8s.io/utils/exec/testing"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
 )
 
@@ -81,6 +82,10 @@ func TestMain(m *testing.M) {
 }
 
 func TestEnsureMountPoint(t *testing.T) {
+	if mounter.IsFakeUsingCSIProxy() {
+		t.Skip("Skipping test because CSI Proxy is used.")
+	}
+
 	existingMountPointPath, err := ioutil.TempDir(os.TempDir(), "existingMountPointPath-*")
 	assert.NoError(t, err)
 	defer os.RemoveAll(existingMountPointPath)
@@ -144,6 +149,10 @@ func TestEnsureMountPoint(t *testing.T) {
 }
 
 func TestEnsureBlockTargetFile(t *testing.T) {
+	if mounter.IsFakeUsingCSIProxy() {
+		t.Skip("Skipping test because CSI Proxy is used.")
+	}
+
 	newBlockFilePath := filepath.Join(targetTestDirPath, "newBlockFile.bin")
 	defer os.Remove(newBlockFilePath)
 
@@ -242,6 +251,9 @@ func TestGetBlockSizeBytes(t *testing.T) {
 }
 
 func TestGetDevicePathWithLUN(t *testing.T) {
+	if mounter.IsFakeUsingCSIProxy() {
+		t.Skip("Skipping test because CSI Proxy is used.")
+	}
 
 	tests := []struct {
 		desc        string
