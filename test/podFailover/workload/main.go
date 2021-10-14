@@ -12,9 +12,9 @@ import (
 )
 
 const metricsServiceURL = "metrics-publisher-service.default"
-const metricsServiceEndpoint = "/podDowntime"
 
 var mountPath = flag.String("mount-path", "", "The path of the file where timestamps will be logged")
+var metricsEndpoint = flag.String("metrics-endpoint", "", "The endpoint where prometheus metrics should be published")
 
 func main() {
 
@@ -33,7 +33,7 @@ func main() {
 		timeDifference = time.Now().Unix() - fileModTime.Unix()
 		klog.Infof("The downtime seen by the pod is %d", timeDifference)
 		//Make a request to the metrics service
-		req, err := http.NewRequest("GET", "http://20.150.156.25:9091/podDowntime", nil)
+		req, err := http.NewRequest("GET", *metricsEndpoint, nil)
 		if err != nil {
 			klog.Errorf("Error occured while creating the get http request: %v", err)
 		}

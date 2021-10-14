@@ -57,12 +57,16 @@ spec:
   nodeSelector:
     kubernetes.io/os: linux
   containers:
-    - image: nearora4/controllerpod:latest
+    - image: controller-pod-image
       name: controller
       imagePullPolicy: Always
       args:
       - "--driver-version=v2"
       - "--maxshares=3"
-      - "--duration=120"
-      - "--workload-image=nearora4/workloadpod:latest"
+      - "--duration=60"
+      - "--workload-image=workload-pod-image"
+      - "--pod-count=1"
+      - "--pvc-per-pod=3"
+      - "--metrics-endpoint=http://metrics-endpoint:9090/podDowntime"
+      - "--delay-before-failover=10"
   restartPolicy: Never

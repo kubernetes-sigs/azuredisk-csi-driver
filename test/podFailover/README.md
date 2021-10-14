@@ -9,13 +9,44 @@ This test run creates a controller pod and a workload pod. The controller pod is
 ### How to run pod failover test
 - Navigate to the root directory and run this command. This will create and publish the containers for the controller and the workload. 
 ```console
+export REGISTRY=<your-personal-docker-repo>
 make pod-failover-test-containers
 ```
+
+## Create metrics service
+
+- Create the metrics service where the workload pod can publish it's metrics using the command mentioned below:
+```console
+wget https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/test/podFailover/metrics-svc.yaml
+```
+
+- Edit the value of metrics-service-image and run:
+```console
+kubectl apply -f metrics-svc.yaml
+```
+
+- Get the external endpoint of the service from the cluster
+```console
+kubectl get service pod-failover-metrics-service
+```
+
+## Run failover test
+
 - Get the deployment file to deploy the controller
 ```console
 wget https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/test/podFailover/deployment.yaml
 ```
-- Modify the values of controller-pod image, workloadpod-image, duration(duration for which the test should run), driver-version(v1 or v2), and maxshares.
+- Modify the values the following parameters:
+    1. controller-pod-image
+    2. driver-version
+    3. maxshares
+    5. duration
+    6. workload-image
+    7. pod-count
+    8. pvc-per-pod
+    9. metrics-endpoint(Use the value retrieved from the above steps)
+    10. delay-before-failover
+
 - Run the below command to deploy the controller. This will start the test for the given duration.
 ```console
 kubectl apply -f deployment.yaml

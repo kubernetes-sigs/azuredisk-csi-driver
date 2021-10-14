@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -29,12 +30,14 @@ const (
 )
 
 var (
-	driverVersion = flag.String("driver-version", "v2", "Specify whether the azuredisk csi driver being tested is v1 or v2")
-	maxShares     = flag.Int("maxshares", 3, "Specify the maxshares value for the storage class")
-	duration      = flag.Int("duration", 60, "Duration for which the test should run in minutes")
-	workloadImage = flag.String("workload-image", "nearora4/workloadpod:latest", "Image of the workload pod that will be deployed by the controller")
-	podCount      = flag.Int("pod-count", 1, "The number of pods that should be created for a deployment")
-	pvcPerPod     = flag.Int("pvc-per-pod", 3, "Number of pvcs that should be created per pod")
+	driverVersion       = flag.String("driver-version", "v2", "Specify whether the azuredisk csi driver being tested is v1 or v2")
+	maxShares           = flag.Int("maxshares", 3, "Specify the maxshares value for the storage class")
+	duration            = flag.Int("duration", 60, "Duration for which the test should run in minutes")
+	workloadImage       = flag.String("workload-image", "nearora4/workloadpod:latest", "Image of the workload pod that will be deployed by the controller")
+	podCount            = flag.Int("pod-count", 1, "The number of pods that should be created for a deployment")
+	pvcPerPod           = flag.Int("pvc-per-pod", 3, "Number of pvcs that should be created per pod")
+	metricsEndpoint     = flag.String("metrics-endpoint", "", "Target where prometheus metrics shouls be published")
+	delayBeforeFailover = flag.Int("delay-before-failover", 0, "Time in seconds for which the controller should wait before failing the pod")
 )
 
 func main() {
@@ -50,10 +53,6 @@ func main() {
 	}
 
 	clientset, _ := kubernetes.NewForConfig(config)
-	//makeNodeUnschedulable("aks-nodepool1-28591986-vmss000003", false, clientset)
-	//makeNodeUnschedulable("aks-nodepool1-28591986-vmss000007", false, clientset)
-	// makeNodeUnschedulable("aks-nodepool1-28591986-vmss000002", false, clientset)
-	// makeNodeUnschedulable("aks-nodepool1-28591986-vmss000003", false, clientset)
 
 	ctx := context.Background()
 	if err := createTestNamespace(ctx, clientset); err != nil {
@@ -247,7 +246,7 @@ func createDeployment(ctx context.Context, clientset *kubernetes.Clientset, pvcL
 									},
 								},
 							},
-							Args: []string{"--mount-path=" + mountPath},
+							Args: []string{"--mount-path=" + mountPath, "--metrics-endpoint=" + *metricsEndpoint},
 						},
 					},
 					RestartPolicy: v1.RestartPolicyAlways,
@@ -284,37 +283,14 @@ func waitForDeploymentToComplete(ctx context.Context, namespace string, clientse
 }
 
 func RunWorkloadPods(ctx context.Context, clientset *kubernetes.Clientset, deployments []*apps.Deployment, stopCh <-chan struct{}) {
-
 	for {
 		select {
 		case <-stopCh:
 			return
 		default:
-			//n := rand.Intn(len(deployments))
-			//selectedDeployment := deployments[n]
-			selectedDeployment := deployments[0]
+			n := rand.Intn(len(deployments))
+			selectedDeployment := deployments[n]
 			podList, _ := getPodsForDeployment(clientset, selectedDeployment)
-			//podList, _ := clientset.CoreV1().Pods(podFailoverNamespace).List(context.TODO(), metav1.ListOptions{})
-			//n1 := rand.Intn(len(deployments))
-			//n2 := rand.Intn(len(deployments))
-
-			// for n1 == n2 {
-			// 	n2 = rand.Intn(len(deployments))
-			// }
-
-			// var wg sync.WaitGroup
-			// wg.Add(1)
-			// go func() {
-			// 	defer wg.Done()
-			// 	deleteAndReschedulePod(ctx, clientset, deployments[n1])
-			// }()
-			// wg.Add(1)
-			// go func() {
-			// 	defer wg.Done()
-			// 	deleteAndReschedulePod(ctx, clientset, deployments[n2])
-			// }()
-
-			// wg.Wait()
 
 			for _, pod := range podList.Items {
 				nodeName := pod.Spec.NodeName
@@ -323,9 +299,10 @@ func RunWorkloadPods(ctx context.Context, clientset *kubernetes.Clientset, deplo
 
 				// wait for the pod to come back up
 				waitForDeploymentToComplete(ctx, podFailoverNamespace, clientset, selectedDeployment)
+				// Wait for the given time delay
+				time.Sleep(time.Duration(*delayBeforeFailover) * time.Second)
 				makeNodeUnschedulable(nodeName, false, clientset)
 			}
-
 		}
 	}
 }
