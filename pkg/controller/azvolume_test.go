@@ -28,7 +28,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	fakev1 "k8s.io/client-go/kubernetes/fake"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	diskv1alpha1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	diskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
@@ -346,10 +345,10 @@ func TestAzVolumeControllerRecover(t *testing.T) {
 			description: "[Success] Should update AzVolume CRIs to right state",
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAzVolume {
 				newAzVolume0 := testAzVolume0.DeepCopy()
-				newAzVolume0.Status.State = v1alpha1.VolumeCreating
+				newAzVolume0.Status.State = diskv1alpha1.VolumeCreating
 
 				newAzVolume1 := testAzVolume1.DeepCopy()
-				newAzVolume1.Status.State = v1alpha1.VolumeDeleting
+				newAzVolume1.Status.State = diskv1alpha1.VolumeDeleting
 
 				controller := NewTestAzVolumeController(
 					mockCtl,
@@ -366,12 +365,12 @@ func TestAzVolumeControllerRecover(t *testing.T) {
 
 				azVolume, localErr := controller.azVolumeClient.DiskV1alpha1().AzVolumes(testNamespace).Get(context.TODO(), testPersistentVolume0Name, metav1.GetOptions{})
 				require.NoError(t, localErr)
-				require.Equal(t, azVolume.Status.State, v1alpha1.VolumeOperationPending)
+				require.Equal(t, azVolume.Status.State, diskv1alpha1.VolumeOperationPending)
 				require.Contains(t, azVolume.ObjectMeta.Annotations, consts.RecoverAnnotation)
 
 				azVolume, localErr = controller.azVolumeClient.DiskV1alpha1().AzVolumes(testNamespace).Get(context.TODO(), testPersistentVolume1Name, metav1.GetOptions{})
 				require.NoError(t, localErr)
-				require.Equal(t, azVolume.Status.State, v1alpha1.VolumeCreated)
+				require.Equal(t, azVolume.Status.State, diskv1alpha1.VolumeCreated)
 				require.Contains(t, azVolume.ObjectMeta.Annotations, consts.RecoverAnnotation)
 			},
 		},

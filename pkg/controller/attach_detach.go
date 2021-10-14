@@ -394,7 +394,7 @@ func (r *ReconcileAttachDetach) Recover(ctx context.Context) error {
 		klog.Warningf("failed to recreate missing AzVolumeAttachment CRI: %v", err)
 	}
 	// retrigger any aborted operation from possible previous controller crash
-	recovered := sync.Map{}
+	recovered := &sync.Map{}
 	for i := 0; i < maxRetry; i++ {
 		if err = r.recoverAzVolumeAttachment(ctx, recovered); err == nil {
 			break
@@ -557,7 +557,7 @@ func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, 
 	return syncedVolumeAttachments, volumesToSync, nil
 }
 
-func (r *ReconcileAttachDetach) recoverAzVolumeAttachment(ctx context.Context, recoverdAzVolumeAttachments sync.Map) error {
+func (r *ReconcileAttachDetach) recoverAzVolumeAttachment(ctx context.Context, recoverdAzVolumeAttachments *sync.Map) error {
 	// list all AzVolumeAttachment
 	azVolumeAttachments, err := r.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(r.namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
@@ -576,20 +576,21 @@ func (r *ReconcileAttachDetach) recoverAzVolumeAttachment(ctx context.Context, r
 		}
 
 		wg.Add(1)
-		go func(azv v1alpha1.AzVolumeAttachment, azvMap sync.Map) {
+		go func(azv v1alpha1.AzVolumeAttachment, azvMap *sync.Map) {
 			defer wg.Done()
 			var targetState v1alpha1.AzVolumeAttachmentAttachmentState
 			updateFunc := func(obj interface{}) error {
+				var err error
 				azv := obj.(*v1alpha1.AzVolumeAttachment)
-				if azv.Status.State != targetState {
-					updateState(azv, targetState, forceUpdate)
-				}
 				// add a recover annotation to the CRI so that reconciliation can be triggered for the CRI even if CRI's current state == target state
 				if azv.ObjectMeta.Annotations == nil {
 					azv.ObjectMeta.Annotations = map[string]string{}
 				}
 				azv.ObjectMeta.Annotations[consts.RecoverAnnotation] = "azVolumeAttachment"
-				return nil
+				if azv.Status.State != targetState {
+					_, err = updateState(azv, targetState, forceUpdate)
+				}
+				return err
 			}
 			switch azv.Status.State {
 			case v1alpha1.Attaching:

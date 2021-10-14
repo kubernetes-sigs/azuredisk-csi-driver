@@ -524,7 +524,7 @@ func (r *ReconcileAzVolume) recreateAzVolumes(ctx context.Context) error {
 	return nil
 }
 
-func (r *ReconcileAzVolume) recoverAzVolume(ctx context.Context, recoveredAzVolumes sync.Map) error {
+func (r *ReconcileAzVolume) recoverAzVolume(ctx context.Context, recoveredAzVolumes *sync.Map) error {
 	// list all AzVolumes
 	azVolumes, err := r.azVolumeClient.DiskV1alpha1().AzVolumes(r.namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
@@ -543,20 +543,21 @@ func (r *ReconcileAzVolume) recoverAzVolume(ctx context.Context, recoveredAzVolu
 		}
 
 		wg.Add(1)
-		go func(azv v1alpha1.AzVolume, azvMap sync.Map) {
+		go func(azv v1alpha1.AzVolume, azvMap *sync.Map) {
 			defer wg.Done()
 			var targetState v1alpha1.AzVolumeState
 			updateFunc := func(obj interface{}) error {
+				var err error
 				azv := obj.(*v1alpha1.AzVolume)
-				if azv.Status.State != targetState {
-					r.updateState(azv, targetState, forceUpdate)
-				}
 				// add a recover annotation to the CRI so that reconciliation can be triggered for the CRI even if CRI's current state == target state
 				if azv.ObjectMeta.Annotations == nil {
 					azv.ObjectMeta.Annotations = map[string]string{}
 				}
 				azv.ObjectMeta.Annotations[consts.RecoverAnnotation] = "azVolume"
-				return nil
+				if azv.Status.State != targetState {
+					_, err = r.updateState(azv, targetState, forceUpdate)
+				}
+				return err
 			}
 			switch azv.Status.State {
 			case v1alpha1.VolumeCreating:
@@ -593,7 +594,7 @@ func (r *ReconcileAzVolume) Recover(ctx context.Context) error {
 		klog.Warningf("failed to recreate missing AzVolume CRI: %v", err)
 	}
 
-	recovered := sync.Map{}
+	recovered := &sync.Map{}
 	for i := 0; i < maxRetry; i++ {
 		if err = r.recoverAzVolume(ctx, recovered); err == nil {
 			break

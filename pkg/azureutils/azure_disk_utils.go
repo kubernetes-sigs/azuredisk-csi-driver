@@ -664,7 +664,7 @@ func isNetError(err error) bool {
 
 func ExitOnNetError(err error) {
 	if isNetError(err) {
-		klog.Fatalf("encountered unrecoverable network error: %v \nexiting process...")
+		klog.Fatalf("encountered unrecoverable network error: %v \nexiting process...", err)
 		os.Exit(1)
 	}
 }
