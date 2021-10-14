@@ -245,6 +245,9 @@ func (r *ReconcileAttachDetach) triggerDetach(ctx context.Context, azVolumeAttac
 }
 
 func (r *ReconcileAttachDetach) promote(ctx context.Context, azVolumeAttachment *v1alpha1.AzVolumeAttachment) error {
+	klog.Infof("Promoting volume attachment (%s) for volume (%s) on node (%s) from %s to Primary",
+		azVolumeAttachment.Name, azVolumeAttachment.Spec.UnderlyingVolume, azVolumeAttachment.Spec.NodeName, azVolumeAttachment.Status.Detail.Role)
+
 	// initialize metadata and update status block
 	updateFunc := func(obj interface{}) error {
 		azv := obj.(*v1alpha1.AzVolumeAttachment)
