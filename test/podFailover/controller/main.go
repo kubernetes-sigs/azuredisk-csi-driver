@@ -320,7 +320,6 @@ func RunWorkloadPods(ctx context.Context, clientset *kubernetes.Clientset, deplo
 			podList, err := getPodsForDeployment(clientset, selectedDeployment)
 			if err != nil {
 				klog.Errorf("Error occurred while getting pods for the deployment  %s: %v", selectedDeployment.Name, err)
-				return
 			}
 
 			for _, pod := range podList.Items {
@@ -329,14 +328,12 @@ func RunWorkloadPods(ctx context.Context, clientset *kubernetes.Clientset, deplo
 				err = clientset.CoreV1().Pods(podFailoverNamespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
 				if err != nil {
 					klog.Errorf("Error occurred while deleting the pod  %s: %v", pod.Name, err)
-					return
 				}
 
 				// wait for the pod to come back up
 				err = waitForDeploymentToComplete(ctx, podFailoverNamespace, clientset, selectedDeployment)
 				if err != nil {
 					klog.Errorf("Error occurred while waiting for the deployment to complete  %s: %v", selectedDeployment.Name, err)
-					return
 				}
 				// Wait for the given time delay
 				time.Sleep(time.Duration(*delayBeforeFailover) * time.Second)

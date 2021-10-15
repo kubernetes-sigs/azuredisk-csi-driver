@@ -28,4 +28,7 @@ spec:
     - name: metrics
       port: 9090
       targetPort: 9090
+    - name: podDowntime
+      port: 9091
+      targetPort: 9091
   type: LoadBalancer

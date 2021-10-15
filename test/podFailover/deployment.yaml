@@ -67,6 +67,6 @@ spec:
       - "--workload-image=workload-pod-image"
       - "--pod-count=1"
       - "--pvc-per-pod=3"
-      - "--metrics-endpoint=http://metrics-endpoint:9090/podDowntime"
+      - "--metrics-endpoint=http://metrics-endpoint:9091/podDowntime"
       - "--delay-before-failover=10"
   restartPolicy: Never
