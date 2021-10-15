@@ -108,8 +108,8 @@ const (
 	CRIUpdateRetryFactor    = 3.0
 	CRIUpdateRetryStep      = 5
 	ZonedField              = "zoned"
-	CRIDefaultMaxNetRetry   = 0
-	CRITransientMaxNetRetry = 5
+	NormalUpdateMaxNetRetry = 0
+	ForcedUpdateMaxNetRetry = 5
 )
 
 var (

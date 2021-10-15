@@ -94,7 +94,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 					azVolumeAttachment := obj.(*v1alpha1.AzVolumeAttachment)
 					_, err = updateState(azVolumeAttachment, v1alpha1.ForceDetachPending, normalUpdate)
 					return err
-				}, consts.CRIDefaultMaxNetRetry); err != nil {
+				}, consts.NormalUpdateMaxNetRetry); err != nil {
 					return reconcile.Result{Requeue: true}, err
 				}
 			}

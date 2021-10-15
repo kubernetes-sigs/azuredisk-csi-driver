@@ -134,7 +134,7 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 		_, derr := updateState(azv, v1alpha1.Attaching, normalUpdate)
 		return derr
 	}
-	if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, azVolumeAttachment, updateFunc, consts.CRIDefaultMaxNetRetry); err != nil {
+	if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry); err != nil {
 		return err
 	}
 
@@ -178,7 +178,7 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 				return uerr
 			}
 		}
-		if derr := azureutils.UpdateCRIWithRetry(updateCtx, nil, r.client, r.azVolumeClient, azVolumeAttachment, updateFunc, consts.CRITransientMaxNetRetry); derr != nil {
+		if derr := azureutils.UpdateCRIWithRetry(updateCtx, nil, r.client, r.azVolumeClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry); derr != nil {
 			klog.Errorf("failed to update AzVolumeAttachment (%s) with attachVolume result (response: %v, error: %v): %v", azVolumeAttachment.Name, response, attachErr, derr)
 		} else {
 			klog.Infof("Successfully updated AzVolumeAttachment (%s) with attachVolume result (response: %v, error: %v)", azVolumeAttachment.Name, response, attachErr)
@@ -204,7 +204,7 @@ func (r *ReconcileAttachDetach) triggerDetach(ctx context.Context, azVolumeAttac
 			_, derr := updateState(azv, v1alpha1.Detaching, normalUpdate)
 			return derr
 		}
-		if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, azVolumeAttachment, updateFunc, consts.CRIDefaultMaxNetRetry); err != nil {
+		if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry); err != nil {
 			return err
 		}
 
@@ -232,7 +232,7 @@ func (r *ReconcileAttachDetach) triggerDetach(ctx context.Context, azVolumeAttac
 					return derr
 				}
 			}
-			if derr := azureutils.UpdateCRIWithRetry(updateCtx, nil, r.client, r.azVolumeClient, azVolumeAttachment, updateFunc, consts.CRITransientMaxNetRetry); derr != nil {
+			if derr := azureutils.UpdateCRIWithRetry(updateCtx, nil, r.client, r.azVolumeClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry); derr != nil {
 				klog.Errorf("failed to update AzVolumeAttachment (%s) with detachVolume result (error: %v): %v", azVolumeAttachment.Name, err, derr)
 			} else {
 				klog.Infof("Successfully updated AzVolumeAttachment (%s) with detachVolume result (error: %v)", azVolumeAttachment.Name, err)
@@ -245,7 +245,7 @@ func (r *ReconcileAttachDetach) triggerDetach(ctx context.Context, azVolumeAttac
 			_ = r.deleteFinalizer(azv)
 			return nil
 		}
-		if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, azVolumeAttachment, updateFunc, consts.CRIDefaultMaxNetRetry); err != nil {
+		if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry); err != nil {
 			return err
 		}
 	}
@@ -259,7 +259,7 @@ func (r *ReconcileAttachDetach) promote(ctx context.Context, azVolumeAttachment 
 		_ = updateRole(azv, v1alpha1.PrimaryRole)
 		return nil
 	}
-	return azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, azVolumeAttachment, updateFunc, consts.CRIDefaultMaxNetRetry)
+	return azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry)
 }
 
 func (r *ReconcileAttachDetach) initializeMeta(azVolumeAttachment *v1alpha1.AzVolumeAttachment) *v1alpha1.AzVolumeAttachment {
@@ -557,11 +557,11 @@ func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, 
 	return syncedVolumeAttachments, volumesToSync, nil
 }
 
-func (r *ReconcileAttachDetach) recoverAzVolumeAttachment(ctx context.Context, recoverdAzVolumeAttachments *sync.Map) error {
+func (r *ReconcileAttachDetach) recoverAzVolumeAttachment(ctx context.Context, recoveredAzVolumeAttachments *sync.Map) error {
 	// list all AzVolumeAttachment
 	azVolumeAttachments, err := r.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(r.namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
-		klog.Errorf("failed to get list of exising AzVolumeAttachment CRI in controller recovery stage")
+		klog.Errorf("failed to get list of existing AzVolumeAttachment CRI in controller recovery stage")
 		return err
 	}
 
@@ -570,7 +570,7 @@ func (r *ReconcileAttachDetach) recoverAzVolumeAttachment(ctx context.Context, r
 
 	for _, azVolumeAttachment := range azVolumeAttachments.Items {
 		// skip if AzVolumeAttachment already recovered
-		if _, ok := recoverdAzVolumeAttachments.Load(azVolumeAttachment.Name); ok {
+		if _, ok := recoveredAzVolumeAttachments.Load(azVolumeAttachment.Name); ok {
 			numRecovered++
 			continue
 		}
@@ -601,14 +601,14 @@ func (r *ReconcileAttachDetach) recoverAzVolumeAttachment(ctx context.Context, r
 				targetState = v1alpha1.Attached
 			}
 
-			if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, &azv, updateFunc, consts.CRITransientMaxNetRetry); err != nil {
+			if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, &azv, updateFunc, consts.ForcedUpdateMaxNetRetry); err != nil {
 				klog.Warningf("failed to udpate AzVolumeAttachment (%s) for recovery: %v", azv.Name)
 			} else {
 				// if update succeeded, add the CRI to the recoveryComplete list
 				azvMap.Store(azv.Name, struct{}{})
 				atomic.AddInt32(&numRecovered, 1)
 			}
-		}(azVolumeAttachment, recoverdAzVolumeAttachments)
+		}(azVolumeAttachment, recoveredAzVolumeAttachments)
 	}
 	wg.Wait()
 
