@@ -39,11 +39,11 @@ func main() {
 	if os.IsNotExist(err) {
 		_, err = os.Create(filePath)
 		if err != nil {
-			log.Fatalf("Error occured while creating the file %s: %v", filePath, err)
+			log.Fatalf("Error occurred while creating the file %s: %v", filePath, err)
 		}
 		fi, err = os.Stat(filePath)
 		if err != nil {
-			klog.Errorf("Error occured while getting the stats for file %s: %v", filePath, err)
+			klog.Errorf("Error occurred while getting the stats for file %s: %v", filePath, err)
 		}
 	}
 	fileModTime := fi.ModTime()
@@ -55,7 +55,7 @@ func main() {
 		//Make a request to the metrics service
 		req, err := http.NewRequest("GET", *metricsEndpoint, nil)
 		if err != nil {
-			klog.Errorf("Error occured while creating the get http request: %v", err)
+			klog.Errorf("Error occurred while creating the get http request: %v", err)
 		}
 		query := req.URL.Query()
 		query.Add("value", strconv.Itoa(int(timeDifference)))
@@ -64,7 +64,7 @@ func main() {
 
 		_, err = client.Do(req)
 		if err != nil {
-			klog.Infof("Error occured while making the http call to metrics publisher: %v", err)
+			klog.Infof("Error occurred while making the http call to metrics publisher: %v", err)
 		}
 	}
 

@@ -72,14 +72,14 @@ func main() {
 
 	ctx := context.Background()
 	if err := createTestNamespace(ctx, clientset); err != nil {
-		klog.Errorf("Error occured while creating namespace %s, err: %v", podFailoverNamespace, err)
+		klog.Errorf("Error occurred while creating namespace %s, err: %v", podFailoverNamespace, err)
 		return
 	}
 	defer deleteTestNamespace(ctx, clientset)
 
 	scName, err := createStorageClass(ctx, clientset, *maxShares)
 	if err != nil {
-		klog.Errorf("Error occured while creating storageClass: %v", err)
+		klog.Errorf("Error occurred while creating storageClass: %v", err)
 		return
 	}
 	defer deleteStorageClass(ctx, clientset, scName)
@@ -93,7 +93,7 @@ func main() {
 		pvcName, err := createPVC(ctx, clientset, &scName)
 
 		if err != nil {
-			klog.Errorf("Error occured while creating pvc: %v", err)
+			klog.Errorf("Error occurred while creating pvc: %v", err)
 			return
 		}
 
@@ -107,7 +107,7 @@ func main() {
 		deployment, err := createDeployment(ctx, clientset, pvcCreatedList, nextPVC, numPvcsPerPod)
 
 		if err != nil {
-			klog.Errorf("Error occured while creating deployment: %v", err)
+			klog.Errorf("Error occurred while creating deployment: %v", err)
 			return
 		}
 		deployments = append(deployments, deployment)
@@ -159,7 +159,7 @@ func createTestNamespace(ctx context.Context, clientset *kubernetes.Clientset) e
 func deleteTestNamespace(ctx context.Context, clientset *kubernetes.Clientset) {
 	err := clientset.CoreV1().Namespaces().Delete(ctx, podFailoverNamespace, metav1.DeleteOptions{})
 	if err != nil {
-		klog.Errorf("Error occured while deleting namespace %s: %v", podFailoverNamespace, err)
+		klog.Errorf("Error occurred while deleting namespace %s: %v", podFailoverNamespace, err)
 	}
 
 }
@@ -185,7 +185,7 @@ func createStorageClass(ctx context.Context, clientset *kubernetes.Clientset, ma
 func deleteStorageClass(ctx context.Context, clientset *kubernetes.Clientset, name string) {
 	err := clientset.StorageV1().StorageClasses().Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
-		klog.Errorf("Error occured while deleting the storage class %s : %v", name, err)
+		klog.Errorf("Error occurred while deleting the storage class %s : %v", name, err)
 	}
 }
 
@@ -319,7 +319,7 @@ func RunWorkloadPods(ctx context.Context, clientset *kubernetes.Clientset, deplo
 			selectedDeployment := deployments[n]
 			podList, err := getPodsForDeployment(clientset, selectedDeployment)
 			if err != nil {
-				klog.Errorf("Error Occured while getting pods for the deployment  %s: %v", selectedDeployment.Name, err)
+				klog.Errorf("Error occurred while getting pods for the deployment  %s: %v", selectedDeployment.Name, err)
 				return
 			}
 
@@ -328,14 +328,14 @@ func RunWorkloadPods(ctx context.Context, clientset *kubernetes.Clientset, deplo
 				makeNodeUnschedulable(nodeName, true, clientset)
 				err = clientset.CoreV1().Pods(podFailoverNamespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
 				if err != nil {
-					klog.Errorf("Error Occured while deleting the pod  %s: %v", pod.Name, err)
+					klog.Errorf("Error occurred while deleting the pod  %s: %v", pod.Name, err)
 					return
 				}
 
 				// wait for the pod to come back up
 				err = waitForDeploymentToComplete(ctx, podFailoverNamespace, clientset, selectedDeployment)
 				if err != nil {
-					klog.Errorf("Error Occured while waiting for the deployment to complete  %s: %v", selectedDeployment.Name, err)
+					klog.Errorf("Error occurred while waiting for the deployment to complete  %s: %v", selectedDeployment.Name, err)
 					return
 				}
 				// Wait for the given time delay
@@ -353,7 +353,7 @@ func makeNodeUnschedulable(nodeName string, unschedulable bool, clientset *kuber
 	// Cordon off the node
 	_, err := clientset.CoreV1().Nodes().Update(context.TODO(), nodeTobeCordoned, metav1.UpdateOptions{})
 	if err != nil {
-		klog.Errorf("Error occured in makeNodeUnschedulable; unschedulable: %t, err: %v", unschedulable, err)
+		klog.Errorf("Error occurred in makeNodeUnschedulable; unschedulable: %t, err: %v", unschedulable, err)
 	}
 }
 

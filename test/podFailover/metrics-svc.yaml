@@ -19,6 +19,8 @@ apiVersion: v1
 metadata:
   name: pod-failover-metrics-service
   namespace: default
+  labels:
+    app: pod-failover-metrics
 spec:
   selector:
     app: pod-failover-metrics
