@@ -36,6 +36,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	clientset "k8s.io/client-go/kubernetes"
@@ -569,7 +570,7 @@ func GetAzVolumeAttachmentState(volumeAttachmentStatus storagev1.VolumeAttachmen
 	}
 }
 
-func UpdateCRIWithRetry(ctx context.Context, informerFactory azurediskInformers.SharedInformerFactory, cachedClient client.Client, azDiskClient azDiskClientSet.Interface, obj interface{}, updateFunc func(interface{}) error) error {
+func UpdateCRIWithRetry(ctx context.Context, informerFactory azurediskInformers.SharedInformerFactory, cachedClient client.Client, azDiskClient azDiskClientSet.Interface, obj interface{}, updateFunc func(interface{}) error, maxNetRetry int) error {
 	conditionFunc := func() error {
 		var err error
 		switch target := obj.(type) {
@@ -629,14 +630,43 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azurediskInformers.
 		return err
 	}
 
-	return retry.RetryOnConflict(
+	curRetry := 0
+	maxRetry := maxNetRetry
+	isRetriable := func(err error) bool {
+		if errors.IsConflict(err) {
+			return true
+		}
+		if isNetError(err) {
+			defer func() { curRetry++ }()
+			return curRetry < maxRetry
+		}
+		return false
+	}
+
+	err := retry.OnError(
 		wait.Backoff{
 			Duration: consts.CRIUpdateRetryDuration,
 			Factor:   consts.CRIUpdateRetryFactor,
 			Steps:    consts.CRIUpdateRetryStep,
 		},
+		isRetriable,
 		conditionFunc,
 	)
+
+	// if encountered net error from api server unavailability, exit process
+	ExitOnNetError(err)
+	return err
+}
+
+func isNetError(err error) bool {
+	return net.IsConnectionRefused(err) || net.IsConnectionReset(err) || net.IsTimeout(err) || net.IsProbableEOF(err)
+}
+
+func ExitOnNetError(err error) {
+	if isNetError(err) {
+		klog.Fatalf("encountered unrecoverable network error: %v \nexiting process...", err)
+		os.Exit(1)
+	}
 }
 
 // InsertDiskProperties: insert disk properties to map

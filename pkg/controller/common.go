@@ -53,6 +53,8 @@ const (
 	defaultRetryDuration = time.Duration(1) * time.Second
 	defaultRetryFactor   = 5.0
 	defaultRetrySteps    = 5
+
+	cloudTimeout = time.Duration(5) * time.Minute
 )
 
 type cleanUpMode int

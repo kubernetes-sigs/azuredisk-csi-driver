@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -129,11 +130,11 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 	updateFunc := func(obj interface{}) error {
 		azv := obj.(*v1alpha1.AzVolumeAttachment)
 		// Update state to attaching, Initialize finalizer and add label to the object
-		azv = r.initializeMeta(ctx, azv)
-		_, derr := updateState(ctx, azv, v1alpha1.Attaching, normalUpdate)
+		azv = r.initializeMeta(azv)
+		_, derr := updateState(azv, v1alpha1.Attaching, normalUpdate)
 		return derr
 	}
-	if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, azVolumeAttachment, updateFunc); err != nil {
+	if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry); err != nil {
 		return err
 	}
 
@@ -153,15 +154,18 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 
 	// initiate goroutine to attach volume
 	go func() {
-		response, attachErr := r.attachVolume(ctx, azVolumeAttachment.Spec.VolumeID, azVolumeAttachment.Spec.NodeName, azVolumeAttachment.Spec.VolumeContext)
+		cloudCtx, cloudCancel := context.WithTimeout(context.Background(), cloudTimeout)
+		defer cloudCancel()
+		updateCtx := context.Background()
+		response, attachErr := r.attachVolume(cloudCtx, azVolumeAttachment.Spec.VolumeID, azVolumeAttachment.Spec.NodeName, azVolumeAttachment.Spec.VolumeContext)
 		var updateFunc func(interface{}) error
 		if attachErr != nil {
 			klog.Errorf("failed to attach volume %s to node %s: %v", azVolumeAttachment.Spec.UnderlyingVolume, azVolumeAttachment.Spec.NodeName, attachErr)
 
 			updateFunc = func(obj interface{}) error {
 				azv := obj.(*v1alpha1.AzVolumeAttachment)
-				azv = updateError(ctx, azv, attachErr)
-				_, uerr := updateState(ctx, azv, v1alpha1.AttachmentFailed, forceUpdate)
+				azv = updateError(azv, attachErr)
+				_, uerr := updateState(azv, v1alpha1.AttachmentFailed, forceUpdate)
 				return uerr
 			}
 		} else {
@@ -169,12 +173,12 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 
 			updateFunc = func(obj interface{}) error {
 				azv := obj.(*v1alpha1.AzVolumeAttachment)
-				azv = updateStatusDetail(ctx, azv, response)
-				_, uerr := updateState(ctx, azv, v1alpha1.Attached, forceUpdate)
+				azv = updateStatusDetail(azv, response)
+				_, uerr := updateState(azv, v1alpha1.Attached, forceUpdate)
 				return uerr
 			}
 		}
-		if derr := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, azVolumeAttachment, updateFunc); derr != nil {
+		if derr := azureutils.UpdateCRIWithRetry(updateCtx, nil, r.client, r.azVolumeClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry); derr != nil {
 			klog.Errorf("failed to update AzVolumeAttachment (%s) with attachVolume result (response: %v, error: %v): %v", azVolumeAttachment.Name, response, attachErr, derr)
 		} else {
 			klog.Infof("Successfully updated AzVolumeAttachment (%s) with attachVolume result (response: %v, error: %v)", azVolumeAttachment.Name, response, attachErr)
@@ -197,34 +201,38 @@ func (r *ReconcileAttachDetach) triggerDetach(ctx context.Context, azVolumeAttac
 		updateFunc := func(obj interface{}) error {
 			azv := obj.(*v1alpha1.AzVolumeAttachment)
 			// Update state to detaching
-			_, derr := updateState(ctx, azv, v1alpha1.Detaching, normalUpdate)
+			_, derr := updateState(azv, v1alpha1.Detaching, normalUpdate)
 			return derr
 		}
-		if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, azVolumeAttachment, updateFunc); err != nil {
+		if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry); err != nil {
 			return err
 		}
 
 		klog.Infof("Detaching volume (%s) from node (%s)", azVolumeAttachment.Spec.VolumeID, azVolumeAttachment.Spec.NodeName)
 
 		go func() {
+			cloudCtx, cloudCancel := context.WithTimeout(context.Background(), cloudTimeout)
+			defer cloudCancel()
+			updateCtx := context.Background()
+
 			var updateFunc func(obj interface{}) error
-			err := r.detachVolume(ctx, azVolumeAttachment.Spec.VolumeID, azVolumeAttachment.Spec.NodeName)
+			err := r.detachVolume(cloudCtx, azVolumeAttachment.Spec.VolumeID, azVolumeAttachment.Spec.NodeName)
 			if err != nil {
 				updateFunc = func(obj interface{}) error {
 					azv := obj.(*v1alpha1.AzVolumeAttachment)
-					azv = updateError(ctx, azv, err)
-					_, derr := updateState(ctx, azv, v1alpha1.DetachmentFailed, forceUpdate)
+					azv = updateError(azv, err)
+					_, derr := updateState(azv, v1alpha1.DetachmentFailed, forceUpdate)
 					return derr
 				}
 			} else {
 				updateFunc = func(obj interface{}) error {
 					azv := obj.(*v1alpha1.AzVolumeAttachment)
-					azv = r.deleteFinalizer(ctx, azv)
-					_, derr := updateState(ctx, azv, v1alpha1.Detached, forceUpdate)
+					azv = r.deleteFinalizer(azv)
+					_, derr := updateState(azv, v1alpha1.Detached, forceUpdate)
 					return derr
 				}
 			}
-			if derr := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, azVolumeAttachment, updateFunc); derr != nil {
+			if derr := azureutils.UpdateCRIWithRetry(updateCtx, nil, r.client, r.azVolumeClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry); derr != nil {
 				klog.Errorf("failed to update AzVolumeAttachment (%s) with detachVolume result (error: %v): %v", azVolumeAttachment.Name, err, derr)
 			} else {
 				klog.Infof("Successfully updated AzVolumeAttachment (%s) with detachVolume result (error: %v)", azVolumeAttachment.Name, err)
@@ -234,10 +242,10 @@ func (r *ReconcileAttachDetach) triggerDetach(ctx context.Context, azVolumeAttac
 		updateFunc := func(obj interface{}) error {
 			azv := obj.(*v1alpha1.AzVolumeAttachment)
 			// delete finalizer
-			_ = r.deleteFinalizer(ctx, azv)
+			_ = r.deleteFinalizer(azv)
 			return nil
 		}
-		if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, azVolumeAttachment, updateFunc); err != nil {
+		if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry); err != nil {
 			return err
 		}
 	}
@@ -251,13 +259,13 @@ func (r *ReconcileAttachDetach) promote(ctx context.Context, azVolumeAttachment 
 	// initialize metadata and update status block
 	updateFunc := func(obj interface{}) error {
 		azv := obj.(*v1alpha1.AzVolumeAttachment)
-		_ = updateRole(ctx, azv, v1alpha1.PrimaryRole)
+		_ = updateRole(azv, v1alpha1.PrimaryRole)
 		return nil
 	}
-	return azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, azVolumeAttachment, updateFunc)
+	return azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry)
 }
 
-func (r *ReconcileAttachDetach) initializeMeta(ctx context.Context, azVolumeAttachment *v1alpha1.AzVolumeAttachment) *v1alpha1.AzVolumeAttachment {
+func (r *ReconcileAttachDetach) initializeMeta(azVolumeAttachment *v1alpha1.AzVolumeAttachment) *v1alpha1.AzVolumeAttachment {
 	if azVolumeAttachment == nil {
 		return nil
 	}
@@ -290,7 +298,7 @@ func (r *ReconcileAttachDetach) initializeMeta(ctx context.Context, azVolumeAtta
 	return azVolumeAttachment
 }
 
-func (r *ReconcileAttachDetach) deleteFinalizer(ctx context.Context, azVolumeAttachment *v1alpha1.AzVolumeAttachment) *v1alpha1.AzVolumeAttachment {
+func (r *ReconcileAttachDetach) deleteFinalizer(azVolumeAttachment *v1alpha1.AzVolumeAttachment) *v1alpha1.AzVolumeAttachment {
 	if azVolumeAttachment == nil {
 		return nil
 	}
@@ -368,13 +376,6 @@ func (r *ReconcileAttachDetach) deleteFinalizer(ctx context.Context, azVolumeAtt
 // 	return nil
 // }
 
-func (r *ReconcileAttachDetach) update(ctx context.Context, azVolumeAttachment *v1alpha1.AzVolumeAttachment) error {
-	if azVolumeAttachment == nil {
-		return status.Error(codes.FailedPrecondition, "expecting non-nil azVolumeAttachment object to update")
-	}
-	return r.client.Update(ctx, azVolumeAttachment, &client.UpdateOptions{})
-}
-
 func (r *ReconcileAttachDetach) attachVolume(ctx context.Context, volumeID, node string, volumeContext map[string]string) (map[string]string, error) {
 	return r.attachmentProvisioner.PublishVolume(ctx, volumeID, node, volumeContext)
 }
@@ -385,25 +386,29 @@ func (r *ReconcileAttachDetach) detachVolume(ctx context.Context, volumeID, node
 
 func (r *ReconcileAttachDetach) Recover(ctx context.Context) error {
 	klog.Info("Recovering AzVolumeAttachment CRIs...")
-	// try to recover states
+	// try to recreate missing AzVolumeAttachment CRI
 	var syncedVolumeAttachments, volumesToSync map[string]bool
-	for i := 0; i < maxRetry; i++ {
-		var retry bool
-		var err error
+	var err error
 
-		retry, syncedVolumeAttachments, volumesToSync, err = r.syncAll(ctx, syncedVolumeAttachments, volumesToSync)
-		if err != nil {
-			klog.Warningf("failed to complete initial AzVolumeAttachment sync: %v", err)
-		}
-		if !retry {
+	for i := 0; i < maxRetry; i++ {
+		if syncedVolumeAttachments, volumesToSync, err = r.recreateAzVolumeAttachment(ctx, syncedVolumeAttachments, volumesToSync); err == nil {
 			break
 		}
+		klog.Warningf("failed to recreate missing AzVolumeAttachment CRI: %v", err)
+	}
+	// retrigger any aborted operation from possible previous controller crash
+	recovered := &sync.Map{}
+	for i := 0; i < maxRetry; i++ {
+		if err = r.recoverAzVolumeAttachment(ctx, recovered); err == nil {
+			break
+		}
+		klog.Warningf("failed to recover AzVolumeAttachment state: %v", err)
 	}
 
-	return nil
+	return err
 }
 
-func updateRole(ctx context.Context, azVolumeAttachment *v1alpha1.AzVolumeAttachment, role v1alpha1.Role) *v1alpha1.AzVolumeAttachment {
+func updateRole(azVolumeAttachment *v1alpha1.AzVolumeAttachment, role v1alpha1.Role) *v1alpha1.AzVolumeAttachment {
 	if azVolumeAttachment == nil {
 		return nil
 	}
@@ -421,7 +426,7 @@ func updateRole(ctx context.Context, azVolumeAttachment *v1alpha1.AzVolumeAttach
 	return azVolumeAttachment
 }
 
-func updateStatusDetail(ctx context.Context, azVolumeAttachment *v1alpha1.AzVolumeAttachment, status map[string]string) *v1alpha1.AzVolumeAttachment {
+func updateStatusDetail(azVolumeAttachment *v1alpha1.AzVolumeAttachment, status map[string]string) *v1alpha1.AzVolumeAttachment {
 	if azVolumeAttachment == nil {
 		return nil
 	}
@@ -435,7 +440,7 @@ func updateStatusDetail(ctx context.Context, azVolumeAttachment *v1alpha1.AzVolu
 	return azVolumeAttachment
 }
 
-func updateError(ctx context.Context, azVolumeAttachment *v1alpha1.AzVolumeAttachment, err error) *v1alpha1.AzVolumeAttachment {
+func updateError(azVolumeAttachment *v1alpha1.AzVolumeAttachment, err error) *v1alpha1.AzVolumeAttachment {
 	if azVolumeAttachment == nil {
 		return nil
 	}
@@ -447,7 +452,7 @@ func updateError(ctx context.Context, azVolumeAttachment *v1alpha1.AzVolumeAttac
 	return azVolumeAttachment
 }
 
-func updateState(ctx context.Context, azVolumeAttachment *v1alpha1.AzVolumeAttachment, state v1alpha1.AzVolumeAttachmentAttachmentState, mode updateMode) (*v1alpha1.AzVolumeAttachment, error) {
+func updateState(azVolumeAttachment *v1alpha1.AzVolumeAttachment, state v1alpha1.AzVolumeAttachmentAttachmentState, mode updateMode) (*v1alpha1.AzVolumeAttachment, error) {
 	var err error
 	if azVolumeAttachment == nil {
 		return nil, status.Errorf(codes.FailedPrecondition, "function `updateState` requires non-nil AzVolumeAttachment object.")
@@ -464,12 +469,11 @@ func updateState(ctx context.Context, azVolumeAttachment *v1alpha1.AzVolumeAttac
 	return azVolumeAttachment, err
 }
 
-// ManageAttachmentsForVolume will be running on a separate channel
-func (r *ReconcileAttachDetach) syncAll(ctx context.Context, syncedVolumeAttachments map[string]bool, volumesToSync map[string]bool) (bool, map[string]bool, map[string]bool, error) {
+func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, syncedVolumeAttachments map[string]bool, volumesToSync map[string]bool) (map[string]bool, map[string]bool, error) {
 	// Get all volumeAttachments
 	volumeAttachments, err := r.kubeClient.StorageV1().VolumeAttachments().List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return true, syncedVolumeAttachments, volumesToSync, err
+		return syncedVolumeAttachments, volumesToSync, err
 	}
 
 	if syncedVolumeAttachments == nil {
@@ -494,7 +498,7 @@ func (r *ReconcileAttachDetach) syncAll(ctx context.Context, syncedVolumeAttachm
 			pv, err := r.kubeClient.CoreV1().PersistentVolumes().Get(ctx, *volumeName, metav1.GetOptions{})
 			if err != nil {
 				klog.Errorf("failed to get PV (%s): %v", *volumeName, err)
-				return true, syncedVolumeAttachments, volumesToSync, err
+				return syncedVolumeAttachments, volumesToSync, err
 			}
 
 			if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != consts.DefaultDriverName {
@@ -512,18 +516,9 @@ func (r *ReconcileAttachDetach) syncAll(ctx context.Context, syncedVolumeAttachm
 			azVolumeAttachmentName := azureutils.GetAzVolumeAttachmentName(diskName, nodeName)
 
 			// check if the CRI exists already
-			azVolumeAttachment, err := azureutils.GetAzVolumeAttachment(ctx, r.client, r.azVolumeClient, azVolumeAttachmentName, r.namespace, false)
-			klog.Infof("Recovering AzVolumeAttachment(%s)", azVolumeAttachmentName)
-			// if CRI already exists, append finalizer to it
-			if err == nil {
-				azVolumeAttachment = r.initializeMeta(ctx, azVolumeAttachment)
-				err = r.update(ctx, azVolumeAttachment)
-				if err != nil {
-					klog.Errorf("failed to add finalizer to AzVolumeAttachment (%s): %v", azVolumeAttachmentName, err)
-					return true, syncedVolumeAttachments, volumesToSync, err
-				}
-				// if not found, create one
-			} else if errors.IsNotFound(err) {
+			_, err = azureutils.GetAzVolumeAttachment(ctx, r.client, r.azVolumeClient, azVolumeAttachmentName, r.namespace, false)
+			if errors.IsNotFound(err) {
+				klog.Infof("Recreating AzVolumeAttachment(%s)", azVolumeAttachmentName)
 				azVolumeAttachment := v1alpha1.AzVolumeAttachment{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: azVolumeAttachmentName,
@@ -552,17 +547,79 @@ func (r *ReconcileAttachDetach) syncAll(ctx context.Context, syncedVolumeAttachm
 				_, err := r.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(r.namespace).Create(ctx, &azVolumeAttachment, metav1.CreateOptions{})
 				if err != nil {
 					klog.Errorf("failed to create AzVolumeAttachment (%s) for volume (%s) and node (%s): %v", azVolumeAttachmentName, *volumeName, nodeName, err)
-					return true, syncedVolumeAttachments, volumesToSync, err
+					return syncedVolumeAttachments, volumesToSync, err
 				}
 			} else {
 				klog.Errorf("failed to get AzVolumeAttachment (%s): %v", azVolumeAttachmentName, err)
-				return true, syncedVolumeAttachments, volumesToSync, err
+				return syncedVolumeAttachments, volumesToSync, err
 			}
 
 			syncedVolumeAttachments[volumeAttachment.Name] = true
 		}
 	}
-	return false, syncedVolumeAttachments, volumesToSync, nil
+	return syncedVolumeAttachments, volumesToSync, nil
+}
+
+func (r *ReconcileAttachDetach) recoverAzVolumeAttachment(ctx context.Context, recoveredAzVolumeAttachments *sync.Map) error {
+	// list all AzVolumeAttachment
+	azVolumeAttachments, err := r.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(r.namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		klog.Errorf("failed to get list of existing AzVolumeAttachment CRI in controller recovery stage")
+		return err
+	}
+
+	var wg sync.WaitGroup
+	numRecovered := int32(0)
+
+	for _, azVolumeAttachment := range azVolumeAttachments.Items {
+		// skip if AzVolumeAttachment already recovered
+		if _, ok := recoveredAzVolumeAttachments.Load(azVolumeAttachment.Name); ok {
+			numRecovered++
+			continue
+		}
+
+		wg.Add(1)
+		go func(azv v1alpha1.AzVolumeAttachment, azvMap *sync.Map) {
+			defer wg.Done()
+			var targetState v1alpha1.AzVolumeAttachmentAttachmentState
+			updateFunc := func(obj interface{}) error {
+				var err error
+				azv := obj.(*v1alpha1.AzVolumeAttachment)
+				// add a recover annotation to the CRI so that reconciliation can be triggered for the CRI even if CRI's current state == target state
+				if azv.ObjectMeta.Annotations == nil {
+					azv.ObjectMeta.Annotations = map[string]string{}
+				}
+				azv.ObjectMeta.Annotations[consts.RecoverAnnotation] = "azVolumeAttachment"
+				if azv.Status.State != targetState {
+					_, err = updateState(azv, targetState, forceUpdate)
+				}
+				return err
+			}
+			switch azv.Status.State {
+			case v1alpha1.Attaching:
+				// reset state to Pending so Attach operation can be redone
+				targetState = v1alpha1.AttachmentPending
+			case v1alpha1.Detaching:
+				// reset state to Attached so Detach operation can be redone
+				targetState = v1alpha1.Attached
+			}
+
+			if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, &azv, updateFunc, consts.ForcedUpdateMaxNetRetry); err != nil {
+				klog.Warningf("failed to udpate AzVolumeAttachment (%s) for recovery: %v", azv.Name)
+			} else {
+				// if update succeeded, add the CRI to the recoveryComplete list
+				azvMap.Store(azv.Name, struct{}{})
+				atomic.AddInt32(&numRecovered, 1)
+			}
+		}(azVolumeAttachment, recoveredAzVolumeAttachments)
+	}
+	wg.Wait()
+
+	// if recovery has not been completed for all CRIs, return error
+	if numRecovered < int32(len(azVolumeAttachments.Items)) {
+		return status.Errorf(codes.Internal, "failed to recover some AzVolumeAttachment states")
+	}
+	return nil
 }
 
 func NewAttachDetachController(mgr manager.Manager, azVolumeClient azVolumeClientSet.Interface, kubeClient kubeClientSet.Interface, namespace string, attachmentProvisioner AttachmentProvisioner) (*ReconcileAttachDetach, error) {

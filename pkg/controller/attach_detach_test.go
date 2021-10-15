@@ -209,6 +209,8 @@ func TestAttachDetachRecover(t *testing.T) {
 					&testVolumeAttachment,
 					&testPersistentVolume0)
 
+				mockClientsAndAttachmentProvisioner(controller)
+
 				return controller
 			},
 			verifyFunc: func(t *testing.T, controller *ReconcileAttachDetach, err error) {
@@ -217,6 +219,39 @@ func TestAttachDetachRecover(t *testing.T) {
 				azVolumeAttachments, localErr := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{})
 				require.NoError(t, localErr)
 				require.Len(t, azVolumeAttachments.Items, 1)
+			},
+		},
+		{
+			description: "[Success] Should update AzVolumeAttachment CRIs to right state",
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAttachDetach {
+				newAzVolumeAttachment0 := testPrimaryAzVolumeAttachment0.DeepCopy()
+				newAzVolumeAttachment0.Status.State = diskv1alpha1.Attaching
+
+				newAzVolumeAttachment1 := testPrimaryAzVolumeAttachment1.DeepCopy()
+				newAzVolumeAttachment1.Status.State = diskv1alpha1.Detaching
+
+				controller := NewTestAttachDetachController(
+					mockCtl,
+					testNamespace,
+					newAzVolumeAttachment0,
+					newAzVolumeAttachment1)
+
+				mockClientsAndAttachmentProvisioner(controller)
+
+				return controller
+			},
+			verifyFunc: func(t *testing.T, controller *ReconcileAttachDetach, err error) {
+				require.NoError(t, err)
+
+				azVolumeAttachment, localErr := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testNamespace).Get(context.TODO(), testPrimaryAzVolumeAttachment0Name, metav1.GetOptions{})
+				require.NoError(t, localErr)
+				require.Equal(t, azVolumeAttachment.Status.State, diskv1alpha1.AttachmentPending)
+				require.Contains(t, azVolumeAttachment.ObjectMeta.Annotations, consts.RecoverAnnotation)
+
+				azVolumeAttachment, localErr = controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testNamespace).Get(context.TODO(), testPrimaryAzVolumeAttachment1Name, metav1.GetOptions{})
+				require.NoError(t, localErr)
+				require.Equal(t, azVolumeAttachment.Status.State, diskv1alpha1.Attached)
+				require.Contains(t, azVolumeAttachment.ObjectMeta.Annotations, consts.RecoverAnnotation)
 			},
 		},
 	}
