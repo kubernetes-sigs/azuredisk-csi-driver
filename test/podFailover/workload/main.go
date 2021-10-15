@@ -11,8 +11,6 @@ import (
 	"k8s.io/klog"
 )
 
-const metricsServiceURL = "metrics-publisher-service.default"
-
 var mountPath = flag.String("mount-path", "", "The path of the file where timestamps will be logged")
 var metricsEndpoint = flag.String("metrics-endpoint", "", "The endpoint where prometheus metrics should be published")
 
@@ -23,8 +21,14 @@ func main() {
 	klog.Infof("The file path is %s", filePath)
 	fi, err := os.Stat(filePath)
 	if os.IsNotExist(err) {
-		os.Create(filePath)
+		_, err = os.Create(filePath)
+		if err != nil {
+			log.Fatalf("Error occured while creating the file %s: %v", filePath, err)
+		}
 		fi, err = os.Stat(filePath)
+		if err != nil {
+			klog.Errorf("Error occured while getting the stats for file %s: %v", filePath, err)
+		}
 	}
 	fileModTime := fi.ModTime()
 
@@ -49,6 +53,9 @@ func main() {
 	}
 
 	file, err := os.OpenFile(filePath, os.O_RDWR, os.ModeAppend)
+	if err != nil {
+		log.Fatalf("Couldn't open the file %s", filePath)
+	}
 	// Write timestamp to the file every second
 	go logTimestamp(file)
 	defer file.Close()

@@ -119,8 +119,11 @@ func createTestNamespace(ctx context.Context, clientset *kubernetes.Clientset) e
 		},
 	}
 	namespace, err := clientset.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
+	if err != nil {
+		return err
+	}
 
-	wait.PollImmediate(5*time.Second, 2*time.Minute, func() (bool, error) {
+	if err := wait.PollImmediate(5*time.Second, 2*time.Minute, func() (bool, error) {
 		var err error
 		namespace, err = clientset.CoreV1().Namespaces().Get(ctx, podFailoverNamespace, metav1.GetOptions{})
 		if err != nil {
@@ -130,17 +133,19 @@ func createTestNamespace(ctx context.Context, clientset *kubernetes.Clientset) e
 			return true, nil
 		}
 		return false, nil
-	})
-
-	if err != nil {
+	}); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func deleteTestNamespace(ctx context.Context, clientset *kubernetes.Clientset) error {
-	return clientset.CoreV1().Namespaces().Delete(ctx, podFailoverNamespace, metav1.DeleteOptions{})
+func deleteTestNamespace(ctx context.Context, clientset *kubernetes.Clientset) {
+	err := clientset.CoreV1().Namespaces().Delete(ctx, podFailoverNamespace, metav1.DeleteOptions{})
+	if err != nil {
+		klog.Errorf("Error occured while deleting namespace %s: %v", podFailoverNamespace, err)
+	}
+
 }
 
 func createStorageClass(ctx context.Context, clientset *kubernetes.Clientset, maxShares int) (string, error) {
@@ -162,7 +167,10 @@ func createStorageClass(ctx context.Context, clientset *kubernetes.Clientset, ma
 }
 
 func deleteStorageClass(ctx context.Context, clientset *kubernetes.Clientset, name string) {
-	clientset.StorageV1().StorageClasses().Delete(ctx, name, metav1.DeleteOptions{})
+	err := clientset.StorageV1().StorageClasses().Delete(ctx, name, metav1.DeleteOptions{})
+	if err != nil {
+		klog.Errorf("Error occured while deleting the storage class %s : %v", name, err)
+	}
 }
 
 func createPVC(ctx context.Context, clientset *kubernetes.Clientset, scName *string) (string, error) {
@@ -260,7 +268,10 @@ func createDeployment(ctx context.Context, clientset *kubernetes.Clientset, pvcL
 	}
 
 	deploymentCreated, err := clientset.AppsV1().Deployments(podFailoverNamespace).Create(context.TODO(), deployment, metav1.CreateOptions{})
-	waitForDeploymentToComplete(ctx, podFailoverNamespace, clientset, deploymentCreated)
+	if err != nil {
+		return nil, err
+	}
+	err = waitForDeploymentToComplete(ctx, podFailoverNamespace, clientset, deploymentCreated)
 
 	return deploymentCreated, err
 }
@@ -290,15 +301,27 @@ func RunWorkloadPods(ctx context.Context, clientset *kubernetes.Clientset, deplo
 		default:
 			n := rand.Intn(len(deployments))
 			selectedDeployment := deployments[n]
-			podList, _ := getPodsForDeployment(clientset, selectedDeployment)
+			podList, err := getPodsForDeployment(clientset, selectedDeployment)
+			if err != nil {
+				klog.Errorf("Error Occured while getting pods for the deployment  %s: %v", selectedDeployment.Name, err)
+				return
+			}
 
 			for _, pod := range podList.Items {
 				nodeName := pod.Spec.NodeName
 				makeNodeUnschedulable(nodeName, true, clientset)
-				clientset.CoreV1().Pods(podFailoverNamespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
+				err = clientset.CoreV1().Pods(podFailoverNamespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
+				if err != nil {
+					klog.Errorf("Error Occured while deleting the pod  %s: %v", pod.Name, err)
+					return
+				}
 
 				// wait for the pod to come back up
-				waitForDeploymentToComplete(ctx, podFailoverNamespace, clientset, selectedDeployment)
+				err = waitForDeploymentToComplete(ctx, podFailoverNamespace, clientset, selectedDeployment)
+				if err != nil {
+					klog.Errorf("Error Occured while waiting for the deployment to complete  %s: %v", selectedDeployment.Name, err)
+					return
+				}
 				// Wait for the given time delay
 				time.Sleep(time.Duration(*delayBeforeFailover) * time.Second)
 				makeNodeUnschedulable(nodeName, false, clientset)
@@ -335,17 +358,4 @@ func getPodsForDeployment(client *kubernetes.Clientset, deployment *apps.Deploym
 		return nil, fmt.Errorf("Failed to list Pods of Deployment %q: %v", deployment.Name, err)
 	}
 	return podList, nil
-}
-
-func deleteAndReschedulePod(ctx context.Context, clientset *kubernetes.Clientset, deployment *apps.Deployment) {
-	podList, _ := getPodsForDeployment(clientset, deployment)
-	for _, pod := range podList.Items {
-		nodeName := pod.Spec.NodeName
-		makeNodeUnschedulable(nodeName, true, clientset)
-		clientset.CoreV1().Pods(podFailoverNamespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
-
-		// wait for the pod to come back up
-		waitForDeploymentToComplete(ctx, podFailoverNamespace, clientset, deployment)
-		makeNodeUnschedulable(nodeName, false, clientset)
-	}
 }
