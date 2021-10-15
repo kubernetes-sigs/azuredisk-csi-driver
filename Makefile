@@ -340,4 +340,4 @@ pod-failover-test-containers:
 	docker build -t $(REGISTRY)/metricspod:latest -f ./test/podFailover/metrics/Dockerfile .
 	docker push $(REGISTRY)/workloadpod:latest
 	docker push $(REGISTRY)/controllerpod:latest
-	docker push $(REGISTRY)/metricsPod:latest
+	docker push $(REGISTRY)/metricspod:latest

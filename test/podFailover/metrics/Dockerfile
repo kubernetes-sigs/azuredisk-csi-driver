@@ -13,8 +13,8 @@
 # limitations under the License.
 
 FROM gcr.io/distroless/static:latest
-LABEL description="Workload container for pod failover testing"
+LABEL description="Container to log prometheus metrics for pod failover testing"
 
 ARG ARCH=amd64
-COPY ./_output/${ARCH}/workloadPod /workloadPod
-ENTRYPOINT ["/workloadPod"]
+COPY ./_output/${ARCH}/metricsPod /metricsPod
+ENTRYPOINT ["/metricsPod"] 
