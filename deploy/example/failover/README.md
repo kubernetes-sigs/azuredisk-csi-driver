@@ -3,7 +3,7 @@
 The Azure Disk CSI Driver V2 enhances the Azure Disk CSI Driver to improve scalability and reduce pod failover latency. It uses shared disks to provision attachment replicas on multiple cluster nodes and integrates with the pod scheduler to ensure a node with a attachment replica is chosen on pod failover. It is beneficial for both single zone use case as well as multi zone use case that uses [Zone Redundant Disks](https://docs.microsoft.com/en-us/azure/virtual-machines/disks-redundancy#zone-redundant-storage-for-managed-disks). This demo is based on [this guide](https://github.com/mohmdnofal/aks-best-practices/blob/master/stateful_workloads/zrs/README.md)
 
 # Azure Disk CSI Driver V2 with ZRS Demo Introduction 
-In this demo we will create a 3 node cluster distributed across 3 availability zones, deploy a single mysql pod, ingest some data there, and then drain the node hosing the pod. This means that we took one node offline, triggering the scheduler to migrate your pod to another node. 
+In this demo we will create a 3 node cluster distributed across 3 availability zones, deploy a single mysql pod, ingest some data there, and then drain the node hosting the pod. This means that we took one node offline, triggering the scheduler to migrate your pod to another node. 
 
 # Demo
 
@@ -11,11 +11,11 @@ In this demo we will create a 3 node cluster distributed across 3 availability z
 ```shell 
 
 #Set the parameters
-LOCATION=northeurope # Location 
-AKS_NAME=az-zrs
-RG=$AKS_NAME-$LOCATION
-AKS_CLUSTER_NAME=$AKS_NAME-cluster # name of the cluster
-K8S_VERSION=$(az aks get-versions  -l $LOCATION --query 'orchestrators[-1].orchestratorVersion' -o tsv)
+export LOCATION=northeurope # Location 
+export AKS_NAME=az-zrs
+export RG=$AKS_NAME-$LOCATION
+export AKS_CLUSTER_NAME=$AKS_NAME-cluster # name of the cluster
+export K8S_VERSION=$(az aks get-versions  -l $LOCATION --query 'orchestrators[-1].orchestratorVersion' -o tsv)
 
 
 ##Create RG
@@ -24,12 +24,12 @@ az group create --name $RG --location $LOCATION
 
 ## create the cluster 
 az aks create \
--g $RG \
--n $AKS_CLUSTER_NAME \
--l $LOCATION \
---kubernetes-version $K8S_VERSION \
---zones 1 2 3 \
---generate-ssh-keys 
+  -g $RG \
+  -n $AKS_CLUSTER_NAME \
+  -l $LOCATION \
+  --kubernetes-version $K8S_VERSION \
+  --zones 1 2 3 \
+  --generate-ssh-keys 
 
 
 ## get the credentials 
@@ -53,28 +53,7 @@ As of K8s 1.21, you can see the default storage class now pointing to the Azure 
 ```shell
 helm repo add azuredisk-csi-driver https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts
 
-helm install azuredisk-csi-driver-v2  azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v2.0.0-alpha.1 \
-        --set snapshot.enabled=true \
-        --set snapshot.createCRDs=false \
-        --set snapshot.name="csi-azuredisk2-snapshot-controller" \
-        --set snapshot.snapshotController.name="csi-azuredisk2-snapshot-controller" \
-        --set driver.name="disk2.csi.azure.com" \
-        --set controller.name="csi-azuredisk2-controller" \
-        --set rbac.name=azuredisk2 \
-        --set serviceAccount.controller=csi-azuredisk2-controller-sa \
-        --set serviceAccount.node=csi-azuredisk2-node-sa \
-        --set linux.dsName=csi-azuredisk2-node \
-        --set windows.dsName=csi-azuredisk2-node-win \
-        --set serviceAccount.snapshotController="csi2-snapshot-controller-sa" \
-        --set image.azuredisk.pullPolicy=Always \
-        --set image.schedulerExtender.pullPolicy=Always \
-        --set storageClasses.enableZRS=true \
-        --set controller.metricsPort=29614 \
-        --set controller.livenessProbe.healthPort=29612 \
-        --set node.metricsPort=29615 \
-        --set node.livenessProbe.healthPort=29613 \
-        --set schedulerExtender.metricsPort=29616 \
-        --set schedulerExtender.servicePort=8899
+helm install azuredisk-csi-driver-v2  azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v2.0.0-alpha.1 --values=charts/v2.0.0-alpha.1/azuredisk-csi-driver/sidebysidevalues.yaml
 ```
 
 
@@ -109,7 +88,7 @@ parameters:
   cachingmode: None
   skuName: StandardSSD_ZRS
   maxShares: "2"
-provisioner: disk.csi.azure.com
+provisioner: disk2.csi.azure.com
 reclaimPolicy: Delete
 volumeBindingMode: Immediate
 allowVolumeExpansion: true
@@ -124,7 +103,7 @@ kubectl get sc | grep azuredisk
 
 4. Create mysql statefulset using volumes provisioned by the Azure Disk CSI Driver V2 driver 
 - This deployment is based on [this guide](https://kubernetes.io/docs/tasks/run-application/run-replicated-stateful-application/).
-- The statefulset  modified to use the azuredisk-standard-ssd-zrs-replicas StorageClass and Azure Disk CSI Driver V2 scheduler extender.
+- The statefulset modified to use the azuredisk-standard-ssd-zrs-replicas StorageClass and Azure Disk CSI Driver V2 scheduler extender.
 - The config map and service deployments can be taken straight from the guide.
 <details>
   <summary> Statefulset YAML Details </summary>
@@ -355,11 +334,12 @@ pod "mysql-client" deleted
 
 ```shell 
 ## when we created our cluster we activated the availability zones feature, as we created 3 nodes, we should see that they are equally split across AZs 
-kubectl describe nodes | grep -i topology.kubernetes.io/zone
+kubectl get nodes --output=custom-columns=NAME:.metadata.name,ZONE:".metadata.labels.topology\.kubernetes\.io/zone"
 
-                    topology.kubernetes.io/zone=northeurope-1
-                    topology.kubernetes.io/zone=northeurope-2
-                    topology.kubernetes.io/zone=northeurope-3
+NAME                                ZONE   
+aks-nodepool1-20996793-vmss000000   northeurope-1 
+aks-nodepool1-20996793-vmss000001   northeurope-2 
+aks-nodepool1-20996793-vmss000002   northeurope-3
 
 ## lets check in which node our pods is running 
 kubectl get pods -l app=mysql -o wide 
