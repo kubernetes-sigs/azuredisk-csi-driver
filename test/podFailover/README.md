@@ -2,7 +2,7 @@
 This test run creates a controller pod and a workload pod. The controller pod is responsible for repeatedly creating and deleting workload pod over the given duration. The workload pod will publish a metric called "default_failover_testing_workload_downtime" with the value of the downtime seen by the workload pod in seconds.
 
 ## Prerequisite
-- Make sure a kubernetes cluster(with version >= 1.13) is set up and kubeconfig is under $HOME/.kube/config.
+- Make sure a kubernetes cluster(with version >= 1.18) is set up and kubeconfig is under $HOME/.kube/config.
 - Make sure that prometheus is setup on the kubernetes cluster where this test is being run to scrape the pod downtime metrics.
 - Make sure that azuredisk-csi driver is already deployed on the kubernetes cluster.
 
