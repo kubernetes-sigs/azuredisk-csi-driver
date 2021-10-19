@@ -299,9 +299,13 @@ func getRankedNodesForReplicaAttachments(ctx context.Context, azr azReconciler, 
 func (c *SharedState) addPod(pod *v1.Pod, updateOption updateWithLock) {
 
 	podKey := getQualifiedName(pod.Namespace, pod.Name)
-	klog.V(5).Infof("Adding pod %s to shared map with keyName %s.", pod.Name, podKey)
-	v, _ := c.podLocks.LoadOrStore(podKey, &sync.Mutex{})
+	v, ok := c.podLocks.LoadOrStore(podKey, &sync.Mutex{})
+	// if pod entry already exists, do not add to map
+	if ok {
+		return
+	}
 
+	klog.V(5).Infof("Adding pod %s to shared map with keyName %s.", pod.Name, podKey)
 	podLock := v.(*sync.Mutex)
 	if updateOption == acquireLock {
 		podLock.Lock()
