@@ -33,20 +33,22 @@ import (
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	azurediskInformers "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 )
 
 type CrdProvisioner struct {
-	azDiskClient azDiskClientSet.Interface
-	namespace    string
+	azDiskClient     azDiskClientSet.Interface
+	namespace        string
+	conditionWatcher *conditionWatcher
 }
 
 const (
 	// TODO: Figure out good interval and timeout values, and make them configurable.
-	interval         = time.Duration(1) * time.Second
-	provisionTimeout = time.Duration(15) * time.Second
-	attachTimeout    = time.Duration(5) * time.Minute
+	interval       = time.Duration(1) * time.Second
+	informerResync = time.Duration(30) * time.Second
 )
 
 func NewCrdProvisioner(kubeConfig *rest.Config, objNamespace string) (*CrdProvisioner, error) {
@@ -55,9 +57,12 @@ func NewCrdProvisioner(kubeConfig *rest.Config, objNamespace string) (*CrdProvis
 		return nil, err
 	}
 
+	informerFactory := azurediskInformers.NewSharedInformerFactory(diskClient, informerResync)
+
 	return &CrdProvisioner{
-		azDiskClient: diskClient,
-		namespace:    objNamespace,
+		azDiskClient:     diskClient,
+		namespace:        objNamespace,
+		conditionWatcher: newConditionWatcher(context.Background(), diskClient, informerFactory, objNamespace),
 	}, nil
 }
 
@@ -72,11 +77,11 @@ func (c *CrdProvisioner) RegisterDriverNode(
 
 	if err == nil && azDriverNodeFromCache != nil {
 		// We found that the object already exists.
-		klog.V(2).Infof("AzDriverNode exists, will update status. azDriverNodeFromCache=(%v)", azDriverNodeFromCache)
+		klog.V(2).Infof("AzDriverNode (%s) exists, will update status. azDriverNodeFromCache=(%v)", nodeID, azDriverNodeFromCache)
 		azDriverNodeUpdate = azDriverNodeFromCache.DeepCopy()
 	} else if errors.IsNotFound(err) {
 		// If AzDriverNode object is not there create it
-		klog.Errorf("AzDriverNode is not registered yet, will create. error: %v", err)
+		klog.V(2).Infof("AzDriverNode (%s) is not registered yet, will create.", nodeID)
 		azDriverNodeNew := &v1alpha1.AzDriverNode{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: strings.ToLower(nodeID),
@@ -88,7 +93,7 @@ func (c *CrdProvisioner) RegisterDriverNode(
 		if azDriverNodeNew.Labels == nil {
 			azDriverNodeNew.Labels = make(map[string]string)
 		}
-		azDriverNodeNew.Labels[azureutils.PartitionLabel] = nodePartition
+		azDriverNodeNew.Labels[consts.PartitionLabel] = nodePartition
 		klog.V(2).Infof("Creating AzDriverNode with details (%v)", azDriverNodeNew)
 		azDriverNodeCreated, err := azN.Create(ctx, azDriverNodeNew, metav1.CreateOptions{})
 		if err != nil || azDriverNodeCreated == nil {
@@ -133,16 +138,35 @@ func (c *CrdProvisioner) CreateVolume(
 	secrets map[string]string,
 	volumeContentSource *v1alpha1.ContentVolumeSource,
 	accessibilityReq *v1alpha1.TopologyRequirement) (*v1alpha1.AzVolumeStatusParams, error) {
+
+	lister := c.conditionWatcher.informerFactory.Disk().V1alpha1().AzVolumes().Lister().AzVolumes(c.namespace)
+	azVolumeClient := c.azDiskClient.DiskV1alpha1().AzVolumes(c.namespace)
+
 	_, maxMountReplicaCount := azureutils.GetMaxSharesAndMaxMountReplicaCount(parameters)
 
 	// Getting the validVolumeName here since after volume
 	// creation the diskURI will consist of the validVolumeName
-	validVolumeName := azureutils.GetValidDiskName(volumeName)
-	azVolumeName := strings.ToLower(validVolumeName)
+	volumeName = azureutils.CreateValidDiskName(volumeName, true)
+	azVolumeName := strings.ToLower(volumeName)
 
-	azV := c.azDiskClient.DiskV1alpha1().AzVolumes(c.namespace)
+	waiter, err := c.conditionWatcher.newConditionWaiter(ctx, azVolumeType, azVolumeName, func(obj interface{}, _ bool) (bool, error) {
+		if obj == nil {
+			return false, nil
+		}
+		azVolumeInstance := obj.(*v1alpha1.AzVolume)
+		if azVolumeInstance.Status.Detail != nil {
+			return true, nil
+		} else if azVolumeInstance.Status.Error != nil {
+			return false, util.ErrorFromAzError(azVolumeInstance.Status.Error)
+		}
+		return false, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer waiter.Close()
 
-	azVolumeInstance, err := azV.Get(ctx, azVolumeName, metav1.GetOptions{})
+	azVolumeInstance, err := lister.Get(azVolumeName)
 
 	if err == nil {
 		if azVolumeInstance.Status.Detail != nil && azVolumeInstance.Status.Detail.ResponseObject != nil {
@@ -178,7 +202,7 @@ func (c *CrdProvisioner) CreateVolume(
 			return nil
 		}
 
-		if err = azureutils.UpdateCRIWithRetry(ctx, nil, c.azDiskClient, azVolumeInstance, updateFunc); err != nil {
+		if err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.informerFactory, nil, c.azDiskClient, azVolumeInstance, updateFunc, consts.NormalUpdateMaxNetRetry); err != nil {
 			klog.Errorf("failed to update AzVolume (%s) with updated spec: %v", azVolumeName, err)
 			return nil, err
 		}
@@ -194,7 +218,7 @@ func (c *CrdProvisioner) CreateVolume(
 			},
 			Spec: v1alpha1.AzVolumeSpec{
 				MaxMountReplicaCount:      maxMountReplicaCount,
-				UnderlyingVolume:          validVolumeName,
+				UnderlyingVolume:          volumeName,
 				VolumeCapability:          volumeCapabilities,
 				CapacityRange:             capacityRange,
 				Parameters:                parameters,
@@ -207,7 +231,7 @@ func (c *CrdProvisioner) CreateVolume(
 			},
 		}
 
-		azVolumeInstance, err := azV.Create(ctx, azVolume, metav1.CreateOptions{})
+		azVolumeInstance, err := azVolumeClient.Create(ctx, azVolume, metav1.CreateOptions{})
 		if err != nil {
 			klog.Errorf("Failed to create azvolume resource for volume name (%s), error: %v", volumeName, err)
 			return nil, err
@@ -220,26 +244,12 @@ func (c *CrdProvisioner) CreateVolume(
 		klog.Infof("Successfully created AzVolume CRI (%s)...", azVolumeName)
 	}
 
-	conditionFunc := func() (bool, error) {
-		azVolumeInstance, err = azV.Get(ctx, azVolumeName, metav1.GetOptions{})
-
-		if err != nil {
-			return true, err
-		}
-		if azVolumeInstance.Status.Detail != nil {
-			return true, nil
-		} else if azVolumeInstance.Status.Error != nil {
-			return true, util.ErrorFromAzError(azVolumeInstance.Status.Error)
-		}
-		return false, nil
-	}
-
-	err = wait.PollImmediate(interval, provisionTimeout, conditionFunc)
-	// if volume creation was unsuccessful, delete the AzVolume CRI and return error
-	if err != nil {
+	obj, err := waiter.Wait(ctx)
+	if obj == nil || err != nil {
+		// if volume creation was unsuccessful, delete the AzVolume CRI and return error
 		go func() {
 			conditionFunc := func() (bool, error) {
-				if err := azV.Delete(context.Background(), azVolumeName, metav1.DeleteOptions{}); err != nil && !errors.IsNotFound(err) {
+				if err := azVolumeClient.Delete(context.Background(), azVolumeName, metav1.DeleteOptions{}); err != nil && !errors.IsNotFound(err) {
 					klog.Errorf("failed to delete AzVolume (%s): %v", azVolumeName, err)
 					return false, nil
 				}
@@ -251,37 +261,62 @@ func (c *CrdProvisioner) CreateVolume(
 		}()
 		return nil, err
 	}
+	azVolumeInstance = obj.(*v1alpha1.AzVolume)
+
+	if azVolumeInstance.Status.Detail == nil {
+		// this line should not be reached
+		return nil, status.Errorf(codes.Internal, "Failed to create azvolume resource for volume (%s)", volumeName)
+	}
 
 	return azVolumeInstance.Status.Detail.ResponseObject, nil
 }
 
 func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secrets map[string]string) error {
-	azV := c.azDiskClient.DiskV1alpha1().AzVolumes(c.namespace)
-
 	// TODO: Since the CRD provisioner needs to the AzVolume name and not the ARM disk URI, it should really
 	// return the AzVolume name to the caller as the volume ID. To make this work, we would need to implement
 	// snapshot APIs through the CRD provisioner.
 	// Replace them in all instances in this file.
-	volumeName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(volumeID)
+	lister := c.conditionWatcher.informerFactory.Disk().V1alpha1().AzVolumes().Lister().AzVolumes(c.namespace)
+	azVolumeClient := c.azDiskClient.DiskV1alpha1().AzVolumes(c.namespace)
+
+	volumeName, err := azureutils.GetDiskName(volumeID)
 	if err != nil {
-		klog.Errorf("Invalid diskURI (%s) for DeleteVolume operation. Error : (%v)", volumeID, err)
+		klog.Errorf("Error finding volume : %v", err)
 		return nil
 	}
-
 	azVolumeName := strings.ToLower(volumeName)
 
-	azVolume, err := azV.Get(ctx, azVolumeName, metav1.GetOptions{})
+	waiter, err := c.conditionWatcher.newConditionWaiter(ctx, azVolumeType, azVolumeName, func(obj interface{}, objectDeleted bool) (bool, error) {
+		// if no object is found, object is deleted
+		if obj == nil || objectDeleted {
+			return true, nil
+		}
+
+		// otherwise, the volume deletion has either failed with error or pending
+		azVolumeInstance := obj.(*v1alpha1.AzVolume)
+		if azVolumeInstance.Status.Error != nil {
+			return false, util.ErrorFromAzError(azVolumeInstance.Status.Error)
+		}
+		return false, nil
+	})
+
+	if err != nil {
+		return err
+	}
+	defer waiter.Close()
+
+	azVolumeInstance, err := lister.Get(azVolumeName)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			klog.Infof("Could not find the volume name (%s). Deletion succeeded", volumeName)
 			return nil
 		}
-		klog.Infof("failed to get AzVolume (%s): %v", volumeName)
+		klog.Infof("failed to get AzVolume (%s): %v", azVolumeName)
 		return err
 	}
 
 	// if volume deletion already in process, return to prevent duplicate request
-	if azVolume.Status.State == v1alpha1.VolumeDeleting {
+	if azVolumeInstance.Status.State == v1alpha1.VolumeDeleting {
 		return status.Errorf(codes.Aborted, "deletion still in process for volume (%s)", volumeName)
 	}
 
@@ -291,7 +326,7 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 		if updateInstance.Annotations == nil {
 			updateInstance.Annotations = map[string]string{}
 		}
-		updateInstance.Annotations[azureutils.VolumeDeleteRequestAnnotation] = "cloud-delete-volume"
+		updateInstance.Annotations[consts.VolumeDeleteRequestAnnotation] = "cloud-delete-volume"
 
 		// remove deletion failure error from AzVolume CRI to retrigger deletion
 		updateInstance.Status.Error = nil
@@ -302,31 +337,18 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 	}
 
 	// update AzVolume CRI with annotation and resetted state with retry upon conflict
-	if err := azureutils.UpdateCRIWithRetry(ctx, nil, c.azDiskClient, azVolume, updateFunc); err != nil {
+	if err := azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.informerFactory, nil, c.azDiskClient, azVolumeInstance, updateFunc, consts.NormalUpdateMaxNetRetry); err != nil {
 		return err
 	}
 
-	err = azV.Delete(ctx, azVolumeName, metav1.DeleteOptions{})
+	err = azVolumeClient.Delete(ctx, azVolumeName, metav1.DeleteOptions{})
 	if err != nil {
 		klog.Errorf("Failed to delete azvolume resource for volume id (%s), error: %v", volumeName, err)
 		return err
 	}
 
-	conditionFunc := func() (bool, error) {
-		// Verify if the azVolume is deleted
-		azVolume, err := azV.Get(ctx, azVolumeName, metav1.GetOptions{})
-		if err != nil {
-			if errors.IsNotFound(err) {
-				return true, nil
-			}
-			return true, status.Errorf(codes.Internal, "failed to delete azvolume resource for volume name (%s)", volumeName)
-		} else if azVolume.Status.Error != nil {
-			return true, util.ErrorFromAzError(azVolume.Status.Error)
-		}
-		return false, nil
-	}
-
-	return wait.PollImmediate(interval, provisionTimeout, conditionFunc)
+	_, err = waiter.Wait(ctx)
+	return err
 }
 
 func (c *CrdProvisioner) PublishVolume(
@@ -337,18 +359,40 @@ func (c *CrdProvisioner) PublishVolume(
 	readOnly bool,
 	secrets map[string]string,
 	volumeContext map[string]string) (map[string]string, error) {
-	azVA := c.azDiskClient.DiskV1alpha1().AzVolumeAttachments(c.namespace)
-	volumeName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(volumeID)
+
+	lister := c.conditionWatcher.informerFactory.Disk().V1alpha1().AzVolumeAttachments().Lister().AzVolumeAttachments(c.namespace)
+	azVAClient := c.azDiskClient.DiskV1alpha1().AzVolumeAttachments(c.namespace)
+
+	volumeName, err := azureutils.GetDiskName(volumeID)
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "Error finding volume : %v", err)
 	}
 
 	attachmentName := azureutils.GetAzVolumeAttachmentName(volumeName, nodeID)
 
+	waiter, err := c.conditionWatcher.newConditionWaiter(ctx, azVolumeAttachmentType, attachmentName, func(obj interface{}, _ bool) (bool, error) {
+		if obj == nil {
+			return false, nil
+		}
+		azVolumeAttachmentInstance := obj.(*v1alpha1.AzVolumeAttachment)
+		if azVolumeAttachmentInstance.Status.Detail != nil {
+			return true, nil
+		}
+		if azVolumeAttachmentInstance.Status.Error != nil {
+			return false, util.ErrorFromAzError(azVolumeAttachmentInstance.Status.Error)
+		}
+		return false, nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+	defer waiter.Close()
+
 	if volumeContext == nil {
 		volumeContext = map[string]string{}
 	}
-	azVolumeAttachmentInstance, err := azVA.Get(ctx, attachmentName, metav1.GetOptions{})
+	azVolumeAttachmentInstance, err := lister.Get(attachmentName)
 	if err == nil {
 		// if CRI is scheduled for deletion, retry until operations are complete
 		if azVolumeAttachmentInstance.DeletionTimestamp != nil {
@@ -379,12 +423,12 @@ func (c *CrdProvisioner) PublishVolume(
 			if updateInstance.Labels == nil {
 				updateInstance.Labels = map[string]string{}
 			}
-			updateInstance.Labels[azureutils.RoleLabel] = string(v1alpha1.PrimaryRole)
+			updateInstance.Labels[consts.RoleLabel] = string(v1alpha1.PrimaryRole)
 
 			return nil
 		}
 
-		if err := azureutils.UpdateCRIWithRetry(ctx, nil, c.azDiskClient, azVolumeAttachmentInstance, updateFunc); err != nil {
+		if err := azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.informerFactory, nil, c.azDiskClient, azVolumeAttachmentInstance, updateFunc, consts.NormalUpdateMaxNetRetry); err != nil {
 			return nil, err
 		}
 	} else if !errors.IsNotFound(err) {
@@ -394,9 +438,9 @@ func (c *CrdProvisioner) PublishVolume(
 			ObjectMeta: metav1.ObjectMeta{
 				Name: attachmentName,
 				Labels: map[string]string{
-					azureutils.NodeNameLabel:   nodeID,
-					azureutils.VolumeNameLabel: volumeName,
-					azureutils.RoleLabel:       string(v1alpha1.PrimaryRole),
+					consts.NodeNameLabel:   nodeID,
+					consts.VolumeNameLabel: volumeName,
+					consts.RoleLabel:       string(v1alpha1.PrimaryRole),
 				},
 			},
 			Spec: v1alpha1.AzVolumeAttachmentSpec{
@@ -411,33 +455,21 @@ func (c *CrdProvisioner) PublishVolume(
 			},
 		}
 
-		azVolumeAttachmentInstance, err = azVA.Create(ctx, azVolumeAttachment, metav1.CreateOptions{})
+		_, err = azVAClient.Create(ctx, azVolumeAttachment, metav1.CreateOptions{})
 		if err != nil {
 			klog.Errorf("Error creating azvolume attachment for volume id (%s) to node id (%s) error : %v", volumeID, nodeID, err)
 			return nil, err
 		}
 	}
 
-	conditionFunc := func() (bool, error) {
-		azVolumeAttachmentInstance, err = azVA.Get(ctx, attachmentName, metav1.GetOptions{})
-		if err != nil {
-			return false, err
-		}
-		if azVolumeAttachmentInstance.Status.Detail != nil {
-			return true, nil
-		}
-		if azVolumeAttachmentInstance.Status.Error != nil {
-			return true, util.ErrorFromAzError(azVolumeAttachmentInstance.Status.Error)
-		}
-		return false, nil
-	}
-
-	err = wait.PollImmediate(interval, attachTimeout, conditionFunc)
+	obj, err := waiter.Wait(ctx)
 	if err != nil {
-		klog.Errorf("attachment failed: %v", err)
 		return nil, err
 	}
-
+	if obj == nil {
+		return nil, status.Errorf(codes.Aborted, "failed to wait for attachment for volume (%s) and node (%s) to complete: unknown error", volumeName, nodeID)
+	}
+	azVolumeAttachmentInstance = obj.(*v1alpha1.AzVolumeAttachment)
 	if azVolumeAttachmentInstance.Status.Detail == nil {
 		return nil, status.Errorf(codes.Internal, "Failed to attach azvolume attachment resource for volume id (%s) to node (%s)", volumeID, nodeID)
 	}
@@ -450,16 +482,35 @@ func (c *CrdProvisioner) UnpublishVolume(
 	volumeID string,
 	nodeID string,
 	secrets map[string]string) error {
-	azVA := c.azDiskClient.DiskV1alpha1().AzVolumeAttachments(c.namespace)
 
-	volumeName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(volumeID)
+	azVAClient := c.azDiskClient.DiskV1alpha1().AzVolumeAttachments(c.namespace)
+	lister := c.conditionWatcher.informerFactory.Disk().V1alpha1().AzVolumeAttachments().Lister().AzVolumeAttachments(c.namespace)
+
+	volumeName, err := azureutils.GetDiskName(volumeID)
 	if err != nil {
 		return err
 	}
-
 	attachmentName := azureutils.GetAzVolumeAttachmentName(volumeName, nodeID)
 
-	azVolumeAttachment, err := azVA.Get(ctx, attachmentName, metav1.GetOptions{})
+	waiter, err := c.conditionWatcher.newConditionWaiter(ctx, azVolumeAttachmentType, attachmentName, func(obj interface{}, objectDeleted bool) (bool, error) {
+		// if no object is found, return
+		if obj == nil || objectDeleted {
+			return true, nil
+		}
+
+		// otherwise, the volume detachment has either failed with error or pending
+		azVolumeAttachmentInstance := obj.(*v1alpha1.AzVolumeAttachment)
+		if azVolumeAttachmentInstance.Status.Error != nil {
+			return false, util.ErrorFromAzError(azVolumeAttachmentInstance.Status.Error)
+		}
+		return false, nil
+	})
+	if err != nil {
+		return err
+	}
+	defer waiter.Close()
+
+	azVolumeAttachmentInstance, err := lister.Get(attachmentName)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			klog.Infof("AzVolumeAttachment (%s) has already been deleted.", attachmentName)
@@ -470,18 +521,17 @@ func (c *CrdProvisioner) UnpublishVolume(
 	}
 
 	// if AzVolumeAttachment instance indicates that previous attachment request was successful, annotate the CRI with detach request so that the underlying volume attachment can be properly detached.
-	if azVolumeAttachment.Status.Detail != nil {
+	if azVolumeAttachmentInstance.Status.Detail != nil {
 		// if detachment is pending, return to prevent duplicate request
-		if azVolumeAttachment.Status.State == v1alpha1.Detaching {
+		if azVolumeAttachmentInstance.Status.State == v1alpha1.Detaching {
 			return status.Errorf(codes.Aborted, "detachment still in process for volume (%s) and node (%s)", volumeName, nodeID)
 		}
-
 		updateFunc := func(obj interface{}) error {
 			updateInstance := obj.(*v1alpha1.AzVolumeAttachment)
 			if updateInstance.Annotations == nil {
 				updateInstance.Annotations = map[string]string{}
 			}
-			updateInstance.Annotations[azureutils.VolumeDetachRequestAnnotation] = "cloud-detach-volume"
+			updateInstance.Annotations[consts.VolumeDetachRequestAnnotation] = "crdProvisioner"
 
 			// remove detachment failure error from AzVolumeAttachment CRI to retrigger detachment
 			updateInstance.Status.Error = nil
@@ -490,38 +540,23 @@ func (c *CrdProvisioner) UnpublishVolume(
 
 			return nil
 		}
-		if err = azureutils.UpdateCRIWithRetry(ctx, nil, c.azDiskClient, azVolumeAttachment, updateFunc); err != nil {
-			klog.Errorf("failed to update AzVolumeAttachment (%s) with Annotation (%s): %v", attachmentName, azureutils.VolumeDetachRequestAnnotation, err)
+		if err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.informerFactory, nil, c.azDiskClient, azVolumeAttachmentInstance, updateFunc, consts.NormalUpdateMaxNetRetry); err != nil {
+			klog.Errorf("failed to update AzVolumeAttachment (%s) with Annotation (%s): %v", attachmentName, consts.VolumeDetachRequestAnnotation, err)
 			return err
 		}
 	}
 
-	err = azVA.Delete(ctx, attachmentName, metav1.DeleteOptions{})
+	err = azVAClient.Delete(ctx, attachmentName, metav1.DeleteOptions{})
 	if errors.IsNotFound(err) {
 		klog.Infof("Could not find the volume attachment (%s). Deletion succeeded", attachmentName)
 		return nil
-	}
-
-	if err != nil {
+	} else if err != nil {
 		klog.Errorf("Failed to delete azvolume attachment resource for volume id (%s) to node (%s), error: %v", volumeID, nodeID, err)
 		return err
 	}
 
-	conditionFunc := func() (bool, error) {
-		// Verify if the azVolume is deleted
-		azVolumeAttachment, err := azVA.Get(ctx, attachmentName, metav1.GetOptions{})
-		if err != nil {
-			if errors.IsNotFound(err) {
-				return true, nil
-			}
-			return true, status.Errorf(codes.Internal, "Failed to delete azvolume resource attachment for volume name (%s) to node (%s)", volumeID, nodeID)
-		} else if azVolumeAttachment.Status.Error != nil {
-			return true, util.ErrorFromAzError(azVolumeAttachment.Status.Error)
-		}
-		return false, nil
-	}
-
-	return wait.PollImmediate(interval, attachTimeout, conditionFunc)
+	_, err = waiter.Wait(ctx)
+	return err
 }
 
 func (c *CrdProvisioner) ExpandVolume(
@@ -529,15 +564,38 @@ func (c *CrdProvisioner) ExpandVolume(
 	volumeID string,
 	capacityRange *v1alpha1.CapacityRange,
 	secrets map[string]string) (*v1alpha1.AzVolumeStatusParams, error) {
-	azV := c.azDiskClient.DiskV1alpha1().AzVolumes(c.namespace)
 
-	volumeName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(volumeID)
+	lister := c.conditionWatcher.informerFactory.Disk().V1alpha1().AzVolumes().Lister().AzVolumes(c.namespace)
+
+	volumeName, err := azureutils.GetDiskName(volumeID)
 	if err != nil {
 		return nil, err
 	}
-	volumeName = strings.ToLower(volumeName)
+	azVolumeName := strings.ToLower(volumeName)
 
-	azVolume, err := azV.Get(ctx, volumeName, metav1.GetOptions{})
+	waiter, err := c.conditionWatcher.newConditionWaiter(ctx, azVolumeType, azVolumeName, func(obj interface{}, _ bool) (bool, error) {
+		if obj == nil {
+			return false, nil
+		}
+		azVolumeInstance := obj.(*v1alpha1.AzVolume)
+		// Checking that the status is updated with the required capacityRange
+		if azVolumeInstance.Status.Detail != nil {
+			if azVolumeInstance.Status.Detail.ResponseObject != nil && azVolumeInstance.Status.Detail.ResponseObject.CapacityBytes == capacityRange.RequiredBytes {
+				return true, nil
+			}
+		}
+		if azVolumeInstance.Status.Error != nil {
+			return false, util.ErrorFromAzError(azVolumeInstance.Status.Error)
+		}
+		return false, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	defer waiter.Close()
+
+	azVolume, err := lister.Get(volumeName)
 	if err != nil || azVolume == nil {
 		klog.Errorf("Failed to retrieve existing volume id (%s)", volumeID)
 		return nil, status.Errorf(codes.Internal, "Failed to retrieve volume id (%s), error: %v", volumeID, err)
@@ -549,37 +607,41 @@ func (c *CrdProvisioner) ExpandVolume(
 		return nil
 	}
 
-	if err := azureutils.UpdateCRIWithRetry(ctx, nil, c.azDiskClient, azVolume, updateFunc); err != nil {
+	if err := azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.informerFactory, nil, c.azDiskClient, azVolume, updateFunc, consts.NormalUpdateMaxNetRetry); err != nil {
 		klog.Errorf("Failed to update AzVolume capacity range for volume (%s), error: %v", volumeID, err)
 		return nil, err
 	}
 
-	conditionFunc := func() (bool, error) {
-		azVolume, err = azV.Get(ctx, volumeName, metav1.GetOptions{})
-		if err != nil {
-			return true, err
-		}
-		// Checking that the status is updated with the required capacityRange
-		if azVolume.Status.Detail != nil {
-			if azVolume.Status.Detail.ResponseObject != nil && azVolume.Status.Detail.ResponseObject.CapacityBytes == capacityRange.RequiredBytes {
-				return true, nil
-			}
-		}
-		if azVolume.Status.Error != nil {
-			return true, util.ErrorFromAzError(azVolume.Status.Error)
-		}
-		return false, nil
-	}
-
-	err = wait.PollImmediate(interval, provisionTimeout, conditionFunc)
+	obj, err := waiter.Wait(ctx)
 	if err != nil {
+		klog.Errorf("Failed to update azvolume resource (%s), error: %v", azVolumeName, err)
 		return nil, err
 	}
-	if azVolume.Status.Detail.ResponseObject.CapacityBytes != capacityRange.RequiredBytes {
+	if obj == nil {
+		return nil, status.Errorf(codes.Aborted, "failed to volume expansion for volume (%s) to complete: unknown error", volumeName)
+	}
+
+	azVolumeInstance := obj.(*v1alpha1.AzVolume)
+	if azVolumeInstance.Status.Detail.ResponseObject.CapacityBytes != capacityRange.RequiredBytes {
 		return nil, status.Errorf(codes.Internal, "AzVolume status not updated with the new capacity for volume name (%s)", volumeID)
 	}
 
-	return azVolume.Status.Detail.ResponseObject, nil
+	return azVolumeInstance.Status.Detail.ResponseObject, nil
+}
+
+func (c *CrdProvisioner) GetAzVolumeAttachmentState(ctx context.Context, volumeID string, nodeID string) (v1alpha1.AzVolumeAttachmentAttachmentState, error) {
+	diskName, err := azureutils.GetDiskName(volumeID)
+	if err != nil {
+		return v1alpha1.AttachmentStateUnknown, err
+	}
+	azVolumeAttachmentName := azureutils.GetAzVolumeAttachmentName(diskName, nodeID)
+	var azVolumeAttachment *v1alpha1.AzVolumeAttachment
+
+	if azVolumeAttachment, err = c.conditionWatcher.informerFactory.Disk().V1alpha1().AzVolumeAttachments().Lister().AzVolumeAttachments(c.namespace).Get(azVolumeAttachmentName); err != nil {
+		return v1alpha1.AttachmentStateUnknown, err
+	}
+
+	return azVolumeAttachment.Status.State, nil
 }
 
 func (c *CrdProvisioner) GetDiskClientSet() azDiskClientSet.Interface {

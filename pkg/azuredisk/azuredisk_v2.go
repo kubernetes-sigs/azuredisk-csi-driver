@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -43,7 +44,6 @@ import (
 
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	azuredisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
-	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller"
@@ -57,7 +57,6 @@ import (
 var isControllerPlugin = flag.Bool("is-controller-plugin", false, "Boolean flag to indicate this instance is running as controller.")
 var isNodePlugin = flag.Bool("is-node-plugin", false, "Boolean flag to indicate this instance is running as node daemon.")
 var driverObjectNamespace = flag.String("driver-object-namespace", consts.AzureDiskCrdNamespace, "namespace where driver related custom resources are created.")
-var useDriverV2 = flag.Bool("temp-use-driver-v2", false, "A temporary flag to enable early test and development of Azure Disk CSI Driver V2. This will be removed in the future.")
 var heartbeatFrequencyInSec = flag.Int("heartbeat-frequency-in-sec", 30, "Frequency in seconds at which node driver sends heartbeat.")
 var controllerLeaseDurationInSec = flag.Int("lease-duration-in-sec", 15, "The duration that non-leader candidates will wait to force acquire leadership")
 var controllerLeaseRenewDeadlineInSec = flag.Int("lease-renew-deadline-in-sec", 10, "The duration that the acting controlplane will retry refreshing leadership before giving up.")
@@ -87,29 +86,12 @@ type DriverV2 struct {
 	controllerLeaseRetryPeriodInSec   int
 	kubeConfig                        *rest.Config
 	kubeClient                        clientset.Interface
+	deviceChecker                     deviceChecker
 }
 
-type CrdProvisioner interface {
-	RegisterDriverNode(ctx context.Context, node *v1.Node, nodePartition string, nodeID string) error
-	CreateVolume(ctx context.Context, volumeName string, capacityRange *azuredisk.CapacityRange,
-		volumeCapabilities []azuredisk.VolumeCapability, parameters map[string]string,
-		secrets map[string]string, volumeContentSource *azuredisk.ContentVolumeSource,
-		accessibilityReq *azuredisk.TopologyRequirement) (*azuredisk.AzVolumeStatusParams, error)
-	DeleteVolume(ctx context.Context, volumeID string, secrets map[string]string) error
-	PublishVolume(ctx context.Context, volumeID string, nodeID string, volumeCapability *azuredisk.VolumeCapability,
-		readOnly bool, secrets map[string]string, volumeContext map[string]string) (map[string]string, error)
-	UnpublishVolume(ctx context.Context, volumeID string, nodeID string, secrets map[string]string) error
-	ExpandVolume(ctx context.Context, volumeID string, capacityRange *azuredisk.CapacityRange, secrets map[string]string) (*azuredisk.AzVolumeStatusParams, error)
-	GetDiskClientSet() azDiskClientSet.Interface
-}
-
-// NewDriver creates a Driver or DriverV2 object depending on the --temp-use-driver-v2 flag.
+// NewDriver creates a driver object.
 func NewDriver(options *DriverOptions) CSIDriver {
-	if !*useDriverV2 {
-		return newDriverV1(options)
-	} else {
-		return newDriverV2(options, *driverObjectNamespace, "default", "default", *heartbeatFrequencyInSec, *controllerLeaseDurationInSec, *controllerLeaseRenewDeadlineInSec, *controllerLeaseRetryPeriodInSec)
-	}
+	return newDriverV2(options, *driverObjectNamespace, "default", "default", *heartbeatFrequencyInSec, *controllerLeaseDurationInSec, *controllerLeaseRenewDeadlineInSec, *controllerLeaseRetryPeriodInSec)
 }
 
 // newDriverV2 Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
@@ -137,13 +119,16 @@ func newDriverV2(options *DriverOptions,
 	driver.NodeID = options.NodeID
 	driver.VolumeAttachLimit = options.VolumeAttachLimit
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
+	driver.ready = make(chan struct{})
 	driver.perfOptimizationEnabled = options.EnablePerfOptimization
 	driver.cloudConfigSecretName = options.CloudConfigSecretName
 	driver.cloudConfigSecretNamespace = options.CloudConfigSecretNamespace
 	driver.customUserAgent = options.CustomUserAgent
 	driver.userAgentSuffix = options.UserAgentSuffix
+	driver.useCSIProxyGAInterface = options.UseCSIProxyGAInterface
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
+	driver.deviceChecker = deviceChecker{lock: sync.RWMutex{}, entry: nil}
 
 	topologyKey = fmt.Sprintf("topology.%s/zone", driver.Name)
 	return &driver
@@ -204,7 +189,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 
 	// d.nodeProvisioner is set by NewFakeDriver for unit tests.
 	if d.nodeProvisioner == nil {
-		d.nodeProvisioner, err = provisioner.NewNodeProvisioner()
+		d.nodeProvisioner, err = provisioner.NewNodeProvisioner(d.useCSIProxyGAInterface)
 		if err != nil {
 			klog.Fatalf("Failed to get node provisioner. Error: %v", err)
 		}
@@ -220,6 +205,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 			csi.ControllerServiceCapability_RPC_EXPAND_VOLUME,
 			csi.ControllerServiceCapability_RPC_LIST_VOLUMES,
 			csi.ControllerServiceCapability_RPC_LIST_VOLUMES_PUBLISHED_NODES,
+			csi.ControllerServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER,
 		})
 	d.AddVolumeCapabilityAccessModes(
 		[]csi.VolumeCapability_AccessMode_Mode{
@@ -232,6 +218,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 		csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
 		csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
 		csi.NodeServiceCapability_RPC_GET_VOLUME_STATS,
+		csi.NodeServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER,
 	})
 
 	// cancel the context the controller manager will be running under, if receive SIGTERM or SIGINT
@@ -256,6 +243,9 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 	if *isNodePlugin {
 		go d.RunAzDriverNodeHeartbeatLoop(ctx)
 	}
+
+	// Signal that the driver is ready.
+	d.signalReady()
 
 	// Wait for the GRPC Server to exit
 	s.Wait()
@@ -328,7 +318,7 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 	}
 
 	klog.V(2).Info("Initializing Replica controller")
-	_, err = controller.NewReplicaController(mgr, d.crdProvisioner.GetDiskClientSet(), d.kubeClient, sharedState)
+	_, err = controller.NewReplicaController(mgr, d.crdProvisioner.GetDiskClientSet(), d.kubeClient, d.objectNamespace, sharedState)
 	if err != nil {
 		klog.Errorf("Failed to initialize ReplicaController. Error: %v. Exiting application...", err)
 		os.Exit(1)
@@ -348,12 +338,6 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 		os.Exit(1)
 	}
 
-	klog.V(2).Info("Initializing VolumeAttachment controller")
-	vaReconciler, err := controller.NewVolumeAttachmentController(ctx, mgr, d.crdProvisioner.GetDiskClientSet(), d.kubeClient, d.objectNamespace)
-	if err != nil {
-		klog.Errorf("Failed to initialize VolumeAttachmentController. Error: %v. Exiting application...", err)
-		os.Exit(1)
-	}
 	// This goroutine is preserved for leader controller manager
 	// Leader controller manager should recover CRI if possible and clean them up before exiting.
 	go func() {
@@ -365,9 +349,6 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 		}
 		if err := attachReconciler.Recover(ctx); err != nil {
 			klog.Warningf("Failed to recover AzVolumeAttachments: %v.", err)
-		}
-		if err := vaReconciler.Recover(ctx); err != nil {
-			klog.Warningf("Failed to update AzVolumeAttachments with necessary VolumeAttachments Annotations: %v.", err)
 		}
 		if err := pvReconciler.Recover(ctx); err != nil {
 			klog.Warningf("Failed to restore shared claimToVolumeMap and volumeToClaimMap: %v.", err)
@@ -401,7 +382,7 @@ func (d *DriverV2) RegisterAzDriverNodeOrDie(ctx context.Context) {
 		klog.V(2).Infof("Registering AzDriverNode for node (%s)", d.NodeID)
 		node, err := d.kubeClient.CoreV1().Nodes().Get(ctx, d.NodeID, metav1.GetOptions{})
 		if err != nil || node == nil {
-			klog.Errorf("Failed to get node (%s), error: %v", node, err)
+			klog.Errorf("Failed to get node (%s), error: %v", d.NodeID, err)
 			err = errors.NewBadRequest("Failed to get node or node not found, can not register the plugin.")
 		}
 	}

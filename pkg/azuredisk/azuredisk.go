@@ -54,6 +54,7 @@ type DriverOptions struct {
 	CloudConfigSecretNamespace string
 	CustomUserAgent            string
 	UserAgentSuffix            string
+	UseCSIProxyGAInterface     bool
 }
 
 // CSIDriver defines the interface for a CSI driver.
@@ -63,6 +64,9 @@ type CSIDriver interface {
 	csi.IdentityServer
 
 	Run(endpoint, kubeconfig string, disableAVSetNodes, testMode bool)
+
+	// Ready returns a closed channel when the driver's Run function has completed initialization
+	Ready() <-chan struct{}
 }
 
 type hostUtil interface {
@@ -72,6 +76,7 @@ type hostUtil interface {
 // DriverCore contains fields common to both the V1 and V2 driver, and implements all interfaces of CSI drivers
 type DriverCore struct {
 	csicommon.CSIDriver
+	ready                      chan struct{}
 	perfOptimizationEnabled    bool
 	cloudConfigSecretName      string
 	cloudConfigSecretNamespace string
@@ -81,6 +86,7 @@ type DriverCore struct {
 	nodeInfo                   *optimization.NodeInfo
 	ioHandler                  azureutils.IOHandler
 	hostUtil                   hostUtil
+	useCSIProxyGAInterface     bool
 }
 
 // Driver is the v1 implementation of the Azure Disk CSI Driver.
@@ -102,11 +108,13 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.Version = driverVersion
 	driver.NodeID = options.NodeID
 	driver.VolumeAttachLimit = options.VolumeAttachLimit
+	driver.ready = make(chan struct{})
 	driver.perfOptimizationEnabled = options.EnablePerfOptimization
 	driver.cloudConfigSecretName = options.CloudConfigSecretName
 	driver.cloudConfigSecretNamespace = options.CloudConfigSecretNamespace
 	driver.customUserAgent = options.CustomUserAgent
 	driver.userAgentSuffix = options.UserAgentSuffix
+	driver.useCSIProxyGAInterface = options.UseCSIProxyGAInterface
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
@@ -166,12 +174,9 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 		}
 	}
 
-	// d.mounter is set by NewFakeDriver for unit tests.
-	if d.mounter == nil {
-		d.mounter, err = mounter.NewSafeMounter()
-		if err != nil {
-			klog.Fatalf("Failed to get safe mounter. Error: %v", err)
-		}
+	d.mounter, err = mounter.NewSafeMounter(d.useCSIProxyGAInterface)
+	if err != nil {
+		klog.Fatalf("Failed to get safe mounter. Error: %v", err)
 	}
 
 	d.AddControllerServiceCapabilities(
@@ -184,6 +189,7 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 			csi.ControllerServiceCapability_RPC_EXPAND_VOLUME,
 			csi.ControllerServiceCapability_RPC_LIST_VOLUMES,
 			csi.ControllerServiceCapability_RPC_LIST_VOLUMES_PUBLISHED_NODES,
+			csi.ControllerServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER,
 		})
 	d.AddVolumeCapabilityAccessModes(
 		[]csi.VolumeCapability_AccessMode_Mode{
@@ -196,11 +202,17 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 		csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
 		csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
 		csi.NodeServiceCapability_RPC_GET_VOLUME_STATS,
+		csi.NodeServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER,
 	})
 
 	s := csicommon.NewNonBlockingGRPCServer()
 	// Driver d act as IdentityServer, ControllerServer and NodeServer
 	s.Start(endpoint, d, d, d, testingMock)
+
+	// Signal that the driver is ready.
+	d.signalReady()
+
+	// Wait for the GRPC Server to exit
 	s.Wait()
 }
 
@@ -266,6 +278,14 @@ func (d *Driver) checkDiskCapacity(ctx context.Context, resourceGroup, diskName 
 
 func (d *Driver) getVolumeLocks() *volumehelper.VolumeLocks {
 	return d.volumeLocks
+}
+
+func (d *DriverCore) Ready() <-chan struct{} {
+	return d.ready
+}
+
+func (d *DriverCore) signalReady() {
+	close(d.ready)
 }
 
 // setControllerCapabilities sets the controller capabilities field. It is intended for use with unit tests.

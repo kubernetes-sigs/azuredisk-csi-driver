@@ -146,10 +146,11 @@ type AzVolumeList struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Namespaced
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp",description="The age of the attachment"
-// +kubebuilder:printcolumn:name="NodeName",type=string,JSONPath=`.spec.nodeName`,description="Name of the Node which this AzVolumeAttachment object is attached to"
-// +kubebuilder:printcolumn:name="UnderlyingVolume",type=string,JSONPath=`.spec.underlyingVolume`,description="Name of the Volume which this AzVolumeAttachment object references"
+// +kubebuilder:printcolumn:name="NodeName",type=string,JSONPath=`.spec.nodeName`,description="Name of the Node which this AzVolumeAttachment object is attached to",priority=10
+// +kubebuilder:printcolumn:name="UnderlyingVolume",type=string,JSONPath=`.spec.underlyingVolume`,description="Name of the Volume which this AzVolumeAttachment object references",priority=10
 // +kubebuilder:printcolumn:name="RequestedRole",type=string,JSONPath=`.spec.role`,description="Indicates if the volume attachment should be primary attachment or not"
 // +kubebuilder:printcolumn:name="Role",type=string,JSONPath=`.status.detail.role`,description="Indicates if the volume attachment is primary attachment or not"
+// +kubebuilder:printcolumn:name="State",type=string,JSONPath=`.status.state`,description="Indicates the state of the volume attachment"
 type AzVolumeAttachment struct {
 	metav1.TypeMeta `json:",inline"`
 	// Standard object's metadata.
@@ -190,6 +191,8 @@ const (
 type AzVolumeAttachmentAttachmentState string
 
 const (
+	// Unknown state is used in crdProvsioner.GetAzVolumeAttachmentState when the attachment does not exist.
+	AttachmentStateUnknown AzVolumeAttachmentAttachmentState = "Unknown"
 	// Pending indicates a state where no operation has been initated
 	AttachmentPending AzVolumeAttachmentAttachmentState = "Pending"
 	// AttachmentInProgress indicates that node to volume attachment is in progress
@@ -204,6 +207,8 @@ const (
 	Detached AzVolumeAttachmentAttachmentState = "Detached"
 	// DetachmentFailed indicates that the volume detachment has failed
 	DetachmentFailed AzVolumeAttachmentAttachmentState = "DetachmentFailed"
+	// ForceDetachPending allows controller to retry on failed replica detachment
+	ForceDetachPending AzVolumeAttachmentAttachmentState = "ForceDetachPending"
 )
 
 // AzVolumeAttachmentStatus is the status for a AzVolumeAttachment resource
@@ -368,6 +373,8 @@ const (
 	VolumeCapabilityAccessModeMultiNodeReaderOnly
 	VolumeCapabilityAccessModeMultiNodeSingleWriter
 	VolumeCapabilityAccessModeMultiNodeMultiWriter
+	VolumeCapabilityAccessModeSingleNodeSingleWriter
+	VolumeCapabilityAccessModeSingleNodeMultiWriter
 )
 
 type VolumeCapabilityAccess int

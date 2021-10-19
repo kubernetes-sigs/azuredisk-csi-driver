@@ -27,6 +27,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/onsi/ginkgo"
 	"github.com/onsi/ginkgo/reporters"
@@ -129,6 +130,10 @@ var _ = ginkgo.BeforeSuite(func() {
 			os.Setenv("AZURE_CREDENTIAL_FILE", credentials.TempAzureCredentialFilePath)
 			azurediskDriver.Run(fmt.Sprintf("unix:///tmp/csi-%s.sock", uuid.NewUUID().String()), kubeconfig, false, false)
 		}()
+
+		// Ensure the local implementation of the driver is fully initialized so that the pre-provisioning
+		// test cases can safely call it.
+		gomega.Eventually(azurediskDriver.Ready(), 5*time.Minute, 1*time.Second).Should(gomega.BeClosed())
 	}
 })
 

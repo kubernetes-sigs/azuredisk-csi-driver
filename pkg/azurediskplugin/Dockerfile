@@ -12,13 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM alpine:3.14.1
+FROM alpine:3.14.2
 RUN apk add --no-cache util-linux e2fsprogs e2fsprogs-extra ca-certificates udev xfsprogs xfsprogs-extra
 
 LABEL maintainers="andyzhangx"
 LABEL description="Azure Disk CSI Driver"
 
-ARG ARCH
+ARG ARCH=amd64
 ARG PLUGIN_NAME=azurediskplugin
 COPY ./_output/${ARCH}/${PLUGIN_NAME} /azurediskplugin
 ENTRYPOINT ["/azurediskplugin"]

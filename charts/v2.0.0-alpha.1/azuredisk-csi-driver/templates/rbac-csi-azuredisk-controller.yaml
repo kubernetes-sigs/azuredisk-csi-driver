@@ -32,7 +32,6 @@ rules:
   - apiGroups: ["snapshot.storage.k8s.io"]
     resources: ["volumesnapshotcontents"]
     verbs: ["get", "list"]
-    {{- if .Values.feature.useV2Driver}}
   - apiGroups: ["disk.csi.azure.com"]
     resources: ["azdrivernodes", "azvolumeattachments", "azvolumes"]
     verbs: ["create", "get", "list", "watch", "patch", "update", "delete"]
@@ -48,7 +47,6 @@ rules:
   - apiGroups: [""]
     resources: ["serviceaccounts"]
     verbs: ["get", "patch", "update"]
-    {{- end }}
 
 ---
 

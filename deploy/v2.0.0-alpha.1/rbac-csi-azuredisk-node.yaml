@@ -19,10 +19,10 @@ rules:
     resources: ["nodes"]
     verbs: ["get", "list", "watch"]
   - apiGroups: ["disk.csi.azure.com"]
-    resources: ["azdrivernodes"]
-    verbs: ["create", "get", "patch", "update"]
+    resources: ["azdrivernodes", "azvolumeattachments", "azvolumes"]
+    verbs: ["create", "get", "list", "watch", "patch", "update", "delete"]
   - apiGroups: ["disk.csi.azure.com"]
-    resources: ["azdrivernodes/status"]
+    resources: ["azdrivernodes/status", "azvolumeattachments/status", "azvolumes/status"]
     verbs: ["get", "patch", "update"]
 ---
 kind: ClusterRoleBinding

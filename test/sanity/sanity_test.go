@@ -33,11 +33,13 @@ import (
 )
 
 const (
-	nodeid = "sanity-test-node"
-	vmType = "standard"
+	nodeid   = "sanity-test-node"
+	vmType   = "standard"
+	driverV1 = "v1"
+	driverV2 = "v2"
 )
 
-var useDriverV2 = flag.Bool("temp-use-driver-v2", false, "A temporary flag to enable early test and development of Azure Disk CSI Driver V2. This will be removed in the future.")
+var testDriverVersion = flag.String("test-driver-version", driverV1, "The version of the driver to be tested. Valid values are \"v1\" or \"v2\".")
 var imageTag = flag.String("image-tag", "", "A flag to get the docker image tag")
 
 func TestSanity(t *testing.T) {
@@ -94,7 +96,7 @@ func TestSanity(t *testing.T) {
 	assert.True(t, strings.HasSuffix(projectRoot, "azuredisk-csi-driver"))
 
 	args := make([]string, 0)
-	if *useDriverV2 {
+	if strings.EqualFold(*testDriverVersion, driverV2) {
 		args = append(args, "v2")
 		args = append(args, *imageTag)
 	}

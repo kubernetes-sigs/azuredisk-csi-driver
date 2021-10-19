@@ -17,6 +17,7 @@ limitations under the License.
 package provisioner
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -54,8 +55,8 @@ type NodeProvisioner struct {
 }
 
 // NewNodeProvisioner creates a new NodeProvisioner to handle node-specific provisioning tasks.
-func NewNodeProvisioner() (*NodeProvisioner, error) {
-	m, err := mounter.NewSafeMounter()
+func NewNodeProvisioner(useCSIProxyGAInterface bool) (*NodeProvisioner, error) {
+	m, err := mounter.NewSafeMounter(useCSIProxyGAInterface)
 	if err != nil {
 		return nil, err
 	}
@@ -76,11 +77,15 @@ func (p *NodeProvisioner) SetDevicePollParameters(interval, timeout time.Duratio
 }
 
 // GetDevicePathWithLUN returns the device path for the specified LUN number.
-func (p *NodeProvisioner) GetDevicePathWithLUN(lun int) (string, error) {
+func (p *NodeProvisioner) GetDevicePathWithLUN(ctx context.Context, lun int) (string, error) {
 	p.rescanScsiHost()
 
 	newDevicePath := ""
-	err := wait.PollImmediate(p.devicePollInterval, p.devicePollTimeout, func() (bool, error) {
+
+	// the new context's timeout will be capped by the parent's timeout but if parent's timeout is sufficiently longer, defaultDevicePollTimeout will be used
+	newCtx, cancel := context.WithTimeout(ctx, p.devicePollTimeout)
+	defer cancel()
+	conditionFunc := func() (bool, error) {
 		var err error
 
 		if newDevicePath, err = p.findDiskByLun(lun); err != nil {
@@ -94,10 +99,11 @@ func (p *NodeProvisioner) GetDevicePathWithLUN(lun int) (string, error) {
 
 		// wait until timeout
 		return false, nil
-	})
+	}
+	err := wait.PollImmediateUntil(p.devicePollInterval, conditionFunc, newCtx.Done())
 
 	if err == nil && newDevicePath == "" {
-		err = fmt.Errorf("azureDisk - findDiskByLun(%v) failed within timeout", lun)
+		err = fmt.Errorf("azureDisk - findDiskByLun(%v) failed with unexpected error", lun)
 	}
 
 	return newDevicePath, err

@@ -46,7 +46,7 @@ func main() {
 
 	// Create an http server that listens to the timestamp and logs it
 	podDowntimeMux := http.NewServeMux()
-	podDowntimeMux.HandleFunc("/podDowntime", func(w http.ResponseWriter, r *http.Request) {
+	podDowntimeMux.HandleFunc("/pod-failover", func(w http.ResponseWriter, r *http.Request) {
 		downtime, _ := strconv.ParseFloat(r.URL.Query().Get("value"), 64)
 		klog.Infof("The downtime observed by the logging pod is: %f", downtime)
 		podDowntimeHistogram.Observe(downtime)

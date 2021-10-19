@@ -24,6 +24,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -43,6 +44,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
+	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
@@ -55,6 +57,8 @@ type CloudProvisioner struct {
 	kubeClient                 clientset.Interface
 	cloudConfigSecretName      string
 	cloudConfigSecretNamespace string
+	// a timed cache GetDisk throttling
+	getDiskThrottlingCache *azcache.TimedCache
 }
 
 // listVolumeStatus explains the return status of `listVolumesByResourceGroup`
@@ -79,11 +83,19 @@ func NewCloudProvisioner(
 
 	topologyKeyStr = topologyKey
 
+	cache, err := azcache.NewTimedcache(5*time.Minute, func(key string) (interface{}, error) {
+		return nil, nil
+	})
+	if err != nil {
+		klog.Fatalf("failed to create disk throttling cache: %v", err)
+	}
+
 	return &CloudProvisioner{
 		cloud:                      azCloud,
 		kubeClient:                 kubeClient,
 		cloudConfigSecretName:      cloudConfigSecretName,
 		cloudConfigSecretNamespace: cloudConfigSecretNamespace,
+		getDiskThrottlingCache:     cache,
 	}, nil
 }
 
@@ -187,11 +199,12 @@ func (c *CloudProvisioner) CreateVolume(
 			if err != nil {
 				return nil, fmt.Errorf("create cloud with UserAgent(%s) failed with: (%s)", newUserAgent, err)
 			}
-		// The following parameter is not used by the cloud provisioner, but must be present in the VolumeContext
+		// The following parameters are not used by the cloud provisioner, but must be present in the VolumeContext
 		// returned to the caller so that it is included in the parameters passed to Node{Publish|Stage}Volume.
+		case azureconstants.ZonedField:
+			// no op, only for backward compatibility with in-tree driver
 		case azureconstants.FsTypeField:
 			// no-op
-
 		case azureconstants.KindField:
 			// fix csi migration issue: https://github.com/kubernetes/kubernetes/issues/103433
 			parameters[azureconstants.KindField] = string(v1.AzureManagedDisk)
@@ -203,19 +216,19 @@ func (c *CloudProvisioner) CreateVolume(
 	if diskName == "" {
 		diskName = volumeName
 	}
-	diskName = azureutils.GetValidDiskName(diskName)
+	diskName = azureutils.CreateValidDiskName(diskName, true)
 
 	if resourceGroup == "" {
 		resourceGroup = c.cloud.ResourceGroup
 	}
 
 	// normalize values
-	skuName, err := azureutils.NormalizeAzureStorageAccountType(storageAccountType, localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud)
+	skuName, err := azureutils.NormalizeStorageAccountType(storageAccountType, localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud)
 	if err != nil {
 		return nil, err
 	}
 
-	if _, err = azureutils.NormalizeAzureDataDiskCachingMode(cachingMode); err != nil {
+	if _, err = azureutils.NormalizeCachingMode(cachingMode, maxShares); err != nil {
 		return nil, err
 	}
 
@@ -322,6 +335,8 @@ func (c *CloudProvisioner) CreateVolume(
 		BurstingEnabled:     enableBursting,
 	}
 
+	volumeOptions.SkipGetDiskOperation = c.isGetDiskThrottled()
+
 	// Azure Stack Cloud does not support NetworkAccessPolicy
 	if !azureutils.IsAzureStackCloud(localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud) {
 		volumeOptions.NetworkAccessPolicy = networkAccessPolicy
@@ -386,7 +401,7 @@ func (c *CloudProvisioner) PublishVolume(
 	}
 
 	nodeName := types.NodeName(nodeID)
-	diskName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(volumeID)
+	diskName, err := azureutils.GetDiskName(volumeID)
 	if err != nil {
 		return nil, err
 	}
@@ -408,11 +423,11 @@ func (c *CloudProvisioner) PublishVolume(
 		// Volume is already attached to node.
 		klog.V(2).Infof("Attach operation is successful. volume %q is already attached to node %q at lun %d.", volumeID, nodeName, lun)
 	} else {
+		klog.V(2).Infof("Trying to attach volume %q to node %q.", volumeID, nodeName)
 		var cachingMode compute.CachingTypes
 		if cachingMode, err = azureutils.GetCachingMode(volumeContext); err != nil {
 			return nil, err
 		}
-		klog.V(2).Infof("Trying to attach volume %q to node %q", volumeID, nodeName)
 
 		lun, err = c.cloud.AttachDisk(ctx, true, diskName, volumeID, nodeName, cachingMode, disk)
 		if err == nil {
@@ -439,7 +454,7 @@ func (c *CloudProvisioner) UnpublishVolume(
 	nodeID string) error {
 	nodeName := types.NodeName(nodeID)
 
-	diskName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(volumeID)
+	diskName, err := azureutils.GetDiskName(volumeID)
 	if err != nil {
 		return err
 	}
@@ -469,11 +484,11 @@ func (c *CloudProvisioner) ExpandVolume(
 		return nil, status.Errorf(codes.InvalidArgument, "disk URI(%s) is not valid: %v", volumeID, err)
 	}
 
-	diskName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(volumeID)
+	diskName, err := azureutils.GetDiskName(volumeID)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "could not get disk name from diskURI(%s) with error(%v)", volumeID, err)
 	}
-	resourceGroup, err := azureutils.GetResourceGroupFromAzureManagedDiskURI(volumeID)
+	resourceGroup, err := azureutils.GetResourceGroupFromURI(volumeID)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "could not get resource group from diskURI(%s) with error(%v)", volumeID, err)
 	}
@@ -512,7 +527,7 @@ func (c *CloudProvisioner) CreateSnapshot(
 	snapshotName string,
 	secrets map[string]string,
 	parameters map[string]string) (*v1alpha1.Snapshot, error) {
-	snapshotName = azureutils.GetValidDiskName(snapshotName)
+	snapshotName = azureutils.CreateValidDiskName(snapshotName, true)
 
 	var customTags string
 	// set incremental snapshot as true by default
@@ -548,7 +563,7 @@ func (c *CloudProvisioner) CreateSnapshot(
 	}
 
 	if resourceGroup == "" {
-		resourceGroup, err = azureutils.GetResourceGroupFromAzureManagedDiskURI(sourceVolumeID)
+		resourceGroup, err = azureutils.GetResourceGroupFromURI(sourceVolumeID)
 		if err != nil {
 			return nil, status.Errorf(codes.InvalidArgument, "could not get resource group from diskURI(%s) with error(%v)", sourceVolumeID, err)
 		}
@@ -653,7 +668,7 @@ func (c *CloudProvisioner) ListSnapshots(
 	}
 	entries := []v1alpha1.Snapshot{}
 	for count := 0; start < len(snapshots) && count < totalEntries; start++ {
-		if (sourceVolumeID != "" && sourceVolumeID == azureutils.GetSnapshotSourceVolumeID(&snapshots[start])) || sourceVolumeID == "" {
+		if (sourceVolumeID != "" && sourceVolumeID == azureutils.GetSourceVolumeID(&snapshots[start])) || sourceVolumeID == "" {
 			snapshotObj, err := azureutils.NewAzureDiskSnapshot(sourceVolumeID, &snapshots[start])
 			if err != nil {
 				return nil, fmt.Errorf("failed to generate snapshot entry: %v", err)
@@ -701,18 +716,28 @@ func (c *CloudProvisioner) DeleteSnapshot(
 }
 
 func (c *CloudProvisioner) CheckDiskExists(ctx context.Context, diskURI string) (*compute.Disk, error) {
-	diskName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(diskURI)
+	diskName, err := azureutils.GetDiskName(diskURI)
 	if err != nil {
 		return nil, err
 	}
 
-	resourceGroup, err := azureutils.GetResourceGroupFromAzureManagedDiskURI(diskURI)
+	resourceGroup, err := azureutils.GetResourceGroupFromURI(diskURI)
 	if err != nil {
 		return nil, err
+	}
+
+	if c.isGetDiskThrottled() {
+		klog.Warningf("skip checkDiskExists(%s) since it's still in throttling", diskURI)
+		return nil, nil
 	}
 
 	disk, rerr := c.cloud.DisksClient.Get(ctx, resourceGroup, diskName)
 	if rerr != nil {
+		if strings.Contains(rerr.RawError.Error(), azureconstants.RateLimited) {
+			klog.Warningf("checkDiskExists(%s) is throttled with error: %v", diskURI, rerr.Error())
+			c.getDiskThrottlingCache.Set(azureconstants.ThrottlingKey, "")
+			return nil, nil
+		}
 		return nil, rerr.Error()
 	}
 
@@ -743,7 +768,7 @@ func (c *CloudProvisioner) GetSourceDiskSize(ctx context.Context, resourceGroup,
 	if result.DiskProperties.CreationData != nil && (*result.DiskProperties.CreationData).CreateOption == "Copy" {
 		klog.V(2).Infof("Clone source disk has a parent source")
 		sourceResourceID := *result.DiskProperties.CreationData.SourceResourceID
-		parentResourceGroup, _ := azureutils.GetResourceGroupFromAzureManagedDiskURI(sourceResourceID)
+		parentResourceGroup, _ := azureutils.GetResourceGroupFromURI(sourceResourceID)
 		parentDiskName := path.Base(sourceResourceID)
 		return c.GetSourceDiskSize(ctx, parentResourceGroup, parentDiskName, curDepth+1, maxDepth)
 	}
@@ -755,12 +780,22 @@ func (c *CloudProvisioner) GetSourceDiskSize(ctx context.Context, resourceGroup,
 }
 
 func (c *CloudProvisioner) CheckDiskCapacity(ctx context.Context, resourceGroup, diskName string, requestGiB int) (bool, error) {
-	disk, err := c.cloud.DisksClient.Get(ctx, resourceGroup, diskName)
+	if c.isGetDiskThrottled() {
+		klog.Warningf("skip checkDiskCapacity((%s, %s) since it's still in throttling", resourceGroup, diskName)
+		return true, nil
+	}
+
+	disk, rerr := c.cloud.DisksClient.Get(ctx, resourceGroup, diskName)
 	// Because we can not judge the reason of the error. Maybe the disk does not exist.
 	// So here we do not handle the error.
-	if err == nil {
+	if rerr == nil {
 		if !reflect.DeepEqual(disk, compute.Disk{}) && disk.DiskSizeGB != nil && int(*disk.DiskSizeGB) != requestGiB {
 			return false, status.Errorf(codes.AlreadyExists, "the request volume already exists, but its capacity(%v) is different from (%v)", *disk.DiskProperties.DiskSizeGB, requestGiB)
+		}
+	} else {
+		if strings.Contains(rerr.RawError.Error(), azureconstants.RateLimited) {
+			klog.Warningf("checkDiskCapacity(%s, %s) is throttled with error: %v", resourceGroup, diskName, rerr.Error())
+			c.getDiskThrottlingCache.Set(azureconstants.ThrottlingKey, "")
 		}
 	}
 	return true, nil
@@ -797,6 +832,15 @@ func (c *CloudProvisioner) getSnapshotByID(ctx context.Context, resourceGroup st
 	}
 
 	return azureutils.NewAzureDiskSnapshot(sourceVolumeID, &snapshot)
+}
+
+func (c *CloudProvisioner) isGetDiskThrottled() bool {
+	cache, err := c.getDiskThrottlingCache.Get(azureconstants.ThrottlingKey, azcache.CacheReadTypeDefault)
+	if err != nil {
+		klog.Warningf("getDiskThrottlingCache(%s) return with error: %s", azureconstants.ThrottlingKey, err)
+		return false
+	}
+	return cache != nil
 }
 
 func (c *CloudProvisioner) validateCreateVolumeRequestParams(
@@ -843,7 +887,9 @@ func (c *CloudProvisioner) validateCreateVolumeRequestParams(
 		for _, c := range volumeCaps {
 			mode := c.AccessMode
 			if mode != v1alpha1.VolumeCapabilityAccessModeSingleNodeWriter &&
-				mode != v1alpha1.VolumeCapabilityAccessModeSingleNodeReaderOnly {
+				mode != v1alpha1.VolumeCapabilityAccessModeSingleNodeReaderOnly &&
+				mode != v1alpha1.VolumeCapabilityAccessModeSingleNodeSingleWriter &&
+				mode != v1alpha1.VolumeCapabilityAccessModeSingleNodeMultiWriter {
 				return status.Error(codes.InvalidArgument, fmt.Sprintf("Volume capability(%v) not supported", mode))
 			}
 		}
@@ -855,7 +901,7 @@ func (c *CloudProvisioner) validateCreateVolumeRequestParams(
 // listVolumesInCluster is a helper function for ListVolumes used for when there is an available kubeclient
 func (c *CloudProvisioner) listVolumesInCluster(ctx context.Context, start, maxEntries int) (*v1alpha1.ListVolumesResult, error) {
 	kubeClient := c.cloud.KubeClient
-	pvList, err := kubeClient.CoreV1().PersistentVolumes().List(context.TODO(), metav1.ListOptions{})
+	pvList, err := kubeClient.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "ListVolumes failed while fetching PersistentVolumes List with error: %v", err.Error())
 	}
@@ -870,7 +916,7 @@ func (c *CloudProvisioner) listVolumesInCluster(ctx context.Context, start, maxE
 				klog.Warningf("invalid disk uri (%s) with error(%v)", diskURI, err)
 				continue
 			}
-			rg, err := azureutils.GetResourceGroupFromAzureManagedDiskURI(diskURI)
+			rg, err := azureutils.GetResourceGroupFromURI(diskURI)
 			if err != nil {
 				klog.Warningf("failed to get resource group from disk uri (%s) with error(%v)", diskURI, err)
 				continue

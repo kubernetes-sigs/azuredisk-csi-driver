@@ -37,7 +37,6 @@ import (
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
-	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
 const (
@@ -104,10 +103,12 @@ func newFakeDriverV1(t *testing.T) (*fakeDriverV1, error) {
 	driver.Version = fakeDriverVersion
 	driver.NodeID = fakeNodeID
 	driver.CSIDriver = *csicommon.NewFakeCSIDriver()
+	driver.ready = make(chan struct{})
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.VolumeAttachLimit = -1
 	driver.ioHandler = azureutils.NewFakeIOHandler()
 	driver.hostUtil = azureutils.NewFakeHostUtil()
+	driver.useCSIProxyGAInterface = true
 
 	driver.VolumeAttachLimit = -1
 	driver.ioHandler = azureutils.NewFakeIOHandler()
@@ -116,7 +117,7 @@ func newFakeDriverV1(t *testing.T) (*fakeDriverV1, error) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	driver.cloud = azure.GetTestCloud(ctrl)
+	driver.cloud = provider.GetTestCloud(ctrl)
 	mounter, err := mounter.NewFakeSafeMounter()
 	if err != nil {
 		return nil, err

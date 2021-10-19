@@ -41,15 +41,15 @@ echo "==========================================================================
 
 if [[ "${VERSION}" == "v2" ]]; then
     echo "print out all AzDriverNode instances"
-    kubectl get -n azure-disk-csi azdrivernode
+    kubectl get -n azure-disk-csi azdrivernode -o wide
     echo "======================================================================================"
 
     echo "print out all AzVolume instances"
-    kubectl get -n azure-disk-csi azvolumes
+    kubectl get -n azure-disk-csi azvolumes -o wide
     echo "======================================================================================"
 
     echo "print out all AzVolumeAttachment instances"
-    kubectl get -n azure-disk-csi azvolumeattachments
+    kubectl get -n azure-disk-csi azvolumeattachments -o wide
     echo "======================================================================================"
 fi
 

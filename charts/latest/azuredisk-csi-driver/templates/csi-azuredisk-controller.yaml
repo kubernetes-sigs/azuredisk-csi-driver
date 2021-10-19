@@ -33,6 +33,10 @@ spec:
       tolerations:
 {{ toYaml . | indent 8 }}
 {{- end }}
+{{- with .Values.controller.affinity }}
+      affinity:
+{{ toYaml . | indent 8 }}
+{{- end }}
       {{- include "azuredisk.pullSecrets" . | indent 6 }}
       containers:
         - name: csi-provisioner
@@ -214,9 +218,6 @@ spec:
               name: socket-dir
             - mountPath: /etc/kubernetes/
               name: azure-cred
-            - mountPath: /var/lib/waagent/ManagedIdentity-Settings
-              readOnly: true
-              name: msi
             {{- if eq .Values.cloud "AzureStackCloud" }}
             - name: ssl
               mountPath: /etc/ssl/certs
@@ -243,10 +244,7 @@ spec:
         - name: azure-cred
           hostPath:
             path: /etc/kubernetes/
-            type: Directory
-        - name: msi
-          hostPath:
-            path: /var/lib/waagent/ManagedIdentity-Settings
+            type: DirectoryOrCreate
         {{- if eq .Values.cloud "AzureStackCloud" }}
         - name: ssl
           hostPath:

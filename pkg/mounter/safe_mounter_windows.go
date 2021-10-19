@@ -372,17 +372,19 @@ func newCSIProxyMounter() (*csiProxyMounter, error) {
 	}, nil
 }
 
-func NewSafeMounter() (*mount.SafeFormatAndMount, error) {
-	csiProxyMounter, err := newCSIProxyMounter()
-	if err == nil {
-		klog.V(2).Infof("using CSIProxyMounterV1, %s", csiProxyMounter.GetAPIVersions())
-		return &mount.SafeFormatAndMount{
-			Interface: csiProxyMounter,
-			Exec:      utilexec.New(),
-		}, nil
+func NewSafeMounter(useCSIProxyGAInterface bool) (*mount.SafeFormatAndMount, error) {
+	if useCSIProxyGAInterface {
+		csiProxyMounter, err := newCSIProxyMounter()
+		if err == nil {
+			klog.V(2).Infof("using CSIProxyMounterV1, %s", csiProxyMounter.GetAPIVersions())
+			return &mount.SafeFormatAndMount{
+				Interface: csiProxyMounter,
+				Exec:      utilexec.New(),
+			}, nil
+		}
+		klog.V(2).Infof("failed to connect to csi-proxy v1 with error: %v, will try with v1Beta", err)
 	}
 
-	klog.V(2).Infof("failed to connect to csi-proxy v1 with error: %v, will try with v1Beta", err)
 	csiProxyMounterV1Beta, err := newCSIProxyMounterV1Beta()
 	if err == nil {
 		klog.V(2).Infof("using CSIProxyMounterV1beta, %s", csiProxyMounterV1Beta.GetAPIVersions())

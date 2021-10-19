@@ -21,7 +21,7 @@ jobs:
       run: make azuredisk
 
     - name: Run Linux Unit Tests
-      run: sudo go test -covermode=count -coverprofile=profile.cov ./pkg/...
+      run: go test -covermode=count -coverprofile=profile.cov ./pkg/...
 
     - name: Send coverage
       env:

@@ -166,9 +166,6 @@ spec:
               name: socket-dir
             - mountPath: /etc/kubernetes/
               name: azure-cred
-            - mountPath: /var/lib/waagent/ManagedIdentity-Settings
-              readOnly: true
-              name: msi
           resources:
             limits:
               cpu: 200m
@@ -182,7 +179,4 @@ spec:
         - name: azure-cred
           hostPath:
             path: /etc/kubernetes/
-            type: Directory
-        - name: msi
-          hostPath:
-            path: /var/lib/waagent/ManagedIdentity-Settings
+            type: DirectoryOrCreate

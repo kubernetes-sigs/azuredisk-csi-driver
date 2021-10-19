@@ -17,7 +17,10 @@ limitations under the License.
 package provisioner
 
 import (
+	"time"
+
 	"github.com/golang/mock/gomock"
+	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
@@ -28,8 +31,15 @@ type FakeCloudProvisioner struct {
 func NewFakeCloudProvisioner(ctrl *gomock.Controller) (*FakeCloudProvisioner, error) {
 	fakeCloud := provider.GetTestCloud(ctrl)
 
+	cache, err := azcache.NewTimedcache(time.Minute, func(key string) (interface{}, error) {
+		return nil, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	return &FakeCloudProvisioner{
-		CloudProvisioner: CloudProvisioner{cloud: fakeCloud},
+		CloudProvisioner: CloudProvisioner{cloud: fakeCloud, getDiskThrottlingCache: cache},
 	}, nil
 }
 

@@ -21,6 +21,7 @@ package azuredisk
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
@@ -50,16 +51,7 @@ type fakeDriverV2 struct {
 
 // NewFakeDriver returns a driver implementation suitable for use in unit tests.
 func NewFakeDriver(t *testing.T) (FakeDriver, error) {
-	var d FakeDriver
-	var err error
-
-	if !*useDriverV2 {
-		d, err = newFakeDriverV1(t)
-	} else {
-		d, err = newFakeDriverV2(t)
-	}
-
-	return d, err
+	return newFakeDriverV2(t)
 }
 
 func newFakeDriverV2(t *testing.T) (*fakeDriverV2, error) {
@@ -69,12 +61,14 @@ func newFakeDriverV2(t *testing.T) (*fakeDriverV2, error) {
 	driver.Version = fakeDriverVersion
 	driver.NodeID = fakeNodeID
 	driver.CSIDriver = *csicommon.NewFakeCSIDriver()
+	driver.ready = make(chan struct{})
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.objectNamespace = fakeObjNamespace
 
 	driver.VolumeAttachLimit = -1
 	driver.ioHandler = azureutils.NewFakeIOHandler()
 	driver.hostUtil = azureutils.NewFakeHostUtil()
+	driver.useCSIProxyGAInterface = true
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -103,6 +97,8 @@ func newFakeDriverV2(t *testing.T) (*fakeDriverV2, error) {
 	driver.deviceHelper = mockoptimization.NewMockInterface(ctrl)
 
 	driver.deviceHelper = mockoptimization.NewMockInterface(ctrl)
+
+	driver.deviceChecker = deviceChecker{lock: sync.RWMutex{}, entry: nil}
 
 	driver.AddControllerServiceCapabilities(
 		[]csi.ControllerServiceCapability_RPC_Type{
@@ -168,11 +164,9 @@ func (d *DriverV2) setDiskThrottlingCache(key string, value string) {
 }
 
 func skipIfTestingDriverV2(t *testing.T) {
-	if *useDriverV2 {
-		t.Skip("Skipping test on DriverV2")
-	}
+	t.Skip("Skipping test on DriverV2")
 }
 
 func isTestingDriverV2() bool {
-	return *useDriverV2
+	return true
 }

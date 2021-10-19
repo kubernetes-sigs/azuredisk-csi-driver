@@ -55,6 +55,12 @@ apt update && apt install curl -y
 curl https://apiserver-fqdn -k -v 2>&1
 ```
 
+ - get Windows csi-proxy logs inside driver
+```console
+kubectl exec -it csi-azuredisk-node-win-xxxxx -n kube-system -c azuredisk cmd
+type c:\k\csi-proxy.err.log
+```
+
 #### Update driver version quickly by editting driver deployment directly
  - update controller deployment
 ```console
@@ -66,6 +72,6 @@ kubectl edit ds csi-azuredisk-node -n kube-system
 ```
 change below deployment config, e.g.
 ```console
-        image: mcr.microsoft.com/k8s/csi/azuredisk-csi:v1.5.0
+        image: mcr.microsoft.com/k8s/csi/azuredisk-csi:v1.8.0
         imagePullPolicy: Always
 ```

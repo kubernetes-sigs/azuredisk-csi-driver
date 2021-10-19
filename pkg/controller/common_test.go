@@ -143,12 +143,6 @@ var (
 		},
 	}
 
-	testVolumeAttachmentRequest = reconcile.Request{
-		NamespacedName: types.NamespacedName{
-			Name: testVolumeAttachmentName,
-		},
-	}
-
 	testPersistentVolume0 = v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: testPersistentVolume0Name,
@@ -245,9 +239,9 @@ func createAzVolumeAttachment(pvName, nodeName string, role v1alpha1.Role) v1alp
 			Name:      azureutils.GetAzVolumeAttachmentName(pvName, nodeName),
 			Namespace: testNamespace,
 			Labels: map[string]string{
-				azureutils.NodeNameLabel:   nodeName,
-				azureutils.VolumeNameLabel: strings.ToLower(pvName),
-				azureutils.RoleLabel:       string(role),
+				consts.NodeNameLabel:   nodeName,
+				consts.VolumeNameLabel: strings.ToLower(pvName),
+				consts.RoleLabel:       string(role),
 			},
 		},
 		Spec: v1alpha1.AzVolumeAttachmentSpec{
@@ -326,7 +320,7 @@ func initState(objs ...runtime.Object) (c *SharedState) {
 			}
 			c.podToClaimsMap.Store(podKey, claims)
 		case *v1.PersistentVolume:
-			diskName, _ := azureutils.GetDiskNameFromAzureManagedDiskURI(target.Spec.CSI.VolumeHandle)
+			diskName, _ := azureutils.GetDiskName(target.Spec.CSI.VolumeHandle)
 			azVolumeName := strings.ToLower(diskName)
 			claimName := getQualifiedName(target.Spec.ClaimRef.Namespace, target.Spec.ClaimRef.Name)
 			c.volumeToClaimMap.Store(azVolumeName, claimName)

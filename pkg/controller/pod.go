@@ -104,14 +104,8 @@ func (r *ReconcilePod) createReplicas(ctx context.Context, podKey string) error 
 		}
 
 		// get all replica attachments for the given volume
-		replicaNodes, err := getNodesWithReplica(ctx, r, volume)
-		if err != nil {
-			klog.Warningf("Error getting replica azvolumes for pod %s and volume %s. Error: %v", podKey, volume, err)
-			return err
-		}
-		// if there already are replica attachments for the volume, let the replica reconciler handle replica creation and skip batch creation to avoid race between two controllers
-		if len(replicaNodes) > 0 {
-			klog.V(5).Infof("Replica azvolumeattachments for pod %s and volume %s already exist.", podKey, volume)
+		if r.controllerSharedState.isVolumeVisited(volume) {
+			klog.Infof("No need to create replica attachment for volume (%s). Replica controller is responsible for it")
 			continue
 		}
 
@@ -121,12 +115,15 @@ func (r *ReconcilePod) createReplicas(ctx context.Context, podKey string) error 
 			if numCreated >= azVolume.Spec.MaxMountReplicaCount {
 				break
 			}
-			if err := createReplicaAzVolumeAttachment(ctx, r, azVolume.Status.Detail.ResponseObject.VolumeID, node); err != nil {
+			if err := createReplicaAzVolumeAttachment(ctx, r, azVolume.Status.Detail.ResponseObject.VolumeID, node, azVolume.Spec.Parameters); err != nil {
 				klog.Warningf("Error creating %d/%d replicas azvolumeattachment for pod %s and volume %s on node %s. Error: %v", azVolume.Spec.MaxMountReplicaCount, numCreated, podKey, volume, node, err)
 				return err
 			}
 			numCreated++
 		}
+
+		// once replica attachment batch is created by pod controller, future replica reconciliation needs to be handled by replica controller
+		r.controllerSharedState.markVolumeVisited(volume)
 	}
 	return nil
 }

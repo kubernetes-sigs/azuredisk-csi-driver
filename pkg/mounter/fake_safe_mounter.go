@@ -31,18 +31,6 @@ type FakeSafeMounter struct {
 	testingexec.FakeExec
 }
 
-// NewFakeSafeMounter creates a mount.SafeFormatAndMount instance suitable for use in unit tests.
-func NewFakeSafeMounter() (*mount.SafeFormatAndMount, error) {
-	fakeSafeMounter := FakeSafeMounter{}
-	fakeSafeMounter.ExactOrder = true
-	fakeSafeMounter.MountCheckErrors = make(map[string]error)
-
-	return &mount.SafeFormatAndMount{
-		Interface: &fakeSafeMounter,
-		Exec:      &fakeSafeMounter,
-	}, nil
-}
-
 // Mount overrides mount.FakeMounter.Mount.
 func (f *FakeSafeMounter) Mount(source, target, fstype string, options []string) error {
 	if strings.Contains(source, "error_mount") {
