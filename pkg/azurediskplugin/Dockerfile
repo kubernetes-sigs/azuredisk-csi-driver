@@ -15,7 +15,7 @@
 FROM k8s.gcr.io/build-image/debian-base:bullseye-v1.0.0
 
 FROM alpine:3.14.1
-RUN apk add --no-cache util-linux e2fsprogs e2fsprogs-extra ca-certificates udev xfsprogs xfsprogs-extra
+RUN apk add --no-cache util-linux e2fsprogs e2fsprogs-extra ca-certificates udev xfsprogs xfsprogs-extra libssl1.1 libcrypto1.1
 
 LABEL maintainers="andyzhangx"
 LABEL description="Azure Disk CSI Driver"
