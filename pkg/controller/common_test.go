@@ -299,24 +299,16 @@ func initState(objs ...runtime.Object) (c *SharedState) {
 				}
 				namespacedClaimName := getQualifiedName(target.Namespace, volume.PersistentVolumeClaim.ClaimName)
 				claims = append(claims, namespacedClaimName)
-				v, ok := c.claimToPodsMap.Load(namespacedClaimName)
-				var pods []string
-				if !ok {
-					pods = []string{}
-				} else {
-					pods = v.([]string)
+				v, _ := c.claimToPodsMap.LoadOrStore(namespacedClaimName, newLockableEntry(set{}))
+
+				lockable := v.(lockableEntry)
+				lockable.lock.Lock()
+				pods := lockable.entry.(set)
+				if !pods.has(podKey) {
+					pods.add(podKey)
 				}
-				podExist := false
-				for _, pod := range pods {
-					if pod == podKey {
-						podExist = true
-						break
-					}
-				}
-				if !podExist {
-					pods = append(pods, podKey)
-				}
-				c.claimToPodsMap.Store(namespacedClaimName, pods)
+				// No need to restore the amended set to claimToPodsMap because set is a reference type
+				lockable.lock.Unlock()
 			}
 			c.podToClaimsMap.Store(podKey, claims)
 		case *v1.PersistentVolume:

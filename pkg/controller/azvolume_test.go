@@ -330,6 +330,8 @@ func TestAzVolumeControllerRecover(t *testing.T) {
 					&testPersistentVolume0,
 					&testPersistentVolume1)
 
+				mockClientsAndVolumeProvisioner(controller)
+
 				return controller
 			},
 			verifyFunc: func(t *testing.T, controller *ReconcileAzVolume, err error) {
@@ -337,6 +339,39 @@ func TestAzVolumeControllerRecover(t *testing.T) {
 				azVolumes, err := controller.azVolumeClient.DiskV1alpha1().AzVolumes(testNamespace).List(context.TODO(), metav1.ListOptions{})
 				require.NoError(t, err)
 				require.Len(t, azVolumes.Items, 2)
+			},
+		},
+		{
+			description: "[Success] Should update AzVolume CRIs to right state",
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAzVolume {
+				newAzVolume0 := testAzVolume0.DeepCopy()
+				newAzVolume0.Status.State = diskv1alpha1.VolumeCreating
+
+				newAzVolume1 := testAzVolume1.DeepCopy()
+				newAzVolume1.Status.State = diskv1alpha1.VolumeDeleting
+
+				controller := NewTestAzVolumeController(
+					mockCtl,
+					testNamespace,
+					newAzVolume0,
+					newAzVolume1)
+
+				mockClientsAndVolumeProvisioner(controller)
+
+				return controller
+			},
+			verifyFunc: func(t *testing.T, controller *ReconcileAzVolume, err error) {
+				require.NoError(t, err)
+
+				azVolume, localErr := controller.azVolumeClient.DiskV1alpha1().AzVolumes(testNamespace).Get(context.TODO(), testPersistentVolume0Name, metav1.GetOptions{})
+				require.NoError(t, localErr)
+				require.Equal(t, azVolume.Status.State, diskv1alpha1.VolumeOperationPending)
+				require.Contains(t, azVolume.ObjectMeta.Annotations, consts.RecoverAnnotation)
+
+				azVolume, localErr = controller.azVolumeClient.DiskV1alpha1().AzVolumes(testNamespace).Get(context.TODO(), testPersistentVolume1Name, metav1.GetOptions{})
+				require.NoError(t, localErr)
+				require.Equal(t, azVolume.Status.State, diskv1alpha1.VolumeCreated)
+				require.Contains(t, azVolume.ObjectMeta.Annotations, consts.RecoverAnnotation)
 			},
 		},
 	}

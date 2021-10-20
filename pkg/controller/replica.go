@@ -77,7 +77,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 			r.triggerGarbageCollection(azVolumeAttachment.Spec.UnderlyingVolume)
 		} else {
 			// If not, cancel scheduled garbage collection if there is one enqueued
-			r.cancelGarbageCollection(azVolumeAttachment.Spec.UnderlyingVolume)
+			r.removeGarbageCollection(azVolumeAttachment.Spec.UnderlyingVolume)
 
 			// If promotion event, create a replacement replica
 			if isAttached(azVolumeAttachment) && azVolumeAttachment.Status.Detail.Role != azVolumeAttachment.Spec.RequestedRole {
@@ -92,9 +92,9 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 			if azVolumeAttachment.Status.State == v1alpha1.DetachmentFailed {
 				if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, azVolumeAttachment, func(obj interface{}) error {
 					azVolumeAttachment := obj.(*v1alpha1.AzVolumeAttachment)
-					_, err = updateState(ctx, azVolumeAttachment, v1alpha1.ForceDetachPending, normalUpdate)
+					_, err = updateState(azVolumeAttachment, v1alpha1.ForceDetachPending, normalUpdate)
 					return err
-				}); err != nil {
+				}, consts.NormalUpdateMaxNetRetry); err != nil {
 					return reconcile.Result{Requeue: true}, err
 				}
 			}
@@ -133,7 +133,11 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 func (r *ReconcileReplica) triggerGarbageCollection(volumeName string) {
 	emptyCtx := context.TODO()
 	deletionCtx, cancelFunc := context.WithCancel(emptyCtx)
-	_, _ = r.cleanUpMap.LoadOrStore(volumeName, cancelFunc)
+	if _, ok := r.cleanUpMap.LoadOrStore(volumeName, cancelFunc); ok {
+		klog.Infof("There already is a scheduled garbage collection for AzVolume (%s)")
+		cancelFunc()
+		return
+	}
 	klog.Infof("garbage collection of AzVolumeAttachments for AzVolume (%s) scheduled in %s.", volumeName, DefaultTimeUntilGarbageCollection.String())
 
 	go func(ctx context.Context) {
@@ -149,12 +153,13 @@ func (r *ReconcileReplica) triggerGarbageCollection(volumeName string) {
 			_, _ = cleanUpAzVolumeAttachmentByVolume(ctx, r, volumeName, "replicaController", all, detachAndDeleteCRI)
 			volumeLock.Unlock()
 			r.mutexLocks.Delete(volumeName)
+			r.removeGarbageCollection(volumeName)
 			r.controllerSharedState.unmarkVolumeVisited(volumeName)
 		}
 	}(deletionCtx)
 }
 
-func (r *ReconcileReplica) cancelGarbageCollection(volumeName string) {
+func (r *ReconcileReplica) removeGarbageCollection(volumeName string) {
 	v, ok := r.cleanUpMap.LoadAndDelete(volumeName)
 	if ok {
 		cancelFunc := v.(context.CancelFunc)

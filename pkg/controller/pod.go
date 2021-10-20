@@ -65,14 +65,15 @@ func (r *ReconcilePod) Reconcile(ctx context.Context, request reconcile.Request)
 		klog.Errorf("Error getting the pod %s. Error: %v", podKey, err)
 		return reconcile.Result{Requeue: true}, err
 	}
-
 	r.controllerSharedState.addPod(&pod, acquireLock)
 
-	if err := r.createReplicas(ctx, podKey); err != nil {
-		klog.V(5).Infof("Error creating replicas for pod %s. Error: %v. Requeuing reconciliation.", request.Name, err)
-		return reconcile.Result{Requeue: true}, err
+	if pod.Status.Phase == corev1.PodRunning {
+		if err := r.createReplicas(ctx, podKey); err != nil {
+			klog.V(5).Infof("Error creating replicas for pod %s. Error: %v. Requeuing reconciliation.", request.Name, err)
+			return reconcile.Result{Requeue: true}, err
+		}
+		klog.V(5).Infof("Successfully created replicas for pod %s. Reconciliation succeeded.", request.Name)
 	}
-	klog.V(5).Infof("Successfully created replicas for pod %s. Reconciliation succeeded.", request.Name)
 	return reconcile.Result{}, nil
 }
 
@@ -173,7 +174,7 @@ func NewPodController(mgr manager.Manager, azVolumeClient azClientSet.Interface,
 	// Watch for Update events on Pod objects
 	err = c.Watch(&source.Kind{Type: &corev1.Pod{}}, &handler.EnqueueRequestForObject{}, predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
-			return false
+			return true
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			// make sure only update event from pod status change to "running" gets enqueued to reconciler queue

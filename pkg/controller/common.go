@@ -53,6 +53,8 @@ const (
 	defaultRetryDuration = time.Duration(1) * time.Second
 	defaultRetryFactor   = 5.0
 	defaultRetrySteps    = 5
+
+	cloudTimeout = time.Duration(5) * time.Minute
 )
 
 type cleanUpMode int
@@ -152,6 +154,31 @@ func (r *retryInfo) deleteEntry(objectName string) {
 	r.retryMap.Delete(objectName)
 }
 
+type emptyType struct{}
+
+type set map[interface{}]emptyType
+
+func (s set) add(entry interface{}) {
+	s[entry] = emptyType{}
+}
+
+func (s set) has(entry interface{}) bool {
+	_, ok := s[entry]
+	return ok
+}
+
+type lockableEntry struct {
+	lock  *sync.RWMutex
+	entry interface{}
+}
+
+func newLockableEntry(entry interface{}) lockableEntry {
+	return lockableEntry{
+		lock:  &sync.RWMutex{},
+		entry: entry,
+	}
+}
+
 type SharedState struct {
 	podToClaimsMap   *sync.Map
 	claimToPodsMap   *sync.Map
@@ -217,10 +244,27 @@ func (c *SharedState) getPodsFromVolume(volumeName string) ([]string, error) {
 	if !ok {
 		return nil, status.Errorf(codes.NotFound, "no pods found for PVC (%s)", claimName)
 	}
-	pods, ok := value.([]string)
+	lockable, ok := value.(lockableEntry)
 	if !ok {
-		return nil, status.Errorf(codes.Internal, "claimToPodsMap should hold string slices")
+		return nil, status.Errorf(codes.Internal, "claimToPodsMap should hold lockable entry")
 	}
+
+	lockable.lock.RLock()
+	defer lockable.lock.RUnlock()
+
+	podMap, ok := lockable.entry.(set)
+	if !ok {
+		return nil, status.Errorf(codes.Internal, "claimToPodsMap entry should hold a set")
+	}
+
+	pods := make([]string, len(podMap))
+	i := 0
+	for v := range podMap {
+		pod := v.(string)
+		pods[i] = pod
+		i++
+	}
+
 	return pods, nil
 }
 
@@ -297,9 +341,13 @@ func getRankedNodesForReplicaAttachments(ctx context.Context, azr azReconciler, 
 func (c *SharedState) addPod(pod *v1.Pod, updateOption updateWithLock) {
 
 	podKey := getQualifiedName(pod.Namespace, pod.Name)
-	klog.V(5).Infof("Adding pod %s to shared map with keyName %s.", pod.Name, podKey)
-	v, _ := c.podLocks.LoadOrStore(podKey, &sync.Mutex{})
+	v, ok := c.podLocks.LoadOrStore(podKey, &sync.Mutex{})
+	// if pod entry already exists, do not add to map
+	if ok {
+		return
+	}
 
+	klog.V(5).Infof("Adding pod %s to shared map with keyName %s.", pod.Name, podKey)
 	podLock := v.(*sync.Mutex)
 	if updateOption == acquireLock {
 		podLock.Lock()
@@ -319,23 +367,19 @@ func (c *SharedState) addPod(pod *v1.Pod, updateOption updateWithLock) {
 		}
 		klog.V(5).Infof("Pod %s. Volume %v is csi.", pod.Name, volume)
 		claims = append(claims, namespacedClaimName)
-		v, _ := c.claimToPodsMap.LoadOrStore(namespacedClaimName, []string{})
+		v, _ := c.claimToPodsMap.LoadOrStore(namespacedClaimName, newLockableEntry(set{}))
 
-		pods := v.([]string)
-		podExist := false
-		for _, pod := range pods {
-			klog.V(5).Infof("Looking for pod %s with podkey %s.", pod, podKey)
-			if pod == podKey {
-				klog.V(5).Infof("Found pod %s with podkey %s.", pod, podKey)
-				podExist = true
-				break
-			}
+		lockable := v.(lockableEntry)
+		lockable.lock.Lock()
+		pods := lockable.entry.(set)
+		if !pods.has(podKey) {
+			pods.add(podKey)
 		}
-		if !podExist {
-			pods = append(pods, podKey)
-		}
+		// No need to restore the amended set to claimToPodsMap because set is a reference type
+		lockable.lock.Unlock()
+
 		klog.V(5).Infof("Storing pod %s and claim %s to claimToPodsMap map.", pod.Name, namespacedClaimName)
-		c.claimToPodsMap.Store(namespacedClaimName, pods)
+		c.claimToPodsMap.Store(namespacedClaimName, lockable)
 	}
 	klog.V(5).Infof("Storing pod %s and claim %s to podToClaimsMap map.", pod.Name, claims)
 	c.podToClaimsMap.Store(podKey, claims)

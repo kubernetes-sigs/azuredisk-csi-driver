@@ -20,12 +20,37 @@ limitations under the License.
 package mounter
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"strings"
+
+	"k8s.io/mount-utils"
 )
 
 var _ CSIProxyMounter = &FakeSafeMounter{}
+var useCSIProxy = flag.Bool("use-csi-proxy", true, "Specifies whether to use CSI Proxy or internal fake when running unit tests.")
+
+// Returns whether FakeSafeMounter is using CSI Proxy.
+func IsFakeUsingCSIProxy() bool {
+	return *useCSIProxy
+}
+
+// NewFakeSafeMounter creates a mount.SafeFormatAndMount instance suitable for use in unit tests.
+func NewFakeSafeMounter() (*mount.SafeFormatAndMount, error) {
+	if *useCSIProxy {
+		return NewSafeMounter(true)
+	}
+
+	fakeSafeMounter := FakeSafeMounter{}
+	fakeSafeMounter.ExactOrder = true
+	fakeSafeMounter.MountCheckErrors = make(map[string]error)
+
+	return &mount.SafeFormatAndMount{
+		Interface: &fakeSafeMounter,
+		Exec:      &fakeSafeMounter,
+	}, nil
+}
 
 // FormatAndMount - accepts the source disk number, target path to mount, the fstype to format with and options to be used.
 func (fake *FakeSafeMounter) FormatAndMount(source, target, fstype string, options []string) error {
@@ -78,7 +103,7 @@ func (fake *FakeSafeMounter) GetDeviceNameFromMount(mountPath, pluginMountDir st
 	output, err := fake.Command("powershell", cmd).Output()
 	if err != nil {
 		windowsMountPath := strings.Replace(mountPath, "/", "\\", -1)
-		return "", fmt.Errorf("Forward to GetVolumeIDFromTargetPath failed, err=error getting the volume for the mount %s, internal error error getting volume from mount. cmd: (Get-Item -Path %s).Target, output: , error: <nil>", windowsMountPath, windowsMountPath)
+		return "", fmt.Errorf("error getting the volume for the mount %s, internal error error getting volume from mount. cmd: (Get-Item -Path %s).Target, output: , error: <nil>", windowsMountPath, windowsMountPath)
 	}
 
 	return string(output), nil
@@ -86,7 +111,7 @@ func (fake *FakeSafeMounter) GetDeviceNameFromMount(mountPath, pluginMountDir st
 
 // GetVolumeSizeInBytes returns the size of the volume in bytes.
 func (fake *FakeSafeMounter) GetVolumeSizeInBytes(devicePath string) (int64, error) {
-	return -1, fmt.Errorf("GetVolumeSizeInBytes error")
+	return -1, fmt.Errorf("error getting the volume for the mount %s, internal error error getting volume from mount. cmd: (Get-Item -Path %s).Target, output: , error: <nil>", devicePath, devicePath)
 }
 
 // ResizeVolume resizes the volume to the maximum available size.

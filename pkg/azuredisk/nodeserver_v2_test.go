@@ -38,6 +38,9 @@ import (
 )
 
 func TestNodeStageVolumeMountRecovery(t *testing.T) {
+	if mounter.IsFakeUsingCSIProxy() {
+		t.Skip("Skipping test because CSI Proxy is used.")
+	}
 	d, err := newFakeDriverV2(t)
 	assert.NoError(t, err)
 	ctrl := gomock.NewController(t)
@@ -145,7 +148,7 @@ func TestNodeStageVolumeMountRecovery(t *testing.T) {
 			if test.desc == "Failed volume mount" {
 				assert.Error(t, err)
 			} else if !testutil.IsErrorEquivalent(err, test.expectedErr) {
-				t.Errorf("desc: %s\n actualErr: (%v), test.: (%v)", test.desc, err, test.expectedErr)
+				t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
 			}
 		}
 	}
