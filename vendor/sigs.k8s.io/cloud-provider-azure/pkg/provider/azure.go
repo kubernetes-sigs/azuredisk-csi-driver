@@ -17,6 +17,7 @@ limitations under the License.
 package provider
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -30,8 +31,10 @@ import (
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/adal"
 	"github.com/Azure/go-autorest/autorest/azure"
+	"golang.org/x/time/rate"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
@@ -41,7 +44,6 @@ import (
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/flowcontrol"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
 
@@ -68,6 +70,7 @@ import (
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmssclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmssvmclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/zoneclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/batch"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
 	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
@@ -297,6 +300,8 @@ type Cloud struct {
 	nodeResourceGroups map[string]string
 	// unmanagedNodes holds a list of nodes not managed by Azure cloud provider.
 	unmanagedNodes sets.String
+	// excludeLoadBalancerNodes holds a list of nodes that should be excluded from LoadBalancer.
+	excludeLoadBalancerNodes sets.String
 	// nodeInformerSynced is for determining if the informer has synced.
 	nodeInformerSynced cache.InformerSynced
 
@@ -403,11 +408,12 @@ func (az *Cloud) configSecretMetadata(secretName, secretNamespace, cloudConfigKe
 
 func NewCloudFromSecret(clientBuilder cloudprovider.ControllerClientBuilder, secretName, secretNamespace, cloudConfigKey string) (cloudprovider.Interface, error) {
 	az := &Cloud{
-		nodeNames:          sets.NewString(),
-		nodeZones:          map[string]sets.String{},
-		nodeResourceGroups: map[string]string{},
-		unmanagedNodes:     sets.NewString(),
-		routeCIDRs:         map[string]string{},
+		nodeNames:                sets.NewString(),
+		nodeZones:                map[string]sets.String{},
+		nodeResourceGroups:       map[string]string{},
+		unmanagedNodes:           sets.NewString(),
+		routeCIDRs:               map[string]string{},
+		excludeLoadBalancerNodes: sets.NewString(),
 	}
 
 	az.configSecretMetadata(secretName, secretNamespace, cloudConfigKey)
@@ -433,11 +439,12 @@ func NewCloudWithoutFeatureGates(configReader io.Reader, callFromCCM bool) (*Clo
 	}
 
 	az := &Cloud{
-		nodeNames:          sets.NewString(),
-		nodeZones:          map[string]sets.String{},
-		nodeResourceGroups: map[string]string{},
-		unmanagedNodes:     sets.NewString(),
-		routeCIDRs:         map[string]string{},
+		nodeNames:                sets.NewString(),
+		nodeZones:                map[string]sets.String{},
+		nodeResourceGroups:       map[string]string{},
+		unmanagedNodes:           sets.NewString(),
+		routeCIDRs:               map[string]string{},
+		excludeLoadBalancerNodes: sets.NewString(),
 	}
 
 	err = az.InitializeCloudFromConfig(config, false, callFromCCM)
@@ -893,10 +900,10 @@ func initDiskControllers(az *Cloud) error {
 	// Common controller contains the function
 	// needed by both blob disk and managed disk controllers
 
-	qps := float32(defaultAtachDetachDiskQPS)
-	bucket := defaultAtachDetachDiskBucket
+	qps := rate.Limit(defaultAttachDetachDiskQPS)
+	bucket := defaultAttachDetachDiskBucket
 	if az.Config.AttachDetachDiskRateLimit != nil {
-		qps = az.Config.AttachDetachDiskRateLimit.CloudProviderRateLimitQPSWrite
+		qps = rate.Limit(az.Config.AttachDetachDiskRateLimit.CloudProviderRateLimitQPSWrite)
 		bucket = az.Config.AttachDetachDiskRateLimit.CloudProviderRateLimitBucketWrite
 	}
 	klog.V(2).Infof("attach/detach disk operation rate limit QPS: %f, Bucket: %d", qps, bucket)
@@ -908,8 +915,58 @@ func initDiskControllers(az *Cloud) error {
 		subscriptionID:        az.SubscriptionID,
 		cloud:                 az,
 		lockMap:               newLockMap(),
-		diskOpRateLimiter:     flowcontrol.NewTokenBucketRateLimiter(qps, bucket),
 	}
+
+	attachDetachRateLimiter := rate.NewLimiter(qps, bucket)
+
+	loggerAdapter := batch.NewLoggerAdapter(
+		batch.WithVerboseLogger(klog.V(3).Infof),
+		batch.WithInfoLogger(klog.Infof),
+		batch.WithWarningLogger(klog.Warningf),
+		batch.WithErrorLogger(klog.Errorf),
+	)
+
+	processorOptions := []batch.ProcessorOption{
+		batch.WithDelayBeforeStart(1 * time.Second),
+		batch.WithGlobalLimiter(attachDetachRateLimiter),
+		batch.WithLogger(loggerAdapter),
+	}
+
+	attachBatchFn := func(ctx context.Context, nodeName string, values []interface{}) ([]interface{}, error) {
+		disksToAttach := make([]attachDiskParams, len(values))
+		for i, value := range values {
+			disksToAttach[i] = value.(attachDiskParams)
+		}
+
+		lunChans, err := common.attachDiskBatchToNode(ctx, types.NodeName(nodeName), disksToAttach)
+		if err != nil {
+			return nil, err
+		}
+
+		results := make([]interface{}, len(lunChans))
+		for i, lun := range lunChans {
+			results[i] = lun
+		}
+
+		return results, nil
+	}
+
+	detachBatchFn := func(ctx context.Context, nodeName string, values []interface{}) ([]interface{}, error) {
+		disksToDetach := make([]detachDiskParams, len(values))
+		for i, value := range values {
+			disksToDetach[i] = value.(detachDiskParams)
+		}
+
+		err := common.detachDiskBatchFromNode(ctx, types.NodeName(nodeName), disksToDetach)
+		if err != nil {
+			return nil, err
+		}
+
+		return make([]interface{}, len(disksToDetach)), nil
+	}
+
+	common.attachDiskProcessor = batch.NewProcessor(attachBatchFn, processorOptions...)
+	common.detachDiskProcessor = batch.NewProcessor(detachBatchFn, processorOptions...)
 
 	if az.HasExtendedLocation() {
 		common.extendedLocation = &ExtendedLocation{
@@ -937,10 +994,6 @@ func (az *Cloud) SetInformers(informerFactory informers.SharedInformerFactory) {
 		UpdateFunc: func(prev, obj interface{}) {
 			prevNode := prev.(*v1.Node)
 			newNode := obj.(*v1.Node)
-			if newNode.Labels[consts.LabelFailureDomainBetaZone] ==
-				prevNode.Labels[consts.LabelFailureDomainBetaZone] {
-				return
-			}
 			az.updateNodeCaches(prevNode, newNode)
 		},
 		DeleteFunc: func(obj interface{}) {
@@ -993,6 +1046,12 @@ func (az *Cloud) updateNodeCaches(prevNode, newNode *v1.Node) {
 		managed, ok := prevNode.ObjectMeta.Labels[consts.ManagedByAzureLabel]
 		if ok && strings.EqualFold(managed, consts.NotManagedByAzureLabelValue) {
 			az.unmanagedNodes.Delete(prevNode.ObjectMeta.Name)
+			az.excludeLoadBalancerNodes.Delete(prevNode.ObjectMeta.Name)
+		}
+
+		// Remove from excludeLoadBalancerNodes cache.
+		if _, hasExcludeBalancerLabel := prevNode.ObjectMeta.Labels[v1.LabelNodeExcludeBalancers]; hasExcludeBalancerLabel {
+			az.excludeLoadBalancerNodes.Delete(prevNode.ObjectMeta.Name)
 		}
 	}
 
@@ -1019,6 +1078,12 @@ func (az *Cloud) updateNodeCaches(prevNode, newNode *v1.Node) {
 		managed, ok := newNode.ObjectMeta.Labels[consts.ManagedByAzureLabel]
 		if ok && strings.EqualFold(managed, consts.NotManagedByAzureLabelValue) {
 			az.unmanagedNodes.Insert(newNode.ObjectMeta.Name)
+			az.excludeLoadBalancerNodes.Insert(newNode.ObjectMeta.Name)
+		}
+
+		// Add to excludeLoadBalancerNodes cache.
+		if _, hasExcludeBalancerLabel := newNode.ObjectMeta.Labels[v1.LabelNodeExcludeBalancers]; hasExcludeBalancerLabel {
+			az.excludeLoadBalancerNodes.Insert(newNode.ObjectMeta.Name)
 		}
 	}
 }
@@ -1124,16 +1189,23 @@ func (az *Cloud) GetUnmanagedNodes() (sets.String, error) {
 	return sets.NewString(az.unmanagedNodes.List()...), nil
 }
 
-// ShouldNodeExcludedFromLoadBalancer returns true if node is unmanaged or in external resource group.
-func (az *Cloud) ShouldNodeExcludedFromLoadBalancer(node *v1.Node) bool {
-	labels := node.ObjectMeta.Labels
-	if rg, ok := labels[consts.ExternalResourceGroupLabel]; ok && !strings.EqualFold(rg, az.ResourceGroup) {
-		return true
+// ShouldNodeExcludedFromLoadBalancer returns true if node is unmanaged, in external resource group or labeled with "node.kubernetes.io/exclude-from-external-load-balancers".
+func (az *Cloud) ShouldNodeExcludedFromLoadBalancer(nodeName string) (bool, error) {
+	// Kubelet won't set az.nodeInformerSynced, always return nil.
+	if az.nodeInformerSynced == nil {
+		return false, nil
 	}
 
-	if managed, ok := labels[consts.ManagedByAzureLabel]; ok && strings.EqualFold(managed, consts.NotManagedByAzureLabelValue) {
-		return true
+	az.nodeCachesLock.RLock()
+	defer az.nodeCachesLock.RUnlock()
+	if !az.nodeInformerSynced() {
+		return false, fmt.Errorf("node informer is not synced when trying to fetch node caches")
 	}
 
-	return false
+	// Return true if the node is in external resource group.
+	if cachedRG, ok := az.nodeResourceGroups[nodeName]; ok && !strings.EqualFold(cachedRG, az.ResourceGroup) {
+		return true, nil
+	}
+
+	return az.excludeLoadBalancerNodes.Has(nodeName), nil
 }
