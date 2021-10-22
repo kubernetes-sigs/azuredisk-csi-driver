@@ -50,7 +50,12 @@ controller:
   cloudConfigSecretName: azure-cloud-provider
   cloudConfigSecretNamespace: kube-system
   replicas: 2
-  metricsPort: 29604
+  metrics:
+    port: 29604
+    service:
+      enabled: false
+      monitor:
+        enabled: false
   livenessProbe:
     healthPort: 29602
   runOnMaster: false
@@ -72,7 +77,8 @@ node:
   cloudConfigSecretName: azure-cloud-provider
   cloudConfigSecretNamespace: kube-system
   maxUnavailable: 1
-  metricsPort: 29605
+  metrics:
+    port: 29605
   logLevel: 5
   livenessProbe:
     healthPort: 29603
@@ -80,7 +86,12 @@ node:
 schedulerExtender:
   name: csi-azuredisk-scheduler-extender
   replicas: 2
-  metricsPort: 29606
+  metrics:
+    port: 29606
+    service:
+      enabled: false
+      monitor:
+        enabled: false
   servicePort: 8889
 
 snapshot:

@@ -177,7 +177,7 @@ spec:
           args:
             - "--v={{ .Values.controller.logLevel }}"
             - "--endpoint=$(CSI_ENDPOINT)"
-            - "--metrics-address=0.0.0.0:{{ .Values.controller.metricsPort }}"
+            - "--metrics-address=0.0.0.0:{{ .Values.controller.metrics.port }}"
             - "--is-controller-plugin=true"
             - "--disable-avset-nodes={{ .Values.controller.disableAvailabilitySetNodes }}"
             - "--drivername={{ .Values.driver.name }}"
@@ -189,7 +189,7 @@ spec:
             - containerPort: {{ .Values.controller.livenessProbe.healthPort }}
               name: healthz
               protocol: TCP
-            - containerPort: {{ .Values.controller.metricsPort }}
+            - containerPort: {{ .Values.controller.metrics.port }}
               name: metrics
               protocol: TCP
           livenessProbe:
