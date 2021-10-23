@@ -224,7 +224,7 @@ func TestGetSnapshotName(t *testing.T) {
 	}
 }
 
-func TestIsCSISnapshotReady(t *testing.T) {
+func TestIsSnapshotReady(t *testing.T) {
 	tests := []struct {
 		state        string
 		expectedResp bool
@@ -243,7 +243,7 @@ func TestIsCSISnapshotReady(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		flag, err := isCSISnapshotReady(test.state)
+		flag, err := isSnapshotReady(test.state)
 
 		if flag != test.expectedResp {
 			t.Errorf("testdesc: %v \n expected result:%t \n actual result:%t", test.state, test.expectedResp, flag)

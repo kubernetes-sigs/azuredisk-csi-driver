@@ -30,6 +30,7 @@ import (
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -46,14 +47,15 @@ const (
 )
 
 type ReconcileReplica struct {
-	client                client.Client
-	azVolumeClient        azClientSet.Interface
-	kubeClient            kubeClientSet.Interface
-	namespace             string
-	controllerSharedState *SharedState
-	deletionMap           sync.Map
-	cleanUpMap            sync.Map
-	mutexLocks            sync.Map
+	client                     client.Client
+	azVolumeClient             azClientSet.Interface
+	kubeClient                 kubeClientSet.Interface
+	namespace                  string
+	controllerSharedState      *SharedState
+	deletionMap                sync.Map
+	cleanUpMap                 sync.Map
+	mutexLocks                 sync.Map
+	timeUntilGarbageCollection time.Duration
 }
 
 var _ reconcile.Reconciler = &ReconcileReplica{}
@@ -75,7 +77,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 			r.triggerGarbageCollection(azVolumeAttachment.Spec.UnderlyingVolume)
 		} else {
 			// If not, cancel scheduled garbage collection if there is one enqueued
-			r.cancelGarbageCollection(azVolumeAttachment.Spec.UnderlyingVolume)
+			r.removeGarbageCollection(azVolumeAttachment.Spec.UnderlyingVolume)
 
 			// If promotion event, create a replacement replica
 			if isAttached(azVolumeAttachment) && azVolumeAttachment.Status.Detail.Role != azVolumeAttachment.Spec.RequestedRole {
@@ -90,13 +92,13 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 			if azVolumeAttachment.Status.State == v1alpha1.DetachmentFailed {
 				if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, azVolumeAttachment, func(obj interface{}) error {
 					azVolumeAttachment := obj.(*v1alpha1.AzVolumeAttachment)
-					_, err = updateState(ctx, azVolumeAttachment, v1alpha1.ForceDetachPending, normalUpdate)
+					_, err = updateState(azVolumeAttachment, v1alpha1.ForceDetachPending, normalUpdate)
 					return err
-				}); err != nil {
+				}, consts.NormalUpdateMaxNetRetry); err != nil {
 					return reconcile.Result{Requeue: true}, err
 				}
 			}
-			if azVolumeAttachment.Annotations == nil || !metav1.HasAnnotation(azVolumeAttachment.ObjectMeta, azureutils.CleanUpAnnotation) {
+			if azVolumeAttachment.Annotations == nil || !metav1.HasAnnotation(azVolumeAttachment.ObjectMeta, consts.CleanUpAnnotation) {
 				go func() {
 					// wait for replica AzVolumeAttachment deletion
 					conditionFunc := func() (bool, error) {
@@ -131,25 +133,33 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 func (r *ReconcileReplica) triggerGarbageCollection(volumeName string) {
 	emptyCtx := context.TODO()
 	deletionCtx, cancelFunc := context.WithCancel(emptyCtx)
-	_, _ = r.cleanUpMap.LoadOrStore(volumeName, cancelFunc)
-	klog.Infof("garbage collection of AzVolumeAttachments for AzVolume (%s) scheduled in %s.", volumeName, DefaultTimeUntilDeletion.String())
+	if _, ok := r.cleanUpMap.LoadOrStore(volumeName, cancelFunc); ok {
+		klog.Infof("There already is a scheduled garbage collection for AzVolume (%s)")
+		cancelFunc()
+		return
+	}
+	klog.Infof("garbage collection of AzVolumeAttachments for AzVolume (%s) scheduled in %s.", volumeName, DefaultTimeUntilGarbageCollection.String())
 
 	go func(ctx context.Context) {
-		// Sleep
-		time.Sleep(DefaultTimeUntilDeletion)
 		select {
 		case <-ctx.Done():
 			klog.Infof("garbage collection for AzVolume (%s) cancelled", volumeName)
 			return
-		default:
+		case <-time.After(r.timeUntilGarbageCollection):
 			klog.Infof("Initiating garbage collection for AzVolume (%s)", volumeName)
+			v, _ := r.mutexLocks.LoadOrStore(volumeName, &sync.RWMutex{})
+			volumeLock := v.(*sync.RWMutex)
+			volumeLock.Lock()
 			_, _ = cleanUpAzVolumeAttachmentByVolume(ctx, r, volumeName, "replicaController", all, detachAndDeleteCRI)
+			volumeLock.Unlock()
 			r.mutexLocks.Delete(volumeName)
+			r.removeGarbageCollection(volumeName)
+			r.controllerSharedState.unmarkVolumeVisited(volumeName)
 		}
 	}(deletionCtx)
 }
 
-func (r *ReconcileReplica) cancelGarbageCollection(volumeName string) {
+func (r *ReconcileReplica) removeGarbageCollection(volumeName string) {
 	v, ok := r.cleanUpMap.LoadAndDelete(volumeName)
 	if ok {
 		cancelFunc := v.(context.CancelFunc)
@@ -192,7 +202,7 @@ func (r *ReconcileReplica) manageReplicas(ctx context.Context, volumeName string
 			// underlying volume does not exist, so volume attachment cannot be made
 			return nil
 		}
-		if err = r.createReplicas(ctx, min(defaultMaxReplicaUpdateCount, desiredReplicaCount-currentReplicaCount), azVolume.Name, azVolume.Status.Detail.ResponseObject.VolumeID); err != nil {
+		if err = r.createReplicas(ctx, min(defaultMaxReplicaUpdateCount, desiredReplicaCount-currentReplicaCount), azVolume.Name, azVolume.Status.Detail.ResponseObject.VolumeID, azVolume.Spec.Parameters); err != nil {
 			klog.Errorf("failed to create %d replicas for volume (%s): %v", desiredReplicaCount-currentReplicaCount, azVolume.Spec.UnderlyingVolume, err)
 			return err
 		}
@@ -245,7 +255,7 @@ func (r *ReconcileReplica) getNodesForReplica(ctx context.Context, volumeName st
 	return filtered, nil
 }
 
-func (r *ReconcileReplica) createReplicas(ctx context.Context, numReplica int, volumeName, volumeID string) error {
+func (r *ReconcileReplica) createReplicas(ctx context.Context, numReplica int, volumeName, volumeID string, volumeContext map[string]string) error {
 	// if volume is scheduled for clean up, skip replica creation
 	if _, cleanUpScheduled := r.cleanUpMap.Load(volumeName); cleanUpScheduled {
 		return nil
@@ -272,7 +282,7 @@ func (r *ReconcileReplica) createReplicas(ctx context.Context, numReplica int, v
 	}
 
 	for _, node := range nodes {
-		if err := createReplicaAzVolumeAttachment(ctx, r, volumeID, node); err != nil {
+		if err := createReplicaAzVolumeAttachment(ctx, r, volumeID, node, volumeContext); err != nil {
 			klog.Errorf("failed to create replica AzVolumeAttachment for volume %s: %v", volumeName, err)
 			return err
 		}
@@ -280,16 +290,18 @@ func (r *ReconcileReplica) createReplicas(ctx context.Context, numReplica int, v
 	return nil
 }
 
-func NewReplicaController(mgr manager.Manager, azVolumeClient azClientSet.Interface, kubeClient kubeClientSet.Interface, controllerSharedState *SharedState) (*ReconcileReplica, error) {
+func NewReplicaController(mgr manager.Manager, azVolumeClient azClientSet.Interface, kubeClient kubeClientSet.Interface, namespace string, controllerSharedState *SharedState) (*ReconcileReplica, error) {
 	logger := mgr.GetLogger().WithValues("controller", "replica")
 	reconciler := ReconcileReplica{
-		client:                mgr.GetClient(),
-		azVolumeClient:        azVolumeClient,
-		kubeClient:            kubeClient,
-		controllerSharedState: controllerSharedState,
-		deletionMap:           sync.Map{},
-		cleanUpMap:            sync.Map{},
-		mutexLocks:            sync.Map{},
+		client:                     mgr.GetClient(),
+		azVolumeClient:             azVolumeClient,
+		kubeClient:                 kubeClient,
+		namespace:                  namespace,
+		controllerSharedState:      controllerSharedState,
+		deletionMap:                sync.Map{},
+		cleanUpMap:                 sync.Map{},
+		mutexLocks:                 sync.Map{},
+		timeUntilGarbageCollection: DefaultTimeUntilGarbageCollection,
 	}
 	c, err := controller.New("replica-controller", mgr, controller.Options{
 		MaxConcurrentReconciles: 10,
@@ -313,13 +325,7 @@ func NewReplicaController(mgr manager.Manager, azVolumeClient azClientSet.Interf
 			return false
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			// enqueue AzVolumeAttachment promotion events
-			old, oldOk := e.ObjectOld.(*v1alpha1.AzVolumeAttachment)
-			new, newOk := e.ObjectNew.(*v1alpha1.AzVolumeAttachment)
-			if oldOk && newOk && old.Spec.RequestedRole != new.Spec.RequestedRole {
-				return true
-			}
-			return false
+			return true
 		},
 		GenericFunc: func(e event.GenericEvent) bool {
 			return false

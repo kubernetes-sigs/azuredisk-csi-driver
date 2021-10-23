@@ -11,7 +11,7 @@ DriverInfo:
         block: true
         fsGroup: true
         topology: true
-        controllerExpansion: false
-        nodeExpansion: false
+        controllerExpansion: true
+        nodeExpansion: true
         volumeLimits: true
         snapshotDataSource: true

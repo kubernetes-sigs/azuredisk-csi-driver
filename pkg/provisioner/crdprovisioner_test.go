@@ -34,6 +34,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
 	azurediskInformers "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 )
 
@@ -664,8 +665,8 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{
 						Name: azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
 						Labels: map[string]string{
-							azureutils.NodeNameLabel:   testNodeName,
-							azureutils.VolumeNameLabel: testDiskURI,
+							consts.NodeNameLabel:   testNodeName,
+							consts.VolumeNameLabel: testDiskURI,
 						},
 						Namespace: provisioner.namespace,
 					},
@@ -697,8 +698,8 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{
 						Name: azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
 						Labels: map[string]string{
-							azureutils.NodeNameLabel:   testNodeName,
-							azureutils.VolumeNameLabel: testDiskURI,
+							consts.NodeNameLabel:   testNodeName,
+							consts.VolumeNameLabel: testDiskURI,
 						},
 						Namespace: provisioner.namespace,
 					},
@@ -730,8 +731,8 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{
 						Name: azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
 						Labels: map[string]string{
-							azureutils.NodeNameLabel:   testNodeName,
-							azureutils.VolumeNameLabel: testDiskURI,
+							consts.NodeNameLabel:   testNodeName,
+							consts.VolumeNameLabel: testDiskURI,
 						},
 						Namespace: provisioner.namespace,
 					},
@@ -860,8 +861,8 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{
 						Name: azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
 						Labels: map[string]string{
-							azureutils.NodeNameLabel:   testNodeName,
-							azureutils.VolumeNameLabel: testDiskURI,
+							consts.NodeNameLabel:   testNodeName,
+							consts.VolumeNameLabel: testDiskURI,
 						},
 						Namespace: provisioner.namespace,
 					},
@@ -893,8 +894,8 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{
 						Name: azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
 						Labels: map[string]string{
-							azureutils.NodeNameLabel:   testNodeName,
-							azureutils.VolumeNameLabel: testDiskURI,
+							consts.NodeNameLabel:   testNodeName,
+							consts.VolumeNameLabel: testDiskURI,
 						},
 						Namespace: provisioner.namespace,
 					},

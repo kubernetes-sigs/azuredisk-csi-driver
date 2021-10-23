@@ -27,7 +27,7 @@ func TestNewSafeMounter(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Skipping test on Windows")
 	}
-	resp, err := NewSafeMounter()
+	resp, err := NewSafeMounter(true)
 	assert.NotNil(t, resp)
 	assert.Nil(t, err)
 }

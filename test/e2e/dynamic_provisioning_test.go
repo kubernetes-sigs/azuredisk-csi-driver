@@ -138,6 +138,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 				"diskIopsReadWrite": "2000",
 				"diskMbpsReadWrite": "320",
 				"logicalSectorSize": "512",
+				"zoned":             "true",
 			}
 		}
 		if !isUsingInTreeVolumePlugin && supportsZRS {

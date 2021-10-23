@@ -181,6 +181,8 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			if err != nil {
 				return nil, fmt.Errorf("create cloud with UserAgent(%s) failed with: (%s)", newUserAgent, err)
 			}
+		case consts.ZonedField:
+			// no op, only for backward compatibility with in-tree driver
 		default:
 			return nil, fmt.Errorf("invalid parameter %s in storage class", k)
 		}
@@ -207,7 +209,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	if diskName == "" {
 		diskName = name
 	}
-	diskName = azureutils.CreateValidDiskName(diskName)
+	diskName = azureutils.CreateValidDiskName(diskName, false)
 
 	if resourceGroup == "" {
 		resourceGroup = d.cloud.ResourceGroup
@@ -219,7 +221,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		return nil, err
 	}
 
-	if _, err = azureutils.NormalizeCachingMode(cachingMode); err != nil {
+	if _, err = azureutils.NormalizeCachingMode(cachingMode, maxShares); err != nil {
 		return nil, err
 	}
 
@@ -594,7 +596,7 @@ func (d *Driver) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest) (
 
 // listVolumesInCluster is a helper function for ListVolumes used for when there is an available kubeclient
 func (d *Driver) listVolumesInCluster(ctx context.Context, start, maxEntries int) (*csi.ListVolumesResponse, error) {
-	pvList, err := d.cloud.KubeClient.CoreV1().PersistentVolumes().List(context.TODO(), metav1.ListOptions{})
+	pvList, err := d.cloud.KubeClient.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "ListVolumes failed while fetching PersistentVolumes List with error: %v", err.Error())
 	}
@@ -836,7 +838,7 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 		return nil, status.Error(codes.InvalidArgument, "snapshot name must be provided")
 	}
 
-	snapshotName = azureutils.CreateValidDiskName(snapshotName)
+	snapshotName = azureutils.CreateValidDiskName(snapshotName, false)
 
 	var customTags string
 	// set incremental snapshot as true by default

@@ -239,9 +239,9 @@ func createAzVolumeAttachment(pvName, nodeName string, role v1alpha1.Role) v1alp
 			Name:      azureutils.GetAzVolumeAttachmentName(pvName, nodeName),
 			Namespace: testNamespace,
 			Labels: map[string]string{
-				azureutils.NodeNameLabel:   nodeName,
-				azureutils.VolumeNameLabel: strings.ToLower(pvName),
-				azureutils.RoleLabel:       string(role),
+				consts.NodeNameLabel:   nodeName,
+				consts.VolumeNameLabel: strings.ToLower(pvName),
+				consts.RoleLabel:       string(role),
 			},
 		},
 		Spec: v1alpha1.AzVolumeAttachmentSpec{
@@ -299,28 +299,20 @@ func initState(objs ...runtime.Object) (c *SharedState) {
 				}
 				namespacedClaimName := getQualifiedName(target.Namespace, volume.PersistentVolumeClaim.ClaimName)
 				claims = append(claims, namespacedClaimName)
-				v, ok := c.claimToPodsMap.Load(namespacedClaimName)
-				var pods []string
-				if !ok {
-					pods = []string{}
-				} else {
-					pods = v.([]string)
+				v, _ := c.claimToPodsMap.LoadOrStore(namespacedClaimName, newLockableEntry(set{}))
+
+				lockable := v.(lockableEntry)
+				lockable.lock.Lock()
+				pods := lockable.entry.(set)
+				if !pods.has(podKey) {
+					pods.add(podKey)
 				}
-				podExist := false
-				for _, pod := range pods {
-					if pod == podKey {
-						podExist = true
-						break
-					}
-				}
-				if !podExist {
-					pods = append(pods, podKey)
-				}
-				c.claimToPodsMap.Store(namespacedClaimName, pods)
+				// No need to restore the amended set to claimToPodsMap because set is a reference type
+				lockable.lock.Unlock()
 			}
 			c.podToClaimsMap.Store(podKey, claims)
 		case *v1.PersistentVolume:
-			diskName, _ := azureutils.GetDiskNameFromAzureManagedDiskURI(target.Spec.CSI.VolumeHandle)
+			diskName, _ := azureutils.GetDiskName(target.Spec.CSI.VolumeHandle)
 			azVolumeName := strings.ToLower(diskName)
 			claimName := getQualifiedName(target.Spec.ClaimRef.Namespace, target.Spec.ClaimRef.Name)
 			c.volumeToClaimMap.Store(azVolumeName, claimName)

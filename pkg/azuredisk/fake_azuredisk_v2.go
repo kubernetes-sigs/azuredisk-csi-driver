@@ -21,6 +21,7 @@ package azuredisk
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
@@ -60,12 +61,14 @@ func newFakeDriverV2(t *testing.T) (*fakeDriverV2, error) {
 	driver.Version = fakeDriverVersion
 	driver.NodeID = fakeNodeID
 	driver.CSIDriver = *csicommon.NewFakeCSIDriver()
+	driver.ready = make(chan struct{})
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.objectNamespace = fakeObjNamespace
 
 	driver.VolumeAttachLimit = -1
 	driver.ioHandler = azureutils.NewFakeIOHandler()
 	driver.hostUtil = azureutils.NewFakeHostUtil()
+	driver.useCSIProxyGAInterface = true
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -94,6 +97,8 @@ func newFakeDriverV2(t *testing.T) (*fakeDriverV2, error) {
 	driver.deviceHelper = mockoptimization.NewMockInterface(ctrl)
 
 	driver.deviceHelper = mockoptimization.NewMockInterface(ctrl)
+
+	driver.deviceChecker = deviceChecker{lock: sync.RWMutex{}, entry: nil}
 
 	driver.AddControllerServiceCapabilities(
 		[]csi.ControllerServiceCapability_RPC_Type{

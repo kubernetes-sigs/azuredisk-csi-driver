@@ -30,6 +30,7 @@ import (
 	fakev1 "k8s.io/client-go/kubernetes/fake"
 	diskv1alpha1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	diskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller/mockclient"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller/mockvolumeprovisioner"
@@ -83,7 +84,7 @@ func mockClientsAndVolumeProvisioner(controller *ReconcileAzVolume) {
 			volumeID string,
 			capacityRange *diskv1alpha1.CapacityRange,
 			secrets map[string]string) (*diskv1alpha1.AzVolumeStatusParams, error) {
-			volumeName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(volumeID)
+			volumeName, err := azureutils.GetDiskName(volumeID)
 			if err != nil {
 				return nil, err
 			}
@@ -184,9 +185,9 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 				azVolume := testAzVolume0.DeepCopy()
 
 				azVolume.Annotations = map[string]string{
-					azureutils.VolumeDeleteRequestAnnotation: "cloud-delete-volume",
+					consts.VolumeDeleteRequestAnnotation: "cloud-delete-volume",
 				}
-				azVolume.Finalizers = []string{azureutils.AzVolumeFinalizer}
+				azVolume.Finalizers = []string{consts.AzVolumeFinalizer}
 				azVolume.Status.Detail = &diskv1alpha1.AzVolumeStatusDetail{
 					ResponseObject: &diskv1alpha1.AzVolumeStatusParams{
 						VolumeID:      testManagedDiskURI0,
@@ -259,9 +260,9 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 				azVolume := testAzVolume0.DeepCopy()
 
 				azVolume.Annotations = map[string]string{
-					azureutils.VolumeDeleteRequestAnnotation: "cloud-delete-volume",
+					consts.VolumeDeleteRequestAnnotation: "cloud-delete-volume",
 				}
-				azVolume.Finalizers = []string{azureutils.AzVolumeFinalizer}
+				azVolume.Finalizers = []string{consts.AzVolumeFinalizer}
 				azVolume.Status.Detail = &diskv1alpha1.AzVolumeStatusDetail{
 					ResponseObject: &diskv1alpha1.AzVolumeStatusParams{
 						VolumeID:      testManagedDiskURI0,
@@ -329,6 +330,8 @@ func TestAzVolumeControllerRecover(t *testing.T) {
 					&testPersistentVolume0,
 					&testPersistentVolume1)
 
+				mockClientsAndVolumeProvisioner(controller)
+
 				return controller
 			},
 			verifyFunc: func(t *testing.T, controller *ReconcileAzVolume, err error) {
@@ -336,6 +339,39 @@ func TestAzVolumeControllerRecover(t *testing.T) {
 				azVolumes, err := controller.azVolumeClient.DiskV1alpha1().AzVolumes(testNamespace).List(context.TODO(), metav1.ListOptions{})
 				require.NoError(t, err)
 				require.Len(t, azVolumes.Items, 2)
+			},
+		},
+		{
+			description: "[Success] Should update AzVolume CRIs to right state",
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAzVolume {
+				newAzVolume0 := testAzVolume0.DeepCopy()
+				newAzVolume0.Status.State = diskv1alpha1.VolumeCreating
+
+				newAzVolume1 := testAzVolume1.DeepCopy()
+				newAzVolume1.Status.State = diskv1alpha1.VolumeDeleting
+
+				controller := NewTestAzVolumeController(
+					mockCtl,
+					testNamespace,
+					newAzVolume0,
+					newAzVolume1)
+
+				mockClientsAndVolumeProvisioner(controller)
+
+				return controller
+			},
+			verifyFunc: func(t *testing.T, controller *ReconcileAzVolume, err error) {
+				require.NoError(t, err)
+
+				azVolume, localErr := controller.azVolumeClient.DiskV1alpha1().AzVolumes(testNamespace).Get(context.TODO(), testPersistentVolume0Name, metav1.GetOptions{})
+				require.NoError(t, localErr)
+				require.Equal(t, azVolume.Status.State, diskv1alpha1.VolumeOperationPending)
+				require.Contains(t, azVolume.ObjectMeta.Annotations, consts.RecoverAnnotation)
+
+				azVolume, localErr = controller.azVolumeClient.DiskV1alpha1().AzVolumes(testNamespace).Get(context.TODO(), testPersistentVolume1Name, metav1.GetOptions{})
+				require.NoError(t, localErr)
+				require.Equal(t, azVolume.Status.State, diskv1alpha1.VolumeCreated)
+				require.Contains(t, azVolume.ObjectMeta.Annotations, consts.RecoverAnnotation)
 			},
 		},
 	}

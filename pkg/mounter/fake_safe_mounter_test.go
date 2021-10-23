@@ -53,6 +53,9 @@ func TestMain(m *testing.M) {
 }
 
 func TestMount(t *testing.T) {
+	if IsFakeUsingCSIProxy() {
+		t.Skip("Skipping test because CSI Proxy is used.")
+	}
 	tests := []struct {
 		desc        string
 		source      string
@@ -91,6 +94,9 @@ func TestMount(t *testing.T) {
 }
 
 func TestMountSensitive(t *testing.T) {
+	if IsFakeUsingCSIProxy() {
+		t.Skip("Skipping test because CSI Proxy is used.")
+	}
 	tests := []struct {
 		desc        string
 		source      string
@@ -129,6 +135,9 @@ func TestMountSensitive(t *testing.T) {
 }
 
 func TestIsLikelyNotMountPoint(t *testing.T) {
+	if IsFakeUsingCSIProxy() {
+		t.Skip("Skipping test because CSI Proxy is used.")
+	}
 	tests := []struct {
 		desc        string
 		file        string

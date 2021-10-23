@@ -5,16 +5,13 @@ on:
 
 jobs:
   build:
-    strategy:
-      matrix:
-        go-versions: [1.16.x]
-        platform: [windows-latest]
-    runs-on: ${{ matrix.platform }}
+    runs-on: windows-latest
     steps:
-      - name: Install Go
-        uses: actions/setup-go@v1
+      - name: Set up Go 1.x
+        uses: actions/setup-go@v2
         with:
-          go-version: ${{ matrix.go-version }}
+          go-version: ^1.16
+        id: go
       - name: Checkout code
         uses: actions/checkout@v2
       - name: Build Test
@@ -22,4 +19,13 @@ jobs:
           make azuredisk-windows
       - name: Run Windows Unit Tests
         run: |
+          # start the CSI Proxy before running tests on windows
+          Start-Job -Name CSIProxy -ScriptBlock {
+            Invoke-WebRequest https://acs-mirror.azureedge.net/csi-proxy/v1.0.0/binaries/csi-proxy-v1.0.0.tar.gz -OutFile csi-proxy.tar.gz;
+            tar -xvf csi-proxy.tar.gz
+            .\bin\csi-proxy.exe --kubelet-path $pwd
+          };
+          Start-Sleep -Seconds 30;
+          Write-Output "getting named pipes"
+          [System.IO.Directory]::GetFiles("\\.\\pipe\\")
           go test -v -race ./pkg/...

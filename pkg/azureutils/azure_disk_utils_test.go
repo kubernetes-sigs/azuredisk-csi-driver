@@ -400,7 +400,7 @@ func TestGetDiskName(t *testing.T) {
 	for _, test := range tests {
 		result1, result2 := GetDiskName(test.options)
 		if !reflect.DeepEqual(result1, test.expected1) || !reflect.DeepEqual(result2, test.expected2) {
-			t.Errorf("input: %q, getDiskName result1: %q, expected1: %q, result2: %q, expected2: %q", test.options, result1, test.expected1,
+			t.Errorf("input: %q, GetDiskName result1: %q, expected1: %q, result2: %q, expected2: %q", test.options, result1, test.expected1,
 				result2, test.expected2)
 		}
 	}
@@ -437,13 +437,13 @@ func TestGetResourceGroupFromURI(t *testing.T) {
 
 	for _, test := range tests {
 		result, err := GetResourceGroupFromURI(test.diskURL)
-		assert.Equal(t, result, test.expectedResult, "Expect result not equal with getResourceGroupFromURI(%s) return: %q, expected: %q",
+		assert.Equal(t, result, test.expectedResult, "Expect result not equal with GetResourceGroupFromURI(%s) return: %q, expected: %q",
 			test.diskURL, result, test.expectedResult)
 
 		if test.expectError {
-			assert.NotNil(t, err, "Expect error during getResourceGroupFromURI(%s)", test.diskURL)
+			assert.NotNil(t, err, "Expect error during GetResourceGroupFromURI(%s)", test.diskURL)
 		} else {
-			assert.Nil(t, err, "Expect error is nil during getResourceGroupFromURI(%s)", test.diskURL)
+			assert.Nil(t, err, "Expect error is nil during GetResourceGroupFromURI(%s)", test.diskURL)
 		}
 	}
 }
@@ -497,133 +497,7 @@ func TestGetSourceVolumeID(t *testing.T) {
 	}
 }
 
-func TestGetValidCreationData(t *testing.T) {
-	sourceResourceSnapshotID := "/subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/snapshots/xxx"
-	sourceResourceVolumeID := "/subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/disks/xxx"
-
-	tests := []struct {
-		subscriptionID   string
-		resourceGroup    string
-		sourceResourceID string
-		sourceType       string
-		expected1        compute.CreationData
-		expected2        error
-	}{
-		{
-			subscriptionID:   "",
-			resourceGroup:    "",
-			sourceResourceID: "",
-			sourceType:       "",
-			expected1: compute.CreationData{
-				CreateOption: compute.Empty,
-			},
-			expected2: nil,
-		},
-		{
-			subscriptionID:   "",
-			resourceGroup:    "",
-			sourceResourceID: "/subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/snapshots/xxx",
-			sourceType:       consts.SourceSnapshot,
-			expected1: compute.CreationData{
-				CreateOption:     compute.Copy,
-				SourceResourceID: &sourceResourceSnapshotID,
-			},
-			expected2: nil,
-		},
-		{
-			subscriptionID:   "xxx",
-			resourceGroup:    "xxx",
-			sourceResourceID: "xxx",
-			sourceType:       consts.SourceSnapshot,
-			expected1: compute.CreationData{
-				CreateOption:     compute.Copy,
-				SourceResourceID: &sourceResourceSnapshotID,
-			},
-			expected2: nil,
-		},
-		{
-			subscriptionID:   "",
-			resourceGroup:    "",
-			sourceResourceID: "/subscriptions/23/providers/Microsoft.Compute/disks/name",
-			sourceType:       consts.SourceSnapshot,
-			expected1:        compute.CreationData{},
-			expected2:        fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", "/subscriptions//resourceGroups//providers/Microsoft.Compute/snapshots//subscriptions/23/providers/Microsoft.Compute/disks/name", consts.DiskSnapshotPathRE),
-		},
-		{
-			subscriptionID:   "",
-			resourceGroup:    "",
-			sourceResourceID: "http://test.com/vhds/name",
-			sourceType:       consts.SourceSnapshot,
-			expected1:        compute.CreationData{},
-			expected2:        fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", "/subscriptions//resourceGroups//providers/Microsoft.Compute/snapshots/http://test.com/vhds/name", consts.DiskSnapshotPathRE),
-		},
-		{
-			subscriptionID:   "",
-			resourceGroup:    "",
-			sourceResourceID: "/subscriptions/xxx/snapshots/xxx",
-			sourceType:       consts.SourceSnapshot,
-			expected1:        compute.CreationData{},
-			expected2:        fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", "/subscriptions//resourceGroups//providers/Microsoft.Compute/snapshots//subscriptions/xxx/snapshots/xxx", consts.DiskSnapshotPathRE),
-		},
-		{
-			subscriptionID:   "",
-			resourceGroup:    "",
-			sourceResourceID: "/subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/snapshots/xxx/snapshots/xxx/snapshots/xxx",
-			sourceType:       consts.SourceSnapshot,
-			expected1:        compute.CreationData{},
-			expected2:        fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", "/subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/snapshots/xxx/snapshots/xxx/snapshots/xxx", consts.DiskSnapshotPathRE),
-		},
-		{
-			subscriptionID:   "",
-			resourceGroup:    "",
-			sourceResourceID: "xxx",
-			sourceType:       "",
-			expected1: compute.CreationData{
-				CreateOption: compute.Empty,
-			},
-			expected2: nil,
-		},
-		{
-			subscriptionID:   "",
-			resourceGroup:    "",
-			sourceResourceID: "/subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/disks/xxx",
-			sourceType:       consts.SourceVolume,
-			expected1: compute.CreationData{
-				CreateOption:     compute.Copy,
-				SourceResourceID: &sourceResourceVolumeID,
-			},
-			expected2: nil,
-		},
-		{
-			subscriptionID:   "xxx",
-			resourceGroup:    "xxx",
-			sourceResourceID: "xxx",
-			sourceType:       consts.SourceVolume,
-			expected1: compute.CreationData{
-				CreateOption:     compute.Copy,
-				SourceResourceID: &sourceResourceVolumeID,
-			},
-			expected2: nil,
-		},
-		{
-			subscriptionID:   "",
-			resourceGroup:    "",
-			sourceResourceID: "/subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/snapshots/xxx",
-			sourceType:       consts.SourceVolume,
-			expected1:        compute.CreationData{},
-			expected2:        fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", "/subscriptions//resourceGroups//providers/Microsoft.Compute/disks//subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/snapshots/xxx", consts.ManagedDiskPathRE),
-		},
-	}
-
-	for _, test := range tests {
-		result, err := GetValidCreationData(test.subscriptionID, test.resourceGroup, test.sourceResourceID, test.sourceType)
-		if !reflect.DeepEqual(result, test.expected1) || !reflect.DeepEqual(err, test.expected2) {
-			t.Errorf("input sourceResourceID: %v, sourceType: %v, getValidCreationData result: %v, expected1 : %v, err: %v, expected2: %v", test.sourceResourceID, test.sourceType, result, test.expected1, err, test.expected2)
-		}
-	}
-}
-
-func TestGetValidDiskName(t *testing.T) {
+func TestCreateValidDiskName(t *testing.T) {
 	tests := []struct {
 		volumeName string
 		expected   string
@@ -655,7 +529,7 @@ func TestGetValidDiskName(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		result := CreateValidDiskName(test.volumeName)
+		result := CreateValidDiskName(test.volumeName, false)
 		if !reflect.DeepEqual(result, test.expected) {
 			t.Errorf("input: %q, getValidFileShareName result: %q, expected: %q", test.volumeName, result, test.expected)
 		}
@@ -796,35 +670,51 @@ func TestIsValidDiskURI(t *testing.T) {
 		}
 	}
 }
+
 func TestNormalizeCachingMode(t *testing.T) {
 	tests := []struct {
-		desc          string
-		req           v1.AzureDataDiskCachingMode
-		expectedErr   error
-		expectedValue v1.AzureDataDiskCachingMode
+		desc                        string
+		req                         v1.AzureDataDiskCachingMode
+		expectedErr                 error
+		expectedValue               v1.AzureDataDiskCachingMode
+		expectedValueForSharedDisks v1.AzureDataDiskCachingMode
 	}{
 		{
-			desc:          "CachingMode not exist",
-			req:           "",
-			expectedErr:   nil,
-			expectedValue: v1.AzureDataDiskCachingReadOnly,
+			desc:                        "CachingMode not exist",
+			req:                         "",
+			expectedErr:                 nil,
+			expectedValue:               v1.AzureDataDiskCachingReadOnly,
+			expectedValueForSharedDisks: v1.AzureDataDiskCachingNone,
 		},
 		{
-			desc:          "Not supported CachingMode",
-			req:           "WriteOnly",
-			expectedErr:   fmt.Errorf("azureDisk - WriteOnly is not supported cachingmode. Supported values are [None ReadOnly ReadWrite]"),
-			expectedValue: "",
+			desc:                        "Not supported CachingMode",
+			req:                         "WriteOnly",
+			expectedErr:                 fmt.Errorf("azureDisk - WriteOnly is not supported cachingmode. Supported values are [None ReadOnly ReadWrite]"),
+			expectedValue:               "",
+			expectedValueForSharedDisks: "",
 		},
 		{
-			desc:          "Valid CachingMode",
-			req:           "ReadOnly",
-			expectedErr:   nil,
-			expectedValue: "ReadOnly",
+			desc:                        "Valid CachingMode - ReadOnly",
+			req:                         v1.AzureDataDiskCachingReadOnly,
+			expectedErr:                 nil,
+			expectedValue:               v1.AzureDataDiskCachingReadOnly,
+			expectedValueForSharedDisks: v1.AzureDataDiskCachingReadOnly,
+		},
+		{
+			desc:                        "Valid CachingMode - None",
+			req:                         v1.AzureDataDiskCachingNone,
+			expectedErr:                 nil,
+			expectedValue:               v1.AzureDataDiskCachingNone,
+			expectedValueForSharedDisks: v1.AzureDataDiskCachingNone,
 		},
 	}
 	for _, test := range tests {
-		value, err := NormalizeCachingMode(test.req)
+		value, err := NormalizeCachingMode(test.req, 1)
 		assert.Equal(t, value, test.expectedValue)
+		assert.Equal(t, err, test.expectedErr, fmt.Sprintf("error msg: %v", err))
+
+		value, err = NormalizeCachingMode(test.req, 2)
+		assert.Equal(t, value, test.expectedValueForSharedDisks)
 		assert.Equal(t, err, test.expectedErr, fmt.Sprintf("error msg: %v", err))
 	}
 }
@@ -875,6 +765,7 @@ func TestNormalizeNetworkAccessPolicy(t *testing.T) {
 }
 
 func TestNormalizeStorageAccountType(t *testing.T) {
+	var azurePublicCloud = "AZUREPUBLICCLOUD"
 	tests := []struct {
 		cloud                  string
 		storageAccountType     string

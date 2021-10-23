@@ -52,6 +52,7 @@ import (
 	imageutils "k8s.io/kubernetes/test/utils/image"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	v1alpha1ClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1alpha1"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 )
@@ -1213,8 +1214,8 @@ func (t *TestAzVolumeAttachment) WaitForFinalizer(timeout time.Duration) error {
 			return false, nil
 		}
 		for _, finalizer := range att.ObjectMeta.Finalizers {
-			if finalizer == azureutils.AzVolumeAttachmentFinalizer {
-				klog.Infof("finalizer (%s) found on AzVolumeAttachment object (%s)", azureutils.AzVolumeAttachmentFinalizer, att.Name)
+			if finalizer == consts.AzVolumeAttachmentFinalizer {
+				klog.Infof("finalizer (%s) found on AzVolumeAttachment object (%s)", consts.AzVolumeAttachmentFinalizer, att.Name)
 				return true, nil
 			}
 		}
@@ -1234,10 +1235,10 @@ func (t *TestAzVolumeAttachment) WaitForLabels(timeout time.Duration) error {
 		if att.Labels == nil {
 			return false, nil
 		}
-		if _, ok := att.Labels[azureutils.NodeNameLabel]; !ok {
+		if _, ok := att.Labels[consts.NodeNameLabel]; !ok {
 			return false, nil
 		}
-		if _, ok := att.Labels[azureutils.VolumeNameLabel]; !ok {
+		if _, ok := att.Labels[consts.VolumeNameLabel]; !ok {
 			return false, nil
 		}
 		return true, nil
@@ -1357,8 +1358,8 @@ func (t *TestAzVolume) WaitForFinalizer(timeout time.Duration) error {
 			return false, nil
 		}
 		for _, finalizer := range azVolume.ObjectMeta.Finalizers {
-			if finalizer == azureutils.AzVolumeFinalizer {
-				klog.Infof("finalizer (%s) found on AzVolume object (%s)", azureutils.AzVolumeFinalizer, azVolume.Name)
+			if finalizer == consts.AzVolumeFinalizer {
+				klog.Infof("finalizer (%s) found on AzVolume object (%s)", consts.AzVolumeFinalizer, azVolume.Name)
 				return true, nil
 			}
 		}
