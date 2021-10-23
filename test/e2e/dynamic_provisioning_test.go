@@ -908,6 +908,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	ginkgo.It("Should test pod failover with cordoning a node using ZRS", func() {
 		skipIfUsingInTreeVolumePlugin()
 		skipIfNotZRSSupported()
+		skipIfTestingInWindowsCluster()
 
 		volume := testsuites.VolumeDetails{
 			ClaimSize: "10Gi",
