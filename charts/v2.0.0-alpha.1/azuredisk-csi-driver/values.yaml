@@ -96,6 +96,7 @@ schedulerExtender:
 
 snapshot:
   enabled: false
+  createCRDs: true
   name: csi-snapshot-controller
   apiVersion: beta # available values: beta, ga
   image:
@@ -164,6 +165,19 @@ windows:
                 - virtual-kubelet
 
 cloud: AzurePublicCloud
+
+storageClasses:
+  create: true
+  enableZRS: false
+  enableUltraSSD: false
+  storageClassNames:
+    standardLRS: "azuredisk-standard-hdd-lrs"
+    standardSSDLRS: "azuredisk-standard-ssd-lrs"
+    standardSSDZRS: "azuredisk-standard-ssd-zrs"
+    premiumLRS: "azuredisk-premium-ssd-lrs"
+    premiumZRS: "azuredisk-premium-ssd-zrs"
+    ultraSSDLRS: "azuredisk-ultra-ssd-lrs"
+
 
 ## Reference to one or more secrets to be used when pulling images
 ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
