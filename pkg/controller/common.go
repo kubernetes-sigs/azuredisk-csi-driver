@@ -167,6 +167,10 @@ func (s set) has(entry interface{}) bool {
 	return ok
 }
 
+func (s set) remove(entry interface{}) {
+	delete(s, entry)
+}
+
 type lockableEntry struct {
 	lock  *sync.RWMutex
 	entry interface{}
@@ -322,6 +326,25 @@ func getRankedNodesForReplicaAttachments(ctx context.Context, azr azReconciler, 
 			}
 		}
 	}
+
+	// remove the primary node from the nodeScores map as it can get added if all the volume attachments aren't promoted at the same time
+	delete(nodeScores, primaryNode)
+
+	// Remove the primary node from the node list as it can get added if all the volume attachments aren't promoted at the same time
+	if len(nodes) > 0 {
+		indexToRemove := -1
+		for i, node := range nodes {
+			if node == primaryNode {
+				indexToRemove = i
+				break
+			}
+		}
+		if indexToRemove != -1 {
+			nodes[indexToRemove] = nodes[len(nodes)-1]
+			nodes = nodes[:len(nodes)-1]
+		}
+	}
+
 	// sorting nodes array per their score in nodeScore array
 	sort.Slice(nodes[:], func(i, j int) bool {
 		return nodeScores[nodes[i]] > nodeScores[nodes[j]]
@@ -341,11 +364,7 @@ func getRankedNodesForReplicaAttachments(ctx context.Context, azr azReconciler, 
 func (c *SharedState) addPod(pod *v1.Pod, updateOption updateWithLock) {
 
 	podKey := getQualifiedName(pod.Namespace, pod.Name)
-	v, ok := c.podLocks.LoadOrStore(podKey, &sync.Mutex{})
-	// if pod entry already exists, do not add to map
-	if ok {
-		return
-	}
+	v, _ := c.podLocks.LoadOrStore(podKey, &sync.Mutex{})
 
 	klog.V(5).Infof("Adding pod %s to shared map with keyName %s.", pod.Name, podKey)
 	podLock := v.(*sync.Mutex)
@@ -354,7 +373,15 @@ func (c *SharedState) addPod(pod *v1.Pod, updateOption updateWithLock) {
 		defer podLock.Unlock()
 	}
 	klog.V(5).Infof("Pod spec of pod %s is: %v. With volumes: %v", pod.Name, pod.Spec, pod.Spec.Volumes)
-	claims := []string{}
+
+	// If the claims already exist for the podKey, add them to a set
+	value, _ := c.podToClaimsMap.LoadOrStore(podKey, []string{})
+	claims := value.([]string)
+	claimSet := set{}
+	for _, claim := range claims {
+		claimSet.add(claim)
+	}
+
 	for _, volume := range pod.Spec.Volumes {
 		if volume.PersistentVolumeClaim == nil {
 			klog.V(5).Infof("Pod %s: Skipping Volume %s. No persistent volume exists.", pod.Name, volume)
@@ -366,7 +393,7 @@ func (c *SharedState) addPod(pod *v1.Pod, updateOption updateWithLock) {
 			continue
 		}
 		klog.V(5).Infof("Pod %s. Volume %v is csi.", pod.Name, volume)
-		claims = append(claims, namespacedClaimName)
+		claimSet.add(namespacedClaimName)
 		v, _ := c.claimToPodsMap.LoadOrStore(namespacedClaimName, newLockableEntry(set{}))
 
 		lockable := v.(lockableEntry)
@@ -382,20 +409,57 @@ func (c *SharedState) addPod(pod *v1.Pod, updateOption updateWithLock) {
 		c.claimToPodsMap.Store(namespacedClaimName, lockable)
 	}
 	klog.V(5).Infof("Storing pod %s and claim %s to podToClaimsMap map.", pod.Name, claims)
-	c.podToClaimsMap.Store(podKey, claims)
+
+	allClaims := []string{}
+	for key := range claimSet {
+		allClaims = append(allClaims, key.(string))
+	}
+	c.podToClaimsMap.Store(podKey, allClaims)
 }
 
 func (c *SharedState) deletePod(podKey string) {
-	value, exists := c.podToClaimsMap.LoadAndDelete(podKey)
+	value, exists := c.podLocks.LoadAndDelete(podKey)
+	if !exists {
+		return
+	}
+	podLock := value.(*sync.Mutex)
+	podLock.Lock()
+	defer podLock.Unlock()
+
+	value, exists = c.podToClaimsMap.LoadAndDelete(podKey)
 	if !exists {
 		return
 	}
 	claims := value.([]string)
 
 	for _, claim := range claims {
-		c.claimToPodsMap.Delete(claim)
+		value, ok := c.claimToPodsMap.Load(claim)
+		if !ok {
+			klog.Errorf("No pods found for PVC (%s)", claim)
+		}
+
+		// Scope the duration that we hold the lockable lock using a function.
+		func() {
+			lockable, ok := value.(lockableEntry)
+			if !ok {
+				klog.Errorf("claimToPodsMap should hold lockable entry")
+				return
+			}
+
+			lockable.lock.Lock()
+			defer lockable.lock.Unlock()
+
+			podSet, ok := lockable.entry.(set)
+			if !ok {
+				klog.Errorf("claimToPodsMap entry should hold a set")
+			}
+
+			podSet.remove(podKey)
+			if len(podSet) == 0 {
+				c.claimToPodsMap.Delete(claim)
+			}
+		}()
 	}
-	c.podLocks.Delete(podKey)
 }
 
 func (c *SharedState) addVolumeAndClaim(azVolumeName, pvClaimName string) {
