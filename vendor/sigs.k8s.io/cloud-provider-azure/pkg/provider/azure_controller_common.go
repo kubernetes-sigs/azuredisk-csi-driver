@@ -284,12 +284,24 @@ func (c *controllerCommon) attachDiskBatchToNode(ctx context.Context, nodeName t
 	}
 
 	go func() {
+		// The context, ctx, passed to attachDiskBatchToNode is owned by batch.Processor which will
+		// cancel it when we return. Since we're asynchronously waiting for the attach disk result,
+		// we must create an independent context passed to WaitForUpdateResult with the deadline
+		// provided in ctx. This avoid an ealier return due to ctx being canceled while still
+		// respecting the deadline for the overall attach operation.
+		resultCtx := context.Background()
+		if deadline, ok := ctx.Deadline(); ok {
+			var cancel func()
+			resultCtx, cancel = context.WithDeadline(resultCtx, deadline)
+			defer cancel()
+		}
+
 		resourceGroup, err := c.cloud.GetNodeResourceGroup(string(nodeName))
 		if err != nil {
 			resourceGroup = "unknown"
 		}
 
-		err = vmset.WaitForUpdateResult(ctx, future, resourceGroup, "attach_disk")
+		err = vmset.WaitForUpdateResult(resultCtx, future, resourceGroup, "attach_disk")
 		if err == nil {
 			klog.V(2).Infof("azuredisk - successfully attached disks to node %q: %s", nodeName, diskMap)
 		}
