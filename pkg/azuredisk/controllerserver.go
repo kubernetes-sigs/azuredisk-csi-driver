@@ -174,9 +174,24 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			}
 		case consts.UserAgentField:
 			newUserAgent := v
-			localCloud, err = azureutils.GetCloudProvider(d.kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, newUserAgent)
+			if newUserAgent != d.cloud.UserAgent {
+				localCloud, err = azureutils.GetCloudProvider(d.kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, newUserAgent, d.cloud)
+				if err != nil {
+					return nil, fmt.Errorf("create cloud with UserAgent(%s) failed with: %s", newUserAgent, err)
+				}
+			}
+		case consts.DiskAttachQPS:
+			f, err := strconv.ParseFloat(v, 32)
 			if err != nil {
-				return nil, fmt.Errorf("create cloud with UserAgent(%s) failed with: (%s)", newUserAgent, err)
+				return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("parse float value %s failed with error: %v", v, err))
+			}
+			if d.cloud.AttachDetachDiskRateLimit.CloudProviderRateLimitQPSWrite != float32(f) {
+				d.cloud.AttachDetachDiskRateLimit.CloudProviderRateLimitQPSWrite = float32(f)
+				localCloud, err = azureutils.GetCloudProvider(d.kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, d.cloud.UserAgent, d.cloud)
+				if err != nil {
+					return nil, fmt.Errorf("create cloud failed with: %s", err)
+				}
+				d.cloud = localCloud
 			}
 		case consts.ZonedField:
 			// no op, only for backward compatibility with in-tree driver
@@ -857,10 +872,9 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 			resourceGroup = v
 		case consts.UserAgentField:
 			newUserAgent := v
-			localCloud, err = azureutils.GetCloudProvider(d.kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, newUserAgent)
+			localCloud, err = azureutils.GetCloudProvider(d.kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, newUserAgent, d.cloud)
 			if err != nil {
-				return nil, fmt.Errorf("create cloud with UserAgent(%s) failed with: (%s)", newUserAgent, err)
-
+				return nil, fmt.Errorf("create cloud with UserAgent(%s) failed with: %s", newUserAgent, err)
 			}
 		default:
 			return nil, fmt.Errorf("AzureDisk - invalid option %s in VolumeSnapshotClass", k)

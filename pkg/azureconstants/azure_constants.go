@@ -74,6 +74,7 @@ const (
 	WellKnownTopologyKey          = "topology.kubernetes.io/zone"
 	WriteAcceleratorEnabled       = "writeacceleratorenabled"
 	ZonedField                    = "zoned"
+	DiskAttachQPS                 = "diskattachqps"
 )
 
 var (

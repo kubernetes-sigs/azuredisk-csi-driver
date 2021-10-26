@@ -112,7 +112,7 @@ func GetCachingMode(attributes map[string]string) (compute.CachingTypes, error) 
 }
 
 // GetCloudProvider get Azure Cloud Provider
-func GetCloudProvider(kubeconfig, secretName, secretNamespace, userAgent string) (*azure.Cloud, error) {
+func GetCloudProvider(kubeconfig, secretName, secretNamespace, userAgent string, cloud *azure.Cloud) (*azure.Cloud, error) {
 	az := &azure.Cloud{
 		InitSecretConfig: azure.InitSecretConfig{
 			SecretName:      secretName,
@@ -182,6 +182,9 @@ func GetCloudProvider(kubeconfig, secretName, secretNamespace, userAgent string)
 			CloudProviderRateLimit: false,
 		}
 		config.UserAgent = userAgent
+		if cloud != nil {
+			config.AttachDetachDiskRateLimit = cloud.AttachDetachDiskRateLimit
+		}
 		if err = az.InitializeCloudFromConfig(config, fromSecret, false); err != nil {
 			klog.Warningf("InitializeCloudFromConfig failed with error: %v", err)
 		}

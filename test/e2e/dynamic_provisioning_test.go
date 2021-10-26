@@ -176,6 +176,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			"skuName":             "Standard_LRS",
 			"networkAccessPolicy": "DenyAll",
 			"userAgent":           "azuredisk-e2e-test",
+			"diskAttachQPS":       "0.01",
 		}
 		test := testsuites.DynamicallyProvisionedVolumeSubpathTester{
 			CSIDriver:              testDriver,
@@ -213,6 +214,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 				// enableBursting can only be applied to Premium disk, disk size > 512GB, Ultra & shared disk is not supported.
 				"enableBursting": "true",
 				"userAgent":      "azuredisk-e2e-test",
+				"diskAttachQPS":  "10.2",
 			},
 		}
 		test.Run(cs, ns)
