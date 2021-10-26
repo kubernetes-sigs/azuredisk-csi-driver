@@ -139,7 +139,7 @@ func createTestNamespace(ctx context.Context, clientset *kubernetes.Clientset) e
 		return err
 	}
 
-	if err := wait.PollImmediate(5*time.Second, 2*time.Minute, func() (bool, error) {
+	if err := wait.PollImmediate(1*time.Second, 2*time.Minute, func() (bool, error) {
 		var err error
 		namespace, err = clientset.CoreV1().Namespaces().Get(ctx, podFailoverNamespace, metav1.GetOptions{})
 		if err != nil {
@@ -283,30 +283,43 @@ func createDeployment(ctx context.Context, clientset *kubernetes.Clientset, pvcL
 		deployment.Spec.Template.Spec.SchedulerName = scheduleExtenderName
 	}
 
+	klog.Infof("Creating deployment %s.", deploymentName)
 	deploymentCreated, err := clientset.AppsV1().Deployments(podFailoverNamespace).Create(context.TODO(), deployment, metav1.CreateOptions{})
 	if err != nil {
 		return nil, err
 	}
-	err = waitForDeploymentToComplete(ctx, podFailoverNamespace, clientset, deploymentCreated)
+	deploymentCreated, err = waitForDeploymentToComplete(ctx, podFailoverNamespace, clientset, deploymentCreated)
+	if err != nil {
+		return nil, err
+	}
 
-	return deploymentCreated, err
+	newPodList, err := getPodsForDeployment(clientset, deploymentCreated)
+	if err != nil {
+		klog.Warningf("Error occurred while getting pods for the deployment %s: %v", deploymentName, err)
+	} else {
+		for _, newPod := range newPodList.Items {
+			klog.Infof("Found new pod %s for deployment %s on node %s", newPod.Name, deploymentName, newPod.Spec.NodeName)
+		}
+	}
+
+	return deploymentCreated, nil
 }
 
-func waitForDeploymentToComplete(ctx context.Context, namespace string, clientset *kubernetes.Clientset, deployment *apps.Deployment) error {
-	if err := wait.PollImmediate(30*time.Second, 10*time.Minute, func() (bool, error) {
+func waitForDeploymentToComplete(ctx context.Context, namespace string, clientset *kubernetes.Clientset, deployment *apps.Deployment) (*apps.Deployment, error) {
+	if err := wait.PollImmediate(1*time.Second, 10*time.Minute, func() (bool, error) {
 		var err error
 		deployment, err = clientset.AppsV1().Deployments(namespace).Get(context.TODO(), deployment.Name, metav1.GetOptions{})
 		if err != nil {
 			return false, err
 		}
-		if deployment.Status.ReadyReplicas == *deployment.Spec.Replicas {
+		if deploymentutil.DeploymentComplete(deployment, &deployment.Status) {
 			return true, nil
 		}
 		return false, nil
 	}); err != nil {
-		return err
+		return nil, err
 	}
-	return nil
+	return deployment, nil
 }
 
 func RunWorkloadPods(ctx context.Context, clientset *kubernetes.Clientset, deployments []*apps.Deployment, stopCh <-chan struct{}) {
@@ -314,7 +327,7 @@ func RunWorkloadPods(ctx context.Context, clientset *kubernetes.Clientset, deplo
 		select {
 		case <-stopCh:
 			return
-		default:
+		case <-time.After(time.Duration(*delayBeforeFailover) * time.Second):
 			n := rand.Intn(len(deployments))
 			selectedDeployment := deployments[n]
 			podList, err := getPodsForDeployment(clientset, selectedDeployment)
@@ -325,18 +338,42 @@ func RunWorkloadPods(ctx context.Context, clientset *kubernetes.Clientset, deplo
 			for _, pod := range podList.Items {
 				nodeName := pod.Spec.NodeName
 				makeNodeUnschedulable(nodeName, true, clientset)
+
+				klog.Infof("Deleting pod %s of deployment %s from node %s.", pod.Name, selectedDeployment.Name, nodeName)
 				err = clientset.CoreV1().Pods(podFailoverNamespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
 				if err != nil {
-					klog.Errorf("Error occurred while deleting the pod  %s: %v", pod.Name, err)
+					klog.Errorf("Error occurred while deleting the pod %s: %v", pod.Name, err)
 				}
 
 				// wait for the pod to come back up
-				err = waitForDeploymentToComplete(ctx, podFailoverNamespace, clientset, selectedDeployment)
+				klog.Infof("Waiting for deployment %s to create new pod.", selectedDeployment.Name)
+				selectedDeployment, err = waitForDeploymentToComplete(ctx, podFailoverNamespace, clientset, selectedDeployment)
 				if err != nil {
-					klog.Errorf("Error occurred while waiting for the deployment to complete  %s: %v", selectedDeployment.Name, err)
+					klog.Errorf("Error occurred while waiting for the deployment to complete %s: %v", selectedDeployment.Name, err)
 				}
-				// Wait for the given time delay
-				time.Sleep(time.Duration(*delayBeforeFailover) * time.Second)
+
+				klog.Infof("Deployment %s ready.", selectedDeployment.Name)
+				newPodList, err := getPodsForDeployment(clientset, selectedDeployment)
+				if err != nil {
+					klog.Errorf("Error occurred while getting pods for the deployment %s: %v", selectedDeployment.Name, err)
+				} else if len(newPodList.Items) <= 0 {
+					klog.Errorf("No pods found for %s: %v", selectedDeployment.Name, err)
+				} else {
+					for _, newPod := range newPodList.Items {
+						isNew := true
+						for _, oldPod := range podList.Items {
+							if newPod.Name == oldPod.Name {
+								isNew = false
+								break
+							}
+						}
+
+						if isNew {
+							klog.Infof("Found new pod %s for deployment %s on node %s", newPod.Name, selectedDeployment.Name, newPod.Spec.NodeName)
+						}
+					}
+				}
+
 				makeNodeUnschedulable(nodeName, false, clientset)
 			}
 		}
