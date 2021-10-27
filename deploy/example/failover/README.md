@@ -53,7 +53,7 @@ As of K8s 1.21, you can see the default storage class now pointing to the Azure 
 ```shell
 helm repo add azuredisk-csi-driver https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts
 
-helm install azuredisk-csi-driver-v2  azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v2.0.0-alpha.1 --values=charts/v2.0.0-alpha.1/azuredisk-csi-driver/sidebysidevalues.yaml
+helm install azuredisk-csi-driver-v2  azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v2.0.0-alpha.1 --values=charts/v2.0.0-alpha.1/azuredisk-csi-driver/side-by-side-values.yaml
 ```
 
 
