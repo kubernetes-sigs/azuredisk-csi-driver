@@ -134,7 +134,6 @@ linux:
   distro: debian # available values: debian, fedora
   enablePerfOptimization: true
   tolerations:
-    - operator: "Exists"
   hostNetwork: true # this setting could be disabled if perfProfile is `none`
   podLabels: {}
   nodeAffinity:

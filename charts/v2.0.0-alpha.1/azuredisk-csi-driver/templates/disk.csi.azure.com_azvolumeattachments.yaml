@@ -40,6 +40,11 @@ spec:
       jsonPath: .status.detail.role
       name: Role
       type: string
+    - description: Describes the previous volume attachment role
+      jsonPath: .status.detail.previous_role
+      name: PreviousRole
+      priority: 10
+      type: string
     - description: Indicates the state of the volume attachment
       jsonPath: .status.state
       name: State
@@ -95,13 +100,15 @@ spec:
                   volume attachment Nil Status indicates that the volume has not yet
                   been attached to the node
                 properties:
+                  previous_role:
+                    description: The previous attachment role.
+                    type: string
                   publish_context:
                     additionalProperties:
                       type: string
                     type: object
                   role:
-                    description: Role indicates if the volume attachment is replica
-                      attachment or not
+                    description: The current attachment role.
                     type: string
                 required:
                 - role

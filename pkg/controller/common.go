@@ -307,7 +307,7 @@ func getRankedNodesForReplicaAttachments(ctx context.Context, azr azReconciler, 
 			klog.V(5).Infof("Error listing AzVolumeAttachments for azvolume %s. Error: %v.", volume, err)
 		}
 
-		klog.V(5).Infof("Found %d AzVolumeAttachments for volume %s. AzVolumeAttachments: %v.", len(azVolumeAttachments), volume, azVolumeAttachments)
+		klog.V(5).Infof("Found %d AzVolumeAttachments for volume %s. AzVolumeAttachments: %+v.", len(azVolumeAttachments), volume, azVolumeAttachments)
 		for _, azVolumeAttachment := range azVolumeAttachments {
 			if azVolumeAttachment.Spec.RequestedRole == v1alpha1.PrimaryRole {
 				klog.V(5).Infof("AzVolumeAttachments %s for volume %s is primary on node %s.", azVolumeAttachment.Name, volume, azVolumeAttachment.Spec.NodeName)
@@ -372,7 +372,7 @@ func (c *SharedState) addPod(pod *v1.Pod, updateOption updateWithLock) {
 		podLock.Lock()
 		defer podLock.Unlock()
 	}
-	klog.V(5).Infof("Pod spec of pod %s is: %v. With volumes: %v", pod.Name, pod.Spec, pod.Spec.Volumes)
+	klog.V(5).Infof("Pod spec of pod %s is: %+v. With volumes: %+v", pod.Name, pod.Spec, pod.Spec.Volumes)
 
 	// If the claims already exist for the podKey, add them to a set
 	value, _ := c.podToClaimsMap.LoadOrStore(podKey, []string{})
@@ -389,7 +389,7 @@ func (c *SharedState) addPod(pod *v1.Pod, updateOption updateWithLock) {
 		}
 		namespacedClaimName := getQualifiedName(pod.Namespace, volume.PersistentVolumeClaim.ClaimName)
 		if _, ok := c.claimToVolumeMap.Load(namespacedClaimName); !ok {
-			klog.Infof("Skipping Pod %s. Volume %v not csi. Driver: %s", pod.Name, volume, volume.CSI)
+			klog.Infof("Skipping Pod %s. Volume %s not csi. Driver: %+v", pod.Name, volume.Name, volume.CSI)
 			continue
 		}
 		klog.V(5).Infof("Pod %s. Volume %v is csi.", pod.Name, volume)

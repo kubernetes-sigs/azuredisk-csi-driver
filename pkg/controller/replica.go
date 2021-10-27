@@ -72,15 +72,17 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 
 	if azVolumeAttachment.Spec.RequestedRole == v1alpha1.PrimaryRole {
 		// Deletion Event
-		if criDeletionRequested(&azVolumeAttachment.ObjectMeta) && volumeDetachRequested(azVolumeAttachment) {
-			// If primary attachment is marked for deletion, queue garbage collection for replica attachments
-			r.triggerGarbageCollection(azVolumeAttachment.Spec.UnderlyingVolume)
+		if criDeletionRequested(&azVolumeAttachment.ObjectMeta) {
+			if volumeDetachRequested(azVolumeAttachment) {
+				// If primary attachment is marked for deletion, queue garbage collection for replica attachments
+				r.triggerGarbageCollection(azVolumeAttachment.Spec.UnderlyingVolume)
+			}
 		} else {
 			// If not, cancel scheduled garbage collection if there is one enqueued
 			r.removeGarbageCollection(azVolumeAttachment.Spec.UnderlyingVolume)
 
 			// If promotion event, create a replacement replica
-			if isAttached(azVolumeAttachment) && azVolumeAttachment.Status.Detail.Role != azVolumeAttachment.Spec.RequestedRole {
+			if isAttached(azVolumeAttachment) && azVolumeAttachment.Status.Detail.PreviousRole == v1alpha1.ReplicaRole {
 				if err := r.manageReplicas(ctx, azVolumeAttachment.Spec.UnderlyingVolume); err != nil {
 					return reconcile.Result{Requeue: true}, err
 				}
