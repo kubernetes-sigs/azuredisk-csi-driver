@@ -178,6 +178,8 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			if err != nil {
 				return nil, fmt.Errorf("create cloud with UserAgent(%s) failed with: (%s)", newUserAgent, err)
 			}
+		case consts.EnableAsyncAttachField:
+			parameters[consts.EnableAsyncAttachField] = v
 		case consts.ZonedField:
 			// no op, only for backward compatibility with in-tree driver
 		default:
@@ -444,6 +446,8 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("failed to get azure instance id for node %q (%v)", nodeName, err))
 	}
 
+	volumeContext := req.VolumeContext
+
 	if err == nil {
 		if vmState != nil && strings.ToLower(*vmState) == "failed" {
 			klog.Warningf("VM(%q) is in failed state, update VM first", nodeName)
@@ -460,7 +464,11 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		}
 		klog.V(2).Infof("Trying to attach volume %q to node %q", diskURI, nodeName)
 
-		lun, err = d.cloud.AttachDisk(ctx, true, diskName, diskURI, nodeName, cachingMode, disk)
+		asyncAttach := true
+		if volumeContext != nil && volumeContext[consts.EnableAsyncAttachField] == consts.FalseValue {
+			asyncAttach = false
+		}
+		lun, err = d.cloud.AttachDisk(ctx, asyncAttach, diskName, diskURI, nodeName, cachingMode, disk)
 		if err == nil {
 			klog.V(2).Infof("Attach operation successful: volume %q attached to node %q.", diskURI, nodeName)
 		} else {
@@ -475,7 +483,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 					return nil, status.Errorf(codes.Internal, "Could not detach volume %q from node %q: %v", diskURI, derr.CurrentNode, err)
 				}
 				klog.V(2).Infof("Trying to attach volume %q to node %q again", diskURI, nodeName)
-				lun, err = d.cloud.AttachDisk(ctx, true, diskName, diskURI, nodeName, cachingMode, disk)
+				lun, err = d.cloud.AttachDisk(ctx, asyncAttach, diskName, diskURI, nodeName, cachingMode, disk)
 			}
 			if err != nil {
 				klog.Errorf("Attach volume %q to instance %q failed with %v", diskURI, nodeName, err)
@@ -486,7 +494,6 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 	}
 
 	publishContext := map[string]string{consts.LUN: strconv.Itoa(int(lun))}
-	volumeContext := req.VolumeContext
 	if disk != nil && volumeContext != nil {
 		if _, ok := volumeContext[consts.RequestedSizeGib]; !ok {
 			klog.V(2).Infof("found static PV(%s), insert disk properties to volumeattachments", diskURI)
