@@ -301,14 +301,14 @@ func initState(objs ...runtime.Object) (c *SharedState) {
 				claims = append(claims, namespacedClaimName)
 				v, _ := c.claimToPodsMap.LoadOrStore(namespacedClaimName, newLockableEntry(set{}))
 
-				lockable := v.(lockableEntry)
-				lockable.lock.Lock()
+				lockable := v.(*lockableEntry)
+				lockable.Lock()
 				pods := lockable.entry.(set)
 				if !pods.has(podKey) {
 					pods.add(podKey)
 				}
 				// No need to restore the amended set to claimToPodsMap because set is a reference type
-				lockable.lock.Unlock()
+				lockable.Unlock()
 			}
 			c.podToClaimsMap.Store(podKey, claims)
 		case *v1.PersistentVolume:
@@ -317,6 +317,7 @@ func initState(objs ...runtime.Object) (c *SharedState) {
 			claimName := getQualifiedName(target.Spec.ClaimRef.Namespace, target.Spec.ClaimRef.Name)
 			c.volumeToClaimMap.Store(azVolumeName, claimName)
 			c.claimToVolumeMap.Store(claimName, azVolumeName)
+			c.createOperationQueue(azVolumeName)
 		default:
 			continue
 		}

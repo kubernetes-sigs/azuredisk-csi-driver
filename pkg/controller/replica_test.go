@@ -50,9 +50,7 @@ func NewTestReplicaController(controller *gomock.Controller, namespace string, o
 		azVolumeClient:             diskfakes.NewSimpleClientset(diskv1alpha1Objs...),
 		kubeClient:                 fakev1.NewSimpleClientset(kubeObjs...),
 		namespace:                  namespace,
-		mutexLocks:                 sync.Map{},
 		cleanUpMap:                 sync.Map{},
-		deletionMap:                sync.Map{},
 		controllerSharedState:      controllerSharedState,
 		timeUntilGarbageCollection: testTimeUntilGarbageCollection,
 	}
@@ -158,13 +156,16 @@ func TestReplicaReconcile(t *testing.T) {
 			verifyFunc: func(t *testing.T, controller *ReconcileReplica, result reconcile.Result, err error) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
-
-				roleReq, _ := createLabelRequirements(consts.RoleLabel, string(diskv1alpha1.ReplicaRole))
-				labelSelector := labels.NewSelector().Add(*roleReq)
-				replicas, localError := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
-				require.NoError(t, localError)
-				require.NotNil(t, replicas)
-				require.Len(t, replicas.Items, 1)
+				conditionFunc := func() (bool, error) {
+					roleReq, _ := createLabelRequirements(consts.RoleLabel, string(diskv1alpha1.ReplicaRole))
+					labelSelector := labels.NewSelector().Add(*roleReq)
+					replicas, localError := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
+					require.NoError(t, localError)
+					require.NotNil(t, replicas)
+					return len(replicas.Items) == 1, nil
+				}
+				err = wait.PollImmediate(verifyCRIInterval, verifyCRITimeout, conditionFunc)
+				require.NoError(t, err)
 			},
 		},
 		{
