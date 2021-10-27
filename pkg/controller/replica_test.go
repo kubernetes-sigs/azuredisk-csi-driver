@@ -24,10 +24,13 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/util/wait"
 	fakev1 "k8s.io/client-go/kubernetes/fake"
 	diskv1alpha1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
@@ -83,8 +86,8 @@ func TestReplicaReconcile(t *testing.T) {
 					testNamespace,
 					newVolume,
 					&testPersistentVolume0,
-					&testAzDriverNode0,
-					&testAzDriverNode1,
+					&testNode0,
+					&testNode1,
 					&testPod0,
 					&replicaAttachment)
 
@@ -106,7 +109,7 @@ func TestReplicaReconcile(t *testing.T) {
 				require.False(t, result.Requeue)
 
 				conditionFunc := func() (bool, error) {
-					roleReq, _ := createLabelRequirements(consts.RoleLabel, string(diskv1alpha1.ReplicaRole))
+					roleReq, _ := createLabelRequirements(consts.RoleLabel, selection.Equals, string(diskv1alpha1.ReplicaRole))
 					labelSelector := labels.NewSelector().Add(*roleReq)
 					replicas, localError := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
 					require.NoError(t, localError)
@@ -145,8 +148,8 @@ func TestReplicaReconcile(t *testing.T) {
 					testNamespace,
 					newVolume,
 					&testPersistentVolume0,
-					&testAzDriverNode0,
-					&testAzDriverNode1,
+					&testNode0,
+					&testNode1,
 					&testPod0,
 					replicaAttachment)
 
@@ -157,7 +160,7 @@ func TestReplicaReconcile(t *testing.T) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
 				conditionFunc := func() (bool, error) {
-					roleReq, _ := createLabelRequirements(consts.RoleLabel, string(diskv1alpha1.ReplicaRole))
+					roleReq, _ := createLabelRequirements(consts.RoleLabel, selection.Equals, string(diskv1alpha1.ReplicaRole))
 					labelSelector := labels.NewSelector().Add(*roleReq)
 					replicas, localError := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
 					require.NoError(t, localError)
@@ -190,8 +193,8 @@ func TestReplicaReconcile(t *testing.T) {
 					newVolume,
 					primaryAttachment,
 					&testPersistentVolume0,
-					&testAzDriverNode0,
-					&testAzDriverNode1,
+					&testNode0,
+					&testNode1,
 					&testReplicaAzVolumeAttachment)
 
 				mockClients(controller.client.(*mockclient.MockClient), controller.azVolumeClient, controller.kubeClient)
@@ -203,7 +206,7 @@ func TestReplicaReconcile(t *testing.T) {
 
 				// wait for the garbage collection to queue
 				time.Sleep(controller.timeUntilGarbageCollection + time.Minute)
-				roleReq, _ := createLabelRequirements(consts.RoleLabel, string(diskv1alpha1.ReplicaRole))
+				roleReq, _ := createLabelRequirements(consts.RoleLabel, selection.Equals, string(diskv1alpha1.ReplicaRole))
 				labelSelector := labels.NewSelector().Add(*roleReq)
 				replicas, localError := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
 				require.NoError(t, localError)
@@ -240,8 +243,8 @@ func TestReplicaReconcile(t *testing.T) {
 					newVolume,
 					primaryAttachment,
 					&testPersistentVolume0,
-					&testAzDriverNode0,
-					&testAzDriverNode1,
+					&testNode0,
+					&testNode1,
 					&testPod0,
 					replicaAttachment)
 
@@ -270,7 +273,7 @@ func TestReplicaReconcile(t *testing.T) {
 				require.False(t, result.Requeue)
 
 				time.Sleep(controller.timeUntilGarbageCollection + time.Minute)
-				roleReq, _ := createLabelRequirements(consts.RoleLabel, string(diskv1alpha1.ReplicaRole))
+				roleReq, _ := createLabelRequirements(consts.RoleLabel, selection.Equals, string(diskv1alpha1.ReplicaRole))
 				labelSelector := labels.NewSelector().Add(*roleReq)
 				replicas, localError := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
 				require.NoError(t, localError)
@@ -289,6 +292,113 @@ func TestReplicaReconcile(t *testing.T) {
 			controller := tt.setupFunc(t, mockCtl)
 			result, err := controller.Reconcile(context.TODO(), tt.request)
 			tt.verifyFunc(t, controller, result, err)
+		})
+	}
+}
+
+func TestGetNodesForReplica(t *testing.T) {
+	tests := []struct {
+		description string
+		volumes     []string
+		setupFunc   func(*testing.T, *gomock.Controller) *ReconcileReplica
+		verifyFunc  func(*testing.T, []string, error)
+	}{
+		{
+			description: "[Success] Should not select nodes with no remaining capacity.",
+			volumes:     []string{testPersistentVolume0Name},
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileReplica {
+				replicaAttachment := testReplicaAzVolumeAttachment
+				now := metav1.Time{Time: metav1.Now().Add(-1000)}
+				replicaAttachment.DeletionTimestamp = &now
+
+				newVolume := testAzVolume0.DeepCopy()
+				newVolume.Status.Detail = &diskv1alpha1.AzVolumeStatusDetail{
+					ResponseObject: &diskv1alpha1.AzVolumeStatusParams{
+						VolumeID: testManagedDiskURI0,
+					},
+				}
+
+				newNode := testNode0.DeepCopy()
+				newNode.Status.Allocatable[consts.AttachableVolumesField] = resource.MustParse("0")
+
+				controller := NewTestReplicaController(
+					mockCtl,
+					testNamespace,
+					newVolume,
+					&testPersistentVolume0,
+					newNode,
+					&testNode2,
+					&testPod0,
+				)
+
+				mockClients(controller.client.(*mockclient.MockClient), controller.azVolumeClient, controller.kubeClient)
+				return controller
+			},
+			verifyFunc: func(t *testing.T, nodes []string, err error) {
+				require.NoError(t, err)
+				require.Len(t, nodes, 1)
+				require.NotEqual(t, nodes[0], testNode0Name)
+			},
+		},
+		{
+			description: "[Success] Should not create replica attachment on a node that does not match volume's node affinity rule",
+			volumes:     []string{testPersistentVolume0Name},
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileReplica {
+				replicaAttachment := testReplicaAzVolumeAttachment
+				now := metav1.Time{Time: metav1.Now().Add(-1000)}
+				replicaAttachment.DeletionTimestamp = &now
+
+				newPV := testPersistentVolume0.DeepCopy()
+				newPV.Spec.NodeAffinity = &v1.VolumeNodeAffinity{
+					Required: &v1.NodeSelector{
+						NodeSelectorTerms: []v1.NodeSelectorTerm{{
+							MatchExpressions: []v1.NodeSelectorRequirement{{
+								Key:      consts.TopologyRegionKey,
+								Operator: v1.NodeSelectorOpIn,
+								Values:   []string{"westus2"},
+							}},
+						}},
+					},
+				}
+
+				newVolume := testAzVolume0.DeepCopy()
+				newVolume.Status.Detail = &diskv1alpha1.AzVolumeStatusDetail{
+					ResponseObject: &diskv1alpha1.AzVolumeStatusParams{
+						VolumeID: testManagedDiskURI0,
+					},
+				}
+
+				newNode := testNode0.DeepCopy()
+				newNode.Labels = map[string]string{consts.TopologyRegionKey: "westus2"}
+
+				controller := NewTestReplicaController(
+					mockCtl,
+					testNamespace,
+					newVolume,
+					newPV,
+					newNode,
+					&testNode1,
+					&testPod0,
+				)
+
+				mockClients(controller.client.(*mockclient.MockClient), controller.azVolumeClient, controller.kubeClient)
+				return controller
+			},
+			verifyFunc: func(t *testing.T, nodes []string, err error) {
+				require.NoError(t, err)
+				require.Len(t, nodes, 1)
+				require.NotEqual(t, nodes[0], testNode1Name)
+			},
+		},
+	}
+	for _, test := range tests {
+		tt := test
+		t.Run(tt.description, func(t *testing.T) {
+			mockCtl := gomock.NewController(t)
+			defer mockCtl.Finish()
+			controller := tt.setupFunc(t, mockCtl)
+			nodes, err := getRankedNodesForReplicaAttachments(context.TODO(), controller, tt.volumes)
+			tt.verifyFunc(t, nodes, err)
 		})
 	}
 }

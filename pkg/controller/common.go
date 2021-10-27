@@ -37,7 +37,9 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/selection"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/component-helpers/scheduling/corev1/nodeaffinity"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
@@ -67,6 +69,11 @@ const (
 	replica      operationRequester = "replica-controller"
 	pod                             = "pod-controller"
 )
+
+type labelPair struct {
+	key   string
+	entry string
+}
 
 type cleanUpMode int
 
@@ -429,83 +436,6 @@ func (c *SharedState) getVolumesForPods(pods ...string) ([]string, error) {
 	return volumes, nil
 }
 
-func getRankedNodesForReplicaAttachments(ctx context.Context, azr azReconciler, volumes []string) ([]string, error) {
-	klog.V(5).Info("Getting ranked list of nodes for creating AzVolumeAttachments")
-	numReplica := 0
-	nodes := []string{}
-	nodeScores := map[string]int{}
-	primaryNode := ""
-
-	for _, volume := range volumes {
-		azVolume, err := azureutils.GetAzVolume(ctx, azr.getClient(), azr.getAzClient(), volume, consts.AzureDiskCrdNamespace, true)
-		if err != nil {
-			klog.V(5).Infof("AzVolume for volume %s is not found.", volume)
-			return nil, err
-		}
-
-		numReplica = max(numReplica, azVolume.Spec.MaxMountReplicaCount)
-		klog.V(5).Infof("Number of requested replicas for azvolume %s is: %d. Max replica count is: %d.",
-			volume, numReplica, azVolume.Spec.MaxMountReplicaCount)
-
-		azVolumeAttachments, err := getAzVolumeAttachmentsForVolume(ctx, azr.getClient(), volume, all)
-		if err != nil {
-			klog.V(5).Infof("Error listing AzVolumeAttachments for azvolume %s. Error: %v.", volume, err)
-		}
-
-		klog.V(5).Infof("Found %d AzVolumeAttachments for volume %s. AzVolumeAttachments: %+v.", len(azVolumeAttachments), volume, azVolumeAttachments)
-		for _, azVolumeAttachment := range azVolumeAttachments {
-			if azVolumeAttachment.Spec.RequestedRole == v1alpha1.PrimaryRole {
-				klog.V(5).Infof("AzVolumeAttachments %s for volume %s is primary on node %s.", azVolumeAttachment.Name, volume, azVolumeAttachment.Spec.NodeName)
-				if primaryNode == "" {
-					primaryNode = azVolumeAttachment.Spec.NodeName
-				}
-			} else {
-				klog.V(5).Infof("Azvolumeattachment %s is not primary. Scoring node %s with replica attachment. Current score array is %v. Len: %d.", azVolumeAttachment.Name, azVolumeAttachment.Spec.NodeName, nodeScores, len(nodeScores))
-				if _, ok := nodeScores[azVolumeAttachment.Spec.NodeName]; !ok {
-					// Node is not in the array. Adding node to the array with score 0.
-					nodeScores[azVolumeAttachment.Spec.NodeName] = 0
-					nodes = append(nodes, azVolumeAttachment.Spec.NodeName)
-				}
-				nodeScores[azVolumeAttachment.Spec.NodeName]++
-				klog.V(5).Infof("New score for node %s is %d. Updated score array is %v. Len: %d.", azVolumeAttachment.Spec.NodeName, nodeScores[azVolumeAttachment.Spec.NodeName], nodeScores, len(nodeScores))
-			}
-		}
-	}
-
-	// remove the primary node from the nodeScores map as it can get added if all the volume attachments aren't promoted at the same time
-	delete(nodeScores, primaryNode)
-
-	// Remove the primary node from the node list as it can get added if all the volume attachments aren't promoted at the same time
-	if len(nodes) > 0 {
-		indexToRemove := -1
-		for i, node := range nodes {
-			if node == primaryNode {
-				indexToRemove = i
-				break
-			}
-		}
-		if indexToRemove != -1 {
-			nodes[indexToRemove] = nodes[len(nodes)-1]
-			nodes = nodes[:len(nodes)-1]
-		}
-	}
-
-	// sorting nodes array per their score in nodeScore array
-	sort.Slice(nodes[:], func(i, j int) bool {
-		return nodeScores[nodes[i]] > nodeScores[nodes[j]]
-	})
-
-	// select at least as many nodes as requested replicas
-	if len(nodes) < numReplica {
-		selected, err := selectNodes(ctx, azr, numReplica-len(nodes), primaryNode, nodeScores)
-		if err != nil {
-			return nil, err
-		}
-		nodes = append(nodes, selected...)
-	}
-	return nodes[:min(len(nodes), numReplica)], nil
-}
-
 func (c *SharedState) addPod(pod *v1.Pod, updateOption updateWithLock) {
 
 	podKey := getQualifiedName(pod.Namespace, pod.Name)
@@ -632,51 +562,210 @@ func (c *SharedState) isVolumeVisited(azVolumeName string) bool {
 	return visited
 }
 
-func selectNodes(ctx context.Context, azr azReconciler, numNodes int, primaryNode string, exceptionNodes map[string]int) ([]string, error) {
-	// TODO: fill with node selection logic (based on node capacity and node failure domain)
-	/*
-		Below is temporary node selection logic
-	*/
-	filteredNodes := []string{}
-	var nodes *v1alpha1.AzDriverNodeList
-	var err error
-	// List all AzDriverNodes
-	nodes = &v1alpha1.AzDriverNodeList{}
-	if err = azr.getClient().List(ctx, nodes, &client.ListOptions{}); err != nil {
-		klog.Errorf("failed to retrieve azDriverNode List for namespace %s: %v", consts.AzureDiskCrdNamespace, err)
-		return filteredNodes, err
-	}
-
+func getRankedNodesForReplicaAttachments(ctx context.Context, azr azReconciler, volumes []string) ([]string, error) {
+	klog.V(5).Info("Getting ranked list of nodes for creating AzVolumeAttachments")
+	numReplica := 0
+	nodes := []string{}
 	nodeScores := map[string]int{}
-	if nodes != nil {
-		for _, node := range nodes.Items {
-			if _, ok := exceptionNodes[node.Name]; ok || node.Name == primaryNode {
-				continue
-			}
+	primaryNode := ""
 
-			// filter out attachments labeled with specified node and volume
-			var attachmentList v1alpha1.AzVolumeAttachmentList
-			nodeRequirement, err := createLabelRequirements(consts.NodeNameLabel, node.Name)
-			if err != nil {
-				klog.Errorf("Encountered error while creating Requirement: %+v", err)
-				continue
-			}
+	for _, volume := range volumes {
+		azVolume, err := azureutils.GetAzVolume(ctx, azr.getClient(), azr.getAzClient(), volume, consts.AzureDiskCrdNamespace, true)
+		if err != nil {
+			klog.V(5).Infof("AzVolume for volume %s is not found.", volume)
+			return nil, err
+		}
 
-			labelSelector := labels.NewSelector().Add(*nodeRequirement)
-			if err := azr.getClient().List(ctx, &attachmentList, &client.ListOptions{LabelSelector: labelSelector}); err != nil {
-				klog.Warningf("failed to get AzVolumeAttachmentList labeled with node (%s): %v", node.Name, err)
-				continue
-			}
+		numReplica = max(numReplica, azVolume.Spec.MaxMountReplicaCount)
+		klog.V(5).Infof("Number of requested replicas for azvolume %s is: %d. Max replica count is: %d.",
+			volume, numReplica, azVolume.Spec.MaxMountReplicaCount)
 
-			nodeScores[node.Name] = len(attachmentList.Items)
-			filteredNodes = append(filteredNodes, node.Name)
-			klog.Infof("node (%s) has %d attachments", node.Name, len(attachmentList.Items))
+		azVolumeAttachments, err := getAzVolumeAttachmentsForVolume(ctx, azr.getClient(), volume, all)
+		if err != nil {
+			klog.V(5).Infof("Error listing AzVolumeAttachments for azvolume %s. Error: %v.", volume, err)
+		}
+
+		klog.V(5).Infof("Found %d AzVolumeAttachments for volume %s. AzVolumeAttachments: %+v.", len(azVolumeAttachments), volume, azVolumeAttachments)
+		for _, azVolumeAttachment := range azVolumeAttachments {
+			if azVolumeAttachment.Spec.RequestedRole == v1alpha1.PrimaryRole {
+				klog.V(5).Infof("AzVolumeAttachments %s for volume %s is primary on node %s.", azVolumeAttachment.Name, volume, azVolumeAttachment.Spec.NodeName)
+				if primaryNode == "" {
+					primaryNode = azVolumeAttachment.Spec.NodeName
+				}
+			} else {
+				klog.V(5).Infof("Azvolumeattachment %s is not primary. Scoring node %s with replica attachment. Current score array is %v. Len: %d.", azVolumeAttachment.Name, azVolumeAttachment.Spec.NodeName, nodeScores, len(nodeScores))
+				if _, ok := nodeScores[azVolumeAttachment.Spec.NodeName]; !ok {
+					// Node is not in the array. Adding node to the array with score 0.
+					nodeScores[azVolumeAttachment.Spec.NodeName] = 0
+					nodes = append(nodes, azVolumeAttachment.Spec.NodeName)
+				}
+				nodeScores[azVolumeAttachment.Spec.NodeName]++
+				klog.V(5).Infof("New score for node %s is %d. Updated score array is %v. Len: %d.", azVolumeAttachment.Spec.NodeName, nodeScores[azVolumeAttachment.Spec.NodeName], nodeScores, len(nodeScores))
+			}
 		}
 	}
 
-	// sort the filteredNodes by their number of attachments (low to high) and return a slice
+	removeCandidacy := func(nodeName string, err error) {
+		klog.Errorf("Removing node (%s) from candidate nodes for replica attachments: %v", nodeName, err)
+		delete(nodeScores, nodeName)
+
+		if len(nodes) > 0 {
+			indexToRemove := -1
+			for i, node := range nodes {
+				if node == nodeName {
+					indexToRemove = i
+					break
+				}
+			}
+			if indexToRemove != -1 {
+				nodes[indexToRemove] = nodes[len(nodes)-1]
+				nodes = nodes[:len(nodes)-1]
+			}
+		}
+	}
+
+	// remove the primary node from the candidates list as it can get added if all the volume attachments aren't promoted at the same time
+	removeCandidacy(primaryNode, nil)
+
+	for nodeName, nodeScore := range nodeScores {
+		if remainingCapacity, err := getNodeRemainingCapacity(ctx, azr.getClient(), nil, nodeName); err != nil {
+			// it is safe to delete entry from map while iterating
+			removeCandidacy(nodeName, err)
+		} else if remainingCapacity < len(volumes)-nodeScore {
+			// if node is too full to take n extra attachments, remove the node from the candidate list
+			err = status.Errorf(codes.Internal, "remaining node capacity: %d", remainingCapacity)
+			removeCandidacy(nodeName, err)
+		}
+	}
+
+	// sorting nodes array per their score in nodeScore array
+	sort.Slice(nodes[:], func(i, j int) bool {
+		return nodeScores[nodes[i]] > nodeScores[nodes[j]]
+	})
+
+	// select at least as many nodes as requested replicas
+	if len(nodes) < numReplica {
+		selected, err := selectNodes(ctx, azr, numReplica-len(nodes), primaryNode, nodeScores, volumes)
+		if err != nil {
+			return nil, err
+		}
+		nodes = append(nodes, selected...)
+	}
+	return nodes[:min(len(nodes), numReplica)], nil
+}
+
+func getNodeRemainingCapacity(ctx context.Context, cachedClient client.Client, nodeObj *v1.Node, nodeName string) (int, error) {
+	// get node if necessary
+	if nodeObj == nil {
+		nodeObj = &v1.Node{}
+		if err := cachedClient.Get(ctx, types.NamespacedName{Name: nodeName}, nodeObj); err != nil {
+			return -1, err
+		}
+	}
+
+	// get all replica azvolumeattachments on the node
+	attachments, err := getAzVolumeAttachmentsForNode(ctx, cachedClient, nodeName, all)
+	if err != nil {
+		return -1, err
+	}
+
+	// get node instance type to query node capacity
+	capacity := 0
+	queryAttachable := false
+
+	if nodeObj.Labels == nil {
+		queryAttachable = true
+	} else {
+		if nodeVMType, ok := nodeObj.Labels[v1.LabelInstanceTypeStable]; !ok {
+			queryAttachable = true
+		} else {
+			for vmType, vmCapacity := range azureutils.MaxDataDiskCountMap {
+				if strings.EqualFold(nodeVMType, vmType) {
+					capacity = int(vmCapacity)
+					break
+				}
+			}
+		}
+	}
+
+	if queryAttachable {
+		// check node capacity
+		maxAttachables, ok := nodeObj.Status.Allocatable[consts.AttachableVolumesField]
+		if !ok {
+			err := status.Errorf(codes.Internal, "failed to get the max node capacity for node (%s).", nodeName)
+			return -1, err
+		}
+		capacity = int(maxAttachables.Value())
+	}
+
+	return capacity - len(attachments), nil
+}
+
+func selectNodes(ctx context.Context, azr azReconciler, numNodes int, primaryNode string, exceptionNodes map[string]int, volumes []string) ([]string, error) {
+	filteredNodes := []string{}
+	var nodes *v1.NodeList
+	var err error
+	// List all nodes
+	nodes = &v1.NodeList{}
+	if err = azr.getClient().List(ctx, nodes); err != nil {
+		klog.Errorf("failed to retrieve node list: %v", err)
+		return filteredNodes, err
+	}
+
+	type nodeEntry struct {
+		node      *v1.Node
+		nodeScore int
+	}
+
+	nodeMap := map[string]nodeEntry{}
+	for _, node := range nodes.Items {
+		nodeVar := node
+		nodeMap[node.Name] = nodeEntry{node: &nodeVar, nodeScore: 0}
+	}
+
+	// Loop through all volumes and filter out node candidates based on node affinity rules of the given volumes
+	for _, volume := range volumes {
+		var pv v1.PersistentVolume
+		if err := azr.getClient().Get(ctx, types.NamespacedName{Name: volume}, &pv); err != nil {
+			return filteredNodes, err
+		}
+		if pv.Spec.NodeAffinity == nil || pv.Spec.NodeAffinity.Required == nil {
+			continue
+		}
+		nodeSelector, err := nodeaffinity.NewNodeSelector(pv.Spec.NodeAffinity.Required)
+		if err != nil {
+			// if failed to create a new node selector return error
+			return filteredNodes, err
+		}
+		for nodeName, nodeEntry := range nodeMap {
+			if !nodeSelector.Match(nodeEntry.node) {
+				delete(nodeMap, nodeName)
+			}
+		}
+	}
+
+	for nodeName, nodeEntry := range nodeMap {
+		if _, ok := exceptionNodes[nodeName]; ok || nodeName == primaryNode {
+			continue
+		}
+
+		remainingCapacity, err := getNodeRemainingCapacity(ctx, azr.getClient(), nodeEntry.node, nodeName)
+		if err != nil {
+			// if failed to get node's remaining capacity, remove the node from the candidate list and proceed
+			klog.Errorf("failed to get remaining capacity of node (%s): %v", nodeName, err)
+			delete(nodeMap, nodeName)
+			continue
+		}
+
+		nodeEntry.nodeScore = remainingCapacity
+		nodeMap[nodeName] = nodeEntry
+		filteredNodes = append(filteredNodes, nodeName)
+		klog.Infof("node (%s) can accept %d more attachments", nodeName, remainingCapacity)
+	}
+
+	// sort the filteredNodes by their remaining capacity (high to low) and return a slice
 	sort.Slice(filteredNodes[:], func(i, j int) bool {
-		return nodeScores[filteredNodes[i]] < nodeScores[filteredNodes[j]]
+		return nodeMap[filteredNodes[i]].nodeScore > nodeMap[filteredNodes[j]].nodeScore
 	})
 
 	if len(filteredNodes) > numNodes {
@@ -743,7 +832,7 @@ func createReplicaAzVolumeAttachment(ctx context.Context, azr azReconciler, volu
 
 func cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azr azReconciler, azVolumeName string, caller operationRequester, role roleMode, deleteMode cleanUpMode) (*v1alpha1.AzVolumeAttachmentList, error) {
 	klog.Infof("AzVolumeAttachment clean up requested by %s for AzVolume (%s)", caller, azVolumeName)
-	volRequirement, err := createLabelRequirements(consts.VolumeNameLabel, azVolumeName)
+	volRequirement, err := createLabelRequirements(consts.VolumeNameLabel, selection.Equals, azVolumeName)
 	if err != nil {
 		return nil, err
 	}
@@ -774,7 +863,7 @@ func cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azr azReconciler, az
 
 func cleanUpAzVolumeAttachmentByNode(ctx context.Context, azr azReconciler, azDriverNodeName string, caller operationRequester, role roleMode, deleteMode cleanUpMode) (*v1alpha1.AzVolumeAttachmentList, error) {
 	klog.Infof("AzVolumeAttachment clean up requested by %s for AzDriverNode (%s)", caller, azDriverNodeName)
-	nodeRequirement, err := createLabelRequirements(consts.NodeNameLabel, azDriverNodeName)
+	nodeRequirement, err := createLabelRequirements(consts.NodeNameLabel, selection.Equals, azDriverNodeName)
 	if err != nil {
 		return nil, err
 	}
@@ -845,27 +934,37 @@ func cleanUpAzVolumeAttachments(ctx context.Context, azr azReconciler, attachmen
 
 func getAzVolumeAttachmentsForVolume(ctx context.Context, azclient client.Client, volumeName string, azVolumeAttachmentRole roleMode) (attachments []v1alpha1.AzVolumeAttachment, err error) {
 	klog.V(5).Infof("Getting the list of AzVolumeAttachments for %s.", volumeName)
+	if azVolumeAttachmentRole == all {
+		return getAzVolumeAttachmentsWithLabel(ctx, azclient, labelPair{consts.VolumeNameLabel, volumeName})
+	}
+	return getAzVolumeAttachmentsWithLabel(ctx, azclient, labelPair{consts.VolumeNameLabel, volumeName}, labelPair{consts.RoleLabel, roles[azVolumeAttachmentRole]})
+}
+
+func getAzVolumeAttachmentsForNode(ctx context.Context, azclient client.Client, nodeName string, azVolumeAttachmentRole roleMode) (attachments []v1alpha1.AzVolumeAttachment, err error) {
+	klog.V(5).Infof("Getting the list of AzVolumeAttachments for %s.", nodeName)
+	if azVolumeAttachmentRole == all {
+		return getAzVolumeAttachmentsWithLabel(ctx, azclient, labelPair{consts.NodeNameLabel, nodeName})
+	}
+	return getAzVolumeAttachmentsWithLabel(ctx, azclient, labelPair{consts.NodeNameLabel, nodeName}, labelPair{consts.RoleLabel, roles[azVolumeAttachmentRole]})
+}
+
+func getAzVolumeAttachmentsWithLabel(ctx context.Context, azclient client.Client, labelPairs ...labelPair) (attachments []v1alpha1.AzVolumeAttachment, err error) {
 	labelSelector := labels.NewSelector()
-	volReq, err := createLabelRequirements(consts.VolumeNameLabel, volumeName)
-	if err != nil {
-		klog.V(5).Infof("Failed to create volume based label for listing AzVolumeAttachments for %s. Error: %v", volumeName, err)
-		return
-	}
-	// filter by role if a role is specified
-	if azVolumeAttachmentRole != all {
-		roleReq, err := createLabelRequirements(consts.RoleLabel, roles[azVolumeAttachmentRole])
+	for _, labelPair := range labelPairs {
+		var req *labels.Requirement
+		req, err = createLabelRequirements(labelPair.key, selection.Equals, labelPair.entry)
 		if err != nil {
-			klog.V(5).Infof("Failed to create role based label for listing AzVolumeAttachments for %s. Error: %v", volumeName, err)
-			return nil, err
+			klog.Errorf("failed to create label (%s, %s) for listing AzVolumeAttachment", labelPair.key, labelPair.entry)
+			return
 		}
-		labelSelector = labelSelector.Add(*roleReq)
+		labelSelector = labelSelector.Add(*req)
 	}
-	labelSelector = labelSelector.Add(*volReq)
-	klog.V(5).Infof("Label selector for AzVolumeAttachments for volume %s is: %v.", volumeName, labelSelector)
+
+	klog.V(5).Infof("Label selector is: %v.", labelSelector)
 	azVolumeAttachments := &v1alpha1.AzVolumeAttachmentList{}
 	err = azclient.List(ctx, azVolumeAttachments, &client.ListOptions{LabelSelector: labelSelector})
 	if err != nil {
-		klog.V(5).Infof("Error retrieving AzVolumeAttachments azvolume %s. Error: %v", volumeName, err)
+		klog.V(5).Infof("Error retrieving AzVolumeAttachments for label %s. Error: %v", labelSelector, err)
 		return
 	}
 	attachments = azVolumeAttachments.Items
@@ -916,13 +1015,13 @@ func labelExists(labels map[string]string, label string) bool {
 	return false
 }
 
-func createLabelRequirements(label, value string) (*labels.Requirement, error) {
-	req, err := labels.NewRequirement(label, selection.Equals, []string{value})
+func createLabelRequirements(label string, operator selection.Operator, values ...string) (*labels.Requirement, error) {
+	req, err := labels.NewRequirement(label, operator, values)
 	if err != nil {
 		return nil, err
 	}
 	if req == nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Unable to create Requirement to for label key : (%s) and label value: (%s)", label, value))
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Unable to create Requirement to for label key : (%s) and label value: (%s)", label, values))
 	}
 	return req, nil
 }

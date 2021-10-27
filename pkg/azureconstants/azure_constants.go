@@ -79,7 +79,9 @@ const (
 	UserAgentField                = "useragent"
 	VolumeAttributePartition      = "partition"
 	WellKnownTopologyKey          = "topology.kubernetes.io/zone"
+	TopologyRegionKey             = "topology.kubernetes.io/region"
 	WriteAcceleratorEnabled       = "writeacceleratorenabled"
+	AttachableVolumesField        = "attachable-volumes-azure-disk"
 
 	// CRDs specific constants
 	// 1. AzVolumeAttachmentFinalizer for AzVolumeAttachment objects handles deletion of AzVolumeAttachment CRIs

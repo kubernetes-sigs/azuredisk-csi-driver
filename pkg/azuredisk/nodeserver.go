@@ -349,7 +349,7 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 
 func getMaxDataDiskCount(instanceType string) int64 {
 	vmsize := strings.ToUpper(instanceType)
-	maxDataDiskCount, exists := maxDataDiskCountMap[vmsize]
+	maxDataDiskCount, exists := azureutils.MaxDataDiskCountMap[vmsize]
 	if exists {
 		klog.V(5).Infof("got a matching size in getMaxDataDiskCount, VM Size: %s, MaxDataDiskCount: %d", vmsize, maxDataDiskCount)
 		return maxDataDiskCount
