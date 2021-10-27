@@ -241,7 +241,7 @@ func prioritize(context context.Context, schedulerExtenderArgs schedulerapi.Exte
 
 			completeNodeNameToVolumeMap[attachedVolume.Spec.NodeName] = append(completeNodeNameToVolumeMap[attachedVolume.Spec.NodeName], attachedVolume.Spec.UnderlyingVolume)
 
-			if attachedVolume.DeletionTimestamp.IsZero() || attachedVolume.Status.State != v1alpha1Meta.Attached {
+			if !attachedVolume.DeletionTimestamp.IsZero() || attachedVolume.Status.State != v1alpha1Meta.Attached {
 				klog.V(2).Infof("Volume attachment excluded because it is to be deleted or not in the Attached state: Name %s, Volume: %s", attachedVolume.Name, attachedVolume.Spec.UnderlyingVolume)
 				continue
 			}
