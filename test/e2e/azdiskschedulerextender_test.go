@@ -176,7 +176,10 @@ func schedulerExtenderTests(isMultiZone bool) {
 		skipIfUsingInTreeVolumePlugin()
 		volumes := []testsuites.VolumeDetails{}
 		t := dynamicProvisioningTestSuite{}
-
+		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
+		if err != nil {
+			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
+		}
 		for i := 1; i <= 3; i++ {
 			volume := testsuites.VolumeDetails{
 				FSType:    "ext3",
@@ -199,6 +202,7 @@ func schedulerExtenderTests(isMultiZone bool) {
 			Pod:                    pod,
 			Replicas:               1,
 			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
+			AzDiskClient:           azDiskClient,
 		}
 		test.Run(cs, ns, schedulerName)
 	})
