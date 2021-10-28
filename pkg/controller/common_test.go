@@ -61,43 +61,9 @@ var (
 
 	testNode0Name = "node-0"
 	testNode1Name = "node-1"
-	testNode2Name = "node-2"
 
 	testNode1NotFoundError      = k8serrors.NewNotFound(v1.Resource("nodes"), testNode1Name)
 	testNode1ServerTimeoutError = k8serrors.NewServerTimeout(v1.Resource("nodes"), testNode1Name, 1)
-
-	testNode0 = v1.Node{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: testNode0Name,
-		},
-		Status: v1.NodeStatus{
-			Allocatable: v1.ResourceList(map[v1.ResourceName]resource.Quantity{
-				consts.AttachableVolumesField: resource.MustParse("8"),
-			}),
-		},
-	}
-
-	testNode1 = v1.Node{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: testNode1Name,
-		},
-		Status: v1.NodeStatus{
-			Allocatable: v1.ResourceList(map[v1.ResourceName]resource.Quantity{
-				consts.AttachableVolumesField: resource.MustParse("8"),
-			}),
-		},
-	}
-
-	testNode2 = v1.Node{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: testNode2Name,
-		},
-		Status: v1.NodeStatus{
-			Allocatable: v1.ResourceList(map[v1.ResourceName]resource.Quantity{
-				consts.AttachableVolumesField: resource.MustParse("8"),
-			}),
-		},
-	}
 
 	testAzDriverNode0 = v1alpha1.AzDriverNode{
 		ObjectMeta: metav1.ObjectMeta{
@@ -418,14 +384,6 @@ func mockClients(mockClient *mockclient.MockClient, azVolumeClient azVolumeClien
 
 				pod.DeepCopyInto(target)
 
-			case *v1.Node:
-				node, err := kubeClient.CoreV1().Nodes().Get(ctx, key.Name, metav1.GetOptions{})
-				if err != nil {
-					return err
-				}
-
-				node.DeepCopyInto(target)
-
 			default:
 				gr := schema.GroupResource{
 					Group:    target.GetObjectKind().GroupVersionKind().Group,
@@ -525,14 +483,6 @@ func mockClients(mockClient *mockclient.MockClient, azVolumeClient azVolumeClien
 				}
 
 				pods.DeepCopyInto(target)
-
-			case *v1.NodeList:
-				nodes, err := kubeClient.CoreV1().Nodes().List(ctx, *options.AsListOptions())
-				if err != nil {
-					return err
-				}
-
-				nodes.DeepCopyInto(target)
 			}
 
 			return nil
