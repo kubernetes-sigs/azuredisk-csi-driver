@@ -36,6 +36,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/klog"
 	deploymentutil "k8s.io/kubernetes/pkg/controller/deployment/util"
 )
@@ -248,11 +249,11 @@ func createDeployment(ctx context.Context, clientset *kubernetes.Clientset, pvcL
 		Spec: apps.DeploymentSpec{
 			Replicas: &podReplicas,
 			Selector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{"app": "nginx"},
+				MatchLabels: map[string]string{"app": "pod-failover-workload"},
 			},
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{"app": "nginx"},
+					Labels: map[string]string{"app": "pod-failover-workload"},
 				},
 				Spec: v1.PodSpec{
 					NodeSelector: map[string]string{"kubernetes.io/os": "linux"},
@@ -330,34 +331,36 @@ func RunWorkloadPods(ctx context.Context, clientset *kubernetes.Clientset, deplo
 		case <-time.After(time.Duration(*delayBeforeFailover) * time.Second):
 			n := rand.Intn(len(deployments))
 			selectedDeployment := deployments[n]
+			selectedDeploymentName := selectedDeployment.Name
 			podList, err := getPodsForDeployment(clientset, selectedDeployment)
 			if err != nil {
-				klog.Errorf("Error occurred while getting pods for the deployment  %s: %v", selectedDeployment.Name, err)
+				klog.Errorf("Error occurred while getting pods for the deployment  %s: %v", selectedDeploymentName, err)
 			}
 
 			for _, pod := range podList.Items {
 				nodeName := pod.Spec.NodeName
 				makeNodeUnschedulable(nodeName, true, clientset)
 
-				klog.Infof("Deleting pod %s of deployment %s from node %s.", pod.Name, selectedDeployment.Name, nodeName)
+				klog.Infof("Deleting pod %s of deployment %s from node %s.", pod.Name, selectedDeploymentName, nodeName)
 				err = clientset.CoreV1().Pods(podFailoverNamespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
 				if err != nil {
 					klog.Errorf("Error occurred while deleting the pod %s: %v", pod.Name, err)
 				}
 
 				// wait for the pod to come back up
-				klog.Infof("Waiting for deployment %s to create new pod.", selectedDeployment.Name)
+				klog.Infof("Waiting for deployment %s to create new pod.", selectedDeploymentName)
 				selectedDeployment, err = waitForDeploymentToComplete(ctx, podFailoverNamespace, clientset, selectedDeployment)
 				if err != nil {
-					klog.Errorf("Error occurred while waiting for the deployment to complete %s: %v", selectedDeployment.Name, err)
+					klog.Errorf("Error occurred while waiting for the deployment to complete %s: %v", selectedDeploymentName, err)
+					continue
 				}
 
-				klog.Infof("Deployment %s ready.", selectedDeployment.Name)
+				klog.Infof("Deployment %s ready.", selectedDeploymentName)
 				newPodList, err := getPodsForDeployment(clientset, selectedDeployment)
 				if err != nil {
-					klog.Errorf("Error occurred while getting pods for the deployment %s: %v", selectedDeployment.Name, err)
+					klog.Errorf("Error occurred while getting pods for the deployment %s: %v", selectedDeploymentName, err)
 				} else if len(newPodList.Items) <= 0 {
-					klog.Errorf("No pods found for %s: %v", selectedDeployment.Name, err)
+					klog.Errorf("No pods found for %s: %v", selectedDeploymentName, err)
 				} else {
 					for _, newPod := range newPodList.Items {
 						isNew := true
@@ -381,13 +384,27 @@ func RunWorkloadPods(ctx context.Context, clientset *kubernetes.Clientset, deplo
 }
 
 func makeNodeUnschedulable(nodeName string, unschedulable bool, clientset *kubernetes.Clientset) {
-	node, _ := clientset.CoreV1().Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
-	nodeTobeCordoned := node.DeepCopy()
-	nodeTobeCordoned.Spec.Unschedulable = unschedulable
-	// Cordon off the node
-	_, err := clientset.CoreV1().Nodes().Update(context.TODO(), nodeTobeCordoned, metav1.UpdateOptions{})
+	backoff := wait.Backoff{Duration: 1 * time.Second, Factor: 2.0, Steps: 5}
+	err := retry.RetryOnConflict(backoff, func() error {
+		node, err := clientset.CoreV1().Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+
+		nodeTobeCordoned := node.DeepCopy()
+		nodeTobeCordoned.Spec.Unschedulable = unschedulable
+
+		// Cordon off the node
+		_, err = clientset.CoreV1().Nodes().Update(context.TODO(), nodeTobeCordoned, metav1.UpdateOptions{})
+		if err != nil {
+			return err
+		}
+
+		return nil
+	})
+
 	if err != nil {
-		klog.Errorf("Error occurred in makeNodeUnschedulable; unschedulable: %t, err: %v", unschedulable, err)
+		klog.Errorf("Error occurred setting schedulability of node %s; unschedulable: %t, err: %v", nodeName, unschedulable, err)
 	}
 }
 
