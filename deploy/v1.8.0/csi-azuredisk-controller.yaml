@@ -27,13 +27,13 @@ spec:
           operator: "Exists"
           effect: "NoSchedule"
       containers:
-        - name: csi-provisioner-disk
+        - name: csi-provisioner
           image: mcr.microsoft.com/oss/kubernetes-csi/csi-provisioner:v2.2.2
           args:
             - "--feature-gates=Topology=true"
             - "--csi-address=$(ADDRESS)"
             - "--v=2"
-            - "--timeout=30s"
+            - "--timeout=15s"
             - "--leader-election"
             - "--worker-threads=40"
             - "--extra-create-metadata=true"
@@ -51,7 +51,7 @@ spec:
             requests:
               cpu: 10m
               memory: 20Mi
-        - name: csi-attacher-disk
+        - name: csi-attacher
           image: mcr.microsoft.com/oss/kubernetes-csi/csi-attacher:v3.3.0
           args:
             - "-v=2"
@@ -72,7 +72,7 @@ spec:
             requests:
               cpu: 10m
               memory: 20Mi
-        - name: csi-snapshotter-disk
+        - name: csi-snapshotter
           image: mcr.microsoft.com/oss/kubernetes-csi/csi-snapshotter:v3.0.3
           args:
             - "-csi-address=$(ADDRESS)"
@@ -91,7 +91,7 @@ spec:
             requests:
               cpu: 10m
               memory: 20Mi
-        - name: csi-resizer-disk
+        - name: csi-resizer
           image: mcr.microsoft.com/oss/kubernetes-csi/csi-resizer:v1.3.0
           args:
             - "-csi-address=$(ADDRESS)"
@@ -111,7 +111,7 @@ spec:
             requests:
               cpu: 10m
               memory: 20Mi
-        - name: liveness-probe-disk
+        - name: liveness-probe
           image: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe:v2.4.0
           args:
             - --csi-address=/csi/csi.sock
@@ -129,7 +129,7 @@ spec:
               cpu: 10m
               memory: 20Mi
         - name: azuredisk
-          image: mcr.microsoft.com/k8s/csi/azuredisk-csi:latest
+          image: mcr.microsoft.com/k8s/csi/azuredisk-csi:v1.8.0
           imagePullPolicy: IfNotPresent
           args:
             - "--v=5"
@@ -137,7 +137,6 @@ spec:
             - "--metrics-address=0.0.0.0:29604"
             - "--user-agent-suffix=OSS-kubectl"
             - "--disable-avset-nodes=true"
-            - "--is-controller-plugin=true"
           ports:
             - containerPort: 29602
               name: healthz

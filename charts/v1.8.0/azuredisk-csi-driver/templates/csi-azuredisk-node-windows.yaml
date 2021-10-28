@@ -1,8 +1,8 @@
-{{- if .Values.linux.enabled}}
+{{- if .Values.windows.enabled}}
 kind: DaemonSet
 apiVersion: apps/v1
 metadata:
-  name: {{ .Values.linux.dsName }}
+  name: {{ .Values.windows.dsName }}
   namespace: {{ .Release.Namespace }}
 {{ include "azuredisk.labels" . | indent 2 }}
 spec:
@@ -12,52 +12,50 @@ spec:
     type: RollingUpdate
   selector:
     matchLabels:
-      app: {{ .Values.linux.dsName }}
+      app: {{ .Values.windows.dsName }}
   template:
     metadata:
 {{ include "azuredisk.labels" . | indent 6 }}
-        app: {{ .Values.linux.dsName }}
-{{- with .Values.linux.podLabels }}
+        app: {{ .Values.windows.dsName }}
+{{- with .Values.windows.podLabels }}
 {{ toYaml . | indent 8 }}
 {{- end }}
     spec:
-      {{- if .Values.imagePullSecrets }}
-      imagePullSecrets:
-{{ toYaml .Values.imagePullSecrets | indent 8 }}
-      {{- end }}
-      hostNetwork: {{ .Values.linux.hostNetwork }}
-      dnsPolicy: Default
       serviceAccountName: {{ .Values.serviceAccount.node }}
-      nodeSelector:
-        kubernetes.io/os: linux
-      affinity:
-        nodeAffinity:
-{{ toYaml .Values.linux.nodeAffinity | indent 10 }}
-      priorityClassName: system-node-critical
-{{- with .Values.linux.tolerations }}
+{{- with .Values.windows.tolerations }}
       tolerations:
 {{ toYaml . | indent 8 }}
 {{- end }}
+      nodeSelector:
+        kubernetes.io/os: windows
+      affinity:
+        nodeAffinity:
+{{ toYaml .Values.windows.nodeAffinity | indent 10 }}
+      priorityClassName: system-node-critical
       {{- include "azuredisk.pullSecrets" . | indent 6 }}
       containers:
         - name: liveness-probe
           volumeMounts:
-            - mountPath: /csi
-              name: socket-dir
+            - mountPath: C:\csi
+              name: plugin-dir
 {{- if hasPrefix "/" .Values.image.livenessProbe.repository }}
           image: "{{ .Values.image.baseRepo }}{{ .Values.image.livenessProbe.repository }}:{{ .Values.image.livenessProbe.tag }}"
 {{- else }}
           image: "{{ .Values.image.livenessProbe.repository }}:{{ .Values.image.livenessProbe.tag }}"
 {{- end }}
           args:
-            - --csi-address=/csi/csi.sock
-            - --probe-timeout=3s
-            - --health-port={{ .Values.node.livenessProbe.healthPort }}
-            - --v=2
+            - "--csi-address=$(CSI_ENDPOINT)"
+            - "--probe-timeout=3s"
+            - "--health-port={{ .Values.node.livenessProbe.healthPort }}"
+            - "--v=2"
+          env:
+            - name: CSI_ENDPOINT
+              value: unix://C:\\csi\\csi.sock
+          imagePullPolicy: {{ .Values.image.livenessProbe.pullPolicy }}
           resources:
             limits:
-              cpu: 100m
-              memory: 100Mi
+              cpu: 200m
+              memory: 200Mi
             requests:
               cpu: 10m
               memory: 20Mi
@@ -68,35 +66,42 @@ spec:
           image: "{{ .Values.image.nodeDriverRegistrar.repository }}:{{ .Values.image.nodeDriverRegistrar.tag }}"
 {{- end }}
           args:
-            - --csi-address=$(ADDRESS)
-            - --kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)
-            - --v=2
+            - "--v=2"
+            - "--csi-address=$(CSI_ENDPOINT)"
+            - "--kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)"
           lifecycle:
             preStop:
               exec:
-                command: ["/bin/sh", "-c", "rm -rf /registration/{{ .Values.driver.name }}-reg.sock /csi/csi.sock"]
+                command: ["cmd", "/c", "del /f C:\\registration\\{{ .Values.driver.name }}-reg.sock C:\\csi\\{{ .Values.driver.name }}\\csi.sock"]
           livenessProbe:
             exec:
               command:
-                - /csi-node-driver-registrar
+                - /csi-node-driver-registrar.exe
                 - --kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)
                 - --mode=kubelet-registration-probe
             initialDelaySeconds: 30
             timeoutSeconds: 15
           env:
-            - name: ADDRESS
-              value: /csi/csi.sock
+            - name: CSI_ENDPOINT
+              value: unix://C:\\csi\\csi.sock
             - name: DRIVER_REG_SOCK_PATH
-              value: {{ .Values.linux.kubelet }}/plugins/{{ .Values.driver.name }}/csi.sock
+              value: C:\\var\\lib\\kubelet\\plugins\\{{ .Values.driver.name }}\\csi.sock
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          imagePullPolicy: {{ .Values.image.nodeDriverRegistrar.pullPolicy }}
           volumeMounts:
-            - name: socket-dir
-              mountPath: /csi
+            - name: kubelet-dir
+              mountPath: "C:\\var\\lib\\kubelet"
+            - name: plugin-dir
+              mountPath: C:\csi
             - name: registration-dir
-              mountPath: /registration
+              mountPath: C:\registration
           resources:
             limits:
-              cpu: 100m
-              memory: 100Mi
+              cpu: 200m
+              memory: 200Mi
             requests:
               cpu: 10m
               memory: 20Mi
@@ -111,7 +116,6 @@ spec:
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--nodeid=$(KUBE_NODE_NAME)"
             - "--metrics-address=0.0.0.0:{{ .Values.node.metricsPort }}"
-            - "--enable-perf-optimization={{ .Values.linux.enablePerfOptimization }}"
             - "--drivername={{ .Values.driver.name }}"
             - "--volume-attach-limit={{ .Values.driver.volumeAttachLimit }}"
             - "--cloud-config-secret-name={{ .Values.node.cloudConfigSecretName }}"
@@ -135,10 +139,10 @@ spec:
               valueFrom:
                 configMapKeyRef:
                   name: azure-cred-file
-                  key: path
+                  key: path-windows
                   optional: true
             - name: CSI_ENDPOINT
-              value: unix:///csi/csi.sock
+              value: unix://C:\\csi\\csi.sock
             - name: KUBE_NODE_NAME
               valueFrom:
                 fieldRef:
@@ -146,85 +150,72 @@ spec:
                   fieldPath: spec.nodeName
             {{- if eq .Values.cloud "AzureStackCloud" }}
             - name: AZURE_ENVIRONMENT_FILEPATH
-              value: /etc/kubernetes/azurestackcloud.json
+              value: C:\k\azurestackcloud.json
             {{- end }}
           imagePullPolicy: {{ .Values.image.azuredisk.pullPolicy }}
-          securityContext:
-            privileged: true
           volumeMounts:
-            - mountPath: /csi
-              name: socket-dir
-            - mountPath: {{ .Values.linux.kubelet }}/
-              mountPropagation: Bidirectional
-              name: mountpoint-dir
-            - mountPath: /etc/kubernetes/
-              name: azure-cred
-            - mountPath: /dev
-              name: device-dir
-            - mountPath: /sys/bus/scsi/devices
-              name: sys-devices-dir
-            - mountPath: /sys/class/scsi_host/
-              name: scsi-host-dir
-            {{- if eq .Values.cloud "AzureStackCloud" }}
-            - name: ssl
-              mountPath: /etc/ssl/certs
-              readOnly: true
-            {{- end }}
-            {{- if eq .Values.linux.distro "fedora" }}
-            - name: ssl
-              mountPath: /etc/ssl/certs
-              readOnly: true
-            - name: ssl-pki
-              mountPath: /etc/pki/ca-trust/extracted
-              readOnly: true
-            {{- end }}
+            - name: kubelet-dir
+              mountPath: "C:\\var\\lib\\kubelet"
+            - name: plugin-dir
+              mountPath: C:\csi
+            - name: azure-config
+              mountPath: C:\k
+            - name: csi-proxy-fs-pipe-v1
+              mountPath: \\.\pipe\csi-proxy-filesystem-v1
+            - name: csi-proxy-disk-pipe-v1
+              mountPath: \\.\pipe\csi-proxy-disk-v1
+            - name: csi-proxy-volume-pipe-v1
+              mountPath: \\.\pipe\csi-proxy-volume-v1
+            # these paths are still included for compatibility, they're used
+            # only if the node has still the beta version of the CSI proxy
+            - name: csi-proxy-fs-pipe-v1beta1
+              mountPath: \\.\pipe\csi-proxy-filesystem-v1beta1
+            - name: csi-proxy-disk-pipe-v1beta2
+              mountPath: \\.\pipe\csi-proxy-disk-v1beta2
+            - name: csi-proxy-volume-pipe-v1beta2
+              mountPath: \\.\pipe\csi-proxy-volume-v1beta2
           resources:
             limits:
-              cpu: 200m
-              memory: 200Mi
+              cpu: 400m
+              memory: 400Mi
             requests:
               cpu: 10m
               memory: 20Mi
       volumes:
-        - hostPath:
-            path: {{ .Values.linux.kubelet }}/plugins/{{ .Values.driver.name }}
-            type: DirectoryOrCreate
-          name: socket-dir
-        - hostPath:
-            path: {{ .Values.linux.kubelet }}/
-            type: DirectoryOrCreate
-          name: mountpoint-dir
-        - hostPath:
-            path: {{ .Values.linux.kubelet }}/plugins_registry/
-            type: DirectoryOrCreate
-          name: registration-dir
-        - hostPath:
-            path: /etc/kubernetes/
-            type: DirectoryOrCreate
-          name: azure-cred
-        - hostPath:
-            path: /dev
-            type: Directory
-          name: device-dir
-        - hostPath:
-            path: /sys/bus/scsi/devices
-            type: Directory
-          name: sys-devices-dir
-        - hostPath:
-            path: /sys/class/scsi_host/
-            type: Directory
-          name: scsi-host-dir
-        {{- if eq .Values.cloud "AzureStackCloud" }}
-        - name: ssl
+        - name: csi-proxy-fs-pipe-v1
           hostPath:
-            path: /etc/ssl/certs
-        {{- end }}
-        {{- if eq .Values.linux.distro "fedora" }}
-        - name: ssl
+            path: \\.\pipe\csi-proxy-filesystem-v1
+        - name: csi-proxy-disk-pipe-v1
           hostPath:
-            path: /etc/ssl/certs
-        - name: ssl-pki
+            path: \\.\pipe\csi-proxy-disk-v1
+        - name: csi-proxy-volume-pipe-v1
           hostPath:
-            path: /etc/pki/ca-trust/extracted
-        {{- end }}
+            path: \\.\pipe\csi-proxy-volume-v1
+        # these paths are still included for compatibility, they're used
+        # only if the node has still the beta version of the CSI proxy
+        - name: csi-proxy-fs-pipe-v1beta1
+          hostPath:
+            path: \\.\pipe\csi-proxy-filesystem-v1beta1
+        - name: csi-proxy-disk-pipe-v1beta2
+          hostPath:
+            path: \\.\pipe\csi-proxy-disk-v1beta2
+        - name: csi-proxy-volume-pipe-v1beta2
+          hostPath:
+            path: \\.\pipe\csi-proxy-volume-v1beta2
+        - name: registration-dir
+          hostPath:
+            path: {{ .Values.windows.kubelet }}\plugins_registry\
+            type: Directory
+        - name: kubelet-dir
+          hostPath:
+            path: {{ .Values.windows.kubelet }}\
+            type: Directory
+        - name: plugin-dir
+          hostPath:
+            path: {{ .Values.windows.kubelet }}\plugins\{{ .Values.driver.name }}\
+            type: DirectoryOrCreate
+        - name: azure-config
+          hostPath:
+            path: C:\k
+            type: DirectoryOrCreate
 {{- end -}}

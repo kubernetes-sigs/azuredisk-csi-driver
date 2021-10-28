@@ -20,7 +20,7 @@ IMAGE_NAME ?= azuredisk-csi
 SCHEDULER_EXTENDER_IMAGE_NAME ?= azdiskschedulerextender-csi
 ifndef BUILD_V2
 PLUGIN_NAME = azurediskplugin
-IMAGE_VERSION ?= v1.8.0
+IMAGE_VERSION ?= v1.9.0
 CHART_VERSION ?= latest
 else
 PLUGIN_NAME = azurediskpluginv2
@@ -151,7 +151,7 @@ endif
 
 .PHONY: azuredisk
 azuredisk:
-	CGO_ENABLED=0 GOOS=linux go build -a -ldflags ${LDFLAGS} -mod vendor -o _output/${ARCH}/${PLUGIN_NAME} ./pkg/azurediskplugin
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(ARCH) go build -a -ldflags ${LDFLAGS} -mod vendor -o _output/${ARCH}/${PLUGIN_NAME} ./pkg/azurediskplugin
 
 .PHONY: azuredisk-v2
 azuredisk-v2:

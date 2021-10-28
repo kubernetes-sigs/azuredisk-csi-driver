@@ -55,6 +55,17 @@ apt update && apt install curl -y
 curl https://apiserver-fqdn -k -v 2>&1
 ```
 
+ - get cloud config file(`azure.json`) on Linux node
+```console
+kubectl exec -it csi-azuredisk-node-dx94w -n kube-system -c azuredisk -- cat /etc/kubernetes/azure.json
+```
+
+ - get cloud config file(`azure.json`) on Windows node
+```console
+kubectl exec -it csi-azuredisk-node-win-xxxxx -n kube-system -c azuredisk cmd
+type c:\k\azure.json
+```
+
  - get Windows csi-proxy logs inside driver
 ```console
 kubectl exec -it csi-azuredisk-node-win-xxxxx -n kube-system -c azuredisk cmd
