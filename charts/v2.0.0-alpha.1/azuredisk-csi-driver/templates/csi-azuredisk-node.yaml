@@ -109,7 +109,7 @@ spec:
             - "--v={{ .Values.node.logLevel }}"
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--nodeid=$(KUBE_NODE_NAME)"
-            - "--metrics-address=0.0.0.0:{{ .Values.node.metricsPort }}"
+            - "--metrics-address=0.0.0.0:{{ .Values.node.metrics.port }}"
             - "--enable-perf-optimization={{ .Values.linux.enablePerfOptimization }}"
             - "--is-node-plugin=true"
             - "--drivername={{ .Values.driver.name }}"

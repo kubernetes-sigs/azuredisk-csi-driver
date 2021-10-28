@@ -59,11 +59,12 @@ type VolumeProvisioner interface {
 
 //Struct for the reconciler
 type ReconcileAzVolume struct {
-	client            client.Client
-	azVolumeClient    azClientSet.Interface
-	kubeClient        kubeClientSet.Interface
-	namespace         string
-	volumeProvisioner VolumeProvisioner
+	client                client.Client
+	azVolumeClient        azClientSet.Interface
+	kubeClient            kubeClientSet.Interface
+	namespace             string
+	volumeProvisioner     VolumeProvisioner
+	controllerSharedState *SharedState
 	// stateLock prevents concurrent cloud operation for same volume to be executed due to state update race
 	stateLock *sync.Map
 	retryInfo *retryInfo
@@ -86,8 +87,9 @@ var allowedTargetVolumeStates = map[string][]string{
 func (r *ReconcileAzVolume) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
 	azVolume, err := azureutils.GetAzVolume(ctx, r.client, r.azVolumeClient, request.Name, request.Namespace, true)
 	if err != nil {
-		// ignore not found error as they will not be fixed with a requeue
+		// if AzVolume has been deleted, delete the operation queue for the volume and return success
 		if errors.IsNotFound(err) {
+			r.controllerSharedState.deleteOperationQueue(request.Name)
 			return reconcileReturnOnSuccess(request.Name, r.retryInfo)
 		}
 
@@ -168,6 +170,8 @@ func (r *ReconcileAzVolume) triggerCreate(ctx context.Context, azVolume *v1alpha
 			}
 		} else {
 			klog.Infof("Successfully created volume %s: %v", azVolume.Spec.UnderlyingVolume, response)
+			// create operation queue for the volume
+			r.controllerSharedState.createOperationQueue(azVolume.Name)
 			updateFunc = func(obj interface{}) error {
 				azv := obj.(*v1alpha1.AzVolume)
 				if response == nil {
@@ -198,8 +202,16 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *v1alpha
 		mode = detachAndDeleteCRI
 	}
 
+	// override volume operation queue to prevent any other replica operation from being executed
+	release := r.controllerSharedState.overrideAndClearOperationQueue(azVolume.Name)
+	defer func() {
+		if release != nil {
+			release()
+		}
+	}()
+
 	// Delete all AzVolumeAttachment objects bound to the deleted AzVolume
-	attachments, err := cleanUpAzVolumeAttachmentByVolume(ctx, r, azVolume.Name, "azVolumeController", all, mode)
+	attachments, err := cleanUpAzVolumeAttachmentByVolume(ctx, r, azVolume.Name, azvolume, all, mode)
 	if err != nil {
 		return err
 	}
@@ -518,6 +530,9 @@ func (r *ReconcileAzVolume) recreateAzVolumes(ctx context.Context) error {
 				},
 			}, metav1.CreateOptions{}); err != nil {
 				klog.Errorf("failed to recover AzVolume (%s): %v", diskName, err)
+			} else {
+				// if AzVolume CRI successfully recreated, also recreate the operation queue for the volume
+				r.controllerSharedState.createOperationQueue(azVolumeName)
 			}
 		}
 	}
@@ -604,15 +619,16 @@ func (r *ReconcileAzVolume) Recover(ctx context.Context) error {
 	return err
 }
 
-func NewAzVolumeController(mgr manager.Manager, azVolumeClient azClientSet.Interface, kubeClient kubeClientSet.Interface, namespace string, volumeProvisioner VolumeProvisioner) (*ReconcileAzVolume, error) {
+func NewAzVolumeController(mgr manager.Manager, azVolumeClient azClientSet.Interface, kubeClient kubeClientSet.Interface, namespace string, volumeProvisioner VolumeProvisioner, controllerSharedState *SharedState) (*ReconcileAzVolume, error) {
 	reconciler := ReconcileAzVolume{
-		client:            mgr.GetClient(),
-		azVolumeClient:    azVolumeClient,
-		kubeClient:        kubeClient,
-		namespace:         namespace,
-		volumeProvisioner: volumeProvisioner,
-		stateLock:         &sync.Map{},
-		retryInfo:         newRetryInfo(),
+		client:                mgr.GetClient(),
+		azVolumeClient:        azVolumeClient,
+		kubeClient:            kubeClient,
+		namespace:             namespace,
+		volumeProvisioner:     volumeProvisioner,
+		stateLock:             &sync.Map{},
+		retryInfo:             newRetryInfo(),
+		controllerSharedState: controllerSharedState,
 	}
 	logger := mgr.GetLogger().WithValues("controller", "azvolume")
 
@@ -647,4 +663,8 @@ func (r *ReconcileAzVolume) getClient() client.Client {
 
 func (r *ReconcileAzVolume) getAzClient() azClientSet.Interface {
 	return r.azVolumeClient
+}
+
+func (r *ReconcileAzVolume) getSharedState() *SharedState {
+	return r.controllerSharedState
 }

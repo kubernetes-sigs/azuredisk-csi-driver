@@ -94,37 +94,48 @@ func (r *ReconcilePod) createReplicas(ctx context.Context, podKey string) error 
 
 	// creating replica attachments for each volume
 	for _, volume := range volumes {
-		azVolume, err := azureutils.GetAzVolume(ctx, r.client, r.azVolumeClient, volume, consts.AzureDiskCrdNamespace, true)
-		if err != nil {
-			klog.V(5).Infof("Error getting azvolumes for pod %s. Error: %v", podKey, err)
-			return err
-		}
-		// if underlying volume is not present, abort operation
-		if !isCreated(azVolume) {
-			return status.Errorf(codes.Aborted, "azVolume (%s) has no underlying volume object", azVolume.Name)
-		}
+		volume := volume
+		r.controllerSharedState.addToOperationQueue(
+			volume,
+			pod,
+			func() error {
+				azVolume, err := azureutils.GetAzVolume(ctx, r.client, r.azVolumeClient, volume, consts.AzureDiskCrdNamespace, true)
+				if err != nil {
+					klog.V(5).Infof("Error getting azvolumes for pod %s. Error: %v", podKey, err)
+					return err
+				}
+				// if underlying volume is not present, abort operation
+				if !isCreated(azVolume) {
+					return status.Errorf(codes.Aborted, "azVolume (%s) has no underlying volume object", azVolume.Name)
+				}
 
-		// get all replica attachments for the given volume
-		if r.controllerSharedState.isVolumeVisited(volume) {
-			klog.Infof("No need to create replica attachment for volume (%s). Replica controller is responsible for it")
-			continue
-		}
+				// get all replica attachments for the given volume
+				if r.controllerSharedState.isVolumeVisited(volume) {
+					klog.Infof("No need to create replica attachment for volume (%s). Replica controller is responsible for it", volume)
+					return nil
+				}
 
-		numCreated := 0
-		// loop over all eligible nodes to create replicas.
-		for _, node := range nodes {
-			if numCreated >= azVolume.Spec.MaxMountReplicaCount {
-				break
-			}
-			if err := createReplicaAzVolumeAttachment(ctx, r, azVolume.Status.Detail.ResponseObject.VolumeID, node, azVolume.Spec.Parameters); err != nil {
-				klog.Warningf("Error creating %d/%d replicas azvolumeattachment for pod %s and volume %s on node %s. Error: %v", azVolume.Spec.MaxMountReplicaCount, numCreated, podKey, volume, node, err)
-				return err
-			}
-			numCreated++
-		}
+				numCreated := 0
+				// loop over all eligible nodes to create replicas.
+				for _, node := range nodes {
+					if numCreated >= azVolume.Spec.MaxMountReplicaCount {
+						break
+					}
+					if err := createReplicaAzVolumeAttachment(ctx, r, azVolume.Status.Detail.ResponseObject.VolumeID, node, azVolume.Spec.Parameters); err != nil {
+						klog.Warningf("Error creating %d/%d replicas azvolumeattachment for pod %s and volume %s on node %s. Error: %v", azVolume.Spec.MaxMountReplicaCount, numCreated, podKey, volume, node, err)
+						return err
+					}
+					numCreated++
+				}
 
-		// once replica attachment batch is created by pod controller, future replica reconciliation needs to be handled by replica controller
-		r.controllerSharedState.markVolumeVisited(volume)
+				// once replica attachment batch is created by pod controller, future replica reconciliation needs to be handled by replica controller
+				r.controllerSharedState.markVolumeVisited(volume)
+				// remove replica controller from the blacklist
+				r.controllerSharedState.removeFromExclusionList(volume, replica)
+				return nil
+			},
+			false,
+		)
 	}
 	return nil
 }
@@ -207,4 +218,8 @@ func (r *ReconcilePod) getClient() client.Client {
 
 func (r *ReconcilePod) getAzClient() azClientSet.Interface {
 	return r.azVolumeClient
+}
+
+func (r *ReconcilePod) getSharedState() *SharedState {
+	return r.controllerSharedState
 }

@@ -50,9 +50,7 @@ func NewTestReplicaController(controller *gomock.Controller, namespace string, o
 		azVolumeClient:             diskfakes.NewSimpleClientset(diskv1alpha1Objs...),
 		kubeClient:                 fakev1.NewSimpleClientset(kubeObjs...),
 		namespace:                  namespace,
-		mutexLocks:                 sync.Map{},
 		cleanUpMap:                 sync.Map{},
-		deletionMap:                sync.Map{},
 		controllerSharedState:      controllerSharedState,
 		timeUntilGarbageCollection: testTimeUntilGarbageCollection,
 	}
@@ -124,12 +122,16 @@ func TestReplicaReconcile(t *testing.T) {
 			request:     testReplicaAzVolumeAttachmentRequest,
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileReplica {
 				replicaAttachment := testReplicaAzVolumeAttachment.DeepCopy()
-				replicaAttachment.Status.Detail = &diskv1alpha1.AzVolumeAttachmentStatusDetail{
-					PublishContext: map[string]string{},
-					Role:           diskv1alpha1.ReplicaRole,
+				replicaAttachment.Status = diskv1alpha1.AzVolumeAttachmentStatus{
+					Detail: &diskv1alpha1.AzVolumeAttachmentStatusDetail{
+						PublishContext: map[string]string{},
+						Role:           diskv1alpha1.ReplicaRole,
+					},
+					State: diskv1alpha1.Attached,
 				}
-				replicaAttachment.Labels[consts.RoleLabel] = string(diskv1alpha1.PrimaryRole)
+
 				replicaAttachment.Spec.RequestedRole = diskv1alpha1.PrimaryRole
+				replicaAttachment = updateRole(replicaAttachment, diskv1alpha1.PrimaryRole)
 
 				newVolume := testAzVolume0.DeepCopy()
 				newVolume.Status.Detail = &diskv1alpha1.AzVolumeStatusDetail{
@@ -154,13 +156,16 @@ func TestReplicaReconcile(t *testing.T) {
 			verifyFunc: func(t *testing.T, controller *ReconcileReplica, result reconcile.Result, err error) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
-
-				roleReq, _ := createLabelRequirements(consts.RoleLabel, string(diskv1alpha1.ReplicaRole))
-				labelSelector := labels.NewSelector().Add(*roleReq)
-				replicas, localError := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
-				require.NoError(t, localError)
-				require.NotNil(t, replicas)
-				require.Len(t, replicas.Items, 1)
+				conditionFunc := func() (bool, error) {
+					roleReq, _ := createLabelRequirements(consts.RoleLabel, string(diskv1alpha1.ReplicaRole))
+					labelSelector := labels.NewSelector().Add(*roleReq)
+					replicas, localError := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
+					require.NoError(t, localError)
+					require.NotNil(t, replicas)
+					return len(replicas.Items) == 1, nil
+				}
+				err = wait.PollImmediate(verifyCRIInterval, verifyCRITimeout, conditionFunc)
+				require.NoError(t, err)
 			},
 		},
 		{
@@ -214,9 +219,12 @@ func TestReplicaReconcile(t *testing.T) {
 				now := metav1.Time{Time: metav1.Now().Add(-1000)}
 				primaryAttachment.DeletionTimestamp = &now
 				replicaAttachment := testReplicaAzVolumeAttachment.DeepCopy()
-				replicaAttachment.Status.Detail = &diskv1alpha1.AzVolumeAttachmentStatusDetail{
-					PublishContext: map[string]string{},
-					Role:           diskv1alpha1.ReplicaRole,
+				replicaAttachment.Status = diskv1alpha1.AzVolumeAttachmentStatus{
+					Detail: &diskv1alpha1.AzVolumeAttachmentStatusDetail{
+						PublishContext: map[string]string{},
+						Role:           diskv1alpha1.ReplicaRole,
+					},
+					State: diskv1alpha1.Attached,
 				}
 
 				newVolume := testAzVolume0.DeepCopy()
@@ -249,9 +257,8 @@ func TestReplicaReconcile(t *testing.T) {
 				require.NoError(t, err)
 
 				// promote replica to primary
-				replicaAttachment = replicaAttachment.DeepCopy()
-				replicaAttachment.Labels[consts.RoleLabel] = string(diskv1alpha1.PrimaryRole)
 				replicaAttachment.Spec.RequestedRole = diskv1alpha1.PrimaryRole
+				replicaAttachment = updateRole(replicaAttachment.DeepCopy(), diskv1alpha1.PrimaryRole)
 
 				err = controller.client.Update(context.TODO(), replicaAttachment)
 				require.NoError(t, err)

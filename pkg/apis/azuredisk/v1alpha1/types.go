@@ -150,6 +150,7 @@ type AzVolumeList struct {
 // +kubebuilder:printcolumn:name="UnderlyingVolume",type=string,JSONPath=`.spec.underlyingVolume`,description="Name of the Volume which this AzVolumeAttachment object references",priority=10
 // +kubebuilder:printcolumn:name="RequestedRole",type=string,JSONPath=`.spec.role`,description="Indicates if the volume attachment should be primary attachment or not"
 // +kubebuilder:printcolumn:name="Role",type=string,JSONPath=`.status.detail.role`,description="Indicates if the volume attachment is primary attachment or not"
+// +kubebuilder:printcolumn:name="PreviousRole",type=string,JSONPath=`.status.detail.previous_role`,description="Describes the previous volume attachment role",priority=10
 // +kubebuilder:printcolumn:name="State",type=string,JSONPath=`.status.state`,description="Indicates the state of the volume attachment"
 type AzVolumeAttachment struct {
 	metav1.TypeMeta `json:",inline"`
@@ -227,7 +228,11 @@ type AzVolumeAttachmentStatus struct {
 
 // AzVolumeAttachmentStatusDetail is the status of the attachment between specified node and volume.
 type AzVolumeAttachmentStatusDetail struct {
+	// The current attachment role.
 	Role Role `json:"role"`
+	// The previous attachment role.
+	//+optional
+	PreviousRole Role `json:"previous_role,omitempty"`
 	//+optional
 	PublishContext map[string]string `json:"publish_context,omitempty"`
 }

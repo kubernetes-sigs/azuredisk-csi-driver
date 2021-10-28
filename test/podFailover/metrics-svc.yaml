@@ -17,7 +17,7 @@ spec:
 kind: Service
 apiVersion: v1
 metadata:
-  name: pod-failover-metrics-service
+  name: pod-failover-metrics
   namespace: default
   labels:
     app: pod-failover-metrics
@@ -28,7 +28,7 @@ spec:
     - name: metrics
       port: 9090
       targetPort: 9090
-    - name: poddowntime
+    - name: pod-failover
       port: 9091
       targetPort: 9091
-  type: LoadBalancer
+  type: ClusterIP

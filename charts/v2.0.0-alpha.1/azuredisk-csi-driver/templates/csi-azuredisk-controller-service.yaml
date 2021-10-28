@@ -1,0 +1,18 @@
+{{- if .Values.controller.metrics.service.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.controller.name }}
+  namespace: {{ .Release.Namespace }}
+{{ include "azuredisk.labels" . | indent 2 }}
+    app: {{ .Values.controller.name }}
+spec:
+  selector:
+    app: {{ .Values.controller.name }}
+  ports:
+    - name: "metrics"
+      port: {{ .Values.controller.metrics.port }}
+      targetPort: {{ .Values.controller.metrics.port }}
+  type: ClusterIP
+{{- end -}}

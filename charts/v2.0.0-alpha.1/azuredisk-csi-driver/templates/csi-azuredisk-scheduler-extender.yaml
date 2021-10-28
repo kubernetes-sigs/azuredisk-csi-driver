@@ -95,7 +95,7 @@ spec:
         imagePullPolicy: {{ .Values.image.schedulerExtender.pullPolicy }}
         args:
         - "--port={{ .Values.schedulerExtender.servicePort }}"
-        - "--metrics-address=0.0.0.0:{{ .Values.schedulerExtender.metricsPort}}"
+        - "--metrics-address=0.0.0.0:{{ .Values.schedulerExtender.metrics.port }}"
         - "--v=5"
         livenessProbe:
           httpGet:
@@ -120,5 +120,5 @@ spec:
             containerPort: {{ .Values.schedulerExtender.servicePort }}
             hostPort: {{ .Values.schedulerExtender.servicePort }}
           - name: metrics-port
-            containerPort: {{ .Values.schedulerExtender.metricsPort }}
+            containerPort: {{ .Values.schedulerExtender.metrics.port }}
             protocol: TCP

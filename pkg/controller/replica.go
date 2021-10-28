@@ -21,8 +21,6 @@ import (
 	"sync"
 	"time"
 
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -52,9 +50,7 @@ type ReconcileReplica struct {
 	kubeClient                 kubeClientSet.Interface
 	namespace                  string
 	controllerSharedState      *SharedState
-	deletionMap                sync.Map
 	cleanUpMap                 sync.Map
-	mutexLocks                 sync.Map
 	timeUntilGarbageCollection time.Duration
 }
 
@@ -72,18 +68,25 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 
 	if azVolumeAttachment.Spec.RequestedRole == v1alpha1.PrimaryRole {
 		// Deletion Event
-		if criDeletionRequested(&azVolumeAttachment.ObjectMeta) && volumeDetachRequested(azVolumeAttachment) {
-			// If primary attachment is marked for deletion, queue garbage collection for replica attachments
-			r.triggerGarbageCollection(azVolumeAttachment.Spec.UnderlyingVolume)
+		if criDeletionRequested(&azVolumeAttachment.ObjectMeta) {
+			if volumeDetachRequested(azVolumeAttachment) {
+				// If primary attachment is marked for deletion, queue garbage collection for replica attachments
+				r.triggerGarbageCollection(azVolumeAttachment.Spec.UnderlyingVolume)
+			}
 		} else {
 			// If not, cancel scheduled garbage collection if there is one enqueued
 			r.removeGarbageCollection(azVolumeAttachment.Spec.UnderlyingVolume)
 
 			// If promotion event, create a replacement replica
-			if isAttached(azVolumeAttachment) && azVolumeAttachment.Status.Detail.Role != azVolumeAttachment.Spec.RequestedRole {
-				if err := r.manageReplicas(ctx, azVolumeAttachment.Spec.UnderlyingVolume); err != nil {
-					return reconcile.Result{Requeue: true}, err
-				}
+			if isAttached(azVolumeAttachment) && azVolumeAttachment.Status.Detail.PreviousRole == v1alpha1.ReplicaRole {
+				r.controllerSharedState.addToOperationQueue(
+					azVolumeAttachment.Spec.UnderlyingVolume,
+					replica,
+					func() error {
+						return r.manageReplicas(context.Background(), azVolumeAttachment.Spec.UnderlyingVolume)
+					},
+					false,
+				)
 			}
 		}
 	} else {
@@ -112,12 +115,15 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 					}
 					_ = wait.PollImmediateInfinite(deletionPollingInterval, conditionFunc)
 
-					// retry replica management with exponential backoff until success
-					conditionFunc = func() (bool, error) {
-						err := r.manageReplicas(ctx, azVolumeAttachment.Spec.UnderlyingVolume)
-						return true, err
-					}
-					_ = wait.ExponentialBackoffWithContext(ctx, wait.Backoff{Duration: defaultRetryDuration, Factor: defaultRetryFactor, Steps: defaultRetrySteps}, conditionFunc)
+					// add replica management operation to the queue
+					r.controllerSharedState.addToOperationQueue(
+						azVolumeAttachment.Spec.UnderlyingVolume,
+						replica,
+						func() error {
+							return r.manageReplicas(context.Background(), azVolumeAttachment.Spec.UnderlyingVolume)
+						},
+						false,
+					)
 				}()
 			}
 		} else if azVolumeAttachment.Status.State == v1alpha1.AttachmentFailed {
@@ -138,7 +144,7 @@ func (r *ReconcileReplica) triggerGarbageCollection(volumeName string) {
 		cancelFunc()
 		return
 	}
-	klog.Infof("garbage collection of AzVolumeAttachments for AzVolume (%s) scheduled in %s.", volumeName, DefaultTimeUntilGarbageCollection.String())
+	klog.Infof("garbage collection of AzVolumeAttachments for AzVolume (%s) scheduled in %s.", volumeName, r.timeUntilGarbageCollection.String())
 
 	go func(ctx context.Context) {
 		select {
@@ -147,14 +153,21 @@ func (r *ReconcileReplica) triggerGarbageCollection(volumeName string) {
 			return
 		case <-time.After(r.timeUntilGarbageCollection):
 			klog.Infof("Initiating garbage collection for AzVolume (%s)", volumeName)
-			v, _ := r.mutexLocks.LoadOrStore(volumeName, &sync.RWMutex{})
-			volumeLock := v.(*sync.RWMutex)
-			volumeLock.Lock()
-			_, _ = cleanUpAzVolumeAttachmentByVolume(ctx, r, volumeName, "replicaController", all, detachAndDeleteCRI)
-			volumeLock.Unlock()
-			r.mutexLocks.Delete(volumeName)
-			r.removeGarbageCollection(volumeName)
-			r.controllerSharedState.unmarkVolumeVisited(volumeName)
+			r.controllerSharedState.addToOperationQueue(
+				volumeName,
+				replica,
+				func() error {
+					_, err := cleanUpAzVolumeAttachmentByVolume(context.Background(), r, volumeName, "replicaController", all, detachAndDeleteCRI)
+					if err != nil {
+						return err
+					}
+					r.controllerSharedState.addToGcExclusionList(volumeName, replica)
+					r.removeGarbageCollection(volumeName)
+					r.controllerSharedState.unmarkVolumeVisited(volumeName)
+					return nil
+				},
+				true,
+			)
 		}
 	}(deletionCtx)
 }
@@ -165,15 +178,11 @@ func (r *ReconcileReplica) removeGarbageCollection(volumeName string) {
 		cancelFunc := v.(context.CancelFunc)
 		cancelFunc()
 	}
+	// if there is any garbage collection enqueued in operation queue, remove it
+	r.controllerSharedState.dequeueGarbageCollection(volumeName)
 }
 
 func (r *ReconcileReplica) manageReplicas(ctx context.Context, volumeName string) error {
-	// this is to prevent multiple sync volume operation to be performed on a single volume concurrently as it can create or delete more attachments than necessary
-	v, _ := r.mutexLocks.LoadOrStore(volumeName, &sync.RWMutex{})
-	volumeLock := v.(*sync.RWMutex)
-	volumeLock.Lock()
-	defer volumeLock.Unlock()
-
 	azVolume, err := azureutils.GetAzVolume(ctx, r.client, r.azVolumeClient, volumeName, r.namespace, true)
 	if errors.IsNotFound(err) {
 		klog.Infof("Aborting replica management... volume (%s) does not exist", volumeName)
@@ -182,8 +191,11 @@ func (r *ReconcileReplica) manageReplicas(ctx context.Context, volumeName string
 		klog.Errorf("failed to get AzVolume (%s): %v", volumeName, err)
 		return err
 	}
-	if !isCreated(azVolume) {
-		return status.Errorf(codes.Aborted, "azVolume (%s) has no underlying volume object", azVolume.Name)
+
+	// replica management should not be executed or retried if AzVolume is scheduled for a deletion or not created.
+	if !isCreated(azVolume) || criDeletionRequested(&azVolume.ObjectMeta) {
+		klog.Errorf("azVolume (%s) is scheduled for deletion or has no underlying volume object", azVolume.Name)
+		return nil
 	}
 
 	azVolumeAttachments, err := getAzVolumeAttachmentsForVolume(ctx, r.client, volumeName, replicaOnly)
@@ -195,8 +207,7 @@ func (r *ReconcileReplica) manageReplicas(ctx context.Context, volumeName string
 	desiredReplicaCount, currentReplicaCount := azVolume.Spec.MaxMountReplicaCount, len(azVolumeAttachments)
 	klog.Infof("control number of replicas for volume (%s): desired=%d,\tcurrent:%d", azVolume.Spec.UnderlyingVolume, desiredReplicaCount, currentReplicaCount)
 
-	// if the azVolume is marked deleted, do no create more azvolumeattachment objects
-	if azVolume.DeletionTimestamp == nil && desiredReplicaCount > currentReplicaCount {
+	if desiredReplicaCount > currentReplicaCount {
 		klog.Infof("Need %d more replicas for volume (%s)", desiredReplicaCount-currentReplicaCount, azVolume.Spec.UnderlyingVolume)
 		if azVolume.Status.Detail == nil || azVolume.Status.State == v1alpha1.VolumeDeleting || azVolume.Status.State == v1alpha1.VolumeDeleted || azVolume.Status.Detail.ResponseObject == nil {
 			// underlying volume does not exist, so volume attachment cannot be made
@@ -298,9 +309,7 @@ func NewReplicaController(mgr manager.Manager, azVolumeClient azClientSet.Interf
 		kubeClient:                 kubeClient,
 		namespace:                  namespace,
 		controllerSharedState:      controllerSharedState,
-		deletionMap:                sync.Map{},
 		cleanUpMap:                 sync.Map{},
-		mutexLocks:                 sync.Map{},
 		timeUntilGarbageCollection: DefaultTimeUntilGarbageCollection,
 	}
 	c, err := controller.New("replica-controller", mgr, controller.Options{
@@ -349,4 +358,8 @@ func (r *ReconcileReplica) getClient() client.Client {
 
 func (r *ReconcileReplica) getAzClient() azClientSet.Interface {
 	return r.azVolumeClient
+}
+
+func (r *ReconcileReplica) getSharedState() *SharedState {
+	return r.controllerSharedState
 }

@@ -38,11 +38,10 @@ import (
 
 // ReconcileAzDriverNode reconciles AzDriverNode
 type ReconcileAzDriverNode struct {
-	client client.Client
-
-	azVolumeClient azClientSet.Interface
-
-	namespace string
+	client                client.Client
+	azVolumeClient        azClientSet.Interface
+	controllerSharedState *SharedState
+	namespace             string
 }
 
 // Implement reconcile.Reconciler so the controller can reconcile objects
@@ -75,7 +74,7 @@ func (r *ReconcileAzDriverNode) Reconcile(ctx context.Context, request reconcile
 		}
 
 		// Delete all volumeAttachments attached to this node, if failed, requeue
-		if _, err = cleanUpAzVolumeAttachmentByNode(ctx, r, request.Name, "azDriverNodeController", all, detachAndDeleteCRI); err != nil {
+		if _, err = cleanUpAzVolumeAttachmentByNode(ctx, r, request.Name, azdrivernode, all, detachAndDeleteCRI); err != nil {
 			return reconcile.Result{Requeue: true}, nil
 		}
 		return reconcile.Result{}, nil
@@ -87,9 +86,14 @@ func (r *ReconcileAzDriverNode) Reconcile(ctx context.Context, request reconcile
 }
 
 // NewAzDriverNodeController initializes azdrivernode-controller
-func NewAzDriverNodeController(mgr manager.Manager, azVolumeClient azClientSet.Interface, namespace string) (*ReconcileAzDriverNode, error) {
+func NewAzDriverNodeController(mgr manager.Manager, azVolumeClient azClientSet.Interface, namespace string, controllerSharedState *SharedState) (*ReconcileAzDriverNode, error) {
 	logger := mgr.GetLogger().WithValues("controller", "azdrivernode")
-	reconciler := ReconcileAzDriverNode{client: mgr.GetClient(), azVolumeClient: azVolumeClient, namespace: namespace}
+	reconciler := ReconcileAzDriverNode{
+		client:                mgr.GetClient(),
+		azVolumeClient:        azVolumeClient,
+		namespace:             namespace,
+		controllerSharedState: controllerSharedState,
+	}
 	c, err := controller.New("azdrivernode-controller", mgr, controller.Options{
 		MaxConcurrentReconciles: 10,
 		Reconciler:              &reconciler,
@@ -135,4 +139,8 @@ func (r *ReconcileAzDriverNode) getClient() client.Client {
 
 func (r *ReconcileAzDriverNode) getAzClient() azClientSet.Interface {
 	return r.azVolumeClient
+}
+
+func (r *ReconcileAzDriverNode) getSharedState() *SharedState {
+	return r.controllerSharedState
 }

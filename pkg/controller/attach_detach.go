@@ -421,6 +421,8 @@ func updateRole(azVolumeAttachment *v1alpha1.AzVolumeAttachment, role v1alpha1.R
 	if azVolumeAttachment.Status.Detail == nil {
 		return azVolumeAttachment
 	}
+
+	azVolumeAttachment.Status.Detail.PreviousRole = azVolumeAttachment.Status.Detail.Role
 	azVolumeAttachment.Status.Detail.Role = role
 
 	return azVolumeAttachment
@@ -434,6 +436,8 @@ func updateStatusDetail(azVolumeAttachment *v1alpha1.AzVolumeAttachment, status 
 	if azVolumeAttachment.Status.Detail == nil {
 		azVolumeAttachment.Status.Detail = &v1alpha1.AzVolumeAttachmentStatusDetail{}
 	}
+
+	azVolumeAttachment.Status.Detail.PreviousRole = azVolumeAttachment.Status.Detail.Role
 	azVolumeAttachment.Status.Detail.Role = azVolumeAttachment.Spec.RequestedRole
 	azVolumeAttachment.Status.Detail.PublishContext = status
 

@@ -17,7 +17,9 @@ limitations under the License.
 package controller
 
 import (
+	"container/list"
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"sort"
@@ -29,7 +31,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -55,6 +57,15 @@ const (
 	defaultRetrySteps    = 5
 
 	cloudTimeout = time.Duration(5) * time.Minute
+)
+
+type operationRequester string
+
+const (
+	azdrivernode operationRequester = "azdrivernode-controller"
+	azvolume     operationRequester = "azvolume-controller"
+	replica      operationRequester = "replica-controller"
+	pod                             = "pod-controller"
 )
 
 type cleanUpMode int
@@ -118,6 +129,25 @@ type CloudProvisioner interface {
 type azReconciler interface {
 	getClient() client.Client
 	getAzClient() azClientSet.Interface
+	getSharedState() *SharedState
+}
+
+type replicaOperation struct {
+	requester                  operationRequester
+	operationFunc              func() error
+	isReplicaGarbageCollection bool
+}
+
+type operationQueue struct {
+	*list.List
+	gcExclusionList set
+}
+
+func newOperationQueue() *operationQueue {
+	return &operationQueue{
+		gcExclusionList: set{},
+		List:            list.New(),
+	}
 }
 
 type retryInfoEntry struct {
@@ -167,36 +197,155 @@ func (s set) has(entry interface{}) bool {
 	return ok
 }
 
+func (s set) remove(entry interface{}) {
+	delete(s, entry)
+}
+
 type lockableEntry struct {
-	lock  *sync.RWMutex
+	sync.RWMutex
 	entry interface{}
 }
 
-func newLockableEntry(entry interface{}) lockableEntry {
-	return lockableEntry{
-		lock:  &sync.RWMutex{},
-		entry: entry,
+func newLockableEntry(entry interface{}) *lockableEntry {
+	return &lockableEntry{
+		RWMutex: sync.RWMutex{},
+		entry:   entry,
 	}
 }
 
 type SharedState struct {
-	podToClaimsMap   *sync.Map
-	claimToPodsMap   *sync.Map
-	volumeToClaimMap *sync.Map
-	claimToVolumeMap *sync.Map
-	podLocks         *sync.Map
-	visitedVolumes   *sync.Map
+	podToClaimsMap        sync.Map
+	claimToPodsMap        sync.Map
+	volumeToClaimMap      sync.Map
+	claimToVolumeMap      sync.Map
+	podLocks              sync.Map
+	visitedVolumes        sync.Map
+	volumeOperationQueues sync.Map
 }
 
 func NewSharedState() *SharedState {
-	return &SharedState{
-		podToClaimsMap:   &sync.Map{},
-		claimToPodsMap:   &sync.Map{},
-		volumeToClaimMap: &sync.Map{},
-		claimToVolumeMap: &sync.Map{},
-		podLocks:         &sync.Map{},
-		visitedVolumes:   &sync.Map{},
+	return &SharedState{}
+}
+
+func (c *SharedState) createOperationQueue(volumeName string) {
+	_, _ = c.volumeOperationQueues.LoadOrStore(volumeName, newLockableEntry(newOperationQueue()))
+}
+
+func (c *SharedState) addToOperationQueue(volumeName string, requester operationRequester, operationFunc func() error, isReplicaGarbageCollection bool) {
+	v, ok := c.volumeOperationQueues.Load(volumeName)
+	if !ok {
+		return
 	}
+	lockable := v.(*lockableEntry)
+	lockable.Lock()
+
+	isFirst := lockable.entry.(*operationQueue).Len() == 0
+	_ = lockable.entry.(*operationQueue).PushBack(&replicaOperation{
+		requester:                  requester,
+		operationFunc:              operationFunc,
+		isReplicaGarbageCollection: isReplicaGarbageCollection,
+	})
+	lockable.Unlock()
+
+	// if first operation, start goroutine
+	if isFirst {
+		go func() {
+			lockable.Lock()
+			for {
+				operationQueue := lockable.entry.(*operationQueue)
+				// pop the first operation
+				front := operationQueue.Front()
+				operation := front.Value.(*replicaOperation)
+				lockable.Unlock()
+
+				// only run the operation if the operation requester is not enlisted in blacklist
+				if !operationQueue.gcExclusionList.has(operation.requester) {
+					if err := operation.operationFunc(); err != nil {
+						klog.Error(err)
+						if !operation.isReplicaGarbageCollection || !errors.Is(err, context.Canceled) {
+							// if failed, push it to the end of the queue
+							lockable.Lock()
+							operationQueue.PushBack(operation)
+							lockable.Unlock()
+						}
+					}
+				}
+
+				lockable.Lock()
+				operationQueue.Remove(front)
+				// if there is no entry remaining, exit the loop
+				if operationQueue.Front() == nil {
+					break
+				}
+			}
+			lockable.Unlock()
+			klog.Infof("operation queue for volume (%s) fully iterated and completed.", volumeName)
+		}()
+	}
+}
+
+func (c *SharedState) deleteOperationQueue(volumeName string) {
+	v, ok := c.volumeOperationQueues.LoadAndDelete(volumeName)
+	// if operation queue has already been deleted, return
+	if !ok {
+		return
+	}
+	// clear the queue in case, there still is an entry in queue
+	lockable := v.(*lockableEntry)
+	lockable.Lock()
+	lockable.entry.(*operationQueue).Init()
+	lockable.Unlock()
+}
+
+func (c *SharedState) overrideAndClearOperationQueue(volumeName string) func() {
+	v, ok := c.volumeOperationQueues.Load(volumeName)
+	if !ok {
+		return nil
+	}
+	lockable := v.(*lockableEntry)
+
+	lockable.Lock()
+	lockable.entry.(*operationQueue).Init()
+	return lockable.Unlock
+}
+
+func (c *SharedState) addToGcExclusionList(volumeName string, target operationRequester) {
+	v, ok := c.volumeOperationQueues.Load(volumeName)
+	if !ok {
+		return
+	}
+	lockable := v.(*lockableEntry)
+	lockable.Lock()
+	lockable.entry.(*operationQueue).gcExclusionList.add(volumeName)
+	lockable.Unlock()
+}
+
+func (c *SharedState) removeFromExclusionList(volumeName string, target operationRequester) {
+	v, ok := c.volumeOperationQueues.Load(volumeName)
+	if !ok {
+		return
+	}
+	lockable := v.(*lockableEntry)
+	lockable.Lock()
+	delete(lockable.entry.(*operationQueue).gcExclusionList, volumeName)
+	lockable.Unlock()
+}
+
+func (c *SharedState) dequeueGarbageCollection(volumeName string) {
+	v, ok := c.volumeOperationQueues.Load(volumeName)
+	if !ok {
+		return
+	}
+	lockable := v.(*lockableEntry)
+	lockable.Lock()
+	queue := lockable.entry.(*operationQueue)
+	// look for garbage collection operation in the queue and remove from queue
+	for cur := queue.Front(); cur != nil; cur = cur.Next() {
+		if cur.Value.(*replicaOperation).isReplicaGarbageCollection {
+			_ = queue.Remove(cur)
+		}
+	}
+	lockable.Unlock()
 }
 
 func (c *SharedState) getVolumesFromPod(podName string) ([]string, error) {
@@ -244,13 +393,13 @@ func (c *SharedState) getPodsFromVolume(volumeName string) ([]string, error) {
 	if !ok {
 		return nil, status.Errorf(codes.NotFound, "no pods found for PVC (%s)", claimName)
 	}
-	lockable, ok := value.(lockableEntry)
+	lockable, ok := value.(*lockableEntry)
 	if !ok {
 		return nil, status.Errorf(codes.Internal, "claimToPodsMap should hold lockable entry")
 	}
 
-	lockable.lock.RLock()
-	defer lockable.lock.RUnlock()
+	lockable.RLock()
+	defer lockable.RUnlock()
 
 	podMap, ok := lockable.entry.(set)
 	if !ok {
@@ -303,7 +452,7 @@ func getRankedNodesForReplicaAttachments(ctx context.Context, azr azReconciler, 
 			klog.V(5).Infof("Error listing AzVolumeAttachments for azvolume %s. Error: %v.", volume, err)
 		}
 
-		klog.V(5).Infof("Found %d AzVolumeAttachments for volume %s. AzVolumeAttachments: %v.", len(azVolumeAttachments), volume, azVolumeAttachments)
+		klog.V(5).Infof("Found %d AzVolumeAttachments for volume %s. AzVolumeAttachments: %+v.", len(azVolumeAttachments), volume, azVolumeAttachments)
 		for _, azVolumeAttachment := range azVolumeAttachments {
 			if azVolumeAttachment.Spec.RequestedRole == v1alpha1.PrimaryRole {
 				klog.V(5).Infof("AzVolumeAttachments %s for volume %s is primary on node %s.", azVolumeAttachment.Name, volume, azVolumeAttachment.Spec.NodeName)
@@ -322,6 +471,25 @@ func getRankedNodesForReplicaAttachments(ctx context.Context, azr azReconciler, 
 			}
 		}
 	}
+
+	// remove the primary node from the nodeScores map as it can get added if all the volume attachments aren't promoted at the same time
+	delete(nodeScores, primaryNode)
+
+	// Remove the primary node from the node list as it can get added if all the volume attachments aren't promoted at the same time
+	if len(nodes) > 0 {
+		indexToRemove := -1
+		for i, node := range nodes {
+			if node == primaryNode {
+				indexToRemove = i
+				break
+			}
+		}
+		if indexToRemove != -1 {
+			nodes[indexToRemove] = nodes[len(nodes)-1]
+			nodes = nodes[:len(nodes)-1]
+		}
+	}
+
 	// sorting nodes array per their score in nodeScore array
 	sort.Slice(nodes[:], func(i, j int) bool {
 		return nodeScores[nodes[i]] > nodeScores[nodes[j]]
@@ -341,11 +509,7 @@ func getRankedNodesForReplicaAttachments(ctx context.Context, azr azReconciler, 
 func (c *SharedState) addPod(pod *v1.Pod, updateOption updateWithLock) {
 
 	podKey := getQualifiedName(pod.Namespace, pod.Name)
-	v, ok := c.podLocks.LoadOrStore(podKey, &sync.Mutex{})
-	// if pod entry already exists, do not add to map
-	if ok {
-		return
-	}
+	v, _ := c.podLocks.LoadOrStore(podKey, &sync.Mutex{})
 
 	klog.V(5).Infof("Adding pod %s to shared map with keyName %s.", pod.Name, podKey)
 	podLock := v.(*sync.Mutex)
@@ -353,8 +517,16 @@ func (c *SharedState) addPod(pod *v1.Pod, updateOption updateWithLock) {
 		podLock.Lock()
 		defer podLock.Unlock()
 	}
-	klog.V(5).Infof("Pod spec of pod %s is: %v. With volumes: %v", pod.Name, pod.Spec, pod.Spec.Volumes)
-	claims := []string{}
+	klog.V(5).Infof("Pod spec of pod %s is: %+v. With volumes: %+v", pod.Name, pod.Spec, pod.Spec.Volumes)
+
+	// If the claims already exist for the podKey, add them to a set
+	value, _ := c.podToClaimsMap.LoadOrStore(podKey, []string{})
+	claims := value.([]string)
+	claimSet := set{}
+	for _, claim := range claims {
+		claimSet.add(claim)
+	}
+
 	for _, volume := range pod.Spec.Volumes {
 		if volume.PersistentVolumeClaim == nil {
 			klog.V(5).Infof("Pod %s: Skipping Volume %s. No persistent volume exists.", pod.Name, volume)
@@ -362,40 +534,76 @@ func (c *SharedState) addPod(pod *v1.Pod, updateOption updateWithLock) {
 		}
 		namespacedClaimName := getQualifiedName(pod.Namespace, volume.PersistentVolumeClaim.ClaimName)
 		if _, ok := c.claimToVolumeMap.Load(namespacedClaimName); !ok {
-			klog.Infof("Skipping Pod %s. Volume %v not csi. Driver: %s", pod.Name, volume, volume.CSI)
+			klog.Infof("Skipping Pod %s. Volume %s not csi. Driver: %+v", pod.Name, volume.Name, volume.CSI)
 			continue
 		}
 		klog.V(5).Infof("Pod %s. Volume %v is csi.", pod.Name, volume)
-		claims = append(claims, namespacedClaimName)
+		claimSet.add(namespacedClaimName)
 		v, _ := c.claimToPodsMap.LoadOrStore(namespacedClaimName, newLockableEntry(set{}))
 
-		lockable := v.(lockableEntry)
-		lockable.lock.Lock()
+		lockable := v.(*lockableEntry)
+		lockable.Lock()
 		pods := lockable.entry.(set)
 		if !pods.has(podKey) {
 			pods.add(podKey)
 		}
 		// No need to restore the amended set to claimToPodsMap because set is a reference type
-		lockable.lock.Unlock()
+		lockable.Unlock()
 
 		klog.V(5).Infof("Storing pod %s and claim %s to claimToPodsMap map.", pod.Name, namespacedClaimName)
-		c.claimToPodsMap.Store(namespacedClaimName, lockable)
 	}
 	klog.V(5).Infof("Storing pod %s and claim %s to podToClaimsMap map.", pod.Name, claims)
-	c.podToClaimsMap.Store(podKey, claims)
+
+	allClaims := []string{}
+	for key := range claimSet {
+		allClaims = append(allClaims, key.(string))
+	}
+	c.podToClaimsMap.Store(podKey, allClaims)
 }
 
 func (c *SharedState) deletePod(podKey string) {
-	value, exists := c.podToClaimsMap.LoadAndDelete(podKey)
+	value, exists := c.podLocks.LoadAndDelete(podKey)
+	if !exists {
+		return
+	}
+	podLock := value.(*sync.Mutex)
+	podLock.Lock()
+	defer podLock.Unlock()
+
+	value, exists = c.podToClaimsMap.LoadAndDelete(podKey)
 	if !exists {
 		return
 	}
 	claims := value.([]string)
 
 	for _, claim := range claims {
-		c.claimToPodsMap.Delete(claim)
+		value, ok := c.claimToPodsMap.Load(claim)
+		if !ok {
+			klog.Errorf("No pods found for PVC (%s)", claim)
+		}
+
+		// Scope the duration that we hold the lockable lock using a function.
+		func() {
+			lockable, ok := value.(lockableEntry)
+			if !ok {
+				klog.Errorf("claimToPodsMap should hold lockable entry")
+				return
+			}
+
+			lockable.Lock()
+			defer lockable.Unlock()
+
+			podSet, ok := lockable.entry.(set)
+			if !ok {
+				klog.Errorf("claimToPodsMap entry should hold a set")
+			}
+
+			podSet.remove(podKey)
+			if len(podSet) == 0 {
+				c.claimToPodsMap.Delete(claim)
+			}
+		}()
 	}
-	c.podLocks.Delete(podKey)
 }
 
 func (c *SharedState) addVolumeAndClaim(azVolumeName, pvClaimName string) {
@@ -533,7 +741,7 @@ func createReplicaAzVolumeAttachment(ctx context.Context, azr azReconciler, volu
 	return nil
 }
 
-func cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azr azReconciler, azVolumeName, caller string, role roleMode, deleteMode cleanUpMode) (*v1alpha1.AzVolumeAttachmentList, error) {
+func cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azr azReconciler, azVolumeName string, caller operationRequester, role roleMode, deleteMode cleanUpMode) (*v1alpha1.AzVolumeAttachmentList, error) {
 	klog.Infof("AzVolumeAttachment clean up requested by %s for AzVolume (%s)", caller, azVolumeName)
 	volRequirement, err := createLabelRequirements(consts.VolumeNameLabel, azVolumeName)
 	if err != nil {
@@ -543,7 +751,7 @@ func cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azr azReconciler, az
 
 	attachments, err := azr.getAzClient().DiskV1alpha1().AzVolumeAttachments(consts.AzureDiskCrdNamespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if apiErrors.IsNotFound(err) {
 			return nil, nil
 		}
 		klog.Errorf("failed to get AzVolumeAttachments: %v", err)
@@ -564,7 +772,7 @@ func cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azr azReconciler, az
 	return attachments, nil
 }
 
-func cleanUpAzVolumeAttachmentByNode(ctx context.Context, azr azReconciler, azDriverNodeName, caller string, role roleMode, deleteMode cleanUpMode) (*v1alpha1.AzVolumeAttachmentList, error) {
+func cleanUpAzVolumeAttachmentByNode(ctx context.Context, azr azReconciler, azDriverNodeName string, caller operationRequester, role roleMode, deleteMode cleanUpMode) (*v1alpha1.AzVolumeAttachmentList, error) {
 	klog.Infof("AzVolumeAttachment clean up requested by %s for AzDriverNode (%s)", caller, azDriverNodeName)
 	nodeRequirement, err := createLabelRequirements(consts.NodeNameLabel, azDriverNodeName)
 	if err != nil {
@@ -574,37 +782,53 @@ func cleanUpAzVolumeAttachmentByNode(ctx context.Context, azr azReconciler, azDr
 
 	attachments, err := azr.getAzClient().DiskV1alpha1().AzVolumeAttachments(consts.AzureDiskCrdNamespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if apiErrors.IsNotFound(err) {
 			return attachments, nil
 		}
 		klog.Errorf("failed to get AzVolumeAttachments: %v", err)
 		return nil, err
 	}
 
-	cleanUps := []v1alpha1.AzVolumeAttachment{}
+	cleanUpMap := map[string][]v1alpha1.AzVolumeAttachment{}
 	for _, attachment := range attachments.Items {
 		if shouldCleanUp(attachment, role) {
-			cleanUps = append(cleanUps, attachment)
+			cleanUpMap[attachment.Spec.UnderlyingVolume] = append(cleanUpMap[attachment.Spec.UnderlyingVolume], attachment)
 		}
 	}
 
-	if err := cleanUpAzVolumeAttachments(ctx, azr, cleanUps, deleteMode, caller); err != nil {
-		return attachments, err
+	for v, c := range cleanUpMap {
+		volumeName := v
+		cleanUps := c
+		azr.getSharedState().addToOperationQueue(
+			volumeName,
+			caller,
+			func() error {
+				ctx := context.Background()
+				err := cleanUpAzVolumeAttachments(ctx, azr, cleanUps, deleteMode, caller)
+				if err == nil {
+					klog.Infof("successfully requested deletion of AzVolumeAttachments for AzDriverNode (%s)", azDriverNodeName)
+				}
+				return err
+			},
+			false)
 	}
-	klog.Infof("successfully requested deletion of AzVolumeAttachments for AzDriverNode (%s)", azDriverNodeName)
 	return attachments, nil
 }
 
-func cleanUpAzVolumeAttachments(ctx context.Context, azr azReconciler, attachments []v1alpha1.AzVolumeAttachment, cleanUp cleanUpMode, caller string) error {
+func cleanUpAzVolumeAttachments(ctx context.Context, azr azReconciler, attachments []v1alpha1.AzVolumeAttachment, cleanUp cleanUpMode, caller operationRequester) error {
 	for _, attachment := range attachments {
 		patched := attachment.DeepCopy()
 		if patched.Annotations == nil {
 			patched.Annotations = map[string]string{}
 		}
-		patched.Annotations[consts.CleanUpAnnotation] = "true"
+
+		// if caller is azdrivernode, don't append cleanup annotation
+		if caller != azdrivernode {
+			patched.Annotations[consts.CleanUpAnnotation] = string(caller)
+		}
 		// replica attachments should always be detached regardless of the cleanup mode
 		if cleanUp == detachAndDeleteCRI || patched.Spec.RequestedRole == v1alpha1.ReplicaRole {
-			patched.Annotations[consts.VolumeDetachRequestAnnotation] = caller
+			patched.Annotations[consts.VolumeDetachRequestAnnotation] = string(caller)
 		}
 		if err := azr.getClient().Patch(ctx, patched, client.MergeFrom(&attachment)); err != nil {
 			klog.Errorf("failed to delete AzVolumeAttachment (%s): %v", attachment.Name, err)

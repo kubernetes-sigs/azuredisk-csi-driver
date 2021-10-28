@@ -25,6 +25,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/wait"
 	azfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller/mockclient"
@@ -32,10 +33,14 @@ import (
 )
 
 func NewTestAzDriverNodeController(controller *gomock.Controller, namespace string, objects ...runtime.Object) *ReconcileAzDriverNode {
+	controllerSharedState := initState(objects...)
+	diskv1alpha1Objs, _ := splitObjects(objects...)
+
 	return &ReconcileAzDriverNode{
-		client:         mockclient.NewMockClient(controller),
-		azVolumeClient: azfakes.NewSimpleClientset(objects...),
-		namespace:      namespace,
+		client:                mockclient.NewMockClient(controller),
+		azVolumeClient:        azfakes.NewSimpleClientset(diskv1alpha1Objs...),
+		namespace:             namespace,
+		controllerSharedState: controllerSharedState,
 	}
 }
 
@@ -80,7 +85,9 @@ func TestAzDriverNodeControllerReconcile(t *testing.T) {
 					&testAzDriverNode0,
 					&testAzDriverNode1,
 					&testPrimaryAzVolumeAttachment0,
-					&testReplicaAzVolumeAttachment)
+					&testReplicaAzVolumeAttachment,
+					&testPersistentVolume0,
+				)
 
 				controller.client.(*mockclient.MockClient).EXPECT().
 					Get(gomock.Any(), testNode1Request.NamespacedName, gomock.Any()).
@@ -100,8 +107,12 @@ func TestAzDriverNodeControllerReconcile(t *testing.T) {
 
 				nodeRequirement, _ := createLabelRequirements(consts.NodeNameLabel, testNode1Name)
 				labelSelector := labels.NewSelector().Add(*nodeRequirement)
-				attachments, _ := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
-				require.Len(t, attachments.Items, 0)
+				conditionFunc := func() (bool, error) {
+					attachments, _ := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
+					return len(attachments.Items) == 0, nil
+				}
+				err = wait.PollImmediate(verifyCRIInterval, verifyCRITimeout, conditionFunc)
+				require.NoError(t, err)
 			},
 		},
 		{

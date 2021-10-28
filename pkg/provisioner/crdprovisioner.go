@@ -375,7 +375,7 @@ func (c *CrdProvisioner) PublishVolume(
 			return false, nil
 		}
 		azVolumeAttachmentInstance := obj.(*v1alpha1.AzVolumeAttachment)
-		if azVolumeAttachmentInstance.Status.Detail != nil {
+		if azVolumeAttachmentInstance.Status.Detail != nil && azVolumeAttachmentInstance.Status.Detail.PublishContext != nil && azVolumeAttachmentInstance.Status.Detail.Role == v1alpha1.PrimaryRole {
 			return true, nil
 		}
 		if azVolumeAttachmentInstance.Status.Error != nil {

@@ -143,6 +143,7 @@ var (
 	successAzVAStatus = v1alpha1.AzVolumeAttachmentStatus{
 		Detail: &v1alpha1.AzVolumeAttachmentStatusDetail{
 			PublishContext: map[string]string{"test_key": "test_value"},
+			Role:           v1alpha1.PrimaryRole,
 		},
 	}
 )

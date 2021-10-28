@@ -297,7 +297,7 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 	// Setup a new controller to clean-up AzDriverNodes
 	// objects for the nodes which get deleted
 	klog.V(2).Info("Initializing AzDriverNode controller")
-	_, err = controller.NewAzDriverNodeController(mgr, d.crdProvisioner.GetDiskClientSet(), d.objectNamespace)
+	_, err = controller.NewAzDriverNodeController(mgr, d.crdProvisioner.GetDiskClientSet(), d.objectNamespace, sharedState)
 	if err != nil {
 		klog.Errorf("Failed to initialize AzDriverNodeController. Error: %v. Exiting application...", err)
 		os.Exit(1)
@@ -325,7 +325,7 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 	}
 
 	klog.V(2).Info("Initializing AzVolume controller")
-	azvReconciler, err := controller.NewAzVolumeController(mgr, d.crdProvisioner.GetDiskClientSet(), d.kubeClient, d.objectNamespace, d.cloudProvisioner)
+	azvReconciler, err := controller.NewAzVolumeController(mgr, d.crdProvisioner.GetDiskClientSet(), d.kubeClient, d.objectNamespace, d.cloudProvisioner, sharedState)
 	if err != nil {
 		klog.Errorf("Failed to initialize AzVolumeController. Error: %v. Exiting application...", err)
 		os.Exit(1)
