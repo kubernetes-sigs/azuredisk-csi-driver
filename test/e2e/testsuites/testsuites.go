@@ -562,6 +562,7 @@ type TestStatefulset struct {
 	statefulset *apps.StatefulSet
 	namespace   *v1.Namespace
 	podNames    []string
+	allPods     []PodDetails
 }
 
 func NewTestStatefulset(c clientset.Interface, ns *v1.Namespace, command string, pvc []v1.PersistentVolumeClaim, volumeMount []v1.VolumeMount, isWindows, useCMD bool, schedulerName string, replicaCount int) *TestStatefulset {
@@ -636,6 +637,22 @@ func (t *TestStatefulset) Create() {
 	framework.ExpectNoError(err)
 	for _, pod := range statefulSetPods.Items {
 		t.podNames = append(t.podNames, pod.Name)
+		var podPersistentVolumes []VolumeDetails
+		for _, volume := range pod.Spec.Volumes {
+			if volume.VolumeSource.PersistentVolumeClaim != nil {
+				pvc, err := t.client.CoreV1().PersistentVolumeClaims(t.namespace.Name).Get(context.TODO(), volume.VolumeSource.PersistentVolumeClaim.ClaimName, metav1.GetOptions{})
+				framework.ExpectNoError(err)
+				newVolume := VolumeDetails{
+					PersistentVolume: &v1.PersistentVolume{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: pvc.Spec.VolumeName,
+						},
+					},
+				}
+				podPersistentVolumes = append(podPersistentVolumes, newVolume)
+			}
+		}
+		t.allPods = append(t.allPods, PodDetails{Volumes: podPersistentVolumes})
 	}
 }
 

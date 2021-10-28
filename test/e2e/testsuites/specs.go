@@ -17,17 +17,24 @@ limitations under the License.
 package testsuites
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/onsi/ginkgo"
 
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	clientset "k8s.io/client-go/kubernetes"
 	restclientset "k8s.io/client-go/rest"
+	"k8s.io/kubernetes/test/e2e/framework"
 
+	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 )
 
@@ -56,6 +63,8 @@ type VolumeDetails struct {
 	DataSource *DataSource
 	// Optional, used with specified StorageClass
 	StorageClass *storagev1.StorageClass
+	// Optional, used for sorting by label of AzVolumeAttachments
+	PersistentVolume *v1.PersistentVolume
 }
 
 type VolumeMode int
@@ -205,6 +214,7 @@ func (pod *PodDetails) SetupDeployment(client clientset.Interface, namespace *v1
 			ReadOnly:  volume.VolumeMount.ReadOnly,
 		}
 		volumeMounts = append(volumeMounts, newVolumeMount)
+		pod.Volumes[n].PersistentVolume = tpvc.persistentVolume
 	}
 	tDeployment := NewTestDeployment(client, namespace, pod.Cmd, volumeMounts, volumes, podReplicas, pod.IsWindows, pod.UseCMD, schedulerName)
 
@@ -309,4 +319,42 @@ func CreateVolumeSnapshotClass(client restclientset.Interface, namespace *v1.Nam
 	tvsc := NewTestVolumeSnapshotClass(client, namespace, volumeSnapshotClass)
 
 	return tvsc, tvsc.Cleanup
+}
+func VerifySuccessfulReplicaAzVolumeAttachments(pod PodDetails, azDiskClient *azDiskClientSet.Clientset, storageClassParameters map[string]string) {
+	for _, volume := range pod.Volumes {
+		if volume.PersistentVolume != nil {
+			labelSelector := metav1.LabelSelector{MatchLabels: map[string]string{azureconstants.RoleLabel: "Replica", azureconstants.VolumeNameLabel: volume.PersistentVolume.Name}}
+			azVolumeAttachmentsReplica, err := azDiskClient.DiskV1alpha1().AzVolumeAttachments(azureconstants.AzureDiskCrdNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: labels.Set(labelSelector.MatchLabels).String()})
+			if err != nil {
+				ginkgo.Fail("failed to get replica attachments")
+			}
+			maxShares, err := strconv.ParseInt(storageClassParameters["maxShares"], 10, 0)
+			framework.ExpectNoError(err)
+			numReplicaAttachments := len(azVolumeAttachmentsReplica.Items)
+
+			var expectedNumberOfReplicas int
+			nodes := ListAzDriverNodeNames(azDiskClient.DiskV1alpha1().AzDriverNodes(azureconstants.AzureDiskCrdNamespace))
+			nodesAvailableForReplicas := len(nodes) - 1
+			if nodesAvailableForReplicas >= int(maxShares-1) {
+				expectedNumberOfReplicas = int(maxShares - 1)
+			} else {
+				expectedNumberOfReplicas = nodesAvailableForReplicas
+			}
+
+			if numReplicaAttachments != expectedNumberOfReplicas {
+				ginkgo.Fail(fmt.Sprintf("expected %d replica attachments, found %d", int(maxShares-1), numReplicaAttachments))
+			}
+
+			numFailedAttached := 0
+			for _, replica := range azVolumeAttachmentsReplica.Items {
+				if replica.Status.State != "Attached" {
+					numFailedAttached++
+				}
+			}
+			if numFailedAttached > 0 {
+				ginkgo.Fail(fmt.Sprintf("total replica attachments %d, found %d failed replica attachments", numReplicaAttachments, numFailedAttached))
+
+			}
+		}
+	}
 }

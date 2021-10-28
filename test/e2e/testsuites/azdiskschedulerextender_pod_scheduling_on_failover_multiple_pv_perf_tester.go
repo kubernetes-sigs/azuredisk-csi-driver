@@ -18,10 +18,12 @@ package testsuites
 
 import (
 	"sync"
+	"time"
 
 	"github.com/onsi/ginkgo"
 	v1 "k8s.io/api/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
+	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 )
 
@@ -32,6 +34,7 @@ type AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV struct {
 	Pod                    PodDetails
 	Replicas               int
 	StorageClassParameters map[string]string
+	AzDiskClient           *azDiskClientSet.Clientset
 }
 
 func (t *AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
@@ -51,6 +54,7 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV) Run(client cl
 			defer ginkgo.GinkgoRecover()
 			tokens <- struct{}{} // acquire a token
 			ss.Create()
+			tStatefulSet.allPods = ss.allPods
 			<-tokens // release the token
 		}(tStatefulSet)
 	}
@@ -73,5 +77,12 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV) Run(client cl
 			}(tStatefulSet)
 		}
 		wg.Wait()
+	}
+	//Check that AzVolumeAttachment resources were created correctly
+	time.Sleep(1 * time.Minute)
+	for _, ss := range tStatefulSets {
+		for _, pod := range ss.allPods {
+			VerifySuccessfulReplicaAzVolumeAttachments(pod, t.AzDiskClient, t.StorageClassParameters)
+		}
 	}
 }
