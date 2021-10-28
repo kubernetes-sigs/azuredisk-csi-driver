@@ -69,11 +69,13 @@ const (
 	TagsField                     = "tags"
 	ThrottlingKey                 = "throttlingKey"
 	TrueValue                     = "true"
+	FalseValue                    = "false"
 	UserAgentField                = "useragent"
 	VolumeAttributePartition      = "partition"
 	WellKnownTopologyKey          = "topology.kubernetes.io/zone"
 	WriteAcceleratorEnabled       = "writeacceleratorenabled"
 	ZonedField                    = "zoned"
+	EnableAsyncAttachField        = "enableasyncattach"
 )
 
 var (
