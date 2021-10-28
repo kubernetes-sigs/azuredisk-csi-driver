@@ -157,7 +157,7 @@ func (r *ReconcileReplica) triggerGarbageCollection(volumeName string) {
 				volumeName,
 				replica,
 				func() error {
-					_, err := cleanUpAzVolumeAttachmentByVolume(context.Background(), r, volumeName, "replicaController", all, detachAndDeleteCRI)
+					_, err := cleanUpAzVolumeAttachmentByVolume(context.Background(), r, volumeName, "replicaController", all, detachAndDeleteCRI, r.controllerSharedState)
 					if err != nil {
 						return err
 					}

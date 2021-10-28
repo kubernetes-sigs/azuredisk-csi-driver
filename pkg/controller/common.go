@@ -708,7 +708,9 @@ func createReplicaAzVolumeAttachment(ctx context.Context, azr azReconciler, volu
 		klog.Warningf("Error getting Diskname for replica AzVolumeAttachments for volumeId %s on node %s. Error: %v. ", volumeID, node, err)
 		return err
 	}
-
+	if volumeContext == nil {
+		volumeContext = make(map[string]string)
+	}
 	// creating azvolumeattachment
 	volumeName := strings.ToLower(diskName)
 	replicaName := azureutils.GetAzVolumeAttachmentName(volumeName, node)
@@ -741,7 +743,7 @@ func createReplicaAzVolumeAttachment(ctx context.Context, azr azReconciler, volu
 	return nil
 }
 
-func cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azr azReconciler, azVolumeName string, caller operationRequester, role roleMode, deleteMode cleanUpMode) (*v1alpha1.AzVolumeAttachmentList, error) {
+func cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azr azReconciler, azVolumeName string, caller operationRequester, role roleMode, deleteMode cleanUpMode, controllerSharedState *SharedState) (*v1alpha1.AzVolumeAttachmentList, error) {
 	klog.Infof("AzVolumeAttachment clean up requested by %s for AzVolume (%s)", caller, azVolumeName)
 	volRequirement, err := createLabelRequirements(consts.VolumeNameLabel, azVolumeName)
 	if err != nil {
@@ -768,6 +770,7 @@ func cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azr azReconciler, az
 	if err := cleanUpAzVolumeAttachments(ctx, azr, cleanUps, deleteMode, caller); err != nil {
 		return attachments, err
 	}
+	controllerSharedState.unmarkVolumeVisited(azVolumeName)
 	klog.Infof("successfully requested deletion of AzVolumeAttachments for AzVolume (%s)", azVolumeName)
 	return attachments, nil
 }

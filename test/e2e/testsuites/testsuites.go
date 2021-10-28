@@ -22,7 +22,6 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/kubernetes-csi/external-snapshotter/v2/pkg/apis/volumesnapshot/v1beta1"
 	snapshotclientset "github.com/kubernetes-csi/external-snapshotter/v2/pkg/client/clientset/versioned"
 	"github.com/onsi/ginkgo"
@@ -53,8 +52,8 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	v1alpha1ClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1alpha1"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
 const (
@@ -381,15 +380,12 @@ func (t *TestPersistentVolumeClaim) DeleteBoundPersistentVolume() {
 	framework.ExpectNoError(err)
 }
 
-func (t *TestPersistentVolumeClaim) DeleteBackingVolume(driver azuredisk.CSIDriver) {
-	volumeID := t.persistentVolume.Spec.CSI.VolumeHandle
-	ginkgo.By(fmt.Sprintf("deleting azuredisk volume %q", volumeID))
-	req := &csi.DeleteVolumeRequest{
-		VolumeId: volumeID,
-	}
-	_, err := driver.DeleteVolume(context.Background(), req)
+func (t *TestPersistentVolumeClaim) DeleteBackingVolume(azureCloud *provider.Cloud) {
+	diskURI := t.persistentVolume.Spec.CSI.VolumeHandle
+	ginkgo.By(fmt.Sprintf("deleting azuredisk volume %q", diskURI))
+	err := azureCloud.DeleteManagedDisk(context.Background(), diskURI)
 	if err != nil {
-		ginkgo.Fail(fmt.Sprintf("could not delete volume %q: %v", volumeID, err))
+		ginkgo.Fail(fmt.Sprintf("could not delete volume %q: %v", diskURI, err))
 	}
 }
 
@@ -949,14 +945,24 @@ func ListNodeNames(c clientset.Interface) []string {
 	nodes, err := c.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 	framework.ExpectNoError(err)
 	for _, item := range nodes.Items {
-		nodeNames = append(nodeNames, item.ObjectMeta.Name)
+		nodeNames = append(nodeNames, item.Name)
+	}
+	return nodeNames
+}
+
+func ListAzDriverNodeNames(azDriverNode v1alpha1ClientSet.AzDriverNodeInterface) []string {
+	var nodeNames []string
+	nodes, err := azDriverNode.List(context.TODO(), metav1.ListOptions{})
+	framework.ExpectNoError(err)
+	for _, item := range nodes.Items {
+		nodeNames = append(nodeNames, item.Name)
 	}
 	return nodeNames
 }
 
 func DeleteAllPodsWithMatchingLabel(cs clientset.Interface, ns *v1.Namespace, matchLabels map[string]string) {
 
-	e2elog.Logf("Deleting all pods with %v labels in namespace %q", matchLabels, ns)
+	e2elog.Logf("Deleting all pods with %v labels in namespace %s", matchLabels, ns.Name)
 	labelSelector := metav1.LabelSelector{MatchLabels: matchLabels}
 	err := cs.CoreV1().Pods(ns.Name).DeleteCollection(context.TODO(), metav1.DeleteOptions{}, metav1.ListOptions{LabelSelector: labels.Set(labelSelector.MatchLabels).String()})
 	if !apierrs.IsNotFound(err) {

@@ -18,12 +18,14 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 	"sync/atomic"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubeClientSet "k8s.io/client-go/kubernetes"
@@ -211,7 +213,7 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *v1alpha
 	}()
 
 	// Delete all AzVolumeAttachment objects bound to the deleted AzVolume
-	attachments, err := cleanUpAzVolumeAttachmentByVolume(ctx, r, azVolume.Name, azvolume, all, mode)
+	attachments, err := cleanUpAzVolumeAttachmentByVolume(ctx, r, azVolume.Name, azvolume, all, mode, r.controllerSharedState)
 	if err != nil {
 		return err
 	}
@@ -338,7 +340,7 @@ func (r *ReconcileAzVolume) triggerUpdate(ctx context.Context, azVolume *v1alpha
 func (r *ReconcileAzVolume) triggerRelease(ctx context.Context, azVolume *v1alpha1.AzVolume) error {
 	klog.Infof("Volume released: Initiating AzVolumeAttachment Clean-up")
 
-	if _, err := cleanUpAzVolumeAttachmentByVolume(ctx, r, azVolume.Name, "azVolumeController", replicaOnly, detachAndDeleteCRI); err != nil {
+	if _, err := cleanUpAzVolumeAttachmentByVolume(ctx, r, azVolume.Name, "azVolumeController", replicaOnly, detachAndDeleteCRI, r.controllerSharedState); err != nil {
 		return err
 	}
 	updateFunc := func(obj interface{}) error {
@@ -485,55 +487,8 @@ func (r *ReconcileAzVolume) recreateAzVolumes(ctx context.Context) error {
 	}
 
 	for _, pv := range pvs.Items {
-		if pv.Spec.CSI != nil && pv.Spec.CSI.Driver == consts.DefaultDriverName {
-			diskName, err := azureutils.GetDiskName(pv.Spec.CSI.VolumeHandle)
-			if err != nil {
-				klog.Warningf("skipping restoration, failed to extract diskName from volume handle (%s): %v", pv.Spec.CSI.VolumeHandle, err)
-				continue
-			}
-			azVolumeName := strings.ToLower(diskName)
-			klog.Infof("Recovering AzVolume (%s)", azVolumeName)
-			requiredBytes, _ := pv.Spec.Capacity.Storage().AsInt64()
-			storageClassName := pv.Spec.StorageClassName
-			maxMountReplicaCount := 0
-			if storageClassName == "" {
-				klog.Warningf("defaulting to 0 mount replica, PV (%s) has an empty named storage class", pv.Name)
-			} else {
-				storageClass, err := r.kubeClient.StorageV1().StorageClasses().Get(ctx, pv.Spec.StorageClassName, metav1.GetOptions{})
-				if err != nil {
-					klog.Warningf("defaulting to 0 mount replica, failed to get storage class (%s): %v", pv.Spec.StorageClassName, err)
-					continue
-				}
-				_, maxMountReplicaCount = azureutils.GetMaxSharesAndMaxMountReplicaCount(storageClass.Parameters)
-			}
-			if _, err := r.azVolumeClient.DiskV1alpha1().AzVolumes(r.namespace).Create(ctx, &v1alpha1.AzVolume{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:       azVolumeName,
-					Finalizers: []string{consts.AzVolumeFinalizer},
-				},
-				Spec: v1alpha1.AzVolumeSpec{
-					MaxMountReplicaCount: maxMountReplicaCount,
-					UnderlyingVolume:     diskName,
-					CapacityRange: &v1alpha1.CapacityRange{
-						RequiredBytes: requiredBytes,
-					},
-					VolumeCapability: []v1alpha1.VolumeCapability{},
-				},
-				Status: v1alpha1.AzVolumeStatus{
-					Detail: &v1alpha1.AzVolumeStatusDetail{
-						Phase: azureutils.GetAzVolumePhase(pv.Status.Phase),
-						ResponseObject: &v1alpha1.AzVolumeStatusParams{
-							VolumeID: pv.Spec.CSI.VolumeHandle,
-						},
-					},
-					State: v1alpha1.VolumeCreated,
-				},
-			}, metav1.CreateOptions{}); err != nil {
-				klog.Errorf("failed to recover AzVolume (%s): %v", diskName, err)
-			} else {
-				// if AzVolume CRI successfully recreated, also recreate the operation queue for the volume
-				r.controllerSharedState.createOperationQueue(azVolumeName)
-			}
+		if err := createAzVolumeFromPv(ctx, pv, r.azVolumeClient, r.kubeClient, r.namespace, make(map[string]string), r.controllerSharedState); err != nil {
+			klog.Errorf("failed to recover AzVolume for PV (%s): %v", pv.Name, err)
 		}
 	}
 	return nil
@@ -663,6 +618,71 @@ func (r *ReconcileAzVolume) getClient() client.Client {
 
 func (r *ReconcileAzVolume) getAzClient() azClientSet.Interface {
 	return r.azVolumeClient
+}
+
+func createAzVolumeFromPv(ctx context.Context, pv v1.PersistentVolume, azVolumeClient azClientSet.Interface, kubeClient kubeClientSet.Interface, namespace string, annotations map[string]string, controllerSharedState *SharedState) error {
+	var volumeParams map[string]string
+	if pv.Spec.CSI != nil && pv.Spec.CSI.Driver == consts.DefaultDriverName {
+		diskName, err := azureutils.GetDiskName(pv.Spec.CSI.VolumeHandle)
+		if err != nil {
+			return fmt.Errorf("Failed to extract diskName from volume handle (%s): %v", pv.Spec.CSI.VolumeHandle, err)
+		}
+		azVolumeName := strings.ToLower(diskName)
+		klog.Infof("Creating AzVolume (%s) for PV(%s)", azVolumeName, pv.Name)
+		requiredBytes, _ := pv.Spec.Capacity.Storage().AsInt64()
+		storageClassName := pv.Spec.StorageClassName
+		maxMountReplicaCount := 0
+		if storageClassName == "" {
+			klog.Warningf("storage class for PV (%s) is not defined, trying to get maxMountReplicaCount from VolumeAttributes.", pv.Name)
+			_, maxMountReplicaCount = azureutils.GetMaxSharesAndMaxMountReplicaCount(pv.Spec.CSI.VolumeAttributes)
+
+		} else {
+			storageClass, err := kubeClient.StorageV1().StorageClasses().Get(ctx, pv.Spec.StorageClassName, metav1.GetOptions{})
+			if err != nil {
+				return fmt.Errorf("Failed to get storage class (%s): %v", pv.Spec.StorageClassName, err)
+			}
+			_, maxMountReplicaCount = azureutils.GetMaxSharesAndMaxMountReplicaCount(storageClass.Parameters)
+		}
+
+		if pv.Spec.CSI.VolumeAttributes == nil {
+			volumeParams = make(map[string]string)
+		} else {
+			volumeParams = pv.Spec.CSI.VolumeAttributes
+		}
+
+		azvolume := v1alpha1.AzVolume{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:        azVolumeName,
+				Finalizers:  []string{consts.AzVolumeFinalizer},
+				Annotations: annotations,
+			},
+			Spec: v1alpha1.AzVolumeSpec{
+				MaxMountReplicaCount: maxMountReplicaCount,
+				Parameters:           volumeParams,
+				UnderlyingVolume:     diskName,
+				CapacityRange: &v1alpha1.CapacityRange{
+					RequiredBytes: requiredBytes,
+				},
+				VolumeCapability: []v1alpha1.VolumeCapability{},
+			},
+			Status: v1alpha1.AzVolumeStatus{
+				Detail: &v1alpha1.AzVolumeStatusDetail{
+					Phase: azureutils.GetAzVolumePhase(pv.Status.Phase),
+					ResponseObject: &v1alpha1.AzVolumeStatusParams{
+						VolumeID: pv.Spec.CSI.VolumeHandle,
+					},
+				},
+				State: v1alpha1.VolumeCreated,
+			},
+		}
+		if _, err := azVolumeClient.DiskV1alpha1().AzVolumes(namespace).Create(ctx, &azvolume, metav1.CreateOptions{}); err != nil {
+			klog.Errorf("failed to create AzVolume (%s) for PV (%s): %v", diskName, pv.Name, err)
+			return err
+		}
+		// if AzVolume CRI successfully recreated, also recreate the operation queue for the volume
+		controllerSharedState.createOperationQueue(azVolumeName)
+	}
+	return nil
 }
 
 func (r *ReconcileAzVolume) getSharedState() *SharedState {
