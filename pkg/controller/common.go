@@ -584,7 +584,7 @@ func (c *SharedState) deletePod(podKey string) {
 
 		// Scope the duration that we hold the lockable lock using a function.
 		func() {
-			lockable, ok := value.(lockableEntry)
+			lockable, ok := value.(*lockableEntry)
 			if !ok {
 				klog.Errorf("claimToPodsMap should hold lockable entry")
 				return
