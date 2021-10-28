@@ -76,6 +76,7 @@ func (c *Clientset) Tracker() testing.ObjectTracker {
 
 var (
 	_ clientset.Interface = &Clientset{}
+	_ testing.FakeClient  = &Clientset{}
 )
 
 // DiskV1alpha1 retrieves the DiskV1alpha1Client
