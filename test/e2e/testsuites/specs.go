@@ -321,6 +321,9 @@ func CreateVolumeSnapshotClass(client restclientset.Interface, namespace *v1.Nam
 	return tvsc, tvsc.Cleanup
 }
 func VerifySuccessfulReplicaAzVolumeAttachments(pod PodDetails, azDiskClient *azDiskClientSet.Clientset, storageClassParameters map[string]string) {
+	if storageClassParameters["maxShares"] == "" {
+		return
+	}
 	for _, volume := range pod.Volumes {
 		if volume.PersistentVolume != nil {
 			labelSelector := metav1.LabelSelector{MatchLabels: map[string]string{azureconstants.RoleLabel: "Replica", azureconstants.VolumeNameLabel: volume.PersistentVolume.Name}}
@@ -329,6 +332,7 @@ func VerifySuccessfulReplicaAzVolumeAttachments(pod PodDetails, azDiskClient *az
 				ginkgo.Fail("failed to get replica attachments")
 			}
 			maxShares, err := strconv.ParseInt(storageClassParameters["maxShares"], 10, 0)
+
 			framework.ExpectNoError(err)
 			numReplicaAttachments := len(azVolumeAttachmentsReplica.Items)
 
