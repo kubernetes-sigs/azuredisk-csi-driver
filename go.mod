@@ -46,9 +46,9 @@ replace (
 	github.com/niemeyer/pretty => github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e
 	go.etcd.io/etcd => go.etcd.io/etcd v0.0.0-20200410171415-59f5fb25a533
 	google.golang.org/grpc => google.golang.org/grpc v1.27.0
-	k8s.io/api => k8s.io/api v0.21.0
+	k8s.io/api => k8s.io/api v0.22.2
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.21.0
-	k8s.io/apimachinery => k8s.io/apimachinery v0.21.0
+	k8s.io/apimachinery => k8s.io/apimachinery v0.22.2
 	k8s.io/apiserver => k8s.io/apiserver v0.21.0
 	k8s.io/cli-runtime => k8s.io/cli-runtime v0.21.0
 	k8s.io/client-go => k8s.io/client-go v0.22.1
