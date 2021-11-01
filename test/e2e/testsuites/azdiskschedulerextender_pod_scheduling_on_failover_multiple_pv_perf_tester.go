@@ -79,7 +79,7 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV) Run(client cl
 		wg.Wait()
 	}
 	//Check that AzVolumeAttachment resources were created correctly
-	time.Sleep(2 * time.Minute)
+	time.Sleep(3 * time.Minute)
 	for _, ss := range tStatefulSets {
 		for _, pod := range ss.allPods {
 			VerifySuccessfulReplicaAzVolumeAttachments(pod, t.AzDiskClient, t.StorageClassParameters)
