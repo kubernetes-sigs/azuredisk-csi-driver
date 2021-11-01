@@ -46,7 +46,7 @@ spec:
               name: socket-dir
           resources:
             limits:
-              cpu: 100m
+              cpu: 200m
               memory: 300Mi
             requests:
               cpu: 10m
@@ -67,7 +67,7 @@ spec:
               name: socket-dir
           resources:
             limits:
-              cpu: 100m
+              cpu: 200m
               memory: 400Mi
             requests:
               cpu: 10m
@@ -86,7 +86,7 @@ spec:
               mountPath: /csi
           resources:
             limits:
-              cpu: 100m
+              cpu: 200m
               memory: 100Mi
             requests:
               cpu: 10m
@@ -106,7 +106,7 @@ spec:
               mountPath: /csi
           resources:
             limits:
-              cpu: 100m
+              cpu: 200m
               memory: 300Mi
             requests:
               cpu: 10m
@@ -168,7 +168,7 @@ spec:
               name: azure-cred
           resources:
             limits:
-              cpu: 200m
+              cpu: 300m
               memory: 500Mi
             requests:
               cpu: 10m
