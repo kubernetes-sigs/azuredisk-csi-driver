@@ -174,6 +174,7 @@ func schedulerExtenderTests(isMultiZone bool) {
 
 	ginkgo.It("Should schedule and start a pod with multiple persistent volume requests and reschedule on failover.", func() {
 		skipIfUsingInTreeVolumePlugin()
+		skipIfNotZRSSupported()
 		volumes := []testsuites.VolumeDetails{}
 		t := dynamicProvisioningTestSuite{}
 		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
@@ -209,6 +210,7 @@ func schedulerExtenderTests(isMultiZone bool) {
 
 	ginkgo.It("Should schedule and start a pod with multiple persistent volume requests with replicas and reschedule on deletion.", func() {
 		skipIfUsingInTreeVolumePlugin()
+		skipIfNotZRSSupported()
 		volumes := []testsuites.VolumeDetails{}
 		t := dynamicProvisioningTestSuite{}
 		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
