@@ -110,7 +110,11 @@ func TestPVControllerReconcile(t *testing.T) {
 			},
 			verifyFunc: func(t *testing.T, controller *ReconcilePV, result reconcile.Result, err error) {
 				require.NoError(t, err)
-				require.True(t, result.Requeue)
+				require.False(t, result.Requeue)
+
+				azVolume, localError := controller.azVolumeClient.DiskV1alpha1().AzVolumes(testNamespace).Get(context.TODO(), testPersistentVolume0Name, metav1.GetOptions{})
+				require.NoError(t, localError)
+				require.Equal(t, diskv1alpha1.VolumeReleased, azVolume.Status.Detail.Phase)
 			},
 		},
 	}

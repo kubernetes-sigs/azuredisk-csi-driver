@@ -140,7 +140,7 @@ func (r *ReconcileReplica) triggerGarbageCollection(volumeName string) {
 	emptyCtx := context.TODO()
 	deletionCtx, cancelFunc := context.WithCancel(emptyCtx)
 	if _, ok := r.cleanUpMap.LoadOrStore(volumeName, cancelFunc); ok {
-		klog.Infof("There already is a scheduled garbage collection for AzVolume (%s)")
+		klog.Infof("There already is a scheduled garbage collection for AzVolume (%s)", volumeName)
 		cancelFunc()
 		return
 	}
@@ -157,7 +157,7 @@ func (r *ReconcileReplica) triggerGarbageCollection(volumeName string) {
 				volumeName,
 				replica,
 				func() error {
-					_, err := cleanUpAzVolumeAttachmentByVolume(context.Background(), r, volumeName, "replicaController", all, detachAndDeleteCRI)
+					_, err := cleanUpAzVolumeAttachmentByVolume(context.Background(), r, volumeName, "replicaController", all, detachAndDeleteCRI, r.controllerSharedState)
 					if err != nil {
 						return err
 					}

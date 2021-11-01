@@ -37,9 +37,12 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework/config"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
+	utils "sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/azure"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/credentials"
+	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
 const (
@@ -56,6 +59,7 @@ const (
 
 var (
 	azurediskDriver             azuredisk.CSIDriver
+	azureCloud                  *provider.Cloud
 	isUsingInTreeVolumePlugin   = os.Getenv(driver.AzureDriverNameVar) == inTreeStorageClass
 	isTestingMigration          = os.Getenv(testMigrationEnvVar) != ""
 	isWindowsCluster            = os.Getenv(testWindowsEnvVar) != ""
@@ -124,15 +128,18 @@ var _ = ginkgo.BeforeSuite(func() {
 			VolumeAttachLimit:      16,
 			EnablePerfOptimization: false,
 		}
+		os.Setenv("AZURE_CREDENTIAL_FILE", credentials.TempAzureCredentialFilePath)
 		azurediskDriver = azuredisk.NewDriver(&driverOptions)
 		kubeconfig := os.Getenv(kubeconfigEnvVar)
+		kubeclient, err := csicommon.GetKubeClient(kubeconfig)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		azureCloud, err = utils.GetAzureCloudProvider(kubeclient, driverOptions.CloudConfigSecretName, driverOptions.CloudConfigSecretNamespace, azuredisk.GetUserAgent(driverOptions.DriverName, driverOptions.CustomUserAgent, driverOptions.UserAgentSuffix))
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		go func() {
-			os.Setenv("AZURE_CREDENTIAL_FILE", credentials.TempAzureCredentialFilePath)
 			azurediskDriver.Run(fmt.Sprintf("unix:///tmp/csi-%s.sock", uuid.NewUUID().String()), kubeconfig, false, false)
 		}()
 
-		// Ensure the local implementation of the driver is fully initialized so that the pre-provisioning
-		// test cases can safely call it.
+		// Driver is used for checking the pre-provisioned Dangling Attachment case
 		gomega.Eventually(azurediskDriver.Ready(), 5*time.Minute, 1*time.Second).Should(gomega.BeClosed())
 	}
 })

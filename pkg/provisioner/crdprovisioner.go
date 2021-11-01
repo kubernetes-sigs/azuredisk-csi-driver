@@ -311,8 +311,14 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 			klog.Infof("Could not find the volume name (%s). Deletion succeeded", volumeName)
 			return nil
 		}
-		klog.Infof("failed to get AzVolume (%s): %v", azVolumeName)
+		klog.Infof("failed to get AzVolume (%s): %v", azVolumeName, err)
 		return err
+	}
+
+	// we don't want to delete pre-provisioned volumes
+	if azVolumeInstance.Annotations != nil && metav1.HasAnnotation(azVolumeInstance.ObjectMeta, consts.PreProvisionedVolumeAnnotation) {
+		klog.Infof("AzVolume (%s) is pre-provisioned and won't be deleted.", azVolumeName)
+		return nil
 	}
 
 	// if volume deletion already in process, return to prevent duplicate request

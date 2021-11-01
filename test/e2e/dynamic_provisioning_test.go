@@ -441,9 +441,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			},
 		}, isMultiZone)
 		test := testsuites.DynamicallyProvisionedReclaimPolicyTest{
-			CSIDriver: testDriver,
-			Volumes:   volumes,
-			Azuredisk: azurediskDriver,
+			CSIDriver:  testDriver,
+			Volumes:    volumes,
+			AzureCloud: azureCloud,
 		}
 		test.Run(cs, ns)
 	})

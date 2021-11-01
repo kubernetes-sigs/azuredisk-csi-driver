@@ -30,6 +30,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azVolumeClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -58,40 +59,77 @@ var _ reconcile.Reconciler = &ReconcilePV{}
 
 func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
 	var pv corev1.PersistentVolume
+	var azVolume v1alpha1.AzVolume
+	// Ignore not found errors as they cannot be fixed by a requeue
 	if err := r.client.Get(ctx, request.NamespacedName, &pv); err != nil {
 		if errors.IsNotFound(err) {
-			return reconcile.Result{}, nil
+			return reconcileReturnOnSuccess(request.Name, r.controllerRetryInfo)
 		}
 		klog.Errorf("failed to get PV (%s): %v", request.Name, err)
-		return reconcile.Result{Requeue: true}, err
+		return reconcileReturnOnError(&pv, "get", err, r.controllerRetryInfo)
 	}
 
+	// ignore PV-s for none-csi volumes
 	if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != azureconstants.DefaultDriverName {
-		return reconcile.Result{}, nil
+		return reconcileReturnOnSuccess(pv.Name, r.controllerRetryInfo)
 	}
 
-	var azVolume v1alpha1.AzVolume
+	// get the AzVolume name for the PV
 	diskName, err := azureutils.GetDiskName(pv.Spec.CSI.VolumeHandle)
 	azVolumeName := strings.ToLower(diskName)
+	// ignoring cases when we can't get the disk name from volumehandle as this error will not be fixed with a requeue
 	if err != nil {
 		klog.Errorf("failed to extract proper diskName from pv(%s)'s volume handle (%s): %v", pv.Name, pv.Spec.CSI.VolumeHandle, err)
-		// if disk name cannot be extracted from volumehandle, there is no point of requeueing
-		return reconcile.Result{}, err
+		return reconcileReturnOnError(&pv, "get", err, r.controllerRetryInfo)
 	}
+
+	// PV is deleted
+	if criDeletionRequested(&pv.ObjectMeta) {
+		if err := r.client.Get(ctx, types.NamespacedName{Namespace: r.namespace, Name: azVolumeName}, &azVolume); err != nil {
+			// AzVolume doesn't exist, so there is nothing for us to do
+			if errors.IsNotFound(err) {
+				return reconcileReturnOnSuccess(pv.Name, r.controllerRetryInfo)
+			}
+			// getting AzVolume failed, for unknown reason, we requeue and retry deleting it on the next cycle
+			klog.Infof("Failed to get AzVolume (%s). Err: %v. ", azVolumeName, err)
+			return reconcileReturnOnError(&pv, "get", err, r.controllerRetryInfo)
+
+		}
+		// AzVolume does exist and needs to be deleted
+		if err := r.azVolumeClient.DiskV1alpha1().AzVolumes(consts.AzureDiskCrdNamespace).Delete(ctx, azVolumeName, metav1.DeleteOptions{}); err != nil {
+			klog.Errorf("failed to set the deletion timestamp for AzVolume (%s): %v", azVolumeName, err)
+			return reconcileReturnOnError(&pv, "delete", err, r.controllerRetryInfo)
+		}
+		// deletion timestamp is set and AzVolume reconcliler will handle the delete request.
+		// For pre-provisioned case when only PV is deleted, we will only be deleting the CRI as VolumeDeleteRequestAnnotation will not be set.
+		// The volume itself will not be deleted.
+		klog.Infof("deletion timestamp for AzVolume (%s) is set.", azVolumeName)
+		return reconcileReturnOnSuccess(pv.Name, r.controllerRetryInfo)
+	}
+
+	// PV exists but AzVolume doesn't
 	if err := r.client.Get(ctx, types.NamespacedName{Namespace: r.namespace, Name: azVolumeName}, &azVolume); err != nil {
-		// if underlying PV was found but AzVolume was not. Might be due to stale cache, so try until found
+		// if getting AzVolume failed due to errors other than it doesn't exist, we requeue and retry
 		if !errors.IsNotFound(err) {
 			klog.V(5).Infof("failed to get AzVolume (%s): %v", diskName, err)
-			return reconcile.Result{Requeue: true}, err
+			return reconcileReturnOnError(&pv, "get", err, r.controllerRetryInfo)
 		}
-
-		// if AzVolume is not found, retry with exponential back off
-		nextRequeue := r.controllerRetryInfo.nextRequeue(azVolumeName)
-
-		klog.Infof("AzVolume (%s) not found... reconciliation will be requeued after %f seconds", azVolumeName, nextRequeue.Seconds())
-		return reconcile.Result{Requeue: true, RequeueAfter: nextRequeue}, nil
+		// when underlying PV was found but AzVolume was not, then this is a pre-provisioned volume case and
+		// we need to create the AzVolume
+		annotation := map[string]string{
+			consts.PreProvisionedVolumeAnnotation: "true",
+		}
+		if err := createAzVolumeFromPv(ctx, pv, r.azVolumeClient, r.kubeClient, r.namespace, annotation, r.controllerSharedState); err != nil {
+			if !errors.IsAlreadyExists(err) {
+				// if creating AzVolume failed, retry with exponential back off
+				klog.Infof("Failed to create AzVolume (%s). Err: %v.", azVolumeName, err)
+				return reconcileReturnOnError(&pv, "create", err, r.controllerRetryInfo)
+			}
+		}
+		return reconcileReturnOnSuccess(pv.Name, r.controllerRetryInfo)
 	}
-	// if AzVolume is found, remove entry from retryMap and retryLocks
+
+	// both PV and AzVolume exist. Remove entry from retryMap and retryLocks
 	r.controllerRetryInfo.deleteEntry(azVolumeName)
 
 	if azVolume.Status.Detail != nil {
@@ -105,15 +143,15 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 			updated.Status.Detail.Phase = v1alpha1.VolumeReleased
 			r.controllerSharedState.deleteVolumeAndClaim(azVolumeName)
 		}
-
+		// update the status of AzVolume to match that of the PV
 		if !reflect.DeepEqual(updated, azVolume) {
 			if err := r.client.Update(ctx, updated, &client.UpdateOptions{}); err != nil {
 				klog.Errorf("failed to update AzVolume (%s): %v", pv.Name, err)
-				return reconcile.Result{Requeue: true}, err
+				return reconcileReturnOnError(&pv, "update", err, r.controllerRetryInfo)
 			}
 		}
 	}
-	return reconcile.Result{}, nil
+	return reconcileReturnOnSuccess(pv.Name, r.controllerRetryInfo)
 }
 
 func (r *ReconcilePV) Recover(ctx context.Context) error {
