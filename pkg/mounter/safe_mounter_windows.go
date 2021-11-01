@@ -234,7 +234,7 @@ func (mounter *csiProxyMounter) MountSensitiveWithoutSystemd(source string, targ
 	return fmt.Errorf("MountSensitiveWithoutSystemd is not implemented for csiProxyMounter")
 }
 
-func (mounter *csiProxyMounter)	MountSensitiveWithoutSystemdWithMountFlags(source string, target string, fstype string, options []string, sensitiveOptions []string, mountFlags []string) error {
+func (mounter *csiProxyMounter) MountSensitiveWithoutSystemdWithMountFlags(source string, target string, fstype string, options []string, sensitiveOptions []string, mountFlags []string) error {
 	return fmt.Errorf("MountSensitiveWithoutSystemdWithMountFlags is not implemented for csiProxyMounter")
 }
 
