@@ -411,6 +411,11 @@ func (d *DriverV2) ControllerPublishVolume(ctx context.Context, req *csi.Control
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("failed to get azure instance id for node %q (%v)", nodeName, err))
 	}
 
+	volumeContext := req.GetVolumeContext()
+	if volumeContext == nil {
+		volumeContext = map[string]string{}
+	}
+
 	if err == nil {
 		if vmState != nil && strings.ToLower(*vmState) == "failed" {
 			klog.Warningf("VM(%q) is in failed state, update VM first", nodeName)
@@ -422,7 +427,7 @@ func (d *DriverV2) ControllerPublishVolume(ctx context.Context, req *csi.Control
 		klog.V(2).Infof("Attach operation is successful. volume %q is already attached to node %q at lun %d.", diskURI, nodeName, lun)
 	} else {
 		var cachingMode compute.CachingTypes
-		if cachingMode, err = azureutils.GetCachingMode(req.GetVolumeContext()); err != nil {
+		if cachingMode, err = azureutils.GetCachingMode(volumeContext); err != nil {
 			return nil, err
 		}
 		klog.V(2).Infof("Trying to attach volume %q to node %q", diskURI, nodeName)
@@ -448,8 +453,7 @@ func (d *DriverV2) ControllerPublishVolume(ctx context.Context, req *csi.Control
 	}
 
 	publishContext := map[string]string{consts.LUN: strconv.Itoa(int(lun))}
-	volumeContext := req.VolumeContext
-	if disk != nil && volumeContext != nil {
+	if disk != nil {
 		if _, ok := volumeContext[consts.RequestedSizeGib]; !ok {
 			klog.V(2).Infof("found static PV(%s), insert disk properties to volumeattachments", diskURI)
 			azureutils.InsertDiskProperties(disk, publishContext)
