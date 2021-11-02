@@ -1,0 +1,34 @@
+---
+kind: Pod
+apiVersion: v1
+metadata:
+  name: pod-failover-metrics
+  labels:
+    app: pod-failover-metrics
+spec:
+  nodeSelector:
+    kubernetes.io/os: linux
+  containers:
+    - image: metrics-service-image
+      name: controller
+      imagePullPolicy: IfNotPresent
+  restartPolicy: OnFailure
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: pod-failover-metrics
+  namespace: default
+  labels:
+    app: pod-failover-metrics
+spec:
+  selector:
+    app: pod-failover-metrics
+  ports:
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+    - name: pod-failover
+      port: 9091
+      targetPort: 9091
+  type: ClusterIP

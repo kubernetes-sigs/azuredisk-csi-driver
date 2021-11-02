@@ -4,6 +4,7 @@ kind: ConfigMap
 metadata:
   name: csi-azuredisk-scheduler-extender-config
   namespace: {{ .Release.Namespace }}
+{{ include "azuredisk.labels" . | indent 2 }}
 data:
   config.yaml: |
     apiVersion: kubescheduler.config.k8s.io/v1alpha2
@@ -32,8 +33,7 @@ kind: Deployment
 metadata:
   name: {{ .Values.schedulerExtender.name }}
   namespace: {{ .Release.Namespace }}
-  labels: 
-{{ include "azuredisk.labels" . | indent 4 }}
+{{ include "azuredisk.labels" . | indent 2 }}
     app: {{ .Values.schedulerExtender.name }}
 spec:
   replicas: {{ .Values.schedulerExtender.replicas }}
@@ -42,8 +42,7 @@ spec:
       app: {{ .Values.schedulerExtender.name }}
   template:
     metadata:
-      labels:
-{{ include "azuredisk.labels" . | indent 8}}
+{{ include "azuredisk.labels" . | indent 6 }}
         app: {{ .Values.schedulerExtender.name }}
     spec:
       {{- if .Values.imagePullSecrets }}
@@ -88,11 +87,15 @@ spec:
         - name: csi-azuredisk-scheduler-extender-config
           mountPath: /azdiskschedulerextender
       - name: csi-azuredisk-scheduler-extender
+{{- if hasPrefix "/" .Values.image.schedulerExtender.repository }}
+        image: "{{ .Values.image.baseRepo }}{{ .Values.image.schedulerExtender.repository }}:{{ .Values.image.azuredisk.tag }}"
+{{- else }}
         image: "{{ .Values.image.schedulerExtender.repository }}:{{ .Values.image.schedulerExtender.tag }}"
+{{- end }}
         imagePullPolicy: {{ .Values.image.schedulerExtender.pullPolicy }}
         args:
         - "--port={{ .Values.schedulerExtender.servicePort }}"
-        - "--metrics-address=0.0.0.0:{{ .Values.schedulerExtender.metricsPort}}"
+        - "--metrics-address=0.0.0.0:{{ .Values.schedulerExtender.metrics.port }}"
         - "--v=5"
         livenessProbe:
           httpGet:
@@ -117,5 +120,5 @@ spec:
             containerPort: {{ .Values.schedulerExtender.servicePort }}
             hostPort: {{ .Values.schedulerExtender.servicePort }}
           - name: metrics-port
-            containerPort: {{ .Values.schedulerExtender.metricsPort }}
+            containerPort: {{ .Values.schedulerExtender.metrics.port }}
             protocol: TCP

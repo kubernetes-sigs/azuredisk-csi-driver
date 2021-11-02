@@ -65,14 +65,15 @@ func (r *ReconcilePod) Reconcile(ctx context.Context, request reconcile.Request)
 		klog.Errorf("Error getting the pod %s. Error: %v", podKey, err)
 		return reconcile.Result{Requeue: true}, err
 	}
-
 	r.controllerSharedState.addPod(&pod, acquireLock)
 
-	if err := r.createReplicas(ctx, podKey); err != nil {
-		klog.V(5).Infof("Error creating replicas for pod %s. Error: %v. Requeuing reconciliation.", request.Name, err)
-		return reconcile.Result{Requeue: true}, err
+	if pod.Status.Phase == corev1.PodRunning {
+		if err := r.createReplicas(ctx, podKey); err != nil {
+			klog.V(5).Infof("Error creating replicas for pod %s. Error: %v. Requeuing reconciliation.", request.Name, err)
+			return reconcile.Result{Requeue: true}, err
+		}
+		klog.V(5).Infof("Successfully created replicas for pod %s. Reconciliation succeeded.", request.Name)
 	}
-	klog.V(5).Infof("Successfully created replicas for pod %s. Reconciliation succeeded.", request.Name)
 	return reconcile.Result{}, nil
 }
 
@@ -93,40 +94,48 @@ func (r *ReconcilePod) createReplicas(ctx context.Context, podKey string) error 
 
 	// creating replica attachments for each volume
 	for _, volume := range volumes {
-		azVolume, err := azureutils.GetAzVolume(ctx, r.client, r.azVolumeClient, volume, consts.AzureDiskCrdNamespace, true)
-		if err != nil {
-			klog.V(5).Infof("Error getting azvolumes for pod %s. Error: %v", podKey, err)
-			return err
-		}
-		// if underlying volume is not present, abort operation
-		if !isCreated(azVolume) {
-			return status.Errorf(codes.Aborted, "azVolume (%s) has no underlying volume object", azVolume.Name)
-		}
+		volume := volume
+		r.controllerSharedState.addToOperationQueue(
+			volume,
+			pod,
+			func() error {
+				azVolume, err := azureutils.GetAzVolume(ctx, r.client, r.azVolumeClient, volume, consts.AzureDiskCrdNamespace, true)
+				if err != nil {
+					klog.V(5).Infof("Error getting azvolumes for pod %s. Error: %v", podKey, err)
+					return err
+				}
+				// if underlying volume is not present, abort operation
+				if !isCreated(azVolume) {
+					return status.Errorf(codes.Aborted, "azVolume (%s) has no underlying volume object", azVolume.Name)
+				}
 
-		// get all replica attachments for the given volume
-		replicaNodes, err := getNodesWithReplica(ctx, r, volume)
-		if err != nil {
-			klog.Warningf("Error getting replica azvolumes for pod %s and volume %s. Error: %v", podKey, volume, err)
-			return err
-		}
-		// if there already are replica attachments for the volume, let the replica reconciler handle replica creation and skip batch creation to avoid race between two controllers
-		if len(replicaNodes) > 0 {
-			klog.V(5).Infof("Replica azvolumeattachments for pod %s and volume %s already exist.", podKey, volume)
-			continue
-		}
+				// get all replica attachments for the given volume
+				if r.controllerSharedState.isVolumeVisited(volume) {
+					klog.Infof("No need to create replica attachment for volume (%s). Replica controller is responsible for it", volume)
+					return nil
+				}
 
-		numCreated := 0
-		// loop over all eligible nodes to create replicas.
-		for _, node := range nodes {
-			if numCreated >= azVolume.Spec.MaxMountReplicaCount {
-				break
-			}
-			if err := createReplicaAzVolumeAttachment(ctx, r, azVolume.Status.Detail.ResponseObject.VolumeID, node); err != nil {
-				klog.Warningf("Error creating %d/%d replicas azvolumeattachment for pod %s and volume %s on node %s. Error: %v", azVolume.Spec.MaxMountReplicaCount, numCreated, podKey, volume, node, err)
-				return err
-			}
-			numCreated++
-		}
+				numCreated := 0
+				// loop over all eligible nodes to create replicas.
+				for _, node := range nodes {
+					if numCreated >= azVolume.Spec.MaxMountReplicaCount {
+						break
+					}
+					if err := createReplicaAzVolumeAttachment(ctx, r, azVolume.Status.Detail.ResponseObject.VolumeID, node, azVolume.Spec.Parameters); err != nil {
+						klog.Warningf("Error creating %d/%d replicas azvolumeattachment for pod %s and volume %s on node %s. Error: %v", azVolume.Spec.MaxMountReplicaCount, numCreated, podKey, volume, node, err)
+						return err
+					}
+					numCreated++
+				}
+
+				// once replica attachment batch is created by pod controller, future replica reconciliation needs to be handled by replica controller
+				r.controllerSharedState.markVolumeVisited(volume)
+				// remove replica controller from the blacklist
+				r.controllerSharedState.removeFromExclusionList(volume, replica)
+				return nil
+			},
+			false,
+		)
 	}
 	return nil
 }
@@ -176,7 +185,7 @@ func NewPodController(mgr manager.Manager, azVolumeClient azClientSet.Interface,
 	// Watch for Update events on Pod objects
 	err = c.Watch(&source.Kind{Type: &corev1.Pod{}}, &handler.EnqueueRequestForObject{}, predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
-			return false
+			return true
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			// make sure only update event from pod status change to "running" gets enqueued to reconciler queue
@@ -209,4 +218,8 @@ func (r *ReconcilePod) getClient() client.Client {
 
 func (r *ReconcilePod) getAzClient() azClientSet.Interface {
 	return r.azVolumeClient
+}
+
+func (r *ReconcilePod) getSharedState() *SharedState {
+	return r.controllerSharedState
 }

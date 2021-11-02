@@ -267,6 +267,7 @@ if [[ ${IS_AZURE_CLUSTER_TEMPLATE_URI} -eq 0 ]]; then
 else
   AZURE_CLUSTER_TEMPLATE_FILE=$(mktemp -t "aks-engine-model-XXX.json")
   curl -sSfL "$AZURE_CLUSTER_TEMPLATE" -o "$AZURE_CLUSTER_TEMPLATE_FILE"
+  AZURE_CLUSTER_TEMPLATE=$(basename -s ".json" "$AZURE_CLUSTER_TEMPLATE" | sed "s/_/-/g" )
 fi
 
 if [[ -z ${AZURE_CLUSTER_DNS_NAME:-} ]]; then
@@ -274,7 +275,9 @@ if [[ -z ${AZURE_CLUSTER_DNS_NAME:-} ]]; then
   if [[ ${CLUSTER_PREFIX:-root} == "root" ]]; then
     CLUSTER_PREFIX=k8s
   fi
-  AZURE_CLUSTER_DNS_NAME=$(basename "$(mktemp -t "${CLUSTER_PREFIX}-${AZURE_CLUSTER_TEMPLATE}-${GIT_COMMIT}-XXX")")
+  # Generate the cluster name, replacing "windows" with "win" to keep ARM from preventing
+  # creation of DNS name containing a trademarked named.
+  AZURE_CLUSTER_DNS_NAME=$(basename "$(mktemp -t "${CLUSTER_PREFIX}-${AZURE_CLUSTER_TEMPLATE}-${GIT_COMMIT}-XXX")" | sed "s/windows/win/g")
 fi
 
 if [[ -z ${AZURE_RESOURCE_GROUP:-} ]]; then

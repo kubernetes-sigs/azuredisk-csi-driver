@@ -22,6 +22,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strings"
 	"testing"
 
@@ -31,11 +32,16 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+const (
+	driverV1 = "v1"
+	driverV2 = "v2"
+)
+
 var (
 	nodeids = []string{"integration-test-node-0", "integration-test-node-1", "integration-test-node-2"}
 )
 
-var useDriverV2 = flag.Bool("temp-use-driver-v2", false, "A temporary flag to enable early test and development of Azure Disk CSI Driver V2. This will be removed in the future.")
+var testDriverVersion = flag.String("test-driver-version", driverV1, "The version of the driver to be tested. Valid values are \"v1\" or \"v2\".")
 var imageTag = flag.String("image-tag", "", "A flag to get the docker image tag")
 
 func TestIntegrationOnAzurePublicCloud(t *testing.T) {
@@ -52,7 +58,9 @@ func TestIntegrationOnAzurePublicCloud(t *testing.T) {
 	// Set necessary env vars for sanity test
 	os.Setenv("AZURE_CREDENTIAL_FILE", credentials.TempAzureCredentialFilePath)
 
-	if *useDriverV2 {
+	useDriverV2 := strings.EqualFold(*testDriverVersion, driverV2)
+
+	if useDriverV2 {
 		os.Setenv("nodeid_0", nodeids[0])
 		os.Setenv("nodeid_1", nodeids[1])
 		os.Setenv("nodeid_2", nodeids[2])
@@ -61,7 +69,9 @@ func TestIntegrationOnAzurePublicCloud(t *testing.T) {
 	azureClient, err := azure.GetAzureClient(creds.Cloud, creds.SubscriptionID, creds.AADClientID, creds.TenantID, creds.AADClientSecret)
 	azure.AssertNoError(t, err)
 
-	ctx := context.Background()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
 	// Create an empty resource group for integration test
 	log.Printf("Creating resource group %s in %s", creds.ResourceGroup, creds.Cloud)
 	_, err = azureClient.EnsureResourceGroup(ctx, creds.ResourceGroup, creds.Location, nil)
@@ -70,14 +80,14 @@ func TestIntegrationOnAzurePublicCloud(t *testing.T) {
 		// Only delete resource group the test created
 		if strings.HasPrefix(creds.ResourceGroup, credentials.ResourceGroupPrefix) {
 			log.Printf("Deleting resource group %s", creds.ResourceGroup)
-			err := azureClient.DeleteResourceGroup(ctx, creds.ResourceGroup)
+			err := azureClient.DeleteResourceGroup(context.Background(), creds.ResourceGroup)
 			azure.AssertNoError(t, err)
 		}
 	}()
 
 	// for v2 driver testing, we need multiple VMs for testing AzVolumeAttachment where maxShares > 1
 	numVM := 1
-	if *useDriverV2 {
+	if useDriverV2 {
 		numVM = 3
 	}
 	for i := 0; i < numVM; i++ {
@@ -100,12 +110,12 @@ func TestIntegrationOnAzurePublicCloud(t *testing.T) {
 	assert.True(t, strings.HasSuffix(cwd, "azuredisk-csi-driver"))
 
 	args := []string{creds.Cloud}
-	if *useDriverV2 {
+	if useDriverV2 {
 		args = append(args, "v2")
 		args = append(args, *imageTag)
 	}
 
-	cmd := exec.Command("./test/integration/run-tests-all-clouds.sh", args...)
+	cmd := exec.CommandContext(ctx, "./test/integration/run-tests-all-clouds.sh", args...)
 	cmd.Dir = cwd
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

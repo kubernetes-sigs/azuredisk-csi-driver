@@ -1,0 +1,47 @@
+image:
+  azuredisk:
+    pullPolicy: Always
+  schedulerExtender:
+    pullPolicy: Always
+
+serviceAccount:
+  controller: csi-azuredisk2-controller-sa
+  node: csi-azuredisk2-node-sa 
+  snapshotController: csi2-snapshot-controller-sa
+
+rbac:
+  name: azuredisk2
+
+controller:
+  name: csi-azuredisk2-controller
+  metricsPort: 29624
+  livenessProbe:
+    healthPort: 29623
+
+node:
+  metricsPort: 29615
+  livenessProbe:
+    healthPort: 29613
+
+schedulerExtender:
+  metricsPort: 29616
+  servicePort: 8899
+
+snapshot:
+  enabled: true
+  createCRDs: false
+  name: csi-azuredisk2-snapshot-controller
+  snapshotController:
+    name: csi-azuredisk2-snapshot-controller
+
+driver:
+  name: disk2.csi.azure.com
+
+linux:
+  dsName: csi-azuredisk2-node 
+
+windows:
+  dsName: csi-azuredisk2-node-win
+
+storageClasses:
+  enableZRS: true

@@ -42,6 +42,7 @@ import (
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/diskclient/mockdiskclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/snapshotclient/mocksnapshotclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmclient/mockvmclient"
+	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
 )
@@ -190,8 +191,17 @@ func NewTestCloudProvisioner(controller *gomock.Controller) *CloudProvisioner {
 	cloud := provider.GetTestCloud(controller)
 	cloud.SubscriptionID = testSubscription
 	cloud.ResourceGroup = testResourceGroup
+
+	cache, err := azcache.NewTimedcache(time.Minute, func(key string) (interface{}, error) {
+		return nil, nil
+	})
+	if err != nil {
+		panic(err)
+	}
+
 	return &CloudProvisioner{
-		cloud: cloud,
+		cloud:                  cloud,
+		getDiskThrottlingCache: cache,
 	}
 }
 

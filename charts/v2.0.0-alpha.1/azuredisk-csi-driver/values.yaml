@@ -1,30 +1,35 @@
 image:
+  baseRepo: mcr.microsoft.com
   azuredisk:
-    repository: mcr.microsoft.com/k8s/csi/azuredisk-csi
+    repository: /k8s/csi/azuredisk-csi
     tag: v2.0.0-alpha.1
     pullPolicy: IfNotPresent
   csiProvisioner:
-    repository: mcr.microsoft.com/oss/kubernetes-csi/csi-provisioner
+    repository: /oss/kubernetes-csi/csi-provisioner
     tag: v2.2.2
     pullPolicy: IfNotPresent
   csiAttacher:
-    repository: mcr.microsoft.com/oss/kubernetes-csi/csi-attacher
+    repository: /oss/kubernetes-csi/csi-attacher
     tag: v3.3.0
     pullPolicy: IfNotPresent
   csiResizer:
-    repository: mcr.microsoft.com/oss/kubernetes-csi/csi-resizer
+    repository: /oss/kubernetes-csi/csi-resizer
     tag: v1.3.0
     pullPolicy: IfNotPresent
+  curl:
+    repository: docker.io/curlimages/curl
+    tag: latest
+    pullPolicy: IfNotPresent
   livenessProbe:
-    repository: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe
+    repository: /oss/kubernetes-csi/livenessprobe
     tag: v2.4.0
     pullPolicy: IfNotPresent
   nodeDriverRegistrar:
-    repository: mcr.microsoft.com/oss/kubernetes-csi/csi-node-driver-registrar
+    repository: /oss/kubernetes-csi/csi-node-driver-registrar
     tag: v2.3.0
     pullPolicy: IfNotPresent
   schedulerExtender:
-    repository: mcr.microsoft.com/k8s/csi/azdiskschedulerextender-csi
+    repository: /k8s/csi/azdiskschedulerextender-csi
     tag: v2.0.1-alpha.1
     pullPolicy: IfNotPresent
     imageVersion: v1.18.6
@@ -40,15 +45,17 @@ rbac:
   create: true
   name: azuredisk
 
-azuredisk:
-  useV2Driver: true
-
 controller:
   name: csi-azuredisk-controller
   cloudConfigSecretName: azure-cloud-provider
   cloudConfigSecretNamespace: kube-system
   replicas: 2
-  metricsPort: 29604
+  metrics:
+    port: 29604
+    service:
+      enabled: false
+      monitor:
+        enabled: false
   livenessProbe:
     healthPort: 29602
   runOnMaster: false
@@ -70,7 +77,8 @@ node:
   cloudConfigSecretName: azure-cloud-provider
   cloudConfigSecretNamespace: kube-system
   maxUnavailable: 1
-  metricsPort: 29605
+  metrics:
+    port: 29605
   logLevel: 5
   livenessProbe:
     healthPort: 29603
@@ -78,28 +86,34 @@ node:
 schedulerExtender:
   name: csi-azuredisk-scheduler-extender
   replicas: 2
-  metricsPort: 29606
+  metrics:
+    port: 29606
+    service:
+      enabled: false
+      monitor:
+        enabled: false
   servicePort: 8889
 
 snapshot:
   enabled: false
+  createCRDs: true
   name: csi-snapshot-controller
   apiVersion: beta # available values: beta, ga
   image:
     csiSnapshotter:
-      repository: mcr.microsoft.com/oss/kubernetes-csi/csi-snapshotter
+      repository: /oss/kubernetes-csi/csi-snapshotter
       tag: v3.0.3
+      gaTag: v4.2.1
       pullPolicy: IfNotPresent
     csiSnapshotController:
-      repository: mcr.microsoft.com/oss/kubernetes-csi/snapshot-controller
+      repository: /oss/kubernetes-csi/snapshot-controller
       tag: v3.0.3
+      gaTag: v4.2.1
       pullPolicy: IfNotPresent
   snapshotController:
     name: csi-snapshot-controller
     replicas: 1
     podLabels: {}
-    serviceAccount: true
-    rbac: true
 
 feature:
   enableFSGroupPolicy: false
@@ -113,13 +127,6 @@ driver:
   customUserAgent: ""
   userAgentSuffix: "OSS-helm"
 
-cleanup:
-  image:
-    curl:
-      repository: docker.io/curlimages/curl
-      tag: latest
-      pullPolicy: IfNotPresent
-
 linux:
   enabled: true
   dsName: csi-azuredisk-node # daemonset name
@@ -127,30 +134,49 @@ linux:
   distro: debian # available values: debian, fedora
   enablePerfOptimization: true
   tolerations:
-    - operator: "Exists"
   hostNetwork: true # this setting could be disabled if perfProfile is `none`
   podLabels: {}
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: type
+              operator: NotIn
+              values:
+                - virtual-kubelet
 
 windows:
   enabled: true
   dsName: csi-azuredisk-node-win # daemonset name
   kubelet: 'C:\var\lib\kubelet'
-  image:
-    livenessProbe:
-      repository: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe
-      tag: v2.3.0
-      pullPolicy: IfNotPresent
-    nodeDriverRegistrar:
-      repository: mcr.microsoft.com/oss/kubernetes-csi/csi-node-driver-registrar
-      tag: v2.2.0
-      pullPolicy: IfNotPresent
   tolerations:
     - key: "node.kubernetes.io/os"
       operator: "Exists"
       effect: "NoSchedule"
   podLabels: {}
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: type
+              operator: NotIn
+              values:
+                - virtual-kubelet
 
 cloud: AzurePublicCloud
+
+storageClasses:
+  create: true
+  enableZRS: false
+  enableUltraSSD: false
+  storageClassNames:
+    standardLRS: "azuredisk-standard-hdd-lrs"
+    standardSSDLRS: "azuredisk-standard-ssd-lrs"
+    standardSSDZRS: "azuredisk-standard-ssd-zrs"
+    premiumLRS: "azuredisk-premium-ssd-lrs"
+    premiumZRS: "azuredisk-premium-ssd-zrs"
+    ultraSSDLRS: "azuredisk-ultra-ssd-lrs"
+
 
 ## Reference to one or more secrets to be used when pulling images
 ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/

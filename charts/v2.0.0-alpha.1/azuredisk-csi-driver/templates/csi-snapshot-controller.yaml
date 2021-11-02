@@ -4,8 +4,7 @@ apiVersion: apps/v1
 metadata:
   name: {{ .Values.snapshot.snapshotController.name }}
   namespace: {{ .Release.Namespace }}
-  labels:
-{{ include "azuredisk.labels" . | indent 4 }}
+{{ include "azuredisk.labels" . | indent 2 }}
 spec:
   replicas: {{ .Values.snapshot.snapshotController.replicas }}
   selector:
@@ -13,8 +12,7 @@ spec:
       app: {{ .Values.snapshot.snapshotController.name }}
   template:
     metadata:
-      labels: 
-{{ include "azuredisk.labels" . | indent 8 }}
+{{ include "azuredisk.labels" . | indent 6 }}
         app: {{ .Values.snapshot.snapshotController.name }}
 {{- with .Values.snapshot.snapshotController.podLabels }}
 {{ toYaml . | indent 8 }}
@@ -28,10 +26,26 @@ spec:
       tolerations:
 {{ toYaml . | indent 8 }}
 {{- end }}
+{{- with .Values.controller.affinity }}
+      affinity:
+{{ toYaml . | indent 8 }}
+{{- end }}
       {{- include "azuredisk.pullSecrets" . | indent 6 }}
       containers:
         - name: {{ .Values.snapshot.snapshotController.name }}
+{{- if eq .Values.snapshot.apiVersion "beta" }}
+  {{- if hasPrefix "/" .Values.snapshot.image.csiSnapshotController.repository }}
+          image: "{{ .Values.image.baseRepo }}{{ .Values.snapshot.image.csiSnapshotController.repository }}:{{ .Values.snapshot.image.csiSnapshotController.tag }}"
+  {{- else }}
           image: "{{ .Values.snapshot.image.csiSnapshotController.repository }}:{{ .Values.snapshot.image.csiSnapshotController.tag }}"
+  {{- end }}
+{{- else }}
+  {{- if hasPrefix "/" .Values.snapshot.image.csiSnapshotController.repository }}
+          image: "{{ .Values.image.baseRepo }}{{ .Values.snapshot.image.csiSnapshotController.repository }}:{{ .Values.snapshot.image.csiSnapshotController.gaTag }}"
+  {{- else }}
+          image: "{{ .Values.snapshot.image.csiSnapshotController.repository }}:{{ .Values.snapshot.image.csiSnapshotController.gaTag }}"
+  {{- end }}
+{{- end }}
           args:
             - "--v=2"
             - "--leader-election=false"

@@ -21,6 +21,7 @@ import (
 	"io/ioutil"
 	"os"
 	"testing"
+	"time"
 
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
@@ -95,7 +96,12 @@ func TestRun(t *testing.T) {
 				}
 
 				d, _ := NewFakeDriver(t)
-				d.Run("tcp://127.0.0.1:0", "", true, true)
+				go d.Run("tcp://127.0.0.1:0", "", true, true)
+				select {
+				case <-d.Ready():
+				case <-time.After(30 * time.Second):
+					t.Error("Driver failed to ready within timeout")
+				}
 			},
 		},
 		{
@@ -130,7 +136,12 @@ func TestRun(t *testing.T) {
 				d, _ := NewFakeDriver(t)
 				d.setCloud(&azure.Cloud{})
 				d.setNodeID("")
-				d.Run("tcp://127.0.0.1:0", "", true, true)
+				go d.Run("tcp://127.0.0.1:0", "", true, true)
+				select {
+				case <-d.Ready():
+				case <-time.After(30 * time.Second):
+					t.Error("Driver failed to ready within timeout")
+				}
 			},
 		},
 	}

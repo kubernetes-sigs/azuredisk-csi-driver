@@ -22,7 +22,6 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/kubernetes-csi/external-snapshotter/v2/pkg/apis/volumesnapshot/v1beta1"
 	snapshotclientset "github.com/kubernetes-csi/external-snapshotter/v2/pkg/client/clientset/versioned"
 	"github.com/onsi/ginkgo"
@@ -52,8 +51,9 @@ import (
 	imageutils "k8s.io/kubernetes/test/utils/image"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	v1alpha1ClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1alpha1"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
 const (
@@ -380,15 +380,12 @@ func (t *TestPersistentVolumeClaim) DeleteBoundPersistentVolume() {
 	framework.ExpectNoError(err)
 }
 
-func (t *TestPersistentVolumeClaim) DeleteBackingVolume(driver azuredisk.CSIDriver) {
-	volumeID := t.persistentVolume.Spec.CSI.VolumeHandle
-	ginkgo.By(fmt.Sprintf("deleting azuredisk volume %q", volumeID))
-	req := &csi.DeleteVolumeRequest{
-		VolumeId: volumeID,
-	}
-	_, err := driver.DeleteVolume(context.Background(), req)
+func (t *TestPersistentVolumeClaim) DeleteBackingVolume(azureCloud *provider.Cloud) {
+	diskURI := t.persistentVolume.Spec.CSI.VolumeHandle
+	ginkgo.By(fmt.Sprintf("deleting azuredisk volume %q", diskURI))
+	err := azureCloud.DeleteManagedDisk(context.Background(), diskURI)
 	if err != nil {
-		ginkgo.Fail(fmt.Sprintf("could not delete volume %q: %v", volumeID, err))
+		ginkgo.Fail(fmt.Sprintf("could not delete volume %q: %v", diskURI, err))
 	}
 }
 
@@ -948,14 +945,24 @@ func ListNodeNames(c clientset.Interface) []string {
 	nodes, err := c.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 	framework.ExpectNoError(err)
 	for _, item := range nodes.Items {
-		nodeNames = append(nodeNames, item.ObjectMeta.Name)
+		nodeNames = append(nodeNames, item.Name)
+	}
+	return nodeNames
+}
+
+func ListAzDriverNodeNames(azDriverNode v1alpha1ClientSet.AzDriverNodeInterface) []string {
+	var nodeNames []string
+	nodes, err := azDriverNode.List(context.TODO(), metav1.ListOptions{})
+	framework.ExpectNoError(err)
+	for _, item := range nodes.Items {
+		nodeNames = append(nodeNames, item.Name)
 	}
 	return nodeNames
 }
 
 func DeleteAllPodsWithMatchingLabel(cs clientset.Interface, ns *v1.Namespace, matchLabels map[string]string) {
 
-	e2elog.Logf("Deleting all pods with %v labels in namespace %q", matchLabels, ns)
+	e2elog.Logf("Deleting all pods with %v labels in namespace %s", matchLabels, ns.Name)
 	labelSelector := metav1.LabelSelector{MatchLabels: matchLabels}
 	err := cs.CoreV1().Pods(ns.Name).DeleteCollection(context.TODO(), metav1.DeleteOptions{}, metav1.ListOptions{LabelSelector: labels.Set(labelSelector.MatchLabels).String()})
 	if !apierrs.IsNotFound(err) {
@@ -1213,8 +1220,8 @@ func (t *TestAzVolumeAttachment) WaitForFinalizer(timeout time.Duration) error {
 			return false, nil
 		}
 		for _, finalizer := range att.ObjectMeta.Finalizers {
-			if finalizer == azureutils.AzVolumeAttachmentFinalizer {
-				klog.Infof("finalizer (%s) found on AzVolumeAttachment object (%s)", azureutils.AzVolumeAttachmentFinalizer, att.Name)
+			if finalizer == consts.AzVolumeAttachmentFinalizer {
+				klog.Infof("finalizer (%s) found on AzVolumeAttachment object (%s)", consts.AzVolumeAttachmentFinalizer, att.Name)
 				return true, nil
 			}
 		}
@@ -1234,10 +1241,10 @@ func (t *TestAzVolumeAttachment) WaitForLabels(timeout time.Duration) error {
 		if att.Labels == nil {
 			return false, nil
 		}
-		if _, ok := att.Labels[azureutils.NodeNameLabel]; !ok {
+		if _, ok := att.Labels[consts.NodeNameLabel]; !ok {
 			return false, nil
 		}
-		if _, ok := att.Labels[azureutils.VolumeNameLabel]; !ok {
+		if _, ok := att.Labels[consts.VolumeNameLabel]; !ok {
 			return false, nil
 		}
 		return true, nil
@@ -1357,8 +1364,8 @@ func (t *TestAzVolume) WaitForFinalizer(timeout time.Duration) error {
 			return false, nil
 		}
 		for _, finalizer := range azVolume.ObjectMeta.Finalizers {
-			if finalizer == azureutils.AzVolumeFinalizer {
-				klog.Infof("finalizer (%s) found on AzVolume object (%s)", azureutils.AzVolumeFinalizer, azVolume.Name)
+			if finalizer == consts.AzVolumeFinalizer {
+				klog.Infof("finalizer (%s) found on AzVolume object (%s)", consts.AzVolumeFinalizer, azVolume.Name)
 				return true, nil
 			}
 		}

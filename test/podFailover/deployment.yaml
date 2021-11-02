@@ -1,0 +1,74 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: controller-pod-sa
+  namespace: default
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: controller-pod-sa-role
+rules:
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["get", "list", "create"]
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "update"]
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "create", "delete"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get", "list", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "create"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "create"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list","create","delete"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list", "create", "delete"]
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: controller-pod-sa-role
+subjects:
+  - kind: ServiceAccount
+    name: controller-pod-sa
+    namespace: default
+roleRef:
+  kind: ClusterRole
+  name: controller-pod-sa-role
+  apiGroup: rbac.authorization.k8s.io
+---
+kind: Pod
+apiVersion: v1
+metadata:
+  name: controller-pod
+  labels:
+    app: pod-failover-controller
+spec:
+  serviceAccountName: controller-pod-sa
+  nodeSelector:
+    kubernetes.io/os: linux
+  containers:
+    - image: controller-pod-image
+      name: controller
+      imagePullPolicy: Always
+      args:
+      - "--driver-version=v2"
+      - "--maxshares=3"
+      - "--duration=60"
+      - "--workload-image=workload-pod-image"
+      - "--pod-count=1"
+      - "--pvc-per-pod=3"
+      - "--metrics-endpoint=http://$(POD_FAILOVER_METRICS_SERVICE_HOST):$(POD_FAILOVER_METRICS_SERVICE_PORT_POD_FAILOVER)/pod-failover"
+      - "--delay-before-failover=10"
+  restartPolicy: Never

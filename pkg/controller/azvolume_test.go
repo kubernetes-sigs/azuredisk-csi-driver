@@ -20,17 +20,17 @@ import (
 	"context"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	fakev1 "k8s.io/client-go/kubernetes/fake"
 	diskv1alpha1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	diskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller/mockclient"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller/mockvolumeprovisioner"
@@ -39,14 +39,17 @@ import (
 
 func NewTestAzVolumeController(controller *gomock.Controller, namespace string, objects ...runtime.Object) *ReconcileAzVolume {
 	diskv1alpha1Objs, kubeObjs := splitObjects(objects...)
+	controllerSharedState := initState(objects...)
 
 	return &ReconcileAzVolume{
-		client:            mockclient.NewMockClient(controller),
-		azVolumeClient:    diskfakes.NewSimpleClientset(diskv1alpha1Objs...),
-		kubeClient:        fakev1.NewSimpleClientset(kubeObjs...),
-		namespace:         namespace,
-		volumeProvisioner: mockvolumeprovisioner.NewMockVolumeProvisioner(controller),
-		stateLock:         &sync.Map{},
+		client:                mockclient.NewMockClient(controller),
+		azVolumeClient:        diskfakes.NewSimpleClientset(diskv1alpha1Objs...),
+		kubeClient:            fakev1.NewSimpleClientset(kubeObjs...),
+		namespace:             namespace,
+		volumeProvisioner:     mockvolumeprovisioner.NewMockVolumeProvisioner(controller),
+		stateLock:             &sync.Map{},
+		retryInfo:             newRetryInfo(),
+		controllerSharedState: controllerSharedState,
 	}
 }
 
@@ -83,7 +86,7 @@ func mockClientsAndVolumeProvisioner(controller *ReconcileAzVolume) {
 			volumeID string,
 			capacityRange *diskv1alpha1.CapacityRange,
 			secrets map[string]string) (*diskv1alpha1.AzVolumeStatusParams, error) {
-			volumeName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(volumeID)
+			volumeName, err := azureutils.GetDiskName(volumeID)
 			if err != nil {
 				return nil, err
 			}
@@ -184,9 +187,9 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 				azVolume := testAzVolume0.DeepCopy()
 
 				azVolume.Annotations = map[string]string{
-					azureutils.VolumeDeleteRequestAnnotation: "cloud-delete-volume",
+					consts.VolumeDeleteRequestAnnotation: "cloud-delete-volume",
 				}
-				azVolume.Finalizers = []string{azureutils.AzVolumeFinalizer}
+				azVolume.Finalizers = []string{consts.AzVolumeFinalizer}
 				azVolume.Status.Detail = &diskv1alpha1.AzVolumeStatusDetail{
 					ResponseObject: &diskv1alpha1.AzVolumeStatusParams{
 						VolumeID:      testManagedDiskURI0,
@@ -259,9 +262,9 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 				azVolume := testAzVolume0.DeepCopy()
 
 				azVolume.Annotations = map[string]string{
-					azureutils.VolumeDeleteRequestAnnotation: "cloud-delete-volume",
+					consts.VolumeDeleteRequestAnnotation: "cloud-delete-volume",
 				}
-				azVolume.Finalizers = []string{azureutils.AzVolumeFinalizer}
+				azVolume.Finalizers = []string{consts.AzVolumeFinalizer}
 				azVolume.Status.Detail = &diskv1alpha1.AzVolumeStatusDetail{
 					ResponseObject: &diskv1alpha1.AzVolumeStatusParams{
 						VolumeID:      testManagedDiskURI0,
@@ -284,8 +287,8 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 				return controller
 			},
 			verifyFunc: func(t *testing.T, controller *ReconcileAzVolume, result reconcile.Result, err error) {
-				require.Equal(t, status.Errorf(codes.Aborted, "volume deletion requeued until attached azVolumeAttachments are entirely detached..."), err)
-				require.True(t, result.Requeue)
+				require.NoError(t, err)
+				require.Greater(t, result.RequeueAfter, time.Duration(0))
 
 				azVolume, err := controller.azVolumeClient.DiskV1alpha1().AzVolumes(testNamespace).Get(context.TODO(), testPersistentVolume0Name, metav1.GetOptions{})
 				require.NoError(t, err)
@@ -329,6 +332,8 @@ func TestAzVolumeControllerRecover(t *testing.T) {
 					&testPersistentVolume0,
 					&testPersistentVolume1)
 
+				mockClientsAndVolumeProvisioner(controller)
+
 				return controller
 			},
 			verifyFunc: func(t *testing.T, controller *ReconcileAzVolume, err error) {
@@ -336,6 +341,39 @@ func TestAzVolumeControllerRecover(t *testing.T) {
 				azVolumes, err := controller.azVolumeClient.DiskV1alpha1().AzVolumes(testNamespace).List(context.TODO(), metav1.ListOptions{})
 				require.NoError(t, err)
 				require.Len(t, azVolumes.Items, 2)
+			},
+		},
+		{
+			description: "[Success] Should update AzVolume CRIs to right state",
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAzVolume {
+				newAzVolume0 := testAzVolume0.DeepCopy()
+				newAzVolume0.Status.State = diskv1alpha1.VolumeCreating
+
+				newAzVolume1 := testAzVolume1.DeepCopy()
+				newAzVolume1.Status.State = diskv1alpha1.VolumeDeleting
+
+				controller := NewTestAzVolumeController(
+					mockCtl,
+					testNamespace,
+					newAzVolume0,
+					newAzVolume1)
+
+				mockClientsAndVolumeProvisioner(controller)
+
+				return controller
+			},
+			verifyFunc: func(t *testing.T, controller *ReconcileAzVolume, err error) {
+				require.NoError(t, err)
+
+				azVolume, localErr := controller.azVolumeClient.DiskV1alpha1().AzVolumes(testNamespace).Get(context.TODO(), testPersistentVolume0Name, metav1.GetOptions{})
+				require.NoError(t, localErr)
+				require.Equal(t, azVolume.Status.State, diskv1alpha1.VolumeOperationPending)
+				require.Contains(t, azVolume.ObjectMeta.Annotations, consts.RecoverAnnotation)
+
+				azVolume, localErr = controller.azVolumeClient.DiskV1alpha1().AzVolumes(testNamespace).Get(context.TODO(), testPersistentVolume1Name, metav1.GetOptions{})
+				require.NoError(t, localErr)
+				require.Equal(t, azVolume.Status.State, diskv1alpha1.VolumeCreated)
+				require.Contains(t, azVolume.ObjectMeta.Annotations, consts.RecoverAnnotation)
 			},
 		},
 	}

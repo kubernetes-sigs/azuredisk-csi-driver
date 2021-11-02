@@ -135,7 +135,8 @@ spec:
             - "--v=5"
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--metrics-address=0.0.0.0:29604"
-            - "--temp-use-driver-v2=true"
+            - "--user-agent-suffix=OSS-kubectl"
+            - "--disable-avset-nodes=true"
             - "--is-controller-plugin=true"
           ports:
             - containerPort: 29602
@@ -166,9 +167,6 @@ spec:
               name: socket-dir
             - mountPath: /etc/kubernetes/
               name: azure-cred
-            - mountPath: /var/lib/waagent/ManagedIdentity-Settings
-              readOnly: true
-              name: msi
           resources:
             limits:
               cpu: 200m
@@ -182,7 +180,4 @@ spec:
         - name: azure-cred
           hostPath:
             path: /etc/kubernetes/
-            type: Directory
-        - name: msi
-          hostPath:
-            path: /var/lib/waagent/ManagedIdentity-Settings
+            type: DirectoryOrCreate

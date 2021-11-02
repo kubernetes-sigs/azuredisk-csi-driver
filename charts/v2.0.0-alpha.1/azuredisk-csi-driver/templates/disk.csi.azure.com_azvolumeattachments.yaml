@@ -1,4 +1,3 @@
-{{- if .Values.azuredisk.useV2Driver -}}
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
@@ -6,8 +5,7 @@ metadata:
   annotations:
   creationTimestamp: null
   name: azvolumeattachments.disk.csi.azure.com
-  labels:
-{{ include "azuredisk.labels" . | indent 4 }}
+{{ include "azuredisk.labels" . | indent 2 }}
 spec:
   group: disk.csi.azure.com
   names:
@@ -18,14 +16,20 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
+    - description: The age of the attachment
+      jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
     - description: Name of the Node which this AzVolumeAttachment object is attached
         to
       jsonPath: .spec.nodeName
       name: NodeName
+      priority: 10
       type: string
     - description: Name of the Volume which this AzVolumeAttachment object references
       jsonPath: .spec.underlyingVolume
       name: UnderlyingVolume
+      priority: 10
       type: string
     - description: Indicates if the volume attachment should be primary attachment
         or not
@@ -33,8 +37,17 @@ spec:
       name: RequestedRole
       type: string
     - description: Indicates if the volume attachment is primary attachment or not
-      jsonPath: .status.role
+      jsonPath: .status.detail.role
       name: Role
+      type: string
+    - description: Describes the previous volume attachment role
+      jsonPath: .status.detail.previous_role
+      name: PreviousRole
+      priority: 10
+      type: string
+    - description: Indicates the state of the volume attachment
+      jsonPath: .status.state
+      name: State
       type: string
     name: v1alpha1
     schema:
@@ -87,13 +100,15 @@ spec:
                   volume attachment Nil Status indicates that the volume has not yet
                   been attached to the node
                 properties:
+                  previous_role:
+                    description: The previous attachment role.
+                    type: string
                   publish_context:
                     additionalProperties:
                       type: string
                     type: object
                   role:
-                    description: Role indicates if the volume attachment is replica
-                      attachment or not
+                    description: The current attachment role.
                     type: string
                 required:
                 - role
@@ -154,4 +169,3 @@ status:
     plural: ""
   conditions: []
   storedVersions: []
-{{- end -}}

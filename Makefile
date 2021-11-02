@@ -27,7 +27,6 @@ PLUGIN_NAME = azurediskpluginv2
 IMAGE_VERSION ?= v2.0.0-alpha.1
 CHART_VERSION ?= v2.0.0-alpha.1
 GOTAGS += -tags azurediskv2
-E2E_TEST_ARGS=--temp-use-driver-v2
 endif
 CLOUD ?= AzurePublicCloud
 # Use a custom version for E2E tests if we are testing in CI
@@ -67,14 +66,14 @@ ALL_OS = linux windows
 ALL_ARCH.linux = amd64 arm64
 ALL_OS_ARCH.linux = $(foreach arch, ${ALL_ARCH.linux}, linux-$(arch))
 ALL_ARCH.windows = amd64
-ALL_OSVERSIONS.windows := 1809 1903 1909 2004
+ALL_OSVERSIONS.windows := 1809 1903 1909 2004 20H2 ltsc2022
 ALL_OS_ARCH.windows = $(foreach arch, $(ALL_ARCH.windows), $(foreach osversion, ${ALL_OSVERSIONS.windows}, windows-${osversion}-${arch}))
 ALL_OS_ARCH = $(foreach os, $(ALL_OS), ${ALL_OS_ARCH.${os}})
 
 # The current context of image building
 # The architecture of the image
 ARCH ?= amd64
-# OS Version for the Windows images: 1809, 1903, 1909, 2004
+# OS Version for the Windows images: 1809, 1903, 1909, 2004, ltsc2022
 OSVERSION ?= 1809
 # Output type of docker buildx build
 OUTPUT_TYPE ?= registry
@@ -97,7 +96,7 @@ unit-test-v1:
 
 .PHONY: unit-test-v2
 unit-test-v2:
-	go test -v -cover -tags azurediskv2 ./pkg/azuredisk --temp-use-driver-v2
+	go test -v -cover -tags azurediskv2 ./pkg/azuredisk
 
 .PHONY: sanity-test
 sanity-test: azuredisk
@@ -105,7 +104,7 @@ sanity-test: azuredisk
 
 .PHONY: sanity-test-v2
 sanity-test-v2: container-v2
-	go test -v -timeout=30m ./test/sanity --temp-use-driver-v2 --image-tag ${IMAGE_TAG}
+	go test -v -timeout=30m ./test/sanity --test-driver-version=v2 --image-tag ${IMAGE_TAG}
 
 .PHONY: integration-test
 integration-test:
@@ -113,7 +112,7 @@ integration-test:
 
 .PHONY: integration-test-v2
 integration-test-v2: container-v2
-	go test -v -timeout=45m ./test/integration --temp-use-driver-v2 --image-tag ${IMAGE_TAG}
+	go test -v -timeout=45m ./test/integration --test-driver-version=v2 --image-tag ${IMAGE_TAG}
 
 .PHONY: e2e-bootstrap
 e2e-bootstrap: install-helm
@@ -176,11 +175,11 @@ azdiskschedulerextender:
 
 .PHONY: container
 container: azuredisk
-	docker build --no-cache -t $(IMAGE_TAG) --build-arg PLUGIN_NAME=${PLUGIN_NAME} -f ./pkg/azurediskplugin/dev.Dockerfile .
+	docker build --no-cache -t $(IMAGE_TAG) --build-arg PLUGIN_NAME=${PLUGIN_NAME} --output=type=docker -f ./pkg/azurediskplugin/Dockerfile .
 
 .PHONY: container-v2
 container-v2: azuredisk-v2
-	docker build --no-cache -t $(IMAGE_TAG) --build-arg PLUGIN_NAME=${PLUGIN_NAME} -f ./pkg/azurediskplugin/dev.Dockerfile .
+	docker build --no-cache -t $(IMAGE_TAG) --build-arg PLUGIN_NAME=${PLUGIN_NAME} --output=type=docker -f ./pkg/azurediskplugin/Dockerfile .
 
 .PHONY: container-linux
 container-linux:
@@ -323,9 +322,21 @@ e2e-test:
 	if [ ! -z "$(EXTERNAL_E2E_TEST)" ]; then \
 		bash ./test/external-e2e/run.sh;\
 	else \
-		go test -v -timeout=0 ${GOTAGS} ./test/e2e ${E2E_TEST_ARGS} ${GINKGO_FLAGS};\
+		go test -v -timeout=0 ${GOTAGS} ./test/e2e ${GINKGO_FLAGS};\
 	fi
 
 .PHONY: e2e-test-v2
 e2e-test-v2:
 	BUILD_V2=1 make e2e-test
+
+.PHONY: pod-failover-test-containers
+pod-failover-test-containers:
+	CGO_ENABLED=0 go build -a -mod vendor -o _output/${ARCH}/workloadPod ./test/podFailover/workload 
+	CGO_ENABLED=0 go build -a -mod vendor -o _output/${ARCH}/controllerPod ./test/podFailover/controller
+	CGO_ENABLED=0 go build  -o _output/${ARCH}/metricsPod ./test/podFailover/metrics
+	docker build -t $(REGISTRY)/workloadpod:latest -f ./test/podFailover/workload/Dockerfile .
+	docker build -t $(REGISTRY)/controllerpod:latest -f ./test/podFailover/controller/Dockerfile .
+	docker build -t $(REGISTRY)/metricspod:latest -f ./test/podFailover/metrics/Dockerfile .
+	docker push $(REGISTRY)/workloadpod:latest
+	docker push $(REGISTRY)/controllerpod:latest
+	docker push $(REGISTRY)/metricspod:latest

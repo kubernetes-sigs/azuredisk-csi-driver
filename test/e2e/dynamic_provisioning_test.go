@@ -138,6 +138,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 				"diskIopsReadWrite": "2000",
 				"diskMbpsReadWrite": "320",
 				"logicalSectorSize": "512",
+				"zoned":             "true",
 			}
 		}
 		if !isUsingInTreeVolumePlugin && supportsZRS {
@@ -440,9 +441,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			},
 		}, isMultiZone)
 		test := testsuites.DynamicallyProvisionedReclaimPolicyTest{
-			CSIDriver: testDriver,
-			Volumes:   volumes,
-			Azuredisk: azurediskDriver,
+			CSIDriver:  testDriver,
+			Volumes:    volumes,
+			AzureCloud: azureCloud,
 		}
 		test.Run(cs, ns)
 	})

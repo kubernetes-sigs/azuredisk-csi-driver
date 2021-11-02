@@ -2,7 +2,8 @@
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: csi-snapshot-controller-role
+  name: csi-{{ .Values.rbac.name }}-snapshot-controller-role
+{{ include "azuredisk.labels" . | indent 2 }}
 rules:
   - apiGroups: [""]
     resources: ["persistentvolumes"]
@@ -33,21 +34,23 @@ rules:
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: csi-snapshot-controller-binding
+  name: csi-{{ .Values.rbac.name }}-snapshot-controller-binding
+{{ include "azuredisk.labels" . | indent 2 }}
 subjects:
   - kind: ServiceAccount
     name: {{ .Values.serviceAccount.snapshotController }}
     namespace: {{ .Release.Namespace }}
 roleRef:
   kind: ClusterRole
-  name: csi-snapshot-controller-role
+  name: csi-{{ .Values.rbac.name }}-snapshot-controller-role
   apiGroup: rbac.authorization.k8s.io
 
 ---
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: csi-snapshot-controller-leaderelection-role
+  name: csi-{{ .Values.rbac.name }}-snapshot-controller-leaderelection-role
+{{ include "azuredisk.labels" . | indent 2 }}
 rules:
   - apiGroups: ["coordination.k8s.io"]
     resources: ["leases"]
@@ -57,13 +60,14 @@ rules:
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: csi-snapshot-controller-leaderelection-binding
+  name: csi-{{ .Values.rbac.name }}-snapshot-controller-leaderelection-binding
+{{ include "azuredisk.labels" . | indent 2 }}
 subjects:
   - kind: ServiceAccount
     name: {{ .Values.serviceAccount.snapshotController }}
     namespace: {{ .Release.Namespace }}
 roleRef:
   kind: ClusterRole
-  name: csi-snapshot-controller-leaderelection-role
+  name: csi-{{ .Values.rbac.name }}-snapshot-controller-leaderelection-role
   apiGroup: rbac.authorization.k8s.io
 {{ end }}

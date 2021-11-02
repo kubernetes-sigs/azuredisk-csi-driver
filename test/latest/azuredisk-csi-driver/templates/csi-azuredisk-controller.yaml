@@ -35,9 +35,8 @@ spec:
             - "--v={{ .Values.controller.logLevel }}"
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--metrics-address=0.0.0.0:{{ .Values.controller.metricsPort }}"
-            - "--temp-use-driver-v2={{ .Values.azuredisk.useV2Driver }}"
-            - "--is-controller-plugin={{ .Values.azuredisk.useV2Driver }}"
-            - "--is-node-plugin={{ .Values.azuredisk.useV2Driver }}"
+            - "--is-controller-plugin=true"
+            - "--is-node-plugin=true"
             - "--nodeid={{ .Values.azuredisk.nodeId }}"
             - "--is-test-run={{ .Values.azuredisk.isTestRun }}"
           ports:

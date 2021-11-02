@@ -80,7 +80,9 @@ Mounted By:  <none>
 
  - Create a pod mounting with this PVC, you will get
 ```console
-$ kubectl exec -it nginx-azuredisk -- bash
+kubectl exec -it nginx-azuredisk -- bash
+```
+```
 # df -h
 Filesystem      Size  Used Avail Use% Mounted on
 ...
@@ -88,9 +90,20 @@ Filesystem      Size  Used Avail Use% Mounted on
 ...
 ```
 
+
  - Workaround
  
  If disk size does not change inside agent node while its size is actually expanded by Azure, run following command on agent node to workaround:
  ```console
  resize2fs /dev/sdX
  ```
+ 
+ example output could be like following:
+ ```console
+ resize2fs 1.44.1 (24-Mar-2018)
+Filesystem at /dev/sdd is mounted on /var/lib/kubelet/plugins/kubernetes.io/azure-disk/mounts/m398871401; on-line resizing required
+old_desc_blocks = 13, new_desc_blocks = 32
+The filesystem on /dev/sdd is now 67108864 (4k) blocks long.
+```
+
+After resizing successfully, deployment would have the expanded disk size without restart.

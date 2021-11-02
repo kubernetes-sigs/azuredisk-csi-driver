@@ -47,6 +47,7 @@ const (
 	LocationField                 = "location"
 	LogicalSectorSizeField        = "logicalsectorsize"
 	LUN                           = "LUN"
+	MaxMountReplicaCountField     = "maxmountreplicacount"
 	MaxSharesField                = "maxshares"
 	MinimumDiskSizeGiB            = 1
 	NetworkAccessPolicyField      = "networkaccesspolicy"
@@ -80,11 +81,36 @@ const (
 	WellKnownTopologyKey          = "topology.kubernetes.io/zone"
 	WriteAcceleratorEnabled       = "writeacceleratorenabled"
 
-	MaxMountReplicaCountField = "maxmountreplicacount"
+	// CRDs specific constants
+	// 1. AzVolumeAttachmentFinalizer for AzVolumeAttachment objects handles deletion of AzVolumeAttachment CRIs
+	// 2. AzVolumeAttachmentFinalizer for AzVolume prevents AzVolume CRI from being deleted before all AzVolumeAttachments attached to that volume is deleted as well
+	AzVolumeAttachmentFinalizer = "disk.csi.azure.com/azvolumeattachment-finalizer"
+	AzVolumeFinalizer           = "disk.csi.azure.com/azvolume-finalizer"
+	// ControllerFinalizer is a finalizer added to the pod running Azuredisk driver controller
+	// to prevent the pod deletion until clean up is completed
+	ControllerFinalizer            = "disk.csi.azure.com/azuredisk-finalizer"
+	CleanUpAnnotation              = "disk.csi.azure.com/clean-up"
+	NodeNameLabel                  = "disk.csi.azure.com/node-name"
+	PartitionLabel                 = "azdrivernodes.disk.csi.azure.com/partition"
+	RoleLabel                      = "disk.csi.azure.com/requested-role"
+	VolumeDeleteRequestAnnotation  = "disk.csi.azure.com/volume-delete-request"
+	VolumeDetachRequestAnnotation  = "disk.csi.azure.com/volume-detach-request"
+	RecoverAnnotation              = "disk.csi.azure.com/recovery" // used to ensure reconciliation is triggered for recovering CRIs
+	VolumeNameLabel                = "disk.csi.azure.com/volume-name"
+	PreProvisionedVolumeAnnotation = "disk.csi.azure.com/pre-provisioned"
 
-	CRIUpdateRetryDuration = time.Duration(1) * time.Second
-	CRIUpdateRetryFactor   = 3.0
-	CRIUpdateRetryStep     = 5
+	ControllerClusterRoleName         = "azuredisk-external-provisioner-role"
+	ControllerClusterRoleBindingName  = "azuredisk-csi-provisioner-binding"
+	ControllerServiceAccountName      = "csi-azuredisk-controller-sa"
+	ControllerServiceAccountFinalizer = "disk.csi.azure.com/azuredisk-controller"
+	ReleaseNamespace                  = "kube-system"
+
+	CRIUpdateRetryDuration  = time.Duration(1) * time.Second
+	CRIUpdateRetryFactor    = 3.0
+	CRIUpdateRetryStep      = 5
+	ZonedField              = "zoned"
+	NormalUpdateMaxNetRetry = 0
+	ForcedUpdateMaxNetRetry = 5
 )
 
 var (
@@ -109,6 +135,12 @@ var (
 		},
 		{
 			Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY,
+		},
+		{
+			Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_SINGLE_WRITER,
+		},
+		{
+			Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_MULTI_WRITER,
 		},
 		{
 			Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY,

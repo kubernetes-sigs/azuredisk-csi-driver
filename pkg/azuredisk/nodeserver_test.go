@@ -186,8 +186,6 @@ func TestGetMaxDataDiskCount(t *testing.T) {
 }
 
 func TestEnsureMountPoint(t *testing.T) {
-	skipIfTestingDriverV2(t)
-
 	errorTarget, err := testutil.GetWorkDirPath("error_is_likely_target")
 	assert.NoError(t, err)
 	alreadyExistTarget, err := testutil.GetWorkDirPath("false_is_likely_exist_target")
@@ -237,8 +235,9 @@ func TestEnsureMountPoint(t *testing.T) {
 	// Setup
 	_ = makeDir(alreadyExistTarget)
 	d, _ := NewFakeDriver(t)
-	_, err = mounter.NewFakeSafeMounter()
+	fakeMounter, err := mounter.NewFakeSafeMounter()
 	assert.NoError(t, err)
+	d.setMounter(fakeMounter)
 
 	for _, test := range tests {
 		if !(runtime.GOOS == "windows" && test.skipOnWindows) {
@@ -940,10 +939,6 @@ func TestNodeUnpublishVolume(t *testing.T) {
 }
 
 func TestNodeExpandVolume(t *testing.T) {
-	if isTestingDriverV2() && runtime.GOOS == "windows" {
-		t.Skip("Skipping V2 tests on Windows")
-	}
-
 	d, _ := NewFakeDriver(t)
 	fakeMounter, err := mounter.NewFakeSafeMounter()
 	assert.NoError(t, err)
@@ -967,28 +962,34 @@ func TestNodeExpandVolume(t *testing.T) {
 	}
 	devicePathErr := testutil.TestError{
 		DefaultError: status.Errorf(codes.NotFound, "could not determine device path(%s), error: %v", targetTest, notFoundErr),
-		WindowsError: status.Errorf(codes.NotFound, "Forward to GetVolumeIDFromTargetPath failed, err=error getting the volume for the mount %s, internal error error getting volume from mount. cmd: (Get-Item -Path %s).Target, output: , error: <nil>", targetTest, targetTest),
+		WindowsError: status.Errorf(codes.NotFound, "error getting the volume for the mount %s, internal error error getting volume from mount. cmd: (Get-Item -Path %s).Target, output: , error: <nil>", targetTest, targetTest),
 	}
 	blockSizeErr := testutil.TestError{
 		DefaultError: status.Error(codes.Internal, "Could not get size of block volume at path test: error when getting size of block volume at path test: output: , err: exit status 1"),
-		WindowsError: status.Errorf(codes.NotFound, "Forward to GetVolumeIDFromTargetPath failed, err=error getting the volume for the mount %s, internal error error getting volume from mount. cmd: (Get-Item -Path %s).Target, output: , error: <nil>", targetTest, targetTest),
+		WindowsError: status.Errorf(codes.NotFound, "error getting the volume for the mount %s, internal error error getting volume from mount. cmd: (Get-Item -Path %s).Target, output: , error: <nil>", targetTest, targetTest),
 	}
 	resizeErr := testutil.TestError{
 		DefaultError: status.Errorf(codes.Internal, "Could not resize volume \"test\" (\"test\"):  resize of device test failed: %v. resize2fs output: ", notFoundErr),
-		WindowsError: status.Errorf(codes.Internal, "Could not get size of block volume at path test: GetVolumeSizeInBytes error"),
+		WindowsError: status.Errorf(codes.NotFound, "error getting the volume for the mount %s, internal error error getting volume from mount. cmd: (Get-Item -Path %s).Target, output: , error: <nil>", targetTest, targetTest),
 	}
 	sizeTooSmallErr := testutil.TestError{
 		DefaultError: status.Errorf(codes.Internal, "resize requested for %v, but after resizing volume size was %v", volumehelper.RoundUpGiB(stdCapacityRange.RequiredBytes), volumehelper.RoundUpGiB(stdCapacityRange.RequiredBytes/2)),
-		WindowsError: status.Errorf(codes.Internal, "Could not get size of block volume at path DEVICE=test\nTYPE=ext4: GetVolumeSizeInBytes error"),
+		WindowsError: status.Errorf(codes.NotFound, "error getting the volume for the mount %s, internal error error getting volume from mount. cmd: (Get-Item -Path %s).Target, output: , error: <nil>", targetTest, targetTest),
 	}
 
 	notFoundErrAction := func() ([]byte, []byte, error) {
 		return []byte{}, []byte{}, notFoundErr
 	}
 	findmntAction := func() ([]byte, []byte, error) {
+		if runtime.GOOS == "windows" {
+			return []byte{}, []byte{}, notFoundErr
+		}
 		return []byte("test"), []byte{}, nil
 	}
 	blkidAction := func() ([]byte, []byte, error) {
+		if runtime.GOOS == "windows" {
+			return []byte{}, []byte{}, errors.New("path \"./test\" does not exist")
+		}
 		return []byte("DEVICE=test\nTYPE=ext4"), []byte{}, nil
 	}
 	resize2fsFailedAction := func() ([]byte, []byte, error) {
@@ -1139,12 +1140,7 @@ func TestNodeExpandVolume(t *testing.T) {
 
 	d.setPathIsDeviceResult(blockVolumePath, true, nil)
 
-	if runtime.GOOS == "windows" {
-		winNotFoundErrAction := func() ([]byte, []byte, error) {
-			return []byte{}, []byte{}, errors.New("path \"./test\" does not exist")
-		}
-		tests[1].outputScripts = []testingexec.FakeAction{winNotFoundErrAction}
-	} else if isTestingDriverV2() {
+	if isTestingDriverV2() {
 		d.setIsBlockDevicePathError("./test", false, errors.New("path \"./test\" does not exist"))
 	}
 
@@ -1152,8 +1148,13 @@ func TestNodeExpandVolume(t *testing.T) {
 		if (test.skipOnDarwin && runtime.GOOS == "darwin") || (test.skipOnWindows && runtime.GOOS == "windows") {
 			continue
 		}
-
-		d.setNextCommandOutputScripts(test.outputScripts...)
+		if !mounter.IsFakeUsingCSIProxy() {
+			if runtime.GOOS == "windows" && len(test.outputScripts) > 1 {
+				d.setNextCommandOutputScripts(test.outputScripts[0])
+			} else {
+				d.setNextCommandOutputScripts(test.outputScripts...)
+			}
+		}
 
 		_, err := d.NodeExpandVolume(context.Background(), &test.req)
 		if !testutil.AssertError(&test.expectedErr, err) {

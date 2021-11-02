@@ -22,6 +22,10 @@ DRIVER=azuredisk
 if [[ "$#" -gt 0 ]]; then
     DRIVER=$1
 fi
+VERSION=v1
+if [[ "$#" -gt 1 ]]; then
+    VERSION=$2
+fi
 
 echo "print out all nodes status ..."
 kubectl get nodes -o wide --show-labels
@@ -34,6 +38,20 @@ echo "==========================================================================
 echo "print out all $NS namespace pods status ..."
 kubectl get pods -n${NS} -o wide
 echo "======================================================================================"
+
+if [[ "${VERSION}" == "v2" ]]; then
+    echo "print out all AzDriverNode instances"
+    kubectl get -n azure-disk-csi azdrivernode -o wide
+    echo "======================================================================================"
+
+    echo "print out all AzVolume instances"
+    kubectl get -n azure-disk-csi azvolumes -o wide
+    echo "======================================================================================"
+
+    echo "print out all AzVolumeAttachment instances"
+    kubectl get -n azure-disk-csi azvolumeattachments -o wide
+    echo "======================================================================================"
+fi
 
 echo "print out controller logs ..."
 echo "======================================================================================"

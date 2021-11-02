@@ -43,6 +43,26 @@ helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --na
 helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --set driver.name="disk2.csi.azure.com" --set controller.name="csi-azuredisk2-controller" --set rbac.name=azuredisk2 --set serviceAccount.controller=csi-azuredisk2-controller-sa --set serviceAccount.node=csi-azuredisk2-node-sa --set linux.dsName=csi-azuredisk2-node --set windows.dsName=csi-azuredisk2-node-win --set node.livenessProbe.healthPort=39705
 ```
 
+### install driver with Prometheus monitors
+> only supported from `v2.0.0-alpha.1`+
+```console
+>/tmp/azuredisk-csi-driver-overrides.yaml cat <<EOF
+controller:
+  metrics:
+    service:
+      enabled: true
+      monitor:
+        enabled: true
+schedulerExtender:
+  metrics:
+    service:
+      enabled: true
+      monitor:
+        enabled: true
+EOF
+helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --values /tmp/azure-isk-csi-driver-overrides.yaml
+```
+
 ### search for all available chart versions
 ```console
 helm search repo -l azuredisk-csi-driver

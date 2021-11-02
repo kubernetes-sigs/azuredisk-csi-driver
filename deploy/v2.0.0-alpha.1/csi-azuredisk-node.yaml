@@ -18,7 +18,7 @@ spec:
         app: csi-azuredisk-node
     spec:
       hostNetwork: true
-      dnsPolicy: ClusterFirstWithHostNet
+      dnsPolicy: Default
       serviceAccountName: csi-azuredisk-node-sa
       nodeSelector:
         kubernetes.io/os: linux
@@ -95,7 +95,6 @@ spec:
             - "--nodeid=$(KUBE_NODE_NAME)"
             - "--metrics-address=0.0.0.0:29605"
             - "--enable-perf-optimization=true"
-            - "--temp-use-driver-v2=true"
             - "--is-node-plugin=true"
           ports:
             - containerPort: 29603
@@ -133,9 +132,6 @@ spec:
               name: mountpoint-dir
             - mountPath: /etc/kubernetes/
               name: azure-cred
-            - mountPath: /var/lib/waagent/ManagedIdentity-Settings
-              readOnly: true
-              name: msi
             - mountPath: /dev
               name: device-dir
             - mountPath: /sys/bus/scsi/devices
@@ -164,11 +160,8 @@ spec:
           name: registration-dir
         - hostPath:
             path: /etc/kubernetes/
-            type: Directory
+            type: DirectoryOrCreate
           name: azure-cred
-        - hostPath:
-            path: /var/lib/waagent/ManagedIdentity-Settings
-          name: msi
         - hostPath:
             path: /dev
             type: Directory

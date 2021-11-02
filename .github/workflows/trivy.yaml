@@ -1,0 +1,39 @@
+name: Trivy vulnerability scanner
+on:
+  push:
+    branches:
+      - master
+  pull_request: {}
+  schedule:
+  - cron: "0 13 * * *"
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-18.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Go 1.x
+        uses: actions/setup-go@v2
+        with:
+          go-version: ^1.16
+        id: go
+
+      - name: Build an image from Dockerfile
+        run: |
+          export PUBLISH=true
+          export REGISTRY=test
+          export IMAGE_VERSION=latest
+          export DOCKER_CLI_EXPERIMENTAL=enabled
+          make container
+      
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'test/azuredisk-csi:latest'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'

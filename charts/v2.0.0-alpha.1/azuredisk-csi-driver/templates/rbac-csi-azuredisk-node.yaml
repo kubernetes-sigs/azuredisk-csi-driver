@@ -4,13 +4,11 @@ kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: csi-{{ .Values.rbac.name }}-node-secret-role
-  labels:
-{{ include "azuredisk.labels" . | indent 4 }}
+{{ include "azuredisk.labels" . | indent 2 }}
 rules:
   - apiGroups: [""]
     resources: ["secrets"]
     verbs: ["get", "list"]
-    {{- if .Values.azuredisk.useV2Driver}}
   - apiGroups: ["storage.k8s.io"]
     resources: ["storageclasses"]
     verbs: ["get", "list", "watch"]
@@ -18,19 +16,17 @@ rules:
     resources: ["nodes"]
     verbs: ["get", "list", "watch"]
   - apiGroups: ["disk.csi.azure.com"]
-    resources: ["azdrivernodes"]
-    verbs: ["create", "get", "patch", "update"]
+    resources: ["azdrivernodes", "azvolumeattachments", "azvolumes"]
+    verbs: ["create", "get", "list", "watch", "patch", "update", "delete"]
   - apiGroups: ["disk.csi.azure.com"]
-    resources: ["azdrivernodes/status"]
+    resources: ["azdrivernodes/status", "azvolumeattachments/status", "azvolumes/status"]
     verbs: ["get", "patch", "update"]
-    {{- end }}
 ---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: csi-{{ .Values.rbac.name }}-node-secret-binding
-  labels:
-{{ include "azuredisk.labels" . | indent 4 }}
+{{ include "azuredisk.labels" . | indent 2 }}
 subjects:
   - kind: ServiceAccount
     name: {{ .Values.serviceAccount.node }}

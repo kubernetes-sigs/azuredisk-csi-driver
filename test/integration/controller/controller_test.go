@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -56,8 +55,6 @@ var (
 	config         *rest.Config
 	azVolumeClient azVolumeClientSet.Interface
 )
-
-var useDriverV2 = flag.Bool("temp-use-driver-v2", false, "A temporary flag to enable early test and development of Azure Disk CSI Driver V2. This will be removed in the future.")
 
 func setUpConfig() error {
 	var err error
@@ -129,12 +126,12 @@ func checkReplicaCount(volumeName string, desiredNumReplica int) (bool, error) {
 		return false, status.Errorf(codes.Internal, "failed to get volumeID with volumeName (%s)", volumeName)
 	}
 
-	diskName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(volumeID)
+	diskName, err := azureutils.GetDiskName(volumeID)
 	if len(diskName) == 0 || err != nil {
 		return false, status.Errorf(codes.Internal, "failed to extract diskName from diskURI (%s)", volumeID)
 	}
 
-	labelSelector := fmt.Sprintf("%s=%s", azureutils.VolumeNameLabel, diskName)
+	labelSelector := fmt.Sprintf("%s=%s", consts.VolumeNameLabel, diskName)
 	azVAs, err := azVolumeClient.DiskV1alpha1().AzVolumeAttachments(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: labelSelector})
 	if err != nil {
 		return false, status.Errorf(codes.Internal, "failed to get AzVolumeAttachment List for volumeName (%s): %v", diskName, err)
@@ -153,10 +150,6 @@ func checkReplicaCount(volumeName string, desiredNumReplica int) (bool, error) {
 }
 
 func TestAzVolume(t *testing.T) {
-	if !*useDriverV2 {
-		t.Skip("Skipping controller test... supported only for v2 driver")
-	}
-
 	err := testBootstrap()
 	require.NoError(t, err)
 
@@ -195,7 +188,7 @@ func TestAzVolume(t *testing.T) {
 				// check if finalizer has been properly populated
 				finalizerFound := false
 				for _, finalizer := range azVolume.Finalizers {
-					finalizerFound = finalizerFound || finalizer == azureutils.AzVolumeFinalizer
+					finalizerFound = finalizerFound || finalizer == consts.AzVolumeFinalizer
 				}
 				require.True(t, finalizerFound)
 			},
@@ -237,7 +230,7 @@ func TestAzVolume(t *testing.T) {
 				require.NotEmpty(t, volumeID)
 				require.NoError(t, err)
 
-				diskName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(volumeID)
+				diskName, err := azureutils.GetDiskName(volumeID)
 				require.NotEmpty(t, diskName)
 				require.NoError(t, err)
 
@@ -246,7 +239,7 @@ func TestAzVolume(t *testing.T) {
 
 				klog.Infof("Waiting for replica AzVolumeAttachment to be created for AzVolume (%s)", volumeName)
 				conditionFunc := func() (bool, error) {
-					labelSelector := fmt.Sprintf("%s=%s", azureutils.VolumeNameLabel, diskName)
+					labelSelector := fmt.Sprintf("%s=%s", consts.VolumeNameLabel, diskName)
 					azVolumeAttachments, err := azVolumeClient.DiskV1alpha1().AzVolumeAttachments(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: labelSelector})
 					if err != nil {
 						return false, nil
@@ -279,7 +272,7 @@ func TestAzVolume(t *testing.T) {
 
 				// check if all azVolumeAttachments attached have been deleted
 				conditionFunc = func() (bool, error) {
-					labelSelector := fmt.Sprintf("%s=%s", azureutils.VolumeNameLabel, diskName)
+					labelSelector := fmt.Sprintf("%s=%s", consts.VolumeNameLabel, diskName)
 					azVolumeAttachments, err := azVolumeClient.DiskV1alpha1().AzVolumeAttachments(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: labelSelector})
 					klog.Infof("Number of AzVolumeAttachment CRI attached to %s: %d", volumeName, len(azVolumeAttachments.Items))
 					if err != nil && !errors.IsNotFound(err) {
@@ -303,11 +296,11 @@ func TestAzVolume(t *testing.T) {
 				require.NotNil(t, azVolume.Status.Detail.ResponseObject)
 
 				volumeID := azVolume.Status.Detail.ResponseObject.VolumeID
-				diskName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(volumeID)
+				diskName, err := azureutils.GetDiskName(volumeID)
 				require.NotEmpty(t, diskName)
 				require.NoError(t, err)
 
-				labelSelector := fmt.Sprintf("%s=%s", azureutils.VolumeNameLabel, diskName)
+				labelSelector := fmt.Sprintf("%s=%s", consts.VolumeNameLabel, diskName)
 				azVolumeAttachments, err := azVolumeClient.DiskV1alpha1().AzVolumeAttachments(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: labelSelector})
 				for _, azVolumeAttachment := range azVolumeAttachments.Items {
 					err = azVolumeClient.DiskV1alpha1().AzVolumeAttachments(namespace).Delete(context.Background(), azVolumeAttachment.Name, metav1.DeleteOptions{})
@@ -364,10 +357,6 @@ func TestAzVolume(t *testing.T) {
 }
 
 func TestAzVolumeAttachment(t *testing.T) {
-	if !*useDriverV2 {
-		t.Skip("Skipping controller test... supported only for v2 driver")
-	}
-
 	err := testBootstrap()
 	require.NoError(t, err)
 
@@ -377,7 +366,7 @@ func TestAzVolumeAttachment(t *testing.T) {
 		require.NotEmpty(t, volumeID)
 		require.NoError(t, err)
 
-		diskName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(volumeID)
+		diskName, err := azureutils.GetDiskName(volumeID)
 		require.NotEmpty(t, diskName)
 		require.NoError(t, err)
 
@@ -394,7 +383,7 @@ func TestAzVolumeAttachment(t *testing.T) {
 
 		// check if all azVolumeAttachments attached have been deleted
 		conditionFunc = func() (bool, error) {
-			labelSelector := fmt.Sprintf("%s=%s", azureutils.VolumeNameLabel, diskName)
+			labelSelector := fmt.Sprintf("%s=%s", consts.VolumeNameLabel, diskName)
 			azVolumeAttachments, err := azVolumeClient.DiskV1alpha1().AzVolumeAttachments(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: labelSelector})
 			klog.Infof("Current number of AzVolumeAttachment CRI attached to %s: %d", volumeName, len(azVolumeAttachments.Items))
 			if err != nil && !errors.IsNotFound(err) {
@@ -437,7 +426,7 @@ func TestAzVolumeAttachment(t *testing.T) {
 				require.NotEmpty(t, volumeID)
 				require.NoError(t, err)
 
-				diskName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(volumeID)
+				diskName, err := azureutils.GetDiskName(volumeID)
 				require.NotEmpty(t, diskName)
 				require.NoError(t, err)
 				azVAName := azureutils.GetAzVolumeAttachmentName(diskName, nodeName)
@@ -449,14 +438,14 @@ func TestAzVolumeAttachment(t *testing.T) {
 				// check if finalizer has been properly populated
 				finalizerFound := false
 				for _, finalizer := range azVA.Finalizers {
-					finalizerFound = finalizerFound || finalizer == azureutils.AzVolumeAttachmentFinalizer
+					finalizerFound = finalizerFound || finalizer == consts.AzVolumeAttachmentFinalizer
 				}
 				require.True(t, finalizerFound)
 				klog.Infof("Found finalizers added to AzVolumeAttachment (%s)", azVAName)
 
 				// check if labels have been properly populated
 				labelsFound := true
-				for _, label := range []string{azureutils.RoleLabel, azureutils.NodeNameLabel, azureutils.VolumeNameLabel} {
+				for _, label := range []string{consts.RoleLabel, consts.NodeNameLabel, consts.VolumeNameLabel} {
 					_, labelFound := azVA.Labels[label]
 					labelsFound = labelsFound && labelFound
 				}
@@ -512,10 +501,10 @@ func TestAzVolumeAttachment(t *testing.T) {
 				require.NotEmpty(t, volumeID)
 				require.NoError(t, err)
 
-				diskName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(volumeID)
+				diskName, err := azureutils.GetDiskName(volumeID)
 				require.NotEmpty(t, diskName)
 				require.NoError(t, err)
-				labelSelector := fmt.Sprintf("%s=%s", azureutils.VolumeNameLabel, diskName)
+				labelSelector := fmt.Sprintf("%s=%s", consts.VolumeNameLabel, diskName)
 				azVAs, err := azVolumeClient.DiskV1alpha1().AzVolumeAttachments(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: labelSelector})
 				require.NoError(t, err)
 				var deletedReplica *v1alpha1.AzVolumeAttachment
@@ -607,10 +596,10 @@ func TestAzVolumeAttachment(t *testing.T) {
 				require.NotEmpty(t, volumeID)
 				require.NoError(t, err)
 
-				diskName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(volumeID)
+				diskName, err := azureutils.GetDiskName(volumeID)
 				require.NotEmpty(t, diskName)
 				require.NoError(t, err)
-				labelSelector := fmt.Sprintf("%s=%s", azureutils.VolumeNameLabel, diskName)
+				labelSelector := fmt.Sprintf("%s=%s", consts.VolumeNameLabel, diskName)
 				azVAs, err := azVolumeClient.DiskV1alpha1().AzVolumeAttachments(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: labelSelector})
 				require.NoError(t, err)
 
@@ -666,7 +655,7 @@ func TestAzVolumeAttachment(t *testing.T) {
 				require.NotEmpty(t, volumeID)
 				require.NoError(t, err)
 
-				diskName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(volumeID)
+				diskName, err := azureutils.GetDiskName(volumeID)
 				require.NotEmpty(t, diskName)
 				require.NoError(t, err)
 
@@ -675,10 +664,10 @@ func TestAzVolumeAttachment(t *testing.T) {
 				require.NoError(t, err)
 
 				// sleep and wait for the replica garbage collection to happen
-				klog.Infof("Sleeping for %.2f seconds allowing AzVolumeAttachment garbage collection to happen for AzVolume (%s)", controller.DefaultTimeUntilDeletion.Seconds(), volumeName)
-				time.Sleep(controller.DefaultTimeUntilDeletion)
+				klog.Infof("Sleeping for %.2f seconds allowing AzVolumeAttachment garbage collection to happen for AzVolume (%s)", controller.DefaultTimeUntilGarbageCollection.Seconds(), volumeName)
+				time.Sleep(controller.DefaultTimeUntilGarbageCollection)
 
-				labelSelector := fmt.Sprintf("%s=%s", azureutils.VolumeNameLabel, diskName)
+				labelSelector := fmt.Sprintf("%s=%s", consts.VolumeNameLabel, diskName)
 				conditionFunc = func() (bool, error) {
 					azVAs, err := azVolumeClient.DiskV1alpha1().AzVolumeAttachments(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: labelSelector})
 					if errors.IsNotFound(err) || len(azVAs.Items) == 0 {
@@ -716,7 +705,7 @@ func TestAzVolumeAttachment(t *testing.T) {
 				require.NotEmpty(t, volumeID)
 				require.NoError(t, err)
 
-				diskName, err := azureutils.GetDiskNameFromAzureManagedDiskURI(volumeID)
+				diskName, err := azureutils.GetDiskName(volumeID)
 				require.NotEmpty(t, diskName)
 				require.NoError(t, err)
 
@@ -724,9 +713,9 @@ func TestAzVolumeAttachment(t *testing.T) {
 				err = crdProvisioner.UnpublishVolume(context.Background(), volumeID, nodeName, nil)
 				require.NoError(t, err)
 
-				klog.Infof("Sleeping for %.2f seconds... AzVolumeAttachment garbage collection for AzVolume (%s) should not have happened yet.", (controller.DefaultTimeUntilDeletion / 2).Seconds(), volumeName)
+				klog.Infof("Sleeping for %.2f seconds... AzVolumeAttachment garbage collection for AzVolume (%s) should not have happened yet.", (controller.DefaultTimeUntilGarbageCollection / 2).Seconds(), volumeName)
 				// sleep only half the amount of garbage collection wait time and make publishVolume call
-				time.Sleep(controller.DefaultTimeUntilDeletion / 2)
+				time.Sleep(controller.DefaultTimeUntilGarbageCollection / 2)
 
 				klog.Infof("Publishing volume (%s) to node (%s)", volumeID, nodeName)
 				response, err := crdProvisioner.PublishVolume(context.Background(), volumeID, nodeName, &v1alpha1.VolumeCapability{}, false, nil, nil)

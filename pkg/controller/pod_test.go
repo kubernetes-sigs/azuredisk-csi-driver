@@ -22,14 +22,15 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/wait"
 	fakev1 "k8s.io/client-go/kubernetes/fake"
 	diskv1alpha1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	diskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller/mockclient"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
@@ -88,12 +89,16 @@ func TestPodReconcile(t *testing.T) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
 
-				roleReq, _ := createLabelRequirements(azureutils.RoleLabel, string(diskv1alpha1.ReplicaRole))
+				roleReq, _ := createLabelRequirements(consts.RoleLabel, string(diskv1alpha1.ReplicaRole))
 				labelSelector := labels.NewSelector().Add(*roleReq)
-				replicas, localError := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testPrimaryAzVolumeAttachment0.Namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
-				require.NoError(t, localError)
-				require.NotNil(t, replicas)
-				require.Len(t, replicas.Items, 1)
+				conditionFunc := func() (bool, error) {
+					replicas, localError := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testPrimaryAzVolumeAttachment0.Namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
+					require.NoError(t, localError)
+					require.NotNil(t, replicas)
+					return len(replicas.Items) == 1, nil
+				}
+				err = wait.PollImmediate(verifyCRIInterval, verifyCRITimeout, conditionFunc)
+				require.NoError(t, err)
 			},
 		},
 		{
@@ -142,13 +147,19 @@ func TestPodReconcile(t *testing.T) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
 
-				roleReq, _ := createLabelRequirements(azureutils.RoleLabel, string(diskv1alpha1.ReplicaRole))
+				roleReq, _ := createLabelRequirements(consts.RoleLabel, string(diskv1alpha1.ReplicaRole))
 				labelSelector := labels.NewSelector().Add(*roleReq)
-				replicas, localError := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testPrimaryAzVolumeAttachment0.Namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
-				require.NoError(t, localError)
-				require.NotNil(t, replicas)
-				require.Len(t, replicas.Items, 2)
-				require.Equal(t, replicas.Items[0].Spec.NodeName, replicas.Items[1].Spec.NodeName)
+				conditionFunc := func() (bool, error) {
+					replicas, localError := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testPrimaryAzVolumeAttachment0.Namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
+					require.NoError(t, localError)
+					require.NotNil(t, replicas)
+					if len(replicas.Items) == 2 {
+						return replicas.Items[0].Spec.NodeName == replicas.Items[1].Spec.NodeName, nil
+					}
+					return false, nil
+				}
+				err = wait.PollImmediate(verifyCRIInterval, verifyCRITimeout, conditionFunc)
+				require.NoError(t, err)
 			},
 		},
 		{
@@ -204,13 +215,19 @@ func TestPodReconcile(t *testing.T) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
 
-				roleReq, _ := createLabelRequirements(azureutils.RoleLabel, string(diskv1alpha1.ReplicaRole))
+				roleReq, _ := createLabelRequirements(consts.RoleLabel, string(diskv1alpha1.ReplicaRole))
 				labelSelector := labels.NewSelector().Add(*roleReq)
-				replicas, localError := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testPrimaryAzVolumeAttachment0.Namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
-				require.NoError(t, localError)
-				require.NotNil(t, replicas)
-				require.Len(t, replicas.Items, 2)
-				require.Equal(t, replicas.Items[0].Spec.NodeName, replicas.Items[1].Spec.NodeName)
+				conditionFunc := func() (bool, error) {
+					replicas, localError := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testPrimaryAzVolumeAttachment0.Namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
+					require.NoError(t, localError)
+					require.NotNil(t, replicas)
+					if len(replicas.Items) == 2 {
+						return replicas.Items[0].Spec.NodeName == replicas.Items[1].Spec.NodeName, nil
+					}
+					return false, nil
+				}
+				err = wait.PollImmediate(verifyCRIInterval, verifyCRITimeout, conditionFunc)
+				require.NoError(t, err)
 			},
 		},
 	}
@@ -277,13 +294,19 @@ func TestPodRecover(t *testing.T) {
 			verifyFunc: func(t *testing.T, controller *ReconcilePod, err error) {
 				require.NoError(t, err)
 
-				roleReq, _ := createLabelRequirements(azureutils.RoleLabel, string(diskv1alpha1.ReplicaRole))
+				roleReq, _ := createLabelRequirements(consts.RoleLabel, string(diskv1alpha1.ReplicaRole))
 				labelSelector := labels.NewSelector().Add(*roleReq)
-				replicas, localError := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testPrimaryAzVolumeAttachment0.Namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
-				require.NoError(t, localError)
-				require.NotNil(t, replicas)
-				require.Len(t, replicas.Items, 2)
-				require.Equal(t, replicas.Items[0].Spec.NodeName, replicas.Items[1].Spec.NodeName)
+				conditionFunc := func() (bool, error) {
+					replicas, localError := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testPrimaryAzVolumeAttachment0.Namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
+					require.NoError(t, localError)
+					require.NotNil(t, replicas)
+					if len(replicas.Items) == 2 {
+						return replicas.Items[0].Spec.NodeName == replicas.Items[1].Spec.NodeName, nil
+					}
+					return false, nil
+				}
+				err = wait.PollImmediate(verifyCRIInterval, verifyCRITimeout, conditionFunc)
+				require.NoError(t, err)
 			},
 		},
 	}
