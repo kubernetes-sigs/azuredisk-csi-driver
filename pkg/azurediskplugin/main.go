@@ -51,6 +51,7 @@ var (
 	customUserAgent            = flag.String("custom-user-agent", "", "custom userAgent")
 	userAgentSuffix            = flag.String("user-agent-suffix", "", "userAgent suffix")
 	useCSIProxyGAInterface     = flag.Bool("use-csiproxy-ga-interface", true, "boolean flag to enable csi-proxy GA interface on Windows")
+	enableDiskOnlineResize     = flag.Bool("enable-disk-online-resize", true, "boolean flag to enable disk online resize")
 )
 
 func main() {
@@ -85,6 +86,7 @@ func handle() {
 		CustomUserAgent:            *customUserAgent,
 		UserAgentSuffix:            *userAgentSuffix,
 		UseCSIProxyGAInterface:     *useCSIProxyGAInterface,
+		EnableDiskOnlineResize:     *enableDiskOnlineResize,
 	}
 	driver := azuredisk.NewDriver(&driverOptions)
 	if driver == nil {

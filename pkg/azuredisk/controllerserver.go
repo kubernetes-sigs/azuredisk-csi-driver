@@ -815,7 +815,7 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 	oldSize := *resource.NewQuantity(int64(*result.DiskProperties.DiskSizeGB), resource.BinarySI)
 
 	klog.V(2).Infof("begin to expand azure disk(%s) with new size(%d)", diskURI, requestSize.Value())
-	newSize, err := d.cloud.ResizeDisk(diskURI, oldSize, requestSize)
+	newSize, err := d.cloud.ResizeDisk(diskURI, oldSize, requestSize, d.enableDiskOnlineResize)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to resize disk(%s) with error(%v)", diskURI, err)
 	}
