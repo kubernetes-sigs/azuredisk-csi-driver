@@ -35,6 +35,7 @@ import (
 
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 )
 
@@ -320,13 +321,21 @@ func CreateVolumeSnapshotClass(client restclientset.Interface, namespace *v1.Nam
 
 	return tvsc, tvsc.Cleanup
 }
-func VerifySuccessfulReplicaAzVolumeAttachments(pod PodDetails, azDiskClient *azDiskClientSet.Clientset, storageClassParameters map[string]string) {
+func VerifySuccessfulReplicaAzVolumeAttachments(pod PodDetails, azDiskClient *azDiskClientSet.Clientset, storageClassParameters map[string]string, client clientset.Interface, namespace *v1.Namespace) {
 	if storageClassParameters["maxShares"] == "" {
 		return
 	}
 	for _, volume := range pod.Volumes {
 		if volume.PersistentVolume != nil {
-			labelSelector := metav1.LabelSelector{MatchLabels: map[string]string{azureconstants.RoleLabel: "Replica", azureconstants.VolumeNameLabel: volume.PersistentVolume.Name}}
+			pv, err := client.CoreV1().PersistentVolumes().Get(context.TODO(), volume.PersistentVolume.Name, metav1.GetOptions{})
+			if err != nil {
+				ginkgo.Fail("failed to get persistent volume")
+			}
+			diskname, err := azureutils.GetDiskName(pv.Spec.CSI.VolumeHandle)
+			if err != nil {
+				ginkgo.Fail("failed to get persistent volume diskname")
+			}
+			labelSelector := metav1.LabelSelector{MatchLabels: map[string]string{azureconstants.RoleLabel: "Replica", azureconstants.VolumeNameLabel: diskname}}
 			azVolumeAttachmentsReplica, err := azDiskClient.DiskV1alpha1().AzVolumeAttachments(azureconstants.AzureDiskCrdNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: labels.Set(labelSelector.MatchLabels).String()})
 			if err != nil {
 				ginkgo.Fail("failed to get replica attachments")

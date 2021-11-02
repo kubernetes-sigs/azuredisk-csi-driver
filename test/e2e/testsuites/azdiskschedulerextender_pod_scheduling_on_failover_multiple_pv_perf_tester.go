@@ -82,7 +82,7 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV) Run(client cl
 	time.Sleep(2 * time.Minute)
 	for _, ss := range tStatefulSets {
 		for _, pod := range ss.allPods {
-			VerifySuccessfulReplicaAzVolumeAttachments(pod, t.AzDiskClient, t.StorageClassParameters)
+			VerifySuccessfulReplicaAzVolumeAttachments(pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
 		}
 	}
 }
