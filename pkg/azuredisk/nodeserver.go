@@ -36,6 +36,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
+	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/volume"
 	mount "k8s.io/mount-utils"
@@ -302,6 +303,10 @@ func (d *Driver) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapabi
 // NodeGetInfo return info of the node on which this plugin is running
 func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
 	var instanceType string
+	topology := &csi.Topology{
+		Segments: map[string]string{topologyKey: ""},
+	}
+
 	if runtime.GOOS == "windows" && d.cloud.UseInstanceMetadata && d.cloud.Metadata != nil {
 		metadata, err := d.cloud.Metadata.GetMetadata(azcache.CacheReadTypeDefault)
 		if err == nil && metadata.Compute != nil {
@@ -321,12 +326,18 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 		}
 	}
 
-	topology := &csi.Topology{
-		Segments: map[string]string{topologyKey: ""},
+	var (
+		zone      cloudprovider.Zone
+		zoneError error
+	)
+	if runtime.GOOS == "windows" && (!d.cloud.UseInstanceMetadata || d.cloud.Metadata == nil) {
+		zone, zoneError = d.cloud.VMSet.GetZoneByNodeName(d.NodeID)
+	} else {
+		zone, zoneError = d.cloud.GetZone(ctx)
 	}
-	zone, err := d.cloud.GetZone(ctx)
-	if err != nil {
-		klog.Warningf("get zone(%s) failed with: %v", d.NodeID, err)
+
+	if zoneError != nil {
+		klog.Warningf("get zone(%s) failed with: %v", d.NodeID, zoneError)
 	} else {
 		if azureutils.IsValidAvailabilityZone(zone.FailureDomain, d.cloud.Location) {
 			topology.Segments[topologyKey] = zone.FailureDomain
