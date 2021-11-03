@@ -55,6 +55,8 @@ const (
 	inTreeStorageClass      = "kubernetes.io/azure-disk"
 	buildV2Driver           = "BUILD_V2"
 	useOnlyDefaultScheduler = "USE_ONLY_DEFAULT_SCHEDULER"
+	poll                    = time.Duration(2) * time.Second
+	pollTimeout             = time.Duration(10) * time.Minute
 )
 
 var (

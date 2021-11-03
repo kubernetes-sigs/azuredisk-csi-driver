@@ -31,7 +31,6 @@ import (
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	apierrs "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
@@ -508,7 +507,7 @@ func (t *TestDeployment) DeletePodAndWait() {
 	for _, podName := range t.podNames {
 		err := <-ch
 		if err != nil {
-			if !apierrs.IsNotFound(err) {
+			if !errors.IsNotFound(err) {
 				framework.ExpectNoError(fmt.Errorf("pod %q Delete API error: %v", podName, err))
 			}
 		}
@@ -525,7 +524,7 @@ func (t *TestDeployment) DeletePodAndWait() {
 	for _, podName := range t.podNames {
 		err := <-ch
 		if err != nil {
-			if !apierrs.IsNotFound(err) {
+			if !errors.IsNotFound(err) {
 				framework.ExpectNoError(fmt.Errorf("pod %q error waiting for delete: %v", podName, err))
 			}
 		}
@@ -666,7 +665,7 @@ func (t *TestStatefulset) DeletePodAndWait() {
 	for range t.podNames {
 		err := <-ch
 		if err != nil {
-			if !apierrs.IsNotFound(err) {
+			if !errors.IsNotFound(err) {
 				framework.ExpectNoError(err)
 			}
 		}
@@ -965,7 +964,7 @@ func DeleteAllPodsWithMatchingLabel(cs clientset.Interface, ns *v1.Namespace, ma
 	e2elog.Logf("Deleting all pods with %v labels in namespace %s", matchLabels, ns.Name)
 	labelSelector := metav1.LabelSelector{MatchLabels: matchLabels}
 	err := cs.CoreV1().Pods(ns.Name).DeleteCollection(context.TODO(), metav1.DeleteOptions{}, metav1.ListOptions{LabelSelector: labels.Set(labelSelector.MatchLabels).String()})
-	if !apierrs.IsNotFound(err) {
+	if !errors.IsNotFound(err) {
 		framework.ExpectNoError(err)
 	}
 
@@ -991,7 +990,7 @@ func podLogs(client clientset.Interface, name, namespace string) ([]byte, error)
 func getPodsForDeployment(client clientset.Interface, deployment *apps.Deployment) (*v1.PodList, error) {
 	replicaSet, err := deploymentutil.GetNewReplicaSet(deployment, client.AppsV1())
 	if err != nil {
-		return nil, fmt.Errorf("Failed to get new replica set for deployment %q: %v", deployment.Name, err)
+		return nil, fmt.Errorf("failed to get new replica set for deployment %q: %v", deployment.Name, err)
 	}
 	if replicaSet == nil {
 		return nil, fmt.Errorf("expected a new replica set for deployment %q, found none", deployment.Name)
@@ -1002,7 +1001,7 @@ func getPodsForDeployment(client clientset.Interface, deployment *apps.Deploymen
 	rsList := []*apps.ReplicaSet{replicaSet}
 	podList, err := deploymentutil.ListPods(deployment, rsList, podListFunc)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to list Pods of Deployment %q: %v", deployment.Name, err)
+		return nil, fmt.Errorf("failed to list Pods of Deployment %q: %v", deployment.Name, err)
 	}
 	return podList, nil
 }
@@ -1013,7 +1012,7 @@ func waitForPersistentVolumeClaimDeleted(c clientset.Interface, ns string, pvcNa
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(Poll) {
 		_, err := c.CoreV1().PersistentVolumeClaims(ns).Get(context.TODO(), pvcName, metav1.GetOptions{})
 		if err != nil {
-			if apierrs.IsNotFound(err) {
+			if errors.IsNotFound(err) {
 				framework.Logf("Claim %q in namespace %q doesn't exist in the system", pvcName, ns)
 				return nil
 			}
@@ -1165,23 +1164,23 @@ func (t *TestAzVolumeAttachment) Create() *v1alpha1.AzVolumeAttachment {
 func (t *TestAzVolumeAttachment) Cleanup() {
 	klog.Info("cleaning up")
 	err := t.azclient.AzVolumes(t.namespace).Delete(context.Background(), t.underlyingVolume, metav1.DeleteOptions{})
-	if !apierrs.IsNotFound(err) {
+	if !errors.IsNotFound(err) {
 		framework.ExpectNoError(err)
 	}
 
 	// Delete All AzVolumeAttachments for t.underlyingVolume
 	err = t.azclient.AzVolumeAttachments(t.namespace).Delete(context.Background(), GetAzVolumeAttachmentName(t.underlyingVolume, t.primaryNodeName), metav1.DeleteOptions{})
-	if !apierrs.IsNotFound(err) {
+	if !errors.IsNotFound(err) {
 		framework.ExpectNoError(err)
 	}
 
 	nodes, err := t.azclient.AzDriverNodes(t.namespace).List(context.Background(), metav1.ListOptions{})
-	if !apierrs.IsNotFound(err) {
+	if !errors.IsNotFound(err) {
 		framework.ExpectNoError(err)
 	}
 	for _, node := range nodes.Items {
 		err = t.azclient.AzVolumeAttachments(t.namespace).Delete(context.Background(), GetAzVolumeAttachmentName(t.underlyingVolume, node.Name), metav1.DeleteOptions{})
-		if !apierrs.IsNotFound(err) {
+		if !errors.IsNotFound(err) {
 			framework.ExpectNoError(err)
 		}
 	}
@@ -1345,7 +1344,7 @@ func (t *TestAzVolume) Create() *v1alpha1.AzVolume {
 func (t *TestAzVolume) Cleanup() {
 	klog.Info("cleaning up TestAzVolume")
 	err := t.azclient.AzVolumes(t.namespace).Delete(context.Background(), t.underlyingVolume, metav1.DeleteOptions{})
-	if !apierrs.IsNotFound(err) {
+	if !errors.IsNotFound(err) {
 		framework.ExpectNoError(err)
 	}
 	time.Sleep(time.Duration(1) * time.Minute)

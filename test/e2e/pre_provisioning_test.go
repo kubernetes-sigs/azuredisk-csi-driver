@@ -28,10 +28,13 @@ import (
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
 	"github.com/onsi/ginkgo"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
@@ -46,10 +49,11 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 	scheduler := getSchedulerForE2E()
 
 	var (
-		cs         clientset.Interface
-		ns         *v1.Namespace
-		testDriver driver.PreProvisionedVolumeTestDriver
-		volumeID   string
+		cs           clientset.Interface
+		ns           *v1.Namespace
+		azDiskClient azDiskClientSet.Interface
+		testDriver   driver.PreProvisionedVolumeTestDriver
+		volumeID     string
 		// Set to true if the volume should not be deleted automatically after test
 		skipVolumeDeletion bool
 	)
@@ -57,6 +61,11 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 	ginkgo.BeforeEach(func() {
 		cs = f.ClientSet
 		ns = f.Namespace
+		var err error
+		if isUsingCSIDriverV2 {
+			azDiskClient, err = azDiskClientSet.NewForConfig(f.ClientConfig())
+		}
+		framework.ExpectNoError(err, fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		testDriver = driver.InitAzureDiskDriver()
 		// reset value to false to default to volume clean up after test unless specified otherwise
 		skipVolumeDeletion = false
@@ -65,12 +74,31 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 	ginkgo.AfterEach(func() {
 		if !skipVolumeDeletion {
 			EnsureDiskExists(volumeID)
-			_ = azureCloud.DeleteManagedDisk(context.Background(), volumeID)
-			// TODO #255
-			// Add back when the bug with successfully detaching the disk is fixed in cloud provider
-			// if err != nil {
-			// 		ginkgo.Fail(fmt.Sprintf("delete volume %q error: %v", volumeID, err))
-			// }
+
+			if isUsingCSIDriverV2 {
+				// wait for the AzVolumeAttachments to be deleted
+				framework.ExpectNotEqual(azDiskClient, nil)
+				diskName, err := azureutils.GetDiskName(volumeID)
+				framework.ExpectNoError(err)
+				diskName = strings.ToLower(diskName)
+
+				labelSelector := metav1.LabelSelector{MatchLabels: map[string]string{consts.VolumeNameLabel: diskName}}
+				err = wait.PollImmediate(poll, pollTimeout,
+					func() (bool, error) {
+						azVolumeAttachments, listErr := azDiskClient.DiskV1alpha1().AzVolumeAttachments(consts.AzureDiskCrdNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: labels.Set(labelSelector.MatchLabels).String()})
+						if listErr != nil {
+							if errors.IsNotFound(listErr) {
+								return true, nil
+							}
+							return false, listErr
+						}
+						return azVolumeAttachments == nil || len(azVolumeAttachments.Items) == 0, nil
+					})
+				framework.ExpectNoError(err)
+			}
+
+			err := azureCloud.DeleteManagedDisk(context.Background(), volumeID)
+			framework.ExpectNoError(err, fmt.Sprintf("delete volume %q error: %v", volumeID, err))
 		}
 	})
 
@@ -298,10 +326,6 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			skipIfOnAzureStackCloud()
 			skipIfNotUsingCSIDriverV2()
 
-			azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
-			if err != nil {
-				ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
-			}
 			sharedDiskSize := 256
 			volumeName := "shared-disk-replicas"
 			volumeContext := map[string]string{
@@ -310,6 +334,8 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 				consts.CachingModeField: "None",
 				consts.PerfProfileField: "None",
 			}
+
+			var err error
 			volumeID, err = CreateVolume(volumeName, sharedDiskSize, volumeContext)
 			if err != nil {
 				skipVolumeDeletion = true
@@ -401,9 +427,9 @@ func CreateVolume(diskName string, sizeGiB int, volumeContext map[string]string)
 
 	for k, v := range volumeContext {
 		switch strings.ToLower(k) {
-		case azureconstants.SkuNameField:
+		case consts.SkuNameField:
 			storageAccountType = v
-		case azureconstants.MaxSharesField:
+		case consts.MaxSharesField:
 			maxShares, err = strconv.Atoi(v)
 			if err != nil || maxShares < 1 {
 				maxShares = 1

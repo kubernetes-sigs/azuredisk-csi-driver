@@ -96,6 +96,16 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 
 		}
 		// AzVolume does exist and needs to be deleted
+		// add annotation to mark AzVolumeAttachment cleanup
+		updateFunc := func(obj interface{}) error {
+			azv := obj.(*v1alpha1.AzVolume)
+			azv.Annotations[consts.PreProvisionedVolumeCleanupAnnotation] = "true"
+			return nil
+		}
+		if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, &azVolume, updateFunc, consts.NormalUpdateMaxNetRetry); err != nil {
+			return reconcileReturnOnError(&pv, "delete", err, r.controllerRetryInfo)
+		}
+
 		if err := r.azVolumeClient.DiskV1alpha1().AzVolumes(consts.AzureDiskCrdNamespace).Delete(ctx, azVolumeName, metav1.DeleteOptions{}); err != nil {
 			klog.Errorf("failed to set the deletion timestamp for AzVolume (%s): %v", azVolumeName, err)
 			return reconcileReturnOnError(&pv, "delete", err, r.controllerRetryInfo)

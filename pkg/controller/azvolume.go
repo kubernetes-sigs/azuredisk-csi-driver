@@ -198,9 +198,10 @@ func (r *ReconcileAzVolume) triggerCreate(ctx context.Context, azVolume *v1alpha
 func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *v1alpha1.AzVolume) error {
 	// Determine if this is a controller server requested deletion or driver clean up
 	volumeDeleteRequested := volumeDeleteRequested(azVolume)
+	preProvisionCleanupRequested := preProvisionCleanupRequested(azVolume)
 
 	mode := deleteCRIOnly
-	if volumeDeleteRequested {
+	if volumeDeleteRequested || preProvisionCleanupRequested {
 		mode = detachAndDeleteCRI
 	}
 

@@ -902,6 +902,10 @@ func volumeDeleteRequested(volume *v1alpha1.AzVolume) bool {
 	return volume != nil && volume.Annotations != nil && metav1.HasAnnotation(volume.ObjectMeta, consts.VolumeDeleteRequestAnnotation)
 }
 
+func preProvisionCleanupRequested(volume *v1alpha1.AzVolume) bool {
+	return volume != nil && volume.Annotations != nil && metav1.HasAnnotation(volume.ObjectMeta, consts.PreProvisionedVolumeCleanupAnnotation)
+}
+
 func finalizerExists(finalizers []string, finalizerName string) bool {
 	for _, finalizer := range finalizers {
 		if finalizer == finalizerName {
