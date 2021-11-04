@@ -4,10 +4,13 @@ kind: Service
 metadata:
   name: csi-azuredisk-controller
   namespace: kube-system
+  labels:
+    app: csi-azuredisk-controller
 spec:
   selector:
     app: csi-azuredisk-controller
   ports:
-    - port: 29604
+    - name: metrics
+      port: 29604
       targetPort: 29604
-  type: LoadBalancer
+  type: ClusterIP

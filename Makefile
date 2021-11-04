@@ -314,8 +314,10 @@ endif
 
 .PHONY: delete-metrics-svc
 delete-metrics-svc:
-	kubectl delete -f deploy/example/metrics/csi-azuredisk-controller-svc.yaml --ignore-not-found
+ifdef BUILD_V2
 	kubectl delete -f deploy/example/metrics/csi-azuredisk-scheduler-extender-svc.yaml --ignore-not-found
+endif
+	kubectl delete -f deploy/example/metrics/csi-azuredisk-controller-svc.yaml --ignore-not-found
 
 .PHONY: e2e-test
 e2e-test:
