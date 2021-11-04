@@ -220,10 +220,10 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			}
 
 			test := testsuites.PreProvisionedDanglingAttachVolumeTest{
-				CSIDriver:       testDriver,
-				AzureDiskDriver: azurediskDriver,
-				Pod:             pod,
-				VolumeContext:   volumeContext,
+				CSIDriver:     testDriver,
+				AzureCloud:    azureCloud,
+				Pod:           pod,
+				VolumeContext: volumeContext,
 			}
 			test.Run(cs, ns, schedulerName)
 		})

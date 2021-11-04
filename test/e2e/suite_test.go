@@ -19,7 +19,6 @@ package e2e
 import (
 	"context"
 	"flag"
-	"fmt"
 	"log"
 	"os"
 	"os/exec"
@@ -32,7 +31,6 @@ import (
 	"github.com/onsi/ginkgo"
 	"github.com/onsi/ginkgo/reporters"
 	"github.com/onsi/gomega"
-	"github.com/pborman/uuid"
 	"k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/config"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
@@ -60,7 +58,6 @@ const (
 )
 
 var (
-	azurediskDriver             azuredisk.CSIDriver
 	azureCloud                  *provider.Cloud
 	isUsingInTreeVolumePlugin   = os.Getenv(driver.AzureDriverNameVar) == inTreeStorageClass
 	isTestingMigration          = os.Getenv(testMigrationEnvVar) != ""
@@ -131,18 +128,11 @@ var _ = ginkgo.BeforeSuite(func() {
 			EnablePerfOptimization: false,
 		}
 		os.Setenv("AZURE_CREDENTIAL_FILE", credentials.TempAzureCredentialFilePath)
-		azurediskDriver = azuredisk.NewDriver(&driverOptions)
 		kubeconfig := os.Getenv(kubeconfigEnvVar)
 		kubeclient, err := csicommon.GetKubeClient(kubeconfig)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		azureCloud, err = utils.GetAzureCloudProvider(kubeclient, driverOptions.CloudConfigSecretName, driverOptions.CloudConfigSecretNamespace, azuredisk.GetUserAgent(driverOptions.DriverName, driverOptions.CustomUserAgent, driverOptions.UserAgentSuffix))
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		go func() {
-			azurediskDriver.Run(fmt.Sprintf("unix:///tmp/csi-%s.sock", uuid.NewUUID().String()), kubeconfig, false, false)
-		}()
-
-		// Driver is used for checking the pre-provisioned Dangling Attachment case
-		gomega.Eventually(azurediskDriver.Ready(), 5*time.Minute, 1*time.Second).Should(gomega.BeClosed())
 	}
 })
 

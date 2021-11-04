@@ -37,7 +37,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	clientset "k8s.io/client-go/kubernetes"
 	cloudprovider "k8s.io/cloud-provider"
-	volerr "k8s.io/cloud-provider/volume/errors"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
@@ -430,18 +429,11 @@ func (c *CloudProvisioner) PublishVolume(
 		}
 
 		lun, err = c.cloud.AttachDisk(ctx, true, diskName, volumeID, nodeName, cachingMode, disk)
-		if err == nil {
-			klog.V(2).Infof("Attach operation successful: volume %q attached to node %q.", volumeID, nodeName)
-		} else {
-			if derr, ok := err.(*volerr.DanglingAttachError); ok {
-				return nil, derr
-			}
-			if err != nil {
-				klog.Errorf("Attach volume %q to instance %q failed with %v", volumeID, nodeName, err)
-				return nil, fmt.Errorf("attach volume %q to instance %q failed with %v", volumeID, nodeName, err)
-			}
+		if err != nil {
+			klog.Errorf("attach volume %q to instance %q failed with %v", volumeID, nodeName, err)
+			return nil, err
 		}
-		klog.V(2).Infof("attach volume %q to node %q successfully", volumeID, nodeName)
+		klog.V(2).Infof("attach operation successful: volume %q attached to node %q.", volumeID, nodeName)
 	}
 
 	pvInfo := map[string]string{"LUN": strconv.Itoa(int(lun))}

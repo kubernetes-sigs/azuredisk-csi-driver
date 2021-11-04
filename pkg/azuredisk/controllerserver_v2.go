@@ -29,7 +29,6 @@ import (
 	"github.com/golang/protobuf/ptypes"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	volerr "k8s.io/cloud-provider/volume/errors"
 	"k8s.io/klog/v2"
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
@@ -234,22 +233,7 @@ func (d *DriverV2) ControllerPublishVolume(ctx context.Context, req *csi.Control
 	response, err := d.crdProvisioner.PublishVolume(ctx, diskURI, nodeID, &volumeCapability, req.GetReadonly(), req.GetSecrets(), req.GetVolumeContext())
 
 	if err != nil {
-		if derr, ok := err.(*volerr.DanglingAttachError); ok {
-			klog.Warningf("volume %q is already attached to node %q, try detach first", diskURI, derr.CurrentNode)
-
-			//  delete AzVolumeAttachment to correspond with the detachment
-			if err = d.crdProvisioner.UnpublishVolume(ctx, diskURI, string(derr.CurrentNode), req.GetSecrets()); err != nil {
-				return nil, status.Errorf(codes.Internal, "Could not detach volume %q from node %q: %v", diskURI, derr.CurrentNode, err)
-			}
-			klog.Infof("successfully detached volume %q from node %q", diskURI, derr.CurrentNode)
-			// create AzVolumeAttachment to correspond with the new volume attachment
-			if response, err = d.crdProvisioner.PublishVolume(ctx, diskURI, nodeID, &volumeCapability, req.GetReadonly(), req.GetSecrets(), req.GetVolumeContext()); err != nil {
-				return nil, status.Errorf(codes.Internal, "Could not attach volume %q to node %q: %v", diskURI, nodeID, err)
-			}
-			klog.Infof("successfully attached volume %q to node %q", diskURI, nodeID)
-		} else {
-			return nil, err
-		}
+		return nil, err
 	}
 
 	if response == nil {

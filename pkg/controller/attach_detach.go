@@ -33,6 +33,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 
+	volerr "k8s.io/cloud-provider/volume/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -46,9 +47,13 @@ const (
 	defaultMaxReplicaUpdateCount = 1
 )
 
-type AttachmentProvisioner interface {
+type CloudDiskAttachDetacher interface {
 	PublishVolume(ctx context.Context, volumeID string, nodeID string, volumeContext map[string]string) (map[string]string, error)
 	UnpublishVolume(ctx context.Context, volumeID string, nodeID string) error
+}
+
+type CrdDetacher interface {
+	UnpublishVolume(ctx context.Context, volumeID string, nodeID string, secrets map[string]string) error
 }
 
 /*
@@ -58,13 +63,14 @@ Attach Detach controller is responsible for
 	3. detaching volume upon deletions marked with certain annotations
 */
 type ReconcileAttachDetach struct {
-	client                client.Client
-	azVolumeClient        azVolumeClientSet.Interface
-	kubeClient            kubeClientSet.Interface
-	namespace             string
-	attachmentProvisioner AttachmentProvisioner
-	stateLock             *sync.Map
-	retryInfo             *retryInfo
+	client            client.Client
+	azVolumeClient    azVolumeClientSet.Interface
+	kubeClient        kubeClientSet.Interface
+	namespace         string
+	crdDetacher       CrdDetacher
+	cloudDiskAttacher CloudDiskAttachDetacher
+	stateLock         *sync.Map
+	retryInfo         *retryInfo
 }
 
 var _ reconcile.Reconciler = &ReconcileAttachDetach{}
@@ -157,7 +163,40 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 		cloudCtx, cloudCancel := context.WithTimeout(context.Background(), cloudTimeout)
 		defer cloudCancel()
 		updateCtx := context.Background()
+		// attempt to attach the disk to a node
 		response, attachErr := r.attachVolume(cloudCtx, azVolumeAttachment.Spec.VolumeID, azVolumeAttachment.Spec.NodeName, azVolumeAttachment.Spec.VolumeContext)
+		// if the disk is attached to a different node
+		if danglingAttachErr, ok := attachErr.(*volerr.DanglingAttachError); ok {
+			// get disk, current node and attachment name
+			diskName, err := azureutils.GetDiskName(azVolumeAttachment.Spec.VolumeID)
+			if err != nil {
+				klog.Warningf("failed to extract disk name from volumeID (%s): %v", azVolumeAttachment.Spec.VolumeID, err)
+			}
+			currentNodeName := string(danglingAttachErr.CurrentNode)
+			currentAttachmentName := azureutils.GetAzVolumeAttachmentName(diskName, currentNodeName)
+
+			// check if AzVolumeAttachment exists for the existing attachment
+			_, err = r.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(r.namespace).Get(cloudCtx, currentAttachmentName, metav1.GetOptions{})
+			var detachErr error
+			if errors.IsNotFound(err) {
+				// AzVolumeAttachment doesn't exist so we only need to detach disk from cloud
+				detachErr = r.cloudDiskAttacher.UnpublishVolume(ctx, azVolumeAttachment.Spec.VolumeID, currentNodeName)
+				if detachErr != nil {
+					klog.Errorf("failed to detach volume (%s) from node (%s). Error: %v", azVolumeAttachment.Spec.VolumeID, currentNodeName, err)
+				}
+			} else {
+				// AzVolumeAttachment exist so we need to detach disk through crdProvisioner
+				detachErr = r.crdDetacher.UnpublishVolume(ctx, azVolumeAttachment.Spec.VolumeID, currentNodeName, make(map[string]string))
+				if detachErr != nil {
+					klog.Errorf("failed to unpublish AzVolumeAttachment for volume (%s) and node (%s). Error: %v", azVolumeAttachment.Spec.VolumeID, currentNodeName, err)
+				}
+			}
+			// attempt to attach the disk to a node after detach
+			if detachErr == nil {
+				response, attachErr = r.attachVolume(cloudCtx, azVolumeAttachment.Spec.VolumeID, azVolumeAttachment.Spec.NodeName, azVolumeAttachment.Spec.VolumeContext)
+			}
+		}
+		// update AzVolumeAttachment CRI with the result of the attach operation
 		var updateFunc func(interface{}) error
 		if attachErr != nil {
 			klog.Errorf("failed to attach volume %s to node %s: %v", azVolumeAttachment.Spec.UnderlyingVolume, azVolumeAttachment.Spec.NodeName, attachErr)
@@ -377,11 +416,11 @@ func (r *ReconcileAttachDetach) deleteFinalizer(azVolumeAttachment *v1alpha1.AzV
 // }
 
 func (r *ReconcileAttachDetach) attachVolume(ctx context.Context, volumeID, node string, volumeContext map[string]string) (map[string]string, error) {
-	return r.attachmentProvisioner.PublishVolume(ctx, volumeID, node, volumeContext)
+	return r.cloudDiskAttacher.PublishVolume(ctx, volumeID, node, volumeContext)
 }
 
 func (r *ReconcileAttachDetach) detachVolume(ctx context.Context, volumeID, node string) error {
-	return r.attachmentProvisioner.UnpublishVolume(ctx, volumeID, node)
+	return r.cloudDiskAttacher.UnpublishVolume(ctx, volumeID, node)
 }
 
 func (r *ReconcileAttachDetach) Recover(ctx context.Context) error {
@@ -626,15 +665,16 @@ func (r *ReconcileAttachDetach) recoverAzVolumeAttachment(ctx context.Context, r
 	return nil
 }
 
-func NewAttachDetachController(mgr manager.Manager, azVolumeClient azVolumeClientSet.Interface, kubeClient kubeClientSet.Interface, namespace string, attachmentProvisioner AttachmentProvisioner) (*ReconcileAttachDetach, error) {
+func NewAttachDetachController(mgr manager.Manager, azVolumeClient azVolumeClientSet.Interface, kubeClient kubeClientSet.Interface, namespace string, cloudDiskAttacher CloudDiskAttachDetacher, crdDetacher CrdDetacher) (*ReconcileAttachDetach, error) {
 	reconciler := ReconcileAttachDetach{
-		client:                mgr.GetClient(),
-		azVolumeClient:        azVolumeClient,
-		kubeClient:            kubeClient,
-		namespace:             namespace,
-		attachmentProvisioner: attachmentProvisioner,
-		stateLock:             &sync.Map{},
-		retryInfo:             newRetryInfo(),
+		client:            mgr.GetClient(),
+		azVolumeClient:    azVolumeClient,
+		kubeClient:        kubeClient,
+		namespace:         namespace,
+		crdDetacher:       crdDetacher,
+		cloudDiskAttacher: cloudDiskAttacher,
+		stateLock:         &sync.Map{},
+		retryInfo:         newRetryInfo(),
 	}
 
 	c, err := controller.New("azvolumeattachment-controller", mgr, controller.Options{
