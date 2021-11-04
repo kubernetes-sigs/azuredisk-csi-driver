@@ -76,6 +76,10 @@ const (
 	WriteAcceleratorEnabled       = "writeacceleratorenabled"
 	ZonedField                    = "zoned"
 	EnableAsyncAttachField        = "enableasyncattach"
+	TooManyRequests               = "TooManyRequests"
+	ClientThrottled               = "client throttled"
+	// define different sleep time when hit throttling
+	SnapshotOpThrottlingSleepSec = 50
 )
 
 var (

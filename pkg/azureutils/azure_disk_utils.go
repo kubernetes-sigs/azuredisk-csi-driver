@@ -22,6 +22,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
@@ -37,6 +38,7 @@ import (
 
 	api "k8s.io/kubernetes/pkg/apis/core"
 	volumeUtil "k8s.io/kubernetes/pkg/volume/util"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	azclients "sigs.k8s.io/cloud-provider-azure/pkg/azureclients"
@@ -488,5 +490,12 @@ func InsertDiskProperties(disk *compute.Disk, publishConext map[string]string) {
 		if prop.MaxShares != nil {
 			publishConext[consts.MaxSharesField] = strconv.Itoa(int(*prop.MaxShares))
 		}
+	}
+}
+
+func SleepIfThrottled(err error, sleepSec int) {
+	if strings.Contains(strings.ToLower(err.Error()), strings.ToLower(azureconstants.TooManyRequests)) || strings.Contains(strings.ToLower(err.Error()), azureconstants.ClientThrottled) {
+		klog.Warningf("sleep %d more seconds, waiting for throttling complete", sleepSec)
+		time.Sleep(time.Duration(sleepSec) * time.Second)
 	}
 }
