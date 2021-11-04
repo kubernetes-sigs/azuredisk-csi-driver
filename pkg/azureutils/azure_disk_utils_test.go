@@ -174,12 +174,11 @@ func TestGetCachingMode(t *testing.T) {
 	}
 }
 
-func TestGetCloudProvider(t *testing.T) {
+func TestGetKubeConfig(t *testing.T) {
 	// skip for now as this is very flaky on Windows
 	skipIfTestingOnWindows(t)
-	fakeCredFile := "fake-cred-file.json"
-	fakeKubeConfig := "fake-kube-config"
-	emptyKubeConfig := "empty-kube-config"
+	emptyKubeConfig := "empty-Kube-Config"
+	validKubeConfig := "valid-Kube-Config"
 	fakeContent := `
 apiVersion: v1
 clusters:
@@ -215,6 +214,68 @@ users:
 		}
 	}()
 
+	err = createTestFile(validKubeConfig)
+	if err != nil {
+		t.Error(err)
+	}
+	defer func() {
+		if err := os.Remove(validKubeConfig); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	if err := ioutil.WriteFile(validKubeConfig, []byte(fakeContent), 0666); err != nil {
+		t.Error(err)
+	}
+
+	tests := []struct {
+		desc                     string
+		kubeconfig               string
+		expectError              bool
+		envVariableHasConfig     bool
+		envVariableConfigIsValid bool
+	}{
+		{
+			desc:                     "[success] valid kube config passed",
+			kubeconfig:               validKubeConfig,
+			expectError:              false,
+			envVariableHasConfig:     false,
+			envVariableConfigIsValid: false,
+		},
+		{
+			desc:                     "[failure] invalid kube config passed",
+			kubeconfig:               emptyKubeConfig,
+			expectError:              true,
+			envVariableHasConfig:     false,
+			envVariableConfigIsValid: false,
+		},
+	}
+
+	for _, test := range tests {
+		_, err := GetKubeConfig(test.kubeconfig)
+		receiveError := (err != nil)
+		if test.expectError != receiveError {
+			t.Errorf("desc: %s,\n input: %q, GetCloudProvider err: %v, expectErr: %v", test.desc, test.kubeconfig, err, test.expectError)
+		}
+	}
+}
+
+func TestGetCloudProvider(t *testing.T) {
+	// skip for now as this is very flaky on Windows
+	skipIfTestingOnWindows(t)
+	fakeCredFile := "fake-cred-file.json"
+	emptyKubeConfig := "empty-kube-config"
+
+	err := createTestFile(emptyKubeConfig)
+	if err != nil {
+		t.Error(err)
+	}
+	defer func() {
+		if err := os.Remove(emptyKubeConfig); err != nil {
+			t.Error(err)
+		}
+	}()
+
 	tests := []struct {
 		desc        string
 		kubeconfig  string
@@ -222,24 +283,9 @@ users:
 		expectedErr error
 	}{
 		{
-			desc:        "[failure] out of cluster, no kubeconfig, no credential file",
-			kubeconfig:  "",
-			expectedErr: nil,
-		},
-		{
-			desc:        "[failure] out of cluster & in cluster, specify a non-exist kubeconfig, no credential file",
-			kubeconfig:  "/tmp/non-exist.json",
-			expectedErr: nil,
-		},
-		{
 			desc:        "[failure] out of cluster & in cluster, specify a empty kubeconfig, no credential file",
 			kubeconfig:  emptyKubeConfig,
 			expectedErr: fmt.Errorf("failed to get KubeClient: invalid configuration: no configuration has been provided, try setting KUBERNETES_MASTER environment variable"),
-		},
-		{
-			desc:        "[failure] out of cluster & in cluster, specify a fake kubeconfig, no credential file",
-			kubeconfig:  fakeKubeConfig,
-			expectedErr: nil,
 		},
 		{
 			desc:        "[success] out of cluster & in cluster, no kubeconfig, a fake credential file",
@@ -250,21 +296,6 @@ users:
 	}
 
 	for _, test := range tests {
-		if test.desc == "[failure] out of cluster & in cluster, specify a fake kubeconfig, no credential file" {
-			err := createTestFile(fakeKubeConfig)
-			if err != nil {
-				t.Error(err)
-			}
-			defer func() {
-				if err := os.Remove(fakeKubeConfig); err != nil {
-					t.Error(err)
-				}
-			}()
-
-			if err := ioutil.WriteFile(fakeKubeConfig, []byte(fakeContent), 0666); err != nil {
-				t.Error(err)
-			}
-		}
 		if test.desc == "[success] out of cluster & in cluster, no kubeconfig, a fake credential file" {
 			err := createTestFile(fakeCredFile)
 			if err != nil {
@@ -288,9 +319,7 @@ users:
 		if !reflect.DeepEqual(err, test.expectedErr) {
 			t.Errorf("desc: %s,\n input: %q, GetCloudProvider err: %v, expectedErr: %v", test.desc, test.kubeconfig, err, test.expectedErr)
 		}
-		if cloud == nil {
-			t.Errorf("return value of getCloudProvider should not be nil even there is error")
-		} else {
+		if cloud != nil {
 			assert.Equal(t, cloud.UserAgent, test.userAgent)
 			assert.Equal(t, cloud.DiskRateLimit != nil && cloud.DiskRateLimit.CloudProviderRateLimit, false)
 			assert.Equal(t, cloud.SnapshotRateLimit != nil && cloud.SnapshotRateLimit.CloudProviderRateLimit, false)
