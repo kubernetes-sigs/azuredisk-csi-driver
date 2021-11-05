@@ -133,7 +133,8 @@ spec:
             - "-csi-address=$(ADDRESS)"
             - "-v=2"
             - "-leader-election"
-            - '-handle-volume-inuse-error=true'
+            - '-handle-volume-inuse-error=false'
+            - "-timeout=60s"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
