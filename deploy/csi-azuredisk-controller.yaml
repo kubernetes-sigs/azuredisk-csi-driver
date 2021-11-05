@@ -47,7 +47,7 @@ spec:
           resources:
             limits:
               cpu: 200m
-              memory: 300Mi
+              memory: 500Mi
             requests:
               cpu: 10m
               memory: 20Mi
@@ -68,7 +68,7 @@ spec:
           resources:
             limits:
               cpu: 200m
-              memory: 400Mi
+              memory: 500Mi
             requests:
               cpu: 10m
               memory: 20Mi
@@ -97,7 +97,8 @@ spec:
             - "-csi-address=$(ADDRESS)"
             - "-v=2"
             - "-leader-election"
-            - '-handle-volume-inuse-error=true'
+            - '-handle-volume-inuse-error=false'
+            - "-timeout=60s"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -107,7 +108,7 @@ spec:
           resources:
             limits:
               cpu: 200m
-              memory: 300Mi
+              memory: 500Mi
             requests:
               cpu: 10m
               memory: 20Mi
