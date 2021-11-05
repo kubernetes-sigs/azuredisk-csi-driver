@@ -69,7 +69,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 		return reconcileReturnOnError(&pv, "get", err, r.controllerRetryInfo)
 	}
 
-	// ignore PV-s for none-csi volumes
+	// ignore PV-s for non-csi volumes
 	if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != azureconstants.DefaultDriverName {
 		return reconcileReturnOnSuccess(pv.Name, r.controllerRetryInfo)
 	}
@@ -141,9 +141,13 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 
 	// both PV and AzVolume exist. Remove entry from retryMap and retryLocks
 	r.controllerRetryInfo.deleteEntry(azVolumeName)
+	updated := azVolume.DeepCopy()
+
+	if azVolume.Status.PersistentVolume != pv.Name {
+		updated.Status.PersistentVolume = pv.Name
+	}
 
 	if azVolume.Status.Detail != nil {
-		updated := azVolume.DeepCopy()
 		switch phase := pv.Status.Phase; phase {
 		case corev1.VolumeBound:
 			pvClaimName := getQualifiedName(pv.Spec.ClaimRef.Namespace, pv.Spec.ClaimRef.Name)
@@ -153,12 +157,13 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 			updated.Status.Detail.Phase = v1alpha1.VolumeReleased
 			r.controllerSharedState.deleteVolumeAndClaim(azVolumeName)
 		}
-		// update the status of AzVolume to match that of the PV
-		if !reflect.DeepEqual(updated, azVolume) {
-			if err := r.client.Update(ctx, updated, &client.UpdateOptions{}); err != nil {
-				klog.Errorf("failed to update AzVolume (%s): %v", pv.Name, err)
-				return reconcileReturnOnError(&pv, "update", err, r.controllerRetryInfo)
-			}
+	}
+
+	// update the status of AzVolume to match that of the PV
+	if !reflect.DeepEqual(updated, azVolume) {
+		if err := r.client.Update(ctx, updated, &client.UpdateOptions{}); err != nil {
+			klog.Errorf("failed to update AzVolume (%s): %v", pv.Name, err)
+			return reconcileReturnOnError(&pv, "update", err, r.controllerRetryInfo)
 		}
 	}
 	return reconcileReturnOnSuccess(pv.Name, r.controllerRetryInfo)

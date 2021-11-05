@@ -1014,6 +1014,7 @@ k8s.io/component-base/metrics/testutil
 k8s.io/component-base/traces
 k8s.io/component-base/version
 # k8s.io/component-helpers v0.22.3 => k8s.io/component-helpers v0.22.3
+## explicit
 k8s.io/component-helpers/scheduling/corev1
 k8s.io/component-helpers/scheduling/corev1/nodeaffinity
 k8s.io/component-helpers/storage/volume

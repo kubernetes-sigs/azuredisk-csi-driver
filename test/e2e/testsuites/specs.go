@@ -53,6 +53,8 @@ type VolumeDetails struct {
 	VolumeMode            VolumeMode
 	VolumeMount           VolumeMountDetails
 	VolumeDevice          VolumeDeviceDetails
+	// Optional, used to get AzVolumeAttachments
+	PersistentVolume *v1.PersistentVolume
 	// Optional, used with pre-provisioned volumes
 	VolumeID string
 	// Optional, used with PVCs created from snapshots or pvc
@@ -109,6 +111,9 @@ func (pod *PodDetails) SetupWithDynamicVolumes(client clientset.Interface, names
 			tpod.SetupRawBlockVolume(tpvc.persistentVolumeClaim, fmt.Sprintf("%s%d", v.VolumeDevice.NameGenerate, n+1), v.VolumeDevice.DevicePath)
 		} else {
 			tpod.SetupVolume(tpvc.persistentVolumeClaim, fmt.Sprintf("%s%d", v.VolumeMount.NameGenerate, n+1), fmt.Sprintf("%s%d", v.VolumeMount.MountPathGenerate, n+1), v.VolumeMount.ReadOnly)
+		}
+		if tpvc.persistentVolume != nil {
+			pod.Volumes[n].PersistentVolume = tpvc.persistentVolume.DeepCopy()
 		}
 	}
 	return tpod, cleanupFuncs

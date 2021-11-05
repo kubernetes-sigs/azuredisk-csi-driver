@@ -235,7 +235,7 @@ func (r *ReconcileReplica) getNodesForReplica(ctx context.Context, volumeName st
 		return nil, err
 	}
 
-	nodes, err := getRankedNodesForReplicaAttachments(ctx, r, volumes)
+	nodes, err := getRankedNodesForReplicaAttachments(ctx, r, volumes, pods)
 	if err != nil {
 		return nil, err
 	}

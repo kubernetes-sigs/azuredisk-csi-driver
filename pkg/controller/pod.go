@@ -86,7 +86,7 @@ func (r *ReconcilePod) createReplicas(ctx context.Context, podKey string) error 
 	}
 	klog.V(5).Infof("Pod %s has %d volumes. Volumes: %v", podKey, len(volumes), volumes)
 
-	nodes, err := getRankedNodesForReplicaAttachments(ctx, r, volumes)
+	nodes, err := getRankedNodesForReplicaAttachments(ctx, r, volumes, []string{podKey})
 	if err != nil {
 		klog.V(5).Infof("Error getting nodes for replicas for pod %s. Error: %v", podKey, err)
 		return err

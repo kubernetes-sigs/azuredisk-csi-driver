@@ -26,6 +26,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/util/wait"
 	fakev1 "k8s.io/client-go/kubernetes/fake"
 	diskv1alpha1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
@@ -77,9 +78,9 @@ func TestPodReconcile(t *testing.T) {
 					testNamespace,
 					newVolume,
 					newAttachment,
+					&testNode0,
+					&testNode1,
 					&testPersistentVolume0,
-					&testAzDriverNode0,
-					&testAzDriverNode1,
 					newPod)
 
 				mockClients(controller.client.(*mockclient.MockClient), controller.azVolumeClient, controller.kubeClient)
@@ -89,7 +90,7 @@ func TestPodReconcile(t *testing.T) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
 
-				roleReq, _ := createLabelRequirements(consts.RoleLabel, string(diskv1alpha1.ReplicaRole))
+				roleReq, _ := CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(diskv1alpha1.ReplicaRole))
 				labelSelector := labels.NewSelector().Add(*roleReq)
 				conditionFunc := func() (bool, error) {
 					replicas, localError := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testPrimaryAzVolumeAttachment0.Namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
@@ -136,8 +137,8 @@ func TestPodReconcile(t *testing.T) {
 					newAttachment1,
 					&testPersistentVolume0,
 					&testPersistentVolume1,
-					&testAzDriverNode0,
-					&testAzDriverNode1,
+					&testNode0,
+					&testNode1,
 					newPod)
 
 				mockClients(controller.client.(*mockclient.MockClient), controller.azVolumeClient, controller.kubeClient)
@@ -147,7 +148,7 @@ func TestPodReconcile(t *testing.T) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
 
-				roleReq, _ := createLabelRequirements(consts.RoleLabel, string(diskv1alpha1.ReplicaRole))
+				roleReq, _ := CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(diskv1alpha1.ReplicaRole))
 				labelSelector := labels.NewSelector().Add(*roleReq)
 				conditionFunc := func() (bool, error) {
 					replicas, localError := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testPrimaryAzVolumeAttachment0.Namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
@@ -200,8 +201,8 @@ func TestPodReconcile(t *testing.T) {
 					newAttachment1,
 					&testPersistentVolume0,
 					&testPersistentVolume1,
-					&testAzDriverNode0,
-					&testAzDriverNode1,
+					&testNode0,
+					&testNode1,
 					newPod0,
 					newPod1)
 
@@ -215,7 +216,7 @@ func TestPodReconcile(t *testing.T) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
 
-				roleReq, _ := createLabelRequirements(consts.RoleLabel, string(diskv1alpha1.ReplicaRole))
+				roleReq, _ := CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(diskv1alpha1.ReplicaRole))
 				labelSelector := labels.NewSelector().Add(*roleReq)
 				conditionFunc := func() (bool, error) {
 					replicas, localError := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testPrimaryAzVolumeAttachment0.Namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
@@ -282,8 +283,8 @@ func TestPodRecover(t *testing.T) {
 					newVolume1,
 					&testPersistentVolume0,
 					&testPersistentVolume1,
-					&testAzDriverNode0,
-					&testAzDriverNode1,
+					&testNode0,
+					&testNode1,
 					newAttachment0,
 					newAttachment1,
 					newPod)
@@ -294,7 +295,7 @@ func TestPodRecover(t *testing.T) {
 			verifyFunc: func(t *testing.T, controller *ReconcilePod, err error) {
 				require.NoError(t, err)
 
-				roleReq, _ := createLabelRequirements(consts.RoleLabel, string(diskv1alpha1.ReplicaRole))
+				roleReq, _ := CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(diskv1alpha1.ReplicaRole))
 				labelSelector := labels.NewSelector().Add(*roleReq)
 				conditionFunc := func() (bool, error) {
 					replicas, localError := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testPrimaryAzVolumeAttachment0.Namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})

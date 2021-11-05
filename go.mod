@@ -30,6 +30,7 @@ require (
 	k8s.io/cloud-provider v0.22.3
 	k8s.io/code-generator v0.22.3
 	k8s.io/component-base v0.22.3
+	k8s.io/component-helpers v0.22.3
 	k8s.io/klog v1.0.0
 	k8s.io/klog/v2 v2.10.0
 	k8s.io/kube-scheduler v0.22.3

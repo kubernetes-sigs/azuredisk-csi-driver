@@ -173,6 +173,8 @@ func (c *CloudProvisioner) CreateVolume(
 			if maxShares < 1 {
 				return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("parse %s returned with invalid value: %d", v, maxShares))
 			}
+		case azureconstants.MaxMountReplicaCountField:
+			continue
 		case azureconstants.PvcNameKey:
 			tags[azureconstants.PvcNameTag] = v
 		case azureconstants.PvcNamespaceKey:

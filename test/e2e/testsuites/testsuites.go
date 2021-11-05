@@ -65,6 +65,40 @@ const (
 	poll            = 2 * time.Second
 	pollLongTimeout = 5 * time.Minute
 	pollTimeout     = 10 * time.Minute
+
+	testTolerationKey   = "test-toleration-key"
+	testTolerationValue = "test-toleration-value"
+	testLabelKey        = "test-label-key"
+	testLabelValue      = "test-label-value"
+)
+
+var (
+	testTaint = v1.Taint{
+		Key:    testTolerationKey,
+		Value:  testTolerationValue,
+		Effect: v1.TaintEffectNoSchedule,
+	}
+
+	testLabel = map[string]string{
+		testLabelKey: testLabelValue,
+	}
+
+	testAffinity = v1.Affinity{
+		NodeAffinity: &v1.NodeAffinity{
+			RequiredDuringSchedulingIgnoredDuringExecution: &v1.NodeSelector{
+				NodeSelectorTerms: []v1.NodeSelectorTerm{
+					{
+						MatchExpressions: []v1.NodeSelectorRequirement{
+							{
+								Key:      testLabelKey,
+								Operator: v1.NodeSelectorOpExists,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
 )
 
 type TestStorageClass struct {
@@ -893,8 +927,24 @@ func (t *TestPod) SetupVolumeMountWithSubpath(pvc *v1.PersistentVolumeClaim, nam
 	t.pod.Spec.Volumes = append(t.pod.Spec.Volumes, volume)
 }
 
+func (t *TestPod) AllowScheduleOnMasterNode() {
+	t.SetNodeToleration(v1.Toleration{
+		Key:      consts.MasterNodeRoleTaintKey,
+		Operator: v1.TolerationOpExists,
+		Effect:   v1.TaintEffectNoSchedule,
+	})
+}
+
 func (t *TestPod) SetNodeSelector(nodeSelector map[string]string) {
 	t.pod.Spec.NodeSelector = nodeSelector
+}
+
+func (t *TestPod) SetAffinity(affinity *v1.Affinity) {
+	t.pod.Spec.Affinity = affinity
+}
+
+func (t *TestPod) SetNodeToleration(nodeTolerations ...v1.Toleration) {
+	t.pod.Spec.Tolerations = nodeTolerations
 }
 
 func (t *TestPod) SetNodeUnschedulable(nodeName string, unschedulable bool) {
@@ -947,6 +997,53 @@ func ListNodeNames(c clientset.Interface) []string {
 		nodeNames = append(nodeNames, item.Name)
 	}
 	return nodeNames
+}
+
+func SetNodeLabels(c clientset.Interface, node *v1.Node, newLabels map[string]string) (cleanup func(), err error) {
+	originalLabels := node.Labels
+	nodeName := node.Name
+	cleanup = func() {
+		node, err := c.CoreV1().Nodes().Get(context.Background(), nodeName, metav1.GetOptions{})
+		framework.ExpectNoError(err)
+		node.Labels = originalLabels
+		_, _ = c.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{})
+	}
+	if node.Labels == nil {
+		node.Labels = newLabels
+	} else {
+		for key, value := range newLabels {
+			node.Labels[key] = value
+		}
+	}
+
+	_, err = c.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{})
+	return
+}
+
+func SetNodeTaints(c clientset.Interface, node *v1.Node, taints ...v1.Taint) (cleanup func(), err error) {
+	originalTaints := node.Spec.Taints
+	nodeName := node.Name
+	cleanup = func() {
+		node, err := c.CoreV1().Nodes().Get(context.Background(), nodeName, metav1.GetOptions{})
+		framework.ExpectNoError(err)
+		node.Spec.Taints = originalTaints
+		_, _ = c.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{})
+	}
+
+	if node.Spec.Taints == nil {
+		node.Spec.Taints = taints
+	} else {
+		// acknowledge that this can lead to duplicate taints
+		node.Spec.Taints = append(node.Spec.Taints, taints...)
+	}
+
+	_, err = c.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{})
+	if err != nil {
+		klog.Errorf("failed to add taints (%+v) to node (%s): %v", taints, node.Name, err)
+	} else {
+		klog.Infof("successfully added taints (%+v) to node (%s)", taints, node.Name)
+	}
+	return
 }
 
 func ListAzDriverNodeNames(azDriverNode v1alpha1ClientSet.AzDriverNodeInterface) []string {
