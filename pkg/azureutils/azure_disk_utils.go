@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"os"
 	"reflect"
-	"runtime"
 	"strconv"
 	"strings"
 	"unicode"
@@ -38,7 +37,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/kubernetes"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -46,7 +44,6 @@ import (
 	"k8s.io/klog"
 	kubeutil "k8s.io/kubernetes/pkg/volume/util"
 	"k8s.io/mount-utils"
-
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	azurediskInformers "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions"
@@ -94,7 +91,6 @@ func IsAzureStackCloud(cloud string, disableAzureStackCloud bool) bool {
 func GetAzDiskClient(config *rest.Config) (
 	*azDiskClientSet.Clientset,
 	error) {
-
 	azDiskClient, err := azDiskClientSet.NewForConfig(config)
 	if err != nil {
 		return nil, err
@@ -208,8 +204,11 @@ func CreateValidDiskName(volumeName string, usedForLabel bool) string {
 	return diskName
 }
 
-// GetCloudProvider get Azure Cloud Provider
-func GetAzureCloudProvider(kubeClient clientset.Interface, secretName string, secretNamespace string, userAgent string) (*azure.Cloud, error) {
+// GetCloudProviderFromClient get Azure Cloud Provider
+func GetCloudProviderFromClient(kubeClient *clientset.Clientset, secretName string, secretNamespace string, userAgent string) (*azure.Cloud, error) {
+	var config *azure.Config
+	var fromSecret bool
+	var err error
 	az := &azure.Cloud{
 		InitSecretConfig: azure.InitSecretConfig{
 			SecretName:      secretName,
@@ -217,71 +216,6 @@ func GetAzureCloudProvider(kubeClient clientset.Interface, secretName string, se
 			CloudConfigKey:  "cloud-config",
 		},
 	}
-	if kubeClient != nil {
-		klog.V(2).Infof("reading cloud config from secret")
-		az.KubeClient = kubeClient
-		if err := az.InitializeCloudFromSecret(); err != nil {
-			klog.V(2).Infof("InitializeCloudFromSecret failed with error: %v", err)
-		}
-	}
-
-	if az.TenantID == "" || az.SubscriptionID == "" || az.ResourceGroup == "" {
-		klog.V(2).Infof("could not read cloud config from secret")
-		credFile, ok := os.LookupEnv(consts.DefaultAzureCredentialFileEnv)
-		if ok && strings.TrimSpace(credFile) != "" {
-			klog.V(2).Infof("%s env var set as %v", consts.DefaultAzureCredentialFileEnv, credFile)
-		} else {
-			if runtime.GOOS == "windows" {
-				credFile = consts.DefaultCredFilePathWindows
-			} else {
-				credFile = consts.DefaultCredFilePathLinux
-			}
-
-			klog.V(2).Infof("use default %s env var: %v", consts.DefaultAzureCredentialFileEnv, credFile)
-		}
-
-		f, err := os.Open(credFile)
-		if err != nil {
-			klog.Errorf("Failed to load config from file: %s", credFile)
-			return nil, fmt.Errorf("Failed to load config from file: %s, cloud not get azure cloud provider", credFile)
-		}
-		defer f.Close()
-
-		klog.V(2).Infof("read cloud config from file: %s successfully", credFile)
-		if az, err = azure.NewCloudWithoutFeatureGates(f, false); err != nil {
-			return az, err
-		}
-	}
-
-	// reassign kubeClient
-	if kubeClient != nil && az.KubeClient == nil {
-		az.KubeClient = kubeClient
-	}
-	return az, nil
-}
-
-// GetCloudProvider get Azure Cloud Provider
-func GetCloudProvider(kubeconfig, secretName, secretNamespace, userAgent string) (*azure.Cloud, error) {
-	az := &azure.Cloud{
-		InitSecretConfig: azure.InitSecretConfig{
-			SecretName:      secretName,
-			SecretNamespace: secretNamespace,
-			CloudConfigKey:  "cloud-config",
-		},
-	}
-
-	kubeClient, err := getKubeClient(kubeconfig)
-	if err != nil {
-		klog.Warningf("get kubeconfig(%s) failed with error: %v", kubeconfig, err)
-		if !os.IsNotExist(err) && err != rest.ErrNotInCluster {
-			return az, fmt.Errorf("failed to get KubeClient: %v", err)
-		}
-	}
-	var (
-		config     *azure.Config
-		fromSecret bool
-	)
-
 	if kubeClient != nil {
 		klog.V(2).Infof("reading cloud config from secret %s/%s", az.SecretNamespace, az.SecretName)
 		az.KubeClient = kubeClient
@@ -310,13 +244,13 @@ func GetCloudProvider(kubeconfig, secretName, secretNamespace, userAgent string)
 
 		credFileConfig, err := os.Open(credFile)
 		if err != nil {
-			klog.Warningf("load azure config from file(%s) failed with %v", credFile, err)
-		} else {
-			defer credFileConfig.Close()
-			klog.V(2).Infof("read cloud config from file: %s successfully", credFile)
-			if config, err = azure.ParseConfig(credFileConfig); err != nil {
-				klog.Warningf("parse config file(%s) failed with error: %v", credFile, err)
-			}
+			klog.Errorf("Failed to load config from file: %s", credFile)
+			return nil, fmt.Errorf("Failed to load config from file: %s, cloud not get azure cloud provider", credFile)
+		}
+		defer credFileConfig.Close()
+		klog.V(2).Infof("read cloud config from file: %s successfully", credFile)
+		if config, err = azure.ParseConfig(credFileConfig); err != nil {
+			klog.Warningf("parse config file(%s) failed with error: %v", credFile, err)
 		}
 	}
 
@@ -341,6 +275,41 @@ func GetCloudProvider(kubeconfig, secretName, secretNamespace, userAgent string)
 		az.KubeClient = kubeClient
 	}
 	return az, nil
+}
+
+// GetCloudProvider get Azure Cloud Provider
+func GetCloudProvider(kubeConfig, secretName, secretNamespace, userAgent string) (*azure.Cloud, error) {
+	kubeClient, err := GetKubeClient(kubeConfig)
+	if err != nil {
+		klog.Warningf("get kubeconfig(%s) failed with error: %v", kubeConfig, err)
+		if !os.IsNotExist(err) && err != rest.ErrNotInCluster {
+			return nil, fmt.Errorf("failed to get KubeClient: %v", err)
+		}
+	}
+	return GetCloudProviderFromClient(kubeClient, secretName, secretNamespace, userAgent)
+}
+
+// GetKubeConfig gets config object from config file
+func GetKubeConfig(kubeconfig string) (config *rest.Config, err error) {
+	if kubeconfig != "" {
+		if config, err = clientcmd.BuildConfigFromFlags("", kubeconfig); err != nil {
+			return nil, err
+		}
+	} else {
+		if config, err = rest.InClusterConfig(); err != nil {
+			return nil, err
+		}
+	}
+	return config, err
+}
+
+func GetKubeClient(kubeconfig string) (*clientset.Clientset, error) {
+	config, err := GetKubeConfig(kubeconfig)
+	if err != nil {
+		return nil, err
+	}
+
+	return clientset.NewForConfig(config)
 }
 
 func IsValidDiskURI(diskURI string) error {
@@ -712,22 +681,4 @@ func checkDiskName(diskName string) bool {
 	}
 
 	return true
-}
-
-func getKubeClient(kubeconfig string) (*kubernetes.Clientset, error) {
-	var (
-		config *rest.Config
-		err    error
-	)
-	if kubeconfig != "" {
-		if config, err = clientcmd.BuildConfigFromFlags("", kubeconfig); err != nil {
-			return nil, err
-		}
-	} else {
-		if config, err = rest.InClusterConfig(); err != nil {
-			return nil, err
-		}
-	}
-
-	return kubernetes.NewForConfig(config)
 }

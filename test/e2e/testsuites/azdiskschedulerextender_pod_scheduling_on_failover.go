@@ -38,7 +38,9 @@ type AzDiskSchedulerExtenderPodSchedulingOnFailover struct {
 }
 
 func (t *AzDiskSchedulerExtenderPodSchedulingOnFailover) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
-	tStatefulSet, cleanup := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, schedulerName, 1, t.StorageClassParameters)
+	tStorageClass, storageCleanup := t.Pod.CreateStorageClass(client, namespace, t.CSIDriver, t.StorageClassParameters)
+	defer storageCleanup()
+	tStatefulSet, cleanup := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, schedulerName, 1, t.StorageClassParameters, &tStorageClass)
 	for i := range cleanup {
 		i := i
 		defer cleanup[i]()

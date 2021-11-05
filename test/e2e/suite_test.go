@@ -35,8 +35,7 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework/config"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
-	utils "sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
-	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/azure"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/credentials"
@@ -129,9 +128,9 @@ var _ = ginkgo.BeforeSuite(func() {
 		}
 		os.Setenv("AZURE_CREDENTIAL_FILE", credentials.TempAzureCredentialFilePath)
 		kubeconfig := os.Getenv(kubeconfigEnvVar)
-		kubeclient, err := csicommon.GetKubeClient(kubeconfig)
+		kubeclient, err := azureutils.GetKubeClient(kubeconfig)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		azureCloud, err = utils.GetAzureCloudProvider(kubeclient, driverOptions.CloudConfigSecretName, driverOptions.CloudConfigSecretNamespace, azuredisk.GetUserAgent(driverOptions.DriverName, driverOptions.CustomUserAgent, driverOptions.UserAgentSuffix))
+		azureCloud, err = azureutils.GetCloudProviderFromClient(kubeclient, driverOptions.CloudConfigSecretName, driverOptions.CloudConfigSecretNamespace, azuredisk.GetUserAgent(driverOptions.DriverName, driverOptions.CustomUserAgent, driverOptions.UserAgentSuffix))
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	}
 })
