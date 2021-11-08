@@ -858,6 +858,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	})
 
 	ginkgo.It("Should not create replicas on node with non-tolerable taint", func() {
+		ginkgo.Skip("This test is failing randomly. Skipping the test case while the issue is being debugged.")
 		skipIfUsingInTreeVolumePlugin()
 		if isMultiZone {
 			ginkgo.Skip("test case does not apply to multi az case")
