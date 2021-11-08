@@ -23,6 +23,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
@@ -681,4 +682,11 @@ func checkDiskName(diskName string) bool {
 	}
 
 	return true
+}
+
+func SleepIfThrottled(err error, sleepSec int) {
+	if strings.Contains(strings.ToLower(err.Error()), strings.ToLower(consts.TooManyRequests)) || strings.Contains(strings.ToLower(err.Error()), consts.ClientThrottled) {
+		klog.Warningf("sleep %d more seconds, waiting for throttling complete", sleepSec)
+		time.Sleep(time.Duration(sleepSec) * time.Second)
+	}
 }

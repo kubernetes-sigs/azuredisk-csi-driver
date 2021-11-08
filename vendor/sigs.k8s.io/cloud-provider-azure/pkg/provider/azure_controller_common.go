@@ -145,9 +145,9 @@ func (c *controllerCommon) getNodeVMSet(nodeName types.NodeName, crt azcache.Azu
 	return ss, nil
 }
 
-// AttachDisk attaches a vhd to vm. The vhd must exist, can be identified by diskName, diskURI.
+// AttachDisk attaches a disk to vm
 // return (lun, error)
-func (c *controllerCommon) AttachDisk(ctx context.Context, isManagedDisk bool, diskName, diskURI string, nodeName types.NodeName,
+func (c *controllerCommon) AttachDisk(ctx context.Context, ignored bool, diskName, diskURI string, nodeName types.NodeName,
 	cachingMode compute.CachingTypes, disk *compute.Disk) (int32, error) {
 	diskEncryptionSetID := ""
 	writeAcceleratorEnabled := false
@@ -209,7 +209,7 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, isManagedDisk bool, d
 
 	options := &AttachDiskOptions{
 		lun:                     -1,
-		isManagedDisk:           isManagedDisk,
+		isManagedDisk:           true,
 		diskName:                diskName,
 		cachingMode:             cachingMode,
 		diskEncryptionSetID:     diskEncryptionSetID,

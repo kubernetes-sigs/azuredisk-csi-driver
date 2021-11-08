@@ -79,8 +79,8 @@ spec:
                 - /csi-node-driver-registrar.exe
                 - --kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)
                 - --mode=kubelet-registration-probe
-            initialDelaySeconds: 30
-            timeoutSeconds: 15
+            initialDelaySeconds: 60
+            timeoutSeconds: 30
           env:
             - name: CSI_ENDPOINT
               value: unix://C:\\csi\\csi.sock
@@ -213,7 +213,7 @@ spec:
             type: Directory
         - name: plugin-dir
           hostPath:
-            path: {{ .Values.windows.kubelet }}\plugins\disk.csi.azure.com\
+            path: {{ .Values.windows.kubelet }}\plugins\{{ .Values.driver.name }}\
             type: DirectoryOrCreate
         - name: azure-config
           hostPath:
