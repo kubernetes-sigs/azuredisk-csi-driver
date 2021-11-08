@@ -48,7 +48,7 @@ spec:
 {{- end }}
           args:
             - "--v=2"
-            - "--leader-election=false"
+            - "--leader-election=true"
           resources:
             limits:
               cpu: 100m
