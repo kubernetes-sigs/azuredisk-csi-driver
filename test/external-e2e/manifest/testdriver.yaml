@@ -15,3 +15,6 @@ DriverInfo:
         nodeExpansion: true
         volumeLimits: true
         snapshotDataSource: true
+    StressTestOptions:
+        NumPods: 10
+        NumSnapshots: 10
