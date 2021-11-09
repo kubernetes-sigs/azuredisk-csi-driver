@@ -72,7 +72,7 @@ func (t *PodFailoverWithReplicas) Run(client clientset.Interface, namespace *v1.
 	var failedReplicaAttachments *v1alpha1.AzVolumeAttachmentList
 	err := wait.Poll(15*time.Second, 10*time.Minute, func() (bool, error) {
 		var err error
-		allReplicasAttached, err, failedReplicaAttachments = VerifySuccessfulReplicaAzVolumeAttachments(t.Pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
+		allReplicasAttached, failedReplicaAttachments, err = VerifySuccessfulReplicaAzVolumeAttachments(t.Pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
 		return allReplicasAttached, err
 	})
 

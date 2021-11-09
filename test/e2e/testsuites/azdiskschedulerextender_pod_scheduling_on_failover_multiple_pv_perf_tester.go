@@ -93,7 +93,7 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV) Run(client cl
 		var podFailedReplicaAttachments *v1alpha1.AzVolumeAttachmentList
 		for _, ss := range tStatefulSets {
 			for _, pod := range ss.allPods {
-				attached, err, podFailedReplicaAttachments = VerifySuccessfulReplicaAzVolumeAttachments(pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
+				attached, podFailedReplicaAttachments, err = VerifySuccessfulReplicaAzVolumeAttachments(pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
 				allReplicasAttached = allReplicasAttached && attached
 				if podFailedReplicaAttachments != nil {
 					failedReplicaAttachments = append(failedReplicaAttachments, podFailedReplicaAttachments)

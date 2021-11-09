@@ -323,7 +323,7 @@ func CreateVolumeSnapshotClass(client restclientset.Interface, namespace *v1.Nam
 
 	return tvsc, tvsc.Cleanup
 }
-func VerifySuccessfulReplicaAzVolumeAttachments(pod PodDetails, azDiskClient *azDiskClientSet.Clientset, storageClassParameters map[string]string, client clientset.Interface, namespace *v1.Namespace) (bool, error, *v1alpha1.AzVolumeAttachmentList) {
+func VerifySuccessfulReplicaAzVolumeAttachments(pod PodDetails, azDiskClient *azDiskClientSet.Clientset, storageClassParameters map[string]string, client clientset.Interface, namespace *v1.Namespace) (bool, *v1alpha1.AzVolumeAttachmentList, error) {
 	if storageClassParameters["maxShares"] == "" {
 		return true, nil, nil
 	}
