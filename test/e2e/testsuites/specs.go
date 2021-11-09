@@ -362,7 +362,7 @@ func VerifySuccessfulReplicaAzVolumeAttachments(pod PodDetails, azDiskClient *az
 				}
 			}
 			if len(failedReplicaAttachments.Items) > 0 {
-				return false, nil, &failedReplicaAttachments
+				return false, &failedReplicaAttachments, nil
 			}
 		}
 	}
