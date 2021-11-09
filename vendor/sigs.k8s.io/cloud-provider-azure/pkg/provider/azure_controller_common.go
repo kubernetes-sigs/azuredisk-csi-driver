@@ -38,6 +38,7 @@ import (
 	"sigs.k8s.io/cloud-provider-azure/pkg/batch"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
+	"sigs.k8s.io/cloud-provider-azure/pkg/metrics"
 )
 
 const (
@@ -221,8 +222,13 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, ignored bool, diskNam
 		options: options,
 	}
 
-	node := strings.ToLower(string(nodeName))
-	r, err := c.attachDiskProcessor.Do(ctx, node, diskToAttach)
+	resourceGroup, err := c.cloud.GetNodeResourceGroup(string(nodeName))
+	if err != nil {
+		resourceGroup = c.resourceGroup
+	}
+
+	batchKey := metrics.KeyFromAttributes(c.subscriptionID, strings.ToLower(resourceGroup), strings.ToLower(string(nodeName)))
+	r, err := c.attachDiskProcessor.Do(ctx, batchKey, diskToAttach)
 	if err == nil {
 		select {
 		case <-ctx.Done():
@@ -248,12 +254,12 @@ type attachDiskResult struct {
 	err error
 }
 
-func (c *controllerCommon) attachDiskBatchToNode(ctx context.Context, nodeName types.NodeName, disksToAttach []attachDiskParams) ([]chan (attachDiskResult), error) {
+func (c *controllerCommon) attachDiskBatchToNode(ctx context.Context, subscriptionID, resourceGroup string, nodeName types.NodeName, disksToAttach []attachDiskParams) ([]chan (attachDiskResult), error) {
 	diskMap := make(map[string]*AttachDiskOptions, len(disksToAttach))
 	lunChans := make([]chan (attachDiskResult), len(disksToAttach))
 
 	for i, disk := range disksToAttach {
-		lunChans[i] = make(chan (attachDiskResult))
+		lunChans[i] = make(chan (attachDiskResult), 1)
 
 		diskMap[disk.diskURI] = disk.options
 
@@ -272,9 +278,8 @@ func (c *controllerCommon) attachDiskBatchToNode(ctx context.Context, nodeName t
 		return nil, err
 	}
 
-	node := strings.ToLower(string(nodeName))
-	c.lockMap.LockEntry(node)
-	defer c.lockMap.UnlockEntry(node)
+	c.lockMap.LockEntry(string(nodeName))
+	defer c.lockMap.UnlockEntry(string(nodeName))
 
 	klog.V(2).Infof("azuredisk - trying to attach disks to node %q: %s", nodeName, diskMap)
 
@@ -287,18 +292,13 @@ func (c *controllerCommon) attachDiskBatchToNode(ctx context.Context, nodeName t
 		// The context, ctx, passed to attachDiskBatchToNode is owned by batch.Processor which will
 		// cancel it when we return. Since we're asynchronously waiting for the attach disk result,
 		// we must create an independent context passed to WaitForUpdateResult with the deadline
-		// provided in ctx. This avoid an ealier return due to ctx being canceled while still
+		// provided in ctx. This avoid an earlier return due to ctx being canceled while still
 		// respecting the deadline for the overall attach operation.
 		resultCtx := context.Background()
 		if deadline, ok := ctx.Deadline(); ok {
 			var cancel func()
 			resultCtx, cancel = context.WithDeadline(resultCtx, deadline)
 			defer cancel()
-		}
-
-		resourceGroup, err := c.cloud.GetNodeResourceGroup(string(nodeName))
-		if err != nil {
-			resourceGroup = "unknown"
 		}
 
 		err = vmset.WaitForUpdateResult(resultCtx, future, resourceGroup, "attach_disk")
@@ -327,14 +327,18 @@ func (c *controllerCommon) DetachDisk(ctx context.Context, diskName, diskURI str
 		return fmt.Errorf("failed to get azure instance id for node %q: %w", nodeName, err)
 	}
 
-	node := strings.ToLower(string(nodeName))
+	resourceGroup, err := c.cloud.GetNodeResourceGroup(string(nodeName))
+	if err != nil {
+		resourceGroup = c.resourceGroup
+	}
 
 	diskToDetach := detachDiskParams{
 		diskName: diskName,
 		diskURI:  diskURI,
 	}
 
-	if _, err := c.detachDiskProcessor.Do(ctx, node, diskToDetach); err != nil {
+	batchKey := metrics.KeyFromAttributes(c.subscriptionID, strings.ToLower(resourceGroup), strings.ToLower(string(nodeName)))
+	if _, err := c.detachDiskProcessor.Do(ctx, batchKey, diskToDetach); err != nil {
 		klog.Errorf("azureDisk - detach disk(%s, %s) failed, err: %v", diskName, diskURI, err)
 		return err
 	}
@@ -348,7 +352,7 @@ type detachDiskParams struct {
 	diskURI  string
 }
 
-func (c *controllerCommon) detachDiskBatchFromNode(ctx context.Context, nodeName types.NodeName, disksToDetach []detachDiskParams) error {
+func (c *controllerCommon) detachDiskBatchFromNode(ctx context.Context, subscriptionID, resourceGroup string, nodeName types.NodeName, disksToDetach []detachDiskParams) error {
 	diskMap := make(map[string]string, len(disksToDetach))
 	for _, disk := range disksToDetach {
 		diskMap[disk.diskURI] = disk.diskName
@@ -363,9 +367,8 @@ func (c *controllerCommon) detachDiskBatchFromNode(ctx context.Context, nodeName
 		return err
 	}
 
-	node := strings.ToLower(string(nodeName))
-	c.lockMap.LockEntry(node)
-	defer c.lockMap.UnlockEntry(node)
+	c.lockMap.LockEntry(string(nodeName))
+	defer c.lockMap.UnlockEntry(string(nodeName))
 
 	klog.V(2).Infof("azuredisk - trying to detach disks from node %q: %s", nodeName, diskMap)
 

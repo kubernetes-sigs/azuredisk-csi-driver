@@ -66,6 +66,14 @@ func (b *batcher) add(ctx context.Context, value interface{}) (e *entry, first b
 	return
 }
 
+// isEmpty returns true if the batch is currently empty.
+func (b *batcher) isEmpty() bool {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+
+	return len(b.entries) == 0
+}
+
 // flush returns the current batch of values and empties the batch. It also returns the time of the
 // furthest context deadline in the batch. If no entries specify a deadline in their context,
 // deadline.IsZero() == true.
@@ -182,34 +190,44 @@ func (b *batcher) do(
 			delayBeforeStart := processor.delayBeforeStart
 			limiter := processor.getLimiterFn(key)
 
-			for !b.deleted {
-				// Delay start of batch processing based on the max of the initial delay and delay due to throttling.
-				reservation := limiter.Reserve()
-				timeToDelay := maxDuration(delayBeforeStart, reservation.Delay())
-
-				if timeToDelay > 0 {
-					time.Sleep(timeToDelay)
-
-					if delayBeforeStart > 0 {
-						processor.logger.Verbosef("Delayed processing of batch %q by %v due to start delay", key, timeToDelay)
-					} else {
-						processor.logger.Warningf("Delayed processing of batch %q by %v due to client-side throttling", key, timeToDelay)
-					}
-				}
-
-				// Get the next batch of entries to process.
-				entries, deadline := b.flush()
-				if len(entries) <= 0 {
-					break
-				}
-
-				values := make([]interface{}, len(entries))
-				for i, entry := range entries {
-					values[i] = entry.value
-				}
-
-				// Scope the (potential) context cancelation in a function closure.
+			for !b.deleted && !b.isEmpty() {
+				// Scope the loop deferals in a function closure.
 				func() {
+					var (
+						batchSize int
+						err       error
+					)
+
+					batchRecorder := processor.metricsRecorder.RecordBatchStart(key)
+					defer func() { batchRecorder.RecordBatchCompletion(batchSize, err) }()
+
+					// Delay start of batch processing based on the max of the initial delay and delay due to throttling.
+					reservation := limiter.Reserve()
+					timeToDelay := maxDuration(delayBeforeStart, reservation.Delay())
+
+					if timeToDelay > 0 {
+						time.Sleep(timeToDelay)
+
+						if timeToDelay == delayBeforeStart {
+							processor.logger.Verbosef("Delayed processing of batch %q by %v due to start delay", key, timeToDelay)
+						} else {
+							processor.logger.Warningf("Delayed processing of batch %q by %v due to client-side throttling", key, timeToDelay)
+							batchRecorder.RecordRateLimitDelay(timeToDelay)
+						}
+					}
+
+					// Get the next batch of entries to process.
+					entries, deadline := b.flush()
+					batchSize = len(entries)
+					if batchSize <= 0 {
+						return
+					}
+
+					values := make([]interface{}, len(entries))
+					for i, entry := range entries {
+						values[i] = entry.value
+					}
+
 					innerCtx := context.Background()
 					if !deadline.IsZero() {
 						var cancel func()
@@ -217,7 +235,8 @@ func (b *batcher) do(
 						defer cancel()
 					}
 
-					results, err := processor.fn(innerCtx, key, values)
+					var results []interface{}
+					results, err = processor.fn(innerCtx, key, values)
 
 					for i, entry := range entries {
 						var valResult interface{}
@@ -238,8 +257,8 @@ func (b *batcher) do(
 					}
 				}()
 
-				// We only want to delay before the initial start of batch processing assuming the more
-				// request will come in before the configured delay. On subsequent iterations of this loop,
+				// We only want to delay before the initial start of batch processing assuming that more
+				// requests will come in before the configured delay. On subsequent iterations of this loop,
 				// we rely on the latency of the operation to naturally batch new requests.
 				delayBeforeStart = 0
 			}
@@ -312,6 +331,10 @@ func (p *Processor) applyDefaults() {
 	if p.logger == nil {
 		p.logger = NewStandardLogger()
 	}
+
+	if p.metricsRecorder == nil {
+		p.metricsRecorder = &nullRecorder
+	}
 }
 
 // NewProcessor returns a new batch processor.
@@ -369,5 +392,12 @@ func WithBatchLimits(limit rate.Limit, burst int) ProcessorOption {
 func WithLogger(l Logger) ProcessorOption {
 	return func(p *Processor) {
 		p.logger = l
+	}
+}
+
+// WithMetricsRecorder sets the metrics recorder.
+func WithMetricsRecorder(metricsRecorder ProcessorMetricsRecorder) ProcessorOption {
+	return func(p *Processor) {
+		p.metricsRecorder = metricsRecorder
 	}
 }
