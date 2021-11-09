@@ -42,8 +42,8 @@ follow guide [here](./docs/install-driver-on-aks.md)
  - [Basic usage](./deploy/example/e2e_usage.md)
  
 ### Features
- - [Topology(Availability Zone)](./deploy/example/topology)
-   - [ZRS disk support(Preview)](./deploy/example/topology#zrs-disk-support)
+ - [Topology(availability zone)](./deploy/example/topology)
+   - [ZRS disk](./deploy/example/topology#zrs-disk-support)
  - [Snapshot](./deploy/example/snapshot)
  - [Volume Cloning](./deploy/example/cloning)
  - [Volume Expansion](./deploy/example/resize) 
