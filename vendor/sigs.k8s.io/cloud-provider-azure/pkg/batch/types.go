@@ -59,6 +59,9 @@ type BatchFunc func(ctx context.Context, key string, values []interface{}) ([]in
 // value for any given key.
 type GetLimiterFunc func(key string) *rate.Limiter
 
+// GetProcessorMetricsRecorderFunc returns a metrics recorder a Processor can use to record metrics.
+type GetProcessorMetricsRecorderFunc func() ProcessorMetricsRecorder
+
 // ProcessorOption modifies the Process configuration.
 type ProcessorOption func(p *Processor)
 
@@ -70,6 +73,7 @@ type Processor struct {
 	delayBeforeStart time.Duration
 	getLimiterFn     GetLimiterFunc
 	logger           Logger
+	metricsRecorder  ProcessorMetricsRecorder
 	batches          sync.Map
 	limiters         sync.Map
 }

@@ -73,6 +73,7 @@ import (
 	"sigs.k8s.io/cloud-provider-azure/pkg/batch"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
+	"sigs.k8s.io/cloud-provider-azure/pkg/metrics"
 	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
 
 	// ensure the newly added package from azure-sdk-for-go is in vendor/
@@ -932,13 +933,15 @@ func initDiskControllers(az *Cloud) error {
 		batch.WithLogger(loggerAdapter),
 	}
 
-	attachBatchFn := func(ctx context.Context, nodeName string, values []interface{}) ([]interface{}, error) {
+	attachBatchFn := func(ctx context.Context, key string, values []interface{}) ([]interface{}, error) {
+		subscriptionID, resourceGroup, nodeName := metrics.AttributesFromKey(key)
+
 		disksToAttach := make([]attachDiskParams, len(values))
 		for i, value := range values {
 			disksToAttach[i] = value.(attachDiskParams)
 		}
 
-		lunChans, err := common.attachDiskBatchToNode(ctx, types.NodeName(nodeName), disksToAttach)
+		lunChans, err := common.attachDiskBatchToNode(ctx, subscriptionID, resourceGroup, types.NodeName(nodeName), disksToAttach)
 		if err != nil {
 			return nil, err
 		}
@@ -951,13 +954,18 @@ func initDiskControllers(az *Cloud) error {
 		return results, nil
 	}
 
-	detachBatchFn := func(ctx context.Context, nodeName string, values []interface{}) ([]interface{}, error) {
+	attachDiskProcessOptions := append(processorOptions,
+		batch.WithMetricsRecorder(metrics.NewBatchProcessorMetricsRecorder("batch", "updateasync", "attach_disk")))
+
+	detachBatchFn := func(ctx context.Context, key string, values []interface{}) ([]interface{}, error) {
+		subscriptionID, resourceGroup, nodeName := metrics.AttributesFromKey(key)
+
 		disksToDetach := make([]detachDiskParams, len(values))
 		for i, value := range values {
 			disksToDetach[i] = value.(detachDiskParams)
 		}
 
-		err := common.detachDiskBatchFromNode(ctx, types.NodeName(nodeName), disksToDetach)
+		err := common.detachDiskBatchFromNode(ctx, subscriptionID, resourceGroup, types.NodeName(nodeName), disksToDetach)
 		if err != nil {
 			return nil, err
 		}
@@ -965,8 +973,11 @@ func initDiskControllers(az *Cloud) error {
 		return make([]interface{}, len(disksToDetach)), nil
 	}
 
-	common.attachDiskProcessor = batch.NewProcessor(attachBatchFn, processorOptions...)
-	common.detachDiskProcessor = batch.NewProcessor(detachBatchFn, processorOptions...)
+	detachDiskProcessorOptions := append(processorOptions,
+		batch.WithMetricsRecorder(metrics.NewBatchProcessorMetricsRecorder("batch", "update", "detach_disk")))
+
+	common.attachDiskProcessor = batch.NewProcessor(attachBatchFn, attachDiskProcessOptions...)
+	common.detachDiskProcessor = batch.NewProcessor(detachBatchFn, detachDiskProcessorOptions...)
 
 	if az.HasExtendedLocation() {
 		common.extendedLocation = &ExtendedLocation{

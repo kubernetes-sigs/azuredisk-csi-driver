@@ -497,7 +497,7 @@ func (c *CloudProvisioner) ExpandVolume(
 	oldSize := *resource.NewQuantity(int64(*result.DiskProperties.DiskSizeGB), resource.BinarySI)
 
 	klog.V(2).Infof("begin to expand azure disk(%s) with new size(%d)", volumeID, requestSize.Value())
-	newSize, err := c.cloud.ResizeDisk(volumeID, oldSize, requestSize)
+	newSize, err := c.cloud.ResizeDisk(volumeID, oldSize, requestSize, true)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to resize disk(%s) with error(%v)", volumeID, err)
 	}
