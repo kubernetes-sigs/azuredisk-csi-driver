@@ -22,7 +22,10 @@ import (
 
 	"github.com/onsi/ginkgo"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
+	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
+	v1alpha1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 )
@@ -79,10 +82,31 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV) Run(client cl
 		wg.Wait()
 	}
 	//Check that AzVolumeAttachment resources were created correctly
-	time.Sleep(2 * time.Minute)
-	for _, ss := range tStatefulSets {
-		for _, pod := range ss.allPods {
-			VerifySuccessfulReplicaAzVolumeAttachments(pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
+
+	allReplicasAttached := true
+	var failedReplicaAttachments []*v1alpha1.AzVolumeAttachmentList
+	err := wait.Poll(15*time.Second, 10*time.Minute, func() (bool, error) {
+		failedReplicaAttachments = nil
+		var err error
+		var attached bool
+		var podFailedReplicaAttachments *v1alpha1.AzVolumeAttachmentList
+		for _, ss := range tStatefulSets {
+			for _, pod := range ss.allPods {
+				attached, err, podFailedReplicaAttachments = VerifySuccessfulReplicaAzVolumeAttachments(pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
+				allReplicasAttached = allReplicasAttached && attached
+				failedReplicaAttachments = append(failedReplicaAttachments, podFailedReplicaAttachments)
+			}
 		}
+		return allReplicasAttached, err
+
+	})
+	if err != nil || !allReplicasAttached || len(failedReplicaAttachments) > 0 {
+		e2elog.Logf("some azvolumeattachments failed:")
+		for _, podAttachments := range failedReplicaAttachments {
+			for _, attachments := range podAttachments.Items {
+				e2elog.Logf("azvolumeattachment: %s, err: %s", attachments.Name, attachments.Status.Error.ErrorMessage)
+			}
+		}
+		ginkgo.Fail("failed to verify that replicas were attached correctly")
 	}
 }
