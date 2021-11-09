@@ -17,6 +17,7 @@ limitations under the License.
 package testsuites
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -81,8 +82,8 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV) Run(client cl
 		}
 		wg.Wait()
 	}
-	//Check that AzVolumeAttachment resources were created correctly
 
+	//Check that AzVolumeAttachment resources were created correctly
 	allReplicasAttached := true
 	var failedReplicaAttachments []*v1alpha1.AzVolumeAttachmentList
 	err := wait.Poll(15*time.Second, 10*time.Minute, func() (bool, error) {
@@ -94,19 +95,27 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV) Run(client cl
 			for _, pod := range ss.allPods {
 				attached, err, podFailedReplicaAttachments = VerifySuccessfulReplicaAzVolumeAttachments(pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
 				allReplicasAttached = allReplicasAttached && attached
-				failedReplicaAttachments = append(failedReplicaAttachments, podFailedReplicaAttachments)
+				if podFailedReplicaAttachments != nil {
+					failedReplicaAttachments = append(failedReplicaAttachments, podFailedReplicaAttachments)
+				}
 			}
 		}
 		return allReplicasAttached, err
-
 	})
-	if err != nil || !allReplicasAttached || len(failedReplicaAttachments) > 0 {
-		e2elog.Logf("some azvolumeattachments failed:")
+	if len(failedReplicaAttachments) > 0 {
+		e2elog.Logf("found %d azvolumeattachments failed:", len(failedReplicaAttachments))
 		for _, podAttachments := range failedReplicaAttachments {
 			for _, attachments := range podAttachments.Items {
 				e2elog.Logf("azvolumeattachment: %s, err: %s", attachments.Name, attachments.Status.Error.ErrorMessage)
 			}
 		}
-		ginkgo.Fail("failed to verify that replicas were attached correctly")
+		ginkgo.Fail("failed due to replicas failing to attach")
+	} else if !allReplicasAttached {
+		ginkgo.Fail("could not find correct number of replicas")
+	} else if err != nil {
+		ginkgo.Fail(fmt.Sprintf("failed to verify replica attachments, err: %s", err))
+
 	}
+	ginkgo.By("replica attachments verified successfully")
+
 }

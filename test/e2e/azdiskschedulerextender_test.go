@@ -174,8 +174,10 @@ func schedulerExtenderTests(isMultiZone bool) {
 
 	ginkgo.It("Should schedule and start a pod with multiple persistent volume requests and reschedule on failover.", func() {
 		skipIfUsingInTreeVolumePlugin()
+		skuName := "StandardSSD_LRS"
 		if isMultiZone {
-			ginkgo.Skip("test case does not apply to multi az case")
+			skipIfNotZRSSupported()
+			skuName = "StandardSSD_ZRS"
 		}
 
 		volumes := []testsuites.VolumeDetails{}
@@ -205,7 +207,7 @@ func schedulerExtenderTests(isMultiZone bool) {
 			CSIDriver:              testDriver,
 			Pod:                    pod,
 			Replicas:               1,
-			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
+			StorageClassParameters: map[string]string{"skuName": skuName},
 			AzDiskClient:           azDiskClient,
 		}
 		test.Run(cs, ns, schedulerName)
@@ -213,8 +215,10 @@ func schedulerExtenderTests(isMultiZone bool) {
 
 	ginkgo.It("Should schedule and start a pod with multiple persistent volume requests with replicas and reschedule on deletion.", func() {
 		skipIfUsingInTreeVolumePlugin()
+		skuName := "Premium_LRS"
 		if isMultiZone {
-			ginkgo.Skip("test case does not apply to multi az case")
+			skipIfNotZRSSupported()
+			skuName = "Premium_ZRS"
 		}
 
 		volumes := []testsuites.VolumeDetails{}
@@ -244,7 +248,7 @@ func schedulerExtenderTests(isMultiZone bool) {
 			CSIDriver:              testDriver,
 			Pod:                    pod,
 			Replicas:               1,
-			StorageClassParameters: map[string]string{"skuName": "Premium_LRS", "maxShares": "2", "cachingmode": "None"},
+			StorageClassParameters: map[string]string{"skuName": skuName, "maxShares": "2", "cachingmode": "None"},
 			AzDiskClient:           azDiskClient,
 		}
 		test.Run(cs, ns, schedulerName)

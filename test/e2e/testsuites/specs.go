@@ -350,7 +350,7 @@ func VerifySuccessfulReplicaAzVolumeAttachments(pod PodDetails, azDiskClient *az
 				return false, nil, nil
 			}
 
-			var failedReplicaAttachments *v1alpha1.AzVolumeAttachmentList
+			failedReplicaAttachments := v1alpha1.AzVolumeAttachmentList{}
 
 			for _, replica := range replicaAttachments.Items {
 				if replica.Status.State != "Attached" {
@@ -362,7 +362,7 @@ func VerifySuccessfulReplicaAzVolumeAttachments(pod PodDetails, azDiskClient *az
 				}
 			}
 			if len(failedReplicaAttachments.Items) > 0 {
-				return false, nil, failedReplicaAttachments
+				return false, nil, &failedReplicaAttachments
 			}
 		}
 	}

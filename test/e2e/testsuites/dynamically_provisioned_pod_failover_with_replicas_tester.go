@@ -17,11 +17,15 @@ limitations under the License.
 package testsuites
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/onsi/ginkgo"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
+	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
+	v1alpha1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 )
@@ -64,8 +68,27 @@ func (t *PodFailoverWithReplicas) Run(client clientset.Interface, namespace *v1.
 	}
 
 	//Check that AzVolumeAttachment resources were created correctly
-	time.Sleep(1 * time.Minute)
-	VerifySuccessfulReplicaAzVolumeAttachments(t.Pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
+	allReplicasAttached := true
+	var failedReplicaAttachments *v1alpha1.AzVolumeAttachmentList
+	err := wait.Poll(15*time.Second, 10*time.Minute, func() (bool, error) {
+		var err error
+		allReplicasAttached, err, failedReplicaAttachments = VerifySuccessfulReplicaAzVolumeAttachments(t.Pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
+		return allReplicasAttached, err
+	})
+
+	if failedReplicaAttachments != nil {
+		e2elog.Logf("found %d azvolumeattachments failed:", len(failedReplicaAttachments.Items))
+		for _, attachments := range failedReplicaAttachments.Items {
+			e2elog.Logf("azvolumeattachment: %s, err: %s", attachments.Name, attachments.Status.Error.ErrorMessage)
+		}
+		ginkgo.Fail("failed due to replicas failing to attach")
+	} else if !allReplicasAttached {
+		ginkgo.Fail("could not find correct number of replicas")
+	} else if err != nil {
+		ginkgo.Fail(fmt.Sprintf("failed to verify replica attachments, err: %s", err))
+
+	}
+	ginkgo.By("replica attachments verified successfully")
 
 	ginkgo.By("cordoning node 0")
 

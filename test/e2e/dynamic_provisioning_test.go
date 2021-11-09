@@ -956,8 +956,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	})
 	ginkgo.It("Should test pod failover and check for correct number of replicas", func() {
 		skipIfUsingInTreeVolumePlugin()
+		skuName := "StandardSSD_LRS"
 		if isMultiZone {
-			ginkgo.Skip("test case does not apply to multi az case")
+			skipIfNotZRSSupported()
+			skuName = "StandardSSD_ZRS"
 		}
 		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
 		if err != nil {
@@ -992,7 +994,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			expectedString = "hello world\r\n"
 		}
 
-		storageClassParameters := map[string]string{"skuName": "StandardSSD_LRS", "maxShares": "2"}
+		storageClassParameters := map[string]string{"skuName": skuName, "maxShares": "2"}
 
 		test := testsuites.PodFailoverWithReplicas{
 			CSIDriver: testDriver,
