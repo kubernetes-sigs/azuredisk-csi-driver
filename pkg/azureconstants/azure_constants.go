@@ -76,6 +76,7 @@ const (
 	TagsField                     = "tags"
 	ThrottlingKey                 = "throttlingKey"
 	TrueValue                     = "true"
+	FalseValue                    = "false"
 	UserAgentField                = "useragent"
 	VolumeAttributePartition      = "partition"
 	WellKnownTopologyKey          = "topology.kubernetes.io/zone"
@@ -115,6 +116,11 @@ const (
 	ZonedField              = "zoned"
 	NormalUpdateMaxNetRetry = 0
 	ForcedUpdateMaxNetRetry = 5
+	EnableAsyncAttachField  = "enableasyncattach"
+	TooManyRequests         = "TooManyRequests"
+	ClientThrottled         = "client throttled"
+	// define different sleep time when hit throttling
+	SnapshotOpThrottlingSleepSec = 50
 )
 
 var (

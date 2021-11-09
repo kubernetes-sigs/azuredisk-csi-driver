@@ -126,6 +126,7 @@ func newDriverV2(options *DriverOptions,
 	driver.customUserAgent = options.CustomUserAgent
 	driver.userAgentSuffix = options.UserAgentSuffix
 	driver.useCSIProxyGAInterface = options.UseCSIProxyGAInterface
+	driver.enableDiskOnlineResize = options.EnableDiskOnlineResize
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
 	driver.deviceChecker = deviceChecker{lock: sync.RWMutex{}, entry: nil}
@@ -165,7 +166,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 		userAgent := GetUserAgent(d.Name, d.customUserAgent, d.userAgentSuffix)
 		klog.V(2).Infof("driver userAgent: %s", userAgent)
 
-		d.cloudProvisioner, err = provisioner.NewCloudProvisioner(d.kubeClient, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, topologyKey, userAgent)
+		d.cloudProvisioner, err = provisioner.NewCloudProvisioner(d.kubeClient, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, topologyKey, userAgent, d.enableDiskOnlineResize)
 		if err != nil {
 			klog.Fatalf("Failed to get controller provisioner. Error: %v", err)
 		}
