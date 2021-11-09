@@ -645,6 +645,8 @@ func (r *ReconcileAttachDetach) recoverAzVolumeAttachment(ctx context.Context, r
 			case v1alpha1.Detaching:
 				// reset state to Attached so Detach operation can be redone
 				targetState = v1alpha1.Attached
+			default:
+				targetState = azv.Status.State
 			}
 
 			if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, &azv, updateFunc, consts.ForcedUpdateMaxNetRetry); err != nil {

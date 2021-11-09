@@ -537,6 +537,8 @@ func (r *ReconcileAzVolume) recoverAzVolume(ctx context.Context, recoveredAzVolu
 			case v1alpha1.VolumeDeleting:
 				// reset state to Created so Delete operation can be redone
 				targetState = v1alpha1.VolumeCreated
+			default:
+				targetState = azv.Status.State
 			}
 
 			if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, &azv, updateFunc, consts.ForcedUpdateMaxNetRetry); err != nil {
