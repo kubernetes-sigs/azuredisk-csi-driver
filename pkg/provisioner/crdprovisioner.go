@@ -373,6 +373,7 @@ func (c *CrdProvisioner) PublishVolume(
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "Error finding volume : %v", err)
 	}
+	volumeName = strings.ToLower(volumeName)
 
 	attachmentName := azureutils.GetAzVolumeAttachmentName(volumeName, nodeID)
 

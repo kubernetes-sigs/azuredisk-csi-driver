@@ -81,7 +81,8 @@ spec:
                 - /csi-node-driver-registrar
                 - --kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)
                 - --mode=kubelet-registration-probe
-            initialDelaySeconds: 3
+            initialDelaySeconds: 30
+            timeoutSeconds: 15
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -94,7 +95,7 @@ spec:
               mountPath: /registration
           resources:
             limits:
-              cpu: 100m
+              cpu: 200m
               memory: 100Mi
             requests:
               cpu: 10m

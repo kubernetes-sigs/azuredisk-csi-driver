@@ -31,7 +31,6 @@ import (
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	apierrs "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
@@ -53,6 +52,7 @@ import (
 	v1alpha1ClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1alpha1"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
@@ -66,6 +66,42 @@ const (
 	poll            = 2 * time.Second
 	pollLongTimeout = 5 * time.Minute
 	pollTimeout     = 10 * time.Minute
+
+	testTolerationKey   = "test-toleration-key"
+	testTolerationValue = "test-toleration-value"
+	testLabelKey        = "test-label-key"
+	testLabelValue      = "test-label-value"
+
+	masterNodeLabel = "node-role.kubernetes.io/master"
+)
+
+var (
+	testTaint = v1.Taint{
+		Key:    testTolerationKey,
+		Value:  testTolerationValue,
+		Effect: v1.TaintEffectNoSchedule,
+	}
+
+	testLabel = map[string]string{
+		testLabelKey: testLabelValue,
+	}
+
+	testAffinity = v1.Affinity{
+		NodeAffinity: &v1.NodeAffinity{
+			RequiredDuringSchedulingIgnoredDuringExecution: &v1.NodeSelector{
+				NodeSelectorTerms: []v1.NodeSelectorTerm{
+					{
+						MatchExpressions: []v1.NodeSelectorRequirement{
+							{
+								Key:      testLabelKey,
+								Operator: v1.NodeSelectorOpExists,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
 )
 
 type TestStorageClass struct {
@@ -358,7 +394,7 @@ func (t *TestPersistentVolumeClaim) Cleanup() {
 		framework.ExpectNoError(err)
 	}
 	// Wait for the PVC to be deleted
-	err = waitForPersistentVolumeClaimDeleted(t.client, t.persistentVolumeClaim.Name, t.namespace.Name, 5*time.Second, 5*time.Minute)
+	err = waitForPersistentVolumeClaimDeleted(t.client, t.namespace.Name, t.persistentVolumeClaim.Name, 5*time.Second, 5*time.Minute)
 	framework.ExpectNoError(err)
 }
 
@@ -508,7 +544,7 @@ func (t *TestDeployment) DeletePodAndWait() {
 	for _, podName := range t.podNames {
 		err := <-ch
 		if err != nil {
-			if !apierrs.IsNotFound(err) {
+			if !errors.IsNotFound(err) {
 				framework.ExpectNoError(fmt.Errorf("pod %q Delete API error: %v", podName, err))
 			}
 		}
@@ -525,7 +561,7 @@ func (t *TestDeployment) DeletePodAndWait() {
 	for _, podName := range t.podNames {
 		err := <-ch
 		if err != nil {
-			if !apierrs.IsNotFound(err) {
+			if !errors.IsNotFound(err) {
 				framework.ExpectNoError(fmt.Errorf("pod %q error waiting for delete: %v", podName, err))
 			}
 		}
@@ -683,7 +719,7 @@ func (t *TestStatefulset) DeletePodAndWait() {
 	for range t.podNames {
 		err := <-ch
 		if err != nil {
-			if !apierrs.IsNotFound(err) {
+			if !errors.IsNotFound(err) {
 				framework.ExpectNoError(err)
 			}
 		}
@@ -911,8 +947,24 @@ func (t *TestPod) SetupVolumeMountWithSubpath(pvc *v1.PersistentVolumeClaim, nam
 	t.pod.Spec.Volumes = append(t.pod.Spec.Volumes, volume)
 }
 
+func (t *TestPod) AllowScheduleOnMasterNode() {
+	t.SetNodeToleration(v1.Toleration{
+		Key:      consts.MasterNodeRoleTaintKey,
+		Operator: v1.TolerationOpExists,
+		Effect:   v1.TaintEffectNoSchedule,
+	})
+}
+
 func (t *TestPod) SetNodeSelector(nodeSelector map[string]string) {
 	t.pod.Spec.NodeSelector = nodeSelector
+}
+
+func (t *TestPod) SetAffinity(affinity *v1.Affinity) {
+	t.pod.Spec.Affinity = affinity
+}
+
+func (t *TestPod) SetNodeToleration(nodeTolerations ...v1.Toleration) {
+	t.pod.Spec.Tolerations = nodeTolerations
 }
 
 func (t *TestPod) SetNodeUnschedulable(nodeName string, unschedulable bool) {
@@ -967,6 +1019,130 @@ func ListNodeNames(c clientset.Interface) []string {
 	return nodeNames
 }
 
+func MakeNodeSchedulable(c clientset.Interface, node *v1.Node, isMultiZone bool) (newNode *v1.Node, cleanup func()) {
+	topologyValue := ""
+	if isMultiZone {
+		region := node.Labels[consts.TopologyRegionKey]
+		zone := node.Labels[consts.WellKnownTopologyKey]
+		topologyValue = fmt.Sprintf("%s-%s", region, zone)
+	}
+	var roleLabelCleanup func()
+	node, roleLabelCleanup, err := SetNodeLabels(c, node, map[string]string{driver.TopologyKey: topologyValue})
+	framework.ExpectNoError(err)
+
+	csiNodeCleanup, err := SetCSINodeDriver(c, node.Name)
+	framework.ExpectNoError(err)
+
+	cleanup = func() {
+		// annotationCleanup()
+		roleLabelCleanup()
+		csiNodeCleanup()
+	}
+	return
+}
+
+func SetNodeLabels(c clientset.Interface, node *v1.Node, newLabels map[string]string) (newNode *v1.Node, cleanup func(), err error) {
+	originalLabels := node.Labels
+	nodeName := node.Name
+	cleanup = func() {
+		node, err := c.CoreV1().Nodes().Get(context.Background(), nodeName, metav1.GetOptions{})
+		framework.ExpectNoError(err)
+		node.Labels = originalLabels
+		_, _ = c.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{})
+	}
+	if node.Labels == nil {
+		node.Labels = newLabels
+	} else {
+		for key, value := range newLabels {
+			node.Labels[key] = value
+		}
+	}
+
+	newNode, err = c.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{})
+	return
+}
+
+func SetNodeTaints(c clientset.Interface, node *v1.Node, taints ...v1.Taint) (newNode *v1.Node, cleanup func(), err error) {
+	originalTaints := node.Spec.Taints
+	nodeName := node.Name
+	cleanup = func() {
+		node, err := c.CoreV1().Nodes().Get(context.Background(), nodeName, metav1.GetOptions{})
+		framework.ExpectNoError(err)
+		node.Spec.Taints = originalTaints
+		_, _ = c.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{})
+	}
+
+	if node.Spec.Taints == nil {
+		node.Spec.Taints = taints
+	} else {
+		// acknowledge that this can lead to duplicate taints
+		node.Spec.Taints = append(node.Spec.Taints, taints...)
+	}
+
+	newNode, err = c.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{})
+	if err != nil {
+		klog.Errorf("failed to add taints (%+v) to node (%s): %v", taints, node.Name, err)
+	} else {
+		klog.Infof("successfully added taints (%+v) to node (%s)", taints, node.Name)
+	}
+	return
+}
+
+func AnnotateNode(c clientset.Interface, node *v1.Node, newAnnotations map[string]string) (newNode *v1.Node, cleanup func(), err error) {
+	originalAnnotations := node.Annotations
+	nodeName := node.Name
+	cleanup = func() {
+		node, err := c.CoreV1().Nodes().Get(context.Background(), nodeName, metav1.GetOptions{})
+		framework.ExpectNoError(err)
+		node.Annotations = originalAnnotations
+		_, _ = c.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{})
+	}
+
+	if node.Annotations == nil {
+		node.Annotations = newAnnotations
+	} else {
+		for key, value := range newAnnotations {
+			node.Annotations[key] = value
+		}
+	}
+
+	newNode, err = c.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{})
+	if err != nil {
+		klog.Errorf("failed to add annotations (%+v) to node (%s): %v", newAnnotations, node.Name, err)
+	} else {
+		klog.Infof("successfully added annotations (%+v) to node (%s)", newAnnotations, node.Name)
+	}
+	return
+}
+
+func SetCSINodeDriver(c clientset.Interface, nodeName string) (cleanup func(), err error) {
+	csiNode, err := c.StorageV1().CSINodes().Get(context.Background(), nodeName, metav1.GetOptions{})
+	framework.ExpectNoError(err)
+	originalSpec := csiNode.Spec
+	cleanup = func() {
+		csiNode, err := c.StorageV1().CSINodes().Get(context.Background(), nodeName, metav1.GetOptions{})
+		framework.ExpectNoError(err)
+		csiNode.Spec = originalSpec
+		_, _ = c.StorageV1().CSINodes().Update(context.Background(), csiNode, metav1.UpdateOptions{})
+	}
+
+	if csiNode.Spec.Drivers == nil || len(csiNode.Spec.Drivers) == 0 {
+		csiNode.Spec.Drivers = []storagev1.CSINodeDriver{
+			{
+				Name:         "secrets-store.csi.k8s.io",
+				NodeID:       nodeName,
+				TopologyKeys: nil,
+			},
+		}
+	}
+
+	_, err = c.StorageV1().CSINodes().Update(context.Background(), csiNode, metav1.UpdateOptions{})
+	if err != nil {
+		klog.Errorf("failed to add driver spec to csi node (%s): %v", nodeName, err)
+	}
+	return
+}
+
 func ListAzDriverNodeNames(azDriverNode v1alpha1ClientSet.AzDriverNodeInterface) []string {
 	var nodeNames []string
 	nodes, err := azDriverNode.List(context.TODO(), metav1.ListOptions{})
@@ -982,7 +1158,7 @@ func DeleteAllPodsWithMatchingLabel(cs clientset.Interface, ns *v1.Namespace, ma
 	e2elog.Logf("Deleting all pods with %v labels in namespace %s", matchLabels, ns.Name)
 	labelSelector := metav1.LabelSelector{MatchLabels: matchLabels}
 	err := cs.CoreV1().Pods(ns.Name).DeleteCollection(context.TODO(), metav1.DeleteOptions{}, metav1.ListOptions{LabelSelector: labels.Set(labelSelector.MatchLabels).String()})
-	if !apierrs.IsNotFound(err) {
+	if !errors.IsNotFound(err) {
 		framework.ExpectNoError(err)
 	}
 
@@ -1008,7 +1184,7 @@ func podLogs(client clientset.Interface, name, namespace string) ([]byte, error)
 func getPodsForDeployment(client clientset.Interface, deployment *apps.Deployment) (*v1.PodList, error) {
 	replicaSet, err := deploymentutil.GetNewReplicaSet(deployment, client.AppsV1())
 	if err != nil {
-		return nil, fmt.Errorf("Failed to get new replica set for deployment %q: %v", deployment.Name, err)
+		return nil, fmt.Errorf("failed to get new replica set for deployment %q: %v", deployment.Name, err)
 	}
 	if replicaSet == nil {
 		return nil, fmt.Errorf("expected a new replica set for deployment %q, found none", deployment.Name)
@@ -1019,7 +1195,7 @@ func getPodsForDeployment(client clientset.Interface, deployment *apps.Deploymen
 	rsList := []*apps.ReplicaSet{replicaSet}
 	podList, err := deploymentutil.ListPods(deployment, rsList, podListFunc)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to list Pods of Deployment %q: %v", deployment.Name, err)
+		return nil, fmt.Errorf("failed to list Pods of Deployment %q: %v", deployment.Name, err)
 	}
 	return podList, nil
 }
@@ -1030,7 +1206,7 @@ func waitForPersistentVolumeClaimDeleted(c clientset.Interface, ns string, pvcNa
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(Poll) {
 		_, err := c.CoreV1().PersistentVolumeClaims(ns).Get(context.TODO(), pvcName, metav1.GetOptions{})
 		if err != nil {
-			if apierrs.IsNotFound(err) {
+			if errors.IsNotFound(err) {
 				framework.Logf("Claim %q in namespace %q doesn't exist in the system", pvcName, ns)
 				return nil
 			}
@@ -1182,23 +1358,23 @@ func (t *TestAzVolumeAttachment) Create() *v1alpha1.AzVolumeAttachment {
 func (t *TestAzVolumeAttachment) Cleanup() {
 	klog.Info("cleaning up")
 	err := t.azclient.AzVolumes(t.namespace).Delete(context.Background(), t.underlyingVolume, metav1.DeleteOptions{})
-	if !apierrs.IsNotFound(err) {
+	if !errors.IsNotFound(err) {
 		framework.ExpectNoError(err)
 	}
 
 	// Delete All AzVolumeAttachments for t.underlyingVolume
 	err = t.azclient.AzVolumeAttachments(t.namespace).Delete(context.Background(), GetAzVolumeAttachmentName(t.underlyingVolume, t.primaryNodeName), metav1.DeleteOptions{})
-	if !apierrs.IsNotFound(err) {
+	if !errors.IsNotFound(err) {
 		framework.ExpectNoError(err)
 	}
 
 	nodes, err := t.azclient.AzDriverNodes(t.namespace).List(context.Background(), metav1.ListOptions{})
-	if !apierrs.IsNotFound(err) {
+	if !errors.IsNotFound(err) {
 		framework.ExpectNoError(err)
 	}
 	for _, node := range nodes.Items {
 		err = t.azclient.AzVolumeAttachments(t.namespace).Delete(context.Background(), GetAzVolumeAttachmentName(t.underlyingVolume, node.Name), metav1.DeleteOptions{})
-		if !apierrs.IsNotFound(err) {
+		if !errors.IsNotFound(err) {
 			framework.ExpectNoError(err)
 		}
 	}
@@ -1362,7 +1538,7 @@ func (t *TestAzVolume) Create() *v1alpha1.AzVolume {
 func (t *TestAzVolume) Cleanup() {
 	klog.Info("cleaning up TestAzVolume")
 	err := t.azclient.AzVolumes(t.namespace).Delete(context.Background(), t.underlyingVolume, metav1.DeleteOptions{})
-	if !apierrs.IsNotFound(err) {
+	if !errors.IsNotFound(err) {
 		framework.ExpectNoError(err)
 	}
 	time.Sleep(time.Duration(1) * time.Minute)

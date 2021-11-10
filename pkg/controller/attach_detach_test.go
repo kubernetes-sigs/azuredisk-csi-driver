@@ -39,26 +39,26 @@ func NewTestAttachDetachController(controller *gomock.Controller, namespace stri
 	diskv1alpha1Objs, kubeObjs := splitObjects(objects...)
 
 	return &ReconcileAttachDetach{
-		client:                mockclient.NewMockClient(controller),
-		azVolumeClient:        diskfakes.NewSimpleClientset(diskv1alpha1Objs...),
-		kubeClient:            fakev1.NewSimpleClientset(kubeObjs...),
-		namespace:             namespace,
-		attachmentProvisioner: mockattachmentprovisioner.NewMockAttachmentProvisioner(controller),
-		stateLock:             &sync.Map{},
-		retryInfo:             newRetryInfo(),
+		client:            mockclient.NewMockClient(controller),
+		azVolumeClient:    diskfakes.NewSimpleClientset(diskv1alpha1Objs...),
+		kubeClient:        fakev1.NewSimpleClientset(kubeObjs...),
+		namespace:         namespace,
+		cloudDiskAttacher: mockattachmentprovisioner.NewMockAttachmentProvisioner(controller),
+		stateLock:         &sync.Map{},
+		retryInfo:         newRetryInfo(),
 	}
 }
 
 func mockClientsAndAttachmentProvisioner(controller *ReconcileAttachDetach) {
 	mockClients(controller.client.(*mockclient.MockClient), controller.azVolumeClient, controller.kubeClient)
 
-	controller.attachmentProvisioner.(*mockattachmentprovisioner.MockAttachmentProvisioner).EXPECT().
+	controller.cloudDiskAttacher.(*mockattachmentprovisioner.MockAttachmentProvisioner).EXPECT().
 		PublishVolume(gomock.Any(), testManagedDiskURI0, gomock.Any(), gomock.Any()).
 		DoAndReturn(func(ctx context.Context, volumeID, nodeID string, volumeContext map[string]string) (map[string]string, error) {
 			return volumeContext, nil
 		}).
 		MaxTimes(1)
-	controller.attachmentProvisioner.(*mockattachmentprovisioner.MockAttachmentProvisioner).EXPECT().
+	controller.cloudDiskAttacher.(*mockattachmentprovisioner.MockAttachmentProvisioner).EXPECT().
 		UnpublishVolume(gomock.Any(), testManagedDiskURI0, gomock.Any()).
 		DoAndReturn(func(ctx context.Context, volumeID, nodeID string) error {
 			return nil

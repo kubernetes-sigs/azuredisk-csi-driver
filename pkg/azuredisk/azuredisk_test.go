@@ -17,7 +17,6 @@ limitations under the License.
 package azuredisk
 
 import (
-	"fmt"
 	"io/ioutil"
 	"os"
 	"testing"
@@ -25,10 +24,6 @@ import (
 
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
-)
-
-var (
-	KubeConfigFileEnvVar = "KUBECONFIG"
 )
 
 func TestRun(t *testing.T) {
@@ -87,16 +82,14 @@ func TestRun(t *testing.T) {
 				}
 				os.Setenv(consts.DefaultAzureCredentialFileEnv, fakeCredFile)
 
-				existingConfigPath, err := createConfigFileAndSetEnv(validKubeConfigPath, validKubeConfigContent, KubeConfigFileEnvVar)
-				if len(existingConfigPath) > 0 {
-					defer cleanConfigAndRestoreEnv(validKubeConfigPath, KubeConfigFileEnvVar, existingConfigPath)
-				}
+				err := createConfigFile(validKubeConfigPath, validKubeConfigContent)
+				defer deleteConfig(validKubeConfigPath)
 				if err != nil {
 					t.Error(err)
 				}
 
 				d, _ := NewFakeDriver(t)
-				go d.Run("tcp://127.0.0.1:0", "", true, true)
+				go d.Run("tcp://127.0.0.1:0", validKubeConfigPath, true, true)
 				select {
 				case <-d.Ready():
 				case <-time.After(30 * time.Second):
@@ -125,10 +118,9 @@ func TestRun(t *testing.T) {
 				}
 				os.Setenv(consts.DefaultAzureCredentialFileEnv, fakeCredFile)
 
-				existingConfigPath, err := createConfigFileAndSetEnv(validKubeConfigPath, validKubeConfigContent, KubeConfigFileEnvVar)
-				if len(existingConfigPath) > 0 {
-					defer cleanConfigAndRestoreEnv(validKubeConfigPath, KubeConfigFileEnvVar, existingConfigPath)
-				}
+				err := createConfigFile(validKubeConfigPath, validKubeConfigContent)
+				defer deleteConfig(validKubeConfigPath)
+
 				if err != nil {
 					t.Error(err)
 				}
@@ -136,7 +128,7 @@ func TestRun(t *testing.T) {
 				d, _ := NewFakeDriver(t)
 				d.setCloud(&azure.Cloud{})
 				d.setNodeID("")
-				go d.Run("tcp://127.0.0.1:0", "", true, true)
+				go d.Run("tcp://127.0.0.1:0", validKubeConfigPath, true, true)
 				select {
 				case <-d.Ready():
 				case <-time.After(30 * time.Second):
@@ -151,31 +143,19 @@ func TestRun(t *testing.T) {
 	}
 }
 
-func createConfigFileAndSetEnv(path string, content string, envVariableName string) (string, error) {
+func createConfigFile(path string, content string) error {
 	f, err := os.Create(path)
 	if err != nil {
-		return "", err
+		return err
 	}
 	defer f.Close()
 
-	if err != nil {
-		return "", err
-	}
-
 	if err := ioutil.WriteFile(path, []byte(content), 0666); err != nil {
-		return "", err
+		return err
 	}
-
-	envValue, _ := os.LookupEnv(envVariableName)
-	err = os.Setenv(envVariableName, path)
-	if err != nil {
-		return "", fmt.Errorf("Failed to set env variable")
-	}
-
-	return envValue, err
+	return nil
 }
 
-func cleanConfigAndRestoreEnv(path string, envVariableName string, envValue string) {
-	defer os.Setenv(envVariableName, envValue)
+func deleteConfig(path string) {
 	os.Remove(path)
 }

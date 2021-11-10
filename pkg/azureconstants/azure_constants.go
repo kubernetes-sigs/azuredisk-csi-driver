@@ -76,10 +76,14 @@ const (
 	TagsField                     = "tags"
 	ThrottlingKey                 = "throttlingKey"
 	TrueValue                     = "true"
+	FalseValue                    = "false"
 	UserAgentField                = "useragent"
 	VolumeAttributePartition      = "partition"
 	WellKnownTopologyKey          = "topology.kubernetes.io/zone"
+	TopologyRegionKey             = "topology.kubernetes.io/region"
+	MasterNodeRoleTaintKey        = "node-role.kubernetes.io/master"
 	WriteAcceleratorEnabled       = "writeacceleratorenabled"
+	AttachableVolumesField        = "attachable-volumes-azure-disk"
 
 	// CRDs specific constants
 	// 1. AzVolumeAttachmentFinalizer for AzVolumeAttachment objects handles deletion of AzVolumeAttachment CRIs
@@ -88,16 +92,17 @@ const (
 	AzVolumeFinalizer           = "disk.csi.azure.com/azvolume-finalizer"
 	// ControllerFinalizer is a finalizer added to the pod running Azuredisk driver controller
 	// to prevent the pod deletion until clean up is completed
-	ControllerFinalizer            = "disk.csi.azure.com/azuredisk-finalizer"
-	CleanUpAnnotation              = "disk.csi.azure.com/clean-up"
-	NodeNameLabel                  = "disk.csi.azure.com/node-name"
-	PartitionLabel                 = "azdrivernodes.disk.csi.azure.com/partition"
-	RoleLabel                      = "disk.csi.azure.com/requested-role"
-	VolumeDeleteRequestAnnotation  = "disk.csi.azure.com/volume-delete-request"
-	VolumeDetachRequestAnnotation  = "disk.csi.azure.com/volume-detach-request"
-	RecoverAnnotation              = "disk.csi.azure.com/recovery" // used to ensure reconciliation is triggered for recovering CRIs
-	VolumeNameLabel                = "disk.csi.azure.com/volume-name"
-	PreProvisionedVolumeAnnotation = "disk.csi.azure.com/pre-provisioned"
+	ControllerFinalizer                   = "disk.csi.azure.com/azuredisk-finalizer"
+	CleanUpAnnotation                     = "disk.csi.azure.com/clean-up"
+	NodeNameLabel                         = "disk.csi.azure.com/node-name"
+	PartitionLabel                        = "azdrivernodes.disk.csi.azure.com/partition"
+	RoleLabel                             = "disk.csi.azure.com/requested-role"
+	VolumeDeleteRequestAnnotation         = "disk.csi.azure.com/volume-delete-request"
+	VolumeDetachRequestAnnotation         = "disk.csi.azure.com/volume-detach-request"
+	RecoverAnnotation                     = "disk.csi.azure.com/recovery" // used to ensure reconciliation is triggered for recovering CRIs
+	VolumeNameLabel                       = "disk.csi.azure.com/volume-name"
+	PreProvisionedVolumeAnnotation        = "disk.csi.azure.com/pre-provisioned"
+	PreProvisionedVolumeCleanupAnnotation = "disk.csi.azure.com/pre-provisioned-clean-up"
 
 	ControllerClusterRoleName         = "azuredisk-external-provisioner-role"
 	ControllerClusterRoleBindingName  = "azuredisk-csi-provisioner-binding"
@@ -111,6 +116,11 @@ const (
 	ZonedField              = "zoned"
 	NormalUpdateMaxNetRetry = 0
 	ForcedUpdateMaxNetRetry = 5
+	EnableAsyncAttachField  = "enableasyncattach"
+	TooManyRequests         = "TooManyRequests"
+	ClientThrottled         = "client throttled"
+	// define different sleep time when hit throttling
+	SnapshotOpThrottlingSleepSec = 50
 )
 
 var (

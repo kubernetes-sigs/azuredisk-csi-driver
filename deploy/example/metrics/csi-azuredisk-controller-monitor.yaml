@@ -1,0 +1,19 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: csi-azuredisk-controller
+  namespace: kube-system
+  labels:
+    app: csi-azuredisk-controller
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: csi-azuredisk-controller
+  namespaceSelector:
+    matchNames:
+      - kube-system
+  endpoints:
+    - port: metrics
+      interval: 15s

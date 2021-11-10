@@ -32,6 +32,7 @@ import (
 	restclientset "k8s.io/client-go/rest"
 	"k8s.io/kubernetes/test/e2e/framework"
 	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
+ 	"k8s.io/klog/v2"
 
 	v1alpha1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
@@ -59,6 +60,8 @@ type VolumeDetails struct {
 	VolumeMode            VolumeMode
 	VolumeMount           VolumeMountDetails
 	VolumeDevice          VolumeDeviceDetails
+	// Optional, used to get AzVolumeAttachments
+	PersistentVolume *v1.PersistentVolume
 	// Optional, used with pre-provisioned volumes
 	VolumeID string
 	// Optional, used with PVCs created from snapshots or pvc
@@ -117,6 +120,10 @@ func (pod *PodDetails) SetupWithDynamicVolumes(client clientset.Interface, names
 			tpod.SetupRawBlockVolume(tpvc.persistentVolumeClaim, fmt.Sprintf("%s%d", v.VolumeDevice.NameGenerate, n+1), v.VolumeDevice.DevicePath)
 		} else {
 			tpod.SetupVolume(tpvc.persistentVolumeClaim, fmt.Sprintf("%s%d", v.VolumeMount.NameGenerate, n+1), fmt.Sprintf("%s%d", v.VolumeMount.MountPathGenerate, n+1), v.VolumeMount.ReadOnly)
+		}
+		if tpvc.persistentVolume != nil {
+			klog.Infof("adding PV (%s) to pod (%s)", tpvc.persistentVolume.Name, tpod.pod.Name)
+			pod.Volumes[n].PersistentVolume = tpvc.persistentVolume.DeepCopy()
 		}
 	}
 	return tpod, cleanupFuncs
@@ -223,19 +230,35 @@ func (pod *PodDetails) SetupDeployment(client clientset.Interface, namespace *v1
 	cleanupFuncs = append(cleanupFuncs, tDeployment.Cleanup)
 	return tDeployment, cleanupFuncs
 }
+func (pod *PodDetails) CreateStorageClass(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.DynamicPVTestDriver, storageClassParameters map[string]string) (storagev1.StorageClass, func()) {
+	ginkgo.By("setting up the StorageClass")
+	var allowedTopologyValues []string
+	nodes, err := client.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+	framework.ExpectNoError(err)
+	allowedTopologyValuesMap := make(map[string]bool)
+	for _, node := range nodes.Items {
+		if zone, ok := node.Labels[driver.TopologyKey]; ok {
+			allowedTopologyValuesMap[zone] = true
+		}
+	}
+	for k := range allowedTopologyValuesMap {
+		allowedTopologyValues = append(allowedTopologyValues, k)
+	}
+	volumeBindingMode := storagev1.VolumeBindingWaitForFirstConsumer
+	reclaimPolicy := v1.PersistentVolumeReclaimDelete
+	storageClass := csiDriver.GetDynamicProvisionStorageClass(storageClassParameters, []string{}, &reclaimPolicy, &volumeBindingMode, allowedTopologyValues, namespace.Name)
+	tsc := NewTestStorageClass(client, namespace, storageClass)
+	createdStorageClass := tsc.Create()
+	return createdStorageClass, tsc.Cleanup
+}
 
-func (pod *PodDetails) SetupStatefulset(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.DynamicPVTestDriver, schedulerName string, replicaCount int, storageClassParameters map[string]string) (*TestStatefulset, []func()) {
+func (pod *PodDetails) SetupStatefulset(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.DynamicPVTestDriver, schedulerName string, replicaCount int, storageClassParameters map[string]string, storageClass *storagev1.StorageClass) (*TestStatefulset, []func()) {
 	cleanupFuncs := make([]func(), 0)
 	var pvcs []v1.PersistentVolumeClaim
 	var volumeMounts []v1.VolumeMount
 	for n, volume := range pod.Volumes {
-		ginkgo.By("setting up the StorageClass")
-		storageClass := csiDriver.GetDynamicProvisionStorageClass(storageClassParameters, volume.MountOptions, volume.ReclaimPolicy, volume.VolumeBindingMode, volume.AllowedTopologyValues, namespace.Name)
-		tsc := NewTestStorageClass(client, namespace, storageClass)
-		createdStorageClass := tsc.Create()
-		cleanupFuncs = append(cleanupFuncs, tsc.Cleanup)
 		ginkgo.By("setting up the PVC")
-		tpvc := NewTestPersistentVolumeClaim(client, namespace, volume.ClaimSize, volume.VolumeMode, &createdStorageClass)
+		tpvc := NewTestPersistentVolumeClaim(client, namespace, volume.ClaimSize, volume.VolumeMode, storageClass)
 		storageClassName := ""
 		if tpvc.storageClass != nil {
 			storageClassName = tpvc.storageClass.Name

@@ -140,7 +140,7 @@ func (r *ReconcileReplica) triggerGarbageCollection(volumeName string) {
 	emptyCtx := context.TODO()
 	deletionCtx, cancelFunc := context.WithCancel(emptyCtx)
 	if _, ok := r.cleanUpMap.LoadOrStore(volumeName, cancelFunc); ok {
-		klog.Infof("There already is a scheduled garbage collection for AzVolume (%s)")
+		klog.Infof("There already is a scheduled garbage collection for AzVolume (%s)", volumeName)
 		cancelFunc()
 		return
 	}
@@ -235,7 +235,7 @@ func (r *ReconcileReplica) getNodesForReplica(ctx context.Context, volumeName st
 		return nil, err
 	}
 
-	nodes, err := getRankedNodesForReplicaAttachments(ctx, r, volumes)
+	nodes, err := getRankedNodesForReplicaAttachments(ctx, r, volumes, pods)
 	if err != nil {
 		return nil, err
 	}

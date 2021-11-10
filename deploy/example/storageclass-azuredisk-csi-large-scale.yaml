@@ -1,0 +1,12 @@
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: managed-csi
+provisioner: disk.csi.azure.com
+parameters:
+  skuName: StandardSSD_LRS  # alias: storageaccounttype, available values: Standard_LRS, Premium_LRS, StandardSSD_LRS, UltraSSD_LRS
+  enableAsyncAttach: "false"  # disable aync attach to reduce Azure API calls when there are large mount of volume attachments
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+allowVolumeExpansion: true

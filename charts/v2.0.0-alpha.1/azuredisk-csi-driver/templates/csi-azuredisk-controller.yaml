@@ -39,7 +39,7 @@ spec:
 {{- end }}
       {{- include "azuredisk.pullSecrets" . | indent 6 }}
       containers:
-        - name: csi-provisioner
+        - name: csi-provisioner-disk
 {{- if hasPrefix "/" .Values.image.csiProvisioner.repository }}
           image: "{{ .Values.image.baseRepo }}{{ .Values.image.csiProvisioner.repository }}:{{ .Values.image.csiProvisioner.tag }}"
 {{- else }}
@@ -62,12 +62,12 @@ spec:
               name: socket-dir
           resources:
             limits:
-              cpu: 100m
-              memory: 300Mi
+              cpu: 200m
+              memory: 500Mi
             requests:
               cpu: 10m
               memory: 20Mi
-        - name: csi-attacher
+        - name: csi-attacher-disk
 {{- if hasPrefix "/" .Values.image.csiAttacher.repository }}
           image: "{{ .Values.image.baseRepo }}{{ .Values.image.csiAttacher.repository }}:{{ .Values.image.csiAttacher.tag }}"
 {{- else }}
@@ -87,12 +87,12 @@ spec:
               name: socket-dir
           resources:
             limits:
-              cpu: 100m
-              memory: 400Mi
+              cpu: 200m
+              memory: 500Mi
             requests:
               cpu: 10m
               memory: 20Mi
-        - name: csi-snapshotter
+        - name: csi-snapshotter-disk
 {{- if eq .Values.snapshot.apiVersion "beta" }}
   {{- if hasPrefix "/" .Values.snapshot.image.csiSnapshotter.repository }}
           image: "{{ .Values.image.baseRepo }}{{ .Values.snapshot.image.csiSnapshotter.repository }}:{{ .Values.snapshot.image.csiSnapshotter.tag }}"
@@ -118,12 +118,12 @@ spec:
               mountPath: /csi
           resources:
             limits:
-              cpu: 100m
+              cpu: 200m
               memory: 100Mi
             requests:
               cpu: 10m
               memory: 20Mi
-        - name: csi-resizer
+        - name: csi-resizer-disk
 {{- if hasPrefix "/" .Values.image.csiResizer.repository }}
           image: "{{ .Values.image.baseRepo }}{{ .Values.image.csiResizer.repository }}:{{ .Values.image.csiResizer.tag }}"
 {{- else }}
@@ -133,7 +133,8 @@ spec:
             - "-csi-address=$(ADDRESS)"
             - "-v=2"
             - "-leader-election"
-            - '-handle-volume-inuse-error=true'
+            - '-handle-volume-inuse-error=false'
+            - "-timeout=60s"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -142,12 +143,12 @@ spec:
               mountPath: /csi
           resources:
             limits:
-              cpu: 100m
-              memory: 300Mi
+              cpu: 200m
+              memory: 500Mi
             requests:
               cpu: 10m
               memory: 20Mi
-        - name: liveness-probe
+        - name: liveness-probe-disk
 {{- if hasPrefix "/" .Values.image.livenessProbe.repository }}
           image: "{{ .Values.image.baseRepo }}{{ .Values.image.livenessProbe.repository }}:{{ .Values.image.livenessProbe.tag }}"
 {{- else }}
@@ -234,7 +235,7 @@ spec:
             {{- end }}
           resources:
             limits:
-              cpu: 200m
+              cpu: 300m
               memory: 500Mi
             requests:
               cpu: 10m

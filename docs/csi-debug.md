@@ -42,7 +42,7 @@ kubectl logs csi-azuredisk-node-cvgbs -c azuredisk -n kube-system > csi-azuredis
 
  - check disk mount inside driver
 ```console
-kubectl exec -it csi-azuredisk-node-j796x -n kube-system -c azuredisk -- mount | grep sd
+kubectl exec -it csi-azuredisk-node-xxxxx -n kube-system -c azuredisk -- mount | grep sd
 ```
 <pre>
 /dev/sdc on /var/lib/kubelet/plugins/kubernetes.io/csi/pv/pvc-e4c14592-2a79-423e-846f-4b25fe393d6c/globalmount type ext4 (rw,relatime)
@@ -53,6 +53,17 @@ kubectl exec -it csi-azuredisk-node-j796x -n kube-system -c azuredisk -- mount |
 ```console
 apt update && apt install curl -y
 curl https://apiserver-fqdn -k -v 2>&1
+```
+
+ - get cloud config file(`azure.json`) on Linux node
+```console
+kubectl exec -it csi-azuredisk-node-dx94w -n kube-system -c azuredisk -- cat /etc/kubernetes/azure.json
+```
+
+ - get cloud config file(`azure.json`) on Windows node
+```console
+kubectl exec -it csi-azuredisk-node-win-xxxxx -n kube-system -c azuredisk cmd
+type c:\k\azure.json
 ```
 
  - get Windows csi-proxy logs inside driver
