@@ -293,7 +293,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 				Cmd: convertToPowershellorCmdCommandIfNecessary("touch /mnt/test-1/data"),
 				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
-						FSType:    "ext4",
+						FSType:    "btrfs",
 						ClaimSize: "10Gi",
 						VolumeMount: testsuites.VolumeMountDetails{
 							NameGenerate:      "test-volume-",
@@ -339,7 +339,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 				Cmd: convertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
 				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
-						FSType:    "ext4",
+						FSType:    "btrfs",
 						ClaimSize: "10Gi",
 						VolumeMount: testsuites.VolumeMountDetails{
 							NameGenerate:      "test-volume-",
