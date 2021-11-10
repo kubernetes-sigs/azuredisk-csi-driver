@@ -57,6 +57,7 @@ type DriverOptions struct {
 	UserAgentSuffix            string
 	UseCSIProxyGAInterface     bool
 	EnableDiskOnlineResize     bool
+	AllowEmptyCloudConfig      bool
 }
 
 // CSIDriver defines the interface for a CSI driver.
@@ -89,6 +90,7 @@ type DriverCore struct {
 	hostUtil                   hostUtil
 	useCSIProxyGAInterface     bool
 	enableDiskOnlineResize     bool
+	allowEmptyCloudConfig      bool
 }
 
 // Driver is the v1 implementation of the Azure Disk CSI Driver.
@@ -114,6 +116,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.userAgentSuffix = options.UserAgentSuffix
 	driver.useCSIProxyGAInterface = options.UseCSIProxyGAInterface
 	driver.enableDiskOnlineResize = options.EnableDiskOnlineResize
+	driver.allowEmptyCloudConfig = options.AllowEmptyCloudConfig
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
@@ -141,7 +144,7 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 	userAgent := GetUserAgent(d.Name, d.customUserAgent, d.userAgentSuffix)
 	klog.V(2).Infof("driver userAgent: %s", userAgent)
 
-	cloud, err := azureutils.GetCloudProvider(kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, userAgent)
+	cloud, err := azureutils.GetCloudProvider(kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, userAgent, d.allowEmptyCloudConfig)
 	if err != nil {
 		klog.Fatalf("failed to get Azure Cloud Provider, error: %v", err)
 	}

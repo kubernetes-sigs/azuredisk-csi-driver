@@ -39,6 +39,7 @@ controller:
   name: csi-azuredisk-controller
   cloudConfigSecretName: azure-cloud-provider
   cloudConfigSecretNamespace: kube-system
+  allowEmptyCloudConfig: false
   replicas: 2
   metricsPort: 29604
   livenessProbe:
@@ -61,6 +62,7 @@ controller:
 node:
   cloudConfigSecretName: azure-cloud-provider
   cloudConfigSecretNamespace: kube-system
+  allowEmptyCloudConfig: true
   maxUnavailable: 1
   metricsPort: 29605
   logLevel: 5

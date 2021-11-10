@@ -104,6 +104,7 @@ spec:
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--nodeid=$(KUBE_NODE_NAME)"
             - "--metrics-address=0.0.0.0:29605"
+            - "--allow-empty-cloud-config=true"
           ports:
             - containerPort: 29603
               name: healthz
