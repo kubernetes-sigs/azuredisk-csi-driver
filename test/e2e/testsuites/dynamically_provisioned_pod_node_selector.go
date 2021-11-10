@@ -54,8 +54,9 @@ func (t *PodNodeSelector) Run(client clientset.Interface, namespace *v1.Namespac
 
 	// Get the list of available nodes for scheduling the pod
 	nodes := ListNodeNames(client)
-	if len(nodes) < maxMountReplicaCount+1 {
-		ginkgo.Skip("need at least %d nodes to verify the test case. Current node count is %d", maxMountReplicaCount+1, len(nodes))
+	necessaryNodeCount := maxMountReplicaCount + 2
+	if len(nodes) < necessaryNodeCount {
+		ginkgo.Skip("need at least %d nodes to verify the test case. Current node count is %d", necessaryNodeCount, len(nodes))
 	}
 
 	ctx := context.Background()
@@ -63,22 +64,23 @@ func (t *PodNodeSelector) Run(client clientset.Interface, namespace *v1.Namespac
 	// set node label
 	numNodesWithLabel := maxMountReplicaCount + 1
 	nodesWithLabel := map[string]struct{}{}
+	count := 0
 	for i := range nodes {
 		nodeObj, err := client.CoreV1().Nodes().Get(ctx, nodes[i], metav1.GetOptions{})
 		framework.ExpectNoError(err)
-		if i < numNodesWithLabel {
+
+		// if the node is a master node, skip
+		if _, ok := nodeObj.Labels[masterNodeLabel]; ok {
+			continue
+		}
+
+		if count < numNodesWithLabel {
 			var labelCleanup func()
-			nodeObj, labelCleanup, err = SetNodeLabels(client, nodeObj, testLabel)
+			_, labelCleanup, err = SetNodeLabels(client, nodeObj, testLabel)
 			framework.ExpectNoError(err)
 			defer labelCleanup()
 			nodesWithLabel[nodes[i]] = struct{}{}
-		}
-
-		// if the node is a master node, it will not have the required node affinity to schedule pod.
-		// so add the label
-		if _, ok := nodeObj.Labels[masterNodeLabel]; ok {
-			_, scheduleCleanup := MakeNodeSchedulable(client, nodeObj, t.IsMultiZone)
-			defer scheduleCleanup()
+			count++
 		}
 	}
 
@@ -90,8 +92,6 @@ func (t *PodNodeSelector) Run(client clientset.Interface, namespace *v1.Namespac
 	pod := tpod.pod.DeepCopy()
 
 	tpod.SetNodeSelector(testLabel)
-	// add master node toleration to pod so that the test can utilize all available nodes
-	tpod.AllowScheduleOnMasterNode()
 	ginkgo.By("deploying the pod")
 	tpod.Create()
 	defer tpod.Cleanup()

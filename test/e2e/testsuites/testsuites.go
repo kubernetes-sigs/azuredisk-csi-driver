@@ -52,7 +52,6 @@ import (
 	v1alpha1ClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1alpha1"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
-	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
@@ -930,14 +929,6 @@ func (t *TestPod) SetupVolumeMountWithSubpath(pvc *v1.PersistentVolumeClaim, nam
 	t.pod.Spec.Volumes = append(t.pod.Spec.Volumes, volume)
 }
 
-func (t *TestPod) AllowScheduleOnMasterNode() {
-	t.SetNodeToleration(v1.Toleration{
-		Key:      consts.MasterNodeRoleTaintKey,
-		Operator: v1.TolerationOpExists,
-		Effect:   v1.TaintEffectNoSchedule,
-	})
-}
-
 func (t *TestPod) SetNodeSelector(nodeSelector map[string]string) {
 	t.pod.Spec.NodeSelector = nodeSelector
 }
@@ -1002,28 +993,6 @@ func ListNodeNames(c clientset.Interface) []string {
 	return nodeNames
 }
 
-func MakeNodeSchedulable(c clientset.Interface, node *v1.Node, isMultiZone bool) (newNode *v1.Node, cleanup func()) {
-	topologyValue := ""
-	if isMultiZone {
-		region := node.Labels[consts.TopologyRegionKey]
-		zone := node.Labels[consts.WellKnownTopologyKey]
-		topologyValue = fmt.Sprintf("%s-%s", region, zone)
-	}
-	var roleLabelCleanup func()
-	node, roleLabelCleanup, err := SetNodeLabels(c, node, map[string]string{driver.TopologyKey: topologyValue})
-	framework.ExpectNoError(err)
-
-	csiNodeCleanup, err := SetCSINodeDriver(c, node.Name)
-	framework.ExpectNoError(err)
-
-	cleanup = func() {
-		// annotationCleanup()
-		roleLabelCleanup()
-		csiNodeCleanup()
-	}
-	return
-}
-
 func SetNodeLabels(c clientset.Interface, node *v1.Node, newLabels map[string]string) (newNode *v1.Node, cleanup func(), err error) {
 	originalLabels := node.Labels
 	nodeName := node.Name
@@ -1067,61 +1036,6 @@ func SetNodeTaints(c clientset.Interface, node *v1.Node, taints ...v1.Taint) (ne
 		klog.Errorf("failed to add taints (%+v) to node (%s): %v", taints, node.Name, err)
 	} else {
 		klog.Infof("successfully added taints (%+v) to node (%s)", taints, node.Name)
-	}
-	return
-}
-
-func AnnotateNode(c clientset.Interface, node *v1.Node, newAnnotations map[string]string) (newNode *v1.Node, cleanup func(), err error) {
-	originalAnnotations := node.Annotations
-	nodeName := node.Name
-	cleanup = func() {
-		node, err := c.CoreV1().Nodes().Get(context.Background(), nodeName, metav1.GetOptions{})
-		framework.ExpectNoError(err)
-		node.Annotations = originalAnnotations
-		_, _ = c.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{})
-	}
-
-	if node.Annotations == nil {
-		node.Annotations = newAnnotations
-	} else {
-		for key, value := range newAnnotations {
-			node.Annotations[key] = value
-		}
-	}
-
-	newNode, err = c.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{})
-	if err != nil {
-		klog.Errorf("failed to add annotations (%+v) to node (%s): %v", newAnnotations, node.Name, err)
-	} else {
-		klog.Infof("successfully added annotations (%+v) to node (%s)", newAnnotations, node.Name)
-	}
-	return
-}
-
-func SetCSINodeDriver(c clientset.Interface, nodeName string) (cleanup func(), err error) {
-	csiNode, err := c.StorageV1().CSINodes().Get(context.Background(), nodeName, metav1.GetOptions{})
-	framework.ExpectNoError(err)
-	originalSpec := csiNode.Spec
-	cleanup = func() {
-		csiNode, err := c.StorageV1().CSINodes().Get(context.Background(), nodeName, metav1.GetOptions{})
-		framework.ExpectNoError(err)
-		csiNode.Spec = originalSpec
-		_, _ = c.StorageV1().CSINodes().Update(context.Background(), csiNode, metav1.UpdateOptions{})
-	}
-
-	if csiNode.Spec.Drivers == nil || len(csiNode.Spec.Drivers) == 0 {
-		csiNode.Spec.Drivers = []storagev1.CSINodeDriver{
-			{
-				Name:         "secrets-store.csi.k8s.io",
-				NodeID:       nodeName,
-				TopologyKeys: nil,
-			},
-		}
-	}
-
-	_, err = c.StorageV1().CSINodes().Update(context.Background(), csiNode, metav1.UpdateOptions{})
-	if err != nil {
-		klog.Errorf("failed to add driver spec to csi node (%s): %v", nodeName, err)
 	}
 	return
 }

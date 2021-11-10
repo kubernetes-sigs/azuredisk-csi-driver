@@ -54,32 +54,33 @@ func (t *PodToleration) Run(client clientset.Interface, namespace *v1.Namespace,
 
 	// Get the list of available nodes for scheduling the pod
 	nodes := ListNodeNames(client)
-	if len(nodes) < maxMountReplicaCount+1 {
-		ginkgo.Skip("need at least %d nodes to verify the test case. Current node count is %d", maxMountReplicaCount+1, len(nodes))
+	necessaryNodeCount := maxMountReplicaCount + 2
+	if len(nodes) < necessaryNodeCount {
+		ginkgo.Skip("need at least %d nodes to verify the test case. Current node count is %d", necessaryNodeCount, len(nodes))
 	}
 
 	ctx := context.Background()
 
 	// set node taint
-	numNodesWithTaint := len(nodes) - (maxMountReplicaCount + 1)
+	numNodesWithTaint := len(nodes) - (maxMountReplicaCount + 2)
 	nodesWithTaint := map[string]struct{}{}
+	count := 0
 	for i := range nodes {
 		nodeObj, err := client.CoreV1().Nodes().Get(ctx, nodes[i], metav1.GetOptions{})
 		framework.ExpectNoError(err)
 
-		if i < numNodesWithTaint {
+		// if the node is a master node, skip
+		if _, ok := nodeObj.Labels[masterNodeLabel]; ok {
+			continue
+		}
+
+		if count < numNodesWithTaint {
 			var taintCleanup func()
-			nodeObj, taintCleanup, err = SetNodeTaints(client, nodeObj, testTaint)
+			_, taintCleanup, err = SetNodeTaints(client, nodeObj, testTaint)
 			framework.ExpectNoError(err)
 			defer taintCleanup()
 			nodesWithTaint[nodes[i]] = struct{}{}
-		}
-
-		// if the node is a master node, it will not have the required node affinity to schedule pod.
-		// so add the label
-		if _, ok := nodeObj.Labels[masterNodeLabel]; ok {
-			_, scheduleCleanup := MakeNodeSchedulable(client, nodeObj, t.IsMultiZone)
-			defer scheduleCleanup()
+			count++
 		}
 	}
 
@@ -89,9 +90,6 @@ func (t *PodToleration) Run(client clientset.Interface, namespace *v1.Namespace,
 		defer cleanup[i]()
 	}
 	pod := tpod.pod.DeepCopy()
-
-	// add master node toleration to pod so that the test can utilize all available nodes
-	tpod.AllowScheduleOnMasterNode()
 
 	ginkgo.By("deploying the pod")
 	tpod.Create()
