@@ -983,7 +983,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 					},
 					VolumeMount: volume.VolumeMount,
 				},
-			}, false),
+			}, isMultiZone),
 			IsWindows: isWindowsCluster,
 			UseCMD:    false,
 		}

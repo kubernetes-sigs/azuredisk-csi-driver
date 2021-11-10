@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/onsi/ginkgo"
@@ -329,12 +328,11 @@ func VerifySuccessfulReplicaAzVolumeAttachments(pod PodDetails, azDiskClient *az
 	}
 
 	var expectedNumberOfReplicas int
-	maxShares, err := strconv.ParseInt(storageClassParameters["maxShares"], 10, 0)
-	framework.ExpectNoError(err)
+	_, maxMountReplicas := azureutils.GetMaxSharesAndMaxMountReplicaCount(storageClassParameters)
 	nodes := ListAzDriverNodeNames(azDiskClient.DiskV1alpha1().AzDriverNodes(azureconstants.AzureDiskCrdNamespace))
 	nodesAvailableForReplicas := len(nodes) - 1
-	if nodesAvailableForReplicas >= int(maxShares-1) {
-		expectedNumberOfReplicas = int(maxShares - 1)
+	if nodesAvailableForReplicas >= maxMountReplicas {
+		expectedNumberOfReplicas = maxMountReplicas
 	} else {
 		expectedNumberOfReplicas = nodesAvailableForReplicas
 	}
@@ -378,8 +376,7 @@ func GetReplicaAttachments(persistentVolume *v1.PersistentVolume, client clients
 	if err != nil {
 		ginkgo.Fail("failed to get persistent volume diskname")
 	}
-	labelSelector := metav1.LabelSelector{MatchLabels: map[string]string{azureconstants.RoleLabel: "Replica", azureconstants.VolumeNameLabel: diskname}}
-	azVolumeAttachmentsReplica, err := azDiskClient.DiskV1alpha1().AzVolumeAttachments(azureconstants.AzureDiskCrdNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: labels.Set(labelSelector.MatchLabels).String()})
+	azVolumeAttachmentsReplica, err := azDiskClient.DiskV1alpha1().AzVolumeAttachments(azureconstants.AzureDiskCrdNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: labels.Set(map[string]string{azureconstants.RoleLabel: "Replica", azureconstants.VolumeNameLabel: diskname}).String()})
 	if err != nil {
 		ginkgo.Fail("failed while getting replica attachments")
 	}
