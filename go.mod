@@ -30,6 +30,7 @@ require (
 	k8s.io/cloud-provider v0.22.3
 	k8s.io/code-generator v0.22.3
 	k8s.io/component-base v0.22.3
+	k8s.io/component-helpers v0.22.3
 	k8s.io/klog v1.0.0
 	k8s.io/klog/v2 v2.10.0
 	k8s.io/kube-scheduler v0.22.3
@@ -39,7 +40,7 @@ require (
 	sigs.k8s.io/cloud-provider-azure v0.7.4
 	sigs.k8s.io/controller-runtime v0.10.1
 	sigs.k8s.io/controller-tools v0.5.0
-	sigs.k8s.io/yaml v1.2.0
+	sigs.k8s.io/yaml v1.3.0
 )
 
 replace (
@@ -74,5 +75,5 @@ replace (
 	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.22.3
 	k8s.io/sample-controller => k8s.io/sample-controller v0.22.3
 
-	sigs.k8s.io/cloud-provider-azure => github.com/edreed/cloud-provider-azure v0.0.0-20211025061105-0605f71fca75
+	sigs.k8s.io/cloud-provider-azure => github.com/edreed/cloud-provider-azure v0.0.0-20211107000200-4c5f4c4a3e3d
 )

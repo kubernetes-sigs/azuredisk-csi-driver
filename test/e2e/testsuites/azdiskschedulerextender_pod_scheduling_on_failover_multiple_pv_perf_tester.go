@@ -38,8 +38,10 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV) Run(client cl
 	var tStatefulSets []*TestStatefulset
 	var wg sync.WaitGroup
 	var tokens = make(chan struct{}, 20) // avoid too many concurrent requests
+	tStorageClass, storageCleanup := t.Pod.CreateStorageClass(client, namespace, t.CSIDriver, t.StorageClassParameters)
+	defer storageCleanup()
 	for i := 0; i < 2; i++ {
-		tStatefulSet, cleanupStatefulSet := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, schedulerName, t.Replicas, t.StorageClassParameters)
+		tStatefulSet, cleanupStatefulSet := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, schedulerName, t.Replicas, t.StorageClassParameters, &tStorageClass)
 		tStatefulSets = append(tStatefulSets, tStatefulSet)
 		for i := range cleanupStatefulSet {
 			i := i

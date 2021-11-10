@@ -19,18 +19,22 @@ package testsuites
 import (
 	"context"
 	"fmt"
-	"strconv"
-	"time"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 
 	"github.com/onsi/ginkgo"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/klog"
+	"k8s.io/kubernetes/test/e2e/framework"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 )
 
 // PreProvisionedCheckForReplicasTest will provision required PV(s), PVC(s) and Pod(s)
@@ -39,7 +43,7 @@ type PreProvisionedCheckForReplicasTest struct {
 	CSIDriver     driver.PreProvisionedVolumeTestDriver
 	Pods          []PodDetails
 	VolumeName    string
-	AzDiskClient  *azDiskClientSet.Clientset
+	AzDiskClient  azDiskClientSet.Interface
 	VolumeContext map[string]string
 }
 
@@ -63,32 +67,30 @@ func (t *PreProvisionedCheckForReplicasTest) Run(client clientset.Interface, nam
 		tpod.WaitForRunning()
 
 		// get the expected number of replicas
-		maxSharesValue, ok := t.VolumeContext[consts.MaxSharesField]
-		if !ok {
-			ginkgo.Fail("failed to get the volume maxshares")
-		}
-		maxShares, err := strconv.ParseInt(maxSharesValue, 10, 0)
-		if err != nil {
-			ginkgo.Fail("failed to parse the volume maxshares")
-		}
+		_, maxMountReplicaCount := azureutils.GetMaxSharesAndMaxMountReplicaCount(t.VolumeContext)
 
 		// we can only create as many replicas as there are nodes
 		var expectedNumberOfReplicas int
 		nodesAvailableForReplicas := len(nodes) - 1 // excluding the node hosting primary attachment
-		if nodesAvailableForReplicas >= int(maxShares-1) {
-			expectedNumberOfReplicas = int(maxShares - 1)
+		if nodesAvailableForReplicas >= maxMountReplicaCount {
+			expectedNumberOfReplicas = maxMountReplicaCount
 		} else {
 			expectedNumberOfReplicas = nodesAvailableForReplicas
 		}
 
-		time.Sleep(3 * time.Minute)
-		labelSelector := metav1.LabelSelector{MatchLabels: map[string]string{"disk.csi.azure.com/volume-name": t.VolumeName, "disk.csi.azure.com/requested-role": "Replica"}}
-		azVolumeAttachments, err := t.AzDiskClient.DiskV1alpha1().AzVolumeAttachments(consts.AzureDiskCrdNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: labels.Set(labelSelector.MatchLabels).String()})
-		if err != nil {
-			ginkgo.Fail(fmt.Sprintf("failed to get replica attachments. Error: %v", err))
-		}
-		if len(azVolumeAttachments.Items) != int(expectedNumberOfReplicas) {
-			ginkgo.Fail(fmt.Sprintf("expected number of replicas is not maintained. Expected %d replcias. Found %d.", expectedNumberOfReplicas, len(azVolumeAttachments.Items)))
-		}
+		labelSelector := metav1.LabelSelector{MatchLabels: map[string]string{consts.VolumeNameLabel: t.VolumeName, consts.RoleLabel: "Replica"}}
+		err := wait.PollImmediate(poll, pollTimeout,
+			func() (bool, error) {
+				azVolumeAttachments, err := t.AzDiskClient.DiskV1alpha1().AzVolumeAttachments(consts.AzureDiskCrdNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: labels.Set(labelSelector.MatchLabels).String()})
+				if err != nil {
+					return false, status.Errorf(codes.Internal, "failed to get replica attachments. Error: %v", err)
+				}
+				if len(azVolumeAttachments.Items) != int(expectedNumberOfReplicas) {
+					klog.Errorf("Expected %d replcias. Found %d.", expectedNumberOfReplicas, len(azVolumeAttachments.Items))
+					return false, nil
+				}
+				return true, nil
+			})
+		framework.ExpectNoError(err)
 	}
 }

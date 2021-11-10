@@ -93,6 +93,10 @@ const (
 
 // AzVolumeStatus is the status for an AzVolume resource
 type AzVolumeStatus struct {
+	// the name of PV that corresponds to the AzVolume obj
+	//+optional
+	PersistentVolume string `json:"persistentVolume"`
+
 	//Current status detail of the AzVolume
 	//Nil detail indicates that the volume has not been created
 	//+optional

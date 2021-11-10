@@ -85,7 +85,7 @@ type DriverV2 struct {
 	controllerLeaseRenewDeadlineInSec int
 	controllerLeaseRetryPeriodInSec   int
 	kubeConfig                        *rest.Config
-	kubeClient                        clientset.Interface
+	kubeClient                        *clientset.Clientset
 	deviceChecker                     deviceChecker
 }
 
@@ -142,12 +142,12 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 	}
 	klog.Infof("\nDRIVER INFORMATION:\n-------------------\n%s\n\nStreaming logs below:", versionMeta)
 
-	d.kubeConfig, err = csicommon.GetKubeConfig(kubeconfig)
+	d.kubeConfig, err = azureutils.GetKubeConfig(kubeconfig)
 	if err != nil || d.kubeConfig == nil {
 		klog.Fatalf("failed to get kube config (%s), error: %v. Exiting application...", kubeconfig, err)
 	}
 
-	d.kubeClient, err = csicommon.GetKubeClient(kubeconfig)
+	d.kubeClient, err = azureutils.GetKubeClient(kubeconfig)
 	if err != nil || d.kubeClient == nil {
 		klog.Fatalf("failed to get kubeclient with kubeconfig (%s), error: %v. Exiting application...", kubeconfig, err)
 	}
@@ -304,7 +304,7 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 	}
 
 	klog.V(2).Info("Initializing AzVolumeAttachment controller")
-	attachReconciler, err := controller.NewAttachDetachController(mgr, d.crdProvisioner.GetDiskClientSet(), d.kubeClient, d.objectNamespace, d.cloudProvisioner)
+	attachReconciler, err := controller.NewAttachDetachController(mgr, d.crdProvisioner.GetDiskClientSet(), d.kubeClient, d.objectNamespace, d.cloudProvisioner, d.crdProvisioner)
 	if err != nil {
 		klog.Errorf("Failed to initialize AzVolumeAttachmentController. Error: %v. Exiting application...", err)
 		os.Exit(1)

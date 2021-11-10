@@ -304,7 +304,7 @@ fi
 
 if [[ -z "$(command -v aks-engine)" ]]; then
   echo "Installing aks-engine..."
-  curl -sSfL https://raw.githubusercontent.com/Azure/aks-engine/master/scripts/get-akse.sh | sudo bash
+  curl -sSfL https://raw.githubusercontent.com/Azure/aks-engine/master/scripts/get-akse.sh | sudo bash -s -- --version v0.67.0
 fi
 
 #

@@ -16,6 +16,9 @@ limitations under the License.
 
 package batch
 
+import "time"
+
+// Logger defines an interface for logging.
 type Logger interface {
 	// Logs to the verbose log. It handles the arguments in the manner of fmt.Printf.
 	Verbosef(format string, v ...interface{})
@@ -28,4 +31,19 @@ type Logger interface {
 
 	// Logs to the error log. It handles the arguments in the manner of fmt.Printf.
 	Errorf(format string, v ...interface{})
+}
+
+// MetricsRecorder defines an interface for recording batch metrics.
+type MetricsRecorder interface {
+	// Records the rate limit delay, if any, incurred by the current batch.
+	RecordRateLimitDelay(delay time.Duration)
+
+	// Records completion of processing for the current batch.
+	RecordBatchCompletion(size int, err error)
+}
+
+// ProcessorMetricsRecorder defines an interface for recording batch processor metrics.
+type ProcessorMetricsRecorder interface {
+	// Records the processing start for a single batch of values for the specified key.
+	RecordBatchStart(key string) MetricsRecorder
 }

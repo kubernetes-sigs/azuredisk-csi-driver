@@ -198,9 +198,10 @@ func (r *ReconcileAzVolume) triggerCreate(ctx context.Context, azVolume *v1alpha
 func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *v1alpha1.AzVolume) error {
 	// Determine if this is a controller server requested deletion or driver clean up
 	volumeDeleteRequested := volumeDeleteRequested(azVolume)
+	preProvisionCleanupRequested := preProvisionCleanupRequested(azVolume)
 
 	mode := deleteCRIOnly
-	if volumeDeleteRequested {
+	if volumeDeleteRequested || preProvisionCleanupRequested {
 		mode = detachAndDeleteCRI
 	}
 
@@ -625,7 +626,7 @@ func createAzVolumeFromPv(ctx context.Context, pv v1.PersistentVolume, azVolumeC
 	if pv.Spec.CSI != nil && pv.Spec.CSI.Driver == consts.DefaultDriverName {
 		diskName, err := azureutils.GetDiskName(pv.Spec.CSI.VolumeHandle)
 		if err != nil {
-			return fmt.Errorf("Failed to extract diskName from volume handle (%s): %v", pv.Spec.CSI.VolumeHandle, err)
+			return fmt.Errorf("failed to extract diskName from volume handle (%s): %v", pv.Spec.CSI.VolumeHandle, err)
 		}
 		azVolumeName := strings.ToLower(diskName)
 		klog.Infof("Creating AzVolume (%s) for PV(%s)", azVolumeName, pv.Name)
@@ -639,7 +640,7 @@ func createAzVolumeFromPv(ctx context.Context, pv v1.PersistentVolume, azVolumeC
 		} else {
 			storageClass, err := kubeClient.StorageV1().StorageClasses().Get(ctx, pv.Spec.StorageClassName, metav1.GetOptions{})
 			if err != nil {
-				return fmt.Errorf("Failed to get storage class (%s): %v", pv.Spec.StorageClassName, err)
+				return fmt.Errorf("failed to get storage class (%s): %v", pv.Spec.StorageClassName, err)
 			}
 			_, maxMountReplicaCount = azureutils.GetMaxSharesAndMaxMountReplicaCount(storageClass.Parameters)
 		}
@@ -666,6 +667,7 @@ func createAzVolumeFromPv(ctx context.Context, pv v1.PersistentVolume, azVolumeC
 				VolumeCapability: []v1alpha1.VolumeCapability{},
 			},
 			Status: v1alpha1.AzVolumeStatus{
+				PersistentVolume: pv.Name,
 				Detail: &v1alpha1.AzVolumeStatusDetail{
 					Phase: azureutils.GetAzVolumePhase(pv.Status.Phase),
 					ResponseObject: &v1alpha1.AzVolumeStatusParams{

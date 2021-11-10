@@ -94,7 +94,7 @@ func (t *DynamicallyProvisionedAzureDiskDetach) Run(client clientset.Interface, 
 		err = wait.Poll(15*time.Second, 10*time.Minute, func() (bool, error) {
 			disktest, err := disksClient.Get(context.Background(), resourceGroup, diskName)
 			if err != nil {
-				return false, fmt.Errorf("Error getting disk for azuredisk %v", err)
+				return false, fmt.Errorf("error getting disk for azuredisk %v", err)
 			}
 			if disktest.DiskState == compute.Unattached {
 				return true, nil

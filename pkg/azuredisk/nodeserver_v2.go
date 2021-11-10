@@ -23,6 +23,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"runtime"
 	"sync"
 	"sync/atomic"
 
@@ -35,6 +36,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"k8s.io/apimachinery/pkg/types"
+	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/volume"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
@@ -361,9 +363,19 @@ func (d *DriverV2) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest)
 	topology := &csi.Topology{
 		Segments: map[string]string{topologyKey: ""},
 	}
-	zone, err := d.cloudProvisioner.GetCloud().GetZone(ctx)
-	if err != nil {
-		klog.Warningf("Failed to get zone from Azure cloud provider, nodeName: %v, error: %v", d.NodeID, err)
+
+	var (
+		zone      cloudprovider.Zone
+		zoneError error
+	)
+	if runtime.GOOS == "windows" && (!d.cloudProvisioner.GetCloud().UseInstanceMetadata || d.cloudProvisioner.GetCloud().Metadata == nil) {
+		zone, zoneError = d.cloudProvisioner.GetCloud().VMSet.GetZoneByNodeName(d.NodeID)
+	} else {
+		zone, zoneError = d.cloudProvisioner.GetCloud().GetZone(ctx)
+	}
+
+	if zoneError != nil {
+		klog.Warningf("get zone(%s) failed with: %v", d.NodeID, zoneError)
 	} else {
 		if azureutils.IsValidAvailabilityZone(zone.FailureDomain, d.cloudProvisioner.GetCloud().Location) {
 			topology.Segments[topologyKey] = zone.FailureDomain

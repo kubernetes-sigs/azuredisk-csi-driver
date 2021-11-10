@@ -240,6 +240,9 @@ spec:
                 - errorCode
                 - errorMessage
                 type: object
+              persistentVolume:
+                description: the name of PV that corresponds to the AzVolume obj
+                type: string
               state:
                 description: Current state of underlying volume
                 type: string

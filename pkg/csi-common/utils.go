@@ -18,8 +18,6 @@ package csicommon
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"golang.org/x/net/context"
@@ -28,9 +26,6 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/kubernetes-csi/csi-lib-utils/protosanitizer"
 
-	clientSet "k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 )
 
@@ -108,38 +103,4 @@ func logGRPC(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, h
 		klog.V(level).Infof("GRPC response: %s", protosanitizer.StripSecrets(resp))
 	}
 	return resp, err
-}
-
-// GetKubeConfig gets config object from config file
-func GetKubeConfig(kubeconfig string) (config *rest.Config, err error) {
-
-	if kubeconfig == "" {
-		// if kubeconfig path is not passed
-		// read the incluster config
-		config, err = rest.InClusterConfig()
-
-		// if we couldn't get the in-cluster config
-		// get kubeconfig path from environment variable
-		if err != nil {
-			kubeconfig = os.Getenv("KUBECONFIG")
-			if kubeconfig == "" {
-				kubeconfig = filepath.Join(os.Getenv("HOME"), ".kube", "config")
-			}
-		} else {
-			return config, err
-		}
-	}
-
-	config, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
-
-	return config, err
-}
-
-func GetKubeClient(kubeconfig string) (*clientSet.Clientset, error) {
-	config, err := GetKubeConfig(kubeconfig)
-	if err != nil {
-		return nil, err
-	}
-
-	return clientSet.NewForConfig(config)
 }
