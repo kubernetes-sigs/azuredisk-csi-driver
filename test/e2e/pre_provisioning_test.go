@@ -77,7 +77,9 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 
 			if isUsingCSIDriverV2 {
 				// wait for the AzVolumeAttachments to be deleted
-				framework.ExpectNotEqual(azDiskClient, nil)
+				if azDiskClient == nil {
+					framework.Fail("azure disk client is nil")
+				}
 				diskName, err := azureutils.GetDiskName(volumeID)
 				framework.ExpectNoError(err)
 				diskName = strings.ToLower(diskName)

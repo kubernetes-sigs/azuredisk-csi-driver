@@ -52,6 +52,7 @@ import (
 	v1alpha1ClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1alpha1"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
@@ -70,6 +71,8 @@ const (
 	testTolerationValue = "test-toleration-value"
 	testLabelKey        = "test-label-key"
 	testLabelValue      = "test-label-value"
+
+	masterNodeLabel = "node-role.kubernetes.io/master"
 )
 
 var (
@@ -391,7 +394,7 @@ func (t *TestPersistentVolumeClaim) Cleanup() {
 		framework.ExpectNoError(err)
 	}
 	// Wait for the PVC to be deleted
-	err = waitForPersistentVolumeClaimDeleted(t.client, t.persistentVolumeClaim.Name, t.namespace.Name, 5*time.Second, 5*time.Minute)
+	err = waitForPersistentVolumeClaimDeleted(t.client, t.namespace.Name, t.persistentVolumeClaim.Name, 5*time.Second, 5*time.Minute)
 	framework.ExpectNoError(err)
 }
 
@@ -999,7 +1002,29 @@ func ListNodeNames(c clientset.Interface) []string {
 	return nodeNames
 }
 
-func SetNodeLabels(c clientset.Interface, node *v1.Node, newLabels map[string]string) (cleanup func(), err error) {
+func MakeNodeSchedulable(c clientset.Interface, node *v1.Node, isMultiZone bool) (newNode *v1.Node, cleanup func()) {
+	topologyValue := ""
+	if isMultiZone {
+		region := node.Labels[consts.TopologyRegionKey]
+		zone := node.Labels[consts.WellKnownTopologyKey]
+		topologyValue = fmt.Sprintf("%s-%s", region, zone)
+	}
+	var roleLabelCleanup func()
+	node, roleLabelCleanup, err := SetNodeLabels(c, node, map[string]string{driver.TopologyKey: topologyValue})
+	framework.ExpectNoError(err)
+
+	csiNodeCleanup, err := SetCSINodeDriver(c, node.Name)
+	framework.ExpectNoError(err)
+
+	cleanup = func() {
+		// annotationCleanup()
+		roleLabelCleanup()
+		csiNodeCleanup()
+	}
+	return
+}
+
+func SetNodeLabels(c clientset.Interface, node *v1.Node, newLabels map[string]string) (newNode *v1.Node, cleanup func(), err error) {
 	originalLabels := node.Labels
 	nodeName := node.Name
 	cleanup = func() {
@@ -1016,11 +1041,11 @@ func SetNodeLabels(c clientset.Interface, node *v1.Node, newLabels map[string]st
 		}
 	}
 
-	_, err = c.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{})
+	newNode, err = c.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{})
 	return
 }
 
-func SetNodeTaints(c clientset.Interface, node *v1.Node, taints ...v1.Taint) (cleanup func(), err error) {
+func SetNodeTaints(c clientset.Interface, node *v1.Node, taints ...v1.Taint) (newNode *v1.Node, cleanup func(), err error) {
 	originalTaints := node.Spec.Taints
 	nodeName := node.Name
 	cleanup = func() {
@@ -1037,11 +1062,66 @@ func SetNodeTaints(c clientset.Interface, node *v1.Node, taints ...v1.Taint) (cl
 		node.Spec.Taints = append(node.Spec.Taints, taints...)
 	}
 
-	_, err = c.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{})
+	newNode, err = c.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{})
 	if err != nil {
 		klog.Errorf("failed to add taints (%+v) to node (%s): %v", taints, node.Name, err)
 	} else {
 		klog.Infof("successfully added taints (%+v) to node (%s)", taints, node.Name)
+	}
+	return
+}
+
+func AnnotateNode(c clientset.Interface, node *v1.Node, newAnnotations map[string]string) (newNode *v1.Node, cleanup func(), err error) {
+	originalAnnotations := node.Annotations
+	nodeName := node.Name
+	cleanup = func() {
+		node, err := c.CoreV1().Nodes().Get(context.Background(), nodeName, metav1.GetOptions{})
+		framework.ExpectNoError(err)
+		node.Annotations = originalAnnotations
+		_, _ = c.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{})
+	}
+
+	if node.Annotations == nil {
+		node.Annotations = newAnnotations
+	} else {
+		for key, value := range newAnnotations {
+			node.Annotations[key] = value
+		}
+	}
+
+	newNode, err = c.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{})
+	if err != nil {
+		klog.Errorf("failed to add annotations (%+v) to node (%s): %v", newAnnotations, node.Name, err)
+	} else {
+		klog.Infof("successfully added annotations (%+v) to node (%s)", newAnnotations, node.Name)
+	}
+	return
+}
+
+func SetCSINodeDriver(c clientset.Interface, nodeName string) (cleanup func(), err error) {
+	csiNode, err := c.StorageV1().CSINodes().Get(context.Background(), nodeName, metav1.GetOptions{})
+	framework.ExpectNoError(err)
+	originalSpec := csiNode.Spec
+	cleanup = func() {
+		csiNode, err := c.StorageV1().CSINodes().Get(context.Background(), nodeName, metav1.GetOptions{})
+		framework.ExpectNoError(err)
+		csiNode.Spec = originalSpec
+		_, _ = c.StorageV1().CSINodes().Update(context.Background(), csiNode, metav1.UpdateOptions{})
+	}
+
+	if csiNode.Spec.Drivers == nil || len(csiNode.Spec.Drivers) == 0 {
+		csiNode.Spec.Drivers = []storagev1.CSINodeDriver{
+			{
+				Name:         "secrets-store.csi.k8s.io",
+				NodeID:       nodeName,
+				TopologyKeys: nil,
+			},
+		}
+	}
+
+	_, err = c.StorageV1().CSINodes().Update(context.Background(), csiNode, metav1.UpdateOptions{})
+	if err != nil {
+		klog.Errorf("failed to add driver spec to csi node (%s): %v", nodeName, err)
 	}
 	return
 }

@@ -860,7 +860,6 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	})
 
 	ginkgo.It("Should not create replicas on node with non-tolerable taint", func() {
-		ginkgo.Skip("This test is failing randomly. Skipping the test case while the issue is being debugged.")
 		skipIfUsingInTreeVolumePlugin()
 		if isMultiZone {
 			ginkgo.Skip("test case does not apply to multi az case")
@@ -890,7 +889,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 					},
 					VolumeMount: volume.VolumeMount,
 				},
-			}, false),
+			}, isMultiZone),
 			IsWindows: isWindowsCluster,
 			UseCMD:    false,
 		}
@@ -905,6 +904,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			CSIDriver:              testDriver,
 			Pod:                    pod,
 			AzDiskClient:           azDiskClient,
+			IsMultiZone:            isMultiZone,
 			Volume:                 volume,
 			StorageClassParameters: storageClassParameters,
 		}
@@ -941,7 +941,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 					},
 					VolumeMount: volume.VolumeMount,
 				},
-			}, false),
+			}, isMultiZone),
 			IsWindows: isWindowsCluster,
 			UseCMD:    false,
 		}
@@ -956,6 +956,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			CSIDriver:              testDriver,
 			Pod:                    pod,
 			AzDiskClient:           azDiskClient,
+			IsMultiZone:            isMultiZone,
 			Volume:                 volume,
 			StorageClassParameters: storageClassParameters,
 		}
@@ -992,7 +993,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 					},
 					VolumeMount: volume.VolumeMount,
 				},
-			}, false),
+			}, isMultiZone),
 			IsWindows: isWindowsCluster,
 			UseCMD:    false,
 		}
@@ -1006,6 +1007,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		test := testsuites.PodNodeAffinity{
 			CSIDriver:              testDriver,
 			Pod:                    pod,
+			IsMultiZone:            isMultiZone,
 			AzDiskClient:           azDiskClient,
 			Volume:                 volume,
 			StorageClassParameters: storageClassParameters,

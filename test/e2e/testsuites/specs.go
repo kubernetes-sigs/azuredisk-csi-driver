@@ -29,6 +29,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	restclientset "k8s.io/client-go/rest"
+	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e/framework"
 
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
@@ -113,6 +114,7 @@ func (pod *PodDetails) SetupWithDynamicVolumes(client clientset.Interface, names
 			tpod.SetupVolume(tpvc.persistentVolumeClaim, fmt.Sprintf("%s%d", v.VolumeMount.NameGenerate, n+1), fmt.Sprintf("%s%d", v.VolumeMount.MountPathGenerate, n+1), v.VolumeMount.ReadOnly)
 		}
 		if tpvc.persistentVolume != nil {
+			klog.Infof("adding PV (%s) to pod (%s)", tpvc.persistentVolume.Name, tpod.pod.Name)
 			pod.Volumes[n].PersistentVolume = tpvc.persistentVolume.DeepCopy()
 		}
 	}

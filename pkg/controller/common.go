@@ -779,6 +779,7 @@ nodeLoop:
 	for nodeName, nodeEntry := range nodeMap {
 		for _, podNodeAffinity := range podNodeAffinities {
 			if match, err := podNodeAffinity.Match(nodeEntry.node); !match || err != nil {
+				klog.Infof("Removing node (%s) from replica candidates: node (%s) does not match pod affinity", nodeName, nodeName)
 				delete(nodeMap, nodeName)
 				continue nodeLoop
 			}
@@ -796,12 +797,14 @@ nodeLoop:
 		}
 
 		if !tolerable {
+			klog.Infof("Removing node (%s) from replica candidates: node (%s)'s taint cannot be tolerated", nodeName, nodeName)
 			delete(nodeMap, nodeName)
 			continue nodeLoop
 		}
 
 		for _, volumeNodeSelector := range volumeNodeSelectors {
 			if !volumeNodeSelector.Match(nodeEntry.node) {
+				klog.Infof("Removing node (%s) from replica candidates: pod node selector cannot be matched with node (%s).", nodeName, nodeName)
 				delete(nodeMap, nodeName)
 				continue nodeLoop
 			}

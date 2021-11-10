@@ -29,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/klog"
 	"k8s.io/kubernetes/test/e2e/framework"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
@@ -43,6 +44,7 @@ type PodToleration struct {
 	CSIDriver              driver.DynamicPVTestDriver
 	Pod                    PodDetails
 	Volume                 VolumeDetails
+	IsMultiZone            bool
 	AzDiskClient           *azDiskClientSet.Clientset
 	StorageClassParameters map[string]string
 }
@@ -61,14 +63,24 @@ func (t *PodToleration) Run(client clientset.Interface, namespace *v1.Namespace,
 	// set node taint
 	numNodesWithTaint := len(nodes) - (maxMountReplicaCount + 1)
 	nodesWithTaint := map[string]struct{}{}
-	for i := 0; i < numNodesWithTaint; i++ {
+	for i := range nodes {
 		nodeObj, err := client.CoreV1().Nodes().Get(ctx, nodes[i], metav1.GetOptions{})
 		framework.ExpectNoError(err)
-		taintCleanup, err := SetNodeTaints(client, nodeObj, testTaint)
-		framework.ExpectNoError(err)
-		defer taintCleanup()
 
-		nodesWithTaint[nodes[i]] = struct{}{}
+		if i < numNodesWithTaint {
+			var taintCleanup func()
+			nodeObj, taintCleanup, err = SetNodeTaints(client, nodeObj, testTaint)
+			framework.ExpectNoError(err)
+			defer taintCleanup()
+			nodesWithTaint[nodes[i]] = struct{}{}
+		}
+
+		// if the node is a master node, it will not have the required node affinity to schedule pod.
+		// so add the label
+		if _, ok := nodeObj.Labels[masterNodeLabel]; ok {
+			_, scheduleCleanup := MakeNodeSchedulable(client, nodeObj, t.IsMultiZone)
+			defer scheduleCleanup()
+		}
 	}
 
 	tpod, cleanup := t.Pod.SetupWithDynamicVolumes(client, namespace, t.CSIDriver, t.StorageClassParameters, schedulerName)
@@ -76,6 +88,7 @@ func (t *PodToleration) Run(client clientset.Interface, namespace *v1.Namespace,
 	for i := range cleanup {
 		defer cleanup[i]()
 	}
+	pod := tpod.pod.DeepCopy()
 
 	// add master node toleration to pod so that the test can utilize all available nodes
 	tpod.AllowScheduleOnMasterNode()
@@ -86,11 +99,16 @@ func (t *PodToleration) Run(client clientset.Interface, namespace *v1.Namespace,
 	ginkgo.By("checking that the pod is running")
 	tpod.WaitForRunning()
 
-	diskNames := make([]string, len(t.Pod.Volumes))
-	for i, volume := range t.Pod.Volumes {
-		framework.ExpectNotEqual(volume.PersistentVolume, nil)
+	klog.Infof("volumes: %+v", pod.Spec.Volumes)
+	diskNames := make([]string, len(pod.Spec.Volumes))
+	for i, volume := range pod.Spec.Volumes {
+		if volume.PersistentVolumeClaim == nil {
+			framework.Failf("volume (%s) does not hold PersistentVolumeClaim field", volume.Name)
+		}
+		pvc, err := client.CoreV1().PersistentVolumeClaims(tpod.namespace.Name).Get(ctx, volume.PersistentVolumeClaim.ClaimName, metav1.GetOptions{})
+		framework.ExpectNoError(err)
 
-		pv, err := client.CoreV1().PersistentVolumes().Get(ctx, volume.PersistentVolume.Name, metav1.GetOptions{})
+		pv, err := client.CoreV1().PersistentVolumes().Get(ctx, pvc.Spec.VolumeName, metav1.GetOptions{})
 		framework.ExpectNoError(err)
 		framework.ExpectNotEqual(pv.Spec.CSI, nil)
 		framework.ExpectEqual(pv.Spec.CSI.Driver, consts.DefaultDriverName)
@@ -107,14 +125,20 @@ func (t *PodToleration) Run(client clientset.Interface, namespace *v1.Namespace,
 				labelSelector := labels.NewSelector()
 				volReq, err := controller.CreateLabelRequirements(consts.VolumeNameLabel, selection.Equals, diskName)
 				framework.ExpectNoError(err)
-				labelSelector.Add(*volReq)
+				labelSelector = labelSelector.Add(*volReq)
 
 				azVolumeAttachments, err := t.AzDiskClient.DiskV1alpha1().AzVolumeAttachments(consts.AzureDiskCrdNamespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})
 				if err != nil {
 					return false, err
 				}
 
-				if azVolumeAttachments == nil || len(azVolumeAttachments.Items) != maxMountReplicaCount+1 {
+				if azVolumeAttachments == nil {
+					return false, nil
+				}
+
+				klog.Infof("found %d AzVolumeAttachments for volume (%s)", len(azVolumeAttachments.Items), diskName)
+
+				if len(azVolumeAttachments.Items) != maxMountReplicaCount+1 {
 					return false, nil
 				}
 
