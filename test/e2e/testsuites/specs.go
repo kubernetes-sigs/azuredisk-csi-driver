@@ -30,9 +30,9 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	clientset "k8s.io/client-go/kubernetes"
 	restclientset "k8s.io/client-go/rest"
+	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e/framework"
 	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
- 	"k8s.io/klog/v2"
 
 	v1alpha1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
@@ -68,8 +68,6 @@ type VolumeDetails struct {
 	DataSource *DataSource
 	// Optional, used with specified StorageClass
 	StorageClass *storagev1.StorageClass
-	// Optional, used for sorting by label of AzVolumeAttachments
-	PersistentVolume *v1.PersistentVolume
 }
 
 type VolumeMode int
