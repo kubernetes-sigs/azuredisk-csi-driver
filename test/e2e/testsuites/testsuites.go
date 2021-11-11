@@ -85,7 +85,7 @@ var (
 		testLabelKey: testLabelValue,
 	}
 
-	testAffinity = v1.Affinity{
+	testNodeAffinity = v1.Affinity{
 		NodeAffinity: &v1.NodeAffinity{
 			RequiredDuringSchedulingIgnoredDuringExecution: &v1.NodeSelector{
 				NodeSelectorTerms: []v1.NodeSelectorTerm{
@@ -99,6 +99,16 @@ var (
 					},
 				},
 			},
+		},
+	}
+
+	testPodAffinity = v1.Affinity{
+		PodAffinity: &v1.PodAffinity{
+			RequiredDuringSchedulingIgnoredDuringExecution: []v1.PodAffinityTerm{
+				{
+					LabelSelector: &metav1.LabelSelector{MatchLabels: testLabel},
+					TopologyKey:   consts.WellKnownTopologyKey,
+				}},
 		},
 	}
 )
@@ -935,6 +945,10 @@ func (t *TestPod) SetNodeSelector(nodeSelector map[string]string) {
 
 func (t *TestPod) SetAffinity(affinity *v1.Affinity) {
 	t.pod.Spec.Affinity = affinity
+}
+
+func (t *TestPod) SetLabel(labels map[string]string) {
+	t.pod.ObjectMeta.Labels = labels
 }
 
 func (t *TestPod) SetNodeToleration(nodeTolerations ...v1.Toleration) {
