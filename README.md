@@ -38,6 +38,9 @@ follow guide [here](./docs/install-driver-on-aks.md)
  - install via [kubectl](./docs/install-azuredisk-csi-driver.md) on public Azure (please use helm for Azure Stack, RedHat/CentOS)
  - install via [helm charts](./charts) on public Azure, Azure Stack, RedHat/CentOS
 
+### Install Azure Disk CSI Driver V2 on a Kubernetes cluster (Preview)
+ - install via [helm charts](./charts)
+
 ### Examples
  - [Basic usage](./deploy/example/e2e_usage.md)
  
@@ -53,6 +56,7 @@ follow guide [here](./docs/install-driver-on-aks.md)
  - [Volume Limits](./deploy/example/volumelimits)
  - [fsGroupPolicy](./deploy/example/fsgroup)
  - [Tune disk performance on Linux](./docs/enhancements/feat-add-ability-to-tune-azuredisk-performance-parameters.md)
+ - [Attachments Replicas for Faster Pod Failover(Preview for v2.0.0-alpha.1 and later)](./docs/design-v2.md)
 
 ### Troubleshooting
  - [CSI driver troubleshooting guide](./docs/csi-debug.md)
