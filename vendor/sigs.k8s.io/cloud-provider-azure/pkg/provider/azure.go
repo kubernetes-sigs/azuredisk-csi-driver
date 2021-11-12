@@ -439,6 +439,11 @@ func NewCloudWithoutFeatureGates(configReader io.Reader, callFromCCM bool) (*Clo
 		return nil, err
 	}
 
+	return NewCloudWithoutFeatureGatesFromConfig(config, false, callFromCCM)
+}
+
+// NewCloudWithoutFeatureGatesFromConfig returns a Cloud without trying to wire the feature gates.
+func NewCloudWithoutFeatureGatesFromConfig(config *Config, fromSecret, callFromCCM bool) (*Cloud, error) {
 	az := &Cloud{
 		nodeNames:                sets.NewString(),
 		nodeZones:                map[string]sets.String{},
@@ -448,7 +453,7 @@ func NewCloudWithoutFeatureGates(configReader io.Reader, callFromCCM bool) (*Clo
 		excludeLoadBalancerNodes: sets.NewString(),
 	}
 
-	err = az.InitializeCloudFromConfig(config, false, callFromCCM)
+	err := az.InitializeCloudFromConfig(config, fromSecret, callFromCCM)
 	if err != nil {
 		return nil, err
 	}

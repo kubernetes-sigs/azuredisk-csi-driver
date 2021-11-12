@@ -75,5 +75,5 @@ replace (
 	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.22.3
 	k8s.io/sample-controller => k8s.io/sample-controller v0.22.3
 
-	sigs.k8s.io/cloud-provider-azure => github.com/edreed/cloud-provider-azure v0.0.0-20211107000200-4c5f4c4a3e3d
+	sigs.k8s.io/cloud-provider-azure => github.com/edreed/cloud-provider-azure v0.0.0-20211111214527-f012c48a31cc
 )
