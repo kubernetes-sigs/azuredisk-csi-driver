@@ -58,6 +58,49 @@ controller:
       effect: "NoSchedule"
   hostNetwork: true # this setting could be disabled if controller does not depend on MSI setting
   podLabels: {}
+  resources:
+    csiProvisioner:
+      limits:
+        cpu: 200m
+        memory: 500Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    csiAttacher:
+      limits:
+        cpu: 200m
+        memory: 500Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    csiResizer:
+      limits:
+        cpu: 200m
+        memory: 500Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    csiSnapshotter:
+      limits:
+        cpu: 200m
+        memory: 100Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    livenessProbe:
+      limits:
+        cpu: 100m
+        memory: 100Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    azuredisk:
+      limits:
+        cpu: 300m
+        memory: 500Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
 
 node:
   cloudConfigSecretName: azure-cloud-provider
@@ -88,6 +131,13 @@ snapshot:
     name: csi-snapshot-controller
     replicas: 2
     podLabels: {}
+    resources:
+      limits:
+        cpu: 200m
+        memory: 100Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
 
 feature:
   enableFSGroupPolicy: false
@@ -118,6 +168,28 @@ linux:
               operator: NotIn
               values:
                 - virtual-kubelet
+  resources:
+    livenessProbe:
+      limits:
+        cpu: 100m
+        memory: 100Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    nodeDriverRegistrar:
+      limits:
+        cpu: 200m
+        memory: 100Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    azuredisk:
+      limits:
+        cpu: 200m
+        memory: 200Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
 
 windows:
   enabled: true
@@ -136,6 +208,28 @@ windows:
               operator: NotIn
               values:
                 - virtual-kubelet
+  resources:
+    livenessProbe:
+      limits:
+        cpu: 200m
+        memory: 200Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    nodeDriverRegistrar:
+      limits:
+        cpu: 200m
+        memory: 200Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    azuredisk:
+      limits:
+        cpu: 400m
+        memory: 400Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
 
 cloud: AzurePublicCloud
 
