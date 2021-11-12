@@ -27,11 +27,17 @@ import (
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	clientset "k8s.io/client-go/kubernetes"
 	restclientset "k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e/framework"
+	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
 
+	v1alpha1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
+	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 )
 
@@ -215,6 +221,7 @@ func (pod *PodDetails) SetupDeployment(client clientset.Interface, namespace *v1
 			ReadOnly:  volume.VolumeMount.ReadOnly,
 		}
 		volumeMounts = append(volumeMounts, newVolumeMount)
+		pod.Volumes[n].PersistentVolume = tpvc.persistentVolume
 	}
 	tDeployment := NewTestDeployment(client, namespace, pod.Cmd, volumeMounts, volumes, podReplicas, pod.IsWindows, pod.UseCMD, schedulerName)
 
@@ -335,4 +342,64 @@ func CreateVolumeSnapshotClass(client restclientset.Interface, namespace *v1.Nam
 	tvsc := NewTestVolumeSnapshotClass(client, namespace, volumeSnapshotClass)
 
 	return tvsc, tvsc.Cleanup
+}
+func VerifySuccessfulReplicaAzVolumeAttachments(pod PodDetails, azDiskClient *azDiskClientSet.Clientset, storageClassParameters map[string]string, client clientset.Interface, namespace *v1.Namespace) (bool, *v1alpha1.AzVolumeAttachmentList, error) {
+	if storageClassParameters["maxShares"] == "" {
+		return true, nil, nil
+	}
+
+	var expectedNumberOfReplicas int
+	_, maxMountReplicas := azureutils.GetMaxSharesAndMaxMountReplicaCount(storageClassParameters)
+	nodes := ListAzDriverNodeNames(azDiskClient.DiskV1alpha1().AzDriverNodes(azureconstants.AzureDiskCrdNamespace))
+	nodesAvailableForReplicas := len(nodes) - 1
+	if nodesAvailableForReplicas >= maxMountReplicas {
+		expectedNumberOfReplicas = maxMountReplicas
+	} else {
+		expectedNumberOfReplicas = nodesAvailableForReplicas
+	}
+
+	for _, volume := range pod.Volumes {
+		if volume.PersistentVolume != nil {
+			replicaAttachments, err := GetReplicaAttachments(volume.PersistentVolume, client, namespace, azDiskClient)
+			framework.ExpectNoError(err)
+			numReplicaAttachments := len(replicaAttachments.Items)
+
+			if numReplicaAttachments != expectedNumberOfReplicas {
+				e2elog.Logf("expected %d replica attachments, found %d", expectedNumberOfReplicas, numReplicaAttachments)
+				return false, nil, nil
+			}
+
+			failedReplicaAttachments := v1alpha1.AzVolumeAttachmentList{}
+
+			for _, replica := range replicaAttachments.Items {
+				if replica.Status.State != "Attached" {
+					e2elog.Logf(fmt.Sprintf("found replica attachment %s, currently not attached", replica.Name))
+					failedReplicaAttachments.Items = append(failedReplicaAttachments.Items, replica)
+				} else {
+					e2elog.Logf(fmt.Sprintf("found replica attachment %s in attached state", replica.Name))
+
+				}
+			}
+			if len(failedReplicaAttachments.Items) > 0 {
+				return false, &failedReplicaAttachments, nil
+			}
+		}
+	}
+	return true, nil, nil
+}
+
+func GetReplicaAttachments(persistentVolume *v1.PersistentVolume, client clientset.Interface, namespace *v1.Namespace, azDiskClient *azDiskClientSet.Clientset) (*v1alpha1.AzVolumeAttachmentList, error) {
+	pv, err := client.CoreV1().PersistentVolumes().Get(context.TODO(), persistentVolume.Name, metav1.GetOptions{})
+	if err != nil {
+		ginkgo.Fail("failed to get persistent volume")
+	}
+	diskname, err := azureutils.GetDiskName(pv.Spec.CSI.VolumeHandle)
+	if err != nil {
+		ginkgo.Fail("failed to get persistent volume diskname")
+	}
+	azVolumeAttachmentsReplica, err := azDiskClient.DiskV1alpha1().AzVolumeAttachments(azureconstants.AzureDiskCrdNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: labels.Set(map[string]string{azureconstants.RoleLabel: "Replica", azureconstants.VolumeNameLabel: diskname}).String()})
+	if err != nil {
+		ginkgo.Fail("failed while getting replica attachments")
+	}
+	return azVolumeAttachmentsReplica, nil
 }

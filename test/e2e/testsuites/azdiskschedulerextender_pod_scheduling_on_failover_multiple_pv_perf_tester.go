@@ -17,11 +17,17 @@ limitations under the License.
 package testsuites
 
 import (
+	"fmt"
 	"sync"
+	"time"
 
 	"github.com/onsi/ginkgo"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
+	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
+	v1alpha1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
+	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 )
 
@@ -32,6 +38,7 @@ type AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV struct {
 	Pod                    PodDetails
 	Replicas               int
 	StorageClassParameters map[string]string
+	AzDiskClient           *azDiskClientSet.Clientset
 }
 
 func (t *AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
@@ -53,6 +60,7 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV) Run(client cl
 			defer ginkgo.GinkgoRecover()
 			tokens <- struct{}{} // acquire a token
 			ss.Create()
+			tStatefulSet.allPods = ss.allPods
 			<-tokens // release the token
 		}(tStatefulSet)
 	}
@@ -76,4 +84,40 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV) Run(client cl
 		}
 		wg.Wait()
 	}
+
+	//Check that AzVolumeAttachment resources were created correctly
+	allReplicasAttached := true
+	var failedReplicaAttachments []*v1alpha1.AzVolumeAttachmentList
+	err := wait.Poll(15*time.Second, 10*time.Minute, func() (bool, error) {
+		failedReplicaAttachments = nil
+		var err error
+		var attached bool
+		var podFailedReplicaAttachments *v1alpha1.AzVolumeAttachmentList
+		for _, ss := range tStatefulSets {
+			for _, pod := range ss.allPods {
+				attached, podFailedReplicaAttachments, err = VerifySuccessfulReplicaAzVolumeAttachments(pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
+				allReplicasAttached = allReplicasAttached && attached
+				if podFailedReplicaAttachments != nil {
+					failedReplicaAttachments = append(failedReplicaAttachments, podFailedReplicaAttachments)
+				}
+			}
+		}
+		return allReplicasAttached, err
+	})
+	if len(failedReplicaAttachments) > 0 {
+		e2elog.Logf("found %d azvolumeattachments failed:", len(failedReplicaAttachments))
+		for _, podAttachments := range failedReplicaAttachments {
+			for _, attachments := range podAttachments.Items {
+				e2elog.Logf("azvolumeattachment: %s, err: %s", attachments.Name, attachments.Status.Error.ErrorMessage)
+			}
+		}
+		ginkgo.Fail("failed due to replicas failing to attach")
+	} else if !allReplicasAttached {
+		ginkgo.Fail("could not find correct number of replicas")
+	} else if err != nil {
+		ginkgo.Fail(fmt.Sprintf("failed to verify replica attachments, err: %s", err))
+
+	}
+	ginkgo.By("replica attachments verified successfully")
+
 }
