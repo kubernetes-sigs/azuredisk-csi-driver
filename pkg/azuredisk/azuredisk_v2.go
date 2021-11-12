@@ -166,7 +166,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 		userAgent := GetUserAgent(d.Name, d.customUserAgent, d.userAgentSuffix)
 		klog.V(2).Infof("driver userAgent: %s", userAgent)
 
-		d.cloudProvisioner, err = provisioner.NewCloudProvisioner(d.kubeClient, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, topologyKey, userAgent, d.enableDiskOnlineResize)
+		d.cloudProvisioner, err = provisioner.NewCloudProvisioner(d.kubeClient, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, d.getPerfOptimizationEnabled(), topologyKey, userAgent, d.enableDiskOnlineResize)
 		if err != nil {
 			klog.Fatalf("Failed to get controller provisioner. Error: %v", err)
 		}

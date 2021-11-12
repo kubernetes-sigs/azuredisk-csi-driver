@@ -200,8 +200,9 @@ func NewTestCloudProvisioner(controller *gomock.Controller) *CloudProvisioner {
 	}
 
 	return &CloudProvisioner{
-		cloud:                  cloud,
-		getDiskThrottlingCache: cache,
+		cloud:                   cloud,
+		getDiskThrottlingCache:  cache,
+		perfOptimizationEnabled: util.IsLinuxOS(),
 	}
 }
 
@@ -400,6 +401,7 @@ func TestCreateVolume(t *testing.T) {
 		contentSource *v1alpha1.ContentVolumeSource
 		topology      *v1alpha1.TopologyRequirement
 		expectedError error
+		disabled      bool
 	}{
 		{
 			description:   "[Success] Creates a disk with default parameters",
@@ -422,6 +424,121 @@ func TestCreateVolume(t *testing.T) {
 				"resourceGroup":      testResourceGroup,
 				"maxShares":          "1",
 				"storageAccountType": "Premium_LRS",
+			},
+			secrets: map[string]string{
+				"sh": "a secret",
+			},
+			contentSource: &v1alpha1.ContentVolumeSource{
+				ContentSource:   v1alpha1.ContentVolumeSourceTypeVolume,
+				ContentSourceID: testDiskURI,
+			},
+			topology: &v1alpha1.TopologyRequirement{
+				Requisite: []v1alpha1.Topology{
+					{
+						Segments: map[string]string{
+							topologyKeyStr: "testregion-1",
+						},
+					},
+				},
+			},
+			expectedError: nil,
+		},
+		{
+			description: "[Failure] advanced perfProfile fails if no device settings provided",
+			disabled:    !provisioner.perfOptimizationEnabled,
+			diskName:    "disk-with-specific-parameters",
+			capacity: &v1alpha1.CapacityRange{
+				RequiredBytes: util.GiBToBytes(10),
+				LimitBytes:    util.GiBToBytes(10),
+			},
+			capabilities: []v1alpha1.VolumeCapability{
+				{
+					AccessMode: v1alpha1.VolumeCapabilityAccessModeSingleNodeWriter,
+				},
+			},
+			parameter: map[string]string{
+				"resourceGroup":      testResourceGroup,
+				"maxShares":          "1",
+				"storageAccountType": "Premium_LRS",
+				"perfProfile":        "advanced",
+			},
+			secrets: map[string]string{
+				"sh": "a secret",
+			},
+			contentSource: &v1alpha1.ContentVolumeSource{
+				ContentSource:   v1alpha1.ContentVolumeSourceTypeVolume,
+				ContentSourceID: testDiskURI,
+			},
+			topology: &v1alpha1.TopologyRequirement{
+				Requisite: []v1alpha1.Topology{
+					{
+						Segments: map[string]string{
+							topologyKeyStr: "testregion-1",
+						},
+					},
+				},
+			},
+			expectedError: fmt.Errorf("AreDeviceSettingsValid: No deviceSettings passed"),
+		},
+		{
+			description: "[Failure] advanced perfProfile fails if invalid device settings provided",
+			disabled:    !provisioner.perfOptimizationEnabled,
+			diskName:    "disk-with-specific-parameters",
+			capacity: &v1alpha1.CapacityRange{
+				RequiredBytes: util.GiBToBytes(10),
+				LimitBytes:    util.GiBToBytes(10),
+			},
+			capabilities: []v1alpha1.VolumeCapability{
+				{
+					AccessMode: v1alpha1.VolumeCapabilityAccessModeSingleNodeWriter,
+				},
+			},
+			parameter: map[string]string{
+				"resourceGroup":      testResourceGroup,
+				"maxShares":          "1",
+				"storageAccountType": "Premium_LRS",
+				"perfProfile":        "advanced",
+				azureconstants.DeviceSettingsKeyPrefix + "device/scheduler":        "8",
+				azureconstants.DeviceSettingsKeyPrefix + "../../device/nr_request": "8",
+			},
+			secrets: map[string]string{
+				"sh": "a secret",
+			},
+			contentSource: &v1alpha1.ContentVolumeSource{
+				ContentSource:   v1alpha1.ContentVolumeSourceTypeVolume,
+				ContentSourceID: testDiskURI,
+			},
+			topology: &v1alpha1.TopologyRequirement{
+				Requisite: []v1alpha1.Topology{
+					{
+						Segments: map[string]string{
+							topologyKeyStr: "testregion-1",
+						},
+					},
+				},
+			},
+			expectedError: fmt.Errorf("AreDeviceSettingsValid: Setting /sys/device/nr_request is not a valid file path under %s",
+				azureconstants.DummyBlockDevicePathLinux),
+		},
+		{
+			description: "[Success] advanced perfProfile succeeds if valid device settings provided",
+			disabled:    !provisioner.perfOptimizationEnabled,
+			diskName:    "disk-with-specific-parameters",
+			capacity: &v1alpha1.CapacityRange{
+				RequiredBytes: util.GiBToBytes(10),
+				LimitBytes:    util.GiBToBytes(10),
+			},
+			capabilities: []v1alpha1.VolumeCapability{
+				{
+					AccessMode: v1alpha1.VolumeCapabilityAccessModeSingleNodeWriter,
+				},
+			},
+			parameter: map[string]string{
+				"resourceGroup":      testResourceGroup,
+				"maxShares":          "1",
+				"storageAccountType": "Premium_LRS",
+				"perfProfile":        "advanced",
+				azureconstants.DeviceSettingsKeyPrefix + "device/nr_request": "8",
 			},
 			secrets: map[string]string{
 				"sh": "a secret",
@@ -519,6 +636,9 @@ func TestCreateVolume(t *testing.T) {
 	}
 
 	for _, test := range tests {
+		if test.disabled {
+			continue
+		}
 		tt := test
 		t.Run(test.description, func(t *testing.T) {
 			if tt.diskName != testDiskName {

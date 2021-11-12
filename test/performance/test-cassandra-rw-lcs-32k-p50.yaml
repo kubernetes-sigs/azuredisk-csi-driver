@@ -1,0 +1,96 @@
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: sc-test-cassandra-rw-lcs-32k-p50
+provisioner: disk.csi.azure.com
+parameters:
+  cachingmode: None
+  skuname: Premium_LRS
+  perfProfile: None
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+---
+apiVersion: perf.kubestone.xridge.io/v1alpha1
+kind: Fio
+metadata:
+  name: test-cassandra-rw-lcs-32k-p50
+spec:
+  customJobFiles:
+  - |
+    [global]
+    rw=readwrite                        # type of load wanted
+    ioengine=libaio                     # libaio = best for linux, mmap if not supported (Mac)
+    iodepth=8                           # baseline of a medium used server, increase to 16-32 for more heavily to max used
+    invalidate=1                        # Invalidate the buffer/page cache parts for this file prior to starting I/O
+    direct=1                            # bypass os buffers
+    randrepeat=1                        # run one pass of the defined time
+    fallocate=none                      # do not pre-allocate space when files are laid down
+    thread=1                            # only run one thread for each job
+    fadvise_hint=0                      # don't alert the OS kernel of type of load
+    time_based=1                        # run on timer vs. rounds
+    file_service_type=sequential        # finish one file write then move to the next
+    filename_format=cassandra.$filenum  # create named files to be reused in all jobs below
+    nrfiles=10                          # number of files to read/write
+    filesize=160m                       # LCS target is 160mb
+    blocksize=32k                       # sstable compaction chunk size
+
+
+    [setup]
+    name=lcs_setup      # name in end report
+    readwrite=write     # write only load type
+    end_fsync=1         # on finish force fsync of dirty bytes to disk
+    runtime=1           # just create the base files and move on
+    stonewall           # block on this job until all files are created
+
+
+    [sstable_writer]
+    new_group                       # create a new grouping in the report to separate setup and real load tests
+    name=lcs_32k_write              # name in end report
+    readwrite=write                 # write only job
+    runtime=60s                     # run for 60s
+    openfiles=1                     # simulate single threaded compaction
+    write_bw_log=lcs.32k.write      # output throughput results to graph
+    write_lat_log=lcs.32k.write     # output latency results to graph
+    write_iops_log=lcs.32k.write    # output iops results to graph
+
+
+    [sstable_reader]
+    name=lcs_32k_read               # name in end report
+    rw=randread                     # perform random reads
+    runtime=60s                     # run for 60s
+    openfiles=5                     # simulate random reads across multiple sstables
+    file_service_type=random        # randomly read across all files
+    write_bw_log=lcs.32k.read       # output throughput results to graph
+    write_lat_log=lcs.32k.read      # output latency results to graph
+    write_iops_log=lcs.32k.read     # output iops results to graph
+  cmdLineArgs: --output-format=json
+  podConfig:
+    podLabels:
+        app: kubestone
+    podScheduling:
+          affinity:
+            podAntiAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchExpressions:
+                      - key: "app"
+                        operator: In
+                        values:
+                        - kubestone
+                  topologyKey: "kubernetes.io/hostname"
+  image:
+    name: xridge/fio:3.13
+  volume:
+    persistentVolumeClaimSpec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 4096Gi
+      storageClassName: sc-test-cassandra-rw-lcs-32k-p50
+    volumeSource:
+      persistentVolumeClaim:
+        claimName: GENERATED
+---

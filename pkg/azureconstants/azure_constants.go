@@ -53,6 +53,7 @@ const (
 	NetworkAccessPolicyField      = "networkaccesspolicy"
 	NotFound                      = "NotFound"
 	PerfProfileBasic              = "basic"
+	PerfProfileAdvanced           = "advanced"
 	PerfProfileField              = "perfprofile"
 	PerfProfileNone               = "none"
 	PremiumAccountPrefix          = "premium"
@@ -84,6 +85,9 @@ const (
 	MasterNodeRoleTaintKey        = "node-role.kubernetes.io/master"
 	WriteAcceleratorEnabled       = "writeacceleratorenabled"
 	AttachableVolumesField        = "attachable-volumes-azure-disk"
+	DeviceSettingsKeyPrefix       = "device-setting/"
+	BlockDeviceRootPathLinux      = "/sys/block"
+	DummyBlockDevicePathLinux     = "/sys/block/sda"
 
 	// CRDs specific constants
 	// 1. AzVolumeAttachmentFinalizer for AzVolumeAttachment objects handles deletion of AzVolumeAttachment CRIs

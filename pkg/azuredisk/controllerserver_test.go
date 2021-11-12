@@ -19,6 +19,7 @@ package azuredisk
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -40,6 +41,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockkubeclient"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockpersistentvolume"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/diskclient/mockdiskclient"
@@ -74,7 +76,6 @@ func TestCreateVolume(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				d, _ := NewFakeDriver(t)
 				d.setControllerCapabilities([]*csi.ControllerServiceCapability{})
-
 				req := &csi.CreateVolumeRequest{}
 				_, err := d.CreateVolume(context.Background(), req)
 				expectedErr := status.Error(codes.InvalidArgument, "CREATE_DELETE_VOLUME")
@@ -195,7 +196,7 @@ func TestCreateVolume(t *testing.T) {
 					Parameters:         mp,
 				}
 				_, err := d.CreateVolume(context.Background(), req)
-				expectedErr := status.Error(codes.InvalidArgument, "Perf profile blah is not supported. Supported tuning modes are none and basic.")
+				expectedErr := status.Error(codes.InvalidArgument, "Perf profile blah is not supported")
 				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
@@ -441,6 +442,120 @@ func TestCreateVolume(t *testing.T) {
 				expectedErr := fmt.Errorf("invalid parameter %s in storage class", "invalidparameter")
 				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "advanced perfProfile fails if no device settings provided",
+			testFunc: func(t *testing.T) {
+				d, _ := NewFakeDriver(t)
+				d.setPerfOptimizationEnabled(util.IsLinuxOS())
+				if util.IsLinuxOS() {
+					stdCapacityRangetest := &csi.CapacityRange{
+						RequiredBytes: volumehelper.GiBToBytes(10),
+						LimitBytes:    volumehelper.GiBToBytes(15),
+					}
+					req := &csi.CreateVolumeRequest{
+						Name:               testVolumeName,
+						VolumeCapabilities: stdVolumeCapabilities,
+						CapacityRange:      stdCapacityRangetest,
+						Parameters:         map[string]string{"perfProfile": "advanced"},
+					}
+					size := int32(volumehelper.BytesToGiB(req.CapacityRange.RequiredBytes))
+					id := fmt.Sprintf(consts.ManagedDiskPath, "subs", "rg", testVolumeName)
+					state := string(compute.ProvisioningStateSucceeded)
+					disk := compute.Disk{
+						ID:   &id,
+						Name: &testVolumeName,
+						DiskProperties: &compute.DiskProperties{
+							DiskSizeGB:        &size,
+							ProvisioningState: &state,
+						},
+					}
+					d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+					d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+					_, err := d.CreateVolume(context.Background(), req)
+					expectedErr := fmt.Errorf("AreDeviceSettingsValid: No deviceSettings passed")
+					if !testutil.IsErrorEquivalent(err, expectedErr) {
+						t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+					}
+				}
+			},
+		},
+		{
+			name: "advanced perfProfile succeeds if atleast one device settings provided",
+			testFunc: func(t *testing.T) {
+				d, _ := NewFakeDriver(t)
+				d.setPerfOptimizationEnabled(util.IsLinuxOS())
+				if util.IsLinuxOS() {
+					stdCapacityRangetest := &csi.CapacityRange{
+						RequiredBytes: volumehelper.GiBToBytes(10),
+						LimitBytes:    volumehelper.GiBToBytes(15),
+					}
+					req := &csi.CreateVolumeRequest{
+						Name:               testVolumeName,
+						VolumeCapabilities: stdVolumeCapabilities,
+						CapacityRange:      stdCapacityRangetest,
+						Parameters:         map[string]string{"perfProfile": "advanced", consts.DeviceSettingsKeyPrefix + "device/nr_request": "8"},
+					}
+					size := int32(volumehelper.BytesToGiB(req.CapacityRange.RequiredBytes))
+					id := fmt.Sprintf(consts.ManagedDiskPath, "subs", "rg", testVolumeName)
+					state := string(compute.ProvisioningStateSucceeded)
+					disk := compute.Disk{
+						ID:   &id,
+						Name: &testVolumeName,
+						DiskProperties: &compute.DiskProperties{
+							DiskSizeGB:        &size,
+							ProvisioningState: &state,
+						},
+					}
+					d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+					d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+					_, err := d.CreateVolume(context.Background(), req)
+					expectedErr := error(nil)
+					if !testutil.IsErrorEquivalent(err, expectedErr) {
+						t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+					}
+				}
+			},
+		},
+		{
+			name: "advanced perfProfile fails if invalid device settings provided",
+			testFunc: func(t *testing.T) {
+				d, _ := NewFakeDriver(t)
+				d.setPerfOptimizationEnabled(util.IsLinuxOS())
+				if util.IsLinuxOS() {
+					deviceSettingOverride := consts.DeviceSettingsKeyPrefix + "../device/scheduler"
+					settingPath, _ := filepath.Abs(filepath.Join(consts.DummyBlockDevicePathLinux, "../device/scheduler"))
+					//absFilePath, _ := filepath.Abs(relativeSettingPath)
+					stdCapacityRangetest := &csi.CapacityRange{
+						RequiredBytes: volumehelper.GiBToBytes(10),
+						LimitBytes:    volumehelper.GiBToBytes(15),
+					}
+					req := &csi.CreateVolumeRequest{
+						Name:               testVolumeName,
+						VolumeCapabilities: stdVolumeCapabilities,
+						CapacityRange:      stdCapacityRangetest,
+						Parameters:         map[string]string{"perfProfile": "advanced", consts.DeviceSettingsKeyPrefix + "device/nr_request": "8", deviceSettingOverride: "8"},
+					}
+					size := int32(volumehelper.BytesToGiB(req.CapacityRange.RequiredBytes))
+					id := fmt.Sprintf(consts.ManagedDiskPath, "subs", "rg", testVolumeName)
+					state := string(compute.ProvisioningStateSucceeded)
+					disk := compute.Disk{
+						ID:   &id,
+						Name: &testVolumeName,
+						DiskProperties: &compute.DiskProperties{
+							DiskSizeGB:        &size,
+							ProvisioningState: &state,
+						},
+					}
+					d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+					d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+					_, err := d.CreateVolume(context.Background(), req)
+					expectedErr := fmt.Errorf("AreDeviceSettingsValid: Setting %s is not a valid file path under %s", settingPath, consts.DummyBlockDevicePathLinux)
+					if !testutil.IsErrorEquivalent(err, expectedErr) {
+						t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+					}
 				}
 			},
 		},

@@ -65,15 +65,15 @@ func (mr *MockInterfaceMockRecorder) DiskSupportsPerfOptimization(diskPerfProfil
 }
 
 // OptimizeDiskPerformance mocks base method.
-func (m *MockInterface) OptimizeDiskPerformance(nodeInfo *optimization.NodeInfo, devicePath, perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr string) error {
+func (m *MockInterface) OptimizeDiskPerformance(nodeInfo *optimization.NodeInfo, devicePath, perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr string, deviceSettingsFromCtx map[string]string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "OptimizeDiskPerformance", nodeInfo, devicePath, perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr)
+	ret := m.ctrl.Call(m, "OptimizeDiskPerformance", nodeInfo, devicePath, perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr, deviceSettingsFromCtx)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // OptimizeDiskPerformance indicates an expected call of OptimizeDiskPerformance.
-func (mr *MockInterfaceMockRecorder) OptimizeDiskPerformance(nodeInfo, devicePath, perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr interface{}) *gomock.Call {
+func (mr *MockInterfaceMockRecorder) OptimizeDiskPerformance(nodeInfo, devicePath, perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr, deviceSettingsFromCtx interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OptimizeDiskPerformance", reflect.TypeOf((*MockInterface)(nil).OptimizeDiskPerformance), nodeInfo, devicePath, perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OptimizeDiskPerformance", reflect.TypeOf((*MockInterface)(nil).OptimizeDiskPerformance), nodeInfo, devicePath, perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr, deviceSettingsFromCtx)
 }

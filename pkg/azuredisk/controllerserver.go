@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"path"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -107,6 +108,9 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		diskAccessID            string
 		maxShares               int
 		enableBursting          *bool
+		perfProfile             string
+		isAdvancedPerfProfile   bool
+		deviceSettings          map[string]string
 	)
 
 	localCloud := d.cloud
@@ -115,8 +119,11 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	if parameters == nil {
 		parameters = make(map[string]string)
 	}
+	isAdvancedPerfProfile = false
+	deviceSettings = make(map[string]string)
 	for k, v := range parameters {
-		switch strings.ToLower(k) {
+		key := strings.ToLower(k)
+		switch key {
 		case consts.SkuNameField:
 			storageAccountType = v
 		case consts.LocationField:
@@ -164,9 +171,11 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			// fix csi migration issue: https://github.com/kubernetes/kubernetes/issues/103433
 			parameters[consts.KindField] = string(v1.AzureManagedDisk)
 		case consts.PerfProfileField:
-			if !optimization.IsValidPerfProfile(v) {
-				return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Perf profile %s is not supported. Supported tuning modes are none and basic.", v))
+			perfProfile = strings.ToLower(v)
+			if !optimization.IsValidPerfProfile(perfProfile) {
+				return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Perf profile %s is not supported", v))
 			}
+			isAdvancedPerfProfile = strings.EqualFold(perfProfile, consts.PerfProfileAdvanced)
 		case consts.NetworkAccessPolicyField:
 			netAccessPolicy = v
 		case consts.DiskAccessIDField:
@@ -186,7 +195,20 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		case consts.ZonedField:
 			// no op, only for backward compatibility with in-tree driver
 		default:
-			return nil, fmt.Errorf("invalid parameter %s in storage class", k)
+			// accept all device settings params
+			// device settings need to start with consts.DeviceSettingsKeyPrefix
+			if deviceSetting, err := optimization.GetDeviceSettingFromAttribute(k); err == nil {
+				deviceSettings[filepath.Join(consts.DummyBlockDevicePathLinux, deviceSetting)] = v
+			} else {
+				return nil, fmt.Errorf("invalid parameter %s in storage class", k)
+			}
+		}
+	}
+
+	// If perfProfile is set to advanced and no/invalid device settings are provided, fail the request
+	if d.getPerfOptimizationEnabled() && isAdvancedPerfProfile {
+		if err = optimization.AreDeviceSettingsValid(consts.DummyBlockDevicePathLinux, deviceSettings); err != nil {
+			return nil, err
 		}
 	}
 

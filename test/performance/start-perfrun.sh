@@ -18,8 +18,7 @@ set -euo pipefail
 
 readonly PKG_ROOT="$(git rev-parse --show-toplevel)"
 
-kustomize build github.com/xridge/kubestone/config/default?ref=v0.5.0 | sed "s/kubestone:latest/kubestone:v0.5.0/" | kubectl create -f -
-kubectl create namespace kubestone
+for testFile in ${PKG_ROOT}/test/performance/test-*.yaml; do
+    kubectl apply -f "$testFile"
+done
 
-kubectl apply -f "${PKG_ROOT}/test/performance/kubestone-storageclass.yaml"
-kubectl apply -f "${PKG_ROOT}/test/performance/kubestone-benchmarks.yaml"

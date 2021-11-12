@@ -98,14 +98,14 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	// If perf optimizations are enabled
 	// tweak device settings to enhance performance
 	if d.getPerfOptimizationEnabled() {
-		profile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr, err := optimization.GetDiskPerfAttributes(req.GetVolumeContext())
+		profile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr, deviceSettings, err := optimization.GetDiskPerfAttributes(req.GetVolumeContext())
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "Failed to get perf attributes for %s. Error: %v", source, err)
 		}
 
 		if d.getDeviceHelper().DiskSupportsPerfOptimization(profile, accountType) {
 			if err := d.getDeviceHelper().OptimizeDiskPerformance(d.getNodeInfo(), source, profile, accountType,
-				diskSizeGibStr, diskIopsStr, diskBwMbpsStr); err != nil {
+				diskSizeGibStr, diskIopsStr, diskBwMbpsStr, deviceSettings); err != nil {
 				return nil, status.Errorf(codes.Internal, "Failed to optimize device performance for target(%s) error(%s)", source, err)
 			}
 		} else {

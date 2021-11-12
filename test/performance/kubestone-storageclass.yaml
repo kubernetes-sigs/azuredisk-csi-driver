@@ -1,26 +1,45 @@
-
 ---
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: sc-kubestone-perf-optimized-premium-ssd-csi
+  name: sc-perf-premium-ssd-csi
 provisioner: disk.csi.azure.com
 parameters:
+  cachingmode: None
   skuname: Premium_LRS
-  perfProfile: Basic
 reclaimPolicy: Delete
-volumeBindingMode: Immediate
+volumeBindingMode: WaitForFirstConsumer
 allowVolumeExpansion: true
 ---
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: sc-kubestone-premium-ssd-csi
+  cachingmode: None
+  name: sc-perf-basic-optimized-premium-ssd-csi
 provisioner: disk.csi.azure.com
 parameters:
   skuname: Premium_LRS
+  perfProfile: Basic
 reclaimPolicy: Delete
-volumeBindingMode: Immediate
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: sc-perf-advanced-optimized-premium-ssd-csi
+provisioner: disk.csi.azure.com
+parameters:
+  cachingmode: None
+  skuname: Premium_LRS
+  perfProfile: Advanced
+  device-setting/queue/max_sectors_kb: "52"
+  device-setting/queue/scheduler: "mq-deadline"
+  device-setting/device/queue_depth: "16"
+  device-setting/queue/nr_requests: "16"
+  device-setting/queue/read_ahead_kb: "8"
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer
 allowVolumeExpansion: true
 ---
 allowVolumeExpansion: true
@@ -34,4 +53,5 @@ parameters:
   skuName: Premium_LRS
 provisioner: disk.csi.azure.com
 reclaimPolicy: Delete
-volumeBindingMode: Immediate
+volumeBindingMode: WaitForFirstConsumer
+---
