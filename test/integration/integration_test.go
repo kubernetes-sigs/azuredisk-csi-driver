@@ -39,6 +39,7 @@ var useDriverV2 = flag.Bool("temp-use-driver-v2", false, "A temporary flag to en
 
 func TestIntegrationOnAzurePublicCloud(t *testing.T) {
 	// Test on AzurePublicCloud
+	os.Setenv("AZURE_VM_TYPE", "standard")
 	creds, err := credentials.CreateAzureCredentialFile()
 	defer func() {
 		err := credentials.DeleteAzureCredentialFile()

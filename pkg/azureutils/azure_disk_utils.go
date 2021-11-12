@@ -114,7 +114,7 @@ func GetCachingMode(attributes map[string]string) (compute.CachingTypes, error) 
 }
 
 // GetCloudProviderFromClient get Azure Cloud Provider
-func GetCloudProviderFromClient(kubeClient *clientset.Clientset, secretName string, secretNamespace string, userAgent string) (*azure.Cloud, error) {
+func GetCloudProviderFromClient(kubeClient *clientset.Clientset, secretName, secretNamespace, userAgent string, allowEmptyCloudConfig bool) (*azure.Cloud, error) {
 	var config *azure.Config
 	var fromSecret bool
 	var err error
@@ -153,18 +153,22 @@ func GetCloudProviderFromClient(kubeClient *clientset.Clientset, secretName stri
 
 		credFileConfig, err := os.Open(credFile)
 		if err != nil {
-			klog.Errorf("Failed to load config from file: %s", credFile)
-			return nil, fmt.Errorf("Failed to load config from file: %s, cloud not get azure cloud provider", credFile)
-		}
-		defer credFileConfig.Close()
-		klog.V(2).Infof("read cloud config from file: %s successfully", credFile)
-		if config, err = azure.ParseConfig(credFileConfig); err != nil {
-			klog.Warningf("parse config file(%s) failed with error: %v", credFile, err)
+			klog.Warningf("load azure config from file(%s) failed with %v", credFile, err)
+		} else {
+			defer credFileConfig.Close()
+			klog.V(2).Infof("read cloud config from file: %s successfully", credFile)
+			if config, err = azure.ParseConfig(credFileConfig); err != nil {
+				klog.Warningf("parse config file(%s) failed with error: %v", credFile, err)
+			}
 		}
 	}
 
 	if config == nil {
-		klog.V(2).Infof("no cloud config provided, error: %v, driver will run without cloud config", err)
+		if allowEmptyCloudConfig {
+			klog.V(2).Infof("no cloud config provided, error: %v, driver will run without cloud config", err)
+		} else {
+			return nil, fmt.Errorf("no cloud config provided, error: %v", err)
+		}
 	} else {
 		// disable disk related rate limit
 		config.DiskRateLimit = &azclients.RateLimitConfig{
@@ -187,7 +191,7 @@ func GetCloudProviderFromClient(kubeClient *clientset.Clientset, secretName stri
 }
 
 // GetCloudProviderFromConfig get Azure Cloud Provider
-func GetCloudProvider(kubeConfig, secretName, secretNamespace, userAgent string) (*azure.Cloud, error) {
+func GetCloudProvider(kubeConfig, secretName, secretNamespace, userAgent string, allowEmptyCloudConfig bool) (*azure.Cloud, error) {
 	kubeClient, err := GetKubeClient(kubeConfig)
 	if err != nil {
 		klog.Warningf("get kubeconfig(%s) failed with error: %v", kubeConfig, err)
@@ -195,7 +199,7 @@ func GetCloudProvider(kubeConfig, secretName, secretNamespace, userAgent string)
 			return nil, fmt.Errorf("failed to get KubeClient: %v", err)
 		}
 	}
-	return GetCloudProviderFromClient(kubeClient, secretName, secretNamespace, userAgent)
+	return GetCloudProviderFromClient(kubeClient, secretName, secretNamespace, userAgent, allowEmptyCloudConfig)
 }
 
 // GetKubeConfig gets config object from config file
