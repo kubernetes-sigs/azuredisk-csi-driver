@@ -174,7 +174,7 @@ func (r *ReconcilePV) Recover(ctx context.Context) error {
 		return err
 	}
 	for _, volume := range volumes.Items {
-		if volume.Spec.CSI == nil || volume.Spec.CSI.Driver != consts.DefaultDriverName {
+		if volume.Spec.CSI == nil || volume.Spec.CSI.Driver != consts.DefaultDriverName || volume.Spec.ClaimRef == nil {
 			continue
 		}
 		diskName, err := azureutils.GetDiskName(volume.Spec.CSI.VolumeHandle)
