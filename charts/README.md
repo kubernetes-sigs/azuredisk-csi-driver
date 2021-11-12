@@ -20,17 +20,27 @@ helm repo add azuredisk-csi-driver https://raw.githubusercontent.com/kubernetes-
 helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system
 ```
 ## install Azure Disk CSI Driver V2 (Preview)
+
+> only supported from `v2.0.0-alpha.1`+
+
 Applicable to any Kubernetes cluster without the Azure Disk CSI Driver V1 installed. If V1 is installed, proceed to side-by-side installation instructions below. The V1 driver is installed by default in AKS clusters with Kubernetes version 1.21 and later.   
+
 ```console
 helm repo add azuredisk-csi-driver https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts
 helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v2.0.0-alpha.1
 ```
+
 ## install Azure Disk CSI Driver V2 side-by-side with Azure Disk CSI Driver V1 (Preview)
+
+> only supported from `v2.0.0-alpha.1`+
+
 Since VolumeSnapshot CRDs and other components are created first when V1 driver is installed, use the side-by-side-values.yaml to customize the V2 driver to run side-by-side with the V1 driver. Note that if you uninstall the V1 driver, you would have to update your V2 driver to install the necessary snapshot components that would have then been deleted. 
+
 ```console
 helm repo add azuredisk-csi-driver https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts
-helm install azuredisk-csi-driver-v2  azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system \
-  --version v2.0.0-alpha.1 --values=charts/v2.0.0-alpha.1/azuredisk-csi-driver/side-by-side-values.yaml
+helm install azuredisk-csi-driver-v2 azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system \
+  --version v2.0.0-alpha.1 \
+  --values https://raw.githubusercontent.com/kubernetes-sigs/master/charts/v2.0.0-alpha.1/azuredisk-csi-driver/side-by-side-values.yaml
 ```
 
 ### install a specific version
@@ -57,7 +67,9 @@ helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --na
 ```
 
 ### install driver with Prometheus monitors
+
 > only supported from `v2.0.0-alpha.1`+
+
 ```console
 >/tmp/azuredisk-csi-driver-overrides.yaml cat <<EOF
 controller:
