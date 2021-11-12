@@ -110,7 +110,7 @@ func (r *ReconcileAttachDetach) Reconcile(ctx context.Context, request reconcile
 		}
 		// attachment request
 	} else if azVolumeAttachment.Status.Detail == nil {
-		if azVolumeAttachment.Status.State == v1alpha1.AttachmentPending || azVolumeAttachment.Status.State == v1alpha1.AttachmentFailed {
+		if azVolumeAttachment.Status.State == v1alpha1.AttachmentPending {
 			if err := r.triggerAttach(ctx, azVolumeAttachment); err != nil {
 				return reconcileReturnOnError(azVolumeAttachment, "attach", err, r.retryInfo)
 			}
