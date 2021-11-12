@@ -14,18 +14,16 @@ rbac:
 
 controller:
   name: csi-azuredisk2-controller
-  metricsPort: 29624
+  metrics:
+    port: 29624
   livenessProbe:
     healthPort: 29623
 
 node:
-  metricsPort: 29615
+  metrics:
+    port: 29615
   livenessProbe:
     healthPort: 29613
-
-schedulerExtender:
-  metricsPort: 29616
-  servicePort: 8899
 
 snapshot:
   enabled: true

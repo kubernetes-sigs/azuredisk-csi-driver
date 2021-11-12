@@ -8,4 +8,4 @@ To learn more about the release, try:
 
 To check Azure Disk CSI Driver pods status, please run:
 
-  kubectl --namespace={{ .Release.Namespace }} get pods --selector="app.kubernetes.io/release={{ .Release.Name }}" --watch
+  kubectl --namespace={{ .Release.Namespace }} get pods --selector="app.kubernetes.io/instance={{ .Release.Name }}" --watch
