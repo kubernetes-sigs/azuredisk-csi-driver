@@ -23,7 +23,7 @@ node:
   metrics:
     port: 29625
   livenessProbe:
-    healthPort: 29623
+    healthPort: 29627
 
 snapshot:
   enabled: true
