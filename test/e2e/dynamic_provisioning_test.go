@@ -1016,6 +1016,8 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	})
 
 	ginkgo.It("Should create replicas on node with matching pod affinity", func() {
+		ginkgo.Skip("test case make an invalid assumption")
+
 		skipIfUsingInTreeVolumePlugin()
 		if isMultiZone {
 			ginkgo.Skip("test case does not apply to multi az case")
