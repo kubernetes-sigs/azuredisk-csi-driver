@@ -60,13 +60,7 @@ spec:
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
-          resources:
-            limits:
-              cpu: 200m
-              memory: 500Mi
-            requests:
-              cpu: 10m
-              memory: 20Mi
+          resources: {{- toYaml .Values.controller.resources.csiProvisioner | nindent 12 }}
         - name: csi-attacher
 {{- if hasPrefix "/" .Values.image.csiAttacher.repository }}
           image: "{{ .Values.image.baseRepo }}{{ .Values.image.csiAttacher.repository }}:{{ .Values.image.csiAttacher.tag }}"
@@ -85,13 +79,7 @@ spec:
           volumeMounts:
           - mountPath: /csi
             name: socket-dir
-          resources:
-            limits:
-              cpu: 200m
-              memory: 500Mi
-            requests:
-              cpu: 10m
-              memory: 20Mi
+          resources: {{- toYaml .Values.controller.resources.csiAttacher | nindent 12 }}
         - name: csi-snapshotter
 {{- if eq .Values.snapshot.apiVersion "beta" }}
   {{- if hasPrefix "/" .Values.snapshot.image.csiSnapshotter.repository }}
@@ -116,13 +104,7 @@ spec:
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
-          resources:
-            limits:
-              cpu: 200m
-              memory: 100Mi
-            requests:
-              cpu: 10m
-              memory: 20Mi
+          resources: {{- toYaml .Values.controller.resources.csiSnapshotter | nindent 12 }}
         - name: csi-resizer
 {{- if hasPrefix "/" .Values.image.csiResizer.repository }}
           image: "{{ .Values.image.baseRepo }}{{ .Values.image.csiResizer.repository }}:{{ .Values.image.csiResizer.tag }}"
@@ -141,13 +123,7 @@ spec:
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
-          resources:
-            limits:
-              cpu: 200m
-              memory: 500Mi
-            requests:
-              cpu: 10m
-              memory: 20Mi
+          resources: {{- toYaml .Values.controller.resources.csiResizer | nindent 12 }}
         - name: liveness-probe
 {{- if hasPrefix "/" .Values.image.livenessProbe.repository }}
           image: "{{ .Values.image.baseRepo }}{{ .Values.image.livenessProbe.repository }}:{{ .Values.image.livenessProbe.tag }}"
@@ -162,13 +138,7 @@ spec:
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
-          resources:
-            limits:
-              cpu: 100m
-              memory: 100Mi
-            requests:
-              cpu: 10m
-              memory: 20Mi
+          resources: {{- toYaml .Values.controller.resources.livenessProbe | nindent 12 }}
         - name: azuredisk
 {{- if hasPrefix "/" .Values.image.azuredisk.repository }}
           image: "{{ .Values.image.baseRepo }}{{ .Values.image.azuredisk.repository }}:{{ .Values.image.azuredisk.tag }}"
@@ -233,13 +203,7 @@ spec:
               mountPath: /etc/pki/ca-trust/extracted
               readOnly: true
             {{- end }}
-          resources:
-            limits:
-              cpu: 300m
-              memory: 500Mi
-            requests:
-              cpu: 10m
-              memory: 20Mi
+          resources: {{- toYaml .Values.controller.resources.azuredisk | nindent 12 }}
       volumes:
         - name: socket-dir
           emptyDir: {}
