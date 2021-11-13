@@ -34,4 +34,4 @@ jobs:
 
     - name: Sanity Test
       run: |
-        BUILD_V2=1 make sanity-test-v2
+        BUILD_V2=true make sanity-test-v2

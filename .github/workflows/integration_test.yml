@@ -34,4 +34,4 @@ jobs:
 
     - name: Integration Test
       run: |
-        BUILD_V2=1 make integration-test-v2
+        BUILD_V2=true make integration-test-v2

@@ -18,7 +18,7 @@ REGISTRY ?= andyzhangx
 REGISTRY_NAME ?= $(shell echo $(REGISTRY) | sed "s/.azurecr.io//g")
 IMAGE_NAME ?= azuredisk-csi
 SCHEDULER_EXTENDER_IMAGE_NAME ?= azdiskschedulerextender-csi
-ifndef BUILD_V2
+ifneq ($(BUILD_V2), true)
 PLUGIN_NAME = azurediskplugin
 IMAGE_VERSION ?= v1.9.0
 CHART_VERSION ?= latest
@@ -145,7 +145,7 @@ e2e-teardown:
 	helm delete azuredisk-csi-driver --namespace kube-system
 	kubectl wait --namespace=kube-system --for=delete pod --selector app=csi-azuredisk-controller --timeout 5m || true
 	kubectl wait --namespace=kube-system --for=delete pod --selector app=csi-azuredisk-node --timeout 5m || true
-ifdef BUILD_V2
+ifeq ($(BUILD_V2), true)
 	kubectl wait --namespace=kube-system --for=delete pod --selector app=csi-azuredisk-scheduler-extender --timeout 5m || true
 endif
 
@@ -155,7 +155,7 @@ azuredisk:
 
 .PHONY: azuredisk-v2
 azuredisk-v2:
-	BUILD_V2=1 $(MAKE) azuredisk
+	BUILD_V2=true $(MAKE) azuredisk
 
 .PHONY: azuredisk-windows
 azuredisk-windows:
@@ -163,7 +163,7 @@ azuredisk-windows:
 
 .PHONY: azuredisk-windows-v2
 azuredisk-windows-v2:
-	BUILD_V2=1 $(MAKE) azuredisk
+	BUILD_V2=true $(MAKE) azuredisk
 
 .PHONY: azuredisk-darwin
 azuredisk-darwin:
@@ -308,13 +308,13 @@ clean:
 .PHONY: create-metrics-svc
 create-metrics-svc:
 	kubectl create -f deploy/example/metrics/csi-azuredisk-controller-svc.yaml
-ifdef BUILD_V2
+ifeq ($(BUILD_V2), true)
 	kubectl create -f deploy/example/metrics/csi-azuredisk-scheduler-extender-svc.yaml
 endif
 
 .PHONY: delete-metrics-svc
 delete-metrics-svc:
-ifdef BUILD_V2
+ifeq ($(BUILD_V2), true)
 	kubectl delete -f deploy/example/metrics/csi-azuredisk-scheduler-extender-svc.yaml --ignore-not-found
 endif
 	kubectl delete -f deploy/example/metrics/csi-azuredisk-controller-svc.yaml --ignore-not-found
@@ -329,7 +329,7 @@ e2e-test:
 
 .PHONY: e2e-test-v2
 e2e-test-v2:
-	BUILD_V2=1 make e2e-test
+	BUILD_V2=true make e2e-test
 
 .PHONY: pod-failover-test-containers
 pod-failover-test-containers:

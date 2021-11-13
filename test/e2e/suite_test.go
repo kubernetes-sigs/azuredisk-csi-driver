@@ -61,7 +61,7 @@ var (
 	isUsingInTreeVolumePlugin   = os.Getenv(driver.AzureDriverNameVar) == inTreeStorageClass
 	isTestingMigration          = os.Getenv(testMigrationEnvVar) != ""
 	isWindowsCluster            = os.Getenv(testWindowsEnvVar) != ""
-	isUsingCSIDriverV2          = os.Getenv(buildV2Driver) != ""
+	isUsingCSIDriverV2          = strings.EqualFold(os.Getenv(buildV2Driver), "true")
 	isUsingOnlyDefaultScheduler = os.Getenv(useOnlyDefaultScheduler) != ""
 	isAzureStackCloud           = strings.EqualFold(os.Getenv(cloudNameEnvVar), "AZURESTACKCLOUD")
 	skipClusterBootstrap        = flag.Bool("skip-cluster-bootstrap", false, "flag to indicate that we can skip cluster bootstrap.")
