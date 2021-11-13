@@ -21,9 +21,9 @@ controller:
 
 node:
   metrics:
-    port: 29615
+    port: 29625
   livenessProbe:
-    healthPort: 29613
+    healthPort: 29623
 
 snapshot:
   enabled: true
