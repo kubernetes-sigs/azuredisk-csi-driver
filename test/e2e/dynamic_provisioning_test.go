@@ -312,8 +312,16 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			Pods:                   pods,
 			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
 		}
-		if !isUsingInTreeVolumePlugin && (location == "westus2" || location == "westeurope") {
+		if !isUsingInTreeVolumePlugin && isZRSSupported() {
 			test.StorageClassParameters = map[string]string{"skuName": "Premium_ZRS"}
+			for _, pod := range pods {
+				for _, volume := range pod.Volumes {
+					volume.AllowedTopologyValues = make([]string, 0)
+
+					immediate := storagev1.VolumeBindingImmediate
+					volume.VolumeBindingMode = &immediate
+				}
+			}
 		}
 		if isAzureStackCloud {
 			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}

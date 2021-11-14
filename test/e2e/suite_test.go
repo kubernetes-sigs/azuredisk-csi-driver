@@ -308,8 +308,12 @@ func getSchedulerForE2E() string {
 	return "csi-azuredisk-scheduler-extender"
 }
 
+func isZRSSupported() bool {
+	return location == "westus2" || location == "westeurope"
+}
+
 func skipIfNotZRSSupported() {
-	if !(location == "westus2" || location == "westeurope") {
+	if !(isZRSSupported()) {
 		ginkgo.Skip("test case not supported on regions without ZRS")
 	}
 }
