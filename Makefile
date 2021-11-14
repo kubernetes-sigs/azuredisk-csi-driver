@@ -17,7 +17,7 @@ GIT_COMMIT ?= $(shell git rev-parse HEAD)
 REGISTRY ?= andyzhangx
 REGISTRY_NAME ?= $(shell echo $(REGISTRY) | sed "s/.azurecr.io//g")
 IMAGE_NAME ?= azuredisk-csi
-ifndef BUILD_V2
+ifneq ($(BUILD_V2), true)
 PLUGIN_NAME = azurediskplugin
 IMAGE_VERSION ?= v1.9.0
 CHART_VERSION ?= latest
@@ -141,7 +141,7 @@ azuredisk:
 
 .PHONY: azuredisk-v2
 azuredisk-v2:
-	BUILD_V2=1 $(MAKE) azuredisk
+	BUILD_V2=true $(MAKE) azuredisk
 
 .PHONY: azuredisk-windows
 azuredisk-windows:
@@ -149,7 +149,7 @@ azuredisk-windows:
 
 .PHONY: azuredisk-windows-v2
 azuredisk-windows-v2:
-	BUILD_V2=1 $(MAKE) azuredisk
+	BUILD_V2=true $(MAKE) azuredisk
 
 .PHONY: azuredisk-darwin
 azuredisk-darwin:
