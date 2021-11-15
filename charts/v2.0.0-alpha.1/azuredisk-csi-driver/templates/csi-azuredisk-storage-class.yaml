@@ -29,6 +29,20 @@ parameters:
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
+  name: {{ .Values.storageClasses.storageClassNames.standardSSDLRS }}-replicas
+  namespace: {{ .Release.Namespace }}
+{{ include "azuredisk.labels" . | indent 2 }}
+provisioner: {{ .Values.driver.name }}
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+parameters:
+  skuName: StandardSSD_LRS
+  maxShares: "3"
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
   name: {{ .Values.storageClasses.storageClassNames.premiumLRS }}
   namespace: {{ .Release.Namespace }}
 {{ include "azuredisk.labels" . | indent 2 }}
@@ -38,6 +52,20 @@ volumeBindingMode: WaitForFirstConsumer
 allowVolumeExpansion: true
 parameters:
   skuName: Premium_LRS
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{ .Values.storageClasses.storageClassNames.premiumLRS }}-replicas
+  namespace: {{ .Release.Namespace }}
+{{ include "azuredisk.labels" . | indent 2 }}
+provisioner: {{ .Values.driver.name }}
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+parameters:
+  skuName: Premium_LRS
+  maxShares: "3"
 ---
 {{- if .Values.storageClasses.enableUltraSSD -}}
 apiVersion: storage.k8s.io/v1
@@ -52,6 +80,20 @@ volumeBindingMode: WaitForFirstConsumer
 allowVolumeExpansion: true
 parameters:
   skuName: UltraSSD_LRS
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{ .Values.storageClasses.storageClassNames.ultraSSDLRS }}-replicas
+  namespace: {{ .Release.Namespace }}
+{{ include "azuredisk.labels" . | indent 2 }}
+provisioner: {{ .Values.driver.name }}
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+parameters:
+  skuName: UltraSSD_LRS
+  maxShares: "3"
 ---
 {{- end -}}
 {{- if .Values.storageClasses.enableZRS -}}
@@ -71,6 +113,20 @@ parameters:
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
+  name: {{ .Values.storageClasses.storageClassNames.standardSSDZRS }}-replicas
+  namespace: {{ .Release.Namespace }}
+{{ include "azuredisk.labels" . | indent 2 }}
+provisioner: {{ .Values.driver.name }}
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+allowVolumeExpansion: true
+parameters:
+  skuName: StandardSSD_ZRS
+  maxShares: "3"
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
   name: {{ .Values.storageClasses.storageClassNames.premiumZRS }}
   namespace: {{ .Release.Namespace }}
 {{ include "azuredisk.labels" . | indent 2 }}
@@ -80,5 +136,19 @@ volumeBindingMode: Immediate
 allowVolumeExpansion: true
 parameters:
   skuName: Premium_ZRS
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{ .Values.storageClasses.storageClassNames.premiumZRS }}-replicas
+  namespace: {{ .Release.Namespace }}
+{{ include "azuredisk.labels" . | indent 2 }}
+provisioner: {{ .Values.driver.name }}
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+allowVolumeExpansion: true
+parameters:
+  skuName: Premium_ZRS
+  maxShares: "3"
 {{- end -}}
 {{- end -}}
