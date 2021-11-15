@@ -71,7 +71,11 @@ spec:
           name: csi-azuredisk-scheduler-extender-config
       containers:
       - name: csi-azuredisk-scheduler
-        image: k8s.gcr.io/kube-scheduler:{{ .Values.image.schedulerExtender.imageVersion }}
+{{- if hasPrefix "/" .Values.image.kubeScheduler.repository }}
+        image: "{{ .Values.image.baseRepo }}{{ .Values.image.kubeScheduler.repository }}:{{ .Values.image.kubeScheduler.tag }}"
+{{- else }}
+        image: "{{ .Values.image.kubeScheduler.repository }}:{{ .Values.image.kubeScheduler.tag }}"
+{{- end }}
         imagePullPolicy: IfNotPresent
         args:
         - kube-scheduler

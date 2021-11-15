@@ -32,7 +32,10 @@ image:
     repository: /k8s/csi/azdiskschedulerextender-csi
     tag: v2.0.0-alpha.1
     pullPolicy: IfNotPresent
-    imageVersion: v1.18.6
+  kubeScheduler:
+    repository: k8s.gcr.io/kube-scheduler
+    tag: v1.18.6
+    pullPolicy: IfNotPresent
 
 serviceAccount:
   create: true # When true, service accounts will be created for you. Set to false if you want to use your own.
