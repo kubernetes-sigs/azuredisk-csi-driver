@@ -1,9 +1,3 @@
-image:
-  azuredisk:
-    pullPolicy: Always
-  schedulerExtender:
-    pullPolicy: Always
-
 serviceAccount:
   controller: csi-azuredisk2-controller-sa
   node: csi-azuredisk2-node-sa 
