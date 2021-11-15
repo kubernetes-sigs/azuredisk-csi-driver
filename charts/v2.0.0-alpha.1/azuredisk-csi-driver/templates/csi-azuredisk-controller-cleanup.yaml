@@ -1,0 +1,54 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: csi-azuredisk-controller-cleanup
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    "helm.sh/hook": pre-delete
+    "helm.sh/hook-delete-policy": hook-succeeded
+{{ include "azuredisk.labels" . | indent 2 }}
+spec:
+  template:
+    spec:
+      {{- if .Values.imagePullSecrets }}
+      imagePullSecrets:
+{{ toYaml .Values.imagePullSecrets | indent 8 }}
+      {{- end }}
+      serviceAccountName: {{ .Values.serviceAccount.controller }}
+      nodeSelector:
+        kubernetes.io/os: linux
+        {{- if .Values.controller.runOnMaster}}
+        kubernetes.io/role: master
+        {{- end}}
+      priorityClassName: system-cluster-critical
+{{- with .Values.controller.tolerations }}
+      tolerations:
+{{ toYaml . | indent 8 }}
+{{- end }}
+      {{- include "azuredisk.pullSecrets" . | indent 6 }}
+      restartPolicy: Never
+      containers:
+        - name: delete-azvolume
+{{- if hasPrefix "/" .Values.image.curl.repository }}
+          image: {{ .Values.image.baseRepo }}{{ .Values.image.curl.repository }}:{{ .Values.image.curl.tag }}
+{{- else }}
+          image: {{ .Values.image.curl.repository }}:{{ .Values.image.curl.tag }}
+{{- end }}
+          imagePullPolicy: {{ .Values.image.curl.pullPolicy }}
+          command:
+            - "/bin/sh"
+            - "-c"
+            - "curl --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
+          --header \"Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)\" \
+          -X DELETE https://kubernetes.default.svc/apis/apiextensions.k8s.io/v1/customresourcedefinitions/azvolumes.disk.csi.azure.com;\
+          until curl -v --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
+          --header \"Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)\" \
+          https://kubernetes.default.svc/apis/apiextensions.k8s.io/v1/customresourcedefinitions/azvolumes.disk.csi.azure.com 2>&1 | grep NotFound; do echo Waiting for AzVolume CRIs to be fully deleted; sleep 15;\
+          done;\
+          curl --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
+          --header \"Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)\" \
+          -X DELETE https://kubernetes.default.svc/apis/apiextensions.k8s.io/v1/customresourcedefinitions/azvolumeattachments.disk.csi.azure.com;\
+          until curl -v --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
+          --header \"Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)\" \
+          https://kubernetes.default.svc/apis/apiextensions.k8s.io/v1/customresourcedefinitions/azvolumeattachments.disk.csi.azure.com 2>&1 | grep NotFound; do echo Waiting for AzVolumeAttachment CRIs to be fully deleted; sleep 15;\
+          done;"

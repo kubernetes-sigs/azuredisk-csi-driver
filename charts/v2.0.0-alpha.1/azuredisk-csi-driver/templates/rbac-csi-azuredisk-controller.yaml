@@ -2,7 +2,7 @@
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: azuredisk-external-provisioner-role
+  name: {{ .Values.rbac.name }}-external-provisioner-role
 {{ include "azuredisk.labels" . | indent 2 }}
 rules:
   - apiGroups: [""]
@@ -32,22 +32,36 @@ rules:
   - apiGroups: ["snapshot.storage.k8s.io"]
     resources: ["volumesnapshotcontents"]
     verbs: ["get", "list"]
+  - apiGroups: ["disk.csi.azure.com"]
+    resources: ["azdrivernodes", "azvolumeattachments", "azvolumes"]
+    verbs: ["create", "get", "list", "watch", "patch", "update", "delete"]
+  - apiGroups: ["disk.csi.azure.com"]
+    resources: ["azdrivernodes/status", "azvolumeattachments/status", "azvolumes/status"]
+    verbs: ["get", "patch", "update"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["clusterroles"]
+    verbs: ["get", "patch", "update"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["clusterrolebindings"]
+    verbs: ["get", "patch", "update"]
+  - apiGroups: [""]
+    resources: ["serviceaccounts"]
+    verbs: ["get", "patch", "update"]
 
 ---
 
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: azuredisk-csi-provisioner-binding
-  namespace: {{ .Release.Namespace }}
+  name: {{ .Values.rbac.name }}-csi-provisioner-binding
 {{ include "azuredisk.labels" . | indent 2 }}
 subjects:
   - kind: ServiceAccount
-    name: csi-azuredisk-controller-sa
+    name: {{ .Values.serviceAccount.controller }}
     namespace: {{ .Release.Namespace }}
 roleRef:
   kind: ClusterRole
-  name: azuredisk-external-provisioner-role
+  name: {{ .Values.rbac.name }}-external-provisioner-role
   apiGroup: rbac.authorization.k8s.io
 
 ---
@@ -55,7 +69,7 @@ roleRef:
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: azuredisk-external-attacher-role
+  name: {{ .Values.rbac.name }}-external-attacher-role
 {{ include "azuredisk.labels" . | indent 2 }}
 rules:
   - apiGroups: [""]
@@ -70,6 +84,9 @@ rules:
   - apiGroups: ["storage.k8s.io"]
     resources: ["volumeattachments"]
     verbs: ["get", "list", "watch", "update", "patch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["volumeattachments/status"]
+    verbs: ["get", "list", "watch", "update", "patch"]
   - apiGroups: ["coordination.k8s.io"]
     resources: ["leases"]
     verbs: ["get", "list", "watch", "create", "update", "patch"]
@@ -78,16 +95,15 @@ rules:
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: azuredisk-csi-attacher-binding
-  namespace: {{ .Release.Namespace }}
+  name: {{ .Values.rbac.name }}-csi-attacher-binding
 {{ include "azuredisk.labels" . | indent 2 }}
 subjects:
   - kind: ServiceAccount
-    name: csi-azuredisk-controller-sa
+    name: {{ .Values.serviceAccount.controller }}
     namespace: {{ .Release.Namespace }}
 roleRef:
   kind: ClusterRole
-  name: azuredisk-external-attacher-role
+  name: {{ .Values.rbac.name }}-external-attacher-role
   apiGroup: rbac.authorization.k8s.io
 
 ---
@@ -95,7 +111,7 @@ roleRef:
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: azuredisk-external-snapshotter-role
+  name: {{ .Values.rbac.name }}-external-snapshotter-role
 {{ include "azuredisk.labels" . | indent 2 }}
 rules:
   - apiGroups: [""]
@@ -115,7 +131,7 @@ rules:
     verbs: ["update"]
   - apiGroups: ["apiextensions.k8s.io"]
     resources: ["customresourcedefinitions"]
-    verbs: ["create", "list", "watch", "delete"]
+    verbs: ["create", "get", "list", "watch", "delete"]
   - apiGroups: ["coordination.k8s.io"]
     resources: ["leases"]
     verbs: ["get", "watch", "list", "delete", "update", "create"]
@@ -124,24 +140,22 @@ rules:
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: azuredisk-csi-snapshotter-binding
-  namespace: {{ .Release.Namespace }}
+  name: {{ .Values.rbac.name }}-csi-snapshotter-binding
 {{ include "azuredisk.labels" . | indent 2 }}
 subjects:
   - kind: ServiceAccount
-    name: csi-azuredisk-controller-sa
+    name: {{ .Values.serviceAccount.controller }}
     namespace: {{ .Release.Namespace }}
 roleRef:
   kind: ClusterRole
-  name: azuredisk-external-snapshotter-role
+  name: {{ .Values.rbac.name }}-external-snapshotter-role
   apiGroup: rbac.authorization.k8s.io
 
 ---
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: azuredisk-external-resizer-role
-  namespace: {{ .Release.Namespace }}
+  name: {{ .Values.rbac.name }}-external-resizer-role
 {{ include "azuredisk.labels" . | indent 2 }}
 rules:
   - apiGroups: [""]
@@ -166,24 +180,23 @@ rules:
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: azuredisk-csi-resizer-role
-  namespace: {{ .Release.Namespace }}
+  name: {{ .Values.rbac.name }}-csi-resizer-role
 {{ include "azuredisk.labels" . | indent 2 }}
 subjects:
   - kind: ServiceAccount
-    name: csi-azuredisk-controller-sa
+    name: {{ .Values.serviceAccount.controller }}
     namespace: {{ .Release.Namespace }}
 roleRef:
   kind: ClusterRole
-  name: azuredisk-external-resizer-role
+  name: {{ .Values.rbac.name }}-external-resizer-role
   apiGroup: rbac.authorization.k8s.io
 
 ---
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  namespace: {{ .Release.Namespace }}
-  name: csi-azuredisk-controller-secret-role
+  name: csi-{{ .Values.rbac.name }}-controller-secret-role
+{{ include "azuredisk.labels" . | indent 2 }}
 rules:
   - apiGroups: [""]
     resources: ["secrets"]
@@ -193,14 +206,14 @@ rules:
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: csi-azuredisk-controller-secret-binding
-  namespace: {{ .Release.Namespace }}
+  name: csi-{{ .Values.rbac.name }}-controller-secret-binding
+{{ include "azuredisk.labels" . | indent 2 }}
 subjects:
   - kind: ServiceAccount
-    name: csi-azuredisk-controller-sa
+    name: {{ .Values.serviceAccount.controller }}
     namespace: {{ .Release.Namespace }}
 roleRef:
   kind: ClusterRole
-  name: csi-azuredisk-controller-secret-role
+  name: csi-{{ .Values.rbac.name }}-controller-secret-role
   apiGroup: rbac.authorization.k8s.io
 {{ end }}

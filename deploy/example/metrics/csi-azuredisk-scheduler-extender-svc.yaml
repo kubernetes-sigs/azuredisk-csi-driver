@@ -1,0 +1,16 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: csi-azuredisk-scheduler-extender
+  namespace: kube-system
+  labels:
+    app: csi-azuredisk-scheduler-extender
+spec:
+  selector:
+    app: csi-azuredisk-scheduler-extender
+  ports:
+    - name: metrics
+      port: 29606
+      targetPort: 29606
+  type: ClusterIP

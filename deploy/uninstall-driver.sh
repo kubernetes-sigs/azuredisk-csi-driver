@@ -34,12 +34,22 @@ if [ $ver != "master" ]; then
 fi
 
 echo "Uninstalling Azure Disk CSI driver, version: $ver ..."
+
+if [[ $ver == "v2"* ]]; then
+  kubectl delete -f $repo/csi-azuredisk-scheduler-extender.yaml --ignore-not-found
+  kubectl delete -f $repo/rbac-csi-azuredisk-scheduler-extender.yaml --ignore-not-found
+  kubectl delete -f $repo/disk.csi.azure.com_azdrivernodes.yaml --ignore-not-found
+  kubectl delete -f $repo/disk.csi.azure.com_azvolumes.yaml --ignore-not-found
+  kubectl delete -f $repo/disk.csi.azure.com_azvolumeattachments.yaml --ignore-not-found
+  kubectl delete -f $repo/namespace-azure-disk-csi.yaml --ignore-not-found
+fi
+
+kubectl delete -f $repo/crd-csi-snapshot.yaml --ignore-not-found
 kubectl delete -f $repo/csi-snapshot-controller.yaml --ignore-not-found
 kubectl delete -f $repo/csi-azuredisk-controller.yaml --ignore-not-found
 kubectl delete -f $repo/csi-azuredisk-node.yaml --ignore-not-found
 kubectl delete -f $repo/csi-azuredisk-node-windows.yaml --ignore-not-found
 kubectl delete -f $repo/csi-azuredisk-driver.yaml --ignore-not-found
-kubectl delete -f $repo/crd-csi-snapshot.yaml --ignore-not-found
 kubectl delete -f $repo/rbac-csi-snapshot-controller.yaml --ignore-not-found
 kubectl delete -f $repo/rbac-csi-azuredisk-controller.yaml --ignore-not-found
 kubectl delete -f $repo/rbac-csi-azuredisk-node.yaml --ignore-not-found

@@ -21,19 +21,23 @@ spec:
       priorityClassName: system-cluster-critical
       tolerations:
         - key: "node-role.kubernetes.io/master"
-          operator: "Equal"
-          value: "true"
+          operator: "Exists"
+          effect: "NoSchedule"
+        - key: "node-role.kubernetes.io/controlplane"
+          operator: "Exists"
           effect: "NoSchedule"
       containers:
-        - name: csi-provisioner
-          image: mcr.microsoft.com/oss/kubernetes-csi/csi-provisioner:v1.6.1
+        - name: csi-provisioner-disk
+          image: mcr.microsoft.com/oss/kubernetes-csi/csi-provisioner:v2.2.2
           args:
             - "--feature-gates=Topology=true"
             - "--csi-address=$(ADDRESS)"
             - "--v=2"
-            - "--timeout=15s"
-            - "--enable-leader-election"
-            - "--leader-election-type=leases"
+            - "--timeout=30s"
+            - "--leader-election"
+            - "--worker-threads=40"
+            - "--extra-create-metadata=true"
+            - "--strict-topology=true"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -42,18 +46,19 @@ spec:
               name: socket-dir
           resources:
             limits:
-              cpu: 100m
-              memory: 100Mi
+              cpu: 200m
+              memory: 500Mi
             requests:
               cpu: 10m
               memory: 20Mi
-        - name: csi-attacher
-          image: mcr.microsoft.com/oss/kubernetes-csi/csi-attacher:v2.2.0
+        - name: csi-attacher-disk
+          image: mcr.microsoft.com/oss/kubernetes-csi/csi-attacher:v3.3.0
           args:
             - "-v=2"
             - "-csi-address=$(ADDRESS)"
-            - "-timeout=120s"
+            - "-timeout=600s"
             - "-leader-election"
+            - "-worker-threads=500"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -62,12 +67,12 @@ spec:
               name: socket-dir
           resources:
             limits:
-              cpu: 100m
-              memory: 100Mi
+              cpu: 200m
+              memory: 500Mi
             requests:
               cpu: 10m
               memory: 20Mi
-        - name: csi-snapshotter
+        - name: csi-snapshotter-disk
           image: mcr.microsoft.com/oss/kubernetes-csi/csi-snapshotter:v3.0.3
           args:
             - "-csi-address=$(ADDRESS)"
@@ -81,18 +86,19 @@ spec:
               mountPath: /csi
           resources:
             limits:
-              cpu: 100m
+              cpu: 200m
               memory: 100Mi
             requests:
               cpu: 10m
               memory: 20Mi
-        - name: csi-resizer
-          image: mcr.microsoft.com/oss/kubernetes-csi/csi-resizer:v1.1.0
+        - name: csi-resizer-disk
+          image: mcr.microsoft.com/oss/kubernetes-csi/csi-resizer:v1.3.0
           args:
             - "-csi-address=$(ADDRESS)"
             - "-v=2"
             - "-leader-election"
-            - '-handle-volume-inuse-error=true'
+            - '-handle-volume-inuse-error=false'
+            - "-timeout=60s"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -101,13 +107,13 @@ spec:
               mountPath: /csi
           resources:
             limits:
-              cpu: 100m
-              memory: 200Mi
+              cpu: 200m
+              memory: 500Mi
             requests:
               cpu: 10m
               memory: 20Mi
-        - name: liveness-probe
-          image: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe:v2.2.0
+        - name: liveness-probe-disk
+          image: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe:v2.4.0
           args:
             - --csi-address=/csi/csi.sock
             - --probe-timeout=3s
@@ -124,13 +130,16 @@ spec:
               cpu: 10m
               memory: 20Mi
         - name: azuredisk
-          image: mcr.microsoft.com/k8s/csi/azuredisk-csi:v2.0.0-alpha.1
+          image: mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:latest
           imagePullPolicy: IfNotPresent
           args:
             - "--v=5"
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--metrics-address=0.0.0.0:29604"
-            - "--temp-use-driver-v2"
+            - "--enable-perf-optimization=true"
+            - "--user-agent-suffix=OSS-kubectl"
+            - "--disable-avset-nodes=true"
+            - "--is-controller-plugin=true"
           ports:
             - containerPort: 29602
               name: healthz
@@ -160,13 +169,10 @@ spec:
               name: socket-dir
             - mountPath: /etc/kubernetes/
               name: azure-cred
-            - mountPath: /var/lib/waagent/ManagedIdentity-Settings
-              readOnly: true
-              name: msi
           resources:
             limits:
-              cpu: 200m
-              memory: 200Mi
+              cpu: 300m
+              memory: 500Mi
             requests:
               cpu: 10m
               memory: 20Mi
@@ -176,7 +182,4 @@ spec:
         - name: azure-cred
           hostPath:
             path: /etc/kubernetes/
-            type: Directory
-        - name: msi
-          hostPath:
-            path: /var/lib/waagent/ManagedIdentity-Settings
+            type: DirectoryOrCreate
