@@ -293,7 +293,7 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 		os.Exit(1)
 	}
 
-	sharedState := controller.NewSharedState()
+	sharedState := controller.NewSharedState(d.Name)
 
 	// Setup a new controller to clean-up AzDriverNodes
 	// objects for the nodes which get deleted
@@ -305,7 +305,7 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 	}
 
 	klog.V(2).Info("Initializing AzVolumeAttachment controller")
-	attachReconciler, err := controller.NewAttachDetachController(mgr, d.crdProvisioner.GetDiskClientSet(), d.kubeClient, d.objectNamespace, d.cloudProvisioner, d.crdProvisioner)
+	attachReconciler, err := controller.NewAttachDetachController(mgr, d.crdProvisioner.GetDiskClientSet(), d.kubeClient, d.objectNamespace, d.cloudProvisioner, d.crdProvisioner, sharedState)
 	if err != nil {
 		klog.Errorf("Failed to initialize AzVolumeAttachmentController. Error: %v. Exiting application...", err)
 		os.Exit(1)

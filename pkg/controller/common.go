@@ -221,6 +221,7 @@ func newLockableEntry(entry interface{}) *lockableEntry {
 }
 
 type SharedState struct {
+	driverName            string
 	podToClaimsMap        sync.Map
 	claimToPodsMap        sync.Map
 	volumeToClaimMap      sync.Map
@@ -230,8 +231,8 @@ type SharedState struct {
 	volumeOperationQueues sync.Map
 }
 
-func NewSharedState() *SharedState {
-	return &SharedState{}
+func NewSharedState(driverName string) *SharedState {
+	return &SharedState{driverName: driverName}
 }
 
 func (c *SharedState) createOperationQueue(volumeName string) {

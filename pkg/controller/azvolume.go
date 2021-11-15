@@ -625,7 +625,7 @@ func (r *ReconcileAzVolume) getAzClient() azClientSet.Interface {
 
 func createAzVolumeFromPv(ctx context.Context, pv v1.PersistentVolume, azVolumeClient azClientSet.Interface, kubeClient kubeClientSet.Interface, namespace string, annotations map[string]string, controllerSharedState *SharedState) error {
 	var volumeParams map[string]string
-	if pv.Spec.CSI != nil && pv.Spec.CSI.Driver == consts.DefaultDriverName {
+	if pv.Spec.CSI != nil && pv.Spec.CSI.Driver == controllerSharedState.driverName {
 		diskName, err := azureutils.GetDiskName(pv.Spec.CSI.VolumeHandle)
 		if err != nil {
 			return fmt.Errorf("failed to extract diskName from volume handle (%s): %v", pv.Spec.CSI.VolumeHandle, err)
