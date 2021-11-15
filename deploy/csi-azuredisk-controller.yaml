@@ -46,8 +46,8 @@ spec:
               name: socket-dir
           resources:
             limits:
-              cpu: 100m
-              memory: 300Mi
+              cpu: 200m
+              memory: 500Mi
             requests:
               cpu: 10m
               memory: 20Mi
@@ -67,8 +67,8 @@ spec:
               name: socket-dir
           resources:
             limits:
-              cpu: 100m
-              memory: 400Mi
+              cpu: 200m
+              memory: 500Mi
             requests:
               cpu: 10m
               memory: 20Mi
@@ -86,7 +86,7 @@ spec:
               mountPath: /csi
           resources:
             limits:
-              cpu: 100m
+              cpu: 200m
               memory: 100Mi
             requests:
               cpu: 10m
@@ -97,7 +97,8 @@ spec:
             - "-csi-address=$(ADDRESS)"
             - "-v=2"
             - "-leader-election"
-            - '-handle-volume-inuse-error=true'
+            - '-handle-volume-inuse-error=false'
+            - "-timeout=60s"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -106,8 +107,8 @@ spec:
               mountPath: /csi
           resources:
             limits:
-              cpu: 100m
-              memory: 300Mi
+              cpu: 200m
+              memory: 500Mi
             requests:
               cpu: 10m
               memory: 20Mi
@@ -135,6 +136,7 @@ spec:
             - "--v=5"
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--metrics-address=0.0.0.0:29604"
+            - "--enable-perf-optimization=true"
             - "--user-agent-suffix=OSS-kubectl"
             - "--disable-avset-nodes=true"
           ports:
@@ -168,7 +170,7 @@ spec:
               name: azure-cred
           resources:
             limits:
-              cpu: 200m
+              cpu: 300m
               memory: 500Mi
             requests:
               cpu: 10m

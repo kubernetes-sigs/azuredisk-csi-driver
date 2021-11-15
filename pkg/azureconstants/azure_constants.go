@@ -53,6 +53,7 @@ const (
 	NetworkAccessPolicyField      = "networkaccesspolicy"
 	NotFound                      = "NotFound"
 	PerfProfileBasic              = "basic"
+	PerfProfileAdvanced           = "advanced"
 	PerfProfileField              = "perfprofile"
 	PerfProfileNone               = "none"
 	PremiumAccountPrefix          = "premium"
@@ -76,6 +77,7 @@ const (
 	TagsField                     = "tags"
 	ThrottlingKey                 = "throttlingKey"
 	TrueValue                     = "true"
+	FalseValue                    = "false"
 	UserAgentField                = "useragent"
 	VolumeAttributePartition      = "partition"
 	WellKnownTopologyKey          = "topology.kubernetes.io/zone"
@@ -83,6 +85,9 @@ const (
 	MasterNodeRoleTaintKey        = "node-role.kubernetes.io/master"
 	WriteAcceleratorEnabled       = "writeacceleratorenabled"
 	AttachableVolumesField        = "attachable-volumes-azure-disk"
+	DeviceSettingsKeyPrefix       = "device-setting/"
+	BlockDeviceRootPathLinux      = "/sys/block"
+	DummyBlockDevicePathLinux     = "/sys/block/sda"
 
 	// CRDs specific constants
 	// 1. AzVolumeAttachmentFinalizer for AzVolumeAttachment objects handles deletion of AzVolumeAttachment CRIs
@@ -115,6 +120,11 @@ const (
 	ZonedField              = "zoned"
 	NormalUpdateMaxNetRetry = 0
 	ForcedUpdateMaxNetRetry = 5
+	EnableAsyncAttachField  = "enableasyncattach"
+	TooManyRequests         = "TooManyRequests"
+	ClientThrottled         = "client throttled"
+	// define different sleep time when hit throttling
+	SnapshotOpThrottlingSleepSec = 50
 )
 
 var (

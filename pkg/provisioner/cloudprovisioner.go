@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"path"
+	"path/filepath"
 	"reflect"
 	"sort"
 	"strconv"
@@ -56,6 +57,8 @@ type CloudProvisioner struct {
 	kubeClient                 *clientset.Clientset
 	cloudConfigSecretName      string
 	cloudConfigSecretNamespace string
+	enableOnlineDiskResize     bool
+	perfOptimizationEnabled    bool
 	// a timed cache GetDisk throttling
 	getDiskThrottlingCache *azcache.TimedCache
 }
@@ -72,8 +75,11 @@ func NewCloudProvisioner(
 	kubeClient *clientset.Clientset,
 	cloudConfigSecretName string,
 	cloudConfigSecretNamespace string,
+	perfOptimizationEnabled bool,
 	topologyKey string,
-	userAgent string) (*CloudProvisioner, error) {
+	userAgent string,
+	enableOnlineDiskResize bool,
+) (*CloudProvisioner, error) {
 	azCloud, err := azureutils.GetCloudProviderFromClient(kubeClient, cloudConfigSecretName, cloudConfigSecretNamespace, userAgent)
 	if err != nil || azCloud.TenantID == "" || azCloud.SubscriptionID == "" {
 		klog.Fatalf("failed to get Azure Cloud Provider, error: %v", err)
@@ -94,6 +100,8 @@ func NewCloudProvisioner(
 		kubeClient:                 kubeClient,
 		cloudConfigSecretName:      cloudConfigSecretName,
 		cloudConfigSecretNamespace: cloudConfigSecretNamespace,
+		enableOnlineDiskResize:     enableOnlineDiskResize,
+		perfOptimizationEnabled:    perfOptimizationEnabled,
 		getDiskThrottlingCache:     cache,
 	}, nil
 }
@@ -128,6 +136,9 @@ func (c *CloudProvisioner) CreateVolume(
 		netAccessPolicy         string
 		diskAccessID            string
 		enableBursting          *bool
+		perfProfile             string
+		isAdvancedPerfProfile   bool
+		deviceSettings          map[string]string
 	)
 
 	localCloud := c.cloud
@@ -135,9 +146,11 @@ func (c *CloudProvisioner) CreateVolume(
 	if parameters == nil {
 		parameters = make(map[string]string)
 	}
-
+	isAdvancedPerfProfile = false
+	deviceSettings = make(map[string]string)
 	for k, v := range parameters {
-		switch strings.ToLower(k) {
+		key := strings.ToLower(k)
+		switch key {
 		case azureconstants.SkuNameField:
 			storageAccountType = v
 		case azureconstants.LocationField:
@@ -183,9 +196,11 @@ func (c *CloudProvisioner) CreateVolume(
 			tags[azureconstants.PvNameTag] = v
 
 		case azureconstants.PerfProfileField:
-			if !optimization.IsValidPerfProfile(v) {
-				return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Perf profile %s is not supported. Supported tuning modes are none and basic.", v))
+			perfProfile = strings.ToLower(v)
+			if !optimization.IsValidPerfProfile(perfProfile) {
+				return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Perf profile %s is not supported", v))
 			}
+			isAdvancedPerfProfile = strings.EqualFold(perfProfile, azureconstants.PerfProfileAdvanced)
 		case azureconstants.NetworkAccessPolicyField:
 			netAccessPolicy = v
 		case azureconstants.DiskAccessIDField:
@@ -202,15 +217,30 @@ func (c *CloudProvisioner) CreateVolume(
 			}
 		// The following parameters are not used by the cloud provisioner, but must be present in the VolumeContext
 		// returned to the caller so that it is included in the parameters passed to Node{Publish|Stage}Volume.
+		case azureconstants.EnableAsyncAttachField:
+			// no-op, only for backward compatibility with the V1 driver
 		case azureconstants.ZonedField:
-			// no op, only for backward compatibility with in-tree driver
+			// no-op, only for backward compatibility with in-tree driver
 		case azureconstants.FsTypeField:
 			// no-op
 		case azureconstants.KindField:
 			// fix csi migration issue: https://github.com/kubernetes/kubernetes/issues/103433
 			parameters[azureconstants.KindField] = string(v1.AzureManagedDisk)
 		default:
-			return nil, fmt.Errorf("invalid parameter %s in storage class", k)
+			// accept all device settings params
+			// device settings need to start with azureconstants.DeviceSettingsKeyPrefix
+			if deviceSetting, err := optimization.GetDeviceSettingFromAttribute(k); err == nil {
+				deviceSettings[filepath.Join(azureconstants.DummyBlockDevicePathLinux, deviceSetting)] = v
+			} else {
+				return nil, fmt.Errorf("invalid parameter %s in storage class", k)
+			}
+		}
+	}
+
+	// If perfProfile is set to advanced and no/invalid device settings are provided, fail the request
+	if c.GetPerfOptimizationEnabled() && isAdvancedPerfProfile {
+		if err = optimization.AreDeviceSettingsValid(azureconstants.DummyBlockDevicePathLinux, deviceSettings); err != nil {
+			return nil, err
 		}
 	}
 
@@ -497,7 +527,7 @@ func (c *CloudProvisioner) ExpandVolume(
 	oldSize := *resource.NewQuantity(int64(*result.DiskProperties.DiskSizeGB), resource.BinarySI)
 
 	klog.V(2).Infof("begin to expand azure disk(%s) with new size(%d)", volumeID, requestSize.Value())
-	newSize, err := c.cloud.ResizeDisk(volumeID, oldSize, requestSize, true)
+	newSize, err := c.cloud.ResizeDisk(volumeID, oldSize, requestSize, c.enableOnlineDiskResize)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to resize disk(%s) with error(%v)", volumeID, err)
 	}
@@ -1097,4 +1127,12 @@ func pickAvailabilityZone(requirement *v1alpha1.TopologyRequirement, region stri
 		}
 	}
 	return ""
+}
+
+func (c *CloudProvisioner) GetPerfOptimizationEnabled() bool {
+	return c.perfOptimizationEnabled
+}
+
+func (c *CloudProvisioner) SetPerfOptimizationEnabled(enabled bool) {
+	c.perfOptimizationEnabled = enabled
 }

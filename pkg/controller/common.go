@@ -221,6 +221,7 @@ func newLockableEntry(entry interface{}) *lockableEntry {
 }
 
 type SharedState struct {
+	driverName            string
 	podToClaimsMap        sync.Map
 	claimToPodsMap        sync.Map
 	volumeToClaimMap      sync.Map
@@ -230,8 +231,8 @@ type SharedState struct {
 	volumeOperationQueues sync.Map
 }
 
-func NewSharedState() *SharedState {
-	return &SharedState{}
+func NewSharedState(driverName string) *SharedState {
+	return &SharedState{driverName: driverName}
 }
 
 func (c *SharedState) createOperationQueue(volumeName string) {
@@ -436,6 +437,18 @@ func (c *SharedState) getVolumesForPods(pods ...string) ([]string, error) {
 	return volumes, nil
 }
 
+func (c *SharedState) getVolumesForPodObjs(pods ...v1.Pod) ([]string, error) {
+	volumes := []string{}
+	for _, pod := range pods {
+		podVolumes, err := c.getVolumesFromPod(getQualifiedName(pod.Namespace, pod.Name))
+		if err != nil {
+			return nil, err
+		}
+		volumes = append(volumes, podVolumes...)
+	}
+	return volumes, nil
+}
+
 func (c *SharedState) addPod(pod *v1.Pod, updateOption updateWithLock) {
 
 	podKey := getQualifiedName(pod.Namespace, pod.Name)
@@ -571,8 +584,10 @@ func getRankedNodesForReplicaAttachments(ctx context.Context, azr azReconciler, 
 
 	var podNodeAffinities []*nodeaffinity.RequiredNodeAffinity
 	var podTolerations []v1.Toleration
-	podNodeSelector := map[string]string{}
-	for _, pod := range pods {
+	podNodeSelector := labels.NewSelector()
+	podAffinities := labels.NewSelector()
+
+	for i, pod := range pods {
 		namespace, name := parseQualifiedName(pod)
 		var podObj v1.Pod
 		if err := azr.getClient().Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, &podObj); err != nil {
@@ -581,11 +596,49 @@ func getRankedNodesForReplicaAttachments(ctx context.Context, azr azReconciler, 
 		// acknowledge that there can be duplicate entries within the slice
 		podNodeAffinity := nodeaffinity.GetRequiredNodeAffinity(&podObj)
 		podNodeAffinities = append(podNodeAffinities, &podNodeAffinity)
-		podTolerations = append(podTolerations, podObj.Spec.Tolerations...)
 
-		for key, value := range podObj.Spec.NodeSelector {
-			// acknowledge that this will overwrite existing entry if there are conflicting nodeSelectors among the pods
-			podNodeSelector[key] = value
+		// find intersection of tolerations among pods
+		if i == 0 {
+			podTolerations = append(podTolerations, podObj.Spec.Tolerations...)
+		} else {
+			podTolerationMap := map[string]*v1.Toleration{}
+			for _, podToleration := range podObj.Spec.Tolerations {
+				podToleration := &podToleration
+				podTolerationMap[podToleration.Key] = podToleration
+			}
+
+			updatedTolerations := []v1.Toleration{}
+			for _, podToleration := range podTolerations {
+				if existingToleration, ok := podTolerationMap[podToleration.Key]; ok {
+					if podToleration.MatchToleration(existingToleration) {
+						updatedTolerations = append(updatedTolerations, podToleration)
+					}
+				}
+			}
+			podTolerations = updatedTolerations
+		}
+
+		nodeSelector := labels.SelectorFromSet(labels.Set(podObj.Spec.NodeSelector))
+		requirements, selectable := nodeSelector.Requirements()
+		if selectable {
+			podNodeSelector = podNodeSelector.Add(requirements...)
+		}
+
+		if podObj.Spec.Affinity == nil || podObj.Spec.Affinity.PodAffinity == nil {
+			continue
+		}
+		// TODO: add filtering for pod anti-affinity and more advanced affinity scenarios (e.g. Preferred affinites)
+		for _, podAffinity := range podObj.Spec.Affinity.PodAffinity.RequiredDuringSchedulingIgnoredDuringExecution {
+			podSelector, err := metav1.LabelSelectorAsSelector(podAffinity.LabelSelector)
+			// if failed to convert pod affinity label selector to selector, log error and skip
+			if err != nil {
+				klog.Errorf("failed to convert pod affinity (%v) to selector", podAffinity.LabelSelector)
+				continue
+			}
+			requirements, selectable := podSelector.Requirements()
+			if selectable {
+				podAffinities = podAffinities.Add(requirements...)
+			}
 		}
 	}
 
@@ -681,7 +734,7 @@ func getRankedNodesForReplicaAttachments(ctx context.Context, azr azReconciler, 
 
 	// select at least as many nodes as requested replicas
 	if len(nodes) < numReplica {
-		selected, err := selectNodes(ctx, azr, numReplica-len(nodes), primaryNode, nodeScores, podNodeAffinities, podTolerations, podNodeSelector, volumeNodeSelectors)
+		selected, err := selectNodes(ctx, azr, numReplica-len(nodes), primaryNode, nodeScores, podNodeAffinities, podTolerations, podNodeSelector, podAffinities, volumeNodeSelectors)
 		if err != nil {
 			return nil, err
 		}
@@ -739,24 +792,14 @@ func getNodeRemainingCapacity(ctx context.Context, cachedClient client.Client, n
 	return capacity - len(attachments), nil
 }
 
-func selectNodes(ctx context.Context, azr azReconciler, numNodes int, primaryNode string, exceptionNodes map[string]int, podNodeAffinities []*nodeaffinity.RequiredNodeAffinity, podTolerations []v1.Toleration, podNodeSelectors map[string]string, volumeNodeSelectors []*nodeaffinity.NodeSelector) ([]string, error) {
+func selectNodes(ctx context.Context, azr azReconciler, numNodes int, primaryNode string, exceptionNodes map[string]int, podNodeAffinities []*nodeaffinity.RequiredNodeAffinity, podTolerations []v1.Toleration, podNodeSelectors, podAffinities labels.Selector, volumeNodeSelectors []*nodeaffinity.NodeSelector) ([]string, error) {
 	filteredNodes := []string{}
 	var nodes *v1.NodeList
 	var err error
 
-	selector := labels.NewSelector()
-	for key, value := range podNodeSelectors {
-		req, err := CreateLabelRequirements(key, selection.Equals, value)
-		// if failed to create label requirement, skip
-		if err != nil {
-			klog.Error(err)
-			continue
-		}
-		selector.Add(*req)
-	}
 	// List all nodes
 	nodes = &v1.NodeList{}
-	if err = azr.getClient().List(ctx, nodes, &client.ListOptions{LabelSelector: selector}); err != nil {
+	if err = azr.getClient().List(ctx, nodes, &client.ListOptions{LabelSelector: podNodeSelectors}); err != nil {
 		klog.Errorf("failed to retrieve node list: %v", err)
 		return filteredNodes, err
 	}
@@ -772,13 +815,39 @@ func selectNodes(ctx context.Context, azr azReconciler, numNodes int, primaryNod
 		nodeMap[node.Name] = nodeEntry{node: &nodeVar, nodeScore: 0}
 	}
 
-	// Loop through all volumes and filter out node candidates based on node affinity rules of the given volumes
+	// if podAffinity is specified, filter nodes based on pod affinity
+	// Get all replica attachments for the filtered pod and get filtered node list
+	filteredPodNodes := set{}
+	if podAffinities != nil && !podAffinities.Empty() {
+		pods := &v1.PodList{}
+		if err = azr.getClient().List(ctx, pods, &client.ListOptions{LabelSelector: podAffinities}); err != nil {
+			klog.Errorf("failed to retrieve pod list: %v", err)
+			return filteredNodes, err
+		}
+
+		volumes, err := azr.getSharedState().getVolumesForPodObjs(pods.Items...)
+		if err != nil {
+			klog.Errorf("failed to get volumes for pods (%+v)", pods.Items)
+			return filteredNodes, err
+		}
+		for _, volume := range volumes {
+			attachments, err := getAzVolumeAttachmentsForVolume(ctx, azr.getClient(), volume, all)
+			if err != nil {
+				klog.Errorf("failed to get replica attachments for volume (%s): %v", volume)
+				return filteredNodes, err
+			}
+			for _, attachment := range attachments {
+				filteredPodNodes.add(attachment.Spec.NodeName)
+			}
+		}
+	}
 
 	// loop through nodes and filter out candidates that don't match volume's node selector, pod's node affinity, toleration
 nodeLoop:
 	for nodeName, nodeEntry := range nodeMap {
 		for _, podNodeAffinity := range podNodeAffinities {
 			if match, err := podNodeAffinity.Match(nodeEntry.node); !match || err != nil {
+				klog.Infof("Removing node (%s) from replica candidates: node (%s) does not match pod affinity", nodeName, nodeName)
 				delete(nodeMap, nodeName)
 				continue nodeLoop
 			}
@@ -796,12 +865,14 @@ nodeLoop:
 		}
 
 		if !tolerable {
+			klog.Infof("Removing node (%s) from replica candidates: node (%s)'s taint cannot be tolerated", nodeName, nodeName)
 			delete(nodeMap, nodeName)
 			continue nodeLoop
 		}
 
 		for _, volumeNodeSelector := range volumeNodeSelectors {
 			if !volumeNodeSelector.Match(nodeEntry.node) {
+				klog.Infof("Removing node (%s) from replica candidates: pod node selector cannot be matched with node (%s).", nodeName, nodeName)
 				delete(nodeMap, nodeName)
 				continue nodeLoop
 			}
@@ -829,6 +900,13 @@ nodeLoop:
 
 	// sort the filteredNodes by their remaining capacity (high to low) and return a slice
 	sort.Slice(filteredNodes[:], func(i, j int) bool {
+		// prioritize the nodes filtered by pod affinity
+		iIsFiltered := filteredPodNodes.has(filteredNodes[i])
+		jIsFiltered := filteredPodNodes.has(filteredNodes[j])
+		if iIsFiltered != jIsFiltered {
+			return iIsFiltered
+		}
+		// if both satisfy or don't pod affinity, rank by their node scores
 		return nodeMap[filteredNodes[i]].nodeScore > nodeMap[filteredNodes[j]].nodeScore
 	})
 

@@ -418,6 +418,7 @@ func TestNodeGetVolumeStats(t *testing.T) {
 
 func TestNodeStageVolume(t *testing.T) {
 	d, err := NewFakeDriver(t)
+	d.setPerfOptimizationEnabled(false)
 	assert.NoError(t, err)
 
 	stdVolCap := &csi.VolumeCapability_Mount{
@@ -557,7 +558,7 @@ func TestNodeStageVolume(t *testing.T) {
 					DiskSupportsPerfOptimization(gomock.Any(), gomock.Any()).
 					Return(true)
 				mockoptimization.EXPECT().
-					OptimizeDiskPerformance(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					OptimizeDiskPerformance(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 					Return(nil).
 					After(diskSupportsPerfOptimizationCall)
 

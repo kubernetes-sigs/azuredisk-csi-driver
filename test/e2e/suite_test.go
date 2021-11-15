@@ -61,7 +61,7 @@ var (
 	isUsingInTreeVolumePlugin   = os.Getenv(driver.AzureDriverNameVar) == inTreeStorageClass
 	isTestingMigration          = os.Getenv(testMigrationEnvVar) != ""
 	isWindowsCluster            = os.Getenv(testWindowsEnvVar) != ""
-	isUsingCSIDriverV2          = os.Getenv(buildV2Driver) != ""
+	isUsingCSIDriverV2          = strings.EqualFold(os.Getenv(buildV2Driver), "true")
 	isUsingOnlyDefaultScheduler = os.Getenv(useOnlyDefaultScheduler) != ""
 	isAzureStackCloud           = strings.EqualFold(os.Getenv(cloudNameEnvVar), "AZURESTACKCLOUD")
 	skipClusterBootstrap        = flag.Bool("skip-cluster-bootstrap", false, "flag to indicate that we can skip cluster bootstrap.")
@@ -308,8 +308,12 @@ func getSchedulerForE2E() string {
 	return "csi-azuredisk-scheduler-extender"
 }
 
+func isZRSSupported() bool {
+	return location == "westus2" || location == "westeurope"
+}
+
 func skipIfNotZRSSupported() {
-	if !(location == "westus2" || location == "westeurope") {
+	if !(isZRSSupported()) {
 		ginkgo.Skip("test case not supported on regions without ZRS")
 	}
 }

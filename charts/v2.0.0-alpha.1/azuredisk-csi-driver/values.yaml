@@ -30,7 +30,7 @@ image:
     pullPolicy: IfNotPresent
   schedulerExtender:
     repository: /k8s/csi/azdiskschedulerextender-csi
-    tag: v2.0.1-alpha.1
+    tag: v2.0.0-alpha.1
     pullPolicy: IfNotPresent
     imageVersion: v1.18.6
 

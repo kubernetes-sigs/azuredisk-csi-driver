@@ -18,6 +18,7 @@ package testsuites
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/onsi/ginkgo"
@@ -29,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/klog"
 	"k8s.io/kubernetes/test/e2e/framework"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
@@ -39,15 +41,16 @@ import (
 
 //  will provision required PV(s), PVC(s) and Pod(s)
 // Primary AzVolumeAttachment and Replica AzVolumeAttachments should be created on set of nodes with matching label
-type PodNodeAffinity struct {
+type PodAffinity struct {
 	CSIDriver              driver.DynamicPVTestDriver
-	Pod                    PodDetails
+	IsMultiZone            bool
+	Pods                   []PodDetails
 	Volume                 VolumeDetails
 	AzDiskClient           *azDiskClientSet.Clientset
 	StorageClassParameters map[string]string
 }
 
-func (t *PodNodeAffinity) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
+func (t *PodAffinity) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
 	_, maxMountReplicaCount := azureutils.GetMaxSharesAndMaxMountReplicaCount(t.StorageClassParameters)
 
 	// Get the list of available nodes for scheduling the pod
@@ -56,76 +59,86 @@ func (t *PodNodeAffinity) Run(client clientset.Interface, namespace *v1.Namespac
 		ginkgo.Skip("need at least %d nodes to verify the test case. Current node count is %d", maxMountReplicaCount+1, len(nodes))
 	}
 
+	if len(t.Pods) < 2 {
+		ginkgo.Skip("need at least 2 pods to verify the test case.")
+	}
+
 	ctx := context.Background()
 
-	// set node label
-	numNodesWithLabel := maxMountReplicaCount + 1
-	nodesWithLabel := map[string]struct{}{}
-	for i := 0; i < numNodesWithLabel; i++ {
-		nodeObj, err := client.CoreV1().Nodes().Get(ctx, nodes[i], metav1.GetOptions{})
-		framework.ExpectNoError(err)
-		labelCleanup, err := SetNodeLabels(client, nodeObj, testLabel)
-		framework.ExpectNoError(err)
-		defer labelCleanup()
-		nodesWithLabel[nodes[i]] = struct{}{}
-	}
+	scheduledNodes := map[string]struct{}{}
+	for i := range t.Pods {
+		tpod, cleanup := t.Pods[i].SetupWithDynamicVolumes(client, namespace, t.CSIDriver, t.StorageClassParameters, schedulerName)
+		// defer must be called here for resources not get removed before using them
+		for i := range cleanup {
+			defer cleanup[i]()
+		}
 
-	tpod, cleanup := t.Pod.SetupWithDynamicVolumes(client, namespace, t.CSIDriver, t.StorageClassParameters, schedulerName)
-	// defer must be called here for resources not get removed before using them
-	for i := range cleanup {
-		defer cleanup[i]()
-	}
+		pod := tpod.pod.DeepCopy()
 
-	tpod.SetAffinity(&testAffinity)
-	// add master node toleration to pod so that the test can utilize all available nodes
-	tpod.AllowScheduleOnMasterNode()
-	ginkgo.By("deploying the pod")
-	tpod.Create()
-	defer tpod.Cleanup()
-	ginkgo.By("checking that the pod is running")
-	tpod.WaitForRunning()
-	framework.ExpectNotEqual(t.Pod.Volumes[0].PersistentVolume, nil)
+		// add master node toleration to pod so that the test can utilize all available nodes
+		tpod.SetAffinity(&testPodAffinity)
+		tpod.SetLabel(testLabel)
+		ginkgo.By(fmt.Sprintf("deploying pod %d", i))
+		tpod.Create()
+		defer tpod.Cleanup()
+		ginkgo.By("checking that the pod is running")
+		tpod.WaitForRunning()
 
-	diskNames := make([]string, len(t.Pod.Volumes))
-	for i, volume := range t.Pod.Volumes {
-		framework.ExpectNotEqual(volume.PersistentVolume, nil)
+		klog.Infof("volumes: %+v", pod.Spec.Volumes)
+		diskNames := make([]string, len(pod.Spec.Volumes))
+		for j, volume := range pod.Spec.Volumes {
+			if volume.PersistentVolumeClaim == nil {
+				framework.Failf("volume (%s) does not hold PersistentVolumeClaim field", volume.Name)
+			}
+			pvc, err := client.CoreV1().PersistentVolumeClaims(tpod.namespace.Name).Get(ctx, volume.PersistentVolumeClaim.ClaimName, metav1.GetOptions{})
+			framework.ExpectNoError(err)
 
-		pv, err := client.CoreV1().PersistentVolumes().Get(ctx, volume.PersistentVolume.Name, metav1.GetOptions{})
-		framework.ExpectNoError(err)
-		framework.ExpectNotEqual(pv.Spec.CSI, nil)
-		framework.ExpectEqual(pv.Spec.CSI.Driver, consts.DefaultDriverName)
+			pv, err := client.CoreV1().PersistentVolumes().Get(ctx, pvc.Spec.VolumeName, metav1.GetOptions{})
+			framework.ExpectNoError(err)
+			framework.ExpectNotEqual(pv.Spec.CSI, nil)
+			framework.ExpectEqual(pv.Spec.CSI.Driver, consts.DefaultDriverName)
 
-		diskName, err := azureutils.GetDiskName(pv.Spec.CSI.VolumeHandle)
-		framework.ExpectNoError(err)
-		diskNames[i] = strings.ToLower(diskName)
-	}
+			diskName, err := azureutils.GetDiskName(pv.Spec.CSI.VolumeHandle)
+			framework.ExpectNoError(err)
+			diskNames[j] = strings.ToLower(diskName)
+		}
 
-	// confirm that the primary and replica AzVolumeAttachments for this volume are created on a node with the label
-	err := wait.PollImmediate(poll, pollTimeout,
-		func() (bool, error) {
-			for _, diskName := range diskNames {
-				labelSelector := labels.NewSelector()
-				volReq, err := controller.CreateLabelRequirements(consts.VolumeNameLabel, selection.Equals, diskName)
-				framework.ExpectNoError(err)
-				labelSelector.Add(*volReq)
+		err := wait.PollImmediate(poll, pollTimeout,
+			func() (bool, error) {
+				for _, diskName := range diskNames {
+					labelSelector := labels.NewSelector()
+					volReq, err := controller.CreateLabelRequirements(consts.VolumeNameLabel, selection.Equals, diskName)
+					framework.ExpectNoError(err)
+					labelSelector = labelSelector.Add(*volReq)
 
-				azVolumeAttachments, err := t.AzDiskClient.DiskV1alpha1().AzVolumeAttachments(consts.AzureDiskCrdNamespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})
-				if err != nil {
-					return false, err
-				}
+					azVolumeAttachments, err := t.AzDiskClient.DiskV1alpha1().AzVolumeAttachments(consts.AzureDiskCrdNamespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})
+					if err != nil {
+						return false, err
+					}
 
-				if azVolumeAttachments == nil || len(azVolumeAttachments.Items) != maxMountReplicaCount+1 {
-					return false, nil
-				}
+					if azVolumeAttachments == nil {
+						return false, nil
+					}
 
-				for _, azVolumeAttachment := range azVolumeAttachments.Items {
-					if _, ok := nodesWithLabel[azVolumeAttachment.Spec.NodeName]; !ok {
-						return false, status.Errorf(codes.Internal, "AzVolumeAttachment (%s) for volume (%s) created on a wrong node (%s)", azVolumeAttachment.Name, diskName, azVolumeAttachment.Spec.NodeName)
+					klog.Infof("found %d AzVolumeAttachments for volume (%s)", len(azVolumeAttachments.Items), diskName)
+
+					if len(azVolumeAttachments.Items) != maxMountReplicaCount+1 {
+						return false, nil
+					}
+
+					// if first pod, check which nodes pod's volumes were attached to
+					for _, azVolumeAttachment := range azVolumeAttachments.Items {
+						if i == 0 {
+							scheduledNodes[azVolumeAttachment.Spec.NodeName] = struct{}{}
+						} else {
+							if _, ok := scheduledNodes[azVolumeAttachment.Spec.NodeName]; !ok {
+								return false, status.Errorf(codes.Internal, "AzVolumeAttachment (%s) for volume (%s) created on a wrong node (%s)", azVolumeAttachment.Name, diskName, azVolumeAttachment.Spec.NodeName)
+							}
+						}
 					}
 				}
-			}
-			return true, nil
-		})
-
-	framework.ExpectNoError(err)
+				return true, nil
+			})
+		framework.ExpectNoError(err)
+	}
 }

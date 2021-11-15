@@ -170,3 +170,8 @@ func skipIfTestingDriverV2(t *testing.T) {
 func isTestingDriverV2() bool {
 	return true
 }
+
+func (d *fakeDriverV2) setPerfOptimizationEnabled(enabled bool) {
+	d.perfOptimizationEnabled = enabled
+	d.cloudProvisioner.(*provisioner.FakeCloudProvisioner).SetPerfOptimizationEnabled(enabled)
+}

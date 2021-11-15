@@ -13,7 +13,8 @@
 # limitations under the License.
 
 FROM alpine:3.14.2
-RUN apk add --no-cache util-linux e2fsprogs e2fsprogs-extra ca-certificates udev xfsprogs xfsprogs-extra
+RUN apk upgrade --no-cache busybox \
+    && apk add --no-cache util-linux e2fsprogs e2fsprogs-extra ca-certificates udev xfsprogs xfsprogs-extra
 
 LABEL maintainers="andyzhangx"
 LABEL description="Azure Disk CSI Driver"

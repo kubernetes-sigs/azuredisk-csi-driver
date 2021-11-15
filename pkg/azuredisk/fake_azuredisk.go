@@ -82,6 +82,7 @@ type FakeDriver interface {
 	getDeviceHelper() optimization.Interface
 	getHostUtil() hostUtil
 	setPerfOptimizationEnabled(bool)
+	getPerfOptimizationEnabled() bool
 	setMounter(*mount.SafeFormatAndMount)
 	setPathIsDeviceResult(path string, isDevice bool, err error)
 

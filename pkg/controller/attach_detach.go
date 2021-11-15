@@ -63,14 +63,15 @@ Attach Detach controller is responsible for
 	3. detaching volume upon deletions marked with certain annotations
 */
 type ReconcileAttachDetach struct {
-	client            client.Client
-	azVolumeClient    azVolumeClientSet.Interface
-	kubeClient        kubeClientSet.Interface
-	namespace         string
-	crdDetacher       CrdDetacher
-	cloudDiskAttacher CloudDiskAttachDetacher
-	stateLock         *sync.Map
-	retryInfo         *retryInfo
+	client                client.Client
+	azVolumeClient        azVolumeClientSet.Interface
+	kubeClient            kubeClientSet.Interface
+	namespace             string
+	crdDetacher           CrdDetacher
+	cloudDiskAttacher     CloudDiskAttachDetacher
+	controllerSharedState *SharedState
+	stateLock             *sync.Map
+	retryInfo             *retryInfo
 }
 
 var _ reconcile.Reconciler = &ReconcileAttachDetach{}
@@ -110,7 +111,7 @@ func (r *ReconcileAttachDetach) Reconcile(ctx context.Context, request reconcile
 		}
 		// attachment request
 	} else if azVolumeAttachment.Status.Detail == nil {
-		if azVolumeAttachment.Status.State == v1alpha1.AttachmentPending || azVolumeAttachment.Status.State == v1alpha1.AttachmentFailed {
+		if azVolumeAttachment.Status.State == v1alpha1.AttachmentPending {
 			if err := r.triggerAttach(ctx, azVolumeAttachment); err != nil {
 				return reconcileReturnOnError(azVolumeAttachment, "attach", err, r.retryInfo)
 			}
@@ -532,7 +533,7 @@ func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, 
 		if syncedVolumeAttachments[volumeAttachment.Name] {
 			continue
 		}
-		if volumeAttachment.Spec.Attacher == consts.DefaultDriverName {
+		if volumeAttachment.Spec.Attacher == r.controllerSharedState.driverName {
 			volumeName := volumeAttachment.Spec.Source.PersistentVolumeName
 			if volumeName == nil {
 				continue
@@ -544,7 +545,7 @@ func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, 
 				return syncedVolumeAttachments, volumesToSync, err
 			}
 
-			if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != consts.DefaultDriverName {
+			if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != r.controllerSharedState.driverName {
 				continue
 			}
 			volumesToSync[pv.Spec.CSI.VolumeHandle] = true
@@ -645,6 +646,8 @@ func (r *ReconcileAttachDetach) recoverAzVolumeAttachment(ctx context.Context, r
 			case v1alpha1.Detaching:
 				// reset state to Attached so Detach operation can be redone
 				targetState = v1alpha1.Attached
+			default:
+				targetState = azv.Status.State
 			}
 
 			if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, &azv, updateFunc, consts.ForcedUpdateMaxNetRetry); err != nil {
@@ -665,16 +668,17 @@ func (r *ReconcileAttachDetach) recoverAzVolumeAttachment(ctx context.Context, r
 	return nil
 }
 
-func NewAttachDetachController(mgr manager.Manager, azVolumeClient azVolumeClientSet.Interface, kubeClient kubeClientSet.Interface, namespace string, cloudDiskAttacher CloudDiskAttachDetacher, crdDetacher CrdDetacher) (*ReconcileAttachDetach, error) {
+func NewAttachDetachController(mgr manager.Manager, azVolumeClient azVolumeClientSet.Interface, kubeClient kubeClientSet.Interface, namespace string, cloudDiskAttacher CloudDiskAttachDetacher, crdDetacher CrdDetacher, controllerSharedState *SharedState) (*ReconcileAttachDetach, error) {
 	reconciler := ReconcileAttachDetach{
-		client:            mgr.GetClient(),
-		azVolumeClient:    azVolumeClient,
-		kubeClient:        kubeClient,
-		namespace:         namespace,
-		crdDetacher:       crdDetacher,
-		cloudDiskAttacher: cloudDiskAttacher,
-		stateLock:         &sync.Map{},
-		retryInfo:         newRetryInfo(),
+		client:                mgr.GetClient(),
+		azVolumeClient:        azVolumeClient,
+		kubeClient:            kubeClient,
+		namespace:             namespace,
+		crdDetacher:           crdDetacher,
+		cloudDiskAttacher:     cloudDiskAttacher,
+		stateLock:             &sync.Map{},
+		retryInfo:             newRetryInfo(),
+		controllerSharedState: controllerSharedState,
 	}
 
 	c, err := controller.New("azvolumeattachment-controller", mgr, controller.Options{

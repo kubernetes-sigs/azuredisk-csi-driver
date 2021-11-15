@@ -23,6 +23,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
@@ -49,7 +50,7 @@ import (
 	azurediskInformers "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
-	azclients "sigs.k8s.io/cloud-provider-azure/pkg/azureclients"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -208,28 +209,33 @@ func CreateValidDiskName(volumeName string, usedForLabel bool) string {
 func GetCloudProviderFromClient(kubeClient *clientset.Clientset, secretName string, secretNamespace string, userAgent string) (*azure.Cloud, error) {
 	var config *azure.Config
 	var fromSecret bool
-	var err error
-	az := &azure.Cloud{
-		InitSecretConfig: azure.InitSecretConfig{
-			SecretName:      secretName,
-			SecretNamespace: secretNamespace,
-			CloudConfigKey:  "cloud-config",
-		},
-	}
+
+	// Try to get the configuration from a K8s secret first...
 	if kubeClient != nil {
-		klog.V(2).Infof("reading cloud config from secret %s/%s", az.SecretNamespace, az.SecretName)
-		az.KubeClient = kubeClient
-		config, err = az.GetConfigFromSecret()
-		if err == nil && config != nil {
-			fromSecret = true
+		az := &azure.Cloud{
+			InitSecretConfig: azure.InitSecretConfig{
+				SecretName:      secretName,
+				SecretNamespace: secretNamespace,
+				CloudConfigKey:  "cloud-config",
+			},
 		}
-		if err != nil {
-			klog.Warningf("InitializeCloudFromSecret: failed to get cloud config from secret %s/%s: %v", az.SecretNamespace, az.SecretName, err)
+
+		az.KubeClient = kubeClient
+
+		var err error
+
+		config, err = az.GetConfigFromSecret()
+		if err == nil {
+			fromSecret = true
+		} else {
+			if !errors.IsNotFound(err) {
+				klog.Warningf("failed to create cloud config from secret %s/%s: %v", az.SecretNamespace, az.SecretName, err)
+			}
 		}
 	}
 
+	// ... and fallback to reading configuration file on disk.
 	if config == nil {
-		klog.V(2).Infof("could not read cloud config from secret %s/%s", az.SecretNamespace, az.SecretName)
 		credFile, ok := os.LookupEnv(consts.DefaultAzureCredentialFileEnv)
 		if ok && strings.TrimSpace(credFile) != "" {
 			klog.V(2).Infof("%s env var set as %v", consts.DefaultAzureCredentialFileEnv, credFile)
@@ -244,36 +250,42 @@ func GetCloudProviderFromClient(kubeClient *clientset.Clientset, secretName stri
 
 		credFileConfig, err := os.Open(credFile)
 		if err != nil {
-			klog.Errorf("Failed to load config from file: %s", credFile)
-			return nil, fmt.Errorf("Failed to load config from file: %s, cloud not get azure cloud provider", credFile)
+			err = fmt.Errorf("failed to load cloud config from file %q: %v", credFile, err)
+			klog.Errorf(err.Error())
+			return nil, err
 		}
 		defer credFileConfig.Close()
-		klog.V(2).Infof("read cloud config from file: %s successfully", credFile)
-		if config, err = azure.ParseConfig(credFileConfig); err != nil {
-			klog.Warningf("parse config file(%s) failed with error: %v", credFile, err)
+
+		config, err = azure.ParseConfig(credFileConfig)
+		if err != nil {
+			err = fmt.Errorf("failed to parse cloud config file %q: %v", credFile, err)
+			klog.Errorf(err.Error())
+			return nil, err
 		}
 	}
 
-	if config == nil {
-		klog.V(2).Infof("no cloud config provided, error: %v, driver will run without cloud config", err)
-	} else {
-		// disable disk related rate limit
-		config.DiskRateLimit = &azclients.RateLimitConfig{
-			CloudProviderRateLimit: false,
-		}
-		config.SnapshotRateLimit = &azclients.RateLimitConfig{
-			CloudProviderRateLimit: false,
-		}
-		config.UserAgent = userAgent
-		if err = az.InitializeCloudFromConfig(config, fromSecret, false); err != nil {
-			klog.Warningf("InitializeCloudFromConfig failed with error: %v", err)
-		}
+	// Override configuration values
+	config.DiskRateLimit = &azureclients.RateLimitConfig{
+		CloudProviderRateLimit: false,
+	}
+	config.SnapshotRateLimit = &azureclients.RateLimitConfig{
+		CloudProviderRateLimit: false,
+	}
+	config.UserAgent = userAgent
+
+	// Create a new cloud provider
+	az, err := azure.NewCloudWithoutFeatureGatesFromConfig(config, fromSecret, false)
+	if err != nil {
+		err = fmt.Errorf("failed to create cloud: %v", err)
+		klog.Errorf(err.Error())
+		return nil, err
 	}
 
 	// reassign kubeClient
 	if kubeClient != nil && az.KubeClient == nil {
 		az.KubeClient = kubeClient
 	}
+
 	return az, nil
 }
 
@@ -681,4 +693,11 @@ func checkDiskName(diskName string) bool {
 	}
 
 	return true
+}
+
+func SleepIfThrottled(err error, sleepSec int) {
+	if strings.Contains(strings.ToLower(err.Error()), strings.ToLower(consts.TooManyRequests)) || strings.Contains(strings.ToLower(err.Error()), consts.ClientThrottled) {
+		klog.Warningf("sleep %d more seconds, waiting for throttling complete", sleepSec)
+		time.Sleep(time.Duration(sleepSec) * time.Second)
+	}
 }

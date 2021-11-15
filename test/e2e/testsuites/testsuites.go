@@ -70,6 +70,8 @@ const (
 	testTolerationValue = "test-toleration-value"
 	testLabelKey        = "test-label-key"
 	testLabelValue      = "test-label-value"
+
+	masterNodeLabel = "node-role.kubernetes.io/master"
 )
 
 var (
@@ -83,7 +85,7 @@ var (
 		testLabelKey: testLabelValue,
 	}
 
-	testAffinity = v1.Affinity{
+	testNodeAffinity = v1.Affinity{
 		NodeAffinity: &v1.NodeAffinity{
 			RequiredDuringSchedulingIgnoredDuringExecution: &v1.NodeSelector{
 				NodeSelectorTerms: []v1.NodeSelectorTerm{
@@ -97,6 +99,16 @@ var (
 					},
 				},
 			},
+		},
+	}
+
+	testPodAffinity = v1.Affinity{
+		PodAffinity: &v1.PodAffinity{
+			RequiredDuringSchedulingIgnoredDuringExecution: []v1.PodAffinityTerm{
+				{
+					LabelSelector: &metav1.LabelSelector{MatchLabels: testLabel},
+					TopologyKey:   consts.WellKnownTopologyKey,
+				}},
 		},
 	}
 )
@@ -391,7 +403,7 @@ func (t *TestPersistentVolumeClaim) Cleanup() {
 		framework.ExpectNoError(err)
 	}
 	// Wait for the PVC to be deleted
-	err = waitForPersistentVolumeClaimDeleted(t.client, t.persistentVolumeClaim.Name, t.namespace.Name, 5*time.Second, 5*time.Minute)
+	err = waitForPersistentVolumeClaimDeleted(t.client, t.namespace.Name, t.persistentVolumeClaim.Name, 5*time.Second, 5*time.Minute)
 	framework.ExpectNoError(err)
 }
 
@@ -595,6 +607,7 @@ type TestStatefulset struct {
 	statefulset *apps.StatefulSet
 	namespace   *v1.Namespace
 	podNames    []string
+	allPods     []PodDetails
 }
 
 func NewTestStatefulset(c clientset.Interface, ns *v1.Namespace, command string, pvc []v1.PersistentVolumeClaim, volumeMount []v1.VolumeMount, isWindows, useCMD bool, schedulerName string, replicaCount int) *TestStatefulset {
@@ -669,6 +682,22 @@ func (t *TestStatefulset) Create() {
 	framework.ExpectNoError(err)
 	for _, pod := range statefulSetPods.Items {
 		t.podNames = append(t.podNames, pod.Name)
+		var podPersistentVolumes []VolumeDetails
+		for _, volume := range pod.Spec.Volumes {
+			if volume.VolumeSource.PersistentVolumeClaim != nil {
+				pvc, err := t.client.CoreV1().PersistentVolumeClaims(t.namespace.Name).Get(context.TODO(), volume.VolumeSource.PersistentVolumeClaim.ClaimName, metav1.GetOptions{})
+				framework.ExpectNoError(err)
+				newVolume := VolumeDetails{
+					PersistentVolume: &v1.PersistentVolume{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: pvc.Spec.VolumeName,
+						},
+					},
+				}
+				podPersistentVolumes = append(podPersistentVolumes, newVolume)
+			}
+		}
+		t.allPods = append(t.allPods, PodDetails{Volumes: podPersistentVolumes})
 	}
 }
 
@@ -927,20 +956,16 @@ func (t *TestPod) SetupVolumeMountWithSubpath(pvc *v1.PersistentVolumeClaim, nam
 	t.pod.Spec.Volumes = append(t.pod.Spec.Volumes, volume)
 }
 
-func (t *TestPod) AllowScheduleOnMasterNode() {
-	t.SetNodeToleration(v1.Toleration{
-		Key:      consts.MasterNodeRoleTaintKey,
-		Operator: v1.TolerationOpExists,
-		Effect:   v1.TaintEffectNoSchedule,
-	})
-}
-
 func (t *TestPod) SetNodeSelector(nodeSelector map[string]string) {
 	t.pod.Spec.NodeSelector = nodeSelector
 }
 
 func (t *TestPod) SetAffinity(affinity *v1.Affinity) {
 	t.pod.Spec.Affinity = affinity
+}
+
+func (t *TestPod) SetLabel(labels map[string]string) {
+	t.pod.ObjectMeta.Labels = labels
 }
 
 func (t *TestPod) SetNodeToleration(nodeTolerations ...v1.Toleration) {
@@ -999,7 +1024,7 @@ func ListNodeNames(c clientset.Interface) []string {
 	return nodeNames
 }
 
-func SetNodeLabels(c clientset.Interface, node *v1.Node, newLabels map[string]string) (cleanup func(), err error) {
+func SetNodeLabels(c clientset.Interface, node *v1.Node, newLabels map[string]string) (newNode *v1.Node, cleanup func(), err error) {
 	originalLabels := node.Labels
 	nodeName := node.Name
 	cleanup = func() {
@@ -1016,11 +1041,11 @@ func SetNodeLabels(c clientset.Interface, node *v1.Node, newLabels map[string]st
 		}
 	}
 
-	_, err = c.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{})
+	newNode, err = c.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{})
 	return
 }
 
-func SetNodeTaints(c clientset.Interface, node *v1.Node, taints ...v1.Taint) (cleanup func(), err error) {
+func SetNodeTaints(c clientset.Interface, node *v1.Node, taints ...v1.Taint) (newNode *v1.Node, cleanup func(), err error) {
 	originalTaints := node.Spec.Taints
 	nodeName := node.Name
 	cleanup = func() {
@@ -1037,7 +1062,7 @@ func SetNodeTaints(c clientset.Interface, node *v1.Node, taints ...v1.Taint) (cl
 		node.Spec.Taints = append(node.Spec.Taints, taints...)
 	}
 
-	_, err = c.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{})
+	newNode, err = c.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{})
 	if err != nil {
 		klog.Errorf("failed to add taints (%+v) to node (%s): %v", taints, node.Name, err)
 	} else {

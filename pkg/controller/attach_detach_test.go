@@ -37,15 +37,17 @@ import (
 
 func NewTestAttachDetachController(controller *gomock.Controller, namespace string, objects ...runtime.Object) *ReconcileAttachDetach {
 	diskv1alpha1Objs, kubeObjs := splitObjects(objects...)
+	controllerSharedState := initState(objects...)
 
 	return &ReconcileAttachDetach{
-		client:            mockclient.NewMockClient(controller),
-		azVolumeClient:    diskfakes.NewSimpleClientset(diskv1alpha1Objs...),
-		kubeClient:        fakev1.NewSimpleClientset(kubeObjs...),
-		namespace:         namespace,
-		cloudDiskAttacher: mockattachmentprovisioner.NewMockAttachmentProvisioner(controller),
-		stateLock:         &sync.Map{},
-		retryInfo:         newRetryInfo(),
+		client:                mockclient.NewMockClient(controller),
+		azVolumeClient:        diskfakes.NewSimpleClientset(diskv1alpha1Objs...),
+		kubeClient:            fakev1.NewSimpleClientset(kubeObjs...),
+		namespace:             namespace,
+		cloudDiskAttacher:     mockattachmentprovisioner.NewMockAttachmentProvisioner(controller),
+		stateLock:             &sync.Map{},
+		retryInfo:             newRetryInfo(),
+		controllerSharedState: controllerSharedState,
 	}
 }
 

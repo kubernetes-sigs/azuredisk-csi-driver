@@ -50,3 +50,11 @@ func (fake *FakeCloudProvisioner) GetCloud() *provider.Cloud {
 func (fake *FakeCloudProvisioner) SetCloud(cloud *provider.Cloud) {
 	fake.cloud = cloud
 }
+
+func (fake *FakeCloudProvisioner) GetPerfOptimizationEnabled() bool {
+	return fake.perfOptimizationEnabled
+}
+
+func (fake *FakeCloudProvisioner) SetPerfOptimizationEnabled(enabled bool) {
+	fake.perfOptimizationEnabled = enabled
+}

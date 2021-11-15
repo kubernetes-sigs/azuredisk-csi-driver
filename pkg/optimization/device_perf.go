@@ -20,7 +20,7 @@ package optimization
 type Interface interface {
 	DiskSupportsPerfOptimization(diskPerfProfile, diskAccountType string) bool
 	OptimizeDiskPerformance(nodeInfo *NodeInfo,
-		devicePath, perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr string) error
+		devicePath, perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr string, deviceSettingsFromCtx map[string]string) error
 }
 
 // Compile-time check to ensure all Mounter DeviceHelper satisfy
@@ -43,6 +43,6 @@ func (dh *SafeDeviceHelper) DeviceSupportsPerfOptimization(diskPerfProfile, disk
 }
 
 func (dh *SafeDeviceHelper) OptimizeDiskPerformance(nodeInfo *NodeInfo,
-	devicePath, perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr string) error {
-	return dh.Interface.OptimizeDiskPerformance(nodeInfo, devicePath, perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr)
+	devicePath, perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr string, deviceSettingsFromCtx map[string]string) error {
+	return dh.Interface.OptimizeDiskPerformance(nodeInfo, devicePath, perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr, deviceSettingsFromCtx)
 }

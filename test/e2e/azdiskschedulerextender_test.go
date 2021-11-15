@@ -17,10 +17,13 @@ limitations under the License.
 package e2e
 
 import (
+	"fmt"
+
 	"github.com/onsi/ginkgo"
 	v1 "k8s.io/api/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
+	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/testsuites"
@@ -171,9 +174,18 @@ func schedulerExtenderTests(isMultiZone bool) {
 
 	ginkgo.It("Should schedule and start a pod with multiple persistent volume requests and reschedule on failover.", func() {
 		skipIfUsingInTreeVolumePlugin()
+		skuName := "StandardSSD_LRS"
+		if isMultiZone {
+			skipIfNotZRSSupported()
+			skuName = "StandardSSD_ZRS"
+		}
+
 		volumes := []testsuites.VolumeDetails{}
 		t := dynamicProvisioningTestSuite{}
-
+		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
+		if err != nil {
+			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
+		}
 		for i := 1; i <= 3; i++ {
 			volume := testsuites.VolumeDetails{
 				FSType:    "ext3",
@@ -195,16 +207,26 @@ func schedulerExtenderTests(isMultiZone bool) {
 			CSIDriver:              testDriver,
 			Pod:                    pod,
 			Replicas:               1,
-			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
+			StorageClassParameters: map[string]string{"skuName": skuName},
+			AzDiskClient:           azDiskClient,
 		}
 		test.Run(cs, ns, schedulerName)
 	})
 
 	ginkgo.It("Should schedule and start a pod with multiple persistent volume requests with replicas and reschedule on deletion.", func() {
 		skipIfUsingInTreeVolumePlugin()
+		skuName := "Premium_LRS"
+		if isMultiZone {
+			skipIfNotZRSSupported()
+			skuName = "Premium_ZRS"
+		}
+
 		volumes := []testsuites.VolumeDetails{}
 		t := dynamicProvisioningTestSuite{}
-
+		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
+		if err != nil {
+			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
+		}
 		for i := 1; i <= 2; i++ {
 			volume := testsuites.VolumeDetails{
 				FSType:    "ext4",
@@ -226,7 +248,8 @@ func schedulerExtenderTests(isMultiZone bool) {
 			CSIDriver:              testDriver,
 			Pod:                    pod,
 			Replicas:               1,
-			StorageClassParameters: map[string]string{"skuName": "Premium_LRS", "maxShares": "2", "cachingmode": "None"},
+			StorageClassParameters: map[string]string{"skuName": skuName, "maxShares": "2", "cachingmode": "None"},
+			AzDiskClient:           azDiskClient,
 		}
 		test.Run(cs, ns, schedulerName)
 	})

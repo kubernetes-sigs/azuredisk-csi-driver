@@ -323,7 +323,7 @@ func createPod(podNamespace, podName string, pvcs []string) v1.Pod {
 }
 
 func initState(objs ...runtime.Object) (c *SharedState) {
-	c = NewSharedState()
+	c = NewSharedState(consts.DefaultDriverName)
 
 	for _, obj := range objs {
 		switch target := obj.(type) {

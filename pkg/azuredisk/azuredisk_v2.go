@@ -126,6 +126,7 @@ func newDriverV2(options *DriverOptions,
 	driver.customUserAgent = options.CustomUserAgent
 	driver.userAgentSuffix = options.UserAgentSuffix
 	driver.useCSIProxyGAInterface = options.UseCSIProxyGAInterface
+	driver.enableDiskOnlineResize = options.EnableDiskOnlineResize
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
 	driver.deviceChecker = deviceChecker{lock: sync.RWMutex{}, entry: nil}
@@ -165,7 +166,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 		userAgent := GetUserAgent(d.Name, d.customUserAgent, d.userAgentSuffix)
 		klog.V(2).Infof("driver userAgent: %s", userAgent)
 
-		d.cloudProvisioner, err = provisioner.NewCloudProvisioner(d.kubeClient, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, topologyKey, userAgent)
+		d.cloudProvisioner, err = provisioner.NewCloudProvisioner(d.kubeClient, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, d.getPerfOptimizationEnabled(), topologyKey, userAgent, d.enableDiskOnlineResize)
 		if err != nil {
 			klog.Fatalf("Failed to get controller provisioner. Error: %v", err)
 		}
@@ -292,7 +293,7 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 		os.Exit(1)
 	}
 
-	sharedState := controller.NewSharedState()
+	sharedState := controller.NewSharedState(d.Name)
 
 	// Setup a new controller to clean-up AzDriverNodes
 	// objects for the nodes which get deleted
@@ -304,7 +305,7 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 	}
 
 	klog.V(2).Info("Initializing AzVolumeAttachment controller")
-	attachReconciler, err := controller.NewAttachDetachController(mgr, d.crdProvisioner.GetDiskClientSet(), d.kubeClient, d.objectNamespace, d.cloudProvisioner, d.crdProvisioner)
+	attachReconciler, err := controller.NewAttachDetachController(mgr, d.crdProvisioner.GetDiskClientSet(), d.kubeClient, d.objectNamespace, d.cloudProvisioner, d.crdProvisioner, sharedState)
 	if err != nil {
 		klog.Errorf("Failed to initialize AzVolumeAttachmentController. Error: %v. Exiting application...", err)
 		os.Exit(1)
