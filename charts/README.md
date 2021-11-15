@@ -1,29 +1,33 @@
 # Install CSI driver with Helm 3
 
 ## Prerequisites
- - [install Helm](https://helm.sh/docs/intro/quickstart/#install-helm)
+
+- [install Helm](https://helm.sh/docs/intro/quickstart/#install-helm)
 
 ### Tips
- - make controller only run on master node: `--set controller.runOnMaster=true`
- - enable `fsGroupPolicy` on a k8s 1.20+ cluster: `--set feature.enableFSGroupPolicy=true`
- - set replica of controller as `1`: `--set controller.replicas=1`
- - specify different cloud config secret for the driver:
-   - `--set controller.cloudConfigSecretName`
-   - `--set controller.cloudConfigSecretNamesapce`
-   - `--set node.cloudConfigSecretName`
-   - `--set node.cloudConfigSecretNamesapce`
- - switch to `mcr.azk8s.cn` repository in Azure China: `--set image.baseRepo=mcr.azk8s.cn`
+
+- make controller only run on master node: `--set controller.runOnMaster=true`
+- enable `fsGroupPolicy` on a k8s 1.20+ cluster: `--set feature.enableFSGroupPolicy=true`
+- set replica of controller as `1`: `--set controller.replicas=1`
+- specify different cloud config secret for the driver:
+  - `--set controller.cloudConfigSecretName`
+  - `--set controller.cloudConfigSecretNamesapce`
+  - `--set node.cloudConfigSecretName`
+  - `--set node.cloudConfigSecretNamesapce`
+- switch to `mcr.azk8s.cn` repository in Azure China: `--set image.baseRepo=mcr.azk8s.cn`
 
 ## install latest version
+
 ```console
 helm repo add azuredisk-csi-driver https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts
 helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system
 ```
+
 ## install Azure Disk CSI Driver V2 (Preview)
 
 > only supported from `v2.0.0-alpha.1`+
 
-Applicable to any Kubernetes cluster without the Azure Disk CSI Driver V1 installed. If V1 is installed, proceed to side-by-side installation instructions below. The V1 driver is installed by default in AKS clusters with Kubernetes version 1.21 and later.   
+Applicable to any Kubernetes cluster without the Azure Disk CSI Driver V1 installed. If V1 is installed, proceed to side-by-side installation instructions below. The V1 driver is installed by default in AKS clusters with Kubernetes version 1.21 and later.
 
 ```console
 helm repo add azuredisk-csi-driver https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts
@@ -34,7 +38,7 @@ helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --na
 
 > only supported from `v2.0.0-alpha.1`+
 
-Since VolumeSnapshot CRDs and other components are created first when V1 driver is installed, use the side-by-side-values.yaml to customize the V2 driver to run side-by-side with the V1 driver. Note that if you uninstall the V1 driver, you would have to update your V2 driver to install the necessary snapshot components that would have then been deleted. 
+Since VolumeSnapshot CRDs and other components are created first when V1 driver is installed, use the side-by-side-values.yaml to customize the V2 driver to run side-by-side with the V1 driver. Note that if you uninstall the V1 driver, you would have to update your V2 driver to install the necessary snapshot components that would have then been deleted.
 
 ```console
 helm repo add azuredisk-csi-driver https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts
@@ -43,30 +47,48 @@ helm install azuredisk-csi-driver-v2 azuredisk-csi-driver/azuredisk-csi-driver -
   --values https://raw.githubusercontent.com/kubernetes-sigs/master/charts/v2.0.0-alpha.1/azuredisk-csi-driver/side-by-side-values.yaml
 ```
 
-### install a specific version
+> NOTE: When installing the V2 driver side-by-side with the V1 driver in an AKS cluster, you will need to grant the agentpool service principal or managed identity `Contributor` access to the resource groups used to store managed disks. By default, this is the resource group prefixed by `MC_` corresponding to your AKS cluster.
+
+## upgrade Azure Disk CSI Driver V1 to V2 (Preview)
+
+> only supported from `v2.0.0-alpha.1`+
+
+This assumes you have already installed Azure Disk CSI Driver V1 to a non-AKS cluster, e.g. one created using [aks-engine](https://github.com/Azure/aks-engine) or [Cluster API Provider for Azure (CAPZ)](https://github.com/kubernetes-sigs/cluster-api-provider-azure).
+
+```console
+helm upgrade azure-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v2.0.0-alpha.1
+```
+
+## install a specific version
+
 ```console
 helm repo add azuredisk-csi-driver https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts
 helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v1.8.0
 ```
 
-### install on Azure Stack
+## install on Azure Stack
+
 ```console
 helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --set cloud=AzureStackCloud
 ```
 
-### install on RedHat/CentOS
+## install on RedHat/CentOS
+
 ```console
 helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --set linux.distro=fedora
 ```
 
-### install driver with customized driver name, deployment name
+## install driver with customized driver name, deployment name
+
 > only supported from `v1.5.0`+
- - following example would install a driver with name `disk2`
+
+- following example would install a driver with name `disk2`
+
 ```console
 helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --set driver.name="disk2.csi.azure.com" --set controller.name="csi-azuredisk2-controller" --set rbac.name=azuredisk2 --set serviceAccount.controller=csi-azuredisk2-controller-sa --set serviceAccount.node=csi-azuredisk2-node-sa --set linux.dsName=csi-azuredisk2-node --set windows.dsName=csi-azuredisk2-node-win --set node.livenessProbe.healthPort=39705
 ```
 
-### install driver with Prometheus monitors
+## install driver with Prometheus monitors
 
 > only supported from `v2.0.0-alpha.1`+
 
@@ -88,17 +110,21 @@ EOF
 helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --values /tmp/azure-isk-csi-driver-overrides.yaml
 ```
 
-### search for all available chart versions
+## search for all available chart versions
+
 ```console
 helm search repo -l azuredisk-csi-driver
 ```
 
 ## uninstall CSI driver
+
 ```console
 helm uninstall azuredisk-csi-driver -n kube-system
 ```
 
 ## latest chart configuration
+
+### V1 Parameters
 
 The following table lists the configurable parameters of the latest Azure Disk CSI Driver chart and default values.
 
@@ -173,6 +199,43 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `windows.tolerations`                             | windows node driver tolerations                            |                                                              |
 | `cloud`                                           | cloud environment driver is running on                     | `AzurePublicCloud`                                                  |
 
-## troubleshooting
- - Add `--wait -v=5 --debug` in `helm install` command to get detailed error
- - Use `kubectl describe` to get more info
+### New or Updated Parameters for V2
+
+In addition to the parameters supported by the V1 driver, Azure Disk CSI driver V2 adds or modifies the following parameters:
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `image.azuredisk.tag` | Azure Disk CSI Driver V2 docker image tag | `v2.0.0-alpha.1` |
+| `image.curl.repository` | curl docker image | `docker.io/curlimages/curl` |
+| `image.curl.tag` | curl docker image tag | `latest` |
+| `image.curl.pullPolicy` | curl docker image pull policy | `IfNotPresent` |
+| `image.schedulerExtender.repository` | Azure Disk CSI Driver V2 Scheduler Extender docker image | `/k8s/csi/azdiskschedulerextender-csi` |
+| `image.schedulerExtender.tag` | Azure Disk CSI Driver V2 Scheduler Extender  docker image tag | `v2.0.0-alpha.1` |
+| `image.schedulerExtender.pullPolicy` | Azure Disk CSI Driver V2 Scheduler Extender  docker image pull policy | `IfNotPresent` |
+| `serviceAccount.schedulerExtender`| name of service account for Azure Disk CSI Driver V2 Scheduler Extender | `csi-azuredisk-scheduler-extender-sa` |
+| `controller.metrics.port` | Azure Disk CSI Driver V2 controller metrics server port. This value replaces `controller.metricsPort` | `29604` |
+| `controller.metrics.service.enabled` | whether a `Service` is created for the Azure Disk CSI Driver V2 controller metrics server | `false` |
+| `controller.metrics.service.monitor.enabled` | whether a `ServiceMonitor` is created for the Azure Disk CSI Driver V2 controller metrics server `Service`. | `false` |
+| `schedulerExtender.name` | Azure Disk CSI Driver V2 Scheduler Extender deployment name | `csi-azuredisk-scheduler-extender` |
+| `schedulerExtender.replicas` | Azure Disk CSI Driver V2 Scheduler Extender replica count | `2` |
+| `schedulerExtender.metrics.port` | Azure Disk CSI Driver V2 Scheduler Extender metrics server port | `29604` |
+| `schedulerExtender.metrics.service.enabled` | whether a `Service` is created for the Azure Disk CSI Driver V2 Scheduler Extender metrics server | `false` |
+| `schedulerExtender.metrics.service.monitor.enabled` | whether a `ServiceMonitor` is created for the Azure Disk CSI Driver V2 Scheduler Extender metrics server `Service`. | `false` |
+| `schedulerExtender.servicePort` | Azure Disk CSI Driver V2 Scheduler Extender service port | `8889` |
+| `snapshot.createCRDs` | whether the snapshot CRDs are created | `true` |
+| `feature.enableCSIMigration` | enables the CSIMIgration feature flag on the Azure Disk CSI V2 Driver Scheduler Extender | `false` |
+| `storageClasses.create` | whether to create the default `StorageClass` instances for Azure Disk CSI Driver V2 | `true` |
+| `storageClasses.enableZRS` | whether to create the `StorageClass` instances for ZRS disks (not supported in all regions) | `false` |
+| `storageClasses.enableUltraSSD` | whether to create the `StorageClass` instances for UltraSSD disks (not supported in all regions) | `false` |
+| `storageClasses.storageClassNames.standardLRS` | The `StorageClass` name for `Standard_LRS` disks | `azuredisk-standard-hdd-lrs` |
+| `storageClasses.storageClassNames.standardSSDLRS` | The `StorageClass` name for `StandardSSD_LRS` disks | `azuredisk-standard-sdd-lrs` |
+| `storageClasses.storageClassNames.standardSSDZRS` | The `StorageClass` name for `StandardSSD_ZRS` disks | `azuredisk-standard-sdd-zrs` |
+| `storageClasses.storageClassNames.premiumLRS` | The `StorageClass` name for `Premium_LRS` disks | `azuredisk-premium-sdd-lrs` |
+| `storageClasses.storageClassNames.premiumZRS` | The `StorageClass` name for `Premium_ZRS` disks | `azuredisk-premium-sdd-zrs` |
+| `storageClasses.storageClassNames.ultraSSDLRS` | The `StorageClass` name for `UltraSSD_LRS` disks | `azuredisk-ultra-sdd-lrs` |
+
+
+## Troubleshooting
+
+- Add `--wait -v=5 --debug` in `helm install` command to get detailed error
+- Use `kubectl describe` to get more info
