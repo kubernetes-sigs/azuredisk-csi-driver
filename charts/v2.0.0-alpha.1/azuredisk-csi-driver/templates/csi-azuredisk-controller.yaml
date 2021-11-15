@@ -180,6 +180,7 @@ spec:
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--metrics-address=0.0.0.0:{{ .Values.controller.metrics.port }}"
             - "--is-controller-plugin=true"
+            - "--enable-perf-optimization={{ .Values.linux.enablePerfOptimization }}"
             - "--disable-avset-nodes={{ .Values.controller.disableAvailabilitySetNodes }}"
             - "--drivername={{ .Values.driver.name }}"
             - "--cloud-config-secret-name={{ .Values.controller.cloudConfigSecretName }}"

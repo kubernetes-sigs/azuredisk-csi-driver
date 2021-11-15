@@ -2,12 +2,19 @@
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: sc-test-postgressql-p40
+  name: sc-test-postgresql-p20-optimized
 provisioner: disk.csi.azure.com
 parameters:
-  cachingmode: None
   skuname: Premium_LRS
-  perfProfile: None
+  cachingmode: None
+  perfProfile: Advanced
+  device-setting/queue/max_sectors_kb: "211"
+  device-setting/queue/scheduler: "none"
+  device-setting/device/queue_depth: "17"
+  device-setting/queue/nr_requests: "44"
+  device-setting/queue/read_ahead_kb: "256"
+  device-setting/queue/wbt_lat_usec: "0"
+  device-setting/queue/rotational: "0"
 reclaimPolicy: Delete
 volumeBindingMode: WaitForFirstConsumer
 allowVolumeExpansion: true
@@ -15,7 +22,7 @@ allowVolumeExpansion: true
 apiVersion: perf.kubestone.xridge.io/v1alpha1
 kind: Fio
 metadata:
-  name: test-postgressql-p40
+  name: test-postgresql-p20-optimized
 spec:
   customJobFiles:
   - |
@@ -66,8 +73,8 @@ spec:
       - ReadWriteOnce
       resources:
         requests:
-          storage: 2048Gi
-      storageClassName: sc-test-postgressql-p40
+          storage: 512Gi
+      storageClassName: sc-test-postgresql-p20-optimized
     volumeSource:
       persistentVolumeClaim:
         claimName: GENERATED

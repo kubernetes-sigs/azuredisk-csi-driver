@@ -222,6 +222,42 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		test.Run(cs, ns, schedulerName)
 	})
 
+	ginkgo.It("Should create and attach a volume with advanced perfProfile [enableBursting][disk.csi.azure.com] [Windows]", func() {
+		skipIfOnAzureStackCloud()
+		skipIfUsingInTreeVolumePlugin()
+		pods := []testsuites.PodDetails{
+			{
+				Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
+				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+					{
+						FSType:    "ext4",
+						ClaimSize: "1Ti",
+						VolumeMount: testsuites.VolumeMountDetails{
+							NameGenerate:      "test-volume-",
+							MountPathGenerate: "/mnt/test-",
+						},
+					},
+				}, isMultiZone),
+				IsWindows: isWindowsCluster,
+			},
+		}
+		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
+			CSIDriver: testDriver,
+			Pods:      pods,
+			StorageClassParameters: map[string]string{
+				"skuName":                            "Premium_LRS",
+				"perfProfile":                        "Advanced",
+				"device-setting/queue/read_ahead_kb": "8",
+				"device-setting/queue/nomerges":      "0",
+				// enableBursting can only be applied to Premium disk, disk size > 512GB, Ultra & shared disk is not supported.
+				"enableBursting":    "true",
+				"userAgent":         "azuredisk-e2e-test",
+				"enableAsyncAttach": "false",
+			},
+		}
+		test.Run(cs, ns, schedulerName)
+	})
+
 	ginkgo.It(fmt.Sprintf("should receive FailedMount event with invalid mount options [kubernetes.io/azure-disk] [disk.csi.azure.com] [%s]", schedulerName), func() {
 		skipIfTestingInWindowsCluster()
 

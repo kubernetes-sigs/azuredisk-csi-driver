@@ -110,7 +110,7 @@ allowVolumeExpansion: true
 
 ## Example
 
-Consider `StorageClass` `sc-test-postgressql-p40-optimized` in below example, which can optimize a P40 azure disk to get increased combined throughput, IOPS and better IO latency for a PostresSQL inspired fio workload.
+Consider `StorageClass` `sc-test-postgresql-p20-optimized` in below example, which can optimize a p20 azure disk to get increased combined throughput, IOPS and better IO latency for a PostresSQL inspired fio workload.
 
 To try the optimizations, follow below step:
 
@@ -134,7 +134,7 @@ cat <<EOF | kubectl apply -f -
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: sc-test-postgressql-p40-optimized
+  name: sc-test-postgresql-p20-optimized
 provisioner: disk.csi.azure.com
 parameters:
   skuname: Premium_LRS
@@ -144,7 +144,7 @@ parameters:
   device-setting/queue/scheduler: "none"
   device-setting/device/queue_depth: "17"
   device-setting/queue/nr_requests: "44"
-  device-setting/queue/read_ahead_kb: "633"
+  device-setting/queue/read_ahead_kb: "256"
   device-setting/queue/wbt_lat_usec: "0"
   device-setting/queue/rotational: "0"
 reclaimPolicy: Delete
@@ -154,7 +154,7 @@ allowVolumeExpansion: true
 apiVersion: perf.kubestone.xridge.io/v1alpha1
 kind: Fio
 metadata:
-  name: test-postgressql-p40-optimized
+  name: test-postgresql-p20-optimized
 spec:
   customJobFiles:
   - |
@@ -205,8 +205,8 @@ spec:
       - ReadWriteOnce
       resources:
         requests:
-          storage: 2048Gi
-      storageClassName: sc-test-postgressql-p40-optimized
+          storage: 512Gi
+      storageClassName: sc-test-postgresql-p20-optimized
     volumeSource:
       persistentVolumeClaim:
         claimName: GENERATED
@@ -222,7 +222,7 @@ cat <<EOF | kubectl apply -f -
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: sc-test-postgressql-p40
+  name: sc-test-postgresql-p20
 provisioner: disk.csi.azure.com
 parameters:
   cachingmode: None
@@ -235,7 +235,7 @@ allowVolumeExpansion: true
 apiVersion: perf.kubestone.xridge.io/v1alpha1
 kind: Fio
 metadata:
-  name: test-postgressql-p40
+  name: test-postgresql-p20
 spec:
   customJobFiles:
   - |
@@ -286,8 +286,8 @@ spec:
       - ReadWriteOnce
       resources:
         requests:
-          storage: 2048Gi
-      storageClassName: sc-test-postgressql-p40
+          storage: 512Gi
+      storageClassName: sc-test-postgresql-p20
     volumeSource:
       persistentVolumeClaim:
         claimName: GENERATED
@@ -306,9 +306,9 @@ kustomize build github.com/xridge/kubestone/config/default?ref=v0.5.0 | sed "s/k
 - To delete StorageClass
 
 ```console
-kubectl delete sc sc-test-postgressql-p40 --ignore-not-found
+kubectl delete sc sc-test-postgresql-p20 --ignore-not-found
 
-kubectl delete sc sc-test-postgressql-p40-optimized  --ignore-not-found
+kubectl delete sc sc-test-postgresql-p20-optimized --ignore-not-found
 ```
 
 - To uninstall azuredisk CSI driver v2 use instructions [here](https://github.com/kubernetes-sigs/azuredisk-csi-driver/tree/main_v2/charts)
