@@ -90,6 +90,7 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV) Run(client cl
 	var failedReplicaAttachments []*v1alpha1.AzVolumeAttachmentList
 	err := wait.Poll(15*time.Second, 10*time.Minute, func() (bool, error) {
 		failedReplicaAttachments = nil
+		allReplicasAttached = true
 		var err error
 		var attached bool
 		var podFailedReplicaAttachments *v1alpha1.AzVolumeAttachmentList

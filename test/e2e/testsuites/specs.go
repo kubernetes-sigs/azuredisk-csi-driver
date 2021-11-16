@@ -381,10 +381,10 @@ func VerifySuccessfulReplicaAzVolumeAttachments(pod PodDetails, azDiskClient *az
 
 			for _, replica := range replicaAttachments.Items {
 				if replica.Status.State != "Attached" {
-					e2elog.Logf(fmt.Sprintf("found replica attachment %s, currently not attached", replica.Name))
+					e2elog.Logf("found replica attachment %s, currently not attached", replica.Name)
 					failedReplicaAttachments.Items = append(failedReplicaAttachments.Items, replica)
 				} else {
-					e2elog.Logf(fmt.Sprintf("found replica attachment %s in attached state", replica.Name))
+					e2elog.Logf("found replica attachment %s in attached state", replica.Name)
 
 				}
 			}
