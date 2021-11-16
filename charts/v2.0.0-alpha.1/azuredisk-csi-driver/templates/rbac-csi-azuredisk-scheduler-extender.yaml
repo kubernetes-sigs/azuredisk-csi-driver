@@ -54,16 +54,12 @@ rules:
     verbs: ["get", "list", "watch"]
   - apiGroups: [""]
     resources: ["persistentvolumeclaims"]
-    {{- if not .Values.feature.enableCSIMigration }}
-    verbs: ["get", "list", "watch", "update"]
-    {{- else }}
     verbs: ["get", "list", "watch", "patch", "update"]
-    {{- end }}
   - apiGroups: [""]
     resources: ["persistentvolumes"]
     verbs: ["get", "list", "watch"]
   - apiGroups: ["storage.k8s.io"]
-    resources: ["storageclasses", "csinodes"]
+    resources: ["storageclasses", "csinodes", "csistoragecapacities", "csidrivers"]
     verbs: ["get", "list", "watch"]
   - apiGroups: ["coordination.k8s.io"]
     resources: ["leases"]

@@ -7,7 +7,7 @@ metadata:
 {{ include "azuredisk.labels" . | indent 2 }}
 data:
   config.yaml: |
-    apiVersion: kubescheduler.config.k8s.io/v1alpha2
+    apiVersion: kubescheduler.config.k8s.io/v1beta1
     kind: KubeSchedulerConfiguration
     leaderElection:
       leaderElect: true
@@ -24,7 +24,6 @@ data:
       filterVerb: "filter"
       prioritizeVerb: "prioritize"
       weight: 1
-      enableHttps: false
       nodeCacheCapable: false
       ignorable: true
 ---
@@ -82,17 +81,13 @@ spec:
         - --config=/azdiskschedulerextender/config.yaml
         - --v=5
         - --feature-gates
-        {{- if not .Values.feature.enableCSIMigration }}
         - CSIInlineVolume=true,LocalStorageCapacityIsolation=true,ServiceNodeExclusion=true
-        {{- else }}
-        - CSIInlineVolume=true,LocalStorageCapacityIsolation=true,ServiceNodeExclusion=true,CSIMigration=true,CSIMigrationAzureDisk=true,CSIMigrationAzureDiskComplete=true
-        {{- end }}
         volumeMounts:
         - name: csi-azuredisk-scheduler-extender-config
           mountPath: /azdiskschedulerextender
       - name: csi-azuredisk-scheduler-extender
 {{- if hasPrefix "/" .Values.image.schedulerExtender.repository }}
-        image: "{{ .Values.image.baseRepo }}{{ .Values.image.schedulerExtender.repository }}:{{ .Values.image.azuredisk.tag }}"
+        image: "{{ .Values.image.baseRepo }}{{ .Values.image.schedulerExtender.repository }}:{{ .Values.image.schedulerExtender.tag }}"
 {{- else }}
         image: "{{ .Values.image.schedulerExtender.repository }}:{{ .Values.image.schedulerExtender.tag }}"
 {{- end }}

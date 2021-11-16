@@ -223,7 +223,6 @@ In addition to the parameters supported by the V1 driver, Azure Disk CSI driver 
 | `schedulerExtender.metrics.service.monitor.enabled` | whether a `ServiceMonitor` is created for the Azure Disk CSI Driver V2 Scheduler Extender metrics server `Service`. | `false` |
 | `schedulerExtender.servicePort` | Azure Disk CSI Driver V2 Scheduler Extender service port | `8889` |
 | `snapshot.createCRDs` | whether the snapshot CRDs are created | `true` |
-| `feature.enableCSIMigration` | enables the CSIMIgration feature flag on the Azure Disk CSI V2 Driver Scheduler Extender | `false` |
 | `storageClasses.create` | whether to create the default `StorageClass` instances for Azure Disk CSI Driver V2 | `true` |
 | `storageClasses.enableZRS` | whether to create the `StorageClass` instances for ZRS disks (not supported in all regions) | `false` |
 | `storageClasses.enableUltraSSD` | whether to create the `StorageClass` instances for UltraSSD disks (not supported in all regions) | `false` |

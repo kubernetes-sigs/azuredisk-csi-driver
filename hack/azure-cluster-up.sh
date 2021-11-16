@@ -248,7 +248,7 @@ IS_AZURE_CLUSTER_TEMPLATE_URI=$(expr `expr "$AZURE_CLUSTER_TEMPLATE" : "https://
 IS_WINDOWS_CLUSTER=$(expr `expr "$AZURE_CLUSTER_TEMPLATE" : ".*-windows\|.*/windows-testing/.*"` != 0 || true)
 
 if [[ -z ${AZURE_K8S_VERSION:-} ]]; then
-  AZURE_K8S_VERSION="1.18"
+  AZURE_K8S_VERSION="1.21"
 fi
 
 GIT_ROOT=$(git rev-parse --show-toplevel)

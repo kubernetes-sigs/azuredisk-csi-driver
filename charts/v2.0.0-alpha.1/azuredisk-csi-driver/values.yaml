@@ -33,8 +33,8 @@ image:
     tag: v2.0.0-alpha.1
     pullPolicy: IfNotPresent
   kubeScheduler:
-    repository: k8s.gcr.io/kube-scheduler
-    tag: v1.18.6
+    repository: /oss/kubernetes/kube-scheduler
+    tag: v1.21.2
     pullPolicy: IfNotPresent
 
 serviceAccount:
@@ -120,7 +120,6 @@ snapshot:
 
 feature:
   enableFSGroupPolicy: false
-  enableCSIMigration: false
 
 driver:
   name: disk.csi.azure.com
