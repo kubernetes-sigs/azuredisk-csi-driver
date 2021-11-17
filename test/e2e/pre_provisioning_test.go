@@ -145,6 +145,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 		})
 
 		ginkgo.It(fmt.Sprintf("should succeed when creating a shared disk with multiple pods [disk.csi.azure.com][shared disk][%s]", scheduler), func() {
+			skipIfTestingInWindowsCluster()
 			skipIfUsingInTreeVolumePlugin()
 			skipIfOnAzureStackCloud()
 			sharedDiskSize := 1024
