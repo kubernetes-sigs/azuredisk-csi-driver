@@ -29,6 +29,8 @@ import (
 	"github.com/pborman/uuid"
 
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	restclientset "k8s.io/client-go/rest"
 	"k8s.io/kubernetes/test/e2e/framework"
@@ -53,6 +55,8 @@ type DynamicallyProvisionedVolumeSnapshotTest struct {
 func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interface, restclient restclientset.Interface, namespace *v1.Namespace, schedulerName string) {
 	tpod := NewTestPod(client, namespace, t.Pod.Cmd, schedulerName, t.Pod.IsWindows)
 	volume := t.Pod.Volumes[0]
+	ctx := context.Background()
+
 	tpvc, pvcCleanup := volume.SetupDynamicPersistentVolumeClaim(client, namespace, t.CSIDriver, t.StorageClassParameters)
 	for i := range pvcCleanup {
 		defer pvcCleanup[i]()
@@ -63,6 +67,23 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interfac
 	defer tpod.Cleanup()
 	ginkgo.By("checking that the pod's command exits with no error")
 	tpod.WaitForSuccess()
+
+	// delete pod and wait for volume to be unpublished to ensure filesystem cache is flushed
+	tpod.Cleanup()
+	err := wait.PollImmediate(poll, pollTimeout, func() (bool, error) {
+		volumeAttachments, err := client.StorageV1().VolumeAttachments().List(ctx, metav1.ListOptions{})
+		if err != nil {
+			return false, err
+		}
+		notFound := true
+		for _, volumeAttachment := range volumeAttachments.Items {
+			if volumeAttachment.Spec.Source.PersistentVolumeName != nil && *volumeAttachment.Spec.Source.PersistentVolumeName == tpvc.persistentVolumeClaim.Spec.VolumeName {
+				notFound = false
+			}
+		}
+		return notFound, nil
+	})
+	framework.ExpectNoError(err)
 
 	ginkgo.By("Checking Prow test resource group")
 	creds, err := credentials.CreateAzureCredentialFile()
@@ -80,7 +101,6 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interfac
 	//create external resource group
 	externalRG := credentials.ResourceGroupPrefix + uuid.NewUUID().String()
 	ginkgo.By("Creating external resource group: " + externalRG)
-	ctx := context.Background()
 	_, err = azureClient.EnsureResourceGroup(ctx, externalRG, creds.Location, nil)
 	framework.ExpectNoError(err)
 	defer func() {
@@ -104,6 +124,9 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interfac
 	ginkgo.By("taking snapshots")
 	snapshot := tvsc.CreateSnapshot(tpvc.persistentVolumeClaim)
 
+	defer tvsc.DeleteSnapshot(snapshot)
+	tvsc.ReadyToUse(snapshot)
+
 	if t.ShouldOverwrite {
 		tpod = NewTestPod(client, namespace, t.PodOverwrite.Cmd, schedulerName, t.PodOverwrite.IsWindows)
 
@@ -114,9 +137,6 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interfac
 		ginkgo.By("checking that the pod's command exits with no error")
 		tpod.WaitForSuccess()
 	}
-
-	defer tvsc.DeleteSnapshot(snapshot)
-	tvsc.ReadyToUse(snapshot)
 
 	snapshotVolume := volume
 	snapshotVolume.DataSource = &DataSource{

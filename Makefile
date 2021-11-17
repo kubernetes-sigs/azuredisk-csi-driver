@@ -168,7 +168,7 @@ azuredisk-darwin:
 
 .PHONY: azdiskschedulerextender
 azdiskschedulerextender:
-	CGO_ENABLED=0 GOOS=linux go build -a -ldflags ${SCHEDULER_EXTENDER_LDFLAGS} -tags azurediskv2 -mod vendor -o _output/${ARCH}/azdiskschedulerextender ./pkg/azdiskschedulerextender
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(ARCH) go build -a -ldflags ${SCHEDULER_EXTENDER_LDFLAGS} -tags azurediskv2 -mod vendor -o _output/${ARCH}/azdiskschedulerextender ./pkg/azdiskschedulerextender
 
 .PHONY: container
 container: azuredisk
