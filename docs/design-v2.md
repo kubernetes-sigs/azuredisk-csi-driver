@@ -1,6 +1,6 @@
-# Azure Disk CSI Driver V2 (Project Mandalay)
+# Azure Disk CSI Driver V2
 
-Project Mandalay enhances the Azure Disk CSI Driver to improve scalability and reduce pod 
+Azure Disk CSI Driver V2 improves scalability and reduces pod 
 failover latency. It uses shared disks to provision attachment replicas on multiple cluster 
 nodes and integrates with the pod scheduler to ensure a node with a attachment replica is 
 chosen on pod failover.
@@ -8,9 +8,9 @@ chosen on pod failover.
 ## Architecture and Components
 
 The diagram below shows the components in the Kubernetes control plane (CCP) and cluster 
-nodes, and the Azure services the Mandalay driver uses.
+nodes, and the Azure services the Azure Disk CSI Driver V2 uses.
 
-![Mandalay Architecture](images/mandalay_arch.png)
+![Azure Disk CSI Driver V2 Architecture](images/csi_driver_v2.png)
 
 ### Controller Plug-in
 
@@ -31,7 +31,7 @@ The node plug-in is deployed on each node in the cluster as a [DaemonSet](https:
 
 ### Scheduler Extender
 
-Mandalay provides a [scheduler extender](https://github.com/kubernetes/community/blob/master/contributors/design-proposals/scheduling/scheduler_extender.md) 
+Azure Disk CSI Driver V2 provides a [scheduler extender](https://github.com/kubernetes/community/blob/master/contributors/design-proposals/scheduling/scheduler_extender.md) 
 that is responsible for influencing pod placements.
 
 Like the controller plug-in, the scheduler extender is deployed as a 
@@ -42,12 +42,12 @@ with leader election.
 ## Implementation
 
 This section describes the changes and high-level implementation details of the different 
-components in Mandalay.
+components in Azure Disk CSI Driver V2.
 
 ### StorageClass
 
 In addition to the existing StorageClass parameters described in 
-[driver-parameters](driver-parameters.md), Mandalay supports the following:
+[driver-parameters](driver-parameters.md), Azure Disk CSI Driver V2 supports the following:
 
 | Name                                        | Meaning                                         | Available Value                                        | Mandatory | Default value                                                                                     |
 | ------------------------------------------- | ----------------------------------------------- | ------------------------------------------------------ | --------- | ------------------------------------------------------------------------------------------------- |
@@ -55,14 +55,14 @@ In addition to the existing StorageClass parameters described in
 
 ### Custom Resources and Controllers
 
-Mandalay uses 3 different custom resources defined in the `azure-disk-csi` namespace to 
+Azure Disk CSI Driver V2 uses 3 different custom resources defined in the `azure-disk-csi` namespace to 
 orchestrate disk management and facilitate pod failover to nodes with attachment replica. A 
 controller for each resource watches for and responds to changes to its custom resource 
 instances.
 
 #### `AzDriverNode` Resource and Controller
 
-The `AzDriverNode` custom resource represents a node in the cluster where the Mandalay node 
+The `AzDriverNode` custom resource represents a node in the cluster where the Azure Disk CSI Driver V2 node 
 plug-in runs. An instance of `AzDriverNode` is created when the node plug-in starts. The node 
 plug-in periodically updates the heartbeat in the `Status` field.
 
@@ -118,7 +118,7 @@ been removed from the object store.
 
 ### Scheduler Extender
 
-The Manadalay scheduler extender influences pod placement by prioritizing healthy nodes where 
+The Azure Disk CSI Driver V2 scheduler extender influences pod placement by prioritizing healthy nodes where 
 attachment replicas for the required persistent volume(s) already exist (i.e. node(s) to which 
 the managed disk(s) is(are) already attached). It relies on the `AzVolumeAttachment` instances 
 to determine which nodes have attachment replicas, and the heartbeat information in the 
@@ -128,6 +128,6 @@ volume currently exist, the scheduler extender will weight all nodes equally.
 ### Provisioner Library
 
 The Provisioner Library is a common library to abstract the underlying platform for all 
-Mandalay plugins, services and controllers. It handles the platform-specific details of 
+Azure Disk CSI Driver V2 plugins, services and controllers. It handles the platform-specific details of 
 performing volume operations such as (but not necessarily limited to) create, delete, attach, 
 detach, snapshot, stage, unstage, mount, unmount, etc.
