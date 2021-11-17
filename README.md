@@ -27,10 +27,10 @@ V2: Preview
 
 #### V2
 
-|Driver Version  |Image                                                 | supported k8s version |
-|----------------|------------------------------------------------------|-----------------------|
-|`main_v2` branch|                                                      | 1.21+                 |
-|v2.0.0-alpha.1  |mcr.microsoft.com/k8s/csi/azuredisk-csi:v2.0.0-alpha.1| 1.21+                 |
+|Driver Version  |Image                                                            | supported k8s version |
+|----------------|-----------------------------------------------------------------|-----------------------|
+|`main_v2` branch|                                                                 | 1.21+                 |
+|v2.0.0-alpha.1  |mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v2.0.0-alpha.1| 1.21+                 |
 
 ### Driver parameters
 
@@ -85,6 +85,7 @@ follow guide [here](./docs/install-driver-on-aks.md)
 #### New in V2
 
 - [Attachments Replicas for Faster Pod Failover (Preview)](./docs/design-v2.md)
+  - See [pod failover demo](./deploy/example/failover/README.md) for example configuration.
 - [Advanced disk performance tuning (Preview)](./docs/perf-profiles.md)
 
 ### Troubleshooting
