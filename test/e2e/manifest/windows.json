@@ -6,7 +6,7 @@
         },
         "orchestratorProfile": {
             "orchestratorType": "Kubernetes",
-            "orchestratorRelease": "",
+            "orchestratorRelease": "1.21",
             "kubernetesConfig": {
                 "useManagedIdentity": true,
                 "userAssignedID": "azuredisk-csi-driver-e2e-test-id"

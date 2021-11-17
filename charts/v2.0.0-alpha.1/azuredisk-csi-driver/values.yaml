@@ -1,7 +1,7 @@
 image:
   baseRepo: mcr.microsoft.com
   azuredisk:
-    repository: /k8s/csi/azuredisk-csi
+    repository: /oss/kubernetes-csi/azuredisk-csi
     tag: v2.0.0-alpha.1
     pullPolicy: IfNotPresent
   csiProvisioner:
@@ -29,10 +29,13 @@ image:
     tag: v2.3.0
     pullPolicy: IfNotPresent
   schedulerExtender:
-    repository: /k8s/csi/azdiskschedulerextender-csi
+    repository: /oss/kubernetes-csi/azdiskschedulerextender-csi
     tag: v2.0.0-alpha.1
     pullPolicy: IfNotPresent
-    imageVersion: v1.18.6
+  kubeScheduler:
+    repository: /oss/kubernetes/kube-scheduler
+    tag: v1.21.2
+    pullPolicy: IfNotPresent
 
 serviceAccount:
   create: true # When true, service accounts will be created for you. Set to false if you want to use your own.
@@ -117,7 +120,6 @@ snapshot:
 
 feature:
   enableFSGroupPolicy: false
-  enableCSIMigration: false
 
 driver:
   name: disk.csi.azure.com

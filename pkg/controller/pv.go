@@ -98,6 +98,9 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 		// add annotation to mark AzVolumeAttachment cleanup
 		updateFunc := func(obj interface{}) error {
 			azv := obj.(*v1alpha1.AzVolume)
+			if azv.Annotations == nil {
+				azv.Annotations = make(map[string]string, 1)
+			}
 			azv.Annotations[consts.PreProvisionedVolumeCleanupAnnotation] = "true"
 			return nil
 		}

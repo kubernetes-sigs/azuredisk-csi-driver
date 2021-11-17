@@ -4,7 +4,6 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: {{ .Values.storageClasses.storageClassNames.standardLRS }}
-  namespace: {{ .Release.Namespace }}
 {{ include "azuredisk.labels" . | indent 2 }}
 provisioner: {{ .Values.driver.name }}
 reclaimPolicy: Delete
@@ -17,7 +16,6 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: {{ .Values.storageClasses.storageClassNames.standardSSDLRS }}
-  namespace: {{ .Release.Namespace }}
 {{ include "azuredisk.labels" . | indent 2 }}
 provisioner: {{ .Values.driver.name }}
 reclaimPolicy: Delete
@@ -30,7 +28,6 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: {{ .Values.storageClasses.storageClassNames.standardSSDLRS }}-replicas
-  namespace: {{ .Release.Namespace }}
 {{ include "azuredisk.labels" . | indent 2 }}
 provisioner: {{ .Values.driver.name }}
 reclaimPolicy: Delete
@@ -44,7 +41,6 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: {{ .Values.storageClasses.storageClassNames.premiumLRS }}
-  namespace: {{ .Release.Namespace }}
 {{ include "azuredisk.labels" . | indent 2 }}
 provisioner: {{ .Values.driver.name }}
 reclaimPolicy: Delete
@@ -57,7 +53,6 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: {{ .Values.storageClasses.storageClassNames.premiumLRS }}-replicas
-  namespace: {{ .Release.Namespace }}
 {{ include "azuredisk.labels" . | indent 2 }}
 provisioner: {{ .Values.driver.name }}
 reclaimPolicy: Delete
@@ -72,7 +67,6 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: {{ .Values.storageClasses.storageClassNames.ultraSSDLRS }}
-  namespace: {{ .Release.Namespace }}
 {{ include "azuredisk.labels" . | indent 2 }}
 provisioner: {{ .Values.driver.name }}
 reclaimPolicy: Delete
@@ -85,7 +79,6 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: {{ .Values.storageClasses.storageClassNames.ultraSSDLRS }}-replicas
-  namespace: {{ .Release.Namespace }}
 {{ include "azuredisk.labels" . | indent 2 }}
 provisioner: {{ .Values.driver.name }}
 reclaimPolicy: Delete
@@ -101,7 +94,6 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: {{ .Values.storageClasses.storageClassNames.standardSSDZRS }}
-  namespace: {{ .Release.Namespace }}
 {{ include "azuredisk.labels" . | indent 2 }}
 provisioner: {{ .Values.driver.name }}
 reclaimPolicy: Delete
@@ -114,7 +106,6 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: {{ .Values.storageClasses.storageClassNames.standardSSDZRS }}-replicas
-  namespace: {{ .Release.Namespace }}
 {{ include "azuredisk.labels" . | indent 2 }}
 provisioner: {{ .Values.driver.name }}
 reclaimPolicy: Delete
@@ -128,7 +119,6 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: {{ .Values.storageClasses.storageClassNames.premiumZRS }}
-  namespace: {{ .Release.Namespace }}
 {{ include "azuredisk.labels" . | indent 2 }}
 provisioner: {{ .Values.driver.name }}
 reclaimPolicy: Delete
@@ -141,7 +131,6 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: {{ .Values.storageClasses.storageClassNames.premiumZRS }}-replicas
-  namespace: {{ .Release.Namespace }}
 {{ include "azuredisk.labels" . | indent 2 }}
 provisioner: {{ .Values.driver.name }}
 reclaimPolicy: Delete

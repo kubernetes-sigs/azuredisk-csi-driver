@@ -537,6 +537,9 @@ func (r *ReconcileAzVolume) recoverAzVolume(ctx context.Context, recoveredAzVolu
 			case v1alpha1.VolumeDeleting:
 				// reset state to Created so Delete operation can be redone
 				targetState = v1alpha1.VolumeCreated
+			case v1alpha1.VolumeUpdating:
+				// reset state to Created so Update operation can be redone
+				targetState = v1alpha1.VolumeCreated
 			default:
 				targetState = azv.Status.State
 			}

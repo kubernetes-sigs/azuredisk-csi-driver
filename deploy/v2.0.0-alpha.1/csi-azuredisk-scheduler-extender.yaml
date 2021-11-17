@@ -6,7 +6,7 @@ metadata:
   namespace: kube-system
 data:
   config.yaml: |
-    apiVersion: kubescheduler.config.k8s.io/v1alpha2
+    apiVersion: kubescheduler.config.k8s.io/v1beta1
     kind: KubeSchedulerConfiguration
     leaderElection:
       leaderElect: true
@@ -23,7 +23,6 @@ data:
       filterVerb: "filter"
       prioritizeVerb: "prioritize"
       weight: 1
-      enableHttps: false
       nodeCacheCapable: false
       ignorable: true
 ---
@@ -51,7 +50,7 @@ spec:
           name: csi-azuredisk-scheduler-extender-config
       containers:
       - name: csi-azuredisk-scheduler
-        image: k8s.gcr.io/kube-scheduler:v1.18.6
+        image: mcr.microsoft.com/oss/kubernetes/kube-scheduler:v1.21.2
         imagePullPolicy: IfNotPresent
         args:
         - kube-scheduler
@@ -63,7 +62,7 @@ spec:
         - name: csi-azuredisk-scheduler-extender-config
           mountPath: /azdiskschedulerextender
       - name: csi-azuredisk-scheduler-extender
-        image: mcr.microsoft.com/k8s/csi/azdiskschedulerextender-csi:v2.0.0-alpha.1 
+        image: mcr.microsoft.com/oss/kubernetes-csi/azdiskschedulerextender-csi:v2.0.0-alpha.1 
         imagePullPolicy: Always
         args:
         - "--port=8889"
