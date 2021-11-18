@@ -1,0 +1,19 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: csi-azuredisk-scheduler-extender
+  namespace: kube-system
+  labels:
+    app: csi-azuredisk-scheduler-extender
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: csi-azuredisk-scheduler-extender
+  namespaceSelector:
+    matchNames:
+      - kube-system
+  endpoints:
+    - port: metrics
+      interval: 15s

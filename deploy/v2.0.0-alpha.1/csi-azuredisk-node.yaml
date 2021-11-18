@@ -5,6 +5,10 @@ metadata:
   name: csi-azuredisk-node
   namespace: kube-system
 spec:
+  updateStrategy:
+    rollingUpdate:
+      maxUnavailable: 1
+    type: RollingUpdate
   selector:
     matchLabels:
       app: csi-azuredisk-node
@@ -14,7 +18,7 @@ spec:
         app: csi-azuredisk-node
     spec:
       hostNetwork: true
-      dnsPolicy: ClusterFirstWithHostNet
+      dnsPolicy: Default
       serviceAccountName: csi-azuredisk-node-sa
       nodeSelector:
         kubernetes.io/os: linux
@@ -35,7 +39,7 @@ spec:
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
-          image: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe:v2.2.0
+          image: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe:v2.4.0
           args:
             - --csi-address=/csi/csi.sock
             - --probe-timeout=3s
@@ -49,7 +53,7 @@ spec:
               cpu: 10m
               memory: 20Mi
         - name: node-driver-registrar
-          image: mcr.microsoft.com/oss/kubernetes-csi/csi-node-driver-registrar:v2.0.1
+          image: mcr.microsoft.com/oss/kubernetes-csi/csi-node-driver-registrar:v2.3.0
           args:
             - --csi-address=$(ADDRESS)
             - --kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)
@@ -58,6 +62,14 @@ spec:
             preStop:
               exec:
                 command: ["/bin/sh", "-c", "rm -rf /registration/disk.csi.azure.com-reg.sock /csi/csi.sock"]
+          livenessProbe:
+            exec:
+              command:
+                - /csi-node-driver-registrar
+                - --kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)
+                - --mode=kubelet-registration-probe
+            initialDelaySeconds: 30
+            timeoutSeconds: 15
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -70,26 +82,24 @@ spec:
               mountPath: /registration
           resources:
             limits:
-              cpu: 100m
+              cpu: 200m
               memory: 100Mi
             requests:
               cpu: 10m
               memory: 20Mi
         - name: azuredisk
-          image: mcr.microsoft.com/k8s/csi/azuredisk-csi:v2.0.0-alpha.1
+          image: mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v2.0.0-alpha.1
           imagePullPolicy: IfNotPresent
           args:
             - "--v=5"
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--nodeid=$(KUBE_NODE_NAME)"
             - "--metrics-address=0.0.0.0:29605"
-            - "--temp-use-driver-v2"
+            - "--enable-perf-optimization=true"
+            - "--is-node-plugin=true"
           ports:
             - containerPort: 29603
               name: healthz
-              protocol: TCP
-            - containerPort: 29605
-              name: metrics
               protocol: TCP
           livenessProbe:
             failureThreshold: 5
@@ -123,9 +133,6 @@ spec:
               name: mountpoint-dir
             - mountPath: /etc/kubernetes/
               name: azure-cred
-            - mountPath: /var/lib/waagent/ManagedIdentity-Settings
-              readOnly: true
-              name: msi
             - mountPath: /dev
               name: device-dir
             - mountPath: /sys/bus/scsi/devices
@@ -154,11 +161,8 @@ spec:
           name: registration-dir
         - hostPath:
             path: /etc/kubernetes/
-            type: Directory
+            type: DirectoryOrCreate
           name: azure-cred
-        - hostPath:
-            path: /var/lib/waagent/ManagedIdentity-Settings
-          name: msi
         - hostPath:
             path: /dev
             type: Directory
@@ -171,4 +175,3 @@ spec:
             path: /sys/class/scsi_host/
             type: Directory
           name: scsi-host-dir
----

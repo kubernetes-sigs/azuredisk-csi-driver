@@ -42,6 +42,15 @@ kubectl apply -f $repo/csi-azuredisk-controller.yaml
 kubectl apply -f $repo/csi-azuredisk-node.yaml
 kubectl apply -f $repo/csi-azuredisk-node-windows.yaml
 
+if [[ $ver == "v2"* ]]; then
+  kubectl apply -f $repo/csi-azuredisk-scheduler-extender.yaml
+  kubectl apply -f $repo/rbac-csi-azuredisk-scheduler-extender.yaml
+  kubectl apply -f $repo/namespace-azure-disk-csi.yaml
+  kubectl apply -f $repo/disk.csi.azure.com_azdrivernodes.yaml
+  kubectl apply -f $repo/disk.csi.azure.com_azvolumeattachments.yaml
+  kubectl apply -f $repo/disk.csi.azure.com_azvolumes.yaml
+fi
+
 if [[ "$#" -gt 1 ]]; then
   if [[ "$2" == *"snapshot"* ]]; then
     echo "install snapshot driver ..."
