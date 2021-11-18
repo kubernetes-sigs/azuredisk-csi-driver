@@ -269,7 +269,7 @@ Since VolumeSnapshot CRDs and other components are created first when V1 driver 
 ```console
 helm install azuredisk-csi-driver-v2 azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system \
   --version v2.0.0-alpha.1 \
-  --values https://raw.githubusercontent.com/kubernetes-sigs/master/charts/v2.0.0-alpha.1/azuredisk-csi-driver/side-by-side-values.yaml
+  --values https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts/v2.0.0-alpha.1/azuredisk-csi-driver/side-by-side-values.yaml
 ```
 
 > NOTE: When installing the V2 driver side-by-side with the V1 driver in an AKS cluster, you will need to grant the agentpool service principal or managed identity `Contributor` access to the resource groups used to store managed disks. By default, this is the resource group prefixed by `MC_` corresponding to your AKS cluster.
