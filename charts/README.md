@@ -162,27 +162,27 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `controller.logLevel`                             | controller driver log level                                |`5`                                                           |
 | `controller.tolerations`                          | controller pod tolerations                                 |                                                              |
 | `controller.hostNetwork`                          | `hostNetwork` setting on controller driver(could be disabled if controller does not depend on MSI setting)                            | `true`                                                            | `true`, `false`
-| `controller.resources.csiProvisioner.limits.cpu`      | csi-provisioner cpu limits                            | 200m                                                           |
+| `controller.resources.csiProvisioner.limits.cpu`      | csi-provisioner cpu limits                            | 1                                                           |
 | `controller.resources.csiProvisioner.limits.memory`   | csi-provisioner memory limits                         | 500Mi                                                          |
 | `controller.resources.csiProvisioner.requests.cpu`    | csi-provisioner cpu requests limits                   | 10m                                                            |
 | `controller.resources.csiProvisioner.requests.memory` | csi-provisioner memory requests limits                | 20Mi                                                           |
-| `controller.resources.csiAttacher.limits.cpu`         | csi-attacher cpu limits                            | 200m                                                           |
+| `controller.resources.csiAttacher.limits.cpu`         | csi-attacher cpu limits                            | 1                                                           |
 | `controller.resources.csiAttacher.limits.memory`      | csi-attacher memory limits                         | 500Mi                                                          |
 | `controller.resources.csiAttacher.requests.cpu`       | csi-attacher cpu requests limits                   | 10m                                                            |
 | `controller.resources.csiAttacher.requests.memory`    | csi-attacher memory requests limits                | 20Mi                                                           |
-| `controller.resources.csiResizer.limits.cpu`          | csi-resizer cpu limits                            | 200m                                                           |
+| `controller.resources.csiResizer.limits.cpu`          | csi-resizer cpu limits                            | 1                                                           |
 | `controller.resources.csiResizer.limits.memory`       | csi-resizer memory limits                         | 500Mi                                                          |
 | `controller.resources.csiResizer.requests.cpu`        | csi-resizer cpu requests limits                   | 10m                                                            |
 | `controller.resources.csiResizer.requests.memory`     | csi-resizer memory requests limits                | 20Mi                                                           |
-| `controller.resources.csiSnapshotter.limits.cpu`      | csi-snapshotter cpu limits                            | 200m                                                           |
+| `controller.resources.csiSnapshotter.limits.cpu`      | csi-snapshotter cpu limits                            | 1                                                           |
 | `controller.resources.csiSnapshotter.limits.memory`   | csi-snapshotter memory limits                         | 500Mi                                                          |
 | `controller.resources.csiSnapshotter.requests.cpu`    | csi-snapshotter cpu requests limits                   | 10m                                                            |
 | `controller.resources.csiSnapshotter.requests.memory` | csi-snapshotter memory requests limits                | 20Mi                                                           |
-| `controller.resources.livenessProbe.limits.cpu`       | liveness-probe cpu limits                             | 100m                                                           |
+| `controller.resources.livenessProbe.limits.cpu`       | liveness-probe cpu limits                             | 1                                                           |
 | `controller.resources.livenessProbe.limits.memory`    | liveness-probe memory limits                          | 100Mi                                                          |
 | `controller.resources.livenessProbe.requests.cpu`     | liveness-probe cpu requests limits                    | 10m                                                            |
 | `controller.resources.livenessProbe.requests.memory`  | liveness-probe memory requests limits                 | 20Mi                                                           |
-| `controller.resources.azuredisk.limits.cpu`           | azuredisk cpu limits                            | 300m                                                           |
+| `controller.resources.azuredisk.limits.cpu`           | azuredisk cpu limits                            | 1                                                           |
 | `controller.resources.azuredisk.limits.memory`        | azuredisk memory limits                         | 500Mi                                                          |
 | `controller.resources.azuredisk.requests.cpu`         | azuredisk cpu requests limits                   | 10m                                                            |
 | `controller.resources.azuredisk.requests.memory`      | azuredisk memory requests limits                | 20Mi                                                           |
@@ -203,7 +203,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `snapshot.image.csiSnapshotController.pullPolicy` | snapshot-controller image pull policy                      | `IfNotPresent`                                                 |
 | `snapshot.snapshotController.name`                | snapshot controller name                                   | `csi-snapshot-controller`                                                           |
 | `snapshot.snapshotController.replicas`            | the replicas of snapshot-controller                        | `2`                                                            |
-| `snapshot.snapshotController.resources.limits.cpu`             | csi-snapshot-controller cpu limits                             | 200m                                                           |
+| `snapshot.snapshotController.resources.limits.cpu`             | csi-snapshot-controller cpu limits                             | 1                                                           |
 | `snapshot.snapshotController.resources.limits.memory`          | csi-snapshot-controller memory limits                          | 100Mi                                                          |
 | `snapshot.snapshotController.resources.requests.cpu`           | csi-snapshot-controller cpu requests limits                    | 10m                                                            |
 | `snapshot.snapshotController.resources.requests.memory`        | csi-snapshot-controller memory requests limits                 | 20Mi                                                           |
@@ -213,15 +213,15 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `linux.distro`                                    | configure ssl certificates for different Linux distribution(available values: `debian`, `fedora`)                  | `debian`                                                |
 | `linux.tolerations`                               | linux node driver tolerations                              |                                                              |
 | `linux.hostNetwork`                               | `hostNetwork` setting on linux node driver(could be disabled if perfProfile is `none`)                            | `true`                                                            | `true`, `false`
-| `linux.resources.livenessProbe.limits.cpu`             | liveness-probe cpu limits                             | 100m                                                           |
+| `linux.resources.livenessProbe.limits.cpu`             | liveness-probe cpu limits                             | 1                                                           |
 | `linux.resources.livenessProbe.limits.memory`          | liveness-probe memory limits                          | 100Mi                                                          |
 | `linux.resources.livenessProbe.requests.cpu`           | liveness-probe cpu requests limits                    | 10m                                                            |
 | `linux.resources.livenessProbe.requests.memory`        | liveness-probe memory requests limits                 | 20Mi                                                           |
-| `linux.resources.nodeDriverRegistrar.limits.cpu`       | csi-node-driver-registrar cpu limits                  | 200m                                                           |
+| `linux.resources.nodeDriverRegistrar.limits.cpu`       | csi-node-driver-registrar cpu limits                  | 1                                                           |
 | `linux.resources.nodeDriverRegistrar.limits.memory`    | csi-node-driver-registrar memory limits               | 100Mi                                                          |
 | `linux.resources.nodeDriverRegistrar.requests.cpu`     | csi-node-driver-registrar cpu requests limits         | 10m                                                            |
 | `linux.resources.nodeDriverRegistrar.requests.memory`  | csi-node-driver-registrar memory requests limits      | 20Mi                                                           |
-| `linux.resources.azuredisk.limits.cpu`                 | azuredisk cpu limits                            | 200m                                                            |
+| `linux.resources.azuredisk.limits.cpu`                 | azuredisk cpu limits                            | 1                                                            |
 | `linux.resources.azuredisk.limits.memory`              | azuredisk memory limits                         | 200Mi                                                         |
 | `linux.resources.azuredisk.requests.cpu`               | azuredisk cpu requests limits                   | 10m                                                            |
 | `linux.resources.azuredisk.requests.memory`            | azuredisk memory requests limits                | 20Mi                                                           |
@@ -229,15 +229,15 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `windows.dsName`                                  | name of driver daemonset on windows                        |`csi-azuredisk-node-win`                                                         |
 | `windows.kubelet`                                 | configure kubelet directory path on Windows agent node     | `'C:\var\lib\kubelet'`                                            |
 | `windows.tolerations`                             | windows node driver tolerations                            |                                                              |
-| `windows.resources.livenessProbe.limits.cpu`             | liveness-probe cpu limits                             | 200m                                                           |
+| `windows.resources.livenessProbe.limits.cpu`             | liveness-probe cpu limits                             | 1                                                           |
 | `windows.resources.livenessProbe.limits.memory`          | liveness-probe memory limits                          | 200Mi                                                          |
 | `windows.resources.livenessProbe.requests.cpu`           | liveness-probe cpu requests limits                    | 10m                                                            |
 | `windows.resources.livenessProbe.requests.memory`        | liveness-probe memory requests limits                 | 20Mi                                                           |
-| `windows.resources.nodeDriverRegistrar.limits.cpu`       | csi-node-driver-registrar cpu limits                  | 200m                                                           |
+| `windows.resources.nodeDriverRegistrar.limits.cpu`       | csi-node-driver-registrar cpu limits                  | 1                                                           |
 | `windows.resources.nodeDriverRegistrar.limits.memory`    | csi-node-driver-registrar memory limits               | 200Mi                                                          |
 | `windows.resources.nodeDriverRegistrar.requests.cpu`     | csi-node-driver-registrar cpu requests limits         | 10m                                                            |
 | `windows.resources.nodeDriverRegistrar.requests.memory`  | csi-node-driver-registrar memory requests limits      | 20Mi                                                           |
-| `windows.resources.azuredisk.limits.cpu`                 | azuredisk cpu limits                            | 400m                                                            |
+| `windows.resources.azuredisk.limits.cpu`                 | azuredisk cpu limits                            | 1                                                            |
 | `windows.resources.azuredisk.limits.memory`              | azuredisk memory limits                         | 400Mi                                                         |
 | `windows.resources.azuredisk.requests.cpu`               | azuredisk cpu requests limits                   | 10m                                                            |
 | `windows.resources.azuredisk.requests.memory`            | azuredisk memory requests limits                | 20Mi                                                           |
