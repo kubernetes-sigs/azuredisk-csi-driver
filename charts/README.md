@@ -8,7 +8,6 @@
     - [search for all available chart versions](#search-for-all-available-chart-versions)
     - [update the repository](#update-the-repository)
   - [Azure Disk CSI Driver V1](#azure-disk-csi-driver-v1)
-    - [install latest version](#install-latest-version)
     - [install a specific version](#install-a-specific-version)
     - [install on Azure Stack](#install-on-azure-stack)
     - [install on RedHat/CentOS](#install-on-redhatcentos)
@@ -69,12 +68,6 @@ helm repo update azuredisk-csi-driver
 ---
 
 ## Azure Disk CSI Driver V1
-
-### install latest version
-
-```console
-helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system
-```
 
 ### install a specific version
 
