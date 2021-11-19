@@ -18,12 +18,12 @@ V2: Preview
 
 #### V1
 
-|Driver Version  |Image                                           | supported k8s version |
-|----------------|------------------------------------------------|-----------------------|
-|`master` branch |mcr.microsoft.com/k8s/csi/azuredisk-csi:latest  | 1.19+                 |
-|v1.8.0          |mcr.microsoft.com/k8s/csi/azuredisk-csi:v1.8.0  | 1.18+                 |
-|v1.7.0          |mcr.microsoft.com/k8s/csi/azuredisk-csi:v1.7.0  | 1.18+                 |
-|v1.6.0          |mcr.microsoft.com/k8s/csi/azuredisk-csi:v1.6.0  | 1.18+                 |
+|Driver Version  |Image                                                     | supported k8s version |
+|----------------|----------------------------------------------------------|-----------------------|
+|`master` branch |mcr.microsoft.com/k8s/csi/azuredisk-csi:latest            | 1.19+                 |
+|v1.8.0          |mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v1.8.0 | 1.18+                 |
+|v1.7.0          |mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v1.7.0 | 1.18+                 |
+|v1.6.0          |mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v1.6.0 | 1.18+                 |
 
 #### V2
 
@@ -71,7 +71,7 @@ follow guide [here](./docs/install-driver-on-aks.md)
 ### Features
 
 - [Topology (Availability Zone)](./deploy/example/topology)
-  - [ZRS disk support (Preview)](./deploy/example/topology#zrs-disk-support)
+  - [ZRS disk support](./deploy/example/topology#zrs-disk-support)
 - [Snapshot](./deploy/example/snapshot)
 - [Volume Cloning](./deploy/example/cloning)
 - [Volume Expansion](./deploy/example/resize)
