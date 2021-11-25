@@ -51,7 +51,7 @@ follow guide [here](./docs/install-driver-on-aks.md)
   > ```
   >
 - This driver also supports [read cloud config from kuberenetes secret](./docs/read-from-secret.md).
-- If cluster identity is [Managed Service Identity(MSI)](https://docs.microsoft.com/en-us/azure/aks/use-managed-identity), make sure user assigned identity has `Contributor` role on node resource group
+- Make sure identity used by driver has `Contributor` role on node resource group
   - When installing side-by-side with an earlier version of the driver on an AKS cluster, ensure the agentpool service principal or managed service identity is assigned to the `Contributor` role on the resource groups used to store managed disks.
 - [Set up CSI driver on Azure RedHat OpenShift(ARO)](https://github.com/ezYakaEagle442/aro-pub-storage/blob/master/setup-store-CSI-driver-azure-disk.md)
 
