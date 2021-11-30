@@ -80,7 +80,7 @@ follow guide [here](./docs/install-driver-on-aks.md)
 - [Shared Disk](./deploy/example/sharedisk)
 - [Volume Limits](./deploy/example/volumelimits)
 - [fsGroupPolicy](./deploy/example/fsgroup)
-- [Tune disk performance on Linux](./docs/enhancements/feat-add-ability-to-tune-azuredisk-performance-parameters.md)
+- [Tune disk performance on Linux](./docs/perf-profiles.md)
 
 #### New in V2
 
