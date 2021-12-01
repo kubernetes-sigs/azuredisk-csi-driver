@@ -60,14 +60,8 @@ spec:
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
-          resources:
-            limits:
-              cpu: 200m
-              memory: 500Mi
-            requests:
-              cpu: 10m
-              memory: 20Mi
-        - name: csi-attacher-disk
+          resources: {{- toYaml .Values.controller.resources.csiProvisioner | nindent 12 }}
+        - name: csi-attacher
 {{- if hasPrefix "/" .Values.image.csiAttacher.repository }}
           image: "{{ .Values.image.baseRepo }}{{ .Values.image.csiAttacher.repository }}:{{ .Values.image.csiAttacher.tag }}"
 {{- else }}
@@ -85,14 +79,8 @@ spec:
           volumeMounts:
           - mountPath: /csi
             name: socket-dir
-          resources:
-            limits:
-              cpu: 200m
-              memory: 500Mi
-            requests:
-              cpu: 10m
-              memory: 20Mi
-        - name: csi-snapshotter-disk
+          resources: {{- toYaml .Values.controller.resources.csiAttacher | nindent 12 }}
+        - name: csi-snapshotter
 {{- if eq .Values.snapshot.apiVersion "beta" }}
   {{- if hasPrefix "/" .Values.snapshot.image.csiSnapshotter.repository }}
           image: "{{ .Values.image.baseRepo }}{{ .Values.snapshot.image.csiSnapshotter.repository }}:{{ .Values.snapshot.image.csiSnapshotter.tag }}"
@@ -116,14 +104,8 @@ spec:
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
-          resources:
-            limits:
-              cpu: 200m
-              memory: 100Mi
-            requests:
-              cpu: 10m
-              memory: 20Mi
-        - name: csi-resizer-disk
+          resources: {{- toYaml .Values.controller.resources.csiSnapshotter | nindent 12 }}
+        - name: csi-resizer
 {{- if hasPrefix "/" .Values.image.csiResizer.repository }}
           image: "{{ .Values.image.baseRepo }}{{ .Values.image.csiResizer.repository }}:{{ .Values.image.csiResizer.tag }}"
 {{- else }}
@@ -141,14 +123,8 @@ spec:
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
-          resources:
-            limits:
-              cpu: 200m
-              memory: 500Mi
-            requests:
-              cpu: 10m
-              memory: 20Mi
-        - name: liveness-probe-disk
+          resources: {{- toYaml .Values.controller.resources.csiResizer | nindent 12 }}
+        - name: liveness-probe
 {{- if hasPrefix "/" .Values.image.livenessProbe.repository }}
           image: "{{ .Values.image.baseRepo }}{{ .Values.image.livenessProbe.repository }}:{{ .Values.image.livenessProbe.tag }}"
 {{- else }}
@@ -162,13 +138,7 @@ spec:
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
-          resources:
-            limits:
-              cpu: 100m
-              memory: 100Mi
-            requests:
-              cpu: 10m
-              memory: 20Mi
+          resources: {{- toYaml .Values.controller.resources.livenessProbe | nindent 12 }}
         - name: azuredisk
 {{- if hasPrefix "/" .Values.image.azuredisk.repository }}
           image: "{{ .Values.image.baseRepo }}{{ .Values.image.azuredisk.repository }}:{{ .Values.image.azuredisk.tag }}"
@@ -185,6 +155,7 @@ spec:
             - "--cloud-config-secret-namespace={{ .Values.controller.cloudConfigSecretNamespace }}"
             - "--custom-user-agent={{ .Values.driver.customUserAgent }}"
             - "--user-agent-suffix={{ .Values.driver.userAgentSuffix }}"
+            - "--allow-empty-cloud-config={{ .Values.controller.allowEmptyCloudConfig }}"
           ports:
             - containerPort: {{ .Values.controller.livenessProbe.healthPort }}
               name: healthz
@@ -232,13 +203,7 @@ spec:
               mountPath: /etc/pki/ca-trust/extracted
               readOnly: true
             {{- end }}
-          resources:
-            limits:
-              cpu: 300m
-              memory: 500Mi
-            requests:
-              cpu: 10m
-              memory: 20Mi
+          resources: {{- toYaml .Values.controller.resources.azuredisk | nindent 12 }}
       volumes:
         - name: socket-dir
           emptyDir: {}

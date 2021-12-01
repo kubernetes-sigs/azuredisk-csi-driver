@@ -140,6 +140,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 				"diskMbpsReadWrite": "320",
 				"logicalSectorSize": "512",
 				"zoned":             "true",
+				"fsType":            "btrfs",
 			}
 		}
 		if !isUsingInTreeVolumePlugin && supportsZRS {
@@ -528,6 +529,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			test.StorageClassParameters = map[string]string{
 				"skuName":             "StandardSSD_ZRS",
 				"networkAccessPolicy": "DenyAll",
+				"fsType":              "btrfs",
 			}
 		}
 		test.Run(cs, ns, schedulerName)
@@ -799,7 +801,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			StorageClassParameters: map[string]string{"skuName": "Standard_LRS"},
 		}
 		if !isUsingInTreeVolumePlugin && supportsZRS {
-			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
+			test.StorageClassParameters = map[string]string{
+				"skuName": "StandardSSD_ZRS",
+				"fsType":  "btrfs",
+			}
 		}
 		test.Run(cs, ns, schedulerName)
 	})

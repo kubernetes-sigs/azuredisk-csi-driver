@@ -80,7 +80,7 @@ func NewCloudProvisioner(
 	userAgent string,
 	enableOnlineDiskResize bool,
 ) (*CloudProvisioner, error) {
-	azCloud, err := azureutils.GetCloudProviderFromClient(kubeClient, cloudConfigSecretName, cloudConfigSecretNamespace, userAgent)
+	azCloud, err := azureutils.GetCloudProviderFromClient(kubeClient, cloudConfigSecretName, cloudConfigSecretNamespace, userAgent, false)
 	if err != nil || azCloud.TenantID == "" || azCloud.SubscriptionID == "" {
 		klog.Fatalf("failed to get Azure Cloud Provider, error: %v", err)
 		return nil, err
@@ -211,7 +211,7 @@ func (c *CloudProvisioner) CreateVolume(
 			}
 		case azureconstants.UserAgentField:
 			newUserAgent := v
-			localCloud, err = azureutils.GetCloudProviderFromClient(c.kubeClient, c.cloudConfigSecretName, c.cloudConfigSecretNamespace, newUserAgent)
+			localCloud, err = azureutils.GetCloudProviderFromClient(c.kubeClient, c.cloudConfigSecretName, c.cloudConfigSecretNamespace, newUserAgent, false)
 			if err != nil {
 				return nil, fmt.Errorf("create cloud with UserAgent(%s) failed with: (%s)", newUserAgent, err)
 			}
@@ -572,7 +572,7 @@ func (c *CloudProvisioner) CreateSnapshot(
 			resourceGroup = v
 		case azureconstants.UserAgentField:
 			newUserAgent := v
-			localCloud, err = azureutils.GetCloudProviderFromClient(c.kubeClient, c.cloudConfigSecretName, c.cloudConfigSecretNamespace, newUserAgent)
+			localCloud, err = azureutils.GetCloudProviderFromClient(c.kubeClient, c.cloudConfigSecretName, c.cloudConfigSecretNamespace, newUserAgent, false)
 			if err != nil {
 				return nil, fmt.Errorf("create cloud with UserAgent(%s) failed with: (%s)", newUserAgent, err)
 			}

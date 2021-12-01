@@ -1,4 +1,6 @@
-# (alpha) Block device performance tuning using perfProfiles
+# Block device performance tuning using perfProfiles
+
+- Feature status: Preview
 
 ## Table of Contents
 
@@ -40,13 +42,15 @@ metadata:
 provisioner: disk.csi.azure.com
 parameters:
   skuName: Premium_LRS
-  perfProfile: Basic # available values: None(by default), Basic, Advanced. These are case insensitive.
+  perfProfile: Basic # available values: "None" (default) and "Basic". The V2 driver adds "Advanced". These values are case insensitive.
 reclaimPolicy: Delete
 volumeBindingMode: Immediate
 allowVolumeExpansion: true
 ```
 
 ### Advanced
+
+> Available with v2.0.0-alpha.1+
 
 `Advanced` `perfProfile` gives users the ultimate flexibility to tweak any device setting they desire, to optimize the disk IOs for their workload.
 

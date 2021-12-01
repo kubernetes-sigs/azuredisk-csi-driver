@@ -47,6 +47,7 @@ var imageTag = flag.String("image-tag", "", "A flag to get the docker image tag"
 func TestIntegrationOnAzurePublicCloud(t *testing.T) {
 	flag.Parse()
 	// Test on AzurePublicCloud
+	os.Setenv("AZURE_VM_TYPE", "standard")
 	creds, err := credentials.CreateAzureCredentialFile()
 	defer func() {
 		err := credentials.DeleteAzureCredentialFile()

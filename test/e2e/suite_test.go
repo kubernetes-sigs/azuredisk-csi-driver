@@ -130,7 +130,7 @@ var _ = ginkgo.BeforeSuite(func() {
 		kubeconfig := os.Getenv(kubeconfigEnvVar)
 		kubeclient, err := azureutils.GetKubeClient(kubeconfig)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		azureCloud, err = azureutils.GetCloudProviderFromClient(kubeclient, driverOptions.CloudConfigSecretName, driverOptions.CloudConfigSecretNamespace, azuredisk.GetUserAgent(driverOptions.DriverName, driverOptions.CustomUserAgent, driverOptions.UserAgentSuffix))
+		azureCloud, err = azureutils.GetCloudProviderFromClient(kubeclient, driverOptions.CloudConfigSecretName, driverOptions.CloudConfigSecretNamespace, azuredisk.GetUserAgent(driverOptions.DriverName, driverOptions.CustomUserAgent, driverOptions.UserAgentSuffix), false)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	}
 })

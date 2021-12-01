@@ -92,7 +92,6 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	}
 
 	var (
-		location                string
 		storageAccountType      string
 		cachingMode             v1.AzureDataDiskCachingMode
 		err                     error
@@ -112,6 +111,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		isAdvancedPerfProfile   bool
 		deviceSettings          map[string]string
 	)
+	location := d.cloud.Location
 
 	localCloud := d.cloud
 	tags := make(map[string]string)
@@ -186,7 +186,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			}
 		case consts.UserAgentField:
 			newUserAgent := v
-			localCloud, err = azureutils.GetCloudProvider(d.kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, newUserAgent)
+			localCloud, err = azureutils.GetCloudProvider(d.kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, newUserAgent, d.allowEmptyCloudConfig)
 			if err != nil {
 				return nil, fmt.Errorf("create cloud with UserAgent(%s) failed with: (%s)", newUserAgent, err)
 			}
@@ -255,7 +255,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	}
 
 	requirement := req.GetAccessibilityRequirements()
-	diskZone := azureutils.PickAvailabilityZone(requirement, d.cloud.Location, topologyKey)
+	diskZone := azureutils.PickAvailabilityZone(requirement, location, topologyKey)
 	accessibleTopology := []*csi.Topology{}
 	if skuName == compute.StandardSSDZRS || skuName == compute.PremiumZRS {
 		klog.V(2).Infof("diskZone(%s) is reset as empty since disk(%s) is ZRS(%s)", diskZone, diskName, skuName)
@@ -263,7 +263,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		// make volume scheduled on all 3 availability zones
 		for i := 1; i <= 3; i++ {
 			topology := &csi.Topology{
-				Segments: map[string]string{topologyKey: fmt.Sprintf("%s-%d", d.cloud.Location, i)},
+				Segments: map[string]string{topologyKey: fmt.Sprintf("%s-%d", location, i)},
 			}
 			accessibleTopology = append(accessibleTopology, topology)
 		}
@@ -878,6 +878,7 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	var resourceGroup string
 	var err error
 	localCloud := d.cloud
+	location := d.cloud.Location
 
 	parameters := req.GetParameters()
 	for k, v := range parameters {
@@ -890,9 +891,11 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 			}
 		case consts.ResourceGroupField:
 			resourceGroup = v
+		case consts.LocationField:
+			location = v
 		case consts.UserAgentField:
 			newUserAgent := v
-			localCloud, err = azureutils.GetCloudProvider(d.kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, newUserAgent)
+			localCloud, err = azureutils.GetCloudProvider(d.kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, newUserAgent, d.allowEmptyCloudConfig)
 			if err != nil {
 				return nil, fmt.Errorf("create cloud with UserAgent(%s) failed with: (%s)", newUserAgent, err)
 
@@ -931,7 +934,7 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 			},
 			Incremental: &incremental,
 		},
-		Location: &d.cloud.Location,
+		Location: &location,
 		Tags:     tags,
 	}
 

@@ -12,7 +12,7 @@ Name | Meaning | Available Value | Mandatory | Default value
 --- | --- | --- | --- | ---
 skuName | azure disk storage account type (alias: `storageAccountType`)| `Standard_LRS`, `Premium_LRS`, `StandardSSD_LRS`, `UltraSSD_LRS`, `Premium_ZRS`, `StandardSSD_ZRS` | No | `StandardSSD_LRS`
 kind | managed or unmanaged(blob based) disk | `managed` (`dedicated`, `shared` are deprecated) | No | `managed`
-fsType | File System Type | `ext4`, `ext3`, `ext2`, `xfs` | No | `ext4`
+fsType | File System Type | `ext4`, `ext3`, `ext2`, `xfs`, `btrfs` | No | `ext4`
 cachingMode | [Azure Data Disk Host Cache Setting](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/premium-storage-performance#disk-caching) | `None`, `ReadOnly`, `ReadWrite` | No | `ReadOnly`
 location | specify the Azure location in which azure disk will be created | `eastus`, `westus`, etc. | No | if empty, driver will use the same location name as current k8s cluster
 resourceGroup | specify the resource group in which azure disk will be created | existing resource group name | No | if empty, driver will use the same resource group name as current k8s cluster
@@ -22,7 +22,7 @@ LogicalSectorSize | Logical sector size in bytes for Ultra disk. Supported value
 tags | azure disk [tags](https://docs.microsoft.com/en-us/azure/azure-resource-manager/management/tag-resources) | tag format: `key1=val1,key2=val2` | No | ""
 diskEncryptionSetID | ResourceId of the disk encryption set to use for [enabling encryption at rest](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/disk-encryption) | format: `/subscriptions/{subs-id}/resourceGroups/{rg-name}/providers/Microsoft.Compute/diskEncryptionSets/{diskEncryptionSet-name}` | No | ""
 writeAcceleratorEnabled | [Write Accelerator on Azure Disks](https://docs.microsoft.com/azure/virtual-machines/windows/how-to-enable-write-accelerator) | `true`, `false` | No | ""
-perfProfile | [disk device performance profile](../docs/enhancements/feat-add-ability-to-tune-azuredisk-performance-parameters.md) | `none`, `basic` | No | `none`
+perfProfile | [Block device performance tuning using perfProfiles](./perf-profiles.md) | `none`, `basic` | No | `none`
 networkAccessPolicy | NetworkAccessPolicy property to prevent anybody from generating the SAS URI for a disk or a snapshot | `AllowAll`, `DenyAll`, `AllowPrivate` | No | `AllowAll`
 diskAccessID | ARM id of the DiskAccess resource for using private endpoints on disks | | No  | ``
 enableBursting | [enable on-demand bursting](https://docs.microsoft.com/en-us/azure/virtual-machines/disk-bursting) beyond the provisioned performance target of the disk. On-demand bursting only be applied to Premium disk, disk size > 512GB, Ultra & shared disk is not supported. Bursting is disabled by default. | `true`, `false` | No | `false`
@@ -48,7 +48,7 @@ Name | Meaning | Available Value | Mandatory | Default value
 --- | --- | --- | --- | ---
 perfProfile | [Block device performance tuning using perfProfiles](./perf-profiles.md) | `none`, `basic`, `advanced` | No | `none`
 enableAsyncAttach | The V2 driver uses a different strategy to manage Azure API throttling and ignores this parameter. | N/A | No | N/A
-maxShares | The total number of shared disk mounts allowed for the disk. | Supported values depend on the disk size. See [Share an Azure managed disk](https://docs.microsoft.com/en-us/azure/virtual-machines/disks-shared) for supported values. | No | 1
+maxShares | The total number of shared disk mounts allowed for the disk. Setting the value to 2 or more enables attachment replicas. | Supported values depend on the disk size. See [Share an Azure managed disk](https://docs.microsoft.com/en-us/azure/virtual-machines/disks-shared) for supported values. | No | 1
 maxMountReplicaCount | The number of replicas attachments to maintain. | This value must be in the range `[0..(maxShares - 1)]` | No        | If `accessMode` is `ReadWriteMany`, the default is `0`. Otherwise, the default is `maxShares - 1` |
 
 > NOTE: Setting the `maxShares` parameter to a value greater than 1 enables faster pod failover through attachment replicas. See the [Azure CSI Driver V2](./design-v2.md) document for more details. See the [failover demo](../deploy/example/failover/README.md) for an example of how to use attachment replicas and ZRS disks for a better pod failover experience.
@@ -69,6 +69,7 @@ volumeAttributes.cachingMode | [disk host cache setting](https://docs.microsoft.
 Name | Meaning | Available Value | Mandatory | Default value
 --- | --- | --- | --- | ---
 resourceGroup | resource group for storing snapshot shots | EXISTING RESOURCE GROUP | No | If not specified, snapshot will be stored in the same resource group as source Azure disk
+location | specify Azure location in which snapshot will be created | `eastus`, `westus`, etc. | No | if empty, driver will use the same location name as current k8s cluster
 incremental | take [full or incremental snapshot](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/incremental-snapshots) | `true`, `false` | No | `true`
 tags | azure disk [tags](https://docs.microsoft.com/en-us/azure/azure-resource-manager/management/tag-resources) | tag format: 'key1=val1,key2=val2' | No | ""
 useragent | User agent used for [customer usage attribution](https://docs.microsoft.com/en-us/azure/marketplace/azure-partner-customer-usage-attribution) | | No  | Generated Useragent formatted `driverName/driverVersion compiler/version (GOARCH-GOOS) gitCommit/buildDate`
