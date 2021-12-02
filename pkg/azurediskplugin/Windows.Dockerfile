@@ -6,6 +6,9 @@ FROM mcr.microsoft.com/windows/nanoserver:${OSVERSION}
 COPY --from=core /Windows/System32/netapi32.dll /Windows/System32/netapi32.dll
 
 USER ContainerAdministrator
+# Delete DiagTrack service as it causes CPU spikes and delays pod/container startup times.
+RUN sc.exe delete diagtrack -f
+
 LABEL description="CSI Azure disk plugin"
 
 ARG ARCH
