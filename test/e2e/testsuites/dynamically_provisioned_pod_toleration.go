@@ -80,6 +80,7 @@ func (t *PodToleration) Run(client clientset.Interface, namespace *v1.Namespace,
 			framework.ExpectNoError(err)
 			defer taintCleanup()
 			nodesWithTaint[nodes[i]] = struct{}{}
+			klog.Infof("Added taint to node (%s)", nodes[i])
 			count++
 		}
 	}

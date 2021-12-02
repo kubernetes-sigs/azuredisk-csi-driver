@@ -1280,6 +1280,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			},
 			StorageClassParameters: storageClassParameters,
 			AzDiskClient:           azDiskClient,
+			IsMultiZone:            isMultiZone,
 		}
 		test.Run(cs, ns, schedulerName)
 	})

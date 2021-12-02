@@ -39,6 +39,7 @@ type PodFailoverWithReplicas struct {
 	PodCheck               *PodExecCheck
 	StorageClassParameters map[string]string
 	AzDiskClient           *azDiskClientSet.Clientset
+	IsMultiZone            bool
 }
 
 func (t *PodFailoverWithReplicas) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
@@ -51,8 +52,12 @@ func (t *PodFailoverWithReplicas) Run(client clientset.Interface, namespace *v1.
 
 	// Get the list of available nodes for scheduling the pod
 	nodes := ListNodeNames(client)
-	if len(nodes) < 2 {
-		ginkgo.Skip("need at least 2 nodes to verify the test case. Current node count is %d", len(nodes))
+	numRequiredNodes := 2
+	if t.IsMultiZone {
+		numRequiredNodes = 4
+	}
+	if len(nodes) < numRequiredNodes {
+		ginkgo.Skip("need at least %d nodes to verify the test case. Current node count is %d", numRequiredNodes, len(nodes))
 	}
 
 	ginkgo.By("deploying the deployment")

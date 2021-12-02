@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"sync"
 	"time"
 
 	"github.com/kubernetes-csi/external-snapshotter/v2/pkg/apis/volumesnapshot/v1beta1"
@@ -520,6 +521,7 @@ func (t *TestDeployment) WaitForPodReady() {
 		t.podNames = append(t.podNames, pod.Name)
 	}
 	ch := make(chan error, len(t.podNames))
+	defer close(ch)
 	for _, pod := range pods.Items {
 		go func(client clientset.Interface, pod v1.Pod) {
 			err = e2epod.WaitForPodRunningInNamespace(t.client, &pod)
@@ -527,10 +529,16 @@ func (t *TestDeployment) WaitForPodReady() {
 		}(t.client, pod)
 	}
 	// Wait on all goroutines to report on pod ready
+	var wg sync.WaitGroup
 	for range t.podNames {
-		err := <-ch
-		framework.ExpectNoError(err)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			err := <-ch
+			framework.ExpectNoError(err)
+		}()
 	}
+	wg.Wait()
 }
 
 func (t *TestDeployment) Exec(command []string, expectedString string) {
@@ -974,11 +982,10 @@ func (t *TestPod) SetNodeToleration(nodeTolerations ...v1.Toleration) {
 
 func (t *TestPod) SetNodeUnschedulable(nodeName string, unschedulable bool) {
 	var err error
-	var node *v1.Node
-	node, err = t.client.CoreV1().Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
-	framework.ExpectNoError(err)
-	node.Spec.Unschedulable = unschedulable
-	_, err = t.client.CoreV1().Nodes().Update(context.TODO(), node, metav1.UpdateOptions{})
+	updateFunc := func(nodeObj *v1.Node) {
+		nodeObj.Spec.Unschedulable = unschedulable
+	}
+	_, err = updateNodeWithRetry(t.client, nodeName, updateFunc)
 	framework.ExpectNoError(err)
 }
 
@@ -1024,24 +1031,49 @@ func ListNodeNames(c clientset.Interface) []string {
 	return nodeNames
 }
 
+func updateNodeWithRetry(c clientset.Interface, nodeName string, updateFunc func(*v1.Node)) (nodeObj *v1.Node, err error) {
+	ctx, cancelFunc := context.WithTimeout(context.Background(), pollTimeout)
+	defer cancelFunc()
+
+	err = wait.PollImmediateUntil(poll, func() (bool, error) {
+		nodeObj, err = c.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+		if err != nil {
+			return false, err
+		}
+		updateFunc(nodeObj)
+
+		nodeObj, err = c.CoreV1().Nodes().Update(ctx, nodeObj, metav1.UpdateOptions{})
+		if errors.IsConflict(err) {
+			return false, nil
+		}
+		return true, err
+	}, ctx.Done())
+
+	return
+}
+
 func SetNodeLabels(c clientset.Interface, node *v1.Node, newLabels map[string]string) (newNode *v1.Node, cleanup func(), err error) {
 	originalLabels := node.Labels
 	nodeName := node.Name
 	cleanup = func() {
-		node, err := c.CoreV1().Nodes().Get(context.Background(), nodeName, metav1.GetOptions{})
-		framework.ExpectNoError(err)
-		node.Labels = originalLabels
-		_, _ = c.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{})
+		updateFunc := func(nodeObj *v1.Node) {
+			nodeObj.Labels = originalLabels
+		}
+		_, cleanUpErr := updateNodeWithRetry(c, nodeName, updateFunc)
+		framework.ExpectNoError(cleanUpErr)
 	}
-	if node.Labels == nil {
-		node.Labels = newLabels
-	} else {
-		for key, value := range newLabels {
-			node.Labels[key] = value
+
+	updateFunc := func(nodeObj *v1.Node) {
+		if nodeObj.Labels == nil {
+			nodeObj.Labels = newLabels
+		} else {
+			for key, value := range newLabels {
+				nodeObj.Labels[key] = value
+			}
 		}
 	}
 
-	newNode, err = c.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{})
+	newNode, err = updateNodeWithRetry(c, node.Name, updateFunc)
 	return
 }
 
@@ -1049,25 +1081,23 @@ func SetNodeTaints(c clientset.Interface, node *v1.Node, taints ...v1.Taint) (ne
 	originalTaints := node.Spec.Taints
 	nodeName := node.Name
 	cleanup = func() {
-		node, err := c.CoreV1().Nodes().Get(context.Background(), nodeName, metav1.GetOptions{})
-		framework.ExpectNoError(err)
-		node.Spec.Taints = originalTaints
-		_, _ = c.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{})
+		updateFunc := func(nodeObj *v1.Node) {
+			node.Spec.Taints = originalTaints
+		}
+		_, cleanUpErr := updateNodeWithRetry(c, nodeName, updateFunc)
+		framework.ExpectNoError(cleanUpErr)
 	}
 
-	if node.Spec.Taints == nil {
-		node.Spec.Taints = taints
-	} else {
-		// acknowledge that this can lead to duplicate taints
-		node.Spec.Taints = append(node.Spec.Taints, taints...)
+	updateFunc := func(nodeObj *v1.Node) {
+		if node.Spec.Taints == nil {
+			node.Spec.Taints = taints
+		} else {
+			// acknowledge that this can lead to duplicate taints
+			node.Spec.Taints = append(node.Spec.Taints, taints...)
+		}
 	}
 
-	newNode, err = c.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{})
-	if err != nil {
-		klog.Errorf("failed to add taints (%+v) to node (%s): %v", taints, node.Name, err)
-	} else {
-		klog.Infof("successfully added taints (%+v) to node (%s)", taints, node.Name)
-	}
+	newNode, err = updateNodeWithRetry(c, node.Name, updateFunc)
 	return
 }
 
@@ -1126,6 +1156,26 @@ func getPodsForDeployment(client clientset.Interface, deployment *apps.Deploymen
 		return nil, fmt.Errorf("failed to list Pods of Deployment %q: %v", deployment.Name, err)
 	}
 	return podList, nil
+}
+
+// waitForVolumeDetach waits for volumeattachment for a PV to be removed from the cluster
+func waitForVolumeDetach(c clientset.Interface, pvName string, poll, pollTimeout time.Duration) error {
+	ginkgo.By("waiting for disk to detach from node")
+	ctx, cancelFunc := context.WithTimeout(context.Background(), pollTimeout)
+	defer cancelFunc()
+	return wait.PollImmediateUntil(poll, func() (bool, error) {
+		volumeAttachments, err := c.StorageV1().VolumeAttachments().List(ctx, metav1.ListOptions{})
+		if err != nil {
+			return false, err
+		}
+		notFound := true
+		for _, volumeAttachment := range volumeAttachments.Items {
+			if volumeAttachment.Spec.Source.PersistentVolumeName != nil && *volumeAttachment.Spec.Source.PersistentVolumeName == pvName {
+				notFound = false
+			}
+		}
+		return notFound, nil
+	}, ctx.Done())
 }
 
 // waitForPersistentVolumeClaimDeleted waits for a PersistentVolumeClaim to be removed from the system until timeout occurs, whichever comes first.

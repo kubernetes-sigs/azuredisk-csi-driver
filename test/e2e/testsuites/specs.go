@@ -233,20 +233,16 @@ func (pod *PodDetails) CreateStorageClass(client clientset.Interface, namespace 
 	var allowedTopologyValues []string
 	var volumeBindingMode storagev1.VolumeBindingMode
 
-	if skuName, ok := storageClassParameters[azureconstants.SkuNameField]; ok && strings.HasSuffix(skuName, "_ZRS") {
-		volumeBindingMode = storagev1.VolumeBindingImmediate
-	} else {
-		nodes, err := client.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
-		framework.ExpectNoError(err)
-		allowedTopologyValuesMap := make(map[string]bool)
-		for _, node := range nodes.Items {
-			if zone, ok := node.Labels[driver.TopologyKey]; ok {
-				allowedTopologyValuesMap[zone] = true
-			}
+	nodes, err := client.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+	framework.ExpectNoError(err)
+	allowedTopologyValuesMap := make(map[string]bool)
+	for _, node := range nodes.Items {
+		if zone, ok := node.Labels[driver.TopologyKey]; ok {
+			allowedTopologyValuesMap[zone] = true
 		}
-		for k := range allowedTopologyValuesMap {
-			allowedTopologyValues = append(allowedTopologyValues, k)
-		}
+	}
+	for k := range allowedTopologyValuesMap {
+		allowedTopologyValues = append(allowedTopologyValues, k)
 
 		volumeBindingMode = storagev1.VolumeBindingWaitForFirstConsumer
 	}

@@ -29,8 +29,6 @@ import (
 	"github.com/pborman/uuid"
 
 	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	restclientset "k8s.io/client-go/rest"
 	"k8s.io/kubernetes/test/e2e/framework"
@@ -70,19 +68,7 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interfac
 
 	// delete pod and wait for volume to be unpublished to ensure filesystem cache is flushed
 	tpod.Cleanup()
-	err := wait.PollImmediate(poll, pollTimeout, func() (bool, error) {
-		volumeAttachments, err := client.StorageV1().VolumeAttachments().List(ctx, metav1.ListOptions{})
-		if err != nil {
-			return false, err
-		}
-		notFound := true
-		for _, volumeAttachment := range volumeAttachments.Items {
-			if volumeAttachment.Spec.Source.PersistentVolumeName != nil && *volumeAttachment.Spec.Source.PersistentVolumeName == tpvc.persistentVolumeClaim.Spec.VolumeName {
-				notFound = false
-			}
-		}
-		return notFound, nil
-	})
+	err := waitForVolumeDetach(client, tpvc.persistentVolumeClaim.Spec.VolumeName, poll, pollTimeout)
 	framework.ExpectNoError(err)
 
 	ginkgo.By("Checking Prow test resource group")

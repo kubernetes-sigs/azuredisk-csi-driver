@@ -63,16 +63,21 @@ func (d *azureDiskDriver) GetDynamicProvisionStorageClass(parameters map[string]
 	provisioner := d.driverName
 	generateName := fmt.Sprintf("%s-%s-dynamic-sc-", namespace, normalizeProvisioner(provisioner))
 	var allowedTopologies []v1.TopologySelectorTerm
-	if len(allowedTopologyValues) > 0 {
-		allowedTopologies = []v1.TopologySelectorTerm{
-			{
-				MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
-					{
-						Key:    TopologyKey,
-						Values: allowedTopologyValues,
+	if skuName, ok := parameters[consts.SkuNameField]; ok && strings.HasSuffix(skuName, "_ZRS") {
+		mode := storagev1.VolumeBindingImmediate
+		bindingMode = &mode
+	} else {
+		if len(allowedTopologyValues) > 0 {
+			allowedTopologies = []v1.TopologySelectorTerm{
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{
+							Key:    TopologyKey,
+							Values: allowedTopologyValues,
+						},
 					},
 				},
-			},
+			}
 		}
 	}
 

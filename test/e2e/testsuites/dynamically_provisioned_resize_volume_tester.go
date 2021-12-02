@@ -86,8 +86,9 @@ func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface,
 	_, err = client.AppsV1().StatefulSets(tStatefulSet.namespace.Name).UpdateScale(context.TODO(), tStatefulSet.statefulset.Name, newScale, metav1.UpdateOptions{})
 	framework.ExpectNoError(err)
 
-	ginkgo.By("sleep 120s waiting for disk to detach from node")
-	time.Sleep(120 * time.Second)
+	// wait for volume to detach
+	err = waitForVolumeDetach(client, pvc.Spec.VolumeName, poll, pollTimeout)
+	framework.ExpectNoError(err)
 
 	// Get the original requested size of the pvs and increase it by 10GB
 	originalSize := pvc.Spec.Resources.Requests["storage"]
