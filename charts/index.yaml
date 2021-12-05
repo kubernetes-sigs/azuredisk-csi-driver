@@ -3,16 +3,16 @@ entries:
   azuredisk-csi-driver:
   - apiVersion: v1
     appVersion: v2.0.0-alpha.1
-    created: "2021-12-01T12:44:49.295267908-08:00"
+    created: "2021-12-05T14:02:20.062763804-08:00"
     description: Azure disk Container Storage Interface (CSI) Storage Plugin
-    digest: 7d7fb50169873fb15c9f740f12696057340447e9eccdf61406ac5cc832d40c11
+    digest: 35ae02fa457a557d1a4a90fc228fad766102631a1f7c18d94607f18f41ad6711
     name: azuredisk-csi-driver
     urls:
     - https://raw.githubusercontent.com/abhisheksinghbaghel/azuredisk-csi-driver/master/charts/v2.0.0-alpha.1/azuredisk-csi-driver-v2.0.0-alpha.1.tgz
     version: v2.0.0-alpha.1
   - apiVersion: v1
     appVersion: latest
-    created: "2021-12-01T12:44:49.24528479-08:00"
+    created: "2021-12-05T14:02:20.017496653-08:00"
     description: Azure disk Container Storage Interface (CSI) Storage Plugin
     digest: 147b31df2989e7b116e6d289ecdb817670d739dc1c399f42594c6fa0a4a1547f
     name: azuredisk-csi-driver
@@ -20,26 +20,17 @@ entries:
     - https://raw.githubusercontent.com/abhisheksinghbaghel/azuredisk-csi-driver/master/charts/latest/azuredisk-csi-driver-v1.10.0.tgz
     version: v1.10.0
   - apiVersion: v1
-    appVersion: latest
-    created: "2021-12-01T12:44:49.292444703-08:00"
+    appVersion: v1.9.0
+    created: "2021-12-05T14:02:20.059909489-08:00"
     description: Azure disk Container Storage Interface (CSI) Storage Plugin
-    digest: 95abb75d6a4575ed34479261ddd2ac5634ee3ce763a7c9afefb2aaf646834710
+    digest: d917427661ca4ec13add77efcfe31d2c7c989e20b1427dd566a05ad1bdd98fa9
     name: azuredisk-csi-driver
     urls:
     - https://raw.githubusercontent.com/abhisheksinghbaghel/azuredisk-csi-driver/master/charts/v1.9.0/azuredisk-csi-driver-v1.9.0.tgz
     version: v1.9.0
   - apiVersion: v1
-    appVersion: latest
-    created: "2021-12-01T12:44:49.247220325-08:00"
-    description: Azure disk Container Storage Interface (CSI) Storage Plugin
-    digest: 3f1675353ab9dbe91c9e5ab5d3cbb3b23eebc913a65f8ceb25240709505dd30c
-    name: azuredisk-csi-driver
-    urls:
-    - https://raw.githubusercontent.com/abhisheksinghbaghel/azuredisk-csi-driver/master/charts/latest/azuredisk-csi-driver-v1.9.0.tgz
-    version: v1.9.0
-  - apiVersion: v1
     appVersion: v1.8.0
-    created: "2021-12-01T12:44:49.290234478-08:00"
+    created: "2021-12-05T14:02:20.052791402-08:00"
     description: Azure disk Container Storage Interface (CSI) Storage Plugin
     digest: a37491e845671e81b9567f2d1a746dbf4f182fde0c8f9e689dfa632c5651c6c9
     name: azuredisk-csi-driver
@@ -48,7 +39,7 @@ entries:
     version: v1.8.0
   - apiVersion: v1
     appVersion: v1.7.0
-    created: "2021-12-01T12:44:49.285198847-08:00"
+    created: "2021-12-05T14:02:20.04883022-08:00"
     description: Azure disk Container Storage Interface (CSI) Storage Plugin
     digest: 4df7a10466206c60deab00efbca57f67f042afd1ecd5daca738df28526f3ffcc
     name: azuredisk-csi-driver
@@ -57,7 +48,7 @@ entries:
     version: v1.7.0
   - apiVersion: v1
     appVersion: v1.6.0
-    created: "2021-12-01T12:44:49.282061953-08:00"
+    created: "2021-12-05T14:02:20.04714697-08:00"
     description: Azure disk Container Storage Interface (CSI) Storage Plugin
     digest: b1a4c384fdfdb6577dd6dfd3709fb746b5c79247846e5c582b93c3a1187f6d88
     name: azuredisk-csi-driver
@@ -66,7 +57,7 @@ entries:
     version: v1.6.0
   - apiVersion: v1
     appVersion: v1.5.1
-    created: "2021-12-01T12:44:49.276934825-08:00"
+    created: "2021-12-05T14:02:20.045274126-08:00"
     description: Azure disk Container Storage Interface (CSI) Storage Plugin
     digest: efb42e1d56cc5596eb4e695b658c2748bc05cc6c47862e3f20ea6b5b199d01d6
     name: azuredisk-csi-driver
@@ -75,7 +66,7 @@ entries:
     version: v1.5.1
   - apiVersion: v1
     appVersion: v1.5.0
-    created: "2021-12-01T12:44:49.274606004-08:00"
+    created: "2021-12-05T14:02:20.043287485-08:00"
     description: Azure disk Container Storage Interface (CSI) Storage Plugin
     digest: c8490efde8d4a43bd25f5c619887498dfb4b41edf3929ac8dbf0a9d3f691e6ae
     name: azuredisk-csi-driver
@@ -84,7 +75,7 @@ entries:
     version: v1.5.0
   - apiVersion: v1
     appVersion: v1.4.0
-    created: "2021-12-01T12:44:49.272280182-08:00"
+    created: "2021-12-05T14:02:20.041354942-08:00"
     description: Azure disk Container Storage Interface (CSI) Storage Plugin
     digest: 55e5e17aac7c144b21a198867654ef70ad272987b0bb165782905adf91ca3c03
     name: azuredisk-csi-driver
@@ -93,7 +84,7 @@ entries:
     version: v1.4.0
   - apiVersion: v1
     appVersion: v1.3.0
-    created: "2021-12-01T12:44:49.270031357-08:00"
+    created: "2021-12-05T14:02:20.034838336-08:00"
     description: Azure disk Container Storage Interface (CSI) Storage Plugin
     digest: 2665483e922a577feb8539ca7f774bc70c945ce490294fd3378f098c2d244dde
     name: azuredisk-csi-driver
@@ -102,7 +93,7 @@ entries:
     version: v1.3.0
   - apiVersion: v1
     appVersion: v1.2.0
-    created: "2021-12-01T12:44:49.267959627-08:00"
+    created: "2021-12-05T14:02:20.032913194-08:00"
     description: Azure disk Container Storage Interface (CSI) Storage Plugin
     digest: 2bbfe2f9d080f1b3ff10590c7168d05ce026c5a73332b4d48014610a52337808
     name: azuredisk-csi-driver
@@ -111,7 +102,7 @@ entries:
     version: v1.2.0
   - apiVersion: v1
     appVersion: v1.1.1
-    created: "2021-12-01T12:44:49.264707337-08:00"
+    created: "2021-12-05T14:02:20.031346141-08:00"
     description: Azure disk Container Storage Interface (CSI) Storage Plugin
     digest: dd7066be8f499f6c1a396ab27c0013c09f5a8d8319cc04fbdd480d31107bb851
     name: azuredisk-csi-driver
@@ -120,7 +111,7 @@ entries:
     version: v1.1.1
   - apiVersion: v1
     appVersion: v1.1.0
-    created: "2021-12-01T12:44:49.26311829-08:00"
+    created: "2021-12-05T14:02:20.030112577-08:00"
     description: Azure disk Container Storage Interface (CSI) Storage Plugin
     digest: 3d2a5189416dd6a43bd3e2097bbe23a8db347b6e1a36c6a43fd59cc9c9633ff3
     name: azuredisk-csi-driver
@@ -129,7 +120,7 @@ entries:
     version: v1.1.0
   - apiVersion: v1
     appVersion: v1.0.0
-    created: "2021-12-01T12:44:49.260419481-08:00"
+    created: "2021-12-05T14:02:20.02868012-08:00"
     description: Azure disk Container Storage Interface (CSI) Storage Plugin
     digest: d179bc6f338518859b6efdc3b3bed8d06513313e8047563eb4b654b2d417c81e
     name: azuredisk-csi-driver
@@ -138,7 +129,7 @@ entries:
     version: v1.0.0
   - apiVersion: v1
     appVersion: v0.10.0
-    created: "2021-12-01T12:44:49.249078163-08:00"
+    created: "2021-12-05T14:02:20.021022748-08:00"
     description: Azure disk Container Storage Interface (CSI) Storage Plugin
     digest: 3dbbaca098fe8316de079236598253b5831e8e85fd88b390231d828157d62206
     name: azuredisk-csi-driver
@@ -147,7 +138,7 @@ entries:
     version: v0.10.0
   - apiVersion: v1
     appVersion: v0.9.0
-    created: "2021-12-01T12:44:49.256620409-08:00"
+    created: "2021-12-05T14:02:20.027301961-08:00"
     description: Azure disk Container Storage Interface (CSI) Storage Plugin
     digest: a978f3e6ef5d678c3b6512bd8a63277cb4ce40d3f3e34b80370f0c37298824f2
     name: azuredisk-csi-driver
@@ -156,7 +147,7 @@ entries:
     version: v0.9.0
   - apiVersion: v1
     appVersion: v0.8.0
-    created: "2021-12-01T12:44:49.254607676-08:00"
+    created: "2021-12-05T14:02:20.026120196-08:00"
     description: Azure disk Container Storage Interface (CSI) Storage Plugin
     digest: 1762b832389b4f7a5eab9748127fa6dbb85131485d67bc3fe485bbe86c468128
     name: azuredisk-csi-driver
@@ -165,7 +156,7 @@ entries:
     version: v0.8.0
   - apiVersion: v1
     appVersion: v0.7.0
-    created: "2021-12-01T12:44:49.252674341-08:00"
+    created: "2021-12-05T14:02:20.024885933-08:00"
     description: Azure disk Container Storage Interface (CSI) Storage Plugin
     digest: 29e21f686814f46c1edaaaa95ce2d25579ff1aad270c58b774bdb5a89858b8bf
     name: azuredisk-csi-driver
@@ -174,11 +165,11 @@ entries:
     version: v0.7.0
   - apiVersion: v1
     appVersion: v0.6.0
-    created: "2021-12-01T12:44:49.250785005-08:00"
+    created: "2021-12-05T14:02:20.02363517-08:00"
     description: Azure disk Container Storage Interface (CSI) Storage Plugin
     digest: b11d8dfee371ca7c63a1448ba27c1fd1f032ea33575fefeeb16927fc95d1eeb7
     name: azuredisk-csi-driver
     urls:
     - https://raw.githubusercontent.com/abhisheksinghbaghel/azuredisk-csi-driver/master/charts/v0.6.0/azuredisk-csi-driver-v0.6.0.tgz
     version: v0.6.0
-generated: "2021-12-01T12:44:49.239242293-08:00"
+generated: "2021-12-05T14:02:20.014358947-08:00"
