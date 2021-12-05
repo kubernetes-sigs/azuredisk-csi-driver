@@ -22,7 +22,6 @@ import (
 	"os"
 	"reflect"
 	"runtime"
-	"strings"
 	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
@@ -31,7 +30,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
-	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
+	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
 func TestCheckDiskName(t *testing.T) {
@@ -262,44 +261,12 @@ users:
 }
 
 func TestGetCloudProvider(t *testing.T) {
-	fakeCredFile, err := testutil.GetWorkDirPath("fake-cred-file.json")
-	if err != nil {
-		t.Errorf("GetWorkDirPath failed with %v", err)
-	}
-	fakeKubeConfig, err := testutil.GetWorkDirPath("fake-kube-config")
-	if err != nil {
-		t.Errorf("GetWorkDirPath failed with %v", err)
-	}
-	emptyKubeConfig, err := testutil.GetWorkDirPath("empty-kube-config")
-	if err != nil {
-		t.Errorf("GetWorkDirPath failed with %v", err)
-	}
+	// skip for now as this is very flaky on Windows
+	skipIfTestingOnWindows(t)
+	fakeCredFile := "fake-cred-file.json"
+	emptyKubeConfig := "empty-kube-config"
 
-	fakeContent := `apiVersion: v1
-clusters:
-- cluster:
-    server: https://localhost:8080
-  name: foo-cluster
-contexts:
-- context:
-    cluster: foo-cluster
-    user: foo-user
-    namespace: bar
-  name: foo-context
-current-context: foo-context
-kind: Config
-users:
-- name: foo-user
-  user:
-    exec:
-      apiVersion: client.authentication.k8s.io/v1alpha1
-      args:
-      - arg-1
-      - arg-2
-      command: foo-command
-`
-
-	err = createTestFile(emptyKubeConfig)
+	err := createTestFile(emptyKubeConfig)
 	if err != nil {
 		t.Error(err)
 	}
@@ -310,53 +277,35 @@ users:
 	}()
 
 	tests := []struct {
-		desc                  string
-		createFakeCredFile    bool
-		createFakeKubeConfig  bool
-		kubeconfig            string
-		userAgent             string
-		allowEmptyCloudConfig bool
-		expectedErr           error
+		desc        string
+		kubeconfig  string
+		userAgent   string
+		expectedErr error
 	}{
 		{
-			desc:                  "[failure] out of cluster & in cluster, specify a fake kubeconfig, no credential file",
-			createFakeKubeConfig:  true,
-			kubeconfig:            fakeKubeConfig,
-			allowEmptyCloudConfig: false,
-			expectedErr: testutil.TestError{
-				DefaultError: fmt.Errorf("no cloud config provided, error"),
-			},
+
+			desc:        "[failure] out of cluster & in cluster, specify an empty kubeconfig, no credential file",
+			kubeconfig:  emptyKubeConfig,
+			expectedErr: fmt.Errorf("failed to get KubeClient: invalid configuration: no configuration has been provided, try setting KUBERNETES_MASTER environment variable"),
 		},
 		{
-			desc:                  "[failure] out of cluster & in cluster, specify a empty kubeconfig, no credential file",
-			kubeconfig:            emptyKubeConfig,
-			allowEmptyCloudConfig: true,
-			expectedErr:           fmt.Errorf("failed to get KubeClient: invalid configuration: no configuration has been provided, try setting KUBERNETES_MASTER environment variable"),
-		},
-		{
-			desc:                  "[success] out of cluster & in cluster, no kubeconfig, a fake credential file",
-			createFakeCredFile:    true,
-			kubeconfig:            "",
-			userAgent:             "useragent",
-			allowEmptyCloudConfig: true,
-			expectedErr:           nil,
-		},
-		{
-			desc:                  "[success] out of cluster & in cluster, specify a fake kubeconfig, no credential file",
-			createFakeKubeConfig:  true,
-			kubeconfig:            fakeKubeConfig,
-			allowEmptyCloudConfig: true,
-			expectedErr:           nil,
+			desc:        "[success] out of cluster & in cluster, no kubeconfig, a fake credential file",
+			kubeconfig:  "",
+			userAgent:   "useragent",
+			expectedErr: nil,
 		},
 	}
 
 	for _, test := range tests {
-		if test.createFakeCredFile {
-			if err := createTestFile(fakeCredFile); err != nil {
+		if test.desc == "[success] out of cluster & in cluster, no kubeconfig, a fake credential file" {
+			err := createTestFile(fakeCredFile)
+			if err != nil {
 				t.Error(err)
 			}
 			defer func() {
-				os.Remove(fakeCredFile)
+				if err := os.Remove(fakeCredFile); err != nil {
+					t.Error(err)
+				}
 			}()
 
 			originalCredFile, ok := os.LookupEnv(consts.DefaultAzureCredentialFileEnv)
@@ -367,21 +316,11 @@ users:
 			}
 			os.Setenv(consts.DefaultAzureCredentialFileEnv, fakeCredFile)
 		}
-		if test.createFakeKubeConfig {
-			if err := createTestFile(fakeKubeConfig); err != nil {
-				t.Error(err)
-			}
-			defer func() {
-				os.Remove(fakeKubeConfig)
-			}()
+		var cloud *provider.Cloud
+		cloud, err = GetCloudProvider(test.kubeconfig, "", "", test.userAgent)
 
-			if err := ioutil.WriteFile(fakeKubeConfig, []byte(fakeContent), 0666); err != nil {
-				t.Error(err)
-			}
-		}
-		cloud, err := GetCloudProvider(test.kubeconfig, "", "", test.userAgent)
-		if !reflect.DeepEqual(err, test.expectedErr) && !strings.Contains(err.Error(), test.expectedErr.Error()) {
-			t.Errorf("desc: %s,\n input: %q, GetCloudProvider err: %v, expectedErr: %v", test.desc, test.kubeconfig, err, test.expectedErr)
+		if !reflect.DeepEqual(err, test.expectedErr) {
+			t.Errorf("desc: %s,\n input: %q, actualErr: %v, expectedErr: %v", test.desc, test.kubeconfig, err, test.expectedErr)
 		}
 		if cloud != nil {
 			assert.Equal(t, cloud.UserAgent, test.userAgent)

@@ -571,7 +571,7 @@ func (c *CloudProvisioner) CreateSnapshot(
 			}
 		case azureconstants.ResourceGroupField:
 			resourceGroup = v
-		case consts.LocationField:
+		case azureconstants.LocationField:
 			location = v
 		case azureconstants.UserAgentField:
 			newUserAgent := v
