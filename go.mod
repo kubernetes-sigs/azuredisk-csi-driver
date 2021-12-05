@@ -34,7 +34,7 @@ require (
 	k8s.io/klog v1.0.0
 	k8s.io/klog/v2 v2.10.0
 	k8s.io/kube-scheduler v0.22.4
-	k8s.io/kubernetes v1.22.3
+	k8s.io/kubernetes v1.22.4
 	k8s.io/mount-utils v0.22.4
 	k8s.io/utils v0.0.0-20210819203725-bdf08cb9a70a
 	sigs.k8s.io/cloud-provider-azure v0.7.4

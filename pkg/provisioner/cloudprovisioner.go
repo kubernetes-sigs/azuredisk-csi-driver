@@ -80,7 +80,7 @@ func NewCloudProvisioner(
 	userAgent string,
 	enableOnlineDiskResize bool,
 ) (*CloudProvisioner, error) {
-	azCloud, err := azureutils.GetCloudProviderFromClient(kubeClient, cloudConfigSecretName, cloudConfigSecretNamespace, userAgent, false)
+	azCloud, err := azureutils.GetCloudProviderFromClient(kubeClient, cloudConfigSecretName, cloudConfigSecretNamespace, userAgent)
 	if err != nil || azCloud.TenantID == "" || azCloud.SubscriptionID == "" {
 		klog.Fatalf("failed to get Azure Cloud Provider, error: %v", err)
 		return nil, err
@@ -211,7 +211,7 @@ func (c *CloudProvisioner) CreateVolume(
 			}
 		case azureconstants.UserAgentField:
 			newUserAgent := v
-			localCloud, err = azureutils.GetCloudProviderFromClient(c.kubeClient, c.cloudConfigSecretName, c.cloudConfigSecretNamespace, newUserAgent, false)
+			localCloud, err = azureutils.GetCloudProviderFromClient(c.kubeClient, c.cloudConfigSecretName, c.cloudConfigSecretNamespace, newUserAgent)
 			if err != nil {
 				return nil, fmt.Errorf("create cloud with UserAgent(%s) failed with: (%s)", newUserAgent, err)
 			}
@@ -559,6 +559,7 @@ func (c *CloudProvisioner) CreateSnapshot(
 	var resourceGroup string
 	var err error
 	localCloud := c.cloud
+	location := c.cloud.Location
 
 	for k, v := range parameters {
 		switch strings.ToLower(k) {
@@ -570,9 +571,11 @@ func (c *CloudProvisioner) CreateSnapshot(
 			}
 		case azureconstants.ResourceGroupField:
 			resourceGroup = v
+		case consts.LocationField:
+			location = v
 		case azureconstants.UserAgentField:
 			newUserAgent := v
-			localCloud, err = azureutils.GetCloudProviderFromClient(c.kubeClient, c.cloudConfigSecretName, c.cloudConfigSecretNamespace, newUserAgent, false)
+			localCloud, err = azureutils.GetCloudProviderFromClient(c.kubeClient, c.cloudConfigSecretName, c.cloudConfigSecretNamespace, newUserAgent)
 			if err != nil {
 				return nil, fmt.Errorf("create cloud with UserAgent(%s) failed with: (%s)", newUserAgent, err)
 			}
@@ -610,7 +613,7 @@ func (c *CloudProvisioner) CreateSnapshot(
 			},
 			Incremental: &incremental,
 		},
-		Location: &c.cloud.Location,
+		Location: &location,
 		Tags:     tags,
 	}
 

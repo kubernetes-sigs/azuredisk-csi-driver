@@ -186,7 +186,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			}
 		case consts.UserAgentField:
 			newUserAgent := v
-			localCloud, err = azureutils.GetCloudProvider(d.kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, newUserAgent, d.allowEmptyCloudConfig)
+			localCloud, err = azureutils.GetCloudProvider(d.kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, newUserAgent)
 			if err != nil {
 				return nil, fmt.Errorf("create cloud with UserAgent(%s) failed with: (%s)", newUserAgent, err)
 			}
@@ -895,7 +895,7 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 			location = v
 		case consts.UserAgentField:
 			newUserAgent := v
-			localCloud, err = azureutils.GetCloudProvider(d.kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, newUserAgent, d.allowEmptyCloudConfig)
+			localCloud, err = azureutils.GetCloudProvider(d.kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, newUserAgent)
 			if err != nil {
 				return nil, fmt.Errorf("create cloud with UserAgent(%s) failed with: (%s)", newUserAgent, err)
 
