@@ -559,6 +559,7 @@ func (c *CloudProvisioner) CreateSnapshot(
 	var resourceGroup string
 	var err error
 	localCloud := c.cloud
+	location := c.cloud.Location
 
 	for k, v := range parameters {
 		switch strings.ToLower(k) {
@@ -570,6 +571,8 @@ func (c *CloudProvisioner) CreateSnapshot(
 			}
 		case azureconstants.ResourceGroupField:
 			resourceGroup = v
+		case azureconstants.LocationField:
+			location = v
 		case azureconstants.UserAgentField:
 			newUserAgent := v
 			localCloud, err = azureutils.GetCloudProviderFromClient(c.kubeClient, c.cloudConfigSecretName, c.cloudConfigSecretNamespace, newUserAgent)
@@ -610,7 +613,7 @@ func (c *CloudProvisioner) CreateSnapshot(
 			},
 			Incremental: &incremental,
 		},
-		Location: &c.cloud.Location,
+		Location: &location,
 		Tags:     tags,
 	}
 

@@ -56,6 +56,7 @@ type DriverOptions struct {
 	UserAgentSuffix            string
 	UseCSIProxyGAInterface     bool
 	EnableDiskOnlineResize     bool
+	AllowEmptyCloudConfig      bool
 }
 
 // CSIDriver defines the interface for a CSI driver.
@@ -89,6 +90,7 @@ type DriverCore struct {
 	hostUtil                   hostUtil
 	useCSIProxyGAInterface     bool
 	enableDiskOnlineResize     bool
+	allowEmptyCloudConfig      bool
 }
 
 // Driver is the v1 implementation of the Azure Disk CSI Driver.
@@ -118,6 +120,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.userAgentSuffix = options.UserAgentSuffix
 	driver.useCSIProxyGAInterface = options.UseCSIProxyGAInterface
 	driver.enableDiskOnlineResize = options.EnableDiskOnlineResize
+	driver.allowEmptyCloudConfig = options.AllowEmptyCloudConfig
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
