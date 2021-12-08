@@ -15,7 +15,7 @@ github.com/Azure/go-autorest
 ## explicit
 github.com/Azure/go-autorest/autorest
 github.com/Azure/go-autorest/autorest/azure
-# github.com/Azure/go-autorest/autorest/adal v0.9.16
+# github.com/Azure/go-autorest/autorest/adal v0.9.17
 ## explicit
 github.com/Azure/go-autorest/autorest/adal
 # github.com/Azure/go-autorest/autorest/date v0.3.0
@@ -749,7 +749,7 @@ k8s.io/client-go/util/homedir
 k8s.io/client-go/util/keyutil
 k8s.io/client-go/util/retry
 k8s.io/client-go/util/workqueue
-# k8s.io/cloud-provider v0.22.3 => k8s.io/cloud-provider v0.21.0
+# k8s.io/cloud-provider v0.22.4 => k8s.io/cloud-provider v0.21.0
 ## explicit
 k8s.io/cloud-provider
 k8s.io/cloud-provider/fake
@@ -867,7 +867,7 @@ k8s.io/utils/trace
 # sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.0.15
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/client
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/proto/client
-# sigs.k8s.io/cloud-provider-azure v0.7.4 => sigs.k8s.io/cloud-provider-azure v0.7.4-0.20211122133108-fb665868ac66
+# sigs.k8s.io/cloud-provider-azure v0.7.4 => sigs.k8s.io/cloud-provider-azure v0.7.4-0.20211208054345-a457bc0a16ac
 ## explicit
 sigs.k8s.io/cloud-provider-azure/pkg/auth
 sigs.k8s.io/cloud-provider-azure/pkg/azureclients
@@ -951,4 +951,4 @@ sigs.k8s.io/yaml
 # k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.21.0
 # k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.21.0
 # k8s.io/sample-controller => k8s.io/sample-controller v0.21.0
-# sigs.k8s.io/cloud-provider-azure => sigs.k8s.io/cloud-provider-azure v0.7.4-0.20211122133108-fb665868ac66
+# sigs.k8s.io/cloud-provider-azure => sigs.k8s.io/cloud-provider-azure v0.7.4-0.20211208054345-a457bc0a16ac
