@@ -14,43 +14,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package e2e
+package scale
 
 import (
 	"context"
-	"flag"
 	"os"
-	"path"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/onsi/ginkgo"
-	"github.com/onsi/ginkgo/reporters"
 	"github.com/onsi/gomega"
 	"k8s.io/kubernetes/test/e2e/framework"
-	"k8s.io/kubernetes/test/e2e/framework/config"
-	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/azure"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/credentials"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
-	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
-)
-
-const (
-	poll        = time.Duration(2) * time.Second
-	pollTimeout = time.Duration(10) * time.Minute
-)
-
-var (
-	skipClusterBootstrap = flag.Bool("skip-cluster-bootstrap", false, "flag to indicate that we can skip cluster bootstrap.")
-	azureCloud           *provider.Cloud
-	location             string
-	supportsZRS          bool
 )
 
 var _ = ginkgo.BeforeSuite(func() {
@@ -73,12 +52,6 @@ var _ = ginkgo.BeforeSuite(func() {
 		_, err = azureClient.EnsureResourceGroup(context.Background(), creds.ResourceGroup, creds.Location, nil)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-		location = creds.Location
-
-		if location == "westus2" || location == "westeurope" {
-			supportsZRS = true
-		}
-
 		// Install Azure Disk CSI Driver on cluster from project root
 		e2eBootstrap := testtypes.TestCmd{
 			Command:  "make",
@@ -96,19 +69,6 @@ var _ = ginkgo.BeforeSuite(func() {
 		if !*skipClusterBootstrap {
 			testutil.ExecTestCmd([]testtypes.TestCmd{e2eBootstrap, createMetricsSVC})
 		}
-
-		driverOptions := azuredisk.DriverOptions{
-			NodeID:                 os.Getenv("nodeid"),
-			DriverName:             consts.DefaultDriverName,
-			VolumeAttachLimit:      16,
-			EnablePerfOptimization: false,
-		}
-		os.Setenv("AZURE_CREDENTIAL_FILE", testconsts.TempAzureCredentialFilePath)
-		kubeconfig := os.Getenv(testconsts.KubeconfigEnvVar)
-		kubeclient, err := azureutils.GetKubeClient(kubeconfig)
-		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		azureCloud, err = azureutils.GetCloudProviderFromClient(kubeclient, driverOptions.CloudConfigSecretName, driverOptions.CloudConfigSecretNamespace, azuredisk.GetUserAgent(driverOptions.DriverName, driverOptions.CustomUserAgent, driverOptions.UserAgentSuffix))
-		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	}
 })
 
@@ -133,22 +93,6 @@ var _ = ginkgo.AfterSuite(func() {
 			EndLog:   "Check successfully",
 		}
 		testutil.ExecTestCmd([]testtypes.TestCmd{checkPodsRestart})
-
-		os := "linux"
-		cloud := "azurepubliccloud"
-		if testconsts.IsWindowsCluster {
-			os = "windows"
-		}
-		if testconsts.IsAzureStackCloud {
-			cloud = "azurestackcloud"
-		}
-		createExampleDeployment := testtypes.TestCmd{
-			Command:  "bash",
-			Args:     []string{"hack/verify-examples.sh", os, cloud},
-			StartLog: "create example deployments",
-			EndLog:   "example deployments created",
-		}
-		testutil.ExecTestCmd([]testtypes.TestCmd{createExampleDeployment})
 
 		azurediskLogArgs := []string{"test/utils/azuredisk_log.sh", "azuredisk"}
 		if testconsts.IsUsingCSIDriverV2 {
@@ -182,55 +126,12 @@ var _ = ginkgo.AfterSuite(func() {
 			testutil.ExecTestCmd([]testtypes.TestCmd{azurediskLog, deleteMetricsSVC, e2eTeardown})
 		}
 
-		if !testconsts.IsTestingMigration && !testconsts.IsUsingCSIDriverV2 {
-
-			// install Azure Disk CSI Driver deployment scripts test
-			installDriver := testtypes.TestCmd{
-				Command:  "bash",
-				Args:     []string{"deploy/install-driver.sh", "master", "windows,snapshot,local"},
-				StartLog: "===================install Azure Disk CSI Driver deployment scripts test===================",
-				EndLog:   "===================================================",
-			}
-			testutil.ExecTestCmd([]testtypes.TestCmd{installDriver})
-
-			// run example deployment again
-			createExampleDeployment := testtypes.TestCmd{
-				Command:  "bash",
-				Args:     []string{"hack/verify-examples.sh", os, cloud},
-				StartLog: "create example deployments#2",
-				EndLog:   "example deployments#2 created",
-			}
-			testutil.ExecTestCmd([]testtypes.TestCmd{createExampleDeployment})
-
-			// uninstall Azure Disk CSI Driver deployment scripts test
-			uninstallDriver := testtypes.TestCmd{
-				Command:  "bash",
-				Args:     []string{"deploy/uninstall-driver.sh", "master", "windows,snapshot,local"},
-				StartLog: "===================uninstall Azure Disk CSI Driver deployment scripts test===================",
-				EndLog:   "===================================================",
-			}
-			testutil.ExecTestCmd([]testtypes.TestCmd{uninstallDriver})
-		}
-
 		err := credentials.DeleteAzureCredentialFile()
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	}
 })
 
-func TestE2E(t *testing.T) {
+func TestScale(t *testing.T) {
 	gomega.RegisterFailHandler(ginkgo.Fail)
-	reportDir := os.Getenv(testconsts.ReportDirEnvVar)
-	if reportDir == "" {
-		reportDir = testconsts.DefaultReportDir
-	}
-	r := []ginkgo.Reporter{reporters.NewJUnitReporter(path.Join(reportDir, "junit_01.xml"))}
-	ginkgo.RunSpecsWithDefaultAndCustomReporters(t, "AzureDisk CSI Driver End-to-End Tests", r)
-}
-
-// handleFlags sets up all flags and parses the command line.
-func handleFlags() {
-	config.CopyFlags(config.Flags, flag.CommandLine)
-	framework.RegisterCommonFlags(flag.CommandLine)
-	framework.RegisterClusterFlags(flag.CommandLine)
-	flag.Parse()
+	ginkgo.RunSpecs(t, "AzureDisk CSI Driver Scale Tests")
 }

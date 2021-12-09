@@ -24,6 +24,7 @@ import (
 	"text/template"
 
 	"github.com/stretchr/testify/assert"
+	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 )
 
 const (
@@ -47,38 +48,38 @@ const (
 
 func TestCreateAzureCredentialFileOnAzurePublicCloud(t *testing.T) {
 	t.Run("WithAzureCredentials", func(t *testing.T) {
-		os.Setenv(tenantIDEnvVar, "")
-		os.Setenv(subscriptionIDEnvVar, "")
-		os.Setenv(aadClientIDEnvVar, "")
-		os.Setenv(aadClientSecretEnvVar, "")
-		os.Setenv(resourceGroupEnvVar, testResourceGroup)
-		os.Setenv(locationEnvVar, testLocation)
-		os.Setenv(vmTypeEnvVar, testVMType)
+		os.Setenv(testconsts.TenantIDEnvVar, "")
+		os.Setenv(testconsts.SubscriptionIDEnvVar, "")
+		os.Setenv(testconsts.AadClientIDEnvVar, "")
+		os.Setenv(testconsts.AadClientSecretEnvVar, "")
+		os.Setenv(testconsts.ResourceGroupEnvVar, testResourceGroup)
+		os.Setenv(testconsts.LocationEnvVar, testLocation)
+		os.Setenv(testconsts.VMTypeEnvVar, testVMType)
 		withAzureCredentials(t)
 	})
 
 	t.Run("WithEnvironmentVariables", func(t *testing.T) {
-		os.Setenv(tenantIDEnvVar, testTenantID)
-		os.Setenv(subscriptionIDEnvVar, testSubscriptionID)
-		os.Setenv(aadClientIDEnvVar, testAadClientID)
-		os.Setenv(aadClientSecretEnvVar, testAadClientSecret)
-		os.Setenv(resourceGroupEnvVar, testResourceGroup)
-		os.Setenv(locationEnvVar, testLocation)
-		os.Setenv(vmTypeEnvVar, testVMType)
+		os.Setenv(testconsts.TenantIDEnvVar, testTenantID)
+		os.Setenv(testconsts.SubscriptionIDEnvVar, testSubscriptionID)
+		os.Setenv(testconsts.AadClientIDEnvVar, testAadClientID)
+		os.Setenv(testconsts.AadClientSecretEnvVar, testAadClientSecret)
+		os.Setenv(testconsts.ResourceGroupEnvVar, testResourceGroup)
+		os.Setenv(testconsts.LocationEnvVar, testLocation)
+		os.Setenv(testconsts.VMTypeEnvVar, testVMType)
 		withEnvironmentVariables(t)
 	})
 }
 
 func TestCreateAzureCredentialFileOnAzureStackCloud(t *testing.T) {
 	t.Run("WithEnvironmentVariables", func(t *testing.T) {
-		os.Setenv(cloudNameEnvVar, "AzureStackCloud")
-		os.Setenv(tenantIDEnvVar, testTenantID)
-		os.Setenv(subscriptionIDEnvVar, testSubscriptionID)
-		os.Setenv(aadClientIDEnvVar, testAadClientID)
-		os.Setenv(aadClientSecretEnvVar, testAadClientSecret)
-		os.Setenv(resourceGroupEnvVar, testResourceGroup)
-		os.Setenv(locationEnvVar, testLocation)
-		os.Setenv(vmTypeEnvVar, testVMType)
+		os.Setenv(testconsts.CloudNameEnvVar, "AzureStackCloud")
+		os.Setenv(testconsts.TenantIDEnvVar, testTenantID)
+		os.Setenv(testconsts.SubscriptionIDEnvVar, testSubscriptionID)
+		os.Setenv(testconsts.AadClientIDEnvVar, testAadClientID)
+		os.Setenv(testconsts.AadClientSecretEnvVar, testAadClientSecret)
+		os.Setenv(testconsts.ResourceGroupEnvVar, testResourceGroup)
+		os.Setenv(testconsts.LocationEnvVar, testLocation)
+		os.Setenv(testconsts.VMTypeEnvVar, testVMType)
 		withEnvironmentVariables(t)
 	})
 }
@@ -103,7 +104,7 @@ func withAzureCredentials(t *testing.T) {
 		assert.NoError(t, err)
 	}()
 
-	cloud := AzurePublicCloud
+	cloud := testconsts.AzurePublicCloud
 
 	assert.Equal(t, cloud, creds.Cloud)
 	assert.Equal(t, "72f988bf-xxxx-xxxx-xxxx-2d7cd011db47", creds.TenantID)
@@ -114,7 +115,7 @@ func withAzureCredentials(t *testing.T) {
 	assert.Equal(t, testLocation, creds.Location)
 	assert.Equal(t, testVMType, creds.VMType)
 
-	azureCredentialFileContent, err := ioutil.ReadFile(TempAzureCredentialFilePath)
+	azureCredentialFileContent, err := ioutil.ReadFile(testconsts.TempAzureCredentialFilePath)
 	assert.NoError(t, err)
 
 	const expectedAzureCredentialFileContent = `
@@ -152,9 +153,9 @@ func withEnvironmentVariables(t *testing.T) {
 	assert.NoError(t, err)
 
 	var cloud string
-	cloud = os.Getenv(cloudNameEnvVar)
+	cloud = os.Getenv(testconsts.CloudNameEnvVar)
 	if cloud == "" {
-		cloud = AzurePublicCloud
+		cloud = testconsts.AzurePublicCloud
 	}
 
 	assert.Equal(t, cloud, creds.Cloud)
@@ -166,7 +167,7 @@ func withEnvironmentVariables(t *testing.T) {
 	assert.Equal(t, testLocation, creds.Location)
 	assert.Equal(t, testVMType, creds.VMType)
 
-	azureCredentialFileContent, err := ioutil.ReadFile(TempAzureCredentialFilePath)
+	azureCredentialFileContent, err := ioutil.ReadFile(testconsts.TempAzureCredentialFilePath)
 	assert.NoError(t, err)
 
 	const expectedAzureCredentialFileContent = `

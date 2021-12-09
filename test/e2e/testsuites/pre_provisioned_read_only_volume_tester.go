@@ -20,6 +20,7 @@ import (
 	"fmt"
 
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
+	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
 
 	"github.com/onsi/ginkgo"
 	"github.com/onsi/gomega"
@@ -32,7 +33,7 @@ import (
 // Testing that the Pod(s) cannot write to the volume when mounted
 type PreProvisionedReadOnlyVolumeTest struct {
 	CSIDriver     driver.PreProvisionedVolumeTestDriver
-	Pods          []PodDetails
+	Pods          []testtypes.PodDetails
 	VolumeContext map[string]string
 }
 
@@ -56,7 +57,7 @@ func (t *PreProvisionedReadOnlyVolumeTest) Run(client clientset.Interface, names
 		tpod.WaitForFailure()
 		ginkgo.By("checking that pod logs contain expected message")
 		body, err := tpod.Logs()
-		framework.ExpectNoError(err, fmt.Sprintf("Error getting logs for pod %s: %v", tpod.pod.Name, err))
+		framework.ExpectNoError(err, fmt.Sprintf("Error getting logs for pod %s: %v", tpod.Pod.Name, err))
 		gomega.Expect(string(body)).To(gomega.ContainSubstring(expectedReadOnlyLog))
 	}
 }

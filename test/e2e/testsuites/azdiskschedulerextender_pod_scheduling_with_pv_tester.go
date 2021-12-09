@@ -21,18 +21,20 @@ import (
 	v1 "k8s.io/api/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
+	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
+	nodeutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/node"
 )
 
 // AzDiskSchedulerExtenderPodSchedulingWithPVTest will provision required PV(s), PVC(s) and Pod(s)
 // Pod with PV should successfully be scheduled in a cluster with AzDriverNode and AzVolumeAttachment resources
 type AzDiskSchedulerExtenderPodSchedulingWithPVTest struct {
 	CSIDriver              driver.DynamicPVTestDriver
-	Pod                    PodDetails
+	Pod                    testtypes.PodDetails
 	StorageClassParameters map[string]string
 }
 
 func (t *AzDiskSchedulerExtenderPodSchedulingWithPVTest) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
-	tpod := NewTestPod(client, namespace, t.Pod.Cmd, schedulerName, t.Pod.IsWindows)
+	tpod := testtypes.NewTestPod(client, namespace, t.Pod.Cmd, schedulerName, t.Pod.IsWindows)
 	volume := t.Pod.Volumes[0]
 	tpvc, pvcCleanup := volume.SetupDynamicPersistentVolumeClaim(client, namespace, t.CSIDriver, t.StorageClassParameters)
 	for i := range pvcCleanup {
@@ -40,10 +42,10 @@ func (t *AzDiskSchedulerExtenderPodSchedulingWithPVTest) Run(client clientset.In
 		defer pvcCleanup[i]()
 	}
 	volumeName := volume.VolumeMount.NameGenerate + "1"
-	tpod.SetupVolume(tpvc.persistentVolumeClaim, volumeName, volume.VolumeMount.MountPathGenerate+"1", volume.VolumeMount.ReadOnly)
+	tpod.SetupVolume(tpvc.PersistentVolumeClaim, volumeName, volume.VolumeMount.MountPathGenerate+"1", volume.VolumeMount.ReadOnly)
 
 	// Get the list of available nodes for scheduling the pod
-	nodeNames := ListNodeNames(client)
+	nodeNames := nodeutil.ListNodeNames(client)
 	if len(nodeNames) < 1 {
 		ginkgo.Skip("need at least 1 nodes to verify the test case. Current node count is %d", len(nodeNames))
 	}

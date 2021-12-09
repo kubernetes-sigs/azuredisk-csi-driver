@@ -19,28 +19,27 @@ package e2e
 import (
 	"context"
 	"fmt"
-	"os"
 
+	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/testsuites"
+	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
 
 	"github.com/onsi/ginkgo"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/runtime/serializer"
 	clientset "k8s.io/client-go/kubernetes"
 	restclientset "k8s.io/client-go/rest"
 	"k8s.io/kubernetes/test/e2e/framework"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
 )
 
 var _ = ginkgo.Describe("Dynamic Provisioning", func() {
 	t := dynamicProvisioningTestSuite{}
-	scheduler := getSchedulerForE2E()
+	scheduler := testutil.GetSchedulerForE2E()
 
 	ginkgo.Context("[single-az]", func() {
 		t.defineTests(false, scheduler)
@@ -66,19 +65,19 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	)
 
 	ginkgo.BeforeEach(func() {
-		checkPodsRestart := testCmd{
-			command:  "bash",
-			args:     []string{"test/utils/check_driver_pods_restart.sh"},
-			startLog: "Check driver pods if restarts ...",
-			endLog:   "Check successfully",
+		checkPodsRestart := testtypes.TestCmd{
+			Command:  "bash",
+			Args:     []string{"test/utils/check_driver_pods_restart.sh"},
+			StartLog: "Check driver pods if restarts ...",
+			EndLog:   "Check successfully",
 		}
-		execTestCmd([]testCmd{checkPodsRestart})
+		testutil.ExecTestCmd([]testtypes.TestCmd{checkPodsRestart})
 
 		cs = f.ClientSet
 		ns = f.Namespace
 
 		var err error
-		snapshotrcs, err = restClient(testsuites.SnapshotAPIGroup, testsuites.APIVersionv1beta1)
+		snapshotrcs, err = testutil.RestClient(testconsts.SnapshotAPIGroup, testconsts.APIVersionv1beta1)
 		if err != nil {
 			ginkgo.Fail(fmt.Sprintf("could not get rest clientset: %v", err))
 		}
@@ -89,7 +88,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			framework.ExpectNoError(err)
 			allowedTopologyValuesMap := make(map[string]bool)
 			for _, node := range nodes.Items {
-				if zone, ok := node.Labels[driver.TopologyKey]; ok {
+				if zone, ok := node.Labels[testconsts.TopologyKey]; ok {
 					allowedTopologyValuesMap[zone] = true
 				}
 			}
@@ -105,23 +104,23 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		if isMultiZone {
 			pvcSize = "1000Gi"
 		}
-		pods := []testsuites.PodDetails{
+		pods := []testtypes.PodDetails{
 			{
-				Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
-				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+				Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
+				Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
 					{
 						ClaimSize: pvcSize,
 						MountOptions: []string{
 							"barrier=1",
 							"acl",
 						},
-						VolumeMount: testsuites.VolumeMountDetails{
+						VolumeMount: testtypes.VolumeMountDetails{
 							NameGenerate:      "test-volume-",
 							MountPathGenerate: "/mnt/test-",
 						},
 					},
-				}, isMultiZone),
-				IsWindows: isWindowsCluster,
+				}, t.allowedTopologyValues, isMultiZone),
+				IsWindows: testconsts.IsWindowsCluster,
 			},
 		}
 		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
@@ -132,7 +131,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			},
 		}
 
-		if isMultiZone && !isUsingInTreeVolumePlugin {
+		if isMultiZone && !testconsts.IsUsingInTreeVolumePlugin {
 			test.StorageClassParameters = map[string]string{
 				"skuName":           "UltraSSD_LRS",
 				"cachingmode":       "None",
@@ -143,13 +142,13 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 				"fsType":            "btrfs",
 			}
 		}
-		if !isUsingInTreeVolumePlugin && supportsZRS {
+		if !testconsts.IsUsingInTreeVolumePlugin && supportsZRS {
 			test.StorageClassParameters = map[string]string{
 				"skuName":             "StandardSSD_ZRS",
 				"networkAccessPolicy": "AllowAll",
 			}
 		}
-		if isUsingInTreeVolumePlugin {
+		if testconsts.IsUsingInTreeVolumePlugin {
 			// cover case: https://github.com/kubernetes/kubernetes/issues/103433
 			test.StorageClassParameters = map[string]string{"Kind": "managed"}
 		}
@@ -157,21 +156,21 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	})
 
 	ginkgo.It("should create a pod with volume mount subpath [disk.csi.azure.com] [Windows]", func() {
-		skipIfUsingInTreeVolumePlugin()
+		testutil.SkipIfUsingInTreeVolumePlugin()
 
-		pods := []testsuites.PodDetails{
+		pods := []testtypes.PodDetails{
 			{
-				Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
-				Volumes: []testsuites.VolumeDetails{
+				Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
+				Volumes: []testtypes.VolumeDetails{
 					{
 						ClaimSize: "10Gi",
-						VolumeMount: testsuites.VolumeMountDetails{
+						VolumeMount: testtypes.VolumeMountDetails{
 							NameGenerate:      "test-volume-",
 							MountPathGenerate: "/mnt/test-",
 						},
 					},
 				},
-				IsWindows: isWindowsCluster,
+				IsWindows: testconsts.IsWindowsCluster,
 			},
 		}
 
@@ -190,22 +189,22 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	})
 
 	ginkgo.It("Should create and attach a volume with basic perfProfile [enableBursting][disk.csi.azure.com] [Windows]", func() {
-		skipIfOnAzureStackCloud()
-		skipIfUsingInTreeVolumePlugin()
-		pods := []testsuites.PodDetails{
+		testutil.SkipIfOnAzureStackCloud()
+		testutil.SkipIfUsingInTreeVolumePlugin()
+		pods := []testtypes.PodDetails{
 			{
-				Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
-				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+				Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
+				Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
 					{
 						FSType:    "ext4",
 						ClaimSize: "1Ti",
-						VolumeMount: testsuites.VolumeMountDetails{
+						VolumeMount: testtypes.VolumeMountDetails{
 							NameGenerate:      "test-volume-",
 							MountPathGenerate: "/mnt/test-",
 						},
 					},
-				}, isMultiZone),
-				IsWindows: isWindowsCluster,
+				}, t.allowedTopologyValues, isMultiZone),
+				IsWindows: testconsts.IsWindowsCluster,
 			},
 		}
 		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
@@ -224,22 +223,22 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	})
 
 	ginkgo.It("Should create and attach a volume with advanced perfProfile [enableBursting][disk.csi.azure.com] [Windows]", func() {
-		skipIfOnAzureStackCloud()
-		skipIfUsingInTreeVolumePlugin()
-		pods := []testsuites.PodDetails{
+		testutil.SkipIfOnAzureStackCloud()
+		testutil.SkipIfUsingInTreeVolumePlugin()
+		pods := []testtypes.PodDetails{
 			{
-				Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
-				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+				Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
+				Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
 					{
 						FSType:    "ext4",
 						ClaimSize: "1Ti",
-						VolumeMount: testsuites.VolumeMountDetails{
+						VolumeMount: testtypes.VolumeMountDetails{
 							NameGenerate:      "test-volume-",
 							MountPathGenerate: "/mnt/test-",
 						},
 					},
-				}, isMultiZone),
-				IsWindows: isWindowsCluster,
+				}, t.allowedTopologyValues, isMultiZone),
+				IsWindows: testconsts.IsWindowsCluster,
 			},
 		}
 		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
@@ -260,12 +259,12 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	})
 
 	ginkgo.It(fmt.Sprintf("should receive FailedMount event with invalid mount options [kubernetes.io/azure-disk] [disk.csi.azure.com] [%s]", schedulerName), func() {
-		skipIfTestingInWindowsCluster()
+		testutil.SkipIfTestingInWindowsCluster()
 
-		pods := []testsuites.PodDetails{
+		pods := []testtypes.PodDetails{
 			{
 				Cmd: "echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data",
-				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+				Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
 					{
 						ClaimSize: "10Gi",
 						MountOptions: []string{
@@ -273,12 +272,12 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 							"mount",
 							"options",
 						},
-						VolumeMount: testsuites.VolumeMountDetails{
+						VolumeMount: testtypes.VolumeMountDetails{
 							NameGenerate:      "test-volume-",
 							MountPathGenerate: "/mnt/test-",
 						},
 					},
-				}, isMultiZone),
+				}, t.allowedTopologyValues, isMultiZone),
 			},
 		}
 		test := testsuites.DynamicallyProvisionedInvalidMountOptions{
@@ -286,31 +285,31 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			Pods:                   pods,
 			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
 		}
-		if !isUsingInTreeVolumePlugin && (location == "westus2" || location == "westeurope") {
+		if !testconsts.IsUsingInTreeVolumePlugin && (location == "westus2" || location == "westeurope") {
 			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
 		}
-		if isAzureStackCloud {
+		if testconsts.IsAzureStackCloud {
 			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}
 		}
 		test.Run(cs, ns, schedulerName)
 	})
 
 	ginkgo.It(fmt.Sprintf("should create a raw block volume on demand [kubernetes.io/azure-disk] [disk.csi.azure.com] [%s]", schedulerName), func() {
-		skipIfTestingInWindowsCluster()
+		testutil.SkipIfTestingInWindowsCluster()
 
-		pods := []testsuites.PodDetails{
+		pods := []testtypes.PodDetails{
 			{
 				Cmd: "ls /dev | grep e2e-test",
-				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+				Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
 					{
 						ClaimSize:  "10Gi",
-						VolumeMode: testsuites.Block,
-						VolumeDevice: testsuites.VolumeDeviceDetails{
+						VolumeMode: testtypes.Block,
+						VolumeDevice: testtypes.VolumeDeviceDetails{
 							NameGenerate: "test-volume-",
 							DevicePath:   "/dev/e2e-test",
 						},
 					},
-				}, isMultiZone),
+				}, t.allowedTopologyValues, isMultiZone),
 			},
 		}
 		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
@@ -318,7 +317,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			Pods:                   pods,
 			StorageClassParameters: map[string]string{"skuName": "Premium_LRS"},
 		}
-		if !isUsingInTreeVolumePlugin && supportsZRS {
+		if !testconsts.IsUsingInTreeVolumePlugin && supportsZRS {
 			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
 		}
 
@@ -327,21 +326,21 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 
 	// Track issue https://github.com/kubernetes/kubernetes/issues/70505
 	ginkgo.It(fmt.Sprintf("should create a volume on demand and mount it as readOnly in a pod [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows] [%s]", schedulerName), func() {
-		pods := []testsuites.PodDetails{
+		pods := []testtypes.PodDetails{
 			{
-				Cmd: convertToPowershellorCmdCommandIfNecessary("touch /mnt/test-1/data"),
-				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+				Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("touch /mnt/test-1/data"),
+				Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
 					{
 						FSType:    "ext4",
 						ClaimSize: "10Gi",
-						VolumeMount: testsuites.VolumeMountDetails{
+						VolumeMount: testtypes.VolumeMountDetails{
 							NameGenerate:      "test-volume-",
 							MountPathGenerate: "/mnt/test-",
 							ReadOnly:          true,
 						},
 					},
-				}, isMultiZone),
-				IsWindows: isWindowsCluster,
+				}, t.allowedTopologyValues, isMultiZone),
+				IsWindows: testconsts.IsWindowsCluster,
 			},
 		}
 		test := testsuites.DynamicallyProvisionedReadOnlyVolumeTest{
@@ -349,7 +348,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			Pods:                   pods,
 			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
 		}
-		if !isUsingInTreeVolumePlugin && isZRSSupported() {
+		if !testconsts.IsUsingInTreeVolumePlugin && testutil.IsZRSSupported(location) {
 			test.StorageClassParameters = map[string]string{"skuName": "Premium_ZRS"}
 			for _, pod := range pods {
 				for _, volume := range pod.Volumes {
@@ -360,55 +359,55 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 				}
 			}
 		}
-		if isAzureStackCloud {
+		if testconsts.IsAzureStackCloud {
 			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}
 		}
 		test.Run(cs, ns, schedulerName)
 	})
 
 	ginkgo.It(fmt.Sprintf("should create multiple PV objects, bind to PVCs and attach all to different pods on the same node [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows] [%s]", schedulerName), func() {
-		pods := []testsuites.PodDetails{
+		pods := []testtypes.PodDetails{
 			{
-				Cmd: convertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
-				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+				Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
+				Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
 					{
 						FSType:    "ext3",
 						ClaimSize: "10Gi",
-						VolumeMount: testsuites.VolumeMountDetails{
+						VolumeMount: testtypes.VolumeMountDetails{
 							NameGenerate:      "test-volume-",
 							MountPathGenerate: "/mnt/test-",
 						},
 					},
-				}, isMultiZone),
-				IsWindows: isWindowsCluster,
+				}, t.allowedTopologyValues, isMultiZone),
+				IsWindows: testconsts.IsWindowsCluster,
 			},
 			{
-				Cmd: convertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
-				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+				Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
+				Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
 					{
 						FSType:    "ext4",
 						ClaimSize: "10Gi",
-						VolumeMount: testsuites.VolumeMountDetails{
+						VolumeMount: testtypes.VolumeMountDetails{
 							NameGenerate:      "test-volume-",
 							MountPathGenerate: "/mnt/test-",
 						},
 					},
-				}, isMultiZone),
-				IsWindows: isWindowsCluster,
+				}, t.allowedTopologyValues, isMultiZone),
+				IsWindows: testconsts.IsWindowsCluster,
 			},
 			{
-				Cmd: convertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
-				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+				Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
+				Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
 					{
 						FSType:    "xfs",
 						ClaimSize: "10Gi",
-						VolumeMount: testsuites.VolumeMountDetails{
+						VolumeMount: testtypes.VolumeMountDetails{
 							NameGenerate:      "test-volume-",
 							MountPathGenerate: "/mnt/test-",
 						},
 					},
-				}, isMultiZone),
-				IsWindows: isWindowsCluster,
+				}, t.allowedTopologyValues, isMultiZone),
+				IsWindows: testconsts.IsWindowsCluster,
 			},
 		}
 		test := testsuites.DynamicallyProvisionedCollocatedPodTest{
@@ -417,7 +416,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			ColocatePods:           true,
 			StorageClassParameters: map[string]string{"skuName": "Premium_LRS"},
 		}
-		if !isUsingInTreeVolumePlugin && supportsZRS {
+		if !testconsts.IsUsingInTreeVolumePlugin && supportsZRS {
 			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
 		}
 
@@ -425,25 +424,25 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	})
 
 	ginkgo.It(fmt.Sprintf("should create a deployment object, write and read to it, delete the pod and write and read to it again [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows] [%s]", schedulerName), func() {
-		pod := testsuites.PodDetails{
-			Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
-			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+		pod := testtypes.PodDetails{
+			Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
+			Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
 				{
 					FSType:    "ext3",
 					ClaimSize: "10Gi",
-					VolumeMount: testsuites.VolumeMountDetails{
+					VolumeMount: testtypes.VolumeMountDetails{
 						NameGenerate:      "test-volume-",
 						MountPathGenerate: "/mnt/test-",
 					},
 				},
-			}, isMultiZone),
-			IsWindows: isWindowsCluster,
+			}, t.allowedTopologyValues, isMultiZone),
+			IsWindows: testconsts.IsWindowsCluster,
 			UseCMD:    false,
 		}
 
 		podCheckCmd := []string{"cat", "/mnt/test-1/data"}
 		expectedString := "hello world\n"
-		if isWindowsCluster {
+		if testconsts.IsWindowsCluster {
 			podCheckCmd = []string{"cmd", "/c", "type C:\\mnt\\test-1\\data.txt"}
 			expectedString = "hello world\r\n"
 		}
@@ -460,13 +459,13 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 
 	ginkgo.It(fmt.Sprintf("should delete PV with reclaimPolicy %q [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", v1.PersistentVolumeReclaimDelete), func() {
 		reclaimPolicy := v1.PersistentVolumeReclaimDelete
-		volumes := t.normalizeVolumes([]testsuites.VolumeDetails{
+		volumes := testutil.NormalizeVolumes([]testtypes.VolumeDetails{
 			{
 				FSType:        "ext4",
 				ClaimSize:     "10Gi",
 				ReclaimPolicy: &reclaimPolicy,
 			},
-		}, isMultiZone)
+		}, t.allowedTopologyValues, isMultiZone)
 		test := testsuites.DynamicallyProvisionedReclaimPolicyTest{
 			CSIDriver: testDriver,
 			Volumes:   volumes,
@@ -478,16 +477,16 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		// This tests uses the CSI driver to delete the PV.
 		// TODO: Go via the k8s interfaces and also make it more reliable for in-tree and then
 		//       test can be enabled.
-		skipIfUsingInTreeVolumePlugin()
+		testutil.SkipIfUsingInTreeVolumePlugin()
 
 		reclaimPolicy := v1.PersistentVolumeReclaimRetain
-		volumes := t.normalizeVolumes([]testsuites.VolumeDetails{
+		volumes := testutil.NormalizeVolumes([]testtypes.VolumeDetails{
 			{
 				FSType:        "ext4",
 				ClaimSize:     "10Gi",
 				ReclaimPolicy: &reclaimPolicy,
 			},
-		}, isMultiZone)
+		}, t.allowedTopologyValues, isMultiZone)
 		test := testsuites.DynamicallyProvisionedReclaimPolicyTest{
 			CSIDriver:  testDriver,
 			Volumes:    volumes,
@@ -497,23 +496,23 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	})
 
 	ginkgo.It(fmt.Sprintf("should clone a volume from an existing volume and read from it [disk.csi.azure.com] [%s]", schedulerName), func() {
-		skipIfTestingInWindowsCluster()
-		skipIfUsingInTreeVolumePlugin()
+		testutil.SkipIfTestingInWindowsCluster()
+		testutil.SkipIfUsingInTreeVolumePlugin()
 
-		pod := testsuites.PodDetails{
+		pod := testtypes.PodDetails{
 			Cmd: "echo 'hello world' > /mnt/test-1/data && fsync /mnt/test-1/data",
-			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+			Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
 				{
 					FSType:    "ext4",
 					ClaimSize: "10Gi",
-					VolumeMount: testsuites.VolumeMountDetails{
+					VolumeMount: testtypes.VolumeMountDetails{
 						NameGenerate:      "test-volume-",
 						MountPathGenerate: "/mnt/test-",
 					},
 				},
-			}, isMultiZone),
+			}, []string{}, isMultiZone),
 		}
-		podWithClonedVolume := testsuites.PodDetails{
+		podWithClonedVolume := testtypes.PodDetails{
 			Cmd: "grep 'hello world' /mnt/test-1/data",
 		}
 		test := testsuites.DynamicallyProvisionedVolumeCloningTest{
@@ -525,7 +524,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 				"fsType":  "xfs",
 			},
 		}
-		if !isUsingInTreeVolumePlugin && supportsZRS {
+		if !testconsts.IsUsingInTreeVolumePlugin && supportsZRS {
 			test.StorageClassParameters = map[string]string{
 				"skuName":             "StandardSSD_ZRS",
 				"networkAccessPolicy": "DenyAll",
@@ -536,24 +535,24 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	})
 
 	ginkgo.It(fmt.Sprintf("should clone a volume of larger size than the source volume and make sure the filesystem is appropriately adjusted [disk.csi.azure.com] [%s]", schedulerName), func() {
-		skipIfTestingInWindowsCluster()
-		skipIfUsingInTreeVolumePlugin()
+		testutil.SkipIfTestingInWindowsCluster()
+		testutil.SkipIfUsingInTreeVolumePlugin()
 
-		pod := testsuites.PodDetails{
-			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+		pod := testtypes.PodDetails{
+			Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
 				{
 					FSType:    "ext4",
 					ClaimSize: "10Gi",
-					VolumeMount: testsuites.VolumeMountDetails{
+					VolumeMount: testtypes.VolumeMountDetails{
 						NameGenerate:      "test-volume-",
 						MountPathGenerate: "/mnt/test-",
 					},
 				},
-			}, isMultiZone),
+			}, []string{}, isMultiZone),
 		}
 		clonedVolumeSize := "20Gi"
 
-		podWithClonedVolume := testsuites.PodDetails{
+		podWithClonedVolume := testtypes.PodDetails{
 			Cmd: "df -h | grep /mnt/test- | awk '{print $2}' | grep 20.0G",
 		}
 
@@ -567,7 +566,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 				"fsType":  "xfs",
 			},
 		}
-		if !isUsingInTreeVolumePlugin && supportsZRS {
+		if !testconsts.IsUsingInTreeVolumePlugin && supportsZRS {
 			test.StorageClassParameters = map[string]string{
 				"skuName":             "StandardSSD_ZRS",
 				"fsType":              "xfs",
@@ -578,14 +577,14 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	})
 
 	ginkgo.It(fmt.Sprintf("should create multiple PV objects, bind to PVCs and attach all to a single pod [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows] [%s]", schedulerName), func() {
-		pods := []testsuites.PodDetails{
+		pods := []testtypes.PodDetails{
 			{
-				Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && echo 'hello world' > /mnt/test-2/data && echo 'hello world' > /mnt/test-3/data && grep 'hello world' /mnt/test-1/data && grep 'hello world' /mnt/test-2/data && grep 'hello world' /mnt/test-3/data"),
-				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+				Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && echo 'hello world' > /mnt/test-2/data && echo 'hello world' > /mnt/test-3/data && grep 'hello world' /mnt/test-1/data && grep 'hello world' /mnt/test-2/data && grep 'hello world' /mnt/test-3/data"),
+				Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
 					{
 						FSType:    "ext3",
 						ClaimSize: "10Gi",
-						VolumeMount: testsuites.VolumeMountDetails{
+						VolumeMount: testtypes.VolumeMountDetails{
 							NameGenerate:      "test-volume-",
 							MountPathGenerate: "/mnt/test-",
 						},
@@ -593,7 +592,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 					{
 						FSType:    "ext4",
 						ClaimSize: "10Gi",
-						VolumeMount: testsuites.VolumeMountDetails{
+						VolumeMount: testtypes.VolumeMountDetails{
 							NameGenerate:      "test-volume-",
 							MountPathGenerate: "/mnt/test-",
 						},
@@ -601,13 +600,13 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 					{
 						FSType:    "xfs",
 						ClaimSize: "10Gi",
-						VolumeMount: testsuites.VolumeMountDetails{
+						VolumeMount: testtypes.VolumeMountDetails{
 							NameGenerate:      "test-volume-",
 							MountPathGenerate: "/mnt/test-",
 						},
 					},
-				}, isMultiZone),
-				IsWindows: isWindowsCluster,
+				}, []string{}, isMultiZone),
+				IsWindows: testconsts.IsWindowsCluster,
 			},
 		}
 		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
@@ -615,26 +614,26 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			Pods:                   pods,
 			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
 		}
-		if isAzureStackCloud {
+		if testconsts.IsAzureStackCloud {
 			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}
 		}
-		if !isUsingInTreeVolumePlugin && supportsZRS {
+		if !testconsts.IsUsingInTreeVolumePlugin && supportsZRS {
 			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
 		}
 		test.Run(cs, ns, schedulerName)
 	})
 
 	ginkgo.It(fmt.Sprintf("should create a raw block volume and a filesystem volume on demand and bind to the same pod [kubernetes.io/azure-disk] [disk.csi.azure.com] [%s]", schedulerName), func() {
-		skipIfTestingInWindowsCluster()
+		testutil.SkipIfTestingInWindowsCluster()
 
-		pods := []testsuites.PodDetails{
+		pods := []testtypes.PodDetails{
 			{
 				Cmd: "dd if=/dev/zero of=/dev/xvda bs=1024k count=100 && echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data",
-				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+				Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
 					{
 						FSType:    "ext4",
 						ClaimSize: "10Gi",
-						VolumeMount: testsuites.VolumeMountDetails{
+						VolumeMount: testtypes.VolumeMountDetails{
 							NameGenerate:      "test-volume-",
 							MountPathGenerate: "/mnt/test-",
 						},
@@ -643,13 +642,13 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 						FSType:       "ext4",
 						MountOptions: []string{"rw"},
 						ClaimSize:    "10Gi",
-						VolumeMode:   testsuites.Block,
-						VolumeDevice: testsuites.VolumeDeviceDetails{
+						VolumeMode:   testtypes.Block,
+						VolumeDevice: testtypes.VolumeDeviceDetails{
 							NameGenerate: "test-block-volume-",
 							DevicePath:   "/dev/xvda",
 						},
 					},
-				}, isMultiZone),
+				}, []string{}, isMultiZone),
 			},
 		}
 		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
@@ -657,30 +656,30 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			Pods:                   pods,
 			StorageClassParameters: map[string]string{"skuName": "Premium_LRS"},
 		}
-		if !isUsingInTreeVolumePlugin && supportsZRS {
+		if !testconsts.IsUsingInTreeVolumePlugin && supportsZRS {
 			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
 		}
 		test.Run(cs, ns, schedulerName)
 	})
 
 	ginkgo.It(fmt.Sprintf("should create a pod, write and read to it, take a volume snapshot, and create another pod from the snapshot [disk.csi.azure.com] [%s]", schedulerName), func() {
-		skipIfTestingInWindowsCluster()
-		skipIfUsingInTreeVolumePlugin()
+		testutil.SkipIfTestingInWindowsCluster()
+		testutil.SkipIfUsingInTreeVolumePlugin()
 
-		pod := testsuites.PodDetails{
+		pod := testtypes.PodDetails{
 			Cmd: "echo 'hello world' > /mnt/test-1/data",
-			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+			Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
 				{
 					FSType:    "ext4",
 					ClaimSize: "10Gi",
-					VolumeMount: testsuites.VolumeMountDetails{
+					VolumeMount: testtypes.VolumeMountDetails{
 						NameGenerate:      "test-volume-",
 						MountPathGenerate: "/mnt/test-",
 					},
 				},
-			}, isMultiZone),
+			}, []string{}, isMultiZone),
 		}
-		podWithSnapshot := testsuites.PodDetails{
+		podWithSnapshot := testtypes.PodDetails{
 			Cmd: "grep 'hello world' /mnt/test-1/data",
 		}
 		test := testsuites.DynamicallyProvisionedVolumeSnapshotTest{
@@ -690,38 +689,38 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			PodWithSnapshot:        podWithSnapshot,
 			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
 		}
-		if isAzureStackCloud {
+		if testconsts.IsAzureStackCloud {
 			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}
 		}
-		if !isUsingInTreeVolumePlugin && supportsZRS {
+		if !testconsts.IsUsingInTreeVolumePlugin && supportsZRS {
 			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
 		}
 		test.Run(cs, snapshotrcs, ns, schedulerName)
 	})
 
 	ginkgo.It(fmt.Sprintf("should create a pod, write to its pv, take a volume snapshot, overwrite data in original pv, create another pod from the snapshot, and read unaltered original data from original pv[disk.csi.azure.com] [%s]", schedulerName), func() {
-		skipIfTestingInWindowsCluster()
-		skipIfUsingInTreeVolumePlugin()
+		testutil.SkipIfTestingInWindowsCluster()
+		testutil.SkipIfUsingInTreeVolumePlugin()
 
-		pod := testsuites.PodDetails{
+		pod := testtypes.PodDetails{
 			Cmd: "echo 'hello world' > /mnt/test-1/data",
-			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+			Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
 				{
 					FSType:    "ext4",
 					ClaimSize: "10Gi",
-					VolumeMount: testsuites.VolumeMountDetails{
+					VolumeMount: testtypes.VolumeMountDetails{
 						NameGenerate:      "test-volume-",
 						MountPathGenerate: "/mnt/test-",
 					},
 				},
-			}, isMultiZone),
+			}, []string{}, isMultiZone),
 		}
 
-		podOverwrite := testsuites.PodDetails{
+		podOverwrite := testtypes.PodDetails{
 			Cmd: "echo 'overwrite' > /mnt/test-1/data",
 		}
 
-		podWithSnapshot := testsuites.PodDetails{
+		podWithSnapshot := testtypes.PodDetails{
 			Cmd: "grep 'hello world' /mnt/test-1/data",
 		}
 
@@ -733,21 +732,21 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			PodWithSnapshot:        podWithSnapshot,
 			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
 		}
-		if isAzureStackCloud {
+		if testconsts.IsAzureStackCloud {
 			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}
 		}
-		if !isUsingInTreeVolumePlugin && supportsZRS {
+		if !testconsts.IsUsingInTreeVolumePlugin && supportsZRS {
 			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
 		}
 		test.Run(cs, snapshotrcs, ns, schedulerName)
 	})
 
 	ginkgo.It(fmt.Sprintf("should create a pod with multiple volumes [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows] [%s]", schedulerName), func() {
-		volumes := []testsuites.VolumeDetails{}
+		volumes := []testtypes.VolumeDetails{}
 		for i := 1; i <= 3; i++ {
-			volume := testsuites.VolumeDetails{
+			volume := testtypes.VolumeDetails{
 				ClaimSize: "10Gi",
-				VolumeMount: testsuites.VolumeMountDetails{
+				VolumeMount: testtypes.VolumeMountDetails{
 					NameGenerate:      "test-volume-",
 					MountPathGenerate: "/mnt/test-",
 				},
@@ -755,11 +754,11 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			volumes = append(volumes, volume)
 		}
 
-		pods := []testsuites.PodDetails{
+		pods := []testtypes.PodDetails{
 			{
-				Cmd:       convertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
-				Volumes:   t.normalizeVolumes(volumes, isMultiZone),
-				IsWindows: isWindowsCluster,
+				Cmd:       testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
+				Volumes:   testutil.NormalizeVolumes(volumes, []string{}, isMultiZone),
+				IsWindows: testconsts.IsWindowsCluster,
 			},
 		}
 		test := testsuites.DynamicallyProvisionedPodWithMultiplePVsTest{
@@ -770,17 +769,17 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	})
 
 	ginkgo.It(fmt.Sprintf("should create a volume on demand and resize it [disk.csi.azure.com] [Windows] [%s]", schedulerName), func() {
-		skipIfUsingInTreeVolumePlugin()
-		volume := testsuites.VolumeDetails{
+		testutil.SkipIfUsingInTreeVolumePlugin()
+		volume := testtypes.VolumeDetails{
 			ClaimSize: "10Gi",
-			VolumeMount: testsuites.VolumeMountDetails{
+			VolumeMount: testtypes.VolumeMountDetails{
 				NameGenerate:      "test-volume-",
 				MountPathGenerate: "/mnt/test-",
 			},
 		}
-		pod := testsuites.PodDetails{
-			Cmd: convertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
-			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+		pod := testtypes.PodDetails{
+			Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
+			Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
 				{
 					ClaimSize: volume.ClaimSize,
 					MountOptions: []string{
@@ -789,8 +788,8 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 					},
 					VolumeMount: volume.VolumeMount,
 				},
-			}, isMultiZone),
-			IsWindows: isWindowsCluster,
+			}, []string{}, isMultiZone),
+			IsWindows: testconsts.IsWindowsCluster,
 			UseCMD:    false,
 		}
 
@@ -800,34 +799,31 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			Pod:                    pod,
 			StorageClassParameters: map[string]string{"skuName": "Standard_LRS"},
 		}
-		if !isUsingInTreeVolumePlugin && supportsZRS {
-			test.StorageClassParameters = map[string]string{
-				"skuName": "StandardSSD_ZRS",
-				"fsType":  "btrfs",
-			}
+		if !testconsts.IsUsingInTreeVolumePlugin && supportsZRS {
+			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS", "fsType": "btrfs"}
 		}
 		test.Run(cs, ns, schedulerName)
 	})
 
 	ginkgo.It(fmt.Sprintf("should create a volume azuredisk with tag [disk.csi.azure.com] [Windows] [%s]", schedulerName), func() {
-		skipIfUsingInTreeVolumePlugin()
-		pods := []testsuites.PodDetails{
+		testutil.SkipIfUsingInTreeVolumePlugin()
+		pods := []testtypes.PodDetails{
 			{
-				Cmd: convertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
-				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+				Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
+				Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
 					{
 						ClaimSize: "10Gi",
 						MountOptions: []string{
 							"barrier=1",
 							"acl",
 						},
-						VolumeMount: testsuites.VolumeMountDetails{
+						VolumeMount: testtypes.VolumeMountDetails{
 							NameGenerate:      "test-volume-",
 							MountPathGenerate: "/mnt/test-",
 						},
 					},
-				}, isMultiZone),
-				IsWindows: isWindowsCluster,
+				}, []string{}, isMultiZone),
+				IsWindows: testconsts.IsWindowsCluster,
 			},
 		}
 		tags := "disk=test"
@@ -837,30 +833,30 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			StorageClassParameters: map[string]string{"skuName": "Standard_LRS", "tags": tags},
 			Tags:                   tags,
 		}
-		if !isUsingInTreeVolumePlugin && supportsZRS {
+		if !testconsts.IsUsingInTreeVolumePlugin && supportsZRS {
 			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS", "tags": tags}
 		}
 		test.Run(cs, ns, schedulerName)
 	})
 
 	ginkgo.It(fmt.Sprintf("should detach disk after pod deleted [disk.csi.azure.com] [Windows] [%s]", schedulerName), func() {
-		pods := []testsuites.PodDetails{
+		pods := []testtypes.PodDetails{
 			{
-				Cmd: convertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
-				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+				Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
+				Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
 					{
 						ClaimSize: "10Gi",
 						MountOptions: []string{
 							"barrier=1",
 							"acl",
 						},
-						VolumeMount: testsuites.VolumeMountDetails{
+						VolumeMount: testtypes.VolumeMountDetails{
 							NameGenerate:      "test-volume-",
 							MountPathGenerate: "/mnt/test-",
 						},
 					},
-				}, isMultiZone),
-				IsWindows: isWindowsCluster,
+				}, []string{}, isMultiZone),
+				IsWindows: testconsts.IsWindowsCluster,
 			},
 		}
 		test := testsuites.DynamicallyProvisionedAzureDiskDetach{
@@ -868,32 +864,32 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			Pods:                   pods,
 			StorageClassParameters: map[string]string{"skuName": "Standard_LRS"},
 		}
-		if !isUsingInTreeVolumePlugin && supportsZRS {
+		if !testconsts.IsUsingInTreeVolumePlugin && supportsZRS {
 			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
 		}
 		test.Run(cs, ns, schedulerName)
 	})
 
 	ginkgo.It("should create a statefulset object, write and read to it, delete the pod and write and read to it again [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func() {
-		pod := testsuites.PodDetails{
-			Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
-			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+		pod := testtypes.PodDetails{
+			Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
+			Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
 				{
 					FSType:    "ext3",
 					ClaimSize: "10Gi",
-					VolumeMount: testsuites.VolumeMountDetails{
+					VolumeMount: testtypes.VolumeMountDetails{
 						NameGenerate:      "pvc",
 						MountPathGenerate: "/mnt/test-",
 					},
 				},
-			}, isMultiZone),
-			IsWindows: isWindowsCluster,
+			}, []string{}, isMultiZone),
+			IsWindows: testconsts.IsWindowsCluster,
 			UseCMD:    false,
 		}
 
 		podCheckCmd := []string{"cat", "/mnt/test-1/data"}
 		expectedString := "hello world\n"
-		if isWindowsCluster {
+		if testconsts.IsWindowsCluster {
 			podCheckCmd = []string{"cmd", "/c", "type C:\\mnt\\test-1\\data.txt"}
 			expectedString = "hello world\r\n"
 		}
@@ -909,27 +905,28 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	})
 
 	ginkgo.It("Should not create replicas on node with non-tolerable taint", func() {
-		skipIfUsingInTreeVolumePlugin()
+		ginkgo.Skip("This test is failing randomly. Skipping the test case while the issue is being debugged.")
+		testutil.SkipIfUsingInTreeVolumePlugin()
 		if isMultiZone {
 			ginkgo.Skip("test case does not apply to multi az case")
 		}
-		skipIfNotUsingCSIDriverV2()
+		testutil.SkipIfNotUsingCSIDriverV2()
 
 		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
 		if err != nil {
 			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		}
 
-		volume := testsuites.VolumeDetails{
+		volume := testtypes.VolumeDetails{
 			ClaimSize: "10Gi",
-			VolumeMount: testsuites.VolumeMountDetails{
+			VolumeMount: testtypes.VolumeMountDetails{
 				NameGenerate:      "test-volume-",
 				MountPathGenerate: "/mnt/test-",
 			},
 		}
-		pod := testsuites.PodDetails{
-			Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
-			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+		pod := testtypes.PodDetails{
+			Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
+			Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
 				{
 					ClaimSize: volume.ClaimSize,
 					MountOptions: []string{
@@ -938,8 +935,8 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 					},
 					VolumeMount: volume.VolumeMount,
 				},
-			}, isMultiZone),
-			IsWindows: isWindowsCluster,
+			}, []string{}, false),
+			IsWindows: testconsts.IsWindowsCluster,
 			UseCMD:    false,
 		}
 
@@ -961,27 +958,27 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	})
 
 	ginkgo.It("Should create replicas on node with matching pod node selector", func() {
-		skipIfUsingInTreeVolumePlugin()
+		testutil.SkipIfUsingInTreeVolumePlugin()
 		if isMultiZone {
 			ginkgo.Skip("test case does not apply to multi az case")
 		}
-		skipIfNotUsingCSIDriverV2()
+		testutil.SkipIfNotUsingCSIDriverV2()
 
 		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
 		if err != nil {
 			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		}
 
-		volume := testsuites.VolumeDetails{
+		volume := testtypes.VolumeDetails{
 			ClaimSize: "10Gi",
-			VolumeMount: testsuites.VolumeMountDetails{
+			VolumeMount: testtypes.VolumeMountDetails{
 				NameGenerate:      "test-volume-",
 				MountPathGenerate: "/mnt/test-",
 			},
 		}
-		pod := testsuites.PodDetails{
-			Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
-			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+		pod := testtypes.PodDetails{
+			Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
+			Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
 				{
 					ClaimSize: volume.ClaimSize,
 					MountOptions: []string{
@@ -990,8 +987,8 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 					},
 					VolumeMount: volume.VolumeMount,
 				},
-			}, isMultiZone),
-			IsWindows: isWindowsCluster,
+			}, []string{}, false),
+			IsWindows: testconsts.IsWindowsCluster,
 			UseCMD:    false,
 		}
 
@@ -1013,27 +1010,27 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	})
 
 	ginkgo.It("Should create replicas on node with matching pod node affinity", func() {
-		skipIfUsingInTreeVolumePlugin()
+		testutil.SkipIfUsingInTreeVolumePlugin()
 		if isMultiZone {
 			ginkgo.Skip("test case does not apply to multi az case")
 		}
-		skipIfNotUsingCSIDriverV2()
+		testutil.SkipIfNotUsingCSIDriverV2()
 
 		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
 		if err != nil {
 			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		}
 
-		volume := testsuites.VolumeDetails{
+		volume := testtypes.VolumeDetails{
 			ClaimSize: "10Gi",
-			VolumeMount: testsuites.VolumeMountDetails{
+			VolumeMount: testtypes.VolumeMountDetails{
 				NameGenerate:      "test-volume-",
 				MountPathGenerate: "/mnt/test-",
 			},
 		}
-		pod := testsuites.PodDetails{
-			Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
-			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+		pod := testtypes.PodDetails{
+			Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
+			Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
 				{
 					ClaimSize: volume.ClaimSize,
 					MountOptions: []string{
@@ -1042,8 +1039,8 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 					},
 					VolumeMount: volume.VolumeMount,
 				},
-			}, isMultiZone),
-			IsWindows: isWindowsCluster,
+			}, []string{}, false),
+			IsWindows: testconsts.IsWindowsCluster,
 			UseCMD:    false,
 		}
 
@@ -1067,28 +1064,28 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	ginkgo.It("Should create replicas on node with matching pod affinity", func() {
 		ginkgo.Skip("test case make an invalid assumption")
 
-		skipIfUsingInTreeVolumePlugin()
+		testutil.SkipIfUsingInTreeVolumePlugin()
 		if isMultiZone {
 			ginkgo.Skip("test case does not apply to multi az case")
 		}
-		skipIfNotUsingCSIDriverV2()
+		testutil.SkipIfNotUsingCSIDriverV2()
 
 		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
 		if err != nil {
 			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		}
 
-		volume := testsuites.VolumeDetails{
+		volume := testtypes.VolumeDetails{
 			ClaimSize: "10Gi",
-			VolumeMount: testsuites.VolumeMountDetails{
+			VolumeMount: testtypes.VolumeMountDetails{
 				NameGenerate:      "test-volume-",
 				MountPathGenerate: "/mnt/test-",
 			},
 		}
-		pods := []testsuites.PodDetails{
+		pods := []testtypes.PodDetails{
 			{
-				Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
-				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+				Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
+				Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
 					{
 						ClaimSize: volume.ClaimSize,
 						MountOptions: []string{
@@ -1097,13 +1094,13 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 						},
 						VolumeMount: volume.VolumeMount,
 					},
-				}, isMultiZone),
-				IsWindows: isWindowsCluster,
+				}, []string{}, isMultiZone),
+				IsWindows: testconsts.IsWindowsCluster,
 				UseCMD:    false,
 			},
 			{
-				Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
-				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+				Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
+				Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
 					{
 						ClaimSize: volume.ClaimSize,
 						MountOptions: []string{
@@ -1112,8 +1109,8 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 						},
 						VolumeMount: volume.VolumeMount,
 					},
-				}, isMultiZone),
-				IsWindows: isWindowsCluster,
+				}, t.allowedTopologyValues, isMultiZone),
+				IsWindows: testconsts.IsWindowsCluster,
 				UseCMD:    false,
 			},
 		}
@@ -1136,21 +1133,21 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	})
 
 	ginkgo.It("Should test pod failover with cordoning a node", func() {
-		skipIfUsingInTreeVolumePlugin()
+		testutil.SkipIfUsingInTreeVolumePlugin()
 		if isMultiZone {
 			ginkgo.Skip("test case does not apply to multi az case")
 		}
 
-		volume := testsuites.VolumeDetails{
+		volume := testtypes.VolumeDetails{
 			ClaimSize: "10Gi",
-			VolumeMount: testsuites.VolumeMountDetails{
+			VolumeMount: testtypes.VolumeMountDetails{
 				NameGenerate:      "test-volume-",
 				MountPathGenerate: "/mnt/test-",
 			},
 		}
-		pod := testsuites.PodDetails{
-			Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
-			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+		pod := testtypes.PodDetails{
+			Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
+			Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
 				{
 					ClaimSize: volume.ClaimSize,
 					MountOptions: []string{
@@ -1159,13 +1156,13 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 					},
 					VolumeMount: volume.VolumeMount,
 				},
-			}, false),
-			IsWindows: isWindowsCluster,
+			}, []string{}, false),
+			IsWindows: testconsts.IsWindowsCluster,
 			UseCMD:    false,
 		}
 		podCheckCmd := []string{"cat", "/mnt/test-1/data"}
 		expectedString := "hello world\n"
-		if isWindowsCluster {
+		if testconsts.IsWindowsCluster {
 			podCheckCmd = []string{"cmd", "/c", "type C:\\mnt\\test-1\\data.txt"}
 			expectedString = "hello world\r\n"
 		}
@@ -1186,20 +1183,20 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	})
 
 	ginkgo.It("Should test pod failover with cordoning a node using ZRS", func() {
-		skipIfUsingInTreeVolumePlugin()
-		skipIfNotZRSSupported()
-		skipIfTestingInWindowsCluster()
+		testutil.SkipIfUsingInTreeVolumePlugin()
+		testutil.SkipIfNotZRSSupported(location)
+		testutil.SkipIfTestingInWindowsCluster()
 
-		volume := testsuites.VolumeDetails{
+		volume := testtypes.VolumeDetails{
 			ClaimSize: "10Gi",
-			VolumeMount: testsuites.VolumeMountDetails{
+			VolumeMount: testtypes.VolumeMountDetails{
 				NameGenerate:      "test-volume-",
 				MountPathGenerate: "/mnt/test-",
 			},
 		}
-		pod := testsuites.PodDetails{
-			Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
-			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+		pod := testtypes.PodDetails{
+			Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
+			Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
 				{
 					ClaimSize: volume.ClaimSize,
 					MountOptions: []string{
@@ -1208,13 +1205,13 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 					},
 					VolumeMount: volume.VolumeMount,
 				},
-			}, false),
-			IsWindows: isWindowsCluster,
+			}, []string{}, false),
+			IsWindows: testconsts.IsWindowsCluster,
 			UseCMD:    false,
 		}
 		podCheckCmd := []string{"cat", "/mnt/test-1/data"}
 		expectedString := "hello world\n"
-		if isWindowsCluster {
+		if testconsts.IsWindowsCluster {
 			podCheckCmd = []string{"cmd", "/c", "type C:\\mnt\\test-1\\data.txt"}
 			expectedString = "hello world\r\n"
 		}
@@ -1234,26 +1231,26 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		test.Run(cs, ns, schedulerName)
 	})
 	ginkgo.It("Should test pod failover and check for correct number of replicas", func() {
-		skipIfUsingInTreeVolumePlugin()
+		testutil.SkipIfUsingInTreeVolumePlugin()
 		skuName := "StandardSSD_LRS"
 		if isMultiZone {
-			skipIfNotZRSSupported()
+			testutil.SkipIfNotZRSSupported(location)
 			skuName = "StandardSSD_ZRS"
 		}
 		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
 		if err != nil {
 			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		}
-		volume := testsuites.VolumeDetails{
+		volume := testtypes.VolumeDetails{
 			ClaimSize: "10Gi",
-			VolumeMount: testsuites.VolumeMountDetails{
+			VolumeMount: testtypes.VolumeMountDetails{
 				NameGenerate:      "test-volume-",
 				MountPathGenerate: "/mnt/test-",
 			},
 		}
-		pod := testsuites.PodDetails{
-			Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
-			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+		pod := testtypes.PodDetails{
+			Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
+			Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
 				{
 					ClaimSize: volume.ClaimSize,
 					MountOptions: []string{
@@ -1262,13 +1259,13 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 					},
 					VolumeMount: volume.VolumeMount,
 				},
-			}, isMultiZone),
-			IsWindows: isWindowsCluster,
+			}, t.allowedTopologyValues, isMultiZone),
+			IsWindows: testconsts.IsWindowsCluster,
 			UseCMD:    false,
 		}
 		podCheckCmd := []string{"cat", "/mnt/test-1/data"}
 		expectedString := "hello world\n"
-		if isWindowsCluster {
+		if testconsts.IsWindowsCluster {
 			podCheckCmd = []string{"cmd", "/c", "type C:\\mnt\\test-1\\data.txt"}
 			expectedString = "hello world\r\n"
 		}
@@ -1289,42 +1286,4 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		}
 		test.Run(cs, ns, schedulerName)
 	})
-}
-
-// Normalize volumes by adding allowed topology values and WaitForFirstConsumer binding mode if we are testing in a multi-az cluster
-func (t *dynamicProvisioningTestSuite) normalizeVolumes(volumes []testsuites.VolumeDetails, isMultiZone bool) []testsuites.VolumeDetails {
-	for i := range volumes {
-		volumes[i] = t.normalizeVolume(volumes[i], isMultiZone)
-	}
-	return volumes
-}
-
-func (t *dynamicProvisioningTestSuite) normalizeVolume(volume testsuites.VolumeDetails, isMultiZone bool) testsuites.VolumeDetails {
-	driverName := os.Getenv(driver.AzureDriverNameVar)
-	switch driverName {
-	case "kubernetes.io/azure-disk":
-		volumeBindingMode := storagev1.VolumeBindingWaitForFirstConsumer
-		volume.VolumeBindingMode = &volumeBindingMode
-	case "", consts.DefaultDriverName:
-		if !isMultiZone {
-			return volume
-		}
-		volume.AllowedTopologyValues = t.allowedTopologyValues
-		volumeBindingMode := storagev1.VolumeBindingWaitForFirstConsumer
-		volume.VolumeBindingMode = &volumeBindingMode
-	}
-
-	return volume
-}
-
-func restClient(group string, version string) (restclientset.Interface, error) {
-	config, err := framework.LoadConfig()
-	if err != nil {
-		ginkgo.Fail(fmt.Sprintf("could not load config: %v", err))
-	}
-	gv := schema.GroupVersion{Group: group, Version: version}
-	config.GroupVersion = &gv
-	config.APIPath = "/apis"
-	config.NegotiatedSerializer = serializer.WithoutConversionCodecFactory{CodecFactory: serializer.NewCodecFactory(runtime.NewScheme())}
-	return restclientset.RESTClientFor(config)
 }

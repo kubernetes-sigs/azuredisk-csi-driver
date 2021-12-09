@@ -31,6 +31,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
+	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/azure"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/credentials"
 )
@@ -40,7 +41,7 @@ import (
 // Testing if azuredisk contains tag
 type DynamicallyProvisionedAzureDiskWithTag struct {
 	CSIDriver              driver.DynamicPVTestDriver
-	Pods                   []PodDetails
+	Pods                   []testtypes.PodDetails
 	StorageClassParameters map[string]string
 	Tags                   string
 }
@@ -62,7 +63,7 @@ func (t *DynamicallyProvisionedAzureDiskWithTag) Run(client clientset.Interface,
 		ginkgo.By("checking whether azuredisk contains tag")
 
 		//Get diskURI from pv information
-		pvcname := tpod.pod.Spec.Volumes[0].VolumeSource.PersistentVolumeClaim.ClaimName
+		pvcname := tpod.Pod.Spec.Volumes[0].VolumeSource.PersistentVolumeClaim.ClaimName
 		pvc, err := client.CoreV1().PersistentVolumeClaims(namespace.Name).Get(context.Background(), pvcname, metav1.GetOptions{})
 		framework.ExpectNoError(err, fmt.Sprintf("Error getting pvc for azuredisk %v", err))
 

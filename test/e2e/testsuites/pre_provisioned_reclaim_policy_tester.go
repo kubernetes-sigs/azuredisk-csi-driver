@@ -18,6 +18,7 @@ package testsuites
 
 import (
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
+	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
 
 	v1 "k8s.io/api/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -27,7 +28,7 @@ import (
 // Testing the correct behavior for different reclaimPolicies
 type PreProvisionedReclaimPolicyTest struct {
 	CSIDriver     driver.PreProvisionedVolumeTestDriver
-	Volumes       []VolumeDetails
+	Volumes       []testtypes.VolumeDetails
 	VolumeContext map[string]string
 }
 

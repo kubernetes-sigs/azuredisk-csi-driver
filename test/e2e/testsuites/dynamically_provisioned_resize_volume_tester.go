@@ -34,9 +34,12 @@ import (
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
+	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
+	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/azure"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/credentials"
+	volutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/volume"
 )
 
 // DynamicallyProvisionedResizeVolumeTest will provision required StorageClass(es), PVC(s)
@@ -45,8 +48,8 @@ import (
 type DynamicallyProvisionedResizeVolumeTest struct {
 	CSIDriver              driver.DynamicPVTestDriver
 	StorageClassParameters map[string]string
-	Pod                    PodDetails
-	Volume                 VolumeDetails
+	Pod                    testtypes.PodDetails
+	Volume                 testtypes.VolumeDetails
 }
 
 func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
@@ -66,7 +69,7 @@ func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface,
 	tStatefulSet.WaitForPodReady()
 
 	ginkgo.By("get PersistentVolumeClaim for statefulset")
-	pvcName := fmt.Sprintf("%s-%s-%d", tStatefulSet.statefulset.Spec.VolumeClaimTemplates[0].Name, tStatefulSet.statefulset.ObjectMeta.Name, 0)
+	pvcName := fmt.Sprintf("%s-%s-%d", tStatefulSet.Statefulset.Spec.VolumeClaimTemplates[0].Name, tStatefulSet.Statefulset.ObjectMeta.Name, 0)
 
 	pvc, err := client.CoreV1().PersistentVolumeClaims(namespace.Name).Get(context.TODO(), pvcName, metav1.GetOptions{})
 	if err != nil {
@@ -76,18 +79,18 @@ func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface,
 	ginkgo.By("scale statefulset to zero pods to detach disk")
 	newScale := &scale.Scale{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      tStatefulSet.statefulset.Name,
-			Namespace: tStatefulSet.namespace.Name,
+			Name:      tStatefulSet.Statefulset.Name,
+			Namespace: tStatefulSet.Namespace.Name,
 		},
 		Spec: scale.ScaleSpec{
 			Replicas: int32(0)}}
 
 	// Scale statefulset to 0
-	_, err = client.AppsV1().StatefulSets(tStatefulSet.namespace.Name).UpdateScale(context.TODO(), tStatefulSet.statefulset.Name, newScale, metav1.UpdateOptions{})
+	_, err = client.AppsV1().StatefulSets(tStatefulSet.Namespace.Name).UpdateScale(context.TODO(), tStatefulSet.Statefulset.Name, newScale, metav1.UpdateOptions{})
 	framework.ExpectNoError(err)
 
 	// wait for volume to detach
-	err = waitForVolumeDetach(client, pvc.Spec.VolumeName, poll, pollTimeout)
+	err = volutil.WaitForVolumeDetach(client, pvc.Spec.VolumeName, testconsts.Poll, testconsts.PollTimeout)
 	framework.ExpectNoError(err)
 
 	// Get the original requested size of the pvs and increase it by 10GB
@@ -155,7 +158,7 @@ func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface,
 	// Scale the stateful set back to 1 pod
 	newScale.Spec.Replicas = int32(1)
 
-	_, err = client.AppsV1().StatefulSets(tStatefulSet.namespace.Name).UpdateScale(context.TODO(), tStatefulSet.statefulset.Name, newScale, metav1.UpdateOptions{})
+	_, err = client.AppsV1().StatefulSets(tStatefulSet.Namespace.Name).UpdateScale(context.TODO(), tStatefulSet.Statefulset.Name, newScale, metav1.UpdateOptions{})
 	framework.ExpectNoError(err)
 
 	ginkgo.By("sleep 30s waiting for statefulset update complete")

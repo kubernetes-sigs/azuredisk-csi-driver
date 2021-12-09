@@ -14,13 +14,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package testsuites
+package testtypes
 
 import (
 	"context"
 	"fmt"
-	"os"
-	"strings"
 
 	"github.com/onsi/ginkgo"
 
@@ -38,8 +36,17 @@ import (
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
+	nodeutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/node"
 )
+
+type TestCmd struct {
+	Command  string
+	Args     []string
+	StartLog string
+	EndLog   string
+}
 
 type PodDetails struct {
 	Cmd       string
@@ -77,20 +84,6 @@ const (
 	Block
 )
 
-const (
-	VolumeSnapshotKind = "VolumeSnapshot"
-	VolumePVCKind      = "PersistentVolumeClaim"
-	APIVersionv1beta1  = "v1beta1"
-	SnapshotAPIVersion = "snapshot.storage.k8s.io/" + APIVersionv1beta1
-)
-
-var (
-	SnapshotAPIGroup                             = "snapshot.storage.k8s.io"
-	isAzureStackCloud                            = strings.EqualFold(os.Getenv("AZURE_CLOUD_NAME"), "AZURESTACKCLOUD")
-	azurePublicCloudSupportedStorageAccountTypes = []string{"Standard_LRS", "Premium_LRS", "StandardSSD_LRS"}
-	azureStackCloudSupportedStorageAccountTypes  = []string{"Standard_LRS", "Premium_LRS"}
-)
-
 type VolumeMountDetails struct {
 	NameGenerate      string
 	MountPathGenerate string
@@ -115,13 +108,13 @@ func (pod *PodDetails) SetupWithDynamicVolumes(client clientset.Interface, names
 		cleanupFuncs = append(cleanupFuncs, funcs...)
 		ginkgo.By("setting up the pod")
 		if v.VolumeMode == Block {
-			tpod.SetupRawBlockVolume(tpvc.persistentVolumeClaim, fmt.Sprintf("%s%d", v.VolumeDevice.NameGenerate, n+1), v.VolumeDevice.DevicePath)
+			tpod.SetupRawBlockVolume(tpvc.PersistentVolumeClaim, fmt.Sprintf("%s%d", v.VolumeDevice.NameGenerate, n+1), v.VolumeDevice.DevicePath)
 		} else {
-			tpod.SetupVolume(tpvc.persistentVolumeClaim, fmt.Sprintf("%s%d", v.VolumeMount.NameGenerate, n+1), fmt.Sprintf("%s%d", v.VolumeMount.MountPathGenerate, n+1), v.VolumeMount.ReadOnly)
+			tpod.SetupVolume(tpvc.PersistentVolumeClaim, fmt.Sprintf("%s%d", v.VolumeMount.NameGenerate, n+1), fmt.Sprintf("%s%d", v.VolumeMount.MountPathGenerate, n+1), v.VolumeMount.ReadOnly)
 		}
-		if tpvc.persistentVolume != nil {
-			klog.Infof("adding PV (%s) to pod (%s)", tpvc.persistentVolume.Name, tpod.pod.Name)
-			pod.Volumes[n].PersistentVolume = tpvc.persistentVolume.DeepCopy()
+		if tpvc.PersistentVolume != nil {
+			klog.Infof("adding PV (%s) to pod (%s)", tpvc.PersistentVolume.Name, tpod.Pod.Name)
+			pod.Volumes[n].PersistentVolume = tpvc.PersistentVolume.DeepCopy()
 		}
 	}
 	return tpod, cleanupFuncs
@@ -131,9 +124,9 @@ func (pod *PodDetails) SetupWithDynamicVolumes(client clientset.Interface, names
 func (pod *PodDetails) SetupWithDynamicMultipleVolumes(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.DynamicPVTestDriver, schedulerName string) (*TestPod, []func()) {
 	tpod := NewTestPod(client, namespace, pod.Cmd, schedulerName, pod.IsWindows)
 	cleanupFuncs := make([]func(), 0)
-	supportedStorageAccountTypes := azurePublicCloudSupportedStorageAccountTypes
-	if isAzureStackCloud {
-		supportedStorageAccountTypes = azureStackCloudSupportedStorageAccountTypes
+	supportedStorageAccountTypes := testconsts.AzurePublicCloudSupportedStorageAccountTypes
+	if testconsts.IsAzureStackCloud {
+		supportedStorageAccountTypes = testconsts.AzureStackCloudSupportedStorageAccountTypes
 	}
 	accountTypeCount := len(supportedStorageAccountTypes)
 	for n, v := range pod.Volumes {
@@ -141,9 +134,9 @@ func (pod *PodDetails) SetupWithDynamicMultipleVolumes(client clientset.Interfac
 		tpvc, funcs := v.SetupDynamicPersistentVolumeClaim(client, namespace, csiDriver, storageClassParameters)
 		cleanupFuncs = append(cleanupFuncs, funcs...)
 		if v.VolumeMode == Block {
-			tpod.SetupRawBlockVolume(tpvc.persistentVolumeClaim, fmt.Sprintf("%s%d", v.VolumeDevice.NameGenerate, n+1), v.VolumeDevice.DevicePath)
+			tpod.SetupRawBlockVolume(tpvc.PersistentVolumeClaim, fmt.Sprintf("%s%d", v.VolumeDevice.NameGenerate, n+1), v.VolumeDevice.DevicePath)
 		} else {
-			tpod.SetupVolume(tpvc.persistentVolumeClaim, fmt.Sprintf("%s%d", v.VolumeMount.NameGenerate, n+1), fmt.Sprintf("%s%d", v.VolumeMount.MountPathGenerate, n+1), v.VolumeMount.ReadOnly)
+			tpod.SetupVolume(tpvc.PersistentVolumeClaim, fmt.Sprintf("%s%d", v.VolumeMount.NameGenerate, n+1), fmt.Sprintf("%s%d", v.VolumeMount.MountPathGenerate, n+1), v.VolumeMount.ReadOnly)
 		}
 	}
 	return tpod, cleanupFuncs
@@ -155,7 +148,7 @@ func (pod *PodDetails) SetupWithDynamicVolumesWithSubpath(client clientset.Inter
 	for n, v := range pod.Volumes {
 		tpvc, funcs := v.SetupDynamicPersistentVolumeClaim(client, namespace, csiDriver, storageClassParameters)
 		cleanupFuncs = append(cleanupFuncs, funcs...)
-		tpod.SetupVolumeMountWithSubpath(tpvc.persistentVolumeClaim, fmt.Sprintf("%s%d", v.VolumeMount.NameGenerate, n+1), fmt.Sprintf("%s%d", v.VolumeMount.MountPathGenerate, n+1), "testSubpath", v.VolumeMount.ReadOnly)
+		tpod.SetupVolumeMountWithSubpath(tpvc.PersistentVolumeClaim, fmt.Sprintf("%s%d", v.VolumeMount.NameGenerate, n+1), fmt.Sprintf("%s%d", v.VolumeMount.MountPathGenerate, n+1), "testSubpath", v.VolumeMount.ReadOnly)
 	}
 	return tpod, cleanupFuncs
 }
@@ -177,9 +170,9 @@ func (pod *PodDetails) SetupWithPreProvisionedVolumes(client clientset.Interface
 		cleanupFuncs = append(cleanupFuncs, funcs...)
 
 		if v.VolumeMode == Block {
-			tpod.SetupRawBlockVolume(tpvc.persistentVolumeClaim, fmt.Sprintf("%s%d", v.VolumeDevice.NameGenerate, n+1), v.VolumeDevice.DevicePath)
+			tpod.SetupRawBlockVolume(tpvc.PersistentVolumeClaim, fmt.Sprintf("%s%d", v.VolumeDevice.NameGenerate, n+1), v.VolumeDevice.DevicePath)
 		} else {
-			tpod.SetupVolume(tpvc.persistentVolumeClaim, fmt.Sprintf("%s%d", v.VolumeMount.NameGenerate, n+1), fmt.Sprintf("%s%d", v.VolumeMount.MountPathGenerate, n+1), v.VolumeMount.ReadOnly)
+			tpod.SetupVolume(tpvc.PersistentVolumeClaim, fmt.Sprintf("%s%d", v.VolumeMount.NameGenerate, n+1), fmt.Sprintf("%s%d", v.VolumeMount.MountPathGenerate, n+1), v.VolumeMount.ReadOnly)
 		}
 	}
 	return tpod, cleanupFuncs
@@ -209,7 +202,7 @@ func (pod *PodDetails) SetupDeployment(client clientset.Interface, namespace *v1
 			Name: newVolumeName,
 			VolumeSource: v1.VolumeSource{
 				PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
-					ClaimName: tpvc.persistentVolumeClaim.Name,
+					ClaimName: tpvc.PersistentVolumeClaim.Name,
 				},
 			},
 		}
@@ -221,7 +214,7 @@ func (pod *PodDetails) SetupDeployment(client clientset.Interface, namespace *v1
 			ReadOnly:  volume.VolumeMount.ReadOnly,
 		}
 		volumeMounts = append(volumeMounts, newVolumeMount)
-		pod.Volumes[n].PersistentVolume = tpvc.persistentVolume
+		pod.Volumes[n].PersistentVolume = tpvc.PersistentVolume
 	}
 	tDeployment := NewTestDeployment(client, namespace, pod.Cmd, volumeMounts, volumes, podReplicas, pod.IsWindows, pod.UseCMD, schedulerName)
 
@@ -237,7 +230,7 @@ func (pod *PodDetails) CreateStorageClass(client clientset.Interface, namespace 
 	framework.ExpectNoError(err)
 	allowedTopologyValuesMap := make(map[string]bool)
 	for _, node := range nodes.Items {
-		if zone, ok := node.Labels[driver.TopologyKey]; ok {
+		if zone, ok := node.Labels[testconsts.TopologyKey]; ok {
 			allowedTopologyValuesMap[zone] = true
 		}
 	}
@@ -262,8 +255,8 @@ func (pod *PodDetails) SetupStatefulset(client clientset.Interface, namespace *v
 		ginkgo.By("setting up the PVC")
 		tpvc := NewTestPersistentVolumeClaim(client, namespace, volume.ClaimSize, volume.VolumeMode, storageClass)
 		storageClassName := ""
-		if tpvc.storageClass != nil {
-			storageClassName = tpvc.storageClass.Name
+		if tpvc.StorageClass != nil {
+			storageClassName = tpvc.StorageClass.Name
 		}
 		tvolumeMount := v1.VolumeMount{
 			Name:      fmt.Sprintf("%s%d", volume.VolumeMount.NameGenerate, n+1),
@@ -272,8 +265,8 @@ func (pod *PodDetails) SetupStatefulset(client clientset.Interface, namespace *v
 		}
 		volumeMounts = append(volumeMounts, tvolumeMount)
 
-		tpvc.requestedPersistentVolumeClaim = generateStatefulSetPVC(tpvc.namespace.Name, tvolumeMount.Name, storageClassName, tpvc.claimSize, tpvc.volumeMode, tpvc.dataSource)
-		pvcs = append(pvcs, *tpvc.requestedPersistentVolumeClaim)
+		tpvc.RequestedPersistentVolumeClaim = generateStatefulSetPVC(tpvc.Namespace.Name, tvolumeMount.Name, storageClassName, tpvc.ClaimSize, tpvc.VolumeMode, tpvc.DataSource)
+		pvcs = append(pvcs, *tpvc.RequestedPersistentVolumeClaim)
 	}
 	ginkgo.By("setting up the statefulset")
 	tStatefulset := NewTestStatefulset(client, namespace, pod.Cmd, pvcs, volumeMounts, pod.IsWindows, pod.UseCMD, schedulerName, replicaCount)
@@ -288,7 +281,7 @@ func (volume *VolumeDetails) SetupDynamicPersistentVolumeClaim(client clientset.
 	if storageClass == nil {
 		tsc, tscCleanup := volume.CreateStorageClass(client, namespace, csiDriver, storageClassParameters)
 		cleanupFuncs = append(cleanupFuncs, tscCleanup)
-		storageClass = tsc.storageClass
+		storageClass = tsc.StorageClass
 	}
 	ginkgo.By("setting up the PVC and PV")
 	var tpvc *TestPersistentVolumeClaim
@@ -297,8 +290,9 @@ func (volume *VolumeDetails) SetupDynamicPersistentVolumeClaim(client clientset.
 			Name: volume.DataSource.Name,
 			Kind: volume.DataSource.Kind,
 		}
-		if volume.DataSource.Kind == VolumeSnapshotKind {
-			dataSource.APIGroup = &SnapshotAPIGroup
+		if volume.DataSource.Kind == testconsts.VolumeSnapshotKind {
+			apiGroup := testconsts.SnapshotAPIGroup
+			dataSource.APIGroup = &apiGroup
 		}
 		tpvc = NewTestPersistentVolumeClaimWithDataSource(client, namespace, volume.ClaimSize, volume.VolumeMode, storageClass, dataSource)
 	} else {
@@ -347,6 +341,7 @@ func CreateVolumeSnapshotClass(client restclientset.Interface, namespace *v1.Nam
 
 	return tvsc, tvsc.Cleanup
 }
+
 func VerifySuccessfulReplicaAzVolumeAttachments(pod PodDetails, azDiskClient *azDiskClientSet.Clientset, storageClassParameters map[string]string, client clientset.Interface, namespace *v1.Namespace) (bool, *v1alpha1.AzVolumeAttachmentList, error) {
 	if storageClassParameters["maxShares"] == "" {
 		return true, nil, nil
@@ -354,7 +349,7 @@ func VerifySuccessfulReplicaAzVolumeAttachments(pod PodDetails, azDiskClient *az
 
 	var expectedNumberOfReplicas int
 	_, maxMountReplicas := azureutils.GetMaxSharesAndMaxMountReplicaCount(storageClassParameters)
-	nodes := ListAzDriverNodeNames(azDiskClient.DiskV1alpha1().AzDriverNodes(azureconstants.AzureDiskCrdNamespace))
+	nodes := nodeutil.ListAzDriverNodeNames(azDiskClient.DiskV1alpha1().AzDriverNodes(azureconstants.AzureDiskCrdNamespace))
 	nodesAvailableForReplicas := len(nodes) - 1
 	if nodesAvailableForReplicas >= maxMountReplicas {
 		expectedNumberOfReplicas = maxMountReplicas

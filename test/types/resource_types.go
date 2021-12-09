@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package testsuites
+package testtypes
 
 import (
 	"context"
@@ -35,132 +35,75 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	restclientset "k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
-	deploymentutil "k8s.io/kubernetes/pkg/controller/deployment/util"
 	"k8s.io/kubernetes/pkg/kubelet/events"
 	"k8s.io/kubernetes/test/e2e/framework"
 	e2eevents "k8s.io/kubernetes/test/e2e/framework/events"
 	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 	e2epv "k8s.io/kubernetes/test/e2e/framework/pv"
-	testutil "k8s.io/kubernetes/test/utils"
+	testutils "k8s.io/kubernetes/test/utils"
 	imageutils "k8s.io/kubernetes/test/utils/image"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	v1alpha1ClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1alpha1"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
+	nodeutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/node"
+	podutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/pod"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
-const (
-	execTimeout = 10 * time.Second
-	// Some pods can take much longer to get ready due to volume attach/detach latency.
-	slowPodStartTimeout = 10 * time.Minute
-	// Description that will printed during tests
-	failedConditionDescription = "Error status code"
-
-	poll            = 2 * time.Second
-	pollLongTimeout = 5 * time.Minute
-	pollTimeout     = 10 * time.Minute
-
-	testTolerationKey   = "test-toleration-key"
-	testTolerationValue = "test-toleration-value"
-	testLabelKey        = "test-label-key"
-	testLabelValue      = "test-label-value"
-
-	masterNodeLabel = "node-role.kubernetes.io/master"
-)
-
-var (
-	testTaint = v1.Taint{
-		Key:    testTolerationKey,
-		Value:  testTolerationValue,
-		Effect: v1.TaintEffectNoSchedule,
-	}
-
-	testLabel = map[string]string{
-		testLabelKey: testLabelValue,
-	}
-
-	testNodeAffinity = v1.Affinity{
-		NodeAffinity: &v1.NodeAffinity{
-			RequiredDuringSchedulingIgnoredDuringExecution: &v1.NodeSelector{
-				NodeSelectorTerms: []v1.NodeSelectorTerm{
-					{
-						MatchExpressions: []v1.NodeSelectorRequirement{
-							{
-								Key:      testLabelKey,
-								Operator: v1.NodeSelectorOpExists,
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-
-	testPodAffinity = v1.Affinity{
-		PodAffinity: &v1.PodAffinity{
-			RequiredDuringSchedulingIgnoredDuringExecution: []v1.PodAffinityTerm{
-				{
-					LabelSelector: &metav1.LabelSelector{MatchLabels: testLabel},
-					TopologyKey:   consts.WellKnownTopologyKey,
-				}},
-		},
-	}
-)
-
 type TestStorageClass struct {
-	client       clientset.Interface
-	storageClass *storagev1.StorageClass
-	namespace    *v1.Namespace
+	Client       clientset.Interface
+	StorageClass *storagev1.StorageClass
+	Namespace    *v1.Namespace
 }
 
 func NewTestStorageClass(c clientset.Interface, ns *v1.Namespace, sc *storagev1.StorageClass) *TestStorageClass {
 	return &TestStorageClass{
-		client:       c,
-		storageClass: sc,
-		namespace:    ns,
+		Client:       c,
+		StorageClass: sc,
+		Namespace:    ns,
 	}
 }
 
 func (t *TestStorageClass) Create() storagev1.StorageClass {
 	var err error
 
-	ginkgo.By("creating a StorageClass " + t.storageClass.Name)
-	t.storageClass, err = t.client.StorageV1().StorageClasses().Create(context.TODO(), t.storageClass, metav1.CreateOptions{})
+	ginkgo.By("creating a StorageClass " + t.StorageClass.Name)
+	t.StorageClass, err = t.Client.StorageV1().StorageClasses().Create(context.TODO(), t.StorageClass, metav1.CreateOptions{})
 	framework.ExpectNoError(err)
-	return *t.storageClass
+	return *t.StorageClass
 }
 
 func (t *TestStorageClass) Cleanup() {
-	e2elog.Logf("deleting StorageClass %s", t.storageClass.Name)
-	err := t.client.StorageV1().StorageClasses().Delete(context.TODO(), t.storageClass.Name, metav1.DeleteOptions{})
+	e2elog.Logf("deleting StorageClass %s", t.StorageClass.Name)
+	err := t.Client.StorageV1().StorageClasses().Delete(context.TODO(), t.StorageClass.Name, metav1.DeleteOptions{})
 	framework.ExpectNoError(err)
 }
 
 type TestVolumeSnapshotClass struct {
-	client              restclientset.Interface
-	volumeSnapshotClass *v1beta1.VolumeSnapshotClass
-	namespace           *v1.Namespace
+	Client              restclientset.Interface
+	VolumeSnapshotClass *v1beta1.VolumeSnapshotClass
+	Namespace           *v1.Namespace
 }
 
 func NewTestVolumeSnapshotClass(c restclientset.Interface, ns *v1.Namespace, vsc *v1beta1.VolumeSnapshotClass) *TestVolumeSnapshotClass {
 	return &TestVolumeSnapshotClass{
-		client:              c,
-		volumeSnapshotClass: vsc,
-		namespace:           ns,
+		Client:              c,
+		VolumeSnapshotClass: vsc,
+		Namespace:           ns,
 	}
 }
 
 func (t *TestVolumeSnapshotClass) Create() {
 	ginkgo.By("creating a VolumeSnapshotClass")
 	var err error
-	t.volumeSnapshotClass, err = snapshotclientset.New(t.client).SnapshotV1beta1().VolumeSnapshotClasses().Create(context.TODO(), t.volumeSnapshotClass, metav1.CreateOptions{})
+	t.VolumeSnapshotClass, err = snapshotclientset.New(t.Client).SnapshotV1beta1().VolumeSnapshotClasses().Create(context.TODO(), t.VolumeSnapshotClass, metav1.CreateOptions{})
 	framework.ExpectNoError(err)
 }
 
@@ -168,21 +111,21 @@ func (t *TestVolumeSnapshotClass) CreateSnapshot(pvc *v1.PersistentVolumeClaim) 
 	ginkgo.By("creating a VolumeSnapshot for " + pvc.Name)
 	snapshot := &v1beta1.VolumeSnapshot{
 		TypeMeta: metav1.TypeMeta{
-			Kind:       VolumeSnapshotKind,
-			APIVersion: SnapshotAPIVersion,
+			Kind:       testconsts.VolumeSnapshotKind,
+			APIVersion: testconsts.SnapshotAPIVersion,
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: "volume-snapshot-",
-			Namespace:    t.namespace.Name,
+			Namespace:    t.Namespace.Name,
 		},
 		Spec: v1beta1.VolumeSnapshotSpec{
-			VolumeSnapshotClassName: &t.volumeSnapshotClass.Name,
+			VolumeSnapshotClassName: &t.VolumeSnapshotClass.Name,
 			Source: v1beta1.VolumeSnapshotSource{
 				PersistentVolumeClaimName: &pvc.Name,
 			},
 		},
 	}
-	snapshot, err := snapshotclientset.New(t.client).SnapshotV1beta1().VolumeSnapshots(t.namespace.Name).Create(context.TODO(), snapshot, metav1.CreateOptions{})
+	snapshot, err := snapshotclientset.New(t.Client).SnapshotV1beta1().VolumeSnapshots(t.Namespace.Name).Create(context.TODO(), snapshot, metav1.CreateOptions{})
 	framework.ExpectNoError(err)
 	return snapshot
 }
@@ -190,7 +133,7 @@ func (t *TestVolumeSnapshotClass) CreateSnapshot(pvc *v1.PersistentVolumeClaim) 
 func (t *TestVolumeSnapshotClass) ReadyToUse(snapshot *v1beta1.VolumeSnapshot) {
 	ginkgo.By("waiting for VolumeSnapshot to be ready to use - " + snapshot.Name)
 	err := wait.Poll(15*time.Second, 5*time.Minute, func() (bool, error) {
-		vs, err := snapshotclientset.New(t.client).SnapshotV1beta1().VolumeSnapshots(t.namespace.Name).Get(context.TODO(), snapshot.Name, metav1.GetOptions{})
+		vs, err := snapshotclientset.New(t.Client).SnapshotV1beta1().VolumeSnapshots(t.Namespace.Name).Get(context.TODO(), snapshot.Name, metav1.GetOptions{})
 		if err != nil {
 			return false, fmt.Errorf("did not see ReadyToUse: %v", err)
 		}
@@ -201,15 +144,15 @@ func (t *TestVolumeSnapshotClass) ReadyToUse(snapshot *v1beta1.VolumeSnapshot) {
 
 func (t *TestVolumeSnapshotClass) DeleteSnapshot(vs *v1beta1.VolumeSnapshot) {
 	ginkgo.By("deleting a VolumeSnapshot " + vs.Name)
-	err := snapshotclientset.New(t.client).SnapshotV1beta1().VolumeSnapshots(t.namespace.Name).Delete(context.TODO(), vs.Name, metav1.DeleteOptions{})
+	err := snapshotclientset.New(t.Client).SnapshotV1beta1().VolumeSnapshots(t.Namespace.Name).Delete(context.TODO(), vs.Name, metav1.DeleteOptions{})
 	framework.ExpectNoError(err)
 }
 
 func (t *TestVolumeSnapshotClass) Cleanup() {
 	// skip deleting volume snapshot storage class otherwise snapshot e2e test will fail, details:
 	// https://github.com/kubernetes-sigs/azuredisk-csi-driver/pull/260#issuecomment-583296932
-	e2elog.Logf("skip deleting VolumeSnapshotClass %s", t.volumeSnapshotClass.Name)
-	//err := snapshotclientset.New(t.client).SnapshotV1beta1().VolumeSnapshotClasses().Delete(t.volumeSnapshotClass.Name, nil)
+	e2elog.Logf("skip deleting VolumeSnapshotClass %s", t.VolumeSnapshotClass.Name)
+	//err := snapshotclientset.New(t.Client).SnapshotV1beta1().VolumeSnapshotClasses().Delete(t.VolumeSnapshotClass.Name, nil)
 	//framework.ExpectNoError(err)
 }
 
@@ -235,15 +178,15 @@ func (pv *TestPreProvisionedPersistentVolume) Create() v1.PersistentVolume {
 }
 
 type TestPersistentVolumeClaim struct {
-	client                         clientset.Interface
-	claimSize                      string
-	volumeMode                     v1.PersistentVolumeMode
-	storageClass                   *storagev1.StorageClass
-	namespace                      *v1.Namespace
-	persistentVolume               *v1.PersistentVolume
-	persistentVolumeClaim          *v1.PersistentVolumeClaim
-	requestedPersistentVolumeClaim *v1.PersistentVolumeClaim
-	dataSource                     *v1.TypedLocalObjectReference
+	Client                         clientset.Interface
+	ClaimSize                      string
+	VolumeMode                     v1.PersistentVolumeMode
+	StorageClass                   *storagev1.StorageClass
+	Namespace                      *v1.Namespace
+	PersistentVolume               *v1.PersistentVolume
+	PersistentVolumeClaim          *v1.PersistentVolumeClaim
+	RequestedPersistentVolumeClaim *v1.PersistentVolumeClaim
+	DataSource                     *v1.TypedLocalObjectReference
 }
 
 func NewTestPersistentVolumeClaim(c clientset.Interface, ns *v1.Namespace, claimSize string, volumeMode VolumeMode, sc *storagev1.StorageClass) *TestPersistentVolumeClaim {
@@ -252,11 +195,11 @@ func NewTestPersistentVolumeClaim(c clientset.Interface, ns *v1.Namespace, claim
 		mode = v1.PersistentVolumeBlock
 	}
 	return &TestPersistentVolumeClaim{
-		client:       c,
-		claimSize:    claimSize,
-		volumeMode:   mode,
-		namespace:    ns,
-		storageClass: sc,
+		Client:       c,
+		ClaimSize:    claimSize,
+		VolumeMode:   mode,
+		Namespace:    ns,
+		StorageClass: sc,
 	}
 }
 
@@ -266,12 +209,12 @@ func NewTestPersistentVolumeClaimWithDataSource(c clientset.Interface, ns *v1.Na
 		mode = v1.PersistentVolumeBlock
 	}
 	return &TestPersistentVolumeClaim{
-		client:       c,
-		claimSize:    claimSize,
-		volumeMode:   mode,
-		namespace:    ns,
-		storageClass: sc,
-		dataSource:   dataSource,
+		Client:       c,
+		ClaimSize:    claimSize,
+		VolumeMode:   mode,
+		Namespace:    ns,
+		StorageClass: sc,
+		DataSource:   dataSource,
 	}
 }
 
@@ -280,11 +223,11 @@ func (t *TestPersistentVolumeClaim) Create() {
 
 	ginkgo.By("creating a PVC")
 	storageClassName := ""
-	if t.storageClass != nil {
-		storageClassName = t.storageClass.Name
+	if t.StorageClass != nil {
+		storageClassName = t.StorageClass.Name
 	}
-	t.requestedPersistentVolumeClaim = generatePVC(t.namespace.Name, storageClassName, t.claimSize, t.volumeMode, t.dataSource)
-	t.persistentVolumeClaim, err = t.client.CoreV1().PersistentVolumeClaims(t.namespace.Name).Create(context.TODO(), t.requestedPersistentVolumeClaim, metav1.CreateOptions{})
+	t.RequestedPersistentVolumeClaim = generatePVC(t.Namespace.Name, storageClassName, t.ClaimSize, t.VolumeMode, t.DataSource)
+	t.PersistentVolumeClaim, err = t.Client.CoreV1().PersistentVolumeClaims(t.Namespace.Name).Create(context.TODO(), t.RequestedPersistentVolumeClaim, metav1.CreateOptions{})
 	framework.ExpectNoError(err)
 }
 
@@ -293,29 +236,29 @@ func (t *TestPersistentVolumeClaim) ValidateProvisionedPersistentVolume() {
 
 	// Get the bound PersistentVolume
 	ginkgo.By("validating provisioned PV")
-	t.persistentVolume, err = t.client.CoreV1().PersistentVolumes().Get(context.TODO(), t.persistentVolumeClaim.Spec.VolumeName, metav1.GetOptions{})
+	t.PersistentVolume, err = t.Client.CoreV1().PersistentVolumes().Get(context.TODO(), t.PersistentVolumeClaim.Spec.VolumeName, metav1.GetOptions{})
 	framework.ExpectNoError(err)
 
 	// Check sizes
-	expectedCapacity := t.requestedPersistentVolumeClaim.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
-	claimCapacity := t.persistentVolumeClaim.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
+	expectedCapacity := t.RequestedPersistentVolumeClaim.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
+	claimCapacity := t.PersistentVolumeClaim.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
 	gomega.Expect(claimCapacity.Value()).To(gomega.Equal(expectedCapacity.Value()), "claimCapacity is not equal to requestedCapacity")
 
-	pvCapacity := t.persistentVolume.Spec.Capacity[v1.ResourceName(v1.ResourceStorage)]
+	pvCapacity := t.PersistentVolume.Spec.Capacity[v1.ResourceName(v1.ResourceStorage)]
 	gomega.Expect(pvCapacity.Value()).To(gomega.Equal(expectedCapacity.Value()), "pvCapacity is not equal to requestedCapacity")
 
 	// Check PV properties
 	ginkgo.By("checking the PV")
-	expectedAccessModes := t.requestedPersistentVolumeClaim.Spec.AccessModes
-	gomega.Expect(t.persistentVolume.Spec.AccessModes).To(gomega.Equal(expectedAccessModes))
-	gomega.Expect(t.persistentVolume.Spec.ClaimRef.Name).To(gomega.Equal(t.persistentVolumeClaim.ObjectMeta.Name))
-	gomega.Expect(t.persistentVolume.Spec.ClaimRef.Namespace).To(gomega.Equal(t.persistentVolumeClaim.ObjectMeta.Namespace))
+	expectedAccessModes := t.RequestedPersistentVolumeClaim.Spec.AccessModes
+	gomega.Expect(t.PersistentVolume.Spec.AccessModes).To(gomega.Equal(expectedAccessModes))
+	gomega.Expect(t.PersistentVolume.Spec.ClaimRef.Name).To(gomega.Equal(t.PersistentVolumeClaim.ObjectMeta.Name))
+	gomega.Expect(t.PersistentVolume.Spec.ClaimRef.Namespace).To(gomega.Equal(t.PersistentVolumeClaim.ObjectMeta.Namespace))
 	// If storageClass is nil, PV was pre-provisioned with these values already set
-	if t.storageClass != nil {
-		gomega.Expect(t.persistentVolume.Spec.PersistentVolumeReclaimPolicy).To(gomega.Equal(*t.storageClass.ReclaimPolicy))
-		gomega.Expect(t.persistentVolume.Spec.MountOptions).To(gomega.Equal(t.storageClass.MountOptions))
-		if *t.storageClass.VolumeBindingMode == storagev1.VolumeBindingWaitForFirstConsumer {
-			gomega.Expect(t.persistentVolume.Spec.NodeAffinity.Required.NodeSelectorTerms[0].MatchExpressions[0].Values).
+	if t.StorageClass != nil {
+		gomega.Expect(t.PersistentVolume.Spec.PersistentVolumeReclaimPolicy).To(gomega.Equal(*t.StorageClass.ReclaimPolicy))
+		gomega.Expect(t.PersistentVolume.Spec.MountOptions).To(gomega.Equal(t.StorageClass.MountOptions))
+		if *t.StorageClass.VolumeBindingMode == storagev1.VolumeBindingWaitForFirstConsumer {
+			gomega.Expect(t.PersistentVolume.Spec.NodeAffinity.Required.NodeSelectorTerms[0].MatchExpressions[0].Values).
 				To(gomega.HaveLen(1))
 		}
 	}
@@ -325,15 +268,15 @@ func (t *TestPersistentVolumeClaim) WaitForBound() v1.PersistentVolumeClaim {
 	var err error
 
 	ginkgo.By(fmt.Sprintf("waiting for PVC to be in phase %q", v1.ClaimBound))
-	err = e2epv.WaitForPersistentVolumeClaimPhase(v1.ClaimBound, t.client, t.namespace.Name, t.persistentVolumeClaim.Name, framework.Poll, framework.ClaimProvisionTimeout)
+	err = e2epv.WaitForPersistentVolumeClaimPhase(v1.ClaimBound, t.Client, t.Namespace.Name, t.PersistentVolumeClaim.Name, framework.Poll, framework.ClaimProvisionTimeout)
 	framework.ExpectNoError(err)
 
 	ginkgo.By("checking the PVC")
 	// Get new copy of the claim
-	t.persistentVolumeClaim, err = t.client.CoreV1().PersistentVolumeClaims(t.namespace.Name).Get(context.TODO(), t.persistentVolumeClaim.Name, metav1.GetOptions{})
+	t.PersistentVolumeClaim, err = t.Client.CoreV1().PersistentVolumeClaims(t.Namespace.Name).Get(context.TODO(), t.PersistentVolumeClaim.Name, metav1.GetOptions{})
 	framework.ExpectNoError(err)
 
-	return *t.persistentVolumeClaim
+	return *t.PersistentVolumeClaim
 }
 
 func generatePVC(namespace, storageClassName, claimSize string, volumeMode v1.PersistentVolumeMode, dataSource *v1.TypedLocalObjectReference) *v1.PersistentVolumeClaim {
@@ -383,14 +326,14 @@ func generateStatefulSetPVC(namespace, name, storageClassName, claimSize string,
 func (t *TestPersistentVolumeClaim) Cleanup() {
 	// Since PV is created after pod creation when the volume binding mode is WaitForFirstConsumer,
 	// we need to populate fields such as PVC and PV info in TestPersistentVolumeClaim, and valid it
-	if t.storageClass != nil && *t.storageClass.VolumeBindingMode == storagev1.VolumeBindingWaitForFirstConsumer {
+	if t.StorageClass != nil && *t.StorageClass.VolumeBindingMode == storagev1.VolumeBindingWaitForFirstConsumer {
 		var err error
-		t.persistentVolumeClaim, err = t.client.CoreV1().PersistentVolumeClaims(t.namespace.Name).Get(context.TODO(), t.persistentVolumeClaim.Name, metav1.GetOptions{})
+		t.PersistentVolumeClaim, err = t.Client.CoreV1().PersistentVolumeClaims(t.Namespace.Name).Get(context.TODO(), t.PersistentVolumeClaim.Name, metav1.GetOptions{})
 		framework.ExpectNoError(err)
 		t.ValidateProvisionedPersistentVolume()
 	}
-	e2elog.Logf("deleting PVC %q/%q", t.namespace.Name, t.persistentVolumeClaim.Name)
-	err := e2epv.DeletePersistentVolumeClaim(t.client, t.persistentVolumeClaim.Name, t.namespace.Name)
+	e2elog.Logf("deleting PVC %q/%q", t.Namespace.Name, t.PersistentVolumeClaim.Name)
+	err := e2epv.DeletePersistentVolumeClaim(t.Client, t.PersistentVolumeClaim.Name, t.Namespace.Name)
 	framework.ExpectNoError(err)
 	// Wait for the PV to get deleted if reclaim policy is Delete. (If it's
 	// Retain, there's no use waiting because the PV won't be auto-deleted and
@@ -398,36 +341,36 @@ func (t *TestPersistentVolumeClaim) Cleanup() {
 	// attempts may fail, as the volume is still attached to a node because
 	// kubelet is slowly cleaning up the previous pod, however it should succeed
 	// in a couple of minutes.
-	if t.persistentVolume.Spec.PersistentVolumeReclaimPolicy == v1.PersistentVolumeReclaimDelete {
-		ginkgo.By(fmt.Sprintf("waiting for claim's PV %q to be deleted", t.persistentVolume.Name))
-		err := e2epv.WaitForPersistentVolumeDeleted(t.client, t.persistentVolume.Name, 5*time.Second, 10*time.Minute)
+	if t.PersistentVolume.Spec.PersistentVolumeReclaimPolicy == v1.PersistentVolumeReclaimDelete {
+		ginkgo.By(fmt.Sprintf("waiting for claim's PV %q to be deleted", t.PersistentVolume.Name))
+		err := e2epv.WaitForPersistentVolumeDeleted(t.Client, t.PersistentVolume.Name, 5*time.Second, 10*time.Minute)
 		framework.ExpectNoError(err)
 	}
 	// Wait for the PVC to be deleted
-	err = waitForPersistentVolumeClaimDeleted(t.client, t.namespace.Name, t.persistentVolumeClaim.Name, 5*time.Second, 5*time.Minute)
+	err = waitForPersistentVolumeClaimDeleted(t.Client, t.Namespace.Name, t.PersistentVolumeClaim.Name, 5*time.Second, 5*time.Minute)
 	framework.ExpectNoError(err)
 }
 
 func (t *TestPersistentVolumeClaim) ReclaimPolicy() v1.PersistentVolumeReclaimPolicy {
-	return t.persistentVolume.Spec.PersistentVolumeReclaimPolicy
+	return t.PersistentVolume.Spec.PersistentVolumeReclaimPolicy
 }
 
 func (t *TestPersistentVolumeClaim) WaitForPersistentVolumePhase(phase v1.PersistentVolumePhase) {
-	err := e2epv.WaitForPersistentVolumePhase(phase, t.client, t.persistentVolume.Name, 5*time.Second, 10*time.Minute)
+	err := e2epv.WaitForPersistentVolumePhase(phase, t.Client, t.PersistentVolume.Name, 5*time.Second, 10*time.Minute)
 	framework.ExpectNoError(err)
 }
 
 func (t *TestPersistentVolumeClaim) DeleteBoundPersistentVolume() {
-	ginkgo.By(fmt.Sprintf("deleting PV %q", t.persistentVolume.Name))
-	err := e2epv.DeletePersistentVolume(t.client, t.persistentVolume.Name)
+	ginkgo.By(fmt.Sprintf("deleting PV %q", t.PersistentVolume.Name))
+	err := e2epv.DeletePersistentVolume(t.Client, t.PersistentVolume.Name)
 	framework.ExpectNoError(err)
-	ginkgo.By(fmt.Sprintf("waiting for claim's PV %q to be deleted", t.persistentVolume.Name))
-	err = e2epv.WaitForPersistentVolumeDeleted(t.client, t.persistentVolume.Name, 5*time.Second, 10*time.Minute)
+	ginkgo.By(fmt.Sprintf("waiting for claim's PV %q to be deleted", t.PersistentVolume.Name))
+	err = e2epv.WaitForPersistentVolumeDeleted(t.Client, t.PersistentVolume.Name, 5*time.Second, 10*time.Minute)
 	framework.ExpectNoError(err)
 }
 
 func (t *TestPersistentVolumeClaim) DeleteBackingVolume(azureCloud *provider.Cloud) {
-	diskURI := t.persistentVolume.Spec.CSI.VolumeHandle
+	diskURI := t.PersistentVolume.Spec.CSI.VolumeHandle
 	ginkgo.By(fmt.Sprintf("deleting azuredisk volume %q", diskURI))
 	err := azureCloud.DeleteManagedDisk(context.Background(), diskURI)
 	if err != nil {
@@ -435,11 +378,31 @@ func (t *TestPersistentVolumeClaim) DeleteBackingVolume(azureCloud *provider.Clo
 	}
 }
 
+// waitForPersistentVolumeClaimDeleted waits for a PersistentVolumeClaim to be removed from the system until timeout occurs, whichever comes first.
+func waitForPersistentVolumeClaimDeleted(c clientset.Interface, ns string, pvcName string, Poll, timeout time.Duration) error {
+	framework.Logf("Waiting up to %v for PersistentVolumeClaim %s to be removed", timeout, pvcName)
+	err := wait.PollImmediate(testconsts.Poll, testconsts.PollTimeout, func() (bool, error) {
+		var err error
+		_, err = c.CoreV1().PersistentVolumeClaims(ns).Get(context.TODO(), pvcName, metav1.GetOptions{})
+		if err != nil {
+			if errors.IsNotFound(err) {
+				framework.Logf("Claim %q in namespace %q doesn't exist in the system", pvcName, ns)
+				return true, nil
+			}
+			framework.Logf("Failed to get claim %q in namespace %q, retrying in %v. Error: %v", pvcName, ns, Poll, err)
+			return false, err
+		}
+		return false, nil
+	})
+
+	return err
+}
+
 type TestDeployment struct {
-	client     clientset.Interface
-	deployment *apps.Deployment
-	namespace  *v1.Namespace
-	podNames   []string
+	Client     clientset.Interface
+	Deployment *apps.Deployment
+	Namespace  *v1.Namespace
+	PodNames   []string
 }
 
 func NewTestDeployment(c clientset.Interface, ns *v1.Namespace, command string, volumeMounts []v1.VolumeMount, volumes []v1.Volume, podReplicas int, isWindows bool, useCMD bool, schedulerName string) *TestDeployment {
@@ -448,9 +411,9 @@ func NewTestDeployment(c clientset.Interface, ns *v1.Namespace, command string, 
 	replicas := int32(podReplicas)
 
 	testDeployment := &TestDeployment{
-		client:    c,
-		namespace: ns,
-		deployment: &apps.Deployment{
+		Client:    c,
+		Namespace: ns,
+		Deployment: &apps.Deployment{
 			ObjectMeta: metav1.ObjectMeta{
 				GenerateName: generateName,
 			},
@@ -484,16 +447,16 @@ func NewTestDeployment(c clientset.Interface, ns *v1.Namespace, command string, 
 	}
 
 	if isWindows {
-		testDeployment.deployment.Spec.Template.Spec.NodeSelector = map[string]string{
+		testDeployment.Deployment.Spec.Template.Spec.NodeSelector = map[string]string{
 			"kubernetes.io/os": "windows",
 		}
-		testDeployment.deployment.Spec.Template.Spec.Containers[0].Image = "mcr.microsoft.com/windows/servercore:ltsc2019"
+		testDeployment.Deployment.Spec.Template.Spec.Containers[0].Image = "mcr.microsoft.com/windows/servercore:ltsc2019"
 		if useCMD {
-			testDeployment.deployment.Spec.Template.Spec.Containers[0].Command = []string{"cmd"}
-			testDeployment.deployment.Spec.Template.Spec.Containers[0].Args = []string{"/c", command}
+			testDeployment.Deployment.Spec.Template.Spec.Containers[0].Command = []string{"cmd"}
+			testDeployment.Deployment.Spec.Template.Spec.Containers[0].Args = []string{"/c", command}
 		} else {
-			testDeployment.deployment.Spec.Template.Spec.Containers[0].Command = []string{"powershell.exe"}
-			testDeployment.deployment.Spec.Template.Spec.Containers[0].Args = []string{"-Command", command}
+			testDeployment.Deployment.Spec.Template.Spec.Containers[0].Command = []string{"powershell.exe"}
+			testDeployment.Deployment.Spec.Template.Spec.Containers[0].Args = []string{"-Command", command}
 		}
 	}
 
@@ -502,35 +465,35 @@ func NewTestDeployment(c clientset.Interface, ns *v1.Namespace, command string, 
 
 func (t *TestDeployment) Create() {
 	var err error
-	t.deployment, err = t.client.AppsV1().Deployments(t.namespace.Name).Create(context.TODO(), t.deployment, metav1.CreateOptions{})
+	t.Deployment, err = t.Client.AppsV1().Deployments(t.Namespace.Name).Create(context.TODO(), t.Deployment, metav1.CreateOptions{})
 	framework.ExpectNoError(err)
-	err = testutil.WaitForDeploymentComplete(t.client, t.deployment, e2elog.Logf, poll, pollLongTimeout)
+	err = testutils.WaitForDeploymentComplete(t.Client, t.Deployment, e2elog.Logf, testconsts.Poll, testconsts.PollLongTimeout)
 	framework.ExpectNoError(err)
-	pods, err := getPodsForDeployment(t.client, t.deployment)
+	pods, err := podutil.GetPodsForDeployment(t.Client, t.Deployment)
 	framework.ExpectNoError(err)
 	for _, pod := range pods.Items {
-		t.podNames = append(t.podNames, pod.Name)
+		t.PodNames = append(t.PodNames, pod.Name)
 	}
 }
 
 func (t *TestDeployment) WaitForPodReady() {
-	pods, err := getPodsForDeployment(t.client, t.deployment)
+	pods, err := podutil.GetPodsForDeployment(t.Client, t.Deployment)
 	framework.ExpectNoError(err)
-	t.podNames = []string{}
+	t.PodNames = []string{}
 	for _, pod := range pods.Items {
-		t.podNames = append(t.podNames, pod.Name)
+		t.PodNames = append(t.PodNames, pod.Name)
 	}
-	ch := make(chan error, len(t.podNames))
+	ch := make(chan error, len(t.PodNames))
 	defer close(ch)
 	for _, pod := range pods.Items {
 		go func(client clientset.Interface, pod v1.Pod) {
-			err = e2epod.WaitForPodRunningInNamespace(t.client, &pod)
+			err = e2epod.WaitForPodRunningInNamespace(t.Client, &pod)
 			ch <- err
-		}(t.client, pod)
+		}(t.Client, pod)
 	}
 	// Wait on all goroutines to report on pod ready
 	var wg sync.WaitGroup
-	for range t.podNames {
+	for range t.PodNames {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -542,23 +505,23 @@ func (t *TestDeployment) WaitForPodReady() {
 }
 
 func (t *TestDeployment) Exec(command []string, expectedString string) {
-	for _, podName := range t.podNames {
-		_, err := framework.LookForStringInPodExec(t.namespace.Name, podName, command, expectedString, execTimeout)
+	for _, podName := range t.PodNames {
+		_, err := framework.LookForStringInPodExec(t.Namespace.Name, podName, command, expectedString, testconsts.ExecTimeout)
 		framework.ExpectNoError(err)
 	}
 }
 
 func (t *TestDeployment) DeletePodAndWait() {
-	ch := make(chan error, len(t.podNames))
-	for _, podName := range t.podNames {
-		e2elog.Logf("Deleting pod %q in namespace %q", podName, t.namespace.Name)
+	ch := make(chan error, len(t.PodNames))
+	for _, podName := range t.PodNames {
+		e2elog.Logf("Deleting pod %q in namespace %q", podName, t.Namespace.Name)
 		go func(client clientset.Interface, ns, podName string) {
 			err := client.CoreV1().Pods(ns).Delete(context.TODO(), podName, metav1.DeleteOptions{})
 			ch <- err
-		}(t.client, t.namespace.Name, podName)
+		}(t.Client, t.Namespace.Name, podName)
 	}
 	// Wait on all goroutines to report on pod delete
-	for _, podName := range t.podNames {
+	for _, podName := range t.PodNames {
 		err := <-ch
 		if err != nil {
 			if !errors.IsNotFound(err) {
@@ -567,15 +530,15 @@ func (t *TestDeployment) DeletePodAndWait() {
 		}
 	}
 
-	for _, podName := range t.podNames {
-		e2elog.Logf("Waiting for pod %q in namespace %q to be fully deleted", podName, t.namespace.Name)
+	for _, podName := range t.PodNames {
+		e2elog.Logf("Waiting for pod %q in namespace %q to be fully deleted", podName, t.Namespace.Name)
 		go func(client clientset.Interface, ns, podName string) {
 			err := e2epod.WaitForPodNoLongerRunningInNamespace(client, podName, ns)
 			ch <- err
-		}(t.client, t.namespace.Name, podName)
+		}(t.Client, t.Namespace.Name, podName)
 	}
 	// Wait on all goroutines to report on pod terminating
-	for _, podName := range t.podNames {
+	for _, podName := range t.PodNames {
 		err := <-ch
 		if err != nil {
 			if !errors.IsNotFound(err) {
@@ -586,22 +549,22 @@ func (t *TestDeployment) DeletePodAndWait() {
 }
 
 func (t *TestDeployment) Cleanup() {
-	e2elog.Logf("deleting Deployment %q/%q", t.namespace.Name, t.deployment.Name)
+	e2elog.Logf("deleting Deployment %q/%q", t.Namespace.Name, t.Deployment.Name)
 	body, err := t.Logs()
 	if err != nil {
-		e2elog.Logf("Error getting logs for %s: %v", t.deployment.Name, err)
+		e2elog.Logf("Error getting logs for %s: %v", t.Deployment.Name, err)
 	} else {
 		for i, logs := range body {
-			e2elog.Logf("Pod %s has the following logs: %s", t.podNames[i], logs)
+			e2elog.Logf("Pod %s has the following logs: %s", t.PodNames[i], logs)
 		}
 	}
-	err = t.client.AppsV1().Deployments(t.namespace.Name).Delete(context.TODO(), t.deployment.Name, metav1.DeleteOptions{})
+	err = t.Client.AppsV1().Deployments(t.Namespace.Name).Delete(context.TODO(), t.Deployment.Name, metav1.DeleteOptions{})
 	framework.ExpectNoError(err)
 }
 
 func (t *TestDeployment) Logs() (logs [][]byte, err error) {
-	for _, name := range t.podNames {
-		log, err := podLogs(t.client, name, t.namespace.Name)
+	for _, name := range t.PodNames {
+		log, err := podutil.PodLogs(t.Client, name, t.Namespace.Name)
 		if err != nil {
 			return nil, err
 		}
@@ -611,11 +574,11 @@ func (t *TestDeployment) Logs() (logs [][]byte, err error) {
 }
 
 type TestStatefulset struct {
-	client      clientset.Interface
-	statefulset *apps.StatefulSet
-	namespace   *v1.Namespace
-	podNames    []string
-	allPods     []PodDetails
+	Client      clientset.Interface
+	Statefulset *apps.StatefulSet
+	Namespace   *v1.Namespace
+	PodNames    []string
+	AllPods     []PodDetails
 }
 
 func NewTestStatefulset(c clientset.Interface, ns *v1.Namespace, command string, pvc []v1.PersistentVolumeClaim, volumeMount []v1.VolumeMount, isWindows, useCMD bool, schedulerName string, replicaCount int) *TestStatefulset {
@@ -625,14 +588,15 @@ func NewTestStatefulset(c clientset.Interface, ns *v1.Namespace, command string,
 	var volumeClaimTest []v1.PersistentVolumeClaim
 	volumeClaimTest = append(volumeClaimTest, pvc...)
 	testStatefulset := &TestStatefulset{
-		client:    c,
-		namespace: ns,
-		statefulset: &apps.StatefulSet{
+		Client:    c,
+		Namespace: ns,
+		Statefulset: &apps.StatefulSet{
 			ObjectMeta: metav1.ObjectMeta{
 				GenerateName: generateName,
 			},
 			Spec: apps.StatefulSetSpec{
-				Replicas: &replicas,
+				PodManagementPolicy: apps.ParallelPodManagement,
+				Replicas:            &replicas,
 				Selector: &metav1.LabelSelector{
 					MatchLabels: map[string]string{"app": label},
 				},
@@ -661,16 +625,16 @@ func NewTestStatefulset(c clientset.Interface, ns *v1.Namespace, command string,
 	}
 
 	if isWindows {
-		testStatefulset.statefulset.Spec.Template.Spec.NodeSelector = map[string]string{
+		testStatefulset.Statefulset.Spec.Template.Spec.NodeSelector = map[string]string{
 			"kubernetes.io/os": "windows",
 		}
-		testStatefulset.statefulset.Spec.Template.Spec.Containers[0].Image = "mcr.microsoft.com/windows/servercore:ltsc2019"
+		testStatefulset.Statefulset.Spec.Template.Spec.Containers[0].Image = "mcr.microsoft.com/windows/servercore:ltsc2019"
 		if useCMD {
-			testStatefulset.statefulset.Spec.Template.Spec.Containers[0].Command = []string{"cmd"}
-			testStatefulset.statefulset.Spec.Template.Spec.Containers[0].Args = []string{"/c", command}
+			testStatefulset.Statefulset.Spec.Template.Spec.Containers[0].Command = []string{"cmd"}
+			testStatefulset.Statefulset.Spec.Template.Spec.Containers[0].Args = []string{"/c", command}
 		} else {
-			testStatefulset.statefulset.Spec.Template.Spec.Containers[0].Command = []string{"powershell.exe"}
-			testStatefulset.statefulset.Spec.Template.Spec.Containers[0].Args = []string{"-Command", command}
+			testStatefulset.Statefulset.Spec.Template.Spec.Containers[0].Command = []string{"powershell.exe"}
+			testStatefulset.Statefulset.Spec.Template.Spec.Containers[0].Args = []string{"-Command", command}
 		}
 	}
 
@@ -679,21 +643,35 @@ func NewTestStatefulset(c clientset.Interface, ns *v1.Namespace, command string,
 
 func (t *TestStatefulset) Create() {
 	var err error
-	t.statefulset, err = t.client.AppsV1().StatefulSets(t.namespace.Name).Create(context.TODO(), t.statefulset, metav1.CreateOptions{})
+	t.Statefulset, err = t.Client.AppsV1().StatefulSets(t.Namespace.Name).Create(context.TODO(), t.Statefulset, metav1.CreateOptions{})
 	framework.ExpectNoError(err)
-	err = waitForStatefulSetComplete(t.client, t.namespace, t.statefulset)
+	err = waitForStatefulSetComplete(t.Client, t.Namespace, t.Statefulset)
 	framework.ExpectNoError(err)
-	selector, err := metav1.LabelSelectorAsSelector(t.statefulset.Spec.Selector)
+	selector, err := metav1.LabelSelectorAsSelector(t.Statefulset.Spec.Selector)
 	framework.ExpectNoError(err)
 	options := metav1.ListOptions{LabelSelector: selector.String()}
-	statefulSetPods, err := t.client.CoreV1().Pods(t.namespace.Name).List(context.TODO(), options)
+	statefulSetPods, err := t.Client.CoreV1().Pods(t.Namespace.Name).List(context.TODO(), options)
 	framework.ExpectNoError(err)
 	for _, pod := range statefulSetPods.Items {
-		t.podNames = append(t.podNames, pod.Name)
+		t.PodNames = append(t.PodNames, pod.Name)
+	}
+}
+
+func (t *TestStatefulset) CreateWithoutWaiting() {
+	var err error
+	t.Statefulset, err = t.Client.AppsV1().StatefulSets(t.Namespace.Name).Create(context.TODO(), t.Statefulset, metav1.CreateOptions{})
+	framework.ExpectNoError(err)
+	selector, err := metav1.LabelSelectorAsSelector(t.Statefulset.Spec.Selector)
+	framework.ExpectNoError(err)
+	options := metav1.ListOptions{LabelSelector: selector.String()}
+	statefulSetPods, err := t.Client.CoreV1().Pods(t.Namespace.Name).List(context.TODO(), options)
+	framework.ExpectNoError(err)
+	for _, pod := range statefulSetPods.Items {
+		t.PodNames = append(t.PodNames, pod.Name)
 		var podPersistentVolumes []VolumeDetails
 		for _, volume := range pod.Spec.Volumes {
 			if volume.VolumeSource.PersistentVolumeClaim != nil {
-				pvc, err := t.client.CoreV1().PersistentVolumeClaims(t.namespace.Name).Get(context.TODO(), volume.VolumeSource.PersistentVolumeClaim.ClaimName, metav1.GetOptions{})
+				pvc, err := t.Client.CoreV1().PersistentVolumeClaims(t.Namespace.Name).Get(context.TODO(), volume.VolumeSource.PersistentVolumeClaim.ClaimName, metav1.GetOptions{})
 				framework.ExpectNoError(err)
 				newVolume := VolumeDetails{
 					PersistentVolume: &v1.PersistentVolume{
@@ -705,35 +683,35 @@ func (t *TestStatefulset) Create() {
 				podPersistentVolumes = append(podPersistentVolumes, newVolume)
 			}
 		}
-		t.allPods = append(t.allPods, PodDetails{Volumes: podPersistentVolumes})
+		t.AllPods = append(t.AllPods, PodDetails{Volumes: podPersistentVolumes})
 	}
 }
 
 func (t *TestStatefulset) WaitForPodReady() {
 
-	err := waitForStatefulSetComplete(t.client, t.namespace, t.statefulset)
+	err := waitForStatefulSetComplete(t.Client, t.Namespace, t.Statefulset)
 	framework.ExpectNoError(err)
 }
 
 func (t *TestStatefulset) Exec(command []string, expectedString string) {
-	for _, podName := range t.podNames {
-		_, err := framework.LookForStringInPodExec(t.namespace.Name, podName, command, expectedString, execTimeout)
+	for _, podName := range t.PodNames {
+		_, err := framework.LookForStringInPodExec(t.Namespace.Name, podName, command, expectedString, testconsts.ExecTimeout)
 		framework.ExpectNoError(err)
 	}
 }
 
 func (t *TestStatefulset) DeletePodAndWait() {
-	ch := make(chan error, len(t.podNames))
-	for _, podName := range t.podNames {
-		e2elog.Logf("Deleting pod %q in namespace %q", podName, t.namespace.Name)
+	ch := make(chan error, len(t.PodNames))
+	for _, podName := range t.PodNames {
+		e2elog.Logf("Deleting pod %q in namespace %q", podName, t.Namespace.Name)
 		go func(client clientset.Interface, ns, podName string) {
 			err := client.CoreV1().Pods(ns).Delete(context.TODO(), podName, metav1.DeleteOptions{})
 			ch <- err
-		}(t.client, t.namespace.Name, podName)
+		}(t.Client, t.Namespace.Name, podName)
 	}
 
 	// Wait on all goroutines to report on pod delete
-	for range t.podNames {
+	for range t.PodNames {
 		err := <-ch
 		if err != nil {
 			if !errors.IsNotFound(err) {
@@ -746,22 +724,14 @@ func (t *TestStatefulset) DeletePodAndWait() {
 }
 
 func (t *TestStatefulset) Cleanup() {
-	e2elog.Logf("deleting StatefulSet %q/%q", t.namespace.Name, t.statefulset.Name)
-	body, err := t.Logs()
-	if err != nil {
-		e2elog.Logf("Error getting logs for %s: %v", t.statefulset.Name, err)
-	} else {
-		for i, logs := range body {
-			e2elog.Logf("Pod %s has the following logs: %s", t.podNames[i], logs)
-		}
-	}
-	err = t.client.AppsV1().StatefulSets(t.namespace.Name).Delete(context.TODO(), t.statefulset.Name, metav1.DeleteOptions{})
+	e2elog.Logf("deleting StatefulSet %q/%q", t.Namespace.Name, t.Statefulset.Name)
+	err := t.Client.AppsV1().StatefulSets(t.Namespace.Name).Delete(context.TODO(), t.Statefulset.Name, metav1.DeleteOptions{})
 	framework.ExpectNoError(err)
 }
 
 func (t *TestStatefulset) Logs() (logs [][]byte, err error) {
-	for _, name := range t.podNames {
-		log, err := podLogs(t.client, name, t.namespace.Name)
+	for _, name := range t.PodNames {
+		log, err := podutil.PodLogs(t.Client, name, t.Namespace.Name)
 		if err != nil {
 			return nil, err
 		}
@@ -771,7 +741,7 @@ func (t *TestStatefulset) Logs() (logs [][]byte, err error) {
 }
 
 func waitForStatefulSetComplete(cs clientset.Interface, ns *v1.Namespace, ss *apps.StatefulSet) error {
-	err := wait.PollImmediate(poll, pollTimeout, func() (bool, error) {
+	err := wait.PollImmediate(testconsts.Poll, testconsts.PollTimeout, func() (bool, error) {
 		var err error
 		statefulSet, err := cs.AppsV1().StatefulSets(ns.Name).Get(context.TODO(), ss.Name, metav1.GetOptions{})
 		if err != nil {
@@ -788,16 +758,16 @@ func waitForStatefulSetComplete(cs clientset.Interface, ns *v1.Namespace, ss *ap
 }
 
 type TestPod struct {
-	client    clientset.Interface
-	pod       *v1.Pod
-	namespace *v1.Namespace
+	Client    clientset.Interface
+	Pod       *v1.Pod
+	Namespace *v1.Namespace
 }
 
 func NewTestPod(c clientset.Interface, ns *v1.Namespace, command, schedulerName string, isWindows bool) *TestPod {
 	testPod := &TestPod{
-		client:    c,
-		namespace: ns,
-		pod: &v1.Pod{
+		Client:    c,
+		Namespace: ns,
+		Pod: &v1.Pod{
 			ObjectMeta: metav1.ObjectMeta{
 				GenerateName: "azuredisk-volume-tester-",
 			},
@@ -818,12 +788,12 @@ func NewTestPod(c clientset.Interface, ns *v1.Namespace, command, schedulerName 
 		},
 	}
 	if isWindows {
-		testPod.pod.Spec.NodeSelector = map[string]string{
+		testPod.Pod.Spec.NodeSelector = map[string]string{
 			"kubernetes.io/os": "windows",
 		}
-		testPod.pod.Spec.Containers[0].Image = "mcr.microsoft.com/windows/servercore:ltsc2019"
-		testPod.pod.Spec.Containers[0].Command = []string{"powershell.exe"}
-		testPod.pod.Spec.Containers[0].Args = []string{"-Command", command}
+		testPod.Pod.Spec.Containers[0].Image = "mcr.microsoft.com/windows/servercore:ltsc2019"
+		testPod.Pod.Spec.Containers[0].Command = []string{"powershell.exe"}
+		testPod.Pod.Spec.Containers[0].Args = []string{"-Command", command}
 	}
 
 	return testPod
@@ -832,32 +802,32 @@ func NewTestPod(c clientset.Interface, ns *v1.Namespace, command, schedulerName 
 func (t *TestPod) Create() {
 	var err error
 
-	t.pod, err = t.client.CoreV1().Pods(t.namespace.Name).Create(context.TODO(), t.pod, metav1.CreateOptions{})
+	t.Pod, err = t.Client.CoreV1().Pods(t.Namespace.Name).Create(context.TODO(), t.Pod, metav1.CreateOptions{})
 	framework.ExpectNoError(err)
 }
 
 func (t *TestPod) WaitForSuccess() {
-	err := e2epod.WaitForPodSuccessInNamespaceSlow(t.client, t.pod.Name, t.namespace.Name)
+	err := e2epod.WaitForPodSuccessInNamespaceSlow(t.Client, t.Pod.Name, t.Namespace.Name)
 	framework.ExpectNoError(err)
 }
 
 func (t *TestPod) WaitForRunning() {
-	err := e2epod.WaitForPodRunningInNamespace(t.client, t.pod)
+	err := e2epod.WaitForPodRunningInNamespace(t.Client, t.Pod)
 	framework.ExpectNoError(err)
 }
 
 func (t *TestPod) WaitForRunningLong() {
-	err := e2epod.WaitForPodRunningInNamespaceSlow(t.client, t.pod.Name, t.namespace.Name)
+	err := e2epod.WaitForPodRunningInNamespaceSlow(t.Client, t.Pod.Name, t.Namespace.Name)
 	framework.ExpectNoError(err)
 }
 
 func (t *TestPod) WaitForFailedMountError() {
 	err := e2eevents.WaitTimeoutForEvent(
-		t.client,
-		t.namespace.Name,
+		t.Client,
+		t.Namespace.Name,
 		fields.Set{"reason": events.FailedMountVolume}.AsSelector().String(),
 		"MountVolume.MountDevice failed for volume",
-		pollLongTimeout)
+		testconsts.PollLongTimeout)
 	framework.ExpectNoError(err)
 }
 
@@ -876,7 +846,7 @@ var podFailedCondition = func(pod *v1.Pod) (bool, error) {
 }
 
 func (t *TestPod) WaitForFailure() {
-	err := e2epod.WaitForPodCondition(t.client, t.namespace.Name, t.pod.Name, failedConditionDescription, slowPodStartTimeout, podFailedCondition)
+	err := e2epod.WaitForPodCondition(t.Client, t.Namespace.Name, t.Pod.Name, testconsts.FailedConditionDescription, testconsts.SlowPodStartTimeout, podFailedCondition)
 	framework.ExpectNoError(err)
 }
 
@@ -886,7 +856,7 @@ func (t *TestPod) SetupVolume(pvc *v1.PersistentVolumeClaim, name, mountPath str
 		MountPath: mountPath,
 		ReadOnly:  readOnly,
 	}
-	t.pod.Spec.Containers[0].VolumeMounts = append(t.pod.Spec.Containers[0].VolumeMounts, volumeMount)
+	t.Pod.Spec.Containers[0].VolumeMounts = append(t.Pod.Spec.Containers[0].VolumeMounts, volumeMount)
 
 	volume := v1.Volume{
 		Name: name,
@@ -896,7 +866,7 @@ func (t *TestPod) SetupVolume(pvc *v1.PersistentVolumeClaim, name, mountPath str
 			},
 		},
 	}
-	t.pod.Spec.Volumes = append(t.pod.Spec.Volumes, volume)
+	t.Pod.Spec.Volumes = append(t.Pod.Spec.Volumes, volume)
 }
 
 func (t *TestPod) SetupInlineVolume(name, mountPath, diskURI string, readOnly bool) {
@@ -905,7 +875,7 @@ func (t *TestPod) SetupInlineVolume(name, mountPath, diskURI string, readOnly bo
 		MountPath: mountPath,
 		ReadOnly:  readOnly,
 	}
-	t.pod.Spec.Containers[0].VolumeMounts = append(t.pod.Spec.Containers[0].VolumeMounts, volumeMount)
+	t.Pod.Spec.Containers[0].VolumeMounts = append(t.Pod.Spec.Containers[0].VolumeMounts, volumeMount)
 
 	kind := v1.AzureDataDiskKind("Managed")
 	diskName, _ := azureutils.GetDiskName(diskURI)
@@ -920,7 +890,7 @@ func (t *TestPod) SetupInlineVolume(name, mountPath, diskURI string, readOnly bo
 			},
 		},
 	}
-	t.pod.Spec.Volumes = append(t.pod.Spec.Volumes, volume)
+	t.Pod.Spec.Volumes = append(t.Pod.Spec.Volumes, volume)
 }
 
 func (t *TestPod) SetupRawBlockVolume(pvc *v1.PersistentVolumeClaim, name, devicePath string) {
@@ -928,8 +898,8 @@ func (t *TestPod) SetupRawBlockVolume(pvc *v1.PersistentVolumeClaim, name, devic
 		Name:       name,
 		DevicePath: devicePath,
 	}
-	t.pod.Spec.Containers[0].VolumeDevices = make([]v1.VolumeDevice, 0)
-	t.pod.Spec.Containers[0].VolumeDevices = append(t.pod.Spec.Containers[0].VolumeDevices, volumeDevice)
+	t.Pod.Spec.Containers[0].VolumeDevices = make([]v1.VolumeDevice, 0)
+	t.Pod.Spec.Containers[0].VolumeDevices = append(t.Pod.Spec.Containers[0].VolumeDevices, volumeDevice)
 
 	volume := v1.Volume{
 		Name: name,
@@ -939,7 +909,7 @@ func (t *TestPod) SetupRawBlockVolume(pvc *v1.PersistentVolumeClaim, name, devic
 			},
 		},
 	}
-	t.pod.Spec.Volumes = append(t.pod.Spec.Volumes, volume)
+	t.Pod.Spec.Volumes = append(t.Pod.Spec.Volumes, volume)
 }
 
 func (t *TestPod) SetupVolumeMountWithSubpath(pvc *v1.PersistentVolumeClaim, name, mountPath string, subpath string, readOnly bool) {
@@ -950,7 +920,7 @@ func (t *TestPod) SetupVolumeMountWithSubpath(pvc *v1.PersistentVolumeClaim, nam
 		ReadOnly:  readOnly,
 	}
 
-	t.pod.Spec.Containers[0].VolumeMounts = append(t.pod.Spec.Containers[0].VolumeMounts, volumeMount)
+	t.Pod.Spec.Containers[0].VolumeMounts = append(t.Pod.Spec.Containers[0].VolumeMounts, volumeMount)
 
 	volume := v1.Volume{
 		Name: name,
@@ -961,23 +931,23 @@ func (t *TestPod) SetupVolumeMountWithSubpath(pvc *v1.PersistentVolumeClaim, nam
 		},
 	}
 
-	t.pod.Spec.Volumes = append(t.pod.Spec.Volumes, volume)
+	t.Pod.Spec.Volumes = append(t.Pod.Spec.Volumes, volume)
 }
 
 func (t *TestPod) SetNodeSelector(nodeSelector map[string]string) {
-	t.pod.Spec.NodeSelector = nodeSelector
+	t.Pod.Spec.NodeSelector = nodeSelector
 }
 
 func (t *TestPod) SetAffinity(affinity *v1.Affinity) {
-	t.pod.Spec.Affinity = affinity
+	t.Pod.Spec.Affinity = affinity
 }
 
 func (t *TestPod) SetLabel(labels map[string]string) {
-	t.pod.ObjectMeta.Labels = labels
+	t.Pod.ObjectMeta.Labels = labels
 }
 
 func (t *TestPod) SetNodeToleration(nodeTolerations ...v1.Toleration) {
-	t.pod.Spec.Tolerations = nodeTolerations
+	t.Pod.Spec.Tolerations = nodeTolerations
 }
 
 func (t *TestPod) SetNodeUnschedulable(nodeName string, unschedulable bool) {
@@ -985,24 +955,24 @@ func (t *TestPod) SetNodeUnschedulable(nodeName string, unschedulable bool) {
 	updateFunc := func(nodeObj *v1.Node) {
 		nodeObj.Spec.Unschedulable = unschedulable
 	}
-	_, err = updateNodeWithRetry(t.client, nodeName, updateFunc)
+	_, err = nodeutil.UpdateNodeWithRetry(t.Client, nodeName, updateFunc)
 	framework.ExpectNoError(err)
 }
 
 func (t *TestPod) Cleanup() {
-	cleanupPodOrFail(t.client, t.pod.Name, t.namespace.Name)
+	podutil.CleanupPodOrFail(t.Client, t.Pod.Name, t.Namespace.Name)
 }
 
 func (t *TestPod) GetZoneForVolume(index int) string {
-	pvcSource := t.pod.Spec.Volumes[index].VolumeSource.PersistentVolumeClaim
+	pvcSource := t.Pod.Spec.Volumes[index].VolumeSource.PersistentVolumeClaim
 	if pvcSource == nil {
 		return ""
 	}
 
-	pvc, err := t.client.CoreV1().PersistentVolumeClaims(t.namespace.Name).Get(context.TODO(), pvcSource.ClaimName, metav1.GetOptions{})
+	pvc, err := t.Client.CoreV1().PersistentVolumeClaims(t.Namespace.Name).Get(context.TODO(), pvcSource.ClaimName, metav1.GetOptions{})
 	framework.ExpectNoError(err)
 
-	pv, err := t.client.CoreV1().PersistentVolumes().Get(context.TODO(), pvc.Spec.VolumeName, metav1.GetOptions{})
+	pv, err := t.Client.CoreV1().PersistentVolumes().Get(context.TODO(), pvc.Spec.VolumeName, metav1.GetOptions{})
 	framework.ExpectNoError(err)
 
 	zone := ""
@@ -1018,189 +988,16 @@ func (t *TestPod) GetZoneForVolume(index int) string {
 }
 
 func (t *TestPod) Logs() ([]byte, error) {
-	return podLogs(t.client, t.pod.Name, t.namespace.Name)
-}
-
-func ListNodeNames(c clientset.Interface) []string {
-	var nodeNames []string
-	nodes, err := c.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
-	framework.ExpectNoError(err)
-	for _, item := range nodes.Items {
-		nodeNames = append(nodeNames, item.Name)
-	}
-	return nodeNames
-}
-
-func updateNodeWithRetry(c clientset.Interface, nodeName string, updateFunc func(*v1.Node)) (nodeObj *v1.Node, err error) {
-	ctx, cancelFunc := context.WithTimeout(context.Background(), pollTimeout)
-	defer cancelFunc()
-
-	err = wait.PollImmediateUntil(poll, func() (bool, error) {
-		nodeObj, err = c.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
-		if err != nil {
-			return false, err
-		}
-		updateFunc(nodeObj)
-
-		nodeObj, err = c.CoreV1().Nodes().Update(ctx, nodeObj, metav1.UpdateOptions{})
-		if errors.IsConflict(err) {
-			return false, nil
-		}
-		return true, err
-	}, ctx.Done())
-
-	return
-}
-
-func SetNodeLabels(c clientset.Interface, node *v1.Node, newLabels map[string]string) (newNode *v1.Node, cleanup func(), err error) {
-	originalLabels := node.Labels
-	nodeName := node.Name
-	cleanup = func() {
-		updateFunc := func(nodeObj *v1.Node) {
-			nodeObj.Labels = originalLabels
-		}
-		_, cleanUpErr := updateNodeWithRetry(c, nodeName, updateFunc)
-		framework.ExpectNoError(cleanUpErr)
-	}
-
-	updateFunc := func(nodeObj *v1.Node) {
-		if nodeObj.Labels == nil {
-			nodeObj.Labels = newLabels
-		} else {
-			for key, value := range newLabels {
-				nodeObj.Labels[key] = value
-			}
-		}
-	}
-
-	newNode, err = updateNodeWithRetry(c, node.Name, updateFunc)
-	return
-}
-
-func SetNodeTaints(c clientset.Interface, node *v1.Node, taints ...v1.Taint) (newNode *v1.Node, cleanup func(), err error) {
-	originalTaints := node.Spec.Taints
-	nodeName := node.Name
-	cleanup = func() {
-		updateFunc := func(nodeObj *v1.Node) {
-			node.Spec.Taints = originalTaints
-		}
-		_, cleanUpErr := updateNodeWithRetry(c, nodeName, updateFunc)
-		framework.ExpectNoError(cleanUpErr)
-	}
-
-	updateFunc := func(nodeObj *v1.Node) {
-		if node.Spec.Taints == nil {
-			node.Spec.Taints = taints
-		} else {
-			// acknowledge that this can lead to duplicate taints
-			node.Spec.Taints = append(node.Spec.Taints, taints...)
-		}
-	}
-
-	newNode, err = updateNodeWithRetry(c, node.Name, updateFunc)
-	return
-}
-
-func ListAzDriverNodeNames(azDriverNode v1alpha1ClientSet.AzDriverNodeInterface) []string {
-	var nodeNames []string
-	nodes, err := azDriverNode.List(context.TODO(), metav1.ListOptions{})
-	framework.ExpectNoError(err)
-	for _, item := range nodes.Items {
-		nodeNames = append(nodeNames, item.Name)
-	}
-	return nodeNames
-}
-
-func DeleteAllPodsWithMatchingLabel(cs clientset.Interface, ns *v1.Namespace, matchLabels map[string]string) {
-
-	e2elog.Logf("Deleting all pods with %v labels in namespace %s", matchLabels, ns.Name)
-	labelSelector := metav1.LabelSelector{MatchLabels: matchLabels}
-	err := cs.CoreV1().Pods(ns.Name).DeleteCollection(context.TODO(), metav1.DeleteOptions{}, metav1.ListOptions{LabelSelector: labels.Set(labelSelector.MatchLabels).String()})
-	if !errors.IsNotFound(err) {
-		framework.ExpectNoError(err)
-	}
-
-	//sleep ensure waitForPodready will not pass before old pod is deleted.
-	time.Sleep(60 * time.Second)
-}
-
-func cleanupPodOrFail(client clientset.Interface, name, namespace string) {
-	e2elog.Logf("deleting Pod %q/%q", namespace, name)
-	body, err := podLogs(client, name, namespace)
-	if err != nil {
-		e2elog.Logf("Error getting logs for pod %s: %v", name, err)
-	} else {
-		e2elog.Logf("Pod %s has the following logs: %s", name, body)
-	}
-	e2epod.DeletePodOrFail(client, namespace, name)
-}
-
-func podLogs(client clientset.Interface, name, namespace string) ([]byte, error) {
-	return client.CoreV1().Pods(namespace).GetLogs(name, &v1.PodLogOptions{}).Do(context.TODO()).Raw()
-}
-
-func getPodsForDeployment(client clientset.Interface, deployment *apps.Deployment) (*v1.PodList, error) {
-	replicaSet, err := deploymentutil.GetNewReplicaSet(deployment, client.AppsV1())
-	if err != nil {
-		return nil, fmt.Errorf("failed to get new replica set for deployment %q: %v", deployment.Name, err)
-	}
-	if replicaSet == nil {
-		return nil, fmt.Errorf("expected a new replica set for deployment %q, found none", deployment.Name)
-	}
-	podListFunc := func(namespace string, options metav1.ListOptions) (*v1.PodList, error) {
-		return client.CoreV1().Pods(namespace).List(context.TODO(), options)
-	}
-	rsList := []*apps.ReplicaSet{replicaSet}
-	podList, err := deploymentutil.ListPods(deployment, rsList, podListFunc)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list Pods of Deployment %q: %v", deployment.Name, err)
-	}
-	return podList, nil
-}
-
-// waitForVolumeDetach waits for volumeattachment for a PV to be removed from the cluster
-func waitForVolumeDetach(c clientset.Interface, pvName string, poll, pollTimeout time.Duration) error {
-	ginkgo.By("waiting for disk to detach from node")
-	ctx, cancelFunc := context.WithTimeout(context.Background(), pollTimeout)
-	defer cancelFunc()
-	return wait.PollImmediateUntil(poll, func() (bool, error) {
-		volumeAttachments, err := c.StorageV1().VolumeAttachments().List(ctx, metav1.ListOptions{})
-		if err != nil {
-			return false, err
-		}
-		notFound := true
-		for _, volumeAttachment := range volumeAttachments.Items {
-			if volumeAttachment.Spec.Source.PersistentVolumeName != nil && *volumeAttachment.Spec.Source.PersistentVolumeName == pvName {
-				notFound = false
-			}
-		}
-		return notFound, nil
-	}, ctx.Done())
-}
-
-// waitForPersistentVolumeClaimDeleted waits for a PersistentVolumeClaim to be removed from the system until timeout occurs, whichever comes first.
-func waitForPersistentVolumeClaimDeleted(c clientset.Interface, ns string, pvcName string, Poll, timeout time.Duration) error {
-	framework.Logf("Waiting up to %v for PersistentVolumeClaim %s to be removed", timeout, pvcName)
-	for start := time.Now(); time.Since(start) < timeout; time.Sleep(Poll) {
-		_, err := c.CoreV1().PersistentVolumeClaims(ns).Get(context.TODO(), pvcName, metav1.GetOptions{})
-		if err != nil {
-			if errors.IsNotFound(err) {
-				framework.Logf("Claim %q in namespace %q doesn't exist in the system", pvcName, ns)
-				return nil
-			}
-			framework.Logf("Failed to get claim %q in namespace %q, retrying in %v. Error: %v", pvcName, ns, Poll, err)
-		}
-	}
-	return fmt.Errorf("PersistentVolumeClaim %s is not removed from the system within %v", pvcName, timeout)
+	return podutil.PodLogs(t.Client, t.Pod.Name, t.Namespace.Name)
 }
 
 // should only be used for integration tests
 type TestAzVolumeAttachment struct {
-	azclient             v1alpha1ClientSet.DiskV1alpha1Interface
-	namespace            string
-	underlyingVolume     string
-	primaryNodeName      string
-	maxMountReplicaCount int
+	Azclient             v1alpha1ClientSet.DiskV1alpha1Interface
+	Namespace            string
+	UnderlyingVolume     string
+	PrimaryNodeName      string
+	MaxMountReplicaCount int
 }
 
 // should only be used for integration tests
@@ -1310,24 +1107,24 @@ func NewTestAzVolume(azVolume v1alpha1ClientSet.AzVolumeInterface, underlyingVol
 // should only be used for integration tests
 func SetupTestAzVolumeAttachment(azclient v1alpha1ClientSet.DiskV1alpha1Interface, namespace, underlyingVolume, primaryNodeName string, maxMountReplicaCount int) *TestAzVolumeAttachment {
 	return &TestAzVolumeAttachment{
-		azclient:             azclient,
-		namespace:            namespace,
-		underlyingVolume:     underlyingVolume,
-		primaryNodeName:      primaryNodeName,
-		maxMountReplicaCount: maxMountReplicaCount,
+		Azclient:             azclient,
+		Namespace:            namespace,
+		UnderlyingVolume:     underlyingVolume,
+		PrimaryNodeName:      primaryNodeName,
+		MaxMountReplicaCount: maxMountReplicaCount,
 	}
 }
 
 // should only be used for integration tests
 func (t *TestAzVolumeAttachment) Create() *v1alpha1.AzVolumeAttachment {
 	// create test az volume
-	azVol := t.azclient.AzVolumes(t.namespace)
-	_ = NewTestAzVolume(azVol, t.underlyingVolume, t.maxMountReplicaCount)
+	azVol := t.Azclient.AzVolumes(t.Namespace)
+	_ = NewTestAzVolume(azVol, t.UnderlyingVolume, t.MaxMountReplicaCount)
 
 	// create test az volume attachment
-	azAtt := t.azclient.AzVolumeAttachments(t.namespace)
-	attName := GetAzVolumeAttachmentName(t.underlyingVolume, t.primaryNodeName)
-	att := NewTestAzVolumeAttachment(azAtt, attName, t.primaryNodeName, t.underlyingVolume, t.namespace)
+	azAtt := t.Azclient.AzVolumeAttachments(t.Namespace)
+	attName := GetAzVolumeAttachmentName(t.UnderlyingVolume, t.PrimaryNodeName)
+	att := NewTestAzVolumeAttachment(azAtt, attName, t.PrimaryNodeName, t.UnderlyingVolume, t.Namespace)
 
 	return att
 }
@@ -1335,23 +1132,23 @@ func (t *TestAzVolumeAttachment) Create() *v1alpha1.AzVolumeAttachment {
 // should only be used for integration tests
 func (t *TestAzVolumeAttachment) Cleanup() {
 	klog.Info("cleaning up")
-	err := t.azclient.AzVolumes(t.namespace).Delete(context.Background(), t.underlyingVolume, metav1.DeleteOptions{})
+	err := t.Azclient.AzVolumes(t.Namespace).Delete(context.Background(), t.UnderlyingVolume, metav1.DeleteOptions{})
 	if !errors.IsNotFound(err) {
 		framework.ExpectNoError(err)
 	}
 
-	// Delete All AzVolumeAttachments for t.underlyingVolume
-	err = t.azclient.AzVolumeAttachments(t.namespace).Delete(context.Background(), GetAzVolumeAttachmentName(t.underlyingVolume, t.primaryNodeName), metav1.DeleteOptions{})
+	// Delete All AzVolumeAttachments for t.UnderlyingVolume
+	err = t.Azclient.AzVolumeAttachments(t.Namespace).Delete(context.Background(), GetAzVolumeAttachmentName(t.UnderlyingVolume, t.PrimaryNodeName), metav1.DeleteOptions{})
 	if !errors.IsNotFound(err) {
 		framework.ExpectNoError(err)
 	}
 
-	nodes, err := t.azclient.AzDriverNodes(t.namespace).List(context.Background(), metav1.ListOptions{})
+	nodes, err := t.Azclient.AzDriverNodes(t.Namespace).List(context.Background(), metav1.ListOptions{})
 	if !errors.IsNotFound(err) {
 		framework.ExpectNoError(err)
 	}
 	for _, node := range nodes.Items {
-		err = t.azclient.AzVolumeAttachments(t.namespace).Delete(context.Background(), GetAzVolumeAttachmentName(t.underlyingVolume, node.Name), metav1.DeleteOptions{})
+		err = t.Azclient.AzVolumeAttachments(t.Namespace).Delete(context.Background(), GetAzVolumeAttachmentName(t.UnderlyingVolume, node.Name), metav1.DeleteOptions{})
 		if !errors.IsNotFound(err) {
 			framework.ExpectNoError(err)
 		}
@@ -1366,7 +1163,7 @@ func GetAzVolumeAttachmentName(underlyingVolume, nodeName string) string {
 // Wait for the azVolumeAttachment object update
 func (t *TestAzVolumeAttachment) WaitForAttach(timeout time.Duration) error {
 	conditionFunc := func() (bool, error) {
-		att, err := t.azclient.AzVolumeAttachments(t.namespace).Get(context.TODO(), GetAzVolumeAttachmentName(t.underlyingVolume, t.primaryNodeName), metav1.GetOptions{})
+		att, err := t.Azclient.AzVolumeAttachments(t.Namespace).Get(context.TODO(), GetAzVolumeAttachmentName(t.UnderlyingVolume, t.PrimaryNodeName), metav1.GetOptions{})
 		if err != nil {
 			return false, err
 		}
@@ -1383,7 +1180,7 @@ func (t *TestAzVolumeAttachment) WaitForAttach(timeout time.Duration) error {
 // Wait for the azVolumeAttachment object update
 func (t *TestAzVolumeAttachment) WaitForFinalizer(timeout time.Duration) error {
 	conditionFunc := func() (bool, error) {
-		att, err := t.azclient.AzVolumeAttachments(t.namespace).Get(context.TODO(), GetAzVolumeAttachmentName(t.underlyingVolume, t.primaryNodeName), metav1.GetOptions{})
+		att, err := t.Azclient.AzVolumeAttachments(t.Namespace).Get(context.TODO(), GetAzVolumeAttachmentName(t.UnderlyingVolume, t.PrimaryNodeName), metav1.GetOptions{})
 		if err != nil {
 			return false, err
 		}
@@ -1405,7 +1202,7 @@ func (t *TestAzVolumeAttachment) WaitForFinalizer(timeout time.Duration) error {
 // Wait for the azVolumeAttachment object update
 func (t *TestAzVolumeAttachment) WaitForLabels(timeout time.Duration) error {
 	conditionFunc := func() (bool, error) {
-		att, err := t.azclient.AzVolumeAttachments(t.namespace).Get(context.TODO(), GetAzVolumeAttachmentName(t.underlyingVolume, t.primaryNodeName), metav1.GetOptions{})
+		att, err := t.Azclient.AzVolumeAttachments(t.Namespace).Get(context.TODO(), GetAzVolumeAttachmentName(t.UnderlyingVolume, t.PrimaryNodeName), metav1.GetOptions{})
 		if err != nil {
 			return false, err
 		}
@@ -1426,9 +1223,9 @@ func (t *TestAzVolumeAttachment) WaitForLabels(timeout time.Duration) error {
 // should only be used for integration tests
 // Wait for the azVolumeAttachment object update
 func (t *TestAzVolumeAttachment) WaitForDelete(nodeName string, timeout time.Duration) error {
-	attName := GetAzVolumeAttachmentName(t.underlyingVolume, nodeName)
+	attName := GetAzVolumeAttachmentName(t.UnderlyingVolume, nodeName)
 	conditionFunc := func() (bool, error) {
-		_, err := t.azclient.AzVolumeAttachments(t.namespace).Get(context.TODO(), attName, metav1.GetOptions{})
+		_, err := t.Azclient.AzVolumeAttachments(t.Namespace).Get(context.TODO(), attName, metav1.GetOptions{})
 		if errors.IsNotFound(err) {
 			klog.Infof("azVolumeAttachment %s not found.", attName)
 			return true, nil
@@ -1444,7 +1241,7 @@ func (t *TestAzVolumeAttachment) WaitForDelete(nodeName string, timeout time.Dur
 // Wait for the azVolumeAttachment object update
 func (t *TestAzVolumeAttachment) WaitForPrimary(timeout time.Duration) error {
 	conditionFunc := func() (bool, error) {
-		attachments, err := t.azclient.AzVolumeAttachments(t.namespace).List(context.TODO(), metav1.ListOptions{})
+		attachments, err := t.Azclient.AzVolumeAttachments(t.Namespace).List(context.TODO(), metav1.ListOptions{})
 		if err != nil {
 			return false, err
 		}
@@ -1452,7 +1249,7 @@ func (t *TestAzVolumeAttachment) WaitForPrimary(timeout time.Duration) error {
 			if attachment.Status.Detail == nil {
 				continue
 			}
-			if attachment.Spec.UnderlyingVolume == t.underlyingVolume && attachment.Spec.RequestedRole == v1alpha1.PrimaryRole && attachment.Status.Detail.Role == v1alpha1.PrimaryRole {
+			if attachment.Spec.UnderlyingVolume == t.UnderlyingVolume && attachment.Spec.RequestedRole == v1alpha1.PrimaryRole && attachment.Status.Detail.Role == v1alpha1.PrimaryRole {
 				return true, nil
 			}
 		}
@@ -1465,7 +1262,7 @@ func (t *TestAzVolumeAttachment) WaitForPrimary(timeout time.Duration) error {
 // Wait for the azVolumeAttachment object update
 func (t *TestAzVolumeAttachment) WaitForReplicas(numReplica int, timeout time.Duration) error {
 	conditionFunc := func() (bool, error) {
-		attachments, err := t.azclient.AzVolumeAttachments(t.namespace).List(context.TODO(), metav1.ListOptions{})
+		attachments, err := t.Azclient.AzVolumeAttachments(t.Namespace).List(context.TODO(), metav1.ListOptions{})
 		if err != nil {
 			return false, err
 		}
@@ -1474,11 +1271,11 @@ func (t *TestAzVolumeAttachment) WaitForReplicas(numReplica int, timeout time.Du
 			if attachment.Status.Detail == nil {
 				continue
 			}
-			if attachment.Spec.UnderlyingVolume == t.underlyingVolume && attachment.Status.Detail.Role == v1alpha1.ReplicaRole {
+			if attachment.Spec.UnderlyingVolume == t.UnderlyingVolume && attachment.Status.Detail.Role == v1alpha1.ReplicaRole {
 				counter++
 			}
 		}
-		klog.Infof("%d replica found for volume %s", counter, t.underlyingVolume)
+		klog.Infof("%d replica found for volume %s", counter, t.UnderlyingVolume)
 		return counter == numReplica, nil
 	}
 	return wait.PollImmediate(time.Duration(15)*time.Second, timeout, conditionFunc)
@@ -1486,27 +1283,27 @@ func (t *TestAzVolumeAttachment) WaitForReplicas(numReplica int, timeout time.Du
 
 // should only be used for integration tests
 type TestAzVolume struct {
-	azclient             v1alpha1ClientSet.DiskV1alpha1Interface
-	namespace            string
-	underlyingVolume     string
-	maxMountReplicaCount int
+	Azclient             v1alpha1ClientSet.DiskV1alpha1Interface
+	Namespace            string
+	UnderlyingVolume     string
+	MaxMountReplicaCount int
 }
 
 // should only be used for integration tests
 func SetupTestAzVolume(azclient v1alpha1ClientSet.DiskV1alpha1Interface, namespace string, underlyingVolume string, maxMountReplicaCount int) *TestAzVolume {
 	return &TestAzVolume{
-		azclient:             azclient,
-		namespace:            namespace,
-		underlyingVolume:     underlyingVolume,
-		maxMountReplicaCount: maxMountReplicaCount,
+		Azclient:             azclient,
+		Namespace:            namespace,
+		UnderlyingVolume:     underlyingVolume,
+		MaxMountReplicaCount: maxMountReplicaCount,
 	}
 }
 
 // should only be used for integration tests
 func (t *TestAzVolume) Create() *v1alpha1.AzVolume {
 	// create test az volume
-	azVolClient := t.azclient.AzVolumes(t.namespace)
-	azVolume := NewTestAzVolume(azVolClient, t.underlyingVolume, t.maxMountReplicaCount)
+	azVolClient := t.Azclient.AzVolumes(t.Namespace)
+	azVolume := NewTestAzVolume(azVolClient, t.UnderlyingVolume, t.MaxMountReplicaCount)
 
 	return azVolume
 }
@@ -1515,7 +1312,7 @@ func (t *TestAzVolume) Create() *v1alpha1.AzVolume {
 //Cleanup after TestAzVolume was created
 func (t *TestAzVolume) Cleanup() {
 	klog.Info("cleaning up TestAzVolume")
-	err := t.azclient.AzVolumes(t.namespace).Delete(context.Background(), t.underlyingVolume, metav1.DeleteOptions{})
+	err := t.Azclient.AzVolumes(t.Namespace).Delete(context.Background(), t.UnderlyingVolume, metav1.DeleteOptions{})
 	if !errors.IsNotFound(err) {
 		framework.ExpectNoError(err)
 	}
@@ -1527,7 +1324,7 @@ func (t *TestAzVolume) Cleanup() {
 // Wait for the azVolume object update
 func (t *TestAzVolume) WaitForFinalizer(timeout time.Duration) error {
 	conditionFunc := func() (bool, error) {
-		azVolume, err := t.azclient.AzVolumes(t.namespace).Get(context.TODO(), t.underlyingVolume, metav1.GetOptions{})
+		azVolume, err := t.Azclient.AzVolumes(t.Namespace).Get(context.TODO(), t.UnderlyingVolume, metav1.GetOptions{})
 		if err != nil {
 			return false, err
 		}
@@ -1550,9 +1347,9 @@ func (t *TestAzVolume) WaitForFinalizer(timeout time.Duration) error {
 func (t *TestAzVolume) WaitForDelete(timeout time.Duration) error {
 	klog.Infof("Waiting for delete azVolume object")
 	conditionFunc := func() (bool, error) {
-		_, err := t.azclient.AzVolumes(t.namespace).Get(context.TODO(), t.underlyingVolume, metav1.GetOptions{})
+		_, err := t.Azclient.AzVolumes(t.Namespace).Get(context.TODO(), t.UnderlyingVolume, metav1.GetOptions{})
 		if errors.IsNotFound(err) {
-			klog.Infof("azVolume %s deleted.", t.underlyingVolume)
+			klog.Infof("azVolume %s deleted.", t.UnderlyingVolume)
 			return true, nil
 		} else if err != nil {
 			return false, err

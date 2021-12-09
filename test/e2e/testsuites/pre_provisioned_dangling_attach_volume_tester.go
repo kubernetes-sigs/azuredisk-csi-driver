@@ -21,6 +21,8 @@ import (
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
+	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
+	nodeutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/node"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
@@ -37,7 +39,7 @@ import (
 type PreProvisionedDanglingAttachVolumeTest struct {
 	CSIDriver     driver.PreProvisionedVolumeTestDriver
 	AzureCloud    *provider.Cloud
-	Pod           PodDetails
+	Pod           testtypes.PodDetails
 	VolumeContext map[string]string
 }
 
@@ -50,7 +52,7 @@ func (t *PreProvisionedDanglingAttachVolumeTest) Run(client clientset.Interface,
 	}
 
 	// Get the list of available nodes for scheduling the pod
-	nodes := ListNodeNames(client)
+	nodes := nodeutil.ListNodeNames(client)
 	if len(nodes) < 2 {
 		ginkgo.Skip("need at least 2 nodes to verify the test case. Current node count is %d", len(nodes))
 	}

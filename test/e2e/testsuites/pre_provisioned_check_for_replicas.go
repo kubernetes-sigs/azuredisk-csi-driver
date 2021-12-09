@@ -22,7 +22,9 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
+	nodeutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/node"
 
 	"github.com/onsi/ginkgo"
 	v1 "k8s.io/api/core/v1"
@@ -35,13 +37,14 @@ import (
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
 )
 
 // PreProvisionedCheckForReplicasTest will provision required PV(s), PVC(s) and Pod(s)
 // Test will create a pods with shared disks and will verify that correct number of replica attachments are created
 type PreProvisionedCheckForReplicasTest struct {
 	CSIDriver     driver.PreProvisionedVolumeTestDriver
-	Pods          []PodDetails
+	Pods          []testtypes.PodDetails
 	VolumeName    string
 	AzDiskClient  azDiskClientSet.Interface
 	VolumeContext map[string]string
@@ -49,7 +52,7 @@ type PreProvisionedCheckForReplicasTest struct {
 
 func (t *PreProvisionedCheckForReplicasTest) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
 	// Get the list of available nodes for scheduling the pod
-	nodes := ListAzDriverNodeNames(t.AzDiskClient.DiskV1alpha1().AzDriverNodes(consts.AzureDiskCrdNamespace))
+	nodes := nodeutil.ListAzDriverNodeNames(t.AzDiskClient.DiskV1alpha1().AzDriverNodes(consts.AzureDiskCrdNamespace))
 	if len(nodes) < 2 {
 		ginkgo.Skip(fmt.Sprintf("need at least 2 nodes to verify the test case. Current node count is %d", len(nodes)))
 	}
@@ -79,7 +82,7 @@ func (t *PreProvisionedCheckForReplicasTest) Run(client clientset.Interface, nam
 		}
 
 		labelSelector := metav1.LabelSelector{MatchLabels: map[string]string{consts.VolumeNameLabel: t.VolumeName, consts.RoleLabel: "Replica"}}
-		err := wait.PollImmediate(poll, pollTimeout,
+		err := wait.PollImmediate(testconsts.Poll, testconsts.PollTimeout,
 			func() (bool, error) {
 				azVolumeAttachments, err := t.AzDiskClient.DiskV1alpha1().AzVolumeAttachments(consts.AzureDiskCrdNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: labels.Set(labelSelector.MatchLabels).String()})
 				if err != nil {

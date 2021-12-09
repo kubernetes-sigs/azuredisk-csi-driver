@@ -111,6 +111,10 @@ integration-test:
 integration-test-v2: container-v2
 	go test -v -timeout=45m ./test/integration --test-driver-version=v2 --image-tag ${IMAGE_TAG}
 
+.PHONY: scale-test-v2
+scale-test-v2: 
+	BUILD_V2=1 go test -v -timeout=0 ${GOTAGS} ./test/e2e/scale ${GINKGO_FLAGS}
+
 .PHONY: e2e-bootstrap
 e2e-bootstrap: install-helm
 	docker pull $(IMAGE_TAG) || make container-all push-manifest

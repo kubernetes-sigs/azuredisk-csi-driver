@@ -35,15 +35,18 @@ import (
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller"
+	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
+	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
+	nodeutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/node"
 )
 
 //  will provision required PV(s), PVC(s) and Pod(s)
 // Primary AzVolumeAttachment and Replica AzVolumeAttachments should be created on set of nodes with matching label
 type PodNodeSelector struct {
 	CSIDriver              driver.DynamicPVTestDriver
-	Pod                    PodDetails
-	Volume                 VolumeDetails
+	Pod                    testtypes.PodDetails
+	Volume                 testtypes.VolumeDetails
 	IsMultiZone            bool
 	AzDiskClient           *azDiskClientSet.Clientset
 	StorageClassParameters map[string]string
@@ -53,7 +56,7 @@ func (t *PodNodeSelector) Run(client clientset.Interface, namespace *v1.Namespac
 	_, maxMountReplicaCount := azureutils.GetMaxSharesAndMaxMountReplicaCount(t.StorageClassParameters)
 
 	// Get the list of available nodes for scheduling the pod
-	nodes := ListNodeNames(client)
+	nodes := nodeutil.ListNodeNames(client)
 	necessaryNodeCount := maxMountReplicaCount + 2
 	if len(nodes) < necessaryNodeCount {
 		ginkgo.Skip("need at least %d nodes to verify the test case. Current node count is %d", necessaryNodeCount, len(nodes))
@@ -70,13 +73,13 @@ func (t *PodNodeSelector) Run(client clientset.Interface, namespace *v1.Namespac
 		framework.ExpectNoError(err)
 
 		// if the node is a master node, skip
-		if _, ok := nodeObj.Labels[masterNodeLabel]; ok {
+		if _, ok := nodeObj.Labels[testconsts.MasterNodeLabel]; ok {
 			continue
 		}
 
 		if count < numNodesWithLabel {
 			var labelCleanup func()
-			_, labelCleanup, err = SetNodeLabels(client, nodeObj, testLabel)
+			_, labelCleanup, err = nodeutil.SetNodeLabels(client, nodeObj, testconsts.TestLabel)
 			framework.ExpectNoError(err)
 			defer labelCleanup()
 			nodesWithLabel[nodes[i]] = struct{}{}
@@ -89,9 +92,9 @@ func (t *PodNodeSelector) Run(client clientset.Interface, namespace *v1.Namespac
 	for i := range cleanup {
 		defer cleanup[i]()
 	}
-	pod := tpod.pod.DeepCopy()
+	pod := tpod.Pod.DeepCopy()
 
-	tpod.SetNodeSelector(testLabel)
+	tpod.SetNodeSelector(testconsts.TestLabel)
 	ginkgo.By("deploying the pod")
 	tpod.Create()
 	defer tpod.Cleanup()
@@ -104,7 +107,7 @@ func (t *PodNodeSelector) Run(client clientset.Interface, namespace *v1.Namespac
 		if volume.PersistentVolumeClaim == nil {
 			framework.Failf("volume (%s) does not hold PersistentVolumeClaim field", volume.Name)
 		}
-		pvc, err := client.CoreV1().PersistentVolumeClaims(tpod.namespace.Name).Get(ctx, volume.PersistentVolumeClaim.ClaimName, metav1.GetOptions{})
+		pvc, err := client.CoreV1().PersistentVolumeClaims(tpod.Namespace.Name).Get(ctx, volume.PersistentVolumeClaim.ClaimName, metav1.GetOptions{})
 		framework.ExpectNoError(err)
 
 		pv, err := client.CoreV1().PersistentVolumes().Get(ctx, pvc.Spec.VolumeName, metav1.GetOptions{})
@@ -118,7 +121,7 @@ func (t *PodNodeSelector) Run(client clientset.Interface, namespace *v1.Namespac
 	}
 
 	// confirm that the primary and replica AzVolumeAttachments for this volume are created on a node with the label
-	err := wait.PollImmediate(poll, pollTimeout,
+	err := wait.PollImmediate(testconsts.Poll, testconsts.PollTimeout,
 		func() (bool, error) {
 			for _, diskName := range diskNames {
 				labelSelector := labels.NewSelector()

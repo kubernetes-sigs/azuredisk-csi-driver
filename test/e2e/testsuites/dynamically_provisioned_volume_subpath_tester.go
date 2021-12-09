@@ -21,6 +21,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
+	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
 )
 
 // DynamicallyProvisionedCmdVolumeTest will provision required StorageClass(es), PVC(s) and Pod(s)
@@ -28,7 +29,7 @@ import (
 // Testing if the Pod(s) Cmd is run with a 0 exit code
 type DynamicallyProvisionedVolumeSubpathTester struct {
 	CSIDriver              driver.DynamicPVTestDriver
-	Pods                   []PodDetails
+	Pods                   []testtypes.PodDetails
 	StorageClassParameters map[string]string
 }
 

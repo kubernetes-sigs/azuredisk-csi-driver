@@ -36,16 +36,19 @@ import (
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller"
+	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
+	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
+	nodeutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/node"
 )
 
 //  will provision required PV(s), PVC(s) and Pod(s)
 // Primary AzVolumeAttachment and Replica AzVolumeAttachments should be created on set of nodes with matching label
 type PodAffinity struct {
 	CSIDriver              driver.DynamicPVTestDriver
+	Pods                   []testtypes.PodDetails
 	IsMultiZone            bool
-	Pods                   []PodDetails
-	Volume                 VolumeDetails
+	Volume                 testtypes.VolumeDetails
 	AzDiskClient           *azDiskClientSet.Clientset
 	StorageClassParameters map[string]string
 }
@@ -54,7 +57,7 @@ func (t *PodAffinity) Run(client clientset.Interface, namespace *v1.Namespace, s
 	_, maxMountReplicaCount := azureutils.GetMaxSharesAndMaxMountReplicaCount(t.StorageClassParameters)
 
 	// Get the list of available nodes for scheduling the pod
-	nodes := ListNodeNames(client)
+	nodes := nodeutil.ListNodeNames(client)
 	if len(nodes) < maxMountReplicaCount+1 {
 		ginkgo.Skip("need at least %d nodes to verify the test case. Current node count is %d", maxMountReplicaCount+1, len(nodes))
 	}
@@ -73,11 +76,11 @@ func (t *PodAffinity) Run(client clientset.Interface, namespace *v1.Namespace, s
 			defer cleanup[i]()
 		}
 
-		pod := tpod.pod.DeepCopy()
+		pod := tpod.Pod.DeepCopy()
 
 		// add master node toleration to pod so that the test can utilize all available nodes
-		tpod.SetAffinity(&testPodAffinity)
-		tpod.SetLabel(testLabel)
+		tpod.SetAffinity(&testconsts.TestAffinity)
+		tpod.SetLabel(testconsts.TestLabel)
 		ginkgo.By(fmt.Sprintf("deploying pod %d", i))
 		tpod.Create()
 		defer tpod.Cleanup()
@@ -90,7 +93,7 @@ func (t *PodAffinity) Run(client clientset.Interface, namespace *v1.Namespace, s
 			if volume.PersistentVolumeClaim == nil {
 				framework.Failf("volume (%s) does not hold PersistentVolumeClaim field", volume.Name)
 			}
-			pvc, err := client.CoreV1().PersistentVolumeClaims(tpod.namespace.Name).Get(ctx, volume.PersistentVolumeClaim.ClaimName, metav1.GetOptions{})
+			pvc, err := client.CoreV1().PersistentVolumeClaims(tpod.Namespace.Name).Get(ctx, volume.PersistentVolumeClaim.ClaimName, metav1.GetOptions{})
 			framework.ExpectNoError(err)
 
 			pv, err := client.CoreV1().PersistentVolumes().Get(ctx, pvc.Spec.VolumeName, metav1.GetOptions{})
@@ -103,7 +106,7 @@ func (t *PodAffinity) Run(client clientset.Interface, namespace *v1.Namespace, s
 			diskNames[j] = strings.ToLower(diskName)
 		}
 
-		err := wait.PollImmediate(poll, pollTimeout,
+		err := wait.PollImmediate(testconsts.Poll, testconsts.PollTimeout,
 			func() (bool, error) {
 				for _, diskName := range diskNames {
 					labelSelector := labels.NewSelector()
