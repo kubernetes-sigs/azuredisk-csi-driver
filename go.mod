@@ -5,7 +5,7 @@ go 1.16
 require (
 	github.com/Azure/azure-sdk-for-go v55.8.0+incompatible
 	github.com/Azure/go-autorest/autorest v0.11.22
-	github.com/Azure/go-autorest/autorest/adal v0.9.16
+	github.com/Azure/go-autorest/autorest/adal v0.9.17
 	github.com/Azure/go-autorest/autorest/date v0.3.0
 	github.com/Azure/go-autorest/autorest/to v0.4.0
 	github.com/container-storage-interface/spec v1.5.0
@@ -25,7 +25,7 @@ require (
 	k8s.io/api v0.22.4
 	k8s.io/apimachinery v0.22.4
 	k8s.io/client-go v0.22.4
-	k8s.io/cloud-provider v0.22.3
+	k8s.io/cloud-provider v0.22.4
 	k8s.io/component-base v0.22.4
 	k8s.io/klog/v2 v2.10.0
 	k8s.io/kubernetes v1.21.1
@@ -40,7 +40,6 @@ replace (
 	github.com/prometheus/client_golang => github.com/prometheus/client_golang v1.7.1
 	go.etcd.io/etcd => go.etcd.io/etcd v0.0.0-20200410171415-59f5fb25a533
 	google.golang.org/grpc => google.golang.org/grpc v1.27.0
-
 	k8s.io/api => k8s.io/api v0.21.0
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.21.0
 	k8s.io/apimachinery => k8s.io/apimachinery v0.21.0
@@ -67,6 +66,5 @@ replace (
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.21.0
 	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.21.0
 	k8s.io/sample-controller => k8s.io/sample-controller v0.21.0
-
-	sigs.k8s.io/cloud-provider-azure => sigs.k8s.io/cloud-provider-azure v0.7.4-0.20211122133108-fb665868ac66
+	sigs.k8s.io/cloud-provider-azure => sigs.k8s.io/cloud-provider-azure v0.7.4-0.20211208054345-a457bc0a16ac
 )
