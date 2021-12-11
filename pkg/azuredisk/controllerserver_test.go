@@ -217,11 +217,11 @@ func TestCreateVolume(t *testing.T) {
 				mp[consts.WriteAcceleratorEnabled] = "ut"
 				req := &csi.CreateVolumeRequest{
 					Name:               "unit-test",
-					VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY),
+					VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER),
 					Parameters:         mp,
 				}
 				_, err := d.CreateVolume(context.Background(), req)
-				expectedErr := status.Error(codes.InvalidArgument, "Volume capability(MULTI_NODE_READER_ONLY) not supported")
+				expectedErr := status.Error(codes.InvalidArgument, "Volume capability not supported")
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
@@ -561,8 +561,12 @@ func TestGetSnapshotInfo(t *testing.T) {
 }
 
 func TestControllerPublishVolume(t *testing.T) {
-	volumeCap := csi.VolumeCapability_AccessMode{Mode: 2}
-	volumeCapWrong := csi.VolumeCapability_AccessMode{Mode: 10}
+	volumeCap := &csi.VolumeCapability{
+		AccessType: &csi.VolumeCapability_Mount{Mount: &csi.VolumeCapability_MountVolume{}},
+		AccessMode: &csi.VolumeCapability_AccessMode{Mode: 2}}
+	volumeCapWrong := &csi.VolumeCapability{
+		AccessType: &csi.VolumeCapability_Mount{Mount: &csi.VolumeCapability_MountVolume{}},
+		AccessMode: &csi.VolumeCapability_AccessMode{Mode: 10}}
 	d, err := NewFakeDriver(t)
 	nodeName := "unit-test-node"
 	//d.setCloud(&azure.Cloud{})
@@ -605,7 +609,7 @@ func TestControllerPublishVolume(t *testing.T) {
 				d, _ := NewFakeDriver(t)
 				req := &csi.ControllerPublishVolumeRequest{
 					VolumeId:         "vol_1",
-					VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCapWrong},
+					VolumeCapability: volumeCapWrong,
 				}
 				expectedErr := status.Error(codes.InvalidArgument, "Volume capability not supported")
 				_, err := d.ControllerPublishVolume(context.Background(), req)
@@ -619,7 +623,7 @@ func TestControllerPublishVolume(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				req := &csi.ControllerPublishVolumeRequest{
 					VolumeId:         "vol_1",
-					VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap},
+					VolumeCapability: volumeCap,
 				}
 				expectedErr := status.Error(codes.NotFound, "Volume not found, failed with error: could not get disk name from vol_1, correct format: (?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/disks/(.+)")
 				_, err := d.ControllerPublishVolume(context.Background(), req)
@@ -633,7 +637,7 @@ func TestControllerPublishVolume(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				req := &csi.ControllerPublishVolumeRequest{
 					VolumeId:         testVolumeID,
-					VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap},
+					VolumeCapability: volumeCap,
 				}
 				id := req.VolumeId
 				disk := compute.Disk{
@@ -657,7 +661,7 @@ func TestControllerPublishVolume(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				req := &csi.ControllerPublishVolumeRequest{
 					VolumeId:         testVolumeID,
-					VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap},
+					VolumeCapability: volumeCap,
 					NodeId:           nodeName,
 				}
 				id := req.VolumeId
@@ -714,7 +718,7 @@ func TestControllerPublishVolume(t *testing.T) {
 				d, err = NewFakeDriver(t)
 				req := &csi.ControllerPublishVolumeRequest{
 					VolumeId:         testVolumeID,
-					VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap},
+					VolumeCapability: volumeCap,
 					NodeId:           nodeName,
 				}
 				id := req.VolumeId
@@ -771,7 +775,7 @@ func TestControllerPublishVolume(t *testing.T) {
 				volumeContext[consts.CachingModeField] = "badmode"
 				req := &csi.ControllerPublishVolumeRequest{
 					VolumeId:         testVolumeID,
-					VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap},
+					VolumeCapability: volumeCap,
 					NodeId:           nodeName,
 					VolumeContext:    volumeContext,
 				}
@@ -887,6 +891,9 @@ func TestControllerGetCapabilities(t *testing.T) {
 func TestIsValidVolumeCapabilities(t *testing.T) {
 	var caps []*csi.VolumeCapability
 	stdVolCap := csi.VolumeCapability{
+		AccessType: &csi.VolumeCapability_Mount{
+			Mount: &csi.VolumeCapability_MountVolume{},
+		},
 		AccessMode: &csi.VolumeCapability_AccessMode{
 			Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
 		},
@@ -922,7 +929,7 @@ func TestControllerExpandVolume(t *testing.T) {
 				ctx := context.Background()
 				d, _ := NewFakeDriver(t)
 
-				expectedErr := status.Error(codes.InvalidArgument, "Volume ID missing in request")
+				expectedErr := status.Error(codes.InvalidArgument, "Volume ID missing in the request")
 				_, err := d.ControllerExpandVolume(ctx, req)
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("Unexpected error: %v", err)
@@ -1817,7 +1824,7 @@ func TestValidateVolumeCapabilities(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				req := csi.ValidateVolumeCapabilitiesRequest{}
 				d, _ := NewFakeDriver(t)
-				expectedErr := status.Errorf(codes.InvalidArgument, "Volume ID missing in request")
+				expectedErr := status.Errorf(codes.InvalidArgument, "Volume ID missing in the request")
 				_, err := d.ValidateVolumeCapabilities(context.TODO(), &req)
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
@@ -1831,7 +1838,7 @@ func TestValidateVolumeCapabilities(t *testing.T) {
 					VolumeId: "unit-test",
 				}
 				d, _ := NewFakeDriver(t)
-				expectedErr := status.Errorf(codes.InvalidArgument, "Volume capabilities missing in request")
+				expectedErr := status.Errorf(codes.InvalidArgument, "VolumeCapabilities missing in the request")
 				_, err := d.ValidateVolumeCapabilities(context.TODO(), &req)
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)

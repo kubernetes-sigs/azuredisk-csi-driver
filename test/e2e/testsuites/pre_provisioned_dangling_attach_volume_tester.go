@@ -57,6 +57,9 @@ func (t *PreProvisionedDanglingAttachVolumeTest) Run(client clientset.Interface,
 		VolumeId: t.Pod.Volumes[0].VolumeID,
 		NodeId:   nodes[0],
 		VolumeCapability: &csi.VolumeCapability{
+			AccessType: &csi.VolumeCapability_Mount{
+				Mount: &csi.VolumeCapability_MountVolume{},
+			},
 			AccessMode: &csi.VolumeCapability_AccessMode{
 				Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
 			},

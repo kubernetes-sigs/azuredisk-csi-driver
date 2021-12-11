@@ -355,14 +355,30 @@ func IsValidDiskURI(diskURI string) error {
 }
 
 func IsValidVolumeCapabilities(volCaps []*csi.VolumeCapability) bool {
+	if ok := IsValidAccessModes(volCaps); !ok {
+		return false
+	}
+	for _, c := range volCaps {
+		blockVolume := c.GetBlock()
+		mountVolume := c.GetMount()
+		accessMode := c.GetAccessMode().GetMode()
+
+		if (blockVolume == nil && mountVolume == nil) ||
+			(blockVolume != nil && mountVolume != nil) {
+			return false
+		}
+		if mountVolume != nil && (accessMode == csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER ||
+			accessMode == csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY ||
+			accessMode == csi.VolumeCapability_AccessMode_MULTI_NODE_SINGLE_WRITER) {
+			return false
+		}
+	}
+	return true
+}
+
+func IsValidAccessModes(volCaps []*csi.VolumeCapability) bool {
 	hasSupport := func(cap *csi.VolumeCapability) bool {
 		for _, c := range volumeCaps {
-			// todo: Block volume support
-			/* compile error here
-			if blk := c.GetBlock(); blk != nil {
-				return false
-			}
-			*/
 			if c.GetMode() == cap.AccessMode.GetMode() {
 				return true
 			}

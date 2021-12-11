@@ -693,7 +693,7 @@ func TestNodeUnstageVolume(t *testing.T) {
 func TestNodePublishVolume(t *testing.T) {
 	d, _ := NewFakeDriver(t)
 
-	volumeCap := csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER}
+	volumeCap := csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_SINGLE_WRITER}
 	publishContext := map[string]string{
 		consts.LUN: "/dev/01",
 	}
@@ -728,21 +728,21 @@ func TestNodePublishVolume(t *testing.T) {
 	}{
 		{
 			desc: "Volume capabilities missing",
-			req:  csi.NodePublishVolumeRequest{},
+			req:  csi.NodePublishVolumeRequest{VolumeId: "vol_1"},
 			expectedErr: testutil.TestError{
 				DefaultError: status.Error(codes.InvalidArgument, "Volume capability missing in request"),
 			},
 		},
 		{
 			desc: "Volume ID missing",
-			req:  csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap}},
+			req:  csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap, AccessType: stdVolCapBlock}},
 			expectedErr: testutil.TestError{
-				DefaultError: status.Error(codes.InvalidArgument, "Volume ID missing in request"),
+				DefaultError: status.Error(codes.InvalidArgument, "Volume ID missing in the request"),
 			},
 		},
 		{
 			desc: "Staging target path missing",
-			req: csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap},
+			req: csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap, AccessType: stdVolCapBlock},
 				VolumeId: "vol_1"},
 			expectedErr: testutil.TestError{
 				DefaultError: status.Error(codes.InvalidArgument, "Staging target not provided"),
@@ -750,7 +750,7 @@ func TestNodePublishVolume(t *testing.T) {
 		},
 		{
 			desc: "Target path missing",
-			req: csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap},
+			req: csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap, AccessType: stdVolCapBlock},
 				VolumeId:          "vol_1",
 				StagingTargetPath: sourceTest},
 			expectedErr: testutil.TestError{
@@ -795,7 +795,7 @@ func TestNodePublishVolume(t *testing.T) {
 		},
 		{
 			desc: "[Error] Mount error mocked by Mount",
-			req: csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap},
+			req: csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap, AccessType: stdVolCap},
 				VolumeId:          "vol_1",
 				TargetPath:        targetTest,
 				StagingTargetPath: errorMountSource,
@@ -808,7 +808,7 @@ func TestNodePublishVolume(t *testing.T) {
 		},
 		{
 			desc: "[Success] Valid request already mounted",
-			req: csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap},
+			req: csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap, AccessType: stdVolCap},
 				VolumeId:          "vol_1",
 				TargetPath:        alreadyMountedTarget,
 				StagingTargetPath: sourceTest,
@@ -818,7 +818,7 @@ func TestNodePublishVolume(t *testing.T) {
 		},
 		{
 			desc: "[Success] Valid request",
-			req: csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap},
+			req: csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap, AccessType: stdVolCap},
 				VolumeId:          "vol_1",
 				TargetPath:        targetTest,
 				StagingTargetPath: sourceTest,
@@ -878,7 +878,7 @@ func TestNodeUnpublishVolume(t *testing.T) {
 			desc: "Volume ID missing",
 			req:  csi.NodeUnpublishVolumeRequest{TargetPath: targetTest},
 			expectedErr: testutil.TestError{
-				DefaultError: status.Error(codes.InvalidArgument, "Volume ID missing in request"),
+				DefaultError: status.Error(codes.InvalidArgument, "Volume ID missing in the request"),
 			},
 		},
 		{

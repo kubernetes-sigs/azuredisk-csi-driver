@@ -191,11 +191,17 @@ func (d *DriverV2) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVo
 // NodePublishVolume mount the volume from staging to target path
 func (d *DriverV2) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
 	volumeID := req.GetVolumeId()
-	if req.GetVolumeCapability() == nil {
+	if len(volumeID) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in the request")
+	}
+
+	volumeCapability := req.GetVolumeCapability()
+	if volumeCapability == nil {
 		return nil, status.Error(codes.InvalidArgument, "Volume capability missing in request")
 	}
-	if len(volumeID) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in request")
+
+	if !azureutils.IsValidVolumeCapabilities([]*csi.VolumeCapability{volumeCapability}) {
+		return nil, status.Error(codes.InvalidArgument, "Volume capability not supported")
 	}
 
 	source := req.GetStagingTargetPath()
@@ -264,9 +270,8 @@ func (d *DriverV2) NodePublishVolume(ctx context.Context, req *csi.NodePublishVo
 func (d *DriverV2) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
 	targetPath := req.GetTargetPath()
 	volumeID := req.GetVolumeId()
-
 	if len(volumeID) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in request")
+		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in the request")
 	}
 	if len(targetPath) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Target path missing in request")
