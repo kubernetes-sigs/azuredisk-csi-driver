@@ -48,6 +48,10 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 		return nil, status.Error(codes.InvalidArgument, "CreateVolume Name must be provided")
 	}
 
+	if !azureutils.IsValidVolumeCapabilities(volCaps) {
+		return nil, status.Error(codes.InvalidArgument, "Volume capability not supported")
+	}
+
 	if acquired := d.volumeLocks.TryAcquire(name); !acquired {
 		return nil, status.Errorf(codes.Aborted, volumeOperationAlreadyExistsFmt, name)
 	}
@@ -305,15 +309,12 @@ func (d *DriverV2) ValidateVolumeCapabilities(ctx context.Context, req *csi.Vali
 
 	if _, err := d.cloudProvisioner.CheckDiskExists(ctx, diskURI); err != nil {
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume not found, failed with error: %v", err))
-	}
 
 	return &csi.ValidateVolumeCapabilitiesResponse{
 		Confirmed: &csi.ValidateVolumeCapabilitiesResponse_Confirmed{
 			VolumeCapabilities: volumeCapabilities,
 		}}, nil
 }
-
-// ControllerGetCapabilities returns the capabilities of the Controller plugin
 func (d *DriverV2) ControllerGetCapabilities(ctx context.Context, req *csi.ControllerGetCapabilitiesRequest) (*csi.ControllerGetCapabilitiesResponse, error) {
 	return &csi.ControllerGetCapabilitiesResponse{
 		Capabilities: d.Cap,
