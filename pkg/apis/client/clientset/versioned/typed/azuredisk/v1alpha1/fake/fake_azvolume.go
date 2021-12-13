@@ -117,7 +117,7 @@ func (c *FakeAzVolumes) UpdateStatus(ctx context.Context, azVolume *v1alpha1.AzV
 // Delete takes name of the azVolume and deletes it. Returns an error if one occurs.
 func (c *FakeAzVolumes) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewDeleteAction(azvolumesResource, c.ns, name), &v1alpha1.AzVolume{})
+		Invokes(testing.NewDeleteActionWithOptions(azvolumesResource, c.ns, name, opts), &v1alpha1.AzVolume{})
 
 	return err
 }

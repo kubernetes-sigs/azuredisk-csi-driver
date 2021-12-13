@@ -49,8 +49,18 @@ func PodLogs(client clientset.Interface, name, namespace string) ([]byte, error)
 	return client.CoreV1().Pods(namespace).GetLogs(name, &v1.PodLogOptions{}).Do(context.TODO()).Raw()
 }
 
+// GetNewReplicaSet returns a replica set that matches the intent of the given deployment; get ReplicaSetList from client interface.
+// Returns nil if the new replica set doesn't exist yet.
+func GetNewReplicaSet(deployment *apps.Deployment, c clientset.Interface) (*apps.ReplicaSet, error) {
+	rsList, err := deploymentutil.ListReplicaSets(deployment, deploymentutil.RsListFromClient(c.AppsV1()))
+	if err != nil {
+		return nil, err
+	}
+	return deploymentutil.FindNewReplicaSet(deployment, rsList), nil
+}
+
 func GetPodsForDeployment(client clientset.Interface, deployment *apps.Deployment) (*v1.PodList, error) {
-	replicaSet, err := deploymentutil.GetNewReplicaSet(deployment, client.AppsV1())
+	replicaSet, err := GetNewReplicaSet(deployment, client)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get new replica set for deployment %q: %v", deployment.Name, err)
 	}

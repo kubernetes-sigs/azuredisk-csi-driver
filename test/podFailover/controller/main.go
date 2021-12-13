@@ -265,7 +265,7 @@ func createDeployment(ctx context.Context, clientset *kubernetes.Clientset, pvcL
 							VolumeMounts:    volumeMounts,
 							ImagePullPolicy: v1.PullAlways,
 							Lifecycle: &v1.Lifecycle{
-								PreStop: &v1.Handler{
+								PreStop: &v1.LifecycleHandler{
 									HTTPGet: &v1.HTTPGetAction{
 										Path: "/cleanup",
 										Port: intstr.IntOrString{IntVal: 9091},
@@ -424,8 +424,16 @@ func makeNodeUnschedulable(nodeName string, unschedulable bool, clientset *kuber
 	}
 }
 
+func getNewReplicaSet(deployment *apps.Deployment, c *kubernetes.Clientset) (*apps.ReplicaSet, error) {
+	rsList, err := deploymentutil.ListReplicaSets(deployment, deploymentutil.RsListFromClient(c.AppsV1()))
+	if err != nil {
+		return nil, err
+	}
+	return deploymentutil.FindNewReplicaSet(deployment, rsList), nil
+}
+
 func getPodsForDeployment(client *kubernetes.Clientset, deployment *apps.Deployment) (*v1.PodList, error) {
-	replicaSet, err := deploymentutil.GetNewReplicaSet(deployment, client.AppsV1())
+	replicaSet, err := getNewReplicaSet(deployment, client)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to get new replica set for deployment %q: %v", deployment.Name, err)
 	}
