@@ -24,8 +24,8 @@ IMAGE_VERSION ?= v1.10.0
 CHART_VERSION ?= latest
 else
 PLUGIN_NAME = azurediskpluginv2
-IMAGE_VERSION ?= v2.0.0-alpha.1
-CHART_VERSION ?= v2.0.0-alpha.1
+IMAGE_VERSION ?= latest-v2
+CHART_VERSION ?= latest-v2
 GOTAGS += -tags azurediskv2
 endif
 CLOUD ?= AzurePublicCloud
