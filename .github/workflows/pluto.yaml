@@ -1,0 +1,21 @@
+name: apiVersion deprecation test
+on:
+    pull_request: {}
+    push: {}
+
+jobs:
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+
+    - name: Checkout
+      uses: actions/checkout@v2
+
+    - name: Download pluto
+      uses: FairwindsOps/pluto/github-action@master
+
+    - name: Check example folder
+      run: |
+        pluto detect-files -d deploy/example
