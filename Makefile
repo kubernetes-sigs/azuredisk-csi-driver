@@ -14,8 +14,8 @@
 
 PKG = sigs.k8s.io/azuredisk-csi-driver
 GIT_COMMIT ?= $(shell git rev-parse HEAD)
-REGISTRY ?= andyzhangx
-REGISTRY_NAME ?= $(shell echo $(REGISTRY) | sed "s/.azurecr.io//g")
+REGISTRY = anonymouspullrepro.azurecr.io
+REGISTRY_NAME = anonymouspullrepro
 IMAGE_NAME ?= azuredisk-csi
 ifneq ($(BUILD_V2), true)
 PLUGIN_NAME = azurediskplugin
