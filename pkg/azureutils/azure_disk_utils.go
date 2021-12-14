@@ -551,7 +551,9 @@ func GetAzVolumeAttachmentState(volumeAttachmentStatus storagev1.VolumeAttachmen
 	}
 }
 
-func UpdateCRIWithRetry(ctx context.Context, informerFactory azurediskInformers.SharedInformerFactory, cachedClient client.Client, azDiskClient azDiskClientSet.Interface, obj interface{}, updateFunc func(interface{}) error, maxNetRetry int) error {
+func UpdateCRIWithRetry(ctx context.Context, informerFactory azurediskInformers.SharedInformerFactory, cachedClient client.Client, azDiskClient azDiskClientSet.Interface, obj client.Object, updateFunc func(interface{}) error, maxNetRetry int) error {
+	klog.Infof("Initiating update with retry for %v (%s)", reflect.TypeOf(obj), obj.GetName())
+
 	conditionFunc := func() error {
 		var err error
 		switch target := obj.(type) {
@@ -577,10 +579,8 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azurediskInformers.
 			return status.Errorf(codes.Internal, "object (%v) not supported.", reflect.TypeOf(target))
 		}
 
-		klog.Infof("Initiating update with retry for %v (%s)", reflect.TypeOf(obj), obj.(client.Object).GetName())
-
 		if err != nil {
-			klog.Errorf("failed to get %v (%s): %v", reflect.TypeOf(obj), obj.(client.Object).GetName(), err)
+			klog.Errorf("failed to get %v (%s): %v", reflect.TypeOf(obj), obj.GetName(), err)
 			return err
 		}
 
@@ -601,11 +601,6 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azurediskInformers.
 			} else {
 				err = cachedClient.Update(ctx, target)
 			}
-		}
-
-		// log unrecoverable error
-		if err != nil && !errors.IsConflict(err) {
-			klog.Errorf("failed to update %v (%s): %v", reflect.TypeOf(obj), obj.(client.Object).GetName(), err)
 		}
 
 		return err
@@ -633,6 +628,9 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azurediskInformers.
 		isRetriable,
 		conditionFunc,
 	)
+	if err != nil {
+		klog.Errorf("failed to update %v (%s): %v", reflect.TypeOf(obj), obj.GetName(), err)
+	}
 
 	// if encountered net error from api server unavailability, exit process
 	ExitOnNetError(err)
