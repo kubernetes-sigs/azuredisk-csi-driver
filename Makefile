@@ -161,6 +161,7 @@ container: azuredisk
 
 .PHONY: container-linux
 container-linux:
+	az acr login --name $(REGISTRY_NAME)
 	docker buildx build . \
 		--pull \
 		--output=type=$(OUTPUT_TYPE) \
@@ -172,6 +173,7 @@ container-linux:
 
 .PHONY: container-windows
 container-windows:
+	az acr login --name $(REGISTRY_NAME)
 	docker buildx build . \
 		--pull \
 		--output=type=$(OUTPUT_TYPE) \
