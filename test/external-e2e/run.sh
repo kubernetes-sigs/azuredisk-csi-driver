@@ -30,7 +30,7 @@ setup_e2e_binaries() {
     mkdir /tmp/csi-azuredisk
 
     # download k8s external e2e binary for kubernetes
-    curl -sL https://storage.googleapis.com/kubernetes-release/release/v1.22.0/kubernetes-test-linux-amd64.tar.gz --output e2e-tests.tar.gz
+    curl -sL https://storage.googleapis.com/kubernetes-release/release/v1.23.0/kubernetes-test-linux-amd64.tar.gz --output e2e-tests.tar.gz
     tar -xvf e2e-tests.tar.gz && rm e2e-tests.tar.gz
 
     # test on alternative driver name
