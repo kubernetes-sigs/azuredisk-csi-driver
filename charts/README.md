@@ -116,8 +116,6 @@ helm uninstall azuredisk-csi-driver -n kube-system
 
 #### V1 Parameters
 
-### V1 Parameters
-
 The following table lists the configurable parameters of the latest Azure Disk CSI Driver chart and default values.
 
 | Parameter                                         | Description                                                | Default                                                      |
@@ -162,7 +160,8 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `controller.livenessProbe.healthPort `            | health check port for liveness probe                       | `29602` |
 | `controller.runOnMaster`                          | run csi-azuredisk-controller on master node                | `false`                                                        |
 | `controller.logLevel`                             | controller driver log level                                |`5`                                                           |
-| `controller.tolerations`                          | controller pod tolerations                                 |                                                              |
+| `controller.affinity`                             | controller pod affinity                                    |                                                                |
+| `controller.tolerations`                          | controller pod tolerations                                 | Tolerates scheduling to control plane                          |
 | `controller.hostNetwork`                          | `hostNetwork` setting on controller driver(could be disabled if controller does not depend on MSI setting)                            | `true`                                                            | `true`, `false`
 | `controller.resources.csiProvisioner.limits.cpu`      | csi-provisioner cpu limits                            | 1                                                           |
 | `controller.resources.csiProvisioner.limits.memory`   | csi-provisioner memory limits                         | 500Mi                                                          |
@@ -327,6 +326,8 @@ In addition to the parameters supported by the V1 driver, Azure Disk CSI driver 
 | `schedulerExtender.metrics.service.enabled` | whether a `Service` is created for the Azure Disk CSI Driver V2 Scheduler Extender metrics server | `false` |
 | `schedulerExtender.metrics.service.monitor.enabled` | whether a `ServiceMonitor` is created for the Azure Disk CSI Driver V2 Scheduler Extender metrics server `Service`. | `false` |
 | `schedulerExtender.servicePort` | Azure Disk CSI Driver V2 Scheduler Extender service port | `8889` |
+| `schedulerExtender.affinity` | Azure Disk CSI Driver V2 Scheduler Extender pod affinity | |
+| `schedulerExtender.tolerations` | Azure Disk CSI Driver V2 Scheduler Extender pod tolerations | Tolerates scheduling to control plane |
 | `snapshot.createCRDs` | whether the snapshot CRDs are created | `true` |
 | `storageClasses.create` | whether to create the default `StorageClass` instances for Azure Disk CSI Driver V2 | `true` |
 | `storageClasses.enableZRS` | whether to create the `StorageClass` instances for ZRS disks (not supported in all regions) | `false` |

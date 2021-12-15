@@ -55,15 +55,14 @@ spec:
         kubernetes.io/role: master
         {{- end}}
       priorityClassName: system-cluster-critical
+{{- with .Values.schedulerExtender.tolerations }}
       tolerations:
-        - key: "node-role.kubernetes.io/master"
-          operator: "Equal"
-          value: "true"
-          effect: "NoSchedule"
-        - key: "node-role.kubernetes.io/controlplane"
-          operator: "Equal"
-          value: "true"
-          effect: "NoSchedule"
+{{ toYaml . | indent 8 }}
+{{- end }}
+{{- with .Values.schedulerExtender.affinity }}
+      affinity:
+{{ toYaml . | indent 8 }}
+{{- end }}
       volumes:
       - name: csi-azuredisk-scheduler-extender-config
         configMap:

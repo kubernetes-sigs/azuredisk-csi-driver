@@ -96,6 +96,13 @@ schedulerExtender:
       monitor:
         enabled: false
   servicePort: 8889
+  tolerations:
+    - key: "node-role.kubernetes.io/master"
+      operator: "Exists"
+      effect: "NoSchedule"
+    - key: "node-role.kubernetes.io/controlplane"
+      operator: "Exists"
+      effect: "NoSchedule"
 
 snapshot:
   enabled: false
@@ -136,6 +143,7 @@ linux:
   distro: debian # available values: debian, fedora
   enablePerfOptimization: true
   tolerations:
+    - operator: "Exists"
   hostNetwork: true # this setting could be disabled if perfProfile is `none`
   podLabels: {}
   nodeAffinity:

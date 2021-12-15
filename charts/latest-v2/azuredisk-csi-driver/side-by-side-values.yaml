@@ -12,6 +12,48 @@ controller:
     port: 29624
   livenessProbe:
     healthPort: 29623
+  affinity:
+    nodeAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        preference:
+          matchExpressions:
+          - key: kubernetes.azure.com/mode
+            operator: In
+            values:
+            - system
+  tolerations:
+  - key: "node-role.kubernetes.io/master"
+    operator: "Exists"
+    effect: "NoSchedule"
+  - key: "node-role.kubernetes.io/controlplane"
+    operator: "Exists"
+    effect: "NoSchedule"
+  - key: "CriticalAddonsOnly"
+    operator: "Exists"
+    effect: "NoSchedule"
+
+schedulerExtender:
+  affinity:
+    nodeAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        preference:
+          matchExpressions:
+          - key: kubernetes.azure.com/mode
+            operator: In
+            values:
+            - system
+  tolerations:
+  - key: "node-role.kubernetes.io/master"
+    operator: "Exists"
+    effect: "NoSchedule"
+  - key: "node-role.kubernetes.io/controlplane"
+    operator: "Exists"
+    effect: "NoSchedule"
+  - key: "CriticalAddonsOnly"
+    operator: "Exists"
+    effect: "NoSchedule"
 
 node:
   metrics:
