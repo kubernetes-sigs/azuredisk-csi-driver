@@ -1128,11 +1128,14 @@ func isCreated(volume *v1alpha1.AzVolume) bool {
 	return volume != nil && volume.Status.Detail != nil && volume.Status.Detail.ResponseObject != nil
 }
 
-func criDeletionRequested(objectMeta *metav1.ObjectMeta) bool {
-	if objectMeta == nil {
+func objectDeletionRequested(obj runtime.Object) bool {
+	meta, _ := meta.Accessor(obj)
+	if meta == nil {
 		return false
 	}
-	return !objectMeta.DeletionTimestamp.IsZero() && objectMeta.DeletionTimestamp.Time.Before(time.Now())
+	deletionTime := meta.GetDeletionTimestamp()
+
+	return !deletionTime.IsZero() && deletionTime.Time.Before(time.Now())
 }
 
 func volumeDetachRequested(attachment *v1alpha1.AzVolumeAttachment) bool {

@@ -107,7 +107,7 @@ func (r *ReconcileAzVolume) Reconcile(ctx context.Context, request reconcile.Req
 	}
 
 	// azVolume deletion
-	if criDeletionRequested(&azVolume.ObjectMeta) {
+	if objectDeletionRequested(azVolume) {
 		if err := r.triggerDelete(ctx, azVolume); err != nil {
 			//If delete failed, requeue request
 			return reconcileReturnOnError(azVolume, "delete", err, r.retryInfo)

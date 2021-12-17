@@ -103,7 +103,7 @@ func (r *ReconcileAttachDetach) Reconcile(ctx context.Context, request reconcile
 	}
 
 	// detachment request
-	if criDeletionRequested(&azVolumeAttachment.ObjectMeta) {
+	if objectDeletionRequested(azVolumeAttachment) {
 		if azVolumeAttachment.Status.State == v1alpha1.AttachmentPending || azVolumeAttachment.Status.State == v1alpha1.Attached || azVolumeAttachment.Status.State == v1alpha1.AttachmentFailed || azVolumeAttachment.Status.State == v1alpha1.DetachmentFailed {
 			if err := r.triggerDetach(ctx, azVolumeAttachment); err != nil {
 				return reconcileReturnOnError(azVolumeAttachment, "detach", err, r.retryInfo)
