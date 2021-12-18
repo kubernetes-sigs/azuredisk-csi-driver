@@ -14,7 +14,7 @@
 
 FROM alpine:3.14.2
 RUN apk upgrade --no-cache busybox \
-    && apk add --no-cache util-linux e2fsprogs e2fsprogs-extra ca-certificates udev xfsprogs xfsprogs-extra btrfs-progs
+    && apk add --no-cache util-linux e2fsprogs e2fsprogs-extra ca-certificates udev xfsprogs xfsprogs-extra btrfs-progs btrfs-progs-extra
 
 LABEL maintainers="andyzhangx"
 LABEL description="Azure Disk CSI Driver"

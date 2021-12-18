@@ -131,26 +131,25 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			},
 		}
 
-		if isMultiZone && !testconsts.IsUsingInTreeVolumePlugin {
-			test.StorageClassParameters = map[string]string{
-				"skuName":           "UltraSSD_LRS",
-				"cachingmode":       "None",
-				"diskIopsReadWrite": "2000",
-				"diskMbpsReadWrite": "320",
-				"logicalSectorSize": "512",
-				"zoned":             "true",
-				"fsType":            "btrfs",
-			}
-		}
-		if !testconsts.IsUsingInTreeVolumePlugin && supportsZRS {
-			test.StorageClassParameters = map[string]string{
-				"skuName":             "StandardSSD_ZRS",
-				"networkAccessPolicy": "AllowAll",
-			}
-		}
 		if testconsts.IsUsingInTreeVolumePlugin {
 			// cover case: https://github.com/kubernetes/kubernetes/issues/103433
 			test.StorageClassParameters = map[string]string{"Kind": "managed"}
+		} else if isMultiZone {
+			if supportsZRS {
+				test.StorageClassParameters["skuName"] = "StandardSSD_ZRS"
+				test.StorageClassParameters["networkAccessPolicy"] = "AllowAll"
+			} else {
+				test.StorageClassParameters["skuName"] = "UltraSSD_LRS"
+				test.StorageClassParameters["diskIopsReadWrite"] = "2000"
+				test.StorageClassParameters["diskMbpsReadWrite"] = "320"
+				test.StorageClassParameters["logicalSectorSize"] = "512"
+			}
+
+			test.StorageClassParameters["cachingmode"] = "None"
+			test.StorageClassParameters["zoned"] = "true"
+			test.StorageClassParameters["fsType"] = "btrfs"
+
+			test.Pods[0].Volumes[0].MountOptions = []string{"barrier", "acl"}
 		}
 		test.Run(cs, ns, schedulerName)
 	})
