@@ -1,4 +1,4 @@
-name: k8s apiVersion check test
+name: k8s api version check
 on:
     pull_request: {}
     push: {}
