@@ -1,4 +1,4 @@
-name: apiVersion deprecation test
+name: k8s apiVersion check test
 on:
     pull_request: {}
     push: {}
@@ -15,6 +15,10 @@ jobs:
 
     - name: Download pluto
       uses: FairwindsOps/pluto/github-action@master
+
+    - name: Check deploy folder
+      run: |
+        pluto detect-files -d deploy --ignore-deprecations --ignore-removals
 
     - name: Check example folder
       run: |
