@@ -18,6 +18,7 @@ package testsuites
 
 import (
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
+	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 
 	v1 "k8s.io/api/core/v1"
@@ -29,7 +30,7 @@ import (
 // Testing the correct behavior for different reclaimPolicies
 type DynamicallyProvisionedReclaimPolicyTest struct {
 	CSIDriver              driver.DynamicPVTestDriver
-	Volumes                []VolumeDetails
+	Volumes                []testtypes.VolumeDetails
 	AzureCloud             *provider.Cloud
 	StorageClassParameters map[string]string
 }

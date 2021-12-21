@@ -18,11 +18,11 @@ image:
     pullPolicy: IfNotPresent
   livenessProbe:
     repository: /oss/kubernetes-csi/livenessprobe
-    tag: v2.4.0
+    tag: v2.5.0
     pullPolicy: IfNotPresent
   nodeDriverRegistrar:
     repository: /oss/kubernetes-csi/csi-node-driver-registrar
-    tag: v2.3.0
+    tag: v2.4.0
     pullPolicy: IfNotPresent
 
 serviceAccount:
@@ -39,6 +39,7 @@ controller:
   name: csi-azuredisk-controller
   cloudConfigSecretName: azure-cloud-provider
   cloudConfigSecretNamespace: kube-system
+  allowEmptyCloudConfig: false
   replicas: 2
   metricsPort: 29604
   livenessProbe:
@@ -57,10 +58,54 @@ controller:
       effect: "NoSchedule"
   hostNetwork: true # this setting could be disabled if controller does not depend on MSI setting
   podLabels: {}
+  resources:
+    csiProvisioner:
+      limits:
+        cpu: 1
+        memory: 500Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    csiAttacher:
+      limits:
+        cpu: 1
+        memory: 500Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    csiResizer:
+      limits:
+        cpu: 1
+        memory: 500Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    csiSnapshotter:
+      limits:
+        cpu: 1
+        memory: 100Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    livenessProbe:
+      limits:
+        cpu: 1
+        memory: 100Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    azuredisk:
+      limits:
+        cpu: 1
+        memory: 500Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
 
 node:
   cloudConfigSecretName: azure-cloud-provider
   cloudConfigSecretNamespace: kube-system
+  allowEmptyCloudConfig: true
   maxUnavailable: 1
   metricsPort: 29605
   logLevel: 5
@@ -84,8 +129,15 @@ snapshot:
       pullPolicy: IfNotPresent
   snapshotController:
     name: csi-snapshot-controller
-    replicas: 1
+    replicas: 2
     podLabels: {}
+    resources:
+      limits:
+        cpu: 1
+        memory: 100Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
 
 feature:
   enableFSGroupPolicy: false
@@ -116,6 +168,28 @@ linux:
               operator: NotIn
               values:
                 - virtual-kubelet
+  resources:
+    livenessProbe:
+      limits:
+        cpu: 1
+        memory: 100Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    nodeDriverRegistrar:
+      limits:
+        cpu: 1
+        memory: 100Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    azuredisk:
+      limits:
+        cpu: 1
+        memory: 200Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
 
 windows:
   enabled: true
@@ -134,6 +208,28 @@ windows:
               operator: NotIn
               values:
                 - virtual-kubelet
+  resources:
+    livenessProbe:
+      limits:
+        cpu: 1
+        memory: 200Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    nodeDriverRegistrar:
+      limits:
+        cpu: 1
+        memory: 200Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    azuredisk:
+      limits:
+        cpu: 1
+        memory: 400Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
 
 cloud: AzurePublicCloud
 

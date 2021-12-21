@@ -6,7 +6,7 @@
 
 ### Note
 
-Only raw block device(`volumeMode: Block`) is supported on shared disk feature, kubernetes application should manage coordination and control of writes, reads, locks, caches, mounts, fencing on the shared disk which is exposed as raw block device.
+Only raw block device(`volumeMode: Block`) is supported on shared disk feature, Kubernetes application should manage coordination and control of writes, reads, locks, caches, mounts, fencing on the shared disk which is exposed as raw block device. Shared disk only supports single node read write.
 
 
 ###  Example

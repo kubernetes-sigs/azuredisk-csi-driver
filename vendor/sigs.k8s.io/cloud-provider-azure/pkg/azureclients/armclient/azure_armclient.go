@@ -31,6 +31,8 @@ import (
 	"time"
 	"unicode"
 
+	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients"
+
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/azure"
 
@@ -75,20 +77,35 @@ type Client struct {
 }
 
 // New creates a ARM client
-func New(authorizer autorest.Authorizer, baseURI, userAgent, apiVersion, clientRegion string, clientBackoff *retry.Backoff) *Client {
-	restClient := autorest.NewClientWithUserAgent(userAgent)
-	restClient.PollingDelay = 5 * time.Second
-	restClient.RetryAttempts = 3
-	restClient.RetryDuration = time.Second * 1
+func New(authorizer autorest.Authorizer, clientConfig azureclients.ClientConfig, baseURI, apiVersion string) *Client {
+	restClient := autorest.NewClientWithUserAgent(clientConfig.UserAgent)
 	restClient.Authorizer = authorizer
 	restClient.Sender = getSender()
 	restClient.Sender = autorest.DecorateSender(restClient.Sender, autorest.DoCloseIfError())
 
-	if userAgent == "" {
+	if clientConfig.UserAgent == "" {
 		restClient.UserAgent = GetUserAgent(restClient)
 	}
 
-	backoff := clientBackoff
+	if clientConfig.RestClientConfig.PollingDelay == nil {
+		restClient.PollingDelay = 5 * time.Second
+	} else {
+		restClient.PollingDelay = *clientConfig.RestClientConfig.PollingDelay
+	}
+
+	if clientConfig.RestClientConfig.RetryAttempts == nil {
+		restClient.RetryAttempts = 3
+	} else {
+		restClient.RetryAttempts = *clientConfig.RestClientConfig.RetryAttempts
+	}
+
+	if clientConfig.RestClientConfig.RetryDuration == nil {
+		restClient.RetryDuration = 1 * time.Second
+	} else {
+		restClient.RetryDuration = *clientConfig.RestClientConfig.RetryDuration
+	}
+
+	backoff := clientConfig.Backoff
 	if backoff == nil {
 		backoff = &retry.Backoff{}
 	}
@@ -102,7 +119,7 @@ func New(authorizer autorest.Authorizer, baseURI, userAgent, apiVersion, clientR
 		baseURI:      baseURI,
 		backoff:      backoff,
 		apiVersion:   apiVersion,
-		clientRegion: NormalizeAzureRegion(clientRegion),
+		clientRegion: NormalizeAzureRegion(clientConfig.Location),
 	}
 }
 
@@ -226,6 +243,10 @@ func dumpResponse(resp *http.Response, v klog.Level) {
 }
 
 func dumpRequest(req *http.Request, v klog.Level) {
+	if req == nil {
+		return
+	}
+
 	requestDump, err := httputil.DumpRequest(req, true)
 	if err != nil {
 		klog.Errorf("Failed to dump request: %v", err)
@@ -412,6 +433,7 @@ func (c *Client) PutResources(ctx context.Context, resources map[string]interfac
 			autorest.WithJSON(parameters),
 		}
 		request, err := c.PreparePutRequest(ctx, decorators...)
+		dumpRequest(request, 10)
 		if err != nil {
 			klog.V(5).Infof("Received error in %s: resourceID: %s, error: %s", "put.prepare", resourceID, err)
 			responses[resourceID] = &PutResourcesResponse{
@@ -419,7 +441,6 @@ func (c *Client) PutResources(ctx context.Context, resources map[string]interfac
 			}
 			continue
 		}
-		dumpRequest(request, 10)
 
 		future, resp, clientErr := c.SendAsync(ctx, request)
 		defer c.CloseResponse(ctx, resp)
@@ -479,11 +500,11 @@ func (c *Client) PutResources(ctx context.Context, resources map[string]interfac
 // PutResourceWithDecorators puts a resource by resource ID
 func (c *Client) PutResourceWithDecorators(ctx context.Context, resourceID string, parameters interface{}, decorators []autorest.PrepareDecorator) (*http.Response, *retry.Error) {
 	request, err := c.PreparePutRequest(ctx, decorators...)
+	dumpRequest(request, 10)
 	if err != nil {
 		klog.V(5).Infof("Received error in %s: resourceID: %s, error: %s", "put.prepare", resourceID, err)
 		return nil, retry.NewError(false, err)
 	}
-	dumpRequest(request, 10)
 
 	future, resp, clientErr := c.SendAsync(ctx, request)
 	defer c.CloseResponse(ctx, resp)
@@ -582,11 +603,11 @@ func (c *Client) PutResourceAsync(ctx context.Context, resourceID string, parame
 	}
 
 	request, err := c.PreparePutRequest(ctx, decorators...)
+	dumpRequest(request, 10)
 	if err != nil {
 		klog.V(5).Infof("Received error in %s: resourceID: %s, error: %s", "put.prepare", resourceID, err)
 		return nil, retry.NewError(false, err)
 	}
-	dumpRequest(request, 10)
 
 	future, resp, rErr := c.SendAsync(ctx, request)
 	defer c.CloseResponse(ctx, resp)

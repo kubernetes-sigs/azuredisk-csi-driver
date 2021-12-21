@@ -17,7 +17,9 @@ limitations under the License.
 package testsuites
 
 import (
+	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
+	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
 
 	"github.com/onsi/ginkgo"
 	v1 "k8s.io/api/core/v1"
@@ -28,8 +30,8 @@ import (
 // ClonedVolumeSize optional for when testing for cloned volume with different size to the original volume
 type DynamicallyProvisionedVolumeCloningTest struct {
 	CSIDriver              driver.DynamicPVTestDriver
-	Pod                    PodDetails
-	PodWithClonedVolume    PodDetails
+	Pod                    testtypes.PodDetails
+	PodWithClonedVolume    testtypes.PodDetails
 	ClonedVolumeSize       string
 	StorageClassParameters map[string]string
 }
@@ -40,7 +42,7 @@ func (t *DynamicallyProvisionedVolumeCloningTest) Run(client clientset.Interface
 	defer tscCleanup()
 
 	// create the pod
-	t.Pod.Volumes[0].StorageClass = tsc.storageClass
+	t.Pod.Volumes[0].StorageClass = tsc.StorageClass
 	tpod, cleanups := t.Pod.SetupWithDynamicVolumes(client, namespace, t.CSIDriver, t.StorageClassParameters, schedulerName)
 	for i := range cleanups {
 		defer cleanups[i]()
@@ -54,11 +56,11 @@ func (t *DynamicallyProvisionedVolumeCloningTest) Run(client clientset.Interface
 
 	ginkgo.By("cloning existing volume")
 	clonedVolume := t.Pod.Volumes[0]
-	clonedVolume.DataSource = &DataSource{
-		Name: tpod.pod.Spec.Volumes[0].VolumeSource.PersistentVolumeClaim.ClaimName,
-		Kind: VolumePVCKind,
+	clonedVolume.DataSource = &testtypes.DataSource{
+		Name: tpod.Pod.Spec.Volumes[0].VolumeSource.PersistentVolumeClaim.ClaimName,
+		Kind: testconsts.VolumePVCKind,
 	}
-	clonedVolume.StorageClass = tsc.storageClass
+	clonedVolume.StorageClass = tsc.StorageClass
 
 	if t.ClonedVolumeSize != "" {
 		clonedVolume.ClaimSize = t.ClonedVolumeSize
@@ -66,7 +68,7 @@ func (t *DynamicallyProvisionedVolumeCloningTest) Run(client clientset.Interface
 
 	zone := tpod.GetZoneForVolume(0)
 
-	t.PodWithClonedVolume.Volumes = []VolumeDetails{clonedVolume}
+	t.PodWithClonedVolume.Volumes = []testtypes.VolumeDetails{clonedVolume}
 	tpod, cleanups = t.PodWithClonedVolume.SetupWithDynamicVolumes(client, namespace, t.CSIDriver, t.StorageClassParameters, schedulerName)
 	for i := range cleanups {
 		defer cleanups[i]()

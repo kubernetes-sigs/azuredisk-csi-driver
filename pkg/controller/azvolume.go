@@ -107,7 +107,7 @@ func (r *ReconcileAzVolume) Reconcile(ctx context.Context, request reconcile.Req
 	}
 
 	// azVolume deletion
-	if criDeletionRequested(&azVolume.ObjectMeta) {
+	if objectDeletionRequested(azVolume) {
 		if err := r.triggerDelete(ctx, azVolume); err != nil {
 			//If delete failed, requeue request
 			return reconcileReturnOnError(azVolume, "delete", err, r.retryInfo)
@@ -185,11 +185,8 @@ func (r *ReconcileAzVolume) triggerCreate(ctx context.Context, azVolume *v1alpha
 				return derr
 			}
 		}
-		if err := azureutils.UpdateCRIWithRetry(updateCtx, nil, r.client, r.azVolumeClient, azVolume, updateFunc, consts.ForcedUpdateMaxNetRetry); err != nil {
-			klog.Errorf("failed to update AzVolume (%s) with volume creation result (response: %v, error: %v)", azVolume.Name, response, err)
-		} else {
-			klog.Infof("successfully created volume (%s) with volume creation result (response: %v, error: %v)", azVolume.Spec.UnderlyingVolume, response, err)
-		}
+
+		_ = azureutils.UpdateCRIWithRetry(updateCtx, nil, r.client, r.azVolumeClient, azVolume, updateFunc, consts.ForcedUpdateMaxNetRetry)
 	}()
 
 	return nil
@@ -266,11 +263,8 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *v1alpha
 					return derr
 				}
 			}
-			if err := azureutils.UpdateCRIWithRetry(updateCtx, nil, r.client, r.azVolumeClient, azVolume, updateFunc, consts.ForcedUpdateMaxNetRetry); err != nil {
-				klog.Errorf("failed to update AzVolume (%s) with volume deletion result: %v", azVolume.Name, err)
-			} else {
-				klog.Infof("successfully updated AzVolume (%s) with volume deletion result", azVolume.Name)
-			}
+
+			_ = azureutils.UpdateCRIWithRetry(updateCtx, nil, r.client, r.azVolumeClient, azVolume, updateFunc, consts.ForcedUpdateMaxNetRetry)
 		}()
 	} else {
 		updateFunc := func(obj interface{}) error {
@@ -328,11 +322,8 @@ func (r *ReconcileAzVolume) triggerUpdate(ctx context.Context, azVolume *v1alpha
 				return derr
 			}
 		}
-		if err := azureutils.UpdateCRIWithRetry(updateCtx, nil, r.client, r.azVolumeClient, azVolume, updateFunc, consts.ForcedUpdateMaxNetRetry); err != nil {
-			klog.Errorf("failed to update AzVolume (%s) with volume update result (response: %v, error: %v)", azVolume.Name, response, err)
-		} else {
-			klog.Infof("successfully created volume (%s) with volume update result (response: %v, error: %v)", azVolume.Spec.UnderlyingVolume, response, err)
-		}
+
+		_ = azureutils.UpdateCRIWithRetry(updateCtx, nil, r.client, r.azVolumeClient, azVolume, updateFunc, consts.ForcedUpdateMaxNetRetry)
 	}()
 
 	return nil

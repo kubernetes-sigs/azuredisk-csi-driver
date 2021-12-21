@@ -4,9 +4,9 @@ Azure Disk CSI Driver V2 improves scalability and reduces pod failover latency. 
 
 ## Architecture and Components
 
-The diagram below shows the components in the Kubernetes control plane (CCP) and cluster nodes, and the Azure services the V2 driver uses.
+The diagram below shows the components in the Kubernetes control plane (CCP) and cluster nodes, and the Azure services the Azure Disk CSI Driver V2 uses.
 
-![V2 Architecture](images/v2_arch.png)
+![V2 Architecture](images/csi_driver_v2.png)
 
 ### Controller Plug-in
 
@@ -22,17 +22,17 @@ The node plug-in is deployed on each node in the cluster as a [DaemonSet](https:
 
 ### Scheduler Extender Plug-in
 
-V2 provides a [scheduler extender](https://github.com/kubernetes/community/blob/master/contributors/design-proposals/scheduling/scheduler_extender.md) that is responsible for influencing pod placements.
+Azure Disk CSI Driver V2 provides a [scheduler extender](https://github.com/kubernetes/community/blob/master/contributors/design-proposals/scheduling/scheduler_extender.md) that is responsible for influencing pod placements.
 
 Like the controller plug-in, the scheduler extender is deployed as a [ReplicaSet](https://kubernetes.io/docs/concepts/workloads/controllers/replicaset/) through [Deployment](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/) with leader election.
 
 ## Implementation
 
-This section describes the changes and high-level implementation details of the different components in the V2 driver.
+This section describes the changes and high-level implementation details of the different components in the Azure Disk CSI Driver V2.
 
 ### StorageClass
 
-In addition to the existing StorageClass parameters described in [driver-parameters](driver-parameters.md), the V2 driver supports the following:
+In addition to the existing StorageClass parameters described in [driver-parameters](driver-parameters.md), the Azure Disk CSI Driver V2 supports the following:
 
 | Name | Meaning  | Available Value | Mandatory | Default value |
 |------|----------|-----------------|-----------|---------------|
@@ -41,7 +41,7 @@ In addition to the existing StorageClass parameters described in [driver-paramet
 
 ### Custom Resources and Controllers
 
-The V2 driver uses 3 different custom resources defined in the `azure-disk-csi` namespace to orchestrate disk management and facilitate pod failover to nodes with attachment replica. A controller for each resource watches for and responds to changes to its custom resource instances.
+The Azure Disk CSI Driver V2 uses 3 different custom resources defined in the `azure-disk-csi` namespace to orchestrate disk management and facilitate pod failover to nodes with attachment replica. A controller for each resource watches for and responds to changes to its custom resource instances.
 
 #### `AzDriverNode` Resource and Controller
 

@@ -28,11 +28,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
-)
-
-const (
-	AzureDriverNameVar = "AZURE_STORAGE_DRIVER"
-	TopologyKey        = "topology.disk.csi.azure.com/zone"
+	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 )
 
 // Implement DynamicPVTestDriver interface
@@ -48,7 +44,7 @@ func normalizeProvisioner(provisioner string) string {
 
 // InitAzureDiskDriver returns azureDiskDriver that implements DynamicPVTestDriver interface
 func InitAzureDiskDriver() PVTestDriver {
-	driverName := os.Getenv(AzureDriverNameVar)
+	driverName := os.Getenv(testconsts.AzureDriverNameVar)
 	if driverName == "" {
 		driverName = consts.DefaultDriverName
 	}
@@ -63,16 +59,21 @@ func (d *azureDiskDriver) GetDynamicProvisionStorageClass(parameters map[string]
 	provisioner := d.driverName
 	generateName := fmt.Sprintf("%s-%s-dynamic-sc-", namespace, normalizeProvisioner(provisioner))
 	var allowedTopologies []v1.TopologySelectorTerm
-	if len(allowedTopologyValues) > 0 {
-		allowedTopologies = []v1.TopologySelectorTerm{
-			{
-				MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
-					{
-						Key:    TopologyKey,
-						Values: allowedTopologyValues,
+	if skuName, ok := parameters[consts.SkuNameField]; ok && strings.HasSuffix(skuName, "_ZRS") {
+		mode := storagev1.VolumeBindingImmediate
+		bindingMode = &mode
+	} else {
+		if len(allowedTopologyValues) > 0 {
+			allowedTopologies = []v1.TopologySelectorTerm{
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{
+							Key:    testconsts.TopologyKey,
+							Values: allowedTopologyValues,
+						},
 					},
 				},
-			},
+			}
 		}
 	}
 

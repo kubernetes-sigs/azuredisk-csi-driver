@@ -20,12 +20,12 @@ IMAGE_NAME ?= azuredisk-csi
 SCHEDULER_EXTENDER_IMAGE_NAME ?= azdiskschedulerextender-csi
 ifneq ($(BUILD_V2), true)
 PLUGIN_NAME = azurediskplugin
-IMAGE_VERSION ?= v1.9.0
+IMAGE_VERSION ?= v1.10.0
 CHART_VERSION ?= latest
 else
 PLUGIN_NAME = azurediskpluginv2
-IMAGE_VERSION ?= v2.0.0-alpha.1
-CHART_VERSION ?= v2.0.0-alpha.1
+IMAGE_VERSION ?= latest-v2
+CHART_VERSION ?= latest-v2
 GOTAGS += -tags azurediskv2
 endif
 CLOUD ?= AzurePublicCloud
@@ -110,6 +110,10 @@ integration-test:
 .PHONY: integration-test-v2
 integration-test-v2: container-v2
 	go test -v -timeout=45m ./test/integration --test-driver-version=v2 --image-tag ${IMAGE_TAG}
+
+.PHONY: scale-test-v2
+scale-test-v2: 
+	BUILD_V2=1 go test -v -timeout=0 ${GOTAGS} ./test/e2e/scale ${GINKGO_FLAGS}
 
 .PHONY: e2e-bootstrap
 e2e-bootstrap: install-helm
@@ -222,9 +226,6 @@ container-setup:
 ifeq ($(CLOUD), AzureStackCloud)
 	docker run --privileged --name buildx_buildkit_container-builder0 -d --mount type=bind,src=/etc/ssl/certs,dst=/etc/ssl/certs moby/buildkit:latest || true
 endif
-	# enable qemu for arm64 build
-	# https://github.com/docker/buildx/issues/464#issuecomment-741507760
-	docker run --privileged --rm tonistiigi/binfmt --uninstall qemu-aarch64
 	docker run --rm --privileged tonistiigi/binfmt --install all
 
 .PHONY: azdiskschedulerextender-all

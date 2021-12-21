@@ -203,7 +203,6 @@ func (c *CrdProvisioner) CreateVolume(
 		}
 
 		if err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.informerFactory, nil, c.azDiskClient, azVolumeInstance, updateFunc, consts.NormalUpdateMaxNetRetry); err != nil {
-			klog.Errorf("failed to update AzVolume (%s) with updated spec: %v", azVolumeName, err)
 			return nil, err
 		}
 		// if the error was caused by errors other than IsNotFound, return failure
@@ -548,7 +547,6 @@ func (c *CrdProvisioner) UnpublishVolume(
 			return nil
 		}
 		if err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.informerFactory, nil, c.azDiskClient, azVolumeAttachmentInstance, updateFunc, consts.NormalUpdateMaxNetRetry); err != nil {
-			klog.Errorf("failed to update AzVolumeAttachment (%s) with Annotation (%s): %v", attachmentName, consts.VolumeDetachRequestAnnotation, err)
 			return err
 		}
 	}
@@ -615,7 +613,6 @@ func (c *CrdProvisioner) ExpandVolume(
 	}
 
 	if err := azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.informerFactory, nil, c.azDiskClient, azVolume, updateFunc, consts.NormalUpdateMaxNetRetry); err != nil {
-		klog.Errorf("Failed to update AzVolume capacity range for volume (%s), error: %v", volumeID, err)
 		return nil, err
 	}
 

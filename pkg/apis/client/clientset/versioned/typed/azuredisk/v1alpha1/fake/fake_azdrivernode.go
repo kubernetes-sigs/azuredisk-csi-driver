@@ -117,7 +117,7 @@ func (c *FakeAzDriverNodes) UpdateStatus(ctx context.Context, azDriverNode *v1al
 // Delete takes name of the azDriverNode and deletes it. Returns an error if one occurs.
 func (c *FakeAzDriverNodes) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewDeleteAction(azdrivernodesResource, c.ns, name), &v1alpha1.AzDriverNode{})
+		Invokes(testing.NewDeleteActionWithOptions(azdrivernodesResource, c.ns, name, opts), &v1alpha1.AzDriverNode{})
 
 	return err
 }

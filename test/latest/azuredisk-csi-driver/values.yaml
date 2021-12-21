@@ -1,6 +1,6 @@
 image:
   azuredisk:
-    tag: mcr.microsoft.com/k8s/csi/azuredisk-csi:v2.0.0-alpha.1
+    tag: mcr.microsoft.com/k8s/csi/azuredisk-csi:latest-v2
   pullPolicy: IfNotPresent
 
 serviceAccount:

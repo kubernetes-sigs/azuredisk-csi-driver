@@ -68,7 +68,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 
 	if azVolumeAttachment.Spec.RequestedRole == v1alpha1.PrimaryRole {
 		// Deletion Event
-		if criDeletionRequested(&azVolumeAttachment.ObjectMeta) {
+		if objectDeletionRequested(azVolumeAttachment) {
 			if volumeDetachRequested(azVolumeAttachment) {
 				// If primary attachment is marked for deletion, queue garbage collection for replica attachments
 				r.triggerGarbageCollection(azVolumeAttachment.Spec.UnderlyingVolume)
@@ -91,7 +91,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 		}
 	} else {
 		// create a replacement replica if replica attachment failed or promoted
-		if criDeletionRequested(&azVolumeAttachment.ObjectMeta) {
+		if objectDeletionRequested(azVolumeAttachment) {
 			if azVolumeAttachment.Status.State == v1alpha1.DetachmentFailed {
 				if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, azVolumeAttachment, func(obj interface{}) error {
 					azVolumeAttachment := obj.(*v1alpha1.AzVolumeAttachment)
@@ -193,7 +193,7 @@ func (r *ReconcileReplica) manageReplicas(ctx context.Context, volumeName string
 	}
 
 	// replica management should not be executed or retried if AzVolume is scheduled for a deletion or not created.
-	if !isCreated(azVolume) || criDeletionRequested(&azVolume.ObjectMeta) {
+	if !isCreated(azVolume) || objectDeletionRequested(azVolume) {
 		klog.Errorf("azVolume (%s) is scheduled for deletion or has no underlying volume object", azVolume.Name)
 		return nil
 	}

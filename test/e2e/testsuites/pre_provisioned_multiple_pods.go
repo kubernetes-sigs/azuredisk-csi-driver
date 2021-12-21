@@ -18,6 +18,7 @@ package testsuites
 
 import (
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
+	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
 
 	"github.com/onsi/ginkgo"
 	v1 "k8s.io/api/core/v1"
@@ -28,7 +29,7 @@ import (
 // Testing that a volume could be mounted by multiple pods
 type PreProvisionedMultiplePodsTest struct {
 	CSIDriver     driver.PreProvisionedVolumeTestDriver
-	Pods          []PodDetails
+	Pods          []testtypes.PodDetails
 	VolumeContext map[string]string
 }
 

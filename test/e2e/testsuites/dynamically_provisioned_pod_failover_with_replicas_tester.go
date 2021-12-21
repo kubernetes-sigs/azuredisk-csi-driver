@@ -28,17 +28,20 @@ import (
 	v1alpha1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
+	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
+	nodeutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/node"
 )
 
 //  will provision required PV(s), PVC(s) and Pod(s)
 // Pod should successfully be re-scheduled on failover in a cluster with AzDriverNode and AzVolumeAttachment resources
 type PodFailoverWithReplicas struct {
 	CSIDriver              driver.DynamicPVTestDriver
-	Pod                    PodDetails
-	Volume                 VolumeDetails
+	Pod                    testtypes.PodDetails
+	Volume                 testtypes.VolumeDetails
 	PodCheck               *PodExecCheck
 	StorageClassParameters map[string]string
 	AzDiskClient           *azDiskClientSet.Clientset
+	IsMultiZone            bool
 }
 
 func (t *PodFailoverWithReplicas) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
@@ -50,9 +53,13 @@ func (t *PodFailoverWithReplicas) Run(client clientset.Interface, namespace *v1.
 	}
 
 	// Get the list of available nodes for scheduling the pod
-	nodes := ListNodeNames(client)
-	if len(nodes) < 2 {
-		ginkgo.Skip("need at least 2 nodes to verify the test case. Current node count is %d", len(nodes))
+	nodes := nodeutil.ListNodeNames(client)
+	numRequiredNodes := 2
+	if t.IsMultiZone {
+		numRequiredNodes = 4
+	}
+	if len(nodes) < numRequiredNodes {
+		ginkgo.Skip("need at least %d nodes to verify the test case. Current node count is %d", numRequiredNodes, len(nodes))
 	}
 
 	ginkgo.By("deploying the deployment")
@@ -72,7 +79,7 @@ func (t *PodFailoverWithReplicas) Run(client clientset.Interface, namespace *v1.
 	var failedReplicaAttachments *v1alpha1.AzVolumeAttachmentList
 	err := wait.Poll(15*time.Second, 10*time.Minute, func() (bool, error) {
 		var err error
-		allReplicasAttached, failedReplicaAttachments, err = VerifySuccessfulReplicaAzVolumeAttachments(t.Pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
+		allReplicasAttached, failedReplicaAttachments, err = testtypes.VerifySuccessfulReplicaAzVolumeAttachments(t.Pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
 		return allReplicasAttached, err
 	})
 
@@ -92,8 +99,8 @@ func (t *PodFailoverWithReplicas) Run(client clientset.Interface, namespace *v1.
 
 	ginkgo.By("cordoning node 0")
 
-	testPod := TestPod{
-		client: client,
+	testPod := testtypes.TestPod{
+		Client: client,
 	}
 
 	// Make node#0 unschedulable to ensure that pods are scheduled on a different node

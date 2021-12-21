@@ -26,6 +26,7 @@ import (
 	"strings"
 	"testing"
 
+	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/azure"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/credentials"
 
@@ -47,6 +48,7 @@ var imageTag = flag.String("image-tag", "", "A flag to get the docker image tag"
 func TestIntegrationOnAzurePublicCloud(t *testing.T) {
 	flag.Parse()
 	// Test on AzurePublicCloud
+	os.Setenv("AZURE_VM_TYPE", "standard")
 	creds, err := credentials.CreateAzureCredentialFile()
 	defer func() {
 		err := credentials.DeleteAzureCredentialFile()
@@ -56,7 +58,7 @@ func TestIntegrationOnAzurePublicCloud(t *testing.T) {
 	azure.AssertNotNil(t, creds)
 
 	// Set necessary env vars for sanity test
-	os.Setenv("AZURE_CREDENTIAL_FILE", credentials.TempAzureCredentialFilePath)
+	os.Setenv("AZURE_CREDENTIAL_FILE", testconsts.TempAzureCredentialFilePath)
 
 	useDriverV2 := strings.EqualFold(*testDriverVersion, driverV2)
 
@@ -78,7 +80,7 @@ func TestIntegrationOnAzurePublicCloud(t *testing.T) {
 	azure.AssertNoError(t, err)
 	defer func() {
 		// Only delete resource group the test created
-		if strings.HasPrefix(creds.ResourceGroup, credentials.ResourceGroupPrefix) {
+		if strings.HasPrefix(creds.ResourceGroup, testconsts.ResourceGroupPrefix) {
 			log.Printf("Deleting resource group %s", creds.ResourceGroup)
 			err := azureClient.DeleteResourceGroup(context.Background(), creds.ResourceGroup)
 			azure.AssertNoError(t, err)

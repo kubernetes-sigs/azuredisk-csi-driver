@@ -21,20 +21,22 @@ import (
 	v1 "k8s.io/api/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
+	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
+	nodeutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/node"
 )
 
 // AzDiskSchedulerExtenderSimplePodSchedulingTest will provision required PV(s), PVC(s) and Pod(s)
 // Pod without PVs should successfully be scheduled in a cluster with AzDriverNode and AzVolumeAttachment resources
 type AzDiskSchedulerExtenderSimplePodSchedulingTest struct {
 	CSIDriver driver.DynamicPVTestDriver
-	Pod       PodDetails
+	Pod       testtypes.PodDetails
 }
 
 func (t *AzDiskSchedulerExtenderSimplePodSchedulingTest) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
-	tpod := NewTestPod(client, namespace, t.Pod.Cmd, schedulerName, t.Pod.IsWindows)
+	tpod := testtypes.NewTestPod(client, namespace, t.Pod.Cmd, schedulerName, t.Pod.IsWindows)
 
 	// Get the list of available nodes for scheduling the pod
-	nodeNames := ListNodeNames(client)
+	nodeNames := nodeutil.ListNodeNames(client)
 	if len(nodeNames) < 1 {
 		ginkgo.Skip("need at least 1 nodes to verify the test case. Current node count is %d", len(nodeNames))
 	}

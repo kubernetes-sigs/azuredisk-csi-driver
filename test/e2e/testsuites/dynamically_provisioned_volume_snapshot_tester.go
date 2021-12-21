@@ -21,16 +21,17 @@ import (
 	"fmt"
 	"strings"
 
+	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
+	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/azure"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/credentials"
+	volutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/volume"
 
 	"github.com/onsi/ginkgo"
 	"github.com/pborman/uuid"
 
 	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	restclientset "k8s.io/client-go/rest"
 	"k8s.io/kubernetes/test/e2e/framework"
@@ -45,15 +46,15 @@ import (
 // This test only supports a single volume
 type DynamicallyProvisionedVolumeSnapshotTest struct {
 	CSIDriver              driver.PVTestDriver
-	Pod                    PodDetails
+	Pod                    testtypes.PodDetails
 	ShouldOverwrite        bool
-	PodOverwrite           PodDetails
-	PodWithSnapshot        PodDetails
+	PodOverwrite           testtypes.PodDetails
+	PodWithSnapshot        testtypes.PodDetails
 	StorageClassParameters map[string]string
 }
 
 func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interface, restclient restclientset.Interface, namespace *v1.Namespace, schedulerName string) {
-	tpod := NewTestPod(client, namespace, t.Pod.Cmd, schedulerName, t.Pod.IsWindows)
+	tpod := testtypes.NewTestPod(client, namespace, t.Pod.Cmd, schedulerName, t.Pod.IsWindows)
 	volume := t.Pod.Volumes[0]
 	ctx := context.Background()
 
@@ -61,7 +62,7 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interfac
 	for i := range pvcCleanup {
 		defer pvcCleanup[i]()
 	}
-	tpod.SetupVolume(tpvc.persistentVolumeClaim, volume.VolumeMount.NameGenerate+"1", volume.VolumeMount.MountPathGenerate+"1", volume.VolumeMount.ReadOnly)
+	tpod.SetupVolume(tpvc.PersistentVolumeClaim, volume.VolumeMount.NameGenerate+"1", volume.VolumeMount.MountPathGenerate+"1", volume.VolumeMount.ReadOnly)
 	ginkgo.By("deploying the pod")
 	tpod.Create()
 	defer tpod.Cleanup()
@@ -70,19 +71,7 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interfac
 
 	// delete pod and wait for volume to be unpublished to ensure filesystem cache is flushed
 	tpod.Cleanup()
-	err := wait.PollImmediate(poll, pollTimeout, func() (bool, error) {
-		volumeAttachments, err := client.StorageV1().VolumeAttachments().List(ctx, metav1.ListOptions{})
-		if err != nil {
-			return false, err
-		}
-		notFound := true
-		for _, volumeAttachment := range volumeAttachments.Items {
-			if volumeAttachment.Spec.Source.PersistentVolumeName != nil && *volumeAttachment.Spec.Source.PersistentVolumeName == tpvc.persistentVolumeClaim.Spec.VolumeName {
-				notFound = false
-			}
-		}
-		return notFound, nil
-	})
+	err := volutil.WaitForVolumeDetach(client, tpvc.PersistentVolumeClaim.Spec.VolumeName, testconsts.Poll, testconsts.PollTimeout)
 	framework.ExpectNoError(err)
 
 	ginkgo.By("Checking Prow test resource group")
@@ -99,13 +88,13 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interfac
 	framework.ExpectNoError(err)
 
 	//create external resource group
-	externalRG := credentials.ResourceGroupPrefix + uuid.NewUUID().String()
+	externalRG := testconsts.ResourceGroupPrefix + uuid.NewUUID().String()
 	ginkgo.By("Creating external resource group: " + externalRG)
 	_, err = azureClient.EnsureResourceGroup(ctx, externalRG, creds.Location, nil)
 	framework.ExpectNoError(err)
 	defer func() {
 		// Only delete resource group the test created
-		if strings.HasPrefix(externalRG, credentials.ResourceGroupPrefix) {
+		if strings.HasPrefix(externalRG, testconsts.ResourceGroupPrefix) {
 			e2elog.Logf("Deleting resource group %s", externalRG)
 			err := azureClient.DeleteResourceGroup(ctx, externalRG)
 			framework.ExpectNoError(err)
@@ -113,24 +102,24 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interfac
 	}()
 
 	ginkgo.By("creating volume snapshot class with external rg " + externalRG)
-	tvsc, cleanup := CreateVolumeSnapshotClass(restclient, namespace, t.CSIDriver)
+	tvsc, cleanup := testtypes.CreateVolumeSnapshotClass(restclient, namespace, t.CSIDriver)
 	mp := map[string]string{
 		"resourceGroup": externalRG,
 	}
-	tvsc.volumeSnapshotClass.Parameters = mp
+	tvsc.VolumeSnapshotClass.Parameters = mp
 	tvsc.Create()
 	defer cleanup()
 
 	ginkgo.By("taking snapshots")
-	snapshot := tvsc.CreateSnapshot(tpvc.persistentVolumeClaim)
+	snapshot := tvsc.CreateSnapshot(tpvc.PersistentVolumeClaim)
 
 	defer tvsc.DeleteSnapshot(snapshot)
 	tvsc.ReadyToUse(snapshot)
 
 	if t.ShouldOverwrite {
-		tpod = NewTestPod(client, namespace, t.PodOverwrite.Cmd, schedulerName, t.PodOverwrite.IsWindows)
+		tpod = testtypes.NewTestPod(client, namespace, t.PodOverwrite.Cmd, schedulerName, t.PodOverwrite.IsWindows)
 
-		tpod.SetupVolume(tpvc.persistentVolumeClaim, volume.VolumeMount.NameGenerate+"1", volume.VolumeMount.MountPathGenerate+"1", volume.VolumeMount.ReadOnly)
+		tpod.SetupVolume(tpvc.PersistentVolumeClaim, volume.VolumeMount.NameGenerate+"1", volume.VolumeMount.MountPathGenerate+"1", volume.VolumeMount.ReadOnly)
 		ginkgo.By("deploying a new pod to overwrite pv data")
 		tpod.Create()
 		defer tpod.Cleanup()
@@ -139,11 +128,11 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interfac
 	}
 
 	snapshotVolume := volume
-	snapshotVolume.DataSource = &DataSource{
-		Kind: VolumeSnapshotKind,
+	snapshotVolume.DataSource = &testtypes.DataSource{
+		Kind: testconsts.VolumeSnapshotKind,
 		Name: snapshot.Name,
 	}
-	t.PodWithSnapshot.Volumes = []VolumeDetails{snapshotVolume}
+	t.PodWithSnapshot.Volumes = []testtypes.VolumeDetails{snapshotVolume}
 	tPodWithSnapshot, tPodWithSnapshotCleanup := t.PodWithSnapshot.SetupWithDynamicVolumes(client, namespace, t.CSIDriver, t.StorageClassParameters, schedulerName)
 	for i := range tPodWithSnapshotCleanup {
 		defer tPodWithSnapshotCleanup[i]()

@@ -83,7 +83,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 	}
 
 	// PV is deleted
-	if criDeletionRequested(&pv.ObjectMeta) {
+	if objectDeletionRequested(&pv) {
 		if err := r.client.Get(ctx, types.NamespacedName{Namespace: r.namespace, Name: azVolumeName}, &azVolume); err != nil {
 			// AzVolume doesn't exist, so there is nothing for us to do
 			if errors.IsNotFound(err) {

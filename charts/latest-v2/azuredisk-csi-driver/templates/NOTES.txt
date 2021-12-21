@@ -1,0 +1,11 @@
+Thank you for installing Azure Disk CSI Driver to your cluster.
+
+Your release is named {{ .Release.Name }}.
+
+To learn more about the release, try:
+
+  helm status {{ .Release.Name }} --namespace={{ .Release.Namespace }}
+
+To check Azure Disk CSI Driver pods status, please run:
+
+  kubectl --namespace={{ .Release.Namespace }} get pods --selector="app.kubernetes.io/instance={{ .Release.Name }}" --watch

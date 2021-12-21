@@ -27,13 +27,15 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
+	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
+	nodeutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/node"
 )
 
 // AzDiskSchedulerExtenderPodSchedulingOnFailover will provision required PV(s), PVC(s) and Pod(s)
 // Pod should successfully be re-scheduled on failover/scaling in a cluster with AzDriverNode and AzVolumeAttachment resources
 type AzDiskSchedulerExtenderPodSchedulingOnFailover struct {
 	CSIDriver              driver.DynamicPVTestDriver
-	Pod                    PodDetails
+	Pod                    testtypes.PodDetails
 	StorageClassParameters map[string]string
 }
 
@@ -47,7 +49,7 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailover) Run(client clientset.In
 	}
 
 	// Get the list of available nodes for scheduling the pod
-	nodes := ListNodeNames(client)
+	nodes := nodeutil.ListNodeNames(client)
 	if len(nodes) < 1 {
 		ginkgo.Skip("need at least 1 nodes to verify the test case. Current node count is %d", len(nodes))
 	}
@@ -61,14 +63,14 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailover) Run(client clientset.In
 	// Define a new scale for statefulset
 	newScale := &scale.Scale{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      tStatefulSet.statefulset.Name,
-			Namespace: tStatefulSet.namespace.Name,
+			Name:      tStatefulSet.Statefulset.Name,
+			Namespace: tStatefulSet.Namespace.Name,
 		},
 		Spec: scale.ScaleSpec{
 			Replicas: int32(0)}}
 
 	// Scale statefulset to 0
-	_, err := client.AppsV1().StatefulSets(tStatefulSet.namespace.Name).UpdateScale(context.TODO(), tStatefulSet.statefulset.Name, newScale, metav1.UpdateOptions{})
+	_, err := client.AppsV1().StatefulSets(tStatefulSet.Namespace.Name).UpdateScale(context.TODO(), tStatefulSet.Statefulset.Name, newScale, metav1.UpdateOptions{})
 	framework.ExpectNoError(err)
 
 	ginkgo.By("sleep 240s waiting for statefulset update to complete and disk to detach")
@@ -77,7 +79,7 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailover) Run(client clientset.In
 	// Scale the stateful set back to 1 pod
 	newScale.Spec.Replicas = int32(1)
 
-	_, err = client.AppsV1().StatefulSets(tStatefulSet.namespace.Name).UpdateScale(context.TODO(), tStatefulSet.statefulset.Name, newScale, metav1.UpdateOptions{})
+	_, err = client.AppsV1().StatefulSets(tStatefulSet.Namespace.Name).UpdateScale(context.TODO(), tStatefulSet.Statefulset.Name, newScale, metav1.UpdateOptions{})
 	framework.ExpectNoError(err)
 
 	ginkgo.By("sleep 30s waiting for statefulset update to complete")
