@@ -304,7 +304,7 @@ func (d *Driver) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapabi
 func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
 	var instanceType string
 	topology := &csi.Topology{
-		Segments: map[string]string{topologyKey: ""},
+		Segments: map[string]string{topologyKey: "", consts.WellKnownTopologyKey: ""},
 	}
 
 	if runtime.GOOS == "windows" && d.cloud.UseInstanceMetadata && d.cloud.Metadata != nil {

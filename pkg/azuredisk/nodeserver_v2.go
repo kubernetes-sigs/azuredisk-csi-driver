@@ -309,7 +309,7 @@ func (d *DriverV2) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest)
 	}
 
 	topology := &csi.Topology{
-		Segments: map[string]string{topologyKey: ""},
+		Segments: map[string]string{topologyKey: "", consts.WellKnownTopologyKey: ""},
 	}
 	zone, err := d.cloud.GetZone(ctx)
 	if err != nil {
