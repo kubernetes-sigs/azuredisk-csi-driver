@@ -47,7 +47,6 @@ spec:
             - --v=2
           resources:
             limits:
-              cpu: 1
               memory: 100Mi
             requests:
               cpu: 10m
@@ -78,7 +77,6 @@ spec:
               mountPath: /registration
           resources:
             limits:
-              cpu: 1
               memory: 100Mi
             requests:
               cpu: 10m
@@ -137,7 +135,6 @@ spec:
               name: scsi-host-dir
           resources:
             limits:
-              cpu: 1
               memory: 200Mi
             requests:
               cpu: 10m
