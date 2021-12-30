@@ -372,6 +372,9 @@ const (
 	SYS_LANDLOCK_CREATE_RULESET = 444
 	SYS_LANDLOCK_ADD_RULE       = 445
 	SYS_LANDLOCK_RESTRICT_SELF  = 446
+<<<<<<< HEAD
 	SYS_PROCESS_MRELEASE        = 448
 	SYS_FUTEX_WAITV             = 449
+=======
+>>>>>>> chore: upgrade azure lib
 )

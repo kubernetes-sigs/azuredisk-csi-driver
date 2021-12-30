@@ -3168,6 +3168,7 @@ const (
 	DEVLINK_ATTR_RELOAD_ACTION_INFO                    = 0xa2
 	DEVLINK_ATTR_RELOAD_ACTION_STATS                   = 0xa3
 	DEVLINK_ATTR_PORT_PCI_SF_NUMBER                    = 0xa4
+<<<<<<< HEAD
 	DEVLINK_ATTR_RATE_TYPE                             = 0xa5
 	DEVLINK_ATTR_RATE_TX_SHARE                         = 0xa6
 	DEVLINK_ATTR_RATE_TX_MAX                           = 0xa7
@@ -3175,6 +3176,9 @@ const (
 	DEVLINK_ATTR_RATE_PARENT_NODE_NAME                 = 0xa9
 	DEVLINK_ATTR_REGION_MAX_SNAPSHOTS                  = 0xaa
 	DEVLINK_ATTR_MAX                                   = 0xaa
+=======
+	DEVLINK_ATTR_MAX                                   = 0xa9
+>>>>>>> chore: upgrade azure lib
 	DEVLINK_DPIPE_FIELD_MAPPING_TYPE_NONE              = 0x0
 	DEVLINK_DPIPE_FIELD_MAPPING_TYPE_IFINDEX           = 0x1
 	DEVLINK_DPIPE_MATCH_TYPE_FIELD_EXACT               = 0x0
@@ -3471,6 +3475,7 @@ const (
 	ETHTOOL_MSG_CABLE_TEST_ACT                = 0x1a
 	ETHTOOL_MSG_CABLE_TEST_TDR_ACT            = 0x1b
 	ETHTOOL_MSG_TUNNEL_INFO_GET               = 0x1c
+<<<<<<< HEAD
 	ETHTOOL_MSG_FEC_GET                       = 0x1d
 	ETHTOOL_MSG_FEC_SET                       = 0x1e
 	ETHTOOL_MSG_MODULE_EEPROM_GET             = 0x1f
@@ -3479,6 +3484,9 @@ const (
 	ETHTOOL_MSG_MODULE_GET                    = 0x22
 	ETHTOOL_MSG_MODULE_SET                    = 0x23
 	ETHTOOL_MSG_USER_MAX                      = 0x23
+=======
+	ETHTOOL_MSG_USER_MAX                      = 0x21
+>>>>>>> chore: upgrade azure lib
 	ETHTOOL_MSG_KERNEL_NONE                   = 0x0
 	ETHTOOL_MSG_STRSET_GET_REPLY              = 0x1
 	ETHTOOL_MSG_LINKINFO_GET_REPLY            = 0x2
@@ -3509,6 +3517,7 @@ const (
 	ETHTOOL_MSG_CABLE_TEST_NTF                = 0x1b
 	ETHTOOL_MSG_CABLE_TEST_TDR_NTF            = 0x1c
 	ETHTOOL_MSG_TUNNEL_INFO_GET_REPLY         = 0x1d
+<<<<<<< HEAD
 	ETHTOOL_MSG_FEC_GET_REPLY                 = 0x1e
 	ETHTOOL_MSG_FEC_NTF                       = 0x1f
 	ETHTOOL_MSG_MODULE_EEPROM_GET_REPLY       = 0x20
@@ -3517,6 +3526,9 @@ const (
 	ETHTOOL_MSG_MODULE_GET_REPLY              = 0x23
 	ETHTOOL_MSG_MODULE_NTF                    = 0x24
 	ETHTOOL_MSG_KERNEL_MAX                    = 0x24
+=======
+	ETHTOOL_MSG_KERNEL_MAX                    = 0x22
+>>>>>>> chore: upgrade azure lib
 	ETHTOOL_A_HEADER_UNSPEC                   = 0x0
 	ETHTOOL_A_HEADER_DEV_INDEX                = 0x1
 	ETHTOOL_A_HEADER_DEV_NAME                 = 0x2

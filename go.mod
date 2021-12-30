@@ -23,6 +23,7 @@ require (
 	github.com/prometheus/client_golang v1.11.0
 	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.7.0
+<<<<<<< HEAD
 	golang.org/x/net v0.0.0-20211209124913-491a49abca63
 	google.golang.org/grpc v1.42.0
 	google.golang.org/protobuf v1.27.1
@@ -38,6 +39,20 @@ require (
 	k8s.io/kubernetes v1.23.0
 	k8s.io/mount-utils v0.23.3
 	k8s.io/utils v0.0.0-20211116205334-6203023598ed
+=======
+	golang.org/x/net v0.0.0-20210825183410-e898025ed96a
+	google.golang.org/grpc v1.40.0
+	google.golang.org/protobuf v1.27.1
+	k8s.io/api v0.23.1
+	k8s.io/apimachinery v0.23.1
+	k8s.io/client-go v0.23.1
+	k8s.io/cloud-provider v0.23.0
+	k8s.io/component-base v0.23.0
+	k8s.io/klog/v2 v2.30.0
+	k8s.io/kubernetes v1.21.1
+	k8s.io/mount-utils v0.0.0
+	k8s.io/utils v0.0.0-20210930125809-cb0fa318a74b
+>>>>>>> chore: upgrade azure lib
 	sigs.k8s.io/cloud-provider-azure v0.7.4
 	sigs.k8s.io/controller-runtime v0.11.0
 	sigs.k8s.io/controller-tools v0.5.0

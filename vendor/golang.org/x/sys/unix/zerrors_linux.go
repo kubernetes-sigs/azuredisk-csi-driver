@@ -1991,9 +1991,12 @@ const (
 	PR_SCHED_CORE_CREATE                        = 0x1
 	PR_SCHED_CORE_GET                           = 0x0
 	PR_SCHED_CORE_MAX                           = 0x4
+<<<<<<< HEAD
 	PR_SCHED_CORE_SCOPE_PROCESS_GROUP           = 0x2
 	PR_SCHED_CORE_SCOPE_THREAD                  = 0x0
 	PR_SCHED_CORE_SCOPE_THREAD_GROUP            = 0x1
+=======
+>>>>>>> chore: upgrade azure lib
 	PR_SCHED_CORE_SHARE_FROM                    = 0x3
 	PR_SCHED_CORE_SHARE_TO                      = 0x2
 	PR_SET_CHILD_SUBREAPER                      = 0x24

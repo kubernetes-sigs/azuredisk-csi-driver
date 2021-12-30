@@ -75,6 +75,7 @@ func (p *clientConnPool) getClientConn(req *http.Request, addr string, dialOnMis
 	for {
 		p.mu.Lock()
 		for _, cc := range p.conns[addr] {
+<<<<<<< HEAD
 			if cc.ReserveNewRequest() {
 				// When a connection is presented to us by the net/http package,
 				// the GetConn hook has already been called.
@@ -83,6 +84,12 @@ func (p *clientConnPool) getClientConn(req *http.Request, addr string, dialOnMis
 					traceGetConn(req, addr)
 				}
 				cc.getConnCalled = false
+=======
+			if st := cc.idleState(); st.canTakeNewRequest {
+				if p.shouldTraceGetConn(st) {
+					traceGetConn(req, addr)
+				}
+>>>>>>> chore: upgrade azure lib
 				p.mu.Unlock()
 				return cc, nil
 			}
@@ -98,6 +105,7 @@ func (p *clientConnPool) getClientConn(req *http.Request, addr string, dialOnMis
 		if shouldRetryDial(call, req) {
 			continue
 		}
+<<<<<<< HEAD
 		cc, err := call.res, call.err
 		if err != nil {
 			return nil, err
@@ -105,6 +113,9 @@ func (p *clientConnPool) getClientConn(req *http.Request, addr string, dialOnMis
 		if cc.ReserveNewRequest() {
 			return cc, nil
 		}
+=======
+		return call.res, call.err
+>>>>>>> chore: upgrade azure lib
 	}
 }
 

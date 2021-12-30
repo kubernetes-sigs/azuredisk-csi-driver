@@ -34,7 +34,11 @@ import (
 	"golang.org/x/time/rate"
 
 	v1 "k8s.io/api/core/v1"
+<<<<<<< HEAD
 	"k8s.io/apimachinery/pkg/types"
+=======
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+>>>>>>> chore: upgrade azure lib
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
@@ -1164,6 +1168,15 @@ func (az *Cloud) updateNodeCaches(prevNode, newNode *v1.Node) {
 			az.nodePrivateIPs[newNode.Name].Insert(address)
 		}
 	}
+}
+
+func (az *Cloud) ListNodes(ctx context.Context) ([]v1.Node, error) {
+	nodes, err := az.KubeClient.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return []v1.Node{}, fmt.Errorf("ListAllNodes: failed to list nodes: %w", err)
+	}
+
+	return nodes.Items, nil
 }
 
 // GetActiveZones returns all the zones in which k8s nodes are currently running.
