@@ -144,7 +144,11 @@ func (pw *pickerWrapper) pick(ctx context.Context, failfast bool, info balancer.
 
 		acw, ok := pickResult.SubConn.(*acBalancerWrapper)
 		if !ok {
+<<<<<<< HEAD
 			logger.Errorf("subconn returned from pick is type %T, not *acBalancerWrapper", pickResult.SubConn)
+=======
+			logger.Error("subconn returned from pick is not *acBalancerWrapper")
+>>>>>>> upgrade to k8s 1.23 lib
 			continue
 		}
 		if t := acw.getAddrConn().getReadyTransport(); t != nil {

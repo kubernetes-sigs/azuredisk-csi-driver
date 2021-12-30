@@ -23,7 +23,10 @@ import (
 	"errors"
 	"fmt"
 	"math"
+<<<<<<< HEAD
 	"net/url"
+=======
+>>>>>>> upgrade to k8s 1.23 lib
 	"reflect"
 	"strings"
 	"sync"
@@ -38,6 +41,10 @@ import (
 	"google.golang.org/grpc/internal/backoff"
 	"google.golang.org/grpc/internal/channelz"
 	"google.golang.org/grpc/internal/grpcsync"
+<<<<<<< HEAD
+=======
+	"google.golang.org/grpc/internal/grpcutil"
+>>>>>>> upgrade to k8s 1.23 lib
 	iresolver "google.golang.org/grpc/internal/resolver"
 	"google.golang.org/grpc/internal/transport"
 	"google.golang.org/grpc/keepalive"
@@ -248,6 +255,7 @@ func DialContext(ctx context.Context, target string, opts ...DialOption) (conn *
 	}
 
 	// Determine the resolver to use.
+<<<<<<< HEAD
 	resolverBuilder, err := cc.parseTargetAndFindResolver()
 	if err != nil {
 		return nil, err
@@ -255,6 +263,39 @@ func DialContext(ctx context.Context, target string, opts ...DialOption) (conn *
 	cc.authority, err = determineAuthority(cc.parsedTarget.Endpoint, cc.target, cc.dopts)
 	if err != nil {
 		return nil, err
+=======
+	cc.parsedTarget = grpcutil.ParseTarget(cc.target, cc.dopts.copts.Dialer != nil)
+	channelz.Infof(logger, cc.channelzID, "parsed scheme: %q", cc.parsedTarget.Scheme)
+	resolverBuilder := cc.getResolver(cc.parsedTarget.Scheme)
+	if resolverBuilder == nil {
+		// If resolver builder is still nil, the parsed target's scheme is
+		// not registered. Fallback to default resolver and set Endpoint to
+		// the original target.
+		channelz.Infof(logger, cc.channelzID, "scheme %q not registered, fallback to default scheme", cc.parsedTarget.Scheme)
+		cc.parsedTarget = resolver.Target{
+			Scheme:   resolver.GetDefaultScheme(),
+			Endpoint: target,
+		}
+		resolverBuilder = cc.getResolver(cc.parsedTarget.Scheme)
+		if resolverBuilder == nil {
+			return nil, fmt.Errorf("could not get resolver for default scheme: %q", cc.parsedTarget.Scheme)
+		}
+	}
+
+	creds := cc.dopts.copts.TransportCredentials
+	if creds != nil && creds.Info().ServerName != "" {
+		cc.authority = creds.Info().ServerName
+	} else if cc.dopts.insecure && cc.dopts.authority != "" {
+		cc.authority = cc.dopts.authority
+	} else if strings.HasPrefix(cc.target, "unix:") || strings.HasPrefix(cc.target, "unix-abstract:") {
+		cc.authority = "localhost"
+	} else if strings.HasPrefix(cc.parsedTarget.Endpoint, ":") {
+		cc.authority = "localhost" + cc.parsedTarget.Endpoint
+	} else {
+		// Use endpoint from "scheme://authority/endpoint" as the default
+		// authority for ClientConn.
+		cc.authority = cc.parsedTarget.Endpoint
+>>>>>>> upgrade to k8s 1.23 lib
 	}
 	channelz.Infof(logger, cc.channelzID, "Channel authority set to %q", cc.authority)
 
@@ -517,8 +558,13 @@ func (cc *ClientConn) WaitForStateChange(ctx context.Context, sourceState connec
 //
 // Experimental
 //
+<<<<<<< HEAD
 // Notice: This API is EXPERIMENTAL and may be changed or removed in a later
 // release.
+=======
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a
+// later release.
+>>>>>>> upgrade to k8s 1.23 lib
 func (cc *ClientConn) GetState() connectivity.State {
 	return cc.csMgr.getState()
 }
@@ -893,6 +939,7 @@ func (ac *addrConn) tryUpdateAddrs(addrs []resolver.Address) bool {
 	return curAddrFound
 }
 
+<<<<<<< HEAD
 // getServerName determines the serverName to be used in the connection
 // handshake. The default value for the serverName is the authority on the
 // ClientConn, which either comes from the user's dial target or through an
@@ -913,6 +960,8 @@ func (cc *ClientConn) getServerName(addr resolver.Address) string {
 	return cc.authority
 }
 
+=======
+>>>>>>> upgrade to k8s 1.23 lib
 func getMethodConfig(sc *ServiceConfig, method string) MethodConfig {
 	if sc == nil {
 		return MethodConfig{}
@@ -1210,8 +1259,15 @@ func (ac *addrConn) resetTransport() {
 		}
 
 		ac.mu.Lock()
+<<<<<<< HEAD
 		if ac.state != connectivity.Shutdown {
 			ac.updateConnectivityState(connectivity.Idle, err)
+=======
+		if ac.state == connectivity.Shutdown {
+			ac.mu.Unlock()
+			newTr.Close(fmt.Errorf("reached connectivity state: SHUTDOWN"))
+			return
+>>>>>>> upgrade to k8s 1.23 lib
 		}
 		ac.mu.Unlock()
 		return
@@ -1269,6 +1325,7 @@ func (ac *addrConn) createTransport(addr resolver.Address, copts transport.Conne
 	prefaceReceived := grpcsync.NewEvent()
 	connClosed := grpcsync.NewEvent()
 
+<<<<<<< HEAD
 	addr.ServerName = ac.cc.getServerName(addr)
 	hctx, hcancel := context.WithCancel(ac.ctx)
 	hcStarted := false // protected by ac.mu
@@ -1294,6 +1351,11 @@ func (ac *addrConn) createTransport(addr resolver.Address, copts transport.Conne
 		if ac.state != connectivity.Shutdown {
 			ac.updateConnectivityState(connectivity.Idle, nil)
 		}
+=======
+	// addr.ServerName takes precedent over ClientConn authority, if present.
+	if addr.ServerName == "" {
+		addr.ServerName = ac.cc.authority
+>>>>>>> upgrade to k8s 1.23 lib
 	}
 
 	onGoAway := func(r transport.GoAwayReason) {
@@ -1309,16 +1371,25 @@ func (ac *addrConn) createTransport(addr resolver.Address, copts transport.Conne
 		copts.ChannelzParentID = ac.channelzID
 	}
 
+<<<<<<< HEAD
 	newTr, err := transport.NewClientTransport(connectCtx, ac.cc.ctx, addr, copts, func() { prefaceReceived.Fire() }, onGoAway, onClose)
 	if err != nil {
 		// newTr is either nil, or closed.
 		channelz.Warningf(logger, ac.channelzID, "grpc: addrConn.createTransport failed to connect to %v. Err: %v", addr, err)
 		return err
+=======
+	newTr, err := transport.NewClientTransport(connectCtx, ac.cc.ctx, addr, copts, onPrefaceReceipt, onGoAway, onClose)
+	if err != nil {
+		// newTr is either nil, or closed.
+		channelz.Warningf(logger, ac.channelzID, "grpc: addrConn.createTransport failed to connect to %v. Err: %v. Reconnecting...", addr, err)
+		return nil, nil, err
+>>>>>>> upgrade to k8s 1.23 lib
 	}
 
 	select {
 	case <-connectCtx.Done():
 		// We didn't get the preface in time.
+<<<<<<< HEAD
 		// The error we pass to Close() is immaterial since there are no open
 		// streams at this point, so no trailers with error details will be sent
 		// out. We just need to pass a non-nil error.
@@ -1330,6 +1401,12 @@ func (ac *addrConn) createTransport(addr resolver.Address, copts transport.Conne
 		}
 		return nil
 	case <-prefaceReceived.Done():
+=======
+		newTr.Close(fmt.Errorf("failed to receive server preface within timeout"))
+		channelz.Warningf(logger, ac.channelzID, "grpc: addrConn.createTransport failed to connect to %v: didn't receive server preface in time. Reconnecting...", addr)
+		return nil, nil, errors.New("timed out waiting for server handshake")
+	case <-prefaceReceived:
+>>>>>>> upgrade to k8s 1.23 lib
 		// We got the preface - huzzah! things are good.
 		ac.mu.Lock()
 		defer ac.mu.Unlock()
@@ -1610,6 +1687,7 @@ func (cc *ClientConn) connectionError() error {
 	cc.lceMu.Lock()
 	defer cc.lceMu.Unlock()
 	return cc.lastConnectionError
+<<<<<<< HEAD
 }
 
 func (cc *ClientConn) parseTargetAndFindResolver() (resolver.Builder, error) {
@@ -1721,4 +1799,6 @@ func determineAuthority(endpoint, target string, dopts dialOptions) (string, err
 		// "scheme://authority/endpoint" as the default authority.
 		return endpoint, nil
 	}
+=======
+>>>>>>> upgrade to k8s 1.23 lib
 }

@@ -138,13 +138,18 @@ __%[1]s_process_completion_results() {
             _filedir -d
         fi
     else
+<<<<<<< HEAD
         __%[1]s_handle_completion_types
+=======
+        __%[1]s_handle_standard_completion_case
+>>>>>>> upgrade to k8s 1.23 lib
     fi
 
     __%[1]s_handle_special_char "$cur" :
     __%[1]s_handle_special_char "$cur" =
 }
 
+<<<<<<< HEAD
 __%[1]s_handle_completion_types() {
     __%[1]s_debug "__%[1]s_handle_completion_types: COMP_TYPE is $COMP_TYPE"
 
@@ -174,6 +179,8 @@ __%[1]s_handle_completion_types() {
     esac
 }
 
+=======
+>>>>>>> upgrade to k8s 1.23 lib
 __%[1]s_handle_standard_completion_case() {
     local tab comp
     tab=$(printf '\t')

@@ -44,6 +44,7 @@ type exitIdle struct{}
 // ccBalancerWrapper is a wrapper on top of cc for balancers.
 // It implements balancer.ClientConn interface.
 type ccBalancerWrapper struct {
+<<<<<<< HEAD
 	cc          *ClientConn
 	balancerMu  sync.Mutex // synchronizes calls to the balancer
 	balancer    balancer.Balancer
@@ -51,6 +52,14 @@ type ccBalancerWrapper struct {
 	updateCh    *buffer.Unbounded
 	closed      *grpcsync.Event
 	done        *grpcsync.Event
+=======
+	cc         *ClientConn
+	balancerMu sync.Mutex // synchronizes calls to the balancer
+	balancer   balancer.Balancer
+	updateCh   *buffer.Unbounded
+	closed     *grpcsync.Event
+	done       *grpcsync.Event
+>>>>>>> upgrade to k8s 1.23 lib
 
 	mu       sync.Mutex
 	subConns map[*acBalancerWrapper]struct{}
@@ -92,6 +101,7 @@ func (ccb *ccBalancerWrapper) watcher() {
 					ccb.cc.removeAddrConn(u.getAddrConn(), errConnDrain)
 				}
 				ccb.mu.Unlock()
+<<<<<<< HEAD
 			case exitIdle:
 				if ccb.cc.GetState() == connectivity.Idle {
 					if ei, ok := ccb.balancer.(balancer.ExitIdler); ok {
@@ -103,6 +113,8 @@ func (ccb *ccBalancerWrapper) watcher() {
 						ccb.balancerMu.Unlock()
 					}
 				}
+=======
+>>>>>>> upgrade to k8s 1.23 lib
 			default:
 				logger.Errorf("ccBalancerWrapper.watcher: unknown update %+v, type %T", t, t)
 			}
@@ -133,6 +145,7 @@ func (ccb *ccBalancerWrapper) watcher() {
 func (ccb *ccBalancerWrapper) close() {
 	ccb.closed.Fire()
 	<-ccb.done.Done()
+<<<<<<< HEAD
 }
 
 func (ccb *ccBalancerWrapper) exitIdle() bool {
@@ -141,6 +154,8 @@ func (ccb *ccBalancerWrapper) exitIdle() bool {
 	}
 	ccb.updateCh.Put(exitIdle{})
 	return true
+=======
+>>>>>>> upgrade to k8s 1.23 lib
 }
 
 func (ccb *ccBalancerWrapper) handleSubConnStateChange(sc balancer.SubConn, s connectivity.State, err error) {
@@ -169,8 +184,13 @@ func (ccb *ccBalancerWrapper) updateClientConnState(ccs *balancer.ClientConnStat
 
 func (ccb *ccBalancerWrapper) resolverError(err error) {
 	ccb.balancerMu.Lock()
+<<<<<<< HEAD
 	defer ccb.balancerMu.Unlock()
 	ccb.balancer.ResolverError(err)
+=======
+	ccb.balancer.ResolverError(err)
+	ccb.balancerMu.Unlock()
+>>>>>>> upgrade to k8s 1.23 lib
 }
 
 func (ccb *ccBalancerWrapper) NewSubConn(addrs []resolver.Address, opts balancer.NewSubConnOptions) (balancer.SubConn, error) {

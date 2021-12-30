@@ -56,6 +56,7 @@ const (
 //
 //       // The raw HTTP body is bound to this field.
 //       google.api.HttpBody http_body = 2;
+<<<<<<< HEAD
 //
 //     }
 //
@@ -65,6 +66,14 @@ const (
 //       rpc UpdateResource(google.api.HttpBody)
 //         returns (google.protobuf.Empty);
 //
+=======
+//     }
+//
+//     service ResourceService {
+//       rpc GetResource(GetResourceRequest) returns (google.api.HttpBody);
+//       rpc UpdateResource(google.api.HttpBody) returns
+//       (google.protobuf.Empty);
+>>>>>>> upgrade to k8s 1.23 lib
 //     }
 //
 // Example with streaming methods:
@@ -74,7 +83,10 @@ const (
 //         returns (stream google.api.HttpBody);
 //       rpc UpdateCalendar(stream google.api.HttpBody)
 //         returns (stream google.api.HttpBody);
+<<<<<<< HEAD
 //
+=======
+>>>>>>> upgrade to k8s 1.23 lib
 //     }
 //
 // Use of this type only changes how the request and response bodies are

@@ -40,6 +40,7 @@ func New(key, value interface{}) *Attributes {
 	return &Attributes{m: map[interface{}]interface{}{key: value}}
 }
 
+<<<<<<< HEAD
 // WithValue returns a new Attributes containing the previous keys and values
 // and the new key/value pair.  If the same key appears multiple times, the
 // last value overwrites all previous values for that key.  To remove an
@@ -47,6 +48,18 @@ func New(key, value interface{}) *Attributes {
 func (a *Attributes) WithValue(key, value interface{}) *Attributes {
 	if a == nil {
 		return New(key, value)
+=======
+// WithValues returns a new Attributes containing all key/value pairs in a and
+// kvs.  Panics if len(kvs) is not even.  If the same key appears multiple
+// times, the last value overwrites all previous values for that key.  To
+// remove an existing key, use a nil value.
+func (a *Attributes) WithValues(kvs ...interface{}) *Attributes {
+	if a == nil {
+		return New(kvs...)
+	}
+	if len(kvs)%2 != 0 {
+		panic(fmt.Sprintf("attributes.New called with unexpected input: len(kvs) = %v", len(kvs)))
+>>>>>>> upgrade to k8s 1.23 lib
 	}
 	n := &Attributes{m: make(map[interface{}]interface{}, len(a.m)+1)}
 	for k, v := range a.m {

@@ -1,3 +1,8 @@
+<<<<<<< HEAD
+=======
+// +build !appengine
+
+>>>>>>> upgrade to k8s 1.23 lib
 /*
  *
  * Copyright 2020 gRPC authors.

@@ -41,6 +41,11 @@ vetdeps:
 	clean \
 	proto \
 	test \
+<<<<<<< HEAD
+=======
+	testappengine \
+	testappenginedeps \
+>>>>>>> upgrade to k8s 1.23 lib
 	testrace \
 	vet \
 	vetdeps

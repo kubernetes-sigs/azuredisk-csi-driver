@@ -93,8 +93,11 @@ type CompletionOptions struct {
 	// DisableDescriptions turns off all completion descriptions for shells
 	// that support them
 	DisableDescriptions bool
+<<<<<<< HEAD
 	// HiddenDefaultCmd makes the default 'completion' command hidden
 	HiddenDefaultCmd bool
+=======
+>>>>>>> upgrade to k8s 1.23 lib
 }
 
 // NoFileCompletions can be used to disable file completion for commands that should
@@ -228,6 +231,7 @@ func (c *Command) getCompletions(args []string) (*Command, []string, ShellCompDi
 	if c.Root().TraverseChildren {
 		finalCmd, finalArgs, err = c.Root().Traverse(trimmedArgs)
 	} else {
+<<<<<<< HEAD
 		// For Root commands that don't specify any value for their Args fields, when we call
 		// Find(), if those Root commands don't have any sub-commands, they will accept arguments.
 		// However, because we have added the __complete sub-command in the current code path, the
@@ -239,6 +243,9 @@ func (c *Command) getCompletions(args []string) (*Command, []string, ShellCompDi
 		}
 
 		finalCmd, finalArgs, err = rootCmd.Find(trimmedArgs)
+=======
+		finalCmd, finalArgs, err = c.Root().Find(trimmedArgs)
+>>>>>>> upgrade to k8s 1.23 lib
 	}
 	if err != nil {
 		// Unable to find the real command. E.g., <program> someInvalidCmd <TAB>
@@ -278,12 +285,15 @@ func (c *Command) getCompletions(args []string) (*Command, []string, ShellCompDi
 		}
 	}
 
+<<<<<<< HEAD
 	// We only remove the flags from the arguments if DisableFlagParsing is not set.
 	// This is important for commands which have requested to do their own flag completion.
 	if !finalCmd.DisableFlagParsing {
 		finalArgs = finalCmd.Flags().Args()
 	}
 
+=======
+>>>>>>> upgrade to k8s 1.23 lib
 	if flag != nil && flagCompletion {
 		// Check if we are completing a flag value subject to annotations
 		if validExts, present := flag.Annotations[BashCompFilenameExt]; present {
@@ -308,16 +318,24 @@ func (c *Command) getCompletions(args []string) (*Command, []string, ShellCompDi
 		}
 	}
 
+<<<<<<< HEAD
 	var completions []string
 	var directive ShellCompDirective
 
 	// Note that we want to perform flagname completion even if finalCmd.DisableFlagParsing==true;
 	// doing this allows for completion of persistant flag names even for commands that disable flag parsing.
 	//
+=======
+>>>>>>> upgrade to k8s 1.23 lib
 	// When doing completion of a flag name, as soon as an argument starts with
 	// a '-' we know it is a flag.  We cannot use isFlagArg() here as it requires
 	// the flag name to be complete
 	if flag == nil && len(toComplete) > 0 && toComplete[0] == '-' && !strings.Contains(toComplete, "=") && flagCompletion {
+<<<<<<< HEAD
+=======
+		var completions []string
+
+>>>>>>> upgrade to k8s 1.23 lib
 		// First check for required flags
 		completions = completeRequireFlags(finalCmd, toComplete)
 
@@ -344,12 +362,17 @@ func (c *Command) getCompletions(args []string) (*Command, []string, ShellCompDi
 			})
 		}
 
+<<<<<<< HEAD
 		directive = ShellCompDirectiveNoFileComp
+=======
+		directive := ShellCompDirectiveNoFileComp
+>>>>>>> upgrade to k8s 1.23 lib
 		if len(completions) == 1 && strings.HasSuffix(completions[0], "=") {
 			// If there is a single completion, the shell usually adds a space
 			// after the completion.  We don't want that if the flag ends with an =
 			directive = ShellCompDirectiveNoSpace
 		}
+<<<<<<< HEAD
 
 		if !finalCmd.DisableFlagParsing {
 			// If DisableFlagParsing==false, we have completed the flags as known by Cobra;
@@ -424,6 +447,82 @@ func (c *Command) getCompletions(args []string) (*Command, []string, ShellCompDi
 			// even if we already found sub-commands.
 			// This is for commands that have subcommands but also specify a ValidArgsFunction.
 		}
+=======
+		return finalCmd, completions, directive, nil
+	}
+
+	// We only remove the flags from the arguments if DisableFlagParsing is not set.
+	// This is important for commands which have requested to do their own flag completion.
+	if !finalCmd.DisableFlagParsing {
+		finalArgs = finalCmd.Flags().Args()
+	}
+
+	var completions []string
+	directive := ShellCompDirectiveDefault
+	if flag == nil {
+		foundLocalNonPersistentFlag := false
+		// If TraverseChildren is true on the root command we don't check for
+		// local flags because we can use a local flag on a parent command
+		if !finalCmd.Root().TraverseChildren {
+			// Check if there are any local, non-persistent flags on the command-line
+			localNonPersistentFlags := finalCmd.LocalNonPersistentFlags()
+			finalCmd.NonInheritedFlags().VisitAll(func(flag *pflag.Flag) {
+				if localNonPersistentFlags.Lookup(flag.Name) != nil && flag.Changed {
+					foundLocalNonPersistentFlag = true
+				}
+			})
+		}
+
+		// Complete subcommand names, including the help command
+		if len(finalArgs) == 0 && !foundLocalNonPersistentFlag {
+			// We only complete sub-commands if:
+			// - there are no arguments on the command-line and
+			// - there are no local, non-persistent flags on the command-line or TraverseChildren is true
+			for _, subCmd := range finalCmd.Commands() {
+				if subCmd.IsAvailableCommand() || subCmd == finalCmd.helpCommand {
+					if strings.HasPrefix(subCmd.Name(), toComplete) {
+						completions = append(completions, fmt.Sprintf("%s\t%s", subCmd.Name(), subCmd.Short))
+					}
+					directive = ShellCompDirectiveNoFileComp
+				}
+			}
+		}
+
+		// Complete required flags even without the '-' prefix
+		completions = append(completions, completeRequireFlags(finalCmd, toComplete)...)
+
+		// Always complete ValidArgs, even if we are completing a subcommand name.
+		// This is for commands that have both subcommands and ValidArgs.
+		if len(finalCmd.ValidArgs) > 0 {
+			if len(finalArgs) == 0 {
+				// ValidArgs are only for the first argument
+				for _, validArg := range finalCmd.ValidArgs {
+					if strings.HasPrefix(validArg, toComplete) {
+						completions = append(completions, validArg)
+					}
+				}
+				directive = ShellCompDirectiveNoFileComp
+
+				// If no completions were found within commands or ValidArgs,
+				// see if there are any ArgAliases that should be completed.
+				if len(completions) == 0 {
+					for _, argAlias := range finalCmd.ArgAliases {
+						if strings.HasPrefix(argAlias, toComplete) {
+							completions = append(completions, argAlias)
+						}
+					}
+				}
+			}
+
+			// If there are ValidArgs specified (even if they don't match), we stop completion.
+			// Only one of ValidArgs or ValidArgsFunction can be used for a single command.
+			return finalCmd, completions, directive, nil
+		}
+
+		// Let the logic continue so as to add any ValidArgsFunction completions,
+		// even if we already found sub-commands.
+		// This is for commands that have subcommands but also specify a ValidArgsFunction.
+>>>>>>> upgrade to k8s 1.23 lib
 	}
 
 	// Find the completion function for the flag or command
@@ -611,28 +710,47 @@ func (c *Command) initDefaultCompletionCmd() {
 
 	completionCmd := &Command{
 		Use:   compCmdName,
+<<<<<<< HEAD
 		Short: "Generate the autocompletion script for the specified shell",
 		Long: fmt.Sprintf(`Generate the autocompletion script for %[1]s for the specified shell.
+=======
+		Short: "generate the autocompletion script for the specified shell",
+		Long: fmt.Sprintf(`
+Generate the autocompletion script for %[1]s for the specified shell.
+>>>>>>> upgrade to k8s 1.23 lib
 See each sub-command's help for details on how to use the generated script.
 `, c.Root().Name()),
 		Args:              NoArgs,
 		ValidArgsFunction: NoFileCompletions,
+<<<<<<< HEAD
 		Hidden:            c.CompletionOptions.HiddenDefaultCmd,
+=======
+>>>>>>> upgrade to k8s 1.23 lib
 	}
 	c.AddCommand(completionCmd)
 
 	out := c.OutOrStdout()
 	noDesc := c.CompletionOptions.DisableDescriptions
+<<<<<<< HEAD
 	shortDesc := "Generate the autocompletion script for %s"
 	bash := &Command{
 		Use:   "bash",
 		Short: fmt.Sprintf(shortDesc, "bash"),
 		Long: fmt.Sprintf(`Generate the autocompletion script for the bash shell.
+=======
+	shortDesc := "generate the autocompletion script for %s"
+	bash := &Command{
+		Use:   "bash",
+		Short: fmt.Sprintf(shortDesc, "bash"),
+		Long: fmt.Sprintf(`
+Generate the autocompletion script for the bash shell.
+>>>>>>> upgrade to k8s 1.23 lib
 
 This script depends on the 'bash-completion' package.
 If it is not installed already, you can install it via your OS's package manager.
 
 To load completions in your current shell session:
+<<<<<<< HEAD
 
 	source <(%[1]s completion bash)
 
@@ -648,6 +766,18 @@ To load completions for every new session, execute once:
 
 You will need to start a new shell for this setup to take effect.
 `, c.Root().Name()),
+=======
+$ source <(%[1]s completion bash)
+
+To load completions for every new session, execute once:
+Linux:
+  $ %[1]s completion bash > /etc/bash_completion.d/%[1]s
+MacOS:
+  $ %[1]s completion bash > /usr/local/etc/bash_completion.d/%[1]s
+
+You will need to start a new shell for this setup to take effect.
+  `, c.Root().Name()),
+>>>>>>> upgrade to k8s 1.23 lib
 		Args:                  NoArgs,
 		DisableFlagsInUseLine: true,
 		ValidArgsFunction:     NoFileCompletions,
@@ -662,11 +792,17 @@ You will need to start a new shell for this setup to take effect.
 	zsh := &Command{
 		Use:   "zsh",
 		Short: fmt.Sprintf(shortDesc, "zsh"),
+<<<<<<< HEAD
 		Long: fmt.Sprintf(`Generate the autocompletion script for the zsh shell.
+=======
+		Long: fmt.Sprintf(`
+Generate the autocompletion script for the zsh shell.
+>>>>>>> upgrade to k8s 1.23 lib
 
 If shell completion is not already enabled in your environment you will need
 to enable it.  You can execute the following once:
 
+<<<<<<< HEAD
 	echo "autoload -U compinit; compinit" >> ~/.zshrc
 
 To load completions for every new session, execute once:
@@ -678,6 +814,15 @@ To load completions for every new session, execute once:
 #### macOS:
 
 	%[1]s completion zsh > /usr/local/share/zsh/site-functions/_%[1]s
+=======
+$ echo "autoload -U compinit; compinit" >> ~/.zshrc
+
+To load completions for every new session, execute once:
+# Linux:
+$ %[1]s completion zsh > "${fpath[1]}/_%[1]s"
+# macOS:
+$ %[1]s completion zsh > /usr/local/share/zsh/site-functions/_%[1]s
+>>>>>>> upgrade to k8s 1.23 lib
 
 You will need to start a new shell for this setup to take effect.
 `, c.Root().Name()),
@@ -697,6 +842,7 @@ You will need to start a new shell for this setup to take effect.
 	fish := &Command{
 		Use:   "fish",
 		Short: fmt.Sprintf(shortDesc, "fish"),
+<<<<<<< HEAD
 		Long: fmt.Sprintf(`Generate the autocompletion script for the fish shell.
 
 To load completions in your current shell session:
@@ -706,6 +852,16 @@ To load completions in your current shell session:
 To load completions for every new session, execute once:
 
 	%[1]s completion fish > ~/.config/fish/completions/%[1]s.fish
+=======
+		Long: fmt.Sprintf(`
+Generate the autocompletion script for the fish shell.
+
+To load completions in your current shell session:
+$ %[1]s completion fish | source
+
+To load completions for every new session, execute once:
+$ %[1]s completion fish > ~/.config/fish/completions/%[1]s.fish
+>>>>>>> upgrade to k8s 1.23 lib
 
 You will need to start a new shell for this setup to take effect.
 `, c.Root().Name()),
@@ -722,11 +878,19 @@ You will need to start a new shell for this setup to take effect.
 	powershell := &Command{
 		Use:   "powershell",
 		Short: fmt.Sprintf(shortDesc, "powershell"),
+<<<<<<< HEAD
 		Long: fmt.Sprintf(`Generate the autocompletion script for powershell.
 
 To load completions in your current shell session:
 
 	%[1]s completion powershell | Out-String | Invoke-Expression
+=======
+		Long: fmt.Sprintf(`
+Generate the autocompletion script for powershell.
+
+To load completions in your current shell session:
+PS C:\> %[1]s completion powershell | Out-String | Invoke-Expression
+>>>>>>> upgrade to k8s 1.23 lib
 
 To load completions for every new session, add the output of the above command
 to your powershell profile.

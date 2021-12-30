@@ -24,7 +24,11 @@ func writePreamble(buf io.StringWriter, name string) {
 	WriteStringAndCheck(buf, fmt.Sprintf(`
 __%[1]s_debug()
 {
+<<<<<<< HEAD
     if [[ -n ${BASH_COMP_DEBUG_FILE:-} ]]; then
+=======
+    if [[ -n ${BASH_COMP_DEBUG_FILE} ]]; then
+>>>>>>> upgrade to k8s 1.23 lib
         echo "$*" >> "${BASH_COMP_DEBUG_FILE}"
     fi
 }
@@ -134,7 +138,11 @@ __%[1]s_handle_go_custom_completion()
         $filteringCmd
     elif [ $((directive & shellCompDirectiveFilterDirs)) -ne 0 ]; then
         # File completion for directories only
+<<<<<<< HEAD
         local subdir
+=======
+        local subDir
+>>>>>>> upgrade to k8s 1.23 lib
         # Use printf to strip any trailing newline
         subdir=$(printf "%%s" "${out[0]}")
         if [ -n "$subdir" ]; then
@@ -187,12 +195,17 @@ __%[1]s_handle_reply()
                     PREFIX=""
                     cur="${cur#*=}"
                     ${flags_completion[${index}]}
+<<<<<<< HEAD
                     if [ -n "${ZSH_VERSION:-}" ]; then
+=======
+                    if [ -n "${ZSH_VERSION}" ]; then
+>>>>>>> upgrade to k8s 1.23 lib
                         # zsh completion needs --flag= prefix
                         eval "COMPREPLY=( \"\${COMPREPLY[@]/#/${flag}=}\" )"
                     fi
                 fi
             fi
+<<<<<<< HEAD
 
             if [[ -z "${flag_parsing_disabled}" ]]; then
                 # If flag parsing is enabled, we have completed the flags and can return.
@@ -200,6 +213,9 @@ __%[1]s_handle_reply()
                 # to possibly call handle_go_custom_completion.
                 return 0;
             fi
+=======
+            return 0;
+>>>>>>> upgrade to k8s 1.23 lib
             ;;
     esac
 
@@ -238,6 +254,7 @@ __%[1]s_handle_reply()
     fi
 
     if [[ ${#COMPREPLY[@]} -eq 0 ]]; then
+<<<<<<< HEAD
         if declare -F __%[1]s_custom_func >/dev/null; then
             # try command name qualified custom func
             __%[1]s_custom_func
@@ -245,6 +262,15 @@ __%[1]s_handle_reply()
             # otherwise fall back to unqualified for compatibility
             declare -F __custom_func >/dev/null && __custom_func
         fi
+=======
+		if declare -F __%[1]s_custom_func >/dev/null; then
+			# try command name qualified custom func
+			__%[1]s_custom_func
+		else
+			# otherwise fall back to unqualified for compatibility
+			declare -F __custom_func >/dev/null && __custom_func
+		fi
+>>>>>>> upgrade to k8s 1.23 lib
     fi
 
     # available in bash-completion >= 2, not always present on macOS
@@ -278,7 +304,11 @@ __%[1]s_handle_flag()
 
     # if a command required a flag, and we found it, unset must_have_one_flag()
     local flagname=${words[c]}
+<<<<<<< HEAD
     local flagvalue=""
+=======
+    local flagvalue
+>>>>>>> upgrade to k8s 1.23 lib
     # if the word contained an =
     if [[ ${words[c]} == *"="* ]]; then
         flagvalue=${flagname#*=} # take in as flagvalue after the =
@@ -297,7 +327,11 @@ __%[1]s_handle_flag()
 
     # keep flag value with flagname as flaghash
     # flaghash variable is an associative array which is only supported in bash > 3.
+<<<<<<< HEAD
     if [[ -z "${BASH_VERSION:-}" || "${BASH_VERSINFO[0]:-}" -gt 3 ]]; then
+=======
+    if [[ -z "${BASH_VERSION}" || "${BASH_VERSINFO[0]}" -gt 3 ]]; then
+>>>>>>> upgrade to k8s 1.23 lib
         if [ -n "${flagvalue}" ] ; then
             flaghash[${flagname}]=${flagvalue}
         elif [ -n "${words[ $((c+1)) ]}" ] ; then
@@ -309,7 +343,11 @@ __%[1]s_handle_flag()
 
     # skip the argument to a two word flag
     if [[ ${words[c]} != *"="* ]] && __%[1]s_contains_word "${words[c]}" "${two_word_flags[@]}"; then
+<<<<<<< HEAD
         __%[1]s_debug "${FUNCNAME[0]}: found a flag ${words[c]}, skip the next argument"
+=======
+			  __%[1]s_debug "${FUNCNAME[0]}: found a flag ${words[c]}, skip the next argument"
+>>>>>>> upgrade to k8s 1.23 lib
         c=$((c+1))
         # if we are looking for a flags value, don't show commands
         if [[ $c -eq $cword ]]; then
@@ -369,7 +407,11 @@ __%[1]s_handle_word()
         __%[1]s_handle_command
     elif __%[1]s_contains_word "${words[c]}" "${command_aliases[@]}"; then
         # aliashash variable is an associative array which is only supported in bash > 3.
+<<<<<<< HEAD
         if [[ -z "${BASH_VERSION:-}" || "${BASH_VERSINFO[0]:-}" -gt 3 ]]; then
+=======
+        if [[ -z "${BASH_VERSION}" || "${BASH_VERSINFO[0]}" -gt 3 ]]; then
+>>>>>>> upgrade to k8s 1.23 lib
             words[c]=${aliashash[${words[c]}]}
             __%[1]s_handle_command
         else
@@ -400,7 +442,10 @@ func writePostscript(buf io.StringWriter, name string) {
     fi
 
     local c=0
+<<<<<<< HEAD
     local flag_parsing_disabled=
+=======
+>>>>>>> upgrade to k8s 1.23 lib
     local flags=()
     local two_word_flags=()
     local local_nonpersistent_flags=()
@@ -410,8 +455,13 @@ func writePostscript(buf io.StringWriter, name string) {
     local command_aliases=()
     local must_have_one_flag=()
     local must_have_one_noun=()
+<<<<<<< HEAD
     local has_completion_function=""
     local last_command=""
+=======
+    local has_completion_function
+    local last_command
+>>>>>>> upgrade to k8s 1.23 lib
     local nouns=()
     local noun_aliases=()
 
@@ -542,11 +592,14 @@ func writeFlags(buf io.StringWriter, cmd *Command) {
     flags_completion=()
 
 `)
+<<<<<<< HEAD
 
 	if cmd.DisableFlagParsing {
 		WriteStringAndCheck(buf, "    flag_parsing_disabled=1\n")
 	}
 
+=======
+>>>>>>> upgrade to k8s 1.23 lib
 	localNonPersistentFlags := cmd.LocalNonPersistentFlags()
 	cmd.NonInheritedFlags().VisitAll(func(flag *pflag.Flag) {
 		if nonCompletableFlag(flag) {
@@ -621,7 +674,11 @@ func writeCmdAliases(buf io.StringWriter, cmd *Command) {
 
 	sort.Strings(cmd.Aliases)
 
+<<<<<<< HEAD
 	WriteStringAndCheck(buf, fmt.Sprint(`    if [[ -z "${BASH_VERSION:-}" || "${BASH_VERSINFO[0]:-}" -gt 3 ]]; then`, "\n"))
+=======
+	WriteStringAndCheck(buf, fmt.Sprint(`    if [[ -z "${BASH_VERSION}" || "${BASH_VERSINFO[0]}" -gt 3 ]]; then`, "\n"))
+>>>>>>> upgrade to k8s 1.23 lib
 	for _, value := range cmd.Aliases {
 		WriteStringAndCheck(buf, fmt.Sprintf("        command_aliases+=(%q)\n", value))
 		WriteStringAndCheck(buf, fmt.Sprintf("        aliashash[%q]=%q\n", value, cmd.Name()))

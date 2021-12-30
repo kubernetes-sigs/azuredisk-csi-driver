@@ -832,14 +832,42 @@ func (s *Server) handleRawConn(lisAddr string, rawConn net.Conn) {
 		return
 	}
 	rawConn.SetDeadline(time.Now().Add(s.opts.connectionTimeout))
+<<<<<<< HEAD
+=======
+	conn, authInfo, err := s.useTransportAuthenticator(rawConn)
+	if err != nil {
+		// ErrConnDispatched means that the connection was dispatched away from
+		// gRPC; those connections should be left open.
+		if err != credentials.ErrConnDispatched {
+			// In deployments where a gRPC server runs behind a cloud load
+			// balancer which performs regular TCP level health checks, the
+			// connection is closed immediately by the latter. Skipping the
+			// error here will help reduce log clutter.
+			if err != io.EOF {
+				s.mu.Lock()
+				s.errorf("ServerHandshake(%q) failed: %v", rawConn.RemoteAddr(), err)
+				s.mu.Unlock()
+				channelz.Warningf(logger, s.channelzID, "grpc: Server.Serve failed to complete security handshake from %q: %v", rawConn.RemoteAddr(), err)
+			}
+			rawConn.Close()
+		}
+		rawConn.SetDeadline(time.Time{})
+		return
+	}
+>>>>>>> upgrade to k8s 1.23 lib
 
 	// Finish handshaking (HTTP2)
 	st := s.newHTTP2Transport(rawConn)
 	rawConn.SetDeadline(time.Time{})
 	if st == nil {
+		conn.Close()
 		return
 	}
 
+<<<<<<< HEAD
+=======
+	rawConn.SetDeadline(time.Time{})
+>>>>>>> upgrade to k8s 1.23 lib
 	if !s.addConn(lisAddr, st) {
 		return
 	}
@@ -882,6 +910,7 @@ func (s *Server) newHTTP2Transport(c net.Conn) transport.ServerTransport {
 		s.mu.Lock()
 		s.errorf("NewServerTransport(%q) failed: %v", c.RemoteAddr(), err)
 		s.mu.Unlock()
+<<<<<<< HEAD
 		// ErrConnDispatched means that the connection was dispatched away from
 		// gRPC; those connections should be left open.
 		if err != credentials.ErrConnDispatched {
@@ -891,6 +920,10 @@ func (s *Server) newHTTP2Transport(c net.Conn) transport.ServerTransport {
 			}
 			c.Close()
 		}
+=======
+		c.Close()
+		channelz.Warning(logger, s.channelzID, "grpc: Server.Serve failed to create ServerTransport: ", err)
+>>>>>>> upgrade to k8s 1.23 lib
 		return nil
 	}
 
@@ -1104,6 +1137,7 @@ func chainUnaryServerInterceptors(s *Server) {
 
 func chainUnaryInterceptors(interceptors []UnaryServerInterceptor) UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *UnaryServerInfo, handler UnaryHandler) (interface{}, error) {
+<<<<<<< HEAD
 		// the struct ensures the variables are allocated together, rather than separately, since we
 		// know they should be garbage collected together. This saves 1 allocation and decreases
 		// time/call by about 10% on the microbenchmark.
@@ -1119,6 +1153,18 @@ func chainUnaryInterceptors(interceptors []UnaryServerInterceptor) UnaryServerIn
 			return interceptors[state.i-1](ctx, req, info, state.next)
 		}
 		return state.next(ctx, req)
+=======
+		var i int
+		var next UnaryHandler
+		next = func(ctx context.Context, req interface{}) (interface{}, error) {
+			if i == len(interceptors)-1 {
+				return interceptors[i](ctx, req, info, handler)
+			}
+			i++
+			return interceptors[i-1](ctx, req, info, next)
+		}
+		return next(ctx, req)
+>>>>>>> upgrade to k8s 1.23 lib
 	}
 }
 
@@ -1394,6 +1440,7 @@ func chainStreamServerInterceptors(s *Server) {
 
 func chainStreamInterceptors(interceptors []StreamServerInterceptor) StreamServerInterceptor {
 	return func(srv interface{}, ss ServerStream, info *StreamServerInfo, handler StreamHandler) error {
+<<<<<<< HEAD
 		// the struct ensures the variables are allocated together, rather than separately, since we
 		// know they should be garbage collected together. This saves 1 allocation and decreases
 		// time/call by about 10% on the microbenchmark.
@@ -1409,6 +1456,18 @@ func chainStreamInterceptors(interceptors []StreamServerInterceptor) StreamServe
 			return interceptors[state.i-1](srv, ss, info, state.next)
 		}
 		return state.next(srv, ss)
+=======
+		var i int
+		var next StreamHandler
+		next = func(srv interface{}, ss ServerStream) error {
+			if i == len(interceptors)-1 {
+				return interceptors[i](srv, ss, info, handler)
+			}
+			i++
+			return interceptors[i-1](srv, ss, info, next)
+		}
+		return next(srv, ss)
+>>>>>>> upgrade to k8s 1.23 lib
 	}
 }
 

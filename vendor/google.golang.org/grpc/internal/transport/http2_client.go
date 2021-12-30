@@ -25,7 +25,10 @@ import (
 	"math"
 	"net"
 	"net/http"
+<<<<<<< HEAD
 	"path/filepath"
+=======
+>>>>>>> upgrade to k8s 1.23 lib
 	"strconv"
 	"strings"
 	"sync"
@@ -147,6 +150,7 @@ func dial(ctx context.Context, fn func(context.Context, string) (net.Conn, error
 	address := addr.Addr
 	networkType, ok := networktype.Get(addr)
 	if fn != nil {
+<<<<<<< HEAD
 		// Special handling for unix scheme with custom dialer. Back in the day,
 		// we did not have a unix resolver and therefore targets with a unix
 		// scheme would end up using the passthrough resolver. So, user's used a
@@ -161,6 +165,15 @@ func dial(ctx context.Context, fn func(context.Context, string) (net.Conn, error
 				return fn(ctx, "unix://"+address)
 			}
 			return fn(ctx, "unix:"+address)
+=======
+		if networkType == "unix" && !strings.HasPrefix(address, "\x00") {
+			// For backward compatibility, if the user dialed "unix:///path",
+			// the passthrough resolver would be used and the user's custom
+			// dialer would see "unix:///path". Since the unix resolver is used
+			// and the address is now "/path", prepend "unix://" so the user's
+			// custom dialer sees the same address.
+			return fn(ctx, "unix://"+address)
+>>>>>>> upgrade to k8s 1.23 lib
 		}
 		return fn(ctx, address)
 	}
@@ -624,6 +637,7 @@ func (t *http2Client) getCallAuthData(ctx context.Context, audience string, call
 	return callAuthData, nil
 }
 
+<<<<<<< HEAD
 // NewStreamError wraps an error and reports additional information.  Typically
 // NewStream errors result in transparent retry, as they mean nothing went onto
 // the wire.  However, there are two notable exceptions:
@@ -640,6 +654,14 @@ type NewStreamError struct {
 
 	DoNotRetry            bool
 	DoNotTransparentRetry bool
+=======
+// NewStreamError wraps an error and reports additional information.
+type NewStreamError struct {
+	Err error
+
+	DoNotRetry  bool
+	PerformedIO bool
+>>>>>>> upgrade to k8s 1.23 lib
 }
 
 func (e NewStreamError) Error() string {
@@ -649,6 +671,20 @@ func (e NewStreamError) Error() string {
 // NewStream creates a stream and registers it into the transport as "active"
 // streams.  All non-nil errors returned will be *NewStreamError.
 func (t *http2Client) NewStream(ctx context.Context, callHdr *CallHdr) (_ *Stream, err error) {
+	defer func() {
+		if err != nil {
+			nse, ok := err.(*NewStreamError)
+			if !ok {
+				nse = &NewStreamError{Err: err}
+			}
+			if len(t.perRPCCreds) > 0 || callHdr.Creds != nil {
+				// We may have performed I/O in the per-RPC creds callback, so do not
+				// allow transparent retry.
+				nse.PerformedIO = true
+			}
+			err = nse
+		}
+	}()
 	ctx = peer.NewContext(ctx, t.getPeer())
 	headerFields, err := t.createHeaderFields(ctx, callHdr)
 	if err != nil {
@@ -1294,6 +1330,7 @@ func (t *http2Client) operateHeaders(frame *http2.MetaHeadersFrame) {
 	if frame.Truncated {
 		se := status.New(codes.Internal, "peer header list size exceeded limit")
 		t.closeStream(s, se.Err(), true, http2.ErrCodeFrameSize, se, nil, endStream)
+<<<<<<< HEAD
 		return
 	}
 
@@ -1335,6 +1372,142 @@ func (t *http2Client) operateHeaders(frame *http2.MetaHeadersFrame) {
 				se := status.New(codes.Internal, fmt.Sprintf("transport: malformed grpc-status: %v", err))
 				t.closeStream(s, se.Err(), true, http2.ErrCodeProtocol, se, nil, endStream)
 				return
+=======
+		return
+	}
+
+	var (
+		// If a gRPC Response-Headers has already been received, then it means
+		// that the peer is speaking gRPC and we are in gRPC mode.
+		isGRPC         = !initialHeader
+		mdata          = make(map[string][]string)
+		contentTypeErr = "malformed header: missing HTTP content-type"
+		grpcMessage    string
+		statusGen      *status.Status
+		recvCompress   string
+		httpStatusCode *int
+		httpStatusErr  string
+		rawStatusCode  = codes.Unknown
+		// headerError is set if an error is encountered while parsing the headers
+		headerError string
+	)
+
+	if initialHeader {
+		httpStatusErr = "malformed header: missing HTTP status"
+	}
+
+	for _, hf := range frame.Fields {
+		switch hf.Name {
+		case "content-type":
+			if _, validContentType := grpcutil.ContentSubtype(hf.Value); !validContentType {
+				contentTypeErr = fmt.Sprintf("transport: received unexpected content-type %q", hf.Value)
+				break
+			}
+			contentTypeErr = ""
+			mdata[hf.Name] = append(mdata[hf.Name], hf.Value)
+			isGRPC = true
+		case "grpc-encoding":
+			recvCompress = hf.Value
+		case "grpc-status":
+			code, err := strconv.ParseInt(hf.Value, 10, 32)
+			if err != nil {
+				se := status.New(codes.Internal, fmt.Sprintf("transport: malformed grpc-status: %v", err))
+				t.closeStream(s, se.Err(), true, http2.ErrCodeProtocol, se, nil, endStream)
+				return
+			}
+			rawStatusCode = codes.Code(uint32(code))
+		case "grpc-message":
+			grpcMessage = decodeGrpcMessage(hf.Value)
+		case "grpc-status-details-bin":
+			var err error
+			statusGen, err = decodeGRPCStatusDetails(hf.Value)
+			if err != nil {
+				headerError = fmt.Sprintf("transport: malformed grpc-status-details-bin: %v", err)
+			}
+		case ":status":
+			if hf.Value == "200" {
+				httpStatusErr = ""
+				statusCode := 200
+				httpStatusCode = &statusCode
+				break
+			}
+
+			c, err := strconv.ParseInt(hf.Value, 10, 32)
+			if err != nil {
+				se := status.New(codes.Internal, fmt.Sprintf("transport: malformed http-status: %v", err))
+				t.closeStream(s, se.Err(), true, http2.ErrCodeProtocol, se, nil, endStream)
+				return
+			}
+			statusCode := int(c)
+			httpStatusCode = &statusCode
+
+			httpStatusErr = fmt.Sprintf(
+				"unexpected HTTP status code received from server: %d (%s)",
+				statusCode,
+				http.StatusText(statusCode),
+			)
+		default:
+			if isReservedHeader(hf.Name) && !isWhitelistedHeader(hf.Name) {
+				break
+			}
+			v, err := decodeMetadataHeader(hf.Name, hf.Value)
+			if err != nil {
+				headerError = fmt.Sprintf("transport: malformed %s: %v", hf.Name, err)
+				logger.Warningf("Failed to decode metadata header (%q, %q): %v", hf.Name, hf.Value, err)
+				break
+			}
+			mdata[hf.Name] = append(mdata[hf.Name], v)
+		}
+	}
+
+	if !isGRPC || httpStatusErr != "" {
+		var code = codes.Internal // when header does not include HTTP status, return INTERNAL
+
+		if httpStatusCode != nil {
+			var ok bool
+			code, ok = HTTPStatusConvTab[*httpStatusCode]
+			if !ok {
+				code = codes.Unknown
+			}
+		}
+		var errs []string
+		if httpStatusErr != "" {
+			errs = append(errs, httpStatusErr)
+		}
+		if contentTypeErr != "" {
+			errs = append(errs, contentTypeErr)
+		}
+		// Verify the HTTP response is a 200.
+		se := status.New(code, strings.Join(errs, "; "))
+		t.closeStream(s, se.Err(), true, http2.ErrCodeProtocol, se, nil, endStream)
+		return
+	}
+
+	if headerError != "" {
+		se := status.New(codes.Internal, headerError)
+		t.closeStream(s, se.Err(), true, http2.ErrCodeProtocol, se, nil, endStream)
+		return
+	}
+
+	isHeader := false
+	defer func() {
+		if t.statsHandler != nil {
+			if isHeader {
+				inHeader := &stats.InHeader{
+					Client:      true,
+					WireLength:  int(frame.Header().Length),
+					Header:      s.header.Copy(),
+					Compression: s.recvCompress,
+				}
+				t.statsHandler.HandleRPC(s.ctx, inHeader)
+			} else {
+				inTrailer := &stats.InTrailer{
+					Client:     true,
+					WireLength: int(frame.Header().Length),
+					Trailer:    s.trailer.Copy(),
+				}
+				t.statsHandler.HandleRPC(s.ctx, inTrailer)
+>>>>>>> upgrade to k8s 1.23 lib
 			}
 			rawStatusCode = codes.Code(uint32(code))
 		case "grpc-message":

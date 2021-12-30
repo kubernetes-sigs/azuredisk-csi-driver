@@ -139,11 +139,14 @@ type TransportCredentials interface {
 	// the error implements Temporary() to have the correct retry behaviors.
 	// Additionally, ClientHandshakeInfo data will be available via the context
 	// passed to this call.
+<<<<<<< HEAD
 	//
 	// The second argument to this method is the `:authority` header value used
 	// while creating new streams on this connection after authentication
 	// succeeds. Implementations must use this as the server name during the
 	// authentication handshake.
+=======
+>>>>>>> upgrade to k8s 1.23 lib
 	//
 	// If the returned net.Conn is closed, it MUST close the net.Conn provided.
 	ClientHandshake(context.Context, string, net.Conn) (net.Conn, AuthInfo, error)

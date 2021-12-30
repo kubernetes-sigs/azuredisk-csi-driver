@@ -30,6 +30,7 @@ type mdKeyType string
 
 const mdKey = mdKeyType("grpc.internal.address.metadata")
 
+<<<<<<< HEAD
 type mdValue metadata.MD
 
 func (m mdValue) Equal(o interface{}) bool {
@@ -54,14 +55,21 @@ func (m mdValue) Equal(o interface{}) bool {
 	return true
 }
 
+=======
+>>>>>>> upgrade to k8s 1.23 lib
 // Get returns the metadata of addr.
 func Get(addr resolver.Address) metadata.MD {
 	attrs := addr.Attributes
 	if attrs == nil {
 		return nil
 	}
+<<<<<<< HEAD
 	md, _ := attrs.Value(mdKey).(mdValue)
 	return metadata.MD(md)
+=======
+	md, _ := attrs.Value(mdKey).(metadata.MD)
+	return md
+>>>>>>> upgrade to k8s 1.23 lib
 }
 
 // Set sets (overrides) the metadata in addr.
@@ -69,6 +77,10 @@ func Get(addr resolver.Address) metadata.MD {
 // When a SubConn is created with this address, the RPCs sent on it will all
 // have this metadata.
 func Set(addr resolver.Address, md metadata.MD) resolver.Address {
+<<<<<<< HEAD
 	addr.Attributes = addr.Attributes.WithValue(mdKey, mdValue(md))
+=======
+	addr.Attributes = addr.Attributes.WithValues(mdKey, md)
+>>>>>>> upgrade to k8s 1.23 lib
 	return addr
 }

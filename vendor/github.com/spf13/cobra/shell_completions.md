@@ -28,6 +28,7 @@ and then modifying the generated `cmd/completion.go` file to look something like
 var completionCmd = &cobra.Command{
 	Use:   "completion [bash|zsh|fish|powershell]",
 	Short: "Generate completion script",
+<<<<<<< HEAD
 	Long: fmt.Sprintf(`To load completions:
 
 Bash:
@@ -39,6 +40,19 @@ Bash:
   $ %[1]s completion bash > /etc/bash_completion.d/%[1]s
   # macOS:
   $ %[1]s completion bash > /usr/local/etc/bash_completion.d/%[1]s
+=======
+	Long: `To load completions:
+
+Bash:
+
+  $ source <(yourprogram completion bash)
+
+  # To load completions for each session, execute once:
+  # Linux:
+  $ yourprogram completion bash > /etc/bash_completion.d/yourprogram
+  # macOS:
+  $ yourprogram completion bash > /usr/local/etc/bash_completion.d/yourprogram
+>>>>>>> upgrade to k8s 1.23 lib
 
 Zsh:
 
@@ -48,12 +62,17 @@ Zsh:
   $ echo "autoload -U compinit; compinit" >> ~/.zshrc
 
   # To load completions for each session, execute once:
+<<<<<<< HEAD
   $ %[1]s completion zsh > "${fpath[1]}/_%[1]s"
+=======
+  $ yourprogram completion zsh > "${fpath[1]}/_yourprogram"
+>>>>>>> upgrade to k8s 1.23 lib
 
   # You will need to start a new shell for this setup to take effect.
 
 fish:
 
+<<<<<<< HEAD
   $ %[1]s completion fish | source
 
   # To load completions for each session, execute once:
@@ -67,6 +86,21 @@ PowerShell:
   PS> %[1]s completion powershell > %[1]s.ps1
   # and source this file from your PowerShell profile.
 `,cmd.Root().Name()),
+=======
+  $ yourprogram completion fish | source
+
+  # To load completions for each session, execute once:
+  $ yourprogram completion fish > ~/.config/fish/completions/yourprogram.fish
+
+PowerShell:
+
+  PS> yourprogram completion powershell | Out-String | Invoke-Expression
+
+  # To load completions for every new session, run:
+  PS> yourprogram completion powershell > yourprogram.ps1
+  # and source this file from your PowerShell profile.
+`,
+>>>>>>> upgrade to k8s 1.23 lib
 	DisableFlagsInUseLine: true,
 	ValidArgs:             []string{"bash", "zsh", "fish", "powershell"},
 	Args:                  cobra.ExactValidArgs(1),

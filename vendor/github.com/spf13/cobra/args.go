@@ -107,6 +107,7 @@ func RangeArgs(min int, max int) PositionalArgs {
 		return nil
 	}
 }
+<<<<<<< HEAD
 
 // MatchAll allows combining several PositionalArgs to work in concert.
 func MatchAll(pargs ...PositionalArgs) PositionalArgs {
@@ -119,3 +120,5 @@ func MatchAll(pargs ...PositionalArgs) PositionalArgs {
 		return nil
 	}
 }
+=======
+>>>>>>> upgrade to k8s 1.23 lib

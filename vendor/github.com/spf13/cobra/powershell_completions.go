@@ -50,7 +50,11 @@ Register-ArgumentCompleter -CommandName '%[1]s' -ScriptBlock {
     if ($Command.Length -gt $CursorPosition) {
         $Command=$Command.Substring(0,$CursorPosition)
     }
+<<<<<<< HEAD
     __%[1]s_debug "Truncated command: $Command"
+=======
+	__%[1]s_debug "Truncated command: $Command"
+>>>>>>> upgrade to k8s 1.23 lib
 
     $ShellCompDirectiveError=%[3]d
     $ShellCompDirectiveNoSpace=%[4]d
@@ -58,7 +62,11 @@ Register-ArgumentCompleter -CommandName '%[1]s' -ScriptBlock {
     $ShellCompDirectiveFilterFileExt=%[6]d
     $ShellCompDirectiveFilterDirs=%[7]d
 
+<<<<<<< HEAD
     # Prepare the command to request completions for the program.
+=======
+	# Prepare the command to request completions for the program.
+>>>>>>> upgrade to k8s 1.23 lib
     # Split the command at the first space to separate the program and arguments.
     $Program,$Arguments = $Command.Split(" ",2)
     $RequestComp="$Program %[2]s $Arguments"
@@ -233,7 +241,11 @@ Register-ArgumentCompleter -CommandName '%[1]s' -ScriptBlock {
             Default {
                 # Like MenuComplete but we don't want to add a space here because
                 # the user need to press space anyway to get the completion.
+<<<<<<< HEAD
                 # Description will not be shown because that's not possible with TabCompleteNext
+=======
+                # Description will not be shown because thats not possible with TabCompleteNext
+>>>>>>> upgrade to k8s 1.23 lib
                 [System.Management.Automation.CompletionResult]::new($($comp.Name | __%[1]s_escapeStringWithSpecialChars), "$($comp.Name)", 'ParameterValue', "$($comp.Description)")
             }
         }

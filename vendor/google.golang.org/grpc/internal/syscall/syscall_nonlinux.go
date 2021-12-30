@@ -36,7 +36,11 @@ var logger = grpclog.Component("core")
 
 func log() {
 	once.Do(func() {
+<<<<<<< HEAD
 		logger.Info("CPU time info is unavailable on non-linux environments.")
+=======
+		logger.Info("CPU time info is unavailable on non-linux or appengine environment.")
+>>>>>>> upgrade to k8s 1.23 lib
 	})
 }
 
@@ -50,7 +54,11 @@ func GetCPUTime() int64 {
 // Rusage is an empty struct under non-linux environments.
 type Rusage struct{}
 
+<<<<<<< HEAD
 // GetRusage is a no-op function under non-linux environments.
+=======
+// GetRusage is a no-op function under non-linux or appengine environment.
+>>>>>>> upgrade to k8s 1.23 lib
 func GetRusage() *Rusage {
 	log()
 	return nil

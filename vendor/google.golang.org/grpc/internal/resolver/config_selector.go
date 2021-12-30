@@ -117,12 +117,18 @@ type ClientInterceptor interface {
 	NewStream(ctx context.Context, ri RPCInfo, done func(), newStream func(ctx context.Context, done func()) (ClientStream, error)) (ClientStream, error)
 }
 
+<<<<<<< HEAD
 // ServerInterceptor is an interceptor for incoming RPC's on gRPC server side.
 type ServerInterceptor interface {
 	// AllowRPC checks if an incoming RPC is allowed to proceed based on
 	// information about connection RPC was received on, and HTTP Headers. This
 	// information will be piped into context.
 	AllowRPC(ctx context.Context) error // TODO: Make this a real interceptor for filters such as rate limiting.
+=======
+// ServerInterceptor is unimplementable; do not use.
+type ServerInterceptor interface {
+	notDefined()
+>>>>>>> upgrade to k8s 1.23 lib
 }
 
 type csKeyType string
@@ -132,7 +138,11 @@ const csKey = csKeyType("grpc.internal.resolver.configSelector")
 // SetConfigSelector sets the config selector in state and returns the new
 // state.
 func SetConfigSelector(state resolver.State, cs ConfigSelector) resolver.State {
+<<<<<<< HEAD
 	state.Attributes = state.Attributes.WithValue(csKey, cs)
+=======
+	state.Attributes = state.Attributes.WithValues(csKey, cs)
+>>>>>>> upgrade to k8s 1.23 lib
 	return state
 }
 

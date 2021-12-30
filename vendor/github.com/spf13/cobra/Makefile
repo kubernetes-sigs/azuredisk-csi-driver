@@ -23,7 +23,11 @@ lint:
 	$(info ******************** running lint tools ********************)
 	golangci-lint run -v
 
+<<<<<<< HEAD
 test: install_deps
+=======
+test: install_deps lint
+>>>>>>> upgrade to k8s 1.23 lib
 	$(info ******************** running tests ********************)
 	richgo test -v ./...
 

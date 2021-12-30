@@ -49,9 +49,12 @@ type Begin struct {
 	IsClientStream bool
 	// IsServerStream indicates whether the RPC is a server streaming RPC.
 	IsServerStream bool
+<<<<<<< HEAD
 	// IsTransparentRetryAttempt indicates whether this attempt was initiated
 	// due to transparently retrying a previous attempt.
 	IsTransparentRetryAttempt bool
+=======
+>>>>>>> upgrade to k8s 1.23 lib
 }
 
 // IsClient indicates if the stats information is from client side.

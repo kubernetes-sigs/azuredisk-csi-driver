@@ -11,6 +11,31 @@ name a few. [This list](./projects_using_cobra.md) contains a more extensive lis
 [![Go Report Card](https://goreportcard.com/badge/github.com/spf13/cobra)](https://goreportcard.com/report/github.com/spf13/cobra)
 [![Slack](https://img.shields.io/badge/Slack-cobra-brightgreen)](https://gophers.slack.com/archives/CD3LP1199)
 
+<<<<<<< HEAD
+=======
+# Table of Contents
+
+- [Overview](#overview)
+- [Concepts](#concepts)
+  * [Commands](#commands)
+  * [Flags](#flags)
+- [Installing](#installing)
+- [Usage](#usage)
+  * [Using the Cobra Generator](user_guide.md#using-the-cobra-generator)
+  * [Using the Cobra Library](user_guide.md#using-the-cobra-library)
+  * [Working with Flags](user_guide.md#working-with-flags)
+  * [Positional and Custom Arguments](user_guide.md#positional-and-custom-arguments)
+  * [Example](user_guide.md#example)
+  * [Help Command](user_guide.md#help-command)
+  * [Usage Message](user_guide.md#usage-message)
+  * [PreRun and PostRun Hooks](user_guide.md#prerun-and-postrun-hooks)
+  * [Suggestions when "unknown command" happens](user_guide.md#suggestions-when-unknown-command-happens)
+  * [Generating documentation for your command](user_guide.md#generating-documentation-for-your-command)
+  * [Generating shell completions](user_guide.md#generating-shell-completions)
+- [Contributing](CONTRIBUTING.md)
+- [License](#license)
+
+>>>>>>> upgrade to k8s 1.23 lib
 # Overview
 
 Cobra is a library providing a simple interface to create powerful modern CLI
@@ -24,7 +49,11 @@ Cobra provides:
 * Fully POSIX-compliant flags (including short & long versions)
 * Nested subcommands
 * Global, local and cascading flags
+<<<<<<< HEAD
 * Easy generation of applications & commands with `cobra init` & `cobra add cmdname`
+=======
+* Easy generation of applications & commands with `cobra init appname` & `cobra add cmdname`
+>>>>>>> upgrade to k8s 1.23 lib
 * Intelligent suggestions (`app srver`... did you mean `app server`?)
 * Automatic help generation for commands and flags
 * Automatic help flag recognition of `-h`, `--help`, etc.
@@ -32,7 +61,11 @@ Cobra provides:
 * Automatically generated man pages for your application
 * Command aliases so you can change things without breaking them
 * The flexibility to define your own help, usage, etc.
+<<<<<<< HEAD
 * Optional seamless integration with [viper](http://github.com/spf13/viper) for 12-factor apps
+=======
+* Optional tight integration with [viper](http://github.com/spf13/viper) for 12-factor apps
+>>>>>>> upgrade to k8s 1.23 lib
 
 # Concepts
 
@@ -66,7 +99,11 @@ have children commands and optionally run an action.
 
 In the example above, 'server' is the command.
 
+<<<<<<< HEAD
 [More about cobra.Command](https://pkg.go.dev/github.com/spf13/cobra#Command)
+=======
+[More about cobra.Command](https://godoc.org/github.com/spf13/cobra#Command)
+>>>>>>> upgrade to k8s 1.23 lib
 
 ## Flags
 
@@ -95,12 +132,17 @@ import "github.com/spf13/cobra"
 ```
 
 # Usage
+<<<<<<< HEAD
 Cobra provides its own program that will create your application and add any
 commands you want. It's the easiest way to incorporate Cobra into your application.
 
 For complete details on using the Cobra generator, please read [The Cobra Generator README](https://github.com/spf13/cobra/blob/master/cobra/README.md)
 
 For complete details on using the Cobra library, please read the [The Cobra User Guide](user_guide.md).
+=======
+
+See [User Guide](user_guide.md).
+>>>>>>> upgrade to k8s 1.23 lib
 
 # License
 
