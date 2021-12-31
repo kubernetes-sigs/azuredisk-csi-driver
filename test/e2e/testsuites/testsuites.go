@@ -39,9 +39,9 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	restclientset "k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
-	deploymentutil "k8s.io/kubernetes/pkg/controller/deployment/util"
 	"k8s.io/kubernetes/pkg/kubelet/events"
 	"k8s.io/kubernetes/test/e2e/framework"
+	"k8s.io/kubernetes/test/e2e/framework/deployment"
 	e2eevents "k8s.io/kubernetes/test/e2e/framework/events"
 	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
@@ -473,14 +473,14 @@ func (t *TestDeployment) Create() {
 	framework.ExpectNoError(err)
 	err = testutil.WaitForDeploymentComplete(t.client, t.deployment, e2elog.Logf, poll, pollLongTimeout)
 	framework.ExpectNoError(err)
-	pods, err := getPodsForDeployment(t.client, t.deployment)
+	pods, err := deployment.GetPodsForDeployment(t.client, t.deployment)
 	framework.ExpectNoError(err)
 	// always get first pod as there should only be one
 	t.podName = pods.Items[0].Name
 }
 
 func (t *TestDeployment) WaitForPodReady() {
-	pods, err := getPodsForDeployment(t.client, t.deployment)
+	pods, err := deployment.GetPodsForDeployment(t.client, t.deployment)
 	framework.ExpectNoError(err)
 	// always get first pod as there should only be one
 	pod := pods.Items[0]
@@ -924,25 +924,6 @@ func cleanupPodOrFail(client clientset.Interface, name, namespace string) {
 
 func podLogs(client clientset.Interface, name, namespace string) ([]byte, error) {
 	return client.CoreV1().Pods(namespace).GetLogs(name, &v1.PodLogOptions{}).Do(context.TODO()).Raw()
-}
-
-func getPodsForDeployment(client clientset.Interface, deployment *apps.Deployment) (*v1.PodList, error) {
-	replicaSet, err := deploymentutil.GetNewReplicaSet(deployment, client.AppsV1())
-	if err != nil {
-		return nil, fmt.Errorf("Failed to get new replica set for deployment %q: %v", deployment.Name, err)
-	}
-	if replicaSet == nil {
-		return nil, fmt.Errorf("expected a new replica set for deployment %q, found none", deployment.Name)
-	}
-	podListFunc := func(namespace string, options metav1.ListOptions) (*v1.PodList, error) {
-		return client.CoreV1().Pods(namespace).List(context.TODO(), options)
-	}
-	rsList := []*apps.ReplicaSet{replicaSet}
-	podList, err := deploymentutil.ListPods(deployment, rsList, podListFunc)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to list Pods of Deployment %q: %v", deployment.Name, err)
-	}
-	return podList, nil
 }
 
 // waitForPersistentVolumeClaimDeleted waits for a PersistentVolumeClaim to be removed from the system until timeout occurs, whichever comes first.
