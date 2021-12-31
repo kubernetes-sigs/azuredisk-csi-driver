@@ -2,7 +2,7 @@ image:
   baseRepo: mcr.microsoft.com
   azuredisk:
     repository: /k8s/csi/azuredisk-csi
-    tag: latest
+    tag: v1.10.0
     pullPolicy: IfNotPresent
   csiProvisioner:
     repository: /oss/kubernetes-csi/csi-provisioner
