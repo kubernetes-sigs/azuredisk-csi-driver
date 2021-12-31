@@ -18,12 +18,12 @@ V2: Preview
 
 #### V1
 
-|Driver Version  |Image                                                     | supported k8s version |
-|----------------|----------------------------------------------------------|-----------------------|
-|`master` branch |mcr.microsoft.com/k8s/csi/azuredisk-csi:latest            | 1.19+                 |
-|v1.9.0          |mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v1.9.0 | 1.19+                 |
-|v1.8.0          |mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v1.8.0 | 1.18+                 |
-|v1.7.0          |mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v1.7.0 | 1.18+                 |
+|Driver Version  |Image                                                      | supported k8s version |
+|----------------|-----------------------------------------------------------|-----------------------|
+|`master` branch |mcr.microsoft.com/k8s/csi/azuredisk-csi:latest             | 1.19+                 |
+|v1.10.0         |mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v1.10.0 | 1.19+                 |
+|v1.9.0          |mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v1.9.0  | 1.19+                 |
+|v1.8.0          |mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v1.8.0  | 1.18+                 |
 
 #### V2
 
