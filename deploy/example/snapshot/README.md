@@ -7,7 +7,7 @@
 This driver supports both [full and incremental snapshot functionalities](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/incremental-snapshots), user could set `incremental` in `VolumeSnapshotClass` to control whether create full or incremental(by default) snapshot(refer to [VolumeSnapshotClass](../../../docs/driver-parameters.md#volumesnapshotclass) for detailed parameters description):
 
 ```yaml
-apiVersion: snapshot.storage.k8s.io/v1beta1
+apiVersion: snapshot.storage.k8s.io/v1
 kind: VolumeSnapshotClass
 metadata:
   name: csi-azuredisk-vsc
@@ -46,8 +46,8 @@ Name:         azuredisk-volume-snapshot
 Namespace:    default
 Labels:       <none>
 Annotations:  kubectl.kubernetes.io/last-applied-configuration:
-                {"apiVersion":"snapshot.storage.k8s.io/v1beta1","kind":"VolumeSnapshot","metadata":{"annotations":{},"name":"azuredisk-volume-snapshot","n...
-API Version:  snapshot.storage.k8s.io/v1beta1
+                {"apiVersion":"snapshot.storage.k8s.io/v1","kind":"VolumeSnapshot","metadata":{"annotations":{},"name":"azuredisk-volume-snapshot","n...
+API Version:  snapshot.storage.k8s.io/v1
 Kind:         VolumeSnapshot
 Metadata:
   Creation Timestamp:  2020-02-04T13:59:54Z
@@ -56,7 +56,7 @@ Metadata:
     snapshot.storage.kubernetes.io/volumesnapshot-bound-protection
   Generation:        1
   Resource Version:  48044
-  Self Link:         /apis/snapshot.storage.k8s.io/v1beta1/namespaces/default/volumesnapshots/azuredisk-volume-snapshot
+  Self Link:         /apis/snapshot.storage.k8s.io/v1/namespaces/default/volumesnapshots/azuredisk-volume-snapshot
   UID:               2b0ef334-4112-4c86-8360-079c625d5562
 Spec:
   Source:
