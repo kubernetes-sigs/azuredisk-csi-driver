@@ -43,12 +43,18 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 		return nil, err
 	}
 
+	params := req.GetParameters()
+	diskParams, err := azureutils.ParseDiskParameters(params)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Failed parsing disk parameters: %v", err)
+	}
+
 	name := req.GetName()
 	if len(name) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "CreateVolume Name must be provided")
 	}
 
-	if !azureutils.IsValidVolumeCapabilities(volCaps) {
+	if !azureutils.IsValidVolumeCapabilities(volCaps, diskParams.MaxShares) {
 		return nil, status.Error(codes.InvalidArgument, "Volume capability not supported")
 	}
 
