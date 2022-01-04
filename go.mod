@@ -15,7 +15,7 @@ require (
 	github.com/kubernetes-csi/csi-proxy/client v1.0.1
 	github.com/kubernetes-csi/external-snapshotter/v2 v2.0.0-20200617021606-4800ca72d403
 	github.com/onsi/ginkgo v1.16.5
-	github.com/onsi/gomega v1.16.0
+	github.com/onsi/gomega v1.17.0
 	github.com/pborman/uuid v1.2.0
 	github.com/pelletier/go-toml v1.9.3
 	github.com/prometheus/client_golang v1.11.0
@@ -31,21 +31,18 @@ require (
 	k8s.io/code-generator v0.23.0
 	k8s.io/component-base v0.23.0
 	k8s.io/component-helpers v0.23.0
-	k8s.io/klog v1.0.0
 	k8s.io/klog/v2 v2.30.0
 	k8s.io/kube-scheduler v0.23.0
 	k8s.io/kubernetes v1.23.0
 	k8s.io/mount-utils v0.23.0
 	k8s.io/utils v0.0.0-20210930125809-cb0fa318a74b
 	sigs.k8s.io/cloud-provider-azure v0.7.4
-	sigs.k8s.io/controller-runtime v0.10.1
+	sigs.k8s.io/controller-runtime v0.11.0
 	sigs.k8s.io/controller-tools v0.5.0
 	sigs.k8s.io/yaml v1.3.0
 )
 
 replace (
-	github.com/go-logr/logr => github.com/go-logr/logr v0.4.0
-	github.com/go-logr/zapr => github.com/go-logr/zapr v0.4.0
 	github.com/niemeyer/pretty => github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e
 	go.etcd.io/etcd => go.etcd.io/etcd v0.0.0-20200410171415-59f5fb25a533
 	k8s.io/api => k8s.io/api v0.23.0
@@ -62,7 +59,6 @@ replace (
 	k8s.io/controller-manager => k8s.io/controller-manager v0.23.0
 	k8s.io/cri-api => k8s.io/cri-api v0.23.0
 	k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.0.0-20200530124324-08bf6a63b59d
-	k8s.io/klog/v2 => k8s.io/klog/v2 v2.10.0
 	k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.23.0
 	k8s.io/kube-controller-manager => k8s.io/kube-controller-manager v0.23.0
 	k8s.io/kube-openapi => k8s.io/kube-openapi v0.0.0-20201113171705-d219536bb9fd
