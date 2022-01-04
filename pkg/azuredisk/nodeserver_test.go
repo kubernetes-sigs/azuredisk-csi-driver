@@ -117,45 +117,6 @@ func TestNodeGetCapabilities(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestGetFStype(t *testing.T) {
-	tests := []struct {
-		options  map[string]string
-		expected string
-	}{
-		{
-			nil,
-			"",
-		},
-		{
-			map[string]string{},
-			"",
-		},
-		{
-			map[string]string{"fstype": ""},
-			"",
-		},
-		{
-			map[string]string{"fstype": "xfs"},
-			"xfs",
-		},
-		{
-			map[string]string{"FSType": "xfs"},
-			"xfs",
-		},
-		{
-			map[string]string{"fstype": "EXT4"},
-			"ext4",
-		},
-	}
-
-	for _, test := range tests {
-		result := getFStype(test.options)
-		if result != test.expected {
-			t.Errorf("input: %q, getFStype result: %s, expected: %s", test.options, result, test.expected)
-		}
-	}
-}
-
 func TestGetMaxDataDiskCount(t *testing.T) {
 	tests := []struct {
 		instanceType string
@@ -940,7 +901,6 @@ func TestNodeExpandVolume(t *testing.T) {
 	_ = makeDir(blockVolumePath)
 	_ = makeDir(targetTest)
 	notFoundErr := errors.New("exit status 1")
-	volumeCapWrong := csi.VolumeCapability_AccessMode{Mode: 10}
 
 	stdCapacityRange = &csi.CapacityRange{
 		RequiredBytes: volumehelper.GiBToBytes(15),
@@ -950,9 +910,7 @@ func TestNodeExpandVolume(t *testing.T) {
 	invalidPathErr := testutil.TestError{
 		DefaultError: status.Error(codes.NotFound, "failed to determine device path for volumePath [./test]: path \"./test\" does not exist"),
 	}
-	volumeCapacityErr := testutil.TestError{
-		DefaultError: status.Error(codes.InvalidArgument, "VolumeCapability is invalid."),
-	}
+
 	devicePathErr := testutil.TestError{
 		DefaultError: status.Errorf(codes.NotFound, "could not determine device path(%s), error: %v", targetTest, notFoundErr),
 		WindowsError: status.Errorf(codes.NotFound, "error getting the volume for the mount %s, internal error error getting volume from mount. cmd: (Get-Item -Path %s).Target, output: , error: <nil>", targetTest, targetTest),
@@ -1026,17 +984,6 @@ func TestNodeExpandVolume(t *testing.T) {
 			expectedErr: testutil.TestError{
 				DefaultError: status.Error(codes.InvalidArgument, "volume path must be provided"),
 			},
-		},
-		{
-			desc: "Volume capacity invalid",
-			req: csi.NodeExpandVolumeRequest{
-				CapacityRange:     stdCapacityRange,
-				VolumePath:        targetTest,
-				VolumeId:          "test",
-				StagingTargetPath: "test",
-				VolumeCapability:  &csi.VolumeCapability{AccessMode: &volumeCapWrong},
-			},
-			expectedErr: volumeCapacityErr,
 		},
 		{
 			desc: "Invalid device path",

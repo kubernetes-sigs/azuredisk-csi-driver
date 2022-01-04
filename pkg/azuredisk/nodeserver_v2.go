@@ -61,7 +61,13 @@ func (d *DriverV2) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolume
 		return nil, status.Error(codes.InvalidArgument, "Volume capability not provided")
 	}
 
-	if !azureutils.IsValidVolumeCapabilities([]*csi.VolumeCapability{volumeCapability}) {
+	params := req.GetVolumeContext()
+	maxShares, err := azureutils.GetMaxShares(params)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "MaxShares value not supported")
+	}
+
+	if !azureutils.IsValidVolumeCapabilities([]*csi.VolumeCapability{volumeCapability}, maxShares) {
 		return nil, status.Error(codes.InvalidArgument, "Volume capability not supported")
 	}
 
@@ -123,7 +129,7 @@ func (d *DriverV2) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolume
 		options = append(options, mnt.MountFlags...)
 	}
 
-	volContextFSType := getFStype(req.GetVolumeContext())
+	volContextFSType := azureutils.GetFStype(req.GetVolumeContext())
 	if volContextFSType != "" {
 		// respect "fstype" setting in storage class parameters
 		fstype = volContextFSType
@@ -200,7 +206,13 @@ func (d *DriverV2) NodePublishVolume(ctx context.Context, req *csi.NodePublishVo
 		return nil, status.Error(codes.InvalidArgument, "Volume capability missing in request")
 	}
 
-	if !azureutils.IsValidVolumeCapabilities([]*csi.VolumeCapability{volumeCapability}) {
+	params := req.GetVolumeContext()
+	maxShares, err := azureutils.GetMaxShares(params)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "MaxShares value not supported")
+	}
+
+	if !azureutils.IsValidVolumeCapabilities([]*csi.VolumeCapability{volumeCapability}, maxShares) {
 		return nil, status.Error(codes.InvalidArgument, "Volume capability not supported")
 	}
 
@@ -214,7 +226,7 @@ func (d *DriverV2) NodePublishVolume(ctx context.Context, req *csi.NodePublishVo
 		return nil, status.Error(codes.InvalidArgument, "Target path not provided")
 	}
 
-	err := preparePublishPath(target, d.mounter)
+	err = preparePublishPath(target, d.mounter)
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Target path could not be prepared: %v", err))
 	}
@@ -450,12 +462,6 @@ func (d *DriverV2) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolu
 
 	volumeCapability := req.GetVolumeCapability()
 	if volumeCapability != nil {
-		// VolumeCapability is optional, if specified, validate it
-		caps := []*csi.VolumeCapability{volumeCapability}
-		if !azureutils.IsValidVolumeCapabilities(caps) {
-			return nil, status.Error(codes.InvalidArgument, "VolumeCapability is invalid.")
-		}
-
 		if blk := volumeCapability.GetBlock(); blk != nil {
 			// Noop for Block NodeExpandVolume
 			// This should not be executed but if somehow it is set to Block we should be cautious

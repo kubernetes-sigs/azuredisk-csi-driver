@@ -500,6 +500,94 @@ func TestGetDiskName(t *testing.T) {
 	}
 }
 
+func TestGetFStype(t *testing.T) {
+	tests := []struct {
+		options  map[string]string
+		expected string
+	}{
+		{
+			nil,
+			"",
+		},
+		{
+			map[string]string{},
+			"",
+		},
+		{
+			map[string]string{"fstype": ""},
+			"",
+		},
+		{
+			map[string]string{"fstype": "xfs"},
+			"xfs",
+		},
+		{
+			map[string]string{"FSType": "xfs"},
+			"xfs",
+		},
+		{
+			map[string]string{"fstype": "EXT4"},
+			"ext4",
+		},
+	}
+
+	for _, test := range tests {
+		result := GetFStype(test.options)
+		if result != test.expected {
+			t.Errorf("input: %q, GetFStype result: %s, expected: %s", test.options, result, test.expected)
+		}
+	}
+}
+
+func TestGetMaxShares(t *testing.T) {
+	tests := []struct {
+		options       map[string]string
+		expectedValue int
+		expectedError error
+	}{
+		{
+			nil,
+			1,
+			nil,
+		},
+		{
+			map[string]string{},
+			1,
+			nil,
+		},
+		{
+			map[string]string{consts.MaxSharesField: ""},
+			0,
+			fmt.Errorf("parse  failed with error: strconv.Atoi: parsing \"\": invalid syntax"),
+		},
+		{
+			map[string]string{consts.MaxSharesField: "-1"},
+			0,
+			fmt.Errorf("parse -1 returned with invalid value: -1"),
+		},
+		{
+			map[string]string{consts.MaxSharesField: "NAN"},
+			0,
+			fmt.Errorf("parse NAN failed with error: strconv.Atoi: parsing \"NAN\": invalid syntax"),
+		},
+		{
+			map[string]string{consts.MaxSharesField: "2"},
+			2,
+			nil,
+		},
+	}
+
+	for _, test := range tests {
+		result, err := GetMaxShares(test.options)
+		if result != test.expectedValue {
+			t.Errorf("input: %q, GetMaxShates result: %v, expected: %v", test.options, result, test.expectedValue)
+		}
+		if !reflect.DeepEqual(err, test.expectedError) {
+			t.Errorf("input: %q, GetMaxShates error: %v, expected: %v", test.options, err, test.expectedError)
+		}
+	}
+}
+
 func TestGetResourceGroupFromURI(t *testing.T) {
 	tests := []struct {
 		diskURL        string
@@ -1045,6 +1133,86 @@ func TestNormalizeStorageAccountType(t *testing.T) {
 		result, err := NormalizeStorageAccountType(test.storageAccountType, test.cloud, test.disableAzureStackCloud)
 		assert.Equal(t, result, test.expectedAccountType)
 		assert.Equal(t, err != nil, test.expectError, fmt.Sprintf("error msg: %v", err))
+	}
+}
+
+func TestParseDiskParameters(t *testing.T) {
+	testCases := []struct {
+		name           string
+		inputParams    map[string]string
+		expectedOutput ManagedDiskParameters
+		expectedError  error
+	}{
+		{
+			name:        "nil disk parameters",
+			inputParams: nil,
+			expectedOutput: ManagedDiskParameters{
+				Incremental:   true,
+				Tags:          make(map[string]string),
+				VolumeContext: make(map[string]string),
+			},
+			expectedError: nil,
+		},
+		{
+			name:        "invalid field in parameters",
+			inputParams: map[string]string{"invalidField": "someValue"},
+			expectedOutput: ManagedDiskParameters{
+				Incremental:   true,
+				Tags:          make(map[string]string),
+				VolumeContext: map[string]string{"invalidField": "someValue"},
+			},
+			expectedError: fmt.Errorf("invalid parameter %s in storage class", "invalidField"),
+		},
+		{
+			name:        "invalid value in parameters",
+			inputParams: map[string]string{consts.LogicalSectorSizeField: "invalidValue"},
+			expectedOutput: ManagedDiskParameters{
+				Incremental:   true,
+				Tags:          make(map[string]string),
+				VolumeContext: map[string]string{consts.LogicalSectorSizeField: "invalidValue"},
+			},
+			expectedError: fmt.Errorf("parse invalidValue failed with error: strconv.Atoi: parsing \"invalidValue\": invalid syntax"),
+		},
+		{
+			name: "valid parameters input",
+			inputParams: map[string]string{
+				consts.LogicalSectorSizeField: "1",
+				consts.PvcNameKey:             "pvcName",
+				consts.PvcNamespaceKey:        "pvcNamespace",
+				consts.PvNameKey:              "pvName",
+				consts.TagsField:              "key0=value0, key1=value1",
+				consts.MaxSharesField:         "1",
+				consts.IncrementalField:       "false",
+			},
+			expectedOutput: ManagedDiskParameters{
+				Incremental: false,
+				Tags: map[string]string{
+					consts.PvcNameTag:      "pvcName",
+					consts.PvcNamespaceTag: "pvcNamespace",
+					consts.PvNameTag:       "pvName",
+					"key0":                 "value0",
+					"key1":                 "value1"},
+				VolumeContext: map[string]string{
+					consts.LogicalSectorSizeField: "1",
+					consts.PvcNameKey:             "pvcName",
+					consts.PvcNamespaceKey:        "pvcNamespace",
+					consts.PvNameKey:              "pvName",
+					consts.TagsField:              "key0=value0, key1=value1",
+					consts.MaxSharesField:         "1",
+					consts.IncrementalField:       "false",
+				},
+				MaxShares:         1,
+				LogicalSectorSize: 1,
+			},
+			expectedError: nil,
+		},
+	}
+	for _, test := range testCases {
+		result, err := ParseDiskParameters(test.inputParams)
+		assert.Equal(t, result, test.expectedOutput)
+		if !reflect.DeepEqual(test.expectedError, err) {
+			t.Errorf("actualresponse: (%v), expectedresponse: (%v)", err, test.expectedError)
+		}
 	}
 }
 

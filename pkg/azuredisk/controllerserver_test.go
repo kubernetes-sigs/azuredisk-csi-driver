@@ -140,7 +140,7 @@ func TestCreateVolume(t *testing.T) {
 					Parameters:         mp,
 				}
 				_, err := d.CreateVolume(context.Background(), req)
-				expectedErr := status.Error(codes.InvalidArgument, "parse aaa failed with error: strconv.Atoi: parsing \"aaa\": invalid syntax")
+				expectedErr := status.Error(codes.InvalidArgument, "Failed parsing disk parameters: parse aaa failed with error: strconv.Atoi: parsing \"aaa\": invalid syntax")
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
@@ -158,7 +158,7 @@ func TestCreateVolume(t *testing.T) {
 					Parameters:         mp,
 				}
 				_, err := d.CreateVolume(context.Background(), req)
-				expectedErr := status.Error(codes.InvalidArgument, "parse aaa failed with error: strconv.Atoi: parsing \"aaa\": invalid syntax")
+				expectedErr := status.Error(codes.InvalidArgument, "Failed parsing disk parameters: parse aaa failed with error: strconv.Atoi: parsing \"aaa\": invalid syntax")
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
@@ -176,7 +176,7 @@ func TestCreateVolume(t *testing.T) {
 					Parameters:         mp,
 				}
 				_, err := d.CreateVolume(context.Background(), req)
-				expectedErr := status.Error(codes.InvalidArgument, "parse 0 returned with invalid value: 0")
+				expectedErr := status.Error(codes.InvalidArgument, "Failed parsing disk parameters: parse 0 returned with invalid value: 0")
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
@@ -194,7 +194,7 @@ func TestCreateVolume(t *testing.T) {
 					Parameters:         mp,
 				}
 				_, err := d.CreateVolume(context.Background(), req)
-				expectedErr := status.Error(codes.InvalidArgument, "Perf profile blah is not supported. Supported tuning modes are none and basic.")
+				expectedErr := status.Error(codes.InvalidArgument, "Failed parsing disk parameters: perf profile blah is not supported, supported tuning modes are none and basic")
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
@@ -279,7 +279,7 @@ func TestCreateVolume(t *testing.T) {
 				}
 				d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
 				_, err := d.CreateVolume(context.Background(), req)
-				expectedErr := fmt.Errorf("Tags 'unit-test' are invalid, the format should like: 'key1=value1,key2=value2'")
+				expectedErr := status.Error(codes.InvalidArgument, "Failed parsing disk parameters: Tags 'unit-test' are invalid, the format should like: 'key1=value1,key2=value2'")
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
@@ -435,7 +435,7 @@ func TestCreateVolume(t *testing.T) {
 					Parameters:         map[string]string{"invalidparameter": "value"},
 				}
 				_, err := d.CreateVolume(context.Background(), req)
-				expectedErr := fmt.Errorf("invalid parameter %s in storage class", "invalidparameter")
+				expectedErr := status.Error(codes.InvalidArgument, "Failed parsing disk parameters: invalid parameter invalidparameter in storage class")
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
@@ -899,7 +899,7 @@ func TestIsValidVolumeCapabilities(t *testing.T) {
 		},
 	}
 	caps = append(caps, &stdVolCap)
-	if !azureutils.IsValidVolumeCapabilities(caps) {
+	if !azureutils.IsValidVolumeCapabilities(caps, 1) {
 		t.Errorf("Unexpected error")
 	}
 	stdVolCap1 := csi.VolumeCapability{
@@ -908,7 +908,7 @@ func TestIsValidVolumeCapabilities(t *testing.T) {
 		},
 	}
 	caps = append(caps, &stdVolCap1)
-	if azureutils.IsValidVolumeCapabilities(caps) {
+	if azureutils.IsValidVolumeCapabilities(caps, 1) {
 		t.Errorf("Unexpected error")
 	}
 }
