@@ -32,6 +32,7 @@ import (
 	"github.com/pborman/uuid"
 
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	restclientset "k8s.io/client-go/rest"
 	"k8s.io/kubernetes/test/e2e/framework"
@@ -69,9 +70,13 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interfac
 	ginkgo.By("checking that the pod's command exits with no error")
 	tpod.WaitForSuccess()
 
+	// get the name of the PV created for the PVC
+	pvc, err := client.CoreV1().PersistentVolumeClaims(namespace.Name).Get(context.TODO(), tpvc.PersistentVolumeClaim.Name, metav1.GetOptions{})
+	framework.ExpectNoError(err)
+
 	// delete pod and wait for volume to be unpublished to ensure filesystem cache is flushed
 	tpod.Cleanup()
-	err := volutil.WaitForVolumeDetach(client, tpvc.PersistentVolumeClaim.Spec.VolumeName, testconsts.Poll, testconsts.PollTimeout)
+	err = volutil.WaitForVolumeDetach(client, pvc.Spec.VolumeName, testconsts.Poll, testconsts.PollTimeout)
 	framework.ExpectNoError(err)
 
 	ginkgo.By("Checking Prow test resource group")
