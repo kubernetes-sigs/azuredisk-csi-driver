@@ -92,7 +92,7 @@ github.com/fatih/color
 github.com/felixge/httpsnoop
 # github.com/fsnotify/fsnotify v1.5.1
 github.com/fsnotify/fsnotify
-# github.com/go-logr/logr v1.2.0
+# github.com/go-logr/logr v1.2.2
 github.com/go-logr/logr
 # github.com/go-openapi/jsonpointer v0.19.5
 github.com/go-openapi/jsonpointer
@@ -531,7 +531,7 @@ gopkg.in/tomb.v1
 gopkg.in/yaml.v2
 # gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 gopkg.in/yaml.v3
-# k8s.io/api v0.23.0 => k8s.io/api v0.23.0
+# k8s.io/api v0.23.1 => k8s.io/api v0.23.0
 ## explicit
 k8s.io/api/admission/v1
 k8s.io/api/admission/v1beta1
@@ -584,7 +584,7 @@ k8s.io/api/storage/v1beta1
 k8s.io/apiextensions-apiserver/pkg/apis/apiextensions
 k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1
 k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1
-# k8s.io/apimachinery v0.23.0 => k8s.io/apimachinery v0.23.0
+# k8s.io/apimachinery v0.23.1 => k8s.io/apimachinery v0.23.0
 ## explicit
 k8s.io/apimachinery/pkg/api/equality
 k8s.io/apimachinery/pkg/api/errors
@@ -680,7 +680,7 @@ k8s.io/apiserver/pkg/util/feature
 k8s.io/apiserver/pkg/util/webhook
 k8s.io/apiserver/pkg/util/x509metrics
 k8s.io/apiserver/pkg/warning
-# k8s.io/client-go v0.23.0 => k8s.io/client-go v0.23.0
+# k8s.io/client-go v0.23.1 => k8s.io/client-go v0.23.0
 ## explicit
 k8s.io/client-go/applyconfigurations/admissionregistration/v1
 k8s.io/client-go/applyconfigurations/admissionregistration/v1beta1
@@ -1026,7 +1026,7 @@ k8s.io/component-base/metrics/legacyregistry
 k8s.io/component-base/metrics/testutil
 k8s.io/component-base/traces
 k8s.io/component-base/version
-# k8s.io/component-helpers v0.23.0 => k8s.io/component-helpers v0.23.0
+# k8s.io/component-helpers v0.23.1 => k8s.io/component-helpers v0.23.0
 ## explicit
 k8s.io/component-helpers/node/util/sysctl
 k8s.io/component-helpers/scheduling/corev1
@@ -1155,7 +1155,7 @@ k8s.io/utils/trace
 # sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.0.25
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/client
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/proto/client
-# sigs.k8s.io/cloud-provider-azure v0.7.4 => github.com/edreed/cloud-provider-azure v0.0.0-20211210225521-a57226b0ee32
+# sigs.k8s.io/cloud-provider-azure v0.7.4 => github.com/edreed/cloud-provider-azure v0.0.0-20220105174156-dd368ed8c1eb
 ## explicit
 sigs.k8s.io/cloud-provider-azure/pkg/auth
 sigs.k8s.io/cloud-provider-azure/pkg/azureclients
@@ -1294,4 +1294,4 @@ sigs.k8s.io/yaml
 # k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.23.0
 # k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.23.0
 # k8s.io/sample-controller => k8s.io/sample-controller v0.23.0
-# sigs.k8s.io/cloud-provider-azure => github.com/edreed/cloud-provider-azure v0.0.0-20211210225521-a57226b0ee32
+# sigs.k8s.io/cloud-provider-azure => github.com/edreed/cloud-provider-azure v0.0.0-20220105174156-dd368ed8c1eb

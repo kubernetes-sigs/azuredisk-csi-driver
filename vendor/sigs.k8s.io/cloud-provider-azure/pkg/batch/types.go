@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-logr/logr"
 	"golang.org/x/sync/semaphore"
 	"golang.org/x/time/rate"
 )
@@ -72,7 +73,8 @@ type Processor struct {
 	fn               BatchFunc
 	delayBeforeStart time.Duration
 	getLimiterFn     GetLimiterFunc
-	logger           Logger
+	logger           logr.Logger
+	verboseLogLevel  int
 	metricsRecorder  ProcessorMetricsRecorder
 	batches          sync.Map
 	limiters         sync.Map

@@ -18,21 +18,6 @@ package batch
 
 import "time"
 
-// Logger defines an interface for logging.
-type Logger interface {
-	// Logs to the verbose log. It handles the arguments in the manner of fmt.Printf.
-	Verbosef(format string, v ...interface{})
-
-	// Logs to the informational log. It handles the arguments in the manner of fmt.Printf.
-	Infof(format string, v ...interface{})
-
-	// Logs to the warning log. It handles the arguments in the manner of fmt.Printf.
-	Warningf(format string, v ...interface{})
-
-	// Logs to the error log. It handles the arguments in the manner of fmt.Printf.
-	Errorf(format string, v ...interface{})
-}
-
 // MetricsRecorder defines an interface for recording batch metrics.
 type MetricsRecorder interface {
 	// Records the rate limit delay, if any, incurred by the current batch.

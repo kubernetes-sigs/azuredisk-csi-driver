@@ -47,6 +47,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
+	"k8s.io/klog/v2/klogr"
 
 	"sigs.k8s.io/cloud-provider-azure/pkg/auth"
 	azclients "sigs.k8s.io/cloud-provider-azure/pkg/azureclients"
@@ -243,6 +244,9 @@ type Config struct {
 	// `nodeIP`: vm private IPs will be attached to the inbound backend pool of the load balancer;
 	// `podIP`: pod IPs will be attached to the inbound backend pool of the load balancer (not supported yet).
 	LoadBalancerBackendPoolConfigurationType string `json:"loadBalancerBackendPoolConfigurationType,omitempty" yaml:"loadBalancerBackendPoolConfigurationType,omitempty"`
+	// PutVMSSVMBatchSize defines how many requests the client send concurrently when putting the VMSS VMs.
+	// If it is smaller than or equal to zero, the request will be sent one by one in sequence (default).
+	PutVMSSVMBatchSize int `json:"putVMSSVMBatchSize" yaml:"putVMSSVMBatchSize"`
 }
 
 type InitSecretConfig struct {
@@ -648,6 +652,10 @@ func (az *Cloud) isLBBackendPoolTypeNodeIP() bool {
 	return strings.EqualFold(az.LoadBalancerBackendPoolConfigurationType, consts.LoadBalancerBackendPoolConfigurationTypeNodeIP)
 }
 
+func (az *Cloud) getPutVMSSVMBatchSize() int {
+	return az.PutVMSSVMBatchSize
+}
+
 func (az *Cloud) initCaches() (err error) {
 	az.vmCache, err = az.newVMCache()
 	if err != nil {
@@ -967,17 +975,12 @@ func initDiskControllers(az *Cloud) error {
 
 	attachDetachRateLimiter := rate.NewLimiter(qps, bucket)
 
-	loggerAdapter := batch.NewLoggerAdapter(
-		batch.WithVerboseLogger(klog.V(3).Infof),
-		batch.WithInfoLogger(klog.Infof),
-		batch.WithWarningLogger(klog.Warningf),
-		batch.WithErrorLogger(klog.Errorf),
-	)
+	logger := klogr.NewWithOptions(klogr.WithFormat(klogr.FormatKlog)).WithName("cloud-provider-azure").WithValues("type", "batch")
 
 	processorOptions := []batch.ProcessorOption{
+		batch.WithVerboseLogLevel(3),
 		batch.WithDelayBeforeStart(1 * time.Second),
 		batch.WithGlobalLimiter(attachDetachRateLimiter),
-		batch.WithLogger(loggerAdapter),
 	}
 
 	attachBatchFn := func(ctx context.Context, key string, values []interface{}) ([]interface{}, error) {
@@ -1002,6 +1005,7 @@ func initDiskControllers(az *Cloud) error {
 	}
 
 	attachDiskProcessOptions := append(processorOptions,
+		batch.WithLogger(logger.WithValues("operation", "attach_disk")),
 		batch.WithMetricsRecorder(metrics.NewBatchProcessorMetricsRecorder("batch", "updateasync", "attach_disk")))
 
 	detachBatchFn := func(ctx context.Context, key string, values []interface{}) ([]interface{}, error) {
@@ -1021,6 +1025,7 @@ func initDiskControllers(az *Cloud) error {
 	}
 
 	detachDiskProcessorOptions := append(processorOptions,
+		batch.WithLogger(logger.WithValues("operation", "detach_disk")),
 		batch.WithMetricsRecorder(metrics.NewBatchProcessorMetricsRecorder("batch", "update", "detach_disk")))
 
 	common.attachDiskProcessor = batch.NewProcessor(attachBatchFn, attachDiskProcessOptions...)
