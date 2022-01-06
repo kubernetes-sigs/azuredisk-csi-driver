@@ -67,7 +67,7 @@ func (r *ReconcileAzDriverNode) Reconcile(ctx context.Context, request reconcile
 		azN := r.azVolumeClient.DiskV1alpha1().AzDriverNodes(r.namespace)
 		err = azN.Delete(ctx, request.Name, metav1.DeleteOptions{})
 
-		// If there is an issue in deleteing the AzDriverNode, requeue
+		// If there is an issue in deleting the AzDriverNode, requeue
 		if err != nil && !errors.IsNotFound(err) {
 			klog.Errorf("Will retry. Failed to delete AzDriverNode: (%s). Error: (%v)", request.Name, err)
 			return reconcile.Result{Requeue: true}, nil

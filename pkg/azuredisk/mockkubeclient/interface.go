@@ -231,20 +231,6 @@ func (mr *MockInterfaceMockRecorder) AutoscalingV1() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AutoscalingV1", reflect.TypeOf((*MockInterface)(nil).AutoscalingV1))
 }
 
-// AutoscalingV2 mocks base method.
-func (m *MockInterface) AutoscalingV2() v2.AutoscalingV2Interface {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AutoscalingV2")
-	ret0, _ := ret[0].(v2.AutoscalingV2Interface)
-	return ret0
-}
-
-// AutoscalingV2 indicates an expected call of AutoscalingV2.
-func (mr *MockInterfaceMockRecorder) AutoscalingV2() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AutoscalingV2", reflect.TypeOf((*MockInterface)(nil).AutoscalingV2))
-}
-
 // AutoscalingV2beta1 mocks base method.
 func (m *MockInterface) AutoscalingV2beta1() v2beta1.AutoscalingV2beta1Interface {
 	m.ctrl.T.Helper()
@@ -273,7 +259,21 @@ func (mr *MockInterfaceMockRecorder) AutoscalingV2beta2() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AutoscalingV2beta2", reflect.TypeOf((*MockInterface)(nil).AutoscalingV2beta2))
 }
 
-// BatchV1 mocks base method.
+// AutoscalingV2 mocks base method
+func (m *MockInterface) AutoscalingV2() v2.AutoscalingV2Interface {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AutoscalingV2")
+	ret0, _ := ret[0].(v2.AutoscalingV2Interface)
+	return ret0
+}
+
+// AutoscalingV2 indicates an expected call of AutoscalingV2
+func (mr *MockInterfaceMockRecorder) AutoscalingV2() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AutoscalingV2", reflect.TypeOf((*MockInterface)(nil).AutoscalingV2))
+}
+
+// BatchV1 mocks base method
 func (m *MockInterface) BatchV1() v14.BatchV1Interface {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "BatchV1")
@@ -483,7 +483,7 @@ func (mr *MockInterfaceMockRecorder) FlowcontrolV1beta1() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FlowcontrolV1beta1", reflect.TypeOf((*MockInterface)(nil).FlowcontrolV1beta1))
 }
 
-// FlowcontrolV1beta2 mocks base method.
+// FlowcontrolV1beta2 mocks base method
 func (m *MockInterface) FlowcontrolV1beta2() v1beta20.FlowcontrolV1beta2Interface {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "FlowcontrolV1beta2")
@@ -491,7 +491,7 @@ func (m *MockInterface) FlowcontrolV1beta2() v1beta20.FlowcontrolV1beta2Interfac
 	return ret0
 }
 
-// FlowcontrolV1beta2 indicates an expected call of FlowcontrolV1beta2.
+// FlowcontrolV1beta2 indicates an expected call of FlowcontrolV1beta2
 func (mr *MockInterfaceMockRecorder) FlowcontrolV1beta2() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FlowcontrolV1beta2", reflect.TypeOf((*MockInterface)(nil).FlowcontrolV1beta2))
@@ -511,7 +511,7 @@ func (mr *MockInterfaceMockRecorder) InternalV1alpha1() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalV1alpha1", reflect.TypeOf((*MockInterface)(nil).InternalV1alpha1))
 }
 
-// NetworkingV1 mocks base method.
+// NetworkingV1 mocks base method
 func (m *MockInterface) NetworkingV1() v110.NetworkingV1Interface {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "NetworkingV1")
