@@ -19,7 +19,6 @@ jobs:
 
     - name: Build Test
       run: |
-        make verify
         go test -covermode=count -coverprofile=profile.cov ./pkg/...
 
     - name: Send coverage
