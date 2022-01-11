@@ -189,6 +189,7 @@ type TestPersistentVolumeClaim struct {
 	client                         clientset.Interface
 	claimSize                      string
 	volumeMode                     v1.PersistentVolumeMode
+	accessMode                     v1.PersistentVolumeAccessMode
 	storageClass                   *storagev1.StorageClass
 	namespace                      *v1.Namespace
 	persistentVolume               *v1.PersistentVolume
@@ -197,7 +198,7 @@ type TestPersistentVolumeClaim struct {
 	dataSource                     *v1.TypedLocalObjectReference
 }
 
-func NewTestPersistentVolumeClaim(c clientset.Interface, ns *v1.Namespace, claimSize string, volumeMode VolumeMode, sc *storagev1.StorageClass) *TestPersistentVolumeClaim {
+func NewTestPersistentVolumeClaim(c clientset.Interface, ns *v1.Namespace, claimSize string, volumeMode VolumeMode, accessMode v1.PersistentVolumeAccessMode, sc *storagev1.StorageClass) *TestPersistentVolumeClaim {
 	mode := v1.PersistentVolumeFilesystem
 	if volumeMode == Block {
 		mode = v1.PersistentVolumeBlock
@@ -206,12 +207,13 @@ func NewTestPersistentVolumeClaim(c clientset.Interface, ns *v1.Namespace, claim
 		client:       c,
 		claimSize:    claimSize,
 		volumeMode:   mode,
+		accessMode:   accessMode,
 		namespace:    ns,
 		storageClass: sc,
 	}
 }
 
-func NewTestPersistentVolumeClaimWithDataSource(c clientset.Interface, ns *v1.Namespace, claimSize string, volumeMode VolumeMode, sc *storagev1.StorageClass, dataSource *v1.TypedLocalObjectReference) *TestPersistentVolumeClaim {
+func NewTestPersistentVolumeClaimWithDataSource(c clientset.Interface, ns *v1.Namespace, claimSize string, volumeMode VolumeMode, accessMode v1.PersistentVolumeAccessMode, sc *storagev1.StorageClass, dataSource *v1.TypedLocalObjectReference) *TestPersistentVolumeClaim {
 	mode := v1.PersistentVolumeFilesystem
 	if volumeMode == Block {
 		mode = v1.PersistentVolumeBlock
@@ -220,6 +222,7 @@ func NewTestPersistentVolumeClaimWithDataSource(c clientset.Interface, ns *v1.Na
 		client:       c,
 		claimSize:    claimSize,
 		volumeMode:   mode,
+		accessMode:   accessMode,
 		namespace:    ns,
 		storageClass: sc,
 		dataSource:   dataSource,
@@ -234,7 +237,7 @@ func (t *TestPersistentVolumeClaim) Create() {
 	if t.storageClass != nil {
 		storageClassName = t.storageClass.Name
 	}
-	t.requestedPersistentVolumeClaim = generatePVC(t.namespace.Name, storageClassName, t.claimSize, t.volumeMode, t.dataSource)
+	t.requestedPersistentVolumeClaim = generatePVC(t.namespace.Name, storageClassName, "", t.claimSize, t.volumeMode, t.accessMode, t.dataSource)
 	t.persistentVolumeClaim, err = t.client.CoreV1().PersistentVolumeClaims(t.namespace.Name).Create(context.TODO(), t.requestedPersistentVolumeClaim, metav1.CreateOptions{})
 	framework.ExpectNoError(err)
 }
@@ -287,38 +290,26 @@ func (t *TestPersistentVolumeClaim) WaitForBound() v1.PersistentVolumeClaim {
 	return *t.persistentVolumeClaim
 }
 
-func generatePVC(namespace, storageClassName, claimSize string, volumeMode v1.PersistentVolumeMode, dataSource *v1.TypedLocalObjectReference) *v1.PersistentVolumeClaim {
-	return &v1.PersistentVolumeClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: "pvc-",
-			Namespace:    namespace,
-		},
-		Spec: v1.PersistentVolumeClaimSpec{
-			StorageClassName: &storageClassName,
-			AccessModes: []v1.PersistentVolumeAccessMode{
-				v1.ReadWriteOnce,
-			},
-			Resources: v1.ResourceRequirements{
-				Requests: v1.ResourceList{
-					v1.ResourceName(v1.ResourceStorage): resource.MustParse(claimSize),
-				},
-			},
-			VolumeMode: &volumeMode,
-			DataSource: dataSource,
-		},
+func generatePVC(namespace, storageClassName, name, claimSize string, volumeMode v1.PersistentVolumeMode, accessMode v1.PersistentVolumeAccessMode, dataSource *v1.TypedLocalObjectReference) *v1.PersistentVolumeClaim {
+	if accessMode != v1.ReadWriteOnce && accessMode != v1.ReadOnlyMany && accessMode != v1.ReadWriteMany {
+		accessMode = v1.ReadWriteOnce
 	}
-}
 
-func generateStatefulSetPVC(namespace, storageClassName, claimSize string, volumeMode v1.PersistentVolumeMode, dataSource *v1.TypedLocalObjectReference) *v1.PersistentVolumeClaim {
+	pvcMeta := metav1.ObjectMeta{
+		Namespace: namespace,
+	}
+	if name == "" {
+		pvcMeta.GenerateName = "pvc-"
+	} else {
+		pvcMeta.Name = name
+	}
+
 	return &v1.PersistentVolumeClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "pvc",
-			Namespace: namespace,
-		},
+		ObjectMeta: pvcMeta,
 		Spec: v1.PersistentVolumeClaimSpec{
 			StorageClassName: &storageClassName,
 			AccessModes: []v1.PersistentVolumeAccessMode{
-				v1.ReadWriteOnce,
+				accessMode,
 			},
 			Resources: v1.ResourceRequirements{
 				Requests: v1.ResourceList{

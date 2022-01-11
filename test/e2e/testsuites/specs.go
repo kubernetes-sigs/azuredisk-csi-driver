@@ -50,6 +50,7 @@ type VolumeDetails struct {
 	VolumeMode            VolumeMode
 	VolumeMount           VolumeMountDetails
 	VolumeDevice          VolumeDeviceDetails
+	VolumeAccessMode      v1.PersistentVolumeAccessMode
 	// Optional, used with pre-provisioned volumes
 	VolumeID string
 	// Optional, used with PVCs created from snapshots or pvc
@@ -178,7 +179,7 @@ func (pod *PodDetails) SetupDeployment(client clientset.Interface, namespace *v1
 	createdStorageClass := tsc.Create()
 	cleanupFuncs = append(cleanupFuncs, tsc.Cleanup)
 	ginkgo.By("setting up the PVC")
-	tpvc := NewTestPersistentVolumeClaim(client, namespace, volume.ClaimSize, volume.VolumeMode, &createdStorageClass)
+	tpvc := NewTestPersistentVolumeClaim(client, namespace, volume.ClaimSize, volume.VolumeMode, volume.VolumeAccessMode, &createdStorageClass)
 	tpvc.Create()
 	if volume.VolumeBindingMode == nil || *volume.VolumeBindingMode == storagev1.VolumeBindingImmediate {
 		tpvc.WaitForBound()
@@ -201,12 +202,12 @@ func (pod *PodDetails) SetupStatefulset(client clientset.Interface, namespace *v
 	createdStorageClass := tsc.Create()
 	cleanupFuncs = append(cleanupFuncs, tsc.Cleanup)
 	ginkgo.By("setting up the PVC")
-	tpvc := NewTestPersistentVolumeClaim(client, namespace, volume.ClaimSize, volume.VolumeMode, &createdStorageClass)
+	tpvc := NewTestPersistentVolumeClaim(client, namespace, volume.ClaimSize, volume.VolumeMode, volume.VolumeAccessMode, &createdStorageClass)
 	storageClassName := ""
 	if tpvc.storageClass != nil {
 		storageClassName = tpvc.storageClass.Name
 	}
-	tpvc.requestedPersistentVolumeClaim = generateStatefulSetPVC(tpvc.namespace.Name, storageClassName, tpvc.claimSize, tpvc.volumeMode, tpvc.dataSource)
+	tpvc.requestedPersistentVolumeClaim = generatePVC(tpvc.namespace.Name, storageClassName, "pvc", tpvc.claimSize, tpvc.volumeMode, tpvc.accessMode, tpvc.dataSource)
 	ginkgo.By("setting up the statefulset")
 	tStatefulset := NewTestStatefulset(client, namespace, pod.Cmd, tpvc.requestedPersistentVolumeClaim, "pvc", fmt.Sprintf("%s%d", volume.VolumeMount.MountPathGenerate, 1), volume.VolumeMount.ReadOnly, pod.IsWindows, pod.UseCMD)
 
@@ -232,9 +233,9 @@ func (volume *VolumeDetails) SetupDynamicPersistentVolumeClaim(client clientset.
 		if volume.DataSource.Kind == VolumeSnapshotKind {
 			dataSource.APIGroup = &SnapshotAPIGroup
 		}
-		tpvc = NewTestPersistentVolumeClaimWithDataSource(client, namespace, volume.ClaimSize, volume.VolumeMode, storageClass, dataSource)
+		tpvc = NewTestPersistentVolumeClaimWithDataSource(client, namespace, volume.ClaimSize, volume.VolumeMode, volume.VolumeAccessMode, storageClass, dataSource)
 	} else {
-		tpvc = NewTestPersistentVolumeClaim(client, namespace, volume.ClaimSize, volume.VolumeMode, storageClass)
+		tpvc = NewTestPersistentVolumeClaim(client, namespace, volume.ClaimSize, volume.VolumeMode, volume.VolumeAccessMode, storageClass)
 	}
 	tpvc.Create()
 	cleanupFuncs = append(cleanupFuncs, tpvc.Cleanup)
@@ -254,7 +255,7 @@ func (volume *VolumeDetails) SetupPreProvisionedPersistentVolumeClaim(client cli
 	tpv := NewTestPreProvisionedPersistentVolume(client, pv)
 	tpv.Create()
 	ginkgo.By("setting up the PVC")
-	tpvc := NewTestPersistentVolumeClaim(client, namespace, volume.ClaimSize, volume.VolumeMode, nil)
+	tpvc := NewTestPersistentVolumeClaim(client, namespace, volume.ClaimSize, volume.VolumeMode, volume.VolumeAccessMode, nil)
 	tpvc.Create()
 	cleanupFuncs = append(cleanupFuncs, tpvc.DeleteBoundPersistentVolume)
 	cleanupFuncs = append(cleanupFuncs, tpvc.Cleanup)
