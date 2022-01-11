@@ -245,6 +245,8 @@ container-all: azuredisk-windows container-setup
 	for osversion in $(ALL_OSVERSIONS.windows); do \
 		OSVERSION=$${osversion} $(MAKE) container-windows; \
 	done
+	# workaround fpr capz tests
+	docker login -u "${AZURE_CLIENT_ID}" -p "${AZURE_CLIENT_SECRET}" capzci.azurecr.io
 
 .PHONY: push-manifest
 push-manifest:
