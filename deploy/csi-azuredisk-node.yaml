@@ -121,7 +121,6 @@ spec:
             - mountPath: /csi
               name: socket-dir
             - mountPath: /var/lib/kubelet/
-              mountPropagation: Bidirectional
               name: mountpoint-dir
             - mountPath: /etc/kubernetes/
               name: azure-cred
