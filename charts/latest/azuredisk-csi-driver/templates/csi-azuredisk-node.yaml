@@ -134,8 +134,6 @@ spec:
               value: /etc/kubernetes/azurestackcloud.json
             {{- end }}
           imagePullPolicy: {{ .Values.image.azuredisk.pullPolicy }}
-          securityContext:
-            privileged: true
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
