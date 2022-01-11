@@ -43,7 +43,6 @@ func NewTestAttachDetachController(controller *gomock.Controller, namespace stri
 		client:                mockclient.NewMockClient(controller),
 		azVolumeClient:        diskfakes.NewSimpleClientset(diskv1alpha1Objs...),
 		kubeClient:            fakev1.NewSimpleClientset(kubeObjs...),
-		namespace:             namespace,
 		cloudDiskAttacher:     mockattachmentprovisioner.NewMockAttachmentProvisioner(controller),
 		stateLock:             &sync.Map{},
 		retryInfo:             newRetryInfo(),

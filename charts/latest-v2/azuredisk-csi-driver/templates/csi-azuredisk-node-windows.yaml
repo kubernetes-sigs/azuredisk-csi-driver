@@ -118,6 +118,7 @@ spec:
             - "--metrics-address=0.0.0.0:{{ .Values.node.metrics.port }}"
             - "--is-node-plugin=true"
             - "--drivername={{ .Values.driver.name }}"
+            - "--driver-object-namespace={{ .Values.driver.objectNamespace }}"
             - "--volume-attach-limit={{ .Values.driver.volumeAttachLimit }}"
             - "--cloud-config-secret-name={{ .Values.node.cloudConfigSecretName }}"
             - "--cloud-config-secret-namespace={{ .Values.node.cloudConfigSecretNamespace }}"

@@ -47,7 +47,6 @@ func newTestPVController(controller *gomock.Controller, namespace string, object
 			client:                mockclient.NewMockClient(controller),
 			azVolumeClient:        diskfakes.NewSimpleClientset(diskv1alpha1Objs...),
 			controllerRetryInfo:   newRetryInfo(),
-			namespace:             namespace,
 			controllerSharedState: controllerSharedState,
 		},
 		kubeClient: fakev1.NewSimpleClientset(kubeObjs...),

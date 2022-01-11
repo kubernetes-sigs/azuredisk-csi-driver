@@ -40,7 +40,6 @@ func NewTestAzDriverNodeController(controller *gomock.Controller, namespace stri
 	return &ReconcileAzDriverNode{
 		client:                mockclient.NewMockClient(controller),
 		azVolumeClient:        azfakes.NewSimpleClientset(diskv1alpha1Objs...),
-		namespace:             namespace,
 		controllerSharedState: controllerSharedState,
 	}
 }

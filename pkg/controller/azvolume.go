@@ -64,7 +64,6 @@ type ReconcileAzVolume struct {
 	client                client.Client
 	azVolumeClient        azClientSet.Interface
 	kubeClient            kubeClientSet.Interface
-	namespace             string
 	volumeProvisioner     VolumeProvisioner
 	controllerSharedState *SharedState
 	// stateLock prevents concurrent cloud operation for same volume to be executed due to state update race
@@ -479,7 +478,7 @@ func (r *ReconcileAzVolume) recreateAzVolumes(ctx context.Context) error {
 	}
 
 	for _, pv := range pvs.Items {
-		if err := createAzVolumeFromPv(ctx, pv, r.azVolumeClient, r.kubeClient, r.namespace, make(map[string]string), r.controllerSharedState); err != nil {
+		if err := createAzVolumeFromPv(ctx, pv, r.azVolumeClient, r.kubeClient, r.controllerSharedState.objectNamespace, make(map[string]string), r.controllerSharedState); err != nil {
 			klog.Errorf("failed to recover AzVolume for PV (%s): %v", pv.Name, err)
 		}
 	}
@@ -488,7 +487,7 @@ func (r *ReconcileAzVolume) recreateAzVolumes(ctx context.Context) error {
 
 func (r *ReconcileAzVolume) recoverAzVolume(ctx context.Context, recoveredAzVolumes *sync.Map) error {
 	// list all AzVolumes
-	azVolumes, err := r.azVolumeClient.DiskV1alpha1().AzVolumes(r.namespace).List(ctx, metav1.ListOptions{})
+	azVolumes, err := r.azVolumeClient.DiskV1alpha1().AzVolumes(r.controllerSharedState.objectNamespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		klog.Errorf("failed to get list of existing AzVolume CRI in controller recovery stage")
 		return err
@@ -571,12 +570,11 @@ func (r *ReconcileAzVolume) Recover(ctx context.Context) error {
 	return err
 }
 
-func NewAzVolumeController(mgr manager.Manager, azVolumeClient azClientSet.Interface, kubeClient kubeClientSet.Interface, namespace string, volumeProvisioner VolumeProvisioner, controllerSharedState *SharedState) (*ReconcileAzVolume, error) {
+func NewAzVolumeController(mgr manager.Manager, azVolumeClient azClientSet.Interface, kubeClient kubeClientSet.Interface, volumeProvisioner VolumeProvisioner, controllerSharedState *SharedState) (*ReconcileAzVolume, error) {
 	reconciler := ReconcileAzVolume{
 		client:                mgr.GetClient(),
 		azVolumeClient:        azVolumeClient,
 		kubeClient:            kubeClient,
-		namespace:             namespace,
 		volumeProvisioner:     volumeProvisioner,
 		stateLock:             &sync.Map{},
 		retryInfo:             newRetryInfo(),

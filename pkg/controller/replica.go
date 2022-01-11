@@ -48,7 +48,6 @@ type ReconcileReplica struct {
 	client                     client.Client
 	azVolumeClient             azClientSet.Interface
 	kubeClient                 kubeClientSet.Interface
-	namespace                  string
 	controllerSharedState      *SharedState
 	cleanUpMap                 sync.Map
 	timeUntilGarbageCollection time.Duration
@@ -183,7 +182,7 @@ func (r *ReconcileReplica) removeGarbageCollection(volumeName string) {
 }
 
 func (r *ReconcileReplica) manageReplicas(ctx context.Context, volumeName string) error {
-	azVolume, err := azureutils.GetAzVolume(ctx, r.client, r.azVolumeClient, volumeName, r.namespace, true)
+	azVolume, err := azureutils.GetAzVolume(ctx, r.client, r.azVolumeClient, volumeName, r.controllerSharedState.objectNamespace, true)
 	if errors.IsNotFound(err) {
 		klog.Infof("Aborting replica management... volume (%s) does not exist", volumeName)
 		return nil
@@ -301,13 +300,12 @@ func (r *ReconcileReplica) createReplicas(ctx context.Context, numReplica int, v
 	return nil
 }
 
-func NewReplicaController(mgr manager.Manager, azVolumeClient azClientSet.Interface, kubeClient kubeClientSet.Interface, namespace string, controllerSharedState *SharedState) (*ReconcileReplica, error) {
+func NewReplicaController(mgr manager.Manager, azVolumeClient azClientSet.Interface, kubeClient kubeClientSet.Interface, controllerSharedState *SharedState) (*ReconcileReplica, error) {
 	logger := mgr.GetLogger().WithValues("controller", "replica")
 	reconciler := ReconcileReplica{
 		client:                     mgr.GetClient(),
 		azVolumeClient:             azVolumeClient,
 		kubeClient:                 kubeClient,
-		namespace:                  namespace,
 		controllerSharedState:      controllerSharedState,
 		cleanUpMap:                 sync.Map{},
 		timeUntilGarbageCollection: DefaultTimeUntilGarbageCollection,

@@ -44,7 +44,7 @@ import (
 )
 
 const (
-	namespace = consts.AzureDiskCrdNamespace
+	namespace = consts.DefaultAzureDiskCrdNamespace
 	interval  = time.Duration(15) * time.Second
 	timeout   = time.Duration(15) * time.Minute
 	maxRetry  = 5

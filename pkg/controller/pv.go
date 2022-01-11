@@ -50,7 +50,6 @@ type ReconcilePV struct {
 	// retryMap allows volumeAttachment controller to retry Get operation for AzVolume in case the CRI has not been created yet
 	controllerRetryInfo   *retryInfo
 	controllerSharedState *SharedState
-	namespace             string
 }
 
 // Implement reconcile.Reconciler so the controller can reconcile objects
@@ -84,7 +83,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 
 	// PV is deleted
 	if objectDeletionRequested(&pv) {
-		if err := r.client.Get(ctx, types.NamespacedName{Namespace: r.namespace, Name: azVolumeName}, &azVolume); err != nil {
+		if err := r.client.Get(ctx, types.NamespacedName{Namespace: r.controllerSharedState.objectNamespace, Name: azVolumeName}, &azVolume); err != nil {
 			// AzVolume doesn't exist, so there is nothing for us to do
 			if errors.IsNotFound(err) {
 				return reconcileReturnOnSuccess(pv.Name, r.controllerRetryInfo)
@@ -108,7 +107,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 			return reconcileReturnOnError(&pv, "delete", err, r.controllerRetryInfo)
 		}
 
-		if err := r.azVolumeClient.DiskV1alpha1().AzVolumes(consts.AzureDiskCrdNamespace).Delete(ctx, azVolumeName, metav1.DeleteOptions{}); err != nil {
+		if err := r.azVolumeClient.DiskV1alpha1().AzVolumes(r.controllerSharedState.objectNamespace).Delete(ctx, azVolumeName, metav1.DeleteOptions{}); err != nil {
 			klog.Errorf("failed to set the deletion timestamp for AzVolume (%s): %v", azVolumeName, err)
 			return reconcileReturnOnError(&pv, "delete", err, r.controllerRetryInfo)
 		}
@@ -120,7 +119,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 	}
 
 	// PV exists but AzVolume doesn't
-	if err := r.client.Get(ctx, types.NamespacedName{Namespace: r.namespace, Name: azVolumeName}, &azVolume); err != nil {
+	if err := r.client.Get(ctx, types.NamespacedName{Namespace: r.controllerSharedState.objectNamespace, Name: azVolumeName}, &azVolume); err != nil {
 		// if getting AzVolume failed due to errors other than it doesn't exist, we requeue and retry
 		if !errors.IsNotFound(err) {
 			klog.V(5).Infof("failed to get AzVolume (%s): %v", diskName, err)
@@ -131,7 +130,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 		annotation := map[string]string{
 			consts.PreProvisionedVolumeAnnotation: "true",
 		}
-		if err := createAzVolumeFromPv(ctx, pv, r.azVolumeClient, r.kubeClient, r.namespace, annotation, r.controllerSharedState); err != nil {
+		if err := createAzVolumeFromPv(ctx, pv, r.azVolumeClient, r.kubeClient, r.controllerSharedState.objectNamespace, annotation, r.controllerSharedState); err != nil {
 			if !errors.IsAlreadyExists(err) {
 				// if creating AzVolume failed, retry with exponential back off
 				klog.Infof("Failed to create AzVolume (%s). Err: %v.", azVolumeName, err)
@@ -191,14 +190,13 @@ func (r *ReconcilePV) Recover(ctx context.Context) error {
 	return nil
 }
 
-func NewPVController(mgr manager.Manager, azVolumeClient azVolumeClientSet.Interface, kubeClient kubeClientSet.Interface, namespace string, controllerSharedState *SharedState) (*ReconcilePV, error) {
+func NewPVController(mgr manager.Manager, azVolumeClient azVolumeClientSet.Interface, kubeClient kubeClientSet.Interface, controllerSharedState *SharedState) (*ReconcilePV, error) {
 	logger := mgr.GetLogger().WithValues("controller", "azvolume")
 	reconciler := ReconcilePV{
 		client:                mgr.GetClient(),
 		kubeClient:            kubeClient,
 		controllerRetryInfo:   newRetryInfo(),
 		azVolumeClient:        azVolumeClient,
-		namespace:             namespace,
 		controllerSharedState: controllerSharedState,
 	}
 

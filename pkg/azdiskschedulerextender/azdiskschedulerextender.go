@@ -21,6 +21,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -49,7 +50,7 @@ var (
 	pvcInformer                kubeInformerTypes.PersistentVolumeClaimInformer
 	kubeClientset              *kubernetes.Clientset
 	kubeExtensionClientset     versioned.Interface
-	ns                         = consts.AzureDiskCrdNamespace
+	criNamespace               string
 	pvcToPvMapCache            cachedMapping
 )
 
@@ -61,6 +62,10 @@ type azDriverNodesMeta struct {
 type azVolumeAttachmentsMeta struct {
 	volumes []*v1alpha1Meta.AzVolumeAttachment
 	err     error
+}
+
+func init() {
+	flag.StringVar(&criNamespace, "driver-object-namespace", consts.DefaultAzureDiskCrdNamespace, "The namespace where driver related custom resources are created.")
 }
 
 func initSchedulerExtender(ctx context.Context) {
@@ -341,7 +346,7 @@ func getAzDriverNodes(context context.Context, out chan azDriverNodesMeta) {
 	defer Goroutines.WithLabelValues("getAzDriverNodes").Dec()
 	// get all nodes that have azDriverNode running
 	var activeDriverNodes azDriverNodesMeta
-	activeDriverNodes.nodes, activeDriverNodes.err = azDriverNodeInformer.Lister().AzDriverNodes(ns).List(labels.Everything())
+	activeDriverNodes.nodes, activeDriverNodes.err = azDriverNodeInformer.Lister().AzDriverNodes(criNamespace).List(labels.Everything())
 	klog.Infof("AzDriverNodes: %v", activeDriverNodes.nodes)
 	out <- activeDriverNodes
 }
@@ -351,7 +356,7 @@ func getAzVolumeAttachments(context context.Context, out chan azVolumeAttachment
 	defer Goroutines.WithLabelValues("getAzVolumeAttachments").Dec()
 	// get all azVolumeAttachments running in the cluster
 	var activeVolumeAttachments azVolumeAttachmentsMeta
-	activeVolumeAttachments.volumes, activeVolumeAttachments.err = azVolumeAttachmentInformer.Lister().AzVolumeAttachments(ns).List(labels.Everything())
+	activeVolumeAttachments.volumes, activeVolumeAttachments.err = azVolumeAttachmentInformer.Lister().AzVolumeAttachments(criNamespace).List(labels.Everything())
 	klog.Infof("AzVolumeAttachments: %v", len(activeVolumeAttachments.volumes))
 	out <- activeVolumeAttachments
 }

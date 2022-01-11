@@ -42,7 +42,7 @@ import (
 )
 
 const (
-	fakeObjNamespace = consts.AzureDiskCrdNamespace
+	fakeObjNamespace = consts.DefaultAzureDiskCrdNamespace
 )
 
 type fakeDriverV2 struct {

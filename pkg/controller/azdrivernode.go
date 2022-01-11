@@ -41,7 +41,6 @@ type ReconcileAzDriverNode struct {
 	client                client.Client
 	azVolumeClient        azClientSet.Interface
 	controllerSharedState *SharedState
-	namespace             string
 }
 
 // Implement reconcile.Reconciler so the controller can reconcile objects
@@ -64,7 +63,7 @@ func (r *ReconcileAzDriverNode) Reconcile(ctx context.Context, request reconcile
 		klog.V(2).Info("Deleting AzDriverNode (%s).", request.Name)
 
 		// Delete the azDriverNode, since corresponding node is deleted
-		azN := r.azVolumeClient.DiskV1alpha1().AzDriverNodes(r.namespace)
+		azN := r.azVolumeClient.DiskV1alpha1().AzDriverNodes(r.controllerSharedState.objectNamespace)
 		err = azN.Delete(ctx, request.Name, metav1.DeleteOptions{})
 
 		// If there is an issue in deleting the AzDriverNode, requeue
@@ -86,12 +85,11 @@ func (r *ReconcileAzDriverNode) Reconcile(ctx context.Context, request reconcile
 }
 
 // NewAzDriverNodeController initializes azdrivernode-controller
-func NewAzDriverNodeController(mgr manager.Manager, azVolumeClient azClientSet.Interface, namespace string, controllerSharedState *SharedState) (*ReconcileAzDriverNode, error) {
+func NewAzDriverNodeController(mgr manager.Manager, azVolumeClient azClientSet.Interface, controllerSharedState *SharedState) (*ReconcileAzDriverNode, error) {
 	logger := mgr.GetLogger().WithValues("controller", "azdrivernode")
 	reconciler := ReconcileAzDriverNode{
 		client:                mgr.GetClient(),
 		azVolumeClient:        azVolumeClient,
-		namespace:             namespace,
 		controllerSharedState: controllerSharedState,
 	}
 	c, err := controller.New("azdrivernode-controller", mgr, controller.Options{

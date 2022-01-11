@@ -183,6 +183,7 @@ spec:
             - "--enable-perf-optimization={{ .Values.linux.enablePerfOptimization }}"
             - "--disable-avset-nodes={{ .Values.controller.disableAvailabilitySetNodes }}"
             - "--drivername={{ .Values.driver.name }}"
+            - "--driver-object-namespace={{ .Values.driver.objectNamespace }}"
             - "--cloud-config-secret-name={{ .Values.controller.cloudConfigSecretName }}"
             - "--cloud-config-secret-namespace={{ .Values.controller.cloudConfigSecretNamespace }}"
             - "--custom-user-agent={{ .Values.driver.customUserAgent }}"
