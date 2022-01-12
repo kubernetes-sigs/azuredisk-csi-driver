@@ -25,6 +25,7 @@ parse_cred() {
 # for Prow we use the provided AZURE_CREDENTIALS file.
 # the file is expected to be in toml format.
 if [[ -n "${AZURE_CREDENTIALS:-}" ]]; then
+    echo "parsing AZURE_CREDENTIALS ..."
     AZURE_SUBSCRIPTION_ID="$(parse_cred SubscriptionID < "${AZURE_CREDENTIALS}")"
     AZURE_TENANT_ID="$(parse_cred TenantID < "${AZURE_CREDENTIALS}")"
     AZURE_CLIENT_ID="$(parse_cred ClientID < "${AZURE_CREDENTIALS}")"
@@ -35,4 +36,6 @@ if [[ -n "${AZURE_CREDENTIALS:-}" ]]; then
     AZURE_STORAGE_KEY="$(parse_cred StorageAccountKey < "${AZURE_CREDENTIALS}")"
 
     export AZURE_SUBSCRIPTION_ID AZURE_TENANT_ID AZURE_CLIENT_ID AZURE_CLIENT_SECRET AZURE_MULTI_TENANCY_ID AZURE_MULTI_TENANCY_SECRET AZURE_STORAGE_ACCOUNT AZURE_STORAGE_KEY
+else
+    echo "AZURE_CREDENTIALS is empty"
 fi
