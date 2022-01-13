@@ -697,7 +697,7 @@ func TestGetValidCreationData(t *testing.T) {
 			sourceResourceID: "",
 			sourceType:       "",
 			expected1: compute.CreationData{
-				CreateOption: compute.Empty,
+				CreateOption: compute.DiskCreateOptionEmpty,
 			},
 			expected2: nil,
 		},
@@ -707,7 +707,7 @@ func TestGetValidCreationData(t *testing.T) {
 			sourceResourceID: "/subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/snapshots/xxx",
 			sourceType:       consts.SourceSnapshot,
 			expected1: compute.CreationData{
-				CreateOption:     compute.Copy,
+				CreateOption:     compute.DiskCreateOptionCopy,
 				SourceResourceID: &sourceResourceSnapshotID,
 			},
 			expected2: nil,
@@ -718,7 +718,7 @@ func TestGetValidCreationData(t *testing.T) {
 			sourceResourceID: "xxx",
 			sourceType:       consts.SourceSnapshot,
 			expected1: compute.CreationData{
-				CreateOption:     compute.Copy,
+				CreateOption:     compute.DiskCreateOptionCopy,
 				SourceResourceID: &sourceResourceSnapshotID,
 			},
 			expected2: nil,
@@ -761,7 +761,7 @@ func TestGetValidCreationData(t *testing.T) {
 			sourceResourceID: "xxx",
 			sourceType:       "",
 			expected1: compute.CreationData{
-				CreateOption: compute.Empty,
+				CreateOption: compute.DiskCreateOptionEmpty,
 			},
 			expected2: nil,
 		},
@@ -771,7 +771,7 @@ func TestGetValidCreationData(t *testing.T) {
 			sourceResourceID: "/subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/disks/xxx",
 			sourceType:       consts.SourceVolume,
 			expected1: compute.CreationData{
-				CreateOption:     compute.Copy,
+				CreateOption:     compute.DiskCreateOptionCopy,
 				SourceResourceID: &sourceResourceVolumeID,
 			},
 			expected2: nil,
@@ -782,7 +782,7 @@ func TestGetValidCreationData(t *testing.T) {
 			sourceResourceID: "xxx",
 			sourceType:       consts.SourceVolume,
 			expected1: compute.CreationData{
-				CreateOption:     compute.Copy,
+				CreateOption:     compute.DiskCreateOptionCopy,
 				SourceResourceID: &sourceResourceVolumeID,
 			},
 			expected2: nil,
@@ -1019,22 +1019,22 @@ func TestNormalizeNetworkAccessPolicy(t *testing.T) {
 	}{
 		{
 			networkAccessPolicy:         "",
-			expectedNetworkAccessPolicy: compute.AllowAll,
+			expectedNetworkAccessPolicy: compute.NetworkAccessPolicyAllowAll,
 			expectError:                 false,
 		},
 		{
 			networkAccessPolicy:         "AllowAll",
-			expectedNetworkAccessPolicy: compute.AllowAll,
+			expectedNetworkAccessPolicy: compute.NetworkAccessPolicyAllowAll,
 			expectError:                 false,
 		},
 		{
 			networkAccessPolicy:         "DenyAll",
-			expectedNetworkAccessPolicy: compute.DenyAll,
+			expectedNetworkAccessPolicy: compute.NetworkAccessPolicyDenyAll,
 			expectError:                 false,
 		},
 		{
 			networkAccessPolicy:         "AllowPrivate",
-			expectedNetworkAccessPolicy: compute.AllowPrivate,
+			expectedNetworkAccessPolicy: compute.NetworkAccessPolicyAllowPrivate,
 			expectError:                 false,
 		},
 		{
@@ -1068,14 +1068,14 @@ func TestNormalizeStorageAccountType(t *testing.T) {
 			cloud:                  azurePublicCloud,
 			storageAccountType:     "",
 			disableAzureStackCloud: false,
-			expectedAccountType:    compute.StandardSSDLRS,
+			expectedAccountType:    compute.DiskStorageAccountTypesStandardSSDLRS,
 			expectError:            false,
 		},
 		{
 			cloud:                  azureStackCloud,
 			storageAccountType:     "",
 			disableAzureStackCloud: false,
-			expectedAccountType:    compute.StandardLRS,
+			expectedAccountType:    compute.DiskStorageAccountTypesStandardLRS,
 			expectError:            false,
 		},
 		{
@@ -1089,28 +1089,28 @@ func TestNormalizeStorageAccountType(t *testing.T) {
 			cloud:                  azurePublicCloud,
 			storageAccountType:     "Standard_LRS",
 			disableAzureStackCloud: false,
-			expectedAccountType:    compute.StandardLRS,
+			expectedAccountType:    compute.DiskStorageAccountTypesStandardLRS,
 			expectError:            false,
 		},
 		{
 			cloud:                  azurePublicCloud,
 			storageAccountType:     "Premium_LRS",
 			disableAzureStackCloud: false,
-			expectedAccountType:    compute.PremiumLRS,
+			expectedAccountType:    compute.DiskStorageAccountTypesPremiumLRS,
 			expectError:            false,
 		},
 		{
 			cloud:                  azurePublicCloud,
 			storageAccountType:     "StandardSSD_LRS",
 			disableAzureStackCloud: false,
-			expectedAccountType:    compute.StandardSSDLRS,
+			expectedAccountType:    compute.DiskStorageAccountTypesStandardSSDLRS,
 			expectError:            false,
 		},
 		{
 			cloud:                  azurePublicCloud,
 			storageAccountType:     "UltraSSD_LRS",
 			disableAzureStackCloud: false,
-			expectedAccountType:    compute.UltraSSDLRS,
+			expectedAccountType:    compute.DiskStorageAccountTypesUltraSSDLRS,
 			expectError:            false,
 		},
 		{
@@ -1124,7 +1124,7 @@ func TestNormalizeStorageAccountType(t *testing.T) {
 			cloud:                  azureStackCloud,
 			storageAccountType:     "UltraSSD_LRS",
 			disableAzureStackCloud: true,
-			expectedAccountType:    compute.UltraSSDLRS,
+			expectedAccountType:    compute.DiskStorageAccountTypesUltraSSDLRS,
 			expectError:            false,
 		},
 	}
@@ -1371,17 +1371,17 @@ func TestInsertDiskProperties(t *testing.T) {
 		{
 			desc: "skuName",
 			disk: &compute.Disk{
-				Sku: &compute.DiskSku{Name: compute.PremiumLRS},
+				Sku: &compute.DiskSku{Name: compute.DiskStorageAccountTypesPremiumLRS},
 			},
 			inputMap:    map[string]string{},
-			expectedMap: map[string]string{"skuname": string(compute.PremiumLRS)},
+			expectedMap: map[string]string{"skuname": string(compute.DiskStorageAccountTypesPremiumLRS)},
 		},
 		{
 			desc: "DiskProperties",
 			disk: &compute.Disk{
-				Sku: &compute.DiskSku{Name: compute.StandardSSDLRS},
+				Sku: &compute.DiskSku{Name: compute.DiskStorageAccountTypesStandardSSDLRS},
 				DiskProperties: &compute.DiskProperties{
-					NetworkAccessPolicy: compute.AllowPrivate,
+					NetworkAccessPolicy: compute.NetworkAccessPolicyAllowPrivate,
 					DiskIOPSReadWrite:   to.Int64Ptr(6400),
 					DiskMBpsReadWrite:   to.Int64Ptr(100),
 					CreationData: &compute.CreationData{
@@ -1393,8 +1393,8 @@ func TestInsertDiskProperties(t *testing.T) {
 			},
 			inputMap: map[string]string{},
 			expectedMap: map[string]string{
-				consts.SkuNameField:             string(compute.StandardSSDLRS),
-				consts.NetworkAccessPolicyField: string(compute.AllowPrivate),
+				consts.SkuNameField:             string(compute.DiskStorageAccountTypesStandardSSDLRS),
+				consts.NetworkAccessPolicyField: string(compute.NetworkAccessPolicyAllowPrivate),
 				consts.DiskIOPSReadWriteField:   "6400",
 				consts.DiskMBPSReadWriteField:   "100",
 				consts.LogicalSectorSizeField:   "512",

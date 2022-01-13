@@ -762,7 +762,7 @@ func (d *DriverV2) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRe
 	snapshot := compute.Snapshot{
 		SnapshotProperties: &compute.SnapshotProperties{
 			CreationData: &compute.CreationData{
-				CreateOption: compute.Copy,
+				CreateOption: compute.DiskCreateOptionCopy,
 				SourceURI:    &sourceVolumeID,
 			},
 			Incremental: &incremental,
