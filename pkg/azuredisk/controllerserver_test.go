@@ -39,7 +39,6 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockcorev1"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockkubeclient"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockpersistentvolume"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/diskclient/mockdiskclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/snapshotclient/mocksnapshotclient"
@@ -886,31 +885,6 @@ func TestControllerGetCapabilities(t *testing.T) {
 	assert.NotNil(t, resp)
 	assert.Equal(t, resp.Capabilities[0].GetType(), capType)
 	assert.NoError(t, err)
-}
-
-func TestIsValidVolumeCapabilities(t *testing.T) {
-	var caps []*csi.VolumeCapability
-	stdVolCap := csi.VolumeCapability{
-		AccessType: &csi.VolumeCapability_Mount{
-			Mount: &csi.VolumeCapability_MountVolume{},
-		},
-		AccessMode: &csi.VolumeCapability_AccessMode{
-			Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
-		},
-	}
-	caps = append(caps, &stdVolCap)
-	if !azureutils.IsValidVolumeCapabilities(caps, 1) {
-		t.Errorf("Unexpected error")
-	}
-	stdVolCap1 := csi.VolumeCapability{
-		AccessMode: &csi.VolumeCapability_AccessMode{
-			Mode: 10,
-		},
-	}
-	caps = append(caps, &stdVolCap1)
-	if azureutils.IsValidVolumeCapabilities(caps, 1) {
-		t.Errorf("Unexpected error")
-	}
 }
 
 func TestControllerExpandVolume(t *testing.T) {
