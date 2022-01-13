@@ -4,4 +4,8 @@ package version
 // Licensed under the MIT License. See License.txt in the project root for license information.
 
 // Number contains the semantic version of this SDK.
+<<<<<<< HEAD
 const Number = "v61.3.0"
+=======
+const Number = "v58.2.0"
+>>>>>>> chore: upgrade azure lib
