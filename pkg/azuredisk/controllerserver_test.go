@@ -27,7 +27,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
 
@@ -690,7 +690,7 @@ func TestControllerPublishVolume(t *testing.T) {
 				vm.VirtualMachineProperties = &compute.VirtualMachineProperties{
 					ProvisioningState: to.StringPtr(string(compute.ProvisioningStateFailed)),
 					HardwareProfile: &compute.HardwareProfile{
-						VMSize: compute.StandardA0,
+						VMSize: compute.VirtualMachineSizeTypesStandardA0,
 					},
 					InstanceView: &compute.VirtualMachineInstanceView{
 						Statuses: &vmstatus,
@@ -747,7 +747,7 @@ func TestControllerPublishVolume(t *testing.T) {
 				vm.VirtualMachineProperties = &compute.VirtualMachineProperties{
 					ProvisioningState: to.StringPtr(string(compute.ProvisioningStateSucceeded)),
 					HardwareProfile: &compute.HardwareProfile{
-						VMSize: compute.StandardA0,
+						VMSize: compute.VirtualMachineSizeTypesStandardA0,
 					},
 					InstanceView: &compute.VirtualMachineInstanceView{
 						Statuses: &vmstatus,
@@ -805,7 +805,7 @@ func TestControllerPublishVolume(t *testing.T) {
 				vm.VirtualMachineProperties = &compute.VirtualMachineProperties{
 					ProvisioningState: to.StringPtr(string(compute.ProvisioningStateSucceeded)),
 					HardwareProfile: &compute.HardwareProfile{
-						VMSize: compute.StandardA0,
+						VMSize: compute.VirtualMachineSizeTypesStandardA0,
 					},
 					InstanceView: &compute.VirtualMachineInstanceView{
 						Statuses: &vmstatus,
