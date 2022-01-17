@@ -130,7 +130,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `image.azuredisk.tag`                             | azuredisk-csi-driver docker image tag                      | `latest`                                                       |
 | `image.azuredisk.pullPolicy`                      | azuredisk-csi-driver image pull policy                     | `IfNotPresent`                                                 |
 | `image.csiProvisioner.repository`                 | csi-provisioner docker image                               | `/oss/kubernetes-csi/csi-provisioner`         |
-| `image.csiProvisioner.tag`                        | csi-provisioner docker image tag                           | `v2.2.2`                                                       |
+| `image.csiProvisioner.tag`                        | csi-provisioner docker image tag                           | `v3.1.0`                                                       |
 | `image.csiProvisioner.pullPolicy`                 | csi-provisioner image pull policy                          | `IfNotPresent`                                                 |
 | `image.csiAttacher.repository`                    | csi-attacher docker image                                  | `/oss/kubernetes-csi/csi-attacher`            |
 | `image.csiAttacher.tag`                           | csi-attacher docker image tag                              | `v3.3.0`                                                       |
@@ -187,7 +187,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `node.metricsPort`                                | metrics port of csi-azuredisk-node                         |`29605`                                                        |
 | `node.livenessProbe.healthPort `                  | health check port for liveness probe                       | `29603` |
 | `node.logLevel`                                   | node driver log level                                      |`5`                                                           |
-| `snapshot.apiVersion`                             | when using Snapshot, specify `ga` for K8s >= 1.20          | `beta`                                                        |
+| `snapshot.apiVersion`                             | when using Snapshot, specify `ga` for K8s >= 1.20          | `ga`                                                        |
 | `snapshot.enabled`                                | whether enable snapshot feature                            | `false`                                                        |
 | `snapshot.image.csiSnapshotter.repository`        | csi-snapshotter docker image                               | `/oss/kubernetes-csi/csi-snapshotter`         |
 | `snapshot.image.csiSnapshotter.tag`               | csi-snapshotter docker image tag                           | `v3.0.3`                                                       |
