@@ -21,7 +21,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/kubernetes-csi/external-snapshotter/v2/pkg/apis/volumesnapshot/v1beta1"
+	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -85,7 +85,7 @@ func (d *azureDiskDriver) GetDynamicProvisionStorageClass(parameters map[string]
 	return getStorageClass(generateName, provisioner, parameters, mountOptions, reclaimPolicy, bindingMode, allowedTopologies)
 }
 
-func (d *azureDiskDriver) GetVolumeSnapshotClass(namespace string) *v1beta1.VolumeSnapshotClass {
+func (d *azureDiskDriver) GetVolumeSnapshotClass(namespace string) *snapshotv1.VolumeSnapshotClass {
 	provisioner := d.driverName
 	generateName := fmt.Sprintf("%s-%s-dynamic-sc-", namespace, normalizeProvisioner(provisioner))
 	return getVolumeSnapshotClass(generateName, provisioner)
