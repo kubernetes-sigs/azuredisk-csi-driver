@@ -97,7 +97,11 @@ If Mergo is useful to you, consider buying me a coffee, a beer, or making a mont
 - [mantasmatelis/whooplist-server](https://github.com/mantasmatelis/whooplist-server)
 - [jnuthong/item_search](https://github.com/jnuthong/item_search)
 - [bukalapak/snowboard](https://github.com/bukalapak/snowboard)
+<<<<<<< HEAD
 - [containerssh/containerssh](https://github.com/containerssh/containerssh)
+=======
+- [janoszen/containerssh](https://github.com/janoszen/containerssh)
+>>>>>>> upgrade snapshot v1beta1 to v1 api
 
 ## Install
 

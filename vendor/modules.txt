@@ -575,6 +575,7 @@ google.golang.org/grpc/status
 google.golang.org/grpc/tap
 # google.golang.org/protobuf v1.27.1
 <<<<<<< HEAD
+<<<<<<< HEAD
 ## explicit; go 1.9
 google.golang.org/protobuf/encoding/protojson
 =======
@@ -582,6 +583,9 @@ google.golang.org/protobuf/encoding/protojson
 <<<<<<< HEAD
 >>>>>>> chore: upgrade azure lib
 =======
+=======
+## explicit; go 1.9
+>>>>>>> upgrade snapshot v1beta1 to v1 api
 google.golang.org/protobuf/encoding/protojson
 >>>>>>> upgrade to k8s 1.23 lib
 google.golang.org/protobuf/encoding/prototext
@@ -628,17 +632,24 @@ gopkg.in/tomb.v1
 gopkg.in/yaml.v2
 # gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
+=======
+## explicit
+>>>>>>> upgrade snapshot v1beta1 to v1 api
 gopkg.in/yaml.v3
 <<<<<<< HEAD
 # k8s.io/api v0.23.1 => k8s.io/api v0.21.0
 >>>>>>> chore: upgrade azure lib
 =======
 # k8s.io/api v0.23.1 => k8s.io/api v0.23.0
+<<<<<<< HEAD
 >>>>>>> upgrade to k8s 1.23 lib
 ## explicit
 gopkg.in/yaml.v3
 # k8s.io/api v0.23.3 => k8s.io/api v0.23.1
+=======
+>>>>>>> upgrade snapshot v1beta1 to v1 api
 ## explicit; go 1.16
 k8s.io/api/admission/v1
 k8s.io/api/admission/v1beta1
@@ -700,9 +711,13 @@ k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1
 # k8s.io/apimachinery v0.23.1 => k8s.io/apimachinery v0.21.0
 =======
 # k8s.io/apimachinery v0.23.1 => k8s.io/apimachinery v0.23.0
+<<<<<<< HEAD
 >>>>>>> upgrade to k8s 1.23 lib
 ## explicit
 >>>>>>> chore: upgrade azure lib
+=======
+## explicit; go 1.16
+>>>>>>> upgrade snapshot v1beta1 to v1 api
 k8s.io/apimachinery/pkg/api/equality
 k8s.io/apimachinery/pkg/api/errors
 k8s.io/apimachinery/pkg/api/meta
@@ -766,7 +781,11 @@ k8s.io/apimachinery/third_party/forked/golang/reflect
 >>>>>>> chore: upgrade azure lib
 =======
 # k8s.io/apiserver v0.23.0 => k8s.io/apiserver v0.23.0
+<<<<<<< HEAD
 >>>>>>> upgrade to k8s 1.23 lib
+=======
+## explicit; go 1.16
+>>>>>>> upgrade snapshot v1beta1 to v1 api
 k8s.io/apiserver/pkg/admission
 k8s.io/apiserver/pkg/admission/configuration
 k8s.io/apiserver/pkg/admission/initializer
@@ -814,9 +833,13 @@ k8s.io/apiserver/pkg/warning
 # k8s.io/client-go v0.23.1 => k8s.io/client-go v0.21.0
 =======
 # k8s.io/client-go v0.23.1 => k8s.io/client-go v0.23.0
+<<<<<<< HEAD
 >>>>>>> upgrade to k8s 1.23 lib
 ## explicit
 >>>>>>> chore: upgrade azure lib
+=======
+## explicit; go 1.16
+>>>>>>> upgrade snapshot v1beta1 to v1 api
 k8s.io/client-go/applyconfigurations/admissionregistration/v1
 k8s.io/client-go/applyconfigurations/admissionregistration/v1beta1
 k8s.io/client-go/applyconfigurations/apiserverinternal/v1alpha1
@@ -1126,9 +1149,13 @@ k8s.io/client-go/util/workqueue
 # k8s.io/cloud-provider v0.23.0 => k8s.io/cloud-provider v0.21.0
 =======
 # k8s.io/cloud-provider v0.23.0 => k8s.io/cloud-provider v0.23.0
+<<<<<<< HEAD
 >>>>>>> upgrade to k8s 1.23 lib
 ## explicit
 >>>>>>> chore: upgrade azure lib
+=======
+## explicit; go 1.16
+>>>>>>> upgrade snapshot v1beta1 to v1 api
 k8s.io/cloud-provider
 k8s.io/cloud-provider/fake
 k8s.io/cloud-provider/service/helpers
@@ -1178,9 +1205,13 @@ k8s.io/code-generator/third_party/forked/golang/reflect
 # k8s.io/component-base v0.23.0 => k8s.io/component-base v0.21.0
 =======
 # k8s.io/component-base v0.23.0 => k8s.io/component-base v0.23.0
+<<<<<<< HEAD
 >>>>>>> upgrade to k8s 1.23 lib
 ## explicit
 >>>>>>> chore: upgrade azure lib
+=======
+## explicit; go 1.16
+>>>>>>> upgrade snapshot v1beta1 to v1 api
 k8s.io/component-base/cli/flag
 k8s.io/component-base/config
 k8s.io/component-base/config/v1alpha1
@@ -1225,15 +1256,17 @@ k8s.io/kube-openapi/pkg/schemaconv
 # k8s.io/component-helpers v0.23.1 => k8s.io/component-helpers v0.21.0
 =======
 # k8s.io/component-helpers v0.23.1 => k8s.io/component-helpers v0.23.0
+## explicit; go 1.16
 k8s.io/component-helpers/node/util/sysctl
 >>>>>>> upgrade to k8s 1.23 lib
 k8s.io/component-helpers/scheduling/corev1
 k8s.io/component-helpers/scheduling/corev1/nodeaffinity
 k8s.io/component-helpers/storage/volume
 # k8s.io/klog/v2 v2.30.0
-## explicit
+## explicit; go 1.13
 k8s.io/klog/v2
 # k8s.io/kube-openapi v0.0.0-20211115234752-e816edb12b65
+<<<<<<< HEAD
 <<<<<<< HEAD
 >>>>>>> chore: upgrade azure lib
 k8s.io/kube-openapi/pkg/util/proto
@@ -1255,16 +1288,25 @@ k8s.io/kubelet/pkg/apis/stats/v1alpha1
 # k8s.io/kubernetes v1.23.0
 ## explicit; go 1.16
 =======
+=======
+## explicit; go 1.16
+>>>>>>> upgrade snapshot v1beta1 to v1 api
 k8s.io/kube-openapi/pkg/schemaconv
 k8s.io/kube-openapi/pkg/util/proto
 # k8s.io/kubectl v0.0.0 => k8s.io/kubectl v0.23.0
+## explicit; go 1.16
 k8s.io/kubectl/pkg/scale
 k8s.io/kubectl/pkg/util/podutils
 # k8s.io/kubelet v0.23.0 => k8s.io/kubelet v0.23.0
+## explicit; go 1.16
 k8s.io/kubelet/pkg/apis/stats/v1alpha1
 # k8s.io/kubernetes v1.23.0
+<<<<<<< HEAD
 ## explicit
 >>>>>>> upgrade to k8s 1.23 lib
+=======
+## explicit; go 1.16
+>>>>>>> upgrade snapshot v1beta1 to v1 api
 k8s.io/kubernetes/pkg/api/legacyscheme
 k8s.io/kubernetes/pkg/api/service
 k8s.io/kubernetes/pkg/api/v1/pod
@@ -1336,16 +1378,24 @@ k8s.io/kubernetes/test/utils/image
 ## explicit; go 1.16
 =======
 # k8s.io/mount-utils v0.23.0 => k8s.io/mount-utils v0.23.0
+<<<<<<< HEAD
 ## explicit
 >>>>>>> upgrade to k8s 1.23 lib
+=======
+## explicit; go 1.16
+>>>>>>> upgrade snapshot v1beta1 to v1 api
 k8s.io/mount-utils
 <<<<<<< HEAD
 # k8s.io/utils v0.0.0-20211116205334-6203023598ed
 ## explicit; go 1.12
 =======
 # k8s.io/utils v0.0.0-20210930125809-cb0fa318a74b
+<<<<<<< HEAD
 ## explicit
 >>>>>>> chore: upgrade azure lib
+=======
+## explicit; go 1.12
+>>>>>>> upgrade snapshot v1beta1 to v1 api
 k8s.io/utils/buffer
 k8s.io/utils/clock
 k8s.io/utils/clock/testing
@@ -1372,11 +1422,16 @@ sigs.k8s.io/apiserver-network-proxy/konnectivity-client/proto/client
 ## explicit; go 1.17
 =======
 # sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.0.25
+## explicit; go 1.17
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/client
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/proto/client
 # sigs.k8s.io/cloud-provider-azure v0.7.4 => sigs.k8s.io/cloud-provider-azure v0.7.4-0.20220113021309-22837509ca53
+<<<<<<< HEAD
 ## explicit
 >>>>>>> chore: upgrade azure lib
+=======
+## explicit; go 1.17
+>>>>>>> upgrade snapshot v1beta1 to v1 api
 sigs.k8s.io/cloud-provider-azure/pkg/auth
 sigs.k8s.io/cloud-provider-azure/pkg/azureclients
 sigs.k8s.io/cloud-provider-azure/pkg/azureclients/armclient
@@ -1488,7 +1543,11 @@ sigs.k8s.io/json
 sigs.k8s.io/json/internal/golang/encoding/json
 >>>>>>> upgrade to k8s 1.23 lib
 # sigs.k8s.io/structured-merge-diff/v4 v4.1.2
+<<<<<<< HEAD
 >>>>>>> chore: upgrade azure lib
+=======
+## explicit; go 1.13
+>>>>>>> upgrade snapshot v1beta1 to v1 api
 sigs.k8s.io/structured-merge-diff/v4/fieldpath
 sigs.k8s.io/structured-merge-diff/v4/schema
 sigs.k8s.io/structured-merge-diff/v4/typed

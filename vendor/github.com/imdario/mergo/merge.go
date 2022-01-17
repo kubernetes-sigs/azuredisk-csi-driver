@@ -95,18 +95,17 @@ func deepMerge(dst, src reflect.Value, visited map[uintptr]*visit, depth int, co
 				}
 			}
 		} else {
+<<<<<<< HEAD
 			if dst.CanSet() && (isReflectNil(dst) || overwrite) && (!isEmptyValue(src) || overwriteWithEmptySrc) {
+=======
+			if (isReflectNil(dst) || overwrite) && (!isEmptyValue(src) || overwriteWithEmptySrc) {
+>>>>>>> upgrade snapshot v1beta1 to v1 api
 				dst.Set(src)
 			}
 		}
 	case reflect.Map:
 		if dst.IsNil() && !src.IsNil() {
-			if dst.CanSet() {
-				dst.Set(reflect.MakeMap(dst.Type()))
-			} else {
-				dst = src
-				return
-			}
+			dst.Set(reflect.MakeMap(dst.Type()))
 		}
 
 		if src.Kind() != reflect.Map {
@@ -116,6 +115,16 @@ func deepMerge(dst, src reflect.Value, visited map[uintptr]*visit, depth int, co
 			return
 		}
 
+<<<<<<< HEAD
+		if src.Kind() != reflect.Map {
+			if overwrite {
+				dst.Set(src)
+			}
+			return
+		}
+
+=======
+>>>>>>> upgrade snapshot v1beta1 to v1 api
 		for _, key := range src.MapKeys() {
 			srcElement := src.MapIndex(key)
 			if !srcElement.IsValid() {
