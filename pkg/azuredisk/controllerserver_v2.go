@@ -756,7 +756,8 @@ func (d *DriverV2) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRe
 	}
 	tags := make(map[string]*string)
 	for k, v := range customTagsMap {
-		tags[k] = &v
+		value := v
+		tags[k] = &value
 	}
 
 	snapshot := compute.Snapshot{
