@@ -34,7 +34,6 @@
 ### Tips
 
 - make controller only run on master node: `--set controller.runOnMaster=true`
-- enable `fsGroupPolicy` on a k8s 1.20+ cluster: `--set feature.enableFSGroupPolicy=true`
 - set replica of controller as `1`: `--set controller.replicas=1`
 - specify different cloud config secret for the driver:
   - `--set controller.cloudConfigSecretName`
@@ -124,7 +123,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `driver.customUserAgent`                          | custom userAgent                                           | `` |
 | `driver.userAgentSuffix`                          | userAgent suffix                                           | `OSS-helm` |
 | `driver.volumeAttachLimit`                        | maximum number of attachable volumes per node maximum number is defined according to node instance type by default(`-1`)                        | `-1` |
-| `feature.enableFSGroupPolicy`                     | enable `fsGroupPolicy` on a k8s 1.20+ cluster              | `false`                      |
+| `feature.enableFSGroupPolicy`                     | enable `fsGroupPolicy` on a k8s 1.20+ cluster              | `true`                      |
 | `image.baseRepo`                                  | base repository of driver images                           | `mcr.microsoft.com`                      |
 | `image.azuredisk.repository`                      | azuredisk-csi-driver docker image                          | `/oss/csi/azuredisk-csi`                      |
 | `image.azuredisk.tag`                             | azuredisk-csi-driver docker image tag                      | `latest`                                                       |
@@ -187,7 +186,6 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `node.metricsPort`                                | metrics port of csi-azuredisk-node                         |`29605`                                                        |
 | `node.livenessProbe.healthPort `                  | health check port for liveness probe                       | `29603` |
 | `node.logLevel`                                   | node driver log level                                      |`5`                                                           |
-| `snapshot.apiVersion`                             | when using Snapshot, specify `ga` for K8s >= 1.20          | `ga`                                                        |
 | `snapshot.enabled`                                | whether enable snapshot feature                            | `false`                                                        |
 | `snapshot.image.csiSnapshotter.repository`        | csi-snapshotter docker image                               | `/oss/kubernetes-csi/csi-snapshotter`         |
 | `snapshot.image.csiSnapshotter.tag`               | csi-snapshotter docker image tag                           | `v3.0.3`                                                       |
