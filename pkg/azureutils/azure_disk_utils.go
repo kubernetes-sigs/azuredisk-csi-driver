@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
@@ -27,6 +28,7 @@ import (
 	"unicode"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
+	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/pborman/uuid"
 	"google.golang.org/grpc/codes"
@@ -48,7 +50,9 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	azurediskInformers "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
@@ -78,6 +82,32 @@ const (
 )
 
 type ClientOperationMode int
+
+type ManagedDiskParameters struct {
+	AccountType             string
+	CachingMode             v1.AzureDataDiskCachingMode
+	DeviceSettings          map[string]string
+	DiskAccessID            string
+	DiskEncryptionSetID     string
+	DiskIOPSReadWrite       string
+	DiskMBPSReadWrite       string
+	DiskName                string
+	EnableAsyncAttach       *bool
+	EnableBursting          *bool
+	FsType                  string
+	Incremental             bool
+	Location                string
+	LogicalSectorSize       int
+	MaxShares               int
+	NetworkAccessPolicy     string
+	PerfProfile             string
+	ResourceGroup           string
+	Tags                    map[string]string
+	UserAgent               string
+	VolumeContext           map[string]string
+	WriteAcceleratorEnabled string
+	Zoned                   string
+}
 
 const (
 	Cached ClientOperationMode = iota
@@ -120,6 +150,26 @@ func GetDiskLUN(deviceInfo string) (int32, error) {
 		return -1, err
 	}
 	return int32(lun), nil
+}
+
+func GetFStype(attributes map[string]string) string {
+	for k, v := range attributes {
+		switch strings.ToLower(k) {
+		case consts.FsTypeField:
+			return strings.ToLower(v)
+		}
+	}
+	return ""
+}
+
+func GetMaxShares(attributes map[string]string) (int, error) {
+	for k, v := range attributes {
+		switch strings.ToLower(k) {
+		case consts.MaxSharesField:
+			return ParseMaxShares(v)
+		}
+	}
+	return 1, nil // disk is not shared
 }
 
 func NormalizeStorageAccountType(storageAccountType, cloud string, disableAzureStackCloud bool) (compute.DiskStorageAccountTypes, error) {
@@ -170,6 +220,120 @@ func NormalizeNetworkAccessPolicy(networkAccessPolicy string) (compute.NetworkAc
 		}
 	}
 	return "", fmt.Errorf("azureDisk - %s is not supported NetworkAccessPolicy. Supported values are %s", networkAccessPolicy, compute.PossibleNetworkAccessPolicyValues())
+}
+
+func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, error) {
+	var err error
+	if parameters == nil {
+		parameters = make(map[string]string)
+	}
+
+	diskParams := ManagedDiskParameters{
+		DeviceSettings: make(map[string]string),
+		Incremental:    true, //true by default
+		Tags:           make(map[string]string),
+		VolumeContext:  parameters,
+	}
+	for k, v := range parameters {
+		switch strings.ToLower(k) {
+		case consts.SkuNameField:
+			diskParams.AccountType = v
+		case consts.LocationField:
+			diskParams.Location = v
+		case consts.StorageAccountTypeField:
+			diskParams.AccountType = v
+		case consts.CachingModeField:
+			diskParams.CachingMode = v1.AzureDataDiskCachingMode(v)
+		case consts.ResourceGroupField:
+			diskParams.ResourceGroup = v
+		case consts.DiskIOPSReadWriteField:
+			diskParams.DiskIOPSReadWrite = v
+		case consts.DiskMBPSReadWriteField:
+			diskParams.DiskMBPSReadWrite = v
+		case consts.LogicalSectorSizeField:
+			diskParams.LogicalSectorSize, err = strconv.Atoi(v)
+			if err != nil {
+				return diskParams, fmt.Errorf("parse %s failed with error: %v", v, err)
+			}
+		case consts.DiskNameField:
+			diskParams.DiskName = v
+		case consts.DesIDField:
+			diskParams.DiskEncryptionSetID = v
+		case consts.TagsField:
+			customTagsMap, err := util.ConvertTagsToMap(v)
+			if err != nil {
+				return diskParams, err
+			}
+			for k, v := range customTagsMap {
+				diskParams.Tags[k] = v
+			}
+		case azure.WriteAcceleratorEnabled:
+			diskParams.WriteAcceleratorEnabled = v
+		case consts.MaxSharesField:
+			diskParams.MaxShares, err = ParseMaxShares(v)
+			if err != nil {
+				return diskParams, err
+			}
+		case consts.MaxMountReplicaCountField:
+			continue
+		case consts.PvcNameKey:
+			diskParams.Tags[consts.PvcNameTag] = v
+		case consts.PvcNamespaceKey:
+			diskParams.Tags[consts.PvcNamespaceTag] = v
+		case consts.PvNameKey:
+			diskParams.Tags[consts.PvNameTag] = v
+		case consts.PerfProfileField:
+			if !optimization.IsValidPerfProfile(v) {
+				return diskParams, fmt.Errorf("perf profile %s is not supported, supported tuning modes are none and basic", v)
+			}
+			diskParams.PerfProfile = v
+		case consts.NetworkAccessPolicyField:
+			diskParams.NetworkAccessPolicy = v
+		case consts.DiskAccessIDField:
+			diskParams.DiskAccessID = v
+		case consts.EnableBurstingField:
+			if strings.EqualFold(v, consts.TrueValue) {
+				diskParams.EnableBursting = to.BoolPtr(true)
+			}
+		case consts.UserAgentField:
+			diskParams.UserAgent = v
+		// The following parameters are not used by the cloud provisioner, but must be present in the VolumeContext
+		// returned to the caller so that it is included in the parameters passed to Node{Publish|Stage}Volume.
+		case consts.EnableAsyncAttachField:
+			diskParams.VolumeContext[consts.EnableAsyncAttachField] = v
+		case consts.IncrementalField:
+			if v == "false" {
+				diskParams.Incremental = false
+			}
+		case consts.ZonedField:
+			// no op, only for backward compatibility with in-tree driver
+		case consts.FsTypeField:
+			diskParams.FsType = strings.ToLower(v)
+		case consts.KindField:
+			// fix csi migration issue: https://github.com/kubernetes/kubernetes/issues/103433
+			diskParams.VolumeContext[consts.KindField] = string(v1.AzureManagedDisk)
+		default:
+			// accept all device settings params
+			// device settings need to start with azureconstants.DeviceSettingsKeyPrefix
+			if deviceSettings, err := optimization.GetDeviceSettingFromAttribute(k); err == nil {
+				diskParams.DeviceSettings[filepath.Join(azureconstants.DummyBlockDevicePathLinux, deviceSettings)] = v
+			} else {
+				return diskParams, fmt.Errorf("invalid parameter %s in storage class", k)
+			}
+		}
+	}
+	return diskParams, nil
+}
+
+func ParseMaxShares(maxSharesValue string) (int, error) {
+	maxShares, err := strconv.Atoi(maxSharesValue)
+	if err != nil {
+		return 0, fmt.Errorf("parse %s failed with error: %v", maxSharesValue, err)
+	}
+	if maxShares < 1 {
+		return 0, fmt.Errorf("parse %s returned with invalid value: %d", maxSharesValue, maxShares)
+	}
+	return maxShares, nil
 }
 
 // Disk name must begin with a letter or number, end with a letter, number or underscore,
@@ -423,15 +587,36 @@ func PickAvailabilityZone(requirement *csi.TopologyRequirement, region, topology
 	return ""
 }
 
-func IsValidVolumeCapabilities(volCaps []*csi.VolumeCapability) bool {
+func IsValidVolumeCapabilities(volCaps []*csi.VolumeCapability, maxShares int) bool {
+	if ok := IsValidAccessModes(volCaps); !ok {
+		return false
+	}
+	for _, c := range volCaps {
+		blockVolume := c.GetBlock()
+		mountVolume := c.GetMount()
+		accessMode := c.GetAccessMode().GetMode()
+
+		if (blockVolume == nil && mountVolume == nil) ||
+			(blockVolume != nil && mountVolume != nil) {
+			return false
+		}
+		if mountVolume != nil && (accessMode == csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER ||
+			accessMode == csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY ||
+			accessMode == csi.VolumeCapability_AccessMode_MULTI_NODE_SINGLE_WRITER) {
+			return false
+		}
+		if maxShares < 2 && (accessMode == csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER ||
+			accessMode == csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY ||
+			accessMode == csi.VolumeCapability_AccessMode_MULTI_NODE_SINGLE_WRITER) {
+			return false
+		}
+	}
+	return true
+}
+
+func IsValidAccessModes(volCaps []*csi.VolumeCapability) bool {
 	hasSupport := func(cap *csi.VolumeCapability) bool {
 		for _, c := range consts.VolumeCaps {
-			// todo: Block volume support
-			/* compile error here
-			if blk := c.GetBlock(); blk != nil {
-				return false
-			}
-			*/
 			if c.GetMode() == cap.AccessMode.GetMode() {
 				return true
 			}

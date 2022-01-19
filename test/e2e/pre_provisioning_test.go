@@ -135,6 +135,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 								MountPathGenerate: "/mnt/test-",
 								ReadOnly:          true,
 							},
+							VolumeAccessMode: v1.ReadWriteOnce,
 						},
 					},
 					IsWindows: testconsts.IsWindowsCluster,
@@ -177,6 +178,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 								NameGenerate:      "test-volume-",
 								MountPathGenerate: "/mnt/test-",
 							},
+							VolumeAccessMode: v1.ReadWriteOnce,
 						},
 					},
 					IsWindows: testconsts.IsWindowsCluster,
@@ -219,6 +221,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 							NameGenerate:      "test-volume-",
 							MountPathGenerate: "/mnt/test-",
 						},
+						VolumeAccessMode: v1.ReadWriteOnce,
 					},
 				},
 				IsWindows: testconsts.IsWindowsCluster,
@@ -250,10 +253,11 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			reclaimPolicy := v1.PersistentVolumeReclaimRetain
 			volumes := []testtypes.VolumeDetails{
 				{
-					VolumeID:      volumeID,
-					FSType:        "ext4",
-					ClaimSize:     diskSize,
-					ReclaimPolicy: &reclaimPolicy,
+					VolumeID:         volumeID,
+					FSType:           "ext4",
+					ClaimSize:        diskSize,
+					ReclaimPolicy:    &reclaimPolicy,
+					VolumeAccessMode: v1.ReadWriteOnce,
 				},
 			}
 			test := testsuites.PreProvisionedReclaimPolicyTest{
@@ -312,6 +316,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 								NameGenerate:      "test-volume-",
 								MountPathGenerate: "/mnt/test-",
 							},
+							VolumeAccessMode: v1.ReadWriteOnce,
 						},
 					},
 					IsWindows: testconsts.IsWindowsCluster,
@@ -362,6 +367,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 								NameGenerate:      "test-volume-",
 								MountPathGenerate: "/mnt/test-",
 							},
+							VolumeAccessMode: v1.ReadWriteOnce,
 						},
 					},
 					IsWindows: testconsts.IsWindowsCluster,
@@ -407,6 +413,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 								NameGenerate:      "test-volume-",
 								MountPathGenerate: "/mnt/test-",
 							},
+							VolumeAccessMode: v1.ReadWriteOnce,
 						},
 					},
 					IsWindows: testconsts.IsWindowsCluster,

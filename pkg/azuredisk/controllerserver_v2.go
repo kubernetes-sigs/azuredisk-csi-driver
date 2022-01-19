@@ -47,26 +47,28 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 	if len(name) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "CreateVolume Name must be provided")
 	}
-	volumeCaps := req.GetVolumeCapabilities()
-	if len(volumeCaps) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "CreateVolume Volume capabilities must be provided")
-	}
 
 	if acquired := d.volumeLocks.TryAcquire(name); !acquired {
 		return nil, status.Errorf(codes.Aborted, volumeOperationAlreadyExistsFmt, name)
 	}
 	defer d.volumeLocks.Release(name)
 
-	parameters := req.GetParameters()
-	if parameters == nil {
-		parameters = make(map[string]string)
-	}
-
 	mc := metrics.NewMetricContext(d.cloudProvisioner.GetMetricPrefix(), "controller_create_volume", d.cloudProvisioner.GetCloud().ResourceGroup, d.cloudProvisioner.GetCloud().SubscriptionID, d.Name)
 	isOperationSucceeded := false
 	defer func() {
 		mc.ObserveOperationWithResult(isOperationSucceeded)
 	}()
+
+	volumeCaps := req.GetVolumeCapabilities()
+	if len(volumeCaps) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "CreateVolume Volume capabilities must be provided")
+	}
+
+	params := req.GetParameters()
+	maxShares, err := azureutils.GetMaxShares(params)
+	if !azureutils.IsValidVolumeCapabilities(volumeCaps, maxShares) {
+		return nil, status.Error(codes.InvalidArgument, "Volume capability not supported")
+	}
 
 	capRange := &v1alpha1.CapacityRange{
 		RequiredBytes: req.GetCapacityRange().GetRequiredBytes(),
@@ -116,7 +118,7 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 		Preferred: preferredTopology,
 	}
 
-	response, err := d.crdProvisioner.CreateVolume(ctx, name, capRange, volCaps, parameters, req.GetSecrets(), contentVolSource, accessibilityRequirement)
+	response, err := d.crdProvisioner.CreateVolume(ctx, name, capRange, volCaps, params, req.GetSecrets(), contentVolSource, accessibilityRequirement)
 
 	if err != nil {
 		return nil, err
@@ -170,7 +172,7 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 func (d *DriverV2) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
 	volumeID := req.GetVolumeId()
 	if len(volumeID) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in request")
+		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in the request")
 	}
 
 	if err := d.ValidateControllerServiceRequest(csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME); err != nil {
@@ -213,7 +215,12 @@ func (d *DriverV2) ControllerPublishVolume(ctx context.Context, req *csi.Control
 	}
 
 	caps := []*csi.VolumeCapability{volCap}
-	if !azureutils.IsValidVolumeCapabilities(caps) {
+	maxShares, err := azureutils.GetMaxShares(req.GetVolumeContext())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("invalid value specified by maxShares parameter: %s", err.Error()))
+	}
+
+	if !azureutils.IsValidVolumeCapabilities(caps, maxShares) {
 		return nil, status.Error(codes.InvalidArgument, "Volume capability not supported")
 	}
 
@@ -279,22 +286,31 @@ func (d *DriverV2) ControllerUnpublishVolume(ctx context.Context, req *csi.Contr
 func (d *DriverV2) ValidateVolumeCapabilities(ctx context.Context, req *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, error) {
 	diskURI := req.GetVolumeId()
 	if len(diskURI) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in request")
+		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in the request")
 	}
-	if req.GetVolumeCapabilities() == nil {
-		return nil, status.Error(codes.InvalidArgument, "Volume capabilities missing in request")
+	volumeCapabilities := req.GetVolumeCapabilities()
+	if volumeCapabilities == nil {
+		return nil, status.Error(codes.InvalidArgument, "VolumeCapabilities missing in the request")
+	}
+
+	params := req.GetParameters()
+	maxShares, err := azureutils.GetMaxShares(params)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("invalid value specified by maxShares parameter: %s", err.Error()))
+	}
+
+	if !azureutils.IsValidVolumeCapabilities(volumeCapabilities, maxShares) {
+		return &csi.ValidateVolumeCapabilitiesResponse{Message: "VolumeCapabilities are invalid"}, nil
 	}
 
 	if _, err := d.cloudProvisioner.CheckDiskExists(ctx, diskURI); err != nil {
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume not found, failed with error: %v", err))
 	}
 
-	for _, cap := range req.VolumeCapabilities {
-		if cap.GetAccessMode().GetMode() != csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER {
-			return &csi.ValidateVolumeCapabilitiesResponse{Message: ""}, nil
-		}
-	}
-	return &csi.ValidateVolumeCapabilitiesResponse{Message: ""}, nil
+	return &csi.ValidateVolumeCapabilitiesResponse{
+		Confirmed: &csi.ValidateVolumeCapabilitiesResponse_Confirmed{
+			VolumeCapabilities: volumeCapabilities,
+		}}, nil
 }
 
 // ControllerGetCapabilities returns the capabilities of the Controller plugin
@@ -411,7 +427,7 @@ func (d *DriverV2) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest)
 func (d *DriverV2) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
 	diskURI := req.GetVolumeId()
 	if len(diskURI) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in request")
+		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in the request")
 	}
 	if err := d.ValidateControllerServiceRequest(csi.ControllerServiceCapability_RPC_EXPAND_VOLUME); err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid expand volume request: %v", req)
