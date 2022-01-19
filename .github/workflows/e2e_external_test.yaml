@@ -12,7 +12,7 @@ jobs:
       AZURE_SUBSCRIPTION_ID: ${{ secrets.SubscriptionId }}
       AZURE_CLIENT_ID: ${{ secrets.ClientId }}
       AZURE_CLIENT_SECRET: ${{ secrets.ClientSecret }}
-      AZURE_LOCATION: ${{ secrets.E2ELocation }}
+      AZURE_LOCATION: northeurope 
       EXTERNAL_E2E_TEST: true
 
     steps:
