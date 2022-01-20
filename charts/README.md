@@ -132,7 +132,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `image.csiProvisioner.tag`                        | csi-provisioner docker image tag                           | `v3.1.0`                                                       |
 | `image.csiProvisioner.pullPolicy`                 | csi-provisioner image pull policy                          | `IfNotPresent`                                                 |
 | `image.csiAttacher.repository`                    | csi-attacher docker image                                  | `/oss/kubernetes-csi/csi-attacher`            |
-| `image.csiAttacher.tag`                           | csi-attacher docker image tag                              | `v3.3.0`                                                       |
+| `image.csiAttacher.tag`                           | csi-attacher docker image tag                              | `v3.4.0`                                                       |
 | `image.csiAttacher.pullPolicy`                    | csi-attacher image pull policy                             | `IfNotPresent`                                                 |
 | `image.csiResizer.repository`                     | csi-resizer docker image                                   | `/oss/kubernetes-csi/csi-resizer`             |
 | `image.csiResizer.tag`                            | csi-resizer docker image tag                               | `v1.3.0`                                                       |
