@@ -34,10 +34,10 @@ V2: Preview
 
 #### V2
 
-|Driver Version  |Image                                                 | supported k8s version |
-|----------------|------------------------------------------------------|-----------------------|
-|`main_v2` branch|                                                      | 1.21+                 |
-|v2.0.0-alpha.1  |mcr.microsoft.com/k8s/csi/azuredisk-csi:v2.0.0-alpha.1| 1.21+                 |
+|Driver Version  |Image                                                            | supported k8s version |
+|----------------|-----------------------------------------------------------------|-----------------------|
+|`main_v2` branch|                                                                 | 1.21+                 |
+|v2.0.0-alpha.1  |mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v2.0.0-alpha.1| 1.21+                 |
 
 ### Driver parameters
 
