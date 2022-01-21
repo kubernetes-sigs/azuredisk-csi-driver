@@ -993,7 +993,15 @@ func (ss *ScaleSet) EnsureHostInPool(service *v1.Service, nodeName types.NodeNam
 	} else if ss.EnableMultipleStandardLoadBalancers {
 		// need to check the vmSet name when using multiple standard LBs
 		needCheck = true
+
+		// ensure the vm that is supposed to share the primary SLB in the backendpool of the primary SLB
+		if strings.EqualFold(ss.GetPrimaryVMSetName(), vmSetNameOfLB) &&
+			ss.getVMSetNamesSharingPrimarySLB().Has(strings.ToLower(ssName)) {
+			klog.V(4).Infof("EnsureHostInPool: the vm %s in the vmSet %s is supposed to share the primary SLB", nodeName, ssName)
+			needCheck = false
+		}
 	}
+
 	if vmSetNameOfLB != "" && needCheck && !strings.EqualFold(vmSetNameOfLB, ssName) {
 		klog.V(3).Infof("EnsureHostInPool skips node %s because it is not in the ScaleSet %s", vmName, vmSetNameOfLB)
 		return "", "", "", nil, nil
@@ -1330,7 +1338,7 @@ func (ss *ScaleSet) EnsureHostsInPool(service *v1.Service, nodes []*v1.Node, bac
 			ctx, cancel := getContextWithCancel()
 			defer cancel()
 			klog.V(2).Infof("EnsureHostInPool begins to UpdateVMs for VMSS(%s, %s) with new backendPoolID %s", meta.resourceGroup, meta.vmssName, backendPoolID)
-			rerr := ss.VirtualMachineScaleSetVMsClient.UpdateVMs(ctx, meta.resourceGroup, meta.vmssName, update, "network_update")
+			rerr := ss.VirtualMachineScaleSetVMsClient.UpdateVMs(ctx, meta.resourceGroup, meta.vmssName, update, "network_update", ss.getPutVMSSVMBatchSize())
 			if rerr != nil {
 				klog.Errorf("EnsureHostInPool UpdateVMs for VMSS(%s, %s) failed with error %v", meta.resourceGroup, meta.vmssName, rerr.Error())
 				return rerr.Error()
@@ -1592,7 +1600,7 @@ func (ss *ScaleSet) EnsureBackendPoolDeleted(service *v1.Service, backendPoolID,
 			ctx, cancel := getContextWithCancel()
 			defer cancel()
 			klog.V(2).Infof("EnsureBackendPoolDeleted begins to UpdateVMs for VMSS(%s, %s) with backendPoolID %s", meta.resourceGroup, meta.vmssName, backendPoolID)
-			rerr := ss.VirtualMachineScaleSetVMsClient.UpdateVMs(ctx, meta.resourceGroup, meta.vmssName, update, "network_update")
+			rerr := ss.VirtualMachineScaleSetVMsClient.UpdateVMs(ctx, meta.resourceGroup, meta.vmssName, update, "network_update", ss.getPutVMSSVMBatchSize())
 			if rerr != nil {
 				klog.Errorf("EnsureBackendPoolDeleted UpdateVMs for VMSS(%s, %s) failed with error %v", meta.resourceGroup, meta.vmssName, rerr.Error())
 				return rerr.Error()

@@ -90,7 +90,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 				labelSelector := metav1.LabelSelector{MatchLabels: map[string]string{consts.VolumeNameLabel: diskName}}
 				err = wait.PollImmediate(poll, pollTimeout,
 					func() (bool, error) {
-						azVolumeAttachments, listErr := azDiskClient.DiskV1alpha1().AzVolumeAttachments(consts.AzureDiskCrdNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: labels.Set(labelSelector.MatchLabels).String()})
+						azVolumeAttachments, listErr := azDiskClient.DiskV1alpha1().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: labels.Set(labelSelector.MatchLabels).String()})
 						if listErr != nil {
 							if errors.IsNotFound(listErr) {
 								return true, nil
@@ -135,6 +135,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 								MountPathGenerate: "/mnt/test-",
 								ReadOnly:          true,
 							},
+							VolumeAccessMode: v1.ReadWriteOnce,
 						},
 					},
 					IsWindows: testconsts.IsWindowsCluster,
@@ -177,6 +178,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 								NameGenerate:      "test-volume-",
 								MountPathGenerate: "/mnt/test-",
 							},
+							VolumeAccessMode: v1.ReadWriteOnce,
 						},
 					},
 					IsWindows: testconsts.IsWindowsCluster,
@@ -219,6 +221,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 							NameGenerate:      "test-volume-",
 							MountPathGenerate: "/mnt/test-",
 						},
+						VolumeAccessMode: v1.ReadWriteOnce,
 					},
 				},
 				IsWindows: testconsts.IsWindowsCluster,
@@ -250,10 +253,11 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			reclaimPolicy := v1.PersistentVolumeReclaimRetain
 			volumes := []testtypes.VolumeDetails{
 				{
-					VolumeID:      volumeID,
-					FSType:        "ext4",
-					ClaimSize:     diskSize,
-					ReclaimPolicy: &reclaimPolicy,
+					VolumeID:         volumeID,
+					FSType:           "ext4",
+					ClaimSize:        diskSize,
+					ReclaimPolicy:    &reclaimPolicy,
+					VolumeAccessMode: v1.ReadWriteOnce,
 				},
 			}
 			test := testsuites.PreProvisionedReclaimPolicyTest{
@@ -312,6 +316,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 								NameGenerate:      "test-volume-",
 								MountPathGenerate: "/mnt/test-",
 							},
+							VolumeAccessMode: v1.ReadWriteOnce,
 						},
 					},
 					IsWindows: testconsts.IsWindowsCluster,
@@ -362,6 +367,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 								NameGenerate:      "test-volume-",
 								MountPathGenerate: "/mnt/test-",
 							},
+							VolumeAccessMode: v1.ReadWriteOnce,
 						},
 					},
 					IsWindows: testconsts.IsWindowsCluster,
@@ -407,6 +413,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 								NameGenerate:      "test-volume-",
 								MountPathGenerate: "/mnt/test-",
 							},
+							VolumeAccessMode: v1.ReadWriteOnce,
 						},
 					},
 					IsWindows: testconsts.IsWindowsCluster,

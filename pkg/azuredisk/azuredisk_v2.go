@@ -37,9 +37,8 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
-	klogv1 "k8s.io/klog"
-	"k8s.io/klog/klogr"
 	"k8s.io/klog/v2"
+	"k8s.io/klog/v2/klogr"
 	"k8s.io/kubernetes/pkg/volume/util/hostutil"
 
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -56,7 +55,7 @@ import (
 
 var isControllerPlugin = flag.Bool("is-controller-plugin", false, "Boolean flag to indicate this instance is running as controller.")
 var isNodePlugin = flag.Bool("is-node-plugin", false, "Boolean flag to indicate this instance is running as node daemon.")
-var driverObjectNamespace = flag.String("driver-object-namespace", consts.AzureDiskCrdNamespace, "namespace where driver related custom resources are created.")
+var driverObjectNamespace = flag.String("driver-object-namespace", consts.DefaultAzureDiskCrdNamespace, "The namespace where driver related custom resources are created.")
 var heartbeatFrequencyInSec = flag.Int("heartbeat-frequency-in-sec", 30, "Frequency in seconds at which node driver sends heartbeat.")
 var controllerLeaseDurationInSec = flag.Int("lease-duration-in-sec", 15, "The duration that non-leader candidates will wait to force acquire leadership")
 var controllerLeaseRenewDeadlineInSec = flag.Int("lease-renew-deadline-in-sec", 10, "The duration that the acting controlplane will retry refreshing leadership before giving up.")
@@ -254,17 +253,6 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 
 // StartControllersAndDieOnExit starts all the controllers for a certain object partition
 func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
-	// Version of klogr used here has a dependency on klog v1
-	// The klogr -> klogv1 dependency is chained so we can't update klogr to a newer version right now
-	// Using below workaround to redirect klogv1 to use same log files as klogv2
-	// More details @ https://github.com/kubernetes/klog/blob/master/examples/coexist_klog_v1_and_v2/coexist_klog_v1_and_v2.go
-	var klogv1Flags flag.FlagSet
-	klogv1.InitFlags(&klogv1Flags)
-	klogv1Flags.Set("logtostderr", "false") // By default klog v1 logs to stderr, switch that off
-	klogv1.SetOutputBySeverity("INFO", klogWriter{})
-	klogv1.SetOutputBySeverity("ERROR", klogWriter{})
-	klogv1.SetOutputBySeverity("WARNING", klogWriter{})
-	klogv1.SetOutputBySeverity("FATAL", klogWriter{})
 	log := klogr.New().WithName("AzDiskControllerManager").WithValues("namespace", d.objectNamespace).WithValues("partition", d.controllerPartition)
 
 	leaseDuration := time.Duration(d.controllerLeaseDurationInSec) * time.Second
@@ -293,19 +281,19 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 		os.Exit(1)
 	}
 
-	sharedState := controller.NewSharedState(d.Name)
+	sharedState := controller.NewSharedState(d.Name, d.objectNamespace)
 
 	// Setup a new controller to clean-up AzDriverNodes
 	// objects for the nodes which get deleted
 	klog.V(2).Info("Initializing AzDriverNode controller")
-	_, err = controller.NewAzDriverNodeController(mgr, d.crdProvisioner.GetDiskClientSet(), d.objectNamespace, sharedState)
+	_, err = controller.NewAzDriverNodeController(mgr, d.crdProvisioner.GetDiskClientSet(), sharedState)
 	if err != nil {
 		klog.Errorf("Failed to initialize AzDriverNodeController. Error: %v. Exiting application...", err)
 		os.Exit(1)
 	}
 
 	klog.V(2).Info("Initializing AzVolumeAttachment controller")
-	attachReconciler, err := controller.NewAttachDetachController(mgr, d.crdProvisioner.GetDiskClientSet(), d.kubeClient, d.objectNamespace, d.cloudProvisioner, d.crdProvisioner, sharedState)
+	attachReconciler, err := controller.NewAttachDetachController(mgr, d.crdProvisioner.GetDiskClientSet(), d.kubeClient, d.cloudProvisioner, d.crdProvisioner, sharedState)
 	if err != nil {
 		klog.Errorf("Failed to initialize AzVolumeAttachmentController. Error: %v. Exiting application...", err)
 		os.Exit(1)
@@ -319,21 +307,21 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 	}
 
 	klog.V(2).Info("Initializing Replica controller")
-	_, err = controller.NewReplicaController(mgr, d.crdProvisioner.GetDiskClientSet(), d.kubeClient, d.objectNamespace, sharedState)
+	_, err = controller.NewReplicaController(mgr, d.crdProvisioner.GetDiskClientSet(), d.kubeClient, sharedState)
 	if err != nil {
 		klog.Errorf("Failed to initialize ReplicaController. Error: %v. Exiting application...", err)
 		os.Exit(1)
 	}
 
 	klog.V(2).Info("Initializing AzVolume controller")
-	azvReconciler, err := controller.NewAzVolumeController(mgr, d.crdProvisioner.GetDiskClientSet(), d.kubeClient, d.objectNamespace, d.cloudProvisioner, sharedState)
+	azvReconciler, err := controller.NewAzVolumeController(mgr, d.crdProvisioner.GetDiskClientSet(), d.kubeClient, d.cloudProvisioner, sharedState)
 	if err != nil {
 		klog.Errorf("Failed to initialize AzVolumeController. Error: %v. Exiting application...", err)
 		os.Exit(1)
 	}
 
 	klog.V(2).Info("Initializing PV controller")
-	pvReconciler, err := controller.NewPVController(mgr, d.crdProvisioner.GetDiskClientSet(), d.kubeClient, d.objectNamespace, sharedState)
+	pvReconciler, err := controller.NewPVController(mgr, d.crdProvisioner.GetDiskClientSet(), d.kubeClient, sharedState)
 	if err != nil {
 		klog.Errorf("Failed to initialize PVController. Error: %v. Exiting application...", err)
 		os.Exit(1)
@@ -456,29 +444,6 @@ func (d *DriverV2) RunAzDriverNodeHeartbeatLoop(ctx context.Context) {
 			continue
 		}
 	}
-}
-
-// klogWriter is used in SetOutputBySeverity call below to redirect
-// any calls to klogv1 to end up in klogv2
-type klogWriter struct{}
-
-func (kw klogWriter) Write(p []byte) (n int, err error) {
-	if len(p) < DefaultPrefixLength {
-		klog.InfoDepth(OutputCallDepth, string(p))
-		return len(p), nil
-	}
-	if p[0] == 'I' {
-		klog.InfoDepth(OutputCallDepth, string(p[DefaultPrefixLength:]))
-	} else if p[0] == 'W' {
-		klog.WarningDepth(OutputCallDepth, string(p[DefaultPrefixLength:]))
-	} else if p[0] == 'E' {
-		klog.ErrorDepth(OutputCallDepth, string(p[DefaultPrefixLength:]))
-	} else if p[0] == 'F' {
-		klog.FatalDepth(OutputCallDepth, string(p[DefaultPrefixLength:]))
-	} else {
-		klog.InfoDepth(OutputCallDepth, string(p[DefaultPrefixLength:]))
-	}
-	return len(p), nil
 }
 
 func (d *DriverV2) getVolumeLocks() *volumehelper.VolumeLocks {

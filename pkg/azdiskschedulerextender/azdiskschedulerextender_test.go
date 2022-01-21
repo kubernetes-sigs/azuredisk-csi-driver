@@ -115,8 +115,8 @@ func TestFilterAndPrioritizeRequestResponseCode(t *testing.T) {
 	for _, test := range tests {
 		// create fake clients
 		var testClientSet versionedClientSet.Interface = fakeClientSet.NewSimpleClientset(
-			getVolumeAttachment("volumeAttachment", ns, "vol", "node"),
-			getDriverNode("driverNode", ns, "node", true),
+			getVolumeAttachment("volumeAttachment", criNamespace, "vol", "node"),
+			getDriverNode("driverNode", criNamespace, "node", true),
 		)
 
 		// continue with fake client
@@ -161,9 +161,9 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 		{
 			name: "Test simple case of one pod/node/volume",
 			testClientSet: fakeClientSet.NewSimpleClientset(
-				getVolumeAttachment("volumeAttachment", ns, "vol", "node"),
+				getVolumeAttachment("volumeAttachment", criNamespace, "vol", "node"),
 
-				getDriverNode("driverNode", ns, "node", true),
+				getDriverNode("driverNode", criNamespace, "node", true),
 			),
 			schedulerArgs: schedulerapi.ExtenderArgs{
 				Pod: &v1.Pod{
@@ -189,8 +189,8 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 			name: "Test simple case of pod/node/volume with pending azDriverNode",
 			testClientSet: fakeClientSet.NewSimpleClientset(
 
-				getVolumeAttachment("volumeAttachment", ns, "vol", "node"),
-				getDriverNode("driverNode", ns, "node", false),
+				getVolumeAttachment("volumeAttachment", criNamespace, "vol", "node"),
+				getDriverNode("driverNode", criNamespace, "node", false),
 			),
 			schedulerArgs: schedulerapi.ExtenderArgs{
 				Pod: &v1.Pod{
@@ -215,8 +215,8 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 		{
 			name: "Test simple case of single node/volume with no pod volume requests",
 			testClientSet: fakeClientSet.NewSimpleClientset(
-				getVolumeAttachment("volumeAttachment", ns, "vol", "node"),
-				getDriverNode("driverNode", ns, "node", true),
+				getVolumeAttachment("volumeAttachment", criNamespace, "vol", "node"),
+				getDriverNode("driverNode", criNamespace, "node", true),
 			),
 			schedulerArgs: schedulerapi.ExtenderArgs{
 				Pod: &v1.Pod{
@@ -235,9 +235,9 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 		{
 			name: "Test case with 2 nodes and one pod/volume",
 			testClientSet: fakeClientSet.NewSimpleClientset(
-				getVolumeAttachment("volumeAttachment", ns, "vol", "node0"),
-				getDriverNode("driverNode0", ns, "node0", true),
-				getDriverNode("driverNode1", ns, "node1", true),
+				getVolumeAttachment("volumeAttachment", criNamespace, "vol", "node0"),
+				getDriverNode("driverNode0", criNamespace, "node0", true),
+				getDriverNode("driverNode1", criNamespace, "node1", true),
 			),
 			schedulerArgs: schedulerapi.ExtenderArgs{
 				Pod: &v1.Pod{
@@ -277,9 +277,9 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 		{
 			name: "Test case with 1 ready and 1 pending nodes and one pod/volume",
 			testClientSet: fakeClientSet.NewSimpleClientset(
-				getVolumeAttachment("volumeAttachment", ns, "vol", "node1"),
-				getDriverNode("driverNode0", ns, "node0", false),
-				getDriverNode("driverNode1", ns, "node1", true),
+				getVolumeAttachment("volumeAttachment", criNamespace, "vol", "node1"),
+				getDriverNode("driverNode0", criNamespace, "node0", false),
+				getDriverNode("driverNode1", criNamespace, "node1", true),
 			),
 			schedulerArgs: schedulerapi.ExtenderArgs{
 				Pod: &v1.Pod{
@@ -318,10 +318,10 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 		{
 			name: "Test case with 2 nodes/volumes attached to one node",
 			testClientSet: fakeClientSet.NewSimpleClientset(
-				getVolumeAttachment("volumeAttachment0", ns, "vol", "node0"),
-				getVolumeAttachment("volumeAttachment1", ns, "vol", "node0"),
-				getDriverNode("driverNode0", ns, "node0", true),
-				getDriverNode("driverNode1", ns, "node1", true),
+				getVolumeAttachment("volumeAttachment0", criNamespace, "vol", "node0"),
+				getVolumeAttachment("volumeAttachment1", criNamespace, "vol", "node0"),
+				getDriverNode("driverNode0", criNamespace, "node0", true),
+				getDriverNode("driverNode1", criNamespace, "node1", true),
 			),
 			schedulerArgs: schedulerapi.ExtenderArgs{
 				Pod: &v1.Pod{
@@ -361,15 +361,15 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 		{
 			name: "Test case with 3 nodes and 6 volumes attached to multiple nodes",
 			testClientSet: fakeClientSet.NewSimpleClientset(
-				getVolumeAttachment("volumeAttachment0", ns, "vol", "node2"),
-				getVolumeAttachment("volumeAttachment1", ns, "vol", "node0"),
-				getVolumeAttachment("volumeAttachment2", ns, "vol", "node1"),
-				getVolumeAttachment("volumeAttachment3", ns, "vol", "node1"),
-				getVolumeAttachment("volumeAttachment4", ns, "vol", "node1"),
-				getVolumeAttachment("volumeAttachment5", ns, "vol", "node0"),
-				getDriverNode("driverNode0", ns, "node0", true),
-				getDriverNode("driverNode1", ns, "node1", true),
-				getDriverNode("driverNode2", ns, "node2", true),
+				getVolumeAttachment("volumeAttachment0", criNamespace, "vol", "node2"),
+				getVolumeAttachment("volumeAttachment1", criNamespace, "vol", "node0"),
+				getVolumeAttachment("volumeAttachment2", criNamespace, "vol", "node1"),
+				getVolumeAttachment("volumeAttachment3", criNamespace, "vol", "node1"),
+				getVolumeAttachment("volumeAttachment4", criNamespace, "vol", "node1"),
+				getVolumeAttachment("volumeAttachment5", criNamespace, "vol", "node0"),
+				getDriverNode("driverNode0", criNamespace, "node0", true),
+				getDriverNode("driverNode1", criNamespace, "node1", true),
+				getDriverNode("driverNode2", criNamespace, "node2", true),
 			),
 			schedulerArgs: schedulerapi.ExtenderArgs{
 				Pod: &v1.Pod{
@@ -405,15 +405,15 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 		{
 			name: "Test case with 3 nodes, extra volumes and pod with 2 volume requests",
 			testClientSet: fakeClientSet.NewSimpleClientset(
-				getVolumeAttachment("volumeAttachment0", ns, "vol2", "node2"),
-				getVolumeAttachment("volumeAttachment1", ns, "vol", "node0"),
-				getVolumeAttachment("volumeAttachment2", ns, "vol1", "node1"),
-				getVolumeAttachment("volumeAttachment3", ns, "vol", "node1"),
-				getVolumeAttachment("volumeAttachment4", ns, "vol", "node1"),
-				getVolumeAttachment("volumeAttachment5", ns, "vol", "node0"),
-				getDriverNode("driverNode0", ns, "node0", true),
-				getDriverNode("driverNode1", ns, "node1", true),
-				getDriverNode("driverNode2", ns, "node2", true),
+				getVolumeAttachment("volumeAttachment0", criNamespace, "vol2", "node2"),
+				getVolumeAttachment("volumeAttachment1", criNamespace, "vol", "node0"),
+				getVolumeAttachment("volumeAttachment2", criNamespace, "vol1", "node1"),
+				getVolumeAttachment("volumeAttachment3", criNamespace, "vol", "node1"),
+				getVolumeAttachment("volumeAttachment4", criNamespace, "vol", "node1"),
+				getVolumeAttachment("volumeAttachment5", criNamespace, "vol", "node0"),
+				getDriverNode("driverNode0", criNamespace, "node0", true),
+				getDriverNode("driverNode1", criNamespace, "node1", true),
+				getDriverNode("driverNode2", criNamespace, "node2", true),
 			),
 			schedulerArgs: schedulerapi.ExtenderArgs{
 				Pod: &v1.Pod{
@@ -452,15 +452,15 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 		{
 			name: "Test case with 3 nodes and extra volumes attached to multiple nodes",
 			testClientSet: fakeClientSet.NewSimpleClientset(
-				getVolumeAttachment("volumeAttachment0", ns, "vol2", "node2"),
-				getVolumeAttachment("volumeAttachment1", ns, "vol", "node0"),
-				getVolumeAttachment("volumeAttachment2", ns, "vol1", "node1"),
-				getVolumeAttachment("volumeAttachment3", ns, "vol", "node1"),
-				getVolumeAttachment("volumeAttachment4", ns, "vol", "node1"),
-				getVolumeAttachment("volumeAttachment5", ns, "vol", "node0"),
-				getDriverNode("driverNode0", ns, "node0", true),
-				getDriverNode("driverNode1", ns, "node1", true),
-				getDriverNode("driverNode2", ns, "node2", true),
+				getVolumeAttachment("volumeAttachment0", criNamespace, "vol2", "node2"),
+				getVolumeAttachment("volumeAttachment1", criNamespace, "vol", "node0"),
+				getVolumeAttachment("volumeAttachment2", criNamespace, "vol1", "node1"),
+				getVolumeAttachment("volumeAttachment3", criNamespace, "vol", "node1"),
+				getVolumeAttachment("volumeAttachment4", criNamespace, "vol", "node1"),
+				getVolumeAttachment("volumeAttachment5", criNamespace, "vol", "node0"),
+				getDriverNode("driverNode0", criNamespace, "node0", true),
+				getDriverNode("driverNode1", criNamespace, "node1", true),
+				getDriverNode("driverNode2", criNamespace, "node2", true),
 			),
 			schedulerArgs: schedulerapi.ExtenderArgs{
 				Pod: &v1.Pod{
@@ -592,12 +592,12 @@ func TestFilterAndPrioritizeInRandomizedLargeCluster(t *testing.T) {
 				nodeName := fmt.Sprintf("node%d", i)
 				nodes = append(nodes, v1.Node{ObjectMeta: meta.ObjectMeta{Name: nodeName}})
 				nodeNames = append(nodeNames, nodeName)
-				clusterResourses = append(clusterResourses, getDriverNode(fmt.Sprintf("driverNode%d", i), ns, nodeName, true))
+				clusterResourses = append(clusterResourses, getDriverNode(fmt.Sprintf("driverNode%d", i), criNamespace, nodeName, true))
 			}
 
 			// generate volumes and assign to nodes
 			for i := 0; i < numberOfClusterVolumes; i++ {
-				clusterResourses = append(clusterResourses, getVolumeAttachment(fmt.Sprintf("volumeAttachment%d", i), ns, fmt.Sprintf("vol%d", i), fmt.Sprintf("node%d", rand.Intn(5000))))
+				clusterResourses = append(clusterResourses, getVolumeAttachment(fmt.Sprintf("volumeAttachment%d", i), criNamespace, fmt.Sprintf("vol%d", i), fmt.Sprintf("node%d", rand.Intn(5000))))
 			}
 
 			var testClientSet versionedClientSet.Interface = fakeClientSet.NewSimpleClientset(

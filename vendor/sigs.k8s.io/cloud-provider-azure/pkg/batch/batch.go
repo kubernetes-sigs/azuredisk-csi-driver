@@ -22,8 +22,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-logr/logr"
 	"golang.org/x/sync/semaphore"
 	"golang.org/x/time/rate"
+)
+
+const (
+	defaultVerboseLogLevel int = 1
 )
 
 // newEntry returns a new batch entry.
@@ -209,9 +214,9 @@ func (b *batcher) do(
 						time.Sleep(timeToDelay)
 
 						if timeToDelay == delayBeforeStart {
-							processor.logger.Verbosef("Delayed processing of batch %q by %v due to start delay", key, timeToDelay)
+							processor.logger.V(processor.verboseLogLevel).Info("Delayed processing of batch due to start delay", "key", key, "delay", timeToDelay)
 						} else {
-							processor.logger.Warningf("Delayed processing of batch %q by %v due to client-side throttling", key, timeToDelay)
+							processor.logger.Info("Delayed processing of batch due to client-side throttling", "key", key, "delay", timeToDelay)
 							batchRecorder.RecordRateLimitDelay(timeToDelay)
 						}
 					}
@@ -251,7 +256,7 @@ func (b *batcher) do(
 							}
 						} else if numResults != 0 {
 							errResult = fmt.Errorf("result not received for entry (%v)", entry.value)
-							processor.logger.Errorf(errResult.Error())
+							processor.logger.Error(errResult, "Missing result")
 						}
 						entry.setResult(valResult, errResult)
 					}
@@ -328,8 +333,12 @@ func (p *Processor) applyDefaults() {
 		}
 	}
 
-	if p.logger == nil {
-		p.logger = NewStandardLogger()
+	if p.logger.GetSink() == nil {
+		p.logger = logr.Discard()
+	}
+
+	if p.verboseLogLevel == -1 {
+		p.verboseLogLevel = defaultVerboseLogLevel
 	}
 
 	if p.metricsRecorder == nil {
@@ -339,7 +348,7 @@ func (p *Processor) applyDefaults() {
 
 // NewProcessor returns a new batch processor.
 func NewProcessor(fn BatchFunc, options ...ProcessorOption) *Processor {
-	p := &Processor{fn: fn}
+	p := &Processor{fn: fn, verboseLogLevel: -1}
 
 	for _, option := range options {
 		option(p)
@@ -389,9 +398,16 @@ func WithBatchLimits(limit rate.Limit, burst int) ProcessorOption {
 }
 
 // WithLogger sets the logger.
-func WithLogger(l Logger) ProcessorOption {
+func WithLogger(l logr.Logger) ProcessorOption {
 	return func(p *Processor) {
 		p.logger = l
+	}
+}
+
+// WithVerboseLogLevel sets the verbose logging level
+func WithVerboseLogLevel(level int) ProcessorOption {
+	return func(p *Processor) {
+		p.verboseLogLevel = level
 	}
 }
 

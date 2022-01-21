@@ -117,45 +117,6 @@ func TestNodeGetCapabilities(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestGetFStype(t *testing.T) {
-	tests := []struct {
-		options  map[string]string
-		expected string
-	}{
-		{
-			nil,
-			"",
-		},
-		{
-			map[string]string{},
-			"",
-		},
-		{
-			map[string]string{"fstype": ""},
-			"",
-		},
-		{
-			map[string]string{"fstype": "xfs"},
-			"xfs",
-		},
-		{
-			map[string]string{"FSType": "xfs"},
-			"xfs",
-		},
-		{
-			map[string]string{"fstype": "EXT4"},
-			"ext4",
-		},
-	}
-
-	for _, test := range tests {
-		result := getFStype(test.options)
-		if result != test.expected {
-			t.Errorf("input: %q, getFStype result: %s, expected: %s", test.options, result, test.expected)
-		}
-	}
-}
-
 func TestGetMaxDataDiskCount(t *testing.T) {
 	tests := []struct {
 		instanceType string
@@ -700,7 +661,7 @@ func TestNodePublishVolume(t *testing.T) {
 	d, err := NewFakeDriver(t)
 	assert.NoError(t, err)
 
-	volumeCap := csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER}
+	volumeCap := csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_SINGLE_WRITER}
 	publishContext := map[string]string{
 		consts.LUN: "/dev/01",
 	}
@@ -735,21 +696,21 @@ func TestNodePublishVolume(t *testing.T) {
 	}{
 		{
 			desc: "Volume capabilities missing",
-			req:  csi.NodePublishVolumeRequest{},
+			req:  csi.NodePublishVolumeRequest{VolumeId: "vol_1"},
 			expectedErr: testutil.TestError{
 				DefaultError: status.Error(codes.InvalidArgument, "Volume capability missing in request"),
 			},
 		},
 		{
 			desc: "Volume ID missing",
-			req:  csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap}},
+			req:  csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap, AccessType: stdVolCapBlock}},
 			expectedErr: testutil.TestError{
-				DefaultError: status.Error(codes.InvalidArgument, "Volume ID missing in request"),
+				DefaultError: status.Error(codes.InvalidArgument, "Volume ID missing in the request"),
 			},
 		},
 		{
 			desc: "Staging target path missing",
-			req: csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap},
+			req: csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap, AccessType: stdVolCapBlock},
 				VolumeId: "vol_1"},
 			expectedErr: testutil.TestError{
 				DefaultError: status.Error(codes.InvalidArgument, "Staging target not provided"),
@@ -757,7 +718,7 @@ func TestNodePublishVolume(t *testing.T) {
 		},
 		{
 			desc: "Target path missing",
-			req: csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap},
+			req: csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap, AccessType: stdVolCapBlock},
 				VolumeId:          "vol_1",
 				StagingTargetPath: sourceTest},
 			expectedErr: testutil.TestError{
@@ -802,7 +763,7 @@ func TestNodePublishVolume(t *testing.T) {
 		},
 		{
 			desc: "[Error] Mount error mocked by Mount",
-			req: csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap},
+			req: csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap, AccessType: stdVolCap},
 				VolumeId:          "vol_1",
 				TargetPath:        targetTest,
 				StagingTargetPath: errorMountSource,
@@ -815,7 +776,7 @@ func TestNodePublishVolume(t *testing.T) {
 		},
 		{
 			desc: "[Success] Valid request already mounted",
-			req: csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap},
+			req: csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap, AccessType: stdVolCap},
 				VolumeId:          "vol_1",
 				TargetPath:        alreadyMountedTarget,
 				StagingTargetPath: sourceTest,
@@ -825,7 +786,7 @@ func TestNodePublishVolume(t *testing.T) {
 		},
 		{
 			desc: "[Success] Valid request",
-			req: csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap},
+			req: csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap, AccessType: stdVolCap},
 				VolumeId:          "vol_1",
 				TargetPath:        targetTest,
 				StagingTargetPath: sourceTest,
@@ -886,7 +847,7 @@ func TestNodeUnpublishVolume(t *testing.T) {
 			desc: "Volume ID missing",
 			req:  csi.NodeUnpublishVolumeRequest{TargetPath: targetTest},
 			expectedErr: testutil.TestError{
-				DefaultError: status.Error(codes.InvalidArgument, "Volume ID missing in request"),
+				DefaultError: status.Error(codes.InvalidArgument, "Volume ID missing in the request"),
 			},
 		},
 		{
@@ -948,7 +909,6 @@ func TestNodeExpandVolume(t *testing.T) {
 	_ = makeDir(blockVolumePath)
 	_ = makeDir(targetTest)
 	notFoundErr := errors.New("exit status 1")
-	volumeCapWrong := csi.VolumeCapability_AccessMode{Mode: 10}
 
 	stdCapacityRange = &csi.CapacityRange{
 		RequiredBytes: volumehelper.GiBToBytes(15),
@@ -957,9 +917,6 @@ func TestNodeExpandVolume(t *testing.T) {
 
 	invalidPathErr := testutil.TestError{
 		DefaultError: status.Error(codes.NotFound, "failed to determine device path for volumePath [./test]: path \"./test\" does not exist"),
-	}
-	volumeCapacityErr := testutil.TestError{
-		DefaultError: status.Error(codes.InvalidArgument, "VolumeCapability is invalid."),
 	}
 	devicePathErr := testutil.TestError{
 		DefaultError: status.Errorf(codes.NotFound, "could not determine device path(%s), error: %v", targetTest, notFoundErr),
@@ -1040,17 +997,6 @@ func TestNodeExpandVolume(t *testing.T) {
 			expectedErr: testutil.TestError{
 				DefaultError: status.Error(codes.InvalidArgument, "volume path must be provided"),
 			},
-		},
-		{
-			desc: "Volume capacity invalid",
-			req: csi.NodeExpandVolumeRequest{
-				CapacityRange:     stdCapacityRange,
-				VolumePath:        targetTest,
-				VolumeId:          "test",
-				StagingTargetPath: "test",
-				VolumeCapability:  &csi.VolumeCapability{AccessMode: &volumeCapWrong},
-			},
-			expectedErr: volumeCapacityErr,
 		},
 		{
 			desc: "Invalid device path",

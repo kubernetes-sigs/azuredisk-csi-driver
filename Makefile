@@ -20,7 +20,7 @@ IMAGE_NAME ?= azuredisk-csi
 SCHEDULER_EXTENDER_IMAGE_NAME ?= azdiskschedulerextender-csi
 ifneq ($(BUILD_V2), true)
 PLUGIN_NAME = azurediskplugin
-IMAGE_VERSION ?= v1.10.0
+IMAGE_VERSION ?= v1.11.0
 CHART_VERSION ?= latest
 else
 PLUGIN_NAME = azurediskpluginv2
@@ -63,7 +63,7 @@ ALL_OS = linux windows
 ALL_ARCH.linux = amd64 arm64
 ALL_OS_ARCH.linux = $(foreach arch, ${ALL_ARCH.linux}, linux-$(arch))
 ALL_ARCH.windows = amd64
-ALL_OSVERSIONS.windows := 1809 1903 1909 2004 20H2 ltsc2022
+ALL_OSVERSIONS.windows := 1809 20H2 ltsc2022
 ALL_OS_ARCH.windows = $(foreach arch, $(ALL_ARCH.windows), $(foreach osversion, ${ALL_OSVERSIONS.windows}, windows-${osversion}-${arch}))
 ALL_OS_ARCH = $(foreach os, $(ALL_OS), ${ALL_OS_ARCH.${os}})
 
@@ -226,6 +226,9 @@ container-setup:
 ifeq ($(CLOUD), AzureStackCloud)
 	docker run --privileged --name buildx_buildkit_container-builder0 -d --mount type=bind,src=/etc/ssl/certs,dst=/etc/ssl/certs moby/buildkit:latest || true
 endif
+	# enable qemu for arm64 build
+	# https://github.com/docker/buildx/issues/464#issuecomment-741507760
+	docker run --privileged --rm tonistiigi/binfmt --uninstall qemu-aarch64
 	docker run --rm --privileged tonistiigi/binfmt --install all
 
 .PHONY: azdiskschedulerextender-all

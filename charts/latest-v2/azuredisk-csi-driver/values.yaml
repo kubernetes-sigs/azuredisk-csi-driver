@@ -130,6 +130,7 @@ feature:
 
 driver:
   name: disk.csi.azure.com
+  objectNamespace: "azure-disk-csi" # The namespace where driver related custom resources are created
   # maximum number of attachable volumes per node,
   # maximum number is defined according to node instance type by default(-1)
   volumeAttachLimit: -1

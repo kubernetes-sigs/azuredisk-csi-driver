@@ -27,7 +27,6 @@ import (
 	"k8s.io/klog/v2"
 
 	azClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
-	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -99,7 +98,7 @@ func (r *ReconcilePod) createReplicas(ctx context.Context, podKey string) error 
 			volume,
 			pod,
 			func() error {
-				azVolume, err := azureutils.GetAzVolume(ctx, r.client, r.azVolumeClient, volume, consts.AzureDiskCrdNamespace, true)
+				azVolume, err := azureutils.GetAzVolume(ctx, r.client, r.azVolumeClient, volume, r.controllerSharedState.objectNamespace, true)
 				if err != nil {
 					klog.V(5).Infof("Error getting azvolumes for pod %s. Error: %v", podKey, err)
 					return err

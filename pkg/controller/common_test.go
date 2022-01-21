@@ -57,7 +57,7 @@ var (
 	testManagedDiskURI0 = getTestDiskURI(testPersistentVolume0Name)
 	testManagedDiskURI1 = getTestDiskURI(testPersistentVolume1Name)
 
-	testNamespace = consts.AzureDiskCrdNamespace
+	testNamespace = consts.DefaultAzureDiskCrdNamespace
 
 	testNode0Name = "node-0"
 	testNode1Name = "node-1"
@@ -323,7 +323,7 @@ func createPod(podNamespace, podName string, pvcs []string) v1.Pod {
 }
 
 func initState(objs ...runtime.Object) (c *SharedState) {
-	c = NewSharedState(consts.DefaultDriverName)
+	c = NewSharedState(consts.DefaultDriverName, consts.DefaultAzureDiskCrdNamespace)
 
 	for _, obj := range objs {
 		switch target := obj.(type) {

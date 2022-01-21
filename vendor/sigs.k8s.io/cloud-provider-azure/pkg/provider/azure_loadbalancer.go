@@ -387,7 +387,7 @@ func (az *Cloud) safeDeleteLoadBalancer(lb network.LoadBalancer, clusterName, vm
 		}
 	}
 
-	klog.V(2).Infof("safeDeleteLoadBalancer: deleting LB %s because the corresponding vmSet is supposed to be in the primary SLB", to.String(lb.Name))
+	klog.V(2).Infof("safeDeleteLoadBalancer: deleting LB %s", to.String(lb.Name))
 	rerr := az.DeleteLB(service, to.String(lb.Name))
 	if rerr != nil {
 		return rerr
@@ -395,28 +395,6 @@ func (az *Cloud) safeDeleteLoadBalancer(lb network.LoadBalancer, clusterName, vm
 	_ = az.lbCache.Delete(to.String(lb.Name))
 
 	return nil
-}
-
-func extractBackendIPConfigurationIDsFromLB(lb network.LoadBalancer, lbBackendPoolName string) []string {
-	result := make([]string, 0)
-	if lb.LoadBalancerPropertiesFormat != nil &&
-		lb.BackendAddressPools != nil {
-		for i := 0; i < len(*lb.BackendAddressPools); i++ {
-			backendPool := (*lb.BackendAddressPools)[i]
-			if strings.EqualFold(to.String(backendPool.Name), lbBackendPoolName) {
-				if backendPool.BackendAddressPoolPropertiesFormat != nil &&
-					backendPool.BackendIPConfigurations != nil {
-					for _, ipConfiguration := range *backendPool.BackendIPConfigurations {
-						if ipConfiguration.ID != nil {
-							result = append(result, to.String(ipConfiguration.ID))
-						}
-					}
-				}
-			}
-		}
-	}
-
-	return result
 }
 
 // reconcileSharedLoadBalancer deletes the dedicated SLBs of the non-primary vmSets. There are
@@ -427,9 +405,8 @@ func extractBackendIPConfigurationIDsFromLB(lb network.LoadBalancer, lbBackendPo
 // It runs only once everytime the cloud controller manager restarts.
 func (az *Cloud) reconcileSharedLoadBalancer(service *v1.Service, clusterName string, nodes []*v1.Node) ([]network.LoadBalancer, error) {
 	var (
-		primarySLBs, existingLBs []network.LoadBalancer
-		changed                  bool
-		err                      error
+		existingLBs []network.LoadBalancer
+		err         error
 	)
 
 	existingLBs, err = az.ListManagedLBs(service, nodes, clusterName)
@@ -452,15 +429,12 @@ func (az *Cloud) reconcileSharedLoadBalancer(service *v1.Service, clusterName st
 		return existingLBs, nil
 	}
 
-	lbBackendPoolName := getBackendPoolName(clusterName, service)
 	lbNamesToBeDeleted := sets.NewString()
-	// 1: delete unwanted LBs
+	// delete unwanted LBs
 	for _, lb := range existingLBs {
-		lbNamePrefix := strings.TrimSuffix(to.String(lb.Name), consts.InternalLoadBalancerNameSuffix)
-
 		// skip the internal or external primary load balancer
+		lbNamePrefix := strings.TrimSuffix(to.String(lb.Name), consts.InternalLoadBalancerNameSuffix)
 		if strings.EqualFold(lbNamePrefix, clusterName) {
-			primarySLBs = append(primarySLBs, lb)
 			continue
 		}
 
@@ -468,6 +442,7 @@ func (az *Cloud) reconcileSharedLoadBalancer(service *v1.Service, clusterName st
 		// the vmSet is supposed to have dedicated SLBs
 		vmSetName := strings.ToLower(az.mapLoadBalancerNameToVMSet(to.String(lb.Name), clusterName))
 		if az.EnableMultipleStandardLoadBalancers && !az.getVMSetNamesSharingPrimarySLB().Has(vmSetName) {
+			klog.V(4).Infof("reconcileSharedLoadBalancer: skip deleting the LB %s because the vmSet %s needs a dedicated SLB", to.String(lb.Name), vmSetName)
 			continue
 		}
 
@@ -475,6 +450,7 @@ func (az *Cloud) reconcileSharedLoadBalancer(service *v1.Service, clusterName st
 		// If the VMSet name is in az.NodePoolsWithoutDedicatedSLB, we should
 		// decouple the VMSet from the lb and delete the lb. Then adding the VMSet
 		// to the backend pool of the primary slb.
+		klog.V(2).Infof("reconcileSharedLoadBalancer: deleting LB %s because the corresponding vmSet is supposed to be in the primary SLB", to.String(lb.Name))
 		rerr := az.safeDeleteLoadBalancer(lb, clusterName, vmSetName, service)
 		if rerr != nil {
 			return nil, rerr.Error()
@@ -483,91 +459,15 @@ func (az *Cloud) reconcileSharedLoadBalancer(service *v1.Service, clusterName st
 		// remove the deleted lb from the list and construct a new primary
 		// lb, so that getServiceLoadBalancer doesn't have to call list api again
 		lbNamesToBeDeleted.Insert(strings.ToLower(to.String(lb.Name)))
-		changed = true
 	}
 
-	if !changed {
-		klog.V(4).Infof("reconcileSharedLoadBalancer: no changes made, return now")
-		return existingLBs, nil
-	}
-
-	vmSetsToBeMovedToPrimarySLB := sets.NewString()
-	ipConfigIDsToBeAddedToPrimarySLB := sets.NewString()
-	// 2: add nodes to the backend pool of the primary SLBs
 	for i := len(existingLBs) - 1; i >= 0; i-- {
 		lb := existingLBs[i]
 		if !lbNamesToBeDeleted.Has(strings.ToLower(to.String(lb.Name))) {
 			continue
 		}
-
-		vmSetName := strings.ToLower(az.mapLoadBalancerNameToVMSet(to.String(lb.Name), clusterName))
-		vmSetsToBeMovedToPrimarySLB.Insert(vmSetName)
-		isInternalLB := strings.HasSuffix(to.String(lb.Name), consts.InternalLoadBalancerNameSuffix)
-		primarySLBName := clusterName
-		if isInternalLB {
-			primarySLBName = fmt.Sprintf("%s%s", clusterName, consts.InternalLoadBalancerNameSuffix)
-		}
-		primaryLBBackendPoolID := az.getBackendPoolID(primarySLBName, az.getLoadBalancerResourceGroup(), getBackendPoolName(clusterName, service))
-
-		klog.V(2).Infof("reconcileSharedLoadBalancer: binding the vmSet %s to the backend pool %s", vmSetName, primaryLBBackendPoolID)
-		if strings.EqualFold(az.LoadBalancerBackendPoolConfigurationType, consts.LoadBalancerBackendPoolConfigurationTypeNodeIPConfiguration) {
-			err = az.VMSet.EnsureHostsInPool(service, nodes, primaryLBBackendPoolID, vmSetName)
-			if err != nil {
-				return nil, fmt.Errorf("reconcileSharedLoadBalancer: failed to EnsureHostsInPool: %w", err)
-			}
-
-			for _, id := range extractBackendIPConfigurationIDsFromLB(lb, lbBackendPoolName) {
-				ipConfigIDsToBeAddedToPrimarySLB.Insert(id)
-			}
-		}
-
 		// remove the deleted LB from the list
 		existingLBs = append(existingLBs[:i], existingLBs[i+1:]...)
-	}
-
-	for _, primarySLB := range primarySLBs {
-		if primarySLB.LoadBalancerPropertiesFormat != nil &&
-			primarySLB.BackendAddressPools != nil {
-			for i := 0; i < len(*primarySLB.BackendAddressPools); i++ {
-				if strings.EqualFold(to.String((*primarySLB.BackendAddressPools)[i].Name), lbBackendPoolName) {
-					if az.isLBBackendPoolTypeNodeIPConfig() {
-						backendPoolIPConfigs := (*primarySLB.BackendAddressPools)[i].BackendIPConfigurations
-						for _, id := range ipConfigIDsToBeAddedToPrimarySLB.List() {
-							*backendPoolIPConfigs = append(*backendPoolIPConfigs, network.InterfaceIPConfiguration{
-								ID: to.StringPtr(id),
-							})
-						}
-					} else if az.isLBBackendPoolTypeNodeIP() {
-						backendPool := (*primarySLB.BackendAddressPools)[i]
-						if backendPool.LoadBalancerBackendAddresses == nil {
-							lbBackendPoolAddresses := make([]network.LoadBalancerBackendAddress, 0)
-							backendPool.LoadBalancerBackendAddresses = &lbBackendPoolAddresses
-						}
-
-						if err := az.LoadBalancerBackendPool.EnsureHostsInPool(service, nodes, "", "", clusterName, to.String(primarySLB.Name), backendPool); err != nil {
-							return nil, fmt.Errorf("reconcileSharedLoadBalancer: failed to EnsureHostsInPool: %w", err)
-						}
-
-						(*primarySLB.BackendAddressPools)[i] = backendPool
-					}
-
-					break
-				}
-			}
-		}
-	}
-
-	for i, existingLB := range existingLBs {
-		for _, primarySLB := range primarySLBs {
-			if strings.EqualFold(to.String(existingLB.Name), to.String(primarySLB.Name)) {
-				// Proactively disable the etag to prevent etag mismatch error when putting lb later.
-				// This could happen because when we remove the hosts from the lb, the nrp
-				// would put the lb to remove the backend references as well.
-				primarySLB.Etag = nil
-
-				existingLBs[i] = primarySLB
-			}
-		}
 	}
 
 	return existingLBs, nil
@@ -1296,6 +1196,87 @@ func getIdleTimeout(s *v1.Service) (*int32, error) {
 	return &to32, nil
 }
 
+// getProbeIntervalInSecondsAndNumOfProbe parse probeInterval and numberOfProbes from the annotations of service object.
+func getProbeIntervalInSecondsAndNumOfProbe(s *v1.Service) (*int32, *int32, error) {
+	// get number of probes
+	numberOfProbes, err := getInt32FromAnnotations(s.Annotations, consts.ServiceAnnotationLoadBalancerHealthProbeNumOfProbe, func(val *int32) error {
+		//minimum number of unhealthy responses is 2. ref: https://docs.microsoft.com/en-us/rest/api/load-balancer/load-balancers/create-or-update#probe
+		const (
+			MinimumNumOfProbe = 2
+		)
+		if *val < MinimumNumOfProbe {
+			return fmt.Errorf("the minimum value of %s is %d", consts.ServiceAnnotationLoadBalancerHealthProbeNumOfProbe, MinimumNumOfProbe)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	// if numberOfProbes is not set, set it to default instead ref: https://docs.microsoft.com/en-us/rest/api/load-balancer/load-balancers/create-or-update#probe
+	if numberOfProbes == nil {
+		numberOfProbes = to.Int32Ptr(2)
+	}
+
+	probeInterval, err := getInt32FromAnnotations(s.Annotations, consts.ServiceAnnotationLoadBalancerHealthProbeInterval, func(val *int32) error {
+		//minimum probe interval in seconds is 5. ref: https://docs.microsoft.com/en-us/rest/api/load-balancer/load-balancers/create-or-update#probe
+		const (
+			MinimumProbeIntervalInSecond = 5
+		)
+		if *val < 5 {
+			return fmt.Errorf("the minimum value of %s is %d", consts.ServiceAnnotationLoadBalancerHealthProbeInterval, MinimumProbeIntervalInSecond)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	// if probeInterval is not set, set it to default instead ref: https://docs.microsoft.com/en-us/rest/api/load-balancer/load-balancers/create-or-update#probe
+	if probeInterval == nil {
+		probeInterval = to.Int32Ptr(5)
+	}
+
+	// total probe should be less than 120 seconds ref: https://docs.microsoft.com/en-us/rest/api/load-balancer/load-balancers/create-or-update#probe
+	if (*probeInterval)*(*numberOfProbes) >= 120 {
+		return nil, nil, fmt.Errorf("total probe should be less than 120, please adjust interval and number of probe accordingly")
+	}
+
+	return probeInterval, numberOfProbes, nil
+}
+
+// Int32BusinessValidator is validator function which is invoked after values are parsed in order to make sure input value meets the businees need.
+type Int32BusinessValidator func(*int32) error
+
+// getInt32FromAnnotations parse integer value from annotation and return an reference to int32 object
+func getInt32FromAnnotations(annotations map[string]string, key string, businessValidator ...Int32BusinessValidator) (*int32, error) {
+	if len(key) <= 0 {
+		return nil, fmt.Errorf("annotation key should not be empty")
+	}
+	if annotations == nil {
+		// Return a nil here as this will set the value to the azure default
+		return nil, nil
+	}
+	val, ok := annotations[key]
+	if !ok {
+		// Return a nil here as this will set the value to the azure default
+		return nil, nil
+	}
+	errKey := fmt.Errorf("%s value must be a whole number", key)
+	toInt, err := strconv.ParseInt(val, 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing %s value: %w: %v", key, err, errKey)
+	}
+	parsedInt := int32(toInt)
+	for _, validator := range businessValidator {
+		if validator != nil {
+			err := validator(&parsedInt)
+			if err != nil {
+				return nil, fmt.Errorf("error parsing %s value: %w", key, err)
+			}
+		}
+	}
+	return &parsedInt, nil
+}
+
 func (az *Cloud) isFrontendIPChanged(clusterName string, config network.FrontendIPConfiguration, service *v1.Service, lbFrontendIPConfigName string) (bool, error) {
 	isServiceOwnsFrontendIP, isPrimaryService, err := az.serviceOwnsFrontendIP(config, service)
 	if err != nil {
@@ -2011,6 +1992,10 @@ func (az *Cloud) getExpectedLBRules(
 		}
 
 		probeProtocol, requestPath := parseHealthProbeProtocolAndPath(service)
+		probeInterval, numberOfProbe, err := getProbeIntervalInSecondsAndNumOfProbe(service)
+		if err != nil {
+			return expectedProbes, expectedRules, err
+		}
 		if servicehelpers.NeedsHealthCheck(service) {
 			podPresencePath, podPresencePort := servicehelpers.GetServiceHealthCheckPathPort(service)
 			if probeProtocol == "" {
@@ -2028,8 +2013,8 @@ func (az *Cloud) getExpectedLBRules(
 					RequestPath:       to.StringPtr(requestPath),
 					Protocol:          network.ProbeProtocol(probeProtocol),
 					Port:              to.Int32Ptr(podPresencePort),
-					IntervalInSeconds: to.Int32Ptr(5),
-					NumberOfProbes:    to.Int32Ptr(2),
+					IntervalInSeconds: probeInterval,
+					NumberOfProbes:    numberOfProbe,
 				},
 			})
 		} else if port.Protocol != v1.ProtocolUDP && port.Protocol != v1.ProtocolSCTP {
@@ -2051,8 +2036,8 @@ func (az *Cloud) getExpectedLBRules(
 					Protocol:          network.ProbeProtocol(probeProtocol),
 					RequestPath:       actualPath,
 					Port:              to.Int32Ptr(port.NodePort),
-					IntervalInSeconds: to.Int32Ptr(5),
-					NumberOfProbes:    to.Int32Ptr(2),
+					IntervalInSeconds: probeInterval,
+					NumberOfProbes:    numberOfProbe,
 				},
 			})
 		}

@@ -222,6 +222,7 @@ func newLockableEntry(entry interface{}) *lockableEntry {
 
 type SharedState struct {
 	driverName            string
+	objectNamespace       string
 	podToClaimsMap        sync.Map
 	claimToPodsMap        sync.Map
 	volumeToClaimMap      sync.Map
@@ -231,8 +232,8 @@ type SharedState struct {
 	volumeOperationQueues sync.Map
 }
 
-func NewSharedState(driverName string) *SharedState {
-	return &SharedState{driverName: driverName}
+func NewSharedState(driverName, objectNamespace string) *SharedState {
+	return &SharedState{driverName: driverName, objectNamespace: objectNamespace}
 }
 
 func (c *SharedState) createOperationQueue(volumeName string) {
@@ -644,7 +645,7 @@ func getRankedNodesForReplicaAttachments(ctx context.Context, azr azReconciler, 
 
 	var volumeNodeSelectors []*nodeaffinity.NodeSelector
 	for _, volume := range volumes {
-		azVolume, err := azureutils.GetAzVolume(ctx, azr.getClient(), azr.getAzClient(), volume, consts.AzureDiskCrdNamespace, true)
+		azVolume, err := azureutils.GetAzVolume(ctx, azr.getClient(), azr.getAzClient(), volume, azr.getSharedState().objectNamespace, true)
 		if err != nil {
 			klog.V(5).Infof("AzVolume for volume %s is not found.", volume)
 			return nil, err
@@ -945,10 +946,10 @@ func createReplicaAzVolumeAttachment(ctx context.Context, azr azReconciler, volu
 	// creating azvolumeattachment
 	volumeName := strings.ToLower(diskName)
 	replicaName := azureutils.GetAzVolumeAttachmentName(volumeName, node)
-	_, err = azr.getAzClient().DiskV1alpha1().AzVolumeAttachments(consts.AzureDiskCrdNamespace).Create(ctx, &v1alpha1.AzVolumeAttachment{
+	_, err = azr.getAzClient().DiskV1alpha1().AzVolumeAttachments(azr.getSharedState().objectNamespace).Create(ctx, &v1alpha1.AzVolumeAttachment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      replicaName,
-			Namespace: consts.AzureDiskCrdNamespace,
+			Namespace: azr.getSharedState().objectNamespace,
 			Labels: map[string]string{
 				consts.NodeNameLabel:   node,
 				consts.VolumeNameLabel: volumeName,
@@ -982,7 +983,7 @@ func cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azr azReconciler, az
 	}
 	labelSelector := labels.NewSelector().Add(*volRequirement)
 
-	attachments, err := azr.getAzClient().DiskV1alpha1().AzVolumeAttachments(consts.AzureDiskCrdNamespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})
+	attachments, err := azr.getAzClient().DiskV1alpha1().AzVolumeAttachments(azr.getSharedState().objectNamespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})
 	if err != nil {
 		if apiErrors.IsNotFound(err) {
 			return nil, nil
@@ -1014,7 +1015,7 @@ func cleanUpAzVolumeAttachmentByNode(ctx context.Context, azr azReconciler, azDr
 	}
 	labelSelector := labels.NewSelector().Add(*nodeRequirement)
 
-	attachments, err := azr.getAzClient().DiskV1alpha1().AzVolumeAttachments(consts.AzureDiskCrdNamespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})
+	attachments, err := azr.getAzClient().DiskV1alpha1().AzVolumeAttachments(azr.getSharedState().objectNamespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})
 	if err != nil {
 		if apiErrors.IsNotFound(err) {
 			return attachments, nil
@@ -1068,7 +1069,7 @@ func cleanUpAzVolumeAttachments(ctx context.Context, azr azReconciler, attachmen
 			klog.Errorf("failed to delete AzVolumeAttachment (%s): %v", attachment.Name, err)
 			return err
 		}
-		if err := azr.getAzClient().DiskV1alpha1().AzVolumeAttachments(consts.AzureDiskCrdNamespace).Delete(ctx, attachment.Name, metav1.DeleteOptions{}); err != nil {
+		if err := azr.getAzClient().DiskV1alpha1().AzVolumeAttachments(azr.getSharedState().objectNamespace).Delete(ctx, attachment.Name, metav1.DeleteOptions{}); err != nil {
 			klog.Errorf("failed to delete AzVolumeAttachment (%s): %v", attachment.Name, err)
 			return err
 		}

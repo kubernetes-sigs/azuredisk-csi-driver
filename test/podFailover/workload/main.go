@@ -24,7 +24,7 @@ import (
 	"strconv"
 	"time"
 
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 )
 
 var mountPath = flag.String("mount-path", "", "The path of the file where timestamps will be logged")

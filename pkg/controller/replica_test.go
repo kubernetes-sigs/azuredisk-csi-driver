@@ -52,7 +52,6 @@ func NewTestReplicaController(controller *gomock.Controller, namespace string, o
 		client:                     mockclient.NewMockClient(controller),
 		azVolumeClient:             diskfakes.NewSimpleClientset(diskv1alpha1Objs...),
 		kubeClient:                 fakev1.NewSimpleClientset(kubeObjs...),
-		namespace:                  namespace,
 		cleanUpMap:                 sync.Map{},
 		controllerSharedState:      controllerSharedState,
 		timeUntilGarbageCollection: testTimeUntilGarbageCollection,

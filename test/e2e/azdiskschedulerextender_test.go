@@ -33,7 +33,7 @@ import (
 )
 
 const (
-	namespace     = consts.AzureDiskCrdNamespace
+	namespace     = consts.DefaultAzureDiskCrdNamespace
 	schedulerName = "csi-azuredisk-scheduler-extender"
 )
 

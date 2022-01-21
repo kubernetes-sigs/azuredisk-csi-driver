@@ -605,17 +605,7 @@ func TestCreateVolume(t *testing.T) {
 			parameter: map[string]string{
 				"maxShares": "NaN",
 			},
-			expectedError: status.Error(codes.InvalidArgument, "parse NaN failed with error: strconv.Atoi: parsing \"NaN\": invalid syntax"),
-		},
-		{
-			description: "[Failure] Returns an error when an unsupported access mode is specified",
-			diskName:    "disk-with-invalid-access-mode",
-			capabilities: []v1alpha1.VolumeCapability{
-				{
-					AccessMode: v1alpha1.VolumeCapabilityAccessModeMultiNodeMultiWriter,
-				},
-			},
-			expectedError: status.Error(codes.InvalidArgument, fmt.Sprintf("Volume capability(%v) not supported", v1alpha1.VolumeCapabilityAccessModeMultiNodeMultiWriter)),
+			expectedError: status.Error(codes.InvalidArgument, "Failed parsing disk parameters: parse NaN failed with error: strconv.Atoi: parsing \"NaN\": invalid syntax"),
 		},
 		{
 			description: "[Failure] Returns an error when an unsupported storage account type is specified",

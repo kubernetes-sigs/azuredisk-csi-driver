@@ -66,7 +66,6 @@ type ReconcileAttachDetach struct {
 	client                client.Client
 	azVolumeClient        azVolumeClientSet.Interface
 	kubeClient            kubeClientSet.Interface
-	namespace             string
 	crdDetacher           CrdDetacher
 	cloudDiskAttacher     CloudDiskAttachDetacher
 	controllerSharedState *SharedState
@@ -177,7 +176,7 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 			currentAttachmentName := azureutils.GetAzVolumeAttachmentName(diskName, currentNodeName)
 
 			// check if AzVolumeAttachment exists for the existing attachment
-			_, err = r.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(r.namespace).Get(cloudCtx, currentAttachmentName, metav1.GetOptions{})
+			_, err = r.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(r.controllerSharedState.objectNamespace).Get(cloudCtx, currentAttachmentName, metav1.GetOptions{})
 			var detachErr error
 			if errors.IsNotFound(err) {
 				// AzVolumeAttachment doesn't exist so we only need to detach disk from cloud
@@ -554,7 +553,7 @@ func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, 
 			azVolumeAttachmentName := azureutils.GetAzVolumeAttachmentName(diskName, nodeName)
 
 			// check if the CRI exists already
-			_, err = azureutils.GetAzVolumeAttachment(ctx, r.client, r.azVolumeClient, azVolumeAttachmentName, r.namespace, false)
+			_, err = azureutils.GetAzVolumeAttachment(ctx, r.client, r.azVolumeClient, azVolumeAttachmentName, r.controllerSharedState.objectNamespace, false)
 			if errors.IsNotFound(err) {
 				klog.Infof("Recreating AzVolumeAttachment(%s)", azVolumeAttachmentName)
 				azVolumeAttachment := v1alpha1.AzVolumeAttachment{
@@ -582,7 +581,7 @@ func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, 
 						Role: v1alpha1.PrimaryRole,
 					}
 				}
-				_, err := r.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(r.namespace).Create(ctx, &azVolumeAttachment, metav1.CreateOptions{})
+				_, err := r.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(r.controllerSharedState.objectNamespace).Create(ctx, &azVolumeAttachment, metav1.CreateOptions{})
 				if err != nil {
 					klog.Errorf("failed to create AzVolumeAttachment (%s) for volume (%s) and node (%s): %v", azVolumeAttachmentName, *volumeName, nodeName, err)
 					return syncedVolumeAttachments, volumesToSync, err
@@ -600,7 +599,7 @@ func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, 
 
 func (r *ReconcileAttachDetach) recoverAzVolumeAttachment(ctx context.Context, recoveredAzVolumeAttachments *sync.Map) error {
 	// list all AzVolumeAttachment
-	azVolumeAttachments, err := r.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(r.namespace).List(ctx, metav1.ListOptions{})
+	azVolumeAttachments, err := r.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(r.controllerSharedState.objectNamespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		klog.Errorf("failed to get list of existing AzVolumeAttachment CRI in controller recovery stage")
 		return err
@@ -662,12 +661,11 @@ func (r *ReconcileAttachDetach) recoverAzVolumeAttachment(ctx context.Context, r
 	return nil
 }
 
-func NewAttachDetachController(mgr manager.Manager, azVolumeClient azVolumeClientSet.Interface, kubeClient kubeClientSet.Interface, namespace string, cloudDiskAttacher CloudDiskAttachDetacher, crdDetacher CrdDetacher, controllerSharedState *SharedState) (*ReconcileAttachDetach, error) {
+func NewAttachDetachController(mgr manager.Manager, azVolumeClient azVolumeClientSet.Interface, kubeClient kubeClientSet.Interface, cloudDiskAttacher CloudDiskAttachDetacher, crdDetacher CrdDetacher, controllerSharedState *SharedState) (*ReconcileAttachDetach, error) {
 	reconciler := ReconcileAttachDetach{
 		client:                mgr.GetClient(),
 		azVolumeClient:        azVolumeClient,
 		kubeClient:            kubeClient,
-		namespace:             namespace,
 		crdDetacher:           crdDetacher,
 		cloudDiskAttacher:     cloudDiskAttacher,
 		stateLock:             &sync.Map{},

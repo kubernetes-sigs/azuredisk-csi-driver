@@ -142,7 +142,7 @@ func TestCreateVolume(t *testing.T) {
 					Parameters:         mp,
 				}
 				_, err := d.CreateVolume(context.Background(), req)
-				expectedErr := status.Error(codes.InvalidArgument, "parse aaa failed with error: strconv.Atoi: parsing \"aaa\": invalid syntax")
+				expectedErr := status.Error(codes.InvalidArgument, "Failed parsing disk parameters: parse aaa failed with error: strconv.Atoi: parsing \"aaa\": invalid syntax")
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
@@ -160,7 +160,7 @@ func TestCreateVolume(t *testing.T) {
 					Parameters:         mp,
 				}
 				_, err := d.CreateVolume(context.Background(), req)
-				expectedErr := status.Error(codes.InvalidArgument, "parse aaa failed with error: strconv.Atoi: parsing \"aaa\": invalid syntax")
+				expectedErr := status.Error(codes.InvalidArgument, "Failed parsing disk parameters: parse aaa failed with error: strconv.Atoi: parsing \"aaa\": invalid syntax")
 				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
@@ -178,7 +178,7 @@ func TestCreateVolume(t *testing.T) {
 					Parameters:         mp,
 				}
 				_, err := d.CreateVolume(context.Background(), req)
-				expectedErr := status.Error(codes.InvalidArgument, "parse 0 returned with invalid value: 0")
+				expectedErr := status.Error(codes.InvalidArgument, "Failed parsing disk parameters: parse 0 returned with invalid value: 0")
 				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
@@ -196,7 +196,7 @@ func TestCreateVolume(t *testing.T) {
 					Parameters:         mp,
 				}
 				_, err := d.CreateVolume(context.Background(), req)
-				expectedErr := status.Error(codes.InvalidArgument, "Perf profile blah is not supported")
+				expectedErr := status.Error(codes.InvalidArgument, "Failed parsing disk parameters: perf profile blah is not supported, supported tuning modes are none and basic")
 				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
@@ -219,15 +219,13 @@ func TestCreateVolume(t *testing.T) {
 				mp[consts.WriteAcceleratorEnabled] = "ut"
 				req := &csi.CreateVolumeRequest{
 					Name:               "unit-test",
-					VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY),
+					VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER),
 					Parameters:         mp,
 				}
 				_, err := d.CreateVolume(context.Background(), req)
-				expectedErrV1 := status.Error(codes.InvalidArgument, "Volume capability(MULTI_NODE_READER_ONLY) not supported")
-				expectedErrV2 := status.Error(codes.InvalidArgument, "Volume capability(3) not supported")
-				if !testutil.IsErrorEquivalent(err, expectedErrV1) &&
-					!testutil.IsErrorEquivalent(err, expectedErrV2) {
-					t.Errorf("actualErr: (%v), expectedErrV1: (%v) or expectedErrV2:(%v)", err, expectedErrV1, expectedErrV2)
+				expectedErr := status.Error(codes.InvalidArgument, "Volume capability not supported")
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
 		},
@@ -283,7 +281,7 @@ func TestCreateVolume(t *testing.T) {
 				}
 				d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
 				_, err := d.CreateVolume(context.Background(), req)
-				expectedErr := fmt.Errorf("Tags 'unit-test' are invalid, the format should like: 'key1=value1,key2=value2'")
+				expectedErr := status.Error(codes.InvalidArgument, "Failed parsing disk parameters: Tags 'unit-test' are invalid, the format should like: 'key1=value1,key2=value2'")
 				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
@@ -439,7 +437,7 @@ func TestCreateVolume(t *testing.T) {
 					Parameters:         map[string]string{"invalidparameter": "value"},
 				}
 				_, err := d.CreateVolume(context.Background(), req)
-				expectedErr := fmt.Errorf("invalid parameter %s in storage class", "invalidparameter")
+				expectedErr := status.Error(codes.InvalidArgument, "Failed parsing disk parameters: invalid parameter invalidparameter in storage class")
 				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
@@ -679,8 +677,12 @@ func TestGetSnapshotInfo(t *testing.T) {
 }
 
 func TestControllerPublishVolume(t *testing.T) {
-	volumeCap := csi.VolumeCapability_AccessMode{Mode: 2}
-	volumeCapWrong := csi.VolumeCapability_AccessMode{Mode: 10}
+	volumeCap := &csi.VolumeCapability{
+		AccessType: &csi.VolumeCapability_Mount{Mount: &csi.VolumeCapability_MountVolume{}},
+		AccessMode: &csi.VolumeCapability_AccessMode{Mode: 2}}
+	volumeCapWrong := &csi.VolumeCapability{
+		AccessType: &csi.VolumeCapability_Mount{Mount: &csi.VolumeCapability_MountVolume{}},
+		AccessMode: &csi.VolumeCapability_AccessMode{Mode: 10}}
 	d, err := NewFakeDriver(t)
 	nodeName := "unit-test-node"
 	//d.setCloud(&azure.Cloud{})
@@ -723,7 +725,7 @@ func TestControllerPublishVolume(t *testing.T) {
 				d, _ := NewFakeDriver(t)
 				req := &csi.ControllerPublishVolumeRequest{
 					VolumeId:         "vol_1",
-					VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCapWrong},
+					VolumeCapability: volumeCapWrong,
 				}
 				expectedErr := status.Error(codes.InvalidArgument, "Volume capability not supported")
 				_, err := d.ControllerPublishVolume(context.Background(), req)
@@ -737,7 +739,7 @@ func TestControllerPublishVolume(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				req := &csi.ControllerPublishVolumeRequest{
 					VolumeId:         "vol_1",
-					VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap},
+					VolumeCapability: volumeCap,
 					NodeId:           nodeName,
 				}
 				expectedErr := status.Error(codes.NotFound, "Volume not found, failed with error: could not get disk name from vol_1, correct format: (?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/disks/(.+)")
@@ -752,7 +754,7 @@ func TestControllerPublishVolume(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				req := &csi.ControllerPublishVolumeRequest{
 					VolumeId:         testVolumeID,
-					VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap},
+					VolumeCapability: volumeCap,
 				}
 				id := req.VolumeId
 				disk := compute.Disk{
@@ -776,7 +778,7 @@ func TestControllerPublishVolume(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				req := &csi.ControllerPublishVolumeRequest{
 					VolumeId:         testVolumeID,
-					VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap},
+					VolumeCapability: volumeCap,
 					NodeId:           nodeName,
 				}
 				id := req.VolumeId
@@ -833,7 +835,7 @@ func TestControllerPublishVolume(t *testing.T) {
 				d, err = NewFakeDriver(t)
 				req := &csi.ControllerPublishVolumeRequest{
 					VolumeId:         testVolumeID,
-					VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap},
+					VolumeCapability: volumeCap,
 					NodeId:           nodeName,
 				}
 				id := req.VolumeId
@@ -890,7 +892,7 @@ func TestControllerPublishVolume(t *testing.T) {
 				volumeContext[consts.CachingModeField] = "badmode"
 				req := &csi.ControllerPublishVolumeRequest{
 					VolumeId:         testVolumeID,
-					VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap},
+					VolumeCapability: volumeCap,
 					NodeId:           nodeName,
 					VolumeContext:    volumeContext,
 				}
@@ -1007,12 +1009,15 @@ func TestControllerGetCapabilities(t *testing.T) {
 func TestIsValidVolumeCapabilities(t *testing.T) {
 	var caps []*csi.VolumeCapability
 	stdVolCap := csi.VolumeCapability{
+		AccessType: &csi.VolumeCapability_Mount{
+			Mount: &csi.VolumeCapability_MountVolume{},
+		},
 		AccessMode: &csi.VolumeCapability_AccessMode{
 			Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
 		},
 	}
 	caps = append(caps, &stdVolCap)
-	if !azureutils.IsValidVolumeCapabilities(caps) {
+	if !azureutils.IsValidVolumeCapabilities(caps, 1) {
 		t.Errorf("Unexpected error")
 	}
 	stdVolCap1 := csi.VolumeCapability{
@@ -1021,7 +1026,7 @@ func TestIsValidVolumeCapabilities(t *testing.T) {
 		},
 	}
 	caps = append(caps, &stdVolCap1)
-	if azureutils.IsValidVolumeCapabilities(caps) {
+	if azureutils.IsValidVolumeCapabilities(caps, 1) {
 		t.Errorf("Unexpected error")
 	}
 }
@@ -1042,7 +1047,7 @@ func TestControllerExpandVolume(t *testing.T) {
 				ctx := context.Background()
 				d, _ := NewFakeDriver(t)
 
-				expectedErr := status.Error(codes.InvalidArgument, "Volume ID missing in request")
+				expectedErr := status.Error(codes.InvalidArgument, "Volume ID missing in the request")
 				_, err := d.ControllerExpandVolume(ctx, req)
 				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("Unexpected error: %v", err)
@@ -1939,7 +1944,7 @@ func TestValidateVolumeCapabilities(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				req := csi.ValidateVolumeCapabilitiesRequest{}
 				d, _ := NewFakeDriver(t)
-				expectedErr := status.Errorf(codes.InvalidArgument, "Volume ID missing in request")
+				expectedErr := status.Errorf(codes.InvalidArgument, "Volume ID missing in the request")
 				_, err := d.ValidateVolumeCapabilities(context.TODO(), &req)
 				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
@@ -1953,7 +1958,7 @@ func TestValidateVolumeCapabilities(t *testing.T) {
 					VolumeId: "unit-test",
 				}
 				d, _ := NewFakeDriver(t)
-				expectedErr := status.Errorf(codes.InvalidArgument, "Volume capabilities missing in request")
+				expectedErr := status.Errorf(codes.InvalidArgument, "VolumeCapabilities missing in the request")
 				_, err := d.ValidateVolumeCapabilities(context.TODO(), &req)
 				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
