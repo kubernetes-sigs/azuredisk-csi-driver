@@ -43,7 +43,7 @@ kubectl apply -f service-monitor.yaml
 - Get the deployment file to deploy the controller
 
 ```console
-wget https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/test/podFailover/deployment.yaml
+wget https://raw.githubusercontent.com/abhisheksinghbaghel/azuredisk-csi-driver/master/test/podFailover/deployment.yaml
 ```
 
 - Modify the values the following parameters:
@@ -55,6 +55,8 @@ wget https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/mast
     6. pod-count
     7. pvc-per-pod
     8. delay-before-failover
+    9. test-name
+    10. auth-enabled
 
 - Run the below command to deploy the controller. This will start the test for the given duration and will also start pushing metrics to the metrics-svc.
 

@@ -43,8 +43,9 @@ import (
 )
 
 const (
-	podFailoverNamespace = "pod-failover-ns"
-	scheduleExtenderName = "csi-azuredisk-scheduler-extender"
+	podFailoverNamespace         = "pod-failover-ns"
+	scheduleExtenderName         = "csi-azuredisk-scheduler-extender"
+	metricsServiceAuthSecretName = "podfailover-authcerts"
 )
 
 var (
@@ -55,7 +56,9 @@ var (
 	podCount            = flag.Int("pod-count", 1, "The number of pods that should be created for a deployment")
 	pvcPerPod           = flag.Int("pvc-per-pod", 3, "Number of pvcs that should be created per pod")
 	metricsEndpoint     = flag.String("metrics-endpoint", "", "Target where prometheus metrics shouls be published")
+	authEnabled         = flag.Bool("auth-enabled", false, "Specify whether request to metrics endpoint requires authentication or not")
 	delayBeforeFailover = flag.Int("delay-before-failover", 0, "Time in seconds for which the controller should wait before failing the pod")
+	testName            = flag.String("test-name", "default-test-run", "The name of the test to be used as metrics label to distinguish metrics sent from multiple test runs")
 )
 
 func main() {
@@ -137,7 +140,7 @@ func createTestNamespace(ctx context.Context, clientset *kubernetes.Clientset) e
 		},
 	}
 	namespace, err := clientset.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
-	if err != nil {
+	if err != nil && !errors.IsAlreadyExists(err) {
 		return err
 	}
 
@@ -272,7 +275,7 @@ func createDeployment(ctx context.Context, clientset *kubernetes.Clientset, pvcL
 									},
 								},
 							},
-							Args: []string{"--mount-path=" + mountPath, "--metrics-endpoint=" + *metricsEndpoint},
+							Args: []string{"--mount-path=" + mountPath, "--metrics-endpoint=" + *metricsEndpoint, "--test-name=" + *testName, "--auth-enabled=" + strconv.FormatBool(*authEnabled)},
 						},
 					},
 					RestartPolicy: v1.RestartPolicyAlways,
@@ -280,6 +283,44 @@ func createDeployment(ctx context.Context, clientset *kubernetes.Clientset, pvcL
 				},
 			},
 		}}
+
+	if *authEnabled {
+		deployment.Spec.Template.Spec.Containers[0].Env = []v1.EnvVar{
+			{
+				Name: "CA_CERT",
+				ValueFrom: &v1.EnvVarSource{
+					SecretKeyRef: &v1.SecretKeySelector{
+						LocalObjectReference: v1.LocalObjectReference{
+							Name: metricsServiceAuthSecretName,
+						},
+						Key: "ca.crt",
+					},
+				},
+			},
+			{
+				Name: "CLIENT_CERT",
+				ValueFrom: &v1.EnvVarSource{
+					SecretKeyRef: &v1.SecretKeySelector{
+						LocalObjectReference: v1.LocalObjectReference{
+							Name: metricsServiceAuthSecretName,
+						},
+						Key: "client.crt",
+					},
+				},
+			},
+			{
+				Name: "CLIENT_KEY",
+				ValueFrom: &v1.EnvVarSource{
+					SecretKeyRef: &v1.SecretKeySelector{
+						LocalObjectReference: v1.LocalObjectReference{
+							Name: metricsServiceAuthSecretName,
+						},
+						Key: "client.key",
+					},
+				},
+			},
+		}
+	}
 
 	if *driverVersion == "v2" {
 		deployment.Spec.Template.Spec.SchedulerName = scheduleExtenderName

@@ -29,12 +29,12 @@ import (
 func main() {
 
 	// Register prometheus metrics
-	podDowntimeHistogram := prometheus.NewHistogram(prometheus.HistogramOpts{
+	podDowntimeHistogram := prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "default",
 		Name:      "pod_downtime_duration",
 		Help:      "Downtime seen by the workload pod after failing",
 		Buckets:   prometheus.LinearBuckets(10, 10, 20),
-	})
+	}, []string{"testName"})
 
 	klog.Infof("Registering metrics")
 	r := prometheus.NewRegistry()
@@ -48,8 +48,9 @@ func main() {
 	podDowntimeMux := http.NewServeMux()
 	podDowntimeMux.HandleFunc("/pod-failover", func(w http.ResponseWriter, r *http.Request) {
 		downtime, _ := strconv.ParseFloat(r.URL.Query().Get("value"), 64)
+		testName := r.URL.Query().Get("testName")
 		klog.Infof("The downtime observed by the logging pod is: %f", downtime)
-		podDowntimeHistogram.Observe(downtime)
+		podDowntimeHistogram.WithLabelValues(testName).Observe(downtime)
 	})
 	srv2 := &http.Server{Addr: ":9091", Handler: podDowntimeMux}
 
