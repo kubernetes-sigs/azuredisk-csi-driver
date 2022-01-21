@@ -332,14 +332,18 @@ e2e-test:
 e2e-test-v2:
 	BUILD_V2=true make e2e-test
 
+POD_FAILOVER_IMAGE_VERSION = latest
+ifdef CI
+override POD_FAILOVER_IMAGE_VERSION = $(GIT_COMMIT)
+endif
 .PHONY: pod-failover-test-containers
 pod-failover-test-containers:
 	CGO_ENABLED=0 go build -a -mod vendor -o _output/${ARCH}/workloadPod ./test/podFailover/workload 
 	CGO_ENABLED=0 go build -a -mod vendor -o _output/${ARCH}/controllerPod ./test/podFailover/controller
 	CGO_ENABLED=0 go build  -o _output/${ARCH}/metricsPod ./test/podFailover/metrics
-	docker build -t $(REGISTRY)/workloadpod:latest -f ./test/podFailover/workload/Dockerfile .
-	docker build -t $(REGISTRY)/controllerpod:latest -f ./test/podFailover/controller/Dockerfile .
-	docker build -t $(REGISTRY)/metricspod:latest -f ./test/podFailover/metrics/Dockerfile .
-	docker push $(REGISTRY)/workloadpod:latest
-	docker push $(REGISTRY)/controllerpod:latest
-	docker push $(REGISTRY)/metricspod:latest
+	docker build -t $(REGISTRY)/workloadpod:$(POD_FAILOVER_IMAGE_VERSION) -f ./test/podFailover/workload/Dockerfile .
+	docker build -t $(REGISTRY)/controllerpod:$(POD_FAILOVER_IMAGE_VERSION) -f ./test/podFailover/controller/Dockerfile .
+	docker build -t $(REGISTRY)/metricspod:$(POD_FAILOVER_IMAGE_VERSION) -f ./test/podFailover/metrics/Dockerfile .
+	docker push $(REGISTRY)/workloadpod:$(POD_FAILOVER_IMAGE_VERSION)
+	docker push $(REGISTRY)/controllerpod:$(POD_FAILOVER_IMAGE_VERSION)
+	docker push $(REGISTRY)/metricspod:$(POD_FAILOVER_IMAGE_VERSION)

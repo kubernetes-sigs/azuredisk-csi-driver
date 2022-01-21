@@ -69,11 +69,10 @@ spec:
         - "--maxshares=3"
         - "--duration=60"
         - "--workload-image=workload-pod-image"
-        - "--pod-count=1"
-        - "--pvc-per-pod=3"
+        - "--pod-count=$(POD_COUNT)"
+        - "--pvc-per-pod=$(PVC_PER_POD)"
         - "--metrics-endpoint=$(POD_FAILOVER_METRICS_SERVICE_HOST):$(POD_FAILOVER_METRICS_SERVICE_PORT_POD_FAILOVER)"
         - "--delay-before-failover=10"
-        - "--test-name=default-test-run"
-        - "--auth-enabled=false"
+        - "--test-name=$(TEST_NAME)"
+        - "--auth-enabled=$(AUTH_ENABLED)"
       restartPolicy: Never
-  restartPolicy: Never
