@@ -37,6 +37,8 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -114,6 +116,17 @@ const (
 	Uncached
 )
 
+func CreateLabelRequirements(label string, operator selection.Operator, values ...string) (*labels.Requirement, error) {
+	req, err := labels.NewRequirement(label, operator, values)
+	if err != nil {
+		return nil, err
+	}
+	if req == nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Unable to create Requirement to for label key : (%s) and label value: (%s)", label, values))
+	}
+	return req, nil
+}
+
 func IsAzureStackCloud(cloud string, disableAzureStackCloud bool) bool {
 	return !disableAzureStackCloud && strings.EqualFold(cloud, azureStackCloud)
 }
@@ -160,6 +173,22 @@ func GetFStype(attributes map[string]string) string {
 		}
 	}
 	return ""
+}
+
+func GetNodeMaxDiskCount(labels map[string]string) (int, error) {
+	if labels == nil {
+		return 0, fmt.Errorf("labels for the node are not provided")
+	}
+	instanceType, ok := labels[v1.LabelInstanceTypeStable]
+	if !ok {
+		return 0, fmt.Errorf("node instance type is not found")
+	}
+	vmsize := strings.ToUpper(instanceType)
+	maxDataDiskCount, exists := MaxDataDiskCountMap[vmsize]
+	if !exists {
+		return 0, fmt.Errorf("disk count for the node instance type %s is not found", vmsize)
+	}
+	return int(maxDataDiskCount), nil
 }
 
 func GetMaxShares(attributes map[string]string) (int, error) {

@@ -768,15 +768,10 @@ func getNodeRemainingCapacity(ctx context.Context, cachedClient client.Client, n
 	if nodeObj.Labels == nil {
 		queryAttachable = true
 	} else {
-		if nodeVMType, ok := nodeObj.Labels[v1.LabelInstanceTypeStable]; !ok {
+		if _, ok := nodeObj.Labels[v1.LabelInstanceTypeStable]; !ok {
 			queryAttachable = true
 		} else {
-			for vmType, vmCapacity := range azureutils.MaxDataDiskCountMap {
-				if strings.EqualFold(nodeVMType, vmType) {
-					capacity = int(vmCapacity)
-					break
-				}
-			}
+			capacity, _ = azureutils.GetNodeMaxDiskCount(nodeObj.Labels)
 		}
 	}
 
@@ -977,7 +972,7 @@ func createReplicaAzVolumeAttachment(ctx context.Context, azr azReconciler, volu
 
 func cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azr azReconciler, azVolumeName string, caller operationRequester, role roleMode, deleteMode cleanUpMode, controllerSharedState *SharedState) (*v1alpha1.AzVolumeAttachmentList, error) {
 	klog.Infof("AzVolumeAttachment clean up requested by %s for AzVolume (%s)", caller, azVolumeName)
-	volRequirement, err := CreateLabelRequirements(consts.VolumeNameLabel, selection.Equals, azVolumeName)
+	volRequirement, err := azureutils.CreateLabelRequirements(consts.VolumeNameLabel, selection.Equals, azVolumeName)
 	if err != nil {
 		return nil, err
 	}
@@ -1009,7 +1004,7 @@ func cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azr azReconciler, az
 
 func cleanUpAzVolumeAttachmentByNode(ctx context.Context, azr azReconciler, azDriverNodeName string, caller operationRequester, role roleMode, deleteMode cleanUpMode) (*v1alpha1.AzVolumeAttachmentList, error) {
 	klog.Infof("AzVolumeAttachment clean up requested by %s for AzDriverNode (%s)", caller, azDriverNodeName)
-	nodeRequirement, err := CreateLabelRequirements(consts.NodeNameLabel, selection.Equals, azDriverNodeName)
+	nodeRequirement, err := azureutils.CreateLabelRequirements(consts.NodeNameLabel, selection.Equals, azDriverNodeName)
 	if err != nil {
 		return nil, err
 	}
@@ -1098,7 +1093,7 @@ func getAzVolumeAttachmentsWithLabel(ctx context.Context, azclient client.Client
 	labelSelector := labels.NewSelector()
 	for _, labelPair := range labelPairs {
 		var req *labels.Requirement
-		req, err = CreateLabelRequirements(labelPair.key, selection.Equals, labelPair.entry)
+		req, err = azureutils.CreateLabelRequirements(labelPair.key, selection.Equals, labelPair.entry)
 		if err != nil {
 			klog.Errorf("failed to create label (%s, %s) for listing AzVolumeAttachment", labelPair.key, labelPair.entry)
 			return
@@ -1166,17 +1161,6 @@ func labelExists(labels map[string]string, label string) bool {
 		return ok
 	}
 	return false
-}
-
-func CreateLabelRequirements(label string, operator selection.Operator, values ...string) (*labels.Requirement, error) {
-	req, err := labels.NewRequirement(label, operator, values)
-	if err != nil {
-		return nil, err
-	}
-	if req == nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Unable to create Requirement to for label key : (%s) and label value: (%s)", label, values))
-	}
-	return req, nil
 }
 
 func getQualifiedName(namespace, name string) string {

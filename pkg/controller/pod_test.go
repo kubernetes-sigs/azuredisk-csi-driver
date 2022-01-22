@@ -32,6 +32,7 @@ import (
 	diskv1alpha1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
 	diskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller/mockclient"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
@@ -90,7 +91,7 @@ func TestPodReconcile(t *testing.T) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
 
-				roleReq, _ := CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(diskv1alpha1.ReplicaRole))
+				roleReq, _ := azureutils.CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(diskv1alpha1.ReplicaRole))
 				labelSelector := labels.NewSelector().Add(*roleReq)
 				conditionFunc := func() (bool, error) {
 					replicas, localError := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testPrimaryAzVolumeAttachment0.Namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
@@ -148,7 +149,7 @@ func TestPodReconcile(t *testing.T) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
 
-				roleReq, _ := CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(diskv1alpha1.ReplicaRole))
+				roleReq, _ := azureutils.CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(diskv1alpha1.ReplicaRole))
 				labelSelector := labels.NewSelector().Add(*roleReq)
 				conditionFunc := func() (bool, error) {
 					replicas, localError := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testPrimaryAzVolumeAttachment0.Namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
@@ -216,7 +217,7 @@ func TestPodReconcile(t *testing.T) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
 
-				roleReq, _ := CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(diskv1alpha1.ReplicaRole))
+				roleReq, _ := azureutils.CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(diskv1alpha1.ReplicaRole))
 				labelSelector := labels.NewSelector().Add(*roleReq)
 				conditionFunc := func() (bool, error) {
 					replicas, localError := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testPrimaryAzVolumeAttachment0.Namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
@@ -295,7 +296,7 @@ func TestPodRecover(t *testing.T) {
 			verifyFunc: func(t *testing.T, controller *ReconcilePod, err error) {
 				require.NoError(t, err)
 
-				roleReq, _ := CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(diskv1alpha1.ReplicaRole))
+				roleReq, _ := azureutils.CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(diskv1alpha1.ReplicaRole))
 				labelSelector := labels.NewSelector().Add(*roleReq)
 				conditionFunc := func() (bool, error) {
 					replicas, localError := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testPrimaryAzVolumeAttachment0.Namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})

@@ -35,7 +35,6 @@ import (
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
@@ -110,7 +109,7 @@ func (t *PodAffinity) Run(client clientset.Interface, namespace *v1.Namespace, s
 			func() (bool, error) {
 				for _, diskName := range diskNames {
 					labelSelector := labels.NewSelector()
-					volReq, err := controller.CreateLabelRequirements(consts.VolumeNameLabel, selection.Equals, diskName)
+					volReq, err := azureutils.CreateLabelRequirements(consts.VolumeNameLabel, selection.Equals, diskName)
 					framework.ExpectNoError(err)
 					labelSelector = labelSelector.Add(*volReq)
 
