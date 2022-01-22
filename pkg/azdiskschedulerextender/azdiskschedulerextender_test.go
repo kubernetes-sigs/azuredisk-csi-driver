@@ -225,8 +225,8 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 				NodeNames: &[]string{"node"},
 			},
 			expectedFilterResult: schedulerapi.ExtenderFilterResult{
-				Nodes:       &v1.NodeList{},
-				NodeNames:   nil,
+				Nodes:       &v1.NodeList{Items: []v1.Node{{ObjectMeta: meta.ObjectMeta{Name: "node"}}}},
+				NodeNames:   &[]string{"node"},
 				FailedNodes: nil,
 				Error:       "",
 			},
@@ -530,7 +530,7 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 			}
 
 			if !gotExpectedFilterResults(actualFilterResult, test.expectedFilterResult) {
-				t.Errorf("Actual filter response (%s) does not equal expected response.", filterResultRecorder.Body)
+				t.Errorf("Actual filter response (%v) does not equal expected response (%v).", actualFilterResult, test.expectedFilterResult)
 			}
 
 			// check prioritize result
