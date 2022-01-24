@@ -20,7 +20,7 @@ DRIVER_NAME = disk.csi.azure.com
 IMAGE_NAME ?= azuredisk-csi
 ifndef BUILD_V2
 PLUGIN_NAME = azurediskplugin
-IMAGE_VERSION ?= v1.2.0
+IMAGE_VERSION ?= v1.2.1
 CHART_VERSION ?= latest
 else
 PLUGIN_NAME = azurediskpluginv2
@@ -157,7 +157,7 @@ azuredisk-darwin:
 
 .PHONY: container
 container: azuredisk
-	docker build --no-cache -t $(IMAGE_TAG) -f ./pkg/azurediskplugin/dev.Dockerfile .
+	docker build --no-cache --output=type=$(OUTPUT_TYPE) -t $(IMAGE_TAG) -f ./pkg/azurediskplugin/Dockerfile .
 
 .PHONY: container-linux
 container-linux:
