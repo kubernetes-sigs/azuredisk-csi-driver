@@ -157,7 +157,7 @@ azuredisk-darwin:
 
 .PHONY: container
 container: azuredisk
-	docker build --no-cache -t $(IMAGE_TAG) -f ./pkg/azurediskplugin/dev.Dockerfile .
+	docker build --no-cache --output=type=$(OUTPUT_TYPE) -t $(IMAGE_TAG) -f ./pkg/azurediskplugin/Dockerfile .
 
 .PHONY: container-linux
 container-linux:
