@@ -32,10 +32,12 @@ import (
 )
 
 type PodDetails struct {
-	Cmd       string
-	Volumes   []VolumeDetails
-	IsWindows bool
-	UseCMD    bool
+	Cmd             string
+	Volumes         []VolumeDetails
+	IsWindows       bool
+	UseCMD          bool
+	UseAntiAffinity bool
+	ReplicaCount    int32
 }
 
 type VolumeDetails struct {
@@ -187,7 +189,10 @@ func (pod *PodDetails) SetupDeployment(client clientset.Interface, namespace *v1
 	}
 	cleanupFuncs = append(cleanupFuncs, tpvc.Cleanup)
 	ginkgo.By("setting up the Deployment")
-	tDeployment := NewTestDeployment(client, namespace, pod.Cmd, tpvc.persistentVolumeClaim, fmt.Sprintf("%s%d", volume.VolumeMount.NameGenerate, 1), fmt.Sprintf("%s%d", volume.VolumeMount.MountPathGenerate, 1), volume.VolumeMount.ReadOnly, pod.IsWindows, pod.UseCMD)
+	if pod.ReplicaCount == 0 {
+		pod.ReplicaCount = 1
+	}
+	tDeployment := NewTestDeployment(client, namespace, pod.ReplicaCount, pod.Cmd, tpvc.persistentVolumeClaim, fmt.Sprintf("%s%d", volume.VolumeMount.NameGenerate, 1), fmt.Sprintf("%s%d", volume.VolumeMount.MountPathGenerate, 1), volume.VolumeMount.ReadOnly, pod.IsWindows, pod.UseCMD, pod.UseAntiAffinity)
 
 	cleanupFuncs = append(cleanupFuncs, tDeployment.Cleanup)
 	return tDeployment, cleanupFuncs
