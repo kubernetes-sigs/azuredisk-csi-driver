@@ -21,7 +21,6 @@ spec:
 {{ toYaml . | indent 8 }}
 {{- end }}
     spec:
-      serviceAccountName: {{ .Values.serviceAccount.node }}
 {{- with .Values.windows.tolerations }}
       tolerations:
 {{ toYaml . | indent 8 }}

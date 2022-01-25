@@ -27,7 +27,6 @@ spec:
       {{- end }}
       hostNetwork: {{ .Values.linux.hostNetwork }}
       dnsPolicy: Default
-      serviceAccountName: {{ .Values.serviceAccount.node }}
       nodeSelector:
         kubernetes.io/os: linux
       affinity:
