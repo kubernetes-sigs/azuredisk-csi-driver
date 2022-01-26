@@ -30,7 +30,7 @@ const (
 
 type PVTestDriver interface {
 	GetDynamicProvisionStorageClass(parameters map[string]string, mountOptions []string, reclaimPolicy *v1.PersistentVolumeReclaimPolicy, bindingMode *storagev1.VolumeBindingMode, allowedTopologyValues []string, namespace string) *storagev1.StorageClass
-	GetPersistentVolume(volumeID string, fsType string, size string, reclaimPolicy *v1.PersistentVolumeReclaimPolicy, namespace string, volumeContext map[string]string) *v1.PersistentVolume
+	GetPersistentVolume(volumeID, fsType, size string, volumeMode v1.PersistentVolumeMode, accessMode v1.PersistentVolumeAccessMode, reclaimPolicy *v1.PersistentVolumeReclaimPolicy, namespace string, volumeContext map[string]string) *v1.PersistentVolume
 	GetVolumeSnapshotClass(namespace string) *snapshotv1.VolumeSnapshotClass
 }
 
@@ -43,7 +43,7 @@ type DynamicPVTestDriver interface {
 // PreProvisionedVolumeTestDriver represents an interface for a CSI driver that supports pre-provisioned volume
 type PreProvisionedVolumeTestDriver interface {
 	// GetPersistentVolume returns a PersistentVolume with pre-provisioned volumeHandle
-	GetPersistentVolume(volumeID string, fsType string, size string, reclaimPolicy *v1.PersistentVolumeReclaimPolicy, namespace string, volumeContext map[string]string) *v1.PersistentVolume
+	GetPersistentVolume(volumeID, fsType, size string, volumeMode v1.PersistentVolumeMode, accessMode v1.PersistentVolumeAccessMode, reclaimPolicy *v1.PersistentVolumeReclaimPolicy, namespace string, volumeContext map[string]string) *v1.PersistentVolume
 }
 
 type VolumeSnapshotTestDriver interface {
