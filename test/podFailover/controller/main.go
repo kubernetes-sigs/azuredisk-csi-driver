@@ -76,12 +76,14 @@ func main() {
 	clientset, _ := kubernetes.NewForConfig(config)
 
 	ctx := context.Background()
-	if err := createTestNamespace(ctx, clientset); err != nil {
+	deleteNamespace, err := createTestNamespace(ctx, clientset)
+	if err != nil {
 		klog.Errorf("Error occurred while creating namespace %s, err: %v", podFailoverNamespace, err)
 		return
 	}
-	defer deleteTestNamespace(ctx, clientset)
-
+	if deleteNamespace {
+		defer deleteTestNamespace(ctx, clientset)
+	}
 	scName, err := createStorageClass(ctx, clientset, *maxShares)
 	if err != nil {
 		klog.Errorf("Error occurred while creating storageClass: %v", err)
@@ -133,15 +135,18 @@ func main() {
 
 }
 
-func createTestNamespace(ctx context.Context, clientset *kubernetes.Clientset) error {
+func createTestNamespace(ctx context.Context, clientset *kubernetes.Clientset) (bool, error) {
 	ns := &v1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: podFailoverNamespace,
 		},
 	}
 	namespace, err := clientset.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
-	if err != nil && !errors.IsAlreadyExists(err) {
-		return err
+	if err != nil {
+		if errors.IsAlreadyExists(err) {
+			return false, nil
+		}
+		return false, err
 	}
 
 	if err := wait.PollImmediate(1*time.Second, 2*time.Minute, func() (bool, error) {
@@ -155,10 +160,10 @@ func createTestNamespace(ctx context.Context, clientset *kubernetes.Clientset) e
 		}
 		return false, nil
 	}); err != nil {
-		return err
+		return true, err
 	}
 
-	return nil
+	return true, nil
 }
 
 func deleteTestNamespace(ctx context.Context, clientset *kubernetes.Clientset) {
