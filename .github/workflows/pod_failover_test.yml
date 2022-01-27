@@ -115,8 +115,8 @@ jobs:
          kubectl delete job pod-failover-job
          rm automation-run.yaml
       
-    -name: Delete the namespace created for test workload
-     run: kubectl delete namespace pod-failover-ns --ignore-not-found
+    - name: Delete the namespace created for test workload
+      run: kubectl delete namespace pod-failover-ns --ignore-not-found
 
     - name: Cleanup 
       if: ${{ always() }}
