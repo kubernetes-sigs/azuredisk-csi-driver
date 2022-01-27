@@ -991,6 +991,69 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		}
 		test.Run(cs, ns)
 	})
+
+	ginkgo.It("should succeed when attaching a shared block volume to multiple pods [disk.csi.azure.com][shared disk]", func() {
+		skipIfUsingInTreeVolumePlugin()
+		skipIfOnAzureStackCloud()
+		skipIfTestingInWindowsCluster()
+		if isMultiZone {
+			skipIfNotZRSSupported()
+		}
+
+		pod := testsuites.PodDetails{
+			Cmd: convertToPowershellorCmdCommandIfNecessary("while true; do sleep 5; done"),
+			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+				{
+					ClaimSize: "10Gi",
+					VolumeMount: testsuites.VolumeMountDetails{
+						NameGenerate:      "test-shared-volume-",
+						MountPathGenerate: "/dev/shared-",
+					},
+					VolumeMode:       testsuites.Block,
+					VolumeAccessMode: v1.ReadWriteMany,
+				},
+			}, isMultiZone),
+			UseCMD:          false,
+			IsWindows:       isWindowsCluster,
+			UseAntiAffinity: isMultiZone,
+			ReplicaCount:    2,
+		}
+
+		storageClassParameters := map[string]string{
+			"skuname":     "StandardSSD_LRS",
+			"maxshares":   "2",
+			"cachingmode": "None",
+		}
+		if supportsZRS {
+			storageClassParameters["skuname"] = "StandardSSD_ZRS"
+		}
+
+		podCheck := &testsuites.PodExecCheck{
+			ExpectedString: "VOLUME ATTACHED",
+		}
+		if !isWindowsCluster {
+			podCheck.Cmd = []string{
+				"sh",
+				"-c",
+				"(stat /dev/shared-1 > /dev/null) && echo \"VOLUME ATTACHED\"",
+			}
+		} else {
+			podCheck.Cmd = []string{
+				"powershell",
+				"-NoLogo",
+				"-Command",
+				"if (Test-Path c:\\dev\\shared-1) { \"VOLUME ATTACHED\" | Out-Host }",
+			}
+		}
+
+		test := testsuites.DynamicallyProvisionedSharedDiskTester{
+			CSIDriver:              testDriver,
+			Pod:                    pod,
+			PodCheck:               podCheck,
+			StorageClassParameters: storageClassParameters,
+		}
+		test.Run(cs, ns)
+	})
 }
 
 // Normalize volumes by adding allowed topology values and WaitForFirstConsumer binding mode if we are testing in a multi-az cluster

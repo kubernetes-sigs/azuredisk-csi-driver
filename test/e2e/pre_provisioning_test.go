@@ -94,6 +94,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 								MountPathGenerate: "/mnt/test-",
 								ReadOnly:          true,
 							},
+							VolumeAccessMode: v1.ReadWriteOnce,
 						},
 					},
 					IsWindows: isWindowsCluster,
@@ -174,7 +175,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			skipIfUsingInTreeVolumePlugin()
 			skipIfOnAzureStackCloud()
 			sharedDiskSize := int64(1024)
-			req := makeCreateVolumeReq("shared-disk-multiple-pods", sharedDiskSize)
+			req := makeCreateVolumeReq("shared-disk-single-pod", sharedDiskSize)
 			diskSize := fmt.Sprintf("%dGi", sharedDiskSize)
 			req.Parameters = map[string]string{
 				"skuName":     "Premium_LRS",
@@ -214,6 +215,79 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			test := testsuites.PreProvisionedMultiplePodsTest{
 				CSIDriver:     testDriver,
 				Pods:          pods,
+				VolumeContext: resp.Volume.VolumeContext,
+			}
+			test.Run(cs, ns)
+		})
+
+		ginkgo.It("should succeed when attaching a shared block volume to multiple pods [disk.csi.azure.com][shared disk]", func() {
+			skipIfUsingInTreeVolumePlugin()
+			skipIfOnAzureStackCloud()
+			skipIfTestingInWindowsCluster()
+
+			sharedDiskSize := int64(10)
+			req := makeCreateVolumeReq("shared-disk-multiple-pods", sharedDiskSize)
+			diskSize := fmt.Sprintf("%dGi", sharedDiskSize)
+			req.Parameters = map[string]string{
+				"skuName":     "Premium_LRS",
+				"maxshares":   "2",
+				"cachingMode": "None",
+				"perfProfile": "None",
+			}
+			req.VolumeCapabilities[0].AccessType = &csi.VolumeCapability_Block{
+				Block: &csi.VolumeCapability_BlockVolume{},
+			}
+			req.VolumeCapabilities[0].AccessMode = &csi.VolumeCapability_AccessMode{
+				Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER,
+			}
+			resp, err := azurediskDriver.CreateVolume(context.Background(), req)
+			if err != nil {
+				ginkgo.Fail(fmt.Sprintf("create volume error: %v", err))
+			}
+			volumeID = resp.Volume.VolumeId
+			ginkgo.By(fmt.Sprintf("Successfully provisioned a shared disk volume: %q\n", volumeID))
+
+			pod := testsuites.PodDetails{
+				Cmd: convertToPowershellorCmdCommandIfNecessary("while true; do sleep 5; done"),
+				Volumes: []testsuites.VolumeDetails{
+					{
+						VolumeID:  volumeID,
+						ClaimSize: diskSize,
+						VolumeMount: testsuites.VolumeMountDetails{
+							NameGenerate:      "test-shared-volume-",
+							MountPathGenerate: "/dev/shared-",
+						},
+						VolumeMode:       testsuites.Block,
+						VolumeAccessMode: v1.ReadWriteMany,
+					},
+				},
+				UseCMD:       false,
+				IsWindows:    isWindowsCluster,
+				ReplicaCount: 2,
+			}
+
+			podCheck := &testsuites.PodExecCheck{
+				ExpectedString: "VOLUME ATTACHED",
+			}
+			if !isWindowsCluster {
+				podCheck.Cmd = []string{
+					"sh",
+					"-c",
+					"(stat /dev/shared-1 > /dev/null) && echo \"VOLUME ATTACHED\"",
+				}
+			} else {
+				podCheck.Cmd = []string{
+					"powershell",
+					"-NoLogo",
+					"-Command",
+					"if (Test-Path c:\\dev\\shared-1) { \"VOLUME ATTACHED\" | Out-Host }",
+				}
+			}
+
+			test := testsuites.PreProvisionedSharedDiskTester{
+				CSIDriver:     testDriver,
+				Pod:           pod,
+				PodCheck:      podCheck,
 				VolumeContext: resp.Volume.VolumeContext,
 			}
 			test.Run(cs, ns)

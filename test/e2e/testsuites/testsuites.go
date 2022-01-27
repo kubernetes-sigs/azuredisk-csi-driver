@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"sync"
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -31,6 +32,7 @@ import (
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -51,6 +53,7 @@ import (
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 )
 
 const (
@@ -384,13 +387,33 @@ type TestDeployment struct {
 	client     clientset.Interface
 	deployment *apps.Deployment
 	namespace  *v1.Namespace
-	podName    string
+	podNames   []string
 }
 
-func NewTestDeployment(c clientset.Interface, ns *v1.Namespace, command string, pvc *v1.PersistentVolumeClaim, volumeName, mountPath string, readOnly, isWindows bool, useCMD bool) *TestDeployment {
+func NewTestDeployment(c clientset.Interface, ns *v1.Namespace, replicaCount int32, command string, pvc *v1.PersistentVolumeClaim, volumeName, mountPath string, readOnly, isWindows, useCMD, useAntiAffinity bool) *TestDeployment {
 	generateName := "azuredisk-volume-tester-"
 	selectorValue := fmt.Sprintf("%s%d", generateName, rand.Int())
-	replicas := int32(1)
+
+	volumeMounts := make([]v1.VolumeMount, 0)
+	volumeDevices := make([]v1.VolumeDevice, 0)
+
+	if pvc.Spec.VolumeMode == nil || *pvc.Spec.VolumeMode == v1.PersistentVolumeFilesystem {
+		volumeMounts = []v1.VolumeMount{
+			{
+				Name:      volumeName,
+				MountPath: mountPath,
+				ReadOnly:  readOnly,
+			},
+		}
+	} else {
+		volumeDevices = []v1.VolumeDevice{
+			{
+				Name:       volumeName,
+				DevicePath: mountPath,
+			},
+		}
+	}
+
 	testDeployment := &TestDeployment{
 		client:    c,
 		namespace: ns,
@@ -399,7 +422,7 @@ func NewTestDeployment(c clientset.Interface, ns *v1.Namespace, command string, 
 				GenerateName: generateName,
 			},
 			Spec: apps.DeploymentSpec{
-				Replicas: &replicas,
+				Replicas: &replicaCount,
 				Selector: &metav1.LabelSelector{
 					MatchLabels: map[string]string{"app": selectorValue},
 				},
@@ -411,17 +434,12 @@ func NewTestDeployment(c clientset.Interface, ns *v1.Namespace, command string, 
 						NodeSelector: map[string]string{"kubernetes.io/os": "linux"},
 						Containers: []v1.Container{
 							{
-								Name:    "volume-tester",
-								Image:   imageutils.GetE2EImage(imageutils.BusyBox),
-								Command: []string{"/bin/sh"},
-								Args:    []string{"-c", command},
-								VolumeMounts: []v1.VolumeMount{
-									{
-										Name:      volumeName,
-										MountPath: mountPath,
-										ReadOnly:  readOnly,
-									},
-								},
+								Name:          "volume-tester",
+								Image:         imageutils.GetE2EImage(imageutils.BusyBox),
+								Command:       []string{"/bin/sh"},
+								Args:          []string{"-c", command},
+								VolumeMounts:  volumeMounts,
+								VolumeDevices: volumeDevices,
 							},
 						},
 						RestartPolicy: v1.RestartPolicyAlways,
@@ -439,6 +457,22 @@ func NewTestDeployment(c clientset.Interface, ns *v1.Namespace, command string, 
 				},
 			},
 		},
+	}
+
+	if useAntiAffinity {
+		affinity := &v1.Affinity{
+			PodAntiAffinity: &v1.PodAntiAffinity{
+				RequiredDuringSchedulingIgnoredDuringExecution: []v1.PodAffinityTerm{
+					{
+						LabelSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{"app": selectorValue},
+						},
+						TopologyKey: driver.TopologyKey,
+					},
+				},
+			},
+		}
+		testDeployment.deployment.Spec.Template.Spec.Affinity = affinity
 	}
 
 	if isWindows {
@@ -466,39 +500,79 @@ func (t *TestDeployment) Create() {
 	framework.ExpectNoError(err)
 	pods, err := deployment.GetPodsForDeployment(t.client, t.deployment)
 	framework.ExpectNoError(err)
-	// always get first pod as there should only be one
-	t.podName = pods.Items[0].Name
+	for _, pod := range pods.Items {
+		t.podNames = append(t.podNames, pod.Name)
+	}
 }
 
 func (t *TestDeployment) WaitForPodReady() {
 	pods, err := deployment.GetPodsForDeployment(t.client, t.deployment)
 	framework.ExpectNoError(err)
-	// always get first pod as there should only be one
-	pod := pods.Items[0]
-	t.podName = pod.Name
-	err = e2epod.WaitForPodRunningInNamespace(t.client, &pod)
-	framework.ExpectNoError(err)
+	t.podNames = []string{}
+	for _, pod := range pods.Items {
+		t.podNames = append(t.podNames, pod.Name)
+	}
+	ch := make(chan error, len(t.podNames))
+	defer close(ch)
+	for _, pod := range pods.Items {
+		go func(client clientset.Interface, pod v1.Pod) {
+			err = e2epod.WaitForPodRunningInNamespace(client, &pod)
+			ch <- err
+		}(t.client, pod)
+	}
+	// Wait on all goroutines to report on pod ready
+	var wg sync.WaitGroup
+	for range t.podNames {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			err := <-ch
+			framework.ExpectNoError(err)
+		}()
+	}
+	wg.Wait()
 }
 
 func (t *TestDeployment) Exec(command []string, expectedString string) {
-	_, err := framework.LookForStringInPodExec(t.namespace.Name, t.podName, command, expectedString, execTimeout)
-	framework.ExpectNoError(err)
+	for _, podName := range t.podNames {
+		_, err := framework.LookForStringInPodExec(t.namespace.Name, podName, command, expectedString, execTimeout)
+		framework.ExpectNoError(err)
+	}
 }
 
 func (t *TestDeployment) DeletePodAndWait() {
-	e2elog.Logf("Deleting pod %q in namespace %q", t.podName, t.namespace.Name)
-	err := t.client.CoreV1().Pods(t.namespace.Name).Delete(context.TODO(), t.podName, metav1.DeleteOptions{})
-	if err != nil {
-		if !apierrs.IsNotFound(err) {
-			framework.ExpectNoError(fmt.Errorf("pod %q Delete API error: %v", t.podName, err))
-		}
-		return
+	ch := make(chan error, len(t.podNames))
+	for _, podName := range t.podNames {
+		e2elog.Logf("Deleting pod %q in namespace %q", podName, t.namespace.Name)
+		go func(client clientset.Interface, ns, podName string) {
+			err := client.CoreV1().Pods(ns).Delete(context.TODO(), podName, metav1.DeleteOptions{})
+			ch <- err
+		}(t.client, t.namespace.Name, podName)
 	}
-	e2elog.Logf("Waiting for pod %q in namespace %q to be fully deleted", t.podName, t.namespace.Name)
-	err = e2epod.WaitForPodNoLongerRunningInNamespace(t.client, t.podName, t.namespace.Name)
-	if err != nil {
-		if !apierrs.IsNotFound(err) {
-			framework.ExpectNoError(fmt.Errorf("pod %q error waiting for delete: %v", t.podName, err))
+	// Wait on all goroutines to report on pod delete
+	for _, podName := range t.podNames {
+		err := <-ch
+		if err != nil {
+			if !errors.IsNotFound(err) {
+				framework.ExpectNoError(fmt.Errorf("pod %q Delete API error: %v", podName, err))
+			}
+		}
+	}
+
+	for _, podName := range t.podNames {
+		e2elog.Logf("Waiting for pod %q in namespace %q to be fully deleted", podName, t.namespace.Name)
+		go func(client clientset.Interface, ns, podName string) {
+			err := e2epod.WaitForPodNoLongerRunningInNamespace(client, podName, ns)
+			ch <- err
+		}(t.client, t.namespace.Name, podName)
+	}
+	// Wait on all goroutines to report on pod terminating
+	for _, podName := range t.podNames {
+		err := <-ch
+		if err != nil {
+			if !errors.IsNotFound(err) {
+				framework.ExpectNoError(fmt.Errorf("pod %q error waiting for delete: %v", podName, err))
+			}
 		}
 	}
 }
@@ -507,16 +581,26 @@ func (t *TestDeployment) Cleanup() {
 	e2elog.Logf("deleting Deployment %q/%q", t.namespace.Name, t.deployment.Name)
 	body, err := t.Logs()
 	if err != nil {
-		e2elog.Logf("Error getting logs for pod %s: %v", t.podName, err)
+		e2elog.Logf("Error getting logs for %s: %v", t.deployment.Name, err)
 	} else {
-		e2elog.Logf("Pod %s has the following logs: %s", t.podName, body)
+		for i, logs := range body {
+			e2elog.Logf("Pod %s has the following logs: %s", t.podNames[i], string(logs))
+		}
 	}
+
 	err = t.client.AppsV1().Deployments(t.namespace.Name).Delete(context.TODO(), t.deployment.Name, metav1.DeleteOptions{})
 	framework.ExpectNoError(err)
 }
 
-func (t *TestDeployment) Logs() ([]byte, error) {
-	return podLogs(t.client, t.podName, t.namespace.Name)
+func (t *TestDeployment) Logs() (logs [][]byte, err error) {
+	for _, name := range t.podNames {
+		log, err := podLogs(t.client, name, t.namespace.Name)
+		if err != nil {
+			return nil, err
+		}
+		logs = append(logs, log)
+	}
+	return
 }
 
 type TestStatefulset struct {
