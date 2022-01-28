@@ -18,6 +18,7 @@ package azureutils
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -486,7 +487,7 @@ func GetCloudProvider(kubeConfig, secretName, secretNamespace, userAgent string)
 	kubeClient, err := GetKubeClient(kubeConfig)
 	if err != nil {
 		klog.Warningf("get kubeconfig(%s) failed with error: %v", kubeConfig, err)
-		if !os.IsNotExist(err) && err != rest.ErrNotInCluster {
+		if !os.IsNotExist(err) && !errors.Is(err, rest.ErrNotInCluster) {
 			return nil, fmt.Errorf("failed to get KubeClient: %v", err)
 		}
 	}
@@ -610,7 +611,6 @@ func GetValidCreationData(subscriptionID, resourceGroup, sourceResourceID, sourc
 
 func IsCorruptedDir(dir string) bool {
 	_, pathErr := mount.PathExists(dir)
-	fmt.Printf("IsCorruptedDir(%s) returned with error: %v", dir, pathErr)
 	return pathErr != nil && mount.IsCorruptedMnt(pathErr)
 }
 

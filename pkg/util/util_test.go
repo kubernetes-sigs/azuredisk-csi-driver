@@ -179,7 +179,6 @@ func TestMakeDir(t *testing.T) {
 		}
 		err := MakeDir(testCase.targetDir)
 		if testCase.expectedError {
-			fmt.Print(err)
 			assert.NotNil(t, err, "TestCase[%d]: %s", i, testCase.desc)
 		} else {
 			assert.Nil(t, err, "TestCase[%d]: %s", i, testCase.desc)
@@ -225,7 +224,6 @@ func TestMakeFile(t *testing.T) {
 		}
 		err := MakeFile(testCase.targetFile)
 		if testCase.expectedError {
-			fmt.Print(err)
 			assert.NotNil(t, err, "TestCase[%d]: %s", i, testCase.desc)
 		} else {
 			assert.Nil(t, err, "TestCase[%d]: %s", i, testCase.desc)
