@@ -108,7 +108,8 @@ spec:
             - "-v=2"
             - "-leader-election"
             - '-handle-volume-inuse-error=false'
-            - "-timeout=60s"
+            - '-feature-gates=RecoverVolumeExpansionFailure=true'
+            - "-timeout=120s"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
