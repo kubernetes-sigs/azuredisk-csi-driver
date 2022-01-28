@@ -171,55 +171,6 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			framework.ExpectError(err)
 		})
 
-		ginkgo.It("should succeed when creating a shared disk with single pod [disk.csi.azure.com][shared disk]", func() {
-			skipIfUsingInTreeVolumePlugin()
-			skipIfOnAzureStackCloud()
-			sharedDiskSize := int64(1024)
-			req := makeCreateVolumeReq("shared-disk-single-pod", sharedDiskSize)
-			diskSize := fmt.Sprintf("%dGi", sharedDiskSize)
-			req.Parameters = map[string]string{
-				"skuName":     "Premium_LRS",
-				"maxShares":   "5",
-				"cachingMode": "None",
-				"perfProfile": "None",
-			}
-			req.VolumeCapabilities[0].AccessType = &csi.VolumeCapability_Block{
-				Block: &csi.VolumeCapability_BlockVolume{},
-			}
-			resp, err := azurediskDriver.CreateVolume(context.Background(), req)
-			if err != nil {
-				ginkgo.Fail(fmt.Sprintf("create volume error: %v", err))
-			}
-			volumeID = resp.Volume.VolumeId
-			ginkgo.By(fmt.Sprintf("Successfully provisioned a shared disk volume: %q\n", volumeID))
-			pods := []testsuites.PodDetails{}
-			for i := 1; i <= 1; i++ {
-				pod := testsuites.PodDetails{
-					Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
-					Volumes: []testsuites.VolumeDetails{
-						{
-							VolumeID:  volumeID,
-							ClaimSize: diskSize,
-							VolumeMount: testsuites.VolumeMountDetails{
-								NameGenerate:      "test-volume-",
-								MountPathGenerate: "/mnt/test-",
-							},
-							VolumeAccessMode: v1.ReadWriteOnce,
-						},
-					},
-					IsWindows: isWindowsCluster,
-				}
-				pods = append(pods, pod)
-			}
-
-			test := testsuites.PreProvisionedMultiplePodsTest{
-				CSIDriver:     testDriver,
-				Pods:          pods,
-				VolumeContext: resp.Volume.VolumeContext,
-			}
-			test.Run(cs, ns)
-		})
-
 		ginkgo.It("should succeed when attaching a shared block volume to multiple pods [disk.csi.azure.com][shared disk]", func() {
 			skipIfUsingInTreeVolumePlugin()
 			skipIfOnAzureStackCloud()
