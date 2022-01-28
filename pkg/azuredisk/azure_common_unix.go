@@ -21,10 +21,12 @@ package azuredisk
 
 import (
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 
 	mount "k8s.io/mount-utils"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 )
 
 func getDevicePathWithMountPath(mountPath string, m *mount.SafeFormatAndMount) (string, error) {
@@ -62,4 +64,12 @@ func resizeVolume(devicePath, volumePath string, m *mount.SafeFormatAndMount) er
 	}
 
 	return nil
+}
+
+// rescanVolume rescan device for detecting device size expansion
+// devicePath e.g. `/dev/sdc`
+func rescanVolume(io azureutils.IOHandler, devicePath string) error {
+	deviceName := filepath.Base(devicePath)
+	rescanPath := filepath.Join("/sys/class/block/", deviceName, "device/rescan")
+	return io.WriteFile(rescanPath, []byte("1"), 0666)
 }
