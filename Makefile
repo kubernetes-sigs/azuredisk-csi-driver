@@ -118,7 +118,9 @@ scale-test-v2:
 .PHONY: e2e-bootstrap
 e2e-bootstrap: install-helm
 	docker pull $(IMAGE_TAG) || make container-all push-manifest
+ifeq ($(BUILD_V2), true)
 	docker pull $(AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG) || make azdiskschedulerextender-all push-manifest-azdiskschedulerextender
+endif
 ifdef TEST_WINDOWS
 	helm install azuredisk-csi-driver charts/${CHART_VERSION}/azuredisk-csi-driver --namespace kube-system --wait --timeout=15m -v=5 --debug \
 		${E2E_HELM_OPTIONS} \
@@ -332,6 +334,14 @@ e2e-test:
 .PHONY: e2e-test-v2
 e2e-test-v2:
 	BUILD_V2=true make e2e-test
+
+.PHONY: scale-test
+scale-test:
+	go test -v -timeout=0 ${GOTAGS} ./test/scale -ginkgo.focus="Scale test scheduling and starting multiple pods with a persistent volume";
+
+.PHONY: scale-test-v2
+scale-test-v2:
+	BUILD_V2=true make scale-test
 
 POD_FAILOVER_IMAGE_VERSION = latest
 ifdef CI

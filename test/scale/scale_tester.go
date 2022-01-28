@@ -127,7 +127,7 @@ scaleInTest:
 			break scaleInTest
 		case <-ticker.C:
 			tickerCount = tickerCount + 1
-			numberOfRunningPods = podutil.CountAllPodsWithMatchingLabel(client, namespace, map[string]string{"app": "azuredisk-volume-tester"}, string(v1.PodRunning))
+			numberOfRemainingPods = podutil.CountAllPodsWithMatchingLabel(client, namespace, map[string]string{"app": "azuredisk-volume-tester"}, string(v1.PodRunning))
 			if numberOfRemainingPods <= 0 {
 				break scaleInTest
 			}
@@ -172,6 +172,10 @@ scaleInTest:
 	klog.Infof("Total number of remaining pods: %d", numberOfRemainingPods)
 
 	klog.Infof("Scaling in detach completed in %f minutes.", scaleInCompleted)
+
+	if numberOfRunningPods != totalNumberOfPods || numberOfRemainingPods != 0 {
+		ginkgo.Fail("Scale test failed to fully scale out/in. Number of pods that ran: %d, number of pods that were not deleted: %d", numberOfRunningPods, numberOfRemainingPods)
+	}
 }
 
 func (t *PodSchedulingOnFailoverScaleTest) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
