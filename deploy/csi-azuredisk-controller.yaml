@@ -132,7 +132,6 @@ spec:
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--metrics-address=0.0.0.0:29604"
             - "--user-agent-suffix=OSS-kubectl"
-            - "--disable-avset-nodes=true"
             - "--allow-empty-cloud-config=false"
           ports:
             - containerPort: 29602
