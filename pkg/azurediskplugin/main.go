@@ -62,7 +62,7 @@ func main() {
 		if err != nil {
 			klog.Fatalln(err)
 		}
-		fmt.Println(info)
+		fmt.Println(info) // nolint
 		os.Exit(0)
 	}
 
