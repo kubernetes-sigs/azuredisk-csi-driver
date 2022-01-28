@@ -89,7 +89,7 @@ func mockClientsAndVolumeProvisioner(controller *ReconcileAzVolume) {
 			if err != nil {
 				return nil, err
 			}
-			azVolume, err := controller.azVolumeClient.DiskV1alpha1().AzVolumes(testNamespace).Get(context.TODO(), volumeName, metav1.GetOptions{})
+			azVolume, err := controller.azVolumeClient.DiskV1alpha1().AzVolumes(testNamespace).Get(ctx, volumeName, metav1.GetOptions{})
 			if err != nil {
 				return nil, err
 			}

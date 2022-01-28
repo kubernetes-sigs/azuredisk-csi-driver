@@ -27,7 +27,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/testsuites"
 	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
 	"github.com/onsi/ginkgo"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -452,7 +452,7 @@ func CreateVolume(diskName string, sizeGiB int, volumeContext map[string]string)
 
 	accoutType, err := azureutils.NormalizeStorageAccountType(storageAccountType, azureCloud.Config.Cloud, azureCloud.Config.DisableAzureStackCloud)
 	if err != nil {
-		accoutType = compute.DiskStorageAccountTypes(compute.PremiumLRS)
+		accoutType = compute.DiskStorageAccountTypes(compute.DiskStorageAccountTypesPremiumLRS)
 	}
 	volumeOptions := &azure.ManagedDiskOptions{
 		DiskName:           diskName,

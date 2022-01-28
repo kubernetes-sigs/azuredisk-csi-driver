@@ -519,6 +519,7 @@ func TestAzVolumeAttachment(t *testing.T) {
 						require.NoError(t, err)
 						klog.Infof("Temporarily failing AzDriverNode (%s)", azVA.Spec.NodeName)
 
+						azVA := azVA
 						deletedReplica = &azVA
 						break
 					}

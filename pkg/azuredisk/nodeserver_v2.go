@@ -336,7 +336,6 @@ func (d *DriverV2) NodePublishVolume(ctx context.Context, req *csi.NodePublishVo
 func (d *DriverV2) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
 	targetPath := req.GetTargetPath()
 	volumeID := req.GetVolumeId()
-
 	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in the request")
 	}

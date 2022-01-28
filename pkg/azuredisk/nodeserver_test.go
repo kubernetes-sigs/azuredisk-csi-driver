@@ -28,7 +28,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
@@ -60,8 +60,8 @@ var (
 	provisioningStateSucceeded = "Succeeded"
 
 	testVMName     = fakeNodeID
-	testVMURI      = fmt.Sprint(virtualMachineURIFormat, testSubscription, testResourceGroup, testVMName)
-	testVMSize     = compute.StandardD3V2
+	testVMURI      = fmt.Sprintf(virtualMachineURIFormat, testSubscription, testResourceGroup, testVMName)
+	testVMSize     = compute.VirtualMachineSizeTypesStandardD3V2
 	testVMLocation = "westus"
 	testVMZones    = []string{"1"}
 	testVM         = compute.VirtualMachine{

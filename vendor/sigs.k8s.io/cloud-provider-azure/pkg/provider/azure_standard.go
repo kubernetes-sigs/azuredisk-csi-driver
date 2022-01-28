@@ -29,7 +29,7 @@ import (
 
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
 	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2021-02-01/network"
 	"github.com/Azure/go-autorest/autorest/to"
 
@@ -105,7 +105,7 @@ func (az *Cloud) getLoadBalancerProbeID(lbName, rgName, lbRuleName string) strin
 
 // getNetworkResourceSubscriptionID returns the subscription id which hosts network resources
 func (az *Cloud) getNetworkResourceSubscriptionID() string {
-	if az.Config.UsesNetworkResourceInDifferentTenant() {
+	if az.Config.UsesNetworkResourceInDifferentTenantOrSubscription() {
 		return az.NetworkResourceSubscriptionID
 	}
 	return az.SubscriptionID

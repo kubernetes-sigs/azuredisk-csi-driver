@@ -28,7 +28,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
 
@@ -40,7 +40,6 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockcorev1"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockkubeclient"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockpersistentvolume"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
@@ -807,7 +806,7 @@ func TestControllerPublishVolume(t *testing.T) {
 				vm.VirtualMachineProperties = &compute.VirtualMachineProperties{
 					ProvisioningState: to.StringPtr(string(compute.ProvisioningStateFailed)),
 					HardwareProfile: &compute.HardwareProfile{
-						VMSize: compute.StandardA0,
+						VMSize: compute.VirtualMachineSizeTypesStandardA0,
 					},
 					InstanceView: &compute.VirtualMachineInstanceView{
 						Statuses: &vmstatus,
@@ -864,7 +863,7 @@ func TestControllerPublishVolume(t *testing.T) {
 				vm.VirtualMachineProperties = &compute.VirtualMachineProperties{
 					ProvisioningState: to.StringPtr(string(compute.ProvisioningStateSucceeded)),
 					HardwareProfile: &compute.HardwareProfile{
-						VMSize: compute.StandardA0,
+						VMSize: compute.VirtualMachineSizeTypesStandardA0,
 					},
 					InstanceView: &compute.VirtualMachineInstanceView{
 						Statuses: &vmstatus,
@@ -922,7 +921,7 @@ func TestControllerPublishVolume(t *testing.T) {
 				vm.VirtualMachineProperties = &compute.VirtualMachineProperties{
 					ProvisioningState: to.StringPtr(string(compute.ProvisioningStateSucceeded)),
 					HardwareProfile: &compute.HardwareProfile{
-						VMSize: compute.StandardA0,
+						VMSize: compute.VirtualMachineSizeTypesStandardA0,
 					},
 					InstanceView: &compute.VirtualMachineInstanceView{
 						Statuses: &vmstatus,
@@ -1004,31 +1003,6 @@ func TestControllerGetCapabilities(t *testing.T) {
 	assert.NotNil(t, resp)
 	assert.Equal(t, resp.Capabilities[0].GetType(), capType)
 	assert.NoError(t, err)
-}
-
-func TestIsValidVolumeCapabilities(t *testing.T) {
-	var caps []*csi.VolumeCapability
-	stdVolCap := csi.VolumeCapability{
-		AccessType: &csi.VolumeCapability_Mount{
-			Mount: &csi.VolumeCapability_MountVolume{},
-		},
-		AccessMode: &csi.VolumeCapability_AccessMode{
-			Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
-		},
-	}
-	caps = append(caps, &stdVolCap)
-	if !azureutils.IsValidVolumeCapabilities(caps, 1) {
-		t.Errorf("Unexpected error")
-	}
-	stdVolCap1 := csi.VolumeCapability{
-		AccessMode: &csi.VolumeCapability_AccessMode{
-			Mode: 10,
-		},
-	}
-	caps = append(caps, &stdVolCap1)
-	if azureutils.IsValidVolumeCapabilities(caps, 1) {
-		t.Errorf("Unexpected error")
-	}
 }
 
 func TestControllerExpandVolume(t *testing.T) {

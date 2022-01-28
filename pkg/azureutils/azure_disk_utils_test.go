@@ -17,17 +17,20 @@ limitations under the License.
 package azureutils
 
 import (
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"reflect"
 	"runtime"
 	"testing"
+	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
@@ -616,95 +619,19 @@ func TestGetSourceVolumeID(t *testing.T) {
 		}
 	}
 }
+func TestIsCorruptedDir(t *testing.T) {
+	isCorrupted := IsCorruptedDir("/non-existing-dir")
+	assert.False(t, isCorrupted)
 
-func TestParseDiskParameters(t *testing.T) {
-	testCases := []struct {
-		name           string
-		inputParams    map[string]string
-		expectedOutput ManagedDiskParameters
-		expectedError  error
-	}{
-		{
-			name:        "nil disk parameters",
-			inputParams: nil,
-			expectedOutput: ManagedDiskParameters{
-				Incremental:    true,
-				Tags:           make(map[string]string),
-				VolumeContext:  make(map[string]string),
-				DeviceSettings: make(map[string]string),
-			},
-			expectedError: nil,
-		},
-		{
-			name:        "invalid field in parameters",
-			inputParams: map[string]string{"invalidField": "someValue"},
-			expectedOutput: ManagedDiskParameters{
-				Incremental:    true,
-				Tags:           make(map[string]string),
-				VolumeContext:  map[string]string{"invalidField": "someValue"},
-				DeviceSettings: make(map[string]string),
-			},
-			expectedError: fmt.Errorf("invalid parameter %s in storage class", "invalidField"),
-		},
-		{
-			name:        "invalid value in parameters",
-			inputParams: map[string]string{consts.LogicalSectorSizeField: "invalidValue"},
-			expectedOutput: ManagedDiskParameters{
-				Incremental:    true,
-				Tags:           make(map[string]string),
-				VolumeContext:  map[string]string{consts.LogicalSectorSizeField: "invalidValue"},
-				DeviceSettings: make(map[string]string),
-			},
-			expectedError: fmt.Errorf("parse invalidValue failed with error: strconv.Atoi: parsing \"invalidValue\": invalid syntax"),
-		},
-		{
-			name: "valid parameters input",
-			inputParams: map[string]string{
-				consts.LogicalSectorSizeField: "1",
-				consts.PvcNameKey:             "pvcName",
-				consts.PvcNamespaceKey:        "pvcNamespace",
-				consts.PvNameKey:              "pvName",
-				consts.TagsField:              "key0=value0, key1=value1",
-				consts.MaxSharesField:         "1",
-				consts.IncrementalField:       "false",
-			},
-			expectedOutput: ManagedDiskParameters{
-				Incremental: false,
-				Tags: map[string]string{
-					consts.PvcNameTag:      "pvcName",
-					consts.PvcNamespaceTag: "pvcNamespace",
-					consts.PvNameTag:       "pvName",
-					"key0":                 "value0",
-					"key1":                 "value1"},
-				VolumeContext: map[string]string{
-					consts.LogicalSectorSizeField: "1",
-					consts.PvcNameKey:             "pvcName",
-					consts.PvcNamespaceKey:        "pvcNamespace",
-					consts.PvNameKey:              "pvName",
-					consts.TagsField:              "key0=value0, key1=value1",
-					consts.MaxSharesField:         "1",
-					consts.IncrementalField:       "false",
-				},
-				DeviceSettings:    make(map[string]string),
-				MaxShares:         1,
-				LogicalSectorSize: 1,
-			},
-			expectedError: nil,
-		},
-	}
-	for _, test := range testCases {
-		result, err := ParseDiskParameters(test.inputParams)
-		assert.Equal(t, result, test.expectedOutput)
-		if !reflect.DeepEqual(test.expectedError, err) {
-			t.Errorf("actualresponse: (%v), expectedresponse: (%v)", err, test.expectedError)
-		}
-	}
+	isCorrupted = IsCorruptedDir(os.TempDir())
+	assert.False(t, isCorrupted)
 }
 
 func TestCreateValidDiskName(t *testing.T) {
 	tests := []struct {
-		volumeName string
-		expected   string
+		volumeName      string
+		expected        string
+		expectedIsRegEx bool
 	}{
 		{
 			volumeName: "az",
@@ -730,12 +657,24 @@ func TestCreateValidDiskName(t *testing.T) {
 			volumeName: "123456789-123456789-123456789-123456789-123456789.123456789-123456789_1234567890-123456789-123456789-123456789-123456789-123456789.123456789-123456789_1234567890-123456789-123456789-123456789-123456789-123456789.123456789-123456789_1234567890",
 			expected:   "123456789-123456789-123456789-123456789-123456789.123456789-123456789_1234567890",
 		},
+		{
+			volumeName:      "",
+			expected:        "pvc-disk-dynamic-[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}",
+			expectedIsRegEx: true,
+		},
+		{
+			volumeName:      "$xyz123",
+			expected:        "pvc-disk-dynamic-[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}",
+			expectedIsRegEx: true,
+		},
 	}
 
 	for _, test := range tests {
 		result := CreateValidDiskName(test.volumeName, false)
-		if !reflect.DeepEqual(result, test.expected) {
-			t.Errorf("input: %q, getValidFileShareName result: %q, expected: %q", test.volumeName, result, test.expected)
+		if !test.expectedIsRegEx {
+			assert.Equal(t, test.expected, result)
+		} else {
+			assert.Regexp(t, test.expected, result)
 		}
 	}
 }
@@ -875,6 +814,162 @@ func TestIsValidDiskURI(t *testing.T) {
 	}
 }
 
+func TestIsValidVolumeCapabilities(t *testing.T) {
+	tests := []struct {
+		description    string
+		volCaps        []*csi.VolumeCapability
+		maxShares      int
+		expectedResult bool
+	}{
+		{
+			description: "[Success] Returns true for valid mount capabilities",
+			volCaps: []*csi.VolumeCapability{
+				{
+					AccessType: &csi.VolumeCapability_Mount{
+						Mount: &csi.VolumeCapability_MountVolume{},
+					},
+					AccessMode: &csi.VolumeCapability_AccessMode{
+						Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+					},
+				},
+			},
+			maxShares:      1,
+			expectedResult: true,
+		},
+		{
+			description: "[Failure] Returns false for unsupported mount access mode",
+			volCaps: []*csi.VolumeCapability{
+				{
+					AccessType: &csi.VolumeCapability_Mount{
+						Mount: &csi.VolumeCapability_MountVolume{},
+					},
+					AccessMode: &csi.VolumeCapability_AccessMode{
+						Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER,
+					},
+				},
+			},
+			maxShares:      2,
+			expectedResult: false,
+		},
+		{
+			description: "[Failure] Returns false for invalid mount access mode",
+			volCaps: []*csi.VolumeCapability{
+				{
+					AccessType: &csi.VolumeCapability_Mount{
+						Mount: &csi.VolumeCapability_MountVolume{},
+					},
+					AccessMode: &csi.VolumeCapability_AccessMode{
+						Mode: 10,
+					},
+				},
+			},
+			maxShares:      1,
+			expectedResult: false,
+		},
+		{
+			description: "[Success] Returns true for valid block capabilities",
+			volCaps: []*csi.VolumeCapability{
+				{
+					AccessType: &csi.VolumeCapability_Block{
+						Block: &csi.VolumeCapability_BlockVolume{},
+					},
+					AccessMode: &csi.VolumeCapability_AccessMode{
+						Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+					},
+				},
+			},
+			maxShares:      1,
+			expectedResult: true,
+		},
+		{
+			description: "[Success] Returns true for shared block access mode",
+			volCaps: []*csi.VolumeCapability{
+				{
+					AccessType: &csi.VolumeCapability_Block{
+						Block: &csi.VolumeCapability_BlockVolume{},
+					},
+					AccessMode: &csi.VolumeCapability_AccessMode{
+						Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER,
+					},
+				},
+			},
+			maxShares:      2,
+			expectedResult: true,
+		},
+		{
+			description: "[Failure] Returns false for unsupported mount access mode",
+			volCaps: []*csi.VolumeCapability{
+				{
+					AccessType: &csi.VolumeCapability_Block{
+						Block: &csi.VolumeCapability_BlockVolume{},
+					},
+					AccessMode: &csi.VolumeCapability_AccessMode{
+						Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER,
+					},
+				},
+			},
+			maxShares:      1,
+			expectedResult: false,
+		},
+		{
+			description: "[Failure] Returns false for invalid block access mode",
+			volCaps: []*csi.VolumeCapability{
+				{
+					AccessType: &csi.VolumeCapability_Block{
+						Block: &csi.VolumeCapability_BlockVolume{},
+					},
+					AccessMode: &csi.VolumeCapability_AccessMode{
+						Mode: 10,
+					},
+				},
+			},
+			maxShares:      1,
+			expectedResult: false,
+		},
+		{
+			description: "[Failure] Returns false for empty volume capability",
+			volCaps: []*csi.VolumeCapability{
+				{
+					AccessType: nil,
+					AccessMode: nil,
+				},
+			},
+			maxShares:      1,
+			expectedResult: false,
+		},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.description, func(t *testing.T) {
+			result := IsValidVolumeCapabilities(test.volCaps, test.maxShares)
+			assert.Equal(t, test.expectedResult, result)
+		})
+	}
+	var caps []*csi.VolumeCapability
+	stdVolCap := csi.VolumeCapability{
+		AccessType: &csi.VolumeCapability_Mount{
+			Mount: &csi.VolumeCapability_MountVolume{},
+		},
+		AccessMode: &csi.VolumeCapability_AccessMode{
+			Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+		},
+	}
+	caps = append(caps, &stdVolCap)
+	if !IsValidVolumeCapabilities(caps, 1) {
+		t.Errorf("Unexpected error")
+	}
+	stdVolCap1 := csi.VolumeCapability{
+		AccessMode: &csi.VolumeCapability_AccessMode{
+			Mode: 10,
+		},
+	}
+	caps = append(caps, &stdVolCap1)
+	if IsValidVolumeCapabilities(caps, 1) {
+		t.Errorf("Unexpected error")
+	}
+}
+
 func TestNormalizeCachingMode(t *testing.T) {
 	tests := []struct {
 		desc                        string
@@ -931,22 +1026,22 @@ func TestNormalizeNetworkAccessPolicy(t *testing.T) {
 	}{
 		{
 			networkAccessPolicy:         "",
-			expectedNetworkAccessPolicy: compute.AllowAll,
+			expectedNetworkAccessPolicy: compute.NetworkAccessPolicyAllowAll,
 			expectError:                 false,
 		},
 		{
 			networkAccessPolicy:         "AllowAll",
-			expectedNetworkAccessPolicy: compute.AllowAll,
+			expectedNetworkAccessPolicy: compute.NetworkAccessPolicyAllowAll,
 			expectError:                 false,
 		},
 		{
 			networkAccessPolicy:         "DenyAll",
-			expectedNetworkAccessPolicy: compute.DenyAll,
+			expectedNetworkAccessPolicy: compute.NetworkAccessPolicyDenyAll,
 			expectError:                 false,
 		},
 		{
 			networkAccessPolicy:         "AllowPrivate",
-			expectedNetworkAccessPolicy: compute.AllowPrivate,
+			expectedNetworkAccessPolicy: compute.NetworkAccessPolicyAllowPrivate,
 			expectError:                 false,
 		},
 		{
@@ -981,14 +1076,14 @@ func TestNormalizeStorageAccountType(t *testing.T) {
 			cloud:                  azurePublicCloud,
 			storageAccountType:     "",
 			disableAzureStackCloud: false,
-			expectedAccountType:    compute.StandardSSDLRS,
+			expectedAccountType:    compute.DiskStorageAccountTypesStandardSSDLRS,
 			expectError:            false,
 		},
 		{
 			cloud:                  azureStackCloud,
 			storageAccountType:     "",
 			disableAzureStackCloud: false,
-			expectedAccountType:    compute.StandardLRS,
+			expectedAccountType:    compute.DiskStorageAccountTypesStandardLRS,
 			expectError:            false,
 		},
 		{
@@ -1002,28 +1097,28 @@ func TestNormalizeStorageAccountType(t *testing.T) {
 			cloud:                  azurePublicCloud,
 			storageAccountType:     "Standard_LRS",
 			disableAzureStackCloud: false,
-			expectedAccountType:    compute.StandardLRS,
+			expectedAccountType:    compute.DiskStorageAccountTypesStandardLRS,
 			expectError:            false,
 		},
 		{
 			cloud:                  azurePublicCloud,
 			storageAccountType:     "Premium_LRS",
 			disableAzureStackCloud: false,
-			expectedAccountType:    compute.PremiumLRS,
+			expectedAccountType:    compute.DiskStorageAccountTypesPremiumLRS,
 			expectError:            false,
 		},
 		{
 			cloud:                  azurePublicCloud,
 			storageAccountType:     "StandardSSD_LRS",
 			disableAzureStackCloud: false,
-			expectedAccountType:    compute.StandardSSDLRS,
+			expectedAccountType:    compute.DiskStorageAccountTypesStandardSSDLRS,
 			expectError:            false,
 		},
 		{
 			cloud:                  azurePublicCloud,
 			storageAccountType:     "UltraSSD_LRS",
 			disableAzureStackCloud: false,
-			expectedAccountType:    compute.UltraSSDLRS,
+			expectedAccountType:    compute.DiskStorageAccountTypesUltraSSDLRS,
 			expectError:            false,
 		},
 		{
@@ -1037,7 +1132,7 @@ func TestNormalizeStorageAccountType(t *testing.T) {
 			cloud:                  azureStackCloud,
 			storageAccountType:     "UltraSSD_LRS",
 			disableAzureStackCloud: true,
-			expectedAccountType:    compute.UltraSSDLRS,
+			expectedAccountType:    compute.DiskStorageAccountTypesUltraSSDLRS,
 			expectError:            false,
 		},
 	}
@@ -1046,6 +1141,143 @@ func TestNormalizeStorageAccountType(t *testing.T) {
 		result, err := NormalizeStorageAccountType(test.storageAccountType, test.cloud, test.disableAzureStackCloud)
 		assert.Equal(t, result, test.expectedAccountType)
 		assert.Equal(t, err != nil, test.expectError, fmt.Sprintf("error msg: %v", err))
+	}
+}
+
+func TestParseDiskParameters(t *testing.T) {
+	testCases := []struct {
+		name           string
+		inputParams    map[string]string
+		expectedOutput ManagedDiskParameters
+		expectedError  error
+	}{
+		{
+			name:        "nil disk parameters",
+			inputParams: nil,
+			expectedOutput: ManagedDiskParameters{
+				Incremental:    true,
+				Tags:           make(map[string]string),
+				VolumeContext:  make(map[string]string),
+				DeviceSettings: make(map[string]string),
+			},
+			expectedError: nil,
+		},
+		{
+			name:        "invalid field in parameters",
+			inputParams: map[string]string{"invalidField": "someValue"},
+			expectedOutput: ManagedDiskParameters{
+				Incremental:    true,
+				Tags:           make(map[string]string),
+				VolumeContext:  map[string]string{"invalidField": "someValue"},
+				DeviceSettings: make(map[string]string),
+			},
+			expectedError: fmt.Errorf("invalid parameter %s in storage class", "invalidField"),
+		},
+		{
+			name:        "invalid value in parameters",
+			inputParams: map[string]string{consts.LogicalSectorSizeField: "invalidValue"},
+			expectedOutput: ManagedDiskParameters{
+				Incremental:    true,
+				Tags:           make(map[string]string),
+				VolumeContext:  map[string]string{consts.LogicalSectorSizeField: "invalidValue"},
+				DeviceSettings: make(map[string]string),
+			},
+			expectedError: fmt.Errorf("parse invalidValue failed with error: strconv.Atoi: parsing \"invalidValue\": invalid syntax"),
+		},
+		{
+			name: "valid parameters input",
+			inputParams: map[string]string{
+				consts.SkuNameField:             "skuName",
+				consts.LocationField:            "location",
+				consts.CachingModeField:         "cachingMode",
+				consts.ResourceGroupField:       "resourceGroup",
+				consts.DiskIOPSReadWriteField:   "diskIOPSReadWrite",
+				consts.DiskMBPSReadWriteField:   "diskMBPSReadWrite",
+				consts.LogicalSectorSizeField:   "1",
+				consts.DiskNameField:            "diskName",
+				consts.DiskEncryptionSetID:      "diskEncyptionSetID",
+				consts.TagsField:                "key0=value0, key1=value1",
+				consts.WriteAcceleratorEnabled:  "writeAcceleratorEnabled",
+				consts.PvcNameKey:               "pvcName",
+				consts.PvcNamespaceKey:          "pvcNamespace",
+				consts.PvNameKey:                "pvName",
+				consts.FsTypeField:              "fsType",
+				consts.KindField:                "ignored",
+				consts.MaxSharesField:           "1",
+				consts.PerfProfileField:         "None",
+				consts.NetworkAccessPolicyField: "networkAccessPolicy",
+				consts.DiskAccessIDField:        "diskAccessID",
+				consts.EnableBurstingField:      "true",
+				consts.UserAgentField:           "userAgent",
+				consts.EnableAsyncAttachField:   "enableAsyncAttach",
+				consts.IncrementalField:         "false",
+				consts.ZonedField:               "ignored",
+			},
+			expectedOutput: ManagedDiskParameters{
+				AccountType:         "skuName",
+				Location:            "location",
+				CachingMode:         v1.AzureDataDiskCachingMode("cachingMode"),
+				ResourceGroup:       "resourceGroup",
+				DiskIOPSReadWrite:   "diskIOPSReadWrite",
+				DiskMBPSReadWrite:   "diskMBPSReadWrite",
+				DiskName:            "diskName",
+				DiskEncryptionSetID: "diskEncyptionSetID",
+				Incremental:         false,
+				Tags: map[string]string{
+					consts.PvcNameTag:      "pvcName",
+					consts.PvcNamespaceTag: "pvcNamespace",
+					consts.PvNameTag:       "pvName",
+					"key0":                 "value0",
+					"key1":                 "value1",
+				},
+				WriteAcceleratorEnabled: "writeAcceleratorEnabled",
+				FsType:                  "fstype",
+				PerfProfile:             "None",
+				NetworkAccessPolicy:     "networkAccessPolicy",
+				DiskAccessID:            "diskAccessID",
+				EnableBursting:          to.BoolPtr(true),
+				UserAgent:               "userAgent",
+				VolumeContext: map[string]string{
+					consts.SkuNameField:             "skuName",
+					consts.LocationField:            "location",
+					consts.CachingModeField:         "cachingMode",
+					consts.ResourceGroupField:       "resourceGroup",
+					consts.DiskIOPSReadWriteField:   "diskIOPSReadWrite",
+					consts.DiskMBPSReadWriteField:   "diskMBPSReadWrite",
+					consts.LogicalSectorSizeField:   "1",
+					consts.DiskNameField:            "diskName",
+					consts.DiskEncryptionSetID:      "diskEncyptionSetID",
+					consts.TagsField:                "key0=value0, key1=value1",
+					consts.WriteAcceleratorEnabled:  "writeAcceleratorEnabled",
+					consts.PvcNameKey:               "pvcName",
+					consts.PvcNamespaceKey:          "pvcNamespace",
+					consts.PvNameKey:                "pvName",
+					consts.FsTypeField:              "fsType",
+					consts.KindField:                string(v1.AzureManagedDisk),
+					consts.MaxSharesField:           "1",
+					consts.PerfProfileField:         "None",
+					consts.NetworkAccessPolicyField: "networkAccessPolicy",
+					consts.DiskAccessIDField:        "diskAccessID",
+					consts.EnableBurstingField:      "true",
+					consts.UserAgentField:           "userAgent",
+					consts.EnableAsyncAttachField:   "enableAsyncAttach",
+					consts.IncrementalField:         "false",
+					consts.ZonedField:               "ignored",
+				},
+				DeviceSettings:    make(map[string]string),
+				MaxShares:         1,
+				LogicalSectorSize: 1,
+			},
+			expectedError: nil,
+		},
+	}
+	for _, test := range testCases {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			result, err := ParseDiskParameters(test.inputParams)
+			require.Equal(t, test.expectedError, err)
+			assert.Equal(t, test.expectedOutput, result)
+		})
 	}
 }
 
@@ -1204,17 +1436,17 @@ func TestInsertDiskProperties(t *testing.T) {
 		{
 			desc: "skuName",
 			disk: &compute.Disk{
-				Sku: &compute.DiskSku{Name: compute.PremiumLRS},
+				Sku: &compute.DiskSku{Name: compute.DiskStorageAccountTypesPremiumLRS},
 			},
 			inputMap:    map[string]string{},
-			expectedMap: map[string]string{"skuname": string(compute.PremiumLRS)},
+			expectedMap: map[string]string{"skuname": string(compute.DiskStorageAccountTypesPremiumLRS)},
 		},
 		{
 			desc: "DiskProperties",
 			disk: &compute.Disk{
-				Sku: &compute.DiskSku{Name: compute.StandardSSDLRS},
+				Sku: &compute.DiskSku{Name: compute.DiskStorageAccountTypesStandardSSDLRS},
 				DiskProperties: &compute.DiskProperties{
-					NetworkAccessPolicy: compute.AllowPrivate,
+					NetworkAccessPolicy: compute.NetworkAccessPolicyAllowPrivate,
 					DiskIOPSReadWrite:   to.Int64Ptr(6400),
 					DiskMBpsReadWrite:   to.Int64Ptr(100),
 					CreationData: &compute.CreationData{
@@ -1226,8 +1458,8 @@ func TestInsertDiskProperties(t *testing.T) {
 			},
 			inputMap: map[string]string{},
 			expectedMap: map[string]string{
-				consts.SkuNameField:             string(compute.StandardSSDLRS),
-				consts.NetworkAccessPolicyField: string(compute.AllowPrivate),
+				consts.SkuNameField:             string(compute.DiskStorageAccountTypesStandardSSDLRS),
+				consts.NetworkAccessPolicyField: string(compute.NetworkAccessPolicyAllowPrivate),
 				consts.DiskIOPSReadWriteField:   "6400",
 				consts.DiskMBPSReadWriteField:   "100",
 				consts.LogicalSectorSizeField:   "512",
@@ -1244,5 +1476,44 @@ func TestInsertDiskProperties(t *testing.T) {
 				t.Errorf("test [%q] get unexpected result: (%v, %v) != (%v, %v)", test.desc, k, v, k, test.expectedMap[k])
 			}
 		}
+	}
+}
+
+func TestSleepIfThrottled(t *testing.T) {
+	const sleepDuration = 1 * time.Second
+
+	tests := []struct {
+		description           string
+		err                   error
+		expectedSleepDuration time.Duration
+	}{
+		{
+			description: "No sleep",
+			err:         errors.New("do not sleep"),
+		},
+		{
+			description:           "Too many requests, sleep 100ms",
+			err:                   errors.New(consts.TooManyRequests),
+			expectedSleepDuration: sleepDuration,
+		},
+		{
+			description:           "Client throttled, sleep 100ms",
+			err:                   errors.New(consts.ClientThrottled),
+			expectedSleepDuration: sleepDuration,
+		},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.description, func(t *testing.T) {
+			start := time.Now()
+			SleepIfThrottled(test.err, int(sleepDuration.Seconds()))
+			actualSleepDuration := time.Since(start)
+			if test.expectedSleepDuration == 0 {
+				assert.Less(t, actualSleepDuration, sleepDuration)
+			} else {
+				assert.GreaterOrEqual(t, actualSleepDuration, test.expectedSleepDuration)
+			}
+		})
 	}
 }

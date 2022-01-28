@@ -435,6 +435,7 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 			if tt.existingAzVolumes != nil {
 				existingList := make([]runtime.Object, len(tt.existingAzVolumes))
 				for itr, azVol := range tt.existingAzVolumes {
+					azVol := azVol
 					existingList[itr] = &azVol
 				}
 				provisioner.azDiskClient = fake.NewSimpleClientset(existingList...)
@@ -608,6 +609,7 @@ func TestCrdProvisionerDeleteVolume(t *testing.T) {
 			if tt.existingAzVolumes != nil {
 				existingList := make([]runtime.Object, len(tt.existingAzVolumes))
 				for itr, azVol := range tt.existingAzVolumes {
+					azVol := azVol
 					existingList[itr] = &azVol
 				}
 				provisioner.azDiskClient = fake.NewSimpleClientset(existingList...)
@@ -775,6 +777,7 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 			if tt.existingAzVolAttachment != nil {
 				existingList := make([]runtime.Object, len(tt.existingAzVolAttachment))
 				for itr, azVA := range tt.existingAzVolAttachment {
+					azVA := azVA
 					existingList[itr] = &azVA
 				}
 				provisioner.azDiskClient = fake.NewSimpleClientset(existingList...)
@@ -950,6 +953,7 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 			if tt.existingAzVolAttachment != nil {
 				existingList := make([]runtime.Object, len(tt.existingAzVolAttachment))
 				for itr, azVA := range tt.existingAzVolAttachment {
+					azVA := azVA
 					existingList[itr] = &azVA
 				}
 				provisioner.azDiskClient = fake.NewSimpleClientset(existingList...)
@@ -1091,6 +1095,7 @@ func TestCrdProvisionerExpandVolume(t *testing.T) {
 			if tt.existingAzVolumes != nil {
 				existingList := make([]runtime.Object, len(tt.existingAzVolumes))
 				for itr, azVol := range tt.existingAzVolumes {
+					azVol := azVol
 					existingList[itr] = &azVol
 				}
 				provisioner.azDiskClient = fake.NewSimpleClientset(existingList...)
