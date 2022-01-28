@@ -40,10 +40,14 @@ type State struct {
 // data should not be mutated after calling Set.
 func Set(state resolver.State, s *State) resolver.State {
 <<<<<<< HEAD
+<<<<<<< HEAD
 	state.Attributes = state.Attributes.WithValue(key, s)
 =======
 	state.Attributes = state.Attributes.WithValues(key, s)
 >>>>>>> upgrade to k8s 1.23 lib
+=======
+	state.Attributes = state.Attributes.WithValue(key, s)
+>>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 	return state
 }
 

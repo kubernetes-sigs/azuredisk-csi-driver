@@ -24,10 +24,14 @@ lint:
 	golangci-lint run -v
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 test: install_deps
 =======
 test: install_deps lint
 >>>>>>> upgrade to k8s 1.23 lib
+=======
+test: install_deps
+>>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 	$(info ******************** running tests ********************)
 	richgo test -v ./...
 

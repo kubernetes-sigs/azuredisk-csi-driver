@@ -203,10 +203,14 @@ _%[1]s()
     elif [ $((directive & shellCompDirectiveFilterDirs)) -ne 0 ]; then
         # File completion for directories only
 <<<<<<< HEAD
+<<<<<<< HEAD
         local subdir
 =======
         local subDir
 >>>>>>> upgrade to k8s 1.23 lib
+=======
+        local subdir
+>>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
         subdir="${completions[1]}"
         if [ -n "$subdir" ]; then
             __%[1]s_debug "Listing directories in $subdir"
@@ -255,10 +259,14 @@ _%[1]s()
 # don't run the completion function when being source-ed or eval-ed
 if [ "$funcstack[1]" = "_%[1]s" ]; then
 <<<<<<< HEAD
+<<<<<<< HEAD
     _%[1]s
 =======
 	_%[1]s
 >>>>>>> upgrade to k8s 1.23 lib
+=======
+    _%[1]s
+>>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 fi
 `, name, compCmd,
 		ShellCompDirectiveError, ShellCompDirectiveNoSpace, ShellCompDirectiveNoFileComp,

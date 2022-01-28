@@ -26,9 +26,13 @@ import (
 	"net"
 	"net/http"
 <<<<<<< HEAD
+<<<<<<< HEAD
 	"path/filepath"
 =======
 >>>>>>> upgrade to k8s 1.23 lib
+=======
+	"path/filepath"
+>>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 	"strconv"
 	"strings"
 	"sync"
@@ -151,6 +155,9 @@ func dial(ctx context.Context, fn func(context.Context, string) (net.Conn, error
 	networkType, ok := networktype.Get(addr)
 	if fn != nil {
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 		// Special handling for unix scheme with custom dialer. Back in the day,
 		// we did not have a unix resolver and therefore targets with a unix
 		// scheme would end up using the passthrough resolver. So, user's used a
@@ -158,6 +165,7 @@ func dial(ctx context.Context, fn func(context.Context, string) (net.Conn, error
 		// be passed to the custom dialer. Now, we have a unix resolver. But if
 		// a custom dialer is specified, we want to retain the old behavior in
 		// terms of the address being passed to the custom dialer.
+<<<<<<< HEAD
 		if networkType == "unix" && !strings.HasPrefix(address, "\x00") {
 			// Supported unix targets are either "unix://absolute-path" or
 			// "unix:relative-path".
@@ -174,6 +182,15 @@ func dial(ctx context.Context, fn func(context.Context, string) (net.Conn, error
 			// custom dialer sees the same address.
 			return fn(ctx, "unix://"+address)
 >>>>>>> upgrade to k8s 1.23 lib
+=======
+		if networkType == "unix" && !strings.HasPrefix(address, "\x00") {
+			// Supported unix targets are either "unix://absolute-path" or
+			// "unix:relative-path".
+			if filepath.IsAbs(address) {
+				return fn(ctx, "unix://"+address)
+			}
+			return fn(ctx, "unix:"+address)
+>>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 		}
 		return fn(ctx, address)
 	}
@@ -1490,6 +1507,7 @@ func (t *http2Client) operateHeaders(frame *http2.MetaHeadersFrame) {
 	}
 
 	isHeader := false
+<<<<<<< HEAD
 	defer func() {
 		if t.statsHandler != nil {
 			if isHeader {
@@ -1584,6 +1602,8 @@ func (t *http2Client) operateHeaders(frame *http2.MetaHeadersFrame) {
 	}
 
 	isHeader := false
+=======
+>>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 
 	// If headerChan hasn't been closed yet
 	if atomic.CompareAndSwapUint32(&s.headerChanClosed, 0, 1) {

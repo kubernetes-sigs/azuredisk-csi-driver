@@ -1138,6 +1138,9 @@ func chainUnaryServerInterceptors(s *Server) {
 func chainUnaryInterceptors(interceptors []UnaryServerInterceptor) UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *UnaryServerInfo, handler UnaryHandler) (interface{}, error) {
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 		// the struct ensures the variables are allocated together, rather than separately, since we
 		// know they should be garbage collected together. This saves 1 allocation and decreases
 		// time/call by about 10% on the microbenchmark.
@@ -1148,6 +1151,7 @@ func chainUnaryInterceptors(interceptors []UnaryServerInterceptor) UnaryServerIn
 		state.next = func(ctx context.Context, req interface{}) (interface{}, error) {
 			if state.i == len(interceptors)-1 {
 				return interceptors[state.i](ctx, req, info, handler)
+<<<<<<< HEAD
 			}
 			state.i++
 			return interceptors[state.i-1](ctx, req, info, state.next)
@@ -1159,12 +1163,18 @@ func chainUnaryInterceptors(interceptors []UnaryServerInterceptor) UnaryServerIn
 		next = func(ctx context.Context, req interface{}) (interface{}, error) {
 			if i == len(interceptors)-1 {
 				return interceptors[i](ctx, req, info, handler)
+=======
+>>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 			}
-			i++
-			return interceptors[i-1](ctx, req, info, next)
+			state.i++
+			return interceptors[state.i-1](ctx, req, info, state.next)
 		}
+<<<<<<< HEAD
 		return next(ctx, req)
 >>>>>>> upgrade to k8s 1.23 lib
+=======
+		return state.next(ctx, req)
+>>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 	}
 }
 
@@ -1441,6 +1451,9 @@ func chainStreamServerInterceptors(s *Server) {
 func chainStreamInterceptors(interceptors []StreamServerInterceptor) StreamServerInterceptor {
 	return func(srv interface{}, ss ServerStream, info *StreamServerInfo, handler StreamHandler) error {
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 		// the struct ensures the variables are allocated together, rather than separately, since we
 		// know they should be garbage collected together. This saves 1 allocation and decreases
 		// time/call by about 10% on the microbenchmark.
@@ -1451,6 +1464,7 @@ func chainStreamInterceptors(interceptors []StreamServerInterceptor) StreamServe
 		state.next = func(srv interface{}, ss ServerStream) error {
 			if state.i == len(interceptors)-1 {
 				return interceptors[state.i](srv, ss, info, handler)
+<<<<<<< HEAD
 			}
 			state.i++
 			return interceptors[state.i-1](srv, ss, info, state.next)
@@ -1462,12 +1476,18 @@ func chainStreamInterceptors(interceptors []StreamServerInterceptor) StreamServe
 		next = func(srv interface{}, ss ServerStream) error {
 			if i == len(interceptors)-1 {
 				return interceptors[i](srv, ss, info, handler)
+=======
+>>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 			}
-			i++
-			return interceptors[i-1](srv, ss, info, next)
+			state.i++
+			return interceptors[state.i-1](srv, ss, info, state.next)
 		}
+<<<<<<< HEAD
 		return next(srv, ss)
 >>>>>>> upgrade to k8s 1.23 lib
+=======
+		return state.next(srv, ss)
+>>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 	}
 }
 

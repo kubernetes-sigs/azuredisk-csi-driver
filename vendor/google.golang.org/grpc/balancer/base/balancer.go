@@ -22,7 +22,6 @@ import (
 	"errors"
 	"fmt"
 
-	"google.golang.org/grpc/attributes"
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/grpclog"
@@ -43,10 +42,14 @@ func (bb *baseBuilder) Build(cc balancer.ClientConn, opt balancer.BuildOptions) 
 		pickerBuilder: bb.pickerBuilder,
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 		subConns: resolver.NewAddressMap(),
 =======
 		subConns: make(map[resolver.Address]subConnInfo),
 >>>>>>> upgrade to k8s 1.23 lib
+=======
+		subConns: resolver.NewAddressMap(),
+>>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 		scStates: make(map[balancer.SubConn]connectivity.State),
 		csEvltr:  &balancer.ConnectivityStateEvaluator{},
 		config:   bb.config,
@@ -63,6 +66,7 @@ func (bb *baseBuilder) Name() string {
 }
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 type subConnInfo struct {
 	subConn balancer.SubConn
@@ -70,6 +74,8 @@ type subConnInfo struct {
 }
 
 >>>>>>> upgrade to k8s 1.23 lib
+=======
+>>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 type baseBalancer struct {
 	cc            balancer.ClientConn
 	pickerBuilder PickerBuilder
@@ -78,10 +84,14 @@ type baseBalancer struct {
 	state   connectivity.State
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 	subConns *resolver.AddressMap
 =======
 	subConns map[resolver.Address]subConnInfo // `attributes` is stripped from the keys of this map (the addresses)
 >>>>>>> upgrade to k8s 1.23 lib
+=======
+	subConns *resolver.AddressMap
+>>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 	scStates map[balancer.SubConn]connectivity.State
 	picker   balancer.Picker
 	config   Config
@@ -92,6 +102,7 @@ type baseBalancer struct {
 
 func (b *baseBalancer) ResolverError(err error) {
 	b.resolverErr = err
+<<<<<<< HEAD
 <<<<<<< HEAD
 	if b.subConns.Len() == 0 {
 		b.state = connectivity.TransientFailure
@@ -104,6 +115,9 @@ func (b *baseBalancer) ResolverError(err error) {
 	}
 =======
 	if len(b.subConns) == 0 {
+=======
+	if b.subConns.Len() == 0 {
+>>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 		b.state = connectivity.TransientFailure
 	}
 
@@ -131,6 +145,7 @@ func (b *baseBalancer) UpdateClientConnState(s balancer.ClientConnState) error {
 	addrsSet := resolver.NewAddressMap()
 	for _, a := range s.ResolverState.Addresses {
 <<<<<<< HEAD
+<<<<<<< HEAD
 		addrsSet.Set(a, nil)
 		if _, ok := b.subConns.Get(a); !ok {
 =======
@@ -149,36 +164,31 @@ func (b *baseBalancer) UpdateClientConnState(s balancer.ClientConnState) error {
 		addrsSet[aNoAttrs] = struct{}{}
 		if scInfo, ok := b.subConns[aNoAttrs]; !ok {
 >>>>>>> upgrade to k8s 1.23 lib
+=======
+		addrsSet.Set(a, nil)
+		if _, ok := b.subConns.Get(a); !ok {
+>>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 			// a is a new address (not existing in b.subConns).
-			//
-			// When creating SubConn, the original address with attributes is
-			// passed through. So that connection configurations in attributes
-			// (like creds) will be used.
 			sc, err := b.cc.NewSubConn([]resolver.Address{a}, balancer.NewSubConnOptions{HealthCheckEnabled: b.config.HealthCheck})
 			if err != nil {
 				logger.Warningf("base.baseBalancer: failed to create new SubConn: %v", err)
 				continue
 			}
 <<<<<<< HEAD
+<<<<<<< HEAD
 			b.subConns.Set(a, sc)
 =======
 			b.subConns[aNoAttrs] = subConnInfo{subConn: sc, attrs: a.Attributes}
 >>>>>>> upgrade to k8s 1.23 lib
+=======
+			b.subConns.Set(a, sc)
+>>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 			b.scStates[sc] = connectivity.Idle
 			b.csEvltr.RecordTransition(connectivity.Shutdown, connectivity.Idle)
 			sc.Connect()
-		} else {
-			// Always update the subconn's address in case the attributes
-			// changed.
-			//
-			// The SubConn does a reflect.DeepEqual of the new and old
-			// addresses. So this is a noop if the current address is the same
-			// as the old one (including attributes).
-			scInfo.attrs = a.Attributes
-			b.subConns[aNoAttrs] = scInfo
-			b.cc.UpdateAddresses(scInfo.subConn, []resolver.Address{a})
 		}
 	}
+<<<<<<< HEAD
 <<<<<<< HEAD
 	for _, a := range b.subConns.Keys() {
 		sci, _ := b.subConns.Get(a)
@@ -194,6 +204,15 @@ func (b *baseBalancer) UpdateClientConnState(s balancer.ClientConnState) error {
 			b.cc.RemoveSubConn(scInfo.subConn)
 			delete(b.subConns, a)
 >>>>>>> upgrade to k8s 1.23 lib
+=======
+	for _, a := range b.subConns.Keys() {
+		sci, _ := b.subConns.Get(a)
+		sc := sci.(balancer.SubConn)
+		// a was removed by resolver.
+		if _, ok := addrsSet.Get(a); !ok {
+			b.cc.RemoveSubConn(sc)
+			b.subConns.Delete(a)
+>>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 			// Keep the state of this sc in b.scStates until sc's state becomes Shutdown.
 			// The entry will be deleted in UpdateSubConnState.
 		}
@@ -236,17 +255,23 @@ func (b *baseBalancer) regeneratePicker() {
 
 	// Filter out all ready SCs from full subConn map.
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 	for _, addr := range b.subConns.Keys() {
 		sci, _ := b.subConns.Get(addr)
 		sc := sci.(balancer.SubConn)
 		if st, ok := b.scStates[sc]; ok && st == connectivity.Ready {
 			readySCs[sc] = SubConnInfo{Address: addr}
+<<<<<<< HEAD
 =======
 	for addr, scInfo := range b.subConns {
 		if st, ok := b.scStates[scInfo.subConn]; ok && st == connectivity.Ready {
 			addr.Attributes = scInfo.attrs
 			readySCs[scInfo.subConn] = SubConnInfo{Address: addr}
 >>>>>>> upgrade to k8s 1.23 lib
+=======
+>>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 		}
 	}
 	b.picker = b.pickerBuilder.Build(PickerBuildInfo{ReadySCs: readySCs})

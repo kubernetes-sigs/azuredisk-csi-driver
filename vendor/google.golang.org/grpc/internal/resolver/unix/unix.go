@@ -38,6 +38,9 @@ func (b *builder) Build(target resolver.Target, cc resolver.ClientConn, _ resolv
 		return nil, fmt.Errorf("invalid (non-empty) authority: %v", target.Authority)
 	}
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 
 	// gRPC was parsing the dial target manually before PR #4817, and we
 	// switched to using url.Parse() in that PR. To avoid breaking existing
@@ -49,9 +52,12 @@ func (b *builder) Build(target resolver.Target, cc resolver.ClientConn, _ resolv
 		endpoint = target.URL.Opaque
 	}
 	addr := resolver.Address{Addr: endpoint}
+<<<<<<< HEAD
 =======
 	addr := resolver.Address{Addr: target.Endpoint}
 >>>>>>> upgrade to k8s 1.23 lib
+=======
+>>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 	if b.scheme == unixAbstractScheme {
 		// prepend "\x00" to address for unix-abstract
 		addr.Addr = "\x00" + addr.Addr

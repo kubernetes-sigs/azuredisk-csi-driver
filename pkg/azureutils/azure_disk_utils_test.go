@@ -619,6 +619,9 @@ func TestGetSourceVolumeID(t *testing.T) {
 		}
 	}
 }
+func TestIsCorruptedDir(t *testing.T) {
+	isCorrupted := IsCorruptedDir("/non-existing-dir")
+	assert.False(t, isCorrupted)
 
 func TestIsCorruptedDir(t *testing.T) {
 	isCorrupted := IsCorruptedDir("/non-existing-dir")

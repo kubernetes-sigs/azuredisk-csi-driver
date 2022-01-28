@@ -139,10 +139,14 @@ const csKey = csKeyType("grpc.internal.resolver.configSelector")
 // state.
 func SetConfigSelector(state resolver.State, cs ConfigSelector) resolver.State {
 <<<<<<< HEAD
+<<<<<<< HEAD
 	state.Attributes = state.Attributes.WithValue(csKey, cs)
 =======
 	state.Attributes = state.Attributes.WithValues(csKey, cs)
 >>>>>>> upgrade to k8s 1.23 lib
+=======
+	state.Attributes = state.Attributes.WithValue(csKey, cs)
+>>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 	return state
 }
 

@@ -41,11 +41,15 @@ func New(key, value interface{}) *Attributes {
 }
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 // WithValue returns a new Attributes containing the previous keys and values
 // and the new key/value pair.  If the same key appears multiple times, the
 // last value overwrites all previous values for that key.  To remove an
 // existing key, use a nil value.  value should not be modified later.
 func (a *Attributes) WithValue(key, value interface{}) *Attributes {
+<<<<<<< HEAD
 	if a == nil {
 		return New(key, value)
 =======
@@ -54,13 +58,18 @@ func (a *Attributes) WithValue(key, value interface{}) *Attributes {
 // times, the last value overwrites all previous values for that key.  To
 // remove an existing key, use a nil value.
 func (a *Attributes) WithValues(kvs ...interface{}) *Attributes {
+=======
+>>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 	if a == nil {
-		return New(kvs...)
+		return New(key, value)
 	}
+<<<<<<< HEAD
 	if len(kvs)%2 != 0 {
 		panic(fmt.Sprintf("attributes.New called with unexpected input: len(kvs) = %v", len(kvs)))
 >>>>>>> upgrade to k8s 1.23 lib
 	}
+=======
+>>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 	n := &Attributes{m: make(map[interface{}]interface{}, len(a.m)+1)}
 	for k, v := range a.m {
 		n.m[k] = v

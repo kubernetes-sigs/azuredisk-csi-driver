@@ -122,10 +122,14 @@ func (t *grpcTunnel) serve(c clientConn) {
 					connid: resp.ConnectID,
 				}
 <<<<<<< HEAD
+<<<<<<< HEAD
 				select {
 =======
 				select  {
 >>>>>>> chore: upgrade azure lib
+=======
+				select {
+>>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 				case ch <- result:
 				default:
 					klog.ErrorS(fmt.Errorf("blocked pending channel"), "Received second dial response for connection request", "connectionID", resp.ConnectID, "dialID", resp.Random)

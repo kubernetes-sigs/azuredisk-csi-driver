@@ -5,9 +5,13 @@
 - [CockroachDB](http://www.cockroachlabs.com/)
 - [Cosmos SDK](https://github.com/cosmos/cosmos-sdk)
 <<<<<<< HEAD
+<<<<<<< HEAD
 - [Datree](https://github.com/datreeio/datree)
 =======
 >>>>>>> upgrade to k8s 1.23 lib
+=======
+- [Datree](https://github.com/datreeio/datree)
+>>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 - [Delve](https://github.com/derekparker/delve)
 - [Docker (distribution)](https://github.com/docker/distribution)
 - [Etcd](https://etcd.io/)
@@ -19,19 +23,26 @@
 - [Golangci-lint](https://golangci-lint.run)
 - [GopherJS](http://www.gopherjs.org/)
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 - [GoReleaser](https://goreleaser.com)
 - [Helm](https://helm.sh)
 - [Hugo](https://gohugo.io)
 - [Infracost](https://github.com/infracost/infracost)
+<<<<<<< HEAD
 =======
 - [Helm](https://helm.sh)
 - [Hugo](https://gohugo.io)
 >>>>>>> upgrade to k8s 1.23 lib
+=======
+>>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 - [Istio](https://istio.io)
 - [Kool](https://github.com/kool-dev/kool)
 - [Kubernetes](http://kubernetes.io/)
 - [Linkerd](https://linkerd.io/)
 - [Mattermost-server](https://github.com/mattermost/mattermost-server)
+<<<<<<< HEAD
 <<<<<<< HEAD
 - [Mercure](https://mercure.rocks/)
 - [Meroxa CLI](https://github.com/meroxa/cli)
@@ -42,16 +53,27 @@
 - [Nanobox](https://github.com/nanobox-io/nanobox)/[Nanopack](https://github.com/nanopack)
 - [nFPM](https://nfpm.goreleaser.com)
 =======
+=======
+- [Mercure](https://mercure.rocks/)
+- [Meroxa CLI](https://github.com/meroxa/cli)
+>>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 - [Metal Stack CLI](https://github.com/metal-stack/metalctl)
 - [Moby (former Docker)](https://github.com/moby/moby)
+- [Moldy](https://github.com/Moldy-Community/moldy)
+- [Multi-gitter](https://github.com/lindell/multi-gitter)
 - [Nanobox](https://github.com/nanobox-io/nanobox)/[Nanopack](https://github.com/nanopack)
+<<<<<<< HEAD
 >>>>>>> upgrade to k8s 1.23 lib
+=======
+- [nFPM](https://nfpm.goreleaser.com)
+>>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 - [OpenShift](https://www.openshift.com/)
 - [Ory Hydra](https://github.com/ory/hydra)
 - [Ory Kratos](https://github.com/ory/kratos)
 - [Pouch](https://github.com/alibaba/pouch)
 - [ProjectAtomic (enterprise)](http://www.projectatomic.io/)
 - [Prototool](https://github.com/uber/prototool)
+<<<<<<< HEAD
 <<<<<<< HEAD
 - [QRcp](https://github.com/claudiodangelis/qrcp)
 - [Random](https://github.com/erdaltsksn/random)
@@ -63,10 +85,19 @@
 - [UpCloud CLI (`upctl`)](https://github.com/UpCloudLtd/upcloud-cli)
 - VMware's [Tanzu Community Edition](https://github.com/vmware-tanzu/community-edition) & [Tanzu Framework](https://github.com/vmware-tanzu/tanzu-framework)
 =======
+=======
+- [QRcp](https://github.com/claudiodangelis/qrcp)
+>>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 - [Random](https://github.com/erdaltsksn/random)
 - [Rclone](https://rclone.org/)
+- [Scaleway CLI](https://github.com/scaleway/scaleway-cli)
 - [Skaffold](https://skaffold.dev/)
 - [Tendermint](https://github.com/tendermint/tendermint)
 - [Twitch CLI](https://github.com/twitchdev/twitch-cli)
+<<<<<<< HEAD
 >>>>>>> upgrade to k8s 1.23 lib
+=======
+- [UpCloud CLI (`upctl`)](https://github.com/UpCloudLtd/upcloud-cli)
+- VMware's [Tanzu Community Edition](https://github.com/vmware-tanzu/community-edition) & [Tanzu Framework](https://github.com/vmware-tanzu/tanzu-framework)
+>>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 - [Werf](https://werf.io/)
