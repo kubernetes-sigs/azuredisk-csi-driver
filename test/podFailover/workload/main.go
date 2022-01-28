@@ -63,9 +63,9 @@ func main() {
 		if *authEnabled {
 
 			// Read the values from the secret
-			var caCert string = os.Getenv("CA_CERT")
-			var clientCert string = os.Getenv("CLIENT_CERT")
-			var clientKey string = os.Getenv("CLIENT_KEY")
+			var caCert = os.Getenv("CA_CERT")
+			var clientCert = os.Getenv("CLIENT_CERT")
+			var clientKey = os.Getenv("CLIENT_KEY")
 
 			caCertPool := x509.NewCertPool()
 			caCertPool.AppendCertsFromPEM([]byte(caCert))
@@ -96,9 +96,12 @@ func main() {
 		query.Add("testName", *testName)
 		metricsEndpointURL.RawQuery = query.Encode()
 
-		_, err = client.Get(metricsEndpointURL.String())
+		resp, err := client.Get(metricsEndpointURL.String())
 		if err != nil {
 			klog.Infof("Error occurred while making the http call to metrics publisher: %v", err)
+		}
+		if resp != nil {
+			resp.Body.Close()
 		}
 	}
 

@@ -5,7 +5,8 @@ metadata:
   name: disk.csi.azure.com
   annotations:
     csiDriver: latest
-    snapshot: v3.0.3
+    snapshot: v4.2.1
 spec:
   attachRequired: true
   podInfoOnMount: false
+  fsGroupPolicy: File

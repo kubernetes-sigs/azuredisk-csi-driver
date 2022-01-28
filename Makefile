@@ -325,6 +325,7 @@ e2e-test:
 	if [ ! -z "$(EXTERNAL_E2E_TEST)" ]; then \
 		bash ./test/external-e2e/run.sh;\
 	else \
+		bash ./hack/parse-prow-creds.sh;\
 		go test -v -timeout=0 ${GOTAGS} ./test/e2e ${GINKGO_FLAGS};\
 	fi
 

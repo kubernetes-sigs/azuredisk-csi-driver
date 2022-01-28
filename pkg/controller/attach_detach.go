@@ -159,10 +159,10 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 	// }
 
 	// initiate goroutine to attach volume
+	//nolint:contextcheck // Attach is performed asynchronously by the reconciler; context is not inherited by design
 	go func() {
 		cloudCtx, cloudCancel := context.WithTimeout(context.Background(), cloudTimeout)
 		defer cloudCancel()
-		updateCtx := context.Background()
 		// attempt to attach the disk to a node
 		response, attachErr := r.attachVolume(cloudCtx, azVolumeAttachment.Spec.VolumeID, azVolumeAttachment.Spec.NodeName, azVolumeAttachment.Spec.VolumeContext)
 		// if the disk is attached to a different node
@@ -218,7 +218,7 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 			}
 		}
 
-		_ = azureutils.UpdateCRIWithRetry(updateCtx, nil, r.client, r.azVolumeClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry)
+		_ = azureutils.UpdateCRIWithRetry(cloudCtx, nil, r.client, r.azVolumeClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry)
 	}()
 
 	return nil

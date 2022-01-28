@@ -15,4 +15,4 @@ jobs:
       - name: Check out code into the Go module directory
         uses: actions/checkout@v2
       - name: Verify
-        run: make verify
+        run: sudo -E -H PATH="$PATH" make verify

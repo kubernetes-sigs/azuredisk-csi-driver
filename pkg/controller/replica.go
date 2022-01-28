@@ -70,7 +70,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 		if objectDeletionRequested(azVolumeAttachment) {
 			if volumeDetachRequested(azVolumeAttachment) {
 				// If primary attachment is marked for deletion, queue garbage collection for replica attachments
-				r.triggerGarbageCollection(azVolumeAttachment.Spec.UnderlyingVolume)
+				r.triggerGarbageCollection(azVolumeAttachment.Spec.UnderlyingVolume) //nolint:contextcheck // Garbage collection is asynchronous; context is not inherited by design
 			}
 		} else {
 			// If not, cancel scheduled garbage collection if there is one enqueued
@@ -136,7 +136,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 }
 
 func (r *ReconcileReplica) triggerGarbageCollection(volumeName string) {
-	emptyCtx := context.TODO()
+	emptyCtx := context.Background()
 	deletionCtx, cancelFunc := context.WithCancel(emptyCtx)
 	if _, ok := r.cleanUpMap.LoadOrStore(volumeName, cancelFunc); ok {
 		klog.Infof("There already is a scheduled garbage collection for AzVolume (%s)", volumeName)

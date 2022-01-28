@@ -20,7 +20,7 @@ V2: Preview
 
 |Driver Version  |Image                                                      | supported k8s version |
 |----------------|-----------------------------------------------------------|-----------------------|
-|`master` branch |mcr.microsoft.com/k8s/csi/azuredisk-csi:latest             | 1.19+                 |
+|`master` branch |mcr.microsoft.com/k8s/csi/azuredisk-csi:latest             | 1.20+                 |
 |v1.10.0         |mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v1.10.0 | 1.19+                 |
 |v1.9.0          |mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v1.9.0  | 1.19+                 |
 |v1.8.0          |mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v1.8.0  | 1.18+                 |
@@ -57,8 +57,8 @@ follow guide [here](./docs/install-driver-on-aks.md)
   > kubectl create configmap azure-cred-file --from-literal=path="/etc/kubernetes/cloud.conf" --from-literal=path-windows="C:\\k\\cloud.conf" -n kube-system
   > ```
   >
-- This driver also supports [read cloud config from kuberenetes secret](./docs/read-from-secret.md).
-- If cluster identity is [Managed Service Identity(MSI)](https://docs.microsoft.com/en-us/azure/aks/use-managed-identity), make sure user assigned identity has `Contributor` role on node resource group
+- This driver also supports [read cloud config from kuberenetes secret](./docs/read-from-secret.md) as first priority.
+- Make sure identity used by driver has `Contributor` role on node resource group
   - When installing side-by-side with an earlier version of the driver on an AKS cluster, ensure the agentpool service principal or managed service identity is assigned to the `Contributor` role on the resource groups used to store managed disks.
 - [Set up CSI driver on Azure RedHat OpenShift(ARO)](https://github.com/ezYakaEagle442/aro-pub-storage/blob/master/setup-store-CSI-driver-azure-disk.md)
 
