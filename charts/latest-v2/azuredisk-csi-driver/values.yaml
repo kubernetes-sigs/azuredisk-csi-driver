@@ -17,8 +17,8 @@ image:
     tag: v1.3.0
     pullPolicy: IfNotPresent
   curl:
-    repository: docker.io/curlimages/curl
-    tag: latest
+    repository: /oss/kubernetes/kubectl
+    tag: v1.21.2
     pullPolicy: IfNotPresent
   livenessProbe:
     repository: /oss/kubernetes-csi/livenessprobe
