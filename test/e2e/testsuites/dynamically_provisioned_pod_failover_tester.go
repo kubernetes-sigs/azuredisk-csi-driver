@@ -38,7 +38,7 @@ type PodFailover struct {
 }
 
 func (t *PodFailover) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
-	tDeployment, cleanup := t.Pod.SetupDeployment(client, namespace, t.CSIDriver, schedulerName, 1, t.StorageClassParameters)
+	tDeployment, cleanup := t.Pod.SetupDeployment(client, namespace, t.CSIDriver, schedulerName, t.StorageClassParameters)
 
 	// defer must be called here so resources don't get removed before using them
 	for i := range cleanup {

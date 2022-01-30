@@ -92,9 +92,9 @@ func (d *azureDiskDriver) GetVolumeSnapshotClass(namespace string) *snapshotv1.V
 	return getVolumeSnapshotClass(generateName, provisioner)
 }
 
-func (d *azureDiskDriver) GetPersistentVolume(volumeID string, fsType string, size string, reclaimPolicy *v1.PersistentVolumeReclaimPolicy, namespace string, volumeContext map[string]string) *v1.PersistentVolume {
+func (d *azureDiskDriver) GetPersistentVolume(volumeID, fsType, size string, volumeMode v1.PersistentVolumeMode, accessMode v1.PersistentVolumeAccessMode, reclaimPolicy *v1.PersistentVolumeReclaimPolicy, namespace string, volumeContext map[string]string) *v1.PersistentVolume {
 	provisioner := d.driverName
-	generateName := fmt.Sprintf("%s-%s-preprovsioned-pv-", namespace, normalizeProvisioner(provisioner))
+	generateName := fmt.Sprintf("%s-%s-preprovisioned-pv-", namespace, normalizeProvisioner(provisioner))
 	// Default to Retain ReclaimPolicy for pre-provisioned volumes
 	pvReclaimPolicy := v1.PersistentVolumeReclaimRetain
 	if reclaimPolicy != nil {
@@ -110,7 +110,8 @@ func (d *azureDiskDriver) GetPersistentVolume(volumeID string, fsType string, si
 			},
 		},
 		Spec: v1.PersistentVolumeSpec{
-			AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+			VolumeMode:  &volumeMode,
+			AccessModes: []v1.PersistentVolumeAccessMode{accessMode},
 			Capacity: v1.ResourceList{
 				v1.ResourceName(v1.ResourceStorage): resource.MustParse(size),
 			},

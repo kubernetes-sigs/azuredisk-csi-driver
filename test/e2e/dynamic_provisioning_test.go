@@ -810,7 +810,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 						"acl",
 					},
 					VolumeMount:      volume.VolumeMount,
-					VolumeAccessMode: volume.VolumeAccessMode,
+					VolumeAccessMode: v1.ReadWriteOnce,
 				},
 			}, []string{}, isMultiZone),
 			IsWindows: testconsts.IsWindowsCluster,
@@ -1325,6 +1325,69 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			StorageClassParameters: storageClassParameters,
 			AzDiskClient:           azDiskClient,
 			IsMultiZone:            isMultiZone,
+		}
+		test.Run(cs, ns, schedulerName)
+	})
+
+	ginkgo.It("should succeed when attaching a shared block volume to multiple pods [disk.csi.azure.com][shared disk]", func() {
+		testutil.SkipIfUsingInTreeVolumePlugin()
+		testutil.SkipIfOnAzureStackCloud()
+		testutil.SkipIfTestingInWindowsCluster()
+		if isMultiZone {
+			testutil.SkipIfNotZRSSupported(location)
+		}
+
+		pod := testtypes.PodDetails{
+			Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do sleep 5; done"),
+			Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
+				{
+					ClaimSize: "10Gi",
+					VolumeMount: testtypes.VolumeMountDetails{
+						NameGenerate:      "test-shared-volume-",
+						MountPathGenerate: "/dev/shared-",
+					},
+					VolumeMode:       testtypes.Block,
+					VolumeAccessMode: v1.ReadWriteMany,
+				},
+			}, t.allowedTopologyValues, isMultiZone),
+			UseCMD:          false,
+			IsWindows:       testconsts.IsWindowsCluster,
+			UseAntiAffinity: isMultiZone,
+			ReplicaCount:    2,
+		}
+
+		storageClassParameters := map[string]string{
+			"skuName":     "StandardSSD_LRS",
+			"maxshares":   "2",
+			"cachingmode": "None",
+		}
+		if supportsZRS {
+			storageClassParameters["skuName"] = "StandardSSD_ZRS"
+		}
+
+		podCheck := &testsuites.PodExecCheck{
+			ExpectedString: "VOLUME ATTACHED",
+		}
+		if !testconsts.IsWindowsCluster {
+			podCheck.Cmd = []string{
+				"sh",
+				"-c",
+				"(stat /dev/shared-1 > /dev/null) && echo \"VOLUME ATTACHED\"",
+			}
+		} else {
+			podCheck.Cmd = []string{
+				"powershell",
+				"-NoLogo",
+				"-Command",
+				"if (Test-Path c:\\dev\\shared-1) { \"VOLUME ATTACHED\" | Out-Host }",
+			}
+		}
+
+		test := testsuites.DynamicallyProvisionedSharedDiskTester{
+			CSIDriver:              testDriver,
+			Pod:                    pod,
+			PodCheck:               podCheck,
+			StorageClassParameters: storageClassParameters,
 		}
 		test.Run(cs, ns, schedulerName)
 	})
