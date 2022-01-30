@@ -166,22 +166,18 @@ func (c *CloudProvisioner) CreateVolume(
 	if skuName == compute.DiskStorageAccountTypesStandardSSDZRS || skuName == compute.DiskStorageAccountTypesPremiumZRS {
 		klog.V(2).Infof("diskZone(%s) is reset as empty since disk(%s) is ZRS(%s)", selectedAvailabilityZone, diskParams.DiskName, skuName)
 		selectedAvailabilityZone = ""
-		if accessibilityRequirements != nil && len(accessibilityRequirements.Requisite) > 0 {
-			accessibleTopology = append(accessibleTopology, accessibilityRequirements.Requisite...)
-		} else {
-			// make volume scheduled on all 3 availability zones
-			for i := 1; i <= 3; i++ {
-				topology := v1alpha1.Topology{
-					Segments: map[string]string{topologyKeyStr: fmt.Sprintf("%s-%d", c.cloud.Location, i)},
-				}
-				accessibleTopology = append(accessibleTopology, topology)
-			}
-			// make volume scheduled on all non-zone nodes
+		// make volume scheduled on all 3 availability zones
+		for i := 1; i <= 3; i++ {
 			topology := v1alpha1.Topology{
-				Segments: map[string]string{topologyKeyStr: ""},
+				Segments: map[string]string{topologyKeyStr: fmt.Sprintf("%s-%d", c.cloud.Location, i)},
 			}
 			accessibleTopology = append(accessibleTopology, topology)
 		}
+		// make volume scheduled on all non-zone nodes
+		topology := v1alpha1.Topology{
+			Segments: map[string]string{topologyKeyStr: ""},
+		}
+		accessibleTopology = append(accessibleTopology, topology)
 	} else {
 		accessibleTopology = []v1alpha1.Topology{
 			{

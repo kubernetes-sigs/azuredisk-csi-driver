@@ -396,10 +396,9 @@ type TestDeployment struct {
 	PodNames   []string
 }
 
-func NewTestDeployment(c clientset.Interface, ns *v1.Namespace, command string, volumeMounts []v1.VolumeMount, volumes []v1.Volume, podReplicas int, isWindows bool, useCMD bool, schedulerName string) *TestDeployment {
+func NewTestDeployment(c clientset.Interface, ns *v1.Namespace, command string, volumeMounts []v1.VolumeMount, volumeDevices []v1.VolumeDevice, volumes []v1.Volume, replicaCount int32, isWindows, useCMD, useAntiAffinity bool, schedulerName string) *TestDeployment {
 	generateName := "azuredisk-volume-tester-"
 	selectorValue := fmt.Sprintf("%s%d", generateName, rand.Int())
-	replicas := int32(podReplicas)
 
 	testDeployment := &TestDeployment{
 		Client:    c,
@@ -409,7 +408,7 @@ func NewTestDeployment(c clientset.Interface, ns *v1.Namespace, command string, 
 				GenerateName: generateName,
 			},
 			Spec: apps.DeploymentSpec{
-				Replicas: &replicas,
+				Replicas: &replicaCount,
 				Selector: &metav1.LabelSelector{
 					MatchLabels: map[string]string{"app": selectorValue},
 				},
@@ -422,11 +421,12 @@ func NewTestDeployment(c clientset.Interface, ns *v1.Namespace, command string, 
 						NodeSelector:  map[string]string{"kubernetes.io/os": "linux"},
 						Containers: []v1.Container{
 							{
-								Name:         "volume-tester",
-								Image:        imageutils.GetE2EImage(imageutils.BusyBox),
-								Command:      []string{"/bin/sh"},
-								Args:         []string{"-c", command},
-								VolumeMounts: volumeMounts,
+								Name:          "volume-tester",
+								Image:         imageutils.GetE2EImage(imageutils.BusyBox),
+								Command:       []string{"/bin/sh"},
+								Args:          []string{"-c", command},
+								VolumeMounts:  volumeMounts,
+								VolumeDevices: volumeDevices,
 							},
 						},
 						RestartPolicy: v1.RestartPolicyAlways,
@@ -435,6 +435,22 @@ func NewTestDeployment(c clientset.Interface, ns *v1.Namespace, command string, 
 				},
 			},
 		},
+	}
+
+	if useAntiAffinity {
+		affinity := &v1.Affinity{
+			PodAntiAffinity: &v1.PodAntiAffinity{
+				RequiredDuringSchedulingIgnoredDuringExecution: []v1.PodAffinityTerm{
+					{
+						LabelSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{"app": selectorValue},
+						},
+						TopologyKey: testconsts.TopologyKey,
+					},
+				},
+			},
+		}
+		testDeployment.Deployment.Spec.Template.Spec.Affinity = affinity
 	}
 
 	if isWindows {

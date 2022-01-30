@@ -571,6 +571,43 @@ func IsARMResourceID(resourceID string) bool {
 	return strings.Contains(id, "/subscriptions/")
 }
 
+func GetValidCreationData(subscriptionID, resourceGroup, sourceResourceID, sourceType string) (compute.CreationData, error) {
+	if sourceResourceID == "" {
+		return compute.CreationData{
+			CreateOption: compute.DiskCreateOptionEmpty,
+		}, nil
+	}
+
+	switch sourceType {
+	case consts.SourceSnapshot:
+		if match := consts.DiskSnapshotPathRE.FindString(sourceResourceID); match == "" {
+			sourceResourceID = fmt.Sprintf(consts.DiskSnapshotPath, subscriptionID, resourceGroup, sourceResourceID)
+		}
+
+	case consts.SourceVolume:
+		if match := consts.ManagedDiskPathRE.FindString(sourceResourceID); match == "" {
+			sourceResourceID = fmt.Sprintf(consts.ManagedDiskPath, subscriptionID, resourceGroup, sourceResourceID)
+		}
+	default:
+		return compute.CreationData{
+			CreateOption: compute.DiskCreateOptionEmpty,
+		}, nil
+	}
+
+	splits := strings.Split(sourceResourceID, "/")
+	if len(splits) > 9 {
+		if sourceType == consts.SourceSnapshot {
+			return compute.CreationData{}, fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", sourceResourceID, consts.DiskSnapshotPathRE)
+		}
+
+		return compute.CreationData{}, fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", sourceResourceID, consts.ManagedDiskPathRE)
+	}
+	return compute.CreationData{
+		CreateOption:     compute.DiskCreateOptionCopy,
+		SourceResourceID: &sourceResourceID,
+	}, nil
+}
+
 func IsCorruptedDir(dir string) bool {
 	_, pathErr := mount.PathExists(dir)
 	fmt.Printf("IsCorruptedDir(%s) returned with error: %v", dir, pathErr)

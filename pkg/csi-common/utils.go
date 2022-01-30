@@ -43,24 +43,6 @@ func NewVolumeCapabilityAccessMode(mode csi.VolumeCapability_AccessMode_Mode) *c
 	return &csi.VolumeCapability_AccessMode{Mode: mode}
 }
 
-func NewDefaultNodeServer(d *CSIDriver) *DefaultNodeServer {
-	return &DefaultNodeServer{
-		Driver: d,
-	}
-}
-
-func NewDefaultIdentityServer(d *CSIDriver) *DefaultIdentityServer {
-	return &DefaultIdentityServer{
-		Driver: d,
-	}
-}
-
-func NewDefaultControllerServer(d *CSIDriver) *DefaultControllerServer {
-	return &DefaultControllerServer{
-		Driver: d,
-	}
-}
-
 func NewControllerServiceCapability(cap csi.ControllerServiceCapability_RPC_Type) *csi.ControllerServiceCapability {
 	return &csi.ControllerServiceCapability{
 		Type: &csi.ControllerServiceCapability_Rpc{
