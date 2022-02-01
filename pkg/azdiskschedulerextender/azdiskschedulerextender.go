@@ -218,7 +218,7 @@ func prioritize(context context.Context, schedulerExtenderArgs schedulerapi.Exte
 				volume.VolumeSource.PersistentVolumeClaim,
 			)
 			if volume.PersistentVolumeClaim != nil {
-				if entry, ok := pvcToPvMapCache.Get(volume.PersistentVolumeClaim.ClaimName); ok && strings.EqualFold(entry.AccessMode, fmt.Sprintf("%v", v1.ReadWriteMany)) {
+				if entry, ok := pvcToPvMapCache.Get(volume.PersistentVolumeClaim.ClaimName); ok && !strings.EqualFold(entry.AccessMode, fmt.Sprintf("%v", v1.ReadWriteMany)) {
 					klog.V(2).Infof(
 						"Mapping volume %s for pod %s. Claim: %v",
 						volume.Name,
