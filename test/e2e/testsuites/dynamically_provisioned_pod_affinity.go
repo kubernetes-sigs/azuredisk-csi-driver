@@ -53,7 +53,7 @@ type PodAffinity struct {
 }
 
 func (t *PodAffinity) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
-	_, maxMountReplicaCount := azureutils.GetMaxSharesAndMaxMountReplicaCount(t.StorageClassParameters)
+	_, maxMountReplicaCount := azureutils.GetMaxSharesAndMaxMountReplicaCount(t.StorageClassParameters, false)
 
 	// Get the list of available nodes for scheduling the pod
 	nodes := nodeutil.ListNodeNames(client)
