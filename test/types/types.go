@@ -430,17 +430,18 @@ func VerifySuccessfulReplicaAzVolumeAttachments(pod PodDetails, azDiskClient *az
 	}
 
 	var expectedNumberOfReplicas int
-	_, maxMountReplicas := azureutils.GetMaxSharesAndMaxMountReplicaCount(storageClassParameters)
 	nodes := nodeutil.ListAzDriverNodeNames(azDiskClient.DiskV1alpha1().AzDriverNodes(azureconstants.DefaultAzureDiskCrdNamespace))
 	nodesAvailableForReplicas := len(nodes) - 1
-	if nodesAvailableForReplicas >= maxMountReplicas {
-		expectedNumberOfReplicas = maxMountReplicas
-	} else {
-		expectedNumberOfReplicas = nodesAvailableForReplicas
-	}
 
 	for _, volume := range pod.Volumes {
 		if volume.PersistentVolume != nil {
+			_, maxMountReplicas := azureutils.GetMaxSharesAndMaxMountReplicaCount(storageClassParameters, volume.VolumeMode == Block)
+			if nodesAvailableForReplicas >= maxMountReplicas {
+				expectedNumberOfReplicas = maxMountReplicas
+			} else {
+				expectedNumberOfReplicas = nodesAvailableForReplicas
+			}
+
 			replicaAttachments, err := GetReplicaAttachments(volume.PersistentVolume, client, namespace, azDiskClient)
 			framework.ExpectNoError(err)
 			numReplicaAttachments := len(replicaAttachments.Items)

@@ -698,13 +698,40 @@ func IsValidAccessModes(volCaps []*csi.VolumeCapability) bool {
 	return foundAll
 }
 
+func IsMultiNodeAzVolumeCapabilityAccessMode(accessMode v1alpha1.VolumeCapabilityAccessMode) bool {
+	return accessMode == v1alpha1.VolumeCapabilityAccessModeMultiNodeMultiWriter ||
+		accessMode == v1alpha1.VolumeCapabilityAccessModeMultiNodeSingleWriter ||
+		accessMode == v1alpha1.VolumeCapabilityAccessModeMultiNodeReaderOnly
+}
+
+func HasMultiNodeAzVolumeCapabilityAccessMode(volCaps []v1alpha1.VolumeCapability) bool {
+	for _, volCap := range volCaps {
+		if IsMultiNodeAzVolumeCapabilityAccessMode(volCap.AccessMode) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func IsMultiNodePersistentVolume(pv v1.PersistentVolume) bool {
+	for _, accessMode := range pv.Spec.AccessModes {
+		if accessMode == v1.ReadWriteMany || accessMode == v1.ReadOnlyMany {
+			return true
+		}
+	}
+
+	return false
+}
+
 func GetAzVolumeAttachmentName(volumeName string, nodeName string) string {
 	return fmt.Sprintf("%s-%s-attachment", strings.ToLower(volumeName), strings.ToLower(nodeName))
 }
 
-func GetMaxSharesAndMaxMountReplicaCount(parameters map[string]string) (int, int) {
-	maxShares := 1
-	maxMountReplicaCount := -1
+func GetMaxSharesAndMaxMountReplicaCount(parameters map[string]string, isMultiNodeVolume bool) (maxShares, maxMountReplicaCount int) {
+	maxShares = 1
+	maxMountReplicaCount = -1
+
 	for param, value := range parameters {
 		if strings.EqualFold(param, consts.MaxSharesField) {
 			parsed, err := strconv.Atoi(value)
@@ -727,6 +754,17 @@ func GetMaxSharesAndMaxMountReplicaCount(parameters map[string]string) (int, int
 		klog.Warningf("maxShares cannot be set smaller than 1... Defaulting current maxShares (%d) value to 1", maxShares)
 		maxShares = 1
 	}
+
+	if isMultiNodeVolume {
+		if maxMountReplicaCount > 0 {
+			klog.Warning("maxMountReplicaCount is ignored for volumes that can be mounted to multiple nodes... Defaulting current maxMountReplicaCount (%d) to 0", maxMountReplicaCount)
+		}
+
+		maxMountReplicaCount = 0
+
+		return
+	}
+
 	if maxShares-1 < maxMountReplicaCount {
 		klog.Warningf("maxMountReplicaCount cannot be set larger than maxShares - 1... Defaulting current maxMountReplicaCount (%d) value to (%d)", maxMountReplicaCount, maxShares-1)
 		maxMountReplicaCount = maxShares - 1
@@ -734,7 +772,7 @@ func GetMaxSharesAndMaxMountReplicaCount(parameters map[string]string) (int, int
 		maxMountReplicaCount = maxShares - 1
 	}
 
-	return maxShares, maxMountReplicaCount
+	return
 }
 
 func GetAzVolumePhase(phase v1.PersistentVolumePhase) v1alpha1.AzVolumePhase {
