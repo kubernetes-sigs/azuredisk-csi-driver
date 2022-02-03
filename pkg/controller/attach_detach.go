@@ -561,11 +561,19 @@ func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, 
 						Finalizers: []string{consts.AzVolumeAttachmentFinalizer},
 					},
 					Spec: diskv1alpha2.AzVolumeAttachmentSpec{
+<<<<<<< HEAD
 						VolumeName:    *volumeName,
 						VolumeID:      pv.Spec.CSI.VolumeHandle,
 						NodeName:      nodeName,
 						RequestedRole: diskv1alpha2.PrimaryRole,
 						VolumeContext: map[string]string{},
+=======
+						UnderlyingVolume: *volumeName,
+						VolumeID:         pv.Spec.CSI.VolumeHandle,
+						NodeName:         nodeName,
+						RequestedRole:    diskv1alpha2.PrimaryRole,
+						VolumeContext:    map[string]string{},
+>>>>>>> feat: Introduce v1alpha2 API version in preparation for changes (#362)
 					},
 					Status: diskv1alpha2.AzVolumeAttachmentStatus{
 						State: azureutils.GetAzVolumeAttachmentState(volumeAttachment.Status),
