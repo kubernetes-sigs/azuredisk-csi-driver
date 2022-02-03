@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"time"
 
 	apps "k8s.io/api/apps/v1"
@@ -44,21 +45,24 @@ import (
 
 const (
 	podFailoverNamespace         = "pod-failover-ns"
-	scheduleExtenderName         = "csi-azuredisk-scheduler-extender"
+	schedulerExtenderName        = "csi-azuredisk-scheduler-extender"
+	podAffinityLabelKey          = "app"
+	podAffinityLabelValue        = "pod-failover-workload"
 	metricsServiceAuthSecretName = "podfailover-authcerts"
 )
 
 var (
-	driverVersion       = flag.String("driver-version", "v2", "Specify whether the azuredisk csi driver being tested is v1 or v2")
-	maxShares           = flag.Int("maxshares", 3, "Specify the maxshares value for the storage class")
-	duration            = flag.Int("duration", 60, "Duration for which the test should run in minutes")
-	workloadImage       = flag.String("workload-image", "nearora4/workloadpod:latest", "Image of the workload pod that will be deployed by the controller")
-	podCount            = flag.Int("pod-count", 1, "The number of pods that should be created for a deployment")
-	pvcPerPod           = flag.Int("pvc-per-pod", 3, "Number of pvcs that should be created per pod")
-	metricsEndpoint     = flag.String("metrics-endpoint", "", "Target where prometheus metrics shouls be published")
-	authEnabled         = flag.Bool("auth-enabled", false, "Specify whether request to metrics endpoint requires authentication or not")
-	delayBeforeFailover = flag.Int("delay-before-failover", 0, "Time in seconds for which the controller should wait before failing the pod")
-	testName            = flag.String("test-name", "default-test-run", "The name of the test to be used as metrics label to distinguish metrics sent from multiple test runs")
+	driverVersion          = flag.String("driver-version", "v2", "Specify whether the azuredisk csi driver being tested is v1 or v2")
+	maxShares              = flag.Int("maxshares", 3, "Specify the maxshares value for the storage class")
+	duration               = flag.Int("duration", 60, "Duration for which the test should run in minutes")
+	workloadImage          = flag.String("workload-image", "nearora4/workloadpod:latest", "Image of the workload pod that will be deployed by the controller")
+	podCount               = flag.Int("pod-count", 1, "The number of pods that should be created for a deployment")
+	pvcPerPod              = flag.Int("pvc-per-pod", 3, "Number of pvcs that should be created per pod")
+	metricsEndpoint        = flag.String("metrics-endpoint", "", "Target where prometheus metrics shouls be published")
+	authEnabled            = flag.Bool("auth-enabled", false, "Specify whether request to metrics endpoint requires authentication or not")
+	delayBeforeFailover    = flag.Int("delay-before-failover", 0, "Time in seconds for which the controller should wait before failing the pod")
+	deployAllPodsOnOneNode = flag.Bool("all-pods-on-one-node", false, "Specify whether to deploy all the pods on the same node")
+	testName               = flag.String("test-name", "default-test-run", "The name of the test to be used as metrics label to distinguish metrics sent from multiple test runs")
 )
 
 func main() {
@@ -107,21 +111,6 @@ func main() {
 		pvcCreatedList = append(pvcCreatedList, pvcName)
 	}
 
-	var deployments []*apps.Deployment
-	nextPVC := 0
-	for count := 0; count < numPods; count++ {
-
-		deployment, err := createDeployment(ctx, clientset, pvcCreatedList, nextPVC, numPvcsPerPod)
-
-		if err != nil {
-			klog.Errorf("Error occurred while creating deployment: %v", err)
-			return
-		}
-		deployments = append(deployments, deployment)
-		nextPVC = nextPVC + numPvcsPerPod
-
-	}
-
 	// Run workload pod for a given duration
 	timer := time.NewTimer(time.Duration(*duration) * time.Minute)
 	stopCh := make(chan struct{})
@@ -131,7 +120,43 @@ func main() {
 		close(stopCh)
 	}()
 
-	RunWorkloadPods(ctx, clientset, deployments, stopCh)
+	if *deployAllPodsOnOneNode {
+		var deployments []*apps.Deployment
+		deployment, err := createDeployment(ctx, clientset, pvcCreatedList, 0, numPvcsPerPod, false)
+		deployments = append(deployments, deployment)
+		if err != nil {
+			klog.Errorf("Error occurred while creating deployment: %v", err)
+			return
+		}
+		nextPVC := numPvcsPerPod
+		for count := 1; count < numPods; count++ {
+			deployment, err := createDeployment(ctx, clientset, pvcCreatedList, nextPVC, numPvcsPerPod, true)
+			if err != nil {
+				klog.Errorf("Error occurred while creating deployment: %v", err)
+				return
+			}
+			deployments = append(deployments, deployment)
+			nextPVC = nextPVC + numPvcsPerPod
+		}
+		RunWorkloadPodsOnSameNode(ctx, clientset, deployments, stopCh)
+
+	} else {
+		var deployments []*apps.Deployment
+		nextPVC := 0
+		for count := 0; count < numPods; count++ {
+
+			deployment, err := createDeployment(ctx, clientset, pvcCreatedList, nextPVC, numPvcsPerPod, false)
+
+			if err != nil {
+				klog.Errorf("Error occurred while creating deployment: %v", err)
+				return
+			}
+			deployments = append(deployments, deployment)
+			nextPVC = nextPVC + numPvcsPerPod
+		}
+
+		RunWorkloadPods(ctx, clientset, deployments, stopCh)
+	}
 
 }
 
@@ -222,7 +247,7 @@ func createPVC(ctx context.Context, clientset *kubernetes.Clientset, scName *str
 	return pvcCreated.Name, err
 }
 
-func createDeployment(ctx context.Context, clientset *kubernetes.Clientset, pvcList []string, start int, countOfPvc int) (*apps.Deployment, error) {
+func createDeployment(ctx context.Context, clientset *kubernetes.Clientset, pvcList []string, start int, countOfPvc int, usePodAffinity bool) (*apps.Deployment, error) {
 	var podReplicas int32 = 1
 
 	var volumes []v1.Volume
@@ -328,7 +353,21 @@ func createDeployment(ctx context.Context, clientset *kubernetes.Clientset, pvcL
 	}
 
 	if *driverVersion == "v2" {
-		deployment.Spec.Template.Spec.SchedulerName = scheduleExtenderName
+		deployment.Spec.Template.Spec.SchedulerName = schedulerExtenderName
+	}
+
+	if usePodAffinity {
+		deployment.Spec.Template.Spec.Affinity = &v1.Affinity{
+			PodAffinity: &v1.PodAffinity{
+				RequiredDuringSchedulingIgnoredDuringExecution: []v1.PodAffinityTerm{
+					{
+						LabelSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{podAffinityLabelKey: podAffinityLabelValue},
+						},
+						TopologyKey: "kubernetes.io/hostname",
+					},
+				},
+			}}
 	}
 
 	klog.Infof("Creating deployment %s.", deploymentName)
@@ -386,6 +425,48 @@ func waitForDeploymentToComplete(ctx context.Context, namespace string, clientse
 	})
 }
 
+func RunWorkloadPodsOnSameNode(ctx context.Context, clientset *kubernetes.Clientset, deployments []*apps.Deployment, stopCh <-chan struct{}) {
+	for {
+		select {
+		case <-stopCh:
+			return
+		case <-time.After(time.Duration(*delayBeforeFailover) * time.Second):
+			// Get a pod from any deployment
+			pods, err := getPodsForDeployment(ctx, clientset, deployments[0])
+			if err != nil {
+				klog.Errorf("Error occurred while getting pods for the deployment  %s: %v", deployments[0].Name, err)
+			}
+
+			var nodeName string
+			if len(pods.Items) > 0 {
+				nodeName = pods.Items[0].Spec.NodeName
+				makeNodeUnschedulable(ctx, nodeName, true, clientset)
+			}
+
+			// Reschedule the 1st deployment as it doesn't have any associated pod affinity rules
+			deleteAndRestartDeployment(ctx, clientset, deployments[0], false)
+
+			// After that restart all the pods that have associated affinity rules
+			var wg sync.WaitGroup
+
+			for i := 1; i < len(deployments); i++ {
+
+				wg.Add(1)
+
+				deployment := deployments[i]
+				go func() {
+					defer wg.Done()
+					deleteAndRestartDeployment(ctx, clientset, deployment, false)
+				}()
+
+			}
+			wg.Wait()
+
+			makeNodeUnschedulable(ctx, nodeName, false, clientset)
+		}
+	}
+}
+
 func RunWorkloadPods(ctx context.Context, clientset *kubernetes.Clientset, deployments []*apps.Deployment, stopCh <-chan struct{}) {
 	for {
 		select {
@@ -394,54 +475,66 @@ func RunWorkloadPods(ctx context.Context, clientset *kubernetes.Clientset, deplo
 		case <-time.After(time.Duration(*delayBeforeFailover) * time.Second):
 			n := rand.Intn(len(deployments))
 			selectedDeployment := deployments[n]
-			podList, err := getPodsForDeployment(ctx, clientset, selectedDeployment)
-			if err != nil {
-				klog.Errorf("Error occurred while getting pods for the deployment  %s: %v", selectedDeployment.Name, err)
-			}
+			deleteAndRestartDeployment(ctx, clientset, selectedDeployment, true)
+		}
+	}
+}
 
-			for _, pod := range podList.Items {
-				nodeName := pod.Spec.NodeName
-				makeNodeUnschedulable(ctx, nodeName, true, clientset)
+func deleteAndRestartDeployment(ctx context.Context, clientset *kubernetes.Clientset, deployment *apps.Deployment, unscheduleNode bool) {
 
-				klog.Infof("Deleting pod %s of deployment %s from node %s.", pod.Name, selectedDeployment.Name, nodeName)
-				err = deletePod(ctx, podFailoverNamespace, pod.Name, clientset)
-				if err != nil {
-					klog.Errorf("Error occurred while deleting the pod %s: %v", pod.Name, err)
-				}
+	podList, err := getPodsForDeployment(ctx, clientset, deployment)
+	if err != nil {
+		klog.Errorf("Error occurred while getting pods for the deployment  %s: %v", deployment.Name, err)
+	}
 
-				// wait for the pod to come back up
-				klog.Infof("Waiting for deployment %s to create new pod.", selectedDeployment.Name)
-				err = waitForDeploymentToComplete(ctx, podFailoverNamespace, clientset, selectedDeployment)
-				if err != nil {
-					klog.Errorf("Error occurred while waiting for the deployment to complete %s: %v", selectedDeployment.Name, err)
-					continue
-				}
+	var nodeName string
+	for _, pod := range podList.Items {
 
-				klog.Infof("Deployment %s ready.", selectedDeployment.Name)
-				newPodList, err := getPodsForDeployment(ctx, clientset, selectedDeployment)
-				if err != nil {
-					klog.Errorf("Error occurred while getting pods for the deployment %s: %v", selectedDeployment.Name, err)
-				} else if len(newPodList.Items) <= 0 {
-					klog.Errorf("No pods found for %s: %v", selectedDeployment.Name, err)
-				} else {
-					for _, newPod := range newPodList.Items {
-						isNew := true
-						for _, oldPod := range podList.Items {
-							if newPod.Name == oldPod.Name {
-								isNew = false
-								break
-							}
-						}
+		if unscheduleNode {
+			nodeName = pod.Spec.NodeName
+			makeNodeUnschedulable(ctx, nodeName, true, clientset)
+		}
 
-						if isNew {
-							klog.Infof("Found new pod %s for deployment %s on node %s", newPod.Name, selectedDeployment.Name, newPod.Spec.NodeName)
-						}
+		klog.Infof("Deleting pod %s of deployment %s ", pod.Name, deployment.Name)
+		err = deletePod(ctx, podFailoverNamespace, pod.Name, clientset)
+		if err != nil {
+			klog.Errorf("Error occurred while deleting the pod %s: %v", pod.Name, err)
+		}
+
+		// wait for the pod to come back up
+		klog.Infof("Waiting for deployment %s to create new pod.", deployment.Name)
+		err = waitForDeploymentToComplete(ctx, podFailoverNamespace, clientset, deployment)
+		if err != nil {
+			klog.Errorf("Error occurred while waiting for the deployment to complete %s: %v", deployment.Name, err)
+			continue
+		}
+
+		klog.Infof("Deployment %s ready.", deployment.Name)
+		newPodList, err := getPodsForDeployment(ctx, clientset, deployment)
+		if err != nil {
+			klog.Errorf("Error occurred while getting pods for the deployment %s: %v", deployment.Name, err)
+		} else if len(newPodList.Items) <= 0 {
+			klog.Errorf("No pods found for %s: %v", deployment.Name, err)
+		} else {
+			for _, newPod := range newPodList.Items {
+				isNew := true
+				for _, oldPod := range podList.Items {
+					if newPod.Name == oldPod.Name {
+						isNew = false
+						break
 					}
 				}
 
-				makeNodeUnschedulable(ctx, nodeName, false, clientset)
+				if isNew {
+					klog.Infof("Found new pod %s for deployment %s on node %s", newPod.Name, deployment.Name, newPod.Spec.NodeName)
+				}
 			}
 		}
+
+	}
+
+	if unscheduleNode {
+		makeNodeUnschedulable(ctx, nodeName, false, clientset)
 	}
 }
 
@@ -481,7 +574,7 @@ func getNewReplicaSet(deployment *apps.Deployment, c *kubernetes.Clientset) (*ap
 func getPodsForDeployment(ctx context.Context, client *kubernetes.Clientset, deployment *apps.Deployment) (*v1.PodList, error) {
 	replicaSet, err := getNewReplicaSet(deployment, client)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to get new replica set for deployment %q: %v", deployment.Name, err)
+		return nil, fmt.Errorf("failed to get new replica set for deployment %q: %v", deployment.Name, err)
 	}
 	if replicaSet == nil {
 		return nil, fmt.Errorf("expected a new replica set for deployment %q, found none", deployment.Name)
@@ -492,7 +585,7 @@ func getPodsForDeployment(ctx context.Context, client *kubernetes.Clientset, dep
 	rsList := []*apps.ReplicaSet{replicaSet}
 	podList, err := deploymentutil.ListPods(deployment, rsList, podListFunc)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to list Pods of Deployment %q: %v", deployment.Name, err)
+		return nil, fmt.Errorf("failed to list Pods of Deployment %q: %v", deployment.Name, err)
 	}
 	return podList, nil
 }
