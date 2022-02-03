@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"sync"
 	"testing"
 	"time"
 
@@ -53,7 +52,6 @@ func NewTestReplicaController(controller *gomock.Controller, namespace string, o
 		client:                     mockclient.NewMockClient(controller),
 		azVolumeClient:             diskfakes.NewSimpleClientset(diskv1alpha1Objs...),
 		kubeClient:                 fakev1.NewSimpleClientset(kubeObjs...),
-		cleanUpMap:                 sync.Map{},
 		controllerSharedState:      controllerSharedState,
 		timeUntilGarbageCollection: testTimeUntilGarbageCollection,
 	}

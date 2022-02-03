@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"sync"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -49,7 +48,6 @@ type ReconcileReplica struct {
 	azVolumeClient             azClientSet.Interface
 	kubeClient                 kubeClientSet.Interface
 	controllerSharedState      *SharedState
-	cleanUpMap                 sync.Map
 	timeUntilGarbageCollection time.Duration
 }
 
@@ -82,7 +80,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 					azVolumeAttachment.Spec.UnderlyingVolume,
 					replica,
 					func() error {
-						return r.manageReplicas(context.Background(), azVolumeAttachment.Spec.UnderlyingVolume)
+						return r.controllerSharedState.manageReplicas(context.Background(), azVolumeAttachment.Spec.UnderlyingVolume, r)
 					},
 					false,
 				)
@@ -119,7 +117,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 						azVolumeAttachment.Spec.UnderlyingVolume,
 						replica,
 						func() error {
-							return r.manageReplicas(context.Background(), azVolumeAttachment.Spec.UnderlyingVolume)
+							return r.controllerSharedState.manageReplicas(context.Background(), azVolumeAttachment.Spec.UnderlyingVolume, r)
 						},
 						false,
 					)
@@ -138,7 +136,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 func (r *ReconcileReplica) triggerGarbageCollection(volumeName string) {
 	emptyCtx := context.Background()
 	deletionCtx, cancelFunc := context.WithCancel(emptyCtx)
-	if _, ok := r.cleanUpMap.LoadOrStore(volumeName, cancelFunc); ok {
+	if _, ok := r.controllerSharedState.cleanUpMap.LoadOrStore(volumeName, cancelFunc); ok {
 		klog.Infof("There already is a scheduled garbage collection for AzVolume (%s)", volumeName)
 		cancelFunc()
 		return
@@ -172,132 +170,13 @@ func (r *ReconcileReplica) triggerGarbageCollection(volumeName string) {
 }
 
 func (r *ReconcileReplica) removeGarbageCollection(volumeName string) {
-	v, ok := r.cleanUpMap.LoadAndDelete(volumeName)
+	v, ok := r.controllerSharedState.cleanUpMap.LoadAndDelete(volumeName)
 	if ok {
 		cancelFunc := v.(context.CancelFunc)
 		cancelFunc()
 	}
 	// if there is any garbage collection enqueued in operation queue, remove it
 	r.controllerSharedState.dequeueGarbageCollection(volumeName)
-}
-
-func (r *ReconcileReplica) manageReplicas(ctx context.Context, volumeName string) error {
-	azVolume, err := azureutils.GetAzVolume(ctx, r.client, r.azVolumeClient, volumeName, r.controllerSharedState.objectNamespace, true)
-	if errors.IsNotFound(err) {
-		klog.Infof("Aborting replica management... volume (%s) does not exist", volumeName)
-		return nil
-	} else if err != nil {
-		klog.Errorf("failed to get AzVolume (%s): %v", volumeName, err)
-		return err
-	}
-
-	// replica management should not be executed or retried if AzVolume is scheduled for a deletion or not created.
-	if !isCreated(azVolume) || objectDeletionRequested(azVolume) {
-		klog.Errorf("azVolume (%s) is scheduled for deletion or has no underlying volume object", azVolume.Name)
-		return nil
-	}
-
-	azVolumeAttachments, err := getAzVolumeAttachmentsForVolume(ctx, r.client, volumeName, replicaOnly)
-	if err != nil {
-		klog.Errorf("failed to list AzVolumeAttachment: %v", err)
-		return err
-	}
-
-	desiredReplicaCount, currentReplicaCount := azVolume.Spec.MaxMountReplicaCount, len(azVolumeAttachments)
-	klog.Infof("control number of replicas for volume (%s): desired=%d,\tcurrent:%d", azVolume.Spec.UnderlyingVolume, desiredReplicaCount, currentReplicaCount)
-
-	if desiredReplicaCount > currentReplicaCount {
-		klog.Infof("Need %d more replicas for volume (%s)", desiredReplicaCount-currentReplicaCount, azVolume.Spec.UnderlyingVolume)
-		if azVolume.Status.Detail == nil || azVolume.Status.State == v1alpha1.VolumeDeleting || azVolume.Status.State == v1alpha1.VolumeDeleted || azVolume.Status.Detail.ResponseObject == nil {
-			// underlying volume does not exist, so volume attachment cannot be made
-			return nil
-		}
-		if err = r.createReplicas(ctx, min(defaultMaxReplicaUpdateCount, desiredReplicaCount-currentReplicaCount), azVolume.Name, azVolume.Status.Detail.ResponseObject.VolumeID, azVolume.Spec.Parameters); err != nil {
-			klog.Errorf("failed to create %d replicas for volume (%s): %v", desiredReplicaCount-currentReplicaCount, azVolume.Spec.UnderlyingVolume, err)
-			return err
-		}
-	}
-	return nil
-}
-
-func (r *ReconcileReplica) getNodesForReplica(ctx context.Context, volumeName string, pods []string, numReplica int) ([]string, error) {
-	var err error
-	if pods == nil {
-		pods, err = r.controllerSharedState.getPodsFromVolume(volumeName)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	volumes, err := r.controllerSharedState.getVolumesForPods(pods...)
-	if err != nil {
-		return nil, err
-	}
-
-	nodes, err := getRankedNodesForReplicaAttachments(ctx, r, volumes, pods)
-	if err != nil {
-		return nil, err
-	}
-
-	replicaNodes, err := getNodesWithReplica(ctx, r, volumeName)
-	if err != nil {
-		return nil, err
-	}
-
-	skipSet := map[string]bool{}
-	for _, replicaNode := range replicaNodes {
-		skipSet[replicaNode] = true
-	}
-
-	filtered := []string{}
-	numFiltered := 0
-	for _, node := range nodes {
-		if numFiltered >= numReplica {
-			break
-		}
-		if skipSet[node] {
-			continue
-		}
-		filtered = append(filtered, node)
-		numFiltered++
-	}
-
-	return filtered, nil
-}
-
-func (r *ReconcileReplica) createReplicas(ctx context.Context, numReplica int, volumeName, volumeID string, volumeContext map[string]string) error {
-	// if volume is scheduled for clean up, skip replica creation
-	if _, cleanUpScheduled := r.cleanUpMap.Load(volumeName); cleanUpScheduled {
-		return nil
-	}
-
-	// get pods linked to the volume
-	pods, err := r.controllerSharedState.getPodsFromVolume(volumeName)
-	if err != nil {
-		return err
-	}
-
-	// acquire per-pod lock to be released upon creation of replica AzVolumeAttachment CRIs
-	for _, pod := range pods {
-		v, _ := r.controllerSharedState.podLocks.LoadOrStore(pod, &sync.Mutex{})
-		podLock := v.(*sync.Mutex)
-		podLock.Lock()
-		defer podLock.Unlock()
-	}
-
-	nodes, err := r.getNodesForReplica(ctx, volumeName, pods, numReplica)
-	if err != nil {
-		klog.Errorf("failed to get a list of nodes for replica attachment: %v", err)
-		return err
-	}
-
-	for _, node := range nodes {
-		if err := createReplicaAzVolumeAttachment(ctx, r, volumeID, node, volumeContext); err != nil {
-			klog.Errorf("failed to create replica AzVolumeAttachment for volume %s: %v", volumeName, err)
-			return err
-		}
-	}
-	return nil
 }
 
 func NewReplicaController(mgr manager.Manager, azVolumeClient azClientSet.Interface, kubeClient kubeClientSet.Interface, controllerSharedState *SharedState) (*ReconcileReplica, error) {
@@ -307,7 +186,6 @@ func NewReplicaController(mgr manager.Manager, azVolumeClient azClientSet.Interf
 		azVolumeClient:             azVolumeClient,
 		kubeClient:                 kubeClient,
 		controllerSharedState:      controllerSharedState,
-		cleanUpMap:                 sync.Map{},
 		timeUntilGarbageCollection: DefaultTimeUntilGarbageCollection,
 	}
 	c, err := controller.New("replica-controller", mgr, controller.Options{
