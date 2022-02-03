@@ -73,6 +73,7 @@ spec:
         - "--pvc-per-pod=3"
         - "--metrics-endpoint=$(POD_FAILOVER_METRICS_SERVICE_HOST):$(POD_FAILOVER_METRICS_SERVICE_PORT_POD_FAILOVER)"
         - "--delay-before-failover=10"
+        - "--all-pods-on-one-node=false"
         - "--test-name=default-test-run"
         - "--auth-enabled=false"
       restartPolicy: Never

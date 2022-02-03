@@ -55,8 +55,9 @@ wget https://raw.githubusercontent.com/abhisheksinghbaghel/azuredisk-csi-driver/
     6. pod-count
     7. pvc-per-pod
     8. delay-before-failover
-    9. test-name
-    10. auth-enabled
+    9. all-pods-on-one-node
+    10. test-name
+    11. auth-enabled
 
 - Run the below command to deploy the controller. This will start the test for the given duration and will also start pushing metrics to the metrics-svc.
 
