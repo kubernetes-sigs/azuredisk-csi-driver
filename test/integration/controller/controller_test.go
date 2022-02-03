@@ -32,7 +32,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
+	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
 	azVolumeClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
@@ -109,7 +109,7 @@ func testBootstrap() error {
 }
 
 func getVolumeID(volumeName string) (string, error) {
-	azVolume, err := azVolumeClient.DiskV1alpha1().AzVolumes(namespace).Get(context.Background(), volumeName, metav1.GetOptions{})
+	azVolume, err := azVolumeClient.DiskV1alpha2().AzVolumes(namespace).Get(context.Background(), volumeName, metav1.GetOptions{})
 	if errors.IsNotFound(err) {
 		return "", err
 	}
@@ -132,17 +132,17 @@ func checkReplicaCount(volumeName string, desiredNumReplica int) (bool, error) {
 	}
 
 	labelSelector := fmt.Sprintf("%s=%s", consts.VolumeNameLabel, diskName)
-	azVAs, err := azVolumeClient.DiskV1alpha1().AzVolumeAttachments(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: labelSelector})
+	azVAs, err := azVolumeClient.DiskV1alpha2().AzVolumeAttachments(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: labelSelector})
 	if err != nil {
 		return false, status.Errorf(codes.Internal, "failed to get AzVolumeAttachment List for volumeName (%s): %v", diskName, err)
 	}
 
 	numReplicas := 0
 	for _, azVA := range azVAs.Items {
-		if azVA.Spec.RequestedRole == v1alpha1.ReplicaRole &&
+		if azVA.Spec.RequestedRole == diskv1alpha2.ReplicaRole &&
 			azVA.Status.Detail != nil &&
 			azVA.Status.Detail.PublishContext != nil &&
-			azVA.Status.Detail.Role == v1alpha1.ReplicaRole {
+			azVA.Status.Detail.Role == diskv1alpha2.ReplicaRole {
 			numReplicas++
 		}
 	}
@@ -156,22 +156,22 @@ func TestAzVolume(t *testing.T) {
 	tests := []struct {
 		testName            string
 		volumeName          string
-		capacityRange       *v1alpha1.CapacityRange
-		volumeCapabilities  []v1alpha1.VolumeCapability
+		capacityRange       *diskv1alpha2.CapacityRange
+		volumeCapabilities  []diskv1alpha2.VolumeCapability
 		parameters          map[string]string
 		secrets             map[string]string
-		volumeContentSource *v1alpha1.ContentVolumeSource
-		accessibilityReq    *v1alpha1.TopologyRequirement
+		volumeContentSource *diskv1alpha2.ContentVolumeSource
+		accessibilityReq    *diskv1alpha2.TopologyRequirement
 		testFunc            func(*testing.T, string)
 		cleanUpFunc         func(*testing.T, string)
 	}{
 		{
 			testName:   "create volume and check if finalizers have been properly populated.",
 			volumeName: "test-volume",
-			capacityRange: &v1alpha1.CapacityRange{
+			capacityRange: &diskv1alpha2.CapacityRange{
 				RequiredBytes: 1073741824,
 			},
-			volumeCapabilities: []v1alpha1.VolumeCapability{},
+			volumeCapabilities: []diskv1alpha2.VolumeCapability{},
 			parameters: map[string]string{
 				"kind":      "managed",
 				"maxShares": "1",
@@ -181,7 +181,7 @@ func TestAzVolume(t *testing.T) {
 			volumeContentSource: nil,
 			accessibilityReq:    nil,
 			testFunc: func(t *testing.T, volumeName string) {
-				azVolume, err := azVolumeClient.DiskV1alpha1().AzVolumes(namespace).Get(context.Background(), volumeName, metav1.GetOptions{})
+				azVolume, err := azVolumeClient.DiskV1alpha2().AzVolumes(namespace).Get(context.Background(), volumeName, metav1.GetOptions{})
 				require.NoError(t, err)
 				require.NotNil(t, azVolume.Finalizers)
 
@@ -213,10 +213,10 @@ func TestAzVolume(t *testing.T) {
 		{
 			testName:   "delete volume and check if volume and all its attachments get deleted",
 			volumeName: "test-volume",
-			capacityRange: &v1alpha1.CapacityRange{
+			capacityRange: &diskv1alpha2.CapacityRange{
 				RequiredBytes: 274877906944,
 			},
-			volumeCapabilities: []v1alpha1.VolumeCapability{},
+			volumeCapabilities: []diskv1alpha2.VolumeCapability{},
 			parameters: map[string]string{
 				"kind":      "managed",
 				"maxShares": "2",
@@ -240,13 +240,13 @@ func TestAzVolume(t *testing.T) {
 				klog.Infof("Waiting for replica AzVolumeAttachment to be created for AzVolume (%s)", volumeName)
 				conditionFunc := func() (bool, error) {
 					labelSelector := fmt.Sprintf("%s=%s", consts.VolumeNameLabel, diskName)
-					azVolumeAttachments, err := azVolumeClient.DiskV1alpha1().AzVolumeAttachments(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: labelSelector})
+					azVolumeAttachments, err := azVolumeClient.DiskV1alpha2().AzVolumeAttachments(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: labelSelector})
 					if err != nil {
 						return false, nil
 					}
 
 					for _, azVolumeAttachment := range azVolumeAttachments.Items {
-						if azVolumeAttachment.Spec.RequestedRole == v1alpha1.ReplicaRole && azVolumeAttachment.Status.Detail != nil {
+						if azVolumeAttachment.Spec.RequestedRole == diskv1alpha2.ReplicaRole && azVolumeAttachment.Status.Detail != nil {
 							klog.Infof("Replica AzVolumeAttachment (%s) successfully created and attached.", azVolumeAttachment.Name)
 							return true, nil
 						}
@@ -273,7 +273,7 @@ func TestAzVolume(t *testing.T) {
 				// check if all azVolumeAttachments attached have been deleted
 				conditionFunc = func() (bool, error) {
 					labelSelector := fmt.Sprintf("%s=%s", consts.VolumeNameLabel, diskName)
-					azVolumeAttachments, err := azVolumeClient.DiskV1alpha1().AzVolumeAttachments(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: labelSelector})
+					azVolumeAttachments, err := azVolumeClient.DiskV1alpha2().AzVolumeAttachments(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: labelSelector})
 					klog.Infof("Number of AzVolumeAttachment CRI attached to %s: %d", volumeName, len(azVolumeAttachments.Items))
 					if err != nil && !errors.IsNotFound(err) {
 						return false, err
@@ -286,7 +286,7 @@ func TestAzVolume(t *testing.T) {
 			},
 			cleanUpFunc: func(t *testing.T, volumeName string) {
 				// detach volume
-				azVolume, err := azVolumeClient.DiskV1alpha1().AzVolumes(namespace).Get(context.Background(), volumeName, metav1.GetOptions{})
+				azVolume, err := azVolumeClient.DiskV1alpha2().AzVolumes(namespace).Get(context.Background(), volumeName, metav1.GetOptions{})
 				if errors.IsNotFound(err) {
 					klog.Infof("AzVolume has been successfully deleted.")
 					return
@@ -301,13 +301,13 @@ func TestAzVolume(t *testing.T) {
 				require.NoError(t, err)
 
 				labelSelector := fmt.Sprintf("%s=%s", consts.VolumeNameLabel, diskName)
-				azVolumeAttachments, err := azVolumeClient.DiskV1alpha1().AzVolumeAttachments(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: labelSelector})
+				azVolumeAttachments, err := azVolumeClient.DiskV1alpha2().AzVolumeAttachments(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: labelSelector})
 				for _, azVolumeAttachment := range azVolumeAttachments.Items {
-					err = azVolumeClient.DiskV1alpha1().AzVolumeAttachments(namespace).Delete(context.Background(), azVolumeAttachment.Name, metav1.DeleteOptions{})
+					err = azVolumeClient.DiskV1alpha2().AzVolumeAttachments(namespace).Delete(context.Background(), azVolumeAttachment.Name, metav1.DeleteOptions{})
 					assert.NoError(t, err)
 
 					conditionFunc := func() (bool, error) {
-						_, err := azVolumeClient.DiskV1alpha1().AzVolumeAttachments(namespace).Get(context.Background(), azVolumeAttachment.Name, metav1.GetOptions{})
+						_, err := azVolumeClient.DiskV1alpha2().AzVolumeAttachments(namespace).Get(context.Background(), azVolumeAttachment.Name, metav1.GetOptions{})
 						if errors.IsNotFound(err) {
 							return true, nil
 						}
@@ -384,7 +384,7 @@ func TestAzVolumeAttachment(t *testing.T) {
 		// check if all azVolumeAttachments attached have been deleted
 		conditionFunc = func() (bool, error) {
 			labelSelector := fmt.Sprintf("%s=%s", consts.VolumeNameLabel, diskName)
-			azVolumeAttachments, err := azVolumeClient.DiskV1alpha1().AzVolumeAttachments(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: labelSelector})
+			azVolumeAttachments, err := azVolumeClient.DiskV1alpha2().AzVolumeAttachments(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: labelSelector})
 			klog.Infof("Current number of AzVolumeAttachment CRI attached to %s: %d", volumeName, len(azVolumeAttachments.Items))
 			if err != nil && !errors.IsNotFound(err) {
 				return false, err
@@ -400,7 +400,7 @@ func TestAzVolumeAttachment(t *testing.T) {
 		testName         string
 		volumeName       string
 		primaryNode      string
-		volumeCapability *v1alpha1.VolumeCapability
+		volumeCapability *diskv1alpha2.VolumeCapability
 		readOnly         bool
 		secrets          map[string]string
 		volumeContext    map[string]string
@@ -418,7 +418,7 @@ func TestAzVolumeAttachment(t *testing.T) {
 			volumeContext:    nil,
 			setUpFunc: func(t *testing.T, volumeName string) {
 				// create volume
-				_, err := crdProvisioner.CreateVolume(context.Background(), volumeName, &v1alpha1.CapacityRange{RequiredBytes: 274877906944}, []v1alpha1.VolumeCapability{}, map[string]string{"kind": "managed", "maxShares": "1", "skuName": "StandardSSD_LRS"}, nil, nil, nil)
+				_, err := crdProvisioner.CreateVolume(context.Background(), volumeName, &diskv1alpha2.CapacityRange{RequiredBytes: 274877906944}, []diskv1alpha2.VolumeCapability{}, map[string]string{"kind": "managed", "maxShares": "1", "skuName": "StandardSSD_LRS"}, nil, nil, nil)
 				require.NoError(t, err)
 			},
 			testFunc: func(t *testing.T, volumeName, nodeName string) {
@@ -430,7 +430,7 @@ func TestAzVolumeAttachment(t *testing.T) {
 				require.NotEmpty(t, diskName)
 				require.NoError(t, err)
 				azVAName := azureutils.GetAzVolumeAttachmentName(diskName, nodeName)
-				azVA, err := azVolumeClient.DiskV1alpha1().AzVolumeAttachments(namespace).Get(context.Background(), azVAName, metav1.GetOptions{})
+				azVA, err := azVolumeClient.DiskV1alpha2().AzVolumeAttachments(namespace).Get(context.Background(), azVAName, metav1.GetOptions{})
 				require.NoError(t, err)
 				require.NotNil(t, azVA.Finalizers)
 				require.NotNil(t, azVA.Labels)
@@ -464,7 +464,7 @@ func TestAzVolumeAttachment(t *testing.T) {
 			volumeContext:    nil,
 			setUpFunc: func(t *testing.T, volumeName string) {
 				// create volume
-				_, err := crdProvisioner.CreateVolume(context.Background(), volumeName, &v1alpha1.CapacityRange{RequiredBytes: 274877906944}, []v1alpha1.VolumeCapability{}, map[string]string{"kind": "managed", "maxShares": "2", "skuName": "Premium_LRS"}, nil, nil, nil)
+				_, err := crdProvisioner.CreateVolume(context.Background(), volumeName, &diskv1alpha2.CapacityRange{RequiredBytes: 274877906944}, []diskv1alpha2.VolumeCapability{}, map[string]string{"kind": "managed", "maxShares": "2", "skuName": "Premium_LRS"}, nil, nil, nil)
 				require.NoError(t, err)
 			},
 			testFunc: func(t *testing.T, volumeName, nodeName string) {
@@ -486,7 +486,7 @@ func TestAzVolumeAttachment(t *testing.T) {
 			volumeContext:    nil,
 			setUpFunc: func(t *testing.T, volumeName string) {
 				// create volume
-				_, err := crdProvisioner.CreateVolume(context.Background(), volumeName, &v1alpha1.CapacityRange{RequiredBytes: 274877906944}, []v1alpha1.VolumeCapability{}, map[string]string{"kind": "managed", "maxShares": "2", "skuName": "Premium_LRS"}, nil, nil, nil)
+				_, err := crdProvisioner.CreateVolume(context.Background(), volumeName, &diskv1alpha2.CapacityRange{RequiredBytes: 274877906944}, []diskv1alpha2.VolumeCapability{}, map[string]string{"kind": "managed", "maxShares": "2", "skuName": "Premium_LRS"}, nil, nil, nil)
 				require.NoError(t, err)
 			},
 			testFunc: func(t *testing.T, volumeName, nodeName string) {
@@ -505,17 +505,17 @@ func TestAzVolumeAttachment(t *testing.T) {
 				require.NotEmpty(t, diskName)
 				require.NoError(t, err)
 				labelSelector := fmt.Sprintf("%s=%s", consts.VolumeNameLabel, diskName)
-				azVAs, err := azVolumeClient.DiskV1alpha1().AzVolumeAttachments(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: labelSelector})
+				azVAs, err := azVolumeClient.DiskV1alpha2().AzVolumeAttachments(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: labelSelector})
 				require.NoError(t, err)
-				var deletedReplica *v1alpha1.AzVolumeAttachment
+				var deletedReplica *diskv1alpha2.AzVolumeAttachment
 				for _, azVA := range azVAs.Items {
-					if azVA.Spec.RequestedRole == v1alpha1.ReplicaRole {
-						err = azVolumeClient.DiskV1alpha1().AzVolumeAttachments(namespace).Delete(context.Background(), azVA.Name, metav1.DeleteOptions{})
+					if azVA.Spec.RequestedRole == diskv1alpha2.ReplicaRole {
+						err = azVolumeClient.DiskV1alpha2().AzVolumeAttachments(namespace).Delete(context.Background(), azVA.Name, metav1.DeleteOptions{})
 						require.NoError(t, err)
 						klog.Infof("Deleting replica AzVolumeAttachment (%s)", azVA.Name)
 
 						// delete azdrivernode for the attached node to prevent immediate reattachment to the same node
-						err = azVolumeClient.DiskV1alpha1().AzDriverNodes(namespace).Delete(context.Background(), azVA.Spec.NodeName, metav1.DeleteOptions{})
+						err = azVolumeClient.DiskV1alpha2().AzDriverNodes(namespace).Delete(context.Background(), azVA.Spec.NodeName, metav1.DeleteOptions{})
 						require.NoError(t, err)
 						klog.Infof("Temporarily failing AzDriverNode (%s)", azVA.Spec.NodeName)
 
@@ -529,7 +529,7 @@ func TestAzVolumeAttachment(t *testing.T) {
 
 				// check if the replica has been properly deleted
 				conditionFunc = func() (bool, error) {
-					_, err := azVolumeClient.DiskV1alpha1().AzVolumeAttachments(namespace).Get(context.Background(), deletedReplica.Name, metav1.GetOptions{})
+					_, err := azVolumeClient.DiskV1alpha2().AzVolumeAttachments(namespace).Get(context.Background(), deletedReplica.Name, metav1.GetOptions{})
 					if errors.IsNotFound(err) {
 						klog.Infof("Successfully deleted replica AzVolumeAttachment (%s)", deletedReplica.Name)
 						return true, nil
@@ -540,11 +540,11 @@ func TestAzVolumeAttachment(t *testing.T) {
 				require.NoError(t, err)
 
 				// restore azdrivernode
-				_, err = azVolumeClient.DiskV1alpha1().AzDriverNodes(namespace).Create(context.Background(), &v1alpha1.AzDriverNode{
+				_, err = azVolumeClient.DiskV1alpha2().AzDriverNodes(namespace).Create(context.Background(), &diskv1alpha2.AzDriverNode{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: deletedReplica.Spec.NodeName,
 					},
-					Spec: v1alpha1.AzDriverNodeSpec{
+					Spec: diskv1alpha2.AzDriverNodeSpec{
 						NodeName: deletedReplica.Spec.NodeName,
 					},
 				}, metav1.CreateOptions{})
@@ -554,12 +554,12 @@ func TestAzVolumeAttachment(t *testing.T) {
 
 				// check if a new replica has been created
 				conditionFunc = func() (bool, error) {
-					azVAs, err := azVolumeClient.DiskV1alpha1().AzVolumeAttachments(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: labelSelector})
+					azVAs, err := azVolumeClient.DiskV1alpha2().AzVolumeAttachments(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: labelSelector})
 					require.NoError(t, err)
 					require.NotEmpty(t, azVAs.Items)
 
 					for _, azVA := range azVAs.Items {
-						if azVA.Spec.RequestedRole == v1alpha1.ReplicaRole && azVA.Status.Detail != nil && azVA.Status.Detail.Role == v1alpha1.ReplicaRole && azVA.Status.Detail.PublishContext != nil {
+						if azVA.Spec.RequestedRole == diskv1alpha2.ReplicaRole && azVA.Status.Detail != nil && azVA.Status.Detail.Role == diskv1alpha2.ReplicaRole && azVA.Status.Detail.PublishContext != nil {
 							klog.Infof("A new replica AzVolumeAttachment (%s) found successfully attached to node (%s)", azVA.Name, azVA.Spec.NodeName)
 							return true, nil
 						}
@@ -582,7 +582,7 @@ func TestAzVolumeAttachment(t *testing.T) {
 			volumeContext:    nil,
 			setUpFunc: func(t *testing.T, volumeName string) {
 				// create volume
-				_, err := crdProvisioner.CreateVolume(context.Background(), volumeName, &v1alpha1.CapacityRange{RequiredBytes: 1099511627776}, []v1alpha1.VolumeCapability{}, map[string]string{"kind": "managed", "maxShares": "3", "skuName": "Premium_LRS"}, nil, nil, nil)
+				_, err := crdProvisioner.CreateVolume(context.Background(), volumeName, &diskv1alpha2.CapacityRange{RequiredBytes: 1099511627776}, []diskv1alpha2.VolumeCapability{}, map[string]string{"kind": "managed", "maxShares": "3", "skuName": "Premium_LRS"}, nil, nil, nil)
 				require.NoError(t, err)
 			},
 			testFunc: func(t *testing.T, volumeName, nodeName string) {
@@ -601,13 +601,13 @@ func TestAzVolumeAttachment(t *testing.T) {
 				require.NotEmpty(t, diskName)
 				require.NoError(t, err)
 				labelSelector := fmt.Sprintf("%s=%s", consts.VolumeNameLabel, diskName)
-				azVAs, err := azVolumeClient.DiskV1alpha1().AzVolumeAttachments(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: labelSelector})
+				azVAs, err := azVolumeClient.DiskV1alpha2().AzVolumeAttachments(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: labelSelector})
 				require.NoError(t, err)
 
 				numReplicaDeleted := 0
 				for _, azVA := range azVAs.Items {
-					if azVA.Spec.RequestedRole == v1alpha1.ReplicaRole {
-						err = azVolumeClient.DiskV1alpha1().AzVolumeAttachments(namespace).Delete(context.Background(), azVA.Name, metav1.DeleteOptions{})
+					if azVA.Spec.RequestedRole == diskv1alpha2.ReplicaRole {
+						err = azVolumeClient.DiskV1alpha2().AzVolumeAttachments(namespace).Delete(context.Background(), azVA.Name, metav1.DeleteOptions{})
 						require.NoError(t, err)
 						klog.Infof("Deleting two replica AzVolumeAttachment (%s)", azVA.Name)
 						numReplicaDeleted++
@@ -642,7 +642,7 @@ func TestAzVolumeAttachment(t *testing.T) {
 			volumeContext:    nil,
 			setUpFunc: func(t *testing.T, volumeName string) {
 				// create volume
-				_, err := crdProvisioner.CreateVolume(context.Background(), volumeName, &v1alpha1.CapacityRange{RequiredBytes: 274877906944}, []v1alpha1.VolumeCapability{}, map[string]string{"kind": "managed", "maxShares": "2", "skuName": "Premium_LRS"}, nil, nil, nil)
+				_, err := crdProvisioner.CreateVolume(context.Background(), volumeName, &diskv1alpha2.CapacityRange{RequiredBytes: 274877906944}, []diskv1alpha2.VolumeCapability{}, map[string]string{"kind": "managed", "maxShares": "2", "skuName": "Premium_LRS"}, nil, nil, nil)
 				require.NoError(t, err)
 			},
 			testFunc: func(t *testing.T, volumeName, nodeName string) {
@@ -670,7 +670,7 @@ func TestAzVolumeAttachment(t *testing.T) {
 
 				labelSelector := fmt.Sprintf("%s=%s", consts.VolumeNameLabel, diskName)
 				conditionFunc = func() (bool, error) {
-					azVAs, err := azVolumeClient.DiskV1alpha1().AzVolumeAttachments(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: labelSelector})
+					azVAs, err := azVolumeClient.DiskV1alpha2().AzVolumeAttachments(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: labelSelector})
 					if errors.IsNotFound(err) || len(azVAs.Items) == 0 {
 						klog.Infof("Garbage collection completed for AzVolume (%s)", volumeName)
 						return true, nil
@@ -693,7 +693,7 @@ func TestAzVolumeAttachment(t *testing.T) {
 			volumeContext:    nil,
 			setUpFunc: func(t *testing.T, volumeName string) {
 				// create volume
-				_, err := crdProvisioner.CreateVolume(context.Background(), volumeName, &v1alpha1.CapacityRange{RequiredBytes: 274877906944}, []v1alpha1.VolumeCapability{}, map[string]string{"kind": "managed", "maxShares": "2", "skuName": "Premium_LRS"}, nil, nil, nil)
+				_, err := crdProvisioner.CreateVolume(context.Background(), volumeName, &diskv1alpha2.CapacityRange{RequiredBytes: 274877906944}, []diskv1alpha2.VolumeCapability{}, map[string]string{"kind": "managed", "maxShares": "2", "skuName": "Premium_LRS"}, nil, nil, nil)
 				require.NoError(t, err)
 			},
 			testFunc: func(t *testing.T, volumeName, nodeName string) {
@@ -719,7 +719,7 @@ func TestAzVolumeAttachment(t *testing.T) {
 				time.Sleep(controller.DefaultTimeUntilGarbageCollection / 2)
 
 				klog.Infof("Publishing volume (%s) to node (%s)", volumeID, nodeName)
-				response, err := crdProvisioner.PublishVolume(context.Background(), volumeID, nodeName, &v1alpha1.VolumeCapability{}, false, nil, nil)
+				response, err := crdProvisioner.PublishVolume(context.Background(), volumeID, nodeName, &diskv1alpha2.VolumeCapability{}, false, nil, nil)
 				if !assert.NotNil(t, response) || !assert.NoError(t, err) {
 					return
 				}

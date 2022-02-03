@@ -29,7 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/util/wait"
 	fakev1 "k8s.io/client-go/kubernetes/fake"
-	diskv1alpha1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
+	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
 	diskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
@@ -61,11 +61,11 @@ func TestNodeAvailabilityController(t *testing.T) {
 			request:     testSchedulableNodeRequest,
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileNodeAvailability {
 				newAttachment := testPrimaryAzVolumeAttachment0.DeepCopy()
-				newAttachment.Status.State = diskv1alpha1.Attached
+				newAttachment.Status.State = diskv1alpha2.Attached
 
 				newVolume := testAzVolume0.DeepCopy()
-				newVolume.Status.Detail = &diskv1alpha1.AzVolumeStatusDetail{
-					ResponseObject: &diskv1alpha1.AzVolumeStatusParams{
+				newVolume.Status.Detail = &diskv1alpha2.AzVolumeStatusDetail{
+					ResponseObject: &diskv1alpha2.AzVolumeStatusParams{
 						VolumeID: testManagedDiskURI0,
 					},
 				}
@@ -93,11 +93,11 @@ func TestNodeAvailabilityController(t *testing.T) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
 
-				roleReq, _ := azureutils.CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(diskv1alpha1.ReplicaRole))
+				roleReq, _ := azureutils.CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(diskv1alpha2.ReplicaRole))
 				labelSelector := labels.NewSelector().Add(*roleReq)
 
 				conditionFunc := func() (bool, error) {
-					replicas, localError := controller.azVolumeClient.DiskV1alpha1().AzVolumeAttachments(testPrimaryAzVolumeAttachment0.Namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
+					replicas, localError := controller.azVolumeClient.DiskV1alpha2().AzVolumeAttachments(testPrimaryAzVolumeAttachment0.Namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
 					require.NoError(t, localError)
 					require.NotNil(t, replicas)
 					return len(replicas.Items) == 1, nil

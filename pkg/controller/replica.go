@@ -25,7 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	kubeClientSet "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
+	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
 	azClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
@@ -63,7 +63,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 		return reconcile.Result{Requeue: true}, err
 	}
 
-	if azVolumeAttachment.Spec.RequestedRole == v1alpha1.PrimaryRole {
+	if azVolumeAttachment.Spec.RequestedRole == diskv1alpha2.PrimaryRole {
 		// Deletion Event
 		if objectDeletionRequested(azVolumeAttachment) {
 			if volumeDetachRequested(azVolumeAttachment) {
@@ -75,7 +75,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 			r.removeGarbageCollection(azVolumeAttachment.Spec.UnderlyingVolume)
 
 			// If promotion event, create a replacement replica
-			if isAttached(azVolumeAttachment) && azVolumeAttachment.Status.Detail.PreviousRole == v1alpha1.ReplicaRole {
+			if isAttached(azVolumeAttachment) && azVolumeAttachment.Status.Detail.PreviousRole == diskv1alpha2.ReplicaRole {
 				r.controllerSharedState.addToOperationQueue(
 					azVolumeAttachment.Spec.UnderlyingVolume,
 					replica,
@@ -89,10 +89,10 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 	} else {
 		// create a replacement replica if replica attachment failed or promoted
 		if objectDeletionRequested(azVolumeAttachment) {
-			if azVolumeAttachment.Status.State == v1alpha1.DetachmentFailed {
+			if azVolumeAttachment.Status.State == diskv1alpha2.DetachmentFailed {
 				if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, azVolumeAttachment, func(obj interface{}) error {
-					azVolumeAttachment := obj.(*v1alpha1.AzVolumeAttachment)
-					_, err = updateState(azVolumeAttachment, v1alpha1.ForceDetachPending, normalUpdate)
+					azVolumeAttachment := obj.(*diskv1alpha2.AzVolumeAttachment)
+					_, err = updateState(azVolumeAttachment, diskv1alpha2.ForceDetachPending, normalUpdate)
 					return err
 				}, consts.NormalUpdateMaxNetRetry); err != nil {
 					return reconcile.Result{Requeue: true}, err
@@ -102,7 +102,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 				go func() {
 					// wait for replica AzVolumeAttachment deletion
 					conditionFunc := func() (bool, error) {
-						var tmp v1alpha1.AzVolumeAttachment
+						var tmp diskv1alpha2.AzVolumeAttachment
 						err := r.client.Get(ctx, request.NamespacedName, &tmp)
 						if errors.IsNotFound(err) {
 							return true, nil
@@ -123,7 +123,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 					)
 				}()
 			}
-		} else if azVolumeAttachment.Status.State == v1alpha1.AttachmentFailed {
+		} else if azVolumeAttachment.Status.State == diskv1alpha2.AttachmentFailed {
 			// if attachment failed for replica AzVolumeAttachment, delete the CRI so that replace replica AzVolumeAttachment can be created.
 			if err := r.client.Delete(ctx, azVolumeAttachment); err != nil {
 				return reconcile.Result{Requeue: true}, err
@@ -201,10 +201,10 @@ func NewReplicaController(mgr manager.Manager, azVolumeClient azClientSet.Interf
 
 	klog.V(2).Info("Starting to watch AzVolumeAttachments.")
 
-	err = c.Watch(&source.Kind{Type: &v1alpha1.AzVolumeAttachment{}}, &handler.EnqueueRequestForObject{}, predicate.Funcs{
+	err = c.Watch(&source.Kind{Type: &diskv1alpha2.AzVolumeAttachment{}}, &handler.EnqueueRequestForObject{}, predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
-			azVolumeAttachment, ok := e.Object.(*v1alpha1.AzVolumeAttachment)
-			if ok && azVolumeAttachment.Spec.RequestedRole == v1alpha1.PrimaryRole {
+			azVolumeAttachment, ok := e.Object.(*diskv1alpha2.AzVolumeAttachment)
+			if ok && azVolumeAttachment.Spec.RequestedRole == diskv1alpha2.PrimaryRole {
 				return true
 			}
 			return false

@@ -30,7 +30,7 @@ import (
 	k8stypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	volerr "k8s.io/cloud-provider/volume/errors"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
+	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
 )
 
 const (
@@ -226,8 +226,8 @@ func getErrorCodeFromString(errorCode string) codes.Code {
 	return codes.Unknown
 }
 
-// NewAzError returns a new v1alpha1.AzError object representing the specified error.
-func NewAzError(err error) *v1alpha1.AzError {
+// NewAzError returns a new AzError object representing the specified error.
+func NewAzError(err error) *diskv1alpha2.AzError {
 	var (
 		errorCode    string
 		errorMessage = err.Error()
@@ -257,7 +257,7 @@ func NewAzError(err error) *v1alpha1.AzError {
 		errorCode = getStringValueForErrorCode(code)
 	}
 
-	return &v1alpha1.AzError{
+	return &diskv1alpha2.AzError{
 		ErrorCode:    errorCode,
 		ErrorMessage: errorMessage,
 		CurrentNode:  currentNode,
@@ -265,8 +265,8 @@ func NewAzError(err error) *v1alpha1.AzError {
 	}
 }
 
-// ErrorFromAzError returns an error object for the specified v1alpha1.AzError instance.
-func ErrorFromAzError(azError *v1alpha1.AzError) error {
+// ErrorFromAzError returns an error object for the specified AzError instance.
+func ErrorFromAzError(azError *diskv1alpha2.AzError) error {
 	if azError == nil {
 		return nil
 	}

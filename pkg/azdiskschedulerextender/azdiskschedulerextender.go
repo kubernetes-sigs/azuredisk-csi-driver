@@ -39,10 +39,10 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 	schedulerapi "k8s.io/kube-scheduler/extender/v1"
-	v1alpha1Meta "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
+	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	azurediskInformers "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions"
-	azurediskInformerTypes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions/azuredisk/v1alpha1"
+	azurediskInformerTypes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions/azuredisk/v1alpha2"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 )
@@ -58,12 +58,12 @@ var (
 )
 
 type azDriverNodesMeta struct {
-	nodes []*v1alpha1Meta.AzDriverNode
+	nodes []*diskv1alpha2.AzDriverNode
 	err   error
 }
 
 type azVolumeAttachmentsMeta struct {
-	volumes []*v1alpha1Meta.AzVolumeAttachment
+	volumes []*diskv1alpha2.AzVolumeAttachment
 	err     error
 }
 
@@ -91,8 +91,8 @@ func initSchedulerExtender(ctx context.Context) {
 	azurediskInformerFactory := azurediskInformers.NewSharedInformerFactory(kubeExtensionClientset, time.Second*30)
 	pvcInformerFactory := informers.NewSharedInformerFactory(kubeClientset, time.Second*30)
 
-	azVolumeAttachmentInformer = azurediskInformerFactory.Disk().V1alpha1().AzVolumeAttachments()
-	azDriverNodeInformer = azurediskInformerFactory.Disk().V1alpha1().AzDriverNodes()
+	azVolumeAttachmentInformer = azurediskInformerFactory.Disk().V1alpha2().AzVolumeAttachments()
+	azDriverNodeInformer = azurediskInformerFactory.Disk().V1alpha2().AzDriverNodes()
 	pvcInformer = pvcInformerFactory.Core().V1().PersistentVolumeClaims()
 
 	pvcInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -265,7 +265,7 @@ func prioritize(context context.Context, schedulerExtenderArgs schedulerapi.Exte
 
 			nodeNameToVolumeMap[attachedVolume.Spec.NodeName] = append(nodeNameToVolumeMap[attachedVolume.Spec.NodeName], attachedVolume.Spec.UnderlyingVolume)
 
-			if !attachedVolume.DeletionTimestamp.IsZero() || attachedVolume.Status.State != v1alpha1Meta.Attached {
+			if !attachedVolume.DeletionTimestamp.IsZero() || attachedVolume.Status.State != diskv1alpha2.Attached {
 				klog.V(2).Infof("Volume attachment excluded because it is to be deleted or not in the Attached state: Name %s, Volume: %s", attachedVolume.Name, attachedVolume.Spec.UnderlyingVolume)
 				continue
 			}
@@ -380,7 +380,7 @@ func getAzVolumeAttachments(context context.Context, out chan azVolumeAttachment
 	out <- activeVolumeAttachments
 }
 
-func getAzVolumeAttachmentsByNode(nodeName string) ([]*v1alpha1Meta.AzVolumeAttachment, error) {
+func getAzVolumeAttachmentsByNode(nodeName string) ([]*diskv1alpha2.AzVolumeAttachment, error) {
 	nodeNameFilter, err := azureutils.CreateLabelRequirements(consts.NodeNameLabel, selection.Equals, nodeName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create a filter label for listing AzVolumeAttachments for node %s: %v", nodeName, err)

@@ -27,7 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
 	fakev1 "k8s.io/client-go/kubernetes/fake"
-	diskv1alpha1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
+	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
 	diskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller/mockclient"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -39,13 +39,13 @@ type testReconcilePV struct {
 }
 
 func newTestPVController(controller *gomock.Controller, namespace string, objects ...runtime.Object) *testReconcilePV {
-	diskv1alpha1Objs, kubeObjs := splitObjects(objects...)
+	azDiskObjs, kubeObjs := splitObjects(objects...)
 	controllerSharedState := initState(objects...)
 
 	return &testReconcilePV{
 		ReconcilePV: ReconcilePV{
 			client:                mockclient.NewMockClient(controller),
-			azVolumeClient:        diskfakes.NewSimpleClientset(diskv1alpha1Objs...),
+			azVolumeClient:        diskfakes.NewSimpleClientset(azDiskObjs...),
 			controllerRetryInfo:   newRetryInfo(),
 			controllerSharedState: controllerSharedState,
 		},
@@ -65,8 +65,8 @@ func TestPVControllerReconcile(t *testing.T) {
 			request:     testPersistentVolume0Request,
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcilePV {
 				azVolume := testAzVolume0.DeepCopy()
-				azVolume.Status.Detail = &diskv1alpha1.AzVolumeStatusDetail{
-					Phase: diskv1alpha1.VolumeBound,
+				azVolume.Status.Detail = &diskv1alpha2.AzVolumeStatusDetail{
+					Phase: diskv1alpha2.VolumeBound,
 				}
 
 				pv := testPersistentVolume0.DeepCopy()
@@ -86,9 +86,9 @@ func TestPVControllerReconcile(t *testing.T) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
 
-				azVolume, localError := controller.azVolumeClient.DiskV1alpha1().AzVolumes(testNamespace).Get(context.TODO(), testPersistentVolume0Name, metav1.GetOptions{})
+				azVolume, localError := controller.azVolumeClient.DiskV1alpha2().AzVolumes(testNamespace).Get(context.TODO(), testPersistentVolume0Name, metav1.GetOptions{})
 				require.NoError(t, localError)
-				require.Equal(t, diskv1alpha1.VolumeReleased, azVolume.Status.Detail.Phase)
+				require.Equal(t, diskv1alpha2.VolumeReleased, azVolume.Status.Detail.Phase)
 			},
 		},
 		{
@@ -111,9 +111,9 @@ func TestPVControllerReconcile(t *testing.T) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
 
-				azVolume, localError := controller.azVolumeClient.DiskV1alpha1().AzVolumes(testNamespace).Get(context.TODO(), testPersistentVolume0Name, metav1.GetOptions{})
+				azVolume, localError := controller.azVolumeClient.DiskV1alpha2().AzVolumes(testNamespace).Get(context.TODO(), testPersistentVolume0Name, metav1.GetOptions{})
 				require.NoError(t, localError)
-				require.Equal(t, diskv1alpha1.VolumeReleased, azVolume.Status.Detail.Phase)
+				require.Equal(t, diskv1alpha2.VolumeReleased, azVolume.Status.Detail.Phase)
 			},
 		},
 	}

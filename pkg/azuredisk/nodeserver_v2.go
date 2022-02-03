@@ -27,7 +27,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
+	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 
@@ -123,7 +123,7 @@ func (d *DriverV2) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolume
 			if getErr != nil {
 				return nil, status.Errorf(codes.Internal, "failed to get current attachment state for volume (%s) and node (%s): %v", diskURI, d.NodeID, getErr)
 			}
-			if state != v1alpha1.Attached {
+			if state != diskv1alpha2.Attached {
 				return nil, status.Errorf(codes.Internal, "volume (%s) is not yet attached to node (%s)", diskURI, d.NodeID)
 			}
 		}

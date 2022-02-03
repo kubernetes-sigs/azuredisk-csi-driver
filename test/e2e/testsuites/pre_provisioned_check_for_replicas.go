@@ -52,7 +52,7 @@ type PreProvisionedCheckForReplicasTest struct {
 
 func (t *PreProvisionedCheckForReplicasTest) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
 	// Get the list of available nodes for scheduling the pod
-	nodes := nodeutil.ListAzDriverNodeNames(t.AzDiskClient.DiskV1alpha1().AzDriverNodes(consts.DefaultAzureDiskCrdNamespace))
+	nodes := nodeutil.ListAzDriverNodeNames(t.AzDiskClient)
 	if len(nodes) < 2 {
 		ginkgo.Skip(fmt.Sprintf("need at least 2 nodes to verify the test case. Current node count is %d", len(nodes)))
 	}
@@ -84,7 +84,7 @@ func (t *PreProvisionedCheckForReplicasTest) Run(client clientset.Interface, nam
 		labelSelector := metav1.LabelSelector{MatchLabels: map[string]string{consts.VolumeNameLabel: t.VolumeName, consts.RoleLabel: "Replica"}}
 		err := wait.PollImmediate(testconsts.Poll, testconsts.PollTimeout,
 			func() (bool, error) {
-				azVolumeAttachments, err := t.AzDiskClient.DiskV1alpha1().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: labels.Set(labelSelector.MatchLabels).String()})
+				azVolumeAttachments, err := t.AzDiskClient.DiskV1alpha2().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: labels.Set(labelSelector.MatchLabels).String()})
 				if err != nil {
 					return false, status.Errorf(codes.Internal, "failed to get replica attachments. Error: %v", err)
 				}

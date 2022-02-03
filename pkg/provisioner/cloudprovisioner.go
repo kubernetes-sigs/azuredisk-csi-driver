@@ -36,7 +36,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
+	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
@@ -64,7 +64,7 @@ type CloudProvisioner struct {
 type listVolumeStatus struct {
 	numVisited    int  // the number of iterated azure disks
 	isCompleteRun bool // isCompleteRun is flagged true if the function iterated through all azure disks
-	entries       []v1alpha1.VolumeEntry
+	entries       []diskv1alpha2.VolumeEntry
 	err           error
 }
 
@@ -106,14 +106,14 @@ func NewCloudProvisioner(
 func (c *CloudProvisioner) CreateVolume(
 	ctx context.Context,
 	volumeName string,
-	capacityRange *v1alpha1.CapacityRange,
-	volumeCapabilities []v1alpha1.VolumeCapability,
-	params map[string]string,
+	capacityRange *diskv1alpha2.CapacityRange,
+	volumeCapabilities []diskv1alpha2.VolumeCapability,
+	parameters map[string]string,
 	secrets map[string]string,
-	volumeContentSource *v1alpha1.ContentVolumeSource,
-	accessibilityRequirements *v1alpha1.TopologyRequirement) (*v1alpha1.AzVolumeStatusParams, error) {
+	volumeContentSource *diskv1alpha2.ContentVolumeSource,
+	accessibilityRequirements *diskv1alpha2.TopologyRequirement) (*diskv1alpha2.AzVolumeStatusParams, error) {
 
-	diskParams, err := azureutils.ParseDiskParameters(params)
+	diskParams, err := azureutils.ParseDiskParameters(parameters)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "Failed parsing disk parameters: %v", err)
 	}
@@ -162,24 +162,24 @@ func (c *CloudProvisioner) CreateVolume(
 	}
 
 	selectedAvailabilityZone := pickAvailabilityZone(accessibilityRequirements, c.GetCloud().Location)
-	accessibleTopology := []v1alpha1.Topology{}
+	accessibleTopology := []diskv1alpha2.Topology{}
 	if skuName == compute.DiskStorageAccountTypesStandardSSDZRS || skuName == compute.DiskStorageAccountTypesPremiumZRS {
 		klog.V(2).Infof("diskZone(%s) is reset as empty since disk(%s) is ZRS(%s)", selectedAvailabilityZone, diskParams.DiskName, skuName)
 		selectedAvailabilityZone = ""
 		// make volume scheduled on all 3 availability zones
 		for i := 1; i <= 3; i++ {
-			topology := v1alpha1.Topology{
+			topology := diskv1alpha2.Topology{
 				Segments: map[string]string{topologyKeyStr: fmt.Sprintf("%s-%d", c.cloud.Location, i)},
 			}
 			accessibleTopology = append(accessibleTopology, topology)
 		}
 		// make volume scheduled on all non-zone nodes
-		topology := v1alpha1.Topology{
+		topology := diskv1alpha2.Topology{
 			Segments: map[string]string{topologyKeyStr: ""},
 		}
 		accessibleTopology = append(accessibleTopology, topology)
 	} else {
-		accessibleTopology = []v1alpha1.Topology{
+		accessibleTopology = []diskv1alpha2.Topology{
 			{
 				Segments: map[string]string{topologyKeyStr: selectedAvailabilityZone},
 			},
@@ -210,13 +210,13 @@ func (c *CloudProvisioner) CreateVolume(
 	}
 	sourceID := ""
 	sourceType := ""
-	contentSource := &v1alpha1.ContentVolumeSource{}
+	contentSource := &diskv1alpha2.ContentVolumeSource{}
 	if volumeContentSource != nil {
 		sourceID = volumeContentSource.ContentSourceID
 		contentSource.ContentSource = volumeContentSource.ContentSource
 		contentSource.ContentSourceID = volumeContentSource.ContentSourceID
 		sourceType = azureconstants.SourceSnapshot
-		if volumeContentSource.ContentSource == v1alpha1.ContentVolumeSourceTypeVolume {
+		if volumeContentSource.ContentSource == diskv1alpha2.ContentVolumeSourceTypeVolume {
 			sourceType = azureconstants.SourceVolume
 
 			ctx, cancel := context.WithCancel(ctx)
@@ -266,7 +266,7 @@ func (c *CloudProvisioner) CreateVolume(
 
 	klog.V(2).Infof("create disk(%s) account type(%s) rg(%s) location(%s) size(%d) tags(%s) successfully", diskParams.DiskName, skuName, diskParams.ResourceGroup, diskParams.Location, requestGiB, diskParams.Tags)
 
-	return &v1alpha1.AzVolumeStatusParams{
+	return &diskv1alpha2.AzVolumeStatusParams{
 		VolumeID:           diskURI,
 		CapacityBytes:      volSizeBytes,
 		VolumeContext:      diskParams.VolumeContext,
@@ -290,7 +290,7 @@ func (c *CloudProvisioner) DeleteVolume(
 func (c *CloudProvisioner) ListVolumes(
 	ctx context.Context,
 	maxEntries int32,
-	startingToken string) (*v1alpha1.ListVolumesResult, error) {
+	startingToken string) (*diskv1alpha2.ListVolumesResult, error) {
 	start, _ := strconv.Atoi(startingToken)
 	kubeClient := c.cloud.KubeClient
 	if kubeClient != nil && kubeClient.CoreV1() != nil && kubeClient.CoreV1().PersistentVolumes() != nil {
@@ -380,8 +380,8 @@ func (c *CloudProvisioner) UnpublishVolume(
 func (c *CloudProvisioner) ExpandVolume(
 	ctx context.Context,
 	volumeID string,
-	capacityRange *v1alpha1.CapacityRange,
-	secrets map[string]string) (*v1alpha1.AzVolumeStatusParams, error) {
+	capacityRange *diskv1alpha2.CapacityRange,
+	secrets map[string]string) (*diskv1alpha2.AzVolumeStatusParams, error) {
 	requestSize := *resource.NewQuantity(capacityRange.RequiredBytes, resource.BinarySI)
 
 	if err := azureutils.IsValidDiskURI(volumeID); err != nil {
@@ -419,7 +419,7 @@ func (c *CloudProvisioner) ExpandVolume(
 
 	klog.V(2).Infof("expand azure disk(%s) successfully, currentSize(%d)", volumeID, currentSize)
 
-	return &v1alpha1.AzVolumeStatusParams{
+	return &diskv1alpha2.AzVolumeStatusParams{
 		CapacityBytes:         currentSize,
 		NodeExpansionRequired: true,
 	}, nil
@@ -430,7 +430,7 @@ func (c *CloudProvisioner) CreateSnapshot(
 	sourceVolumeID string,
 	snapshotName string,
 	secrets map[string]string,
-	parameters map[string]string) (*v1alpha1.Snapshot, error) {
+	parameters map[string]string) (*diskv1alpha2.Snapshot, error) {
 	snapshotName = azureutils.CreateValidDiskName(snapshotName, true)
 
 	var customTags string
@@ -524,19 +524,19 @@ func (c *CloudProvisioner) ListSnapshots(
 	startingToken string,
 	sourceVolumeID string,
 	snapshotID string,
-	secrets map[string]string) (*v1alpha1.ListSnapshotsResult, error) {
+	secrets map[string]string) (*diskv1alpha2.ListSnapshotsResult, error) {
 	// SnapshotID is not empty, return snapshot that match the snapshot id.
 	if len(snapshotID) != 0 {
 		snapshot, err := c.getSnapshotByID(ctx, c.cloud.ResourceGroup, snapshotID, sourceVolumeID)
 		if err != nil {
 			if strings.Contains(err.Error(), azureconstants.ResourceNotFound) {
-				return &v1alpha1.ListSnapshotsResult{}, nil
+				return &diskv1alpha2.ListSnapshotsResult{}, nil
 			}
 			return nil, err
 		}
-		entries := []v1alpha1.Snapshot{*snapshot}
+		entries := []diskv1alpha2.Snapshot{*snapshot}
 
-		listSnapshotResp := &v1alpha1.ListSnapshotsResult{
+		listSnapshotResp := &diskv1alpha2.ListSnapshotsResult{
 			Entries: entries,
 		}
 		return listSnapshotResp, nil
@@ -574,7 +574,7 @@ func (c *CloudProvisioner) ListSnapshots(
 	if maxEntries > 0 && int(maxEntries) < maxAvailableEntries {
 		totalEntries = int(maxEntries)
 	}
-	entries := []v1alpha1.Snapshot{}
+	entries := []diskv1alpha2.Snapshot{}
 	for count := 0; start < len(snapshots) && count < totalEntries; start++ {
 		if (sourceVolumeID != "" && sourceVolumeID == azureutils.GetSourceVolumeID(&snapshots[start])) || sourceVolumeID == "" {
 			snapshotObj, err := azureutils.NewAzureDiskSnapshot(sourceVolumeID, &snapshots[start])
@@ -591,7 +591,7 @@ func (c *CloudProvisioner) ListSnapshots(
 		nextToken = start
 	}
 
-	listSnapshotResp := &v1alpha1.ListSnapshotsResult{
+	listSnapshotResp := &diskv1alpha2.ListSnapshotsResult{
 		Entries:   entries,
 		NextToken: strconv.Itoa(nextToken),
 	}
@@ -723,7 +723,7 @@ func (c *CloudProvisioner) GetSnapshotAndResourceNameFromSnapshotID(snapshotID s
 	return snapshotName, resourceGroup, err
 }
 
-func (c *CloudProvisioner) getSnapshotByID(ctx context.Context, resourceGroup string, snapshotName string, sourceVolumeID string) (*v1alpha1.Snapshot, error) {
+func (c *CloudProvisioner) getSnapshotByID(ctx context.Context, resourceGroup string, snapshotName string, sourceVolumeID string) (*diskv1alpha2.Snapshot, error) {
 	snapshotNameVal, resourceGroupName, err := c.GetSnapshotAndResourceNameFromSnapshotID(snapshotName)
 	if err != nil {
 		return nil, err
@@ -752,8 +752,8 @@ func (c *CloudProvisioner) isGetDiskThrottled() bool {
 }
 
 func (c *CloudProvisioner) validateCreateVolumeRequestParams(
-	capacityRange *v1alpha1.CapacityRange,
-	volumeCaps []v1alpha1.VolumeCapability,
+	capacityRange *diskv1alpha2.CapacityRange,
+	volumeCaps []diskv1alpha2.VolumeCapability,
 	diskParams azureutils.ManagedDiskParameters) error {
 	if capacityRange != nil {
 		capacityBytes := capacityRange.RequiredBytes
@@ -779,7 +779,7 @@ func (c *CloudProvisioner) validateCreateVolumeRequestParams(
 }
 
 // listVolumesInCluster is a helper function for ListVolumes used for when there is an available kubeclient
-func (c *CloudProvisioner) listVolumesInCluster(ctx context.Context, start, maxEntries int) (*v1alpha1.ListVolumesResult, error) {
+func (c *CloudProvisioner) listVolumesInCluster(ctx context.Context, start, maxEntries int) (*diskv1alpha2.ListVolumesResult, error) {
 	kubeClient := c.cloud.KubeClient
 	pvList, err := kubeClient.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
 	if err != nil {
@@ -819,7 +819,7 @@ func (c *CloudProvisioner) listVolumesInCluster(ctx context.Context, start, maxE
 	sort.Strings(resourceGroups)
 
 	// loop through each resourceGroup to get disk lists
-	entries := []v1alpha1.VolumeEntry{}
+	entries := []diskv1alpha2.VolumeEntry{}
 	numVisited := 0
 	isCompleteRun, startFound := true, false
 	for _, resourceGroup := range resourceGroups {
@@ -853,7 +853,7 @@ func (c *CloudProvisioner) listVolumesInCluster(ctx context.Context, start, maxE
 		nextTokenString = strconv.Itoa(start + numVisited)
 	}
 
-	listVolumesResp := &v1alpha1.ListVolumesResult{
+	listVolumesResp := &diskv1alpha2.ListVolumesResult{
 		Entries:   entries,
 		NextToken: nextTokenString,
 	}
@@ -862,8 +862,8 @@ func (c *CloudProvisioner) listVolumesInCluster(ctx context.Context, start, maxE
 }
 
 // listVolumesInNodeResourceGroup is a helper function for ListVolumes used for when there is no available kubeclient
-func (c *CloudProvisioner) listVolumesInNodeResourceGroup(ctx context.Context, start, maxEntries int) (*v1alpha1.ListVolumesResult, error) {
-	entries := []v1alpha1.VolumeEntry{}
+func (c *CloudProvisioner) listVolumesInNodeResourceGroup(ctx context.Context, start, maxEntries int) (*diskv1alpha2.ListVolumesResult, error) {
+	entries := []diskv1alpha2.VolumeEntry{}
 	listStatus := c.listVolumesByResourceGroup(ctx, c.cloud.ResourceGroup, entries, start, maxEntries, nil)
 	if listStatus.err != nil {
 		return nil, listStatus.err
@@ -874,7 +874,7 @@ func (c *CloudProvisioner) listVolumesInNodeResourceGroup(ctx context.Context, s
 		nextTokenString = strconv.Itoa(start + listStatus.numVisited)
 	}
 
-	listVolumesResp := &v1alpha1.ListVolumesResult{
+	listVolumesResp := &diskv1alpha2.ListVolumesResult{
 		Entries:   listStatus.entries,
 		NextToken: nextTokenString,
 	}
@@ -883,7 +883,7 @@ func (c *CloudProvisioner) listVolumesInNodeResourceGroup(ctx context.Context, s
 }
 
 // listVolumesByResourceGroup is a helper function that updates the ListVolumeResponse_Entry slice and returns number of total visited volumes, number of volumes that needs to be visited and an error if found
-func (c *CloudProvisioner) listVolumesByResourceGroup(ctx context.Context, resourceGroup string, entries []v1alpha1.VolumeEntry, start, maxEntries int, volSet map[string]bool) listVolumeStatus {
+func (c *CloudProvisioner) listVolumesByResourceGroup(ctx context.Context, resourceGroup string, entries []diskv1alpha2.VolumeEntry, start, maxEntries int, volSet map[string]bool) listVolumeStatus {
 	disks, derr := c.cloud.DisksClient.ListByResourceGroup(ctx, resourceGroup)
 	if derr != nil {
 		return listVolumeStatus{err: status.Errorf(codes.Internal, "ListVolumes on rg(%s) failed with error: %v", resourceGroup, derr.Error())}
@@ -931,11 +931,11 @@ func (c *CloudProvisioner) listVolumesByResourceGroup(ctx context.Context, resou
 				nodeList = append(nodeList, string(attachedNode))
 			}
 
-			entries = append(entries, v1alpha1.VolumeEntry{
-				Details: &v1alpha1.VolumeDetails{
+			entries = append(entries, diskv1alpha2.VolumeEntry{
+				Details: &diskv1alpha2.VolumeDetails{
 					VolumeID: *disk.ID,
 				},
-				Status: &v1alpha1.VolumeStatus{
+				Status: &diskv1alpha2.VolumeStatus{
 					PublishedNodeIds: nodeList,
 				},
 			})
@@ -950,7 +950,7 @@ func (c *CloudProvisioner) listVolumesByResourceGroup(ctx context.Context, resou
 
 // pickAvailabilityZone selects 1 zone given topology requirement.
 // if not found or topology requirement is not zone format, empty string is returned.
-func pickAvailabilityZone(requirement *v1alpha1.TopologyRequirement, region string) string {
+func pickAvailabilityZone(requirement *diskv1alpha2.TopologyRequirement, region string) string {
 	if requirement == nil {
 		return ""
 	}

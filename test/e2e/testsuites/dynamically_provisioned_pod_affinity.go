@@ -113,7 +113,7 @@ func (t *PodAffinity) Run(client clientset.Interface, namespace *v1.Namespace, s
 					framework.ExpectNoError(err)
 					labelSelector = labelSelector.Add(*volReq)
 
-					azVolumeAttachments, err := t.AzDiskClient.DiskV1alpha1().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})
+					azVolumeAttachments, err := t.AzDiskClient.DiskV1alpha2().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})
 					if err != nil {
 						return false, err
 					}

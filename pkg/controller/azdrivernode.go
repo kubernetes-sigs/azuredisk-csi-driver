@@ -63,7 +63,7 @@ func (r *ReconcileAzDriverNode) Reconcile(ctx context.Context, request reconcile
 		klog.V(2).Info("Deleting AzDriverNode (%s).", request.Name)
 
 		// Delete the azDriverNode, since corresponding node is deleted
-		azN := r.azVolumeClient.DiskV1alpha1().AzDriverNodes(r.controllerSharedState.objectNamespace)
+		azN := r.azVolumeClient.DiskV1alpha2().AzDriverNodes(r.controllerSharedState.objectNamespace)
 		err = azN.Delete(ctx, request.Name, metav1.DeleteOptions{})
 
 		// If there is an issue in deleting the AzDriverNode, requeue

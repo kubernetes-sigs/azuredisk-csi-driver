@@ -21,28 +21,28 @@ package fake
 import (
 	rest "k8s.io/client-go/rest"
 	testing "k8s.io/client-go/testing"
-	v1alpha1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1alpha1"
+	v1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1alpha2"
 )
 
-type FakeDiskV1alpha1 struct {
+type FakeDiskV1alpha2 struct {
 	*testing.Fake
 }
 
-func (c *FakeDiskV1alpha1) AzDriverNodes(namespace string) v1alpha1.AzDriverNodeInterface {
+func (c *FakeDiskV1alpha2) AzDriverNodes(namespace string) v1alpha2.AzDriverNodeInterface {
 	return &FakeAzDriverNodes{c, namespace}
 }
 
-func (c *FakeDiskV1alpha1) AzVolumes(namespace string) v1alpha1.AzVolumeInterface {
+func (c *FakeDiskV1alpha2) AzVolumes(namespace string) v1alpha2.AzVolumeInterface {
 	return &FakeAzVolumes{c, namespace}
 }
 
-func (c *FakeDiskV1alpha1) AzVolumeAttachments(namespace string) v1alpha1.AzVolumeAttachmentInterface {
+func (c *FakeDiskV1alpha2) AzVolumeAttachments(namespace string) v1alpha2.AzVolumeAttachmentInterface {
 	return &FakeAzVolumeAttachments{c, namespace}
 }
 
 // RESTClient returns a RESTClient that is used to communicate
 // with API server by this client implementation.
-func (c *FakeDiskV1alpha1) RESTClient() rest.Interface {
+func (c *FakeDiskV1alpha2) RESTClient() rest.Interface {
 	var ret *rest.RESTClient
 	return ret
 }
