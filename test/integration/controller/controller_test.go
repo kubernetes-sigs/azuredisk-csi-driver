@@ -113,11 +113,11 @@ func getVolumeID(volumeName string) (string, error) {
 	if errors.IsNotFound(err) {
 		return "", err
 	}
-	if err != nil || azVolume.Status.Detail == nil || azVolume.Status.Detail.ResponseObject == nil {
+	if err != nil || azVolume.Status.Detail == nil {
 		return "", status.Error(codes.Internal, "volume creation seems to have failed.")
 	}
 
-	return azVolume.Status.Detail.ResponseObject.VolumeID, nil
+	return azVolume.Status.Detail.VolumeID, nil
 }
 
 func checkReplicaCount(volumeName string, desiredNumReplica int) (bool, error) {
@@ -293,9 +293,8 @@ func TestAzVolume(t *testing.T) {
 				}
 				require.NoError(t, err)
 				require.NotNil(t, azVolume.Status.Detail)
-				require.NotNil(t, azVolume.Status.Detail.ResponseObject)
 
-				volumeID := azVolume.Status.Detail.ResponseObject.VolumeID
+				volumeID := azVolume.Status.Detail.VolumeID
 				diskName, err := azureutils.GetDiskName(volumeID)
 				require.NotEmpty(t, diskName)
 				require.NoError(t, err)

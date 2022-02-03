@@ -273,7 +273,7 @@ func createAzVolume(pvName string, maxMountReplicaCount int) diskv1alpha2.AzVolu
 			Namespace: testNamespace,
 		},
 		Spec: diskv1alpha2.AzVolumeSpec{
-			UnderlyingVolume: pvName,
+			VolumeName: pvName,
 			CapacityRange: &diskv1alpha2.CapacityRange{
 				RequiredBytes: util.GiBToBytes(10),
 			},
@@ -300,10 +300,10 @@ func createAzVolumeAttachment(pvName, nodeName string, role diskv1alpha2.Role) d
 			},
 		},
 		Spec: diskv1alpha2.AzVolumeAttachmentSpec{
-			RequestedRole:    role,
-			UnderlyingVolume: strings.ToLower(pvName),
-			VolumeID:         volumeID,
-			NodeName:         nodeName,
+			RequestedRole: role,
+			VolumeName:    strings.ToLower(pvName),
+			VolumeID:      volumeID,
+			NodeName:      nodeName,
 		},
 	}
 	return azVolumeAttachment

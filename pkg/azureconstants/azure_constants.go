@@ -125,6 +125,9 @@ const (
 	ClientThrottled         = "client throttled"
 	// define different sleep time when hit throttling
 	SnapshotOpThrottlingSleepSec = 50
+
+	CurrentNodeParameter = "currentNode"
+	DevicePathParameter  = "devicePath"
 )
 
 var (

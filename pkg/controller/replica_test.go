@@ -74,9 +74,7 @@ func TestReplicaReconcile(t *testing.T) {
 
 				newVolume := testAzVolume0.DeepCopy()
 				newVolume.Status.Detail = &diskv1alpha2.AzVolumeStatusDetail{
-					ResponseObject: &diskv1alpha2.AzVolumeStatusParams{
-						VolumeID: testManagedDiskURI0,
-					},
+					VolumeID: testManagedDiskURI0,
 				}
 
 				controller := NewTestReplicaController(
@@ -136,9 +134,7 @@ func TestReplicaReconcile(t *testing.T) {
 
 				newVolume := testAzVolume0.DeepCopy()
 				newVolume.Status.Detail = &diskv1alpha2.AzVolumeStatusDetail{
-					ResponseObject: &diskv1alpha2.AzVolumeStatusParams{
-						VolumeID: testManagedDiskURI0,
-					},
+					VolumeID: testManagedDiskURI0,
 				}
 
 				controller := NewTestReplicaController(
@@ -180,9 +176,7 @@ func TestReplicaReconcile(t *testing.T) {
 
 				newVolume := testAzVolume0.DeepCopy()
 				newVolume.Status.Detail = &diskv1alpha2.AzVolumeStatusDetail{
-					ResponseObject: &diskv1alpha2.AzVolumeStatusParams{
-						VolumeID: testManagedDiskURI0,
-					},
+					VolumeID: testManagedDiskURI0,
 				}
 
 				controller := NewTestReplicaController(
@@ -230,9 +224,7 @@ func TestReplicaReconcile(t *testing.T) {
 
 				newVolume := testAzVolume0.DeepCopy()
 				newVolume.Status.Detail = &diskv1alpha2.AzVolumeStatusDetail{
-					ResponseObject: &diskv1alpha2.AzVolumeStatusParams{
-						VolumeID: testManagedDiskURI0,
-					},
+					VolumeID: testManagedDiskURI0,
 				}
 
 				controller := NewTestReplicaController(
@@ -313,9 +305,7 @@ func TestGetNodesForReplica(t *testing.T) {
 
 				newVolume := testAzVolume0.DeepCopy()
 				newVolume.Status.Detail = &diskv1alpha2.AzVolumeStatusDetail{
-					ResponseObject: &diskv1alpha2.AzVolumeStatusParams{
-						VolumeID: testManagedDiskURI0,
-					},
+					VolumeID: testManagedDiskURI0,
 				}
 
 				newNode := testNode0.DeepCopy()
@@ -364,9 +354,7 @@ func TestGetNodesForReplica(t *testing.T) {
 
 				newVolume := testAzVolume0.DeepCopy()
 				newVolume.Status.Detail = &diskv1alpha2.AzVolumeStatusDetail{
-					ResponseObject: &diskv1alpha2.AzVolumeStatusParams{
-						VolumeID: testManagedDiskURI0,
-					},
+					VolumeID: testManagedDiskURI0,
 				}
 
 				newNode := testNode0.DeepCopy()

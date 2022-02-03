@@ -1047,9 +1047,9 @@ func NewTestAzVolumeAttachment(azVolumeAttachment azDiskClientSet.AzVolumeAttach
 			Name: volumeAttachmentName,
 		},
 		Spec: diskv1alpha2.AzVolumeAttachmentSpec{
-			UnderlyingVolume: volumeName,
-			NodeName:         nodeName,
-			RequestedRole:    diskv1alpha2.PrimaryRole,
+			VolumeName:    volumeName,
+			NodeName:      nodeName,
+			RequestedRole: diskv1alpha2.PrimaryRole,
 			VolumeContext: map[string]string{
 				"controller": "azdrivernode",
 				"name":       volumeAttachmentName,
@@ -1087,13 +1087,11 @@ func NewTestAzVolume(azVolume azDiskClientSet.AzVolumeInterface, underlyingVolum
 			Name: underlyingVolumeName,
 		},
 		Spec: diskv1alpha2.AzVolumeSpec{
-			UnderlyingVolume:     underlyingVolumeName,
+			VolumeName:           underlyingVolumeName,
 			MaxMountReplicaCount: maxMountReplicaCount,
 			VolumeCapability: []diskv1alpha2.VolumeCapability{
 				{
-					AccessDetails: diskv1alpha2.VolumeCapabilityAccessDetails{
-						AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
-					},
+					AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
 					AccessMode: diskv1alpha2.VolumeCapabilityAccessModeSingleNodeWriter,
 				},
 			},
@@ -1176,7 +1174,7 @@ func (t *TestAzVolumeAttachment) WaitForAttach(timeout time.Duration) error {
 			return false, err
 		}
 		if att.Status.Detail != nil {
-			klog.Infof("volume (%s) attached to node (%s)", att.Spec.UnderlyingVolume, att.Spec.NodeName)
+			klog.Infof("volume (%s) attached to node (%s)", att.Spec.VolumeName, att.Spec.NodeName)
 			return true, nil
 		}
 		return false, nil
@@ -1257,7 +1255,7 @@ func (t *TestAzVolumeAttachment) WaitForPrimary(timeout time.Duration) error {
 			if attachment.Status.Detail == nil {
 				continue
 			}
-			if attachment.Spec.UnderlyingVolume == t.UnderlyingVolume && attachment.Spec.RequestedRole == diskv1alpha2.PrimaryRole && attachment.Status.Detail.Role == diskv1alpha2.PrimaryRole {
+			if attachment.Spec.VolumeName == t.UnderlyingVolume && attachment.Spec.RequestedRole == diskv1alpha2.PrimaryRole && attachment.Status.Detail.Role == diskv1alpha2.PrimaryRole {
 				return true, nil
 			}
 		}
@@ -1279,7 +1277,7 @@ func (t *TestAzVolumeAttachment) WaitForReplicas(numReplica int, timeout time.Du
 			if attachment.Status.Detail == nil {
 				continue
 			}
-			if attachment.Spec.UnderlyingVolume == t.UnderlyingVolume && attachment.Status.Detail.Role == diskv1alpha2.ReplicaRole {
+			if attachment.Spec.VolumeName == t.UnderlyingVolume && attachment.Status.Detail.Role == diskv1alpha2.ReplicaRole {
 				counter++
 			}
 		}

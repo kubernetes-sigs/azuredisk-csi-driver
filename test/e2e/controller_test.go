@@ -78,7 +78,7 @@ var _ = ginkgo.Describe("Controller", func() {
 						ginkgo.Fail("Driver found not ready for allocation")
 					}
 					ginkgo.By("Checking to see if node reported heartbeat")
-					if dNode.Status.LastHeartbeatTime == nil || *dNode.Status.LastHeartbeatTime <= 0 {
+					if dNode.Status.LastHeartbeatTime == nil || dNode.Status.LastHeartbeatTime.IsZero() {
 						ginkgo.Fail("Driver heartbeat not reported")
 					}
 

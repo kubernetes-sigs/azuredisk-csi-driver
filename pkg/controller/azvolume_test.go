@@ -65,8 +65,8 @@ func mockClientsAndVolumeProvisioner(controller *ReconcileAzVolume) {
 			parameters map[string]string,
 			secrets map[string]string,
 			volumeContentSource *diskv1alpha2.ContentVolumeSource,
-			accessibilityTopology *diskv1alpha2.TopologyRequirement) (*diskv1alpha2.AzVolumeStatusParams, error) {
-			return &diskv1alpha2.AzVolumeStatusParams{
+			accessibilityTopology *diskv1alpha2.TopologyRequirement) (*diskv1alpha2.AzVolumeStatusDetail, error) {
+			return &diskv1alpha2.AzVolumeStatusDetail{
 				VolumeID:      testManagedDiskURI0,
 				VolumeContext: parameters,
 				CapacityBytes: capacityRange.RequiredBytes,
@@ -84,7 +84,7 @@ func mockClientsAndVolumeProvisioner(controller *ReconcileAzVolume) {
 			ctx context.Context,
 			volumeID string,
 			capacityRange *diskv1alpha2.CapacityRange,
-			secrets map[string]string) (*diskv1alpha2.AzVolumeStatusParams, error) {
+			secrets map[string]string) (*diskv1alpha2.AzVolumeStatusDetail, error) {
 			volumeName, err := azureutils.GetDiskName(volumeID)
 			if err != nil {
 				return nil, err
@@ -94,7 +94,7 @@ func mockClientsAndVolumeProvisioner(controller *ReconcileAzVolume) {
 				return nil, err
 			}
 
-			azVolumeStatusParams := azVolume.Status.Detail.ResponseObject.DeepCopy()
+			azVolumeStatusParams := azVolume.Status.Detail.DeepCopy()
 			azVolumeStatusParams.CapacityBytes = capacityRange.RequiredBytes
 
 			return azVolumeStatusParams, nil
@@ -148,10 +148,8 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 				azVolume := testAzVolume0.DeepCopy()
 
 				azVolume.Status.Detail = &diskv1alpha2.AzVolumeStatusDetail{
-					ResponseObject: &diskv1alpha2.AzVolumeStatusParams{
-						VolumeID:      testManagedDiskURI0,
-						CapacityBytes: azVolume.Spec.CapacityRange.RequiredBytes,
-					},
+					VolumeID:      testManagedDiskURI0,
+					CapacityBytes: azVolume.Spec.CapacityRange.RequiredBytes,
 				}
 				azVolume.Spec.CapacityRange.RequiredBytes *= 2
 				azVolume.Status.State = diskv1alpha2.VolumeCreated
@@ -173,7 +171,7 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 					if localError != nil {
 						return false, nil
 					}
-					return azVolume.Status.Detail.ResponseObject.CapacityBytes == azVolume.Spec.CapacityRange.RequiredBytes, nil
+					return azVolume.Status.Detail.CapacityBytes == azVolume.Spec.CapacityRange.RequiredBytes, nil
 				}
 				conditionError := wait.PollImmediate(verifyCRIInterval, verifyCRITimeout, conditionFunc)
 				require.NoError(t, conditionError)
@@ -190,10 +188,8 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 				}
 				azVolume.Finalizers = []string{consts.AzVolumeFinalizer}
 				azVolume.Status.Detail = &diskv1alpha2.AzVolumeStatusDetail{
-					ResponseObject: &diskv1alpha2.AzVolumeStatusParams{
-						VolumeID:      testManagedDiskURI0,
-						CapacityBytes: azVolume.Spec.CapacityRange.RequiredBytes,
-					},
+					VolumeID:      testManagedDiskURI0,
+					CapacityBytes: azVolume.Spec.CapacityRange.RequiredBytes,
 				}
 				now := metav1.Time{Time: metav1.Now().Add(-1000)}
 				azVolume.ObjectMeta.DeletionTimestamp = &now
@@ -229,13 +225,11 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 				azVolume := testAzVolume0.DeepCopy()
 
 				azVolume.Status.Detail = &diskv1alpha2.AzVolumeStatusDetail{
-					Phase: diskv1alpha2.VolumeReleased,
-					ResponseObject: &diskv1alpha2.AzVolumeStatusParams{
-						VolumeID:      testManagedDiskURI0,
-						CapacityBytes: azVolume.Spec.CapacityRange.RequiredBytes,
-					},
+					VolumeID:      testManagedDiskURI0,
+					CapacityBytes: azVolume.Spec.CapacityRange.RequiredBytes,
 				}
 				azVolume.Status.State = diskv1alpha2.VolumeCreated
+				azVolume.Status.Phase = diskv1alpha2.VolumeReleased
 
 				controller := NewTestAzVolumeController(
 					mockCtl,
@@ -265,10 +259,8 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 				}
 				azVolume.Finalizers = []string{consts.AzVolumeFinalizer}
 				azVolume.Status.Detail = &diskv1alpha2.AzVolumeStatusDetail{
-					ResponseObject: &diskv1alpha2.AzVolumeStatusParams{
-						VolumeID:      testManagedDiskURI0,
-						CapacityBytes: azVolume.Spec.CapacityRange.RequiredBytes,
-					},
+					VolumeID:      testManagedDiskURI0,
+					CapacityBytes: azVolume.Spec.CapacityRange.RequiredBytes,
 				}
 				now := metav1.Time{Time: metav1.Now().Add(-1000)}
 				azVolume.ObjectMeta.DeletionTimestamp = &now

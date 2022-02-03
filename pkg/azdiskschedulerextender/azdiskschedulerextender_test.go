@@ -37,7 +37,7 @@ import (
 	crypto "crypto/rand"
 
 	v1 "k8s.io/api/core/v1"
-	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
@@ -91,14 +91,14 @@ func TestFilterAndPrioritizeRequestResponseCode(t *testing.T) {
 	}{
 		{
 			inputArgs: &schedulerapi.ExtenderArgs{
-				Pod:       &v1.Pod{ObjectMeta: meta.ObjectMeta{Name: "pod"}},
-				Nodes:     &v1.NodeList{Items: []v1.Node{{ObjectMeta: meta.ObjectMeta{Name: "node"}}}},
+				Pod:       &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod"}},
+				Nodes:     &v1.NodeList{Items: []v1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node"}}}},
 				NodeNames: &[]string{"node"}},
 			want: http.StatusOK,
 		},
 		{
 			inputArgs: &schedulerapi.ExtenderArgs{
-				Pod:       &v1.Pod{ObjectMeta: meta.ObjectMeta{Name: "pod"}},
+				Pod:       &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod"}},
 				Nodes:     &v1.NodeList{Items: nil},
 				NodeNames: &[]string{"node"}},
 			want: http.StatusBadRequest,
@@ -166,23 +166,23 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 			),
 			schedulerArgs: schedulerapi.ExtenderArgs{
 				Pod: &v1.Pod{
-					ObjectMeta: meta.ObjectMeta{Name: "pod"},
+					ObjectMeta: metav1.ObjectMeta{Name: "pod"},
 					Spec: v1.PodSpec{
 						Volumes: []v1.Volume{
 							{
 								Name: "vol",
 							},
 						}}},
-				Nodes:     &v1.NodeList{Items: []v1.Node{{ObjectMeta: meta.ObjectMeta{Name: "node"}}}},
+				Nodes:     &v1.NodeList{Items: []v1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node"}}}},
 				NodeNames: &[]string{"node"},
 			},
 			expectedFilterResult: schedulerapi.ExtenderFilterResult{
-				Nodes:       &v1.NodeList{Items: []v1.Node{{ObjectMeta: meta.ObjectMeta{Name: "node"}}}},
+				Nodes:       &v1.NodeList{Items: []v1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node"}}}},
 				NodeNames:   &[]string{"node"},
 				FailedNodes: make(map[string]string),
 				Error:       "",
 			},
-			expectedPrioritizeResult: schedulerapi.HostPriorityList{schedulerapi.HostPriority{Host: "node", Score: getNodeScore(1, time.Now().UnixNano(), 1, 1, "node")}},
+			expectedPrioritizeResult: schedulerapi.HostPriorityList{schedulerapi.HostPriority{Host: "node", Score: getNodeScore(1, metav1.Now(), 1, 1, "node")}},
 		},
 		{
 			name: "Test simple case of pod/node/volume with pending azDriverNode",
@@ -193,14 +193,14 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 			),
 			schedulerArgs: schedulerapi.ExtenderArgs{
 				Pod: &v1.Pod{
-					ObjectMeta: meta.ObjectMeta{Name: "pod"},
+					ObjectMeta: metav1.ObjectMeta{Name: "pod"},
 					Spec: v1.PodSpec{
 						Volumes: []v1.Volume{
 							{
 								Name: "vol",
 							},
 						}}},
-				Nodes:     &v1.NodeList{Items: []v1.Node{{ObjectMeta: meta.ObjectMeta{Name: "node"}}}},
+				Nodes:     &v1.NodeList{Items: []v1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node"}}}},
 				NodeNames: &[]string{"node"},
 			},
 			expectedFilterResult: schedulerapi.ExtenderFilterResult{
@@ -209,7 +209,7 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 				FailedNodes: map[string]string{"node": "AzDriverNode for node is not ready."},
 				Error:       "",
 			},
-			expectedPrioritizeResult: schedulerapi.HostPriorityList{schedulerapi.HostPriority{Host: "node", Score: getNodeScore(1, time.Now().UnixNano(), 1, 1, "node")}},
+			expectedPrioritizeResult: schedulerapi.HostPriorityList{schedulerapi.HostPriority{Host: "node", Score: getNodeScore(1, metav1.Now(), 1, 1, "node")}},
 		},
 		{
 			name: "Test simple case of single node/volume with no pod volume requests",
@@ -219,17 +219,17 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 			),
 			schedulerArgs: schedulerapi.ExtenderArgs{
 				Pod: &v1.Pod{
-					ObjectMeta: meta.ObjectMeta{Name: "pod"}},
-				Nodes:     &v1.NodeList{Items: []v1.Node{{ObjectMeta: meta.ObjectMeta{Name: "node"}}}},
+					ObjectMeta: metav1.ObjectMeta{Name: "pod"}},
+				Nodes:     &v1.NodeList{Items: []v1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node"}}}},
 				NodeNames: &[]string{"node"},
 			},
 			expectedFilterResult: schedulerapi.ExtenderFilterResult{
-				Nodes:       &v1.NodeList{Items: []v1.Node{{ObjectMeta: meta.ObjectMeta{Name: "node"}}}},
+				Nodes:       &v1.NodeList{Items: []v1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node"}}}},
 				NodeNames:   &[]string{"node"},
 				FailedNodes: nil,
 				Error:       "",
 			},
-			expectedPrioritizeResult: schedulerapi.HostPriorityList{schedulerapi.HostPriority{Host: "node", Score: getNodeScore(0, time.Now().UnixNano(), 1, 1, "node")}},
+			expectedPrioritizeResult: schedulerapi.HostPriorityList{schedulerapi.HostPriority{Host: "node", Score: getNodeScore(0, metav1.Now(), 1, 1, "node")}},
 		},
 		{
 			name: "Test case with 2 nodes and one pod/volume",
@@ -240,7 +240,7 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 			),
 			schedulerArgs: schedulerapi.ExtenderArgs{
 				Pod: &v1.Pod{
-					ObjectMeta: meta.ObjectMeta{Name: "pod"},
+					ObjectMeta: metav1.ObjectMeta{Name: "pod"},
 					Spec: v1.PodSpec{
 						Volumes: []v1.Volume{
 							{
@@ -251,8 +251,8 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 				},
 				Nodes: &v1.NodeList{
 					Items: []v1.Node{
-						{ObjectMeta: meta.ObjectMeta{Name: "node0"}},
-						{ObjectMeta: meta.ObjectMeta{Name: "node1"}},
+						{ObjectMeta: metav1.ObjectMeta{Name: "node0"}},
+						{ObjectMeta: metav1.ObjectMeta{Name: "node1"}},
 					},
 				},
 				NodeNames: &[]string{"node0, node1"},
@@ -260,8 +260,8 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 			expectedFilterResult: schedulerapi.ExtenderFilterResult{
 				Nodes: &v1.NodeList{
 					Items: []v1.Node{
-						{ObjectMeta: meta.ObjectMeta{Name: "node0"}},
-						{ObjectMeta: meta.ObjectMeta{Name: "node1"}},
+						{ObjectMeta: metav1.ObjectMeta{Name: "node0"}},
+						{ObjectMeta: metav1.ObjectMeta{Name: "node1"}},
 					},
 				},
 				NodeNames:   &[]string{"node0", "node1"},
@@ -269,8 +269,8 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 				Error:       "",
 			},
 			expectedPrioritizeResult: schedulerapi.HostPriorityList{
-				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(1, time.Now().UnixNano(), 2, 1, "node0")},
-				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(0, time.Now().UnixNano(), 2, 0, "node1")},
+				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(1, metav1.Now(), 2, 1, "node0")},
+				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(0, metav1.Now(), 2, 0, "node1")},
 			},
 		},
 		{
@@ -282,7 +282,7 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 			),
 			schedulerArgs: schedulerapi.ExtenderArgs{
 				Pod: &v1.Pod{
-					ObjectMeta: meta.ObjectMeta{Name: "pod"},
+					ObjectMeta: metav1.ObjectMeta{Name: "pod"},
 					Spec: v1.PodSpec{
 						Volumes: []v1.Volume{
 							{
@@ -293,8 +293,8 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 				},
 				Nodes: &v1.NodeList{
 					Items: []v1.Node{
-						{ObjectMeta: meta.ObjectMeta{Name: "node0"}},
-						{ObjectMeta: meta.ObjectMeta{Name: "node1"}},
+						{ObjectMeta: metav1.ObjectMeta{Name: "node0"}},
+						{ObjectMeta: metav1.ObjectMeta{Name: "node1"}},
 					},
 				},
 				NodeNames: &[]string{"node0, node1"},
@@ -302,7 +302,7 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 			expectedFilterResult: schedulerapi.ExtenderFilterResult{
 				Nodes: &v1.NodeList{
 					Items: []v1.Node{
-						{ObjectMeta: meta.ObjectMeta{Name: "node1"}},
+						{ObjectMeta: metav1.ObjectMeta{Name: "node1"}},
 					},
 				},
 				NodeNames:   &[]string{"node1"},
@@ -310,8 +310,8 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 				Error:       "",
 			},
 			expectedPrioritizeResult: schedulerapi.HostPriorityList{
-				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(0, time.Now().UnixNano(), 2, 1, "node0")},
-				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(1, time.Now().UnixNano(), 2, 0, "node1")},
+				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(0, metav1.Now(), 2, 1, "node0")},
+				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(1, metav1.Now(), 2, 0, "node1")},
 			},
 		},
 		{
@@ -324,7 +324,7 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 			),
 			schedulerArgs: schedulerapi.ExtenderArgs{
 				Pod: &v1.Pod{
-					ObjectMeta: meta.ObjectMeta{Name: "pod"},
+					ObjectMeta: metav1.ObjectMeta{Name: "pod"},
 					Spec: v1.PodSpec{
 						Volumes: []v1.Volume{
 							{
@@ -335,8 +335,8 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 				},
 				Nodes: &v1.NodeList{
 					Items: []v1.Node{
-						{ObjectMeta: meta.ObjectMeta{Name: "node0"}},
-						{ObjectMeta: meta.ObjectMeta{Name: "node1"}},
+						{ObjectMeta: metav1.ObjectMeta{Name: "node0"}},
+						{ObjectMeta: metav1.ObjectMeta{Name: "node1"}},
 					},
 				},
 				NodeNames: &[]string{"node0, node1"},
@@ -344,8 +344,8 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 			expectedFilterResult: schedulerapi.ExtenderFilterResult{
 				Nodes: &v1.NodeList{
 					Items: []v1.Node{
-						{ObjectMeta: meta.ObjectMeta{Name: "node0"}},
-						{ObjectMeta: meta.ObjectMeta{Name: "node1"}},
+						{ObjectMeta: metav1.ObjectMeta{Name: "node0"}},
+						{ObjectMeta: metav1.ObjectMeta{Name: "node1"}},
 					},
 				},
 				NodeNames:   &[]string{"node0", "node1"},
@@ -353,8 +353,8 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 				Error:       "",
 			},
 			expectedPrioritizeResult: schedulerapi.HostPriorityList{
-				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(2, time.Now().UnixNano(), 2, 2, "node0")},
-				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(0, time.Now().UnixNano(), 2, 0, "node1")},
+				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(2, metav1.Now(), 2, 2, "node0")},
+				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(0, metav1.Now(), 2, 0, "node1")},
 			},
 		},
 		{
@@ -372,7 +372,7 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 			),
 			schedulerArgs: schedulerapi.ExtenderArgs{
 				Pod: &v1.Pod{
-					ObjectMeta: meta.ObjectMeta{Name: "pod"},
+					ObjectMeta: metav1.ObjectMeta{Name: "pod"},
 					Spec: v1.PodSpec{
 						Volumes: []v1.Volume{
 							{
@@ -380,25 +380,25 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 							}}}},
 				Nodes: &v1.NodeList{
 					Items: []v1.Node{
-						{ObjectMeta: meta.ObjectMeta{Name: "node0"}},
-						{ObjectMeta: meta.ObjectMeta{Name: "node1"}},
-						{ObjectMeta: meta.ObjectMeta{Name: "node2"}}}},
+						{ObjectMeta: metav1.ObjectMeta{Name: "node0"}},
+						{ObjectMeta: metav1.ObjectMeta{Name: "node1"}},
+						{ObjectMeta: metav1.ObjectMeta{Name: "node2"}}}},
 				NodeNames: &[]string{"node0", "node1", "node2"},
 			},
 			expectedFilterResult: schedulerapi.ExtenderFilterResult{
 				Nodes: &v1.NodeList{
 					Items: []v1.Node{
-						{ObjectMeta: meta.ObjectMeta{Name: "node0"}},
-						{ObjectMeta: meta.ObjectMeta{Name: "node1"}},
-						{ObjectMeta: meta.ObjectMeta{Name: "node2"}}}},
+						{ObjectMeta: metav1.ObjectMeta{Name: "node0"}},
+						{ObjectMeta: metav1.ObjectMeta{Name: "node1"}},
+						{ObjectMeta: metav1.ObjectMeta{Name: "node2"}}}},
 				NodeNames:   &[]string{"node0", "node1", "node2"},
 				FailedNodes: make(map[string]string),
 				Error:       "",
 			},
 			expectedPrioritizeResult: schedulerapi.HostPriorityList{
-				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(2, time.Now().UnixNano(), 3, 2, "node0")},
-				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(3, time.Now().UnixNano(), 3, 3, "node1")},
-				schedulerapi.HostPriority{Host: "node2", Score: getNodeScore(1, time.Now().UnixNano(), 3, 1, "node2")},
+				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(2, metav1.Now(), 3, 2, "node0")},
+				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(3, metav1.Now(), 3, 3, "node1")},
+				schedulerapi.HostPriority{Host: "node2", Score: getNodeScore(1, metav1.Now(), 3, 1, "node2")},
 			},
 		},
 		{
@@ -416,7 +416,7 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 			),
 			schedulerArgs: schedulerapi.ExtenderArgs{
 				Pod: &v1.Pod{
-					ObjectMeta: meta.ObjectMeta{Name: "pod"},
+					ObjectMeta: metav1.ObjectMeta{Name: "pod"},
 					Spec: v1.PodSpec{
 						Volumes: []v1.Volume{
 							{
@@ -427,25 +427,25 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 							}}}},
 				Nodes: &v1.NodeList{
 					Items: []v1.Node{
-						{ObjectMeta: meta.ObjectMeta{Name: "node0"}},
-						{ObjectMeta: meta.ObjectMeta{Name: "node1"}},
-						{ObjectMeta: meta.ObjectMeta{Name: "node2"}}}},
+						{ObjectMeta: metav1.ObjectMeta{Name: "node0"}},
+						{ObjectMeta: metav1.ObjectMeta{Name: "node1"}},
+						{ObjectMeta: metav1.ObjectMeta{Name: "node2"}}}},
 				NodeNames: &[]string{"node0", "node1", "node2"},
 			},
 			expectedFilterResult: schedulerapi.ExtenderFilterResult{
 				Nodes: &v1.NodeList{
 					Items: []v1.Node{
-						{ObjectMeta: meta.ObjectMeta{Name: "node0"}},
-						{ObjectMeta: meta.ObjectMeta{Name: "node1"}},
-						{ObjectMeta: meta.ObjectMeta{Name: "node2"}}}},
+						{ObjectMeta: metav1.ObjectMeta{Name: "node0"}},
+						{ObjectMeta: metav1.ObjectMeta{Name: "node1"}},
+						{ObjectMeta: metav1.ObjectMeta{Name: "node2"}}}},
 				NodeNames:   &[]string{"node0", "node1", "node2"},
 				FailedNodes: make(map[string]string),
 				Error:       "",
 			},
 			expectedPrioritizeResult: schedulerapi.HostPriorityList{
-				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(2, time.Now().UnixNano(), 3, 2, "node0")},
-				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(3, time.Now().UnixNano(), 3, 3, "node1")},
-				schedulerapi.HostPriority{Host: "node2", Score: getNodeScore(0, time.Now().UnixNano(), 3, 1, "node2")},
+				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(2, metav1.Now(), 3, 2, "node0")},
+				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(3, metav1.Now(), 3, 3, "node1")},
+				schedulerapi.HostPriority{Host: "node2", Score: getNodeScore(0, metav1.Now(), 3, 1, "node2")},
 			},
 		},
 		{
@@ -463,7 +463,7 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 			),
 			schedulerArgs: schedulerapi.ExtenderArgs{
 				Pod: &v1.Pod{
-					ObjectMeta: meta.ObjectMeta{Name: "pod"},
+					ObjectMeta: metav1.ObjectMeta{Name: "pod"},
 					Spec: v1.PodSpec{
 						Volumes: []v1.Volume{
 							{
@@ -471,25 +471,25 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 							}}}},
 				Nodes: &v1.NodeList{
 					Items: []v1.Node{
-						{ObjectMeta: meta.ObjectMeta{Name: "node0"}},
-						{ObjectMeta: meta.ObjectMeta{Name: "node1"}},
-						{ObjectMeta: meta.ObjectMeta{Name: "node2"}}}},
+						{ObjectMeta: metav1.ObjectMeta{Name: "node0"}},
+						{ObjectMeta: metav1.ObjectMeta{Name: "node1"}},
+						{ObjectMeta: metav1.ObjectMeta{Name: "node2"}}}},
 				NodeNames: &[]string{"node0", "node1", "node2"},
 			},
 			expectedFilterResult: schedulerapi.ExtenderFilterResult{
 				Nodes: &v1.NodeList{
 					Items: []v1.Node{
-						{ObjectMeta: meta.ObjectMeta{Name: "node0"}},
-						{ObjectMeta: meta.ObjectMeta{Name: "node1"}},
-						{ObjectMeta: meta.ObjectMeta{Name: "node2"}}}},
+						{ObjectMeta: metav1.ObjectMeta{Name: "node0"}},
+						{ObjectMeta: metav1.ObjectMeta{Name: "node1"}},
+						{ObjectMeta: metav1.ObjectMeta{Name: "node2"}}}},
 				NodeNames:   &[]string{"node0", "node1", "node2"},
 				FailedNodes: make(map[string]string),
 				Error:       "",
 			},
 			expectedPrioritizeResult: schedulerapi.HostPriorityList{
-				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(2, time.Now().UnixNano(), 3, 2, "node0")},
-				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(2, time.Now().UnixNano(), 3, 3, "node1")},
-				schedulerapi.HostPriority{Host: "node2", Score: getNodeScore(0, time.Now().UnixNano(), 3, 0, "node2")},
+				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(2, metav1.Now(), 3, 2, "node0")},
+				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(2, metav1.Now(), 3, 3, "node1")},
+				schedulerapi.HostPriority{Host: "node2", Score: getNodeScore(0, metav1.Now(), 3, 0, "node2")},
 			},
 		},
 	}
@@ -589,7 +589,7 @@ func TestFilterAndPrioritizeInRandomizedLargeCluster(t *testing.T) {
 			// generate large number of nodes
 			for i := 0; i < numberOfClusterNodes; i++ {
 				nodeName := fmt.Sprintf("node%d", i)
-				nodes = append(nodes, v1.Node{ObjectMeta: meta.ObjectMeta{Name: nodeName}})
+				nodes = append(nodes, v1.Node{ObjectMeta: metav1.ObjectMeta{Name: nodeName}})
 				nodeNames = append(nodeNames, nodeName)
 				clusterResourses = append(clusterResourses, getDriverNode(fmt.Sprintf("driverNode%d", i), criNamespace, nodeName, true))
 			}
@@ -629,7 +629,7 @@ func TestFilterAndPrioritizeInRandomizedLargeCluster(t *testing.T) {
 					}
 
 					testPod := &v1.Pod{
-						ObjectMeta: meta.ObjectMeta{Name: "pod"},
+						ObjectMeta: metav1.ObjectMeta{Name: "pod"},
 						Spec: v1.PodSpec{
 							Volumes: testPodVolumes}}
 
@@ -730,14 +730,14 @@ func gotExpectedPrioritizeList(got, want schedulerapi.HostPriorityList) bool {
 
 func getVolumeAttachment(attachmentName, ns, volumeName, nodeName string) *diskv1alpha2.AzVolumeAttachment {
 	return &diskv1alpha2.AzVolumeAttachment{
-		ObjectMeta: meta.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:      attachmentName,
 			Namespace: ns,
 		},
 		Spec: diskv1alpha2.AzVolumeAttachmentSpec{
-			UnderlyingVolume: volumeName,
-			NodeName:         nodeName,
-			RequestedRole:    diskv1alpha2.PrimaryRole,
+			VolumeName:    volumeName,
+			NodeName:      nodeName,
+			RequestedRole: diskv1alpha2.PrimaryRole,
 		},
 		Status: diskv1alpha2.AzVolumeAttachmentStatus{
 			Detail: &diskv1alpha2.AzVolumeAttachmentStatusDetail{
@@ -749,9 +749,9 @@ func getVolumeAttachment(attachmentName, ns, volumeName, nodeName string) *diskv
 }
 
 func getDriverNode(driverNodeName, ns, nodeName string, ready bool) *diskv1alpha2.AzDriverNode {
-	heartbeat := time.Now().UnixNano()
+	heartbeat := metav1.Now()
 	return &diskv1alpha2.AzDriverNode{
-		ObjectMeta: meta.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:      driverNodeName,
 			Namespace: ns,
 		},

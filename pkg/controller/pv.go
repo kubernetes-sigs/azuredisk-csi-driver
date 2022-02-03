@@ -148,16 +148,14 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 		updated.Status.PersistentVolume = pv.Name
 	}
 
-	if azVolume.Status.Detail != nil {
-		switch phase := pv.Status.Phase; phase {
-		case corev1.VolumeBound:
-			pvClaimName := getQualifiedName(pv.Spec.ClaimRef.Namespace, pv.Spec.ClaimRef.Name)
-			updated.Status.Detail.Phase = diskv1alpha2.VolumeBound
-			r.controllerSharedState.addVolumeAndClaim(azVolumeName, pvClaimName)
-		case corev1.VolumeReleased:
-			updated.Status.Detail.Phase = diskv1alpha2.VolumeReleased
-			r.controllerSharedState.deleteVolumeAndClaim(azVolumeName)
-		}
+	switch phase := pv.Status.Phase; phase {
+	case corev1.VolumeBound:
+		pvClaimName := getQualifiedName(pv.Spec.ClaimRef.Namespace, pv.Spec.ClaimRef.Name)
+		updated.Status.Phase = diskv1alpha2.VolumeBound
+		r.controllerSharedState.addVolumeAndClaim(azVolumeName, pvClaimName)
+	case corev1.VolumeReleased:
+		updated.Status.Phase = diskv1alpha2.VolumeReleased
+		r.controllerSharedState.deleteVolumeAndClaim(azVolumeName)
 	}
 
 	// update the status of AzVolume to match that of the PV

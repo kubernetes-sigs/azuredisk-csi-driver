@@ -123,11 +123,11 @@ type CloudProvisioner interface {
 		parameters map[string]string,
 		secrets map[string]string,
 		volumeContentSource *diskv1alpha2.ContentVolumeSource,
-		accessibilityTopology *diskv1alpha2.TopologyRequirement) (*diskv1alpha2.AzVolumeStatusParams, error)
+		accessibilityTopology *diskv1alpha2.TopologyRequirement) (*diskv1alpha2.AzVolumeStatusDetail, error)
 	DeleteVolume(ctx context.Context, volumeID string, secrets map[string]string) error
 	PublishVolume(ctx context.Context, volumeID string, nodeID string, volumeContext map[string]string) (map[string]string, error)
 	UnpublishVolume(ctx context.Context, volumeID string, nodeID string) error
-	ExpandVolume(ctx context.Context, volumeID string, capacityRange *diskv1alpha2.CapacityRange, secrets map[string]string) (*diskv1alpha2.AzVolumeStatusParams, error)
+	ExpandVolume(ctx context.Context, volumeID string, capacityRange *diskv1alpha2.CapacityRange, secrets map[string]string) (*diskv1alpha2.AzVolumeStatusDetail, error)
 	ListVolumes(ctx context.Context, maxEntries int32, startingToken string) (*diskv1alpha2.ListVolumesResult, error)
 	CreateSnapshot(ctx context.Context, sourceVolumeID string, snapshotName string, secrets map[string]string, parameters map[string]string) (*diskv1alpha2.Snapshot, error)
 	ListSnapshots(ctx context.Context, maxEntries int32, startingToken string, sourceVolumeID string, snapshotID string, secrets map[string]string) (*diskv1alpha2.ListSnapshotsResult, error)
@@ -972,11 +972,11 @@ func createReplicaAzVolumeAttachment(ctx context.Context, azr azReconciler, volu
 			},
 		},
 		Spec: diskv1alpha2.AzVolumeAttachmentSpec{
-			NodeName:         node,
-			VolumeID:         volumeID,
-			UnderlyingVolume: volumeName,
-			RequestedRole:    diskv1alpha2.ReplicaRole,
-			VolumeContext:    volumeContext,
+			NodeName:      node,
+			VolumeID:      volumeID,
+			VolumeName:    volumeName,
+			RequestedRole: diskv1alpha2.ReplicaRole,
+			VolumeContext: volumeContext,
 		},
 		Status: diskv1alpha2.AzVolumeAttachmentStatus{
 			State: diskv1alpha2.AttachmentPending,
@@ -1042,7 +1042,7 @@ func cleanUpAzVolumeAttachmentByNode(ctx context.Context, azr azReconciler, azDr
 	cleanUpMap := map[string][]diskv1alpha2.AzVolumeAttachment{}
 	for _, attachment := range attachments.Items {
 		if shouldCleanUp(attachment, role) {
-			cleanUpMap[attachment.Spec.UnderlyingVolume] = append(cleanUpMap[attachment.Spec.UnderlyingVolume], attachment)
+			cleanUpMap[attachment.Spec.VolumeName] = append(cleanUpMap[attachment.Spec.VolumeName], attachment)
 		}
 	}
 
@@ -1141,7 +1141,7 @@ func isAttached(attachment *diskv1alpha2.AzVolumeAttachment) bool {
 }
 
 func isCreated(volume *diskv1alpha2.AzVolume) bool {
-	return volume != nil && volume.Status.Detail != nil && volume.Status.Detail.ResponseObject != nil
+	return volume != nil && volume.Status.Detail != nil
 }
 
 func objectDeletionRequested(obj runtime.Object) bool {
@@ -1338,16 +1338,16 @@ func (c *SharedState) manageReplicas(ctx context.Context, volumeName string, azr
 	}
 
 	desiredReplicaCount, currentReplicaCount := azVolume.Spec.MaxMountReplicaCount, len(azVolumeAttachments)
-	klog.Infof("control number of replicas for volume (%s): desired=%d,\tcurrent:%d", azVolume.Spec.UnderlyingVolume, desiredReplicaCount, currentReplicaCount)
+	klog.Infof("control number of replicas for volume (%s): desired=%d,\tcurrent:%d", azVolume.Spec.VolumeName, desiredReplicaCount, currentReplicaCount)
 
 	if desiredReplicaCount > currentReplicaCount {
-		klog.Infof("Need %d more replicas for volume (%s)", desiredReplicaCount-currentReplicaCount, azVolume.Spec.UnderlyingVolume)
-		if azVolume.Status.Detail == nil || azVolume.Status.State == diskv1alpha2.VolumeDeleting || azVolume.Status.State == diskv1alpha2.VolumeDeleted || azVolume.Status.Detail.ResponseObject == nil {
+		klog.Infof("Need %d more replicas for volume (%s)", desiredReplicaCount-currentReplicaCount, azVolume.Spec.VolumeName)
+		if azVolume.Status.Detail == nil || azVolume.Status.State == diskv1alpha2.VolumeDeleting || azVolume.Status.State == diskv1alpha2.VolumeDeleted {
 			// underlying volume does not exist, so volume attachment cannot be made
 			return nil
 		}
-		if err = c.createReplicas(ctx, desiredReplicaCount-currentReplicaCount, azVolume.Name, azVolume.Status.Detail.ResponseObject.VolumeID, azVolume.Spec.Parameters, azr); err != nil {
-			klog.Errorf("failed to create %d replicas for volume (%s): %v", desiredReplicaCount-currentReplicaCount, azVolume.Spec.UnderlyingVolume, err)
+		if err = c.createReplicas(ctx, desiredReplicaCount-currentReplicaCount, azVolume.Name, azVolume.Status.Detail.VolumeID, azVolume.Spec.Parameters, azr); err != nil {
+			klog.Errorf("failed to create %d replicas for volume (%s): %v", desiredReplicaCount-currentReplicaCount, azVolume.Spec.VolumeName, err)
 			return err
 		}
 	}

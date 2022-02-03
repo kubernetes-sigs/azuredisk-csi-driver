@@ -29,13 +29,13 @@ type CrdProvisioner interface {
 	CreateVolume(ctx context.Context, volumeName string, capacityRange *diskv1alpha2.CapacityRange,
 		volumeCapabilities []diskv1alpha2.VolumeCapability, parameters map[string]string,
 		secrets map[string]string, volumeContentSource *diskv1alpha2.ContentVolumeSource,
-		accessibilityReq *diskv1alpha2.TopologyRequirement) (*diskv1alpha2.AzVolumeStatusParams, error)
+		accessibilityReq *diskv1alpha2.TopologyRequirement) (*diskv1alpha2.AzVolumeStatusDetail, error)
 	DeleteVolume(ctx context.Context, volumeID string, secrets map[string]string) error
 	PublishVolume(ctx context.Context, volumeID string, nodeID string, volumeCapability *diskv1alpha2.VolumeCapability,
 		readOnly bool, secrets map[string]string, volumeContext map[string]string) (map[string]string, error)
 	UnpublishVolume(ctx context.Context, volumeID string, nodeID string, secrets map[string]string) error
 	GetAzVolumeAttachmentState(ctx context.Context, volumeID string, nodeID string) (diskv1alpha2.AzVolumeAttachmentAttachmentState, error)
-	ExpandVolume(ctx context.Context, volumeID string, capacityRange *diskv1alpha2.CapacityRange, secrets map[string]string) (*diskv1alpha2.AzVolumeStatusParams, error)
+	ExpandVolume(ctx context.Context, volumeID string, capacityRange *diskv1alpha2.CapacityRange, secrets map[string]string) (*diskv1alpha2.AzVolumeStatusDetail, error)
 	GetDiskClientSet() azDiskClientSet.Interface
 }
 

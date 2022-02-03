@@ -108,7 +108,7 @@ func (r *ReconcilePod) createReplicas(ctx context.Context, podKey string) error 
 					return nil
 				}
 
-				err = r.controllerSharedState.manageReplicas(ctx, azVolume.Spec.UnderlyingVolume, r)
+				err = r.controllerSharedState.manageReplicas(ctx, azVolume.Spec.VolumeName, r)
 				if err != nil {
 					klog.Warningf("Error creating replica azvolumeattachment for pod %s and volume %s. Error: %v", podKey, volume, err)
 					return err

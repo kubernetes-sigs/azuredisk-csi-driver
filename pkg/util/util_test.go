@@ -28,9 +28,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"k8s.io/apimachinery/pkg/types"
 	k8stypes "k8s.io/apimachinery/pkg/types"
 	volerr "k8s.io/cloud-provider/volume/errors"
 	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
 )
 
@@ -284,32 +286,32 @@ func TestNewAzError(t *testing.T) {
 	tests := []struct {
 		description  string
 		sourceError  error
-		expectedCode string
+		expectedCode diskv1alpha2.AzErrorCode
 	}{
 		{
 			description:  "Dangling attach error",
 			sourceError:  volerr.NewDanglingError("dangling attach", currentNode, devicePath),
-			expectedCode: danglingAttachErrorCode,
+			expectedCode: diskv1alpha2.AzErrorCodeDanglingAttach,
 		},
 		{
 			description:  "GRPC status error",
 			sourceError:  status.Error(codes.NotFound, "not found"),
-			expectedCode: getStringValueForErrorCode(codes.NotFound),
+			expectedCode: azErrorCodeFromRPCCode(codes.NotFound),
 		},
 		{
 			description:  "Azure retry non-retriable error",
 			sourceError:  (&retry.Error{Retriable: false, HTTPStatusCode: http.StatusBadRequest, RawError: errors.New("bad request")}).Error(),
-			expectedCode: getStringValueForErrorCode(codes.FailedPrecondition),
+			expectedCode: azErrorCodeFromRPCCode(codes.FailedPrecondition),
 		},
 		{
 			description:  "Azure retry conflict error",
 			sourceError:  (&retry.Error{Retriable: true, HTTPStatusCode: http.StatusConflict, RawError: errors.New("conflict")}).Error(),
-			expectedCode: getStringValueForErrorCode(codes.Aborted),
+			expectedCode: azErrorCodeFromRPCCode(codes.Aborted),
 		},
 		{
 			description:  "Azure retry retriable error",
 			sourceError:  (&retry.Error{Retriable: true, HTTPStatusCode: http.StatusTooManyRequests, RawError: errors.New("too many requests")}).Error(),
-			expectedCode: getStringValueForErrorCode(codes.Unavailable),
+			expectedCode: azErrorCodeFromRPCCode(codes.Unavailable),
 		},
 	}
 
@@ -318,15 +320,22 @@ func TestNewAzError(t *testing.T) {
 		t.Run(test.description, func(t *testing.T) {
 			azError := NewAzError(test.sourceError)
 			require.NotNil(t, azError)
-			assert.Equal(t, test.expectedCode, azError.ErrorCode)
-			assert.Equal(t, test.sourceError.Error(), azError.ErrorMessage)
+			assert.Equal(t, test.expectedCode, azError.Code)
+			assert.Equal(t, test.sourceError.Error(), azError.Message)
 
 			if derr, ok := test.sourceError.(*volerr.DanglingAttachError); ok {
-				assert.Equal(t, derr.CurrentNode, azError.CurrentNode)
-				assert.Equal(t, derr.DevicePath, azError.DevicePath)
+				assert.Contains(t, azError.Parameters, azureconstants.CurrentNodeParameter)
+				if currentNode, ok := azError.Parameters[azureconstants.CurrentNodeParameter]; ok {
+					assert.Equal(t, derr.CurrentNode, types.NodeName(currentNode))
+				}
+
+				assert.Contains(t, azError.Parameters, azureconstants.DevicePathParameter)
+				if devicePath, ok := azError.Parameters[azureconstants.DevicePathParameter]; ok {
+					assert.Equal(t, derr.DevicePath, devicePath)
+				}
 			} else {
-				assert.Empty(t, azError.CurrentNode)
-				assert.Empty(t, azError.DevicePath)
+				assert.NotContains(t, azError.Parameters, azureconstants.CurrentNodeParameter)
+				assert.NotContains(t, azError.Parameters, azureconstants.DevicePathParameter)
 			}
 		})
 	}
@@ -342,13 +351,19 @@ func TestErrorFromAzError(t *testing.T) {
 		expectedError error
 	}{
 		{
-			description:   "Dangling attach error",
-			sourceAzError: &diskv1alpha2.AzError{ErrorCode: danglingAttachErrorCode, ErrorMessage: "dangling attach", CurrentNode: currentNode, DevicePath: devicePath},
+			description: "Dangling attach error",
+			sourceAzError: &diskv1alpha2.AzError{
+				Code:    diskv1alpha2.AzErrorCodeDanglingAttach,
+				Message: "dangling attach", Parameters: map[string]string{
+					azureconstants.CurrentNodeParameter: string(currentNode),
+					azureconstants.DevicePathParameter:  devicePath,
+				},
+			},
 			expectedError: volerr.NewDanglingError("dangling attach", currentNode, devicePath),
 		},
 		{
 			description:   "GRPC status error",
-			sourceAzError: &diskv1alpha2.AzError{ErrorCode: "NOT_FOUND", ErrorMessage: "not found"},
+			sourceAzError: &diskv1alpha2.AzError{Code: diskv1alpha2.AzErrorCodeNotFound, Message: "not found"},
 			expectedError: status.Error(codes.NotFound, "not found"),
 		},
 	}
