@@ -393,7 +393,7 @@ type TestDeployment struct {
 	Client     clientset.Interface
 	Deployment *apps.Deployment
 	Namespace  *v1.Namespace
-	PodNames   []string
+	Pods       []PodDetails
 }
 
 func NewTestDeployment(c clientset.Interface, ns *v1.Namespace, command string, volumeMounts []v1.VolumeMount, volumeDevices []v1.VolumeDevice, volumes []v1.Volume, replicaCount int32, isWindows, useCMD, useAntiAffinity bool, schedulerName string) *TestDeployment {
@@ -479,18 +479,18 @@ func (t *TestDeployment) Create() {
 	pods, err := podutil.GetPodsForDeployment(t.Client, t.Deployment)
 	framework.ExpectNoError(err)
 	for _, pod := range pods.Items {
-		t.PodNames = append(t.PodNames, pod.Name)
+		t.Pods = append(t.Pods, PodDetails{Name: pod.Name})
 	}
 }
 
 func (t *TestDeployment) WaitForPodReady() {
 	pods, err := podutil.GetPodsForDeployment(t.Client, t.Deployment)
 	framework.ExpectNoError(err)
-	t.PodNames = []string{}
+	t.Pods = []PodDetails{}
 	for _, pod := range pods.Items {
-		t.PodNames = append(t.PodNames, pod.Name)
+		t.Pods = append(t.Pods, PodDetails{Name: pod.Name})
 	}
-	ch := make(chan error, len(t.PodNames))
+	ch := make(chan error, len(t.Pods))
 	defer close(ch)
 	for _, pod := range pods.Items {
 		go func(client clientset.Interface, pod v1.Pod) {
@@ -500,7 +500,7 @@ func (t *TestDeployment) WaitForPodReady() {
 	}
 	// Wait on all goroutines to report on pod ready
 	var wg sync.WaitGroup
-	for range t.PodNames {
+	for range t.Pods {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -512,44 +512,44 @@ func (t *TestDeployment) WaitForPodReady() {
 }
 
 func (t *TestDeployment) Exec(command []string, expectedString string) {
-	for _, podName := range t.PodNames {
-		_, err := framework.LookForStringInPodExec(t.Namespace.Name, podName, command, expectedString, testconsts.ExecTimeout)
+	for _, pod := range t.Pods {
+		_, err := framework.LookForStringInPodExec(t.Namespace.Name, pod.Name, command, expectedString, testconsts.ExecTimeout)
 		framework.ExpectNoError(err)
 	}
 }
 
 func (t *TestDeployment) DeletePodAndWait() {
-	ch := make(chan error, len(t.PodNames))
-	for _, podName := range t.PodNames {
-		e2elog.Logf("Deleting pod %q in namespace %q", podName, t.Namespace.Name)
+	ch := make(chan error, len(t.Pods))
+	for _, pod := range t.Pods {
+		e2elog.Logf("Deleting pod %q in namespace %q", pod.Name, t.Namespace.Name)
 		go func(client clientset.Interface, ns, podName string) {
 			err := client.CoreV1().Pods(ns).Delete(context.TODO(), podName, metav1.DeleteOptions{})
 			ch <- err
-		}(t.Client, t.Namespace.Name, podName)
+		}(t.Client, t.Namespace.Name, pod.Name)
 	}
 	// Wait on all goroutines to report on pod delete
-	for _, podName := range t.PodNames {
+	for _, pod := range t.Pods {
 		err := <-ch
 		if err != nil {
 			if !errors.IsNotFound(err) {
-				framework.ExpectNoError(fmt.Errorf("pod %q Delete API error: %v", podName, err))
+				framework.ExpectNoError(fmt.Errorf("pod %q Delete API error: %v", pod.Name, err))
 			}
 		}
 	}
 
-	for _, podName := range t.PodNames {
-		e2elog.Logf("Waiting for pod %q in namespace %q to be fully deleted", podName, t.Namespace.Name)
+	for _, pod := range t.Pods {
+		e2elog.Logf("Waiting for pod %q in namespace %q to be fully deleted", pod.Name, t.Namespace.Name)
 		go func(client clientset.Interface, ns, podName string) {
 			err := e2epod.WaitForPodNoLongerRunningInNamespace(client, podName, ns)
 			ch <- err
-		}(t.Client, t.Namespace.Name, podName)
+		}(t.Client, t.Namespace.Name, pod.Name)
 	}
 	// Wait on all goroutines to report on pod terminating
-	for _, podName := range t.PodNames {
+	for _, pod := range t.Pods {
 		err := <-ch
 		if err != nil {
 			if !errors.IsNotFound(err) {
-				framework.ExpectNoError(fmt.Errorf("pod %q error waiting for delete: %v", podName, err))
+				framework.ExpectNoError(fmt.Errorf("pod %q error waiting for delete: %v", pod.Name, err))
 			}
 		}
 	}
@@ -562,7 +562,7 @@ func (t *TestDeployment) Cleanup() {
 		e2elog.Logf("Error getting logs for %s: %v", t.Deployment.Name, err)
 	} else {
 		for i, logs := range body {
-			e2elog.Logf("Pod %s has the following logs: %s", t.PodNames[i], logs)
+			e2elog.Logf("Pod %s has the following logs: %s", t.Pods[i], logs)
 		}
 	}
 	err = t.Client.AppsV1().Deployments(t.Namespace.Name).Delete(context.TODO(), t.Deployment.Name, metav1.DeleteOptions{})
@@ -570,8 +570,8 @@ func (t *TestDeployment) Cleanup() {
 }
 
 func (t *TestDeployment) Logs() (logs [][]byte, err error) {
-	for _, name := range t.PodNames {
-		log, err := podutil.PodLogs(t.Client, name, t.Namespace.Name)
+	for _, pod := range t.Pods {
+		log, err := podutil.PodLogs(t.Client, pod.Name, t.Namespace.Name)
 		if err != nil {
 			return nil, err
 		}
@@ -691,7 +691,7 @@ func (t *TestStatefulset) CreateWithoutWaiting() {
 				podPersistentVolumes = append(podPersistentVolumes, newVolume)
 			}
 		}
-		t.AllPods = append(t.AllPods, PodDetails{Volumes: podPersistentVolumes})
+		t.AllPods = append(t.AllPods, PodDetails{Volumes: podPersistentVolumes, Name: pod.Name})
 	}
 }
 

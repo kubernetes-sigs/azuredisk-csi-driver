@@ -326,7 +326,12 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 		klog.Errorf("Failed to initialize PVController. Error: %v. Exiting application...", err)
 		os.Exit(1)
 	}
-
+	klog.V(2).Info("Initializing Node Availability controller")
+	_, err = controller.NewNodeAvailabilityController(mgr, d.crdProvisioner.GetDiskClientSet(), d.kubeClient, sharedState)
+	if err != nil {
+		klog.Errorf("Failed to initialize NodeAvailabilityController. Error: %v. Exiting application...", err)
+		os.Exit(1)
+	}
 	// This goroutine is preserved for leader controller manager
 	// Leader controller manager should recover CRI if possible and clean them up before exiting.
 	go func() {

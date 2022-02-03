@@ -25,6 +25,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
@@ -45,6 +46,8 @@ import (
 	azClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+
+	cache "k8s.io/client-go/tools/cache"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -64,10 +67,11 @@ const (
 type operationRequester string
 
 const (
-	azdrivernode operationRequester = "azdrivernode-controller"
-	azvolume     operationRequester = "azvolume-controller"
-	replica      operationRequester = "replica-controller"
-	pod                             = "pod-controller"
+	azdrivernode     operationRequester = "azdrivernode-controller"
+	azvolume         operationRequester = "azvolume-controller"
+	replica          operationRequester = "replica-controller"
+	nodeavailability operationRequester = "nodeavailability-controller"
+	pod                                 = "pod-controller"
 )
 
 type labelPair struct {
@@ -221,19 +225,24 @@ func newLockableEntry(entry interface{}) *lockableEntry {
 }
 
 type SharedState struct {
-	driverName            string
-	objectNamespace       string
-	podToClaimsMap        sync.Map
-	claimToPodsMap        sync.Map
-	volumeToClaimMap      sync.Map
-	claimToVolumeMap      sync.Map
-	podLocks              sync.Map
-	visitedVolumes        sync.Map
-	volumeOperationQueues sync.Map
+	driverName                    string
+	objectNamespace               string
+	podToClaimsMap                sync.Map
+	claimToPodsMap                sync.Map
+	volumeToClaimMap              sync.Map
+	claimToVolumeMap              sync.Map
+	podLocks                      sync.Map
+	visitedVolumes                sync.Map
+	volumeOperationQueues         sync.Map
+	cleanUpMap                    sync.Map
+	priorityReplicaRequestsQueue  *VolumeReplicaRequestsPriorityQueue
+	processingReplicaRequestQueue int32
 }
 
-func NewSharedState(driverName, objectNamespace string) *SharedState {
-	return &SharedState{driverName: driverName, objectNamespace: objectNamespace}
+func NewSharedState(driverName string, objectNamespace string) *SharedState {
+	newSharedState := &SharedState{driverName: driverName, objectNamespace: objectNamespace}
+	newSharedState.createReplicaRequestsQueue()
+	return newSharedState
 }
 
 func (c *SharedState) createOperationQueue(volumeName string) {
@@ -304,6 +313,17 @@ func (c *SharedState) deleteOperationQueue(volumeName string) {
 	lockable.Lock()
 	lockable.entry.(*operationQueue).Init()
 	lockable.Unlock()
+}
+
+func (c *SharedState) createReplicaRequestsQueue() {
+	c.priorityReplicaRequestsQueue = &VolumeReplicaRequestsPriorityQueue{}
+	c.priorityReplicaRequestsQueue.queue = cache.NewHeap(
+		func(obj interface{}) (string, error) {
+			return obj.(*ReplicaRequest).VolumeName, nil
+		},
+		func(left, right interface{}) bool {
+			return left.(*ReplicaRequest).Priority > right.(*ReplicaRequest).Priority
+		})
 }
 
 func (c *SharedState) overrideAndClearOperationQueue(volumeName string) func() {
@@ -1246,4 +1266,179 @@ func containsString(key string, items []string) bool {
 		}
 	}
 	return false
+}
+
+type ReplicaRequest struct {
+	VolumeName string
+	Priority   int //The number of replicas that have yet to be created
+}
+type VolumeReplicaRequestsPriorityQueue struct {
+	queue *cache.Heap
+	size  int32
+}
+
+func (vq *VolumeReplicaRequestsPriorityQueue) Push(replicaRequest *ReplicaRequest) {
+	err := vq.queue.Add(replicaRequest)
+	atomic.AddInt32(&vq.size, 1)
+	if err != nil {
+		klog.Infof("Failed to add replica request for volume %s: %v", replicaRequest.VolumeName, err)
+	}
+}
+
+func (vq *VolumeReplicaRequestsPriorityQueue) Pop() *ReplicaRequest {
+	request, _ := vq.queue.Pop()
+	atomic.AddInt32(&vq.size, -1)
+	return request.(*ReplicaRequest)
+}
+func (vq *VolumeReplicaRequestsPriorityQueue) DrainQueue() []*ReplicaRequest {
+	var listRequests []*ReplicaRequest
+	for i := vq.size; i > 0; i-- {
+		listRequests = append(listRequests, vq.Pop())
+	}
+	return listRequests
+}
+
+///Removes replica requests from the priority queue and adds to operation queue.
+func (c *SharedState) tryCreateFailedReplicas(ctx context.Context, requestor operationRequester, azr azReconciler) error {
+	requests := c.priorityReplicaRequestsQueue.DrainQueue()
+	for i := 0; i < len(requests); i++ {
+		replicaRequest := requests[i]
+		c.addToOperationQueue(
+			replicaRequest.VolumeName,
+			requestor,
+			func() error {
+				return c.manageReplicas(context.Background(), replicaRequest.VolumeName, azr)
+			},
+			false,
+		)
+	}
+	return nil
+}
+
+func (c *SharedState) manageReplicas(ctx context.Context, volumeName string, azr azReconciler) error {
+	azVolume, err := azureutils.GetAzVolume(ctx, azr.getClient(), azr.getAzClient(), volumeName, c.objectNamespace, true)
+	if apiErrors.IsNotFound(err) {
+		klog.Infof("Aborting replica management... volume (%s) does not exist", volumeName)
+		return nil
+	} else if err != nil {
+		klog.Errorf("failed to get AzVolume (%s): %v", volumeName, err)
+		return err
+	}
+
+	// replica management should not be executed or retried if AzVolume is scheduled for a deletion or not created.
+	if !isCreated(azVolume) || objectDeletionRequested(azVolume) {
+		klog.Errorf("azVolume (%s) is scheduled for deletion or has no underlying volume object", azVolume.Name)
+		return nil
+	}
+
+	azVolumeAttachments, err := getAzVolumeAttachmentsForVolume(ctx, azr.getClient(), volumeName, replicaOnly)
+	if err != nil {
+		klog.Errorf("failed to list AzVolumeAttachment: %v", err)
+		return err
+	}
+
+	desiredReplicaCount, currentReplicaCount := azVolume.Spec.MaxMountReplicaCount, len(azVolumeAttachments)
+	klog.Infof("control number of replicas for volume (%s): desired=%d,\tcurrent:%d", azVolume.Spec.UnderlyingVolume, desiredReplicaCount, currentReplicaCount)
+
+	if desiredReplicaCount > currentReplicaCount {
+		klog.Infof("Need %d more replicas for volume (%s)", desiredReplicaCount-currentReplicaCount, azVolume.Spec.UnderlyingVolume)
+		if azVolume.Status.Detail == nil || azVolume.Status.State == v1alpha1.VolumeDeleting || azVolume.Status.State == v1alpha1.VolumeDeleted || azVolume.Status.Detail.ResponseObject == nil {
+			// underlying volume does not exist, so volume attachment cannot be made
+			return nil
+		}
+		if err = c.createReplicas(ctx, desiredReplicaCount-currentReplicaCount, azVolume.Name, azVolume.Status.Detail.ResponseObject.VolumeID, azVolume.Spec.Parameters, azr); err != nil {
+			klog.Errorf("failed to create %d replicas for volume (%s): %v", desiredReplicaCount-currentReplicaCount, azVolume.Spec.UnderlyingVolume, err)
+			return err
+		}
+	}
+	return nil
+}
+func (c *SharedState) createReplicas(ctx context.Context, remainingReplicas int, volumeName, volumeID string, volumeContext map[string]string, azr azReconciler) error {
+	// if volume is scheduled for clean up, skip replica creation
+	if _, cleanUpScheduled := c.cleanUpMap.Load(volumeName); cleanUpScheduled {
+		return nil
+	}
+
+	// get pods linked to the volume
+	pods, err := c.getPodsFromVolume(volumeName)
+	if err != nil {
+		return err
+	}
+
+	// acquire per-pod lock to be released upon creation of replica AzVolumeAttachment CRIs
+	for _, pod := range pods {
+		v, _ := c.podLocks.LoadOrStore(pod, &sync.Mutex{})
+		podLock := v.(*sync.Mutex)
+		podLock.Lock()
+		defer podLock.Unlock()
+	}
+
+	nodes, err := c.getNodesForReplica(ctx, volumeName, pods, remainingReplicas, azr)
+	if err != nil {
+		klog.Errorf("failed to get a list of nodes for replica attachment: %v", err)
+		return err
+	}
+
+	for _, node := range nodes {
+		if err := createReplicaAzVolumeAttachment(ctx, azr, volumeID, node, volumeContext); err != nil {
+			klog.Errorf("failed to create replica AzVolumeAttachment for volume %s: %v", volumeName, err)
+			//Push to queue the failed replica number
+			request := ReplicaRequest{VolumeName: volumeName, Priority: remainingReplicas}
+			c.priorityReplicaRequestsQueue.Push(&request)
+			return err
+		}
+		remainingReplicas--
+	}
+
+	if remainingReplicas > 0 {
+		//no failed replica attachments, but there are still more replicas to reach MaxShares
+		request := ReplicaRequest{VolumeName: volumeName, Priority: remainingReplicas}
+		c.priorityReplicaRequestsQueue.Push(&request)
+	}
+	return nil
+}
+
+func (c *SharedState) getNodesForReplica(ctx context.Context, volumeName string, pods []string, numReplica int, azr azReconciler) ([]string, error) {
+	var err error
+	if pods == nil {
+		pods, err = c.getPodsFromVolume(volumeName)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	volumes, err := c.getVolumesForPods(pods...)
+	if err != nil {
+		return nil, err
+	}
+
+	nodes, err := getRankedNodesForReplicaAttachments(ctx, azr, volumes, pods)
+	if err != nil {
+		return nil, err
+	}
+
+	replicaNodes, err := getNodesWithReplica(ctx, azr, volumeName)
+	if err != nil {
+		return nil, err
+	}
+
+	skipSet := map[string]bool{}
+	for _, replicaNode := range replicaNodes {
+		skipSet[replicaNode] = true
+	}
+
+	filtered := []string{}
+	numFiltered := 0
+	for _, node := range nodes {
+		if numFiltered >= numReplica {
+			break
+		}
+		if skipSet[node] {
+			continue
+		}
+		filtered = append(filtered, node)
+		numFiltered++
+	}
+
+	return filtered, nil
 }

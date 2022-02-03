@@ -42,11 +42,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
-const (
-	// defaultMaxReplicaUpdateCount refers to the maximum number of creation or deletion of AzVolumeAttachment objects in a single ManageReplica call
-	defaultMaxReplicaUpdateCount = 1
-)
-
 type CloudDiskAttachDetacher interface {
 	PublishVolume(ctx context.Context, volumeID string, nodeID string, volumeContext map[string]string) (map[string]string, error)
 	UnpublishVolume(ctx context.Context, volumeID string, nodeID string) error

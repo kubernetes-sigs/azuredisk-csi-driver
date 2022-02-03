@@ -63,6 +63,8 @@ var (
 	testNode1Name = "node-1"
 	testNode2Name = "node-2"
 
+	testSchedulableNodeName = "node-schedulable-1"
+
 	testNode1NotFoundError      = k8serrors.NewNotFound(v1.Resource("nodes"), testNode1Name)
 	testNode1ServerTimeoutError = k8serrors.NewServerTimeout(v1.Resource("nodes"), testNode1Name, 1)
 
@@ -96,6 +98,20 @@ var (
 			Allocatable: v1.ResourceList(map[v1.ResourceName]resource.Quantity{
 				consts.AttachableVolumesField: resource.MustParse("8"),
 			}),
+		},
+	}
+
+	testSchedulableNode1 = v1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: testSchedulableNodeName,
+		},
+		Status: v1.NodeStatus{
+			Allocatable: v1.ResourceList(map[v1.ResourceName]resource.Quantity{
+				consts.AttachableVolumesField: resource.MustParse("8"),
+			}),
+		},
+		Spec: v1.NodeSpec{
+			Unschedulable: false,
 		},
 	}
 
@@ -148,6 +164,8 @@ var (
 	testReplicaAzVolumeAttachment = createAzVolumeAttachment(testPersistentVolume0Name, testNode1Name, v1alpha1.ReplicaRole)
 
 	testReplicaAzVolumeAttachmentRequest = createReconcileRequest(testNamespace, testReplicaAzVolumeAttachmentName)
+
+	testSchedulableNodeRequest = createReconcileRequest(testNamespace, testSchedulableNodeName)
 
 	testStorageClassName = "test-storage-class"
 

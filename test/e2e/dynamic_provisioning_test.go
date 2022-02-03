@@ -1328,7 +1328,62 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		}
 		test.Run(cs, ns, schedulerName)
 	})
+	ginkgo.It("Should test an increase in replicas when scaling up", func() {
+		testutil.SkipIfUsingInTreeVolumePlugin()
+		skuName := "StandardSSD_LRS"
+		if isMultiZone {
+			testutil.SkipIfNotZRSSupported(location)
+			skuName = "StandardSSD_ZRS"
+		}
+		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
+		if err != nil {
+			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
+		}
+		volume := testtypes.VolumeDetails{
+			ClaimSize: "10Gi",
+			VolumeMount: testtypes.VolumeMountDetails{
+				NameGenerate:      "test-volume-",
+				MountPathGenerate: "/mnt/test-",
+			},
+		}
+		pod := testtypes.PodDetails{
+			Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
+			Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
+				{
+					ClaimSize: volume.ClaimSize,
+					MountOptions: []string{
+						"barrier=1",
+						"acl",
+					},
+					VolumeMount: volume.VolumeMount,
+				},
+			}, t.allowedTopologyValues, isMultiZone),
+			IsWindows: testconsts.IsWindowsCluster,
+			UseCMD:    false,
+		}
+		podCheckCmd := []string{"cat", "/mnt/test-1/data"}
+		expectedString := "hello world\n"
+		if testconsts.IsWindowsCluster {
+			podCheckCmd = []string{"cmd", "/c", "type C:\\mnt\\test-1\\data.txt"}
+			expectedString = "hello world\r\n"
+		}
 
+		storageClassParameters := map[string]string{"skuName": skuName, "maxShares": "3", "cachingMode": "None"}
+
+		test := testsuites.PodNodeScaleUp{
+			CSIDriver: testDriver,
+			Pod:       pod,
+			Volume:    volume,
+			PodCheck: &testsuites.PodExecCheck{
+				Cmd:            podCheckCmd,
+				ExpectedString: expectedString,
+			},
+			StorageClassParameters: storageClassParameters,
+			AzDiskClient:           azDiskClient,
+			IsMultiZone:            isMultiZone,
+		}
+		test.Run(cs, ns, schedulerName)
+	})
 	ginkgo.It("should succeed when attaching a shared block volume to multiple pods [disk.csi.azure.com][shared disk]", func() {
 		testutil.SkipIfUsingInTreeVolumePlugin()
 		testutil.SkipIfOnAzureStackCloud()

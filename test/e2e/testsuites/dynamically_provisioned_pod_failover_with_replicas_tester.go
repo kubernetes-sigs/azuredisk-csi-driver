@@ -77,9 +77,21 @@ func (t *PodFailoverWithReplicas) Run(client clientset.Interface, namespace *v1.
 	//Check that AzVolumeAttachment resources were created correctly
 	allReplicasAttached := true
 	var failedReplicaAttachments *v1alpha1.AzVolumeAttachmentList
+
 	err := wait.Poll(15*time.Second, 10*time.Minute, func() (bool, error) {
+		failedReplicaAttachments = nil
+		allReplicasAttached = true
 		var err error
-		allReplicasAttached, failedReplicaAttachments, err = testtypes.VerifySuccessfulReplicaAzVolumeAttachments(t.Pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
+		var attached bool
+		var podFailedReplicaAttachments *v1alpha1.AzVolumeAttachmentList
+		for _, pod := range tDeployment.Pods {
+			attached, podFailedReplicaAttachments, err = testtypes.VerifySuccessfulReplicaAzVolumeAttachments(pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
+			allReplicasAttached = allReplicasAttached && attached
+			if podFailedReplicaAttachments != nil {
+				failedReplicaAttachments.Items = append(failedReplicaAttachments.Items, podFailedReplicaAttachments.Items...)
+			}
+		}
+
 		return allReplicasAttached, err
 	})
 
