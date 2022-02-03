@@ -84,7 +84,7 @@ func (t *PodNodeScaleUp) Run(client clientset.Interface, namespace *v1.Namespace
 	if failedReplicaAttachments != nil {
 		e2elog.Logf("found %d azvolumeattachments failed:", len(failedReplicaAttachments.Items))
 		for _, attachments := range failedReplicaAttachments.Items {
-			e2elog.Logf("azvolumeattachment: %s, err: %s", attachments.Name, attachments.Status.Error.ErrorMessage)
+			e2elog.Logf("azvolumeattachment: %s, err: %s", attachments.Name, attachments.Status.Error.Message)
 		}
 		ginkgo.Fail("failed due to replicas failing to attach")
 	} else if !allReplicasAttached {
@@ -110,7 +110,7 @@ func (t *PodNodeScaleUp) Run(client clientset.Interface, namespace *v1.Namespace
 	if failedReplicaAttachments != nil {
 		e2elog.Logf("found %d azvolumeattachments failed:", len(failedReplicaAttachments.Items))
 		for _, attachments := range failedReplicaAttachments.Items {
-			e2elog.Logf("azvolumeattachment: %s, err: %s", attachments.Name, attachments.Status.Error.ErrorMessage)
+			e2elog.Logf("azvolumeattachment: %s, err: %s", attachments.Name, attachments.Status.Error.Message)
 		}
 		ginkgo.Fail("failed due to replicas failing to attach")
 	} else if !allReplicasAttached {

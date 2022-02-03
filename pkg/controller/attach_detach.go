@@ -194,7 +194,7 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 		// update AzVolumeAttachment CRI with the result of the attach operation
 		var updateFunc func(interface{}) error
 		if attachErr != nil {
-			klog.Errorf("failed to attach volume %s to node %s: %v", azVolumeAttachment.Spec.UnderlyingVolume, azVolumeAttachment.Spec.NodeName, attachErr)
+			klog.Errorf("failed to attach volume %s to node %s: %v", azVolumeAttachment.Spec.VolumeName, azVolumeAttachment.Spec.NodeName, attachErr)
 
 			updateFunc = func(obj interface{}) error {
 				azv := obj.(*diskv1alpha2.AzVolumeAttachment)
@@ -203,7 +203,7 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 				return uerr
 			}
 		} else {
-			klog.Infof("successfully attached volume (%s) to node (%s) and update status of AzVolumeAttachment (%s)", azVolumeAttachment.Spec.UnderlyingVolume, azVolumeAttachment.Spec.NodeName, azVolumeAttachment.Name)
+			klog.Infof("successfully attached volume (%s) to node (%s) and update status of AzVolumeAttachment (%s)", azVolumeAttachment.Spec.VolumeName, azVolumeAttachment.Spec.NodeName, azVolumeAttachment.Name)
 
 			updateFunc = func(obj interface{}) error {
 				azv := obj.(*diskv1alpha2.AzVolumeAttachment)
@@ -282,7 +282,7 @@ func (r *ReconcileAttachDetach) triggerDetach(ctx context.Context, azVolumeAttac
 
 func (r *ReconcileAttachDetach) promote(ctx context.Context, azVolumeAttachment *diskv1alpha2.AzVolumeAttachment) error {
 	klog.Infof("Promoting volume attachment (%s) for volume (%s) on node (%s) from %s to Primary",
-		azVolumeAttachment.Name, azVolumeAttachment.Spec.UnderlyingVolume, azVolumeAttachment.Spec.NodeName, azVolumeAttachment.Status.Detail.Role)
+		azVolumeAttachment.Name, azVolumeAttachment.Spec.VolumeName, azVolumeAttachment.Spec.NodeName, azVolumeAttachment.Status.Detail.Role)
 
 	// initialize metadata and update status block
 	updateFunc := func(obj interface{}) error {
@@ -320,7 +320,7 @@ func (r *ReconcileAttachDetach) initializeMeta(azVolumeAttachment *diskv1alpha2.
 		azVolumeAttachment.Labels = make(map[string]string)
 	}
 	azVolumeAttachment.Labels[consts.NodeNameLabel] = azVolumeAttachment.Spec.NodeName
-	azVolumeAttachment.Labels[consts.VolumeNameLabel] = azVolumeAttachment.Spec.UnderlyingVolume
+	azVolumeAttachment.Labels[consts.VolumeNameLabel] = azVolumeAttachment.Spec.VolumeName
 	azVolumeAttachment.Labels[consts.RoleLabel] = string(azVolumeAttachment.Spec.RequestedRole)
 
 	return azVolumeAttachment
@@ -561,11 +561,11 @@ func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, 
 						Finalizers: []string{consts.AzVolumeAttachmentFinalizer},
 					},
 					Spec: diskv1alpha2.AzVolumeAttachmentSpec{
-						UnderlyingVolume: *volumeName,
-						VolumeID:         pv.Spec.CSI.VolumeHandle,
-						NodeName:         nodeName,
-						RequestedRole:    diskv1alpha2.PrimaryRole,
-						VolumeContext:    map[string]string{},
+						VolumeName:    *volumeName,
+						VolumeID:      pv.Spec.CSI.VolumeHandle,
+						NodeName:      nodeName,
+						RequestedRole: diskv1alpha2.PrimaryRole,
+						VolumeContext: map[string]string{},
 					},
 					Status: diskv1alpha2.AzVolumeAttachmentStatus{
 						State: azureutils.GetAzVolumeAttachmentState(volumeAttachment.Status),

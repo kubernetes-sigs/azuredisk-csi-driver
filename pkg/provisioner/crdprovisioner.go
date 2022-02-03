@@ -111,7 +111,7 @@ func (c *CrdProvisioner) RegisterDriverNode(
 		azDriverNodeUpdate.Status = &diskv1alpha2.AzDriverNodeStatus{}
 	}
 	readyForAllocation := false
-	timestamp := time.Now().UnixNano()
+	timestamp := metav1.Now()
 	statusMessage := "Driver node initializing."
 	azDriverNodeUpdate.Status.ReadyForVolumeAllocation = &readyForAllocation
 	azDriverNodeUpdate.Status.LastHeartbeatTime = &timestamp
@@ -137,7 +137,7 @@ func (c *CrdProvisioner) CreateVolume(
 	parameters map[string]string,
 	secrets map[string]string,
 	volumeContentSource *diskv1alpha2.ContentVolumeSource,
-	accessibilityReq *diskv1alpha2.TopologyRequirement) (*diskv1alpha2.AzVolumeStatusParams, error) {
+	accessibilityReq *diskv1alpha2.TopologyRequirement) (*diskv1alpha2.AzVolumeStatusDetail, error) {
 
 	lister := c.conditionWatcher.informerFactory.Disk().V1alpha2().AzVolumes().Lister().AzVolumes(c.namespace)
 	azVolumeClient := c.azDiskClient.DiskV1alpha2().AzVolumes(c.namespace)
@@ -169,14 +169,14 @@ func (c *CrdProvisioner) CreateVolume(
 	azVolumeInstance, err := lister.Get(azVolumeName)
 
 	if err == nil {
-		if azVolumeInstance.Status.Detail != nil && azVolumeInstance.Status.Detail.ResponseObject != nil {
+		if azVolumeInstance.Status.Detail != nil {
 			// If current request has different specifications than the existing volume, return error.
 			if !isAzVolumeSpecSameAsRequestParams(azVolumeInstance, maxMountReplicaCount, capacityRange, parameters, secrets, volumeContentSource, accessibilityReq) {
 				return nil, status.Errorf(codes.AlreadyExists, "Volume with name (%s) already exists with different specifications", volumeName)
 			}
 			// The volume creation was successful previously,
 			// Returning the response object from the status
-			return azVolumeInstance.Status.Detail.ResponseObject, nil
+			return azVolumeInstance.Status.Detail, nil
 		}
 		// return if volume creation is already in process to prevent duplicate request
 		if azVolumeInstance.Status.State == diskv1alpha2.VolumeCreating {
@@ -217,7 +217,7 @@ func (c *CrdProvisioner) CreateVolume(
 			},
 			Spec: diskv1alpha2.AzVolumeSpec{
 				MaxMountReplicaCount:      maxMountReplicaCount,
-				UnderlyingVolume:          volumeName,
+				VolumeName:                volumeName,
 				VolumeCapability:          volumeCapabilities,
 				CapacityRange:             capacityRange,
 				Parameters:                parameters,
@@ -227,6 +227,7 @@ func (c *CrdProvisioner) CreateVolume(
 			},
 			Status: diskv1alpha2.AzVolumeStatus{
 				State: diskv1alpha2.VolumeOperationPending,
+				Phase: diskv1alpha2.VolumePending,
 			},
 		}
 
@@ -267,7 +268,7 @@ func (c *CrdProvisioner) CreateVolume(
 		return nil, status.Errorf(codes.Internal, "Failed to create azvolume resource for volume (%s)", volumeName)
 	}
 
-	return azVolumeInstance.Status.Detail.ResponseObject, nil
+	return azVolumeInstance.Status.Detail, nil
 }
 
 func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secrets map[string]string) error {
@@ -450,11 +451,11 @@ func (c *CrdProvisioner) PublishVolume(
 				},
 			},
 			Spec: diskv1alpha2.AzVolumeAttachmentSpec{
-				UnderlyingVolume: volumeName,
-				VolumeID:         volumeID,
-				NodeName:         nodeID,
-				VolumeContext:    volumeContext,
-				RequestedRole:    diskv1alpha2.PrimaryRole,
+				VolumeName:    volumeName,
+				VolumeID:      volumeID,
+				NodeName:      nodeID,
+				VolumeContext: volumeContext,
+				RequestedRole: diskv1alpha2.PrimaryRole,
 			},
 			Status: diskv1alpha2.AzVolumeAttachmentStatus{
 				State: diskv1alpha2.AttachmentPending,
@@ -568,7 +569,7 @@ func (c *CrdProvisioner) ExpandVolume(
 	ctx context.Context,
 	volumeID string,
 	capacityRange *diskv1alpha2.CapacityRange,
-	secrets map[string]string) (*diskv1alpha2.AzVolumeStatusParams, error) {
+	secrets map[string]string) (*diskv1alpha2.AzVolumeStatusDetail, error) {
 
 	lister := c.conditionWatcher.informerFactory.Disk().V1alpha2().AzVolumes().Lister().AzVolumes(c.namespace)
 
@@ -584,10 +585,8 @@ func (c *CrdProvisioner) ExpandVolume(
 		}
 		azVolumeInstance := obj.(*diskv1alpha2.AzVolume)
 		// Checking that the status is updated with the required capacityRange
-		if azVolumeInstance.Status.Detail != nil {
-			if azVolumeInstance.Status.Detail.ResponseObject != nil && azVolumeInstance.Status.Detail.ResponseObject.CapacityBytes == capacityRange.RequiredBytes {
-				return true, nil
-			}
+		if azVolumeInstance.Status.Detail != nil && azVolumeInstance.Status.Detail.CapacityBytes == capacityRange.RequiredBytes {
+			return true, nil
 		}
 		if azVolumeInstance.Status.Error != nil {
 			return false, util.ErrorFromAzError(azVolumeInstance.Status.Error)
@@ -626,11 +625,11 @@ func (c *CrdProvisioner) ExpandVolume(
 	}
 
 	azVolumeInstance := obj.(*diskv1alpha2.AzVolume)
-	if azVolumeInstance.Status.Detail.ResponseObject.CapacityBytes != capacityRange.RequiredBytes {
+	if azVolumeInstance.Status.Detail.CapacityBytes != capacityRange.RequiredBytes {
 		return nil, status.Errorf(codes.Internal, "AzVolume status not updated with the new capacity for volume name (%s)", volumeID)
 	}
 
-	return azVolumeInstance.Status.Detail.ResponseObject, nil
+	return azVolumeInstance.Status.Detail, nil
 }
 
 func (c *CrdProvisioner) GetAzVolumeAttachmentState(ctx context.Context, volumeID string, nodeID string) (diskv1alpha2.AzVolumeAttachmentAttachmentState, error) {

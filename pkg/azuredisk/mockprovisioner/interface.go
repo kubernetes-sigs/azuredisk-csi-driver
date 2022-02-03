@@ -67,10 +67,10 @@ func (mr *MockCrdProvisionerMockRecorder) RegisterDriverNode(ctx, node, nodePart
 }
 
 // CreateVolume mocks base method
-func (m *MockCrdProvisioner) CreateVolume(ctx context.Context, volumeName string, capacityRange *v1alpha2.CapacityRange, volumeCapabilities []v1alpha2.VolumeCapability, parameters, secrets map[string]string, volumeContentSource *v1alpha2.ContentVolumeSource, accessibilityReq *v1alpha2.TopologyRequirement) (*v1alpha2.AzVolumeStatusParams, error) {
+func (m *MockCrdProvisioner) CreateVolume(ctx context.Context, volumeName string, capacityRange *v1alpha2.CapacityRange, volumeCapabilities []v1alpha2.VolumeCapability, parameters, secrets map[string]string, volumeContentSource *v1alpha2.ContentVolumeSource, accessibilityReq *v1alpha2.TopologyRequirement) (*v1alpha2.AzVolumeStatusDetail, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CreateVolume", ctx, volumeName, capacityRange, volumeCapabilities, parameters, secrets, volumeContentSource, accessibilityReq)
-	ret0, _ := ret[0].(*v1alpha2.AzVolumeStatusParams)
+	ret0, _ := ret[0].(*v1alpha2.AzVolumeStatusDetail)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -140,10 +140,10 @@ func (mr *MockCrdProvisionerMockRecorder) GetAzVolumeAttachmentState(ctx, volume
 }
 
 // ExpandVolume mocks base method
-func (m *MockCrdProvisioner) ExpandVolume(ctx context.Context, volumeID string, capacityRange *v1alpha2.CapacityRange, secrets map[string]string) (*v1alpha2.AzVolumeStatusParams, error) {
+func (m *MockCrdProvisioner) ExpandVolume(ctx context.Context, volumeID string, capacityRange *v1alpha2.CapacityRange, secrets map[string]string) (*v1alpha2.AzVolumeStatusDetail, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ExpandVolume", ctx, volumeID, capacityRange, secrets)
-	ret0, _ := ret[0].(*v1alpha2.AzVolumeStatusParams)
+	ret0, _ := ret[0].(*v1alpha2.AzVolumeStatusDetail)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

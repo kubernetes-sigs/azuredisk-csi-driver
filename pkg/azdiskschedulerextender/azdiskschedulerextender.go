@@ -29,6 +29,7 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/client-go/informers"
@@ -202,7 +203,7 @@ func prioritize(context context.Context, schedulerExtenderArgs schedulerapi.Exte
 		volumesPodNeeds := make(map[string]struct{})
 		nodeNameToRequestedVolumeMap := make(map[string][]string)
 		nodeNameToVolumeMap := make(map[string][]string)
-		nodeNameToHeartbeatMap := make(map[string]int64)
+		nodeNameToHeartbeatMap := make(map[string]metav1.Time)
 		nodesChan, volumesChan := make(chan azDriverNodesMeta), make(chan azVolumeAttachmentsMeta)
 
 		go getAzDriverNodes(context, nodesChan)
@@ -260,20 +261,20 @@ func prioritize(context context.Context, schedulerExtenderArgs schedulerapi.Exte
 			klog.V(2).Infof(
 				"Volume attachment in consideration: Name: %s, Volume: %s.",
 				attachedVolume.Name,
-				attachedVolume.Spec.UnderlyingVolume,
+				attachedVolume.Spec.VolumeName,
 			)
 
-			nodeNameToVolumeMap[attachedVolume.Spec.NodeName] = append(nodeNameToVolumeMap[attachedVolume.Spec.NodeName], attachedVolume.Spec.UnderlyingVolume)
+			nodeNameToVolumeMap[attachedVolume.Spec.NodeName] = append(nodeNameToVolumeMap[attachedVolume.Spec.NodeName], attachedVolume.Spec.VolumeName)
 
 			if !attachedVolume.DeletionTimestamp.IsZero() || attachedVolume.Status.State != diskv1alpha2.Attached {
-				klog.V(2).Infof("Volume attachment excluded because it is to be deleted or not in the Attached state: Name %s, Volume: %s", attachedVolume.Name, attachedVolume.Spec.UnderlyingVolume)
+				klog.V(2).Infof("Volume attachment excluded because it is to be deleted or not in the Attached state: Name %s, Volume: %s", attachedVolume.Name, attachedVolume.Spec.VolumeName)
 				continue
 			}
 
-			_, requestedByPod := volumesPodNeeds[attachedVolume.Spec.UnderlyingVolume]
+			_, requestedByPod := volumesPodNeeds[attachedVolume.Spec.VolumeName]
 			if requestedByPod {
-				klog.V(2).Infof("Volume attachment is needed: Name: %s, Volume: %s.", attachedVolume.Name, attachedVolume.Spec.UnderlyingVolume)
-				nodeNameToRequestedVolumeMap[attachedVolume.Spec.NodeName] = append(nodeNameToRequestedVolumeMap[attachedVolume.Spec.NodeName], attachedVolume.Spec.UnderlyingVolume)
+				klog.V(2).Infof("Volume attachment is needed: Name: %s, Volume: %s.", attachedVolume.Name, attachedVolume.Spec.VolumeName)
+				nodeNameToRequestedVolumeMap[attachedVolume.Spec.NodeName] = append(nodeNameToRequestedVolumeMap[attachedVolume.Spec.NodeName], attachedVolume.Spec.VolumeName)
 			}
 		}
 
@@ -342,9 +343,9 @@ func getKubernetesClientset() (*kubernetes.Clientset, error) {
 	return kubeClient, nil
 }
 
-func getNodeScore(volumeAttachments int, heartbeat int64, availableNodeCount int, totalnumberOfVolumeAttachments int, nodeName string) int64 {
+func getNodeScore(volumeAttachments int, latestHeartbeat metav1.Time, availableNodeCount int, totalnumberOfVolumeAttachments int, nodeName string) int64 {
 	now := time.Now()
-	latestHeartbeatWas := time.Unix(0, heartbeat)
+	latestHeartbeatWas := latestHeartbeat.Time
 	latestHeartbeatCanBe := now.Add(-2 * time.Minute)
 
 	if latestHeartbeatWas.Before(latestHeartbeatCanBe) {

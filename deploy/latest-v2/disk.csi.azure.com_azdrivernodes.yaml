@@ -30,7 +30,7 @@ spec:
         sent a heatbeat.
       jsonPath: .status.lastHeartbeatTime
       name: LastHeartbeatTime
-      type: integer
+      type: date
     - description: A brief node status message.
       jsonPath: .status.statusMessage
       name: StatusMessage
@@ -108,8 +108,8 @@ spec:
                   is responsive and is communicating to API server. Clients should
                   not solely reply on LastHeartbeatTime to ascertain node plugin's
                   health state.
-                format: int64
-                type: integer
+                format: date-time
+                type: string
               readyForVolumeAllocation:
                 description: ReadyForVolumeAllocation tells client wheather the node
                   plug-in is ready for volume allocation. If status is not present

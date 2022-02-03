@@ -42,7 +42,7 @@ func (c *FakeCrdProvisioner) CreateVolume(
 	parameters map[string]string,
 	secrets map[string]string,
 	volumeContentSource *v1alpha2.ContentVolumeSource,
-	accessibilityReq *v1alpha2.TopologyRequirement) (*v1alpha2.AzVolumeStatusParams, error) {
+	accessibilityReq *v1alpha2.TopologyRequirement) (*v1alpha2.AzVolumeStatusDetail, error) {
 	return c.fakeCloudProv.CreateVolume(ctx, volumeName, capacityRange, volumeCapabilities, parameters, secrets, volumeContentSource, accessibilityReq)
 }
 
@@ -73,6 +73,6 @@ func (c *FakeCrdProvisioner) ExpandVolume(
 	ctx context.Context,
 	volumeID string,
 	capacityRange *v1alpha2.CapacityRange,
-	secrets map[string]string) (*v1alpha2.AzVolumeStatusParams, error) {
+	secrets map[string]string) (*v1alpha2.AzVolumeStatusDetail, error) {
 	return c.fakeCloudProv.ExpandVolume(ctx, volumeID, capacityRange, secrets)
 }

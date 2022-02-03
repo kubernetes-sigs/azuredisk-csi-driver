@@ -582,11 +582,11 @@ func generateAzVolumeCapability(volumeCapability *csi.VolumeCapability) diskv1al
 	}
 
 	if volumeCapability.GetMount() != nil {
-		volCap.AccessDetails.AccessType = diskv1alpha2.VolumeCapabilityAccessMount
-		volCap.AccessDetails.FsType = volumeCapability.GetMount().GetFsType()
-		volCap.AccessDetails.MountFlags = volumeCapability.GetMount().GetMountFlags()
+		volCap.AccessType = diskv1alpha2.VolumeCapabilityAccessMount
+		volCap.FsType = volumeCapability.GetMount().GetFsType()
+		volCap.MountFlags = volumeCapability.GetMount().GetMountFlags()
 	} else if volumeCapability.GetBlock() != nil {
-		volCap.AccessDetails.AccessType = diskv1alpha2.VolumeCapabilityAccessBlock
+		volCap.AccessType = diskv1alpha2.VolumeCapabilityAccessBlock
 	}
 
 	return volCap

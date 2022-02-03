@@ -65,9 +65,7 @@ func TestNodeAvailabilityController(t *testing.T) {
 
 				newVolume := testAzVolume0.DeepCopy()
 				newVolume.Status.Detail = &diskv1alpha2.AzVolumeStatusDetail{
-					ResponseObject: &diskv1alpha2.AzVolumeStatusParams{
-						VolumeID: testManagedDiskURI0,
-					},
+					VolumeID: testManagedDiskURI0,
 				}
 
 				newPod := testPod1.DeepCopy()

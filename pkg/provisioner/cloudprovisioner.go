@@ -111,7 +111,7 @@ func (c *CloudProvisioner) CreateVolume(
 	parameters map[string]string,
 	secrets map[string]string,
 	volumeContentSource *diskv1alpha2.ContentVolumeSource,
-	accessibilityRequirements *diskv1alpha2.TopologyRequirement) (*diskv1alpha2.AzVolumeStatusParams, error) {
+	accessibilityRequirements *diskv1alpha2.TopologyRequirement) (*diskv1alpha2.AzVolumeStatusDetail, error) {
 
 	diskParams, err := azureutils.ParseDiskParameters(parameters)
 	if err != nil {
@@ -266,7 +266,7 @@ func (c *CloudProvisioner) CreateVolume(
 
 	klog.V(2).Infof("create disk(%s) account type(%s) rg(%s) location(%s) size(%d) tags(%s) successfully", diskParams.DiskName, skuName, diskParams.ResourceGroup, diskParams.Location, requestGiB, diskParams.Tags)
 
-	return &diskv1alpha2.AzVolumeStatusParams{
+	return &diskv1alpha2.AzVolumeStatusDetail{
 		VolumeID:           diskURI,
 		CapacityBytes:      volSizeBytes,
 		VolumeContext:      diskParams.VolumeContext,
@@ -381,7 +381,7 @@ func (c *CloudProvisioner) ExpandVolume(
 	ctx context.Context,
 	volumeID string,
 	capacityRange *diskv1alpha2.CapacityRange,
-	secrets map[string]string) (*diskv1alpha2.AzVolumeStatusParams, error) {
+	secrets map[string]string) (*diskv1alpha2.AzVolumeStatusDetail, error) {
 	requestSize := *resource.NewQuantity(capacityRange.RequiredBytes, resource.BinarySI)
 
 	if err := azureutils.IsValidDiskURI(volumeID); err != nil {
@@ -419,7 +419,7 @@ func (c *CloudProvisioner) ExpandVolume(
 
 	klog.V(2).Infof("expand azure disk(%s) successfully, currentSize(%d)", volumeID, currentSize)
 
-	return &diskv1alpha2.AzVolumeStatusParams{
+	return &diskv1alpha2.AzVolumeStatusDetail{
 		CapacityBytes:         currentSize,
 		NodeExpansionRequired: true,
 	}, nil

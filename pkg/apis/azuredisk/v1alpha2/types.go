@@ -18,7 +18,6 @@ package v1alpha2
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	k8stypes "k8s.io/apimachinery/pkg/types"
 )
 
 // +genclient
@@ -54,24 +53,26 @@ const (
 
 // AzVolumeSpec is the spec for an AzVolume resource
 type AzVolumeSpec struct {
-	//the disk URI of the underlying volume
-	UnderlyingVolume     string `json:"underlyingVolume"`
-	MaxMountReplicaCount int    `json:"maxMountReplicaCount"`
-	//The capabilities that the volume MUST have
+	//The disk name.
+	VolumeName string `json:"volumeName"`
+	//The number of replicas attachments to maintain. This value must be in the range [0..(maxShares - 1)].
+	//If the volume access mode is ReadWriteMany, the default is 0. Otherwise, the default is maxShares - 1.
+	MaxMountReplicaCount int `json:"maxMountReplicaCount"`
+	//The capabilities that the volume MUST have.
 	VolumeCapability []VolumeCapability `json:"volumeCapability"`
-	//The capacity of the storage
+	//The capacity of the storage.
 	//+optional
 	CapacityRange *CapacityRange `json:"capacityRange,omitempty"`
-	//Parameters for the volume
+	//Parameters for the volume.
 	//+optional
 	Parameters map[string]string `json:"parameters,omitempty"`
-	//Secrets for the volume
+	//Secrets for the volume.
 	//+optional
 	Secrets map[string]string `json:"secrets,omitempty"`
-	//ContentVolumeSource for the volume
+	//The source of initial content for the volume.
 	//+optional
 	ContentVolumeSource *ContentVolumeSource `json:"contentVolumeSource,omitempty"`
-	//Specifies where the provisioned volume should be accessible
+	//Specifies where the provisioned volume should be accessible.
 	//+optional
 	AccessibilityRequirements *TopologyRequirement `json:"accessibilityRequirements,omitempty"`
 }
@@ -93,7 +94,7 @@ const (
 
 // AzVolumeStatus is the status for an AzVolume resource
 type AzVolumeStatus struct {
-	// the name of PV that corresponds to the AzVolume obj
+	//The name of the PersistentVolume that corresponds to the AzVolume instance.
 	//+optional
 	PersistentVolume string `json:"persistentVolume"`
 
@@ -106,6 +107,10 @@ type AzVolumeStatus struct {
 	//+required
 	State AzVolumeState `json:"state"`
 
+	//Current phase of the underlying PersistentVolume
+	//+optional
+	Phase AzVolumePhase `json:"phase,omitempty"`
+
 	//Error occurred during creation/deletion of volume
 	//+optional
 	Error *AzError `json:"error,omitempty"`
@@ -113,15 +118,6 @@ type AzVolumeStatus struct {
 
 // AzVolumeStatusDetail is the status of the underlying Volume resource
 type AzVolumeStatusDetail struct {
-	//Current status of the AzVolume
-	//+optional
-	ResponseObject *AzVolumeStatusParams `json:"status,omitempty"`
-	//Current phase of the underlying PV
-	//+optional
-	Phase AzVolumePhase `json:"phase,omitempty"`
-}
-
-type AzVolumeStatusParams struct {
 	VolumeID string `json:"volume_id"`
 	// +optional
 	VolumeContext map[string]string `json:"parameters,omitempty"`
@@ -151,7 +147,7 @@ type AzVolumeList struct {
 // +kubebuilder:resource:scope=Namespaced
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp",description="The age of the attachment"
 // +kubebuilder:printcolumn:name="NodeName",type=string,JSONPath=`.spec.nodeName`,description="Name of the Node which this AzVolumeAttachment object is attached to",priority=10
-// +kubebuilder:printcolumn:name="UnderlyingVolume",type=string,JSONPath=`.spec.underlyingVolume`,description="Name of the Volume which this AzVolumeAttachment object references",priority=10
+// +kubebuilder:printcolumn:name="VolumeName",type=string,JSONPath=`.spec.volumeName`,description="Name of the volume which this AzVolumeAttachment object references",priority=10
 // +kubebuilder:printcolumn:name="RequestedRole",type=string,JSONPath=`.spec.role`,description="Indicates if the volume attachment should be primary attachment or not"
 // +kubebuilder:printcolumn:name="Role",type=string,JSONPath=`.status.detail.role`,description="Indicates if the volume attachment is primary attachment or not"
 // +kubebuilder:printcolumn:name="PreviousRole",type=string,JSONPath=`.status.detail.previous_role`,description="Describes the previous volume attachment role",priority=10
@@ -175,11 +171,11 @@ type AzVolumeAttachment struct {
 
 // AzVolumeAttachmentSpec is the spec for a AzVolumeAttachment resource
 type AzVolumeAttachmentSpec struct {
-	UnderlyingVolume string            `json:"underlyingVolume"`
-	VolumeID         string            `json:"volume_id"`
-	NodeName         string            `json:"nodeName"`
-	VolumeContext    map[string]string `json:"volume_context"`
-	RequestedRole    Role              `json:"role"`
+	VolumeName    string            `json:"volumeName"`
+	VolumeID      string            `json:"volume_id"`
+	NodeName      string            `json:"nodeName"`
+	VolumeContext map[string]string `json:"volume_context"`
+	RequestedRole Role              `json:"role"`
 }
 
 // Role indicates if the volume attachment is replica attachment or not
@@ -251,11 +247,33 @@ type AzVolumeAttachmentList struct {
 	Items []AzVolumeAttachment `json:"items"`
 }
 
+type AzErrorCode string
+
+const (
+	AzErrorCodeOK                 AzErrorCode = "OK"
+	AzErrorCodeCanceled           AzErrorCode = "CANCELLED"
+	AzErrorCodeUnknown            AzErrorCode = "UNKNOWN"
+	AzErrorCodeInvalidArgument    AzErrorCode = "INVALID_ARGUMENT"
+	AzErrorCodeDeadlineExceeded   AzErrorCode = "DEADLINE_EXCEEDED"
+	AzErrorCodeNotFound           AzErrorCode = "NOT_FOUND"
+	AzErrorCodeAlreadyExists      AzErrorCode = "ALREADY_EXISTS"
+	AzErrorCodePermissionDenied   AzErrorCode = "PERMISSION_DENIED"
+	AzErrorCodeResourceExhausted  AzErrorCode = "RESOURCE_EXHAUSTED"
+	AzErrorCodeFailedPrecondition AzErrorCode = "FAILED_PRECONDITION"
+	AzErrorCodeAborted            AzErrorCode = "ABORTED"
+	AzErrorCodeOutOfRange         AzErrorCode = "OUT_OF_RANGE"
+	AzErrorCodeUnimplemented      AzErrorCode = "UNIMPLEMENTED"
+	AzErrorCodeInternal           AzErrorCode = "INTERNAL"
+	AzErrorCodeUnavailable        AzErrorCode = "UNAVAILABLE"
+	AzErrorCodeDataLoss           AzErrorCode = "DATA_LOSS"
+	AzErrorCodeUnauthenticated    AzErrorCode = "UNAUTHENTICATED"
+	AzErrorCodeDanglingAttach     AzErrorCode = "DANGLING_ATTACH"
+)
+
 type AzError struct {
-	ErrorCode    string            `json:"errorCode"`
-	ErrorMessage string            `json:"errorMessage"`
-	CurrentNode  k8stypes.NodeName `json:"currentNode"`
-	DevicePath   string            `json:"devicePath"`
+	Code       AzErrorCode       `json:"code"`
+	Message    string            `json:"message"`
+	Parameters map[string]string `json:"parameters,omitempty"`
 }
 
 // +genclient
@@ -267,31 +285,31 @@ type AzError struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="NodeName",type=string,JSONPath=`.spec.nodeName`,description="Name of the Node which this AzDriverNode object represents."
 // +kubebuilder:printcolumn:name="ReadyForVolumeAllocation",type=boolean,JSONPath=`.status.readyForVolumeAllocation`,description="Indicates if the azure persistent volume driver is ready for new pods which use azure persistent volumes."
-// +kubebuilder:printcolumn:name="LastHeartbeatTime",type=integer,JSONPath=`.status.lastHeartbeatTime`,description="Represents the time stamp at which azure persistent volume driver sent a heatbeat."
+// +kubebuilder:printcolumn:name="LastHeartbeatTime",type=date,JSONPath=`.status.lastHeartbeatTime`,description="Represents the time stamp at which azure persistent volume driver sent a heatbeat."
 // +kubebuilder:printcolumn:name="StatusMessage",type=string,JSONPath=`.status.statusMessage`,description="A brief node status message."
 type AzDriverNode struct {
 	metav1.TypeMeta `json:",inline"`
 	// Standard object's metadata.
 	// More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#metadata
 	// +optional
-	metav1.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	// spec defines the desired state of a AzDriverNode.
 	// Required.
-	Spec AzDriverNodeSpec `json:"spec" protobuf:"bytes,2,name=spec"`
+	Spec AzDriverNodeSpec `json:"spec"`
 
 	// status represents the current state of AzDriverNode.
 	// If this is nil or empty, clients should prefer other nodes
 	// for persistent volume allocations or pod places for pods which use azure persistent volumes.
 	// +optional
-	Status *AzDriverNodeStatus `json:"status,omitempty" protobuf:"bytes,3,opt,name=status"`
+	Status *AzDriverNodeStatus `json:"status,omitempty"`
 }
 
 // AzDriverNodeSpec is the spec for a AzDriverNode resource.
 type AzDriverNodeSpec struct {
 	// Name of the node which this AzDriverNode represents.
 	// Required.
-	NodeName string `json:"nodeName" protobuf:"bytes,1,name=nodeName"`
+	NodeName string `json:"nodeName"`
 }
 
 // AzDriverNodeStatus is the status for a AzDriverNode resource.
@@ -300,47 +318,47 @@ type AzDriverNodeStatus struct {
 	// A recent timestamp means that node-plugin is responsive and is communicating to API server.
 	// Clients should not solely reply on LastHeartbeatTime to ascertain node plugin's health state.
 	// +optional
-	LastHeartbeatTime *int64 `json:"lastHeartbeatTime,omitempty" protobuf:"varint,1,opt,name=lastHeartbeatTime"`
+	LastHeartbeatTime *metav1.Time `json:"lastHeartbeatTime,omitempty"`
 
 	// ReadyForVolumeAllocation tells client wheather the node plug-in is ready for volume allocation.
 	// If status is not present or ReadyForVolumeAllocation, then clients should prefer
 	// other nodes in the clusters for azure persistent volumes\pod placements for pods with azure disks.
 	// +optional
-	ReadyForVolumeAllocation *bool `json:"readyForVolumeAllocation,omitempty" protobuf:"varint,2,opt,name=readyForVolumeAllocation"`
+	ReadyForVolumeAllocation *bool `json:"readyForVolumeAllocation,omitempty"`
 
 	// StatusMessage is a brief status message regarding nodes health
 	// This field should not be used for any decision making in code
 	// It is for display/debug purpose only
 	// For code logic dependency, use Conditions filed
 	// +optional
-	StatusMessage *string `json:"statusMessage,omitempty" protobuf:"bytes,3,opt,name=statusMessage"`
+	StatusMessage *string `json:"statusMessage,omitempty"`
 
 	// Conditions contains an array of generic AzDriver related health conditions
 	// These conditions can be used programatically to take decisions
 	// +optional
 	// +patchMergeKey=type
 	// +patchStrategy=merge
-	Conditions []AzDriverCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,4,rep,name=conditions"`
+	Conditions []AzDriverCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 }
 
 // AzDriverCondition defines condition for the AzDriver
 type AzDriverCondition struct {
 	// Type of node condition.
-	Type AzDriverConditionType `json:"type" protobuf:"bytes,1,opt,name=type,casttype=AzDriverNodeConditionType"`
+	Type AzDriverConditionType `json:"type"`
 	// Status of the condition, one of True, False, Unknown.
-	Status AzDriverConditionStatus `json:"status" protobuf:"bytes,2,opt,name=status,casttype=AzDriverConditionStatus"`
+	Status AzDriverConditionStatus `json:"status"`
 	// Last time we got an update on a given condition.
 	// +optional
-	LastHeartbeatTime metav1.Time `json:"lastHeartbeatTime,omitempty" protobuf:"bytes,3,opt,name=lastHeartbeatTime"`
+	LastHeartbeatTime metav1.Time `json:"lastHeartbeatTime,omitempty"`
 	// Last time the condition transit from one status to another.
 	// +optional
-	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty" protobuf:"bytes,4,opt,name=lastTransitionTime"`
+	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
 	// (brief) reason for the condition's last transition.
 	// +optional
-	Reason string `json:"reason,omitempty" protobuf:"bytes,5,opt,name=reason"`
+	Reason string `json:"reason,omitempty"`
 	// Human readable message indicating details about last transition.
 	// +optional
-	Message string `json:"message,omitempty" protobuf:"bytes,6,opt,name=message"`
+	Message string `json:"message,omitempty"`
 }
 
 // AzDriverConditionStatus defines condition status' for the AzDriver
@@ -393,13 +411,13 @@ const (
 	VolumeCapabilityAccessMount
 )
 
-type VolumeCapabilityAccessDetails struct {
+type VolumeCapability struct {
 	// Specifies the access type for the volume.
 	AccessType VolumeCapabilityAccess `json:"access_type"`
 	// The filesystem type. This field is OPTIONAL.
 	// An empty string is equal to an unspecified field value.
 	// +optional
-	FsType string `json:"fs_type"`
+	FsType string `json:"fs_type,omitempty"`
 	// The mount options that can be used for the volume. This field is
 	// OPTIONAL. `mount_flags` MAY contain sensitive information.
 	// Therefore, the CO and the Plugin MUST NOT leak this information
@@ -407,14 +425,6 @@ type VolumeCapabilityAccessDetails struct {
 	// SHALL NOT exceed 4 KiB.
 	// +optional
 	MountFlags []string `json:"mount_flags,omitempty"`
-}
-
-type VolumeCapability struct {
-	// Specifies what API the volume will be accessed using. One of the
-	// following fields MUST be specified.
-	//
-	// Types that are valid to be assigned to AccessType: block, mount
-	AccessDetails VolumeCapabilityAccessDetails `json:"access_details"`
 	// This is a REQUIRED field.
 	AccessMode VolumeCapabilityAccessMode `json:"access_mode"`
 }
@@ -426,11 +436,11 @@ type CapacityRange struct {
 	// Volume MUST be at least this big. This field is OPTIONAL.
 	// A value of 0 is equal to an unspecified field value.
 	// The value of this field MUST NOT be negative.
-	RequiredBytes int64 `protobuf:"varint,1,opt,name=required_bytes,json=requiredBytes,proto3" json:"required_bytes,omitempty"`
+	RequiredBytes int64 `json:"required_bytes,omitempty"`
 	// Volume MUST not be bigger than this. This field is OPTIONAL.
 	// A value of 0 is equal to an unspecified field value.
 	// The value of this field MUST NOT be negative.
-	LimitBytes int64 `protobuf:"varint,2,opt,name=limit_bytes,json=limitBytes,proto3" json:"limit_bytes,omitempty"`
+	LimitBytes int64 `json:"limit_bytes,omitempty"`
 }
 
 type ContentVolumeSourceType int

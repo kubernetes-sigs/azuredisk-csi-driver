@@ -57,13 +57,11 @@ var (
 			Name: defaultVolumeNameWithParam,
 		},
 		Spec: diskv1alpha2.AzVolumeSpec{
-			UnderlyingVolume:     defaultVolumeNameWithParam,
+			VolumeName:           defaultVolumeNameWithParam,
 			MaxMountReplicaCount: 2,
 			VolumeCapability: []diskv1alpha2.VolumeCapability{
 				{
-					AccessDetails: diskv1alpha2.VolumeCapabilityAccessDetails{
-						AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
-					},
+					AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
 					AccessMode: diskv1alpha2.VolumeCapabilityAccessModeSingleNodeWriter,
 				},
 			},
@@ -101,13 +99,11 @@ var (
 			Name: defaultVolumeNameWithNilParam,
 		},
 		Spec: diskv1alpha2.AzVolumeSpec{
-			UnderlyingVolume:     defaultVolumeNameWithNilParam,
+			VolumeName:           defaultVolumeNameWithNilParam,
 			MaxMountReplicaCount: 1,
 			VolumeCapability: []diskv1alpha2.VolumeCapability{
 				{
-					AccessDetails: diskv1alpha2.VolumeCapabilityAccessDetails{
-						AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
-					},
+					AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
 					AccessMode: diskv1alpha2.VolumeCapabilityAccessModeSingleNodeWriter,
 				},
 			},
@@ -134,9 +130,7 @@ var (
 
 	successAzVolStatus = diskv1alpha2.AzVolumeStatus{
 		Detail: &diskv1alpha2.AzVolumeStatusDetail{
-			ResponseObject: &diskv1alpha2.AzVolumeStatusParams{
-				VolumeID: testDiskURI,
-			},
+			VolumeID: testDiskURI,
 		},
 	}
 
@@ -184,9 +178,7 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 			capacity:             &diskv1alpha2.CapacityRange{},
 			capabilities: []diskv1alpha2.VolumeCapability{
 				{
-					AccessDetails: diskv1alpha2.VolumeCapabilityAccessDetails{
-						AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
-					},
+					AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
 					AccessMode: diskv1alpha2.VolumeCapabilityAccessModeSingleNodeWriter,
 				},
 			},
@@ -222,9 +214,7 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 			capacity:             &diskv1alpha2.CapacityRange{},
 			capabilities: []diskv1alpha2.VolumeCapability{
 				{
-					AccessDetails: diskv1alpha2.VolumeCapabilityAccessDetails{
-						AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
-					},
+					AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
 					AccessMode: diskv1alpha2.VolumeCapabilityAccessModeSingleNodeWriter,
 				},
 			},
@@ -242,9 +232,7 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 			capacity:             &diskv1alpha2.CapacityRange{},
 			capabilities: []diskv1alpha2.VolumeCapability{
 				{
-					AccessDetails: diskv1alpha2.VolumeCapabilityAccessDetails{
-						AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
-					},
+					AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
 					AccessMode: diskv1alpha2.VolumeCapabilityAccessModeSingleNodeWriter,
 				},
 			},
@@ -263,16 +251,14 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 						Namespace: provisioner.namespace,
 					},
 					Spec: diskv1alpha2.AzVolumeSpec{
-						UnderlyingVolume: testDiskName,
+						VolumeName: testDiskName,
 						CapacityRange: &diskv1alpha2.CapacityRange{
 							RequiredBytes: 2,
 							LimitBytes:    2,
 						},
 						VolumeCapability: []diskv1alpha2.VolumeCapability{
 							{
-								AccessDetails: diskv1alpha2.VolumeCapabilityAccessDetails{
-									AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
-								},
+								AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
 								AccessMode: diskv1alpha2.VolumeCapabilityAccessModeSingleNodeWriter,
 							},
 						},
@@ -286,9 +272,7 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 					},
 					Status: diskv1alpha2.AzVolumeStatus{
 						Detail: &diskv1alpha2.AzVolumeStatusDetail{
-							ResponseObject: &diskv1alpha2.AzVolumeStatusParams{
-								VolumeID: testDiskURI,
-							},
+							VolumeID: testDiskURI,
 						},
 					},
 				},
@@ -301,9 +285,7 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 			},
 			capabilities: []diskv1alpha2.VolumeCapability{
 				{
-					AccessDetails: diskv1alpha2.VolumeCapabilityAccessDetails{
-						AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
-					},
+					AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
 					AccessMode: diskv1alpha2.VolumeCapabilityAccessModeSingleNodeWriter,
 				},
 			},
@@ -325,16 +307,14 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 						Namespace: provisioner.namespace,
 					},
 					Spec: diskv1alpha2.AzVolumeSpec{
-						UnderlyingVolume: testDiskName,
+						VolumeName: testDiskName,
 						CapacityRange: &diskv1alpha2.CapacityRange{
 							RequiredBytes: 2,
 							LimitBytes:    2,
 						},
 						VolumeCapability: []diskv1alpha2.VolumeCapability{
 							{
-								AccessDetails: diskv1alpha2.VolumeCapabilityAccessDetails{
-									AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
-								},
+								AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
 								AccessMode: diskv1alpha2.VolumeCapabilityAccessModeSingleNodeWriter,
 							},
 						},
@@ -348,7 +328,7 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 					},
 					Status: diskv1alpha2.AzVolumeStatus{
 						Error: &diskv1alpha2.AzError{
-							ErrorMessage: "Test error message here",
+							Message: "Test error message here",
 						},
 					},
 				},
@@ -361,9 +341,7 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 			},
 			capabilities: []diskv1alpha2.VolumeCapability{
 				{
-					AccessDetails: diskv1alpha2.VolumeCapabilityAccessDetails{
-						AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
-					},
+					AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
 					AccessMode: diskv1alpha2.VolumeCapabilityAccessModeSingleNodeWriter,
 				},
 			},
@@ -385,12 +363,10 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 						Namespace: provisioner.namespace,
 					},
 					Spec: diskv1alpha2.AzVolumeSpec{
-						UnderlyingVolume: testDiskName,
+						VolumeName: testDiskName,
 						VolumeCapability: []diskv1alpha2.VolumeCapability{
 							{
-								AccessDetails: diskv1alpha2.VolumeCapabilityAccessDetails{
-									AccessType: diskv1alpha2.VolumeCapabilityAccessBlock,
-								},
+								AccessType: diskv1alpha2.VolumeCapabilityAccessBlock,
 								AccessMode: diskv1alpha2.VolumeCapabilityAccessModeSingleNodeWriter,
 							},
 						},
@@ -398,10 +374,8 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 					},
 					Status: diskv1alpha2.AzVolumeStatus{
 						Detail: &diskv1alpha2.AzVolumeStatusDetail{
-							ResponseObject: &diskv1alpha2.AzVolumeStatusParams{
-								VolumeID:      testDiskURI,
-								CapacityBytes: 2,
-							},
+							VolumeID:      testDiskURI,
+							CapacityBytes: 2,
 						},
 					},
 				},
@@ -411,9 +385,7 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 			capacity:             &diskv1alpha2.CapacityRange{},
 			capabilities: []diskv1alpha2.VolumeCapability{
 				{
-					AccessDetails: diskv1alpha2.VolumeCapabilityAccessDetails{
-						AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
-					},
+					AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
 					AccessMode: diskv1alpha2.VolumeCapabilityAccessModeSingleNodeWriter,
 				},
 			},
@@ -525,22 +497,18 @@ func TestCrdProvisionerDeleteVolume(t *testing.T) {
 						Namespace: provisioner.namespace,
 					},
 					Spec: diskv1alpha2.AzVolumeSpec{
-						UnderlyingVolume:     testDiskName,
+						VolumeName:           testDiskName,
 						MaxMountReplicaCount: 2,
 						VolumeCapability: []diskv1alpha2.VolumeCapability{
 							{
-								AccessDetails: diskv1alpha2.VolumeCapabilityAccessDetails{
-									AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
-								},
+								AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
 								AccessMode: diskv1alpha2.VolumeCapabilityAccessModeSingleNodeWriter,
 							},
 						},
 					},
 					Status: diskv1alpha2.AzVolumeStatus{
 						Detail: &diskv1alpha2.AzVolumeStatusDetail{
-							ResponseObject: &diskv1alpha2.AzVolumeStatusParams{
-								VolumeID: testDiskURI,
-							},
+							VolumeID: testDiskURI,
 						},
 					},
 				},
@@ -558,22 +526,18 @@ func TestCrdProvisionerDeleteVolume(t *testing.T) {
 						Namespace: provisioner.namespace,
 					},
 					Spec: diskv1alpha2.AzVolumeSpec{
-						UnderlyingVolume:     testDiskName,
+						VolumeName:           testDiskName,
 						MaxMountReplicaCount: 2,
 						VolumeCapability: []diskv1alpha2.VolumeCapability{
 							{
-								AccessDetails: diskv1alpha2.VolumeCapabilityAccessDetails{
-									AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
-								},
+								AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
 								AccessMode: diskv1alpha2.VolumeCapabilityAccessModeSingleNodeWriter,
 							},
 						},
 					},
 					Status: diskv1alpha2.AzVolumeStatus{
 						Detail: &diskv1alpha2.AzVolumeStatusDetail{
-							ResponseObject: &diskv1alpha2.AzVolumeStatusParams{
-								VolumeID: testDiskURI,
-							},
+							VolumeID: testDiskURI,
 						},
 					},
 				},
@@ -674,15 +638,15 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 						Namespace: provisioner.namespace,
 					},
 					Spec: diskv1alpha2.AzVolumeAttachmentSpec{
-						UnderlyingVolume: azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
-						VolumeID:         testDiskName,
-						NodeName:         testNodeName,
-						VolumeContext:    make(map[string]string),
-						RequestedRole:    diskv1alpha2.PrimaryRole,
+						VolumeName:    azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
+						VolumeID:      testDiskName,
+						NodeName:      testNodeName,
+						VolumeContext: make(map[string]string),
+						RequestedRole: diskv1alpha2.PrimaryRole,
 					},
 					Status: diskv1alpha2.AzVolumeAttachmentStatus{
 						Error: &diskv1alpha2.AzError{
-							ErrorMessage: "Test error message here",
+							Message: "Test error message here",
 						},
 						State: diskv1alpha2.AttachmentFailed,
 					},
@@ -707,11 +671,11 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 						Namespace: provisioner.namespace,
 					},
 					Spec: diskv1alpha2.AzVolumeAttachmentSpec{
-						UnderlyingVolume: azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
-						VolumeID:         testDiskName,
-						NodeName:         testNodeName,
-						VolumeContext:    make(map[string]string),
-						RequestedRole:    diskv1alpha2.PrimaryRole,
+						VolumeName:    azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
+						VolumeID:      testDiskName,
+						NodeName:      testNodeName,
+						VolumeContext: make(map[string]string),
+						RequestedRole: diskv1alpha2.PrimaryRole,
 					},
 					Status: diskv1alpha2.AzVolumeAttachmentStatus{
 						Detail: &diskv1alpha2.AzVolumeAttachmentStatusDetail{
@@ -740,11 +704,11 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 						Namespace: provisioner.namespace,
 					},
 					Spec: diskv1alpha2.AzVolumeAttachmentSpec{
-						UnderlyingVolume: azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
-						VolumeID:         testDiskName,
-						NodeName:         testNodeName,
-						VolumeContext:    make(map[string]string),
-						RequestedRole:    diskv1alpha2.PrimaryRole,
+						VolumeName:    azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
+						VolumeID:      testDiskName,
+						NodeName:      testNodeName,
+						VolumeContext: make(map[string]string),
+						RequestedRole: diskv1alpha2.PrimaryRole,
 					},
 					Status: diskv1alpha2.AzVolumeAttachmentStatus{},
 				},
@@ -871,11 +835,11 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 						Namespace: provisioner.namespace,
 					},
 					Spec: diskv1alpha2.AzVolumeAttachmentSpec{
-						UnderlyingVolume: azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
-						VolumeID:         testDiskName,
-						NodeName:         testNodeName,
-						VolumeContext:    nil,
-						RequestedRole:    diskv1alpha2.PrimaryRole,
+						VolumeName:    azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
+						VolumeID:      testDiskName,
+						NodeName:      testNodeName,
+						VolumeContext: nil,
+						RequestedRole: diskv1alpha2.PrimaryRole,
 					},
 					Status: diskv1alpha2.AzVolumeAttachmentStatus{
 						Detail: &diskv1alpha2.AzVolumeAttachmentStatusDetail{
@@ -904,11 +868,11 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 						Namespace: provisioner.namespace,
 					},
 					Spec: diskv1alpha2.AzVolumeAttachmentSpec{
-						UnderlyingVolume: azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
-						VolumeID:         testDiskName,
-						NodeName:         testNodeName,
-						VolumeContext:    nil,
-						RequestedRole:    diskv1alpha2.PrimaryRole,
+						VolumeName:    azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
+						VolumeID:      testDiskName,
+						NodeName:      testNodeName,
+						VolumeContext: nil,
+						RequestedRole: diskv1alpha2.PrimaryRole,
 					},
 					Status: diskv1alpha2.AzVolumeAttachmentStatus{
 						Detail: &diskv1alpha2.AzVolumeAttachmentStatusDetail{
@@ -997,12 +961,10 @@ func TestCrdProvisionerExpandVolume(t *testing.T) {
 						Namespace: provisioner.namespace,
 					},
 					Spec: diskv1alpha2.AzVolumeSpec{
-						UnderlyingVolume: testDiskName,
+						VolumeName: testDiskName,
 						VolumeCapability: []diskv1alpha2.VolumeCapability{
 							{
-								AccessDetails: diskv1alpha2.VolumeCapabilityAccessDetails{
-									AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
-								},
+								AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
 								AccessMode: diskv1alpha2.VolumeCapabilityAccessModeSingleNodeWriter,
 							},
 						},
@@ -1013,9 +975,7 @@ func TestCrdProvisionerExpandVolume(t *testing.T) {
 					},
 					Status: diskv1alpha2.AzVolumeStatus{
 						Detail: &diskv1alpha2.AzVolumeStatusDetail{
-							ResponseObject: &diskv1alpha2.AzVolumeStatusParams{
-								VolumeID: testDiskURI,
-							},
+							VolumeID: testDiskURI,
 						},
 					},
 				},
@@ -1038,12 +998,10 @@ func TestCrdProvisionerExpandVolume(t *testing.T) {
 						Namespace: provisioner.namespace,
 					},
 					Spec: diskv1alpha2.AzVolumeSpec{
-						UnderlyingVolume: testDiskName,
+						VolumeName: testDiskName,
 						VolumeCapability: []diskv1alpha2.VolumeCapability{
 							{
-								AccessDetails: diskv1alpha2.VolumeCapabilityAccessDetails{
-									AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
-								},
+								AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
 								AccessMode: diskv1alpha2.VolumeCapabilityAccessModeSingleNodeWriter,
 							},
 						},
@@ -1054,9 +1012,7 @@ func TestCrdProvisionerExpandVolume(t *testing.T) {
 					},
 					Status: diskv1alpha2.AzVolumeStatus{
 						Detail: &diskv1alpha2.AzVolumeStatusDetail{
-							ResponseObject: &diskv1alpha2.AzVolumeStatusParams{
-								VolumeID: testDiskURI,
-							},
+							VolumeID: testDiskURI,
 						},
 					},
 				},
@@ -1115,7 +1071,7 @@ func TestCrdProvisionerExpandVolume(t *testing.T) {
 					"azvolumes",
 					func(action testingClient.Action) (bool, runtime.Object, error) {
 						objPresent := action.(testingClient.UpdateAction).GetObject().(*diskv1alpha2.AzVolume)
-						objPresent.Status.Detail.ResponseObject.CapacityBytes = tt.capacityRange.RequiredBytes
+						objPresent.Status.Detail.CapacityBytes = tt.capacityRange.RequiredBytes
 
 						err := tracker.Update(action.GetResource(), objPresent, action.GetNamespace())
 						if err != nil {

@@ -54,9 +54,9 @@ type VolumeProvisioner interface {
 		parameters map[string]string,
 		secrets map[string]string,
 		volumeContentSource *diskv1alpha2.ContentVolumeSource,
-		accessibilityTopology *diskv1alpha2.TopologyRequirement) (*diskv1alpha2.AzVolumeStatusParams, error)
+		accessibilityTopology *diskv1alpha2.TopologyRequirement) (*diskv1alpha2.AzVolumeStatusDetail, error)
 	DeleteVolume(ctx context.Context, volumeID string, secrets map[string]string) error
-	ExpandVolume(ctx context.Context, volumeID string, capacityRange *diskv1alpha2.CapacityRange, secrets map[string]string) (*diskv1alpha2.AzVolumeStatusParams, error)
+	ExpandVolume(ctx context.Context, volumeID string, capacityRange *diskv1alpha2.CapacityRange, secrets map[string]string) (*diskv1alpha2.AzVolumeStatusDetail, error)
 }
 
 //Struct for the reconciler
@@ -114,17 +114,17 @@ func (r *ReconcileAzVolume) Reconcile(ctx context.Context, request reconcile.Req
 		//azVolume creation
 	} else if azVolume.Status.Detail == nil {
 		if err := r.triggerCreate(ctx, azVolume); err != nil {
-			klog.Errorf("failed to create volume (%s): %v", azVolume.Spec.UnderlyingVolume, err)
+			klog.Errorf("failed to create volume (%s): %v", azVolume.Spec.VolumeName, err)
 			return reconcileReturnOnError(azVolume, "create", err, r.retryInfo)
 		}
 		// azVolume update
-	} else if azVolume.Status.Detail.ResponseObject != nil && azVolume.Spec.CapacityRange.RequiredBytes != azVolume.Status.Detail.ResponseObject.CapacityBytes {
+	} else if azVolume.Spec.CapacityRange.RequiredBytes != azVolume.Status.Detail.CapacityBytes {
 		if err := r.triggerUpdate(ctx, azVolume); err != nil {
-			klog.Errorf("failed to update volume (%s): %v", azVolume.Spec.UnderlyingVolume, err)
+			klog.Errorf("failed to update volume (%s): %v", azVolume.Spec.VolumeName, err)
 			return reconcileReturnOnError(azVolume, "update", err, r.retryInfo)
 		}
 		// azVolume released, so clean up replica Attachments (primary Attachment should be deleted via UnpublishVolume request to avoid race condition)
-	} else if azVolume.Status.Detail.Phase == diskv1alpha2.VolumeReleased {
+	} else if azVolume.Status.Phase == diskv1alpha2.VolumeReleased {
 		if err := r.triggerRelease(ctx, azVolume); err != nil {
 			klog.Errorf("failed to release AzVolume and clean up all attachments (%s): %v", azVolume.Name, err)
 			return reconcileReturnOnError(azVolume, "release", err, r.retryInfo)
@@ -152,7 +152,7 @@ func (r *ReconcileAzVolume) triggerCreate(ctx context.Context, azVolume *diskv1a
 		return err
 	}
 
-	klog.Infof("Creating Volume (%s)...", azVolume.Spec.UnderlyingVolume)
+	klog.Infof("Creating Volume (%s)...", azVolume.Spec.VolumeName)
 
 	// create volume
 	go func() {
@@ -162,7 +162,7 @@ func (r *ReconcileAzVolume) triggerCreate(ctx context.Context, azVolume *diskv1a
 		var updateFunc func(interface{}) error
 		response, err := r.createVolume(cloudCtx, azVolume)
 		if err != nil {
-			klog.Errorf("failed to create volume %s: %v", azVolume.Spec.UnderlyingVolume, err)
+			klog.Errorf("failed to create volume %s: %v", azVolume.Spec.VolumeName, err)
 			updateFunc = func(obj interface{}) error {
 				azv := obj.(*diskv1alpha2.AzVolume)
 				azv = r.updateError(azv, err)
@@ -170,13 +170,13 @@ func (r *ReconcileAzVolume) triggerCreate(ctx context.Context, azVolume *diskv1a
 				return derr
 			}
 		} else {
-			klog.Infof("Successfully created volume %s: %v", azVolume.Spec.UnderlyingVolume, response)
+			klog.Infof("Successfully created volume %s: %v", azVolume.Spec.VolumeName, response)
 			// create operation queue for the volume
 			r.controllerSharedState.createOperationQueue(azVolume.Name)
 			updateFunc = func(obj interface{}) error {
 				azv := obj.(*diskv1alpha2.AzVolume)
 				if response == nil {
-					return status.Errorf(codes.Internal, "non-nil AzVolumeStatusParams expected but nil given")
+					return status.Errorf(codes.Internal, "non-nil AzVolumeStatusDetail expected but nil given")
 				}
 				azv = r.updateStatusDetail(azv, response, response.CapacityBytes, response.NodeExpansionRequired)
 				azv = r.updateStatusPhase(azv, diskv1alpha2.VolumeBound)
@@ -233,7 +233,7 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *diskv1a
 			return derr
 		}
 
-		klog.Infof("Deleting Volume (%s)...", azVolume.Spec.UnderlyingVolume)
+		klog.Infof("Deleting Volume (%s)...", azVolume.Spec.VolumeName)
 
 		if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, azVolume, updateFunc, consts.NormalUpdateMaxNetRetry); err != nil {
 			return err
@@ -246,7 +246,7 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *diskv1a
 			var updateFunc func(interface{}) error
 			err := r.deleteVolume(cloudCtx, azVolume)
 			if err != nil {
-				klog.Errorf("failed to delete volume (%s): %v", azVolume.Spec.UnderlyingVolume, err)
+				klog.Errorf("failed to delete volume (%s): %v", azVolume.Spec.VolumeName, err)
 				updateFunc = func(obj interface{}) error {
 					azv := obj.(*diskv1alpha2.AzVolume)
 					azv = r.updateError(azv, err)
@@ -254,7 +254,7 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *diskv1a
 					return derr
 				}
 			} else {
-				klog.Infof("successfully deleted volume (%s)", azVolume.Spec.UnderlyingVolume)
+				klog.Infof("successfully deleted volume (%s)", azVolume.Spec.VolumeName)
 				updateFunc = func(obj interface{}) error {
 					azv := obj.(*diskv1alpha2.AzVolume)
 					azv = r.deleteFinalizer(azv, map[string]bool{consts.AzVolumeFinalizer: true})
@@ -293,7 +293,7 @@ func (r *ReconcileAzVolume) triggerUpdate(ctx context.Context, azVolume *diskv1a
 		return err
 	}
 
-	klog.Infof("Updating Volume (%s)...", azVolume.Spec.UnderlyingVolume)
+	klog.Infof("Updating Volume (%s)...", azVolume.Spec.VolumeName)
 
 	go func() {
 		cloudCtx, cloudCancel := context.WithTimeout(context.Background(), cloudTimeout)
@@ -302,7 +302,7 @@ func (r *ReconcileAzVolume) triggerUpdate(ctx context.Context, azVolume *diskv1a
 		var updateFunc func(interface{}) error
 		response, err := r.expandVolume(cloudCtx, azVolume)
 		if err != nil {
-			klog.Errorf("failed to update volume %s: %v", azVolume.Spec.UnderlyingVolume, err)
+			klog.Errorf("failed to update volume %s: %v", azVolume.Spec.VolumeName, err)
 			updateFunc = func(obj interface{}) error {
 				azv := obj.(*diskv1alpha2.AzVolume)
 				azv = r.updateError(azv, err)
@@ -310,11 +310,11 @@ func (r *ReconcileAzVolume) triggerUpdate(ctx context.Context, azVolume *diskv1a
 				return derr
 			}
 		} else {
-			klog.Infof("Successfully updated volume %s: %v", azVolume.Spec.UnderlyingVolume, response)
+			klog.Infof("Successfully updated volume %s: %v", azVolume.Spec.VolumeName, response)
 			updateFunc = func(obj interface{}) error {
 				azv := obj.(*diskv1alpha2.AzVolume)
 				if response == nil {
-					return status.Errorf(codes.Internal, "non-nil AzVolumeStatusParams expected but nil given")
+					return status.Errorf(codes.Internal, "non-nil AzVolumeStatusDetail expected but nil given")
 				}
 				azv = r.updateStatusDetail(azv, response, response.CapacityBytes, response.NodeExpansionRequired)
 				_, derr := r.updateState(azv, diskv1alpha2.VolumeUpdated, forceUpdate)
@@ -400,20 +400,15 @@ func (r *ReconcileAzVolume) updateState(azVolume *diskv1alpha2.AzVolume, state d
 	return azVolume, err
 }
 
-func (r *ReconcileAzVolume) updateStatusDetail(azVolume *diskv1alpha2.AzVolume, status *diskv1alpha2.AzVolumeStatusParams, capacityBytes int64, nodeExpansionRequired bool) *diskv1alpha2.AzVolume {
+func (r *ReconcileAzVolume) updateStatusDetail(azVolume *diskv1alpha2.AzVolume, status *diskv1alpha2.AzVolumeStatusDetail, capacityBytes int64, nodeExpansionRequired bool) *diskv1alpha2.AzVolume {
 	if azVolume == nil {
 		return nil
 	}
 	if azVolume.Status.Detail == nil {
-		azVolume.Status.Detail = &diskv1alpha2.AzVolumeStatusDetail{
-			ResponseObject: status,
-		}
+		azVolume.Status.Detail = status
 	} else {
-		if azVolume.Status.Detail.ResponseObject == nil {
-			azVolume.Status.Detail.ResponseObject = &diskv1alpha2.AzVolumeStatusParams{}
-		}
-		azVolume.Status.Detail.ResponseObject.CapacityBytes = capacityBytes
-		azVolume.Status.Detail.ResponseObject.NodeExpansionRequired = nodeExpansionRequired
+		azVolume.Status.Detail.CapacityBytes = capacityBytes
+		azVolume.Status.Detail.NodeExpansionRequired = nodeExpansionRequired
 	}
 	return azVolume
 }
@@ -422,10 +417,7 @@ func (r *ReconcileAzVolume) updateStatusPhase(azVolume *diskv1alpha2.AzVolume, p
 	if azVolume == nil {
 		return nil
 	}
-	if azVolume.Status.Detail == nil {
-		azVolume.Status.Detail = &diskv1alpha2.AzVolumeStatusDetail{}
-	}
-	azVolume.Status.Detail.Phase = phase
+	azVolume.Status.Phase = phase
 	return azVolume
 }
 
@@ -439,35 +431,34 @@ func (r *ReconcileAzVolume) updateError(azVolume *diskv1alpha2.AzVolume, err err
 	return azVolume
 }
 
-func (r *ReconcileAzVolume) expandVolume(ctx context.Context, azVolume *diskv1alpha2.AzVolume) (*diskv1alpha2.AzVolumeStatusParams, error) {
-	if azVolume.Status.Detail == nil || azVolume.Status.Detail.ResponseObject == nil {
+func (r *ReconcileAzVolume) expandVolume(ctx context.Context, azVolume *diskv1alpha2.AzVolume) (*diskv1alpha2.AzVolumeStatusDetail, error) {
+	if azVolume.Status.Detail == nil {
 		err := status.Errorf(codes.Internal, "Disk for expansion does not exist for AzVolume (%s).", azVolume.Name)
 		klog.Errorf("skipping expandVolume operation for AzVolume (%s): %v", azVolume.Name, err)
 		return nil, err
 	}
 	// use deep-copied version of the azVolume CRI to prevent any unwanted update to the object
 	copied := azVolume.DeepCopy()
-	return r.volumeProvisioner.ExpandVolume(ctx, copied.Status.Detail.ResponseObject.VolumeID, copied.Spec.CapacityRange, copied.Spec.Secrets)
+	return r.volumeProvisioner.ExpandVolume(ctx, copied.Status.Detail.VolumeID, copied.Spec.CapacityRange, copied.Spec.Secrets)
 }
 
-func (r *ReconcileAzVolume) createVolume(ctx context.Context, azVolume *diskv1alpha2.AzVolume) (*diskv1alpha2.AzVolumeStatusParams, error) {
-	if azVolume.Status.Detail != nil && azVolume.Status.Detail.ResponseObject != nil {
-		return azVolume.Status.Detail.ResponseObject, nil
+func (r *ReconcileAzVolume) createVolume(ctx context.Context, azVolume *diskv1alpha2.AzVolume) (*diskv1alpha2.AzVolumeStatusDetail, error) {
+	if azVolume.Status.Detail != nil {
+		return azVolume.Status.Detail, nil
 	}
 	// use deep-copied version of the azVolume CRI to prevent any unwanted update to the object
 	copied := azVolume.DeepCopy()
-	return r.volumeProvisioner.CreateVolume(ctx, copied.Spec.UnderlyingVolume, copied.Spec.CapacityRange, copied.Spec.VolumeCapability, copied.Spec.Parameters, copied.Spec.Secrets, copied.Spec.ContentVolumeSource, copied.Spec.AccessibilityRequirements)
+	return r.volumeProvisioner.CreateVolume(ctx, copied.Spec.VolumeName, copied.Spec.CapacityRange, copied.Spec.VolumeCapability, copied.Spec.Parameters, copied.Spec.Secrets, copied.Spec.ContentVolumeSource, copied.Spec.AccessibilityRequirements)
 }
 
 func (r *ReconcileAzVolume) deleteVolume(ctx context.Context, azVolume *diskv1alpha2.AzVolume) error {
-	if azVolume.Status.Detail == nil || azVolume.Status.Detail.ResponseObject == nil {
+	if azVolume.Status.Detail == nil {
 		klog.Infof("skipping deleteVolume operation for AzVolume (%s): No volume to delete for AzVolume (%s)", azVolume.Name, azVolume.Name)
 		return nil
 	}
 	// use deep-copied version of the azVolume CRI to prevent any unwanted update to the object
 	copied := azVolume.DeepCopy()
-	err := r.volumeProvisioner.DeleteVolume(ctx, copied.Status.Detail.ResponseObject.VolumeID, copied.Spec.Secrets)
-	return err
+	return r.volumeProvisioner.DeleteVolume(ctx, copied.Status.Detail.VolumeID, copied.Spec.Secrets)
 }
 
 func (r *ReconcileAzVolume) recreateAzVolumes(ctx context.Context) error {
@@ -654,7 +645,7 @@ func createAzVolumeFromPv(ctx context.Context, pv v1.PersistentVolume, azVolumeC
 			Spec: diskv1alpha2.AzVolumeSpec{
 				MaxMountReplicaCount: maxMountReplicaCount,
 				Parameters:           volumeParams,
-				UnderlyingVolume:     diskName,
+				VolumeName:           diskName,
 				CapacityRange: &diskv1alpha2.CapacityRange{
 					RequiredBytes: requiredBytes,
 				},
@@ -663,12 +654,10 @@ func createAzVolumeFromPv(ctx context.Context, pv v1.PersistentVolume, azVolumeC
 			Status: diskv1alpha2.AzVolumeStatus{
 				PersistentVolume: pv.Name,
 				Detail: &diskv1alpha2.AzVolumeStatusDetail{
-					Phase: azureutils.GetAzVolumePhase(pv.Status.Phase),
-					ResponseObject: &diskv1alpha2.AzVolumeStatusParams{
-						VolumeID: pv.Spec.CSI.VolumeHandle,
-					},
+					VolumeID: pv.Spec.CSI.VolumeHandle,
 				},
 				State: diskv1alpha2.VolumeCreated,
+				Phase: azureutils.GetAzVolumePhase(pv.Status.Phase),
 			},
 		}
 		if _, err := azVolumeClient.DiskV1alpha2().AzVolumes(namespace).Create(ctx, &azvolume, metav1.CreateOptions{}); err != nil {

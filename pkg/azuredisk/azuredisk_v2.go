@@ -421,7 +421,7 @@ func (d *DriverV2) RunAzDriverNodeHeartbeatLoop(ctx context.Context) {
 
 		// Send heartbeat
 		azDriverNodeToUpdate := cachedAzDriverNode.DeepCopy()
-		timestamp := time.Now().UnixNano()
+		timestamp := metav1.Now()
 		readyForAllocation := true
 		statusMessage := "Driver node healthy."
 		klog.V(2).Infof("Updating status for (%v)", azDriverNodeToUpdate)

@@ -110,7 +110,7 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV) Run(client cl
 	if len(failedReplicaAttachments.Items) > 0 {
 		e2elog.Logf("found %d azvolumeattachments failed:", len(failedReplicaAttachments.Items))
 		for _, podAttachments := range failedReplicaAttachments.Items {
-			e2elog.Logf("azvolumeattachment: %s, err: %s", podAttachments.Name, podAttachments.Status.Error.ErrorMessage)
+			e2elog.Logf("azvolumeattachment: %s, err: %s", podAttachments.Name, podAttachments.Status.Error.Message)
 		}
 		ginkgo.Fail("failed due to replicas failing to attach")
 	} else if !allReplicasAttached {

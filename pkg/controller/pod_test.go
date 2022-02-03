@@ -66,9 +66,7 @@ func TestPodReconcile(t *testing.T) {
 
 				newVolume := testAzVolume0.DeepCopy()
 				newVolume.Status.Detail = &diskv1alpha2.AzVolumeStatusDetail{
-					ResponseObject: &diskv1alpha2.AzVolumeStatusParams{
-						VolumeID: testManagedDiskURI0,
-					},
+					VolumeID: testManagedDiskURI0,
 				}
 
 				newPod := testPod0.DeepCopy()
@@ -114,16 +112,12 @@ func TestPodReconcile(t *testing.T) {
 
 				newVolume0 := testAzVolume0.DeepCopy()
 				newVolume0.Status.Detail = &diskv1alpha2.AzVolumeStatusDetail{
-					ResponseObject: &diskv1alpha2.AzVolumeStatusParams{
-						VolumeID: testManagedDiskURI0,
-					},
+					VolumeID: testManagedDiskURI0,
 				}
 
 				newVolume1 := testAzVolume1.DeepCopy()
 				newVolume1.Status.Detail = &diskv1alpha2.AzVolumeStatusDetail{
-					ResponseObject: &diskv1alpha2.AzVolumeStatusParams{
-						VolumeID: testManagedDiskURI1,
-					},
+					VolumeID: testManagedDiskURI1,
 				}
 
 				newPod := testPod1.DeepCopy()
@@ -175,16 +169,12 @@ func TestPodReconcile(t *testing.T) {
 
 				newVolume0 := testAzVolume0.DeepCopy()
 				newVolume0.Status.Detail = &diskv1alpha2.AzVolumeStatusDetail{
-					ResponseObject: &diskv1alpha2.AzVolumeStatusParams{
-						VolumeID: testManagedDiskURI0,
-					},
+					VolumeID: testManagedDiskURI0,
 				}
 
 				newVolume1 := testAzVolume1.DeepCopy()
 				newVolume1.Status.Detail = &diskv1alpha2.AzVolumeStatusDetail{
-					ResponseObject: &diskv1alpha2.AzVolumeStatusParams{
-						VolumeID: testManagedDiskURI1,
-					},
+					VolumeID: testManagedDiskURI1,
 				}
 
 				newPod0 := testPod0.DeepCopy()
@@ -265,16 +255,12 @@ func TestPodRecover(t *testing.T) {
 
 				newVolume0 := testAzVolume0.DeepCopy()
 				newVolume0.Status.Detail = &diskv1alpha2.AzVolumeStatusDetail{
-					ResponseObject: &diskv1alpha2.AzVolumeStatusParams{
-						VolumeID: testManagedDiskURI0,
-					},
+					VolumeID: testManagedDiskURI0,
 				}
 
 				newVolume1 := testAzVolume1.DeepCopy()
 				newVolume1.Status.Detail = &diskv1alpha2.AzVolumeStatusDetail{
-					ResponseObject: &diskv1alpha2.AzVolumeStatusParams{
-						VolumeID: testManagedDiskURI1,
-					},
+					VolumeID: testManagedDiskURI1,
 				}
 
 				controller := NewTestPodController(

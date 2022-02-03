@@ -68,19 +68,19 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 		if objectDeletionRequested(azVolumeAttachment) {
 			if volumeDetachRequested(azVolumeAttachment) {
 				// If primary attachment is marked for deletion, queue garbage collection for replica attachments
-				r.triggerGarbageCollection(azVolumeAttachment.Spec.UnderlyingVolume) //nolint:contextcheck // Garbage collection is asynchronous; context is not inherited by design
+				r.triggerGarbageCollection(azVolumeAttachment.Spec.VolumeName) //nolint:contextcheck // Garbage collection is asynchronous; context is not inherited by design
 			}
 		} else {
 			// If not, cancel scheduled garbage collection if there is one enqueued
-			r.removeGarbageCollection(azVolumeAttachment.Spec.UnderlyingVolume)
+			r.removeGarbageCollection(azVolumeAttachment.Spec.VolumeName)
 
 			// If promotion event, create a replacement replica
 			if isAttached(azVolumeAttachment) && azVolumeAttachment.Status.Detail.PreviousRole == diskv1alpha2.ReplicaRole {
 				r.controllerSharedState.addToOperationQueue(
-					azVolumeAttachment.Spec.UnderlyingVolume,
+					azVolumeAttachment.Spec.VolumeName,
 					replica,
 					func() error {
-						return r.controllerSharedState.manageReplicas(context.Background(), azVolumeAttachment.Spec.UnderlyingVolume, r)
+						return r.controllerSharedState.manageReplicas(context.Background(), azVolumeAttachment.Spec.VolumeName, r)
 					},
 					false,
 				)
@@ -114,10 +114,10 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 
 					// add replica management operation to the queue
 					r.controllerSharedState.addToOperationQueue(
-						azVolumeAttachment.Spec.UnderlyingVolume,
+						azVolumeAttachment.Spec.VolumeName,
 						replica,
 						func() error {
-							return r.controllerSharedState.manageReplicas(context.Background(), azVolumeAttachment.Spec.UnderlyingVolume, r)
+							return r.controllerSharedState.manageReplicas(context.Background(), azVolumeAttachment.Spec.VolumeName, r)
 						},
 						false,
 					)
