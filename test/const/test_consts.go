@@ -59,9 +59,9 @@ const (
 	VolumeSnapshotClassKind = "VolumeSnapshotClass"
 	VolumeSnapshotKind      = "VolumeSnapshot"
 	VolumePVCKind           = "PersistentVolumeClaim"
-	APIVersionv1beta1       = "v1beta1"
+	APIVersionv1            = "v1"
 	SnapshotAPIGroup        = "snapshot.storage.k8s.io"
-	SnapshotAPIVersion      = SnapshotAPIGroup + "/" + APIVersionv1beta1
+	SnapshotAPIVersion      = SnapshotAPIGroup + "/" + APIVersionv1
 
 	KubeconfigEnvVar = "KUBECONFIG"
 	ReportDirEnvVar  = "ARTIFACTS"

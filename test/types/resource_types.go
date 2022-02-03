@@ -23,8 +23,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kubernetes-csi/external-snapshotter/v2/pkg/apis/volumesnapshot/v1beta1"
-	snapshotclientset "github.com/kubernetes-csi/external-snapshotter/v2/pkg/client/clientset/versioned"
+	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1"
+	snapshotclientset "github.com/kubernetes-csi/external-snapshotter/client/v4/clientset/versioned"
 	"github.com/onsi/ginkgo"
 	"github.com/onsi/gomega"
 
@@ -88,11 +88,11 @@ func (t *TestStorageClass) Cleanup() {
 
 type TestVolumeSnapshotClass struct {
 	Client              restclientset.Interface
-	VolumeSnapshotClass *v1beta1.VolumeSnapshotClass
+	VolumeSnapshotClass *snapshotv1.VolumeSnapshotClass
 	Namespace           *v1.Namespace
 }
 
-func NewTestVolumeSnapshotClass(c restclientset.Interface, ns *v1.Namespace, vsc *v1beta1.VolumeSnapshotClass) *TestVolumeSnapshotClass {
+func NewTestVolumeSnapshotClass(c restclientset.Interface, ns *v1.Namespace, vsc *snapshotv1.VolumeSnapshotClass) *TestVolumeSnapshotClass {
 	return &TestVolumeSnapshotClass{
 		Client:              c,
 		VolumeSnapshotClass: vsc,
@@ -103,13 +103,13 @@ func NewTestVolumeSnapshotClass(c restclientset.Interface, ns *v1.Namespace, vsc
 func (t *TestVolumeSnapshotClass) Create() {
 	ginkgo.By("creating a VolumeSnapshotClass")
 	var err error
-	t.VolumeSnapshotClass, err = snapshotclientset.New(t.Client).SnapshotV1beta1().VolumeSnapshotClasses().Create(context.TODO(), t.VolumeSnapshotClass, metav1.CreateOptions{})
+	t.VolumeSnapshotClass, err = snapshotclientset.New(t.Client).SnapshotV1().VolumeSnapshotClasses().Create(context.TODO(), t.VolumeSnapshotClass, metav1.CreateOptions{})
 	framework.ExpectNoError(err)
 }
 
-func (t *TestVolumeSnapshotClass) CreateSnapshot(pvc *v1.PersistentVolumeClaim) *v1beta1.VolumeSnapshot {
+func (t *TestVolumeSnapshotClass) CreateSnapshot(pvc *v1.PersistentVolumeClaim) *snapshotv1.VolumeSnapshot {
 	ginkgo.By("creating a VolumeSnapshot for " + pvc.Name)
-	snapshot := &v1beta1.VolumeSnapshot{
+	snapshot := &snapshotv1.VolumeSnapshot{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       testconsts.VolumeSnapshotKind,
 			APIVersion: testconsts.SnapshotAPIVersion,
@@ -118,22 +118,22 @@ func (t *TestVolumeSnapshotClass) CreateSnapshot(pvc *v1.PersistentVolumeClaim) 
 			GenerateName: "volume-snapshot-",
 			Namespace:    t.Namespace.Name,
 		},
-		Spec: v1beta1.VolumeSnapshotSpec{
+		Spec: snapshotv1.VolumeSnapshotSpec{
 			VolumeSnapshotClassName: &t.VolumeSnapshotClass.Name,
-			Source: v1beta1.VolumeSnapshotSource{
+			Source: snapshotv1.VolumeSnapshotSource{
 				PersistentVolumeClaimName: &pvc.Name,
 			},
 		},
 	}
-	snapshot, err := snapshotclientset.New(t.Client).SnapshotV1beta1().VolumeSnapshots(t.Namespace.Name).Create(context.TODO(), snapshot, metav1.CreateOptions{})
+	snapshot, err := snapshotclientset.New(t.Client).SnapshotV1().VolumeSnapshots(t.Namespace.Name).Create(context.TODO(), snapshot, metav1.CreateOptions{})
 	framework.ExpectNoError(err)
 	return snapshot
 }
 
-func (t *TestVolumeSnapshotClass) ReadyToUse(snapshot *v1beta1.VolumeSnapshot) {
+func (t *TestVolumeSnapshotClass) ReadyToUse(snapshot *snapshotv1.VolumeSnapshot) {
 	ginkgo.By("waiting for VolumeSnapshot to be ready to use - " + snapshot.Name)
 	err := wait.Poll(15*time.Second, 5*time.Minute, func() (bool, error) {
-		vs, err := snapshotclientset.New(t.Client).SnapshotV1beta1().VolumeSnapshots(t.Namespace.Name).Get(context.TODO(), snapshot.Name, metav1.GetOptions{})
+		vs, err := snapshotclientset.New(t.Client).SnapshotV1().VolumeSnapshots(t.Namespace.Name).Get(context.TODO(), snapshot.Name, metav1.GetOptions{})
 		if err != nil {
 			return false, fmt.Errorf("did not see ReadyToUse: %v", err)
 		}
@@ -142,9 +142,9 @@ func (t *TestVolumeSnapshotClass) ReadyToUse(snapshot *v1beta1.VolumeSnapshot) {
 	framework.ExpectNoError(err)
 }
 
-func (t *TestVolumeSnapshotClass) DeleteSnapshot(vs *v1beta1.VolumeSnapshot) {
+func (t *TestVolumeSnapshotClass) DeleteSnapshot(vs *snapshotv1.VolumeSnapshot) {
 	ginkgo.By("deleting a VolumeSnapshot " + vs.Name)
-	err := snapshotclientset.New(t.Client).SnapshotV1beta1().VolumeSnapshots(t.Namespace.Name).Delete(context.TODO(), vs.Name, metav1.DeleteOptions{})
+	err := snapshotclientset.New(t.Client).SnapshotV1().VolumeSnapshots(t.Namespace.Name).Delete(context.TODO(), vs.Name, metav1.DeleteOptions{})
 	framework.ExpectNoError(err)
 }
 
@@ -152,7 +152,7 @@ func (t *TestVolumeSnapshotClass) Cleanup() {
 	// skip deleting volume snapshot storage class otherwise snapshot e2e test will fail, details:
 	// https://github.com/kubernetes-sigs/azuredisk-csi-driver/pull/260#issuecomment-583296932
 	e2elog.Logf("skip deleting VolumeSnapshotClass %s", t.VolumeSnapshotClass.Name)
-	//err := snapshotclientset.New(t.Client).SnapshotV1beta1().VolumeSnapshotClasses().Delete(t.VolumeSnapshotClass.Name, nil)
+	//err := snapshotclientset.New(t.Client).SnapshotV1().VolumeSnapshotClasses().Delete(t.VolumeSnapshotClass.Name, nil)
 	//framework.ExpectNoError(err)
 }
 
@@ -396,10 +396,9 @@ type TestDeployment struct {
 	PodNames   []string
 }
 
-func NewTestDeployment(c clientset.Interface, ns *v1.Namespace, command string, volumeMounts []v1.VolumeMount, volumes []v1.Volume, podReplicas int, isWindows bool, useCMD bool, schedulerName string) *TestDeployment {
+func NewTestDeployment(c clientset.Interface, ns *v1.Namespace, command string, volumeMounts []v1.VolumeMount, volumeDevices []v1.VolumeDevice, volumes []v1.Volume, replicaCount int32, isWindows, useCMD, useAntiAffinity bool, schedulerName string) *TestDeployment {
 	generateName := "azuredisk-volume-tester-"
 	selectorValue := fmt.Sprintf("%s%d", generateName, rand.Int())
-	replicas := int32(podReplicas)
 
 	testDeployment := &TestDeployment{
 		Client:    c,
@@ -409,7 +408,7 @@ func NewTestDeployment(c clientset.Interface, ns *v1.Namespace, command string, 
 				GenerateName: generateName,
 			},
 			Spec: apps.DeploymentSpec{
-				Replicas: &replicas,
+				Replicas: &replicaCount,
 				Selector: &metav1.LabelSelector{
 					MatchLabels: map[string]string{"app": selectorValue},
 				},
@@ -422,11 +421,12 @@ func NewTestDeployment(c clientset.Interface, ns *v1.Namespace, command string, 
 						NodeSelector:  map[string]string{"kubernetes.io/os": "linux"},
 						Containers: []v1.Container{
 							{
-								Name:         "volume-tester",
-								Image:        imageutils.GetE2EImage(imageutils.BusyBox),
-								Command:      []string{"/bin/sh"},
-								Args:         []string{"-c", command},
-								VolumeMounts: volumeMounts,
+								Name:          "volume-tester",
+								Image:         imageutils.GetE2EImage(imageutils.BusyBox),
+								Command:       []string{"/bin/sh"},
+								Args:          []string{"-c", command},
+								VolumeMounts:  volumeMounts,
+								VolumeDevices: volumeDevices,
 							},
 						},
 						RestartPolicy: v1.RestartPolicyAlways,
@@ -435,6 +435,22 @@ func NewTestDeployment(c clientset.Interface, ns *v1.Namespace, command string, 
 				},
 			},
 		},
+	}
+
+	if useAntiAffinity {
+		affinity := &v1.Affinity{
+			PodAntiAffinity: &v1.PodAntiAffinity{
+				RequiredDuringSchedulingIgnoredDuringExecution: []v1.PodAffinityTerm{
+					{
+						LabelSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{"app": selectorValue},
+						},
+						TopologyKey: testconsts.TopologyKey,
+					},
+				},
+			},
+		}
+		testDeployment.Deployment.Spec.Template.Spec.Affinity = affinity
 	}
 
 	if isWindows {

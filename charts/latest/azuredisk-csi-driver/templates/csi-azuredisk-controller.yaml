@@ -39,7 +39,7 @@ spec:
 {{- end }}
       {{- include "azuredisk.pullSecrets" . | indent 6 }}
       containers:
-        - name: csi-provisioner-disk
+        - name: csi-provisioner
 {{- if hasPrefix "/" .Values.image.csiProvisioner.repository }}
           image: "{{ .Values.image.baseRepo }}{{ .Values.image.csiProvisioner.repository }}:{{ .Values.image.csiProvisioner.tag }}"
 {{- else }}
@@ -81,18 +81,10 @@ spec:
             name: socket-dir
           resources: {{- toYaml .Values.controller.resources.csiAttacher | nindent 12 }}
         - name: csi-snapshotter
-{{- if eq .Values.snapshot.apiVersion "beta" }}
-  {{- if hasPrefix "/" .Values.snapshot.image.csiSnapshotter.repository }}
+{{- if hasPrefix "/" .Values.snapshot.image.csiSnapshotter.repository }}
           image: "{{ .Values.image.baseRepo }}{{ .Values.snapshot.image.csiSnapshotter.repository }}:{{ .Values.snapshot.image.csiSnapshotter.tag }}"
-  {{- else }}
-          image: "{{ .Values.snapshot.image.csiSnapshotter.repository }}:{{ .Values.snapshot.image.csiSnapshotter.tag }}"
-  {{- end }}
 {{- else }}
-  {{- if hasPrefix "/" .Values.snapshot.image.csiSnapshotter.repository }}
-          image: "{{ .Values.image.baseRepo }}{{ .Values.snapshot.image.csiSnapshotter.repository }}:{{ .Values.snapshot.image.csiSnapshotter.gaTag }}"
-  {{- else }}
-          image: "{{ .Values.snapshot.image.csiSnapshotter.repository }}:{{ .Values.snapshot.image.csiSnapshotter.gaTag }}"
-  {{- end }}
+          image: "{{ .Values.snapshot.image.csiSnapshotter.repository }}:{{ .Values.snapshot.image.csiSnapshotter.tag }}"
 {{- end }}
           args:
             - "-csi-address=$(ADDRESS)"

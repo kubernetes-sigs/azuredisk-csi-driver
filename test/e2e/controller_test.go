@@ -189,6 +189,7 @@ var _ = ginkgo.Describe("Controller", func() {
 			var replica *v1alpha1.AzVolumeAttachment
 			for _, attachment := range attachments.Items {
 				if attachment.Status.Detail != nil && attachment.Status.Detail.Role == v1alpha1.ReplicaRole {
+					attachment := attachment
 					replica = &attachment
 					break
 				}
@@ -227,6 +228,7 @@ var _ = ginkgo.Describe("Controller", func() {
 			var replica *v1alpha1.AzVolumeAttachment
 			for _, attachment := range attachments.Items {
 				if attachment.Status.Detail != nil && attachment.Status.Detail.Role == v1alpha1.ReplicaRole {
+					attachment := attachment
 					replica = &attachment
 					break
 				}
@@ -353,6 +355,7 @@ var _ = ginkgo.Describe("Controller", func() {
 			var replica *v1alpha1.AzVolumeAttachment
 			for _, attachment := range attachments.Items {
 				if attachment.Status.Detail != nil && attachment.Status.Detail.Role == v1alpha1.ReplicaRole {
+					attachment := attachment
 					replica = &attachment
 					break
 				}

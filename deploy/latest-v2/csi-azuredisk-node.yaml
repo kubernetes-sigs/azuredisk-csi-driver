@@ -39,7 +39,7 @@ spec:
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
-          image: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe:v2.4.0
+          image: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe:v2.5.0
           args:
             - --csi-address=/csi/csi.sock
             - --probe-timeout=3s
@@ -47,21 +47,16 @@ spec:
             - --v=2
           resources:
             limits:
-              cpu: 100m
               memory: 100Mi
             requests:
               cpu: 10m
               memory: 20Mi
         - name: node-driver-registrar
-          image: mcr.microsoft.com/oss/kubernetes-csi/csi-node-driver-registrar:v2.3.0
+          image: mcr.microsoft.com/oss/kubernetes-csi/csi-node-driver-registrar:v2.4.0
           args:
             - --csi-address=$(ADDRESS)
             - --kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)
             - --v=2
-          lifecycle:
-            preStop:
-              exec:
-                command: ["/bin/sh", "-c", "rm -rf /registration/disk.csi.azure.com-reg.sock /csi/csi.sock"]
           livenessProbe:
             exec:
               command:
@@ -82,7 +77,6 @@ spec:
               mountPath: /registration
           resources:
             limits:
-              cpu: 200m
               memory: 100Mi
             requests:
               cpu: 10m
@@ -96,6 +90,7 @@ spec:
             - "--nodeid=$(KUBE_NODE_NAME)"
             - "--metrics-address=0.0.0.0:29605"
             - "--enable-perf-optimization=true"
+            - "--allow-empty-cloud-config=true"
             - "--is-node-plugin=true"
           ports:
             - containerPort: 29603
@@ -141,7 +136,6 @@ spec:
               name: scsi-host-dir
           resources:
             limits:
-              cpu: 200m
               memory: 200Mi
             requests:
               cpu: 10m

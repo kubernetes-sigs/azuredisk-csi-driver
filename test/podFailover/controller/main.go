@@ -43,8 +43,9 @@ import (
 )
 
 const (
-	podFailoverNamespace = "pod-failover-ns"
-	scheduleExtenderName = "csi-azuredisk-scheduler-extender"
+	podFailoverNamespace         = "pod-failover-ns"
+	scheduleExtenderName         = "csi-azuredisk-scheduler-extender"
+	metricsServiceAuthSecretName = "podfailover-authcerts"
 )
 
 var (
@@ -55,7 +56,9 @@ var (
 	podCount            = flag.Int("pod-count", 1, "The number of pods that should be created for a deployment")
 	pvcPerPod           = flag.Int("pvc-per-pod", 3, "Number of pvcs that should be created per pod")
 	metricsEndpoint     = flag.String("metrics-endpoint", "", "Target where prometheus metrics shouls be published")
+	authEnabled         = flag.Bool("auth-enabled", false, "Specify whether request to metrics endpoint requires authentication or not")
 	delayBeforeFailover = flag.Int("delay-before-failover", 0, "Time in seconds for which the controller should wait before failing the pod")
+	testName            = flag.String("test-name", "default-test-run", "The name of the test to be used as metrics label to distinguish metrics sent from multiple test runs")
 )
 
 func main() {
@@ -73,12 +76,14 @@ func main() {
 	clientset, _ := kubernetes.NewForConfig(config)
 
 	ctx := context.Background()
-	if err := createTestNamespace(ctx, clientset); err != nil {
+	deleteNamespace, err := createTestNamespace(ctx, clientset)
+	if err != nil {
 		klog.Errorf("Error occurred while creating namespace %s, err: %v", podFailoverNamespace, err)
 		return
 	}
-	defer deleteTestNamespace(ctx, clientset)
-
+	if deleteNamespace {
+		defer deleteTestNamespace(ctx, clientset)
+	}
 	scName, err := createStorageClass(ctx, clientset, *maxShares)
 	if err != nil {
 		klog.Errorf("Error occurred while creating storageClass: %v", err)
@@ -130,7 +135,7 @@ func main() {
 
 }
 
-func createTestNamespace(ctx context.Context, clientset *kubernetes.Clientset) error {
+func createTestNamespace(ctx context.Context, clientset *kubernetes.Clientset) (bool, error) {
 	ns := &v1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: podFailoverNamespace,
@@ -138,7 +143,10 @@ func createTestNamespace(ctx context.Context, clientset *kubernetes.Clientset) e
 	}
 	namespace, err := clientset.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
 	if err != nil {
-		return err
+		if errors.IsAlreadyExists(err) {
+			return false, nil
+		}
+		return false, err
 	}
 
 	if err := wait.PollImmediate(1*time.Second, 2*time.Minute, func() (bool, error) {
@@ -152,10 +160,10 @@ func createTestNamespace(ctx context.Context, clientset *kubernetes.Clientset) e
 		}
 		return false, nil
 	}); err != nil {
-		return err
+		return true, err
 	}
 
-	return nil
+	return true, nil
 }
 
 func deleteTestNamespace(ctx context.Context, clientset *kubernetes.Clientset) {
@@ -210,7 +218,7 @@ func createPVC(ctx context.Context, clientset *kubernetes.Clientset, scName *str
 		},
 	}
 
-	pvcCreated, err := clientset.CoreV1().PersistentVolumeClaims(podFailoverNamespace).Create(context.TODO(), pvc, metav1.CreateOptions{})
+	pvcCreated, err := clientset.CoreV1().PersistentVolumeClaims(podFailoverNamespace).Create(ctx, pvc, metav1.CreateOptions{})
 	return pvcCreated.Name, err
 }
 
@@ -272,7 +280,7 @@ func createDeployment(ctx context.Context, clientset *kubernetes.Clientset, pvcL
 									},
 								},
 							},
-							Args: []string{"--mount-path=" + mountPath, "--metrics-endpoint=" + *metricsEndpoint},
+							Args: []string{"--mount-path=" + mountPath, "--metrics-endpoint=" + *metricsEndpoint, "--test-name=" + *testName, "--auth-enabled=" + strconv.FormatBool(*authEnabled)},
 						},
 					},
 					RestartPolicy: v1.RestartPolicyAlways,
@@ -281,12 +289,50 @@ func createDeployment(ctx context.Context, clientset *kubernetes.Clientset, pvcL
 			},
 		}}
 
+	if *authEnabled {
+		deployment.Spec.Template.Spec.Containers[0].Env = []v1.EnvVar{
+			{
+				Name: "CA_CERT",
+				ValueFrom: &v1.EnvVarSource{
+					SecretKeyRef: &v1.SecretKeySelector{
+						LocalObjectReference: v1.LocalObjectReference{
+							Name: metricsServiceAuthSecretName,
+						},
+						Key: "ca.crt",
+					},
+				},
+			},
+			{
+				Name: "CLIENT_CERT",
+				ValueFrom: &v1.EnvVarSource{
+					SecretKeyRef: &v1.SecretKeySelector{
+						LocalObjectReference: v1.LocalObjectReference{
+							Name: metricsServiceAuthSecretName,
+						},
+						Key: "client.crt",
+					},
+				},
+			},
+			{
+				Name: "CLIENT_KEY",
+				ValueFrom: &v1.EnvVarSource{
+					SecretKeyRef: &v1.SecretKeySelector{
+						LocalObjectReference: v1.LocalObjectReference{
+							Name: metricsServiceAuthSecretName,
+						},
+						Key: "client.key",
+					},
+				},
+			},
+		}
+	}
+
 	if *driverVersion == "v2" {
 		deployment.Spec.Template.Spec.SchedulerName = scheduleExtenderName
 	}
 
 	klog.Infof("Creating deployment %s.", deploymentName)
-	deploymentCreated, err := clientset.AppsV1().Deployments(podFailoverNamespace).Create(context.TODO(), deployment, metav1.CreateOptions{})
+	deploymentCreated, err := clientset.AppsV1().Deployments(podFailoverNamespace).Create(ctx, deployment, metav1.CreateOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -296,7 +342,7 @@ func createDeployment(ctx context.Context, clientset *kubernetes.Clientset, pvcL
 		return nil, err
 	}
 
-	newPodList, err := getPodsForDeployment(clientset, deploymentCreated)
+	newPodList, err := getPodsForDeployment(ctx, clientset, deploymentCreated)
 	if err != nil {
 		klog.Warningf("Error occurred while getting pods for the deployment %s: %v", deploymentName, err)
 	} else {
@@ -309,13 +355,13 @@ func createDeployment(ctx context.Context, clientset *kubernetes.Clientset, pvcL
 }
 
 func deletePod(ctx context.Context, namespace, podName string, clientset *kubernetes.Clientset) error {
-	err := clientset.CoreV1().Pods(namespace).Delete(context.TODO(), podName, metav1.DeleteOptions{})
+	err := clientset.CoreV1().Pods(namespace).Delete(ctx, podName, metav1.DeleteOptions{})
 	if err != nil {
 		return err
 	}
 
 	return wait.PollImmediate(1*time.Second, 10*time.Minute, func() (done bool, err error) {
-		_, err = clientset.CoreV1().Pods(podFailoverNamespace).Get(context.TODO(), podName, metav1.GetOptions{})
+		_, err = clientset.CoreV1().Pods(podFailoverNamespace).Get(ctx, podName, metav1.GetOptions{})
 		if err != nil {
 			if errors.IsNotFound(err) {
 				return true, nil
@@ -348,17 +394,17 @@ func RunWorkloadPods(ctx context.Context, clientset *kubernetes.Clientset, deplo
 		case <-time.After(time.Duration(*delayBeforeFailover) * time.Second):
 			n := rand.Intn(len(deployments))
 			selectedDeployment := deployments[n]
-			podList, err := getPodsForDeployment(clientset, selectedDeployment)
+			podList, err := getPodsForDeployment(ctx, clientset, selectedDeployment)
 			if err != nil {
 				klog.Errorf("Error occurred while getting pods for the deployment  %s: %v", selectedDeployment.Name, err)
 			}
 
 			for _, pod := range podList.Items {
 				nodeName := pod.Spec.NodeName
-				makeNodeUnschedulable(nodeName, true, clientset)
+				makeNodeUnschedulable(ctx, nodeName, true, clientset)
 
 				klog.Infof("Deleting pod %s of deployment %s from node %s.", pod.Name, selectedDeployment.Name, nodeName)
-				err = deletePod(context.TODO(), podFailoverNamespace, pod.Name, clientset)
+				err = deletePod(ctx, podFailoverNamespace, pod.Name, clientset)
 				if err != nil {
 					klog.Errorf("Error occurred while deleting the pod %s: %v", pod.Name, err)
 				}
@@ -372,7 +418,7 @@ func RunWorkloadPods(ctx context.Context, clientset *kubernetes.Clientset, deplo
 				}
 
 				klog.Infof("Deployment %s ready.", selectedDeployment.Name)
-				newPodList, err := getPodsForDeployment(clientset, selectedDeployment)
+				newPodList, err := getPodsForDeployment(ctx, clientset, selectedDeployment)
 				if err != nil {
 					klog.Errorf("Error occurred while getting pods for the deployment %s: %v", selectedDeployment.Name, err)
 				} else if len(newPodList.Items) <= 0 {
@@ -393,16 +439,16 @@ func RunWorkloadPods(ctx context.Context, clientset *kubernetes.Clientset, deplo
 					}
 				}
 
-				makeNodeUnschedulable(nodeName, false, clientset)
+				makeNodeUnschedulable(ctx, nodeName, false, clientset)
 			}
 		}
 	}
 }
 
-func makeNodeUnschedulable(nodeName string, unschedulable bool, clientset *kubernetes.Clientset) {
+func makeNodeUnschedulable(ctx context.Context, nodeName string, unschedulable bool, clientset *kubernetes.Clientset) {
 	backoff := wait.Backoff{Duration: 1 * time.Second, Factor: 2.0, Steps: 5}
 	err := retry.RetryOnConflict(backoff, func() error {
-		node, err := clientset.CoreV1().Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
+		node, err := clientset.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
 		if err != nil {
 			return err
 		}
@@ -411,7 +457,7 @@ func makeNodeUnschedulable(nodeName string, unschedulable bool, clientset *kuber
 		nodeTobeCordoned.Spec.Unschedulable = unschedulable
 
 		// Cordon off the node
-		_, err = clientset.CoreV1().Nodes().Update(context.TODO(), nodeTobeCordoned, metav1.UpdateOptions{})
+		_, err = clientset.CoreV1().Nodes().Update(ctx, nodeTobeCordoned, metav1.UpdateOptions{})
 		if err != nil {
 			return err
 		}
@@ -432,7 +478,7 @@ func getNewReplicaSet(deployment *apps.Deployment, c *kubernetes.Clientset) (*ap
 	return deploymentutil.FindNewReplicaSet(deployment, rsList), nil
 }
 
-func getPodsForDeployment(client *kubernetes.Clientset, deployment *apps.Deployment) (*v1.PodList, error) {
+func getPodsForDeployment(ctx context.Context, client *kubernetes.Clientset, deployment *apps.Deployment) (*v1.PodList, error) {
 	replicaSet, err := getNewReplicaSet(deployment, client)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to get new replica set for deployment %q: %v", deployment.Name, err)
@@ -441,7 +487,7 @@ func getPodsForDeployment(client *kubernetes.Clientset, deployment *apps.Deploym
 		return nil, fmt.Errorf("expected a new replica set for deployment %q, found none", deployment.Name)
 	}
 	podListFunc := func(namespace string, options metav1.ListOptions) (*v1.PodList, error) {
-		return client.CoreV1().Pods(namespace).List(context.TODO(), options)
+		return client.CoreV1().Pods(namespace).List(ctx, options)
 	}
 	rsList := []*apps.ReplicaSet{replicaSet}
 	podList, err := deploymentutil.ListPods(deployment, rsList, podListFunc)

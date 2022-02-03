@@ -33,28 +33,14 @@ spec:
       {{- include "azuredisk.pullSecrets" . | indent 6 }}
       containers:
         - name: {{ .Values.snapshot.snapshotController.name }}
-{{- if eq .Values.snapshot.apiVersion "beta" }}
-  {{- if hasPrefix "/" .Values.snapshot.image.csiSnapshotController.repository }}
+{{- if hasPrefix "/" .Values.snapshot.image.csiSnapshotController.repository }}
           image: "{{ .Values.image.baseRepo }}{{ .Values.snapshot.image.csiSnapshotController.repository }}:{{ .Values.snapshot.image.csiSnapshotController.tag }}"
-  {{- else }}
-          image: "{{ .Values.snapshot.image.csiSnapshotController.repository }}:{{ .Values.snapshot.image.csiSnapshotController.tag }}"
-  {{- end }}
 {{- else }}
-  {{- if hasPrefix "/" .Values.snapshot.image.csiSnapshotController.repository }}
-          image: "{{ .Values.image.baseRepo }}{{ .Values.snapshot.image.csiSnapshotController.repository }}:{{ .Values.snapshot.image.csiSnapshotController.gaTag }}"
-  {{- else }}
-          image: "{{ .Values.snapshot.image.csiSnapshotController.repository }}:{{ .Values.snapshot.image.csiSnapshotController.gaTag }}"
-  {{- end }}
+          image: "{{ .Values.snapshot.image.csiSnapshotController.repository }}:{{ .Values.snapshot.image.csiSnapshotController.tag }}"
 {{- end }}
           args:
             - "--v=2"
-            - "--leader-election=false"
-          resources:
-            limits:
-              cpu: 100m
-              memory: 100Mi
-            requests:
-              cpu: 10m
-              memory: 20Mi
+            - "--leader-election=true"
+          resources: {{- toYaml .Values.snapshot.snapshotController.resources | nindent 12 }}
           imagePullPolicy: {{ .Values.snapshot.image.csiSnapshotController.pullPolicy }}
 {{- end -}}

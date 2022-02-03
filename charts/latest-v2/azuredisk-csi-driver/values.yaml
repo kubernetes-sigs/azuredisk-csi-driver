@@ -6,27 +6,27 @@ image:
     pullPolicy: IfNotPresent
   csiProvisioner:
     repository: /oss/kubernetes-csi/csi-provisioner
-    tag: v2.2.2
+    tag: v3.1.0
     pullPolicy: IfNotPresent
   csiAttacher:
     repository: /oss/kubernetes-csi/csi-attacher
-    tag: v3.3.0
+    tag: v3.4.0
     pullPolicy: IfNotPresent
   csiResizer:
     repository: /oss/kubernetes-csi/csi-resizer
     tag: v1.3.0
     pullPolicy: IfNotPresent
   curl:
-    repository: docker.io/curlimages/curl
-    tag: latest
+    repository: /oss/kubernetes/kubectl
+    tag: v1.21.2
     pullPolicy: IfNotPresent
   livenessProbe:
     repository: /oss/kubernetes-csi/livenessprobe
-    tag: v2.4.0
+    tag: v2.5.0
     pullPolicy: IfNotPresent
   nodeDriverRegistrar:
     repository: /oss/kubernetes-csi/csi-node-driver-registrar
-    tag: v2.3.0
+    tag: v2.4.0
     pullPolicy: IfNotPresent
   schedulerExtender:
     repository: /oss/kubernetes-csi/azdiskschedulerextender-csi
@@ -52,6 +52,7 @@ controller:
   name: csi-azuredisk-controller
   cloudConfigSecretName: azure-cloud-provider
   cloudConfigSecretNamespace: kube-system
+  allowEmptyCloudConfig: false
   replicas: 2
   metrics:
     port: 29604
@@ -75,10 +76,48 @@ controller:
       effect: "NoSchedule"
   hostNetwork: true # this setting could be disabled if controller does not depend on MSI setting
   podLabels: {}
+  resources:
+    csiProvisioner:
+      limits:
+        memory: 500Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    csiAttacher:
+      limits:
+        memory: 500Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    csiResizer:
+      limits:
+        memory: 500Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    csiSnapshotter:
+      limits:
+        memory: 100Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    livenessProbe:
+      limits:
+        memory: 100Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    azuredisk:
+      limits:
+        memory: 500Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
 
 node:
   cloudConfigSecretName: azure-cloud-provider
   cloudConfigSecretNamespace: kube-system
+  allowEmptyCloudConfig: true
   maxUnavailable: 1
   metrics:
     port: 29605
@@ -106,27 +145,29 @@ schedulerExtender:
 
 snapshot:
   enabled: false
-  createCRDs: true
   name: csi-snapshot-controller
-  apiVersion: beta # available values: beta, ga
   image:
     csiSnapshotter:
       repository: /oss/kubernetes-csi/csi-snapshotter
-      tag: v3.0.3
-      gaTag: v4.2.1
+      tag: v5.0.1
       pullPolicy: IfNotPresent
     csiSnapshotController:
       repository: /oss/kubernetes-csi/snapshot-controller
-      tag: v3.0.3
-      gaTag: v4.2.1
+      tag: v5.0.1
       pullPolicy: IfNotPresent
   snapshotController:
     name: csi-snapshot-controller
-    replicas: 1
+    replicas: 2
     podLabels: {}
+    resources:
+      limits:
+        memory: 100Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
 
 feature:
-  enableFSGroupPolicy: false
+  enableFSGroupPolicy: true
 
 driver:
   name: disk.csi.azure.com
@@ -155,6 +196,25 @@ linux:
               operator: NotIn
               values:
                 - virtual-kubelet
+  resources:
+    livenessProbe:
+      limits:
+        memory: 100Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    nodeDriverRegistrar:
+      limits:
+        memory: 100Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    azuredisk:
+      limits:
+        memory: 200Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
 
 windows:
   enabled: true
@@ -173,6 +233,25 @@ windows:
               operator: NotIn
               values:
                 - virtual-kubelet
+  resources:
+    livenessProbe:
+      limits:
+        memory: 200Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    nodeDriverRegistrar:
+      limits:
+        memory: 200Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    azuredisk:
+      limits:
+        memory: 400Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
 
 cloud: AzurePublicCloud
 

@@ -27,13 +27,13 @@ spec:
           operator: "Exists"
           effect: "NoSchedule"
       containers:
-        - name: csi-provisioner-disk
-          image: mcr.microsoft.com/oss/kubernetes-csi/csi-provisioner:v2.2.2
+        - name: csi-provisioner
+          image: mcr.microsoft.com/oss/kubernetes-csi/csi-provisioner:v3.1.0
           args:
             - "--feature-gates=Topology=true"
             - "--csi-address=$(ADDRESS)"
             - "--v=2"
-            - "--timeout=30s"
+            - "--timeout=15s"
             - "--leader-election"
             - "--worker-threads=40"
             - "--extra-create-metadata=true"
@@ -46,13 +46,12 @@ spec:
               name: socket-dir
           resources:
             limits:
-              cpu: 200m
               memory: 500Mi
             requests:
               cpu: 10m
               memory: 20Mi
-        - name: csi-attacher-disk
-          image: mcr.microsoft.com/oss/kubernetes-csi/csi-attacher:v3.3.0
+        - name: csi-attacher
+          image: mcr.microsoft.com/oss/kubernetes-csi/csi-attacher:v3.4.0
           args:
             - "-v=2"
             - "-csi-address=$(ADDRESS)"
@@ -67,13 +66,12 @@ spec:
               name: socket-dir
           resources:
             limits:
-              cpu: 200m
               memory: 500Mi
             requests:
               cpu: 10m
               memory: 20Mi
-        - name: csi-snapshotter-disk
-          image: mcr.microsoft.com/oss/kubernetes-csi/csi-snapshotter:v3.0.3
+        - name: csi-snapshotter
+          image: mcr.microsoft.com/oss/kubernetes-csi/csi-snapshotter:v5.0.1
           args:
             - "-csi-address=$(ADDRESS)"
             - "-leader-election"
@@ -86,7 +84,6 @@ spec:
               mountPath: /csi
           resources:
             limits:
-              cpu: 200m
               memory: 100Mi
             requests:
               cpu: 10m
@@ -107,13 +104,12 @@ spec:
               mountPath: /csi
           resources:
             limits:
-              cpu: 200m
               memory: 500Mi
             requests:
               cpu: 10m
               memory: 20Mi
-        - name: liveness-probe-disk
-          image: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe:v2.4.0
+        - name: liveness-probe
+          image: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe:v2.5.0
           args:
             - --csi-address=/csi/csi.sock
             - --probe-timeout=3s
@@ -124,7 +120,6 @@ spec:
               mountPath: /csi
           resources:
             limits:
-              cpu: 100m
               memory: 100Mi
             requests:
               cpu: 10m
@@ -139,6 +134,7 @@ spec:
             - "--enable-perf-optimization=true"
             - "--user-agent-suffix=OSS-kubectl"
             - "--disable-avset-nodes=true"
+            - "--allow-empty-cloud-config=false"
             - "--is-controller-plugin=true"
           ports:
             - containerPort: 29602
@@ -171,7 +167,6 @@ spec:
               name: azure-cred
           resources:
             limits:
-              cpu: 300m
               memory: 500Mi
             requests:
               cpu: 10m

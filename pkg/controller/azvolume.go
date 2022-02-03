@@ -629,14 +629,14 @@ func createAzVolumeFromPv(ctx context.Context, pv v1.PersistentVolume, azVolumeC
 		maxMountReplicaCount := 0
 		if storageClassName == "" {
 			klog.Warningf("storage class for PV (%s) is not defined, trying to get maxMountReplicaCount from VolumeAttributes.", pv.Name)
-			_, maxMountReplicaCount = azureutils.GetMaxSharesAndMaxMountReplicaCount(pv.Spec.CSI.VolumeAttributes)
+			_, maxMountReplicaCount = azureutils.GetMaxSharesAndMaxMountReplicaCount(pv.Spec.CSI.VolumeAttributes, azureutils.IsMultiNodePersistentVolume(pv))
 
 		} else {
 			storageClass, err := kubeClient.StorageV1().StorageClasses().Get(ctx, pv.Spec.StorageClassName, metav1.GetOptions{})
 			if err != nil {
 				return fmt.Errorf("failed to get storage class (%s): %v", pv.Spec.StorageClassName, err)
 			}
-			_, maxMountReplicaCount = azureutils.GetMaxSharesAndMaxMountReplicaCount(storageClass.Parameters)
+			_, maxMountReplicaCount = azureutils.GetMaxSharesAndMaxMountReplicaCount(storageClass.Parameters, azureutils.IsMultiNodePersistentVolume(pv))
 		}
 
 		if pv.Spec.CSI.VolumeAttributes == nil {

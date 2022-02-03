@@ -34,7 +34,6 @@ import (
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
@@ -53,7 +52,7 @@ type PodToleration struct {
 }
 
 func (t *PodToleration) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
-	_, maxMountReplicaCount := azureutils.GetMaxSharesAndMaxMountReplicaCount(t.StorageClassParameters)
+	_, maxMountReplicaCount := azureutils.GetMaxSharesAndMaxMountReplicaCount(t.StorageClassParameters, false)
 
 	// Get the list of available nodes for scheduling the pod
 	nodes := nodeutil.ListNodeNames(client)
@@ -125,7 +124,7 @@ func (t *PodToleration) Run(client clientset.Interface, namespace *v1.Namespace,
 		func() (bool, error) {
 			for _, diskName := range diskNames {
 				labelSelector := labels.NewSelector()
-				volReq, err := controller.CreateLabelRequirements(consts.VolumeNameLabel, selection.Equals, diskName)
+				volReq, err := azureutils.CreateLabelRequirements(consts.VolumeNameLabel, selection.Equals, diskName)
 				framework.ExpectNoError(err)
 				labelSelector = labelSelector.Add(*volReq)
 

@@ -75,7 +75,7 @@ var _ = ginkgo.BeforeSuite(func() {
 
 		location = creds.Location
 
-		if location == "westus2" || location == "westeurope" {
+		if location == "westus2" || location == "westeurope" || location == "northeurope" || location == "francecentral" {
 			supportsZRS = true
 		}
 

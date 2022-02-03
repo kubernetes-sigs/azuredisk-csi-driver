@@ -24,7 +24,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
 	"github.com/Azure/go-autorest/autorest/date"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
@@ -78,7 +78,7 @@ var (
 		ID:   &testDiskURI,
 		DiskProperties: &compute.DiskProperties{
 			DiskSizeGB:        &testDiskSizeGiB,
-			DiskState:         compute.Unattached,
+			DiskState:         compute.DiskStateUnattached,
 			ProvisioningState: &provisioningStateSucceeded,
 			TimeCreated:       &testDiskTimeCreated,
 		},
@@ -96,11 +96,11 @@ var (
 		ID:   &clonedDiskURI,
 		DiskProperties: &compute.DiskProperties{
 			CreationData: &compute.CreationData{
-				CreateOption:     compute.Copy,
+				CreateOption:     compute.DiskCreateOptionCopy,
 				SourceResourceID: &testDiskURI,
 			},
 			DiskSizeGB:        &clonedDiskSizeGiB,
-			DiskState:         compute.Unattached,
+			DiskState:         compute.DiskStateUnattached,
 			ProvisioningState: &provisioningStateSucceeded,
 			TimeCreated:       &testDiskTimeCreated,
 		},
@@ -123,10 +123,10 @@ var (
 		DiskProperties: &compute.DiskProperties{},
 	}
 
-	testSnapshotName              = "test-snapshot"
-	testSnapshotURI               = fmt.Sprintf(computeSnapshotURIFormat, testSubscription, testResourceGroup, testSnapshotName)
-	testSnapshotSizeGiB     int32 = testDiskSizeGiB
-	testSnapshotTimeCreated       = date.Time{Time: time.Now()}
+	testSnapshotName        = "test-snapshot"
+	testSnapshotURI         = fmt.Sprintf(computeSnapshotURIFormat, testSubscription, testResourceGroup, testSnapshotName)
+	testSnapshotSizeGiB     = testDiskSizeGiB
+	testSnapshotTimeCreated = date.Time{Time: time.Now()}
 
 	testSnapshot = compute.Snapshot{
 		Name: &testSnapshotName,
@@ -292,7 +292,7 @@ func mockPeristentVolumesList(provisioner *CloudProvisioner, pvCount int32) {
 			ID:   &diskURI,
 			DiskProperties: &compute.DiskProperties{
 				DiskSizeGB:        &testDiskSizeGiB,
-				DiskState:         compute.Unattached,
+				DiskState:         compute.DiskStateUnattached,
 				ProvisioningState: &provisioningStateSucceeded,
 				TimeCreated:       &timeCreated,
 			},

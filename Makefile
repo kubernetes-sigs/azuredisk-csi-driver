@@ -111,14 +111,12 @@ integration-test:
 integration-test-v2: container-v2
 	go test -v -timeout=45m ./test/integration --test-driver-version=v2 --image-tag ${IMAGE_TAG}
 
-.PHONY: scale-test-v2
-scale-test-v2: 
-	BUILD_V2=1 go test -v -timeout=0 ${GOTAGS} ./test/e2e/scale ${GINKGO_FLAGS}
-
 .PHONY: e2e-bootstrap
 e2e-bootstrap: install-helm
 	docker pull $(IMAGE_TAG) || make container-all push-manifest
+ifeq ($(BUILD_V2), true)
 	docker pull $(AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG) || make azdiskschedulerextender-all push-manifest-azdiskschedulerextender
+endif
 ifdef TEST_WINDOWS
 	helm install azuredisk-csi-driver charts/${CHART_VERSION}/azuredisk-csi-driver --namespace kube-system --wait --timeout=15m -v=5 --debug \
 		${E2E_HELM_OPTIONS} \
@@ -325,6 +323,7 @@ e2e-test:
 	if [ ! -z "$(EXTERNAL_E2E_TEST)" ]; then \
 		bash ./test/external-e2e/run.sh;\
 	else \
+		bash ./hack/parse-prow-creds.sh;\
 		go test -v -timeout=0 ${GOTAGS} ./test/e2e ${GINKGO_FLAGS};\
 	fi
 
@@ -332,14 +331,26 @@ e2e-test:
 e2e-test-v2:
 	BUILD_V2=true make e2e-test
 
+.PHONY: scale-test
+scale-test:
+	go test -v -timeout=0 ${GOTAGS} ./test/scale -ginkgo.focus="Scale test scheduling and starting multiple pods with a persistent volume";
+
+.PHONY: scale-test-v2
+scale-test-v2:
+	BUILD_V2=true make scale-test
+
+POD_FAILOVER_IMAGE_VERSION = latest
+ifdef CI
+override POD_FAILOVER_IMAGE_VERSION = $(GIT_COMMIT)
+endif
 .PHONY: pod-failover-test-containers
 pod-failover-test-containers:
 	CGO_ENABLED=0 go build -a -mod vendor -o _output/${ARCH}/workloadPod ./test/podFailover/workload 
 	CGO_ENABLED=0 go build -a -mod vendor -o _output/${ARCH}/controllerPod ./test/podFailover/controller
 	CGO_ENABLED=0 go build  -o _output/${ARCH}/metricsPod ./test/podFailover/metrics
-	docker build -t $(REGISTRY)/workloadpod:latest -f ./test/podFailover/workload/Dockerfile .
-	docker build -t $(REGISTRY)/controllerpod:latest -f ./test/podFailover/controller/Dockerfile .
-	docker build -t $(REGISTRY)/metricspod:latest -f ./test/podFailover/metrics/Dockerfile .
-	docker push $(REGISTRY)/workloadpod:latest
-	docker push $(REGISTRY)/controllerpod:latest
-	docker push $(REGISTRY)/metricspod:latest
+	docker build -t $(REGISTRY)/workloadpod:$(POD_FAILOVER_IMAGE_VERSION) -f ./test/podFailover/workload/Dockerfile .
+	docker build -t $(REGISTRY)/controllerpod:$(POD_FAILOVER_IMAGE_VERSION) -f ./test/podFailover/controller/Dockerfile .
+	docker build -t $(REGISTRY)/metricspod:$(POD_FAILOVER_IMAGE_VERSION) -f ./test/podFailover/metrics/Dockerfile .
+	docker push $(REGISTRY)/workloadpod:$(POD_FAILOVER_IMAGE_VERSION)
+	docker push $(REGISTRY)/controllerpod:$(POD_FAILOVER_IMAGE_VERSION)
+	docker push $(REGISTRY)/metricspod:$(POD_FAILOVER_IMAGE_VERSION)

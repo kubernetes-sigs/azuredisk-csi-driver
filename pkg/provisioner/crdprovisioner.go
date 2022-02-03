@@ -142,7 +142,7 @@ func (c *CrdProvisioner) CreateVolume(
 	lister := c.conditionWatcher.informerFactory.Disk().V1alpha1().AzVolumes().Lister().AzVolumes(c.namespace)
 	azVolumeClient := c.azDiskClient.DiskV1alpha1().AzVolumes(c.namespace)
 
-	_, maxMountReplicaCount := azureutils.GetMaxSharesAndMaxMountReplicaCount(parameters)
+	_, maxMountReplicaCount := azureutils.GetMaxSharesAndMaxMountReplicaCount(parameters, azureutils.HasMultiNodeAzVolumeCapabilityAccessMode(volumeCapabilities))
 
 	// Getting the validVolumeName here since after volume
 	// creation the diskURI will consist of the validVolumeName

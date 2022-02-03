@@ -29,7 +29,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -163,25 +163,21 @@ func (c *CloudProvisioner) CreateVolume(
 
 	selectedAvailabilityZone := pickAvailabilityZone(accessibilityRequirements, c.GetCloud().Location)
 	accessibleTopology := []v1alpha1.Topology{}
-	if skuName == compute.StandardSSDZRS || skuName == compute.PremiumZRS {
+	if skuName == compute.DiskStorageAccountTypesStandardSSDZRS || skuName == compute.DiskStorageAccountTypesPremiumZRS {
 		klog.V(2).Infof("diskZone(%s) is reset as empty since disk(%s) is ZRS(%s)", selectedAvailabilityZone, diskParams.DiskName, skuName)
 		selectedAvailabilityZone = ""
-		if accessibilityRequirements != nil && len(accessibilityRequirements.Requisite) > 0 {
-			accessibleTopology = append(accessibleTopology, accessibilityRequirements.Requisite...)
-		} else {
-			// make volume scheduled on all 3 availability zones
-			for i := 1; i <= 3; i++ {
-				topology := v1alpha1.Topology{
-					Segments: map[string]string{topologyKeyStr: fmt.Sprintf("%s-%d", c.cloud.Location, i)},
-				}
-				accessibleTopology = append(accessibleTopology, topology)
-			}
-			// make volume scheduled on all non-zone nodes
+		// make volume scheduled on all 3 availability zones
+		for i := 1; i <= 3; i++ {
 			topology := v1alpha1.Topology{
-				Segments: map[string]string{topologyKeyStr: ""},
+				Segments: map[string]string{topologyKeyStr: fmt.Sprintf("%s-%d", c.cloud.Location, i)},
 			}
 			accessibleTopology = append(accessibleTopology, topology)
 		}
+		// make volume scheduled on all non-zone nodes
+		topology := v1alpha1.Topology{
+			Segments: map[string]string{topologyKeyStr: ""},
+		}
+		accessibleTopology = append(accessibleTopology, topology)
 	} else {
 		accessibleTopology = []v1alpha1.Topology{
 			{
@@ -223,7 +219,7 @@ func (c *CloudProvisioner) CreateVolume(
 		if volumeContentSource.ContentSource == v1alpha1.ContentVolumeSourceTypeVolume {
 			sourceType = azureconstants.SourceVolume
 
-			ctx, cancel := context.WithCancel(context.Background())
+			ctx, cancel := context.WithCancel(ctx)
 			if sourceGiB, _ := c.GetSourceDiskSize(ctx, diskParams.ResourceGroup, path.Base(sourceID), 0, azureconstants.SourceDiskSearchMaxDepth); sourceGiB != nil && *sourceGiB < int32(requestGiB) {
 				diskParams.VolumeContext[azureconstants.ResizeRequired] = strconv.FormatBool(true)
 			}
@@ -486,13 +482,14 @@ func (c *CloudProvisioner) CreateSnapshot(
 	}
 	tags := make(map[string]*string)
 	for k, v := range customTagsMap {
-		tags[k] = &v
+		value := v
+		tags[k] = &value
 	}
 
 	snapshot := compute.Snapshot{
 		SnapshotProperties: &compute.SnapshotProperties{
 			CreationData: &compute.CreationData{
-				CreateOption: compute.Copy,
+				CreateOption: compute.DiskCreateOptionCopy,
 				SourceURI:    &sourceVolumeID,
 			},
 			Incremental: &incremental,

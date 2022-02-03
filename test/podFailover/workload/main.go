@@ -17,9 +17,12 @@ limitations under the License.
 package main
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"flag"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"time"
@@ -29,6 +32,8 @@ import (
 
 var mountPath = flag.String("mount-path", "", "The path of the file where timestamps will be logged")
 var metricsEndpoint = flag.String("metrics-endpoint", "", "The endpoint where prometheus metrics should be published")
+var authEnabled = flag.Bool("auth-enabled", false, "Specify whether request to metrics endpoint requires authentication or not")
+var testName = flag.String("test-name", "default-test-run", "The name of the test to be used as metrics label to distinguish metrics sent from multiple test runs")
 
 func main() {
 
@@ -52,19 +57,51 @@ func main() {
 	if fi.Size() > 0 {
 		timeDifference = time.Now().Unix() - fileModTime.Unix()
 		klog.Infof("The downtime seen by the pod is %d", timeDifference)
-		//Make a request to the metrics service
-		req, err := http.NewRequest("GET", *metricsEndpoint, nil)
-		if err != nil {
-			klog.Errorf("Error occurred while creating the get http request: %v", err)
-		}
-		query := req.URL.Query()
-		query.Add("value", strconv.Itoa(int(timeDifference)))
-		req.URL.RawQuery = query.Encode()
+
 		client := &http.Client{}
 
-		_, err = client.Do(req)
+		if *authEnabled {
+
+			// Read the values from the secret
+			var caCert = os.Getenv("CA_CERT")
+			var clientCert = os.Getenv("CLIENT_CERT")
+			var clientKey = os.Getenv("CLIENT_KEY")
+
+			caCertPool := x509.NewCertPool()
+			caCertPool.AppendCertsFromPEM([]byte(caCert))
+			cert, err := tls.X509KeyPair([]byte(clientCert), []byte(clientKey))
+
+			if err != nil {
+				klog.Errorf("Error occurred while parsing the certificate %v", err)
+			}
+
+			client = &http.Client{
+				Transport: &http.Transport{
+					TLSClientConfig: &tls.Config{
+						RootCAs:      caCertPool,
+						Certificates: []tls.Certificate{cert},
+					},
+				},
+			}
+		}
+
+		metricsEndpointURL, err := url.Parse(*metricsEndpoint)
+		if err != nil {
+			klog.Infof("Error occurred while parsing the url %v", *metricsEndpoint)
+		}
+
+		//Make a request to the metrics service
+		query := metricsEndpointURL.Query()
+		query.Add("value", strconv.Itoa(int(timeDifference)))
+		query.Add("testName", *testName)
+		metricsEndpointURL.RawQuery = query.Encode()
+
+		resp, err := client.Get(metricsEndpointURL.String())
 		if err != nil {
 			klog.Infof("Error occurred while making the http call to metrics publisher: %v", err)
+		}
+		if resp != nil {
+			resp.Body.Close()
 		}
 	}
 

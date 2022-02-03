@@ -21,7 +21,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/kubernetes-csi/external-snapshotter/v2/pkg/apis/volumesnapshot/v1beta1"
+	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -86,15 +86,15 @@ func (d *azureDiskDriver) GetDynamicProvisionStorageClass(parameters map[string]
 	return getStorageClass(generateName, provisioner, parameters, mountOptions, reclaimPolicy, bindingMode, allowedTopologies)
 }
 
-func (d *azureDiskDriver) GetVolumeSnapshotClass(namespace string) *v1beta1.VolumeSnapshotClass {
+func (d *azureDiskDriver) GetVolumeSnapshotClass(namespace string) *snapshotv1.VolumeSnapshotClass {
 	provisioner := d.driverName
 	generateName := fmt.Sprintf("%s-%s-dynamic-sc-", namespace, normalizeProvisioner(provisioner))
 	return getVolumeSnapshotClass(generateName, provisioner)
 }
 
-func (d *azureDiskDriver) GetPersistentVolume(volumeID string, fsType string, size string, reclaimPolicy *v1.PersistentVolumeReclaimPolicy, namespace string, volumeContext map[string]string) *v1.PersistentVolume {
+func (d *azureDiskDriver) GetPersistentVolume(volumeID, fsType, size string, volumeMode v1.PersistentVolumeMode, accessMode v1.PersistentVolumeAccessMode, reclaimPolicy *v1.PersistentVolumeReclaimPolicy, namespace string, volumeContext map[string]string) *v1.PersistentVolume {
 	provisioner := d.driverName
-	generateName := fmt.Sprintf("%s-%s-preprovsioned-pv-", namespace, normalizeProvisioner(provisioner))
+	generateName := fmt.Sprintf("%s-%s-preprovisioned-pv-", namespace, normalizeProvisioner(provisioner))
 	// Default to Retain ReclaimPolicy for pre-provisioned volumes
 	pvReclaimPolicy := v1.PersistentVolumeReclaimRetain
 	if reclaimPolicy != nil {
@@ -110,7 +110,8 @@ func (d *azureDiskDriver) GetPersistentVolume(volumeID string, fsType string, si
 			},
 		},
 		Spec: v1.PersistentVolumeSpec{
-			AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+			VolumeMode:  &volumeMode,
+			AccessModes: []v1.PersistentVolumeAccessMode{accessMode},
 			Capacity: v1.ResourceList{
 				v1.ResourceName(v1.ResourceStorage): resource.MustParse(size),
 			},

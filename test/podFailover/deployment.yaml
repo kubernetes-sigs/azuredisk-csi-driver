@@ -48,27 +48,32 @@ roleRef:
   name: controller-pod-sa-role
   apiGroup: rbac.authorization.k8s.io
 ---
-kind: Pod
-apiVersion: v1
+apiVersion: batch/v1
+kind: Job
 metadata:
-  name: controller-pod
+  name: pod-failover-job
   labels:
     app: pod-failover-controller
 spec:
-  serviceAccountName: controller-pod-sa
-  nodeSelector:
-    kubernetes.io/os: linux
-  containers:
-    - image: controller-pod-image
-      name: controller
-      imagePullPolicy: Always
-      args:
-      - "--driver-version=v2"
-      - "--maxshares=3"
-      - "--duration=60"
-      - "--workload-image=workload-pod-image"
-      - "--pod-count=1"
-      - "--pvc-per-pod=3"
-      - "--metrics-endpoint=http://$(POD_FAILOVER_METRICS_SERVICE_HOST):$(POD_FAILOVER_METRICS_SERVICE_PORT_POD_FAILOVER)/pod-failover"
-      - "--delay-before-failover=10"
+  template:
+    spec:
+      serviceAccountName: controller-pod-sa
+      nodeSelector:
+        kubernetes.io/os: linux
+      containers:
+      - image: controller-pod-image
+        name: controller
+        imagePullPolicy: Always
+        args:
+        - "--driver-version=v2"
+        - "--maxshares=3"
+        - "--duration=60"
+        - "--workload-image=workload-pod-image"
+        - "--pod-count=1"
+        - "--pvc-per-pod=3"
+        - "--metrics-endpoint=$(POD_FAILOVER_METRICS_SERVICE_HOST):$(POD_FAILOVER_METRICS_SERVICE_PORT_POD_FAILOVER)"
+        - "--delay-before-failover=10"
+        - "--test-name=default-test-run"
+        - "--auth-enabled=false"
+      restartPolicy: Never
   restartPolicy: Never

@@ -27,8 +27,8 @@ spec:
           operator: "Exists"
           effect: "NoSchedule"
       containers:
-        - name: csi-provisioner-disk
-          image: mcr.microsoft.com/oss/kubernetes-csi/csi-provisioner:v2.2.2
+        - name: csi-provisioner
+          image: mcr.microsoft.com/oss/kubernetes-csi/csi-provisioner:v3.1.0
           args:
             - "--feature-gates=Topology=true"
             - "--csi-address=$(ADDRESS)"
@@ -50,8 +50,8 @@ spec:
             requests:
               cpu: 10m
               memory: 20Mi
-        - name: csi-attacher-disk
-          image: mcr.microsoft.com/oss/kubernetes-csi/csi-attacher:v3.3.0
+        - name: csi-attacher
+          image: mcr.microsoft.com/oss/kubernetes-csi/csi-attacher:v3.4.0
           args:
             - "-v=2"
             - "-csi-address=$(ADDRESS)"
@@ -70,8 +70,8 @@ spec:
             requests:
               cpu: 10m
               memory: 20Mi
-        - name: csi-snapshotter-disk
-          image: mcr.microsoft.com/oss/kubernetes-csi/csi-snapshotter:v3.0.3
+        - name: csi-snapshotter
+          image: mcr.microsoft.com/oss/kubernetes-csi/csi-snapshotter:v5.0.1
           args:
             - "-csi-address=$(ADDRESS)"
             - "-leader-election"

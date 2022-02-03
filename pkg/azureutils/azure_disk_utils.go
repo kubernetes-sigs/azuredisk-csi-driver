@@ -27,7 +27,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/pborman/uuid"
@@ -37,6 +37,8 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -60,10 +62,9 @@ import (
 )
 
 const (
-	azureStackCloud = "AZURESTACKCLOUD"
-
-	azurePublicCloudDefaultStorageAccountType     = compute.StandardSSDLRS
-	azureStackCloudDefaultStorageAccountType      = compute.StandardLRS
+	azureStackCloud                               = "AZURESTACKCLOUD"
+	azurePublicCloudDefaultStorageAccountType     = compute.DiskStorageAccountTypesStandardSSDLRS
+	azureStackCloudDefaultStorageAccountType      = compute.DiskStorageAccountTypesStandardLRS
 	defaultAzureDataDiskCachingMode               = v1.AzureDataDiskCachingReadOnly
 	defaultAzureDataDiskCachingModeForSharedDisks = v1.AzureDataDiskCachingNone
 
@@ -114,6 +115,17 @@ const (
 	Uncached
 )
 
+func CreateLabelRequirements(label string, operator selection.Operator, values ...string) (*labels.Requirement, error) {
+	req, err := labels.NewRequirement(label, operator, values)
+	if err != nil {
+		return nil, err
+	}
+	if req == nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Unable to create Requirement to for label key : (%s) and label value: (%s)", label, values))
+	}
+	return req, nil
+}
+
 func IsAzureStackCloud(cloud string, disableAzureStackCloud bool) bool {
 	return !disableAzureStackCloud && strings.EqualFold(cloud, azureStackCloud)
 }
@@ -162,6 +174,22 @@ func GetFStype(attributes map[string]string) string {
 	return ""
 }
 
+func GetNodeMaxDiskCount(labels map[string]string) (int, error) {
+	if labels == nil {
+		return 0, fmt.Errorf("labels for the node are not provided")
+	}
+	instanceType, ok := labels[v1.LabelInstanceTypeStable]
+	if !ok {
+		return 0, fmt.Errorf("node instance type is not found")
+	}
+	vmsize := strings.ToUpper(instanceType)
+	maxDataDiskCount, exists := MaxDataDiskCountMap[vmsize]
+	if !exists {
+		return 0, fmt.Errorf("disk count for the node instance type %s is not found", vmsize)
+	}
+	return int(maxDataDiskCount), nil
+}
+
 func GetMaxShares(attributes map[string]string) (int, error) {
 	for k, v := range attributes {
 		switch strings.ToLower(k) {
@@ -183,7 +211,7 @@ func NormalizeStorageAccountType(storageAccountType, cloud string, disableAzureS
 	sku := compute.DiskStorageAccountTypes(storageAccountType)
 	supportedSkuNames := compute.PossibleDiskStorageAccountTypesValues()
 	if IsAzureStackCloud(cloud, disableAzureStackCloud) {
-		supportedSkuNames = []compute.DiskStorageAccountTypes{compute.StandardLRS, compute.PremiumLRS}
+		supportedSkuNames = []compute.DiskStorageAccountTypes{compute.DiskStorageAccountTypesStandardLRS, compute.DiskStorageAccountTypesPremiumLRS}
 	}
 	for _, s := range supportedSkuNames {
 		if sku == s {
@@ -211,7 +239,7 @@ func NormalizeCachingMode(cachingMode v1.AzureDataDiskCachingMode, maxShares int
 
 func NormalizeNetworkAccessPolicy(networkAccessPolicy string) (compute.NetworkAccessPolicy, error) {
 	if networkAccessPolicy == "" {
-		return compute.AllowAll, nil
+		return compute.NetworkAccessPolicyAllowAll, nil
 	}
 	policy := compute.NetworkAccessPolicy(networkAccessPolicy)
 	for _, s := range compute.PossibleNetworkAccessPolicyValues() {
@@ -543,6 +571,43 @@ func IsARMResourceID(resourceID string) bool {
 	return strings.Contains(id, "/subscriptions/")
 }
 
+func GetValidCreationData(subscriptionID, resourceGroup, sourceResourceID, sourceType string) (compute.CreationData, error) {
+	if sourceResourceID == "" {
+		return compute.CreationData{
+			CreateOption: compute.DiskCreateOptionEmpty,
+		}, nil
+	}
+
+	switch sourceType {
+	case consts.SourceSnapshot:
+		if match := consts.DiskSnapshotPathRE.FindString(sourceResourceID); match == "" {
+			sourceResourceID = fmt.Sprintf(consts.DiskSnapshotPath, subscriptionID, resourceGroup, sourceResourceID)
+		}
+
+	case consts.SourceVolume:
+		if match := consts.ManagedDiskPathRE.FindString(sourceResourceID); match == "" {
+			sourceResourceID = fmt.Sprintf(consts.ManagedDiskPath, subscriptionID, resourceGroup, sourceResourceID)
+		}
+	default:
+		return compute.CreationData{
+			CreateOption: compute.DiskCreateOptionEmpty,
+		}, nil
+	}
+
+	splits := strings.Split(sourceResourceID, "/")
+	if len(splits) > 9 {
+		if sourceType == consts.SourceSnapshot {
+			return compute.CreationData{}, fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", sourceResourceID, consts.DiskSnapshotPathRE)
+		}
+
+		return compute.CreationData{}, fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", sourceResourceID, consts.ManagedDiskPathRE)
+	}
+	return compute.CreationData{
+		CreateOption:     compute.DiskCreateOptionCopy,
+		SourceResourceID: &sourceResourceID,
+	}, nil
+}
+
 func IsCorruptedDir(dir string) bool {
 	_, pathErr := mount.PathExists(dir)
 	fmt.Printf("IsCorruptedDir(%s) returned with error: %v", dir, pathErr)
@@ -633,13 +698,40 @@ func IsValidAccessModes(volCaps []*csi.VolumeCapability) bool {
 	return foundAll
 }
 
+func IsMultiNodeAzVolumeCapabilityAccessMode(accessMode v1alpha1.VolumeCapabilityAccessMode) bool {
+	return accessMode == v1alpha1.VolumeCapabilityAccessModeMultiNodeMultiWriter ||
+		accessMode == v1alpha1.VolumeCapabilityAccessModeMultiNodeSingleWriter ||
+		accessMode == v1alpha1.VolumeCapabilityAccessModeMultiNodeReaderOnly
+}
+
+func HasMultiNodeAzVolumeCapabilityAccessMode(volCaps []v1alpha1.VolumeCapability) bool {
+	for _, volCap := range volCaps {
+		if IsMultiNodeAzVolumeCapabilityAccessMode(volCap.AccessMode) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func IsMultiNodePersistentVolume(pv v1.PersistentVolume) bool {
+	for _, accessMode := range pv.Spec.AccessModes {
+		if accessMode == v1.ReadWriteMany || accessMode == v1.ReadOnlyMany {
+			return true
+		}
+	}
+
+	return false
+}
+
 func GetAzVolumeAttachmentName(volumeName string, nodeName string) string {
 	return fmt.Sprintf("%s-%s-attachment", strings.ToLower(volumeName), strings.ToLower(nodeName))
 }
 
-func GetMaxSharesAndMaxMountReplicaCount(parameters map[string]string) (int, int) {
-	maxShares := 1
-	maxMountReplicaCount := -1
+func GetMaxSharesAndMaxMountReplicaCount(parameters map[string]string, isMultiNodeVolume bool) (maxShares, maxMountReplicaCount int) {
+	maxShares = 1
+	maxMountReplicaCount = -1
+
 	for param, value := range parameters {
 		if strings.EqualFold(param, consts.MaxSharesField) {
 			parsed, err := strconv.Atoi(value)
@@ -662,6 +754,17 @@ func GetMaxSharesAndMaxMountReplicaCount(parameters map[string]string) (int, int
 		klog.Warningf("maxShares cannot be set smaller than 1... Defaulting current maxShares (%d) value to 1", maxShares)
 		maxShares = 1
 	}
+
+	if isMultiNodeVolume {
+		if maxMountReplicaCount > 0 {
+			klog.Warning("maxMountReplicaCount is ignored for volumes that can be mounted to multiple nodes... Defaulting current maxMountReplicaCount (%d) to 0", maxMountReplicaCount)
+		}
+
+		maxMountReplicaCount = 0
+
+		return
+	}
+
 	if maxShares-1 < maxMountReplicaCount {
 		klog.Warningf("maxMountReplicaCount cannot be set larger than maxShares - 1... Defaulting current maxMountReplicaCount (%d) value to (%d)", maxMountReplicaCount, maxShares-1)
 		maxMountReplicaCount = maxShares - 1
@@ -669,7 +772,7 @@ func GetMaxSharesAndMaxMountReplicaCount(parameters map[string]string) (int, int
 		maxMountReplicaCount = maxShares - 1
 	}
 
-	return maxShares, maxMountReplicaCount
+	return
 }
 
 func GetAzVolumePhase(phase v1.PersistentVolumePhase) v1alpha1.AzVolumePhase {
