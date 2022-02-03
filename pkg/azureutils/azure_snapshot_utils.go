@@ -27,7 +27,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
+	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 )
@@ -106,7 +106,7 @@ func GetSnapshotNameFromURI(snapshotURI string) (string, error) {
 	return matches[1], nil
 }
 
-func NewAzureDiskSnapshot(sourceVolumeID string, snapshot *compute.Snapshot) (*v1alpha1.Snapshot, error) {
+func NewAzureDiskSnapshot(sourceVolumeID string, snapshot *compute.Snapshot) (*diskv1alpha2.Snapshot, error) {
 	if snapshot == nil || snapshot.SnapshotProperties == nil {
 		return nil, fmt.Errorf("snapshot property is nil")
 	}
@@ -131,7 +131,7 @@ func NewAzureDiskSnapshot(sourceVolumeID string, snapshot *compute.Snapshot) (*v
 		sourceVolumeID = GetSourceVolumeID(snapshot)
 	}
 
-	return &v1alpha1.Snapshot{
+	return &diskv1alpha2.Snapshot{
 		SizeBytes:      volumehelper.GiBToBytes(int64(*snapshot.SnapshotProperties.DiskSizeGB)),
 		SnapshotID:     *snapshot.ID,
 		SourceVolumeID: sourceVolumeID,

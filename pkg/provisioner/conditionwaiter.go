@@ -40,11 +40,11 @@ func (w *conditionWaiter) Wait(ctx context.Context) (runtime.Object, error) {
 	namespace := w.watcher.namespace
 	switch w.objType {
 	case azVolumeType:
-		obj, err = w.watcher.informerFactory.Disk().V1alpha1().AzVolumes().Lister().AzVolumes(namespace).Get(w.objName)
+		obj, err = w.watcher.informerFactory.Disk().V1alpha2().AzVolumes().Lister().AzVolumes(namespace).Get(w.objName)
 	case azVolumeAttachmentType:
-		obj, err = w.watcher.informerFactory.Disk().V1alpha1().AzVolumeAttachments().Lister().AzVolumeAttachments(namespace).Get(w.objName)
+		obj, err = w.watcher.informerFactory.Disk().V1alpha2().AzVolumeAttachments().Lister().AzVolumeAttachments(namespace).Get(w.objName)
 	case azDriverNodeType:
-		obj, err = w.watcher.informerFactory.Disk().V1alpha1().AzDriverNodes().Lister().AzDriverNodes(namespace).Get(w.objName)
+		obj, err = w.watcher.informerFactory.Disk().V1alpha2().AzDriverNodes().Lister().AzDriverNodes(namespace).Get(w.objName)
 	}
 
 	// if there exists an object in cache, evaluate condition function on it

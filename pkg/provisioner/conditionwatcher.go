@@ -30,7 +30,7 @@ import (
 	"k8s.io/klog/v2"
 
 	"k8s.io/client-go/tools/cache"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
+	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	azurediskInformers "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions"
 )
@@ -68,9 +68,9 @@ type conditionWatcher struct {
 }
 
 func newConditionWatcher(ctx context.Context, azDiskClient azDiskClientSet.Interface, informerFactory azurediskInformers.SharedInformerFactory, namespace string) *conditionWatcher {
-	azVolumeAttachmentInformer := informerFactory.Disk().V1alpha1().AzVolumeAttachments().Informer()
-	azVolumeInformer := informerFactory.Disk().V1alpha1().AzVolumes().Informer()
-	azDriverNodeInformer := informerFactory.Disk().V1alpha1().AzDriverNodes().Informer()
+	azVolumeAttachmentInformer := informerFactory.Disk().V1alpha2().AzVolumeAttachments().Informer()
+	azVolumeInformer := informerFactory.Disk().V1alpha2().AzVolumes().Informer()
+	azDriverNodeInformer := informerFactory.Disk().V1alpha2().AzDriverNodes().Informer()
 
 	c := conditionWatcher{
 		informerFactory: informerFactory,
@@ -147,11 +147,11 @@ func (c *conditionWatcher) handleEvent(obj interface{}, eventType eventType) {
 
 	var objType objectType
 	switch obj.(type) {
-	case *v1alpha1.AzVolume:
+	case *diskv1alpha2.AzVolume:
 		objType = azVolumeType
-	case *v1alpha1.AzVolumeAttachment:
+	case *diskv1alpha2.AzVolumeAttachment:
 		objType = azVolumeAttachmentType
-	case *v1alpha1.AzDriverNode:
+	case *diskv1alpha2.AzDriverNode:
 		objType = azDriverNodeType
 	default:
 		// unknown object type

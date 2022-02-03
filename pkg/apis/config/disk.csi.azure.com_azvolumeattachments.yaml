@@ -50,7 +50,7 @@ spec:
       jsonPath: .status.state
       name: State
       type: string
-    name: v1alpha1
+    name: v1alpha2
     schema:
       openAPIV3Schema:
         description: AzVolumeAttachment is a specification for a AzVolumeAttachment

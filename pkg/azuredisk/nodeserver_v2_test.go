@@ -30,7 +30,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
+	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockprovisioner"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
@@ -100,7 +100,7 @@ func TestNodeStageVolumeMountRecovery(t *testing.T) {
 					diskURI:     "vol_1",
 					detachState: detachCompleted,
 				}
-				d.crdProvisioner.(*mockprovisioner.MockCrdProvisioner).EXPECT().GetAzVolumeAttachmentState(gomock.Any(), gomock.Any(), gomock.Any()).Return(v1alpha1.AttachmentStateUnknown, nil)
+				d.crdProvisioner.(*mockprovisioner.MockCrdProvisioner).EXPECT().GetAzVolumeAttachmentState(gomock.Any(), gomock.Any(), gomock.Any()).Return(diskv1alpha2.AttachmentStateUnknown, nil)
 			},
 			req: csi.NodeStageVolumeRequest{VolumeId: "vol_1", StagingTargetPath: sourceTest,
 				VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap,
@@ -118,7 +118,7 @@ func TestNodeStageVolumeMountRecovery(t *testing.T) {
 					diskURI:     "vol_1",
 					detachState: detachCompleted,
 				}
-				d.crdProvisioner.(*mockprovisioner.MockCrdProvisioner).EXPECT().GetAzVolumeAttachmentState(gomock.Any(), gomock.Any(), gomock.Any()).Return(v1alpha1.Attached, nil)
+				d.crdProvisioner.(*mockprovisioner.MockCrdProvisioner).EXPECT().GetAzVolumeAttachmentState(gomock.Any(), gomock.Any(), gomock.Any()).Return(diskv1alpha2.Attached, nil)
 				d.setNextCommandOutputScripts(blkidAction, fsckAction)
 			},
 			req: csi.NodeStageVolumeRequest{VolumeId: "vol_1", StagingTargetPath: sourceTest,

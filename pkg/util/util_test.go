@@ -30,7 +30,7 @@ import (
 	"google.golang.org/grpc/status"
 	k8stypes "k8s.io/apimachinery/pkg/types"
 	volerr "k8s.io/cloud-provider/volume/errors"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
+	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
 	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
 )
 
@@ -338,17 +338,17 @@ func TestErrorFromAzError(t *testing.T) {
 
 	tests := []struct {
 		description   string
-		sourceAzError *v1alpha1.AzError
+		sourceAzError *diskv1alpha2.AzError
 		expectedError error
 	}{
 		{
 			description:   "Dangling attach error",
-			sourceAzError: &v1alpha1.AzError{ErrorCode: danglingAttachErrorCode, ErrorMessage: "dangling attach", CurrentNode: currentNode, DevicePath: devicePath},
+			sourceAzError: &diskv1alpha2.AzError{ErrorCode: danglingAttachErrorCode, ErrorMessage: "dangling attach", CurrentNode: currentNode, DevicePath: devicePath},
 			expectedError: volerr.NewDanglingError("dangling attach", currentNode, devicePath),
 		},
 		{
 			description:   "GRPC status error",
-			sourceAzError: &v1alpha1.AzError{ErrorCode: "NOT_FOUND", ErrorMessage: "not found"},
+			sourceAzError: &diskv1alpha2.AzError{ErrorCode: "NOT_FOUND", ErrorMessage: "not found"},
 			expectedError: status.Error(codes.NotFound, "not found"),
 		},
 	}

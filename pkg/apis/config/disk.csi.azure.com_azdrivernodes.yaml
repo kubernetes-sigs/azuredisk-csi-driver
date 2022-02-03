@@ -35,7 +35,7 @@ spec:
       jsonPath: .status.statusMessage
       name: StatusMessage
       type: string
-    name: v1alpha1
+    name: v1alpha2
     schema:
       openAPIV3Schema:
         description: AzDriverNode is a representation of a node, where azure CSI driver

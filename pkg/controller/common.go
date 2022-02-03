@@ -42,7 +42,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/component-helpers/scheduling/corev1/nodeaffinity"
 	"k8s.io/klog/v2"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
+	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
 	azClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
@@ -102,8 +102,8 @@ const (
 )
 
 var roles = map[roleMode]string{
-	primaryOnly: string(v1alpha1.PrimaryRole),
-	replicaOnly: string(v1alpha1.ReplicaRole),
+	primaryOnly: string(diskv1alpha2.PrimaryRole),
+	replicaOnly: string(diskv1alpha2.ReplicaRole),
 }
 
 type updateWithLock bool
@@ -118,19 +118,19 @@ type CloudProvisioner interface {
 	CreateVolume(
 		ctx context.Context,
 		volumeName string,
-		capacityRange *v1alpha1.CapacityRange,
-		volumeCapabilities []v1alpha1.VolumeCapability,
+		capacityRange *diskv1alpha2.CapacityRange,
+		volumeCapabilities []diskv1alpha2.VolumeCapability,
 		parameters map[string]string,
 		secrets map[string]string,
-		volumeContentSource *v1alpha1.ContentVolumeSource,
-		accessibilityTopology *v1alpha1.TopologyRequirement) (*v1alpha1.AzVolumeStatusParams, error)
+		volumeContentSource *diskv1alpha2.ContentVolumeSource,
+		accessibilityTopology *diskv1alpha2.TopologyRequirement) (*diskv1alpha2.AzVolumeStatusParams, error)
 	DeleteVolume(ctx context.Context, volumeID string, secrets map[string]string) error
 	PublishVolume(ctx context.Context, volumeID string, nodeID string, volumeContext map[string]string) (map[string]string, error)
 	UnpublishVolume(ctx context.Context, volumeID string, nodeID string) error
-	ExpandVolume(ctx context.Context, volumeID string, capacityRange *v1alpha1.CapacityRange, secrets map[string]string) (*v1alpha1.AzVolumeStatusParams, error)
-	ListVolumes(ctx context.Context, maxEntries int32, startingToken string) (*v1alpha1.ListVolumesResult, error)
-	CreateSnapshot(ctx context.Context, sourceVolumeID string, snapshotName string, secrets map[string]string, parameters map[string]string) (*v1alpha1.Snapshot, error)
-	ListSnapshots(ctx context.Context, maxEntries int32, startingToken string, sourceVolumeID string, snapshotID string, secrets map[string]string) (*v1alpha1.ListSnapshotsResult, error)
+	ExpandVolume(ctx context.Context, volumeID string, capacityRange *diskv1alpha2.CapacityRange, secrets map[string]string) (*diskv1alpha2.AzVolumeStatusParams, error)
+	ListVolumes(ctx context.Context, maxEntries int32, startingToken string) (*diskv1alpha2.ListVolumesResult, error)
+	CreateSnapshot(ctx context.Context, sourceVolumeID string, snapshotName string, secrets map[string]string, parameters map[string]string) (*diskv1alpha2.Snapshot, error)
+	ListSnapshots(ctx context.Context, maxEntries int32, startingToken string, sourceVolumeID string, snapshotID string, secrets map[string]string) (*diskv1alpha2.ListSnapshotsResult, error)
 	DeleteSnapshot(ctx context.Context, snapshotID string, secrets map[string]string) error
 	CheckDiskExists(ctx context.Context, diskURI string) (*compute.Disk, error)
 	GetCloud() *provider.Cloud
@@ -682,7 +682,7 @@ func getRankedNodesForReplicaAttachments(ctx context.Context, azr azReconciler, 
 
 		klog.V(5).Infof("Found %d AzVolumeAttachments for volume %s. AzVolumeAttachments: %+v.", len(azVolumeAttachments), volume, azVolumeAttachments)
 		for _, azVolumeAttachment := range azVolumeAttachments {
-			if azVolumeAttachment.Spec.RequestedRole == v1alpha1.PrimaryRole {
+			if azVolumeAttachment.Spec.RequestedRole == diskv1alpha2.PrimaryRole {
 				klog.V(5).Infof("AzVolumeAttachments %s for volume %s is primary on node %s.", azVolumeAttachment.Name, volume, azVolumeAttachment.Spec.NodeName)
 				if primaryNode == "" {
 					primaryNode = azVolumeAttachment.Spec.NodeName
@@ -961,25 +961,25 @@ func createReplicaAzVolumeAttachment(ctx context.Context, azr azReconciler, volu
 	// creating azvolumeattachment
 	volumeName := strings.ToLower(diskName)
 	replicaName := azureutils.GetAzVolumeAttachmentName(volumeName, node)
-	_, err = azr.getAzClient().DiskV1alpha1().AzVolumeAttachments(azr.getSharedState().objectNamespace).Create(ctx, &v1alpha1.AzVolumeAttachment{
+	_, err = azr.getAzClient().DiskV1alpha2().AzVolumeAttachments(azr.getSharedState().objectNamespace).Create(ctx, &diskv1alpha2.AzVolumeAttachment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      replicaName,
 			Namespace: azr.getSharedState().objectNamespace,
 			Labels: map[string]string{
 				consts.NodeNameLabel:   node,
 				consts.VolumeNameLabel: volumeName,
-				consts.RoleLabel:       string(v1alpha1.ReplicaRole),
+				consts.RoleLabel:       string(diskv1alpha2.ReplicaRole),
 			},
 		},
-		Spec: v1alpha1.AzVolumeAttachmentSpec{
+		Spec: diskv1alpha2.AzVolumeAttachmentSpec{
 			NodeName:         node,
 			VolumeID:         volumeID,
 			UnderlyingVolume: volumeName,
-			RequestedRole:    v1alpha1.ReplicaRole,
+			RequestedRole:    diskv1alpha2.ReplicaRole,
 			VolumeContext:    volumeContext,
 		},
-		Status: v1alpha1.AzVolumeAttachmentStatus{
-			State: v1alpha1.AttachmentPending,
+		Status: diskv1alpha2.AzVolumeAttachmentStatus{
+			State: diskv1alpha2.AttachmentPending,
 		},
 	}, metav1.CreateOptions{})
 	if err != nil {
@@ -990,7 +990,7 @@ func createReplicaAzVolumeAttachment(ctx context.Context, azr azReconciler, volu
 	return nil
 }
 
-func cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azr azReconciler, azVolumeName string, caller operationRequester, role roleMode, deleteMode cleanUpMode, controllerSharedState *SharedState) (*v1alpha1.AzVolumeAttachmentList, error) {
+func cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azr azReconciler, azVolumeName string, caller operationRequester, role roleMode, deleteMode cleanUpMode, controllerSharedState *SharedState) (*diskv1alpha2.AzVolumeAttachmentList, error) {
 	klog.Infof("AzVolumeAttachment clean up requested by %s for AzVolume (%s)", caller, azVolumeName)
 	volRequirement, err := azureutils.CreateLabelRequirements(consts.VolumeNameLabel, selection.Equals, azVolumeName)
 	if err != nil {
@@ -998,7 +998,7 @@ func cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azr azReconciler, az
 	}
 	labelSelector := labels.NewSelector().Add(*volRequirement)
 
-	attachments, err := azr.getAzClient().DiskV1alpha1().AzVolumeAttachments(azr.getSharedState().objectNamespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})
+	attachments, err := azr.getAzClient().DiskV1alpha2().AzVolumeAttachments(azr.getSharedState().objectNamespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})
 	if err != nil {
 		if apiErrors.IsNotFound(err) {
 			return nil, nil
@@ -1007,7 +1007,7 @@ func cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azr azReconciler, az
 		return nil, err
 	}
 
-	cleanUps := []v1alpha1.AzVolumeAttachment{}
+	cleanUps := []diskv1alpha2.AzVolumeAttachment{}
 	for _, attachment := range attachments.Items {
 		if shouldCleanUp(attachment, role) {
 			cleanUps = append(cleanUps, attachment)
@@ -1022,7 +1022,7 @@ func cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azr azReconciler, az
 	return attachments, nil
 }
 
-func cleanUpAzVolumeAttachmentByNode(ctx context.Context, azr azReconciler, azDriverNodeName string, caller operationRequester, role roleMode, deleteMode cleanUpMode) (*v1alpha1.AzVolumeAttachmentList, error) {
+func cleanUpAzVolumeAttachmentByNode(ctx context.Context, azr azReconciler, azDriverNodeName string, caller operationRequester, role roleMode, deleteMode cleanUpMode) (*diskv1alpha2.AzVolumeAttachmentList, error) {
 	klog.Infof("AzVolumeAttachment clean up requested by %s for AzDriverNode (%s)", caller, azDriverNodeName)
 	nodeRequirement, err := azureutils.CreateLabelRequirements(consts.NodeNameLabel, selection.Equals, azDriverNodeName)
 	if err != nil {
@@ -1030,7 +1030,7 @@ func cleanUpAzVolumeAttachmentByNode(ctx context.Context, azr azReconciler, azDr
 	}
 	labelSelector := labels.NewSelector().Add(*nodeRequirement)
 
-	attachments, err := azr.getAzClient().DiskV1alpha1().AzVolumeAttachments(azr.getSharedState().objectNamespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})
+	attachments, err := azr.getAzClient().DiskV1alpha2().AzVolumeAttachments(azr.getSharedState().objectNamespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})
 	if err != nil {
 		if apiErrors.IsNotFound(err) {
 			return attachments, nil
@@ -1039,7 +1039,7 @@ func cleanUpAzVolumeAttachmentByNode(ctx context.Context, azr azReconciler, azDr
 		return nil, err
 	}
 
-	cleanUpMap := map[string][]v1alpha1.AzVolumeAttachment{}
+	cleanUpMap := map[string][]diskv1alpha2.AzVolumeAttachment{}
 	for _, attachment := range attachments.Items {
 		if shouldCleanUp(attachment, role) {
 			cleanUpMap[attachment.Spec.UnderlyingVolume] = append(cleanUpMap[attachment.Spec.UnderlyingVolume], attachment)
@@ -1065,7 +1065,7 @@ func cleanUpAzVolumeAttachmentByNode(ctx context.Context, azr azReconciler, azDr
 	return attachments, nil
 }
 
-func cleanUpAzVolumeAttachments(ctx context.Context, azr azReconciler, attachments []v1alpha1.AzVolumeAttachment, cleanUp cleanUpMode, caller operationRequester) error {
+func cleanUpAzVolumeAttachments(ctx context.Context, azr azReconciler, attachments []diskv1alpha2.AzVolumeAttachment, cleanUp cleanUpMode, caller operationRequester) error {
 	for _, attachment := range attachments {
 		patched := attachment.DeepCopy()
 		if patched.Annotations == nil {
@@ -1077,14 +1077,14 @@ func cleanUpAzVolumeAttachments(ctx context.Context, azr azReconciler, attachmen
 			patched.Annotations[consts.CleanUpAnnotation] = string(caller)
 		}
 		// replica attachments should always be detached regardless of the cleanup mode
-		if cleanUp == detachAndDeleteCRI || patched.Spec.RequestedRole == v1alpha1.ReplicaRole {
+		if cleanUp == detachAndDeleteCRI || patched.Spec.RequestedRole == diskv1alpha2.ReplicaRole {
 			patched.Annotations[consts.VolumeDetachRequestAnnotation] = string(caller)
 		}
 		if err := azr.getClient().Patch(ctx, patched, client.MergeFrom(&attachment)); err != nil {
 			klog.Errorf("failed to delete AzVolumeAttachment (%s): %v", attachment.Name, err)
 			return err
 		}
-		if err := azr.getAzClient().DiskV1alpha1().AzVolumeAttachments(azr.getSharedState().objectNamespace).Delete(ctx, attachment.Name, metav1.DeleteOptions{}); err != nil {
+		if err := azr.getAzClient().DiskV1alpha2().AzVolumeAttachments(azr.getSharedState().objectNamespace).Delete(ctx, attachment.Name, metav1.DeleteOptions{}); err != nil {
 			klog.Errorf("failed to delete AzVolumeAttachment (%s): %v", attachment.Name, err)
 			return err
 		}
@@ -1093,7 +1093,7 @@ func cleanUpAzVolumeAttachments(ctx context.Context, azr azReconciler, attachmen
 	return nil
 }
 
-func getAzVolumeAttachmentsForVolume(ctx context.Context, azclient client.Client, volumeName string, azVolumeAttachmentRole roleMode) (attachments []v1alpha1.AzVolumeAttachment, err error) {
+func getAzVolumeAttachmentsForVolume(ctx context.Context, azclient client.Client, volumeName string, azVolumeAttachmentRole roleMode) (attachments []diskv1alpha2.AzVolumeAttachment, err error) {
 	klog.V(5).Infof("Getting the list of AzVolumeAttachments for %s.", volumeName)
 	if azVolumeAttachmentRole == all {
 		return getAzVolumeAttachmentsWithLabel(ctx, azclient, labelPair{consts.VolumeNameLabel, volumeName})
@@ -1101,7 +1101,7 @@ func getAzVolumeAttachmentsForVolume(ctx context.Context, azclient client.Client
 	return getAzVolumeAttachmentsWithLabel(ctx, azclient, labelPair{consts.VolumeNameLabel, volumeName}, labelPair{consts.RoleLabel, roles[azVolumeAttachmentRole]})
 }
 
-func getAzVolumeAttachmentsForNode(ctx context.Context, azclient client.Client, nodeName string, azVolumeAttachmentRole roleMode) (attachments []v1alpha1.AzVolumeAttachment, err error) {
+func getAzVolumeAttachmentsForNode(ctx context.Context, azclient client.Client, nodeName string, azVolumeAttachmentRole roleMode) (attachments []diskv1alpha2.AzVolumeAttachment, err error) {
 	klog.V(5).Infof("Getting the list of AzVolumeAttachments for %s.", nodeName)
 	if azVolumeAttachmentRole == all {
 		return getAzVolumeAttachmentsWithLabel(ctx, azclient, labelPair{consts.NodeNameLabel, nodeName})
@@ -1109,7 +1109,7 @@ func getAzVolumeAttachmentsForNode(ctx context.Context, azclient client.Client, 
 	return getAzVolumeAttachmentsWithLabel(ctx, azclient, labelPair{consts.NodeNameLabel, nodeName}, labelPair{consts.RoleLabel, roles[azVolumeAttachmentRole]})
 }
 
-func getAzVolumeAttachmentsWithLabel(ctx context.Context, azclient client.Client, labelPairs ...labelPair) (attachments []v1alpha1.AzVolumeAttachment, err error) {
+func getAzVolumeAttachmentsWithLabel(ctx context.Context, azclient client.Client, labelPairs ...labelPair) (attachments []diskv1alpha2.AzVolumeAttachment, err error) {
 	labelSelector := labels.NewSelector()
 	for _, labelPair := range labelPairs {
 		var req *labels.Requirement
@@ -1122,7 +1122,7 @@ func getAzVolumeAttachmentsWithLabel(ctx context.Context, azclient client.Client
 	}
 
 	klog.V(5).Infof("Label selector is: %v.", labelSelector)
-	azVolumeAttachments := &v1alpha1.AzVolumeAttachmentList{}
+	azVolumeAttachments := &diskv1alpha2.AzVolumeAttachmentList{}
 	err = azclient.List(ctx, azVolumeAttachments, &client.ListOptions{LabelSelector: labelSelector})
 	if err != nil {
 		klog.V(5).Infof("Error retrieving AzVolumeAttachments for label %s. Error: %v", labelSelector, err)
@@ -1132,15 +1132,15 @@ func getAzVolumeAttachmentsWithLabel(ctx context.Context, azclient client.Client
 	return
 }
 
-func shouldCleanUp(attachment v1alpha1.AzVolumeAttachment, mode roleMode) bool {
-	return mode == all || (attachment.Spec.RequestedRole == v1alpha1.PrimaryRole && mode == primaryOnly) || (attachment.Spec.RequestedRole == v1alpha1.ReplicaRole && mode == replicaOnly)
+func shouldCleanUp(attachment diskv1alpha2.AzVolumeAttachment, mode roleMode) bool {
+	return mode == all || (attachment.Spec.RequestedRole == diskv1alpha2.PrimaryRole && mode == primaryOnly) || (attachment.Spec.RequestedRole == diskv1alpha2.ReplicaRole && mode == replicaOnly)
 }
 
-func isAttached(attachment *v1alpha1.AzVolumeAttachment) bool {
+func isAttached(attachment *diskv1alpha2.AzVolumeAttachment) bool {
 	return attachment != nil && attachment.Status.Detail != nil && attachment.Status.Detail.PublishContext != nil
 }
 
-func isCreated(volume *v1alpha1.AzVolume) bool {
+func isCreated(volume *diskv1alpha2.AzVolume) bool {
 	return volume != nil && volume.Status.Detail != nil && volume.Status.Detail.ResponseObject != nil
 }
 
@@ -1154,15 +1154,15 @@ func objectDeletionRequested(obj runtime.Object) bool {
 	return !deletionTime.IsZero() && deletionTime.Time.Before(time.Now())
 }
 
-func volumeDetachRequested(attachment *v1alpha1.AzVolumeAttachment) bool {
+func volumeDetachRequested(attachment *diskv1alpha2.AzVolumeAttachment) bool {
 	return attachment != nil && attachment.Annotations != nil && metav1.HasAnnotation(attachment.ObjectMeta, consts.VolumeDetachRequestAnnotation)
 }
 
-func volumeDeleteRequested(volume *v1alpha1.AzVolume) bool {
+func volumeDeleteRequested(volume *diskv1alpha2.AzVolume) bool {
 	return volume != nil && volume.Annotations != nil && metav1.HasAnnotation(volume.ObjectMeta, consts.VolumeDeleteRequestAnnotation)
 }
 
-func preProvisionCleanupRequested(volume *v1alpha1.AzVolume) bool {
+func preProvisionCleanupRequested(volume *diskv1alpha2.AzVolume) bool {
 	return volume != nil && volume.Annotations != nil && metav1.HasAnnotation(volume.ObjectMeta, consts.PreProvisionedVolumeCleanupAnnotation)
 }
 
@@ -1237,10 +1237,10 @@ func reconcileReturnOnError(obj runtime.Object, operationType string, err error,
 
 func isOperationInProcess(obj interface{}) bool {
 	switch target := obj.(type) {
-	case *v1alpha1.AzVolume:
-		return target.Status.State == v1alpha1.VolumeCreating || target.Status.State == v1alpha1.VolumeDeleting || target.Status.State == v1alpha1.VolumeUpdating
-	case *v1alpha1.AzVolumeAttachment:
-		return target.Status.State == v1alpha1.Attaching || target.Status.State == v1alpha1.Detaching
+	case *diskv1alpha2.AzVolume:
+		return target.Status.State == diskv1alpha2.VolumeCreating || target.Status.State == diskv1alpha2.VolumeDeleting || target.Status.State == diskv1alpha2.VolumeUpdating
+	case *diskv1alpha2.AzVolumeAttachment:
+		return target.Status.State == diskv1alpha2.Attaching || target.Status.State == diskv1alpha2.Detaching
 	}
 	return false
 }
@@ -1342,7 +1342,7 @@ func (c *SharedState) manageReplicas(ctx context.Context, volumeName string, azr
 
 	if desiredReplicaCount > currentReplicaCount {
 		klog.Infof("Need %d more replicas for volume (%s)", desiredReplicaCount-currentReplicaCount, azVolume.Spec.UnderlyingVolume)
-		if azVolume.Status.Detail == nil || azVolume.Status.State == v1alpha1.VolumeDeleting || azVolume.Status.State == v1alpha1.VolumeDeleted || azVolume.Status.Detail.ResponseObject == nil {
+		if azVolume.Status.Detail == nil || azVolume.Status.State == diskv1alpha2.VolumeDeleting || azVolume.Status.State == diskv1alpha2.VolumeDeleted || azVolume.Status.Detail.ResponseObject == nil {
 			// underlying volume does not exist, so volume attachment cannot be made
 			return nil
 		}

@@ -20,23 +20,22 @@ import (
 	"context"
 
 	v1 "k8s.io/api/core/v1"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
-	azuredisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
+	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 )
 
 type CrdProvisioner interface {
 	RegisterDriverNode(ctx context.Context, node *v1.Node, nodePartition string, nodeID string) error
-	CreateVolume(ctx context.Context, volumeName string, capacityRange *azuredisk.CapacityRange,
-		volumeCapabilities []azuredisk.VolumeCapability, parameters map[string]string,
-		secrets map[string]string, volumeContentSource *azuredisk.ContentVolumeSource,
-		accessibilityReq *azuredisk.TopologyRequirement) (*azuredisk.AzVolumeStatusParams, error)
+	CreateVolume(ctx context.Context, volumeName string, capacityRange *diskv1alpha2.CapacityRange,
+		volumeCapabilities []diskv1alpha2.VolumeCapability, parameters map[string]string,
+		secrets map[string]string, volumeContentSource *diskv1alpha2.ContentVolumeSource,
+		accessibilityReq *diskv1alpha2.TopologyRequirement) (*diskv1alpha2.AzVolumeStatusParams, error)
 	DeleteVolume(ctx context.Context, volumeID string, secrets map[string]string) error
-	PublishVolume(ctx context.Context, volumeID string, nodeID string, volumeCapability *azuredisk.VolumeCapability,
+	PublishVolume(ctx context.Context, volumeID string, nodeID string, volumeCapability *diskv1alpha2.VolumeCapability,
 		readOnly bool, secrets map[string]string, volumeContext map[string]string) (map[string]string, error)
 	UnpublishVolume(ctx context.Context, volumeID string, nodeID string, secrets map[string]string) error
-	GetAzVolumeAttachmentState(ctx context.Context, volumeID string, nodeID string) (v1alpha1.AzVolumeAttachmentAttachmentState, error)
-	ExpandVolume(ctx context.Context, volumeID string, capacityRange *azuredisk.CapacityRange, secrets map[string]string) (*azuredisk.AzVolumeStatusParams, error)
+	GetAzVolumeAttachmentState(ctx context.Context, volumeID string, nodeID string) (diskv1alpha2.AzVolumeAttachmentAttachmentState, error)
+	ExpandVolume(ctx context.Context, volumeID string, capacityRange *diskv1alpha2.CapacityRange, secrets map[string]string) (*diskv1alpha2.AzVolumeStatusParams, error)
 	GetDiskClientSet() azDiskClientSet.Interface
 }
 
