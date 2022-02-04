@@ -24,6 +24,7 @@ Filesystem      Size  Used Avail Use% Mounted on
 </pre>
 
 ### Azuredisk Static Provisioning(use an existing azure disk)
+> Make sure identity used by the driver has access to the existing Azure disk
  - Create an azuredisk CSI PV, download `pv-azuredisk-csi.yaml` file and edit `diskName`, `diskURI` in `volumeAttributes`
 ```console
 wget https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/pv-azuredisk-csi.yaml
