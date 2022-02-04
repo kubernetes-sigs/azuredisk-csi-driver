@@ -171,6 +171,11 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 						Volumes: []v1.Volume{
 							{
 								Name: "vol",
+								VolumeSource: v1.VolumeSource{
+									PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+										ClaimName: "vol",
+									},
+								},
 							},
 						}}},
 				Nodes:     &v1.NodeList{Items: []v1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node"}}}},
@@ -198,6 +203,11 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 						Volumes: []v1.Volume{
 							{
 								Name: "vol",
+								VolumeSource: v1.VolumeSource{
+									PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+										ClaimName: "vol",
+									},
+								},
 							},
 						}}},
 				Nodes:     &v1.NodeList{Items: []v1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node"}}}},
@@ -245,6 +255,11 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 						Volumes: []v1.Volume{
 							{
 								Name: "vol",
+								VolumeSource: v1.VolumeSource{
+									PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+										ClaimName: "vol",
+									},
+								},
 							},
 						},
 					},
@@ -287,6 +302,11 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 						Volumes: []v1.Volume{
 							{
 								Name: "vol",
+								VolumeSource: v1.VolumeSource{
+									PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+										ClaimName: "vol",
+									},
+								},
 							},
 						},
 					},
@@ -329,6 +349,11 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 						Volumes: []v1.Volume{
 							{
 								Name: "vol",
+								VolumeSource: v1.VolumeSource{
+									PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+										ClaimName: "vol",
+									},
+								},
 							},
 						},
 					},
@@ -377,6 +402,11 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 						Volumes: []v1.Volume{
 							{
 								Name: "vol",
+								VolumeSource: v1.VolumeSource{
+									PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+										ClaimName: "vol",
+									},
+								},
 							}}}},
 				Nodes: &v1.NodeList{
 					Items: []v1.Node{
@@ -421,9 +451,19 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 						Volumes: []v1.Volume{
 							{
 								Name: "vol",
+								VolumeSource: v1.VolumeSource{
+									PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+										ClaimName: "vol",
+									},
+								},
 							},
 							{
 								Name: "vol1",
+								VolumeSource: v1.VolumeSource{
+									PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+										ClaimName: "vol1",
+									},
+								},
 							}}}},
 				Nodes: &v1.NodeList{
 					Items: []v1.Node{
@@ -468,6 +508,11 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 						Volumes: []v1.Volume{
 							{
 								Name: "vol",
+								VolumeSource: v1.VolumeSource{
+									PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+										ClaimName: "vol",
+									},
+								},
 							}}}},
 				Nodes: &v1.NodeList{
 					Items: []v1.Node{

@@ -156,6 +156,29 @@ func filter(context context.Context, schedulerExtenderArgs schedulerapi.Extender
 		}
 	}
 
+	// get PV names for requested PVCs
+	var pvNamesForRequestedVolumes []string
+	numberOfRequestedAttachments := 0
+	for _, volume := range requestedVolumes {
+		if volume.PersistentVolumeClaim != nil {
+			// not the same as len(pvNamesForRequestedVolumes). PV-s for a new pod might not be cached yet.
+			numberOfRequestedAttachments++
+			if entry, ok := pvcToPvMapCache.Get(volume.PersistentVolumeClaim.ClaimName); ok {
+				klog.V(2).Infof(
+					"pvc(%s) to pv(%s) mapping for pod %s exists.",
+					volume.PersistentVolumeClaim.ClaimName,
+					entry.VolumeName,
+					schedulerExtenderArgs.Pod.Name,
+				)
+				pvNamesForRequestedVolumes = append(pvNamesForRequestedVolumes, entry.VolumeName)
+			}
+		}
+	}
+
+	if numberOfRequestedAttachments == 0 {
+		return formatFilterResult(schedulerExtenderArgs.Nodes.Items, schedulerExtenderArgs.NodeNames, failedNodes, ""), nil
+	}
+
 	// filter the nodes based on AzDiverNode status and number of disk attachments
 	failedNodes = make(map[string]string)
 	for _, node := range allNodes {
@@ -163,12 +186,15 @@ func filter(context context.Context, schedulerExtenderArgs schedulerapi.Extender
 		excludeNode := false
 		if found && ready {
 			// get AzVolumeAttachments for the node
-			azVolumeAttachments, err := getAzVolumeAttachmentsByNode(node.Name)
+			azVolumeAttachments, err := getAdditionalAzVolumeAttachmentsOnNode(node.Name, pvNamesForRequestedVolumes)
+			klog.V(2).Infof(
+				"number of additional volume attachments for node %s and pod %s is %d. Number of requested volumes is %d. Err: %v",
+				node.Name, schedulerExtenderArgs.Pod.Name, len(azVolumeAttachments), numberOfRequestedAttachments, err)
 			if err == nil {
 				// get the max disk count for the node type
 				maxDiskCount, err := azureutils.GetNodeMaxDiskCount(node.Labels)
-				if err == nil && len(azVolumeAttachments)+len(requestedVolumes) > maxDiskCount {
-					klog.Warningf("max number of azVolumeAttachments for node %s has been reached. The node will be skipped", node.Name, azDriverNodesMeta.err)
+				if err == nil && len(azVolumeAttachments)+numberOfRequestedAttachments > maxDiskCount {
+					klog.Warningf("max number of azVolumeAttachments for node %s has been reached. Node will be skipped.", node.Name)
 					excludeNode = true
 					failedNodes[node.Name] = "node(s) reached the maximum number of disk attachments"
 				}
@@ -183,7 +209,7 @@ func filter(context context.Context, schedulerExtenderArgs schedulerapi.Extender
 	}
 	filteredNodeNames = &storeFilteredNodeNames
 
-	klog.V(2).Infof("Request to Filter completed with the following filter and failed node lists. Filtered nodes: %+v. Failed nodes: %+v.", storeFilteredNodeNames, failedNodes)
+	klog.V(2).Infof("request to Filter completed with the following filter and failed node lists. Filtered nodes: %+v. Failed nodes: %+v.", storeFilteredNodeNames, failedNodes)
 
 	return formatFilterResult(filteredNodes, filteredNodeNames, failedNodes, ""), nil
 }
@@ -211,22 +237,15 @@ func prioritize(context context.Context, schedulerExtenderArgs schedulerapi.Exte
 
 		// create a lookup map of all the volumes the pod needs
 		for _, volume := range requestedVolumes {
-			klog.V(2).Infof(
-				"Volume pod %s needs: %s. PVC: %v. PVC source: %v.",
-				schedulerExtenderArgs.Pod.Name,
-				volume.Name,
-				volume.PersistentVolumeClaim,
-				volume.VolumeSource.PersistentVolumeClaim,
-			)
 			if volume.PersistentVolumeClaim != nil {
 				if entry, ok := pvcToPvMapCache.Get(volume.PersistentVolumeClaim.ClaimName); ok &&
 					!strings.EqualFold(entry.AccessMode, string(v1.ReadWriteMany)) &&
 					!strings.EqualFold(entry.AccessMode, string(v1.ReadOnlyMany)) {
 					klog.V(2).Infof(
-						"Mapping volume %s for pod %s. Claim: %v",
-						volume.Name,
+						"pvc(%s) to pv(%s) mapping for pod %s exists.",
+						volume.PersistentVolumeClaim.ClaimName,
+						entry.VolumeName,
 						schedulerExtenderArgs.Pod.Name,
-						volume.PersistentVolumeClaim,
 					)
 					volumesPodNeeds[entry.VolumeName] = struct{}{}
 				}
@@ -237,7 +256,7 @@ func prioritize(context context.Context, schedulerExtenderArgs schedulerapi.Exte
 		azDriverNodesMeta := <-nodesChan
 		if azDriverNodesMeta.err != nil {
 			priorityList = setNodeScoresToZero(availableNodes)
-			klog.Warningf("Failed to get the list of azDriverNodes: %v", azDriverNodesMeta.err)
+			klog.Warningf("failed to get the list of azDriverNodes: %v", azDriverNodesMeta.err)
 			return
 		}
 
@@ -252,14 +271,14 @@ func prioritize(context context.Context, schedulerExtenderArgs schedulerapi.Exte
 		azVolumeAttachmentsMeta := <-volumesChan
 		if azVolumeAttachmentsMeta.err != nil {
 			priorityList = setNodeScoresToZero(availableNodes)
-			klog.Warningf("Failed to get the list of azVolumeAttachments: %v", azVolumeAttachmentsMeta.err)
+			klog.Warningf("failed to get the list of azVolumeAttachments: %v", azVolumeAttachmentsMeta.err)
 			return
 		}
 
 		// for every volume the pod needs, append its azVolumeAttachment name to the node name
 		for _, attachedVolume := range azVolumeAttachmentsMeta.volumes {
 			klog.V(2).Infof(
-				"Volume attachment in consideration: Name: %s, Volume: %s.",
+				"volume attachment in consideration: Name: %s, Volume: %s.",
 				attachedVolume.Name,
 				attachedVolume.Spec.VolumeName,
 			)
@@ -267,21 +286,21 @@ func prioritize(context context.Context, schedulerExtenderArgs schedulerapi.Exte
 			nodeNameToVolumeMap[attachedVolume.Spec.NodeName] = append(nodeNameToVolumeMap[attachedVolume.Spec.NodeName], attachedVolume.Spec.VolumeName)
 
 			if !attachedVolume.DeletionTimestamp.IsZero() || attachedVolume.Status.State != diskv1alpha2.Attached {
-				klog.V(2).Infof("Volume attachment excluded because it is to be deleted or not in the Attached state: Name %s, Volume: %s", attachedVolume.Name, attachedVolume.Spec.VolumeName)
+				klog.V(2).Infof("volume attachment excluded because it is to be deleted or not in the Attached state: Name %s, Volume: %s", attachedVolume.Name, attachedVolume.Spec.VolumeName)
 				continue
 			}
 
 			_, requestedByPod := volumesPodNeeds[attachedVolume.Spec.VolumeName]
 			if requestedByPod {
-				klog.V(2).Infof("Volume attachment is needed: Name: %s, Volume: %s.", attachedVolume.Name, attachedVolume.Spec.VolumeName)
+				klog.V(2).Infof("volume attachment is needed: Name: %s, Volume: %s.", attachedVolume.Name, attachedVolume.Spec.VolumeName)
 				nodeNameToRequestedVolumeMap[attachedVolume.Spec.NodeName] = append(nodeNameToRequestedVolumeMap[attachedVolume.Spec.NodeName], attachedVolume.Spec.VolumeName)
 			}
 		}
 
 		// score nodes based in how many azVolumeAttchments are appended to its name
-		klog.V(2).Infof("Scoring nodes for pod %+v.", schedulerExtenderArgs.Pod.Name)
+		klog.V(2).Infof("scoring nodes for pod %+v.", schedulerExtenderArgs.Pod.Name)
 		for _, node := range availableNodes {
-			klog.V(2).Infof("Node %+v has %d/%d of requested volumes volumes", node.Name, len(nodeNameToVolumeMap[node.Name]), len(requestedVolumes))
+			klog.V(2).Infof("node %+v has %d/%d of requested volumes volumes", node.Name, len(nodeNameToRequestedVolumeMap[node.Name]), len(requestedVolumes))
 			score := getNodeScore(len(nodeNameToRequestedVolumeMap[node.Name]),
 				nodeNameToHeartbeatMap[node.Name],
 				len(availableNodes),
@@ -291,14 +310,14 @@ func prioritize(context context.Context, schedulerExtenderArgs schedulerapi.Exte
 			priorityList = append(priorityList, hostPriority)
 		}
 	}
-	klog.V(2).Infof("Request to Prioritize completed with the following priority list: %+v", priorityList)
+	klog.V(2).Infof("request to Prioritize completed with the following priority list: %+v", priorityList)
 	return
 }
 
 func getKubeConfig() (config *rest.Config, err error) {
 	config, err = rest.InClusterConfig()
 	if err != nil {
-		klog.Warning("Failed getting the in cluster config: %v", err)
+		klog.Warning("failed getting the in cluster config: %v", err)
 		// fallback to kubeconfig
 		kubeConfigPath := os.Getenv("KUBECONFIG")
 		if len(kubeConfigPath) == 0 {
@@ -315,16 +334,16 @@ func getKubernetesExtensionClientsets() (azKubeExtensionClientset versioned.Inte
 	// getKubeConfig gets config object from config file
 	config, err := getKubeConfig()
 	if err != nil {
-		return nil, fmt.Errorf("Failed to get the kubernetes config: %v", err)
+		return nil, fmt.Errorf("failed to get the kubernetes config: %v", err)
 	}
 
 	// generate the clientset extension based off of the config
 	azKubeExtensionClientset, err = versioned.NewForConfig(config)
 	if err != nil {
-		return azKubeExtensionClientset, fmt.Errorf("Cannot create the clientset: %v", err)
+		return azKubeExtensionClientset, fmt.Errorf("cannot create the clientset: %v", err)
 	}
 
-	klog.Info("Successfully constructed kubernetes client and extension clientset")
+	klog.V(2).Info("successfully constructed kubernetes client and extension clientset")
 	return azKubeExtensionClientset, nil
 }
 
@@ -332,13 +351,13 @@ func getKubernetesClientset() (*kubernetes.Clientset, error) {
 	// getKubeConfig gets config object from config file
 	config, err := getKubeConfig()
 	if err != nil {
-		return nil, fmt.Errorf("Failed to get the kubernetes config: %v", err)
+		return nil, fmt.Errorf("failed to get the kubernetes config: %v", err)
 	}
 
 	// generate the clientset extension based off of the config
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		return nil, fmt.Errorf("Cannot create the kubernetes client: %v", err)
+		return nil, fmt.Errorf("cannot create the kubernetes client: %v", err)
 	}
 	return kubeClient, nil
 }
@@ -350,7 +369,7 @@ func getNodeScore(volumeAttachments int, latestHeartbeat metav1.Time, availableN
 
 	if latestHeartbeatWas.Before(latestHeartbeatCanBe) {
 		klog.Warningf(
-			"Node is unresponsive. Latest node heartbeat for %v was: %v. Latest accepted heartbeat could be: %s",
+			"node is unresponsive. Latest node heartbeat for %v was: %v. Latest accepted heartbeat is: %s",
 			nodeName,
 			latestHeartbeatWas.Format(time.UnixDate),
 			latestHeartbeatCanBe.Format(time.UnixDate))
@@ -367,7 +386,7 @@ func getAzDriverNodes(context context.Context, out chan azDriverNodesMeta) {
 	// get all nodes that have azDriverNode running
 	var activeDriverNodes azDriverNodesMeta
 	activeDriverNodes.nodes, activeDriverNodes.err = azDriverNodeInformer.Lister().AzDriverNodes(criNamespace).List(labels.Everything())
-	klog.Infof("AzDriverNodes: %v", activeDriverNodes.nodes)
+	klog.V(2).Infof("AzDriverNodes: %d", len(activeDriverNodes.nodes))
 	out <- activeDriverNodes
 }
 
@@ -377,21 +396,29 @@ func getAzVolumeAttachments(context context.Context, out chan azVolumeAttachment
 	// get all azVolumeAttachments running in the cluster
 	var activeVolumeAttachments azVolumeAttachmentsMeta
 	activeVolumeAttachments.volumes, activeVolumeAttachments.err = azVolumeAttachmentInformer.Lister().AzVolumeAttachments(criNamespace).List(labels.Everything())
-	klog.Infof("AzVolumeAttachments: %v", len(activeVolumeAttachments.volumes))
+	klog.V(2).Infof("AzVolumeAttachments: %d", len(activeVolumeAttachments.volumes))
 	out <- activeVolumeAttachments
 }
 
-func getAzVolumeAttachmentsByNode(nodeName string) ([]*diskv1alpha2.AzVolumeAttachment, error) {
+func getAdditionalAzVolumeAttachmentsOnNode(nodeName string, volumeNames []string) ([]*diskv1alpha2.AzVolumeAttachment, error) {
 	nodeNameFilter, err := azureutils.CreateLabelRequirements(consts.NodeNameLabel, selection.Equals, nodeName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create a filter label for listing AzVolumeAttachments for node %s: %v", nodeName, err)
 	}
-	attachments, err := azVolumeAttachmentInformer.Lister().AzVolumeAttachments(criNamespace).List(labels.NewSelector().Add(*nodeNameFilter))
+	labelSelector := labels.NewSelector().Add(*nodeNameFilter)
+	if len(volumeNames) > 0 {
+		volumeFilter, err := azureutils.CreateLabelRequirements(consts.VolumeNameLabel, selection.NotIn, volumeNames...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create a filter label for filtering out replica AzVolumeAttachments for volumes %v: %v", volumeNames, err)
+		}
+		labelSelector = labelSelector.Add(*volumeFilter)
+	}
+
+	attachments, err := azVolumeAttachmentInformer.Lister().AzVolumeAttachments(criNamespace).List(labelSelector)
 	if err != nil {
 		return nil, fmt.Errorf("failed listing AzVolumeAttachments for node %s: %v", nodeName, err)
 	}
 
-	klog.Infof("node %s has %d AzVolumeAttachments", nodeName, len(attachments))
 	return attachments, nil
 }
 
@@ -417,7 +444,7 @@ func setNodeScoresToZero(nodes []v1.Node) (priorityList schedulerapi.HostPriorit
 func onPvcUpdate(obj interface{}, newObj interface{}) {
 	// Cast the obj to pvc
 	pvc := newObj.(*v1.PersistentVolumeClaim)
-	klog.Infof("Updating pvcToPv map cache.PVC: %s PV: %s, AccessMode: %v", pvc.Name, pvc.Spec.VolumeName, pvc.Spec.AccessModes)
+	klog.V(4).Infof("updating pvcToPv mapping cache. PVC: %s PV: %s, AccessMode: %v", pvc.Name, pvc.Spec.VolumeName, pvc.Spec.AccessModes)
 	cacheValue := cacheEntry{VolumeName: pvc.Spec.VolumeName, AccessMode: fmt.Sprintf("%v", pvc.Spec.AccessModes[0])}
 	pvcToPvMapCache.AddOrUpdate(pvc.Name, &cacheValue)
 }
@@ -425,6 +452,6 @@ func onPvcUpdate(obj interface{}, newObj interface{}) {
 func onPvcDelete(obj interface{}) {
 	// Cast the obj to pvc
 	pvc := obj.(*v1.PersistentVolumeClaim)
-	klog.Infof("Deleting pvcToPv map cache entry. PVC: %s PV: %s", pvc.Name, pvc.Spec.VolumeName)
+	klog.V(4).Infof("deleting from pvcToPv mapping cache. PVC: %s PV: %s", pvc.Name, pvc.Spec.VolumeName)
 	pvcToPvMapCache.Delete(pvc.Name)
 }
