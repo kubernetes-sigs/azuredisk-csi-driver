@@ -120,8 +120,8 @@ func main() {
 		close(stopCh)
 	}()
 
+	var deployments []*apps.Deployment
 	if *deployAllPodsOnOneNode {
-		var deployments []*apps.Deployment
 		deployment, err := createDeployment(ctx, clientset, pvcCreatedList, 0, numPvcsPerPod, false)
 		deployments = append(deployments, deployment)
 		if err != nil {
@@ -138,10 +138,15 @@ func main() {
 			deployments = append(deployments, deployment)
 			nextPVC = nextPVC + numPvcsPerPod
 		}
+
+		if !deleteNamespace {
+			defer deletePVCs(ctx, clientset, pvcCreatedList...)
+			defer deleteDeployments(ctx, clientset, deployments...)
+		}
+
 		RunWorkloadPodsOnSameNode(ctx, clientset, deployments, stopCh)
 
 	} else {
-		var deployments []*apps.Deployment
 		nextPVC := 0
 		for count := 0; count < numPods; count++ {
 
@@ -153,6 +158,11 @@ func main() {
 			}
 			deployments = append(deployments, deployment)
 			nextPVC = nextPVC + numPvcsPerPod
+		}
+
+		if !deleteNamespace {
+			defer deletePVCs(ctx, clientset, pvcCreatedList...)
+			defer deleteDeployments(ctx, clientset, deployments...)
 		}
 
 		RunWorkloadPods(ctx, clientset, deployments, stopCh)
@@ -221,6 +231,39 @@ func deleteStorageClass(ctx context.Context, clientset *kubernetes.Clientset, na
 	err := clientset.StorageV1().StorageClasses().Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		klog.Errorf("Error occurred while deleting the storage class %s : %v", name, err)
+	}
+}
+
+func deleteDeployments(ctx context.Context, clientset *kubernetes.Clientset, deployments ...*apps.Deployment) {
+	var wg sync.WaitGroup
+	for _, deployment := range deployments {
+		podList, err := getPodsForDeployment(ctx, clientset, deployment)
+		if err != nil {
+			klog.Errorf("Error occurred while getting the list of pods while deleting the deployment %s : %v", deployment.Name, err)
+		}
+		err = clientset.AppsV1().Deployments(podFailoverNamespace).Delete(ctx, deployment.Name, metav1.DeleteOptions{})
+		if err != nil {
+			klog.Errorf("Error occurred while deleting the deployment %s : %v", deployment.Name, err)
+		}
+		for _, pod := range podList.Items {
+			go func(pod v1.Pod) {
+				defer wg.Done()
+				err := waitForPodToBeDeleted(ctx, pod.Name, clientset)
+				if err != nil {
+					klog.Infof("Error occurred while deleting pod %s: %v", pod.Name, err)
+				}
+			}(pod)
+		}
+	}
+	wg.Wait()
+}
+
+func deletePVCs(ctx context.Context, clientset *kubernetes.Clientset, pvcNames ...string) {
+	for _, pvc := range pvcNames {
+		err := clientset.CoreV1().PersistentVolumeClaims(podFailoverNamespace).Delete(ctx, pvc, metav1.DeleteOptions{})
+		if err != nil {
+			klog.Errorf("Error occurred while deleting the pvc %s : %v", pvc, err)
+		}
 	}
 }
 
@@ -398,7 +441,10 @@ func deletePod(ctx context.Context, namespace, podName string, clientset *kubern
 	if err != nil {
 		return err
 	}
+	return waitForPodToBeDeleted(ctx, podName, clientset)
+}
 
+func waitForPodToBeDeleted(ctx context.Context, podName string, clientset *kubernetes.Clientset) error {
 	return wait.PollImmediate(1*time.Second, 10*time.Minute, func() (done bool, err error) {
 		_, err = clientset.CoreV1().Pods(podFailoverNamespace).Get(ctx, podName, metav1.GetOptions{})
 		if err != nil {
@@ -406,7 +452,6 @@ func deletePod(ctx context.Context, namespace, podName string, clientset *kubern
 				return true, nil
 			}
 		}
-
 		return false, err
 	})
 }
