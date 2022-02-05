@@ -281,7 +281,7 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 		os.Exit(1)
 	}
 
-	sharedState := controller.NewSharedState(d.Name, d.objectNamespace)
+	sharedState := controller.NewSharedState(d.Name, d.objectNamespace, topologyKey)
 
 	// Setup a new controller to clean-up AzDriverNodes
 	// objects for the nodes which get deleted
