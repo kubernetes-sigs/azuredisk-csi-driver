@@ -227,6 +227,7 @@ func newLockableEntry(entry interface{}) *lockableEntry {
 type SharedState struct {
 	driverName                    string
 	objectNamespace               string
+	topologyKey                   string
 	podToClaimsMap                sync.Map
 	claimToPodsMap                sync.Map
 	volumeToClaimMap              sync.Map
@@ -239,8 +240,8 @@ type SharedState struct {
 	processingReplicaRequestQueue int32
 }
 
-func NewSharedState(driverName string, objectNamespace string) *SharedState {
-	newSharedState := &SharedState{driverName: driverName, objectNamespace: objectNamespace}
+func NewSharedState(driverName, objectNamespace, topologyKey string) *SharedState {
+	newSharedState := &SharedState{driverName: driverName, objectNamespace: objectNamespace, topologyKey: topologyKey}
 	newSharedState.createReplicaRequestsQueue()
 	return newSharedState
 }
@@ -602,6 +603,7 @@ func getRankedNodesForReplicaAttachments(ctx context.Context, azr azReconciler, 
 	nodes := []string{}
 	nodeScores := map[string]int{}
 	primaryNode := ""
+	compatibleZones := []string{}
 
 	var podNodeAffinities []*nodeaffinity.RequiredNodeAffinity
 	var podTolerations []v1.Toleration
@@ -664,7 +666,8 @@ func getRankedNodesForReplicaAttachments(ctx context.Context, azr azReconciler, 
 	}
 
 	var volumeNodeSelectors []*nodeaffinity.NodeSelector
-	for _, volume := range volumes {
+	compatibleZonesSet := set{}
+	for i, volume := range volumes {
 		azVolume, err := azureutils.GetAzVolume(ctx, azr.getClient(), azr.getAzClient(), volume, azr.getSharedState().objectNamespace, true)
 		if err != nil {
 			klog.V(5).Infof("AzVolume for volume %s is not found.", volume)
@@ -706,6 +709,22 @@ func getRankedNodesForReplicaAttachments(ctx context.Context, azr azReconciler, 
 		if pv.Spec.NodeAffinity == nil || pv.Spec.NodeAffinity.Required == nil {
 			continue
 		}
+
+		// Find the intersection of the zones for all the volumes
+		topologyKey := azr.getSharedState().topologyKey
+		if i == 0 {
+			compatibleZonesSet = getSupportedZones(pv.Spec.NodeAffinity.Required.NodeSelectorTerms, topologyKey)
+		} else {
+			commonZones := set{}
+			listOfZones := getSupportedZones(pv.Spec.NodeAffinity.Required.NodeSelectorTerms, topologyKey)
+			for key := range listOfZones {
+				if compatibleZonesSet.has(key) {
+					commonZones.add(key)
+				}
+			}
+			compatibleZonesSet = commonZones
+		}
+
 		nodeSelector, err := nodeaffinity.NewNodeSelector(pv.Spec.NodeAffinity.Required)
 		if err != nil {
 			// if failed to create a new node selector return error
@@ -713,6 +732,12 @@ func getRankedNodesForReplicaAttachments(ctx context.Context, azr azReconciler, 
 		}
 		// acknowledge that there can be duplicates in the slice
 		volumeNodeSelectors = append(volumeNodeSelectors, nodeSelector)
+	}
+
+	if len(compatibleZonesSet) > 0 {
+		for key := range compatibleZonesSet {
+			compatibleZones = append(compatibleZones, key.(string))
+		}
 	}
 
 	removeCandidacy := func(nodeName string, err error) {
@@ -755,7 +780,7 @@ func getRankedNodesForReplicaAttachments(ctx context.Context, azr azReconciler, 
 
 	// select at least as many nodes as requested replicas
 	if len(nodes) < numReplica {
-		selected, err := selectNodes(ctx, azr, numReplica-len(nodes), primaryNode, nodeScores, podNodeAffinities, podTolerations, podNodeSelector, podAffinities, volumeNodeSelectors)
+		selected, err := selectNodes(ctx, azr, numReplica-len(nodes), primaryNode, nodeScores, podNodeAffinities, podTolerations, podNodeSelector, podAffinities, volumeNodeSelectors, compatibleZones)
 		if err != nil {
 			return nil, err
 		}
@@ -764,6 +789,27 @@ func getRankedNodesForReplicaAttachments(ctx context.Context, azr azReconciler, 
 
 	klog.Infof("Selected nodes (%+v) for replica AzVolumeAttachments for volumes (%+v)", nodes, volumes)
 	return nodes[:min(len(nodes), numReplica)], nil
+}
+
+func getSupportedZones(nodeSelectorTerms []v1.NodeSelectorTerm, topologyKey string) set {
+	// Get the list of supported zones for pv
+	supportedZones := set{}
+	if len(nodeSelectorTerms) > 0 {
+		for _, term := range nodeSelectorTerms {
+			if len(term.MatchExpressions) > 0 {
+				for _, matchExpr := range term.MatchExpressions {
+					if matchExpr.Key == topologyKey {
+						for _, value := range matchExpr.Values {
+							if value != "" && !supportedZones.has(value) {
+								supportedZones.add(value)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	return supportedZones
 }
 
 func getNodeRemainingCapacity(ctx context.Context, cachedClient client.Client, nodeObj *v1.Node, nodeName string) (int, error) {
@@ -808,17 +854,113 @@ func getNodeRemainingCapacity(ctx context.Context, cachedClient client.Client, n
 	return capacity - len(attachments), nil
 }
 
-func selectNodes(ctx context.Context, azr azReconciler, numNodes int, primaryNode string, exceptionNodes map[string]int, podNodeAffinities []*nodeaffinity.RequiredNodeAffinity, podTolerations []v1.Toleration, podNodeSelectors, podAffinities labels.Selector, volumeNodeSelectors []*nodeaffinity.NodeSelector) ([]string, error) {
-	filteredNodes := []string{}
+func selectNodes(ctx context.Context, azr azReconciler, numNodes int, primaryNode string, exceptionNodes map[string]int, podNodeAffinities []*nodeaffinity.RequiredNodeAffinity, podTolerations []v1.Toleration, podNodeSelectors, podAffinities labels.Selector, volumeNodeSelectors []*nodeaffinity.NodeSelector, compatibleZones []string) ([]string, error) {
+	selectedNodes := []string{}
 	var nodes *v1.NodeList
 	var err error
 
-	// List all nodes
 	nodes = &v1.NodeList{}
+	// Select only the nodes from specific supported zones in case of a multi zone cluster
+	if len(compatibleZones) > 0 {
+		klog.Infof("The list of zones to select nodes from is: %s", strings.Join(compatibleZones, ","))
+		nodeObj := &v1.Node{}
+		// Get the zone of the primary node
+		err := azr.getClient().Get(ctx, types.NamespacedName{Name: primaryNode}, nodeObj)
+		if err != nil {
+			klog.Errorf("failed to retrieve the primary node: %v", err)
+		}
+		primaryNodeZone, ok := nodeObj.Labels[consts.WellKnownTopologyKey]
+		if !ok {
+			klog.Infof("failed to find zone annotations for primary node")
+		}
+
+		nodeSelector := labels.NewSelector()
+		zoneRequirement, _ := labels.NewRequirement(consts.WellKnownTopologyKey, selection.In, compatibleZones)
+		nodeSelector = nodeSelector.Add(*zoneRequirement)
+		podNodeSelectorRequirements, _ := podNodeSelectors.Requirements()
+		nodeSelector = nodeSelector.Add(podNodeSelectorRequirements...)
+
+		if err = azr.getClient().List(ctx, nodes, &client.ListOptions{LabelSelector: nodeSelector}); err != nil {
+			klog.Errorf("failed to retrieve node list: %v", err)
+			return selectedNodes, err
+		}
+
+		// Create a zone to node map
+		zoneToNodeMap := map[string][]v1.Node{}
+		for _, node := range nodes.Items {
+			zoneName, ok := node.Labels[consts.WellKnownTopologyKey]
+			if !ok {
+				continue
+			}
+			if _, ok := zoneToNodeMap[zoneName]; !ok {
+				zoneToNodeMap[zoneName] = []v1.Node{}
+			}
+			zoneToNodeMap[zoneName] = append(zoneToNodeMap[zoneName], node)
+		}
+
+		// Get filtered and sorted nodes per zone
+		nodesPerZone := [][]string{}
+		primaryZoneNodes := []string{}
+		totalCount := 0
+		for zone, nodeList := range zoneToNodeMap {
+			filteredNodes, err := filterAndSortNodes(ctx, azr, primaryNode, exceptionNodes, podNodeAffinities, podTolerations, podNodeSelectors, podAffinities, volumeNodeSelectors, v1.NodeList{Items: nodeList})
+			if err != nil {
+				klog.Errorf("failed to filter and sort nodes: %v", err)
+				return selectedNodes, err
+			}
+			if len(filteredNodes) > 0 {
+				totalCount += len(filteredNodes)
+				if zone == primaryNodeZone {
+					primaryZoneNodes = filteredNodes
+					continue
+				}
+				nodesPerZone = append(nodesPerZone, filteredNodes)
+			}
+		}
+
+		// Append the nodes from the zone of the primary node at last
+		if len(primaryZoneNodes) > 0 {
+			nodesPerZone = append(nodesPerZone, primaryZoneNodes)
+		}
+
+		// Select the nodes from each of the zones one by one and append to the list
+		i, j, countSoFar := 0, 0, 0
+		for len(selectedNodes) < numNodes && countSoFar < totalCount {
+			if len(nodesPerZone[i]) > j {
+				selectedNodes = append(selectedNodes, nodesPerZone[i][j])
+				countSoFar++
+			}
+			if i < len(nodesPerZone)-1 {
+				i++
+			} else {
+				i = 0
+				j++
+			}
+		}
+
+		return selectedNodes, nil
+	}
+	// List all nodes
 	if err = azr.getClient().List(ctx, nodes, &client.ListOptions{LabelSelector: podNodeSelectors}); err != nil {
 		klog.Errorf("failed to retrieve node list: %v", err)
-		return filteredNodes, err
+		return selectedNodes, err
 	}
+
+	selectedNodes, err = filterAndSortNodes(ctx, azr, primaryNode, exceptionNodes, podNodeAffinities, podTolerations, podNodeSelectors, podAffinities, volumeNodeSelectors, *nodes)
+	if err != nil {
+		klog.Errorf("failed to filter and sort nodes: %v", err)
+		return selectedNodes, err
+	}
+
+	if len(selectedNodes) > numNodes {
+		return selectedNodes[:numNodes], nil
+	}
+	return selectedNodes, nil
+}
+
+func filterAndSortNodes(ctx context.Context, azr azReconciler, primaryNode string, exceptionNodes map[string]int, podNodeAffinities []*nodeaffinity.RequiredNodeAffinity, podTolerations []v1.Toleration, podNodeSelectors, podAffinities labels.Selector, volumeNodeSelectors []*nodeaffinity.NodeSelector, nodes v1.NodeList) ([]string, error) {
+	filteredNodes := []string{}
+	var err error
 
 	type nodeEntry struct {
 		node      *v1.Node
@@ -926,9 +1068,6 @@ nodeLoop:
 		return nodeMap[filteredNodes[i]].nodeScore > nodeMap[filteredNodes[j]].nodeScore
 	})
 
-	if len(filteredNodes) > numNodes {
-		return filteredNodes[:numNodes], nil
-	}
 	return filteredNodes, nil
 }
 

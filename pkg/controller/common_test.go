@@ -341,7 +341,7 @@ func createPod(podNamespace, podName string, pvcs []string) v1.Pod {
 }
 
 func initState(objs ...runtime.Object) (c *SharedState) {
-	c = NewSharedState(consts.DefaultDriverName, consts.DefaultAzureDiskCrdNamespace)
+	c = NewSharedState(consts.DefaultDriverName, consts.DefaultAzureDiskCrdNamespace, consts.WellKnownTopologyKey)
 
 	for _, obj := range objs {
 		switch target := obj.(type) {
