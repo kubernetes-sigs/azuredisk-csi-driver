@@ -31,15 +31,7 @@ const key = keyType("grpc.internal.transport.networktype")
 
 // Set returns a copy of the provided address with attributes containing networkType.
 func Set(address resolver.Address, networkType string) resolver.Address {
-<<<<<<< HEAD
-<<<<<<< HEAD
 	address.Attributes = address.Attributes.WithValue(key, networkType)
-=======
-	address.Attributes = address.Attributes.WithValues(key, networkType)
->>>>>>> upgrade to k8s 1.23 lib
-=======
-	address.Attributes = address.Attributes.WithValue(key, networkType)
->>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 	return address
 }
 

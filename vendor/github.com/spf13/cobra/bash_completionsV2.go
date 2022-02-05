@@ -138,25 +138,13 @@ __%[1]s_process_completion_results() {
             _filedir -d
         fi
     else
-<<<<<<< HEAD
-<<<<<<< HEAD
         __%[1]s_handle_completion_types
-=======
-        __%[1]s_handle_standard_completion_case
->>>>>>> upgrade to k8s 1.23 lib
-=======
-        __%[1]s_handle_completion_types
->>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
     fi
 
     __%[1]s_handle_special_char "$cur" :
     __%[1]s_handle_special_char "$cur" =
 }
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 __%[1]s_handle_completion_types() {
     __%[1]s_debug "__%[1]s_handle_completion_types: COMP_TYPE is $COMP_TYPE"
 
@@ -186,11 +174,6 @@ __%[1]s_handle_completion_types() {
     esac
 }
 
-<<<<<<< HEAD
-=======
->>>>>>> upgrade to k8s 1.23 lib
-=======
->>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 __%[1]s_handle_standard_completion_case() {
     local tab comp
     tab=$(printf '\t')

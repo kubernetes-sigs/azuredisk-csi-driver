@@ -520,8 +520,6 @@ func WithDisableServiceConfig() DialOption {
 //
 // 1. WithDisableServiceConfig is also used, or
 //
-<<<<<<< HEAD
-<<<<<<< HEAD
 // 2. The name resolver does not provide a service config or provides an
 // invalid service config.
 //
@@ -530,22 +528,6 @@ func WithDisableServiceConfig() DialOption {
 // https://github.com/grpc/grpc/blob/master/doc/service_config.md
 // For a simple example of usage, see:
 // examples/features/load_balancing/client/main.go
-=======
-// Experimental
-//
-// Notice: This API is EXPERIMENTAL and may be changed or removed in a
-// later release.
->>>>>>> upgrade to k8s 1.23 lib
-=======
-// 2. The name resolver does not provide a service config or provides an
-// invalid service config.
-//
-// The parameter s is the JSON representation of the default service config.
-// For more information about service configs, see:
-// https://github.com/grpc/grpc/blob/master/doc/service_config.md
-// For a simple example of usage, see:
-// examples/features/load_balancing/client/main.go
->>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 func WithDefaultServiceConfig(s string) DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
 		o.defaultServiceConfigRawJSON = &s
@@ -557,24 +539,8 @@ func WithDefaultServiceConfig(s string) DialOption {
 // will happen automatically if no data is written to the wire or if the RPC is
 // unprocessed by the remote server.
 //
-<<<<<<< HEAD
-<<<<<<< HEAD
 // Retry support is currently enabled by default, but may be disabled by
 // setting the environment variable "GRPC_GO_RETRY" to "off".
-=======
-// Retry support is currently disabled by default, but will be enabled by
-// default in the future.  Until then, it may be enabled by setting the
-// environment variable "GRPC_GO_RETRY" to "on".
-//
-// Experimental
-//
-// Notice: This API is EXPERIMENTAL and may be changed or removed in a
-// later release.
->>>>>>> upgrade to k8s 1.23 lib
-=======
-// Retry support is currently enabled by default, but may be disabled by
-// setting the environment variable "GRPC_GO_RETRY" to "off".
->>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 func WithDisableRetry() DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
 		o.disableRetry = true

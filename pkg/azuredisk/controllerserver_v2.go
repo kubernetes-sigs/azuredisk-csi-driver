@@ -158,10 +158,42 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 		}
 	}
 
+<<<<<<< HEAD
 	responseAccessibleTopology := []*csi.Topology{}
 	for _, t := range response.AccessibleTopology {
 		topology := &csi.Topology{
 			Segments: t.Segments,
+=======
+	diskParams.VolumeContext[consts.RequestedSizeGib] = strconv.Itoa(requestGiB)
+	volumeOptions := &azure.ManagedDiskOptions{
+		AvailabilityZone:    selectedAvailabilityZone,
+		BurstingEnabled:     diskParams.EnableBursting,
+		DiskEncryptionSetID: diskParams.DiskEncryptionSetID,
+		DiskIOPSReadWrite:   diskParams.DiskIOPSReadWrite,
+		DiskMBpsReadWrite:   diskParams.DiskMBPSReadWrite,
+		DiskName:            diskParams.DiskName,
+		LogicalSectorSize:   int32(diskParams.LogicalSectorSize),
+		MaxShares:           int32(diskParams.MaxShares),
+		PVCName:             "",
+		ResourceGroup:       diskParams.ResourceGroup,
+		SizeGB:              requestGiB,
+		StorageAccountType:  skuName,
+		SourceResourceID:    sourceID,
+		SourceType:          sourceType,
+		Tags:                diskParams.Tags,
+	}
+	// Azure Stack Cloud does not support NetworkAccessPolicy
+	if !azureutils.IsAzureStackCloud(d.cloud.Config.Cloud, d.cloud.Config.DisableAzureStackCloud) {
+		volumeOptions.NetworkAccessPolicy = networkAccessPolicy
+		if diskParams.DiskAccessID != "" {
+			volumeOptions.DiskAccessID = &diskParams.DiskAccessID
+		}
+	}
+	diskURI, err := d.cloud.CreateManagedDisk(ctx, volumeOptions)
+	if err != nil {
+		if strings.Contains(err.Error(), consts.NotFound) {
+			return nil, status.Error(codes.NotFound, err.Error())
+>>>>>>> chore: upgrade azure lib
 		}
 
 		responseAccessibleTopology = append(responseAccessibleTopology, topology)
@@ -253,8 +285,45 @@ func (d *DriverV2) ControllerPublishVolume(ctx context.Context, req *csi.Control
 		return nil, err
 	}
 
+<<<<<<< HEAD
 	if response == nil {
 		return nil, status.Error(codes.Unknown, "Error publishing volume")
+=======
+	if err == nil {
+		if vmState != nil && strings.ToLower(*vmState) == "failed" {
+			klog.Warningf("VM(%q) is in failed state, update VM first", nodeName)
+			if err := d.cloud.UpdateVM(ctx, nodeName); err != nil {
+				return nil, fmt.Errorf("update instance %q failed with %v", nodeName, err)
+			}
+		}
+		// Volume is already attached to node.
+		klog.V(2).Infof("Attach operation is successful. volume %q is already attached to node %q at lun %d.", diskURI, nodeName, lun)
+	} else {
+		var cachingMode compute.CachingTypes
+		if cachingMode, err = azureutils.GetCachingMode(volumeContext); err != nil {
+			return nil, err
+		}
+		klog.V(2).Infof("Trying to attach volume %q to node %q", diskURI, nodeName)
+
+		lun, err = d.cloud.AttachDisk(ctx, true, diskName, diskURI, nodeName, cachingMode, disk)
+		if err == nil {
+			klog.V(2).Infof("Attach operation successful: volume %q attached to node %q.", diskURI, nodeName)
+		} else {
+			if derr, ok := err.(*volerr.DanglingAttachError); ok {
+				klog.Warningf("volume %q is already attached to node %q, try detach first", diskURI, derr.CurrentNode)
+				if err = d.cloud.DetachDisk(ctx, diskName, diskURI, derr.CurrentNode); err != nil {
+					return nil, status.Errorf(codes.Internal, "Could not detach volume %q from node %q: %v", diskURI, derr.CurrentNode, err)
+				}
+				klog.V(2).Infof("Trying to attach volume %q to node %q again", diskURI, nodeName)
+				lun, err = d.cloud.AttachDisk(ctx, true, diskName, diskURI, nodeName, cachingMode, disk)
+			}
+			if err != nil {
+				klog.Errorf("Attach volume %q to instance %q failed with %v", diskURI, nodeName, err)
+				return nil, fmt.Errorf("Attach volume %q to instance %q failed with %v", diskURI, nodeName, err)
+			}
+		}
+		klog.V(2).Infof("attach volume %q to node %q successfully", diskURI, nodeName)
+>>>>>>> chore: upgrade azure lib
 	}
 
 	isOperationSucceeded = true
@@ -456,8 +525,13 @@ func (d *DriverV2) ControllerExpandVolume(ctx context.Context, req *csi.Controll
 		LimitBytes:    req.GetCapacityRange().GetLimitBytes(),
 	}
 
+<<<<<<< HEAD
 	response, err := d.crdProvisioner.ExpandVolume(ctx, diskURI, capacityRange, req.GetSecrets())
 
+=======
+	klog.V(2).Infof("begin to expand azure disk(%s) with new size(%d)", diskURI, requestSize.Value())
+	newSize, err := d.cloud.ResizeDisk(ctx, diskURI, oldSize, requestSize, d.enableDiskOnlineResize)
+>>>>>>> chore: upgrade azure lib
 	if err != nil {
 		return nil, err
 	}

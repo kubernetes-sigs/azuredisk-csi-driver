@@ -129,10 +129,6 @@ type http2Server struct {
 // options from config.
 //
 // It returns a non-nil transport and a nil error on success. On failure, it
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 // returns a nil transport and a non-nil error. For a special case where the
 // underlying conn gets closed before the client preface could be read, it
 // returns a nil transport and a nil error.
@@ -153,12 +149,6 @@ func NewServerTransport(conn net.Conn, config *ServerConfig) (_ ServerTransport,
 			return nil, connectionErrorf(false, err, "ServerHandshake(%q) failed: %v", rawConn.RemoteAddr(), err)
 		}
 	}
-=======
-// returns a non-nil transport and a nil-error. For a special case where the
-// underlying conn gets closed before the client preface could be read, it
-// returns a nil transport and a nil error.
-func NewServerTransport(conn net.Conn, config *ServerConfig) (_ ServerTransport, err error) {
->>>>>>> upgrade to k8s 1.23 lib
 	writeBufSize := config.WriteBufferSize
 	readBufSize := config.ReadBufferSize
 	maxHeaderListSize := defaultServerMaxHeaderListSize
@@ -300,26 +290,11 @@ func NewServerTransport(conn net.Conn, config *ServerConfig) (_ ServerTransport,
 	if _, err := io.ReadFull(t.conn, preface); err != nil {
 		// In deployments where a gRPC server runs behind a cloud load balancer
 		// which performs regular TCP level health checks, the connection is
-<<<<<<< HEAD
-<<<<<<< HEAD
 		// closed immediately by the latter.  Returning io.EOF here allows the
 		// grpc server implementation to recognize this scenario and suppress
 		// logging to reduce spam.
 		if err == io.EOF {
 			return nil, io.EOF
-=======
-		// closed immediately by the latter. Skipping the error here will help
-		// reduce log clutter.
-		if err == io.EOF {
-			return nil, nil
->>>>>>> upgrade to k8s 1.23 lib
-=======
-		// closed immediately by the latter.  Returning io.EOF here allows the
-		// grpc server implementation to recognize this scenario and suppress
-		// logging to reduce spam.
-		if err == io.EOF {
-			return nil, io.EOF
->>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 		}
 		return nil, connectionErrorf(false, err, "transport: http2Server.HandleStreams failed to receive the preface from client: %v", err)
 	}
@@ -416,10 +391,6 @@ func (t *http2Server) operateHeaders(frame *http2.MetaHeadersFrame, handle func(
 			if timeout, err = decodeTimeout(hf.Value); err != nil {
 				headerError = true
 			}
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 		// "Transports must consider requests containing the Connection header
 		// as malformed." - A41
 		case "connection":
@@ -427,11 +398,6 @@ func (t *http2Server) operateHeaders(frame *http2.MetaHeadersFrame, handle func(
 				logger.Errorf("transport: http2Server.operateHeaders parsed a :connection header which makes a request malformed as per the HTTP/2 spec")
 			}
 			headerError = true
-<<<<<<< HEAD
-=======
->>>>>>> upgrade to k8s 1.23 lib
-=======
->>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 		default:
 			if isReservedHeader(hf.Name) && !isWhitelistedHeader(hf.Name) {
 				break
@@ -446,10 +412,6 @@ func (t *http2Server) operateHeaders(frame *http2.MetaHeadersFrame, handle func(
 		}
 	}
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 	// "If multiple Host headers or multiple :authority headers are present, the
 	// request must be rejected with an HTTP status code 400 as required by Host
 	// validation in RFC 7230 §5.4, gRPC status code INTERNAL, or RST_STREAM
@@ -465,25 +427,10 @@ func (t *http2Server) operateHeaders(frame *http2.MetaHeadersFrame, handle func(
 			streamID:       streamID,
 			contentSubtype: s.contentSubtype,
 			status:         status.New(codes.Internal, errMsg),
-<<<<<<< HEAD
-=======
-	if !isGRPC || headerError {
-		t.controlBuf.put(&cleanupStream{
-			streamID: streamID,
-			rst:      true,
-			rstCode:  http2.ErrCodeProtocol,
-			onWrite:  func() {},
->>>>>>> upgrade to k8s 1.23 lib
-=======
->>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 		})
 		return false
 	}
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 	if !isGRPC || headerError {
 		t.controlBuf.put(&cleanupStream{
 			streamID: streamID,
@@ -507,11 +454,6 @@ func (t *http2Server) operateHeaders(frame *http2.MetaHeadersFrame, handle func(
 		delete(mdata, "host")
 	}
 
-<<<<<<< HEAD
-=======
->>>>>>> upgrade to k8s 1.23 lib
-=======
->>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 	if frame.StreamEnded() {
 		// s is just created by the caller. No lock needed.
 		s.state = streamReadDone
@@ -592,14 +534,7 @@ func (t *http2Server) operateHeaders(frame *http2.MetaHeadersFrame, handle func(
 				stat = status.New(codes.PermissionDenied, err.Error())
 			}
 			t.controlBuf.put(&earlyAbortStream{
-<<<<<<< HEAD
-<<<<<<< HEAD
 				httpStatus:     200,
-=======
->>>>>>> upgrade to k8s 1.23 lib
-=======
-				httpStatus:     200,
->>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 				streamID:       s.id,
 				contentSubtype: s.contentSubtype,
 				status:         stat,

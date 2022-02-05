@@ -26,14 +26,7 @@ import (
 	"log"
 	"os"
 	"strconv"
-<<<<<<< HEAD
-<<<<<<< HEAD
 	"strings"
-=======
->>>>>>> upgrade to k8s 1.23 lib
-=======
-	"strings"
->>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 
 	"google.golang.org/grpc/internal/grpclog"
 )

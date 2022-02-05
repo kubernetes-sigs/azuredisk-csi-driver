@@ -20,19 +20,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
 	compute "github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
-=======
-	compute "github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-12-01/compute"
->>>>>>> chore: upgrade azure lib
-=======
-	compute "github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
->>>>>>> chore: upgrade azure lib
-=======
-	compute "github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
->>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 	network "github.com/Azure/azure-sdk-for-go/services/network/mgmt/2021-02-01/network"
 	azure "github.com/Azure/go-autorest/autorest/azure"
 	gomock "github.com/golang/mock/gomock"

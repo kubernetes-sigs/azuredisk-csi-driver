@@ -47,11 +47,7 @@ func init() {
 type rrPickerBuilder struct{}
 
 func (*rrPickerBuilder) Build(info base.PickerBuildInfo) balancer.Picker {
-<<<<<<< HEAD
 	logger.Infof("roundrobinPicker: Build called with info: %v", info)
-=======
-	logger.Infof("roundrobinPicker: newPicker called with info: %v", info)
->>>>>>> upgrade to k8s 1.23 lib
 	if len(info.ReadySCs) == 0 {
 		return base.NewErrPicker(balancer.ErrNoSubConnAvailable)
 	}

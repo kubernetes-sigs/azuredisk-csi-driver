@@ -78,10 +78,7 @@ func (bc *BalancerConfig) UnmarshalJSON(b []byte) error {
 		return err
 	}
 
-<<<<<<< HEAD
 	var names []string
-=======
->>>>>>> upgrade to k8s 1.23 lib
 	for i, lbcfg := range ir {
 		if len(lbcfg) != 1 {
 			return fmt.Errorf("invalid loadBalancingConfig: entry %v does not contain exactly 1 policy/config pair: %q", i, lbcfg)
@@ -96,10 +93,7 @@ func (bc *BalancerConfig) UnmarshalJSON(b []byte) error {
 		for name, jsonCfg = range lbcfg {
 		}
 
-<<<<<<< HEAD
 		names = append(names, name)
-=======
->>>>>>> upgrade to k8s 1.23 lib
 		builder := balancer.Get(name)
 		if builder == nil {
 			// If the balancer is not registered, move on to the next config.
@@ -128,11 +122,7 @@ func (bc *BalancerConfig) UnmarshalJSON(b []byte) error {
 	// return. This means we had a loadBalancingConfig slice but did not
 	// encounter a registered policy. The config is considered invalid in this
 	// case.
-<<<<<<< HEAD
 	return fmt.Errorf("invalid loadBalancingConfig: no supported policies found in %v", names)
-=======
-	return fmt.Errorf("invalid loadBalancingConfig: no supported policies found")
->>>>>>> upgrade to k8s 1.23 lib
 }
 
 // MethodConfig defines the configuration recommended by the service providers for a

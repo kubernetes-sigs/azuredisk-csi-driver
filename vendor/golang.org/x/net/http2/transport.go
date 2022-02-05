@@ -287,15 +287,10 @@ type ClientConn struct {
 	peerMaxHeaderListSize uint64
 	initialWindowSize     uint32
 
-<<<<<<< HEAD
 	// reqHeaderMu is a 1-element semaphore channel controlling access to sending new requests.
 	// Write to reqHeaderMu to lock it, read from it to unlock.
 	// Lock reqmu BEFORE mu or wmu.
 	reqHeaderMu chan struct{}
-=======
-	hbuf bytes.Buffer // HPACK encoder writes into this
-	henc *hpack.Encoder
->>>>>>> chore: upgrade azure lib
 
 	// wmu is held while writing.
 	// Acquire BEFORE mu when holding both, to avoid blocking mu on network writes.
@@ -401,19 +396,6 @@ func (cs *clientStream) abortRequestBodyWrite() {
 		cs.reqBodyClosed = true
 		cc.cond.Broadcast()
 	}
-<<<<<<< HEAD
-=======
-	cc := cs.cc
-	cc.mu.Lock()
-	if cs.stopReqBody == nil {
-		cs.stopReqBody = err
-		if cs.req.Body != nil {
-			cs.req.Body.Close()
-		}
-		cc.cond.Broadcast()
-	}
-	cc.mu.Unlock()
->>>>>>> chore: upgrade azure lib
 }
 
 type stickyErrWriter struct {
@@ -1035,12 +1017,9 @@ func (cc *ClientConn) Close() error {
 // closes the client connection immediately. In-flight requests are interrupted.
 func (cc *ClientConn) closeForLostPing() error {
 	err := errors.New("http2: client connection lost")
-<<<<<<< HEAD
 	if f := cc.t.CountError; f != nil {
 		f("conn_close_lost_ping")
 	}
-=======
->>>>>>> chore: upgrade azure lib
 	return cc.closeForError(err)
 }
 
@@ -1377,7 +1356,6 @@ func (cs *clientStream) encodeAndWriteHeaders(req *http.Request) error {
 	default:
 	}
 
-<<<<<<< HEAD
 	// Encode headers.
 	//
 	// we send: HEADERS{1}, CONTINUATION{0,} + DATA{0,} (DATA is
@@ -1446,51 +1424,6 @@ func (cs *clientStream) cleanupWriteRequest(err error) {
 				}
 			} else {
 				cc.writeStreamReset(cs.ID, ErrCodeCancel, err)
-=======
-	handleError := func(err error) (*http.Response, bool, error) {
-		if !hasBody || bodyWritten {
-			cc.writeStreamReset(cs.ID, ErrCodeCancel, nil)
-		} else {
-			bodyWriter.cancel()
-			cs.abortRequestBodyWrite(errStopReqBodyWriteAndCancel)
-			<-bodyWriter.resc
-		}
-		cc.forgetStreamID(cs.ID)
-		return nil, cs.getStartedWrite(), err
-	}
-
-	for {
-		select {
-		case re := <-readLoopResCh:
-			return handleReadLoopResponse(re)
-		case <-respHeaderTimer:
-			return handleError(errTimeout)
-		case <-ctx.Done():
-			return handleError(ctx.Err())
-		case <-req.Cancel:
-			return handleError(errRequestCanceled)
-		case <-cs.peerReset:
-			// processResetStream already removed the
-			// stream from the streams map; no need for
-			// forgetStreamID.
-			return nil, cs.getStartedWrite(), cs.resetErr
-		case err := <-bodyWriter.resc:
-			bodyWritten = true
-			// Prefer the read loop's response, if available. Issue 16102.
-			select {
-			case re := <-readLoopResCh:
-				return handleReadLoopResponse(re)
-			default:
-			}
-			if err != nil {
-				cc.forgetStreamID(cs.ID)
-				return nil, cs.getStartedWrite(), err
-			}
-			if d := cc.responseHeaderTimeout(); d != 0 {
-				timer := time.NewTimer(d)
-				defer timer.Stop()
-				respHeaderTimer = timer.C
->>>>>>> chore: upgrade azure lib
 			}
 		}
 		cs.bufPipe.CloseWithError(err) // no-op if already closed
@@ -1585,11 +1518,7 @@ func (cs *clientStream) frameScratchBufferLen(maxFrameSize int) int {
 	if n > max {
 		n = max
 	}
-<<<<<<< HEAD
 	if cl := cs.reqBodyContentLength; cl != -1 && cl+1 < n {
-=======
-	if cl := actualContentLength(cs.req); cl != -1 && cl+1 < n {
->>>>>>> chore: upgrade azure lib
 		// Add an extra byte past the declared content-length to
 		// give the caller's Request.Body io.Reader a chance to
 		// give us more bytes than they declared, so we can catch it
@@ -1604,35 +1533,10 @@ func (cs *clientStream) frameScratchBufferLen(maxFrameSize int) int {
 
 var bufPool sync.Pool // of *[]byte
 
-<<<<<<< HEAD
 func (cs *clientStream) writeRequestBody(req *http.Request) (err error) {
-=======
-func (cs *clientStream) writeRequestBody(body io.Reader, bodyCloser io.Closer) (err error) {
->>>>>>> chore: upgrade azure lib
 	cc := cs.cc
 	body := cs.reqBody
 	sentEnd := false // whether we sent the final DATA frame w/ END_STREAM
-<<<<<<< HEAD
-=======
-
-	defer func() {
-		traceWroteRequest(cs.trace, err)
-		// TODO: write h12Compare test showing whether
-		// Request.Body is closed by the Transport,
-		// and in multiple cases: server replies <=299 and >299
-		// while still writing request body
-		var cerr error
-		cc.mu.Lock()
-		if cs.stopReqBody == nil {
-			cs.stopReqBody = errStopReqBodyWrite
-			cerr = bodyCloser.Close()
-		}
-		cc.mu.Unlock()
-		if err == nil {
-			err = cerr
-		}
-	}()
->>>>>>> chore: upgrade azure lib
 
 	hasTrailers := req.Trailer != nil
 	remainLen := cs.reqBodyContentLength
@@ -1726,7 +1630,6 @@ func (cs *clientStream) writeRequestBody(body io.Reader, bodyCloser io.Closer) (
 		return nil
 	}
 
-<<<<<<< HEAD
 	// Since the RoundTrip contract permits the caller to "mutate or reuse"
 	// a request after the Response's Body is closed, verify that this hasn't
 	// happened before accessing the trailers.
@@ -1736,18 +1639,6 @@ func (cs *clientStream) writeRequestBody(body io.Reader, bodyCloser io.Closer) (
 	cc.mu.Unlock()
 	if err != nil {
 		return err
-=======
-	var trls []byte
-	if hasTrailers {
-		cc.mu.Lock()
-		trls, err = cc.encodeTrailers(req)
-		cc.mu.Unlock()
-		if err != nil {
-			cc.writeStreamReset(cs.ID, ErrCodeInternal, err)
-			cc.forgetStreamID(cs.ID)
-			return err
-		}
->>>>>>> chore: upgrade azure lib
 	}
 
 	cc.wmu.Lock()
@@ -2022,11 +1913,7 @@ func (cc *ClientConn) encodeTrailers(trailer http.Header) ([]byte, error) {
 		return nil, errRequestHeaderListSize
 	}
 
-<<<<<<< HEAD
 	for k, vv := range trailer {
-=======
-	for k, vv := range req.Trailer {
->>>>>>> chore: upgrade azure lib
 		lowKey, ascii := asciiToLower(k)
 		if !ascii {
 			// Skip writing invalid headers. Per RFC 7540, Section 8.1.2, header

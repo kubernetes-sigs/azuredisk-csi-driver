@@ -44,11 +44,7 @@ func (s State) String() string {
 		return "SHUTDOWN"
 	default:
 		logger.Errorf("unknown connectivity state: %d", s)
-<<<<<<< HEAD
 		return "INVALID_STATE"
-=======
-		return "Invalid-State"
->>>>>>> upgrade to k8s 1.23 lib
 	}
 }
 
@@ -64,7 +60,6 @@ const (
 	// Shutdown indicates the ClientConn has started shutting down.
 	Shutdown
 )
-<<<<<<< HEAD
 
 // ServingMode indicates the current mode of operation of the server.
 //
@@ -97,5 +92,3 @@ func (s ServingMode) String() string {
 		return "INVALID_MODE"
 	}
 }
-=======
->>>>>>> upgrade to k8s 1.23 lib

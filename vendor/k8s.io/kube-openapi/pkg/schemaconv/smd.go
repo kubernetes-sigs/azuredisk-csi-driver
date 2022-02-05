@@ -27,13 +27,6 @@ import (
 	"sigs.k8s.io/structured-merge-diff/v4/schema"
 )
 
-<<<<<<< HEAD
-=======
-const (
-	quantityResource = "io.k8s.apimachinery.pkg.api.resource.Quantity"
-)
-
->>>>>>> upgrade to k8s 1.23 lib
 // ToSchema converts openapi definitions into a schema suitable for structured
 // merge (i.e. kubectl apply v2).
 func ToSchema(models proto.Models) (*schema.Schema, error) {
@@ -421,7 +414,6 @@ func ptr(s schema.Scalar) *schema.Scalar { return &s }
 
 func (c *convert) VisitPrimitive(p *proto.Primitive) {
 	a := c.top()
-<<<<<<< HEAD
 	switch p.Type {
 	case proto.Integer:
 		a.Scalar = ptr(schema.Numeric)
@@ -445,47 +437,14 @@ func (c *convert) VisitPrimitive(p *proto.Primitive) {
 		a.Scalar = ptr(schema.Boolean)
 	default:
 		a.Scalar = ptr(schema.Scalar("untyped"))
-=======
-	if c.currentName == quantityResource {
-		a.Scalar = ptr(schema.Scalar("untyped"))
-	} else {
-		switch p.Type {
-		case proto.Integer:
-			a.Scalar = ptr(schema.Numeric)
-		case proto.Number:
-			a.Scalar = ptr(schema.Numeric)
-		case proto.String:
-			switch p.Format {
-			case "":
-				a.Scalar = ptr(schema.String)
-			case "byte":
-				// byte really means []byte and is encoded as a string.
-				a.Scalar = ptr(schema.String)
-			case "int-or-string":
-				a.Scalar = ptr(schema.Scalar("untyped"))
-			case "date-time":
-				a.Scalar = ptr(schema.Scalar("untyped"))
-			default:
-				a.Scalar = ptr(schema.Scalar("untyped"))
-			}
-		case proto.Boolean:
-			a.Scalar = ptr(schema.Boolean)
-		default:
-			a.Scalar = ptr(schema.Scalar("untyped"))
-		}
->>>>>>> upgrade to k8s 1.23 lib
 	}
 }
 
 func (c *convert) VisitArbitrary(a *proto.Arbitrary) {
-<<<<<<< HEAD
 	*c.top() = untypedDef.Atom
 	if c.preserveUnknownFields {
 		*c.top() = deducedDef.Atom
 	}
-=======
-	*c.top() = deducedDef.Atom
->>>>>>> upgrade to k8s 1.23 lib
 }
 
 func (c *convert) VisitReference(proto.Reference) {

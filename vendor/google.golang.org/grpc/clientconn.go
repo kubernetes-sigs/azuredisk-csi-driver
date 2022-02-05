@@ -23,14 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
-<<<<<<< HEAD
-<<<<<<< HEAD
 	"net/url"
-=======
->>>>>>> upgrade to k8s 1.23 lib
-=======
-	"net/url"
->>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 	"reflect"
 	"strings"
 	"sync"
@@ -45,13 +38,6 @@ import (
 	"google.golang.org/grpc/internal/backoff"
 	"google.golang.org/grpc/internal/channelz"
 	"google.golang.org/grpc/internal/grpcsync"
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
-	"google.golang.org/grpc/internal/grpcutil"
->>>>>>> upgrade to k8s 1.23 lib
-=======
->>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 	iresolver "google.golang.org/grpc/internal/resolver"
 	"google.golang.org/grpc/internal/transport"
 	"google.golang.org/grpc/keepalive"
@@ -262,8 +248,6 @@ func DialContext(ctx context.Context, target string, opts ...DialOption) (conn *
 	}
 
 	// Determine the resolver to use.
-<<<<<<< HEAD
-<<<<<<< HEAD
 	resolverBuilder, err := cc.parseTargetAndFindResolver()
 	if err != nil {
 		return nil, err
@@ -271,48 +255,6 @@ func DialContext(ctx context.Context, target string, opts ...DialOption) (conn *
 	cc.authority, err = determineAuthority(cc.parsedTarget.Endpoint, cc.target, cc.dopts)
 	if err != nil {
 		return nil, err
-=======
-	cc.parsedTarget = grpcutil.ParseTarget(cc.target, cc.dopts.copts.Dialer != nil)
-	channelz.Infof(logger, cc.channelzID, "parsed scheme: %q", cc.parsedTarget.Scheme)
-	resolverBuilder := cc.getResolver(cc.parsedTarget.Scheme)
-	if resolverBuilder == nil {
-		// If resolver builder is still nil, the parsed target's scheme is
-		// not registered. Fallback to default resolver and set Endpoint to
-		// the original target.
-		channelz.Infof(logger, cc.channelzID, "scheme %q not registered, fallback to default scheme", cc.parsedTarget.Scheme)
-		cc.parsedTarget = resolver.Target{
-			Scheme:   resolver.GetDefaultScheme(),
-			Endpoint: target,
-		}
-		resolverBuilder = cc.getResolver(cc.parsedTarget.Scheme)
-		if resolverBuilder == nil {
-			return nil, fmt.Errorf("could not get resolver for default scheme: %q", cc.parsedTarget.Scheme)
-		}
-	}
-
-	creds := cc.dopts.copts.TransportCredentials
-	if creds != nil && creds.Info().ServerName != "" {
-		cc.authority = creds.Info().ServerName
-	} else if cc.dopts.insecure && cc.dopts.authority != "" {
-		cc.authority = cc.dopts.authority
-	} else if strings.HasPrefix(cc.target, "unix:") || strings.HasPrefix(cc.target, "unix-abstract:") {
-		cc.authority = "localhost"
-	} else if strings.HasPrefix(cc.parsedTarget.Endpoint, ":") {
-		cc.authority = "localhost" + cc.parsedTarget.Endpoint
-	} else {
-		// Use endpoint from "scheme://authority/endpoint" as the default
-		// authority for ClientConn.
-		cc.authority = cc.parsedTarget.Endpoint
->>>>>>> upgrade to k8s 1.23 lib
-=======
-	resolverBuilder, err := cc.parseTargetAndFindResolver()
-	if err != nil {
-		return nil, err
-	}
-	cc.authority, err = determineAuthority(cc.parsedTarget.Endpoint, cc.target, cc.dopts)
-	if err != nil {
-		return nil, err
->>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 	}
 	channelz.Infof(logger, cc.channelzID, "Channel authority set to %q", cc.authority)
 
@@ -575,13 +517,8 @@ func (cc *ClientConn) WaitForStateChange(ctx context.Context, sourceState connec
 //
 // Experimental
 //
-<<<<<<< HEAD
 // Notice: This API is EXPERIMENTAL and may be changed or removed in a later
 // release.
-=======
-// Notice: This API is EXPERIMENTAL and may be changed or removed in a
-// later release.
->>>>>>> upgrade to k8s 1.23 lib
 func (cc *ClientConn) GetState() connectivity.State {
 	return cc.csMgr.getState()
 }
@@ -956,10 +893,6 @@ func (ac *addrConn) tryUpdateAddrs(addrs []resolver.Address) bool {
 	return curAddrFound
 }
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 // getServerName determines the serverName to be used in the connection
 // handshake. The default value for the serverName is the authority on the
 // ClientConn, which either comes from the user's dial target or through an
@@ -980,11 +913,6 @@ func (cc *ClientConn) getServerName(addr resolver.Address) string {
 	return cc.authority
 }
 
-<<<<<<< HEAD
-=======
->>>>>>> upgrade to k8s 1.23 lib
-=======
->>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 func getMethodConfig(sc *ServiceConfig, method string) MethodConfig {
 	if sc == nil {
 		return MethodConfig{}
@@ -1282,15 +1210,8 @@ func (ac *addrConn) resetTransport() {
 		}
 
 		ac.mu.Lock()
-<<<<<<< HEAD
 		if ac.state != connectivity.Shutdown {
 			ac.updateConnectivityState(connectivity.Idle, err)
-=======
-		if ac.state == connectivity.Shutdown {
-			ac.mu.Unlock()
-			newTr.Close(fmt.Errorf("reached connectivity state: SHUTDOWN"))
-			return
->>>>>>> upgrade to k8s 1.23 lib
 		}
 		ac.mu.Unlock()
 		return
@@ -1348,10 +1269,6 @@ func (ac *addrConn) createTransport(addr resolver.Address, copts transport.Conne
 	prefaceReceived := grpcsync.NewEvent()
 	connClosed := grpcsync.NewEvent()
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 	addr.ServerName = ac.cc.getServerName(addr)
 	hctx, hcancel := context.WithCancel(ac.ctx)
 	hcStarted := false // protected by ac.mu
@@ -1377,11 +1294,6 @@ func (ac *addrConn) createTransport(addr resolver.Address, copts transport.Conne
 		if ac.state != connectivity.Shutdown {
 			ac.updateConnectivityState(connectivity.Idle, nil)
 		}
-=======
-	// addr.ServerName takes precedent over ClientConn authority, if present.
-	if addr.ServerName == "" {
-		addr.ServerName = ac.cc.authority
->>>>>>> upgrade to k8s 1.23 lib
 	}
 
 	onGoAway := func(r transport.GoAwayReason) {
@@ -1397,25 +1309,16 @@ func (ac *addrConn) createTransport(addr resolver.Address, copts transport.Conne
 		copts.ChannelzParentID = ac.channelzID
 	}
 
-<<<<<<< HEAD
 	newTr, err := transport.NewClientTransport(connectCtx, ac.cc.ctx, addr, copts, func() { prefaceReceived.Fire() }, onGoAway, onClose)
 	if err != nil {
 		// newTr is either nil, or closed.
 		channelz.Warningf(logger, ac.channelzID, "grpc: addrConn.createTransport failed to connect to %v. Err: %v", addr, err)
 		return err
-=======
-	newTr, err := transport.NewClientTransport(connectCtx, ac.cc.ctx, addr, copts, onPrefaceReceipt, onGoAway, onClose)
-	if err != nil {
-		// newTr is either nil, or closed.
-		channelz.Warningf(logger, ac.channelzID, "grpc: addrConn.createTransport failed to connect to %v. Err: %v. Reconnecting...", addr, err)
-		return nil, nil, err
->>>>>>> upgrade to k8s 1.23 lib
 	}
 
 	select {
 	case <-connectCtx.Done():
 		// We didn't get the preface in time.
-<<<<<<< HEAD
 		// The error we pass to Close() is immaterial since there are no open
 		// streams at this point, so no trailers with error details will be sent
 		// out. We just need to pass a non-nil error.
@@ -1427,12 +1330,6 @@ func (ac *addrConn) createTransport(addr resolver.Address, copts transport.Conne
 		}
 		return nil
 	case <-prefaceReceived.Done():
-=======
-		newTr.Close(fmt.Errorf("failed to receive server preface within timeout"))
-		channelz.Warningf(logger, ac.channelzID, "grpc: addrConn.createTransport failed to connect to %v: didn't receive server preface in time. Reconnecting...", addr)
-		return nil, nil, errors.New("timed out waiting for server handshake")
-	case <-prefaceReceived:
->>>>>>> upgrade to k8s 1.23 lib
 		// We got the preface - huzzah! things are good.
 		ac.mu.Lock()
 		defer ac.mu.Unlock()
@@ -1713,120 +1610,6 @@ func (cc *ClientConn) connectionError() error {
 	cc.lceMu.Lock()
 	defer cc.lceMu.Unlock()
 	return cc.lastConnectionError
-<<<<<<< HEAD
-}
-
-func (cc *ClientConn) parseTargetAndFindResolver() (resolver.Builder, error) {
-	channelz.Infof(logger, cc.channelzID, "original dial target is: %q", cc.target)
-
-	var rb resolver.Builder
-	parsedTarget, err := parseTarget(cc.target)
-	if err != nil {
-		channelz.Infof(logger, cc.channelzID, "dial target %q parse failed: %v", cc.target, err)
-	} else {
-		channelz.Infof(logger, cc.channelzID, "parsed dial target is: %+v", parsedTarget)
-		rb = cc.getResolver(parsedTarget.Scheme)
-		if rb != nil {
-			cc.parsedTarget = parsedTarget
-			return rb, nil
-		}
-	}
-
-	// We are here because the user's dial target did not contain a scheme or
-	// specified an unregistered scheme. We should fallback to the default
-	// scheme, except when a custom dialer is specified in which case, we should
-	// always use passthrough scheme.
-	defScheme := resolver.GetDefaultScheme()
-	channelz.Infof(logger, cc.channelzID, "fallback to scheme %q", defScheme)
-	canonicalTarget := defScheme + ":///" + cc.target
-
-	parsedTarget, err = parseTarget(canonicalTarget)
-	if err != nil {
-		channelz.Infof(logger, cc.channelzID, "dial target %q parse failed: %v", canonicalTarget, err)
-		return nil, err
-	}
-	channelz.Infof(logger, cc.channelzID, "parsed dial target is: %+v", parsedTarget)
-	rb = cc.getResolver(parsedTarget.Scheme)
-	if rb == nil {
-		return nil, fmt.Errorf("could not get resolver for default scheme: %q", parsedTarget.Scheme)
-	}
-	cc.parsedTarget = parsedTarget
-	return rb, nil
-}
-
-// parseTarget uses RFC 3986 semantics to parse the given target into a
-// resolver.Target struct containing scheme, authority and endpoint. Query
-// params are stripped from the endpoint.
-func parseTarget(target string) (resolver.Target, error) {
-	u, err := url.Parse(target)
-	if err != nil {
-		return resolver.Target{}, err
-	}
-	// For targets of the form "[scheme]://[authority]/endpoint, the endpoint
-	// value returned from url.Parse() contains a leading "/". Although this is
-	// in accordance with RFC 3986, we do not want to break existing resolver
-	// implementations which expect the endpoint without the leading "/". So, we
-	// end up stripping the leading "/" here. But this will result in an
-	// incorrect parsing for something like "unix:///path/to/socket". Since we
-	// own the "unix" resolver, we can workaround in the unix resolver by using
-	// the `URL` field instead of the `Endpoint` field.
-	endpoint := u.Path
-	if endpoint == "" {
-		endpoint = u.Opaque
-	}
-	endpoint = strings.TrimPrefix(endpoint, "/")
-	return resolver.Target{
-		Scheme:    u.Scheme,
-		Authority: u.Host,
-		Endpoint:  endpoint,
-		URL:       *u,
-	}, nil
-}
-
-// Determine channel authority. The order of precedence is as follows:
-// - user specified authority override using `WithAuthority` dial option
-// - creds' notion of server name for the authentication handshake
-// - endpoint from dial target of the form "scheme://[authority]/endpoint"
-func determineAuthority(endpoint, target string, dopts dialOptions) (string, error) {
-	// Historically, we had two options for users to specify the serverName or
-	// authority for a channel. One was through the transport credentials
-	// (either in its constructor, or through the OverrideServerName() method).
-	// The other option (for cases where WithInsecure() dial option was used)
-	// was to use the WithAuthority() dial option.
-	//
-	// A few things have changed since:
-	// - `insecure` package with an implementation of the `TransportCredentials`
-	//   interface for the insecure case
-	// - WithAuthority() dial option support for secure credentials
-	authorityFromCreds := ""
-	if creds := dopts.copts.TransportCredentials; creds != nil && creds.Info().ServerName != "" {
-		authorityFromCreds = creds.Info().ServerName
-	}
-	authorityFromDialOption := dopts.authority
-	if (authorityFromCreds != "" && authorityFromDialOption != "") && authorityFromCreds != authorityFromDialOption {
-		return "", fmt.Errorf("ClientConn's authority from transport creds %q and dial option %q don't match", authorityFromCreds, authorityFromDialOption)
-	}
-
-	switch {
-	case authorityFromDialOption != "":
-		return authorityFromDialOption, nil
-	case authorityFromCreds != "":
-		return authorityFromCreds, nil
-	case strings.HasPrefix(target, "unix:") || strings.HasPrefix(target, "unix-abstract:"):
-		// TODO: remove when the unix resolver implements optional interface to
-		// return channel authority.
-		return "localhost", nil
-	case strings.HasPrefix(endpoint, ":"):
-		return "localhost" + endpoint, nil
-	default:
-		// TODO: Define an optional interface on the resolver builder to return
-		// the channel authority given the user's dial target. For resolvers
-		// which don't implement this interface, we will use the endpoint from
-		// "scheme://authority/endpoint" as the default authority.
-		return endpoint, nil
-	}
-=======
->>>>>>> upgrade to k8s 1.23 lib
 }
 
 func (cc *ClientConn) parseTargetAndFindResolver() (resolver.Builder, error) {

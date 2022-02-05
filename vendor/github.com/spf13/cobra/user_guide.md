@@ -32,15 +32,7 @@ func main() {
 Cobra provides its own program that will create your application and add any
 commands you want. It's the easiest way to incorporate Cobra into your application.
 
-<<<<<<< HEAD
-<<<<<<< HEAD
 For complete details on using the Cobra generator, please read [The Cobra Generator README](https://github.com/spf13/cobra/blob/master/cobra/README.md)
-=======
-[Here](https://github.com/spf13/cobra/blob/master/cobra/README.md) you can find more information about it.
->>>>>>> upgrade to k8s 1.23 lib
-=======
-For complete details on using the Cobra generator, please read [The Cobra Generator README](https://github.com/spf13/cobra/blob/master/cobra/README.md)
->>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 
 ## Using the Cobra Library
 
@@ -289,15 +281,7 @@ func init() {
 
 In this example, the persistent flag `author` is bound with `viper`.
 **Note**: the variable `author` will not be set to the value from config,
-<<<<<<< HEAD
-<<<<<<< HEAD
 when the `--author` flag is provided by user.
-=======
-when the `--author` flag is not provided by user.
->>>>>>> upgrade to k8s 1.23 lib
-=======
-when the `--author` flag is provided by user.
->>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 
 More in [viper documentation](https://github.com/spf13/viper#working-with-flags).
 
@@ -331,14 +315,7 @@ The following validators are built in:
 - `ExactArgs(int)` - the command will report an error if there are not exactly N positional args.
 - `ExactValidArgs(int)` - the command will report an error if there are not exactly N positional args OR if there are any positional args that are not in the `ValidArgs` field of `Command`
 - `RangeArgs(min, max)` - the command will report an error if the number of args is not between the minimum and maximum number of expected args.
-<<<<<<< HEAD
-<<<<<<< HEAD
 - `MatchAll(pargs ...PositionalArgs)` - enables combining existing checks with arbitrary other checks (e.g. you want to check the ExactArgs length along with other qualities).
-=======
->>>>>>> upgrade to k8s 1.23 lib
-=======
-- `MatchAll(pargs ...PositionalArgs)` - enables combining existing checks with arbitrary other checks (e.g. you want to check the ExactArgs length along with other qualities).
->>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 
 An example of setting the custom validator:
 

@@ -274,38 +274,6 @@ func newClientStreamWithParams(ctx context.Context, desc *StreamDesc, cc *Client
 	if c.creds != nil {
 		callHdr.Creds = c.creds
 	}
-<<<<<<< HEAD
-=======
-	var trInfo *traceInfo
-	if EnableTracing {
-		trInfo = &traceInfo{
-			tr: trace.New("grpc.Sent."+methodFamily(method), method),
-			firstLine: firstLine{
-				client: true,
-			},
-		}
-		if deadline, ok := ctx.Deadline(); ok {
-			trInfo.firstLine.deadline = time.Until(deadline)
-		}
-		trInfo.tr.LazyLog(&trInfo.firstLine, false)
-		ctx = trace.NewContext(ctx, trInfo.tr)
-	}
-	ctx = newContextWithRPCInfo(ctx, c.failFast, c.codec, cp, comp)
-	sh := cc.dopts.copts.StatsHandler
-	var beginTime time.Time
-	if sh != nil {
-		ctx = sh.TagRPC(ctx, &stats.RPCTagInfo{FullMethodName: method, FailFast: c.failFast})
-		beginTime = time.Now()
-		begin := &stats.Begin{
-			Client:         true,
-			BeginTime:      beginTime,
-			FailFast:       c.failFast,
-			IsClientStream: desc.ClientStreams,
-			IsServerStream: desc.ServerStreams,
-		}
-		sh.HandleRPC(ctx, begin)
-	}
->>>>>>> upgrade to k8s 1.23 lib
 
 	cs := &clientStream{
 		callHdr:      callHdr,
@@ -327,13 +295,7 @@ func newClientStreamWithParams(ctx context.Context, desc *StreamDesc, cc *Client
 	}
 	cs.binlog = binarylog.GetMethodLogger(method)
 
-<<<<<<< HEAD
 	if err := cs.newAttemptLocked(false /* isTransparent */); err != nil {
-=======
-	// Only this initial attempt has stats/tracing.
-	// TODO(dfawley): move to newAttempt when per-attempt stats are implemented.
-	if err := cs.newAttemptLocked(sh, trInfo); err != nil {
->>>>>>> upgrade to k8s 1.23 lib
 		cs.finish(err)
 		return nil, err
 	}
@@ -436,18 +398,10 @@ func (cs *clientStream) newAttemptLocked(isTransparent bool) (retErr error) {
 		return toRPCErr(err)
 	}
 
-<<<<<<< HEAD
 	if cs.cc.parsedTarget.Scheme == "xds" {
 		// Add extra metadata (metadata that will be added by transport) to context
 		// so the balancer can see them.
 		ctx = grpcutil.WithExtraMetadata(ctx, metadata.Pairs(
-=======
-	ctx := cs.ctx
-	if cs.cc.parsedTarget.Scheme == "xds" {
-		// Add extra metadata (metadata that will be added by transport) to context
-		// so the balancer can see them.
-		ctx = grpcutil.WithExtraMetadata(cs.ctx, metadata.Pairs(
->>>>>>> upgrade to k8s 1.23 lib
 			"content-type", grpcutil.ContentType(cs.callHdr.ContentSubtype),
 		))
 	}
@@ -569,25 +523,16 @@ func (cs *clientStream) commitAttempt() {
 }
 
 // shouldRetry returns nil if the RPC should be retried; otherwise it returns
-<<<<<<< HEAD
 // the error that should be returned by the operation.  If the RPC should be
 // retried, the bool indicates whether it is being retried transparently.
 func (cs *clientStream) shouldRetry(err error) (bool, error) {
-=======
-// the error that should be returned by the operation.
-func (cs *clientStream) shouldRetry(err error) error {
->>>>>>> upgrade to k8s 1.23 lib
 	if cs.attempt.s == nil {
 		// Error from NewClientStream.
 		nse, ok := err.(*transport.NewStreamError)
 		if !ok {
 			// Unexpected, but assume no I/O was performed and the RPC is not
 			// fatal, so retry indefinitely.
-<<<<<<< HEAD
 			return true, nil
-=======
-			return nil
->>>>>>> upgrade to k8s 1.23 lib
 		}
 
 		// Unwrap and convert error.
@@ -596,23 +541,14 @@ func (cs *clientStream) shouldRetry(err error) error {
 		// Never retry DoNotRetry errors, which indicate the RPC should not be
 		// retried due to max header list size violation, etc.
 		if nse.DoNotRetry {
-<<<<<<< HEAD
 			return false, err
-=======
-			return err
->>>>>>> upgrade to k8s 1.23 lib
 		}
 
 		// In the event of a non-IO operation error from NewStream, we never
 		// attempted to write anything to the wire, so we can retry
 		// indefinitely.
-<<<<<<< HEAD
 		if !nse.DoNotTransparentRetry {
 			return true, nil
-=======
-		if !nse.PerformedIO {
-			return nil
->>>>>>> upgrade to k8s 1.23 lib
 		}
 	}
 	if cs.finished || cs.committed {
@@ -627,11 +563,7 @@ func (cs *clientStream) shouldRetry(err error) error {
 	}
 	if cs.firstAttempt && unprocessed {
 		// First attempt, stream unprocessed: transparently retry.
-<<<<<<< HEAD
 		return true, nil
-=======
-		return nil
->>>>>>> upgrade to k8s 1.23 lib
 	}
 	if cs.cc.dopts.disableRetry {
 		return false, err
@@ -671,11 +603,7 @@ func (cs *clientStream) shouldRetry(err error) error {
 
 	rp := cs.methodConfig.RetryPolicy
 	if rp == nil || !rp.RetryableStatusCodes[code] {
-<<<<<<< HEAD
 		return false, err
-=======
-		return err
->>>>>>> upgrade to k8s 1.23 lib
 	}
 
 	// Note: the ordering here is important; we count this as a failure
@@ -684,11 +612,7 @@ func (cs *clientStream) shouldRetry(err error) error {
 		return false, err
 	}
 	if cs.numRetries+1 >= rp.MaxAttempts {
-<<<<<<< HEAD
 		return false, err
-=======
-		return err
->>>>>>> upgrade to k8s 1.23 lib
 	}
 
 	var dur time.Duration
@@ -722,21 +646,13 @@ func (cs *clientStream) shouldRetry(err error) error {
 func (cs *clientStream) retryLocked(lastErr error) error {
 	for {
 		cs.attempt.finish(toRPCErr(lastErr))
-<<<<<<< HEAD
 		isTransparent, err := cs.shouldRetry(lastErr)
 		if err != nil {
-=======
-		if err := cs.shouldRetry(lastErr); err != nil {
->>>>>>> upgrade to k8s 1.23 lib
 			cs.commitAttemptLocked()
 			return err
 		}
 		cs.firstAttempt = false
-<<<<<<< HEAD
 		if err := cs.newAttemptLocked(isTransparent); err != nil {
-=======
-		if err := cs.newAttemptLocked(nil, nil); err != nil {
->>>>>>> upgrade to k8s 1.23 lib
 			return err
 		}
 		if lastErr = cs.replayBufferLocked(); lastErr == nil {

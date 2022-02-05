@@ -19,12 +19,4 @@
 package grpc
 
 // Version is the current grpc version.
-<<<<<<< HEAD
-<<<<<<< HEAD
 const Version = "1.42.0"
-=======
-const Version = "1.40.0"
->>>>>>> upgrade to k8s 1.23 lib
-=======
-const Version = "1.42.0"
->>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)

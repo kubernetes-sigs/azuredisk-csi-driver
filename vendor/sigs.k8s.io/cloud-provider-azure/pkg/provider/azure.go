@@ -17,6 +17,7 @@ limitations under the License.
 package provider
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -33,17 +34,7 @@ import (
 	"golang.org/x/time/rate"
 
 	v1 "k8s.io/api/core/v1"
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 	"k8s.io/apimachinery/pkg/types"
-=======
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
->>>>>>> chore: upgrade azure lib
-=======
->>>>>>> chore: upgrade azure lib
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"

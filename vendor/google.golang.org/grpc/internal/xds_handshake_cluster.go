@@ -28,15 +28,7 @@ type handshakeClusterNameKey struct{}
 // SetXDSHandshakeClusterName returns a copy of addr in which the Attributes field
 // is updated with the cluster name.
 func SetXDSHandshakeClusterName(addr resolver.Address, clusterName string) resolver.Address {
-<<<<<<< HEAD
-<<<<<<< HEAD
 	addr.Attributes = addr.Attributes.WithValue(handshakeClusterNameKey{}, clusterName)
-=======
-	addr.Attributes = addr.Attributes.WithValues(handshakeClusterNameKey{}, clusterName)
->>>>>>> upgrade to k8s 1.23 lib
-=======
-	addr.Attributes = addr.Attributes.WithValue(handshakeClusterNameKey{}, clusterName)
->>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 	return addr
 }
 

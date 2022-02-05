@@ -284,11 +284,7 @@ var (
 
 	punycode = &Profile{}
 	lookup   = &Profile{options{
-<<<<<<< HEAD
 		transitional: transitionalLookup,
-=======
-		transitional: true,
->>>>>>> chore: upgrade azure lib
 		useSTD3Rules: true,
 		checkHyphens: true,
 		checkJoiners: true,

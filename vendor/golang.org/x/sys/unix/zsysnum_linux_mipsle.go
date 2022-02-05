@@ -428,14 +428,6 @@ const (
 	SYS_LANDLOCK_CREATE_RULESET      = 4444
 	SYS_LANDLOCK_ADD_RULE            = 4445
 	SYS_LANDLOCK_RESTRICT_SELF       = 4446
-<<<<<<< HEAD
-<<<<<<< HEAD
 	SYS_PROCESS_MRELEASE             = 4448
 	SYS_FUTEX_WAITV                  = 4449
-=======
->>>>>>> chore: upgrade azure lib
-=======
-	SYS_PROCESS_MRELEASE             = 4448
-	SYS_FUTEX_WAITV                  = 4449
->>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 )

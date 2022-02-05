@@ -73,10 +73,6 @@ func FromProto(s *spb.Status) *Status {
 	return status.FromProto(s)
 }
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 // FromError returns a Status representation of err.
 //
 // - If err was produced by this package or implements the method `GRPCStatus()
@@ -87,16 +83,6 @@ func FromProto(s *spb.Status) *Status {
 // - Otherwise, err is an error not compatible with this package.  In this
 //   case, a Status is returned with codes.Unknown and err's Error() message,
 //   and ok is false.
-<<<<<<< HEAD
-=======
-// FromError returns a Status representing err if it was produced by this
-// package or has a method `GRPCStatus() *Status`.
-// If err is nil, a Status is returned with codes.OK and no message.
-// Otherwise, ok is false and a Status is returned with codes.Unknown and
-// the original error message.
->>>>>>> upgrade to k8s 1.23 lib
-=======
->>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 func FromError(err error) (s *Status, ok bool) {
 	if err == nil {
 		return nil, true

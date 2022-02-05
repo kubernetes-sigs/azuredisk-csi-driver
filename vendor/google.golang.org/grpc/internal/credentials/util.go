@@ -18,13 +18,9 @@
 
 package credentials
 
-<<<<<<< HEAD
 import (
 	"crypto/tls"
 )
-=======
-import "crypto/tls"
->>>>>>> upgrade to k8s 1.23 lib
 
 const alpnProtoStrH2 = "h2"
 

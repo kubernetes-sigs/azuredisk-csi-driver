@@ -28,8 +28,6 @@ and then modifying the generated `cmd/completion.go` file to look something like
 var completionCmd = &cobra.Command{
 	Use:   "completion [bash|zsh|fish|powershell]",
 	Short: "Generate completion script",
-<<<<<<< HEAD
-<<<<<<< HEAD
 	Long: fmt.Sprintf(`To load completions:
 
 Bash:
@@ -41,26 +39,6 @@ Bash:
   $ %[1]s completion bash > /etc/bash_completion.d/%[1]s
   # macOS:
   $ %[1]s completion bash > /usr/local/etc/bash_completion.d/%[1]s
-=======
-	Long: `To load completions:
-=======
-	Long: fmt.Sprintf(`To load completions:
->>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
-
-Bash:
-
-  $ source <(%[1]s completion bash)
-
-  # To load completions for each session, execute once:
-  # Linux:
-  $ %[1]s completion bash > /etc/bash_completion.d/%[1]s
-  # macOS:
-<<<<<<< HEAD
-  $ yourprogram completion bash > /usr/local/etc/bash_completion.d/yourprogram
->>>>>>> upgrade to k8s 1.23 lib
-=======
-  $ %[1]s completion bash > /usr/local/etc/bash_completion.d/%[1]s
->>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 
 Zsh:
 
@@ -70,22 +48,12 @@ Zsh:
   $ echo "autoload -U compinit; compinit" >> ~/.zshrc
 
   # To load completions for each session, execute once:
-<<<<<<< HEAD
-<<<<<<< HEAD
   $ %[1]s completion zsh > "${fpath[1]}/_%[1]s"
-=======
-  $ yourprogram completion zsh > "${fpath[1]}/_yourprogram"
->>>>>>> upgrade to k8s 1.23 lib
-=======
-  $ %[1]s completion zsh > "${fpath[1]}/_%[1]s"
->>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 
   # You will need to start a new shell for this setup to take effect.
 
 fish:
 
-<<<<<<< HEAD
-<<<<<<< HEAD
   $ %[1]s completion fish | source
 
   # To load completions for each session, execute once:
@@ -99,28 +67,6 @@ PowerShell:
   PS> %[1]s completion powershell > %[1]s.ps1
   # and source this file from your PowerShell profile.
 `,cmd.Root().Name()),
-=======
-  $ yourprogram completion fish | source
-=======
-  $ %[1]s completion fish | source
->>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
-
-  # To load completions for each session, execute once:
-  $ %[1]s completion fish > ~/.config/fish/completions/%[1]s.fish
-
-PowerShell:
-
-  PS> %[1]s completion powershell | Out-String | Invoke-Expression
-
-  # To load completions for every new session, run:
-  PS> %[1]s completion powershell > %[1]s.ps1
-  # and source this file from your PowerShell profile.
-<<<<<<< HEAD
-`,
->>>>>>> upgrade to k8s 1.23 lib
-=======
-`,cmd.Root().Name()),
->>>>>>> chore: Merge changes from upstream as of 2022-01-26 (#351)
 	DisableFlagsInUseLine: true,
 	ValidArgs:             []string{"bash", "zsh", "fish", "powershell"},
 	Args:                  cobra.ExactValidArgs(1),
