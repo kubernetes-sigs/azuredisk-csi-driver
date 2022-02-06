@@ -27,7 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	kubeClientSet "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
+	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
 	azVolumeClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
@@ -57,7 +57,7 @@ var _ reconcile.Reconciler = &ReconcilePV{}
 
 func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
 	var pv corev1.PersistentVolume
-	var azVolume v1alpha1.AzVolume
+	var azVolume diskv1alpha2.AzVolume
 	// Ignore not found errors as they cannot be fixed by a requeue
 	if err := r.client.Get(ctx, request.NamespacedName, &pv); err != nil {
 		if errors.IsNotFound(err) {
@@ -96,7 +96,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 		// AzVolume does exist and needs to be deleted
 		// add annotation to mark AzVolumeAttachment cleanup
 		updateFunc := func(obj interface{}) error {
-			azv := obj.(*v1alpha1.AzVolume)
+			azv := obj.(*diskv1alpha2.AzVolume)
 			if azv.Annotations == nil {
 				azv.Annotations = make(map[string]string, 1)
 			}
@@ -107,7 +107,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 			return reconcileReturnOnError(&pv, "delete", err, r.controllerRetryInfo)
 		}
 
-		if err := r.azVolumeClient.DiskV1alpha1().AzVolumes(r.controllerSharedState.objectNamespace).Delete(ctx, azVolumeName, metav1.DeleteOptions{}); err != nil {
+		if err := r.azVolumeClient.DiskV1alpha2().AzVolumes(r.controllerSharedState.objectNamespace).Delete(ctx, azVolumeName, metav1.DeleteOptions{}); err != nil {
 			klog.Errorf("failed to set the deletion timestamp for AzVolume (%s): %v", azVolumeName, err)
 			return reconcileReturnOnError(&pv, "delete", err, r.controllerRetryInfo)
 		}
@@ -148,16 +148,14 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 		updated.Status.PersistentVolume = pv.Name
 	}
 
-	if azVolume.Status.Detail != nil {
-		switch phase := pv.Status.Phase; phase {
-		case corev1.VolumeBound:
-			pvClaimName := getQualifiedName(pv.Spec.ClaimRef.Namespace, pv.Spec.ClaimRef.Name)
-			updated.Status.Detail.Phase = v1alpha1.VolumeBound
-			r.controllerSharedState.addVolumeAndClaim(azVolumeName, pvClaimName)
-		case corev1.VolumeReleased:
-			updated.Status.Detail.Phase = v1alpha1.VolumeReleased
-			r.controllerSharedState.deleteVolumeAndClaim(azVolumeName)
-		}
+	switch phase := pv.Status.Phase; phase {
+	case corev1.VolumeBound:
+		pvClaimName := getQualifiedName(pv.Spec.ClaimRef.Namespace, pv.Spec.ClaimRef.Name)
+		updated.Status.Phase = diskv1alpha2.VolumeBound
+		r.controllerSharedState.addVolumeAndClaim(azVolumeName, pvClaimName)
+	case corev1.VolumeReleased:
+		updated.Status.Phase = diskv1alpha2.VolumeReleased
+		r.controllerSharedState.deleteVolumeAndClaim(azVolumeName)
 	}
 
 	// update the status of AzVolume to match that of the PV

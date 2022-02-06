@@ -25,14 +25,16 @@ import (
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	clientset "k8s.io/client-go/kubernetes"
 	restclientset "k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e/framework"
+
 	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
 
-	v1alpha1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
+	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
@@ -49,6 +51,7 @@ type TestCmd struct {
 }
 
 type PodDetails struct {
+	Name            string
 	Cmd             string
 	Volumes         []VolumeDetails
 	IsWindows       bool
@@ -424,13 +427,13 @@ func CreateVolumeSnapshotClass(client restclientset.Interface, namespace *v1.Nam
 	return tvsc, tvsc.Cleanup
 }
 
-func VerifySuccessfulReplicaAzVolumeAttachments(pod PodDetails, azDiskClient *azDiskClientSet.Clientset, storageClassParameters map[string]string, client clientset.Interface, namespace *v1.Namespace) (bool, *v1alpha1.AzVolumeAttachmentList, error) {
+func VerifySuccessfulReplicaAzVolumeAttachments(pod PodDetails, azDiskClient *azDiskClientSet.Clientset, storageClassParameters map[string]string, client clientset.Interface, namespace *v1.Namespace) (bool, *diskv1alpha2.AzVolumeAttachmentList, error) {
 	if storageClassParameters["maxShares"] == "" {
 		return true, nil, nil
 	}
 
 	var expectedNumberOfReplicas int
-	nodes := nodeutil.ListAzDriverNodeNames(azDiskClient.DiskV1alpha1().AzDriverNodes(azureconstants.DefaultAzureDiskCrdNamespace))
+	nodes := GetSchedulableNodes(azDiskClient, client, pod, namespace)
 	nodesAvailableForReplicas := len(nodes) - 1
 
 	for _, volume := range pod.Volumes {
@@ -451,7 +454,7 @@ func VerifySuccessfulReplicaAzVolumeAttachments(pod PodDetails, azDiskClient *az
 				return false, nil, nil
 			}
 
-			failedReplicaAttachments := v1alpha1.AzVolumeAttachmentList{}
+			failedReplicaAttachments := diskv1alpha2.AzVolumeAttachmentList{}
 
 			for _, replica := range replicaAttachments.Items {
 				if replica.Status.State != "Attached" {
@@ -459,7 +462,6 @@ func VerifySuccessfulReplicaAzVolumeAttachments(pod PodDetails, azDiskClient *az
 					failedReplicaAttachments.Items = append(failedReplicaAttachments.Items, replica)
 				} else {
 					e2elog.Logf("found replica attachment %s in attached state", replica.Name)
-
 				}
 			}
 			if len(failedReplicaAttachments.Items) > 0 {
@@ -470,7 +472,7 @@ func VerifySuccessfulReplicaAzVolumeAttachments(pod PodDetails, azDiskClient *az
 	return true, nil, nil
 }
 
-func GetReplicaAttachments(persistentVolume *v1.PersistentVolume, client clientset.Interface, namespace *v1.Namespace, azDiskClient *azDiskClientSet.Clientset) (*v1alpha1.AzVolumeAttachmentList, error) {
+func GetReplicaAttachments(persistentVolume *v1.PersistentVolume, client clientset.Interface, namespace *v1.Namespace, azDiskClient *azDiskClientSet.Clientset) (*diskv1alpha2.AzVolumeAttachmentList, error) {
 	pv, err := client.CoreV1().PersistentVolumes().Get(context.TODO(), persistentVolume.Name, metav1.GetOptions{})
 	if err != nil {
 		ginkgo.Fail("failed to get persistent volume")
@@ -479,9 +481,51 @@ func GetReplicaAttachments(persistentVolume *v1.PersistentVolume, client clients
 	if err != nil {
 		ginkgo.Fail("failed to get persistent volume diskname")
 	}
-	azVolumeAttachmentsReplica, err := azDiskClient.DiskV1alpha1().AzVolumeAttachments(azureconstants.DefaultAzureDiskCrdNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: labels.Set(map[string]string{azureconstants.RoleLabel: "Replica", azureconstants.VolumeNameLabel: diskname}).String()})
+	azVolumeAttachmentsReplica, err := azDiskClient.DiskV1alpha2().AzVolumeAttachments(azureconstants.DefaultAzureDiskCrdNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: labels.Set(map[string]string{azureconstants.RoleLabel: "Replica", azureconstants.VolumeNameLabel: diskname}).String()})
 	if err != nil {
 		ginkgo.Fail("failed while getting replica attachments")
 	}
 	return azVolumeAttachmentsReplica, nil
+}
+
+func GetSchedulableNodes(azDiskClient *azDiskClientSet.Clientset, client clientset.Interface, pod PodDetails, namespace *v1.Namespace) []*v1.Node {
+	nodes := nodeutil.ListAzDriverNodeNames(azDiskClient)
+	var availableNodes []*v1.Node
+	schedulableNodes, err := client.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{FieldSelector: fields.Set{
+		"spec.unschedulable": "false",
+	}.AsSelector().String()})
+
+	if err != nil {
+		ginkgo.Fail("failed while getting schedulable nodes list")
+	}
+
+	podObj, err := client.CoreV1().Pods(namespace.Name).Get(context.TODO(), pod.Name, metav1.GetOptions{})
+	if err != nil {
+		ginkgo.Fail("failed while getting pod")
+	}
+
+	for _, nodeName := range nodes {
+		for i, schedulableNode := range schedulableNodes.Items {
+			if nodeName == schedulableNode.Name {
+				//Check if node has any taints making it unschedulable
+
+				nodeDetails, err := client.CoreV1().Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
+				framework.ExpectNoError(err)
+
+				tolerable := true
+				for _, taint := range nodeDetails.Spec.Taints {
+					for _, podToleration := range podObj.Spec.Tolerations {
+						if !podToleration.ToleratesTaint(&taint) {
+							tolerable = false
+						}
+					}
+				}
+				if tolerable {
+					availableNodes = append(availableNodes, &schedulableNodes.Items[i])
+				}
+			}
+		}
+	}
+
+	return availableNodes
 }

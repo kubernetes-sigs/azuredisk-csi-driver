@@ -25,7 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
-	v1alpha1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
+	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
@@ -76,17 +76,28 @@ func (t *PodFailoverWithReplicas) Run(client clientset.Interface, namespace *v1.
 
 	//Check that AzVolumeAttachment resources were created correctly
 	allReplicasAttached := true
-	var failedReplicaAttachments *v1alpha1.AzVolumeAttachmentList
+	var failedReplicaAttachments *diskv1alpha2.AzVolumeAttachmentList
 	err := wait.Poll(15*time.Second, 10*time.Minute, func() (bool, error) {
+		failedReplicaAttachments = nil
+		allReplicasAttached = true
 		var err error
-		allReplicasAttached, failedReplicaAttachments, err = testtypes.VerifySuccessfulReplicaAzVolumeAttachments(t.Pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
+		var attached bool
+		var podFailedReplicaAttachments *diskv1alpha2.AzVolumeAttachmentList
+		for _, pod := range tDeployment.Pods {
+			attached, podFailedReplicaAttachments, err = testtypes.VerifySuccessfulReplicaAzVolumeAttachments(pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
+			allReplicasAttached = allReplicasAttached && attached
+			if podFailedReplicaAttachments != nil {
+				failedReplicaAttachments.Items = append(failedReplicaAttachments.Items, podFailedReplicaAttachments.Items...)
+			}
+		}
+
 		return allReplicasAttached, err
 	})
 
 	if failedReplicaAttachments != nil {
 		e2elog.Logf("found %d azvolumeattachments failed:", len(failedReplicaAttachments.Items))
 		for _, attachments := range failedReplicaAttachments.Items {
-			e2elog.Logf("azvolumeattachment: %s, err: %s", attachments.Name, attachments.Status.Error.ErrorMessage)
+			e2elog.Logf("azvolumeattachment: %s, err: %s", attachments.Name, attachments.Status.Error.Message)
 		}
 		ginkgo.Fail("failed due to replicas failing to attach")
 	} else if !allReplicasAttached {

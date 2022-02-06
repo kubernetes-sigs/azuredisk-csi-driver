@@ -1,9 +1,10 @@
+
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.4.0
+    controller-gen.kubebuilder.io/version: v0.5.0
   creationTimestamp: null
   name: azdrivernodes.disk.csi.azure.com
 spec:
@@ -29,12 +30,12 @@ spec:
         sent a heatbeat.
       jsonPath: .status.lastHeartbeatTime
       name: LastHeartbeatTime
-      type: integer
+      type: date
     - description: A brief node status message.
       jsonPath: .status.statusMessage
       name: StatusMessage
       type: string
-    name: v1alpha1
+    name: v1alpha2
     schema:
       openAPIV3Schema:
         description: AzDriverNode is a representation of a node, where azure CSI driver
@@ -107,8 +108,8 @@ spec:
                   is responsive and is communicating to API server. Clients should
                   not solely reply on LastHeartbeatTime to ascertain node plugin's
                   health state.
-                format: int64
-                type: integer
+                format: date-time
+                type: string
               readyForVolumeAllocation:
                 description: ReadyForVolumeAllocation tells client wheather the node
                   plug-in is ready for volume allocation. If status is not present

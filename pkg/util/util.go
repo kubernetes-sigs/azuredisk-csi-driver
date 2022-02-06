@@ -27,59 +27,58 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	k8stypes "k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	volerr "k8s.io/cloud-provider/volume/errors"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
+	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
 const (
 	GiB                  = 1024 * 1024 * 1024
 	TagsDelimiter        = ","
 	TagKeyValueDelimiter = "="
-
-	danglingAttachErrorCode = "DANGLING_ATTACH"
 )
 
 var (
-	strToCode = map[string]codes.Code{
-		"OK":                  codes.OK,
-		"CANCELLED":           codes.Canceled,
-		"UNKNOWN":             codes.Unknown,
-		"INVALID_ARGUMENT":    codes.InvalidArgument,
-		"DEADLINE_EXCEEDED":   codes.DeadlineExceeded,
-		"NOT_FOUND":           codes.NotFound,
-		"ALREADY_EXISTS":      codes.AlreadyExists,
-		"PERMISSION_DENIED":   codes.PermissionDenied,
-		"RESOURCE_EXHAUSTED":  codes.ResourceExhausted,
-		"FAILED_PRECONDITION": codes.FailedPrecondition,
-		"ABORTED":             codes.Aborted,
-		"OUT_OF_RANGE":        codes.OutOfRange,
-		"UNIMPLEMENTED":       codes.Unimplemented,
-		"INTERNAL":            codes.Internal,
-		"UNAVAILABLE":         codes.Unavailable,
-		"DATA_LOSS":           codes.DataLoss,
-		"UNAUTHENTICATED":     codes.Unauthenticated,
+	strToCode = map[diskv1alpha2.AzErrorCode]codes.Code{
+		diskv1alpha2.AzErrorCodeOK:                 codes.OK,
+		diskv1alpha2.AzErrorCodeCanceled:           codes.Canceled,
+		diskv1alpha2.AzErrorCodeUnknown:            codes.Unknown,
+		diskv1alpha2.AzErrorCodeInvalidArgument:    codes.InvalidArgument,
+		diskv1alpha2.AzErrorCodeDeadlineExceeded:   codes.DeadlineExceeded,
+		diskv1alpha2.AzErrorCodeNotFound:           codes.NotFound,
+		diskv1alpha2.AzErrorCodeAlreadyExists:      codes.AlreadyExists,
+		diskv1alpha2.AzErrorCodePermissionDenied:   codes.PermissionDenied,
+		diskv1alpha2.AzErrorCodeResourceExhausted:  codes.ResourceExhausted,
+		diskv1alpha2.AzErrorCodeFailedPrecondition: codes.FailedPrecondition,
+		diskv1alpha2.AzErrorCodeAborted:            codes.Aborted,
+		diskv1alpha2.AzErrorCodeOutOfRange:         codes.OutOfRange,
+		diskv1alpha2.AzErrorCodeUnimplemented:      codes.Unimplemented,
+		diskv1alpha2.AzErrorCodeInternal:           codes.Internal,
+		diskv1alpha2.AzErrorCodeUnavailable:        codes.Unavailable,
+		diskv1alpha2.AzErrorCodeDataLoss:           codes.DataLoss,
+		diskv1alpha2.AzErrorCodeUnauthenticated:    codes.Unauthenticated,
 	}
 
-	codeToStr = map[codes.Code]string{
-		codes.OK:                 "OK",
-		codes.Canceled:           "CANCELLED",
-		codes.Unknown:            "UNKNOWN",
-		codes.InvalidArgument:    "INVALID_ARGUMENT",
-		codes.DeadlineExceeded:   "DEADLINE_EXCEEDED",
-		codes.NotFound:           "NOT_FOUND",
-		codes.AlreadyExists:      "ALREADY_EXISTS",
-		codes.PermissionDenied:   "PERMISSION_DENIED",
-		codes.ResourceExhausted:  "RESOURCE_EXHAUSTED",
-		codes.FailedPrecondition: "FAILED_PRECONDITION",
-		codes.Aborted:            "ABORTED",
-		codes.OutOfRange:         "OUT_OF_RANGE",
-		codes.Unimplemented:      "UNIMPLEMENTED",
-		codes.Internal:           "INTERNAL",
-		codes.Unavailable:        "UNAVAILABLE",
-		codes.DataLoss:           "DATA_LOSS",
-		codes.Unauthenticated:    "UNAUTHENTICATED",
+	codeToStr = map[codes.Code]diskv1alpha2.AzErrorCode{
+		codes.OK:                 diskv1alpha2.AzErrorCodeOK,
+		codes.Canceled:           diskv1alpha2.AzErrorCodeCanceled,
+		codes.Unknown:            diskv1alpha2.AzErrorCodeUnknown,
+		codes.InvalidArgument:    diskv1alpha2.AzErrorCodeInvalidArgument,
+		codes.DeadlineExceeded:   diskv1alpha2.AzErrorCodeDeadlineExceeded,
+		codes.NotFound:           diskv1alpha2.AzErrorCodeNotFound,
+		codes.AlreadyExists:      diskv1alpha2.AzErrorCodeAlreadyExists,
+		codes.PermissionDenied:   diskv1alpha2.AzErrorCodePermissionDenied,
+		codes.ResourceExhausted:  diskv1alpha2.AzErrorCodeResourceExhausted,
+		codes.FailedPrecondition: diskv1alpha2.AzErrorCodeFailedPrecondition,
+		codes.Aborted:            diskv1alpha2.AzErrorCodeAborted,
+		codes.OutOfRange:         diskv1alpha2.AzErrorCodeOutOfRange,
+		codes.Unimplemented:      diskv1alpha2.AzErrorCodeUnimplemented,
+		codes.Internal:           diskv1alpha2.AzErrorCodeInternal,
+		codes.Unavailable:        diskv1alpha2.AzErrorCodeUnavailable,
+		codes.DataLoss:           diskv1alpha2.AzErrorCodeDataLoss,
+		codes.Unauthenticated:    diskv1alpha2.AzErrorCodeUnauthenticated,
 	}
 
 	azureRetryErrorRegEx     = regexp.MustCompile("Retriable: (true|false), RetryAfter: ([0-9]+)s, HTTPStatusCode: ([0-9]+), RawError: ")
@@ -212,33 +211,32 @@ func (vl *VolumeLocks) Release(volumeID string) {
 	vl.locks.Delete(volumeID)
 }
 
-func getStringValueForErrorCode(c codes.Code) string {
+func azErrorCodeFromRPCCode(c codes.Code) diskv1alpha2.AzErrorCode {
 	if val, ok := codeToStr[c]; ok {
 		return val
 	}
-	return "UNKNOWN"
+	return diskv1alpha2.AzErrorCodeUnknown
 }
 
-func getErrorCodeFromString(errorCode string) codes.Code {
+func rpcCodeFromAzErrorCode(errorCode diskv1alpha2.AzErrorCode) codes.Code {
 	if val, ok := strToCode[errorCode]; ok {
 		return val
 	}
 	return codes.Unknown
 }
 
-// NewAzError returns a new v1alpha1.AzError object representing the specified error.
-func NewAzError(err error) *v1alpha1.AzError {
+// NewAzError returns a new AzError object representing the specified error.
+func NewAzError(err error) *diskv1alpha2.AzError {
 	var (
-		errorCode    string
+		errorCode    diskv1alpha2.AzErrorCode
 		errorMessage = err.Error()
-		currentNode  = k8stypes.NodeName("")
-		devicePath   = ""
+		parameters   = make(map[string]string)
 	)
 
 	if derr, ok := err.(*volerr.DanglingAttachError); ok {
-		errorCode = danglingAttachErrorCode
-		currentNode = derr.CurrentNode
-		devicePath = derr.DevicePath
+		errorCode = diskv1alpha2.AzErrorCodeDanglingAttach
+		parameters[azureconstants.CurrentNodeParameter] = string(derr.CurrentNode)
+		parameters[azureconstants.DevicePathParameter] = derr.DevicePath
 	} else {
 		code := status.Code(err)
 
@@ -254,26 +252,40 @@ func NewAzError(err error) *v1alpha1.AzError {
 			}
 		}
 
-		errorCode = getStringValueForErrorCode(code)
+		errorCode = azErrorCodeFromRPCCode(code)
 	}
 
-	return &v1alpha1.AzError{
-		ErrorCode:    errorCode,
-		ErrorMessage: errorMessage,
-		CurrentNode:  currentNode,
-		DevicePath:   devicePath,
+	return &diskv1alpha2.AzError{
+		Code:       errorCode,
+		Message:    errorMessage,
+		Parameters: parameters,
 	}
 }
 
-// ErrorFromAzError returns an error object for the specified v1alpha1.AzError instance.
-func ErrorFromAzError(azError *v1alpha1.AzError) error {
+// ErrorFromAzError returns an error object for the specified AzError instance.
+func ErrorFromAzError(azError *diskv1alpha2.AzError) error {
 	if azError == nil {
 		return nil
 	}
 
-	if azError.ErrorCode == danglingAttachErrorCode {
-		return volerr.NewDanglingError(azError.ErrorMessage, azError.CurrentNode, azError.DevicePath)
+	if azError.Code == diskv1alpha2.AzErrorCodeDanglingAttach {
+		currentName := ""
+		devicePath := ""
+
+		if azError.Parameters != nil {
+			var ok bool
+
+			if currentName, ok = azError.Parameters[azureconstants.CurrentNodeParameter]; !ok {
+				currentName = ""
+			}
+
+			if devicePath, ok = azError.Parameters[azureconstants.DevicePathParameter]; !ok {
+				devicePath = ""
+			}
+		}
+
+		return volerr.NewDanglingError(azError.Message, types.NodeName(currentName), devicePath)
 	}
 
-	return status.Error(getErrorCodeFromString(azError.ErrorCode), azError.ErrorMessage)
+	return status.Error(rpcCodeFromAzErrorCode(azError.Code), azError.Message)
 }

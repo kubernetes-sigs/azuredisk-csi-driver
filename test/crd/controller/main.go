@@ -30,7 +30,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 
 	azVolumeClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
-	azVolumeInformerV1Alpha1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions/azuredisk/v1alpha1"
+	azVolumeInformerV1Alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions/azuredisk/v1alpha2"
 )
 
 // retrieve the Kubernetes cluster client from outside of the cluster
@@ -68,7 +68,7 @@ func main() {
 	// get the Kubernetes client for connectivity
 	client, volumeClient := getKubernetesClient()
 
-	volumeInformer := azVolumeInformerV1Alpha1.NewAzVolumeInformer(
+	volumeInformer := azVolumeInformerV1Alpha2.NewAzVolumeInformer(
 		volumeClient,
 		meta_v1.NamespaceAll,
 		0,

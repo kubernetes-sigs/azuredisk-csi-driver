@@ -42,7 +42,7 @@ import (
 	"k8s.io/kubernetes/pkg/volume/util/hostutil"
 
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
-	azuredisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
+	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller"
@@ -260,7 +260,7 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 	retryPeriod := time.Duration(d.controllerLeaseRetryPeriodInSec) * time.Second
 	scheme := apiRuntime.NewScheme()
 	clientgoscheme.AddToScheme(scheme)
-	azuredisk.AddToScheme(scheme)
+	diskv1alpha2.AddToScheme(scheme)
 
 	// Setup a Manager
 	klog.V(2).Info("Setting up controller manager")
@@ -281,7 +281,7 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 		os.Exit(1)
 	}
 
-	sharedState := controller.NewSharedState(d.Name, d.objectNamespace)
+	sharedState := controller.NewSharedState(d.Name, d.objectNamespace, topologyKey)
 
 	// Setup a new controller to clean-up AzDriverNodes
 	// objects for the nodes which get deleted
@@ -326,7 +326,12 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 		klog.Errorf("Failed to initialize PVController. Error: %v. Exiting application...", err)
 		os.Exit(1)
 	}
-
+	klog.V(2).Info("Initializing Node Availability controller")
+	_, err = controller.NewNodeAvailabilityController(mgr, d.crdProvisioner.GetDiskClientSet(), d.kubeClient, sharedState)
+	if err != nil {
+		klog.Errorf("Failed to initialize NodeAvailabilityController. Error: %v. Exiting application...", err)
+		os.Exit(1)
+	}
 	// This goroutine is preserved for leader controller manager
 	// Leader controller manager should recover CRI if possible and clean them up before exiting.
 	go func() {
@@ -389,8 +394,8 @@ func (d *DriverV2) RegisterAzDriverNodeOrDie(ctx context.Context) {
 func (d *DriverV2) RunAzDriverNodeHeartbeatLoop(ctx context.Context) {
 
 	var err error
-	var cachedAzDriverNode *azuredisk.AzDriverNode
-	azN := d.crdProvisioner.GetDiskClientSet().DiskV1alpha1().AzDriverNodes(d.objectNamespace)
+	var cachedAzDriverNode *diskv1alpha2.AzDriverNode
+	azN := d.crdProvisioner.GetDiskClientSet().DiskV1alpha2().AzDriverNodes(d.objectNamespace)
 	heartbeatFrequency := time.Duration(d.heartbeatFrequencyInSec) * time.Second
 	klog.V(1).Infof("Starting heartbeat loop with frequency (%v)", heartbeatFrequency)
 	for {
@@ -416,12 +421,12 @@ func (d *DriverV2) RunAzDriverNodeHeartbeatLoop(ctx context.Context) {
 
 		// Send heartbeat
 		azDriverNodeToUpdate := cachedAzDriverNode.DeepCopy()
-		timestamp := time.Now().UnixNano()
+		timestamp := metav1.Now()
 		readyForAllocation := true
 		statusMessage := "Driver node healthy."
 		klog.V(2).Infof("Updating status for (%v)", azDriverNodeToUpdate)
 		if azDriverNodeToUpdate.Status == nil {
-			azDriverNodeToUpdate.Status = &azuredisk.AzDriverNodeStatus{}
+			azDriverNodeToUpdate.Status = &diskv1alpha2.AzDriverNodeStatus{}
 		}
 		azDriverNodeToUpdate.Status.ReadyForVolumeAllocation = &readyForAllocation
 		azDriverNodeToUpdate.Status.LastHeartbeatTime = &timestamp

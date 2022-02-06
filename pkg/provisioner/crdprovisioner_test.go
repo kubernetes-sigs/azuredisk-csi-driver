@@ -31,7 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 
 	testingClient "k8s.io/client-go/testing"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
+	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
 	azurediskInformers "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
@@ -52,33 +52,31 @@ var (
 	testNodeName                  = "test-node-name"
 	testNameSpace                 = "test-ns"
 
-	defaultAzVolumeWithParamForComparison = v1alpha1.AzVolume{
+	defaultAzVolumeWithParamForComparison = diskv1alpha2.AzVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: defaultVolumeNameWithParam,
 		},
-		Spec: v1alpha1.AzVolumeSpec{
-			UnderlyingVolume:     defaultVolumeNameWithParam,
+		Spec: diskv1alpha2.AzVolumeSpec{
+			VolumeName:           defaultVolumeNameWithParam,
 			MaxMountReplicaCount: 2,
-			VolumeCapability: []v1alpha1.VolumeCapability{
+			VolumeCapability: []diskv1alpha2.VolumeCapability{
 				{
-					AccessDetails: v1alpha1.VolumeCapabilityAccessDetails{
-						AccessType: v1alpha1.VolumeCapabilityAccessMount,
-					},
-					AccessMode: v1alpha1.VolumeCapabilityAccessModeSingleNodeWriter,
+					AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
+					AccessMode: diskv1alpha2.VolumeCapabilityAccessModeSingleNodeWriter,
 				},
 			},
-			CapacityRange: &v1alpha1.CapacityRange{
+			CapacityRange: &diskv1alpha2.CapacityRange{
 				RequiredBytes: 8,
 				LimitBytes:    10,
 			},
 			Parameters: map[string]string{"skuname": "testname", "location": "westus2"},
 			Secrets:    map[string]string{"test1": "test2"},
-			ContentVolumeSource: &v1alpha1.ContentVolumeSource{
-				ContentSource:   v1alpha1.ContentVolumeSourceTypeVolume,
+			ContentVolumeSource: &diskv1alpha2.ContentVolumeSource{
+				ContentSource:   diskv1alpha2.ContentVolumeSourceTypeVolume,
 				ContentSourceID: "content-volume-source",
 			},
-			AccessibilityRequirements: &v1alpha1.TopologyRequirement{
-				Preferred: []v1alpha1.Topology{
+			AccessibilityRequirements: &diskv1alpha2.TopologyRequirement{
+				Preferred: []diskv1alpha2.Topology{
 					{
 						Segments: map[string]string{"region": "R1", "zone": "Z1"},
 					},
@@ -86,38 +84,36 @@ var (
 						Segments: map[string]string{"region": "R2", "zone": "Z2"},
 					},
 				},
-				Requisite: []v1alpha1.Topology{
+				Requisite: []diskv1alpha2.Topology{
 					{
 						Segments: map[string]string{"region": "R3", "zone": "Z3"},
 					},
 				},
 			},
 		},
-		Status: v1alpha1.AzVolumeStatus{},
+		Status: diskv1alpha2.AzVolumeStatus{},
 	}
 
-	defaultAzVolumeWithNilParamForComparison = v1alpha1.AzVolume{
+	defaultAzVolumeWithNilParamForComparison = diskv1alpha2.AzVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: defaultVolumeNameWithNilParam,
 		},
-		Spec: v1alpha1.AzVolumeSpec{
-			UnderlyingVolume:     defaultVolumeNameWithNilParam,
+		Spec: diskv1alpha2.AzVolumeSpec{
+			VolumeName:           defaultVolumeNameWithNilParam,
 			MaxMountReplicaCount: 1,
-			VolumeCapability: []v1alpha1.VolumeCapability{
+			VolumeCapability: []diskv1alpha2.VolumeCapability{
 				{
-					AccessDetails: v1alpha1.VolumeCapabilityAccessDetails{
-						AccessType: v1alpha1.VolumeCapabilityAccessMount,
-					},
-					AccessMode: v1alpha1.VolumeCapabilityAccessModeSingleNodeWriter,
+					AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
+					AccessMode: diskv1alpha2.VolumeCapabilityAccessModeSingleNodeWriter,
 				},
 			},
-			AccessibilityRequirements: &v1alpha1.TopologyRequirement{},
+			AccessibilityRequirements: &diskv1alpha2.TopologyRequirement{},
 		},
-		Status: v1alpha1.AzVolumeStatus{},
+		Status: diskv1alpha2.AzVolumeStatus{},
 	}
 
-	defaultTopology = v1alpha1.TopologyRequirement{
-		Preferred: []v1alpha1.Topology{
+	defaultTopology = diskv1alpha2.TopologyRequirement{
+		Preferred: []diskv1alpha2.Topology{
 			{
 				Segments: map[string]string{"region": "R1", "zone": "Z1"},
 			},
@@ -125,25 +121,23 @@ var (
 				Segments: map[string]string{"region": "R2", "zone": "Z2"},
 			},
 		},
-		Requisite: []v1alpha1.Topology{
+		Requisite: []diskv1alpha2.Topology{
 			{
 				Segments: map[string]string{"region": "R3", "zone": "Z3"},
 			},
 		},
 	}
 
-	successAzVolStatus = v1alpha1.AzVolumeStatus{
-		Detail: &v1alpha1.AzVolumeStatusDetail{
-			ResponseObject: &v1alpha1.AzVolumeStatusParams{
-				VolumeID: testDiskURI,
-			},
+	successAzVolStatus = diskv1alpha2.AzVolumeStatus{
+		Detail: &diskv1alpha2.AzVolumeStatusDetail{
+			VolumeID: testDiskURI,
 		},
 	}
 
-	successAzVAStatus = v1alpha1.AzVolumeAttachmentStatus{
-		Detail: &v1alpha1.AzVolumeAttachmentStatusDetail{
+	successAzVAStatus = diskv1alpha2.AzVolumeAttachmentStatus{
+		Detail: &diskv1alpha2.AzVolumeAttachmentStatusDetail{
 			PublishContext: map[string]string{"test_key": "test_value"},
-			Role:           v1alpha1.PrimaryRole,
+			Role:           diskv1alpha2.PrimaryRole,
 		},
 	}
 )
@@ -165,15 +159,15 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 
 	tests := []struct {
 		description          string
-		existingAzVolumes    []v1alpha1.AzVolume
+		existingAzVolumes    []diskv1alpha2.AzVolume
 		volumeName           string
 		definePrependReactor bool
-		capacity             *v1alpha1.CapacityRange
-		capabilities         []v1alpha1.VolumeCapability
+		capacity             *diskv1alpha2.CapacityRange
+		capabilities         []diskv1alpha2.VolumeCapability
 		parameters           map[string]string
 		secrets              map[string]string
-		contentSource        *v1alpha1.ContentVolumeSource
-		topology             *v1alpha1.TopologyRequirement
+		contentSource        *diskv1alpha2.ContentVolumeSource
+		topology             *diskv1alpha2.TopologyRequirement
 		expectedError        error
 	}{
 		{
@@ -181,19 +175,17 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 			existingAzVolumes:    nil,
 			volumeName:           testDiskName,
 			definePrependReactor: true,
-			capacity:             &v1alpha1.CapacityRange{},
-			capabilities: []v1alpha1.VolumeCapability{
+			capacity:             &diskv1alpha2.CapacityRange{},
+			capabilities: []diskv1alpha2.VolumeCapability{
 				{
-					AccessDetails: v1alpha1.VolumeCapabilityAccessDetails{
-						AccessType: v1alpha1.VolumeCapabilityAccessMount,
-					},
-					AccessMode: v1alpha1.VolumeCapabilityAccessModeSingleNodeWriter,
+					AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
+					AccessMode: diskv1alpha2.VolumeCapabilityAccessModeSingleNodeWriter,
 				},
 			},
 			parameters:    make(map[string]string),
 			secrets:       make(map[string]string),
-			contentSource: &v1alpha1.ContentVolumeSource{},
-			topology:      &v1alpha1.TopologyRequirement{},
+			contentSource: &diskv1alpha2.ContentVolumeSource{},
+			topology:      &diskv1alpha2.TopologyRequirement{},
 			expectedError: nil,
 		},
 		{
@@ -201,14 +193,14 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 			existingAzVolumes:    nil,
 			volumeName:           testDiskName,
 			definePrependReactor: true,
-			capacity: &v1alpha1.CapacityRange{
+			capacity: &diskv1alpha2.CapacityRange{
 				RequiredBytes: 2,
 				LimitBytes:    2,
 			},
 			parameters: map[string]string{"location": "westus2"},
 			secrets:    map[string]string{"test1": "No secret"},
-			contentSource: &v1alpha1.ContentVolumeSource{
-				ContentSource:   v1alpha1.ContentVolumeSourceTypeVolume,
+			contentSource: &diskv1alpha2.ContentVolumeSource{
+				ContentSource:   diskv1alpha2.ContentVolumeSourceTypeVolume,
 				ContentSourceID: "content-volume-source",
 			},
 			topology:      &defaultTopology,
@@ -219,19 +211,17 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 			existingAzVolumes:    nil,
 			volumeName:           invalidVolumeNameLength,
 			definePrependReactor: true,
-			capacity:             &v1alpha1.CapacityRange{},
-			capabilities: []v1alpha1.VolumeCapability{
+			capacity:             &diskv1alpha2.CapacityRange{},
+			capabilities: []diskv1alpha2.VolumeCapability{
 				{
-					AccessDetails: v1alpha1.VolumeCapabilityAccessDetails{
-						AccessType: v1alpha1.VolumeCapabilityAccessMount,
-					},
-					AccessMode: v1alpha1.VolumeCapabilityAccessModeSingleNodeWriter,
+					AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
+					AccessMode: diskv1alpha2.VolumeCapabilityAccessModeSingleNodeWriter,
 				},
 			},
 			parameters:    make(map[string]string),
 			secrets:       make(map[string]string),
-			contentSource: &v1alpha1.ContentVolumeSource{},
-			topology:      &v1alpha1.TopologyRequirement{},
+			contentSource: &diskv1alpha2.ContentVolumeSource{},
+			topology:      &diskv1alpha2.TopologyRequirement{},
 			expectedError: nil,
 		},
 		{
@@ -239,78 +229,70 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 			existingAzVolumes:    nil,
 			volumeName:           invalidVolumeNameConvention,
 			definePrependReactor: true,
-			capacity:             &v1alpha1.CapacityRange{},
-			capabilities: []v1alpha1.VolumeCapability{
+			capacity:             &diskv1alpha2.CapacityRange{},
+			capabilities: []diskv1alpha2.VolumeCapability{
 				{
-					AccessDetails: v1alpha1.VolumeCapabilityAccessDetails{
-						AccessType: v1alpha1.VolumeCapabilityAccessMount,
-					},
-					AccessMode: v1alpha1.VolumeCapabilityAccessModeSingleNodeWriter,
+					AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
+					AccessMode: diskv1alpha2.VolumeCapabilityAccessModeSingleNodeWriter,
 				},
 			},
 			parameters:    make(map[string]string),
 			secrets:       make(map[string]string),
-			contentSource: &v1alpha1.ContentVolumeSource{},
-			topology:      &v1alpha1.TopologyRequirement{},
+			contentSource: &diskv1alpha2.ContentVolumeSource{},
+			topology:      &diskv1alpha2.TopologyRequirement{},
 			expectedError: nil,
 		},
 		{
 			description: "[Success] Return no error when AzVolume CRI exists with identical CreateVolume request parameters",
-			existingAzVolumes: []v1alpha1.AzVolume{
+			existingAzVolumes: []diskv1alpha2.AzVolume{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      testDiskName,
 						Namespace: provisioner.namespace,
 					},
-					Spec: v1alpha1.AzVolumeSpec{
-						UnderlyingVolume: testDiskName,
-						CapacityRange: &v1alpha1.CapacityRange{
+					Spec: diskv1alpha2.AzVolumeSpec{
+						VolumeName: testDiskName,
+						CapacityRange: &diskv1alpha2.CapacityRange{
 							RequiredBytes: 2,
 							LimitBytes:    2,
 						},
-						VolumeCapability: []v1alpha1.VolumeCapability{
+						VolumeCapability: []diskv1alpha2.VolumeCapability{
 							{
-								AccessDetails: v1alpha1.VolumeCapabilityAccessDetails{
-									AccessType: v1alpha1.VolumeCapabilityAccessMount,
-								},
-								AccessMode: v1alpha1.VolumeCapabilityAccessModeSingleNodeWriter,
+								AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
+								AccessMode: diskv1alpha2.VolumeCapabilityAccessModeSingleNodeWriter,
 							},
 						},
-						ContentVolumeSource: &v1alpha1.ContentVolumeSource{
-							ContentSource:   v1alpha1.ContentVolumeSourceTypeVolume,
+						ContentVolumeSource: &diskv1alpha2.ContentVolumeSource{
+							ContentSource:   diskv1alpha2.ContentVolumeSourceTypeVolume,
 							ContentSourceID: "content-volume-source",
 						},
 						Parameters:                map[string]string{"location": "westus2"},
 						Secrets:                   map[string]string{"secret": "not really"},
 						AccessibilityRequirements: &defaultTopology,
 					},
-					Status: v1alpha1.AzVolumeStatus{
-						Detail: &v1alpha1.AzVolumeStatusDetail{
-							ResponseObject: &v1alpha1.AzVolumeStatusParams{
-								VolumeID: testDiskURI,
-							},
+					Status: diskv1alpha2.AzVolumeStatus{
+						Detail: &diskv1alpha2.AzVolumeStatusDetail{
+							VolumeID: testDiskURI,
 						},
 					},
 				},
 			},
 			volumeName:           testDiskName,
 			definePrependReactor: true,
-			capacity: &v1alpha1.CapacityRange{
+			capacity: &diskv1alpha2.CapacityRange{
 				RequiredBytes: 2,
 				LimitBytes:    2,
 			},
-			capabilities: []v1alpha1.VolumeCapability{
+			capabilities: []diskv1alpha2.VolumeCapability{
 				{
-					AccessDetails: v1alpha1.VolumeCapabilityAccessDetails{
-						AccessType: v1alpha1.VolumeCapabilityAccessMount,
-					},
-					AccessMode: v1alpha1.VolumeCapabilityAccessModeSingleNodeWriter,
+					AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
+					AccessMode: diskv1alpha2.VolumeCapabilityAccessModeSingleNodeWriter,
 				},
 			},
 			parameters: map[string]string{"location": "westus2"},
 			secrets:    map[string]string{"secret": "not really"},
-			contentSource: &v1alpha1.ContentVolumeSource{
-				ContentSource:   v1alpha1.ContentVolumeSourceTypeVolume,
+			contentSource: &diskv1alpha2.ContentVolumeSource{
+				ContentSource:   diskv1alpha2.ContentVolumeSourceTypeVolume,
 				ContentSourceID: "content-volume-source",
 			},
 			topology:      &defaultTopology,
@@ -318,59 +300,55 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 		},
 		{
 			description: "[Success] Update previous creation error in existing AzVolume CRI when CreateVolume request for same volumeName is passed",
-			existingAzVolumes: []v1alpha1.AzVolume{
+			existingAzVolumes: []diskv1alpha2.AzVolume{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      testDiskName,
 						Namespace: provisioner.namespace,
 					},
-					Spec: v1alpha1.AzVolumeSpec{
-						UnderlyingVolume: testDiskName,
-						CapacityRange: &v1alpha1.CapacityRange{
+					Spec: diskv1alpha2.AzVolumeSpec{
+						VolumeName: testDiskName,
+						CapacityRange: &diskv1alpha2.CapacityRange{
 							RequiredBytes: 2,
 							LimitBytes:    2,
 						},
-						VolumeCapability: []v1alpha1.VolumeCapability{
+						VolumeCapability: []diskv1alpha2.VolumeCapability{
 							{
-								AccessDetails: v1alpha1.VolumeCapabilityAccessDetails{
-									AccessType: v1alpha1.VolumeCapabilityAccessMount,
-								},
-								AccessMode: v1alpha1.VolumeCapabilityAccessModeSingleNodeWriter,
+								AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
+								AccessMode: diskv1alpha2.VolumeCapabilityAccessModeSingleNodeWriter,
 							},
 						},
-						ContentVolumeSource: &v1alpha1.ContentVolumeSource{
-							ContentSource:   v1alpha1.ContentVolumeSourceTypeVolume,
+						ContentVolumeSource: &diskv1alpha2.ContentVolumeSource{
+							ContentSource:   diskv1alpha2.ContentVolumeSourceTypeVolume,
 							ContentSourceID: "content-volume-source",
 						},
 						Parameters:                map[string]string{"location": "westus2"},
 						Secrets:                   map[string]string{"secret": "not really"},
 						AccessibilityRequirements: &defaultTopology,
 					},
-					Status: v1alpha1.AzVolumeStatus{
-						Error: &v1alpha1.AzError{
-							ErrorMessage: "Test error message here",
+					Status: diskv1alpha2.AzVolumeStatus{
+						Error: &diskv1alpha2.AzError{
+							Message: "Test error message here",
 						},
 					},
 				},
 			},
 			volumeName:           testDiskName,
 			definePrependReactor: true,
-			capacity: &v1alpha1.CapacityRange{
+			capacity: &diskv1alpha2.CapacityRange{
 				RequiredBytes: 2,
 				LimitBytes:    2,
 			},
-			capabilities: []v1alpha1.VolumeCapability{
+			capabilities: []diskv1alpha2.VolumeCapability{
 				{
-					AccessDetails: v1alpha1.VolumeCapabilityAccessDetails{
-						AccessType: v1alpha1.VolumeCapabilityAccessMount,
-					},
-					AccessMode: v1alpha1.VolumeCapabilityAccessModeSingleNodeWriter,
+					AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
+					AccessMode: diskv1alpha2.VolumeCapabilityAccessModeSingleNodeWriter,
 				},
 			},
 			parameters: map[string]string{"location": "westus2"},
 			secrets:    map[string]string{"secret": "not really"},
-			contentSource: &v1alpha1.ContentVolumeSource{
-				ContentSource:   v1alpha1.ContentVolumeSourceTypeVolume,
+			contentSource: &diskv1alpha2.ContentVolumeSource{
+				ContentSource:   diskv1alpha2.ContentVolumeSourceTypeVolume,
 				ContentSourceID: "content-volume-source",
 			},
 			topology:      &defaultTopology,
@@ -378,49 +356,43 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 		},
 		{
 			description: "[Failure] Return AlreadyExists error when an AzVolume CRI exists with same volume name but different CreateVolume request parameters",
-			existingAzVolumes: []v1alpha1.AzVolume{
+			existingAzVolumes: []diskv1alpha2.AzVolume{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      testDiskName,
 						Namespace: provisioner.namespace,
 					},
-					Spec: v1alpha1.AzVolumeSpec{
-						UnderlyingVolume: testDiskName,
-						VolumeCapability: []v1alpha1.VolumeCapability{
+					Spec: diskv1alpha2.AzVolumeSpec{
+						VolumeName: testDiskName,
+						VolumeCapability: []diskv1alpha2.VolumeCapability{
 							{
-								AccessDetails: v1alpha1.VolumeCapabilityAccessDetails{
-									AccessType: v1alpha1.VolumeCapabilityAccessBlock,
-								},
-								AccessMode: v1alpha1.VolumeCapabilityAccessModeSingleNodeWriter,
+								AccessType: diskv1alpha2.VolumeCapabilityAccessBlock,
+								AccessMode: diskv1alpha2.VolumeCapabilityAccessModeSingleNodeWriter,
 							},
 						},
 						Parameters: map[string]string{"parameter": "new params"},
 					},
-					Status: v1alpha1.AzVolumeStatus{
-						Detail: &v1alpha1.AzVolumeStatusDetail{
-							ResponseObject: &v1alpha1.AzVolumeStatusParams{
-								VolumeID:      testDiskURI,
-								CapacityBytes: 2,
-							},
+					Status: diskv1alpha2.AzVolumeStatus{
+						Detail: &diskv1alpha2.AzVolumeStatusDetail{
+							VolumeID:      testDiskURI,
+							CapacityBytes: 2,
 						},
 					},
 				},
 			},
 			volumeName:           testDiskName,
 			definePrependReactor: false,
-			capacity:             &v1alpha1.CapacityRange{},
-			capabilities: []v1alpha1.VolumeCapability{
+			capacity:             &diskv1alpha2.CapacityRange{},
+			capabilities: []diskv1alpha2.VolumeCapability{
 				{
-					AccessDetails: v1alpha1.VolumeCapabilityAccessDetails{
-						AccessType: v1alpha1.VolumeCapabilityAccessMount,
-					},
-					AccessMode: v1alpha1.VolumeCapabilityAccessModeSingleNodeWriter,
+					AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
+					AccessMode: diskv1alpha2.VolumeCapabilityAccessModeSingleNodeWriter,
 				},
 			},
 			parameters:    make(map[string]string),
 			secrets:       make(map[string]string),
-			contentSource: &v1alpha1.ContentVolumeSource{},
-			topology:      &v1alpha1.TopologyRequirement{},
+			contentSource: &diskv1alpha2.ContentVolumeSource{},
+			topology:      &diskv1alpha2.TopologyRequirement{},
 			expectedError: status.Errorf(codes.AlreadyExists, "Volume with name (%s) already exists with different specifications", testDiskName),
 		},
 	}
@@ -454,7 +426,7 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 					"create",
 					"azvolumes",
 					func(action testingClient.Action) (bool, runtime.Object, error) {
-						objCreated := action.(testingClient.CreateAction).GetObject().(*v1alpha1.AzVolume)
+						objCreated := action.(testingClient.CreateAction).GetObject().(*diskv1alpha2.AzVolume)
 						objCreated.Status = successAzVolStatus
 
 						var err error
@@ -475,7 +447,7 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 					"update",
 					"azvolumes",
 					func(action testingClient.Action) (bool, runtime.Object, error) {
-						objCreated := action.(testingClient.UpdateAction).GetObject().(*v1alpha1.AzVolume)
+						objCreated := action.(testingClient.UpdateAction).GetObject().(*diskv1alpha2.AzVolume)
 						objCreated.Status = successAzVolStatus
 						err := tracker.Update(action.GetResource(), objCreated, action.GetNamespace())
 
@@ -511,36 +483,32 @@ func TestCrdProvisionerDeleteVolume(t *testing.T) {
 
 	tests := []struct {
 		description       string
-		existingAzVolumes []v1alpha1.AzVolume
+		existingAzVolumes []diskv1alpha2.AzVolume
 		diskURI           string
 		secrets           map[string]string
 		expectedError     error
 	}{
 		{
 			description: "[Success] Delete an existing AzVolume CRI entry",
-			existingAzVolumes: []v1alpha1.AzVolume{
+			existingAzVolumes: []diskv1alpha2.AzVolume{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      testDiskName,
 						Namespace: provisioner.namespace,
 					},
-					Spec: v1alpha1.AzVolumeSpec{
-						UnderlyingVolume:     testDiskName,
+					Spec: diskv1alpha2.AzVolumeSpec{
+						VolumeName:           testDiskName,
 						MaxMountReplicaCount: 2,
-						VolumeCapability: []v1alpha1.VolumeCapability{
+						VolumeCapability: []diskv1alpha2.VolumeCapability{
 							{
-								AccessDetails: v1alpha1.VolumeCapabilityAccessDetails{
-									AccessType: v1alpha1.VolumeCapabilityAccessMount,
-								},
-								AccessMode: v1alpha1.VolumeCapabilityAccessModeSingleNodeWriter,
+								AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
+								AccessMode: diskv1alpha2.VolumeCapabilityAccessModeSingleNodeWriter,
 							},
 						},
 					},
-					Status: v1alpha1.AzVolumeStatus{
-						Detail: &v1alpha1.AzVolumeStatusDetail{
-							ResponseObject: &v1alpha1.AzVolumeStatusParams{
-								VolumeID: testDiskURI,
-							},
+					Status: diskv1alpha2.AzVolumeStatus{
+						Detail: &diskv1alpha2.AzVolumeStatusDetail{
+							VolumeID: testDiskURI,
 						},
 					},
 				},
@@ -551,29 +519,25 @@ func TestCrdProvisionerDeleteVolume(t *testing.T) {
 		},
 		{
 			description: "[Success] Delete an existing AzVolume CRI entry when secrets is passed",
-			existingAzVolumes: []v1alpha1.AzVolume{
+			existingAzVolumes: []diskv1alpha2.AzVolume{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      testDiskName,
 						Namespace: provisioner.namespace,
 					},
-					Spec: v1alpha1.AzVolumeSpec{
-						UnderlyingVolume:     testDiskName,
+					Spec: diskv1alpha2.AzVolumeSpec{
+						VolumeName:           testDiskName,
 						MaxMountReplicaCount: 2,
-						VolumeCapability: []v1alpha1.VolumeCapability{
+						VolumeCapability: []diskv1alpha2.VolumeCapability{
 							{
-								AccessDetails: v1alpha1.VolumeCapabilityAccessDetails{
-									AccessType: v1alpha1.VolumeCapabilityAccessMount,
-								},
-								AccessMode: v1alpha1.VolumeCapabilityAccessModeSingleNodeWriter,
+								AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
+								AccessMode: diskv1alpha2.VolumeCapabilityAccessModeSingleNodeWriter,
 							},
 						},
 					},
-					Status: v1alpha1.AzVolumeStatus{
-						Detail: &v1alpha1.AzVolumeStatusDetail{
-							ResponseObject: &v1alpha1.AzVolumeStatusParams{
-								VolumeID: testDiskURI,
-							},
+					Status: diskv1alpha2.AzVolumeStatus{
+						Detail: &diskv1alpha2.AzVolumeStatusDetail{
+							VolumeID: testDiskURI,
 						},
 					},
 				},
@@ -636,7 +600,7 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 
 	tests := []struct {
 		description             string
-		existingAzVolAttachment []v1alpha1.AzVolumeAttachment
+		existingAzVolAttachment []diskv1alpha2.AzVolumeAttachment
 		diskURI                 string
 		nodeID                  string
 		volumeContext           map[string]string
@@ -663,7 +627,7 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 		},
 		{
 			description: "[Success] Overwrite previous error state in an AzVolumeAttachment CRI",
-			existingAzVolAttachment: []v1alpha1.AzVolumeAttachment{
+			existingAzVolAttachment: []diskv1alpha2.AzVolumeAttachment{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
@@ -673,18 +637,18 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 						},
 						Namespace: provisioner.namespace,
 					},
-					Spec: v1alpha1.AzVolumeAttachmentSpec{
-						UnderlyingVolume: azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
-						VolumeID:         testDiskName,
-						NodeName:         testNodeName,
-						VolumeContext:    make(map[string]string),
-						RequestedRole:    v1alpha1.PrimaryRole,
+					Spec: diskv1alpha2.AzVolumeAttachmentSpec{
+						VolumeName:    azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
+						VolumeID:      testDiskName,
+						NodeName:      testNodeName,
+						VolumeContext: make(map[string]string),
+						RequestedRole: diskv1alpha2.PrimaryRole,
 					},
-					Status: v1alpha1.AzVolumeAttachmentStatus{
-						Error: &v1alpha1.AzError{
-							ErrorMessage: "Test error message here",
+					Status: diskv1alpha2.AzVolumeAttachmentStatus{
+						Error: &diskv1alpha2.AzError{
+							Message: "Test error message here",
 						},
-						State: v1alpha1.AttachmentFailed,
+						State: diskv1alpha2.AttachmentFailed,
 					},
 				},
 			},
@@ -696,7 +660,7 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 		},
 		{
 			description: "[Success] Return no error when AzVolumeAttachment CRI with Details and PublishContext exists for the diskURI and nodeID",
-			existingAzVolAttachment: []v1alpha1.AzVolumeAttachment{
+			existingAzVolAttachment: []diskv1alpha2.AzVolumeAttachment{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
@@ -706,19 +670,19 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 						},
 						Namespace: provisioner.namespace,
 					},
-					Spec: v1alpha1.AzVolumeAttachmentSpec{
-						UnderlyingVolume: azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
-						VolumeID:         testDiskName,
-						NodeName:         testNodeName,
-						VolumeContext:    make(map[string]string),
-						RequestedRole:    v1alpha1.PrimaryRole,
+					Spec: diskv1alpha2.AzVolumeAttachmentSpec{
+						VolumeName:    azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
+						VolumeID:      testDiskName,
+						NodeName:      testNodeName,
+						VolumeContext: make(map[string]string),
+						RequestedRole: diskv1alpha2.PrimaryRole,
 					},
-					Status: v1alpha1.AzVolumeAttachmentStatus{
-						Detail: &v1alpha1.AzVolumeAttachmentStatusDetail{
-							Role:           v1alpha1.PrimaryRole,
+					Status: diskv1alpha2.AzVolumeAttachmentStatus{
+						Detail: &diskv1alpha2.AzVolumeAttachmentStatusDetail{
+							Role:           diskv1alpha2.PrimaryRole,
 							PublishContext: map[string]string{},
 						},
-						State: v1alpha1.Attached},
+						State: diskv1alpha2.Attached},
 				},
 			},
 			diskURI:              testDiskURI,
@@ -729,7 +693,7 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 		},
 		{
 			description: "[Success] Update an existing AzVolumeAttachment CRI with no Details and PublishContext for the diskURI and nodeID",
-			existingAzVolAttachment: []v1alpha1.AzVolumeAttachment{
+			existingAzVolAttachment: []diskv1alpha2.AzVolumeAttachment{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
@@ -739,14 +703,14 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 						},
 						Namespace: provisioner.namespace,
 					},
-					Spec: v1alpha1.AzVolumeAttachmentSpec{
-						UnderlyingVolume: azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
-						VolumeID:         testDiskName,
-						NodeName:         testNodeName,
-						VolumeContext:    make(map[string]string),
-						RequestedRole:    v1alpha1.PrimaryRole,
+					Spec: diskv1alpha2.AzVolumeAttachmentSpec{
+						VolumeName:    azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
+						VolumeID:      testDiskName,
+						NodeName:      testNodeName,
+						VolumeContext: make(map[string]string),
+						RequestedRole: diskv1alpha2.PrimaryRole,
 					},
-					Status: v1alpha1.AzVolumeAttachmentStatus{},
+					Status: diskv1alpha2.AzVolumeAttachmentStatus{},
 				},
 			},
 			diskURI:              testDiskURI,
@@ -796,7 +760,7 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 					"create",
 					"azvolumeattachments",
 					func(action testingClient.Action) (bool, runtime.Object, error) {
-						objCreated := action.(testingClient.CreateAction).GetObject().(*v1alpha1.AzVolumeAttachment)
+						objCreated := action.(testingClient.CreateAction).GetObject().(*diskv1alpha2.AzVolumeAttachment)
 						objCreated.Status = successAzVAStatus
 
 						var err error
@@ -817,7 +781,7 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 					"update",
 					"azvolumeattachments",
 					func(action testingClient.Action) (bool, runtime.Object, error) {
-						objCreated := action.(testingClient.UpdateAction).GetObject().(*v1alpha1.AzVolumeAttachment)
+						objCreated := action.(testingClient.UpdateAction).GetObject().(*diskv1alpha2.AzVolumeAttachment)
 						objCreated.Status = successAzVAStatus
 						err := tracker.Update(action.GetResource(), objCreated, action.GetNamespace())
 
@@ -852,7 +816,7 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 
 	tests := []struct {
 		description             string
-		existingAzVolAttachment []v1alpha1.AzVolumeAttachment
+		existingAzVolAttachment []diskv1alpha2.AzVolumeAttachment
 		diskURI                 string
 		nodeID                  string
 		secrets                 map[string]string
@@ -860,7 +824,7 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 	}{
 		{
 			description: "[Success] Delete an AzVolumeAttachment CRI for valid diskURI and nodeID",
-			existingAzVolAttachment: []v1alpha1.AzVolumeAttachment{
+			existingAzVolAttachment: []diskv1alpha2.AzVolumeAttachment{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
@@ -870,19 +834,19 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 						},
 						Namespace: provisioner.namespace,
 					},
-					Spec: v1alpha1.AzVolumeAttachmentSpec{
-						UnderlyingVolume: azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
-						VolumeID:         testDiskName,
-						NodeName:         testNodeName,
-						VolumeContext:    nil,
-						RequestedRole:    v1alpha1.PrimaryRole,
+					Spec: diskv1alpha2.AzVolumeAttachmentSpec{
+						VolumeName:    azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
+						VolumeID:      testDiskName,
+						NodeName:      testNodeName,
+						VolumeContext: nil,
+						RequestedRole: diskv1alpha2.PrimaryRole,
 					},
-					Status: v1alpha1.AzVolumeAttachmentStatus{
-						Detail: &v1alpha1.AzVolumeAttachmentStatusDetail{
-							Role:           v1alpha1.PrimaryRole,
+					Status: diskv1alpha2.AzVolumeAttachmentStatus{
+						Detail: &diskv1alpha2.AzVolumeAttachmentStatusDetail{
+							Role:           diskv1alpha2.PrimaryRole,
 							PublishContext: map[string]string{},
 						},
-						State: v1alpha1.Attached,
+						State: diskv1alpha2.Attached,
 					},
 				},
 			},
@@ -893,7 +857,7 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 		},
 		{
 			description: "[Success] Delete an AzVolumeAttachment CRI for valid diskURI, nodeID and secrets",
-			existingAzVolAttachment: []v1alpha1.AzVolumeAttachment{
+			existingAzVolAttachment: []diskv1alpha2.AzVolumeAttachment{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
@@ -903,19 +867,19 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 						},
 						Namespace: provisioner.namespace,
 					},
-					Spec: v1alpha1.AzVolumeAttachmentSpec{
-						UnderlyingVolume: azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
-						VolumeID:         testDiskName,
-						NodeName:         testNodeName,
-						VolumeContext:    nil,
-						RequestedRole:    v1alpha1.PrimaryRole,
+					Spec: diskv1alpha2.AzVolumeAttachmentSpec{
+						VolumeName:    azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
+						VolumeID:      testDiskName,
+						NodeName:      testNodeName,
+						VolumeContext: nil,
+						RequestedRole: diskv1alpha2.PrimaryRole,
 					},
-					Status: v1alpha1.AzVolumeAttachmentStatus{
-						Detail: &v1alpha1.AzVolumeAttachmentStatusDetail{
-							Role:           v1alpha1.PrimaryRole,
+					Status: diskv1alpha2.AzVolumeAttachmentStatus{
+						Detail: &diskv1alpha2.AzVolumeAttachmentStatusDetail{
+							Role:           diskv1alpha2.PrimaryRole,
 							PublishContext: map[string]string{},
 						},
-						State: v1alpha1.Attached,
+						State: diskv1alpha2.Attached,
 					},
 				},
 			},
@@ -981,47 +945,43 @@ func TestCrdProvisionerExpandVolume(t *testing.T) {
 
 	tests := []struct {
 		description          string
-		existingAzVolumes    []v1alpha1.AzVolume
+		existingAzVolumes    []diskv1alpha2.AzVolume
 		diskURI              string
-		capacityRange        *v1alpha1.CapacityRange
+		capacityRange        *diskv1alpha2.CapacityRange
 		secrets              map[string]string
 		definePrependReactor bool
 		expectedError        error
 	}{
 		{
 			description: "[Success] Update the CapacityBytes for an existing AzVolume CRI with the given diskURI and enw capacity range",
-			existingAzVolumes: []v1alpha1.AzVolume{
+			existingAzVolumes: []diskv1alpha2.AzVolume{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      testDiskName,
 						Namespace: provisioner.namespace,
 					},
-					Spec: v1alpha1.AzVolumeSpec{
-						UnderlyingVolume: testDiskName,
-						VolumeCapability: []v1alpha1.VolumeCapability{
+					Spec: diskv1alpha2.AzVolumeSpec{
+						VolumeName: testDiskName,
+						VolumeCapability: []diskv1alpha2.VolumeCapability{
 							{
-								AccessDetails: v1alpha1.VolumeCapabilityAccessDetails{
-									AccessType: v1alpha1.VolumeCapabilityAccessMount,
-								},
-								AccessMode: v1alpha1.VolumeCapabilityAccessModeSingleNodeWriter,
+								AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
+								AccessMode: diskv1alpha2.VolumeCapabilityAccessModeSingleNodeWriter,
 							},
 						},
-						CapacityRange: &v1alpha1.CapacityRange{
+						CapacityRange: &diskv1alpha2.CapacityRange{
 							RequiredBytes: 3,
 							LimitBytes:    3,
 						},
 					},
-					Status: v1alpha1.AzVolumeStatus{
-						Detail: &v1alpha1.AzVolumeStatusDetail{
-							ResponseObject: &v1alpha1.AzVolumeStatusParams{
-								VolumeID: testDiskURI,
-							},
+					Status: diskv1alpha2.AzVolumeStatus{
+						Detail: &diskv1alpha2.AzVolumeStatusDetail{
+							VolumeID: testDiskURI,
 						},
 					},
 				},
 			},
 			diskURI: testDiskURI,
-			capacityRange: &v1alpha1.CapacityRange{
+			capacityRange: &diskv1alpha2.CapacityRange{
 				RequiredBytes: 4,
 				LimitBytes:    4,
 			},
@@ -1031,38 +991,34 @@ func TestCrdProvisionerExpandVolume(t *testing.T) {
 		},
 		{
 			description: "[Success] Update the CapacityBytes for an existing AzVolume CRI with the given diskURI, new capacity range and secrets",
-			existingAzVolumes: []v1alpha1.AzVolume{
+			existingAzVolumes: []diskv1alpha2.AzVolume{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      testDiskName,
 						Namespace: provisioner.namespace,
 					},
-					Spec: v1alpha1.AzVolumeSpec{
-						UnderlyingVolume: testDiskName,
-						VolumeCapability: []v1alpha1.VolumeCapability{
+					Spec: diskv1alpha2.AzVolumeSpec{
+						VolumeName: testDiskName,
+						VolumeCapability: []diskv1alpha2.VolumeCapability{
 							{
-								AccessDetails: v1alpha1.VolumeCapabilityAccessDetails{
-									AccessType: v1alpha1.VolumeCapabilityAccessMount,
-								},
-								AccessMode: v1alpha1.VolumeCapabilityAccessModeSingleNodeWriter,
+								AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
+								AccessMode: diskv1alpha2.VolumeCapabilityAccessModeSingleNodeWriter,
 							},
 						},
-						CapacityRange: &v1alpha1.CapacityRange{
+						CapacityRange: &diskv1alpha2.CapacityRange{
 							RequiredBytes: 3,
 							LimitBytes:    3,
 						},
 					},
-					Status: v1alpha1.AzVolumeStatus{
-						Detail: &v1alpha1.AzVolumeStatusDetail{
-							ResponseObject: &v1alpha1.AzVolumeStatusParams{
-								VolumeID: testDiskURI,
-							},
+					Status: diskv1alpha2.AzVolumeStatus{
+						Detail: &diskv1alpha2.AzVolumeStatusDetail{
+							VolumeID: testDiskURI,
 						},
 					},
 				},
 			},
 			diskURI: testDiskURI,
-			capacityRange: &v1alpha1.CapacityRange{
+			capacityRange: &diskv1alpha2.CapacityRange{
 				RequiredBytes: 4,
 				LimitBytes:    4,
 			},
@@ -1074,7 +1030,7 @@ func TestCrdProvisionerExpandVolume(t *testing.T) {
 			description:       "[Failure] Return an error when the AzVolume CRI with the given diskURI doesnt exist",
 			existingAzVolumes: nil,
 			diskURI:           testDiskURI,
-			capacityRange: &v1alpha1.CapacityRange{
+			capacityRange: &diskv1alpha2.CapacityRange{
 				RequiredBytes: 4,
 				LimitBytes:    4,
 			},
@@ -1114,8 +1070,8 @@ func TestCrdProvisionerExpandVolume(t *testing.T) {
 					"update",
 					"azvolumes",
 					func(action testingClient.Action) (bool, runtime.Object, error) {
-						objPresent := action.(testingClient.UpdateAction).GetObject().(*v1alpha1.AzVolume)
-						objPresent.Status.Detail.ResponseObject.CapacityBytes = tt.capacityRange.RequiredBytes
+						objPresent := action.(testingClient.UpdateAction).GetObject().(*diskv1alpha2.AzVolume)
+						objPresent.Status.Detail.CapacityBytes = tt.capacityRange.RequiredBytes
 
 						err := tracker.Update(action.GetResource(), objPresent, action.GetNamespace())
 						if err != nil {
@@ -1143,27 +1099,27 @@ func TestCrdProvisionerExpandVolume(t *testing.T) {
 func TestIsAzVolumeSpecSameAsRequestParams(t *testing.T) {
 	tests := []struct {
 		description          string
-		azVolume             v1alpha1.AzVolume
+		azVolume             diskv1alpha2.AzVolume
 		maxMountReplicaCount int
-		capacityRange        *v1alpha1.CapacityRange
+		capacityRange        *diskv1alpha2.CapacityRange
 		parameters           map[string]string
 		secrets              map[string]string
-		volumeContentSource  *v1alpha1.ContentVolumeSource
-		accessibilityReq     *v1alpha1.TopologyRequirement
+		volumeContentSource  *diskv1alpha2.ContentVolumeSource
+		accessibilityReq     *diskv1alpha2.TopologyRequirement
 		expectedOutput       bool
 	}{
 		{
 			description:          "Verify comparison when all the values are identical and non-nil",
 			azVolume:             defaultAzVolumeWithParamForComparison,
 			maxMountReplicaCount: 2,
-			capacityRange: &v1alpha1.CapacityRange{
+			capacityRange: &diskv1alpha2.CapacityRange{
 				RequiredBytes: 8,
 				LimitBytes:    10,
 			},
 			parameters: map[string]string{"skuname": "testname", "location": "westus2"},
 			secrets:    map[string]string{"test1": "test2"},
-			volumeContentSource: &v1alpha1.ContentVolumeSource{
-				ContentSource:   v1alpha1.ContentVolumeSourceTypeVolume,
+			volumeContentSource: &diskv1alpha2.ContentVolumeSource{
+				ContentSource:   diskv1alpha2.ContentVolumeSourceTypeVolume,
 				ContentSourceID: "content-volume-source",
 			},
 			accessibilityReq: &defaultTopology,
@@ -1173,14 +1129,14 @@ func TestIsAzVolumeSpecSameAsRequestParams(t *testing.T) {
 			description:          "Verify comparison when values are mismatched and non-nil Parameters map",
 			azVolume:             defaultAzVolumeWithParamForComparison,
 			maxMountReplicaCount: 2,
-			capacityRange: &v1alpha1.CapacityRange{
+			capacityRange: &diskv1alpha2.CapacityRange{
 				RequiredBytes: 8,
 				LimitBytes:    10,
 			},
 			parameters: map[string]string{"skuname": "testname1", "location": "westus2"},
 			secrets:    map[string]string{"test1": "test2"},
-			volumeContentSource: &v1alpha1.ContentVolumeSource{
-				ContentSource:   v1alpha1.ContentVolumeSourceTypeVolume,
+			volumeContentSource: &diskv1alpha2.ContentVolumeSource{
+				ContentSource:   diskv1alpha2.ContentVolumeSourceTypeVolume,
 				ContentSourceID: "content-volume-source",
 			},
 			accessibilityReq: &defaultTopology,
@@ -1190,14 +1146,14 @@ func TestIsAzVolumeSpecSameAsRequestParams(t *testing.T) {
 			description:          "Verify comparison when values are mismatched and non-nil Secrets map",
 			azVolume:             defaultAzVolumeWithParamForComparison,
 			maxMountReplicaCount: 2,
-			capacityRange: &v1alpha1.CapacityRange{
+			capacityRange: &diskv1alpha2.CapacityRange{
 				RequiredBytes: 8,
 				LimitBytes:    10,
 			},
 			parameters: map[string]string{"skuname": "testname", "location": "westus2"},
 			secrets:    map[string]string{"test1": "test3"},
-			volumeContentSource: &v1alpha1.ContentVolumeSource{
-				ContentSource:   v1alpha1.ContentVolumeSourceTypeVolume,
+			volumeContentSource: &diskv1alpha2.ContentVolumeSource{
+				ContentSource:   diskv1alpha2.ContentVolumeSourceTypeVolume,
 				ContentSourceID: "content-volume-source",
 			},
 			accessibilityReq: &defaultTopology,
@@ -1207,14 +1163,14 @@ func TestIsAzVolumeSpecSameAsRequestParams(t *testing.T) {
 			description:          "Verify comparison when values are mismatched and non-nil ContentVolumeSource object",
 			azVolume:             defaultAzVolumeWithParamForComparison,
 			maxMountReplicaCount: 2,
-			capacityRange: &v1alpha1.CapacityRange{
+			capacityRange: &diskv1alpha2.CapacityRange{
 				RequiredBytes: 8,
 				LimitBytes:    10,
 			},
 			parameters: map[string]string{"skuname": "testname", "location": "westus2"},
 			secrets:    map[string]string{"test1": "test2"},
-			volumeContentSource: &v1alpha1.ContentVolumeSource{
-				ContentSource:   v1alpha1.ContentVolumeSourceTypeSnapshot,
+			volumeContentSource: &diskv1alpha2.ContentVolumeSource{
+				ContentSource:   diskv1alpha2.ContentVolumeSourceTypeSnapshot,
 				ContentSourceID: "content-snapshot-source",
 			},
 			accessibilityReq: &defaultTopology,
@@ -1224,14 +1180,14 @@ func TestIsAzVolumeSpecSameAsRequestParams(t *testing.T) {
 			description:          "Verify comparison when values are mismatched for MaxMountReplicaCount value",
 			azVolume:             defaultAzVolumeWithParamForComparison,
 			maxMountReplicaCount: 4,
-			capacityRange: &v1alpha1.CapacityRange{
+			capacityRange: &diskv1alpha2.CapacityRange{
 				RequiredBytes: 8,
 				LimitBytes:    10,
 			},
 			parameters: map[string]string{"skuname": "testname", "location": "westus2"},
 			secrets:    map[string]string{"test1": "test2"},
-			volumeContentSource: &v1alpha1.ContentVolumeSource{
-				ContentSource:   v1alpha1.ContentVolumeSourceTypeVolume,
+			volumeContentSource: &diskv1alpha2.ContentVolumeSource{
+				ContentSource:   diskv1alpha2.ContentVolumeSourceTypeVolume,
 				ContentSourceID: "content-volume-source",
 			},
 			accessibilityReq: &defaultTopology,
@@ -1241,14 +1197,14 @@ func TestIsAzVolumeSpecSameAsRequestParams(t *testing.T) {
 			description:          "Verify comparison when values are mismatched and non-nil CapacityRange object",
 			azVolume:             defaultAzVolumeWithParamForComparison,
 			maxMountReplicaCount: 2,
-			capacityRange: &v1alpha1.CapacityRange{
+			capacityRange: &diskv1alpha2.CapacityRange{
 				RequiredBytes: 9,
 				LimitBytes:    10,
 			},
 			parameters: map[string]string{"skuname": "testname", "location": "westus2"},
 			secrets:    map[string]string{"test1": "test2"},
-			volumeContentSource: &v1alpha1.ContentVolumeSource{
-				ContentSource:   v1alpha1.ContentVolumeSourceTypeVolume,
+			volumeContentSource: &diskv1alpha2.ContentVolumeSource{
+				ContentSource:   diskv1alpha2.ContentVolumeSourceTypeVolume,
 				ContentSourceID: "content-volume-source",
 			},
 			accessibilityReq: &defaultTopology,
@@ -1258,18 +1214,18 @@ func TestIsAzVolumeSpecSameAsRequestParams(t *testing.T) {
 			description:          "Verify comparison when values are mismatched and non-nil AccessibilityRequirements object",
 			azVolume:             defaultAzVolumeWithParamForComparison,
 			maxMountReplicaCount: 2,
-			capacityRange: &v1alpha1.CapacityRange{
+			capacityRange: &diskv1alpha2.CapacityRange{
 				RequiredBytes: 8,
 				LimitBytes:    10,
 			},
 			parameters: map[string]string{"skuname": "testname", "location": "westus2"},
 			secrets:    map[string]string{"test1": "test2"},
-			volumeContentSource: &v1alpha1.ContentVolumeSource{
-				ContentSource:   v1alpha1.ContentVolumeSourceTypeVolume,
+			volumeContentSource: &diskv1alpha2.ContentVolumeSource{
+				ContentSource:   diskv1alpha2.ContentVolumeSourceTypeVolume,
 				ContentSourceID: "content-volume-source",
 			},
-			accessibilityReq: &v1alpha1.TopologyRequirement{
-				Preferred: []v1alpha1.Topology{
+			accessibilityReq: &diskv1alpha2.TopologyRequirement{
+				Preferred: []diskv1alpha2.Topology{
 					{
 						Segments: map[string]string{"region": "R1", "zone": "Z1"},
 					},
@@ -1277,7 +1233,7 @@ func TestIsAzVolumeSpecSameAsRequestParams(t *testing.T) {
 						Segments: map[string]string{"region": "R2", "zone": "Z3"},
 					},
 				},
-				Requisite: []v1alpha1.Topology{
+				Requisite: []diskv1alpha2.Topology{
 					{
 						Segments: map[string]string{"region": "R3", "zone": "Z2"},
 					},
@@ -1289,11 +1245,11 @@ func TestIsAzVolumeSpecSameAsRequestParams(t *testing.T) {
 			description:          "Verify comparison between empty and nil map objects",
 			azVolume:             defaultAzVolumeWithNilParamForComparison,
 			maxMountReplicaCount: 1,
-			capacityRange:        &v1alpha1.CapacityRange{},
+			capacityRange:        &diskv1alpha2.CapacityRange{},
 			parameters:           map[string]string{},
 			secrets:              map[string]string{},
-			volumeContentSource:  &v1alpha1.ContentVolumeSource{},
-			accessibilityReq:     &v1alpha1.TopologyRequirement{},
+			volumeContentSource:  &diskv1alpha2.ContentVolumeSource{},
+			accessibilityReq:     &diskv1alpha2.TopologyRequirement{},
 			expectedOutput:       true,
 		},
 	}

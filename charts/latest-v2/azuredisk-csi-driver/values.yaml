@@ -145,6 +145,7 @@ schedulerExtender:
 
 snapshot:
   enabled: false
+  createCRDs: true
   name: csi-snapshot-controller
   image:
     csiSnapshotter:

@@ -85,12 +85,6 @@ func (r *ReconcilePod) createReplicas(ctx context.Context, podKey string) error 
 	}
 	klog.V(5).Infof("Pod %s has %d volumes. Volumes: %v", podKey, len(volumes), volumes)
 
-	nodes, err := getRankedNodesForReplicaAttachments(ctx, r, volumes, []string{podKey})
-	if err != nil {
-		klog.V(5).Infof("Error getting nodes for replicas for pod %s. Error: %v", podKey, err)
-		return err
-	}
-
 	// creating replica attachments for each volume
 	for _, volume := range volumes {
 		volume := volume
@@ -114,17 +108,10 @@ func (r *ReconcilePod) createReplicas(ctx context.Context, podKey string) error 
 					return nil
 				}
 
-				numCreated := 0
-				// loop over all eligible nodes to create replicas.
-				for _, node := range nodes {
-					if numCreated >= azVolume.Spec.MaxMountReplicaCount {
-						break
-					}
-					if err := createReplicaAzVolumeAttachment(ctx, r, azVolume.Status.Detail.ResponseObject.VolumeID, node, azVolume.Spec.Parameters); err != nil {
-						klog.Warningf("Error creating %d/%d replicas azvolumeattachment for pod %s and volume %s on node %s. Error: %v", azVolume.Spec.MaxMountReplicaCount, numCreated, podKey, volume, node, err)
-						return err
-					}
-					numCreated++
+				err = r.controllerSharedState.manageReplicas(ctx, azVolume.Spec.VolumeName, r)
+				if err != nil {
+					klog.Warningf("Error creating replica azvolumeattachment for pod %s and volume %s. Error: %v", podKey, volume, err)
+					return err
 				}
 
 				// once replica attachment batch is created by pod controller, future replica reconciliation needs to be handled by replica controller

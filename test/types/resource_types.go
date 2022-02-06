@@ -47,8 +47,8 @@ import (
 	e2epv "k8s.io/kubernetes/test/e2e/framework/pv"
 	testutils "k8s.io/kubernetes/test/utils"
 	imageutils "k8s.io/kubernetes/test/utils/image"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha1"
-	v1alpha1ClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1alpha1"
+	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
+	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1alpha2"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
@@ -393,7 +393,7 @@ type TestDeployment struct {
 	Client     clientset.Interface
 	Deployment *apps.Deployment
 	Namespace  *v1.Namespace
-	PodNames   []string
+	Pods       []PodDetails
 }
 
 func NewTestDeployment(c clientset.Interface, ns *v1.Namespace, command string, volumeMounts []v1.VolumeMount, volumeDevices []v1.VolumeDevice, volumes []v1.Volume, replicaCount int32, isWindows, useCMD, useAntiAffinity bool, schedulerName string) *TestDeployment {
@@ -479,18 +479,18 @@ func (t *TestDeployment) Create() {
 	pods, err := podutil.GetPodsForDeployment(t.Client, t.Deployment)
 	framework.ExpectNoError(err)
 	for _, pod := range pods.Items {
-		t.PodNames = append(t.PodNames, pod.Name)
+		t.Pods = append(t.Pods, PodDetails{Name: pod.Name})
 	}
 }
 
 func (t *TestDeployment) WaitForPodReady() {
 	pods, err := podutil.GetPodsForDeployment(t.Client, t.Deployment)
 	framework.ExpectNoError(err)
-	t.PodNames = []string{}
+	t.Pods = []PodDetails{}
 	for _, pod := range pods.Items {
-		t.PodNames = append(t.PodNames, pod.Name)
+		t.Pods = append(t.Pods, PodDetails{Name: pod.Name})
 	}
-	ch := make(chan error, len(t.PodNames))
+	ch := make(chan error, len(t.Pods))
 	defer close(ch)
 	for _, pod := range pods.Items {
 		go func(client clientset.Interface, pod v1.Pod) {
@@ -500,7 +500,7 @@ func (t *TestDeployment) WaitForPodReady() {
 	}
 	// Wait on all goroutines to report on pod ready
 	var wg sync.WaitGroup
-	for range t.PodNames {
+	for range t.Pods {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -512,44 +512,44 @@ func (t *TestDeployment) WaitForPodReady() {
 }
 
 func (t *TestDeployment) Exec(command []string, expectedString string) {
-	for _, podName := range t.PodNames {
-		_, err := framework.LookForStringInPodExec(t.Namespace.Name, podName, command, expectedString, testconsts.ExecTimeout)
+	for _, pod := range t.Pods {
+		_, err := framework.LookForStringInPodExec(t.Namespace.Name, pod.Name, command, expectedString, testconsts.ExecTimeout)
 		framework.ExpectNoError(err)
 	}
 }
 
 func (t *TestDeployment) DeletePodAndWait() {
-	ch := make(chan error, len(t.PodNames))
-	for _, podName := range t.PodNames {
-		e2elog.Logf("Deleting pod %q in namespace %q", podName, t.Namespace.Name)
+	ch := make(chan error, len(t.Pods))
+	for _, pod := range t.Pods {
+		e2elog.Logf("Deleting pod %q in namespace %q", pod.Name, t.Namespace.Name)
 		go func(client clientset.Interface, ns, podName string) {
 			err := client.CoreV1().Pods(ns).Delete(context.TODO(), podName, metav1.DeleteOptions{})
 			ch <- err
-		}(t.Client, t.Namespace.Name, podName)
+		}(t.Client, t.Namespace.Name, pod.Name)
 	}
 	// Wait on all goroutines to report on pod delete
-	for _, podName := range t.PodNames {
+	for _, pod := range t.Pods {
 		err := <-ch
 		if err != nil {
 			if !errors.IsNotFound(err) {
-				framework.ExpectNoError(fmt.Errorf("pod %q Delete API error: %v", podName, err))
+				framework.ExpectNoError(fmt.Errorf("pod %q Delete API error: %v", pod.Name, err))
 			}
 		}
 	}
 
-	for _, podName := range t.PodNames {
-		e2elog.Logf("Waiting for pod %q in namespace %q to be fully deleted", podName, t.Namespace.Name)
+	for _, pod := range t.Pods {
+		e2elog.Logf("Waiting for pod %q in namespace %q to be fully deleted", pod.Name, t.Namespace.Name)
 		go func(client clientset.Interface, ns, podName string) {
 			err := e2epod.WaitForPodNoLongerRunningInNamespace(client, podName, ns)
 			ch <- err
-		}(t.Client, t.Namespace.Name, podName)
+		}(t.Client, t.Namespace.Name, pod.Name)
 	}
 	// Wait on all goroutines to report on pod terminating
-	for _, podName := range t.PodNames {
+	for _, pod := range t.Pods {
 		err := <-ch
 		if err != nil {
 			if !errors.IsNotFound(err) {
-				framework.ExpectNoError(fmt.Errorf("pod %q error waiting for delete: %v", podName, err))
+				framework.ExpectNoError(fmt.Errorf("pod %q error waiting for delete: %v", pod.Name, err))
 			}
 		}
 	}
@@ -562,7 +562,7 @@ func (t *TestDeployment) Cleanup() {
 		e2elog.Logf("Error getting logs for %s: %v", t.Deployment.Name, err)
 	} else {
 		for i, logs := range body {
-			e2elog.Logf("Pod %s has the following logs: %s", t.PodNames[i], logs)
+			e2elog.Logf("Pod %s has the following logs: %s", t.Pods[i], logs)
 		}
 	}
 	err = t.Client.AppsV1().Deployments(t.Namespace.Name).Delete(context.TODO(), t.Deployment.Name, metav1.DeleteOptions{})
@@ -570,8 +570,8 @@ func (t *TestDeployment) Cleanup() {
 }
 
 func (t *TestDeployment) Logs() (logs [][]byte, err error) {
-	for _, name := range t.PodNames {
-		log, err := podutil.PodLogs(t.Client, name, t.Namespace.Name)
+	for _, pod := range t.Pods {
+		log, err := podutil.PodLogs(t.Client, pod.Name, t.Namespace.Name)
 		if err != nil {
 			return nil, err
 		}
@@ -691,7 +691,7 @@ func (t *TestStatefulset) CreateWithoutWaiting() {
 				podPersistentVolumes = append(podPersistentVolumes, newVolume)
 			}
 		}
-		t.AllPods = append(t.AllPods, PodDetails{Volumes: podPersistentVolumes})
+		t.AllPods = append(t.AllPods, PodDetails{Volumes: podPersistentVolumes, Name: pod.Name})
 	}
 }
 
@@ -1001,7 +1001,7 @@ func (t *TestPod) Logs() ([]byte, error) {
 
 // should only be used for integration tests
 type TestAzVolumeAttachment struct {
-	Azclient             v1alpha1ClientSet.DiskV1alpha1Interface
+	Azclient             azDiskClientSet.DiskV1alpha2Interface
 	Namespace            string
 	UnderlyingVolume     string
 	PrimaryNodeName      string
@@ -1009,18 +1009,18 @@ type TestAzVolumeAttachment struct {
 }
 
 // should only be used for integration tests
-func NewTestAzDriverNode(azDriverNode v1alpha1ClientSet.AzDriverNodeInterface, nodeName string) *v1alpha1.AzDriverNode {
+func NewTestAzDriverNode(azDriverNode azDiskClientSet.AzDriverNodeInterface, nodeName string) *diskv1alpha2.AzDriverNode {
 	// Delete the leftover azDriverNode from previous runs
 	if _, err := azDriverNode.Get(context.Background(), nodeName, metav1.GetOptions{}); err == nil {
 		err := azDriverNode.Delete(context.Background(), nodeName, metav1.DeleteOptions{})
 		framework.ExpectNoError(err)
 	}
 
-	newAzDriverNode, err := azDriverNode.Create(context.Background(), &v1alpha1.AzDriverNode{
+	newAzDriverNode, err := azDriverNode.Create(context.Background(), &diskv1alpha2.AzDriverNode{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: nodeName,
 		},
-		Spec: v1alpha1.AzDriverNodeSpec{
+		Spec: diskv1alpha2.AzDriverNodeSpec{
 			NodeName: nodeName,
 		},
 	}, metav1.CreateOptions{})
@@ -1030,26 +1030,26 @@ func NewTestAzDriverNode(azDriverNode v1alpha1ClientSet.AzDriverNodeInterface, n
 }
 
 // should only be used for integration tests
-func DeleteTestAzDriverNode(azDriverNode v1alpha1ClientSet.AzDriverNodeInterface, nodeName string) {
+func DeleteTestAzDriverNode(azDriverNode azDiskClientSet.AzDriverNodeInterface, nodeName string) {
 	_ = azDriverNode.Delete(context.Background(), nodeName, metav1.DeleteOptions{})
 }
 
 // should only be used for integration tests
-func NewTestAzVolumeAttachment(azVolumeAttachment v1alpha1ClientSet.AzVolumeAttachmentInterface, volumeAttachmentName, nodeName, volumeName, ns string) *v1alpha1.AzVolumeAttachment {
+func NewTestAzVolumeAttachment(azVolumeAttachment azDiskClientSet.AzVolumeAttachmentInterface, volumeAttachmentName, nodeName, volumeName, ns string) *diskv1alpha2.AzVolumeAttachment {
 	// Delete leftover azVolumeAttachments from previous runs
 	if _, err := azVolumeAttachment.Get(context.Background(), volumeAttachmentName, metav1.GetOptions{}); err == nil {
 		err := azVolumeAttachment.Delete(context.Background(), volumeAttachmentName, metav1.DeleteOptions{})
 		framework.ExpectNoError(err)
 	}
 
-	newAzVolumeAttachment, err := azVolumeAttachment.Create(context.Background(), &v1alpha1.AzVolumeAttachment{
+	newAzVolumeAttachment, err := azVolumeAttachment.Create(context.Background(), &diskv1alpha2.AzVolumeAttachment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: volumeAttachmentName,
 		},
-		Spec: v1alpha1.AzVolumeAttachmentSpec{
-			UnderlyingVolume: volumeName,
-			NodeName:         nodeName,
-			RequestedRole:    v1alpha1.PrimaryRole,
+		Spec: diskv1alpha2.AzVolumeAttachmentSpec{
+			VolumeName:    volumeName,
+			NodeName:      nodeName,
+			RequestedRole: diskv1alpha2.PrimaryRole,
 			VolumeContext: map[string]string{
 				"controller": "azdrivernode",
 				"name":       volumeAttachmentName,
@@ -1057,12 +1057,12 @@ func NewTestAzVolumeAttachment(azVolumeAttachment v1alpha1ClientSet.AzVolumeAtta
 				"partition":  "default",
 			},
 		},
-		Status: v1alpha1.AzVolumeAttachmentStatus{
-			Detail: &v1alpha1.AzVolumeAttachmentStatusDetail{
-				Role:           v1alpha1.PrimaryRole,
+		Status: diskv1alpha2.AzVolumeAttachmentStatus{
+			Detail: &diskv1alpha2.AzVolumeAttachmentStatusDetail{
+				Role:           diskv1alpha2.PrimaryRole,
 				PublishContext: map[string]string{},
 			},
-			State: v1alpha1.Attached,
+			State: diskv1alpha2.Attached,
 		},
 	}, metav1.CreateOptions{})
 	framework.ExpectNoError(err)
@@ -1071,40 +1071,38 @@ func NewTestAzVolumeAttachment(azVolumeAttachment v1alpha1ClientSet.AzVolumeAtta
 }
 
 // should only be used for integration tests
-func DeleteTestAzVolumeAttachment(azVolumeAttachment v1alpha1ClientSet.AzVolumeAttachmentInterface, volumeAttachmentName string) {
+func DeleteTestAzVolumeAttachment(azVolumeAttachment azDiskClientSet.AzVolumeAttachmentInterface, volumeAttachmentName string) {
 	_ = azVolumeAttachment.Delete(context.Background(), volumeAttachmentName, metav1.DeleteOptions{})
 }
 
 // should only be used for integration tests
-func NewTestAzVolume(azVolume v1alpha1ClientSet.AzVolumeInterface, underlyingVolumeName string, maxMountReplicaCount int) *v1alpha1.AzVolume {
+func NewTestAzVolume(azVolume azDiskClientSet.AzVolumeInterface, underlyingVolumeName string, maxMountReplicaCount int) *diskv1alpha2.AzVolume {
 	// Delete leftover azVolumes from previous runs
 	if _, err := azVolume.Get(context.Background(), underlyingVolumeName, metav1.GetOptions{}); err == nil {
 		err := azVolume.Delete(context.Background(), underlyingVolumeName, metav1.DeleteOptions{})
 		framework.ExpectNoError(err)
 	}
-	newAzVolume, err := azVolume.Create(context.Background(), &v1alpha1.AzVolume{
+	newAzVolume, err := azVolume.Create(context.Background(), &diskv1alpha2.AzVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: underlyingVolumeName,
 		},
-		Spec: v1alpha1.AzVolumeSpec{
-			UnderlyingVolume:     underlyingVolumeName,
+		Spec: diskv1alpha2.AzVolumeSpec{
+			VolumeName:           underlyingVolumeName,
 			MaxMountReplicaCount: maxMountReplicaCount,
-			VolumeCapability: []v1alpha1.VolumeCapability{
+			VolumeCapability: []diskv1alpha2.VolumeCapability{
 				{
-					AccessDetails: v1alpha1.VolumeCapabilityAccessDetails{
-						AccessType: v1alpha1.VolumeCapabilityAccessMount,
-					},
-					AccessMode: v1alpha1.VolumeCapabilityAccessModeSingleNodeWriter,
+					AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
+					AccessMode: diskv1alpha2.VolumeCapabilityAccessModeSingleNodeWriter,
 				},
 			},
-			CapacityRange: &v1alpha1.CapacityRange{
+			CapacityRange: &diskv1alpha2.CapacityRange{
 				RequiredBytes: 0,
 				LimitBytes:    0,
 			},
-			AccessibilityRequirements: &v1alpha1.TopologyRequirement{},
+			AccessibilityRequirements: &diskv1alpha2.TopologyRequirement{},
 		},
-		Status: v1alpha1.AzVolumeStatus{
-			State: v1alpha1.VolumeOperationPending,
+		Status: diskv1alpha2.AzVolumeStatus{
+			State: diskv1alpha2.VolumeOperationPending,
 		},
 	}, metav1.CreateOptions{})
 	framework.ExpectNoError(err)
@@ -1113,7 +1111,7 @@ func NewTestAzVolume(azVolume v1alpha1ClientSet.AzVolumeInterface, underlyingVol
 }
 
 // should only be used for integration tests
-func SetupTestAzVolumeAttachment(azclient v1alpha1ClientSet.DiskV1alpha1Interface, namespace, underlyingVolume, primaryNodeName string, maxMountReplicaCount int) *TestAzVolumeAttachment {
+func SetupTestAzVolumeAttachment(azclient azDiskClientSet.DiskV1alpha2Interface, namespace, underlyingVolume, primaryNodeName string, maxMountReplicaCount int) *TestAzVolumeAttachment {
 	return &TestAzVolumeAttachment{
 		Azclient:             azclient,
 		Namespace:            namespace,
@@ -1124,7 +1122,7 @@ func SetupTestAzVolumeAttachment(azclient v1alpha1ClientSet.DiskV1alpha1Interfac
 }
 
 // should only be used for integration tests
-func (t *TestAzVolumeAttachment) Create() *v1alpha1.AzVolumeAttachment {
+func (t *TestAzVolumeAttachment) Create() *diskv1alpha2.AzVolumeAttachment {
 	// create test az volume
 	azVol := t.Azclient.AzVolumes(t.Namespace)
 	_ = NewTestAzVolume(azVol, t.UnderlyingVolume, t.MaxMountReplicaCount)
@@ -1176,7 +1174,7 @@ func (t *TestAzVolumeAttachment) WaitForAttach(timeout time.Duration) error {
 			return false, err
 		}
 		if att.Status.Detail != nil {
-			klog.Infof("volume (%s) attached to node (%s)", att.Spec.UnderlyingVolume, att.Spec.NodeName)
+			klog.Infof("volume (%s) attached to node (%s)", att.Spec.VolumeName, att.Spec.NodeName)
 			return true, nil
 		}
 		return false, nil
@@ -1257,7 +1255,7 @@ func (t *TestAzVolumeAttachment) WaitForPrimary(timeout time.Duration) error {
 			if attachment.Status.Detail == nil {
 				continue
 			}
-			if attachment.Spec.UnderlyingVolume == t.UnderlyingVolume && attachment.Spec.RequestedRole == v1alpha1.PrimaryRole && attachment.Status.Detail.Role == v1alpha1.PrimaryRole {
+			if attachment.Spec.VolumeName == t.UnderlyingVolume && attachment.Spec.RequestedRole == diskv1alpha2.PrimaryRole && attachment.Status.Detail.Role == diskv1alpha2.PrimaryRole {
 				return true, nil
 			}
 		}
@@ -1279,7 +1277,7 @@ func (t *TestAzVolumeAttachment) WaitForReplicas(numReplica int, timeout time.Du
 			if attachment.Status.Detail == nil {
 				continue
 			}
-			if attachment.Spec.UnderlyingVolume == t.UnderlyingVolume && attachment.Status.Detail.Role == v1alpha1.ReplicaRole {
+			if attachment.Spec.VolumeName == t.UnderlyingVolume && attachment.Status.Detail.Role == diskv1alpha2.ReplicaRole {
 				counter++
 			}
 		}
@@ -1291,14 +1289,14 @@ func (t *TestAzVolumeAttachment) WaitForReplicas(numReplica int, timeout time.Du
 
 // should only be used for integration tests
 type TestAzVolume struct {
-	Azclient             v1alpha1ClientSet.DiskV1alpha1Interface
+	Azclient             azDiskClientSet.DiskV1alpha2Interface
 	Namespace            string
 	UnderlyingVolume     string
 	MaxMountReplicaCount int
 }
 
 // should only be used for integration tests
-func SetupTestAzVolume(azclient v1alpha1ClientSet.DiskV1alpha1Interface, namespace string, underlyingVolume string, maxMountReplicaCount int) *TestAzVolume {
+func SetupTestAzVolume(azclient azDiskClientSet.DiskV1alpha2Interface, namespace string, underlyingVolume string, maxMountReplicaCount int) *TestAzVolume {
 	return &TestAzVolume{
 		Azclient:             azclient,
 		Namespace:            namespace,
@@ -1308,7 +1306,7 @@ func SetupTestAzVolume(azclient v1alpha1ClientSet.DiskV1alpha1Interface, namespa
 }
 
 // should only be used for integration tests
-func (t *TestAzVolume) Create() *v1alpha1.AzVolume {
+func (t *TestAzVolume) Create() *diskv1alpha2.AzVolume {
 	// create test az volume
 	azVolClient := t.Azclient.AzVolumes(t.Namespace)
 	azVolume := NewTestAzVolume(azVolClient, t.UnderlyingVolume, t.MaxMountReplicaCount)
