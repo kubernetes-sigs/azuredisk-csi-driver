@@ -256,7 +256,7 @@ func (c *CloudProvisioner) CreateVolume(
 		}
 	}
 
-	diskURI, err := localCloud.CreateManagedDisk(volumeOptions)
+	diskURI, err := localCloud.CreateManagedDisk(ctx, volumeOptions)
 	if err != nil {
 		if strings.Contains(err.Error(), "NotFound") {
 			return nil, status.Error(codes.NotFound, err.Error())
@@ -327,7 +327,7 @@ func (c *CloudProvisioner) PublishVolume(
 	if err == nil {
 		if vmState != nil && strings.ToLower(*vmState) == "failed" {
 			klog.Warningf("VM(%q) is in failed state, update VM first", nodeName)
-			if err := c.cloud.UpdateVM(nodeName); err != nil {
+			if err := c.cloud.UpdateVM(ctx, nodeName); err != nil {
 				return nil, fmt.Errorf("update instance %q failed with %v", nodeName, err)
 			}
 		}
@@ -407,7 +407,7 @@ func (c *CloudProvisioner) ExpandVolume(
 	oldSize := *resource.NewQuantity(int64(*result.DiskProperties.DiskSizeGB), resource.BinarySI)
 
 	klog.V(2).Infof("begin to expand azure disk(%s) with new size(%d)", volumeID, requestSize.Value())
-	newSize, err := c.cloud.ResizeDisk(volumeID, oldSize, requestSize, c.enableOnlineDiskResize)
+	newSize, err := c.cloud.ResizeDisk(ctx, volumeID, oldSize, requestSize, c.enableOnlineDiskResize)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to resize disk(%s) with error(%v)", volumeID, err)
 	}

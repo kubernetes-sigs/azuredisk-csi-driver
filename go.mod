@@ -17,7 +17,7 @@ require (
 	github.com/kubernetes-csi/csi-proxy/client v1.0.1
 	github.com/kubernetes-csi/external-snapshotter/client/v4 v4.1.0
 	github.com/onsi/ginkgo v1.16.5
-	github.com/onsi/gomega v1.18.0
+	github.com/onsi/gomega v1.18.1
 	github.com/pborman/uuid v1.2.0
 	github.com/pelletier/go-toml v1.9.4
 	github.com/prometheus/client_golang v1.11.0
@@ -172,5 +172,5 @@ replace (
 	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.23.1
 	k8s.io/sample-controller => k8s.io/sample-controller v0.23.1
 
-	sigs.k8s.io/cloud-provider-azure => github.com/edreed/cloud-provider-azure v0.0.0-20220126214645-d49299af9472
+	sigs.k8s.io/cloud-provider-azure => github.com/edreed/cloud-provider-azure v0.0.0-20220205230955-ece28930a67a
 )
