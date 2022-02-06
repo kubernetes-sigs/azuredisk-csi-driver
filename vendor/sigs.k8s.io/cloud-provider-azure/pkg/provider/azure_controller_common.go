@@ -161,7 +161,7 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, ignored bool, diskNam
 			if strings.EqualFold(string(nodeName), string(attachedNode)) {
 				klog.Warningf("volume %q is actually attached to current node %q, invalidate vm cache and return error", diskURI, nodeName)
 				// update VM(invalidate vm cache)
-				if errUpdate := c.UpdateVM(nodeName); errUpdate != nil {
+				if errUpdate := c.UpdateVM(ctx, nodeName); errUpdate != nil {
 					return -1, errUpdate
 				}
 				lun, _, err := c.GetDiskLun(diskName, diskURI, nodeName)
@@ -275,7 +275,7 @@ func (c *controllerCommon) attachDiskBatchToNode(ctx context.Context, subscripti
 
 	klog.V(2).Infof("azuredisk - trying to attach disks to node %q: %s", nodeName, diskMap)
 
-	future, err := vmset.AttachDisk(nodeName, diskMap)
+	future, err := vmset.AttachDisk(ctx, nodeName, diskMap)
 	if err != nil {
 		return nil, err
 	}
@@ -364,7 +364,7 @@ func (c *controllerCommon) detachDiskBatchFromNode(ctx context.Context, subscrip
 
 	klog.V(2).Infof("azuredisk - trying to detach disks from node %q: %s", nodeName, diskMap)
 
-	err = vmset.DetachDisk(nodeName, diskMap)
+	err = vmset.DetachDisk(ctx, nodeName, diskMap)
 	if err != nil {
 		if isInstanceNotFoundError(err) {
 			// if host doesn't exist, no need to detach
@@ -380,7 +380,7 @@ func (c *controllerCommon) detachDiskBatchFromNode(ctx context.Context, subscrip
 }
 
 // UpdateVM updates a vm
-func (c *controllerCommon) UpdateVM(nodeName types.NodeName) error {
+func (c *controllerCommon) UpdateVM(ctx context.Context, nodeName types.NodeName) error {
 	vmset, err := c.getNodeVMSet(nodeName, azcache.CacheReadTypeUnsafe)
 	if err != nil {
 		return err
@@ -388,7 +388,7 @@ func (c *controllerCommon) UpdateVM(nodeName types.NodeName) error {
 	node := strings.ToLower(string(nodeName))
 	c.lockMap.LockEntry(node)
 	defer c.lockMap.UnlockEntry(node)
-	return vmset.UpdateVM(nodeName)
+	return vmset.UpdateVM(ctx, nodeName)
 }
 
 // getNodeDataDisks invokes vmSet interfaces to get data disks for the node.

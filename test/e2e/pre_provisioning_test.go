@@ -438,7 +438,7 @@ func CreateVolume(diskName string, sizeGiB int, volumeContext map[string]string)
 		MaxShares:          int32(maxShares),
 	}
 
-	diskURI, err := azureCloud.CreateManagedDisk(volumeOptions)
+	diskURI, err := azureCloud.CreateManagedDisk(context.TODO(), volumeOptions)
 	if err != nil {
 		return "", err
 	}
@@ -450,7 +450,7 @@ func EnsureDiskExists(diskURI string) {
 	diskMeta := strings.Split(diskURI, "/")
 	diskName := diskMeta[len(diskMeta)-1]
 	// pre-prov disk should not be deleted when pod, pvc and pv are deleted
-	_, _, err := azureCloud.GetDisk(azureCloud.ResourceGroup, diskName)
+	_, _, err := azureCloud.GetDisk(context.TODO(), azureCloud.ResourceGroup, diskName)
 	if err != nil {
 		ginkgo.Fail(fmt.Sprintf("pre-provisioning disk got deleted with the deletion of pv: %v", err))
 	}
