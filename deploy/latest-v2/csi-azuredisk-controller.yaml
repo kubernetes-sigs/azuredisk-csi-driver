@@ -88,14 +88,15 @@ spec:
             requests:
               cpu: 10m
               memory: 20Mi
-        - name: csi-resizer-disk
-          image: mcr.microsoft.com/oss/kubernetes-csi/csi-resizer:v1.3.0
+        - name: csi-resizer
+          image: mcr.microsoft.com/oss/kubernetes-csi/csi-resizer:v1.4.0
           args:
             - "-csi-address=$(ADDRESS)"
             - "-v=2"
             - "-leader-election"
             - '-handle-volume-inuse-error=false'
-            - "-timeout=60s"
+            - '-feature-gates=RecoverVolumeExpansionFailure=true'
+            - "-timeout=120s"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -125,7 +126,7 @@ spec:
               cpu: 10m
               memory: 20Mi
         - name: azuredisk
-          image: mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:latest
+          image: mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:latest-v2
           imagePullPolicy: IfNotPresent
           args:
             - "--v=5"

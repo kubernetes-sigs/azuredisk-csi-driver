@@ -66,6 +66,13 @@ func (p *NodeProvisioner) CleanupMountPoint(path string, extensiveCheck bool) er
 	return mount.CleanupMountPoint(path, p.mounter, extensiveCheck)
 }
 
+// RescanVolume forces a re-read of a disk's partition table.
+func (p *NodeProvisioner) RescanVolume(devicePath string) error {
+	deviceName := filepath.Base(devicePath)
+	rescanPath := filepath.Join("/sys/class/block/", deviceName, "device/rescan")
+	return p.ioHandler.WriteFile(rescanPath, []byte("1"), 0666)
+}
+
 // Resize resizes the filesystem of the specified volume.
 func (p *NodeProvisioner) Resize(source, target string) error {
 	resizer := mount.NewResizeFs(p.mounter.Exec)

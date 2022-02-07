@@ -537,6 +537,13 @@ func (d *DriverV2) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolu
 		return nil, status.Errorf(codes.NotFound, err.Error())
 	}
 
+	if d.enableDiskOnlineResize {
+		klog.Errorf("NodeExpandVolume begin to rescan device %s on volume(%s)", devicePath, volumeID)
+		if err := d.nodeProvisioner.RescanVolume(devicePath); err != nil {
+			klog.Errorf("NodeExpandVolume rescanVolume failed with error: %v", err)
+		}
+	}
+
 	if err := d.nodeProvisioner.Resize(devicePath, volumePath); err != nil {
 		return nil, status.Errorf(codes.Internal, "Could not resize volume %q (%q):  %v", volumeID, devicePath, err)
 	}
