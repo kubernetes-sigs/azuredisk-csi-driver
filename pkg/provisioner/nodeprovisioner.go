@@ -187,6 +187,6 @@ func (p *NodeProvisioner) Unmount(target string) error {
 
 func isCorruptedMount(target string) bool {
 	_, pathErr := mount.PathExists(target)
-	fmt.Printf("IsCorruptedDir(%s) returned with error: %v", target, pathErr)
+	klog.Errorf("IsCorruptedDir(%s) returned with error: %v", target, pathErr)
 	return pathErr != nil && mount.IsCorruptedMnt(pathErr)
 }
