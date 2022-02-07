@@ -22,8 +22,8 @@ import (
 )
 
 const (
-	defaultAttachDetachDiskQPS    = (240.0 / 180.0)                        // Default compute QPS limit is 240 queries / 3 minutes
-	defaultAttachDetachDiskBucket = int(defaultAttachDetachDiskQPS * 60.0) // Allow for a burst of a minutes worth of quota
+	defaultAtachDetachDiskQPS    = 6.0
+	defaultAtachDetachDiskBucket = 10
 )
 
 // CloudProviderRateLimitConfig indicates the rate limit config for each clients.
@@ -87,8 +87,8 @@ func InitializeCloudProviderRateLimitConfig(config *CloudProviderRateLimitConfig
 
 	atachDetachDiskRateLimitConfig := azclients.RateLimitConfig{
 		CloudProviderRateLimit:            true,
-		CloudProviderRateLimitQPSWrite:    defaultAttachDetachDiskQPS,
-		CloudProviderRateLimitBucketWrite: defaultAttachDetachDiskBucket,
+		CloudProviderRateLimitQPSWrite:    defaultAtachDetachDiskQPS,
+		CloudProviderRateLimitBucketWrite: defaultAtachDetachDiskBucket,
 	}
 	config.AttachDetachDiskRateLimit = overrideDefaultRateLimitConfig(&atachDetachDiskRateLimitConfig, config.AttachDetachDiskRateLimit)
 }

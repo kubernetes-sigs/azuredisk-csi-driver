@@ -66,6 +66,7 @@ const (
 	RateLimited                   = "rate limited"
 	RequestedSizeGib              = "requestedsizegib"
 	ResizeRequired                = "resizeRequired"
+	SubscriptionIDField           = "subscriptionid"
 	ResourceGroupField            = "resourcegroup"
 	ResourceNotFound              = "ResourceNotFound"
 	SkuNameField                  = "skuname"

@@ -103,6 +103,7 @@ type ManagedDiskParameters struct {
 	MaxShares               int
 	NetworkAccessPolicy     string
 	PerfProfile             string
+	SubscriptionID          string
 	ResourceGroup           string
 	Tags                    map[string]string
 	UserAgent               string
@@ -570,6 +571,16 @@ func GetCachingMode(attributes map[string]string) (compute.CachingTypes, error) 
 func IsARMResourceID(resourceID string) bool {
 	id := strings.ToLower(resourceID)
 	return strings.Contains(id, "/subscriptions/")
+}
+
+func GetSubscriptionIDFromURI(diskURI string) string {
+	parts := strings.Split(diskURI, "/")
+	for i, v := range parts {
+		if strings.EqualFold(v, "subscriptions") && (i+1) < len(parts) {
+			return parts[i+1]
+		}
+	}
+	return ""
 }
 
 func GetValidCreationData(subscriptionID, resourceGroup, sourceResourceID, sourceType string) (compute.CreationData, error) {

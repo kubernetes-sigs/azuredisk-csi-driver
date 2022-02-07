@@ -44,7 +44,7 @@ func TestCheckDiskCapacity_V1(t *testing.T) {
 			DiskSizeGB: &size,
 		},
 	}
-	d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+	d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
 
 	flag, err := d.checkDiskCapacity(context.TODO(), resourceGroup, diskName, 10)
 	assert.Equal(t, flag, true)

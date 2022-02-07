@@ -17,7 +17,6 @@ limitations under the License.
 package provider
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -31,10 +30,8 @@ import (
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/adal"
 	"github.com/Azure/go-autorest/autorest/azure"
-	"golang.org/x/time/rate"
 
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
@@ -44,9 +41,9 @@ import (
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/flowcontrol"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
-	"k8s.io/klog/v2/klogr"
 
 	"sigs.k8s.io/cloud-provider-azure/pkg/auth"
 	azclients "sigs.k8s.io/cloud-provider-azure/pkg/azureclients"
@@ -71,10 +68,8 @@ import (
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmssclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmssvmclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/zoneclient"
-	"sigs.k8s.io/cloud-provider-azure/pkg/batch"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
-	"sigs.k8s.io/cloud-provider-azure/pkg/metrics"
 	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
 
 	// ensure the newly added package from azure-sdk-for-go is in vendor/
@@ -455,11 +450,6 @@ func NewCloudWithoutFeatureGates(configReader io.Reader, callFromCCM bool) (*Clo
 		return nil, err
 	}
 
-	return NewCloudWithoutFeatureGatesFromConfig(config, false, callFromCCM)
-}
-
-// NewCloudWithoutFeatureGatesFromConfig returns a Cloud without trying to wire the feature gates.
-func NewCloudWithoutFeatureGatesFromConfig(config *Config, fromSecret, callFromCCM bool) (*Cloud, error) {
 	az := &Cloud{
 		nodeNames:                sets.NewString(),
 		nodeZones:                map[string]sets.String{},
@@ -470,7 +460,7 @@ func NewCloudWithoutFeatureGatesFromConfig(config *Config, fromSecret, callFromC
 		nodePrivateIPs:           map[string]sets.String{},
 	}
 
-	err := az.InitializeCloudFromConfig(config, fromSecret, callFromCCM)
+	err = az.InitializeCloudFromConfig(config, false, callFromCCM)
 	if err != nil {
 		return nil, err
 	}
@@ -955,10 +945,10 @@ func initDiskControllers(az *Cloud) error {
 	// Common controller contains the function
 	// needed by both blob disk and managed disk controllers
 
-	qps := rate.Limit(defaultAttachDetachDiskQPS)
-	bucket := defaultAttachDetachDiskBucket
+	qps := float32(defaultAtachDetachDiskQPS)
+	bucket := defaultAtachDetachDiskBucket
 	if az.Config.AttachDetachDiskRateLimit != nil {
-		qps = rate.Limit(az.Config.AttachDetachDiskRateLimit.CloudProviderRateLimitQPSWrite)
+		qps = az.Config.AttachDetachDiskRateLimit.CloudProviderRateLimitQPSWrite
 		bucket = az.Config.AttachDetachDiskRateLimit.CloudProviderRateLimitBucketWrite
 	}
 	klog.V(2).Infof("attach/detach disk operation rate limit QPS: %f, Bucket: %d", qps, bucket)
@@ -970,65 +960,8 @@ func initDiskControllers(az *Cloud) error {
 		subscriptionID:        az.SubscriptionID,
 		cloud:                 az,
 		lockMap:               newLockMap(),
+		diskOpRateLimiter:     flowcontrol.NewTokenBucketRateLimiter(qps, bucket),
 	}
-
-	attachDetachRateLimiter := rate.NewLimiter(qps, bucket)
-
-	logger := klogr.NewWithOptions(klogr.WithFormat(klogr.FormatKlog)).WithName("cloud-provider-azure").WithValues("type", "batch")
-
-	processorOptions := []batch.ProcessorOption{
-		batch.WithVerboseLogLevel(3),
-		batch.WithDelayBeforeStart(1 * time.Second),
-		batch.WithGlobalLimiter(attachDetachRateLimiter),
-	}
-
-	attachBatchFn := func(ctx context.Context, key string, values []interface{}) ([]interface{}, error) {
-		subscriptionID, resourceGroup, nodeName := metrics.AttributesFromKey(key)
-
-		disksToAttach := make([]attachDiskParams, len(values))
-		for i, value := range values {
-			disksToAttach[i] = value.(attachDiskParams)
-		}
-
-		lunChans, err := common.attachDiskBatchToNode(ctx, subscriptionID, resourceGroup, types.NodeName(nodeName), disksToAttach)
-		if err != nil {
-			return nil, err
-		}
-
-		results := make([]interface{}, len(lunChans))
-		for i, lun := range lunChans {
-			results[i] = lun
-		}
-
-		return results, nil
-	}
-
-	attachDiskProcessOptions := append(processorOptions,
-		batch.WithLogger(logger.WithValues("operation", "attach_disk")),
-		batch.WithMetricsRecorder(metrics.NewBatchProcessorMetricsRecorder("batch", "updateasync", "attach_disk")))
-
-	detachBatchFn := func(ctx context.Context, key string, values []interface{}) ([]interface{}, error) {
-		subscriptionID, resourceGroup, nodeName := metrics.AttributesFromKey(key)
-
-		disksToDetach := make([]detachDiskParams, len(values))
-		for i, value := range values {
-			disksToDetach[i] = value.(detachDiskParams)
-		}
-
-		err := common.detachDiskBatchFromNode(ctx, subscriptionID, resourceGroup, types.NodeName(nodeName), disksToDetach)
-		if err != nil {
-			return nil, err
-		}
-
-		return make([]interface{}, len(disksToDetach)), nil
-	}
-
-	detachDiskProcessorOptions := append(processorOptions,
-		batch.WithLogger(logger.WithValues("operation", "detach_disk")),
-		batch.WithMetricsRecorder(metrics.NewBatchProcessorMetricsRecorder("batch", "update", "detach_disk")))
-
-	common.attachDiskProcessor = batch.NewProcessor(attachBatchFn, attachDiskProcessOptions...)
-	common.detachDiskProcessor = batch.NewProcessor(detachBatchFn, detachDiskProcessorOptions...)
 
 	if az.HasExtendedLocation() {
 		common.extendedLocation = &ExtendedLocation{
