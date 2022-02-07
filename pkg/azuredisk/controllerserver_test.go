@@ -40,7 +40,6 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockcorev1"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockkubeclient"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockpersistentvolume"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/diskclient/mockdiskclient"
@@ -446,8 +445,8 @@ func TestCreateVolume(t *testing.T) {
 			name: "advanced perfProfile fails if no device settings provided",
 			testFunc: func(t *testing.T) {
 				d, _ := NewFakeDriver(t)
-				d.setPerfOptimizationEnabled(util.IsLinuxOS())
-				if util.IsLinuxOS() {
+				d.setPerfOptimizationEnabled(volumehelper.IsLinuxOS())
+				if volumehelper.IsLinuxOS() {
 					stdCapacityRangetest := &csi.CapacityRange{
 						RequiredBytes: volumehelper.GiBToBytes(10),
 						LimitBytes:    volumehelper.GiBToBytes(15),
@@ -483,8 +482,8 @@ func TestCreateVolume(t *testing.T) {
 			name: "advanced perfProfile succeeds if atleast one device settings provided",
 			testFunc: func(t *testing.T) {
 				d, _ := NewFakeDriver(t)
-				d.setPerfOptimizationEnabled(util.IsLinuxOS())
-				if util.IsLinuxOS() {
+				d.setPerfOptimizationEnabled(volumehelper.IsLinuxOS())
+				if volumehelper.IsLinuxOS() {
 					stdCapacityRangetest := &csi.CapacityRange{
 						RequiredBytes: volumehelper.GiBToBytes(10),
 						LimitBytes:    volumehelper.GiBToBytes(15),
@@ -520,8 +519,8 @@ func TestCreateVolume(t *testing.T) {
 			name: "advanced perfProfile fails if invalid device settings provided",
 			testFunc: func(t *testing.T) {
 				d, _ := NewFakeDriver(t)
-				d.setPerfOptimizationEnabled(util.IsLinuxOS())
-				if util.IsLinuxOS() {
+				d.setPerfOptimizationEnabled(volumehelper.IsLinuxOS())
+				if volumehelper.IsLinuxOS() {
 					deviceSettingOverride := consts.DeviceSettingsKeyPrefix + "../device/scheduler"
 					settingPath, _ := filepath.Abs(filepath.Join(consts.DummyBlockDevicePathLinux, "../device/scheduler"))
 					//absFilePath, _ := filepath.Abs(relativeSettingPath)

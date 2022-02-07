@@ -532,9 +532,21 @@ func (d *DriverV2) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolu
 		}
 	}
 
+	if acquired := d.volumeLocks.TryAcquire(volumeID); !acquired {
+		return nil, status.Errorf(codes.Aborted, volumeOperationAlreadyExistsFmt, volumeID)
+	}
+	defer d.volumeLocks.Release(volumeID)
+
 	devicePath, err := d.nodeProvisioner.GetDevicePathWithMountPath(volumePath)
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, err.Error())
+	}
+
+	if d.enableDiskOnlineResize {
+		klog.Errorf("NodeExpandVolume begin to rescan device %s on volume(%s)", devicePath, volumeID)
+		if err := rescanVolume(d.ioHandler, devicePath); err != nil {
+			klog.Errorf("NodeExpandVolume rescanVolume failed with error: %v", err)
+		}
 	}
 
 	if err := d.nodeProvisioner.Resize(devicePath, volumePath); err != nil {
