@@ -214,10 +214,6 @@ func (mounter *csiProxyMounterV1Beta) MountSensitiveWithoutSystemdWithMountFlags
 	return mounter.MountSensitive(source, target, fstype, options, sensitiveOptions /* sensitiveOptions */)
 }
 
-func (mounter *csiProxyMounterV1Beta) MountSensitiveWithoutSystemdWithMountFlags(source string, target string, fstype string, options []string, sensitiveOptions []string, mountFlags []string) error {
-	return mounter.MountSensitive(source, target, fstype, options, sensitiveOptions /* sensitiveOptions */)
-}
-
 // Rescan would trigger an update storage cache via the CSI proxy.
 func (mounter *csiProxyMounterV1Beta) Rescan() error {
 	// Call Rescan from disk APIs of CSI Proxy.
