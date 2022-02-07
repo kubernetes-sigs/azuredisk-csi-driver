@@ -18,6 +18,7 @@ package azureutils
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -35,7 +36,7 @@ import (
 	"google.golang.org/grpc/status"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
@@ -420,7 +421,7 @@ func GetCloudProviderFromClient(kubeClient *clientset.Clientset, secretName stri
 		if err == nil {
 			fromSecret = true
 		} else {
-			if !errors.IsNotFound(err) {
+			if !k8serrors.IsNotFound(err) {
 				klog.Warningf("failed to create cloud config from secret %s/%s: %v", az.SecretNamespace, az.SecretName, err)
 			}
 		}
@@ -486,7 +487,7 @@ func GetCloudProvider(kubeConfig, secretName, secretNamespace, userAgent string)
 	kubeClient, err := GetKubeClient(kubeConfig)
 	if err != nil {
 		klog.Warningf("get kubeconfig(%s) failed with error: %v", kubeConfig, err)
-		if !os.IsNotExist(err) && err != rest.ErrNotInCluster {
+		if !os.IsNotExist(err) && !errors.Is(err, rest.ErrNotInCluster) {
 			return nil, fmt.Errorf("failed to get KubeClient: %v", err)
 		}
 	}
@@ -610,7 +611,6 @@ func GetValidCreationData(subscriptionID, resourceGroup, sourceResourceID, sourc
 
 func IsCorruptedDir(dir string) bool {
 	_, pathErr := mount.PathExists(dir)
-	fmt.Printf("IsCorruptedDir(%s) returned with error: %v", dir, pathErr)
 	return pathErr != nil && mount.IsCorruptedMnt(pathErr)
 }
 
@@ -897,7 +897,7 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azurediskInformers.
 	curRetry := 0
 	maxRetry := maxNetRetry
 	isRetriable := func(err error) bool {
-		if errors.IsConflict(err) {
+		if k8serrors.IsConflict(err) {
 			return true
 		}
 		if isNetError(err) {
