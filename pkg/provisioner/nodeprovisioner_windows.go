@@ -90,6 +90,11 @@ func (p *NodeProvisioner) CleanupMountPoint(path string, extensiveCheck bool) er
 	return p.mounter.Unmount(path)
 }
 
+// RescanVolume forces a re-read of a disk's partition table.
+func (p *NodeProvisioner) RescanVolume(devicePath string) error {
+	return nil
+}
+
 // Resize resizes the filesystem of the specified volume.
 func (p *NodeProvisioner) Resize(source, target string) error {
 	proxy, ok := p.mounter.Interface.(mounter.CSIProxyMounter)
