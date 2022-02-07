@@ -168,7 +168,8 @@ func (d *DriverV2) checkDiskExists(ctx context.Context, diskURI string) (*comput
 		return nil, err
 	}
 
-	disk, rerr := d.cloud.DisksClient.Get(ctx, resourceGroup, diskName)
+	subsID := azureutils.GetSubscriptionIDFromURI(diskURI)
+	disk, rerr := d.cloud.DisksClient.Get(ctx, subsID, resourceGroup, diskName)
 	if rerr != nil {
 		return nil, rerr.Error()
 	}
@@ -176,8 +177,8 @@ func (d *DriverV2) checkDiskExists(ctx context.Context, diskURI string) (*comput
 	return &disk, nil
 }
 
-func (d *DriverV2) checkDiskCapacity(ctx context.Context, resourceGroup, diskName string, requestGiB int) (bool, error) {
-	disk, err := d.cloud.DisksClient.Get(ctx, resourceGroup, diskName)
+func (d *DriverV2) checkDiskCapacity(ctx context.Context, subsID, resourceGroup, diskName string, requestGiB int) (bool, error) {
+	disk, err := d.cloud.DisksClient.Get(ctx, subsID, resourceGroup, diskName)
 	// Because we can not judge the reason of the error. Maybe the disk does not exist.
 	// So here we do not handle the error.
 	if err == nil {

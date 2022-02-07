@@ -41,12 +41,12 @@ func TestCheckDiskCapacity(t *testing.T) {
 			DiskSizeGB: &size,
 		},
 	}
-	d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
-	flag, err := d.checkDiskCapacity(context.TODO(), resourceGroup, diskName, 10)
+	d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+	flag, err := d.checkDiskCapacity(context.TODO(), "", resourceGroup, diskName, 10)
 	assert.Equal(t, flag, true)
 	assert.Nil(t, err)
 
-	flag, err = d.checkDiskCapacity(context.TODO(), resourceGroup, diskName, 11)
+	flag, err = d.checkDiskCapacity(context.TODO(), "", resourceGroup, diskName, 11)
 	assert.Equal(t, flag, false)
 	expectedErr := status.Errorf(6, "the request volume already exists, but its capacity(10) is different from (11)")
 	assert.Equal(t, err, expectedErr)
