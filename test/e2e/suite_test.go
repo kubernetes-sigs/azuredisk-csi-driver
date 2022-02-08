@@ -19,9 +19,12 @@ package e2e
 import (
 	"context"
 	"flag"
+	"log"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -38,7 +41,6 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/azure"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/credentials"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
-	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
 const (
@@ -47,10 +49,14 @@ const (
 )
 
 var (
-	skipClusterBootstrap = flag.Bool("skip-cluster-bootstrap", false, "flag to indicate that we can skip cluster bootstrap.")
-	azureCloud           *provider.Cloud
-	location             string
-	supportsZRS          bool
+	azurediskDriver           azuredisk.CSIDriver
+	isUsingInTreeVolumePlugin = os.Getenv(driver.AzureDriverNameVar) == inTreeStorageClass
+	isTestingMigration        = os.Getenv(testMigrationEnvVar) != ""
+	isWindowsCluster          = os.Getenv(testWindowsEnvVar) != ""
+	isAzureStackCloud         = strings.EqualFold(os.Getenv(cloudNameEnvVar), "AZURESTACKCLOUD")
+	location                  string
+	supportsZRS               bool
+	supportsDynamicResize     bool
 )
 
 var _ = ginkgo.BeforeSuite(func() {
@@ -77,6 +83,35 @@ var _ = ginkgo.BeforeSuite(func() {
 
 		if location == "westus2" || location == "westeurope" || location == "northeurope" || location == "francecentral" {
 			supportsZRS = true
+		}
+
+		dynamicResizeZones := []string{
+			"westcentralus",
+			"francesouth",
+			"westindia",
+			"norwaywest",
+			"eastasia",
+			"francecentral",
+			"germanywestcentral",
+			"japanwest",
+			"southafricanorth",
+			"jioindiawest",
+			"canadacentral",
+			"australiacentral",
+			"japaneast",
+			"northeurope",
+			"centralindia",
+			"uaecentral",
+			"switzerlandwest",
+			"brazilsouth",
+			"uksouth"}
+
+		supportsDynamicResize = false
+		for _, zone := range dynamicResizeZones {
+			if location == zone {
+				supportsDynamicResize = true
+				break
+			}
 		}
 
 		// Install Azure Disk CSI Driver on cluster from project root
@@ -225,6 +260,83 @@ func TestE2E(t *testing.T) {
 	}
 	r := []ginkgo.Reporter{reporters.NewJUnitReporter(path.Join(reportDir, "junit_01.xml"))}
 	ginkgo.RunSpecsWithDefaultAndCustomReporters(t, "AzureDisk CSI Driver End-to-End Tests", r)
+}
+
+func execTestCmd(cmds []testCmd) {
+	err := os.Chdir("../..")
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	defer func() {
+		err := os.Chdir("test/e2e")
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	}()
+
+	projectRoot, err := os.Getwd()
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	gomega.Expect(strings.HasSuffix(projectRoot, "azuredisk-csi-driver")).To(gomega.Equal(true))
+
+	for _, cmd := range cmds {
+		log.Println(cmd.startLog)
+		cmdSh := exec.Command(cmd.command, cmd.args...)
+		cmdSh.Dir = projectRoot
+		cmdSh.Stdout = os.Stdout
+		cmdSh.Stderr = os.Stderr
+		err = cmdSh.Run()
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		log.Println(cmd.endLog)
+	}
+}
+
+func skipIfTestingInWindowsCluster() {
+	if isWindowsCluster {
+		ginkgo.Skip("test case not supported by Windows clusters")
+	}
+}
+
+func skipIfUsingInTreeVolumePlugin() {
+	if isUsingInTreeVolumePlugin {
+		ginkgo.Skip("test case is only available for CSI drivers")
+	}
+}
+
+func skipIfOnAzureStackCloud() {
+	if isAzureStackCloud {
+		ginkgo.Skip("test case not supported on Azure Stack Cloud")
+	}
+}
+
+func skipIfNotZRSSupported() {
+	if !supportsZRS {
+		ginkgo.Skip("test case not supported on regions without ZRS")
+	}
+}
+
+func skipIfNotDynamicallyResizeSuported() {
+	if !supportsDynamicResize {
+		ginkgo.Skip("test case not supported on regions without dynamic resize support")
+	}
+}
+
+func convertToPowershellorCmdCommandIfNecessary(command string) string {
+	if !isWindowsCluster {
+		return command
+	}
+
+	switch command {
+	case "echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data":
+		return "echo 'hello world' | Out-File -FilePath C:\\mnt\\test-1\\data.txt; Get-Content C:\\mnt\\test-1\\data.txt | findstr 'hello world'"
+	case "touch /mnt/test-1/data":
+		return "echo $null >> C:\\mnt\\test-1\\data"
+	case "while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done":
+		return "while (1) { Add-Content -Encoding Ascii C:\\mnt\\test-1\\data.txt $(Get-Date -Format u); sleep 3600 }"
+	case "echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done":
+		return "echo 'hello world' | Out-File -Append -FilePath C:\\mnt\\test-1\\data.txt; Get-Content C:\\mnt\\test-1\\data.txt | findstr 'hello world'; Start-Sleep 3600"
+	case "echo 'hello world' > /mnt/test-1/data && echo 'hello world' > /mnt/test-2/data && echo 'hello world' > /mnt/test-3/data && grep 'hello world' /mnt/test-1/data && grep 'hello world' /mnt/test-2/data && grep 'hello world' /mnt/test-3/data":
+		return "echo 'hello world' | Out-File -FilePath C:\\mnt\\test-1\\data.txt; Get-Content C:\\mnt\\test-1\\data.txt | findstr 'hello world'; echo 'hello world' | Out-File -FilePath C:\\mnt\\test-2\\data.txt; Get-Content C:\\mnt\\test-2\\data.txt | findstr 'hello world'; echo 'hello world' | Out-File -FilePath C:\\mnt\\test-3\\data.txt; Get-Content C:\\mnt\\test-3\\data.txt | findstr 'hello world'"
+	case "while true; do sleep 5; done":
+		return "while ($true) { Start-Sleep 5 }"
+	}
+
+	return command
 }
 
 // handleFlags sets up all flags and parses the command line.
