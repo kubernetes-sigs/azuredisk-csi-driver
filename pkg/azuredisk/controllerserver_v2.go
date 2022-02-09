@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 
 	"github.com/golang/protobuf/ptypes"
@@ -43,9 +44,19 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 		return nil, err
 	}
 
+	params := req.GetParameters()
+	diskParams, err := azureutils.ParseDiskParameters(params)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Failed parsing disk parameters: %v", err)
+	}
+
 	name := req.GetName()
 	if len(name) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "CreateVolume Name must be provided")
+	}
+
+	if !azureutils.IsValidVolumeCapabilities(volCaps, diskParams.MaxShares) {
+		return nil, status.Error(codes.InvalidArgument, "Volume capability not supported")
 	}
 
 	if acquired := d.volumeLocks.TryAcquire(name); !acquired {

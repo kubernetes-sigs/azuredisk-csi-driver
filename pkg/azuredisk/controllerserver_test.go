@@ -40,7 +40,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockcorev1"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockkubeclient"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockpersistentvolume"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
+
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/diskclient/mockdiskclient"
@@ -160,7 +160,11 @@ func TestCreateVolume(t *testing.T) {
 				}
 				_, err := d.CreateVolume(context.Background(), req)
 				expectedErr := status.Error(codes.InvalidArgument, "Failed parsing disk parameters: parse aaa failed with error: strconv.Atoi: parsing \"aaa\": invalid syntax")
+<<<<<<< HEAD
 				if !testutil.IsErrorEquivalent(err, expectedErr) {
+=======
+				if !reflect.DeepEqual(err, expectedErr) {
+>>>>>>> upstream_local_copy
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -178,7 +182,11 @@ func TestCreateVolume(t *testing.T) {
 				}
 				_, err := d.CreateVolume(context.Background(), req)
 				expectedErr := status.Error(codes.InvalidArgument, "Failed parsing disk parameters: parse 0 returned with invalid value: 0")
+<<<<<<< HEAD
 				if !testutil.IsErrorEquivalent(err, expectedErr) {
+=======
+				if !reflect.DeepEqual(err, expectedErr) {
+>>>>>>> upstream_local_copy
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -196,7 +204,11 @@ func TestCreateVolume(t *testing.T) {
 				}
 				_, err := d.CreateVolume(context.Background(), req)
 				expectedErr := status.Error(codes.InvalidArgument, "Failed parsing disk parameters: perf profile blah is not supported, supported tuning modes are none and basic")
+<<<<<<< HEAD
 				if !testutil.IsErrorEquivalent(err, expectedErr) {
+=======
+				if !reflect.DeepEqual(err, expectedErr) {
+>>>>>>> upstream_local_copy
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -223,7 +235,11 @@ func TestCreateVolume(t *testing.T) {
 				}
 				_, err := d.CreateVolume(context.Background(), req)
 				expectedErr := status.Error(codes.InvalidArgument, "Volume capability not supported")
+<<<<<<< HEAD
 				if !testutil.IsErrorEquivalent(err, expectedErr) {
+=======
+				if !reflect.DeepEqual(err, expectedErr) {
+>>>>>>> upstream_local_copy
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -281,7 +297,11 @@ func TestCreateVolume(t *testing.T) {
 				d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
 				_, err := d.CreateVolume(context.Background(), req)
 				expectedErr := status.Error(codes.InvalidArgument, "Failed parsing disk parameters: Tags 'unit-test' are invalid, the format should like: 'key1=value1,key2=value2'")
+<<<<<<< HEAD
 				if !testutil.IsErrorEquivalent(err, expectedErr) {
+=======
+				if !reflect.DeepEqual(err, expectedErr) {
+>>>>>>> upstream_local_copy
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -437,7 +457,11 @@ func TestCreateVolume(t *testing.T) {
 				}
 				_, err := d.CreateVolume(context.Background(), req)
 				expectedErr := status.Error(codes.InvalidArgument, "Failed parsing disk parameters: invalid parameter invalidparameter in storage class")
+<<<<<<< HEAD
 				if !testutil.IsErrorEquivalent(err, expectedErr) {
+=======
+				if !reflect.DeepEqual(err, expectedErr) {
+>>>>>>> upstream_local_copy
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
