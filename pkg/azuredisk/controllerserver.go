@@ -127,7 +127,6 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	if diskParams.DiskName == "" {
 		diskParams.DiskName = name
 	}
-
 	diskParams.DiskName = azureutils.CreateValidDiskName(diskParams.DiskName, false)
 
 	if diskParams.ResourceGroup == "" {
