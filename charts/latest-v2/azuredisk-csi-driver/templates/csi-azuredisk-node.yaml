@@ -150,8 +150,8 @@ spec:
               name: device-dir
             - mountPath: /sys/bus/scsi/devices
               name: sys-devices-dir
-            - mountPath: /sys/class/scsi_host/
-              name: scsi-host-dir
+            - mountPath: /sys/class/
+              name: sys-class
             {{- if eq .Values.cloud "AzureStackCloud" }}
             - name: ssl
               mountPath: /etc/ssl/certs
@@ -192,9 +192,9 @@ spec:
             type: Directory
           name: sys-devices-dir
         - hostPath:
-            path: /sys/class/scsi_host/
+            path: /sys/class/
             type: Directory
-          name: scsi-host-dir
+          name: sys-class
         {{- if eq .Values.cloud "AzureStackCloud" }}
         - name: ssl
           hostPath:

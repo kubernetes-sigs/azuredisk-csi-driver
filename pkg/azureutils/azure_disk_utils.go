@@ -18,6 +18,7 @@ package azureutils
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -35,7 +36,7 @@ import (
 	"google.golang.org/grpc/status"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
@@ -420,7 +421,7 @@ func GetCloudProviderFromClient(kubeClient *clientset.Clientset, secretName stri
 		if err == nil {
 			fromSecret = true
 		} else {
-			if !errors.IsNotFound(err) {
+			if !k8serrors.IsNotFound(err) {
 				klog.Warningf("failed to create cloud config from secret %s/%s: %v", az.SecretNamespace, az.SecretName, err)
 			}
 		}
@@ -896,7 +897,7 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azurediskInformers.
 	curRetry := 0
 	maxRetry := maxNetRetry
 	isRetriable := func(err error) bool {
-		if errors.IsConflict(err) {
+		if k8serrors.IsConflict(err) {
 			return true
 		}
 		if isNetError(err) {

@@ -51,6 +51,7 @@ type NodeProvisioner interface {
 	Mount(source, target, fstype string, options []string) error
 	Unmount(target string) error
 	CleanupMountPoint(path string, extensiveCheck bool) error
+	RescanVolume(devicePath string) error
 	Resize(source, target string) error
 	GetBlockSizeBytes(devicePath string) (int64, error)
 }

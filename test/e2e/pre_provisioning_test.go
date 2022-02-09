@@ -344,7 +344,6 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 							},
 							VolumeAccessMode: v1.ReadWriteOnce,
 						},
-						VolumeAccessMode: v1.ReadWriteOnce,
 					},
 					IsWindows: testconsts.IsWindowsCluster,
 				}
