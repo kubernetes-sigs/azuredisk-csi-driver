@@ -60,7 +60,7 @@ var (
 	provisioningStateSucceeded = "Succeeded"
 
 	testVMName     = fakeNodeID
-	testVMURI      = fmt.Sprint(virtualMachineURIFormat, testSubscription, testResourceGroup, testVMName)
+	testVMURI      = fmt.Sprintf(virtualMachineURIFormat, testSubscription, testResourceGroup, testVMName)
 	testVMSize     = compute.VirtualMachineSizeTypesStandardD3V2
 	testVMLocation = "westus"
 	testVMZones    = []string{"1"}
