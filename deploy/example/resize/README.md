@@ -1,10 +1,14 @@
 # Volume Resizing Example
 
-Currently, Azure Disk CSI Driver only supports resizing unattached disk.
+Azure Disk CSI Driver now only supports resizing **attached** disk, follow this [guide](https://docs.microsoft.com/en-us/azure/virtual-machines/linux/expand-disks#expand-an-azure-managed-disk) to register `LiveResize` feature.
+
+Note:
+ - Azure disk LiveResize feature is supported from v1.10
+ - Pod restart is not necessary from v1.11, before that version, pod restart is still required to get resized disk
 
 ## Example
 
-1. Set `allowVolumeExpansion` field as true in the storage class.
+1. Make sure `allowVolumeExpansion` field as `true` in the storage class.
 
 ```yaml
 apiVersion: storage.k8s.io/v1
@@ -36,13 +40,7 @@ Filesystem      Size  Used Avail Use% Mounted on
 /devhost/sdc    9.8G   37M  9.8G   1% /mnt/azuredisk
 ```
 
-4. Delete the pod.
-
-```console
-kubectl delete -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/nginx-pod-azuredisk.yaml
-```
-
-5. Expand the pvc by increasing the field `spec.resources.requests.storage`.
+4. Expand the pvc by increasing the field `spec.resources.requests.storage`.
 
 ```console
 $ kubectl edit pvc pvc-azuredisk
@@ -56,7 +54,7 @@ spec:
 ...
 ```
 
-6. Check the pvc and pv size.
+5. Check the pvc and pv size after around 2 minutes.
 
 ```console
 $ k get pvc pvc-azuredisk
@@ -68,15 +66,7 @@ NAME                                       CAPACITY   ACCESS MODES   RECLAIM POL
 pvc-84903bd6-f4da-44f3-b3f7-9b8b59f55b6b   15Gi       RWO            Delete           Bound    default/pvc-azuredisk   disk.csi.azure.com            4m2s
 ```
 
-After the pvc re-attaches to the container, the size will be updated.
-
-7. Create the new pod.
-
-```console
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/nginx-pod-azuredisk.yaml
-```
-
-8. Verify the filesystem size.
+6. Verify the filesystem size.
 
 ```console
 $ kubectl get pvc pvc-azuredisk
