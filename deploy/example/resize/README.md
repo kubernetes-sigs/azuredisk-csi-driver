@@ -1,6 +1,6 @@
 # Volume Resizing Example
 
-Azure Disk CSI Driver now only supports resizing **attached** disk, follow this [guide](https://docs.microsoft.com/en-us/azure/virtual-machines/linux/expand-disks#expand-an-azure-managed-disk) to register `LiveResize` feature.
+Azure Disk CSI Driver now supports resizing **attached** disk, follow this [guide](https://docs.microsoft.com/en-us/azure/virtual-machines/linux/expand-disks#expand-an-azure-managed-disk) to register `LiveResize` feature.
 
 Note:
  - Azure disk LiveResize feature is supported from v1.10
