@@ -161,7 +161,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		}
 	}
 
-	if ok, err := d.checkDiskCapacity(ctx, diskParams.ResourceGroup, diskParams.DiskName, requestGiB); !ok {
+	if ok, err := d.checkDiskCapacity(ctx, diskParams.SubscriptionID, diskParams.ResourceGroup, diskParams.DiskName, requestGiB); !ok {
 		return nil, err
 	}
 
@@ -203,8 +203,8 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 					},
 				},
 			}
-
-			if sourceGiB, _ := d.GetSourceDiskSize(ctx, diskParams.ResourceGroup, path.Base(sourceID), 0, consts.SourceDiskSearchMaxDepth); sourceGiB != nil && *sourceGiB < int32(requestGiB) {
+			subsID := azureutils.GetSubscriptionIDFromURI(sourceID)
+			if sourceGiB, _ := d.GetSourceDiskSize(ctx, subsID, diskParams.ResourceGroup, path.Base(sourceID), 0, consts.SourceDiskSearchMaxDepth); sourceGiB != nil && *sourceGiB < int32(requestGiB) {
 				diskParams.VolumeContext[consts.ResizeRequired] = strconv.FormatBool(true)
 			}
 		}
@@ -222,6 +222,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		MaxShares:           int32(diskParams.MaxShares),
 		PVCName:             "",
 		ResourceGroup:       diskParams.ResourceGroup,
+		SubscrtionID:        diskParams.SubscriptionID,
 		SizeGB:              requestGiB,
 		StorageAccountType:  skuName,
 		SourceResourceID:    sourceID,
@@ -537,6 +538,11 @@ func (d *Driver) listVolumesInCluster(ctx context.Context, start, maxEntries int
 				klog.Warningf("failed to get resource group from disk uri (%s) with error(%v)", diskURI, err)
 				continue
 			}
+			subsID := azureutils.GetSubscriptionIDFromURI(diskURI)
+			if !strings.EqualFold(subsID, d.cloud.SubscriptionID) {
+				klog.V(6).Infof("disk(%s) not in current subscription(%s), skip", diskURI, d.cloud.SubscriptionID)
+				continue
+			}
 			rg, diskURI = strings.ToLower(rg), strings.ToLower(diskURI)
 			volSet[diskURI] = true
 			if _, visited := rgMap[rg]; visited {
@@ -620,7 +626,7 @@ func (d *Driver) listVolumesInNodeResourceGroup(ctx context.Context, start, maxE
 
 // listVolumesByResourceGroup is a helper function that updates the ListVolumeResponse_Entry slice and returns number of total visited volumes, number of volumes that needs to be visited and an error if found
 func (d *Driver) listVolumesByResourceGroup(ctx context.Context, resourceGroup string, entries []*csi.ListVolumesResponse_Entry, start, maxEntries int, volSet map[string]bool) listVolumeStatus {
-	disks, derr := d.cloud.DisksClient.ListByResourceGroup(ctx, resourceGroup)
+	disks, derr := d.cloud.DisksClient.ListByResourceGroup(ctx, "", resourceGroup)
 	if derr != nil {
 		return listVolumeStatus{err: status.Errorf(codes.Internal, "ListVolumes on rg(%s) failed with error: %v", resourceGroup, derr.Error())}
 	}
@@ -719,7 +725,8 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 		mc.ObserveOperationWithResult(isOperationSucceeded)
 	}()
 
-	result, rerr := d.cloud.DisksClient.Get(ctx, resourceGroup, diskName)
+	subsID := azureutils.GetSubscriptionIDFromURI(diskURI)
+	result, rerr := d.cloud.DisksClient.Get(ctx, subsID, resourceGroup, diskName)
 	if rerr != nil {
 		return nil, status.Errorf(codes.Internal, "could not get the disk(%s) under rg(%s) with error(%v)", diskName, resourceGroup, rerr.Error())
 	}
@@ -764,7 +771,7 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	var customTags string
 	// set incremental snapshot as true by default
 	incremental := true
-	var resourceGroup string
+	var subsID, resourceGroup string
 	var err error
 	localCloud := d.cloud
 	location := d.cloud.Location
@@ -789,6 +796,8 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 				return nil, fmt.Errorf("create cloud with UserAgent(%s) failed with: (%s)", newUserAgent, err)
 
 			}
+		case consts.SubscriptionIDField:
+			subsID = v
 		default:
 			return nil, fmt.Errorf("AzureDisk - invalid option %s in VolumeSnapshotClass", k)
 		}
@@ -819,8 +828,8 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	snapshot := compute.Snapshot{
 		SnapshotProperties: &compute.SnapshotProperties{
 			CreationData: &compute.CreationData{
-				CreateOption: compute.DiskCreateOptionCopy,
-				SourceURI:    &sourceVolumeID,
+				CreateOption:     compute.DiskCreateOptionCopy,
+				SourceResourceID: &sourceVolumeID,
 			},
 			Incremental: &incremental,
 		},
@@ -835,8 +844,7 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	}()
 
 	klog.V(2).Infof("begin to create snapshot(%s, incremental: %v) under rg(%s)", snapshotName, incremental, resourceGroup)
-	rerr := localCloud.SnapshotsClient.CreateOrUpdate(ctx, resourceGroup, snapshotName, snapshot)
-	if rerr != nil {
+	if rerr := d.cloud.SnapshotsClient.CreateOrUpdate(ctx, subsID, resourceGroup, snapshotName, snapshot); rerr != nil {
 		if strings.Contains(rerr.Error().Error(), "existing disk") {
 			return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("request snapshot(%s) under rg(%s) already exists, but the SourceVolumeId is different, error details: %v", snapshotName, resourceGroup, rerr.Error()))
 		}
@@ -846,7 +854,7 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	}
 	klog.V(2).Infof("create snapshot(%s) under rg(%s) successfully", snapshotName, resourceGroup)
 
-	csiSnapshot, err := d.getSnapshotByID(ctx, resourceGroup, snapshotName, sourceVolumeID)
+	csiSnapshot, err := d.getSnapshotByID(ctx, subsID, resourceGroup, snapshotName, sourceVolumeID)
 	if err != nil {
 		return nil, err
 	}
@@ -866,11 +874,12 @@ func (d *Driver) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequ
 	}
 
 	var err error
+	var subsID string
 	snapshotName := snapshotID
 	resourceGroup := d.cloud.ResourceGroup
 
 	if azureutils.IsARMResourceID(snapshotID) {
-		snapshotName, resourceGroup, err = d.getSnapshotInfo(snapshotID)
+		snapshotName, resourceGroup, subsID, err = d.getSnapshotInfo(snapshotID)
 		if err != nil {
 			return nil, err
 		}
@@ -883,7 +892,7 @@ func (d *Driver) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequ
 	}()
 
 	klog.V(2).Infof("begin to delete snapshot(%s) under rg(%s)", snapshotName, resourceGroup)
-	if rerr := d.cloud.SnapshotsClient.Delete(ctx, resourceGroup, snapshotName); rerr != nil {
+	if rerr := d.cloud.SnapshotsClient.Delete(ctx, subsID, resourceGroup, snapshotName); rerr != nil {
 		azureutils.SleepIfThrottled(rerr.Error(), azureconstants.SnapshotOpThrottlingSleepSec)
 		return nil, status.Error(codes.Internal, fmt.Sprintf("delete snapshot error: %v", rerr.Error()))
 	}
@@ -896,7 +905,7 @@ func (d *Driver) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequ
 func (d *Driver) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
 	// SnapshotId is not empty, return snapshot that match the snapshot id.
 	if len(req.GetSnapshotId()) != 0 {
-		snapshot, err := d.getSnapshotByID(ctx, d.cloud.ResourceGroup, req.GetSnapshotId(), req.SourceVolumeId)
+		snapshot, err := d.getSnapshotByID(ctx, "", d.cloud.ResourceGroup, req.GetSnapshotId(), req.SourceVolumeId)
 		if err != nil {
 			if strings.Contains(err.Error(), consts.ResourceNotFound) {
 				return &csi.ListSnapshotsResponse{}, nil
@@ -915,7 +924,7 @@ func (d *Driver) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsReques
 	}
 
 	// no SnapshotId is set, return all snapshots that satisfy the request.
-	snapshots, err := d.cloud.SnapshotsClient.ListByResourceGroup(ctx, d.cloud.ResourceGroup)
+	snapshots, err := d.cloud.SnapshotsClient.ListByResourceGroup(ctx, "", d.cloud.ResourceGroup)
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown list snapshot error: %v", err.Error()))
 	}
@@ -923,17 +932,17 @@ func (d *Driver) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsReques
 	return azureutils.GetEntriesAndNextToken(req, snapshots)
 }
 
-func (d *Driver) getSnapshotByID(ctx context.Context, resourceGroup, snapshotID, sourceVolumeID string) (*csi.Snapshot, error) {
+func (d *Driver) getSnapshotByID(ctx context.Context, subsID, resourceGroup, snapshotID, sourceVolumeID string) (*csi.Snapshot, error) {
 	var err error
 	snapshotName := snapshotID
 	if azureutils.IsARMResourceID(snapshotID) {
-		snapshotName, resourceGroup, err = d.getSnapshotInfo(snapshotID)
+		snapshotName, resourceGroup, subsID, err = d.getSnapshotInfo(snapshotID)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	snapshot, rerr := d.cloud.SnapshotsClient.Get(ctx, resourceGroup, snapshotName)
+	snapshot, rerr := d.cloud.SnapshotsClient.Get(ctx, subsID, resourceGroup, snapshotName)
 	if rerr != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("get snapshot %s from rg(%s) error: %v", snapshotName, resourceGroup, rerr.Error()))
 	}
@@ -942,11 +951,11 @@ func (d *Driver) getSnapshotByID(ctx context.Context, resourceGroup, snapshotID,
 }
 
 // GetSourceDiskSize recursively searches for the sourceDisk and returns: sourceDisk disk size, error
-func (d *Driver) GetSourceDiskSize(ctx context.Context, resourceGroup, diskName string, curDepth, maxDepth int) (*int32, error) {
+func (d *Driver) GetSourceDiskSize(ctx context.Context, subsID, resourceGroup, diskName string, curDepth, maxDepth int) (*int32, error) {
 	if curDepth > maxDepth {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("current depth (%d) surpassed the max depth (%d) while searching for the source disk size", curDepth, maxDepth))
 	}
-	result, rerr := d.cloud.DisksClient.Get(ctx, resourceGroup, diskName)
+	result, rerr := d.cloud.DisksClient.Get(ctx, subsID, resourceGroup, diskName)
 	if rerr != nil {
 		return nil, rerr.Error()
 	}
@@ -959,7 +968,7 @@ func (d *Driver) GetSourceDiskSize(ctx context.Context, resourceGroup, diskName 
 		sourceResourceID := *result.DiskProperties.CreationData.SourceResourceID
 		parentResourceGroup, _ := azureutils.GetResourceGroupFromURI(sourceResourceID)
 		parentDiskName := path.Base(sourceResourceID)
-		return d.GetSourceDiskSize(ctx, parentResourceGroup, parentDiskName, curDepth+1, maxDepth)
+		return d.GetSourceDiskSize(ctx, subsID, parentResourceGroup, parentDiskName, curDepth+1, maxDepth)
 	}
 
 	if (*result.DiskProperties).DiskSizeGB == nil {
@@ -969,12 +978,15 @@ func (d *Driver) GetSourceDiskSize(ctx context.Context, resourceGroup, diskName 
 }
 
 // The format of snapshot id is /subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/snapshots/snapshot-xxx-xxx.
-func (d *Driver) getSnapshotInfo(snapshotID string) (snapshotName, resourceGroup string, err error) {
+func (d *Driver) getSnapshotInfo(snapshotID string) (snapshotName, resourceGroup, subsID string, err error) {
 	if snapshotName, err = azureutils.GetSnapshotNameFromURI(snapshotID); err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	if resourceGroup, err = azureutils.GetResourceGroupFromURI(snapshotID); err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
-	return snapshotName, resourceGroup, err
+	if subsID = azureutils.GetSubscriptionIDFromURI(snapshotID); subsID == "" {
+		return "", "", "", fmt.Errorf("cannot get SubscriptionID from %s", snapshotID)
+	}
+	return snapshotName, resourceGroup, subsID, err
 }
