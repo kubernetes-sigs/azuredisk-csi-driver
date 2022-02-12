@@ -1168,6 +1168,65 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		test.Run(cs, ns, schedulerName)
 	})
 
+	ginkgo.It("Should create replicas spread across zones for zrs", func() {
+		testutil.SkipIfUsingInTreeVolumePlugin()
+		if !isMultiZone {
+			ginkgo.Skip("test case only applies to the multi az case")
+		}
+
+		testutil.SkipIfNotUsingCSIDriverV2()
+		testutil.SkipIfNotZRSSupported(location)
+
+		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
+		if err != nil {
+			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
+		}
+
+		reclaimPolicy := v1.PersistentVolumeReclaimDelete
+		volume := testtypes.VolumeDetails{
+			ClaimSize: "10Gi",
+			VolumeMount: testtypes.VolumeMountDetails{
+				NameGenerate:      "test-volume-",
+				MountPathGenerate: "/mnt/test-",
+			},
+			ReclaimPolicy:    &reclaimPolicy,
+			VolumeAccessMode: v1.ReadWriteOnce,
+		}
+		volumeBindingMode := storagev1.VolumeBindingImmediate
+		pod := testtypes.PodDetails{
+			Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
+			Volumes: []testtypes.VolumeDetails{
+				{
+					ClaimSize: volume.ClaimSize,
+					MountOptions: []string{
+						"barrier=1",
+						"acl",
+					},
+					VolumeMount:           volume.VolumeMount,
+					VolumeAccessMode:      v1.ReadWriteOnce,
+					AllowedTopologyValues: t.allowedTopologyValues,
+					VolumeBindingMode:     &volumeBindingMode,
+				},
+			},
+			IsWindows: testconsts.IsWindowsCluster,
+			UseCMD:    false,
+		}
+
+		storageClassParameters := map[string]string{
+			consts.SkuNameField:     "StandardSSD_ZRS",
+			consts.MaxSharesField:   "2",
+			consts.CachingModeField: "None",
+		}
+
+		test := testsuites.DynamicallyProvisionedVolumeReplicasAcrossZones{
+			CSIDriver:              testDriver,
+			Pod:                    pod,
+			AzDiskClient:           azDiskClient,
+			StorageClassParameters: storageClassParameters,
+		}
+		test.Run(cs, ns, schedulerName)
+	})
+
 	ginkgo.It("Should test pod failover with cordoning a node", func() {
 		testutil.SkipIfUsingInTreeVolumePlugin()
 		if isMultiZone {
