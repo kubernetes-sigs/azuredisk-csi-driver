@@ -72,9 +72,9 @@ To set `deviceSetting` /sys/block/sda/queue/scheduler (here, /sys/block/sda is a
 
 There are no limitations to how many settings user can tweak using this `perfProfile`.
 
-If `perfProfile` is set to `Advanced`, atleast one device setting override should be provided in the `parameters`.
+If `perfProfile` is set to `Advanced`, at least one device setting override should be provided in the `parameters`.
 
-Incase, no device setting override is provided and the `perfProfile` is set to `Advanced`, CSI driver will fail any disk created using this `StorageClass`.
+In case, no device setting override is provided and the `perfProfile` is set to `Advanced`, CSI driver will fail any disk created using this `StorageClass`.
 
 Any incorrect `deviceSetting` overrides provided in the `parameters` section will result in failure of disk staging on the node and will result in pod scheduling failure.
 
