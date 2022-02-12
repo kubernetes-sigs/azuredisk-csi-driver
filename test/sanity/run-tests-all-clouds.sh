@@ -35,8 +35,8 @@ fi
 if [[ "$#" -ge 2 && "$1" == "v2" ]]; 
 then
 echo 'Running v2 sanity tests'
-test/sanity/run-test-v2.sh "$nodeid" $*
+test/sanity/run-test-v2.sh "$nodeid" "$@"
 else
 echo 'Running v1 sanity tests'
-test/sanity/run-test.sh "$nodeid" $*
+test/sanity/run-test.sh "$nodeid" "$@"
 fi

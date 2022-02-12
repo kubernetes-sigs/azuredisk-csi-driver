@@ -16,7 +16,7 @@
 
 set -euo pipefail
 
-readonly PKG_ROOT="$(git rev-parse --show-toplevel)"
+PKG_ROOT="$(git rev-parse --show-toplevel)"
 
 for testFile in ${PKG_ROOT}/test/performance/test-*.yaml; do
     kubectl apply -f "$testFile"
