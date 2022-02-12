@@ -16,7 +16,7 @@
 
 set -euo pipefail
 
-readonly PKG_ROOT="$(git rev-parse --show-toplevel)"
+PKG_ROOT="$(git rev-parse --show-toplevel)"
 
 kubectl delete -f "${PKG_ROOT}/test/performance/kubestone-benchmarks.yaml" --ignore-not-found
 kubectl delete -f "${PKG_ROOT}/test/performance/kubestone-storageclass.yaml" --ignore-not-found

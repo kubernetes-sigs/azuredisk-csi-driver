@@ -21,8 +21,9 @@ function cleanup {
   pkill -f azurediskplugin
 }
 
+t="$(date +%s)"
 readonly CSC_BIN="$GOBIN/csc"
-readonly volname="citest-$(date +%s)"
+readonly volname="citest-$t"
 
 endpoint='tcp://127.0.0.1:10000'
 if [[ "$#" -gt 0 ]]; then
@@ -64,10 +65,10 @@ fi
 "$CSC_BIN" node get-info --endpoint "$endpoint"
 
 echo 'Create volume test:'
-readonly value=$("$CSC_BIN" controller new --endpoint "$endpoint" --cap 1,block "$volname" --req-bytes 2147483648 --params skuname=Standard_LRS,kind=managed)
+value=$("$CSC_BIN" controller new --endpoint "$endpoint" --cap 1,block "$volname" --req-bytes 2147483648 --params skuname=Standard_LRS,kind=managed)
 sleep 15
 
-readonly volumeid=$(echo "$value" | awk '{print $1}' | sed 's/"//g')
+volumeid=$(echo "$value" | awk '{print $1}' | sed 's/"//g')
 echo "Got volume id: $volumeid"
 
 "$CSC_BIN" controller validate-volume-capabilities --endpoint "$endpoint" --cap 1,block "$volumeid"
