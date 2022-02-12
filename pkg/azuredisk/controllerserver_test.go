@@ -2081,7 +2081,7 @@ func TestGetSourceDiskSize(t *testing.T) {
 			},
 		},
 		{
-			name: "successful serach: depth 2",
+			name: "successful search: depth 2",
 			testFunc: func(t *testing.T) {
 				d, _ := newFakeDriverV1(t)
 				diskSizeGB1 := int32(16)
