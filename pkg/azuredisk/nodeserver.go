@@ -355,13 +355,17 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 	}
 
 	if zoneError != nil {
-		klog.Warningf("get zone(%s) failed with: %v", d.NodeID, zoneError)
-	} else {
-		if azureutils.IsValidAvailabilityZone(zone.FailureDomain, d.cloud.Location) {
-			topology.Segments[topologyKey] = zone.FailureDomain
-			topology.Segments[consts.WellKnownTopologyKey] = zone.FailureDomain
-			klog.V(2).Infof("NodeGetInfo, nodeName: %v, zone: %v", d.NodeID, zone.FailureDomain)
+		errorMsg := fmt.Sprintf("get zone(%s) failed with: %v", d.NodeID, zoneError)
+		if d.returnErrorWhenGetZoneFailed {
+			return nil, status.Error(codes.Internal, errorMsg)
 		}
+		klog.Warningf(errorMsg)
+	}
+
+	klog.V(2).Infof("NodeGetInfo, nodeName: %s, failureDomain: %s, region: %s", d.NodeID, zone.FailureDomain, zone.Region)
+	if azureutils.IsValidAvailabilityZone(zone.FailureDomain, d.cloud.Location) {
+		topology.Segments[topologyKey] = zone.FailureDomain
+		topology.Segments[consts.WellKnownTopologyKey] = zone.FailureDomain
 	}
 
 	maxDataDiskCount := d.VolumeAttachLimit
