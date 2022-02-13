@@ -173,17 +173,17 @@ func TestAccountSupportsPerfOptimization(t *testing.T) {
 			want:        true,
 		},
 		{
-			name:        "UltraSSD_LRS doesnt supports optimization",
+			name:        "UltraSSD_LRS doesn't supports optimization",
 			accountType: "UltraSSD_LRS",
 			want:        false,
 		},
 		{
-			name:        "Standard_LRS doesnt supports optimization",
+			name:        "Standard_LRS doesn't supports optimization",
 			accountType: "Standard_LRS",
 			want:        false,
 		},
 		{
-			name:        "invalid account doesnt supports optimization",
+			name:        "invalid account doesn't supports optimization",
 			accountType: "asdad",
 			want:        false,
 		},

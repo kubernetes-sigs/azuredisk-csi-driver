@@ -42,13 +42,13 @@ func IsLinuxOS() bool {
 	return strings.EqualFold(runtime.GOOS, "linux")
 }
 
-// RoundUpBytes rounds up the volume size in bytes upto multiplications of GiB
+// RoundUpBytes rounds up the volume size in bytes up to multiplications of GiB
 // in the unit of Bytes
 func RoundUpBytes(volumeSizeBytes int64) int64 {
 	return roundUpSize(volumeSizeBytes, GiB) * GiB
 }
 
-// RoundUpGiB rounds up the volume size in bytes upto multiplications of GiB
+// RoundUpGiB rounds up the volume size in bytes up to multiplications of GiB
 // in the unit of GiB
 func RoundUpGiB(volumeSizeBytes int64) int64 {
 	return roundUpSize(volumeSizeBytes, GiB)
@@ -78,7 +78,7 @@ func roundUpSize(volumeSizeBytes int64, allocationUnitBytes int64) int64 {
 }
 
 // ConvertTagsToMap convert the tags from string to map
-// the valid tags fomat is "key1=value1,key2=value2", which could be converted to
+// the valid tags format is "key1=value1,key2=value2", which could be converted to
 // {"key1": "value1", "key2": "value2"}
 func ConvertTagsToMap(tags string) (map[string]string, error) {
 	m := make(map[string]string)

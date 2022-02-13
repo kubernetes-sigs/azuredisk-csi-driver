@@ -414,7 +414,7 @@ func IsValidAvailabilityZone(zone, region string) bool {
 
 func IsValidDiskURI(diskURI string) error {
 	if strings.Index(strings.ToLower(diskURI), "/subscriptions/") != 0 {
-		return fmt.Errorf("inavlid DiskURI: %v, correct format: %v", diskURI, diskURISupportedManaged)
+		return fmt.Errorf("invalid DiskURI: %v, correct format: %v", diskURI, diskURISupportedManaged)
 	}
 	return nil
 }
