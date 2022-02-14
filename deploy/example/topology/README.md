@@ -20,7 +20,7 @@ metadata:
   name: managed-csi
 provisioner: disk.csi.azure.com
 parameters:
-  skuName: StandardSSD_LRS  # available values: Standard_LRS, Premium_LRS, StandardSSD_LRS, UltraSSD_LRS, Premium_ZRS, StandardSSD_ZRS
+  skuName: StandardSSD_ZRS  # available values: Standard_LRS, Premium_LRS, StandardSSD_LRS, UltraSSD_LRS, Premium_ZRS, StandardSSD_ZRS
 reclaimPolicy: Delete
 volumeBindingMode: Immediate
 ```
