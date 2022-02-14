@@ -30,12 +30,17 @@ import (
 	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
+	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	"k8s.io/apimachinery/pkg/types"
+<<<<<<< HEAD
+=======
+	"k8s.io/apimachinery/pkg/util/wait"
+>>>>>>> refine
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/volume"
@@ -378,7 +383,7 @@ func (d *DriverV2) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest)
 	}
 
 	topology := &csi.Topology{
-		Segments: map[string]string{topologyKey: ""},
+		Segments: map[string]string{},
 	}
 
 	var (
@@ -397,12 +402,32 @@ func (d *DriverV2) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest)
 		if azureutils.IsValidAvailabilityZone(zone.FailureDomain, d.cloudProvisioner.GetCloud().Location) {
 			topology.Segments[topologyKey] = zone.FailureDomain
 			topology.Segments[consts.WellKnownTopologyKey] = zone.FailureDomain
-			klog.V(2).Infof("NodeGetInfo, nodeName: %v, zone: %v", d.NodeID, zone.FailureDomain)
+		} else {
+			topology.Segments[topologyKey] = ""
 		}
 	}
 
 	maxDataDiskCount := d.VolumeAttachLimit
 	if maxDataDiskCount < 0 {
+		var instanceType string
+		if runtime.GOOS == "windows" && d.cloud.UseInstanceMetadata && d.cloud.Metadata != nil {
+			metadata, err := d.cloud.Metadata.GetMetadata(azcache.CacheReadTypeDefault)
+			if err == nil && metadata.Compute != nil {
+				instanceType = metadata.Compute.VMSize
+				klog.V(5).Infof("NodeGetInfo: nodeName(%s), VM Size(%s)", d.NodeID, instanceType)
+			} else {
+				klog.Warningf("get instance type(%s) failed with: %v", d.NodeID, err)
+			}
+		} else {
+			instances, ok := d.cloud.Instances()
+			if !ok {
+				return nil, status.Error(codes.Internal, "Failed to get instances from cloud provider")
+			}
+			var err error
+			if instanceType, err = instances.InstanceType(ctx, types.NodeName(d.NodeID)); err != nil {
+				klog.Warningf("get instance type(%s) failed with: %v", d.NodeID, err)
+			}
+		}
 		maxDataDiskCount = getMaxDataDiskCount(instanceType)
 	}
 

@@ -320,30 +320,6 @@ func (d *Driver) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapabi
 
 // NodeGetInfo return info of the node on which this plugin is running
 func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
-	var instanceType string
-	topology := &csi.Topology{
-		Segments: map[string]string{topologyKey: ""},
-	}
-
-	if runtime.GOOS == "windows" && d.cloud.UseInstanceMetadata && d.cloud.Metadata != nil {
-		metadata, err := d.cloud.Metadata.GetMetadata(azcache.CacheReadTypeDefault)
-		if err == nil && metadata.Compute != nil {
-			instanceType = metadata.Compute.VMSize
-			klog.V(5).Infof("NodeGetInfo: nodeName(%s), VM Size(%s)", d.NodeID, instanceType)
-		} else {
-			klog.Warningf("get instance type(%s) failed with: %v", d.NodeID, err)
-		}
-	} else {
-		instances, ok := d.cloud.Instances()
-		if !ok {
-			return nil, status.Error(codes.Internal, "Failed to get instances from cloud provider")
-		}
-		var err error
-		if instanceType, err = instances.InstanceType(ctx, types.NodeName(d.NodeID)); err != nil {
-			klog.Warningf("get instance type(%s) failed with: %v", d.NodeID, err)
-		}
-	}
-
 	var (
 		zone      cloudprovider.Zone
 		zoneError error
@@ -354,22 +330,42 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 		zone, zoneError = d.cloud.GetZone(ctx)
 	}
 
-	if zoneError != nil {
-		errorMsg := fmt.Sprintf("get zone(%s) failed with: %v", d.NodeID, zoneError)
-		if d.returnErrorWhenGetZoneFailed {
-			return nil, status.Error(codes.Internal, errorMsg)
-		}
-		klog.Warningf(errorMsg)
+	topology := &csi.Topology{
+		Segments: map[string]string{},
 	}
-
-	klog.V(2).Infof("NodeGetInfo, nodeName: %s, failureDomain: %s, region: %s", d.NodeID, zone.FailureDomain, zone.Region)
-	if azureutils.IsValidAvailabilityZone(zone.FailureDomain, d.cloud.Location) {
-		topology.Segments[topologyKey] = zone.FailureDomain
-		topology.Segments[consts.WellKnownTopologyKey] = zone.FailureDomain
+	if zoneError != nil {
+		klog.Warningf("get zone(%s) failed with: %v", d.NodeID, zoneError)
+	} else {
+		klog.V(2).Infof("NodeGetInfo, nodeName: %s, failureDomain: %s, region: %s", d.NodeID, zone.FailureDomain, zone.Region)
+		if azureutils.IsValidAvailabilityZone(zone.FailureDomain, d.cloud.Location) {
+			topology.Segments[topologyKey] = zone.FailureDomain
+			topology.Segments[consts.WellKnownTopologyKey] = zone.FailureDomain
+		} else {
+			topology.Segments[topologyKey] = ""
+		}
 	}
 
 	maxDataDiskCount := d.VolumeAttachLimit
 	if maxDataDiskCount < 0 {
+		var instanceType string
+		if runtime.GOOS == "windows" && d.cloud.UseInstanceMetadata && d.cloud.Metadata != nil {
+			metadata, err := d.cloud.Metadata.GetMetadata(azcache.CacheReadTypeDefault)
+			if err == nil && metadata.Compute != nil {
+				instanceType = metadata.Compute.VMSize
+				klog.V(5).Infof("NodeGetInfo: nodeName(%s), VM Size(%s)", d.NodeID, instanceType)
+			} else {
+				klog.Warningf("get instance type(%s) failed with: %v", d.NodeID, err)
+			}
+		} else {
+			instances, ok := d.cloud.Instances()
+			if !ok {
+				return nil, status.Error(codes.Internal, "Failed to get instances from cloud provider")
+			}
+			var err error
+			if instanceType, err = instances.InstanceType(ctx, types.NodeName(d.NodeID)); err != nil {
+				klog.Warningf("get instance type(%s) failed with: %v", d.NodeID, err)
+			}
+		}
 		maxDataDiskCount = getMaxDataDiskCount(instanceType)
 	}
 

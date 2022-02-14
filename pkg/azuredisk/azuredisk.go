@@ -46,18 +46,17 @@ import (
 
 // DriverOptions defines driver parameters specified in driver deployment
 type DriverOptions struct {
-	NodeID                       string
-	DriverName                   string
-	VolumeAttachLimit            int64
-	EnablePerfOptimization       bool
-	CloudConfigSecretName        string
-	CloudConfigSecretNamespace   string
-	CustomUserAgent              string
-	UserAgentSuffix              string
-	UseCSIProxyGAInterface       bool
-	EnableDiskOnlineResize       bool
-	AllowEmptyCloudConfig        bool
-	ReturnErrorWhenGetZoneFailed bool
+	NodeID                     string
+	DriverName                 string
+	VolumeAttachLimit          int64
+	EnablePerfOptimization     bool
+	CloudConfigSecretName      string
+	CloudConfigSecretNamespace string
+	CustomUserAgent            string
+	UserAgentSuffix            string
+	UseCSIProxyGAInterface     bool
+	EnableDiskOnlineResize     bool
+	AllowEmptyCloudConfig      bool
 }
 
 // CSIDriver defines the interface for a CSI driver.
@@ -122,7 +121,6 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.useCSIProxyGAInterface = options.UseCSIProxyGAInterface
 	driver.enableDiskOnlineResize = options.EnableDiskOnlineResize
 	driver.allowEmptyCloudConfig = options.AllowEmptyCloudConfig
-	driver.returnErrorWhenGetZoneFailed = options.ReturnErrorWhenGetZoneFailed
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
