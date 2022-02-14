@@ -49,7 +49,7 @@ fi
 
 # Run CSI driver as a background service
 if [[ $# -lt 4 || "$4" != "v2" ]]; then
-  _output/${ARCH}/azurediskplugin --endpoint "$endpoint" --nodeid "$node" -v=5 --return-error-when-get-zone-failed=false &
+  _output/${ARCH}/azurediskplugin --endpoint "$endpoint" --nodeid "$node" -v=5 &
 else
   _output/${ARCH}/azurediskpluginv2 --endpoint "$endpoint" --nodeid "$node" -v=5 --temp-use-driver-v2 &
 fi
