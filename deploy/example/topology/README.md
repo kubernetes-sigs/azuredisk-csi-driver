@@ -34,7 +34,7 @@ Continue step `Create an azuredisk CSI PVC`, refer to [Basic usage](../e2e_usage
 
 ZRS(`Premium_ZRS`, `StandardSSD_ZRS`) disk could be scheduled on all zone and non-zone agent nodes, without the restriction that disk volume should be co-located in the same zone as a given node.
 
- - More details about [Zone-redundant storage for managed disks](https://docs.microsoft.com/en-us/azure/virtual-machines/disks-redundancy#zone-redundant-storage-for-managed-disks-preview)
+ - More details about [Zone-redundant storage for managed disks](https://docs.microsoft.com/en-us/azure/virtual-machines/disks-redundancy)
 
 #### Links
  - [Azure Availability Zones](https://github.com/kubernetes-sigs/cloud-provider-azure/blob/master/docs/using-availability-zones.md)
