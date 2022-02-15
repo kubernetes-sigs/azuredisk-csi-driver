@@ -23,6 +23,7 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubeClientSet "k8s.io/client-go/kubernetes"
@@ -191,10 +192,25 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 				response, attachErr = r.attachVolume(cloudCtx, azVolumeAttachment.Spec.VolumeID, azVolumeAttachment.Spec.NodeName, azVolumeAttachment.Spec.VolumeContext)
 			}
 		}
+		var pods []v1.Pod
+		if azVolumeAttachment.Spec.RequestedRole == diskv1alpha2.ReplicaRole {
+			var err error
+			pods, err = r.controllerSharedState.getPodsFromVolume(ctx, r.client, azVolumeAttachment.Spec.VolumeName)
+			if err != nil {
+				klog.Infof("failed to get pods for volume (%s). Error: %v", azVolumeAttachment.Spec.VolumeName, err)
+			}
+		}
+
 		// update AzVolumeAttachment CRI with the result of the attach operation
 		var updateFunc func(interface{}) error
 		if attachErr != nil {
 			klog.Errorf("failed to attach volume %s to node %s: %v", azVolumeAttachment.Spec.VolumeName, azVolumeAttachment.Spec.NodeName, attachErr)
+
+			if len(pods) > 0 {
+				for _, pod := range pods {
+					r.controllerSharedState.eventRecorder.Eventf(pod.DeepCopyObject(), v1.EventTypeWarning, consts.ReplicaAttachmentFailedEvent, "Replica mount for volume %s failed to be attached to node %s with error: %v", azVolumeAttachment.Spec.VolumeName, azVolumeAttachment.Spec.NodeName, attachErr)
+				}
+			}
 
 			updateFunc = func(obj interface{}) error {
 				azv := obj.(*diskv1alpha2.AzVolumeAttachment)
@@ -204,6 +220,13 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 			}
 		} else {
 			klog.Infof("successfully attached volume (%s) to node (%s) and update status of AzVolumeAttachment (%s)", azVolumeAttachment.Spec.VolumeName, azVolumeAttachment.Spec.NodeName, azVolumeAttachment.Name)
+
+			// Publish event to indicate attachment success
+			if len(pods) > 0 {
+				for _, pod := range pods {
+					r.controllerSharedState.eventRecorder.Eventf(pod.DeepCopyObject(), v1.EventTypeNormal, consts.ReplicaAttachmentSuccessEvent, "Replica mount for volume %s successfully attached to node %s", azVolumeAttachment.Spec.VolumeName, azVolumeAttachment.Spec.NodeName)
+				}
+			}
 
 			updateFunc = func(obj interface{}) error {
 				azv := obj.(*diskv1alpha2.AzVolumeAttachment)

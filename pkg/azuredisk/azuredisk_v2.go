@@ -42,6 +42,8 @@ import (
 	"k8s.io/kubernetes/pkg/volume/util/hostutil"
 
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/client-go/tools/record"
 	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
@@ -281,7 +283,12 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 		os.Exit(1)
 	}
 
-	sharedState := controller.NewSharedState(d.Name, d.objectNamespace, topologyKey)
+	// Intialize the driver event recorder
+	eventBroadcaster := record.NewBroadcaster()
+	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: d.kubeClient.CoreV1().Events("")})
+	eventRecorder := eventBroadcaster.NewRecorder(clientgoscheme.Scheme, v1.EventSource{Component: consts.AzureDiskCSIDriverName})
+
+	sharedState := controller.NewSharedState(d.Name, d.objectNamespace, topologyKey, eventRecorder)
 
 	// Setup a new controller to clean-up AzDriverNodes
 	// objects for the nodes which get deleted
