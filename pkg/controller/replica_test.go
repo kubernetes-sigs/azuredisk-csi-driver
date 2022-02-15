@@ -290,14 +290,14 @@ func TestGetNodesForReplica(t *testing.T) {
 	tests := []struct {
 		description string
 		volumes     []string
-		pods        []string
+		pods        []v1.Pod
 		setupFunc   func(*testing.T, *gomock.Controller) *ReconcileReplica
 		verifyFunc  func(*testing.T, []string, error)
 	}{
 		{
 			description: "[Success] Should not select nodes with no remaining capacity.",
 			volumes:     []string{testPersistentVolume0Name},
-			pods:        []string{getQualifiedName(testNamespace, testPod0Name)},
+			pods:        []v1.Pod{testPod0},
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileReplica {
 				replicaAttachment := testReplicaAzVolumeAttachment
 				now := metav1.Time{Time: metav1.Now().Add(-1000)}
@@ -333,7 +333,7 @@ func TestGetNodesForReplica(t *testing.T) {
 		{
 			description: "[Success] Should not create replica attachment on a node that does not match volume's node affinity rule",
 			volumes:     []string{testPersistentVolume0Name},
-			pods:        []string{getQualifiedName(testNamespace, testPod0Name)},
+			pods:        []v1.Pod{testPod0},
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileReplica {
 				replicaAttachment := testReplicaAzVolumeAttachment
 				now := metav1.Time{Time: metav1.Now().Add(-1000)}

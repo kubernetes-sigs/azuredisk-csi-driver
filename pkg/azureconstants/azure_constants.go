@@ -128,6 +128,9 @@ const (
 
 	CurrentNodeParameter = "currentNode"
 	DevicePathParameter  = "devicePath"
+
+	ReplicaAttachmentFailedEvent  = "ReplicaAttachmentFailed"
+	ReplicaAttachmentSuccessEvent = "ReplicaAttachmentSucceeded"
 )
 
 var (
