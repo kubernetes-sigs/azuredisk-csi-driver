@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"reflect"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -28,6 +27,7 @@ import (
 	kubeClientSet "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
+	azClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	azVolumeClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
@@ -142,30 +142,30 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 
 	// both PV and AzVolume exist. Remove entry from retryMap and retryLocks
 	r.controllerRetryInfo.deleteEntry(azVolumeName)
-	updated := azVolume.DeepCopy()
-
-	if azVolume.Status.PersistentVolume != pv.Name {
-		updated.Status.PersistentVolume = pv.Name
-	}
 
 	switch phase := pv.Status.Phase; phase {
 	case corev1.VolumeBound:
 		pvClaimName := getQualifiedName(pv.Spec.ClaimRef.Namespace, pv.Spec.ClaimRef.Name)
-		updated.Status.Phase = diskv1alpha2.VolumeBound
 		r.controllerSharedState.addVolumeAndClaim(azVolumeName, pvClaimName)
 	case corev1.VolumeReleased:
-		updated.Status.Phase = diskv1alpha2.VolumeReleased
+		if err := r.triggerRelease(ctx, &azVolume); err != nil {
+			klog.Errorf("failed to release AzVolume (%s): %v", azVolume.Name, err)
+			return reconcileReturnOnError(&pv, "release", err, r.controllerRetryInfo)
+		}
 		r.controllerSharedState.deleteVolumeAndClaim(azVolumeName)
 	}
 
-	// update the status of AzVolume to match that of the PV
-	if !reflect.DeepEqual(updated, azVolume) {
-		if err := r.client.Update(ctx, updated, &client.UpdateOptions{}); err != nil {
-			klog.Errorf("failed to update AzVolume (%s): %v", pv.Name, err)
-			return reconcileReturnOnError(&pv, "update", err, r.controllerRetryInfo)
-		}
-	}
 	return reconcileReturnOnSuccess(pv.Name, r.controllerRetryInfo)
+}
+
+func (r *ReconcilePV) triggerRelease(ctx context.Context, azVolume *diskv1alpha2.AzVolume) error {
+	klog.Infof("Volume released: Initiating AzVolumeAttachment Clean-up")
+
+	if _, err := cleanUpAzVolumeAttachmentByVolume(ctx, r, azVolume.Name, "pv controller", replicaOnly, detachAndDeleteCRI, r.controllerSharedState); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (r *ReconcilePV) Recover(ctx context.Context) error {
@@ -235,4 +235,16 @@ func NewPVController(mgr manager.Manager, azVolumeClient azVolumeClientSet.Inter
 
 	klog.V(2).Info("Controller set-up successful.")
 	return &reconciler, nil
+}
+
+func (r *ReconcilePV) getClient() client.Client {
+	return r.client
+}
+
+func (r *ReconcilePV) getAzClient() azClientSet.Interface {
+	return r.azVolumeClient
+}
+
+func (r *ReconcilePV) getSharedState() *SharedState {
+	return r.controllerSharedState
 }
