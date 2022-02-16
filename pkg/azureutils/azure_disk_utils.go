@@ -844,6 +844,7 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azurediskInformers.
 
 	conditionFunc := func() error {
 		var err error
+		var copyForUpdate client.Object
 		switch target := obj.(type) {
 		case *diskv1alpha2.AzVolume:
 			if informerFactory != nil {
@@ -853,7 +854,9 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azurediskInformers.
 			} else {
 				target, err = azDiskClient.DiskV1alpha2().AzVolumes(target.Namespace).Get(ctx, target.Name, metav1.GetOptions{})
 			}
-			obj = target.DeepCopy()
+			if err == nil {
+				copyForUpdate = target.DeepCopy()
+			}
 		case *diskv1alpha2.AzVolumeAttachment:
 			if informerFactory != nil {
 				target, err = informerFactory.Disk().V1alpha2().AzVolumeAttachments().Lister().AzVolumeAttachments(target.Namespace).Get(target.Name)
@@ -862,7 +865,9 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azurediskInformers.
 			} else {
 				target, err = azDiskClient.DiskV1alpha2().AzVolumeAttachments(target.Namespace).Get(ctx, target.Name, metav1.GetOptions{})
 			}
-			obj = target.DeepCopy()
+			if err == nil {
+				copyForUpdate = target.DeepCopy()
+			}
 		default:
 			return status.Errorf(codes.Internal, "object (%v) not supported.", reflect.TypeOf(target))
 		}
@@ -872,11 +877,11 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azurediskInformers.
 			return err
 		}
 
-		if err = updateFunc(obj); err != nil {
+		if err = updateFunc(copyForUpdate); err != nil {
 			return err
 		}
 
-		switch target := obj.(type) {
+		switch target := copyForUpdate.(type) {
 		case *diskv1alpha2.AzVolume:
 			if cachedClient == nil {
 				_, err = azDiskClient.DiskV1alpha2().AzVolumes(target.Namespace).Update(ctx, target, metav1.UpdateOptions{})
@@ -925,12 +930,19 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azurediskInformers.
 	return err
 }
 
+func isFatalNetError(err error) bool {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	return isNetError(err)
+}
+
 func isNetError(err error) bool {
 	return net.IsConnectionRefused(err) || net.IsConnectionReset(err) || net.IsTimeout(err) || net.IsProbableEOF(err)
 }
 
 func ExitOnNetError(err error) {
-	if isNetError(err) {
+	if isFatalNetError(err) {
 		klog.Fatalf("encountered unrecoverable network error: %v \nexiting process...", err)
 		os.Exit(1)
 	}
