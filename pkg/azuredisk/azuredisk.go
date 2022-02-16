@@ -249,7 +249,7 @@ func (d *Driver) checkDiskExists(ctx context.Context, diskURI string) (*compute.
 	subsID := azureutils.GetSubscriptionIDFromURI(diskURI)
 	disk, rerr := d.cloud.DisksClient.Get(ctx, subsID, resourceGroup, diskName)
 	if rerr != nil {
-		if strings.Contains(rerr.RawError.Error(), consts.RateLimited) {
+		if rerr.IsThrottled() || strings.Contains(rerr.RawError.Error(), consts.RateLimited) {
 			klog.Warningf("checkDiskExists(%s) is throttled with error: %v", diskURI, rerr.Error())
 			d.getDiskThrottlingCache.Set(consts.ThrottlingKey, "")
 			return nil, nil
@@ -274,7 +274,7 @@ func (d *Driver) checkDiskCapacity(ctx context.Context, subsID, resourceGroup, d
 			return false, status.Errorf(codes.AlreadyExists, "the request volume already exists, but its capacity(%v) is different from (%v)", *disk.DiskProperties.DiskSizeGB, requestGiB)
 		}
 	} else {
-		if strings.Contains(rerr.RawError.Error(), consts.RateLimited) {
+		if rerr.IsThrottled() || strings.Contains(rerr.RawError.Error(), consts.RateLimited) {
 			klog.Warningf("checkDiskCapacity(%s, %s) is throttled with error: %v", resourceGroup, diskName, rerr.Error())
 			d.getDiskThrottlingCache.Set(consts.ThrottlingKey, "")
 		}
