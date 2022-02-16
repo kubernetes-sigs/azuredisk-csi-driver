@@ -18,6 +18,7 @@ package provisioner
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"strings"
 	"time"
@@ -25,7 +26,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -79,7 +80,7 @@ func (c *CrdProvisioner) RegisterDriverNode(
 		// We found that the object already exists.
 		klog.V(2).Infof("AzDriverNode (%s) exists, will update status. azDriverNodeFromCache=(%v)", nodeID, azDriverNodeFromCache)
 		azDriverNodeUpdate = azDriverNodeFromCache.DeepCopy()
-	} else if errors.IsNotFound(err) {
+	} else if apiErrors.IsNotFound(err) {
 		// If AzDriverNode object is not there create it
 		klog.V(2).Infof("AzDriverNode (%s) is not registered yet, will create.", nodeID)
 		azDriverNodeNew := &diskv1alpha2.AzDriverNode{
@@ -103,7 +104,7 @@ func (c *CrdProvisioner) RegisterDriverNode(
 		azDriverNodeUpdate = azDriverNodeCreated.DeepCopy()
 	} else {
 		klog.Errorf("Failed to get AzDriverNode for node (%s), error: %v", nodeID, err)
-		return errors.NewBadRequest("Failed to get AzDriverNode or node not found, can not register the plugin.")
+		return apiErrors.NewBadRequest("Failed to get AzDriverNode or node not found, can not register the plugin.")
 	}
 
 	// Do an initial update to AzDriverNode status
@@ -206,7 +207,7 @@ func (c *CrdProvisioner) CreateVolume(
 			return nil, err
 		}
 		// if the error was caused by errors other than IsNotFound, return failure
-	} else if !errors.IsNotFound(err) {
+	} else if !apiErrors.IsNotFound(err) {
 		klog.Error("failed to get AzVolume (%s): %v", azVolumeName, err)
 		return nil, err
 	} else {
@@ -226,8 +227,8 @@ func (c *CrdProvisioner) CreateVolume(
 				AccessibilityRequirements: accessibilityReq,
 			},
 			Status: diskv1alpha2.AzVolumeStatus{
-				State: diskv1alpha2.VolumeOperationPending,
-				Phase: diskv1alpha2.VolumePending,
+				PersistentVolume: parameters[consts.PvNameKey],
+				State:            diskv1alpha2.VolumeOperationPending,
 			},
 		}
 
@@ -246,10 +247,14 @@ func (c *CrdProvisioner) CreateVolume(
 
 	obj, err := waiter.Wait(ctx)
 	if obj == nil || err != nil {
+		// if the error was due to context deadline exceeding, do not delete AzVolume CRI
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, err
+		}
 		// if volume creation was unsuccessful, delete the AzVolume CRI and return error
 		go func() {
 			conditionFunc := func() (bool, error) {
-				if err := azVolumeClient.Delete(context.Background(), azVolumeName, metav1.DeleteOptions{}); err != nil && !errors.IsNotFound(err) {
+				if err := azVolumeClient.Delete(context.Background(), azVolumeName, metav1.DeleteOptions{}); err != nil && !apiErrors.IsNotFound(err) {
 					klog.Errorf("failed to delete AzVolume (%s): %v", azVolumeName, err)
 					return false, nil
 				}
@@ -307,7 +312,7 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 
 	azVolumeInstance, err := lister.Get(azVolumeName)
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if apiErrors.IsNotFound(err) {
 			klog.Infof("Could not find the volume name (%s). Deletion succeeded", volumeName)
 			return nil
 		}
@@ -438,7 +443,7 @@ func (c *CrdProvisioner) PublishVolume(
 		if err := azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.informerFactory, nil, c.azDiskClient, azVolumeAttachmentInstance, updateFunc, consts.NormalUpdateMaxNetRetry); err != nil {
 			return nil, err
 		}
-	} else if !errors.IsNotFound(err) {
+	} else if !apiErrors.IsNotFound(err) {
 		return nil, err
 	} else {
 		azVolumeAttachment := &diskv1alpha2.AzVolumeAttachment{
@@ -519,7 +524,7 @@ func (c *CrdProvisioner) UnpublishVolume(
 
 	azVolumeAttachmentInstance, err := lister.Get(attachmentName)
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if apiErrors.IsNotFound(err) {
 			klog.Infof("AzVolumeAttachment (%s) has already been deleted.", attachmentName)
 			return nil
 		}
@@ -553,7 +558,7 @@ func (c *CrdProvisioner) UnpublishVolume(
 	}
 
 	err = azVAClient.Delete(ctx, attachmentName, metav1.DeleteOptions{})
-	if errors.IsNotFound(err) {
+	if apiErrors.IsNotFound(err) {
 		klog.Infof("Could not find the volume attachment (%s). Deletion succeeded", attachmentName)
 		return nil
 	} else if err != nil {

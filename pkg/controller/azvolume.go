@@ -124,11 +124,6 @@ func (r *ReconcileAzVolume) Reconcile(ctx context.Context, request reconcile.Req
 			return reconcileReturnOnError(azVolume, "update", err, r.retryInfo)
 		}
 		// azVolume released, so clean up replica Attachments (primary Attachment should be deleted via UnpublishVolume request to avoid race condition)
-	} else if azVolume.Status.Phase == diskv1alpha2.VolumeReleased {
-		if err := r.triggerRelease(ctx, azVolume); err != nil {
-			klog.Errorf("failed to release AzVolume and clean up all attachments (%s): %v", azVolume.Name, err)
-			return reconcileReturnOnError(azVolume, "release", err, r.retryInfo)
-		}
 	}
 
 	return reconcileReturnOnSuccess(azVolume.Name, r.retryInfo)
@@ -166,6 +161,7 @@ func (r *ReconcileAzVolume) triggerCreate(ctx context.Context, azVolume *diskv1a
 			updateFunc = func(obj interface{}) error {
 				azv := obj.(*diskv1alpha2.AzVolume)
 				azv = r.updateError(azv, err)
+				azv = r.deleteFinalizer(azv, map[string]bool{consts.AzVolumeFinalizer: true})
 				_, derr := r.updateState(azv, diskv1alpha2.VolumeCreationFailed, forceUpdate)
 				return derr
 			}
@@ -179,7 +175,6 @@ func (r *ReconcileAzVolume) triggerCreate(ctx context.Context, azVolume *diskv1a
 					return status.Errorf(codes.Internal, "non-nil AzVolumeStatusDetail expected but nil given")
 				}
 				azv = r.updateStatusDetail(azv, response, response.CapacityBytes, response.NodeExpansionRequired)
-				azv = r.updateStatusPhase(azv, diskv1alpha2.VolumeBound)
 				_, derr := r.updateState(azv, diskv1alpha2.VolumeCreated, forceUpdate)
 				return derr
 			}
@@ -328,25 +323,6 @@ func (r *ReconcileAzVolume) triggerUpdate(ctx context.Context, azVolume *diskv1a
 	return nil
 }
 
-func (r *ReconcileAzVolume) triggerRelease(ctx context.Context, azVolume *diskv1alpha2.AzVolume) error {
-	klog.Infof("Volume released: Initiating AzVolumeAttachment Clean-up")
-
-	if _, err := cleanUpAzVolumeAttachmentByVolume(ctx, r, azVolume.Name, "azVolumeController", replicaOnly, detachAndDeleteCRI, r.controllerSharedState); err != nil {
-		return err
-	}
-	updateFunc := func(obj interface{}) error {
-		azv := obj.(*diskv1alpha2.AzVolume)
-		_ = r.updateStatusPhase(azv, diskv1alpha2.VolumeAvailable)
-		return nil
-	}
-
-	if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, azVolume, updateFunc, consts.NormalUpdateMaxNetRetry); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (r *ReconcileAzVolume) initializeMeta(azVolume *diskv1alpha2.AzVolume) *diskv1alpha2.AzVolume {
 	if azVolume == nil {
 		return nil
@@ -410,14 +386,6 @@ func (r *ReconcileAzVolume) updateStatusDetail(azVolume *diskv1alpha2.AzVolume, 
 		azVolume.Status.Detail.CapacityBytes = capacityBytes
 		azVolume.Status.Detail.NodeExpansionRequired = nodeExpansionRequired
 	}
-	return azVolume
-}
-
-func (r *ReconcileAzVolume) updateStatusPhase(azVolume *diskv1alpha2.AzVolume, phase diskv1alpha2.AzVolumePhase) *diskv1alpha2.AzVolume {
-	if azVolume == nil {
-		return nil
-	}
-	azVolume.Status.Phase = phase
 	return azVolume
 }
 
@@ -657,7 +625,6 @@ func createAzVolumeFromPv(ctx context.Context, pv v1.PersistentVolume, azVolumeC
 					VolumeID: pv.Spec.CSI.VolumeHandle,
 				},
 				State: diskv1alpha2.VolumeCreated,
-				Phase: azureutils.GetAzVolumePhase(pv.Status.Phase),
 			},
 		}
 		if _, err := azVolumeClient.DiskV1alpha2().AzVolumes(namespace).Create(ctx, &azvolume, metav1.CreateOptions{}); err != nil {

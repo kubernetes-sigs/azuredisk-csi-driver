@@ -219,36 +219,6 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 			},
 		},
 		{
-			description: "[Success] Should release replica attachments when AzVolume is released.",
-			request:     testAzVolume0Request,
-			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAzVolume {
-				azVolume := testAzVolume0.DeepCopy()
-
-				azVolume.Status.Detail = &diskv1alpha2.AzVolumeStatusDetail{
-					VolumeID:      testManagedDiskURI0,
-					CapacityBytes: azVolume.Spec.CapacityRange.RequiredBytes,
-				}
-				azVolume.Status.State = diskv1alpha2.VolumeCreated
-				azVolume.Status.Phase = diskv1alpha2.VolumeReleased
-
-				controller := NewTestAzVolumeController(
-					mockCtl,
-					testNamespace,
-					azVolume,
-					&testReplicaAzVolumeAttachment)
-
-				mockClientsAndVolumeProvisioner(controller)
-
-				return controller
-			},
-			verifyFunc: func(t *testing.T, controller *ReconcileAzVolume, result reconcile.Result, err error) {
-				_, localErr := controller.azVolumeClient.DiskV1alpha2().AzVolumes(testNamespace).Get(context.TODO(), testPersistentVolume0Name, metav1.GetOptions{})
-				require.NoError(t, localErr)
-				azVolumeAttachments, _ := controller.azVolumeClient.DiskV1alpha2().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{})
-				require.Len(t, azVolumeAttachments.Items, 0)
-			},
-		},
-		{
 			description: "[Failure] Should delete volume attachments and requeue when AzVolume is marked for deletion.",
 			request:     testAzVolume0Request,
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAzVolume {

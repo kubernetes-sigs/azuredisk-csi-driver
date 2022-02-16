@@ -208,9 +208,6 @@ spec:
                 description: The name of the PersistentVolume that corresponds to
                   the AzVolume instance.
                 type: string
-              phase:
-                description: Current phase of the underlying PersistentVolume
-                type: string
               state:
                 description: Current state of underlying volume
                 type: string
