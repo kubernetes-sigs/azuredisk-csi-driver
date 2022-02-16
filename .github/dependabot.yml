@@ -1,0 +1,22 @@
+version: 1
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    open-pull-requests-limit: 5
+    schedule:
+      interval: "daily"
+  - package-ecosystem: gomod
+    directory: /
+    open-pull-requests-limit: 5
+    schedule:
+      interval: "daily"
+  - package-ecosystem: docker
+    directory: pkg/azuredisk
+    open-pull-request-limit: 1
+    schedule:
+      interval: "daily"
+  - package-ecosystem: docker
+    directory: pkg/azdiskschedulerextender
+    open-pull-request-limit: 1
+    schedule:
+      interval: "daily"
