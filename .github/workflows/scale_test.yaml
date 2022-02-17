@@ -2,6 +2,7 @@ name: Run scale test
 on:
     schedule:
     - cron: "0 0 * * THU"
+    workflow_dispatch:
 jobs:
   test:
     name: Run scale test 
