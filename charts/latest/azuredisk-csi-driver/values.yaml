@@ -198,19 +198,22 @@ windows:
   resources:
     livenessProbe:
       limits:
-        memory: 200Mi
+        memory: 100Mi
       requests:
         cpu: 10m
+        memory: 40Mi
     nodeDriverRegistrar:
       limits:
+        memory: 100Mi
+      requests:
+        cpu: 10m
+        memory: 40Mi
+    azuredisk:
+      limits:
         memory: 200Mi
       requests:
         cpu: 10m
-    azuredisk:
-      limits:
-        memory: 400Mi
-      requests:
-        cpu: 10m
+        memory: 40Mi
 
 cloud: AzurePublicCloud
 
