@@ -248,7 +248,7 @@ func (c *CrdProvisioner) CreateVolume(
 	obj, err := waiter.Wait(ctx)
 	if obj == nil || err != nil {
 		// if the error was due to context deadline exceeding, do not delete AzVolume CRI
-		if errors.Is(err, context.DeadlineExceeded) {
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 			return nil, err
 		}
 		// if volume creation was unsuccessful, delete the AzVolume CRI and return error
