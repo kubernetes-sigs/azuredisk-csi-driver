@@ -103,6 +103,7 @@ type ManagedDiskParameters struct {
 	MaxShares               int
 	NetworkAccessPolicy     string
 	PerfProfile             string
+	SubscriptionID          string
 	ResourceGroup           string
 	Tags                    map[string]string
 	UserAgent               string
@@ -201,6 +202,16 @@ func GetMaxShares(attributes map[string]string) (int, error) {
 	return 1, nil // disk is not shared
 }
 
+func GetSubscriptionIDFromURI(diskURI string) string {
+	parts := strings.Split(diskURI, "/")
+	for i, v := range parts {
+		if strings.EqualFold(v, "subscriptions") && (i+1) < len(parts) {
+			return parts[i+1]
+		}
+	}
+	return ""
+}
+
 func NormalizeStorageAccountType(storageAccountType, cloud string, disableAzureStackCloud bool) (compute.DiskStorageAccountTypes, error) {
 	if storageAccountType == "" {
 		if IsAzureStackCloud(cloud, disableAzureStackCloud) {
@@ -273,6 +284,8 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 			diskParams.AccountType = v
 		case consts.CachingModeField:
 			diskParams.CachingMode = v1.AzureDataDiskCachingMode(v)
+		case consts.SubscriptionIDField:
+			diskParams.SubscriptionID = v
 		case consts.ResourceGroupField:
 			diskParams.ResourceGroup = v
 		case consts.DiskIOPSReadWriteField:

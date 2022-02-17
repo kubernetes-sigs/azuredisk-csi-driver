@@ -29,6 +29,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
 
@@ -48,8 +49,9 @@ import (
 type DynamicallyProvisionedResizeVolumeTest struct {
 	CSIDriver              driver.DynamicPVTestDriver
 	StorageClassParameters map[string]string
-	Pod                    testtypes.PodDetails
-	Volume                 testtypes.VolumeDetails
+	Pod                    PodDetails
+	Volume                 VolumeDetails
+	ResizeOffline          bool
 }
 
 func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
@@ -85,13 +87,15 @@ func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface,
 		Spec: scale.ScaleSpec{
 			Replicas: int32(0)}}
 
-	// Scale statefulset to 0
-	_, err = client.AppsV1().StatefulSets(tStatefulSet.Namespace.Name).UpdateScale(context.TODO(), tStatefulSet.Statefulset.Name, newScale, metav1.UpdateOptions{})
-	framework.ExpectNoError(err)
+	if t.ResizeOffline {
+		// Scale statefulset to 0
+		_, err = client.AppsV1().StatefulSets(tStatefulSet.namespace.Name).UpdateScale(context.TODO(), tStatefulSet.statefulset.Name, newScale, metav1.UpdateOptions{})
+		framework.ExpectNoError(err)
 
-	// wait for volume to detach
-	err = volutil.WaitForVolumeDetach(client, pvc.Spec.VolumeName, testconsts.Poll, testconsts.PollTimeout)
-	framework.ExpectNoError(err)
+		// wait for volume to detach
+		err = volutil.WaitForVolumeDetach(client, pvc.Spec.VolumeName, testconsts.Poll, testconsts.PollTimeout)
+		framework.ExpectNoError(err)
+	}
 
 	// Get the original requested size of the pvs and increase it by 10GB
 	originalSize := pvc.Spec.Resources.Requests["storage"]
@@ -120,10 +124,19 @@ func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface,
 		framework.Failf("newSize(%+v) is not equal to updatedSize(%+v)", newSize.String(), updatedSize.String())
 	}
 
-	ginkgo.By("checking the resizing PV result")
-	newPv, _ := client.CoreV1().PersistentVolumes().Get(context.Background(), newPvc.Spec.VolumeName, metav1.GetOptions{})
-	newPvSize := newPv.Spec.Capacity["storage"]
-	if !newSize.Equal(newPvSize) {
+	var newPv *v1.PersistentVolume
+	var newPvSize resource.Quantity
+	err = wait.PollImmediate(30*time.Second, 10*time.Minute, func() (bool, error) {
+		//takes 3-6 minutes on average for dynamic resize
+		ginkgo.By("checking the resizing PV result")
+		newPv, _ = client.CoreV1().PersistentVolumes().Get(context.Background(), newPvc.Spec.VolumeName, metav1.GetOptions{})
+		newPvSize = newPv.Spec.Capacity["storage"]
+		if !newSize.Equal(newPvSize) {
+			return false, nil
+		}
+		return true, nil
+	})
+	if err != nil {
 		ginkgo.By(fmt.Sprintf("newPVCSize(%+v) is not equal to newPVSize(%+v)", newSize.String(), newPvSize.String()))
 	}
 
@@ -155,15 +168,16 @@ func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface,
 		framework.Failf("newPVCSize(%+v) is not equal to new azurediskSize(%+v)", newSize.String(), newdiskSize)
 	}
 
-	// Scale the stateful set back to 1 pod
-	newScale.Spec.Replicas = int32(1)
+	if t.ResizeOffline {
+		// Scale the stateful set back to 1 pod
+		newScale.Spec.Replicas = int32(1)
 
-	_, err = client.AppsV1().StatefulSets(tStatefulSet.Namespace.Name).UpdateScale(context.TODO(), tStatefulSet.Statefulset.Name, newScale, metav1.UpdateOptions{})
-	framework.ExpectNoError(err)
+		_, err = client.AppsV1().StatefulSets(tStatefulSet.namespace.Name).UpdateScale(context.TODO(), tStatefulSet.statefulset.Name, newScale, metav1.UpdateOptions{})
+		framework.ExpectNoError(err)
 
-	ginkgo.By("sleep 30s waiting for statefulset update complete")
-	time.Sleep(30 * time.Second)
-
-	ginkgo.By("checking that the pod for statefulset is running")
-	tStatefulSet.WaitForPodReady()
+		ginkgo.By("sleep 30s waiting for statefulset update complete")
+		time.Sleep(30 * time.Second)
+		ginkgo.By("checking that the pod for statefulset is running")
+		tStatefulSet.WaitForPodReady()
+	}
 }

@@ -79,6 +79,35 @@ var _ = ginkgo.BeforeSuite(func() {
 			supportsZRS = true
 		}
 
+		dynamicResizeZones := []string{
+			"westcentralus",
+			"francesouth",
+			"westindia",
+			"norwaywest",
+			"eastasia",
+			"francecentral",
+			"germanywestcentral",
+			"japanwest",
+			"southafricanorth",
+			"jioindiawest",
+			"canadacentral",
+			"australiacentral",
+			"japaneast",
+			"northeurope",
+			"centralindia",
+			"uaecentral",
+			"switzerlandwest",
+			"brazilsouth",
+			"uksouth"}
+
+		supportsDynamicResize = false
+		for _, zone := range dynamicResizeZones {
+			if location == zone {
+				supportsDynamicResize = true
+				break
+			}
+		}
+
 		// Install Azure Disk CSI Driver on cluster from project root
 		e2eBootstrap := testtypes.TestCmd{
 			Command:  "make",

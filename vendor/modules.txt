@@ -1,4 +1,4 @@
-# github.com/Azure/azure-sdk-for-go v61.3.0+incompatible
+# github.com/Azure/azure-sdk-for-go v61.4.0+incompatible
 ## explicit
 github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute
 github.com/Azure/azure-sdk-for-go/services/containerservice/mgmt/2020-04-01/containerservice
@@ -1209,6 +1209,7 @@ k8s.io/kubernetes/pkg/volume/util/volumepathhandler
 k8s.io/kubernetes/test/e2e/framework
 k8s.io/kubernetes/test/e2e/framework/auth
 k8s.io/kubernetes/test/e2e/framework/config
+k8s.io/kubernetes/test/e2e/framework/deployment
 k8s.io/kubernetes/test/e2e/framework/events
 k8s.io/kubernetes/test/e2e/framework/ginkgowrapper
 k8s.io/kubernetes/test/e2e/framework/kubectl

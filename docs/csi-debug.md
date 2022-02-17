@@ -25,7 +25,7 @@ kubectl logs $diskControllerName -n kube-system -c azuredisk > $diskControllerNa
 ```
 
 ### Case#2: volume mount/unmount failed
- - locate csi driver pod and make sure which pod do tha actual volume mount/unmount
+ - locate csi driver pod that does the actual volume mount/unmount
 ```console
 kubectl get po -o wide -n kube-system | grep csi-azuredisk-node
 ```
@@ -72,7 +72,7 @@ kubectl exec -it csi-azuredisk-node-win-xxxxx -n kube-system -c azuredisk cmd
 type c:\k\csi-proxy.err.log
 ```
 
-#### Update driver version quickly by editting driver deployment directly
+#### Update driver version quickly by editing driver deployment directly
  - update controller deployment
 ```console
 kubectl edit deployment csi-azuredisk-controller -n kube-system

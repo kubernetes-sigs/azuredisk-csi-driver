@@ -352,8 +352,38 @@ func (d *DriverV2) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest)
 		return nil, err
 	}
 
+<<<<<<< HEAD
 	if result == nil {
 		return nil, status.Error(codes.Unknown, "Error listing volumes")
+=======
+	// get all resource groups and put them into a sorted slice
+	rgMap := make(map[string]bool)
+	volSet := make(map[string]bool)
+	for _, pv := range pvList.Items {
+		if pv.Spec.CSI != nil && pv.Spec.CSI.Driver == d.Name {
+			diskURI := pv.Spec.CSI.VolumeHandle
+			if err := azureutils.IsValidDiskURI(diskURI); err != nil {
+				klog.Warningf("invalid disk uri (%s) with error(%v)", diskURI, err)
+				continue
+			}
+			rg, err := azureutils.GetResourceGroupFromURI(diskURI)
+			if err != nil {
+				klog.Warningf("failed to get resource group from disk uri (%s) with error(%v)", diskURI, err)
+				continue
+			}
+			subsID := azureutils.GetSubscriptionIDFromURI(diskURI)
+			if !strings.EqualFold(subsID, d.cloud.SubscriptionID) {
+				klog.V(6).Infof("disk(%s) not in current subscription(%s), skip", diskURI, d.cloud.SubscriptionID)
+				continue
+			}
+			rg, diskURI = strings.ToLower(rg), strings.ToLower(diskURI)
+			volSet[diskURI] = true
+			if _, visited := rgMap[rg]; visited {
+				continue
+			}
+			rgMap[rg] = true
+		}
+>>>>>>> upstream_local_copy
 	}
 
 	responseEntries := []*csi.ListVolumesResponse_Entry{}
