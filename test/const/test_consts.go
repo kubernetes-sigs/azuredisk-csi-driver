@@ -71,7 +71,7 @@ const (
 	testWindowsEnvVar       = "TEST_WINDOWS"
 	CloudNameEnvVar         = "AZURE_CLOUD_NAME"
 	inTreeStorageClass      = "kubernetes.io/azure-disk"
-	buildV2Driver           = "BUILD_V2"
+	BuildV2Driver           = "BUILD_V2"
 	useOnlyDefaultScheduler = "USE_ONLY_DEFAULT_SCHEDULER"
 
 	ExecTimeout = 10 * time.Second
@@ -153,7 +153,7 @@ var (
 	IsUsingInTreeVolumePlugin   = os.Getenv(AzureDriverNameVar) == inTreeStorageClass
 	IsTestingMigration          = os.Getenv(testMigrationEnvVar) != ""
 	IsWindowsCluster            = os.Getenv(testWindowsEnvVar) != ""
-	IsUsingCSIDriverV2          = strings.EqualFold(os.Getenv(buildV2Driver), "true")
+	IsUsingCSIDriverV2          = strings.EqualFold(os.Getenv(BuildV2Driver), "true")
 	IsUsingOnlyDefaultScheduler = os.Getenv(useOnlyDefaultScheduler) != ""
 	IsAzureStackCloud           = strings.EqualFold(os.Getenv(CloudNameEnvVar), "AZURESTACKCLOUD")
 )
