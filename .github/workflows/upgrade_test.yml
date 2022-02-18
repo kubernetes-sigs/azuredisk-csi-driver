@@ -26,7 +26,7 @@ jobs:
 
     - name: Set Azure resource group
       run: |
-        echo "AZURE_RESOURCE_GROUP=k8s-upgradeTest-${{ steps.generate-uuid.outputs.uuid }}-rg" >> $GITHUB_ENV
+        echo "AZURE_RESOURCE_GROUP=k8s-upgradeT-${{ steps.generate-uuid.outputs.uuid }}-rg" >> $GITHUB_ENV
     - name: Set up Go 1.x
       uses: actions/setup-go@v2
       with:
