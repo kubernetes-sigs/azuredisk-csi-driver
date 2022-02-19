@@ -53,6 +53,7 @@ var (
 	useCSIProxyGAInterface     = flag.Bool("use-csiproxy-ga-interface", true, "boolean flag to enable csi-proxy GA interface on Windows")
 	enableDiskOnlineResize     = flag.Bool("enable-disk-online-resize", true, "boolean flag to enable disk online resize")
 	allowEmptyCloudConfig      = flag.Bool("allow-empty-cloud-config", true, "Whether allow running driver without cloud config")
+	enableAsyncAttach          = flag.Bool("enable-async-attach", false, "boolean flag to enable async attach")
 )
 
 func main() {
@@ -89,6 +90,7 @@ func handle() {
 		UseCSIProxyGAInterface:     *useCSIProxyGAInterface,
 		EnableDiskOnlineResize:     *enableDiskOnlineResize,
 		AllowEmptyCloudConfig:      *allowEmptyCloudConfig,
+		EnableAsyncAttach:          *enableAsyncAttach,
 	}
 	driver := azuredisk.NewDriver(&driverOptions)
 	if driver == nil {

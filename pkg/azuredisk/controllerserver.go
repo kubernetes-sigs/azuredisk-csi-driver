@@ -372,10 +372,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		}
 		klog.V(2).Infof("Trying to attach volume %q to node %q", diskURI, nodeName)
 
-		asyncAttach := true
-		if volumeContext[consts.EnableAsyncAttachField] == consts.FalseValue {
-			asyncAttach = false
-		}
+		asyncAttach := isAsyncAttachEnabled(d.enableAsyncAttach, volumeContext)
 		lun, err = d.cloud.AttachDisk(ctx, asyncAttach, diskName, diskURI, nodeName, cachingMode, disk)
 		if err == nil {
 			klog.V(2).Infof("Attach operation successful: volume %q attached to node %q.", diskURI, nodeName)
@@ -989,4 +986,19 @@ func (d *Driver) getSnapshotInfo(snapshotID string) (snapshotName, resourceGroup
 		return "", "", "", fmt.Errorf("cannot get SubscriptionID from %s", snapshotID)
 	}
 	return snapshotName, resourceGroup, subsID, err
+}
+
+func isAsyncAttachEnabled(defaultValue bool, volumeContext map[string]string) bool {
+	for k, v := range volumeContext {
+		switch strings.ToLower(k) {
+		case consts.EnableAsyncAttachField:
+			if strings.EqualFold(v, consts.TrueValue) {
+				return true
+			}
+			if strings.EqualFold(v, consts.FalseValue) {
+				return false
+			}
+		}
+	}
+	return defaultValue
 }

@@ -22,19 +22,16 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
 	"github.com/Azure/go-autorest/autorest/date"
 	"github.com/Azure/go-autorest/autorest/to"
-	"github.com/stretchr/testify/assert"
-	v1 "k8s.io/api/core/v1"
-
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
-
+	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
-
+	v1 "k8s.io/api/core/v1"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockcorev1"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockkubeclient"
@@ -2006,4 +2003,43 @@ func getFakeDriverWithKubeClient(t *testing.T) FakeDriver {
 	d.getCloud().KubeClient.(*mockkubeclient.MockInterface).EXPECT().CoreV1().Return(corev1).AnyTimes()
 	d.getCloud().KubeClient.CoreV1().(*mockcorev1.MockInterface).EXPECT().PersistentVolumes().Return(persistentvolume).AnyTimes()
 	return d
+}
+
+func TestIsAsyncAttachEnabled(t *testing.T) {
+	tests := []struct {
+		name          string
+		defaultValue  bool
+		volumeContext map[string]string
+		expected      bool
+	}{
+		{
+			name:         "nil volumeContext",
+			defaultValue: false,
+			expected:     false,
+		},
+		{
+			name:          "empty volumeContext",
+			defaultValue:  true,
+			volumeContext: map[string]string{},
+			expected:      true,
+		},
+		{
+			name:          "false value in volumeContext",
+			defaultValue:  true,
+			volumeContext: map[string]string{"enableAsyncAttach": "false"},
+			expected:      false,
+		},
+		{
+			name:          "trie value in volumeContext",
+			defaultValue:  false,
+			volumeContext: map[string]string{"enableasyncattach": "true"},
+			expected:      true,
+		},
+	}
+	for _, test := range tests {
+		result := isAsyncAttachEnabled(test.defaultValue, test.volumeContext)
+		if result != test.expected {
+			t.Errorf("test(%s): result(%v) != expected result(%v)", test.name, result, test.expected)
+		}
+	}
 }
