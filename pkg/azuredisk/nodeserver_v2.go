@@ -541,6 +541,27 @@ func (d *DriverV2) ensureMountPoint(target string) (bool, error) {
 		}
 	}
 
+	if runtime.GOOS != "windows" {
+		// Check all the mountpoints in case IsLikelyNotMountPoint
+		// cannot handle --bind mount
+		mountList, err := d.mounter.List()
+		if err != nil {
+			return !notMnt, err
+		}
+
+		targetAbs, err := filepath.Abs(target)
+		if err != nil {
+			return !notMnt, err
+		}
+
+		for _, mountPoint := range mountList {
+			if mountPoint.Path == targetAbs {
+				notMnt = false
+				break
+			}
+		}
+	}
+
 	if !notMnt {
 		// testing original mount point, make sure the mount link is valid
 		_, err := ioutil.ReadDir(target)
