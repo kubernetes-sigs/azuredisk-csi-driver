@@ -23,6 +23,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"reflect"
 	"runtime"
 	"syscall"
@@ -1275,4 +1276,51 @@ func TestGetDevicePathWithMountPath(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestNodePublishVolumeIdempotentMount(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Getuid() != 0 {
+		return
+	}
+	stdVolCap := &csi.VolumeCapability_Mount{
+		Mount: &csi.VolumeCapability_MountVolume{
+			FsType: defaultLinuxFsType,
+		},
+	}
+	_ = makeDir(sourceTest)
+	_ = makeDir(targetTest)
+	d, _ := NewFakeDriver(t)
+
+	volumeCap := csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER}
+	req := csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap, AccessType: stdVolCap},
+		VolumeId:          "vol_1",
+		TargetPath:        targetTest,
+		StagingTargetPath: sourceTest,
+		Readonly:          true}
+
+	_, err := d.NodePublishVolume(context.Background(), &req)
+	assert.NoError(t, err)
+	_, err = d.NodePublishVolume(context.Background(), &req)
+	assert.NoError(t, err)
+
+	// ensure the target not be mounted twice
+	targetAbs, err := filepath.Abs(targetTest)
+	assert.NoError(t, err)
+
+	mountList, err := d.getMounter().List()
+	assert.NoError(t, err)
+	mountPointNum := 0
+	for _, mountPoint := range mountList {
+		if mountPoint.Path == targetAbs {
+			mountPointNum++
+		}
+	}
+	assert.Equal(t, 1, mountPointNum)
+	err = d.getMounter().Unmount(targetTest)
+	assert.NoError(t, err)
+	_ = d.getMounter().Unmount(targetTest)
+	err = os.RemoveAll(sourceTest)
+	assert.NoError(t, err)
+	err = os.RemoveAll(targetTest)
+	assert.NoError(t, err)
 }
