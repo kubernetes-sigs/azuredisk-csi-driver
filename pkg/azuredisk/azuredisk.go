@@ -59,6 +59,8 @@ type DriverOptions struct {
 	EnableDiskOnlineResize     bool
 	AllowEmptyCloudConfig      bool
 	EnableAsyncAttach          bool
+	EnableListVolumes          bool
+	EnableListSnapshots        bool
 }
 
 // CSIDriver defines the interface for a CSI driver.
@@ -93,6 +95,8 @@ type DriverCore struct {
 	enableDiskOnlineResize     bool
 	allowEmptyCloudConfig      bool
 	enableAsyncAttach          bool
+	enableListVolumes          bool
+	enableListSnapshots        bool
 }
 
 // Driver is the v1 implementation of the Azure Disk CSI Driver.
@@ -120,6 +124,8 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.enableDiskOnlineResize = options.EnableDiskOnlineResize
 	driver.allowEmptyCloudConfig = options.AllowEmptyCloudConfig
 	driver.enableAsyncAttach = options.EnableAsyncAttach
+	driver.enableListVolumes = options.EnableListVolumes
+	driver.enableListSnapshots = options.EnableListVolumes
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
@@ -184,18 +190,22 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 		klog.Fatalf("Failed to get safe mounter. Error: %v", err)
 	}
 
-	d.AddControllerServiceCapabilities(
-		[]csi.ControllerServiceCapability_RPC_Type{
-			csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
-			csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME,
-			csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT,
-			csi.ControllerServiceCapability_RPC_LIST_SNAPSHOTS,
-			csi.ControllerServiceCapability_RPC_CLONE_VOLUME,
-			csi.ControllerServiceCapability_RPC_EXPAND_VOLUME,
-			csi.ControllerServiceCapability_RPC_LIST_VOLUMES,
-			csi.ControllerServiceCapability_RPC_LIST_VOLUMES_PUBLISHED_NODES,
-			csi.ControllerServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER,
-		})
+	controllerCap := []csi.ControllerServiceCapability_RPC_Type{
+		csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
+		csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME,
+		csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT,
+		csi.ControllerServiceCapability_RPC_CLONE_VOLUME,
+		csi.ControllerServiceCapability_RPC_EXPAND_VOLUME,
+		csi.ControllerServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER,
+	}
+	if d.enableListVolumes {
+		controllerCap = append(controllerCap, csi.ControllerServiceCapability_RPC_LIST_VOLUMES, csi.ControllerServiceCapability_RPC_LIST_VOLUMES_PUBLISHED_NODES)
+	}
+	if d.enableListSnapshots {
+		controllerCap = append(controllerCap, csi.ControllerServiceCapability_RPC_LIST_SNAPSHOTS)
+	}
+
+	d.AddControllerServiceCapabilities(controllerCap)
 	d.AddVolumeCapabilityAccessModes(
 		[]csi.VolumeCapability_AccessMode_Mode{
 			csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
@@ -256,7 +266,7 @@ func (d *Driver) checkDiskExists(ctx context.Context, diskURI string) (*compute.
 
 func (d *Driver) checkDiskCapacity(ctx context.Context, subsID, resourceGroup, diskName string, requestGiB int) (bool, error) {
 	if d.isGetDiskThrottled() {
-		klog.Warningf("skip checkDiskCapacity((%s, %s) since it's still in throttling", resourceGroup, diskName)
+		klog.Warningf("skip checkDiskCapacity(%s, %s) since it's still in throttling", resourceGroup, diskName)
 		return true, nil
 	}
 
