@@ -13,7 +13,7 @@ jobs:
       AZURE_CLIENT_SECRET: ${{ secrets.ClientSecret }}
       AZURE_LOCATION: northeurope
       REGISTRY: e2etest.azurecr.io/mandalay
-      METRICS_ENDPOINT:  https://podfailovermetrics.westus3.cloudapp.azure.com/pod-failover
+      METRICS_ENDPOINT:  https://podfailovermetrics.northeurope.cloudapp.azure.com/pod-failover
       CA_CERT: ${{secrets.CACert}}
       CLIENT_CERT: ${{secrets.ClientCert}}
       CLIENT_KEY: ${{secrets.ClientKey}}
