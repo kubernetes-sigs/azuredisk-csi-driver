@@ -6,10 +6,9 @@ Note:
  - Pod restart on agent node is not necessary from v1.11.
 
 ## Prerequisite
-#### register `LiveResize` feature
-follow this [guide](https://docs.microsoft.com/en-us/azure/virtual-machines/linux/expand-disks#expand-an-azure-managed-disk)
+#### 1. follow this [guide](https://docs.microsoft.com/en-us/azure/virtual-machines/linux/expand-disks#expand-an-azure-managed-disk) to register `LiveResize` feature
 
-#### make sure `allowVolumeExpansion: true` is set in storage class.
+#### 2. make sure `allowVolumeExpansion: true` is set in storage class.
 
 <details>
 
@@ -22,8 +21,6 @@ provisioner: disk.csi.azure.com
 allowVolumeExpansion: true
 parameters:
   skuName: StandardSSD_LRS
-reclaimPolicy: Delete
-volumeBindingMode: Immediate
 ```
 
 </details>
