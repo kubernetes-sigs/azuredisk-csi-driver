@@ -190,7 +190,7 @@ type AzVolumeAttachmentAttachmentState string
 const (
 	// Unknown state is used in crdProvsioner.GetAzVolumeAttachmentState when the attachment does not exist.
 	AttachmentStateUnknown AzVolumeAttachmentAttachmentState = "Unknown"
-	// Pending indicates a state where no operation has been initated
+	// Pending indicates a state where no operation has been initiated
 	AttachmentPending AzVolumeAttachmentAttachmentState = "Pending"
 	// AttachmentInProgress indicates that node to volume attachment is in progress
 	Attaching AzVolumeAttachmentAttachmentState = "Attaching"
@@ -316,7 +316,7 @@ type AzDriverNodeStatus struct {
 	// +optional
 	LastHeartbeatTime *metav1.Time `json:"lastHeartbeatTime,omitempty"`
 
-	// ReadyForVolumeAllocation tells client wheather the node plug-in is ready for volume allocation.
+	// ReadyForVolumeAllocation tells client whether the node plug-in is ready for volume allocation.
 	// If status is not present or ReadyForVolumeAllocation, then clients should prefer
 	// other nodes in the clusters for azure persistent volumes\pod placements for pods with azure disks.
 	// +optional
@@ -330,7 +330,7 @@ type AzDriverNodeStatus struct {
 	StatusMessage *string `json:"statusMessage,omitempty"`
 
 	// Conditions contains an array of generic AzDriver related health conditions
-	// These conditions can be used programatically to take decisions
+	// These conditions can be used programmatically to take decisions
 	// +optional
 	// +patchMergeKey=type
 	// +patchStrategy=merge

@@ -92,7 +92,7 @@ func accountSupportsPerfOptimization(accountType string) bool {
 	return false
 }
 
-// Gets device setting from the Disk attribute/param but triming the consts.DeviceSettingsKeyPrefix prefix
+// Gets device setting from the Disk attribute/param but trimming the consts.DeviceSettingsKeyPrefix prefix
 func GetDeviceSettingFromAttribute(key string) (deviceSetting string, err error) {
 
 	if !strings.HasPrefix(key, consts.DeviceSettingsKeyPrefix) {

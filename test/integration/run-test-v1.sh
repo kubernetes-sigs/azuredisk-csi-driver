@@ -34,4 +34,4 @@ _output/${ARCH}/azurediskplugin --endpoint  $1 --nodeid $2 -v=5 &
 
 echo "Begin to run integration test on $3..."
 
-test/integration/run-test.sh $*
+test/integration/run-test.sh "$@"

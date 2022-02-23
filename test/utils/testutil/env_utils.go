@@ -56,11 +56,25 @@ func GetSchedulerForE2E() string {
 }
 
 func IsZRSSupported(location string) bool {
-	return location == "westus2" || location == "westeurope"
+	return location == "westus2" || location == "westeurope" || location == "northeurope" || location == "francecentral"
 }
 
 func SkipIfNotZRSSupported(location string) {
 	if !(IsZRSSupported(location)) {
 		ginkgo.Skip("test case not supported on regions without ZRS")
+	}
+}
+
+func SkipIfNotDynamicallyResizeSupported(location string) {
+	supportsDynamicResize := false
+	for _, zone := range testconsts.DynamicResizeZones {
+		if location == zone {
+			supportsDynamicResize = true
+			break
+		}
+	}
+
+	if !supportsDynamicResize {
+		ginkgo.Skip("test case not supported no regions without dynamic resize support")
 	}
 }

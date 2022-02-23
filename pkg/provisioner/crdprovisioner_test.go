@@ -897,7 +897,7 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 			expectedError:           nil,
 		},
 		{
-			description:             "[Failure] Retun NotFound error when invalid diskURI is passed",
+			description:             "[Failure] Return NotFound error when invalid diskURI is passed",
 			existingAzVolAttachment: nil,
 			diskURI:                 invalidDiskURI,
 			nodeID:                  testNodeName,
@@ -1027,7 +1027,7 @@ func TestCrdProvisionerExpandVolume(t *testing.T) {
 			expectedError:        nil,
 		},
 		{
-			description:       "[Failure] Return an error when the AzVolume CRI with the given diskURI doesnt exist",
+			description:       "[Failure] Return an error when the AzVolume CRI with the given diskURI doesn't exist",
 			existingAzVolumes: nil,
 			diskURI:           testDiskURI,
 			capacityRange: &diskv1alpha2.CapacityRange{

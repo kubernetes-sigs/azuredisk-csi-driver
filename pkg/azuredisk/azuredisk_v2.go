@@ -283,7 +283,7 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 		os.Exit(1)
 	}
 
-	// Intialize the driver event recorder
+	// Initialize the driver event recorder
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: d.kubeClient.CoreV1().Events("")})
 	eventRecorder := eventBroadcaster.NewRecorder(clientgoscheme.Scheme, v1.EventSource{Component: consts.AzureDiskCSIDriverName})

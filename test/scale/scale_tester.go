@@ -242,7 +242,7 @@ func (t *PodSchedulingOnFailoverScaleTest) Run(client clientset.Interface, names
 	ginkgo.By("Sleep 30mins waiting for statefulset update to complete")
 	time.Sleep(30 * time.Minute)
 
-	ginkgo.By("Reseting the scale for the statefulsets to 1")
+	ginkgo.By("Resetting the scale for the statefulsets to 1")
 	start = time.Now()
 
 	for i := range statefulSets {
