@@ -54,8 +54,8 @@ var (
 	enableDiskOnlineResize     = flag.Bool("enable-disk-online-resize", true, "boolean flag to enable disk online resize")
 	allowEmptyCloudConfig      = flag.Bool("allow-empty-cloud-config", true, "Whether allow running driver without cloud config")
 	enableAsyncAttach          = flag.Bool("enable-async-attach", false, "boolean flag to enable async attach")
-	enableListVolumes          = flag.Bool("enable-list-volumes", true, "boolean flag to enable ListVolumes on controller")
-	enableListSnapshots        = flag.Bool("enable-list-snapshots", true, "boolean flag to enable ListSnapshots on controller")
+	enableListVolumes          = flag.Bool("enable-list-volumes", false, "boolean flag to enable ListVolumes on controller")
+	enableListSnapshots        = flag.Bool("enable-list-snapshots", false, "boolean flag to enable ListSnapshots on controller")
 )
 
 func main() {
