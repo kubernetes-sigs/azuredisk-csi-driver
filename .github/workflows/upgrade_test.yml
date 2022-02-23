@@ -12,7 +12,7 @@ jobs:
       AZURE_SUBSCRIPTION_ID: ${{ secrets.SubscriptionId }}
       AZURE_CLIENT_ID: ${{ secrets.ClientId }}
       AZURE_CLIENT_SECRET: ${{ secrets.ClientSecret }}
-      AZURE_LOCATION: westus3
+      AZURE_LOCATION: eastus
 
     steps:
     - name: Cancel Previous Runs
