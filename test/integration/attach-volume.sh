@@ -26,7 +26,8 @@ fi
 
 export nodeName=$1
 export volumeName=$2
-export volumeId=$(kubectl get azvolume ${volumeName} -n azure-disk-csi -o yaml | egrep -i '/subscriptions/[a-z0-9_\-]+/resourceGroups/[a-z0-9_\-]+/providers/Microsoft.Compute/disks/[a-z0-9_\-]+' | awk -F' ' '{ print $2 }')
+export volumeList="kubectl get azvolume ${volumeName} -n azure-disk-csi -o yaml"
+export volumeId=$( $volumeList | egrep -i '/subscriptions/[a-z0-9_\-]+/resourceGroups/[a-z0-9_\-]+/providers/Microsoft.Compute/disks/[a-z0-9_\-]+' | awk -F' ' '{ print $2 }')
 
 if [ "$mode" = "attach" ]; then
   tee <<-EOF > new-azvolumeattachment.yaml;

@@ -58,7 +58,7 @@ func TestSanity(t *testing.T) {
 
 	// Set necessary env vars for sanity test
 	os.Setenv("AZURE_CREDENTIAL_FILE", testconsts.TempAzureCredentialFilePath)
-	os.Setenv("nodeid", nodeid)
+	os.Setenv("NODEID", nodeid)
 
 	azureClient, err := azure.GetAzureClient(creds.Cloud, creds.SubscriptionID, creds.AADClientID, creds.TenantID, creds.AADClientSecret)
 	azure.AssertNoError(t, err)

@@ -16,6 +16,7 @@
 
 set -euo pipefail
 
+t="$(date +%s)"
 readonly CSC_BIN="$GOBIN/csc"
 readonly volname="citest-$t"
 

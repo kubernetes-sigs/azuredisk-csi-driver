@@ -568,12 +568,12 @@ func (c *controllerCommon) filterNonExistingDisks(ctx context.Context, unfiltere
 
 func (c *controllerCommon) checkDiskExists(ctx context.Context, diskURI string) (bool, error) {
 	diskName := path.Base(diskURI)
-	resourceGroup, err := getResourceGroupFromDiskURI(diskURI)
+	resourceGroup, subsID, err := getInfoFromDiskURI(diskURI)
 	if err != nil {
 		return false, err
 	}
 
-	if _, rerr := c.cloud.DisksClient.Get(ctx, resourceGroup, diskName); rerr != nil {
+	if _, rerr := c.cloud.DisksClient.Get(ctx, subsID, resourceGroup, diskName); rerr != nil {
 		if rerr.HTTPStatusCode == http.StatusNotFound {
 			return false, nil
 		}

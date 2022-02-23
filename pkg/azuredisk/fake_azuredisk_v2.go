@@ -141,11 +141,18 @@ func (d *fakeDriverV2) setCloud(cloud *provider.Cloud) {
 	d.cloudProvisioner.(*provisioner.FakeCloudProvisioner).SetCloud(cloud)
 }
 
-func (d *fakeDriverV2) getSnapshotInfo(snapshotID string) (string, string, error) {
-	return d.cloudProvisioner.(*provisioner.FakeCloudProvisioner).GetSnapshotAndResourceNameFromSnapshotID(snapshotID)
+func (d *fakeDriverV2) getSnapshotInfo(snapshotID string) (string, string, string, error) {
+	snapshotName, resourceGroup, err := d.cloudProvisioner.(*provisioner.FakeCloudProvisioner).GetSnapshotAndResourceNameFromSnapshotID(snapshotID)
+	subID := azureutils.GetSubscriptionIDFromURI(snapshotID)
+
+	if err != nil {
+		return "", "", "", err
+	}
+
+	return snapshotName, resourceGroup, subID, err
 }
 
-func (d *fakeDriverV2) checkDiskCapacity(ctx context.Context, resourceGroup, diskName string, requestGiB int) (bool, error) {
+func (d *fakeDriverV2) checkDiskCapacity(ctx context.Context, subscriptionID, resourceGroup, diskName string, requestGiB int) (bool, error) {
 	return false, nil
 }
 

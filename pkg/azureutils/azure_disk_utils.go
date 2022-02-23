@@ -72,7 +72,7 @@ const (
 	// default IOPS Caps & Throughput Cap (MBps) per https://docs.microsoft.com/en-us/azure/virtual-machines/linux/disks-ultra-ssd
 	// see https://docs.microsoft.com/en-us/rest/api/compute/disks/createorupdate#uri-parameters
 	diskNameMinLength = 1
-	// Reseting max length to 63 since the disk name is used in the label "volume-name"
+	// Resetting max length to 63 since the disk name is used in the label "volume-name"
 	// of the kubernetes object and a label cannot have length greater than 63.
 	// https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
 	diskNameMaxLengthForLabel = 63
@@ -545,7 +545,7 @@ func GetDiskName(diskURI string) (string, error) {
 	return matches[1], nil
 }
 
-// GetResourceGroupFromURI returns resource groupd from URI
+// GetResourceGroupFromURI returns resource grouped from URI
 func GetResourceGroupFromURI(diskURI string) (string, error) {
 	fields := strings.Split(diskURI, "/")
 	if len(fields) != 9 || strings.ToLower(fields[3]) != "resourcegroups" {

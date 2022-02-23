@@ -50,7 +50,6 @@ var (
 	skipClusterBootstrap = flag.Bool("skip-cluster-bootstrap", false, "flag to indicate that we can skip cluster bootstrap.")
 	azureCloud           *provider.Cloud
 	location             string
-	supportsZRS          bool
 )
 
 var _ = ginkgo.BeforeSuite(func() {
@@ -74,39 +73,6 @@ var _ = ginkgo.BeforeSuite(func() {
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		location = creds.Location
-
-		if location == "westus2" || location == "westeurope" || location == "northeurope" || location == "francecentral" {
-			supportsZRS = true
-		}
-
-		dynamicResizeZones := []string{
-			"westcentralus",
-			"francesouth",
-			"westindia",
-			"norwaywest",
-			"eastasia",
-			"francecentral",
-			"germanywestcentral",
-			"japanwest",
-			"southafricanorth",
-			"jioindiawest",
-			"canadacentral",
-			"australiacentral",
-			"japaneast",
-			"northeurope",
-			"centralindia",
-			"uaecentral",
-			"switzerlandwest",
-			"brazilsouth",
-			"uksouth"}
-
-		supportsDynamicResize = false
-		for _, zone := range dynamicResizeZones {
-			if location == zone {
-				supportsDynamicResize = true
-				break
-			}
-		}
 
 		// Install Azure Disk CSI Driver on cluster from project root
 		e2eBootstrap := testtypes.TestCmd{

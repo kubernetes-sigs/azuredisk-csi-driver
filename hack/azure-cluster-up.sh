@@ -291,7 +291,7 @@ if [[ -z ${OUTPUT_DIR:-} ]]; then
   OUTPUT_DIR="$GIT_ROOT/_output/$AZURE_CLUSTER_DNS_NAME"
 fi
 
-# Ensure the output directory exsits.
+# Ensure the output directory exists.
 mkdir -p $OUTPUT_DIR
 
 #

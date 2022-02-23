@@ -63,9 +63,11 @@ func TestIntegrationOnAzurePublicCloud(t *testing.T) {
 	useDriverV2 := strings.EqualFold(*testDriverVersion, driverV2)
 
 	if useDriverV2 {
-		os.Setenv("nodeid_0", nodeids[0])
-		os.Setenv("nodeid_1", nodeids[1])
-		os.Setenv("nodeid_2", nodeids[2])
+		os.Setenv("NODEID_0", nodeids[0])
+		os.Setenv("NODEID_1", nodeids[1])
+		os.Setenv("NODEID_2", nodeids[2])
+	} else {
+		os.Setenv("NODEID", nodeids[0])
 	}
 
 	azureClient, err := azure.GetAzureClient(creds.Cloud, creds.SubscriptionID, creds.AADClientID, creds.TenantID, creds.AADClientSecret)

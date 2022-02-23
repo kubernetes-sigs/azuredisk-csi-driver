@@ -70,8 +70,8 @@ spec:
             properties:
               conditions:
                 description: Conditions contains an array of generic AzDriver related
-                  health conditions These conditions can be used programatically to
-                  take decisions
+                  health conditions These conditions can be used programmatically
+                  to take decisions
                 items:
                   description: AzDriverCondition defines condition for the AzDriver
                   properties:
@@ -111,7 +111,7 @@ spec:
                 format: date-time
                 type: string
               readyForVolumeAllocation:
-                description: ReadyForVolumeAllocation tells client wheather the node
+                description: ReadyForVolumeAllocation tells client whether the node
                   plug-in is ready for volume allocation. If status is not present
                   or ReadyForVolumeAllocation, then clients should prefer other nodes
                   in the clusters for azure persistent volumes\pod placements for

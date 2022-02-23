@@ -494,7 +494,7 @@ func (r *ReconcileAzVolume) recoverAzVolume(ctx context.Context, recoveredAzVolu
 			}
 
 			if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, &azv, updateFunc, consts.ForcedUpdateMaxNetRetry); err != nil {
-				klog.Warningf("failed to udpate AzVolume (%s) for recovery: %v", azv.Name)
+				klog.Warningf("failed to update AzVolume (%s) for recovery: %v", azv.Name)
 			} else {
 				// if update succeeded, add the CRI to the recoveryComplete list
 				azvMap.Store(azv.Name, struct{}{})

@@ -86,7 +86,7 @@ type FakeDriver interface {
 	setMounter(*mount.SafeFormatAndMount)
 	setPathIsDeviceResult(path string, isDevice bool, err error)
 
-	getSnapshotInfo(string) (string, string, error)
+	getSnapshotInfo(string) (string, string, string, error)
 	ensureMountPoint(string) (bool, error)
 
 	checkDiskCapacity(context.Context, string, string, string, int) (bool, error)

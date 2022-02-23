@@ -44,7 +44,7 @@ func (w *conditionWaiter) Wait(ctx context.Context) (runtime.Object, error) {
 	}
 
 	// if there exists an object in cache, evaluate condition function on it
-	// if condtion function returns error, the error could be coming from stale cache, so wait for another condition assessment from event handler.
+	// if condition function returns error, the error could be coming from stale cache, so wait for another condition assessment from event handler.
 	if err == nil {
 		success, _ := w.entry.conditionFunc(obj, false)
 		if success {

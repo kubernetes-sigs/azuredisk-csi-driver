@@ -49,8 +49,8 @@ import (
 type DynamicallyProvisionedResizeVolumeTest struct {
 	CSIDriver              driver.DynamicPVTestDriver
 	StorageClassParameters map[string]string
-	Pod                    PodDetails
-	Volume                 VolumeDetails
+	Pod                    testtypes.PodDetails
+	Volume                 testtypes.VolumeDetails
 	ResizeOffline          bool
 }
 
@@ -89,7 +89,7 @@ func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface,
 
 	if t.ResizeOffline {
 		// Scale statefulset to 0
-		_, err = client.AppsV1().StatefulSets(tStatefulSet.namespace.Name).UpdateScale(context.TODO(), tStatefulSet.statefulset.Name, newScale, metav1.UpdateOptions{})
+		_, err = client.AppsV1().StatefulSets(tStatefulSet.Namespace.Name).UpdateScale(context.TODO(), tStatefulSet.Statefulset.Name, newScale, metav1.UpdateOptions{})
 		framework.ExpectNoError(err)
 
 		// wait for volume to detach
@@ -172,7 +172,7 @@ func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface,
 		// Scale the stateful set back to 1 pod
 		newScale.Spec.Replicas = int32(1)
 
-		_, err = client.AppsV1().StatefulSets(tStatefulSet.namespace.Name).UpdateScale(context.TODO(), tStatefulSet.statefulset.Name, newScale, metav1.UpdateOptions{})
+		_, err = client.AppsV1().StatefulSets(tStatefulSet.Namespace.Name).UpdateScale(context.TODO(), tStatefulSet.Statefulset.Name, newScale, metav1.UpdateOptions{})
 		framework.ExpectNoError(err)
 
 		ginkgo.By("sleep 30s waiting for statefulset update complete")

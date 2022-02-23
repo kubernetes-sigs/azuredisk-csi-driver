@@ -347,7 +347,7 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 		return nil
 	}
 
-	// update AzVolume CRI with annotation and resetted state with retry upon conflict
+	// update AzVolume CRI with annotation and reset state with retry upon conflict
 	if err := azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.informerFactory, nil, c.azDiskClient, azVolumeInstance, updateFunc, consts.NormalUpdateMaxNetRetry); err != nil {
 		return err
 	}
@@ -611,8 +611,8 @@ func (c *CrdProvisioner) ExpandVolume(
 	}
 
 	updateFunc := func(obj interface{}) error {
-		udpateInstance := obj.(*diskv1alpha2.AzVolume)
-		udpateInstance.Spec.CapacityRange = capacityRange
+		updateInstance := obj.(*diskv1alpha2.AzVolume)
+		updateInstance.Spec.CapacityRange = capacityRange
 		return nil
 	}
 
@@ -665,7 +665,7 @@ func isAzVolumeSpecSameAsRequestParams(defaultAzVolume *diskv1alpha2.AzVolume,
 	secrets map[string]string,
 	volumeContentSource *diskv1alpha2.ContentVolumeSource,
 	accessibilityReq *diskv1alpha2.TopologyRequirement) bool {
-	// Since, reflect.DeepEqual doesnt treat nil and empty map/array as equal.
+	// Since, reflect. DeepEqual doesn't treat nil and empty map/array as equal.
 	// For comparison purpose, we want nil and empty map/array as equal.
 	// Thus, modifyng the nil values to empty map/array for desired result.
 	defaultParams := defaultAzVolume.Spec.Parameters
