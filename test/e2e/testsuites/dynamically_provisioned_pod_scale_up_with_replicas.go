@@ -28,7 +28,7 @@ import (
 	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
-	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
+	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 	nodeutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/node"
 )
 
@@ -36,8 +36,8 @@ import (
 // Primary AzVolumeAttachment and Replica AzVolumeAttachments should be created on set of nodes with matching label
 type PodNodeScaleUp struct {
 	CSIDriver              driver.DynamicPVTestDriver
-	Pod                    testtypes.PodDetails
-	Volume                 testtypes.VolumeDetails
+	Pod                    resources.PodDetails
+	Volume                 resources.VolumeDetails
 	IsMultiZone            bool
 	AzDiskClient           *azDiskClientSet.Clientset
 	StorageClassParameters map[string]string
@@ -53,7 +53,7 @@ func (t *PodNodeScaleUp) Run(client clientset.Interface, namespace *v1.Namespace
 	}
 
 	//Cordon a node
-	testPod := testtypes.TestPod{
+	testPod := resources.TestPod{
 		Client: client,
 	}
 	testPod.SetNodeUnschedulable(nodes[0], true)
@@ -77,7 +77,7 @@ func (t *PodNodeScaleUp) Run(client clientset.Interface, namespace *v1.Namespace
 	var failedReplicaAttachments *diskv1alpha2.AzVolumeAttachmentList
 	err := wait.Poll(15*time.Second, 10*time.Minute, func() (bool, error) {
 		var err error
-		allReplicasAttached, failedReplicaAttachments, err = testtypes.VerifySuccessfulReplicaAzVolumeAttachments(t.Pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
+		allReplicasAttached, failedReplicaAttachments, err = resources.VerifySuccessfulReplicaAzVolumeAttachments(t.Pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
 		return allReplicasAttached, err
 	})
 
@@ -103,7 +103,7 @@ func (t *PodNodeScaleUp) Run(client clientset.Interface, namespace *v1.Namespace
 	failedReplicaAttachments = nil
 	err = wait.Poll(15*time.Second, 10*time.Minute, func() (bool, error) {
 		var err error
-		allReplicasAttached, failedReplicaAttachments, err = testtypes.VerifySuccessfulReplicaAzVolumeAttachments(t.Pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
+		allReplicasAttached, failedReplicaAttachments, err = resources.VerifySuccessfulReplicaAzVolumeAttachments(t.Pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
 		return allReplicasAttached, err
 	})
 

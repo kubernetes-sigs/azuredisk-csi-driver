@@ -23,7 +23,7 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
-	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
+	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
 )
 
@@ -53,12 +53,12 @@ func scaleTests(isMultiZone bool) {
 
 	ginkgo.It("Scale test scheduling and starting multiple pods with a persistent volume.", func() {
 		testutil.SkipIfUsingInTreeVolumePlugin()
-		volumes := []testtypes.VolumeDetails{}
+		volumes := []resources.VolumeDetails{}
 		for j := 1; j <= 1; j++ {
-			volume := testtypes.VolumeDetails{
+			volume := resources.VolumeDetails{
 				FSType:    "ext4",
 				ClaimSize: "256Gi",
-				VolumeMount: testtypes.VolumeMountDetails{
+				VolumeMount: resources.VolumeMountDetails{
 					NameGenerate:      "test-volume-",
 					MountPathGenerate: "/mnt/test-",
 				},
@@ -66,9 +66,9 @@ func scaleTests(isMultiZone bool) {
 			volumes = append(volumes, volume)
 		}
 
-		pod := testtypes.PodDetails{
+		pod := resources.PodDetails{
 			Cmd:       testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
-			Volumes:   testutil.NormalizeVolumes(volumes, []string{}, isMultiZone),
+			Volumes:   resources.NormalizeVolumes(volumes, []string{}, isMultiZone),
 			IsWindows: testconsts.IsWindowsCluster,
 		}
 		test := PodSchedulingWithPVScaleTest{}
@@ -85,10 +85,10 @@ func scaleTests(isMultiZone bool) {
 		testutil.SkipIfUsingInTreeVolumePlugin()
 		testutil.SkipIfNotUsingCSIDriverV2()
 
-		volume := testtypes.VolumeDetails{
+		volume := resources.VolumeDetails{
 			FSType:    "ext3",
 			ClaimSize: "10Gi",
-			VolumeMount: testtypes.VolumeMountDetails{
+			VolumeMount: resources.VolumeMountDetails{
 				NameGenerate:      "test-volume-",
 				MountPathGenerate: "/mnt/test-",
 			},
@@ -98,9 +98,9 @@ func scaleTests(isMultiZone bool) {
 			},
 		}
 
-		pod := testtypes.PodDetails{
+		pod := resources.PodDetails{
 			Cmd:       testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
-			Volumes:   testutil.NormalizeVolumes([]testtypes.VolumeDetails{volume}, []string{}, isMultiZone),
+			Volumes:   resources.NormalizeVolumes([]resources.VolumeDetails{volume}, []string{}, isMultiZone),
 			IsWindows: testconsts.IsWindowsCluster,
 			UseCMD:    false,
 		}
@@ -120,12 +120,12 @@ func scaleTests(isMultiZone bool) {
 		testutil.SkipIfNotUsingCSIDriverV2()
 
 		volMountedToPod := 3
-		volumes := []testtypes.VolumeDetails{}
+		volumes := []resources.VolumeDetails{}
 		for j := 1; j <= volMountedToPod; j++ {
-			volume := testtypes.VolumeDetails{
+			volume := resources.VolumeDetails{
 				FSType:    "ext3",
 				ClaimSize: "10Gi",
-				VolumeMount: testtypes.VolumeMountDetails{
+				VolumeMount: resources.VolumeMountDetails{
 					NameGenerate:      "test-volume-",
 					MountPathGenerate: "/mnt/test-",
 				},
@@ -133,9 +133,9 @@ func scaleTests(isMultiZone bool) {
 			volumes = append(volumes, volume)
 		}
 
-		pod := testtypes.PodDetails{
+		pod := resources.PodDetails{
 			Cmd:       testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
-			Volumes:   testutil.NormalizeVolumes(volumes, []string{}, isMultiZone),
+			Volumes:   resources.NormalizeVolumes(volumes, []string{}, isMultiZone),
 			IsWindows: testconsts.IsWindowsCluster,
 		}
 
@@ -151,12 +151,12 @@ func scaleTests(isMultiZone bool) {
 		testutil.SkipIfUsingInTreeVolumePlugin()
 
 		volMountedOnPod := 3
-		volumes := []testtypes.VolumeDetails{}
+		volumes := []resources.VolumeDetails{}
 		for j := 1; j <= volMountedOnPod; j++ {
-			volume := testtypes.VolumeDetails{
+			volume := resources.VolumeDetails{
 				FSType:    "ext4",
 				ClaimSize: "256Gi",
-				VolumeMount: testtypes.VolumeMountDetails{
+				VolumeMount: resources.VolumeMountDetails{
 					NameGenerate:      "test-volume-",
 					MountPathGenerate: "/mnt/test-",
 				},
@@ -164,9 +164,9 @@ func scaleTests(isMultiZone bool) {
 			volumes = append(volumes, volume)
 		}
 
-		pod := testtypes.PodDetails{
+		pod := resources.PodDetails{
 			Cmd:       testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
-			Volumes:   testutil.NormalizeVolumes(volumes, []string{}, isMultiZone),
+			Volumes:   resources.NormalizeVolumes(volumes, []string{}, isMultiZone),
 			IsWindows: testconsts.IsWindowsCluster,
 		}
 

@@ -24,6 +24,7 @@ import (
 	"google.golang.org/grpc/status"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
+	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 	nodeutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/node"
 
 	"github.com/onsi/ginkgo"
@@ -37,14 +38,13 @@ import (
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
-	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
 )
 
 // PreProvisionedCheckForReplicasTest will provision required PV(s), PVC(s) and Pod(s)
 // Test will create a pods with shared disks and will verify that correct number of replica attachments are created
 type PreProvisionedCheckForReplicasTest struct {
 	CSIDriver     driver.PreProvisionedVolumeTestDriver
-	Pods          []testtypes.PodDetails
+	Pods          []resources.PodDetails
 	VolumeName    string
 	AzDiskClient  azDiskClientSet.Interface
 	VolumeContext map[string]string

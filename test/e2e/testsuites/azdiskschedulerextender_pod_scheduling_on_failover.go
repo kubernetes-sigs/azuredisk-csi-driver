@@ -27,7 +27,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
-	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
+	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 	nodeutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/node"
 )
 
@@ -35,7 +35,7 @@ import (
 // Pod should successfully be re-scheduled on failover/scaling in a cluster with AzDriverNode and AzVolumeAttachment resources
 type AzDiskSchedulerExtenderPodSchedulingOnFailover struct {
 	CSIDriver              driver.DynamicPVTestDriver
-	Pod                    testtypes.PodDetails
+	Pod                    resources.PodDetails
 	StorageClassParameters map[string]string
 }
 
