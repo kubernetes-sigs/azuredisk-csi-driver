@@ -24,15 +24,11 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	kubeClientSet "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
-	azClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
-	azVolumeClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -44,9 +40,6 @@ import (
 
 //Struct for the reconciler
 type ReconcilePV struct {
-	client         client.Client
-	azVolumeClient azVolumeClientSet.Interface
-	kubeClient     kubeClientSet.Interface
 	// retryMap allows volumeAttachment controller to retry Get operation for AzVolume in case the CRI has not been created yet
 	controllerRetryInfo   *retryInfo
 	controllerSharedState *SharedState
@@ -59,7 +52,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 	var pv corev1.PersistentVolume
 	var azVolume diskv1alpha2.AzVolume
 	// Ignore not found errors as they cannot be fixed by a requeue
-	if err := r.client.Get(ctx, request.NamespacedName, &pv); err != nil {
+	if err := r.controllerSharedState.cachedClient.Get(ctx, request.NamespacedName, &pv); err != nil {
 		if errors.IsNotFound(err) {
 			return reconcileReturnOnSuccess(request.Name, r.controllerRetryInfo)
 		}
@@ -83,7 +76,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 
 	// PV is deleted
 	if objectDeletionRequested(&pv) {
-		if err := r.client.Get(ctx, types.NamespacedName{Namespace: r.controllerSharedState.objectNamespace, Name: azVolumeName}, &azVolume); err != nil {
+		if err := r.controllerSharedState.cachedClient.Get(ctx, types.NamespacedName{Namespace: r.controllerSharedState.objectNamespace, Name: azVolumeName}, &azVolume); err != nil {
 			// AzVolume doesn't exist, so there is nothing for us to do
 			if errors.IsNotFound(err) {
 				return reconcileReturnOnSuccess(pv.Name, r.controllerRetryInfo)
@@ -103,11 +96,11 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 			azv.Annotations[consts.PreProvisionedVolumeCleanupAnnotation] = "true"
 			return nil
 		}
-		if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, &azVolume, updateFunc, consts.NormalUpdateMaxNetRetry); err != nil {
+		if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, &azVolume, updateFunc, consts.NormalUpdateMaxNetRetry); err != nil {
 			return reconcileReturnOnError(&pv, "delete", err, r.controllerRetryInfo)
 		}
 
-		if err := r.azVolumeClient.DiskV1alpha2().AzVolumes(r.controllerSharedState.objectNamespace).Delete(ctx, azVolumeName, metav1.DeleteOptions{}); err != nil {
+		if err := r.controllerSharedState.azClient.DiskV1alpha2().AzVolumes(r.controllerSharedState.objectNamespace).Delete(ctx, azVolumeName, metav1.DeleteOptions{}); err != nil {
 			klog.Errorf("failed to set the deletion timestamp for AzVolume (%s): %v", azVolumeName, err)
 			return reconcileReturnOnError(&pv, "delete", err, r.controllerRetryInfo)
 		}
@@ -119,7 +112,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 	}
 
 	// PV exists but AzVolume doesn't
-	if err := r.client.Get(ctx, types.NamespacedName{Namespace: r.controllerSharedState.objectNamespace, Name: azVolumeName}, &azVolume); err != nil {
+	if err := r.controllerSharedState.cachedClient.Get(ctx, types.NamespacedName{Namespace: r.controllerSharedState.objectNamespace, Name: azVolumeName}, &azVolume); err != nil {
 		// if getting AzVolume failed due to errors other than it doesn't exist, we requeue and retry
 		if !errors.IsNotFound(err) {
 			klog.V(5).Infof("failed to get AzVolume (%s): %v", diskName, err)
@@ -130,7 +123,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 		annotation := map[string]string{
 			consts.PreProvisionedVolumeAnnotation: "true",
 		}
-		if err := createAzVolumeFromPv(ctx, pv, r.azVolumeClient, r.kubeClient, r.controllerSharedState.objectNamespace, annotation, r.controllerSharedState); err != nil {
+		if err := r.controllerSharedState.createAzVolumeFromPv(ctx, pv, annotation); err != nil {
 			if !errors.IsAlreadyExists(err) {
 				// if creating AzVolume failed, retry with exponential back off
 				klog.Infof("Failed to create AzVolume (%s). Err: %v.", azVolumeName, err)
@@ -161,7 +154,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 func (r *ReconcilePV) triggerRelease(ctx context.Context, azVolume *diskv1alpha2.AzVolume) error {
 	klog.Infof("Volume released: Initiating AzVolumeAttachment Clean-up")
 
-	if _, err := cleanUpAzVolumeAttachmentByVolume(ctx, r, azVolume.Name, "pv controller", replicaOnly, detachAndDeleteCRI, r.controllerSharedState); err != nil {
+	if _, err := r.controllerSharedState.cleanUpAzVolumeAttachmentByVolume(ctx, azVolume.Name, "pv controller", replicaOnly, detachAndDeleteCRI); err != nil {
 		return err
 	}
 
@@ -169,7 +162,7 @@ func (r *ReconcilePV) triggerRelease(ctx context.Context, azVolume *diskv1alpha2
 }
 
 func (r *ReconcilePV) Recover(ctx context.Context) error {
-	volumes, err := r.kubeClient.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
+	volumes, err := r.controllerSharedState.kubeClient.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
@@ -188,13 +181,10 @@ func (r *ReconcilePV) Recover(ctx context.Context) error {
 	return nil
 }
 
-func NewPVController(mgr manager.Manager, azVolumeClient azVolumeClientSet.Interface, kubeClient kubeClientSet.Interface, controllerSharedState *SharedState) (*ReconcilePV, error) {
+func NewPVController(mgr manager.Manager, controllerSharedState *SharedState) (*ReconcilePV, error) {
 	logger := mgr.GetLogger().WithValues("controller", "azvolume")
 	reconciler := ReconcilePV{
-		client:                mgr.GetClient(),
-		kubeClient:            kubeClient,
 		controllerRetryInfo:   newRetryInfo(),
-		azVolumeClient:        azVolumeClient,
 		controllerSharedState: controllerSharedState,
 	}
 
@@ -213,7 +203,7 @@ func NewPVController(mgr manager.Manager, azVolumeClient azVolumeClientSet.Inter
 
 	p := predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
-			return false
+			return true
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			return true
@@ -235,16 +225,4 @@ func NewPVController(mgr manager.Manager, azVolumeClient azVolumeClientSet.Inter
 
 	klog.V(2).Info("Controller set-up successful.")
 	return &reconciler, nil
-}
-
-func (r *ReconcilePV) getClient() client.Client {
-	return r.client
-}
-
-func (r *ReconcilePV) getAzClient() azClientSet.Interface {
-	return r.azVolumeClient
-}
-
-func (r *ReconcilePV) getSharedState() *SharedState {
-	return r.controllerSharedState
 }

@@ -78,6 +78,8 @@ type FakeDriver interface {
 	setVersion(version string)
 	getCloud() *provider.Cloud
 	setCloud(*provider.Cloud)
+	getCrdProvisioner() CrdProvisioner
+	setCrdProvisioner(crdProvisioner CrdProvisioner)
 
 	getDeviceHelper() optimization.Interface
 	getHostUtil() hostUtil
@@ -185,6 +187,10 @@ func (d *Driver) setPathIsDeviceResult(path string, isDevice bool, err error) {
 func (d *fakeDriverV1) setDiskThrottlingCache(key string, value string) {
 	d.getDiskThrottlingCache.Set(key, value)
 }
+
+func (d *fakeDriverV1) getCrdProvisioner() CrdProvisioner { return nil }
+
+func (d *fakeDriverV1) setCrdProvisioner(crdProvisioner CrdProvisioner) {}
 
 func createVolumeCapabilities(accessMode csi.VolumeCapability_AccessMode_Mode) []*csi.VolumeCapability {
 	return []*csi.VolumeCapability{

@@ -110,6 +110,21 @@ func (mr *MockCrdProvisionerMockRecorder) PublishVolume(ctx, volumeID, nodeID, v
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PublishVolume", reflect.TypeOf((*MockCrdProvisioner)(nil).PublishVolume), ctx, volumeID, nodeID, volumeCapability, readOnly, secrets, volumeContext)
 }
 
+// WaitForAttach mocks base method
+func (m *MockCrdProvisioner) WaitForAttach(ctx context.Context, volume, node string) (*v1alpha2.AzVolumeAttachment, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "WaitForAttach", ctx, volume, node)
+	ret0, _ := ret[0].(*v1alpha2.AzVolumeAttachment)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// WaitForAttach indicates an expected call of WaitForAttach
+func (mr *MockCrdProvisionerMockRecorder) WaitForAttach(ctx, volume, node interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WaitForAttach", reflect.TypeOf((*MockCrdProvisioner)(nil).WaitForAttach), ctx, volume, node)
+}
+
 // UnpublishVolume mocks base method
 func (m *MockCrdProvisioner) UnpublishVolume(ctx context.Context, volumeID, nodeID string, secrets map[string]string) error {
 	m.ctrl.T.Helper()
@@ -124,19 +139,33 @@ func (mr *MockCrdProvisionerMockRecorder) UnpublishVolume(ctx, volumeID, nodeID,
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UnpublishVolume", reflect.TypeOf((*MockCrdProvisioner)(nil).UnpublishVolume), ctx, volumeID, nodeID, secrets)
 }
 
-// GetAzVolumeAttachmentState mocks base method
-func (m *MockCrdProvisioner) GetAzVolumeAttachmentState(ctx context.Context, volumeID, nodeID string) (v1alpha2.AzVolumeAttachmentAttachmentState, error) {
+// WaitForDetach mocks base method
+func (m *MockCrdProvisioner) WaitForDetach(ctx context.Context, volume, node string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetAzVolumeAttachmentState", ctx, volumeID, nodeID)
-	ret0, _ := ret[0].(v1alpha2.AzVolumeAttachmentAttachmentState)
+	ret := m.ctrl.Call(m, "WaitForDetach", ctx, volume, node)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// WaitForDetach indicates an expected call of WaitForDetach
+func (mr *MockCrdProvisionerMockRecorder) WaitForDetach(ctx, volume, node interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WaitForDetach", reflect.TypeOf((*MockCrdProvisioner)(nil).WaitForDetach), ctx, volume, node)
+}
+
+// GetAzVolumeAttachment mocks base method
+func (m *MockCrdProvisioner) GetAzVolumeAttachment(ctx context.Context, volumeID, nodeID string) (*v1alpha2.AzVolumeAttachment, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetAzVolumeAttachment", ctx, volumeID, nodeID)
+	ret0, _ := ret[0].(*v1alpha2.AzVolumeAttachment)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetAzVolumeAttachmentState indicates an expected call of GetAzVolumeAttachmentState
-func (mr *MockCrdProvisionerMockRecorder) GetAzVolumeAttachmentState(ctx, volumeID, nodeID interface{}) *gomock.Call {
+// GetAzVolumeAttachment indicates an expected call of GetAzVolumeAttachment
+func (mr *MockCrdProvisionerMockRecorder) GetAzVolumeAttachment(ctx, volumeID, nodeID interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAzVolumeAttachmentState", reflect.TypeOf((*MockCrdProvisioner)(nil).GetAzVolumeAttachmentState), ctx, volumeID, nodeID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAzVolumeAttachment", reflect.TypeOf((*MockCrdProvisioner)(nil).GetAzVolumeAttachment), ctx, volumeID, nodeID)
 }
 
 // ExpandVolume mocks base method

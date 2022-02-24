@@ -504,6 +504,7 @@ func (t *TestDeployment) WaitForPodReady() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			defer ginkgo.GinkgoRecover()
 			err := <-ch
 			framework.ExpectNoError(err)
 		}()

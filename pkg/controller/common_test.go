@@ -34,6 +34,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/record"
 	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
+	azClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	azVolumeClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	diskscheme "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/scheme"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
@@ -143,8 +144,8 @@ var (
 	testPod0Name = "test-pod-0"
 	testPod1Name = "test-pod-1"
 
-	testAzVolume0 = createAzVolume(testPersistentVolume0Name, 1)
-	testAzVolume1 = createAzVolume(testPersistentVolume1Name, 1)
+	testAzVolume0 = createTestAzVolume(testPersistentVolume0Name, 1)
+	testAzVolume1 = createTestAzVolume(testPersistentVolume1Name, 1)
 
 	testAzVolume0Request = createReconcileRequest(testNamespace, testPersistentVolume0Name)
 	testAzVolume1Request = createReconcileRequest(testNamespace, testPersistentVolume1Name)
@@ -152,17 +153,17 @@ var (
 	testPrimaryAzVolumeAttachment0Name = azureutils.GetAzVolumeAttachmentName(testPersistentVolume0Name, testNode0Name)
 	testPrimaryAzVolumeAttachment1Name = azureutils.GetAzVolumeAttachmentName(testPersistentVolume1Name, testNode0Name)
 
-	testPrimaryAzVolumeAttachment0 = createAzVolumeAttachment(testPersistentVolume0Name, testNode0Name, diskv1alpha2.PrimaryRole)
+	testPrimaryAzVolumeAttachment0 = createTestAzVolumeAttachment(testPersistentVolume0Name, testNode0Name, diskv1alpha2.PrimaryRole)
 
 	testPrimaryAzVolumeAttachment0Request = createReconcileRequest(testNamespace, testPrimaryAzVolumeAttachment0Name)
 
-	testPrimaryAzVolumeAttachment1 = createAzVolumeAttachment(testPersistentVolume1Name, testNode0Name, diskv1alpha2.PrimaryRole)
+	testPrimaryAzVolumeAttachment1 = createTestAzVolumeAttachment(testPersistentVolume1Name, testNode0Name, diskv1alpha2.PrimaryRole)
 
 	testPrimaryAzVolumeAttachment1Request = createReconcileRequest(testNamespace, testPrimaryAzVolumeAttachment1Name)
 
 	testReplicaAzVolumeAttachmentName = azureutils.GetAzVolumeAttachmentName(testPersistentVolume0Name, testNode1Name)
 
-	testReplicaAzVolumeAttachment = createAzVolumeAttachment(testPersistentVolume0Name, testNode1Name, diskv1alpha2.ReplicaRole)
+	testReplicaAzVolumeAttachment = createTestAzVolumeAttachment(testPersistentVolume0Name, testNode1Name, diskv1alpha2.ReplicaRole)
 
 	testReplicaAzVolumeAttachmentRequest = createReconcileRequest(testNamespace, testReplicaAzVolumeAttachmentName)
 
@@ -267,7 +268,7 @@ func createReconcileRequest(namespace, name string) reconcile.Request {
 	return reconcile.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: name}}
 }
 
-func createAzVolume(pvName string, maxMountReplicaCount int) diskv1alpha2.AzVolume {
+func createTestAzVolume(pvName string, maxMountReplicaCount int) diskv1alpha2.AzVolume {
 	azVolume := diskv1alpha2.AzVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      pvName,
@@ -288,7 +289,7 @@ func createAzVolume(pvName string, maxMountReplicaCount int) diskv1alpha2.AzVolu
 	return azVolume
 }
 
-func createAzVolumeAttachment(pvName, nodeName string, role diskv1alpha2.Role) diskv1alpha2.AzVolumeAttachment {
+func createTestAzVolumeAttachment(pvName, nodeName string, role diskv1alpha2.Role) diskv1alpha2.AzVolumeAttachment {
 	volumeID := getTestDiskURI(pvName)
 	azVolumeAttachment := diskv1alpha2.AzVolumeAttachment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -341,8 +342,8 @@ func createPod(podNamespace, podName string, pvcs []string) v1.Pod {
 	return testPod
 }
 
-func initState(objs ...runtime.Object) (c *SharedState) {
-	c = NewSharedState(consts.DefaultDriverName, consts.DefaultAzureDiskCrdNamespace, consts.WellKnownTopologyKey, &record.FakeRecorder{})
+func initState(client client.Client, azClient azClientSet.Interface, kubeClient kubernetes.Interface, objs ...runtime.Object) (c *SharedState) {
+	c = NewSharedState(consts.DefaultDriverName, consts.DefaultAzureDiskCrdNamespace, consts.WellKnownTopologyKey, &record.FakeRecorder{}, client, azClient, kubeClient)
 
 	for _, obj := range objs {
 		switch target := obj.(type) {

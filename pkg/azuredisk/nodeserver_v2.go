@@ -27,7 +27,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 
@@ -39,6 +38,7 @@ import (
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/volume"
+	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 )
@@ -50,14 +50,14 @@ const (
 	detachFailed    int32 = 2
 )
 
-type deviceCheckerEntry struct {
-	diskURI     string
-	detachState int32
-}
-
 type deviceChecker struct {
 	lock  sync.RWMutex
 	entry *deviceCheckerEntry
+}
+
+type deviceCheckerEntry struct {
+	diskURI     string
+	detachState int32
 }
 
 func newDeviceCheckerEntry(diskURI string) *deviceCheckerEntry {
@@ -99,14 +99,34 @@ func (d *DriverV2) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolume
 	}
 	defer d.volumeLocks.Release(diskURI)
 
-	lunStr, ok := req.PublishContext[consts.LUN]
+	azVolumeAttachment, getErr := d.crdProvisioner.GetAzVolumeAttachment(ctx, diskURI, d.NodeID)
+	if getErr != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get current attachment for volume (%s) and node (%s): %v", diskURI, d.NodeID, getErr)
+	}
+
+	// wait for volume to be attached to node if not already done so or wait for attachment to be promoted if not already done so
+	waitedForAttach := false
+	if azVolumeAttachment.Status.State != diskv1alpha2.Attached || (azVolumeAttachment.Status.Detail != nil && azVolumeAttachment.Status.Detail.Role != diskv1alpha2.PrimaryRole) {
+		if azVolumeAttachment, err = d.crdProvisioner.WaitForAttach(ctx, diskURI, d.NodeID); err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to wait for volume (%s) to be attached to node (%s): %v", diskURI, d.NodeID, err)
+		}
+		waitedForAttach = true
+	}
+
+	// save the volume's publish context to publish context map
+	publishContext := azVolumeAttachment.Status.Detail.PublishContext
+	if publishContext == nil {
+		return nil, status.Errorf(codes.Internal, "publish context cannot be found for AzVolumeAttachment (%s)", azVolumeAttachment.Name)
+	}
+
+	lunStr, ok := publishContext[consts.LUN]
 	if !ok {
 		return nil, status.Error(codes.InvalidArgument, "lun not provided")
 	}
 
 	lun, err := azureutils.GetDiskLUN(lunStr)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Failed to find disk on lun %s. %v", lunStr, err)
+		return nil, status.Errorf(codes.Internal, "failed to find disk on lun %s. %v", lunStr, err)
 	}
 
 	// check if AzVolumeattachment is in Attached state if recovery is in process for the specified volume and is not in process of detaching
@@ -114,26 +134,17 @@ func (d *DriverV2) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolume
 	_, diskURIMatches := d.isRecoveryInProcess(diskURI)
 	d.deviceChecker.lock.RUnlock()
 	if diskURIMatches {
-		detachState := d.getDetachState(diskURI)
-		switch detachState {
-		case detachInProcess:
+		if d.getDetachState(diskURI) == detachInProcess {
 			return nil, status.Errorf(codes.Internal, "recovery for volume (%s) is still in process", diskURI)
-		case detachCompleted:
-			state, getErr := d.crdProvisioner.GetAzVolumeAttachmentState(ctx, diskURI, d.NodeID)
-			if getErr != nil {
-				return nil, status.Errorf(codes.Internal, "failed to get current attachment state for volume (%s) and node (%s): %v", diskURI, d.NodeID, getErr)
-			}
-			if state != diskv1alpha2.Attached {
-				return nil, status.Errorf(codes.Internal, "volume (%s) is not yet attached to node (%s)", diskURI, d.NodeID)
-			}
 		}
 	}
 
 	source, err := d.nodeProvisioner.GetDevicePathWithLUN(ctx, int(lun))
 	if err == nil {
 		d.markRecoveryCompleteIfInProcess(diskURI)
-	} else {
-		err = status.Errorf(codes.Internal, "Failed to find disk on lun %v. %v", lun, err)
+	} else if !waitedForAttach {
+		// if device path could not be found, start mount recovery only if the function's context was not used up waiting for AzVolumeAttachment CRI attachment to complete
+		err = status.Errorf(codes.Internal, "failed to find disk on lun %v. %v", lun, err)
 		go d.recoverMount(diskURI)
 		return nil, err
 	}
@@ -143,13 +154,13 @@ func (d *DriverV2) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolume
 	if d.getPerfOptimizationEnabled() {
 		profile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr, deviceSettings, err := optimization.GetDiskPerfAttributes(req.GetVolumeContext())
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "Failed to get perf attributes for %s. Error: %v", source, err)
+			return nil, status.Errorf(codes.Internal, "failed to get perf attributes for %s. Error: %v", source, err)
 		}
 
 		if d.getDeviceHelper().DiskSupportsPerfOptimization(profile, accountType) {
 			if err := d.getDeviceHelper().OptimizeDiskPerformance(d.getNodeInfo(), source, profile, accountType,
 				diskSizeGibStr, diskIopsStr, diskBwMbpsStr, deviceSettings); err != nil {
-				return nil, status.Errorf(codes.Internal, "Failed to optimize device performance for target(%s) error(%s)", source, err)
+				return nil, status.Errorf(codes.Internal, "failed to optimize device performance for target(%s) error(%s)", source, err)
 			}
 		} else {
 			klog.V(2).Infof("NodeStageVolume: perf optimization is disabled for %s. perfProfile %s accountType %s", source, profile, accountType)
@@ -164,7 +175,7 @@ func (d *DriverV2) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolume
 
 	mnt, err := d.nodeProvisioner.EnsureMountPointReady(target)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Could not mount target %q: %v", target, err)
+		return nil, status.Errorf(codes.Internal, "could not mount target %q: %v", target, err)
 	}
 	if mnt {
 		klog.V(2).Infof("NodeStageVolume: already mounted on target %s", target)
@@ -289,22 +300,26 @@ func (d *DriverV2) NodePublishVolume(ctx context.Context, req *csi.NodePublishVo
 
 	switch req.GetVolumeCapability().GetAccessType().(type) {
 	case *csi.VolumeCapability_Block:
-		lunStr, ok := req.PublishContext[consts.LUN]
+		azVolumeAttachment, getErr := d.crdProvisioner.GetAzVolumeAttachment(ctx, volumeID, d.NodeID)
+		if getErr != nil {
+			return nil, status.Errorf(codes.Internal, "failed to get current attachment state for volume (%s) and node (%s): %v", volumeID, d.NodeID, getErr)
+		}
+		lunVal, ok := azVolumeAttachment.Status.Detail.PublishContext[consts.LUN]
 		if !ok {
 			return nil, status.Error(codes.InvalidArgument, "lun not provided")
 		}
 
-		lun, err := azureutils.GetDiskLUN(lunStr)
+		lun, err := azureutils.GetDiskLUN(lunVal)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "Failed to find device path with lun %s. %v", lunStr, err)
+			return nil, status.Errorf(codes.Internal, "failed to find device path with LUN %s. %v", lunVal, err)
 		}
 
 		source, err = d.nodeProvisioner.GetDevicePathWithLUN(ctx, int(lun))
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "Failed to find device path with lun %v. %v", lun, err)
+			return nil, status.Errorf(codes.Internal, "failed to find device path with LUN %v. %v", lun, err)
 		}
 
-		klog.V(2).Infof("NodePublishVolume [block]: found device path %s with lun %v", source, lun)
+		klog.V(2).Infof("NodePublishVolume [block]: found device path %s with LUN %v", source, lun)
 
 		err = d.nodeProvisioner.EnsureBlockTargetReady(target)
 		if err != nil {
@@ -314,7 +329,7 @@ func (d *DriverV2) NodePublishVolume(ctx context.Context, req *csi.NodePublishVo
 	case *csi.VolumeCapability_Mount:
 		mnt, err := d.nodeProvisioner.EnsureMountPointReady(target)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "Could not mount target %q: %v", target, err)
+			return nil, status.Errorf(codes.Internal, "could not mount target %q: %v", target, err)
 		}
 		if mnt {
 			klog.V(2).Infof("NodePublishVolume: already mounted on target %s", target)
@@ -324,7 +339,7 @@ func (d *DriverV2) NodePublishVolume(ctx context.Context, req *csi.NodePublishVo
 
 	klog.V(2).Infof("NodePublishVolume: mounting %s at %s", source, target)
 	if err := d.nodeProvisioner.Mount(source, target, "", mountOptions); err != nil {
-		return nil, status.Errorf(codes.Internal, "Could not mount %q at %q: %v", source, target, err)
+		return nil, status.Errorf(codes.Internal, "could not mount %q at %q: %v", source, target, err)
 	}
 
 	klog.V(2).Infof("NodePublishVolume: mount %s at %s successfully", source, target)
@@ -367,13 +382,13 @@ func (d *DriverV2) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest)
 
 	instances, ok := d.cloudProvisioner.GetCloud().Instances()
 	if !ok {
-		return nil, status.Error(codes.Internal, "Failed to get instances from cloud provider")
+		return nil, status.Error(codes.Internal, "failed to get instances from cloud provider")
 	}
 
 	var err error
 	instanceType, err = instances.InstanceType(ctx, types.NodeName(d.NodeID))
 	if err != nil {
-		klog.Warningf("Failed to get instance type from Azure cloud provider, nodeName: %v, error: %v", d.NodeID, err)
+		klog.Warningf("failed to get instance type from Azure cloud provider, nodeName: %v, error: %v", d.NodeID, err)
 		instanceType = ""
 	}
 
@@ -550,12 +565,12 @@ func (d *DriverV2) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolu
 	}
 
 	if err := d.nodeProvisioner.Resize(devicePath, volumePath); err != nil {
-		return nil, status.Errorf(codes.Internal, "Could not resize volume %q (%q):  %v", volumeID, devicePath, err)
+		return nil, status.Errorf(codes.Internal, "could not resize volume %q (%q):  %v", volumeID, devicePath, err)
 	}
 
 	gotBlockSizeBytes, err := d.nodeProvisioner.GetBlockSizeBytes(devicePath)
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Could not get size of block volume at path %s: %v", devicePath, err))
+		return nil, status.Error(codes.Internal, fmt.Sprintf("could not get size of block volume at path %s: %v", devicePath, err))
 	}
 	gotBlockGiB := volumehelper.RoundUpGiB(gotBlockSizeBytes)
 	if gotBlockGiB < requestGiB {
@@ -584,9 +599,19 @@ func (d *DriverV2) recoverMount(diskURI string) {
 		// When the device path cannot be found for the specified LUN, try to recover by detaching and re-attaching the disk.
 		// We only need to perform the detach. The CSI infrastructure will re-attach the disk when it notices a difference in
 		// world states (ListVolumes result doesn't match VolumeAttachment list).
+
+		// make unpublish request
 		detachErr := d.crdProvisioner.UnpublishVolume(recoveryCtx, diskURI, d.NodeID, nil)
 		if detachErr != nil {
 			klog.Errorf("failed to unpublishVolume volume (%s) from node (%s): %v", diskURI, d.NodeID, detachErr)
+			d.markDetachState(diskURI, detachFailed)
+			return
+		}
+
+		// wait for the detach to be completed
+		detachErr = d.crdProvisioner.WaitForDetach(recoveryCtx, diskURI, d.NodeID)
+		if detachErr != nil {
+			klog.Errorf("failed to detach volume (%s) from node (%s): %v", diskURI, d.NodeID, detachErr)
 			d.markDetachState(diskURI, detachFailed)
 		} else {
 			klog.Infof("Detached volume (%s) from node (%s) successfully...", diskURI, d.NodeID)
