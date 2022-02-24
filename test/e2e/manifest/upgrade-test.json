@@ -1,40 +1,44 @@
 {
     "apiVersion": "vlabs",
-    "location": "northeurope",
+    "location": "eastus",
     "properties": {
         "orchestratorProfile": {
             "orchestratorType": "Kubernetes",
             "orchestratorRelease": "1.21",
             "kubernetesConfig": {
-                "useManagedIdentity": false,
+                "useManagedIdentity": true,
+                "userAssignedID": "azuredisk-csi-driver-upgrade-test-id",
+                "useCloudControllerManager": true,
                 "networkPolicy": "none",
                 "cloudProviderRateLimitQPS": 6,
                 "cloudProviderRateLimitBucket": 20,
-                "controllerManagerConfig": {
-                    "--feature-gates": "CSIMigration=true,CSIMigrationAzureDisk=true"
-                },
-                "kubeletConfig": {
-                    "--feature-gates": "CSIMigration=true,CSIMigrationAzureDisk=true"
-                },
-                "schedulerConfig": {
-                    "--feature-gates": "CSIMigration=true,CSIMigrationAzureDisk=true"
-                },
                 "apiServerConfig": {
                     "--enable-admission-plugins": "NamespaceLifecycle,LimitRanger,ServiceAccount,DefaultStorageClass,ResourceQuota,AlwaysPullImages"
-                }
+                },
+                "addons": [
+                    {
+                        "name": "azuredisk-csi-driver",
+                        "enabled": false
+                    },
+                    {
+                        "name": "azurefile-csi-driver",
+                        "enabled": false
+                    }
+                ]
             }
         },
         "masterProfile": {
             "count": 1,
             "dnsPrefix": "{dnsPrefix}",
-            "vmSize": "Standard_DS2_v2"
+            "vmSize": "Standard_D2s_v3"
         },
         "agentPoolProfiles": [
             {
                 "name": "agentpool1",
-                "count": 2,
-                "vmSize": "Standard_DS2_v2",
-                "availabilityProfile": "AvailabilitySet"
+                "count": 3,
+                "vmSize": "Standard_D2s_v3",
+                "availabilityProfile": "AvailabilitySet",
+                "distro": "aks-ubuntu-18.04"
             }
         ],
         "linuxProfile": {
@@ -46,10 +50,6 @@
                     }
                 ]
             }
-        },
-        "servicePrincipalProfile": {
-            "clientID": "{clientID}",
-            "secret": "{secret}"
         }
     }
 }

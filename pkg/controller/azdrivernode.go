@@ -24,9 +24,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 
-	azClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
-
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -38,8 +35,6 @@ import (
 
 // ReconcileAzDriverNode reconciles AzDriverNode
 type ReconcileAzDriverNode struct {
-	client                client.Client
-	azVolumeClient        azClientSet.Interface
 	controllerSharedState *SharedState
 }
 
@@ -49,7 +44,7 @@ var _ reconcile.Reconciler = &ReconcileAzDriverNode{}
 func (r *ReconcileAzDriverNode) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
 	klog.V(2).Info("Checking to see if node (%v) exists.", request.NamespacedName)
 	n := &corev1.Node{}
-	err := r.client.Get(ctx, request.NamespacedName, n)
+	err := r.controllerSharedState.cachedClient.Get(ctx, request.NamespacedName, n)
 
 	// If the node still exists don't delete the AzDriverNode
 	if err == nil {
@@ -63,7 +58,7 @@ func (r *ReconcileAzDriverNode) Reconcile(ctx context.Context, request reconcile
 		klog.V(2).Info("Deleting AzDriverNode (%s).", request.Name)
 
 		// Delete the azDriverNode, since corresponding node is deleted
-		azN := r.azVolumeClient.DiskV1alpha2().AzDriverNodes(r.controllerSharedState.objectNamespace)
+		azN := r.controllerSharedState.azClient.DiskV1alpha2().AzDriverNodes(r.controllerSharedState.objectNamespace)
 		err = azN.Delete(ctx, request.Name, metav1.DeleteOptions{})
 
 		// If there is an issue in deleting the AzDriverNode, requeue
@@ -73,7 +68,7 @@ func (r *ReconcileAzDriverNode) Reconcile(ctx context.Context, request reconcile
 		}
 
 		// Delete all volumeAttachments attached to this node, if failed, requeue
-		if _, err = cleanUpAzVolumeAttachmentByNode(ctx, r, request.Name, azdrivernode, all, detachAndDeleteCRI); err != nil {
+		if _, err = r.controllerSharedState.cleanUpAzVolumeAttachmentByNode(ctx, request.Name, azdrivernode, all, detachAndDeleteCRI); err != nil {
 			return reconcile.Result{Requeue: true}, nil
 		}
 		return reconcile.Result{}, nil
@@ -85,11 +80,9 @@ func (r *ReconcileAzDriverNode) Reconcile(ctx context.Context, request reconcile
 }
 
 // NewAzDriverNodeController initializes azdrivernode-controller
-func NewAzDriverNodeController(mgr manager.Manager, azVolumeClient azClientSet.Interface, controllerSharedState *SharedState) (*ReconcileAzDriverNode, error) {
+func NewAzDriverNodeController(mgr manager.Manager, controllerSharedState *SharedState) (*ReconcileAzDriverNode, error) {
 	logger := mgr.GetLogger().WithValues("controller", "azdrivernode")
 	reconciler := ReconcileAzDriverNode{
-		client:                mgr.GetClient(),
-		azVolumeClient:        azVolumeClient,
 		controllerSharedState: controllerSharedState,
 	}
 	c, err := controller.New("azdrivernode-controller", mgr, controller.Options{
@@ -129,16 +122,4 @@ func NewAzDriverNodeController(mgr manager.Manager, azVolumeClient azClientSet.I
 	klog.V(2).Info("Controller set-up successful.")
 
 	return &reconciler, err
-}
-
-func (r *ReconcileAzDriverNode) getClient() client.Client {
-	return r.client
-}
-
-func (r *ReconcileAzDriverNode) getAzClient() azClientSet.Interface {
-	return r.azVolumeClient
-}
-
-func (r *ReconcileAzDriverNode) getSharedState() *SharedState {
-	return r.controllerSharedState
 }

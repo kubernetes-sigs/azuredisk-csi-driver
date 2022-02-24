@@ -39,12 +39,9 @@ import (
 
 func NewTestPodController(controller *gomock.Controller, namespace string, objects ...runtime.Object) *ReconcilePod {
 	azDiskObjs, kubeObjs := splitObjects(objects...)
-	controllerSharedState := initState(objects...)
+	controllerSharedState := initState(mockclient.NewMockClient(controller), diskfakes.NewSimpleClientset(azDiskObjs...), fakev1.NewSimpleClientset(kubeObjs...), objects...)
 
 	return &ReconcilePod{
-		client:                mockclient.NewMockClient(controller),
-		azVolumeClient:        diskfakes.NewSimpleClientset(azDiskObjs...),
-		kubeClient:            fakev1.NewSimpleClientset(kubeObjs...),
 		namespace:             namespace,
 		controllerSharedState: controllerSharedState,
 	}
@@ -82,7 +79,7 @@ func TestPodReconcile(t *testing.T) {
 					&testPersistentVolume0,
 					newPod)
 
-				mockClients(controller.client.(*mockclient.MockClient), controller.azVolumeClient, controller.kubeClient)
+				mockClients(controller.controllerSharedState.cachedClient.(*mockclient.MockClient), controller.controllerSharedState.azClient, controller.controllerSharedState.kubeClient)
 				return controller
 			},
 			verifyFunc: func(t *testing.T, controller *ReconcilePod, result reconcile.Result, err error) {
@@ -92,7 +89,7 @@ func TestPodReconcile(t *testing.T) {
 				roleReq, _ := azureutils.CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(diskv1alpha2.ReplicaRole))
 				labelSelector := labels.NewSelector().Add(*roleReq)
 				conditionFunc := func() (bool, error) {
-					replicas, localError := controller.azVolumeClient.DiskV1alpha2().AzVolumeAttachments(testPrimaryAzVolumeAttachment0.Namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
+					replicas, localError := controller.controllerSharedState.azClient.DiskV1alpha2().AzVolumeAttachments(testPrimaryAzVolumeAttachment0.Namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
 					require.NoError(t, localError)
 					require.NotNil(t, replicas)
 					return len(replicas.Items) == 1, nil
@@ -136,7 +133,7 @@ func TestPodReconcile(t *testing.T) {
 					&testNode1,
 					newPod)
 
-				mockClients(controller.client.(*mockclient.MockClient), controller.azVolumeClient, controller.kubeClient)
+				mockClients(controller.controllerSharedState.cachedClient.(*mockclient.MockClient), controller.controllerSharedState.azClient, controller.controllerSharedState.kubeClient)
 				return controller
 			},
 			verifyFunc: func(t *testing.T, controller *ReconcilePod, result reconcile.Result, err error) {
@@ -146,7 +143,7 @@ func TestPodReconcile(t *testing.T) {
 				roleReq, _ := azureutils.CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(diskv1alpha2.ReplicaRole))
 				labelSelector := labels.NewSelector().Add(*roleReq)
 				conditionFunc := func() (bool, error) {
-					replicas, localError := controller.azVolumeClient.DiskV1alpha2().AzVolumeAttachments(testPrimaryAzVolumeAttachment0.Namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
+					replicas, localError := controller.controllerSharedState.azClient.DiskV1alpha2().AzVolumeAttachments(testPrimaryAzVolumeAttachment0.Namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
 					require.NoError(t, localError)
 					require.NotNil(t, replicas)
 					if len(replicas.Items) == 2 {
@@ -197,7 +194,7 @@ func TestPodReconcile(t *testing.T) {
 					newPod0,
 					newPod1)
 
-				mockClients(controller.client.(*mockclient.MockClient), controller.azVolumeClient, controller.kubeClient)
+				mockClients(controller.controllerSharedState.cachedClient.(*mockclient.MockClient), controller.controllerSharedState.azClient, controller.controllerSharedState.kubeClient)
 				result, err := controller.Reconcile(context.TODO(), testPod0Request)
 				require.False(t, result.Requeue)
 				require.NoError(t, err)
@@ -210,7 +207,7 @@ func TestPodReconcile(t *testing.T) {
 				roleReq, _ := azureutils.CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(diskv1alpha2.ReplicaRole))
 				labelSelector := labels.NewSelector().Add(*roleReq)
 				conditionFunc := func() (bool, error) {
-					replicas, localError := controller.azVolumeClient.DiskV1alpha2().AzVolumeAttachments(testPrimaryAzVolumeAttachment0.Namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
+					replicas, localError := controller.controllerSharedState.azClient.DiskV1alpha2().AzVolumeAttachments(testPrimaryAzVolumeAttachment0.Namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
 					require.NoError(t, localError)
 					require.NotNil(t, replicas)
 					if len(replicas.Items) == 2 {
@@ -276,7 +273,7 @@ func TestPodRecover(t *testing.T) {
 					newAttachment1,
 					newPod)
 
-				mockClients(controller.client.(*mockclient.MockClient), controller.azVolumeClient, controller.kubeClient)
+				mockClients(controller.controllerSharedState.cachedClient.(*mockclient.MockClient), controller.controllerSharedState.azClient, controller.controllerSharedState.kubeClient)
 				return controller
 			},
 			verifyFunc: func(t *testing.T, controller *ReconcilePod, err error) {
@@ -285,7 +282,7 @@ func TestPodRecover(t *testing.T) {
 				roleReq, _ := azureutils.CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(diskv1alpha2.ReplicaRole))
 				labelSelector := labels.NewSelector().Add(*roleReq)
 				conditionFunc := func() (bool, error) {
-					replicas, localError := controller.azVolumeClient.DiskV1alpha2().AzVolumeAttachments(testPrimaryAzVolumeAttachment0.Namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
+					replicas, localError := controller.controllerSharedState.azClient.DiskV1alpha2().AzVolumeAttachments(testPrimaryAzVolumeAttachment0.Namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
 					require.NoError(t, localError)
 					require.NotNil(t, replicas)
 					if len(replicas.Items) == 2 {

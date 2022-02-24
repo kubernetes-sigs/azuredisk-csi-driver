@@ -1,8 +1,5 @@
-//go:build azurediskv2
-// +build azurediskv2
-
 /*
-Copyright 2017 The Kubernetes Authors.
+Copyright 2019 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,9 +14,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package upgrade
 
-type pvcToPVEntry struct {
-	VolumeName string
-	AccessMode string
+import (
+	"flag"
+
+	"k8s.io/kubernetes/test/e2e/framework"
+	"k8s.io/kubernetes/test/e2e/framework/config"
+)
+
+var (
+	driverExists = flag.Bool("driverExists", false, "flag to indicate that there already is a driver intsalled")
+)
+
+// handleFlags sets up all flags and parses the command line.
+func handleFlags() {
+	config.CopyFlags(config.Flags, flag.CommandLine)
+	framework.RegisterCommonFlags(flag.CommandLine)
+	framework.RegisterClusterFlags(flag.CommandLine)
+	flag.Parse()
 }

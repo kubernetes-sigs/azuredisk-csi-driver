@@ -1,22 +1,18 @@
-name: Run e2e migration tests
+name: Run upgrade test
 on:
-    pull_request: {}
     schedule:
     - cron: "0 13 * * *"
+    workflow_dispatch:
 jobs:
   test:
-    name: Run e2e migration tests
+    name: Run upgrade test
     runs-on: ubuntu-latest
     env:
       AZURE_TENANT_ID: ${{ secrets.TenantId }}
       AZURE_SUBSCRIPTION_ID: ${{ secrets.SubscriptionId }}
       AZURE_CLIENT_ID: ${{ secrets.ClientId }}
       AZURE_CLIENT_SECRET: ${{ secrets.ClientSecret }}
-      # temporarily switched to northeurope because of continuous timeout in westus2 region
-      AZURE_LOCATION: northeurope
-      # AZURE_LOCATION: ${{ secrets.E2EMigLocation }}
-      TEST_MIGRATION: true
-      AZURE_STORAGE_DRIVER: kubernetes.io/azure-disk
+      AZURE_LOCATION: eastus
 
     steps:
     - name: Cancel Previous Runs
@@ -30,7 +26,7 @@ jobs:
 
     - name: Set Azure resource group
       run: |
-        echo "AZURE_RESOURCE_GROUP=k8s-e2eMig-${{ steps.generate-uuid.outputs.uuid }}-rg" >> $GITHUB_ENV
+        echo "AZURE_RESOURCE_GROUP=k8s-upgradeT-${{ steps.generate-uuid.outputs.uuid }}-rg" >> $GITHUB_ENV
     - name: Set up Go 1.x
       uses: actions/setup-go@v2
       with:
@@ -52,13 +48,13 @@ jobs:
 
     - name: Create an aks cluster
       run: |  
-        ./hack/azure-cluster-up.sh --subscription $AZURE_SUBSCRIPTION_ID --location $AZURE_LOCATION --output e2eTestOutput --client-id $AZURE_CLIENT_ID --client-tenant $AZURE_TENANT_ID --client-secret $AZURE_CLIENT_SECRET --resource-group $AZURE_RESOURCE_GROUP --template migration
-        echo "KUBECONFIG=$GITHUB_WORKSPACE/e2eTestOutput/kubeconfig/kubeconfig.${AZURE_LOCATION}.json" >> $GITHUB_ENV
+        ./hack/azure-cluster-up.sh --subscription $AZURE_SUBSCRIPTION_ID --location $AZURE_LOCATION --output upgradeTestOutput --client-id $AZURE_CLIENT_ID --client-tenant $AZURE_TENANT_ID --client-secret $AZURE_CLIENT_SECRET --resource-group $AZURE_RESOURCE_GROUP --template "upgrade-test"
+        echo "KUBECONFIG=$GITHUB_WORKSPACE/upgradeTestOutput/kubeconfig/kubeconfig.${AZURE_LOCATION}.json" >> $GITHUB_ENV
 
-    - name: Run e2e tests
+    - name: Run upgrade test
       run: |
-        REGISTRY=e2etest.azurecr.io/mandalay make e2e-test-v2
+        REGISTRY=e2etest.azurecr.io/mandalay make upgrade-test
         
     - name: Cleanup 
       if: ${{ always() }}
-      run: ./e2eTestOutput/cluster-down.sh
+      run: ./upgradeTestOutput/cluster-down.sh

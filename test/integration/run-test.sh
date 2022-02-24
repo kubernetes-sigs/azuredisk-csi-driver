@@ -35,7 +35,12 @@ if [[ "$#" -gt 2 ]]; then
   cloud="$3"
 fi
 
-echo "Begin to run integration test on $cloud..."
+version='v2'
+if [[ "$#" -gt 3 ]]; then
+  version="$4"
+fi
+
+echo "Begin to run $version integration test on $cloud..."
 
 if [[ "$cloud" == 'AzureChinaCloud' ]]; then
   sleep 25
@@ -52,6 +57,7 @@ sleep 15
 
 volumeid=$(echo "$value" | awk '{print $1}' | sed 's/"//g')
 echo "Got volume id: $volumeid"
+volumename=$(echo "$volumeid" | awk -F / '{print $9}')
 
 "$CSC_BIN" controller validate-volume-capabilities --endpoint "$endpoint" --cap 1,block "$volumeid"
 
@@ -60,6 +66,9 @@ echo 'Expand volume test'
 
 echo 'Attach volume test:'
 "$CSC_BIN" controller publish --endpoint "$endpoint" --node-id "$node" --cap 1,block "$volumeid"
+if [[ "$version" == 'v2' ]]; then
+  test/integration/wait-for-attach.sh "$volumename" "$node"
+fi
 sleep 20
 
 echo 'ListVolumes test:'
@@ -67,6 +76,9 @@ echo 'ListVolumes test:'
 
 echo 'Detach volume test:'
 "$CSC_BIN" controller unpublish --endpoint "$endpoint" --node-id "$node" "$volumeid"
+if [[ "$version" == 'v2' ]]; then
+  test/integration/wait-for-detach.sh "$volumename" "$node"
+fi
 sleep 30
 
 echo 'Create snapshot test:'

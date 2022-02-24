@@ -75,6 +75,7 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV) Run(client cl
 		ginkgo.Skip("need at least 2 nodes to verify the test case. Current node count is %d", len(nodes))
 	}
 
+	time.Sleep(10 * time.Second)
 	for i := 0; i < 3; i++ {
 		podutil.DeleteAllPodsWithMatchingLabel(client, namespace, map[string]string{"app": "azuredisk-volume-tester"})
 		for _, tStatefulSet := range tStatefulSets {
