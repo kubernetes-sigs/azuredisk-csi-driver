@@ -26,16 +26,13 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	kubeClientSet "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
-	azVolumeClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 
 	volerr "k8s.io/cloud-provider/volume/errors"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -50,6 +47,7 @@ type CloudDiskAttachDetacher interface {
 
 type CrdDetacher interface {
 	UnpublishVolume(ctx context.Context, volumeID string, nodeID string, secrets map[string]string) error
+	WaitForDetach(ctx context.Context, volumeID, nodeID string) error
 }
 
 /*
@@ -59,9 +57,6 @@ Attach Detach controller is responsible for
 	3. detaching volume upon deletions marked with certain annotations
 */
 type ReconcileAttachDetach struct {
-	client                client.Client
-	azVolumeClient        azVolumeClientSet.Interface
-	kubeClient            kubeClientSet.Interface
 	crdDetacher           CrdDetacher
 	cloudDiskAttacher     CloudDiskAttachDetacher
 	controllerSharedState *SharedState
@@ -82,7 +77,7 @@ var allowedTargetAttachmentStates = map[string][]string{
 }
 
 func (r *ReconcileAttachDetach) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
-	azVolumeAttachment, err := azureutils.GetAzVolumeAttachment(ctx, r.client, r.azVolumeClient, request.Name, request.Namespace, true)
+	azVolumeAttachment, err := azureutils.GetAzVolumeAttachment(ctx, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, request.Name, request.Namespace, true)
 	// if object is not found, it means the object has been deleted. Log the deletion and do not requeue
 	if errors.IsNotFound(err) {
 		return reconcileReturnOnSuccess(request.Name, r.retryInfo)
@@ -113,8 +108,15 @@ func (r *ReconcileAttachDetach) Reconcile(ctx context.Context, request reconcile
 		}
 		// promotion request
 	} else if azVolumeAttachment.Spec.RequestedRole != azVolumeAttachment.Status.Detail.Role {
-		if err := r.promote(ctx, azVolumeAttachment); err != nil {
-			return reconcileReturnOnError(azVolumeAttachment, "promote", err, r.retryInfo)
+		switch azVolumeAttachment.Spec.RequestedRole {
+		case diskv1alpha2.PrimaryRole:
+			if err := r.promote(ctx, azVolumeAttachment); err != nil {
+				return reconcileReturnOnError(azVolumeAttachment, "promote", err, r.retryInfo)
+			}
+		case diskv1alpha2.ReplicaRole:
+			if err := r.demote(ctx, azVolumeAttachment); err != nil {
+				return reconcileReturnOnError(azVolumeAttachment, "demote", err, r.retryInfo)
+			}
 		}
 	}
 
@@ -136,7 +138,7 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 		_, derr := updateState(azv, diskv1alpha2.Attaching, normalUpdate)
 		return derr
 	}
-	if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry); err != nil {
+	if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry); err != nil {
 		return err
 	}
 
@@ -172,7 +174,7 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 			currentAttachmentName := azureutils.GetAzVolumeAttachmentName(diskName, currentNodeName)
 
 			// check if AzVolumeAttachment exists for the existing attachment
-			_, err = r.azVolumeClient.DiskV1alpha2().AzVolumeAttachments(r.controllerSharedState.objectNamespace).Get(cloudCtx, currentAttachmentName, metav1.GetOptions{})
+			_, err = r.controllerSharedState.azClient.DiskV1alpha2().AzVolumeAttachments(r.controllerSharedState.objectNamespace).Get(cloudCtx, currentAttachmentName, metav1.GetOptions{})
 			var detachErr error
 			if errors.IsNotFound(err) {
 				// AzVolumeAttachment doesn't exist so we only need to detach disk from cloud
@@ -183,6 +185,10 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 			} else {
 				// AzVolumeAttachment exist so we need to detach disk through crdProvisioner
 				detachErr = r.crdDetacher.UnpublishVolume(ctx, azVolumeAttachment.Spec.VolumeID, currentNodeName, make(map[string]string))
+				if detachErr != nil {
+					klog.Errorf("failed to make a unpublish request AzVolumeAttachment for volume (%s) and node (%s). Error: %v", azVolumeAttachment.Spec.VolumeID, currentNodeName, err)
+				}
+				detachErr = r.crdDetacher.WaitForDetach(ctx, azVolumeAttachment.Spec.VolumeID, currentNodeName)
 				if detachErr != nil {
 					klog.Errorf("failed to unpublish AzVolumeAttachment for volume (%s) and node (%s). Error: %v", azVolumeAttachment.Spec.VolumeID, currentNodeName, err)
 				}
@@ -195,7 +201,7 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 		var pods []v1.Pod
 		if azVolumeAttachment.Spec.RequestedRole == diskv1alpha2.ReplicaRole {
 			var err error
-			pods, err = r.controllerSharedState.getPodsFromVolume(ctx, r.client, azVolumeAttachment.Spec.VolumeName)
+			pods, err = r.controllerSharedState.getPodsFromVolume(ctx, r.controllerSharedState.cachedClient, azVolumeAttachment.Spec.VolumeName)
 			if err != nil {
 				klog.Infof("failed to get pods for volume (%s). Error: %v", azVolumeAttachment.Spec.VolumeName, err)
 			}
@@ -236,7 +242,7 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 			}
 		}
 
-		_ = azureutils.UpdateCRIWithRetry(cloudCtx, nil, r.client, r.azVolumeClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry)
+		_ = azureutils.UpdateCRIWithRetry(cloudCtx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry)
 	}()
 
 	return nil
@@ -258,7 +264,7 @@ func (r *ReconcileAttachDetach) triggerDetach(ctx context.Context, azVolumeAttac
 			_, derr := updateState(azv, diskv1alpha2.Detaching, normalUpdate)
 			return derr
 		}
-		if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry); err != nil {
+		if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry); err != nil {
 			return err
 		}
 
@@ -287,7 +293,7 @@ func (r *ReconcileAttachDetach) triggerDetach(ctx context.Context, azVolumeAttac
 				}
 			}
 
-			_ = azureutils.UpdateCRIWithRetry(updateCtx, nil, r.client, r.azVolumeClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry)
+			_ = azureutils.UpdateCRIWithRetry(updateCtx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry)
 		}()
 	} else {
 		updateFunc := func(obj interface{}) error {
@@ -296,7 +302,7 @@ func (r *ReconcileAttachDetach) triggerDetach(ctx context.Context, azVolumeAttac
 			_ = r.deleteFinalizer(azv)
 			return nil
 		}
-		if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry); err != nil {
+		if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry); err != nil {
 			return err
 		}
 	}
@@ -313,7 +319,20 @@ func (r *ReconcileAttachDetach) promote(ctx context.Context, azVolumeAttachment 
 		_ = updateRole(azv, diskv1alpha2.PrimaryRole)
 		return nil
 	}
-	return azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry)
+	return azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry)
+}
+
+func (r *ReconcileAttachDetach) demote(ctx context.Context, azVolumeAttachment *diskv1alpha2.AzVolumeAttachment) error {
+	klog.Infof("Demoting volume attachment (%s) for volume (%s) on node (%s) from %s to Replica",
+		azVolumeAttachment.Name, azVolumeAttachment.Spec.VolumeName, azVolumeAttachment.Spec.NodeName, azVolumeAttachment.Status.Detail.Role)
+
+	// initialize metadata and update status block
+	updateFunc := func(obj interface{}) error {
+		azv := obj.(*diskv1alpha2.AzVolumeAttachment)
+		_ = updateRole(azv, diskv1alpha2.ReplicaRole)
+		return nil
+	}
+	return azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry)
 }
 
 func (r *ReconcileAttachDetach) initializeMeta(azVolumeAttachment *diskv1alpha2.AzVolumeAttachment) *diskv1alpha2.AzVolumeAttachment {
@@ -369,64 +388,6 @@ func (r *ReconcileAttachDetach) deleteFinalizer(azVolumeAttachment *diskv1alpha2
 	return azVolumeAttachment
 }
 
-// TODO: reassess if adding additional finalizer to AzVolume CRI is necessary
-// func (r *ReconcileAttachDetach) addFinalizerToAzVolume(ctx context.Context, volumeName string) error {
-// 	var azVolume *v1alpha1.AzVolume
-// 	azVolume, err := azureutils.GetAzVolume(ctx, r.client, r.azVolumeClient, volumeName, r.namespace, true)
-// 	if err != nil {
-// 		klog.Errorf("failed to get AzVolume (%s): %v", volumeName, err)
-// 		return err
-// 	}
-
-// 	updated := azVolume.DeepCopy()
-
-// 	if updated.Finalizers == nil {
-// 		updated.Finalizers = []string{}
-// 	}
-
-// 	if finalizerExists(updated.Finalizers, azureutils.AzVolumeAttachmentFinalizer) {
-// 		return nil
-// 	}
-
-// 	updated.Finalizers = append(updated.Finalizers, azureutils.AzVolumeAttachmentFinalizer)
-// 	if err := r.client.Update(ctx, updated, &client.UpdateOptions{}); err != nil {
-// 		klog.Errorf("failed to add finalizer (%s) to AzVolume(%s): %v", azureutils.AzVolumeAttachmentFinalizer, updated.Name, err)
-// 		return err
-// 	}
-// 	klog.Infof("successfully added finalizer (%s) to AzVolume (%s)", azureutils.AzVolumeAttachmentFinalizer, updated.Name)
-// 	return nil
-// }
-//
-// func (r *ReconcileAttachDetach) deleteFinalizerFromAzVolume(ctx context.Context, volumeName string) error {
-// 	var azVolume *v1alpha1.AzVolume
-// 	azVolume, err := azureutils.GetAzVolume(ctx, r.client, r.azVolumeClient, volumeName, r.namespace, true)
-// 	if err != nil {
-// 		if errors.IsNotFound(err) {
-// 			return nil
-// 		}
-// 		klog.Errorf("failed to get AzVolume (%s): %v", volumeName, err)
-// 		return err
-// 	}
-
-// 	updated := azVolume.DeepCopy()
-// 	updatedFinalizers := []string{}
-
-// 	for _, finalizer := range updated.Finalizers {
-// 		if finalizer == azureutils.AzVolumeAttachmentFinalizer {
-// 			continue
-// 		}
-// 		updatedFinalizers = append(updatedFinalizers, finalizer)
-// 	}
-// 	updated.Finalizers = updatedFinalizers
-
-// 	if err := r.client.Update(ctx, updated, &client.UpdateOptions{}); err != nil {
-// 		klog.Errorf("failed to delete finalizer (%s) from AzVolume(%s): %v", azureutils.AzVolumeAttachmentFinalizer, updated.Name, err)
-// 		return err
-// 	}
-// 	klog.Infof("successfully deleted finalizer (%s) from AzVolume (%s)", azureutils.AzVolumeAttachmentFinalizer, updated.Name)
-// 	return nil
-// }
-
 func (r *ReconcileAttachDetach) attachVolume(ctx context.Context, volumeID, node string, volumeContext map[string]string) (map[string]string, error) {
 	return r.cloudDiskAttacher.PublishVolume(ctx, volumeID, node, volumeContext)
 }
@@ -475,6 +436,12 @@ func updateRole(azVolumeAttachment *diskv1alpha2.AzVolumeAttachment, role diskv1
 
 	azVolumeAttachment.Status.Detail.PreviousRole = azVolumeAttachment.Status.Detail.Role
 	azVolumeAttachment.Status.Detail.Role = role
+
+	if azVolumeAttachment.Status.Detail.PreviousRole == diskv1alpha2.PrimaryRole && azVolumeAttachment.Status.Detail.Role == diskv1alpha2.ReplicaRole {
+		azVolumeAttachment.Labels[consts.RoleChangeLabel] = consts.Demoted
+	} else if azVolumeAttachment.Status.Detail.PreviousRole == diskv1alpha2.ReplicaRole && azVolumeAttachment.Status.Detail.Role == diskv1alpha2.PrimaryRole {
+		azVolumeAttachment.Labels[consts.RoleChangeLabel] = consts.Promoted
+	}
 
 	return azVolumeAttachment
 }
@@ -526,7 +493,7 @@ func updateState(azVolumeAttachment *diskv1alpha2.AzVolumeAttachment, state disk
 
 func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, syncedVolumeAttachments map[string]bool, volumesToSync map[string]bool) (map[string]bool, map[string]bool, error) {
 	// Get all volumeAttachments
-	volumeAttachments, err := r.kubeClient.StorageV1().VolumeAttachments().List(ctx, metav1.ListOptions{})
+	volumeAttachments, err := r.controllerSharedState.kubeClient.StorageV1().VolumeAttachments().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return syncedVolumeAttachments, volumesToSync, err
 	}
@@ -550,7 +517,7 @@ func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, 
 				continue
 			}
 			// get PV and retrieve diskName
-			pv, err := r.kubeClient.CoreV1().PersistentVolumes().Get(ctx, *volumeName, metav1.GetOptions{})
+			pv, err := r.controllerSharedState.kubeClient.CoreV1().PersistentVolumes().Get(ctx, *volumeName, metav1.GetOptions{})
 			if err != nil {
 				klog.Errorf("failed to get PV (%s): %v", *volumeName, err)
 				return syncedVolumeAttachments, volumesToSync, err
@@ -571,7 +538,7 @@ func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, 
 			azVolumeAttachmentName := azureutils.GetAzVolumeAttachmentName(diskName, nodeName)
 
 			// check if the CRI exists already
-			_, err = azureutils.GetAzVolumeAttachment(ctx, r.client, r.azVolumeClient, azVolumeAttachmentName, r.controllerSharedState.objectNamespace, false)
+			_, err = azureutils.GetAzVolumeAttachment(ctx, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachmentName, r.controllerSharedState.objectNamespace, false)
 			if errors.IsNotFound(err) {
 				klog.Infof("Recreating AzVolumeAttachment(%s)", azVolumeAttachmentName)
 				azVolumeAttachment := diskv1alpha2.AzVolumeAttachment{
@@ -600,7 +567,7 @@ func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, 
 						Role: diskv1alpha2.PrimaryRole,
 					}
 				}
-				_, err := r.azVolumeClient.DiskV1alpha2().AzVolumeAttachments(r.controllerSharedState.objectNamespace).Create(ctx, &azVolumeAttachment, metav1.CreateOptions{})
+				_, err := r.controllerSharedState.azClient.DiskV1alpha2().AzVolumeAttachments(r.controllerSharedState.objectNamespace).Create(ctx, &azVolumeAttachment, metav1.CreateOptions{})
 				if err != nil {
 					klog.Errorf("failed to create AzVolumeAttachment (%s) for volume (%s) and node (%s): %v", azVolumeAttachmentName, *volumeName, nodeName, err)
 					return syncedVolumeAttachments, volumesToSync, err
@@ -618,7 +585,7 @@ func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, 
 
 func (r *ReconcileAttachDetach) recoverAzVolumeAttachment(ctx context.Context, recoveredAzVolumeAttachments *sync.Map) error {
 	// list all AzVolumeAttachment
-	azVolumeAttachments, err := r.azVolumeClient.DiskV1alpha2().AzVolumeAttachments(r.controllerSharedState.objectNamespace).List(ctx, metav1.ListOptions{})
+	azVolumeAttachments, err := r.controllerSharedState.azClient.DiskV1alpha2().AzVolumeAttachments(r.controllerSharedState.objectNamespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		klog.Errorf("failed to get list of existing AzVolumeAttachment CRI in controller recovery stage")
 		return err
@@ -662,7 +629,7 @@ func (r *ReconcileAttachDetach) recoverAzVolumeAttachment(ctx context.Context, r
 				targetState = azv.Status.State
 			}
 
-			if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, &azv, updateFunc, consts.ForcedUpdateMaxNetRetry); err != nil {
+			if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, &azv, updateFunc, consts.ForcedUpdateMaxNetRetry); err != nil {
 				klog.Warningf("failed to udpate AzVolumeAttachment (%s) for recovery: %v", azv.Name)
 			} else {
 				// if update succeeded, add the CRI to the recoveryComplete list
@@ -680,11 +647,8 @@ func (r *ReconcileAttachDetach) recoverAzVolumeAttachment(ctx context.Context, r
 	return nil
 }
 
-func NewAttachDetachController(mgr manager.Manager, azVolumeClient azVolumeClientSet.Interface, kubeClient kubeClientSet.Interface, cloudDiskAttacher CloudDiskAttachDetacher, crdDetacher CrdDetacher, controllerSharedState *SharedState) (*ReconcileAttachDetach, error) {
+func NewAttachDetachController(mgr manager.Manager, cloudDiskAttacher CloudDiskAttachDetacher, crdDetacher CrdDetacher, controllerSharedState *SharedState) (*ReconcileAttachDetach, error) {
 	reconciler := ReconcileAttachDetach{
-		client:                mgr.GetClient(),
-		azVolumeClient:        azVolumeClient,
-		kubeClient:            kubeClient,
 		crdDetacher:           crdDetacher,
 		cloudDiskAttacher:     cloudDiskAttacher,
 		stateLock:             &sync.Map{},

@@ -851,7 +851,8 @@ func GetAzVolumeAttachmentState(volumeAttachmentStatus storagev1.VolumeAttachmen
 }
 
 func UpdateCRIWithRetry(ctx context.Context, informerFactory azurediskInformers.SharedInformerFactory, cachedClient client.Client, azDiskClient azDiskClientSet.Interface, obj client.Object, updateFunc func(interface{}) error, maxNetRetry int) error {
-	klog.Infof("Initiating update with retry for %v (%s)", reflect.TypeOf(obj), obj.GetName())
+	objName := obj.GetName()
+	klog.Infof("Initiating update with retry for %v (%s)", reflect.TypeOf(obj), objName)
 
 	conditionFunc := func() error {
 		var err error
@@ -859,22 +860,22 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azurediskInformers.
 		switch target := obj.(type) {
 		case *diskv1alpha2.AzVolume:
 			if informerFactory != nil {
-				target, err = informerFactory.Disk().V1alpha2().AzVolumes().Lister().AzVolumes(target.Namespace).Get(target.Name)
+				target, err = informerFactory.Disk().V1alpha2().AzVolumes().Lister().AzVolumes(target.Namespace).Get(objName)
 			} else if cachedClient != nil {
-				err = cachedClient.Get(ctx, types.NamespacedName{Namespace: target.Namespace, Name: target.Name}, target)
+				err = cachedClient.Get(ctx, types.NamespacedName{Namespace: target.Namespace, Name: objName}, target)
 			} else {
-				target, err = azDiskClient.DiskV1alpha2().AzVolumes(target.Namespace).Get(ctx, target.Name, metav1.GetOptions{})
+				target, err = azDiskClient.DiskV1alpha2().AzVolumes(target.Namespace).Get(ctx, objName, metav1.GetOptions{})
 			}
 			if err == nil {
 				copyForUpdate = target.DeepCopy()
 			}
 		case *diskv1alpha2.AzVolumeAttachment:
 			if informerFactory != nil {
-				target, err = informerFactory.Disk().V1alpha2().AzVolumeAttachments().Lister().AzVolumeAttachments(target.Namespace).Get(target.Name)
+				target, err = informerFactory.Disk().V1alpha2().AzVolumeAttachments().Lister().AzVolumeAttachments(target.Namespace).Get(objName)
 			} else if cachedClient != nil {
-				err = cachedClient.Get(ctx, types.NamespacedName{Namespace: target.Namespace, Name: target.Name}, target)
+				err = cachedClient.Get(ctx, types.NamespacedName{Namespace: target.Namespace, Name: objName}, target)
 			} else {
-				target, err = azDiskClient.DiskV1alpha2().AzVolumeAttachments(target.Namespace).Get(ctx, target.Name, metav1.GetOptions{})
+				target, err = azDiskClient.DiskV1alpha2().AzVolumeAttachments(target.Namespace).Get(ctx, objName, metav1.GetOptions{})
 			}
 			if err == nil {
 				copyForUpdate = target.DeepCopy()
@@ -884,7 +885,7 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azurediskInformers.
 		}
 
 		if err != nil {
-			klog.Errorf("failed to get %v (%s): %v", reflect.TypeOf(obj), obj.GetName(), err)
+			klog.Errorf("failed to get %v (%s): %v", reflect.TypeOf(obj), objName, err)
 			return err
 		}
 
@@ -933,7 +934,7 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azurediskInformers.
 		conditionFunc,
 	)
 	if err != nil {
-		klog.Errorf("failed to update %v (%s): %v", reflect.TypeOf(obj), obj.GetName(), err)
+		klog.Errorf("failed to update %v (%s): %v", reflect.TypeOf(obj), objName, err)
 	}
 
 	// if encountered net error from api server unavailability, exit process

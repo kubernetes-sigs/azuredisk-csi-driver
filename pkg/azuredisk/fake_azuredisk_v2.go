@@ -98,7 +98,7 @@ func newFakeDriverV2(t *testing.T) (*fakeDriverV2, error) {
 
 	driver.deviceHelper = mockoptimization.NewMockInterface(ctrl)
 
-	driver.deviceChecker = deviceChecker{lock: sync.RWMutex{}, entry: nil}
+	driver.deviceChecker = &deviceChecker{lock: sync.RWMutex{}, entry: nil}
 
 	driver.AddControllerServiceCapabilities(
 		[]csi.ControllerServiceCapability_RPC_Type{
@@ -165,6 +165,14 @@ func (d *fakeDriverV2) setMounter(mounter *mount.SafeFormatAndMount) {
 
 func (d *fakeDriverV2) setPathIsDeviceResult(path string, isDevice bool, err error) {
 	d.nodeProvisioner.(*provisioner.FakeNodeProvisioner).SetIsBlockDevicePathResult(path, isDevice, err)
+}
+
+func (d *fakeDriverV2) getCrdProvisioner() CrdProvisioner {
+	return d.crdProvisioner
+}
+
+func (d *fakeDriverV2) setCrdProvisioner(crdProvisioner CrdProvisioner) {
+	d.crdProvisioner = crdProvisioner
 }
 
 func (d *DriverV2) setDiskThrottlingCache(key string, value string) {

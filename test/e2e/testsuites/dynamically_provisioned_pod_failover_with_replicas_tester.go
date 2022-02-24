@@ -119,6 +119,7 @@ func (t *PodFailoverWithReplicas) Run(client clientset.Interface, namespace *v1.
 	defer testPod.SetNodeUnschedulable(nodes[0], false) // defer kubeclt uncordon node
 
 	ginkgo.By("deleting the pod for deployment")
+	time.Sleep(10 * time.Second)
 	tDeployment.DeletePodAndWait()
 
 	ginkgo.By("checking again that the pod is running")

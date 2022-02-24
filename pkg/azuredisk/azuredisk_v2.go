@@ -87,7 +87,7 @@ type DriverV2 struct {
 	controllerLeaseRetryPeriodInSec   int
 	kubeConfig                        *rest.Config
 	kubeClient                        *clientset.Clientset
-	deviceChecker                     deviceChecker
+	deviceChecker                     *deviceChecker
 }
 
 // NewDriver creates a driver object.
@@ -130,7 +130,7 @@ func newDriverV2(options *DriverOptions,
 	driver.enableDiskOnlineResize = options.EnableDiskOnlineResize
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
-	driver.deviceChecker = deviceChecker{lock: sync.RWMutex{}, entry: nil}
+	driver.deviceChecker = &deviceChecker{lock: sync.RWMutex{}, entry: nil}
 
 	topologyKey = fmt.Sprintf("topology.%s/zone", driver.Name)
 	return &driver
@@ -287,54 +287,53 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: d.kubeClient.CoreV1().Events("")})
 	eventRecorder := eventBroadcaster.NewRecorder(clientgoscheme.Scheme, v1.EventSource{Component: consts.AzureDiskCSIDriverName})
-
-	sharedState := controller.NewSharedState(d.Name, d.objectNamespace, topologyKey, eventRecorder)
+	sharedState := controller.NewSharedState(d.Name, d.objectNamespace, topologyKey, eventRecorder, mgr.GetClient(), d.crdProvisioner.GetDiskClientSet(), d.kubeClient)
 
 	// Setup a new controller to clean-up AzDriverNodes
 	// objects for the nodes which get deleted
 	klog.V(2).Info("Initializing AzDriverNode controller")
-	_, err = controller.NewAzDriverNodeController(mgr, d.crdProvisioner.GetDiskClientSet(), sharedState)
+	_, err = controller.NewAzDriverNodeController(mgr, sharedState)
 	if err != nil {
 		klog.Errorf("Failed to initialize AzDriverNodeController. Error: %v. Exiting application...", err)
 		os.Exit(1)
 	}
 
 	klog.V(2).Info("Initializing AzVolumeAttachment controller")
-	attachReconciler, err := controller.NewAttachDetachController(mgr, d.crdProvisioner.GetDiskClientSet(), d.kubeClient, d.cloudProvisioner, d.crdProvisioner, sharedState)
+	attachReconciler, err := controller.NewAttachDetachController(mgr, d.cloudProvisioner, d.crdProvisioner, sharedState)
 	if err != nil {
 		klog.Errorf("Failed to initialize AzVolumeAttachmentController. Error: %v. Exiting application...", err)
 		os.Exit(1)
 	}
 
 	klog.V(2).Info("Initializing Pod controller")
-	podReconciler, err := controller.NewPodController(mgr, d.crdProvisioner.GetDiskClientSet(), d.kubeClient, sharedState)
+	podReconciler, err := controller.NewPodController(mgr, sharedState)
 	if err != nil {
 		klog.Errorf("Failed to initialize PodController. Error: %v. Exiting application...", err)
 		os.Exit(1)
 	}
 
 	klog.V(2).Info("Initializing Replica controller")
-	_, err = controller.NewReplicaController(mgr, d.crdProvisioner.GetDiskClientSet(), d.kubeClient, sharedState)
+	_, err = controller.NewReplicaController(mgr, sharedState)
 	if err != nil {
 		klog.Errorf("Failed to initialize ReplicaController. Error: %v. Exiting application...", err)
 		os.Exit(1)
 	}
 
 	klog.V(2).Info("Initializing AzVolume controller")
-	azvReconciler, err := controller.NewAzVolumeController(mgr, d.crdProvisioner.GetDiskClientSet(), d.kubeClient, d.cloudProvisioner, sharedState)
+	azvReconciler, err := controller.NewAzVolumeController(mgr, d.cloudProvisioner, sharedState)
 	if err != nil {
 		klog.Errorf("Failed to initialize AzVolumeController. Error: %v. Exiting application...", err)
 		os.Exit(1)
 	}
 
 	klog.V(2).Info("Initializing PV controller")
-	pvReconciler, err := controller.NewPVController(mgr, d.crdProvisioner.GetDiskClientSet(), d.kubeClient, sharedState)
+	pvReconciler, err := controller.NewPVController(mgr, sharedState)
 	if err != nil {
 		klog.Errorf("Failed to initialize PVController. Error: %v. Exiting application...", err)
 		os.Exit(1)
 	}
 	klog.V(2).Info("Initializing Node Availability controller")
-	_, err = controller.NewNodeAvailabilityController(mgr, d.crdProvisioner.GetDiskClientSet(), d.kubeClient, sharedState)
+	_, err = controller.NewNodeAvailabilityController(mgr, sharedState)
 	if err != nil {
 		klog.Errorf("Failed to initialize NodeAvailabilityController. Error: %v. Exiting application...", err)
 		os.Exit(1)

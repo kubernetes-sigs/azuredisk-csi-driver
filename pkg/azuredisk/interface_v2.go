@@ -33,8 +33,10 @@ type CrdProvisioner interface {
 	DeleteVolume(ctx context.Context, volumeID string, secrets map[string]string) error
 	PublishVolume(ctx context.Context, volumeID string, nodeID string, volumeCapability *diskv1alpha2.VolumeCapability,
 		readOnly bool, secrets map[string]string, volumeContext map[string]string) (map[string]string, error)
+	WaitForAttach(ctx context.Context, volume, node string) (*diskv1alpha2.AzVolumeAttachment, error)
 	UnpublishVolume(ctx context.Context, volumeID string, nodeID string, secrets map[string]string) error
-	GetAzVolumeAttachmentState(ctx context.Context, volumeID string, nodeID string) (diskv1alpha2.AzVolumeAttachmentAttachmentState, error)
+	WaitForDetach(ctx context.Context, volume, node string) error
+	GetAzVolumeAttachment(ctx context.Context, volumeID string, nodeID string) (*diskv1alpha2.AzVolumeAttachment, error)
 	ExpandVolume(ctx context.Context, volumeID string, capacityRange *diskv1alpha2.CapacityRange, secrets map[string]string) (*diskv1alpha2.AzVolumeStatusDetail, error)
 	GetDiskClientSet() azDiskClientSet.Interface
 }

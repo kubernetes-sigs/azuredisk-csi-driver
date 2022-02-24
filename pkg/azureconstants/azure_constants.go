@@ -102,10 +102,14 @@ const (
 	NodeNameLabel                         = "disk.csi.azure.com/node-name"
 	PartitionLabel                        = "azdrivernodes.disk.csi.azure.com/partition"
 	RoleLabel                             = "disk.csi.azure.com/requested-role"
+	RoleChangeLabel                       = "disk.csi.azure.com/role-change"
+	Demoted                               = "demoted"
+	Promoted                              = "promoted"
 	VolumeDeleteRequestAnnotation         = "disk.csi.azure.com/volume-delete-request"
 	VolumeDetachRequestAnnotation         = "disk.csi.azure.com/volume-detach-request"
 	RecoverAnnotation                     = "disk.csi.azure.com/recovery" // used to ensure reconciliation is triggered for recovering CRIs
 	VolumeNameLabel                       = "disk.csi.azure.com/volume-name"
+	InlineVolumeAnnotation                = "disk.csi.azure.com/inline-volume"
 	PreProvisionedVolumeAnnotation        = "disk.csi.azure.com/pre-provisioned"
 	PreProvisionedVolumeCleanupAnnotation = "disk.csi.azure.com/pre-provisioned-clean-up"
 

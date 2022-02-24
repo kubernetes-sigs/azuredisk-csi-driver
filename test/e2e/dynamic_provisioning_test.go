@@ -904,7 +904,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		test.Run(cs, ns, schedulerName)
 	})
 
-	ginkgo.It(fmt.Sprintf("should detach disk after pod deleted [disk.csi.azure.com] [Windows] [%s]", schedulerName), func() {
+	ginkgo.It(fmt.Sprintf("should detach disk after pod deleted when maxMountReplicaCount = 0 [disk.csi.azure.com] [Windows] [%s]", schedulerName), func() {
 		pods := []testtypes.PodDetails{
 			{
 				Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
@@ -932,6 +932,81 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		}
 		if !testconsts.IsUsingInTreeVolumePlugin && testutil.IsZRSSupported(location) {
 			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
+		}
+		test.Run(cs, ns, schedulerName)
+	})
+
+	ginkgo.It(fmt.Sprintf("should delete AzVolumeAttachment after pod deleted when maxMountReplicaCount == 0 [disk.csi.azure.com] [%s]", schedulerName), func() {
+		testutil.SkipIfNotUsingCSIDriverV2()
+
+		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
+		if err != nil {
+			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
+		}
+
+		volume := testtypes.VolumeDetails{
+			ClaimSize: "10Gi",
+			VolumeMount: testtypes.VolumeMountDetails{
+				NameGenerate:      "test-volume-",
+				MountPathGenerate: "/mnt/test-",
+			},
+		}
+
+		pod := testtypes.PodDetails{
+			Cmd:       testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
+			Volumes:   testutil.NormalizeVolumes([]testtypes.VolumeDetails{volume}, []string{}, isMultiZone),
+			IsWindows: testconsts.IsWindowsCluster,
+		}
+
+		storageClassParameters := map[string]string{
+			consts.SkuNameField:     "Premium_LRS",
+			consts.MaxSharesField:   "1",
+			consts.CachingModeField: "None",
+		}
+
+		test := testsuites.DynamicallyProvisionedPodDelete{
+			CSIDriver:              testDriver,
+			Pod:                    pod,
+			AzDiskClient:           azDiskClient,
+			StorageClassParameters: storageClassParameters,
+		}
+		test.Run(cs, ns, schedulerName)
+	})
+
+	ginkgo.It(fmt.Sprintf("should demote AzVolumeAttachment after pod deleted when maxMountReplicaCount > 0 [disk.csi.azure.com] [%s]", schedulerName), func() {
+		testutil.SkipIfNotUsingCSIDriverV2()
+		testutil.SkipIfUsingInTreeVolumePlugin()
+
+		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
+		if err != nil {
+			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
+		}
+
+		volume := testtypes.VolumeDetails{
+			ClaimSize: "10Gi",
+			VolumeMount: testtypes.VolumeMountDetails{
+				NameGenerate:      "test-volume-",
+				MountPathGenerate: "/mnt/test-",
+			},
+		}
+
+		pod := testtypes.PodDetails{
+			Cmd:       testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
+			Volumes:   testutil.NormalizeVolumes([]testtypes.VolumeDetails{volume}, []string{}, isMultiZone),
+			IsWindows: testconsts.IsWindowsCluster,
+		}
+
+		storageClassParameters := map[string]string{
+			consts.SkuNameField:     "Premium_LRS",
+			consts.MaxSharesField:   "2",
+			consts.CachingModeField: "None",
+		}
+
+		test := testsuites.DynamicallyProvisionedPodDelete{
+			CSIDriver:              testDriver,
+			Pod:                    pod,
+			AzDiskClient:           azDiskClient,
+			StorageClassParameters: storageClassParameters,
 		}
 		test.Run(cs, ns, schedulerName)
 	})

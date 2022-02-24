@@ -21,15 +21,11 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
-	kubeClientSet "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
-	azClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -44,9 +40,6 @@ const (
 )
 
 type ReconcileReplica struct {
-	client                     client.Client
-	azVolumeClient             azClientSet.Interface
-	kubeClient                 kubeClientSet.Interface
 	controllerSharedState      *SharedState
 	timeUntilGarbageCollection time.Duration
 }
@@ -54,7 +47,7 @@ type ReconcileReplica struct {
 var _ reconcile.Reconciler = &ReconcileReplica{}
 
 func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
-	azVolumeAttachment, err := azureutils.GetAzVolumeAttachment(ctx, r.client, r.azVolumeClient, request.Name, request.Namespace, true)
+	azVolumeAttachment, err := azureutils.GetAzVolumeAttachment(ctx, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, request.Name, request.Namespace, true)
 	if errors.IsNotFound(err) {
 		klog.Infof("AzVolumeAttachment (%s) has been successfully deleted.", request.Name)
 		return reconcile.Result{}, nil
@@ -68,6 +61,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 		if objectDeletionRequested(azVolumeAttachment) {
 			if volumeDetachRequested(azVolumeAttachment) {
 				// If primary attachment is marked for deletion, queue garbage collection for replica attachments
+				//nolint:contextcheck // Garbage collection is asynchronous; context is not inherited by design
 				r.triggerGarbageCollection(azVolumeAttachment.Spec.VolumeName) //nolint:contextcheck // Garbage collection is asynchronous; context is not inherited by design
 			}
 		} else {
@@ -80,17 +74,23 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 					azVolumeAttachment.Spec.VolumeName,
 					replica,
 					func() error {
-						return r.controllerSharedState.manageReplicas(context.Background(), azVolumeAttachment.Spec.VolumeName, r)
+						return r.controllerSharedState.manageReplicas(context.Background(), azVolumeAttachment.Spec.VolumeName)
 					},
 					false,
 				)
 			}
 		}
 	} else {
-		// create a replacement replica if replica attachment failed or promoted
+		// queue garbage collection if a primary attachment is being demoted
+		if isDemotionRequested(azVolumeAttachment) {
+			//nolint:contextcheck // Garbage collection is asynchronous; context is not inherited by design
+			r.triggerGarbageCollection(azVolumeAttachment.Spec.VolumeName)
+			return reconcile.Result{}, nil
+		}
+		// create a replacement replica if replica attachment failed
 		if objectDeletionRequested(azVolumeAttachment) {
 			if azVolumeAttachment.Status.State == diskv1alpha2.DetachmentFailed {
-				if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.client, r.azVolumeClient, azVolumeAttachment, func(obj interface{}) error {
+				if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, func(obj interface{}) error {
 					azVolumeAttachment := obj.(*diskv1alpha2.AzVolumeAttachment)
 					_, err = updateState(azVolumeAttachment, diskv1alpha2.ForceDetachPending, normalUpdate)
 					return err
@@ -98,12 +98,12 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 					return reconcile.Result{Requeue: true}, err
 				}
 			}
-			if azVolumeAttachment.Annotations == nil || !metav1.HasAnnotation(azVolumeAttachment.ObjectMeta, consts.CleanUpAnnotation) {
+			if !isCleanupRequested(azVolumeAttachment) || !volumeDetachRequested(azVolumeAttachment) {
 				go func() {
 					// wait for replica AzVolumeAttachment deletion
 					conditionFunc := func() (bool, error) {
 						var tmp diskv1alpha2.AzVolumeAttachment
-						err := r.client.Get(ctx, request.NamespacedName, &tmp)
+						err := r.controllerSharedState.cachedClient.Get(ctx, request.NamespacedName, &tmp)
 						if errors.IsNotFound(err) {
 							return true, nil
 						}
@@ -117,7 +117,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 						azVolumeAttachment.Spec.VolumeName,
 						replica,
 						func() error {
-							return r.controllerSharedState.manageReplicas(context.Background(), azVolumeAttachment.Spec.VolumeName, r)
+							return r.controllerSharedState.manageReplicas(context.Background(), azVolumeAttachment.Spec.VolumeName)
 						},
 						false,
 					)
@@ -125,7 +125,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 			}
 		} else if azVolumeAttachment.Status.State == diskv1alpha2.AttachmentFailed {
 			// if attachment failed for replica AzVolumeAttachment, delete the CRI so that replace replica AzVolumeAttachment can be created.
-			if err := r.client.Delete(ctx, azVolumeAttachment); err != nil {
+			if err := r.controllerSharedState.cachedClient.Delete(ctx, azVolumeAttachment); err != nil {
 				return reconcile.Result{Requeue: true}, err
 			}
 		}
@@ -154,7 +154,7 @@ func (r *ReconcileReplica) triggerGarbageCollection(volumeName string) {
 				volumeName,
 				replica,
 				func() error {
-					_, err := cleanUpAzVolumeAttachmentByVolume(context.Background(), r, volumeName, "replicaController", all, detachAndDeleteCRI, r.controllerSharedState)
+					_, err := r.controllerSharedState.cleanUpAzVolumeAttachmentByVolume(context.Background(), volumeName, "replicaController", all, detachAndDeleteCRI)
 					if err != nil {
 						return err
 					}
@@ -179,12 +179,9 @@ func (r *ReconcileReplica) removeGarbageCollection(volumeName string) {
 	r.controllerSharedState.dequeueGarbageCollection(volumeName)
 }
 
-func NewReplicaController(mgr manager.Manager, azVolumeClient azClientSet.Interface, kubeClient kubeClientSet.Interface, controllerSharedState *SharedState) (*ReconcileReplica, error) {
+func NewReplicaController(mgr manager.Manager, controllerSharedState *SharedState) (*ReconcileReplica, error) {
 	logger := mgr.GetLogger().WithValues("controller", "replica")
 	reconciler := ReconcileReplica{
-		client:                     mgr.GetClient(),
-		azVolumeClient:             azVolumeClient,
-		kubeClient:                 kubeClient,
 		controllerSharedState:      controllerSharedState,
 		timeUntilGarbageCollection: DefaultTimeUntilGarbageCollection,
 	}
@@ -226,16 +223,4 @@ func NewReplicaController(mgr manager.Manager, azVolumeClient azClientSet.Interf
 
 	klog.V(2).Info("Controller set-up successful.")
 	return &reconciler, nil
-}
-
-func (r *ReconcileReplica) getClient() client.Client {
-	return r.client
-}
-
-func (r *ReconcileReplica) getAzClient() azClientSet.Interface {
-	return r.azVolumeClient
-}
-
-func (r *ReconcileReplica) getSharedState() *SharedState {
-	return r.controllerSharedState
 }
