@@ -29,21 +29,21 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e/framework"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
-	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
+	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 	podutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/pod"
 	volutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/volume"
 )
 
 type PodSchedulingWithPVScaleTest struct {
 	CSIDriver              driver.DynamicPVTestDriver
-	Pod                    testtypes.PodDetails
+	Pod                    resources.PodDetails
 	Replicas               int
 	StorageClassParameters map[string]string
 }
 
 type PodSchedulingOnFailoverScaleTest struct {
 	CSIDriver              driver.DynamicPVTestDriver
-	Pod                    testtypes.PodDetails
+	Pod                    resources.PodDetails
 	PodCount               int
 	Replicas               int
 	StorageClassParameters map[string]string
@@ -179,7 +179,7 @@ scaleInTest:
 }
 
 func (t *PodSchedulingOnFailoverScaleTest) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
-	statefulSets := []*testtypes.TestStatefulset{}
+	statefulSets := []*resources.TestStatefulset{}
 
 	ginkgo.By("Initiating statefulset setup")
 
@@ -202,7 +202,7 @@ func (t *PodSchedulingOnFailoverScaleTest) Run(client clientset.Interface, names
 	start := time.Now()
 	for i := range statefulSets {
 		wg.Add(1)
-		go func(statefulset *testtypes.TestStatefulset) {
+		go func(statefulset *resources.TestStatefulset) {
 			defer wg.Done()
 			defer ginkgo.GinkgoRecover()
 
@@ -228,7 +228,7 @@ func (t *PodSchedulingOnFailoverScaleTest) Run(client clientset.Interface, names
 			},
 		}
 
-		go func(ss *testtypes.TestStatefulset) {
+		go func(ss *resources.TestStatefulset) {
 			defer wg.Done()
 			defer ginkgo.GinkgoRecover()
 
@@ -257,7 +257,7 @@ func (t *PodSchedulingOnFailoverScaleTest) Run(client clientset.Interface, names
 		}
 
 		wg.Add(1)
-		go func(ss *testtypes.TestStatefulset) {
+		go func(ss *resources.TestStatefulset) {
 			defer wg.Done()
 			defer ginkgo.GinkgoRecover()
 

@@ -31,12 +31,12 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
-	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
+	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 )
 
 type DynamicallyProvisionedSharedDiskTester struct {
 	CSIDriver              driver.DynamicPVTestDriver
-	Pod                    testtypes.PodDetails
+	Pod                    resources.PodDetails
 	PodCheck               *PodExecCheck
 	StorageClassParameters map[string]string
 }

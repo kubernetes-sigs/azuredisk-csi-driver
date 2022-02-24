@@ -20,7 +20,7 @@ import (
 	"time"
 
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
-	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
+	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 
 	"github.com/onsi/ginkgo"
 	v1 "k8s.io/api/core/v1"
@@ -32,7 +32,7 @@ import (
 // Deleting a pod, and again testing if the Pod can write and read to mounted volumes
 type DynamicallyProvisionedDeletePodTest struct {
 	CSIDriver driver.DynamicPVTestDriver
-	Pod       testtypes.PodDetails
+	Pod       resources.PodDetails
 	PodCheck  *PodExecCheck
 }
 

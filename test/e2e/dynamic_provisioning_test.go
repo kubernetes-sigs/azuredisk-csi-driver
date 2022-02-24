@@ -23,7 +23,6 @@ import (
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/testsuites"
-	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
 
 	"github.com/onsi/ginkgo"
 	v1 "k8s.io/api/core/v1"
@@ -34,6 +33,7 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
 )
 
@@ -65,13 +65,13 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	)
 
 	ginkgo.BeforeEach(func() {
-		checkPodsRestart := testtypes.TestCmd{
+		checkPodsRestart := testutil.TestCmd{
 			Command:  "bash",
 			Args:     []string{"test/utils/check_driver_pods_restart.sh"},
 			StartLog: "Check driver pods if restarts ...",
 			EndLog:   "Check successfully",
 		}
-		testutil.ExecTestCmd([]testtypes.TestCmd{checkPodsRestart})
+		testutil.ExecTestCmd([]testutil.TestCmd{checkPodsRestart})
 
 		cs = f.ClientSet
 		ns = f.Namespace
@@ -104,17 +104,17 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		if isMultiZone {
 			pvcSize = "1000Gi"
 		}
-		pods := []testtypes.PodDetails{
+		pods := []resources.PodDetails{
 			{
 				Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
-				Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
+				Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
 					{
 						ClaimSize: pvcSize,
 						MountOptions: []string{
 							"barrier=1",
 							"acl",
 						},
-						VolumeMount: testtypes.VolumeMountDetails{
+						VolumeMount: resources.VolumeMountDetails{
 							NameGenerate:      "test-volume-",
 							MountPathGenerate: "/mnt/test-",
 						},
@@ -158,13 +158,13 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	ginkgo.It("should create a pod with volume mount subpath [disk.csi.azure.com] [Windows]", func() {
 		testutil.SkipIfUsingInTreeVolumePlugin()
 
-		pods := []testtypes.PodDetails{
+		pods := []resources.PodDetails{
 			{
 				Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
-				Volumes: []testtypes.VolumeDetails{
+				Volumes: []resources.VolumeDetails{
 					{
 						ClaimSize: "10Gi",
-						VolumeMount: testtypes.VolumeMountDetails{
+						VolumeMount: resources.VolumeMountDetails{
 							NameGenerate:      "test-volume-",
 							MountPathGenerate: "/mnt/test-",
 						},
@@ -192,14 +192,14 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	ginkgo.It("Should create and attach a volume with basic perfProfile [enableBursting][disk.csi.azure.com] [Windows]", func() {
 		testutil.SkipIfOnAzureStackCloud()
 		testutil.SkipIfUsingInTreeVolumePlugin()
-		pods := []testtypes.PodDetails{
+		pods := []resources.PodDetails{
 			{
 				Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
-				Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
+				Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
 					{
 						FSType:    "ext4",
 						ClaimSize: "1Ti",
-						VolumeMount: testtypes.VolumeMountDetails{
+						VolumeMount: resources.VolumeMountDetails{
 							NameGenerate:      "test-volume-",
 							MountPathGenerate: "/mnt/test-",
 						},
@@ -227,14 +227,14 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	ginkgo.It("Should create and attach a volume with advanced perfProfile [enableBursting][disk.csi.azure.com] [Windows]", func() {
 		testutil.SkipIfOnAzureStackCloud()
 		testutil.SkipIfUsingInTreeVolumePlugin()
-		pods := []testtypes.PodDetails{
+		pods := []resources.PodDetails{
 			{
 				Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
-				Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
+				Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
 					{
 						FSType:    "ext4",
 						ClaimSize: "1Ti",
-						VolumeMount: testtypes.VolumeMountDetails{
+						VolumeMount: resources.VolumeMountDetails{
 							NameGenerate:      "test-volume-",
 							MountPathGenerate: "/mnt/test-",
 						},
@@ -264,10 +264,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	ginkgo.It(fmt.Sprintf("should receive FailedMount event with invalid mount options [kubernetes.io/azure-disk] [disk.csi.azure.com] [%s]", schedulerName), func() {
 		testutil.SkipIfTestingInWindowsCluster()
 
-		pods := []testtypes.PodDetails{
+		pods := []resources.PodDetails{
 			{
 				Cmd: "echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data",
-				Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
+				Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
 					{
 						ClaimSize: "10Gi",
 						MountOptions: []string{
@@ -275,7 +275,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 							"mount",
 							"options",
 						},
-						VolumeMount: testtypes.VolumeMountDetails{
+						VolumeMount: resources.VolumeMountDetails{
 							NameGenerate:      "test-volume-",
 							MountPathGenerate: "/mnt/test-",
 						},
@@ -301,14 +301,14 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	ginkgo.It(fmt.Sprintf("should create a raw block volume on demand [kubernetes.io/azure-disk] [disk.csi.azure.com] [%s]", schedulerName), func() {
 		testutil.SkipIfTestingInWindowsCluster()
 
-		pods := []testtypes.PodDetails{
+		pods := []resources.PodDetails{
 			{
 				Cmd: "ls /dev | grep e2e-test",
-				Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
+				Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
 					{
 						ClaimSize:  "10Gi",
-						VolumeMode: testtypes.Block,
-						VolumeDevice: testtypes.VolumeDeviceDetails{
+						VolumeMode: resources.Block,
+						VolumeDevice: resources.VolumeDeviceDetails{
 							NameGenerate: "test-volume-",
 							DevicePath:   "/dev/e2e-test",
 						},
@@ -331,14 +331,14 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 
 	// Track issue https://github.com/kubernetes/kubernetes/issues/70505
 	ginkgo.It(fmt.Sprintf("should create a volume on demand and mount it as readOnly in a pod [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows] [%s]", schedulerName), func() {
-		pods := []testtypes.PodDetails{
+		pods := []resources.PodDetails{
 			{
 				Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("touch /mnt/test-1/data"),
-				Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
+				Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
 					{
 						FSType:    "ext4",
 						ClaimSize: "10Gi",
-						VolumeMount: testtypes.VolumeMountDetails{
+						VolumeMount: resources.VolumeMountDetails{
 							NameGenerate:      "test-volume-",
 							MountPathGenerate: "/mnt/test-",
 							ReadOnly:          true,
@@ -372,14 +372,14 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	})
 
 	ginkgo.It(fmt.Sprintf("should create multiple PV objects, bind to PVCs and attach all to different pods on the same node [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows] [%s]", schedulerName), func() {
-		pods := []testtypes.PodDetails{
+		pods := []resources.PodDetails{
 			{
 				Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
-				Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
+				Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
 					{
 						FSType:    "ext3",
 						ClaimSize: "10Gi",
-						VolumeMount: testtypes.VolumeMountDetails{
+						VolumeMount: resources.VolumeMountDetails{
 							NameGenerate:      "test-volume-",
 							MountPathGenerate: "/mnt/test-",
 						},
@@ -390,11 +390,11 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			},
 			{
 				Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
-				Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
+				Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
 					{
 						FSType:    "ext4",
 						ClaimSize: "10Gi",
-						VolumeMount: testtypes.VolumeMountDetails{
+						VolumeMount: resources.VolumeMountDetails{
 							NameGenerate:      "test-volume-",
 							MountPathGenerate: "/mnt/test-",
 						},
@@ -405,11 +405,11 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			},
 			{
 				Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
-				Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
+				Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
 					{
 						FSType:    "xfs",
 						ClaimSize: "10Gi",
-						VolumeMount: testtypes.VolumeMountDetails{
+						VolumeMount: resources.VolumeMountDetails{
 							NameGenerate:      "test-volume-",
 							MountPathGenerate: "/mnt/test-",
 						},
@@ -433,13 +433,13 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	})
 
 	ginkgo.It(fmt.Sprintf("should create a deployment object, write and read to it, delete the pod and write and read to it again [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows] [%s]", schedulerName), func() {
-		pod := testtypes.PodDetails{
+		pod := resources.PodDetails{
 			Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
-			Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
+			Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
 				{
 					FSType:    "ext3",
 					ClaimSize: "10Gi",
-					VolumeMount: testtypes.VolumeMountDetails{
+					VolumeMount: resources.VolumeMountDetails{
 						NameGenerate:      "test-volume-",
 						MountPathGenerate: "/mnt/test-",
 					},
@@ -469,7 +469,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 
 	ginkgo.It(fmt.Sprintf("should delete PV with reclaimPolicy %q [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", v1.PersistentVolumeReclaimDelete), func() {
 		reclaimPolicy := v1.PersistentVolumeReclaimDelete
-		volumes := testutil.NormalizeVolumes([]testtypes.VolumeDetails{
+		volumes := resources.NormalizeVolumes([]resources.VolumeDetails{
 			{
 				FSType:           "ext4",
 				ClaimSize:        "10Gi",
@@ -491,7 +491,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		testutil.SkipIfUsingInTreeVolumePlugin()
 
 		reclaimPolicy := v1.PersistentVolumeReclaimRetain
-		volumes := testutil.NormalizeVolumes([]testtypes.VolumeDetails{
+		volumes := resources.NormalizeVolumes([]resources.VolumeDetails{
 			{
 				FSType:           "ext4",
 				ClaimSize:        "10Gi",
@@ -511,13 +511,13 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		testutil.SkipIfTestingInWindowsCluster()
 		testutil.SkipIfUsingInTreeVolumePlugin()
 
-		pod := testtypes.PodDetails{
+		pod := resources.PodDetails{
 			Cmd: "echo 'hello world' > /mnt/test-1/data && fsync /mnt/test-1/data",
-			Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
+			Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
 				{
 					FSType:    "ext4",
 					ClaimSize: "10Gi",
-					VolumeMount: testtypes.VolumeMountDetails{
+					VolumeMount: resources.VolumeMountDetails{
 						NameGenerate:      "test-volume-",
 						MountPathGenerate: "/mnt/test-",
 					},
@@ -525,7 +525,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 				},
 			}, []string{}, isMultiZone),
 		}
-		podWithClonedVolume := testtypes.PodDetails{
+		podWithClonedVolume := resources.PodDetails{
 			Cmd: "grep 'hello world' /mnt/test-1/data",
 		}
 		test := testsuites.DynamicallyProvisionedVolumeCloningTest{
@@ -551,12 +551,12 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		testutil.SkipIfTestingInWindowsCluster()
 		testutil.SkipIfUsingInTreeVolumePlugin()
 
-		pod := testtypes.PodDetails{
-			Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
+		pod := resources.PodDetails{
+			Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
 				{
 					FSType:    "ext4",
 					ClaimSize: "10Gi",
-					VolumeMount: testtypes.VolumeMountDetails{
+					VolumeMount: resources.VolumeMountDetails{
 						NameGenerate:      "test-volume-",
 						MountPathGenerate: "/mnt/test-",
 					},
@@ -566,7 +566,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		}
 		clonedVolumeSize := "20Gi"
 
-		podWithClonedVolume := testtypes.PodDetails{
+		podWithClonedVolume := resources.PodDetails{
 			Cmd: "df -h | grep /mnt/test- | awk '{print $2}' | grep 20.0G",
 		}
 
@@ -591,14 +591,14 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	})
 
 	ginkgo.It(fmt.Sprintf("should create multiple PV objects, bind to PVCs and attach all to a single pod [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows] [%s]", schedulerName), func() {
-		pods := []testtypes.PodDetails{
+		pods := []resources.PodDetails{
 			{
 				Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && echo 'hello world' > /mnt/test-2/data && echo 'hello world' > /mnt/test-3/data && grep 'hello world' /mnt/test-1/data && grep 'hello world' /mnt/test-2/data && grep 'hello world' /mnt/test-3/data"),
-				Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
+				Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
 					{
 						FSType:    "ext3",
 						ClaimSize: "10Gi",
-						VolumeMount: testtypes.VolumeMountDetails{
+						VolumeMount: resources.VolumeMountDetails{
 							NameGenerate:      "test-volume-",
 							MountPathGenerate: "/mnt/test-",
 						},
@@ -607,7 +607,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 					{
 						FSType:    "ext4",
 						ClaimSize: "10Gi",
-						VolumeMount: testtypes.VolumeMountDetails{
+						VolumeMount: resources.VolumeMountDetails{
 							NameGenerate:      "test-volume-",
 							MountPathGenerate: "/mnt/test-",
 						},
@@ -616,7 +616,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 					{
 						FSType:    "xfs",
 						ClaimSize: "10Gi",
-						VolumeMount: testtypes.VolumeMountDetails{
+						VolumeMount: resources.VolumeMountDetails{
 							NameGenerate:      "test-volume-",
 							MountPathGenerate: "/mnt/test-",
 						},
@@ -643,14 +643,14 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	ginkgo.It(fmt.Sprintf("should create a raw block volume and a filesystem volume on demand and bind to the same pod [kubernetes.io/azure-disk] [disk.csi.azure.com] [%s]", schedulerName), func() {
 		testutil.SkipIfTestingInWindowsCluster()
 
-		pods := []testtypes.PodDetails{
+		pods := []resources.PodDetails{
 			{
 				Cmd: "dd if=/dev/zero of=/dev/xvda bs=1024k count=100 && echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data",
-				Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
+				Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
 					{
 						FSType:    "ext4",
 						ClaimSize: "10Gi",
-						VolumeMount: testtypes.VolumeMountDetails{
+						VolumeMount: resources.VolumeMountDetails{
 							NameGenerate:      "test-volume-",
 							MountPathGenerate: "/mnt/test-",
 						},
@@ -660,8 +660,8 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 						FSType:       "ext4",
 						MountOptions: []string{"rw"},
 						ClaimSize:    "10Gi",
-						VolumeMode:   testtypes.Block,
-						VolumeDevice: testtypes.VolumeDeviceDetails{
+						VolumeMode:   resources.Block,
+						VolumeDevice: resources.VolumeDeviceDetails{
 							NameGenerate: "test-block-volume-",
 							DevicePath:   "/dev/xvda",
 						},
@@ -685,13 +685,13 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		testutil.SkipIfTestingInWindowsCluster()
 		testutil.SkipIfUsingInTreeVolumePlugin()
 
-		pod := testtypes.PodDetails{
+		pod := resources.PodDetails{
 			Cmd: "echo 'hello world' > /mnt/test-1/data",
-			Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
+			Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
 				{
 					FSType:    "ext4",
 					ClaimSize: "10Gi",
-					VolumeMount: testtypes.VolumeMountDetails{
+					VolumeMount: resources.VolumeMountDetails{
 						NameGenerate:      "test-volume-",
 						MountPathGenerate: "/mnt/test-",
 					},
@@ -699,7 +699,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 				},
 			}, []string{}, isMultiZone),
 		}
-		podWithSnapshot := testtypes.PodDetails{
+		podWithSnapshot := resources.PodDetails{
 			Cmd: "grep 'hello world' /mnt/test-1/data",
 		}
 		test := testsuites.DynamicallyProvisionedVolumeSnapshotTest{
@@ -722,13 +722,13 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		testutil.SkipIfTestingInWindowsCluster()
 		testutil.SkipIfUsingInTreeVolumePlugin()
 
-		pod := testtypes.PodDetails{
+		pod := resources.PodDetails{
 			Cmd: "echo 'hello world' > /mnt/test-1/data",
-			Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
+			Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
 				{
 					FSType:    "ext4",
 					ClaimSize: "10Gi",
-					VolumeMount: testtypes.VolumeMountDetails{
+					VolumeMount: resources.VolumeMountDetails{
 						NameGenerate:      "test-volume-",
 						MountPathGenerate: "/mnt/test-",
 					},
@@ -737,11 +737,11 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			}, []string{}, isMultiZone),
 		}
 
-		podOverwrite := testtypes.PodDetails{
+		podOverwrite := resources.PodDetails{
 			Cmd: "echo 'overwrite' > /mnt/test-1/data",
 		}
 
-		podWithSnapshot := testtypes.PodDetails{
+		podWithSnapshot := resources.PodDetails{
 			Cmd: "grep 'hello world' /mnt/test-1/data",
 		}
 
@@ -763,11 +763,11 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	})
 
 	ginkgo.It(fmt.Sprintf("should create a pod with multiple volumes [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows] [%s]", schedulerName), func() {
-		volumes := []testtypes.VolumeDetails{}
+		volumes := []resources.VolumeDetails{}
 		for i := 1; i <= 3; i++ {
-			volume := testtypes.VolumeDetails{
+			volume := resources.VolumeDetails{
 				ClaimSize: "10Gi",
-				VolumeMount: testtypes.VolumeMountDetails{
+				VolumeMount: resources.VolumeMountDetails{
 					NameGenerate:      "test-volume-",
 					MountPathGenerate: "/mnt/test-",
 				},
@@ -776,10 +776,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			volumes = append(volumes, volume)
 		}
 
-		pods := []testtypes.PodDetails{
+		pods := []resources.PodDetails{
 			{
 				Cmd:       testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
-				Volumes:   testutil.NormalizeVolumes(volumes, []string{}, isMultiZone),
+				Volumes:   resources.NormalizeVolumes(volumes, []string{}, isMultiZone),
 				IsWindows: testconsts.IsWindowsCluster,
 			},
 		}
@@ -792,17 +792,17 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 
 	ginkgo.It(fmt.Sprintf("should create a volume on demand and resize it [disk.csi.azure.com] [Windows] [%s]", schedulerName), func() {
 		testutil.SkipIfUsingInTreeVolumePlugin()
-		volume := testtypes.VolumeDetails{
+		volume := resources.VolumeDetails{
 			ClaimSize: "10Gi",
-			VolumeMount: testtypes.VolumeMountDetails{
+			VolumeMount: resources.VolumeMountDetails{
 				NameGenerate:      "test-volume-",
 				MountPathGenerate: "/mnt/test-",
 			},
 			VolumeAccessMode: v1.ReadWriteOnce,
 		}
-		pod := testtypes.PodDetails{
+		pod := resources.PodDetails{
 			Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
-			Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
+			Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
 				{
 					ClaimSize: volume.ClaimSize,
 					MountOptions: []string{
@@ -871,17 +871,17 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 
 	ginkgo.It("should create a volume azuredisk with tag [disk.csi.azure.com] [Windows]", func() {
 		testutil.SkipIfUsingInTreeVolumePlugin()
-		pods := []testtypes.PodDetails{
+		pods := []resources.PodDetails{
 			{
 				Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
-				Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
+				Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
 					{
 						ClaimSize: "10Gi",
 						MountOptions: []string{
 							"barrier=1",
 							"acl",
 						},
-						VolumeMount: testtypes.VolumeMountDetails{
+						VolumeMount: resources.VolumeMountDetails{
 							NameGenerate:      "test-volume-",
 							MountPathGenerate: "/mnt/test-",
 						},
@@ -905,17 +905,17 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	})
 
 	ginkgo.It(fmt.Sprintf("should detach disk after pod deleted when maxMountReplicaCount = 0 [disk.csi.azure.com] [Windows] [%s]", schedulerName), func() {
-		pods := []testtypes.PodDetails{
+		pods := []resources.PodDetails{
 			{
 				Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
-				Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
+				Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
 					{
 						ClaimSize: "10Gi",
 						MountOptions: []string{
 							"barrier=1",
 							"acl",
 						},
-						VolumeMount: testtypes.VolumeMountDetails{
+						VolumeMount: resources.VolumeMountDetails{
 							NameGenerate:      "test-volume-",
 							MountPathGenerate: "/mnt/test-",
 						},
@@ -944,17 +944,17 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		}
 
-		volume := testtypes.VolumeDetails{
+		volume := resources.VolumeDetails{
 			ClaimSize: "10Gi",
-			VolumeMount: testtypes.VolumeMountDetails{
+			VolumeMount: resources.VolumeMountDetails{
 				NameGenerate:      "test-volume-",
 				MountPathGenerate: "/mnt/test-",
 			},
 		}
 
-		pod := testtypes.PodDetails{
+		pod := resources.PodDetails{
 			Cmd:       testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
-			Volumes:   testutil.NormalizeVolumes([]testtypes.VolumeDetails{volume}, []string{}, isMultiZone),
+			Volumes:   resources.NormalizeVolumes([]resources.VolumeDetails{volume}, []string{}, isMultiZone),
 			IsWindows: testconsts.IsWindowsCluster,
 		}
 
@@ -982,17 +982,17 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		}
 
-		volume := testtypes.VolumeDetails{
+		volume := resources.VolumeDetails{
 			ClaimSize: "10Gi",
-			VolumeMount: testtypes.VolumeMountDetails{
+			VolumeMount: resources.VolumeMountDetails{
 				NameGenerate:      "test-volume-",
 				MountPathGenerate: "/mnt/test-",
 			},
 		}
 
-		pod := testtypes.PodDetails{
+		pod := resources.PodDetails{
 			Cmd:       testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
-			Volumes:   testutil.NormalizeVolumes([]testtypes.VolumeDetails{volume}, []string{}, isMultiZone),
+			Volumes:   resources.NormalizeVolumes([]resources.VolumeDetails{volume}, []string{}, isMultiZone),
 			IsWindows: testconsts.IsWindowsCluster,
 		}
 
@@ -1012,13 +1012,13 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	})
 
 	ginkgo.It("should create a statefulset object, write and read to it, delete the pod and write and read to it again [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func() {
-		pod := testtypes.PodDetails{
+		pod := resources.PodDetails{
 			Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
-			Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
+			Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
 				{
 					FSType:    "ext3",
 					ClaimSize: "10Gi",
-					VolumeMount: testtypes.VolumeMountDetails{
+					VolumeMount: resources.VolumeMountDetails{
 						NameGenerate:      "pvc",
 						MountPathGenerate: "/mnt/test-",
 					},
@@ -1059,17 +1059,17 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		}
 
-		volume := testtypes.VolumeDetails{
+		volume := resources.VolumeDetails{
 			ClaimSize: "10Gi",
-			VolumeMount: testtypes.VolumeMountDetails{
+			VolumeMount: resources.VolumeMountDetails{
 				NameGenerate:      "test-volume-",
 				MountPathGenerate: "/mnt/test-",
 			},
 			VolumeAccessMode: v1.ReadWriteOnce,
 		}
-		pod := testtypes.PodDetails{
+		pod := resources.PodDetails{
 			Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
-			Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
+			Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
 				{
 					ClaimSize: volume.ClaimSize,
 					MountOptions: []string{
@@ -1113,17 +1113,17 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		}
 
-		volume := testtypes.VolumeDetails{
+		volume := resources.VolumeDetails{
 			ClaimSize: "10Gi",
-			VolumeMount: testtypes.VolumeMountDetails{
+			VolumeMount: resources.VolumeMountDetails{
 				NameGenerate:      "test-volume-",
 				MountPathGenerate: "/mnt/test-",
 			},
 			VolumeAccessMode: v1.ReadWriteOnce,
 		}
-		pod := testtypes.PodDetails{
+		pod := resources.PodDetails{
 			Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
-			Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
+			Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
 				{
 					ClaimSize: volume.ClaimSize,
 					MountOptions: []string{
@@ -1167,17 +1167,17 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		}
 
-		volume := testtypes.VolumeDetails{
+		volume := resources.VolumeDetails{
 			ClaimSize: "10Gi",
-			VolumeMount: testtypes.VolumeMountDetails{
+			VolumeMount: resources.VolumeMountDetails{
 				NameGenerate:      "test-volume-",
 				MountPathGenerate: "/mnt/test-",
 			},
 			VolumeAccessMode: v1.ReadWriteOnce,
 		}
-		pod := testtypes.PodDetails{
+		pod := resources.PodDetails{
 			Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
-			Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
+			Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
 				{
 					ClaimSize: volume.ClaimSize,
 					MountOptions: []string{
@@ -1223,18 +1223,18 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		}
 
-		volume := testtypes.VolumeDetails{
+		volume := resources.VolumeDetails{
 			ClaimSize: "10Gi",
-			VolumeMount: testtypes.VolumeMountDetails{
+			VolumeMount: resources.VolumeMountDetails{
 				NameGenerate:      "test-volume-",
 				MountPathGenerate: "/mnt/test-",
 			},
 			VolumeAccessMode: v1.ReadWriteOnce,
 		}
-		pods := []testtypes.PodDetails{
+		pods := []resources.PodDetails{
 			{
 				Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
-				Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
+				Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
 					{
 						ClaimSize: volume.ClaimSize,
 						MountOptions: []string{
@@ -1250,7 +1250,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			},
 			{
 				Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
-				Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
+				Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
 					{
 						ClaimSize: volume.ClaimSize,
 						MountOptions: []string{
@@ -1298,9 +1298,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		}
 
 		reclaimPolicy := v1.PersistentVolumeReclaimDelete
-		volume := testtypes.VolumeDetails{
+		volume := resources.VolumeDetails{
 			ClaimSize: "10Gi",
-			VolumeMount: testtypes.VolumeMountDetails{
+			VolumeMount: resources.VolumeMountDetails{
 				NameGenerate:      "test-volume-",
 				MountPathGenerate: "/mnt/test-",
 			},
@@ -1308,9 +1308,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			VolumeAccessMode: v1.ReadWriteOnce,
 		}
 		volumeBindingMode := storagev1.VolumeBindingImmediate
-		pod := testtypes.PodDetails{
+		pod := resources.PodDetails{
 			Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
-			Volumes: []testtypes.VolumeDetails{
+			Volumes: []resources.VolumeDetails{
 				{
 					ClaimSize: volume.ClaimSize,
 					MountOptions: []string{
@@ -1348,17 +1348,17 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			ginkgo.Skip("test case does not apply to multi az case")
 		}
 
-		volume := testtypes.VolumeDetails{
+		volume := resources.VolumeDetails{
 			ClaimSize: "10Gi",
-			VolumeMount: testtypes.VolumeMountDetails{
+			VolumeMount: resources.VolumeMountDetails{
 				NameGenerate:      "test-volume-",
 				MountPathGenerate: "/mnt/test-",
 			},
 			VolumeAccessMode: v1.ReadWriteOnce,
 		}
-		pod := testtypes.PodDetails{
+		pod := resources.PodDetails{
 			Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
-			Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
+			Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
 				{
 					ClaimSize: volume.ClaimSize,
 					MountOptions: []string{
@@ -1399,17 +1399,17 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		testutil.SkipIfNotZRSSupported(location)
 		testutil.SkipIfTestingInWindowsCluster()
 
-		volume := testtypes.VolumeDetails{
+		volume := resources.VolumeDetails{
 			ClaimSize: "10Gi",
-			VolumeMount: testtypes.VolumeMountDetails{
+			VolumeMount: resources.VolumeMountDetails{
 				NameGenerate:      "test-volume-",
 				MountPathGenerate: "/mnt/test-",
 			},
 			VolumeAccessMode: v1.ReadWriteOnce,
 		}
-		pod := testtypes.PodDetails{
+		pod := resources.PodDetails{
 			Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
-			Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
+			Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
 				{
 					ClaimSize: volume.ClaimSize,
 					MountOptions: []string{
@@ -1455,17 +1455,17 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		if err != nil {
 			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		}
-		volume := testtypes.VolumeDetails{
+		volume := resources.VolumeDetails{
 			ClaimSize: "10Gi",
-			VolumeMount: testtypes.VolumeMountDetails{
+			VolumeMount: resources.VolumeMountDetails{
 				NameGenerate:      "test-volume-",
 				MountPathGenerate: "/mnt/test-",
 			},
 			VolumeAccessMode: v1.ReadWriteOnce,
 		}
-		pod := testtypes.PodDetails{
+		pod := resources.PodDetails{
 			Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
-			Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
+			Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
 				{
 					ClaimSize: volume.ClaimSize,
 					MountOptions: []string{
@@ -1513,16 +1513,16 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		if err != nil {
 			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		}
-		volume := testtypes.VolumeDetails{
+		volume := resources.VolumeDetails{
 			ClaimSize: "10Gi",
-			VolumeMount: testtypes.VolumeMountDetails{
+			VolumeMount: resources.VolumeMountDetails{
 				NameGenerate:      "test-volume-",
 				MountPathGenerate: "/mnt/test-",
 			},
 		}
-		pod := testtypes.PodDetails{
+		pod := resources.PodDetails{
 			Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
-			Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
+			Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
 				{
 					ClaimSize: volume.ClaimSize,
 					MountOptions: []string{
@@ -1566,16 +1566,16 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			testutil.SkipIfNotZRSSupported(location)
 		}
 
-		pod := testtypes.PodDetails{
+		pod := resources.PodDetails{
 			Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do sleep 5; done"),
-			Volumes: testutil.NormalizeVolumes([]testtypes.VolumeDetails{
+			Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
 				{
 					ClaimSize: "10Gi",
-					VolumeMount: testtypes.VolumeMountDetails{
+					VolumeMount: resources.VolumeMountDetails{
 						NameGenerate:      "test-shared-volume-",
 						MountPathGenerate: "/dev/shared-",
 					},
-					VolumeMode:       testtypes.Block,
+					VolumeMode:       resources.Block,
 					VolumeAccessMode: v1.ReadWriteMany,
 				},
 			}, t.allowedTopologyValues, isMultiZone),

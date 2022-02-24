@@ -25,43 +25,20 @@ import (
 
 	"github.com/onsi/ginkgo"
 	"github.com/onsi/gomega"
-	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	restclientset "k8s.io/client-go/rest"
 	"k8s.io/kubernetes/test/e2e/framework"
 
-	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
-	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
 )
 
-// Normalize volumes by adding allowed topology values and WaitForFirstConsumer binding mode if we are testing in a multi-az cluster
-func NormalizeVolumes(volumes []testtypes.VolumeDetails, allowedTopologies []string, isMultiZone bool) []testtypes.VolumeDetails {
-	for i := range volumes {
-		volumes[i] = NormalizeVolume(volumes[i], allowedTopologies, isMultiZone)
-	}
-
-	return volumes
-}
-
-func NormalizeVolume(volume testtypes.VolumeDetails, allowedTopologies []string, isMultiZone bool) testtypes.VolumeDetails {
-	driverName := os.Getenv(testconsts.AzureDriverNameVar)
-	switch driverName {
-	case "kubernetes.io/azure-disk":
-		volumeBindingMode := storagev1.VolumeBindingWaitForFirstConsumer
-		volume.VolumeBindingMode = &volumeBindingMode
-	case "", consts.DefaultDriverName:
-		if !isMultiZone {
-			return volume
-		}
-		volume.AllowedTopologyValues = allowedTopologies
-		volumeBindingMode := storagev1.VolumeBindingWaitForFirstConsumer
-		volume.VolumeBindingMode = &volumeBindingMode
-	}
-
-	return volume
+type TestCmd struct {
+	Command  string
+	Args     []string
+	StartLog string
+	EndLog   string
 }
 
 func RestClient(group string, version string) (restclientset.Interface, error) {
@@ -76,7 +53,7 @@ func RestClient(group string, version string) (restclientset.Interface, error) {
 	return restclientset.RESTClientFor(config)
 }
 
-func ExecTestCmd(cmds []testtypes.TestCmd) {
+func ExecTestCmd(cmds []TestCmd) {
 	err := os.Chdir("../..")
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	defer func() {

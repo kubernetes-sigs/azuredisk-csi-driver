@@ -38,7 +38,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
-	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
+	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/azure"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/credentials"
 	nodeutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/node"
@@ -64,9 +64,9 @@ var _ = ginkgo.BeforeSuite(func() {
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	// Uninstall Azure Disk CSI Driver on cluster if there is one running
-	testCmds := []testtypes.TestCmd{}
+	testCmds := []testutil.TestCmd{}
 	if *driverExists {
-		e2eTeardown := testtypes.TestCmd{
+		e2eTeardown := testutil.TestCmd{
 			Command:  "make",
 			Args:     []string{"e2e-teardown"},
 			StartLog: "Uninstalling Any Existing Azure Disk CSI Driver...",
@@ -77,14 +77,14 @@ var _ = ginkgo.BeforeSuite(func() {
 
 	// Install Azure Disk CSI Driver on cluster from project root
 	os.Unsetenv(testconsts.BuildV2Driver)
-	e2eBootstrap := testtypes.TestCmd{
+	e2eBootstrap := testutil.TestCmd{
 		Command:  "make",
 		Args:     []string{"e2e-bootstrap"},
 		StartLog: "Installing Azure Disk CSI Driver...",
 		EndLog:   "Azure Disk CSI Driver installed",
 	}
 
-	createMetricsSVC := testtypes.TestCmd{
+	createMetricsSVC := testutil.TestCmd{
 		Command:  "make",
 		Args:     []string{"create-metrics-svc"},
 		StartLog: "create metrics service ...",
@@ -97,49 +97,49 @@ var _ = ginkgo.BeforeSuite(func() {
 var _ = ginkgo.AfterSuite(func() {
 	// Default storage driver configuration is CSI. Freshly built
 	// CSI driver is installed for that case.
-	cmLog := testtypes.TestCmd{
+	cmLog := testutil.TestCmd{
 		Command:  "bash",
 		Args:     []string{"test/utils/controller-manager-log.sh"},
 		StartLog: "===================controller-manager log=======",
 		EndLog:   "===================================================",
 	}
-	testutil.ExecTestCmd([]testtypes.TestCmd{cmLog})
+	testutil.ExecTestCmd([]testutil.TestCmd{cmLog})
 
-	checkPodsRestart := testtypes.TestCmd{
+	checkPodsRestart := testutil.TestCmd{
 		Command:  "bash",
 		Args:     []string{"test/utils/check_driver_pods_restart.sh", "log"},
 		StartLog: "Check driver pods if restarts ...",
 		EndLog:   "Check successfully",
 	}
-	testutil.ExecTestCmd([]testtypes.TestCmd{checkPodsRestart})
+	testutil.ExecTestCmd([]testutil.TestCmd{checkPodsRestart})
 
 	azurediskLogArgs := []string{"test/utils/azuredisk_log.sh", "azuredisk"}
 	if testconsts.IsUsingCSIDriverV2 {
 		azurediskLogArgs = append(azurediskLogArgs, "v2")
 	}
 
-	azurediskLog := testtypes.TestCmd{
+	azurediskLog := testutil.TestCmd{
 		Command:  "bash",
 		Args:     azurediskLogArgs,
 		StartLog: "===================azuredisk log===================",
 		EndLog:   "===================================================",
 	}
 
-	deleteMetricsSVC := testtypes.TestCmd{
+	deleteMetricsSVC := testutil.TestCmd{
 		Command:  "make",
 		Args:     []string{"delete-metrics-svc"},
 		StartLog: "delete metrics service...",
 		EndLog:   "metrics service deleted",
 	}
 
-	e2eTeardown := testtypes.TestCmd{
+	e2eTeardown := testutil.TestCmd{
 		Command:  "make",
 		Args:     []string{"e2e-teardown"},
 		StartLog: "Uninstalling Azure Disk CSI Driver...",
 		EndLog:   "Azure Disk CSI Driver uninstalled",
 	}
 
-	testutil.ExecTestCmd([]testtypes.TestCmd{azurediskLog, deleteMetricsSVC, e2eTeardown})
+	testutil.ExecTestCmd([]testutil.TestCmd{azurediskLog, deleteMetricsSVC, e2eTeardown})
 
 	err := credentials.DeleteAzureCredentialFile()
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
@@ -178,12 +178,12 @@ func upgradeTest(isMultiZone bool) {
 	ginkgo.It("Should create a pod with 3 volumes with v1 Azure Disk CSI Driver and should successfully create necessary CRIs upon upgrade to v2 Azure Disk CSI Driver.", func() {
 		ctx := context.Background()
 		nodes := nodeutil.ListNodeNames(cs)
-		volumes := []testtypes.VolumeDetails{}
+		volumes := []resources.VolumeDetails{}
 		for j := 1; j <= 3; j++ {
-			volume := testtypes.VolumeDetails{
+			volume := resources.VolumeDetails{
 				FSType:    "ext4",
 				ClaimSize: "256Gi",
-				VolumeMount: testtypes.VolumeMountDetails{
+				VolumeMount: resources.VolumeMountDetails{
 					NameGenerate:      "test-volume-",
 					MountPathGenerate: "/mnt/test-",
 				},
@@ -191,9 +191,9 @@ func upgradeTest(isMultiZone bool) {
 			volumes = append(volumes, volume)
 		}
 
-		pod := testtypes.PodDetails{
+		pod := resources.PodDetails{
 			Cmd:       testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
-			Volumes:   testutil.NormalizeVolumes(volumes, []string{}, isMultiZone),
+			Volumes:   resources.NormalizeVolumes(volumes, []string{}, isMultiZone),
 			IsWindows: testconsts.IsWindowsCluster,
 		}
 
@@ -213,13 +213,13 @@ func upgradeTest(isMultiZone bool) {
 		ginkgo.By("checking that the pod is running")
 		tpod.WaitForRunning()
 
-		e2eUpgrade := testtypes.TestCmd{
+		e2eUpgrade := testutil.TestCmd{
 			Command:  "make",
 			Args:     []string{"e2e-upgrade-v2"},
 			StartLog: "upgrading to v2 driver ...",
 			EndLog:   "upgraded to v2 driver",
 		}
-		testutil.ExecTestCmd([]testtypes.TestCmd{e2eUpgrade})
+		testutil.ExecTestCmd([]testutil.TestCmd{e2eUpgrade})
 
 		ginkgo.By("checking whether necessary CRIs are created.")
 		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())

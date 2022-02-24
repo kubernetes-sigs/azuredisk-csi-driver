@@ -18,7 +18,7 @@ package testsuites
 
 import (
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
-	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
+	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 
 	"github.com/onsi/ginkgo"
 	v1 "k8s.io/api/core/v1"
@@ -30,7 +30,7 @@ import (
 // Testing if multiple Pod(s) can write simultaneously
 type DynamicallyProvisionedCollocatedPodTest struct {
 	CSIDriver              driver.DynamicPVTestDriver
-	Pods                   []testtypes.PodDetails
+	Pods                   []resources.PodDetails
 	ColocatePods           bool
 	StorageClassParameters map[string]string
 }

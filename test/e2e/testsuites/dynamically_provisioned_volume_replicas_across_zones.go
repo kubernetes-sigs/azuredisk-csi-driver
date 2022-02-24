@@ -35,11 +35,11 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
-	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
+	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 )
 
 type DynamicallyProvisionedVolumeReplicasAcrossZones struct {
-	Pod                    testtypes.PodDetails
+	Pod                    resources.PodDetails
 	CSIDriver              driver.DynamicPVTestDriver
 	AzDiskClient           *azDiskClientSet.Clientset
 	StorageClassParameters map[string]string
