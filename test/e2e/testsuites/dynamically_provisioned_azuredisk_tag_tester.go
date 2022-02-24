@@ -31,7 +31,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
-	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
+	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/azure"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/credentials"
 )
@@ -41,7 +41,7 @@ import (
 // Testing if azuredisk contains tag
 type DynamicallyProvisionedAzureDiskWithTag struct {
 	CSIDriver              driver.DynamicPVTestDriver
-	Pods                   []testtypes.PodDetails
+	Pods                   []resources.PodDetails
 	StorageClassParameters map[string]string
 	Tags                   string
 }

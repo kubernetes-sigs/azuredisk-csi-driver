@@ -26,7 +26,7 @@ import (
 	"github.com/onsi/gomega"
 	"k8s.io/kubernetes/test/e2e/framework"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
-	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
+
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/azure"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/credentials"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
@@ -53,21 +53,21 @@ var _ = ginkgo.BeforeSuite(func() {
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		// Install Azure Disk CSI Driver on cluster from project root
-		e2eBootstrap := testtypes.TestCmd{
+		e2eBootstrap := testutil.TestCmd{
 			Command:  "make",
 			Args:     []string{"e2e-bootstrap"},
 			StartLog: "Installing Azure Disk CSI Driver...",
 			EndLog:   "Azure Disk CSI Driver installed",
 		}
 
-		createMetricsSVC := testtypes.TestCmd{
+		createMetricsSVC := testutil.TestCmd{
 			Command:  "make",
 			Args:     []string{"create-metrics-svc"},
 			StartLog: "create metrics service ...",
 			EndLog:   "metrics service created",
 		}
 		if !*skipClusterBootstrap {
-			testutil.ExecTestCmd([]testtypes.TestCmd{e2eBootstrap, createMetricsSVC})
+			testutil.ExecTestCmd([]testutil.TestCmd{e2eBootstrap, createMetricsSVC})
 		}
 	}
 })
@@ -76,44 +76,44 @@ var _ = ginkgo.AfterSuite(func() {
 	// Default storage driver configuration is CSI. Freshly built
 	// CSI driver is installed for that case.
 	if testconsts.IsTestingMigration || testconsts.IsUsingInTreeVolumePlugin {
-		cmLog := testtypes.TestCmd{
+		cmLog := testutil.TestCmd{
 			Command:  "bash",
 			Args:     []string{"test/utils/controller-manager-log.sh"},
 			StartLog: "===================controller-manager log=======",
 			EndLog:   "===================================================",
 		}
-		testutil.ExecTestCmd([]testtypes.TestCmd{cmLog})
+		testutil.ExecTestCmd([]testutil.TestCmd{cmLog})
 	}
 
 	if testconsts.IsTestingMigration || !testconsts.IsUsingInTreeVolumePlugin {
-		checkPodsRestart := testtypes.TestCmd{
+		checkPodsRestart := testutil.TestCmd{
 			Command:  "bash",
 			Args:     []string{"test/utils/check_driver_pods_restart.sh", "log"},
 			StartLog: "Check driver pods if restarts ...",
 			EndLog:   "Check successfully",
 		}
-		testutil.ExecTestCmd([]testtypes.TestCmd{checkPodsRestart})
+		testutil.ExecTestCmd([]testutil.TestCmd{checkPodsRestart})
 
 		azurediskLogArgs := []string{"test/utils/azuredisk_log.sh", "azuredisk"}
 		if testconsts.IsUsingCSIDriverV2 {
 			azurediskLogArgs = append(azurediskLogArgs, "v2")
 		}
 
-		azurediskLog := testtypes.TestCmd{
+		azurediskLog := testutil.TestCmd{
 			Command:  "bash",
 			Args:     azurediskLogArgs,
 			StartLog: "===================azuredisk log===================",
 			EndLog:   "===================================================",
 		}
 
-		deleteMetricsSVC := testtypes.TestCmd{
+		deleteMetricsSVC := testutil.TestCmd{
 			Command:  "make",
 			Args:     []string{"delete-metrics-svc"},
 			StartLog: "delete metrics service...",
 			EndLog:   "metrics service deleted",
 		}
 
-		e2eTeardown := testtypes.TestCmd{
+		e2eTeardown := testutil.TestCmd{
 			Command:  "make",
 			Args:     []string{"e2e-teardown"},
 			StartLog: "Uninstalling Azure Disk CSI Driver...",
@@ -121,9 +121,9 @@ var _ = ginkgo.AfterSuite(func() {
 		}
 
 		if *skipClusterBootstrap {
-			testutil.ExecTestCmd([]testtypes.TestCmd{azurediskLog})
+			testutil.ExecTestCmd([]testutil.TestCmd{azurediskLog})
 		} else {
-			testutil.ExecTestCmd([]testtypes.TestCmd{azurediskLog, deleteMetricsSVC, e2eTeardown})
+			testutil.ExecTestCmd([]testutil.TestCmd{azurediskLog, deleteMetricsSVC, e2eTeardown})
 		}
 
 		err := credentials.DeleteAzureCredentialFile()

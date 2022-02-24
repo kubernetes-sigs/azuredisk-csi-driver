@@ -21,7 +21,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
-	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
+	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 	nodeutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/node"
 )
 
@@ -29,12 +29,12 @@ import (
 // Pod with PV should successfully be scheduled in a cluster with AzDriverNode and AzVolumeAttachment resources
 type AzDiskSchedulerExtenderPodSchedulingWithPVTest struct {
 	CSIDriver              driver.DynamicPVTestDriver
-	Pod                    testtypes.PodDetails
+	Pod                    resources.PodDetails
 	StorageClassParameters map[string]string
 }
 
 func (t *AzDiskSchedulerExtenderPodSchedulingWithPVTest) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
-	tpod := testtypes.NewTestPod(client, namespace, t.Pod.Cmd, schedulerName, t.Pod.IsWindows)
+	tpod := resources.NewTestPod(client, namespace, t.Pod.Cmd, schedulerName, t.Pod.IsWindows)
 	volume := t.Pod.Volumes[0]
 	tpvc, pvcCleanup := volume.SetupDynamicPersistentVolumeClaim(client, namespace, t.CSIDriver, t.StorageClassParameters)
 	for i := range pvcCleanup {

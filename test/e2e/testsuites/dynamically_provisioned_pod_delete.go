@@ -26,7 +26,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
-	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
+	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 	nodeutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/node"
 
 	"github.com/onsi/ginkgo"
@@ -45,7 +45,7 @@ import (
 // Tests whether AzVolumeAttachment CRI gets either deleted or demoted based on volume's maxMountReplicaCount
 type DynamicallyProvisionedPodDelete struct {
 	CSIDriver              driver.DynamicPVTestDriver
-	Pod                    testtypes.PodDetails
+	Pod                    resources.PodDetails
 	StorageClassParameters map[string]string
 	AzDiskClient           *azDiskClientSet.Clientset
 }

@@ -21,7 +21,7 @@ import (
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
-	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
+	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 	nodeutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/node"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 
@@ -39,7 +39,7 @@ import (
 type PreProvisionedDanglingAttachVolumeTest struct {
 	CSIDriver     driver.PreProvisionedVolumeTestDriver
 	AzureCloud    *provider.Cloud
-	Pod           testtypes.PodDetails
+	Pod           resources.PodDetails
 	VolumeContext map[string]string
 }
 

@@ -37,7 +37,7 @@ import (
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
-	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
+	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/azure"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/credentials"
 	volutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/volume"
@@ -49,8 +49,8 @@ import (
 type DynamicallyProvisionedResizeVolumeTest struct {
 	CSIDriver              driver.DynamicPVTestDriver
 	StorageClassParameters map[string]string
-	Pod                    testtypes.PodDetails
-	Volume                 testtypes.VolumeDetails
+	Pod                    resources.PodDetails
+	Volume                 resources.VolumeDetails
 	ResizeOffline          bool
 }
 

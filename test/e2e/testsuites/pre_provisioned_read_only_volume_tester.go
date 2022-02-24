@@ -20,7 +20,7 @@ import (
 	"fmt"
 
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
-	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
+	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 
 	"github.com/onsi/ginkgo"
 	"github.com/onsi/gomega"
@@ -33,7 +33,7 @@ import (
 // Testing that the Pod(s) cannot write to the volume when mounted
 type PreProvisionedReadOnlyVolumeTest struct {
 	CSIDriver     driver.PreProvisionedVolumeTestDriver
-	Pods          []testtypes.PodDetails
+	Pods          []resources.PodDetails
 	VolumeContext map[string]string
 }
 

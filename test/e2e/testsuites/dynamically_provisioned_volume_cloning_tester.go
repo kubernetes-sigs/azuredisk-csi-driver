@@ -19,7 +19,7 @@ package testsuites
 import (
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
-	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
+	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 
 	"github.com/onsi/ginkgo"
 	v1 "k8s.io/api/core/v1"
@@ -30,8 +30,8 @@ import (
 // ClonedVolumeSize optional for when testing for cloned volume with different size to the original volume
 type DynamicallyProvisionedVolumeCloningTest struct {
 	CSIDriver              driver.DynamicPVTestDriver
-	Pod                    testtypes.PodDetails
-	PodWithClonedVolume    testtypes.PodDetails
+	Pod                    resources.PodDetails
+	PodWithClonedVolume    resources.PodDetails
 	ClonedVolumeSize       string
 	StorageClassParameters map[string]string
 }
@@ -56,7 +56,7 @@ func (t *DynamicallyProvisionedVolumeCloningTest) Run(client clientset.Interface
 
 	ginkgo.By("cloning existing volume")
 	clonedVolume := t.Pod.Volumes[0]
-	clonedVolume.DataSource = &testtypes.DataSource{
+	clonedVolume.DataSource = &resources.DataSource{
 		Name: tpod.Pod.Spec.Volumes[0].VolumeSource.PersistentVolumeClaim.ClaimName,
 		Kind: testconsts.VolumePVCKind,
 	}
@@ -68,7 +68,7 @@ func (t *DynamicallyProvisionedVolumeCloningTest) Run(client clientset.Interface
 
 	zone := tpod.GetZoneForVolume(0)
 
-	t.PodWithClonedVolume.Volumes = []testtypes.VolumeDetails{clonedVolume}
+	t.PodWithClonedVolume.Volumes = []resources.VolumeDetails{clonedVolume}
 	tpod, cleanups = t.PodWithClonedVolume.SetupWithDynamicVolumes(client, namespace, t.CSIDriver, t.StorageClassParameters, schedulerName)
 	for i := range cleanups {
 		defer cleanups[i]()
@@ -77,7 +77,7 @@ func (t *DynamicallyProvisionedVolumeCloningTest) Run(client clientset.Interface
 	// Since an LRS disk cannot be cloned to a different zone, add a selector to the pod so
 	// that it is created in the same zone as the source disk.
 	if len(zone) != 0 {
-		tpod.SetNodeSelector(map[string]string{"topology.disk.csi.azure.com/zone": zone})
+		tpod.SetNodeSelector(map[string]string{testconsts.TopologyKey: zone})
 	}
 
 	ginkgo.By("deploying a second pod with cloned volume")
