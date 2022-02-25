@@ -36,7 +36,7 @@ kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi
 2. check the filesystem size in the container.
 
 ```console
-$ kubectl exec -it nginx-azuredisk -- df -h /mnt/azuredisk
+$ kubectl exec -it statefulset-azuredisk-0 -- df -h /mnt/azuredisk
 Filesystem      Size  Used Avail Use% Mounted on
 /dev/sdc        9.8G   37M  9.8G   1% /mnt/azuredisk
 ```
@@ -44,15 +44,7 @@ Filesystem      Size  Used Avail Use% Mounted on
 3. expand pvc by increasing the value of `spec.resources.requests.storage`.
 
 ```console
-$ kubectl edit pvc persistent-storage-statefulset-azuredisk-0
-...
-...
-spec:
-  resources:
-    requests:
-      storage: 15Gi
-...
-...
+kubectl patch pvc persistent-storage-statefulset-azuredisk-0 --type merge --patch '{"spec": {"resources": {"requests": {"storage": "15Gi"}}}}'
 ```
 
 4. check pvc size after around 2 minutes.
