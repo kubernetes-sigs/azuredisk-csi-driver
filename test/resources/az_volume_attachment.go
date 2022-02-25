@@ -31,7 +31,6 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 )
 
-// should only be used for integration tests
 type TestAzVolumeAttachment struct {
 	Azclient             azDiskClientSet.DiskV1alpha2Interface
 	Namespace            string
@@ -40,7 +39,6 @@ type TestAzVolumeAttachment struct {
 	MaxMountReplicaCount int
 }
 
-// should only be used for integration tests
 func NewTestAzVolumeAttachment(azVolumeAttachment azDiskClientSet.AzVolumeAttachmentInterface, volumeAttachmentName, nodeName, volumeName, ns string) *diskv1alpha2.AzVolumeAttachment {
 	// Delete leftover azVolumeAttachments from previous runs
 	if _, err := azVolumeAttachment.Get(context.Background(), volumeAttachmentName, metav1.GetOptions{}); err == nil {
@@ -76,12 +74,10 @@ func NewTestAzVolumeAttachment(azVolumeAttachment azDiskClientSet.AzVolumeAttach
 	return newAzVolumeAttachment
 }
 
-// should only be used for integration tests
 func DeleteTestAzVolumeAttachment(azVolumeAttachment azDiskClientSet.AzVolumeAttachmentInterface, volumeAttachmentName string) {
 	_ = azVolumeAttachment.Delete(context.Background(), volumeAttachmentName, metav1.DeleteOptions{})
 }
 
-// should only be used for integration tests
 func SetupTestAzVolumeAttachment(azclient azDiskClientSet.DiskV1alpha2Interface, namespace, underlyingVolume, primaryNodeName string, maxMountReplicaCount int) *TestAzVolumeAttachment {
 	return &TestAzVolumeAttachment{
 		Azclient:             azclient,
@@ -92,7 +88,6 @@ func SetupTestAzVolumeAttachment(azclient azDiskClientSet.DiskV1alpha2Interface,
 	}
 }
 
-// should only be used for integration tests
 func (t *TestAzVolumeAttachment) Create() *diskv1alpha2.AzVolumeAttachment {
 	// create test az volume
 	azVol := t.Azclient.AzVolumes(t.Namespace)
@@ -106,7 +101,6 @@ func (t *TestAzVolumeAttachment) Create() *diskv1alpha2.AzVolumeAttachment {
 	return att
 }
 
-// should only be used for integration tests
 func (t *TestAzVolumeAttachment) Cleanup() {
 	klog.Info("cleaning up")
 	err := t.Azclient.AzVolumes(t.Namespace).Delete(context.Background(), t.UnderlyingVolume, metav1.DeleteOptions{})
@@ -132,8 +126,6 @@ func (t *TestAzVolumeAttachment) Cleanup() {
 	}
 }
 
-// should only be used for integration tests
-// Wait for the azVolumeAttachment object update
 func (t *TestAzVolumeAttachment) WaitForAttach(timeout time.Duration) error {
 	conditionFunc := func() (bool, error) {
 		att, err := t.Azclient.AzVolumeAttachments(t.Namespace).Get(context.TODO(), azureutils.GetAzVolumeAttachmentName(t.UnderlyingVolume, t.PrimaryNodeName), metav1.GetOptions{})
@@ -149,8 +141,6 @@ func (t *TestAzVolumeAttachment) WaitForAttach(timeout time.Duration) error {
 	return wait.PollImmediate(time.Duration(15)*time.Second, timeout, conditionFunc)
 }
 
-// should only be used for integration tests
-// Wait for the azVolumeAttachment object update
 func (t *TestAzVolumeAttachment) WaitForFinalizer(timeout time.Duration) error {
 	conditionFunc := func() (bool, error) {
 		att, err := t.Azclient.AzVolumeAttachments(t.Namespace).Get(context.TODO(), azureutils.GetAzVolumeAttachmentName(t.UnderlyingVolume, t.PrimaryNodeName), metav1.GetOptions{})
@@ -171,8 +161,6 @@ func (t *TestAzVolumeAttachment) WaitForFinalizer(timeout time.Duration) error {
 	return wait.PollImmediate(time.Duration(15)*time.Second, timeout, conditionFunc)
 }
 
-// should only be used for integration tests
-// Wait for the azVolumeAttachment object update
 func (t *TestAzVolumeAttachment) WaitForLabels(timeout time.Duration) error {
 	conditionFunc := func() (bool, error) {
 		att, err := t.Azclient.AzVolumeAttachments(t.Namespace).Get(context.TODO(), azureutils.GetAzVolumeAttachmentName(t.UnderlyingVolume, t.PrimaryNodeName), metav1.GetOptions{})
@@ -193,8 +181,6 @@ func (t *TestAzVolumeAttachment) WaitForLabels(timeout time.Duration) error {
 	return wait.PollImmediate(time.Duration(15)*time.Second, timeout, conditionFunc)
 }
 
-// should only be used for integration tests
-// Wait for the azVolumeAttachment object update
 func (t *TestAzVolumeAttachment) WaitForDelete(nodeName string, timeout time.Duration) error {
 	attName := azureutils.GetAzVolumeAttachmentName(t.UnderlyingVolume, nodeName)
 	conditionFunc := func() (bool, error) {
@@ -210,8 +196,6 @@ func (t *TestAzVolumeAttachment) WaitForDelete(nodeName string, timeout time.Dur
 	return wait.PollImmediate(time.Duration(15)*time.Second, timeout, conditionFunc)
 }
 
-// should only be used for integration tests
-// Wait for the azVolumeAttachment object update
 func (t *TestAzVolumeAttachment) WaitForPrimary(timeout time.Duration) error {
 	conditionFunc := func() (bool, error) {
 		attachments, err := t.Azclient.AzVolumeAttachments(t.Namespace).List(context.TODO(), metav1.ListOptions{})
@@ -231,8 +215,6 @@ func (t *TestAzVolumeAttachment) WaitForPrimary(timeout time.Duration) error {
 	return wait.PollImmediate(time.Duration(15)*time.Second, timeout, conditionFunc)
 }
 
-// should only be used for integration tests
-// Wait for the azVolumeAttachment object update
 func (t *TestAzVolumeAttachment) WaitForReplicas(numReplica int, timeout time.Duration) error {
 	conditionFunc := func() (bool, error) {
 		attachments, err := t.Azclient.AzVolumeAttachments(t.Namespace).List(context.TODO(), metav1.ListOptions{})

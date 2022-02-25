@@ -25,6 +25,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/kubernetes/test/e2e/framework"
 	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
 	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
@@ -47,16 +48,17 @@ type AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV struct {
 func (t *AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
 	var tStatefulSets []*resources.TestStatefulset
 	var wg sync.WaitGroup
+	var statefulSetCount = 2
 	var tokens = make(chan struct{}, 20) // avoid too many concurrent requests
+	var errorsChan = make(chan error, statefulSetCount)
+
 	tStorageClass, storageCleanup := t.Pod.CreateStorageClass(client, namespace, t.CSIDriver, t.StorageClassParameters)
 	defer storageCleanup()
-	for i := 0; i < 2; i++ {
-		tStatefulSet, cleanupStatefulSet := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, schedulerName, t.Replicas, t.StorageClassParameters, &tStorageClass)
+	for i := 0; i < statefulSetCount; i++ {
+		tStatefulSet, cleanupStatefulSet := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, schedulerName, t.Replicas, &tStorageClass, map[string]string{"group": "delete-for-failover"})
 		tStatefulSets = append(tStatefulSets, tStatefulSet)
-		for i := range cleanupStatefulSet {
-			i := i
-			defer cleanupStatefulSet[i]()
-		}
+		defer cleanupStatefulSet(15 * time.Minute)
+
 		wg.Add(1)
 		go func(ss *resources.TestStatefulset) {
 			defer wg.Done()
@@ -77,16 +79,21 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV) Run(client cl
 
 	time.Sleep(10 * time.Second)
 	for i := 0; i < 3; i++ {
-		podutil.DeleteAllPodsWithMatchingLabel(client, namespace, map[string]string{"app": "azuredisk-volume-tester"})
+		podutil.DeleteAllPodsWithMatchingLabel(client, namespace, map[string]string{"group": "delete-for-failover"})
 		for _, tStatefulSet := range tStatefulSets {
-			wg.Add(1)
 			go func(ss *resources.TestStatefulset) {
-				defer wg.Done()
 				defer ginkgo.GinkgoRecover()
-				ss.WaitForPodReady()
+				err := ss.WaitForPodReadyOrFail()
+				errorsChan <- err
 			}(tStatefulSet)
 		}
-		wg.Wait()
+
+		for range tStatefulSets {
+			err := <-errorsChan
+			if err != nil {
+				framework.ExpectNoError(err, "Failed waiting for StatefulSet pod failover.")
+			}
+		}
 	}
 
 	//Check that AzVolumeAttachment resources were created correctly
@@ -118,8 +125,6 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV) Run(client cl
 		ginkgo.Fail("could not find correct number of replicas")
 	} else if err != nil {
 		ginkgo.Fail(fmt.Sprintf("failed to verify replica attachments, err: %s", err))
-
 	}
 	ginkgo.By("replica attachments verified successfully")
-
 }

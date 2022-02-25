@@ -18,19 +18,26 @@ package resources
 
 import (
 	"context"
+
+	"fmt"
 	"time"
 
-	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
-	podutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/pod"
-
+	"github.com/onsi/ginkgo"
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e/framework"
 	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
+	e2epv "k8s.io/kubernetes/test/e2e/framework/pv"
 	imageutils "k8s.io/kubernetes/test/utils/image"
+	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
+	podutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/pod"
+	testutils "sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
 )
 
 type TestStatefulset struct {
@@ -41,9 +48,14 @@ type TestStatefulset struct {
 	AllPods     []PodDetails
 }
 
-func NewTestStatefulset(c clientset.Interface, ns *v1.Namespace, command string, pvc []v1.PersistentVolumeClaim, volumeMount []v1.VolumeMount, isWindows, useCMD bool, schedulerName string, replicaCount int) *TestStatefulset {
+func NewTestStatefulset(c clientset.Interface, ns *v1.Namespace, command string, pvc []v1.PersistentVolumeClaim, volumeMount []v1.VolumeMount, isWindows, useCMD bool, schedulerName string, replicaCount int, labels map[string]string) *TestStatefulset {
 	generateName := "azuredisk-volume-tester-"
-	label := "azuredisk-volume-tester"
+	if labels == nil {
+		labels = make(map[string]string)
+	}
+	if _, exists := labels["app"]; !exists {
+		labels["app"] = "azuredisk-volume-tester-" + testutils.GenerateRandomString(5)
+	}
 	replicas := int32(replicaCount)
 	var volumeClaimTest []v1.PersistentVolumeClaim
 	volumeClaimTest = append(volumeClaimTest, pvc...)
@@ -53,16 +65,17 @@ func NewTestStatefulset(c clientset.Interface, ns *v1.Namespace, command string,
 		Statefulset: &apps.StatefulSet{
 			ObjectMeta: metav1.ObjectMeta{
 				GenerateName: generateName,
+				Labels:       labels,
 			},
 			Spec: apps.StatefulSetSpec{
 				PodManagementPolicy: apps.ParallelPodManagement,
 				Replicas:            &replicas,
 				Selector: &metav1.LabelSelector{
-					MatchLabels: map[string]string{"app": label},
+					MatchLabels: labels,
 				},
 				Template: v1.PodTemplateSpec{
 					ObjectMeta: metav1.ObjectMeta{
-						Labels: map[string]string{"app": label},
+						Labels: labels,
 					},
 					Spec: v1.PodSpec{
 						SchedulerName: schedulerName,
@@ -105,7 +118,7 @@ func (t *TestStatefulset) Create() {
 	var err error
 	t.Statefulset, err = t.Client.AppsV1().StatefulSets(t.Namespace.Name).Create(context.TODO(), t.Statefulset, metav1.CreateOptions{})
 	framework.ExpectNoError(err)
-	err = waitForStatefulSetComplete(t.Client, t.Namespace, t.Statefulset)
+	err = t.WaitForPodReadyOrFail()
 	framework.ExpectNoError(err)
 	selector, err := metav1.LabelSelectorAsSelector(t.Statefulset.Spec.Selector)
 	framework.ExpectNoError(err)
@@ -148,10 +161,20 @@ func (t *TestStatefulset) CreateWithoutWaiting() {
 	}
 }
 
-func (t *TestStatefulset) WaitForPodReady() {
-
-	err := waitForStatefulSetComplete(t.Client, t.Namespace, t.Statefulset)
-	framework.ExpectNoError(err)
+func (t *TestStatefulset) WaitForPodReadyOrFail() error {
+	err := wait.PollImmediate(testconsts.Poll, testconsts.PollTimeout, func() (bool, error) {
+		var err error
+		statefulSet, err := t.Client.AppsV1().StatefulSets(t.Namespace.Name).Get(context.TODO(), t.Statefulset.Name, metav1.GetOptions{})
+		if err != nil {
+			return false, err
+		}
+		klog.Infof("%d/%d replicas in the StatefulSet are ready", statefulSet.Status.ReadyReplicas, *statefulSet.Spec.Replicas)
+		if statefulSet.Status.ReadyReplicas == *statefulSet.Spec.Replicas {
+			return true, nil
+		}
+		return false, nil
+	})
+	return err
 }
 
 func (t *TestStatefulset) Exec(command []string, expectedString string) {
@@ -184,10 +207,48 @@ func (t *TestStatefulset) DeletePodAndWait() {
 	time.Sleep(60 * time.Second)
 }
 
-func (t *TestStatefulset) Cleanup() {
+func (t *TestStatefulset) Cleanup(timeout time.Duration) {
 	e2elog.Logf("deleting StatefulSet %q/%q", t.Namespace.Name, t.Statefulset.Name)
+
 	err := t.Client.AppsV1().StatefulSets(t.Namespace.Name).Delete(context.TODO(), t.Statefulset.Name, metav1.DeleteOptions{})
 	framework.ExpectNoError(err)
+
+	labelSelector := metav1.LabelSelector{MatchLabels: t.Statefulset.Labels}
+	listOptions := metav1.ListOptions{LabelSelector: labels.Set(labelSelector.MatchLabels).String()}
+	pvcs, err := t.Client.CoreV1().PersistentVolumeClaims(t.Namespace.Name).List(context.TODO(), listOptions)
+	framework.ExpectNoError(err)
+
+	ch := make(chan error, len(pvcs.Items))
+	for _, pvc := range pvcs.Items {
+		pv, err := t.Client.CoreV1().PersistentVolumes().Get(context.TODO(), pvc.Spec.VolumeName, metav1.GetOptions{})
+		framework.ExpectNoError(err)
+		err = e2epv.DeletePersistentVolumeClaim(t.Client, pvc.Name, pvc.Namespace)
+		framework.ExpectNoError(err)
+		go func(client clientset.Interface, pvName, pvcName, ns string, timeout time.Duration) {
+			// Wait for PV to be deleted if Reclaim Policy is Delete
+			if pv.Spec.PersistentVolumeReclaimPolicy == v1.PersistentVolumeReclaimDelete {
+				ginkgo.By(fmt.Sprintf("waiting for claim's PV %q to be deleted", pvName))
+				err = e2epv.WaitForPersistentVolumeDeleted(client, pvName, 10*time.Second, timeout)
+				if err != nil {
+					ch <- err
+					return
+				}
+			}
+			// Wait for the PVC to be deleted
+			err = waitForPersistentVolumeClaimDeleted(client, ns, pvcName, 10*time.Second, timeout)
+			ch <- err
+		}(t.Client, pvc.Spec.VolumeName, pvc.Name, t.Namespace.Name, timeout)
+	}
+
+	// Wait on all goroutines to report pv/pvc deletion
+	for range pvcs.Items {
+		err := <-ch
+		if err != nil {
+			if !errors.IsNotFound(err) {
+				framework.ExpectNoError(err)
+			}
+		}
+	}
 }
 
 func (t *TestStatefulset) Logs() (logs [][]byte, err error) {

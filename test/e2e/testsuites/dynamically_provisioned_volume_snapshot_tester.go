@@ -21,22 +21,20 @@ import (
 	"fmt"
 	"strings"
 
-	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
-	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
-	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
-	"sigs.k8s.io/azuredisk-csi-driver/test/utils/azure"
-	"sigs.k8s.io/azuredisk-csi-driver/test/utils/credentials"
-	volutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/volume"
-
 	"github.com/onsi/ginkgo"
 	"github.com/pborman/uuid"
-
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	restclientset "k8s.io/client-go/rest"
 	"k8s.io/kubernetes/test/e2e/framework"
 	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
+	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
+	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
+	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
+	"sigs.k8s.io/azuredisk-csi-driver/test/utils/azure"
+	"sigs.k8s.io/azuredisk-csi-driver/test/utils/credentials"
+	volutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/volume"
 )
 
 // DynamicallyProvisionedVolumeSnapshotTest will provision required StorageClass(es),VolumeSnapshotClass(es), PVC(s) and Pod(s)

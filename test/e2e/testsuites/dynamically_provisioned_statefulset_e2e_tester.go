@@ -22,6 +22,7 @@ import (
 	"github.com/onsi/ginkgo"
 	v1 "k8s.io/api/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/kubernetes/test/e2e/framework"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 )
@@ -38,17 +39,16 @@ type DynamicallyProvisionedStatefulSetTest struct {
 func (t *DynamicallyProvisionedStatefulSetTest) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
 	tStorageClass, storageCleanup := t.Pod.CreateStorageClass(client, namespace, t.CSIDriver, driver.GetParameters())
 	defer storageCleanup()
-	tStatefulSet, cleanup := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, schedulerName, 1, driver.GetParameters(), &tStorageClass)
+	tStatefulSet, cleanup := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, schedulerName, 1, &tStorageClass, nil)
 	// defer must be called here for resources not get removed before using them
-	for i := range cleanup {
-		defer cleanup[i]()
-	}
+	defer cleanup(15 * time.Minute)
 
 	ginkgo.By("deploying the statefulset")
 	tStatefulSet.Create()
 
 	ginkgo.By("checking that the pod is running")
-	tStatefulSet.WaitForPodReady()
+	err := tStatefulSet.WaitForPodReadyOrFail()
+	framework.ExpectNoError(err)
 
 	if t.PodCheck != nil {
 		ginkgo.By("sleep 5s and then check pod exec")
@@ -60,7 +60,8 @@ func (t *DynamicallyProvisionedStatefulSetTest) Run(client clientset.Interface, 
 	tStatefulSet.DeletePodAndWait()
 
 	ginkgo.By("checking again that the pod is running")
-	tStatefulSet.WaitForPodReady()
+	err = tStatefulSet.WaitForPodReadyOrFail()
+	framework.ExpectNoError(err)
 
 	if t.PodCheck != nil {
 		ginkgo.By("sleep 5s and then check pod exec after pod restart again")

@@ -30,7 +30,6 @@ import (
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
-// should only be used for integration tests
 type TestAzVolume struct {
 	Azclient             azDiskClientSet.DiskV1alpha2Interface
 	Namespace            string
@@ -38,7 +37,6 @@ type TestAzVolume struct {
 	MaxMountReplicaCount int
 }
 
-// should only be used for integration tests
 func SetupTestAzVolume(azclient azDiskClientSet.DiskV1alpha2Interface, namespace string, underlyingVolume string, maxMountReplicaCount int) *TestAzVolume {
 	return &TestAzVolume{
 		Azclient:             azclient,
@@ -48,7 +46,6 @@ func SetupTestAzVolume(azclient azDiskClientSet.DiskV1alpha2Interface, namespace
 	}
 }
 
-// should only be used for integration tests
 func NewTestAzVolume(azVolume azDiskClientSet.AzVolumeInterface, underlyingVolumeName string, maxMountReplicaCount int) *diskv1alpha2.AzVolume {
 	// Delete leftover azVolumes from previous runs
 	if _, err := azVolume.Get(context.Background(), underlyingVolumeName, metav1.GetOptions{}); err == nil {
@@ -83,7 +80,6 @@ func NewTestAzVolume(azVolume azDiskClientSet.AzVolumeInterface, underlyingVolum
 	return newAzVolume
 }
 
-// should only be used for integration tests
 func (t *TestAzVolume) Create() *diskv1alpha2.AzVolume {
 	// create test az volume
 	azVolClient := t.Azclient.AzVolumes(t.Namespace)
@@ -92,8 +88,6 @@ func (t *TestAzVolume) Create() *diskv1alpha2.AzVolume {
 	return azVolume
 }
 
-// should only be used for integration tests
-//Cleanup after TestAzVolume was created
 func (t *TestAzVolume) Cleanup() {
 	klog.Info("cleaning up TestAzVolume")
 	err := t.Azclient.AzVolumes(t.Namespace).Delete(context.Background(), t.UnderlyingVolume, metav1.DeleteOptions{})
@@ -104,8 +98,6 @@ func (t *TestAzVolume) Cleanup() {
 
 }
 
-// should only be used for integration tests
-// Wait for the azVolume object update
 func (t *TestAzVolume) WaitForFinalizer(timeout time.Duration) error {
 	conditionFunc := func() (bool, error) {
 		azVolume, err := t.Azclient.AzVolumes(t.Namespace).Get(context.TODO(), t.UnderlyingVolume, metav1.GetOptions{})
@@ -126,8 +118,6 @@ func (t *TestAzVolume) WaitForFinalizer(timeout time.Duration) error {
 	return wait.PollImmediate(time.Duration(15)*time.Second, timeout, conditionFunc)
 }
 
-// should only be used for integration tests
-// Wait for the azVolume object update
 func (t *TestAzVolume) WaitForDelete(timeout time.Duration) error {
 	klog.Infof("Waiting for delete azVolume object")
 	conditionFunc := func() (bool, error) {

@@ -25,12 +25,10 @@ import (
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1alpha2"
 )
 
-// should only be used for integration tests
 func DeleteTestAzDriverNode(azDriverNode azDiskClientSet.AzDriverNodeInterface, nodeName string) {
 	_ = azDriverNode.Delete(context.Background(), nodeName, metav1.DeleteOptions{})
 }
 
-// should only be used for integration tests
 func NewTestAzDriverNode(azDriverNode azDiskClientSet.AzDriverNodeInterface, nodeName string) *diskv1alpha2.AzDriverNode {
 	// Delete the leftover azDriverNode from previous runs
 	if _, err := azDriverNode.Get(context.Background(), nodeName, metav1.GetOptions{}); err == nil {

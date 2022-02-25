@@ -42,11 +42,8 @@ type AzDiskSchedulerExtenderPodSchedulingOnFailover struct {
 func (t *AzDiskSchedulerExtenderPodSchedulingOnFailover) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
 	tStorageClass, storageCleanup := t.Pod.CreateStorageClass(client, namespace, t.CSIDriver, t.StorageClassParameters)
 	defer storageCleanup()
-	tStatefulSet, cleanup := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, schedulerName, 1, t.StorageClassParameters, &tStorageClass)
-	for i := range cleanup {
-		i := i
-		defer cleanup[i]()
-	}
+	tStatefulSet, cleanup := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, schedulerName, 1, &tStorageClass, nil)
+	defer cleanup(15 * time.Minute)
 
 	// Get the list of available nodes for scheduling the pod
 	nodes := nodeutil.ListNodeNames(client)
@@ -58,7 +55,8 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailover) Run(client clientset.In
 	tStatefulSet.Create()
 
 	ginkgo.By("checking that the pod for statefulset is running")
-	tStatefulSet.WaitForPodReady()
+	err := tStatefulSet.WaitForPodReadyOrFail()
+	framework.ExpectNoError(err)
 
 	// Define a new scale for statefulset
 	newScale := &scale.Scale{
@@ -70,7 +68,7 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailover) Run(client clientset.In
 			Replicas: int32(0)}}
 
 	// Scale statefulset to 0
-	_, err := client.AppsV1().StatefulSets(tStatefulSet.Namespace.Name).UpdateScale(context.TODO(), tStatefulSet.Statefulset.Name, newScale, metav1.UpdateOptions{})
+	_, err = client.AppsV1().StatefulSets(tStatefulSet.Namespace.Name).UpdateScale(context.TODO(), tStatefulSet.Statefulset.Name, newScale, metav1.UpdateOptions{})
 	framework.ExpectNoError(err)
 
 	ginkgo.By("sleep 240s waiting for statefulset update to complete and disk to detach")
@@ -86,5 +84,6 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailover) Run(client clientset.In
 	time.Sleep(30 * time.Second)
 
 	ginkgo.By("checking that the pod for statefulset is running")
-	tStatefulSet.WaitForPodReady()
+	err = tStatefulSet.WaitForPodReadyOrFail()
+	framework.ExpectNoError(err)
 }

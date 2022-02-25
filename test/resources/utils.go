@@ -23,7 +23,6 @@ import (
 	"time"
 
 	"github.com/onsi/ginkgo"
-	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -33,7 +32,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
-	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e/framework"
 	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
 	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
@@ -220,23 +218,6 @@ func waitForPersistentVolumeClaimDeleted(c clientset.Interface, ns string, pvcNa
 			}
 			framework.Logf("Failed to get claim %q in namespace %q, retrying in %v. Error: %v", pvcName, ns, Poll, err)
 			return false, err
-		}
-		return false, nil
-	})
-
-	return err
-}
-
-func waitForStatefulSetComplete(cs clientset.Interface, ns *v1.Namespace, ss *apps.StatefulSet) error {
-	err := wait.PollImmediate(testconsts.Poll, testconsts.PollTimeout, func() (bool, error) {
-		var err error
-		statefulSet, err := cs.AppsV1().StatefulSets(ns.Name).Get(context.TODO(), ss.Name, metav1.GetOptions{})
-		if err != nil {
-			return false, err
-		}
-		klog.Infof("%d/%d replicas in the StatefulSet are ready", statefulSet.Status.ReadyReplicas, *statefulSet.Spec.Replicas)
-		if statefulSet.Status.ReadyReplicas == *statefulSet.Spec.Replicas {
-			return true, nil
 		}
 		return false, nil
 	})
