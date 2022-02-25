@@ -66,6 +66,9 @@ const (
 	defaultRetrySteps    = 5
 
 	cloudTimeout = time.Duration(5) * time.Minute
+
+	nodeScoreHighCoefficient = 10
+	nodeScoreLowCoefficient  = 1
 )
 
 type operationRequester string
@@ -208,6 +211,16 @@ func (s set) has(entry interface{}) bool {
 
 func (s set) remove(entry interface{}) {
 	delete(s, entry)
+}
+
+func (s set) toStringSlice() []string {
+	entries := make([]string, len(s))
+	i := 0
+	for entry := range s {
+		entries[i] = entry.(string)
+		i++
+	}
+	return entries
 }
 
 type lockableEntry struct {
@@ -636,56 +649,42 @@ func (c *SharedState) isVolumeVisited(azVolumeName string) bool {
 	return visited
 }
 
-func (c *SharedState) getRankedNodesForReplicaAttachments(ctx context.Context, volumes []string, podsObjs []v1.Pod) ([]string, error) {
-	klog.V(5).Info("Getting ranked list of nodes for creating AzVolumeAttachments")
-	numReplica := 0
-	nodes := []string{}
-	nodeScores := map[string]int{}
-	primaryNode := ""
-	compatibleZones := []string{}
+type filterPlugin interface {
+	name() string
+	setup(pods []v1.Pod, persistentVolumes []*v1.PersistentVolume, sharedState *SharedState)
+	filter(ctx context.Context, nodes []v1.Node) ([]v1.Node, error)
+}
 
-	var podNodeAffinities []*nodeaffinity.RequiredNodeAffinity
-	var podTolerations []v1.Toleration
-	podNodeSelector := labels.NewSelector()
-	podAffinities := labels.NewSelector()
+// interPodAffinityFilter selects nodes that either meets inter-pod affinity rules or has replica mounts of volumes of pods with matching labels
+type interPodAffinityFilter struct {
+	pods        []v1.Pod
+	sharedState *SharedState
+}
 
-	for i, podObj := range podsObjs {
-		// acknowledge that there can be duplicate entries within the slice
-		podNodeAffinity := nodeaffinity.GetRequiredNodeAffinity(&podObj)
-		podNodeAffinities = append(podNodeAffinities, &podNodeAffinity)
+func (p *interPodAffinityFilter) name() string {
+	return "inter-pod affinity filter"
+}
 
-		// find intersection of tolerations among pods
-		if i == 0 {
-			podTolerations = append(podTolerations, podObj.Spec.Tolerations...)
-		} else {
-			podTolerationMap := map[string]*v1.Toleration{}
-			for _, podToleration := range podObj.Spec.Tolerations {
-				podToleration := &podToleration
-				podTolerationMap[podToleration.Key] = podToleration
-			}
+func (p *interPodAffinityFilter) setup(pods []v1.Pod, persistentVolumes []*v1.PersistentVolume, sharedState *SharedState) {
+	p.pods = pods
+	p.sharedState = sharedState
+}
 
-			updatedTolerations := []v1.Toleration{}
-			for _, podToleration := range podTolerations {
-				if existingToleration, ok := podTolerationMap[podToleration.Key]; ok {
-					if podToleration.MatchToleration(existingToleration) {
-						updatedTolerations = append(updatedTolerations, podToleration)
-					}
-				}
-			}
-			podTolerations = updatedTolerations
-		}
+func (p *interPodAffinityFilter) filter(ctx context.Context, nodes []v1.Node) ([]v1.Node, error) {
+	nodeMap := map[string]int{}
+	candidateNodes := set{}
+	for i, node := range nodes {
+		nodeMap[node.Name] = i
+		candidateNodes.add(node.Name)
+	}
 
-		nodeSelector := labels.SelectorFromSet(labels.Set(podObj.Spec.NodeSelector))
-		requirements, selectable := nodeSelector.Requirements()
-		if selectable {
-			podNodeSelector = podNodeSelector.Add(requirements...)
-		}
-
-		if podObj.Spec.Affinity == nil || podObj.Spec.Affinity.PodAffinity == nil {
+	replicaNodes := set{}
+	for i, pod := range p.pods {
+		if pod.Spec.Affinity == nil || pod.Spec.Affinity.PodAffinity == nil {
 			continue
 		}
-		// TODO: add filtering for pod anti-affinity and more advanced affinity scenarios (e.g. Preferred affinites)
-		for _, podAffinity := range podObj.Spec.Affinity.PodAffinity.RequiredDuringSchedulingIgnoredDuringExecution {
+
+		for _, podAffinity := range pod.Spec.Affinity.PodAffinity.RequiredDuringSchedulingIgnoredDuringExecution {
 			podSelector, err := metav1.LabelSelectorAsSelector(podAffinity.LabelSelector)
 			// if failed to convert pod affinity label selector to selector, log error and skip
 			if err != nil {
@@ -694,53 +693,649 @@ func (c *SharedState) getRankedNodesForReplicaAttachments(ctx context.Context, v
 			}
 			requirements, selectable := podSelector.Requirements()
 			if selectable {
-				podAffinities = podAffinities.Add(requirements...)
+				podAffinities := labels.NewSelector().Add(requirements...)
+				pods := []v1.Pod{}
+
+				if len(podAffinity.Namespaces) > 0 {
+					for _, namespace := range podAffinity.Namespaces {
+						podList := &v1.PodList{}
+						if err = p.sharedState.cachedClient.List(ctx, podList, &client.ListOptions{LabelSelector: podAffinities, Namespace: namespace}); err != nil {
+							klog.Errorf("failed to retrieve pod list: %v", err)
+							continue
+						}
+						pods = append(pods, podList.Items...)
+					}
+				} else {
+					podList := &v1.PodList{}
+					if err = p.sharedState.cachedClient.List(ctx, podList, &client.ListOptions{LabelSelector: podAffinities}); err != nil {
+						klog.Errorf("failed to retrieve pod list: %v", err)
+						continue
+					}
+					pods = podList.Items
+				}
+
+				nodesWithSelectedPods := set{}
+				for _, pod := range pods {
+					klog.Infof("Pod (%s) has matching label for pod affinity (%v)", getQualifiedName(pod.Namespace, pod.Name), podAffinities)
+					nodesWithSelectedPods.add(pod.Spec.NodeName)
+				}
+
+				// add nodes, to which replica attachments of matching pods' volumes are attached, to replicaNodes
+				if volumes, err := p.sharedState.getVolumesForPodObjs(pods); err == nil {
+					for _, volume := range volumes {
+						attachments, err := getAzVolumeAttachmentsForVolume(ctx, p.sharedState.cachedClient, volume, replicaOnly)
+						if err != nil {
+							continue
+						}
+
+						nodeChecker := set{}
+						for _, attachment := range attachments {
+							if i == 0 {
+								klog.V(5).Infof("Adding node (%s) to the replica node set: replica mounts of volume (%s) found on node", attachment.Spec.NodeName, volume)
+								replicaNodes.add(attachment.Spec.NodeName)
+							} else {
+								nodeChecker.add(attachment.Spec.NodeName)
+							}
+						}
+						if i > 0 {
+							// take an intersection of the current pod list's replica nodes with those of preceding pod lists.
+							for node := range replicaNodes {
+								if !nodeChecker.has(node) {
+									klog.V(5).Infof("Removing node (%s) from the replica node set: replica mounts of volume (%s) cannot be found on node", node, volume)
+									replicaNodes.remove(node)
+								}
+							}
+						}
+					}
+				}
+
+				qualifiedLabelSet := map[string]set{}
+				for node := range nodesWithSelectedPods {
+					var nodeInstance v1.Node
+					if err = p.sharedState.cachedClient.Get(ctx, types.NamespacedName{Name: node.(string)}, &nodeInstance); err != nil {
+						klog.Errorf("failed to get node (%s)", node.(string))
+						continue
+					}
+					if value, exists := nodeInstance.GetLabels()[podAffinity.TopologyKey]; exists {
+						labelSet, exists := qualifiedLabelSet[podAffinity.TopologyKey]
+						if !exists {
+							labelSet = set{}
+						}
+						labelSet.add(value)
+						qualifiedLabelSet[podAffinity.TopologyKey] = labelSet
+					} else {
+						klog.Warningf("node (%s) doesn't have label value for topologyKey (%s)", nodeInstance.Name, podAffinity.TopologyKey)
+					}
+				}
+
+				selector := labels.NewSelector()
+				for key, values := range qualifiedLabelSet {
+					labelValues := values.toStringSlice()
+					requirements, err := azureutils.CreateLabelRequirements(key, selection.In, labelValues...)
+					if err != nil {
+						klog.Errorf("failed to create label for key (%s) and values (%+v) :%v", key, labelValues, err)
+						continue
+					}
+					selector = selector.Add(*requirements)
+				}
+
+				// remove any candidate node which does not satisfy the pod affinity
+				for candidateNode := range candidateNodes {
+					if i, exists := nodeMap[candidateNode.(string)]; exists {
+						node := nodes[i]
+						nodeLabels := labels.Set(node.Labels)
+						if !selector.Matches(nodeLabels) {
+							klog.Infof("Removing node (%s) from candidate nodes: node does not satisfy inter-pod-affinity (%v), label (%v)", candidateNode, podAffinity, selector)
+							candidateNodes.remove(candidateNode)
+						}
+					}
+				}
 			}
 		}
 	}
 
-	var volumeNodeSelectors []*nodeaffinity.NodeSelector
-	compatibleZonesSet := set{}
-	for i, volume := range volumes {
+	filteredNodes := []v1.Node{}
+	for replicaNode := range replicaNodes {
+		klog.Infof("Adding node (%s) to candidate node list: node has a replica mount of qualifying pods", replicaNode)
+		candidateNodes.add(replicaNode)
+	}
+	for candidateNode := range candidateNodes {
+		if i, exists := nodeMap[candidateNode.(string)]; exists {
+			filteredNodes = append(filteredNodes, nodes[i])
+		}
+	}
+	return filteredNodes, nil
+}
 
+type interPodAntiAffinityFilter struct {
+	pods        []v1.Pod
+	sharedState *SharedState
+}
+
+func (p *interPodAntiAffinityFilter) name() string {
+	return "inter-pod anti-affinity filter"
+}
+
+func (p *interPodAntiAffinityFilter) setup(pods []v1.Pod, persistentVolumes []*v1.PersistentVolume, sharedState *SharedState) {
+	p.pods = pods
+	p.sharedState = sharedState
+}
+
+func (p *interPodAntiAffinityFilter) filter(ctx context.Context, nodes []v1.Node) ([]v1.Node, error) {
+	nodeMap := map[string]int{}
+	candidateNodes := set{}
+
+	for i, node := range nodes {
+		nodeMap[node.Name] = i
+		candidateNodes.add(node.Name)
+	}
+
+	for _, pod := range p.pods {
+		if pod.Spec.Affinity == nil || pod.Spec.Affinity.PodAntiAffinity == nil {
+			continue
+		}
+
+		for _, podAntiAffinity := range pod.Spec.Affinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution {
+			podSelector, err := metav1.LabelSelectorAsSelector(podAntiAffinity.LabelSelector)
+			// if failed to convert pod affinity label selector to selector, log error and skip
+			if err != nil {
+				klog.Errorf("failed to convert pod anti-affinity (%v) to selector", podAntiAffinity.LabelSelector)
+				continue
+			}
+			requirements, selectable := podSelector.Requirements()
+			if selectable {
+				podAntiAffinities := labels.NewSelector().Add(requirements...)
+				pods := []v1.Pod{}
+
+				if len(podAntiAffinity.Namespaces) > 0 {
+					for _, namespace := range podAntiAffinity.Namespaces {
+						podList := &v1.PodList{}
+						if err = p.sharedState.cachedClient.List(ctx, podList, &client.ListOptions{LabelSelector: podAntiAffinities, Namespace: namespace}); err != nil {
+							klog.Errorf("failed to retrieve pod list: %v", err)
+							continue
+						}
+						pods = append(pods, podList.Items...)
+					}
+				} else {
+					podList := &v1.PodList{}
+					if err = p.sharedState.cachedClient.List(ctx, podList, &client.ListOptions{LabelSelector: podAntiAffinities}); err != nil {
+						klog.Errorf("failed to retrieve pod list: %v", err)
+						continue
+					}
+					pods = podList.Items
+				}
+
+				nodesWithSelectedPods := set{}
+				for _, pod := range pods {
+					nodesWithSelectedPods.add(pod.Spec.NodeName)
+				}
+
+				qualifiedLabelSet := map[string]set{}
+				for node := range nodesWithSelectedPods {
+					var nodeInstance v1.Node
+					if err = p.sharedState.cachedClient.Get(ctx, types.NamespacedName{Name: node.(string)}, &nodeInstance); err != nil {
+						klog.Errorf("failed to get node (%s)", node.(string))
+						continue
+					}
+					if value, exists := nodeInstance.Labels[podAntiAffinity.TopologyKey]; exists {
+						labelSet, exists := qualifiedLabelSet[podAntiAffinity.TopologyKey]
+						if !exists {
+							labelSet = set{}
+						}
+						labelSet.add(value)
+						qualifiedLabelSet[podAntiAffinity.TopologyKey] = labelSet
+					}
+				}
+
+				selector := labels.NewSelector()
+				for key, values := range qualifiedLabelSet {
+					labelValues := values.toStringSlice()
+					requirements, err := azureutils.CreateLabelRequirements(key, selection.In, labelValues...)
+					if err != nil {
+						klog.Errorf("failed to create label for key (%s) and values (%+v) :%v", key, labelValues, err)
+						continue
+					}
+					selector = selector.Add(*requirements)
+				}
+
+				// remove any candidate node which does not satisfy the pod affinity
+				for candidateNode := range candidateNodes {
+					if i, exists := nodeMap[candidateNode.(string)]; exists {
+						node := nodes[i]
+						nodeLabels := labels.Set(node.Labels)
+						if selector.Matches(nodeLabels) {
+							klog.Infof("Removing node (%s) from candidate nodes: node satisfies inter-pod anti-affinity (%v), label (%v)", candidateNode, podAntiAffinity, selector)
+							candidateNodes.remove(candidateNode)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	filteredNodes := []v1.Node{}
+	for candidateNode := range candidateNodes {
+		if i, exists := nodeMap[candidateNode.(string)]; exists {
+			filteredNodes = append(filteredNodes, nodes[i])
+		}
+	}
+	return filteredNodes, nil
+}
+
+type podTolerationFilter struct {
+	pods []v1.Pod
+}
+
+func (p *podTolerationFilter) name() string {
+	return "pod toleration filter"
+}
+
+func (p *podTolerationFilter) setup(pods []v1.Pod, persistentVolumes []*v1.PersistentVolume, sharedState *SharedState) {
+	p.pods = pods
+}
+
+func (p *podTolerationFilter) filter(ctx context.Context, nodes []v1.Node) ([]v1.Node, error) {
+	candidateNodes := set{}
+	for i := range nodes {
+		candidateNodes.add(i)
+	}
+
+	podTolerations := set{}
+
+	for i, pod := range p.pods {
+		podTolerationMap := map[string]*v1.Toleration{}
+		for _, podToleration := range pod.Spec.Tolerations {
+			podToleration := &podToleration
+			if i == 0 {
+				podTolerations.add(podToleration)
+			} else {
+				podTolerationMap[podToleration.Key] = podToleration
+			}
+		}
+		if i > 0 {
+			for podToleration := range podTolerations {
+				if existingToleration, ok := podTolerationMap[podToleration.(v1.Toleration).Key]; ok {
+					if !podToleration.(*v1.Toleration).MatchToleration(existingToleration) {
+						podTolerations.remove(podToleration)
+					}
+				}
+			}
+		}
+	}
+
+	for candidateNode := range candidateNodes {
+		tolerable := true
+		node := nodes[candidateNode.(int)]
+		for _, taint := range node.Spec.Taints {
+			taintTolerable := false
+			for podToleration := range podTolerations {
+				// if any one of node's taint cannot be tolerated by pod's tolerations, break
+				if podToleration.(*v1.Toleration).ToleratesTaint(&taint) {
+					taintTolerable = true
+				}
+			}
+			if tolerable = tolerable && taintTolerable; !tolerable {
+				klog.Infof("Removing node (%s) from replica candidates: node (%s)'s taint cannot be tolerated", node.Name, node.Name)
+				candidateNodes.remove(candidateNode)
+				break
+			}
+		}
+	}
+
+	filteredNodes := make([]v1.Node, len(candidateNodes))
+	i := 0
+	for candidateNode := range candidateNodes {
+		filteredNodes[i] = nodes[candidateNode.(int)]
+		i++
+	}
+	return filteredNodes, nil
+}
+
+type podNodeAffinityFilter struct {
+	pods []v1.Pod
+}
+
+func (p *podNodeAffinityFilter) name() string {
+	return "pod node-affinity filter"
+}
+
+func (p *podNodeAffinityFilter) setup(pods []v1.Pod, persistentVolumes []*v1.PersistentVolume, sharedState *SharedState) {
+	p.pods = pods
+}
+
+func (p *podNodeAffinityFilter) filter(ctx context.Context, nodes []v1.Node) ([]v1.Node, error) {
+	var podNodeAffinities []nodeaffinity.RequiredNodeAffinity
+
+	candidateNodes := set{}
+	for i := range nodes {
+		candidateNodes.add(i)
+	}
+
+	for _, pod := range p.pods {
+		// acknowledge that there can be duplicate entries within the slice
+		podNodeAffinity := nodeaffinity.GetRequiredNodeAffinity(&pod)
+		podNodeAffinities = append(podNodeAffinities, podNodeAffinity)
+	}
+
+	for i, node := range nodes {
+		for _, podNodeAffinity := range podNodeAffinities {
+			if match, err := podNodeAffinity.Match(&node); !match || err != nil {
+				klog.Infof("Removing node (%s) from replica candidates: node does not match pod node affinity (%+v)", node.Name, podNodeAffinity)
+				candidateNodes.remove(i)
+			}
+		}
+	}
+
+	filteredNodes := make([]v1.Node, len(candidateNodes))
+	i := 0
+	for candidateNode := range candidateNodes {
+		filteredNodes[i] = nodes[candidateNode.(int)]
+		i++
+	}
+	return filteredNodes, nil
+}
+
+type podNodeSelectorFilter struct {
+	pods        []v1.Pod
+	sharedState *SharedState
+}
+
+func (p *podNodeSelectorFilter) name() string {
+	return "pod node-selector filter"
+}
+
+func (p *podNodeSelectorFilter) setup(pods []v1.Pod, persistentVolumes []*v1.PersistentVolume, sharedState *SharedState) {
+	p.pods = pods
+	p.sharedState = sharedState
+}
+
+func (p *podNodeSelectorFilter) filter(ctx context.Context, nodes []v1.Node) ([]v1.Node, error) {
+	candidateNodes := set{}
+	for i := range nodes {
+		candidateNodes.add(i)
+	}
+
+	podNodeSelector := labels.NewSelector()
+	for _, pod := range p.pods {
+		nodeSelector := labels.SelectorFromSet(labels.Set(pod.Spec.NodeSelector))
+		requirements, selectable := nodeSelector.Requirements()
+		if selectable {
+			podNodeSelector = podNodeSelector.Add(requirements...)
+		}
+	}
+
+	filteredNodes := []v1.Node{}
+	for candidateNode := range candidateNodes {
+		node := nodes[candidateNode.(int)]
+		nodeLabels := labels.Set(node.Labels)
+		if podNodeSelector.Matches(nodeLabels) {
+			filteredNodes = append(filteredNodes, node)
+		} else {
+			klog.Infof("Removing node (%s) from replica candidate: node does not match pod node selector (%v)", podNodeSelector)
+		}
+	}
+
+	return filteredNodes, nil
+}
+
+type volumeNodeSelectorFilter struct {
+	persistentVolumes []*v1.PersistentVolume
+}
+
+func (v *volumeNodeSelectorFilter) name() string {
+	return "volume node-selector filter"
+}
+
+func (v *volumeNodeSelectorFilter) setup(pods []v1.Pod, persistentVolumes []*v1.PersistentVolume, sharedState *SharedState) {
+	v.persistentVolumes = persistentVolumes
+}
+
+func (v *volumeNodeSelectorFilter) filter(ctx context.Context, nodes []v1.Node) ([]v1.Node, error) {
+	candidateNodes := set{}
+	for i := range nodes {
+		candidateNodes.add(i)
+	}
+
+	var volumeNodeSelectors []*nodeaffinity.NodeSelector
+	for _, pv := range v.persistentVolumes {
+		if pv.Spec.NodeAffinity == nil || pv.Spec.NodeAffinity.Required == nil {
+			continue
+		}
+		nodeSelector, err := nodeaffinity.NewNodeSelector(pv.Spec.NodeAffinity.Required)
+		if err != nil {
+			klog.Errorf("failed to get node selector from node affinity (%v): %v", pv.Spec.NodeAffinity.Required, err)
+			continue
+		}
+		// acknowledge that there can be duplicates in the slice
+		volumeNodeSelectors = append(volumeNodeSelectors, nodeSelector)
+	}
+
+	for candidateNode := range candidateNodes {
+		node := nodes[candidateNode.(int)]
+		for _, volumeNodeSelector := range volumeNodeSelectors {
+			if !volumeNodeSelector.Match(&node) {
+				klog.Infof("Removing node (%s) from replica candidates: volume node selector (%+v) cannot be matched with the node.", node.Name, volumeNodeSelector)
+				candidateNodes.remove(candidateNode)
+			}
+		}
+	}
+
+	filteredNodes := make([]v1.Node, len(candidateNodes))
+	i := 0
+	for candidateNode := range candidateNodes {
+		filteredNodes[i] = nodes[candidateNode.(int)]
+		i++
+	}
+	return filteredNodes, nil
+}
+
+type nodeScorerPlugin interface {
+	name() string
+	setup(pods []v1.Pod, volumes []string, sharedState *SharedState)
+	score(ctx context.Context, nodeScores map[string]int) (map[string]int, error)
+}
+
+type scoreByNodeCapacity struct {
+	volumes     []string
+	sharedState *SharedState
+}
+
+func (s *scoreByNodeCapacity) name() string {
+	return "score by node capacity"
+}
+
+func (s *scoreByNodeCapacity) setup(pods []v1.Pod, volumes []string, sharedState *SharedState) {
+	s.volumes = volumes
+	s.sharedState = sharedState
+}
+
+func (s *scoreByNodeCapacity) score(ctx context.Context, nodeScores map[string]int) (map[string]int, error) {
+	for nodeName, score := range nodeScores {
+		remainingCapacity, err := getNodeRemainingCapacity(ctx, s.sharedState.cachedClient, nil, nodeName)
+		if err != nil {
+			// if failed to get node's remaining capacity, remove the node from the candidate list and proceed
+			klog.Errorf("failed to get remaining capacity of node (%s): %v", nodeName, err)
+			delete(nodeScores, nodeName)
+		}
+		if remainingCapacity-len(s.volumes) <= 0 {
+			delete(nodeScores, nodeName)
+		}
+
+		nodeScores[nodeName] = score + (nodeScoreLowCoefficient * remainingCapacity)
+		klog.Infof("node (%s) can accept %d more attachments", nodeName, remainingCapacity)
+	}
+	return nodeScores, nil
+}
+
+type scoreByReplicaCount struct {
+	volumes     []string
+	sharedState *SharedState
+}
+
+func (s *scoreByReplicaCount) name() string {
+	return "score by replica count"
+}
+
+func (s *scoreByReplicaCount) setup(pods []v1.Pod, volumes []string, sharedState *SharedState) {
+	s.volumes = volumes
+	s.sharedState = sharedState
+}
+
+func (s *scoreByReplicaCount) score(ctx context.Context, nodeScores map[string]int) (map[string]int, error) {
+	for _, volume := range s.volumes {
+		azVolumeAttachments, err := getAzVolumeAttachmentsForVolume(ctx, s.sharedState.cachedClient, volume, all)
+		if err != nil {
+			klog.V(5).Infof("Error listing AzVolumeAttachments for azvolume %s. Error: %v.", volume, err)
+			continue
+		}
+
+		for _, azVolumeAttachment := range azVolumeAttachments {
+			if score, exists := nodeScores[azVolumeAttachment.Spec.NodeName]; exists {
+				if azVolumeAttachment.Spec.RequestedRole == diskv1alpha2.PrimaryRole {
+					delete(nodeScores, azVolumeAttachment.Spec.NodeName)
+				} else {
+					nodeScores[azVolumeAttachment.Spec.NodeName] = score + nodeScoreHighCoefficient
+				}
+			}
+		}
+	}
+	return nodeScores, nil
+}
+
+func (c *SharedState) getRankedNodesForReplicaAttachments(ctx context.Context, volumes []string, podObjs []v1.Pod) ([]string, error) {
+	klog.V(5).Info("Getting ranked list of nodes for creating AzVolumeAttachments")
+
+	nodeList := &v1.NodeList{}
+	if err := c.cachedClient.List(ctx, nodeList); err != nil {
+		return nil, err
+	}
+
+	selectedNodeObjs, err := c.selectNodesPerTopology(ctx, nodeList.Items, podObjs, volumes)
+	if err != nil {
+		klog.Errorf("failed to select nodes for volumes (%+v): %v", volumes, err)
+		return nil, err
+	}
+
+	selectedNodes := make([]string, len(selectedNodeObjs))
+	for i, selectedNodeObj := range selectedNodeObjs {
+		selectedNodes[i] = selectedNodeObj.Name
+	}
+
+	klog.Infof("Selected nodes (%+v) for replica AzVolumeAttachments for volumes (%+v)", selectedNodes, volumes)
+	return selectedNodes, nil
+}
+
+func (c *SharedState) filterNodes(ctx context.Context, nodes []v1.Node, pods []v1.Pod, volumes []string) ([]v1.Node, error) {
+	pvs := make([]*v1.PersistentVolume, len(volumes))
+	for i, volume := range volumes {
 		azVolume, err := azureutils.GetAzVolume(ctx, c.cachedClient, c.azClient, volume, c.objectNamespace, true)
 		if err != nil {
 			klog.V(5).Infof("AzVolume for volume %s is not found.", volume)
 			return nil, err
 		}
 
-		numReplica = max(numReplica, azVolume.Spec.MaxMountReplicaCount)
-		klog.V(5).Infof("Number of requested replicas for azvolume %s is: %d. Max replica count is: %d.",
-			volume, numReplica, azVolume.Spec.MaxMountReplicaCount)
-
-		azVolumeAttachments, err := getAzVolumeAttachmentsForVolume(ctx, c.cachedClient, volume, all)
-		if err != nil {
-			klog.V(5).Infof("Error listing AzVolumeAttachments for azvolume %s. Error: %v.", volume, err)
+		var pv v1.PersistentVolume
+		if err := c.cachedClient.Get(ctx, types.NamespacedName{Name: azVolume.Status.PersistentVolume}, &pv); err != nil {
+			return nil, err
 		}
+		pvs[i] = &pv
+	}
 
-		klog.V(5).Infof("Found %d AzVolumeAttachments for volume %s. AzVolumeAttachments: %+v.", len(azVolumeAttachments), volume, azVolumeAttachments)
-		for _, azVolumeAttachment := range azVolumeAttachments {
-			if azVolumeAttachment.Spec.RequestedRole == diskv1alpha2.PrimaryRole {
-				klog.V(5).Infof("AzVolumeAttachments %s for volume %s is primary on node %s.", azVolumeAttachment.Name, volume, azVolumeAttachment.Spec.NodeName)
-				if primaryNode == "" {
-					primaryNode = azVolumeAttachment.Spec.NodeName
-				}
-			} else {
-				klog.V(5).Infof("Azvolumeattachment %s is not primary. Scoring node %s with replica attachment. Current score array is %v. Len: %d.", azVolumeAttachment.Name, azVolumeAttachment.Spec.NodeName, nodeScores, len(nodeScores))
-				if _, ok := nodeScores[azVolumeAttachment.Spec.NodeName]; !ok {
-					// Node is not in the array. Adding node to the array with score 0.
-					nodeScores[azVolumeAttachment.Spec.NodeName] = 0
-					nodes = append(nodes, azVolumeAttachment.Spec.NodeName)
-				}
-				nodeScores[azVolumeAttachment.Spec.NodeName]++
-				klog.V(5).Infof("New score for node %s is %d. Updated score array is %v. Len: %d.", azVolumeAttachment.Spec.NodeName, nodeScores[azVolumeAttachment.Spec.NodeName], nodeScores, len(nodeScores))
+	var filterPlugins = []filterPlugin{
+		&interPodAffinityFilter{},
+		&interPodAntiAffinityFilter{},
+		&podTolerationFilter{},
+		&podNodeAffinityFilter{},
+		&podNodeSelectorFilter{},
+		&volumeNodeSelectorFilter{},
+	}
+
+	filteredNodes := nodes
+	for _, filterPlugin := range filterPlugins {
+		filterPlugin.setup(pods, pvs, c)
+		if updatedFilteredNodes, err := filterPlugin.filter(ctx, filteredNodes); err != nil {
+			klog.Errorf("failed to filter node with filter plugin (%s): %v", filterPlugin.name(), err)
+		} else {
+			filteredNodes = updatedFilteredNodes
+			nodeStrs := make([]string, len(filteredNodes))
+			for i, filteredNode := range filteredNodes {
+				nodeStrs[i] = filteredNode.Name
 			}
+			klog.Infof("Filtered node list from filter plugin (%s): %+v", filterPlugin.name(), nodeStrs)
 		}
+	}
+
+	return filteredNodes, nil
+}
+
+func (c *SharedState) prioritizeNodes(ctx context.Context, pods []v1.Pod, volumes []string, nodes []v1.Node) []v1.Node {
+	nodeScores := map[string]int{}
+	for _, node := range nodes {
+		nodeScores[node.Name] = 0
+	}
+
+	var nodeScorerPlugins = []nodeScorerPlugin{
+		&scoreByNodeCapacity{},
+		&scoreByReplicaCount{},
+	}
+
+	for _, nodeScorerPlugin := range nodeScorerPlugins {
+		nodeScorerPlugin.setup(pods, volumes, c)
+		if updatedNodeScores, err := nodeScorerPlugin.score(ctx, nodeScores); err != nil {
+			klog.Errorf("failed to score nodes by node scorer (%s): %v", nodeScorerPlugin.name(), err)
+		} else {
+			// update node scores if scorer plugin returned success
+			nodeScores = updatedNodeScores
+		}
+	}
+
+	// normalize score
+	for _, node := range nodes {
+		if _, exists := nodeScores[node.Name]; !exists {
+			nodeScores[node.Name] = -1
+		}
+	}
+
+	sort.Slice(nodes[:], func(i, j int) bool {
+		return nodeScores[nodes[i].Name] > nodeScores[nodes[j].Name]
+	})
+
+	return nodes
+}
+
+func (c *SharedState) filterAndSortNodes(ctx context.Context, nodes []v1.Node, pods []v1.Pod, volumes []string) ([]v1.Node, error) {
+	filteredNodes, err := c.filterNodes(ctx, nodes, pods, volumes)
+	if err != nil {
+		klog.Errorf("failed to filter nodes for volumes (%+v): %v", volumes, err)
+		return nil, err
+	}
+	sortedNodes := c.prioritizeNodes(ctx, pods, volumes, filteredNodes)
+	return sortedNodes, nil
+}
+
+func (c *SharedState) selectNodesPerTopology(ctx context.Context, nodes []v1.Node, pods []v1.Pod, volumes []string) ([]v1.Node, error) {
+	selectedNodes := []v1.Node{}
+	numReplicas := 0
+
+	// disperse node topology if possible
+	compatibleZonesSet := set{}
+	var primaryNode string
+	for i, volume := range volumes {
+		azVolume, err := azureutils.GetAzVolume(ctx, c.cachedClient, c.azClient, volume, c.objectNamespace, true)
+		if err != nil {
+			klog.V(5).Infof("AzVolume for volume %s is not found.", volume)
+			return nil, err
+		}
+
+		numReplicas = max(numReplicas, azVolume.Spec.MaxMountReplicaCount)
+		klog.V(5).Infof("Number of requested replicas for azvolume %s is: %d. Max replica count is: %d.",
+			volume, numReplicas, azVolume.Spec.MaxMountReplicaCount)
 
 		var pv v1.PersistentVolume
 		if err := c.cachedClient.Get(ctx, types.NamespacedName{Name: azVolume.Status.PersistentVolume}, &pv); err != nil {
 			return nil, err
 		}
+
 		if pv.Spec.NodeAffinity == nil || pv.Spec.NodeAffinity.Required == nil {
 			continue
 		}
@@ -750,80 +1345,111 @@ func (c *SharedState) getRankedNodesForReplicaAttachments(ctx context.Context, v
 		if i == 0 {
 			compatibleZonesSet = getSupportedZones(pv.Spec.NodeAffinity.Required.NodeSelectorTerms, topologyKey)
 		} else {
-			commonZones := set{}
 			listOfZones := getSupportedZones(pv.Spec.NodeAffinity.Required.NodeSelectorTerms, topologyKey)
-			for key := range listOfZones {
-				if compatibleZonesSet.has(key) {
-					commonZones.add(key)
+			for key := range compatibleZonesSet {
+				if !listOfZones.has(key) {
+					compatibleZonesSet.remove(key)
 				}
 			}
-			compatibleZonesSet = commonZones
 		}
 
-		nodeSelector, err := nodeaffinity.NewNodeSelector(pv.Spec.NodeAffinity.Required)
-		if err != nil {
-			// if failed to create a new node selector return error
-			return nil, err
+		// find primary node if not already found
+		if primaryNode == "" {
+			if primaryAttachment, err := getAzVolumeAttachmentsForVolume(ctx, c.cachedClient, volume, primaryOnly); err != nil || len(primaryAttachment) == 0 {
+				continue
+			} else {
+				primaryNode = primaryAttachment[0].Spec.NodeName
+			}
 		}
-		// acknowledge that there can be duplicates in the slice
-		volumeNodeSelectors = append(volumeNodeSelectors, nodeSelector)
 	}
 
+	var compatibleZones []string
 	if len(compatibleZonesSet) > 0 {
 		for key := range compatibleZonesSet {
 			compatibleZones = append(compatibleZones, key.(string))
 		}
 	}
 
-	removeCandidacy := func(nodeName string, err error) {
-		klog.Errorf("Removing node (%s) from candidate nodes for replica attachments: %v", nodeName, err)
-		delete(nodeScores, nodeName)
-
-		if len(nodes) > 0 {
-			indexToRemove := -1
-			for i, node := range nodes {
-				if node == nodeName {
-					indexToRemove = i
-					break
-				}
-			}
-			if indexToRemove != -1 {
-				nodes[indexToRemove] = nodes[len(nodes)-1]
-				nodes = nodes[:len(nodes)-1]
-			}
-		}
-	}
-
-	// remove the primary node from the candidates list as it can get added if all the volume attachments aren't promoted at the same time
-	removeCandidacy(primaryNode, nil)
-
-	for nodeName, nodeScore := range nodeScores {
-		if remainingCapacity, err := getNodeRemainingCapacity(ctx, c.cachedClient, nil, nodeName); err != nil {
-			// it is safe to delete entry from map while iterating
-			removeCandidacy(nodeName, err)
-		} else if remainingCapacity < len(volumes)-nodeScore {
-			// if node is too full to take n extra attachments, remove the node from the candidate list
-			err = status.Errorf(codes.Internal, "remaining node capacity: %d", remainingCapacity)
-			removeCandidacy(nodeName, err)
-		}
-	}
-
-	// sorting nodes array per their score in nodeScore array
-	sort.Slice(nodes[:], func(i, j int) bool {
-		return nodeScores[nodes[i]] > nodeScores[nodes[j]]
-	})
-
-	// select at least as many nodes as requested replicas
-	if len(nodes) < numReplica {
-		selected, err := c.selectNodes(ctx, numReplica-len(nodes), primaryNode, nodeScores, podNodeAffinities, podTolerations, podNodeSelector, podAffinities, volumeNodeSelectors, compatibleZones)
+	if len(compatibleZones) == 0 {
+		var err error
+		selectedNodes, err = c.filterAndSortNodes(ctx, nodes, pods, volumes)
 		if err != nil {
+			klog.Errorf("failed to select nodes for volumes (%+v): %v", volumes, err)
 			return nil, err
 		}
-		nodes = append(nodes, selected...)
+	} else {
+		klog.Infof("The list of zones to select nodes from is: %s", strings.Join(compatibleZones, ","))
+
+		var primaryNodeZone string
+		if primaryNode != "" {
+			nodeObj := &v1.Node{}
+			err := c.cachedClient.Get(ctx, types.NamespacedName{Name: primaryNode}, nodeObj)
+			if err != nil {
+				klog.Errorf("failed to retrieve the primary node: %v", err)
+			}
+
+			var ok bool
+			if primaryNodeZone, ok = nodeObj.Labels[consts.WellKnownTopologyKey]; ok {
+				klog.Infof("failed to find zone annotations for primary node")
+			}
+		}
+
+		nodeSelector := labels.NewSelector()
+		zoneRequirement, _ := labels.NewRequirement(consts.WellKnownTopologyKey, selection.In, compatibleZones)
+		nodeSelector = nodeSelector.Add(*zoneRequirement)
+
+		compatibleNodes := &v1.NodeList{}
+		if err := c.cachedClient.List(ctx, compatibleNodes, &client.ListOptions{LabelSelector: nodeSelector}); err != nil {
+			klog.Errorf("failed to retrieve node list: %v", err)
+			return nodes, err
+		}
+
+		// Create a zone to node map
+		zoneToNodeMap := map[string][]v1.Node{}
+		for _, node := range compatibleNodes.Items {
+			zoneName := node.Labels[consts.WellKnownTopologyKey]
+			zoneToNodeMap[zoneName] = append(zoneToNodeMap[zoneName], node)
+		}
+
+		// Get prioritized nodes per zone
+		nodesPerZone := [][]v1.Node{}
+		primaryZoneNodes := []v1.Node{}
+		totalCount := 0
+		for zone, nodeList := range zoneToNodeMap {
+			sortedNodes, err := c.filterAndSortNodes(ctx, nodeList, pods, volumes)
+			if err != nil {
+				klog.Errorf("failed to select nodes for volumes (%+v): %v", volumes, err)
+				return nil, err
+			}
+
+			totalCount += len(sortedNodes)
+			if zone == primaryNodeZone {
+				primaryZoneNodes = sortedNodes
+				continue
+			}
+			nodesPerZone = append(nodesPerZone, sortedNodes)
+		}
+		// Append the nodes from the zone of the primary node at last
+		if len(primaryZoneNodes) > 0 {
+			nodesPerZone = append(nodesPerZone, primaryZoneNodes)
+		}
+		// Select the nodes from each of the zones one by one and append to the list
+		i, j, countSoFar := 0, 0, 0
+		for len(selectedNodes) < numReplicas && countSoFar < totalCount {
+			if len(nodesPerZone[i]) > j {
+				selectedNodes = append(selectedNodes, nodesPerZone[i][j])
+				countSoFar++
+			}
+			if i < len(nodesPerZone)-1 {
+				i++
+			} else {
+				i = 0
+				j++
+			}
+		}
 	}
 
-	klog.Infof("Selected nodes (%+v) for replica AzVolumeAttachments for volumes (%+v)", nodes, volumes)
-	return nodes[:min(len(nodes), numReplica)], nil
+	return selectedNodes[:min(len(selectedNodes), numReplicas)], nil
 }
 
 func getSupportedZones(nodeSelectorTerms []v1.NodeSelectorTerm, topologyKey string) set {
@@ -887,223 +1513,6 @@ func getNodeRemainingCapacity(ctx context.Context, cachedClient client.Client, n
 	}
 
 	return capacity - len(attachments), nil
-}
-
-func (c *SharedState) selectNodes(ctx context.Context, numNodes int, primaryNode string, exceptionNodes map[string]int, podNodeAffinities []*nodeaffinity.RequiredNodeAffinity, podTolerations []v1.Toleration, podNodeSelectors, podAffinities labels.Selector, volumeNodeSelectors []*nodeaffinity.NodeSelector, compatibleZones []string) ([]string, error) {
-	selectedNodes := []string{}
-	var nodes *v1.NodeList
-	var err error
-
-	nodes = &v1.NodeList{}
-	// Select only the nodes from specific supported zones in case of a multi zone cluster
-	if len(compatibleZones) > 0 {
-		klog.Infof("The list of zones to select nodes from is: %s", strings.Join(compatibleZones, ","))
-		nodeObj := &v1.Node{}
-		// Get the zone of the primary node
-		err := c.cachedClient.Get(ctx, types.NamespacedName{Name: primaryNode}, nodeObj)
-		if err != nil {
-			klog.Errorf("failed to retrieve the primary node: %v", err)
-		}
-		primaryNodeZone, ok := nodeObj.Labels[consts.WellKnownTopologyKey]
-		if !ok {
-			klog.Infof("failed to find zone annotations for primary node")
-		}
-
-		nodeSelector := labels.NewSelector()
-		zoneRequirement, _ := labels.NewRequirement(consts.WellKnownTopologyKey, selection.In, compatibleZones)
-		nodeSelector = nodeSelector.Add(*zoneRequirement)
-		podNodeSelectorRequirements, _ := podNodeSelectors.Requirements()
-		nodeSelector = nodeSelector.Add(podNodeSelectorRequirements...)
-
-		if err = c.cachedClient.List(ctx, nodes, &client.ListOptions{LabelSelector: nodeSelector}); err != nil {
-			klog.Errorf("failed to retrieve node list: %v", err)
-			return selectedNodes, err
-		}
-
-		// Create a zone to node map
-		zoneToNodeMap := map[string][]v1.Node{}
-		for _, node := range nodes.Items {
-			zoneName, ok := node.Labels[consts.WellKnownTopologyKey]
-			if !ok {
-				continue
-			}
-			if _, ok := zoneToNodeMap[zoneName]; !ok {
-				zoneToNodeMap[zoneName] = []v1.Node{}
-			}
-			zoneToNodeMap[zoneName] = append(zoneToNodeMap[zoneName], node)
-		}
-
-		// Get filtered and sorted nodes per zone
-		nodesPerZone := [][]string{}
-		primaryZoneNodes := []string{}
-		totalCount := 0
-		for zone, nodeList := range zoneToNodeMap {
-			filteredNodes, err := c.filterAndSortNodes(ctx, primaryNode, exceptionNodes, podNodeAffinities, podTolerations, podNodeSelectors, podAffinities, volumeNodeSelectors, v1.NodeList{Items: nodeList})
-			if err != nil {
-				klog.Errorf("failed to filter and sort nodes: %v", err)
-				return selectedNodes, err
-			}
-			if len(filteredNodes) > 0 {
-				totalCount += len(filteredNodes)
-				if zone == primaryNodeZone {
-					primaryZoneNodes = filteredNodes
-					continue
-				}
-				nodesPerZone = append(nodesPerZone, filteredNodes)
-			}
-		}
-
-		// Append the nodes from the zone of the primary node at last
-		if len(primaryZoneNodes) > 0 {
-			nodesPerZone = append(nodesPerZone, primaryZoneNodes)
-		}
-
-		// Select the nodes from each of the zones one by one and append to the list
-		i, j, countSoFar := 0, 0, 0
-		for len(selectedNodes) < numNodes && countSoFar < totalCount {
-			if len(nodesPerZone[i]) > j {
-				selectedNodes = append(selectedNodes, nodesPerZone[i][j])
-				countSoFar++
-			}
-			if i < len(nodesPerZone)-1 {
-				i++
-			} else {
-				i = 0
-				j++
-			}
-		}
-
-		return selectedNodes, nil
-	}
-	// List all nodes
-	if err = c.cachedClient.List(ctx, nodes, &client.ListOptions{LabelSelector: podNodeSelectors}); err != nil {
-		klog.Errorf("failed to retrieve node list: %v", err)
-		return selectedNodes, err
-	}
-
-	selectedNodes, err = c.filterAndSortNodes(ctx, primaryNode, exceptionNodes, podNodeAffinities, podTolerations, podNodeSelectors, podAffinities, volumeNodeSelectors, *nodes)
-	if err != nil {
-		klog.Errorf("failed to filter and sort nodes: %v", err)
-		return selectedNodes, err
-	}
-
-	if len(selectedNodes) > numNodes {
-		return selectedNodes[:numNodes], nil
-	}
-	return selectedNodes, nil
-}
-
-func (c *SharedState) filterAndSortNodes(ctx context.Context, primaryNode string, exceptionNodes map[string]int, podNodeAffinities []*nodeaffinity.RequiredNodeAffinity, podTolerations []v1.Toleration, podNodeSelectors, podAffinities labels.Selector, volumeNodeSelectors []*nodeaffinity.NodeSelector, nodes v1.NodeList) ([]string, error) {
-	filteredNodes := []string{}
-	var err error
-
-	type nodeEntry struct {
-		node      *v1.Node
-		nodeScore int
-	}
-
-	nodeMap := map[string]nodeEntry{}
-	for _, node := range nodes.Items {
-		nodeVar := node
-		nodeMap[node.Name] = nodeEntry{node: &nodeVar, nodeScore: 0}
-	}
-
-	// if podAffinity is specified, filter nodes based on pod affinity
-	// Get all replica attachments for the filtered pod and get filtered node list
-	filteredPodNodes := set{}
-	if podAffinities != nil && !podAffinities.Empty() {
-		pods := &v1.PodList{}
-		if err = c.cachedClient.List(ctx, pods, &client.ListOptions{LabelSelector: podAffinities}); err != nil {
-			klog.Errorf("failed to retrieve pod list: %v", err)
-			return filteredNodes, err
-		}
-
-		volumes, err := c.getVolumesForPodObjs(pods.Items)
-		if err != nil {
-			klog.Errorf("failed to get volumes for pods (%+v)", pods.Items)
-			return filteredNodes, err
-		}
-		for _, volume := range volumes {
-			attachments, err := getAzVolumeAttachmentsForVolume(ctx, c.cachedClient, volume, all)
-			if err != nil {
-				klog.Errorf("failed to get replica attachments for volume (%s): %v", volume)
-				return filteredNodes, err
-			}
-			for _, attachment := range attachments {
-				filteredPodNodes.add(attachment.Spec.NodeName)
-			}
-		}
-	}
-
-	// loop through nodes and filter out candidates that don't match volume's node selector, pod's node affinity, toleration
-nodeLoop:
-	for nodeName, nodeEntry := range nodeMap {
-		for _, podNodeAffinity := range podNodeAffinities {
-			if match, err := podNodeAffinity.Match(nodeEntry.node); !match || err != nil {
-				klog.Infof("Removing node (%s) from replica candidates: node (%s) does not match pod node affinity", nodeName, nodeName)
-				delete(nodeMap, nodeName)
-				continue nodeLoop
-			}
-		}
-		tolerable := true
-		for _, taint := range nodeEntry.node.Spec.Taints {
-			taintTolerable := false
-			for _, podToleration := range podTolerations {
-				// if any one of node's taint cannot be tolerated by pod's tolerations, break
-				if podToleration.ToleratesTaint(&taint) {
-					taintTolerable = true
-				}
-			}
-			tolerable = tolerable && taintTolerable
-		}
-
-		if !tolerable {
-			klog.Infof("Removing node (%s) from replica candidates: node (%s)'s taint cannot be tolerated", nodeName, nodeName)
-			delete(nodeMap, nodeName)
-			continue nodeLoop
-		}
-
-		for _, volumeNodeSelector := range volumeNodeSelectors {
-			if !volumeNodeSelector.Match(nodeEntry.node) {
-				klog.Infof("Removing node (%s) from replica candidates: volume node selector (%+v) cannot be matched with node (%s).", nodeName, volumeNodeSelector, nodeName)
-				delete(nodeMap, nodeName)
-				continue nodeLoop
-			}
-		}
-	}
-
-	for nodeName, nodeEntry := range nodeMap {
-		if _, ok := exceptionNodes[nodeName]; ok || nodeName == primaryNode {
-			continue
-		}
-
-		remainingCapacity, err := getNodeRemainingCapacity(ctx, c.cachedClient, nodeEntry.node, nodeName)
-		if err != nil {
-			// if failed to get node's remaining capacity, remove the node from the candidate list and proceed
-			klog.Errorf("failed to get remaining capacity of node (%s): %v", nodeName, err)
-			delete(nodeMap, nodeName)
-			continue
-		}
-
-		nodeEntry.nodeScore = remainingCapacity
-		nodeMap[nodeName] = nodeEntry
-		filteredNodes = append(filteredNodes, nodeName)
-		klog.Infof("node (%s) can accept %d more attachments", nodeName, remainingCapacity)
-	}
-
-	// sort the filteredNodes by their remaining capacity (high to low) and return a slice
-	sort.Slice(filteredNodes[:], func(i, j int) bool {
-		// prioritize the nodes filtered by pod affinity
-		iIsFiltered := filteredPodNodes.has(filteredNodes[i])
-		jIsFiltered := filteredPodNodes.has(filteredNodes[j])
-		if iIsFiltered != jIsFiltered {
-			return iIsFiltered
-		}
-		// if both satisfy or don't pod affinity, rank by their node scores
-		return nodeMap[filteredNodes[i]].nodeScore > nodeMap[filteredNodes[j]].nodeScore
-	})
-
-	return filteredNodes, nil
 }
 
 func (c *SharedState) getNodesWithReplica(ctx context.Context, volumeName string) ([]string, error) {

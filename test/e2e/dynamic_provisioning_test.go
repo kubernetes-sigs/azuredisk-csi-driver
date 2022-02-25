@@ -1210,7 +1210,6 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	})
 
 	ginkgo.It("Should create replicas on node with matching pod affinity", func() {
-		ginkgo.Skip("test case make an invalid assumption")
 
 		testutil.SkipIfUsingInTreeVolumePlugin()
 		if isMultiZone {
@@ -1338,6 +1337,80 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			Pod:                    pod,
 			AzDiskClient:           azDiskClient,
 			StorageClassParameters: storageClassParameters,
+		}
+		test.Run(cs, ns, schedulerName)
+	})
+
+	ginkgo.It("Should not create replicas on node with matching pod anti-affinity", func() {
+
+		testutil.SkipIfUsingInTreeVolumePlugin()
+		if isMultiZone {
+			ginkgo.Skip("test case does not apply to multi az case")
+		}
+		testutil.SkipIfNotUsingCSIDriverV2()
+
+		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
+		if err != nil {
+			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
+		}
+
+		volume := resources.VolumeDetails{
+			ClaimSize: "10Gi",
+			VolumeMount: resources.VolumeMountDetails{
+				NameGenerate:      "test-volume-",
+				MountPathGenerate: "/mnt/test-",
+			},
+			VolumeAccessMode: v1.ReadWriteOnce,
+		}
+		pods := []resources.PodDetails{
+			{
+				Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
+				Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
+					{
+						ClaimSize: volume.ClaimSize,
+						MountOptions: []string{
+							"barrier=1",
+							"acl",
+						},
+						VolumeMount:      volume.VolumeMount,
+						VolumeAccessMode: volume.VolumeAccessMode,
+					},
+				}, []string{}, isMultiZone),
+				IsWindows: testconsts.IsWindowsCluster,
+				UseCMD:    false,
+			},
+			{
+				Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
+				Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
+					{
+						ClaimSize: volume.ClaimSize,
+						MountOptions: []string{
+							"barrier=1",
+							"acl",
+						},
+						VolumeMount:      volume.VolumeMount,
+						VolumeAccessMode: v1.ReadWriteOnce,
+					},
+				}, t.allowedTopologyValues, isMultiZone),
+				IsWindows: testconsts.IsWindowsCluster,
+				UseCMD:    false,
+			},
+		}
+
+		storageClassParameters := map[string]string{
+			consts.SkuNameField:     "Premium_LRS",
+			consts.MaxSharesField:   "2",
+			consts.CachingModeField: "None",
+		}
+
+		test := testsuites.PodAffinity{
+			CSIDriver:              testDriver,
+			Pods:                   pods,
+			IsMultiZone:            isMultiZone,
+			AzDiskClient:           azDiskClient,
+			Volume:                 volume,
+			StorageClassParameters: storageClassParameters,
+			IsAntiAffinityTest:     true,
 		}
 		test.Run(cs, ns, schedulerName)
 	})
