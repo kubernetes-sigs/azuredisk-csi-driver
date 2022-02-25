@@ -70,7 +70,6 @@ func (r *ReconcilePod) Reconcile(ctx context.Context, request reconcile.Request)
 			klog.V(5).Infof("Error creating replicas for pod %s. Error: %v. Requeuing reconciliation.", request.Name, err)
 			return reconcile.Result{Requeue: true}, err
 		}
-		klog.V(5).Infof("Successfully created replicas for pod %s. Reconciliation succeeded.", request.Name)
 	}
 	return reconcile.Result{}, nil
 }
@@ -112,6 +111,7 @@ func (r *ReconcilePod) createReplicas(ctx context.Context, podKey string) error 
 					klog.Warningf("Error creating replica azvolumeattachment for pod %s and volume %s. Error: %v", podKey, volume, err)
 					return err
 				}
+				klog.V(5).Infof("Successfully created replicas for pod %s. Reconciliation succeeded.", podKey)
 
 				// once replica attachment batch is created by pod controller, future replica reconciliation needs to be handled by replica controller
 				r.controllerSharedState.markVolumeVisited(volume)

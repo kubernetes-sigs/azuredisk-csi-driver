@@ -23,12 +23,12 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
 const (
 	AzureDriverNameVar = "AZURE_STORAGE_DRIVER"
 	TopologyKey        = "topology.disk.csi.azure.com/zone"
+	HostNameLabel      = "kubernetes.io/hostname"
 
 	AzurePublicCloud            = "AzurePublicCloud"
 	ResourceGroupPrefix         = "azuredisk-csi-driver-test-"
@@ -145,7 +145,17 @@ var (
 			RequiredDuringSchedulingIgnoredDuringExecution: []v1.PodAffinityTerm{
 				{
 					LabelSelector: &metav1.LabelSelector{MatchLabels: TestLabel},
-					TopologyKey:   consts.WellKnownTopologyKey,
+					TopologyKey:   HostNameLabel,
+				}},
+		},
+	}
+
+	TestPodAntiAffinity = v1.Affinity{
+		PodAntiAffinity: &v1.PodAntiAffinity{
+			RequiredDuringSchedulingIgnoredDuringExecution: []v1.PodAffinityTerm{
+				{
+					LabelSelector: &metav1.LabelSelector{MatchLabels: TestLabel},
+					TopologyKey:   HostNameLabel,
 				}},
 		},
 	}

@@ -117,6 +117,7 @@ const (
 	ControllerServiceAccountName      = "csi-azuredisk-controller-sa"
 	ControllerServiceAccountFinalizer = "disk.csi.azure.com/azuredisk-controller"
 	ReleaseNamespace                  = "kube-system"
+	NamespaceField                    = "metadata.namespace"
 
 	CRIUpdateRetryDuration  = time.Duration(1) * time.Second
 	CRIUpdateRetryFactor    = 3.0
