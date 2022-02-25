@@ -72,7 +72,7 @@ const (
 	// default IOPS Caps & Throughput Cap (MBps) per https://docs.microsoft.com/en-us/azure/virtual-machines/linux/disks-ultra-ssd
 	// see https://docs.microsoft.com/en-us/rest/api/compute/disks/createorupdate#uri-parameters
 	diskNameMinLength = 1
-	// Reseting max length to 63 since the disk name is used in the label "volume-name"
+	// Resetting max length to 63 since the disk name is used in the label "volume-name"
 	// of the kubernetes object and a label cannot have length greater than 63.
 	// https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
 	diskNameMaxLengthForLabel = 63
@@ -103,6 +103,7 @@ type ManagedDiskParameters struct {
 	MaxShares               int
 	NetworkAccessPolicy     string
 	PerfProfile             string
+	SubscriptionID          string
 	ResourceGroup           string
 	Tags                    map[string]string
 	UserAgent               string
@@ -201,6 +202,16 @@ func GetMaxShares(attributes map[string]string) (int, error) {
 	return 1, nil // disk is not shared
 }
 
+func GetSubscriptionIDFromURI(diskURI string) string {
+	parts := strings.Split(diskURI, "/")
+	for i, v := range parts {
+		if strings.EqualFold(v, "subscriptions") && (i+1) < len(parts) {
+			return parts[i+1]
+		}
+	}
+	return ""
+}
+
 func NormalizeStorageAccountType(storageAccountType, cloud string, disableAzureStackCloud bool) (compute.DiskStorageAccountTypes, error) {
 	if storageAccountType == "" {
 		if IsAzureStackCloud(cloud, disableAzureStackCloud) {
@@ -273,6 +284,8 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 			diskParams.AccountType = v
 		case consts.CachingModeField:
 			diskParams.CachingMode = v1.AzureDataDiskCachingMode(v)
+		case consts.SubscriptionIDField:
+			diskParams.SubscriptionID = v
 		case consts.ResourceGroupField:
 			diskParams.ResourceGroup = v
 		case consts.DiskIOPSReadWriteField:
@@ -532,7 +545,7 @@ func GetDiskName(diskURI string) (string, error) {
 	return matches[1], nil
 }
 
-// GetResourceGroupFromURI returns resource groupd from URI
+// GetResourceGroupFromURI returns resource grouped from URI
 func GetResourceGroupFromURI(diskURI string) (string, error) {
 	fields := strings.Split(diskURI, "/")
 	if len(fields) != 9 || strings.ToLower(fields[3]) != "resourcegroups" {

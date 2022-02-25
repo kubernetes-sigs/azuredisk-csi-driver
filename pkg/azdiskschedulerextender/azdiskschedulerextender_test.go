@@ -629,7 +629,7 @@ func TestFilterAndPrioritizeInRandomizedLargeCluster(t *testing.T) {
 	var nodes []v1.Node
 	var nodeNames []string
 
-	//TODO increase numberOfPodsToSchedule when changing the implemention to reuse goroutines
+	//TODO increase numberOfPodsToSchedule when changing the implementation to reuse goroutines
 	stressTestSetupParams := map[string]struct {
 		numberOfNodes   int
 		numberOfVolumes int

@@ -70,7 +70,7 @@ var _ = ginkgo.Describe("Controller", func() {
 					azN := azDiskClient.DiskV1alpha2().AzDriverNodes(namespace)
 					dNode, err := azN.Get(context.Background(), pod.Spec.NodeName, metav1.GetOptions{})
 					framework.ExpectNoError(err)
-					ginkgo.By("Checking AzDriverNode/Staus")
+					ginkgo.By("Checking AzDriverNode/Status")
 					if dNode.Status == nil {
 						ginkgo.Fail("Driver status is not updated")
 					}
@@ -86,7 +86,7 @@ var _ = ginkgo.Describe("Controller", func() {
 					ginkgo.By("Checking to see if node has partition key label.")
 					partition, ok := dNode.Labels[partitionKey]
 					if ok == false || partition == "" {
-						ginkgo.Fail("Driver node parition label was not applied correctly.")
+						ginkgo.Fail("Driver node partition label was not applied correctly.")
 					}
 					break
 				}
@@ -159,7 +159,7 @@ var _ = ginkgo.Describe("Controller", func() {
 
 		})
 
-		ginkgo.It("If failover happens, should turn replica to primary and create an additional replica for replacment", func() {
+		ginkgo.It("If failover happens, should turn replica to primary and create an additional replica for replacement", func() {
 			testutil.SkipIfUsingInTreeVolumePlugin()
 			testutil.SkipIfNotUsingCSIDriverV2()
 			nodes := nodeutil.ListNodeNames(cs)

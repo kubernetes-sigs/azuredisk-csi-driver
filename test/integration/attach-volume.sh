@@ -14,6 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+set -euo pipefail
+
 if [[ "$#" -lt 2 ]]; then
   echo "[Error] wrong number of arguments: the script requires two arguments: <Node Name> <Volume Name>"
   exit 1
@@ -24,9 +26,9 @@ if [[ "$#" -gt 2 ]]; then
   mode=$3
 fi
 
-export nodeName=$1
-export volumeName=$2
-export volumeId=$(kubectl get azvolume ${volumeName} -n azure-disk-csi -o yaml | egrep -i '/subscriptions/[a-z0-9_\-]+/resourceGroups/[a-z0-9_\-]+/providers/Microsoft.Compute/disks/[a-z0-9_\-]+' | awk -F' ' '{ print $2 }')
+nodeName=$1
+volumeName=$2
+volumeId=$( kubectl get azvolume ${volumeName} -n azure-disk-csi -o yaml | egrep -i '/subscriptions/[a-z0-9_\-]+/resourceGroups/[a-z0-9_\-]+/providers/Microsoft.Compute/disks/[a-z0-9_\-]+' | awk -F' ' '{ print $2 }')
 
 if [ "$mode" = "attach" ]; then
   tee <<-EOF > new-azvolumeattachment.yaml;

@@ -147,7 +147,7 @@ func GenerateCSISnapshot(sourceVolumeID string, snapshot *compute.Snapshot) (*cs
 
 	tp := timestamppb.New(snapshot.SnapshotProperties.TimeCreated.ToTime())
 	if tp == nil {
-		return nil, fmt.Errorf("failed to covert timestamp(%v)", snapshot.SnapshotProperties.TimeCreated.ToTime())
+		return nil, fmt.Errorf("failed to convert timestamp(%v)", snapshot.SnapshotProperties.TimeCreated.ToTime())
 	}
 	ready, _ := isSnapshotReady(*snapshot.SnapshotProperties.ProvisioningState)
 

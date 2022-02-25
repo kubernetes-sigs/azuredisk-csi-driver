@@ -495,7 +495,7 @@ func (d *DriverV2) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRe
 
 	tp, err := ptypes.TimestampProto(snapshot.CreationTime.Time)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to covert creation timestamp: %v", err)
+		return nil, fmt.Errorf("Failed to convert creation timestamp: %v", err)
 	}
 
 	isOperationSucceeded = true
@@ -555,7 +555,7 @@ func (d *DriverV2) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsRequ
 	for _, resultEntry := range result.Entries {
 		tp, err := ptypes.TimestampProto(resultEntry.CreationTime.Time)
 		if err != nil {
-			return nil, fmt.Errorf("Failed to covert creation timestamp: %v", err)
+			return nil, fmt.Errorf("Failed to convert creation timestamp: %v", err)
 		}
 		responseEntries = append(responseEntries, &csi.ListSnapshotsResponse_Entry{
 			Snapshot: &csi.Snapshot{

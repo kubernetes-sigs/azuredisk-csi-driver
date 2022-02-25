@@ -68,7 +68,7 @@ func (t *PreProvisionedDanglingAttachVolumeTest) Run(client clientset.Interface,
 	}
 	resourceGroup, err := azureutils.GetResourceGroupFromURI(diskURI)
 	framework.ExpectNoError(err)
-	disk, rerr := t.AzureCloud.DisksClient.Get(context.Background(), resourceGroup, diskName)
+	disk, rerr := t.AzureCloud.DisksClient.Get(context.Background(), t.AzureCloud.SubscriptionID, resourceGroup, diskName)
 	framework.ExpectNoError(rerr.Error())
 	_, err = t.AzureCloud.AttachDisk(context.Background(), true, diskName, diskURI, nodeName, compute.CachingTypes(cachingMode), &disk)
 	framework.ExpectNoError(err)

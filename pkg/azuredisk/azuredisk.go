@@ -246,10 +246,10 @@ func (d *Driver) checkDiskExists(ctx context.Context, diskURI string) (*compute.
 		klog.Warningf("skip checkDiskExists(%s) since it's still in throttling", diskURI)
 		return nil, nil
 	}
-
-	disk, rerr := d.cloud.DisksClient.Get(ctx, resourceGroup, diskName)
+	subsID := azureutils.GetSubscriptionIDFromURI(diskURI)
+	disk, rerr := d.cloud.DisksClient.Get(ctx, subsID, resourceGroup, diskName)
 	if rerr != nil {
-		if strings.Contains(rerr.RawError.Error(), consts.RateLimited) {
+		if rerr.IsThrottled() || strings.Contains(rerr.RawError.Error(), consts.RateLimited) {
 			klog.Warningf("checkDiskExists(%s) is throttled with error: %v", diskURI, rerr.Error())
 			d.getDiskThrottlingCache.Set(consts.ThrottlingKey, "")
 			return nil, nil
@@ -260,13 +260,13 @@ func (d *Driver) checkDiskExists(ctx context.Context, diskURI string) (*compute.
 	return &disk, nil
 }
 
-func (d *Driver) checkDiskCapacity(ctx context.Context, resourceGroup, diskName string, requestGiB int) (bool, error) {
+func (d *Driver) checkDiskCapacity(ctx context.Context, subsID, resourceGroup, diskName string, requestGiB int) (bool, error) {
 	if d.isGetDiskThrottled() {
 		klog.Warningf("skip checkDiskCapacity((%s, %s) since it's still in throttling", resourceGroup, diskName)
 		return true, nil
 	}
 
-	disk, rerr := d.cloud.DisksClient.Get(ctx, resourceGroup, diskName)
+	disk, rerr := d.cloud.DisksClient.Get(ctx, subsID, resourceGroup, diskName)
 	// Because we can not judge the reason of the error. Maybe the disk does not exist.
 	// So here we do not handle the error.
 	if rerr == nil {
@@ -274,7 +274,7 @@ func (d *Driver) checkDiskCapacity(ctx context.Context, resourceGroup, diskName 
 			return false, status.Errorf(codes.AlreadyExists, "the request volume already exists, but its capacity(%v) is different from (%v)", *disk.DiskProperties.DiskSizeGB, requestGiB)
 		}
 	} else {
-		if strings.Contains(rerr.RawError.Error(), consts.RateLimited) {
+		if rerr.IsThrottled() || strings.Contains(rerr.RawError.Error(), consts.RateLimited) {
 			klog.Warningf("checkDiskCapacity(%s, %s) is throttled with error: %v", resourceGroup, diskName, rerr.Error())
 			d.getDiskThrottlingCache.Set(consts.ThrottlingKey, "")
 		}

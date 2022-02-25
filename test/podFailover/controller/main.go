@@ -58,7 +58,7 @@ var (
 	workloadImage          = flag.String("workload-image", "nearora4/workloadpod:latest", "Image of the workload pod that will be deployed by the controller")
 	podCount               = flag.Int("pod-count", 1, "The number of pods that should be created for a deployment")
 	pvcPerPod              = flag.Int("pvc-per-pod", 3, "Number of pvcs that should be created per pod")
-	metricsEndpoint        = flag.String("metrics-endpoint", "", "Target where prometheus metrics shouls be published")
+	metricsEndpoint        = flag.String("metrics-endpoint", "", "Target where prometheus metrics should be published")
 	authEnabled            = flag.Bool("auth-enabled", false, "Specify whether request to metrics endpoint requires authentication or not")
 	delayBeforeFailover    = flag.Int("delay-before-failover", 0, "Time in seconds for which the controller should wait before failing the pod")
 	deployAllPodsOnOneNode = flag.Bool("all-pods-on-one-node", false, "Specify whether to deploy all the pods on the same node")

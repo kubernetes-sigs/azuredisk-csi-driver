@@ -136,7 +136,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			// cover case: https://github.com/kubernetes/kubernetes/issues/103433
 			test.StorageClassParameters = map[string]string{"Kind": "managed"}
 		} else if isMultiZone {
-			if supportsZRS {
+			if testutil.IsZRSSupported(location) {
 				test.StorageClassParameters["skuName"] = "StandardSSD_ZRS"
 				test.StorageClassParameters["networkAccessPolicy"] = "AllowAll"
 			} else {
@@ -322,7 +322,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			Pods:                   pods,
 			StorageClassParameters: map[string]string{"skuName": "Premium_LRS"},
 		}
-		if !testconsts.IsUsingInTreeVolumePlugin && supportsZRS {
+		if !testconsts.IsUsingInTreeVolumePlugin && testutil.IsZRSSupported(location) {
 			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
 		}
 
@@ -425,7 +425,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			ColocatePods:           true,
 			StorageClassParameters: map[string]string{"skuName": "Premium_LRS"},
 		}
-		if !testconsts.IsUsingInTreeVolumePlugin && supportsZRS {
+		if !testconsts.IsUsingInTreeVolumePlugin && testutil.IsZRSSupported(location) {
 			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
 		}
 
@@ -537,7 +537,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 				"fsType":  "xfs",
 			},
 		}
-		if !testconsts.IsUsingInTreeVolumePlugin && supportsZRS {
+		if !testconsts.IsUsingInTreeVolumePlugin && testutil.IsZRSSupported(location) {
 			test.StorageClassParameters = map[string]string{
 				"skuName":             "StandardSSD_ZRS",
 				"networkAccessPolicy": "DenyAll",
@@ -580,7 +580,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 				"fsType":  "xfs",
 			},
 		}
-		if !testconsts.IsUsingInTreeVolumePlugin && supportsZRS {
+		if !testconsts.IsUsingInTreeVolumePlugin && testutil.IsZRSSupported(location) {
 			test.StorageClassParameters = map[string]string{
 				"skuName":             "StandardSSD_ZRS",
 				"fsType":              "xfs",
@@ -634,7 +634,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		if testconsts.IsAzureStackCloud {
 			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}
 		}
-		if !testconsts.IsUsingInTreeVolumePlugin && supportsZRS {
+		if !testconsts.IsUsingInTreeVolumePlugin && testutil.IsZRSSupported(location) {
 			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
 		}
 		test.Run(cs, ns, schedulerName)
@@ -675,7 +675,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			Pods:                   pods,
 			StorageClassParameters: map[string]string{"skuName": "Premium_LRS"},
 		}
-		if !testconsts.IsUsingInTreeVolumePlugin && supportsZRS {
+		if !testconsts.IsUsingInTreeVolumePlugin && testutil.IsZRSSupported(location) {
 			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
 		}
 		test.Run(cs, ns, schedulerName)
@@ -712,7 +712,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		if testconsts.IsAzureStackCloud {
 			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}
 		}
-		if !testconsts.IsUsingInTreeVolumePlugin && supportsZRS {
+		if !testconsts.IsUsingInTreeVolumePlugin && testutil.IsZRSSupported(location) {
 			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
 		}
 		test.Run(cs, snapshotrcs, ns, schedulerName)
@@ -756,7 +756,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		if testconsts.IsAzureStackCloud {
 			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}
 		}
-		if !testconsts.IsUsingInTreeVolumePlugin && supportsZRS {
+		if !testconsts.IsUsingInTreeVolumePlugin && testutil.IsZRSSupported(location) {
 			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
 		}
 		test.Run(cs, snapshotrcs, ns, schedulerName)
@@ -821,15 +821,57 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			CSIDriver:              testDriver,
 			Volume:                 volume,
 			Pod:                    pod,
+			ResizeOffline:          true,
 			StorageClassParameters: map[string]string{"skuName": "Standard_LRS"},
 		}
-		if !testconsts.IsUsingInTreeVolumePlugin && supportsZRS {
+		if !testconsts.IsUsingInTreeVolumePlugin && testutil.IsZRSSupported(location) {
 			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS", "fsType": "btrfs"}
 		}
 		test.Run(cs, ns, schedulerName)
 	})
 
-	ginkgo.It(fmt.Sprintf("should create a volume azuredisk with tag [disk.csi.azure.com] [Windows] [%s]", schedulerName), func() {
+	/*
+		ginkgo.It("should create a volume on demand and dynamically resize it without detaching [disk.csi.azure.com] ", func() {
+			testutil.SkipIfUsingInTreeVolumePlugin()
+			testutil.SkipIfNotDynamicallyResizeSupported(location)
+			//Subscription must be registered for LiveResize
+			volume := resources.VolumeDetails{
+				ClaimSize: "10Gi",
+				VolumeMount: resources.VolumeMountDetails{
+					NameGenerate:      "test-volume-",
+					MountPathGenerate: "/mnt/test-",
+				},
+				VolumeAccessMode: v1.ReadWriteOnce,
+			}
+			pod := resources.PodDetails{
+				Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
+				Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
+					{
+						ClaimSize: volume.ClaimSize,
+						MountOptions: []string{
+							"barrier=1",
+							"acl",
+						},
+						VolumeMount:      volume.VolumeMount,
+						VolumeAccessMode: v1.ReadWriteOnce,
+					},
+				}, []string{}, isMultiZone),
+				IsWindows: testconsts.IsWindowsCluster,
+				UseCMD:    false,
+			}
+
+			test := testsuites.DynamicallyProvisionedResizeVolumeTest{
+				CSIDriver:              testDriver,
+				Volume:                 volume,
+				Pod:                    pod,
+				ResizeOffline:          false,
+				StorageClassParameters: map[string]string{"skuName": "Standard_LRS"},
+			}
+			test.Run(cs, ns, schedulerName)
+		})
+	*/
+
+	ginkgo.It("should create a volume azuredisk with tag [disk.csi.azure.com] [Windows]", func() {
 		testutil.SkipIfUsingInTreeVolumePlugin()
 		pods := []resources.PodDetails{
 			{
@@ -858,7 +900,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			StorageClassParameters: map[string]string{"skuName": "Standard_LRS", "tags": tags},
 			Tags:                   tags,
 		}
-		if !testconsts.IsUsingInTreeVolumePlugin && supportsZRS {
+		if !testconsts.IsUsingInTreeVolumePlugin && testutil.IsZRSSupported(location) {
 			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS", "tags": tags}
 		}
 		test.Run(cs, ns, schedulerName)
@@ -890,7 +932,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			Pods:                   pods,
 			StorageClassParameters: map[string]string{"skuName": "Standard_LRS"},
 		}
-		if !testconsts.IsUsingInTreeVolumePlugin && supportsZRS {
+		if !testconsts.IsUsingInTreeVolumePlugin && testutil.IsZRSSupported(location) {
 			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
 		}
 		test.Run(cs, ns, schedulerName)
@@ -1623,7 +1665,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			"maxshares":   "2",
 			"cachingmode": "None",
 		}
-		if supportsZRS {
+		if testutil.IsZRSSupported(location) {
 			storageClassParameters["skuName"] = "StandardSSD_ZRS"
 		}
 

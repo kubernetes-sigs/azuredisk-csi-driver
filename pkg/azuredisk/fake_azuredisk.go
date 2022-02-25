@@ -88,11 +88,12 @@ type FakeDriver interface {
 	setMounter(*mount.SafeFormatAndMount)
 	setPathIsDeviceResult(path string, isDevice bool, err error)
 
-	getSnapshotInfo(string) (string, string, error)
+	getSnapshotInfo(string) (string, string, string, error)
 	ensureMountPoint(string) (bool, error)
 
-	checkDiskCapacity(context.Context, string, string, int) (bool, error)
+	checkDiskCapacity(context.Context, string, string, string, int) (bool, error)
 	checkDiskExists(ctx context.Context, diskURI string) (*compute.Disk, error)
+
 	setDiskThrottlingCache(key string, value string)
 }
 

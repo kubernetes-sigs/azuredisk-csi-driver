@@ -21,7 +21,7 @@ function get_array() {
     do
         arr[${#arr[@]}]=$value
     done
-    echo ${arr[*]}
+    echo "${arr[*]}"
 }
 
 NS=kube-system
@@ -31,8 +31,8 @@ echo "check the driver pods if restarts ..."
 original_pods=$(kubectl get pods -n kube-system | grep azuredisk | awk '{print $1}')
 original_restarts=$(kubectl get pods -n kube-system | grep azuredisk | awk '{print $4}')
 
-processed_pods=($(get_array "${original_pods[@]}"))
-processed_restarts=($(get_array "${original_restarts[@]}"))
+processed_pods=("$(get_array "${original_pods[@]}")")
+processed_restarts=("$(get_array "${original_restarts[@]}")")
 
 for ((i=0; i<${#processed_restarts[@]}; i++)); do
     if [ "${processed_restarts[$i]}" -ne "0" ]
