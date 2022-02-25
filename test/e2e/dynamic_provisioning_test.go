@@ -830,46 +830,44 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		test.Run(cs, ns, schedulerName)
 	})
 
-	/*
-		ginkgo.It("should create a volume on demand and dynamically resize it without detaching [disk.csi.azure.com] ", func() {
-			testutil.SkipIfUsingInTreeVolumePlugin()
-			testutil.SkipIfNotDynamicallyResizeSupported(location)
-			//Subscription must be registered for LiveResize
-			volume := resources.VolumeDetails{
-				ClaimSize: "10Gi",
-				VolumeMount: resources.VolumeMountDetails{
-					NameGenerate:      "test-volume-",
-					MountPathGenerate: "/mnt/test-",
-				},
-				VolumeAccessMode: v1.ReadWriteOnce,
-			}
-			pod := resources.PodDetails{
-				Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
-				Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
-					{
-						ClaimSize: volume.ClaimSize,
-						MountOptions: []string{
-							"barrier=1",
-							"acl",
-						},
-						VolumeMount:      volume.VolumeMount,
-						VolumeAccessMode: v1.ReadWriteOnce,
+	ginkgo.It("should create a volume on demand and dynamically resize it without detaching [disk.csi.azure.com] ", func() {
+		testutil.SkipIfUsingInTreeVolumePlugin()
+		testutil.SkipIfNotDynamicallyResizeSupported(location)
+		//Subscription must be registered for LiveResize
+		volume := resources.VolumeDetails{
+			ClaimSize: "10Gi",
+			VolumeMount: resources.VolumeMountDetails{
+				NameGenerate:      "test-volume-",
+				MountPathGenerate: "/mnt/test-",
+			},
+			VolumeAccessMode: v1.ReadWriteOnce,
+		}
+		pod := resources.PodDetails{
+			Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
+			Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
+				{
+					ClaimSize: volume.ClaimSize,
+					MountOptions: []string{
+						"barrier=1",
+						"acl",
 					},
-				}, []string{}, isMultiZone),
-				IsWindows: testconsts.IsWindowsCluster,
-				UseCMD:    false,
-			}
+					VolumeMount:      volume.VolumeMount,
+					VolumeAccessMode: v1.ReadWriteOnce,
+				},
+			}, []string{}, isMultiZone),
+			IsWindows: testconsts.IsWindowsCluster,
+			UseCMD:    false,
+		}
 
-			test := testsuites.DynamicallyProvisionedResizeVolumeTest{
-				CSIDriver:              testDriver,
-				Volume:                 volume,
-				Pod:                    pod,
-				ResizeOffline:          false,
-				StorageClassParameters: map[string]string{"skuName": "Standard_LRS"},
-			}
-			test.Run(cs, ns, schedulerName)
-		})
-	*/
+		test := testsuites.DynamicallyProvisionedResizeVolumeTest{
+			CSIDriver:              testDriver,
+			Volume:                 volume,
+			Pod:                    pod,
+			ResizeOffline:          false,
+			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
+		}
+		test.Run(cs, ns, schedulerName)
+	})
 
 	ginkgo.It("should create a volume azuredisk with tag [disk.csi.azure.com] [Windows]", func() {
 		testutil.SkipIfUsingInTreeVolumePlugin()
