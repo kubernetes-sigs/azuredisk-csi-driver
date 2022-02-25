@@ -19,12 +19,6 @@ package testsuites
 import (
 	"context"
 
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
-	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
-	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
-	nodeutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/node"
-	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
-
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
 	"github.com/onsi/ginkgo"
 	v1 "k8s.io/api/core/v1"
@@ -32,6 +26,11 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
+	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
+	nodeutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/node"
+	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
 // PreProvisionedDanglingAttachVolumeTest will provision required PV(s), PVC(s) and Pod(s)

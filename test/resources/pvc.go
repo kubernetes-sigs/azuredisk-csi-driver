@@ -140,6 +140,9 @@ func (t *TestPersistentVolumeClaim) WaitForBound() v1.PersistentVolumeClaim {
 }
 
 func (t *TestPersistentVolumeClaim) Cleanup() {
+	if t.PersistentVolumeClaim == nil {
+		framework.Failf("Cannot clean PVCs up. No reference to PVC found.")
+	}
 	// Since PV is created after pod creation when the volume binding mode is WaitForFirstConsumer,
 	// we need to populate fields such as PVC and PV info in TestPersistentVolumeClaim, and valid it
 	if t.StorageClass != nil && *t.StorageClass.VolumeBindingMode == storagev1.VolumeBindingWaitForFirstConsumer {

@@ -24,7 +24,6 @@ import (
 
 	"github.com/onsi/ginkgo"
 	"github.com/onsi/gomega"
-
 	scale "k8s.io/api/autoscaling/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -32,7 +31,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
-
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
@@ -55,18 +53,16 @@ type DynamicallyProvisionedResizeVolumeTest struct {
 func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
 	tStorageClass, storageCleanup := t.Pod.CreateStorageClass(client, namespace, t.CSIDriver, t.StorageClassParameters)
 	defer storageCleanup()
-	tStatefulSet, cleanup := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, schedulerName, 1, driver.GetParameters(), &tStorageClass)
+	tStatefulSet, cleanup := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, schedulerName, 1, &tStorageClass, nil)
 	// Defer must be called here for resources not get removed before using them
-	for i := range cleanup {
-		i := i
-		defer cleanup[i]()
-	}
+	defer cleanup(15 * time.Minute)
 
 	ginkgo.By("deploying the statefulset")
 	tStatefulSet.Create()
 
 	ginkgo.By("checking that the pod for statefulset is running")
-	tStatefulSet.WaitForPodReady()
+	err := tStatefulSet.WaitForPodReadyOrFail()
+	framework.ExpectNoError(err)
 
 	ginkgo.By("get PersistentVolumeClaim for statefulset")
 	pvcName := fmt.Sprintf("%s-%s-%d", tStatefulSet.Statefulset.Spec.VolumeClaimTemplates[0].Name, tStatefulSet.Statefulset.ObjectMeta.Name, 0)
@@ -175,6 +171,7 @@ func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface,
 		ginkgo.By("sleep 30s waiting for statefulset update complete")
 		time.Sleep(30 * time.Second)
 		ginkgo.By("checking that the pod for statefulset is running")
-		tStatefulSet.WaitForPodReady()
+		err = tStatefulSet.WaitForPodReadyOrFail()
+		framework.ExpectNoError(err)
 	}
 }

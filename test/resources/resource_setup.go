@@ -19,6 +19,7 @@ package resources
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/onsi/ginkgo"
 
@@ -265,8 +266,7 @@ func (pod *PodDetails) CreateStorageClass(client clientset.Interface, namespace 
 	return createdStorageClass, tsc.Cleanup
 }
 
-func (pod *PodDetails) SetupStatefulset(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.DynamicPVTestDriver, schedulerName string, replicaCount int, storageClassParameters map[string]string, storageClass *storagev1.StorageClass) (*TestStatefulset, []func()) {
-	cleanupFuncs := make([]func(), 0)
+func (pod *PodDetails) SetupStatefulset(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.DynamicPVTestDriver, schedulerName string, replicaCount int, storageClass *storagev1.StorageClass, labels map[string]string) (*TestStatefulset, func(time.Duration)) {
 	var pvcs []v1.PersistentVolumeClaim
 	var volumeMounts []v1.VolumeMount
 	for n, volume := range pod.Volumes {
@@ -287,8 +287,7 @@ func (pod *PodDetails) SetupStatefulset(client clientset.Interface, namespace *v
 		pvcs = append(pvcs, *tpvc.RequestedPersistentVolumeClaim)
 	}
 	ginkgo.By("setting up the statefulset")
-	tStatefulset := NewTestStatefulset(client, namespace, pod.Cmd, pvcs, volumeMounts, pod.IsWindows, pod.UseCMD, schedulerName, replicaCount)
+	tStatefulset := NewTestStatefulset(client, namespace, pod.Cmd, pvcs, volumeMounts, pod.IsWindows, pod.UseCMD, schedulerName, replicaCount, labels)
 
-	cleanupFuncs = append(cleanupFuncs, tStatefulset.Cleanup)
-	return tStatefulset, cleanupFuncs
+	return tStatefulset, tStatefulset.Cleanup
 }

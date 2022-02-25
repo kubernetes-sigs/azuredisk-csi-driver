@@ -20,9 +20,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
-	"sync"
 
-	"github.com/onsi/ginkgo"
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -33,7 +31,6 @@ import (
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 	testutils "k8s.io/kubernetes/test/utils"
 	imageutils "k8s.io/kubernetes/test/utils/image"
-
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 	podutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/pod"
 )
@@ -148,17 +145,10 @@ func (t *TestDeployment) WaitForPodReady() {
 		}(t.Client, pod)
 	}
 	// Wait on all goroutines to report on pod ready
-	var wg sync.WaitGroup
 	for range t.Pods {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			defer ginkgo.GinkgoRecover()
-			err := <-ch
-			framework.ExpectNoError(err)
-		}()
+		err := <-ch
+		framework.ExpectNoError(err)
 	}
-	wg.Wait()
 }
 
 func (t *TestDeployment) Exec(command []string, expectedString string) {
