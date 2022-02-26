@@ -2,7 +2,7 @@ name: Run upgrade test
 on:
     schedule:
     - cron: "0 13 * * *"
-    workflow_dispatch:
+    workflow_dispatch: {}
 jobs:
   test:
     name: Run upgrade test
@@ -54,7 +54,7 @@ jobs:
     - name: Run upgrade test
       run: |
         REGISTRY=e2etest.azurecr.io/mandalay make upgrade-test
-        
+
     - name: Cleanup 
       if: ${{ always() }}
       run: ./upgradeTestOutput/cluster-down.sh
