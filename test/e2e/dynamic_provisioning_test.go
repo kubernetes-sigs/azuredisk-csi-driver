@@ -827,6 +827,46 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		test.Run(cs, ns)
 	})
 
+	ginkgo.It("should create a block volume on demand and dynamically resize it without detaching [disk.csi.azure.com] ", func() {
+		skipIfUsingInTreeVolumePlugin()
+		skipIfNotDynamicallyResizeSuported()
+		//Subscription must be registered for LiveResize
+		volume := testsuites.VolumeDetails{
+			ClaimSize: "10Gi",
+			VolumeMount: testsuites.VolumeMountDetails{
+				NameGenerate:      "test-volume-",
+				MountPathGenerate: "/mnt/test-",
+			},
+			VolumeAccessMode: v1.ReadWriteOnce,
+			VolumeMode:       testsuites.Block,
+		}
+		pod := testsuites.PodDetails{
+			Cmd: convertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
+			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+				{
+					ClaimSize: volume.ClaimSize,
+					MountOptions: []string{
+						"barrier=1",
+						"acl",
+					},
+					VolumeMount:      volume.VolumeMount,
+					VolumeAccessMode: v1.ReadWriteOnce,
+				},
+			}, isMultiZone),
+			IsWindows: isWindowsCluster,
+			UseCMD:    false,
+		}
+
+		test := testsuites.DynamicallyProvisionedResizeVolumeTest{
+			CSIDriver:              testDriver,
+			Volume:                 volume,
+			Pod:                    pod,
+			ResizeOffline:          false,
+			StorageClassParameters: map[string]string{"skuName": "Standard_LRS"},
+		}
+		test.Run(cs, ns)
+	})
+
 	ginkgo.It("should create a volume azuredisk with tag [disk.csi.azure.com] [Windows]", func() {
 		skipIfUsingInTreeVolumePlugin()
 		pods := []testsuites.PodDetails{

@@ -470,7 +470,7 @@ func TestNodeStageVolume(t *testing.T) {
 				VolumeContext:  volumeContext,
 			},
 
-			expectedErr: status.Error(codes.Internal, "Failed to find disk on lun /dev/01. cannot parse deviceInfo: /dev/01"),
+			expectedErr: status.Error(codes.Internal, "failed to find disk on lun /dev/01. cannot parse deviceInfo: /dev/01"),
 		},
 		{
 			desc:          "Successfully staged",
@@ -728,7 +728,7 @@ func TestNodePublishVolume(t *testing.T) {
 				Readonly:          true},
 			skipOnWindows: true, // permission issues
 			expectedErr: testutil.TestError{
-				DefaultError: status.Errorf(codes.Internal, fmt.Sprintf("Could not mount target \"%s\": "+
+				DefaultError: status.Errorf(codes.Internal, fmt.Sprintf("could not mount target \"%s\": "+
 					"mkdir %s: not a directory", azuredisk, azuredisk)),
 			},
 		},
@@ -752,7 +752,7 @@ func TestNodePublishVolume(t *testing.T) {
 				PublishContext:    publishContext,
 				Readonly:          true},
 			expectedErr: testutil.TestError{
-				DefaultError: status.Error(codes.Internal, "Failed to find device path with lun /dev/01. cannot parse deviceInfo: /dev/01"),
+				DefaultError: status.Error(codes.Internal, "failed to find device path with lun /dev/01. cannot parse deviceInfo: /dev/01"),
 			},
 		},
 		{
@@ -764,7 +764,7 @@ func TestNodePublishVolume(t *testing.T) {
 				Readonly:          true},
 			skipOnWindows: true, // permission issues
 			expectedErr: testutil.TestError{
-				DefaultError: status.Errorf(codes.Internal, fmt.Sprintf("Could not mount \"%s\" at \"%s\": "+
+				DefaultError: status.Errorf(codes.Internal, fmt.Sprintf("could not mount \"%s\" at \"%s\": "+
 					"fake Mount: source error", errorMountSource, targetTest)),
 			},
 		},
@@ -917,11 +917,11 @@ func TestNodeExpandVolume(t *testing.T) {
 		WindowsError: status.Errorf(codes.NotFound, "error getting the volume for the mount %s, internal error error getting volume from mount. cmd: (Get-Item -Path %s).Target, output: , error: <nil>", targetTest, targetTest),
 	}
 	blockSizeErr := testutil.TestError{
-		DefaultError: status.Error(codes.Internal, "Could not get size of block volume at path test: error when getting size of block volume at path test: output: , err: exit status 1"),
+		DefaultError: status.Error(codes.Internal, "could not get size of block volume at path test: error when getting size of block volume at path test: output: , err: exit status 1"),
 		WindowsError: status.Errorf(codes.NotFound, "error getting the volume for the mount %s, internal error error getting volume from mount. cmd: (Get-Item -Path %s).Target, output: , error: <nil>", targetTest, targetTest),
 	}
 	resizeErr := testutil.TestError{
-		DefaultError: status.Errorf(codes.Internal, "Could not resize volume \"test\" (\"test\"):  resize of device test failed: %v. resize2fs output: ", notFoundErr),
+		DefaultError: status.Errorf(codes.Internal, "could not resize volume \"test\" (\"test\"):  resize of device test failed: %v. resize2fs output: ", notFoundErr),
 		WindowsError: status.Errorf(codes.NotFound, "error getting the volume for the mount %s, internal error error getting volume from mount. cmd: (Get-Item -Path %s).Target, output: , error: <nil>", targetTest, targetTest),
 	}
 	sizeTooSmallErr := testutil.TestError{
@@ -1174,8 +1174,8 @@ func TestEnsureBlockTargetFile(t *testing.T) {
 			desc: "test if file exists",
 			req:  testPath,
 			expectedErr: testutil.TestError{
-				DefaultError: status.Error(codes.Internal, fmt.Sprintf("Could not mount target \"%s\": mkdir %s: not a directory", testTarget, testTarget)),
-				WindowsError: status.Error(codes.Internal, fmt.Sprintf("Could not remove mount target %#v: remove %s: The system cannot find the path specified.", testPath, testPath)),
+				DefaultError: status.Error(codes.Internal, fmt.Sprintf("could not mount target \"%s\": mkdir %s: not a directory", testTarget, testTarget)),
+				WindowsError: status.Error(codes.Internal, fmt.Sprintf("could not remove mount target %#v: remove %s: The system cannot find the path specified.", testPath, testPath)),
 			},
 		},
 	}
