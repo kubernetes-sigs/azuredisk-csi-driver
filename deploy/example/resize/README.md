@@ -62,3 +62,23 @@ $ kubectl exec -it statefulset-azuredisk-0 -- df -h /mnt/azuredisk
 Filesystem      Size  Used Avail Use% Mounted on
 /dev/sdc        15G   41M   15G   1% /mnt/azuredisk
 ```
+
+#### successful volume expansion events example
+<details>
+ 
+```console
+$ kubectl get describe persistent-storage-statefulset-azuredisk-0
+Events:
+  Type     Reason                      Age                   From                                                                                       Message
+  ----     ------                      ----                  ----                                                                                       -------
+  Normal   WaitForFirstConsumer        35m (x2 over 35m)     persistentvolume-controller                                                                waiting for first consumer to be created before binding
+  Normal   ExternalProvisioning        35m                   persistentvolume-controller                                                                waiting for a volume to be created, either by external provisioner "disk.csi.azure.com" or manually created by system administrator
+  Normal   Provisioning                35m                   disk.csi.azure.com_aks-agentpool-32806483-vmss000001_010c423f-e720-4b9f-89fa-07b246c920cb  External provisioner is provisioning volume for claim "default/persistent-storage-statefulset-azuredisk-0"
+  Normal   ProvisioningSucceeded       35m                   disk.csi.azure.com_aks-agentpool-32806483-vmss000001_010c423f-e720-4b9f-89fa-07b246c920cb  Successfully provisioned volume pvc-65a8b677-4490-4066-9446-c4067188acab
+  Warning  ExternalExpanding           77s (x3 over 33m)     volume_expand                                                                              Ignoring the PVC: didn't find a plugin capable of expanding the volume; waiting for an external controller to process this PVC.
+  Normal   Resizing                    77s                   external-resizer disk.csi.azure.com                                                        External resizer is resizing volume pvc-65a8b677-4490-4066-9446-c4067188acab
+  Normal   FileSystemResizeRequired    44s                   external-resizer disk.csi.azure.com                                                        Require file system resize of volume on node
+  Normal   FileSystemResizeSuccessful  6s (x3 over 29m)      kubelet                                                                                    MountVolume.NodeExpandVolume succeeded for volume "pvc-65a8b677-4490-4066-9446-c4067188acab"
+```
+
+</details>
