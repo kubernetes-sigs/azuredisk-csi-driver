@@ -44,6 +44,7 @@ var (
 	kubeconfig                 = flag.String("kubeconfig", "", "Absolute path to the kubeconfig file. Required only when running out of cluster.")
 	driverName                 = flag.String("drivername", consts.DefaultDriverName, "name of the driver")
 	volumeAttachLimit          = flag.Int64("volume-attach-limit", -1, "maximum number of attachable volumes per node")
+	supportZone                = flag.Bool("support-zone", true, "boolean flag to get zone info in NodeGetInfo")
 	disableAVSetNodes          = flag.Bool("disable-avset-nodes", true, "disable DisableAvailabilitySetNodes in cloud config for controller")
 	enablePerfOptimization     = flag.Bool("enable-perf-optimization", false, "boolean flag to enable disk perf optimization")
 	cloudConfigSecretName      = flag.String("cloud-config-secret-name", "azure-cloud-provider", "cloud config secret name")
@@ -95,6 +96,7 @@ func handle() {
 		EnableAsyncAttach:          *enableAsyncAttach,
 		EnableListVolumes:          *enableListVolumes,
 		EnableListSnapshots:        *enableListSnapshots,
+		SupportZone:                *supportZone,
 	}
 	driver := azuredisk.NewDriver(&driverOptions)
 	if driver == nil {

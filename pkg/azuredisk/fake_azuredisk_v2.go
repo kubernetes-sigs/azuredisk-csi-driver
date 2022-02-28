@@ -62,6 +62,7 @@ func newFakeDriverV2(t *testing.T) (*fakeDriverV2, error) {
 	driver.CSIDriver = *csicommon.NewFakeCSIDriver()
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.VolumeAttachLimit = -1
+	driver.supportZone = true
 	driver.ioHandler = azureutils.NewFakeIOHandler()
 	driver.hostUtil = azureutils.NewFakeHostUtil()
 	driver.useCSIProxyGAInterface = true
