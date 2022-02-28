@@ -746,9 +746,16 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 	isOperationSucceeded = true
 	klog.V(2).Infof("expand azure disk(%s) successfully, currentSize(%d)", diskURI, currentSize)
 
+	nodeExpansionRequired := true
+	// if this is a raw block device, no expansion should be necessary on the node
+	cap := req.GetVolumeCapability()
+	if cap != nil && cap.GetBlock() != nil {
+		nodeExpansionRequired = false
+	}
+
 	return &csi.ControllerExpandVolumeResponse{
 		CapacityBytes:         currentSize,
-		NodeExpansionRequired: true,
+		NodeExpansionRequired: nodeExpansionRequired,
 	}, nil
 }
 
