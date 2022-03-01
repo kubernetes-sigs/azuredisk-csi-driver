@@ -34,6 +34,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	cloudprovider "k8s.io/cloud-provider"
@@ -318,37 +319,67 @@ func (d *Driver) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapabi
 	}, nil
 }
 
+// getZoneFromKubeAPIServer returns the Zone from the kube API server.
+// This is a workaround explained in go/amc-csi-windows
+func (d *Driver) getZoneFromKubeAPIServer(node *v1.Node) (cloudprovider.Zone, error) {
+	nodeName := node.Name
+	zoneInfo := cloudprovider.Zone{}
+
+	// the following labels contain info about the zone and the region
+	labelZone := "topology.kubernetes.io/zone"
+	if _, ok := node.Labels[labelZone]; !ok {
+		return zoneInfo, fmt.Errorf("expected label %q in the node %q to exist", labelZone, nodeName)
+	}
+
+	labelRegion := "topology.kubernetes.io/region"
+	if _, ok := node.Labels[labelRegion]; !ok {
+		return zoneInfo, fmt.Errorf("expected label %q in the node %q to exist", labelRegion, nodeName)
+	}
+
+	zoneInfo.FailureDomain = node.Labels[labelZone]
+	zoneInfo.Region = node.Labels[labelRegion]
+
+	return zoneInfo, nil
+}
+
+// getInstanceTypeFromKubeAPIServer returns the instance type from the kube API server.
+// This is a workaround explained in go/amc-csi-windows
+func (d *Driver) getInstanceTypeFromKubeAPIServer(node *v1.Node) (string, error) {
+	var instanceType string
+	var ok bool
+
+	labelInstanceType := "node.kubernetes.io/instance-type"
+	if instanceType, ok = node.Labels[labelInstanceType]; !ok {
+		return "", fmt.Errorf("could not get label=%q from the labels of node=%q", labelInstanceType, node.Name)
+	}
+	return instanceType, nil
+}
+
 // NodeGetInfo return info of the node on which this plugin is running
 func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
-	var instanceType string
 	topology := &csi.Topology{
 		Segments: map[string]string{topologyKey: ""},
 	}
 
-	if runtime.GOOS == "windows" && d.cloud.UseInstanceMetadata && d.cloud.Metadata != nil {
-		metadata, err := d.cloud.Metadata.GetMetadata(azcache.CacheReadTypeDefault)
-		if err == nil && metadata.Compute != nil {
-			instanceType = metadata.Compute.VMSize
-			klog.V(5).Infof("NodeGetInfo: nodeName(%s), VM Size(%s)", d.NodeID, instanceType)
-		} else {
-			klog.Warningf("get instance type(%s) failed with: %v", d.NodeID, err)
-		}
-	} else {
-		instances, ok := d.cloud.Instances()
-		if !ok {
-			return nil, status.Error(codes.Internal, "Failed to get instances from cloud provider")
-		}
-		var err error
-		if instanceType, err = instances.InstanceType(ctx, types.NodeName(d.NodeID)); err != nil {
-			klog.Warningf("get instance type(%s) failed with: %v", d.NodeID, err)
-		}
-	}
-
 	var (
+		node      *v1.Node
 		zone      cloudprovider.Zone
 		zoneError error
 	)
-	if runtime.GOOS == "windows" && (!d.cloud.UseInstanceMetadata || d.cloud.Metadata == nil) {
+
+	if d.useKubeAPIServerForInstanceMetadata {
+		nodeName := d.NodeID
+		var nodeErr error
+		node, nodeErr = d.cloud.KubeClient.CoreV1().Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
+		if nodeErr != nil {
+			return nil, fmt.Errorf("could not get node=%q from the kube API server, err=%v", nodeName, nodeErr)
+		}
+	}
+
+	if d.useKubeAPIServerForInstanceMetadata {
+		klog.V(5).Infof("Attempting to get the Zone from the kube API server")
+		zone, zoneError = d.getZoneFromKubeAPIServer(node)
+	} else if runtime.GOOS == "windows" && (!d.cloud.UseInstanceMetadata || d.cloud.Metadata == nil) {
 		zone, zoneError = d.cloud.VMSet.GetZoneByNodeName(d.NodeID)
 	} else {
 		zone, zoneError = d.cloud.GetZone(ctx)
@@ -366,6 +397,32 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 
 	maxDataDiskCount := d.VolumeAttachLimit
 	if maxDataDiskCount < 0 {
+		var err error
+		var instanceType string
+		if d.useKubeAPIServerForInstanceMetadata {
+			klog.V(5).Infof("Attempting to get the InstanceType from the kube API server")
+			instanceType, err = d.getInstanceTypeFromKubeAPIServer(node)
+			if instanceType == "" {
+				klog.Warningf("get instance type(%s) failed with: %v", d.NodeID, err)
+			}
+		} else if runtime.GOOS == "windows" && d.cloud.UseInstanceMetadata && d.cloud.Metadata != nil {
+			metadata, err := d.cloud.Metadata.GetMetadata(azcache.CacheReadTypeDefault)
+			if err == nil && metadata.Compute != nil {
+				instanceType = metadata.Compute.VMSize
+				klog.V(5).Infof("NodeGetInfo: nodeName(%s), VM Size(%s)", d.NodeID, instanceType)
+			} else {
+				klog.Warningf("get instance type(%s) failed with: %v", d.NodeID, err)
+			}
+		} else {
+			instances, ok := d.cloud.Instances()
+			if !ok {
+				return nil, status.Error(codes.Internal, "Failed to get instances from cloud provider")
+			}
+			var err error
+			if instanceType, err = instances.InstanceType(ctx, types.NodeName(d.NodeID)); err != nil {
+				klog.Warningf("get instance type(%s) failed with: %v", d.NodeID, err)
+			}
+		}
 		maxDataDiskCount = getMaxDataDiskCount(instanceType)
 	}
 

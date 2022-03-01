@@ -74,6 +74,7 @@ func newDriverV2(options *DriverOptions) *DriverV2 {
 	driver.cloudConfigSecretNamespace = options.CloudConfigSecretNamespace
 	driver.customUserAgent = options.CustomUserAgent
 	driver.userAgentSuffix = options.UserAgentSuffix
+	driver.useKubeAPIServerForInstanceMetadata = options.useKubeAPIServerForInstanceMetadata
 	driver.useCSIProxyGAInterface = options.UseCSIProxyGAInterface
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()

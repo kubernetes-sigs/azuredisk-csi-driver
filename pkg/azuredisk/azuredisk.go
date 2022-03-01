@@ -47,17 +47,18 @@ import (
 
 // DriverOptions defines driver parameters specified in driver deployment
 type DriverOptions struct {
-	NodeID                     string
-	DriverName                 string
-	VolumeAttachLimit          int64
-	EnablePerfOptimization     bool
-	CloudConfigSecretName      string
-	CloudConfigSecretNamespace string
-	CustomUserAgent            string
-	UserAgentSuffix            string
-	UseCSIProxyGAInterface     bool
-	EnableDiskOnlineResize     bool
-	AllowEmptyCloudConfig      bool
+	NodeID                              string
+	DriverName                          string
+	VolumeAttachLimit                   int64
+	EnablePerfOptimization              bool
+	CloudConfigSecretName               string
+	CloudConfigSecretNamespace          string
+	CustomUserAgent                     string
+	UserAgentSuffix                     string
+	UseCSIProxyGAInterface              bool
+	UseKubeAPIServerForInstanceMetadata bool
+	EnableDiskOnlineResize              bool
+	AllowEmptyCloudConfig               bool
 }
 
 // CSIDriver defines the interface for a CSI driver.
@@ -76,21 +77,22 @@ type hostUtil interface {
 // DriverCore contains fields common to both the V1 and V2 driver, and implements all interfaces of CSI drivers
 type DriverCore struct {
 	csicommon.CSIDriver
-	perfOptimizationEnabled    bool
-	cloudConfigSecretName      string
-	cloudConfigSecretNamespace string
-	customUserAgent            string
-	userAgentSuffix            string
-	kubeconfig                 string
-	cloud                      *azure.Cloud
-	mounter                    *mount.SafeFormatAndMount
-	deviceHelper               optimization.Interface
-	nodeInfo                   *optimization.NodeInfo
-	ioHandler                  azureutils.IOHandler
-	hostUtil                   hostUtil
-	useCSIProxyGAInterface     bool
-	enableDiskOnlineResize     bool
-	allowEmptyCloudConfig      bool
+	perfOptimizationEnabled             bool
+	cloudConfigSecretName               string
+	cloudConfigSecretNamespace          string
+	customUserAgent                     string
+	userAgentSuffix                     string
+	useKubeAPIServerForInstanceMetadata bool
+	kubeconfig                          string
+	cloud                               *azure.Cloud
+	mounter                             *mount.SafeFormatAndMount
+	deviceHelper                        optimization.Interface
+	nodeInfo                            *optimization.NodeInfo
+	ioHandler                           azureutils.IOHandler
+	hostUtil                            hostUtil
+	useCSIProxyGAInterface              bool
+	enableDiskOnlineResize              bool
+	allowEmptyCloudConfig               bool
 }
 
 // Driver is the v1 implementation of the Azure Disk CSI Driver.
@@ -114,6 +116,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.cloudConfigSecretNamespace = options.CloudConfigSecretNamespace
 	driver.customUserAgent = options.CustomUserAgent
 	driver.userAgentSuffix = options.UserAgentSuffix
+	driver.useKubeAPIServerForInstanceMetadata = options.UseKubeAPIServerForInstanceMetadata
 	driver.useCSIProxyGAInterface = options.UseCSIProxyGAInterface
 	driver.enableDiskOnlineResize = options.EnableDiskOnlineResize
 	driver.allowEmptyCloudConfig = options.AllowEmptyCloudConfig
