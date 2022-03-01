@@ -265,7 +265,7 @@ func TestNodeGetInfo(t *testing.T) {
 		},
 		{
 			desc:        "[Failure] Get node information for non-existing VM",
-			expectedErr: nil,
+			expectedErr: fmt.Errorf("get zone(fakeNodeID) failed with: instance not found"),
 			setupFunc: func(t *testing.T, d FakeDriver) {
 				d.getCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
 					Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).

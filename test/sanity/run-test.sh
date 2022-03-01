@@ -37,9 +37,9 @@ if [[ "${ARCH}" == "x86_64" || ${ARCH} == "unknown" ]]; then
 fi
 
 if [[ "$#" -lt 2 || "$2" != "v2" ]]; then
-  _output/${ARCH}/azurediskplugin --endpoint "$endpoint" --nodeid "$nodeid" -v=5 &
+  _output/${ARCH}/azurediskplugin --endpoint "$endpoint" --nodeid "$nodeid" -v=5 -support-zone=false &
 else
-  _output/${ARCH}/azurediskpluginv2 --endpoint "$endpoint" --nodeid "$nodeid" -v=5 --temp-use-driver-v2 &
+  _output/${ARCH}/azurediskpluginv2 --endpoint "$endpoint" --nodeid "$nodeid" -v=5 -support-zone=false &
 fi
 
 echo 'Begin to run sanity test...'

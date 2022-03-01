@@ -49,9 +49,9 @@ fi
 
 # Run CSI driver as a background service
 if [[ $# -lt 4 || "$4" != "v2" ]]; then
-  _output/${ARCH}/azurediskplugin --endpoint "$endpoint" --nodeid "$node" -v=5 &
+  _output/${ARCH}/azurediskplugin --endpoint "$endpoint" --nodeid "$node" -v=5 -support-zone=false &
 else
-  _output/${ARCH}/azurediskpluginv2 --endpoint "$endpoint" --nodeid "$node" -v=5 --temp-use-driver-v2 &
+  _output/${ARCH}/azurediskpluginv2 --endpoint "$endpoint" --nodeid "$node" -v=5 --temp-use-driver-v2 -support-zone=false &
 fi
 trap cleanup EXIT
 

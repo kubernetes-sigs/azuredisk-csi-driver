@@ -99,6 +99,7 @@ controller:
 node:
   cloudConfigSecretName: azure-cloud-provider
   cloudConfigSecretNamespace: kube-system
+  supportZone: true
   allowEmptyCloudConfig: true
   maxUnavailable: 1
   metricsPort: 29605

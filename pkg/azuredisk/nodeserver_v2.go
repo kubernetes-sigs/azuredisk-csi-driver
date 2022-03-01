@@ -316,28 +316,29 @@ func (d *DriverV2) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapa
 
 // NodeGetInfo return info of the node on which this plugin is running
 func (d *DriverV2) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
-	var (
-		zone      cloudprovider.Zone
-		zoneError error
-	)
-	if runtime.GOOS == "windows" && (!d.cloud.UseInstanceMetadata || d.cloud.Metadata == nil) {
-		zone, zoneError = d.cloud.VMSet.GetZoneByNodeName(d.NodeID)
-	} else {
-		zone, zoneError = d.cloud.GetZone(ctx)
+	topology := &csi.Topology{
+		Segments: map[string]string{topologyKey: ""},
 	}
 
-	topology := &csi.Topology{
-		Segments: map[string]string{},
-	}
-	if zoneError != nil {
-		klog.Warningf("get zone(%s) failed with: %v", d.NodeID, zoneError)
-	} else {
+	if d.supportZone {
+		var (
+			zone      cloudprovider.Zone
+			zoneError error
+		)
+		if runtime.GOOS == "windows" && (!d.cloud.UseInstanceMetadata || d.cloud.Metadata == nil) {
+			zone, zoneError = d.cloud.VMSet.GetZoneByNodeName(d.NodeID)
+		} else {
+			zone, zoneError = d.cloud.GetZone(ctx)
+		}
+
+		if zoneError != nil {
+			return &csi.NodeGetInfoResponse{}, fmt.Errorf("get zone(%s) failed with: %v", d.NodeID, zoneError)
+		}
+
 		klog.V(2).Infof("NodeGetInfo, nodeName: %s, failureDomain: %s, region: %s", d.NodeID, zone.FailureDomain, zone.Region)
 		if azureutils.IsValidAvailabilityZone(zone.FailureDomain, d.cloud.Location) {
 			topology.Segments[topologyKey] = zone.FailureDomain
 			topology.Segments[consts.WellKnownTopologyKey] = zone.FailureDomain
-		} else {
-			topology.Segments[topologyKey] = ""
 		}
 	}
 

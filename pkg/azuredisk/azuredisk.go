@@ -61,6 +61,7 @@ type DriverOptions struct {
 	EnableAsyncAttach          bool
 	EnableListVolumes          bool
 	EnableListSnapshots        bool
+	SupportZone                bool
 }
 
 // CSIDriver defines the interface for a CSI driver.
@@ -97,6 +98,7 @@ type DriverCore struct {
 	enableAsyncAttach          bool
 	enableListVolumes          bool
 	enableListSnapshots        bool
+	supportZone                bool
 }
 
 // Driver is the v1 implementation of the Azure Disk CSI Driver.
@@ -126,6 +128,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.enableAsyncAttach = options.EnableAsyncAttach
 	driver.enableListVolumes = options.EnableListVolumes
 	driver.enableListSnapshots = options.EnableListVolumes
+	driver.supportZone = options.SupportZone
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
