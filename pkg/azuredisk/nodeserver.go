@@ -321,7 +321,7 @@ func (d *Driver) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapabi
 // NodeGetInfo return info of the node on which this plugin is running
 func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
 	topology := &csi.Topology{
-		Segments: map[string]string{},
+		Segments: map[string]string{topologyKey: ""},
 	}
 
 	if d.supportZone {
@@ -336,18 +336,14 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 		}
 
 		if zoneError != nil {
-			klog.Warningf("get zone(%s) failed with: %v", d.NodeID, zoneError)
-		} else {
-			klog.V(2).Infof("NodeGetInfo, nodeName: %s, failureDomain: %s, region: %s", d.NodeID, zone.FailureDomain, zone.Region)
-			if azureutils.IsValidAvailabilityZone(zone.FailureDomain, d.cloud.Location) {
-				topology.Segments[topologyKey] = zone.FailureDomain
-				topology.Segments[consts.WellKnownTopologyKey] = zone.FailureDomain
-			} else {
-				topology.Segments[topologyKey] = ""
-			}
+			return &csi.NodeGetInfoResponse{}, fmt.Errorf("get zone(%s) failed with: %v", d.NodeID, zoneError)
 		}
-	} else {
-		topology.Segments[topologyKey] = ""
+
+		klog.V(2).Infof("NodeGetInfo, nodeName: %s, failureDomain: %s, region: %s", d.NodeID, zone.FailureDomain, zone.Region)
+		if azureutils.IsValidAvailabilityZone(zone.FailureDomain, d.cloud.Location) {
+			topology.Segments[topologyKey] = zone.FailureDomain
+			topology.Segments[consts.WellKnownTopologyKey] = zone.FailureDomain
+		}
 	}
 
 	maxDataDiskCount := d.VolumeAttachLimit
