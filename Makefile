@@ -41,6 +41,9 @@ BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 ENABLE_TOPOLOGY ?= false
 LDFLAGS ?= "-X ${PKG}/pkg/azuredisk.driverVersion=${IMAGE_VERSION} -X ${PKG}/pkg/azuredisk.gitCommit=${GIT_COMMIT} -X ${PKG}/pkg/azuredisk.buildDate=${BUILD_DATE} -extldflags "-static"" ${GOTAGS}
 E2E_HELM_OPTIONS ?= --set image.azuredisk.repository=$(REGISTRY)/$(IMAGE_NAME) --set image.azuredisk.tag=$(IMAGE_VERSION) --set image.azuredisk.pullPolicy=Always --set driver.userAgentSuffix="e2e-test"
+ifdef DISABLE_ZONE
+EXTRA_HELM_OPTIONS += --set node.supportZone=false
+endif
 E2E_HELM_OPTIONS += ${EXTRA_HELM_OPTIONS}
 GINKGO_FLAGS = -ginkgo.v
 ifeq ($(ENABLE_TOPOLOGY), true)
