@@ -18,14 +18,17 @@ package azuredisk
 
 import (
 	"context"
+	"fmt"
 	"io/ioutil"
 	"os"
+	"reflect"
 	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/status"
+	clientset "k8s.io/client-go/kubernetes"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/diskclient/mockdiskclient"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
@@ -130,4 +133,25 @@ func TestDriver_checkDiskExists(t *testing.T) {
 	d, _ := NewFakeDriver(t)
 	_, err := d.checkDiskExists(context.TODO(), "testurl/subscriptions/12/providers/Microsoft.Compute/disks/name")
 	assert.NotEqual(t, err, nil)
+}
+
+func TestGetNodeInfoFromLabels(t *testing.T) {
+	tests := []struct {
+		nodeName      string
+		kubeClient    clientset.Interface
+		expectedError error
+	}{
+		{
+			nodeName:      "",
+			kubeClient:    nil,
+			expectedError: fmt.Errorf("kubeClient is nil"),
+		},
+	}
+
+	for _, test := range tests {
+		_, _, err := getNodeInfoFromLabels(context.TODO(), test.nodeName, test.kubeClient)
+		if !reflect.DeepEqual(err, test.expectedError) {
+			t.Errorf("Unexpected result: %v, expected result: %v", err, test.expectedError)
+		}
+	}
 }
