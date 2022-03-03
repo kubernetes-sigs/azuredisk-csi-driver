@@ -157,7 +157,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `controller.allowEmptyCloudConfig`                | Whether allow running controller driver without cloud config          | `false`
 | `controller.replicas`                             | the replicas of csi-azuredisk-controller                   | `2`                                                            |
 | `controller.metricsPort`                          | metrics port of csi-azuredisk-controller                   | `29604`                                                        |
-| `controller.livenessProbe.healthPort `            | health check port for liveness probe                       | `29602` |
+| `controller.livenessProbe.healthPort`             | health check port for liveness probe                       | `29602` |
 | `controller.runOnMaster`                          | run csi-azuredisk-controller on master node                | `false`                                                        |
 | `controller.logLevel`                             | controller driver log level                                |`5`                                                           |
 | `controller.tolerations`                          | controller pod tolerations                                 |                                                              |
@@ -186,7 +186,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `node.allowEmptyCloudConfig`                      | Whether allow running node driver without cloud config               | `true`
 | `node.maxUnavailable`                             | `maxUnavailable` value of driver node daemonset            | `1`
 | `node.metricsPort`                                | metrics port of csi-azuredisk-node                         |`29605`                                                        |
-| `node.livenessProbe.healthPort `                  | health check port for liveness probe                       | `29603` |
+| `node.livenessProbe.healthPort`                   | health check port for liveness probe                       | `29603` |
 | `node.logLevel`                                   | node driver log level                                      |`5`                                                           |
 | `snapshot.enabled`                                | whether enable snapshot feature                            | `false`                                                        |
 | `snapshot.image.csiSnapshotter.repository`        | csi-snapshotter docker image                               | `/oss/kubernetes-csi/csi-snapshotter`         |
@@ -230,6 +230,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `windows.resources.azuredisk.limits.memory`              | azuredisk memory limits                         | 200Mi                                                         |
 | `windows.resources.azuredisk.requests.cpu`               | azuredisk cpu requests                   | 10m                                                            |
 | `windows.resources.azuredisk.requests.memory`            | azuredisk memory requests                | 40Mi                                                           |
+| `windows.useHostProcessContainers`                       | use HostProcessContainers for deployment | false                                                          |
 | `cloud`                                           | cloud environment driver is running on                     | `AzurePublicCloud`                                                  |
 
 ---

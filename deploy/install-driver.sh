@@ -39,7 +39,11 @@ kubectl apply -f $repo/csi-azuredisk-driver.yaml
 kubectl apply -f $repo/rbac-csi-azuredisk-controller.yaml
 kubectl apply -f $repo/rbac-csi-azuredisk-node.yaml
 kubectl apply -f $repo/csi-azuredisk-node.yaml
-kubectl apply -f $repo/csi-azuredisk-node-windows.yaml
+if [[ "${WINDOWS_USE_HOST_PROCESS_CONTAINERS:=false}" == "true" ]]; then
+  kubectl apply -f $repo/csi-azuredisk-node-windows-hostprocess.yaml
+else
+  kubectl apply -f $repo/csi-azuredisk-node-windows.yaml
+fi
 kubectl apply -f $repo/csi-azuredisk-controller.yaml
 
 if [[ $ver == "v2"* ]]; then
