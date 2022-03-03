@@ -161,6 +161,7 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 	go func() {
 		cloudCtx, cloudCancel := context.WithTimeout(context.Background(), cloudTimeout)
 		defer cloudCancel()
+
 		// attempt to attach the disk to a node
 		response, attachErr := r.attachVolume(cloudCtx, azVolumeAttachment.Spec.VolumeID, azVolumeAttachment.Spec.NodeName, azVolumeAttachment.Spec.VolumeContext)
 		// if the disk is attached to a different node
@@ -242,7 +243,9 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 			}
 		}
 
-		_ = azureutils.UpdateCRIWithRetry(cloudCtx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry)
+		// UpdateCRIWithRetry should be called on a context w/o timeout when called in a separate goroutine as it is not going to be retriggered and leave the CRI in unrecoverable transient state instead.
+		updateCtx := context.Background()
+		_ = azureutils.UpdateCRIWithRetry(updateCtx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry)
 	}()
 
 	return nil
@@ -273,7 +276,6 @@ func (r *ReconcileAttachDetach) triggerDetach(ctx context.Context, azVolumeAttac
 		go func() {
 			cloudCtx, cloudCancel := context.WithTimeout(context.Background(), cloudTimeout)
 			defer cloudCancel()
-			updateCtx := context.Background()
 
 			var updateFunc func(obj interface{}) error
 			err := r.detachVolume(cloudCtx, azVolumeAttachment.Spec.VolumeID, azVolumeAttachment.Spec.NodeName)
@@ -293,6 +295,8 @@ func (r *ReconcileAttachDetach) triggerDetach(ctx context.Context, azVolumeAttac
 				}
 			}
 
+			// UpdateCRIWithRetry should be called on a context w/o timeout when called in a separate goroutine as it is not going to be retriggered and leave the CRI in unrecoverable transient state instead.
+			updateCtx := context.Background()
 			_ = azureutils.UpdateCRIWithRetry(updateCtx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry)
 		}()
 	} else {

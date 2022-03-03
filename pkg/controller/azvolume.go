@@ -147,7 +147,7 @@ func (r *ReconcileAzVolume) triggerCreate(ctx context.Context, azVolume *diskv1a
 	go func() {
 		cloudCtx, cloudCancel := context.WithTimeout(context.Background(), cloudTimeout)
 		defer cloudCancel()
-		updateCtx := context.Background()
+
 		var updateFunc func(interface{}) error
 		response, err := r.createVolume(cloudCtx, azVolume)
 		if err != nil {
@@ -174,6 +174,8 @@ func (r *ReconcileAzVolume) triggerCreate(ctx context.Context, azVolume *diskv1a
 			}
 		}
 
+		// UpdateCRIWithRetry should be called on a context w/o timeout when called in a separate goroutine as it is not going to be retriggered and leave the CRI in unrecoverable transient state instead.
+		updateCtx := context.Background()
 		_ = azureutils.UpdateCRIWithRetry(updateCtx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolume, updateFunc, consts.ForcedUpdateMaxNetRetry)
 	}()
 
@@ -231,7 +233,7 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *diskv1a
 		go func() {
 			cloudCtx, cloudCancel := context.WithTimeout(context.Background(), cloudTimeout)
 			defer cloudCancel()
-			updateCtx := context.Background()
+
 			var updateFunc func(interface{}) error
 			err := r.deleteVolume(cloudCtx, azVolume)
 			if err != nil {
@@ -252,6 +254,8 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *diskv1a
 				}
 			}
 
+			// UpdateCRIWithRetry should be called on a context w/o timeout when called in a separate goroutine as it is not going to be retriggered and leave the CRI in unrecoverable transient state instead.
+			updateCtx := context.Background()
 			_ = azureutils.UpdateCRIWithRetry(updateCtx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolume, updateFunc, consts.ForcedUpdateMaxNetRetry)
 		}()
 	} else {
@@ -287,7 +291,7 @@ func (r *ReconcileAzVolume) triggerUpdate(ctx context.Context, azVolume *diskv1a
 	go func() {
 		cloudCtx, cloudCancel := context.WithTimeout(context.Background(), cloudTimeout)
 		defer cloudCancel()
-		updateCtx := context.Background()
+
 		var updateFunc func(interface{}) error
 		response, err := r.expandVolume(cloudCtx, azVolume)
 		if err != nil {
@@ -311,6 +315,8 @@ func (r *ReconcileAzVolume) triggerUpdate(ctx context.Context, azVolume *diskv1a
 			}
 		}
 
+		// UpdateCRIWithRetry should be called on a context w/o timeout when called in a separate goroutine as it is not going to be retriggered and leave the CRI in unrecoverable transient state instead.
+		updateCtx := context.Background()
 		_ = azureutils.UpdateCRIWithRetry(updateCtx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolume, updateFunc, consts.ForcedUpdateMaxNetRetry)
 	}()
 
