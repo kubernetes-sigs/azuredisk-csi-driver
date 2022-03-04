@@ -971,6 +971,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 
 	ginkgo.It("Should test pod failover with cordoning a node", func() {
 		skipIfUsingInTreeVolumePlugin()
+		skipIfTestingInWindowsCluster()
 		if isMultiZone {
 			ginkgo.Skip("test case does not apply to multi az case")
 		}
