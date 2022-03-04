@@ -82,6 +82,7 @@ jobs:
         sed -i 's@$(PVC_PER_POD)@1@' automation-run.yaml
         sed -i 's@$(TEST_NAME)@1Pod1Pvc@' automation-run.yaml
         sed -i 's@$(AUTH_ENABLED)@true@' automation-run.yaml
+        sed -i 's@$(BOOL_ALL_PODS_ON_SAME_NODE)@false@' automation-run.yaml
 
         # Deploy the yaml file
         kubectl apply -f automation-run.yaml
@@ -104,6 +105,7 @@ jobs:
         sed -i 's@$(PVC_PER_POD)@3@' automation-run.yaml
         sed -i 's@$(TEST_NAME)@1Pod3Pvc@' automation-run.yaml
         sed -i 's@$(AUTH_ENABLED)@true@' automation-run.yaml
+        sed -i 's@$(BOOL_ALL_PODS_ON_SAME_NODE)@false@' automation-run.yaml
 
         # Deploy the yaml file
         kubectl apply -f automation-run.yaml
@@ -114,7 +116,30 @@ jobs:
         # Cleanup after the test run
          kubectl delete job pod-failover-job
          rm automation-run.yaml
-      
+
+    - name: Run failover tests with 3pod+3pvc on the same node
+      run: |
+        # Modify the deployment file according to the test run 
+        wget https://raw.githubusercontent.com/abhisheksinghbaghel/azuredisk-csi-driver/master/test/podFailover/automation-run.yaml
+        sed -i 's@controller-pod-image@e2etest.azurecr.io/mandalay/controllerpod:'$GITHUB_SHA'@' automation-run.yaml
+        sed -i 's@workload-pod-image@e2etest.azurecr.io/mandalay/workloadpod:'$GITHUB_SHA'@' automation-run.yaml
+        sed -i 's@$(POD_FAILOVER_METRICS_SERVICE_HOST):$(POD_FAILOVER_METRICS_SERVICE_PORT_POD_FAILOVER)@'$METRICS_ENDPOINT'@' automation-run.yaml    
+        sed -i 's@$(POD_COUNT)@3@' automation-run.yaml
+        sed -i 's@$(PVC_PER_POD)@3@' automation-run.yaml
+        sed -i 's@$(TEST_NAME)@3Pod3Pvc@' automation-run.yaml
+        sed -i 's@$(AUTH_ENABLED)@true@' automation-run.yaml
+        sed -i 's@$(BOOL_ALL_PODS_ON_SAME_NODE)@true@' automation-run.yaml
+
+        # Deploy the yaml file
+        kubectl apply -f automation-run.yaml
+
+        # Wait for the test run to complete
+        kubectl wait --for=condition=complete job/pod-failover-job --timeout=70m
+
+        # Cleanup after the test run
+         kubectl delete job pod-failover-job
+         rm automation-run.yaml
+    
     - name: Delete the namespace created for test workload
       run: kubectl delete namespace pod-failover-ns --ignore-not-found
 
