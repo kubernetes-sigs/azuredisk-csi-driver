@@ -74,6 +74,7 @@ const (
 	UserAgentField                = "useragent"
 	VolumeAttributePartition      = "partition"
 	WellKnownTopologyKey          = "topology.kubernetes.io/zone"
+	InstanceTypeKey               = "node.kubernetes.io/instance-type"
 	WriteAcceleratorEnabled       = "writeacceleratorenabled"
 	ZonedField                    = "zoned"
 	EnableAsyncAttachField        = "enableasyncattach"

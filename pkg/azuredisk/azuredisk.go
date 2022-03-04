@@ -29,6 +29,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/volume/util/hostutil"
 	"k8s.io/mount-utils"
@@ -62,6 +64,7 @@ type DriverOptions struct {
 	EnableListVolumes          bool
 	EnableListSnapshots        bool
 	SupportZone                bool
+	GetNodeInfoFromLabels      bool
 }
 
 // CSIDriver defines the interface for a CSI driver.
@@ -99,6 +102,7 @@ type DriverCore struct {
 	enableListVolumes          bool
 	enableListSnapshots        bool
 	supportZone                bool
+	getNodeInfoFromLabels      bool
 }
 
 // Driver is the v1 implementation of the Azure Disk CSI Driver.
@@ -129,6 +133,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.enableListVolumes = options.EnableListVolumes
 	driver.enableListSnapshots = options.EnableListVolumes
 	driver.supportZone = options.SupportZone
+	driver.getNodeInfoFromLabels = options.GetNodeInfoFromLabels
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
@@ -360,4 +365,21 @@ func (d *DriverCore) getNodeInfo() *optimization.NodeInfo {
 
 func (d *DriverCore) getHostUtil() hostUtil {
 	return d.hostUtil
+}
+
+// getNodeInfoFromLabels get zone, instanceType from node labels
+func getNodeInfoFromLabels(ctx context.Context, nodeName string, kubeClient clientset.Interface) (string, string, error) {
+	if kubeClient == nil || kubeClient.CoreV1() == nil {
+		return "", "", fmt.Errorf("kubeClient is nil")
+	}
+
+	node, err := kubeClient.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+	if err != nil {
+		return "", "", fmt.Errorf("get node(%s) failed with %v", nodeName, err)
+	}
+
+	if len(node.Labels) == 0 {
+		return "", "", fmt.Errorf("node(%s) label is empty", nodeName)
+	}
+	return node.Labels[consts.WellKnownTopologyKey], node.Labels[consts.InstanceTypeKey], nil
 }

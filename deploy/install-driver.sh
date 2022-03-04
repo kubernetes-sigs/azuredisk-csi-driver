@@ -40,6 +40,7 @@ kubectl apply -f $repo/rbac-csi-azuredisk-controller.yaml
 kubectl apply -f $repo/rbac-csi-azuredisk-node.yaml
 kubectl apply -f $repo/csi-azuredisk-node.yaml
 kubectl apply -f $repo/csi-azuredisk-node-windows.yaml
+kubectl apply -f $repo/csi-azuredisk-controller.yaml
 
 if [[ $ver == "v2"* ]]; then
   kubectl apply -f $repo/csi-azuredisk-scheduler-extender.yaml
@@ -57,19 +58,6 @@ if [[ "$#" -gt 1 ]]; then
     kubectl apply -f $repo/rbac-csi-snapshot-controller.yaml
     kubectl apply -f $repo/csi-snapshot-controller.yaml
   fi
-
-  if [[ "$2" == *"enable-avset"* ]]; then
-    echo "set disable-avset-nodes as false ..."
-    if [[ "$2" == *"local"* ]]; then
-      cat $repo/csi-azuredisk-controller.yaml | sed 's/disable-avset-nodes=true/disable-avset-nodes=false/g' | kubectl apply -f -
-    else
-      curl -s $repo/csi-azuredisk-controller.yaml | sed 's/disable-avset-nodes=true/disable-avset-nodes=false/g' | kubectl apply -f -
-    fi
-  else
-    kubectl apply -f $repo/csi-azuredisk-controller.yaml
-  fi
-else
-  kubectl apply -f $repo/csi-azuredisk-controller.yaml
 fi
 
 echo 'Azure Disk CSI driver installed successfully.'
