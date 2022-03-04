@@ -108,6 +108,7 @@ spec:
             - "--user-agent-suffix={{ .Values.driver.userAgentSuffix }}"
             - "--allow-empty-cloud-config={{ .Values.node.allowEmptyCloudConfig }}"
             - "--support-zone={{ .Values.node.supportZone }}"
+            - "--get-node-info-from-labels={{ .Values.windows.getNodeInfoFromLabels }}"
           ports:
             - containerPort: {{ .Values.node.livenessProbe.healthPort }}
               name: healthz

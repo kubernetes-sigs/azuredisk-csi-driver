@@ -150,6 +150,7 @@ linux:
   tolerations:
     - operator: "Exists"
   hostNetwork: true # this setting could be disabled if perfProfile is `none`
+  getNodeInfoFromLabels: false # get node info from node labels instead of IMDS
   podLabels: {}
   nodeAffinity:
     requiredDuringSchedulingIgnoredDuringExecution:
@@ -183,6 +184,7 @@ windows:
   enabled: true
   dsName: csi-azuredisk-node-win # daemonset name
   kubelet: 'C:\var\lib\kubelet'
+  getNodeInfoFromLabels: false # get node info from node labels instead of IMDS
   tolerations:
     - key: "node.kubernetes.io/os"
       operator: "Exists"
