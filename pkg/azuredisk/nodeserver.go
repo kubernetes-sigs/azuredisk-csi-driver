@@ -324,14 +324,13 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 		Segments: map[string]string{topologyKey: ""},
 	}
 
-	if d.supportZone {
-		var (
-			zone cloudprovider.Zone
-			err  error
-		)
+	var failureDomainFromLabels, instanceTypeFromLabels string
+	var err error
 
+	if d.supportZone {
+		var zone cloudprovider.Zone
 		if d.getNodeInfoFromLabels {
-			zone.FailureDomain, _, err = getNodeInfoFromLabels(ctx, d.NodeID, d.cloud.KubeClient)
+			failureDomainFromLabels, instanceTypeFromLabels, err = getNodeInfoFromLabels(ctx, d.NodeID, d.cloud.KubeClient)
 		} else {
 			if runtime.GOOS == "windows" && (!d.cloud.UseInstanceMetadata || d.cloud.Metadata == nil) {
 				zone, err = d.cloud.VMSet.GetZoneByNodeName(d.NodeID)
@@ -340,11 +339,14 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 			}
 			if err != nil {
 				klog.Warningf("get zone(%s) failed with: %v, fall back to get zone from node labels", d.NodeID, err)
-				zone.FailureDomain, _, err = getNodeInfoFromLabels(ctx, d.NodeID, d.cloud.KubeClient)
+				failureDomainFromLabels, instanceTypeFromLabels, err = getNodeInfoFromLabels(ctx, d.NodeID, d.cloud.KubeClient)
 			}
 		}
 		if err != nil {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("getNodeInfoFromLabels on node(%s) failed with %v", d.NodeID, err))
+		}
+		if zone.FailureDomain == "" {
+			zone.FailureDomain = failureDomainFromLabels
 		}
 
 		klog.V(2).Infof("NodeGetInfo, nodeName: %s, failureDomain: %s", d.NodeID, zone.FailureDomain)
@@ -359,7 +361,9 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 		var instanceType string
 		var err error
 		if d.getNodeInfoFromLabels {
-			_, instanceType, err = getNodeInfoFromLabels(ctx, d.NodeID, d.cloud.KubeClient)
+			if instanceTypeFromLabels == "" {
+				_, instanceTypeFromLabels, err = getNodeInfoFromLabels(ctx, d.NodeID, d.cloud.KubeClient)
+			}
 		} else {
 			if runtime.GOOS == "windows" && d.cloud.UseInstanceMetadata && d.cloud.Metadata != nil {
 				metadata, err := d.cloud.Metadata.GetMetadata(azcache.CacheReadTypeDefault)
@@ -378,13 +382,16 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 			if err != nil {
 				klog.Warningf("get instance type(%s) failed with: %v", d.NodeID, err)
 			}
-			if instanceType == "" {
+			if instanceType == "" && instanceTypeFromLabels == "" {
 				klog.Warningf("fall back to get instance type from node labels")
-				_, instanceType, err = getNodeInfoFromLabels(ctx, d.NodeID, d.cloud.KubeClient)
+				_, instanceTypeFromLabels, err = getNodeInfoFromLabels(ctx, d.NodeID, d.cloud.KubeClient)
 			}
 		}
 		if err != nil {
 			klog.Warningf("getNodeInfoFromLabels on node(%s) failed with %v", d.NodeID, err)
+		}
+		if instanceType == "" {
+			instanceType = instanceTypeFromLabels
 		}
 		maxDataDiskCount = getMaxDataDiskCount(instanceType)
 	}
