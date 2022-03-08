@@ -94,17 +94,13 @@ func (r *ReconcileAttachDetach) Reconcile(ctx context.Context, request reconcile
 
 	// detachment request
 	if objectDeletionRequested(azVolumeAttachment) {
-		if azVolumeAttachment.Status.State == diskv1alpha2.AttachmentPending || azVolumeAttachment.Status.State == diskv1alpha2.Attached || azVolumeAttachment.Status.State == diskv1alpha2.AttachmentFailed || azVolumeAttachment.Status.State == diskv1alpha2.DetachmentFailed {
-			if err := r.triggerDetach(ctx, azVolumeAttachment); err != nil {
-				return reconcileReturnOnError(azVolumeAttachment, "detach", err, r.retryInfo)
-			}
+		if err := r.triggerDetach(ctx, azVolumeAttachment); err != nil {
+			return reconcileReturnOnError(azVolumeAttachment, "detach", err, r.retryInfo)
 		}
 		// attachment request
 	} else if azVolumeAttachment.Status.Detail == nil {
-		if azVolumeAttachment.Status.State == diskv1alpha2.AttachmentPending {
-			if err := r.triggerAttach(ctx, azVolumeAttachment); err != nil {
-				return reconcileReturnOnError(azVolumeAttachment, "attach", err, r.retryInfo)
-			}
+		if err := r.triggerAttach(ctx, azVolumeAttachment); err != nil {
+			return reconcileReturnOnError(azVolumeAttachment, "attach", err, r.retryInfo)
 		}
 		// promotion request
 	} else if azVolumeAttachment.Spec.RequestedRole != azVolumeAttachment.Status.Detail.Role {
