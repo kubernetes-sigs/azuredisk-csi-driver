@@ -122,7 +122,7 @@ func newFakeDriverV1(t *testing.T) (*fakeDriverV1, error) {
 	defer ctrl.Finish()
 
 	driver.cloud = provider.GetTestCloud(ctrl)
-	mounter, err := mounter.NewFakeSafeMounter()
+	mounter, err := mounter.NewSafeMounter(driver.useCSIProxyGAInterface)
 	if err != nil {
 		return nil, err
 	}

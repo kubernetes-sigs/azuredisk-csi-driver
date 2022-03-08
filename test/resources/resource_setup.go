@@ -291,3 +291,45 @@ func (pod *PodDetails) SetupStatefulset(client clientset.Interface, namespace *v
 
 	return tStatefulset, tStatefulset.Cleanup
 }
+
+func GetSchedulableNodes(azDiskClient *azDiskClientSet.Clientset, client clientset.Interface, pod PodDetails, namespace *v1.Namespace) []*v1.Node {
+	nodes := nodeutil.ListAzDriverNodeNames(azDiskClient)
+	var availableNodes []*v1.Node
+	schedulableNodes, err := client.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{FieldSelector: fields.Set{
+		"spec.unschedulable": "false",
+	}.AsSelector().String()})
+
+	if err != nil {
+		ginkgo.Fail("failed while getting schedulable nodes list")
+	}
+
+	podObj, err := client.CoreV1().Pods(namespace.Name).Get(context.TODO(), pod.Name, metav1.GetOptions{})
+	if err != nil {
+		ginkgo.Fail("failed while getting pod")
+	}
+
+	for _, nodeName := range nodes {
+		for i, schedulableNode := range schedulableNodes.Items {
+			if nodeName == schedulableNode.Name {
+				//Check if node has any taints making it unschedulable
+
+				nodeDetails, err := client.CoreV1().Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
+				framework.ExpectNoError(err)
+
+				tolerable := true
+				for _, taint := range nodeDetails.Spec.Taints {
+					for _, podToleration := range podObj.Spec.Tolerations {
+						if !podToleration.ToleratesTaint(&taint) {
+							tolerable = false
+						}
+					}
+				}
+				if tolerable {
+					availableNodes = append(availableNodes, &schedulableNodes.Items[i])
+				}
+			}
+		}
+	}
+
+	return availableNodes
+}

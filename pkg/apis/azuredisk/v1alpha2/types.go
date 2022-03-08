@@ -107,6 +107,10 @@ type AzVolumeStatus struct {
 	//+required
 	State AzVolumeState `json:"state"`
 
+	//Current phase of the underlying PersistentVolume
+	//+optional
+	Phase AzVolumePhase `json:"phase,omitempty"`
+
 	//Error occurred during creation/deletion of volume
 	//+optional
 	Error *AzError `json:"error,omitempty"`
