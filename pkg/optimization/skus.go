@@ -61,8 +61,6 @@ import (
 // }
 type NodeInfo struct {
 	SkuName          string
-	Zone             string
-	Region           string
 	MaxDataDiskCount int
 	VCpus            int
 	MaxBurstIops     int
@@ -117,7 +115,7 @@ type DiskSkuInfo struct {
 }
 
 // NewNodeInfo populates Node and Sku related information in memory
-func NewNodeInfo(cloud cloudprovider.Interface, nodeID string) (*NodeInfo, error) {
+func NewNodeInfo(ctx context.Context, cloud cloudprovider.Interface, nodeID string) (*NodeInfo, error) {
 	klog.V(2).Infof("NewNodeInfo: Starting to populate node and disk sku information.")
 
 	instances, ok := cloud.Instances()
@@ -125,24 +123,13 @@ func NewNodeInfo(cloud cloudprovider.Interface, nodeID string) (*NodeInfo, error
 		return nil, status.Error(codes.Internal, "NewNodeInfo: Failed to get instances from Azure cloud provider")
 	}
 
-	instanceType, err := instances.InstanceType(context.TODO(), types.NodeName(nodeID))
+	instanceType, err := instances.InstanceType(ctx, types.NodeName(nodeID))
 	if err != nil {
 		return nil, fmt.Errorf("NewNodeInfo: Failed to get instance type from Azure cloud provider, nodeName: %v, error: %v", nodeID, err)
 	}
 
-	zones, ok := cloud.Zones()
-	if !ok {
-		return nil, status.Error(codes.Internal, "NewNodeInfo: Failed to get zones from Azure cloud provider.")
-	}
-	zone, err := zones.GetZone(context.TODO())
-	if err != nil {
-		return nil, fmt.Errorf("NewNodeInfo: Failed to get zone from Azure cloud provider, nodeName: %v, error: %v", nodeID, err)
-	}
-
 	nodeInfo := &NodeInfo{}
 	nodeInfo.SkuName = instanceType
-	nodeInfo.Zone = zone.FailureDomain
-	nodeInfo.Region = zone.Region
 
 	nodeSkuNameLower := strings.ToLower(nodeInfo.SkuName)
 
