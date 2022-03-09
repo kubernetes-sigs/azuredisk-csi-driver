@@ -28,7 +28,9 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
+	"k8s.io/kubernetes/pkg/features"
 	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	util "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
@@ -564,60 +566,36 @@ func NewAzVolumeController(mgr manager.Manager, volumeProvisioner VolumeProvisio
 }
 
 func (c *SharedState) createAzVolumeFromPv(ctx context.Context, pv v1.PersistentVolume, annotations map[string]string) error {
-	var volumeParams map[string]string
+	var azVolume *diskv1alpha2.AzVolume
+	var err error
+	requiredBytes, _ := pv.Spec.Capacity.Storage().AsInt64()
+	volumeCapability := getVolumeCapabilityFromPv(&pv)
+
+	// create AzVolume CRI for CSI Volume Source
 	if pv.Spec.CSI != nil && pv.Spec.CSI.Driver == c.driverName {
-		diskName, err := azureutils.GetDiskName(pv.Spec.CSI.VolumeHandle)
+		azVolume, err = c.createAzVolumeFromCSISource(pv.Spec.CSI)
 		if err != nil {
-			return fmt.Errorf("failed to extract diskName from volume handle (%s): %v", pv.Spec.CSI.VolumeHandle, err)
+			return err
 		}
-		azVolumeName := strings.ToLower(diskName)
-		klog.Infof("Creating AzVolume (%s) for PV(%s)", azVolumeName, pv.Name)
-		requiredBytes, _ := pv.Spec.Capacity.Storage().AsInt64()
-		storageClassName := pv.Spec.StorageClassName
-		maxMountReplicaCount := 0
-		if storageClassName == "" {
-			klog.Warningf("storage class for PV (%s) is not defined, trying to get maxMountReplicaCount from VolumeAttributes.", pv.Name)
-			_, maxMountReplicaCount = azureutils.GetMaxSharesAndMaxMountReplicaCount(pv.Spec.CSI.VolumeAttributes, azureutils.IsMultiNodePersistentVolume(pv))
-
-		} else {
-			storageClass, err := c.kubeClient.StorageV1().StorageClasses().Get(ctx, pv.Spec.StorageClassName, metav1.GetOptions{})
-			if err != nil {
-				return fmt.Errorf("failed to get storage class (%s): %v", pv.Spec.StorageClassName, err)
-			}
-			_, maxMountReplicaCount = azureutils.GetMaxSharesAndMaxMountReplicaCount(storageClass.Parameters, azureutils.IsMultiNodePersistentVolume(pv))
+		if azureutils.IsMultiNodePersistentVolume(pv) {
+			azVolume.Spec.MaxMountReplicaCount = 0
 		}
 
-		if pv.Spec.CSI.VolumeAttributes == nil {
-			volumeParams = make(map[string]string)
-		} else {
-			volumeParams = pv.Spec.CSI.VolumeAttributes
-		}
+		// create AzVolume CRI for AzureDisk Volume Source for migration case
+	} else if utilfeature.DefaultFeatureGate.Enabled(features.CSIMigration) &&
+		utilfeature.DefaultFeatureGate.Enabled(features.CSIMigrationAzureDisk) &&
+		pv.Spec.AzureDisk != nil {
+		azVolume = c.createAzVolumeFromAzureDiskVolumeSource(pv.Spec.AzureDisk)
+	}
 
-		azVolume := diskv1alpha2.AzVolume{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:        azVolumeName,
-				Finalizers:  []string{consts.AzVolumeFinalizer},
-				Annotations: annotations,
-			},
-			Spec: diskv1alpha2.AzVolumeSpec{
-				MaxMountReplicaCount: maxMountReplicaCount,
-				Parameters:           volumeParams,
-				VolumeName:           diskName,
-				CapacityRange: &diskv1alpha2.CapacityRange{
-					RequiredBytes: requiredBytes,
-				},
-				VolumeCapability: getVolumeCapabilityFromPv(&pv),
-			},
-			Status: diskv1alpha2.AzVolumeStatus{
-				PersistentVolume: pv.Name,
-				Detail: &diskv1alpha2.AzVolumeStatusDetail{
-					VolumeID: pv.Spec.CSI.VolumeHandle,
-				},
-				State: diskv1alpha2.VolumeCreated,
-			},
-		}
+	if azVolume != nil {
+		azVolume.Spec.CapacityRange = &diskv1alpha2.CapacityRange{RequiredBytes: requiredBytes}
+		azVolume.Spec.VolumeCapability = volumeCapability
+		azVolume.SetAnnotations(annotations)
+		azVolume.Status.PersistentVolume = pv.Name
 
-		if err := c.createAzVolume(ctx, &azVolume); err != nil {
+		klog.Infof("Creating AzVolume (%s) for PV(%s)", azVolume.Name, pv.Name)
+		if err := c.createAzVolume(ctx, azVolume); err != nil {
 			klog.Errorf("failed to create AzVolume (%s) for PV (%s): %v", azVolume.Name, pv.Name, err)
 			return err
 		}
@@ -625,30 +603,73 @@ func (c *SharedState) createAzVolumeFromPv(ctx context.Context, pv v1.Persistent
 	return nil
 }
 
-func (c *SharedState) createAzVolumeFromInline(ctx context.Context, inline *v1.AzureDiskVolumeSource) error {
+func (c *SharedState) createAzVolumeFromInline(ctx context.Context, inline *v1.AzureDiskVolumeSource) (err error) {
+	azVolume := c.createAzVolumeFromAzureDiskVolumeSource(inline)
+
+	if err = c.createAzVolume(ctx, azVolume); err != nil {
+		klog.Errorf("failed to create AzVolume (%s) for inline (%s): %v", azVolume.Name, inline.DiskName, err)
+	}
+	return
+}
+
+func (c *SharedState) createAzVolumeFromCSISource(source *v1.CSIPersistentVolumeSource) (*diskv1alpha2.AzVolume, error) {
+	diskName, err := azureutils.GetDiskName(source.VolumeHandle)
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract diskName from volume handle (%s): %v", source.VolumeHandle, err)
+	}
+
+	_, maxMountReplicaCount := azureutils.GetMaxSharesAndMaxMountReplicaCount(source.VolumeAttributes, false)
+
+	var volumeParams map[string]string
+	if source.VolumeAttributes == nil {
+		volumeParams = make(map[string]string)
+	} else {
+		volumeParams = source.VolumeAttributes
+	}
+
+	azVolumeName := strings.ToLower(diskName)
+
 	azVolume := diskv1alpha2.AzVolume{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        inline.DiskName,
-			Finalizers:  []string{consts.AzVolumeFinalizer},
-			Annotations: map[string]string{consts.InlineVolumeAnnotation: inline.DataDiskURI},
+			Name:       azVolumeName,
+			Finalizers: []string{consts.AzVolumeFinalizer},
 		},
 		Spec: diskv1alpha2.AzVolumeSpec{
-			VolumeName:       inline.DiskName,
-			VolumeCapability: []diskv1alpha2.VolumeCapability{},
+			MaxMountReplicaCount: maxMountReplicaCount,
+			Parameters:           volumeParams,
+			VolumeName:           diskName,
 		},
 		Status: diskv1alpha2.AzVolumeStatus{
 			Detail: &diskv1alpha2.AzVolumeStatusDetail{
-				VolumeID: inline.DataDiskURI,
+				VolumeID: source.VolumeHandle,
 			},
 			State: diskv1alpha2.VolumeCreated,
 		},
 	}
 
-	if err := c.createAzVolume(ctx, &azVolume); err != nil {
-		klog.Errorf("failed to create AzVolume (%s) for inline (%s): %v", azVolume.Name, inline.DiskName, err)
-		return err
+	return &azVolume, nil
+}
+
+func (c *SharedState) createAzVolumeFromAzureDiskVolumeSource(source *v1.AzureDiskVolumeSource) *diskv1alpha2.AzVolume {
+	azVolume := diskv1alpha2.AzVolume{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        source.DiskName,
+			Finalizers:  []string{consts.AzVolumeFinalizer},
+			Annotations: map[string]string{consts.InlineVolumeAnnotation: source.DataDiskURI},
+		},
+		Spec: diskv1alpha2.AzVolumeSpec{
+			VolumeName:       source.DiskName,
+			VolumeCapability: []diskv1alpha2.VolumeCapability{},
+		},
+		Status: diskv1alpha2.AzVolumeStatus{
+			Detail: &diskv1alpha2.AzVolumeStatusDetail{
+				VolumeID: source.DataDiskURI,
+			},
+			State: diskv1alpha2.VolumeCreated,
+		},
 	}
-	return nil
+
+	return &azVolume
 }
 
 func (c *SharedState) createAzVolume(ctx context.Context, azVolume *diskv1alpha2.AzVolume) error {
