@@ -65,6 +65,7 @@ type DriverOptions struct {
 	EnableListSnapshots        bool
 	SupportZone                bool
 	GetNodeInfoFromLabels      bool
+	EnableDiskCapacityCheck    bool
 }
 
 // CSIDriver defines the interface for a CSI driver.
@@ -103,6 +104,7 @@ type DriverCore struct {
 	enableListSnapshots        bool
 	supportZone                bool
 	getNodeInfoFromLabels      bool
+	enableDiskCapacityCheck    bool
 }
 
 // Driver is the v1 implementation of the Azure Disk CSI Driver.
@@ -134,6 +136,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.enableListSnapshots = options.EnableListVolumes
 	driver.supportZone = options.SupportZone
 	driver.getNodeInfoFromLabels = options.GetNodeInfoFromLabels
+	driver.enableDiskCapacityCheck = options.EnableDiskCapacityCheck
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()

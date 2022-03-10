@@ -37,9 +37,9 @@ if [[ "${ARCH}" == "x86_64" || ${ARCH} == "unknown" ]]; then
 fi
 
 if [[ "$#" -lt 2 || "$2" != "v2" ]]; then
-  _output/${ARCH}/azurediskplugin --endpoint "$endpoint" --nodeid "$nodeid" -v=5 -support-zone=false &
+  _output/${ARCH}/azurediskplugin --endpoint "$endpoint" --nodeid "$nodeid" -v=5 -support-zone=false -enable-disk-capacity-check=true &
 else
-  _output/${ARCH}/azurediskpluginv2 --endpoint "$endpoint" --nodeid "$nodeid" -v=5 -support-zone=false &
+  _output/${ARCH}/azurediskpluginv2 --endpoint "$endpoint" --nodeid "$nodeid" -v=5 -support-zone=false -enable-disk-capacity-check=true &
 fi
 
 echo 'Begin to run sanity test...'
