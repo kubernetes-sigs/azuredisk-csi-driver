@@ -96,6 +96,27 @@ const (
 var (
 	AzurePublicCloudSupportedStorageAccountTypes = []string{"Standard_LRS", "Premium_LRS", "StandardSSD_LRS"}
 	AzureStackCloudSupportedStorageAccountTypes  = []string{"Standard_LRS", "Premium_LRS"}
+	DynamicResizeZones                           = []string{
+		"westcentralus",
+		"francesouth",
+		"westindia",
+		"norwaywest",
+		"eastasia",
+		"francecentral",
+		"germanywestcentral",
+		"japanwest",
+		"southafricanorth",
+		"jioindiawest",
+		"canadacentral",
+		"australiacentral",
+		"japaneast",
+		"northeurope",
+		"centralindia",
+		"uaecentral",
+		"switzerlandwest",
+		"brazilsouth",
+		"uksouth",
+	}
 
 	TestTaint = v1.Taint{
 		Key:    testTolerationKey,

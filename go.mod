@@ -3,7 +3,7 @@ module sigs.k8s.io/azuredisk-csi-driver
 go 1.17
 
 require (
-	github.com/Azure/azure-sdk-for-go v61.4.0+incompatible
+	github.com/Azure/azure-sdk-for-go v61.5.0+incompatible
 	github.com/Azure/go-autorest/autorest v0.11.24
 	github.com/Azure/go-autorest/autorest/adal v0.9.18
 	github.com/Azure/go-autorest/autorest/date v0.3.0
@@ -36,7 +36,7 @@ require (
 	k8s.io/component-helpers v0.23.3
 	k8s.io/klog/v2 v2.30.0
 	k8s.io/kube-scheduler v0.23.3
-	k8s.io/kubernetes v1.23.0
+	k8s.io/kubernetes v1.23.3
 	k8s.io/mount-utils v0.23.3
 	k8s.io/utils v0.0.0-20211116205334-6203023598ed
 	sigs.k8s.io/cloud-provider-azure v0.7.4
@@ -70,6 +70,7 @@ require (
 	github.com/go-logr/logr v1.2.2 // indirect
 	github.com/go-openapi/jsonpointer v0.19.5 // indirect
 	github.com/go-openapi/jsonreference v0.19.5 // indirect
+	github.com/go-openapi/spec v0.19.3 // indirect
 	github.com/go-openapi/swag v0.19.14 // indirect
 	github.com/gobuffalo/flect v0.2.2 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
@@ -114,6 +115,7 @@ require (
 	golang.org/x/crypto v0.0.0-20220112180741-5e0467b6c7ce // indirect
 	golang.org/x/mod v0.5.0 // indirect
 	golang.org/x/oauth2 v0.0.0-20211104180415-d3ed0bb246c8 // indirect
+	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c // indirect
 	golang.org/x/sys v0.0.0-20220114195835-da31bd327af9 // indirect
 	golang.org/x/term v0.0.0-20210615171337-6886f2dfbf5b // indirect
 	golang.org/x/text v0.3.7 // indirect
@@ -154,9 +156,10 @@ replace (
 	k8s.io/component-helpers => k8s.io/component-helpers v0.23.3
 	k8s.io/controller-manager => k8s.io/controller-manager v0.23.3
 	k8s.io/cri-api => k8s.io/cri-api v0.23.3
-	k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.23.3
+	k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.0.0-20200530124324-08bf6a63b59d
 	k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.23.3
 	k8s.io/kube-controller-manager => k8s.io/kube-controller-manager v0.23.3
+	k8s.io/kube-openapi => k8s.io/kube-openapi v0.0.0-20201113171705-d219536bb9fd
 	k8s.io/kube-proxy => k8s.io/kube-proxy v0.23.3
 	k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.23.3
 	k8s.io/kubectl => k8s.io/kubectl v0.23.3
@@ -168,5 +171,6 @@ replace (
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.23.3
 	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.23.3
 	k8s.io/sample-controller => k8s.io/sample-controller v0.23.3
-	sigs.k8s.io/cloud-provider-azure => sigs.k8s.io/cloud-provider-azure v0.7.4-0.20220210174547-0e58eaf8be9d
+
+	sigs.k8s.io/cloud-provider-azure => github.com/edreed/cloud-provider-azure v0.0.0-20220218005637-7a8d60e26fe9
 )

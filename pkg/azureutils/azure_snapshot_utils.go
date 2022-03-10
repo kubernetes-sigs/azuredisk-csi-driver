@@ -32,34 +32,6 @@ import (
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 )
 
-func GenerateCSISnapshot(sourceVolumeID string, snapshot *compute.Snapshot) (*csi.Snapshot, error) {
-	if snapshot == nil || snapshot.SnapshotProperties == nil {
-		return nil, fmt.Errorf("snapshot property is nil")
-	}
-
-	tp := timestamppb.New(snapshot.SnapshotProperties.TimeCreated.ToTime())
-	if tp == nil {
-		return nil, fmt.Errorf("failed to convert timestamp(%v)", snapshot.SnapshotProperties.TimeCreated.ToTime())
-	}
-	ready, _ := isCSISnapshotReady(*snapshot.SnapshotProperties.ProvisioningState)
-
-	if snapshot.SnapshotProperties.DiskSizeGB == nil {
-		return nil, fmt.Errorf("diskSizeGB of snapshot property is nil")
-	}
-
-	if sourceVolumeID == "" {
-		sourceVolumeID = GetSourceVolumeID(snapshot)
-	}
-
-	return &csi.Snapshot{
-		SizeBytes:      volumehelper.GiBToBytes(int64(*snapshot.SnapshotProperties.DiskSizeGB)),
-		SnapshotId:     *snapshot.ID,
-		SourceVolumeId: sourceVolumeID,
-		CreationTime:   tp,
-		ReadyToUse:     ready,
-	}, nil
-}
-
 // There are 4 scenarios for listing snapshots.
 // 1. StartingToken is null, and MaxEntries is null. Return all snapshots from zero.
 // 2. StartingToken is null, and MaxEntries is not null. Return `MaxEntries` snapshots from zero.
@@ -175,7 +147,7 @@ func GenerateCSISnapshot(sourceVolumeID string, snapshot *compute.Snapshot) (*cs
 
 	tp := timestamppb.New(snapshot.SnapshotProperties.TimeCreated.ToTime())
 	if tp == nil {
-		return nil, fmt.Errorf("failed to covert timestamp(%v)", snapshot.SnapshotProperties.TimeCreated.ToTime())
+		return nil, fmt.Errorf("failed to convert timestamp(%v)", snapshot.SnapshotProperties.TimeCreated.ToTime())
 	}
 	ready, _ := isSnapshotReady(*snapshot.SnapshotProperties.ProvisioningState)
 

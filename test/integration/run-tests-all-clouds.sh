@@ -33,8 +33,8 @@ endpoint='tcp://127.0.0.1:10000'
 
 if [[ $# -lt 3 || "$2" != "v2" ]]; then
   echo 'Running the v1 tests'
-  test/integration/run-test-v1.sh "$endpoint" "$nodeid" "$cloud" "$version"
+  test/integration/run-test-v1.sh "$endpoint" "$NODEID" "$cloud" "$version"
 else
   echo 'Running the v2 tests'
-  test/integration/run-test-v2.sh "$endpoint" "$nodeid_0" "$cloud" "$version" "$@"
+  test/integration/run-test-v2.sh "$endpoint" "$NODEID_0" "$cloud" "$version" "$@"
 fi

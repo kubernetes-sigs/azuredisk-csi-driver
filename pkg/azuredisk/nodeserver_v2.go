@@ -36,10 +36,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	"k8s.io/apimachinery/pkg/types"
-<<<<<<< HEAD
-=======
-	"k8s.io/apimachinery/pkg/util/wait"
->>>>>>> refine
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/volume"
@@ -424,9 +420,8 @@ func (d *DriverV2) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest)
 
 	maxDataDiskCount := d.VolumeAttachLimit
 	if maxDataDiskCount < 0 {
-		var instanceType string
-		if runtime.GOOS == "windows" && d.cloud.UseInstanceMetadata && d.cloud.Metadata != nil {
-			metadata, err := d.cloud.Metadata.GetMetadata(azcache.CacheReadTypeDefault)
+		if runtime.GOOS == "windows" && d.cloudProvisioner.GetCloud().UseInstanceMetadata && d.cloudProvisioner.GetCloud().Metadata != nil {
+			metadata, err := d.cloudProvisioner.GetCloud().Metadata.GetMetadata(azcache.CacheReadTypeDefault)
 			if err == nil && metadata.Compute != nil {
 				instanceType = metadata.Compute.VMSize
 				klog.V(5).Infof("NodeGetInfo: nodeName(%s), VM Size(%s)", d.NodeID, instanceType)
@@ -434,7 +429,7 @@ func (d *DriverV2) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest)
 				klog.Warningf("get instance type(%s) failed with: %v", d.NodeID, err)
 			}
 		} else {
-			instances, ok := d.cloud.Instances()
+			instances, ok := d.cloudProvisioner.GetCloud().Instances()
 			if !ok {
 				return nil, status.Error(codes.Internal, "Failed to get instances from cloud provider")
 			}
@@ -571,6 +566,11 @@ func (d *DriverV2) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolu
 			return &csi.NodeExpandVolumeResponse{}, nil
 		}
 	}
+
+	if acquired := d.volumeLocks.TryAcquire(volumeID); !acquired {
+		return nil, status.Errorf(codes.Aborted, volumeOperationAlreadyExistsFmt, volumeID)
+	}
+	defer d.volumeLocks.Release(volumeID)
 
 	devicePath, err := d.nodeProvisioner.GetDevicePathWithMountPath(volumePath)
 	if err != nil {

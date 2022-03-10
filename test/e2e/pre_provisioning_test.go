@@ -343,7 +343,6 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 							},
 							VolumeAccessMode: v1.ReadWriteOnce,
 						},
-						VolumeAccessMode: v1.ReadWriteOnce,
 					},
 					IsWindows: testconsts.IsWindowsCluster,
 				}
@@ -449,7 +448,7 @@ func EnsureDiskExists(diskURI string) {
 	diskMeta := strings.Split(diskURI, "/")
 	diskName := diskMeta[len(diskMeta)-1]
 	// pre-prov disk should not be deleted when pod, pvc and pv are deleted
-	_, _, err := azureCloud.GetDisk(context.TODO(), azureCloud.ResourceGroup, diskName)
+	_, _, err := azureCloud.GetDisk(context.TODO(), azureCloud.SubscriptionID, azureCloud.ResourceGroup, diskName)
 	if err != nil {
 		ginkgo.Fail(fmt.Sprintf("pre-provisioning disk got deleted with the deletion of pv: %v", err))
 	}

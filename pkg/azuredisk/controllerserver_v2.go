@@ -43,19 +43,9 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 		return nil, err
 	}
 
-	params := req.GetParameters()
-	diskParams, err := azureutils.ParseDiskParameters(params)
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "Failed parsing disk parameters: %v", err)
-	}
-
 	name := req.GetName()
 	if len(name) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "CreateVolume Name must be provided")
-	}
-
-	if !azureutils.IsValidVolumeCapabilities(volCaps, diskParams.MaxShares) {
-		return nil, status.Error(codes.InvalidArgument, "Volume capability not supported")
 	}
 
 	if acquired := d.volumeLocks.TryAcquire(name); !acquired {
@@ -315,12 +305,15 @@ func (d *DriverV2) ValidateVolumeCapabilities(ctx context.Context, req *csi.Vali
 
 	if _, err := d.cloudProvisioner.CheckDiskExists(ctx, diskURI); err != nil {
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume not found, failed with error: %v", err))
+	}
 
 	return &csi.ValidateVolumeCapabilitiesResponse{
 		Confirmed: &csi.ValidateVolumeCapabilitiesResponse_Confirmed{
 			VolumeCapabilities: volumeCapabilities,
 		}}, nil
 }
+
+// ControllerGetCapabilities returns the capabilities of the Controller plugin
 func (d *DriverV2) ControllerGetCapabilities(ctx context.Context, req *csi.ControllerGetCapabilitiesRequest) (*csi.ControllerGetCapabilitiesResponse, error) {
 	return &csi.ControllerGetCapabilitiesResponse{
 		Capabilities: d.Cap,
@@ -502,7 +495,7 @@ func (d *DriverV2) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRe
 
 	tp, err := ptypes.TimestampProto(snapshot.CreationTime.Time)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to covert creation timestamp: %v", err)
+		return nil, fmt.Errorf("Failed to convert creation timestamp: %v", err)
 	}
 
 	isOperationSucceeded = true
@@ -562,7 +555,7 @@ func (d *DriverV2) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsRequ
 	for _, resultEntry := range result.Entries {
 		tp, err := ptypes.TimestampProto(resultEntry.CreationTime.Time)
 		if err != nil {
-			return nil, fmt.Errorf("Failed to covert creation timestamp: %v", err)
+			return nil, fmt.Errorf("Failed to convert creation timestamp: %v", err)
 		}
 		responseEntries = append(responseEntries, &csi.ListSnapshotsResponse_Entry{
 			Snapshot: &csi.Snapshot{

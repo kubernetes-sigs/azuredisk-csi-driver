@@ -36,7 +36,7 @@ import (
 	"google.golang.org/grpc/status"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
@@ -72,7 +72,7 @@ const (
 	// default IOPS Caps & Throughput Cap (MBps) per https://docs.microsoft.com/en-us/azure/virtual-machines/linux/disks-ultra-ssd
 	// see https://docs.microsoft.com/en-us/rest/api/compute/disks/createorupdate#uri-parameters
 	diskNameMinLength = 1
-	// Reseting max length to 63 since the disk name is used in the label "volume-name"
+	// Resetting max length to 63 since the disk name is used in the label "volume-name"
 	// of the kubernetes object and a label cannot have length greater than 63.
 	// https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
 	diskNameMaxLengthForLabel = 63
@@ -202,6 +202,16 @@ func GetMaxShares(attributes map[string]string) (int, error) {
 	return 1, nil // disk is not shared
 }
 
+func GetSubscriptionIDFromURI(diskURI string) string {
+	parts := strings.Split(diskURI, "/")
+	for i, v := range parts {
+		if strings.EqualFold(v, "subscriptions") && (i+1) < len(parts) {
+			return parts[i+1]
+		}
+	}
+	return ""
+}
+
 func NormalizeStorageAccountType(storageAccountType, cloud string, disableAzureStackCloud bool) (compute.DiskStorageAccountTypes, error) {
 	if storageAccountType == "" {
 		if IsAzureStackCloud(cloud, disableAzureStackCloud) {
@@ -274,6 +284,8 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 			diskParams.AccountType = v
 		case consts.CachingModeField:
 			diskParams.CachingMode = v1.AzureDataDiskCachingMode(v)
+		case consts.SubscriptionIDField:
+			diskParams.SubscriptionID = v
 		case consts.ResourceGroupField:
 			diskParams.ResourceGroup = v
 		case consts.DiskIOPSReadWriteField:
@@ -422,7 +434,7 @@ func GetCloudProviderFromClient(kubeClient *clientset.Clientset, secretName stri
 		if err == nil {
 			fromSecret = true
 		} else {
-			if !errors.IsNotFound(err) {
+			if !k8serrors.IsNotFound(err) {
 				klog.Warningf("failed to create cloud config from secret %s/%s: %v", az.SecretNamespace, az.SecretName, err)
 			}
 		}
@@ -533,7 +545,7 @@ func GetDiskName(diskURI string) (string, error) {
 	return matches[1], nil
 }
 
-// GetResourceGroupFromURI returns resource groupd from URI
+// GetResourceGroupFromURI returns resource grouped from URI
 func GetResourceGroupFromURI(diskURI string) (string, error) {
 	fields := strings.Split(diskURI, "/")
 	if len(fields) != 9 || strings.ToLower(fields[3]) != "resourcegroups" {
@@ -571,16 +583,6 @@ func GetCachingMode(attributes map[string]string) (compute.CachingTypes, error) 
 func IsARMResourceID(resourceID string) bool {
 	id := strings.ToLower(resourceID)
 	return strings.Contains(id, "/subscriptions/")
-}
-
-func GetSubscriptionIDFromURI(diskURI string) string {
-	parts := strings.Split(diskURI, "/")
-	for i, v := range parts {
-		if strings.EqualFold(v, "subscriptions") && (i+1) < len(parts) {
-			return parts[i+1]
-		}
-	}
-	return ""
 }
 
 func GetValidCreationData(subscriptionID, resourceGroup, sourceResourceID, sourceType string) (compute.CreationData, error) {
@@ -914,7 +916,7 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azurediskInformers.
 	curRetry := 0
 	maxRetry := maxNetRetry
 	isRetriable := func(err error) bool {
-		if errors.IsConflict(err) {
+		if k8serrors.IsConflict(err) {
 			return true
 		}
 		if isNetError(err) {

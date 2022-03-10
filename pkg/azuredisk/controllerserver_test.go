@@ -40,7 +40,6 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockcorev1"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockkubeclient"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockpersistentvolume"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/diskclient/mockdiskclient"
@@ -446,8 +445,8 @@ func TestCreateVolume(t *testing.T) {
 			name: "advanced perfProfile fails if no device settings provided",
 			testFunc: func(t *testing.T) {
 				d, _ := NewFakeDriver(t)
-				d.setPerfOptimizationEnabled(util.IsLinuxOS())
-				if util.IsLinuxOS() {
+				d.setPerfOptimizationEnabled(volumehelper.IsLinuxOS())
+				if volumehelper.IsLinuxOS() {
 					stdCapacityRangetest := &csi.CapacityRange{
 						RequiredBytes: volumehelper.GiBToBytes(10),
 						LimitBytes:    volumehelper.GiBToBytes(15),
@@ -469,8 +468,8 @@ func TestCreateVolume(t *testing.T) {
 							ProvisioningState: &state,
 						},
 					}
-					d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
-					d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+					d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+					d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 					_, err := d.CreateVolume(context.Background(), req)
 					expectedErr := fmt.Errorf("AreDeviceSettingsValid: No deviceSettings passed")
 					if !testutil.IsErrorEquivalent(err, expectedErr) {
@@ -480,11 +479,11 @@ func TestCreateVolume(t *testing.T) {
 			},
 		},
 		{
-			name: "advanced perfProfile succeeds if atleast one device settings provided",
+			name: "advanced perfProfile succeeds if at least one device settings provided",
 			testFunc: func(t *testing.T) {
 				d, _ := NewFakeDriver(t)
-				d.setPerfOptimizationEnabled(util.IsLinuxOS())
-				if util.IsLinuxOS() {
+				d.setPerfOptimizationEnabled(volumehelper.IsLinuxOS())
+				if volumehelper.IsLinuxOS() {
 					stdCapacityRangetest := &csi.CapacityRange{
 						RequiredBytes: volumehelper.GiBToBytes(10),
 						LimitBytes:    volumehelper.GiBToBytes(15),
@@ -506,8 +505,8 @@ func TestCreateVolume(t *testing.T) {
 							ProvisioningState: &state,
 						},
 					}
-					d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
-					d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+					d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+					d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 					_, err := d.CreateVolume(context.Background(), req)
 					expectedErr := error(nil)
 					if !testutil.IsErrorEquivalent(err, expectedErr) {
@@ -520,8 +519,8 @@ func TestCreateVolume(t *testing.T) {
 			name: "advanced perfProfile fails if invalid device settings provided",
 			testFunc: func(t *testing.T) {
 				d, _ := NewFakeDriver(t)
-				d.setPerfOptimizationEnabled(util.IsLinuxOS())
-				if util.IsLinuxOS() {
+				d.setPerfOptimizationEnabled(volumehelper.IsLinuxOS())
+				if volumehelper.IsLinuxOS() {
 					deviceSettingOverride := consts.DeviceSettingsKeyPrefix + "../device/scheduler"
 					settingPath, _ := filepath.Abs(filepath.Join(consts.DummyBlockDevicePathLinux, "../device/scheduler"))
 					//absFilePath, _ := filepath.Abs(relativeSettingPath)
@@ -546,8 +545,8 @@ func TestCreateVolume(t *testing.T) {
 							ProvisioningState: &state,
 						},
 					}
-					d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
-					d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+					d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+					d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 					_, err := d.CreateVolume(context.Background(), req)
 					expectedErr := fmt.Errorf("AreDeviceSettingsValid: Setting %s is not a valid file path under %s", settingPath, consts.DummyBlockDevicePathLinux)
 					if !testutil.IsErrorEquivalent(err, expectedErr) {
@@ -667,6 +666,7 @@ func TestGetSnapshotInfo(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
+
 		snapshotName, resourceGroup, subsID, err := d.getSnapshotInfo(test.snapshotID)
 		if !reflect.DeepEqual(snapshotName, test.expectedSnapshotName) ||
 			!reflect.DeepEqual(resourceGroup, test.expectedRGName) ||
@@ -1455,7 +1455,7 @@ func TestGetSnapshotByID(t *testing.T) {
 				d.setCloud(&azure.Cloud{})
 				snapshotID := "testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name"
 				expectedErr := fmt.Errorf("could not get snapshot name from testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name, correct format: (?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/snapshots/(.+)")
-				_, err := d.getSnapshotByID(ctx, d.getCloud().ResourceGroup, snapshotID, sourceVolumeID)
+				_, err := d.getSnapshotByID(ctx, d.getCloud().SubscriptionID, d.getCloud().ResourceGroup, snapshotID, sourceVolumeID)
 				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
@@ -1481,7 +1481,7 @@ func TestGetSnapshotByID(t *testing.T) {
 				snapshotVolumeID := "unit-test"
 				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, rerr).AnyTimes()
 				expectedErr := fmt.Errorf("could not get snapshot name from testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name, correct format: (?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/snapshots/(.+)")
-				_, err := d.getSnapshotByID(context.Background(), d.getCloud().ResourceGroup, snapshotID, snapshotVolumeID)
+				_, err := d.getSnapshotByID(context.Background(), d.getCloud().SubscriptionID, d.getCloud().ResourceGroup, snapshotID, snapshotVolumeID)
 				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
@@ -2025,7 +2025,7 @@ func TestGetSourceDiskSize(t *testing.T) {
 			name: "max depth reached",
 			testFunc: func(t *testing.T) {
 				d, _ := newFakeDriverV1(t)
-				_, err := d.GetSourceDiskSize(context.Background(), "test-rg", "test-disk", 2, 1)
+				_, err := d.GetSourceDiskSize(context.Background(), "test-subscription", "test-rg", "test-disk", 2, 1)
 				expectedErr := status.Errorf(codes.Internal, "current depth (2) surpassed the max depth (1) while searching for the source disk size")
 				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)

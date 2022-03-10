@@ -1,4 +1,4 @@
-# github.com/Azure/azure-sdk-for-go v61.4.0+incompatible
+# github.com/Azure/azure-sdk-for-go v61.5.0+incompatible
 ## explicit
 github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute
 github.com/Azure/azure-sdk-for-go/services/containerservice/mgmt/2020-04-01/containerservice
@@ -122,6 +122,9 @@ github.com/go-openapi/jsonpointer
 # github.com/go-openapi/jsonreference v0.19.5
 ## explicit; go 1.13
 github.com/go-openapi/jsonreference
+# github.com/go-openapi/spec v0.19.3
+## explicit; go 1.13
+github.com/go-openapi/spec
 # github.com/go-openapi/swag v0.19.14
 ## explicit; go 1.11
 github.com/go-openapi/swag
@@ -442,6 +445,9 @@ golang.org/x/net/trace
 ## explicit; go 1.11
 golang.org/x/oauth2
 golang.org/x/oauth2/internal
+# golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
+## explicit
+golang.org/x/sync/semaphore
 # golang.org/x/sys v0.0.0-20220114195835-da31bd327af9
 ## explicit; go 1.17
 golang.org/x/sys/cpu
@@ -1134,8 +1140,8 @@ k8s.io/gengo/types
 ## explicit; go 1.13
 k8s.io/klog/v2
 k8s.io/klog/v2/klogr
-# k8s.io/kube-openapi v0.0.0-20211115234752-e816edb12b65
-## explicit; go 1.16
+# k8s.io/kube-openapi v0.0.0-20211115234752-e816edb12b65 => k8s.io/kube-openapi v0.0.0-20201113171705-d219536bb9fd
+## explicit; go 1.12
 k8s.io/kube-openapi/cmd/openapi-gen/args
 k8s.io/kube-openapi/pkg/common
 k8s.io/kube-openapi/pkg/generators
@@ -1143,7 +1149,6 @@ k8s.io/kube-openapi/pkg/generators/rules
 k8s.io/kube-openapi/pkg/schemaconv
 k8s.io/kube-openapi/pkg/util/proto
 k8s.io/kube-openapi/pkg/util/sets
-k8s.io/kube-openapi/pkg/validation/spec
 # k8s.io/kube-scheduler v0.23.3 => k8s.io/kube-scheduler v0.23.3
 ## explicit; go 1.16
 k8s.io/kube-scheduler/extender/v1
@@ -1154,7 +1159,7 @@ k8s.io/kubectl/pkg/util/podutils
 # k8s.io/kubelet v0.23.3 => k8s.io/kubelet v0.23.3
 ## explicit; go 1.16
 k8s.io/kubelet/pkg/apis/stats/v1alpha1
-# k8s.io/kubernetes v1.23.0
+# k8s.io/kubernetes v1.23.3
 ## explicit; go 1.16
 k8s.io/kubernetes/pkg/api/legacyscheme
 k8s.io/kubernetes/pkg/api/service
@@ -1247,7 +1252,7 @@ k8s.io/utils/trace
 ## explicit; go 1.17
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/client
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/proto/client
-# sigs.k8s.io/cloud-provider-azure v0.7.4 => sigs.k8s.io/cloud-provider-azure v0.7.4-0.20220210174547-0e58eaf8be9d
+# sigs.k8s.io/cloud-provider-azure v0.7.4 => github.com/edreed/cloud-provider-azure v0.0.0-20220218005637-7a8d60e26fe9
 ## explicit; go 1.17
 sigs.k8s.io/cloud-provider-azure/pkg/auth
 sigs.k8s.io/cloud-provider-azure/pkg/azureclients
@@ -1287,6 +1292,7 @@ sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmssclient/mockvmssclient
 sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmssvmclient
 sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmssvmclient/mockvmssvmclient
 sigs.k8s.io/cloud-provider-azure/pkg/azureclients/zoneclient
+sigs.k8s.io/cloud-provider-azure/pkg/batch
 sigs.k8s.io/cloud-provider-azure/pkg/cache
 sigs.k8s.io/cloud-provider-azure/pkg/consts
 sigs.k8s.io/cloud-provider-azure/pkg/metrics
@@ -1373,9 +1379,10 @@ sigs.k8s.io/yaml
 # k8s.io/component-helpers => k8s.io/component-helpers v0.23.3
 # k8s.io/controller-manager => k8s.io/controller-manager v0.23.3
 # k8s.io/cri-api => k8s.io/cri-api v0.23.3
-# k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.23.3
+# k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.0.0-20200530124324-08bf6a63b59d
 # k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.23.3
 # k8s.io/kube-controller-manager => k8s.io/kube-controller-manager v0.23.3
+# k8s.io/kube-openapi => k8s.io/kube-openapi v0.0.0-20201113171705-d219536bb9fd
 # k8s.io/kube-proxy => k8s.io/kube-proxy v0.23.3
 # k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.23.3
 # k8s.io/kubectl => k8s.io/kubectl v0.23.3
@@ -1387,4 +1394,4 @@ sigs.k8s.io/yaml
 # k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.23.3
 # k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.23.3
 # k8s.io/sample-controller => k8s.io/sample-controller v0.23.3
-# sigs.k8s.io/cloud-provider-azure => sigs.k8s.io/cloud-provider-azure v0.7.4-0.20220210174547-0e58eaf8be9d
+# sigs.k8s.io/cloud-provider-azure => github.com/edreed/cloud-provider-azure v0.0.0-20220218005637-7a8d60e26fe9
