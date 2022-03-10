@@ -64,7 +64,7 @@ func getStorageClass(
 		reclaimPolicy = &defaultReclaimPolicy
 	}
 	if bindingMode == nil {
-		defaultBindingMode := storagev1.VolumeBindingImmediate
+		defaultBindingMode := storagev1.VolumeBindingWaitForFirstConsumer
 		bindingMode = &defaultBindingMode
 	}
 	allowVolumeExpansion := true
