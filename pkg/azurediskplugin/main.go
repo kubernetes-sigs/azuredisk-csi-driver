@@ -58,6 +58,7 @@ var (
 	enableAsyncAttach          = flag.Bool("enable-async-attach", false, "boolean flag to enable async attach")
 	enableListVolumes          = flag.Bool("enable-list-volumes", false, "boolean flag to enable ListVolumes on controller")
 	enableListSnapshots        = flag.Bool("enable-list-snapshots", false, "boolean flag to enable ListSnapshots on controller")
+	enableDiskCapacityCheck    = flag.Bool("enable-disk-capacity-check", false, "boolean flag to enable volume capacity check in CreateVolume")
 )
 
 func main() {
@@ -99,6 +100,7 @@ func handle() {
 		EnableListSnapshots:        *enableListSnapshots,
 		SupportZone:                *supportZone,
 		GetNodeInfoFromLabels:      *getNodeInfoFromLabels,
+		EnableDiskCapacityCheck:    *enableDiskCapacityCheck,
 	}
 	driver := azuredisk.NewDriver(&driverOptions)
 	if driver == nil {
