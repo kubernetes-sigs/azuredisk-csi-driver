@@ -18,10 +18,6 @@ package provisioner
 
 import (
 	"context"
-	"fmt"
-
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog/v2"
@@ -48,7 +44,7 @@ func (w *conditionWaiter) Wait(ctx context.Context) (runtime.Object, error) {
 	}
 
 	// if there exists an object in cache, evaluate condition function on it
-	// if condtion function returns error, the error could be coming from stale cache, so wait for another condition assessment from event handler.
+	// if condition function returns error, the error could be coming from stale cache, so wait for another condition assessment from event handler.
 	if err == nil {
 		success, _ := w.entry.conditionFunc(obj, false)
 		if success {
@@ -59,9 +55,8 @@ func (w *conditionWaiter) Wait(ctx context.Context) (runtime.Object, error) {
 	// if not wait for the event handler signal
 	select {
 	case <-ctx.Done():
-		errMsg := fmt.Sprintf("context timeout for %s (%s)", w.objType, w.objName)
-		klog.Error(errMsg)
-		return nil, status.Errorf(codes.DeadlineExceeded, errMsg)
+		klog.Errorf("context timeout for %s (%s)", w.objType, w.objName)
+		return nil, ctx.Err()
 	case waitResult := <-w.entry.waitChan:
 		klog.Infof("received result for %s (%s): error :%v", w.objType, w.objName, waitResult.err)
 		return waitResult.obj, waitResult.err

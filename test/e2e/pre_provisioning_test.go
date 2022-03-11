@@ -22,11 +22,6 @@ import (
 	"strconv"
 	"strings"
 
-	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
-	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
-	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/testsuites"
-	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
-
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
 	"github.com/onsi/ginkgo"
 	v1 "k8s.io/api/core/v1"
@@ -39,6 +34,10 @@ import (
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
+	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
+	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/testsuites"
+	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
@@ -122,15 +121,15 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			ginkgo.By(fmt.Sprintf("Successfully provisioned AzureDisk volume: %q\n", volumeID))
 
 			diskSize := fmt.Sprintf("%dGi", defaultDiskSize)
-			pods := []testtypes.PodDetails{
+			pods := []resources.PodDetails{
 				{
 					Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
-					Volumes: []testtypes.VolumeDetails{
+					Volumes: []resources.VolumeDetails{
 						{
 							VolumeID:  volumeID,
 							FSType:    "ext4",
 							ClaimSize: diskSize,
-							VolumeMount: testtypes.VolumeMountDetails{
+							VolumeMount: resources.VolumeMountDetails{
 								NameGenerate:      "test-volume-",
 								MountPathGenerate: "/mnt/test-",
 								ReadOnly:          true,
@@ -165,13 +164,13 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 
 			diskSize := fmt.Sprintf("%dGi", defaultDiskSize)
 
-			pod := testtypes.PodDetails{
+			pod := resources.PodDetails{
 				Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
-				Volumes: []testtypes.VolumeDetails{
+				Volumes: []resources.VolumeDetails{
 					{
 						VolumeID:  volumeID,
 						ClaimSize: diskSize,
-						VolumeMount: testtypes.VolumeMountDetails{
+						VolumeMount: resources.VolumeMountDetails{
 							NameGenerate:      "test-volume-",
 							MountPathGenerate: "/mnt/test-",
 						},
@@ -205,7 +204,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 
 			diskSize := fmt.Sprintf("%dGi", defaultDiskSize)
 			reclaimPolicy := v1.PersistentVolumeReclaimRetain
-			volumes := []testtypes.VolumeDetails{
+			volumes := []resources.VolumeDetails{
 				{
 					VolumeID:         volumeID,
 					FSType:           "ext4",
@@ -261,17 +260,17 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			ginkgo.By(fmt.Sprintf("Successfully provisioned a shared disk volume: %q\n", volumeID))
 
 			diskSize := fmt.Sprintf("%dGi", sharedDiskSize)
-			pod := testtypes.PodDetails{
+			pod := resources.PodDetails{
 				Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do sleep 5; done"),
-				Volumes: []testtypes.VolumeDetails{
+				Volumes: []resources.VolumeDetails{
 					{
 						VolumeID:  volumeID,
 						ClaimSize: diskSize,
-						VolumeMount: testtypes.VolumeMountDetails{
+						VolumeMount: resources.VolumeMountDetails{
 							NameGenerate:      "test-shared-volume-",
 							MountPathGenerate: "/dev/shared-",
 						},
-						VolumeMode:       testtypes.Block,
+						VolumeMode:       resources.Block,
 						VolumeAccessMode: v1.ReadWriteMany,
 					},
 				},
@@ -330,15 +329,15 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			diskSize := fmt.Sprintf("%dGi", sharedDiskSize)
 
 			ginkgo.By(fmt.Sprintf("Successfully provisioned a shared disk volume: %q\n", volumeID))
-			pods := []testtypes.PodDetails{}
+			pods := []resources.PodDetails{}
 			for i := 1; i <= 1; i++ {
-				pod := testtypes.PodDetails{
+				pod := resources.PodDetails{
 					Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
-					Volumes: []testtypes.VolumeDetails{
+					Volumes: []resources.VolumeDetails{
 						{
 							VolumeID:  volumeID,
 							ClaimSize: diskSize,
-							VolumeMount: testtypes.VolumeMountDetails{
+							VolumeMount: resources.VolumeMountDetails{
 								NameGenerate:      "test-volume-",
 								MountPathGenerate: "/mnt/test-",
 							},
@@ -377,14 +376,14 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			ginkgo.By(fmt.Sprintf("Successfully provisioned AzureDisk volume: %q\n", volumeID))
 
 			diskSize := fmt.Sprintf("%dGi", defaultDiskSize)
-			pods := []testtypes.PodDetails{
+			pods := []resources.PodDetails{
 				{
 					Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
-					Volumes: []testtypes.VolumeDetails{
+					Volumes: []resources.VolumeDetails{
 						{
 							VolumeID:  volumeID,
 							ClaimSize: diskSize,
-							VolumeMount: testtypes.VolumeMountDetails{
+							VolumeMount: resources.VolumeMountDetails{
 								NameGenerate:      "test-volume-",
 								MountPathGenerate: "/mnt/test-",
 							},
@@ -437,7 +436,7 @@ func CreateVolume(diskName string, sizeGiB int, volumeContext map[string]string)
 		MaxShares:          int32(maxShares),
 	}
 
-	diskURI, err := azureCloud.CreateManagedDisk(volumeOptions)
+	diskURI, err := azureCloud.CreateManagedDisk(context.TODO(), volumeOptions)
 	if err != nil {
 		return "", err
 	}
@@ -449,7 +448,7 @@ func EnsureDiskExists(diskURI string) {
 	diskMeta := strings.Split(diskURI, "/")
 	diskName := diskMeta[len(diskMeta)-1]
 	// pre-prov disk should not be deleted when pod, pvc and pv are deleted
-	_, _, err := azureCloud.GetDisk(azureCloud.ResourceGroup, diskName)
+	_, _, err := azureCloud.GetDisk(context.TODO(), azureCloud.SubscriptionID, azureCloud.ResourceGroup, diskName)
 	if err != nil {
 		ginkgo.Fail(fmt.Sprintf("pre-provisioning disk got deleted with the deletion of pv: %v", err))
 	}

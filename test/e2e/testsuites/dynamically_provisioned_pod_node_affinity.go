@@ -36,7 +36,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
-	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
+	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 	nodeutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/node"
 )
 
@@ -44,9 +44,9 @@ import (
 // Primary AzVolumeAttachment and Replica AzVolumeAttachments should be created on set of nodes with matching label
 type PodNodeAffinity struct {
 	CSIDriver              driver.DynamicPVTestDriver
-	Pod                    testtypes.PodDetails
+	Pod                    resources.PodDetails
 	IsMultiZone            bool
-	Volume                 testtypes.VolumeDetails
+	Volume                 resources.VolumeDetails
 	AzDiskClient           *azDiskClientSet.Clientset
 	StorageClassParameters map[string]string
 }

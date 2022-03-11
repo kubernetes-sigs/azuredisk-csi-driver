@@ -18,6 +18,7 @@ package testutil
 
 import (
 	"fmt"
+	"math/rand"
 	"os"
 	"reflect"
 	"runtime"
@@ -75,6 +76,17 @@ func GetWorkDirPath(dir string) (string, error) {
 	}
 	return fmt.Sprintf("%s%c%s", path, os.PathSeparator, dir), nil
 }
+
 func isWindows() bool {
 	return runtime.GOOS == "windows"
+}
+
+func GenerateRandomString(n int) string {
+	var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+
+	randomString := make([]rune, n)
+	for i := range randomString {
+		randomString[i] = letters[rand.Intn(len(letters))]
+	}
+	return string(randomString)
 }

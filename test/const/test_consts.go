@@ -23,12 +23,13 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
 const (
 	AzureDriverNameVar = "AZURE_STORAGE_DRIVER"
-	TopologyKey        = "topology.disk.csi.azure.com/zone"
+	TopologyKey        = "topology." + azureconstants.DefaultDriverName + "/zone"
+	HostNameLabel      = "kubernetes.io/hostname"
 
 	AzurePublicCloud            = "AzurePublicCloud"
 	ResourceGroupPrefix         = "azuredisk-csi-driver-test-"
@@ -71,7 +72,7 @@ const (
 	testWindowsEnvVar       = "TEST_WINDOWS"
 	CloudNameEnvVar         = "AZURE_CLOUD_NAME"
 	inTreeStorageClass      = "kubernetes.io/azure-disk"
-	buildV2Driver           = "BUILD_V2"
+	BuildV2Driver           = "BUILD_V2"
 	useOnlyDefaultScheduler = "USE_ONLY_DEFAULT_SCHEDULER"
 
 	ExecTimeout = 10 * time.Second
@@ -95,6 +96,27 @@ const (
 var (
 	AzurePublicCloudSupportedStorageAccountTypes = []string{"Standard_LRS", "Premium_LRS", "StandardSSD_LRS"}
 	AzureStackCloudSupportedStorageAccountTypes  = []string{"Standard_LRS", "Premium_LRS"}
+	DynamicResizeZones                           = []string{
+		"westcentralus",
+		"francesouth",
+		"westindia",
+		"norwaywest",
+		"eastasia",
+		"francecentral",
+		"germanywestcentral",
+		"japanwest",
+		"southafricanorth",
+		"jioindiawest",
+		"canadacentral",
+		"australiacentral",
+		"japaneast",
+		"northeurope",
+		"centralindia",
+		"uaecentral",
+		"switzerlandwest",
+		"brazilsouth",
+		"uksouth",
+	}
 
 	TestTaint = v1.Taint{
 		Key:    testTolerationKey,
@@ -145,7 +167,17 @@ var (
 			RequiredDuringSchedulingIgnoredDuringExecution: []v1.PodAffinityTerm{
 				{
 					LabelSelector: &metav1.LabelSelector{MatchLabels: TestLabel},
-					TopologyKey:   consts.WellKnownTopologyKey,
+					TopologyKey:   HostNameLabel,
+				}},
+		},
+	}
+
+	TestPodAntiAffinity = v1.Affinity{
+		PodAntiAffinity: &v1.PodAntiAffinity{
+			RequiredDuringSchedulingIgnoredDuringExecution: []v1.PodAffinityTerm{
+				{
+					LabelSelector: &metav1.LabelSelector{MatchLabels: TestLabel},
+					TopologyKey:   HostNameLabel,
 				}},
 		},
 	}
@@ -153,7 +185,7 @@ var (
 	IsUsingInTreeVolumePlugin   = os.Getenv(AzureDriverNameVar) == inTreeStorageClass
 	IsTestingMigration          = os.Getenv(testMigrationEnvVar) != ""
 	IsWindowsCluster            = os.Getenv(testWindowsEnvVar) != ""
-	IsUsingCSIDriverV2          = strings.EqualFold(os.Getenv(buildV2Driver), "true")
+	IsUsingCSIDriverV2          = strings.EqualFold(os.Getenv(BuildV2Driver), "true")
 	IsUsingOnlyDefaultScheduler = os.Getenv(useOnlyDefaultScheduler) != ""
 	IsAzureStackCloud           = strings.EqualFold(os.Getenv(CloudNameEnvVar), "AZURESTACKCLOUD")
 )

@@ -30,7 +30,8 @@ import (
 
 	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
-	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 	nodeutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/node"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
 )
@@ -69,7 +70,7 @@ var _ = ginkgo.Describe("Controller", func() {
 					azN := azDiskClient.DiskV1alpha2().AzDriverNodes(namespace)
 					dNode, err := azN.Get(context.Background(), pod.Spec.NodeName, metav1.GetOptions{})
 					framework.ExpectNoError(err)
-					ginkgo.By("Checking AzDriverNode/Staus")
+					ginkgo.By("Checking AzDriverNode/Status")
 					if dNode.Status == nil {
 						ginkgo.Fail("Driver status is not updated")
 					}
@@ -85,7 +86,7 @@ var _ = ginkgo.Describe("Controller", func() {
 					ginkgo.By("Checking to see if node has partition key label.")
 					partition, ok := dNode.Labels[partitionKey]
 					if ok == false || partition == "" {
-						ginkgo.Fail("Driver node parition label was not applied correctly.")
+						ginkgo.Fail("Driver node partition label was not applied correctly.")
 					}
 					break
 				}
@@ -101,7 +102,7 @@ var _ = ginkgo.Describe("Controller", func() {
 			if len(nodes) < 1 {
 				ginkgo.Skip("need at least 1 nodes to verify the test case. Current node count is %d", len(nodes))
 			}
-			testAzAtt := testtypes.SetupTestAzVolumeAttachment(azDiskClient.DiskV1alpha2(), namespace, "test-volume", nodes[0], 0)
+			testAzAtt := resources.SetupTestAzVolumeAttachment(azDiskClient.DiskV1alpha2(), namespace, "test-volume", nodes[0], 0)
 			defer testAzAtt.Cleanup()
 			_ = testAzAtt.Create()
 
@@ -124,7 +125,7 @@ var _ = ginkgo.Describe("Controller", func() {
 				ginkgo.Skip("need at least 1 nodes to verify the test case. Current node count is %d", len(nodes))
 			}
 			primaryNode := nodes[0]
-			testAzAtt := testtypes.SetupTestAzVolumeAttachment(azDiskClient.DiskV1alpha2(), namespace, volName, primaryNode, 0)
+			testAzAtt := resources.SetupTestAzVolumeAttachment(azDiskClient.DiskV1alpha2(), namespace, volName, primaryNode, 0)
 			defer testAzAtt.Cleanup()
 			att := testAzAtt.Create()
 
@@ -149,7 +150,7 @@ var _ = ginkgo.Describe("Controller", func() {
 			if len(nodes) < 2 {
 				ginkgo.Skip("need at least 2 nodes to verify the test case. Current node count is %d", len(nodes))
 			}
-			testAzAtt := testtypes.SetupTestAzVolumeAttachment(azDiskClient.DiskV1alpha2(), namespace, "test-volume", nodes[0], 1)
+			testAzAtt := resources.SetupTestAzVolumeAttachment(azDiskClient.DiskV1alpha2(), namespace, "test-volume", nodes[0], 1)
 			defer testAzAtt.Cleanup()
 			_ = testAzAtt.Create()
 			// check if the second attachment object was created and marked attached.
@@ -158,7 +159,7 @@ var _ = ginkgo.Describe("Controller", func() {
 
 		})
 
-		ginkgo.It("If failover happens, should turn replica to primary and create an additional replica for replacment", func() {
+		ginkgo.It("If failover happens, should turn replica to primary and create an additional replica for replacement", func() {
 			testutil.SkipIfUsingInTreeVolumePlugin()
 			testutil.SkipIfNotUsingCSIDriverV2()
 			nodes := nodeutil.ListNodeNames(cs)
@@ -167,7 +168,7 @@ var _ = ginkgo.Describe("Controller", func() {
 				ginkgo.Skip("need at least 3 nodes to verify the test case. Current node count is %d", len(nodes))
 			}
 			primaryNode := nodes[0]
-			testAzAtt := testtypes.SetupTestAzVolumeAttachment(azDiskClient.DiskV1alpha2(), namespace, volName, primaryNode, 1)
+			testAzAtt := resources.SetupTestAzVolumeAttachment(azDiskClient.DiskV1alpha2(), namespace, volName, primaryNode, 1)
 			defer testAzAtt.Cleanup()
 			_ = testAzAtt.Create()
 			err := testAzAtt.WaitForReplicas(1, time.Duration(5)*time.Minute)
@@ -176,11 +177,11 @@ var _ = ginkgo.Describe("Controller", func() {
 			framework.ExpectNoError(err)
 
 			// fail primary attachment
-			testtypes.DeleteTestAzDriverNode(azDiskClient.DiskV1alpha2().AzDriverNodes(namespace), primaryNode)
-			defer testtypes.NewTestAzDriverNode(azDiskClient.DiskV1alpha2().AzDriverNodes(namespace), primaryNode)
+			resources.DeleteTestAzDriverNode(azDiskClient.DiskV1alpha2().AzDriverNodes(namespace), primaryNode)
+			defer resources.NewTestAzDriverNode(azDiskClient.DiskV1alpha2().AzDriverNodes(namespace), primaryNode)
 			framework.ExpectNoError(err)
 
-			err = azDiskClient.DiskV1alpha2().AzVolumeAttachments(namespace).Delete(context.Background(), testtypes.GetAzVolumeAttachmentName(volName, primaryNode), metav1.DeleteOptions{})
+			err = azDiskClient.DiskV1alpha2().AzVolumeAttachments(namespace).Delete(context.Background(), azureutils.GetAzVolumeAttachmentName(volName, primaryNode), metav1.DeleteOptions{})
 			framework.ExpectNoError(err)
 			err = testAzAtt.WaitForDelete(primaryNode, time.Duration(5)*time.Minute)
 			framework.ExpectNoError(err)
@@ -216,7 +217,7 @@ var _ = ginkgo.Describe("Controller", func() {
 				ginkgo.Skip("need at least 3 nodes to verify the test case. Current node count is %d", len(nodes))
 			}
 			volName := "test-volume"
-			testAzAtt := testtypes.SetupTestAzVolumeAttachment(azDiskClient.DiskV1alpha2(), namespace, volName, nodes[0], 1)
+			testAzAtt := resources.SetupTestAzVolumeAttachment(azDiskClient.DiskV1alpha2(), namespace, volName, nodes[0], 1)
 			defer testAzAtt.Cleanup()
 			_ = testAzAtt.Create()
 			err := testAzAtt.WaitForReplicas(1, time.Duration(5)*time.Minute)
@@ -233,8 +234,8 @@ var _ = ginkgo.Describe("Controller", func() {
 					break
 				}
 			}
-			testtypes.DeleteTestAzDriverNode(azDiskClient.DiskV1alpha2().AzDriverNodes(namespace), replica.Spec.NodeName)
-			defer testtypes.NewTestAzDriverNode(azDiskClient.DiskV1alpha2().AzDriverNodes(namespace), replica.Spec.NodeName)
+			resources.DeleteTestAzDriverNode(azDiskClient.DiskV1alpha2().AzDriverNodes(namespace), replica.Spec.NodeName)
+			defer resources.NewTestAzDriverNode(azDiskClient.DiskV1alpha2().AzDriverNodes(namespace), replica.Spec.NodeName)
 			framework.ExpectNoError(err)
 
 			err = azDiskClient.DiskV1alpha2().AzVolumeAttachments(namespace).Delete(context.Background(), replica.Name, metav1.DeleteOptions{})
@@ -258,7 +259,7 @@ var _ = ginkgo.Describe("Controller", func() {
 			}
 			replicaCount := 2
 			primaryNode := nodes[0]
-			testAzAtt := testtypes.SetupTestAzVolumeAttachment(azDiskClient.DiskV1alpha2(), namespace, volName, primaryNode, replicaCount)
+			testAzAtt := resources.SetupTestAzVolumeAttachment(azDiskClient.DiskV1alpha2(), namespace, volName, primaryNode, replicaCount)
 			_ = testAzAtt.Create()
 			defer testAzAtt.Cleanup()
 			err := testAzAtt.WaitForReplicas(replicaCount, time.Duration(5)*time.Minute)
@@ -273,7 +274,7 @@ var _ = ginkgo.Describe("Controller", func() {
 					err = azDiskClient.DiskV1alpha2().AzVolumeAttachments(namespace).Delete(context.Background(), attachment.Name, metav1.DeleteOptions{})
 					framework.ExpectNoError(err)
 					// below will be commented out until the controller test uses AzureDiskDriver_v2 running on a separate dedicated namespace for testing
-					// err = testtypes.WaitForDelete(azDiskClient.DiskV1alpha2().AzVolumeAttachments(namespace), att.Namespace, replica.Name, time.Duration(5)*time.Minute)
+					// err = resources.WaitForDelete(azDiskClient.DiskV1alpha2().AzVolumeAttachments(namespace), att.Namespace, replica.Name, time.Duration(5)*time.Minute)
 					// framework.ExpectNoError(err)
 					i++
 				}
@@ -298,15 +299,15 @@ var _ = ginkgo.Describe("Controller", func() {
 			}
 			replicaCount := 1
 			primaryNode := nodes[0]
-			testAzAtt := testtypes.SetupTestAzVolumeAttachment(azDiskClient.DiskV1alpha2(), namespace, volName, primaryNode, replicaCount)
+			testAzAtt := resources.SetupTestAzVolumeAttachment(azDiskClient.DiskV1alpha2(), namespace, volName, primaryNode, replicaCount)
 			primary := testAzAtt.Create()
 			defer testAzAtt.Cleanup()
 			err := testAzAtt.WaitForReplicas(replicaCount, time.Duration(5)*time.Minute)
 			framework.ExpectNoError(err)
 
 			// fail primary attachment
-			testtypes.DeleteTestAzDriverNode(azDiskClient.DiskV1alpha2().AzDriverNodes(namespace), primaryNode)
-			defer testtypes.NewTestAzDriverNode(azDiskClient.DiskV1alpha2().AzDriverNodes(namespace), primaryNode)
+			resources.DeleteTestAzDriverNode(azDiskClient.DiskV1alpha2().AzDriverNodes(namespace), primaryNode)
+			defer resources.NewTestAzDriverNode(azDiskClient.DiskV1alpha2().AzDriverNodes(namespace), primaryNode)
 			framework.ExpectNoError(err)
 
 			err = azDiskClient.DiskV1alpha2().AzVolumeAttachments(namespace).Delete(context.Background(), primary.Name, metav1.DeleteOptions{})
@@ -332,18 +333,18 @@ var _ = ginkgo.Describe("Controller", func() {
 			}
 			replicaCount := 1
 			primaryNode := nodes[0]
-			testAzAtt := testtypes.SetupTestAzVolumeAttachment(azDiskClient.DiskV1alpha2(), namespace, volName, primaryNode, replicaCount)
+			testAzAtt := resources.SetupTestAzVolumeAttachment(azDiskClient.DiskV1alpha2(), namespace, volName, primaryNode, replicaCount)
 			_ = testAzAtt.Create()
 			defer testAzAtt.Cleanup()
 			err := testAzAtt.WaitForReplicas(replicaCount, time.Duration(5)*time.Minute)
 			framework.ExpectNoError(err)
 
 			// fail primary attachment
-			testtypes.DeleteTestAzDriverNode(azDiskClient.DiskV1alpha2().AzDriverNodes(namespace), primaryNode)
-			defer testtypes.NewTestAzDriverNode(azDiskClient.DiskV1alpha2().AzDriverNodes(namespace), primaryNode)
+			resources.DeleteTestAzDriverNode(azDiskClient.DiskV1alpha2().AzDriverNodes(namespace), primaryNode)
+			defer resources.NewTestAzDriverNode(azDiskClient.DiskV1alpha2().AzDriverNodes(namespace), primaryNode)
 			framework.ExpectNoError(err)
 
-			err = azDiskClient.DiskV1alpha2().AzVolumeAttachments(namespace).Delete(context.Background(), testtypes.GetAzVolumeAttachmentName(volName, primaryNode), metav1.DeleteOptions{})
+			err = azDiskClient.DiskV1alpha2().AzVolumeAttachments(namespace).Delete(context.Background(), azureutils.GetAzVolumeAttachmentName(volName, primaryNode), metav1.DeleteOptions{})
 			framework.ExpectNoError(err)
 			err = testAzAtt.WaitForDelete(primaryNode, time.Duration(5)*time.Minute)
 			framework.ExpectNoError(err)
@@ -385,7 +386,7 @@ var _ = ginkgo.Describe("Controller", func() {
 		ginkgo.It("Should initialize AzVolume object", func() {
 			testutil.SkipIfUsingInTreeVolumePlugin()
 			testutil.SkipIfNotUsingCSIDriverV2()
-			testAzVolume := testtypes.SetupTestAzVolume(azDiskClient.DiskV1alpha2(), namespace, "test-volume", 0)
+			testAzVolume := resources.SetupTestAzVolume(azDiskClient.DiskV1alpha2(), namespace, "test-volume", 0)
 			defer testAzVolume.Cleanup()
 			_ = testAzVolume.Create()
 
@@ -396,7 +397,7 @@ var _ = ginkgo.Describe("Controller", func() {
 		ginkgo.It("Should delete AzVolume object", func() {
 			testutil.SkipIfUsingInTreeVolumePlugin()
 			testutil.SkipIfNotUsingCSIDriverV2()
-			testAzVolume := testtypes.SetupTestAzVolume(azDiskClient.DiskV1alpha2(), namespace, "test-volume-delete", 0)
+			testAzVolume := resources.SetupTestAzVolume(azDiskClient.DiskV1alpha2(), namespace, "test-volume-delete", 0)
 			defer testAzVolume.Cleanup()
 			volume := testAzVolume.Create()
 
@@ -417,7 +418,7 @@ var _ = ginkgo.Describe("Controller", func() {
 			if len(nodes) < 1 {
 				ginkgo.Skip("need at least 1 nodes to verify the test case. Current node count is %d", len(nodes))
 			}
-			testAzAtt := testtypes.SetupTestAzVolumeAttachment(azDiskClient.DiskV1alpha2(), namespace, volName, nodes[0], 0)
+			testAzAtt := resources.SetupTestAzVolumeAttachment(azDiskClient.DiskV1alpha2(), namespace, volName, nodes[0], 0)
 			_ = testAzAtt.Create()
 			defer testAzAtt.Cleanup()
 

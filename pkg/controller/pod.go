@@ -23,10 +23,8 @@ import (
 	"google.golang.org/grpc/status"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	kubeClientSet "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
-	azClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -40,9 +38,6 @@ import (
 
 //Struct for the reconciler
 type ReconcilePod struct {
-	client                client.Client
-	kubeClient            kubeClientSet.Interface
-	azVolumeClient        azClientSet.Interface
 	namespace             string
 	controllerSharedState *SharedState
 }
@@ -54,24 +49,27 @@ func (r *ReconcilePod) Reconcile(ctx context.Context, request reconcile.Request)
 	var pod corev1.Pod
 	klog.V(5).Infof("Reconcile pod %s.", request.Name)
 	podKey := getQualifiedName(request.Namespace, request.Name)
-	if err := r.client.Get(ctx, request.NamespacedName, &pod); err != nil {
+	if err := r.controllerSharedState.cachedClient.Get(ctx, request.NamespacedName, &pod); err != nil {
 		// if the pod has been deleted, remove entry from podToClaimsMap and claimToPodMap
 		if errors.IsNotFound(err) {
 			klog.V(5).Infof("Failed to reconcile pod %s. Pod was deleted.", request.Name)
-			r.controllerSharedState.deletePod(podKey)
+			if err := r.controllerSharedState.deletePod(ctx, podKey); err != nil {
+				return reconcile.Result{Requeue: true}, err
+			}
 			return reconcile.Result{}, nil
 		}
 		klog.Errorf("Error getting the pod %s. Error: %v", podKey, err)
 		return reconcile.Result{Requeue: true}, err
 	}
-	r.controllerSharedState.addPod(&pod, acquireLock)
+	if err := r.controllerSharedState.addPod(ctx, &pod, acquireLock); err != nil {
+		return reconcile.Result{Requeue: true}, err
+	}
 
 	if pod.Status.Phase == corev1.PodRunning {
 		if err := r.createReplicas(ctx, podKey); err != nil {
 			klog.V(5).Infof("Error creating replicas for pod %s. Error: %v. Requeuing reconciliation.", request.Name, err)
 			return reconcile.Result{Requeue: true}, err
 		}
-		klog.V(5).Infof("Successfully created replicas for pod %s. Reconciliation succeeded.", request.Name)
 	}
 	return reconcile.Result{}, nil
 }
@@ -92,7 +90,7 @@ func (r *ReconcilePod) createReplicas(ctx context.Context, podKey string) error 
 			volume,
 			pod,
 			func() error {
-				azVolume, err := azureutils.GetAzVolume(ctx, r.client, r.azVolumeClient, volume, r.controllerSharedState.objectNamespace, true)
+				azVolume, err := azureutils.GetAzVolume(ctx, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, volume, r.controllerSharedState.objectNamespace, true)
 				if err != nil {
 					klog.V(5).Infof("Error getting azvolumes for pod %s. Error: %v", podKey, err)
 					return err
@@ -108,11 +106,12 @@ func (r *ReconcilePod) createReplicas(ctx context.Context, podKey string) error 
 					return nil
 				}
 
-				err = r.controllerSharedState.manageReplicas(ctx, azVolume.Spec.VolumeName, r)
+				err = r.controllerSharedState.manageReplicas(ctx, azVolume.Spec.VolumeName)
 				if err != nil {
 					klog.Warningf("Error creating replica azvolumeattachment for pod %s and volume %s. Error: %v", podKey, volume, err)
 					return err
 				}
+				klog.V(5).Infof("Successfully created replicas for pod %s. Reconciliation succeeded.", podKey)
 
 				// once replica attachment batch is created by pod controller, future replica reconciliation needs to be handled by replica controller
 				r.controllerSharedState.markVolumeVisited(volume)
@@ -130,7 +129,7 @@ func (r *ReconcilePod) Recover(ctx context.Context) error {
 	klog.V(5).Info("Recover pod state.")
 	// recover replica AzVolumeAttachments
 	var pods corev1.PodList
-	if err := r.client.List(ctx, &pods, &client.ListOptions{}); err != nil {
+	if err := r.controllerSharedState.cachedClient.List(ctx, &pods, &client.ListOptions{}); err != nil {
 		klog.Errorf("failed to list pods")
 		return err
 	}
@@ -138,7 +137,10 @@ func (r *ReconcilePod) Recover(ctx context.Context) error {
 	for _, pod := range pods.Items {
 		// update the shared map
 		podKey := getQualifiedName(pod.Namespace, pod.Name)
-		r.controllerSharedState.addPod(&pod, skipLock)
+		if err := r.controllerSharedState.addPod(ctx, &pod, skipLock); err != nil {
+			klog.Warningf("failed to add necessary components for pod (%s)", podKey)
+			continue
+		}
 		if err := r.createReplicas(ctx, podKey); err != nil {
 			klog.Warningf("failed to create replica AzVolumeAttachments for pod (%s)", podKey)
 		}
@@ -147,12 +149,9 @@ func (r *ReconcilePod) Recover(ctx context.Context) error {
 	return nil
 }
 
-func NewPodController(mgr manager.Manager, azVolumeClient azClientSet.Interface, kubeClient kubeClientSet.Interface, controllerSharedState *SharedState) (*ReconcilePod, error) {
+func NewPodController(mgr manager.Manager, controllerSharedState *SharedState) (*ReconcilePod, error) {
 	logger := mgr.GetLogger().WithValues("controller", "pod")
 	reconciler := ReconcilePod{
-		client:                mgr.GetClient(),
-		azVolumeClient:        azVolumeClient,
-		kubeClient:            kubeClient,
 		controllerSharedState: controllerSharedState,
 	}
 	c, err := controller.New("pod-controller", mgr, controller.Options{
@@ -196,16 +195,4 @@ func NewPodController(mgr manager.Manager, azVolumeClient azClientSet.Interface,
 
 	klog.V(2).Info("Controller set-up successful.")
 	return &reconciler, nil
-}
-
-func (r *ReconcilePod) getClient() client.Client {
-	return r.client
-}
-
-func (r *ReconcilePod) getAzClient() azClientSet.Interface {
-	return r.azVolumeClient
-}
-
-func (r *ReconcilePod) getSharedState() *SharedState {
-	return r.controllerSharedState
 }

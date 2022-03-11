@@ -14,7 +14,7 @@ image:
     pullPolicy: IfNotPresent
   csiResizer:
     repository: /oss/kubernetes-csi/csi-resizer
-    tag: v1.3.0
+    tag: v1.4.0
     pullPolicy: IfNotPresent
   livenessProbe:
     repository: /oss/kubernetes-csi/livenessprobe
@@ -198,22 +198,22 @@ windows:
   resources:
     livenessProbe:
       limits:
-        memory: 200Mi
+        memory: 100Mi
       requests:
         cpu: 10m
-        memory: 20Mi
+        memory: 40Mi
     nodeDriverRegistrar:
       limits:
+        memory: 100Mi
+      requests:
+        cpu: 10m
+        memory: 40Mi
+    azuredisk:
+      limits:
         memory: 200Mi
       requests:
         cpu: 10m
-        memory: 20Mi
-    azuredisk:
-      limits:
-        memory: 400Mi
-      requests:
-        cpu: 10m
-        memory: 20Mi
+        memory: 40Mi
 
 cloud: AzurePublicCloud
 

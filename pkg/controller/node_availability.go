@@ -22,10 +22,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
-	azClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -36,10 +33,7 @@ import (
 )
 
 type ReconcileNodeAvailability struct {
-	client                client.Client
 	controllerSharedState *SharedState
-	azVolumeClient        azClientSet.Interface
-	kubeClient            kubernetes.Interface
 }
 
 var _ reconcile.Reconciler = &ReconcileNodeAvailability{}
@@ -47,7 +41,7 @@ var _ reconcile.Reconciler = &ReconcileNodeAvailability{}
 func (r *ReconcileNodeAvailability) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
 
 	n := &corev1.Node{}
-	err := r.client.Get(ctx, request.NamespacedName, n)
+	err := r.controllerSharedState.cachedClient.Get(ctx, request.NamespacedName, n)
 
 	if errors.IsNotFound(err) {
 		return reconcile.Result{}, nil
@@ -57,7 +51,7 @@ func (r *ReconcileNodeAvailability) Reconcile(ctx context.Context, request recon
 		if !n.Spec.Unschedulable {
 			//Node is schedulable, proceed to attempt creation of replica attachment
 			if atomic.SwapInt32(&r.controllerSharedState.processingReplicaRequestQueue, 1) == 0 {
-				err := r.controllerSharedState.tryCreateFailedReplicas(ctx, nodeavailability, r)
+				err := r.controllerSharedState.tryCreateFailedReplicas(ctx, nodeavailability)
 				atomic.StoreInt32(&r.controllerSharedState.processingReplicaRequestQueue, 0)
 				if err != nil {
 					return reconcile.Result{Requeue: false}, nil
@@ -69,13 +63,10 @@ func (r *ReconcileNodeAvailability) Reconcile(ctx context.Context, request recon
 	return reconcile.Result{Requeue: false}, err
 }
 
-func NewNodeAvailabilityController(mgr manager.Manager, azVolumeClient azClientSet.Interface, kubeClient kubernetes.Interface, controllerSharedState *SharedState) (*ReconcileNodeAvailability, error) {
+func NewNodeAvailabilityController(mgr manager.Manager, controllerSharedState *SharedState) (*ReconcileNodeAvailability, error) {
 	logger := mgr.GetLogger().WithValues("controller", "nodeavailability")
 	reconciler := ReconcileNodeAvailability{
-		client:                mgr.GetClient(),
 		controllerSharedState: controllerSharedState,
-		azVolumeClient:        azVolumeClient,
-		kubeClient:            kubeClient,
 	}
 
 	c, err := controller.New("nodeavailability-controller", mgr, controller.Options{
@@ -139,16 +130,4 @@ func NewNodeAvailabilityController(mgr manager.Manager, azVolumeClient azClientS
 	}
 	klog.V(2).Info("Controller set-up successful.")
 	return &reconciler, err
-}
-
-func (r *ReconcileNodeAvailability) getClient() client.Client {
-	return r.client
-}
-
-func (r *ReconcileNodeAvailability) getAzClient() azClientSet.Interface {
-	return r.azVolumeClient
-}
-
-func (r *ReconcileNodeAvailability) getSharedState() *SharedState {
-	return r.controllerSharedState
 }

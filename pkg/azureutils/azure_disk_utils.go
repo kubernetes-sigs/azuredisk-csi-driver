@@ -18,6 +18,7 @@ package azureutils
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -35,7 +36,7 @@ import (
 	"google.golang.org/grpc/status"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
@@ -71,7 +72,7 @@ const (
 	// default IOPS Caps & Throughput Cap (MBps) per https://docs.microsoft.com/en-us/azure/virtual-machines/linux/disks-ultra-ssd
 	// see https://docs.microsoft.com/en-us/rest/api/compute/disks/createorupdate#uri-parameters
 	diskNameMinLength = 1
-	// Reseting max length to 63 since the disk name is used in the label "volume-name"
+	// Resetting max length to 63 since the disk name is used in the label "volume-name"
 	// of the kubernetes object and a label cannot have length greater than 63.
 	// https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
 	diskNameMaxLengthForLabel = 63
@@ -102,6 +103,7 @@ type ManagedDiskParameters struct {
 	MaxShares               int
 	NetworkAccessPolicy     string
 	PerfProfile             string
+	SubscriptionID          string
 	ResourceGroup           string
 	Tags                    map[string]string
 	UserAgent               string
@@ -200,6 +202,16 @@ func GetMaxShares(attributes map[string]string) (int, error) {
 	return 1, nil // disk is not shared
 }
 
+func GetSubscriptionIDFromURI(diskURI string) string {
+	parts := strings.Split(diskURI, "/")
+	for i, v := range parts {
+		if strings.EqualFold(v, "subscriptions") && (i+1) < len(parts) {
+			return parts[i+1]
+		}
+	}
+	return ""
+}
+
 func NormalizeStorageAccountType(storageAccountType, cloud string, disableAzureStackCloud bool) (compute.DiskStorageAccountTypes, error) {
 	if storageAccountType == "" {
 		if IsAzureStackCloud(cloud, disableAzureStackCloud) {
@@ -272,6 +284,8 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 			diskParams.AccountType = v
 		case consts.CachingModeField:
 			diskParams.CachingMode = v1.AzureDataDiskCachingMode(v)
+		case consts.SubscriptionIDField:
+			diskParams.SubscriptionID = v
 		case consts.ResourceGroupField:
 			diskParams.ResourceGroup = v
 		case consts.DiskIOPSReadWriteField:
@@ -420,7 +434,7 @@ func GetCloudProviderFromClient(kubeClient *clientset.Clientset, secretName stri
 		if err == nil {
 			fromSecret = true
 		} else {
-			if !errors.IsNotFound(err) {
+			if !k8serrors.IsNotFound(err) {
 				klog.Warningf("failed to create cloud config from secret %s/%s: %v", az.SecretNamespace, az.SecretName, err)
 			}
 		}
@@ -486,7 +500,7 @@ func GetCloudProvider(kubeConfig, secretName, secretNamespace, userAgent string)
 	kubeClient, err := GetKubeClient(kubeConfig)
 	if err != nil {
 		klog.Warningf("get kubeconfig(%s) failed with error: %v", kubeConfig, err)
-		if !os.IsNotExist(err) && err != rest.ErrNotInCluster {
+		if !os.IsNotExist(err) && !errors.Is(err, rest.ErrNotInCluster) {
 			return nil, fmt.Errorf("failed to get KubeClient: %v", err)
 		}
 	}
@@ -531,7 +545,7 @@ func GetDiskName(diskURI string) (string, error) {
 	return matches[1], nil
 }
 
-// GetResourceGroupFromURI returns resource groupd from URI
+// GetResourceGroupFromURI returns resource grouped from URI
 func GetResourceGroupFromURI(diskURI string) (string, error) {
 	fields := strings.Split(diskURI, "/")
 	if len(fields) != 9 || strings.ToLower(fields[3]) != "resourcegroups" {
@@ -610,7 +624,6 @@ func GetValidCreationData(subscriptionID, resourceGroup, sourceResourceID, sourc
 
 func IsCorruptedDir(dir string) bool {
 	_, pathErr := mount.PathExists(dir)
-	fmt.Printf("IsCorruptedDir(%s) returned with error: %v", dir, pathErr)
 	return pathErr != nil && mount.IsCorruptedMnt(pathErr)
 }
 
@@ -840,43 +853,49 @@ func GetAzVolumeAttachmentState(volumeAttachmentStatus storagev1.VolumeAttachmen
 }
 
 func UpdateCRIWithRetry(ctx context.Context, informerFactory azurediskInformers.SharedInformerFactory, cachedClient client.Client, azDiskClient azDiskClientSet.Interface, obj client.Object, updateFunc func(interface{}) error, maxNetRetry int) error {
-	klog.Infof("Initiating update with retry for %v (%s)", reflect.TypeOf(obj), obj.GetName())
+	objName := obj.GetName()
+	klog.Infof("Initiating update with retry for %v (%s)", reflect.TypeOf(obj), objName)
 
 	conditionFunc := func() error {
 		var err error
+		var copyForUpdate client.Object
 		switch target := obj.(type) {
 		case *diskv1alpha2.AzVolume:
 			if informerFactory != nil {
-				target, err = informerFactory.Disk().V1alpha2().AzVolumes().Lister().AzVolumes(target.Namespace).Get(target.Name)
+				target, err = informerFactory.Disk().V1alpha2().AzVolumes().Lister().AzVolumes(target.Namespace).Get(objName)
 			} else if cachedClient != nil {
-				err = cachedClient.Get(ctx, types.NamespacedName{Namespace: target.Namespace, Name: target.Name}, target)
+				err = cachedClient.Get(ctx, types.NamespacedName{Namespace: target.Namespace, Name: objName}, target)
 			} else {
-				target, err = azDiskClient.DiskV1alpha2().AzVolumes(target.Namespace).Get(ctx, target.Name, metav1.GetOptions{})
+				target, err = azDiskClient.DiskV1alpha2().AzVolumes(target.Namespace).Get(ctx, objName, metav1.GetOptions{})
 			}
-			obj = target.DeepCopy()
+			if err == nil {
+				copyForUpdate = target.DeepCopy()
+			}
 		case *diskv1alpha2.AzVolumeAttachment:
 			if informerFactory != nil {
-				target, err = informerFactory.Disk().V1alpha2().AzVolumeAttachments().Lister().AzVolumeAttachments(target.Namespace).Get(target.Name)
+				target, err = informerFactory.Disk().V1alpha2().AzVolumeAttachments().Lister().AzVolumeAttachments(target.Namespace).Get(objName)
 			} else if cachedClient != nil {
-				err = cachedClient.Get(ctx, types.NamespacedName{Namespace: target.Namespace, Name: target.Name}, target)
+				err = cachedClient.Get(ctx, types.NamespacedName{Namespace: target.Namespace, Name: objName}, target)
 			} else {
-				target, err = azDiskClient.DiskV1alpha2().AzVolumeAttachments(target.Namespace).Get(ctx, target.Name, metav1.GetOptions{})
+				target, err = azDiskClient.DiskV1alpha2().AzVolumeAttachments(target.Namespace).Get(ctx, objName, metav1.GetOptions{})
 			}
-			obj = target.DeepCopy()
+			if err == nil {
+				copyForUpdate = target.DeepCopy()
+			}
 		default:
 			return status.Errorf(codes.Internal, "object (%v) not supported.", reflect.TypeOf(target))
 		}
 
 		if err != nil {
-			klog.Errorf("failed to get %v (%s): %v", reflect.TypeOf(obj), obj.GetName(), err)
+			klog.Errorf("failed to get %v (%s): %v", reflect.TypeOf(obj), objName, err)
 			return err
 		}
 
-		if err = updateFunc(obj); err != nil {
+		if err = updateFunc(copyForUpdate); err != nil {
 			return err
 		}
 
-		switch target := obj.(type) {
+		switch target := copyForUpdate.(type) {
 		case *diskv1alpha2.AzVolume:
 			if cachedClient == nil {
 				_, err = azDiskClient.DiskV1alpha2().AzVolumes(target.Namespace).Update(ctx, target, metav1.UpdateOptions{})
@@ -897,7 +916,7 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azurediskInformers.
 	curRetry := 0
 	maxRetry := maxNetRetry
 	isRetriable := func(err error) bool {
-		if errors.IsConflict(err) {
+		if k8serrors.IsConflict(err) {
 			return true
 		}
 		if isNetError(err) {
@@ -917,7 +936,7 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azurediskInformers.
 		conditionFunc,
 	)
 	if err != nil {
-		klog.Errorf("failed to update %v (%s): %v", reflect.TypeOf(obj), obj.GetName(), err)
+		klog.Errorf("failed to update %v (%s): %v", reflect.TypeOf(obj), objName, err)
 	}
 
 	// if encountered net error from api server unavailability, exit process
@@ -925,12 +944,19 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azurediskInformers.
 	return err
 }
 
+func isFatalNetError(err error) bool {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	return isNetError(err)
+}
+
 func isNetError(err error) bool {
 	return net.IsConnectionRefused(err) || net.IsConnectionReset(err) || net.IsTimeout(err) || net.IsProbableEOF(err)
 }
 
 func ExitOnNetError(err error) {
-	if isNetError(err) {
+	if isFatalNetError(err) {
 		klog.Fatalf("encountered unrecoverable network error: %v \nexiting process...", err)
 		os.Exit(1)
 	}

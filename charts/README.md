@@ -71,7 +71,7 @@ helm repo update azuredisk-csi-driver
 ### install a specific version
 
 ```console
-helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v1.10.0
+helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v1.11.0
 ```
 
 ### install on Azure Stack
@@ -135,7 +135,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `image.csiAttacher.tag`                           | csi-attacher docker image tag                              | `v3.4.0`                                                       |
 | `image.csiAttacher.pullPolicy`                    | csi-attacher image pull policy                             | `IfNotPresent`                                                 |
 | `image.csiResizer.repository`                     | csi-resizer docker image                                   | `/oss/kubernetes-csi/csi-resizer`             |
-| `image.csiResizer.tag`                            | csi-resizer docker image tag                               | `v1.3.0`                                                       |
+| `image.csiResizer.tag`                            | csi-resizer docker image tag                               | `v1.4.0`                                                       |
 | `image.csiResizer.pullPolicy`                     | csi-resizer image pull policy                              | `IfNotPresent`                                                 |
 | `image.livenessProbe.repository`                  | liveness-probe docker image                                | `/oss/kubernetes-csi/livenessprobe`           |
 | `image.livenessProbe.tag`                         | liveness-probe docker image tag                            | `v2.5.0`                                                       |

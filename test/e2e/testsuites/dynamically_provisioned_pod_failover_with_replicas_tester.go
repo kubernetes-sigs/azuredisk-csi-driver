@@ -28,7 +28,7 @@ import (
 	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
-	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
+	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 	nodeutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/node"
 )
 
@@ -36,8 +36,8 @@ import (
 // Pod should successfully be re-scheduled on failover in a cluster with AzDriverNode and AzVolumeAttachment resources
 type PodFailoverWithReplicas struct {
 	CSIDriver              driver.DynamicPVTestDriver
-	Pod                    testtypes.PodDetails
-	Volume                 testtypes.VolumeDetails
+	Pod                    resources.PodDetails
+	Volume                 resources.VolumeDetails
 	PodCheck               *PodExecCheck
 	StorageClassParameters map[string]string
 	AzDiskClient           *azDiskClientSet.Clientset
@@ -84,7 +84,7 @@ func (t *PodFailoverWithReplicas) Run(client clientset.Interface, namespace *v1.
 		var attached bool
 		var podFailedReplicaAttachments *diskv1alpha2.AzVolumeAttachmentList
 		for _, pod := range tDeployment.Pods {
-			attached, podFailedReplicaAttachments, err = testtypes.VerifySuccessfulReplicaAzVolumeAttachments(pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
+			attached, podFailedReplicaAttachments, err = resources.VerifySuccessfulReplicaAzVolumeAttachments(pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
 			allReplicasAttached = allReplicasAttached && attached
 			if podFailedReplicaAttachments != nil {
 				failedReplicaAttachments.Items = append(failedReplicaAttachments.Items, podFailedReplicaAttachments.Items...)
@@ -110,7 +110,7 @@ func (t *PodFailoverWithReplicas) Run(client clientset.Interface, namespace *v1.
 
 	ginkgo.By("cordoning node 0")
 
-	testPod := testtypes.TestPod{
+	testPod := resources.TestPod{
 		Client: client,
 	}
 
@@ -119,6 +119,7 @@ func (t *PodFailoverWithReplicas) Run(client clientset.Interface, namespace *v1.
 	defer testPod.SetNodeUnschedulable(nodes[0], false) // defer kubeclt uncordon node
 
 	ginkgo.By("deleting the pod for deployment")
+	time.Sleep(10 * time.Second)
 	tDeployment.DeletePodAndWait()
 
 	ginkgo.By("checking again that the pod is running")

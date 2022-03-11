@@ -46,12 +46,9 @@ const (
 
 func NewTestReplicaController(controller *gomock.Controller, namespace string, objects ...runtime.Object) *ReconcileReplica {
 	azDiskObjs, kubeObjs := splitObjects(objects...)
-	controllerSharedState := initState(objects...)
+	controllerSharedState := initState(mockclient.NewMockClient(controller), diskfakes.NewSimpleClientset(azDiskObjs...), fakev1.NewSimpleClientset(kubeObjs...), objects...)
 
 	return &ReconcileReplica{
-		client:                     mockclient.NewMockClient(controller),
-		azVolumeClient:             diskfakes.NewSimpleClientset(azDiskObjs...),
-		kubeClient:                 fakev1.NewSimpleClientset(kubeObjs...),
 		controllerSharedState:      controllerSharedState,
 		timeUntilGarbageCollection: testTimeUntilGarbageCollection,
 	}
@@ -87,7 +84,7 @@ func TestReplicaReconcile(t *testing.T) {
 					&testPod0,
 					&replicaAttachment)
 
-				mockClients(controller.client.(*mockclient.MockClient), controller.azVolumeClient, controller.kubeClient)
+				mockClients(controller.controllerSharedState.cachedClient.(*mockclient.MockClient), controller.controllerSharedState.azClient, controller.controllerSharedState.kubeClient)
 				return controller
 			},
 			verifyFunc: func(t *testing.T, controller *ReconcileReplica, result reconcile.Result, err error) {
@@ -95,9 +92,9 @@ func TestReplicaReconcile(t *testing.T) {
 				require.False(t, result.Requeue)
 
 				// delete the original replica attachment so that manageReplica can kick in
-				err = controller.azVolumeClient.DiskV1alpha2().AzVolumeAttachments(testNamespace).Delete(context.TODO(), testReplicaAzVolumeAttachmentName, metav1.DeleteOptions{})
+				err = controller.controllerSharedState.azClient.DiskV1alpha2().AzVolumeAttachments(testNamespace).Delete(context.TODO(), testReplicaAzVolumeAttachmentName, metav1.DeleteOptions{})
 				require.NoError(t, err)
-				_, err = controller.azVolumeClient.DiskV1alpha2().AzVolumeAttachments(testNamespace).Get(context.TODO(), testReplicaAzVolumeAttachmentName, metav1.GetOptions{})
+				_, err = controller.controllerSharedState.azClient.DiskV1alpha2().AzVolumeAttachments(testNamespace).Get(context.TODO(), testReplicaAzVolumeAttachmentName, metav1.GetOptions{})
 				require.True(t, errors.IsNotFound(err))
 
 				result, err = controller.Reconcile(context.TODO(), testReplicaAzVolumeAttachmentRequest)
@@ -107,7 +104,7 @@ func TestReplicaReconcile(t *testing.T) {
 				conditionFunc := func() (bool, error) {
 					roleReq, _ := azureutils.CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(diskv1alpha2.ReplicaRole))
 					labelSelector := labels.NewSelector().Add(*roleReq)
-					replicas, localError := controller.azVolumeClient.DiskV1alpha2().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
+					replicas, localError := controller.controllerSharedState.azClient.DiskV1alpha2().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
 					require.NoError(t, localError)
 					require.NotNil(t, replicas)
 					return len(replicas.Items) == 1, nil
@@ -147,7 +144,7 @@ func TestReplicaReconcile(t *testing.T) {
 					&testPod0,
 					replicaAttachment)
 
-				mockClients(controller.client.(*mockclient.MockClient), controller.azVolumeClient, controller.kubeClient)
+				mockClients(controller.controllerSharedState.cachedClient.(*mockclient.MockClient), controller.controllerSharedState.azClient, controller.controllerSharedState.kubeClient)
 				return controller
 			},
 			verifyFunc: func(t *testing.T, controller *ReconcileReplica, result reconcile.Result, err error) {
@@ -156,7 +153,7 @@ func TestReplicaReconcile(t *testing.T) {
 				conditionFunc := func() (bool, error) {
 					roleReq, _ := azureutils.CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(diskv1alpha2.ReplicaRole))
 					labelSelector := labels.NewSelector().Add(*roleReq)
-					replicas, localError := controller.azVolumeClient.DiskV1alpha2().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
+					replicas, localError := controller.controllerSharedState.azClient.DiskV1alpha2().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
 					require.NoError(t, localError)
 					require.NotNil(t, replicas)
 					return len(replicas.Items) == 1, nil
@@ -189,7 +186,7 @@ func TestReplicaReconcile(t *testing.T) {
 					&testNode1,
 					&testReplicaAzVolumeAttachment)
 
-				mockClients(controller.client.(*mockclient.MockClient), controller.azVolumeClient, controller.kubeClient)
+				mockClients(controller.controllerSharedState.cachedClient.(*mockclient.MockClient), controller.controllerSharedState.azClient, controller.controllerSharedState.kubeClient)
 				return controller
 			},
 			verifyFunc: func(t *testing.T, controller *ReconcileReplica, result reconcile.Result, err error) {
@@ -200,7 +197,7 @@ func TestReplicaReconcile(t *testing.T) {
 				time.Sleep(controller.timeUntilGarbageCollection + time.Minute)
 				roleReq, _ := azureutils.CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(diskv1alpha2.ReplicaRole))
 				labelSelector := labels.NewSelector().Add(*roleReq)
-				replicas, localError := controller.azVolumeClient.DiskV1alpha2().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
+				replicas, localError := controller.controllerSharedState.azClient.DiskV1alpha2().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
 				require.NoError(t, localError)
 				require.NotNil(t, replicas)
 				require.Len(t, replicas.Items, 0)
@@ -238,7 +235,7 @@ func TestReplicaReconcile(t *testing.T) {
 					&testPod0,
 					replicaAttachment)
 
-				mockClients(controller.client.(*mockclient.MockClient), controller.azVolumeClient, controller.kubeClient)
+				mockClients(controller.controllerSharedState.cachedClient.(*mockclient.MockClient), controller.controllerSharedState.azClient, controller.controllerSharedState.kubeClient)
 
 				// start garbage collection
 				result, err := controller.Reconcile(context.TODO(), testPrimaryAzVolumeAttachment0Request)
@@ -246,14 +243,14 @@ func TestReplicaReconcile(t *testing.T) {
 				require.False(t, result.Requeue)
 
 				// fully delete primary
-				err = controller.azVolumeClient.DiskV1alpha2().AzVolumeAttachments(primaryAttachment.Namespace).Delete(context.TODO(), primaryAttachment.Name, metav1.DeleteOptions{})
+				err = controller.controllerSharedState.azClient.DiskV1alpha2().AzVolumeAttachments(primaryAttachment.Namespace).Delete(context.TODO(), primaryAttachment.Name, metav1.DeleteOptions{})
 				require.NoError(t, err)
 
 				// promote replica to primary
 				replicaAttachment.Spec.RequestedRole = diskv1alpha2.PrimaryRole
 				replicaAttachment = updateRole(replicaAttachment.DeepCopy(), diskv1alpha2.PrimaryRole)
 
-				err = controller.client.Update(context.TODO(), replicaAttachment)
+				err = controller.controllerSharedState.cachedClient.Update(context.TODO(), replicaAttachment)
 				require.NoError(t, err)
 
 				return controller
@@ -265,7 +262,7 @@ func TestReplicaReconcile(t *testing.T) {
 				time.Sleep(controller.timeUntilGarbageCollection + time.Minute)
 				roleReq, _ := azureutils.CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(diskv1alpha2.ReplicaRole))
 				labelSelector := labels.NewSelector().Add(*roleReq)
-				replicas, localError := controller.azVolumeClient.DiskV1alpha2().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
+				replicas, localError := controller.controllerSharedState.azClient.DiskV1alpha2().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
 				require.NoError(t, localError)
 				require.NotNil(t, replicas)
 				// clean up should not have happened
@@ -290,14 +287,14 @@ func TestGetNodesForReplica(t *testing.T) {
 	tests := []struct {
 		description string
 		volumes     []string
-		pods        []string
+		pods        []v1.Pod
 		setupFunc   func(*testing.T, *gomock.Controller) *ReconcileReplica
 		verifyFunc  func(*testing.T, []string, error)
 	}{
 		{
 			description: "[Success] Should not select nodes with no remaining capacity.",
 			volumes:     []string{testPersistentVolume0Name},
-			pods:        []string{getQualifiedName(testNamespace, testPod0Name)},
+			pods:        []v1.Pod{testPod0},
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileReplica {
 				replicaAttachment := testReplicaAzVolumeAttachment
 				now := metav1.Time{Time: metav1.Now().Add(-1000)}
@@ -321,7 +318,7 @@ func TestGetNodesForReplica(t *testing.T) {
 					&testPod0,
 				)
 
-				mockClients(controller.client.(*mockclient.MockClient), controller.azVolumeClient, controller.kubeClient)
+				mockClients(controller.controllerSharedState.cachedClient.(*mockclient.MockClient), controller.controllerSharedState.azClient, controller.controllerSharedState.kubeClient)
 				return controller
 			},
 			verifyFunc: func(t *testing.T, nodes []string, err error) {
@@ -333,7 +330,7 @@ func TestGetNodesForReplica(t *testing.T) {
 		{
 			description: "[Success] Should not create replica attachment on a node that does not match volume's node affinity rule",
 			volumes:     []string{testPersistentVolume0Name},
-			pods:        []string{getQualifiedName(testNamespace, testPod0Name)},
+			pods:        []v1.Pod{testPod0},
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileReplica {
 				replicaAttachment := testReplicaAzVolumeAttachment
 				now := metav1.Time{Time: metav1.Now().Add(-1000)}
@@ -370,7 +367,7 @@ func TestGetNodesForReplica(t *testing.T) {
 					&testPod0,
 				)
 
-				mockClients(controller.client.(*mockclient.MockClient), controller.azVolumeClient, controller.kubeClient)
+				mockClients(controller.controllerSharedState.cachedClient.(*mockclient.MockClient), controller.controllerSharedState.azClient, controller.controllerSharedState.kubeClient)
 				return controller
 			},
 			verifyFunc: func(t *testing.T, nodes []string, err error) {
@@ -386,7 +383,7 @@ func TestGetNodesForReplica(t *testing.T) {
 			mockCtl := gomock.NewController(t)
 			defer mockCtl.Finish()
 			controller := tt.setupFunc(t, mockCtl)
-			nodes, err := getRankedNodesForReplicaAttachments(context.TODO(), controller, tt.volumes, tt.pods)
+			nodes, err := controller.controllerSharedState.getRankedNodesForReplicaAttachments(context.TODO(), tt.volumes, tt.pods)
 			tt.verifyFunc(t, nodes, err)
 		})
 	}

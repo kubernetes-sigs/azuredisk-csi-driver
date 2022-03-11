@@ -20,13 +20,18 @@ IMAGE_NAME ?= azuredisk-csi
 SCHEDULER_EXTENDER_IMAGE_NAME ?= azdiskschedulerextender-csi
 ifneq ($(BUILD_V2), true)
 PLUGIN_NAME = azurediskplugin
-IMAGE_VERSION ?= v1.11.0
+IMAGE_VERSION ?= v1.12.0
 CHART_VERSION ?= latest
 else
 PLUGIN_NAME = azurediskpluginv2
 IMAGE_VERSION ?= latest-v2
 CHART_VERSION ?= latest-v2
 GOTAGS += -tags azurediskv2
+endif
+ifneq ($(USE_HELM_UPGRADE), true)
+HELM_COMMAND = install
+else
+HELM_COMMAND = upgrade
 endif
 CLOUD ?= AzurePublicCloud
 # Use a custom version for E2E tests if we are testing in CI
@@ -118,7 +123,7 @@ ifeq ($(BUILD_V2), true)
 	docker pull $(AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG) || make azdiskschedulerextender-all push-manifest-azdiskschedulerextender
 endif
 ifdef TEST_WINDOWS
-	helm install azuredisk-csi-driver charts/${CHART_VERSION}/azuredisk-csi-driver --namespace kube-system --wait --timeout=15m -v=5 --debug \
+	helm $(HELM_COMMAND) azuredisk-csi-driver charts/${CHART_VERSION}/azuredisk-csi-driver --namespace kube-system --wait --timeout=15m -v=5 --debug \
 		${E2E_HELM_OPTIONS} \
 		--set windows.enabled=true \
 		--set linux.enabled=false \
@@ -129,11 +134,15 @@ ifdef TEST_WINDOWS
 		--set node.logLevel=6 \
 		--set cloud=$(CLOUD)
 else
-	helm install azuredisk-csi-driver charts/${CHART_VERSION}/azuredisk-csi-driver --namespace kube-system --wait --timeout=15m -v=5 --debug \
+	helm $(HELM_COMMAND) azuredisk-csi-driver charts/${CHART_VERSION}/azuredisk-csi-driver --namespace kube-system --wait --timeout=15m -v=5 --debug \
 		${E2E_HELM_OPTIONS} \
 		--set snapshot.enabled=true \
 		--set cloud=$(CLOUD)
 endif
+
+.PHONY: e2e-upgrade-v2
+e2e-upgrade-v2: 
+	USE_HELM_UPGRADE=true BUILD_V2=true $(MAKE) e2e-bootstrap
 
 .PHONY: install-helm
 install-helm:
@@ -261,7 +270,7 @@ push-manifest:
 	docker manifest push --purge $(IMAGE_TAG)
 	docker manifest inspect $(IMAGE_TAG)
 ifdef PUBLISH
-	docker manifest create $(IMAGE_TAG_LATEST) $(foreach osarch, $(ALL_OS_ARCH), $(IMAGE_TAG)-${osarch})
+	docker manifest create --amend $(IMAGE_TAG_LATEST) $(foreach osarch, $(ALL_OS_ARCH), $(IMAGE_TAG)-${osarch})
 	set -x; \
 	for arch in $(ALL_ARCH.windows); do \
 		for osversion in $(ALL_OSVERSIONS.windows); do \
@@ -354,3 +363,7 @@ pod-failover-test-containers:
 	docker push $(REGISTRY)/workloadpod:$(POD_FAILOVER_IMAGE_VERSION)
 	docker push $(REGISTRY)/controllerpod:$(POD_FAILOVER_IMAGE_VERSION)
 	docker push $(REGISTRY)/metricspod:$(POD_FAILOVER_IMAGE_VERSION)
+
+.PHONY: upgrade-test
+upgrade-test:
+	go test -v -timeout=0 ${GOTAGS} ./test/upgrade

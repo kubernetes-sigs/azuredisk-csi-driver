@@ -98,7 +98,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 
 	source, err := d.getDevicePathWithLUN(lun)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Failed to find disk on lun %s. %v", lun, err)
+		return nil, status.Errorf(codes.Internal, "failed to find disk on lun %s. %v", lun, err)
 	}
 
 	// If perf optimizations are enabled
@@ -106,13 +106,13 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	if d.getPerfOptimizationEnabled() {
 		profile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr, deviceSettings, err := optimization.GetDiskPerfAttributes(req.GetVolumeContext())
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "Failed to get perf attributes for %s. Error: %v", source, err)
+			return nil, status.Errorf(codes.Internal, "failed to get perf attributes for %s. Error: %v", source, err)
 		}
 
 		if d.getDeviceHelper().DiskSupportsPerfOptimization(profile, accountType) {
 			if err := d.getDeviceHelper().OptimizeDiskPerformance(d.getNodeInfo(), source, profile, accountType,
 				diskSizeGibStr, diskIopsStr, diskBwMbpsStr, deviceSettings); err != nil {
-				return nil, status.Errorf(codes.Internal, "Failed to optimize device performance for target(%s) error(%s)", source, err)
+				return nil, status.Errorf(codes.Internal, "failed to optimize device performance for target(%s) error(%s)", source, err)
 			}
 		} else {
 			klog.V(2).Infof("NodeStageVolume: perf optimization is disabled for %s. perfProfile %s accountType %s", source, profile, accountType)
@@ -127,7 +127,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 
 	mnt, err := d.ensureMountPoint(target)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Could not mount target %q: %v", target, err)
+		return nil, status.Errorf(codes.Internal, "could not mount target %q: %v", target, err)
 	}
 	if mnt {
 		klog.V(2).Infof("NodeStageVolume: already mounted on target %s", target)
@@ -260,9 +260,9 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		var err error
 		source, err = d.getDevicePathWithLUN(lun)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "Failed to find device path with lun %s. %v", lun, err)
+			return nil, status.Errorf(codes.Internal, "failed to find device path with LUN %s. %v", lun, err)
 		}
-		klog.V(2).Infof("NodePublishVolume [block]: found device path %s with lun %s", source, lun)
+		klog.V(2).Infof("NodePublishVolume [block]: found device path %s with LUN %s", source, lun)
 		err = d.ensureBlockTargetFile(target)
 		if err != nil {
 			return nil, err
@@ -270,7 +270,7 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 	case *csi.VolumeCapability_Mount:
 		mnt, err := d.ensureMountPoint(target)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "Could not mount target %q: %v", target, err)
+			return nil, status.Errorf(codes.Internal, "could not mount target %q: %v", target, err)
 		}
 		if mnt {
 			klog.V(2).Infof("NodePublishVolume: already mounted on target %s", target)
@@ -280,7 +280,7 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 
 	klog.V(2).Infof("NodePublishVolume: mounting %s at %s", source, target)
 	if err := d.mounter.Mount(source, target, "", mountOptions); err != nil {
-		return nil, status.Errorf(codes.Internal, "Could not mount %q at %q: %v", source, target, err)
+		return nil, status.Errorf(codes.Internal, "could not mount %q at %q: %v", source, target, err)
 	}
 
 	klog.V(2).Infof("NodePublishVolume: mount %s at %s successfully", source, target)
@@ -320,30 +320,6 @@ func (d *Driver) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapabi
 
 // NodeGetInfo return info of the node on which this plugin is running
 func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
-	var instanceType string
-	topology := &csi.Topology{
-		Segments: map[string]string{topologyKey: ""},
-	}
-
-	if runtime.GOOS == "windows" && d.cloud.UseInstanceMetadata && d.cloud.Metadata != nil {
-		metadata, err := d.cloud.Metadata.GetMetadata(azcache.CacheReadTypeDefault)
-		if err == nil && metadata.Compute != nil {
-			instanceType = metadata.Compute.VMSize
-			klog.V(5).Infof("NodeGetInfo: nodeName(%s), VM Size(%s)", d.NodeID, instanceType)
-		} else {
-			klog.Warningf("get instance type(%s) failed with: %v", d.NodeID, err)
-		}
-	} else {
-		instances, ok := d.cloud.Instances()
-		if !ok {
-			return nil, status.Error(codes.Internal, "Failed to get instances from cloud provider")
-		}
-		var err error
-		if instanceType, err = instances.InstanceType(ctx, types.NodeName(d.NodeID)); err != nil {
-			klog.Warningf("get instance type(%s) failed with: %v", d.NodeID, err)
-		}
-	}
-
 	var (
 		zone      cloudprovider.Zone
 		zoneError error
@@ -354,18 +330,42 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 		zone, zoneError = d.cloud.GetZone(ctx)
 	}
 
+	topology := &csi.Topology{
+		Segments: map[string]string{},
+	}
 	if zoneError != nil {
 		klog.Warningf("get zone(%s) failed with: %v", d.NodeID, zoneError)
 	} else {
+		klog.V(2).Infof("NodeGetInfo, nodeName: %s, failureDomain: %s, region: %s", d.NodeID, zone.FailureDomain, zone.Region)
 		if azureutils.IsValidAvailabilityZone(zone.FailureDomain, d.cloud.Location) {
 			topology.Segments[topologyKey] = zone.FailureDomain
 			topology.Segments[consts.WellKnownTopologyKey] = zone.FailureDomain
-			klog.V(2).Infof("NodeGetInfo, nodeName: %v, zone: %v", d.NodeID, zone.FailureDomain)
+		} else {
+			topology.Segments[topologyKey] = ""
 		}
 	}
 
 	maxDataDiskCount := d.VolumeAttachLimit
 	if maxDataDiskCount < 0 {
+		var instanceType string
+		if runtime.GOOS == "windows" && d.cloud.UseInstanceMetadata && d.cloud.Metadata != nil {
+			metadata, err := d.cloud.Metadata.GetMetadata(azcache.CacheReadTypeDefault)
+			if err == nil && metadata.Compute != nil {
+				instanceType = metadata.Compute.VMSize
+				klog.V(5).Infof("NodeGetInfo: nodeName(%s), VM Size(%s)", d.NodeID, instanceType)
+			} else {
+				klog.Warningf("get instance type(%s) failed with: %v", d.NodeID, err)
+			}
+		} else {
+			instances, ok := d.cloud.Instances()
+			if !ok {
+				return nil, status.Error(codes.Internal, "Failed to get instances from cloud provider")
+			}
+			var err error
+			if instanceType, err = instances.InstanceType(ctx, types.NodeName(d.NodeID)); err != nil {
+				klog.Warningf("get instance type(%s) failed with: %v", d.NodeID, err)
+			}
+		}
 		maxDataDiskCount = getMaxDataDiskCount(instanceType)
 	}
 
@@ -507,18 +507,30 @@ func (d *Driver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolume
 		}
 	}
 
+	if acquired := d.volumeLocks.TryAcquire(volumeID); !acquired {
+		return nil, status.Errorf(codes.Aborted, volumeOperationAlreadyExistsFmt, volumeID)
+	}
+	defer d.volumeLocks.Release(volumeID)
+
 	devicePath, err := getDevicePathWithMountPath(volumePath, d.mounter)
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, err.Error())
 	}
 
+	if d.enableDiskOnlineResize {
+		klog.Errorf("NodeExpandVolume begin to rescan device %s on volume(%s)", devicePath, volumeID)
+		if err := rescanVolume(d.ioHandler, devicePath); err != nil {
+			klog.Errorf("NodeExpandVolume rescanVolume failed with error: %v", err)
+		}
+	}
+
 	if err := resizeVolume(devicePath, volumePath, d.mounter); err != nil {
-		return nil, status.Errorf(codes.Internal, "Could not resize volume %q (%q):  %v", volumeID, devicePath, err)
+		return nil, status.Errorf(codes.Internal, "could not resize volume %q (%q):  %v", volumeID, devicePath, err)
 	}
 
 	gotBlockSizeBytes, err := getBlockSizeBytes(devicePath, d.mounter)
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Could not get size of block volume at path %s: %v", devicePath, err))
+		return nil, status.Error(codes.Internal, fmt.Sprintf("could not get size of block volume at path %s: %v", devicePath, err))
 	}
 	gotBlockGiB := volumehelper.RoundUpGiB(gotBlockSizeBytes)
 	if gotBlockGiB < requestGiB {
@@ -609,16 +621,16 @@ func (d *Driver) ensureBlockTargetFile(target string) error {
 	// Since the block device target path is file, its parent directory should be ensured to be valid.
 	parentDir := filepath.Dir(target)
 	if _, err := d.ensureMountPoint(parentDir); err != nil {
-		return status.Errorf(codes.Internal, "Could not mount target %q: %v", parentDir, err)
+		return status.Errorf(codes.Internal, "could not mount target %q: %v", parentDir, err)
 	}
 	// Create the mount point as a file since bind mount device node requires it to be a file
 	klog.V(2).Infof("ensureBlockTargetFile [block]: making target file %s", target)
 	err := volumehelper.MakeFile(target)
 	if err != nil {
 		if removeErr := os.Remove(target); removeErr != nil {
-			return status.Errorf(codes.Internal, "Could not remove mount target %q: %v", target, removeErr)
+			return status.Errorf(codes.Internal, "could not remove mount target %q: %v", target, removeErr)
 		}
-		return status.Errorf(codes.Internal, "Could not create file %q: %v", target, err)
+		return status.Errorf(codes.Internal, "could not create file %q: %v", target, err)
 	}
 
 	return nil

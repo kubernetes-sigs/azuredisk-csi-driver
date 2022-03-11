@@ -29,21 +29,21 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e/framework"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
-	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
+	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 	podutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/pod"
 	volutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/volume"
 )
 
 type PodSchedulingWithPVScaleTest struct {
 	CSIDriver              driver.DynamicPVTestDriver
-	Pod                    testtypes.PodDetails
+	Pod                    resources.PodDetails
 	Replicas               int
 	StorageClassParameters map[string]string
 }
 
 type PodSchedulingOnFailoverScaleTest struct {
 	CSIDriver              driver.DynamicPVTestDriver
-	Pod                    testtypes.PodDetails
+	Pod                    resources.PodDetails
 	PodCount               int
 	Replicas               int
 	StorageClassParameters map[string]string
@@ -65,11 +65,9 @@ func (t *PodSchedulingWithPVScaleTest) Run(client clientset.Interface, namespace
 	startScaleOut := time.Now()
 	tStorageClass, storageCleanup := t.Pod.CreateStorageClass(client, namespace, t.CSIDriver, t.StorageClassParameters)
 	defer storageCleanup()
-	statefulSet, cleanupStatefulSet := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, schedulerName, t.Replicas, t.StorageClassParameters, &tStorageClass)
-	for i := range cleanupStatefulSet {
-		i := i
-		defer cleanupStatefulSet[i]()
-	}
+	statefulSet, cleanupStatefulSet := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, schedulerName, t.Replicas, &tStorageClass, map[string]string{"group": "azuredisk-scale-tester"})
+	defer cleanupStatefulSet(45 * time.Minute)
+
 	statefulSet.CreateWithoutWaiting()
 	numberOfRunningPods := 0
 	ticker := time.NewTicker(time.Minute)
@@ -83,7 +81,7 @@ scaleOutTest:
 			break scaleOutTest
 		case <-ticker.C:
 			tickerCount = tickerCount + 1
-			numberOfRunningPods = podutil.CountAllPodsWithMatchingLabel(client, namespace, map[string]string{"app": "azuredisk-volume-tester"}, string(v1.PodRunning))
+			numberOfRunningPods = podutil.CountAllPodsWithMatchingLabel(client, namespace, map[string]string{"group": "azuredisk-scale-tester"}, string(v1.PodRunning))
 			if numberOfRunningPods >= totalNumberOfPods {
 				break scaleOutTest
 			}
@@ -127,7 +125,7 @@ scaleInTest:
 			break scaleInTest
 		case <-ticker.C:
 			tickerCount = tickerCount + 1
-			numberOfRemainingPods = podutil.CountAllPodsWithMatchingLabel(client, namespace, map[string]string{"app": "azuredisk-volume-tester"}, string(v1.PodRunning))
+			numberOfRemainingPods = podutil.CountAllPodsWithMatchingLabel(client, namespace, map[string]string{"group": "azuredisk-scale-tester"}, string(v1.PodRunning))
 			if numberOfRemainingPods <= 0 {
 				break scaleInTest
 			}
@@ -179,7 +177,7 @@ scaleInTest:
 }
 
 func (t *PodSchedulingOnFailoverScaleTest) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
-	statefulSets := []*testtypes.TestStatefulset{}
+	statefulSets := []*resources.TestStatefulset{}
 
 	ginkgo.By("Initiating statefulset setup")
 
@@ -187,12 +185,9 @@ func (t *PodSchedulingOnFailoverScaleTest) Run(client clientset.Interface, names
 	defer storageCleanup()
 
 	for i := 0; i < t.PodCount; i++ {
-		ss, cleanup := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, schedulerName, t.Replicas, t.StorageClassParameters, &tStorageClass)
+		ss, cleanup := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, schedulerName, t.Replicas, &tStorageClass, nil)
 		statefulSets = append(statefulSets, ss)
-
-		for j := range cleanup {
-			defer cleanup[j]()
-		}
+		defer cleanup(45 * time.Minute)
 	}
 
 	ginkgo.By("Completed statefulset setup")
@@ -202,7 +197,7 @@ func (t *PodSchedulingOnFailoverScaleTest) Run(client clientset.Interface, names
 	start := time.Now()
 	for i := range statefulSets {
 		wg.Add(1)
-		go func(statefulset *testtypes.TestStatefulset) {
+		go func(statefulset *resources.TestStatefulset) {
 			defer wg.Done()
 			defer ginkgo.GinkgoRecover()
 
@@ -228,21 +223,22 @@ func (t *PodSchedulingOnFailoverScaleTest) Run(client clientset.Interface, names
 			},
 		}
 
-		go func(ss *testtypes.TestStatefulset) {
+		go func(ss *resources.TestStatefulset) {
 			defer wg.Done()
 			defer ginkgo.GinkgoRecover()
 
 			_, err := client.AppsV1().StatefulSets(ss.Namespace.Name).UpdateScale(context.TODO(), ss.Statefulset.Name, newScale, metav1.UpdateOptions{})
 			framework.ExpectNoError(err)
 			time.Sleep(30 * time.Second)
-			ss.WaitForPodReady()
+			err = ss.WaitForPodReadyOrFail()
+			framework.ExpectNoError(err)
 		}(statefulSets[i])
 	}
 
 	ginkgo.By("Sleep 30mins waiting for statefulset update to complete")
 	time.Sleep(30 * time.Minute)
 
-	ginkgo.By("Reseting the scale for the statefulsets to 1")
+	ginkgo.By("Resetting the scale for the statefulsets to 1")
 	start = time.Now()
 
 	for i := range statefulSets {
@@ -257,14 +253,15 @@ func (t *PodSchedulingOnFailoverScaleTest) Run(client clientset.Interface, names
 		}
 
 		wg.Add(1)
-		go func(ss *testtypes.TestStatefulset) {
+		go func(ss *resources.TestStatefulset) {
 			defer wg.Done()
 			defer ginkgo.GinkgoRecover()
 
 			_, err := client.AppsV1().StatefulSets(ss.Namespace.Name).UpdateScale(context.TODO(), ss.Statefulset.Name, newScale, metav1.UpdateOptions{})
 			framework.ExpectNoError(err)
 			time.Sleep(30 * time.Second)
-			ss.WaitForPodReady()
+			err = ss.WaitForPodReadyOrFail()
+			framework.ExpectNoError(err)
 		}(statefulSets[i])
 	}
 

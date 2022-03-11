@@ -78,6 +78,8 @@ type FakeDriver interface {
 	setVersion(version string)
 	getCloud() *provider.Cloud
 	setCloud(*provider.Cloud)
+	getCrdProvisioner() CrdProvisioner
+	setCrdProvisioner(crdProvisioner CrdProvisioner)
 
 	getDeviceHelper() optimization.Interface
 	getHostUtil() hostUtil
@@ -86,11 +88,12 @@ type FakeDriver interface {
 	setMounter(*mount.SafeFormatAndMount)
 	setPathIsDeviceResult(path string, isDevice bool, err error)
 
-	getSnapshotInfo(string) (string, string, error)
+	checkDiskCapacity(context.Context, string, string, string, int) (bool, error)
+	checkDiskExists(ctx context.Context, diskURI string) (*compute.Disk, error)
+	getSnapshotInfo(string) (string, string, string, error)
+
 	ensureMountPoint(string) (bool, error)
 
-	checkDiskCapacity(context.Context, string, string, int) (bool, error)
-	checkDiskExists(ctx context.Context, diskURI string) (*compute.Disk, error)
 	setDiskThrottlingCache(key string, value string)
 }
 
@@ -185,6 +188,10 @@ func (d *Driver) setPathIsDeviceResult(path string, isDevice bool, err error) {
 func (d *fakeDriverV1) setDiskThrottlingCache(key string, value string) {
 	d.getDiskThrottlingCache.Set(key, value)
 }
+
+func (d *fakeDriverV1) getCrdProvisioner() CrdProvisioner { return nil }
+
+func (d *fakeDriverV1) setCrdProvisioner(crdProvisioner CrdProvisioner) {}
 
 func createVolumeCapabilities(accessMode csi.VolumeCapability_AccessMode_Mode) []*csi.VolumeCapability {
 	return []*csi.VolumeCapability{

@@ -18,7 +18,7 @@ package testsuites
 
 import (
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
-	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
+	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 
 	"github.com/onsi/ginkgo"
 	v1 "k8s.io/api/core/v1"
@@ -30,7 +30,7 @@ import (
 // Testing if the Pod(s) Cmd is run with a 0 exit code
 type PreProvisionedInlineVolumeTest struct {
 	CSIDriver driver.PreProvisionedVolumeTestDriver
-	Pods      []testtypes.PodDetails
+	Pods      []resources.PodDetails
 	DiskURI   string
 	ReadOnly  bool
 }

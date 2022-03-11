@@ -14,41 +14,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package testtypes
+package resources
 
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/onsi/ginkgo"
 
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/fields"
-	"k8s.io/apimachinery/pkg/labels"
 	clientset "k8s.io/client-go/kubernetes"
-	restclientset "k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e/framework"
 
-	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
-
-	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
-	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
-	nodeutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/node"
 )
-
-type TestCmd struct {
-	Command  string
-	Args     []string
-	StartLog string
-	EndLog   string
-}
 
 type PodDetails struct {
 	Name            string
@@ -58,52 +42,6 @@ type PodDetails struct {
 	UseCMD          bool
 	UseAntiAffinity bool
 	ReplicaCount    int32
-}
-
-type VolumeDetails struct {
-	VolumeType            string
-	FSType                string
-	Encrypted             bool
-	MountOptions          []string
-	ClaimSize             string
-	ReclaimPolicy         *v1.PersistentVolumeReclaimPolicy
-	VolumeBindingMode     *storagev1.VolumeBindingMode
-	AllowedTopologyValues []string
-	VolumeMode            VolumeMode
-	VolumeMount           VolumeMountDetails
-	VolumeDevice          VolumeDeviceDetails
-	VolumeAccessMode      v1.PersistentVolumeAccessMode
-	// Optional, used to get AzVolumeAttachments
-	PersistentVolume *v1.PersistentVolume
-	// Optional, used with pre-provisioned volumes
-	VolumeID string
-	// Optional, used with PVCs created from snapshots or pvc
-	DataSource *DataSource
-	// Optional, used with specified StorageClass
-	StorageClass *storagev1.StorageClass
-}
-
-type VolumeMode int
-
-const (
-	FileSystem VolumeMode = iota
-	Block
-)
-
-type VolumeMountDetails struct {
-	NameGenerate      string
-	MountPathGenerate string
-	ReadOnly          bool
-}
-
-type VolumeDeviceDetails struct {
-	NameGenerate string
-	DevicePath   string
-}
-
-type DataSource struct {
-	Kind string
-	Name string
 }
 
 func (pod *PodDetails) SetupWithDynamicVolumes(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.DynamicPVTestDriver, storageClassParameters map[string]string, schedulerName string) (*TestPod, []func()) {
@@ -328,8 +266,7 @@ func (pod *PodDetails) CreateStorageClass(client clientset.Interface, namespace 
 	return createdStorageClass, tsc.Cleanup
 }
 
-func (pod *PodDetails) SetupStatefulset(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.DynamicPVTestDriver, schedulerName string, replicaCount int, storageClassParameters map[string]string, storageClass *storagev1.StorageClass) (*TestStatefulset, []func()) {
-	cleanupFuncs := make([]func(), 0)
+func (pod *PodDetails) SetupStatefulset(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.DynamicPVTestDriver, schedulerName string, replicaCount int, storageClass *storagev1.StorageClass, labels map[string]string) (*TestStatefulset, func(time.Duration)) {
 	var pvcs []v1.PersistentVolumeClaim
 	var volumeMounts []v1.VolumeMount
 	for n, volume := range pod.Volumes {
@@ -350,182 +287,7 @@ func (pod *PodDetails) SetupStatefulset(client clientset.Interface, namespace *v
 		pvcs = append(pvcs, *tpvc.RequestedPersistentVolumeClaim)
 	}
 	ginkgo.By("setting up the statefulset")
-	tStatefulset := NewTestStatefulset(client, namespace, pod.Cmd, pvcs, volumeMounts, pod.IsWindows, pod.UseCMD, schedulerName, replicaCount)
+	tStatefulset := NewTestStatefulset(client, namespace, pod.Cmd, pvcs, volumeMounts, pod.IsWindows, pod.UseCMD, schedulerName, replicaCount, labels)
 
-	cleanupFuncs = append(cleanupFuncs, tStatefulset.Cleanup)
-	return tStatefulset, cleanupFuncs
-}
-
-func (volume *VolumeDetails) SetupDynamicPersistentVolumeClaim(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.DynamicPVTestDriver, storageClassParameters map[string]string) (*TestPersistentVolumeClaim, []func()) {
-	cleanupFuncs := make([]func(), 0)
-	storageClass := volume.StorageClass
-	if storageClass == nil {
-		tsc, tscCleanup := volume.CreateStorageClass(client, namespace, csiDriver, storageClassParameters)
-		cleanupFuncs = append(cleanupFuncs, tscCleanup)
-		storageClass = tsc.StorageClass
-	}
-	ginkgo.By("setting up the PVC and PV")
-	var tpvc *TestPersistentVolumeClaim
-	if volume.DataSource != nil {
-		dataSource := &v1.TypedLocalObjectReference{
-			Name: volume.DataSource.Name,
-			Kind: volume.DataSource.Kind,
-		}
-		if volume.DataSource.Kind == testconsts.VolumeSnapshotKind {
-			apiGroup := testconsts.SnapshotAPIGroup
-			dataSource.APIGroup = &apiGroup
-		}
-		tpvc = NewTestPersistentVolumeClaimWithDataSource(client, namespace, volume.ClaimSize, volume.VolumeMode, volume.VolumeAccessMode, storageClass, dataSource)
-	} else {
-		tpvc = NewTestPersistentVolumeClaim(client, namespace, volume.ClaimSize, volume.VolumeMode, volume.VolumeAccessMode, storageClass)
-	}
-	tpvc.Create()
-	cleanupFuncs = append(cleanupFuncs, tpvc.Cleanup)
-	// PV will not be ready until PVC is used in a pod when volumeBindingMode: WaitForFirstConsumer
-	if volume.VolumeBindingMode == nil || *volume.VolumeBindingMode == storagev1.VolumeBindingImmediate {
-		tpvc.WaitForBound()
-		tpvc.ValidateProvisionedPersistentVolume()
-	}
-
-	return tpvc, cleanupFuncs
-}
-
-func (volume *VolumeDetails) SetupPreProvisionedPersistentVolumeClaim(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.PreProvisionedVolumeTestDriver, volumeContext map[string]string) (*TestPersistentVolumeClaim, []func()) {
-	cleanupFuncs := make([]func(), 0)
-	ginkgo.By("setting up the PV")
-	volumeMode := v1.PersistentVolumeFilesystem
-	if volume.VolumeMode == Block {
-		volumeMode = v1.PersistentVolumeBlock
-	}
-	pv := csiDriver.GetPersistentVolume(volume.VolumeID, volume.FSType, volume.ClaimSize, volumeMode, volume.VolumeAccessMode, volume.ReclaimPolicy, namespace.Name, volumeContext)
-	tpv := NewTestPreProvisionedPersistentVolume(client, pv)
-	tpv.Create()
-	ginkgo.By("setting up the PVC")
-	tpvc := NewTestPersistentVolumeClaim(client, namespace, volume.ClaimSize, volume.VolumeMode, volume.VolumeAccessMode, nil)
-	tpvc.Create()
-	cleanupFuncs = append(cleanupFuncs, tpvc.DeleteBoundPersistentVolume)
-	cleanupFuncs = append(cleanupFuncs, tpvc.Cleanup)
-	tpvc.WaitForBound()
-	tpvc.ValidateProvisionedPersistentVolume()
-
-	return tpvc, cleanupFuncs
-}
-
-func (volume *VolumeDetails) CreateStorageClass(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.DynamicPVTestDriver, storageClassParameters map[string]string) (*TestStorageClass, func()) {
-	ginkgo.By("setting up the StorageClass")
-	storageClass := csiDriver.GetDynamicProvisionStorageClass(storageClassParameters, volume.MountOptions, volume.ReclaimPolicy, volume.VolumeBindingMode, volume.AllowedTopologyValues, namespace.Name)
-	tsc := NewTestStorageClass(client, namespace, storageClass)
-	tsc.Create()
-	return tsc, tsc.Cleanup
-}
-
-func CreateVolumeSnapshotClass(client restclientset.Interface, namespace *v1.Namespace, csiDriver driver.VolumeSnapshotTestDriver) (*TestVolumeSnapshotClass, func()) {
-	ginkgo.By("setting up the VolumeSnapshotClass")
-	volumeSnapshotClass := csiDriver.GetVolumeSnapshotClass(namespace.Name)
-	tvsc := NewTestVolumeSnapshotClass(client, namespace, volumeSnapshotClass)
-
-	return tvsc, tvsc.Cleanup
-}
-
-func VerifySuccessfulReplicaAzVolumeAttachments(pod PodDetails, azDiskClient *azDiskClientSet.Clientset, storageClassParameters map[string]string, client clientset.Interface, namespace *v1.Namespace) (bool, *diskv1alpha2.AzVolumeAttachmentList, error) {
-	if storageClassParameters["maxShares"] == "" {
-		return true, nil, nil
-	}
-
-	var expectedNumberOfReplicas int
-	nodes := GetSchedulableNodes(azDiskClient, client, pod, namespace)
-	nodesAvailableForReplicas := len(nodes) - 1
-
-	for _, volume := range pod.Volumes {
-		if volume.PersistentVolume != nil {
-			_, maxMountReplicas := azureutils.GetMaxSharesAndMaxMountReplicaCount(storageClassParameters, volume.VolumeMode == Block)
-			if nodesAvailableForReplicas >= maxMountReplicas {
-				expectedNumberOfReplicas = maxMountReplicas
-			} else {
-				expectedNumberOfReplicas = nodesAvailableForReplicas
-			}
-
-			replicaAttachments, err := GetReplicaAttachments(volume.PersistentVolume, client, namespace, azDiskClient)
-			framework.ExpectNoError(err)
-			numReplicaAttachments := len(replicaAttachments.Items)
-
-			if numReplicaAttachments != expectedNumberOfReplicas {
-				e2elog.Logf("expected %d replica attachments, found %d", expectedNumberOfReplicas, numReplicaAttachments)
-				return false, nil, nil
-			}
-
-			failedReplicaAttachments := diskv1alpha2.AzVolumeAttachmentList{}
-
-			for _, replica := range replicaAttachments.Items {
-				if replica.Status.State != "Attached" {
-					e2elog.Logf("found replica attachment %s, currently not attached", replica.Name)
-					failedReplicaAttachments.Items = append(failedReplicaAttachments.Items, replica)
-				} else {
-					e2elog.Logf("found replica attachment %s in attached state", replica.Name)
-				}
-			}
-			if len(failedReplicaAttachments.Items) > 0 {
-				return false, &failedReplicaAttachments, nil
-			}
-		}
-	}
-	return true, nil, nil
-}
-
-func GetReplicaAttachments(persistentVolume *v1.PersistentVolume, client clientset.Interface, namespace *v1.Namespace, azDiskClient *azDiskClientSet.Clientset) (*diskv1alpha2.AzVolumeAttachmentList, error) {
-	pv, err := client.CoreV1().PersistentVolumes().Get(context.TODO(), persistentVolume.Name, metav1.GetOptions{})
-	if err != nil {
-		ginkgo.Fail("failed to get persistent volume")
-	}
-	diskname, err := azureutils.GetDiskName(pv.Spec.CSI.VolumeHandle)
-	if err != nil {
-		ginkgo.Fail("failed to get persistent volume diskname")
-	}
-	azVolumeAttachmentsReplica, err := azDiskClient.DiskV1alpha2().AzVolumeAttachments(azureconstants.DefaultAzureDiskCrdNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: labels.Set(map[string]string{azureconstants.RoleLabel: "Replica", azureconstants.VolumeNameLabel: diskname}).String()})
-	if err != nil {
-		ginkgo.Fail("failed while getting replica attachments")
-	}
-	return azVolumeAttachmentsReplica, nil
-}
-
-func GetSchedulableNodes(azDiskClient *azDiskClientSet.Clientset, client clientset.Interface, pod PodDetails, namespace *v1.Namespace) []*v1.Node {
-	nodes := nodeutil.ListAzDriverNodeNames(azDiskClient)
-	var availableNodes []*v1.Node
-	schedulableNodes, err := client.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{FieldSelector: fields.Set{
-		"spec.unschedulable": "false",
-	}.AsSelector().String()})
-
-	if err != nil {
-		ginkgo.Fail("failed while getting schedulable nodes list")
-	}
-
-	podObj, err := client.CoreV1().Pods(namespace.Name).Get(context.TODO(), pod.Name, metav1.GetOptions{})
-	if err != nil {
-		ginkgo.Fail("failed while getting pod")
-	}
-
-	for _, nodeName := range nodes {
-		for i, schedulableNode := range schedulableNodes.Items {
-			if nodeName == schedulableNode.Name {
-				//Check if node has any taints making it unschedulable
-
-				nodeDetails, err := client.CoreV1().Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
-				framework.ExpectNoError(err)
-
-				tolerable := true
-				for _, taint := range nodeDetails.Spec.Taints {
-					for _, podToleration := range podObj.Spec.Tolerations {
-						if !podToleration.ToleratesTaint(&taint) {
-							tolerable = false
-						}
-					}
-				}
-				if tolerable {
-					availableNodes = append(availableNodes, &schedulableNodes.Items[i])
-				}
-			}
-		}
-	}
-
-	return availableNodes
+	return tStatefulset, tStatefulset.Cleanup
 }

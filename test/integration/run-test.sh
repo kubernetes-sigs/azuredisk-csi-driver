@@ -16,8 +16,14 @@
 
 set -euo pipefail
 
+function cleanup {
+  echo 'pkill -f azurediskplugin'
+  pkill -f azurediskplugin
+}
+
+t="$(date +%s)"
 readonly CSC_BIN="$GOBIN/csc"
-readonly volname="citest-$(date +%s)"
+readonly volname="citest-$t"
 
 endpoint='tcp://127.0.0.1:10000'
 if [[ "$#" -gt 0 ]]; then
@@ -34,7 +40,12 @@ if [[ "$#" -gt 2 ]]; then
   cloud="$3"
 fi
 
-echo "Begin to run integration test on $cloud..."
+version='v2'
+if [[ "$#" -gt 3 ]]; then
+  version="$4"
+fi
+
+echo "Begin to run $version integration test on $cloud..."
 
 if [[ "$cloud" == 'AzureChinaCloud' ]]; then
   sleep 25
@@ -46,11 +57,12 @@ fi
 "$CSC_BIN" node get-info --endpoint "$endpoint"
 
 echo 'Create volume test:'
-readonly value=$("$CSC_BIN" controller new --endpoint "$endpoint" --cap 1,block "$volname" --req-bytes 2147483648 --params skuname=Standard_LRS,kind=managed)
+value=$("$CSC_BIN" controller new --endpoint "$endpoint" --cap 1,block "$volname" --req-bytes 2147483648 --params skuname=Standard_LRS,kind=managed)
 sleep 15
 
-readonly volumeid=$(echo "$value" | awk '{print $1}' | sed 's/"//g')
+volumeid=$(echo "$value" | awk '{print $1}' | sed 's/"//g')
 echo "Got volume id: $volumeid"
+volumename=$(echo "$volumeid" | awk -F / '{print $9}')
 
 "$CSC_BIN" controller validate-volume-capabilities --endpoint "$endpoint" --cap 1,block "$volumeid"
 
@@ -59,6 +71,9 @@ echo 'Expand volume test'
 
 echo 'Attach volume test:'
 "$CSC_BIN" controller publish --endpoint "$endpoint" --node-id "$node" --cap 1,block "$volumeid"
+if [[ "$version" == 'v2' ]]; then
+  test/integration/wait-for-attach.sh "$volumename" "$node"
+fi
 sleep 20
 
 echo 'ListVolumes test:'
@@ -66,6 +81,9 @@ echo 'ListVolumes test:'
 
 echo 'Detach volume test:'
 "$CSC_BIN" controller unpublish --endpoint "$endpoint" --node-id "$node" "$volumeid"
+if [[ "$version" == 'v2' ]]; then
+  test/integration/wait-for-detach.sh "$volumename" "$node"
+fi
 sleep 30
 
 echo 'Create snapshot test:'

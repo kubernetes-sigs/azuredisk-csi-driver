@@ -19,44 +19,7 @@ limitations under the License.
 
 package main
 
-import (
-	"reflect"
-	"sync"
-)
-
-type cacheEntry struct {
+type pvcToPVEntry struct {
 	VolumeName string
 	AccessMode string
-}
-
-type cachedMapping struct {
-	mu   sync.RWMutex
-	memo map[string]*cacheEntry
-}
-
-func (mapping *cachedMapping) Get(key string) (*cacheEntry, bool) {
-	mapping.mu.RLock()
-	defer mapping.mu.RUnlock()
-
-	cacheEntry, ok := mapping.memo[key]
-	if !ok {
-		return nil, false
-	}
-	return cacheEntry, true
-
-}
-
-func (mapping *cachedMapping) AddOrUpdate(key string, value *cacheEntry) {
-	mapping.mu.Lock()
-	defer mapping.mu.Unlock()
-	// Updated value in the cluster is the source of truth
-	if cachedValue, exist := mapping.memo[key]; !exist || !reflect.DeepEqual(cachedValue, value) {
-		mapping.memo[key] = value
-	}
-}
-
-func (mapping *cachedMapping) Delete(key string) {
-	mapping.mu.Lock()
-	defer mapping.mu.Unlock()
-	delete(mapping.memo, key)
 }

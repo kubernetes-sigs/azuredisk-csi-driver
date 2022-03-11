@@ -32,12 +32,13 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e/framework"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
-	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
+	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 	nodeutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/node"
 )
 
@@ -45,11 +46,12 @@ import (
 // Primary AzVolumeAttachment and Replica AzVolumeAttachments should be created on set of nodes with matching label
 type PodAffinity struct {
 	CSIDriver              driver.DynamicPVTestDriver
-	Pods                   []testtypes.PodDetails
+	Pods                   []resources.PodDetails
 	IsMultiZone            bool
-	Volume                 testtypes.VolumeDetails
+	Volume                 resources.VolumeDetails
 	AzDiskClient           *azDiskClientSet.Clientset
 	StorageClassParameters map[string]string
+	IsAntiAffinityTest     bool
 }
 
 func (t *PodAffinity) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
@@ -71,15 +73,23 @@ func (t *PodAffinity) Run(client clientset.Interface, namespace *v1.Namespace, s
 	for i := range t.Pods {
 		tpod, cleanup := t.Pods[i].SetupWithDynamicVolumes(client, namespace, t.CSIDriver, t.StorageClassParameters, schedulerName)
 		// defer must be called here for resources not get removed before using them
-		for i := range cleanup {
-			defer cleanup[i]()
+		for j := range cleanup {
+			defer cleanup[j]()
 		}
 
 		pod := tpod.Pod.DeepCopy()
 
-		// add master node toleration to pod so that the test can utilize all available nodes
-		tpod.SetAffinity(&testconsts.TestAffinity)
-		tpod.SetLabel(testconsts.TestLabel)
+		// set inter-pod affinity with topologyKey == "kubernetes.io/hostname" so that second pod can be placed on the same node as first pod
+		// or anti-affinity so that second pod and its replicaMounts can be placed on different node as the first pod
+		if i == 0 {
+			tpod.SetLabel(testconsts.TestLabel)
+		} else {
+			if t.IsAntiAffinityTest {
+				tpod.SetAffinity(&testconsts.TestPodAntiAffinity)
+			} else {
+				tpod.SetAffinity(&testconsts.TestPodAffinity)
+			}
+		}
 		ginkgo.By(fmt.Sprintf("deploying pod %d", i))
 		tpod.Create()
 		defer tpod.Cleanup()
@@ -131,9 +141,13 @@ func (t *PodAffinity) Run(client clientset.Interface, namespace *v1.Namespace, s
 					// if first pod, check which nodes pod's volumes were attached to
 					for _, azVolumeAttachment := range azVolumeAttachments.Items {
 						if i == 0 {
+							// for anti-affinity, we don't expect the node filter to exclude replica nodes
+							if t.IsAntiAffinityTest && azVolumeAttachment.Spec.RequestedRole == v1alpha2.ReplicaRole {
+								continue
+							}
 							scheduledNodes[azVolumeAttachment.Spec.NodeName] = struct{}{}
 						} else {
-							if _, ok := scheduledNodes[azVolumeAttachment.Spec.NodeName]; !ok {
+							if _, ok := scheduledNodes[azVolumeAttachment.Spec.NodeName]; t.IsAntiAffinityTest == ok {
 								return false, status.Errorf(codes.Internal, "AzVolumeAttachment (%s) for volume (%s) created on a wrong node (%s)", azVolumeAttachment.Name, diskName, azVolumeAttachment.Spec.NodeName)
 							}
 						}

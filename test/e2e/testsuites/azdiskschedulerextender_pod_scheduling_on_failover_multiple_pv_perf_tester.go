@@ -25,11 +25,12 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/kubernetes/test/e2e/framework"
 	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
 	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
-	testtypes "sigs.k8s.io/azuredisk-csi-driver/test/types"
+	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 	nodeutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/node"
 	podutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/pod"
 )
@@ -38,27 +39,28 @@ import (
 // Pod should successfully be re-scheduled on failover/scaling in a cluster with AzDriverNode and AzVolumeAttachment resources
 type AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV struct {
 	CSIDriver              driver.DynamicPVTestDriver
-	Pod                    testtypes.PodDetails
+	Pod                    resources.PodDetails
 	Replicas               int
 	StorageClassParameters map[string]string
 	AzDiskClient           *azDiskClientSet.Clientset
 }
 
 func (t *AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
-	var tStatefulSets []*testtypes.TestStatefulset
+	var tStatefulSets []*resources.TestStatefulset
 	var wg sync.WaitGroup
+	var statefulSetCount = 2
 	var tokens = make(chan struct{}, 20) // avoid too many concurrent requests
+	var errorsChan = make(chan error, statefulSetCount)
+
 	tStorageClass, storageCleanup := t.Pod.CreateStorageClass(client, namespace, t.CSIDriver, t.StorageClassParameters)
 	defer storageCleanup()
-	for i := 0; i < 2; i++ {
-		tStatefulSet, cleanupStatefulSet := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, schedulerName, t.Replicas, t.StorageClassParameters, &tStorageClass)
+	for i := 0; i < statefulSetCount; i++ {
+		tStatefulSet, cleanupStatefulSet := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, schedulerName, t.Replicas, &tStorageClass, map[string]string{"group": "delete-for-failover"})
 		tStatefulSets = append(tStatefulSets, tStatefulSet)
-		for i := range cleanupStatefulSet {
-			i := i
-			defer cleanupStatefulSet[i]()
-		}
+		defer cleanupStatefulSet(15 * time.Minute)
+
 		wg.Add(1)
-		go func(ss *testtypes.TestStatefulset) {
+		go func(ss *resources.TestStatefulset) {
 			defer wg.Done()
 			defer ginkgo.GinkgoRecover()
 			tokens <- struct{}{} // acquire a token
@@ -75,17 +77,23 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV) Run(client cl
 		ginkgo.Skip("need at least 2 nodes to verify the test case. Current node count is %d", len(nodes))
 	}
 
+	time.Sleep(10 * time.Second)
 	for i := 0; i < 3; i++ {
-		podutil.DeleteAllPodsWithMatchingLabel(client, namespace, map[string]string{"app": "azuredisk-volume-tester"})
+		podutil.DeleteAllPodsWithMatchingLabel(client, namespace, map[string]string{"group": "delete-for-failover"})
 		for _, tStatefulSet := range tStatefulSets {
-			wg.Add(1)
-			go func(ss *testtypes.TestStatefulset) {
-				defer wg.Done()
+			go func(ss *resources.TestStatefulset) {
 				defer ginkgo.GinkgoRecover()
-				ss.WaitForPodReady()
+				err := ss.WaitForPodReadyOrFail()
+				errorsChan <- err
 			}(tStatefulSet)
 		}
-		wg.Wait()
+
+		for range tStatefulSets {
+			err := <-errorsChan
+			if err != nil {
+				framework.ExpectNoError(err, "Failed waiting for StatefulSet pod failover.")
+			}
+		}
 	}
 
 	//Check that AzVolumeAttachment resources were created correctly
@@ -98,7 +106,7 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV) Run(client cl
 		var podFailedReplicaAttachments *diskv1alpha2.AzVolumeAttachmentList
 		for _, ss := range tStatefulSets {
 			for _, pod := range ss.AllPods {
-				attached, podFailedReplicaAttachments, err = testtypes.VerifySuccessfulReplicaAzVolumeAttachments(pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
+				attached, podFailedReplicaAttachments, err = resources.VerifySuccessfulReplicaAzVolumeAttachments(pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
 				allReplicasAttached = allReplicasAttached && attached
 				if podFailedReplicaAttachments != nil {
 					failedReplicaAttachments.Items = append(failedReplicaAttachments.Items, podFailedReplicaAttachments.Items...)
@@ -117,8 +125,6 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV) Run(client cl
 		ginkgo.Fail("could not find correct number of replicas")
 	} else if err != nil {
 		ginkgo.Fail(fmt.Sprintf("failed to verify replica attachments, err: %s", err))
-
 	}
 	ginkgo.By("replica attachments verified successfully")
-
 }

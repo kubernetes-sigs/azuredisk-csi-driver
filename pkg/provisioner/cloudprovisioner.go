@@ -256,7 +256,7 @@ func (c *CloudProvisioner) CreateVolume(
 		}
 	}
 
-	diskURI, err := localCloud.CreateManagedDisk(volumeOptions)
+	diskURI, err := localCloud.CreateManagedDisk(ctx, volumeOptions)
 	if err != nil {
 		if strings.Contains(err.Error(), "NotFound") {
 			return nil, status.Error(codes.NotFound, err.Error())
@@ -327,7 +327,7 @@ func (c *CloudProvisioner) PublishVolume(
 	if err == nil {
 		if vmState != nil && strings.ToLower(*vmState) == "failed" {
 			klog.Warningf("VM(%q) is in failed state, update VM first", nodeName)
-			if err := c.cloud.UpdateVM(nodeName); err != nil {
+			if err := c.cloud.UpdateVM(ctx, nodeName); err != nil {
 				return nil, fmt.Errorf("update instance %q failed with %v", nodeName, err)
 			}
 		}
@@ -397,7 +397,7 @@ func (c *CloudProvisioner) ExpandVolume(
 		return nil, status.Errorf(codes.Internal, "could not get resource group from diskURI(%s) with error(%v)", volumeID, err)
 	}
 
-	result, rerr := c.cloud.DisksClient.Get(ctx, resourceGroup, diskName)
+	result, rerr := c.cloud.DisksClient.Get(ctx, c.cloud.SubscriptionID, resourceGroup, diskName)
 	if rerr != nil {
 		return nil, status.Errorf(codes.Internal, "could not get the disk(%s) under rg(%s) with error(%v)", diskName, resourceGroup, rerr.Error())
 	}
@@ -407,7 +407,7 @@ func (c *CloudProvisioner) ExpandVolume(
 	oldSize := *resource.NewQuantity(int64(*result.DiskProperties.DiskSizeGB), resource.BinarySI)
 
 	klog.V(2).Infof("begin to expand azure disk(%s) with new size(%d)", volumeID, requestSize.Value())
-	newSize, err := c.cloud.ResizeDisk(volumeID, oldSize, requestSize, c.enableOnlineDiskResize)
+	newSize, err := c.cloud.ResizeDisk(ctx, volumeID, oldSize, requestSize, c.enableOnlineDiskResize)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to resize disk(%s) with error(%v)", volumeID, err)
 	}
@@ -500,7 +500,7 @@ func (c *CloudProvisioner) CreateSnapshot(
 
 	klog.V(2).Infof("begin to create snapshot(%s, incremental: %v) under rg(%s)", snapshotName, incremental, resourceGroup)
 
-	rerr := localCloud.SnapshotsClient.CreateOrUpdate(ctx, resourceGroup, snapshotName, snapshot)
+	rerr := localCloud.SnapshotsClient.CreateOrUpdate(ctx, localCloud.SubscriptionID, resourceGroup, snapshotName, snapshot)
 	if rerr != nil {
 		if strings.Contains(rerr.Error().Error(), "existing disk") {
 			return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("request snapshot(%s) under rg(%s) already exists, but the SourceVolumeId is different, error details: %v", snapshotName, resourceGroup, rerr.Error()))
@@ -543,7 +543,7 @@ func (c *CloudProvisioner) ListSnapshots(
 	}
 
 	// no SnapshotID is set, return all snapshots that satisfy the request.
-	snapshots, rerr := c.cloud.SnapshotsClient.ListByResourceGroup(ctx, c.cloud.ResourceGroup)
+	snapshots, rerr := c.cloud.SnapshotsClient.ListByResourceGroup(ctx, c.cloud.SubscriptionID, c.cloud.ResourceGroup)
 	if rerr != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown list snapshot error: %v", rerr.Error()))
 	}
@@ -614,7 +614,7 @@ func (c *CloudProvisioner) DeleteSnapshot(
 	}
 
 	klog.V(2).Infof("begin to delete snapshot(%s) under rg(%s)", snapshotName, resourceGroup)
-	rerr := c.cloud.SnapshotsClient.Delete(ctx, resourceGroup, snapshotName)
+	rerr := c.cloud.SnapshotsClient.Delete(ctx, c.cloud.SubscriptionID, resourceGroup, snapshotName)
 	if rerr != nil {
 		return status.Error(codes.Internal, fmt.Sprintf("delete snapshot error: %v", rerr.Error()))
 	}
@@ -639,7 +639,7 @@ func (c *CloudProvisioner) CheckDiskExists(ctx context.Context, diskURI string) 
 		return nil, nil
 	}
 
-	disk, rerr := c.cloud.DisksClient.Get(ctx, resourceGroup, diskName)
+	disk, rerr := c.cloud.DisksClient.Get(ctx, c.cloud.SubscriptionID, resourceGroup, diskName)
 	if rerr != nil {
 		if strings.Contains(rerr.RawError.Error(), azureconstants.RateLimited) {
 			klog.Warningf("checkDiskExists(%s) is throttled with error: %v", diskURI, rerr.Error())
@@ -665,7 +665,7 @@ func (c *CloudProvisioner) GetSourceDiskSize(ctx context.Context, resourceGroup,
 	if curDepth > maxDepth {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("current depth (%d) surpassed the max depth (%d) while searching for the source disk size", curDepth, maxDepth))
 	}
-	result, rerr := c.cloud.DisksClient.Get(ctx, resourceGroup, diskName)
+	result, rerr := c.cloud.DisksClient.Get(ctx, c.cloud.SubscriptionID, resourceGroup, diskName)
 	if rerr != nil {
 		return nil, rerr.Error()
 	}
@@ -693,7 +693,7 @@ func (c *CloudProvisioner) CheckDiskCapacity(ctx context.Context, resourceGroup,
 		return true, nil
 	}
 
-	disk, rerr := c.cloud.DisksClient.Get(ctx, resourceGroup, diskName)
+	disk, rerr := c.cloud.DisksClient.Get(ctx, c.cloud.SubscriptionID, resourceGroup, diskName)
 	// Because we can not judge the reason of the error. Maybe the disk does not exist.
 	// So here we do not handle the error.
 	if rerr == nil {
@@ -734,7 +734,7 @@ func (c *CloudProvisioner) getSnapshotByID(ctx context.Context, resourceGroup st
 		resourceGroupName = resourceGroup
 	}
 
-	snapshot, rerr := c.cloud.SnapshotsClient.Get(ctx, resourceGroupName, snapshotNameVal)
+	snapshot, rerr := c.cloud.SnapshotsClient.Get(ctx, c.cloud.SubscriptionID, resourceGroupName, snapshotNameVal)
 	if rerr != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("get snapshot %s from rg(%s) error: %v", snapshotNameVal, resourceGroupName, rerr.Error()))
 	}
@@ -884,7 +884,7 @@ func (c *CloudProvisioner) listVolumesInNodeResourceGroup(ctx context.Context, s
 
 // listVolumesByResourceGroup is a helper function that updates the ListVolumeResponse_Entry slice and returns number of total visited volumes, number of volumes that needs to be visited and an error if found
 func (c *CloudProvisioner) listVolumesByResourceGroup(ctx context.Context, resourceGroup string, entries []diskv1alpha2.VolumeEntry, start, maxEntries int, volSet map[string]bool) listVolumeStatus {
-	disks, derr := c.cloud.DisksClient.ListByResourceGroup(ctx, resourceGroup)
+	disks, derr := c.cloud.DisksClient.ListByResourceGroup(ctx, c.cloud.SubscriptionID, resourceGroup)
 	if derr != nil {
 		return listVolumeStatus{err: status.Errorf(codes.Internal, "ListVolumes on rg(%s) failed with error: %v", resourceGroup, derr.Error())}
 	}

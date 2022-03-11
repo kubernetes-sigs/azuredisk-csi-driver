@@ -98,7 +98,7 @@ func newFakeDriverV2(t *testing.T) (*fakeDriverV2, error) {
 
 	driver.deviceHelper = mockoptimization.NewMockInterface(ctrl)
 
-	driver.deviceChecker = deviceChecker{lock: sync.RWMutex{}, entry: nil}
+	driver.deviceChecker = &deviceChecker{lock: sync.RWMutex{}, entry: nil}
 
 	driver.AddControllerServiceCapabilities(
 		[]csi.ControllerServiceCapability_RPC_Type{
@@ -141,11 +141,18 @@ func (d *fakeDriverV2) setCloud(cloud *provider.Cloud) {
 	d.cloudProvisioner.(*provisioner.FakeCloudProvisioner).SetCloud(cloud)
 }
 
-func (d *fakeDriverV2) getSnapshotInfo(snapshotID string) (string, string, error) {
-	return d.cloudProvisioner.(*provisioner.FakeCloudProvisioner).GetSnapshotAndResourceNameFromSnapshotID(snapshotID)
+func (d *fakeDriverV2) getSnapshotInfo(snapshotID string) (string, string, string, error) {
+	snapshotName, resourceGroup, err := d.cloudProvisioner.(*provisioner.FakeCloudProvisioner).GetSnapshotAndResourceNameFromSnapshotID(snapshotID)
+	subID := azureutils.GetSubscriptionIDFromURI(snapshotID)
+
+	if err != nil {
+		return "", "", "", err
+	}
+
+	return snapshotName, resourceGroup, subID, err
 }
 
-func (d *fakeDriverV2) checkDiskCapacity(ctx context.Context, resourceGroup, diskName string, requestGiB int) (bool, error) {
+func (d *fakeDriverV2) checkDiskCapacity(ctx context.Context, subscriptionID, resourceGroup, diskName string, requestGiB int) (bool, error) {
 	return false, nil
 }
 
@@ -158,6 +165,14 @@ func (d *fakeDriverV2) setMounter(mounter *mount.SafeFormatAndMount) {
 
 func (d *fakeDriverV2) setPathIsDeviceResult(path string, isDevice bool, err error) {
 	d.nodeProvisioner.(*provisioner.FakeNodeProvisioner).SetIsBlockDevicePathResult(path, isDevice, err)
+}
+
+func (d *fakeDriverV2) getCrdProvisioner() CrdProvisioner {
+	return d.crdProvisioner
+}
+
+func (d *fakeDriverV2) setCrdProvisioner(crdProvisioner CrdProvisioner) {
+	d.crdProvisioner = crdProvisioner
 }
 
 func (d *DriverV2) setDiskThrottlingCache(key string, value string) {

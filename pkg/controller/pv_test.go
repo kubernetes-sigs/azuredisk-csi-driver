@@ -25,31 +25,19 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/kubernetes"
 	fakev1 "k8s.io/client-go/kubernetes/fake"
-	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
 	diskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller/mockclient"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
-type testReconcilePV struct {
-	ReconcilePV
-	kubeClient kubernetes.Interface
-}
-
-func newTestPVController(controller *gomock.Controller, namespace string, objects ...runtime.Object) *testReconcilePV {
+func newTestPVController(controller *gomock.Controller, namespace string, objects ...runtime.Object) *ReconcilePV {
 	azDiskObjs, kubeObjs := splitObjects(objects...)
-	controllerSharedState := initState(objects...)
+	controllerSharedState := initState(mockclient.NewMockClient(controller), diskfakes.NewSimpleClientset(azDiskObjs...), fakev1.NewSimpleClientset(kubeObjs...), objects...)
 
-	return &testReconcilePV{
-		ReconcilePV: ReconcilePV{
-			client:                mockclient.NewMockClient(controller),
-			azVolumeClient:        diskfakes.NewSimpleClientset(azDiskObjs...),
-			controllerRetryInfo:   newRetryInfo(),
-			controllerSharedState: controllerSharedState,
-		},
-		kubeClient: fakev1.NewSimpleClientset(kubeObjs...),
+	return &ReconcilePV{
+		controllerRetryInfo:   newRetryInfo(),
+		controllerSharedState: controllerSharedState,
 	}
 }
 
@@ -65,7 +53,6 @@ func TestPVControllerReconcile(t *testing.T) {
 			request:     testPersistentVolume0Request,
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcilePV {
 				azVolume := testAzVolume0.DeepCopy()
-				azVolume.Status.Phase = diskv1alpha2.VolumeBound
 
 				pv := testPersistentVolume0.DeepCopy()
 				pv.Status.Phase = corev1.VolumeReleased
@@ -74,44 +61,19 @@ func TestPVControllerReconcile(t *testing.T) {
 					mockCtl,
 					testNamespace,
 					azVolume,
+					&testReplicaAzVolumeAttachment,
 					pv)
 
-				mockClients(controller.client.(*mockclient.MockClient), controller.azVolumeClient, controller.kubeClient)
+				mockClients(controller.controllerSharedState.cachedClient.(*mockclient.MockClient), controller.controllerSharedState.azClient, controller.controllerSharedState.kubeClient)
 
-				return &controller.ReconcilePV
+				return controller
 			},
 			verifyFunc: func(t *testing.T, controller *ReconcilePV, result reconcile.Result, err error) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
 
-				azVolume, localError := controller.azVolumeClient.DiskV1alpha2().AzVolumes(testNamespace).Get(context.TODO(), testPersistentVolume0Name, metav1.GetOptions{})
-				require.NoError(t, localError)
-				require.Equal(t, diskv1alpha2.VolumeReleased, azVolume.Status.Phase)
-			},
-		},
-		{
-			description: "[Success] Should requeue when PV is released but AzVolume does not exist.",
-			request:     testPersistentVolume0Request,
-			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcilePV {
-				pv := testPersistentVolume0.DeepCopy()
-				pv.Status.Phase = corev1.VolumeReleased
-
-				controller := newTestPVController(
-					mockCtl,
-					testNamespace,
-					pv)
-
-				mockClients(controller.client.(*mockclient.MockClient), controller.azVolumeClient, controller.kubeClient)
-
-				return &controller.ReconcilePV
-			},
-			verifyFunc: func(t *testing.T, controller *ReconcilePV, result reconcile.Result, err error) {
-				require.NoError(t, err)
-				require.False(t, result.Requeue)
-
-				azVolume, localError := controller.azVolumeClient.DiskV1alpha2().AzVolumes(testNamespace).Get(context.TODO(), testPersistentVolume0Name, metav1.GetOptions{})
-				require.NoError(t, localError)
-				require.Equal(t, diskv1alpha2.VolumeReleased, azVolume.Status.Phase)
+				azVolumeAttachments, _ := controller.controllerSharedState.azClient.DiskV1alpha2().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{})
+				require.Len(t, azVolumeAttachments.Items, 0)
 			},
 		},
 	}

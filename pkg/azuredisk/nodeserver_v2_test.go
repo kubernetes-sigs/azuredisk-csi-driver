@@ -34,6 +34,7 @@ import (
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockprovisioner"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
 )
 
@@ -47,6 +48,22 @@ func TestNodeStageVolumeMountRecovery(t *testing.T) {
 	defer ctrl.Finish()
 	d.crdProvisioner = mockprovisioner.NewMockCrdProvisioner(ctrl)
 
+	publishContext := testAzVolumeAttachment.DeepCopy()
+	publishContext.Status = diskv1alpha2.AzVolumeAttachmentStatus{
+		Detail: &diskv1alpha2.AzVolumeAttachmentStatusDetail{
+			PublishContext: map[string]string{
+				consts.LUN: "/dev/disk/azure/scsi1/lun1",
+			},
+			Role: diskv1alpha2.PrimaryRole,
+		},
+		State: diskv1alpha2.Attached,
+	}
+
+	attachError := &diskv1alpha2.AzError{
+		Code:    diskv1alpha2.AzErrorCodeInternal,
+		Message: "test error it is",
+	}
+
 	stdVolCap := &csi.VolumeCapability_Mount{
 		Mount: &csi.VolumeCapability_MountVolume{
 			FsType: defaultLinuxFsType,
@@ -57,10 +74,6 @@ func TestNodeStageVolumeMountRecovery(t *testing.T) {
 	}
 
 	volumeCap := csi.VolumeCapability_AccessMode{Mode: 2}
-
-	publishContext := map[string]string{
-		consts.LUN: "/dev/disk/azure/scsi1/lun1",
-	}
 
 	blkidAction := func() ([]byte, []byte, error) {
 		return []byte("DEVICE=/dev/sdd\nTYPE=ext4"), []byte{}, nil
@@ -84,31 +97,49 @@ func TestNodeStageVolumeMountRecovery(t *testing.T) {
 					diskURI:     "vol_1",
 					detachState: detachInProcess,
 				}
+				d.crdProvisioner.(*mockprovisioner.MockCrdProvisioner).EXPECT().GetAzVolumeAttachment(gomock.Any(), gomock.Any(), gomock.Any()).Return(publishContext, err)
 			},
 			req: csi.NodeStageVolumeRequest{VolumeId: "vol_1", StagingTargetPath: sourceTest,
 				VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap,
 					AccessType: stdVolCap},
-				PublishContext: publishContext,
-				VolumeContext:  volumeContext,
+				VolumeContext: volumeContext,
 			},
 			expectedErr: status.Errorf(codes.Internal, "recovery for volume (%s) is still in process", "vol_1"),
 		},
 		{
-			desc: "Should return error if recovery detachment is complete but AzVolumeAttachment CRI is not in Attached state yet",
+			desc: "Should return error if recovery detachment is complete but the new AzVolumeAttachment attachment failed",
 			setupFunc: func(t *testing.T, d *fakeDriverV2) {
 				d.deviceChecker.entry = &deviceCheckerEntry{
 					diskURI:     "vol_1",
 					detachState: detachCompleted,
 				}
-				d.crdProvisioner.(*mockprovisioner.MockCrdProvisioner).EXPECT().GetAzVolumeAttachmentState(gomock.Any(), gomock.Any(), gomock.Any()).Return(diskv1alpha2.AttachmentStateUnknown, nil)
+				d.crdProvisioner.(*mockprovisioner.MockCrdProvisioner).EXPECT().GetAzVolumeAttachment(gomock.Any(), gomock.Any(), gomock.Any()).Return(&testAzVolumeAttachment, nil)
+				d.crdProvisioner.(*mockprovisioner.MockCrdProvisioner).EXPECT().WaitForAttach(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, util.ErrorFromAzError(attachError))
 			},
 			req: csi.NodeStageVolumeRequest{VolumeId: "vol_1", StagingTargetPath: sourceTest,
 				VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap,
 					AccessType: stdVolCap},
-				PublishContext: publishContext,
-				VolumeContext:  volumeContext,
+				VolumeContext: volumeContext,
 			},
-			expectedErr: status.Errorf(codes.Internal, "volume (%s) is not yet attached to node (%s)", "vol_1", fakeNodeID),
+			expectedErr: status.Errorf(codes.Internal, "failed to wait for volume (%s) to be attached to node (%s): %v", "vol_1", d.NodeID, util.ErrorFromAzError(attachError)),
+		},
+		{
+			desc: "Should return success if recovery detachment is complete and the new AzVolumeAttachment attachment succeeded",
+			setupFunc: func(t *testing.T, d *fakeDriverV2) {
+				d.deviceChecker.entry = &deviceCheckerEntry{
+					diskURI:     "vol_1",
+					detachState: detachCompleted,
+				}
+				d.crdProvisioner.(*mockprovisioner.MockCrdProvisioner).EXPECT().GetAzVolumeAttachment(gomock.Any(), gomock.Any(), gomock.Any()).Return(&testAzVolumeAttachment, nil)
+				d.setNextCommandOutputScripts(blkidAction, fsckAction)
+				d.crdProvisioner.(*mockprovisioner.MockCrdProvisioner).EXPECT().WaitForAttach(gomock.Any(), gomock.Any(), gomock.Any()).Return(publishContext, nil)
+			},
+			req: csi.NodeStageVolumeRequest{VolumeId: "vol_1", StagingTargetPath: sourceTest,
+				VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap,
+					AccessType: stdVolCap},
+				VolumeContext: volumeContext,
+			},
+			expectedErr: nil,
 		},
 		{
 			desc:         "Should succeed if recovery detachment is complete and AzVolumeAttachment CRI is in attached state",
@@ -118,14 +149,13 @@ func TestNodeStageVolumeMountRecovery(t *testing.T) {
 					diskURI:     "vol_1",
 					detachState: detachCompleted,
 				}
-				d.crdProvisioner.(*mockprovisioner.MockCrdProvisioner).EXPECT().GetAzVolumeAttachmentState(gomock.Any(), gomock.Any(), gomock.Any()).Return(diskv1alpha2.Attached, nil)
+				d.crdProvisioner.(*mockprovisioner.MockCrdProvisioner).EXPECT().GetAzVolumeAttachment(gomock.Any(), gomock.Any(), gomock.Any()).Return(publishContext, nil)
 				d.setNextCommandOutputScripts(blkidAction, fsckAction)
 			},
 			req: csi.NodeStageVolumeRequest{VolumeId: "vol_1", StagingTargetPath: sourceTest,
 				VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap,
 					AccessType: stdVolCap},
-				PublishContext: publishContext,
-				VolumeContext:  volumeContext,
+				VolumeContext: volumeContext,
 			},
 			expectedErr: nil,
 		},
@@ -177,6 +207,7 @@ func TestRecoverMount(t *testing.T) {
 			diskURI: "vol-1",
 			setupFunc: func() {
 				d.crdProvisioner.(*mockprovisioner.MockCrdProvisioner).EXPECT().UnpublishVolume(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+				d.crdProvisioner.(*mockprovisioner.MockCrdProvisioner).EXPECT().WaitForDetach(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			},
 			verifyFunc: func(diskURI string) {
 				assert.NotNil(t, d.deviceChecker.entry)
