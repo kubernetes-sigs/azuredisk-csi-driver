@@ -22,5 +22,5 @@ CODEGEN_PKG=${CODEGEN_PKG:-$(cd "${SCRIPT_ROOT}"; ls -d -1 ./vendor/k8s.io/code-
 bash "${CODEGEN_PKG}"/generate-groups.sh "deepcopy,client,informer,lister" \
   sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client \
   sigs.k8s.io/azuredisk-csi-driver/pkg/apis \
-  azuredisk:v1alpha2 \
+  azuredisk:v1alpha2,v1beta1 \
   --go-header-file "${SCRIPT_ROOT}"/hack/boilerplate/boilerplate.generatego.txt
