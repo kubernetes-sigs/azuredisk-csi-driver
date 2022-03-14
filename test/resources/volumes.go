@@ -40,7 +40,8 @@ type VolumeDetails struct {
 	VolumeDevice          VolumeDeviceDetails
 	VolumeAccessMode      v1.PersistentVolumeAccessMode
 	// Optional, used to get AzVolumeAttachments
-	PersistentVolume *v1.PersistentVolume
+	PersistentVolume      *v1.PersistentVolume
+	PersistentVolumeClaim *v1.PersistentVolumeClaim
 	// Optional, used with pre-provisioned volumes
 	VolumeID string
 	// Optional, used with PVCs created from snapshots or pvc

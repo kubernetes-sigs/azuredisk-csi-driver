@@ -49,6 +49,7 @@ func (pod *PodDetails) SetupWithDynamicVolumes(client clientset.Interface, names
 	cleanupFuncs := make([]func(), 0)
 	for n, v := range pod.Volumes {
 		tpvc, funcs := v.SetupDynamicPersistentVolumeClaim(client, namespace, csiDriver, storageClassParameters)
+		pod.Volumes[n].PersistentVolumeClaim = tpvc.PersistentVolumeClaim.DeepCopy()
 		cleanupFuncs = append(cleanupFuncs, funcs...)
 		ginkgo.By("setting up the pod")
 		if v.VolumeMode == Block {
@@ -76,11 +77,16 @@ func (pod *PodDetails) SetupWithDynamicMultipleVolumes(client clientset.Interfac
 	for n, v := range pod.Volumes {
 		storageClassParameters := map[string]string{"skuName": supportedStorageAccountTypes[n%accountTypeCount]}
 		tpvc, funcs := v.SetupDynamicPersistentVolumeClaim(client, namespace, csiDriver, storageClassParameters)
+		pod.Volumes[n].PersistentVolumeClaim = tpvc.PersistentVolumeClaim.DeepCopy()
 		cleanupFuncs = append(cleanupFuncs, funcs...)
 		if v.VolumeMode == Block {
 			tpod.SetupRawBlockVolume(tpvc.PersistentVolumeClaim, fmt.Sprintf("%s%d", v.VolumeDevice.NameGenerate, n+1), v.VolumeDevice.DevicePath)
 		} else {
 			tpod.SetupVolume(tpvc.PersistentVolumeClaim, fmt.Sprintf("%s%d", v.VolumeMount.NameGenerate, n+1), fmt.Sprintf("%s%d", v.VolumeMount.MountPathGenerate, n+1), v.VolumeMount.ReadOnly)
+		}
+		if tpvc.PersistentVolume != nil {
+			klog.Infof("adding PV (%s) to pod (%s)", tpvc.PersistentVolume.Name, tpod.Pod.Name)
+			pod.Volumes[n].PersistentVolume = tpvc.PersistentVolume.DeepCopy()
 		}
 	}
 	return tpod, cleanupFuncs

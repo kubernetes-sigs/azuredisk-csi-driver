@@ -55,10 +55,14 @@ ifdef DISABLE_ZONE
 E2E_HELM_OPTIONS += --set node.supportZone=false
 endif
 GINKGO_FLAGS = -ginkgo.v
+ifeq ($(IS_UNPLANNED), true)
+GINKGO_FLAGS += -ginkgo.focus="\[unplanned\]"
+else
 ifeq ($(ENABLE_TOPOLOGY), true)
 GINKGO_FLAGS += -ginkgo.focus="\[multi-az\]"
 else
 GINKGO_FLAGS += -ginkgo.focus="\[single-az\]"
+endif
 endif
 GOPATH ?= $(shell go env GOPATH)
 GOBIN ?= $(GOPATH)/bin
@@ -372,4 +376,8 @@ pod-failover-test-containers:
 
 .PHONY: upgrade-test
 upgrade-test:
-	go test -v -timeout=0 ${GOTAGS} ./test/upgrade
+	go test -v -timeout=0 ${GOTAGS} ./test/upgrade $(GINKGO_FLAGS)
+
+.PHONY: unplanned-failover-test
+unplanned-failover-test:
+	IS_UNPLANNED=true BUILD_V2=true make e2e-test

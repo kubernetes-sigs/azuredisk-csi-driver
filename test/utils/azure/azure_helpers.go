@@ -198,6 +198,45 @@ func (az *Client) EnsureVirtualMachine(ctx context.Context, groupName, location,
 	return future.Result(az.vmClient)
 }
 
+func (az *Client) PowerOffVM(ctx context.Context, groupName, vmName string, skipShutdown bool) error {
+	future, err := az.vmClient.PowerOff(
+		ctx,
+		groupName,
+		vmName,
+		&skipShutdown,
+	)
+	if err != nil {
+		return fmt.Errorf("cannot power off vm: %v", err)
+	}
+
+	err = future.WaitForCompletionRef(ctx, az.vmClient.Client)
+	if err != nil {
+		return fmt.Errorf("cannot get the vm power off future response: %v", err)
+	}
+
+	_, err = future.Result(az.vmClient)
+	return err
+}
+
+func (az *Client) StartVM(ctx context.Context, groupName, vmName string) error {
+	future, err := az.vmClient.Start(
+		ctx,
+		groupName,
+		vmName,
+	)
+	if err != nil {
+		return fmt.Errorf("cannot power off vm: %v", err)
+	}
+
+	err = future.WaitForCompletionRef(ctx, az.vmClient.Client)
+	if err != nil {
+		return fmt.Errorf("cannot get the vm power off future response: %v", err)
+	}
+
+	_, err = future.Result(az.vmClient)
+	return err
+}
+
 func (az *Client) EnsureNIC(ctx context.Context, groupName, location, nicName, vnetName, subnetName string) (nic network.Interface, err error) {
 	_, err = az.EnsureVirtualNetworkAndSubnet(ctx, groupName, location, vnetName, subnetName)
 	if err != nil {

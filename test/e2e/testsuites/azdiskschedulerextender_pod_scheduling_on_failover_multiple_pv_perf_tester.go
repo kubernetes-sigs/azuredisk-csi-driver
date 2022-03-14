@@ -97,31 +97,33 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV) Run(client cl
 	}
 
 	//Check that AzVolumeAttachment resources were created correctly
-	allReplicasAttached := true
-	failedReplicaAttachments := &diskv1beta1.AzVolumeAttachmentList{}
+	allAttached := true
+	failedAttachments := []diskv1beta1.AzVolumeAttachment{}
 	err := wait.Poll(15*time.Second, 10*time.Minute, func() (bool, error) {
-		allReplicasAttached = true
-		var err error
-		var attached bool
-		var podFailedReplicaAttachments *diskv1beta1.AzVolumeAttachmentList
+		allAttached = true
+
+		var failedAttachments []diskv1beta1.AzVolumeAttachment
 		for _, ss := range tStatefulSets {
 			for _, pod := range ss.AllPods {
-				attached, podFailedReplicaAttachments, err = resources.VerifySuccessfulReplicaAzVolumeAttachments(pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
-				allReplicasAttached = allReplicasAttached && attached
-				if podFailedReplicaAttachments != nil {
-					failedReplicaAttachments.Items = append(failedReplicaAttachments.Items, podFailedReplicaAttachments.Items...)
+				attached, _, podFailedAttachments, err := resources.VerifySuccessfulAzVolumeAttachments(pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
+				allAttached = allAttached && attached
+				if podFailedAttachments != nil {
+					failedAttachments = append(failedAttachments, podFailedAttachments...)
+				}
+				if err != nil {
+					return allAttached, err
 				}
 			}
 		}
-		return allReplicasAttached, err
+		return allAttached, nil
 	})
-	if len(failedReplicaAttachments.Items) > 0 {
-		e2elog.Logf("found %d azvolumeattachments failed:", len(failedReplicaAttachments.Items))
-		for _, podAttachments := range failedReplicaAttachments.Items {
+	if len(failedAttachments) > 0 {
+		e2elog.Logf("found %d azvolumeattachments failed:", len(failedAttachments))
+		for _, podAttachments := range failedAttachments {
 			e2elog.Logf("azvolumeattachment: %s, err: %s", podAttachments.Name, podAttachments.Status.Error.Message)
 		}
 		ginkgo.Fail("failed due to replicas failing to attach")
-	} else if !allReplicasAttached {
+	} else if !allAttached {
 		ginkgo.Fail("could not find correct number of replicas")
 	} else if err != nil {
 		ginkgo.Fail(fmt.Sprintf("failed to verify replica attachments, err: %s", err))

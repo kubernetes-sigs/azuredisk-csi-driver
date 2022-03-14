@@ -49,6 +49,8 @@ const (
 var (
 	skipClusterBootstrap = flag.Bool("skip-cluster-bootstrap", false, "flag to indicate that we can skip cluster bootstrap.")
 	azureCloud           *provider.Cloud
+	azureClient          *azure.Client
+	resourceGroup        string
 	location             string
 )
 
@@ -67,9 +69,10 @@ var _ = ginkgo.BeforeSuite(func() {
 	if testconsts.IsTestingMigration || !testconsts.IsUsingInTreeVolumePlugin {
 		creds, err := credentials.CreateAzureCredentialFile()
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		azureClient, err := azure.GetAzureClient(creds.Cloud, creds.SubscriptionID, creds.AADClientID, creds.TenantID, creds.AADClientSecret)
+		azureClient, err = azure.GetAzureClient(creds.Cloud, creds.SubscriptionID, creds.AADClientID, creds.TenantID, creds.AADClientSecret)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		_, err = azureClient.EnsureResourceGroup(context.Background(), creds.ResourceGroup, creds.Location, nil)
+		rg, err := azureClient.EnsureResourceGroup(context.Background(), creds.ResourceGroup, creds.Location, nil)
+		resourceGroup = *rg.Name
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		location = creds.Location

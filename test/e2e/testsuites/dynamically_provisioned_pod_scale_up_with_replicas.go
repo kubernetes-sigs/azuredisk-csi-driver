@@ -17,13 +17,16 @@ limitations under the License.
 package testsuites
 
 import (
+	"context"
 	"fmt"
 	"time"
 
 	"github.com/onsi/ginkgo"
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/kubernetes/test/e2e/framework"
 	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
 	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
@@ -45,26 +48,45 @@ type PodNodeScaleUp struct {
 }
 
 func (t *PodNodeScaleUp) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
-
+	ctx := context.Background()
 	// Get the list of available nodes for scheduling the pod
 	nodes := nodeutil.ListNodeNames(client)
 	if len(nodes) < 2 {
 		ginkgo.Skip("need at least 2 nodes to verify the test case. Current node count is %d", len(nodes))
 	}
 
-	//Cordon a node
+	//Cordon nodes except for one worker node
 	testPod := resources.TestPod{
 		Client: client,
 	}
-	testPod.SetNodeUnschedulable(nodes[0], true)
-	defer testPod.SetNodeUnschedulable(nodes[0], false)
+
+	cordoned := []string{}
+	var selectedNode string
+	for _, node := range nodes {
+		nodeObj, err := client.CoreV1().Nodes().Get(ctx, node, metav1.GetOptions{})
+		framework.ExpectNoError(err)
+		// skip tainted nodes
+		if len(nodeObj.Spec.Taints) > 0 {
+			continue
+		}
+		if !nodeObj.Spec.Unschedulable {
+			if selectedNode == "" {
+				selectedNode = node
+				continue
+			}
+			testPod.SetNodeUnschedulable(node, true)
+			defer testPod.SetNodeUnschedulable(node, false)
+			cordoned = append(cordoned, node)
+		}
+
+	}
 
 	tpod, cleanup := t.Pod.SetupWithDynamicVolumes(client, namespace, t.CSIDriver, t.StorageClassParameters, schedulerName)
 	// defer must be called here for resources not get removed before using them
 	for i := range cleanup {
 		defer cleanup[i]()
 	}
-
+	tpod.Pod.Spec.NodeName = selectedNode
 	ginkgo.By("deploying the pod")
 	tpod.Create()
 	defer tpod.Cleanup()
@@ -72,48 +94,42 @@ func (t *PodNodeScaleUp) Run(client clientset.Interface, namespace *v1.Namespace
 	tpod.WaitForRunning()
 	t.Pod.Name = tpod.Pod.Name
 
-	//Check that AzVolumeAttachment resources were created correctly
-	allReplicasAttached := true
-	var failedReplicaAttachments *diskv1beta1.AzVolumeAttachmentList
-	err := wait.Poll(15*time.Second, 10*time.Minute, func() (bool, error) {
-		var err error
-		allReplicasAttached, failedReplicaAttachments, err = resources.VerifySuccessfulReplicaAzVolumeAttachments(t.Pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
-		return allReplicasAttached, err
-	})
+	time.Sleep(10 * time.Second)
+	var successfulAttachments []diskv1beta1.AzVolumeAttachment
+	//Check that only 1 AzVolumeAttachment is created
 
-	if failedReplicaAttachments != nil {
-		e2elog.Logf("found %d azvolumeattachments failed:", len(failedReplicaAttachments.Items))
-		for _, attachments := range failedReplicaAttachments.Items {
-			e2elog.Logf("azvolumeattachment: %s, err: %s", attachments.Name, attachments.Status.Error.Message)
+	_, allAttachments, _, err := resources.VerifySuccessfulAzVolumeAttachments(t.Pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
+	framework.ExpectNoError(err)
+	for _, attachment := range allAttachments {
+		if attachment.Status.Detail != nil && attachment.Status.State == diskv1beta1.Attached {
+			successfulAttachments = append(successfulAttachments, attachment)
 		}
-		ginkgo.Fail("failed due to replicas failing to attach")
-	} else if !allReplicasAttached {
-		ginkgo.Fail("could not find correct number of replicas")
-	} else if err != nil {
-		ginkgo.Fail(fmt.Sprintf("failed to verify replica attachments, err: %s", err))
-
 	}
-	ginkgo.By("replica attachments verified successfully")
 
-	ginkgo.By("uncordoning node 0")
-	testPod.SetNodeUnschedulable(nodes[0], false)
+	framework.ExpectEqual(len(successfulAttachments), 1)
+	ginkgo.By("Verified that no replica AzVolumeAttachment was created.")
+
+	ginkgo.By(fmt.Sprintf("uncordoning nodes: %+v", cordoned))
+	for _, node := range cordoned {
+		testPod.SetNodeUnschedulable(node, false)
+	}
 
 	//Check that AzVolumeAttachment resources were created correctly
-	allReplicasAttached = true
-	failedReplicaAttachments = nil
+	isAttached := true
+	var failedAttachments []diskv1beta1.AzVolumeAttachment
 	err = wait.Poll(15*time.Second, 10*time.Minute, func() (bool, error) {
 		var err error
-		allReplicasAttached, failedReplicaAttachments, err = resources.VerifySuccessfulReplicaAzVolumeAttachments(t.Pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
-		return allReplicasAttached, err
+		isAttached, _, failedAttachments, err = resources.VerifySuccessfulAzVolumeAttachments(t.Pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
+		return isAttached, err
 	})
 
-	if failedReplicaAttachments != nil {
-		e2elog.Logf("found %d azvolumeattachments failed:", len(failedReplicaAttachments.Items))
-		for _, attachments := range failedReplicaAttachments.Items {
+	if failedAttachments != nil {
+		e2elog.Logf("found %d azvolumeattachments failed:", len(failedAttachments))
+		for _, attachments := range failedAttachments {
 			e2elog.Logf("azvolumeattachment: %s, err: %s", attachments.Name, attachments.Status.Error.Message)
 		}
 		ginkgo.Fail("failed due to replicas failing to attach")
-	} else if !allReplicasAttached {
+	} else if !isAttached {
 		ginkgo.Fail("could not find correct number of replicas")
 	} else if err != nil {
 		ginkgo.Fail(fmt.Sprintf("failed to verify replica attachments, err: %s", err))
