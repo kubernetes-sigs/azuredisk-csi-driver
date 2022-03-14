@@ -25,7 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
-	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
+	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
@@ -76,13 +76,13 @@ func (t *PodFailoverWithReplicas) Run(client clientset.Interface, namespace *v1.
 
 	//Check that AzVolumeAttachment resources were created correctly
 	allReplicasAttached := true
-	var failedReplicaAttachments *diskv1alpha2.AzVolumeAttachmentList
+	var failedReplicaAttachments *diskv1beta1.AzVolumeAttachmentList
 	err := wait.Poll(15*time.Second, 10*time.Minute, func() (bool, error) {
 		failedReplicaAttachments = nil
 		allReplicasAttached = true
 		var err error
 		var attached bool
-		var podFailedReplicaAttachments *diskv1alpha2.AzVolumeAttachmentList
+		var podFailedReplicaAttachments *diskv1beta1.AzVolumeAttachmentList
 		for _, pod := range tDeployment.Pods {
 			attached, podFailedReplicaAttachments, err = resources.VerifySuccessfulReplicaAzVolumeAttachments(pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
 			allReplicasAttached = allReplicasAttached && attached

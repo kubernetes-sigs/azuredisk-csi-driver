@@ -25,7 +25,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
-	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
+	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 
@@ -50,7 +50,7 @@ var _ reconcile.Reconciler = &ReconcilePV{}
 
 func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
 	var pv corev1.PersistentVolume
-	var azVolume diskv1alpha2.AzVolume
+	var azVolume diskv1beta1.AzVolume
 	// Ignore not found errors as they cannot be fixed by a requeue
 	if err := r.controllerSharedState.cachedClient.Get(ctx, request.NamespacedName, &pv); err != nil {
 		if errors.IsNotFound(err) {
@@ -89,7 +89,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 		// AzVolume does exist and needs to be deleted
 		// add annotation to mark AzVolumeAttachment cleanup
 		updateFunc := func(obj interface{}) error {
-			azv := obj.(*diskv1alpha2.AzVolume)
+			azv := obj.(*diskv1beta1.AzVolume)
 			if azv.Annotations == nil {
 				azv.Annotations = make(map[string]string, 1)
 			}
@@ -100,7 +100,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 			return reconcileReturnOnError(&pv, "delete", err, r.controllerRetryInfo)
 		}
 
-		if err := r.controllerSharedState.azClient.DiskV1alpha2().AzVolumes(r.controllerSharedState.objectNamespace).Delete(ctx, azVolumeName, metav1.DeleteOptions{}); err != nil {
+		if err := r.controllerSharedState.azClient.DiskV1beta1().AzVolumes(r.controllerSharedState.objectNamespace).Delete(ctx, azVolumeName, metav1.DeleteOptions{}); err != nil {
 			klog.Errorf("failed to set the deletion timestamp for AzVolume (%s): %v", azVolumeName, err)
 			return reconcileReturnOnError(&pv, "delete", err, r.controllerRetryInfo)
 		}
@@ -151,7 +151,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 	return reconcileReturnOnSuccess(pv.Name, r.controllerRetryInfo)
 }
 
-func (r *ReconcilePV) triggerRelease(ctx context.Context, azVolume *diskv1alpha2.AzVolume) error {
+func (r *ReconcilePV) triggerRelease(ctx context.Context, azVolume *diskv1beta1.AzVolume) error {
 	klog.Infof("Volume released: Initiating AzVolumeAttachment Clean-up")
 
 	if _, err := r.controllerSharedState.cleanUpAzVolumeAttachmentByVolume(ctx, azVolume.Name, "pv controller", replicaOnly, detachAndDeleteCRI); err != nil {

@@ -38,7 +38,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	testingexec "k8s.io/utils/exec/testing"
 
-	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
+	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockprovisioner"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
@@ -83,15 +83,15 @@ var (
 			},
 		},
 	}
-	testAzVolumeAttachment = diskv1alpha2.AzVolumeAttachment{
+	testAzVolumeAttachment = diskv1beta1.AzVolumeAttachment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-azvolumeattachment",
 			Namespace: "test-namespace",
 		},
-		Spec: diskv1alpha2.AzVolumeAttachmentSpec{
+		Spec: diskv1beta1.AzVolumeAttachmentSpec{
 			VolumeID:      "test-volume",
 			NodeName:      fakeNodeID,
-			RequestedRole: diskv1alpha2.PrimaryRole,
+			RequestedRole: diskv1beta1.PrimaryRole,
 		},
 	}
 )
@@ -1260,14 +1260,14 @@ func TestGetDevicePathWithLUN(t *testing.T) {
 	}
 }
 
-func createAzVolumeAttachmentWithPublishContext(publishContext map[string]string) *diskv1alpha2.AzVolumeAttachment {
+func createAzVolumeAttachmentWithPublishContext(publishContext map[string]string) *diskv1beta1.AzVolumeAttachment {
 	azVA := testAzVolumeAttachment.DeepCopy()
-	azVA.Status = diskv1alpha2.AzVolumeAttachmentStatus{
-		Detail: &diskv1alpha2.AzVolumeAttachmentStatusDetail{
+	azVA.Status = diskv1beta1.AzVolumeAttachmentStatus{
+		Detail: &diskv1beta1.AzVolumeAttachmentStatusDetail{
 			PublishContext: publishContext,
-			Role:           diskv1alpha2.PrimaryRole,
+			Role:           diskv1beta1.PrimaryRole,
 		},
-		State: diskv1alpha2.Attached,
+		State: diskv1beta1.Attached,
 	}
 	return azVA
 }

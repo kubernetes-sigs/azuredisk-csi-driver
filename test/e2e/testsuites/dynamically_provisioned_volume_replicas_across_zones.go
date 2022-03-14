@@ -86,7 +86,7 @@ func (t *DynamicallyProvisionedVolumeReplicasAcrossZones) Run(client clientset.I
 			framework.ExpectNoError(err)
 			labelSelector = labelSelector.Add(*volReq)
 
-			azVolumeAttachments, err := t.AzDiskClient.DiskV1alpha2().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})
+			azVolumeAttachments, err := t.AzDiskClient.DiskV1beta1().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})
 			if err != nil {
 				return false, err
 			}
