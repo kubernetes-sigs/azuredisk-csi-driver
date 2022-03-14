@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"testing"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
@@ -30,6 +31,7 @@ import (
 	"github.com/Azure/go-autorest/autorest/adal"
 	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/Azure/go-autorest/autorest/to"
+	"github.com/stretchr/testify/assert"
 )
 
 type Client struct {
@@ -132,7 +134,7 @@ func (az *Client) EnsureVirtualMachine(ctx context.Context, groupName, location,
 		return vm, err
 	}
 
-	publicKey, err := az.EnsureSSHPublicKey(ctx, az.subscriptionID, groupName, location, "test-key")
+	publicKey, err := az.EnsureSSHPublicKey(ctx, az.subscriptionID, groupName, location, fmt.Sprintf("%s-test-key", vmName))
 	if err != nil {
 		return vm, err
 	}
@@ -275,6 +277,20 @@ func (az *Client) EnsureVirtualNetworkAndSubnet(ctx context.Context, groupName, 
 
 func (az *Client) GetVirtualNetworkSubnet(ctx context.Context, groupName, vnetName, subnetName string) (network.Subnet, error) {
 	return az.subnetsClient.Get(ctx, groupName, vnetName, subnetName, "")
+}
+
+// AssertNoError asserts no error and exits with error upon seeing one
+func AssertNoError(t *testing.T, err error, msgsAndArgs ...interface{}) {
+	if !assert.NoError(t, err, msgsAndArgs) {
+		t.Fatalf("Exiting... assertion failed: expected no error but received %v", err)
+	}
+}
+
+// AssertNotNil asserts non-nil object and exits with error upon seeing one
+func AssertNotNil(t *testing.T, obj interface{}, msgsAndArgs ...interface{}) {
+	if !assert.NotNil(t, obj, msgsAndArgs) {
+		t.Fatalf("Exiting... assertion failed: expected non-nil object but received nil.")
+	}
 }
 
 func getOAuthConfig(env azure.Environment, subscriptionID, tenantID string) (*adal.OAuthConfig, error) {

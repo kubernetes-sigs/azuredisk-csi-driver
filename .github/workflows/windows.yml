@@ -5,11 +5,7 @@ on:
 
 jobs:
   build:
-    strategy:
-      matrix:
-        go-versions: [1.16.x]
-        platform: [windows-latest]
-    runs-on: ${{ matrix.platform }}
+    runs-on: windows-latest
     steps:
       - name: Set up Go 1.x
         uses: actions/setup-go@v2

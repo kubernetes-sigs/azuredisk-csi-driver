@@ -43,7 +43,6 @@ import (
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	azurecloudconsts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
-	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
@@ -75,6 +74,9 @@ type CSIDriver interface {
 	csi.IdentityServer
 
 	Run(endpoint, kubeconfig string, disableAVSetNodes, testMode bool)
+
+	// Ready returns a closed channel when the driver's Run function has completed initialization
+	Ready() <-chan struct{}
 }
 
 type hostUtil interface {
@@ -84,14 +86,12 @@ type hostUtil interface {
 // DriverCore contains fields common to both the V1 and V2 driver, and implements all interfaces of CSI drivers
 type DriverCore struct {
 	csicommon.CSIDriver
+	ready                      chan struct{}
 	perfOptimizationEnabled    bool
 	cloudConfigSecretName      string
 	cloudConfigSecretNamespace string
 	customUserAgent            string
 	userAgentSuffix            string
-	kubeconfig                 string
-	cloud                      *azure.Cloud
-	mounter                    *mount.SafeFormatAndMount
 	deviceHelper               optimization.Interface
 	nodeInfo                   *optimization.NodeInfo
 	ioHandler                  azureutils.IOHandler
@@ -110,6 +110,9 @@ type DriverCore struct {
 // Driver is the v1 implementation of the Azure Disk CSI Driver.
 type Driver struct {
 	DriverCore
+	cloud       *azure.Cloud
+	kubeconfig  string
+	mounter     *mount.SafeFormatAndMount
 	volumeLocks *volumehelper.VolumeLocks
 	// a timed cache GetDisk throttling
 	getDiskThrottlingCache *azcache.TimedCache
@@ -123,6 +126,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.Version = driverVersion
 	driver.NodeID = options.NodeID
 	driver.VolumeAttachLimit = options.VolumeAttachLimit
+	driver.ready = make(chan struct{})
 	driver.perfOptimizationEnabled = options.EnablePerfOptimization
 	driver.cloudConfigSecretName = options.CloudConfigSecretName
 	driver.cloudConfigSecretNamespace = options.CloudConfigSecretNamespace
@@ -164,7 +168,7 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 	userAgent := GetUserAgent(d.Name, d.customUserAgent, d.userAgentSuffix)
 	klog.V(2).Infof("driver userAgent: %s", userAgent)
 
-	cloud, err := azureutils.GetCloudProvider(kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, userAgent, d.allowEmptyCloudConfig)
+	cloud, err := azureutils.GetCloudProvider(kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, userAgent)
 	if err != nil {
 		klog.Fatalf("failed to get Azure Cloud Provider, error: %v", err)
 	}
@@ -190,7 +194,7 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 	d.deviceHelper = optimization.NewSafeDeviceHelper()
 
 	if d.getPerfOptimizationEnabled() {
-		d.nodeInfo, err = optimization.NewNodeInfo(context.TODO(), d.getCloud(), d.NodeID)
+		d.nodeInfo, err = optimization.NewNodeInfo(context.TODO(), d.cloud, d.NodeID)
 		if err != nil {
 			klog.Warningf("Failed to get node info. Error: %v", err)
 		}
@@ -234,6 +238,11 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 	s := csicommon.NewNonBlockingGRPCServer()
 	// Driver d act as IdentityServer, ControllerServer and NodeServer
 	s.Start(endpoint, d, d, d, testingMock)
+
+	// Signal that the driver is ready.
+	d.signalReady()
+
+	// Wait for the GRPC Server to exit
 	s.Wait()
 }
 
@@ -301,6 +310,14 @@ func (d *Driver) getVolumeLocks() *volumehelper.VolumeLocks {
 	return d.volumeLocks
 }
 
+func (d *DriverCore) Ready() <-chan struct{} {
+	return d.ready
+}
+
+func (d *DriverCore) signalReady() {
+	close(d.ready)
+}
+
 // setControllerCapabilities sets the controller capabilities field. It is intended for use with unit tests.
 func (d *DriverCore) setControllerCapabilities(caps []*csi.ControllerServiceCapability) {
 	d.Cap = caps
@@ -324,26 +341,6 @@ func (d *DriverCore) setNodeID(nodeID string) {
 // setName sets the Version field. It is intended for use with unit tests.
 func (d *DriverCore) setVersion(version string) {
 	d.Version = version
-}
-
-// getCloud returns the value of the cloud field. It is intended for use with unit tests.
-func (d *DriverCore) getCloud() *provider.Cloud {
-	return d.cloud
-}
-
-// setCloud sets the cloud field. It is intended for use with unit tests.
-func (d *DriverCore) setCloud(cloud *provider.Cloud) {
-	d.cloud = cloud
-}
-
-// getMounter returns the value of the mounter field. It is intended for use with unit tests.
-func (d *DriverCore) getMounter() *mount.SafeFormatAndMount {
-	return d.mounter
-}
-
-// setMounter sets the mounter field. It is intended for use with unit tests.
-func (d *DriverCore) setMounter(mounter *mount.SafeFormatAndMount) {
-	d.mounter = mounter
 }
 
 // getPerfOptimizationEnabled returns the value of the perfOptimizationEnabled field. It is intended for use with unit tests.

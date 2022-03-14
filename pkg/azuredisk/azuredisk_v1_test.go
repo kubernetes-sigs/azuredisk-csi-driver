@@ -26,6 +26,10 @@ import (
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/diskclient/mockdiskclient"
 )
@@ -35,6 +39,7 @@ func TestCheckDiskCapacity_V1(t *testing.T) {
 	size := int32(10)
 	diskName := "unit-test"
 	resourceGroup := "unit-test"
+	subID := "unit-test"
 	disk := compute.Disk{
 		DiskProperties: &compute.DiskProperties{
 			DiskSizeGB: &size,
@@ -42,9 +47,15 @@ func TestCheckDiskCapacity_V1(t *testing.T) {
 	}
 	d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
 
-	d.setDiskThrottlingCache(consts.ThrottlingKey, "")
-	flag, _ := d.checkDiskCapacity(context.TODO(), "", resourceGroup, diskName, 11)
+	flag, err := d.checkDiskCapacity(context.TODO(), subID, resourceGroup, diskName, 10)
+
 	assert.Equal(t, flag, true)
+	assert.NoError(t, err)
+
+	flag, err = d.checkDiskCapacity(context.TODO(), subID, resourceGroup, diskName, 11)
+	assert.Equal(t, flag, false)
+	expectedErr := status.Errorf(codes.AlreadyExists, "the request volume already exists, but its capacity(10) is different from (11)")
+	assert.Equal(t, err, expectedErr)
 }
 
 func TestDriver_checkDiskExists_V1(t *testing.T) {

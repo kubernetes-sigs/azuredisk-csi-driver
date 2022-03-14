@@ -3,7 +3,9 @@ on:
   push:
     branches:
       - master
-  pull_request:
+  pull_request: {}
+  schedule:
+  - cron: "0 13 * * *"
 jobs:
   build:
     name: Build
@@ -17,7 +19,7 @@ jobs:
 
       - name: Checkout code
         uses: actions/checkout@v2
-      
+
       - name: Build an image from Dockerfile
         run: |
           export PUBLISH=true

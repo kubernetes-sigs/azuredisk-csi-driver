@@ -1,0 +1,66 @@
+image:
+  azuredisk:
+    tag: mcr.microsoft.com/k8s/csi/azuredisk-csi:latest-v2
+  pullPolicy: IfNotPresent
+
+serviceAccount:
+  create: true
+
+rbac:
+  create: true
+
+azuredisk:
+  isTestRun: true
+  nodeId: sanity-test-node
+  cloudConfig: invalid
+
+controller:
+  replicas: 1
+  port: 10000
+  metricsPort: 29604
+  runOnMaster: false
+  logLevel: 5
+
+snapshot:
+  enabled: false
+  image:
+    csiSnapshotter:
+      repository: mcr.microsoft.com/oss/kubernetes-csi/csi-snapshotter
+      tag: v3.0.3
+      pullPolicy: IfNotPresent
+    csiSnapshotController:
+      repository: mcr.microsoft.com/oss/kubernetes-csi/snapshot-controller
+      tag: v3.0.3
+      pullPolicy: IfNotPresent
+  snapshotController:
+    replicas: 1
+    serviceAccount: true
+    rbac: true
+
+linux:
+  enabled: true
+
+cleanup:
+  image:
+    curl:
+      repository: docker.io/curlimages/curl
+      tag: latest
+      pullPolicy: IfNotPresent
+
+windows:
+  enabled: true
+  image:
+    livenessProbe:
+      repository: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe
+      tag: v2.2.0
+      pullPolicy: IfNotPresent
+    nodeDriverRegistrar:
+      repository: mcr.microsoft.com/oss/kubernetes-csi/csi-node-driver-registrar
+      tag: v2.0.1
+      pullPolicy: IfNotPresent
+
+kubelet:
+  windowsPath: 'C:\var\lib\kubelet'
+  linuxPath: /var/lib/kubelet
+
+cloud: AzurePublicCloud

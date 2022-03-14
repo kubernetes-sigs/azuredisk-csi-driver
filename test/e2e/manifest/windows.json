@@ -6,7 +6,7 @@
         },
         "orchestratorProfile": {
             "orchestratorType": "Kubernetes",
-            "orchestratorRelease": "",
+            "orchestratorRelease": "1.21",
             "kubernetesConfig": {
                 "useManagedIdentity": true,
                 "userAssignedID": "azuredisk-csi-driver-e2e-test-id"
@@ -25,7 +25,7 @@
         "agentPoolProfiles": [
             {
                 "name": "windowspool1",
-                "count": 2,
+                "count": 4,
                 "vmSize": "Standard_D4s_v3",
                 "osDiskSizeGB": 128,
                 "availabilityProfile": "VirtualMachineScaleSets",

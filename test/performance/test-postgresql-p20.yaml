@@ -1,0 +1,74 @@
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: sc-test-postgresql-p20
+provisioner: disk.csi.azure.com
+parameters:
+  cachingmode: None
+  skuname: Premium_LRS
+  perfProfile: None
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+---
+apiVersion: perf.kubestone.xridge.io/v1alpha1
+kind: Fio
+metadata:
+  name: test-postgresql-p20
+spec:
+  customJobFiles:
+  - |
+    [global]
+    time_based=1
+    ioengine=sync
+    buffered=1
+    runtime=120
+    bs=8kiB
+
+    [job1]
+    name=checkpointer
+    rw=write
+    size=4GiB
+    fsync_on_close=1
+    sync_file_range=write:32
+
+    [job2]
+    name=wal
+    rw=write
+    size=2GiB
+    fdatasync=1    
+
+    [job3]
+    name=large_read
+    rw=read
+    size=10GiB
+  cmdLineArgs: --output-format=json
+  podConfig:
+    podLabels:
+        app: kubestone
+    podScheduling:
+          affinity:
+            podAntiAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchExpressions:
+                      - key: "app"
+                        operator: In
+                        values:
+                        - kubestone
+                  topologyKey: "kubernetes.io/hostname"
+  image:
+    name: xridge/fio:3.13
+  volume:
+    persistentVolumeClaimSpec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 512Gi
+      storageClassName: sc-test-postgresql-p20
+    volumeSource:
+      persistentVolumeClaim:
+        claimName: GENERATED
+---

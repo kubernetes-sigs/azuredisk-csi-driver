@@ -96,7 +96,7 @@ func (mounter *csiProxyMounterV1Beta) Unmount(target string) error {
 }
 
 func (mounter *csiProxyMounterV1Beta) List() ([]mount.MountPoint, error) {
-	return []mount.MountPoint{}, fmt.Errorf("List not implemented for CSIProxyMounterV1Beta")
+	return []mount.MountPoint{}, fmt.Errorf("List not implemented for csiProxyMounterV1Beta")
 }
 
 func (mounter *csiProxyMounterV1Beta) IsMountPointMatch(mp mount.MountPoint, dir string) bool {
@@ -127,11 +127,11 @@ func (mounter *csiProxyMounterV1Beta) IsLikelyNotMountPoint(path string) (bool, 
 }
 
 func (mounter *csiProxyMounterV1Beta) PathIsDevice(pathname string) (bool, error) {
-	return false, fmt.Errorf("PathIsDevice not implemented for CSIProxyMounterV1Beta")
+	return false, fmt.Errorf("PathIsDevice not implemented for csiProxyMounterV1Beta")
 }
 
 func (mounter *csiProxyMounterV1Beta) DeviceOpened(pathname string) (bool, error) {
-	return false, fmt.Errorf("DeviceOpened not implemented for CSIProxyMounterV1Beta")
+	return false, fmt.Errorf("DeviceOpened not implemented for csiProxyMounterV1Beta")
 }
 
 // GetDeviceNameFromMount returns the volume ID for a mount path.
@@ -146,11 +146,11 @@ func (mounter *csiProxyMounterV1Beta) GetDeviceNameFromMount(mountPath, pluginMo
 }
 
 func (mounter *csiProxyMounterV1Beta) MakeRShared(path string) error {
-	return fmt.Errorf("MakeRShared not implemented for CSIProxyMounterV1Beta")
+	return fmt.Errorf("MakeRShared not implemented for csiProxyMounterV1Beta")
 }
 
 func (mounter *csiProxyMounterV1Beta) MakeFile(pathname string) error {
-	return fmt.Errorf("MakeFile not implemented for CSIProxyMounterV1Beta")
+	return fmt.Errorf("MakeFile not implemented for csiProxyMounterV1Beta")
 }
 
 // MakeDir - Creates a directory. The CSI proxy takes in context information.
@@ -183,31 +183,31 @@ func (mounter *csiProxyMounterV1Beta) ExistsPath(path string) (bool, error) {
 }
 
 func (mounter *csiProxyMounterV1Beta) EvalHostSymlinks(pathname string) (string, error) {
-	return "", fmt.Errorf("EvalHostSymlinks is not implemented for CSIProxyMounterV1Beta")
+	return "", fmt.Errorf("EvalHostSymlinks is not implemented for csiProxyMounterV1Beta")
 }
 
 func (mounter *csiProxyMounterV1Beta) GetMountRefs(pathname string) ([]string, error) {
-	return []string{}, fmt.Errorf("GetMountRefs is not implemented for CSIProxyMounterV1Beta")
+	return []string{}, fmt.Errorf("GetMountRefs is not implemented for csiProxyMounterV1Beta")
 }
 
 func (mounter *csiProxyMounterV1Beta) GetFSGroup(pathname string) (int64, error) {
-	return -1, fmt.Errorf("GetFSGroup is not implemented for CSIProxyMounterV1Beta")
+	return -1, fmt.Errorf("GetFSGroup is not implemented for csiProxyMounterV1Beta")
 }
 
 func (mounter *csiProxyMounterV1Beta) GetSELinuxSupport(pathname string) (bool, error) {
-	return false, fmt.Errorf("GetSELinuxSupport is not implemented for CSIProxyMounterV1Beta")
+	return false, fmt.Errorf("GetSELinuxSupport is not implemented for csiProxyMounterV1Beta")
 }
 
 func (mounter *csiProxyMounterV1Beta) GetMode(pathname string) (os.FileMode, error) {
-	return 0, fmt.Errorf("GetMode is not implemented for CSIProxyMounterV1Beta")
+	return 0, fmt.Errorf("GetMode is not implemented for csiProxyMounterV1Beta")
 }
 
 func (mounter *csiProxyMounterV1Beta) MountSensitive(source string, target string, fstype string, options []string, sensitiveOptions []string) error {
-	return fmt.Errorf("MountSensitive is not implemented for CSIProxyMounterV1Beta")
+	return fmt.Errorf("MountSensitive is not implemented for csiProxyMounterV1Beta")
 }
 
 func (mounter *csiProxyMounterV1Beta) MountSensitiveWithoutSystemd(source string, target string, fstype string, options []string, sensitiveOptions []string) error {
-	return fmt.Errorf("MountSensitiveWithoutSystemd is not implemented for CSIProxyMounterV1Beta")
+	return fmt.Errorf("MountSensitiveWithoutSystemd is not implemented for csiProxyMounterV1Beta")
 }
 
 func (mounter *csiProxyMounterV1Beta) MountSensitiveWithoutSystemdWithMountFlags(source string, target string, fstype string, options []string, sensitiveOptions []string, mountFlags []string) error {
@@ -331,7 +331,7 @@ func (mounter *csiProxyMounterV1Beta) GetAPIVersions() string {
 	)
 }
 
-// NewCSIProxyMounter - creates a new CSI Proxy mounter struct which encompassed all the
+// newCSIProxyMounter - creates a new CSI Proxy mounter struct which encompassed all the
 // clients to the CSI proxy - filesystem, disk and volume clients.
 func newCSIProxyMounterV1Beta() (*csiProxyMounterV1Beta, error) {
 	fsClient, err := fsclient.NewClient()

@@ -23,7 +23,6 @@ import (
 	"os"
 	"reflect"
 	"runtime"
-	"strings"
 	"testing"
 	"time"
 
@@ -34,7 +33,7 @@ import (
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
-	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
+	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
 func TestCheckDiskName(t *testing.T) {
@@ -208,7 +207,6 @@ users:
       - arg-2
       command: foo-command
 `
-
 	err := createTestFile(emptyKubeConfig)
 	if err != nil {
 		t.Error(err)
@@ -266,44 +264,12 @@ users:
 }
 
 func TestGetCloudProvider(t *testing.T) {
-	fakeCredFile, err := testutil.GetWorkDirPath("fake-cred-file.json")
-	if err != nil {
-		t.Errorf("GetWorkDirPath failed with %v", err)
-	}
-	fakeKubeConfig, err := testutil.GetWorkDirPath("fake-kube-config")
-	if err != nil {
-		t.Errorf("GetWorkDirPath failed with %v", err)
-	}
-	emptyKubeConfig, err := testutil.GetWorkDirPath("empty-kube-config")
-	if err != nil {
-		t.Errorf("GetWorkDirPath failed with %v", err)
-	}
+	// skip for now as this is very flaky on Windows
+	skipIfTestingOnWindows(t)
+	fakeCredFile := "fake-cred-file.json"
+	emptyKubeConfig := "empty-kube-config"
 
-	fakeContent := `apiVersion: v1
-clusters:
-- cluster:
-    server: https://localhost:8080
-  name: foo-cluster
-contexts:
-- context:
-    cluster: foo-cluster
-    user: foo-user
-    namespace: bar
-  name: foo-context
-current-context: foo-context
-kind: Config
-users:
-- name: foo-user
-  user:
-    exec:
-      apiVersion: client.authentication.k8s.io/v1alpha1
-      args:
-      - arg-1
-      - arg-2
-      command: foo-command
-`
-
-	err = createTestFile(emptyKubeConfig)
+	err := createTestFile(emptyKubeConfig)
 	if err != nil {
 		t.Error(err)
 	}
@@ -314,53 +280,35 @@ users:
 	}()
 
 	tests := []struct {
-		desc                  string
-		createFakeCredFile    bool
-		createFakeKubeConfig  bool
-		kubeconfig            string
-		userAgent             string
-		allowEmptyCloudConfig bool
-		expectedErr           error
+		desc        string
+		kubeconfig  string
+		userAgent   string
+		expectedErr error
 	}{
 		{
-			desc:                  "[failure] out of cluster & in cluster, specify a fake kubeconfig, no credential file",
-			createFakeKubeConfig:  true,
-			kubeconfig:            fakeKubeConfig,
-			allowEmptyCloudConfig: false,
-			expectedErr: testutil.TestError{
-				DefaultError: fmt.Errorf("no cloud config provided, error"),
-			},
+
+			desc:        "[failure] out of cluster & in cluster, specify an empty kubeconfig, no credential file",
+			kubeconfig:  emptyKubeConfig,
+			expectedErr: fmt.Errorf("failed to get KubeClient: invalid configuration: no configuration has been provided, try setting KUBERNETES_MASTER environment variable"),
 		},
 		{
-			desc:                  "[failure] out of cluster & in cluster, specify a empty kubeconfig, no credential file",
-			kubeconfig:            emptyKubeConfig,
-			allowEmptyCloudConfig: true,
-			expectedErr:           fmt.Errorf("failed to get KubeClient: invalid configuration: no configuration has been provided, try setting KUBERNETES_MASTER environment variable"),
-		},
-		{
-			desc:                  "[success] out of cluster & in cluster, no kubeconfig, a fake credential file",
-			createFakeCredFile:    true,
-			kubeconfig:            "",
-			userAgent:             "useragent",
-			allowEmptyCloudConfig: true,
-			expectedErr:           nil,
-		},
-		{
-			desc:                  "[success] out of cluster & in cluster, specify a fake kubeconfig, no credential file",
-			createFakeKubeConfig:  true,
-			kubeconfig:            fakeKubeConfig,
-			allowEmptyCloudConfig: true,
-			expectedErr:           nil,
+			desc:        "[success] out of cluster & in cluster, no kubeconfig, a fake credential file",
+			kubeconfig:  "",
+			userAgent:   "useragent",
+			expectedErr: nil,
 		},
 	}
 
 	for _, test := range tests {
-		if test.createFakeCredFile {
-			if err := createTestFile(fakeCredFile); err != nil {
+		if test.desc == "[success] out of cluster & in cluster, no kubeconfig, a fake credential file" {
+			err := createTestFile(fakeCredFile)
+			if err != nil {
 				t.Error(err)
 			}
 			defer func() {
-				os.Remove(fakeCredFile)
+				if err := os.Remove(fakeCredFile); err != nil {
+					t.Error(err)
+				}
 			}()
 
 			originalCredFile, ok := os.LookupEnv(consts.DefaultAzureCredentialFileEnv)
@@ -371,21 +319,11 @@ users:
 			}
 			os.Setenv(consts.DefaultAzureCredentialFileEnv, fakeCredFile)
 		}
-		if test.createFakeKubeConfig {
-			if err := createTestFile(fakeKubeConfig); err != nil {
-				t.Error(err)
-			}
-			defer func() {
-				os.Remove(fakeKubeConfig)
-			}()
+		var cloud *provider.Cloud
+		cloud, err = GetCloudProvider(test.kubeconfig, "", "", test.userAgent)
 
-			if err := ioutil.WriteFile(fakeKubeConfig, []byte(fakeContent), 0666); err != nil {
-				t.Error(err)
-			}
-		}
-		cloud, err := GetCloudProvider(test.kubeconfig, "", "", test.userAgent, test.allowEmptyCloudConfig)
-		if !reflect.DeepEqual(err, test.expectedErr) && !strings.Contains(err.Error(), test.expectedErr.Error()) {
-			t.Errorf("desc: %s,\n input: %q, GetCloudProvider err: %v, expectedErr: %v", test.desc, test.kubeconfig, err, test.expectedErr)
+		if !reflect.DeepEqual(err, test.expectedErr) {
+			t.Errorf("desc: %s,\n input: %q, actualErr: %v, expectedErr: %v", test.desc, test.kubeconfig, err, test.expectedErr)
 		}
 		if cloud != nil {
 			assert.Equal(t, cloud.UserAgent, test.userAgent)
@@ -497,7 +435,7 @@ func TestGetDiskName(t *testing.T) {
 	for _, test := range tests {
 		result1, result2 := GetDiskName(test.options)
 		if !reflect.DeepEqual(result1, test.expected1) || !reflect.DeepEqual(result2, test.expected2) {
-			t.Errorf("input: %q, getDiskName result1: %q, expected1: %q, result2: %q, expected2: %q", test.options, result1, test.expected1,
+			t.Errorf("input: %q, GetDiskName result1: %q, expected1: %q, result2: %q, expected2: %q", test.options, result1, test.expected1,
 				result2, test.expected2)
 		}
 	}
@@ -583,10 +521,10 @@ func TestGetMaxShares(t *testing.T) {
 	for _, test := range tests {
 		result, err := GetMaxShares(test.options)
 		if result != test.expectedValue {
-			t.Errorf("input: %q, GetMaxShates result: %v, expected: %v", test.options, result, test.expectedValue)
+			t.Errorf("input: %q, GetMaxShares result: %v, expected: %v", test.options, result, test.expectedValue)
 		}
 		if !reflect.DeepEqual(err, test.expectedError) {
-			t.Errorf("input: %q, GetMaxShates error: %v, expected: %v", test.options, err, test.expectedError)
+			t.Errorf("input: %q, GetMaxShares error: %v, expected: %v", test.options, err, test.expectedError)
 		}
 	}
 }
@@ -622,13 +560,13 @@ func TestGetResourceGroupFromURI(t *testing.T) {
 
 	for _, test := range tests {
 		result, err := GetResourceGroupFromURI(test.diskURL)
-		assert.Equal(t, result, test.expectedResult, "Expect result not equal with getResourceGroupFromURI(%s) return: %q, expected: %q",
+		assert.Equal(t, result, test.expectedResult, "Expect result not equal with GetResourceGroupFromURI(%s) return: %q, expected: %q",
 			test.diskURL, result, test.expectedResult)
 
 		if test.expectError {
-			assert.NotNil(t, err, "Expect error during getResourceGroupFromURI(%s)", test.diskURL)
+			assert.NotNil(t, err, "Expect error during GetResourceGroupFromURI(%s)", test.diskURL)
 		} else {
-			assert.Nil(t, err, "Expect error is nil during getResourceGroupFromURI(%s)", test.diskURL)
+			assert.Nil(t, err, "Expect error is nil during GetResourceGroupFromURI(%s)", test.diskURL)
 		}
 	}
 }
@@ -732,7 +670,7 @@ func TestGetValidCreationData(t *testing.T) {
 			sourceResourceID: "/subscriptions/23/providers/Microsoft.Compute/disks/name",
 			sourceType:       consts.SourceSnapshot,
 			expected1:        compute.CreationData{},
-			expected2:        fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", "/subscriptions//resourceGroups//providers/Microsoft.Compute/snapshots//subscriptions/23/providers/Microsoft.Compute/disks/name", diskSnapshotPathRE),
+			expected2:        fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", "/subscriptions//resourceGroups//providers/Microsoft.Compute/snapshots//subscriptions/23/providers/Microsoft.Compute/disks/name", consts.DiskSnapshotPathRE),
 		},
 		{
 			subscriptionID:   "",
@@ -740,7 +678,7 @@ func TestGetValidCreationData(t *testing.T) {
 			sourceResourceID: "http://test.com/vhds/name",
 			sourceType:       consts.SourceSnapshot,
 			expected1:        compute.CreationData{},
-			expected2:        fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", "/subscriptions//resourceGroups//providers/Microsoft.Compute/snapshots/http://test.com/vhds/name", diskSnapshotPathRE),
+			expected2:        fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", "/subscriptions//resourceGroups//providers/Microsoft.Compute/snapshots/http://test.com/vhds/name", consts.DiskSnapshotPathRE),
 		},
 		{
 			subscriptionID:   "",
@@ -748,7 +686,7 @@ func TestGetValidCreationData(t *testing.T) {
 			sourceResourceID: "/subscriptions/xxx/snapshots/xxx",
 			sourceType:       consts.SourceSnapshot,
 			expected1:        compute.CreationData{},
-			expected2:        fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", "/subscriptions//resourceGroups//providers/Microsoft.Compute/snapshots//subscriptions/xxx/snapshots/xxx", diskSnapshotPathRE),
+			expected2:        fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", "/subscriptions//resourceGroups//providers/Microsoft.Compute/snapshots//subscriptions/xxx/snapshots/xxx", consts.DiskSnapshotPathRE),
 		},
 		{
 			subscriptionID:   "",
@@ -756,7 +694,7 @@ func TestGetValidCreationData(t *testing.T) {
 			sourceResourceID: "/subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/snapshots/xxx/snapshots/xxx/snapshots/xxx",
 			sourceType:       consts.SourceSnapshot,
 			expected1:        compute.CreationData{},
-			expected2:        fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", "/subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/snapshots/xxx/snapshots/xxx/snapshots/xxx", diskSnapshotPathRE),
+			expected2:        fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", "/subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/snapshots/xxx/snapshots/xxx/snapshots/xxx", consts.DiskSnapshotPathRE),
 		},
 		{
 			subscriptionID:   "",
@@ -859,7 +797,7 @@ func TestCreateValidDiskName(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		result := CreateValidDiskName(test.volumeName)
+		result := CreateValidDiskName(test.volumeName, false)
 		if !test.expectedIsRegEx {
 			assert.Equal(t, test.expected, result)
 		} else {
@@ -963,7 +901,7 @@ func TestIsAzureStackCloud(t *testing.T) {
 }
 
 func TestIsValidDiskURI(t *testing.T) {
-	supportedManagedDiskURI := diskURISupportedManaged
+	supportedManagedDiskURI := consts.DiskURISupportedManaged
 
 	tests := []struct {
 		diskURI     string
@@ -1161,33 +1099,48 @@ func TestIsValidVolumeCapabilities(t *testing.T) {
 
 func TestNormalizeCachingMode(t *testing.T) {
 	tests := []struct {
-		desc          string
-		req           v1.AzureDataDiskCachingMode
-		expectedErr   error
-		expectedValue v1.AzureDataDiskCachingMode
+		desc                        string
+		req                         v1.AzureDataDiskCachingMode
+		expectedErr                 error
+		expectedValue               v1.AzureDataDiskCachingMode
+		expectedValueForSharedDisks v1.AzureDataDiskCachingMode
 	}{
 		{
-			desc:          "CachingMode not exist",
-			req:           "",
-			expectedErr:   nil,
-			expectedValue: v1.AzureDataDiskCachingReadOnly,
+			desc:                        "CachingMode not exist",
+			req:                         "",
+			expectedErr:                 nil,
+			expectedValue:               v1.AzureDataDiskCachingReadOnly,
+			expectedValueForSharedDisks: v1.AzureDataDiskCachingNone,
 		},
 		{
-			desc:          "Not supported CachingMode",
-			req:           "WriteOnly",
-			expectedErr:   fmt.Errorf("azureDisk - WriteOnly is not supported cachingmode. Supported values are [None ReadOnly ReadWrite]"),
-			expectedValue: "",
+			desc:                        "Not supported CachingMode",
+			req:                         "WriteOnly",
+			expectedErr:                 fmt.Errorf("azureDisk - WriteOnly is not supported cachingmode. Supported values are [None ReadOnly ReadWrite]"),
+			expectedValue:               "",
+			expectedValueForSharedDisks: "",
 		},
 		{
-			desc:          "Valid CachingMode",
-			req:           "ReadOnly",
-			expectedErr:   nil,
-			expectedValue: "ReadOnly",
+			desc:                        "Valid CachingMode - ReadOnly",
+			req:                         v1.AzureDataDiskCachingReadOnly,
+			expectedErr:                 nil,
+			expectedValue:               v1.AzureDataDiskCachingReadOnly,
+			expectedValueForSharedDisks: v1.AzureDataDiskCachingReadOnly,
+		},
+		{
+			desc:                        "Valid CachingMode - None",
+			req:                         v1.AzureDataDiskCachingNone,
+			expectedErr:                 nil,
+			expectedValue:               v1.AzureDataDiskCachingNone,
+			expectedValueForSharedDisks: v1.AzureDataDiskCachingNone,
 		},
 	}
 	for _, test := range tests {
-		value, err := NormalizeCachingMode(test.req)
+		value, err := NormalizeCachingMode(test.req, 1)
 		assert.Equal(t, value, test.expectedValue)
+		assert.Equal(t, err, test.expectedErr, fmt.Sprintf("error msg: %v", err))
+
+		value, err = NormalizeCachingMode(test.req, 2)
+		assert.Equal(t, value, test.expectedValueForSharedDisks)
 		assert.Equal(t, err, test.expectedErr, fmt.Sprintf("error msg: %v", err))
 	}
 }
@@ -1238,6 +1191,7 @@ func TestNormalizeNetworkAccessPolicy(t *testing.T) {
 }
 
 func TestNormalizeStorageAccountType(t *testing.T) {
+	var azurePublicCloud = "AZUREPUBLICCLOUD"
 	tests := []struct {
 		cloud                  string
 		storageAccountType     string
@@ -1328,9 +1282,10 @@ func TestParseDiskParameters(t *testing.T) {
 			name:        "nil disk parameters",
 			inputParams: nil,
 			expectedOutput: ManagedDiskParameters{
-				Incremental:   true,
-				Tags:          make(map[string]string),
-				VolumeContext: make(map[string]string),
+				Incremental:    true,
+				Tags:           make(map[string]string),
+				VolumeContext:  make(map[string]string),
+				DeviceSettings: make(map[string]string),
 			},
 			expectedError: nil,
 		},
@@ -1338,9 +1293,10 @@ func TestParseDiskParameters(t *testing.T) {
 			name:        "invalid field in parameters",
 			inputParams: map[string]string{"invalidField": "someValue"},
 			expectedOutput: ManagedDiskParameters{
-				Incremental:   true,
-				Tags:          make(map[string]string),
-				VolumeContext: map[string]string{"invalidField": "someValue"},
+				Incremental:    true,
+				Tags:           make(map[string]string),
+				VolumeContext:  map[string]string{"invalidField": "someValue"},
+				DeviceSettings: make(map[string]string),
 			},
 			expectedError: fmt.Errorf("invalid parameter %s in storage class", "invalidField"),
 		},
@@ -1348,9 +1304,10 @@ func TestParseDiskParameters(t *testing.T) {
 			name:        "invalid value in parameters",
 			inputParams: map[string]string{consts.LogicalSectorSizeField: "invalidValue"},
 			expectedOutput: ManagedDiskParameters{
-				Incremental:   true,
-				Tags:          make(map[string]string),
-				VolumeContext: map[string]string{consts.LogicalSectorSizeField: "invalidValue"},
+				Incremental:    true,
+				Tags:           make(map[string]string),
+				VolumeContext:  map[string]string{consts.LogicalSectorSizeField: "invalidValue"},
+				DeviceSettings: make(map[string]string),
 			},
 			expectedError: fmt.Errorf("parse invalidValue failed with error: strconv.Atoi: parsing \"invalidValue\": invalid syntax"),
 		},
@@ -1434,6 +1391,7 @@ func TestParseDiskParameters(t *testing.T) {
 					consts.IncrementalField:         "false",
 					consts.ZonedField:               "ignored",
 				},
+				DeviceSettings:    make(map[string]string),
 				MaxShares:         1,
 				LogicalSectorSize: 1,
 			},
@@ -1684,5 +1642,44 @@ func TestSleepIfThrottled(t *testing.T) {
 				assert.GreaterOrEqual(t, actualSleepDuration, test.expectedSleepDuration)
 			}
 		})
+	}
+}
+
+func TestIsAsyncAttachEnabled(t *testing.T) {
+	tests := []struct {
+		name          string
+		defaultValue  bool
+		volumeContext map[string]string
+		expected      bool
+	}{
+		{
+			name:         "nil volumeContext",
+			defaultValue: false,
+			expected:     false,
+		},
+		{
+			name:          "empty volumeContext",
+			defaultValue:  true,
+			volumeContext: map[string]string{},
+			expected:      true,
+		},
+		{
+			name:          "false value in volumeContext",
+			defaultValue:  true,
+			volumeContext: map[string]string{"enableAsyncAttach": "false"},
+			expected:      false,
+		},
+		{
+			name:          "trie value in volumeContext",
+			defaultValue:  false,
+			volumeContext: map[string]string{"enableasyncattach": "true"},
+			expected:      true,
+		},
+	}
+	for _, test := range tests {
+		result := IsAsyncAttachEnabled(test.defaultValue, test.volumeContext)
+		if result != test.expected {
+			t.Errorf("test(%s): result(%v) != expected result(%v)", test.name, result, test.expected)
+		}
 	}
 }

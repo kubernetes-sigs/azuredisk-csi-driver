@@ -23,39 +23,11 @@ import (
 	"log"
 	"os"
 
+	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
 
 	"github.com/pborman/uuid"
 	"github.com/pelletier/go-toml"
-)
-
-const (
-	AzurePublicCloud            = "AzurePublicCloud"
-	ResourceGroupPrefix         = "azuredisk-csi-driver-test-"
-	TempAzureCredentialFilePath = "/tmp/azure.json"
-
-	azureCredentialFileTemplate = `{
-    "cloud": "{{.Cloud}}",
-    "tenantId": "{{.TenantID}}",
-    "subscriptionId": "{{.SubscriptionID}}",
-    "aadClientId": "{{.AADClientID}}",
-    "aadClientSecret": "{{.AADClientSecret}}",
-    "resourceGroup": "{{.ResourceGroup}}",
-    "location": "{{.Location}}",
-    "vmType": "{{.VMType}}"
-}`
-	defaultAzurePublicCloudLocation = "eastus2"
-	defaultAzurePublicCloudVMType   = "vmss"
-
-	// Env vars
-	cloudNameEnvVar       = "AZURE_CLOUD_NAME"
-	tenantIDEnvVar        = "AZURE_TENANT_ID"
-	subscriptionIDEnvVar  = "AZURE_SUBSCRIPTION_ID"
-	aadClientIDEnvVar     = "AZURE_CLIENT_ID"
-	aadClientSecretEnvVar = "AZURE_CLIENT_SECRET"
-	resourceGroupEnvVar   = "AZURE_RESOURCE_GROUP"
-	locationEnvVar        = "AZURE_LOCATION"
-	vmTypeEnvVar          = "AZURE_VM_TYPE"
 )
 
 // Config is used in Prow to store Azure credentials
@@ -92,28 +64,28 @@ type Credentials struct {
 func CreateAzureCredentialFile() (*Credentials, error) {
 	// Search credentials through env vars first
 	var cloud, tenantID, subscriptionID, aadClientID, aadClientSecret, resourceGroup, location, vmType string
-	cloud = os.Getenv(cloudNameEnvVar)
+	cloud = os.Getenv(testconsts.CloudNameEnvVar)
 	if cloud == "" {
-		cloud = AzurePublicCloud
+		cloud = testconsts.AzurePublicCloud
 	}
-	tenantID = os.Getenv(tenantIDEnvVar)
-	subscriptionID = os.Getenv(subscriptionIDEnvVar)
-	aadClientID = os.Getenv(aadClientIDEnvVar)
-	aadClientSecret = os.Getenv(aadClientSecretEnvVar)
-	resourceGroup = os.Getenv(resourceGroupEnvVar)
-	location = os.Getenv(locationEnvVar)
-	vmType = os.Getenv(vmTypeEnvVar)
+	tenantID = os.Getenv(testconsts.TenantIDEnvVar)
+	subscriptionID = os.Getenv(testconsts.SubscriptionIDEnvVar)
+	aadClientID = os.Getenv(testconsts.AadClientIDEnvVar)
+	aadClientSecret = os.Getenv(testconsts.AadClientSecretEnvVar)
+	resourceGroup = os.Getenv(testconsts.ResourceGroupEnvVar)
+	location = os.Getenv(testconsts.LocationEnvVar)
+	vmType = os.Getenv(testconsts.VMTypeEnvVar)
 
 	if resourceGroup == "" {
-		resourceGroup = ResourceGroupPrefix + uuid.NewUUID().String()
+		resourceGroup = testconsts.ResourceGroupPrefix + uuid.NewUUID().String()
 	}
 
 	if location == "" {
-		location = defaultAzurePublicCloudLocation
+		location = testconsts.DefaultAzurePublicCloudLocation
 	}
 
 	if vmType == "" {
-		vmType = defaultAzurePublicCloudVMType
+		vmType = testconsts.DefaultAzurePublicCloudVMType
 	}
 
 	// Running test locally
@@ -133,13 +105,13 @@ func CreateAzureCredentialFile() (*Credentials, error) {
 	}
 
 	return nil, fmt.Errorf("If you are running tests locally, you will need to set the following env vars: $%s, $%s, $%s, $%s, $%s, $%s",
-		tenantIDEnvVar, subscriptionIDEnvVar, aadClientIDEnvVar, aadClientSecretEnvVar, resourceGroupEnvVar, locationEnvVar)
+		testconsts.TenantIDEnvVar, testconsts.SubscriptionIDEnvVar, testconsts.AadClientIDEnvVar, testconsts.AadClientSecretEnvVar, testconsts.ResourceGroupEnvVar, testconsts.LocationEnvVar)
 }
 
 // DeleteAzureCredentialFile deletes the temporary Azure credential file
 func DeleteAzureCredentialFile() error {
-	if err := os.Remove(TempAzureCredentialFilePath); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("error removing %s %v", TempAzureCredentialFilePath, err)
+	if err := os.Remove(testconsts.TempAzureCredentialFilePath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("error removing %s %v", testconsts.TempAzureCredentialFilePath, err)
 	}
 
 	return nil
@@ -165,14 +137,14 @@ func getCredentialsFromAzureCredentials(azureCredentialsPath string) (*FromProw,
 // parseAndExecuteTemplate replaces credential placeholders in azureCredentialFileTemplate with actual credentials
 func parseAndExecuteTemplate(cloud, tenantID, subscriptionID, aadClientID, aadClientSecret, resourceGroup, location, vmType string) (*Credentials, error) {
 	t := template.New("AzureCredentialFileTemplate")
-	t, err := t.Parse(azureCredentialFileTemplate)
+	t, err := t.Parse(testconsts.AzureCredentialFileTemplate)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing azureCredentialFileTemplate %v", err)
 	}
 
-	f, err := os.Create(TempAzureCredentialFilePath)
+	f, err := os.Create(testconsts.TempAzureCredentialFilePath)
 	if err != nil {
-		return nil, fmt.Errorf("error creating %s %v", TempAzureCredentialFilePath, err)
+		return nil, fmt.Errorf("error creating %s %v", testconsts.TempAzureCredentialFilePath, err)
 	}
 	defer f.Close()
 

@@ -24,7 +24,6 @@ import (
 
 	"github.com/onsi/ginkgo"
 	"github.com/onsi/gomega"
-
 	scale "k8s.io/api/autoscaling/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -32,10 +31,10 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
-
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
+	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/azure"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/credentials"
 )
@@ -46,45 +45,45 @@ import (
 type DynamicallyProvisionedResizeVolumeTest struct {
 	CSIDriver              driver.DynamicPVTestDriver
 	StorageClassParameters map[string]string
-	Pod                    PodDetails
-	Volume                 VolumeDetails
+	Pod                    resources.PodDetails
+	Volume                 resources.VolumeDetails
 	ResizeOffline          bool
 }
 
-func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface, namespace *v1.Namespace) {
-	tStatefulSet, cleanup := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, driver.GetParameters())
+func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
+	tStorageClass, storageCleanup := t.Pod.CreateStorageClass(client, namespace, t.CSIDriver, t.StorageClassParameters)
+	defer storageCleanup()
+	tStatefulSet, cleanup := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, schedulerName, 1, &tStorageClass, nil)
 	// Defer must be called here for resources not get removed before using them
-	for i := range cleanup {
-		i := i
-		defer cleanup[i]()
-	}
+	defer cleanup(15 * time.Minute)
 
 	ginkgo.By("deploying the statefulset")
 	tStatefulSet.Create()
 
 	ginkgo.By("checking that the pod for statefulset is running")
-	tStatefulSet.WaitForPodReady()
+	err := tStatefulSet.WaitForPodReadyOrFail()
+	framework.ExpectNoError(err)
 
-	//Get diskURI from statefulset information
-	pvcName := fmt.Sprintf("pvc-%s-%d", tStatefulSet.statefulset.ObjectMeta.Name, 0)
+	ginkgo.By("get PersistentVolumeClaim for statefulset")
+	pvcName := fmt.Sprintf("%s-%s-%d", tStatefulSet.Statefulset.Spec.VolumeClaimTemplates[0].Name, tStatefulSet.Statefulset.ObjectMeta.Name, 0)
 
 	pvc, err := client.CoreV1().PersistentVolumeClaims(namespace.Name).Get(context.TODO(), pvcName, metav1.GetOptions{})
 	if err != nil {
 		framework.ExpectNoError(err, fmt.Sprintf("fail to get original pvc(%s): %v", pvcName, err))
 	}
 
-	// Define a new scale for statefulset
+	ginkgo.By("scale statefulset to zero pods to detach disk")
 	newScale := &scale.Scale{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      tStatefulSet.statefulset.Name,
-			Namespace: tStatefulSet.namespace.Name,
+			Name:      tStatefulSet.Statefulset.Name,
+			Namespace: tStatefulSet.Namespace.Name,
 		},
 		Spec: scale.ScaleSpec{
 			Replicas: int32(0)}}
 
 	if t.ResizeOffline {
 		// Scale statefulset to 0
-		_, err = client.AppsV1().StatefulSets(tStatefulSet.namespace.Name).UpdateScale(context.TODO(), tStatefulSet.statefulset.Name, newScale, metav1.UpdateOptions{})
+		_, err = client.AppsV1().StatefulSets(tStatefulSet.Namespace.Name).UpdateScale(context.TODO(), tStatefulSet.Statefulset.Name, newScale, metav1.UpdateOptions{})
 		framework.ExpectNoError(err)
 
 		ginkgo.By("sleep 120s waiting for disk to detach from node")
@@ -166,12 +165,13 @@ func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface,
 		// Scale the stateful set back to 1 pod
 		newScale.Spec.Replicas = int32(1)
 
-		_, err = client.AppsV1().StatefulSets(tStatefulSet.namespace.Name).UpdateScale(context.TODO(), tStatefulSet.statefulset.Name, newScale, metav1.UpdateOptions{})
+		_, err = client.AppsV1().StatefulSets(tStatefulSet.Namespace.Name).UpdateScale(context.TODO(), tStatefulSet.Statefulset.Name, newScale, metav1.UpdateOptions{})
 		framework.ExpectNoError(err)
 
 		ginkgo.By("sleep 30s waiting for statefulset update complete")
 		time.Sleep(30 * time.Second)
 		ginkgo.By("checking that the pod for statefulset is running")
-		tStatefulSet.WaitForPodReady()
+		err = tStatefulSet.WaitForPodReadyOrFail()
+		framework.ExpectNoError(err)
 	}
 }

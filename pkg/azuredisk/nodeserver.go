@@ -79,7 +79,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	params := req.GetVolumeContext()
 	maxShares, err := azureutils.GetMaxShares(params)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, "MaxShares value not supported")
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("invalid value specified by maxShares parameter: %s", err.Error()))
 	}
 
 	if !azureutils.IsValidVolumeCapabilities([]*csi.VolumeCapability{volumeCapability}, maxShares) {
@@ -104,14 +104,14 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	// If perf optimizations are enabled
 	// tweak device settings to enhance performance
 	if d.getPerfOptimizationEnabled() {
-		profile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr, err := optimization.GetDiskPerfAttributes(req.GetVolumeContext())
+		profile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr, deviceSettings, err := optimization.GetDiskPerfAttributes(req.GetVolumeContext())
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to get perf attributes for %s. Error: %v", source, err)
 		}
 
 		if d.getDeviceHelper().DiskSupportsPerfOptimization(profile, accountType) {
 			if err := d.getDeviceHelper().OptimizeDiskPerformance(d.getNodeInfo(), source, profile, accountType,
-				diskSizeGibStr, diskIopsStr, diskBwMbpsStr); err != nil {
+				diskSizeGibStr, diskIopsStr, diskBwMbpsStr, deviceSettings); err != nil {
 				return nil, status.Errorf(codes.Internal, "failed to optimize device performance for target(%s) error(%s)", source, err)
 			}
 		} else {
@@ -224,7 +224,7 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 	params := req.GetVolumeContext()
 	maxShares, err := azureutils.GetMaxShares(params)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, "MaxShares value not supported")
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("invalid value specified by maxShares parameter: %s", err.Error()))
 	}
 
 	if !azureutils.IsValidVolumeCapabilities([]*csi.VolumeCapability{volumeCapability}, maxShares) {
@@ -260,9 +260,9 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		var err error
 		source, err = d.getDevicePathWithLUN(lun)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to find device path with lun %s. %v", lun, err)
+			return nil, status.Errorf(codes.Internal, "failed to find device path with LUN %s. %v", lun, err)
 		}
-		klog.V(2).Infof("NodePublishVolume [block]: found device path %s with lun %s", source, lun)
+		klog.V(2).Infof("NodePublishVolume [block]: found device path %s with LUN %s", source, lun)
 		err = d.ensureBlockTargetFile(target)
 		if err != nil {
 			return nil, err
@@ -359,7 +359,6 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 	maxDataDiskCount := d.VolumeAttachLimit
 	if maxDataDiskCount < 0 {
 		var instanceType string
-		var err error
 		if d.getNodeInfoFromLabels {
 			if instanceTypeFromLabels == "" {
 				_, instanceTypeFromLabels, err = getNodeInfoFromLabels(ctx, d.NodeID, d.cloud.KubeClient)
@@ -370,6 +369,8 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 				if err == nil && metadata.Compute != nil {
 					instanceType = metadata.Compute.VMSize
 					klog.V(5).Infof("NodeGetInfo: nodeName(%s), VM Size(%s)", d.NodeID, instanceType)
+				} else {
+					klog.Warningf("get instance type(%s) failed with: %v", d.NodeID, err)
 				}
 			} else {
 				instances, ok := d.cloud.Instances()
@@ -405,7 +406,7 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 
 func getMaxDataDiskCount(instanceType string) int64 {
 	vmsize := strings.ToUpper(instanceType)
-	maxDataDiskCount, exists := maxDataDiskCountMap[vmsize]
+	maxDataDiskCount, exists := azureutils.MaxDataDiskCountMap[vmsize]
 	if exists {
 		klog.V(5).Infof("got a matching size in getMaxDataDiskCount, VM Size: %s, MaxDataDiskCount: %d", vmsize, maxDataDiskCount)
 		return maxDataDiskCount
@@ -535,6 +536,17 @@ func (d *Driver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolume
 		klog.V(2).Info("NodeExpandVolume skip resize operation on block volume(%s)", volumeID)
 		return &csi.NodeExpandVolumeResponse{}, nil
 	}
+
+	volumeCapability := req.GetVolumeCapability()
+	if volumeCapability != nil {
+		if blk := volumeCapability.GetBlock(); blk != nil {
+			// Noop for Block NodeExpandVolume
+			// This should not be executed but if somehow it is set to Block we should be cautious
+			klog.Warningf("NodeExpandVolume succeeded on %v to %s, capability is block but block check failed to identify it", volumeID, volumePath)
+			return &csi.NodeExpandVolumeResponse{}, nil
+		}
+	}
+	defer d.volumeLocks.Release(volumeID)
 
 	if acquired := d.volumeLocks.TryAcquire(volumeID); !acquired {
 		return nil, status.Errorf(codes.Aborted, volumeOperationAlreadyExistsFmt, volumeID)

@@ -21,6 +21,8 @@ provisioner: disk.csi.azure.com
 allowVolumeExpansion: true
 parameters:
   skuName: StandardSSD_LRS
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
 ```
 
 </details>

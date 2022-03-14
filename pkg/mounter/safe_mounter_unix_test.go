@@ -17,12 +17,16 @@ limitations under the License.
 package mounter
 
 import (
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
 func TestNewSafeMounter(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping test on Windows")
+	}
 	resp, err := NewSafeMounter(true)
 	assert.NotNil(t, resp)
 	assert.Nil(t, err)

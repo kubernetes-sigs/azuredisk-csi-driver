@@ -21,6 +21,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 )
 
 const (
@@ -85,8 +86,8 @@ func getStorageClass(
 func getVolumeSnapshotClass(generateName string, provisioner string) *snapshotv1.VolumeSnapshotClass {
 	return &snapshotv1.VolumeSnapshotClass{
 		TypeMeta: metav1.TypeMeta{
-			Kind:       VolumeSnapshotClassKind,
-			APIVersion: SnapshotAPIVersion,
+			Kind:       testconsts.VolumeSnapshotClassKind,
+			APIVersion: testconsts.SnapshotAPIVersion,
 		},
 
 		ObjectMeta: metav1.ObjectMeta{

@@ -24,5 +24,6 @@ func strFirstLetterToUpper(str string) string {
 	if len(str) < 2 {
 		return str
 	}
+
 	return strings.ToUpper(string(str[0])) + str[1:]
 }

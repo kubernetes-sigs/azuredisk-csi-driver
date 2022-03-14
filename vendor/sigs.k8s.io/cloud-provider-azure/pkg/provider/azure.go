@@ -17,6 +17,7 @@ limitations under the License.
 package provider
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -30,8 +31,10 @@ import (
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/adal"
 	"github.com/Azure/go-autorest/autorest/azure"
+	"golang.org/x/time/rate"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
@@ -41,9 +44,9 @@ import (
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/flowcontrol"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
+	"k8s.io/klog/v2/klogr"
 
 	"sigs.k8s.io/cloud-provider-azure/pkg/auth"
 	azclients "sigs.k8s.io/cloud-provider-azure/pkg/azureclients"
@@ -68,9 +71,10 @@ import (
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmssclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmssvmclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/zoneclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/batch"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
-	nodemanager "sigs.k8s.io/cloud-provider-azure/pkg/nodemanager"
+	"sigs.k8s.io/cloud-provider-azure/pkg/metrics"
 	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
 
 	// ensure the newly added package from azure-sdk-for-go is in vendor/
@@ -451,6 +455,11 @@ func NewCloudWithoutFeatureGates(configReader io.Reader, callFromCCM bool) (*Clo
 		return nil, err
 	}
 
+	return NewCloudWithoutFeatureGatesFromConfig(config, false, callFromCCM)
+}
+
+// NewCloudWithoutFeatureGatesFromConfig returns a Cloud without trying to wire the feature gates.
+func NewCloudWithoutFeatureGatesFromConfig(config *Config, fromSecret, callFromCCM bool) (*Cloud, error) {
 	az := &Cloud{
 		nodeNames:                sets.NewString(),
 		nodeZones:                map[string]sets.String{},
@@ -461,7 +470,7 @@ func NewCloudWithoutFeatureGates(configReader io.Reader, callFromCCM bool) (*Clo
 		nodePrivateIPs:           map[string]sets.String{},
 	}
 
-	err = az.InitializeCloudFromConfig(config, false, callFromCCM)
+	err := az.InitializeCloudFromConfig(config, fromSecret, callFromCCM)
 	if err != nil {
 		return nil, err
 	}
@@ -946,10 +955,10 @@ func initDiskControllers(az *Cloud) error {
 	// Common controller contains the function
 	// needed by both blob disk and managed disk controllers
 
-	qps := float32(defaultAtachDetachDiskQPS)
-	bucket := defaultAtachDetachDiskBucket
+	qps := rate.Limit(defaultAttachDetachDiskQPS)
+	bucket := defaultAttachDetachDiskBucket
 	if az.Config.AttachDetachDiskRateLimit != nil {
-		qps = az.Config.AttachDetachDiskRateLimit.CloudProviderRateLimitQPSWrite
+		qps = rate.Limit(az.Config.AttachDetachDiskRateLimit.CloudProviderRateLimitQPSWrite)
 		bucket = az.Config.AttachDetachDiskRateLimit.CloudProviderRateLimitBucketWrite
 	}
 	klog.V(2).Infof("attach/detach disk operation rate limit QPS: %f, Bucket: %d", qps, bucket)
@@ -961,8 +970,65 @@ func initDiskControllers(az *Cloud) error {
 		subscriptionID:        az.SubscriptionID,
 		cloud:                 az,
 		lockMap:               newLockMap(),
-		diskOpRateLimiter:     flowcontrol.NewTokenBucketRateLimiter(qps, bucket),
 	}
+
+	attachDetachRateLimiter := rate.NewLimiter(qps, bucket)
+
+	logger := klogr.NewWithOptions(klogr.WithFormat(klogr.FormatKlog)).WithName("cloud-provider-azure").WithValues("type", "batch")
+
+	processorOptions := []batch.ProcessorOption{
+		batch.WithVerboseLogLevel(3),
+		batch.WithDelayBeforeStart(1 * time.Second),
+		batch.WithGlobalLimiter(attachDetachRateLimiter),
+	}
+
+	attachBatchFn := func(ctx context.Context, key string, values []interface{}) ([]interface{}, error) {
+		subscriptionID, resourceGroup, nodeName := metrics.AttributesFromKey(key)
+
+		disksToAttach := make([]attachDiskParams, len(values))
+		for i, value := range values {
+			disksToAttach[i] = value.(attachDiskParams)
+		}
+
+		lunChans, err := common.attachDiskBatchToNode(ctx, subscriptionID, resourceGroup, types.NodeName(nodeName), disksToAttach)
+		if err != nil {
+			return nil, err
+		}
+
+		results := make([]interface{}, len(lunChans))
+		for i, lun := range lunChans {
+			results[i] = lun
+		}
+
+		return results, nil
+	}
+
+	attachDiskProcessOptions := append(processorOptions,
+		batch.WithLogger(logger.WithValues("operation", "attach_disk")),
+		batch.WithMetricsRecorder(metrics.NewBatchProcessorMetricsRecorder("batch", "updateasync", "attach_disk")))
+
+	detachBatchFn := func(ctx context.Context, key string, values []interface{}) ([]interface{}, error) {
+		subscriptionID, resourceGroup, nodeName := metrics.AttributesFromKey(key)
+
+		disksToDetach := make([]detachDiskParams, len(values))
+		for i, value := range values {
+			disksToDetach[i] = value.(detachDiskParams)
+		}
+
+		err := common.detachDiskBatchFromNode(ctx, subscriptionID, resourceGroup, types.NodeName(nodeName), disksToDetach)
+		if err != nil {
+			return nil, err
+		}
+
+		return make([]interface{}, len(disksToDetach)), nil
+	}
+
+	detachDiskProcessorOptions := append(processorOptions,
+		batch.WithLogger(logger.WithValues("operation", "detach_disk")),
+		batch.WithMetricsRecorder(metrics.NewBatchProcessorMetricsRecorder("batch", "update", "detach_disk")))
+
+	common.attachDiskProcessor = batch.NewProcessor(attachBatchFn, attachDiskProcessOptions...)
+	common.detachDiskProcessor = batch.NewProcessor(detachBatchFn, detachDiskProcessorOptions...)
 
 	if az.HasExtendedLocation() {
 		common.extendedLocation = &ExtendedLocation{
@@ -1037,20 +1103,16 @@ func (az *Cloud) updateNodeCaches(prevNode, newNode *v1.Node) {
 			delete(az.nodeResourceGroups, prevNode.ObjectMeta.Name)
 		}
 
+		// Remove from unmanagedNodes cache.
 		managed, ok := prevNode.ObjectMeta.Labels[consts.ManagedByAzureLabel]
-		isNodeManagedByCloudProvider := !ok || !strings.EqualFold(managed, consts.NotManagedByAzureLabelValue)
-
-		klog.Infof("managed=%v, ok=%v, isNodeManagedByCloudProvider=%v",
-			managed, ok, isNodeManagedByCloudProvider)
-
-		// Remove from unmanagedNodes cache
-		if !isNodeManagedByCloudProvider {
+		if ok && strings.EqualFold(managed, consts.NotManagedByAzureLabelValue) {
 			az.unmanagedNodes.Delete(prevNode.ObjectMeta.Name)
+			az.excludeLoadBalancerNodes.Delete(prevNode.ObjectMeta.Name)
 		}
 
-		// if the node is being deleted from the cluster, exclude it from load balancers
-		if newNode == nil {
-			az.excludeLoadBalancerNodes.Insert(prevNode.ObjectMeta.Name)
+		// Remove from excludeLoadBalancerNodes cache.
+		if _, hasExcludeBalancerLabel := prevNode.ObjectMeta.Labels[v1.LabelNodeExcludeBalancers]; hasExcludeBalancerLabel {
+			az.excludeLoadBalancerNodes.Delete(prevNode.ObjectMeta.Name)
 		}
 
 		// Remove from nodePrivateIPs cache.
@@ -1079,35 +1141,17 @@ func (az *Cloud) updateNodeCaches(prevNode, newNode *v1.Node) {
 			az.nodeResourceGroups[newNode.ObjectMeta.Name] = strings.ToLower(newRG)
 		}
 
-		_, hasExcludeBalancerLabel := newNode.ObjectMeta.Labels[v1.LabelNodeExcludeBalancers]
+		// Add to unmanagedNodes cache.
 		managed, ok := newNode.ObjectMeta.Labels[consts.ManagedByAzureLabel]
-		isNodeManagedByCloudProvider := !ok || !strings.EqualFold(managed, consts.NotManagedByAzureLabelValue)
-
-		// Update unmanagedNodes cache
-		if !isNodeManagedByCloudProvider {
+		if ok && strings.EqualFold(managed, consts.NotManagedByAzureLabelValue) {
 			az.unmanagedNodes.Insert(newNode.ObjectMeta.Name)
+			az.excludeLoadBalancerNodes.Insert(newNode.ObjectMeta.Name)
 		}
 
-		// Update excludeLoadBalancerNodes cache
-		switch {
-		case !isNodeManagedByCloudProvider:
+		// Add to excludeLoadBalancerNodes cache.
+		if _, hasExcludeBalancerLabel := newNode.ObjectMeta.Labels[v1.LabelNodeExcludeBalancers]; hasExcludeBalancerLabel {
+			klog.V(4).Infof("adding node %s from the exclude-from-lb list because the label %s is found", newNode.Name, v1.LabelNodeExcludeBalancers)
 			az.excludeLoadBalancerNodes.Insert(newNode.ObjectMeta.Name)
-
-		case hasExcludeBalancerLabel:
-			az.excludeLoadBalancerNodes.Insert(newNode.ObjectMeta.Name)
-
-		case !isNodeReady(newNode) && nodemanager.GetCloudTaint(newNode.Spec.Taints) == nil:
-			// If not in ready state and not a newly created node, add to excludeLoadBalancerNodes cache.
-			// New nodes (tainted with "node.cloudprovider.kubernetes.io/uninitialized") should not be
-			// excluded from load balancers regardless of their state, so as to reduce the number of
-			// VMSS API calls and not provoke VMScaleSetActiveModelsCountLimitReached.
-			// (https://github.com/kubernetes-sigs/cloud-provider-azure/issues/851)
-			az.excludeLoadBalancerNodes.Insert(newNode.ObjectMeta.Name)
-
-		default:
-			// Nodes not falling into the three cases above are valid backends and
-			// should not appear in excludeLoadBalancerNodes cache.
-			az.excludeLoadBalancerNodes.Delete(newNode.ObjectMeta.Name)
 		}
 
 		// Add to nodePrivateIPs cache
@@ -1242,13 +1286,4 @@ func (az *Cloud) ShouldNodeExcludedFromLoadBalancer(nodeName string) (bool, erro
 	}
 
 	return az.excludeLoadBalancerNodes.Has(nodeName), nil
-}
-
-func isNodeReady(node *v1.Node) bool {
-	for _, cond := range node.Status.Conditions {
-		if cond.Type == v1.NodeReady && cond.Status == v1.ConditionTrue {
-			return true
-		}
-	}
-	return false
 }

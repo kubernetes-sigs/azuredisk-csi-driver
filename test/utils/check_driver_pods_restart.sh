@@ -30,16 +30,15 @@ mapfile -t PODS_WITH_RESTARTS < <(kubectl get pods --namespace kube-system \
     --output=jsonpath='{range .items[*]}{.metadata.name} {range .status.containerStatuses[?(@.restartCount!=0)]}{.name};{end}{"\n"}{end}' \
     | awk '{if ($2 != "") print $1}')
 
-for POD_WITH_RESTART in "${PODS_WITH_RESTARTS[@]}"; do
-    echo "there is a driver pod which has restarted"
+processed_pods=("$(get_array "${original_pods[@]}")")
+processed_restarts=("$(get_array "${original_restarts[@]}")")
 
-    if [[ "$1" == "log" ]]; then
-        kubectl describe pod "$POD_WITH_RESTART" --namespace kube-system
-        echo "======================================================================================"
-        echo "print previous azuredisk container logs since there is a restart"
-        kubectl logs "$POD_WITH_RESTART" --container azuredisk --previous --namespace kube-system
-        echo "======================================================================================"
-    fi
-done
+if [[ "$1" == "log" ]]; then
+    kubectl describe pod "$POD_WITH_RESTART" --namespace kube-system
+    echo "======================================================================================"
+    echo "print previous azuredisk container logs since there is a restart"
+    kubectl logs "$POD_WITH_RESTART" --container azuredisk --previous --namespace kube-system
+    echo "======================================================================================"
+fi
 
 echo "======================================================================================"

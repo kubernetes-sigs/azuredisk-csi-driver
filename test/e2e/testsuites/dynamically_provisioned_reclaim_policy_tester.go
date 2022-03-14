@@ -17,8 +17,10 @@ limitations under the License.
 package testsuites
 
 import (
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
+	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
+
+	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
@@ -29,8 +31,8 @@ import (
 // Testing the correct behavior for different reclaimPolicies
 type DynamicallyProvisionedReclaimPolicyTest struct {
 	CSIDriver              driver.DynamicPVTestDriver
-	Volumes                []VolumeDetails
-	Azuredisk              azuredisk.CSIDriver
+	Volumes                []resources.VolumeDetails
+	AzureCloud             *provider.Cloud
 	StorageClassParameters map[string]string
 }
 
@@ -48,7 +50,7 @@ func (t *DynamicallyProvisionedReclaimPolicyTest) Run(client clientset.Interface
 		if tpvc.ReclaimPolicy() == v1.PersistentVolumeReclaimRetain {
 			tpvc.WaitForPersistentVolumePhase(v1.VolumeReleased)
 			tpvc.DeleteBoundPersistentVolume()
-			tpvc.DeleteBackingVolume(t.Azuredisk)
+			tpvc.DeleteBackingVolume(t.AzureCloud)
 		}
 	}
 }

@@ -22,9 +22,11 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strings"
 	"testing"
 
+	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/azure"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/credentials"
 
@@ -32,68 +34,75 @@ import (
 )
 
 const (
-	nodeid = "sanity-test-node"
-	vmType = "standard"
+	nodeid   = "sanity-test-node"
+	vmType   = "standard"
+	driverV1 = "v1"
+	driverV2 = "v2"
 )
 
-var useDriverV2 = flag.Bool("temp-use-driver-v2", false, "A temporary flag to enable early test and development of Azure Disk CSI Driver V2. This will be removed in the future.")
+var testDriverVersion = flag.String("test-driver-version", driverV1, "The version of the driver to be tested. Valid values are \"v1\" or \"v2\".")
+var imageTag = flag.String("image-tag", "", "A flag to get the docker image tag")
 
 func TestSanity(t *testing.T) {
 	// Set necessary env vars for creating azure credential file
 	os.Setenv("AZURE_VM_TYPE", vmType)
+	flag.Parse()
 
 	creds, err := credentials.CreateAzureCredentialFile()
 	defer func() {
 		err := credentials.DeleteAzureCredentialFile()
-		assert.NoError(t, err)
+		azure.AssertNoError(t, err)
 	}()
-	assert.NoError(t, err)
-	assert.NotNil(t, creds)
+	azure.AssertNoError(t, err)
+	azure.AssertNotNil(t, creds)
 
 	// Set necessary env vars for sanity test
-	os.Setenv("AZURE_CREDENTIAL_FILE", credentials.TempAzureCredentialFilePath)
-	os.Setenv("nodeid", nodeid)
+	os.Setenv("AZURE_CREDENTIAL_FILE", testconsts.TempAzureCredentialFilePath)
+	os.Setenv("NODEID", nodeid)
 
 	azureClient, err := azure.GetAzureClient(creds.Cloud, creds.SubscriptionID, creds.AADClientID, creds.TenantID, creds.AADClientSecret)
-	assert.NoError(t, err)
+	azure.AssertNoError(t, err)
 
-	ctx := context.Background()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
 	// Create a resource group with a VM for sanity test
 	log.Printf("Creating resource group %s in %s", creds.ResourceGroup, creds.Cloud)
 	_, err = azureClient.EnsureResourceGroup(ctx, creds.ResourceGroup, creds.Location, nil)
-	assert.NoError(t, err)
+	azure.AssertNoError(t, err)
 	defer func() {
 		// Only delete resource group the test created
-		if strings.HasPrefix(creds.ResourceGroup, credentials.ResourceGroupPrefix) {
+		if strings.HasPrefix(creds.ResourceGroup, testconsts.ResourceGroupPrefix) {
 			log.Printf("Deleting resource group %s", creds.ResourceGroup)
-			err := azureClient.DeleteResourceGroup(ctx, creds.ResourceGroup)
-			assert.NoError(t, err)
+			err := azureClient.DeleteResourceGroup(context.Background(), creds.ResourceGroup)
+			azure.AssertNoError(t, err)
 		}
 	}()
 
 	log.Printf("Creating a VM in %s", creds.ResourceGroup)
 	_, err = azureClient.EnsureVirtualMachine(ctx, creds.ResourceGroup, creds.Location, nodeid)
-	assert.NoError(t, err)
+	azure.AssertNoError(t, err)
 
 	// Execute the script from project root
 	err = os.Chdir("../..")
-	assert.NoError(t, err)
+	azure.AssertNoError(t, err)
 	// Change directory back to test/sanity
 	defer func() {
 		err := os.Chdir("test/sanity")
-		assert.NoError(t, err)
+		azure.AssertNoError(t, err)
 	}()
 
 	projectRoot, err := os.Getwd()
-	assert.NoError(t, err)
+	azure.AssertNoError(t, err)
 	assert.True(t, strings.HasSuffix(projectRoot, "azuredisk-csi-driver"))
 
 	args := make([]string, 0)
-	if *useDriverV2 {
+	if strings.EqualFold(*testDriverVersion, driverV2) {
 		args = append(args, "v2")
+		args = append(args, *imageTag)
 	}
 
-	cmd := exec.Command("./test/sanity/run-tests-all-clouds.sh", args...)
+	cmd := exec.CommandContext(ctx, "./test/sanity/run-tests-all-clouds.sh", args...)
 	cmd.Dir = projectRoot
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

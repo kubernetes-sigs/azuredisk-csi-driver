@@ -31,17 +31,18 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
+	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 )
 
 type DynamicallyProvisionedSharedDiskTester struct {
 	CSIDriver              driver.DynamicPVTestDriver
-	Pod                    PodDetails
+	Pod                    resources.PodDetails
 	PodCheck               *PodExecCheck
 	StorageClassParameters map[string]string
 }
 
-func (t *DynamicallyProvisionedSharedDiskTester) Run(client clientset.Interface, namespace *v1.Namespace) {
-	tDeployment, cleanup := t.Pod.SetupDeployment(client, namespace, t.CSIDriver, t.StorageClassParameters)
+func (t *DynamicallyProvisionedSharedDiskTester) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
+	tDeployment, cleanup := t.Pod.SetupDeployment(client, namespace, t.CSIDriver, schedulerName, t.StorageClassParameters)
 	for i := range cleanup {
 		defer cleanup[i]()
 	}
@@ -53,8 +54,8 @@ func (t *DynamicallyProvisionedSharedDiskTester) Run(client clientset.Interface,
 	gomega.Expect(maxShares).To(gomega.BeNumerically(">=", 2), "test case must specify maxshares of at least 2")
 
 	expectedAttachmentCount := int32(1)
-	if tDeployment.deployment.Spec.Replicas != nil {
-		expectedAttachmentCount = *tDeployment.deployment.Spec.Replicas
+	if tDeployment.Deployment.Spec.Replicas != nil {
+		expectedAttachmentCount = *tDeployment.Deployment.Spec.Replicas
 	}
 	gomega.Expect(expectedAttachmentCount).To(gomega.BeNumerically("<=", int32(maxShares)), "test case must specify a number of replica <= maxshares")
 
@@ -72,7 +73,7 @@ func (t *DynamicallyProvisionedSharedDiskTester) Run(client clientset.Interface,
 
 	ginkgo.By("verifying shared attachment")
 
-	for _, volSpec := range tDeployment.deployment.Spec.Template.Spec.Volumes {
+	for _, volSpec := range tDeployment.Deployment.Spec.Template.Spec.Volumes {
 		attachedToNodes := make(map[string]struct{})
 
 		volumeAttachments, err := client.StorageV1().VolumeAttachments().List(context.TODO(), metav1.ListOptions{})

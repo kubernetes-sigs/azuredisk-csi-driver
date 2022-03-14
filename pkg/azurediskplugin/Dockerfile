@@ -12,12 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM k8s.gcr.io/build-image/debian-base:bullseye-v1.1.0
-
-RUN apt update && apt-mark unhold libcap2
-RUN clean-install util-linux e2fsprogs mount ca-certificates udev xfsprogs btrfs-progs
-# install updated packages to fix CVE issues
-RUN clean-install libgmp10 bsdutils
+FROM alpine:3.15.0
+RUN apk upgrade --no-cache busybox \
+    && apk add --no-cache util-linux e2fsprogs e2fsprogs-extra ca-certificates udev xfsprogs xfsprogs-extra btrfs-progs btrfs-progs-extra
 
 LABEL maintainers="andyzhangx"
 LABEL description="Azure Disk CSI Driver"

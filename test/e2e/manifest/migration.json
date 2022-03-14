@@ -1,10 +1,10 @@
 {
     "apiVersion": "vlabs",
-    "location": "westus2",
+    "location": "northeurope",
     "properties": {
         "orchestratorProfile": {
             "orchestratorType": "Kubernetes",
-            "orchestratorRelease": "1.17",
+            "orchestratorRelease": "1.21",
             "kubernetesConfig": {
                 "useManagedIdentity": false,
                 "networkPolicy": "none",

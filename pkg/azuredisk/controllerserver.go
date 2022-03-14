@@ -39,6 +39,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/cloud-provider-azure/pkg/metrics"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
@@ -81,16 +82,23 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	}
 	defer d.volumeLocks.Release(name)
 
-	capacityBytes := req.GetCapacityRange().GetRequiredBytes()
-	volSizeBytes := int64(capacityBytes)
-	requestGiB := int(volumehelper.RoundUpGiB(volSizeBytes))
-	if requestGiB < consts.MinimumDiskSizeGiB {
-		requestGiB = consts.MinimumDiskSizeGiB
+	requestGiB := consts.MinimumDiskSizeGiB
+
+	if req.GetCapacityRange() != nil {
+		volSizeBytes := req.GetCapacityRange().GetRequiredBytes()
+		requestGiB = int(volumehelper.RoundUpGiB(volSizeBytes))
+		if requestGiB < consts.MinimumDiskSizeGiB {
+			requestGiB = consts.MinimumDiskSizeGiB
+		}
+
+		maxVolSize := int(volumehelper.RoundUpGiB(req.GetCapacityRange().GetLimitBytes()))
+		if (maxVolSize > 0) && (maxVolSize < requestGiB) {
+			return nil, status.Error(codes.InvalidArgument, "After round-up, volume size exceeds the limit specified")
+		}
 	}
 
-	maxVolSize := int(volumehelper.RoundUpGiB(req.GetCapacityRange().GetLimitBytes()))
-	if (maxVolSize > 0) && (maxVolSize < requestGiB) {
-		return nil, status.Error(codes.InvalidArgument, "After round-up, volume size exceeds the limit specified")
+	if diskParams.Location == "" {
+		diskParams.Location = d.cloud.Location
 	}
 
 	if diskParams.Location == "" {
@@ -100,9 +108,17 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	localCloud := d.cloud
 
 	if diskParams.UserAgent != "" {
-		localCloud, err = azureutils.GetCloudProvider(d.kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, diskParams.UserAgent, d.allowEmptyCloudConfig)
+		localCloud, err = azureutils.GetCloudProvider(d.kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, diskParams.UserAgent)
 		if err != nil {
 			return nil, fmt.Errorf("create cloud with UserAgent(%s) failed with: (%s)", diskParams.UserAgent, err)
+		}
+	}
+
+	isAdvancedPerfProfile := strings.EqualFold(diskParams.PerfProfile, azureconstants.PerfProfileAdvanced)
+	// If perfProfile is set to advanced and no/invalid device settings are provided, fail the request
+	if d.getPerfOptimizationEnabled() && isAdvancedPerfProfile {
+		if err = optimization.AreDeviceSettingsValid(consts.DummyBlockDevicePathLinux, diskParams.DeviceSettings); err != nil {
+			return nil, err
 		}
 	}
 	if azureutils.IsAzureStackCloud(localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud) {
@@ -114,7 +130,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	if diskParams.DiskName == "" {
 		diskParams.DiskName = name
 	}
-	diskParams.DiskName = azureutils.CreateValidDiskName(diskParams.DiskName)
+	diskParams.DiskName = azureutils.CreateValidDiskName(diskParams.DiskName, false)
 
 	if diskParams.ResourceGroup == "" {
 		diskParams.ResourceGroup = d.cloud.ResourceGroup
@@ -126,7 +142,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		return nil, err
 	}
 
-	if _, err = azureutils.NormalizeCachingMode(diskParams.CachingMode); err != nil {
+	if _, err = azureutils.NormalizeCachingMode(diskParams.CachingMode, diskParams.MaxShares); err != nil {
 		return nil, err
 	}
 
@@ -317,7 +333,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 	caps := []*csi.VolumeCapability{volCap}
 	maxShares, err := azureutils.GetMaxShares(req.GetVolumeContext())
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, "MaxShares value not supported")
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("invalid value specified by maxShares parameter: %s", err.Error()))
 	}
 
 	if !azureutils.IsValidVolumeCapabilities(caps, maxShares) {
@@ -374,7 +390,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		}
 		klog.V(2).Infof("Trying to attach volume %q to node %q", diskURI, nodeName)
 
-		asyncAttach := isAsyncAttachEnabled(d.enableAsyncAttach, volumeContext)
+		asyncAttach := azureutils.IsAsyncAttachEnabled(d.enableAsyncAttach, volumeContext)
 		lun, err = d.cloud.AttachDisk(ctx, asyncAttach, diskName, diskURI, nodeName, cachingMode, disk)
 		if err == nil {
 			klog.V(2).Infof("Attach operation successful: volume %q attached to node %q.", diskURI, nodeName)
@@ -465,7 +481,7 @@ func (d *Driver) ValidateVolumeCapabilities(ctx context.Context, req *csi.Valida
 	params := req.GetParameters()
 	maxShares, err := azureutils.GetMaxShares(params)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, "MaxShares value not supported")
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("invalid value specified by maxShares parameter: %s", err.Error()))
 	}
 
 	if !azureutils.IsValidVolumeCapabilities(volumeCapabilities, maxShares) {
@@ -612,7 +628,7 @@ func (d *Driver) listVolumesInNodeResourceGroup(ctx context.Context, start, maxE
 
 	nextTokenString := ""
 	if !listStatus.isCompleteRun {
-		nextTokenString = strconv.Itoa(listStatus.numVisited)
+		nextTokenString = strconv.Itoa(start + listStatus.numVisited)
 	}
 
 	listVolumesResp := &csi.ListVolumesResponse{
@@ -765,7 +781,7 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 		return nil, status.Error(codes.InvalidArgument, "snapshot name must be provided")
 	}
 
-	snapshotName = azureutils.CreateValidDiskName(snapshotName)
+	snapshotName = azureutils.CreateValidDiskName(snapshotName, false)
 
 	var customTags string
 	// set incremental snapshot as true by default
@@ -790,7 +806,7 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 			location = v
 		case consts.UserAgentField:
 			newUserAgent := v
-			localCloud, err = azureutils.GetCloudProvider(d.kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, newUserAgent, d.allowEmptyCloudConfig)
+			localCloud, err = azureutils.GetCloudProvider(d.kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, newUserAgent)
 			if err != nil {
 				return nil, fmt.Errorf("create cloud with UserAgent(%s) failed with: (%s)", newUserAgent, err)
 
@@ -988,19 +1004,4 @@ func (d *Driver) getSnapshotInfo(snapshotID string) (snapshotName, resourceGroup
 		return "", "", "", fmt.Errorf("cannot get SubscriptionID from %s", snapshotID)
 	}
 	return snapshotName, resourceGroup, subsID, err
-}
-
-func isAsyncAttachEnabled(defaultValue bool, volumeContext map[string]string) bool {
-	for k, v := range volumeContext {
-		switch strings.ToLower(k) {
-		case consts.EnableAsyncAttachField:
-			if strings.EqualFold(v, consts.TrueValue) {
-				return true
-			}
-			if strings.EqualFold(v, consts.FalseValue) {
-				return false
-			}
-		}
-	}
-	return defaultValue
 }
