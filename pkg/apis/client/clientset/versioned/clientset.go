@@ -25,13 +25,11 @@ import (
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"
-	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1alpha2"
 	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1beta1"
 )
 
 type Interface interface {
 	Discovery() discovery.DiscoveryInterface
-	DiskV1alpha2() diskv1alpha2.DiskV1alpha2Interface
 	DiskV1beta1() diskv1beta1.DiskV1beta1Interface
 }
 
@@ -39,13 +37,7 @@ type Interface interface {
 // version included in a Clientset.
 type Clientset struct {
 	*discovery.DiscoveryClient
-	diskV1alpha2 *diskv1alpha2.DiskV1alpha2Client
-	diskV1beta1  *diskv1beta1.DiskV1beta1Client
-}
-
-// DiskV1alpha2 retrieves the DiskV1alpha2Client
-func (c *Clientset) DiskV1alpha2() diskv1alpha2.DiskV1alpha2Interface {
-	return c.diskV1alpha2
+	diskV1beta1 *diskv1beta1.DiskV1beta1Client
 }
 
 // DiskV1beta1 retrieves the DiskV1beta1Client
@@ -93,10 +85,6 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 
 	var cs Clientset
 	var err error
-	cs.diskV1alpha2, err = diskv1alpha2.NewForConfigAndClient(&configShallowCopy, httpClient)
-	if err != nil {
-		return nil, err
-	}
 	cs.diskV1beta1, err = diskv1beta1.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
 		return nil, err
@@ -122,7 +110,6 @@ func NewForConfigOrDie(c *rest.Config) *Clientset {
 // New creates a new Clientset for the given RESTClient.
 func New(c rest.Interface) *Clientset {
 	var cs Clientset
-	cs.diskV1alpha2 = diskv1alpha2.New(c)
 	cs.diskV1beta1 = diskv1beta1.New(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClient(c)

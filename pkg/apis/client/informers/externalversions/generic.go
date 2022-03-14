@@ -23,7 +23,6 @@ import (
 
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	cache "k8s.io/client-go/tools/cache"
-	v1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
 	v1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 )
 
@@ -53,15 +52,7 @@ func (f *genericInformer) Lister() cache.GenericLister {
 // TODO extend this to unknown resources with a client pool
 func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource) (GenericInformer, error) {
 	switch resource {
-	// Group=disk.csi.azure.com, Version=v1alpha2
-	case v1alpha2.SchemeGroupVersion.WithResource("azdrivernodes"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Disk().V1alpha2().AzDriverNodes().Informer()}, nil
-	case v1alpha2.SchemeGroupVersion.WithResource("azvolumes"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Disk().V1alpha2().AzVolumes().Informer()}, nil
-	case v1alpha2.SchemeGroupVersion.WithResource("azvolumeattachments"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Disk().V1alpha2().AzVolumeAttachments().Informer()}, nil
-
-		// Group=disk.csi.azure.com, Version=v1beta1
+	// Group=disk.csi.azure.com, Version=v1beta1
 	case v1beta1.SchemeGroupVersion.WithResource("azdrivernodes"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Disk().V1beta1().AzDriverNodes().Informer()}, nil
 	case v1beta1.SchemeGroupVersion.WithResource("azvolumes"):
