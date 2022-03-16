@@ -310,7 +310,7 @@ func (d *DriverV2) ControllerPublishVolume(ctx context.Context, req *csi.Control
 		mc.ObserveOperationWithResult(isOperationSucceeded)
 	}()
 
-	klog.V(2).Infof("GetDiskLun returned: %v. Initiating attaching volume %q to node %q.", err, diskURI, nodeName)
+	klog.V(2).Infof("GetDiskLun returned: %v. Initiating attaching volume %s to node %s.", err, diskURI, nodeName)
 
 	lun, vmState, err := d.cloud.GetDiskLun(diskName, diskURI, nodeName)
 	if err == cloudprovider.InstanceNotFound {
@@ -324,38 +324,38 @@ func (d *DriverV2) ControllerPublishVolume(ctx context.Context, req *csi.Control
 
 	if err == nil {
 		if vmState != nil && strings.ToLower(*vmState) == "failed" {
-			klog.Warningf("VM(%q) is in failed state, update VM first", nodeName)
+			klog.Warningf("VM(%s) is in failed state, update VM first", nodeName)
 			if err := d.cloud.UpdateVM(ctx, nodeName); err != nil {
 				return nil, fmt.Errorf("update instance %q failed with %v", nodeName, err)
 			}
 		}
 		// Volume is already attached to node.
-		klog.V(2).Infof("Attach operation is successful. volume %q is already attached to node %q at lun %d.", diskURI, nodeName, lun)
+		klog.V(2).Infof("Attach operation is successful. volume %s is already attached to node %s at lun %d.", diskURI, nodeName, lun)
 	} else {
 		var cachingMode compute.CachingTypes
 		if cachingMode, err = azureutils.GetCachingMode(volumeContext); err != nil {
 			return nil, err
 		}
-		klog.V(2).Infof("Trying to attach volume %q to node %q", diskURI, nodeName)
+		klog.V(2).Infof("Trying to attach volume %s to node %s", diskURI, nodeName)
 
 		lun, err = d.cloud.AttachDisk(ctx, true, diskName, diskURI, nodeName, cachingMode, disk)
 		if err == nil {
-			klog.V(2).Infof("Attach operation successful: volume %q attached to node %q.", diskURI, nodeName)
+			klog.V(2).Infof("Attach operation successful: volume %s attached to node %s.", diskURI, nodeName)
 		} else {
 			if derr, ok := err.(*volerr.DanglingAttachError); ok {
-				klog.Warningf("volume %q is already attached to node %q, try detach first", diskURI, derr.CurrentNode)
+				klog.Warningf("volume %s is already attached to node %s, try detach first", diskURI, derr.CurrentNode)
 				if err = d.cloud.DetachDisk(ctx, diskName, diskURI, derr.CurrentNode); err != nil {
-					return nil, status.Errorf(codes.Internal, "Could not detach volume %q from node %q: %v", diskURI, derr.CurrentNode, err)
+					return nil, status.Errorf(codes.Internal, "Could not detach volume %s from node %s: %v", diskURI, derr.CurrentNode, err)
 				}
-				klog.V(2).Infof("Trying to attach volume %q to node %q again", diskURI, nodeName)
+				klog.V(2).Infof("Trying to attach volume %s to node %s again", diskURI, nodeName)
 				lun, err = d.cloud.AttachDisk(ctx, true, diskName, diskURI, nodeName, cachingMode, disk)
 			}
 			if err != nil {
-				klog.Errorf("Attach volume %q to instance %q failed with %v", diskURI, nodeName, err)
-				return nil, fmt.Errorf("Attach volume %q to instance %q failed with %v", diskURI, nodeName, err)
+				klog.Errorf("Attach volume %s to instance %s failed with %v", diskURI, nodeName, err)
+				return nil, fmt.Errorf("Attach volume %s to instance %s failed with %v", diskURI, nodeName, err)
 			}
 		}
-		klog.V(2).Infof("attach volume %q to node %q successfully", diskURI, nodeName)
+		klog.V(2).Infof("attach volume %s to node %s successfully", diskURI, nodeName)
 	}
 
 	publishContext := map[string]string{consts.LUN: strconv.Itoa(int(lun))}
