@@ -12,9 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM alpine:3.14.2
-RUN apk upgrade --no-cache busybox \
-    && apk add --no-cache util-linux e2fsprogs e2fsprogs-extra ca-certificates udev xfsprogs xfsprogs-extra btrfs-progs btrfs-progs-extra
+FROM alpine:3.15.0
+RUN apk add --no-cache util-linux e2fsprogs e2fsprogs-extra ca-certificates udev xfsprogs xfsprogs-extra btrfs-progs btrfs-progs-extra openssl-dev
 
 LABEL maintainers="andyzhangx"
 LABEL description="Azure Disk CSI Driver"
