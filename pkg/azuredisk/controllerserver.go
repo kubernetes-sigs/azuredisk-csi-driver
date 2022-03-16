@@ -403,7 +403,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 	publishContext := map[string]string{consts.LUN: strconv.Itoa(int(lun))}
 	if disk != nil {
 		if _, ok := volumeContext[consts.RequestedSizeGib]; !ok {
-			klog.V(2).Infof("found static PV(%s), insert disk properties to volumeattachments", diskURI)
+			klog.V(6).Infof("found static PV(%s), insert disk properties to volumeattachments", diskURI)
 			azureutils.InsertDiskProperties(disk, publishContext)
 		}
 	}
