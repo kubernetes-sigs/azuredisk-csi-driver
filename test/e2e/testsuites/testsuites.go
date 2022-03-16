@@ -23,6 +23,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1"
 	snapshotclientset "github.com/kubernetes-csi/external-snapshotter/client/v4/clientset/versioned"
@@ -776,8 +777,9 @@ func NewTestPod(c clientset.Interface, ns *v1.Namespace, command string, isWindo
 						Args:    []string{"-c", command},
 					},
 				},
-				RestartPolicy: v1.RestartPolicyNever,
-				Volumes:       make([]v1.Volume, 0),
+				RestartPolicy:                v1.RestartPolicyNever,
+				Volumes:                      make([]v1.Volume, 0),
+				AutomountServiceAccountToken: to.BoolPtr(false),
 			},
 		},
 	}
