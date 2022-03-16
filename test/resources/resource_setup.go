@@ -144,11 +144,14 @@ func (pod *PodDetails) SetupDeployment(client clientset.Interface, namespace *v1
 		}
 		cleanupFuncs = append(cleanupFuncs, tpvc.Cleanup)
 
-		newVolumeName := fmt.Sprintf("%s%d", volume.VolumeMount.NameGenerate, n+1)
-		newMountPath := fmt.Sprintf("%s%d", volume.VolumeMount.MountPathGenerate, n+1)
+		var newVolumeName string
+
 		pvc := tpvc.PersistentVolumeClaim
 
 		if pvc.Spec.VolumeMode == nil || *pvc.Spec.VolumeMode == v1.PersistentVolumeFilesystem {
+			newVolumeName := fmt.Sprintf("%s%d", volume.VolumeMount.NameGenerate, n+1)
+			newMountPath := fmt.Sprintf("%s%d", volume.VolumeMount.MountPathGenerate, n+1)
+
 			newVolumeMount := v1.VolumeMount{
 				Name:      newVolumeName,
 				MountPath: newMountPath,
@@ -156,9 +159,11 @@ func (pod *PodDetails) SetupDeployment(client clientset.Interface, namespace *v1
 			}
 			volumeMounts = append(volumeMounts, newVolumeMount)
 		} else {
+			newVolumeName := fmt.Sprintf("%s%d", volume.VolumeDevice.NameGenerate, n+1)
+
 			newVolumeDevices := v1.VolumeDevice{
 				Name:       newVolumeName,
-				DevicePath: newMountPath,
+				DevicePath: volume.VolumeDevice.DevicePath,
 			}
 			volumeDevices = append(volumeDevices, newVolumeDevices)
 		}
@@ -198,11 +203,14 @@ func (pod *PodDetails) SetupDeploymentWithPreProvisionedVolumes(client clientset
 		tpvc, funcs := volume.SetupPreProvisionedPersistentVolumeClaim(client, namespace, csiDriver, volumeContext)
 		cleanupFuncs = append(cleanupFuncs, funcs...)
 
-		newVolumeName := fmt.Sprintf("%s%d", volume.VolumeMount.NameGenerate, n+1)
-		newMountPath := fmt.Sprintf("%s%d", volume.VolumeMount.MountPathGenerate, n+1)
+		var newVolumeName string
+
 		pvc := tpvc.PersistentVolumeClaim
 
 		if pvc.Spec.VolumeMode == nil || *pvc.Spec.VolumeMode == v1.PersistentVolumeFilesystem {
+			newVolumeName := fmt.Sprintf("%s%d", volume.VolumeMount.NameGenerate, n+1)
+			newMountPath := fmt.Sprintf("%s%d", volume.VolumeMount.MountPathGenerate, n+1)
+
 			newVolumeMount := v1.VolumeMount{
 				Name:      newVolumeName,
 				MountPath: newMountPath,
@@ -210,9 +218,11 @@ func (pod *PodDetails) SetupDeploymentWithPreProvisionedVolumes(client clientset
 			}
 			volumeMounts = append(volumeMounts, newVolumeMount)
 		} else {
+			newVolumeName := fmt.Sprintf("%s%d", volume.VolumeDevice.NameGenerate, n+1)
+
 			newVolumeDevices := v1.VolumeDevice{
 				Name:       newVolumeName,
-				DevicePath: newMountPath,
+				DevicePath: volume.VolumeDevice.DevicePath,
 			}
 			volumeDevices = append(volumeDevices, newVolumeDevices)
 		}
