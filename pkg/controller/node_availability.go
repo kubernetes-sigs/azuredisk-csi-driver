@@ -39,6 +39,9 @@ type ReconcileNodeAvailability struct {
 var _ reconcile.Reconciler = &ReconcileNodeAvailability{}
 
 func (r *ReconcileNodeAvailability) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
+	if !r.controllerSharedState.isRecoveryComplete() {
+		return reconcile.Result{Requeue: true}, nil
+	}
 
 	n := &corev1.Node{}
 	err := r.controllerSharedState.cachedClient.Get(ctx, request.NamespacedName, n)

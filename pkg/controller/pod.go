@@ -46,6 +46,10 @@ type ReconcilePod struct {
 var _ reconcile.Reconciler = &ReconcilePod{}
 
 func (r *ReconcilePod) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
+	if !r.controllerSharedState.isRecoveryComplete() {
+		return reconcile.Result{Requeue: true}, nil
+	}
+
 	var pod corev1.Pod
 	klog.V(5).Infof("Reconcile pod %s.", request.Name)
 	podKey := getQualifiedName(request.Namespace, request.Name)

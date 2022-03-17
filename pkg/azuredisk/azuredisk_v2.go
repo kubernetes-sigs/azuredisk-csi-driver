@@ -356,6 +356,7 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 		if err := podReconciler.Recover(ctx); err != nil {
 			klog.Warningf("Failed to recover replica AzVolumeAttachments: %v.", err)
 		}
+		sharedState.MarkRecoveryComplete()
 	}()
 
 	klog.V(2).Info("Starting controller manager")
