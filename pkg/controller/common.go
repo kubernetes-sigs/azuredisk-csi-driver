@@ -290,6 +290,10 @@ func (c *SharedState) addToOperationQueue(volumeName string, requester operation
 				operationQueue := lockable.entry.(*operationQueue)
 				// pop the first operation
 				front := operationQueue.Front()
+				// if there is no entry remaining, exit the loop
+				if front == nil {
+					break
+				}
 				operation := front.Value.(*replicaOperation)
 				lockable.Unlock()
 
@@ -308,10 +312,6 @@ func (c *SharedState) addToOperationQueue(volumeName string, requester operation
 
 				lockable.Lock()
 				operationQueue.Remove(front)
-				// if there is no entry remaining, exit the loop
-				if operationQueue.Front() == nil {
-					break
-				}
 			}
 			lockable.Unlock()
 			klog.Infof("operation queue for volume (%s) fully iterated and completed.", volumeName)
