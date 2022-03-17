@@ -18,6 +18,7 @@ package testsuites
 
 import (
 	"context"
+	"strings"
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
@@ -51,11 +52,21 @@ func (t *PreProvisionedDanglingAttachVolumeTest) Run(client clientset.Interface,
 	if len(nodes) < 2 {
 		ginkgo.Skip("need at least 2 nodes to verify the test case. Current node count is %d", len(nodes))
 	}
+	var node string
+	for _, n := range nodes {
+		if !strings.Contains(n, "control-plane") {
+			node = n
+			break
+		}
+	}
+	if node == "" {
+		ginkgo.Skip("cannot get a suitable agent node to run test case")
+	}
 
 	ginkgo.By("attaching disk to node#0")
 	req := &csi.ControllerPublishVolumeRequest{
 		VolumeId: t.Pod.Volumes[0].VolumeID,
-		NodeId:   nodes[0],
+		NodeId:   node,
 		VolumeCapability: &csi.VolumeCapability{
 			AccessType: &csi.VolumeCapability_Mount{
 				Mount: &csi.VolumeCapability_MountVolume{},
@@ -69,8 +80,8 @@ func (t *PreProvisionedDanglingAttachVolumeTest) Run(client clientset.Interface,
 	framework.ExpectNoError(err)
 
 	// Make node#0 unschedulable to ensure that pods are scheduled on a different node
-	tpod.SetNodeUnschedulable(nodes[0], true)        // kubeclt cordon node
-	defer tpod.SetNodeUnschedulable(nodes[0], false) // defer kubeclt uncordon node
+	tpod.SetNodeUnschedulable(node, true)        // kubeclt cordon node
+	defer tpod.SetNodeUnschedulable(node, false) // defer kubeclt uncordon node
 
 	// Create a pod with the pvc mount for the disk currently attached to node#0 and wait for success
 	ginkgo.By("deploying the pod")
