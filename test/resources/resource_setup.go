@@ -149,17 +149,16 @@ func (pod *PodDetails) SetupDeployment(client clientset.Interface, namespace *v1
 		pvc := tpvc.PersistentVolumeClaim
 
 		if pvc.Spec.VolumeMode == nil || *pvc.Spec.VolumeMode == v1.PersistentVolumeFilesystem {
-			newVolumeName := fmt.Sprintf("%s%d", volume.VolumeMount.NameGenerate, n+1)
-			newMountPath := fmt.Sprintf("%s%d", volume.VolumeMount.MountPathGenerate, n+1)
+			newVolumeName = fmt.Sprintf("%s%d", volume.VolumeMount.NameGenerate, n+1)
 
 			newVolumeMount := v1.VolumeMount{
 				Name:      newVolumeName,
-				MountPath: newMountPath,
+				MountPath: fmt.Sprintf("%s%d", volume.VolumeMount.MountPathGenerate, n+1),
 				ReadOnly:  volume.VolumeMount.ReadOnly,
 			}
 			volumeMounts = append(volumeMounts, newVolumeMount)
 		} else {
-			newVolumeName := fmt.Sprintf("%s%d", volume.VolumeDevice.NameGenerate, n+1)
+			newVolumeName = fmt.Sprintf("%s%d", volume.VolumeDevice.NameGenerate, n+1)
 
 			newVolumeDevices := v1.VolumeDevice{
 				Name:       newVolumeName,
@@ -208,12 +207,11 @@ func (pod *PodDetails) SetupDeploymentWithPreProvisionedVolumes(client clientset
 		pvc := tpvc.PersistentVolumeClaim
 
 		if pvc.Spec.VolumeMode == nil || *pvc.Spec.VolumeMode == v1.PersistentVolumeFilesystem {
-			newVolumeName := fmt.Sprintf("%s%d", volume.VolumeMount.NameGenerate, n+1)
-			newMountPath := fmt.Sprintf("%s%d", volume.VolumeMount.MountPathGenerate, n+1)
+			newVolumeName = fmt.Sprintf("%s%d", volume.VolumeMount.NameGenerate, n+1)
 
 			newVolumeMount := v1.VolumeMount{
 				Name:      newVolumeName,
-				MountPath: newMountPath,
+				MountPath: fmt.Sprintf("%s%d", volume.VolumeMount.MountPathGenerate, n+1),
 				ReadOnly:  volume.VolumeMount.ReadOnly,
 			}
 			volumeMounts = append(volumeMounts, newVolumeMount)
