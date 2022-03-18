@@ -30,7 +30,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 
 	azVolumeClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
-	azVolumeInformerV1Alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions/azuredisk/v1alpha2"
+	azVolumeInformerV1Alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions/azuredisk/v1beta1"
 )
 
 // retrieve the Kubernetes cluster client from outside of the cluster

@@ -50,7 +50,7 @@ import (
 	"k8s.io/klog/v2"
 	kubeutil "k8s.io/kubernetes/pkg/volume/util"
 	"k8s.io/mount-utils"
-	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
+	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	azurediskInformers "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
@@ -711,13 +711,13 @@ func IsValidAccessModes(volCaps []*csi.VolumeCapability) bool {
 	return foundAll
 }
 
-func IsMultiNodeAzVolumeCapabilityAccessMode(accessMode diskv1alpha2.VolumeCapabilityAccessMode) bool {
-	return accessMode == diskv1alpha2.VolumeCapabilityAccessModeMultiNodeMultiWriter ||
-		accessMode == diskv1alpha2.VolumeCapabilityAccessModeMultiNodeSingleWriter ||
-		accessMode == diskv1alpha2.VolumeCapabilityAccessModeMultiNodeReaderOnly
+func IsMultiNodeAzVolumeCapabilityAccessMode(accessMode diskv1beta1.VolumeCapabilityAccessMode) bool {
+	return accessMode == diskv1beta1.VolumeCapabilityAccessModeMultiNodeMultiWriter ||
+		accessMode == diskv1beta1.VolumeCapabilityAccessModeMultiNodeSingleWriter ||
+		accessMode == diskv1beta1.VolumeCapabilityAccessModeMultiNodeReaderOnly
 }
 
-func HasMultiNodeAzVolumeCapabilityAccessMode(volCaps []diskv1alpha2.VolumeCapability) bool {
+func HasMultiNodeAzVolumeCapabilityAccessMode(volCaps []diskv1beta1.VolumeCapability) bool {
 	for _, volCap := range volCaps {
 		if IsMultiNodeAzVolumeCapabilityAccessMode(volCap.AccessMode) {
 			return true
@@ -788,67 +788,67 @@ func GetMaxSharesAndMaxMountReplicaCount(parameters map[string]string, isMultiNo
 	return
 }
 
-func GetAzVolumePhase(phase v1.PersistentVolumePhase) diskv1alpha2.AzVolumePhase {
-	return diskv1alpha2.AzVolumePhase(phase)
+func GetAzVolumePhase(phase v1.PersistentVolumePhase) diskv1beta1.AzVolumePhase {
+	return diskv1beta1.AzVolumePhase(phase)
 }
 
-func GetAzVolume(ctx context.Context, cachedClient client.Client, azDiskClient azDiskClientSet.Interface, azVolumeName, namespace string, useCache bool) (*diskv1alpha2.AzVolume, error) {
-	var azVolume *diskv1alpha2.AzVolume
+func GetAzVolume(ctx context.Context, cachedClient client.Client, azDiskClient azDiskClientSet.Interface, azVolumeName, namespace string, useCache bool) (*diskv1beta1.AzVolume, error) {
+	var azVolume *diskv1beta1.AzVolume
 	var err error
 	if useCache {
-		azVolume = &diskv1alpha2.AzVolume{}
+		azVolume = &diskv1beta1.AzVolume{}
 		err = cachedClient.Get(ctx, types.NamespacedName{Name: azVolumeName, Namespace: namespace}, azVolume)
 	} else {
-		azVolume, err = azDiskClient.DiskV1alpha2().AzVolumes(namespace).Get(ctx, azVolumeName, metav1.GetOptions{})
+		azVolume, err = azDiskClient.DiskV1beta1().AzVolumes(namespace).Get(ctx, azVolumeName, metav1.GetOptions{})
 	}
 	return azVolume, err
 }
 
-func ListAzVolumes(ctx context.Context, cachedClient client.Client, azDiskClient azDiskClientSet.Interface, namespace string, useCache bool) (diskv1alpha2.AzVolumeList, error) {
-	var azVolumeList *diskv1alpha2.AzVolumeList
+func ListAzVolumes(ctx context.Context, cachedClient client.Client, azDiskClient azDiskClientSet.Interface, namespace string, useCache bool) (diskv1beta1.AzVolumeList, error) {
+	var azVolumeList *diskv1beta1.AzVolumeList
 	var err error
 	if useCache {
-		azVolumeList = &diskv1alpha2.AzVolumeList{}
+		azVolumeList = &diskv1beta1.AzVolumeList{}
 		err = cachedClient.List(ctx, azVolumeList)
 	} else {
-		azVolumeList, err = azDiskClient.DiskV1alpha2().AzVolumes(namespace).List(ctx, metav1.ListOptions{})
+		azVolumeList, err = azDiskClient.DiskV1beta1().AzVolumes(namespace).List(ctx, metav1.ListOptions{})
 	}
 	return *azVolumeList, err
 }
 
-func GetAzVolumeAttachment(ctx context.Context, cachedClient client.Client, azDiskClient azDiskClientSet.Interface, azVolumeAttachmentName, namespace string, useCache bool) (*diskv1alpha2.AzVolumeAttachment, error) {
-	var azVolumeAttachment *diskv1alpha2.AzVolumeAttachment
+func GetAzVolumeAttachment(ctx context.Context, cachedClient client.Client, azDiskClient azDiskClientSet.Interface, azVolumeAttachmentName, namespace string, useCache bool) (*diskv1beta1.AzVolumeAttachment, error) {
+	var azVolumeAttachment *diskv1beta1.AzVolumeAttachment
 	var err error
 	if useCache {
-		azVolumeAttachment = &diskv1alpha2.AzVolumeAttachment{}
+		azVolumeAttachment = &diskv1beta1.AzVolumeAttachment{}
 		err = cachedClient.Get(ctx, types.NamespacedName{Name: azVolumeAttachmentName, Namespace: namespace}, azVolumeAttachment)
 	} else {
-		azVolumeAttachment, err = azDiskClient.DiskV1alpha2().AzVolumeAttachments(namespace).Get(ctx, azVolumeAttachmentName, metav1.GetOptions{})
+		azVolumeAttachment, err = azDiskClient.DiskV1beta1().AzVolumeAttachments(namespace).Get(ctx, azVolumeAttachmentName, metav1.GetOptions{})
 	}
 	return azVolumeAttachment, err
 }
 
-func ListAzVolumeAttachments(ctx context.Context, cachedClient client.Client, azDiskClient azDiskClientSet.Interface, namespace string, useCache bool) (diskv1alpha2.AzVolumeAttachmentList, error) {
-	var azVolumeAttachmentList *diskv1alpha2.AzVolumeAttachmentList
+func ListAzVolumeAttachments(ctx context.Context, cachedClient client.Client, azDiskClient azDiskClientSet.Interface, namespace string, useCache bool) (diskv1beta1.AzVolumeAttachmentList, error) {
+	var azVolumeAttachmentList *diskv1beta1.AzVolumeAttachmentList
 	var err error
 	if useCache {
-		azVolumeAttachmentList = &diskv1alpha2.AzVolumeAttachmentList{}
+		azVolumeAttachmentList = &diskv1beta1.AzVolumeAttachmentList{}
 		err = cachedClient.List(ctx, azVolumeAttachmentList)
 	} else {
-		azVolumeAttachmentList, err = azDiskClient.DiskV1alpha2().AzVolumeAttachments(namespace).List(ctx, metav1.ListOptions{})
+		azVolumeAttachmentList, err = azDiskClient.DiskV1beta1().AzVolumeAttachments(namespace).List(ctx, metav1.ListOptions{})
 	}
 	return *azVolumeAttachmentList, err
 }
 
-func GetAzVolumeAttachmentState(volumeAttachmentStatus storagev1.VolumeAttachmentStatus) diskv1alpha2.AzVolumeAttachmentAttachmentState {
+func GetAzVolumeAttachmentState(volumeAttachmentStatus storagev1.VolumeAttachmentStatus) diskv1beta1.AzVolumeAttachmentAttachmentState {
 	if volumeAttachmentStatus.Attached {
-		return diskv1alpha2.Attached
+		return diskv1beta1.Attached
 	} else if volumeAttachmentStatus.AttachError != nil {
-		return diskv1alpha2.AttachmentFailed
+		return diskv1beta1.AttachmentFailed
 	} else if volumeAttachmentStatus.DetachError != nil {
-		return diskv1alpha2.DetachmentFailed
+		return diskv1beta1.DetachmentFailed
 	} else {
-		return diskv1alpha2.AttachmentPending
+		return diskv1beta1.AttachmentPending
 	}
 }
 
@@ -860,24 +860,24 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azurediskInformers.
 		var err error
 		var copyForUpdate client.Object
 		switch target := obj.(type) {
-		case *diskv1alpha2.AzVolume:
+		case *diskv1beta1.AzVolume:
 			if informerFactory != nil {
-				target, err = informerFactory.Disk().V1alpha2().AzVolumes().Lister().AzVolumes(target.Namespace).Get(objName)
+				target, err = informerFactory.Disk().V1beta1().AzVolumes().Lister().AzVolumes(target.Namespace).Get(objName)
 			} else if cachedClient != nil {
 				err = cachedClient.Get(ctx, types.NamespacedName{Namespace: target.Namespace, Name: objName}, target)
 			} else {
-				target, err = azDiskClient.DiskV1alpha2().AzVolumes(target.Namespace).Get(ctx, objName, metav1.GetOptions{})
+				target, err = azDiskClient.DiskV1beta1().AzVolumes(target.Namespace).Get(ctx, objName, metav1.GetOptions{})
 			}
 			if err == nil {
 				copyForUpdate = target.DeepCopy()
 			}
-		case *diskv1alpha2.AzVolumeAttachment:
+		case *diskv1beta1.AzVolumeAttachment:
 			if informerFactory != nil {
-				target, err = informerFactory.Disk().V1alpha2().AzVolumeAttachments().Lister().AzVolumeAttachments(target.Namespace).Get(objName)
+				target, err = informerFactory.Disk().V1beta1().AzVolumeAttachments().Lister().AzVolumeAttachments(target.Namespace).Get(objName)
 			} else if cachedClient != nil {
 				err = cachedClient.Get(ctx, types.NamespacedName{Namespace: target.Namespace, Name: objName}, target)
 			} else {
-				target, err = azDiskClient.DiskV1alpha2().AzVolumeAttachments(target.Namespace).Get(ctx, objName, metav1.GetOptions{})
+				target, err = azDiskClient.DiskV1beta1().AzVolumeAttachments(target.Namespace).Get(ctx, objName, metav1.GetOptions{})
 			}
 			if err == nil {
 				copyForUpdate = target.DeepCopy()
@@ -896,15 +896,15 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azurediskInformers.
 		}
 
 		switch target := copyForUpdate.(type) {
-		case *diskv1alpha2.AzVolume:
+		case *diskv1beta1.AzVolume:
 			if cachedClient == nil {
-				_, err = azDiskClient.DiskV1alpha2().AzVolumes(target.Namespace).Update(ctx, target, metav1.UpdateOptions{})
+				_, err = azDiskClient.DiskV1beta1().AzVolumes(target.Namespace).Update(ctx, target, metav1.UpdateOptions{})
 			} else {
 				err = cachedClient.Update(ctx, target)
 			}
-		case *diskv1alpha2.AzVolumeAttachment:
+		case *diskv1beta1.AzVolumeAttachment:
 			if cachedClient == nil {
-				_, err = azDiskClient.DiskV1alpha2().AzVolumeAttachments(target.Namespace).Update(ctx, target, metav1.UpdateOptions{})
+				_, err = azDiskClient.DiskV1beta1().AzVolumeAttachments(target.Namespace).Update(ctx, target, metav1.UpdateOptions{})
 			} else {
 				err = cachedClient.Update(ctx, target)
 			}

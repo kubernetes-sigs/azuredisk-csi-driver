@@ -84,7 +84,7 @@ func (t *PreProvisionedCheckForReplicasTest) Run(client clientset.Interface, nam
 		labelSelector := metav1.LabelSelector{MatchLabels: map[string]string{consts.VolumeNameLabel: t.VolumeName, consts.RoleLabel: "Replica"}}
 		err := wait.PollImmediate(testconsts.Poll, testconsts.PollTimeout,
 			func() (bool, error) {
-				azVolumeAttachments, err := t.AzDiskClient.DiskV1alpha2().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: labels.Set(labelSelector.MatchLabels).String()})
+				azVolumeAttachments, err := t.AzDiskClient.DiskV1beta1().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: labels.Set(labelSelector.MatchLabels).String()})
 				if err != nil {
 					return false, status.Errorf(codes.Internal, "failed to get replica attachments. Error: %v", err)
 				}

@@ -251,7 +251,7 @@ func upgradeTest(isMultiZone bool) {
 		}
 
 		checkAzDriverNodes := func() (bool, error) {
-			azDriverNodes, err := azDiskClient.DiskV1alpha2().AzDriverNodes(consts.DefaultAzureDiskCrdNamespace).List(ctx, metav1.ListOptions{})
+			azDriverNodes, err := azDiskClient.DiskV1beta1().AzDriverNodes(consts.DefaultAzureDiskCrdNamespace).List(ctx, metav1.ListOptions{})
 			if err != nil && !errors.IsNotFound(err) {
 				return false, err
 			}
@@ -259,7 +259,7 @@ func upgradeTest(isMultiZone bool) {
 		}
 
 		checkAzVolumes := func() (bool, error) {
-			azVolumes, err := azDiskClient.DiskV1alpha2().AzVolumes(consts.DefaultAzureDiskCrdNamespace).List(ctx, metav1.ListOptions{})
+			azVolumes, err := azDiskClient.DiskV1beta1().AzVolumes(consts.DefaultAzureDiskCrdNamespace).List(ctx, metav1.ListOptions{})
 			if err != nil && !errors.IsNotFound(err) {
 				return false, err
 			}
@@ -306,7 +306,7 @@ func upgradeTest(isMultiZone bool) {
 		}
 
 		checkAzVolumeAttachments := func() (bool, error) {
-			azVolumeAttachments, err := azDiskClient.DiskV1alpha2().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(ctx, metav1.ListOptions{})
+			azVolumeAttachments, err := azDiskClient.DiskV1beta1().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(ctx, metav1.ListOptions{})
 			if err != nil && !errors.IsNotFound(err) {
 				return false, err
 			}

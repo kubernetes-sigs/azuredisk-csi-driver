@@ -31,7 +31,7 @@ import (
 	"google.golang.org/grpc/status"
 	"k8s.io/klog/v2"
 
-	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
+	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/cloud-provider-azure/pkg/metrics"
 )
@@ -70,35 +70,35 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 		return nil, status.Error(codes.InvalidArgument, "Volume capability not supported")
 	}
 
-	capRange := &diskv1alpha2.CapacityRange{
+	capRange := &diskv1beta1.CapacityRange{
 		RequiredBytes: req.GetCapacityRange().GetRequiredBytes(),
 		LimitBytes:    req.GetCapacityRange().GetLimitBytes(),
 	}
 
-	volCaps := []diskv1alpha2.VolumeCapability{}
+	volCaps := []diskv1beta1.VolumeCapability{}
 
 	for _, v := range volumeCaps {
 		volCap := generateAzVolumeCapability(v)
 		volCaps = append(volCaps, volCap)
 	}
 
-	contentVolSource := &diskv1alpha2.ContentVolumeSource{}
+	contentVolSource := &diskv1beta1.ContentVolumeSource{}
 	reqVolumeContentSource := req.GetVolumeContentSource()
 	if reqVolumeContentSource != nil {
 		if reqVolumeContentSource.GetSnapshot() != nil {
-			contentVolSource.ContentSource = diskv1alpha2.ContentVolumeSourceTypeSnapshot
+			contentVolSource.ContentSource = diskv1beta1.ContentVolumeSourceTypeSnapshot
 			contentVolSource.ContentSourceID = reqVolumeContentSource.GetSnapshot().GetSnapshotId()
 		} else if reqVolumeContentSource.GetVolume() != nil {
-			contentVolSource.ContentSource = diskv1alpha2.ContentVolumeSourceTypeVolume
+			contentVolSource.ContentSource = diskv1beta1.ContentVolumeSourceTypeVolume
 			contentVolSource.ContentSourceID = reqVolumeContentSource.GetVolume().GetVolumeId()
 		}
 	}
 
-	preferredTopology, requisiteTopology := []diskv1alpha2.Topology{}, []diskv1alpha2.Topology{}
+	preferredTopology, requisiteTopology := []diskv1beta1.Topology{}, []diskv1beta1.Topology{}
 	accessibilityReqs := req.GetAccessibilityRequirements()
 
 	for _, requisite := range accessibilityReqs.GetRequisite() {
-		reqTopology := diskv1alpha2.Topology{
+		reqTopology := diskv1beta1.Topology{
 			Segments: requisite.GetSegments(),
 		}
 
@@ -106,14 +106,14 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 	}
 
 	for _, preferred := range accessibilityReqs.GetPreferred() {
-		prefTopology := diskv1alpha2.Topology{
+		prefTopology := diskv1beta1.Topology{
 			Segments: preferred.GetSegments(),
 		}
 
 		preferredTopology = append(preferredTopology, prefTopology)
 	}
 
-	accessibilityRequirement := &diskv1alpha2.TopologyRequirement{
+	accessibilityRequirement := &diskv1beta1.TopologyRequirement{
 		Requisite: requisiteTopology,
 		Preferred: preferredTopology,
 	}
@@ -133,7 +133,7 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 	responseVolumeContentSource := &csi.VolumeContentSource{}
 
 	if response.ContentSource != nil {
-		if response.ContentSource.ContentSource == diskv1alpha2.ContentVolumeSourceTypeSnapshot {
+		if response.ContentSource.ContentSource == diskv1beta1.ContentVolumeSourceTypeSnapshot {
 			responseVolumeContentSource.Type = &csi.VolumeContentSource_Snapshot{
 				Snapshot: &csi.VolumeContentSource_SnapshotSource{
 					SnapshotId: response.ContentSource.ContentSourceID,
@@ -363,7 +363,7 @@ func (d *DriverV2) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest)
 		responseContentSource := &csi.VolumeContentSource{}
 
 		if resultVolumeDetail.ContentSource != nil {
-			if resultVolumeDetail.ContentSource.ContentSource == diskv1alpha2.ContentVolumeSourceTypeSnapshot {
+			if resultVolumeDetail.ContentSource.ContentSource == diskv1beta1.ContentVolumeSourceTypeSnapshot {
 				responseContentSource.Type = &csi.VolumeContentSource_Snapshot{
 					Snapshot: &csi.VolumeContentSource_SnapshotSource{
 						SnapshotId: resultVolumeDetail.ContentSource.ContentSourceID,
@@ -444,7 +444,7 @@ func (d *DriverV2) ControllerExpandVolume(ctx context.Context, req *csi.Controll
 		mc.ObserveOperationWithResult(isOperationSucceeded)
 	}()
 
-	capacityRange := &diskv1alpha2.CapacityRange{
+	capacityRange := &diskv1beta1.CapacityRange{
 		RequiredBytes: req.GetCapacityRange().GetRequiredBytes(),
 		LimitBytes:    req.GetCapacityRange().GetLimitBytes(),
 	}
@@ -576,17 +576,17 @@ func (d *DriverV2) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsRequ
 	}, nil
 }
 
-func generateAzVolumeCapability(volumeCapability *csi.VolumeCapability) diskv1alpha2.VolumeCapability {
-	volCap := diskv1alpha2.VolumeCapability{
-		AccessMode: diskv1alpha2.VolumeCapabilityAccessMode(volumeCapability.GetAccessMode().GetMode()),
+func generateAzVolumeCapability(volumeCapability *csi.VolumeCapability) diskv1beta1.VolumeCapability {
+	volCap := diskv1beta1.VolumeCapability{
+		AccessMode: diskv1beta1.VolumeCapabilityAccessMode(volumeCapability.GetAccessMode().GetMode()),
 	}
 
 	if volumeCapability.GetMount() != nil {
-		volCap.AccessType = diskv1alpha2.VolumeCapabilityAccessMount
+		volCap.AccessType = diskv1beta1.VolumeCapabilityAccessMount
 		volCap.FsType = volumeCapability.GetMount().GetFsType()
 		volCap.MountFlags = volumeCapability.GetMount().GetMountFlags()
 	} else if volumeCapability.GetBlock() != nil {
-		volCap.AccessType = diskv1alpha2.VolumeCapabilityAccessBlock
+		volCap.AccessType = diskv1beta1.VolumeCapabilityAccessBlock
 	}
 
 	return volCap

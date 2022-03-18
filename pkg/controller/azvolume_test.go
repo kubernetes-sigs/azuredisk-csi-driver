@@ -28,7 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	fakev1 "k8s.io/client-go/kubernetes/fake"
-	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
+	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 	diskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
@@ -57,13 +57,13 @@ func mockClientsAndVolumeProvisioner(controller *ReconcileAzVolume) {
 		DoAndReturn(func(
 			ctx context.Context,
 			volumeName string,
-			capacityRange *diskv1alpha2.CapacityRange,
-			volumeCapabilities []diskv1alpha2.VolumeCapability,
+			capacityRange *diskv1beta1.CapacityRange,
+			volumeCapabilities []diskv1beta1.VolumeCapability,
 			parameters map[string]string,
 			secrets map[string]string,
-			volumeContentSource *diskv1alpha2.ContentVolumeSource,
-			accessibilityTopology *diskv1alpha2.TopologyRequirement) (*diskv1alpha2.AzVolumeStatusDetail, error) {
-			return &diskv1alpha2.AzVolumeStatusDetail{
+			volumeContentSource *diskv1beta1.ContentVolumeSource,
+			accessibilityTopology *diskv1beta1.TopologyRequirement) (*diskv1beta1.AzVolumeStatusDetail, error) {
+			return &diskv1beta1.AzVolumeStatusDetail{
 				VolumeID:      testManagedDiskURI0,
 				VolumeContext: parameters,
 				CapacityBytes: capacityRange.RequiredBytes,
@@ -80,13 +80,13 @@ func mockClientsAndVolumeProvisioner(controller *ReconcileAzVolume) {
 		DoAndReturn(func(
 			ctx context.Context,
 			volumeID string,
-			capacityRange *diskv1alpha2.CapacityRange,
-			secrets map[string]string) (*diskv1alpha2.AzVolumeStatusDetail, error) {
+			capacityRange *diskv1beta1.CapacityRange,
+			secrets map[string]string) (*diskv1beta1.AzVolumeStatusDetail, error) {
 			volumeName, err := azureutils.GetDiskName(volumeID)
 			if err != nil {
 				return nil, err
 			}
-			azVolume, err := controller.controllerSharedState.azClient.DiskV1alpha2().AzVolumes(testNamespace).Get(ctx, volumeName, metav1.GetOptions{})
+			azVolume, err := controller.controllerSharedState.azClient.DiskV1beta1().AzVolumes(testNamespace).Get(ctx, volumeName, metav1.GetOptions{})
 			if err != nil {
 				return nil, err
 			}
@@ -112,7 +112,7 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAzVolume {
 				azVolume := testAzVolume0.DeepCopy()
 
-				azVolume.Status.State = diskv1alpha2.VolumeOperationPending
+				azVolume.Status.State = diskv1beta1.VolumeOperationPending
 
 				controller := NewTestAzVolumeController(
 					mockCtl,
@@ -128,11 +128,11 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 				require.False(t, result.Requeue)
 
 				conditionFunc := func() (bool, error) {
-					azVolume, localError := controller.controllerSharedState.azClient.DiskV1alpha2().AzVolumes(testAzVolume0.Namespace).Get(context.TODO(), testAzVolume0.Name, metav1.GetOptions{})
+					azVolume, localError := controller.controllerSharedState.azClient.DiskV1beta1().AzVolumes(testAzVolume0.Namespace).Get(context.TODO(), testAzVolume0.Name, metav1.GetOptions{})
 					if localError != nil {
 						return false, nil
 					}
-					return azVolume.Status.State == diskv1alpha2.VolumeCreated, nil
+					return azVolume.Status.State == diskv1beta1.VolumeCreated, nil
 				}
 				conditionError := wait.PollImmediate(verifyCRIInterval, verifyCRITimeout, conditionFunc)
 				require.NoError(t, conditionError)
@@ -144,12 +144,12 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAzVolume {
 				azVolume := testAzVolume0.DeepCopy()
 
-				azVolume.Status.Detail = &diskv1alpha2.AzVolumeStatusDetail{
+				azVolume.Status.Detail = &diskv1beta1.AzVolumeStatusDetail{
 					VolumeID:      testManagedDiskURI0,
 					CapacityBytes: azVolume.Spec.CapacityRange.RequiredBytes,
 				}
 				azVolume.Spec.CapacityRange.RequiredBytes *= 2
-				azVolume.Status.State = diskv1alpha2.VolumeCreated
+				azVolume.Status.State = diskv1beta1.VolumeCreated
 
 				controller := NewTestAzVolumeController(
 					mockCtl,
@@ -164,7 +164,7 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
 				conditionFunc := func() (bool, error) {
-					azVolume, localError := controller.controllerSharedState.azClient.DiskV1alpha2().AzVolumes(testAzVolume0.Namespace).Get(context.TODO(), testAzVolume0.Name, metav1.GetOptions{})
+					azVolume, localError := controller.controllerSharedState.azClient.DiskV1beta1().AzVolumes(testAzVolume0.Namespace).Get(context.TODO(), testAzVolume0.Name, metav1.GetOptions{})
 					if localError != nil {
 						return false, nil
 					}
@@ -184,13 +184,13 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 					consts.VolumeDeleteRequestAnnotation: "cloud-delete-volume",
 				}
 				azVolume.Finalizers = []string{consts.AzVolumeFinalizer}
-				azVolume.Status.Detail = &diskv1alpha2.AzVolumeStatusDetail{
+				azVolume.Status.Detail = &diskv1beta1.AzVolumeStatusDetail{
 					VolumeID:      testManagedDiskURI0,
 					CapacityBytes: azVolume.Spec.CapacityRange.RequiredBytes,
 				}
 				now := metav1.Time{Time: metav1.Now().Add(-1000)}
 				azVolume.ObjectMeta.DeletionTimestamp = &now
-				azVolume.Status.State = diskv1alpha2.VolumeCreated
+				azVolume.Status.State = diskv1beta1.VolumeCreated
 
 				controller := NewTestAzVolumeController(
 					mockCtl,
@@ -205,11 +205,11 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
 				conditionFunc := func() (bool, error) {
-					azVolume, localError := controller.controllerSharedState.azClient.DiskV1alpha2().AzVolumes(testAzVolume0.Namespace).Get(context.TODO(), testAzVolume0.Name, metav1.GetOptions{})
+					azVolume, localError := controller.controllerSharedState.azClient.DiskV1beta1().AzVolumes(testAzVolume0.Namespace).Get(context.TODO(), testAzVolume0.Name, metav1.GetOptions{})
 					if localError != nil {
 						return false, nil
 					}
-					return azVolume.Status.State == diskv1alpha2.VolumeDeleted, nil
+					return azVolume.Status.State == diskv1beta1.VolumeDeleted, nil
 				}
 				conditionError := wait.PollImmediate(verifyCRIInterval, verifyCRITimeout, conditionFunc)
 				require.NoError(t, conditionError)
@@ -225,13 +225,13 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 					consts.VolumeDeleteRequestAnnotation: "cloud-delete-volume",
 				}
 				azVolume.Finalizers = []string{consts.AzVolumeFinalizer}
-				azVolume.Status.Detail = &diskv1alpha2.AzVolumeStatusDetail{
+				azVolume.Status.Detail = &diskv1beta1.AzVolumeStatusDetail{
 					VolumeID:      testManagedDiskURI0,
 					CapacityBytes: azVolume.Spec.CapacityRange.RequiredBytes,
 				}
 				now := metav1.Time{Time: metav1.Now().Add(-1000)}
 				azVolume.ObjectMeta.DeletionTimestamp = &now
-				azVolume.Status.State = diskv1alpha2.VolumeCreated
+				azVolume.Status.State = diskv1beta1.VolumeCreated
 
 				controller := NewTestAzVolumeController(
 					mockCtl,
@@ -248,11 +248,11 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 				require.NoError(t, err)
 				require.Greater(t, result.RequeueAfter, time.Duration(0))
 
-				azVolume, err := controller.controllerSharedState.azClient.DiskV1alpha2().AzVolumes(testNamespace).Get(context.TODO(), testPersistentVolume0Name, metav1.GetOptions{})
+				azVolume, err := controller.controllerSharedState.azClient.DiskV1beta1().AzVolumes(testNamespace).Get(context.TODO(), testPersistentVolume0Name, metav1.GetOptions{})
 				require.NoError(t, err)
-				require.Equal(t, diskv1alpha2.VolumeCreated, azVolume.Status.State)
+				require.Equal(t, diskv1beta1.VolumeCreated, azVolume.Status.State)
 
-				azVolumeAttachments, _ := controller.controllerSharedState.azClient.DiskV1alpha2().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{})
+				azVolumeAttachments, _ := controller.controllerSharedState.azClient.DiskV1beta1().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{})
 				require.Len(t, azVolumeAttachments.Items, 0)
 			},
 		},
@@ -281,7 +281,7 @@ func TestAzVolumeControllerRecover(t *testing.T) {
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAzVolume {
 				azVolume := testAzVolume0.DeepCopy()
 
-				azVolume.Status.State = diskv1alpha2.VolumeOperationPending
+				azVolume.Status.State = diskv1beta1.VolumeOperationPending
 
 				controller := NewTestAzVolumeController(
 					mockCtl,
@@ -296,7 +296,7 @@ func TestAzVolumeControllerRecover(t *testing.T) {
 			},
 			verifyFunc: func(t *testing.T, controller *ReconcileAzVolume, err error) {
 				require.NoError(t, err)
-				azVolumes, err := controller.controllerSharedState.azClient.DiskV1alpha2().AzVolumes(testNamespace).List(context.TODO(), metav1.ListOptions{})
+				azVolumes, err := controller.controllerSharedState.azClient.DiskV1beta1().AzVolumes(testNamespace).List(context.TODO(), metav1.ListOptions{})
 				require.NoError(t, err)
 				require.Len(t, azVolumes.Items, 2)
 			},
@@ -305,10 +305,10 @@ func TestAzVolumeControllerRecover(t *testing.T) {
 			description: "[Success] Should update AzVolume CRIs to right state",
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAzVolume {
 				newAzVolume0 := testAzVolume0.DeepCopy()
-				newAzVolume0.Status.State = diskv1alpha2.VolumeCreating
+				newAzVolume0.Status.State = diskv1beta1.VolumeCreating
 
 				newAzVolume1 := testAzVolume1.DeepCopy()
-				newAzVolume1.Status.State = diskv1alpha2.VolumeDeleting
+				newAzVolume1.Status.State = diskv1beta1.VolumeDeleting
 
 				controller := NewTestAzVolumeController(
 					mockCtl,
@@ -323,14 +323,14 @@ func TestAzVolumeControllerRecover(t *testing.T) {
 			verifyFunc: func(t *testing.T, controller *ReconcileAzVolume, err error) {
 				require.NoError(t, err)
 
-				azVolume, localErr := controller.controllerSharedState.azClient.DiskV1alpha2().AzVolumes(testNamespace).Get(context.TODO(), testPersistentVolume0Name, metav1.GetOptions{})
+				azVolume, localErr := controller.controllerSharedState.azClient.DiskV1beta1().AzVolumes(testNamespace).Get(context.TODO(), testPersistentVolume0Name, metav1.GetOptions{})
 				require.NoError(t, localErr)
-				require.Equal(t, azVolume.Status.State, diskv1alpha2.VolumeOperationPending)
+				require.Equal(t, azVolume.Status.State, diskv1beta1.VolumeOperationPending)
 				require.Contains(t, azVolume.ObjectMeta.Annotations, consts.RecoverAnnotation)
 
-				azVolume, localErr = controller.controllerSharedState.azClient.DiskV1alpha2().AzVolumes(testNamespace).Get(context.TODO(), testPersistentVolume1Name, metav1.GetOptions{})
+				azVolume, localErr = controller.controllerSharedState.azClient.DiskV1beta1().AzVolumes(testNamespace).Get(context.TODO(), testPersistentVolume1Name, metav1.GetOptions{})
 				require.NoError(t, localErr)
-				require.Equal(t, azVolume.Status.State, diskv1alpha2.VolumeCreated)
+				require.Equal(t, azVolume.Status.State, diskv1beta1.VolumeCreated)
 				require.Contains(t, azVolume.ObjectMeta.Annotations, consts.RecoverAnnotation)
 			},
 		},

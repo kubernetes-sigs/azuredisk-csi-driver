@@ -21,26 +21,26 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/kubernetes/test/e2e/framework"
-	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
-	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1alpha2"
+	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1beta1"
 )
 
 func DeleteTestAzDriverNode(azDriverNode azDiskClientSet.AzDriverNodeInterface, nodeName string) {
 	_ = azDriverNode.Delete(context.Background(), nodeName, metav1.DeleteOptions{})
 }
 
-func NewTestAzDriverNode(azDriverNode azDiskClientSet.AzDriverNodeInterface, nodeName string) *diskv1alpha2.AzDriverNode {
+func NewTestAzDriverNode(azDriverNode azDiskClientSet.AzDriverNodeInterface, nodeName string) *diskv1beta1.AzDriverNode {
 	// Delete the leftover azDriverNode from previous runs
 	if _, err := azDriverNode.Get(context.Background(), nodeName, metav1.GetOptions{}); err == nil {
 		err := azDriverNode.Delete(context.Background(), nodeName, metav1.DeleteOptions{})
 		framework.ExpectNoError(err)
 	}
 
-	newAzDriverNode, err := azDriverNode.Create(context.Background(), &diskv1alpha2.AzDriverNode{
+	newAzDriverNode, err := azDriverNode.Create(context.Background(), &diskv1beta1.AzDriverNode{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: nodeName,
 		},
-		Spec: diskv1alpha2.AzDriverNodeSpec{
+		Spec: diskv1beta1.AzDriverNodeSpec{
 			NodeName: nodeName,
 		},
 	}, metav1.CreateOptions{})

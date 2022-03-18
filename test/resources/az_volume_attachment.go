@@ -25,35 +25,35 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e/framework"
-	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
-	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1alpha2"
+	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1beta1"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 )
 
 type TestAzVolumeAttachment struct {
-	Azclient             azDiskClientSet.DiskV1alpha2Interface
+	Azclient             azDiskClientSet.DiskV1beta1Interface
 	Namespace            string
 	UnderlyingVolume     string
 	PrimaryNodeName      string
 	MaxMountReplicaCount int
 }
 
-func NewTestAzVolumeAttachment(azVolumeAttachment azDiskClientSet.AzVolumeAttachmentInterface, volumeAttachmentName, nodeName, volumeName, ns string) *diskv1alpha2.AzVolumeAttachment {
+func NewTestAzVolumeAttachment(azVolumeAttachment azDiskClientSet.AzVolumeAttachmentInterface, volumeAttachmentName, nodeName, volumeName, ns string) *diskv1beta1.AzVolumeAttachment {
 	// Delete leftover azVolumeAttachments from previous runs
 	if _, err := azVolumeAttachment.Get(context.Background(), volumeAttachmentName, metav1.GetOptions{}); err == nil {
 		err := azVolumeAttachment.Delete(context.Background(), volumeAttachmentName, metav1.DeleteOptions{})
 		framework.ExpectNoError(err)
 	}
 
-	newAzVolumeAttachment, err := azVolumeAttachment.Create(context.Background(), &diskv1alpha2.AzVolumeAttachment{
+	newAzVolumeAttachment, err := azVolumeAttachment.Create(context.Background(), &diskv1beta1.AzVolumeAttachment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: volumeAttachmentName,
 		},
-		Spec: diskv1alpha2.AzVolumeAttachmentSpec{
+		Spec: diskv1beta1.AzVolumeAttachmentSpec{
 			VolumeName:    volumeName,
 			NodeName:      nodeName,
-			RequestedRole: diskv1alpha2.PrimaryRole,
+			RequestedRole: diskv1beta1.PrimaryRole,
 			VolumeContext: map[string]string{
 				"controller": "azdrivernode",
 				"name":       volumeAttachmentName,
@@ -61,12 +61,12 @@ func NewTestAzVolumeAttachment(azVolumeAttachment azDiskClientSet.AzVolumeAttach
 				"partition":  "default",
 			},
 		},
-		Status: diskv1alpha2.AzVolumeAttachmentStatus{
-			Detail: &diskv1alpha2.AzVolumeAttachmentStatusDetail{
-				Role:           diskv1alpha2.PrimaryRole,
+		Status: diskv1beta1.AzVolumeAttachmentStatus{
+			Detail: &diskv1beta1.AzVolumeAttachmentStatusDetail{
+				Role:           diskv1beta1.PrimaryRole,
 				PublishContext: map[string]string{},
 			},
-			State: diskv1alpha2.Attached,
+			State: diskv1beta1.Attached,
 		},
 	}, metav1.CreateOptions{})
 	framework.ExpectNoError(err)
@@ -78,7 +78,7 @@ func DeleteTestAzVolumeAttachment(azVolumeAttachment azDiskClientSet.AzVolumeAtt
 	_ = azVolumeAttachment.Delete(context.Background(), volumeAttachmentName, metav1.DeleteOptions{})
 }
 
-func SetupTestAzVolumeAttachment(azclient azDiskClientSet.DiskV1alpha2Interface, namespace, underlyingVolume, primaryNodeName string, maxMountReplicaCount int) *TestAzVolumeAttachment {
+func SetupTestAzVolumeAttachment(azclient azDiskClientSet.DiskV1beta1Interface, namespace, underlyingVolume, primaryNodeName string, maxMountReplicaCount int) *TestAzVolumeAttachment {
 	return &TestAzVolumeAttachment{
 		Azclient:             azclient,
 		Namespace:            namespace,
@@ -88,7 +88,7 @@ func SetupTestAzVolumeAttachment(azclient azDiskClientSet.DiskV1alpha2Interface,
 	}
 }
 
-func (t *TestAzVolumeAttachment) Create() *diskv1alpha2.AzVolumeAttachment {
+func (t *TestAzVolumeAttachment) Create() *diskv1beta1.AzVolumeAttachment {
 	// create test az volume
 	azVol := t.Azclient.AzVolumes(t.Namespace)
 	_ = NewTestAzVolume(azVol, t.UnderlyingVolume, t.MaxMountReplicaCount)
@@ -206,7 +206,7 @@ func (t *TestAzVolumeAttachment) WaitForPrimary(timeout time.Duration) error {
 			if attachment.Status.Detail == nil {
 				continue
 			}
-			if attachment.Spec.VolumeName == t.UnderlyingVolume && attachment.Spec.RequestedRole == diskv1alpha2.PrimaryRole && attachment.Status.Detail.Role == diskv1alpha2.PrimaryRole {
+			if attachment.Spec.VolumeName == t.UnderlyingVolume && attachment.Spec.RequestedRole == diskv1beta1.PrimaryRole && attachment.Status.Detail.Role == diskv1beta1.PrimaryRole {
 				return true, nil
 			}
 		}
@@ -226,7 +226,7 @@ func (t *TestAzVolumeAttachment) WaitForReplicas(numReplica int, timeout time.Du
 			if attachment.Status.Detail == nil {
 				continue
 			}
-			if attachment.Spec.VolumeName == t.UnderlyingVolume && attachment.Status.Detail.Role == diskv1alpha2.ReplicaRole {
+			if attachment.Spec.VolumeName == t.UnderlyingVolume && attachment.Status.Detail.Role == diskv1beta1.ReplicaRole {
 				counter++
 			}
 		}

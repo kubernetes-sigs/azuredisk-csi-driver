@@ -44,7 +44,7 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/record"
-	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
+	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller"
@@ -262,7 +262,7 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 	retryPeriod := time.Duration(d.controllerLeaseRetryPeriodInSec) * time.Second
 	scheme := apiRuntime.NewScheme()
 	clientgoscheme.AddToScheme(scheme)
-	diskv1alpha2.AddToScheme(scheme)
+	diskv1beta1.AddToScheme(scheme)
 
 	// Setup a Manager
 	klog.V(2).Info("Setting up controller manager")
@@ -400,8 +400,8 @@ func (d *DriverV2) RegisterAzDriverNodeOrDie(ctx context.Context) {
 func (d *DriverV2) RunAzDriverNodeHeartbeatLoop(ctx context.Context) {
 
 	var err error
-	var cachedAzDriverNode *diskv1alpha2.AzDriverNode
-	azN := d.crdProvisioner.GetDiskClientSet().DiskV1alpha2().AzDriverNodes(d.objectNamespace)
+	var cachedAzDriverNode *diskv1beta1.AzDriverNode
+	azN := d.crdProvisioner.GetDiskClientSet().DiskV1beta1().AzDriverNodes(d.objectNamespace)
 	heartbeatFrequency := time.Duration(d.heartbeatFrequencyInSec) * time.Second
 	klog.V(1).Infof("Starting heartbeat loop with frequency (%v)", heartbeatFrequency)
 	for {
@@ -432,7 +432,7 @@ func (d *DriverV2) RunAzDriverNodeHeartbeatLoop(ctx context.Context) {
 		statusMessage := "Driver node healthy."
 		klog.V(2).Infof("Updating status for (%v)", azDriverNodeToUpdate)
 		if azDriverNodeToUpdate.Status == nil {
-			azDriverNodeToUpdate.Status = &diskv1alpha2.AzDriverNodeStatus{}
+			azDriverNodeToUpdate.Status = &diskv1beta1.AzDriverNodeStatus{}
 		}
 		azDriverNodeToUpdate.Status.ReadyForVolumeAllocation = &readyForAllocation
 		azDriverNodeToUpdate.Status.LastHeartbeatTime = &timestamp

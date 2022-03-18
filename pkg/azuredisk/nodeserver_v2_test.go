@@ -30,7 +30,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
+	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockprovisioner"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
@@ -49,18 +49,18 @@ func TestNodeStageVolumeMountRecovery(t *testing.T) {
 	d.crdProvisioner = mockprovisioner.NewMockCrdProvisioner(ctrl)
 
 	publishContext := testAzVolumeAttachment.DeepCopy()
-	publishContext.Status = diskv1alpha2.AzVolumeAttachmentStatus{
-		Detail: &diskv1alpha2.AzVolumeAttachmentStatusDetail{
+	publishContext.Status = diskv1beta1.AzVolumeAttachmentStatus{
+		Detail: &diskv1beta1.AzVolumeAttachmentStatusDetail{
 			PublishContext: map[string]string{
 				consts.LUN: "/dev/disk/azure/scsi1/lun1",
 			},
-			Role: diskv1alpha2.PrimaryRole,
+			Role: diskv1beta1.PrimaryRole,
 		},
-		State: diskv1alpha2.Attached,
+		State: diskv1beta1.Attached,
 	}
 
-	attachError := &diskv1alpha2.AzError{
-		Code:    diskv1alpha2.AzErrorCodeInternal,
+	attachError := &diskv1beta1.AzError{
+		Code:    diskv1beta1.AzErrorCodeInternal,
 		Message: "test error it is",
 	}
 

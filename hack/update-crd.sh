@@ -21,6 +21,6 @@ SCRIPT_ROOT=$(realpath "${SCRIPT_ROOT_RELATIVE}")
 CONTROLLERTOOLS_PKG=${CONTROLLERTOOLS_PKG:-$(cd "${SCRIPT_ROOT}"; ls -d -1 ./vendor/sigs.k8s.io/controller-tools 2>/dev/null || echo ../code-controller-tools)}
 
 # find or download controller-gen
-pushd ${CONTROLLERTOOLS_PKG}
+pushd "${CONTROLLERTOOLS_PKG}"
 trap popd exit
-go run -v ./cmd/controller-gen crd:crdVersions=v1,trivialVersions=false paths=${SCRIPT_ROOT}/pkg/apis/azuredisk/v1alpha2 output:crd:dir=${SCRIPT_ROOT}/pkg/apis/config
+go run -v ./cmd/controller-gen crd:crdVersions=v1,trivialVersions=false paths="${SCRIPT_ROOT}/pkg/apis/azuredisk/..." output:crd:dir="${SCRIPT_ROOT}/pkg/apis/config"

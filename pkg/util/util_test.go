@@ -30,7 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	k8stypes "k8s.io/apimachinery/pkg/types"
 	volerr "k8s.io/cloud-provider/volume/errors"
-	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
+	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
 )
@@ -283,12 +283,12 @@ func TestNewAzError(t *testing.T) {
 	tests := []struct {
 		description  string
 		sourceError  error
-		expectedCode diskv1alpha2.AzErrorCode
+		expectedCode diskv1beta1.AzErrorCode
 	}{
 		{
 			description:  "Dangling attach error",
 			sourceError:  volerr.NewDanglingError("dangling attach", currentNode, devicePath),
-			expectedCode: diskv1alpha2.AzErrorCodeDanglingAttach,
+			expectedCode: diskv1beta1.AzErrorCodeDanglingAttach,
 		},
 		{
 			description:  "GRPC status error",
@@ -344,13 +344,13 @@ func TestErrorFromAzError(t *testing.T) {
 
 	tests := []struct {
 		description   string
-		sourceAzError *diskv1alpha2.AzError
+		sourceAzError *diskv1beta1.AzError
 		expectedError error
 	}{
 		{
 			description: "Dangling attach error",
-			sourceAzError: &diskv1alpha2.AzError{
-				Code:    diskv1alpha2.AzErrorCodeDanglingAttach,
+			sourceAzError: &diskv1beta1.AzError{
+				Code:    diskv1beta1.AzErrorCodeDanglingAttach,
 				Message: "dangling attach", Parameters: map[string]string{
 					azureconstants.CurrentNodeParameter: string(currentNode),
 					azureconstants.DevicePathParameter:  devicePath,
@@ -360,7 +360,7 @@ func TestErrorFromAzError(t *testing.T) {
 		},
 		{
 			description:   "GRPC status error",
-			sourceAzError: &diskv1alpha2.AzError{Code: diskv1alpha2.AzErrorCodeNotFound, Message: "not found"},
+			sourceAzError: &diskv1beta1.AzError{Code: diskv1beta1.AzErrorCodeNotFound, Message: "not found"},
 			expectedError: status.Error(codes.NotFound, "not found"),
 		},
 	}
