@@ -29,10 +29,10 @@ require (
 	k8s.io/client-go v0.23.3
 	k8s.io/cloud-provider v0.23.3
 	k8s.io/component-base v0.23.3
-	k8s.io/klog/v2 v2.30.0
+	k8s.io/klog/v2 v2.40.1
 	k8s.io/kubernetes v1.23.3
 	k8s.io/mount-utils v0.23.3
-	k8s.io/utils v0.0.0-20211116205334-6203023598ed
+	k8s.io/utils v0.0.0-20220210201930-3a6ce19ff2f9
 	sigs.k8s.io/cloud-provider-azure v0.7.4
 	sigs.k8s.io/yaml v1.3.0
 )
@@ -141,7 +141,7 @@ replace (
 	k8s.io/kubelet => k8s.io/kubelet v0.23.3
 	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.23.3
 	k8s.io/metrics => k8s.io/metrics v0.23.3
-	k8s.io/mount-utils => k8s.io/mount-utils v0.23.3
+	k8s.io/mount-utils => k8s.io/mount-utils v0.0.0-20220314200322-2af412bcdc5e
 	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.23.3
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.23.3
 	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.23.3
