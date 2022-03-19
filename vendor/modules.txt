@@ -1136,7 +1136,7 @@ k8s.io/gengo/generator
 k8s.io/gengo/namer
 k8s.io/gengo/parser
 k8s.io/gengo/types
-# k8s.io/klog/v2 v2.30.0
+# k8s.io/klog/v2 v2.40.1
 ## explicit; go 1.13
 k8s.io/klog/v2
 k8s.io/klog/v2/klogr
@@ -1209,6 +1209,7 @@ k8s.io/kubernetes/pkg/volume/util/volumepathhandler
 k8s.io/kubernetes/test/e2e/framework
 k8s.io/kubernetes/test/e2e/framework/auth
 k8s.io/kubernetes/test/e2e/framework/config
+k8s.io/kubernetes/test/e2e/framework/deployment
 k8s.io/kubernetes/test/e2e/framework/events
 k8s.io/kubernetes/test/e2e/framework/ginkgowrapper
 k8s.io/kubernetes/test/e2e/framework/kubectl
@@ -1226,10 +1227,10 @@ k8s.io/kubernetes/test/e2e/storage/podlogs
 k8s.io/kubernetes/test/e2e/storage/utils
 k8s.io/kubernetes/test/utils
 k8s.io/kubernetes/test/utils/image
-# k8s.io/mount-utils v0.23.3 => k8s.io/mount-utils v0.23.3
+# k8s.io/mount-utils v0.23.3 => k8s.io/mount-utils v0.0.0-20220314200322-2af412bcdc5e
 ## explicit; go 1.16
 k8s.io/mount-utils
-# k8s.io/utils v0.0.0-20211116205334-6203023598ed
+# k8s.io/utils v0.0.0-20220210201930-3a6ce19ff2f9
 ## explicit; go 1.12
 k8s.io/utils/buffer
 k8s.io/utils/clock
@@ -1389,7 +1390,7 @@ sigs.k8s.io/yaml
 # k8s.io/kubelet => k8s.io/kubelet v0.23.3
 # k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.23.3
 # k8s.io/metrics => k8s.io/metrics v0.23.3
-# k8s.io/mount-utils => k8s.io/mount-utils v0.23.3
+# k8s.io/mount-utils => k8s.io/mount-utils v0.0.0-20220314200322-2af412bcdc5e
 # k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.23.3
 # k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.23.3
 # k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.23.3
