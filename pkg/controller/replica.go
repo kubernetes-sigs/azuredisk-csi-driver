@@ -47,6 +47,10 @@ type ReconcileReplica struct {
 var _ reconcile.Reconciler = &ReconcileReplica{}
 
 func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
+	if !r.controllerSharedState.isRecoveryComplete() {
+		return reconcile.Result{Requeue: true}, nil
+	}
+
 	azVolumeAttachment, err := azureutils.GetAzVolumeAttachment(ctx, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, request.Name, request.Namespace, true)
 	if errors.IsNotFound(err) {
 		klog.Infof("AzVolumeAttachment (%s) has been successfully deleted.", request.Name)

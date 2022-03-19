@@ -42,6 +42,10 @@ type ReconcileAzDriverNode struct {
 var _ reconcile.Reconciler = &ReconcileAzDriverNode{}
 
 func (r *ReconcileAzDriverNode) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
+	if !r.controllerSharedState.isRecoveryComplete() {
+		return reconcile.Result{Requeue: true}, nil
+	}
+
 	klog.V(2).Info("Checking to see if node (%v) exists.", request.NamespacedName)
 	n := &corev1.Node{}
 	err := r.controllerSharedState.cachedClient.Get(ctx, request.NamespacedName, n)

@@ -236,6 +236,7 @@ func newLockableEntry(entry interface{}) *lockableEntry {
 }
 
 type SharedState struct {
+	recoveryComplete              uint32
 	driverName                    string
 	objectNamespace               string
 	topologyKey                   string
@@ -260,6 +261,14 @@ func NewSharedState(driverName, objectNamespace, topologyKey string, eventRecord
 	newSharedState := &SharedState{driverName: driverName, objectNamespace: objectNamespace, topologyKey: topologyKey, eventRecorder: eventRecorder, cachedClient: cachedClient, azClient: azClient, kubeClient: kubeClient}
 	newSharedState.createReplicaRequestsQueue()
 	return newSharedState
+}
+
+func (c *SharedState) isRecoveryComplete() bool {
+	return c.recoveryComplete == 1
+}
+
+func (c *SharedState) MarkRecoveryComplete() {
+	atomic.StoreUint32(&c.recoveryComplete, 1)
 }
 
 func (c *SharedState) createOperationQueue(volumeName string) {

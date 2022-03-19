@@ -49,6 +49,10 @@ type ReconcilePV struct {
 var _ reconcile.Reconciler = &ReconcilePV{}
 
 func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
+	if !r.controllerSharedState.isRecoveryComplete() {
+		return reconcile.Result{Requeue: true}, nil
+	}
+
 	var pv corev1.PersistentVolume
 	var azVolume diskv1beta1.AzVolume
 	// Ignore not found errors as they cannot be fixed by a requeue

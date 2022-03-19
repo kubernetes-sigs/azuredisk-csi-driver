@@ -77,6 +77,10 @@ var allowedTargetAttachmentStates = map[string][]string{
 }
 
 func (r *ReconcileAttachDetach) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
+	if !r.controllerSharedState.isRecoveryComplete() {
+		return reconcile.Result{Requeue: true}, nil
+	}
+
 	azVolumeAttachment, err := azureutils.GetAzVolumeAttachment(ctx, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, request.Name, request.Namespace, true)
 	// if object is not found, it means the object has been deleted. Log the deletion and do not requeue
 	if errors.IsNotFound(err) {

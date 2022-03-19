@@ -344,6 +344,7 @@ func createPod(podNamespace, podName string, pvcs []string) v1.Pod {
 
 func initState(client client.Client, azClient azClientSet.Interface, kubeClient kubernetes.Interface, objs ...runtime.Object) (c *SharedState) {
 	c = NewSharedState(consts.DefaultDriverName, consts.DefaultAzureDiskCrdNamespace, consts.WellKnownTopologyKey, &record.FakeRecorder{}, client, azClient, kubeClient)
+	c.MarkRecoveryComplete()
 
 	for _, obj := range objs {
 		switch target := obj.(type) {

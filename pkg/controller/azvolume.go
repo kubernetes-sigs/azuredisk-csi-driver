@@ -82,6 +82,10 @@ var allowedTargetVolumeStates = map[string][]string{
 }
 
 func (r *ReconcileAzVolume) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
+	if !r.controllerSharedState.isRecoveryComplete() {
+		return reconcile.Result{Requeue: true}, nil
+	}
+
 	azVolume, err := azureutils.GetAzVolume(ctx, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, request.Name, request.Namespace, true)
 	if err != nil {
 		// if AzVolume has been deleted, delete the operation queue for the volume and return success
