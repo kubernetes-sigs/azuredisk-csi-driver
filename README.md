@@ -106,7 +106,6 @@ follow guide [here](./docs/install-driver-on-aks.md)
 ### Links
 
 - [Kubernetes CSI Documentation](https://kubernetes-csi.github.io/docs/)
-- [CSI Drivers](https://github.com/kubernetes-csi/drivers)
 - [Container Storage Interface (CSI) Specification](https://github.com/container-storage-interface/spec)
 
 [support-policy]: support.md
