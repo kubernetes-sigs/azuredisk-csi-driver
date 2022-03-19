@@ -89,7 +89,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 				labelSelector := metav1.LabelSelector{MatchLabels: map[string]string{consts.VolumeNameLabel: diskName}}
 				err = wait.PollImmediate(poll, pollTimeout,
 					func() (bool, error) {
-						azVolumeAttachments, listErr := azDiskClient.DiskV1alpha2().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: labels.Set(labelSelector.MatchLabels).String()})
+						azVolumeAttachments, listErr := azDiskClient.DiskV1beta1().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: labels.Set(labelSelector.MatchLabels).String()})
 						if listErr != nil {
 							if errors.IsNotFound(listErr) {
 								return true, nil

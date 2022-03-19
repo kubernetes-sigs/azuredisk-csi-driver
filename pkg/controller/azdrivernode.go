@@ -42,6 +42,10 @@ type ReconcileAzDriverNode struct {
 var _ reconcile.Reconciler = &ReconcileAzDriverNode{}
 
 func (r *ReconcileAzDriverNode) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
+	if !r.controllerSharedState.isRecoveryComplete() {
+		return reconcile.Result{Requeue: true}, nil
+	}
+
 	klog.V(2).Info("Checking to see if node (%v) exists.", request.NamespacedName)
 	n := &corev1.Node{}
 	err := r.controllerSharedState.cachedClient.Get(ctx, request.NamespacedName, n)
@@ -58,7 +62,7 @@ func (r *ReconcileAzDriverNode) Reconcile(ctx context.Context, request reconcile
 		klog.V(2).Info("Deleting AzDriverNode (%s).", request.Name)
 
 		// Delete the azDriverNode, since corresponding node is deleted
-		azN := r.controllerSharedState.azClient.DiskV1alpha2().AzDriverNodes(r.controllerSharedState.objectNamespace)
+		azN := r.controllerSharedState.azClient.DiskV1beta1().AzDriverNodes(r.controllerSharedState.objectNamespace)
 		err = azN.Delete(ctx, request.Name, metav1.DeleteOptions{})
 
 		// If there is an issue in deleting the AzDriverNode, requeue

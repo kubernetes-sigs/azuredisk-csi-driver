@@ -32,7 +32,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e/framework"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
+	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
@@ -123,7 +123,7 @@ func (t *PodAffinity) Run(client clientset.Interface, namespace *v1.Namespace, s
 					framework.ExpectNoError(err)
 					labelSelector = labelSelector.Add(*volReq)
 
-					azVolumeAttachments, err := t.AzDiskClient.DiskV1alpha2().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})
+					azVolumeAttachments, err := t.AzDiskClient.DiskV1beta1().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})
 					if err != nil {
 						return false, err
 					}
@@ -142,7 +142,7 @@ func (t *PodAffinity) Run(client clientset.Interface, namespace *v1.Namespace, s
 					for _, azVolumeAttachment := range azVolumeAttachments.Items {
 						if i == 0 {
 							// for anti-affinity, we don't expect the node filter to exclude replica nodes
-							if t.IsAntiAffinityTest && azVolumeAttachment.Spec.RequestedRole == v1alpha2.ReplicaRole {
+							if t.IsAntiAffinityTest && azVolumeAttachment.Spec.RequestedRole == diskv1beta1.ReplicaRole {
 								continue
 							}
 							scheduledNodes[azVolumeAttachment.Spec.NodeName] = struct{}{}

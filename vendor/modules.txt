@@ -1209,7 +1209,6 @@ k8s.io/kubernetes/pkg/volume/util/volumepathhandler
 k8s.io/kubernetes/test/e2e/framework
 k8s.io/kubernetes/test/e2e/framework/auth
 k8s.io/kubernetes/test/e2e/framework/config
-k8s.io/kubernetes/test/e2e/framework/deployment
 k8s.io/kubernetes/test/e2e/framework/events
 k8s.io/kubernetes/test/e2e/framework/ginkgowrapper
 k8s.io/kubernetes/test/e2e/framework/kubectl

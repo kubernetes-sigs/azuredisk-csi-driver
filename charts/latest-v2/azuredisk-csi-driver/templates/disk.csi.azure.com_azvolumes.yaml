@@ -25,7 +25,7 @@ spec:
       jsonPath: .status.detail.phase
       name: Phase
       type: string
-    name: v1alpha2
+    name: v1beta1
     schema:
       openAPIV3Schema:
         description: AzVolume is a specification for an AzVolume resource

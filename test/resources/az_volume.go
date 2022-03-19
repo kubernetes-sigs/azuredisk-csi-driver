@@ -25,19 +25,19 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e/framework"
-	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
-	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1alpha2"
+	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1beta1"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
 type TestAzVolume struct {
-	Azclient             azDiskClientSet.DiskV1alpha2Interface
+	Azclient             azDiskClientSet.DiskV1beta1Interface
 	Namespace            string
 	UnderlyingVolume     string
 	MaxMountReplicaCount int
 }
 
-func SetupTestAzVolume(azclient azDiskClientSet.DiskV1alpha2Interface, namespace string, underlyingVolume string, maxMountReplicaCount int) *TestAzVolume {
+func SetupTestAzVolume(azclient azDiskClientSet.DiskV1beta1Interface, namespace string, underlyingVolume string, maxMountReplicaCount int) *TestAzVolume {
 	return &TestAzVolume{
 		Azclient:             azclient,
 		Namespace:            namespace,
@@ -46,33 +46,33 @@ func SetupTestAzVolume(azclient azDiskClientSet.DiskV1alpha2Interface, namespace
 	}
 }
 
-func NewTestAzVolume(azVolume azDiskClientSet.AzVolumeInterface, underlyingVolumeName string, maxMountReplicaCount int) *diskv1alpha2.AzVolume {
+func NewTestAzVolume(azVolume azDiskClientSet.AzVolumeInterface, underlyingVolumeName string, maxMountReplicaCount int) *diskv1beta1.AzVolume {
 	// Delete leftover azVolumes from previous runs
 	if _, err := azVolume.Get(context.Background(), underlyingVolumeName, metav1.GetOptions{}); err == nil {
 		err := azVolume.Delete(context.Background(), underlyingVolumeName, metav1.DeleteOptions{})
 		framework.ExpectNoError(err)
 	}
-	newAzVolume, err := azVolume.Create(context.Background(), &diskv1alpha2.AzVolume{
+	newAzVolume, err := azVolume.Create(context.Background(), &diskv1beta1.AzVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: underlyingVolumeName,
 		},
-		Spec: diskv1alpha2.AzVolumeSpec{
+		Spec: diskv1beta1.AzVolumeSpec{
 			VolumeName:           underlyingVolumeName,
 			MaxMountReplicaCount: maxMountReplicaCount,
-			VolumeCapability: []diskv1alpha2.VolumeCapability{
+			VolumeCapability: []diskv1beta1.VolumeCapability{
 				{
-					AccessType: diskv1alpha2.VolumeCapabilityAccessMount,
-					AccessMode: diskv1alpha2.VolumeCapabilityAccessModeSingleNodeWriter,
+					AccessType: diskv1beta1.VolumeCapabilityAccessMount,
+					AccessMode: diskv1beta1.VolumeCapabilityAccessModeSingleNodeWriter,
 				},
 			},
-			CapacityRange: &diskv1alpha2.CapacityRange{
+			CapacityRange: &diskv1beta1.CapacityRange{
 				RequiredBytes: 0,
 				LimitBytes:    0,
 			},
-			AccessibilityRequirements: &diskv1alpha2.TopologyRequirement{},
+			AccessibilityRequirements: &diskv1beta1.TopologyRequirement{},
 		},
-		Status: diskv1alpha2.AzVolumeStatus{
-			State: diskv1alpha2.VolumeOperationPending,
+		Status: diskv1beta1.AzVolumeStatus{
+			State: diskv1beta1.VolumeOperationPending,
 		},
 	}, metav1.CreateOptions{})
 	framework.ExpectNoError(err)
@@ -80,7 +80,7 @@ func NewTestAzVolume(azVolume azDiskClientSet.AzVolumeInterface, underlyingVolum
 	return newAzVolume
 }
 
-func (t *TestAzVolume) Create() *diskv1alpha2.AzVolume {
+func (t *TestAzVolume) Create() *diskv1beta1.AzVolume {
 	// create test az volume
 	azVolClient := t.Azclient.AzVolumes(t.Namespace)
 	azVolume := NewTestAzVolume(azVolClient, t.UnderlyingVolume, t.MaxMountReplicaCount)

@@ -23,7 +23,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
-	diskv1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1alpha2"
+	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -47,6 +47,10 @@ type ReconcileReplica struct {
 var _ reconcile.Reconciler = &ReconcileReplica{}
 
 func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
+	if !r.controllerSharedState.isRecoveryComplete() {
+		return reconcile.Result{Requeue: true}, nil
+	}
+
 	azVolumeAttachment, err := azureutils.GetAzVolumeAttachment(ctx, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, request.Name, request.Namespace, true)
 	if errors.IsNotFound(err) {
 		klog.Infof("AzVolumeAttachment (%s) has been successfully deleted.", request.Name)
@@ -56,7 +60,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 		return reconcile.Result{Requeue: true}, err
 	}
 
-	if azVolumeAttachment.Spec.RequestedRole == diskv1alpha2.PrimaryRole {
+	if azVolumeAttachment.Spec.RequestedRole == diskv1beta1.PrimaryRole {
 		// Deletion Event
 		if objectDeletionRequested(azVolumeAttachment) {
 			if volumeDetachRequested(azVolumeAttachment) {
@@ -69,7 +73,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 			r.removeGarbageCollection(azVolumeAttachment.Spec.VolumeName)
 
 			// If promotion event, create a replacement replica
-			if isAttached(azVolumeAttachment) && azVolumeAttachment.Status.Detail.PreviousRole == diskv1alpha2.ReplicaRole {
+			if isAttached(azVolumeAttachment) && azVolumeAttachment.Status.Detail.PreviousRole == diskv1beta1.ReplicaRole {
 				r.controllerSharedState.addToOperationQueue(
 					azVolumeAttachment.Spec.VolumeName,
 					replica,
@@ -89,10 +93,10 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 		}
 		// create a replacement replica if replica attachment failed
 		if objectDeletionRequested(azVolumeAttachment) {
-			if azVolumeAttachment.Status.State == diskv1alpha2.DetachmentFailed {
+			if azVolumeAttachment.Status.State == diskv1beta1.DetachmentFailed {
 				if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, func(obj interface{}) error {
-					azVolumeAttachment := obj.(*diskv1alpha2.AzVolumeAttachment)
-					_, err = updateState(azVolumeAttachment, diskv1alpha2.ForceDetachPending, normalUpdate)
+					azVolumeAttachment := obj.(*diskv1beta1.AzVolumeAttachment)
+					_, err = updateState(azVolumeAttachment, diskv1beta1.ForceDetachPending, normalUpdate)
 					return err
 				}, consts.NormalUpdateMaxNetRetry); err != nil {
 					return reconcile.Result{Requeue: true}, err
@@ -102,7 +106,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 				go func() {
 					// wait for replica AzVolumeAttachment deletion
 					conditionFunc := func() (bool, error) {
-						var tmp diskv1alpha2.AzVolumeAttachment
+						var tmp diskv1beta1.AzVolumeAttachment
 						err := r.controllerSharedState.cachedClient.Get(ctx, request.NamespacedName, &tmp)
 						if errors.IsNotFound(err) {
 							return true, nil
@@ -123,7 +127,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 					)
 				}()
 			}
-		} else if azVolumeAttachment.Status.State == diskv1alpha2.AttachmentFailed {
+		} else if azVolumeAttachment.Status.State == diskv1beta1.AttachmentFailed {
 			// if attachment failed for replica AzVolumeAttachment, delete the CRI so that replace replica AzVolumeAttachment can be created.
 			if err := r.controllerSharedState.cachedClient.Delete(ctx, azVolumeAttachment); err != nil {
 				return reconcile.Result{Requeue: true}, err
@@ -198,10 +202,10 @@ func NewReplicaController(mgr manager.Manager, controllerSharedState *SharedStat
 
 	klog.V(2).Info("Starting to watch AzVolumeAttachments.")
 
-	err = c.Watch(&source.Kind{Type: &diskv1alpha2.AzVolumeAttachment{}}, &handler.EnqueueRequestForObject{}, predicate.Funcs{
+	err = c.Watch(&source.Kind{Type: &diskv1beta1.AzVolumeAttachment{}}, &handler.EnqueueRequestForObject{}, predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
-			azVolumeAttachment, ok := e.Object.(*diskv1alpha2.AzVolumeAttachment)
-			if ok && azVolumeAttachment.Spec.RequestedRole == diskv1alpha2.PrimaryRole {
+			azVolumeAttachment, ok := e.Object.(*diskv1beta1.AzVolumeAttachment)
+			if ok && azVolumeAttachment.Spec.RequestedRole == diskv1beta1.PrimaryRole {
 				return true
 			}
 			return false
