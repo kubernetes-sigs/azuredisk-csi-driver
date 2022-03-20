@@ -123,6 +123,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `driver.customUserAgent`                          | custom userAgent                                           | `` |
 | `driver.userAgentSuffix`                          | userAgent suffix                                           | `OSS-helm` |
 | `driver.volumeAttachLimit`                        | maximum number of attachable volumes per node maximum number is defined according to node instance type by default(`-1`)                        | `-1` |
+| `driver.azureGoSDKLogLevel`                       | [Azure go sdk log level](https://github.com/Azure/azure-sdk-for-go/blob/main/documentation/previous-versions-quickstart.md#built-in-basic-requestresponse-logging)  | ``(no logs), `DEBUG`, `INFO`, `WARNING`, `ERROR`, [etc](https://github.com/Azure/go-autorest/blob/50e09bb39af124f28f29ba60efde3fa74a4fe93f/logger/logger.go#L65-L73) |
 | `feature.enableFSGroupPolicy`                     | enable `fsGroupPolicy` on a k8s 1.20+ cluster              | `true`                      |
 | `image.baseRepo`                                  | base repository of driver images                           | `mcr.microsoft.com`                      |
 | `image.azuredisk.repository`                      | azuredisk-csi-driver docker image                          | `/oss/csi/azuredisk-csi`                      |
