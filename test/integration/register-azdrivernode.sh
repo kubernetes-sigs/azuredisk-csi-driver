@@ -22,7 +22,7 @@ fi
 export nodeName=$1
 
 tee <<-EOF > new-azdrivernode.yaml;
-apiVersion: disk.csi.azure.com/v1alpha1
+apiVersion: disk.csi.azure.com/v1beta1
 kind: AzDriverNode
 metadata:
   creationTimestamp: "2021-06-23T03:16:51Z"

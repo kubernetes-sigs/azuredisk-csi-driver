@@ -22,7 +22,7 @@ fi
 export volumeName=$1
 
 tee <<-EOF > new-azvolume.yaml;
-apiVersion: disk.csi.azure.com/v1alpha1
+apiVersion: disk.csi.azure.com/v1beta1
 kind: AzVolume
 metadata:
     name: ${volumeName}
