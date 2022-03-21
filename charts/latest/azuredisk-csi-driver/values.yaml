@@ -140,6 +140,7 @@ driver:
   volumeAttachLimit: -1
   customUserAgent: ""
   userAgentSuffix: "OSS-helm"
+  azureGoSDKLogLevel: "" # available values: ""(no logs), DEBUG, INFO, WARNING, ERROR
 
 linux:
   enabled: true
