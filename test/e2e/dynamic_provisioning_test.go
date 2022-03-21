@@ -492,13 +492,6 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 				"fsType":  "xfs",
 			},
 		}
-		if !isUsingInTreeVolumePlugin && supportsZRS {
-			test.StorageClassParameters = map[string]string{
-				"skuName":             "StandardSSD_ZRS",
-				"networkAccessPolicy": "DenyAll",
-				"fsType":              "btrfs",
-			}
-		}
 		test.Run(cs, ns)
 	})
 
