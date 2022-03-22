@@ -155,6 +155,14 @@ type operationQueue struct {
 	gcExclusionList set
 }
 
+func (q *operationQueue) remove(element *list.Element) {
+	// operationQueue might have been cleared before the lock was acquired
+	// so always check if the list is empty or not before removing object from the queue, otherwise it would set the underlying length of the queue to be < 0, causing issues
+	if q.Front() != nil {
+		_ = q.Remove(element)
+	}
+}
+
 func newOperationQueue() *operationQueue {
 	return &operationQueue{
 		gcExclusionList: set{},
@@ -283,7 +291,7 @@ func (c *SharedState) addToOperationQueue(volumeName string, requester operation
 	lockable := v.(*lockableEntry)
 	lockable.Lock()
 
-	isFirst := lockable.entry.(*operationQueue).Len() == 0
+	isFirst := lockable.entry.(*operationQueue).Len() <= 0
 	_ = lockable.entry.(*operationQueue).PushBack(&replicaOperation{
 		requester:                  requester,
 		operationFunc:              operationFunc,
@@ -316,8 +324,8 @@ func (c *SharedState) addToOperationQueue(volumeName string, requester operation
 				}
 
 				lockable.Lock()
-				operationQueue.Remove(front)
-				// if there is no entry remaining, exit the loop
+				operationQueue.remove(front)
+				// there is no entry remaining, exit the loop
 				if operationQueue.Front() == nil {
 					break
 				}
@@ -341,17 +349,6 @@ func (c *SharedState) deleteOperationQueue(volumeName string) {
 	lockable.Unlock()
 }
 
-func (c *SharedState) createReplicaRequestsQueue() {
-	c.priorityReplicaRequestsQueue = &VolumeReplicaRequestsPriorityQueue{}
-	c.priorityReplicaRequestsQueue.queue = cache.NewHeap(
-		func(obj interface{}) (string, error) {
-			return obj.(*ReplicaRequest).VolumeName, nil
-		},
-		func(left, right interface{}) bool {
-			return left.(*ReplicaRequest).Priority > right.(*ReplicaRequest).Priority
-		})
-}
-
 func (c *SharedState) overrideAndClearOperationQueue(volumeName string) func() {
 	v, ok := c.volumeOperationQueues.Load(volumeName)
 	if !ok {
@@ -371,7 +368,7 @@ func (c *SharedState) addToGcExclusionList(volumeName string, target operationRe
 	}
 	lockable := v.(*lockableEntry)
 	lockable.Lock()
-	lockable.entry.(*operationQueue).gcExclusionList.add(volumeName)
+	lockable.entry.(*operationQueue).gcExclusionList.add(target)
 	lockable.Unlock()
 }
 
@@ -382,7 +379,7 @@ func (c *SharedState) removeFromExclusionList(volumeName string, target operatio
 	}
 	lockable := v.(*lockableEntry)
 	lockable.Lock()
-	delete(lockable.entry.(*operationQueue).gcExclusionList, volumeName)
+	delete(lockable.entry.(*operationQueue).gcExclusionList, target)
 	lockable.Unlock()
 }
 
@@ -395,9 +392,11 @@ func (c *SharedState) dequeueGarbageCollection(volumeName string) {
 	lockable.Lock()
 	queue := lockable.entry.(*operationQueue)
 	// look for garbage collection operation in the queue and remove from queue
-	for cur := queue.Front(); cur != nil; cur = cur.Next() {
+	var next *list.Element
+	for cur := queue.Front(); cur != nil; cur = next {
+		next = cur.Next()
 		if cur.Value.(*replicaOperation).isReplicaGarbageCollection {
-			_ = queue.Remove(cur)
+			queue.remove(cur)
 		}
 	}
 	lockable.Unlock()
@@ -1884,6 +1883,17 @@ type ReplicaRequest struct {
 type VolumeReplicaRequestsPriorityQueue struct {
 	queue *cache.Heap
 	size  int32
+}
+
+func (c *SharedState) createReplicaRequestsQueue() {
+	c.priorityReplicaRequestsQueue = &VolumeReplicaRequestsPriorityQueue{}
+	c.priorityReplicaRequestsQueue.queue = cache.NewHeap(
+		func(obj interface{}) (string, error) {
+			return obj.(*ReplicaRequest).VolumeName, nil
+		},
+		func(left, right interface{}) bool {
+			return left.(*ReplicaRequest).Priority > right.(*ReplicaRequest).Priority
+		})
 }
 
 func (vq *VolumeReplicaRequestsPriorityQueue) Push(replicaRequest *ReplicaRequest) {
