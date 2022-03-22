@@ -1714,14 +1714,14 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			podCheck.Cmd = []string{
 				"sh",
 				"-c",
-				"(stat /dev/shared-1 > /dev/null) && echo \"VOLUME ATTACHED\"",
+				"(stat /dev/e2e-test > /dev/null) && echo \"VOLUME ATTACHED\"",
 			}
 		} else {
 			podCheck.Cmd = []string{
 				"powershell",
 				"-NoLogo",
 				"-Command",
-				"if (Test-Path c:\\dev\\shared-1) { \"VOLUME ATTACHED\" | Out-Host }",
+				"if (Test-Path c:\\dev\\e2e-test) { \"VOLUME ATTACHED\" | Out-Host }",
 			}
 		}
 
