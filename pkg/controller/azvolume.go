@@ -212,7 +212,7 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *diskv1b
 		return err
 	}
 
-	if len(attachments.Items) > 0 {
+	if len(attachments) > 0 {
 		return status.Errorf(codes.Aborted, "volume deletion requeued until attached azVolumeAttachments are entirely detached...")
 	}
 

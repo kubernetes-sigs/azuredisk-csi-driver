@@ -859,6 +859,7 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azurediskInformers.
 	conditionFunc := func() error {
 		var err error
 		var copyForUpdate client.Object
+		var objForUpdate client.Object
 		switch target := obj.(type) {
 		case *diskv1beta1.AzVolume:
 			if informerFactory != nil {
@@ -869,6 +870,7 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azurediskInformers.
 				target, err = azDiskClient.DiskV1beta1().AzVolumes(target.Namespace).Get(ctx, objName, metav1.GetOptions{})
 			}
 			if err == nil {
+				objForUpdate = target
 				copyForUpdate = target.DeepCopy()
 			}
 		case *diskv1beta1.AzVolumeAttachment:
@@ -880,6 +882,7 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azurediskInformers.
 				target, err = azDiskClient.DiskV1beta1().AzVolumeAttachments(target.Namespace).Get(ctx, objName, metav1.GetOptions{})
 			}
 			if err == nil {
+				objForUpdate = target
 				copyForUpdate = target.DeepCopy()
 			}
 		default:
@@ -893,6 +896,11 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azurediskInformers.
 
 		if err = updateFunc(copyForUpdate); err != nil {
 			return err
+		}
+
+		// if updateFunc doesn't change the object, don't bother making an update request
+		if reflect.DeepEqual(objForUpdate, copyForUpdate) {
+			return nil
 		}
 
 		switch target := copyForUpdate.(type) {

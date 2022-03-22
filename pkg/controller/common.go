@@ -76,6 +76,7 @@ type operationRequester string
 const (
 	azdrivernode     operationRequester = "azdrivernode-controller"
 	azvolume         operationRequester = "azvolume-controller"
+	pv               operationRequester = "pv-controller"
 	replica          operationRequester = "replica-controller"
 	nodeavailability operationRequester = "nodeavailability-controller"
 	pod                                 = "pod-controller"
@@ -1581,15 +1582,10 @@ func (c *SharedState) createReplicaAzVolumeAttachment(ctx context.Context, volum
 	return nil
 }
 
-func (c *SharedState) cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azVolumeName string, caller operationRequester, role roleMode, deleteMode cleanUpMode) (*diskv1beta1.AzVolumeAttachmentList, error) {
+func (c *SharedState) cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azVolumeName string, caller operationRequester, role roleMode, deleteMode cleanUpMode) ([]diskv1beta1.AzVolumeAttachment, error) {
 	klog.Infof("AzVolumeAttachment clean up requested by %s for AzVolume (%s)", caller, azVolumeName)
-	volRequirement, err := azureutils.CreateLabelRequirements(consts.VolumeNameLabel, selection.Equals, azVolumeName)
-	if err != nil {
-		return nil, err
-	}
-	labelSelector := labels.NewSelector().Add(*volRequirement)
 
-	attachments, err := c.azClient.DiskV1beta1().AzVolumeAttachments(c.objectNamespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})
+	attachments, err := getAzVolumeAttachmentsForVolume(ctx, c.cachedClient, azVolumeName, role)
 	if err != nil {
 		if apiErrors.IsNotFound(err) {
 			return nil, nil
@@ -1598,14 +1594,7 @@ func (c *SharedState) cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azV
 		return nil, err
 	}
 
-	cleanUps := []diskv1beta1.AzVolumeAttachment{}
-	for _, attachment := range attachments.Items {
-		if shouldCleanUp(attachment, role) {
-			cleanUps = append(cleanUps, attachment)
-		}
-	}
-
-	if err := c.cleanUpAzVolumeAttachments(ctx, cleanUps, deleteMode, caller); err != nil {
+	if err := c.cleanUpAzVolumeAttachments(ctx, attachments, deleteMode, caller); err != nil {
 		return attachments, err
 	}
 	c.unmarkVolumeVisited(azVolumeName)
@@ -1613,7 +1602,7 @@ func (c *SharedState) cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azV
 	return attachments, nil
 }
 
-func (c *SharedState) cleanUpAzVolumeAttachmentByNode(ctx context.Context, azDriverNodeName string, caller operationRequester, role roleMode, deleteMode cleanUpMode) (*diskv1beta1.AzVolumeAttachmentList, error) {
+func (c *SharedState) cleanUpAzVolumeAttachmentByNode(ctx context.Context, azDriverNodeName string, caller operationRequester, role roleMode, deleteMode cleanUpMode) ([]diskv1beta1.AzVolumeAttachment, error) {
 	klog.Infof("AzVolumeAttachment clean up requested by %s for AzDriverNode (%s)", caller, azDriverNodeName)
 	nodeRequirement, err := azureutils.CreateLabelRequirements(consts.NodeNameLabel, selection.Equals, azDriverNodeName)
 	if err != nil {
@@ -1624,7 +1613,7 @@ func (c *SharedState) cleanUpAzVolumeAttachmentByNode(ctx context.Context, azDri
 	attachments, err := c.azClient.DiskV1beta1().AzVolumeAttachments(c.objectNamespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})
 	if err != nil {
 		if apiErrors.IsNotFound(err) {
-			return attachments, nil
+			return nil, nil
 		}
 		klog.Errorf("failed to get AzVolumeAttachments: %v", err)
 		return nil, err
@@ -1653,33 +1642,41 @@ func (c *SharedState) cleanUpAzVolumeAttachmentByNode(ctx context.Context, azDri
 			},
 			false)
 	}
-	return attachments, nil
+	return attachments.Items, nil
 }
 
 func (c *SharedState) cleanUpAzVolumeAttachments(ctx context.Context, attachments []diskv1beta1.AzVolumeAttachment, cleanUp cleanUpMode, caller operationRequester) error {
 	for _, attachment := range attachments {
+		var patchRequired bool
 		patched := attachment.DeepCopy()
+
 		if patched.Annotations == nil {
 			patched.Annotations = map[string]string{}
 		}
-
 		// if caller is azdrivernode, don't append cleanup annotation
-		if caller != azdrivernode {
-			patched.Annotations[consts.CleanUpAnnotation] = string(caller)
-		}
-		// replica attachments should always be detached regardless of the cleanup mode
-		if cleanUp == detachAndDeleteCRI || patched.Spec.RequestedRole == diskv1beta1.ReplicaRole {
+		if (caller != azdrivernode && !metav1.HasAnnotation(patched.ObjectMeta, consts.CleanUpAnnotation)) ||
+			// replica attachments should always be detached regardless of the cleanup mode
+			((cleanUp == detachAndDeleteCRI || patched.Spec.RequestedRole == diskv1beta1.ReplicaRole) && !metav1.HasAnnotation(patched.ObjectMeta, consts.VolumeDetachRequestAnnotation)) {
+			patchRequired = true
+			if caller != azdrivernode {
+				patched.Annotations[consts.CleanUpAnnotation] = string(caller)
+			}
 			patched.Annotations[consts.VolumeDetachRequestAnnotation] = string(caller)
 		}
-		if err := c.cachedClient.Patch(ctx, patched, client.MergeFrom(&attachment)); err != nil {
-			klog.Errorf("failed to delete AzVolumeAttachment (%s): %v", attachment.Name, err)
-			return err
+
+		if patchRequired {
+			if err := c.cachedClient.Patch(ctx, patched, client.MergeFrom(&attachment)); err != nil && apiErrors.IsNotFound(err) {
+				klog.Errorf("failed to delete AzVolumeAttachment (%s): %v", attachment.Name, err)
+				return err
+			}
 		}
-		if err := c.azClient.DiskV1beta1().AzVolumeAttachments(c.objectNamespace).Delete(ctx, attachment.Name, metav1.DeleteOptions{}); err != nil {
-			klog.Errorf("failed to delete AzVolumeAttachment (%s): %v", attachment.Name, err)
-			return err
+		if !objectDeletionRequested(patched) {
+			if err := c.cachedClient.Delete(ctx, patched); err != nil && apiErrors.IsNotFound(err) {
+				klog.Errorf("failed to delete AzVolumeAttachment (%s): %v", attachment.Name, err)
+				return err
+			}
+			klog.V(5).Infof("Set deletion timestamp for AzVolumeAttachment (%s)", attachment.Name)
 		}
-		klog.V(5).Infof("Set deletion timestamp for AzVolumeAttachment (%s)", attachment.Name)
 	}
 	return nil
 }
@@ -1932,6 +1929,34 @@ func (c *SharedState) tryCreateFailedReplicas(ctx context.Context, requestor ope
 		)
 	}
 	return nil
+}
+
+func (c *SharedState) garbageCollectReplicas(ctx context.Context, volumeName string, requester operationRequester) {
+	c.addToOperationQueue(
+		volumeName,
+		replica,
+		func() error {
+			_, err := c.cleanUpAzVolumeAttachmentByVolume(context.Background(), volumeName, requester, all, detachAndDeleteCRI)
+			if err != nil {
+				return err
+			}
+			c.addToGcExclusionList(volumeName, replica)
+			c.removeGarbageCollection(volumeName)
+			c.unmarkVolumeVisited(volumeName)
+			return nil
+		},
+		true,
+	)
+}
+
+func (c *SharedState) removeGarbageCollection(volumeName string) {
+	v, ok := c.cleanUpMap.LoadAndDelete(volumeName)
+	if ok {
+		cancelFunc := v.(context.CancelFunc)
+		cancelFunc()
+	}
+	// if there is any garbage collection enqueued in operation queue, remove it
+	c.dequeueGarbageCollection(volumeName)
 }
 
 func (c *SharedState) manageReplicas(ctx context.Context, volumeName string) error {

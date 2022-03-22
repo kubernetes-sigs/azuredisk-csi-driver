@@ -562,4 +562,31 @@ func mockClients(mockClient *mockclient.MockClient, azVolumeClient azVolumeClien
 			return nil
 		}).
 		AnyTimes()
+	mockClient.EXPECT().
+		Delete(gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(ctx context.Context, obj client.Object, opts ...client.ListOption) error {
+			switch target := obj.(type) {
+			case *diskv1beta1.AzVolume:
+				err := azVolumeClient.DiskV1beta1().AzVolumes(obj.GetNamespace()).Delete(ctx, target.Name, metav1.DeleteOptions{})
+				if err != nil {
+					return err
+				}
+
+			case *diskv1beta1.AzVolumeAttachment:
+				err := azVolumeClient.DiskV1beta1().AzVolumeAttachments(obj.GetNamespace()).Delete(ctx, target.Name, metav1.DeleteOptions{})
+				if err != nil {
+					return err
+				}
+
+			default:
+				gr := schema.GroupResource{
+					Group:    target.GetObjectKind().GroupVersionKind().Group,
+					Resource: target.GetObjectKind().GroupVersionKind().Kind,
+				}
+				return k8serrors.NewNotFound(gr, obj.GetName())
+			}
+
+			return nil
+		}).
+		AnyTimes()
 }
