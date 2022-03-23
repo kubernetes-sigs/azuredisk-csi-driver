@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The Kubernetes Authors.
+Copyright 2017 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,6 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package provider is an implementation of CloudProvider Interface, LoadBalancer
-// and Instances for Azure.
-package provider // import "sigs.k8s.io/cloud-provider-azure/pkg/provider"
+package api
+
+const (
+	// AnnotationAlphaProvidedIPAddr is a node IP annotation set by the "external" cloud provider.
+	// When kubelet is started with the "external" cloud provider, then
+	// it sets this annotation on the node to denote an ip address set from the
+	// cmd line flag (--node-ip). This ip is verified with the cloudprovider as valid by
+	// the cloud-controller-manager
+	AnnotationAlphaProvidedIPAddr = "alpha.kubernetes.io/provided-node-ip"
+)
