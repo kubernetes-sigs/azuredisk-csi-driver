@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -128,6 +129,17 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 	defer r.stateLock.Delete(azVolumeAttachment.Name)
 	if _, ok := r.stateLock.LoadOrStore(azVolumeAttachment.Name, nil); ok {
 		return getOperationRequeueError("attach", azVolumeAttachment)
+	}
+
+	if azVolume, err := azureutils.GetAzVolume(ctx, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, strings.ToLower(azVolumeAttachment.Spec.VolumeName), r.controllerSharedState.objectNamespace, true); err != nil {
+		if errors.IsNotFound(err) {
+			klog.Infof("Aborting attach operation for AzVolumeAttachment (%s): AzVolume (%s) not found", azVolumeAttachment.Name, azVolumeAttachment.Spec.VolumeName)
+			return nil
+		}
+		return err
+	} else if objectDeletionRequested(azVolume) {
+		klog.Infof("Aborting attach operation for AzVolumeAttachment (%s): AzVolume (%s) scheduled for deletion", azVolumeAttachment.Name, azVolumeAttachment.Spec.VolumeName)
+		return nil
 	}
 
 	// initialize metadata and update status block

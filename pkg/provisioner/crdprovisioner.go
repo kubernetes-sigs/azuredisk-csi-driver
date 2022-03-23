@@ -355,10 +355,16 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 		return err
 	}
 
-	err = azVolumeClient.Delete(ctx, azVolumeName, metav1.DeleteOptions{})
-	if err != nil {
-		klog.Errorf("Failed to delete azvolume resource for volume id (%s), error: %v", volumeName, err)
-		return err
+	// only make delete request if object's deletion timestamp is not set
+	if azVolumeInstance.DeletionTimestamp.IsZero() {
+		err = azVolumeClient.Delete(ctx, azVolumeName, metav1.DeleteOptions{})
+		if err != nil {
+			if apiErrors.IsNotFound(err) {
+				return nil
+			}
+			klog.Errorf("Failed to delete azvolume resource for volume id (%s), error: %v", volumeName, err)
+			return err
+		}
 	}
 
 	_, err = waiter.Wait(ctx)
@@ -653,13 +659,16 @@ func (c *CrdProvisioner) UnpublishVolume(
 			}
 		}
 
-		err = azVAClient.Delete(ctx, attachmentName, metav1.DeleteOptions{})
-		if apiErrors.IsNotFound(err) {
-			klog.Infof("Could not find the volume attachment (%s). Deletion succeeded", attachmentName)
-			return nil
-		} else if err != nil {
-			klog.Errorf("Failed to delete azvolume attachment resource for volume id (%s) to node (%s), error: %v", volumeID, nodeID, err)
-			return err
+		// only make delete request if deletionTimestamp is not set
+		if azVolumeAttachmentInstance.DeletionTimestamp.IsZero() {
+			err = azVAClient.Delete(ctx, attachmentName, metav1.DeleteOptions{})
+			if apiErrors.IsNotFound(err) {
+				klog.Infof("Could not find the volume attachment (%s). Deletion succeeded", attachmentName)
+				return nil
+			} else if err != nil {
+				klog.Errorf("Failed to delete azvolume attachment resource for volume id (%s) to node (%s), error: %v", volumeID, nodeID, err)
+				return err
+			}
 		}
 		return c.WaitForDetach(ctx, volumeID, nodeID)
 	}

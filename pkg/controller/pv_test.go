@@ -25,6 +25,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/wait"
 	fakev1 "k8s.io/client-go/kubernetes/fake"
 	diskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller/mockclient"
@@ -71,9 +72,11 @@ func TestPVControllerReconcile(t *testing.T) {
 			verifyFunc: func(t *testing.T, controller *ReconcilePV, result reconcile.Result, err error) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
-
-				azVolumeAttachments, _ := controller.controllerSharedState.azClient.DiskV1beta1().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{})
-				require.Len(t, azVolumeAttachments.Items, 0)
+				waitErr := wait.PollImmediate(verifyCRIInterval, verifyCRITimeout, func() (bool, error) {
+					azVolumeAttachments, err := controller.controllerSharedState.azClient.DiskV1beta1().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{})
+					return len(azVolumeAttachments.Items) == 0, err
+				})
+				require.NoError(t, waitErr)
 			},
 		},
 	}

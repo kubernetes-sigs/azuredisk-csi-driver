@@ -158,9 +158,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 func (r *ReconcilePV) triggerRelease(ctx context.Context, azVolume *diskv1beta1.AzVolume) error {
 	klog.Infof("Volume released: Initiating AzVolumeAttachment Clean-up")
 
-	if _, err := r.controllerSharedState.cleanUpAzVolumeAttachmentByVolume(ctx, azVolume.Name, "pv controller", replicaOnly, detachAndDeleteCRI); err != nil {
-		return err
-	}
+	r.controllerSharedState.garbageCollectReplicas(ctx, azVolume.Name, pv)
 
 	return nil
 }
