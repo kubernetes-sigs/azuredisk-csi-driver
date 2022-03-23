@@ -13,6 +13,7 @@ azuredisk:
   isTestRun: true
   nodeId: sanity-test-node
   cloudConfig: invalid
+  supportZone: true
 
 controller:
   replicas: 1

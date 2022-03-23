@@ -67,6 +67,7 @@ helm install azuredisk-csi-driver test/latest/azuredisk-csi-driver -n kube-syste
   --set azuredisk.cloudConfig="$(cat "${AZURE_CREDENTIAL_FILE}" | base64 | awk '{printf $0}'; echo)" \
   --set controller.port="${CONTROLLER_PORT}" \
   --set azuredisk.nodeId="${NODEID_0}" \
+  --set azuredisk.supportZone=false \
   > /dev/null
 
 echo "Registering AzDriverNode for ${NODEID_1} and ${NODEID_2}"

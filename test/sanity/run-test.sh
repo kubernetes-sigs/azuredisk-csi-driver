@@ -38,7 +38,7 @@ if [[ "${ARCH}" == "x86_64" || ${ARCH} == "unknown" ]]; then
   ARCH="amd64"
 fi
 
- _output/${ARCH}/azurediskplugin --endpoint "$endpoint" --nodeid "$nodeid" -v=5 &
+ _output/${ARCH}/azurediskplugin --endpoint "$endpoint" --nodeid "$nodeid" -v=5 -support-zone=false &
 
 echo 'Begin to run sanity test...'
 readonly CSI_SANITY_BIN='csi-sanity'
