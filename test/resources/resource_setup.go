@@ -192,8 +192,7 @@ func (pod *PodDetails) SetupDeployment(client clientset.Interface, namespace *v1
 
 func (pod *PodDetails) SetupDeploymentWithPreProvisionedVolumes(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.PreProvisionedVolumeTestDriver, volumeContext map[string]string, schedulerName string) (*TestDeployment, []func()) {
 	cleanupFuncs := make([]func(), 0)
-	var volumes []v1.Volume
-
+	volumes := make([]v1.Volume, 0)
 	volumeMounts := make([]v1.VolumeMount, 0)
 	volumeDevices := make([]v1.VolumeDevice, 0)
 
@@ -216,7 +215,7 @@ func (pod *PodDetails) SetupDeploymentWithPreProvisionedVolumes(client clientset
 			}
 			volumeMounts = append(volumeMounts, newVolumeMount)
 		} else {
-			newVolumeName := fmt.Sprintf("%s%d", volume.VolumeDevice.NameGenerate, n+1)
+			newVolumeName = fmt.Sprintf("%s%d", volume.VolumeDevice.NameGenerate, n+1)
 
 			newVolumeDevices := v1.VolumeDevice{
 				Name:       newVolumeName,

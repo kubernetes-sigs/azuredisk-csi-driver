@@ -578,9 +578,22 @@ func (d *DriverV2) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolu
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "failed to determine device path for volumePath [%v]: %v", volumePath, err)
 	}
+
+	if !isBlock {
+		volumeCapability := req.GetVolumeCapability()
+		if volumeCapability != nil {
+			isBlock = volumeCapability.GetBlock() != nil
+		}
+	}
+
 	if isBlock {
-		// Noop for Block NodeExpandVolume
-		klog.V(4).Infof("NodeExpandVolume succeeded on %v to %s, path check is block so this is a no-op", volumeID, volumePath)
+		if d.enableDiskOnlineResize {
+			klog.V(2).Info("NodeExpandVolume begin to rescan all devices on block volume(%s)", volumeID)
+			if err := rescanAllVolumes(d.ioHandler); err != nil {
+				klog.Errorf("NodeExpandVolume rescanAllVolumes failed with error: %v", err)
+			}
+		}
+		klog.V(2).Info("NodeExpandVolume skip resize operation on block volume(%s)", volumeID)
 		return &csi.NodeExpandVolumeResponse{}, nil
 	}
 
