@@ -38,6 +38,7 @@ spec:
             - "--v=2"
             - "--timeout=15s"
             - "--leader-election"
+            - "--leader-election-namespace=kube-system"
             - "--worker-threads=40"
             - "--extra-create-metadata=true"
             - "--strict-topology=true"
@@ -60,6 +61,7 @@ spec:
             - "-csi-address=$(ADDRESS)"
             - "-timeout=600s"
             - "-leader-election"
+            - "--leader-election-namespace=kube-system"
             - "-worker-threads=500"
           env:
             - name: ADDRESS
@@ -78,6 +80,7 @@ spec:
           args:
             - "-csi-address=$(ADDRESS)"
             - "-leader-election"
+            - "--leader-election-namespace=kube-system"
             - "--v=2"
           env:
             - name: ADDRESS
@@ -97,6 +100,7 @@ spec:
             - "-csi-address=$(ADDRESS)"
             - "-v=2"
             - "-leader-election"
+            - "--leader-election-namespace=kube-system"
             - '-handle-volume-inuse-error=false'
             - '-feature-gates=RecoverVolumeExpansionFailure=true'
             - "-timeout=240s"
