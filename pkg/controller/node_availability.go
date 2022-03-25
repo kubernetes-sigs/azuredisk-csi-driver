@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"sync/atomic"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -53,14 +52,8 @@ func (r *ReconcileNodeAvailability) Reconcile(ctx context.Context, request recon
 	if err == nil {
 		if !n.Spec.Unschedulable {
 			//Node is schedulable, proceed to attempt creation of replica attachment
-			if atomic.SwapInt32(&r.controllerSharedState.processingReplicaRequestQueue, 1) == 0 {
-				err := r.controllerSharedState.tryCreateFailedReplicas(ctx, nodeavailability)
-				atomic.StoreInt32(&r.controllerSharedState.processingReplicaRequestQueue, 0)
-				if err != nil {
-					return reconcile.Result{Requeue: false}, nil
-				}
-				return reconcile.Result{Requeue: false}, nil
-			}
+			err = r.controllerSharedState.tryCreateFailedReplicas(ctx, nodeavailability)
+			return reconcile.Result{Requeue: false}, err
 		}
 	}
 	return reconcile.Result{Requeue: false}, err

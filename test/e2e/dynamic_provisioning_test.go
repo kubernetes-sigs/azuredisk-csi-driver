@@ -1693,4 +1693,67 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		}
 		test.Run(cs, ns, schedulerName)
 	})
+	ginkgo.It("should check failed replica attachments are recreated after space is made from a volume detaching.", func() {
+		testutil.SkipIfUsingInTreeVolumePlugin()
+		skuName := "StandardSSD_LRS"
+		if isMultiZone {
+			testutil.SkipIfNotZRSSupported(location)
+			skuName = "StandardSSD_ZRS"
+		}
+
+		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
+		if err != nil {
+			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
+		}
+
+		volumes := []resources.VolumeDetails{}
+
+		statefulSetVolume := resources.VolumeDetails{
+			FSType:    "ext3",
+			ClaimSize: "5Gi",
+			VolumeMount: resources.VolumeMountDetails{
+				NameGenerate:      "test-volume-",
+				MountPathGenerate: "/mnt/test-",
+			},
+		}
+		volumes = append(volumes, statefulSetVolume)
+
+		pod := resources.PodDetails{
+			Cmd:       testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
+			Volumes:   resources.NormalizeVolumes(volumes, []string{}, isMultiZone),
+			IsWindows: testconsts.IsWindowsCluster,
+		}
+
+		volume := resources.VolumeDetails{
+			ClaimSize: "5Gi",
+			VolumeMount: resources.VolumeMountDetails{
+				NameGenerate:      "test-volume-",
+				MountPathGenerate: "/mnt/test-",
+			},
+		}
+		newPod := resources.PodDetails{
+			Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
+			Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
+				{
+					ClaimSize: volume.ClaimSize,
+					MountOptions: []string{
+						"barrier=1",
+						"acl",
+					},
+					VolumeMount: volume.VolumeMount,
+				},
+			}, t.allowedTopologyValues, isMultiZone),
+			IsWindows: testconsts.IsWindowsCluster,
+			UseCMD:    false,
+		}
+
+		test := testsuites.DynamicallyProvisionedScaleReplicasOnDetach{
+			CSIDriver:              testDriver,
+			StatefulSetPod:         pod,
+			NewPod:                 newPod,
+			StorageClassParameters: map[string]string{"skuName": skuName, "maxShares": "2", "cachingMode": "None"},
+			AzDiskClient:           azDiskClient,
+		}
+		test.Run(cs, ns, schedulerName)
+	})
 }

@@ -1919,17 +1919,20 @@ func (vq *VolumeReplicaRequestsPriorityQueue) DrainQueue() []*ReplicaRequest {
 
 ///Removes replica requests from the priority queue and adds to operation queue.
 func (c *SharedState) tryCreateFailedReplicas(ctx context.Context, requestor operationRequester) error {
-	requests := c.priorityReplicaRequestsQueue.DrainQueue()
-	for i := 0; i < len(requests); i++ {
-		replicaRequest := requests[i]
-		c.addToOperationQueue(
-			replicaRequest.VolumeName,
-			requestor,
-			func() error {
-				return c.manageReplicas(context.Background(), replicaRequest.VolumeName)
-			},
-			false,
-		)
+	if atomic.SwapInt32(&c.processingReplicaRequestQueue, 1) == 0 {
+		requests := c.priorityReplicaRequestsQueue.DrainQueue()
+		for i := 0; i < len(requests); i++ {
+			replicaRequest := requests[i]
+			c.addToOperationQueue(
+				replicaRequest.VolumeName,
+				requestor,
+				func() error {
+					return c.manageReplicas(context.Background(), replicaRequest.VolumeName)
+				},
+				false,
+			)
+		}
+		atomic.StoreInt32(&c.processingReplicaRequestQueue, 0)
 	}
 	return nil
 }

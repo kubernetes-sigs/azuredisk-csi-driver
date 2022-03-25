@@ -21,11 +21,15 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
+	apiErrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
 	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -171,6 +175,40 @@ func (r *ReconcileReplica) triggerGarbageCollection(volumeName string) {
 			)
 		}
 	}(deletionCtx)
+
+	go func(ctx context.Context) {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(r.timeUntilGarbageCollection):
+			klog.Infof("Checking for replicas to be created after garbage collection")
+			err := wait.PollImmediate(deletionPollingInterval, 10*time.Minute, func() (bool, error) {
+				volRequirement, err := azureutils.CreateLabelRequirements(consts.VolumeNameLabel, selection.Equals, volumeName)
+				if err != nil {
+					return false, err
+				}
+				labelSelector := labels.NewSelector().Add(*volRequirement)
+				azVolumeAttachmentList := &diskv1beta1.AzVolumeAttachmentList{}
+				err = r.controllerSharedState.cachedClient.List(ctx, azVolumeAttachmentList, &client.ListOptions{LabelSelector: labelSelector})
+				if err != nil {
+					if apiErrors.IsNotFound(err) {
+						return true, nil
+					}
+					klog.Errorf("failed to get AzVolumeAttachments: %v", err)
+					return false, err
+				}
+				return len(azVolumeAttachmentList.Items) == 0, nil
+			})
+			if err == nil {
+				err = r.controllerSharedState.tryCreateFailedReplicas(deletionCtx, "replicaController")
+				if err != nil {
+					klog.Errorf("creating failed replicas after garbage collection failed with error : (%v)", err)
+					return
+				}
+			}
+		}
+	}(deletionCtx)
+
 }
 
 func (r *ReconcileReplica) removeGarbageCollection(volumeName string) {
