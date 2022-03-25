@@ -37,6 +37,7 @@ import (
 	"k8s.io/klog/v2"
 	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1beta1"
 	azurediskInformers "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
@@ -439,7 +440,7 @@ func (c *CrdProvisioner) PublishVolume(
 		// if maxMountReplicaCount has been exceeded, unpublish demoted AzVolumeAttachment or if demoted AzVolumeAttachment does not exist, select one to unpublish
 		requiredUnpublishCount := len(unpublishOrder) - azVolume.Spec.MaxMountReplicaCount
 		for i := 0; requiredUnpublishCount > 0 && i < len(unpublishOrder); i++ {
-			if err := c.UnpublishVolume(ctx, unpublishOrder[i].Spec.VolumeID, unpublishOrder[i].Spec.NodeName, nil); err != nil {
+			if err := c.detachVolume(ctx, azVAClient, unpublishOrder[i]); err != nil {
 				return nil, status.Errorf(codes.Internal, "failed to make request to unpublish volume (%s) from node (%s): %v", unpublishOrder[i].Spec.VolumeName, unpublishOrder[i].Spec.NodeName, err)
 			}
 			requiredUnpublishCount--
@@ -627,61 +628,77 @@ func (c *CrdProvisioner) UnpublishVolume(
 		return err
 	}
 
-	// if volume's maxMountReplicaCount is 0, is a block volume, or attachment is a replica, detach
-	if azVolumeInstance.Spec.MaxMountReplicaCount == 0 || azVolumeAttachmentInstance.Spec.RequestedRole == diskv1beta1.ReplicaRole {
+	// if volume's maxMountReplicaCount is 0, is a block volume, detach
+	if azVolumeInstance.Spec.MaxMountReplicaCount == 0 {
 		// if volume's maxMountReplicaCount == 0, detach and wait for detachment to complete
-		// if AzVolumeAttachment instance indicates that previous attachment request was successful, annotate the CRI with detach request so that the underlying volume attachment can be properly detached.
-		if azVolumeAttachmentInstance.Status.Detail != nil {
-			// if detachment is pending, return to prevent duplicate request
-			if azVolumeAttachmentInstance.Status.State == diskv1beta1.Detaching {
-				return status.Errorf(codes.Aborted, "detachment still in process for volume (%s) and node (%s)", volumeName, nodeID)
-			}
-
-			klog.Infof("Requesting AzVolumeAttachment (%s) deletion", attachmentName)
-
-			updateFunc := func(obj interface{}) error {
-				updateInstance := obj.(*diskv1beta1.AzVolumeAttachment)
-				if updateInstance.Annotations == nil {
-					updateInstance.Annotations = map[string]string{}
-				}
-				updateInstance.Annotations[consts.VolumeDetachRequestAnnotation] = "crdProvisioner"
-
-				// remove detachment failure error from AzVolumeAttachment CRI to retrigger detachment
-				updateInstance.Status.Error = nil
-				// revert attachment state to avoid confusion
-				updateInstance.Status.State = diskv1beta1.Attached
-
-				return nil
-			}
-
-			if err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.informerFactory, nil, c.azDiskClient, azVolumeAttachmentInstance, updateFunc, consts.NormalUpdateMaxNetRetry); err != nil {
-				return err
-			}
-		}
-
-		// only make delete request if deletionTimestamp is not set
-		if azVolumeAttachmentInstance.DeletionTimestamp.IsZero() {
-			err = azVAClient.Delete(ctx, attachmentName, metav1.DeleteOptions{})
-			if apiErrors.IsNotFound(err) {
-				klog.Infof("Could not find the volume attachment (%s). Deletion succeeded", attachmentName)
-				return nil
-			} else if err != nil {
-				klog.Errorf("Failed to delete azvolume attachment resource for volume id (%s) to node (%s), error: %v", volumeID, nodeID, err)
-				return err
-			}
-		}
-		return c.WaitForDetach(ctx, volumeID, nodeID)
+		return c.detachVolume(ctx, azVAClient, azVolumeAttachmentInstance)
 	}
 
-	// if volume's maxMountReplicaCount > 0, demote primary to replica
-	klog.Infof("Requesting AzVolumeAttachment (%s) demotion", attachmentName)
+	return c.demoteVolume(ctx, azVAClient, azVolumeAttachmentInstance)
+}
+
+func (c *CrdProvisioner) demoteVolume(ctx context.Context, azVAClient v1beta1.AzVolumeAttachmentInterface, azVolumeAttachment *diskv1beta1.AzVolumeAttachment) error {
+	klog.Infof("Requesting AzVolumeAttachment (%s) demotion", azVolumeAttachment.Name)
+
 	updateFunc := func(obj interface{}) error {
 		updateInstance := obj.(*diskv1beta1.AzVolumeAttachment)
 		updateInstance.Spec.RequestedRole = diskv1beta1.ReplicaRole
 		return nil
 	}
-	return azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.informerFactory, nil, c.azDiskClient, azVolumeAttachmentInstance, updateFunc, consts.NormalUpdateMaxNetRetry)
+	return azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.informerFactory, nil, c.azDiskClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry)
+}
 
+func (c *CrdProvisioner) detachVolume(ctx context.Context, azVAClient v1beta1.AzVolumeAttachmentInterface, azVolumeAttachment *diskv1beta1.AzVolumeAttachment) error {
+	var err error
+	attachmentName := azVolumeAttachment.Name
+	nodeName := azVolumeAttachment.Spec.NodeName
+	volumeID := azVolumeAttachment.Spec.VolumeID
+	volumeName, err := azureutils.GetDiskName(volumeID)
+	if err != nil {
+		return err
+	}
+
+	if azVolumeAttachment.Status.Detail != nil {
+		// if detachment is pending, return to prevent duplicate request
+		if azVolumeAttachment.Status.State == diskv1beta1.Detaching {
+			return status.Errorf(codes.Aborted, "detachment still in process for volume (%s) and node (%s)", volumeName, nodeName)
+		}
+
+		klog.Infof("Requesting AzVolumeAttachment (%s) deletion", attachmentName)
+
+		updateFunc := func(obj interface{}) error {
+			updateInstance := obj.(*diskv1beta1.AzVolumeAttachment)
+			if updateInstance.Annotations == nil {
+				updateInstance.Annotations = map[string]string{}
+			}
+			updateInstance.Annotations[consts.VolumeDetachRequestAnnotation] = "crdProvisioner"
+
+			// remove detachment failure error from AzVolumeAttachment CRI to retrigger detachment
+			updateInstance.Status.Error = nil
+			// revert attachment state to avoid confusion
+			updateInstance.Status.State = diskv1beta1.Attached
+
+			return nil
+		}
+
+		if err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.informerFactory, nil, c.azDiskClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry); err != nil {
+			return err
+		}
+	}
+
+	// only make delete request if deletionTimestamp is not set
+	if azVolumeAttachment.DeletionTimestamp.IsZero() {
+		err = azVAClient.Delete(ctx, attachmentName, metav1.DeleteOptions{})
+		if apiErrors.IsNotFound(err) {
+			klog.Infof("Could not find the volume attachment (%s). Deletion succeeded", attachmentName)
+			return nil
+		} else if err != nil {
+			klog.Errorf("Failed to delete azvolume attachment resource for volume id (%s) to node (%s), error: %v", volumeID, nodeName, err)
+			return err
+		}
+	}
+
+	return c.WaitForDetach(ctx, volumeID, nodeName)
 }
 
 func (c *CrdProvisioner) WaitForDetach(ctx context.Context, volumeID, nodeID string) error {
