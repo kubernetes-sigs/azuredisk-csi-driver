@@ -53,6 +53,9 @@ var (
 	useCSIProxyGAInterface     = flag.Bool("use-csiproxy-ga-interface", true, "boolean flag to enable csi-proxy GA interface on Windows")
 	enableDiskOnlineResize     = flag.Bool("enable-disk-online-resize", true, "boolean flag to enable disk online resize")
 	allowEmptyCloudConfig      = flag.Bool("allow-empty-cloud-config", true, "Whether allow running driver without cloud config")
+	enableListVolumes          = flag.Bool("enable-list-volumes", false, "boolean flag to enable ListVolumes on controller")
+	enableListSnapshots        = flag.Bool("enable-list-snapshots", false, "boolean flag to enable ListSnapshots on controller")
+	kubeClientQPS              = flag.Int("kube-client-qps", 15, "QPS for the rest client. Defaults to 15.")
 )
 
 func main() {
@@ -89,6 +92,9 @@ func handle() {
 		UseCSIProxyGAInterface:     *useCSIProxyGAInterface,
 		EnableDiskOnlineResize:     *enableDiskOnlineResize,
 		AllowEmptyCloudConfig:      *allowEmptyCloudConfig,
+		EnableListVolumes:          *enableListVolumes,
+		EnableListSnapshots:        *enableListSnapshots,
+		RestClientQPS:              *kubeClientQPS,
 	}
 	driver := azuredisk.NewDriver(&driverOptions)
 	if driver == nil {
