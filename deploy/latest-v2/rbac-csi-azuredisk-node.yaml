@@ -23,7 +23,7 @@ rules:
     verbs: ["create", "get", "list", "watch", "patch", "update", "delete"]
   - apiGroups: ["disk.csi.azure.com"]
     resources: ["azvolumeattachments"]
-    verbs: ["get", "list", "watch"]
+    verbs: ["get", "list", "watch", "update"]
   - apiGroups: ["disk.csi.azure.com"]
     resources: ["azvolumes"]
     verbs: ["get", "list", "watch"]
