@@ -30,11 +30,11 @@ setup_e2e_binaries() {
     mkdir /tmp/csi-azuredisk
 
     # download k8s external e2e binary for kubernetes
-    curl -sL https://storage.googleapis.com/kubernetes-release/release/v1.22.0/kubernetes-test-linux-amd64.tar.gz --output e2e-tests.tar.gz
+    curl -sL https://storage.googleapis.com/kubernetes-release/release/v1.23.0/kubernetes-test-linux-amd64.tar.gz --output e2e-tests.tar.gz
     tar -xvf e2e-tests.tar.gz && rm e2e-tests.tar.gz
 
     # test on alternative driver name
-    export EXTRA_HELM_OPTIONS="--set controller.disableAvailabilitySetNodes=true --set controller.replicas=1 --set driver.name=$DRIVER.csi.azure.com --set controller.name=csi-$DRIVER-controller --set linux.dsName=csi-$DRIVER-node --set windows.dsName=csi-$DRIVER-node-win --set driver.azureGoSDKLogLevel=DEBUG"
+    export EXTRA_HELM_OPTIONS="--set controller.disableAvailabilitySetNodes=true --set controller.replicas=1 --set driver.name=$DRIVER.csi.azure.com --set controller.name=csi-$DRIVER-controller --set linux.dsName=csi-$DRIVER-node --set windows.dsName=csi-$DRIVER-node-win --set driver.azureGoSDKLogLevel=INFO"
     # install the azuredisk-csi-driver driver
     make e2e-bootstrap
     sed -i "s/csi-azuredisk-controller/csi-$DRIVER-controller/g" deploy/example/metrics/csi-azuredisk-controller-svc.yaml
@@ -54,6 +54,6 @@ setup_e2e_binaries
 trap print_logs EXIT
 
 ginkgo -p --progress --v -focus="External.Storage.*$DRIVER.csi.azure.com" \
-       -skip='\[Disruptive\]|\[Slow\]|should resize volume when PVC is edited while pod is using it' kubernetes/test/bin/e2e.test -- \
+       -skip='\[Disruptive\]|\[Slow\]|should resize volume when PVC is edited while pod is using it|should check snapshot fields, check restore correctly works after modifying source data, check deletion' kubernetes/test/bin/e2e.test -- \
        -storage.testdriver=$PROJECT_ROOT/test/external-e2e/manifest/testdriver.yaml \
        --kubeconfig=$KUBECONFIG
