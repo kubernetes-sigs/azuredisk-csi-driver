@@ -57,6 +57,9 @@ type DriverOptions struct {
 	UseCSIProxyGAInterface     bool
 	EnableDiskOnlineResize     bool
 	AllowEmptyCloudConfig      bool
+	EnableListVolumes          bool
+	EnableListSnapshots        bool
+	RestClientQPS              int
 }
 
 // CSIDriver defines the interface for a CSI driver.
@@ -91,6 +94,8 @@ type DriverCore struct {
 	useCSIProxyGAInterface     bool
 	enableDiskOnlineResize     bool
 	allowEmptyCloudConfig      bool
+	enableListVolumes          bool
+	enableListSnapshots        bool
 }
 
 // Driver is the v1 implementation of the Azure Disk CSI Driver.
@@ -124,6 +129,8 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
+	driver.enableListVolumes = options.EnableListVolumes
+	driver.enableListSnapshots = options.EnableListVolumes
 
 	topologyKey = fmt.Sprintf("topology.%s/zone", driver.Name)
 
@@ -190,11 +197,8 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 			csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
 			csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME,
 			csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT,
-			csi.ControllerServiceCapability_RPC_LIST_SNAPSHOTS,
 			csi.ControllerServiceCapability_RPC_CLONE_VOLUME,
 			csi.ControllerServiceCapability_RPC_EXPAND_VOLUME,
-			csi.ControllerServiceCapability_RPC_LIST_VOLUMES,
-			csi.ControllerServiceCapability_RPC_LIST_VOLUMES_PUBLISHED_NODES,
 			csi.ControllerServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER,
 		})
 	d.AddVolumeCapabilityAccessModes(
