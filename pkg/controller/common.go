@@ -1661,7 +1661,9 @@ func (c *SharedState) cleanUpAzVolumeAttachments(ctx context.Context, attachment
 			if caller != azdrivernode {
 				patched.Annotations[consts.CleanUpAnnotation] = string(caller)
 			}
-			patched.Annotations[consts.VolumeDetachRequestAnnotation] = string(caller)
+			if cleanUp == detachAndDeleteCRI || patched.Spec.RequestedRole == diskv1beta1.ReplicaRole {
+				patched.Annotations[consts.VolumeDetachRequestAnnotation] = string(caller)
+			}
 		}
 
 		if patchRequired {
