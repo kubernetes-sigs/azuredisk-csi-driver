@@ -660,7 +660,7 @@ func TestAzVolumeAttachment(t *testing.T) {
 				require.NoError(t, err)
 
 				klog.Infof("Unpublishing volume (%s) from node (%s): expecting primary AzVolumeAttachment (%s) to be deleted.", volumeID, nodeName, azureutils.GetAzVolumeAttachmentName(diskName, nodeName))
-				err = crdProvisioner.UnpublishVolume(context.Background(), volumeID, nodeName, nil)
+				err = crdProvisioner.UnpublishVolume(context.Background(), volumeID, nodeName, nil, consts.Detach)
 				require.NoError(t, err)
 
 				// sleep and wait for the replica garbage collection to happen
@@ -710,7 +710,7 @@ func TestAzVolumeAttachment(t *testing.T) {
 				require.NoError(t, err)
 
 				klog.Infof("Unpublishing volume (%s) from node (%s): expecting primary AzVolumeAttachment (%s) to be deleted.", volumeID, nodeName, azureutils.GetAzVolumeAttachmentName(diskName, nodeName))
-				err = crdProvisioner.UnpublishVolume(context.Background(), volumeID, nodeName, nil)
+				err = crdProvisioner.UnpublishVolume(context.Background(), volumeID, nodeName, nil, consts.Detach)
 				require.NoError(t, err)
 
 				klog.Infof("Sleeping for %.2f seconds... AzVolumeAttachment garbage collection for AzVolume (%s) should not have happened yet.", (controller.DefaultTimeUntilGarbageCollection / 2).Seconds(), volumeName)

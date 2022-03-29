@@ -662,7 +662,7 @@ func (d *DriverV2) recoverMount(diskURI string) {
 		// world states (ListVolumes result doesn't match VolumeAttachment list).
 
 		// make unpublish request
-		detachErr := d.crdProvisioner.UnpublishVolume(recoveryCtx, diskURI, d.NodeID, nil)
+		detachErr := d.crdProvisioner.UnpublishVolume(recoveryCtx, diskURI, d.NodeID, nil, consts.Detach)
 		if detachErr != nil {
 			klog.Errorf("failed to unpublishVolume volume (%s) from node (%s): %v", diskURI, d.NodeID, detachErr)
 			d.markDetachState(diskURI, detachFailed)

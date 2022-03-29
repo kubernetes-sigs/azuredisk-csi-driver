@@ -27,6 +27,7 @@ import (
 	reflect "reflect"
 	v1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 	versioned "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	azureconstants "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
 // MockCrdProvisioner is a mock of CrdProvisioner interface
@@ -126,17 +127,17 @@ func (mr *MockCrdProvisionerMockRecorder) WaitForAttach(ctx, volume, node interf
 }
 
 // UnpublishVolume mocks base method
-func (m *MockCrdProvisioner) UnpublishVolume(ctx context.Context, volumeID, nodeID string, secrets map[string]string) error {
+func (m *MockCrdProvisioner) UnpublishVolume(ctx context.Context, volumeID, nodeID string, secrets map[string]string, mode azureconstants.UnpublishMode) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UnpublishVolume", ctx, volumeID, nodeID, secrets)
+	ret := m.ctrl.Call(m, "UnpublishVolume", ctx, volumeID, nodeID, secrets, mode)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // UnpublishVolume indicates an expected call of UnpublishVolume
-func (mr *MockCrdProvisionerMockRecorder) UnpublishVolume(ctx, volumeID, nodeID, secrets interface{}) *gomock.Call {
+func (mr *MockCrdProvisionerMockRecorder) UnpublishVolume(ctx, volumeID, nodeID, secrets, mode interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UnpublishVolume", reflect.TypeOf((*MockCrdProvisioner)(nil).UnpublishVolume), ctx, volumeID, nodeID, secrets)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UnpublishVolume", reflect.TypeOf((*MockCrdProvisioner)(nil).UnpublishVolume), ctx, volumeID, nodeID, secrets, mode)
 }
 
 // WaitForDetach mocks base method
@@ -362,6 +363,20 @@ func (m *MockNodeProvisioner) CleanupMountPoint(path string, extensiveCheck bool
 func (mr *MockNodeProvisionerMockRecorder) CleanupMountPoint(path, extensiveCheck interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CleanupMountPoint", reflect.TypeOf((*MockNodeProvisioner)(nil).CleanupMountPoint), path, extensiveCheck)
+}
+
+// RescanVolume mocks base method
+func (m *MockNodeProvisioner) RescanVolume(devicePath string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RescanVolume", devicePath)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RescanVolume indicates an expected call of RescanVolume
+func (mr *MockNodeProvisionerMockRecorder) RescanVolume(devicePath interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RescanVolume", reflect.TypeOf((*MockNodeProvisioner)(nil).RescanVolume), devicePath)
 }
 
 // Resize mocks base method

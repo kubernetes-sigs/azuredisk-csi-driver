@@ -105,6 +105,10 @@ spec:
                   type: string
                 description: Parameters for the volume.
                 type: object
+              persistentVolume:
+                description: The name of the PersistentVolume that corresponds to
+                  the AzVolume instance.
+                type: string
               secrets:
                 additionalProperties:
                   type: string
@@ -150,6 +154,12 @@ spec:
             description: status represents the current state of AzVolume. includes
               error, state, and volume status
             properties:
+              annotation:
+                additionalProperties:
+                  type: string
+                description: Annotations contains additional resource information
+                  to guide driver actions
+                type: object
               detail:
                 description: Current status detail of the AzVolume Nil detail indicates
                   that the volume has not been created
@@ -204,10 +214,6 @@ spec:
                 - code
                 - message
                 type: object
-              persistentVolume:
-                description: The name of the PersistentVolume that corresponds to
-                  the AzVolume instance.
-                type: string
               state:
                 description: Current state of underlying volume
                 type: string
@@ -216,11 +222,11 @@ spec:
             type: object
         required:
         - spec
-        - status
         type: object
     served: true
     storage: true
-    subresources: {}
+    subresources:
+      status: {}
 status:
   acceptedNames:
     kind: ""

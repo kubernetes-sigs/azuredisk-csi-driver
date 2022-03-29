@@ -20,6 +20,7 @@ import (
 	"context"
 
 	v1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
 type FakeCrdProvisioner struct {
@@ -65,7 +66,8 @@ func (c *FakeCrdProvisioner) UnpublishVolume(
 	ctx context.Context,
 	volumeID string,
 	nodeID string,
-	secrets map[string]string) error {
+	secrets map[string]string,
+	_ consts.UnpublishMode) error {
 	return c.fakeCloudProv.UnpublishVolume(ctx, volumeID, nodeID)
 }
 

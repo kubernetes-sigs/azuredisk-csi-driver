@@ -280,9 +280,7 @@ func createTestAzVolume(pvName string, maxMountReplicaCount int) diskv1beta1.AzV
 				RequiredBytes: util.GiBToBytes(10),
 			},
 			MaxMountReplicaCount: maxMountReplicaCount,
-		},
-		Status: diskv1beta1.AzVolumeStatus{
-			PersistentVolume: pvName,
+			PersistentVolume:     pvName,
 		},
 	}
 
@@ -397,7 +395,46 @@ func splitObjects(objs ...runtime.Object) (azDiskObjs, kubeObjs []runtime.Object
 	return
 }
 
+type mockStatusClient struct {
+	azVolumeClient azVolumeClientSet.Interface
+}
+
+func (s *mockStatusClient) updateStatus(ctx context.Context, obj client.Object) error {
+	switch target := obj.(type) {
+	case *diskv1beta1.AzVolume:
+		_, err := s.azVolumeClient.DiskV1beta1().AzVolumes(obj.GetNamespace()).UpdateStatus(ctx, target, metav1.UpdateOptions{})
+		if err != nil {
+			return err
+		}
+
+	case *diskv1beta1.AzVolumeAttachment:
+		_, err := s.azVolumeClient.DiskV1beta1().AzVolumeAttachments(obj.GetNamespace()).UpdateStatus(ctx, target, metav1.UpdateOptions{})
+		if err != nil {
+			return err
+		}
+
+	default:
+		gr := schema.GroupResource{
+			Group:    target.GetObjectKind().GroupVersionKind().Group,
+			Resource: target.GetObjectKind().GroupVersionKind().Kind,
+		}
+		return k8serrors.NewNotFound(gr, obj.GetName())
+	}
+
+	return nil
+}
+
+func (s *mockStatusClient) Patch(ctx context.Context, obj client.Object, _ client.Patch, _ ...client.PatchOption) error {
+	return s.updateStatus(ctx, obj)
+}
+
+func (s *mockStatusClient) Update(ctx context.Context, obj client.Object, _ ...client.UpdateOption) error {
+	return s.updateStatus(ctx, obj)
+}
+
 func mockClients(mockClient *mockclient.MockClient, azVolumeClient azVolumeClientSet.Interface, kubeClient kubernetes.Interface) {
+	statusClient := mockStatusClient{azVolumeClient: azVolumeClient}
+	mockClient.EXPECT().Status().Return(&statusClient).AnyTimes()
 	mockClient.EXPECT().
 		Get(gomock.Any(), gomock.Any(), gomock.Any()).
 		DoAndReturn(func(ctx context.Context, key types.NamespacedName, obj runtime.Object) error {

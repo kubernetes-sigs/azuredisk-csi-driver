@@ -1244,7 +1244,7 @@ func (c *SharedState) filterNodes(ctx context.Context, nodes []v1.Node, pods []v
 		}
 
 		var pv v1.PersistentVolume
-		if err := c.cachedClient.Get(ctx, types.NamespacedName{Name: azVolume.Status.PersistentVolume}, &pv); err != nil {
+		if err := c.cachedClient.Get(ctx, types.NamespacedName{Name: azVolume.Spec.PersistentVolume}, &pv); err != nil {
 			return nil, err
 		}
 		pvs[i] = &pv
@@ -1341,7 +1341,7 @@ func (c *SharedState) selectNodesPerTopology(ctx context.Context, nodes []v1.Nod
 			volume, numReplicas, azVolume.Spec.MaxMountReplicaCount)
 
 		var pv v1.PersistentVolume
-		if err := c.cachedClient.Get(ctx, types.NamespacedName{Name: azVolume.Status.PersistentVolume}, &pv); err != nil {
+		if err := c.cachedClient.Get(ctx, types.NamespacedName{Name: azVolume.Spec.PersistentVolume}, &pv); err != nil {
 			return nil, err
 		}
 
@@ -1562,6 +1562,7 @@ func (c *SharedState) createReplicaAzVolumeAttachment(ctx context.Context, volum
 				consts.VolumeNameLabel: volumeName,
 				consts.RoleLabel:       string(diskv1beta1.ReplicaRole),
 			},
+			Finalizers: []string{consts.AzVolumeAttachmentFinalizer},
 		},
 		Spec: diskv1beta1.AzVolumeAttachmentSpec{
 			NodeName:      node,
@@ -1569,9 +1570,6 @@ func (c *SharedState) createReplicaAzVolumeAttachment(ctx context.Context, volum
 			VolumeName:    volumeName,
 			RequestedRole: diskv1beta1.ReplicaRole,
 			VolumeContext: volumeContext,
-		},
-		Status: diskv1beta1.AzVolumeAttachmentStatus{
-			State: diskv1beta1.AttachmentPending,
 		},
 	}, metav1.CreateOptions{})
 	if err != nil {
@@ -1650,24 +1648,21 @@ func (c *SharedState) cleanUpAzVolumeAttachments(ctx context.Context, attachment
 		var patchRequired bool
 		patched := attachment.DeepCopy()
 
-		if patched.Annotations == nil {
-			patched.Annotations = map[string]string{}
-		}
 		// if caller is azdrivernode, don't append cleanup annotation
 		if (caller != azdrivernode && !metav1.HasAnnotation(patched.ObjectMeta, consts.CleanUpAnnotation)) ||
 			// replica attachments should always be detached regardless of the cleanup mode
 			((cleanUp == detachAndDeleteCRI || patched.Spec.RequestedRole == diskv1beta1.ReplicaRole) && !metav1.HasAnnotation(patched.ObjectMeta, consts.VolumeDetachRequestAnnotation)) {
 			patchRequired = true
 			if caller != azdrivernode {
-				patched.Annotations[consts.CleanUpAnnotation] = string(caller)
+				patched.Status.Annotations = azureutils.AddToMap(patched.Status.Annotations, consts.CleanUpAnnotation, string(caller))
 			}
 			if cleanUp == detachAndDeleteCRI || patched.Spec.RequestedRole == diskv1beta1.ReplicaRole {
-				patched.Annotations[consts.VolumeDetachRequestAnnotation] = string(caller)
+				patched.Status.Annotations = azureutils.AddToMap(patched.Status.Annotations, consts.VolumeDetachRequestAnnotation, string(caller))
 			}
 		}
 
 		if patchRequired {
-			if err := c.cachedClient.Patch(ctx, patched, client.MergeFrom(&attachment)); err != nil && apiErrors.IsNotFound(err) {
+			if err := c.cachedClient.Status().Patch(ctx, patched, client.MergeFrom(&attachment)); err != nil && apiErrors.IsNotFound(err) {
 				klog.Errorf("failed to delete AzVolumeAttachment (%s): %v", attachment.Name, err)
 				return err
 			}
@@ -1744,25 +1739,16 @@ func objectDeletionRequested(obj runtime.Object) bool {
 	return !deletionTime.IsZero() && deletionTime.Time.Before(time.Now())
 }
 
-func isCleanupRequested(obj runtime.Object) bool {
-	meta, _ := meta.Accessor(obj)
-	if meta == nil {
-		return false
-	}
-	annotations := meta.GetAnnotations()
-	if annotations == nil {
-		return false
-	}
-	_, requested := annotations[consts.CleanUpAnnotation]
-	return requested
+func isCleanupRequested(attachment *diskv1beta1.AzVolumeAttachment) bool {
+	return attachment != nil && azureutils.MapContains(attachment.Status.Annotations, consts.CleanUpAnnotation)
 }
 
 func volumeDetachRequested(attachment *diskv1beta1.AzVolumeAttachment) bool {
-	return attachment != nil && attachment.Annotations != nil && metav1.HasAnnotation(attachment.ObjectMeta, consts.VolumeDetachRequestAnnotation)
+	return attachment != nil && azureutils.MapContains(attachment.Status.Annotations, consts.VolumeDetachRequestAnnotation)
 }
 
 func volumeDeleteRequested(volume *diskv1beta1.AzVolume) bool {
-	return volume != nil && volume.Annotations != nil && metav1.HasAnnotation(volume.ObjectMeta, consts.VolumeDeleteRequestAnnotation)
+	return volume != nil && azureutils.MapContains(volume.Status.Annotations, consts.VolumeDeleteRequestAnnotation)
 }
 
 func isDemotionRequested(attachment *diskv1beta1.AzVolumeAttachment) bool {
@@ -1770,24 +1756,7 @@ func isDemotionRequested(attachment *diskv1beta1.AzVolumeAttachment) bool {
 }
 
 func isPreProvisionCleanupRequested(volume *diskv1beta1.AzVolume) bool {
-	return volume != nil && volume.Annotations != nil && metav1.HasAnnotation(volume.ObjectMeta, consts.PreProvisionedVolumeCleanupAnnotation)
-}
-
-func finalizerExists(finalizers []string, finalizerName string) bool {
-	for _, finalizer := range finalizers {
-		if finalizer == finalizerName {
-			return true
-		}
-	}
-	return false
-}
-
-func labelExists(labels map[string]string, label string) bool {
-	if labels != nil {
-		_, ok := labels[label]
-		return ok
-	}
-	return false
+	return volume != nil && azureutils.MapContains(volume.Status.Annotations, consts.PreProvisionedVolumeCleanupAnnotation)
 }
 
 func getQualifiedName(namespace, name string) string {
