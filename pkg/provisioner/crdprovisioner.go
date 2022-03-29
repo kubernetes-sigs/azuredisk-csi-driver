@@ -658,20 +658,30 @@ func (c *CrdProvisioner) detachVolume(ctx context.Context, azVAClient v1beta1.Az
 		return err
 	}
 
-	if azVolumeAttachment.Status.Detail != nil {
-		// if detachment is pending, return to prevent duplicate request
-		if azVolumeAttachment.Status.State == diskv1beta1.Detaching {
-			return status.Errorf(codes.Aborted, "detachment still in process for volume (%s) and node (%s)", volumeName, nodeName)
+	updateFunc := func(obj interface{}) error {
+		updateInstance := obj.(*diskv1beta1.AzVolumeAttachment)
+		if updateInstance.Annotations == nil {
+			updateInstance.Annotations = map[string]string{}
 		}
-
-		klog.Infof("Requesting AzVolumeAttachment (%s) deletion", attachmentName)
-
-		updateFunc := func(obj interface{}) error {
+		updateInstance.Annotations[consts.VolumeDetachRequestAnnotation] = "crdProvisioner"
+		return nil
+	}
+	switch azVolumeAttachment.Status.State {
+	case diskv1beta1.Detaching:
+		// if detachment is pending, return to prevent duplicate request
+		return status.Errorf(codes.Aborted, "detachment still in process for volume (%s) and node (%s)", volumeName, nodeName)
+	case diskv1beta1.Attaching:
+		// if attachment is still happening in the background async, wait until attachment is complete
+		klog.Infof("Attachment for volume (%s) to node (%s) is in process... Waiting for the attachment to complete.", volumeName, nodeName)
+		if azVolumeAttachment, err = c.WaitForAttach(ctx, volumeID, nodeName); err != nil {
+			return err
+		}
+	case diskv1beta1.DetachmentFailed:
+		innerFunc := updateFunc
+		// if detachment failed, reset error and state to retrigger operation
+		updateFunc = func(obj interface{}) error {
+			_ = innerFunc(obj)
 			updateInstance := obj.(*diskv1beta1.AzVolumeAttachment)
-			if updateInstance.Annotations == nil {
-				updateInstance.Annotations = map[string]string{}
-			}
-			updateInstance.Annotations[consts.VolumeDetachRequestAnnotation] = "crdProvisioner"
 
 			// remove detachment failure error from AzVolumeAttachment CRI to retrigger detachment
 			updateInstance.Status.Error = nil
@@ -680,10 +690,11 @@ func (c *CrdProvisioner) detachVolume(ctx context.Context, azVAClient v1beta1.Az
 
 			return nil
 		}
+	}
 
-		if err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.informerFactory, nil, c.azDiskClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry); err != nil {
-			return err
-		}
+	klog.Infof("Requesting AzVolumeAttachment (%s) deletion", attachmentName)
+	if err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.informerFactory, nil, c.azDiskClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry); err != nil {
+		return err
 	}
 
 	// only make delete request if deletionTimestamp is not set

@@ -1938,7 +1938,7 @@ func (c *SharedState) garbageCollectReplicas(ctx context.Context, volumeName str
 		volumeName,
 		replica,
 		func() error {
-			_, err := c.cleanUpAzVolumeAttachmentByVolume(context.Background(), volumeName, requester, all, detachAndDeleteCRI)
+			_, err := c.cleanUpAzVolumeAttachmentByVolume(context.Background(), volumeName, requester, replicaOnly, detachAndDeleteCRI)
 			if err != nil {
 				return err
 			}
