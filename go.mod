@@ -24,9 +24,9 @@ require (
 	golang.org/x/net v0.0.0-20220225172249-27dd8689420f
 	google.golang.org/grpc v1.42.0
 	google.golang.org/protobuf v1.27.1
-	k8s.io/api v0.23.3
-	k8s.io/apimachinery v0.23.3
-	k8s.io/client-go v0.23.3
+	k8s.io/api v0.24.0-alpha.4
+	k8s.io/apimachinery v0.24.0-alpha.4
+	k8s.io/client-go v0.24.0-alpha.4
 	k8s.io/cloud-provider v0.23.3
 	k8s.io/component-base v0.23.3
 	k8s.io/klog/v2 v2.40.1
@@ -123,7 +123,7 @@ replace (
 	k8s.io/apimachinery => k8s.io/apimachinery v0.23.3
 	k8s.io/apiserver => k8s.io/apiserver v0.23.3
 	k8s.io/cli-runtime => k8s.io/cli-runtime v0.23.3
-	k8s.io/client-go => k8s.io/client-go v0.23.3
+	k8s.io/client-go => k8s.io/client-go v0.24.0-alpha.4
 	k8s.io/cloud-provider => k8s.io/cloud-provider v0.23.3
 	k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.23.3
 	k8s.io/code-generator => k8s.io/code-generator v0.23.3
