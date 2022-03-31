@@ -797,6 +797,26 @@ func (c *CrdProvisioner) ExpandVolume(
 		return nil
 	}
 
+	switch azVolume.Status.State {
+	case diskv1beta1.VolumeUpdating:
+		return nil, status.Errorf(codes.Aborted, "expand operation still in process for volume (%s)", volumeName)
+	case diskv1beta1.VolumeUpdateFailed:
+		innerFunc := updateFunc
+		updateFunc = func(obj interface{}) error {
+			_ = innerFunc(obj)
+			updateInstance := obj.(*diskv1beta1.AzVolume)
+			updateInstance.Status.Error = nil
+			updateInstance.Status.State = diskv1beta1.VolumeCreated
+			return nil
+		}
+	case diskv1beta1.VolumeUpdated:
+		break
+	case diskv1beta1.VolumeCreated:
+		break
+	default:
+		return nil, status.Errorf(codes.Internal, "unexpected expand volume request: volume is currently in %s state", azVolume.Status.State)
+	}
+
 	if err := azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.informerFactory, nil, c.azDiskClient, azVolume, updateFunc, consts.NormalUpdateMaxNetRetry); err != nil {
 		return nil, err
 	}

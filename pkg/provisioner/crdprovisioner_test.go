@@ -1220,7 +1220,7 @@ func TestCrdProvisionerExpandVolume(t *testing.T) {
 		expectedError        error
 	}{
 		{
-			description: "[Success] Update the CapacityBytes for an existing AzVolume CRI with the given diskURI and enw capacity range",
+			description: "[Success] Update the CapacityBytes for an existing AzVolume CRI with the given diskURI and new capacity range",
 			existingAzVolumes: []diskv1beta1.AzVolume{
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -1244,6 +1244,7 @@ func TestCrdProvisionerExpandVolume(t *testing.T) {
 						Detail: &diskv1beta1.AzVolumeStatusDetail{
 							VolumeID: testDiskURI,
 						},
+						State: diskv1beta1.VolumeCreated,
 					},
 				},
 			},
@@ -1281,6 +1282,7 @@ func TestCrdProvisionerExpandVolume(t *testing.T) {
 						Detail: &diskv1beta1.AzVolumeStatusDetail{
 							VolumeID: testDiskURI,
 						},
+						State: diskv1beta1.VolumeCreated,
 					},
 				},
 			},
