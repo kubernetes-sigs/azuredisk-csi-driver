@@ -29,6 +29,7 @@ import (
 	"github.com/golang/protobuf/ptypes"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 
 	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
@@ -120,7 +121,6 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 	}
 
 	response, err := d.crdProvisioner.CreateVolume(ctx, name, capRange, volCaps, params, req.GetSecrets(), contentVolSource, accessibilityRequirement)
-	diskURI = response.VolumeID
 
 	if err != nil {
 		return nil, err
@@ -130,6 +130,7 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 		return nil, status.Error(codes.Unknown, "Error creating volume")
 	}
 
+	diskURI = response.VolumeID
 	isOperationSucceeded = true
 
 	responseVolumeContentSource := &csi.VolumeContentSource{}
@@ -186,6 +187,8 @@ func (d *DriverV2) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeReques
 	}
 	defer d.volumeLocks.Release(volumeID)
 
+	diskURI := volumeID
+
 	mc := metrics.NewMetricContext(d.cloudProvisioner.GetMetricPrefix(), "controller_delete_volume", d.cloudProvisioner.GetCloud().ResourceGroup, d.cloudProvisioner.GetCloud().SubscriptionID, d.Name)
 	isOperationSucceeded := false
 	defer func() {
@@ -231,6 +234,8 @@ func (d *DriverV2) ControllerPublishVolume(ctx context.Context, req *csi.Control
 		return nil, status.Error(codes.InvalidArgument, "Node ID not provided")
 	}
 
+	nodeName := types.NodeName(nodeID)
+
 	mc := metrics.NewMetricContext(d.cloudProvisioner.GetMetricPrefix(), "controller_publish_volume", d.cloudProvisioner.GetCloud().ResourceGroup, d.cloudProvisioner.GetCloud().SubscriptionID, d.Name)
 	isOperationSucceeded := false
 	defer func() {
@@ -266,6 +271,8 @@ func (d *DriverV2) ControllerUnpublishVolume(ctx context.Context, req *csi.Contr
 	if len(nodeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Node ID not provided")
 	}
+
+	nodeName := types.NodeName(nodeID)
 
 	mc := metrics.NewMetricContext(d.cloudProvisioner.GetMetricPrefix(), "controller_unpublish_volume", d.cloudProvisioner.GetCloud().ResourceGroup, d.cloudProvisioner.GetCloud().SubscriptionID, d.Name)
 	isOperationSucceeded := false
