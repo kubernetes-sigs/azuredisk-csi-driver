@@ -52,7 +52,9 @@ echoerr() {
 
 trap_push() {
   local SIGNAL="${2:?Signal required}"
-  HANDLERS="$( trap -p ${SIGNAL} | cut -f2 -d \' )";
+  HANDLERS="$( trap -p "${SIGNAL}" | cut -f2 -d \' )";
+
+  # shellcheck disable=SC2064
   trap "${1:?Handler required}${HANDLERS:+;}${HANDLERS}" "${SIGNAL}"
 }
 
@@ -64,6 +66,7 @@ retry() {
   local ATTEMPT=1
   while true;
   do
+    # shellcheck disable=SC2015
     ("$@") && break || true
 
     echoerr "Command '$1' failed $ATTEMPT of $MAX_ATTEMPTS attempts."
@@ -74,11 +77,13 @@ retry() {
     fi
 
     echoerr "Retry after $SLEEP_INTERVAL seconds..."
-    sleep $SLEEP_INTERVAL
+    sleep "$SLEEP_INTERVAL"
   done
 }
 
-choose() { echo ${1:RANDOM%${#1}:1} $RANDOM; }
+choose() {
+  echo "${1:RANDOM%${#1}:1} $RANDOM"
+}
 
 genpwd() {
   PWD_SYMBOLS='~!@#$%^&*_-+=`|\(){}[]:;<>.?/'
@@ -96,7 +101,9 @@ genpwd() {
       choose "${PWD_DIGITS}"
       choose "${PWD_LOWERCASE}"
       choose "${PWD_UPPERCASE}"
-      for i in $( seq 4 $1 )
+
+      # shellcheck disable=SC2034
+      for i in $( seq 4 "$1" )
       do
           choose "${PWD_ALL_CHARS}"
       done
@@ -210,7 +217,7 @@ set -- "${POSITIONAL[@]}" # restore positional parameters
 # Validate command-line arguments and initialize variables.
 #
 if [[ ${#POSITIONAL[@]} -ne 0 ]]; then
-  echoerr "ERROR: Unknown positional parameters - ${POSITIONAL[@]}"
+  echoerr "ERROR: Unknown positional parameters - ${POSITIONAL[*]}"
   printhelp
   exit 1
 fi
@@ -244,8 +251,8 @@ if [[ -z ${AZURE_CLUSTER_TEMPLATE:-} ]]; then
   AZURE_CLUSTER_TEMPLATE="single-az"
 fi
 
-IS_AZURE_CLUSTER_TEMPLATE_URI=$(expr `expr "$AZURE_CLUSTER_TEMPLATE" : "https://\|http://"` != 0 || true)
-IS_WINDOWS_CLUSTER=$(expr `expr "$AZURE_CLUSTER_TEMPLATE" : ".*-windows\|.*/windows-testing/.*"` != 0 || true)
+IS_AZURE_CLUSTER_TEMPLATE_URI=$([[ "$AZURE_CLUSTER_TEMPLATE" =~ (https://|http://) ]]; echo $(( $? == 0 )))
+IS_WINDOWS_CLUSTER=$([[ "$AZURE_CLUSTER_TEMPLATE" =~ .*-windows|.*/windows-testing/.* ]]; echo $(( $? == 0 )))
 
 if [[ -z ${AZURE_K8S_VERSION:-} ]]; then
   AZURE_K8S_VERSION="1.21"
@@ -259,7 +266,7 @@ if [[ ${IS_AZURE_CLUSTER_TEMPLATE_URI} -eq 0 ]]; then
   AZURE_CLUSTER_TEMPLATE_FILE=${AZURE_CLUSTER_TEMPLATE_ROOT}/${AZURE_CLUSTER_TEMPLATE}.json
 
   if [[ ! -f "$AZURE_CLUSTER_TEMPLATE_FILE" ]]; then
-    AZURE_CLUSTER_VALID_TEMPLATES=$(ls -x1 "$AZURE_CLUSTER_TEMPLATE_ROOT" | awk '{split($1,f,"."); printf (NR>1?", ":"") f[1]}')
+    AZURE_CLUSTER_VALID_TEMPLATES=$(find "$AZURE_CLUSTER_TEMPLATE_ROOT" -maxdepth 1 -iname '*.json' -printf "%P\n" | awk '{split($1,f,"."); printf (NR>1?", ":"") f[1]}')
     echoerr "ERROR: The template '$AZURE_CLUSTER_TEMPLATE' is not known. Select one of the following values: $AZURE_CLUSTER_VALID_TEMPLATES."
     printhelp
     exit 1
@@ -285,14 +292,13 @@ if [[ -z ${AZURE_RESOURCE_GROUP:-} ]]; then
 fi
 
 AZURE_SUBSCRIPTION_URI="/subscriptions/${AZURE_SUBSCRIPTION_ID}"
-AZURE_RESOURCE_GROUP_URI="${AZURE_SUBSCRIPTION_URI}/resourceGroups/${AZURE_RESOURCE_GROUP}"
 
 if [[ -z ${OUTPUT_DIR:-} ]]; then
   OUTPUT_DIR="$GIT_ROOT/_output/$AZURE_CLUSTER_DNS_NAME"
 fi
 
 # Ensure the output directory exists.
-mkdir -p $OUTPUT_DIR
+mkdir -p "$OUTPUT_DIR"
 
 #
 # Install required tools if necessary.
@@ -318,16 +324,16 @@ fi
 
 if [[ "$AZURE_SUBSCRIPTION_ID" != "$AZURE_ACTIVE_SUBSCRIPTION_ID" ]]; then
   echo "Setting active subscription to $AZURE_SUBSCRIPTION_ID..."
-  az account set --subscription ${AZURE_SUBSCRIPTION_ID} 1> /dev/null
+  az account set --subscription "${AZURE_SUBSCRIPTION_ID}" 1> /dev/null
 fi
 
-if [[ "$(az group exists --resource-group $AZURE_RESOURCE_GROUP)" != "true" ]]; then
+if [[ "$(az group exists --resource-group "$AZURE_RESOURCE_GROUP")" != "true" ]]; then
   echo "Creating resource group $AZURE_RESOURCE_GROUP..."
-  az group create --name $AZURE_RESOURCE_GROUP --location $AZURE_LOCATION 1> /dev/null
+  az group create --name "$AZURE_RESOURCE_GROUP" --location "$AZURE_LOCATION" 1> /dev/null
 fi
 
 CLEANUP_FILE="$OUTPUT_DIR/cluster-down.sh"
->$CLEANUP_FILE cat <<EOF
+>"$CLEANUP_FILE" cat <<EOF
 set -euo pipefail
 AZURE_ACTIVE_SUBSCRIPTION_ID=\$(az account list --query="[?isDefault].id | [0]" --output=tsv)
 if [[ -z \$AZURE_ACTIVE_SUBSCRIPTION_ID ]]; then
@@ -357,17 +363,17 @@ if [[ -z ${AZURE_CLIENT_ID:-} ]]; then
 
     echo "Assigning $AZURE_CLIENT_ID to \"Owner\" role of $AZURE_RESOURCE_GROUP..."
     az role assignment create \
-        --assignee=$AZURE_CLIENT_ID \
+        --assignee="$AZURE_CLIENT_ID" \
         --role=Owner \
-        --resource-group=$AZURE_RESOURCE_GROUP 1> /dev/null
+        --resource-group="$AZURE_RESOURCE_GROUP" 1> /dev/null
   else
     echo "Creating service principal $AZURE_CLIENT_NAME..."
-    AZURE_CLIENT_INFO=($(az ad sp create-for-rbac \
+    mapfile -t AZURE_CLIENT_INFO < <(az ad sp create-for-rbac \
       --name="http://$AZURE_CLIENT_NAME" \
       --role="Contributor" \
       --scopes="$AZURE_SUBSCRIPTION_URI" \
       --output=tsv \
-      --query="[tenant,appId,password]"))
+      --query="[tenant,appId,password]")
     AZURE_TENANT_ID=${AZURE_CLIENT_INFO[0]}
     AZURE_CLIENT_ID=${AZURE_CLIENT_INFO[1]}
     AZURE_CLIENT_SECRET=${AZURE_CLIENT_INFO[2]}
@@ -379,7 +385,7 @@ if [[ -z ${AZURE_CLIENT_ID:-} ]]; then
   fi
 
   # Add removal of the service principal to the cleanup script.
-  echo "az ad sp delete --id=$AZURE_CLIENT_ID" >> $CLEANUP_FILE
+  echo "az ad sp delete --id=$AZURE_CLIENT_ID" >> "$CLEANUP_FILE"
 
   echo "Waiting for service principal to become available in directory..."
   trap_push 'az logout &> /dev/null' exit
@@ -410,8 +416,7 @@ AZURE_ADMIN_PUBLIC_KEY=$(cat "$AZURE_ADMIN_PUBLIC_KEY_FILE")
 echo "Creating Kubernetes cluster $AZURE_CLUSTER_DNS_NAME..."
 API_MODEL="$OUTPUT_DIR/$AZURE_CLUSTER_DNS_NAME-model.json"
 
-cat "$AZURE_CLUSTER_TEMPLATE_FILE" | \
-  sed "s/\"location\": \".*\"/\"location\": \"$AZURE_LOCATION\"/" > $API_MODEL
+< "$AZURE_CLUSTER_TEMPLATE_FILE" sed "s/\"location\": \".*\"/\"location\": \"$AZURE_LOCATION\"/" > "$API_MODEL"
 
 AKS_ENGINE_OVERRIDES=(\
   --set orchestratorProfile.orchestratorRelease="$AZURE_K8S_VERSION" \
@@ -427,10 +432,10 @@ if [[ $IS_WINDOWS_CLUSTER -ne 0 ]]; then
 fi
 
 aks-engine deploy \
-  --subscription-id=$AZURE_SUBSCRIPTION_ID \
-  --resource-group=$AZURE_RESOURCE_GROUP \
-  --location=$AZURE_LOCATION \
-  --client-id=$AZURE_CLIENT_ID \
+  --subscription-id="$AZURE_SUBSCRIPTION_ID" \
+  --resource-group="$AZURE_RESOURCE_GROUP" \
+  --location="$AZURE_LOCATION" \
+  --client-id="$AZURE_CLIENT_ID" \
   --client-secret="$AZURE_CLIENT_SECRET" \
   --api-model="$API_MODEL" \
   --output-directory="$OUTPUT_DIR" \
@@ -439,7 +444,7 @@ aks-engine deploy \
 
 # Set up Bastion access if requested
 if [[ ${ENABLE_AZURE_BASTION:-false} == "true" ]]; then
-  ${GIT_ROOT}/hack/enable-azure-bastion.sh \
+  "${GIT_ROOT}/hack/enable-azure-bastion.sh" \
     --subscription "$AZURE_SUBSCRIPTION_ID" \
     --resource-group "$AZURE_RESOURCE_GROUP" \
     --location "$AZURE_LOCATION" \
@@ -454,7 +459,7 @@ retry 30 10 kubectl --kubeconfig="$AZURE_CLUSTER_KUBECONFIG_FILE" get nodes 1> /
 # Create setup and clean-up shell scripts.
 #
 SETUP_FILE="$OUTPUT_DIR/e2e-setup.sh"
->$SETUP_FILE cat <<EOF
+>"$SETUP_FILE" cat <<EOF
 export ARTIFACTS="$OUTPUT_DIR/artifacts"
 export AZURE_TENANT_ID="$AZURE_TENANT_ID"
 export AZURE_SUBSCRIPTION_ID="$AZURE_SUBSCRIPTION_ID"
@@ -466,7 +471,7 @@ export KUBECONFIG="$AZURE_CLUSTER_KUBECONFIG_FILE"
 EOF
 
 if [[ ${IS_WINDOWS_CLUSTER} -ne 0 ]]; then
-  >>$SETUP_FILE echo "export TEST_WINDOWS=\"true\""
+  >>"$SETUP_FILE" echo "export TEST_WINDOWS=\"true\""
 fi
 
 chmod +x "$SETUP_FILE"

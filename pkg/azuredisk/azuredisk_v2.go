@@ -89,6 +89,7 @@ type DriverV2 struct {
 	kubeConfig                        *rest.Config
 	kubeClient                        *clientset.Clientset
 	deviceChecker                     *deviceChecker
+	kubeClientQPS                     int
 }
 
 // NewDriver creates a driver object.
@@ -140,6 +141,7 @@ func newDriverV2(options *DriverOptions,
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
 	driver.deviceChecker = &deviceChecker{lock: sync.RWMutex{}, entry: nil}
+	driver.kubeClientQPS = options.RestClientQPS
 
 	topologyKey = fmt.Sprintf("topology.%s/zone", driver.Name)
 	return &driver
@@ -163,6 +165,8 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 		klog.Fatalf("failed to get kubeclient with kubeconfig (%s), error: %v. Exiting application...", kubeconfig, err)
 	}
 
+	d.kubeConfig.QPS = float32(d.kubeClientQPS)
+	d.kubeConfig.Burst = d.kubeClientQPS * 2
 	// d.crdProvisioner is set by NewFakeDriver for unit tests.
 	if d.crdProvisioner == nil {
 		d.crdProvisioner, err = provisioner.NewCrdProvisioner(d.kubeConfig, d.objectNamespace)

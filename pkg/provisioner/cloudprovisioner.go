@@ -340,7 +340,12 @@ func (c *CloudProvisioner) PublishVolume(
 			return nil, err
 		}
 
-		lun, err = c.cloud.AttachDisk(ctx, true, diskName, volumeID, nodeName, cachingMode, disk)
+		asyncAttach := true
+		if enableAsync, ok := volumeContext[azureconstants.EnableAsyncAttachField]; ok && enableAsync == azureconstants.FalseValue {
+			asyncAttach = false
+		}
+
+		lun, err = c.cloud.AttachDisk(ctx, asyncAttach, diskName, volumeID, nodeName, cachingMode, disk)
 		if err != nil {
 			klog.Errorf("attach volume %q to instance %q failed with %v", volumeID, nodeName, err)
 			return nil, err

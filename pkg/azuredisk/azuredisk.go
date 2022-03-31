@@ -65,6 +65,7 @@ type DriverOptions struct {
 	SupportZone                bool
 	GetNodeInfoFromLabels      bool
 	EnableDiskCapacityCheck    bool
+	RestClientQPS              int
 }
 
 // CSIDriver defines the interface for a CSI driver.
@@ -144,6 +145,8 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
+	driver.enableListVolumes = options.EnableListVolumes
+	driver.enableListSnapshots = options.EnableListVolumes
 
 	topologyKey = fmt.Sprintf("topology.%s/zone", driver.Name)
 
