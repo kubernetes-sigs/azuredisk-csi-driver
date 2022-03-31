@@ -978,13 +978,16 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azurediskInformers.
 			Duration: consts.CRIUpdateRetryDuration,
 			Factor:   consts.CRIUpdateRetryFactor,
 			Steps:    consts.CRIUpdateRetryStep,
+			Cap:      consts.DefaultBackoffCap,
 		},
 		isRetriable,
 		conditionFunc,
 	)
 
 	// if encountered net error from api server unavailability, exit process
-	ExitOnNetError(err)
+	if isNetError(err) {
+		ExitOnNetError(err, maxRetry > 0 && curRetry >= maxRetry)
+	}
 	return err
 }
 
@@ -999,8 +1002,8 @@ func isNetError(err error) bool {
 	return net.IsConnectionRefused(err) || net.IsConnectionReset(err) || net.IsTimeout(err) || net.IsProbableEOF(err)
 }
 
-func ExitOnNetError(err error) {
-	if isFatalNetError(err) {
+func ExitOnNetError(err error, force bool) {
+	if isFatalNetError(err) || (err != nil && force) {
 		klog.Fatalf("encountered unrecoverable network error: %v \nexiting process...", err)
 		os.Exit(1)
 	}
