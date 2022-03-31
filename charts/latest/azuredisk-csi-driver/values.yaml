@@ -56,6 +56,9 @@ controller:
     - key: "node-role.kubernetes.io/controlplane"
       operator: "Exists"
       effect: "NoSchedule"
+    - key: "node-role.kubernetes.io/control-plane"
+      operator: "Exists"
+      effect: "NoSchedule"
   hostNetwork: true # this setting could be disabled if controller does not depend on MSI setting
   podLabels: {}
   resources:
@@ -140,6 +143,7 @@ driver:
   volumeAttachLimit: -1
   customUserAgent: ""
   userAgentSuffix: "OSS-helm"
+  azureGoSDKLogLevel: "" # available values: ""(no logs), DEBUG, INFO, WARNING, ERROR
 
 linux:
   enabled: true
@@ -217,6 +221,7 @@ windows:
       requests:
         cpu: 10m
         memory: 40Mi
+  useHostProcessContainers: false
 
 cloud: AzurePublicCloud
 

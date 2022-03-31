@@ -71,7 +71,7 @@ helm repo update azuredisk-csi-driver
 ### install a specific version
 
 ```console
-helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v1.13.0
+helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v1.14.0
 ```
 
 ### install on Azure Stack
@@ -123,6 +123,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `driver.customUserAgent`                          | custom userAgent                                           | `` |
 | `driver.userAgentSuffix`                          | userAgent suffix                                           | `OSS-helm` |
 | `driver.volumeAttachLimit`                        | maximum number of attachable volumes per node maximum number is defined according to node instance type by default(`-1`)                        | `-1` |
+| `driver.azureGoSDKLogLevel`                       | [Azure go sdk log level](https://github.com/Azure/azure-sdk-for-go/blob/main/documentation/previous-versions-quickstart.md#built-in-basic-requestresponse-logging)  | ``(no logs), `DEBUG`, `INFO`, `WARNING`, `ERROR`, [etc](https://github.com/Azure/go-autorest/blob/50e09bb39af124f28f29ba60efde3fa74a4fe93f/logger/logger.go#L65-L73) |
 | `feature.enableFSGroupPolicy`                     | enable `fsGroupPolicy` on a k8s 1.20+ cluster              | `true`                      |
 | `image.baseRepo`                                  | base repository of driver images                           | `mcr.microsoft.com`                      |
 | `image.azuredisk.repository`                      | azuredisk-csi-driver docker image                          | `/oss/csi/azuredisk-csi`                      |
@@ -156,7 +157,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `controller.allowEmptyCloudConfig`                | Whether allow running controller driver without cloud config          | `false`
 | `controller.replicas`                             | the replicas of csi-azuredisk-controller                   | `2`                                                            |
 | `controller.metricsPort`                          | metrics port of csi-azuredisk-controller                   | `29604`                                                        |
-| `controller.livenessProbe.healthPort `            | health check port for liveness probe                       | `29602` |
+| `controller.livenessProbe.healthPort`             | health check port for liveness probe                       | `29602` |
 | `controller.runOnMaster`                          | run csi-azuredisk-controller on master node                | `false`                                                        |
 | `controller.logLevel`                             | controller driver log level                                |`5`                                                           |
 | `controller.affinity`                             | controller pod affinity                                    |                                                                |
@@ -186,7 +187,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `node.allowEmptyCloudConfig`                      | Whether allow running node driver without cloud config               | `true`
 | `node.maxUnavailable`                             | `maxUnavailable` value of driver node daemonset            | `1`
 | `node.metricsPort`                                | metrics port of csi-azuredisk-node                         |`29605`                                                        |
-| `node.livenessProbe.healthPort `                  | health check port for liveness probe                       | `29603` |
+| `node.livenessProbe.healthPort`                   | health check port for liveness probe                       | `29603` |
 | `node.logLevel`                                   | node driver log level                                      |`5`                                                           |
 | `snapshot.enabled`                                | whether enable snapshot feature                            | `false`                                                        |
 | `snapshot.image.csiSnapshotter.repository`        | csi-snapshotter docker image                               | `/oss/kubernetes-csi/csi-snapshotter`         |
@@ -230,6 +231,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `windows.resources.azuredisk.limits.memory`              | azuredisk memory limits                         | 200Mi                                                         |
 | `windows.resources.azuredisk.requests.cpu`               | azuredisk cpu requests                   | 10m                                                            |
 | `windows.resources.azuredisk.requests.memory`            | azuredisk memory requests                | 40Mi                                                           |
+| `windows.useHostProcessContainers`                       | use HostProcessContainers for deployment | false                                                          |
 | `cloud`                                           | cloud environment driver is running on                     | `AzurePublicCloud`                                                  |
 
 ---
