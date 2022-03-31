@@ -39,6 +39,7 @@ spec:
             - "--is-node-plugin=true"
             - "--nodeid={{ .Values.azuredisk.nodeId }}"
             - "--is-test-run={{ .Values.azuredisk.isTestRun }}"
+            - "--support-zone={{ .Values.azuredisk.supportZone }}"
           ports:
             - containerPort: 29602
               name: healthz

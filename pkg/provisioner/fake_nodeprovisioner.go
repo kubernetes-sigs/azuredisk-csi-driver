@@ -18,6 +18,7 @@ package provisioner
 
 import (
 	"k8s.io/kubernetes/pkg/volume/util/hostutil"
+	mount "k8s.io/mount-utils"
 	testingexec "k8s.io/utils/exec/testing"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
 )
@@ -103,4 +104,8 @@ func (fake *FakeNodeProvisioner) SetMountCheckError(target string, err error) {
 	fakeMounter, _ := fake.mounter.Interface.(*mounter.FakeSafeMounter)
 
 	fakeMounter.SetMountCheckError(target, err)
+}
+
+func (fake *FakeNodeProvisioner) SetMounter(mounter *mount.SafeFormatAndMount) {
+	fake.mounter = mounter
 }

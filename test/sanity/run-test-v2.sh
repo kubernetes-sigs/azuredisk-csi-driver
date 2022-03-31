@@ -65,6 +65,7 @@ helm install azuredisk-csi-driver test/latest/azuredisk-csi-driver -n kube-syste
   --set image.azuredisk.tag=$image \
   --set azuredisk.cloudConfig="$(cat "${AZURE_CREDENTIAL_FILE}" | base64 | awk '{printf $0}'; echo)" \
   --set controller.port="10000" \
+  --set azuredisk.supportZone=false \
   > /dev/null
 
 echo 'Begin to run sanity test v2'

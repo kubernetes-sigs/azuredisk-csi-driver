@@ -32,7 +32,7 @@ volumeId=$( kubectl get azvolume ${volumeName} -n azure-disk-csi -o yaml | egrep
 
 if [ "$mode" = "attach" ]; then
   tee <<-EOF > new-azvolumeattachment.yaml;
-  apiVersion: disk.csi.azure.com/v1alpha1
+  apiVersion: disk.csi.azure.com/v1beta1
   kind: AzVolumeAttachment
   metadata:
     name: ${volumeName,,}-${nodeName,,}

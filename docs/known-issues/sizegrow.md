@@ -1,3 +1,5 @@
+# Deprecation notice: online resize is already supported from Azure Disk CSI driver v1.11, for details, go to [Volume Expansion](../../deploy/example/resize)
+
 #### Azure disk could not be resized when it's in "attached" state, we could only resize azure disk when it's in "unattached" state, this page will show you how to achieve this.
 
 **How to use azure disk size grow feature**

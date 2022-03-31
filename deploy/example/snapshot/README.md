@@ -4,7 +4,7 @@
 - [Use velero to backup & restore Azure disk by snapshot feature](https://velero.io/blog/csi-integration/)
 
 ## Introduction
-This driver supports both [full and incremental snapshot functionalities](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/incremental-snapshots), user could set `incremental` in `VolumeSnapshotClass` to control whether create full or incremental(by default) snapshot(refer to [VolumeSnapshotClass](../../../docs/driver-parameters.md#volumesnapshotclass) for detailed parameters description):
+This driver supports both [full and incremental snapshot functionalities](https://docs.microsoft.com/en-us/azure/virtual-machines/disks-incremental-snapshots), you could set `incremental` parameter in `VolumeSnapshotClass` to set full or incremental(by default) snapshot(refer to [VolumeSnapshotClass](../../../docs/driver-parameters.md#volumesnapshotclass) for detailed parameters description):
 
 ```yaml
 apiVersion: snapshot.storage.k8s.io/v1
@@ -86,3 +86,4 @@ outfile
 
 #### Links
  - [CSI Snapshotter](https://github.com/kubernetes-csi/external-snapshotter)
+ - [Announcing general availability of incremental snapshots of Managed Disks](https://azure.microsoft.com/en-gb/blog/announcing-general-availability-of-incremental-snapshots-of-managed-disks/)

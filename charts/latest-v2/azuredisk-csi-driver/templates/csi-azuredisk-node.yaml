@@ -105,6 +105,8 @@ spec:
             - "--custom-user-agent={{ .Values.driver.customUserAgent }}"
             - "--user-agent-suffix={{ .Values.driver.userAgentSuffix }}"
             - "--allow-empty-cloud-config={{ .Values.node.allowEmptyCloudConfig }}"
+            - "--support-zone={{ .Values.node.supportZone }}"
+            - "--get-node-info-from-labels={{ .Values.linux.getNodeInfoFromLabels }}"
           ports:
             - containerPort: {{ .Values.node.livenessProbe.healthPort }}
               name: healthz
@@ -131,6 +133,8 @@ spec:
                 fieldRef:
                   apiVersion: v1
                   fieldPath: spec.nodeName
+            - name: AZURE_GO_SDK_LOG_LEVEL
+              value: {{ .Values.driver.azureGoSDKLogLevel }}
             {{- if eq .Values.cloud "AzureStackCloud" }}
             - name: AZURE_ENVIRONMENT_FILEPATH
               value: /etc/kubernetes/azurestackcloud.json

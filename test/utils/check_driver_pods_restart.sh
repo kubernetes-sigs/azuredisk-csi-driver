@@ -24,30 +24,21 @@ function get_array() {
     echo "${arr[*]}"
 }
 
-NS=kube-system
-CONTAINER=azuredisk
-
 echo "check the driver pods if restarts ..."
-original_pods=$(kubectl get pods -n kube-system | grep azuredisk | awk '{print $1}')
-original_restarts=$(kubectl get pods -n kube-system | grep azuredisk | awk '{print $4}')
+mapfile -t PODS_WITH_RESTARTS < <(kubectl get pods --namespace kube-system \
+    --selector app.kubernetes.io/name=azuredisk-csi-driver \
+    --output=jsonpath='{range .items[*]}{.metadata.name} {range .status.containerStatuses[?(@.restartCount!=0)]}{.name};{end}{"\n"}{end}' \
+    | awk '{if ($2 != "") print $1}')
 
 processed_pods=("$(get_array "${original_pods[@]}")")
 processed_restarts=("$(get_array "${original_restarts[@]}")")
 
-for ((i=0; i<${#processed_restarts[@]}; i++)); do
-    if [ "${processed_restarts[$i]}" -ne "0" ]
-    then
-        echo "there is a driver pod which has restarted"
-	    #disable pods restart check temporarily since there is driver restart in MSI enabled cluster
-        #exit 3
-        if [[ "$1" == "log" ]]; then
-            kubectl describe po ${processed_pods[$i]} -n kube-system
-            echo "======================================================================================"
-            echo "print previous azuredisk container logs since there is a restart"
-            kubectl logs ${processed_pods[$i]} -c azuredisk -p -n kube-system
-            echo "======================================================================================"
-        fi
-    fi
-done
+if [[ "$1" == "log" ]]; then
+    kubectl describe pod "$POD_WITH_RESTART" --namespace kube-system
+    echo "======================================================================================"
+    echo "print previous azuredisk container logs since there is a restart"
+    kubectl logs "$POD_WITH_RESTART" --container azuredisk --previous --namespace kube-system
+    echo "======================================================================================"
+fi
 
 echo "======================================================================================"

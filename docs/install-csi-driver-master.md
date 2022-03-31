@@ -1,14 +1,18 @@
 ## Install CSI driver development version on a Kubernetes cluster
+If you have already installed Helm, you can also use it to install this driver. Please check [Installation with Helm](../charts/README.md).
 
 ### Install by kubectl
-```console
-curl -skSL https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/install-driver.sh | bash -s master --
-```
-
- - Enable snapshot support
-> Note: only available from v1.17.0
+ - Option#1. remote install
 ```console
 curl -skSL https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/install-driver.sh | bash -s master snapshot --
+```
+
+ - Option#2. local install
+```console
+git clone https://github.com/kubernetes-sigs/azuredisk-csi-driver.git
+cd azuredisk-csi-driver
+git checkout master
+./deploy/install-driver.sh master local
 ```
 
 ### Check pods status:
@@ -29,8 +33,16 @@ csi-azuredisk-node-cvgbs                        3/3     Running   0          7m4
 csi-azuredisk-node-dr4s4                        3/3     Running   0          7m4s    10.240.0.4     k8s-agentpool-22533604-0
 ```
 
-### Clean up CSI driver
-
+### clean up CSI driver
+ - Option#1. remote uninstall
 ```console
 curl -skSL https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/uninstall-driver.sh | bash -s master --
+```
+
+ - Option#2. local uninstall
+```console
+git clone https://github.com/kubernetes-sigs/azuredisk-csi-driver.git
+cd azuredisk-csi-driver
+git checkout master
+./deploy/install-driver.sh master local
 ```

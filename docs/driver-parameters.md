@@ -12,7 +12,7 @@ Name | Meaning | Available Value | Mandatory | Default value
 --- | --- | --- | --- | ---
 skuName | azure disk storage account type (alias: `storageAccountType`)| `Standard_LRS`, `Premium_LRS`, `StandardSSD_LRS`, `UltraSSD_LRS`, `Premium_ZRS`, `StandardSSD_ZRS` | No | `StandardSSD_LRS`
 kind | managed or unmanaged(blob based) disk | `managed` (`dedicated`, `shared` are deprecated) | No | `managed`
-fsType | File System Type | `ext4`, `ext3`, `ext2`, `xfs`, `btrfs` | No | `ext4`
+fsType | File System Type | `ext4`, `ext3`, `ext2`, `xfs`, `btrfs` on Linux, `ntfs` on Windows | No | `ext4` on Linux, `ntfs` on Windows
 cachingMode | [Azure Data Disk Host Cache Setting](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/premium-storage-performance#disk-caching) | `None`, `ReadOnly`, `ReadWrite` | No | `ReadOnly`
 location | specify Azure location in which Azure disk will be created | `eastus`, `westus`, etc. | No | if empty, driver will use the same location name as current k8s cluster
 resourceGroup | specify the resource group in which azure disk will be created | existing resource group name | No | if empty, driver will use the same resource group name as current k8s cluster
@@ -27,7 +27,7 @@ networkAccessPolicy | NetworkAccessPolicy property to prevent anybody from gener
 diskAccessID | ARM id of the DiskAccess resource for using private endpoints on disks | | No  | ``
 enableBursting | [enable on-demand bursting](https://docs.microsoft.com/en-us/azure/virtual-machines/disk-bursting) beyond the provisioned performance target of the disk. On-demand bursting only be applied to Premium disk, disk size > 512GB, Ultra & shared disk is not supported. Bursting is disabled by default. | `true`, `false` | No | `false`
 useragent | User agent used for [customer usage attribution](https://docs.microsoft.com/en-us/azure/marketplace/azure-partner-customer-usage-attribution)| | No  | Generated Useragent formatted `driverName/driverVersion compiler/version (OS-ARCH)`
-enableAsyncAttach | allow multiple disk attach operations (in batch) on one node in parallel, this could speed up disk attachment while may hit Azure API throttling when there are large number of volume attachments | `true`, `false` | No | `true`
+enableAsyncAttach | allow multiple disk attach operations (in batch) on one node in parallel, this could speed up disk attachment while may hit Azure API throttling when there are large number of volume attachments | `true`, `false` | No | `false`
 subscriptionID | specify Azure subscription ID in which Azure disk will be created  | Azure subscription ID | No | if not empty, `resourceGroup` must be provided
 
 - disk created by dynamic provisioning
@@ -60,8 +60,8 @@ maxMountReplicaCount | The number of replicas attachments to maintain. | This va
 Name | Meaning | Available Value | Mandatory | Default value
 --- | --- | --- | --- | ---
 volumeHandle| Azure disk URI | /subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id} | Yes | N/A
-volumeAttributes.fsType | File System Type | `ext4`, `ext3`, `ext2`, `xfs`, `btrfs` | No | `ext4`
-volumeAttributes.partition | partition num of the existing disk | `1`, `2`, `3` | No | empty(no partition) </br>- make sure partition format is like `-part1`
+volumeAttributes.fsType | File System Type | `ext4`, `ext3`, `ext2`, `xfs`, `btrfs` on Linux, `ntfs` on Windows | No | `ext4` on Linux, `ntfs` on Windows
+volumeAttributes.partition | partition num of the existing disk (only supported on Linux) | `1`, `2`, `3` | No | empty(no partition) </br>- make sure partition format is like `-part1`
 volumeAttributes.cachingMode | [disk host cache setting](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/premium-storage-performance#disk-caching)| `None`, `ReadOnly`, `ReadWrite` | No  | `ReadOnly`
 
 ## `VolumeSnapshotClass`

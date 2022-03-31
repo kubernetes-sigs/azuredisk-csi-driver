@@ -196,10 +196,32 @@ func GetMaxShares(attributes map[string]string) (int, error) {
 	for k, v := range attributes {
 		switch strings.ToLower(k) {
 		case consts.MaxSharesField:
-			return ParseMaxShares(v)
+			maxShares, err := strconv.Atoi(v)
+			if err != nil {
+				return 0, fmt.Errorf("parse %s failed with error: %v", v, err)
+			}
+			if maxShares < 1 {
+				return 0, fmt.Errorf("parse %s returned with invalid value: %d", v, maxShares)
+			}
+			return maxShares, nil
 		}
 	}
 	return 1, nil // disk is not shared
+}
+
+func IsAsyncAttachEnabled(defaultValue bool, volumeContext map[string]string) bool {
+	for k, v := range volumeContext {
+		switch strings.ToLower(k) {
+		case consts.EnableAsyncAttachField:
+			if strings.EqualFold(v, consts.TrueValue) {
+				return true
+			}
+			if strings.EqualFold(v, consts.FalseValue) {
+				return false
+			}
+		}
+	}
+	return defaultValue
 }
 
 func GetSubscriptionIDFromURI(diskURI string) string {

@@ -82,6 +82,7 @@ const (
 	UserAgentField                = "useragent"
 	VolumeAttributePartition      = "partition"
 	WellKnownTopologyKey          = "topology.kubernetes.io/zone"
+	InstanceTypeKey               = "node.kubernetes.io/instance-type"
 	TopologyRegionKey             = "topology.kubernetes.io/region"
 	MasterNodeRoleTaintKey        = "node-role.kubernetes.io/master"
 	WriteAcceleratorEnabled       = "writeacceleratorenabled"

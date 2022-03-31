@@ -21,9 +21,9 @@ V2: Preview
 |Driver Version  |Image                                                      | supported k8s version |
 |----------------|-----------------------------------------------------------|-----------------------|
 |`master` branch |mcr.microsoft.com/k8s/csi/azuredisk-csi:latest             | 1.20+                 |
-|v1.11.0         |mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v1.11.0 | 1.20+                 |
-|v1.10.0         |mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v1.10.0 | 1.19+                 |
-|v1.9.0          |mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v1.9.0  | 1.19+                 |
+|v1.14.0         |mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v1.14.0 | 1.20+                 |
+|v1.13.0         |mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v1.13.0 | 1.20+                 |
+|v1.12.0         |mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v1.12.0 | 1.20+                 |
 
 #### V2
 
@@ -113,7 +113,6 @@ follow guide [here](./docs/install-driver-on-aks.md)
 ### Links
 
 - [Kubernetes CSI Documentation](https://kubernetes-csi.github.io/docs/)
-- [CSI Drivers](https://github.com/kubernetes-csi/drivers)
 - [Container Storage Interface (CSI) Specification](https://github.com/container-storage-interface/spec)
 
 [support-policy]: support.md
