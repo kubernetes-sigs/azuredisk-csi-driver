@@ -57,6 +57,7 @@ import (
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/workflow"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -883,8 +884,10 @@ func GetAzVolumeAttachmentState(volumeAttachmentStatus storagev1.VolumeAttachmen
 }
 
 func UpdateCRIWithRetry(ctx context.Context, informerFactory azurediskInformers.SharedInformerFactory, cachedClient client.Client, azDiskClient azDiskClientSet.Interface, obj client.Object, updateFunc func(interface{}) error, maxNetRetry int, updateMode CRIUpdateMode) error {
+	var err error
 	objName := obj.GetName()
-	klog.Infof("Initiating update with retry for %v (%s)", reflect.TypeOf(obj), objName)
+	ctx, w := workflow.New(ctx)
+	defer func() { w.Finish(err) }()
 
 	conditionFunc := func() error {
 		var err error
@@ -920,7 +923,7 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azurediskInformers.
 		}
 
 		if err != nil {
-			klog.Errorf("failed to get %v (%s): %v", reflect.TypeOf(obj), objName, err)
+			err = status.Errorf(codes.Internal, "failed to get object: %v", err)
 			return err
 		}
 
@@ -970,7 +973,7 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azurediskInformers.
 		return false
 	}
 
-	err := retry.OnError(
+	err = retry.OnError(
 		wait.Backoff{
 			Duration: consts.CRIUpdateRetryDuration,
 			Factor:   consts.CRIUpdateRetryFactor,
@@ -979,9 +982,6 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azurediskInformers.
 		isRetriable,
 		conditionFunc,
 	)
-	if err != nil {
-		klog.Errorf("failed to update %v (%s): %v", reflect.TypeOf(obj), objName, err)
-	}
 
 	// if encountered net error from api server unavailability, exit process
 	ExitOnNetError(err)

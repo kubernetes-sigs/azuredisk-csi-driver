@@ -602,8 +602,8 @@ func TestDeleteVolume(t *testing.T) {
 			ID: &id,
 		}
 
-		d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Eq(ctx), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
-		d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Delete(gomock.Eq(ctx), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+		d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+		d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Delete(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 		result, err := d.DeleteVolume(ctx, test.req)
 		if err != nil {

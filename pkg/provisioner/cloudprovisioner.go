@@ -41,6 +41,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/workflow"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
@@ -112,13 +113,18 @@ func (c *CloudProvisioner) CreateVolume(
 	secrets map[string]string,
 	volumeContentSource *diskv1beta1.ContentVolumeSource,
 	accessibilityRequirements *diskv1beta1.TopologyRequirement) (*diskv1beta1.AzVolumeStatusDetail, error) {
+	var err error
+	ctx, w := workflow.New(ctx)
+	defer func() { w.Finish(err) }()
 
-	diskParams, err := azureutils.ParseDiskParameters(parameters)
+	var diskParams azureutils.ManagedDiskParameters
+	diskParams, err = azureutils.ParseDiskParameters(parameters)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "Failed parsing disk parameters: %v", err)
+		err = status.Errorf(codes.InvalidArgument, "Failed parsing disk parameters: %v", err)
+		return nil, err
 	}
 
-	if err := c.validateCreateVolumeRequestParams(capacityRange, volumeCapabilities, diskParams); err != nil {
+	if err = c.validateCreateVolumeRequestParams(capacityRange, volumeCapabilities, diskParams); err != nil {
 		return nil, err
 	}
 
@@ -143,11 +149,13 @@ func (c *CloudProvisioner) CreateVolume(
 	if diskParams.UserAgent != "" {
 		localCloud, err = azureutils.GetCloudProviderFromClient(c.kubeClient, c.cloudConfigSecretName, c.cloudConfigSecretNamespace, diskParams.UserAgent)
 		if err != nil {
-			return nil, fmt.Errorf("create cloud with UserAgent(%s) failed with: (%s)", diskParams.UserAgent, err)
+			err = fmt.Errorf("create cloud with UserAgent(%s) failed with: (%s)", diskParams.UserAgent, err)
+			return nil, err
 		}
 	}
 	// normalize values
-	skuName, err := azureutils.NormalizeStorageAccountType(diskParams.AccountType, localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud)
+	var skuName compute.DiskStorageAccountTypes
+	skuName, err = azureutils.NormalizeStorageAccountType(diskParams.AccountType, localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud)
 	if err != nil {
 		return nil, err
 	}
@@ -156,7 +164,8 @@ func (c *CloudProvisioner) CreateVolume(
 		return nil, err
 	}
 
-	networkAccessPolicy, err := azureutils.NormalizeNetworkAccessPolicy(diskParams.NetworkAccessPolicy)
+	var networkAccessPolicy compute.NetworkAccessPolicy
+	networkAccessPolicy, err = azureutils.NormalizeNetworkAccessPolicy(diskParams.NetworkAccessPolicy)
 	if err != nil {
 		return nil, err
 	}
@@ -164,7 +173,7 @@ func (c *CloudProvisioner) CreateVolume(
 	selectedAvailabilityZone := pickAvailabilityZone(accessibilityRequirements, c.GetCloud().Location)
 	accessibleTopology := []diskv1beta1.Topology{}
 	if skuName == compute.DiskStorageAccountTypesStandardSSDZRS || skuName == compute.DiskStorageAccountTypesPremiumZRS {
-		klog.V(2).Infof("diskZone(%s) is reset as empty since disk(%s) is ZRS(%s)", selectedAvailabilityZone, diskParams.DiskName, skuName)
+		w.Logger().V(2).Infof("diskZone(%s) is reset as empty since disk(%s) is ZRS(%s)", selectedAvailabilityZone, diskParams.DiskName, skuName)
 		selectedAvailabilityZone = ""
 		// make volume scheduled on all 3 availability zones
 		for i := 1; i <= 3; i++ {
@@ -198,7 +207,8 @@ func (c *CloudProvisioner) CreateVolume(
 		}
 	}
 
-	if ok, err := c.CheckDiskCapacity(ctx, diskParams.ResourceGroup, diskParams.DiskName, requestGiB); !ok {
+	if ok, derr := c.CheckDiskCapacity(ctx, diskParams.ResourceGroup, diskParams.DiskName, requestGiB); !ok {
+		err = derr
 		return nil, err
 	}
 
@@ -256,15 +266,17 @@ func (c *CloudProvisioner) CreateVolume(
 		}
 	}
 
-	diskURI, err := localCloud.CreateManagedDisk(ctx, volumeOptions)
+	var diskURI string
+	diskURI, err = localCloud.CreateManagedDisk(ctx, volumeOptions)
 	if err != nil {
 		if strings.Contains(err.Error(), "NotFound") {
-			return nil, status.Error(codes.NotFound, err.Error())
+			err = status.Error(codes.NotFound, err.Error())
+			return nil, err
 		}
 		return nil, err
 	}
 
-	klog.V(2).Infof("create disk(%s) account type(%s) rg(%s) location(%s) size(%d) tags(%s) successfully", diskParams.DiskName, skuName, diskParams.ResourceGroup, diskParams.Location, requestGiB, diskParams.Tags)
+	w.Logger().V(2).Infof("create disk(%s) account type(%s) rg(%s) location(%s) size(%d) tags(%s) successfully", diskParams.DiskName, skuName, diskParams.ResourceGroup, diskParams.Location, requestGiB, diskParams.Tags)
 
 	return &diskv1beta1.AzVolumeStatusDetail{
 		VolumeID:           diskURI,
@@ -279,12 +291,17 @@ func (c *CloudProvisioner) DeleteVolume(
 	ctx context.Context,
 	volumeID string,
 	secrets map[string]string) error {
-	if err := azureutils.IsValidDiskURI(volumeID); err != nil {
-		klog.Errorf("validateDiskURI(%s) in DeleteVolume failed with error: %v", volumeID, err)
+	var err error
+	ctx, w := workflow.New(ctx)
+	defer func() { w.Finish(err) }()
+
+	if err = azureutils.IsValidDiskURI(volumeID); err != nil {
+		w.Logger().Errorf(err, "validateDiskURI(%s) in DeleteVolume failed with error", volumeID)
 		return nil
 	}
 
-	return c.cloud.DeleteManagedDisk(ctx, volumeID)
+	err = c.cloud.DeleteManagedDisk(ctx, volumeID)
+	return err
 }
 
 func (c *CloudProvisioner) ListVolumes(
@@ -306,35 +323,47 @@ func (c *CloudProvisioner) PublishVolume(
 	volumeID string,
 	nodeID string,
 	volumeContext map[string]string) (map[string]string, error) {
-	disk, err := c.CheckDiskExists(ctx, volumeID)
+	var err error
+	ctx, w := workflow.New(ctx)
+	defer func() { w.Finish(err) }()
+
+	var disk *compute.Disk
+	disk, err = c.CheckDiskExists(ctx, volumeID)
 	if err != nil {
-		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume not found, failed with error: %v", err))
+		err = status.Errorf(codes.NotFound, "Volume not found, failed with error: %v", err)
+		return nil, err
 	}
 
 	nodeName := types.NodeName(nodeID)
-	diskName, err := azureutils.GetDiskName(volumeID)
+
+	var diskName string
+	diskName, err = azureutils.GetDiskName(volumeID)
 	if err != nil {
 		return nil, err
 	}
 
-	lun, vmState, err := c.cloud.GetDiskLun(diskName, volumeID, nodeName)
+	var lun int32
+	var vmState *string
+	lun, vmState, err = c.cloud.GetDiskLun(diskName, volumeID, nodeName)
 	if err == cloudprovider.InstanceNotFound {
-		return nil, status.Error(codes.NotFound, fmt.Sprintf("failed to get azure instance id for node %q (%v)", nodeName, err))
+		err = status.Errorf(codes.NotFound, "failed to get azure instance id for node %q: %v", nodeName, err)
+		return nil, err
 	}
 
-	klog.V(2).Infof("GetDiskLun returned: %v. Initiating attaching volume %q to node %q.", lun, volumeID, nodeName)
+	w.Logger().V(2).Infof("GetDiskLun returned: %v. Initiating attaching volume %q to node %q.", lun, volumeID, nodeName)
 
 	if err == nil {
 		if vmState != nil && strings.ToLower(*vmState) == "failed" {
-			klog.Warningf("VM(%q) is in failed state, update VM first", nodeName)
-			if err := c.cloud.UpdateVM(ctx, nodeName); err != nil {
-				return nil, fmt.Errorf("update instance %q failed with %v", nodeName, err)
+			w.Logger().Infof("VM(%q) is in failed state, update VM first", nodeName)
+			if err = c.cloud.UpdateVM(ctx, nodeName); err != nil {
+				err = fmt.Errorf("update instance %q failed with %v", nodeName, err)
+				return nil, err
 			}
 		}
 		// Volume is already attached to node.
-		klog.V(2).Infof("Attach operation is successful. volume %q is already attached to node %q at lun %d.", volumeID, nodeName, lun)
+		w.Logger().V(2).Infof("Attach operation is successful. volume %q is already attached to node %q at lun %d.", volumeID, nodeName, lun)
 	} else {
-		klog.V(2).Infof("Trying to attach volume %q to node %q.", volumeID, nodeName)
+		w.Logger().V(2).Infof("Trying to attach volume %q to node %q.", volumeID, nodeName)
 		var cachingMode compute.CachingTypes
 		if cachingMode, err = azureutils.GetCachingMode(volumeContext); err != nil {
 			return nil, err
@@ -347,10 +376,10 @@ func (c *CloudProvisioner) PublishVolume(
 
 		lun, err = c.cloud.AttachDisk(ctx, asyncAttach, diskName, volumeID, nodeName, cachingMode, disk)
 		if err != nil {
-			klog.Errorf("attach volume %q to instance %q failed with %v", volumeID, nodeName, err)
+			w.Logger().Errorf(err, "attach volume %q to instance %q failed", volumeID, nodeName)
 			return nil, err
 		}
-		klog.V(2).Infof("attach operation successful: volume %q attached to node %q.", volumeID, nodeName)
+		w.Logger().V(2).Infof("attach operation successful: volume %q attached to node %q.", volumeID, nodeName)
 	}
 
 	pvInfo := map[string]string{"LUN": strconv.Itoa(int(lun))}
@@ -361,23 +390,29 @@ func (c *CloudProvisioner) UnpublishVolume(
 	ctx context.Context,
 	volumeID string,
 	nodeID string) error {
+	var err error
+	ctx, w := workflow.New(ctx)
+	defer func() { w.Finish(err) }()
+
 	nodeName := types.NodeName(nodeID)
 
-	diskName, err := azureutils.GetDiskName(volumeID)
+	var diskName string
+	diskName, err = azureutils.GetDiskName(volumeID)
 	if err != nil {
 		return err
 	}
 
-	klog.V(2).Infof("Trying to detach volume %s from node %s", volumeID, nodeID)
+	w.Logger().V(2).Infof("Trying to detach volume %s from node %s", volumeID, nodeID)
 
-	if err := c.cloud.DetachDisk(ctx, diskName, volumeID, nodeName); err != nil {
+	if err = c.cloud.DetachDisk(ctx, diskName, volumeID, nodeName); err != nil {
 		if strings.Contains(err.Error(), azureconstants.ErrDiskNotFound) {
-			klog.Warningf("volume %s already detached from node %s", volumeID, nodeID)
+			w.Logger().Infof("volume %s already detached from node %s", volumeID, nodeID)
 		} else {
-			return status.Errorf(codes.Internal, "Could not detach volume %q from node %q: %v", volumeID, nodeID, err)
+			err = status.Errorf(codes.Internal, "could not detach volume %q from node %q: %v", volumeID, nodeID, err)
+			return err
 		}
 	}
-	klog.V(2).Infof("detach volume %s from node %s successfully", volumeID, nodeID)
+	w.Logger().V(2).Infof("detach volume %s from node %s successfully", volumeID, nodeID)
 
 	return nil
 }
@@ -387,42 +422,58 @@ func (c *CloudProvisioner) ExpandVolume(
 	volumeID string,
 	capacityRange *diskv1beta1.CapacityRange,
 	secrets map[string]string) (*diskv1beta1.AzVolumeStatusDetail, error) {
+	var err error
+	ctx, w := workflow.New(ctx)
+	defer func() { w.Finish(err) }()
+
 	requestSize := *resource.NewQuantity(capacityRange.RequiredBytes, resource.BinarySI)
 
-	if err := azureutils.IsValidDiskURI(volumeID); err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "disk URI(%s) is not valid: %v", volumeID, err)
+	if err = azureutils.IsValidDiskURI(volumeID); err != nil {
+		err = status.Errorf(codes.InvalidArgument, "disk URI(%s) is not valid: %v", volumeID, err)
+		return nil, err
 	}
 
-	diskName, err := azureutils.GetDiskName(volumeID)
+	var diskName string
+	diskName, err = azureutils.GetDiskName(volumeID)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "could not get disk name from diskURI(%s) with error(%v)", volumeID, err)
+		err = status.Errorf(codes.Internal, "could not get disk name from diskURI(%s) with error(%v)", volumeID, err)
+		return nil, err
 	}
-	resourceGroup, err := azureutils.GetResourceGroupFromURI(volumeID)
+
+	var resourceGroup string
+	resourceGroup, err = azureutils.GetResourceGroupFromURI(volumeID)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "could not get resource group from diskURI(%s) with error(%v)", volumeID, err)
+		err = status.Errorf(codes.Internal, "could not get resource group from diskURI(%s) with error(%v)", volumeID, err)
+		return nil, err
 	}
 
 	result, rerr := c.cloud.DisksClient.Get(ctx, c.cloud.SubscriptionID, resourceGroup, diskName)
 	if rerr != nil {
-		return nil, status.Errorf(codes.Internal, "could not get the disk(%s) under rg(%s) with error(%v)", diskName, resourceGroup, rerr.Error())
+		err = status.Errorf(codes.Internal, "could not get the disk(%s) under rg(%s) with error(%v)", diskName, resourceGroup, rerr.Error())
+		return nil, err
 	}
 	if result.DiskProperties.DiskSizeGB == nil {
-		return nil, status.Errorf(codes.Internal, "could not get size of the disk(%s)", diskName)
+		err = status.Errorf(codes.Internal, "could not get size of the disk(%s)", diskName)
+		return nil, err
 	}
 	oldSize := *resource.NewQuantity(int64(*result.DiskProperties.DiskSizeGB), resource.BinarySI)
 
-	klog.V(2).Infof("begin to expand azure disk(%s) with new size(%d)", volumeID, requestSize.Value())
-	newSize, err := c.cloud.ResizeDisk(ctx, volumeID, oldSize, requestSize, c.enableOnlineDiskResize)
+	w.Logger().V(2).Infof("begin to expand azure disk(%s) with new size(%d)", volumeID, requestSize.Value())
+
+	var newSize resource.Quantity
+	newSize, err = c.cloud.ResizeDisk(ctx, volumeID, oldSize, requestSize, c.enableOnlineDiskResize)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to resize disk(%s) with error(%v)", volumeID, err)
+		err = status.Errorf(codes.Internal, "failed to resize disk(%s) with error(%v)", volumeID, err)
+		return nil, err
 	}
 
 	currentSize, ok := newSize.AsInt64()
 	if !ok {
-		return nil, status.Errorf(codes.Internal, "failed to transform disk size with error(%v)", err)
+		err = status.Errorf(codes.Internal, "failed to transform disk size with error(%v)", err)
+		return nil, err
 	}
 
-	klog.V(2).Infof("expand azure disk(%s) successfully, currentSize(%d)", volumeID, currentSize)
+	w.Logger().V(2).Infof("expand azure disk(%s) successfully, currentSize(%d)", volumeID, currentSize)
 
 	return &diskv1beta1.AzVolumeStatusDetail{
 		CapacityBytes:         currentSize,

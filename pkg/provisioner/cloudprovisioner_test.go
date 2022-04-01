@@ -741,7 +741,7 @@ func TestPublishVolume(t *testing.T) {
 			description:   "[Failure] Returns error for missing VM",
 			nodeID:        missingVMName,
 			diskURI:       testDiskURI,
-			expectedError: status.Errorf(codes.NotFound, "failed to get azure instance id for node %q (%v)", missingVMName, cloudprovider.InstanceNotFound),
+			expectedError: status.Errorf(codes.NotFound, "failed to get azure instance id for node %q: %v", missingVMName, cloudprovider.InstanceNotFound),
 		},
 		{
 			description:   "[Failure] Returns error for missing disk",
