@@ -17,7 +17,7 @@ FROM k8s.gcr.io/build-image/debian-base:bullseye-v1.1.0
 RUN apt update && apt-mark unhold libcap2
 RUN clean-install util-linux e2fsprogs mount ca-certificates udev xfsprogs btrfs-progs
 # install updated packages to fix CVE issues
-RUN clean-install libgmp10 bsdutils libssl1.1 openssl libc6 libc-bin libsystemd0
+RUN clean-install libgmp10 bsdutils libssl1.1 openssl libc6 libc-bin libsystemd0 zlib1g
 
 LABEL maintainers="andyzhangx"
 LABEL description="Azure Disk CSI Driver"
