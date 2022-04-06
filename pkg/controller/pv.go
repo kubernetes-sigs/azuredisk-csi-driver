@@ -94,13 +94,10 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 		// add annotation to mark AzVolumeAttachment cleanup
 		updateFunc := func(obj interface{}) error {
 			azv := obj.(*diskv1beta1.AzVolume)
-			if azv.Annotations == nil {
-				azv.Annotations = make(map[string]string, 1)
-			}
-			azv.Annotations[consts.PreProvisionedVolumeCleanupAnnotation] = "true"
+			azv.Status.Annotations = azureutils.AddToMap(azv.Status.Annotations, consts.PreProvisionedVolumeCleanupAnnotation, "true")
 			return nil
 		}
-		if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, &azVolume, updateFunc, consts.NormalUpdateMaxNetRetry); err != nil {
+		if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, &azVolume, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
 			return reconcileReturnOnError(&pv, "delete", err, r.controllerRetryInfo)
 		}
 
@@ -135,6 +132,17 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 			}
 		}
 		return reconcileReturnOnSuccess(pv.Name, r.controllerRetryInfo)
+	}
+
+	if azVolume.Spec.PersistentVolume == "" {
+		err := azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, &azVolume, func(obj interface{}) error {
+			azVolume := obj.(*diskv1beta1.AzVolume)
+			azVolume.Spec.PersistentVolume = pv.Name
+			return nil
+		}, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRI)
+		if err != nil {
+			return reconcileReturnOnError(&pv, "update", err, r.controllerRetryInfo)
+		}
 	}
 
 	// both PV and AzVolume exist. Remove entry from retryMap and retryLocks

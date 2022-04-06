@@ -117,6 +117,14 @@ const (
 	Uncached
 )
 
+type CRIUpdateMode uint
+
+const (
+	UpdateCRI       CRIUpdateMode = 0b01
+	UpdateCRIStatus CRIUpdateMode = 0b10
+	UpdateAll       CRIUpdateMode = 0b11
+)
+
 func CreateLabelRequirements(label string, operator selection.Operator, values ...string) (*labels.Requirement, error) {
 	req, err := labels.NewRequirement(label, operator, values)
 	if err != nil {
@@ -874,7 +882,7 @@ func GetAzVolumeAttachmentState(volumeAttachmentStatus storagev1.VolumeAttachmen
 	}
 }
 
-func UpdateCRIWithRetry(ctx context.Context, informerFactory azurediskInformers.SharedInformerFactory, cachedClient client.Client, azDiskClient azDiskClientSet.Interface, obj client.Object, updateFunc func(interface{}) error, maxNetRetry int) error {
+func UpdateCRIWithRetry(ctx context.Context, informerFactory azurediskInformers.SharedInformerFactory, cachedClient client.Client, azDiskClient azDiskClientSet.Interface, obj client.Object, updateFunc func(interface{}) error, maxNetRetry int, updateMode CRIUpdateMode) error {
 	objName := obj.GetName()
 	klog.Infof("Initiating update with retry for %v (%s)", reflect.TypeOf(obj), objName)
 
@@ -927,16 +935,22 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azurediskInformers.
 
 		switch target := copyForUpdate.(type) {
 		case *diskv1beta1.AzVolume:
-			if cachedClient == nil {
+			if (updateMode&UpdateCRIStatus) != 0 && !reflect.DeepEqual(objForUpdate.(*diskv1beta1.AzVolume).Status, target.Status) {
+				if _, err = azDiskClient.DiskV1beta1().AzVolumes(target.Namespace).UpdateStatus(ctx, target, metav1.UpdateOptions{}); err != nil {
+					return err
+				}
+			}
+			if (updateMode & UpdateCRI) != 0 {
 				_, err = azDiskClient.DiskV1beta1().AzVolumes(target.Namespace).Update(ctx, target, metav1.UpdateOptions{})
-			} else {
-				err = cachedClient.Update(ctx, target)
 			}
 		case *diskv1beta1.AzVolumeAttachment:
-			if cachedClient == nil {
+			if (updateMode&UpdateCRIStatus) != 0 && !reflect.DeepEqual(objForUpdate.(*diskv1beta1.AzVolumeAttachment).Status, target.Status) {
+				if _, err = azDiskClient.DiskV1beta1().AzVolumeAttachments(target.Namespace).UpdateStatus(ctx, target, metav1.UpdateOptions{}); err != nil {
+					return err
+				}
+			}
+			if (updateMode & UpdateCRI) != 0 {
 				_, err = azDiskClient.DiskV1beta1().AzVolumeAttachments(target.Namespace).Update(ctx, target, metav1.UpdateOptions{})
-			} else {
-				err = cachedClient.Update(ctx, target)
 			}
 		}
 
@@ -1042,4 +1056,20 @@ func SleepIfThrottled(err error, sleepSec int) {
 		klog.Warningf("sleep %d more seconds, waiting for throttling complete", sleepSec)
 		time.Sleep(time.Duration(sleepSec) * time.Second)
 	}
+}
+
+func AddToMap(mmap map[string]string, key, value string) map[string]string {
+	if mmap == nil {
+		mmap = map[string]string{}
+	}
+	mmap[key] = value
+	return mmap
+}
+
+func MapContains(mmap map[string]string, key string) bool {
+	if mmap != nil {
+		_, ok := mmap[key]
+		return ok
+	}
+	return false
 }

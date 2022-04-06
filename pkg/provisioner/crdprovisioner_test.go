@@ -187,7 +187,7 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 					AccessMode: diskv1beta1.VolumeCapabilityAccessModeSingleNodeWriter,
 				},
 			},
-			parameters:    make(map[string]string),
+			parameters:    map[string]string{consts.PvNameKey: testDiskName},
 			secrets:       make(map[string]string),
 			contentSource: &diskv1beta1.ContentVolumeSource{},
 			topology:      &diskv1beta1.TopologyRequirement{},
@@ -202,7 +202,7 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 				RequiredBytes: 2,
 				LimitBytes:    2,
 			},
-			parameters: map[string]string{"location": "westus2"},
+			parameters: map[string]string{"location": "westus2", consts.PvNameKey: testDiskName},
 			secrets:    map[string]string{"test1": "No secret"},
 			contentSource: &diskv1beta1.ContentVolumeSource{
 				ContentSource:   diskv1beta1.ContentVolumeSourceTypeVolume,
@@ -223,7 +223,7 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 					AccessMode: diskv1beta1.VolumeCapabilityAccessModeSingleNodeWriter,
 				},
 			},
-			parameters:    make(map[string]string),
+			parameters:    map[string]string{consts.PvNameKey: testDiskName},
 			secrets:       make(map[string]string),
 			contentSource: &diskv1beta1.ContentVolumeSource{},
 			topology:      &diskv1beta1.TopologyRequirement{},
@@ -241,7 +241,7 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 					AccessMode: diskv1beta1.VolumeCapabilityAccessModeSingleNodeWriter,
 				},
 			},
-			parameters:    make(map[string]string),
+			parameters:    map[string]string{consts.PvNameKey: testDiskName},
 			secrets:       make(map[string]string),
 			contentSource: &diskv1beta1.ContentVolumeSource{},
 			topology:      &diskv1beta1.TopologyRequirement{},
@@ -1190,7 +1190,8 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 				context.TODO(),
 				tt.diskURI,
 				tt.nodeID,
-				tt.secrets)
+				tt.secrets,
+				consts.DemoteOrDetach)
 
 			assert.Equal(t, tt.expectedError, outputErr)
 
@@ -1305,7 +1306,7 @@ func TestCrdProvisionerExpandVolume(t *testing.T) {
 			},
 			secrets:              nil,
 			definePrependReactor: false,
-			expectedError:        status.Error(codes.Internal, fmt.Sprintf("Failed to retrieve volume id (%s), error: azvolume.disk.csi.azure.com \"%s\" not found", testDiskURI, testDiskName)),
+			expectedError:        status.Error(codes.Internal, fmt.Sprintf("failed to retrieve volume id (%s), error: azvolume.disk.csi.azure.com \"%s\" not found", testDiskURI, testDiskName)),
 		},
 	}
 

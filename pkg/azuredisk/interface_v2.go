@@ -22,6 +22,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
 type CrdProvisioner interface {
@@ -34,7 +35,7 @@ type CrdProvisioner interface {
 	PublishVolume(ctx context.Context, volumeID string, nodeID string, volumeCapability *diskv1beta1.VolumeCapability,
 		readOnly bool, secrets map[string]string, volumeContext map[string]string) (map[string]string, error)
 	WaitForAttach(ctx context.Context, volume, node string) (*diskv1beta1.AzVolumeAttachment, error)
-	UnpublishVolume(ctx context.Context, volumeID string, nodeID string, secrets map[string]string) error
+	UnpublishVolume(ctx context.Context, volumeID string, nodeID string, secrets map[string]string, mode consts.UnpublishMode) error
 	WaitForDetach(ctx context.Context, volume, node string) error
 	GetAzVolumeAttachment(ctx context.Context, volumeID string, nodeID string) (*diskv1beta1.AzVolumeAttachment, error)
 	ExpandVolume(ctx context.Context, volumeID string, capacityRange *diskv1beta1.CapacityRange, secrets map[string]string) (*diskv1beta1.AzVolumeStatusDetail, error)

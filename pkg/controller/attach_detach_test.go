@@ -110,7 +110,7 @@ func TestAttachDetachReconcile(t *testing.T) {
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAttachDetach {
 				newAttachment := testPrimaryAzVolumeAttachment0.DeepCopy()
 				newAttachment.Status.State = diskv1beta1.Attached
-				newAttachment.ObjectMeta.Annotations = map[string]string{consts.VolumeDetachRequestAnnotation: "crdProvisioner"}
+				newAttachment.Status.Annotations = map[string]string{consts.VolumeDetachRequestAnnotation: "crdProvisioner"}
 				now := metav1.Time{Time: metav1.Now().Add(-1000)}
 				newAttachment.DeletionTimestamp = &now
 
@@ -149,6 +149,7 @@ func TestAttachDetachReconcile(t *testing.T) {
 					PublishContext: map[string]string{},
 					Role:           diskv1beta1.ReplicaRole,
 				}
+				newAttachment.Labels = map[string]string{consts.RoleLabel: string(diskv1beta1.PrimaryRole)}
 				newAttachment.Spec.RequestedRole = diskv1beta1.PrimaryRole
 				newAttachment.Status.State = diskv1beta1.Attached
 
@@ -171,10 +172,6 @@ func TestAttachDetachReconcile(t *testing.T) {
 				require.NotNil(t, azVolumeAttachment)
 				require.NotNil(t, azVolumeAttachment.Status.Detail)
 				require.Equal(t, azVolumeAttachment.Status.Detail.Role, diskv1beta1.PrimaryRole)
-
-				// check role label
-				require.Contains(t, azVolumeAttachment.Labels, consts.RoleLabel)
-				require.Equal(t, string(diskv1beta1.PrimaryRole), azVolumeAttachment.Labels[consts.RoleLabel])
 			},
 		},
 	}
@@ -244,12 +241,12 @@ func TestAttachDetachRecover(t *testing.T) {
 				azVolumeAttachment, localErr := controller.controllerSharedState.azClient.DiskV1beta1().AzVolumeAttachments(testNamespace).Get(context.TODO(), testPrimaryAzVolumeAttachment0Name, metav1.GetOptions{})
 				require.NoError(t, localErr)
 				require.Equal(t, azVolumeAttachment.Status.State, diskv1beta1.AttachmentPending)
-				require.Contains(t, azVolumeAttachment.ObjectMeta.Annotations, consts.RecoverAnnotation)
+				require.Contains(t, azVolumeAttachment.Status.Annotations, consts.RecoverAnnotation)
 
 				azVolumeAttachment, localErr = controller.controllerSharedState.azClient.DiskV1beta1().AzVolumeAttachments(testNamespace).Get(context.TODO(), testPrimaryAzVolumeAttachment1Name, metav1.GetOptions{})
 				require.NoError(t, localErr)
 				require.Equal(t, azVolumeAttachment.Status.State, diskv1beta1.Attached)
-				require.Contains(t, azVolumeAttachment.ObjectMeta.Annotations, consts.RecoverAnnotation)
+				require.Contains(t, azVolumeAttachment.Status.Annotations, consts.RecoverAnnotation)
 			},
 		},
 	}

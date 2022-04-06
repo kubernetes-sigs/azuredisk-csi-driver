@@ -35,7 +35,7 @@ fi
 
 echo "Uninstalling Azure Disk CSI driver, version: $ver ..."
 
-if [[ $ver == "v2"* ]]; then
+if [[ $ver == *"v2"* ]]; then
   kubectl delete -f $repo/csi-azuredisk-scheduler-extender.yaml --ignore-not-found
   kubectl delete -f $repo/rbac-csi-azuredisk-scheduler-extender.yaml --ignore-not-found
   kubectl delete -f $repo/disk.csi.azure.com_azdrivernodes.yaml --ignore-not-found

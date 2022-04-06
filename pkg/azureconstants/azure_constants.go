@@ -140,6 +140,13 @@ const (
 	ReplicaAttachmentSuccessEvent = "ReplicaAttachmentSucceeded"
 )
 
+type UnpublishMode int
+
+const (
+	Detach UnpublishMode = iota
+	DemoteOrDetach
+)
+
 var (
 	// ManagedDiskPath is described here: https://docs.microsoft.com/en-us/rest/api/compute/disks/createorupdate#create-a-managed-disk-from-an-existing-managed-disk-in-the-same-or-different-subscription.
 	ManagedDiskPath   = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s"

@@ -35,6 +35,8 @@ import (
 	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/cloud-provider-azure/pkg/metrics"
+
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
 // CreateVolume provisions an azure disk
@@ -280,7 +282,7 @@ func (d *DriverV2) ControllerUnpublishVolume(ctx context.Context, req *csi.Contr
 		mc.ObserveOperationWithResult(isOperationSucceeded, diskURI, nodeName)
 	}()
 
-	err := d.crdProvisioner.UnpublishVolume(ctx, diskURI, nodeID, req.GetSecrets())
+	err := d.crdProvisioner.UnpublishVolume(ctx, diskURI, nodeID, req.GetSecrets(), consts.DemoteOrDetach)
 
 	if err != nil {
 		return nil, err
