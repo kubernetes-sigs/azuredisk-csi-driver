@@ -265,7 +265,7 @@ func (c *controllerCommon) attachDiskBatchToNode(ctx context.Context, subscripti
 		async = async || disk.async
 	}
 
-	_, err := c.cloud.SetDiskLun(nodeName, disksToAttach[0].diskURI, diskMap)
+	err := c.cloud.SetDiskLun(nodeName, diskMap)
 	if err != nil {
 		return nil, err
 	}
@@ -442,70 +442,67 @@ func (c *controllerCommon) GetDiskLun(diskName, diskURI string, nodeName types.N
 	return -1, provisioningState, fmt.Errorf("%s for disk %s", consts.CannotFindDiskLUN, diskName)
 }
 
-// SetDiskLun find unused luns and allocate lun for every disk in diskMap.
-// Return lun of diskURI, -1 if all luns are used.
-func (c *controllerCommon) SetDiskLun(nodeName types.NodeName, diskURI string, diskMap map[string]*AttachDiskOptions) (int32, error) {
+// SetDiskLun find unused luns and allocate lun for every disk in disksPendingAttach map.
+// Return err if not enough luns are found.
+func (c *controllerCommon) SetDiskLun(nodeName types.NodeName, disksPendingAttach map[string]*AttachDiskOptions) error {
 	disks, _, err := c.getNodeDataDisks(nodeName, azcache.CacheReadTypeDefault)
 	if err != nil {
 		klog.Errorf("error of getting data disks for node %s: %v", nodeName, err)
-		return -1, err
+		return err
 	}
 
-	lun := int32(-1)
-	_, isDiskInMap := diskMap[diskURI]
-	used := make([]bool, maxLUN)
+	allLuns := make([]bool, maxLUN)
+	uriToLun := make(map[string]int32, len(disks))
 	for _, disk := range disks {
-		if disk.Lun != nil {
-			used[*disk.Lun] = true
-			if !isDiskInMap {
-				// find lun of diskURI since diskURI is not in diskMap
-				if disk.ManagedDisk != nil && strings.EqualFold(*disk.ManagedDisk.ID, diskURI) {
-					lun = *disk.Lun
-				}
+		if disk.Lun != nil && *disk.Lun >= 0 && *disk.Lun < maxLUN {
+			allLuns[*disk.Lun] = true
+			if disk.ManagedDisk != nil {
+				uriToLun[*disk.ManagedDisk.ID] = *disk.Lun
 			}
 		}
 	}
-	if !isDiskInMap && lun < 0 {
-		return -1, fmt.Errorf("could not find disk(%s) in current disk list(len: %d) nor in diskMap(%v)", diskURI, len(disks), diskMap)
-	}
-	if len(diskMap) == 0 {
+	if len(disksPendingAttach) == 0 {
 		// attach disk request is empty, return directly
-		return lun, nil
+		return nil
 	}
 
-	// allocate lun for every disk in diskMap
-	var diskLuns []int32
-	count := 0
-	for k, v := range used {
-		if !v {
-			diskLuns = append(diskLuns, int32(k))
-			count++
-			if count >= len(diskMap) {
+	// allocate lun for every disk in disksPendingAttach
+	var availableDiskLuns []int32
+	freeLunsCount := 0
+	for lun, inUse := range allLuns {
+		if !inUse {
+			availableDiskLuns = append(availableDiskLuns, int32(lun))
+			freeLunsCount++
+			// found enough luns for to assign to all pending disks
+			if freeLunsCount >= len(disksPendingAttach) {
 				break
 			}
 		}
 	}
 
-	if len(diskLuns) != len(diskMap) {
-		return -1, fmt.Errorf("could not find enough disk luns(current: %d) for diskMap(%v, len=%d), diskURI(%s)",
-			len(diskLuns), diskMap, len(diskMap), diskURI)
+	if len(availableDiskLuns) < len(disksPendingAttach) {
+		return fmt.Errorf("could not find enough disk luns(current: %d) for disksPendingAttach(%v, len=%d)",
+			len(availableDiskLuns), disksPendingAttach, len(disksPendingAttach))
 	}
 
-	count = 0
-	for uri, opt := range diskMap {
+	count := 0
+	for uri, opt := range disksPendingAttach {
 		if opt == nil {
-			return -1, fmt.Errorf("unexpected nil pointer in diskMap(%v), diskURI(%s)", diskMap, diskURI)
+			return fmt.Errorf("unexpected nil pointer in disksPendingAttach(%v)", disksPendingAttach)
 		}
-		if strings.EqualFold(uri, diskURI) {
-			lun = diskLuns[count]
+		// disk already exists and has assigned lun
+		lun, exists := uriToLun[uri]
+		if exists {
+			opt.lun = lun
 		}
-		opt.lun = diskLuns[count]
+		opt.lun = availableDiskLuns[count]
 		count++
 	}
-	if lun < 0 {
-		return lun, fmt.Errorf("could not find lun of diskURI(%s), diskMap(%v)", diskURI, diskMap)
+
+	if count <= 0 {
+		return fmt.Errorf("could not find lun of, disksPendingAttach(%v)", disksPendingAttach)
 	}
-	return lun, nil
+	return nil
 }
 
 // DisksAreAttached checks if a list of volumes are attached to the node with the specified NodeName.

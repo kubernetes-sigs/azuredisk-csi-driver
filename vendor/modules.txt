@@ -1255,7 +1255,7 @@ k8s.io/utils/trace
 ## explicit; go 1.17
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/client
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/proto/client
-# sigs.k8s.io/cloud-provider-azure v0.7.4 => github.com/edreed/cloud-provider-azure v0.0.0-20220323183235-ab430b8b79e6
+# sigs.k8s.io/cloud-provider-azure v0.7.4 => github.com/edreed/cloud-provider-azure v0.0.0-20220406225159-b547d8ec990c
 ## explicit; go 1.17
 sigs.k8s.io/cloud-provider-azure/pkg/auth
 sigs.k8s.io/cloud-provider-azure/pkg/azureclients
@@ -1399,4 +1399,4 @@ sigs.k8s.io/yaml
 # k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.23.3
 # k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.23.3
 # k8s.io/sample-controller => k8s.io/sample-controller v0.23.3
-# sigs.k8s.io/cloud-provider-azure => github.com/edreed/cloud-provider-azure v0.0.0-20220323183235-ab430b8b79e6
+# sigs.k8s.io/cloud-provider-azure => github.com/edreed/cloud-provider-azure v0.0.0-20220406225159-b547d8ec990c
