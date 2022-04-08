@@ -7,6 +7,7 @@ require (
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/spf13/cobra v1.4.0
 	github.com/spf13/viper v1.10.1
+	k8s.io/apimachinery v0.23.5
 	k8s.io/client-go v0.23.3
 	sigs.k8s.io/azuredisk-csi-driver v1.14.1-0.20220406220237-37935413efe1
 )
@@ -48,7 +49,6 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
 	k8s.io/api v0.23.3 // indirect
-	k8s.io/apimachinery v0.23.5 // indirect
 	k8s.io/klog/v2 v2.40.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20211115234752-e816edb12b65 // indirect
 	k8s.io/utils v0.0.0-20220210201930-3a6ce19ff2f9 // indirect
