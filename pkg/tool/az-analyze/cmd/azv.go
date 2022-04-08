@@ -16,13 +16,23 @@ limitations under the License.
 package cmd
 
 import (
+	"context"
+	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
+
 	//"reflect"
 
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/util/homedir"
 	v1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	//azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	//consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
 // azvCmd represents the azv command
@@ -77,6 +87,44 @@ type AzvResource struct {
 
 func GetAzVolumesByPod(podNames []string) []AzvResource {
 	// implemetation
+	var kubeconfig *string
+	if home := homedir.HomeDir(); home != "" {
+		kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
+	} else {
+		kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
+	}
+	flag.Parse()
+
+	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
+	if  err != nil {
+		panic(err.Error())
+	}
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		panic(err.Error())
+	} else {
+		pods, err := clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+		if err != nil {
+			panic(err.Error())
+		}
+		fmt.Println(len(pods.Items))
+	}
+
+
+
+	// clientset, err := azDiskClientSet.NewForConfig(config)
+	// if err != nil {
+	// 	panic(err.Error())
+	// } else {
+	// 	azVolumeset, err := clientset.DiskV1beta1().AzVolumeAttachments("azure-disk-csi").List(context.Background(), metav1.ListOptions{})
+	// 	if err != nil {
+	// 		panic(err.Error())
+			
+	// 	}
+	// 	fmt.Println(len(azVolumeset.Items))
+	// }
+
 	var result []AzvResource
 	result = append(result, AzvResource {
 		ResourceType: "example-pod-123", 
