@@ -1,4 +1,4 @@
-# Shared disk(Multi-node ReadWrite)
+# Shared disk
 
 ## Feature Status: GA
 
