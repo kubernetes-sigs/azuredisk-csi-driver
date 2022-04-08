@@ -17,10 +17,13 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
-	v1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
+	v1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 )
 
 // azvaCmd represents the azva command
@@ -34,37 +37,39 @@ Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
+		numFlag := cmd.Flags().NFlag()
+		
+		// typesFlag := []string{"pod", "node", "zone"}
+		// var valuesFlag []string
 
+		// for _, t := range typesFlag {
+		// 	value, _ := cmd.Flags().GetString(t)
+		// 	valuesFlag = append(valuesFlag, value)
+		// }
 		pod, _ := cmd.Flags().GetString("pod")
 		node, _ := cmd.Flags().GetString("node")
 		zone, _ := cmd.Flags().GetString("zone")
 		
-		flags := []bool{pod != "", node != "", zone != ""}
-
-		sum := 0
-		for _, f := range flags {
-			sum += btoi(f)
-		}
-		
 		var azva AzvaResource
 
-		if sum > 1 {
+		if numFlag > 1 {
 			fmt.Printf("only one of the flags is allowed.\n" + "Run 'az-analyze --help' for usage.\n")
 		} else {
-			if sum == 0 {
-				// display all?
+			if numFlag == 0 {
+				fmt.Println("no flags")
+				// the same as  kubectl get AzVolumeAttachment
 			} else if pod != "" {
 				azva = GetAzVolumeAttachementsByPod(pod)
 				// display
-				fmt.Println(azva)
+				displayAzva(azva, pod)
 			} else if node != "" {
 				azva = GetAzVolumeAttachementsByNode(node)
 				// display
-				fmt.Println(azva)
+				displayAzva(azva, node)
 			} else if zone != "" {
 				azva = GetAzVolumeAttachementsByZone(zone)
 				// display
-				fmt.Println(azva)
+				displayAzva(azva,zone)
 			} else {
 				fmt.Printf("invalid flag name\n" + "Run 'az-analyze --help' for usage.\n")
 			}
@@ -90,57 +95,61 @@ func init() {
 }
 
 type AzvaResource struct {
-	resourceType string
-	namespace string
-	name string
-	age time.Duration
-	requestRole v1beta1.Role
-	role v1beta1.Role
-	state v1beta1.AzVolumeAttachmentAttachmentState
+	ResourceType string
+	Namespace string
+	Name string
+	Age time.Duration
+	RequestRole v1beta1.Role
+	Role v1beta1.Role
+	State v1beta1.AzVolumeAttachmentAttachmentState
 }
 
 func GetAzVolumeAttachementsByPod(podName string) AzvaResource {
 	// implemetation
 
 	return AzvaResource {
-		resourceType: "k8s-agentpool1-47843266-vmss000004",
-		namespace: "azure-disk-csi",
-		name: "pvc-b2578f0d-e99b-49d9-b1da-66ad771e073b-k8s-agentpool1-47843266-vmss000004-attachment",
-		age: time.Hour,
-		requestRole: v1beta1.PrimaryRole,
-		role: v1beta1.PrimaryRole,
-		state: v1beta1.Attached }
+		ResourceType: "k8s-agentpool1-47843266-vmss000004",
+		Namespace: "azure-disk-csi",
+		Name: "pvc-b2578f0d-e99b-49d9-b1da-66ad771e073b-k8s-agentpool1-47843266-vmss000004-attachment",
+		Age: time.Hour,
+		RequestRole: v1beta1.PrimaryRole,
+		Role: v1beta1.PrimaryRole,
+		State: v1beta1.Attached }
 }
 
 func GetAzVolumeAttachementsByNode(nodeName string) AzvaResource {
 	// implemetation
 
 	return AzvaResource {
-		resourceType: "k8s-agentpool1-47843266-vmss000004",
-		namespace: "azure-disk-csi",
-		name: "pvc-b2578f0d-e99b-49d9-b1da-66ad771e073b-k8s-agentpool1-47843266-vmss000004-attachment",
-		age: time.Hour,
-		requestRole: v1beta1.PrimaryRole,
-		role: v1beta1.PrimaryRole,
-		state: v1beta1.Attached }
+		ResourceType: "k8s-agentpool1-47843266-vmss000004",
+		Namespace: "azure-disk-csi",
+		Name: "pvc-b2578f0d-e99b-49d9-b1da-66ad771e073b-k8s-agentpool1-47843266-vmss000004-attachment",
+		Age: time.Hour,
+		RequestRole: v1beta1.PrimaryRole,
+		Role: v1beta1.PrimaryRole,
+		State: v1beta1.Attached }
 }
 
 func GetAzVolumeAttachementsByZone(nodeName string) AzvaResource {
 	// implemetation
 
 	return AzvaResource {
-		resourceType: "k8s-agentpool1-47843266-vmss000004",
-		namespace: "azure-disk-csi",
-		name: "pvc-b2578f0d-e99b-49d9-b1da-66ad771e073b-k8s-agentpool1-47843266-vmss000004-attachment",
-		age: time.Hour,
-		requestRole: v1beta1.PrimaryRole,
-		role: v1beta1.PrimaryRole,
-		state: v1beta1.Attached }
+		ResourceType: "k8s-agentpool1-47843266-vmss000004",
+		Namespace: "azure-disk-csi",
+		Name: "pvc-b2578f0d-e99b-49d9-b1da-66ad771e073b-k8s-agentpool1-47843266-vmss000004-attachment",
+		Age: time.Hour,
+		RequestRole: v1beta1.PrimaryRole,
+		Role: v1beta1.PrimaryRole,
+		State: v1beta1.Attached }
 }
 
-func btoi(b bool) int {
-	if b {
-		return 1
-	}
-	return 0
+func displayAzva(azva AzvaResource, typeName string) {
+	table := tablewriter.NewWriter(os.Stdout)
+	table.SetHeader([]string{strings.ToUpper(typeName) + "NAME", "NAMESPACE", "NAME", "AGE", "REQUESTEDROLE", "ROLE", "STATE"})
+	table.Append([]string{azva.ResourceType, azva.Namespace, azva.Name, azva.Age.String()[:2], string(azva.RequestRole),string(azva.Role), string(azva.State)})
+	// for _, azva := range result {
+	// 	table.Append([]string{azva.ResourceType, azva.Namespace, azva.Name, string(azva.Age), string(azva.RequestRole),string(azva.Role), string(azva.State)})
+	// }
+	
+	table.Render()
 }

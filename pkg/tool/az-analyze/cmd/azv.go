@@ -17,9 +17,12 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+	//"reflect"
 
-	v1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
+	v1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 )
 
 // azvCmd represents the azv command
@@ -33,15 +36,19 @@ This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		pod, _ := cmd.Flags().GetString("pod")
+		var podNames []string
+		var result []AzvResource
 
-		var azv AzvResource
-		if pod == "" {
-			azv = GetAzVolumesByPod(pod)
-			// display
-			fmt.Println(azv)
+		if pod != "" {
+			podNames = append(podNames, pod)
+			result = GetAzVolumesByPod(podNames)	
 		} else {
 			// list all pods
+			fmt.Println("all pods")
 		}
+
+		// display
+		displayAzv(result)
 	},
 }
 
@@ -61,20 +68,38 @@ func init() {
 }
 
 type AzvResource struct {
-	resourceType string
-	namespace string 
-	name string
-	state v1beta1.AzVolumeState
-	phase v1beta1.AzVolumePhase
+	ResourceType string
+	Namespace string 
+	Name string
+	State v1beta1.AzVolumeState
+	Phase v1beta1.AzVolumePhase
 }
 
-func GetAzVolumesByPod(podName string) AzvResource {
+func GetAzVolumesByPod(podNames []string) []AzvResource {
 	// implemetation
+	var result []AzvResource
+	result = append(result, AzvResource {
+		ResourceType: "example-pod-123", 
+		Namespace: "azure-disk-csi",
+		Name: "pvc-b2578f0d-e99b-49d9-b1da-66ad771e073b",
+		State: v1beta1.VolumeCreated,
+		Phase: v1beta1.VolumeBound })
 
-	return AzvResource {
-		resourceType: "example-pod-123", 
-		namespace: "azure-disk-csi",
-		name: "pvc-b2578f0d-e99b-49d9-b1da-66ad771e073b",
-		state: v1beta1.VolumeCreated,
-		phase: v1beta1.VolumeBound }
+	return result
+}
+
+func displayAzv(result []AzvResource) {
+	table := tablewriter.NewWriter(os.Stdout)
+	table.SetHeader([]string{"PODNAME", "NAMESPACE", "NAME", "STATE", "PHASE"})
+	// var row []string
+	// v := reflect.ValueOf(azv)
+
+	// for i := 0; i < v.NumField(); i++ {
+	// 	row = append(row, v.Field(i).Interface())
+	// }
+	for _, azv := range result {
+		table.Append([]string{azv.ResourceType, azv.Namespace, azv.Name,string(azv.State), string(azv.Phase)})
+	}
+	
+	table.Render()
 }
