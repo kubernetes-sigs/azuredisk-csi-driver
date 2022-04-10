@@ -16,3 +16,4 @@ DriverInfo:
         nodeExpansion: false
         volumeLimits: true
         snapshotDataSource: true
+        pvcDataSource: true
