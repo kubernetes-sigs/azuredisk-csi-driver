@@ -26,11 +26,11 @@ import (
 
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
-	"k8s.io/client-go/kubernetes"
+	//"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
 	v1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
-	//azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	//consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
@@ -100,30 +100,30 @@ func GetAzVolumesByPod(podNames []string) []AzvResource {
 		panic(err.Error())
 	}
 
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		panic(err.Error())
-	} else {
-		pods, err := clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
-		if err != nil {
-			panic(err.Error())
-		}
-		fmt.Println(len(pods.Items))
-	}
-
-
-
-	// clientset, err := azDiskClientSet.NewForConfig(config)
+	// clientset, err := kubernetes.NewForConfig(config)
 	// if err != nil {
 	// 	panic(err.Error())
 	// } else {
-	// 	azVolumeset, err := clientset.DiskV1beta1().AzVolumeAttachments("azure-disk-csi").List(context.Background(), metav1.ListOptions{})
+	// 	pods, err := clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 	// 	if err != nil {
 	// 		panic(err.Error())
-			
 	// 	}
-	// 	fmt.Println(len(azVolumeset.Items))
+	// 	fmt.Println(len(pods.Items))
 	// }
+
+
+
+	clientset, err := azDiskClientSet.NewForConfig(config)
+	if err != nil {
+		panic(err.Error())
+	} else {
+		azVolumeset, err := clientset.DiskV1beta1().AzVolumeAttachments("azure-disk-csi").List(context.Background(), metav1.ListOptions{})
+		if err != nil {
+			panic(err.Error())
+			
+		}
+		fmt.Println(len(azVolumeset.Items))
+	}
 
 	var result []AzvResource
 	result = append(result, AzvResource {

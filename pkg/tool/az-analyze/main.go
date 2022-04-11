@@ -15,7 +15,7 @@ limitations under the License.
 */
 package main
 
-import "az-analyze/cmd"
+import "sigs.k8s.io/azuredisk-csi-driver/pkg/tool/az-analyze/cmd"
 
 func main() {
   cmd.Execute()
