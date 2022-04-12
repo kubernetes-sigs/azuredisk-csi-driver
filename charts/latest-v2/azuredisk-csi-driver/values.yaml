@@ -63,7 +63,7 @@ controller:
   livenessProbe:
     healthPort: 29602
   runOnMaster: false
-  disableAvailabilitySetNodes: true
+  disableAvailabilitySetNodes: false
   provisionerWorkerThreads: 40
   attacherWorkerThreads: 500
   logLevel: 5
@@ -72,6 +72,9 @@ controller:
       operator: "Exists"
       effect: "NoSchedule"
     - key: "node-role.kubernetes.io/controlplane"
+      operator: "Exists"
+      effect: "NoSchedule"
+    - key: "node-role.kubernetes.io/control-plane"
       operator: "Exists"
       effect: "NoSchedule"
   hostNetwork: true # this setting could be disabled if controller does not depend on MSI setting
@@ -117,6 +120,7 @@ controller:
 node:
   cloudConfigSecretName: azure-cloud-provider
   cloudConfigSecretNamespace: kube-system
+  supportZone: true
   allowEmptyCloudConfig: true
   maxUnavailable: 1
   metrics:
@@ -178,6 +182,7 @@ driver:
   volumeAttachLimit: -1
   customUserAgent: ""
   userAgentSuffix: "OSS-helm"
+  azureGoSDKLogLevel: "" # available values: ""(no logs), DEBUG, INFO, WARNING, ERROR
 
 linux:
   enabled: true
@@ -188,6 +193,7 @@ linux:
   tolerations:
     - operator: "Exists"
   hostNetwork: true # this setting could be disabled if perfProfile is `none`
+  getNodeInfoFromLabels: false # get node info from node labels instead of IMDS
   podLabels: {}
   nodeAffinity:
     requiredDuringSchedulingIgnoredDuringExecution:
@@ -221,6 +227,7 @@ windows:
   enabled: true
   dsName: csi-azuredisk-node-win # daemonset name
   kubelet: 'C:\var\lib\kubelet'
+  getNodeInfoFromLabels: false # get node info from node labels instead of IMDS
   tolerations:
     - key: "node.kubernetes.io/os"
       operator: "Exists"
@@ -253,6 +260,7 @@ windows:
       requests:
         cpu: 10m
         memory: 20Mi
+  useHostProcessContainers: false
 
 cloud: AzurePublicCloud
 

@@ -66,6 +66,7 @@ func newFakeDriverV2(t *testing.T) (*fakeDriverV2, error) {
 	driver.objectNamespace = fakeObjNamespace
 
 	driver.VolumeAttachLimit = -1
+	driver.supportZone = true
 	driver.ioHandler = azureutils.NewFakeIOHandler()
 	driver.hostUtil = azureutils.NewFakeHostUtil()
 	driver.useCSIProxyGAInterface = true
@@ -161,6 +162,7 @@ func (d *fakeDriverV2) checkDiskExists(ctx context.Context, diskURI string) (*co
 }
 
 func (d *fakeDriverV2) setMounter(mounter *mount.SafeFormatAndMount) {
+	d.nodeProvisioner.(*provisioner.FakeNodeProvisioner).SetMounter(mounter)
 }
 
 func (d *fakeDriverV2) setPathIsDeviceResult(path string, isDevice bool, err error) {
@@ -189,4 +191,14 @@ func isTestingDriverV2() bool {
 func (d *fakeDriverV2) setPerfOptimizationEnabled(enabled bool) {
 	d.perfOptimizationEnabled = enabled
 	d.cloudProvisioner.(*provisioner.FakeCloudProvisioner).SetPerfOptimizationEnabled(enabled)
+}
+
+func (d *fakeDriverV2) GetSourceDiskSize(ctx context.Context, subsID, resourceGroup, diskName string, curDepth, maxDepth int) (*int32, error) {
+	var returnVal int32 = 0
+	return &returnVal, nil
+}
+
+func (d *fakeDriverV2) getSnapshotByID(ctx context.Context, subsID, resourceGroup, snapshotID, sourceVolumeID string) (*csi.Snapshot, error) {
+	snapshotVal := csi.Snapshot{}
+	return &snapshotVal, nil
 }

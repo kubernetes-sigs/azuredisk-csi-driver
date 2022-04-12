@@ -266,9 +266,9 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 					{
 						VolumeID:  volumeID,
 						ClaimSize: diskSize,
-						VolumeMount: resources.VolumeMountDetails{
-							NameGenerate:      "test-shared-volume-",
-							MountPathGenerate: "/dev/shared-",
+						VolumeDevice: resources.VolumeDeviceDetails{
+							NameGenerate: "test-volume-",
+							DevicePath:   "/dev/e2e-test",
 						},
 						VolumeMode:       resources.Block,
 						VolumeAccessMode: v1.ReadWriteMany,
@@ -286,14 +286,14 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 				podCheck.Cmd = []string{
 					"sh",
 					"-c",
-					"(stat /dev/shared-1 > /dev/null) && echo \"VOLUME ATTACHED\"",
+					"(stat /dev/e2e-test > /dev/null) && echo \"VOLUME ATTACHED\"",
 				}
 			} else {
 				podCheck.Cmd = []string{
 					"powershell",
 					"-NoLogo",
 					"-Command",
-					"if (Test-Path c:\\dev\\shared-1) { \"VOLUME ATTACHED\" | Out-Host }",
+					"if (Test-Path c:\\dev\\e2e-test) { \"VOLUME ATTACHED\" | Out-Host }",
 				}
 			}
 
@@ -337,11 +337,12 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 						{
 							VolumeID:  volumeID,
 							ClaimSize: diskSize,
-							VolumeMount: resources.VolumeMountDetails{
-								NameGenerate:      "test-volume-",
-								MountPathGenerate: "/mnt/test-",
+							VolumeDevice: resources.VolumeDeviceDetails{
+								NameGenerate: "test-volume-",
+								DevicePath:   "/dev/e2e-test",
 							},
 							VolumeAccessMode: v1.ReadWriteOnce,
+							VolumeMode:       resources.Block,
 						},
 					},
 					IsWindows: testconsts.IsWindowsCluster,

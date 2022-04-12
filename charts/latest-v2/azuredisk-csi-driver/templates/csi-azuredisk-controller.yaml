@@ -51,6 +51,7 @@ spec:
             - "--v=2"
             - "--timeout=15s"
             - "--leader-election"
+            - "--leader-election-namespace={{ .Release.Namespace }}"
             - "--worker-threads={{ .Values.controller.provisionerWorkerThreads }}"
             - "--extra-create-metadata=true"
             - "--strict-topology=true"
@@ -72,6 +73,7 @@ spec:
             - "-csi-address=$(ADDRESS)"
             - "-timeout=600s"
             - "-leader-election"
+            - "--leader-election-namespace={{ .Release.Namespace }}"
             - "-worker-threads={{ .Values.controller.attacherWorkerThreads }}"
           env:
             - name: ADDRESS
@@ -89,6 +91,7 @@ spec:
           args:
             - "-csi-address=$(ADDRESS)"
             - "-leader-election"
+            - "--leader-election-namespace={{ .Release.Namespace }}"
             - "-v=2"
           env:
             - name: ADDRESS
@@ -107,8 +110,10 @@ spec:
             - "-csi-address=$(ADDRESS)"
             - "-v=2"
             - "-leader-election"
+            - "--leader-election-namespace={{ .Release.Namespace }}"
             - '-handle-volume-inuse-error=false'
-            - "-timeout=60s"
+            - '-feature-gates=RecoverVolumeExpansionFailure=true'
+            - "-timeout=240s"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -175,6 +180,8 @@ spec:
                   optional: true
             - name: CSI_ENDPOINT
               value: unix:///csi/csi.sock
+            - name: AZURE_GO_SDK_LOG_LEVEL
+              value: {{ .Values.driver.azureGoSDKLogLevel }}
             {{- if eq .Values.cloud "AzureStackCloud" }}
             - name: AZURE_ENVIRONMENT_FILEPATH
               value: /etc/kubernetes/azurestackcloud.json

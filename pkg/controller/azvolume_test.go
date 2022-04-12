@@ -180,7 +180,7 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAzVolume {
 				azVolume := testAzVolume0.DeepCopy()
 
-				azVolume.Annotations = map[string]string{
+				azVolume.Status.Annotations = map[string]string{
 					consts.VolumeDeleteRequestAnnotation: "cloud-delete-volume",
 				}
 				azVolume.Finalizers = []string{consts.AzVolumeFinalizer}
@@ -221,7 +221,7 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAzVolume {
 				azVolume := testAzVolume0.DeepCopy()
 
-				azVolume.Annotations = map[string]string{
+				azVolume.Status.Annotations = map[string]string{
 					consts.VolumeDeleteRequestAnnotation: "cloud-delete-volume",
 				}
 				azVolume.Finalizers = []string{consts.AzVolumeFinalizer}
@@ -326,12 +326,12 @@ func TestAzVolumeControllerRecover(t *testing.T) {
 				azVolume, localErr := controller.controllerSharedState.azClient.DiskV1beta1().AzVolumes(testNamespace).Get(context.TODO(), testPersistentVolume0Name, metav1.GetOptions{})
 				require.NoError(t, localErr)
 				require.Equal(t, azVolume.Status.State, diskv1beta1.VolumeOperationPending)
-				require.Contains(t, azVolume.ObjectMeta.Annotations, consts.RecoverAnnotation)
+				require.Contains(t, azVolume.Status.Annotations, consts.RecoverAnnotation)
 
 				azVolume, localErr = controller.controllerSharedState.azClient.DiskV1beta1().AzVolumes(testNamespace).Get(context.TODO(), testPersistentVolume1Name, metav1.GetOptions{})
 				require.NoError(t, localErr)
 				require.Equal(t, azVolume.Status.State, diskv1beta1.VolumeCreated)
-				require.Contains(t, azVolume.ObjectMeta.Annotations, consts.RecoverAnnotation)
+				require.Contains(t, azVolume.Status.Annotations, consts.RecoverAnnotation)
 			},
 		},
 	}

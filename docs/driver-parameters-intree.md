@@ -8,7 +8,7 @@ Name | Meaning | Available Value | Mandatory | Default value
 --- | --- | --- | --- | ---
 skuName | azure disk storage account type (alias: `storageAccountType`)| `Standard_LRS`, `Premium_LRS`, `StandardSSD_LRS`, `UltraSSD_LRS` | No | `StandardSSD_LRS`
 kind | managed or unmanaged(blob based) disk | `managed` (`dedicated`, `shared` are deprecated) | No | `managed`
-fsType | File System Type | `ext4`, `ext3`, `ext2`, `xfs` | No | `ext4`
+fsType | File System Type | `ext4`, `ext3`, `ext2`, `xfs`on Linux, `ntfs` on Windows | No | `ext4` on Linux, `ntfs` on Windows
 cachingMode | [Azure Data Disk Host Cache Setting](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/premium-storage-performance#disk-caching) | `None`, `ReadOnly`, `ReadWrite` | No | `ReadOnly`
 storageAccount | specify the storage account name in which azure disk will be created | STORAGE_ACCOUNT_NAME | No | if empty, driver will find a suitable storage account that matches `skuName` in the same resource group as current k8s cluster
 location | specify the Azure location in which azure disk will be created | `eastus`, `westus`, etc. | No | if empty, driver will use the same location name as current k8s cluster
@@ -35,6 +35,6 @@ Name | Meaning | Available Value | Mandatory | Default value
 --- | --- | --- | --- | ---
 diskName | disk name | | Yes |
 diskName | disk resource ID | /subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id} | Yes |
-fsType | File System Type | `ext4`, `ext3`, `ext2`, `xfs` | No | `ext4`
+fsType | File System Type | `ext4`, `ext3`, `ext2`, `xfs`on Linux, `ntfs` on Windows | No | `ext4` on Linux, `ntfs` on Windows
 cachingMode | [Azure Data Disk Host Cache Setting](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/premium-storage-performance#disk-caching) | `None`, `ReadOnly`, `ReadWrite` | No | `ReadOnly`
 readOnly | file system read only or not  | `true`, `false` | No | `false`

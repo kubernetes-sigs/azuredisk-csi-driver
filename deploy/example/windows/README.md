@@ -1,7 +1,6 @@
 # CSI driver on Windows
 
-## Feature Status: Beta
-Refer to [Windows-CSI-Support](https://github.com/kubernetes/enhancements/blob/master/keps/sig-windows/20190714-windows-csi-support.md) for more details.
+Refer to [Windows-CSI-Support](https://github.com/kubernetes/enhancements/tree/master/keps/sig-windows/1122-windows-csi-support) for more details.
 
 ## Prerequisite
 - [Install CSI-Proxy on Windows Node](https://github.com/Azure/aks-engine/blob/master/docs/topics/csi-proxy-windows.md)
@@ -17,7 +16,10 @@ kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi
 kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/windows/statefulset.yaml
 ```
 
-#### enter pod container to do validation
+#### verify file system inside pod
+
+<details>
+ 
 ```console
 # kubectl exec -it busybox-azuredisk-0 cmd
 Microsoft Windows [Version 10.0.17763.1098]
@@ -42,3 +44,5 @@ c:\mnt\azuredisk>cat data.txt
 2020-05-31 12:41:02Z
 ```
 In the above example, there is a `c:\mnt\azuredisk` directory mounted as `NTFS` filesystem.
+ 
+</details>

@@ -523,7 +523,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 					},
 					VolumeAccessMode: v1.ReadWriteOnce,
 				},
-			}, []string{}, isMultiZone),
+			}, t.allowedTopologyValues, isMultiZone),
 		}
 		podWithClonedVolume := resources.PodDetails{
 			Cmd: "grep 'hello world' /mnt/test-1/data",
@@ -537,13 +537,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 				"fsType":  "xfs",
 			},
 		}
-		if !testconsts.IsUsingInTreeVolumePlugin && testutil.IsZRSSupported(location) {
-			test.StorageClassParameters = map[string]string{
-				"skuName":             "StandardSSD_ZRS",
-				"networkAccessPolicy": "DenyAll",
-				"fsType":              "btrfs",
-			}
-		}
+
 		test.Run(cs, ns, schedulerName)
 	})
 
@@ -562,7 +556,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 					},
 					VolumeAccessMode: v1.ReadWriteOnce,
 				},
-			}, []string{}, isMultiZone),
+			}, t.allowedTopologyValues, isMultiZone),
 		}
 		clonedVolumeSize := "20Gi"
 
@@ -622,7 +616,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 						},
 						VolumeAccessMode: v1.ReadWriteOnce,
 					},
-				}, []string{}, isMultiZone),
+				}, t.allowedTopologyValues, isMultiZone),
 				IsWindows: testconsts.IsWindowsCluster,
 			},
 		}
@@ -667,7 +661,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 						},
 						VolumeAccessMode: v1.ReadWriteOnce,
 					},
-				}, []string{}, isMultiZone),
+				}, t.allowedTopologyValues, isMultiZone),
 			},
 		}
 		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
@@ -697,7 +691,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 					},
 					VolumeAccessMode: v1.ReadWriteOnce,
 				},
-			}, []string{}, isMultiZone),
+			}, t.allowedTopologyValues, isMultiZone),
 		}
 		podWithSnapshot := resources.PodDetails{
 			Cmd: "grep 'hello world' /mnt/test-1/data",
@@ -734,7 +728,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 					},
 					VolumeAccessMode: v1.ReadWriteOnce,
 				},
-			}, []string{}, isMultiZone),
+			}, t.allowedTopologyValues, isMultiZone),
 		}
 
 		podOverwrite := resources.PodDetails{
@@ -779,7 +773,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		pods := []resources.PodDetails{
 			{
 				Cmd:       testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
-				Volumes:   resources.NormalizeVolumes(volumes, []string{}, isMultiZone),
+				Volumes:   resources.NormalizeVolumes(volumes, t.allowedTopologyValues, isMultiZone),
 				IsWindows: testconsts.IsWindowsCluster,
 			},
 		}
@@ -812,7 +806,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 					VolumeMount:      volume.VolumeMount,
 					VolumeAccessMode: v1.ReadWriteOnce,
 				},
-			}, []string{}, isMultiZone),
+			}, t.allowedTopologyValues, isMultiZone),
 			IsWindows: testconsts.IsWindowsCluster,
 			UseCMD:    false,
 		}
@@ -854,7 +848,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 					VolumeMount:      volume.VolumeMount,
 					VolumeAccessMode: v1.ReadWriteOnce,
 				},
-			}, []string{}, isMultiZone),
+			}, t.allowedTopologyValues, isMultiZone),
 			IsWindows: testconsts.IsWindowsCluster,
 			UseCMD:    false,
 		}
@@ -864,7 +858,47 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			Volume:                 volume,
 			Pod:                    pod,
 			ResizeOffline:          false,
-			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
+			StorageClassParameters: map[string]string{"skuName": "Standard_LRS"},
+		}
+		test.Run(cs, ns, schedulerName)
+	})
+
+	ginkgo.It("should create a block volume on demand and dynamically resize it without detaching [disk.csi.azure.com] ", func() {
+		testutil.SkipIfUsingInTreeVolumePlugin()
+		testutil.SkipIfNotDynamicallyResizeSupported(location)
+		//Subscription must be registered for LiveResize
+		volume := resources.VolumeDetails{
+			ClaimSize: "10Gi",
+			VolumeDevice: resources.VolumeDeviceDetails{
+				NameGenerate: "test-volume-",
+				DevicePath:   "/dev/e2e-test",
+			},
+			VolumeAccessMode: v1.ReadWriteOnce,
+			VolumeMode:       resources.Block,
+		}
+		pod := resources.PodDetails{
+			Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
+			Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
+				{
+					ClaimSize: volume.ClaimSize,
+					MountOptions: []string{
+						"barrier=1",
+						"acl",
+					},
+					VolumeMount:      volume.VolumeMount,
+					VolumeAccessMode: v1.ReadWriteOnce,
+				},
+			}, t.allowedTopologyValues, isMultiZone),
+			IsWindows: testconsts.IsWindowsCluster,
+			UseCMD:    false,
+		}
+
+		test := testsuites.DynamicallyProvisionedResizeVolumeTest{
+			CSIDriver:              testDriver,
+			Volume:                 volume,
+			Pod:                    pod,
+			ResizeOffline:          false,
+			StorageClassParameters: map[string]string{"skuName": "Standard_LRS"},
 		}
 		test.Run(cs, ns, schedulerName)
 	})
@@ -887,7 +921,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 						},
 						VolumeAccessMode: v1.ReadWriteOnce,
 					},
-				}, []string{}, isMultiZone),
+				}, t.allowedTopologyValues, isMultiZone),
 				IsWindows: testconsts.IsWindowsCluster,
 			},
 		}
@@ -921,7 +955,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 						},
 						VolumeAccessMode: v1.ReadWriteOnce,
 					},
-				}, []string{}, isMultiZone),
+				}, t.allowedTopologyValues, isMultiZone),
 				IsWindows: testconsts.IsWindowsCluster,
 			},
 		}
@@ -954,7 +988,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 
 		pod := resources.PodDetails{
 			Cmd:       testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
-			Volumes:   resources.NormalizeVolumes([]resources.VolumeDetails{volume}, []string{}, isMultiZone),
+			Volumes:   resources.NormalizeVolumes([]resources.VolumeDetails{volume}, t.allowedTopologyValues, isMultiZone),
 			IsWindows: testconsts.IsWindowsCluster,
 		}
 
@@ -992,7 +1026,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 
 		pod := resources.PodDetails{
 			Cmd:       testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
-			Volumes:   resources.NormalizeVolumes([]resources.VolumeDetails{volume}, []string{}, isMultiZone),
+			Volumes:   resources.NormalizeVolumes([]resources.VolumeDetails{volume}, t.allowedTopologyValues, isMultiZone),
 			IsWindows: testconsts.IsWindowsCluster,
 		}
 
@@ -1024,7 +1058,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 					},
 					VolumeAccessMode: v1.ReadWriteOnce,
 				},
-			}, []string{}, isMultiZone),
+			}, t.allowedTopologyValues, isMultiZone),
 			IsWindows: testconsts.IsWindowsCluster,
 			UseCMD:    false,
 		}
@@ -1079,7 +1113,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 					VolumeMount:      volume.VolumeMount,
 					VolumeAccessMode: volume.VolumeAccessMode,
 				},
-			}, []string{}, false),
+			}, t.allowedTopologyValues, false),
 			IsWindows: testconsts.IsWindowsCluster,
 			UseCMD:    false,
 		}
@@ -1133,7 +1167,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 					VolumeMount:      volume.VolumeMount,
 					VolumeAccessMode: volume.VolumeAccessMode,
 				},
-			}, []string{}, false),
+			}, t.allowedTopologyValues, false),
 			IsWindows: testconsts.IsWindowsCluster,
 			UseCMD:    false,
 		}
@@ -1187,7 +1221,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 					VolumeMount:      volume.VolumeMount,
 					VolumeAccessMode: volume.VolumeAccessMode,
 				},
-			}, []string{}, false),
+			}, t.allowedTopologyValues, false),
 			IsWindows: testconsts.IsWindowsCluster,
 			UseCMD:    false,
 		}
@@ -1243,7 +1277,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 						VolumeMount:      volume.VolumeMount,
 						VolumeAccessMode: volume.VolumeAccessMode,
 					},
-				}, []string{}, isMultiZone),
+				}, t.allowedTopologyValues, isMultiZone),
 				IsWindows: testconsts.IsWindowsCluster,
 				UseCMD:    false,
 			},
@@ -1375,7 +1409,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 						VolumeMount:      volume.VolumeMount,
 						VolumeAccessMode: volume.VolumeAccessMode,
 					},
-				}, []string{}, isMultiZone),
+				}, t.allowedTopologyValues, isMultiZone),
 				IsWindows: testconsts.IsWindowsCluster,
 				UseCMD:    false,
 			},
@@ -1441,7 +1475,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 					VolumeMount:      volume.VolumeMount,
 					VolumeAccessMode: volume.VolumeAccessMode,
 				},
-			}, []string{}, false),
+			}, t.allowedTopologyValues, false),
 			IsWindows: testconsts.IsWindowsCluster,
 			UseCMD:    false,
 		}
@@ -1492,7 +1526,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 					VolumeMount:      volume.VolumeMount,
 					VolumeAccessMode: volume.VolumeAccessMode,
 				},
-			}, []string{}, false),
+			}, t.allowedTopologyValues, false),
 			IsWindows: testconsts.IsWindowsCluster,
 			UseCMD:    false,
 		}
@@ -1644,9 +1678,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
 				{
 					ClaimSize: "10Gi",
-					VolumeMount: resources.VolumeMountDetails{
-						NameGenerate:      "test-shared-volume-",
-						MountPathGenerate: "/dev/shared-",
+					VolumeDevice: resources.VolumeDeviceDetails{
+						NameGenerate: "test-volume-",
+						DevicePath:   "/dev/e2e-test",
 					},
 					VolumeMode:       resources.Block,
 					VolumeAccessMode: v1.ReadWriteMany,
@@ -1674,14 +1708,14 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			podCheck.Cmd = []string{
 				"sh",
 				"-c",
-				"(stat /dev/shared-1 > /dev/null) && echo \"VOLUME ATTACHED\"",
+				"(stat /dev/e2e-test > /dev/null) && echo \"VOLUME ATTACHED\"",
 			}
 		} else {
 			podCheck.Cmd = []string{
 				"powershell",
 				"-NoLogo",
 				"-Command",
-				"if (Test-Path c:\\dev\\shared-1) { \"VOLUME ATTACHED\" | Out-Host }",
+				"if (Test-Path c:\\dev\\e2e-test) { \"VOLUME ATTACHED\" | Out-Host }",
 			}
 		}
 

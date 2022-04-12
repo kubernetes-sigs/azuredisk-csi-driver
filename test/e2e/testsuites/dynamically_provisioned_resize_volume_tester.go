@@ -72,7 +72,6 @@ func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface,
 		framework.ExpectNoError(err, fmt.Sprintf("fail to get original pvc(%s): %v", pvcName, err))
 	}
 
-	ginkgo.By("scale statefulset to zero pods to detach disk")
 	newScale := &scale.Scale{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      tStatefulSet.Statefulset.Name,
@@ -82,6 +81,7 @@ func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface,
 			Replicas: int32(0)}}
 
 	if t.ResizeOffline {
+		ginkgo.By("scale statefulset to zero pods to detach disk")
 		// Scale statefulset to 0
 		_, err = client.AppsV1().StatefulSets(tStatefulSet.Namespace.Name).UpdateScale(context.TODO(), tStatefulSet.Statefulset.Name, newScale, metav1.UpdateOptions{})
 		framework.ExpectNoError(err)
@@ -102,10 +102,11 @@ func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface,
 	if err != nil {
 		framework.ExpectNoError(err, fmt.Sprintf("fail to resize pvc(%s): %v", pvcName, err))
 	}
-	updatedSize := updatedPvc.Spec.Resources.Requests["storage"]
 
 	ginkgo.By("sleep 30s waiting for resize complete")
 	time.Sleep(30 * time.Second)
+
+	updatedSize := updatedPvc.Spec.Resources.Requests["storage"]
 
 	ginkgo.By("checking the resizing result")
 	newPvc, err := client.CoreV1().PersistentVolumeClaims(namespace.Name).Get(context.TODO(), pvcName, metav1.GetOptions{})

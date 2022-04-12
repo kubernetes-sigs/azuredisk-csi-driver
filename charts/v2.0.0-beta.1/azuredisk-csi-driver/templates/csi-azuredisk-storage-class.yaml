@@ -1,0 +1,143 @@
+{{- if .Values.storageClasses.create -}}
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{ .Values.storageClasses.storageClassNames.standardLRS }}
+{{ include "azuredisk.labels" . | indent 2 }}
+provisioner: {{ .Values.driver.name }}
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+parameters:
+  skuName: Standard_LRS
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{ .Values.storageClasses.storageClassNames.standardSSDLRS }}
+{{ include "azuredisk.labels" . | indent 2 }}
+provisioner: {{ .Values.driver.name }}
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+parameters:
+  skuName: StandardSSD_LRS
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{ .Values.storageClasses.storageClassNames.standardSSDLRS }}-replicas
+{{ include "azuredisk.labels" . | indent 2 }}
+provisioner: {{ .Values.driver.name }}
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+parameters:
+  skuName: StandardSSD_LRS
+  maxShares: "3"
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{ .Values.storageClasses.storageClassNames.premiumLRS }}
+{{ include "azuredisk.labels" . | indent 2 }}
+provisioner: {{ .Values.driver.name }}
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+parameters:
+  skuName: Premium_LRS
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{ .Values.storageClasses.storageClassNames.premiumLRS }}-replicas
+{{ include "azuredisk.labels" . | indent 2 }}
+provisioner: {{ .Values.driver.name }}
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+parameters:
+  skuName: Premium_LRS
+  maxShares: "3"
+---
+{{- if .Values.storageClasses.enableUltraSSD -}}
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{ .Values.storageClasses.storageClassNames.ultraSSDLRS }}
+{{ include "azuredisk.labels" . | indent 2 }}
+provisioner: {{ .Values.driver.name }}
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+parameters:
+  skuName: UltraSSD_LRS
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{ .Values.storageClasses.storageClassNames.ultraSSDLRS }}-replicas
+{{ include "azuredisk.labels" . | indent 2 }}
+provisioner: {{ .Values.driver.name }}
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+parameters:
+  skuName: UltraSSD_LRS
+  maxShares: "3"
+---
+{{- end -}}
+{{- if .Values.storageClasses.enableZRS -}}
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{ .Values.storageClasses.storageClassNames.standardSSDZRS }}
+{{ include "azuredisk.labels" . | indent 2 }}
+provisioner: {{ .Values.driver.name }}
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+allowVolumeExpansion: true
+parameters:
+  skuName: StandardSSD_ZRS
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{ .Values.storageClasses.storageClassNames.standardSSDZRS }}-replicas
+{{ include "azuredisk.labels" . | indent 2 }}
+provisioner: {{ .Values.driver.name }}
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+allowVolumeExpansion: true
+parameters:
+  skuName: StandardSSD_ZRS
+  maxShares: "3"
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{ .Values.storageClasses.storageClassNames.premiumZRS }}
+{{ include "azuredisk.labels" . | indent 2 }}
+provisioner: {{ .Values.driver.name }}
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+allowVolumeExpansion: true
+parameters:
+  skuName: Premium_ZRS
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{ .Values.storageClasses.storageClassNames.premiumZRS }}-replicas
+{{ include "azuredisk.labels" . | indent 2 }}
+provisioner: {{ .Values.driver.name }}
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+allowVolumeExpansion: true
+parameters:
+  skuName: Premium_ZRS
+  maxShares: "3"
+{{- end -}}
+{{- end -}}

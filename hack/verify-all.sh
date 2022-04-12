@@ -27,4 +27,3 @@ ${PKG_ROOT}/hack/verify-yamllint.sh
 ${PKG_ROOT}/hack/verify-boilerplate.sh
 ${PKG_ROOT}/hack/verify-helm-chart-files.sh
 ${PKG_ROOT}/hack/verify-helm-chart.sh
-${PKG_ROOT}/hack/verify-spelling.sh

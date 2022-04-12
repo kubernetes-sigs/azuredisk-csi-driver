@@ -70,7 +70,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 			}
 		} else {
 			// If not, cancel scheduled garbage collection if there is one enqueued
-			r.removeGarbageCollection(azVolumeAttachment.Spec.VolumeName)
+			r.controllerSharedState.removeGarbageCollection(azVolumeAttachment.Spec.VolumeName)
 
 			// If promotion event, create a replacement replica
 			if isAttached(azVolumeAttachment) && azVolumeAttachment.Status.Detail.PreviousRole == diskv1beta1.ReplicaRole {
@@ -98,7 +98,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 					azVolumeAttachment := obj.(*diskv1beta1.AzVolumeAttachment)
 					_, err = updateState(azVolumeAttachment, diskv1beta1.ForceDetachPending, normalUpdate)
 					return err
-				}, consts.NormalUpdateMaxNetRetry); err != nil {
+				}, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
 					return reconcile.Result{Requeue: true}, err
 				}
 			}
@@ -154,33 +154,9 @@ func (r *ReconcileReplica) triggerGarbageCollection(volumeName string) {
 			return
 		case <-time.After(r.timeUntilGarbageCollection):
 			klog.Infof("Initiating garbage collection for AzVolume (%s)", volumeName)
-			r.controllerSharedState.addToOperationQueue(
-				volumeName,
-				replica,
-				func() error {
-					_, err := r.controllerSharedState.cleanUpAzVolumeAttachmentByVolume(context.Background(), volumeName, "replicaController", all, detachAndDeleteCRI)
-					if err != nil {
-						return err
-					}
-					r.controllerSharedState.addToGcExclusionList(volumeName, replica)
-					r.removeGarbageCollection(volumeName)
-					r.controllerSharedState.unmarkVolumeVisited(volumeName)
-					return nil
-				},
-				true,
-			)
+			r.controllerSharedState.garbageCollectReplicas(ctx, volumeName, replica)
 		}
 	}(deletionCtx)
-}
-
-func (r *ReconcileReplica) removeGarbageCollection(volumeName string) {
-	v, ok := r.controllerSharedState.cleanUpMap.LoadAndDelete(volumeName)
-	if ok {
-		cancelFunc := v.(context.CancelFunc)
-		cancelFunc()
-	}
-	// if there is any garbage collection enqueued in operation queue, remove it
-	r.controllerSharedState.dequeueGarbageCollection(volumeName)
 }
 
 func NewReplicaController(mgr manager.Manager, controllerSharedState *SharedState) (*ReconcileReplica, error) {

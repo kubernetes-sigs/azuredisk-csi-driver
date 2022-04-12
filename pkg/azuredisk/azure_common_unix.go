@@ -25,9 +25,12 @@ import (
 	"strconv"
 	"strings"
 
+	"k8s.io/klog/v2"
 	mount "k8s.io/mount-utils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 )
+
+const sysClassBlockPath = "/sys/class/block/"
 
 func getDevicePathWithMountPath(mountPath string, m *mount.SafeFormatAndMount) (string, error) {
 	args := []string{"-o", "source", "--noheadings", "--mountpoint", mountPath}
@@ -62,14 +65,32 @@ func resizeVolume(devicePath, volumePath string, m *mount.SafeFormatAndMount) er
 	if _, err := resizer.Resize(devicePath, volumePath); err != nil {
 		return err
 	}
-
 	return nil
 }
 
 // rescanVolume rescan device for detecting device size expansion
 // devicePath e.g. `/dev/sdc`
 func rescanVolume(io azureutils.IOHandler, devicePath string) error {
+	klog.V(6).Infof("rescanVolume - begin to rescan %s", devicePath)
 	deviceName := filepath.Base(devicePath)
-	rescanPath := filepath.Join("/sys/class/block/", deviceName, "device/rescan")
+	rescanPath := filepath.Join(sysClassBlockPath, deviceName, "device/rescan")
 	return io.WriteFile(rescanPath, []byte("1"), 0666)
+}
+
+// rescanAllVolumes rescan all sd* devices under /sys/class/block/sd* starting from sdc
+func rescanAllVolumes(io azureutils.IOHandler) error {
+	dirs, err := io.ReadDir(sysClassBlockPath)
+	if err != nil {
+		return err
+	}
+	for _, device := range dirs {
+		deviceName := device.Name()
+		if strings.HasPrefix(deviceName, "sd") && deviceName >= "sdc" {
+			path := filepath.Join(sysClassBlockPath, deviceName)
+			if err := rescanVolume(io, path); err != nil {
+				klog.Warningf("rescanVolume - rescan %s failed with %v", path, err)
+			}
+		}
+	}
+	return nil
 }

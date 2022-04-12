@@ -40,10 +40,8 @@ func Test_getOptimalDeviceSettings(t *testing.T) {
 	diskSkus[strings.ToLower(accountType)][strings.ToLower(sizeP20)] = DiskSkuInfo{StorageAccountType: accountType, StorageTier: tier, DiskSize: sizeP20, MaxIops: 100, MaxBurstIops: 100, MaxBwMbps: 500, MaxBurstBwMbps: 500, MaxSizeGiB: 1024}
 	diskSkus[strings.ToLower(accountType)][strings.ToLower(sizeP30)] = DiskSkuInfo{StorageAccountType: accountType, StorageTier: tier, DiskSize: sizeP30, MaxIops: 200, MaxBurstIops: 200, MaxBwMbps: 1000, MaxBurstBwMbps: 1000, MaxSizeGiB: 4096}
 	skuName := "Standard_DS14"
-	zone := "1"
-	region := "eastus"
-	nodeInfo := &NodeInfo{SkuName: skuName, Zone: zone, Region: region, MaxBurstIops: 51200, MaxIops: 51200, MaxBwMbps: 512, MaxBurstBwMbps: 512}
-	nodeInfoNoCapabilityVM := &NodeInfo{SkuName: skuName, Zone: zone, Region: region, MaxBurstIops: 0, MaxIops: 0, MaxBwMbps: 0, MaxBurstBwMbps: 0}
+	nodeInfo := &NodeInfo{SkuName: skuName, MaxBurstIops: 51200, MaxIops: 51200, MaxBwMbps: 512, MaxBurstBwMbps: 512}
+	nodeInfoNoCapabilityVM := &NodeInfo{SkuName: skuName, MaxBurstIops: 0, MaxIops: 0, MaxBwMbps: 0, MaxBurstBwMbps: 0}
 
 	tests := []struct {
 		name             string

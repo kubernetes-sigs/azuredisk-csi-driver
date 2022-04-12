@@ -67,6 +67,8 @@ var (
 type FakeDriver interface {
 	CSIDriver
 
+	GetSourceDiskSize(ctx context.Context, subsID, resourceGroup, diskName string, curDepth, maxDepth int) (*int32, error)
+
 	setNextCommandOutputScripts(scripts ...testingexec.FakeAction)
 	setIsBlockDevicePathError(string, bool, error)
 
@@ -92,6 +94,7 @@ type FakeDriver interface {
 	checkDiskExists(ctx context.Context, diskURI string) (*compute.Disk, error)
 	getSnapshotInfo(string) (string, string, string, error)
 
+	getSnapshotByID(context.Context, string, string, string, string) (*csi.Snapshot, error)
 	ensureMountPoint(string) (bool, error)
 
 	setDiskThrottlingCache(key string, value string)
@@ -110,6 +113,7 @@ func newFakeDriverV1(t *testing.T) (*fakeDriverV1, error) {
 	driver.ready = make(chan struct{})
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.VolumeAttachLimit = -1
+	driver.supportZone = true
 	driver.ioHandler = azureutils.NewFakeIOHandler()
 	driver.hostUtil = azureutils.NewFakeHostUtil()
 	driver.useCSIProxyGAInterface = true

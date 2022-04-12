@@ -1644,3 +1644,42 @@ func TestSleepIfThrottled(t *testing.T) {
 		})
 	}
 }
+
+func TestIsAsyncAttachEnabled(t *testing.T) {
+	tests := []struct {
+		name          string
+		defaultValue  bool
+		volumeContext map[string]string
+		expected      bool
+	}{
+		{
+			name:         "nil volumeContext",
+			defaultValue: false,
+			expected:     false,
+		},
+		{
+			name:          "empty volumeContext",
+			defaultValue:  true,
+			volumeContext: map[string]string{},
+			expected:      true,
+		},
+		{
+			name:          "false value in volumeContext",
+			defaultValue:  true,
+			volumeContext: map[string]string{"enableAsyncAttach": "false"},
+			expected:      false,
+		},
+		{
+			name:          "trie value in volumeContext",
+			defaultValue:  false,
+			volumeContext: map[string]string{"enableasyncattach": "true"},
+			expected:      true,
+		},
+	}
+	for _, test := range tests {
+		result := IsAsyncAttachEnabled(test.defaultValue, test.volumeContext)
+		if result != test.expected {
+			t.Errorf("test(%s): result(%v) != expected result(%v)", test.name, result, test.expected)
+		}
+	}
+}
