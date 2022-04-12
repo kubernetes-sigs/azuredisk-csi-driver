@@ -47,7 +47,13 @@ var azvCmd = &cobra.Command{
 		result = GetAzVolumesByPod(pod)
 
 		// display
-		displayAzv(result)
+		if len(result) != 0 {
+			displayAzv(result)
+		} else {
+			// not found, display an error
+			fmt.Println("azVolumes not found")
+		}
+		
 	},
 }
 
@@ -71,7 +77,6 @@ type AzvResource struct {
 	Namespace    string
 	Name         string
 	State        v1beta1.AzVolumeState
-	Phase        v1beta1.AzVolumePhase
 }
 
 func GetAzVolumesByPod(podName string) []AzvResource {
@@ -108,11 +113,7 @@ func GetAzVolumesByPod(podName string) []AzvResource {
 			if podName == "" || pod.Name == podName {
 				for _, v := range pod.Spec.Volumes {
 					if v.PersistentVolumeClaim != nil {
-						pvcSet[v.PersistentVolumeClaim.ClaimName] = podName
-
-						fmt.Println(v.PersistentVolumeClaim.ClaimName) // data-mysql-0
-						fmt.Println(v.Name)                            // data
-						fmt.Println(pod.Name)                          //mysql-0
+						pvcSet[v.PersistentVolumeClaim.ClaimName] = pod.Name
 					}
 				}
 			}
@@ -134,37 +135,21 @@ func GetAzVolumesByPod(podName string) []AzvResource {
 
 			// if pvcName is contained in pvcSet, add the azVolume to result
 			if pName, ok := pvcSet[pvcClaimName]; ok {
-				result = append(result, AzvResource{
+				result = append(result, AzvResource {
 					ResourceType: pName,
 					Namespace:    azVolume.Namespace,
 					Name:         azVolume.Status.PersistentVolume,
-					State:        azVolume.Status.State,
-					Phase:        v1beta1.VolumeBound})
+					State:        azVolume.Status.State})
 			}
-
-			// only for testing purpose
-			fmt.Println(azVolume.Spec.VolumeName)                                // pvc-62e7dc04-38d4-4eca-80d8-6768bc4d995a
-			fmt.Println(azVolume.Status.PersistentVolume)                        //pvc-62e7dc04-38d4-4eca-80d8-6768bc4d995a
-			fmt.Println(azVolume.Status.State)                                   //Updated
-			fmt.Println(azVolume.Spec.Parameters["csi.storage.k8s.io/pvc/name"]) //data-mysql-0
-			fmt.Println(azVolume.Spec.Secrets)                                   // empty map
-			fmt.Println(azVolume.Namespace)                                      //azure-disk-csi
 		}
 	}
-	// only for testing purpose
-	result = append(result, AzvResource{
-		ResourceType: "example-pod-123",
-		Namespace:    "azure-disk-csi",
-		Name:         "pvc-b2578f0d-e99b-49d9-b1da-66ad771e073b",
-		State:        v1beta1.VolumeCreated,
-		Phase:        v1beta1.VolumeBound})
 
 	return result
 }
 
 func displayAzv(result []AzvResource) {
 	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader([]string{"PODNAME", "NAMESPACE", "NAME", "STATE", "PHASE"})
+	table.SetHeader([]string{"PODNAME", "NAMESPACE", "NAME", "STATE"})
 	// var row []string
 	// v := reflect.ValueOf(azv)
 
@@ -172,7 +157,7 @@ func displayAzv(result []AzvResource) {
 	// 	row = append(row, v.Field(i).Interface())
 	// }
 	for _, azv := range result {
-		table.Append([]string{azv.ResourceType, azv.Namespace, azv.Name, string(azv.State), string(azv.Phase)})
+		table.Append([]string{azv.ResourceType, azv.Namespace, azv.Name, string(azv.State)})
 	}
 
 	table.Render()
