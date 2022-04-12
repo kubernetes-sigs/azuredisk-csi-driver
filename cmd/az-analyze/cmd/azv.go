@@ -1,5 +1,5 @@
 /*
-Copyright © 2022 NAME HERE <EMAIL ADDRESS>
+Copyright YEAR The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -39,11 +39,7 @@ import (
 var azvCmd = &cobra.Command{
 	Use:   "azv",
 	Short: "Azure Volume",
-	Long: `Azure Volume is a Kubernetes Custom Resource
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+	Long: `Azure Volume is a Kubernetes Custom Resource.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		pod, _ := cmd.Flags().GetString("pod")
 
@@ -79,7 +75,7 @@ type AzvResource struct {
 }
 
 func GetAzVolumesByPod(podName string) []AzvResource {
-	// implemetation
+	// implementation
 	result := make([]AzvResource, 0)
 
 	// access to config
@@ -108,6 +104,7 @@ func GetAzVolumesByPod(podName string) []AzvResource {
 		}
 
 		for _, pod := range pods.Items {
+			// if pod flag isn't provided, print all pods
 			if podName == "" || pod.Name == podName {
 				for _, v := range pod.Spec.Volumes {
 					if v.PersistentVolumeClaim != nil {

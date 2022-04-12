@@ -1,5 +1,5 @@
 /*
-Copyright © 2022 NAME HERE <EMAIL ADDRESS>
+Copyright YEAR The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,13 +24,9 @@ import (
 // getCmd represents the get command
 var getCmd = &cobra.Command{
 	Use:   "get",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+	Short: "Fetching data on the cluster", // A brief description of your command
+	Long: `get command is capable of fetching data on the cluster.
+For example: az-analyze get azv`, // A long description of your command
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Printf("You must specify the type of resource to \"%s\"\n", cmd.Name())
 		fmt.Printf("Run 'az-analyze --help' for usage.\n")

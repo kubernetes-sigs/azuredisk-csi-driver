@@ -1,5 +1,5 @@
 /*
-Copyright © 2022 NAME HERE <EMAIL ADDRESS>
+Copyright YEAR The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,13 +29,8 @@ import (
 // azvaCmd represents the azva command
 var azvaCmd = &cobra.Command{
 	Use:   "azva",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+	Short: "Azure Volume Attachment",
+	Long: `Azure Volume Attachment is a Kubernetes Custom Resource.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		numFlag := cmd.Flags().NFlag()
 		
@@ -105,7 +100,7 @@ type AzvaResource struct {
 }
 
 func GetAzVolumeAttachementsByPod(podName string) AzvaResource {
-	// implemetation
+	// implementation
 
 	return AzvaResource {
 		ResourceType: "k8s-agentpool1-47843266-vmss000004",
@@ -118,7 +113,7 @@ func GetAzVolumeAttachementsByPod(podName string) AzvaResource {
 }
 
 func GetAzVolumeAttachementsByNode(nodeName string) AzvaResource {
-	// implemetation
+	// implementation
 
 	return AzvaResource {
 		ResourceType: "k8s-agentpool1-47843266-vmss000004",
@@ -131,7 +126,7 @@ func GetAzVolumeAttachementsByNode(nodeName string) AzvaResource {
 }
 
 func GetAzVolumeAttachementsByZone(nodeName string) AzvaResource {
-	// implemetation
+	// implementation
 
 	return AzvaResource {
 		ResourceType: "k8s-agentpool1-47843266-vmss000004",

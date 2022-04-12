@@ -1,5 +1,5 @@
 /*
-Copyright © 2022 NAME HERE <EMAIL ADDRESS>
+Copyright YEAR The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@ limitations under the License.
 */
 package main
 
-import "sigs.k8s.io/azuredisk-csi-driver/pkg/tool/az-analyze/cmd"
+import "sigs.k8s.io/azuredisk-csi-driver/cmd/az-analyze/cmd"
 
 func main() {
   cmd.Execute()
