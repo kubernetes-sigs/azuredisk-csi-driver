@@ -19,6 +19,8 @@ package e2e
 import (
 	"context"
 	"flag"
+	"fmt"
+	"log"
 	"os"
 	"path"
 	"path/filepath"
@@ -53,6 +55,11 @@ var (
 )
 
 var _ = ginkgo.BeforeSuite(func() {
+	log.Println(testconsts.AzureDriverNameVar, os.Getenv(testconsts.AzureDriverNameVar), fmt.Sprintf("%v", testconsts.IsUsingInTreeVolumePlugin))
+	log.Println(testconsts.TestMigrationEnvVar, os.Getenv(testconsts.TestMigrationEnvVar), fmt.Sprintf("%v", testconsts.IsTestingMigration))
+	log.Println(testconsts.TestWindowsEnvVar, os.Getenv(testconsts.TestWindowsEnvVar), fmt.Sprintf("%v", testconsts.IsWindowsCluster))
+	log.Println(testconsts.TestWinServerVerEnvVar, os.Getenv(testconsts.TestWinServerVerEnvVar), fmt.Sprintf("%v", testconsts.WinServerVer))
+
 	// k8s.io/kubernetes/test/e2e/framework requires env KUBECONFIG to be set
 	// it does not fall back to defaults
 	if os.Getenv(testconsts.KubeconfigEnvVar) == "" {
