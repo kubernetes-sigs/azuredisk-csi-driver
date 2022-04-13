@@ -97,7 +97,8 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 							VolumeAccessMode: v1.ReadWriteOnce,
 						},
 					},
-					IsWindows: isWindowsCluster,
+					IsWindows:    isWindowsCluster,
+					WinServerVer: winServerVer,
 				},
 			}
 			test := testsuites.PreProvisionedReadOnlyVolumeTest{
@@ -214,6 +215,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 				},
 				UseCMD:       false,
 				IsWindows:    isWindowsCluster,
+				WinServerVer: winServerVer,
 				ReplicaCount: 2,
 			}
 
@@ -277,7 +279,8 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 						VolumeAccessMode: v1.ReadWriteOnce,
 					},
 				},
-				IsWindows: isWindowsCluster,
+				IsWindows:    isWindowsCluster,
+				WinServerVer: winServerVer,
 			}
 
 			test := testsuites.PreProvisionedDanglingAttachVolumeTest{
@@ -321,7 +324,8 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 							VolumeAccessMode: v1.ReadWriteOnce,
 						},
 					},
-					IsWindows: isWindowsCluster,
+					IsWindows:    isWindowsCluster,
+					WinServerVer: winServerVer,
 				},
 			}
 

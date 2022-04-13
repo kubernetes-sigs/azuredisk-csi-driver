@@ -391,7 +391,7 @@ type TestDeployment struct {
 	podNames   []string
 }
 
-func NewTestDeployment(c clientset.Interface, ns *v1.Namespace, replicaCount int32, command string, pvc *v1.PersistentVolumeClaim, volumeName, mountPath string, readOnly, isWindows, useCMD, useAntiAffinity bool) *TestDeployment {
+func NewTestDeployment(c clientset.Interface, ns *v1.Namespace, replicaCount int32, command string, pvc *v1.PersistentVolumeClaim, volumeName, mountPath string, readOnly, isWindows, useCMD, useAntiAffinity bool, winServerVer string) *TestDeployment {
 	generateName := "azuredisk-volume-tester-"
 	selectorValue := fmt.Sprintf("%s%d", generateName, rand.Int())
 
@@ -480,7 +480,7 @@ func NewTestDeployment(c clientset.Interface, ns *v1.Namespace, replicaCount int
 		testDeployment.deployment.Spec.Template.Spec.NodeSelector = map[string]string{
 			"kubernetes.io/os": "windows",
 		}
-		testDeployment.deployment.Spec.Template.Spec.Containers[0].Image = "mcr.microsoft.com/windows/servercore:ltsc2019"
+		testDeployment.deployment.Spec.Template.Spec.Containers[0].Image = "mcr.microsoft.com/windows/servercore:" + getWinImageTag(winServerVer)
 		if useCMD {
 			testDeployment.deployment.Spec.Template.Spec.Containers[0].Command = []string{"cmd"}
 			testDeployment.deployment.Spec.Template.Spec.Containers[0].Args = []string{"/c", command}
@@ -611,7 +611,7 @@ type TestStatefulset struct {
 	podName     string
 }
 
-func NewTestStatefulset(c clientset.Interface, ns *v1.Namespace, command string, pvc *v1.PersistentVolumeClaim, volumeName, mountPath string, readOnly, isWindows, useCMD bool) *TestStatefulset {
+func NewTestStatefulset(c clientset.Interface, ns *v1.Namespace, command string, pvc *v1.PersistentVolumeClaim, volumeName, mountPath string, readOnly, isWindows, useCMD bool, winServerVer string) *TestStatefulset {
 	generateName := "azuredisk-volume-tester-"
 	selectorValue := fmt.Sprintf("%s%d", generateName, rand.Int())
 	replicas := int32(1)
@@ -662,7 +662,7 @@ func NewTestStatefulset(c clientset.Interface, ns *v1.Namespace, command string,
 		testStatefulset.statefulset.Spec.Template.Spec.NodeSelector = map[string]string{
 			"kubernetes.io/os": "windows",
 		}
-		testStatefulset.statefulset.Spec.Template.Spec.Containers[0].Image = "mcr.microsoft.com/windows/servercore:ltsc2019"
+		testStatefulset.statefulset.Spec.Template.Spec.Containers[0].Image = "mcr.microsoft.com/windows/servercore:" + getWinImageTag(winServerVer)
 		if useCMD {
 			testStatefulset.statefulset.Spec.Template.Spec.Containers[0].Command = []string{"cmd"}
 			testStatefulset.statefulset.Spec.Template.Spec.Containers[0].Args = []string{"/c", command}
@@ -759,7 +759,7 @@ type TestPod struct {
 	namespace *v1.Namespace
 }
 
-func NewTestPod(c clientset.Interface, ns *v1.Namespace, command string, isWindows bool) *TestPod {
+func NewTestPod(c clientset.Interface, ns *v1.Namespace, command string, isWindows bool, winServerVer string) *TestPod {
 	testPod := &TestPod{
 		client:    c,
 		namespace: ns,
@@ -787,7 +787,7 @@ func NewTestPod(c clientset.Interface, ns *v1.Namespace, command string, isWindo
 		testPod.pod.Spec.NodeSelector = map[string]string{
 			"kubernetes.io/os": "windows",
 		}
-		testPod.pod.Spec.Containers[0].Image = "mcr.microsoft.com/windows/servercore:ltsc2019"
+		testPod.pod.Spec.Containers[0].Image = "mcr.microsoft.com/windows/servercore:" + getWinImageTag(winServerVer)
 		testPod.pod.Spec.Containers[0].Command = []string{"powershell.exe"}
 		testPod.pod.Spec.Containers[0].Args = []string{"-Command", command}
 	}
@@ -1027,4 +1027,12 @@ func ListNodeNames(c clientset.Interface) []string {
 		nodeNames = append(nodeNames, item.ObjectMeta.Name)
 	}
 	return nodeNames
+}
+
+func getWinImageTag(winServerVer string) string {
+	testWinImageTag := "ltsc2019"
+	if winServerVer == "windows-2022" {
+		testWinImageTag = "ltsc2022"
+	}
+	return testWinImageTag
 }
