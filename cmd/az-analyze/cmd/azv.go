@@ -115,7 +115,7 @@ func GetAzVolumesByPod(podName string, namespace string) []AzvResource {
 			result = append(result, AzvResource {
 				ResourceType: pName,
 				Namespace:    azVolume.Namespace,
-				Name:         azVolume.Status.PersistentVolume,
+				Name:         azVolume.Spec.VolumeName,
 				State:        azVolume.Status.State})
 		}
 	}

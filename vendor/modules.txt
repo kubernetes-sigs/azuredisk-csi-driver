@@ -368,7 +368,6 @@ github.com/spf13/afero/mem
 # github.com/spf13/cast v1.4.1
 ## explicit
 github.com/spf13/cast
-# github.com/spf13/cobra v1.3.0
 # github.com/spf13/cobra v1.4.0
 ## explicit; go 1.15
 github.com/spf13/cobra
@@ -386,7 +385,6 @@ github.com/spf13/viper/internal/encoding/hcl
 github.com/spf13/viper/internal/encoding/json
 github.com/spf13/viper/internal/encoding/toml
 github.com/spf13/viper/internal/encoding/yaml
-# github.com/stretchr/testify v1.7.0
 # github.com/stretchr/testify v1.7.1
 ## explicit; go 1.13
 github.com/stretchr/testify/assert
