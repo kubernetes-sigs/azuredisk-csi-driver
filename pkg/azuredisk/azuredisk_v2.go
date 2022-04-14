@@ -52,6 +52,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/provisioner"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
+	azurecloudconsts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
 
@@ -88,6 +89,7 @@ type DriverV2 struct {
 	kubeConfig                        *rest.Config
 	kubeClient                        *clientset.Clientset
 	deviceChecker                     *deviceChecker
+	kubeClientQPS                     int
 }
 
 // NewDriver creates a driver object.
@@ -128,9 +130,18 @@ func newDriverV2(options *DriverOptions,
 	driver.userAgentSuffix = options.UserAgentSuffix
 	driver.useCSIProxyGAInterface = options.UseCSIProxyGAInterface
 	driver.enableDiskOnlineResize = options.EnableDiskOnlineResize
+	driver.allowEmptyCloudConfig = options.AllowEmptyCloudConfig
+	driver.enableAsyncAttach = options.EnableAsyncAttach
+	driver.enableListVolumes = options.EnableListVolumes
+	driver.enableListSnapshots = options.EnableListVolumes
+	driver.supportZone = options.SupportZone
+	driver.getNodeInfoFromLabels = options.GetNodeInfoFromLabels
+	driver.enableDiskCapacityCheck = options.EnableDiskCapacityCheck
+	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
 	driver.deviceChecker = &deviceChecker{lock: sync.RWMutex{}, entry: nil}
+	driver.kubeClientQPS = options.RestClientQPS
 
 	topologyKey = fmt.Sprintf("topology.%s/zone", driver.Name)
 	return &driver
@@ -154,6 +165,8 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 		klog.Fatalf("failed to get kubeclient with kubeconfig (%s), error: %v. Exiting application...", kubeconfig, err)
 	}
 
+	d.kubeConfig.QPS = float32(d.kubeClientQPS)
+	d.kubeConfig.Burst = d.kubeClientQPS * 2
 	// d.crdProvisioner is set by NewFakeDriver for unit tests.
 	if d.crdProvisioner == nil {
 		d.crdProvisioner, err = provisioner.NewCrdProvisioner(d.kubeConfig, d.objectNamespace)
@@ -176,14 +189,23 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 	if d.NodeID == "" {
 		// Disable UseInstanceMetadata for controller to mitigate a timeout issue using IMDS
 		// https://github.com/kubernetes-sigs/azuredisk-csi-driver/issues/168
-		klog.Infoln("disable UseInstanceMetadata for controller")
+		klog.V(2).Infof("disable UseInstanceMetadata for controller")
 		d.cloudProvisioner.GetCloud().Config.UseInstanceMetadata = false
+
+		if d.cloudProvisioner.GetCloud().VMType == azurecloudconsts.VMTypeVMSS && !d.cloudProvisioner.GetCloud().DisableAvailabilitySetNodes {
+			if disableAVSetNodes {
+				klog.V(2).Infof("DisableAvailabilitySetNodes for controller since current VMType is vmss")
+				d.cloudProvisioner.GetCloud().DisableAvailabilitySetNodes = true
+			} else {
+				klog.Warningf("DisableAvailabilitySetNodes for controller is set as false while current VMType is vmss")
+			}
+		}
 	}
 
 	d.deviceHelper = optimization.NewSafeDeviceHelper()
 
 	if d.getPerfOptimizationEnabled() {
-		d.nodeInfo, err = optimization.NewNodeInfo(d.cloudProvisioner.GetCloud(), d.NodeID)
+		d.nodeInfo, err = optimization.NewNodeInfo(context.Background(), d.cloudProvisioner.GetCloud(), d.NodeID)
 		if err != nil {
 			klog.Errorf("Failed to get node info. Error: %v", err)
 		}
@@ -197,18 +219,22 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 		}
 	}
 
-	d.AddControllerServiceCapabilities(
-		[]csi.ControllerServiceCapability_RPC_Type{
-			csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
-			csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME,
-			csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT,
-			csi.ControllerServiceCapability_RPC_LIST_SNAPSHOTS,
-			csi.ControllerServiceCapability_RPC_CLONE_VOLUME,
-			csi.ControllerServiceCapability_RPC_EXPAND_VOLUME,
-			csi.ControllerServiceCapability_RPC_LIST_VOLUMES,
-			csi.ControllerServiceCapability_RPC_LIST_VOLUMES_PUBLISHED_NODES,
-			csi.ControllerServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER,
-		})
+	controllerCap := []csi.ControllerServiceCapability_RPC_Type{
+		csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
+		csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME,
+		csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT,
+		csi.ControllerServiceCapability_RPC_CLONE_VOLUME,
+		csi.ControllerServiceCapability_RPC_EXPAND_VOLUME,
+		csi.ControllerServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER,
+	}
+	if d.enableListVolumes {
+		controllerCap = append(controllerCap, csi.ControllerServiceCapability_RPC_LIST_VOLUMES, csi.ControllerServiceCapability_RPC_LIST_VOLUMES_PUBLISHED_NODES)
+	}
+	if d.enableListSnapshots {
+		controllerCap = append(controllerCap, csi.ControllerServiceCapability_RPC_LIST_SNAPSHOTS)
+	}
+
+	d.AddControllerServiceCapabilities(controllerCap)
 	d.AddVolumeCapabilityAccessModes(
 		[]csi.VolumeCapability_AccessMode_Mode{
 			csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,

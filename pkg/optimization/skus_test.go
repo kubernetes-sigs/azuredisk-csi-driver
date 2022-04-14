@@ -96,12 +96,6 @@ func TestNewNodeInfo(t *testing.T) {
 			wantErr:          true,
 		},
 		{
-			description:  "[Failure] Should return an error if Zones interface not supported by cloud provider.",
-			nodeID:       "existing-node",
-			disableZones: true,
-			wantErr:      true,
-		},
-		{
 			description: "[Failure] Should return an error for a non-existing node.",
 			nodeID:      "non-existing node",
 			wantErr:     true,
@@ -116,15 +110,13 @@ func TestNewNodeInfo(t *testing.T) {
 		t.Run(tt.description, func(t *testing.T) {
 			cloud.DisableInstances = tt.disableInstances
 			cloud.DisableZones = tt.disableZones
-			nodeInfo, err := NewNodeInfo(cloud, tt.nodeID)
+			nodeInfo, err := NewNodeInfo(context.Background(), cloud, tt.nodeID)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewNodeInfoInternal() error = %v, wantErr %v", err, tt.wantErr)
 			}
 			if err == nil {
 				assert.NotNil(t, nodeInfo)
 				assert.Equal(t, instanceType, nodeInfo.SkuName)
-				assert.Equal(t, cloud.Zone.FailureDomain, nodeInfo.Zone)
-				assert.Equal(t, cloud.Zone.Region, nodeInfo.Region)
 				assert.NotEqual(t, 0, nodeInfo.MaxBurstBwMbps)
 				assert.NotEqual(t, 0, nodeInfo.MaxBurstIops)
 				assert.NotEqual(t, 0, nodeInfo.MaxBwMbps)

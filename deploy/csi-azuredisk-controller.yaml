@@ -26,6 +26,9 @@ spec:
         - key: "node-role.kubernetes.io/controlplane"
           operator: "Exists"
           effect: "NoSchedule"
+        - key: "node-role.kubernetes.io/control-plane"
+          operator: "Exists"
+          effect: "NoSchedule"
       containers:
         - name: csi-provisioner
           image: mcr.microsoft.com/oss/kubernetes-csi/csi-provisioner:v3.1.0
@@ -35,6 +38,7 @@ spec:
             - "--v=2"
             - "--timeout=15s"
             - "--leader-election"
+            - "--leader-election-namespace=kube-system"
             - "--worker-threads=40"
             - "--extra-create-metadata=true"
             - "--strict-topology=true"
@@ -57,6 +61,7 @@ spec:
             - "-csi-address=$(ADDRESS)"
             - "-timeout=600s"
             - "-leader-election"
+            - "--leader-election-namespace=kube-system"
             - "-worker-threads=500"
           env:
             - name: ADDRESS
@@ -75,6 +80,7 @@ spec:
           args:
             - "-csi-address=$(ADDRESS)"
             - "-leader-election"
+            - "--leader-election-namespace=kube-system"
             - "--v=2"
           env:
             - name: ADDRESS
@@ -94,9 +100,10 @@ spec:
             - "-csi-address=$(ADDRESS)"
             - "-v=2"
             - "-leader-election"
+            - "--leader-election-namespace=kube-system"
             - '-handle-volume-inuse-error=false'
             - '-feature-gates=RecoverVolumeExpansionFailure=true'
-            - "-timeout=120s"
+            - "-timeout=240s"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -134,7 +141,7 @@ spec:
             - "--metrics-address=0.0.0.0:29604"
             - "--enable-perf-optimization=true"
             - "--user-agent-suffix=OSS-kubectl"
-            - "--disable-avset-nodes=true"
+            - "--disable-avset-nodes=false"
             - "--allow-empty-cloud-config=false"
           ports:
             - containerPort: 29602

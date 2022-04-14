@@ -99,6 +99,7 @@ spec:
             - "--nodeid=$(KUBE_NODE_NAME)"
             - "--metrics-address=0.0.0.0:29605"
             - "--allow-empty-cloud-config=true"
+            - "--get-node-info-from-labels=false"
           ports:
             - containerPort: 29603
               name: healthz

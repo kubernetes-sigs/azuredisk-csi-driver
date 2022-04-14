@@ -143,7 +143,8 @@ func (d *DriverV2) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolume
 	source, err := d.nodeProvisioner.GetDevicePathWithLUN(ctx, int(lun))
 	if err == nil {
 		d.markRecoveryCompleteIfInProcess(diskURI)
-	} else if !waitedForAttach {
+	} else if !waitedForAttach && d.enableListVolumes {
+		// recovery has a dependency on listVolumes call. Only proceed with recovery if listVolumes is enabled.
 		// if device path could not be found, start mount recovery only if the function's context was not used up waiting for AzVolumeAttachment CRI attachment to complete
 		err = status.Errorf(codes.Internal, "failed to find disk on lun %v. %v", lun, err)
 		go d.recoverMount(diskURI)
@@ -380,13 +381,14 @@ func (d *DriverV2) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapa
 // NodeGetInfo return info of the node on which this plugin is running
 func (d *DriverV2) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
 	var instanceType string
+	var failureDomainFromLabels, instanceTypeFromLabels string
+	var err error
 
 	instances, ok := d.cloudProvisioner.GetCloud().Instances()
 	if !ok {
 		return nil, status.Error(codes.Internal, "failed to get instances from cloud provider")
 	}
 
-	var err error
 	instanceType, err = instances.InstanceType(ctx, types.NodeName(d.NodeID))
 	if err != nil {
 		klog.Warningf("failed to get instance type from Azure cloud provider, nodeName: %v, error: %v", d.NodeID, err)
@@ -394,51 +396,77 @@ func (d *DriverV2) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest)
 	}
 
 	topology := &csi.Topology{
-		Segments: map[string]string{},
+		Segments: map[string]string{topologyKey: ""},
 	}
 
-	var (
-		zone      cloudprovider.Zone
-		zoneError error
-	)
-	if runtime.GOOS == "windows" && (!d.cloudProvisioner.GetCloud().UseInstanceMetadata || d.cloudProvisioner.GetCloud().Metadata == nil) {
-		zone, zoneError = d.cloudProvisioner.GetCloud().VMSet.GetZoneByNodeName(d.NodeID)
-	} else {
-		zone, zoneError = d.cloudProvisioner.GetCloud().GetZone(ctx)
-	}
+	if d.supportZone {
+		var zone cloudprovider.Zone
+		if d.getNodeInfoFromLabels {
+			failureDomainFromLabels, instanceTypeFromLabels, err = getNodeInfoFromLabels(ctx, d.NodeID, d.cloudProvisioner.GetCloud().KubeClient)
+		} else {
+			if runtime.GOOS == "windows" && (!d.cloudProvisioner.GetCloud().UseInstanceMetadata || d.cloudProvisioner.GetCloud().Metadata == nil) {
+				zone, err = d.cloudProvisioner.GetCloud().VMSet.GetZoneByNodeName(d.NodeID)
+			} else {
+				zone, err = d.cloudProvisioner.GetCloud().GetZone(ctx)
+			}
+			if err != nil {
+				klog.Warningf("get zone(%s) failed with: %v, fall back to get zone from node labels", d.NodeID, err)
+				failureDomainFromLabels, instanceTypeFromLabels, err = getNodeInfoFromLabels(ctx, d.NodeID, d.cloudProvisioner.GetCloud().KubeClient)
+			}
+		}
 
-	if zoneError != nil {
-		klog.Warningf("get zone(%s) failed with: %v", d.NodeID, zoneError)
-	} else {
+		if err != nil {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("getNodeInfoFromLabels on node(%s) failed with %v", d.NodeID, err))
+		}
+		if zone.FailureDomain == "" {
+			zone.FailureDomain = failureDomainFromLabels
+		}
+
+		klog.V(2).Infof("NodeGetInfo, nodeName: %s, failureDomain: %s", d.NodeID, zone.FailureDomain)
 		if azureutils.IsValidAvailabilityZone(zone.FailureDomain, d.cloudProvisioner.GetCloud().Location) {
 			topology.Segments[topologyKey] = zone.FailureDomain
 			topology.Segments[consts.WellKnownTopologyKey] = zone.FailureDomain
-		} else {
-			topology.Segments[topologyKey] = ""
 		}
 	}
 
 	maxDataDiskCount := d.VolumeAttachLimit
 	if maxDataDiskCount < 0 {
-		if runtime.GOOS == "windows" && d.cloudProvisioner.GetCloud().UseInstanceMetadata && d.cloudProvisioner.GetCloud().Metadata != nil {
-			metadata, err := d.cloudProvisioner.GetCloud().Metadata.GetMetadata(azcache.CacheReadTypeDefault)
-			if err == nil && metadata.Compute != nil {
-				instanceType = metadata.Compute.VMSize
-				klog.V(5).Infof("NodeGetInfo: nodeName(%s), VM Size(%s)", d.NodeID, instanceType)
-			} else {
-				klog.Warningf("get instance type(%s) failed with: %v", d.NodeID, err)
+		if d.getNodeInfoFromLabels {
+			if instanceTypeFromLabels == "" {
+				_, instanceTypeFromLabels, err = getNodeInfoFromLabels(ctx, d.NodeID, d.cloudProvisioner.GetCloud().KubeClient)
 			}
 		} else {
-			instances, ok := d.cloudProvisioner.GetCloud().Instances()
-			if !ok {
-				return nil, status.Error(codes.Internal, "Failed to get instances from cloud provider")
+			if runtime.GOOS == "windows" && d.cloudProvisioner.GetCloud().UseInstanceMetadata && d.cloudProvisioner.GetCloud().Metadata != nil {
+				metadata, err := d.cloudProvisioner.GetCloud().Metadata.GetMetadata(azcache.CacheReadTypeDefault)
+				if err == nil && metadata.Compute != nil {
+					instanceType = metadata.Compute.VMSize
+					klog.V(5).Infof("NodeGetInfo: nodeName(%s), VM Size(%s)", d.NodeID, instanceType)
+				} else {
+					klog.Warningf("get instance type(%s) failed with: %v", d.NodeID, err)
+				}
+			} else {
+				instances, ok := d.cloudProvisioner.GetCloud().Instances()
+				if !ok {
+					klog.Warningf("failed to get instances from cloud provider")
+				} else {
+					instanceType, err = instances.InstanceType(ctx, types.NodeName(d.NodeID))
+				}
+				if err != nil {
+					klog.Warningf("get instance type(%s) failed with: %v", d.NodeID, err)
+				}
+				if instanceType, err = instances.InstanceType(ctx, types.NodeName(d.NodeID)); err != nil {
+					klog.Warningf("get instance type(%s) failed with: %v", d.NodeID, err)
+					_, instanceTypeFromLabels, err = getNodeInfoFromLabels(ctx, d.NodeID, d.cloudProvisioner.GetCloud().KubeClient)
+				}
 			}
-			var err error
-			if instanceType, err = instances.InstanceType(ctx, types.NodeName(d.NodeID)); err != nil {
-				klog.Warningf("get instance type(%s) failed with: %v", d.NodeID, err)
+			if err != nil {
+				klog.Warningf("getNodeInfoFromLabels on node(%s) failed with %v", d.NodeID, err)
 			}
+			if instanceType == "" {
+				instanceType = instanceTypeFromLabels
+			}
+			maxDataDiskCount = getMaxDataDiskCount(instanceType)
 		}
-		maxDataDiskCount = getMaxDataDiskCount(instanceType)
 	}
 
 	return &csi.NodeGetInfoResponse{
@@ -551,9 +579,22 @@ func (d *DriverV2) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolu
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "failed to determine device path for volumePath [%v]: %v", volumePath, err)
 	}
+
+	if !isBlock {
+		volumeCapability := req.GetVolumeCapability()
+		if volumeCapability != nil {
+			isBlock = volumeCapability.GetBlock() != nil
+		}
+	}
+
 	if isBlock {
-		// Noop for Block NodeExpandVolume
-		klog.V(4).Infof("NodeExpandVolume succeeded on %v to %s, path check is block so this is a no-op", volumeID, volumePath)
+		if d.enableDiskOnlineResize {
+			klog.V(2).Info("NodeExpandVolume begin to rescan all devices on block volume(%s)", volumeID)
+			if err := rescanAllVolumes(d.ioHandler); err != nil {
+				klog.Errorf("NodeExpandVolume rescanAllVolumes failed with error: %v", err)
+			}
+		}
+		klog.V(2).Info("NodeExpandVolume skip resize operation on block volume(%s)", volumeID)
 		return &csi.NodeExpandVolumeResponse{}, nil
 	}
 
@@ -621,7 +662,7 @@ func (d *DriverV2) recoverMount(diskURI string) {
 		// world states (ListVolumes result doesn't match VolumeAttachment list).
 
 		// make unpublish request
-		detachErr := d.crdProvisioner.UnpublishVolume(recoveryCtx, diskURI, d.NodeID, nil)
+		detachErr := d.crdProvisioner.UnpublishVolume(recoveryCtx, diskURI, d.NodeID, nil, consts.Detach)
 		if detachErr != nil {
 			klog.Errorf("failed to unpublishVolume volume (%s) from node (%s): %v", diskURI, d.NodeID, detachErr)
 			d.markDetachState(diskURI, detachFailed)

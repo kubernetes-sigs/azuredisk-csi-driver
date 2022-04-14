@@ -23,19 +23,16 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
 	"github.com/Azure/go-autorest/autorest/date"
 	"github.com/Azure/go-autorest/autorest/to"
-	"github.com/stretchr/testify/assert"
-	v1 "k8s.io/api/core/v1"
-
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
-
+	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
-
+	v1 "k8s.io/api/core/v1"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockcorev1"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockkubeclient"
@@ -666,7 +663,6 @@ func TestGetSnapshotInfo(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-
 		snapshotName, resourceGroup, subsID, err := d.getSnapshotInfo(test.snapshotID)
 		if !reflect.DeepEqual(snapshotName, test.expectedSnapshotName) ||
 			!reflect.DeepEqual(resourceGroup, test.expectedRGName) ||

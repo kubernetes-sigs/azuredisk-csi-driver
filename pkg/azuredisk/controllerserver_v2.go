@@ -29,11 +29,14 @@ import (
 	"github.com/golang/protobuf/ptypes"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 
 	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/cloud-provider-azure/pkg/metrics"
+
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
 // CreateVolume provisions an azure disk
@@ -53,10 +56,11 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 	}
 	defer d.volumeLocks.Release(name)
 
+	var diskURI string
 	mc := metrics.NewMetricContext(d.cloudProvisioner.GetMetricPrefix(), "controller_create_volume", d.cloudProvisioner.GetCloud().ResourceGroup, d.cloudProvisioner.GetCloud().SubscriptionID, d.Name)
 	isOperationSucceeded := false
 	defer func() {
-		mc.ObserveOperationWithResult(isOperationSucceeded)
+		mc.ObserveOperationWithResult(isOperationSucceeded, diskURI, "")
 	}()
 
 	volumeCaps := req.GetVolumeCapabilities()
@@ -128,6 +132,7 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 		return nil, status.Error(codes.Unknown, "Error creating volume")
 	}
 
+	diskURI = response.VolumeID
 	isOperationSucceeded = true
 
 	responseVolumeContentSource := &csi.VolumeContentSource{}
@@ -184,10 +189,12 @@ func (d *DriverV2) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeReques
 	}
 	defer d.volumeLocks.Release(volumeID)
 
+	diskURI := volumeID
+
 	mc := metrics.NewMetricContext(d.cloudProvisioner.GetMetricPrefix(), "controller_delete_volume", d.cloudProvisioner.GetCloud().ResourceGroup, d.cloudProvisioner.GetCloud().SubscriptionID, d.Name)
 	isOperationSucceeded := false
 	defer func() {
-		mc.ObserveOperationWithResult(isOperationSucceeded)
+		mc.ObserveOperationWithResult(isOperationSucceeded, diskURI, "")
 	}()
 
 	klog.V(2).Infof("deleting disk(%s)", volumeID)
@@ -229,10 +236,12 @@ func (d *DriverV2) ControllerPublishVolume(ctx context.Context, req *csi.Control
 		return nil, status.Error(codes.InvalidArgument, "Node ID not provided")
 	}
 
+	nodeName := types.NodeName(nodeID)
+
 	mc := metrics.NewMetricContext(d.cloudProvisioner.GetMetricPrefix(), "controller_publish_volume", d.cloudProvisioner.GetCloud().ResourceGroup, d.cloudProvisioner.GetCloud().SubscriptionID, d.Name)
 	isOperationSucceeded := false
 	defer func() {
-		mc.ObserveOperationWithResult(isOperationSucceeded)
+		mc.ObserveOperationWithResult(isOperationSucceeded, diskURI, nodeName)
 	}()
 
 	volumeCapability := generateAzVolumeCapability(volCap)
@@ -265,13 +274,15 @@ func (d *DriverV2) ControllerUnpublishVolume(ctx context.Context, req *csi.Contr
 		return nil, status.Error(codes.InvalidArgument, "Node ID not provided")
 	}
 
+	nodeName := types.NodeName(nodeID)
+
 	mc := metrics.NewMetricContext(d.cloudProvisioner.GetMetricPrefix(), "controller_unpublish_volume", d.cloudProvisioner.GetCloud().ResourceGroup, d.cloudProvisioner.GetCloud().SubscriptionID, d.Name)
 	isOperationSucceeded := false
 	defer func() {
-		mc.ObserveOperationWithResult(isOperationSucceeded)
+		mc.ObserveOperationWithResult(isOperationSucceeded, diskURI, nodeName)
 	}()
 
-	err := d.crdProvisioner.UnpublishVolume(ctx, diskURI, nodeID, req.GetSecrets())
+	err := d.crdProvisioner.UnpublishVolume(ctx, diskURI, nodeID, req.GetSecrets(), consts.DemoteOrDetach)
 
 	if err != nil {
 		return nil, err
@@ -441,7 +452,7 @@ func (d *DriverV2) ControllerExpandVolume(ctx context.Context, req *csi.Controll
 	mc := metrics.NewMetricContext(d.cloudProvisioner.GetMetricPrefix(), "controller_expand_volume", d.cloudProvisioner.GetCloud().ResourceGroup, d.cloudProvisioner.GetCloud().SubscriptionID, d.Name)
 	isOperationSucceeded := false
 	defer func() {
-		mc.ObserveOperationWithResult(isOperationSucceeded)
+		mc.ObserveOperationWithResult(isOperationSucceeded, diskURI, "")
 	}()
 
 	capacityRange := &diskv1beta1.CapacityRange{
@@ -480,7 +491,7 @@ func (d *DriverV2) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRe
 	mc := metrics.NewMetricContext(d.cloudProvisioner.GetMetricPrefix(), "controller_create_snapshot", d.cloudProvisioner.GetCloud().ResourceGroup, d.cloudProvisioner.GetCloud().SubscriptionID, d.Name)
 	isOperationSucceeded := false
 	defer func() {
-		mc.ObserveOperationWithResult(isOperationSucceeded)
+		mc.ObserveOperationWithResult(isOperationSucceeded, sourceVolumeID, snapshotName)
 	}()
 
 	snapshot, err := d.cloudProvisioner.CreateSnapshot(ctx, sourceVolumeID, snapshotName, req.GetSecrets(), req.GetParameters())
@@ -520,7 +531,7 @@ func (d *DriverV2) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRe
 	mc := metrics.NewMetricContext(d.cloudProvisioner.GetMetricPrefix(), "controller_delete_snapshot", d.cloudProvisioner.GetCloud().ResourceGroup, d.cloudProvisioner.GetCloud().SubscriptionID, d.Name)
 	isOperationSucceeded := false
 	defer func() {
-		mc.ObserveOperationWithResult(isOperationSucceeded)
+		mc.ObserveOperationWithResult(isOperationSucceeded, snapshotID, "")
 	}()
 
 	err := d.cloudProvisioner.DeleteSnapshot(ctx, snapshotID, req.GetSecrets())

@@ -71,7 +71,7 @@ helm repo update azuredisk-csi-driver
 ### install a specific version
 
 ```console
-helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v1.11.0
+helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v1.14.0
 ```
 
 ### install on Azure Stack
@@ -123,6 +123,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `driver.customUserAgent`                          | custom userAgent                                           | `` |
 | `driver.userAgentSuffix`                          | userAgent suffix                                           | `OSS-helm` |
 | `driver.volumeAttachLimit`                        | maximum number of attachable volumes per node maximum number is defined according to node instance type by default(`-1`)                        | `-1` |
+| `driver.azureGoSDKLogLevel`                       | [Azure go sdk log level](https://github.com/Azure/azure-sdk-for-go/blob/main/documentation/previous-versions-quickstart.md#built-in-basic-requestresponse-logging)  | ``(no logs), `DEBUG`, `INFO`, `WARNING`, `ERROR`, [etc](https://github.com/Azure/go-autorest/blob/50e09bb39af124f28f29ba60efde3fa74a4fe93f/logger/logger.go#L65-L73) |
 | `feature.enableFSGroupPolicy`                     | enable `fsGroupPolicy` on a k8s 1.20+ cluster              | `true`                      |
 | `image.baseRepo`                                  | base repository of driver images                           | `mcr.microsoft.com`                      |
 | `image.azuredisk.repository`                      | azuredisk-csi-driver docker image                          | `/oss/csi/azuredisk-csi`                      |
@@ -156,36 +157,37 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `controller.allowEmptyCloudConfig`                | Whether allow running controller driver without cloud config          | `false`
 | `controller.replicas`                             | the replicas of csi-azuredisk-controller                   | `2`                                                            |
 | `controller.metricsPort`                          | metrics port of csi-azuredisk-controller                   | `29604`                                                        |
-| `controller.livenessProbe.healthPort `            | health check port for liveness probe                       | `29602` |
+| `controller.livenessProbe.healthPort`             | health check port for liveness probe                       | `29602` |
 | `controller.runOnMaster`                          | run csi-azuredisk-controller on master node                | `false`                                                        |
 | `controller.logLevel`                             | controller driver log level                                |`5`                                                           |
 | `controller.affinity`                             | controller pod affinity                                    |                                                                |
 | `controller.tolerations`                          | controller pod tolerations                                 | Tolerates scheduling to control plane                          |
 | `controller.hostNetwork`                          | `hostNetwork` setting on controller driver(could be disabled if controller does not depend on MSI setting)                            | `true`                                                            | `true`, `false`
 | `controller.resources.csiProvisioner.limits.memory`   | csi-provisioner memory limits                         | 500Mi                                                          |
-| `controller.resources.csiProvisioner.requests.cpu`    | csi-provisioner cpu requests limits                   | 10m                                                            |
-| `controller.resources.csiProvisioner.requests.memory` | csi-provisioner memory requests limits                | 20Mi                                                           |
+| `controller.resources.csiProvisioner.requests.cpu`    | csi-provisioner cpu requests                   | 10m                                                            |
+| `controller.resources.csiProvisioner.requests.memory` | csi-provisioner memory requests                | 20Mi                                                           |
 | `controller.resources.csiAttacher.limits.memory`      | csi-attacher memory limits                         | 500Mi                                                          |
-| `controller.resources.csiAttacher.requests.cpu`       | csi-attacher cpu requests limits                   | 10m                                                            |
-| `controller.resources.csiAttacher.requests.memory`    | csi-attacher memory requests limits                | 20Mi                                                           |
+| `controller.resources.csiAttacher.requests.cpu`       | csi-attacher cpu requests                   | 10m                                                            |
+| `controller.resources.csiAttacher.requests.memory`    | csi-attacher memory requests                | 20Mi                                                           |
 | `controller.resources.csiResizer.limits.memory`       | csi-resizer memory limits                         | 500Mi                                                          |
-| `controller.resources.csiResizer.requests.cpu`        | csi-resizer cpu requests limits                   | 10m                                                            |
-| `controller.resources.csiResizer.requests.memory`     | csi-resizer memory requests limits                | 20Mi                                                           |
+| `controller.resources.csiResizer.requests.cpu`        | csi-resizer cpu requests                   | 10m                                                            |
+| `controller.resources.csiResizer.requests.memory`     | csi-resizer memory requests                | 20Mi                                                           |
 | `controller.resources.csiSnapshotter.limits.memory`   | csi-snapshotter memory limits                         | 500Mi                                                          |
-| `controller.resources.csiSnapshotter.requests.cpu`    | csi-snapshotter cpu requests limits                   | 10m                                                            |
-| `controller.resources.csiSnapshotter.requests.memory` | csi-snapshotter memory requests limits                | 20Mi                                                           |
+| `controller.resources.csiSnapshotter.requests.cpu`    | csi-snapshotter cpu requests                   | 10m                                                            |
+| `controller.resources.csiSnapshotter.requests.memory` | csi-snapshotter memory requests                | 20Mi                                                           |
 | `controller.resources.livenessProbe.limits.memory`    | liveness-probe memory limits                          | 100Mi                                                          |
-| `controller.resources.livenessProbe.requests.cpu`     | liveness-probe cpu requests limits                    | 10m                                                            |
-| `controller.resources.livenessProbe.requests.memory`  | liveness-probe memory requests limits                 | 20Mi                                                           |
+| `controller.resources.livenessProbe.requests.cpu`     | liveness-probe cpu requests                    | 10m                                                            |
+| `controller.resources.livenessProbe.requests.memory`  | liveness-probe memory requests                 | 20Mi                                                           |
 | `controller.resources.azuredisk.limits.memory`        | azuredisk memory limits                         | 500Mi                                                          |
-| `controller.resources.azuredisk.requests.cpu`         | azuredisk cpu requests limits                   | 10m                                                            |
-| `controller.resources.azuredisk.requests.memory`      | azuredisk memory requests limits                | 20Mi                                                           |
+| `controller.resources.azuredisk.requests.cpu`         | azuredisk cpu requests                   | 10m                                                            |
+| `controller.resources.azuredisk.requests.memory`      | azuredisk memory requests                | 20Mi                                                           |
 | `node.cloudConfigSecretName`                      | cloud config secret name of node driver                    | `azure-cloud-provider`
 | `node.cloudConfigSecretNamespace`                 | cloud config secret namespace of node driver               | `kube-system`
+| `node.supportZone`                                | Whether get zone info in NodeGetInfo on the node (requires instance metadata support)               | `true`
 | `node.allowEmptyCloudConfig`                      | Whether allow running node driver without cloud config               | `true`
 | `node.maxUnavailable`                             | `maxUnavailable` value of driver node daemonset            | `1`
 | `node.metricsPort`                                | metrics port of csi-azuredisk-node                         |`29605`                                                        |
-| `node.livenessProbe.healthPort `                  | health check port for liveness probe                       | `29603` |
+| `node.livenessProbe.healthPort`                   | health check port for liveness probe                       | `29603` |
 | `node.logLevel`                                   | node driver log level                                      |`5`                                                           |
 | `snapshot.enabled`                                | whether enable snapshot feature                            | `false`                                                        |
 | `snapshot.image.csiSnapshotter.repository`        | csi-snapshotter docker image                               | `/oss/kubernetes-csi/csi-snapshotter`         |
@@ -197,36 +199,39 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `snapshot.snapshotController.name`                | snapshot controller name                                   | `csi-snapshot-controller`                                                           |
 | `snapshot.snapshotController.replicas`            | the replicas of snapshot-controller                        | `2`                                                            |
 | `snapshot.snapshotController.resources.limits.memory`          | csi-snapshot-controller memory limits                          | 100Mi                                                          |
-| `snapshot.snapshotController.resources.requests.cpu`           | csi-snapshot-controller cpu requests limits                    | 10m                                                            |
-| `snapshot.snapshotController.resources.requests.memory`        | csi-snapshot-controller memory requests limits                 | 20Mi                                                           |
+| `snapshot.snapshotController.resources.requests.cpu`           | csi-snapshot-controller cpu requests                    | 10m                                                            |
+| `snapshot.snapshotController.resources.requests.memory`        | csi-snapshot-controller memory requests                 | 20Mi                                                           |
 | `linux.enabled`                                   | whether enable linux feature                               | `true`                                                         |
 | `linux.dsName`                                    | name of driver daemonset on linux                          |`csi-azuredisk-node`                                                         |
 | `linux.kubelet`                                   | configure kubelet directory path on Linux agent node       | `/var/lib/kubelet`                                                |
+| `linux.getNodeInfoFromLabels`                     | get node info from node labels instead of IMDS on Linux agent node       | `false`                                                |
 | `linux.distro`                                    | configure ssl certificates for different Linux distribution(available values: `debian`, `fedora`)                  | `debian`                                                |
 | `linux.tolerations`                               | linux node driver tolerations                              |                                                              |
 | `linux.hostNetwork`                               | `hostNetwork` setting on linux node driver(could be disabled if perfProfile is `none`)                            | `true`                                                            | `true`, `false`
 | `linux.resources.livenessProbe.limits.memory`          | liveness-probe memory limits                          | 100Mi                                                          |
-| `linux.resources.livenessProbe.requests.cpu`           | liveness-probe cpu requests limits                    | 10m                                                            |
-| `linux.resources.livenessProbe.requests.memory`        | liveness-probe memory requests limits                 | 20Mi                                                           |
+| `linux.resources.livenessProbe.requests.cpu`           | liveness-probe cpu requests                    | 10m                                                            |
+| `linux.resources.livenessProbe.requests.memory`        | liveness-probe memory requests                 | 20Mi                                                           |
 | `linux.resources.nodeDriverRegistrar.limits.memory`    | csi-node-driver-registrar memory limits               | 100Mi                                                          |
-| `linux.resources.nodeDriverRegistrar.requests.cpu`     | csi-node-driver-registrar cpu requests limits         | 10m                                                            |
-| `linux.resources.nodeDriverRegistrar.requests.memory`  | csi-node-driver-registrar memory requests limits      | 20Mi                                                           |
+| `linux.resources.nodeDriverRegistrar.requests.cpu`     | csi-node-driver-registrar cpu requests         | 10m                                                            |
+| `linux.resources.nodeDriverRegistrar.requests.memory`  | csi-node-driver-registrar memory requests      | 20Mi                                                           |
 | `linux.resources.azuredisk.limits.memory`              | azuredisk memory limits                         | 200Mi                                                         |
-| `linux.resources.azuredisk.requests.cpu`               | azuredisk cpu requests limits                   | 10m                                                            |
-| `linux.resources.azuredisk.requests.memory`            | azuredisk memory requests limits                | 20Mi                                                           |
+| `linux.resources.azuredisk.requests.cpu`               | azuredisk cpu requests                   | 10m                                                            |
+| `linux.resources.azuredisk.requests.memory`            | azuredisk memory requests                | 20Mi                                                           |
 | `windows.enabled`                                 | whether enable windows feature                             | `true`                                                        |
 | `windows.dsName`                                  | name of driver daemonset on windows                        |`csi-azuredisk-node-win`                                                         |
 | `windows.kubelet`                                 | configure kubelet directory path on Windows agent node     | `'C:\var\lib\kubelet'`                                            |
+| `windows.getNodeInfoFromLabels`                   | get node info from node labels instead of IMDS on windows agent node       | `false`                                                |
 | `windows.tolerations`                             | windows node driver tolerations                            |                                                              |
-| `windows.resources.livenessProbe.limits.memory`          | liveness-probe memory limits                          | 200Mi                                                          |
-| `windows.resources.livenessProbe.requests.cpu`           | liveness-probe cpu requests limits                    | 10m                                                            |
-| `windows.resources.livenessProbe.requests.memory`        | liveness-probe memory requests limits                 | 20Mi                                                           |
-| `windows.resources.nodeDriverRegistrar.limits.memory`    | csi-node-driver-registrar memory limits               | 200Mi                                                          |
-| `windows.resources.nodeDriverRegistrar.requests.cpu`     | csi-node-driver-registrar cpu requests limits         | 10m                                                            |
-| `windows.resources.nodeDriverRegistrar.requests.memory`  | csi-node-driver-registrar memory requests limits      | 20Mi                                                           |
-| `windows.resources.azuredisk.limits.memory`              | azuredisk memory limits                         | 400Mi                                                         |
-| `windows.resources.azuredisk.requests.cpu`               | azuredisk cpu requests limits                   | 10m                                                            |
-| `windows.resources.azuredisk.requests.memory`            | azuredisk memory requests limits                | 20Mi                                                           |
+| `windows.resources.livenessProbe.limits.memory`          | liveness-probe memory limits                          | 100Mi                                                          |
+| `windows.resources.livenessProbe.requests.cpu`           | liveness-probe cpu requests                    | 10m                                                            |
+| `windows.resources.livenessProbe.requests.memory`        | liveness-probe memory requests                 | 40Mi                                                           |
+| `windows.resources.nodeDriverRegistrar.limits.memory`    | csi-node-driver-registrar memory limits               | 100Mi                                                          |
+| `windows.resources.nodeDriverRegistrar.requests.cpu`     | csi-node-driver-registrar cpu requests         | 10m                                                            |
+| `windows.resources.nodeDriverRegistrar.requests.memory`  | csi-node-driver-registrar memory requests      | 40Mi                                                           |
+| `windows.resources.azuredisk.limits.memory`              | azuredisk memory limits                         | 200Mi                                                         |
+| `windows.resources.azuredisk.requests.cpu`               | azuredisk cpu requests                   | 10m                                                            |
+| `windows.resources.azuredisk.requests.memory`            | azuredisk memory requests                | 40Mi                                                           |
+| `windows.useHostProcessContainers`                       | use HostProcessContainers for deployment | false                                                          |
 | `cloud`                                           | cloud environment driver is running on                     | `AzurePublicCloud`                                                  |
 
 ---
@@ -238,7 +243,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 Applicable to any Kubernetes cluster without the Azure Disk CSI Driver V1 installed. If V1 is installed, proceed to side-by-side installation instructions below. The V1 driver is installed by default in AKS clusters with Kubernetes version 1.21 and later.
 
 ```console
-helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v2.0.0-alpha.1
+helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v2.0.0-beta.2
 ```
 
 ### install Azure Disk CSI Driver V2 side-by-side with Azure Disk CSI Driver V1 (Preview)
@@ -247,8 +252,8 @@ Since VolumeSnapshot CRDs and other components are created first when V1 driver 
 
 ```console
 helm install azuredisk-csi-driver-v2 azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system \
-  --version v2.0.0-alpha.1 \
-  --values https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts/v2.0.0-alpha.1/azuredisk-csi-driver/side-by-side-values.yaml
+  --version v2.0.0-beta.2 \
+  --values https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts/v2.0.0-beta.2/azuredisk-csi-driver/side-by-side-values.yaml
 ```
 
 > NOTE: When installing the V2 driver side-by-side with the V1 driver in an AKS cluster, you will need to grant the agentpool service principal or managed identity `Contributor` access to the resource groups used to store managed disks. By default, this is the resource group prefixed by `MC_` corresponding to your AKS cluster.
@@ -278,7 +283,7 @@ helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --na
 This assumes you have already installed Azure Disk CSI Driver V1 to a non-AKS cluster, e.g. one created using [aks-engine](https://github.com/Azure/aks-engine) or [Cluster API Provider for Azure (CAPZ)](https://github.com/kubernetes-sigs/cluster-api-provider-azure).
 
 ```console
-helm upgrade azure-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v2.0.0-alpha.1
+helm upgrade azure-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v2.0.0-beta.2
 ```
 
 ---
@@ -291,12 +296,12 @@ In addition to the parameters supported by the V1 driver, Azure Disk CSI driver 
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `image.azuredisk.tag` | Azure Disk CSI Driver V2 docker image tag | `v2.0.0-alpha.1` |
+| `image.azuredisk.tag` | Azure Disk CSI Driver V2 docker image tag | `v2.0.0-beta.2` |
 | `image.curl.repository` | curl docker image | `docker.io/curlimages/curl` |
 | `image.curl.tag` | curl docker image tag | `latest` |
 | `image.curl.pullPolicy` | curl docker image pull policy | `IfNotPresent` |
 | `image.schedulerExtender.repository` | Azure Disk CSI Driver V2 Scheduler Extender docker image | `/oss/csi/azdiskschedulerextender-csi` |
-| `image.schedulerExtender.tag` | Azure Disk CSI Driver V2 Scheduler Extender docker image tag | `v2.0.0-alpha.1` |
+| `image.schedulerExtender.tag` | Azure Disk CSI Driver V2 Scheduler Extender docker image tag | `v2.0.0-beta.2` |
 | `image.schedulerExtender.pullPolicy` | Azure Disk CSI Driver V2 Scheduler Extender docker image pull policy | `IfNotPresent` |
 | `image.kubeScheduler.repository` | kube-scheduler docker image | `/oss/kubernetes/kube-scheduler` |
 | `image.kubeScheduler.tag` | kube-scheduler docker image tag - this version should be the same as the Kubernetes cluster version | `v1.21.2` |

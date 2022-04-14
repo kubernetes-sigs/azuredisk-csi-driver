@@ -206,7 +206,7 @@ func TestRecoverMount(t *testing.T) {
 			desc:    "should recover if no other recovery is currently in process",
 			diskURI: "vol-1",
 			setupFunc: func() {
-				d.crdProvisioner.(*mockprovisioner.MockCrdProvisioner).EXPECT().UnpublishVolume(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+				d.crdProvisioner.(*mockprovisioner.MockCrdProvisioner).EXPECT().UnpublishVolume(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 				d.crdProvisioner.(*mockprovisioner.MockCrdProvisioner).EXPECT().WaitForDetach(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			},
 			verifyFunc: func(diskURI string) {

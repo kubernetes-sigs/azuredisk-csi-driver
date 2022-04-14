@@ -3,7 +3,7 @@ module sigs.k8s.io/azuredisk-csi-driver
 go 1.17
 
 require (
-	github.com/Azure/azure-sdk-for-go v61.5.0+incompatible
+	github.com/Azure/azure-sdk-for-go v62.3.0+incompatible
 	github.com/Azure/go-autorest/autorest v0.11.24
 	github.com/Azure/go-autorest/autorest/adal v0.9.18
 	github.com/Azure/go-autorest/autorest/date v0.3.0
@@ -22,7 +22,7 @@ require (
 	github.com/pelletier/go-toml v1.9.4
 	github.com/prometheus/client_golang v1.11.0
 	github.com/sirupsen/logrus v1.8.1
-	github.com/stretchr/testify v1.7.0
+	github.com/stretchr/testify v1.7.1
 	golang.org/x/net v0.0.0-20211209124913-491a49abca63
 	google.golang.org/grpc v1.42.0
 	google.golang.org/protobuf v1.27.1
@@ -34,11 +34,11 @@ require (
 	k8s.io/code-generator v0.23.3
 	k8s.io/component-base v0.23.3
 	k8s.io/component-helpers v0.23.3
-	k8s.io/klog/v2 v2.30.0
+	k8s.io/klog/v2 v2.40.1
 	k8s.io/kube-scheduler v0.23.3
 	k8s.io/kubernetes v1.23.3
 	k8s.io/mount-utils v0.23.3
-	k8s.io/utils v0.0.0-20211116205334-6203023598ed
+	k8s.io/utils v0.0.0-20220210201930-3a6ce19ff2f9
 	sigs.k8s.io/cloud-provider-azure v0.7.4
 	sigs.k8s.io/controller-runtime v0.11.0
 	sigs.k8s.io/controller-tools v0.5.0
@@ -114,6 +114,7 @@ require (
 	github.com/spf13/afero v1.6.0 // indirect
 	github.com/spf13/cast v1.4.1 // indirect
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
+	github.com/spf13/cobra v1.4.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/subosito/gotenv v1.2.0 // indirect
 	go.opentelemetry.io/contrib v0.20.0 // indirect
@@ -181,11 +182,11 @@ replace (
 	k8s.io/kubelet => k8s.io/kubelet v0.23.3
 	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.23.3
 	k8s.io/metrics => k8s.io/metrics v0.23.3
-	k8s.io/mount-utils => k8s.io/mount-utils v0.23.3
+	k8s.io/mount-utils => k8s.io/mount-utils v0.0.0-20220314200322-2af412bcdc5e
 	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.23.3
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.23.3
 	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.23.3
 	k8s.io/sample-controller => k8s.io/sample-controller v0.23.3
 
-	sigs.k8s.io/cloud-provider-azure => github.com/edreed/cloud-provider-azure v0.0.0-20220218005637-7a8d60e26fe9
+	sigs.k8s.io/cloud-provider-azure => github.com/edreed/cloud-provider-azure v0.0.0-20220406225159-b547d8ec990c
 )

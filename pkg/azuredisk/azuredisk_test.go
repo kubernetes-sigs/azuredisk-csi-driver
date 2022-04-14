@@ -17,11 +17,15 @@ limitations under the License.
 package azuredisk
 
 import (
+	"context"
+	"fmt"
 	"io/ioutil"
 	"os"
+	"reflect"
 	"testing"
 	"time"
 
+	clientset "k8s.io/client-go/kubernetes"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
@@ -158,4 +162,25 @@ func createConfigFile(path string, content string) error {
 
 func deleteConfig(path string) {
 	os.Remove(path)
+}
+
+func TestGetNodeInfoFromLabels(t *testing.T) {
+	tests := []struct {
+		nodeName      string
+		kubeClient    clientset.Interface
+		expectedError error
+	}{
+		{
+			nodeName:      "",
+			kubeClient:    nil,
+			expectedError: fmt.Errorf("kubeClient is nil"),
+		},
+	}
+
+	for _, test := range tests {
+		_, _, err := getNodeInfoFromLabels(context.TODO(), test.nodeName, test.kubeClient)
+		if !reflect.DeepEqual(err, test.expectedError) {
+			t.Errorf("Unexpected result: %v, expected result: %v", err, test.expectedError)
+		}
+	}
 }
