@@ -1,5 +1,5 @@
 /*
-Copyright YEAR The Kubernetes Authors.
+Copyright 2022 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -46,7 +46,7 @@ var azvCmd = &cobra.Command{
 			displayAzv(result)
 		} else {
 			// not found, display an error
-			fmt.Println("azVolumes not found")
+			fmt.Printf("azVolumes not found in the %s\n", namespace)
 		}
 		
 	},
@@ -84,7 +84,7 @@ func GetAzVolumesByPod(podName string, namespace string) []AzvResource {
 	clientsetAzDisk := getAzDiskClientset(config)
 
 	// get pvc claim name set of pod
-	pvcSet := make(map[string]string)
+	pvcClaimNameSet := make(map[string]string)
 
 	pods, err := clientsetK8s.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{})
 	if err != nil {
@@ -96,7 +96,7 @@ func GetAzVolumesByPod(podName string, namespace string) []AzvResource {
 		if podName == "" || pod.Name == podName {
 			for _, v := range pod.Spec.Volumes {
 				if v.PersistentVolumeClaim != nil {
-					pvcSet[v.PersistentVolumeClaim.ClaimName] = pod.Name
+					pvcClaimNameSet[v.PersistentVolumeClaim.ClaimName] = pod.Name
 				}
 			}
 		}
@@ -110,8 +110,8 @@ func GetAzVolumesByPod(podName string, namespace string) []AzvResource {
 	for _, azVolume := range azVolumes.Items {
 		pvcClaimName := azVolume.Spec.Parameters["csi.storage.k8s.io/pvc/name"]
 
-		// if pvcName is contained in pvcSet, add the azVolume to result
-		if pName, ok := pvcSet[pvcClaimName]; ok {
+		// if pvcClaimName is contained in pvcClaimNameSet, add the azVolume to result
+		if pName, ok := pvcClaimNameSet[pvcClaimName]; ok {
 			result = append(result, AzvResource {
 				ResourceType: pName,
 				Namespace:    azVolume.Namespace,
@@ -126,12 +126,7 @@ func GetAzVolumesByPod(podName string, namespace string) []AzvResource {
 func displayAzv(result []AzvResource) {
 	table := tablewriter.NewWriter(os.Stdout)
 	table.SetHeader([]string{"PODNAME", "NAMESPACE", "NAME", "STATE"})
-	// var row []string
-	// v := reflect.ValueOf(azv)
 
-	// for i := 0; i < v.NumField(); i++ {
-	// 	row = append(row, v.Field(i).Interface())
-	// }
 	for _, azv := range result {
 		table.Append([]string{azv.ResourceType, azv.Namespace, azv.Name, string(azv.State)})
 	}

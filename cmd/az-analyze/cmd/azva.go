@@ -1,5 +1,5 @@
 /*
-Copyright YEAR The Kubernetes Authors.
+Copyright 2022 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -58,20 +58,17 @@ var azvaCmd = &cobra.Command{
 			fmt.Printf("only one of the flags is allowed.\n" + "Run 'az-analyze --help' for usage.\n")
 		} else {
 			if numFlag == 0 {
+				// TODO: the same as  kubectl get AzVolumeAttachment
 				fmt.Println("no flags")
-				// the same as  kubectl get AzVolumeAttachment
 			} else if pod != "" {
 				azva = GetAzVolumeAttachementsByPod(pod, namespace)
-				// display
 				displayAzva(azva, "POD")
 			} else if node != "" {
-				//azva = GetAzVolumeAttachementsByNode(node)
-				// display
-				displayAzva(azva, node)
+				azva = GetAzVolumeAttachementsByNode(node)
+				displayAzva(azva, "NODE")
 			} else if zone != "" {
-				//azva = GetAzVolumeAttachementsByZone(zone)
-				// display
-				displayAzva(azva,zone)
+				azva = GetAzVolumeAttachementsByZone(zone)
+				displayAzva(azva, "ZONE")
 			} else {
 				fmt.Printf("invalid flag name\n" + "Run 'az-analyze --help' for usage.\n")
 			}
@@ -84,7 +81,7 @@ func init() {
 	azvaCmd.PersistentFlags().StringP("pod", "p", "", "insert-pod-name (only one of the flags is allowed).")
 	azvaCmd.PersistentFlags().StringP("node", "d", "", "insert-node-name (only one of the flags is allowed).")
 	azvaCmd.PersistentFlags().StringP("zone", "z", "", "insert-zone-name (only one of the flags is allowed).")
-	azvaCmd.PersistentFlags().StringP("namesapce", "n", "", "insert-namespace (optional).")
+	azvaCmd.PersistentFlags().StringP("namespace", "n", "", "insert-namespace (optional).")
 	
 	// Here you will define your flags and configuration settings.
 
@@ -107,8 +104,6 @@ type AzvaResource struct {
 	State v1beta1.AzVolumeAttachmentAttachmentState
 }
 
-
-
 func GetAzVolumeAttachementsByPod(podName string, namespace string) []AzvaResource {
 	result := make([]AzvaResource, 0)
 
@@ -121,26 +116,55 @@ func GetAzVolumeAttachementsByPod(podName string, namespace string) []AzvaResour
 	clientsetK8s := getKubernetesClientset(config)
 	clientsetAzDisk := getAzDiskClientset(config)
 
-	// assume under "default" namesapce
-	pvcSet := make(map[string]string)
+	// get pvc claim names of pod
+	pvcClaimNameSet := make(map[string]bool)
+
 	pods, err := clientsetK8s.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		panic(err.Error())
 	}
 
 	for _, pod := range pods.Items {
-		// if pod flag isn't provided, print all pods
-		if podName == "" || pod.Name == podName {
+		if pod.Name == podName {
 			for _, v := range pod.Spec.Volumes {
 				if v.PersistentVolumeClaim != nil {
-					pvcSet[v.PersistentVolumeClaim.ClaimName] = pod.Name
+					pvcClaimNameSet[v.PersistentVolumeClaim.ClaimName] = true
 				}
 			}
 		}
 	}
 
-	// get azVolumes with the same claim name in pvcSet
-	
+	// get azVolumes with the same claim name in pvcClaimNameSet
+	azVolumeAttachments, err := clientsetAzDisk.DiskV1beta1().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		panic(err.Error())
+	}
+
+	for _, azVolumeAttachment := range azVolumeAttachments.Items {
+		pvcClaimName := azVolumeAttachment.Spec.VolumeContext["csi.storage.k8s.io/pvc/name"]
+
+		// if pvcClaimName is contained in pvcClaimNameSet, add the azVolumeattachment to result
+		if pvcClaimNameSet[pvcClaimName] {
+			result = append(result, AzvaResource {
+				ResourceType: podName,
+				Namespace:    azVolumeAttachment.Namespace,
+				Name:         azVolumeAttachment.Name,
+				Age: time.Duration(metav1.Now().Sub(azVolumeAttachment.CreationTimestamp.Time).Hours()), //TODO: change format of age
+				RequestRole: azVolumeAttachment.Spec.RequestedRole,
+				Role: azVolumeAttachment.Status.Detail.Role,
+				State: azVolumeAttachment.Status.State })
+		}
+	}
+
+	return result
+}
+
+func GetAzVolumeAttachementsByNode(nodeName string) []AzvaResource {
+	result := make([]AzvaResource, 0)
+
+	// access to config and Clientset
+	config := getConfig()
+	clientsetAzDisk := getAzDiskClientset(config)
 
 	azVolumeAttachments, err := clientsetAzDisk.DiskV1beta1().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(context.Background(), metav1.ListOptions{})
 	if err != nil {
@@ -148,82 +172,71 @@ func GetAzVolumeAttachementsByPod(podName string, namespace string) []AzvaResour
 	}
 
 	for _, azVolumeAttachment := range azVolumeAttachments.Items {
-		// pvName := azVolume.Status.PersistentVolume;
-		fmt.Println(azVolumeAttachment.Name)
-		fmt.Println(azVolumeAttachment.Namespace)
-		//fmt.Println(azVolumeAttachment.Labels["disk.csi.azure.com/node-name"]) // "disk.csi.azure.com/requested-role", "disk.csi.azure.com/volume-name"
-		fmt.Println(azVolumeAttachment.Spec.NodeName)
-		fmt.Println(azVolumeAttachment.Spec.RequestedRole)
-		fmt.Println(azVolumeAttachment.Spec.VolumeContext["csi.storage.k8s.io/pvc/name"])
-		fmt.Println(azVolumeAttachment.Spec.VolumeName)
-		fmt.Println(azVolumeAttachment.Status.Detail.Role)
-		fmt.Println(azVolumeAttachment.Status.State)
-		fmt.Println(azVolumeAttachment.ObjectMeta.CreationTimestamp)
-		fmt.Println(azVolumeAttachment.ObjectMeta.ManagedFields[0].Time)
-		pvcClaimName := azVolumeAttachment.Spec.VolumeContext["csi.storage.k8s.io/pvc/name"]
-
-		// if pvcName is contained in pvcSet, add the azVolume to result
-		if pName, ok := pvcSet[pvcClaimName]; ok {
+		if azVolumeAttachment.Spec.NodeName == nodeName {
 			result = append(result, AzvaResource {
-				ResourceType: pName,
+				ResourceType: azVolumeAttachment.Spec.NodeName,
 				Namespace:    azVolumeAttachment.Namespace,
 				Name:         azVolumeAttachment.Name,
-				//Age: metav1.Now().Sub(time.Time(azVolumeAttachment.ObjectMeta.CreationTimestamp)).Hours(),
+				Age: metav1.Now().Sub(azVolumeAttachment.CreationTimestamp.Time),
 				RequestRole: azVolumeAttachment.Spec.RequestedRole,
 				Role: azVolumeAttachment.Status.Detail.Role,
 				State: azVolumeAttachment.Status.State })
 		}
-
-
 	}
-
-	// result = append(result, AzvaResource {
-	// 	ResourceType: "k8s-agentpool1-47843266-vmss000004",
-	// 	Namespace: "azure-disk-csi",
-	// 	Name: "pvc-b2578f0d-e99b-49d9-b1da-66ad771e073b-k8s-agentpool1-47843266-vmss000004-attachment",
-	// 	Age: time.Hour,
-	// 	RequestRole: v1beta1.PrimaryRole,
-	// 	Role: v1beta1.PrimaryRole,
-	// 	State: v1beta1.Attached })
 
 	return result
 }
 
-// func GetAzVolumeAttachementsByNode(nodeName string) AzvaResource {
-// 	// implementation
+func GetAzVolumeAttachementsByZone(zoneName string) []AzvaResource {
+	result := make([]AzvaResource, 0)
 
-// 	return AzvaResource {
-// 		ResourceType: "k8s-agentpool1-47843266-vmss000004",
-// 		Namespace: "azure-disk-csi",
-// 		Name: "pvc-b2578f0d-e99b-49d9-b1da-66ad771e073b-k8s-agentpool1-47843266-vmss000004-attachment",
-// 		Age: time.Hour,
-// 		RequestRole: v1beta1.PrimaryRole,
-// 		Role: v1beta1.PrimaryRole,
-// 		State: v1beta1.Attached }
-// }
+	// access to config and Clientsets
+	config := getConfig()
+	clientsetK8s := getKubernetesClientset(config)
+	clientsetAzDisk := getAzDiskClientset(config)
 
-// func GetAzVolumeAttachementsByZone(nodeName string) AzvaResource {
-// 	// implementation
+	// get nodes in the zone
+	nodeSet := make(map[string]bool)
 
-// 	return AzvaResource {
-// 		ResourceType: "k8s-agentpool1-47843266-vmss000004",
-// 		Namespace: "azure-disk-csi",
-// 		Name: "pvc-b2578f0d-e99b-49d9-b1da-66ad771e073b-k8s-agentpool1-47843266-vmss000004-attachment",
-// 		Age: time.Hour,
-// 		RequestRole: v1beta1.PrimaryRole,
-// 		Role: v1beta1.PrimaryRole,
-// 		State: v1beta1.Attached }
-// }
+	nodes, err := clientsetK8s.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		panic(err.Error())
+	}
+
+	for _, node := range nodes.Items {
+		if node.Labels["topology.kubernetes.io/zone"] == zoneName {
+			nodeSet[node.Name] = true
+		}
+	}
+
+	// get azVolumeAttachments of the nodes in the zone
+	azVolumeAttachments, err := clientsetAzDisk.DiskV1beta1().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		panic(err.Error())
+	}
+
+	for _, azVolumeAttachment := range azVolumeAttachments.Items {
+		if nodeSet[azVolumeAttachment.Spec.NodeName] {
+			result = append(result, AzvaResource {
+				ResourceType: zoneName,
+				Namespace:    azVolumeAttachment.Namespace,
+				Name:         azVolumeAttachment.Name,
+				Age: metav1.Now().Sub(azVolumeAttachment.CreationTimestamp.Time),
+				RequestRole: azVolumeAttachment.Spec.RequestedRole,
+				Role: azVolumeAttachment.Status.Detail.Role,
+				State: azVolumeAttachment.Status.State })
+		}
+	}
+
+	return result
+}
 
 func displayAzva(result []AzvaResource, typeName string) {
 	table := tablewriter.NewWriter(os.Stdout)
 	table.SetHeader([]string{strings.ToUpper(typeName) + "NAME", "NAMESPACE", "NAME", "AGE", "REQUESTEDROLE", "ROLE", "STATE"})
-	//table.Append([]string{azva.ResourceType, azva.Namespace, azva.Name, azva.Age.String()[:2], string(azva.RequestRole),string(azva.Role), string(azva.State)})
-	// for _, azva := range result {
-	// 	table.Append([]string{azva.ResourceType, azva.Namespace, azva.Name, string(azva.Age), string(azva.RequestRole),string(azva.Role), string(azva.State)})
-	// }
+
 	for _, azva := range result {
-		table.Append([]string{azva.ResourceType, azva.Namespace, azva.Name, azva.Age.String()[:2], string(azva.RequestRole),string(azva.Role), string(azva.State)})
+		table.Append([]string{azva.ResourceType, azva.Namespace, azva.Name, azva.Age.String()[:2] + "h", string(azva.RequestRole),string(azva.Role), string(azva.State)})
 	}
 	
 	table.Render()

@@ -1,5 +1,5 @@
 /*
-Copyright YEAR The Kubernetes Authors.
+Copyright 2022 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,8 +28,13 @@ var getCmd = &cobra.Command{
 	Long: `get command is capable of fetching data on the cluster.
 For example: az-analyze get azv`, // A long description of your command
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("You must specify the type of resource to \"%s\"\n", cmd.Name())
-		fmt.Printf("Run 'az-analyze --help' for usage.\n")
+		if len(args) == 0 {
+			fmt.Printf("You must specify the type of resource to \"%s\"\n", cmd.Name())
+			fmt.Printf("Run 'az-analyze --help' for usage.\n")
+		} else {
+			fmt.Printf("error: the server doesn't have a resource type \"%s\"\n", args[0])
+		}
+		
 	},
 }
 
