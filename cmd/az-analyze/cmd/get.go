@@ -34,7 +34,7 @@ For example: az-analyze get azv`, // A long description of your command
 		} else {
 			fmt.Printf("error: the server doesn't have a resource type \"%s\"\n", args[0])
 		}
-		
+
 	},
 }
 

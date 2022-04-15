@@ -33,15 +33,15 @@ import (
 var azvaCmd = &cobra.Command{
 	Use:   "azva",
 	Short: "Azure Volume Attachment",
-	Long: `Azure Volume Attachment is a Kubernetes Custom Resource.`,
+	Long:  `Azure Volume Attachment is a Kubernetes Custom Resource.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		// typesFlag := []string{"pod", "node", "zone", "namespace"}
 		// valuesFlag := []string{pod, node, zone, namespace}
-		
+
 		// for _, value := range valuesFlag {
 
 		// }
-		
+
 		pod, _ := cmd.Flags().GetString("pod")
 		node, _ := cmd.Flags().GetString("node")
 		zone, _ := cmd.Flags().GetString("zone")
@@ -51,7 +51,7 @@ var azvaCmd = &cobra.Command{
 		if hasNamespace := namespace != ""; hasNamespace {
 			numFlag--
 		}
-		
+
 		var azva []AzvaResource
 
 		if numFlag > 1 {
@@ -72,7 +72,7 @@ var azvaCmd = &cobra.Command{
 			} else {
 				fmt.Printf("invalid flag name\n" + "Run 'az-analyze --help' for usage.\n")
 			}
-		}	
+		}
 	},
 }
 
@@ -82,7 +82,7 @@ func init() {
 	azvaCmd.PersistentFlags().StringP("node", "d", "", "insert-node-name (only one of the flags is allowed).")
 	azvaCmd.PersistentFlags().StringP("zone", "z", "", "insert-zone-name (only one of the flags is allowed).")
 	azvaCmd.PersistentFlags().StringP("namespace", "n", "", "insert-namespace (optional).")
-	
+
 	// Here you will define your flags and configuration settings.
 
 	// Cobra supports Persistent Flags which will work for this command
@@ -96,12 +96,12 @@ func init() {
 
 type AzvaResource struct {
 	ResourceType string
-	Namespace string
-	Name string
-	Age time.Duration
-	RequestRole v1beta1.Role
-	Role v1beta1.Role
-	State v1beta1.AzVolumeAttachmentAttachmentState
+	Namespace    string
+	Name         string
+	Age          time.Duration
+	RequestRole  v1beta1.Role
+	Role         v1beta1.Role
+	State        v1beta1.AzVolumeAttachmentAttachmentState
 }
 
 func GetAzVolumeAttachementsByPod(podName string, namespace string) []AzvaResource {
@@ -145,14 +145,14 @@ func GetAzVolumeAttachementsByPod(podName string, namespace string) []AzvaResour
 
 		// if pvcClaimName is contained in pvcClaimNameSet, add the azVolumeattachment to result
 		if pvcClaimNameSet[pvcClaimName] {
-			result = append(result, AzvaResource {
+			result = append(result, AzvaResource{
 				ResourceType: podName,
 				Namespace:    azVolumeAttachment.Namespace,
 				Name:         azVolumeAttachment.Name,
-				Age: time.Duration(metav1.Now().Sub(azVolumeAttachment.CreationTimestamp.Time).Hours()), //TODO: change format of age
-				RequestRole: azVolumeAttachment.Spec.RequestedRole,
-				Role: azVolumeAttachment.Status.Detail.Role,
-				State: azVolumeAttachment.Status.State })
+				Age:          time.Duration(metav1.Now().Sub(azVolumeAttachment.CreationTimestamp.Time).Hours()), //TODO: change format of age
+				RequestRole:  azVolumeAttachment.Spec.RequestedRole,
+				Role:         azVolumeAttachment.Status.Detail.Role,
+				State:        azVolumeAttachment.Status.State})
 		}
 	}
 
@@ -173,14 +173,14 @@ func GetAzVolumeAttachementsByNode(nodeName string) []AzvaResource {
 
 	for _, azVolumeAttachment := range azVolumeAttachments.Items {
 		if azVolumeAttachment.Spec.NodeName == nodeName {
-			result = append(result, AzvaResource {
+			result = append(result, AzvaResource{
 				ResourceType: azVolumeAttachment.Spec.NodeName,
 				Namespace:    azVolumeAttachment.Namespace,
 				Name:         azVolumeAttachment.Name,
-				Age: metav1.Now().Sub(azVolumeAttachment.CreationTimestamp.Time),
-				RequestRole: azVolumeAttachment.Spec.RequestedRole,
-				Role: azVolumeAttachment.Status.Detail.Role,
-				State: azVolumeAttachment.Status.State })
+				Age:          metav1.Now().Sub(azVolumeAttachment.CreationTimestamp.Time),
+				RequestRole:  azVolumeAttachment.Spec.RequestedRole,
+				Role:         azVolumeAttachment.Status.Detail.Role,
+				State:        azVolumeAttachment.Status.State})
 		}
 	}
 
@@ -217,14 +217,14 @@ func GetAzVolumeAttachementsByZone(zoneName string) []AzvaResource {
 
 	for _, azVolumeAttachment := range azVolumeAttachments.Items {
 		if nodeSet[azVolumeAttachment.Spec.NodeName] {
-			result = append(result, AzvaResource {
+			result = append(result, AzvaResource{
 				ResourceType: zoneName,
 				Namespace:    azVolumeAttachment.Namespace,
 				Name:         azVolumeAttachment.Name,
-				Age: metav1.Now().Sub(azVolumeAttachment.CreationTimestamp.Time),
-				RequestRole: azVolumeAttachment.Spec.RequestedRole,
-				Role: azVolumeAttachment.Status.Detail.Role,
-				State: azVolumeAttachment.Status.State })
+				Age:          metav1.Now().Sub(azVolumeAttachment.CreationTimestamp.Time),
+				RequestRole:  azVolumeAttachment.Spec.RequestedRole,
+				Role:         azVolumeAttachment.Status.Detail.Role,
+				State:        azVolumeAttachment.Status.State})
 		}
 	}
 
@@ -236,8 +236,8 @@ func displayAzva(result []AzvaResource, typeName string) {
 	table.SetHeader([]string{strings.ToUpper(typeName) + "NAME", "NAMESPACE", "NAME", "AGE", "REQUESTEDROLE", "ROLE", "STATE"})
 
 	for _, azva := range result {
-		table.Append([]string{azva.ResourceType, azva.Namespace, azva.Name, azva.Age.String()[:2] + "h", string(azva.RequestRole),string(azva.Role), string(azva.State)})
+		table.Append([]string{azva.ResourceType, azva.Namespace, azva.Name, azva.Age.String()[:2] + "h", string(azva.RequestRole), string(azva.Role), string(azva.State)})
 	}
-	
+
 	table.Render()
 }

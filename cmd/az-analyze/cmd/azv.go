@@ -33,7 +33,7 @@ import (
 var azvCmd = &cobra.Command{
 	Use:   "azv",
 	Short: "Azure Volume",
-	Long: `Azure Volume is a Kubernetes Custom Resource.`,
+	Long:  `Azure Volume is a Kubernetes Custom Resource.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		pod, _ := cmd.Flags().GetString("pod")
 		namespace, _ := cmd.Flags().GetString("namespace")
@@ -48,7 +48,7 @@ var azvCmd = &cobra.Command{
 			// not found, display an error
 			fmt.Printf("azVolumes not found in the %s\n", namespace)
 		}
-		
+
 	},
 }
 
@@ -112,7 +112,7 @@ func GetAzVolumesByPod(podName string, namespace string) []AzvResource {
 
 		// if pvcClaimName is contained in pvcClaimNameSet, add the azVolume to result
 		if pName, ok := pvcClaimNameSet[pvcClaimName]; ok {
-			result = append(result, AzvResource {
+			result = append(result, AzvResource{
 				ResourceType: pName,
 				Namespace:    azVolume.Namespace,
 				Name:         azVolume.Spec.VolumeName,
