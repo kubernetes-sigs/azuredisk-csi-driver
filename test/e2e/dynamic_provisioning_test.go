@@ -120,7 +120,8 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 						VolumeAccessMode: v1.ReadWriteOnce,
 					},
 				}, isMultiZone),
-				IsWindows: isWindowsCluster,
+				IsWindows:    isWindowsCluster,
+				WinServerVer: winServerVer,
 			},
 		}
 		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
@@ -171,7 +172,8 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 						VolumeAccessMode: v1.ReadWriteOnce,
 					},
 				},
-				IsWindows: isWindowsCluster,
+				IsWindows:    isWindowsCluster,
+				WinServerVer: winServerVer,
 			},
 		}
 
@@ -206,7 +208,8 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 						VolumeAccessMode: v1.ReadWriteOnce,
 					},
 				}, isMultiZone),
-				IsWindows: isWindowsCluster,
+				IsWindows:    isWindowsCluster,
+				WinServerVer: winServerVer,
 			},
 		}
 		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
@@ -309,7 +312,8 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 						VolumeAccessMode: v1.ReadWriteOnce,
 					},
 				}, isMultiZone),
-				IsWindows: isWindowsCluster,
+				IsWindows:    isWindowsCluster,
+				WinServerVer: winServerVer,
 			},
 		}
 		test := testsuites.DynamicallyProvisionedReadOnlyVolumeTest{
@@ -341,7 +345,8 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 						VolumeAccessMode: v1.ReadWriteOnce,
 					},
 				}, isMultiZone),
-				IsWindows: isWindowsCluster,
+				IsWindows:    isWindowsCluster,
+				WinServerVer: winServerVer,
 			},
 			{
 				Cmd: convertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
@@ -356,7 +361,8 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 						VolumeAccessMode: v1.ReadWriteOnce,
 					},
 				}, isMultiZone),
-				IsWindows: isWindowsCluster,
+				IsWindows:    isWindowsCluster,
+				WinServerVer: winServerVer,
 			},
 			{
 				Cmd: convertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
@@ -371,7 +377,8 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 						VolumeAccessMode: v1.ReadWriteOnce,
 					},
 				}, isMultiZone),
-				IsWindows: isWindowsCluster,
+				IsWindows:    isWindowsCluster,
+				WinServerVer: winServerVer,
 			},
 		}
 		test := testsuites.DynamicallyProvisionedCollocatedPodTest{
@@ -401,8 +408,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 					VolumeAccessMode: v1.ReadWriteOnce,
 				},
 			}, isMultiZone),
-			IsWindows: isWindowsCluster,
-			UseCMD:    false,
+			IsWindows:    isWindowsCluster,
+			WinServerVer: winServerVer,
+			UseCMD:       false,
 		}
 
 		podCheckCmd := []string{"cat", "/mnt/test-1/data"}
@@ -571,7 +579,8 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 						VolumeAccessMode: v1.ReadWriteOnce,
 					},
 				}, isMultiZone),
-				IsWindows: isWindowsCluster,
+				IsWindows:    isWindowsCluster,
+				WinServerVer: winServerVer,
 			},
 		}
 		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
@@ -726,9 +735,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 
 		pods := []testsuites.PodDetails{
 			{
-				Cmd:       convertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
-				Volumes:   t.normalizeVolumes(volumes, isMultiZone),
-				IsWindows: isWindowsCluster,
+				Cmd:          convertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
+				Volumes:      t.normalizeVolumes(volumes, isMultiZone),
+				IsWindows:    isWindowsCluster,
+				WinServerVer: winServerVer,
 			},
 		}
 		test := testsuites.DynamicallyProvisionedPodWithMultiplePVsTest{
@@ -761,8 +771,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 					VolumeAccessMode: v1.ReadWriteOnce,
 				},
 			}, isMultiZone),
-			IsWindows: isWindowsCluster,
-			UseCMD:    false,
+			IsWindows:    isWindowsCluster,
+			WinServerVer: winServerVer,
+			UseCMD:       false,
 		}
 
 		test := testsuites.DynamicallyProvisionedResizeVolumeTest{
@@ -806,8 +817,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 					VolumeAccessMode: v1.ReadWriteOnce,
 				},
 			}, isMultiZone),
-			IsWindows: isWindowsCluster,
-			UseCMD:    false,
+			IsWindows:    isWindowsCluster,
+			WinServerVer: winServerVer,
+			UseCMD:       false,
 		}
 
 		test := testsuites.DynamicallyProvisionedResizeVolumeTest{
@@ -846,8 +858,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 					VolumeAccessMode: v1.ReadWriteOnce,
 				},
 			}, isMultiZone),
-			IsWindows: isWindowsCluster,
-			UseCMD:    false,
+			IsWindows:    isWindowsCluster,
+			WinServerVer: winServerVer,
+			UseCMD:       false,
 		}
 
 		test := testsuites.DynamicallyProvisionedResizeVolumeTest{
@@ -879,7 +892,8 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 						VolumeAccessMode: v1.ReadWriteOnce,
 					},
 				}, isMultiZone),
-				IsWindows: isWindowsCluster,
+				IsWindows:    isWindowsCluster,
+				WinServerVer: winServerVer,
 			},
 		}
 		tags := "disk=test"
@@ -913,7 +927,8 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 						VolumeAccessMode: v1.ReadWriteOnce,
 					},
 				}, isMultiZone),
-				IsWindows: isWindowsCluster,
+				IsWindows:    isWindowsCluster,
+				WinServerVer: winServerVer,
 			},
 		}
 		test := testsuites.DynamicallyProvisionedAzureDiskDetach{
@@ -941,8 +956,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 					VolumeAccessMode: v1.ReadWriteOnce,
 				},
 			}, isMultiZone),
-			IsWindows: isWindowsCluster,
-			UseCMD:    false,
+			IsWindows:    isWindowsCluster,
+			WinServerVer: winServerVer,
+			UseCMD:       false,
 		}
 
 		podCheckCmd := []string{"cat", "/mnt/test-1/data"}
@@ -990,8 +1006,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 					VolumeAccessMode: volume.VolumeAccessMode,
 				},
 			}, false),
-			IsWindows: isWindowsCluster,
-			UseCMD:    false,
+			IsWindows:    isWindowsCluster,
+			WinServerVer: winServerVer,
+			UseCMD:       false,
 		}
 		podCheckCmd := []string{"cat", "/mnt/test-1/data"}
 		expectedString := "hello world\n"
@@ -1041,8 +1058,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 					VolumeAccessMode: volume.VolumeAccessMode,
 				},
 			}, false),
-			IsWindows: isWindowsCluster,
-			UseCMD:    false,
+			IsWindows:    isWindowsCluster,
+			WinServerVer: winServerVer,
+			UseCMD:       false,
 		}
 		podCheckCmd := []string{"cat", "/mnt/test-1/data"}
 		expectedString := "hello world\n"
@@ -1089,6 +1107,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			}, isMultiZone),
 			UseCMD:          false,
 			IsWindows:       isWindowsCluster,
+			WinServerVer:    winServerVer,
 			UseAntiAffinity: isMultiZone,
 			ReplicaCount:    2,
 		}

@@ -42,13 +42,14 @@ import (
 )
 
 const (
-	kubeconfigEnvVar    = "KUBECONFIG"
-	reportDirEnvVar     = "ARTIFACTS"
-	testMigrationEnvVar = "TEST_MIGRATION"
-	testWindowsEnvVar   = "TEST_WINDOWS"
-	cloudNameEnvVar     = "AZURE_CLOUD_NAME"
-	defaultReportDir    = "/workspace/_artifacts"
-	inTreeStorageClass  = "kubernetes.io/azure-disk"
+	kubeconfigEnvVar       = "KUBECONFIG"
+	reportDirEnvVar        = "ARTIFACTS"
+	testMigrationEnvVar    = "TEST_MIGRATION"
+	testWindowsEnvVar      = "TEST_WINDOWS"
+	testWinServerVerEnvVar = "WINDOWS_SERVER_VERSION"
+	cloudNameEnvVar        = "AZURE_CLOUD_NAME"
+	defaultReportDir       = "/workspace/_artifacts"
+	inTreeStorageClass     = "kubernetes.io/azure-disk"
 )
 
 var (
@@ -56,6 +57,7 @@ var (
 	isUsingInTreeVolumePlugin = os.Getenv(driver.AzureDriverNameVar) == inTreeStorageClass
 	isTestingMigration        = os.Getenv(testMigrationEnvVar) != ""
 	isWindowsCluster          = os.Getenv(testWindowsEnvVar) != ""
+	winServerVer              = os.Getenv(testWinServerVerEnvVar)
 	isAzureStackCloud         = strings.EqualFold(os.Getenv(cloudNameEnvVar), "AZURESTACKCLOUD")
 	location                  string
 	supportsZRS               bool
@@ -70,6 +72,11 @@ type testCmd struct {
 }
 
 var _ = ginkgo.BeforeSuite(func() {
+	log.Println(driver.AzureDriverNameVar, os.Getenv(driver.AzureDriverNameVar), fmt.Sprintf("%v", isUsingInTreeVolumePlugin))
+	log.Println(testMigrationEnvVar, os.Getenv(testMigrationEnvVar), fmt.Sprintf("%v", isTestingMigration))
+	log.Println(testWindowsEnvVar, os.Getenv(testWindowsEnvVar), fmt.Sprintf("%v", isWindowsCluster))
+	log.Println(testWinServerVerEnvVar, os.Getenv(testWinServerVerEnvVar), fmt.Sprintf("%v", winServerVer))
+
 	// k8s.io/kubernetes/test/e2e/framework requires env KUBECONFIG to be set
 	// it does not fall back to defaults
 	if os.Getenv(kubeconfigEnvVar) == "" {
@@ -181,6 +188,9 @@ var _ = ginkgo.AfterSuite(func() {
 		cloud := "azurepubliccloud"
 		if isWindowsCluster {
 			os = "windows"
+			if winServerVer == "windows-2022" {
+				os = winServerVer
+			}
 		}
 		if isAzureStackCloud {
 			cloud = "azurestackcloud"
