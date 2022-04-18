@@ -159,6 +159,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `controller.metricsPort`                          | metrics port of csi-azuredisk-controller                   | `29604`                                                        |
 | `controller.livenessProbe.healthPort`             | health check port for liveness probe                       | `29602` |
 | `controller.runOnMaster`                          | run csi-azuredisk-controller on master node                | `false`                                                        |
+| `controller.vmssCacheTTLInSeconds`                | vmss cache TTL in seconds (600 by default)                                |`-1` (use default value)                                                          |
 | `controller.logLevel`                             | controller driver log level                                |`5`                                                           |
 | `controller.tolerations`                          | controller pod tolerations                                 |                                                              |
 | `controller.hostNetwork`                          | `hostNetwork` setting on controller driver(could be disabled if controller does not depend on MSI setting)                            | `true`                                                            | `true`, `false`
