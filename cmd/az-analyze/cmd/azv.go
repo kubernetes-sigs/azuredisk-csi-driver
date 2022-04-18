@@ -87,14 +87,24 @@ func GetAzVolumesByPod(podName string, namespace string) []AzvResource {
 	// get pvc claim name set of pod
 	pvcClaimNameSet := make(map[string]string)
 
-	pods, err := clientsetK8s.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{})
-	if err != nil {
-		panic(err.Error())
-	}
+	if podName != "" {
+		singlePod, err := clientsetK8s.CoreV1().Pods(namespace).Get(context.Background(), podName, metav1.GetOptions{})
+		if err != nil {
+			panic(err.Error())
+		}
 
-	for _, pod := range pods.Items {
-		// if pod flag isn't provided, print all pods
-		if podName == "" || pod.Name == podName {
+		for _, v := range singlePod.Spec.Volumes {
+			if v.PersistentVolumeClaim != nil {
+				pvcClaimNameSet[v.PersistentVolumeClaim.ClaimName] = singlePod.Name
+			}
+		}
+	} else { // if pod flag isn't provided, print all pods
+		pods, err := clientsetK8s.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{})
+		if err != nil {
+			panic(err.Error())
+		}
+
+		for _, pod := range pods.Items {
 			for _, v := range pod.Spec.Volumes {
 				if v.PersistentVolumeClaim != nil {
 					pvcClaimNameSet[v.PersistentVolumeClaim.ClaimName] = pod.Name
@@ -102,6 +112,8 @@ func GetAzVolumesByPod(podName string, namespace string) []AzvResource {
 			}
 		}
 	}
+
+
 
 	// get azVolumes with the same claim name in pvcSet
 	azVolumes, err := clientsetAzDisk.DiskV1beta1().AzVolumes(consts.DefaultAzureDiskCrdNamespace).List(context.Background(), metav1.ListOptions{})
