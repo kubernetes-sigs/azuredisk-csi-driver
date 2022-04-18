@@ -142,7 +142,7 @@ func GetAzVolumeAttachementsByPod(podName string, namespace string) []AzvaResour
 	}
 
 	for _, azVolumeAttachment := range azVolumeAttachments.Items {
-		pvcClaimName := azVolumeAttachment.Spec.VolumeContext["csi.storage.k8s.io/pvc/name"]
+		pvcClaimName := azVolumeAttachment.Spec.VolumeContext[consts.PvcNameKey]
 
 		// if pvcClaimName is contained in pvcClaimNameSet, add the azVolumeattachment to result
 		if pvcClaimNameSet[pvcClaimName] {
@@ -205,7 +205,7 @@ func GetAzVolumeAttachementsByZone(zoneName string) []AzvaResource {
 	}
 
 	for _, node := range nodes.Items {
-		if node.Labels["topology.kubernetes.io/zone"] == zoneName {
+		if node.Labels[consts.WellKnownTopologyKey] == zoneName {
 			nodeSet[node.Name] = true
 		}
 	}

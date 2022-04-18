@@ -121,7 +121,7 @@ func GetAzVolumesByPod(podName string, namespace string) []AzvResource {
 		panic(err.Error())
 	}
 	for _, azVolume := range azVolumes.Items {
-		pvcClaimName := azVolume.Spec.Parameters["csi.storage.k8s.io/pvc/name"]
+		pvcClaimName := azVolume.Spec.Parameters[consts.PvcNameKey]
 
 		// if pvcClaimName is contained in pvcClaimNameSet, add the azVolume to result
 		if pName, ok := pvcClaimNameSet[pvcClaimName]; ok {
