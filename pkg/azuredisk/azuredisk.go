@@ -66,6 +66,7 @@ type DriverOptions struct {
 	SupportZone                bool
 	GetNodeInfoFromLabels      bool
 	EnableDiskCapacityCheck    bool
+	VMSSCacheTTLInSeconds      int64
 }
 
 // CSIDriver defines the interface for a CSI driver.
@@ -105,6 +106,7 @@ type DriverCore struct {
 	supportZone                bool
 	getNodeInfoFromLabels      bool
 	enableDiskCapacityCheck    bool
+	vmssCacheTTLInSeconds      int64
 }
 
 // Driver is the v1 implementation of the Azure Disk CSI Driver.
@@ -137,6 +139,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.supportZone = options.SupportZone
 	driver.getNodeInfoFromLabels = options.GetNodeInfoFromLabels
 	driver.enableDiskCapacityCheck = options.EnableDiskCapacityCheck
+	driver.vmssCacheTTLInSeconds = options.VMSSCacheTTLInSeconds
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
@@ -185,6 +188,12 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 				klog.Warningf("DisableAvailabilitySetNodes for controller is set as false while current VMType is vmss")
 			}
 		}
+	}
+
+	if d.vmssCacheTTLInSeconds > 0 {
+		klog.V(2).Infof("reset vmssCacheTTLInSeconds as %d", d.vmssCacheTTLInSeconds)
+		d.cloud.VMCacheTTLInSeconds = int(d.vmssCacheTTLInSeconds)
+		d.cloud.VmssCacheTTLInSeconds = int(d.vmssCacheTTLInSeconds)
 	}
 
 	d.deviceHelper = optimization.NewSafeDeviceHelper()
