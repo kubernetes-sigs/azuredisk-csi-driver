@@ -76,8 +76,8 @@ fi
 
 cleanup_examples() {
     for EXAMPLE in "${EXAMPLES[@]}"; do
-        echo "Attempting deletion of \"EXAMPLE\""
-        kubectl delete -f "$EXAMPLE"
+        echo "Attempting deletion of \"$EXAMPLE\""
+        kubectl delete -f "$EXAMPLE" --ignore-not-found
     done
 }
 
