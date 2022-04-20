@@ -17,12 +17,12 @@ limitations under the License.
 package cmd
 
 import (
-	"path/filepath"
+	homedir "github.com/mitchellh/go-homedir"
+	"github.com/spf13/viper"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
-	homedir "github.com/mitchellh/go-homedir"
-	"github.com/spf13/viper"
+	"path/filepath"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 )
 

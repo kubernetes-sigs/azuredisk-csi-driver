@@ -20,16 +20,16 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"os"
-	"strings"
-	"time"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"os"
 	v1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	"strings"
+	"time"
 )
 
 // azvaCmd represents the azva command
@@ -62,7 +62,7 @@ var azvaCmd = &cobra.Command{
 				result = GetAzVolumeAttachementsByPod(clientsetK8s, clientsetAzDisk, pod, namespace)
 				if len(result) != 0 {
 					displayAzva(result, "POD")
-				}else {
+				} else {
 					fmt.Println("No azVolumeAttachment was found by pod")
 				}
 
@@ -170,7 +170,7 @@ func GetAzVolumeAttachementsByPod(clientsetK8s *kubernetes.Clientset, clientsetA
 		pvcClaimName := azVolumeAttachment.Spec.VolumeContext[consts.PvcNameKey]
 
 		// if pvcClaimName is contained in pvcClaimNameSet, add the azVolumeattachment to result
-		if pName, ok := pvcClaimNameSet[pvcClaimName]; ok  {
+		if pName, ok := pvcClaimNameSet[pvcClaimName]; ok {
 			result = append(result, AzvaResource{
 				ResourceType: pName,
 				Namespace:    azVolumeAttachment.Namespace,
@@ -196,7 +196,7 @@ func GetAzVolumeAttachementsByNode(clientsetK8s *kubernetes.Clientset, clientset
 			panic(err.Error())
 		}
 
-		for _, n := range nodes.Items{
+		for _, n := range nodes.Items {
 			nodeNames[n.Name] = true
 		}
 	} else {
