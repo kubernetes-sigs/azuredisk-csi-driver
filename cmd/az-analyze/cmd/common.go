@@ -26,8 +26,6 @@ import (
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 )
 
-var driverNamespace string = viper.GetString("driverNamespace")
-
 // access to config
 func getConfig() *rest.Config {
 	kubeconfig := viper.GetString("kubeconfig")
@@ -57,4 +55,8 @@ func getAzDiskClientset(config *rest.Config) *azDiskClientSet.Clientset {
 		panic(err.Error())
 	}
 	return clientsetAzDisk
+}
+
+func getDriverNamesapce() string{
+	return viper.GetString("driverNamespace")
 }

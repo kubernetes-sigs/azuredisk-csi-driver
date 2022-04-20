@@ -101,7 +101,7 @@ func GetAzVolumesByPod(clientsetK8s *kubernetes.Clientset, clientsetAzDisk *azDi
 	}
 
 	// get azVolumes with the same claim name in pvcSet
-	azVolumes, err := clientsetAzDisk.DiskV1beta1().AzVolumes(driverNamespace).List(context.Background(), metav1.ListOptions{})
+	azVolumes, err := clientsetAzDisk.DiskV1beta1().AzVolumes(getDriverNamesapce()).List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		panic(err.Error())
 	}
