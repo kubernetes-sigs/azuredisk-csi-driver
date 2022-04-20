@@ -17,12 +17,12 @@ limitations under the License.
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"strings"
 	"time"
-
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -38,13 +38,6 @@ var azvaCmd = &cobra.Command{
 	Short: "Azure Volume Attachment",
 	Long:  `Azure Volume Attachment is a Kubernetes Custom Resource.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		// typesFlag := []string{"pod", "node", "zone", "namespace"}
-		// valuesFlag := []string{pod, node, zone, namespace}
-
-		// for _, value := range valuesFlag {
-
-		// }
-
 		pod, _ := cmd.Flags().GetString("pod")
 		node, _ := cmd.Flags().GetString("node")
 		zone, _ := cmd.Flags().GetString("zone")
@@ -55,7 +48,7 @@ var azvaCmd = &cobra.Command{
 			numFlag--
 		}
 
-		var azva []AzvaResource
+		var result []AzvaResource
 		// access to config and Clientsets
 		config := getConfig()
 		clientsetK8s := getKubernetesClientset(config)
@@ -65,25 +58,48 @@ var azvaCmd = &cobra.Command{
 			fmt.Printf("only one of the flags is allowed.\n" + "Run 'az-analyze --help' for usage.\n")
 		} else {
 			if numFlag == 0 {
-				// TODO: the same as  kubectl get AzVolumeAttachment
-				azva = GetAzVolumeAttachementsByPod(clientsetK8s, clientsetAzDisk, pod, namespace)
-				displayAzva(azva, "POD")
-				azva = GetAzVolumeAttachementsByNode(clientsetK8s, clientsetAzDisk, node)
-				displayAzva(azva, "NODE")
-				azva = GetAzVolumeAttachementsByZone(clientsetK8s, clientsetAzDisk, zone)
-				displayAzva(azva, "ZONE")
-				//fmt.Println("no flags")
+				// if no flag value is provided , list all of the pods/nodes/zone information
+				result = GetAzVolumeAttachementsByPod(clientsetK8s, clientsetAzDisk, pod, namespace)
+				if len(result) != 0 {
+					displayAzva(result, "POD")
+				}else {
+					fmt.Println("No azVolumeAttachment was found by pod")
+				}
+
+				result = GetAzVolumeAttachementsByNode(clientsetK8s, clientsetAzDisk, node)
+				if len(result) != 0 {
+					displayAzva(result, "NODE")
+				} else {
+					fmt.Println("No azVolumeAttachment was found by node")
+				}
+
+				result = GetAzVolumeAttachementsByZone(clientsetK8s, clientsetAzDisk, zone)
+				if len(result) != 0 {
+					displayAzva(result, "ZONE")
+				} else {
+					fmt.Println("No azVolumeAttachment was found by zone")
+				}
 			} else if pod != "" {
-				azva = GetAzVolumeAttachementsByPod(clientsetK8s, clientsetAzDisk, pod, namespace)
-				displayAzva(azva, "POD")
+				result = GetAzVolumeAttachementsByPod(clientsetK8s, clientsetAzDisk, pod, namespace)
+				if len(result) != 0 {
+					displayAzva(result, "POD")
+				} else {
+					fmt.Println("No azVolumeAttachment was found")
+				}
 			} else if node != "" {
-				azva = GetAzVolumeAttachementsByNode(clientsetK8s, clientsetAzDisk, node)
-				displayAzva(azva, "NODE")
+				result = GetAzVolumeAttachementsByNode(clientsetK8s, clientsetAzDisk, node)
+				if len(result) != 0 {
+					displayAzva(result, "NODE")
+				} else {
+					fmt.Println("No azVolumeAttachment was found")
+				}
 			} else if zone != "" {
-				azva = GetAzVolumeAttachementsByZone(clientsetK8s, clientsetAzDisk, zone)
-				displayAzva(azva, "ZONE")
-			} else {
-				fmt.Printf("invalid flag name\n" + "Run 'az-analyze --help' for usage.\n")
+				result = GetAzVolumeAttachementsByZone(clientsetK8s, clientsetAzDisk, zone)
+				if len(result) != 0 {
+					displayAzva(result, "ZONE")
+				} else {
+					fmt.Println("No azVolumeAttachment was found")
+				}
 			}
 		}
 	},
@@ -95,16 +111,6 @@ func init() {
 	azvaCmd.PersistentFlags().StringP("node", "d", "", "insert-node-name (only one of the flags is allowed).")
 	azvaCmd.PersistentFlags().StringP("zone", "z", "", "insert-zone-name (only one of the flags is allowed).")
 	azvaCmd.PersistentFlags().StringP("namespace", "n", "", "insert-namespace (optional).")
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// azvaCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// azvaCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
 
 type AzvaResource struct {
@@ -155,7 +161,7 @@ func GetAzVolumeAttachementsByPod(clientsetK8s *kubernetes.Clientset, clientsetA
 	}
 
 	// get azVolumes with the same claim name in pvcClaimNameSet
-	azVolumeAttachments, err := clientsetAzDisk.DiskV1beta1().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(context.Background(), metav1.ListOptions{})
+	azVolumeAttachments, err := clientsetAzDisk.DiskV1beta1().AzVolumeAttachments(driverNamespace).List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		panic(err.Error())
 	}
@@ -169,7 +175,7 @@ func GetAzVolumeAttachementsByPod(clientsetK8s *kubernetes.Clientset, clientsetA
 				ResourceType: pName,
 				Namespace:    azVolumeAttachment.Namespace,
 				Name:         azVolumeAttachment.Name,
-				Age:          time.Duration(metav1.Now().Sub(azVolumeAttachment.CreationTimestamp.Time).Hours()), //TODO: change format of age
+				Age:          metav1.Now().Sub(azVolumeAttachment.CreationTimestamp.Time), //TODO: change format of age
 				RequestRole:  azVolumeAttachment.Spec.RequestedRole,
 				Role:         azVolumeAttachment.Status.Detail.Role,
 				State:        azVolumeAttachment.Status.State})
@@ -197,7 +203,7 @@ func GetAzVolumeAttachementsByNode(clientsetK8s *kubernetes.Clientset, clientset
 		nodeNames[nodeName] = true
 	}
 
-	azVolumeAttachments, err := clientsetAzDisk.DiskV1beta1().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(context.Background(), metav1.ListOptions{})
+	azVolumeAttachments, err := clientsetAzDisk.DiskV1beta1().AzVolumeAttachments(driverNamespace).List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		panic(err.Error())
 	}
@@ -236,7 +242,7 @@ func GetAzVolumeAttachementsByZone(clientsetK8s *kubernetes.Clientset, clientset
 	}
 
 	// get azVolumeAttachments of the nodes in the zone
-	azVolumeAttachments, err := clientsetAzDisk.DiskV1beta1().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(context.Background(), metav1.ListOptions{})
+	azVolumeAttachments, err := clientsetAzDisk.DiskV1beta1().AzVolumeAttachments(driverNamespace).List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		panic(err.Error())
 	}
@@ -262,8 +268,34 @@ func displayAzva(result []AzvaResource, typeName string) {
 	table.SetHeader([]string{strings.ToUpper(typeName) + "NAME", "NAMESPACE", "NAME", "AGE", "REQUESTEDROLE", "ROLE", "STATE"})
 
 	for _, azva := range result {
-		table.Append([]string{azva.ResourceType, azva.Namespace, azva.Name, azva.Age.String()[:2] + "h", string(azva.RequestRole), string(azva.Role), string(azva.State)})
+		table.Append([]string{azva.ResourceType, azva.Namespace, azva.Name, timeFmt(azva.Age), string(azva.RequestRole), string(azva.Role), string(azva.State)})
 	}
 
 	table.Render()
+}
+
+func timeFmt(t time.Duration) string {
+	day := t / (24 * time.Hour)
+	t = t % (24 * time.Hour)
+	hour := t / time.Hour
+	t = t % time.Hour
+	minute := t / time.Minute
+	t = t % time.Minute
+	second := int(t)
+
+	var buffer bytes.Buffer
+	if day > 0 {
+		buffer.WriteString(fmt.Sprintf("%dd", day))
+	}
+	if hour > 0 {
+		buffer.WriteString(fmt.Sprintf("%dh", hour))
+		return buffer.String()
+	}
+	if minute > 0 {
+		buffer.WriteString(fmt.Sprintf("%dm", minute))
+	}
+	if second > 0 {
+		buffer.WriteString(fmt.Sprintf("%ds", second))
+	}
+	return buffer.String()
 }

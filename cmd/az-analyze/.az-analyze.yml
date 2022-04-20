@@ -1,0 +1,2 @@
+kubeconfig: ".kube/config"
+driverNamespace: "azure-disk-csi"

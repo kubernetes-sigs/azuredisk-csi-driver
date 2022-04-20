@@ -20,13 +20,12 @@ import (
 	"context"
 	"fmt"
 	"os"
-
-	//"reflect"
-
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 	v1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
@@ -39,17 +38,21 @@ var azvCmd = &cobra.Command{
 		pod, _ := cmd.Flags().GetString("pod")
 		namespace, _ := cmd.Flags().GetString("namespace")
 
+		// access to Config and Clientsets
+		config := getConfig()
+		clientsetK8s := getKubernetesClientset(config)
+		clientsetAzDisk := getAzDiskClientset(config)
+
 		var result []AzvResource
-		result = GetAzVolumesByPod(pod, namespace)
+		result = GetAzVolumesByPod(clientsetK8s, clientsetAzDisk, pod, namespace)
 
 		// display
 		if len(result) != 0 {
 			displayAzv(result)
 		} else {
 			// not found, display an error
-			fmt.Printf("azVolumes not found in the %s\n", namespace)
+			fmt.Println("No azVolume was found")
 		}
-
 	},
 }
 
@@ -57,16 +60,6 @@ func init() {
 	getCmd.AddCommand(azvCmd)
 	azvCmd.PersistentFlags().StringP("pod", "p", "", "insert-pod-name")
 	azvCmd.PersistentFlags().StringP("namespace", "n", "default", "insert-namespace (optional).")
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// azvCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// azvCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
 
 type AzvResource struct {
@@ -76,17 +69,11 @@ type AzvResource struct {
 	State        v1beta1.AzVolumeState
 }
 
-func GetAzVolumesByPod(podName string, namespace string) []AzvResource {
+func GetAzVolumesByPod(clientsetK8s *kubernetes.Clientset, clientsetAzDisk *azDiskClientSet.Clientset, podName string, namespace string) []AzvResource {
 	result := make([]AzvResource, 0)
-
-	// access to Config and Clientsets
-	config := getConfig()
-	clientsetK8s := getKubernetesClientset(config)
-	clientsetAzDisk := getAzDiskClientset(config)
 
 	// get pvc claim name set of pod
 	pvcClaimNameSet := make(map[string]string)
-
 	if podName != "" {
 		singlePod, err := clientsetK8s.CoreV1().Pods(namespace).Get(context.Background(), podName, metav1.GetOptions{})
 		if err != nil {
@@ -113,10 +100,8 @@ func GetAzVolumesByPod(podName string, namespace string) []AzvResource {
 		}
 	}
 
-
-
 	// get azVolumes with the same claim name in pvcSet
-	azVolumes, err := clientsetAzDisk.DiskV1beta1().AzVolumes(consts.DefaultAzureDiskCrdNamespace).List(context.Background(), metav1.ListOptions{})
+	azVolumes, err := clientsetAzDisk.DiskV1beta1().AzVolumes(driverNamespace).List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		panic(err.Error())
 	}
