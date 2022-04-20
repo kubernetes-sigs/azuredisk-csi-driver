@@ -30,8 +30,11 @@ import (
 func getConfig() *rest.Config {
 	kubeconfig := viper.GetString("kubeconfig")
 
-	if home, _ := homedir.Dir(); home != "" {
-		kubeconfig = filepath.Join(home, kubeconfig)
+	// if kubeconfig isn't provided in az-analyze.yaml, using default path "$HOME/.kube/config"
+	if kubeconfig == "" {
+		if home, _ := homedir.Dir(); home != "" {
+			kubeconfig = filepath.Join(home, ".kube", "config")
+		}
 	}
 
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)

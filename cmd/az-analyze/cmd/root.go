@@ -69,8 +69,8 @@ func initConfig() {
 	} else {
 		// Search config in home directory with name ".az-analyze" (without extension).
 		viper.SetConfigType("yaml")
-		viper.AddConfigPath(".")
-		viper.SetConfigName(".az-analyze")
+		viper.AddConfigPath("./config")
+		viper.SetConfigName("az-analyze")
 	}
 
 	viper.AutomaticEnv() // read in environment variables that match
