@@ -154,6 +154,7 @@ type replicaOperation struct {
 type operationQueue struct {
 	*list.List
 	gcExclusionList set
+	isActive        bool
 }
 
 func (q *operationQueue) remove(element *list.Element) {
@@ -168,6 +169,7 @@ func newOperationQueue() *operationQueue {
 	return &operationQueue{
 		gcExclusionList: set{},
 		List:            list.New(),
+		isActive:        true,
 	}
 }
 
@@ -318,7 +320,9 @@ func (c *SharedState) addToOperationQueue(volumeName string, requester operation
 						if !operation.isReplicaGarbageCollection || !errors.Is(err, context.Canceled) {
 							// if failed, push it to the end of the queue
 							lockable.Lock()
-							operationQueue.PushBack(operation)
+							if operationQueue.isActive {
+								operationQueue.PushBack(operation)
+							}
 							lockable.Unlock()
 						}
 					}
@@ -350,7 +354,7 @@ func (c *SharedState) deleteOperationQueue(volumeName string) {
 	lockable.Unlock()
 }
 
-func (c *SharedState) overrideAndClearOperationQueue(volumeName string) func() {
+func (c *SharedState) closeOperationQueue(volumeName string) func() {
 	v, ok := c.volumeOperationQueues.Load(volumeName)
 	if !ok {
 		return nil
@@ -358,6 +362,7 @@ func (c *SharedState) overrideAndClearOperationQueue(volumeName string) func() {
 	lockable := v.(*lockableEntry)
 
 	lockable.Lock()
+	lockable.entry.(*operationQueue).isActive = false
 	lockable.entry.(*operationQueue).Init()
 	return lockable.Unlock
 }
