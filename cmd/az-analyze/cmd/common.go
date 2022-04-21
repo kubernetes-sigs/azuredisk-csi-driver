@@ -24,13 +24,14 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"path/filepath"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
 // access to config
 func getConfig() *rest.Config {
 	kubeconfig := viper.GetString("kubeconfig")
 
-	// if kubeconfig isn't provided in az-analyze.yaml, using default path "$HOME/.kube/config"
+	// if kubeconfig isn't provided in config file, using default path "$HOME/.kube/config"
 	if kubeconfig == "" {
 		if home, _ := homedir.Dir(); home != "" {
 			kubeconfig = filepath.Join(home, ".kube", "config")
@@ -60,6 +61,11 @@ func getAzDiskClientset(config *rest.Config) *azDiskClientSet.Clientset {
 	return clientsetAzDisk
 }
 
+// if driverNamespace isn't provided in config file, using default one
 func getDriverNamesapce() string{
-	return viper.GetString("driverNamespace")
+	driverNamespace := viper.GetString("driverNamespace")
+	if driverNamespace == "" {
+		driverNamespace = consts.DefaultAzureDiskCrdNamespace
+	}
+	return driverNamespace
 }

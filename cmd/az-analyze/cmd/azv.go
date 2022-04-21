@@ -22,10 +22,8 @@ import (
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
 	"os"
 	v1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
-	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
@@ -38,13 +36,8 @@ var azvCmd = &cobra.Command{
 		pod, _ := cmd.Flags().GetString("pod")
 		namespace, _ := cmd.Flags().GetString("namespace")
 
-		// access to Config and Clientsets
-		config := getConfig()
-		clientsetK8s := getKubernetesClientset(config)
-		clientsetAzDisk := getAzDiskClientset(config)
-
 		var result []AzvResource
-		result = GetAzVolumesByPod(clientsetK8s, clientsetAzDisk, pod, namespace)
+		result = GetAzVolumesByPod(pod, namespace)
 
 		// display
 		if len(result) != 0 {
@@ -69,7 +62,13 @@ type AzvResource struct {
 	State        v1beta1.AzVolumeState
 }
 
-func GetAzVolumesByPod(clientsetK8s *kubernetes.Clientset, clientsetAzDisk *azDiskClientSet.Clientset, podName string, namespace string) []AzvResource {
+// return azVolumes by pod. If pod name isn't provided, return by all pods
+func GetAzVolumesByPod(podName string, namespace string) []AzvResource {
+	// access to Config and Clientsets
+	config := getConfig()
+	clientsetK8s := getKubernetesClientset(config)
+	clientsetAzDisk := getAzDiskClientset(config)
+
 	result := make([]AzvResource, 0)
 
 	// get pvc claim name set of pod
@@ -85,7 +84,7 @@ func GetAzVolumesByPod(clientsetK8s *kubernetes.Clientset, clientsetAzDisk *azDi
 				pvcClaimNameSet[v.PersistentVolumeClaim.ClaimName] = singlePod.Name
 			}
 		}
-	} else { // if pod flag isn't provided, print all pods
+	} else { // if pod name isn't provided, print all pods
 		pods, err := clientsetK8s.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{})
 		if err != nil {
 			panic(err.Error())

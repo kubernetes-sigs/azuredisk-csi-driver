@@ -1,2 +1,2 @@
-kubeconfig: "" # default path is "$HOME/.kube/config"
-driverNamespace: "azure-disk-csi"
+kubeconfig: "" # default is "$HOME/.kube/config"
+driverNamespace: "" # default is "azure-disk-csi"
