@@ -104,15 +104,15 @@ type AzvaResource struct {
 }
 
 type AzvaResourceAll struct {
-	PodName      string
-	NodeName     string
-	ZoneName     string
-	Namespace    string
-	Name         string
-	Age          time.Duration
-	RequestRole  v1beta1.Role
-	Role         v1beta1.Role
-	State        v1beta1.AzVolumeAttachmentAttachmentState
+	PodName     string
+	NodeName    string
+	ZoneName    string
+	Namespace   string
+	Name        string
+	Age         time.Duration
+	RequestRole v1beta1.Role
+	Role        v1beta1.Role
+	State       v1beta1.AzVolumeAttachmentAttachmentState
 }
 
 // return azVolumeAttachements with all Pods/Nodes/Zones when no flags is provided
@@ -163,15 +163,15 @@ func GetAllAzVolumeAttachements(namespace string) []AzvaResourceAll {
 		// if pvcClaimName is contained in pvcClaimNameSet, add the azVolumeattachment to result
 		if pName, ok := pvcClaimNameSet[pvcClaimName]; ok {
 			result = append(result, AzvaResourceAll{
-				PodName: pName,
-				NodeName: nodeName,
-				ZoneName: zoneName,
-				Namespace:    azVolumeAttachment.Namespace,
-				Name:         azVolumeAttachment.Name,
-				Age:          metav1.Now().Sub(azVolumeAttachment.CreationTimestamp.Time),
-				RequestRole:  azVolumeAttachment.Spec.RequestedRole,
-				Role:         azVolumeAttachment.Status.Detail.Role,
-				State:        azVolumeAttachment.Status.State,
+				PodName:     pName,
+				NodeName:    nodeName,
+				ZoneName:    zoneName,
+				Namespace:   azVolumeAttachment.Namespace,
+				Name:        azVolumeAttachment.Name,
+				Age:         metav1.Now().Sub(azVolumeAttachment.CreationTimestamp.Time),
+				RequestRole: azVolumeAttachment.Spec.RequestedRole,
+				Role:        azVolumeAttachment.Status.Detail.Role,
+				State:       azVolumeAttachment.Status.State,
 			})
 		}
 	}

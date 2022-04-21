@@ -62,7 +62,7 @@ func getAzDiskClientset(config *rest.Config) *azDiskClientSet.Clientset {
 }
 
 // if driverNamespace isn't provided in config file, using default one
-func getDriverNamesapce() string{
+func getDriverNamesapce() string {
 	driverNamespace := viper.GetString("driverNamespace")
 	if driverNamespace == "" {
 		driverNamespace = consts.DefaultAzureDiskCrdNamespace
