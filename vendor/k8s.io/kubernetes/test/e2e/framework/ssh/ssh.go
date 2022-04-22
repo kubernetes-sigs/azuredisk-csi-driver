@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"os"
 	"path/filepath"
@@ -101,7 +102,7 @@ func GetSigner(provider string) (ssh.Signer, error) {
 }
 
 func makePrivateKeySignerFromFile(key string) (ssh.Signer, error) {
-	buffer, err := os.ReadFile(key)
+	buffer, err := ioutil.ReadFile(key)
 	if err != nil {
 		return nil, fmt.Errorf("error reading SSH key %s: '%v'", key, err)
 	}

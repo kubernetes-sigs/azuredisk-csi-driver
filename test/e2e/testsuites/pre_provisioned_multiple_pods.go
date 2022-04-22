@@ -18,6 +18,7 @@ package testsuites
 
 import (
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
+	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 
 	"github.com/onsi/ginkgo"
 	v1 "k8s.io/api/core/v1"
@@ -28,13 +29,13 @@ import (
 // Testing that a volume could be mounted by multiple pods
 type PreProvisionedMultiplePodsTest struct {
 	CSIDriver     driver.PreProvisionedVolumeTestDriver
-	Pods          []PodDetails
+	Pods          []resources.PodDetails
 	VolumeContext map[string]string
 }
 
-func (t *PreProvisionedMultiplePodsTest) Run(client clientset.Interface, namespace *v1.Namespace) {
+func (t *PreProvisionedMultiplePodsTest) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
 	for _, pod := range t.Pods {
-		tpod, cleanup := pod.SetupWithPreProvisionedVolumes(client, namespace, t.CSIDriver, t.VolumeContext)
+		tpod, cleanup := pod.SetupWithPreProvisionedVolumes(client, namespace, t.CSIDriver, t.VolumeContext, schedulerName)
 		// defer must be called here for resources not get removed before using them
 		for i := range cleanup {
 			defer cleanup[i]()

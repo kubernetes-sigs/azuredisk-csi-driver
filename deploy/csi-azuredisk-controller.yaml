@@ -139,6 +139,7 @@ spec:
             - "--v=5"
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--metrics-address=0.0.0.0:29604"
+            - "--enable-perf-optimization=true"
             - "--user-agent-suffix=OSS-kubectl"
             - "--disable-avset-nodes=false"
             - "--allow-empty-cloud-config=false"

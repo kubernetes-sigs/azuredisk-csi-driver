@@ -67,7 +67,7 @@ When the `ControllerUnpublishVolume` API in the CSI Controller plug-in is called
 
 ### Scheduler Extender
 
-The Azure Disk CSI Driver V2 scheduler extender influences pod placement by prioritizing healthy nodes where attachment replicas for the required persistent volume(s) already exist (i.e. node(s) to which the managed disk(s) is(are) already attached). It relies on the `AzVolumeAttachment` instances to determine which nodes have attachment replicas, and the heartbeat information in the `AzDriverNode` to determine health. If no attachment replicas for the specified persistent volume currently exist, the scheduler extender will weight all nodes equally.
+The V2 driver scheduler extender influences pod placement by prioritizing healthy nodes where attachment replicas for the required persistent volume(s) already exist (i.e. node(s) to which the managed disk(s) is(are) already attached). It relies on the `AzVolumeAttachment` instances to determine which nodes have attachment replicas, and the heartbeat information in the `AzDriverNode` to determine health. If no attachment replicas for the specified persistent volume currently exist, the scheduler extender will weight all nodes equally.
 
 ### Provisioner Library
 

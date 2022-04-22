@@ -28,6 +28,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 )
 
@@ -210,7 +211,7 @@ func TestGetSnapshotName(t *testing.T) {
 		{
 			options:   "testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name",
 			expected1: "",
-			expected2: fmt.Errorf("could not get snapshot name from testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name, correct format: %s", diskSnapshotPathRE),
+			expected2: fmt.Errorf("could not get snapshot name from testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name, correct format: %s", consts.DiskSnapshotPathRE),
 		},
 	}
 
@@ -223,7 +224,7 @@ func TestGetSnapshotName(t *testing.T) {
 	}
 }
 
-func TestIsCSISnapshotReady(t *testing.T) {
+func TestIsSnapshotReady(t *testing.T) {
 	tests := []struct {
 		state        string
 		expectedResp bool
@@ -242,7 +243,7 @@ func TestIsCSISnapshotReady(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		flag, err := isCSISnapshotReady(test.state)
+		flag, err := isSnapshotReady(test.state)
 
 		if flag != test.expectedResp {
 			t.Errorf("testdesc: %v \n expected result:%t \n actual result:%t", test.state, test.expectedResp, flag)

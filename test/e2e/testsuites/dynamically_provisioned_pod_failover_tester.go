@@ -23,20 +23,22 @@ import (
 	v1 "k8s.io/api/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
+	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
+	nodeutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/node"
 )
 
 //  will provision required PV(s), PVC(s) and Pod(s)
 // Pod should successfully be re-scheduled on failover in a cluster with AzDriverNode and AzVolumeAttachment resources
 type PodFailover struct {
 	CSIDriver              driver.DynamicPVTestDriver
-	Pod                    PodDetails
-	Volume                 VolumeDetails
+	Pod                    resources.PodDetails
+	Volume                 resources.VolumeDetails
 	PodCheck               *PodExecCheck
 	StorageClassParameters map[string]string
 }
 
-func (t *PodFailover) Run(client clientset.Interface, namespace *v1.Namespace) {
-	tDeployment, cleanup := t.Pod.SetupDeployment(client, namespace, t.CSIDriver, t.StorageClassParameters)
+func (t *PodFailover) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
+	tDeployment, cleanup := t.Pod.SetupDeployment(client, namespace, t.CSIDriver, schedulerName, t.StorageClassParameters)
 
 	// defer must be called here so resources don't get removed before using them
 	for i := range cleanup {
@@ -44,7 +46,7 @@ func (t *PodFailover) Run(client clientset.Interface, namespace *v1.Namespace) {
 	}
 
 	// Get the list of available nodes for scheduling the pod
-	nodes := ListNodeNames(client)
+	nodes := nodeutil.ListNodeNames(client)
 	if len(nodes) < 2 {
 		ginkgo.Skip("need at least 2 nodes to verify the test case. Current node count is %d", len(nodes))
 	}
@@ -63,8 +65,8 @@ func (t *PodFailover) Run(client clientset.Interface, namespace *v1.Namespace) {
 
 	ginkgo.By("cordoning node 0")
 
-	testPod := TestPod{
-		client: client,
+	testPod := resources.TestPod{
+		Client: client,
 	}
 
 	// Make node#0 unschedulable to ensure that pods are scheduled on a different node

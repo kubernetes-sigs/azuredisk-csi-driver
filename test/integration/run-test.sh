@@ -40,20 +40,12 @@ if [[ "$#" -gt 2 ]]; then
   cloud="$3"
 fi
 
-echo "Begin to run integration test on $cloud..."
-
-ARCH=$(uname -p)
-if [[ "${ARCH}" == "x86_64" || ${ARCH} == "unknown" ]]; then
-  ARCH="amd64"
+version='v2'
+if [[ "$#" -gt 3 ]]; then
+  version="$4"
 fi
 
-# Run CSI driver as a background service
-if [[ $# -lt 4 || "$4" != "v2" ]]; then
-  _output/${ARCH}/azurediskplugin --endpoint "$endpoint" --nodeid "$node" -v=5 -support-zone=false &
-else
-  _output/${ARCH}/azurediskpluginv2 --endpoint "$endpoint" --nodeid "$node" -v=5 --temp-use-driver-v2 -support-zone=false &
-fi
-trap cleanup EXIT
+echo "Begin to run $version integration test on $cloud..."
 
 if [[ "$cloud" == 'AzureChinaCloud' ]]; then
   sleep 25
@@ -70,6 +62,7 @@ sleep 15
 
 volumeid=$(echo "$value" | awk '{print $1}' | sed 's/"//g')
 echo "Got volume id: $volumeid"
+volumename=$(echo "$volumeid" | awk -F / '{print $9}')
 
 "$CSC_BIN" controller validate-volume-capabilities --endpoint "$endpoint" --cap 1,block "$volumeid"
 
@@ -78,6 +71,9 @@ echo 'Expand volume test'
 
 echo 'Attach volume test:'
 "$CSC_BIN" controller publish --endpoint "$endpoint" --node-id "$node" --cap 1,block "$volumeid"
+if [[ "$version" == 'v2' ]]; then
+  test/integration/wait-for-attach.sh "$volumename" "$node"
+fi
 sleep 20
 
 echo 'ListVolumes test:'
@@ -85,6 +81,9 @@ echo 'ListVolumes test:'
 
 echo 'Detach volume test:'
 "$CSC_BIN" controller unpublish --endpoint "$endpoint" --node-id "$node" "$volumeid"
+if [[ "$version" == 'v2' ]]; then
+  test/integration/wait-for-detach.sh "$volumename" "$node"
+fi
 sleep 30
 
 echo 'Create snapshot test:'

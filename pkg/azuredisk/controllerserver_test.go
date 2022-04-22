@@ -19,6 +19,7 @@ package azuredisk
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -37,6 +38,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockkubeclient"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockpersistentvolume"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
+	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/diskclient/mockdiskclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/snapshotclient/mocksnapshotclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmclient/mockvmclient"
@@ -69,11 +71,10 @@ func TestCreateVolume(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				d, _ := NewFakeDriver(t)
 				d.setControllerCapabilities([]*csi.ControllerServiceCapability{})
-
 				req := &csi.CreateVolumeRequest{}
 				_, err := d.CreateVolume(context.Background(), req)
 				expectedErr := status.Error(codes.InvalidArgument, "CREATE_DELETE_VOLUME")
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -85,7 +86,7 @@ func TestCreateVolume(t *testing.T) {
 				req := &csi.CreateVolumeRequest{}
 				_, err := d.CreateVolume(context.Background(), req)
 				expectedErr := status.Error(codes.InvalidArgument, "CreateVolume Name must be provided")
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -99,7 +100,7 @@ func TestCreateVolume(t *testing.T) {
 				}
 				_, err := d.CreateVolume(context.Background(), req)
 				expectedErr := status.Error(codes.InvalidArgument, "CreateVolume Volume capabilities must be provided")
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -119,7 +120,7 @@ func TestCreateVolume(t *testing.T) {
 				}
 				_, err := d.CreateVolume(context.Background(), req)
 				expectedErr := status.Error(codes.InvalidArgument, "After round-up, volume size exceeds the limit specified")
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -155,7 +156,7 @@ func TestCreateVolume(t *testing.T) {
 				}
 				_, err := d.CreateVolume(context.Background(), req)
 				expectedErr := status.Error(codes.InvalidArgument, "Failed parsing disk parameters: parse aaa failed with error: strconv.Atoi: parsing \"aaa\": invalid syntax")
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -173,7 +174,7 @@ func TestCreateVolume(t *testing.T) {
 				}
 				_, err := d.CreateVolume(context.Background(), req)
 				expectedErr := status.Error(codes.InvalidArgument, "Failed parsing disk parameters: parse 0 returned with invalid value: 0")
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -191,7 +192,7 @@ func TestCreateVolume(t *testing.T) {
 				}
 				_, err := d.CreateVolume(context.Background(), req)
 				expectedErr := status.Error(codes.InvalidArgument, "Failed parsing disk parameters: perf profile blah is not supported, supported tuning modes are none and basic")
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -218,7 +219,7 @@ func TestCreateVolume(t *testing.T) {
 				}
 				_, err := d.CreateVolume(context.Background(), req)
 				expectedErr := status.Error(codes.InvalidArgument, "Volume capability not supported")
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -236,7 +237,7 @@ func TestCreateVolume(t *testing.T) {
 				}
 				_, err := d.CreateVolume(context.Background(), req)
 				expectedErr := fmt.Errorf("azureDisk - NOT_EXISTING is not supported sku/storageaccounttype. Supported values are [Premium_LRS Premium_ZRS Standard_LRS StandardSSD_LRS StandardSSD_ZRS UltraSSD_LRS]")
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -254,7 +255,7 @@ func TestCreateVolume(t *testing.T) {
 				}
 				_, err := d.CreateVolume(context.Background(), req)
 				expectedErr := fmt.Errorf("azureDisk - WriteOnly is not supported cachingmode. Supported values are [None ReadOnly ReadWrite]")
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -276,7 +277,7 @@ func TestCreateVolume(t *testing.T) {
 				d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
 				_, err := d.CreateVolume(context.Background(), req)
 				expectedErr := status.Error(codes.InvalidArgument, "Failed parsing disk parameters: Tags 'unit-test' are invalid, the format should like: 'key1=value1,key2=value2'")
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -342,7 +343,7 @@ func TestCreateVolume(t *testing.T) {
 				d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rerr).AnyTimes()
 				_, err := d.CreateVolume(context.Background(), req)
 				expectedErr := status.Error(codes.NotFound, "Retriable: false, RetryAfter: 0s, HTTPStatusCode: 0, RawError: NotFound")
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -411,7 +412,7 @@ func TestCreateVolume(t *testing.T) {
 				d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 				_, err := d.CreateVolume(context.Background(), req)
 				expectedErr := error(nil)
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -432,8 +433,122 @@ func TestCreateVolume(t *testing.T) {
 				}
 				_, err := d.CreateVolume(context.Background(), req)
 				expectedErr := status.Error(codes.InvalidArgument, "Failed parsing disk parameters: invalid parameter invalidparameter in storage class")
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "advanced perfProfile fails if no device settings provided",
+			testFunc: func(t *testing.T) {
+				d, _ := NewFakeDriver(t)
+				d.setPerfOptimizationEnabled(volumehelper.IsLinuxOS())
+				if volumehelper.IsLinuxOS() {
+					stdCapacityRangetest := &csi.CapacityRange{
+						RequiredBytes: volumehelper.GiBToBytes(10),
+						LimitBytes:    volumehelper.GiBToBytes(15),
+					}
+					req := &csi.CreateVolumeRequest{
+						Name:               testVolumeName,
+						VolumeCapabilities: stdVolumeCapabilities,
+						CapacityRange:      stdCapacityRangetest,
+						Parameters:         map[string]string{"perfProfile": "advanced"},
+					}
+					size := int32(volumehelper.BytesToGiB(req.CapacityRange.RequiredBytes))
+					id := fmt.Sprintf(consts.ManagedDiskPath, "subs", "rg", testVolumeName)
+					state := string(compute.ProvisioningStateSucceeded)
+					disk := compute.Disk{
+						ID:   &id,
+						Name: &testVolumeName,
+						DiskProperties: &compute.DiskProperties{
+							DiskSizeGB:        &size,
+							ProvisioningState: &state,
+						},
+					}
+					d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+					d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+					_, err := d.CreateVolume(context.Background(), req)
+					expectedErr := fmt.Errorf("AreDeviceSettingsValid: No deviceSettings passed")
+					if !testutil.IsErrorEquivalent(err, expectedErr) {
+						t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+					}
+				}
+			},
+		},
+		{
+			name: "advanced perfProfile succeeds if at least one device settings provided",
+			testFunc: func(t *testing.T) {
+				d, _ := NewFakeDriver(t)
+				d.setPerfOptimizationEnabled(volumehelper.IsLinuxOS())
+				if volumehelper.IsLinuxOS() {
+					stdCapacityRangetest := &csi.CapacityRange{
+						RequiredBytes: volumehelper.GiBToBytes(10),
+						LimitBytes:    volumehelper.GiBToBytes(15),
+					}
+					req := &csi.CreateVolumeRequest{
+						Name:               testVolumeName,
+						VolumeCapabilities: stdVolumeCapabilities,
+						CapacityRange:      stdCapacityRangetest,
+						Parameters:         map[string]string{"perfProfile": "advanced", consts.DeviceSettingsKeyPrefix + "device/nr_request": "8"},
+					}
+					size := int32(volumehelper.BytesToGiB(req.CapacityRange.RequiredBytes))
+					id := fmt.Sprintf(consts.ManagedDiskPath, "subs", "rg", testVolumeName)
+					state := string(compute.ProvisioningStateSucceeded)
+					disk := compute.Disk{
+						ID:   &id,
+						Name: &testVolumeName,
+						DiskProperties: &compute.DiskProperties{
+							DiskSizeGB:        &size,
+							ProvisioningState: &state,
+						},
+					}
+					d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+					d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+					_, err := d.CreateVolume(context.Background(), req)
+					expectedErr := error(nil)
+					if !testutil.IsErrorEquivalent(err, expectedErr) {
+						t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+					}
+				}
+			},
+		},
+		{
+			name: "advanced perfProfile fails if invalid device settings provided",
+			testFunc: func(t *testing.T) {
+				d, _ := NewFakeDriver(t)
+				d.setPerfOptimizationEnabled(volumehelper.IsLinuxOS())
+				if volumehelper.IsLinuxOS() {
+					deviceSettingOverride := consts.DeviceSettingsKeyPrefix + "../device/scheduler"
+					settingPath, _ := filepath.Abs(filepath.Join(consts.DummyBlockDevicePathLinux, "../device/scheduler"))
+					//absFilePath, _ := filepath.Abs(relativeSettingPath)
+					stdCapacityRangetest := &csi.CapacityRange{
+						RequiredBytes: volumehelper.GiBToBytes(10),
+						LimitBytes:    volumehelper.GiBToBytes(15),
+					}
+					req := &csi.CreateVolumeRequest{
+						Name:               testVolumeName,
+						VolumeCapabilities: stdVolumeCapabilities,
+						CapacityRange:      stdCapacityRangetest,
+						Parameters:         map[string]string{"perfProfile": "advanced", consts.DeviceSettingsKeyPrefix + "device/nr_request": "8", deviceSettingOverride: "8"},
+					}
+					size := int32(volumehelper.BytesToGiB(req.CapacityRange.RequiredBytes))
+					id := fmt.Sprintf(consts.ManagedDiskPath, "subs", "rg", testVolumeName)
+					state := string(compute.ProvisioningStateSucceeded)
+					disk := compute.Disk{
+						ID:   &id,
+						Name: &testVolumeName,
+						DiskProperties: &compute.DiskProperties{
+							DiskSizeGB:        &size,
+							ProvisioningState: &state,
+						},
+					}
+					d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+					d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+					_, err := d.CreateVolume(context.Background(), req)
+					expectedErr := fmt.Errorf("AreDeviceSettingsValid: Setting %s is not a valid file path under %s", settingPath, consts.DummyBlockDevicePathLinux)
+					if !testutil.IsErrorEquivalent(err, expectedErr) {
+						t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+					}
 				}
 			},
 		},
@@ -508,7 +623,7 @@ func TestControllerGetVolume(t *testing.T) {
 	req := csi.ControllerGetVolumeRequest{}
 	resp, err := d.ControllerGetVolume(context.Background(), &req)
 	assert.Nil(t, resp)
-	if !reflect.DeepEqual(err, status.Error(codes.Unimplemented, "")) {
+	if !testutil.IsErrorEquivalent(err, status.Error(codes.Unimplemented, "")) {
 		t.Errorf("Unexpected error: %v", err)
 	}
 }
@@ -626,6 +741,7 @@ func TestControllerPublishVolume(t *testing.T) {
 				req := &csi.ControllerPublishVolumeRequest{
 					VolumeId:         "vol_1",
 					VolumeCapability: volumeCap,
+					NodeId:           nodeName,
 				}
 				expectedErr := status.Error(codes.NotFound, "Volume not found, failed with error: could not get disk name from vol_1, correct format: (?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/disks/(.+)")
 				_, err := d.ControllerPublishVolume(context.Background(), req)
@@ -826,6 +942,7 @@ func TestControllerPublishVolume(t *testing.T) {
 			},
 		},
 	}
+
 	for _, tc := range testCases {
 		t.Run(tc.name, tc.testFunc)
 	}
@@ -865,7 +982,7 @@ func TestControllerUnpublishVolume(t *testing.T) {
 	}
 	for _, test := range tests {
 		_, err := d.ControllerUnpublishVolume(context.Background(), test.req)
-		if !reflect.DeepEqual(err, test.expectedErr) {
+		if !testutil.IsErrorEquivalent(err, test.expectedErr) {
 			t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
 		}
 	}
@@ -908,7 +1025,7 @@ func TestControllerExpandVolume(t *testing.T) {
 
 				expectedErr := status.Error(codes.InvalidArgument, "Volume ID missing in the request")
 				_, err := d.ControllerExpandVolume(ctx, req)
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("Unexpected error: %v", err)
 				}
 			},
@@ -926,7 +1043,7 @@ func TestControllerExpandVolume(t *testing.T) {
 				d.setControllerCapabilities(csc)
 				expectedErr := status.Error(codes.InvalidArgument, "invalid expand volume request: volume_id:\"vol_1\" ")
 				_, err := d.ControllerExpandVolume(ctx, req)
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("Unexpected error: %v", err)
 				}
 			},
@@ -943,7 +1060,7 @@ func TestControllerExpandVolume(t *testing.T) {
 
 				expectedErr := status.Error(codes.InvalidArgument, "volume capacity range missing in request")
 				_, err := d.ControllerExpandVolume(ctx, req)
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("Unexpected error: %v", err)
 				}
 			},
@@ -960,8 +1077,8 @@ func TestControllerExpandVolume(t *testing.T) {
 
 				expectedErr := status.Error(codes.InvalidArgument, "disk URI(httptest) is not valid: invalid DiskURI: httptest, correct format: [/subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id}]")
 				_, err := d.ControllerExpandVolume(ctx, req)
-				if !reflect.DeepEqual(err, expectedErr) {
-					t.Errorf("Unexpected error: %v", err)
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
 		},
@@ -978,7 +1095,7 @@ func TestControllerExpandVolume(t *testing.T) {
 
 				expectedErr := status.Errorf(codes.InvalidArgument, "disk URI(vol_1) is not valid: invalid DiskURI: vol_1, correct format: [/subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id}]")
 				_, err := d.ControllerExpandVolume(ctx, req)
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -1006,7 +1123,7 @@ func TestControllerExpandVolume(t *testing.T) {
 				mockDiskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
 				expectedErr := status.Errorf(codes.Internal, "could not get size of the disk(unit-test-volume)")
 				_, err := d.ControllerExpandVolume(ctx, req)
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -1029,7 +1146,7 @@ func TestCreateSnapshot(t *testing.T) {
 				req := &csi.CreateSnapshotRequest{}
 				_, err := d.CreateSnapshot(context.Background(), req)
 				expectedErr := status.Error(codes.InvalidArgument, "CreateSnapshot Source Volume ID must be provided")
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -1042,7 +1159,7 @@ func TestCreateSnapshot(t *testing.T) {
 					SourceVolumeId: "vol_1"}
 				_, err := d.CreateSnapshot(context.Background(), req)
 				expectedErr := status.Error(codes.InvalidArgument, "snapshot name must be provided")
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -1061,7 +1178,7 @@ func TestCreateSnapshot(t *testing.T) {
 
 				_, err := d.CreateSnapshot(context.Background(), req)
 				expectedErr := fmt.Errorf("AzureDisk - invalid option unit-test in VolumeSnapshotClass")
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -1076,7 +1193,7 @@ func TestCreateSnapshot(t *testing.T) {
 				}
 				_, err := d.CreateSnapshot(context.Background(), req)
 				expectedErr := status.Errorf(codes.InvalidArgument, "could not get resource group from diskURI(vol_1) with error(invalid disk URI: vol_1)")
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -1098,7 +1215,7 @@ func TestCreateSnapshot(t *testing.T) {
 
 				_, err := d.CreateSnapshot(context.Background(), req)
 				expectedErr := fmt.Errorf("Tags 'unit-test' are invalid, the format should like: 'key1=value1,key2=value2'")
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -1123,7 +1240,7 @@ func TestCreateSnapshot(t *testing.T) {
 
 				_, err := d.CreateSnapshot(context.Background(), req)
 				expectedErr := status.Errorf(codes.Internal, "create snapshot error: Retriable: false, RetryAfter: 0s, HTTPStatusCode: 0, RawError: test")
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -1150,7 +1267,7 @@ func TestCreateSnapshot(t *testing.T) {
 				mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rerr).AnyTimes()
 				_, err := d.CreateSnapshot(context.Background(), req)
 				expectedErr := status.Errorf(codes.AlreadyExists, "request snapshot(snapname) under rg(rg) already exists, but the SourceVolumeId is different, error details: Retriable: false, RetryAfter: 0s, HTTPStatusCode: 0, RawError: existing disk")
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -1179,7 +1296,7 @@ func TestCreateSnapshot(t *testing.T) {
 				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, rerr).AnyTimes()
 				_, err := d.CreateSnapshot(context.Background(), req)
 				expectedErr := status.Errorf(codes.Internal, "get snapshot unit-test from rg(rg) error: Retriable: false, RetryAfter: 0s, HTTPStatusCode: 0, RawError: get snapshot error")
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -1251,7 +1368,7 @@ func TestDeleteSnapshot(t *testing.T) {
 				expectedErr := status.Error(codes.InvalidArgument, "Snapshot ID must be provided")
 				d, _ := NewFakeDriver(t)
 				_, err := d.DeleteSnapshot(context.Background(), req)
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -1265,7 +1382,7 @@ func TestDeleteSnapshot(t *testing.T) {
 				d, _ := NewFakeDriver(t)
 				expectedErr := fmt.Errorf("could not get snapshot name from /subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name, correct format: (?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/snapshots/(.+)")
 				_, err := d.DeleteSnapshot(context.Background(), req)
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -1288,7 +1405,7 @@ func TestDeleteSnapshot(t *testing.T) {
 				mockSnapshotClient.EXPECT().Delete(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rerr).AnyTimes()
 				expectedErr := status.Errorf(codes.Internal, "delete snapshot error: Retriable: false, RetryAfter: 0s, HTTPStatusCode: 0, RawError: get snapshot error")
 				_, err := d.DeleteSnapshot(context.Background(), req)
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -1307,7 +1424,7 @@ func TestDeleteSnapshot(t *testing.T) {
 				}
 				mockSnapshotClient.EXPECT().Delete(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 				_, err := d.DeleteSnapshot(context.Background(), req)
-				if !reflect.DeepEqual(err, nil) {
+				if !testutil.IsErrorEquivalent(err, nil) {
 					t.Errorf("actualErr: (%v), expectedErr: nil)", err)
 				}
 			},
@@ -1319,6 +1436,8 @@ func TestDeleteSnapshot(t *testing.T) {
 }
 
 func TestGetSnapshotByID(t *testing.T) {
+	skipIfTestingDriverV2(t)
+
 	testCases := []struct {
 		name     string
 		testFunc func(t *testing.T)
@@ -1328,12 +1447,12 @@ func TestGetSnapshotByID(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				sourceVolumeID := "unit-test"
 				ctx := context.Background()
-				d, _ := NewFakeDriver(t)
+				d, _ := newFakeDriverV1(t)
 				d.setCloud(&azure.Cloud{})
 				snapshotID := "testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name"
 				expectedErr := fmt.Errorf("could not get snapshot name from testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name, correct format: (?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/snapshots/(.+)")
 				_, err := d.getSnapshotByID(ctx, d.getCloud().SubscriptionID, d.getCloud().ResourceGroup, snapshotID, sourceVolumeID)
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -1341,7 +1460,7 @@ func TestGetSnapshotByID(t *testing.T) {
 		{
 			name: "snapshot get error",
 			testFunc: func(t *testing.T) {
-				d, _ := NewFakeDriver(t)
+				d, _ := newFakeDriverV1(t)
 				d.setCloud(&azure.Cloud{})
 				ctrl := gomock.NewController(t)
 				defer ctrl.Finish()
@@ -1359,7 +1478,7 @@ func TestGetSnapshotByID(t *testing.T) {
 				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, rerr).AnyTimes()
 				expectedErr := fmt.Errorf("could not get snapshot name from testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name, correct format: (?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/snapshots/(.+)")
 				_, err := d.getSnapshotByID(context.Background(), d.getCloud().SubscriptionID, d.getCloud().ResourceGroup, snapshotID, snapshotVolumeID)
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -1384,7 +1503,7 @@ func TestListSnapshots(t *testing.T) {
 				d, _ := NewFakeDriver(t)
 				expectedErr := fmt.Errorf("could not get snapshot name from testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-nametestVolumeName, correct format: (?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/snapshots/(.+)")
 				_, err := d.ListSnapshots(context.TODO(), &req)
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -1414,7 +1533,7 @@ func TestListSnapshots(t *testing.T) {
 				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).AnyTimes()
 				expectedErr := error(nil)
 				_, err := d.ListSnapshots(context.TODO(), &req)
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -1437,7 +1556,7 @@ func TestListSnapshots(t *testing.T) {
 				mockSnapshotClient.EXPECT().ListByResourceGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshots, rerr).AnyTimes()
 				expectedErr := status.Error(codes.Internal, "Unknown list snapshot error: Retriable: false, RetryAfter: 0s, HTTPStatusCode: 0, RawError: test")
 				_, err := d.ListSnapshots(context.TODO(), &req)
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -1457,7 +1576,7 @@ func TestListSnapshots(t *testing.T) {
 				mockSnapshotClient.EXPECT().ListByResourceGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshots, nil).AnyTimes()
 				expectedErr := fmt.Errorf("failed to generate snapshot entry: snapshot property is nil")
 				_, err := d.ListSnapshots(context.TODO(), &req)
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -1511,7 +1630,7 @@ func TestGetCapacity(t *testing.T) {
 	req := csi.GetCapacityRequest{}
 	resp, err := d.GetCapacity(context.Background(), &req)
 	assert.Nil(t, resp)
-	if !reflect.DeepEqual(err, status.Error(codes.Unimplemented, "")) {
+	if !testutil.IsErrorEquivalent(err, status.Error(codes.Unimplemented, "")) {
 		t.Errorf("Unexpected error: %v", err)
 	}
 }
@@ -1554,7 +1673,7 @@ func TestListVolumes(t *testing.T) {
 				d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().ListByResourceGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(disks, nil).AnyTimes()
 				expectedErr := error(nil)
 				listVolumesResponse, err := d.ListVolumes(context.TODO(), &req)
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 				if listVolumesResponse.NextToken != "" {
@@ -1576,7 +1695,7 @@ func TestListVolumes(t *testing.T) {
 				d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().ListByResourceGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(disks, nil).AnyTimes()
 				expectedErr := error(nil)
 				listVolumesResponse, err := d.ListVolumes(context.TODO(), &req)
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 				if len(listVolumesResponse.Entries) != int(req.MaxEntries) {
@@ -1602,7 +1721,7 @@ func TestListVolumes(t *testing.T) {
 				d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().ListByResourceGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(disks, nil).AnyTimes()
 				expectedErr := error(nil)
 				listVolumesResponse, err := d.ListVolumes(context.TODO(), &req)
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 				if len(listVolumesResponse.Entries) != int(req.MaxEntries) {
@@ -1627,7 +1746,7 @@ func TestListVolumes(t *testing.T) {
 				d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().ListByResourceGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(disks, nil).AnyTimes()
 				expectedErr := status.Error(codes.FailedPrecondition, "ListVolumes starting token(1) on rg(rg) is greater than total number of volumes")
 				_, err := d.ListVolumes(context.TODO(), &req)
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -1646,7 +1765,7 @@ func TestListVolumes(t *testing.T) {
 				d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().ListByResourceGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(disks, rerr).AnyTimes()
 				expectedErr := status.Error(codes.Internal, "ListVolumes on rg(rg) failed with error: Retriable: false, RetryAfter: 0s, HTTPStatusCode: 0, RawError: test")
 				_, err := d.ListVolumes(context.TODO(), &req)
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -1663,7 +1782,7 @@ func TestListVolumes(t *testing.T) {
 				d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().ListByResourceGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return([]compute.Disk{}, nil)
 				expectedErr := error(nil)
 				_, err := d.ListVolumes(context.TODO(), &req)
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -1682,7 +1801,7 @@ func TestListVolumes(t *testing.T) {
 				d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().ListByResourceGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return([]compute.Disk{disk1}, nil)
 				expectedErr := error(nil)
 				listVolumesResponse, err := d.ListVolumes(context.TODO(), &req)
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 				if listVolumesResponse.NextToken != "" {
@@ -1708,7 +1827,7 @@ func TestListVolumes(t *testing.T) {
 				d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().ListByResourceGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return([]compute.Disk{disk2}, nil)
 				expectedErr := error(nil)
 				listVolumesResponse, err := d.ListVolumes(context.TODO(), &req)
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 				if len(listVolumesResponse.Entries) != int(req.MaxEntries) {
@@ -1738,7 +1857,7 @@ func TestListVolumes(t *testing.T) {
 				d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().ListByResourceGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return([]compute.Disk{disk2}, nil)
 				expectedErr := error(nil)
 				listVolumesResponse, err := d.ListVolumes(context.TODO(), &req)
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 				if len(listVolumesResponse.Entries) != int(req.MaxEntries) {
@@ -1765,7 +1884,7 @@ func TestListVolumes(t *testing.T) {
 				d.getCloud().KubeClient.CoreV1().PersistentVolumes().(*mockpersistentvolume.MockInterface).EXPECT().List(gomock.Any(), gomock.Any()).Return(&pvList, nil)
 				expectedErr := status.Error(codes.FailedPrecondition, "ListVolumes starting token(1) is greater than total number of disks")
 				_, err := d.ListVolumes(context.TODO(), &req)
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -1781,7 +1900,7 @@ func TestListVolumes(t *testing.T) {
 				d.getCloud().KubeClient.CoreV1().PersistentVolumes().(*mockpersistentvolume.MockInterface).EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, rerr)
 				expectedErr := status.Error(codes.Internal, "ListVolumes failed while fetching PersistentVolumes List with error: test")
 				_, err := d.ListVolumes(context.TODO(), &req)
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -1805,7 +1924,7 @@ func TestValidateVolumeCapabilities(t *testing.T) {
 				d, _ := NewFakeDriver(t)
 				expectedErr := status.Errorf(codes.InvalidArgument, "Volume ID missing in the request")
 				_, err := d.ValidateVolumeCapabilities(context.TODO(), &req)
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -1819,7 +1938,7 @@ func TestValidateVolumeCapabilities(t *testing.T) {
 				d, _ := NewFakeDriver(t)
 				expectedErr := status.Errorf(codes.InvalidArgument, "VolumeCapabilities missing in the request")
 				_, err := d.ValidateVolumeCapabilities(context.TODO(), &req)
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -1834,7 +1953,7 @@ func TestValidateVolumeCapabilities(t *testing.T) {
 				d, _ := NewFakeDriver(t)
 				expectedErr := status.Errorf(codes.NotFound, "Volume not found, failed with error: could not get disk name from -, correct format: (?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/disks/(.+)")
 				_, err := d.ValidateVolumeCapabilities(context.TODO(), &req)
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -1853,7 +1972,7 @@ func TestValidateVolumeCapabilities(t *testing.T) {
 				d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
 				expectedErr := error(nil)
 				_, err := d.ValidateVolumeCapabilities(context.TODO(), &req)
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -1880,7 +1999,7 @@ func TestValidateVolumeCapabilities(t *testing.T) {
 				d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
 				expectedErr := error(nil)
 				_, err := d.ValidateVolumeCapabilities(context.TODO(), &req)
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -1892,6 +2011,8 @@ func TestValidateVolumeCapabilities(t *testing.T) {
 }
 
 func TestGetSourceDiskSize(t *testing.T) {
+	skipIfTestingDriverV2(t)
+
 	testCases := []struct {
 		name     string
 		testFunc func(t *testing.T)
@@ -1899,10 +2020,10 @@ func TestGetSourceDiskSize(t *testing.T) {
 		{
 			name: "max depth reached",
 			testFunc: func(t *testing.T) {
-				d, _ := NewFakeDriver(t)
-				_, err := d.GetSourceDiskSize(context.Background(), "", "test-rg", "test-disk", 2, 1)
+				d, _ := newFakeDriverV1(t)
+				_, err := d.GetSourceDiskSize(context.Background(), "test-subscription", "test-rg", "test-disk", 2, 1)
 				expectedErr := status.Errorf(codes.Internal, "current depth (2) surpassed the max depth (1) while searching for the source disk size")
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -1910,12 +2031,12 @@ func TestGetSourceDiskSize(t *testing.T) {
 		{
 			name: "diskproperty not found",
 			testFunc: func(t *testing.T) {
-				d, _ := NewFakeDriver(t)
+				d, _ := newFakeDriverV1(t)
 				disk := compute.Disk{}
 				d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
 				_, err := d.GetSourceDiskSize(context.Background(), "", "test-rg", "test-disk", 0, 1)
 				expectedErr := status.Error(codes.Internal, "DiskProperty not found for disk (test-disk) in resource group (test-rg)")
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -1923,7 +2044,7 @@ func TestGetSourceDiskSize(t *testing.T) {
 		{
 			name: "nil DiskSizeGB",
 			testFunc: func(t *testing.T) {
-				d, _ := NewFakeDriver(t)
+				d, _ := newFakeDriverV1(t)
 				diskProperties := compute.DiskProperties{}
 				disk := compute.Disk{
 					DiskProperties: &diskProperties,
@@ -1931,7 +2052,7 @@ func TestGetSourceDiskSize(t *testing.T) {
 				d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
 				_, err := d.GetSourceDiskSize(context.Background(), "", "test-rg", "test-disk", 0, 1)
 				expectedErr := status.Error(codes.Internal, "DiskSizeGB for disk (test-disk) in resourcegroup (test-rg) is nil")
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -1939,7 +2060,7 @@ func TestGetSourceDiskSize(t *testing.T) {
 		{
 			name: "successful search: depth 1",
 			testFunc: func(t *testing.T) {
-				d, _ := NewFakeDriver(t)
+				d, _ := newFakeDriverV1(t)
 				diskSizeGB := int32(8)
 				diskProperties := compute.DiskProperties{
 					DiskSizeGB: &diskSizeGB,
@@ -1958,7 +2079,7 @@ func TestGetSourceDiskSize(t *testing.T) {
 		{
 			name: "successful search: depth 2",
 			testFunc: func(t *testing.T) {
-				d, _ := NewFakeDriver(t)
+				d, _ := newFakeDriverV1(t)
 				diskSizeGB1 := int32(16)
 				diskSizeGB2 := int32(8)
 				sourceURI := "/subscriptions/xxxxxxxx/resourcegroups/test-rg/providers/microsoft.compute/disks/test-disk-1"
@@ -2003,43 +2124,4 @@ func getFakeDriverWithKubeClient(t *testing.T) FakeDriver {
 	d.getCloud().KubeClient.(*mockkubeclient.MockInterface).EXPECT().CoreV1().Return(corev1).AnyTimes()
 	d.getCloud().KubeClient.CoreV1().(*mockcorev1.MockInterface).EXPECT().PersistentVolumes().Return(persistentvolume).AnyTimes()
 	return d
-}
-
-func TestIsAsyncAttachEnabled(t *testing.T) {
-	tests := []struct {
-		name          string
-		defaultValue  bool
-		volumeContext map[string]string
-		expected      bool
-	}{
-		{
-			name:         "nil volumeContext",
-			defaultValue: false,
-			expected:     false,
-		},
-		{
-			name:          "empty volumeContext",
-			defaultValue:  true,
-			volumeContext: map[string]string{},
-			expected:      true,
-		},
-		{
-			name:          "false value in volumeContext",
-			defaultValue:  true,
-			volumeContext: map[string]string{"enableAsyncAttach": "false"},
-			expected:      false,
-		},
-		{
-			name:          "trie value in volumeContext",
-			defaultValue:  false,
-			volumeContext: map[string]string{"enableasyncattach": "true"},
-			expected:      true,
-		},
-	}
-	for _, test := range tests {
-		result := isAsyncAttachEnabled(test.defaultValue, test.volumeContext)
-		if result != test.expected {
-			t.Errorf("test(%s): result(%v) != expected result(%v)", test.name, result, test.expected)
-		}
-	}
 }

@@ -21,6 +21,8 @@ readonly PKG_ROOT=$(git rev-parse --show-toplevel)
 ${PKG_ROOT}/hack/verify-gofmt.sh
 ${PKG_ROOT}/hack/verify-govet.sh
 ${PKG_ROOT}/hack/verify-gomod.sh
+${PKG_ROOT}/hack/verify-codegen.sh
+${PKG_ROOT}/hack/verify-crd.sh
 ${PKG_ROOT}/hack/verify-yamllint.sh
 ${PKG_ROOT}/hack/verify-boilerplate.sh
 ${PKG_ROOT}/hack/verify-helm-chart-files.sh

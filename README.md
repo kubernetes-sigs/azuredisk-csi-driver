@@ -30,7 +30,7 @@ V2: Preview
 |Driver Version  |Image                                                            | supported k8s version |
 |----------------|-----------------------------------------------------------------|-----------------------|
 |`main_v2` branch|                                                                 | 1.21+                 |
-|v2.0.0-alpha.1  |mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v2.0.0-alpha.1| 1.21+                 |
+|v2.0.0-beta.2   |mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v2.0.0-beta.2 | 1.21+                 |
 
 ### Driver parameters
 
@@ -66,7 +66,7 @@ follow guide [here](./docs/install-driver-on-aks.md)
 ### Features
 
 - [Topology (Availability Zone)](./deploy/example/topology)
-  - [ZRS disk support](./deploy/example/topology#zrs-disk-support)
+  - [ZRS disk support (Preview)](./deploy/example/topology#zrs-disk-support)
 - [Snapshot](./deploy/example/snapshot)
 - [Volume Cloning](./deploy/example/cloning)
 - [Volume Expansion](./deploy/example/resize)
@@ -75,7 +75,7 @@ follow guide [here](./docs/install-driver-on-aks.md)
 - [Shared Disk](./deploy/example/sharedisk)
 - [Volume Limits](./deploy/example/volumelimits)
 - [fsGroupPolicy](./deploy/example/fsgroup)
-- [Tune disk performance on Linux](./docs/perf-profiles.md)
+- [Tune disk performance on Linux](./docs/enhancements/feat-add-ability-to-tune-azuredisk-performance-parameters.md)
 
 #### New in V2
 

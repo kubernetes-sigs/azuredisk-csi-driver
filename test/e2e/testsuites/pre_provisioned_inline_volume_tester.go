@@ -18,6 +18,7 @@ package testsuites
 
 import (
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
+	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 
 	"github.com/onsi/ginkgo"
 	v1 "k8s.io/api/core/v1"
@@ -29,14 +30,14 @@ import (
 // Testing if the Pod(s) Cmd is run with a 0 exit code
 type PreProvisionedInlineVolumeTest struct {
 	CSIDriver driver.PreProvisionedVolumeTestDriver
-	Pods      []PodDetails
+	Pods      []resources.PodDetails
 	DiskURI   string
 	ReadOnly  bool
 }
 
-func (t *PreProvisionedInlineVolumeTest) Run(client clientset.Interface, namespace *v1.Namespace) {
+func (t *PreProvisionedInlineVolumeTest) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
 	for _, pod := range t.Pods {
-		tpod, cleanup := pod.SetupWithInlineVolumes(client, namespace, t.CSIDriver, t.DiskURI, t.ReadOnly)
+		tpod, cleanup := pod.SetupWithInlineVolumes(client, namespace, t.CSIDriver, t.DiskURI, t.ReadOnly, schedulerName)
 		// defer must be called here for resources not get removed before using them
 		for i := range cleanup {
 			defer cleanup[i]()

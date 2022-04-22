@@ -1,0 +1,81 @@
+serviceAccount:
+  controller: csi-azuredisk2-controller-sa
+  node: csi-azuredisk2-node-sa 
+  snapshotController: csi2-snapshot-controller-sa
+
+rbac:
+  name: azuredisk2
+
+controller:
+  name: csi-azuredisk2-controller
+  metrics:
+    port: 29624
+  livenessProbe:
+    healthPort: 29623
+  affinity:
+    nodeAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        preference:
+          matchExpressions:
+          - key: kubernetes.azure.com/mode
+            operator: In
+            values:
+            - system
+  tolerations:
+  - key: "node-role.kubernetes.io/master"
+    operator: "Exists"
+    effect: "NoSchedule"
+  - key: "node-role.kubernetes.io/controlplane"
+    operator: "Exists"
+    effect: "NoSchedule"
+  - key: "CriticalAddonsOnly"
+    operator: "Exists"
+    effect: "NoSchedule"
+
+schedulerExtender:
+  affinity:
+    nodeAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        preference:
+          matchExpressions:
+          - key: kubernetes.azure.com/mode
+            operator: In
+            values:
+            - system
+  tolerations:
+  - key: "node-role.kubernetes.io/master"
+    operator: "Exists"
+    effect: "NoSchedule"
+  - key: "node-role.kubernetes.io/controlplane"
+    operator: "Exists"
+    effect: "NoSchedule"
+  - key: "CriticalAddonsOnly"
+    operator: "Exists"
+    effect: "NoSchedule"
+
+node:
+  metrics:
+    port: 29625
+  livenessProbe:
+    healthPort: 29627
+
+snapshot:
+  enabled: true
+  createCRDs: false
+  name: csi-azuredisk2-snapshot-controller
+  snapshotController:
+    name: csi-azuredisk2-snapshot-controller
+
+driver:
+  name: disk2.csi.azure.com
+
+linux:
+  dsName: csi-azuredisk2-node 
+
+windows:
+  dsName: csi-azuredisk2-node-win
+
+storageClasses:
+  enableZRS: true

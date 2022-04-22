@@ -60,6 +60,7 @@ var (
 	enableListSnapshots        = flag.Bool("enable-list-snapshots", false, "boolean flag to enable ListSnapshots on controller")
 	enableDiskCapacityCheck    = flag.Bool("enable-disk-capacity-check", false, "boolean flag to enable volume capacity check in CreateVolume")
 	vmssCacheTTLInSeconds      = flag.Int64("vmss-cache-ttl-seconds", -1, "vmss cache TTL in seconds (600 by default)")
+	kubeClientQPS              = flag.Int("kube-client-qps", 15, "QPS for the rest client. Defaults to 15.")
 )
 
 func main() {
@@ -103,6 +104,7 @@ func handle() {
 		GetNodeInfoFromLabels:      *getNodeInfoFromLabels,
 		EnableDiskCapacityCheck:    *enableDiskCapacityCheck,
 		VMSSCacheTTLInSeconds:      *vmssCacheTTLInSeconds,
+		RestClientQPS:              *kubeClientQPS,
 	}
 	driver := azuredisk.NewDriver(&driverOptions)
 	if driver == nil {

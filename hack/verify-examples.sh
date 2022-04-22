@@ -79,8 +79,17 @@ if [[ "$1" == *"windows"* ]]; then
     )
 fi
 
+cleanup_examples() {
+    for EXAMPLE in "${EXAMPLES[@]}"; do
+        echo "Attempting deletion of \"$EXAMPLE\""
+        kubectl delete -f "$EXAMPLE" --ignore-not-found
+    done
+}
+
+trap cleanup_examples EXIT
+
 for EXAMPLE in "${EXAMPLES[@]}"; do
-    rollout_and_wait $EXAMPLE
+    rollout_and_wait "$EXAMPLE"
 done
 
 echo "deployment examples running completed."

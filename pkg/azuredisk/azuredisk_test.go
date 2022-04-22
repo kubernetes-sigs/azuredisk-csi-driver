@@ -23,37 +23,12 @@ import (
 	"os"
 	"reflect"
 	"testing"
+	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
-	"github.com/golang/mock/gomock"
-	"github.com/stretchr/testify/assert"
-	"google.golang.org/grpc/status"
 	clientset "k8s.io/client-go/kubernetes"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
-	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/diskclient/mockdiskclient"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
-
-func TestCheckDiskCapacity(t *testing.T) {
-	d, _ := NewFakeDriver(t)
-	size := int32(10)
-	diskName := "unit-test"
-	resourceGroup := "unit-test"
-	disk := compute.Disk{
-		DiskProperties: &compute.DiskProperties{
-			DiskSizeGB: &size,
-		},
-	}
-	d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
-	flag, err := d.checkDiskCapacity(context.TODO(), "", resourceGroup, diskName, 10)
-	assert.Equal(t, flag, true)
-	assert.Nil(t, err)
-
-	flag, err = d.checkDiskCapacity(context.TODO(), "", resourceGroup, diskName, 11)
-	assert.Equal(t, flag, false)
-	expectedErr := status.Errorf(6, "the request volume already exists, but its capacity(10) is different from (11)")
-	assert.Equal(t, err, expectedErr)
-}
 
 func TestRun(t *testing.T) {
 	fakeCredFile := "fake-cred-file.json"
@@ -65,6 +40,26 @@ func TestRun(t *testing.T) {
     "resourceGroup": "rg1",
     "location": "loc"
 }`
+
+	validKubeConfigPath := "valid-Kube-Config-Path"
+	validKubeConfigContent := `
+    apiVersion: v1
+    clusters:
+    - cluster:
+        server: https://foo-cluster-dns-57e0bda1.hcp.westus2.azmk8s.io:443
+      name: foo-cluster
+    contexts:
+    - context:
+        cluster: foo-cluster
+        user: clusterUser_abhib-resources_foo-cluster
+      name: foo-cluster
+    current-context: foo-cluster
+    kind: Config
+    preferences: {}
+    users:
+    - name: clusterUser_abhib-resources_foo-cluster
+      user:
+`
 
 	testCases := []struct {
 		name     string
@@ -91,8 +86,19 @@ func TestRun(t *testing.T) {
 				}
 				os.Setenv(consts.DefaultAzureCredentialFileEnv, fakeCredFile)
 
+				err := createConfigFile(validKubeConfigPath, validKubeConfigContent)
+				defer deleteConfig(validKubeConfigPath)
+				if err != nil {
+					t.Error(err)
+				}
+
 				d, _ := NewFakeDriver(t)
-				d.Run("tcp://127.0.0.1:0", "", true, true)
+				go d.Run("tcp://127.0.0.1:0", validKubeConfigPath, true, true)
+				select {
+				case <-d.Ready():
+				case <-time.After(30 * time.Second):
+					t.Error("Driver failed to ready within timeout")
+				}
 			},
 		},
 		{
@@ -116,10 +122,22 @@ func TestRun(t *testing.T) {
 				}
 				os.Setenv(consts.DefaultAzureCredentialFileEnv, fakeCredFile)
 
+				err := createConfigFile(validKubeConfigPath, validKubeConfigContent)
+				defer deleteConfig(validKubeConfigPath)
+
+				if err != nil {
+					t.Error(err)
+				}
+
 				d, _ := NewFakeDriver(t)
 				d.setCloud(&azure.Cloud{})
 				d.setNodeID("")
-				d.Run("tcp://127.0.0.1:0", "", true, true)
+				go d.Run("tcp://127.0.0.1:0", validKubeConfigPath, true, true)
+				select {
+				case <-d.Ready():
+				case <-time.After(30 * time.Second):
+					t.Error("Driver failed to ready within timeout")
+				}
 			},
 		},
 	}
@@ -129,10 +147,21 @@ func TestRun(t *testing.T) {
 	}
 }
 
-func TestDriver_checkDiskExists(t *testing.T) {
-	d, _ := NewFakeDriver(t)
-	_, err := d.checkDiskExists(context.TODO(), "testurl/subscriptions/12/providers/Microsoft.Compute/disks/name")
-	assert.NotEqual(t, err, nil)
+func createConfigFile(path string, content string) error {
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	if err := ioutil.WriteFile(path, []byte(content), 0666); err != nil {
+		return err
+	}
+	return nil
+}
+
+func deleteConfig(path string) {
+	os.Remove(path)
 }
 
 func TestGetNodeInfoFromLabels(t *testing.T) {

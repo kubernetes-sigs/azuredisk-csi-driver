@@ -17,6 +17,8 @@
 set -euo pipefail
 
 function cleanup {
+  set +e
+
   echo 'pkill -f azurediskplugin'
   pkill -f azurediskplugin
   echo 'Deleting CSI sanity test binary'
@@ -36,11 +38,7 @@ if [[ "${ARCH}" == "x86_64" || ${ARCH} == "unknown" ]]; then
   ARCH="amd64"
 fi
 
-if [[ "$#" -lt 2 || "$2" != "v2" ]]; then
-  _output/${ARCH}/azurediskplugin --endpoint "$endpoint" --nodeid "$nodeid" -v=5 -support-zone=false -enable-disk-capacity-check=true &
-else
-  _output/${ARCH}/azurediskpluginv2 --endpoint "$endpoint" --nodeid "$nodeid" -v=5 -support-zone=false -enable-disk-capacity-check=true &
-fi
+ _output/${ARCH}/azurediskplugin --endpoint "$endpoint" --nodeid "$nodeid" -v=5 -support-zone=false &
 
 echo 'Begin to run sanity test...'
 readonly CSI_SANITY_BIN='csi-sanity'

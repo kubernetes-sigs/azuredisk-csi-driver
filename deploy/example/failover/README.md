@@ -55,8 +55,8 @@ helm repo add azuredisk-csi-driver https://raw.githubusercontent.com/kubernetes-
 
 helm install azuredisk-csi-driver-v2 azuredisk-csi-driver/azuredisk-csi-driver \
   --namespace kube-system \
-  --version v2.0.0-alpha.1 \
-  --values=https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts/v2.0.0-alpha.1/azuredisk-csi-driver/side-by-side-values.yaml
+  --version v2.0.0-beta.2 \
+  --values=https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts/v2.0.0-beta.2/azuredisk-csi-driver/side-by-side-values.yaml
 ```
 
 3. Verify that the new storage classes were created

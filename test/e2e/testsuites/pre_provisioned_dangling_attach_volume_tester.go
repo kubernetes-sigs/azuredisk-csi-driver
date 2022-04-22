@@ -20,35 +20,39 @@ import (
 	"context"
 	"strings"
 
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
-	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
-
-	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
 	"github.com/onsi/ginkgo"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
+	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
+	nodeutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/node"
+	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
 // PreProvisionedDanglingAttachVolumeTest will provision required PV(s), PVC(s) and Pod(s)
 // Testing that a volume could be reattached to a different node on DanglingAttachError
 type PreProvisionedDanglingAttachVolumeTest struct {
-	CSIDriver       driver.PreProvisionedVolumeTestDriver
-	AzureDiskDriver azuredisk.CSIDriver
-	Pod             PodDetails
-	VolumeContext   map[string]string
+	CSIDriver     driver.PreProvisionedVolumeTestDriver
+	AzureCloud    *provider.Cloud
+	Pod           resources.PodDetails
+	VolumeContext map[string]string
 }
 
-func (t *PreProvisionedDanglingAttachVolumeTest) Run(client clientset.Interface, namespace *v1.Namespace) {
+func (t *PreProvisionedDanglingAttachVolumeTest) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
 	// Setup required PV(s) and PVC(s) corresponding to PodDetails that will be shared among two pods
-	tpod, cleanup := t.Pod.SetupWithPreProvisionedVolumes(client, namespace, t.CSIDriver, t.VolumeContext)
+	tpod, cleanup := t.Pod.SetupWithPreProvisionedVolumes(client, namespace, t.CSIDriver, t.VolumeContext, schedulerName)
 	// Defer must be called here for PV(s) and PVC(s) to be removed after the test completion and not earlier
 	for i := range cleanup {
 		defer cleanup[i]()
 	}
 
 	// Get the list of available nodes for scheduling the pod
-	nodes := tpod.ListNodes()
+	nodes := nodeutil.ListNodeNames(client)
 	if len(nodes) < 2 {
 		ginkgo.Skip("need at least 2 nodes to verify the test case. Current node count is %d", len(nodes))
 	}
@@ -64,19 +68,19 @@ func (t *PreProvisionedDanglingAttachVolumeTest) Run(client clientset.Interface,
 	}
 
 	ginkgo.By("attaching disk to node#0")
-	req := &csi.ControllerPublishVolumeRequest{
-		VolumeId: t.Pod.Volumes[0].VolumeID,
-		NodeId:   node,
-		VolumeCapability: &csi.VolumeCapability{
-			AccessType: &csi.VolumeCapability_Mount{
-				Mount: &csi.VolumeCapability_MountVolume{},
-			},
-			AccessMode: &csi.VolumeCapability_AccessMode{
-				Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
-			},
-		},
+	diskURI := t.Pod.Volumes[0].VolumeID
+	diskName, err := azureutils.GetDiskName(diskURI)
+	framework.ExpectNoError(err)
+	nodeName := types.NodeName(nodes[0])
+	cachingMode, ok := t.VolumeContext[consts.CachingModeField]
+	if !ok {
+		cachingMode = "None"
 	}
-	_, err := t.AzureDiskDriver.ControllerPublishVolume(context.Background(), req)
+	resourceGroup, err := azureutils.GetResourceGroupFromURI(diskURI)
+	framework.ExpectNoError(err)
+	disk, rerr := t.AzureCloud.DisksClient.Get(context.Background(), t.AzureCloud.SubscriptionID, resourceGroup, diskName)
+	framework.ExpectNoError(rerr.Error())
+	_, err = t.AzureCloud.AttachDisk(context.Background(), true, diskName, diskURI, nodeName, compute.CachingTypes(cachingMode), &disk)
 	framework.ExpectNoError(err)
 
 	// Make node#0 unschedulable to ensure that pods are scheduled on a different node

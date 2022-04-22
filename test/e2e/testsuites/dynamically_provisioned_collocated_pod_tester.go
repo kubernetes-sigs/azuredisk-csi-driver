@@ -18,6 +18,7 @@ package testsuites
 
 import (
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
+	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 
 	"github.com/onsi/ginkgo"
 	v1 "k8s.io/api/core/v1"
@@ -29,15 +30,15 @@ import (
 // Testing if multiple Pod(s) can write simultaneously
 type DynamicallyProvisionedCollocatedPodTest struct {
 	CSIDriver              driver.DynamicPVTestDriver
-	Pods                   []PodDetails
+	Pods                   []resources.PodDetails
 	ColocatePods           bool
 	StorageClassParameters map[string]string
 }
 
-func (t *DynamicallyProvisionedCollocatedPodTest) Run(client clientset.Interface, namespace *v1.Namespace) {
+func (t *DynamicallyProvisionedCollocatedPodTest) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
 	nodeName := ""
 	for _, pod := range t.Pods {
-		tpod, cleanup := pod.SetupWithDynamicVolumes(client, namespace, t.CSIDriver, t.StorageClassParameters)
+		tpod, cleanup := pod.SetupWithDynamicVolumes(client, namespace, t.CSIDriver, t.StorageClassParameters, schedulerName)
 		if t.ColocatePods && nodeName != "" {
 			tpod.SetNodeSelector(map[string]string{"name": nodeName})
 		}
@@ -52,6 +53,6 @@ func (t *DynamicallyProvisionedCollocatedPodTest) Run(client clientset.Interface
 
 		ginkgo.By("checking that the pod is running")
 		tpod.WaitForRunning()
-		nodeName = tpod.pod.Spec.NodeName
+		nodeName = tpod.Pod.Spec.NodeName
 	}
 }

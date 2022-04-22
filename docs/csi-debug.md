@@ -42,7 +42,7 @@ kubectl logs csi-azuredisk-node-cvgbs -c azuredisk -n kube-system > csi-azuredis
 
  - check disk mount inside driver
 ```console
-kubectl exec -it csi-azuredisk-node-j796x -n kube-system -c azuredisk -- mount | grep sd
+kubectl exec -it csi-azuredisk-node-xxxxx -n kube-system -c azuredisk -- mount | grep sd
 ```
 <pre>
 /dev/sdc on /var/lib/kubelet/plugins/kubernetes.io/csi/pv/pvc-e4c14592-2a79-423e-846f-4b25fe393d6c/globalmount type ext4 (rw,relatime)

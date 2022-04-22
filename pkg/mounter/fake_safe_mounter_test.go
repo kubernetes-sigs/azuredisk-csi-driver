@@ -23,6 +23,8 @@ import (
 	"os"
 	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 var (
@@ -51,6 +53,9 @@ func TestMain(m *testing.M) {
 }
 
 func TestMount(t *testing.T) {
+	if IsFakeUsingCSIProxy() {
+		t.Skip("Skipping test because CSI Proxy is used.")
+	}
 	tests := []struct {
 		desc        string
 		source      string
@@ -77,10 +82,11 @@ func TestMount(t *testing.T) {
 		},
 	}
 
-	fakeMounter := &FakeSafeMounter{}
+	fakeSafeMounter, err := NewFakeSafeMounter()
+	assert.NoError(t, err)
 
 	for _, test := range tests {
-		err := fakeMounter.Mount(test.source, test.target, "", nil)
+		err := fakeSafeMounter.Mount(test.source, test.target, "", nil)
 		if !reflect.DeepEqual(err, test.expectedErr) {
 			t.Errorf("Unexpected error: %v", err)
 		}
@@ -88,6 +94,9 @@ func TestMount(t *testing.T) {
 }
 
 func TestMountSensitive(t *testing.T) {
+	if IsFakeUsingCSIProxy() {
+		t.Skip("Skipping test because CSI Proxy is used.")
+	}
 	tests := []struct {
 		desc        string
 		source      string
@@ -114,10 +123,11 @@ func TestMountSensitive(t *testing.T) {
 		},
 	}
 
-	fakeMounter := &FakeSafeMounter{}
+	fakeSafeMounter, err := NewFakeSafeMounter()
+	assert.NoError(t, err)
 
 	for _, test := range tests {
-		err := fakeMounter.MountSensitive(test.source, test.target, "", nil, nil)
+		err := fakeSafeMounter.MountSensitive(test.source, test.target, "", nil, nil)
 		if !reflect.DeepEqual(err, test.expectedErr) {
 			t.Errorf("Unexpected error: %v", err)
 		}
@@ -125,6 +135,9 @@ func TestMountSensitive(t *testing.T) {
 }
 
 func TestIsLikelyNotMountPoint(t *testing.T) {
+	if IsFakeUsingCSIProxy() {
+		t.Skip("Skipping test because CSI Proxy is used.")
+	}
 	tests := []struct {
 		desc        string
 		file        string
@@ -135,7 +148,8 @@ func TestIsLikelyNotMountPoint(t *testing.T) {
 			file:        "./error_is_likely_target",
 			expectedErr: fmt.Errorf("fake IsLikelyNotMountPoint: fake error"),
 		},
-		{desc: "[Success] Successful run",
+		{
+			desc:        "[Success] Successful run",
 			file:        targetTest,
 			expectedErr: nil,
 		},
@@ -146,10 +160,14 @@ func TestIsLikelyNotMountPoint(t *testing.T) {
 		},
 	}
 
-	fakeMounter := &FakeSafeMounter{}
+	fakeSafeMounter, err := NewFakeSafeMounter()
+	assert.NoError(t, err)
+
+	err = fakeSafeMounter.Mount(sourceTest, targetTest, "ext4", []string{})
+	assert.NoError(t, err)
 
 	for _, test := range tests {
-		_, err := fakeMounter.IsLikelyNotMountPoint(test.file)
+		_, err := fakeSafeMounter.IsLikelyNotMountPoint(test.file)
 		if !reflect.DeepEqual(err, test.expectedErr) {
 			t.Errorf("Unexpected error: %v", err)
 		}

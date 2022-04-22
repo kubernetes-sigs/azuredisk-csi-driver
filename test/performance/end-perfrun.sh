@@ -18,8 +18,6 @@ set -euo pipefail
 
 PKG_ROOT="$(git rev-parse --show-toplevel)"
 
-kubectl delete -f "${PKG_ROOT}/test/performance/kubestone-benchmarks.yaml" --ignore-not-found
-kubectl delete -f "${PKG_ROOT}/test/performance/kubestone-storageclass.yaml" --ignore-not-found
-
-kubectl delete namespace kubestone --ignore-not-found
-kustomize build github.com/xridge/kubestone/config/default?ref=v0.5.0 | sed "s/kubestone:latest/kubestone:v0.5.0/" | kubectl delete --ignore-not-found -f -
+for testFile in ${PKG_ROOT}/test/performance/test-*.yaml; do
+    kubectl delete -f "$testFile" --ignore-not-found
+done

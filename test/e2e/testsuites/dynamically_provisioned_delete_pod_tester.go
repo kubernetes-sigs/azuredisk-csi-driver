@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
+	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 
 	"github.com/onsi/ginkgo"
 	v1 "k8s.io/api/core/v1"
@@ -31,7 +32,7 @@ import (
 // Deleting a pod, and again testing if the Pod can write and read to mounted volumes
 type DynamicallyProvisionedDeletePodTest struct {
 	CSIDriver driver.DynamicPVTestDriver
-	Pod       PodDetails
+	Pod       resources.PodDetails
 	PodCheck  *PodExecCheck
 }
 
@@ -40,8 +41,8 @@ type PodExecCheck struct {
 	ExpectedString string
 }
 
-func (t *DynamicallyProvisionedDeletePodTest) Run(client clientset.Interface, namespace *v1.Namespace) {
-	tDeployment, cleanup := t.Pod.SetupDeployment(client, namespace, t.CSIDriver, driver.GetParameters())
+func (t *DynamicallyProvisionedDeletePodTest) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
+	tDeployment, cleanup := t.Pod.SetupDeployment(client, namespace, t.CSIDriver, schedulerName, driver.GetParameters())
 	// defer must be called here for resources not get removed before using them
 	for i := range cleanup {
 		defer cleanup[i]()

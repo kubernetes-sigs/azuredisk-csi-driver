@@ -25,6 +25,7 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
+	"k8s.io/klog/v2"
 	"k8s.io/mount-utils"
 	testingexec "k8s.io/utils/exec/testing"
 
@@ -36,7 +37,6 @@ import (
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
-	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
 const (
@@ -70,6 +70,7 @@ type FakeDriver interface {
 	GetSourceDiskSize(ctx context.Context, subsID, resourceGroup, diskName string, curDepth, maxDepth int) (*int32, error)
 
 	setNextCommandOutputScripts(scripts ...testingexec.FakeAction)
+	setIsBlockDevicePathError(string, bool, error)
 
 	getVolumeLocks() *volumehelper.VolumeLocks
 	setControllerCapabilities([]*csi.ControllerServiceCapability)
@@ -79,19 +80,23 @@ type FakeDriver interface {
 	setVersion(version string)
 	getCloud() *provider.Cloud
 	setCloud(*provider.Cloud)
-	getMounter() *mount.SafeFormatAndMount
-	setMounter(*mount.SafeFormatAndMount)
-	setPerfOptimizationEnabled(bool)
+	getCrdProvisioner() CrdProvisioner
+	setCrdProvisioner(crdProvisioner CrdProvisioner)
+
 	getDeviceHelper() optimization.Interface
 	getHostUtil() hostUtil
+	setPerfOptimizationEnabled(bool)
+	getPerfOptimizationEnabled() bool
+	setMounter(*mount.SafeFormatAndMount)
+	setPathIsDeviceResult(path string, isDevice bool, err error)
 
 	checkDiskCapacity(context.Context, string, string, string, int) (bool, error)
 	checkDiskExists(ctx context.Context, diskURI string) (*compute.Disk, error)
 	getSnapshotInfo(string) (string, string, string, error)
+
 	getSnapshotByID(context.Context, string, string, string, string) (*csi.Snapshot, error)
 	ensureMountPoint(string) (bool, error)
-	ensureBlockTargetFile(string) error
-	getDevicePathWithLUN(lunStr string) (string, error)
+
 	setDiskThrottlingCache(key string, value string)
 }
 
@@ -105,6 +110,7 @@ func newFakeDriverV1(t *testing.T) (*fakeDriverV1, error) {
 	driver.Version = fakeDriverVersion
 	driver.NodeID = fakeNodeID
 	driver.CSIDriver = *csicommon.NewFakeCSIDriver()
+	driver.ready = make(chan struct{})
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.VolumeAttachLimit = -1
 	driver.supportZone = true
@@ -112,10 +118,14 @@ func newFakeDriverV1(t *testing.T) (*fakeDriverV1, error) {
 	driver.hostUtil = azureutils.NewFakeHostUtil()
 	driver.useCSIProxyGAInterface = true
 
+	driver.VolumeAttachLimit = -1
+	driver.ioHandler = azureutils.NewFakeIOHandler()
+	driver.hostUtil = azureutils.NewFakeHostUtil()
+
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	driver.cloud = azure.GetTestCloud(ctrl)
+	driver.cloud = provider.GetTestCloud(ctrl)
 	mounter, err := mounter.NewSafeMounter(driver.useCSIProxyGAInterface)
 	if err != nil {
 		return nil, err
@@ -130,7 +140,9 @@ func newFakeDriverV1(t *testing.T) (*fakeDriverV1, error) {
 		return nil, err
 	}
 	driver.getDiskThrottlingCache = cache
-	driver.deviceHelper = mockoptimization.NewMockInterface(ctrl)
+
+	mockDeviceHelper := mockoptimization.NewMockInterface(ctrl)
+	driver.deviceHelper = mockDeviceHelper
 
 	driver.AddControllerServiceCapabilities(
 		[]csi.ControllerServiceCapability_RPC_Type{
@@ -161,9 +173,29 @@ func (d *fakeDriverV1) setNextCommandOutputScripts(scripts ...testingexec.FakeAc
 	d.mounter.Exec.(*mounter.FakeSafeMounter).SetNextCommandOutputScripts(scripts...)
 }
 
+func (d *fakeDriverV1) setIsBlockDevicePathError(path string, isDevice bool, result error) {
+	klog.Warning("setIsBlockDevicePathError ignored for driver v1")
+}
+
+func (d *fakeDriverV1) getCloud() *provider.Cloud {
+	return d.cloud
+}
+
+func (d *fakeDriverV1) setCloud(cloud *provider.Cloud) {
+	d.cloud = cloud
+}
+
+func (d *Driver) setPathIsDeviceResult(path string, isDevice bool, err error) {
+	d.getHostUtil().(*azureutils.FakeHostUtil).SetPathIsDeviceResult(path, isDevice, err)
+}
+
 func (d *fakeDriverV1) setDiskThrottlingCache(key string, value string) {
 	d.getDiskThrottlingCache.Set(key, value)
 }
+
+func (d *fakeDriverV1) getCrdProvisioner() CrdProvisioner { return nil }
+
+func (d *fakeDriverV1) setCrdProvisioner(crdProvisioner CrdProvisioner) {}
 
 func createVolumeCapabilities(accessMode csi.VolumeCapability_AccessMode_Mode) []*csi.VolumeCapability {
 	return []*csi.VolumeCapability{
@@ -180,4 +212,8 @@ func createVolumeCapability(accessMode csi.VolumeCapability_AccessMode_Mode) *cs
 			Mode: accessMode,
 		},
 	}
+}
+
+func (d *Driver) setMounter(mounter *mount.SafeFormatAndMount) {
+	d.mounter = mounter
 }

@@ -23,9 +23,8 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"path/filepath"
-	"reflect"
 	"runtime"
+	"strings"
 	"syscall"
 	"testing"
 
@@ -36,8 +35,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	testingexec "k8s.io/utils/exec/testing"
+
+	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockprovisioner"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization/mockoptimization"
@@ -78,6 +81,17 @@ var (
 			StorageProfile: &compute.StorageProfile{
 				DataDisks: new([]compute.DataDisk),
 			},
+		},
+	}
+	testAzVolumeAttachment = diskv1beta1.AzVolumeAttachment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-azvolumeattachment",
+			Namespace: "test-namespace",
+		},
+		Spec: diskv1beta1.AzVolumeAttachmentSpec{
+			VolumeID:      "test-volume",
+			NodeName:      fakeNodeID,
+			RequestedRole: diskv1beta1.PrimaryRole,
 		},
 	}
 )
@@ -248,6 +262,9 @@ func TestNodeGetInfo(t *testing.T) {
 				hostname, err := os.Hostname()
 				require.NoError(t, err)
 
+				// cloud-provider-azure's GetZone function always deals with lower case.
+				hostname = strings.ToLower(hostname)
+
 				d.getCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
 					Get(gomock.Any(), testResourceGroup, hostname, gomock.Any()).
 					Return(testVM, nil).
@@ -362,7 +379,7 @@ func TestNodeGetVolumeStats(t *testing.T) {
 				test.setupFunc(t, d)
 			}
 			_, err := d.NodeGetVolumeStats(context.Background(), &test.req)
-			if !reflect.DeepEqual(err, test.expectedErr) {
+			if !testutil.IsErrorEquivalent(err, test.expectedErr) {
 				t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
 			}
 		}
@@ -376,7 +393,14 @@ func TestNodeGetVolumeStats(t *testing.T) {
 }
 
 func TestNodeStageVolume(t *testing.T) {
-	d, _ := NewFakeDriver(t)
+	d, err := NewFakeDriver(t)
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	d.setCrdProvisioner(mockprovisioner.NewMockCrdProvisioner(ctrl))
+
+	d.setPerfOptimizationEnabled(false)
+	assert.NoError(t, err)
 
 	stdVolCap := &csi.VolumeCapability_Mount{
 		Mount: &csi.VolumeCapability_MountVolume{
@@ -458,6 +482,11 @@ func TestNodeStageVolume(t *testing.T) {
 			desc: "Lun not provided",
 			req: csi.NodeStageVolumeRequest{VolumeId: "vol_1", StagingTargetPath: sourceTest, VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap,
 				AccessType: stdVolCap}},
+			setupFunc: func(t *testing.T, d FakeDriver) {
+				if isTestingDriverV2() {
+					d.getCrdProvisioner().(*mockprovisioner.MockCrdProvisioner).EXPECT().GetAzVolumeAttachment(gomock.Any(), gomock.Any(), gomock.Any()).Return(createAzVolumeAttachmentWithPublishContext(map[string]string{}), err)
+				}
+			},
 			expectedErr: status.Error(codes.InvalidArgument, "lun not provided"),
 		},
 		{
@@ -469,6 +498,11 @@ func TestNodeStageVolume(t *testing.T) {
 				PublishContext: invalidLUN,
 				VolumeContext:  volumeContext,
 			},
+			setupFunc: func(t *testing.T, d FakeDriver) {
+				if isTestingDriverV2() {
+					d.getCrdProvisioner().(*mockprovisioner.MockCrdProvisioner).EXPECT().GetAzVolumeAttachment(gomock.Any(), gomock.Any(), gomock.Any()).Return(createAzVolumeAttachmentWithPublishContext(invalidLUN), err)
+				}
+			},
 
 			expectedErr: status.Error(codes.Internal, "failed to find disk on lun /dev/01. cannot parse deviceInfo: /dev/01"),
 		},
@@ -477,6 +511,9 @@ func TestNodeStageVolume(t *testing.T) {
 			skipOnDarwin:  true,
 			skipOnWindows: true,
 			setupFunc: func(t *testing.T, d FakeDriver) {
+				if isTestingDriverV2() {
+					d.getCrdProvisioner().(*mockprovisioner.MockCrdProvisioner).EXPECT().GetAzVolumeAttachment(gomock.Any(), gomock.Any(), gomock.Any()).Return(createAzVolumeAttachmentWithPublishContext(publishContext), err)
+				}
 				d.setNextCommandOutputScripts(blkidAction, fsckAction)
 			},
 			req: csi.NodeStageVolumeRequest{VolumeId: "vol_1", StagingTargetPath: sourceTest,
@@ -493,6 +530,9 @@ func TestNodeStageVolume(t *testing.T) {
 			skipOnDarwin:  true,
 			skipOnWindows: true,
 			setupFunc: func(t *testing.T, d FakeDriver) {
+				if isTestingDriverV2() {
+					d.getCrdProvisioner().(*mockprovisioner.MockCrdProvisioner).EXPECT().GetAzVolumeAttachment(gomock.Any(), gomock.Any(), gomock.Any()).Return(createAzVolumeAttachmentWithPublishContext(publishContext), err)
+				}
 				d.setNextCommandOutputScripts(blkidAction, fsckAction, blkidAction, resize2fsAction)
 			},
 			req: csi.NodeStageVolumeRequest{VolumeId: "vol_1", StagingTargetPath: sourceTest,
@@ -509,13 +549,16 @@ func TestNodeStageVolume(t *testing.T) {
 			skipOnDarwin:  true,
 			skipOnWindows: true,
 			setupFunc: func(t *testing.T, d FakeDriver) {
+				if isTestingDriverV2() {
+					d.getCrdProvisioner().(*mockprovisioner.MockCrdProvisioner).EXPECT().GetAzVolumeAttachment(gomock.Any(), gomock.Any(), gomock.Any()).Return(createAzVolumeAttachmentWithPublishContext(publishContext), err)
+				}
 				d.setPerfOptimizationEnabled(true)
 				mockoptimization := d.getDeviceHelper().(*mockoptimization.MockInterface)
 				diskSupportsPerfOptimizationCall := mockoptimization.EXPECT().
 					DiskSupportsPerfOptimization(gomock.Any(), gomock.Any()).
 					Return(true)
 				mockoptimization.EXPECT().
-					OptimizeDiskPerformance(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					OptimizeDiskPerformance(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 					Return(nil).
 					After(diskSupportsPerfOptimizationCall)
 
@@ -547,9 +590,9 @@ func TestNodeStageVolume(t *testing.T) {
 				test.setupFunc(t, d)
 			}
 			_, err := d.NodeStageVolume(context.Background(), &test.req)
-			if test.desc == "Failed volume mount" {
+			if test.desc == "failed volume mount" {
 				assert.Error(t, err)
-			} else if !reflect.DeepEqual(err, test.expectedErr) {
+			} else if !testutil.IsErrorEquivalent(err, test.expectedErr) {
 				t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
 			}
 			if test.cleanupFunc != nil {
@@ -566,7 +609,8 @@ func TestNodeStageVolume(t *testing.T) {
 }
 
 func TestNodeUnstageVolume(t *testing.T) {
-	d, _ := NewFakeDriver(t)
+	d, err := NewFakeDriver(t)
+	assert.NoError(t, err)
 	errorTarget, err := testutil.GetWorkDirPath("error_is_likely_target")
 	assert.NoError(t, err)
 	targetFile, err := testutil.GetWorkDirPath("abc.go")
@@ -653,7 +697,12 @@ func TestNodeUnstageVolume(t *testing.T) {
 }
 
 func TestNodePublishVolume(t *testing.T) {
-	d, _ := NewFakeDriver(t)
+	d, err := NewFakeDriver(t)
+	assert.NoError(t, err)
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	d.setCrdProvisioner(mockprovisioner.NewMockCrdProvisioner(ctrl))
 
 	volumeCap := csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_SINGLE_WRITER}
 	publishContext := map[string]string{
@@ -682,7 +731,7 @@ func TestNodePublishVolume(t *testing.T) {
 
 	tests := []struct {
 		desc          string
-		setup         func()
+		setupFunc     func(t *testing.T, d FakeDriver)
 		req           csi.NodePublishVolumeRequest
 		skipOnWindows bool
 		expectedErr   testutil.TestError
@@ -739,6 +788,11 @@ func TestNodePublishVolume(t *testing.T) {
 				TargetPath:        azuredisk,
 				StagingTargetPath: sourceTest,
 				Readonly:          true},
+			setupFunc: func(t *testing.T, d FakeDriver) {
+				if isTestingDriverV2() {
+					d.getCrdProvisioner().(*mockprovisioner.MockCrdProvisioner).EXPECT().GetAzVolumeAttachment(gomock.Any(), gomock.Any(), gomock.Any()).Return(createAzVolumeAttachmentWithPublishContext(map[string]string{}), err)
+				}
+			},
 			expectedErr: testutil.TestError{
 				DefaultError: status.Error(codes.InvalidArgument, "lun not provided"),
 			},
@@ -751,8 +805,13 @@ func TestNodePublishVolume(t *testing.T) {
 				StagingTargetPath: sourceTest,
 				PublishContext:    publishContext,
 				Readonly:          true},
+			setupFunc: func(t *testing.T, d FakeDriver) {
+				if isTestingDriverV2() {
+					d.getCrdProvisioner().(*mockprovisioner.MockCrdProvisioner).EXPECT().GetAzVolumeAttachment(gomock.Any(), gomock.Any(), gomock.Any()).Return(createAzVolumeAttachmentWithPublishContext(publishContext), err)
+				}
+			},
 			expectedErr: testutil.TestError{
-				DefaultError: status.Error(codes.Internal, "failed to find device path with lun /dev/01. cannot parse deviceInfo: /dev/01"),
+				DefaultError: status.Error(codes.Internal, "failed to find device path with LUN /dev/01. cannot parse deviceInfo: /dev/01"),
 			},
 		},
 		{
@@ -798,8 +857,8 @@ func TestNodePublishVolume(t *testing.T) {
 	d.setMounter(fakeMounter)
 
 	for _, test := range tests {
-		if test.setup != nil {
-			test.setup()
+		if test.setupFunc != nil {
+			test.setupFunc(t, d)
 		}
 		if !(test.skipOnWindows && runtime.GOOS == "windows") {
 			var err error
@@ -821,7 +880,8 @@ func TestNodePublishVolume(t *testing.T) {
 }
 
 func TestNodeUnpublishVolume(t *testing.T) {
-	d, _ := NewFakeDriver(t)
+	d, err := NewFakeDriver(t)
+	assert.NoError(t, err)
 	errorTarget, err := testutil.GetWorkDirPath("error_is_likely_target")
 	assert.NoError(t, err)
 	targetFile, err := testutil.GetWorkDirPath("abc.go")
@@ -911,7 +971,6 @@ func TestNodeExpandVolume(t *testing.T) {
 	invalidPathErr := testutil.TestError{
 		DefaultError: status.Error(codes.NotFound, "failed to determine device path for volumePath [./test]: path \"./test\" does not exist"),
 	}
-
 	devicePathErr := testutil.TestError{
 		DefaultError: status.Errorf(codes.NotFound, "could not determine device path(%s), error: %v", targetTest, notFoundErr),
 		WindowsError: status.Errorf(codes.NotFound, "error getting the volume for the mount %s, internal error error getting volume from mount. cmd: (Get-Item -Path %s).Target, output: , error: <nil>", targetTest, targetTest),
@@ -933,9 +992,15 @@ func TestNodeExpandVolume(t *testing.T) {
 		return []byte{}, []byte{}, notFoundErr
 	}
 	findmntAction := func() ([]byte, []byte, error) {
+		if runtime.GOOS == "windows" {
+			return []byte{}, []byte{}, notFoundErr
+		}
 		return []byte("test"), []byte{}, nil
 	}
 	blkidAction := func() ([]byte, []byte, error) {
+		if runtime.GOOS == "windows" {
+			return []byte{}, []byte{}, errors.New("path \"./test\" does not exist")
+		}
 		return []byte("DEVICE=test\nTYPE=ext4"), []byte{}, nil
 	}
 	resize2fsFailedAction := func() ([]byte, []byte, error) {
@@ -1073,14 +1138,22 @@ func TestNodeExpandVolume(t *testing.T) {
 		},
 	}
 
-	d.getHostUtil().(*azureutils.FakeHostUtil).SetPathIsDeviceResult(blockVolumePath, true, nil)
+	d.setPathIsDeviceResult(blockVolumePath, true, nil)
+
+	if isTestingDriverV2() {
+		d.setIsBlockDevicePathError("./test", false, errors.New("path \"./test\" does not exist"))
+	}
 
 	for _, test := range tests {
 		if (test.skipOnDarwin && runtime.GOOS == "darwin") || (test.skipOnWindows && runtime.GOOS == "windows") {
 			continue
 		}
-		if runtime.GOOS != "windows" {
-			d.setNextCommandOutputScripts(test.outputScripts...)
+		if !mounter.IsFakeUsingCSIProxy() {
+			if runtime.GOOS == "windows" && len(test.outputScripts) > 1 {
+				d.setNextCommandOutputScripts(test.outputScripts[0])
+			} else {
+				d.setNextCommandOutputScripts(test.outputScripts...)
+			}
 		}
 
 		_, err := d.NodeExpandVolume(context.Background(), &test.req)
@@ -1094,62 +1167,11 @@ func TestNodeExpandVolume(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestGetBlockSizeBytes(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Skipping test on Windows")
-	}
-	d, _ := NewFakeDriver(t)
-	testTarget, err := testutil.GetWorkDirPath("test")
-	assert.NoError(t, err)
-
-	notFoundErr := "exit status 1"
-	// exception in darwin
-	if runtime.GOOS == "darwin" {
-		notFoundErr = "executable file not found in $PATH"
-	} else if runtime.GOOS == "windows" {
-		notFoundErr = "executable file not found in %PATH%"
-	}
-
-	tests := []struct {
-		desc        string
-		req         string
-		expectedErr testutil.TestError
-	}{
-		{
-			desc: "no exist path",
-			req:  "testpath",
-			expectedErr: testutil.TestError{
-				DefaultError: fmt.Errorf("error when getting size of block volume at path testpath: output: , err: %s", notFoundErr),
-				WindowsError: fmt.Errorf("error when getting size of block volume at path testpath: output: , err: %s", notFoundErr),
-			},
-		},
-		{
-			desc: "invalid path",
-			req:  testTarget,
-			expectedErr: testutil.TestError{
-				DefaultError: fmt.Errorf("error when getting size of block volume at path %s: "+
-					"output: , err: %s", testTarget, notFoundErr),
-				WindowsError: fmt.Errorf("error when getting size of block volume at path %s: "+
-					"output: , err: %s", testTarget, notFoundErr),
-			},
-		},
-	}
-	for _, test := range tests {
-		_, err := getBlockSizeBytes(test.req, d.getMounter())
-		if !testutil.AssertError(&test.expectedErr, err) {
-			t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr.Error())
-		}
-	}
-	//Setup
-	_ = makeDir(testTarget)
-
-	err = os.RemoveAll(testTarget)
-	assert.NoError(t, err)
-}
-
 func TestEnsureBlockTargetFile(t *testing.T) {
-	// sip this test because `util/mount` not supported
-	// on darwin
+	// This functionality has moved to the provisioner package in DriverV2.
+	skipIfTestingDriverV2(t)
+
+	// Skip this test because `util/mount` not supported on darwin
 	if runtime.GOOS == "darwin" {
 		t.Skip("Skipping tests on darwin")
 	}
@@ -1157,7 +1179,7 @@ func TestEnsureBlockTargetFile(t *testing.T) {
 	assert.NoError(t, err)
 	testPath, err := testutil.GetWorkDirPath(fmt.Sprintf("test%ctest", os.PathSeparator))
 	assert.NoError(t, err)
-	d, err := NewFakeDriver(t)
+	d, err := newFakeDriverV1(t)
 	assert.NoError(t, err)
 
 	tests := []struct {
@@ -1217,7 +1239,8 @@ func TestMakeDir(t *testing.T) {
 }
 
 func TestGetDevicePathWithLUN(t *testing.T) {
-	d, _ := NewFakeDriver(t)
+	skipIfTestingDriverV2(t)
+	d, _ := newFakeDriverV1(t)
 	tests := []struct {
 		desc        string
 		req         string
@@ -1226,101 +1249,25 @@ func TestGetDevicePathWithLUN(t *testing.T) {
 		{
 			desc:        "valid test",
 			req:         "unit-test",
-			expectedErr: fmt.Errorf("cannot parse deviceInfo: unit-test"),
+			expectedErr: errors.New("cannot parse deviceInfo: unit-test"),
 		},
 	}
 	for _, test := range tests {
 		_, err := d.getDevicePathWithLUN(test.req)
-		if !reflect.DeepEqual(err, test.expectedErr) {
+		if !testutil.IsErrorEquivalent(test.expectedErr, err) {
 			t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
 		}
 	}
 }
 
-func TestGetDevicePathWithMountPath(t *testing.T) {
-	d, _ := NewFakeDriver(t)
-	err := "exit status 1"
-
-	if runtime.GOOS == "darwin" {
-		err = "executable file not found in $PATH"
-	}
-
-	tests := []struct {
-		desc          string
-		req           string
-		skipOnDarwin  bool
-		skipOnWindows bool
-		expectedErr   error
-	}{
-		{
-			desc:        "Invalid device path",
-			req:         "unit-test",
-			expectedErr: fmt.Errorf("could not determine device path(unit-test), error: %v", err),
-			// Skip negative tests on Windows because error messages from csi-proxy are not easily predictable.
-			skipOnWindows: true,
+func createAzVolumeAttachmentWithPublishContext(publishContext map[string]string) *diskv1beta1.AzVolumeAttachment {
+	azVA := testAzVolumeAttachment.DeepCopy()
+	azVA.Status = diskv1beta1.AzVolumeAttachmentStatus{
+		Detail: &diskv1beta1.AzVolumeAttachmentStatusDetail{
+			PublishContext: publishContext,
+			Role:           diskv1beta1.PrimaryRole,
 		},
-		{
-			desc:          "[Success] Valid device path",
-			req:           "/sys",
-			skipOnDarwin:  true,
-			skipOnWindows: true,
-			expectedErr:   nil,
-		},
+		State: diskv1beta1.Attached,
 	}
-
-	for _, test := range tests {
-		if !(test.skipOnDarwin && runtime.GOOS == "darwin") && !(test.skipOnWindows && runtime.GOOS == "windows") {
-			_, err := getDevicePathWithMountPath(test.req, d.getMounter())
-			if !reflect.DeepEqual(err, test.expectedErr) {
-				t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
-			}
-		}
-	}
-}
-
-func TestNodePublishVolumeIdempotentMount(t *testing.T) {
-	if runtime.GOOS == "windows" || os.Getuid() != 0 {
-		return
-	}
-	stdVolCap := &csi.VolumeCapability_Mount{
-		Mount: &csi.VolumeCapability_MountVolume{
-			FsType: defaultLinuxFsType,
-		},
-	}
-	_ = makeDir(sourceTest)
-	_ = makeDir(targetTest)
-	d, _ := NewFakeDriver(t)
-
-	volumeCap := csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER}
-	req := csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap, AccessType: stdVolCap},
-		VolumeId:          "vol_1",
-		TargetPath:        targetTest,
-		StagingTargetPath: sourceTest,
-		Readonly:          true}
-
-	_, err := d.NodePublishVolume(context.Background(), &req)
-	assert.NoError(t, err)
-	_, err = d.NodePublishVolume(context.Background(), &req)
-	assert.NoError(t, err)
-
-	// ensure the target not be mounted twice
-	targetAbs, err := filepath.Abs(targetTest)
-	assert.NoError(t, err)
-
-	mountList, err := d.getMounter().List()
-	assert.NoError(t, err)
-	mountPointNum := 0
-	for _, mountPoint := range mountList {
-		if mountPoint.Path == targetAbs {
-			mountPointNum++
-		}
-	}
-	assert.Equal(t, 1, mountPointNum)
-	err = d.getMounter().Unmount(targetTest)
-	assert.NoError(t, err)
-	_ = d.getMounter().Unmount(targetTest)
-	err = os.RemoveAll(sourceTest)
-	assert.NoError(t, err)
-	err = os.RemoveAll(targetTest)
-	assert.NoError(t, err)
+	return azVA
 }

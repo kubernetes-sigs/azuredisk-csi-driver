@@ -19,36 +19,55 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 
-	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
-	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/testsuites"
-
-	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
 	"github.com/onsi/ginkgo"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
+	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
+	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
+	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/testsuites"
+	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
+	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
+	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
 const (
-	defaultDiskSize = int64(10)
+	defaultDiskSize = 10
 )
 
 var _ = ginkgo.Describe("Pre-Provisioned", func() {
 	f := framework.NewDefaultFramework("azuredisk")
+	scheduler := testutil.GetSchedulerForE2E()
 
 	var (
-		cs         clientset.Interface
-		ns         *v1.Namespace
-		testDriver driver.PreProvisionedVolumeTestDriver
-		volumeID   string
-		// Set to true if the volume should be not deleted automatically after test
+		cs           clientset.Interface
+		ns           *v1.Namespace
+		azDiskClient azDiskClientSet.Interface
+		testDriver   driver.PreProvisionedVolumeTestDriver
+		volumeID     string
+		// Set to true if the volume should not be deleted automatically after test
 		skipVolumeDeletion bool
 	)
 
 	ginkgo.BeforeEach(func() {
 		cs = f.ClientSet
 		ns = f.Namespace
+		var err error
+		if testconsts.IsUsingCSIDriverV2 {
+			azDiskClient, err = azDiskClientSet.NewForConfig(f.ClientConfig())
+		}
+		framework.ExpectNoError(err, fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		testDriver = driver.InitAzureDiskDriver()
 		// reset value to false to default to volume clean up after test unless specified otherwise
 		skipVolumeDeletion = false
@@ -56,40 +75,61 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 
 	ginkgo.AfterEach(func() {
 		if !skipVolumeDeletion {
-			req := &csi.DeleteVolumeRequest{
-				VolumeId: volumeID,
+			EnsureDiskExists(volumeID)
+
+			if testconsts.IsUsingCSIDriverV2 {
+				// wait for the AzVolumeAttachments to be deleted
+				if azDiskClient == nil {
+					framework.Fail("azure disk client is nil")
+				}
+				diskName, err := azureutils.GetDiskName(volumeID)
+				framework.ExpectNoError(err)
+				diskName = strings.ToLower(diskName)
+
+				labelSelector := metav1.LabelSelector{MatchLabels: map[string]string{consts.VolumeNameLabel: diskName}}
+				err = wait.PollImmediate(poll, pollTimeout,
+					func() (bool, error) {
+						azVolumeAttachments, listErr := azDiskClient.DiskV1beta1().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: labels.Set(labelSelector.MatchLabels).String()})
+						if listErr != nil {
+							if errors.IsNotFound(listErr) {
+								return true, nil
+							}
+							return false, listErr
+						}
+						return azVolumeAttachments == nil || len(azVolumeAttachments.Items) == 0, nil
+					})
+				framework.ExpectNoError(err)
 			}
-			_, err := azurediskDriver.DeleteVolume(context.Background(), req)
-			if err != nil {
-				ginkgo.Fail(fmt.Sprintf("create volume %q error: %v", volumeID, err))
-			}
+
+			err := azureCloud.DeleteManagedDisk(context.Background(), volumeID)
+			framework.ExpectNoError(err, fmt.Sprintf("delete volume %q error: %v", volumeID, err))
 		}
 	})
 
 	ginkgo.Context("[single-az]", func() {
-		ginkgo.It("should use a pre-provisioned volume and mount it as readOnly in a pod [disk.csi.azure.com][windows]", func() {
+		//dynamically generate the following tests for all available schedulers
+		ginkgo.It(fmt.Sprintf("should use a pre-provisioned volume and mount it as readOnly in a pod [disk.csi.azure.com][windows][%s]", scheduler), func() {
 			// Az tests need to be changed to pass the right parameters for in-tree driver.
 			// Skip these tests until above is fixed.
-			skipIfUsingInTreeVolumePlugin()
-
-			req := makeCreateVolumeReq("pre-provisioned-readOnly", defaultDiskSize)
-			resp, err := azurediskDriver.CreateVolume(context.Background(), req)
+			testutil.SkipIfUsingInTreeVolumePlugin()
+			var err error
+			volumeID, err = CreateVolume("pre-provisioned-read-only", defaultDiskSize, make(map[string]string))
 			if err != nil {
+				skipVolumeDeletion = true
 				ginkgo.Fail(fmt.Sprintf("create volume error: %v", err))
 			}
-			volumeID = resp.Volume.VolumeId
 			ginkgo.By(fmt.Sprintf("Successfully provisioned AzureDisk volume: %q\n", volumeID))
 
 			diskSize := fmt.Sprintf("%dGi", defaultDiskSize)
-			pods := []testsuites.PodDetails{
+			pods := []resources.PodDetails{
 				{
-					Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
-					Volumes: []testsuites.VolumeDetails{
+					Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
+					Volumes: []resources.VolumeDetails{
 						{
 							VolumeID:  volumeID,
 							FSType:    "ext4",
 							ClaimSize: diskSize,
-							VolumeMount: testsuites.VolumeMountDetails{
+							VolumeMount: resources.VolumeMountDetails{
 								NameGenerate:      "test-volume-",
 								MountPathGenerate: "/mnt/test-",
 								ReadOnly:          true,
@@ -97,33 +137,75 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 							VolumeAccessMode: v1.ReadWriteOnce,
 						},
 					},
-					IsWindows:    isWindowsCluster,
-					WinServerVer: winServerVer,
+					IsWindows: testconsts.IsWindowsCluster,
+					WinServerVer: testconsts.WindowsServerVersion,
 				},
 			}
 			test := testsuites.PreProvisionedReadOnlyVolumeTest{
 				CSIDriver: testDriver,
 				Pods:      pods,
 			}
-			test.Run(cs, ns)
+			test.Run(cs, ns, schedulerName)
+		})
+
+		ginkgo.It(fmt.Sprintf("should succeed when reattaching a disk to a new node on DanglingAttachError [disk.csi.azure.com][%s]", scheduler), func() {
+			testutil.SkipIfUsingInTreeVolumePlugin()
+			testutil.SkipIfOnAzureStackCloud()
+			var err error
+			volumeContext := map[string]string{
+				consts.SkuNameField:     "Premium_LRS",
+				consts.CachingModeField: "None",
+			}
+			volumeID, err = CreateVolume("reattach-disk-multiple-nodes", defaultDiskSize, volumeContext)
+			if err != nil {
+				skipVolumeDeletion = true
+				ginkgo.Fail(fmt.Sprintf("create volume error: %v", err))
+			}
+			ginkgo.By(fmt.Sprintf("Successfully provisioned a shared disk volume: %q\n", volumeID))
+
+			diskSize := fmt.Sprintf("%dGi", defaultDiskSize)
+
+			pod := resources.PodDetails{
+				Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
+				Volumes: []resources.VolumeDetails{
+					{
+						VolumeID:  volumeID,
+						ClaimSize: diskSize,
+						VolumeMount: resources.VolumeMountDetails{
+							NameGenerate:      "test-volume-",
+							MountPathGenerate: "/mnt/test-",
+						},
+						VolumeAccessMode: v1.ReadWriteOnce,
+					},
+				},
+				IsWindows: testconsts.IsWindowsCluster,
+			}
+
+			test := testsuites.PreProvisionedDanglingAttachVolumeTest{
+				CSIDriver:     testDriver,
+				AzureCloud:    azureCloud,
+				Pod:           pod,
+				VolumeContext: volumeContext,
+			}
+			test.Run(cs, ns, schedulerName)
 		})
 
 		ginkgo.It(fmt.Sprintf("should use a pre-provisioned volume and retain PV with reclaimPolicy %q [disk.csi.azure.com][windows]", v1.PersistentVolumeReclaimRetain), func() {
 			// Az tests need to be changed to pass the right parameters for in-tree driver.
 			// Skip these tests until above is fixed.
-			skipIfUsingInTreeVolumePlugin()
+			testutil.SkipIfUsingInTreeVolumePlugin()
 
-			req := makeCreateVolumeReq("pre-provisioned-retain-reclaimPolicy", defaultDiskSize)
-			resp, err := azurediskDriver.CreateVolume(context.Background(), req)
+			var err error
+			volumeID, err = CreateVolume("pre-provisioned-retain-reclaim-policy", defaultDiskSize, make(map[string]string))
 			if err != nil {
+				skipVolumeDeletion = true
 				ginkgo.Fail(fmt.Sprintf("create volume error: %v", err))
 			}
-			volumeID = resp.Volume.VolumeId
 			ginkgo.By(fmt.Sprintf("Successfully provisioned AzureDisk volume: %q\n", volumeID))
 
 			diskSize := fmt.Sprintf("%dGi", defaultDiskSize)
 			reclaimPolicy := v1.PersistentVolumeReclaimRetain
-			volumes := []testsuites.VolumeDetails{
+			volumes := []resources.VolumeDetails{
 				{
 					VolumeID:         volumeID,
 					FSType:           "ext4",
@@ -135,105 +217,85 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			test := testsuites.PreProvisionedReclaimPolicyTest{
 				CSIDriver:     testDriver,
 				Volumes:       volumes,
-				VolumeContext: resp.Volume.VolumeContext,
+				VolumeContext: make(map[string]string),
 			}
 			test.Run(cs, ns)
 		})
 
 		ginkgo.It("should succeed when creating a shared disk [disk.csi.azure.com][windows]", func() {
-			skipIfUsingInTreeVolumePlugin()
-			skipIfOnAzureStackCloud()
-			req := makeCreateVolumeReq("single-shared-disk", 512)
-			req.Parameters = map[string]string{
-				"skuName":     "Premium_LRS",
-				"maxShares":   "2",
-				"cachingMode": "None",
+
+			testutil.SkipIfUsingInTreeVolumePlugin()
+			testutil.SkipIfOnAzureStackCloud()
+			var err error
+			volumeContext := map[string]string{
+				consts.SkuNameField:     "Premium_LRS",
+				consts.MaxSharesField:   "2",
+				consts.CachingModeField: "None",
 			}
-			req.VolumeCapabilities[0].AccessType = &csi.VolumeCapability_Block{
-				Block: &csi.VolumeCapability_BlockVolume{},
-			}
-			resp, err := azurediskDriver.CreateVolume(context.Background(), req)
+			volumeID, err = CreateVolume("single-shared-disk", 512, volumeContext)
 			if err != nil {
+				skipVolumeDeletion = true
 				ginkgo.Fail(fmt.Sprintf("create volume error: %v", err))
 			}
-			volumeID = resp.Volume.VolumeId
 			ginkgo.By(fmt.Sprintf("Successfully provisioned a shared disk volume: %q\n", volumeID))
-		})
-
-		ginkgo.It("should fail when maxShares is invalid [disk.csi.azure.com][windows]", func() {
-			// Az tests need to be changed to pass the right parameters for in-tree driver.
-			// Skip these tests until above is fixed.
-			skipIfUsingInTreeVolumePlugin()
-
-			skipVolumeDeletion = true
-			req := makeCreateVolumeReq("invalid-maxShares", 256)
-			req.Parameters = map[string]string{"maxShares": "0"}
-			_, err := azurediskDriver.CreateVolume(context.Background(), req)
-			framework.ExpectError(err)
 		})
 
 		ginkgo.It("should succeed when attaching a shared block volume to multiple pods [disk.csi.azure.com][shared disk]", func() {
-			skipIfUsingInTreeVolumePlugin()
-			skipIfOnAzureStackCloud()
-			skipIfTestingInWindowsCluster()
+			testutil.SkipIfUsingInTreeVolumePlugin()
+			testutil.SkipIfOnAzureStackCloud()
+			testutil.SkipIfTestingInWindowsCluster()
 
-			sharedDiskSize := int64(10)
-			req := makeCreateVolumeReq("shared-disk-multiple-pods", sharedDiskSize)
-			diskSize := fmt.Sprintf("%dGi", sharedDiskSize)
-			req.Parameters = map[string]string{
+			var err error
+
+			sharedDiskSize := 10
+			volumeContext := map[string]string{
 				"skuName":     "Premium_LRS",
 				"maxshares":   "2",
 				"cachingMode": "None",
-				"perfProfile": "None",
 			}
-			req.VolumeCapabilities[0].AccessType = &csi.VolumeCapability_Block{
-				Block: &csi.VolumeCapability_BlockVolume{},
-			}
-			req.VolumeCapabilities[0].AccessMode = &csi.VolumeCapability_AccessMode{
-				Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER,
-			}
-			resp, err := azurediskDriver.CreateVolume(context.Background(), req)
+			volumeID, err = CreateVolume("shared-disk-multiple-pods", sharedDiskSize, volumeContext)
 			if err != nil {
+				skipVolumeDeletion = true
 				ginkgo.Fail(fmt.Sprintf("create volume error: %v", err))
 			}
-			volumeID = resp.Volume.VolumeId
 			ginkgo.By(fmt.Sprintf("Successfully provisioned a shared disk volume: %q\n", volumeID))
 
-			pod := testsuites.PodDetails{
-				Cmd: convertToPowershellorCmdCommandIfNecessary("while true; do sleep 5; done"),
-				Volumes: []testsuites.VolumeDetails{
+			diskSize := fmt.Sprintf("%dGi", sharedDiskSize)
+			pod := resources.PodDetails{
+				Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do sleep 5; done"),
+				Volumes: []resources.VolumeDetails{
 					{
 						VolumeID:  volumeID,
 						ClaimSize: diskSize,
-						VolumeMount: testsuites.VolumeMountDetails{
-							NameGenerate:      "test-shared-volume-",
-							MountPathGenerate: "/dev/shared-",
+						VolumeDevice: resources.VolumeDeviceDetails{
+							NameGenerate: "test-volume-",
+							DevicePath:   "/dev/e2e-test",
 						},
-						VolumeMode:       testsuites.Block,
+						VolumeMode:       resources.Block,
 						VolumeAccessMode: v1.ReadWriteMany,
 					},
 				},
 				UseCMD:       false,
-				IsWindows:    isWindowsCluster,
-				WinServerVer: winServerVer,
+				IsWindows:    testconsts.IsWindowsCluster,
+				WinServerVer: testconsts.WindowsServerVersion,
 				ReplicaCount: 2,
 			}
 
 			podCheck := &testsuites.PodExecCheck{
 				ExpectedString: "VOLUME ATTACHED",
 			}
-			if !isWindowsCluster {
+			if !testconsts.IsWindowsCluster {
 				podCheck.Cmd = []string{
 					"sh",
 					"-c",
-					"(stat /dev/shared-1 > /dev/null) && echo \"VOLUME ATTACHED\"",
+					"(stat /dev/e2e-test > /dev/null) && echo \"VOLUME ATTACHED\"",
 				}
 			} else {
 				podCheck.Cmd = []string{
 					"powershell",
 					"-NoLogo",
 					"-Command",
-					"if (Test-Path c:\\dev\\shared-1) { \"VOLUME ATTACHED\" | Out-Host }",
+					"if (Test-Path c:\\dev\\e2e-test) { \"VOLUME ATTACHED\" | Out-Host }",
 				}
 			}
 
@@ -241,91 +303,99 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 				CSIDriver:     testDriver,
 				Pod:           pod,
 				PodCheck:      podCheck,
-				VolumeContext: resp.Volume.VolumeContext,
+				VolumeContext: volumeContext,
 			}
-			test.Run(cs, ns)
+			test.Run(cs, ns, schedulerName)
 		})
 
-		ginkgo.It("should succeed when reattaching a disk to a new node on DanglingAttachError [disk.csi.azure.com]", func() {
-			skipIfUsingInTreeVolumePlugin()
-			skipIfOnAzureStackCloud()
-			req := makeCreateVolumeReq("reattach-disk-multiple-nodes", defaultDiskSize)
-			req.Parameters = map[string]string{
-				"skuName":     "Premium_LRS",
-				"cachingMode": "None",
+		ginkgo.It(fmt.Sprintf("should succeed when creating a single pod and with replica attachments [disk.csi.azure.com][%s]", scheduler), func() {
+			testutil.SkipIfUsingInTreeVolumePlugin()
+			testutil.SkipIfOnAzureStackCloud()
+			testutil.SkipIfNotUsingCSIDriverV2()
+
+			sharedDiskSize := 256
+			volumeName := "shared-disk-replicas"
+			volumeContext := map[string]string{
+				consts.SkuNameField:     "Premium_LRS",
+				consts.MaxSharesField:   "3",
+				consts.CachingModeField: "None",
+				consts.PerfProfileField: "None",
 			}
-			req.VolumeCapabilities[0].AccessType = &csi.VolumeCapability_Block{
-				Block: &csi.VolumeCapability_BlockVolume{},
-			}
-			resp, err := azurediskDriver.CreateVolume(context.Background(), req)
+
+			var err error
+			volumeID, err = CreateVolume(volumeName, sharedDiskSize, volumeContext)
 			if err != nil {
+				skipVolumeDeletion = true
 				ginkgo.Fail(fmt.Sprintf("create volume error: %v", err))
 			}
-			volumeID = resp.Volume.VolumeId
+			diskSize := fmt.Sprintf("%dGi", sharedDiskSize)
+
 			ginkgo.By(fmt.Sprintf("Successfully provisioned a shared disk volume: %q\n", volumeID))
-
-			diskSize := fmt.Sprintf("%dGi", defaultDiskSize)
-
-			pod := testsuites.PodDetails{
-				Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
-				Volumes: []testsuites.VolumeDetails{
-					{
-						VolumeID:  volumeID,
-						ClaimSize: diskSize,
-						VolumeMount: testsuites.VolumeMountDetails{
-							NameGenerate:      "test-volume-",
-							MountPathGenerate: "/mnt/test-",
-						},
-						VolumeAccessMode: v1.ReadWriteOnce,
-					},
-				},
-				IsWindows:    isWindowsCluster,
-				WinServerVer: winServerVer,
-			}
-
-			test := testsuites.PreProvisionedDanglingAttachVolumeTest{
-				CSIDriver:       testDriver,
-				AzureDiskDriver: azurediskDriver,
-				Pod:             pod,
-				VolumeContext:   resp.Volume.VolumeContext,
-			}
-			test.Run(cs, ns)
-		})
-
-		ginkgo.It("should create an inline volume by in-tree driver [kubernetes.io/azure-disk]", func() {
-			if !isUsingInTreeVolumePlugin {
-				ginkgo.Skip("test case is only available for csi driver")
-			}
-			if !isTestingMigration {
-				ginkgo.Skip("test case is only available for migration test")
-			}
-
-			skipVolumeDeletion = true
-			req := makeCreateVolumeReq("pre-provisioned-inline-volume", defaultDiskSize)
-			resp, err := azurediskDriver.CreateVolume(context.Background(), req)
-			if err != nil {
-				ginkgo.Fail(fmt.Sprintf("create volume error: %v", err))
-			}
-			volumeID = resp.Volume.VolumeId
-			ginkgo.By(fmt.Sprintf("Successfully provisioned AzureDisk volume: %q\n", volumeID))
-
-			diskSize := fmt.Sprintf("%dGi", defaultDiskSize)
-			pods := []testsuites.PodDetails{
-				{
-					Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
-					Volumes: []testsuites.VolumeDetails{
+			pods := []resources.PodDetails{}
+			for i := 1; i <= 1; i++ {
+				pod := resources.PodDetails{
+					Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
+					Volumes: []resources.VolumeDetails{
 						{
 							VolumeID:  volumeID,
 							ClaimSize: diskSize,
-							VolumeMount: testsuites.VolumeMountDetails{
+							VolumeDevice: resources.VolumeDeviceDetails{
+								NameGenerate: "test-volume-",
+								DevicePath:   "/dev/e2e-test",
+							},
+							VolumeAccessMode: v1.ReadWriteOnce,
+							VolumeMode:       resources.Block,
+						},
+					},
+					IsWindows: testconsts.IsWindowsCluster,
+					WinServerVer: testconsts.WindowsServerVersion,
+				}
+				pods = append(pods, pod)
+			}
+
+			test := testsuites.PreProvisionedCheckForReplicasTest{
+				CSIDriver:     testDriver,
+				Pods:          pods,
+				VolumeName:    volumeName,
+				AzDiskClient:  azDiskClient,
+				VolumeContext: volumeContext,
+			}
+			test.Run(cs, ns, schedulerName)
+		})
+
+		ginkgo.It("should create an inline volume by in-tree driver [kubernetes.io/azure-disk]", func() {
+			if !testconsts.IsUsingInTreeVolumePlugin {
+				ginkgo.Skip("test case is only available for csi driver")
+			}
+			if !testconsts.IsTestingMigration {
+				ginkgo.Skip("test case is only available for migration test")
+			}
+			var err error
+			skipVolumeDeletion = true
+			volumeID, err = CreateVolume("pre-provisioned-inline-volume", defaultDiskSize, make(map[string]string))
+			if err != nil {
+				skipVolumeDeletion = true
+				ginkgo.Fail(fmt.Sprintf("create volume error: %v", err))
+			}
+			ginkgo.By(fmt.Sprintf("Successfully provisioned AzureDisk volume: %q\n", volumeID))
+
+			diskSize := fmt.Sprintf("%dGi", defaultDiskSize)
+			pods := []resources.PodDetails{
+				{
+					Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
+					Volumes: []resources.VolumeDetails{
+						{
+							VolumeID:  volumeID,
+							ClaimSize: diskSize,
+							VolumeMount: resources.VolumeMountDetails{
 								NameGenerate:      "test-volume-",
 								MountPathGenerate: "/mnt/test-",
 							},
 							VolumeAccessMode: v1.ReadWriteOnce,
 						},
 					},
-					IsWindows:    isWindowsCluster,
-					WinServerVer: winServerVer,
+					IsWindows: testconsts.IsWindowsCluster,
+					WinServerVer: testconsts.WindowsServerVersion,
 				},
 			}
 
@@ -335,29 +405,56 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 				DiskURI:   volumeID,
 				ReadOnly:  false,
 			}
-			test.Run(cs, ns)
+			test.Run(cs, ns, schedulerName)
 		})
 	})
 })
 
-func makeCreateVolumeReq(volumeName string, sizeGiB int64) *csi.CreateVolumeRequest {
-	req := &csi.CreateVolumeRequest{
-		Name: volumeName,
-		VolumeCapabilities: []*csi.VolumeCapability{
-			{
-				AccessType: &csi.VolumeCapability_Mount{
-					Mount: &csi.VolumeCapability_MountVolume{},
-				},
-				AccessMode: &csi.VolumeCapability_AccessMode{
-					Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
-				},
-			},
-		},
-		CapacityRange: &csi.CapacityRange{
-			RequiredBytes: sizeGiB * 1024 * 1024 * 1024,
-			LimitBytes:    sizeGiB * 1024 * 1024 * 1024,
-		},
+func CreateVolume(diskName string, sizeGiB int, volumeContext map[string]string) (string, error) {
+	var (
+		err                error
+		maxShares          int
+		storageAccountType string
+	)
+
+	for k, v := range volumeContext {
+		switch strings.ToLower(k) {
+		case consts.SkuNameField:
+			storageAccountType = v
+		case consts.MaxSharesField:
+			maxShares, err = strconv.Atoi(v)
+			if err != nil || maxShares < 1 {
+				maxShares = 1
+			}
+		}
 	}
 
-	return req
+	accoutType, err := azureutils.NormalizeStorageAccountType(storageAccountType, azureCloud.Config.Cloud, azureCloud.Config.DisableAzureStackCloud)
+	if err != nil {
+		accoutType = compute.DiskStorageAccountTypes(compute.DiskStorageAccountTypesPremiumLRS)
+	}
+	volumeOptions := &azure.ManagedDiskOptions{
+		DiskName:           diskName,
+		StorageAccountType: accoutType,
+		ResourceGroup:      azureCloud.ResourceGroup,
+		SizeGB:             sizeGiB,
+		MaxShares:          int32(maxShares),
+	}
+
+	diskURI, err := azureCloud.CreateManagedDisk(context.TODO(), volumeOptions)
+	if err != nil {
+		return "", err
+	}
+
+	return diskURI, nil
+}
+
+func EnsureDiskExists(diskURI string) {
+	diskMeta := strings.Split(diskURI, "/")
+	diskName := diskMeta[len(diskMeta)-1]
+	// pre-prov disk should not be deleted when pod, pvc and pv are deleted
+	_, _, err := azureCloud.GetDisk(context.TODO(), azureCloud.SubscriptionID, azureCloud.ResourceGroup, diskName)
+	if err != nil {
+		ginkgo.Fail(fmt.Sprintf("pre-provisioning disk got deleted with the deletion of pv: %v", err))
+	}
 }

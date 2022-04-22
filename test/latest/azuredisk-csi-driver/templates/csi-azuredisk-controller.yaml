@@ -1,0 +1,97 @@
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: csi-azuredisk-controller
+  namespace: {{ .Release.Namespace }}
+{{ include "azuredisk.labels" . | indent 2 }}
+spec:
+  replicas: {{ .Values.controller.replicas }}
+  selector:
+    matchLabels:
+      app: csi-azuredisk-controller
+  template:
+    metadata:
+{{ include "azuredisk.labels" . | indent 6 }}
+        app: csi-azuredisk-controller
+    spec:
+      hostNetwork: true
+      serviceAccountName: csi-azuredisk-controller-sa
+      nodeSelector:
+        kubernetes.io/os: linux
+        {{- if .Values.controller.runOnMaster}}
+        kubernetes.io/role: master
+        {{- end}}
+      priorityClassName: system-cluster-critical
+      tolerations:
+        - key: "node-role.kubernetes.io/master"
+          operator: "Equal"
+          value: "true"
+          effect: "NoSchedule"
+      {{- include "azuredisk.pullSecrets" . | indent 6 }}
+      containers:
+        - name: azuredisk
+          image: "{{ .Values.image.azuredisk.tag }}"
+          args:
+            - "--v={{ .Values.controller.logLevel }}"
+            - "--endpoint=$(CSI_ENDPOINT)"
+            - "--metrics-address=0.0.0.0:{{ .Values.controller.metricsPort }}"
+            - "--is-controller-plugin=true"
+            - "--is-node-plugin=true"
+            - "--nodeid={{ .Values.azuredisk.nodeId }}"
+            - "--is-test-run={{ .Values.azuredisk.isTestRun }}"
+            - "--support-zone={{ .Values.azuredisk.supportZone }}"
+          ports:
+            - containerPort: 29602
+              name: healthz
+              protocol: TCP
+            - containerPort: {{ .Values.controller.metricsPort }}
+              name: metrics
+              protocol: TCP
+            - containerPort: {{ .Values.controller.port }}
+              name: controller
+              protocol: TCP
+          env:
+            - name: AZURE_CREDENTIAL_FILE
+              value: /tmp/azure.json
+            - name: CSI_ENDPOINT
+              value: tcp://0.0.0.0:{{ .Values.controller.port }}
+            {{- if eq .Values.cloud "AzureStackCloud" }}
+            - name: AZURE_ENVIRONMENT_FILEPATH
+              value: /etc/kubernetes/azurestackcloud.json
+            {{- end }}
+          imagePullPolicy: {{ .Values.image.azuredisk.pullPolicy }}
+          volumeMounts:
+            - mountPath: /csi
+              name: socket-dir
+            - mountPath: /tmp/
+              name: azure-cred
+            - mountPath: /var/lib/waagent/ManagedIdentity-Settings
+              readOnly: true
+              name: msi
+            {{- if eq .Values.cloud "AzureStackCloud" }}
+            - name: ssl
+              mountPath: /etc/ssl/certs
+              readOnly: true
+            {{- end }}
+          resources:
+            limits:
+              cpu: 200m
+              memory: 200Mi
+            requests:
+              cpu: 10m
+              memory: 20Mi
+      volumes:
+        - name: socket-dir
+          emptyDir: {}
+        - name: azure-cred
+          hostPath:
+            path: /tmp/
+            type: Directory
+        - name: msi
+          hostPath:
+            path: /var/lib/waagent/ManagedIdentity-Settings
+        {{- if eq .Values.cloud "AzureStackCloud" }}
+        - name: ssl
+          hostPath:
+            path: /etc/ssl/certs
+        {{- end }}

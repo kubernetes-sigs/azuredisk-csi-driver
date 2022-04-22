@@ -61,6 +61,8 @@ import (
 // }
 type NodeInfo struct {
 	SkuName          string
+	Zone             string
+	Region           string
 	MaxDataDiskCount int
 	VCpus            int
 	MaxBurstIops     int

@@ -17,10 +17,12 @@ limitations under the License.
 package azureutils
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
-	"regexp"
+	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -30,78 +32,63 @@ import (
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/pborman/uuid"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/util/sets"
+	storagev1 "k8s.io/api/storage/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/net"
+	"k8s.io/apimachinery/pkg/util/wait"
+	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
+	kubeutil "k8s.io/kubernetes/pkg/volume/util"
 	"k8s.io/mount-utils"
-
-	clientset "k8s.io/client-go/kubernetes"
-	api "k8s.io/kubernetes/pkg/apis/core"
-	volumeUtil "k8s.io/kubernetes/pkg/volume/util"
+	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	azurediskInformers "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
-	azclients "sigs.k8s.io/cloud-provider-azure/pkg/azureclients"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
-	azurePublicCloud                          = "AZUREPUBLICCLOUD"
-	azureStackCloud                           = "AZURESTACKCLOUD"
-	azurePublicCloudDefaultStorageAccountType = compute.DiskStorageAccountTypesStandardSSDLRS
-	azureStackCloudDefaultStorageAccountType  = compute.DiskStorageAccountTypesStandardLRS
-	defaultAzureDataDiskCachingMode           = v1.AzureDataDiskCachingReadOnly
+	azureStackCloud                               = "AZURESTACKCLOUD"
+	azurePublicCloudDefaultStorageAccountType     = compute.DiskStorageAccountTypesStandardSSDLRS
+	azureStackCloudDefaultStorageAccountType      = compute.DiskStorageAccountTypesStandardLRS
+	defaultAzureDataDiskCachingMode               = v1.AzureDataDiskCachingReadOnly
+	defaultAzureDataDiskCachingModeForSharedDisks = v1.AzureDataDiskCachingNone
+
 	// default IOPS Caps & Throughput Cap (MBps) per https://docs.microsoft.com/en-us/azure/virtual-machines/linux/disks-ultra-ssd
 	// see https://docs.microsoft.com/en-us/rest/api/compute/disks/createorupdate#uri-parameters
-	diskNameMinLength         = 1
+	diskNameMinLength = 1
+	// Resetting max length to 63 since the disk name is used in the label "volume-name"
+	// of the kubernetes object and a label cannot have length greater than 63.
+	// https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
+	diskNameMaxLengthForLabel = 63
 	diskNameMaxLength         = 80
-	diskNameGenerateMaxLength = 76 // maxLength = 80 - (4 for ".vhd") = 76
+	// maxLength = 63 - (4 for ".vhd") = 59
+	diskNameGenerateMaxLengthForLabel = 59
+	// maxLength = 80 - (4 for ".vhd") = 76
+	diskNameGenerateMaxLength = 76
 )
 
-var (
-	// see https://docs.microsoft.com/en-us/rest/api/compute/disks/createorupdate#create-a-managed-disk-by-copying-a-snapshot.
-	diskSnapshotPath        = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/snapshots/%s"
-	diskSnapshotPathRE      = regexp.MustCompile(`(?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/snapshots/(.+)`)
-	diskURISupportedManaged = []string{"/subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id}"}
-	lunPathRE               = regexp.MustCompile(`/dev(?:.*)/disk/azure/scsi(?:.*)/lun(.+)`)
-	supportedCachingModes   = sets.NewString(
-		string(api.AzureDataDiskCachingNone),
-		string(api.AzureDataDiskCachingReadOnly),
-		string(api.AzureDataDiskCachingReadWrite),
-	)
-
-	// volumeCaps represents how the volume could be accessed.
-	volumeCaps = []csi.VolumeCapability_AccessMode{
-		{
-			Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
-		},
-		{
-			Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY,
-		},
-		{
-			Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_SINGLE_WRITER,
-		},
-		{
-			Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_MULTI_WRITER,
-		},
-		{
-			Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY,
-		},
-		{
-			Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_SINGLE_WRITER,
-		},
-		{
-			Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER,
-		},
-	}
-)
+type ClientOperationMode int
 
 type ManagedDiskParameters struct {
 	AccountType             string
 	CachingMode             v1.AzureDataDiskCachingMode
+	DeviceSettings          map[string]string
 	DiskAccessID            string
 	DiskEncryptionSetID     string
 	DiskIOPSReadWrite       string
@@ -125,133 +112,44 @@ type ManagedDiskParameters struct {
 	Zoned                   string
 }
 
-func GetCachingMode(attributes map[string]string) (compute.CachingTypes, error) {
-	var (
-		cachingMode v1.AzureDataDiskCachingMode
-		err         error
-	)
+const (
+	Cached ClientOperationMode = iota
+	Uncached
+)
 
-	for k, v := range attributes {
-		if strings.EqualFold(k, consts.CachingModeField) {
-			cachingMode = v1.AzureDataDiskCachingMode(v)
-			break
-		}
-	}
+type CRIUpdateMode uint
 
-	cachingMode, err = NormalizeCachingMode(cachingMode)
-	return compute.CachingTypes(cachingMode), err
-}
+const (
+	UpdateCRI       CRIUpdateMode = 0b01
+	UpdateCRIStatus CRIUpdateMode = 0b10
+	UpdateAll       CRIUpdateMode = 0b11
+)
 
-// GetCloudProviderFromClient get Azure Cloud Provider
-func GetCloudProviderFromClient(kubeClient *clientset.Clientset, secretName, secretNamespace, userAgent string, allowEmptyCloudConfig bool) (*azure.Cloud, error) {
-	var config *azure.Config
-	var fromSecret bool
-	var err error
-	az := &azure.Cloud{
-		InitSecretConfig: azure.InitSecretConfig{
-			SecretName:      secretName,
-			SecretNamespace: secretNamespace,
-			CloudConfigKey:  "cloud-config",
-		},
-	}
-	if kubeClient != nil {
-		klog.V(2).Infof("reading cloud config from secret %s/%s", az.SecretNamespace, az.SecretName)
-		az.KubeClient = kubeClient
-		config, err = az.GetConfigFromSecret()
-		if err == nil && config != nil {
-			fromSecret = true
-		}
-		if err != nil {
-			klog.Warningf("InitializeCloudFromSecret: failed to get cloud config from secret %s/%s: %v", az.SecretNamespace, az.SecretName, err)
-		}
-	}
-
-	if config == nil {
-		klog.V(2).Infof("could not read cloud config from secret %s/%s", az.SecretNamespace, az.SecretName)
-		credFile, ok := os.LookupEnv(consts.DefaultAzureCredentialFileEnv)
-		if ok && strings.TrimSpace(credFile) != "" {
-			klog.V(2).Infof("%s env var set as %v", consts.DefaultAzureCredentialFileEnv, credFile)
-		} else {
-			if util.IsWindowsOS() {
-				credFile = consts.DefaultCredFilePathWindows
-			} else {
-				credFile = consts.DefaultCredFilePathLinux
-			}
-			klog.V(2).Infof("use default %s env var: %v", consts.DefaultAzureCredentialFileEnv, credFile)
-		}
-
-		credFileConfig, err := os.Open(credFile)
-		if err != nil {
-			klog.Warningf("load azure config from file(%s) failed with %v", credFile, err)
-		} else {
-			defer credFileConfig.Close()
-			klog.V(2).Infof("read cloud config from file: %s successfully", credFile)
-			if config, err = azure.ParseConfig(credFileConfig); err != nil {
-				klog.Warningf("parse config file(%s) failed with error: %v", credFile, err)
-			}
-		}
-	}
-
-	if config == nil {
-		if allowEmptyCloudConfig {
-			klog.V(2).Infof("no cloud config provided, error: %v, driver will run without cloud config", err)
-		} else {
-			return nil, fmt.Errorf("no cloud config provided, error: %v", err)
-		}
-	} else {
-		// disable disk related rate limit
-		config.DiskRateLimit = &azclients.RateLimitConfig{
-			CloudProviderRateLimit: false,
-		}
-		config.SnapshotRateLimit = &azclients.RateLimitConfig{
-			CloudProviderRateLimit: false,
-		}
-		config.UserAgent = userAgent
-		if err = az.InitializeCloudFromConfig(config, fromSecret, false); err != nil {
-			klog.Warningf("InitializeCloudFromConfig failed with error: %v", err)
-		}
-	}
-
-	// reassign kubeClient
-	if kubeClient != nil && az.KubeClient == nil {
-		az.KubeClient = kubeClient
-	}
-	return az, nil
-}
-
-// GetCloudProviderFromConfig get Azure Cloud Provider
-func GetCloudProvider(kubeConfig, secretName, secretNamespace, userAgent string, allowEmptyCloudConfig bool) (*azure.Cloud, error) {
-	kubeClient, err := GetKubeClient(kubeConfig)
+func CreateLabelRequirements(label string, operator selection.Operator, values ...string) (*labels.Requirement, error) {
+	req, err := labels.NewRequirement(label, operator, values)
 	if err != nil {
-		klog.Warningf("get kubeconfig(%s) failed with error: %v", kubeConfig, err)
-		if !os.IsNotExist(err) && !errors.Is(err, rest.ErrNotInCluster) {
-			return nil, fmt.Errorf("failed to get KubeClient: %v", err)
-		}
+		return nil, err
 	}
-	return GetCloudProviderFromClient(kubeClient, secretName, secretNamespace, userAgent, allowEmptyCloudConfig)
+	if req == nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Unable to create Requirement to for label key : (%s) and label value: (%s)", label, values))
+	}
+	return req, nil
 }
 
-// GetKubeConfig gets config object from config file
-func GetKubeConfig(kubeconfig string) (config *rest.Config, err error) {
-	if kubeconfig != "" {
-		if config, err = clientcmd.BuildConfigFromFlags("", kubeconfig); err != nil {
-			return nil, err
-		}
-	} else {
-		if config, err = rest.InClusterConfig(); err != nil {
-			return nil, err
-		}
-	}
-	return config, err
+func IsAzureStackCloud(cloud string, disableAzureStackCloud bool) bool {
+	return !disableAzureStackCloud && strings.EqualFold(cloud, azureStackCloud)
 }
 
-func GetKubeClient(kubeconfig string) (*clientset.Clientset, error) {
-	config, err := GetKubeConfig(kubeconfig)
+// gets the AzVolume cluster client
+func GetAzDiskClient(config *rest.Config) (
+	*azDiskClientSet.Clientset,
+	error) {
+	azDiskClient, err := azDiskClientSet.NewForConfig(config)
 	if err != nil {
 		return nil, err
 	}
 
-	return clientset.NewForConfig(config)
+	return azDiskClient, nil
 }
 
 // GetDiskLUN : deviceInfo could be a LUN number or a device path, e.g. /dev/disk/azure/scsi1/lun2
@@ -261,7 +159,7 @@ func GetDiskLUN(deviceInfo string) (int32, error) {
 		diskLUN = deviceInfo
 	} else {
 		// extract the LUN num from a device path
-		matches := lunPathRE.FindStringSubmatch(deviceInfo)
+		matches := consts.LunPathRE.FindStringSubmatch(deviceInfo)
 		if len(matches) == 2 {
 			diskLUN = matches[1]
 		} else {
@@ -276,39 +174,6 @@ func GetDiskLUN(deviceInfo string) (int32, error) {
 	return int32(lun), nil
 }
 
-func GetDiskName(diskURI string) (string, error) {
-	matches := consts.ManagedDiskPathRE.FindStringSubmatch(diskURI)
-	if len(matches) != 2 {
-		return "", fmt.Errorf("could not get disk name from %s, correct format: %s", diskURI, consts.ManagedDiskPathRE)
-	}
-	return matches[1], nil
-}
-
-// Disk name must begin with a letter or number, end with a letter, number or underscore,
-// and may contain only letters, numbers, underscores, periods, or hyphens.
-// See https://docs.microsoft.com/en-us/rest/api/compute/disks/createorupdate#uri-parameters
-//
-//
-// Snapshot name must begin with a letter or number, end with a letter, number or underscore,
-// and may contain only letters, numbers, underscores, periods, or hyphens.
-// See https://docs.microsoft.com/en-us/rest/api/compute/snapshots/createorupdate#uri-parameters
-//
-// Since the naming rule of disk is same with snapshot's, here we use the same function to handle disks and snapshots.
-func CreateValidDiskName(volumeName string) string {
-	diskName := volumeName
-	if len(diskName) > diskNameMaxLength {
-		diskName = diskName[0:diskNameMaxLength]
-		klog.Warningf("since the maximum volume name length is %d, so it is truncated as (%q)", diskNameMaxLength, diskName)
-	}
-	if !checkDiskName(diskName) || len(diskName) < diskNameMinLength {
-		// todo: get cluster name
-		diskName = volumeUtil.GenerateVolumeName("pvc-disk", uuid.NewUUID().String(), diskNameGenerateMaxLength)
-		klog.Warningf("the requested volume name (%q) is invalid, so it is regenerated as (%q)", volumeName, diskName)
-	}
-
-	return diskName
-}
-
 func GetFStype(attributes map[string]string) string {
 	for k, v := range attributes {
 		switch strings.ToLower(k) {
@@ -317,6 +182,22 @@ func GetFStype(attributes map[string]string) string {
 		}
 	}
 	return ""
+}
+
+func GetNodeMaxDiskCount(labels map[string]string) (int, error) {
+	if labels == nil {
+		return 0, fmt.Errorf("labels for the node are not provided")
+	}
+	instanceType, ok := labels[v1.LabelInstanceTypeStable]
+	if !ok {
+		return 0, fmt.Errorf("node instance type is not found")
+	}
+	vmsize := strings.ToUpper(instanceType)
+	maxDataDiskCount, exists := MaxDataDiskCountMap[vmsize]
+	if !exists {
+		return 0, fmt.Errorf("disk count for the node instance type %s is not found", vmsize)
+	}
+	return int(maxDataDiskCount), nil
 }
 
 func GetMaxShares(attributes map[string]string) (int, error) {
@@ -336,12 +217,19 @@ func GetMaxShares(attributes map[string]string) (int, error) {
 	return 1, nil // disk is not shared
 }
 
-func GetResourceGroupFromURI(diskURI string) (string, error) {
-	fields := strings.Split(diskURI, "/")
-	if len(fields) != 9 || strings.ToLower(fields[3]) != "resourcegroups" {
-		return "", fmt.Errorf("invalid disk URI: %s", diskURI)
+func IsAsyncAttachEnabled(defaultValue bool, volumeContext map[string]string) bool {
+	for k, v := range volumeContext {
+		switch strings.ToLower(k) {
+		case consts.EnableAsyncAttachField:
+			if strings.EqualFold(v, consts.TrueValue) {
+				return true
+			}
+			if strings.EqualFold(v, consts.FalseValue) {
+				return false
+			}
+		}
 	}
-	return fields[4], nil
+	return defaultValue
 }
 
 func GetSubscriptionIDFromURI(diskURI string) string {
@@ -352,142 +240,6 @@ func GetSubscriptionIDFromURI(diskURI string) string {
 		}
 	}
 	return ""
-}
-
-func GetValidCreationData(subscriptionID, resourceGroup, sourceResourceID, sourceType string) (compute.CreationData, error) {
-	if sourceResourceID == "" {
-		return compute.CreationData{
-			CreateOption: compute.DiskCreateOptionEmpty,
-		}, nil
-	}
-
-	switch sourceType {
-	case consts.SourceSnapshot:
-		if match := diskSnapshotPathRE.FindString(sourceResourceID); match == "" {
-			sourceResourceID = fmt.Sprintf(diskSnapshotPath, subscriptionID, resourceGroup, sourceResourceID)
-		}
-
-	case consts.SourceVolume:
-		if match := consts.ManagedDiskPathRE.FindString(sourceResourceID); match == "" {
-			sourceResourceID = fmt.Sprintf(consts.ManagedDiskPath, subscriptionID, resourceGroup, sourceResourceID)
-		}
-	default:
-		return compute.CreationData{
-			CreateOption: compute.DiskCreateOptionEmpty,
-		}, nil
-	}
-
-	splits := strings.Split(sourceResourceID, "/")
-	if len(splits) > 9 {
-		if sourceType == consts.SourceSnapshot {
-			return compute.CreationData{}, fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", sourceResourceID, diskSnapshotPathRE)
-		}
-
-		return compute.CreationData{}, fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", sourceResourceID, consts.ManagedDiskPathRE)
-	}
-	return compute.CreationData{
-		CreateOption:     compute.DiskCreateOptionCopy,
-		SourceResourceID: &sourceResourceID,
-	}, nil
-}
-
-func IsCorruptedDir(dir string) bool {
-	_, pathErr := mount.PathExists(dir)
-	return pathErr != nil && mount.IsCorruptedMnt(pathErr)
-}
-
-// IsARMResourceID check whether resourceID is an ARM ResourceID
-func IsARMResourceID(resourceID string) bool {
-	id := strings.ToLower(resourceID)
-	return strings.Contains(id, "/subscriptions/")
-}
-
-// IsAzureStackCloud decides whether the driver is running on Azure Stack Cloud.
-func IsAzureStackCloud(cloud string, disableAzureStackCloud bool) bool {
-	return !disableAzureStackCloud && strings.EqualFold(cloud, azureStackCloud)
-}
-
-// IsValidAvailabilityZone returns true if the zone is in format of <region>-<zone-id>.
-func IsValidAvailabilityZone(zone, region string) bool {
-	return strings.HasPrefix(zone, fmt.Sprintf("%s-", region))
-}
-
-func IsValidDiskURI(diskURI string) error {
-	if strings.Index(strings.ToLower(diskURI), "/subscriptions/") != 0 {
-		return fmt.Errorf("invalid DiskURI: %v, correct format: %v", diskURI, diskURISupportedManaged)
-	}
-	return nil
-}
-
-func IsValidVolumeCapabilities(volCaps []*csi.VolumeCapability, maxShares int) bool {
-	if ok := IsValidAccessModes(volCaps); !ok {
-		return false
-	}
-	for _, c := range volCaps {
-		blockVolume := c.GetBlock()
-		mountVolume := c.GetMount()
-		accessMode := c.GetAccessMode().GetMode()
-
-		if (blockVolume == nil && mountVolume == nil) ||
-			(blockVolume != nil && mountVolume != nil) {
-			return false
-		}
-		if mountVolume != nil && (accessMode == csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER ||
-			accessMode == csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY ||
-			accessMode == csi.VolumeCapability_AccessMode_MULTI_NODE_SINGLE_WRITER) {
-			return false
-		}
-		if maxShares < 2 && (accessMode == csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER ||
-			accessMode == csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY ||
-			accessMode == csi.VolumeCapability_AccessMode_MULTI_NODE_SINGLE_WRITER) {
-			return false
-		}
-	}
-	return true
-}
-
-func IsValidAccessModes(volCaps []*csi.VolumeCapability) bool {
-	hasSupport := func(cap *csi.VolumeCapability) bool {
-		for _, c := range volumeCaps {
-			if c.GetMode() == cap.AccessMode.GetMode() {
-				return true
-			}
-		}
-		return false
-	}
-
-	foundAll := true
-	for _, c := range volCaps {
-		if !hasSupport(c) {
-			foundAll = false
-		}
-	}
-	return foundAll
-}
-
-func NormalizeCachingMode(cachingMode v1.AzureDataDiskCachingMode) (v1.AzureDataDiskCachingMode, error) {
-	if cachingMode == "" {
-		return defaultAzureDataDiskCachingMode, nil
-	}
-
-	if !supportedCachingModes.Has(string(cachingMode)) {
-		return "", fmt.Errorf("azureDisk - %s is not supported cachingmode. Supported values are %s", cachingMode, supportedCachingModes.List())
-	}
-
-	return cachingMode, nil
-}
-
-func NormalizeNetworkAccessPolicy(networkAccessPolicy string) (compute.NetworkAccessPolicy, error) {
-	if networkAccessPolicy == "" {
-		return compute.NetworkAccessPolicyAllowAll, nil
-	}
-	policy := compute.NetworkAccessPolicy(networkAccessPolicy)
-	for _, s := range compute.PossibleNetworkAccessPolicyValues() {
-		if policy == s {
-			return policy, nil
-		}
-	}
-	return "", fmt.Errorf("azureDisk - %s is not supported NetworkAccessPolicy. Supported values are %s", networkAccessPolicy, compute.PossibleNetworkAccessPolicyValues())
 }
 
 func NormalizeStorageAccountType(storageAccountType, cloud string, disableAzureStackCloud bool) (compute.DiskStorageAccountTypes, error) {
@@ -512,6 +264,34 @@ func NormalizeStorageAccountType(storageAccountType, cloud string, disableAzureS
 	return "", fmt.Errorf("azureDisk - %s is not supported sku/storageaccounttype. Supported values are %s", storageAccountType, supportedSkuNames)
 }
 
+func NormalizeCachingMode(cachingMode v1.AzureDataDiskCachingMode, maxShares int) (v1.AzureDataDiskCachingMode, error) {
+	if cachingMode == "" {
+		if maxShares > 1 {
+			return defaultAzureDataDiskCachingModeForSharedDisks, nil
+		}
+		return defaultAzureDataDiskCachingMode, nil
+	}
+
+	if !consts.SupportedCachingModes.Has(string(cachingMode)) {
+		return "", fmt.Errorf("azureDisk - %s is not supported cachingmode. Supported values are %s", cachingMode, consts.SupportedCachingModes.List())
+	}
+
+	return cachingMode, nil
+}
+
+func NormalizeNetworkAccessPolicy(networkAccessPolicy string) (compute.NetworkAccessPolicy, error) {
+	if networkAccessPolicy == "" {
+		return compute.NetworkAccessPolicyAllowAll, nil
+	}
+	policy := compute.NetworkAccessPolicy(networkAccessPolicy)
+	for _, s := range compute.PossibleNetworkAccessPolicyValues() {
+		if policy == s {
+			return policy, nil
+		}
+	}
+	return "", fmt.Errorf("azureDisk - %s is not supported NetworkAccessPolicy. Supported values are %s", networkAccessPolicy, compute.PossibleNetworkAccessPolicyValues())
+}
+
 func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, error) {
 	var err error
 	if parameters == nil {
@@ -519,9 +299,10 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 	}
 
 	diskParams := ManagedDiskParameters{
-		Incremental:   true, //true by default
-		Tags:          make(map[string]string),
-		VolumeContext: parameters,
+		DeviceSettings: make(map[string]string),
+		Incremental:    true, //true by default
+		Tags:           make(map[string]string),
+		VolumeContext:  parameters,
 	}
 	for k, v := range parameters {
 		switch strings.ToLower(k) {
@@ -561,24 +342,18 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 		case azure.WriteAcceleratorEnabled:
 			diskParams.WriteAcceleratorEnabled = v
 		case consts.MaxSharesField:
-			diskParams.MaxShares, err = strconv.Atoi(v)
+			diskParams.MaxShares, err = ParseMaxShares(v)
 			if err != nil {
-				return diskParams, fmt.Errorf("parse %s failed with error: %v", v, err)
+				return diskParams, err
 			}
-			if diskParams.MaxShares < 1 {
-				return diskParams, fmt.Errorf("parse %s returned with invalid value: %d", v, diskParams.MaxShares)
-			}
+		case consts.MaxMountReplicaCountField:
+			continue
 		case consts.PvcNameKey:
 			diskParams.Tags[consts.PvcNameTag] = v
 		case consts.PvcNamespaceKey:
 			diskParams.Tags[consts.PvcNamespaceTag] = v
 		case consts.PvNameKey:
 			diskParams.Tags[consts.PvNameTag] = v
-		case consts.FsTypeField:
-			diskParams.FsType = strings.ToLower(v)
-		case consts.KindField:
-			// fix csi migration issue: https://github.com/kubernetes/kubernetes/issues/103433
-			diskParams.VolumeContext[consts.KindField] = string(v1.AzureManagedDisk)
 		case consts.PerfProfileField:
 			if !optimization.IsValidPerfProfile(v) {
 				return diskParams, fmt.Errorf("perf profile %s is not supported, supported tuning modes are none and basic", v)
@@ -594,6 +369,8 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 			}
 		case consts.UserAgentField:
 			diskParams.UserAgent = v
+		// The following parameters are not used by the cloud provisioner, but must be present in the VolumeContext
+		// returned to the caller so that it is included in the parameters passed to Node{Publish|Stage}Volume.
 		case consts.EnableAsyncAttachField:
 			diskParams.VolumeContext[consts.EnableAsyncAttachField] = v
 		case consts.IncrementalField:
@@ -602,11 +379,287 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 			}
 		case consts.ZonedField:
 			// no op, only for backward compatibility with in-tree driver
+		case consts.FsTypeField:
+			diskParams.FsType = strings.ToLower(v)
+		case consts.KindField:
+			// fix csi migration issue: https://github.com/kubernetes/kubernetes/issues/103433
+			diskParams.VolumeContext[consts.KindField] = string(v1.AzureManagedDisk)
 		default:
-			return diskParams, fmt.Errorf("invalid parameter %s in storage class", k)
+			// accept all device settings params
+			// device settings need to start with azureconstants.DeviceSettingsKeyPrefix
+			if deviceSettings, err := optimization.GetDeviceSettingFromAttribute(k); err == nil {
+				diskParams.DeviceSettings[filepath.Join(azureconstants.DummyBlockDevicePathLinux, deviceSettings)] = v
+			} else {
+				return diskParams, fmt.Errorf("invalid parameter %s in storage class", k)
+			}
 		}
 	}
 	return diskParams, nil
+}
+
+func ParseMaxShares(maxSharesValue string) (int, error) {
+	maxShares, err := strconv.Atoi(maxSharesValue)
+	if err != nil {
+		return 0, fmt.Errorf("parse %s failed with error: %v", maxSharesValue, err)
+	}
+	if maxShares < 1 {
+		return 0, fmt.Errorf("parse %s returned with invalid value: %d", maxSharesValue, maxShares)
+	}
+	return maxShares, nil
+}
+
+// Disk name must begin with a letter or number, end with a letter, number or underscore,
+// and may contain only letters, numbers, underscores, periods, or hyphens.
+// See https://docs.microsoft.com/en-us/rest/api/compute/disks/createorupdate#uri-parameters
+//
+//
+// Snapshot name must begin with a letter or number, end with a letter, number or underscore,
+// and may contain only letters, numbers, underscores, periods, or hyphens.
+// See https://docs.microsoft.com/en-us/rest/api/compute/snapshots/createorupdate#uri-parameters
+//
+// Since the naming rule of disk is same with snapshot's, here we use the same function to handle disks and snapshots.
+func CreateValidDiskName(volumeName string, usedForLabel bool) string {
+	var maxDiskNameLength, maxGeneratedDiskNameLength int
+	diskName := volumeName
+	if usedForLabel {
+		maxDiskNameLength = diskNameMaxLengthForLabel
+		maxGeneratedDiskNameLength = diskNameGenerateMaxLengthForLabel
+	} else {
+		maxDiskNameLength = diskNameMaxLength
+		maxGeneratedDiskNameLength = diskNameGenerateMaxLength
+	}
+	if len(diskName) > maxDiskNameLength {
+		diskName = diskName[0:maxDiskNameLength]
+		klog.Warningf("since the maximum volume name length is %d, so it is truncated as (%q)", diskNameMaxLength, diskName)
+	}
+	if !checkDiskName(diskName) || len(diskName) < diskNameMinLength {
+		// todo: get cluster name
+		diskName = kubeutil.GenerateVolumeName("pvc-disk", uuid.NewUUID().String(), maxGeneratedDiskNameLength)
+		klog.Warningf("the requested volume name (%q) is invalid, so it is regenerated as (%q)", volumeName, diskName)
+	}
+
+	return diskName
+}
+
+// GetCloudProviderFromClient get Azure Cloud Provider
+func GetCloudProviderFromClient(kubeClient *clientset.Clientset, secretName string, secretNamespace string, userAgent string) (*azure.Cloud, error) {
+	var config *azure.Config
+	var fromSecret bool
+
+	// Try to get the configuration from a K8s secret first...
+	if kubeClient != nil {
+		az := &azure.Cloud{
+			InitSecretConfig: azure.InitSecretConfig{
+				SecretName:      secretName,
+				SecretNamespace: secretNamespace,
+				CloudConfigKey:  "cloud-config",
+			},
+		}
+
+		az.KubeClient = kubeClient
+
+		var err error
+
+		config, err = az.GetConfigFromSecret()
+		if err == nil {
+			fromSecret = true
+		} else {
+			if !k8serrors.IsNotFound(err) {
+				klog.Warningf("failed to create cloud config from secret %s/%s: %v", az.SecretNamespace, az.SecretName, err)
+			}
+		}
+	}
+
+	// ... and fallback to reading configuration file on disk.
+	if config == nil {
+		credFile, ok := os.LookupEnv(consts.DefaultAzureCredentialFileEnv)
+		if ok && strings.TrimSpace(credFile) != "" {
+			klog.V(2).Infof("%s env var set as %v", consts.DefaultAzureCredentialFileEnv, credFile)
+		} else {
+			if util.IsWindowsOS() {
+				credFile = consts.DefaultCredFilePathWindows
+			} else {
+				credFile = consts.DefaultCredFilePathLinux
+			}
+			klog.V(2).Infof("use default %s env var: %v", consts.DefaultAzureCredentialFileEnv, credFile)
+		}
+
+		credFileConfig, err := os.Open(credFile)
+		if err != nil {
+			err = fmt.Errorf("failed to load cloud config from file %q: %v", credFile, err)
+			klog.Errorf(err.Error())
+			return nil, err
+		}
+		defer credFileConfig.Close()
+
+		config, err = azure.ParseConfig(credFileConfig)
+		if err != nil {
+			err = fmt.Errorf("failed to parse cloud config file %q: %v", credFile, err)
+			klog.Errorf(err.Error())
+			return nil, err
+		}
+	}
+
+	// Override configuration values
+	config.DiskRateLimit = &azureclients.RateLimitConfig{
+		CloudProviderRateLimit: false,
+	}
+	config.SnapshotRateLimit = &azureclients.RateLimitConfig{
+		CloudProviderRateLimit: false,
+	}
+	config.UserAgent = userAgent
+
+	// Create a new cloud provider
+	az, err := azure.NewCloudWithoutFeatureGatesFromConfig(config, fromSecret, false)
+	if err != nil {
+		err = fmt.Errorf("failed to create cloud: %v", err)
+		klog.Errorf(err.Error())
+		return nil, err
+	}
+
+	// reassign kubeClient
+	if kubeClient != nil && az.KubeClient == nil {
+		az.KubeClient = kubeClient
+	}
+
+	return az, nil
+}
+
+// GetCloudProvider get Azure Cloud Provider
+func GetCloudProvider(kubeConfig, secretName, secretNamespace, userAgent string) (*azure.Cloud, error) {
+	kubeClient, err := GetKubeClient(kubeConfig)
+	if err != nil {
+		klog.Warningf("get kubeconfig(%s) failed with error: %v", kubeConfig, err)
+		if !os.IsNotExist(err) && !errors.Is(err, rest.ErrNotInCluster) {
+			return nil, fmt.Errorf("failed to get KubeClient: %v", err)
+		}
+	}
+	return GetCloudProviderFromClient(kubeClient, secretName, secretNamespace, userAgent)
+}
+
+// GetKubeConfig gets config object from config file
+func GetKubeConfig(kubeconfig string) (config *rest.Config, err error) {
+	if kubeconfig != "" {
+		if config, err = clientcmd.BuildConfigFromFlags("", kubeconfig); err != nil {
+			return nil, err
+		}
+	} else {
+		if config, err = rest.InClusterConfig(); err != nil {
+			return nil, err
+		}
+	}
+	return config, err
+}
+
+func GetKubeClient(kubeconfig string) (*clientset.Clientset, error) {
+	config, err := GetKubeConfig(kubeconfig)
+	if err != nil {
+		return nil, err
+	}
+
+	return clientset.NewForConfig(config)
+}
+
+func IsValidDiskURI(diskURI string) error {
+	if strings.Index(strings.ToLower(diskURI), "/subscriptions/") != 0 {
+		return fmt.Errorf("invalid DiskURI: %v, correct format: %v", diskURI, consts.DiskURISupportedManaged)
+	}
+	return nil
+}
+
+func GetDiskName(diskURI string) (string, error) {
+	matches := consts.ManagedDiskPathRE.FindStringSubmatch(diskURI)
+	if len(matches) != 2 {
+		return "", fmt.Errorf("could not get disk name from %s, correct format: %s", diskURI, consts.ManagedDiskPathRE)
+	}
+	return matches[1], nil
+}
+
+// GetResourceGroupFromURI returns resource grouped from URI
+func GetResourceGroupFromURI(diskURI string) (string, error) {
+	fields := strings.Split(diskURI, "/")
+	if len(fields) != 9 || strings.ToLower(fields[3]) != "resourcegroups" {
+		return "", fmt.Errorf("invalid disk URI: %s", diskURI)
+	}
+	return fields[4], nil
+}
+
+func GetCachingMode(attributes map[string]string) (compute.CachingTypes, error) {
+	var (
+		cachingMode v1.AzureDataDiskCachingMode
+		maxShares   int
+		err         error
+	)
+
+	for k, v := range attributes {
+		if strings.EqualFold(k, consts.CachingModeField) {
+			cachingMode = v1.AzureDataDiskCachingMode(v)
+			break
+		}
+		// Check if disk is shared
+		if strings.EqualFold(k, consts.MaxSharesField) {
+			maxShares, err = strconv.Atoi(v)
+			if err != nil || maxShares < 1 {
+				maxShares = 1
+			}
+		}
+	}
+
+	cachingMode, err = NormalizeCachingMode(cachingMode, maxShares)
+	return compute.CachingTypes(cachingMode), err
+}
+
+// isARMResourceID check whether resourceID is an ARM ResourceID
+func IsARMResourceID(resourceID string) bool {
+	id := strings.ToLower(resourceID)
+	return strings.Contains(id, "/subscriptions/")
+}
+
+func GetValidCreationData(subscriptionID, resourceGroup, sourceResourceID, sourceType string) (compute.CreationData, error) {
+	if sourceResourceID == "" {
+		return compute.CreationData{
+			CreateOption: compute.DiskCreateOptionEmpty,
+		}, nil
+	}
+
+	switch sourceType {
+	case consts.SourceSnapshot:
+		if match := consts.DiskSnapshotPathRE.FindString(sourceResourceID); match == "" {
+			sourceResourceID = fmt.Sprintf(consts.DiskSnapshotPath, subscriptionID, resourceGroup, sourceResourceID)
+		}
+
+	case consts.SourceVolume:
+		if match := consts.ManagedDiskPathRE.FindString(sourceResourceID); match == "" {
+			sourceResourceID = fmt.Sprintf(consts.ManagedDiskPath, subscriptionID, resourceGroup, sourceResourceID)
+		}
+	default:
+		return compute.CreationData{
+			CreateOption: compute.DiskCreateOptionEmpty,
+		}, nil
+	}
+
+	splits := strings.Split(sourceResourceID, "/")
+	if len(splits) > 9 {
+		if sourceType == consts.SourceSnapshot {
+			return compute.CreationData{}, fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", sourceResourceID, consts.DiskSnapshotPathRE)
+		}
+
+		return compute.CreationData{}, fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", sourceResourceID, consts.ManagedDiskPathRE)
+	}
+	return compute.CreationData{
+		CreateOption:     compute.DiskCreateOptionCopy,
+		SourceResourceID: &sourceResourceID,
+	}, nil
+}
+
+func IsCorruptedDir(dir string) bool {
+	_, pathErr := mount.PathExists(dir)
+	return pathErr != nil && mount.IsCorruptedMnt(pathErr)
+}
+
+// isAvailabilityZone returns true if the zone is in format of <region>-<zone-id>.
+func IsValidAvailabilityZone(zone, region string) bool {
+	return strings.HasPrefix(zone, fmt.Sprintf("%s-", region))
 }
 
 // PickAvailabilityZone selects 1 zone given topology requirement.
@@ -642,18 +695,315 @@ func PickAvailabilityZone(requirement *csi.TopologyRequirement, region, topology
 	return ""
 }
 
-func checkDiskName(diskName string) bool {
-	length := len(diskName)
+func IsValidVolumeCapabilities(volCaps []*csi.VolumeCapability, maxShares int) bool {
+	if ok := IsValidAccessModes(volCaps); !ok {
+		return false
+	}
+	for _, c := range volCaps {
+		blockVolume := c.GetBlock()
+		mountVolume := c.GetMount()
+		accessMode := c.GetAccessMode().GetMode()
 
-	for i, v := range diskName {
-		if !(unicode.IsLetter(v) || unicode.IsDigit(v) || v == '_' || v == '.' || v == '-') ||
-			(i == 0 && !(unicode.IsLetter(v) || unicode.IsDigit(v))) ||
-			(i == length-1 && !(unicode.IsLetter(v) || unicode.IsDigit(v) || v == '_')) {
+		if (blockVolume == nil && mountVolume == nil) ||
+			(blockVolume != nil && mountVolume != nil) {
+			return false
+		}
+		if mountVolume != nil && (accessMode == csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER ||
+			accessMode == csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY ||
+			accessMode == csi.VolumeCapability_AccessMode_MULTI_NODE_SINGLE_WRITER) {
+			return false
+		}
+		if maxShares < 2 && (accessMode == csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER ||
+			accessMode == csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY ||
+			accessMode == csi.VolumeCapability_AccessMode_MULTI_NODE_SINGLE_WRITER) {
 			return false
 		}
 	}
-
 	return true
+}
+
+func IsValidAccessModes(volCaps []*csi.VolumeCapability) bool {
+	hasSupport := func(cap *csi.VolumeCapability) bool {
+		for _, c := range consts.VolumeCaps {
+			if c.GetMode() == cap.AccessMode.GetMode() {
+				return true
+			}
+		}
+		return false
+	}
+
+	foundAll := true
+	for _, c := range volCaps {
+		if !hasSupport(c) {
+			foundAll = false
+		}
+	}
+	return foundAll
+}
+
+func IsMultiNodeAzVolumeCapabilityAccessMode(accessMode diskv1beta1.VolumeCapabilityAccessMode) bool {
+	return accessMode == diskv1beta1.VolumeCapabilityAccessModeMultiNodeMultiWriter ||
+		accessMode == diskv1beta1.VolumeCapabilityAccessModeMultiNodeSingleWriter ||
+		accessMode == diskv1beta1.VolumeCapabilityAccessModeMultiNodeReaderOnly
+}
+
+func HasMultiNodeAzVolumeCapabilityAccessMode(volCaps []diskv1beta1.VolumeCapability) bool {
+	for _, volCap := range volCaps {
+		if IsMultiNodeAzVolumeCapabilityAccessMode(volCap.AccessMode) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func IsMultiNodePersistentVolume(pv v1.PersistentVolume) bool {
+	for _, accessMode := range pv.Spec.AccessModes {
+		if accessMode == v1.ReadWriteMany || accessMode == v1.ReadOnlyMany {
+			return true
+		}
+	}
+
+	return false
+}
+
+func GetAzVolumeAttachmentName(volumeName string, nodeName string) string {
+	return fmt.Sprintf("%s-%s-attachment", strings.ToLower(volumeName), strings.ToLower(nodeName))
+}
+
+func GetMaxSharesAndMaxMountReplicaCount(parameters map[string]string, isMultiNodeVolume bool) (maxShares, maxMountReplicaCount int) {
+	maxShares = 1
+	maxMountReplicaCount = -1
+
+	for param, value := range parameters {
+		if strings.EqualFold(param, consts.MaxSharesField) {
+			parsed, err := strconv.Atoi(value)
+			if err != nil {
+				klog.Warningf("failed to parse maxShares value (%s) to int, defaulting to 1: %v", value, err)
+			} else {
+				maxShares = parsed
+			}
+		} else if strings.EqualFold(param, consts.MaxMountReplicaCountField) {
+			parsed, err := strconv.Atoi(value)
+			if err != nil {
+				klog.Warningf("failed to parse maxMountReplica value (%s) to int, defaulting to 0: %v", value, err)
+			} else {
+				maxMountReplicaCount = parsed
+			}
+		}
+	}
+
+	if maxShares <= 0 {
+		klog.Warningf("maxShares cannot be set smaller than 1... Defaulting current maxShares (%d) value to 1", maxShares)
+		maxShares = 1
+	}
+
+	if isMultiNodeVolume {
+		if maxMountReplicaCount > 0 {
+			klog.Warning("maxMountReplicaCount is ignored for volumes that can be mounted to multiple nodes... Defaulting current maxMountReplicaCount (%d) to 0", maxMountReplicaCount)
+		}
+
+		maxMountReplicaCount = 0
+
+		return
+	}
+
+	if maxShares-1 < maxMountReplicaCount {
+		klog.Warningf("maxMountReplicaCount cannot be set larger than maxShares - 1... Defaulting current maxMountReplicaCount (%d) value to (%d)", maxMountReplicaCount, maxShares-1)
+		maxMountReplicaCount = maxShares - 1
+	} else if maxMountReplicaCount < 0 {
+		maxMountReplicaCount = maxShares - 1
+	}
+
+	return
+}
+
+func GetAzVolumePhase(phase v1.PersistentVolumePhase) diskv1beta1.AzVolumePhase {
+	return diskv1beta1.AzVolumePhase(phase)
+}
+
+func GetAzVolume(ctx context.Context, cachedClient client.Client, azDiskClient azDiskClientSet.Interface, azVolumeName, namespace string, useCache bool) (*diskv1beta1.AzVolume, error) {
+	var azVolume *diskv1beta1.AzVolume
+	var err error
+	if useCache {
+		azVolume = &diskv1beta1.AzVolume{}
+		err = cachedClient.Get(ctx, types.NamespacedName{Name: azVolumeName, Namespace: namespace}, azVolume)
+	} else {
+		azVolume, err = azDiskClient.DiskV1beta1().AzVolumes(namespace).Get(ctx, azVolumeName, metav1.GetOptions{})
+	}
+	return azVolume, err
+}
+
+func ListAzVolumes(ctx context.Context, cachedClient client.Client, azDiskClient azDiskClientSet.Interface, namespace string, useCache bool) (diskv1beta1.AzVolumeList, error) {
+	var azVolumeList *diskv1beta1.AzVolumeList
+	var err error
+	if useCache {
+		azVolumeList = &diskv1beta1.AzVolumeList{}
+		err = cachedClient.List(ctx, azVolumeList)
+	} else {
+		azVolumeList, err = azDiskClient.DiskV1beta1().AzVolumes(namespace).List(ctx, metav1.ListOptions{})
+	}
+	return *azVolumeList, err
+}
+
+func GetAzVolumeAttachment(ctx context.Context, cachedClient client.Client, azDiskClient azDiskClientSet.Interface, azVolumeAttachmentName, namespace string, useCache bool) (*diskv1beta1.AzVolumeAttachment, error) {
+	var azVolumeAttachment *diskv1beta1.AzVolumeAttachment
+	var err error
+	if useCache {
+		azVolumeAttachment = &diskv1beta1.AzVolumeAttachment{}
+		err = cachedClient.Get(ctx, types.NamespacedName{Name: azVolumeAttachmentName, Namespace: namespace}, azVolumeAttachment)
+	} else {
+		azVolumeAttachment, err = azDiskClient.DiskV1beta1().AzVolumeAttachments(namespace).Get(ctx, azVolumeAttachmentName, metav1.GetOptions{})
+	}
+	return azVolumeAttachment, err
+}
+
+func ListAzVolumeAttachments(ctx context.Context, cachedClient client.Client, azDiskClient azDiskClientSet.Interface, namespace string, useCache bool) (diskv1beta1.AzVolumeAttachmentList, error) {
+	var azVolumeAttachmentList *diskv1beta1.AzVolumeAttachmentList
+	var err error
+	if useCache {
+		azVolumeAttachmentList = &diskv1beta1.AzVolumeAttachmentList{}
+		err = cachedClient.List(ctx, azVolumeAttachmentList)
+	} else {
+		azVolumeAttachmentList, err = azDiskClient.DiskV1beta1().AzVolumeAttachments(namespace).List(ctx, metav1.ListOptions{})
+	}
+	return *azVolumeAttachmentList, err
+}
+
+func GetAzVolumeAttachmentState(volumeAttachmentStatus storagev1.VolumeAttachmentStatus) diskv1beta1.AzVolumeAttachmentAttachmentState {
+	if volumeAttachmentStatus.Attached {
+		return diskv1beta1.Attached
+	} else if volumeAttachmentStatus.AttachError != nil {
+		return diskv1beta1.AttachmentFailed
+	} else if volumeAttachmentStatus.DetachError != nil {
+		return diskv1beta1.DetachmentFailed
+	} else {
+		return diskv1beta1.AttachmentPending
+	}
+}
+
+func UpdateCRIWithRetry(ctx context.Context, informerFactory azurediskInformers.SharedInformerFactory, cachedClient client.Client, azDiskClient azDiskClientSet.Interface, obj client.Object, updateFunc func(interface{}) error, maxNetRetry int, updateMode CRIUpdateMode) error {
+	objName := obj.GetName()
+	klog.Infof("Initiating update with retry for %v (%s)", reflect.TypeOf(obj), objName)
+
+	conditionFunc := func() error {
+		var err error
+		var copyForUpdate client.Object
+		var objForUpdate client.Object
+		switch target := obj.(type) {
+		case *diskv1beta1.AzVolume:
+			if informerFactory != nil {
+				target, err = informerFactory.Disk().V1beta1().AzVolumes().Lister().AzVolumes(target.Namespace).Get(objName)
+			} else if cachedClient != nil {
+				err = cachedClient.Get(ctx, types.NamespacedName{Namespace: target.Namespace, Name: objName}, target)
+			} else {
+				target, err = azDiskClient.DiskV1beta1().AzVolumes(target.Namespace).Get(ctx, objName, metav1.GetOptions{})
+			}
+			if err == nil {
+				objForUpdate = target
+				copyForUpdate = target.DeepCopy()
+			}
+		case *diskv1beta1.AzVolumeAttachment:
+			if informerFactory != nil {
+				target, err = informerFactory.Disk().V1beta1().AzVolumeAttachments().Lister().AzVolumeAttachments(target.Namespace).Get(objName)
+			} else if cachedClient != nil {
+				err = cachedClient.Get(ctx, types.NamespacedName{Namespace: target.Namespace, Name: objName}, target)
+			} else {
+				target, err = azDiskClient.DiskV1beta1().AzVolumeAttachments(target.Namespace).Get(ctx, objName, metav1.GetOptions{})
+			}
+			if err == nil {
+				objForUpdate = target
+				copyForUpdate = target.DeepCopy()
+			}
+		default:
+			return status.Errorf(codes.Internal, "object (%v) not supported.", reflect.TypeOf(target))
+		}
+
+		if err != nil {
+			klog.Errorf("failed to get %v (%s): %v", reflect.TypeOf(obj), objName, err)
+			return err
+		}
+
+		if err = updateFunc(copyForUpdate); err != nil {
+			return err
+		}
+
+		// if updateFunc doesn't change the object, don't bother making an update request
+		if reflect.DeepEqual(objForUpdate, copyForUpdate) {
+			return nil
+		}
+
+		switch target := copyForUpdate.(type) {
+		case *diskv1beta1.AzVolume:
+			if (updateMode&UpdateCRIStatus) != 0 && !reflect.DeepEqual(objForUpdate.(*diskv1beta1.AzVolume).Status, target.Status) {
+				if _, err = azDiskClient.DiskV1beta1().AzVolumes(target.Namespace).UpdateStatus(ctx, target, metav1.UpdateOptions{}); err != nil {
+					return err
+				}
+			}
+			if (updateMode & UpdateCRI) != 0 {
+				_, err = azDiskClient.DiskV1beta1().AzVolumes(target.Namespace).Update(ctx, target, metav1.UpdateOptions{})
+			}
+		case *diskv1beta1.AzVolumeAttachment:
+			if (updateMode&UpdateCRIStatus) != 0 && !reflect.DeepEqual(objForUpdate.(*diskv1beta1.AzVolumeAttachment).Status, target.Status) {
+				if _, err = azDiskClient.DiskV1beta1().AzVolumeAttachments(target.Namespace).UpdateStatus(ctx, target, metav1.UpdateOptions{}); err != nil {
+					return err
+				}
+			}
+			if (updateMode & UpdateCRI) != 0 {
+				_, err = azDiskClient.DiskV1beta1().AzVolumeAttachments(target.Namespace).Update(ctx, target, metav1.UpdateOptions{})
+			}
+		}
+
+		return err
+	}
+
+	curRetry := 0
+	maxRetry := maxNetRetry
+	isRetriable := func(err error) bool {
+		if k8serrors.IsConflict(err) {
+			return true
+		}
+		if isNetError(err) {
+			defer func() { curRetry++ }()
+			return curRetry < maxRetry
+		}
+		return false
+	}
+
+	err := retry.OnError(
+		wait.Backoff{
+			Duration: consts.CRIUpdateRetryDuration,
+			Factor:   consts.CRIUpdateRetryFactor,
+			Steps:    consts.CRIUpdateRetryStep,
+		},
+		isRetriable,
+		conditionFunc,
+	)
+	if err != nil {
+		klog.Errorf("failed to update %v (%s): %v", reflect.TypeOf(obj), objName, err)
+	}
+
+	// if encountered net error from api server unavailability, exit process
+	ExitOnNetError(err)
+	return err
+}
+
+func isFatalNetError(err error) bool {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	return isNetError(err)
+}
+
+func isNetError(err error) bool {
+	return net.IsConnectionRefused(err) || net.IsConnectionReset(err) || net.IsTimeout(err) || net.IsProbableEOF(err)
+}
+
+func ExitOnNetError(err error) {
+	if isFatalNetError(err) {
+		klog.Fatalf("encountered unrecoverable network error: %v \nexiting process...", err)
+		os.Exit(1)
+	}
 }
 
 // InsertDiskProperties: insert disk properties to map
@@ -687,9 +1037,39 @@ func InsertDiskProperties(disk *compute.Disk, publishConext map[string]string) {
 	}
 }
 
+func checkDiskName(diskName string) bool {
+	length := len(diskName)
+
+	for i, v := range diskName {
+		if !(unicode.IsLetter(v) || unicode.IsDigit(v) || v == '_' || v == '.' || v == '-') ||
+			(i == 0 && !(unicode.IsLetter(v) || unicode.IsDigit(v))) ||
+			(i == length-1 && !(unicode.IsLetter(v) || unicode.IsDigit(v) || v == '_')) {
+			return false
+		}
+	}
+
+	return true
+}
+
 func SleepIfThrottled(err error, sleepSec int) {
-	if strings.Contains(strings.ToLower(err.Error()), strings.ToLower(azureconstants.TooManyRequests)) || strings.Contains(strings.ToLower(err.Error()), azureconstants.ClientThrottled) {
+	if strings.Contains(strings.ToLower(err.Error()), strings.ToLower(consts.TooManyRequests)) || strings.Contains(strings.ToLower(err.Error()), consts.ClientThrottled) {
 		klog.Warningf("sleep %d more seconds, waiting for throttling complete", sleepSec)
 		time.Sleep(time.Duration(sleepSec) * time.Second)
 	}
+}
+
+func AddToMap(mmap map[string]string, key, value string) map[string]string {
+	if mmap == nil {
+		mmap = map[string]string{}
+	}
+	mmap[key] = value
+	return mmap
+}
+
+func MapContains(mmap map[string]string, key string) bool {
+	if mmap != nil {
+		_, ok := mmap[key]
+		return ok
+	}
+	return false
 }

@@ -4,7 +4,7 @@
     "properties": {
         "orchestratorProfile": {
             "orchestratorType": "Kubernetes",
-            "orchestratorRelease": "1.16",
+            "orchestratorRelease": "1.21",
             "kubernetesConfig": {
                 "networkPlugin": "azure",
                 "containerRuntime": "containerd",
@@ -40,7 +40,7 @@
         "agentPoolProfiles": [
             {
                 "name": "agentpool",
-                "count": 2,
+                "count": 4,
                 "vmSize": "Standard_D2s_v3",
                 "availabilityProfile": "VirtualMachineScaleSets",
                 "ultraSSDEnabled": true,

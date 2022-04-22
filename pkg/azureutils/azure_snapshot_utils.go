@@ -26,36 +26,11 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 )
-
-func GenerateCSISnapshot(sourceVolumeID string, snapshot *compute.Snapshot) (*csi.Snapshot, error) {
-	if snapshot == nil || snapshot.SnapshotProperties == nil {
-		return nil, fmt.Errorf("snapshot property is nil")
-	}
-
-	tp := timestamppb.New(snapshot.SnapshotProperties.TimeCreated.ToTime())
-	if tp == nil {
-		return nil, fmt.Errorf("failed to convert timestamp(%v)", snapshot.SnapshotProperties.TimeCreated.ToTime())
-	}
-	ready, _ := isCSISnapshotReady(*snapshot.SnapshotProperties.ProvisioningState)
-
-	if snapshot.SnapshotProperties.DiskSizeGB == nil {
-		return nil, fmt.Errorf("diskSizeGB of snapshot property is nil")
-	}
-
-	if sourceVolumeID == "" {
-		sourceVolumeID = GetSourceVolumeID(snapshot)
-	}
-
-	return &csi.Snapshot{
-		SizeBytes:      volumehelper.GiBToBytes(int64(*snapshot.SnapshotProperties.DiskSizeGB)),
-		SnapshotId:     *snapshot.ID,
-		SourceVolumeId: sourceVolumeID,
-		CreationTime:   tp,
-		ReadyToUse:     ready,
-	}, nil
-}
 
 // There are 4 scenarios for listing snapshots.
 // 1. StartingToken is null, and MaxEntries is null. Return all snapshots from zero.
@@ -112,12 +87,85 @@ func GetEntriesAndNextToken(req *csi.ListSnapshotsRequest, snapshots []compute.S
 	return listSnapshotResp, nil
 }
 
+// The format of snapshot id is /subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/snapshots/snapshot-xxx-xxx.
+func GetSnapshotAndResourceNameFromSnapshotID(snapshotID string) (snapshotName, resourceGroup string, err error) {
+	if snapshotName, err = getSnapshotNameFromURI(snapshotID); err != nil {
+		return "", "", err
+	}
+	if resourceGroup, err = GetResourceGroupFromURI(snapshotID); err != nil {
+		return "", "", err
+	}
+	return snapshotName, resourceGroup, err
+}
+
 func GetSnapshotNameFromURI(snapshotURI string) (string, error) {
-	matches := diskSnapshotPathRE.FindStringSubmatch(snapshotURI)
+	matches := consts.DiskSnapshotPathRE.FindStringSubmatch(snapshotURI)
 	if len(matches) != 2 {
-		return "", fmt.Errorf("could not get snapshot name from %s, correct format: %s", snapshotURI, diskSnapshotPathRE)
+		return "", fmt.Errorf("could not get snapshot name from %s, correct format: %s", snapshotURI, consts.DiskSnapshotPathRE)
 	}
 	return matches[1], nil
+}
+
+func NewAzureDiskSnapshot(sourceVolumeID string, snapshot *compute.Snapshot) (*diskv1beta1.Snapshot, error) {
+	if snapshot == nil || snapshot.SnapshotProperties == nil {
+		return nil, fmt.Errorf("snapshot property is nil")
+	}
+
+	if snapshot.SnapshotProperties.TimeCreated == nil {
+		return nil, fmt.Errorf("timeCreated of snapshot property is nil")
+	}
+
+	creationTime := metav1.NewTime(snapshot.SnapshotProperties.TimeCreated.ToTime())
+
+	if snapshot.SnapshotProperties.ProvisioningState == nil {
+		return nil, fmt.Errorf("provisioningState of snapshot property is nil")
+	}
+
+	ready, _ := isSnapshotReady(*snapshot.SnapshotProperties.ProvisioningState)
+
+	if snapshot.SnapshotProperties.DiskSizeGB == nil {
+		return nil, fmt.Errorf("diskSizeGB of snapshot property is nil")
+	}
+
+	if sourceVolumeID == "" {
+		sourceVolumeID = GetSourceVolumeID(snapshot)
+	}
+
+	return &diskv1beta1.Snapshot{
+		SizeBytes:      volumehelper.GiBToBytes(int64(*snapshot.SnapshotProperties.DiskSizeGB)),
+		SnapshotID:     *snapshot.ID,
+		SourceVolumeID: sourceVolumeID,
+		CreationTime:   creationTime,
+		ReadyToUse:     ready,
+	}, nil
+}
+
+func GenerateCSISnapshot(sourceVolumeID string, snapshot *compute.Snapshot) (*csi.Snapshot, error) {
+	if snapshot == nil || snapshot.SnapshotProperties == nil {
+		return nil, fmt.Errorf("snapshot property is nil")
+	}
+
+	tp := timestamppb.New(snapshot.SnapshotProperties.TimeCreated.ToTime())
+	if tp == nil {
+		return nil, fmt.Errorf("failed to convert timestamp(%v)", snapshot.SnapshotProperties.TimeCreated.ToTime())
+	}
+	ready, _ := isSnapshotReady(*snapshot.SnapshotProperties.ProvisioningState)
+
+	if snapshot.SnapshotProperties.DiskSizeGB == nil {
+		return nil, fmt.Errorf("diskSizeGB of snapshot property is nil")
+	}
+
+	if sourceVolumeID == "" {
+		sourceVolumeID = GetSourceVolumeID(snapshot)
+	}
+
+	return &csi.Snapshot{
+		SizeBytes:      volumehelper.GiBToBytes(int64(*snapshot.SnapshotProperties.DiskSizeGB)),
+		SnapshotId:     *snapshot.ID,
+		SourceVolumeId: sourceVolumeID,
+		CreationTime:   tp,
+		ReadyToUse:     ready,
+	}, nil
 }
 
 func GetSourceVolumeID(snapshot *compute.Snapshot) string {
@@ -130,11 +178,19 @@ func GetSourceVolumeID(snapshot *compute.Snapshot) string {
 	return ""
 }
 
-func isCSISnapshotReady(state string) (bool, error) {
+func isSnapshotReady(state string) (bool, error) {
 	switch strings.ToLower(state) {
 	case "succeeded":
 		return true, nil
 	default:
 		return false, nil
 	}
+}
+
+func getSnapshotNameFromURI(snapshotURI string) (string, error) {
+	matches := consts.DiskSnapshotPathRE.FindStringSubmatch(snapshotURI)
+	if len(matches) != 2 {
+		return "", fmt.Errorf("could not get snapshot name from %s, correct format: %s", snapshotURI, consts.DiskSnapshotPathRE)
+	}
+	return matches[1], nil
 }
