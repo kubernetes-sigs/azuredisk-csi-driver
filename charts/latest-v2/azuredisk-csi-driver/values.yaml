@@ -66,6 +66,7 @@ controller:
   disableAvailabilitySetNodes: false
   provisionerWorkerThreads: 40
   attacherWorkerThreads: 500
+  vmssCacheTTLInSeconds: -1
   logLevel: 5
   tolerations:
     - key: "node-role.kubernetes.io/master"
