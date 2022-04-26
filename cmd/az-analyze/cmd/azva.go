@@ -337,7 +337,7 @@ func timeFmt(t time.Duration) string {
 	t = t % time.Hour
 	minute := t / time.Minute
 	t = t % time.Minute
-	second := int(t)
+	second := int(t / time.Second)
 
 	var buffer bytes.Buffer
 	if day > 0 {
