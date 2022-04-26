@@ -201,7 +201,7 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *diskv1b
 	}
 
 	// override volume operation queue to prevent any other replica operation from being executed
-	release := r.controllerSharedState.overrideAndClearOperationQueue(azVolume.Name)
+	release := r.controllerSharedState.closeOperationQueue(azVolume.Name)
 	defer func() {
 		if release != nil {
 			release()
