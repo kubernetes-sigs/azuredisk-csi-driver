@@ -43,8 +43,11 @@ import (
 	"k8s.io/component-helpers/scheduling/corev1/nodeaffinity"
 	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 	azClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	azurediskInformers "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/watcher"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/workflow"
 
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
@@ -269,10 +272,11 @@ type SharedState struct {
 	cachedClient                  client.Client
 	azClient                      azClientSet.Interface
 	kubeClient                    kubernetes.Interface
+	conditionWatcher              *watcher.ConditionWatcher
 }
 
 func NewSharedState(driverName, objectNamespace, topologyKey string, eventRecorder record.EventRecorder, cachedClient client.Client, azClient azClientSet.Interface, kubeClient kubernetes.Interface) *SharedState {
-	newSharedState := &SharedState{driverName: driverName, objectNamespace: objectNamespace, topologyKey: topologyKey, eventRecorder: eventRecorder, cachedClient: cachedClient, azClient: azClient, kubeClient: kubeClient}
+	newSharedState := &SharedState{driverName: driverName, objectNamespace: objectNamespace, topologyKey: topologyKey, eventRecorder: eventRecorder, cachedClient: cachedClient, azClient: azClient, kubeClient: kubeClient, conditionWatcher: watcher.New(context.Background(), azClient, azurediskInformers.NewSharedInformerFactory(azClient, consts.DefaultInformerResync), objectNamespace)}
 	newSharedState.createReplicaRequestsQueue()
 	return newSharedState
 }
@@ -2177,4 +2181,17 @@ func (c *SharedState) getNodesForReplica(ctx context.Context, volumeName string,
 	}
 
 	return filtered, nil
+}
+
+func verifyObjectDeleted(obj interface{}, objectDeleted bool) (bool, error) {
+	if obj == nil || objectDeleted {
+		return true, nil
+	}
+
+	// otherwise, the volume detachment has either failed with error or pending
+	azVolumeAttachmentInstance := obj.(*diskv1beta1.AzVolumeAttachment)
+	if azVolumeAttachmentInstance.Status.Error != nil {
+		return false, util.ErrorFromAzError(azVolumeAttachmentInstance.Status.Error)
+	}
+	return false, nil
 }

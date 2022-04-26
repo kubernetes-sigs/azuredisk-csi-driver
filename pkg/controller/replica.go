@@ -29,6 +29,7 @@ import (
 	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/watcher"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/workflow"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -104,16 +105,9 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 					goCtx := context.Background()
 
 					// wait for replica AzVolumeAttachment deletion
-					conditionFunc := func() (bool, error) {
-						var tmp diskv1beta1.AzVolumeAttachment
-						err := r.controllerSharedState.cachedClient.Get(goCtx, request.NamespacedName, &tmp)
-						if errors.IsNotFound(err) {
-							return true, nil
-						}
-
-						return false, err
-					}
-					_ = wait.PollImmediateInfinite(deletionPollingInterval, conditionFunc)
+					waiter, _ := r.controllerSharedState.conditionWatcher.NewConditionWaiter(goCtx, watcher.AzVolumeAttachmentType, azVolumeAttachment.Name, verifyObjectDeleted)
+					defer waiter.Close()
+					_, _ = waiter.Wait(goCtx)
 
 					// add replica management operation to the queue
 					r.triggerManageReplica(goCtx, azVolumeAttachment.Spec.VolumeName)

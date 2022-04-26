@@ -34,6 +34,7 @@ import (
 	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	util "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/watcher"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/workflow"
 
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
@@ -226,21 +227,9 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *diskv1b
 		}
 	}()
 
-	// Delete all AzVolumeAttachment objects bound to the deleted AzVolume
-	var attachments []diskv1beta1.AzVolumeAttachment
-	attachments, err = r.controllerSharedState.cleanUpAzVolumeAttachmentByVolume(ctx, azVolume.Name, azvolume, all, mode)
-	if err != nil {
-		return err
-	}
-
-	if len(attachments) > 0 {
-		err = status.Errorf(codes.Aborted, "volume deletion requeued until attached azVolumeAttachments are entirely detached...")
-		return err
-	}
-
 	// only try deleting underlying volume 1) if volume creation was successful and 2) volumeDeleteRequestAnnotation is present
 	// if the annotation is not present, only delete the CRI and not the underlying volume
-	if isCreated(azVolume) && volumeDeleteRequested {
+	if isCreated(azVolume) && mode == detachAndDeleteCRI {
 		// requeue if AzVolume's state is being updated by a different worker
 		defer r.stateLock.Delete(azVolume.Name)
 		if _, ok := r.stateLock.LoadOrStore(azVolume.Name, nil); ok {
@@ -256,7 +245,10 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *diskv1b
 			return err
 		}
 
-		w.Logger().Info("Deleting Volume...")
+		if volumeDeleteRequested {
+			w.Logger().Info("Deleting Volume...")
+		}
+
 		waitCh := make(chan goSignal)
 		//nolint:contextcheck // call is asynchronous; context is not inherited by design
 		go func() {
@@ -266,29 +258,101 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *diskv1b
 			waitCh <- goSignal{}
 
 			goCtx := goWorkflow.SaveToContext(context.Background())
-			cloudCtx, cloudCancel := context.WithTimeout(goCtx, cloudTimeout)
-			defer cloudCancel()
+
+			deleteCtx, deleteCancel := context.WithTimeout(goCtx, cloudTimeout)
+			defer deleteCancel()
+
+			reportError := func(obj interface{}, err error) error {
+				azv := obj.(*diskv1beta1.AzVolume)
+				_ = r.updateError(azv, err)
+				_, derr := r.updateState(azv, diskv1beta1.VolumeDeletionFailed, forceUpdate)
+				return derr
+			}
 
 			var updateFunc func(interface{}) error
+			var err error
 			updateMode := azureutils.UpdateCRIStatus
-			deleteErr = r.deleteVolume(cloudCtx, azVolume)
-			if deleteErr != nil {
+
+			// Delete all AzVolumeAttachment objects bound to the deleted AzVolume
+			var attachments []diskv1beta1.AzVolumeAttachment
+			attachments, err = r.controllerSharedState.cleanUpAzVolumeAttachmentByVolume(deleteCtx, azVolume.Name, azvolume, all, mode)
+			if err != nil {
 				updateFunc = func(obj interface{}) error {
-					azv := obj.(*diskv1beta1.AzVolume)
-					azv = r.updateError(azv, deleteErr)
-					_, derr := r.updateState(azv, diskv1beta1.VolumeDeletionFailed, forceUpdate)
-					return derr
+					return reportError(obj, err)
 				}
 			} else {
-				updateFunc = func(obj interface{}) error {
-					azv := obj.(*diskv1beta1.AzVolume)
-					azv = r.deleteFinalizer(azv, map[string]bool{consts.AzVolumeFinalizer: true})
-					_, derr := r.updateState(azv, diskv1beta1.VolumeDeleted, forceUpdate)
-					return derr
-				}
-				updateMode = azureutils.UpdateAll
+				var wg sync.WaitGroup
+				errors := make([]error, len(attachments))
+				numErrors := uint32(0)
 
+				// start waiting for replica AzVolumeAttachment CRIs to be deleted
+				for i, attachment := range attachments {
+					waiter, err := r.controllerSharedState.conditionWatcher.NewConditionWaiter(deleteCtx, watcher.AzVolumeAttachmentType, attachment.Name, verifyObjectDeleted)
+					if err != nil {
+						updateFunc = func(obj interface{}) error {
+							return reportError(obj, err)
+						}
+						break
+					}
+
+					// wait async and report error to go channel
+					wg.Add(1)
+					go func(ctx context.Context, waiter *watcher.ConditionWaiter, i int) {
+						defer waiter.Close()
+						defer wg.Done()
+						_, err := waiter.Wait(ctx)
+						if err != nil {
+							errors[i] = err
+							atomic.AddUint32(&numErrors, 1)
+						}
+					}(deleteCtx, waiter, i)
+				}
+
+				wg.Wait()
+
+				// if errors have been found with the wait calls, format the error msg and report via CRI
+				if numErrors > 0 {
+					var errMsgs []string
+					for i, derr := range errors {
+						if derr != nil {
+							errMsgs = append(errMsgs, fmt.Sprintf("%s: %v", attachments[i].Name, derr))
+						}
+					}
+					err = status.Errorf(codes.Internal, strings.Join(errMsgs, ", "))
+					updateFunc = func(obj interface{}) error {
+						return reportError(obj, err)
+					}
+				}
 			}
+
+			if err == nil {
+				if volumeDeleteRequested {
+					cloudCtx, cloudCancel := context.WithTimeout(goCtx, cloudTimeout)
+					defer cloudCancel()
+
+					deleteErr = r.deleteVolume(cloudCtx, azVolume)
+				}
+				if deleteErr != nil {
+					updateFunc = func(obj interface{}) error {
+						azv := obj.(*diskv1beta1.AzVolume)
+						azv = r.updateError(azv, deleteErr)
+						_, derr := r.updateState(azv, diskv1beta1.VolumeDeletionFailed, forceUpdate)
+						return derr
+					}
+				} else {
+					updateMode = azureutils.UpdateAll
+					updateFunc = func(obj interface{}) error {
+						azv := obj.(*diskv1beta1.AzVolume)
+						azv = r.deleteFinalizer(azv, map[string]bool{consts.AzVolumeFinalizer: true})
+						var derr error
+						if volumeDeleteRequested {
+							_, derr = r.updateState(azv, diskv1beta1.VolumeDeleted, forceUpdate)
+						}
+						return derr
+					}
+				}
+			}
+
 			// UpdateCRIWithRetry should be called on a context w/o timeout when called in a separate goroutine as it is not going to be retriggered and leave the CRI in unrecoverable transient state instead.
 			_ = azureutils.UpdateCRIWithRetry(goCtx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolume, updateFunc, consts.ForcedUpdateMaxNetRetry, updateMode)
 		}()

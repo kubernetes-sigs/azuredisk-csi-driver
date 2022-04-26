@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package provisioner
+package watcher
 
 import (
 	"context"
@@ -35,12 +35,12 @@ import (
 	azurediskInformers "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions"
 )
 
-type objectType string
+type ObjectType string
 
 const (
-	azVolumeAttachmentType objectType = "azvolumeattachments"
-	azVolumeType           objectType = "azvolume"
-	azDriverNodeType       objectType = "azdrivernode"
+	AzVolumeAttachmentType ObjectType = "azvolumeattachments"
+	AzVolumeType           ObjectType = "azvolume"
+	AzDriverNodeType       ObjectType = "azdrivernode"
 )
 
 type eventType int
@@ -61,20 +61,21 @@ type waitEntry struct {
 	waitChan      chan waitResult
 }
 
-type conditionWatcher struct {
+type ConditionWatcher struct {
 	informerFactory azurediskInformers.SharedInformerFactory
 	waitMap         sync.Map // maps namespaced name to waitEntry
 	namespace       string
 }
 
-func newConditionWatcher(ctx context.Context, azDiskClient azDiskClientSet.Interface, informerFactory azurediskInformers.SharedInformerFactory, namespace string) *conditionWatcher {
+func New(ctx context.Context, azDiskClient azDiskClientSet.Interface, informerFactory azurediskInformers.SharedInformerFactory, namespace string) *ConditionWatcher {
 	azVolumeAttachmentInformer := informerFactory.Disk().V1beta1().AzVolumeAttachments().Informer()
 	azVolumeInformer := informerFactory.Disk().V1beta1().AzVolumes().Informer()
 	azDriverNodeInformer := informerFactory.Disk().V1beta1().AzDriverNodes().Informer()
 
-	c := conditionWatcher{
+	c := ConditionWatcher{
 		informerFactory: informerFactory,
 		waitMap:         sync.Map{},
+		namespace:       namespace,
 	}
 
 	azVolumeAttachmentInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -104,7 +105,11 @@ func newConditionWatcher(ctx context.Context, azDiskClient azDiskClientSet.Inter
 	return &c
 }
 
-func (c *conditionWatcher) newConditionWaiter(ctx context.Context, objType objectType, objName string, conditionFunc func(obj interface{}, expectDelete bool) (bool, error)) (*conditionWaiter, error) {
+func (c *ConditionWatcher) InformerFactory() azurediskInformers.SharedInformerFactory {
+	return c.informerFactory
+}
+
+func (c *ConditionWatcher) NewConditionWaiter(ctx context.Context, objType ObjectType, objName string, conditionFunc func(obj interface{}, expectDelete bool) (bool, error)) (*ConditionWaiter, error) {
 	klog.V(5).Infof("Adding a condition function for %s (%s)", objType, objName)
 	entry := waitEntry{
 		conditionFunc: conditionFunc,
@@ -118,7 +123,7 @@ func (c *conditionWatcher) newConditionWaiter(ctx context.Context, objType objec
 		return nil, err
 	}
 
-	return &conditionWaiter{
+	return &ConditionWaiter{
 		objType: objType,
 		objName: objName,
 		entry:   &entry,
@@ -126,33 +131,33 @@ func (c *conditionWatcher) newConditionWaiter(ctx context.Context, objType objec
 	}, nil
 }
 
-func (c *conditionWatcher) onCreate(obj interface{}) {
+func (c *ConditionWatcher) onCreate(obj interface{}) {
 	c.handleEvent(obj, create)
 }
 
-func (c *conditionWatcher) onUpdate(_, newObj interface{}) {
+func (c *ConditionWatcher) onUpdate(_, newObj interface{}) {
 	c.handleEvent(newObj, update)
 }
 
-func (c *conditionWatcher) onDelete(obj interface{}) {
+func (c *ConditionWatcher) onDelete(obj interface{}) {
 	c.handleEvent(obj, delete)
 }
 
-func (c *conditionWatcher) handleEvent(obj interface{}, eventType eventType) {
+func (c *ConditionWatcher) handleEvent(obj interface{}, eventType eventType) {
 	metaObj, err := meta.Accessor(obj)
 	if err != nil {
 		// this line should not be reached
 		klog.Errorf("object (%v) has not implemented meta object interface.")
 	}
 
-	var objType objectType
+	var objType ObjectType
 	switch obj.(type) {
 	case *diskv1beta1.AzVolume:
-		objType = azVolumeType
+		objType = AzVolumeType
 	case *diskv1beta1.AzVolumeAttachment:
-		objType = azVolumeAttachmentType
+		objType = AzVolumeAttachmentType
 	case *diskv1beta1.AzDriverNode:
-		objType = azDriverNodeType
+		objType = AzDriverNodeType
 	default:
 		// unknown object type
 		klog.Errorf("unsupported object type %v", reflect.TypeOf(obj))
@@ -193,6 +198,6 @@ func (c *conditionWatcher) handleEvent(obj interface{}, eventType eventType) {
 	}
 }
 
-func getTypedName(objType objectType, objName string) string {
+func getTypedName(objType ObjectType, objName string) string {
 	return fmt.Sprintf("%s/%s", string(objType), objName)
 }

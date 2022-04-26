@@ -20,12 +20,14 @@ import (
 	"context"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/selection"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	fakev1 "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/klog/v2/klogr"
@@ -35,6 +37,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller/mockclient"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller/mockvolumeprovisioner"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
@@ -218,7 +221,7 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 			},
 		},
 		{
-			description: "[Failure] Should delete volume attachments and requeue when AzVolume is marked for deletion.",
+			description: "[Success] Should delete replica volume attachments and delete AzVolume respectively",
 			request:     testAzVolume0Request,
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAzVolume {
 				azVolume := testAzVolume0.DeepCopy()
@@ -239,7 +242,6 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 					mockCtl,
 					testNamespace,
 					azVolume,
-					&testPrimaryAzVolumeAttachment0,
 					&testReplicaAzVolumeAttachment)
 
 				mockClientsAndVolumeProvisioner(controller)
@@ -248,14 +250,23 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 			},
 			verifyFunc: func(t *testing.T, controller *ReconcileAzVolume, result reconcile.Result, err error) {
 				require.NoError(t, err)
-				require.Greater(t, result.RequeueAfter, time.Duration(0))
-
-				azVolume, err := controller.controllerSharedState.azClient.DiskV1beta1().AzVolumes(testNamespace).Get(context.TODO(), testPersistentVolume0Name, metav1.GetOptions{})
+				req, err := azureutils.CreateLabelRequirements(consts.VolumeNameLabel, selection.Equals, testPersistentVolume0Name)
 				require.NoError(t, err)
-				require.Equal(t, diskv1beta1.VolumeCreated, azVolume.Status.State)
-
-				azVolumeAttachments, _ := controller.controllerSharedState.azClient.DiskV1beta1().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{})
-				require.Len(t, azVolumeAttachments.Items, 0)
+				labelSelector := labels.NewSelector().Add(*req)
+				checkAzVolumeAttachmentDeletion := func() (bool, error) {
+					var attachments diskv1beta1.AzVolumeAttachmentList
+					err := controller.controllerSharedState.cachedClient.List(context.Background(), &attachments, &client.ListOptions{LabelSelector: labelSelector})
+					return len(attachments.Items) == 0, err
+				}
+				err = wait.PollImmediate(verifyCRIInterval, verifyCRITimeout, checkAzVolumeAttachmentDeletion)
+				require.NoError(t, err)
+				checkAzVolumeDeletion := func() (bool, error) {
+					var azVolume diskv1beta1.AzVolume
+					err := controller.controllerSharedState.cachedClient.Get(context.Background(), types.NamespacedName{Namespace: controller.controllerSharedState.objectNamespace, Name: testPersistentVolume0Name}, &azVolume)
+					return azVolume.Status.State == diskv1beta1.VolumeDeleted, err
+				}
+				err = wait.PollImmediate(verifyCRIInterval, verifyCRITimeout, checkAzVolumeDeletion)
+				require.NoError(t, err)
 			},
 		},
 	}
