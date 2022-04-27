@@ -173,9 +173,9 @@ func TestAzVolume(t *testing.T) {
 			},
 			volumeCapabilities: []diskv1beta1.VolumeCapability{},
 			parameters: map[string]string{
-				"kind":      "managed",
-				"maxShares": "1",
-				"skuName":   "StandardSSD_LRS",
+				"kind":              "managed",
+				"maxShares":         "1",
+				consts.SkuNameField: "StandardSSD_LRS",
 			},
 			secrets:             map[string]string{},
 			volumeContentSource: nil,
@@ -218,9 +218,9 @@ func TestAzVolume(t *testing.T) {
 			},
 			volumeCapabilities: []diskv1beta1.VolumeCapability{},
 			parameters: map[string]string{
-				"kind":      "managed",
-				"maxShares": "2",
-				"skuName":   "Premium_LRS",
+				"kind":              "managed",
+				"maxShares":         "2",
+				consts.SkuNameField: "Premium_LRS",
 			},
 			secrets:             map[string]string{},
 			volumeContentSource: nil,
@@ -417,7 +417,7 @@ func TestAzVolumeAttachment(t *testing.T) {
 			volumeContext:    nil,
 			setUpFunc: func(t *testing.T, volumeName string) {
 				// create volume
-				_, err := crdProvisioner.CreateVolume(context.Background(), volumeName, &diskv1beta1.CapacityRange{RequiredBytes: 274877906944}, []diskv1beta1.VolumeCapability{}, map[string]string{"kind": "managed", "maxShares": "1", "skuName": "StandardSSD_LRS"}, nil, nil, nil)
+				_, err := crdProvisioner.CreateVolume(context.Background(), volumeName, &diskv1beta1.CapacityRange{RequiredBytes: 274877906944}, []diskv1beta1.VolumeCapability{}, map[string]string{"kind": "managed", "maxShares": "1", consts.SkuNameField: "StandardSSD_LRS"}, nil, nil, nil)
 				require.NoError(t, err)
 			},
 			testFunc: func(t *testing.T, volumeName, nodeName string) {
@@ -463,7 +463,7 @@ func TestAzVolumeAttachment(t *testing.T) {
 			volumeContext:    nil,
 			setUpFunc: func(t *testing.T, volumeName string) {
 				// create volume
-				_, err := crdProvisioner.CreateVolume(context.Background(), volumeName, &diskv1beta1.CapacityRange{RequiredBytes: 274877906944}, []diskv1beta1.VolumeCapability{}, map[string]string{"kind": "managed", "maxShares": "2", "skuName": "Premium_LRS"}, nil, nil, nil)
+				_, err := crdProvisioner.CreateVolume(context.Background(), volumeName, &diskv1beta1.CapacityRange{RequiredBytes: 274877906944}, []diskv1beta1.VolumeCapability{}, map[string]string{"kind": "managed", "maxShares": "2", consts.SkuNameField: "Premium_LRS"}, nil, nil, nil)
 				require.NoError(t, err)
 			},
 			testFunc: func(t *testing.T, volumeName, nodeName string) {
@@ -485,7 +485,7 @@ func TestAzVolumeAttachment(t *testing.T) {
 			volumeContext:    nil,
 			setUpFunc: func(t *testing.T, volumeName string) {
 				// create volume
-				_, err := crdProvisioner.CreateVolume(context.Background(), volumeName, &diskv1beta1.CapacityRange{RequiredBytes: 274877906944}, []diskv1beta1.VolumeCapability{}, map[string]string{"kind": "managed", "maxShares": "2", "skuName": "Premium_LRS"}, nil, nil, nil)
+				_, err := crdProvisioner.CreateVolume(context.Background(), volumeName, &diskv1beta1.CapacityRange{RequiredBytes: 274877906944}, []diskv1beta1.VolumeCapability{}, map[string]string{"kind": "managed", "maxShares": "2", consts.SkuNameField: "Premium_LRS"}, nil, nil, nil)
 				require.NoError(t, err)
 			},
 			testFunc: func(t *testing.T, volumeName, nodeName string) {
@@ -581,7 +581,7 @@ func TestAzVolumeAttachment(t *testing.T) {
 			volumeContext:    nil,
 			setUpFunc: func(t *testing.T, volumeName string) {
 				// create volume
-				_, err := crdProvisioner.CreateVolume(context.Background(), volumeName, &diskv1beta1.CapacityRange{RequiredBytes: 1099511627776}, []diskv1beta1.VolumeCapability{}, map[string]string{"kind": "managed", "maxShares": "3", "skuName": "Premium_LRS"}, nil, nil, nil)
+				_, err := crdProvisioner.CreateVolume(context.Background(), volumeName, &diskv1beta1.CapacityRange{RequiredBytes: 1099511627776}, []diskv1beta1.VolumeCapability{}, map[string]string{"kind": "managed", "maxShares": "3", consts.SkuNameField: "Premium_LRS"}, nil, nil, nil)
 				require.NoError(t, err)
 			},
 			testFunc: func(t *testing.T, volumeName, nodeName string) {
@@ -641,7 +641,7 @@ func TestAzVolumeAttachment(t *testing.T) {
 			volumeContext:    nil,
 			setUpFunc: func(t *testing.T, volumeName string) {
 				// create volume
-				_, err := crdProvisioner.CreateVolume(context.Background(), volumeName, &diskv1beta1.CapacityRange{RequiredBytes: 274877906944}, []diskv1beta1.VolumeCapability{}, map[string]string{"kind": "managed", "maxShares": "2", "skuName": "Premium_LRS"}, nil, nil, nil)
+				_, err := crdProvisioner.CreateVolume(context.Background(), volumeName, &diskv1beta1.CapacityRange{RequiredBytes: 274877906944}, []diskv1beta1.VolumeCapability{}, map[string]string{"kind": "managed", "maxShares": "2", consts.SkuNameField: "Premium_LRS"}, nil, nil, nil)
 				require.NoError(t, err)
 			},
 			testFunc: func(t *testing.T, volumeName, nodeName string) {
@@ -692,7 +692,7 @@ func TestAzVolumeAttachment(t *testing.T) {
 			volumeContext:    nil,
 			setUpFunc: func(t *testing.T, volumeName string) {
 				// create volume
-				_, err := crdProvisioner.CreateVolume(context.Background(), volumeName, &diskv1beta1.CapacityRange{RequiredBytes: 274877906944}, []diskv1beta1.VolumeCapability{}, map[string]string{"kind": "managed", "maxShares": "2", "skuName": "Premium_LRS"}, nil, nil, nil)
+				_, err := crdProvisioner.CreateVolume(context.Background(), volumeName, &diskv1beta1.CapacityRange{RequiredBytes: 274877906944}, []diskv1beta1.VolumeCapability{}, map[string]string{"kind": "managed", "maxShares": "2", consts.SkuNameField: "Premium_LRS"}, nil, nil, nil)
 				require.NoError(t, err)
 			},
 			testFunc: func(t *testing.T, volumeName, nodeName string) {

@@ -59,10 +59,20 @@ func (d *azureDiskDriver) GetDynamicProvisionStorageClass(parameters map[string]
 	provisioner := d.driverName
 	generateName := fmt.Sprintf("%s-%s-dynamic-sc-", namespace, normalizeProvisioner(provisioner))
 	var allowedTopologies []v1.TopologySelectorTerm
-	if skuName, ok := parameters[consts.SkuNameField]; ok && strings.HasSuffix(skuName, "_ZRS") {
-		mode := storagev1.VolumeBindingImmediate
-		bindingMode = &mode
-	} else {
+	isZRS := false
+	for key, value := range parameters {
+		if strings.EqualFold(key, consts.SkuNameField) {
+			if strings.HasSuffix(value, "_ZRS") {
+				mode := storagev1.VolumeBindingImmediate
+				bindingMode = &mode
+				isZRS = true
+			} else if strings.EqualFold(os.Getenv("AZURE_CLOUD_NAME"), "AZURESTACKCLOUD") && !strings.EqualFold(value, "Standard_LRS") && !strings.EqualFold(value, "Premium_LRS") {
+				parameters[consts.SkuNameField] = "Standard_LRS"
+			}
+			break
+		}
+	}
+	if !isZRS {
 		if len(allowedTopologyValues) > 0 {
 			allowedTopologies = []v1.TopologySelectorTerm{
 				{
@@ -74,12 +84,6 @@ func (d *azureDiskDriver) GetDynamicProvisionStorageClass(parameters map[string]
 					},
 				},
 			}
-		}
-	}
-
-	if strings.EqualFold(os.Getenv("AZURE_CLOUD_NAME"), "AZURESTACKCLOUD") {
-		if sku, ok := parameters["skuName"]; ok && !strings.EqualFold(sku, "Standard_LRS") && !strings.EqualFold(sku, "Premium_LRS") {
-			parameters["skuName"] = "Standard_LRS"
 		}
 	}
 
@@ -130,6 +134,6 @@ func (d *azureDiskDriver) GetPersistentVolume(volumeID, fsType, size string, vol
 
 func GetParameters() map[string]string {
 	return map[string]string{
-		"skuName": "StandardSSD_LRS",
+		consts.SkuNameField: "StandardSSD_LRS",
 	}
 }

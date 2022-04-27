@@ -101,7 +101,7 @@ func schedulerExtenderTests(isMultiZone bool) {
 		test := testsuites.AzDiskSchedulerExtenderPodSchedulingWithPVTest{
 			CSIDriver:              testDriver,
 			Pod:                    pod,
-			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
+			StorageClassParameters: map[string]string{consts.SkuNameField: "StandardSSD_LRS"},
 		}
 		test.Run(cs, ns, schedulerName)
 	})
@@ -137,7 +137,7 @@ func schedulerExtenderTests(isMultiZone bool) {
 		test := testsuites.AzDiskSchedulerExtenderPodSchedulingOnFailover{
 			CSIDriver:              testDriver,
 			Pod:                    pod,
-			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
+			StorageClassParameters: map[string]string{consts.SkuNameField: "StandardSSD_LRS"},
 		}
 		test.Run(cs, ns, schedulerName)
 	})
@@ -205,7 +205,7 @@ func schedulerExtenderTests(isMultiZone bool) {
 			CSIDriver:              testDriver,
 			Pod:                    pod,
 			Replicas:               1,
-			StorageClassParameters: map[string]string{"skuName": skuName},
+			StorageClassParameters: map[string]string{consts.SkuNameField: skuName},
 			AzDiskClient:           azDiskClient,
 		}
 		test.Run(cs, ns, schedulerName)
@@ -245,7 +245,7 @@ func schedulerExtenderTests(isMultiZone bool) {
 			CSIDriver:              testDriver,
 			Pod:                    pod,
 			Replicas:               1,
-			StorageClassParameters: map[string]string{"skuName": skuName, "maxShares": "2", "cachingmode": "None"},
+			StorageClassParameters: map[string]string{consts.SkuNameField: skuName, "maxShares": "2", "cachingmode": "None"},
 			AzDiskClient:           azDiskClient,
 		}
 		test.Run(cs, ns, schedulerName)

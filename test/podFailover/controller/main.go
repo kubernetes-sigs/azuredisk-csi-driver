@@ -41,6 +41,7 @@ import (
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 	deploymentutil "k8s.io/kubernetes/pkg/controller/deployment/util"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
 const (
@@ -218,7 +219,7 @@ func createStorageClass(ctx context.Context, clientset *kubernetes.Clientset, ma
 			GenerateName: "pod-failover-sc-",
 		},
 		Provisioner:          "disk.csi.azure.com",
-		Parameters:           map[string]string{"skuname": "Premium_LRS", "maxShares": strconv.Itoa(maxShares), "cachingMode": "None"},
+		Parameters:           map[string]string{consts.SkuNameField: "Premium_LRS", "maxShares": strconv.Itoa(maxShares), "cachingMode": "None"},
 		ReclaimPolicy:        &reclaimPolicy,
 		AllowVolumeExpansion: &allowVolumeExpansion,
 	}
