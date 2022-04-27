@@ -29,10 +29,10 @@ var cfgFile string
 var rootCmd = &cobra.Command{
 	Use:   "az-analyze",
 	Short: "Azure Disk CSI Driver Debugging and Analysis Tools",
-	Long: `Azure Disk CSI Driver Debugging and Analysis Tools to facilitate analysis and
-debugging of the Azure Disk CSI Driver in Kubernetes cluster. Includes:
-Storage Analysis tool: a command-line tool that enables exploration of Azure Disk CSI Driver custom resources;
-Log Analysis tool: a command-line tool that enable gathering of Azure Disk CSI Driver logs for specific operations.`,
+	Long: `Azure Disk CSI Driver Debugging and Analysis Tools to facilitate analysis and debugging of the Azure Disk CSI Driver
+in Kubernetes cluster, including:
+  Storage Analysis tool: a command-line tool that enables exploration of Azure Disk CSI Driver custom resources;
+  Log Analysis tool:     a command-line tool that enable gathering of Azure Disk CSI Driver logs for specific operations.`,
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
 	//	Run: func(cmd *cobra.Command, args []string) { },
@@ -54,7 +54,7 @@ func init() {
 	// Cobra supports persistent flags, which, if defined here,
 	// will be global for your application.
 
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is ./.az-analyze.yaml)")
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is ./az-analyze.yaml)")
 
 	// Cobra also supports local flags, which will only run
 	// when this action is called directly.
