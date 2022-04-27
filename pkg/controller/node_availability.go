@@ -20,9 +20,10 @@ import (
 	"context"
 	"sync/atomic"
 
+	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/klog/v2"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -33,6 +34,7 @@ import (
 )
 
 type ReconcileNodeAvailability struct {
+	logger                logr.Logger
 	controllerSharedState *SharedState
 }
 
@@ -50,10 +52,13 @@ func (r *ReconcileNodeAvailability) Reconcile(ctx context.Context, request recon
 		return reconcile.Result{}, nil
 	}
 
+	logger := r.logger.WithValues(consts.NodeNameLabel, request.Name)
+
 	if err == nil {
 		if !n.Spec.Unschedulable {
 			//Node is schedulable, proceed to attempt creation of replica attachment
 			if atomic.SwapInt32(&r.controllerSharedState.processingReplicaRequestQueue, 1) == 0 {
+				logger.Info("Node is now available. Will requeue failed replica creation requests.")
 				err := r.controllerSharedState.tryCreateFailedReplicas(ctx, nodeavailability)
 				atomic.StoreInt32(&r.controllerSharedState.processingReplicaRequestQueue, 0)
 				if err != nil {
@@ -70,6 +75,7 @@ func NewNodeAvailabilityController(mgr manager.Manager, controllerSharedState *S
 	logger := mgr.GetLogger().WithValues("controller", "nodeavailability")
 	reconciler := ReconcileNodeAvailability{
 		controllerSharedState: controllerSharedState,
+		logger:                logger,
 	}
 
 	c, err := controller.New("nodeavailability-controller", mgr, controller.Options{
@@ -79,7 +85,7 @@ func NewNodeAvailabilityController(mgr manager.Manager, controllerSharedState *S
 	})
 
 	if err != nil {
-		klog.Errorf("Failed to create node availability controller. Error: %v", err)
+		logger.Error(err, "failed to create controller")
 		return nil, err
 	}
 
@@ -124,13 +130,13 @@ func NewNodeAvailabilityController(mgr manager.Manager, controllerSharedState *S
 		},
 	}
 
-	klog.V(2).Info("starting to watch cluster nodes (nodeavailability controller).")
+	logger.V(2).Info("Starting to watch Node")
 
 	err = c.Watch(&source.Kind{Type: &corev1.Node{}}, &handler.EnqueueRequestForObject{}, p)
 	if err != nil {
-		klog.Errorf("Failed to watch nodes. Error: %v", err)
+		logger.Error(err, "failed to initialize watch for Node")
 		return nil, err
 	}
-	klog.V(2).Info("Controller set-up successful.")
+	logger.V(2).Info("Controller set-up successful.")
 	return &reconciler, err
 }

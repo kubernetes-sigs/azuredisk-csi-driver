@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	fakev1 "k8s.io/client-go/kubernetes/fake"
+	"k8s.io/klog/v2/klogr"
 	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 	diskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
@@ -44,6 +45,7 @@ func NewTestAttachDetachController(controller *gomock.Controller, namespace stri
 		stateLock:             &sync.Map{},
 		retryInfo:             newRetryInfo(),
 		controllerSharedState: controllerSharedState,
+		logger:                klogr.New(),
 	}
 }
 

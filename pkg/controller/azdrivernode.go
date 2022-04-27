@@ -19,10 +19,10 @@ package controller
 import (
 	"context"
 
+	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/klog/v2"
 
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -35,6 +35,7 @@ import (
 
 // ReconcileAzDriverNode reconciles AzDriverNode
 type ReconcileAzDriverNode struct {
+	logger                logr.Logger
 	controllerSharedState *SharedState
 }
 
@@ -46,39 +47,31 @@ func (r *ReconcileAzDriverNode) Reconcile(ctx context.Context, request reconcile
 		return reconcile.Result{Requeue: true}, nil
 	}
 
-	klog.V(2).Info("Checking to see if node (%v) exists.", request.NamespacedName)
 	n := &corev1.Node{}
 	err := r.controllerSharedState.cachedClient.Get(ctx, request.NamespacedName, n)
 
 	// If the node still exists don't delete the AzDriverNode
 	if err == nil {
-		klog.Errorf("Node still exists. Skip deleting azDriverNode for Node: (%v)", n)
 		return reconcile.Result{}, nil
 	}
 
 	// If the node is not found, delete the corresponding AzDriverNode
 	if errors.IsNotFound(err) {
-
-		klog.V(2).Info("Deleting AzDriverNode (%s).", request.Name)
-
 		// Delete the azDriverNode, since corresponding node is deleted
 		azN := r.controllerSharedState.azClient.DiskV1beta1().AzDriverNodes(r.controllerSharedState.objectNamespace)
 		err = azN.Delete(ctx, request.Name, metav1.DeleteOptions{})
 
 		// If there is an issue in deleting the AzDriverNode, requeue
 		if err != nil && !errors.IsNotFound(err) {
-			klog.Errorf("Will retry. Failed to delete AzDriverNode: (%s). Error: (%v)", request.Name, err)
-			return reconcile.Result{Requeue: true}, nil
+			return reconcile.Result{Requeue: true}, err
 		}
 
 		// Delete all volumeAttachments attached to this node, if failed, requeue
 		if _, err = r.controllerSharedState.cleanUpAzVolumeAttachmentByNode(ctx, request.Name, azdrivernode, all, detachAndDeleteCRI); err != nil {
-			return reconcile.Result{Requeue: true}, nil
+			return reconcile.Result{Requeue: true}, err
 		}
 		return reconcile.Result{}, nil
 	}
-
-	klog.Errorf("Failed to query node. Error: %v. Will retry...", err)
 
 	return reconcile.Result{Requeue: true}, err
 }
@@ -88,7 +81,9 @@ func NewAzDriverNodeController(mgr manager.Manager, controllerSharedState *Share
 	logger := mgr.GetLogger().WithValues("controller", "azdrivernode")
 	reconciler := ReconcileAzDriverNode{
 		controllerSharedState: controllerSharedState,
+		logger:                logger,
 	}
+
 	c, err := controller.New("azdrivernode-controller", mgr, controller.Options{
 		MaxConcurrentReconciles: 10,
 		Reconciler:              &reconciler,
@@ -96,7 +91,7 @@ func NewAzDriverNodeController(mgr manager.Manager, controllerSharedState *Share
 	})
 
 	if err != nil {
-		klog.Errorf("Failed to create azdrivernode controller. Error: %v", err)
+		logger.Error(err, "failed to create controller")
 		return nil, err
 	}
 
@@ -116,14 +111,14 @@ func NewAzDriverNodeController(mgr manager.Manager, controllerSharedState *Share
 		},
 	}
 
-	klog.V(2).Info("Starting to watch cluster nodes.")
+	logger.V(2).Info("Starting to watch cluster nodes.")
 	// Watch the nodes
 	err = c.Watch(&source.Kind{Type: &corev1.Node{}}, &handler.EnqueueRequestForObject{}, p)
 	if err != nil {
-		klog.Errorf("Failed to watch nodes. Error: %v", err)
+		logger.Error(err, "failed to initialize watch for Node")
 		return nil, err
 	}
-	klog.V(2).Info("Controller set-up successful.")
+	logger.V(2).Info("Controller set-up successful.")
 
 	return &reconciler, err
 }
