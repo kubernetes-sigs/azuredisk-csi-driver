@@ -54,7 +54,7 @@ spec:
             - "-Force"
       containers:
         - name: liveness-probe
-          image: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe:v2.5.0
+          image: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe:v2.6.0
           command:
             - "livenessprobe.exe"
           args:
@@ -66,7 +66,7 @@ spec:
             - name: CSI_ENDPOINT
               value: unix://C:\\var\\lib\\kubelet\\plugins\\disk.csi.azure.com\\csi.sock
         - name: node-driver-registrar
-          image: mcr.microsoft.com/oss/kubernetes-csi/csi-node-driver-registrar:v2.4.0
+          image: mcr.microsoft.com/oss/kubernetes-csi/csi-node-driver-registrar:v2.5.0
           command:
             - "csi-node-driver-registrar.exe"
           args:
