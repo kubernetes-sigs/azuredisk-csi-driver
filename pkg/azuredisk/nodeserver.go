@@ -164,18 +164,17 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	}
 	klog.V(2).Infof("NodeStageVolume: format %s and mounting at %s successfully.", source, target)
 
-	// if resize is required, resize filesystem
-	if required, ok := req.GetVolumeContext()[consts.ResizeRequired]; ok && required == "true" {
+	resizer := mount.NewResizeFs(d.mounter.Exec)
+	needResize, err := resizer.NeedResize(source, target)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "NodeStageVolume: could not determine if volume %q needs to be resized: %v", diskURI, err)
+	}
+	if needResize {
+		// if resize is required, resize filesystem
 		klog.V(2).Infof("NodeStageVolume: fs resize initiating on target(%s) volumeid(%s)", target, diskURI)
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "NodeStageVolume: could not get volume path for %s: %v", target, err)
-		}
-
-		resizer := mount.NewResizeFs(d.mounter.Exec)
 		if _, err := resizer.Resize(source, target); err != nil {
 			return nil, status.Errorf(codes.Internal, "NodeStageVolume: could not resize volume %q (%q):  %v", diskURI, source, err)
 		}
-
 		klog.V(2).Infof("NodeStageVolume: fs resize successful on target(%s) volumeid(%s).", target, diskURI)
 	}
 
