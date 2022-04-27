@@ -19,10 +19,11 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
+
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"os"
 	v1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
@@ -36,8 +37,7 @@ var azvCmd = &cobra.Command{
 		pod, _ := cmd.Flags().GetString("pod")
 		namespace, _ := cmd.Flags().GetString("namespace")
 
-		var result []AzvResource
-		result = GetAzVolumesByPod(pod, namespace)
+		result := GetAzVolumesByPod(pod, namespace)
 
 		// display
 		if len(result) != 0 {
