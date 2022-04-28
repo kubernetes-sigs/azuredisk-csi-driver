@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	fakev1 "k8s.io/client-go/kubernetes/fake"
+	"k8s.io/klog/v2/klogr"
 	diskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller/mockclient"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -39,6 +40,7 @@ func newTestPVController(controller *gomock.Controller, namespace string, object
 	return &ReconcilePV{
 		controllerRetryInfo:   newRetryInfo(),
 		controllerSharedState: controllerSharedState,
+		logger:                klogr.New(),
 	}
 }
 

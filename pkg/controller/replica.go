@@ -18,14 +18,16 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"time"
 
+	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/klog/v2"
 	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/workflow"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -40,6 +42,7 @@ const (
 )
 
 type ReconcileReplica struct {
+	logger                     logr.Logger
 	controllerSharedState      *SharedState
 	timeUntilGarbageCollection time.Duration
 }
@@ -53,10 +56,9 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 
 	azVolumeAttachment, err := azureutils.GetAzVolumeAttachment(ctx, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, request.Name, request.Namespace, true)
 	if errors.IsNotFound(err) {
-		klog.Infof("AzVolumeAttachment (%s) has been successfully deleted.", request.Name)
 		return reconcile.Result{}, nil
 	} else if err != nil {
-		klog.Errorf("failed to fetch AzVolumeAttachment (%s): %v", request.Name, err)
+		r.logger.Error(err, fmt.Sprintf("failed to get AzVolumeAttachment (%s)", request.Name))
 		return reconcile.Result{Requeue: true}, err
 	}
 
@@ -65,8 +67,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 		if objectDeletionRequested(azVolumeAttachment) {
 			if volumeDetachRequested(azVolumeAttachment) {
 				// If primary attachment is marked for deletion, queue garbage collection for replica attachments
-				//nolint:contextcheck // Garbage collection is asynchronous; context is not inherited by design
-				r.triggerGarbageCollection(azVolumeAttachment.Spec.VolumeName) //nolint:contextcheck // Garbage collection is asynchronous; context is not inherited by design
+				r.triggerGarbageCollection(ctx, azVolumeAttachment.Spec.VolumeName) //nolint:contextcheck // Garbage collection is asynchronous; context is not inherited by design
 			}
 		} else {
 			// If not, cancel scheduled garbage collection if there is one enqueued
@@ -74,21 +75,14 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 
 			// If promotion event, create a replacement replica
 			if isAttached(azVolumeAttachment) && azVolumeAttachment.Status.Detail.PreviousRole == diskv1beta1.ReplicaRole {
-				r.controllerSharedState.addToOperationQueue(
-					azVolumeAttachment.Spec.VolumeName,
-					replica,
-					func() error {
-						return r.controllerSharedState.manageReplicas(context.Background(), azVolumeAttachment.Spec.VolumeName)
-					},
-					false,
-				)
+				r.triggerManageReplica(ctx, azVolumeAttachment.Spec.VolumeName)
 			}
 		}
 	} else {
 		// queue garbage collection if a primary attachment is being demoted
 		if isDemotionRequested(azVolumeAttachment) {
 			//nolint:contextcheck // Garbage collection is asynchronous; context is not inherited by design
-			r.triggerGarbageCollection(azVolumeAttachment.Spec.VolumeName)
+			r.triggerGarbageCollection(ctx, azVolumeAttachment.Spec.VolumeName)
 			return reconcile.Result{}, nil
 		}
 		// create a replacement replica if replica attachment failed
@@ -104,10 +98,12 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 			}
 			if !isCleanupRequested(azVolumeAttachment) || !volumeDetachRequested(azVolumeAttachment) {
 				go func() {
+					goCtx := context.Background()
+
 					// wait for replica AzVolumeAttachment deletion
 					conditionFunc := func() (bool, error) {
 						var tmp diskv1beta1.AzVolumeAttachment
-						err := r.controllerSharedState.cachedClient.Get(ctx, request.NamespacedName, &tmp)
+						err := r.controllerSharedState.cachedClient.Get(goCtx, request.NamespacedName, &tmp)
 						if errors.IsNotFound(err) {
 							return true, nil
 						}
@@ -117,14 +113,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 					_ = wait.PollImmediateInfinite(deletionPollingInterval, conditionFunc)
 
 					// add replica management operation to the queue
-					r.controllerSharedState.addToOperationQueue(
-						azVolumeAttachment.Spec.VolumeName,
-						replica,
-						func() error {
-							return r.controllerSharedState.manageReplicas(context.Background(), azVolumeAttachment.Spec.VolumeName)
-						},
-						false,
-					)
+					r.triggerManageReplica(goCtx, azVolumeAttachment.Spec.VolumeName)
 				}()
 			}
 		} else if azVolumeAttachment.Status.State == diskv1beta1.AttachmentFailed {
@@ -137,24 +126,39 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 	return reconcile.Result{}, nil
 }
 
-func (r *ReconcileReplica) triggerGarbageCollection(volumeName string) {
-	emptyCtx := context.Background()
-	deletionCtx, cancelFunc := context.WithCancel(emptyCtx)
+//nolint:contextcheck // context is not inherited by design
+func (r *ReconcileReplica) triggerManageReplica(ctx context.Context, volumeName string) {
+	manageReplicaCtx, w := workflow.New(context.Background(), workflow.WithDetails(consts.VolumeNameLabel, volumeName))
+	defer w.Finish(nil)
+	r.controllerSharedState.addToOperationQueue(
+		manageReplicaCtx,
+		volumeName,
+		replica,
+		func(ctx context.Context) error {
+			return r.controllerSharedState.manageReplicas(ctx, volumeName)
+		},
+		false,
+	)
+}
+
+//nolint:contextcheck // Garbage collection is asynchronous; context is not inherited by design
+func (r *ReconcileReplica) triggerGarbageCollection(ctx context.Context, volumeName string) {
+	deletionCtx, cancelFunc := context.WithCancel(context.Background())
 	if _, ok := r.controllerSharedState.cleanUpMap.LoadOrStore(volumeName, cancelFunc); ok {
-		klog.Infof("There already is a scheduled garbage collection for AzVolume (%s)", volumeName)
 		cancelFunc()
 		return
 	}
-	klog.Infof("garbage collection of AzVolumeAttachments for AzVolume (%s) scheduled in %s.", volumeName, r.timeUntilGarbageCollection.String())
+
+	workflowCtx, w := workflow.New(deletionCtx, workflow.WithDetails(consts.VolumeNameLabel, volumeName))
+	w.Logger().V(5).Infof("Garbage collection of AzVolumeAttachments for AzVolume (%s) scheduled in %s.", volumeName, r.timeUntilGarbageCollection.String())
 
 	go func(ctx context.Context) {
+		defer w.Finish(nil)
 		select {
 		case <-ctx.Done():
-			klog.Infof("garbage collection for AzVolume (%s) cancelled", volumeName)
 			return
 		case <-time.After(r.timeUntilGarbageCollection):
-			klog.Infof("Initiating garbage collection for AzVolume (%s)", volumeName)
-			r.controllerSharedState.garbageCollectReplicas(ctx, volumeName, replica)
+			r.controllerSharedState.garbageCollectReplicas(workflowCtx, volumeName, replica)
 		}
 	}(deletionCtx)
 }
@@ -164,6 +168,7 @@ func NewReplicaController(mgr manager.Manager, controllerSharedState *SharedStat
 	reconciler := ReconcileReplica{
 		controllerSharedState:      controllerSharedState,
 		timeUntilGarbageCollection: DefaultTimeUntilGarbageCollection,
+		logger:                     logger,
 	}
 	c, err := controller.New("replica-controller", mgr, controller.Options{
 		MaxConcurrentReconciles: 10,
@@ -172,11 +177,11 @@ func NewReplicaController(mgr manager.Manager, controllerSharedState *SharedStat
 	})
 
 	if err != nil {
-		klog.Errorf("Failed to create replica controller. Error: (%v)", err)
+		logger.Error(err, "failed to create controller")
 		return nil, err
 	}
 
-	klog.V(2).Info("Starting to watch AzVolumeAttachments.")
+	logger.Info("Starting to watch AzVolumeAttachments.")
 
 	err = c.Watch(&source.Kind{Type: &diskv1beta1.AzVolumeAttachment{}}, &handler.EnqueueRequestForObject{}, predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
@@ -197,10 +202,10 @@ func NewReplicaController(mgr manager.Manager, controllerSharedState *SharedStat
 		},
 	})
 	if err != nil {
-		klog.Errorf("Failed to watch AzVolumeAttachment. Error: %v", err)
+		logger.Error(err, "failed to initialize watch for AzVolumeAttachment CRI")
 		return nil, err
 	}
 
-	klog.V(2).Info("Controller set-up successful.")
+	logger.V(2).Info("Controller set-up successful.")
 	return &reconciler, nil
 }

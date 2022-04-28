@@ -40,7 +40,7 @@ func (t *DynamicallyProvisionedCollocatedPodTest) Run(client clientset.Interface
 	for _, pod := range t.Pods {
 		tpod, cleanup := pod.SetupWithDynamicVolumes(client, namespace, t.CSIDriver, t.StorageClassParameters, schedulerName)
 		if t.ColocatePods && nodeName != "" {
-			tpod.SetNodeSelector(map[string]string{"name": nodeName})
+			tpod.Pod.Spec.NodeName = nodeName
 		}
 		// defer must be called here for resources not get removed before using them
 		for i := range cleanup {

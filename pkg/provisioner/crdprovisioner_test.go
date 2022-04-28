@@ -715,7 +715,7 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 			registerVolume:          false,
 			registerNode:            true,
 			definePrependReactor:    false,
-			expectedError:           status.Errorf(codes.NotFound, fmt.Sprintf("volume (%s) does not exist", testDiskName)),
+			expectedError:           status.Errorf(codes.NotFound, fmt.Sprintf("volume (%s) does not exist: azvolume.disk.csi.azure.com \"%s\" not found", testDiskName, testDiskName)),
 		},
 		{
 			description:             "[Failure] Return NotFound error when node does not exist",
@@ -726,7 +726,7 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 			registerVolume:          true,
 			registerNode:            false,
 			definePrependReactor:    false,
-			expectedError:           status.Errorf(codes.NotFound, fmt.Sprintf("node (%s) does not exist", testNodeName)),
+			expectedError:           status.Errorf(codes.NotFound, fmt.Sprintf("node (%s) does not exist: azdrivernode.disk.csi.azure.com \"%s\" not found", testNodeName, testNodeName)),
 		},
 	}
 
@@ -1306,7 +1306,7 @@ func TestCrdProvisionerExpandVolume(t *testing.T) {
 			},
 			secrets:              nil,
 			definePrependReactor: false,
-			expectedError:        status.Error(codes.Internal, fmt.Sprintf("failed to retrieve volume id (%s), error: azvolume.disk.csi.azure.com \"%s\" not found", testDiskURI, testDiskName)),
+			expectedError:        status.Error(codes.Internal, fmt.Sprintf("failed to retrieve volume id (%s): azvolume.disk.csi.azure.com \"%s\" not found", testDiskURI, testDiskName)),
 		},
 	}
 

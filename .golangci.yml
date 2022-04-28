@@ -7,3 +7,9 @@ linters:
   - structcheck
   enable:
   - golint
+
+issues:
+  exclude-rules:
+    - path: 'cmd/az-analyze'
+      linters:
+        - forbidigo
