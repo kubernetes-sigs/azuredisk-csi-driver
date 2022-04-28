@@ -3,8 +3,8 @@ module sigs.k8s.io/azuredisk-csi-driver
 go 1.17
 
 require (
-	github.com/Azure/azure-sdk-for-go v63.1.0+incompatible
-	github.com/Azure/go-autorest/autorest v0.11.25
+	github.com/Azure/azure-sdk-for-go v63.4.0+incompatible
+	github.com/Azure/go-autorest/autorest v0.11.27
 	github.com/Azure/go-autorest/autorest/adal v0.9.18
 	github.com/Azure/go-autorest/autorest/date v0.3.0
 	github.com/Azure/go-autorest/autorest/to v0.4.0
@@ -29,7 +29,7 @@ require (
 	k8s.io/client-go v0.24.0-alpha.4
 	k8s.io/cloud-provider v0.24.0-alpha.4
 	k8s.io/component-base v0.24.0-alpha.4
-	k8s.io/klog/v2 v2.40.1
+	k8s.io/klog/v2 v2.60.1
 	k8s.io/kubernetes v1.24.0-alpha.4
 	k8s.io/mount-utils v0.24.0-alpha.4
 	k8s.io/utils v0.0.0-20220210201930-3a6ce19ff2f9
@@ -53,7 +53,7 @@ require (
 	github.com/docker/distribution v2.7.1+incompatible // indirect
 	github.com/evanphx/json-patch v5.6.0+incompatible // indirect
 	github.com/felixge/httpsnoop v1.0.1 // indirect
-	github.com/fsnotify/fsnotify v1.5.1 // indirect
+	github.com/fsnotify/fsnotify v1.5.3 // indirect
 	github.com/go-logr/logr v1.2.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang-jwt/jwt/v4 v4.2.0 // indirect
@@ -144,5 +144,5 @@ replace (
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.24.0-alpha.4
 	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.24.0-alpha.4
 	k8s.io/sample-controller => k8s.io/sample-controller v0.24.0-alpha.4
-	sigs.k8s.io/cloud-provider-azure => sigs.k8s.io/cloud-provider-azure v0.7.4-0.20220407032400-ee6ae83c7ad2
+	sigs.k8s.io/cloud-provider-azure => sigs.k8s.io/cloud-provider-azure v0.7.4-0.20220428013254-8d8ea5d4d4ad
 )

@@ -326,6 +326,9 @@ const (
 	// LoadBalancerBackendPoolConfigurationTypePODIP is the lb backend pool config type pod ip
 	// TODO (nilo19): support pod IP in the future
 	LoadBalancerBackendPoolConfigurationTypePODIP = "podIP"
+
+	// To get pip, we need both resource group name and pip name, key in cache has format: pip_rg:pip_name
+	PIPCacheKeySeparator = ":"
 )
 
 // error messages
@@ -353,7 +356,7 @@ const (
 // metadata service
 const (
 	// ImdsInstanceAPIVersion is the imds instance api version
-	ImdsInstanceAPIVersion = "2019-03-11"
+	ImdsInstanceAPIVersion = "2021-10-01"
 	// ImdsLoadBalancerAPIVersion is the imds load balancer api version
 	ImdsLoadBalancerAPIVersion = "2020-10-01"
 	// ImdsServer is the imds server endpoint
