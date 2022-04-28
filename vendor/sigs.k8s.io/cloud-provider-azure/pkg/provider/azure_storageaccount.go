@@ -57,6 +57,7 @@ type AccountOptions struct {
 	VNetResourceGroup                       string
 	VNetName                                string
 	SubnetName                              string
+	MatchTags                               bool
 }
 
 type accountWithLocation struct {
@@ -152,6 +153,12 @@ func (az *Cloud) EnsureStorageAccount(ctx context.Context, accountOptions *Accou
 		subsID = accountOptions.SubscriptionID
 	}
 
+	if len(accountOptions.Tags) == 0 {
+		accountOptions.Tags = make(map[string]string)
+	}
+	// set built-in tags
+	accountOptions.Tags[consts.CreatedByTag] = "azure"
+
 	var createNewAccount bool
 	if len(accountName) == 0 {
 		createNewAccount = true
@@ -195,6 +202,12 @@ func (az *Cloud) EnsureStorageAccount(ctx context.Context, accountOptions *Accou
 		if err := az.createPrivateDNSZone(ctx, vnetResourceGroup); err != nil {
 			return "", "", fmt.Errorf("Failed to create private DNS zone(%s) in resourceGroup(%s), error: %v", PrivateDNSZoneName, vnetResourceGroup, err)
 		}
+
+		// Create virtual link to the private DNS zone
+		vNetLinkName := accountName + "-vnetlink"
+		if err := az.createVNetLink(ctx, vNetLinkName, vnetResourceGroup, vnetName); err != nil {
+			return "", "", fmt.Errorf("Failed to create virtual link for vnet(%s) and DNS Zone(%s) in resourceGroup(%s), error: %v", vnetName, PrivateDNSZoneName, vnetResourceGroup, err)
+		}
 	}
 
 	if createNewAccount {
@@ -234,10 +247,6 @@ func (az *Cloud) EnsureStorageAccount(ctx context.Context, accountOptions *Accou
 		if accountKind != "" {
 			kind = storage.Kind(accountKind)
 		}
-		if len(accountOptions.Tags) == 0 {
-			accountOptions.Tags = make(map[string]string)
-		}
-		accountOptions.Tags[consts.CreatedByTag] = "azure"
 		tags := convertMapToMapPointer(accountOptions.Tags)
 
 		klog.V(2).Infof("azure - no matching account found, begin to create a new account %s in resource group %s, location: %s, accountType: %s, accountKind: %s, tags: %+v",
@@ -298,12 +307,6 @@ func (az *Cloud) EnsureStorageAccount(ctx context.Context, accountOptions *Accou
 			privateEndpointName := accountName + "-pvtendpoint"
 			if err := az.createPrivateEndpoint(ctx, accountName, storageAccount.ID, privateEndpointName, vnetResourceGroup, vnetName, subnetName, location); err != nil {
 				return "", "", fmt.Errorf("Failed to create private endpoint for storage account(%s), resourceGroup(%s), error: %v", accountName, vnetResourceGroup, err)
-			}
-
-			// Create virtual link to the zone private DNS zone
-			vNetLinkName := accountName + "-vnetlink"
-			if err := az.createVNetLink(ctx, vNetLinkName, vnetResourceGroup, vnetName); err != nil {
-				return "", "", fmt.Errorf("Failed to create virtual link for vnet(%s) and DNS Zone(%s) in resourceGroup(%s), error: %v", vnetName, PrivateDNSZoneName, vnetResourceGroup, err)
 			}
 
 			// Create dns zone group
@@ -508,6 +511,11 @@ func isTaggedWithSkip(account storage.Account) bool {
 }
 
 func isTagsEqual(account storage.Account, accountOptions *AccountOptions) bool {
+	if !accountOptions.MatchTags {
+		// always return true when tags matching is false (by default)
+		return true
+	}
+
 	// nil and empty map should be regarded as equal
 	if len(account.Tags) == 0 && len(accountOptions.Tags) == 0 {
 		return true
