@@ -18,6 +18,7 @@ package cmd
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
@@ -41,7 +42,7 @@ func NewTestK8sClientset() *fake.Clientset {
                         Name: "volume-name-0",
                         VolumeSource: v1.VolumeSource {
                             PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource {
-                                ClaimName: "test-pvcClaimName",
+                                ClaimName: "test-pvcClaimName-0",
                             },
                         },
                     },
@@ -66,24 +67,35 @@ func NewTestK8sClientset() *fake.Clientset {
                         Name: "volume-name",
                         VolumeSource: v1.VolumeSource {
                             PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource {
-                                ClaimName: "test-pvcClaimName",
+                                ClaimName: "test-pvcClaimName-0",
                             },
                         },
                     },
                 },
             },
+        }, &v1.Node{
+            ObjectMeta: metav1.ObjectMeta {
+                Name: "test-node-0",
+                Labels: map[string]string{consts.WellKnownTopologyKey: "eastus-0"},
+            },
+        }, &v1.Node{
+            ObjectMeta: metav1.ObjectMeta {
+                Name: "test-node-1",
+                Labels: map[string]string{consts.WellKnownTopologyKey: "eastus-1"},
+            },
+
     })
 }
 
 func NewTestAzDiskClientset() *diskfakes.Clientset {
     return diskfakes.NewSimpleClientset(&v1beta1.AzVolume {
             ObjectMeta: metav1.ObjectMeta {
-                Name: "test-azVolume",
-                Namespace: "azure-disk-csi",
+                Name: "test-azVolume-0",
+                Namespace: consts.DefaultAzureDiskCrdNamespace,
             },
             Spec: v1beta1.AzVolumeSpec{
-                VolumeName: "test-azVolume",
-                Parameters: map[string]string{consts.PvcNameKey: "test-pvcClaimName"},
+                VolumeName: "test-azVolume-0",
+                Parameters: map[string]string{consts.PvcNameKey: "test-pvcClaimName-0"},
             },
             Status: v1beta1.AzVolumeStatus{
                 State: v1beta1.VolumeCreated,
@@ -91,7 +103,7 @@ func NewTestAzDiskClientset() *diskfakes.Clientset {
         }, &v1beta1.AzVolume {
             ObjectMeta: metav1.ObjectMeta {
                 Name: "test-azVolume-1",
-                Namespace: "azure-disk-csi",
+                Namespace: consts.DefaultAzureDiskCrdNamespace,
             },
             Spec: v1beta1.AzVolumeSpec{
                 VolumeName: "test-azVolume-1",
@@ -99,6 +111,44 @@ func NewTestAzDiskClientset() *diskfakes.Clientset {
             },
             Status: v1beta1.AzVolumeStatus{
                 State: v1beta1.VolumeCreated,
+            },
+        }, &v1beta1.AzVolumeAttachment {
+            ObjectMeta: metav1.ObjectMeta {
+                Name: "test-azVolumeAttachment-0",
+                Namespace: consts.DefaultAzureDiskCrdNamespace,
+                CreationTimestamp: metav1.Time{
+                    Time: time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC),
+                },
+            },
+            Spec: v1beta1.AzVolumeAttachmentSpec{
+                VolumeContext: map[string]string{consts.PvcNameKey: "test-pvcClaimName-0"},
+                NodeName: "test-node-0",
+                RequestedRole: v1beta1.PrimaryRole,
+            },
+            Status: v1beta1.AzVolumeAttachmentStatus{
+                Detail: &v1beta1.AzVolumeAttachmentStatusDetail{
+                    Role: v1beta1.PrimaryRole,
+                },
+                State: v1beta1.Attached,
+            },
+        }, &v1beta1.AzVolumeAttachment {
+            ObjectMeta: metav1.ObjectMeta {
+                Name: "test-azVolumeAttachment-1",
+                Namespace: consts.DefaultAzureDiskCrdNamespace,
+                CreationTimestamp: metav1.Time{
+                    Time: time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC),
+                },
+            },
+            Spec: v1beta1.AzVolumeAttachmentSpec{
+                VolumeContext: map[string]string{consts.PvcNameKey: "test-pvcClaimName-1"},
+                NodeName: "test-node-1",
+                RequestedRole: v1beta1.ReplicaRole,
+            },
+            Status: v1beta1.AzVolumeAttachmentStatus{
+                Detail: &v1beta1.AzVolumeAttachmentStatusDetail{
+                    Role: v1beta1.ReplicaRole,
+                },
+                State: v1beta1.Attached,
             },
     })
 }
@@ -119,7 +169,7 @@ func TestGetAzVolumesByPod(t *testing.T) {
                     {
                         ResourceType: "test-pod-0",
                         Namespace:    consts.DefaultAzureDiskCrdNamespace,
-                        Name:         "test-azVolume",
+                        Name:         "test-azVolume-0",
                         State:        v1beta1.VolumeCreated,
                     },
                     {
@@ -161,13 +211,13 @@ func TestGetAzVolumesByPod(t *testing.T) {
                     {
                         ResourceType: "test-pod-0",
                         Namespace:    consts.DefaultAzureDiskCrdNamespace,
-                        Name:         "test-azVolume",
+                        Name:         "test-azVolume-0",
                         State:        v1beta1.VolumeCreated,
                     },
                     {
                         ResourceType: "test-pod-1",
                         Namespace:    consts.DefaultAzureDiskCrdNamespace,
-                        Name:         "test-azVolume",
+                        Name:         "test-azVolume-0",
                         State:        v1beta1.VolumeCreated,
                     },
                     {
