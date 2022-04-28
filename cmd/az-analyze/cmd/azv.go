@@ -44,7 +44,7 @@ var azvCmd = &cobra.Command{
 		clientsetK8s := getKubernetesClientset(config)
 		clientsetAzDisk := getAzDiskClientset(config)
 
-		result := GetAzVolumesByPod(pod, namespace)
+		result := GetAzVolumesByPod(clientsetK8s, clientsetAzDisk, pod, namespace)
 
 		// display
 		if len(result) != 0 {
