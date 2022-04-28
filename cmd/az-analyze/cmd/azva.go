@@ -17,7 +17,6 @@ limitations under the License.
 package cmd
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -321,30 +320,4 @@ func displayAzvaAll(result []AzvaResourceAll) {
 	}
 
 	table.Render()
-}
-
-func timeFmt(t time.Duration) string {
-	day := t / (24 * time.Hour)
-	t = t % (24 * time.Hour)
-	hour := t / time.Hour
-	t = t % time.Hour
-	minute := t / time.Minute
-	t = t % time.Minute
-	second := int(t / time.Second)
-
-	var buffer bytes.Buffer
-	if day > 0 {
-		buffer.WriteString(fmt.Sprintf("%dd", day))
-	}
-	if hour > 0 {
-		buffer.WriteString(fmt.Sprintf("%dh", hour))
-		return buffer.String()
-	}
-	if minute > 0 {
-		buffer.WriteString(fmt.Sprintf("%dm", minute))
-	}
-	if second > 0 {
-		buffer.WriteString(fmt.Sprintf("%ds", second))
-	}
-	return buffer.String()
 }

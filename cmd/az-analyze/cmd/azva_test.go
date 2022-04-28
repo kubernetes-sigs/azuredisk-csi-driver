@@ -27,188 +27,188 @@ import (
 
 func TestGetAllAzVolumeAttachements(t *testing.T) {
 	fakeClientsetK8s := NewTestK8sClientset()
-    fakeClientsetAzDisk := NewTestAzDiskClientset()
+	fakeClientsetAzDisk := NewTestAzDiskClientset()
 
 	tests := []struct {
-        description string
-        verifyFunc func()
-    }{
+		description string
+		verifyFunc  func()
+	}{
 		{
-            description: "specified namespace",
-            verifyFunc: func() {
-                result := GetAllAzVolumeAttachements(fakeClientsetK8s, fakeClientsetAzDisk, "default")
-                expect := []AzvaResourceAll {
-                    {
-						PodName: "test-pod-0",
-						NodeName: "test-node-0",
-						ZoneName: "eastus-0",
-						Namespace: consts.DefaultAzureDiskCrdNamespace,
-						Name: "test-azVolumeAttachment-0",
-						Age: metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
-						RequestRole: "Primary",
-						Role: "Primary",
-						State: "Attached",
-                    },
-                    {
-						PodName: "test-pod-0",
-						NodeName: "test-node-1",
-						ZoneName: "eastus-1",
-						Namespace: consts.DefaultAzureDiskCrdNamespace,
-						Name: "test-azVolumeAttachment-1",
-						Age: metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
-						RequestRole: "Replica",
-						Role: "Replica",
-						State: "Attached",
-                    },
+			description: "specified namespace",
+			verifyFunc: func() {
+				result := GetAllAzVolumeAttachements(fakeClientsetK8s, fakeClientsetAzDisk, "default")
+				expect := []AzvaResourceAll{
 					{
-						PodName: "test-pod-1",
-						NodeName: "test-node-0",
-						ZoneName: "eastus-0",
-						Namespace: consts.DefaultAzureDiskCrdNamespace,
-						Name: "test-azVolumeAttachment-0",
-						Age: metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
+						PodName:     "test-pod-0",
+						NodeName:    "test-node-0",
+						ZoneName:    "eastus-0",
+						Namespace:   consts.DefaultAzureDiskCrdNamespace,
+						Name:        "test-azVolumeAttachment-0",
+						Age:         metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
 						RequestRole: "Primary",
-						Role: "Primary",
-						State: "Attached",
-                    },
-                }
+						Role:        "Primary",
+						State:       "Attached",
+					},
+					{
+						PodName:     "test-pod-0",
+						NodeName:    "test-node-1",
+						ZoneName:    "eastus-1",
+						Namespace:   consts.DefaultAzureDiskCrdNamespace,
+						Name:        "test-azVolumeAttachment-1",
+						Age:         metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
+						RequestRole: "Replica",
+						Role:        "Replica",
+						State:       "Attached",
+					},
+					{
+						PodName:     "test-pod-1",
+						NodeName:    "test-node-0",
+						ZoneName:    "eastus-0",
+						Namespace:   consts.DefaultAzureDiskCrdNamespace,
+						Name:        "test-azVolumeAttachment-0",
+						Age:         metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
+						RequestRole: "Primary",
+						Role:        "Primary",
+						State:       "Attached",
+					},
+				}
 
-                for i := 0; i < len(result); i++ {
-                    require.Equal(t, result[i], expect[i])
-                }
-            },
+				for i := 0; i < len(result); i++ {
+					require.Equal(t, result[i], expect[i])
+				}
+			},
 		},
 	}
 
 	for _, test := range tests {
-        tt := test
-        t.Run(tt.description, func(t *testing.T) {
-            tt.verifyFunc()
-        })
-    }
+		tt := test
+		t.Run(tt.description, func(t *testing.T) {
+			tt.verifyFunc()
+		})
+	}
 }
 
 func TestGetAzVolumeAttachementsByPod(t *testing.T) {
 	fakeClientsetK8s := NewTestK8sClientset()
-    fakeClientsetAzDisk := NewTestAzDiskClientset()
+	fakeClientsetAzDisk := NewTestAzDiskClientset()
 
 	tests := []struct {
-        description string
-        verifyFunc func()
-    }{
+		description string
+		verifyFunc  func()
+	}{
 		{
-            description: "specified pod name with more than one pv and specified namespace",
-            verifyFunc: func() {
-                result := GetAzVolumeAttachementsByPod(fakeClientsetK8s, fakeClientsetAzDisk, "test-pod-0", "default")
-                expect := []AzvaResource {
-                    {
-						ResourceType: "test-pod-0",
-						Namespace: consts.DefaultAzureDiskCrdNamespace,
-						Name: "test-azVolumeAttachment-0",
-						Age: metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
-						RequestRole: "Primary",
-						Role: "Primary",
-						State: "Attached",
-                    },
+			description: "specified pod name with more than one pv and specified namespace",
+			verifyFunc: func() {
+				result := GetAzVolumeAttachementsByPod(fakeClientsetK8s, fakeClientsetAzDisk, "test-pod-0", "default")
+				expect := []AzvaResource{
 					{
 						ResourceType: "test-pod-0",
-						Namespace: consts.DefaultAzureDiskCrdNamespace,
-						Name: "test-azVolumeAttachment-1",
-						Age: metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
-						RequestRole: "Replica",
-						Role: "Replica",
-						State: "Attached",
-                    },
-                }
+						Namespace:    consts.DefaultAzureDiskCrdNamespace,
+						Name:         "test-azVolumeAttachment-0",
+						Age:          metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
+						RequestRole:  "Primary",
+						Role:         "Primary",
+						State:        "Attached",
+					},
+					{
+						ResourceType: "test-pod-0",
+						Namespace:    consts.DefaultAzureDiskCrdNamespace,
+						Name:         "test-azVolumeAttachment-1",
+						Age:          metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
+						RequestRole:  "Replica",
+						Role:         "Replica",
+						State:        "Attached",
+					},
+				}
 
-                for i := 0; i < len(result); i++ {
-                    require.Equal(t, result[i], expect[i])
-                }
-            },
+				for i := 0; i < len(result); i++ {
+					require.Equal(t, result[i], expect[i])
+				}
+			},
 		},
 	}
 
 	for _, test := range tests {
-        tt := test
-        t.Run(tt.description, func(t *testing.T) {
-            tt.verifyFunc()
-        })
-    }
+		tt := test
+		t.Run(tt.description, func(t *testing.T) {
+			tt.verifyFunc()
+		})
+	}
 }
 
 func TestGetAzVolumeAttachementsByNode(t *testing.T) {
-    fakeClientsetAzDisk := NewTestAzDiskClientset()
+	fakeClientsetAzDisk := NewTestAzDiskClientset()
 
 	tests := []struct {
-        description string
-        verifyFunc func()
-    }{
+		description string
+		verifyFunc  func()
+	}{
 		{
-            description: "specified node name attached one pvc",
-            verifyFunc: func() {
-                result := GetAzVolumeAttachementsByNode(fakeClientsetAzDisk, "test-node-0")
-                expect := []AzvaResource {
-                    {
+			description: "specified node name attached one pvc",
+			verifyFunc: func() {
+				result := GetAzVolumeAttachementsByNode(fakeClientsetAzDisk, "test-node-0")
+				expect := []AzvaResource{
+					{
 						ResourceType: "test-node-0",
-						Namespace: consts.DefaultAzureDiskCrdNamespace,
-						Name: "test-azVolumeAttachment-0",
-						Age: metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
-						RequestRole: "Primary",
-						Role: "Primary",
-						State: "Attached",
-                    },
-                }
+						Namespace:    consts.DefaultAzureDiskCrdNamespace,
+						Name:         "test-azVolumeAttachment-0",
+						Age:          metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
+						RequestRole:  "Primary",
+						Role:         "Primary",
+						State:        "Attached",
+					},
+				}
 
-                for i := 0; i < len(result); i++ {
-                    require.Equal(t, result[i], expect[i])
-                }
-            },
+				for i := 0; i < len(result); i++ {
+					require.Equal(t, result[i], expect[i])
+				}
+			},
 		},
 	}
 
 	for _, test := range tests {
-        tt := test
-        t.Run(tt.description, func(t *testing.T) {
-            tt.verifyFunc()
-        })
-    }
+		tt := test
+		t.Run(tt.description, func(t *testing.T) {
+			tt.verifyFunc()
+		})
+	}
 }
 
 func TestGetAzVolumeAttachementsByZone(t *testing.T) {
 	fakeClientsetK8s := NewTestK8sClientset()
-    fakeClientsetAzDisk := NewTestAzDiskClientset()
+	fakeClientsetAzDisk := NewTestAzDiskClientset()
 
 	tests := []struct {
-        description string
-        verifyFunc func()
-    }{
+		description string
+		verifyFunc  func()
+	}{
 		{
-            description: "specified zone name with one node",
-            verifyFunc: func() {
-                result := GetAzVolumeAttachementsByZone(fakeClientsetK8s, fakeClientsetAzDisk, "eastus-0")
-                expect := []AzvaResource {
-                    {
+			description: "specified zone name with one node",
+			verifyFunc: func() {
+				result := GetAzVolumeAttachementsByZone(fakeClientsetK8s, fakeClientsetAzDisk, "eastus-0")
+				expect := []AzvaResource{
+					{
 						ResourceType: "eastus-0",
-						Namespace: consts.DefaultAzureDiskCrdNamespace,
-						Name: "test-azVolumeAttachment-0",
-						Age: metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
-						RequestRole: "Primary",
-						Role: "Primary",
-						State: "Attached",
-                    },
-                }
+						Namespace:    consts.DefaultAzureDiskCrdNamespace,
+						Name:         "test-azVolumeAttachment-0",
+						Age:          metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
+						RequestRole:  "Primary",
+						Role:         "Primary",
+						State:        "Attached",
+					},
+				}
 
-                for i := 0; i < len(result); i++ {
-                    require.Equal(t, result[i], expect[i])
-                }
-            },
+				for i := 0; i < len(result); i++ {
+					require.Equal(t, result[i], expect[i])
+				}
+			},
 		},
 	}
 
 	for _, test := range tests {
-        tt := test
-        t.Run(tt.description, func(t *testing.T) {
-            tt.verifyFunc()
-        })
-    }
+		tt := test
+		t.Run(tt.description, func(t *testing.T) {
+			tt.verifyFunc()
+		})
+	}
 }
