@@ -155,6 +155,8 @@ func TestGetAllAzVolumeAttachements(t *testing.T) {
 				result := GetAllAzVolumeAttachements(fakeClientsetK8s, fakeClientsetAzDisk, "default")
 				expect := []AzvaResourceAll{azvaResourceAll1, azvaResourceAll2, azvaResourceAll3}
 
+				require.Equal(t, len(result), len(expect))
+
 				for i := 0; i < len(result); i++ {
 					require.Equal(t, result[i].PodName, expect[i].PodName)
 					require.Equal(t, result[i].NodeName, expect[i].NodeName)
@@ -172,6 +174,8 @@ func TestGetAllAzVolumeAttachements(t *testing.T) {
 			verifyFunc: func() {
 				result := GetAllAzVolumeAttachements(fakeClientsetK8s, fakeClientsetAzDisk, "")
 				expect := []AzvaResourceAll{azvaResourceAll1, azvaResourceAll2, azvaResourceAll3}
+
+				require.Equal(t, len(result), len(expect))
 
 				for i := 0; i < len(result); i++ {
 					require.Equal(t, result[i].PodName, expect[i].PodName)
@@ -209,6 +213,8 @@ func TestGetAzVolumeAttachementsByPod(t *testing.T) {
 				result := GetAzVolumeAttachementsByPod(fakeClientsetK8s, fakeClientsetAzDisk, "test-pod-0", "default")
 				expect := []AzvaResource{azvaResource_pod1, azvaResource_pod2}
 
+				require.Equal(t, len(result), len(expect))
+
 				for i := 0; i < len(result); i++ {
 					require.Equal(t, result[i].ResourceType, expect[i].ResourceType)
 					require.Equal(t, result[i].Namespace, expect[i].Namespace)
@@ -224,6 +230,8 @@ func TestGetAzVolumeAttachementsByPod(t *testing.T) {
 			verifyFunc: func() {
 				result := GetAzVolumeAttachementsByPod(fakeClientsetK8s, fakeClientsetAzDisk, "test-pod-0", "")
 				expect := []AzvaResource{azvaResource_pod1, azvaResource_pod2}
+
+				require.Equal(t, len(result), len(expect))
 
 				for i := 0; i < len(result); i++ {
 					require.Equal(t, result[i].ResourceType, expect[i].ResourceType)
@@ -258,6 +266,8 @@ func TestGetAzVolumeAttachementsByNode(t *testing.T) {
 				result := GetAzVolumeAttachementsByNode(fakeClientsetAzDisk, "test-node-0")
 				expect := []AzvaResource{azvaResource_node1}
 
+				require.Equal(t, len(result), len(expect))
+
 				for i := 0; i < len(result); i++ {
 					require.Equal(t, result[i].ResourceType, expect[i].ResourceType)
 					require.Equal(t, result[i].Namespace, expect[i].Namespace)
@@ -273,6 +283,8 @@ func TestGetAzVolumeAttachementsByNode(t *testing.T) {
 			verifyFunc: func() {
 				result := GetAzVolumeAttachementsByNode(fakeClientsetAzDisk, "test-node-1")
 				expect := []AzvaResource{azvaResource_node2, azvaResource_node3}
+
+				require.Equal(t, len(result), len(expect))
 
 				for i := 0; i < len(result); i++ {
 					require.Equal(t, result[i].ResourceType, expect[i].ResourceType)
@@ -308,6 +320,8 @@ func TestGetAzVolumeAttachementsByZone(t *testing.T) {
 				result := GetAzVolumeAttachementsByZone(fakeClientsetK8s, fakeClientsetAzDisk, "eastus-0")
 				expect := []AzvaResource{azvaResource_zone1}
 
+				require.Equal(t, len(result), len(expect))
+
 				for i := 0; i < len(result); i++ {
 					require.Equal(t, result[i].ResourceType, expect[i].ResourceType)
 					require.Equal(t, result[i].Namespace, expect[i].Namespace)
@@ -323,6 +337,8 @@ func TestGetAzVolumeAttachementsByZone(t *testing.T) {
 			verifyFunc: func() {
 				result := GetAzVolumeAttachementsByZone(fakeClientsetK8s, fakeClientsetAzDisk, "eastus-1")
 				expect := []AzvaResource{azvaResource_zone2, azvaResource_zone3}
+
+				require.Equal(t, len(result), len(expect))
 
 				for i := 0; i < len(result); i++ {
 					require.Equal(t, result[i].ResourceType, expect[i].ResourceType)
