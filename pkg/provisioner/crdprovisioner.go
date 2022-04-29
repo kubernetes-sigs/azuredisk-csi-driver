@@ -877,6 +877,8 @@ func (c *CrdProvisioner) ExpandVolume(
 		return nil
 	}
 
+	updateMode := azureutils.UpdateCRI
+
 	switch azVolume.Status.State {
 	case diskv1beta1.VolumeUpdating:
 		err = status.Errorf(codes.Aborted, "expand operation still in process")
@@ -890,6 +892,7 @@ func (c *CrdProvisioner) ExpandVolume(
 			updateInstance.Status.State = diskv1beta1.VolumeCreated
 			return nil
 		}
+		updateMode = azureutils.UpdateAll
 	case diskv1beta1.VolumeUpdated:
 		break
 	case diskv1beta1.VolumeCreated:
@@ -899,7 +902,7 @@ func (c *CrdProvisioner) ExpandVolume(
 		return nil, err
 	}
 
-	if err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.informerFactory, nil, c.azDiskClient, azVolume, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRI); err != nil {
+	if err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.informerFactory, nil, c.azDiskClient, azVolume, updateFunc, consts.NormalUpdateMaxNetRetry, updateMode); err != nil {
 		return nil, err
 	}
 
