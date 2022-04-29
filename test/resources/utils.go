@@ -37,7 +37,6 @@ import (
 	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
 	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
@@ -139,7 +138,7 @@ func getAzVolumeAttachmentsForPV(persistentVolume *v1.PersistentVolume, client c
 	if err != nil {
 		ginkgo.Fail("failed to get persistent volume diskname")
 	}
-	azVolumeAttachments, err := azDiskClient.DiskV1beta1().AzVolumeAttachments(azureconstants.DefaultAzureDiskCrdNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: labels.Set(map[string]string{azureconstants.VolumeNameLabel: diskname}).String()})
+	azVolumeAttachments, err := azDiskClient.DiskV1beta1().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: labels.Set(map[string]string{consts.VolumeNameLabel: diskname}).String()})
 	if err != nil {
 		ginkgo.Fail("failed while getting replica attachments")
 	}

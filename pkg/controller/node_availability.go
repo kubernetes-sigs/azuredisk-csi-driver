@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"sync/atomic"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -57,15 +56,9 @@ func (r *ReconcileNodeAvailability) Reconcile(ctx context.Context, request recon
 	if err == nil {
 		if !n.Spec.Unschedulable {
 			//Node is schedulable, proceed to attempt creation of replica attachment
-			if atomic.SwapInt32(&r.controllerSharedState.processingReplicaRequestQueue, 1) == 0 {
-				logger.Info("Node is now available. Will requeue failed replica creation requests.")
-				err := r.controllerSharedState.tryCreateFailedReplicas(ctx, nodeavailability)
-				atomic.StoreInt32(&r.controllerSharedState.processingReplicaRequestQueue, 0)
-				if err != nil {
-					return reconcile.Result{Requeue: false}, nil
-				}
-				return reconcile.Result{Requeue: false}, nil
-			}
+			logger.Info("Node is now available. Will requeue failed replica creation requests.")
+			r.controllerSharedState.tryCreateFailedReplicas(ctx, nodeavailability)
+			return reconcile.Result{Requeue: false}, nil
 		}
 	}
 	return reconcile.Result{Requeue: false}, err
