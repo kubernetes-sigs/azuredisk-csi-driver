@@ -21,8 +21,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
 func TestGetAllAzVolumeAttachements(t *testing.T) {
@@ -37,44 +35,35 @@ func TestGetAllAzVolumeAttachements(t *testing.T) {
 			description: "specified namespace",
 			verifyFunc: func() {
 				result := GetAllAzVolumeAttachements(fakeClientsetK8s, fakeClientsetAzDisk, "default")
-				expect := []AzvaResourceAll{
-					{
-						PodName:     "test-pod-0",
-						NodeName:    "test-node-0",
-						ZoneName:    "eastus-0",
-						Namespace:   consts.DefaultAzureDiskCrdNamespace,
-						Name:        "test-azVolumeAttachment-0",
-						Age:         metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
-						RequestRole: "Primary",
-						Role:        "Primary",
-						State:       "Attached",
-					},
-					{
-						PodName:     "test-pod-0",
-						NodeName:    "test-node-1",
-						ZoneName:    "eastus-1",
-						Namespace:   consts.DefaultAzureDiskCrdNamespace,
-						Name:        "test-azVolumeAttachment-1",
-						Age:         metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
-						RequestRole: "Replica",
-						Role:        "Replica",
-						State:       "Attached",
-					},
-					{
-						PodName:     "test-pod-1",
-						NodeName:    "test-node-0",
-						ZoneName:    "eastus-0",
-						Namespace:   consts.DefaultAzureDiskCrdNamespace,
-						Name:        "test-azVolumeAttachment-0",
-						Age:         metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
-						RequestRole: "Primary",
-						Role:        "Primary",
-						State:       "Attached",
-					},
-				}
+				expect := []AzvaResourceAll{azvaResourceAll1, azvaResourceAll2, azvaResourceAll3}
 
 				for i := 0; i < len(result); i++ {
-					require.Equal(t, result[i], expect[i])
+					require.Equal(t, result[i].PodName, expect[i].PodName)
+					require.Equal(t, result[i].NodeName, expect[i].NodeName)
+					require.Equal(t, result[i].ZoneName, expect[i].ZoneName)
+					require.Equal(t, result[i].Namespace, expect[i].Namespace)
+					require.Equal(t, result[i].Name, expect[i].Name)
+					require.Equal(t, int(result[i].Age / time.Second), int(expect[i].Age / time.Second))
+					require.Equal(t, result[i].RequestRole, expect[i].RequestRole)
+					require.Equal(t, result[i].Role, expect[i].Role)
+				}
+			},
+		},
+		{
+			description: "empty namespace",
+			verifyFunc: func() {
+				result := GetAllAzVolumeAttachements(fakeClientsetK8s, fakeClientsetAzDisk, "")
+				expect := []AzvaResourceAll{azvaResourceAll1, azvaResourceAll2, azvaResourceAll3}
+
+				for i := 0; i < len(result); i++ {
+					require.Equal(t, result[i].PodName, expect[i].PodName)
+					require.Equal(t, result[i].NodeName, expect[i].NodeName)
+					require.Equal(t, result[i].ZoneName, expect[i].ZoneName)
+					require.Equal(t, result[i].Namespace, expect[i].Namespace)
+					require.Equal(t, result[i].Name, expect[i].Name)
+					require.Equal(t, int(result[i].Age / time.Second), int(expect[i].Age / time.Second))
+					require.Equal(t, result[i].RequestRole, expect[i].RequestRole)
+					require.Equal(t, result[i].Role, expect[i].Role)
 				}
 			},
 		},
@@ -100,29 +89,31 @@ func TestGetAzVolumeAttachementsByPod(t *testing.T) {
 			description: "specified pod name with more than one pv and specified namespace",
 			verifyFunc: func() {
 				result := GetAzVolumeAttachementsByPod(fakeClientsetK8s, fakeClientsetAzDisk, "test-pod-0", "default")
-				expect := []AzvaResource{
-					{
-						ResourceType: "test-pod-0",
-						Namespace:    consts.DefaultAzureDiskCrdNamespace,
-						Name:         "test-azVolumeAttachment-0",
-						Age:          metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
-						RequestRole:  "Primary",
-						Role:         "Primary",
-						State:        "Attached",
-					},
-					{
-						ResourceType: "test-pod-0",
-						Namespace:    consts.DefaultAzureDiskCrdNamespace,
-						Name:         "test-azVolumeAttachment-1",
-						Age:          metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
-						RequestRole:  "Replica",
-						Role:         "Replica",
-						State:        "Attached",
-					},
-				}
+				expect := []AzvaResource{azvaResource_pod1, azvaResource_pod2}
 
 				for i := 0; i < len(result); i++ {
-					require.Equal(t, result[i], expect[i])
+					require.Equal(t, result[i].ResourceType, expect[i].ResourceType)
+					require.Equal(t, result[i].Namespace, expect[i].Namespace)
+					require.Equal(t, result[i].Name, expect[i].Name)
+					require.Equal(t, int(result[i].Age / time.Second), int(expect[i].Age / time.Second))
+					require.Equal(t, result[i].RequestRole, expect[i].RequestRole)
+					require.Equal(t, result[i].Role, expect[i].Role)
+				}
+			},
+		},
+		{
+			description: "specified pod name with more than one pv and empty namespace",
+			verifyFunc: func() {
+				result := GetAzVolumeAttachementsByPod(fakeClientsetK8s, fakeClientsetAzDisk, "test-pod-0", "")
+				expect := []AzvaResource{azvaResource_pod1, azvaResource_pod2}
+
+				for i := 0; i < len(result); i++ {
+					require.Equal(t, result[i].ResourceType, expect[i].ResourceType)
+					require.Equal(t, result[i].Namespace, expect[i].Namespace)
+					require.Equal(t, result[i].Name, expect[i].Name)
+					require.Equal(t, int(result[i].Age / time.Second), int(expect[i].Age / time.Second))
+					require.Equal(t, result[i].RequestRole, expect[i].RequestRole)
+					require.Equal(t, result[i].Role, expect[i].Role)
 				}
 			},
 		},
@@ -147,20 +138,31 @@ func TestGetAzVolumeAttachementsByNode(t *testing.T) {
 			description: "specified node name attached one pvc",
 			verifyFunc: func() {
 				result := GetAzVolumeAttachementsByNode(fakeClientsetAzDisk, "test-node-0")
-				expect := []AzvaResource{
-					{
-						ResourceType: "test-node-0",
-						Namespace:    consts.DefaultAzureDiskCrdNamespace,
-						Name:         "test-azVolumeAttachment-0",
-						Age:          metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
-						RequestRole:  "Primary",
-						Role:         "Primary",
-						State:        "Attached",
-					},
-				}
+				expect := []AzvaResource{azvaResource_node1}
 
 				for i := 0; i < len(result); i++ {
-					require.Equal(t, result[i], expect[i])
+					require.Equal(t, result[i].ResourceType, expect[i].ResourceType)
+					require.Equal(t, result[i].Namespace, expect[i].Namespace)
+					require.Equal(t, result[i].Name, expect[i].Name)
+					require.Equal(t, int(result[i].Age / time.Second), int(expect[i].Age / time.Second))
+					require.Equal(t, result[i].RequestRole, expect[i].RequestRole)
+					require.Equal(t, result[i].Role, expect[i].Role)
+				}
+			},
+		},
+		{
+			description: "specified node name attached more than one pvc",
+			verifyFunc: func() {
+				result := GetAzVolumeAttachementsByNode(fakeClientsetAzDisk, "test-node-1")
+				expect := []AzvaResource{azvaResource_node2, azvaResource_node3}
+
+				for i := 0; i < len(result); i++ {
+					require.Equal(t, result[i].ResourceType, expect[i].ResourceType)
+					require.Equal(t, result[i].Namespace, expect[i].Namespace)
+					require.Equal(t, result[i].Name, expect[i].Name)
+					require.Equal(t, int(result[i].Age / time.Second), int(expect[i].Age / time.Second))
+					require.Equal(t, result[i].RequestRole, expect[i].RequestRole)
+					require.Equal(t, result[i].Role, expect[i].Role)
 				}
 			},
 		},
@@ -186,20 +188,31 @@ func TestGetAzVolumeAttachementsByZone(t *testing.T) {
 			description: "specified zone name with one node",
 			verifyFunc: func() {
 				result := GetAzVolumeAttachementsByZone(fakeClientsetK8s, fakeClientsetAzDisk, "eastus-0")
-				expect := []AzvaResource{
-					{
-						ResourceType: "eastus-0",
-						Namespace:    consts.DefaultAzureDiskCrdNamespace,
-						Name:         "test-azVolumeAttachment-0",
-						Age:          metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
-						RequestRole:  "Primary",
-						Role:         "Primary",
-						State:        "Attached",
-					},
-				}
+				expect := []AzvaResource{azvaResource_zone1}
 
 				for i := 0; i < len(result); i++ {
-					require.Equal(t, result[i], expect[i])
+					require.Equal(t, result[i].ResourceType, expect[i].ResourceType)
+					require.Equal(t, result[i].Namespace, expect[i].Namespace)
+					require.Equal(t, result[i].Name, expect[i].Name)
+					require.Equal(t, int(result[i].Age / time.Second), int(expect[i].Age / time.Second))
+					require.Equal(t, result[i].RequestRole, expect[i].RequestRole)
+					require.Equal(t, result[i].Role, expect[i].Role)
+				}
+			},
+		},
+		{
+			description: "specified zone name with more than one node",
+			verifyFunc: func() {
+				result := GetAzVolumeAttachementsByZone(fakeClientsetK8s, fakeClientsetAzDisk, "eastus-1")
+				expect := []AzvaResource{azvaResource_zone2, azvaResource_zone3}
+
+				for i := 0; i < len(result); i++ {
+					require.Equal(t, result[i].ResourceType, expect[i].ResourceType)
+					require.Equal(t, result[i].Namespace, expect[i].Namespace)
+					require.Equal(t, result[i].Name, expect[i].Name)
+					require.Equal(t, int(result[i].Age / time.Second), int(expect[i].Age / time.Second))
+					require.Equal(t, result[i].RequestRole, expect[i].RequestRole)
+					require.Equal(t, result[i].Role, expect[i].Role)
 				}
 			},
 		},

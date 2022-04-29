@@ -20,8 +20,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
-	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
 func TestGetAzVolumesByPod(t *testing.T) {
@@ -36,68 +34,18 @@ func TestGetAzVolumesByPod(t *testing.T) {
 			description: "specified pod name with more than one pv",
 			verifyFunc: func() {
 				result := GetAzVolumesByPod(fakeClientsetK8s, fakeClientsetAzDisk, "test-pod-0", "default")
-				expect := []AzvResource{
-					{
-						ResourceType: "test-pod-0",
-						Namespace:    consts.DefaultAzureDiskCrdNamespace,
-						Name:         "test-azVolume-0",
-						State:        v1beta1.VolumeCreated,
-					},
-					{
-						ResourceType: "test-pod-0",
-						Namespace:    consts.DefaultAzureDiskCrdNamespace,
-						Name:         "test-azVolume-1",
-						State:        v1beta1.VolumeCreated,
-					},
-				}
+				expect := []AzvResource{azvResource1, azvResource2}
 
 				for i := 0; i < len(result); i++ {
 					require.Equal(t, result[i], expect[i])
 				}
 			},
 		},
-		// {
-		//     description: "specified pod name with namespace default",
-		//     verifyFunc: func() {
-		//         result := GetAzVolumesByPod(fakeClientsetK8s, fakeClientsetAzDisk, "test-pod-1", "default")
-		//         expect := []AzvResource {
-		//             {
-		//                 ResourceType: "test-pod-1",
-		//                 Namespace:    consts.DefaultAzureDiskCrdNamespace,
-		//                 Name:         "test-azVolume",
-		//                 State:        v1beta1.VolumeCreated,
-		//             },
-		//         }
-
-		//         for i := 0; i < len(result); i++ {
-		//             require.Equal(t, result[i], expect[i])
-		//         }
-		//     },
-		// },
 		{
 			description: "empty pod name with multiple pods have same pvc",
 			verifyFunc: func() {
 				result := GetAzVolumesByPod(fakeClientsetK8s, fakeClientsetAzDisk, "", "default")
-				expect := []AzvResource{
-					{
-						ResourceType: "test-pod-0",
-						Namespace:    consts.DefaultAzureDiskCrdNamespace,
-						Name:         "test-azVolume-0",
-						State:        v1beta1.VolumeCreated,
-					},
-					{
-						ResourceType: "test-pod-1",
-						Namespace:    consts.DefaultAzureDiskCrdNamespace,
-						Name:         "test-azVolume-0",
-						State:        v1beta1.VolumeCreated,
-					},
-					{
-						ResourceType: "test-pod-0",
-						Namespace:    consts.DefaultAzureDiskCrdNamespace,
-						Name:         "test-azVolume-1",
-						State:        v1beta1.VolumeCreated,
-					},
-				}
+				expect := []AzvResource{azvResource1, azvResource3, azvResource2}
 
 				for i := 0; i < len(result); i++ {
 					require.Equal(t, result[i], expect[i])

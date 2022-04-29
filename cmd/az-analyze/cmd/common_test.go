@@ -147,5 +147,161 @@ func NewTestAzDiskClientset() *diskfakes.Clientset {
 			},
 			State: v1beta1.Attached,
 		},
+	}, &v1beta1.AzVolumeAttachment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-azVolumeAttachment-2",
+			Namespace: consts.DefaultAzureDiskCrdNamespace,
+			CreationTimestamp: metav1.Time{
+				Time: time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC),
+			},
+		},
+		Spec: v1beta1.AzVolumeAttachmentSpec{
+			VolumeContext: map[string]string{consts.PvcNameKey: "test-pvcClaimName-2"},
+			NodeName:      "test-node-1",
+			RequestedRole: v1beta1.PrimaryRole,
+		},
+		Status: v1beta1.AzVolumeAttachmentStatus{
+			Detail: &v1beta1.AzVolumeAttachmentStatusDetail{
+				Role: v1beta1.PrimaryRole,
+			},
+			State: v1beta1.Attached,
+		},
 	})
+}
+
+var azvResource1 AzvResource = AzvResource{
+	ResourceType: "test-pod-0",
+	Namespace:    consts.DefaultAzureDiskCrdNamespace,
+	Name:         "test-azVolume-0",
+	State:        v1beta1.VolumeCreated,
+}
+
+var azvResource2 AzvResource = AzvResource{
+	ResourceType: "test-pod-0",
+	Namespace:    consts.DefaultAzureDiskCrdNamespace,
+	Name:         "test-azVolume-1",
+	State:        v1beta1.VolumeCreated,
+}
+
+var azvResource3 AzvResource = AzvResource{
+	ResourceType: "test-pod-1",
+	Namespace:    consts.DefaultAzureDiskCrdNamespace,
+	Name:         "test-azVolume-0",
+	State:        v1beta1.VolumeCreated,
+}
+
+var azvaResourceAll1 AzvaResourceAll = AzvaResourceAll{
+	PodName:     "test-pod-0",
+	NodeName:    "test-node-0",
+	ZoneName:    "eastus-0",
+	Namespace:   consts.DefaultAzureDiskCrdNamespace,
+	Name:        "test-azVolumeAttachment-0",
+	Age:         metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
+	RequestRole: "Primary",
+	Role:        "Primary",
+	State:       "Attached",
+}
+
+var azvaResourceAll2 AzvaResourceAll = AzvaResourceAll{
+	PodName:     "test-pod-1",
+	NodeName:    "test-node-0",
+	ZoneName:    "eastus-0",
+	Namespace:   consts.DefaultAzureDiskCrdNamespace,
+	Name:        "test-azVolumeAttachment-0",
+	Age:         metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
+	RequestRole: "Primary",
+	Role:        "Primary",
+	State:       "Attached",
+}
+
+var azvaResourceAll3 AzvaResourceAll = AzvaResourceAll{
+	PodName:     "test-pod-0",
+	NodeName:    "test-node-1",
+	ZoneName:    "eastus-1",
+	Namespace:   consts.DefaultAzureDiskCrdNamespace,
+	Name:        "test-azVolumeAttachment-1",
+	Age:         metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
+	RequestRole: "Replica",
+	Role:        "Replica",
+	State:       "Attached",
+}
+
+var azvaResource_pod1 AzvaResource = AzvaResource{
+	ResourceType: "test-pod-0",
+	Namespace:    consts.DefaultAzureDiskCrdNamespace,
+	Name:         "test-azVolumeAttachment-0",
+	Age:          metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
+	RequestRole:  "Primary",
+	Role:         "Primary",
+	State:        "Attached",
+}
+
+var azvaResource_pod2 AzvaResource = AzvaResource{
+	ResourceType: "test-pod-0",
+	Namespace:    consts.DefaultAzureDiskCrdNamespace,
+	Name:         "test-azVolumeAttachment-1",
+	Age:          metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
+	RequestRole:  "Replica",
+	Role:         "Replica",
+	State:        "Attached",
+}
+
+var azvaResource_node1 AzvaResource = AzvaResource{
+	ResourceType: "test-node-0",
+	Namespace:    consts.DefaultAzureDiskCrdNamespace,
+	Name:         "test-azVolumeAttachment-0",
+	Age:          metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
+	RequestRole:  "Primary",
+	Role:         "Primary",
+	State:        "Attached",
+}
+
+var azvaResource_node2 AzvaResource = AzvaResource{
+	ResourceType: "test-node-1",
+	Namespace:    consts.DefaultAzureDiskCrdNamespace,
+	Name:         "test-azVolumeAttachment-1",
+	Age:          metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
+	RequestRole:  "Replica",
+	Role:         "Replica",
+	State:        "Attached",
+}
+
+var azvaResource_node3 AzvaResource = AzvaResource{
+	ResourceType: "test-node-1",
+	Namespace:    consts.DefaultAzureDiskCrdNamespace,
+	Name:         "test-azVolumeAttachment-2",
+	Age:          metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
+	RequestRole:  "Primary",
+	Role:         "Primary",
+	State:        "Attached",
+}
+
+var azvaResource_zone1 AzvaResource = AzvaResource{
+	ResourceType: "eastus-0",
+	Namespace:    consts.DefaultAzureDiskCrdNamespace,
+	Name:         "test-azVolumeAttachment-0",
+	Age:          metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
+	RequestRole:  "Primary",
+	Role:         "Primary",
+	State:        "Attached",
+}
+
+var azvaResource_zone2 AzvaResource = AzvaResource{
+	ResourceType: "eastus-1",
+	Namespace:    consts.DefaultAzureDiskCrdNamespace,
+	Name:         "test-azVolumeAttachment-1",
+	Age:          metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
+	RequestRole:  "Replica",
+	Role:         "Replica",
+	State:        "Attached",
+}
+
+var azvaResource_zone3 AzvaResource = AzvaResource{
+	ResourceType: "eastus-1",
+	Namespace:    consts.DefaultAzureDiskCrdNamespace,
+	Name:         "test-azVolumeAttachment-2",
+	Age:          metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
+	RequestRole:  "Primary",
+	Role:         "Primary",
+	State:        "Attached",
 }
