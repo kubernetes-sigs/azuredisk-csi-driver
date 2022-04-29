@@ -23,6 +23,7 @@ import (
 
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	v1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
@@ -71,7 +72,6 @@ type AzvResource struct {
 
 // return azVolumes by pod. If pod name isn't provided, return by all pods
 func GetAzVolumesByPod(clientsetK8s kubernetes.Interface, clientsetAzDisk versioned.Interface, podName string, namespace string) []AzvResource {
-
 	result := make([]AzvResource, 0)
 
 	// get pvc claim name set of pod
@@ -79,7 +79,12 @@ func GetAzVolumesByPod(clientsetK8s kubernetes.Interface, clientsetAzDisk versio
 	if podName != "" {
 		singlePod, err := clientsetK8s.CoreV1().Pods(namespace).Get(context.Background(), podName, metav1.GetOptions{})
 		if err != nil {
-			panic(err.Error())
+			if errors.IsNotFound(err) {
+				fmt.Println(err)
+				os.Exit(0)
+			} else {
+				panic(err.Error())
+			}
 		}
 
 		for _, v := range singlePod.Spec.Volumes {
@@ -92,7 +97,7 @@ func GetAzVolumesByPod(clientsetK8s kubernetes.Interface, clientsetAzDisk versio
 		if err != nil {
 			panic(err.Error())
 		}
-		fmt.Printf("len of pods: %v\n", len(pods.Items)) // debug
+
 		for _, pod := range pods.Items {
 			for _, v := range pod.Spec.Volumes {
 				if v.PersistentVolumeClaim != nil {

@@ -71,7 +71,7 @@ func TestGetAzVolumesByPod(t *testing.T) {
 			verifyFunc: func() {
 				result := GetAzVolumesByPod(fakeClientsetK8s, fakeClientsetAzDisk, "", "default")
 				expect := []AzvResource{azvResource1, azvResource3, azvResource2}
-                
+
                 require.Equal(t, len(result), len(expect))
 
 				for i := 0; i < len(result); i++ {

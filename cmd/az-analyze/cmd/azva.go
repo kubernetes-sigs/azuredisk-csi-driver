@@ -25,6 +25,7 @@ import (
 
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	v1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
@@ -196,7 +197,12 @@ func GetAzVolumeAttachementsByPod(clientsetK8s kubernetes.Interface, clientsetAz
 
 	pod, err := clientsetK8s.CoreV1().Pods(namespace).Get(context.Background(), podName, metav1.GetOptions{})
 	if err != nil {
-		panic(err.Error())
+		if errors.IsNotFound(err) {
+			fmt.Println(err)
+			os.Exit(0)
+		} else {
+			panic(err.Error())
+		}
 	}
 
 	for _, v := range pod.Spec.Volumes {
