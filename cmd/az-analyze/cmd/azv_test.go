@@ -20,7 +20,30 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	v1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
+
+var azvResource1 AzvResource = AzvResource{
+	ResourceType: "test-pod-0",
+	Namespace:    consts.DefaultAzureDiskCrdNamespace,
+	Name:         "test-azVolume-0",
+	State:        v1beta1.VolumeCreated,
+}
+
+var azvResource2 AzvResource = AzvResource{
+	ResourceType: "test-pod-0",
+	Namespace:    consts.DefaultAzureDiskCrdNamespace,
+	Name:         "test-azVolume-1",
+	State:        v1beta1.VolumeCreated,
+}
+
+var azvResource3 AzvResource = AzvResource{
+	ResourceType: "test-pod-1",
+	Namespace:    consts.DefaultAzureDiskCrdNamespace,
+	Name:         "test-azVolume-0",
+	State:        v1beta1.VolumeCreated,
+}
 
 func TestGetAzVolumesByPod(t *testing.T) {
 	fakeClientsetK8s := NewTestK8sClientset()

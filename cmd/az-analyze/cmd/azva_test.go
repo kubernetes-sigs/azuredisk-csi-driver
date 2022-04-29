@@ -21,7 +21,125 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
+
+var azvaResourceAll1 AzvaResourceAll = AzvaResourceAll{
+	PodName:     "test-pod-0",
+	NodeName:    "test-node-0",
+	ZoneName:    "eastus-0",
+	Namespace:   consts.DefaultAzureDiskCrdNamespace,
+	Name:        "test-azVolumeAttachment-0",
+	Age:         metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
+	RequestRole: "Primary",
+	Role:        "Primary",
+	State:       "Attached",
+}
+
+var azvaResourceAll2 AzvaResourceAll = AzvaResourceAll{
+	PodName:     "test-pod-1",
+	NodeName:    "test-node-0",
+	ZoneName:    "eastus-0",
+	Namespace:   consts.DefaultAzureDiskCrdNamespace,
+	Name:        "test-azVolumeAttachment-0",
+	Age:         metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
+	RequestRole: "Primary",
+	Role:        "Primary",
+	State:       "Attached",
+}
+
+var azvaResourceAll3 AzvaResourceAll = AzvaResourceAll{
+	PodName:     "test-pod-0",
+	NodeName:    "test-node-1",
+	ZoneName:    "eastus-1",
+	Namespace:   consts.DefaultAzureDiskCrdNamespace,
+	Name:        "test-azVolumeAttachment-1",
+	Age:         metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
+	RequestRole: "Replica",
+	Role:        "Replica",
+	State:       "Attached",
+}
+
+var azvaResource_pod1 AzvaResource = AzvaResource{
+	ResourceType: "test-pod-0",
+	Namespace:    consts.DefaultAzureDiskCrdNamespace,
+	Name:         "test-azVolumeAttachment-0",
+	Age:          metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
+	RequestRole:  "Primary",
+	Role:         "Primary",
+	State:        "Attached",
+}
+
+var azvaResource_pod2 AzvaResource = AzvaResource{
+	ResourceType: "test-pod-0",
+	Namespace:    consts.DefaultAzureDiskCrdNamespace,
+	Name:         "test-azVolumeAttachment-1",
+	Age:          metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
+	RequestRole:  "Replica",
+	Role:         "Replica",
+	State:        "Attached",
+}
+
+var azvaResource_node1 AzvaResource = AzvaResource{
+	ResourceType: "test-node-0",
+	Namespace:    consts.DefaultAzureDiskCrdNamespace,
+	Name:         "test-azVolumeAttachment-0",
+	Age:          metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
+	RequestRole:  "Primary",
+	Role:         "Primary",
+	State:        "Attached",
+}
+
+var azvaResource_node2 AzvaResource = AzvaResource{
+	ResourceType: "test-node-1",
+	Namespace:    consts.DefaultAzureDiskCrdNamespace,
+	Name:         "test-azVolumeAttachment-1",
+	Age:          metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
+	RequestRole:  "Replica",
+	Role:         "Replica",
+	State:        "Attached",
+}
+
+var azvaResource_node3 AzvaResource = AzvaResource{
+	ResourceType: "test-node-1",
+	Namespace:    consts.DefaultAzureDiskCrdNamespace,
+	Name:         "test-azVolumeAttachment-2",
+	Age:          metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
+	RequestRole:  "Primary",
+	Role:         "Primary",
+	State:        "Attached",
+}
+
+var azvaResource_zone1 AzvaResource = AzvaResource{
+	ResourceType: "eastus-0",
+	Namespace:    consts.DefaultAzureDiskCrdNamespace,
+	Name:         "test-azVolumeAttachment-0",
+	Age:          metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
+	RequestRole:  "Primary",
+	Role:         "Primary",
+	State:        "Attached",
+}
+
+var azvaResource_zone2 AzvaResource = AzvaResource{
+	ResourceType: "eastus-1",
+	Namespace:    consts.DefaultAzureDiskCrdNamespace,
+	Name:         "test-azVolumeAttachment-1",
+	Age:          metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
+	RequestRole:  "Replica",
+	Role:         "Replica",
+	State:        "Attached",
+}
+
+var azvaResource_zone3 AzvaResource = AzvaResource{
+	ResourceType: "eastus-1",
+	Namespace:    consts.DefaultAzureDiskCrdNamespace,
+	Name:         "test-azVolumeAttachment-2",
+	Age:          metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
+	RequestRole:  "Primary",
+	Role:         "Primary",
+	State:        "Attached",
+}
 
 func TestGetAllAzVolumeAttachements(t *testing.T) {
 	fakeClientsetK8s := NewTestK8sClientset()
