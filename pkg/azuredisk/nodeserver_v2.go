@@ -26,6 +26,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
@@ -41,7 +42,6 @@ import (
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/volume"
-	mount "k8s.io/mount-utils"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 )
@@ -152,20 +152,13 @@ func (d *DriverV2) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolume
 	klog.V(2).Infof("NodeStageVolume: format %s and mounting at %s successfully.", source, target)
 
 	// if resize is required, resize filesystem
-	if required, ok := req.GetVolumeContext()[consts.ResizeRequired]; ok && required == "true" {
+	if required, ok := req.GetVolumeContext()[consts.ResizeRequired]; ok && strings.EqualFold(required, consts.TrueValue) {
 		klog.V(2).Infof("NodeStageVolume: fs resize initiating on target(%s) volumeid(%s)", target, diskURI)
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "NodeStageVolume: could not get volume path for %s: %v", target, err)
+		if err := resizeVolume(source, target, d.mounter); err != nil {
+			return nil, status.Errorf(codes.Internal, "NodeStageVolume: could not resize volume %q (%q):  %v", source, target, err)
 		}
-
-		resizer := mount.NewResizeFs(d.mounter.Exec)
-		if _, err := resizer.Resize(source, target); err != nil {
-			return nil, status.Errorf(codes.Internal, "NodeStageVolume: could not resize volume %q (%q):  %v", diskURI, source, err)
-		}
-
 		klog.V(2).Infof("NodeStageVolume: fs resize successful on target(%s) volumeid(%s).", target, diskURI)
 	}
-
 	return &csi.NodeStageVolumeResponse{}, nil
 }
 

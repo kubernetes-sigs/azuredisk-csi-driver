@@ -61,11 +61,8 @@ func getBlockSizeBytes(devicePath string, m *mount.SafeFormatAndMount) (int64, e
 }
 
 func resizeVolume(devicePath, volumePath string, m *mount.SafeFormatAndMount) error {
-	resizer := mount.NewResizeFs(m.Exec)
-	if _, err := resizer.Resize(devicePath, volumePath); err != nil {
-		return err
-	}
-	return nil
+	_, err := mount.NewResizeFs(m.Exec).Resize(devicePath, volumePath)
+	return err
 }
 
 // rescanVolume rescan device for detecting device size expansion
