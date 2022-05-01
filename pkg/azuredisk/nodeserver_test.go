@@ -409,6 +409,9 @@ func TestNodeStageVolume(t *testing.T) {
 	fsckAction := func() ([]byte, []byte, error) {
 		return []byte{}, []byte{}, nil
 	}
+	blockSizeAction := func() ([]byte, []byte, error) {
+		return []byte(fmt.Sprintf("%d", stdCapacityRange.RequiredBytes)), []byte{}, nil
+	}
 	resize2fsAction := func() ([]byte, []byte, error) {
 		return []byte{}, []byte{}, nil
 	}
@@ -469,7 +472,6 @@ func TestNodeStageVolume(t *testing.T) {
 				PublishContext: invalidLUN,
 				VolumeContext:  volumeContext,
 			},
-
 			expectedErr: status.Error(codes.Internal, "failed to find disk on lun /dev/01. cannot parse deviceInfo: /dev/01"),
 		},
 		{
@@ -477,7 +479,7 @@ func TestNodeStageVolume(t *testing.T) {
 			skipOnDarwin:  true,
 			skipOnWindows: true,
 			setupFunc: func(t *testing.T, d FakeDriver) {
-				d.setNextCommandOutputScripts(blkidAction, fsckAction)
+				d.setNextCommandOutputScripts(blkidAction, fsckAction, blockSizeAction, blkidAction, blockSizeAction, blkidAction)
 			},
 			req: csi.NodeStageVolumeRequest{VolumeId: "vol_1", StagingTargetPath: sourceTest,
 				VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap,
@@ -485,7 +487,6 @@ func TestNodeStageVolume(t *testing.T) {
 				PublishContext: publishContext,
 				VolumeContext:  volumeContext,
 			},
-
 			expectedErr: nil,
 		},
 		{
@@ -501,7 +502,6 @@ func TestNodeStageVolume(t *testing.T) {
 				PublishContext: publishContext,
 				VolumeContext:  volumeContextWithResize,
 			},
-
 			expectedErr: nil,
 		},
 		{
@@ -519,7 +519,7 @@ func TestNodeStageVolume(t *testing.T) {
 					Return(nil).
 					After(diskSupportsPerfOptimizationCall)
 
-				d.setNextCommandOutputScripts(blkidAction, fsckAction)
+				d.setNextCommandOutputScripts(blkidAction, fsckAction, blockSizeAction, blockSizeAction)
 			},
 			req: csi.NodeStageVolumeRequest{VolumeId: "vol_1", StagingTargetPath: sourceTest,
 				VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap,
