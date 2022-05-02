@@ -23,12 +23,14 @@ import (
 	"fmt"
 	"path/filepath"
 	"strconv"
-	libstrings "strings"
+	"strings"
 
 	"k8s.io/klog/v2"
-	"k8s.io/mount-utils"
+	mount "k8s.io/mount-utils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 )
+
+const sysClassBlockPath = "/sys/class/block/"
 
 // exclude those used by azure as resource and OS root in /dev/disk/azure, /dev/disk/azure/scsi0
 // "/dev/disk/azure/scsi0" dir is populated in Standard_DC4s/DC2s on Ubuntu 18.04
@@ -41,7 +43,7 @@ func listAzureDiskPath(io azureutils.IOHandler) []string {
 				name := f.Name()
 				diskPath := filepath.Join(azureDiskPath, name)
 				if link, linkErr := io.Readlink(diskPath); linkErr == nil {
-					sd := link[(libstrings.LastIndex(link, "/") + 1):]
+					sd := link[(strings.LastIndex(link, "/") + 1):]
 					azureDiskList = append(azureDiskList, sd)
 				}
 			}
@@ -64,7 +66,7 @@ func getDiskLinkByDevName(io azureutils.IOHandler, devLinkPath, devName string) 
 				klog.Warningf("azureDisk - read link (%s) error: %v", diskPath, linkErr)
 				continue
 			}
-			if libstrings.HasSuffix(link, devName) {
+			if strings.HasSuffix(link, devName) {
 				return diskPath, nil
 			}
 		}
@@ -105,7 +107,7 @@ func findDiskByLunWithConstraint(lun int, io azureutils.IOHandler, azureDisks []
 		for _, f := range dirs {
 			name := f.Name()
 			// look for path like /sys/bus/scsi/devices/3:0:0:1
-			arr := libstrings.Split(name, ":")
+			arr := strings.Split(name, ":")
 			if len(arr) < 4 {
 				continue
 			}
@@ -139,8 +141,8 @@ func findDiskByLunWithConstraint(lun int, io azureutils.IOHandler, azureDisks []
 					klog.Errorf("failed to read device vendor, err: %v", err)
 					continue
 				}
-				vendor := libstrings.TrimSpace(string(vendorBytes))
-				if libstrings.ToUpper(vendor) != "MSFT" {
+				vendor := strings.TrimSpace(string(vendorBytes))
+				if strings.ToUpper(vendor) != "MSFT" {
 					klog.V(4).Infof("vendor doesn't match VHD, got %s", vendor)
 					continue
 				}
@@ -151,8 +153,8 @@ func findDiskByLunWithConstraint(lun int, io azureutils.IOHandler, azureDisks []
 					klog.Errorf("failed to read device model, err: %v", err)
 					continue
 				}
-				model := libstrings.TrimSpace(string(modelBytes))
-				if libstrings.ToUpper(model) != "VIRTUAL DISK" {
+				model := strings.TrimSpace(string(modelBytes))
+				if strings.ToUpper(model) != "VIRTUAL DISK" {
 					klog.V(4).Infof("model doesn't match VHD, got %s", model)
 					continue
 				}
@@ -194,4 +196,69 @@ func preparePublishPath(path string, m *mount.SafeFormatAndMount) error {
 
 func CleanupMountPoint(path string, m *mount.SafeFormatAndMount, extensiveCheck bool) error {
 	return mount.CleanupMountPoint(path, m, extensiveCheck)
+}
+
+func getDevicePathWithMountPath(mountPath string, m *mount.SafeFormatAndMount) (string, error) {
+	args := []string{"-o", "source", "--noheadings", "--mountpoint", mountPath}
+	output, err := m.Exec.Command("findmnt", args...).Output()
+	if err != nil {
+		return "", fmt.Errorf("could not determine device path(%s), error: %v", mountPath, err)
+	}
+
+	devicePath := strings.TrimSpace(string(output))
+	if len(devicePath) == 0 {
+		return "", fmt.Errorf("could not get valid device for mount path: %q", mountPath)
+	}
+
+	return devicePath, nil
+}
+
+func getBlockSizeBytes(devicePath string, m *mount.SafeFormatAndMount) (int64, error) {
+	output, err := m.Exec.Command("blockdev", "--getsize64", devicePath).Output()
+	if err != nil {
+		return -1, fmt.Errorf("error when getting size of block volume at path %s: output: %s, err: %v", devicePath, string(output), err)
+	}
+	strOut := strings.TrimSpace(string(output))
+	gotSizeBytes, err := strconv.ParseInt(strOut, 10, 64)
+	if err != nil {
+		return -1, fmt.Errorf("failed to parse size %s into int a size", strOut)
+	}
+	return gotSizeBytes, nil
+}
+
+func resizeVolume(devicePath, volumePath string, m *mount.SafeFormatAndMount) error {
+	_, err := mount.NewResizeFs(m.Exec).Resize(devicePath, volumePath)
+	return err
+}
+
+// needResizeVolume check whether device needs resize
+func needResizeVolume(devicePath, volumePath string, m *mount.SafeFormatAndMount) (bool, error) {
+	return mount.NewResizeFs(m.Exec).NeedResize(devicePath, volumePath)
+}
+
+// rescanVolume rescan device for detecting device size expansion
+// devicePath e.g. `/dev/sdc`
+func rescanVolume(io azureutils.IOHandler, devicePath string) error {
+	klog.V(6).Infof("rescanVolume - begin to rescan %s", devicePath)
+	deviceName := filepath.Base(devicePath)
+	rescanPath := filepath.Join(sysClassBlockPath, deviceName, "device/rescan")
+	return io.WriteFile(rescanPath, []byte("1"), 0666)
+}
+
+// rescanAllVolumes rescan all sd* devices under /sys/class/block/sd* starting from sdc
+func rescanAllVolumes(io azureutils.IOHandler) error {
+	dirs, err := io.ReadDir(sysClassBlockPath)
+	if err != nil {
+		return err
+	}
+	for _, device := range dirs {
+		deviceName := device.Name()
+		if strings.HasPrefix(deviceName, "sd") && deviceName >= "sdc" {
+			path := filepath.Join(sysClassBlockPath, deviceName)
+			if err := rescanVolume(io, path); err != nil {
+				klog.Warningf("rescanVolume - rescan %s failed with %v", path, err)
+			}
+		}
+	}
+	return nil
 }

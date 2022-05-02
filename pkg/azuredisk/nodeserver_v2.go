@@ -144,18 +144,26 @@ func (d *DriverV2) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolume
 
 	// FormatAndMount will format only if needed
 	klog.V(2).Infof("NodeStageVolume: formatting %s and mounting at %s with mount options(%s)", source, target, options)
-	err = d.formatAndMount(source, target, fstype, options)
-	if err != nil {
-		msg := fmt.Sprintf("could not format %q(lun: %q), and mount it at %q", source, lun, target)
-		return nil, status.Error(codes.Internal, msg)
+	if err := d.formatAndMount(source, target, fstype, options); err != nil {
+		return nil, status.Errorf(codes.Internal, "could not format %s(lun: %s), and mount it at %s", source, lun, target)
 	}
 	klog.V(2).Infof("NodeStageVolume: format %s and mounting at %s successfully.", source, target)
 
-	// if resize is required, resize filesystem
+	var needResize bool
 	if required, ok := req.GetVolumeContext()[consts.ResizeRequired]; ok && strings.EqualFold(required, consts.TrueValue) {
+		needResize = true
+	}
+	if !needResize {
+		if needResize, err = needResizeVolume(source, target, d.mounter); err != nil {
+			klog.Errorf("NodeStageVolume: could not determine if volume %s needs to be resized: %v", diskURI, err)
+		}
+	}
+
+	// if resize is required, resize filesystem
+	if needResize {
 		klog.V(2).Infof("NodeStageVolume: fs resize initiating on target(%s) volumeid(%s)", target, diskURI)
 		if err := resizeVolume(source, target, d.mounter); err != nil {
-			return nil, status.Errorf(codes.Internal, "NodeStageVolume: could not resize volume %q (%q):  %v", source, target, err)
+			return nil, status.Errorf(codes.Internal, "NodeStageVolume: could not resize volume %s (%s):  %v", source, target, err)
 		}
 		klog.V(2).Infof("NodeStageVolume: fs resize successful on target(%s) volumeid(%s).", target, diskURI)
 	}
