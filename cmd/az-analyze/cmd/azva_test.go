@@ -26,7 +26,7 @@ import (
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
-var azvaResource_All1 AzvaResource = AzvaResource{
+var azvaResourceAll0 AzvaResource = AzvaResource{
 	PodName:     TestPod0,
 	NodeName:    TestNode0,
 	ZoneName:    TestZone0,
@@ -38,7 +38,7 @@ var azvaResource_All1 AzvaResource = AzvaResource{
 	State:       v1beta1.Attached,
 }
 
-var azvaResource_All2 AzvaResource = AzvaResource{
+var azvaResourceAll1 AzvaResource = AzvaResource{
 	PodName:     TestPod1,
 	NodeName:    TestNode0,
 	ZoneName:    TestZone0,
@@ -50,7 +50,7 @@ var azvaResource_All2 AzvaResource = AzvaResource{
 	State:       v1beta1.Attached,
 }
 
-var azvaResource_All3 AzvaResource = AzvaResource{
+var azvaResourceAll2 AzvaResource = AzvaResource{
 	PodName:     TestPod0,
 	NodeName:    TestNode1,
 	ZoneName:    TestZone1,
@@ -62,7 +62,7 @@ var azvaResource_All3 AzvaResource = AzvaResource{
 	State:       v1beta1.Attached,
 }
 
-var azvaResource_pod1 AzvaResource = AzvaResource{
+var azvaResourcePod0 AzvaResource = AzvaResource{
 	PodName:     TestPod0,
 	NodeName:    "",
 	ZoneName:    "",
@@ -74,7 +74,7 @@ var azvaResource_pod1 AzvaResource = AzvaResource{
 	State:       v1beta1.Attached,
 }
 
-var azvaResource_pod2 AzvaResource = AzvaResource{
+var azvaResourcePod1 AzvaResource = AzvaResource{
 	PodName:     TestPod0,
 	NodeName:    "",
 	ZoneName:    "",
@@ -86,7 +86,7 @@ var azvaResource_pod2 AzvaResource = AzvaResource{
 	State:       v1beta1.Attached,
 }
 
-var azvaResource_node1 AzvaResource = AzvaResource{
+var azvaResourceNode0 AzvaResource = AzvaResource{
 	PodName:     "",
 	NodeName:    TestNode0,
 	ZoneName:    "",
@@ -98,7 +98,7 @@ var azvaResource_node1 AzvaResource = AzvaResource{
 	State:       v1beta1.Attached,
 }
 
-var azvaResource_node2 AzvaResource = AzvaResource{
+var azvaResourceNode1 AzvaResource = AzvaResource{
 	PodName:     "",
 	NodeName:    TestNode1,
 	ZoneName:    "",
@@ -110,7 +110,7 @@ var azvaResource_node2 AzvaResource = AzvaResource{
 	State:       v1beta1.Attached,
 }
 
-var azvaResource_node3 AzvaResource = AzvaResource{
+var azvaResourceNode2 AzvaResource = AzvaResource{
 	PodName:     "",
 	NodeName:    TestNode1,
 	ZoneName:    "",
@@ -122,7 +122,7 @@ var azvaResource_node3 AzvaResource = AzvaResource{
 	State:       v1beta1.Attached,
 }
 
-var azvaResource_zone1 AzvaResource = AzvaResource{
+var azvaResourceZone0 AzvaResource = AzvaResource{
 	PodName:     "",
 	NodeName:    "",
 	ZoneName:    TestZone0,
@@ -134,7 +134,7 @@ var azvaResource_zone1 AzvaResource = AzvaResource{
 	State:       v1beta1.Attached,
 }
 
-var azvaResource_zone2 AzvaResource = AzvaResource{
+var azvaResourceZone1 AzvaResource = AzvaResource{
 	PodName:     "",
 	NodeName:    "",
 	ZoneName:    TestZone1,
@@ -146,7 +146,7 @@ var azvaResource_zone2 AzvaResource = AzvaResource{
 	State:       v1beta1.Attached,
 }
 
-var azvaResource_zone3 AzvaResource = AzvaResource{
+var azvaResourceZone2 AzvaResource = AzvaResource{
 	PodName:     "",
 	NodeName:    "",
 	ZoneName:    TestZone1,
@@ -170,7 +170,7 @@ func TestGetAllAzVolumeAttachements(t *testing.T) {
 			description: "Test get all AzVolumeAttachements with specified namespace",
 			verifyFunc: func() {
 				result := GetAllAzVolumeAttachements(fakeClientsetK8s, fakeClientsetAzDisk, metav1.NamespaceDefault)
-				expect := []AzvaResource{azvaResource_All1, azvaResource_All2, azvaResource_All3}
+				expect := []AzvaResource{azvaResourceAll0, azvaResourceAll1, azvaResourceAll2}
 
 				verifyFields(t, result, expect)
 			},
@@ -179,7 +179,7 @@ func TestGetAllAzVolumeAttachements(t *testing.T) {
 			description: "Test get all AzVolumeAttachements with empty namespace",
 			verifyFunc: func() {
 				result := GetAllAzVolumeAttachements(fakeClientsetK8s, fakeClientsetAzDisk, metav1.NamespaceNone)
-				expect := []AzvaResource{azvaResource_All1, azvaResource_All2, azvaResource_All3}
+				expect := []AzvaResource{azvaResourceAll0, azvaResourceAll1, azvaResourceAll2}
 
 				verifyFields(t, result, expect)
 			},
@@ -206,7 +206,7 @@ func TestGetAzVolumeAttachementsByPod(t *testing.T) {
 			description: "Test get AzVolumeAttachements with specified namespace and pod name which has more than one pv",
 			verifyFunc: func() {
 				result := GetAzVolumeAttachementsByPod(fakeClientsetK8s, fakeClientsetAzDisk, TestPod0, metav1.NamespaceDefault)
-				expect := []AzvaResource{azvaResource_pod1, azvaResource_pod2}
+				expect := []AzvaResource{azvaResourcePod0, azvaResourcePod1}
 
 				verifyFields(t, result, expect)
 			},
@@ -215,7 +215,7 @@ func TestGetAzVolumeAttachementsByPod(t *testing.T) {
 			description: "Test get AzVolumeAttachements with empty namespace and specified pod name which has more than one pv",
 			verifyFunc: func() {
 				result := GetAzVolumeAttachementsByPod(fakeClientsetK8s, fakeClientsetAzDisk, TestPod0, metav1.NamespaceNone)
-				expect := []AzvaResource{azvaResource_pod1, azvaResource_pod2}
+				expect := []AzvaResource{azvaResourcePod0, azvaResourcePod1}
 
 				verifyFields(t, result, expect)
 			},
@@ -241,7 +241,7 @@ func TestGetAzVolumeAttachementsByNode(t *testing.T) {
 			description: "Test get AzVolumeAttachements with specified node name attached one pvc",
 			verifyFunc: func() {
 				result := GetAzVolumeAttachementsByNode(fakeClientsetAzDisk, TestNode0)
-				expect := []AzvaResource{azvaResource_node1}
+				expect := []AzvaResource{azvaResourceNode0}
 
 				verifyFields(t, result, expect)
 			},
@@ -250,7 +250,7 @@ func TestGetAzVolumeAttachementsByNode(t *testing.T) {
 			description: "Test get AzVolumeAttachements with specified node name attached more than one pvc",
 			verifyFunc: func() {
 				result := GetAzVolumeAttachementsByNode(fakeClientsetAzDisk, TestNode1)
-				expect := []AzvaResource{azvaResource_node2, azvaResource_node3}
+				expect := []AzvaResource{azvaResourceNode1, azvaResourceNode2}
 
 				verifyFields(t, result, expect)
 			},
@@ -277,7 +277,7 @@ func TestGetAzVolumeAttachementsByZone(t *testing.T) {
 			description: "Test get AzVolumeAttachements with specified zone name which has one node",
 			verifyFunc: func() {
 				result := GetAzVolumeAttachementsByZone(fakeClientsetK8s, fakeClientsetAzDisk, TestZone0)
-				expect := []AzvaResource{azvaResource_zone1}
+				expect := []AzvaResource{azvaResourceZone0}
 
 				verifyFields(t, result, expect)
 			},
@@ -286,7 +286,7 @@ func TestGetAzVolumeAttachementsByZone(t *testing.T) {
 			description: "Test get AzVolumeAttachements with specified zone name which has more than one node",
 			verifyFunc: func() {
 				result := GetAzVolumeAttachementsByZone(fakeClientsetK8s, fakeClientsetAzDisk, TestZone1)
-				expect := []AzvaResource{azvaResource_zone2, azvaResource_zone3}
+				expect := []AzvaResource{azvaResourceZone1, azvaResourceZone2}
 
 				verifyFields(t, result, expect)
 			},
