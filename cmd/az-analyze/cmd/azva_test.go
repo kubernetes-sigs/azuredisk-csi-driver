@@ -26,7 +26,7 @@ import (
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
-var azvaResourceAll0 AzvaResource = AzvaResource{
+var azvaResourceAll0 = AzvaResource{
 	PodName:     TestPod0,
 	NodeName:    TestNode0,
 	ZoneName:    TestZone0,
@@ -38,7 +38,7 @@ var azvaResourceAll0 AzvaResource = AzvaResource{
 	State:       v1beta1.Attached,
 }
 
-var azvaResourceAll1 AzvaResource = AzvaResource{
+var azvaResourceAll1 = AzvaResource{
 	PodName:     TestPod1,
 	NodeName:    TestNode0,
 	ZoneName:    TestZone0,
@@ -50,7 +50,7 @@ var azvaResourceAll1 AzvaResource = AzvaResource{
 	State:       v1beta1.Attached,
 }
 
-var azvaResourceAll2 AzvaResource = AzvaResource{
+var azvaResourceAll2 = AzvaResource{
 	PodName:     TestPod0,
 	NodeName:    TestNode1,
 	ZoneName:    TestZone1,
@@ -62,7 +62,7 @@ var azvaResourceAll2 AzvaResource = AzvaResource{
 	State:       v1beta1.Attached,
 }
 
-var azvaResourcePod0 AzvaResource = AzvaResource{
+var azvaResourcePod0 = AzvaResource{
 	PodName:     TestPod0,
 	NodeName:    "",
 	ZoneName:    "",
@@ -74,7 +74,7 @@ var azvaResourcePod0 AzvaResource = AzvaResource{
 	State:       v1beta1.Attached,
 }
 
-var azvaResourcePod1 AzvaResource = AzvaResource{
+var azvaResourcePod1 = AzvaResource{
 	PodName:     TestPod0,
 	NodeName:    "",
 	ZoneName:    "",
@@ -86,7 +86,7 @@ var azvaResourcePod1 AzvaResource = AzvaResource{
 	State:       v1beta1.Attached,
 }
 
-var azvaResourceNode0 AzvaResource = AzvaResource{
+var azvaResourceNode0 = AzvaResource{
 	PodName:     "",
 	NodeName:    TestNode0,
 	ZoneName:    "",
@@ -98,7 +98,7 @@ var azvaResourceNode0 AzvaResource = AzvaResource{
 	State:       v1beta1.Attached,
 }
 
-var azvaResourceNode1 AzvaResource = AzvaResource{
+var azvaResourceNode1 = AzvaResource{
 	PodName:     "",
 	NodeName:    TestNode1,
 	ZoneName:    "",
@@ -110,7 +110,7 @@ var azvaResourceNode1 AzvaResource = AzvaResource{
 	State:       v1beta1.Attached,
 }
 
-var azvaResourceNode2 AzvaResource = AzvaResource{
+var azvaResourceNode2 = AzvaResource{
 	PodName:     "",
 	NodeName:    TestNode1,
 	ZoneName:    "",
@@ -122,7 +122,7 @@ var azvaResourceNode2 AzvaResource = AzvaResource{
 	State:       v1beta1.Attached,
 }
 
-var azvaResourceZone0 AzvaResource = AzvaResource{
+var azvaResourceZone0 = AzvaResource{
 	PodName:     "",
 	NodeName:    "",
 	ZoneName:    TestZone0,
@@ -134,7 +134,7 @@ var azvaResourceZone0 AzvaResource = AzvaResource{
 	State:       v1beta1.Attached,
 }
 
-var azvaResourceZone1 AzvaResource = AzvaResource{
+var azvaResourceZone1 = AzvaResource{
 	PodName:     "",
 	NodeName:    "",
 	ZoneName:    TestZone1,
@@ -146,7 +146,7 @@ var azvaResourceZone1 AzvaResource = AzvaResource{
 	State:       v1beta1.Attached,
 }
 
-var azvaResourceZone2 AzvaResource = AzvaResource{
+var azvaResourceZone2 = AzvaResource{
 	PodName:     "",
 	NodeName:    "",
 	ZoneName:    TestZone1,

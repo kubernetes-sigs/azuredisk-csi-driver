@@ -25,21 +25,21 @@ import (
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
-var azvResource1 AzvResource = AzvResource{
+var azvResource1 = AzvResource{
 	ResourceType: TestPod0,
 	Namespace:    consts.DefaultAzureDiskCrdNamespace,
 	Name:         TestAzVolume0,
 	State:        v1beta1.VolumeCreated,
 }
 
-var azvResource2 AzvResource = AzvResource{
+var azvResource2 = AzvResource{
 	ResourceType: TestPod0,
 	Namespace:    consts.DefaultAzureDiskCrdNamespace,
 	Name:         TestAzVolume1,
 	State:        v1beta1.VolumeCreated,
 }
 
-var azvResource3 AzvResource = AzvResource{
+var azvResource3 = AzvResource{
 	ResourceType: TestPod1,
 	Namespace:    consts.DefaultAzureDiskCrdNamespace,
 	Name:         TestAzVolume0,
