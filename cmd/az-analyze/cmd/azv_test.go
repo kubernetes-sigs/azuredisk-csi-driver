@@ -20,28 +20,29 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
 var azvResource1 AzvResource = AzvResource{
-	ResourceType: "test-pod-0",
+	ResourceType: TestPod0,
 	Namespace:    consts.DefaultAzureDiskCrdNamespace,
-	Name:         "test-azVolume-0",
+	Name:         TestAzVolume0,
 	State:        v1beta1.VolumeCreated,
 }
 
 var azvResource2 AzvResource = AzvResource{
-	ResourceType: "test-pod-0",
+	ResourceType: TestPod0,
 	Namespace:    consts.DefaultAzureDiskCrdNamespace,
-	Name:         "test-azVolume-1",
+	Name:         TestAzVolume1,
 	State:        v1beta1.VolumeCreated,
 }
 
 var azvResource3 AzvResource = AzvResource{
-	ResourceType: "test-pod-1",
+	ResourceType: TestPod1,
 	Namespace:    consts.DefaultAzureDiskCrdNamespace,
-	Name:         "test-azVolume-0",
+	Name:         TestAzVolume0,
 	State:        v1beta1.VolumeCreated,
 }
 
@@ -54,12 +55,12 @@ func TestGetAzVolumesByPod(t *testing.T) {
 		verifyFunc  func()
 	}{
 		{
-			description: "specified pod name with more than one pv",
+			description: "Test get AzVolumes with specified pod name which has more than one pv",
 			verifyFunc: func() {
-				result := GetAzVolumesByPod(fakeClientsetK8s, fakeClientsetAzDisk, "test-pod-0", "default")
+				result := GetAzVolumesByPod(fakeClientsetK8s, fakeClientsetAzDisk, TestPod0, metav1.NamespaceDefault)
 				expect := []AzvResource{azvResource1, azvResource2}
 
-                require.Equal(t, len(result), len(expect))
+				require.Equal(t, len(result), len(expect))
 
 				for i := 0; i < len(result); i++ {
 					require.Equal(t, result[i], expect[i])
@@ -67,12 +68,12 @@ func TestGetAzVolumesByPod(t *testing.T) {
 			},
 		},
 		{
-			description: "empty pod name with multiple pods have same pvc",
+			description: "Test get AzVolumes with empty pod name and multiple pods have same pv",
 			verifyFunc: func() {
-				result := GetAzVolumesByPod(fakeClientsetK8s, fakeClientsetAzDisk, "", "default")
+				result := GetAzVolumesByPod(fakeClientsetK8s, fakeClientsetAzDisk, "", metav1.NamespaceDefault)
 				expect := []AzvResource{azvResource1, azvResource3, azvResource2}
 
-                require.Equal(t, len(result), len(expect))
+				require.Equal(t, len(result), len(expect))
 
 				for i := 0; i < len(result); i++ {
 					require.Equal(t, result[i], expect[i])

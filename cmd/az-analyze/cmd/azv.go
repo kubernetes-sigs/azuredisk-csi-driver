@@ -60,7 +60,7 @@ var azvCmd = &cobra.Command{
 func init() {
 	getCmd.AddCommand(azvCmd)
 	azvCmd.PersistentFlags().StringP("pod", "p", "", "insert-pod-name")
-	azvCmd.PersistentFlags().StringP("namespace", "n", "default", "insert-namespace")
+	azvCmd.PersistentFlags().StringP("namespace", "n", metav1.NamespaceDefault, "insert-namespace")
 }
 
 type AzvResource struct {
@@ -125,7 +125,6 @@ func GetAzVolumesByPod(clientsetK8s kubernetes.Interface, clientsetAzDisk versio
 			}
 		}
 	}
-	fmt.Println(result) // debug
 	return result
 }
 
