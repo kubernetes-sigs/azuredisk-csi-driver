@@ -248,9 +248,9 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 
 			sharedDiskSize := 10
 			volumeContext := map[string]string{
-				"skuName":     "Premium_LRS",
-				"maxshares":   "2",
-				"cachingMode": "None",
+				consts.SkuNameField: "Premium_LRS",
+				"maxshares":         "2",
+				"cachingMode":       "None",
 			}
 			volumeID, err = CreateVolume("shared-disk-multiple-pods", sharedDiskSize, volumeContext)
 			if err != nil {

@@ -197,7 +197,7 @@ func upgradeTest(isMultiZone bool) {
 			IsWindows: testconsts.IsWindowsCluster,
 		}
 
-		storageClassParameters := map[string]string{"skuName": "Premium_LRS", "maxShares": "1", "cachingmode": "None"}
+		storageClassParameters := map[string]string{consts.SkuNameField: "Premium_LRS", "maxShares": "1", "cachingmode": "None"}
 
 		tpod, cleanup := pod.SetupWithDynamicVolumes(cs, ns, testDriver, storageClassParameters, scheduler)
 		// defer must be called here for resources not get removed before using them

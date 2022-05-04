@@ -21,6 +21,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
@@ -76,7 +77,7 @@ func scaleTests(isMultiZone bool) {
 		test.CSIDriver = testDriver
 		test.Pod = pod
 		test.Replicas = 1000
-		test.StorageClassParameters = map[string]string{"skuName": "Premium_LRS", "maxShares": "1", "cachingmode": "None"}
+		test.StorageClassParameters = map[string]string{consts.SkuNameField: "Premium_LRS", "maxShares": "1", "cachingmode": "None"}
 
 		test.Run(cs, ns, schedulerName)
 	})
@@ -110,7 +111,7 @@ func scaleTests(isMultiZone bool) {
 		test.Pod = pod
 		test.Replicas = 1
 		test.PodCount = 1000
-		test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_LRS", "maxShares": "2", "cachingmode": "None"}
+		test.StorageClassParameters = map[string]string{consts.SkuNameField: "StandardSSD_LRS", "maxShares": "2", "cachingmode": "None"}
 
 		test.Run(cs, ns, schedulerName)
 	})
@@ -175,7 +176,7 @@ func scaleTests(isMultiZone bool) {
 		test.Pod = pod
 		test.Replicas = volMountedOnPod
 		test.PodCount = 350
-		test.StorageClassParameters = map[string]string{"skuName": "Premium_LRS", "maxShares": "2", "cachingmode": "None"}
+		test.StorageClassParameters = map[string]string{consts.SkuNameField: "Premium_LRS", "maxShares": "2", "cachingmode": "None"}
 
 		test.Run(cs, ns, schedulerName)
 	})
