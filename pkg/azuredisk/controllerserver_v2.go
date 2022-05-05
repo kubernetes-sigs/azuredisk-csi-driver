@@ -108,16 +108,20 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 	// normalize values
 	skuName, err := azureutils.NormalizeStorageAccountType(diskParams.AccountType, d.cloud.Config.Cloud, d.cloud.Config.DisableAzureStackCloud)
 	if err != nil {
-		return nil, err
+		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	if _, err = azureutils.NormalizeCachingMode(diskParams.CachingMode); err != nil {
-		return nil, err
+	if _, err := azureutils.NormalizeCachingMode(diskParams.CachingMode); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	if err := azureutils.ValidateDiskEncryptionType(diskParams.DiskEncryptionType); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
 	networkAccessPolicy, err := azureutils.NormalizeNetworkAccessPolicy(diskParams.NetworkAccessPolicy)
 	if err != nil {
-		return nil, err
+		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
 	selectedAvailabilityZone := azureutils.PickAvailabilityZone(req.GetAccessibilityRequirements(), d.cloud.Location, topologyKey)
