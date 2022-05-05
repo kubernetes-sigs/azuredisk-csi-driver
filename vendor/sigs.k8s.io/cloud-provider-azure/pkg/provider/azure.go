@@ -17,7 +17,6 @@ limitations under the License.
 package provider
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -31,10 +30,8 @@ import (
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/adal"
 	"github.com/Azure/go-autorest/autorest/azure"
-	"golang.org/x/time/rate"
 
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
@@ -44,9 +41,9 @@ import (
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/flowcontrol"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
-	"k8s.io/klog/v2/klogr"
 
 	"sigs.k8s.io/cloud-provider-azure/pkg/auth"
 	azclients "sigs.k8s.io/cloud-provider-azure/pkg/azureclients"
@@ -57,6 +54,7 @@ import (
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/privatednsclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/privatednszonegroupclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/privateendpointclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/privatelinkserviceclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/publicipclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/routeclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/routetableclient"
@@ -71,10 +69,8 @@ import (
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmssclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmssvmclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/zoneclient"
-	"sigs.k8s.io/cloud-provider-azure/pkg/batch"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
-	"sigs.k8s.io/cloud-provider-azure/pkg/metrics"
 	nodemanager "sigs.k8s.io/cloud-provider-azure/pkg/nodemanager"
 	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
 
@@ -231,8 +227,12 @@ type Config struct {
 	NsgCacheTTLInSeconds int `json:"nsgCacheTTLInSeconds,omitempty" yaml:"nsgCacheTTLInSeconds,omitempty"`
 	// RouteTableCacheTTLInSeconds sets the cache TTL for route table
 	RouteTableCacheTTLInSeconds int `json:"routeTableCacheTTLInSeconds,omitempty" yaml:"routeTableCacheTTLInSeconds,omitempty"`
+	// PlsCacheTTLInSeconds sets the cache TTL for private link service resource
+	PlsCacheTTLInSeconds int `json:"plsCacheTTLInSeconds,omitempty" yaml:"plsCacheTTLInSeconds,omitempty"`
 	// AvailabilitySetsCacheTTLInSeconds sets the cache TTL for VMAS
 	AvailabilitySetsCacheTTLInSeconds int `json:"availabilitySetsCacheTTLInSeconds,omitempty" yaml:"availabilitySetsCacheTTLInSeconds,omitempty"`
+	// PublicIPCacheTTLInSeconds sets the cache TTL for public ip
+	PublicIPCacheTTLInSeconds int `json:"publicIPCacheTTLInSeconds,omitempty" yaml:"publicIPCacheTTLInSeconds,omitempty"`
 	// RouteUpdateWaitingInSeconds is the delay time for waiting route updates to take effect. This waiting delay is added
 	// because the routes are not taken effect when the async route updating operation returns success. Default is 30 seconds.
 	RouteUpdateWaitingInSeconds int `json:"routeUpdateWaitingInSeconds,omitempty" yaml:"routeUpdateWaitingInSeconds,omitempty"`
@@ -247,6 +247,8 @@ type Config struct {
 	// PutVMSSVMBatchSize defines how many requests the client send concurrently when putting the VMSS VMs.
 	// If it is smaller than or equal to zero, the request will be sent one by one in sequence (default).
 	PutVMSSVMBatchSize int `json:"putVMSSVMBatchSize" yaml:"putVMSSVMBatchSize"`
+	// PrivateLinkServiceResourceGroup determines the specific resource group of the private link services user want to use
+	PrivateLinkServiceResourceGroup string `json:"privateLinkServiceResourceGroup,omitempty" yaml:"privateLinkServiceResourceGroup,omitempty"`
 }
 
 type InitSecretConfig struct {
@@ -296,6 +298,7 @@ type Cloud struct {
 	privatednsclient                privatednsclient.Interface
 	privatednszonegroupclient       privatednszonegroupclient.Interface
 	virtualNetworkLinksClient       virtualnetworklinksclient.Interface
+	PrivateLinkServiceClient        privatelinkserviceclient.Interface
 
 	ResourceRequestBackoff  wait.Backoff
 	Metadata                *InstanceMetadataService
@@ -341,6 +344,9 @@ type Cloud struct {
 	lbCache  *azcache.TimedCache
 	nsgCache *azcache.TimedCache
 	rtCache  *azcache.TimedCache
+	pipCache *azcache.TimedCache
+	// use LB frontEndIpConfiguration ID as the key and search for PLS attached to the frontEnd
+	plsCache *azcache.TimedCache
 
 	*ManagedDiskController
 	*controllerCommon
@@ -456,11 +462,6 @@ func NewCloudWithoutFeatureGates(configReader io.Reader, callFromCCM bool) (*Clo
 		return nil, err
 	}
 
-	return NewCloudWithoutFeatureGatesFromConfig(config, false, callFromCCM)
-}
-
-// NewCloudWithoutFeatureGatesFromConfig returns a Cloud without trying to wire the feature gates.
-func NewCloudWithoutFeatureGatesFromConfig(config *Config, fromSecret, callFromCCM bool) (*Cloud, error) {
 	az := &Cloud{
 		nodeNames:                sets.NewString(),
 		nodeZones:                map[string]sets.String{},
@@ -471,7 +472,7 @@ func NewCloudWithoutFeatureGatesFromConfig(config *Config, fromSecret, callFromC
 		nodePrivateIPs:           map[string]sets.String{},
 	}
 
-	err := az.InitializeCloudFromConfig(config, fromSecret, callFromCCM)
+	err = az.InitializeCloudFromConfig(config, false, callFromCCM)
 	if err != nil {
 		return nil, err
 	}
@@ -492,6 +493,10 @@ func (az *Cloud) InitializeCloudFromConfig(config *Config, fromSecret, callFromC
 
 	if config.SecurityGroupResourceGroup == "" {
 		config.SecurityGroupResourceGroup = config.ResourceGroup
+	}
+
+	if config.PrivateLinkServiceResourceGroup == "" {
+		config.PrivateLinkServiceResourceGroup = config.ResourceGroup
 	}
 
 	if config.VMType == "" {
@@ -677,6 +682,16 @@ func (az *Cloud) initCaches() (err error) {
 		return err
 	}
 
+	az.pipCache, err = az.newPIPCache()
+	if err != nil {
+		return err
+	}
+
+	az.plsCache, err = az.newPLSCache()
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -835,6 +850,7 @@ func (az *Cloud) configAzureClients(
 	az.privatednsclient = privatednsclient.New(azClientConfig)
 	az.privatednszonegroupclient = privatednszonegroupclient.New(azClientConfig)
 	az.virtualNetworkLinksClient = virtualnetworklinksclient.New(azClientConfig)
+	az.PrivateLinkServiceClient = privatelinkserviceclient.New(azClientConfig)
 
 	if az.ZoneClient == nil {
 		az.ZoneClient = zoneclient.New(zoneClientConfig)
@@ -956,10 +972,10 @@ func initDiskControllers(az *Cloud) error {
 	// Common controller contains the function
 	// needed by both blob disk and managed disk controllers
 
-	qps := rate.Limit(defaultAttachDetachDiskQPS)
-	bucket := defaultAttachDetachDiskBucket
+	qps := float32(defaultAtachDetachDiskQPS)
+	bucket := defaultAtachDetachDiskBucket
 	if az.Config.AttachDetachDiskRateLimit != nil {
-		qps = rate.Limit(az.Config.AttachDetachDiskRateLimit.CloudProviderRateLimitQPSWrite)
+		qps = az.Config.AttachDetachDiskRateLimit.CloudProviderRateLimitQPSWrite
 		bucket = az.Config.AttachDetachDiskRateLimit.CloudProviderRateLimitBucketWrite
 	}
 	klog.V(2).Infof("attach/detach disk operation rate limit QPS: %f, Bucket: %d", qps, bucket)
@@ -971,65 +987,8 @@ func initDiskControllers(az *Cloud) error {
 		subscriptionID:        az.SubscriptionID,
 		cloud:                 az,
 		lockMap:               newLockMap(),
+		diskOpRateLimiter:     flowcontrol.NewTokenBucketRateLimiter(qps, bucket),
 	}
-
-	attachDetachRateLimiter := rate.NewLimiter(qps, bucket)
-
-	logger := klogr.NewWithOptions(klogr.WithFormat(klogr.FormatKlog)).WithName("cloud-provider-azure").WithValues("type", "batch")
-
-	processorOptions := []batch.ProcessorOption{
-		batch.WithVerboseLogLevel(3),
-		batch.WithDelayBeforeStart(1 * time.Second),
-		batch.WithGlobalLimiter(attachDetachRateLimiter),
-	}
-
-	attachBatchFn := func(ctx context.Context, key string, values []interface{}) ([]interface{}, error) {
-		subscriptionID, resourceGroup, nodeName := metrics.AttributesFromKey(key)
-
-		disksToAttach := make([]attachDiskParams, len(values))
-		for i, value := range values {
-			disksToAttach[i] = value.(attachDiskParams)
-		}
-
-		lunChans, err := common.attachDiskBatchToNode(ctx, subscriptionID, resourceGroup, types.NodeName(nodeName), disksToAttach)
-		if err != nil {
-			return nil, err
-		}
-
-		results := make([]interface{}, len(lunChans))
-		for i, lun := range lunChans {
-			results[i] = lun
-		}
-
-		return results, nil
-	}
-
-	attachDiskProcessOptions := append(processorOptions,
-		batch.WithLogger(logger.WithValues("operation", "attach_disk")),
-		batch.WithMetricsRecorder(metrics.NewBatchProcessorMetricsRecorder("batch", "updateasync", "attach_disk")))
-
-	detachBatchFn := func(ctx context.Context, key string, values []interface{}) ([]interface{}, error) {
-		subscriptionID, resourceGroup, nodeName := metrics.AttributesFromKey(key)
-
-		disksToDetach := make([]detachDiskParams, len(values))
-		for i, value := range values {
-			disksToDetach[i] = value.(detachDiskParams)
-		}
-
-		err := common.detachDiskBatchFromNode(ctx, subscriptionID, resourceGroup, types.NodeName(nodeName), disksToDetach)
-		if err != nil {
-			return nil, err
-		}
-
-		return make([]interface{}, len(disksToDetach)), nil
-	}
-
-	detachDiskProcessorOptions := append(processorOptions,
-		batch.WithLogger(logger.WithValues("operation", "detach_disk")),
-		batch.WithMetricsRecorder(metrics.NewBatchProcessorMetricsRecorder("batch", "update", "detach_disk")))
-
-	common.attachDiskProcessor = batch.NewProcessor(attachBatchFn, attachDiskProcessOptions...)
-	common.detachDiskProcessor = batch.NewProcessor(detachBatchFn, detachDiskProcessorOptions...)
 
 	if az.HasExtendedLocation() {
 		common.extendedLocation = &ExtendedLocation{

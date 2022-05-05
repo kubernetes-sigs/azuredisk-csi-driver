@@ -195,6 +195,7 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 				klog.Warningf("DisableAvailabilitySetNodes for controller is set as false while current VMType is vmss")
 			}
 		}
+		klog.V(2).Infof("location: %s, rg: %s, VMType: %s, PrimaryScaleSetName: %s", d.cloud.Location, d.cloud.ResourceGroup, d.cloud.VMType, d.cloud.PrimaryScaleSetName)
 	}
 
 	if d.vmssCacheTTLInSeconds > 0 {

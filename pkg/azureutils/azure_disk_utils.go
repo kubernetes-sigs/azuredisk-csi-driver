@@ -92,6 +92,7 @@ type ManagedDiskParameters struct {
 	DeviceSettings          map[string]string
 	DiskAccessID            string
 	DiskEncryptionSetID     string
+	DiskEncryptionType      string
 	DiskIOPSReadWrite       string
 	DiskMBPSReadWrite       string
 	DiskName                string
@@ -293,6 +294,19 @@ func NormalizeNetworkAccessPolicy(networkAccessPolicy string) (compute.NetworkAc
 	return "", fmt.Errorf("azureDisk - %s is not supported NetworkAccessPolicy. Supported values are %s", networkAccessPolicy, compute.PossibleNetworkAccessPolicyValues())
 }
 
+func ValidateDiskEncryptionType(encryptionType string) error {
+	if encryptionType == "" {
+		return nil
+	}
+	supportedTypes := compute.PossibleEncryptionTypeValues()
+	for _, s := range supportedTypes {
+		if encryptionType == string(s) {
+			return nil
+		}
+	}
+	return fmt.Errorf("DiskEncryptionType(%s) is not supported", encryptionType)
+}
+
 func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, error) {
 	var err error
 	if parameters == nil {
@@ -332,6 +346,8 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 			diskParams.DiskName = v
 		case consts.DesIDField:
 			diskParams.DiskEncryptionSetID = v
+		case consts.DiskEncryptionTypeField:
+			diskParams.DiskEncryptionType = v
 		case consts.TagsField:
 			customTagsMap, err := util.ConvertTagsToMap(v)
 			if err != nil {

@@ -34,8 +34,8 @@ const (
 	DefaultAzureDiskCrdNamespace  = "azure-disk-csi"
 	DefaultDriverName             = "disk.csi.azure.com"
 	DesIDField                    = "diskencryptionsetid"
+	DiskEncryptionTypeField       = "diskencryptiontype"
 	DiskAccessIDField             = "diskaccessid"
-	DiskEncryptionSetID           = "diskencryptionsetid"
 	DiskIOPSReadWriteField        = "diskiopsreadwrite"
 	DiskMBPSReadWriteField        = "diskmbpsreadwrite"
 	DiskNameField                 = "diskname"
@@ -138,6 +138,13 @@ const (
 	TooManyRequests         = "TooManyRequests"
 	ClientThrottled         = "client throttled"
 	Latency                 = "latency"
+
+	VolumeID                      = "volumeid"
+	Node                          = "node"
+	SourceResourceID              = "source_resource_id"
+	SnapshotName                  = "snapshot_name"
+	SnapshotID                    = "snapshot_id"
+
 	// define different sleep time when hit throttling
 	SnapshotOpThrottlingSleepSec = 50
 

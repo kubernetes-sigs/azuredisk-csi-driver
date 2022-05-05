@@ -164,6 +164,10 @@ func (c *CloudProvisioner) CreateVolume(
 		return nil, err
 	}
 
+	if err := azureutils.ValidateDiskEncryptionType(diskParams.DiskEncryptionType); err != nil {
+		return nil, err
+	}
+
 	var networkAccessPolicy compute.NetworkAccessPolicy
 	networkAccessPolicy, err = azureutils.NormalizeNetworkAccessPolicy(diskParams.NetworkAccessPolicy)
 	if err != nil {
