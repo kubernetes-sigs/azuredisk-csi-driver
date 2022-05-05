@@ -94,8 +94,8 @@ github.com/evanphx/json-patch
 # github.com/felixge/httpsnoop v1.0.1
 ## explicit; go 1.13
 github.com/felixge/httpsnoop
-# github.com/fsnotify/fsnotify v1.5.3
-## explicit; go 1.13
+# github.com/fsnotify/fsnotify v1.5.4
+## explicit; go 1.16
 github.com/fsnotify/fsnotify
 # github.com/go-logr/logr v1.2.0
 ## explicit; go 1.16
@@ -388,7 +388,7 @@ golang.org/x/net/trace
 ## explicit; go 1.11
 golang.org/x/oauth2
 golang.org/x/oauth2/internal
-# golang.org/x/sys v0.0.0-20220209214540-3681064d5158
+# golang.org/x/sys v0.0.0-20220412211240-33da011f77ad
 ## explicit; go 1.17
 golang.org/x/sys/cpu
 golang.org/x/sys/internal/unsafeheader
@@ -1054,7 +1054,7 @@ k8s.io/utils/trace
 ## explicit; go 1.17
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/client
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/proto/client
-# sigs.k8s.io/cloud-provider-azure v0.7.4 => sigs.k8s.io/cloud-provider-azure v0.7.4-0.20220428013254-8d8ea5d4d4ad
+# sigs.k8s.io/cloud-provider-azure v0.7.4 => sigs.k8s.io/cloud-provider-azure v0.7.4-0.20220505040003-0b76f094386d
 ## explicit; go 1.17
 sigs.k8s.io/cloud-provider-azure/pkg/auth
 sigs.k8s.io/cloud-provider-azure/pkg/azureclients
@@ -1071,6 +1071,8 @@ sigs.k8s.io/cloud-provider-azure/pkg/azureclients/loadbalancerclient/mockloadbal
 sigs.k8s.io/cloud-provider-azure/pkg/azureclients/privatednsclient
 sigs.k8s.io/cloud-provider-azure/pkg/azureclients/privatednszonegroupclient
 sigs.k8s.io/cloud-provider-azure/pkg/azureclients/privateendpointclient
+sigs.k8s.io/cloud-provider-azure/pkg/azureclients/privatelinkserviceclient
+sigs.k8s.io/cloud-provider-azure/pkg/azureclients/privatelinkserviceclient/mockprivatelinkserviceclient
 sigs.k8s.io/cloud-provider-azure/pkg/azureclients/publicipclient
 sigs.k8s.io/cloud-provider-azure/pkg/azureclients/publicipclient/mockpublicipclient
 sigs.k8s.io/cloud-provider-azure/pkg/azureclients/routeclient
@@ -1146,4 +1148,4 @@ sigs.k8s.io/yaml
 # k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.24.0-alpha.4
 # k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.24.0-alpha.4
 # k8s.io/sample-controller => k8s.io/sample-controller v0.24.0-alpha.4
-# sigs.k8s.io/cloud-provider-azure => sigs.k8s.io/cloud-provider-azure v0.7.4-0.20220428013254-8d8ea5d4d4ad
+# sigs.k8s.io/cloud-provider-azure => sigs.k8s.io/cloud-provider-azure v0.7.4-0.20220505040003-0b76f094386d

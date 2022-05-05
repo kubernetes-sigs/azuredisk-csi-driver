@@ -123,16 +123,20 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	// normalize values
 	skuName, err := azureutils.NormalizeStorageAccountType(diskParams.AccountType, localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud)
 	if err != nil {
-		return nil, err
+		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	if _, err = azureutils.NormalizeCachingMode(diskParams.CachingMode); err != nil {
-		return nil, err
+	if _, err := azureutils.NormalizeCachingMode(diskParams.CachingMode); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	if err := azureutils.ValidateDiskEncryptionType(diskParams.DiskEncryptionType); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
 	networkAccessPolicy, err := azureutils.NormalizeNetworkAccessPolicy(diskParams.NetworkAccessPolicy)
 	if err != nil {
-		return nil, err
+		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
 	requirement := req.GetAccessibilityRequirements()
@@ -211,6 +215,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		AvailabilityZone:    diskZone,
 		BurstingEnabled:     diskParams.EnableBursting,
 		DiskEncryptionSetID: diskParams.DiskEncryptionSetID,
+		DiskEncryptionType:  diskParams.DiskEncryptionType,
 		DiskIOPSReadWrite:   diskParams.DiskIOPSReadWrite,
 		DiskMBpsReadWrite:   diskParams.DiskMBPSReadWrite,
 		DiskName:            diskParams.DiskName,

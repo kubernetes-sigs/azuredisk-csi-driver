@@ -1192,6 +1192,42 @@ func TestNormalizeCachingMode(t *testing.T) {
 	}
 }
 
+func TestValidateDiskEncryptionType(t *testing.T) {
+	tests := []struct {
+		diskEncryptionType string
+		expectedErr        error
+	}{
+		{
+			diskEncryptionType: "",
+			expectedErr:        nil,
+		},
+		{
+			diskEncryptionType: "EncryptionAtRestWithCustomerKey",
+			expectedErr:        nil,
+		},
+		{
+			diskEncryptionType: "EncryptionAtRestWithPlatformAndCustomerKeys",
+			expectedErr:        nil,
+		},
+		{
+			diskEncryptionType: "EncryptionAtRestWithPlatformKey",
+			expectedErr:        nil,
+		},
+		{
+			diskEncryptionType: "encryptionAtRestWithCustomerKey",
+			expectedErr:        fmt.Errorf("DiskEncryptionType(encryptionAtRestWithCustomerKey) is not supported"),
+		},
+		{
+			diskEncryptionType: "invalid",
+			expectedErr:        fmt.Errorf("DiskEncryptionType(invalid) is not supported"),
+		},
+	}
+	for _, test := range tests {
+		err := ValidateDiskEncryptionType(test.diskEncryptionType)
+		assert.Equal(t, err, test.expectedErr)
+	}
+}
+
 func TestNormalizeNetworkAccessPolicy(t *testing.T) {
 	tests := []struct {
 		networkAccessPolicy         string
@@ -1365,7 +1401,7 @@ func TestParseDiskParameters(t *testing.T) {
 				consts.DiskMBPSReadWriteField:   "diskMBPSReadWrite",
 				consts.LogicalSectorSizeField:   "1",
 				consts.DiskNameField:            "diskName",
-				consts.DiskEncryptionSetID:      "diskEncyptionSetID",
+				consts.DesIDField:               "diskEncyptionSetID",
 				consts.TagsField:                "key0=value0, key1=value1",
 				consts.WriteAcceleratorEnabled:  "writeAcceleratorEnabled",
 				consts.PvcNameKey:               "pvcName",
@@ -1416,7 +1452,7 @@ func TestParseDiskParameters(t *testing.T) {
 					consts.DiskMBPSReadWriteField:   "diskMBPSReadWrite",
 					consts.LogicalSectorSizeField:   "1",
 					consts.DiskNameField:            "diskName",
-					consts.DiskEncryptionSetID:      "diskEncyptionSetID",
+					consts.DesIDField:               "diskEncyptionSetID",
 					consts.TagsField:                "key0=value0, key1=value1",
 					consts.WriteAcceleratorEnabled:  "writeAcceleratorEnabled",
 					consts.PvcNameKey:               "pvcName",
