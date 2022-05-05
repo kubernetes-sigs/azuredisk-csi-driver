@@ -32,6 +32,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e/framework"
 	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
 	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
@@ -52,49 +53,49 @@ func NormalizeVolumes(volumes []VolumeDetails, allowedTopologies []string, isMul
 	return volumes
 }
 
-func VerifySuccessfulReplicaAzVolumeAttachments(pod PodDetails, azDiskClient *azDiskClientSet.Clientset, storageClassParameters map[string]string, client clientset.Interface, namespace *v1.Namespace) (bool, *diskv1beta1.AzVolumeAttachmentList, error) {
-	if storageClassParameters["maxShares"] == "" {
-		return true, nil, nil
-	}
-
+func VerifySuccessfulAzVolumeAttachments(pod PodDetails, azDiskClient *azDiskClientSet.Clientset, storageClassParameters map[string]string, client clientset.Interface, namespace *v1.Namespace) (isVerified bool, allAttachments, failedAttachments []diskv1beta1.AzVolumeAttachment, err error) {
 	var expectedNumberOfReplicas int
 	nodes := getSchedulableNodes(azDiskClient, client, pod, namespace)
 	nodesAvailableForReplicas := len(nodes) - 1
 
 	for _, volume := range pod.Volumes {
-		if volume.PersistentVolume != nil {
-			_, maxMountReplicas := azureutils.GetMaxSharesAndMaxMountReplicaCount(storageClassParameters, volume.VolumeMode == Block)
-			if nodesAvailableForReplicas >= maxMountReplicas {
-				expectedNumberOfReplicas = maxMountReplicas
-			} else {
-				expectedNumberOfReplicas = nodesAvailableForReplicas
-			}
-
-			replicaAttachments, err := getReplicaAttachments(volume.PersistentVolume, client, namespace, azDiskClient)
-			framework.ExpectNoError(err)
-			numReplicaAttachments := len(replicaAttachments.Items)
-
-			if numReplicaAttachments != expectedNumberOfReplicas {
-				e2elog.Logf("expected %d replica attachments, found %d", expectedNumberOfReplicas, numReplicaAttachments)
-				return false, nil, nil
-			}
-
-			failedReplicaAttachments := diskv1beta1.AzVolumeAttachmentList{}
-
-			for _, replica := range replicaAttachments.Items {
-				if replica.Status.State != "Attached" {
-					e2elog.Logf("found replica attachment %s, currently not attached", replica.Name)
-					failedReplicaAttachments.Items = append(failedReplicaAttachments.Items, replica)
-				} else {
-					e2elog.Logf("found replica attachment %s in attached state", replica.Name)
-				}
-			}
-			if len(failedReplicaAttachments.Items) > 0 {
-				return false, &failedReplicaAttachments, nil
+		pv := volume.PersistentVolume
+		if pv == nil {
+			if pv = getPVFromPVC(client, volume.PersistentVolumeClaim); pv == nil {
+				continue
 			}
 		}
+		_, maxMountReplicas := azureutils.GetMaxSharesAndMaxMountReplicaCount(storageClassParameters, volume.VolumeMode == Block)
+		if nodesAvailableForReplicas >= maxMountReplicas {
+			expectedNumberOfReplicas = maxMountReplicas
+		} else {
+			expectedNumberOfReplicas = nodesAvailableForReplicas
+		}
+
+		pvAttachments, derr := getAzVolumeAttachmentsForPV(pv, client, namespace, azDiskClient)
+		framework.ExpectNoError(derr)
+		numAttachments := len(pvAttachments.Items)
+
+		if numAttachments != expectedNumberOfReplicas+1 {
+			e2elog.Logf("expected %d attachments, found %d", expectedNumberOfReplicas+1, numAttachments)
+			return
+		}
+		allAttachments = append(allAttachments, pvAttachments.Items...)
+
+		for _, attachment := range pvAttachments.Items {
+			if attachment.Status.State != diskv1beta1.Attached {
+				e2elog.Logf("found attachment %s, currently not attached", attachment.Name)
+				failedAttachments = append(failedAttachments, attachment)
+			} else {
+				e2elog.Logf("found attachment %s in attached state", attachment.Name)
+			}
+		}
+		if len(failedAttachments) > 0 {
+			return
+		}
 	}
-	return true, nil, nil
+	isVerified = true
+	return
 }
 
 func generatePVC(namespace, storageClassName, name, claimSize string, volumeMode v1.PersistentVolumeMode, accessMode v1.PersistentVolumeAccessMode, dataSource *v1.TypedLocalObjectReference) *v1.PersistentVolumeClaim {
@@ -129,7 +130,7 @@ func generatePVC(namespace, storageClassName, name, claimSize string, volumeMode
 	}
 }
 
-func getReplicaAttachments(persistentVolume *v1.PersistentVolume, client clientset.Interface, namespace *v1.Namespace, azDiskClient *azDiskClientSet.Clientset) (*diskv1beta1.AzVolumeAttachmentList, error) {
+func getAzVolumeAttachmentsForPV(persistentVolume *v1.PersistentVolume, client clientset.Interface, namespace *v1.Namespace, azDiskClient *azDiskClientSet.Clientset) (*diskv1beta1.AzVolumeAttachmentList, error) {
 	pv, err := client.CoreV1().PersistentVolumes().Get(context.TODO(), persistentVolume.Name, metav1.GetOptions{})
 	if err != nil {
 		ginkgo.Fail("failed to get persistent volume")
@@ -138,11 +139,11 @@ func getReplicaAttachments(persistentVolume *v1.PersistentVolume, client clients
 	if err != nil {
 		ginkgo.Fail("failed to get persistent volume diskname")
 	}
-	azVolumeAttachmentsReplica, err := azDiskClient.DiskV1beta1().AzVolumeAttachments(azureconstants.DefaultAzureDiskCrdNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: labels.Set(map[string]string{azureconstants.RoleLabel: "Replica", azureconstants.VolumeNameLabel: diskname}).String()})
+	azVolumeAttachments, err := azDiskClient.DiskV1beta1().AzVolumeAttachments(azureconstants.DefaultAzureDiskCrdNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: labels.Set(map[string]string{azureconstants.VolumeNameLabel: diskname}).String()})
 	if err != nil {
 		ginkgo.Fail("failed while getting replica attachments")
 	}
-	return azVolumeAttachmentsReplica, nil
+	return azVolumeAttachments, nil
 }
 
 func getSchedulableNodes(azDiskClient *azDiskClientSet.Clientset, client clientset.Interface, pod PodDetails, namespace *v1.Namespace) []*v1.Node {
@@ -237,4 +238,21 @@ var podFailedCondition = func(pod *v1.Pod) (bool, error) {
 	default:
 		return false, nil
 	}
+}
+
+func getPVFromPVC(client clientset.Interface, pvc *v1.PersistentVolumeClaim) (pv *v1.PersistentVolume) {
+	if pvc == nil {
+		return nil
+	}
+	var err error
+	ctx := context.Background()
+	pvc, err = client.CoreV1().PersistentVolumeClaims(pvc.Namespace).Get(ctx, pvc.Name, metav1.GetOptions{})
+	if err != nil {
+		klog.Error(err)
+	}
+	pv, err = client.CoreV1().PersistentVolumes().Get(ctx, pvc.Spec.VolumeName, metav1.GetOptions{})
+	if err != nil {
+		klog.Error(err)
+	}
+	return
 }

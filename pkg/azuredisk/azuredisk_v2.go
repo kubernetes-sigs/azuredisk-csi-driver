@@ -52,6 +52,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/provisioner"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/workflow"
 	azurecloudconsts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
@@ -368,19 +369,22 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 	// Leader controller manager should recover CRI if possible and clean them up before exiting.
 	go func() {
 		<-mgr.Elected()
+		var errors []error
+		ctx, w := workflow.New(ctx)
+		defer func() { w.Finish(err) }()
 		// recover lost states if necessary
-		klog.Infof("Elected as leader; initiating CRI recovery...")
+		w.Logger().Infof("Elected as leader; initiating CRI recovery...")
 		if err := azvReconciler.Recover(ctx); err != nil {
-			klog.Warningf("Failed to recover AzVolume: %v", err)
+			errors = append(errors, err)
 		}
 		if err := attachReconciler.Recover(ctx); err != nil {
-			klog.Warningf("Failed to recover AzVolumeAttachments: %v.", err)
+			errors = append(errors, err)
 		}
 		if err := pvReconciler.Recover(ctx); err != nil {
-			klog.Warningf("Failed to restore shared claimToVolumeMap and volumeToClaimMap: %v.", err)
+			errors = append(errors, err)
 		}
 		if err := podReconciler.Recover(ctx); err != nil {
-			klog.Warningf("Failed to recover replica AzVolumeAttachments: %v.", err)
+			errors = append(errors, err)
 		}
 		sharedState.MarkRecoveryComplete()
 	}()

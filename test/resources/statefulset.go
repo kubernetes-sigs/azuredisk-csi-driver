@@ -127,6 +127,7 @@ func (t *TestStatefulset) Create() {
 	framework.ExpectNoError(err)
 	for _, pod := range statefulSetPods.Items {
 		t.PodNames = append(t.PodNames, pod.Name)
+		t.updateAllPods(pod)
 	}
 }
 
@@ -141,24 +142,28 @@ func (t *TestStatefulset) CreateWithoutWaiting() {
 	framework.ExpectNoError(err)
 	for _, pod := range statefulSetPods.Items {
 		t.PodNames = append(t.PodNames, pod.Name)
-		var podPersistentVolumes []VolumeDetails
-		for _, volume := range pod.Spec.Volumes {
-			if volume.VolumeSource.PersistentVolumeClaim != nil {
-				pvc, err := t.Client.CoreV1().PersistentVolumeClaims(t.Namespace.Name).Get(context.TODO(), volume.VolumeSource.PersistentVolumeClaim.ClaimName, metav1.GetOptions{})
-				framework.ExpectNoError(err)
-				newVolume := VolumeDetails{
-					PersistentVolume: &v1.PersistentVolume{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: pvc.Spec.VolumeName,
-						},
-					},
-					VolumeAccessMode: v1.ReadWriteOnce,
-				}
-				podPersistentVolumes = append(podPersistentVolumes, newVolume)
-			}
-		}
-		t.AllPods = append(t.AllPods, PodDetails{Volumes: podPersistentVolumes, Name: pod.Name})
+		t.updateAllPods(pod)
 	}
+}
+
+func (t *TestStatefulset) updateAllPods(pod v1.Pod) {
+	var podPersistentVolumes []VolumeDetails
+	for _, volume := range pod.Spec.Volumes {
+		if volume.VolumeSource.PersistentVolumeClaim != nil {
+			pvc, err := t.Client.CoreV1().PersistentVolumeClaims(t.Namespace.Name).Get(context.TODO(), volume.VolumeSource.PersistentVolumeClaim.ClaimName, metav1.GetOptions{})
+			framework.ExpectNoError(err)
+			newVolume := VolumeDetails{
+				PersistentVolume: &v1.PersistentVolume{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: pvc.Spec.VolumeName,
+					},
+				},
+				VolumeAccessMode: v1.ReadWriteOnce,
+			}
+			podPersistentVolumes = append(podPersistentVolumes, newVolume)
+		}
+	}
+	t.AllPods = append(t.AllPods, PodDetails{Volumes: podPersistentVolumes, Name: pod.Name})
 }
 
 func (t *TestStatefulset) WaitForPodReadyOrFail() error {

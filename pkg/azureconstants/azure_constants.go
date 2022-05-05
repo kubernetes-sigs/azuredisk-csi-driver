@@ -110,9 +110,16 @@ const (
 	VolumeDetachRequestAnnotation         = "disk.csi.azure.com/volume-detach-request"
 	RecoverAnnotation                     = "disk.csi.azure.com/recovery" // used to ensure reconciliation is triggered for recovering CRIs
 	VolumeNameLabel                       = "disk.csi.azure.com/volume-name"
+	VolumeIDLabel                         = "disk.csi.azure.com/volume-id"
 	InlineVolumeAnnotation                = "disk.csi.azure.com/inline-volume"
+	PodNameKey                            = "disk.csi/azure.com/pod-name"
 	PreProvisionedVolumeAnnotation        = "disk.csi.azure.com/pre-provisioned"
 	PreProvisionedVolumeCleanupAnnotation = "disk.csi.azure.com/pre-provisioned-clean-up"
+	RequestIDKey                          = "disk.csi.azure.com/request-id"
+	RequestStartimeKey                    = "disk.csi.azure.com/request-starttime"
+	RequestTimeFormat                     = time.RFC3339Nano
+	RequesterKey                          = "disk.csi.azure.com/requester-name"
+	WorkflowKey                           = "disk.csi.azure.com/requester-name"
 
 	ControllerClusterRoleName         = "azuredisk-external-provisioner-role"
 	ControllerClusterRoleBindingName  = "azuredisk-csi-provisioner-binding"
@@ -130,6 +137,7 @@ const (
 	EnableAsyncAttachField  = "enableasyncattach"
 	TooManyRequests         = "TooManyRequests"
 	ClientThrottled         = "client throttled"
+	Latency                 = "latency"
 	// define different sleep time when hit throttling
 	SnapshotOpThrottlingSleepSec = 50
 
@@ -138,6 +146,7 @@ const (
 
 	ReplicaAttachmentFailedEvent  = "ReplicaAttachmentFailed"
 	ReplicaAttachmentSuccessEvent = "ReplicaAttachmentSucceeded"
+	ClientFailedGetEvent          = "ClientFailedToGetObject"
 )
 
 type UnpublishMode int

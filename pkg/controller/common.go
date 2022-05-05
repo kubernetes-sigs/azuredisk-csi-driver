@@ -41,11 +41,12 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/component-helpers/scheduling/corev1/nodeaffinity"
-	"k8s.io/klog/v2"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 	azClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/workflow"
 
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/kubernetes"
@@ -121,6 +122,8 @@ const (
 	skipLock    updateWithLock = false
 )
 
+type goSignal struct{}
+
 // TODO Make CloudProvisioner independent of csi types.
 type CloudProvisioner interface {
 	CreateVolume(
@@ -146,14 +149,16 @@ type CloudProvisioner interface {
 }
 
 type replicaOperation struct {
+	ctx                        context.Context
 	requester                  operationRequester
-	operationFunc              func() error
+	operationFunc              func(context.Context) error
 	isReplicaGarbageCollection bool
 }
 
 type operationQueue struct {
 	*list.List
 	gcExclusionList set
+	isActive        bool
 }
 
 func (q *operationQueue) remove(element *list.Element) {
@@ -168,6 +173,7 @@ func newOperationQueue() *operationQueue {
 	return &operationQueue{
 		gcExclusionList: set{},
 		List:            list.New(),
+		isActive:        true,
 	}
 }
 
@@ -273,7 +279,7 @@ func NewSharedState(driverName, objectNamespace, topologyKey string, eventRecord
 }
 
 func (c *SharedState) isRecoveryComplete() bool {
-	return c.recoveryComplete == 1
+	return atomic.LoadUint32(&c.recoveryComplete) == 1
 }
 
 func (c *SharedState) MarkRecoveryComplete() {
@@ -284,7 +290,11 @@ func (c *SharedState) createOperationQueue(volumeName string) {
 	_, _ = c.volumeOperationQueues.LoadOrStore(volumeName, newLockableEntry(newOperationQueue()))
 }
 
-func (c *SharedState) addToOperationQueue(volumeName string, requester operationRequester, operationFunc func() error, isReplicaGarbageCollection bool) {
+func (c *SharedState) addToOperationQueue(ctx context.Context, volumeName string, requester operationRequester, operationFunc func(context.Context) error, isReplicaGarbageCollection bool) {
+	// It is expected for caller to provide parent workflow via context.
+	// The child workflow will be created below and be fed to the queued operation for necessary workflow information.
+	ctx, w := workflow.New(ctx, workflow.WithDetails(consts.VolumeNameLabel, volumeName))
+
 	v, ok := c.volumeOperationQueues.Load(volumeName)
 	if !ok {
 		return
@@ -294,8 +304,17 @@ func (c *SharedState) addToOperationQueue(volumeName string, requester operation
 
 	isFirst := lockable.entry.(*operationQueue).Len() <= 0
 	_ = lockable.entry.(*operationQueue).PushBack(&replicaOperation{
-		requester:                  requester,
-		operationFunc:              operationFunc,
+		ctx:       ctx,
+		requester: requester,
+		operationFunc: func(ctx context.Context) (err error) {
+			defer func() {
+				if !shouldRequeueReplicaOperation(isReplicaGarbageCollection, err) {
+					w.Finish(err)
+				}
+			}()
+			err = operationFunc(ctx)
+			return
+		},
 		isReplicaGarbageCollection: isReplicaGarbageCollection,
 	})
 	lockable.Unlock()
@@ -313,12 +332,13 @@ func (c *SharedState) addToOperationQueue(volumeName string, requester operation
 
 				// only run the operation if the operation requester is not enlisted in blacklist
 				if !operationQueue.gcExclusionList.has(operation.requester) {
-					if err := operation.operationFunc(); err != nil {
-						klog.Error(err)
-						if !operation.isReplicaGarbageCollection || !errors.Is(err, context.Canceled) {
+					if err := operation.operationFunc(operation.ctx); err != nil {
+						if shouldRequeueReplicaOperation(operation.isReplicaGarbageCollection, err) {
 							// if failed, push it to the end of the queue
 							lockable.Lock()
-							operationQueue.PushBack(operation)
+							if operationQueue.isActive {
+								operationQueue.PushBack(operation)
+							}
 							lockable.Unlock()
 						}
 					}
@@ -332,9 +352,12 @@ func (c *SharedState) addToOperationQueue(volumeName string, requester operation
 				}
 			}
 			lockable.Unlock()
-			klog.Infof("operation queue for volume (%s) fully iterated and completed.", volumeName)
 		}()
 	}
+}
+
+func shouldRequeueReplicaOperation(isReplicaGarbageCollection bool, err error) bool {
+	return !isReplicaGarbageCollection || !errors.Is(err, context.Canceled)
 }
 
 func (c *SharedState) deleteOperationQueue(volumeName string) {
@@ -350,7 +373,7 @@ func (c *SharedState) deleteOperationQueue(volumeName string) {
 	lockable.Unlock()
 }
 
-func (c *SharedState) overrideAndClearOperationQueue(volumeName string) func() {
+func (c *SharedState) closeOperationQueue(volumeName string) func() {
 	v, ok := c.volumeOperationQueues.Load(volumeName)
 	if !ok {
 		return nil
@@ -358,6 +381,7 @@ func (c *SharedState) overrideAndClearOperationQueue(volumeName string) func() {
 	lockable := v.(*lockableEntry)
 
 	lockable.Lock()
+	lockable.entry.(*operationQueue).isActive = false
 	lockable.entry.(*operationQueue).Init()
 	return lockable.Unlock
 }
@@ -403,9 +427,11 @@ func (c *SharedState) dequeueGarbageCollection(volumeName string) {
 	lockable.Unlock()
 }
 
-func (c *SharedState) getVolumesFromPod(podName string) ([]string, error) {
+func (c *SharedState) getVolumesFromPod(ctx context.Context, podName string) ([]string, error) {
+	w, _ := workflow.GetWorkflowFromContext(ctx)
+
 	var claims []string
-	klog.V(5).Infof("Getting requested volumes for pod %s.", podName)
+	w.Logger().V(5).Infof("Getting requested volumes for pod (%s).", podName)
 	value, ok := c.podToClaimsMap.Load(podName)
 	if !ok {
 		return nil, status.Errorf(codes.NotFound, "unable to find an entry for pod (%s) in podToClaims map", podName)
@@ -420,28 +446,32 @@ func (c *SharedState) getVolumesFromPod(podName string) ([]string, error) {
 		value, ok := c.claimToVolumeMap.Load(claim)
 		if !ok {
 			// the pvc entry is not an azure resource
-			klog.V(5).Infof("Requested volume %s for pod %s is not an azure resource", value, podName)
+			w.Logger().V(5).Infof("Requested volume %s for pod %s is not an azure resource", value, podName)
 			continue
 		}
 		volume, ok := value.(string)
-		klog.V(5).Infof("Requested volume %s for pod %s is an azure resource", value, podName)
 		if !ok {
 			return nil, status.Errorf(codes.Internal, "wrong output type: expected string")
 		}
 		volumes = append(volumes, volume)
-		klog.V(5).Infof("Requested volumes for pod %s are now the following: Volumes: %v, Len: %d", podName, volumes, len(volumes))
+		w.Logger().V(5).Infof("Requested volumes for pod %s are now the following: Volumes: %v, Len: %d", podName, volumes, len(volumes))
 	}
 	return volumes, nil
 }
 
 func (c *SharedState) getPodsFromVolume(ctx context.Context, client client.Client, volumeName string) ([]v1.Pod, error) {
+	w, _ := workflow.GetWorkflowFromContext(ctx)
 	pods, err := c.getPodNamesFromVolume(volumeName)
 	if err != nil {
 		return nil, err
 	}
 	podObjs := []v1.Pod{}
 	for _, pod := range pods {
-		namespace, name := parseQualifiedName(pod)
+		namespace, name, err := parseQualifiedName(pod)
+		if err != nil {
+			w.Logger().Errorf(err, "cannot get podObj for pod (%s)", pod)
+			continue
+		}
 		var podObj v1.Pod
 		if err := client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, &podObj); err != nil {
 			return nil, err
@@ -489,10 +519,10 @@ func (c *SharedState) getPodNamesFromVolume(volumeName string) ([]string, error)
 	return pods, nil
 }
 
-func (c *SharedState) getVolumesForPodObjs(pods []v1.Pod) ([]string, error) {
+func (c *SharedState) getVolumesForPodObjs(ctx context.Context, pods []v1.Pod) ([]string, error) {
 	volumes := []string{}
 	for _, pod := range pods {
-		podVolumes, err := c.getVolumesFromPod(getQualifiedName(pod.Namespace, pod.Name))
+		podVolumes, err := c.getVolumesFromPod(ctx, getQualifiedName(pod.Namespace, pod.Name))
 		if err != nil {
 			return nil, err
 		}
@@ -502,16 +532,17 @@ func (c *SharedState) getVolumesForPodObjs(pods []v1.Pod) ([]string, error) {
 }
 
 func (c *SharedState) addPod(ctx context.Context, pod *v1.Pod, updateOption updateWithLock) error {
+	w, _ := workflow.GetWorkflowFromContext(ctx)
 	podKey := getQualifiedName(pod.Namespace, pod.Name)
 	v, _ := c.podLocks.LoadOrStore(podKey, &sync.Mutex{})
 
-	klog.V(5).Infof("Adding pod %s to shared map with keyName %s.", pod.Name, podKey)
+	w.Logger().V(5).Infof("Adding pod %s to shared map with keyName %s.", pod.Name, podKey)
 	podLock := v.(*sync.Mutex)
 	if updateOption == acquireLock {
 		podLock.Lock()
 		defer podLock.Unlock()
 	}
-	klog.V(5).Infof("Pod spec of pod %s is: %+v. With volumes: %+v", pod.Name, pod.Spec, pod.Spec.Volumes)
+	w.Logger().V(5).Infof("Pod spec of pod %s is: %+v. With volumes: %+v", pod.Name, pod.Spec, pod.Spec.Volumes)
 
 	// If the claims already exist for the podKey, add them to a set
 	value, _ := c.podToClaimsMap.LoadOrStore(podKey, []string{})
@@ -528,7 +559,7 @@ func (c *SharedState) addPod(ctx context.Context, pod *v1.Pod, updateOption upda
 			utilfeature.DefaultFeatureGate.Enabled(features.CSIMigrationAzureDisk) &&
 			volume.AzureDisk != nil {
 			// inline volume: create AzVolume resource
-			klog.V(5).Infof("Creating AzVolume instance for inline volume %s.", volume.AzureDisk.DiskName)
+			w.Logger().V(5).Infof("Creating AzVolume instance for inline volume %s.", volume.AzureDisk.DiskName)
 			if err := c.createAzVolumeFromInline(ctx, volume.AzureDisk); err != nil {
 				return err
 			}
@@ -541,15 +572,15 @@ func (c *SharedState) addPod(ctx context.Context, pod *v1.Pod, updateOption upda
 			c.podToInlineMap.Store(podKey, inlines)
 		}
 		if volume.PersistentVolumeClaim == nil {
-			klog.V(5).Infof("Pod %s: Skipping Volume %s. No persistent volume exists.", pod.Name, volume)
+			w.Logger().V(5).Infof("Pod %s: Skipping Volume %s. No persistent volume exists.", pod.Name, volume)
 			continue
 		}
 		namespacedClaimName := getQualifiedName(pod.Namespace, volume.PersistentVolumeClaim.ClaimName)
 		if _, ok := c.claimToVolumeMap.Load(namespacedClaimName); !ok {
-			klog.Infof("Skipping Pod %s. Volume %s not csi. Driver: %+v", pod.Name, volume.Name, volume.CSI)
+			w.Logger().V(5).Infof("Skipping Pod %s. Volume %s not csi. Driver: %+v", pod.Name, volume.Name, volume.CSI)
 			continue
 		}
-		klog.V(5).Infof("Pod %s. Volume %v is csi.", pod.Name, volume)
+		w.Logger().V(5).Infof("Pod %s. Volume %v is csi.", pod.Name, volume)
 		claimSet.add(namespacedClaimName)
 		v, _ := c.claimToPodsMap.LoadOrStore(namespacedClaimName, newLockableEntry(set{}))
 
@@ -562,9 +593,9 @@ func (c *SharedState) addPod(ctx context.Context, pod *v1.Pod, updateOption upda
 		// No need to restore the amended set to claimToPodsMap because set is a reference type
 		lockable.Unlock()
 
-		klog.V(5).Infof("Storing pod %s and claim %s to claimToPodsMap map.", pod.Name, namespacedClaimName)
+		w.Logger().V(5).Infof("Storing pod %s and claim %s to claimToPodsMap map.", pod.Name, namespacedClaimName)
 	}
-	klog.V(5).Infof("Storing pod %s and claim %s to podToClaimsMap map.", pod.Name, claims)
+	w.Logger().V(5).Infof("Storing pod %s and claim %s to podToClaimsMap map.", pod.Name, claims)
 
 	allClaims := []string{}
 	for key := range claimSet {
@@ -575,6 +606,7 @@ func (c *SharedState) addPod(ctx context.Context, pod *v1.Pod, updateOption upda
 }
 
 func (c *SharedState) deletePod(ctx context.Context, podKey string) error {
+	w, _ := workflow.GetWorkflowFromContext(ctx)
 	value, exists := c.podLocks.LoadAndDelete(podKey)
 	if !exists {
 		return nil
@@ -589,7 +621,7 @@ func (c *SharedState) deletePod(ctx context.Context, podKey string) error {
 
 		for _, inline := range inlines {
 			if err := c.azClient.DiskV1beta1().AzVolumes(c.objectNamespace).Delete(ctx, inline, metav1.DeleteOptions{}); err != nil && !apiErrors.IsNotFound(err) {
-				klog.Errorf("failed to delete AzVolume (%s) for inline (%s): %v", inline, inline, err)
+				w.Logger().Errorf(err, "failed to delete AzVolume (%s) for inline (%s): %v", inline, inline, err)
 				return err
 			}
 		}
@@ -604,14 +636,14 @@ func (c *SharedState) deletePod(ctx context.Context, podKey string) error {
 	for _, claim := range claims {
 		value, ok := c.claimToPodsMap.Load(claim)
 		if !ok {
-			klog.Errorf("No pods found for PVC (%s)", claim)
+			w.Logger().Errorf(nil, "No pods found for PVC (%s)", claim)
 		}
 
 		// Scope the duration that we hold the lockable lock using a function.
 		func() {
 			lockable, ok := value.(*lockableEntry)
 			if !ok {
-				klog.Errorf("claimToPodsMap should hold lockable entry")
+				w.Logger().Error(nil, "claimToPodsMap should hold lockable entry")
 				return
 			}
 
@@ -620,7 +652,7 @@ func (c *SharedState) deletePod(ctx context.Context, podKey string) error {
 
 			podSet, ok := lockable.entry.(set)
 			if !ok {
-				klog.Errorf("claimToPodsMap entry should hold a set")
+				w.Logger().Error(nil, "claimToPodsMap entry should hold a set")
 			}
 
 			podSet.remove(podKey)
@@ -680,6 +712,8 @@ func (p *interPodAffinityFilter) setup(pods []v1.Pod, persistentVolumes []*v1.Pe
 }
 
 func (p *interPodAffinityFilter) filter(ctx context.Context, nodes []v1.Node) ([]v1.Node, error) {
+	ctx, w := workflow.New(ctx, workflow.WithDetails("filter-plugin", p.name()))
+	defer w.Finish(nil)
 	nodeMap := map[string]int{}
 	candidateNodes := set{}
 	for i, node := range nodes {
@@ -697,7 +731,7 @@ func (p *interPodAffinityFilter) filter(ctx context.Context, nodes []v1.Node) ([
 			podSelector, err := metav1.LabelSelectorAsSelector(podAffinity.LabelSelector)
 			// if failed to convert pod affinity label selector to selector, log error and skip
 			if err != nil {
-				klog.Errorf("failed to convert pod affinity (%v) to selector", podAffinity.LabelSelector)
+				w.Logger().Errorf(err, "failed to convert pod affinity (%v) to selector", podAffinity.LabelSelector)
 				continue
 			}
 			requirements, selectable := podSelector.Requirements()
@@ -709,7 +743,7 @@ func (p *interPodAffinityFilter) filter(ctx context.Context, nodes []v1.Node) ([
 					for _, namespace := range podAffinity.Namespaces {
 						podList := &v1.PodList{}
 						if err = p.sharedState.cachedClient.List(ctx, podList, &client.ListOptions{LabelSelector: podAffinities, Namespace: namespace}); err != nil {
-							klog.Errorf("failed to retrieve pod list: %v", err)
+							w.Logger().Errorf(err, "failed to retrieve pod list: %v", err)
 							continue
 						}
 						pods = append(pods, podList.Items...)
@@ -717,7 +751,7 @@ func (p *interPodAffinityFilter) filter(ctx context.Context, nodes []v1.Node) ([
 				} else {
 					podList := &v1.PodList{}
 					if err = p.sharedState.cachedClient.List(ctx, podList, &client.ListOptions{LabelSelector: podAffinities}); err != nil {
-						klog.Errorf("failed to retrieve pod list: %v", err)
+						w.Logger().Errorf(err, "failed to retrieve pod list: %v", err)
 						continue
 					}
 					pods = podList.Items
@@ -725,12 +759,12 @@ func (p *interPodAffinityFilter) filter(ctx context.Context, nodes []v1.Node) ([
 
 				nodesWithSelectedPods := set{}
 				for _, pod := range pods {
-					klog.Infof("Pod (%s) has matching label for pod affinity (%v)", getQualifiedName(pod.Namespace, pod.Name), podAffinities)
+					w.Logger().V(5).Infof("Pod (%s) has matching label for pod affinity (%v)", getQualifiedName(pod.Namespace, pod.Name), podAffinities)
 					nodesWithSelectedPods.add(pod.Spec.NodeName)
 				}
 
 				// add nodes, to which replica attachments of matching pods' volumes are attached, to replicaNodes
-				if volumes, err := p.sharedState.getVolumesForPodObjs(pods); err == nil {
+				if volumes, err := p.sharedState.getVolumesForPodObjs(ctx, pods); err == nil {
 					for _, volume := range volumes {
 						attachments, err := getAzVolumeAttachmentsForVolume(ctx, p.sharedState.cachedClient, volume, replicaOnly)
 						if err != nil {
@@ -740,7 +774,7 @@ func (p *interPodAffinityFilter) filter(ctx context.Context, nodes []v1.Node) ([
 						nodeChecker := set{}
 						for _, attachment := range attachments {
 							if i == 0 {
-								klog.V(5).Infof("Adding node (%s) to the replica node set: replica mounts of volume (%s) found on node", attachment.Spec.NodeName, volume)
+								w.Logger().V(5).Infof("Adding node (%s) to the replica node set: replica mounts of volume (%s) found on node", attachment.Spec.NodeName, volume)
 								replicaNodes.add(attachment.Spec.NodeName)
 							} else {
 								nodeChecker.add(attachment.Spec.NodeName)
@@ -750,7 +784,7 @@ func (p *interPodAffinityFilter) filter(ctx context.Context, nodes []v1.Node) ([
 							// take an intersection of the current pod list's replica nodes with those of preceding pod lists.
 							for node := range replicaNodes {
 								if !nodeChecker.has(node) {
-									klog.V(5).Infof("Removing node (%s) from the replica node set: replica mounts of volume (%s) cannot be found on node", node, volume)
+									w.Logger().V(5).Infof("Removing node (%s) from the replica node set: replica mounts of volume (%s) cannot be found on node", node, volume)
 									replicaNodes.remove(node)
 								}
 							}
@@ -762,7 +796,7 @@ func (p *interPodAffinityFilter) filter(ctx context.Context, nodes []v1.Node) ([
 				for node := range nodesWithSelectedPods {
 					var nodeInstance v1.Node
 					if err = p.sharedState.cachedClient.Get(ctx, types.NamespacedName{Name: node.(string)}, &nodeInstance); err != nil {
-						klog.Errorf("failed to get node (%s)", node.(string))
+						w.Logger().Errorf(err, "failed to get node (%s)", node.(string))
 						continue
 					}
 					if value, exists := nodeInstance.GetLabels()[podAffinity.TopologyKey]; exists {
@@ -773,7 +807,7 @@ func (p *interPodAffinityFilter) filter(ctx context.Context, nodes []v1.Node) ([
 						labelSet.add(value)
 						qualifiedLabelSet[podAffinity.TopologyKey] = labelSet
 					} else {
-						klog.Warningf("node (%s) doesn't have label value for topologyKey (%s)", nodeInstance.Name, podAffinity.TopologyKey)
+						w.Logger().V(5).Infof("node (%s) doesn't have label value for topologyKey (%s)", nodeInstance.Name, podAffinity.TopologyKey)
 					}
 				}
 
@@ -782,7 +816,7 @@ func (p *interPodAffinityFilter) filter(ctx context.Context, nodes []v1.Node) ([
 					labelValues := values.toStringSlice()
 					requirements, err := azureutils.CreateLabelRequirements(key, selection.In, labelValues...)
 					if err != nil {
-						klog.Errorf("failed to create label for key (%s) and values (%+v) :%v", key, labelValues, err)
+						w.Logger().Errorf(err, "failed to create label for key (%s) and values (%+v) :%v", key, labelValues, err)
 						continue
 					}
 					selector = selector.Add(*requirements)
@@ -794,7 +828,7 @@ func (p *interPodAffinityFilter) filter(ctx context.Context, nodes []v1.Node) ([
 						node := nodes[i]
 						nodeLabels := labels.Set(node.Labels)
 						if !selector.Matches(nodeLabels) {
-							klog.Infof("Removing node (%s) from candidate nodes: node does not satisfy inter-pod-affinity (%v), label (%v)", candidateNode, podAffinity, selector)
+							w.Logger().V(5).Infof("Removing node (%s) from candidate nodes: node does not satisfy inter-pod-affinity (%v), label (%v)", candidateNode, podAffinity, selector)
 							candidateNodes.remove(candidateNode)
 						}
 					}
@@ -805,7 +839,7 @@ func (p *interPodAffinityFilter) filter(ctx context.Context, nodes []v1.Node) ([
 
 	filteredNodes := []v1.Node{}
 	for replicaNode := range replicaNodes {
-		klog.Infof("Adding node (%s) to candidate node list: node has a replica mount of qualifying pods", replicaNode)
+		w.Logger().V(5).Infof("Adding node (%s) to candidate node list: node has a replica mount of qualifying pods", replicaNode)
 		candidateNodes.add(replicaNode)
 	}
 	for candidateNode := range candidateNodes {
@@ -831,6 +865,8 @@ func (p *interPodAntiAffinityFilter) setup(pods []v1.Pod, persistentVolumes []*v
 }
 
 func (p *interPodAntiAffinityFilter) filter(ctx context.Context, nodes []v1.Node) ([]v1.Node, error) {
+	ctx, w := workflow.New(ctx, workflow.WithDetails("filter-plugin", p.name()))
+	defer w.Finish(nil)
 	nodeMap := map[string]int{}
 	candidateNodes := set{}
 
@@ -848,7 +884,7 @@ func (p *interPodAntiAffinityFilter) filter(ctx context.Context, nodes []v1.Node
 			podSelector, err := metav1.LabelSelectorAsSelector(podAntiAffinity.LabelSelector)
 			// if failed to convert pod affinity label selector to selector, log error and skip
 			if err != nil {
-				klog.Errorf("failed to convert pod anti-affinity (%v) to selector", podAntiAffinity.LabelSelector)
+				w.Logger().Errorf(err, "failed to convert pod anti-affinity (%v) to selector", podAntiAffinity.LabelSelector)
 				continue
 			}
 			requirements, selectable := podSelector.Requirements()
@@ -860,7 +896,7 @@ func (p *interPodAntiAffinityFilter) filter(ctx context.Context, nodes []v1.Node
 					for _, namespace := range podAntiAffinity.Namespaces {
 						podList := &v1.PodList{}
 						if err = p.sharedState.cachedClient.List(ctx, podList, &client.ListOptions{LabelSelector: podAntiAffinities, Namespace: namespace}); err != nil {
-							klog.Errorf("failed to retrieve pod list: %v", err)
+							w.Logger().Errorf(err, "failed to retrieve pod list: %v", err)
 							continue
 						}
 						pods = append(pods, podList.Items...)
@@ -868,7 +904,7 @@ func (p *interPodAntiAffinityFilter) filter(ctx context.Context, nodes []v1.Node
 				} else {
 					podList := &v1.PodList{}
 					if err = p.sharedState.cachedClient.List(ctx, podList, &client.ListOptions{LabelSelector: podAntiAffinities}); err != nil {
-						klog.Errorf("failed to retrieve pod list: %v", err)
+						w.Logger().Errorf(err, "failed to retrieve pod list: %v", err)
 						continue
 					}
 					pods = podList.Items
@@ -883,7 +919,7 @@ func (p *interPodAntiAffinityFilter) filter(ctx context.Context, nodes []v1.Node
 				for node := range nodesWithSelectedPods {
 					var nodeInstance v1.Node
 					if err = p.sharedState.cachedClient.Get(ctx, types.NamespacedName{Name: node.(string)}, &nodeInstance); err != nil {
-						klog.Errorf("failed to get node (%s)", node.(string))
+						w.Logger().Errorf(err, "failed to get node (%s)", node.(string))
 						continue
 					}
 					if value, exists := nodeInstance.Labels[podAntiAffinity.TopologyKey]; exists {
@@ -901,7 +937,7 @@ func (p *interPodAntiAffinityFilter) filter(ctx context.Context, nodes []v1.Node
 					labelValues := values.toStringSlice()
 					requirements, err := azureutils.CreateLabelRequirements(key, selection.In, labelValues...)
 					if err != nil {
-						klog.Errorf("failed to create label for key (%s) and values (%+v) :%v", key, labelValues, err)
+						w.Logger().Errorf(err, "failed to create label for key (%s) and values (%+v) :%v", key, labelValues, err)
 						continue
 					}
 					selector = selector.Add(*requirements)
@@ -913,7 +949,7 @@ func (p *interPodAntiAffinityFilter) filter(ctx context.Context, nodes []v1.Node
 						node := nodes[i]
 						nodeLabels := labels.Set(node.Labels)
 						if selector.Matches(nodeLabels) {
-							klog.Infof("Removing node (%s) from candidate nodes: node satisfies inter-pod anti-affinity (%v), label (%v)", candidateNode, podAntiAffinity, selector)
+							w.Logger().V(5).Infof("Removing node (%s) from candidate nodes: node satisfies inter-pod anti-affinity (%v), label (%v)", candidateNode, podAntiAffinity, selector)
 							candidateNodes.remove(candidateNode)
 						}
 					}
@@ -944,6 +980,8 @@ func (p *podTolerationFilter) setup(pods []v1.Pod, persistentVolumes []*v1.Persi
 }
 
 func (p *podTolerationFilter) filter(ctx context.Context, nodes []v1.Node) ([]v1.Node, error) {
+	_, w := workflow.New(ctx, workflow.WithDetails("filter-plugin", p.name()))
+	defer w.Finish(nil)
 	candidateNodes := set{}
 	for i := range nodes {
 		candidateNodes.add(i)
@@ -984,7 +1022,7 @@ func (p *podTolerationFilter) filter(ctx context.Context, nodes []v1.Node) ([]v1
 				}
 			}
 			if tolerable = tolerable && taintTolerable; !tolerable {
-				klog.Infof("Removing node (%s) from replica candidates: node (%s)'s taint cannot be tolerated", node.Name, node.Name)
+				w.Logger().V(5).Infof("Removing node (%s) from replica candidates: node (%s)'s taint cannot be tolerated", node.Name, node.Name)
 				candidateNodes.remove(candidateNode)
 				break
 			}
@@ -1013,6 +1051,8 @@ func (p *podNodeAffinityFilter) setup(pods []v1.Pod, persistentVolumes []*v1.Per
 }
 
 func (p *podNodeAffinityFilter) filter(ctx context.Context, nodes []v1.Node) ([]v1.Node, error) {
+	_, w := workflow.New(ctx, workflow.WithDetails("filter-plugin", p.name()))
+	defer w.Finish(nil)
 	var podNodeAffinities []nodeaffinity.RequiredNodeAffinity
 
 	candidateNodes := set{}
@@ -1029,7 +1069,7 @@ func (p *podNodeAffinityFilter) filter(ctx context.Context, nodes []v1.Node) ([]
 	for i, node := range nodes {
 		for _, podNodeAffinity := range podNodeAffinities {
 			if match, err := podNodeAffinity.Match(&node); !match || err != nil {
-				klog.Infof("Removing node (%s) from replica candidates: node does not match pod node affinity (%+v)", node.Name, podNodeAffinity)
+				w.Logger().V(5).Infof("Removing node (%s) from replica candidates: node does not match pod node affinity (%+v)", node.Name, podNodeAffinity)
 				candidateNodes.remove(i)
 			}
 		}
@@ -1059,6 +1099,8 @@ func (p *podNodeSelectorFilter) setup(pods []v1.Pod, persistentVolumes []*v1.Per
 }
 
 func (p *podNodeSelectorFilter) filter(ctx context.Context, nodes []v1.Node) ([]v1.Node, error) {
+	_, w := workflow.New(ctx, workflow.WithDetails("filter-plugin", p.name()))
+	defer w.Finish(nil)
 	candidateNodes := set{}
 	for i := range nodes {
 		candidateNodes.add(i)
@@ -1080,7 +1122,7 @@ func (p *podNodeSelectorFilter) filter(ctx context.Context, nodes []v1.Node) ([]
 		if podNodeSelector.Matches(nodeLabels) {
 			filteredNodes = append(filteredNodes, node)
 		} else {
-			klog.Infof("Removing node (%s) from replica candidate: node does not match pod node selector (%v)", podNodeSelector)
+			w.Logger().V(5).Infof("Removing node (%s) from replica candidate: node does not match pod node selector (%v)", node.Name, podNodeSelector)
 		}
 	}
 
@@ -1100,6 +1142,8 @@ func (v *volumeNodeSelectorFilter) setup(pods []v1.Pod, persistentVolumes []*v1.
 }
 
 func (v *volumeNodeSelectorFilter) filter(ctx context.Context, nodes []v1.Node) ([]v1.Node, error) {
+	_, w := workflow.New(ctx, workflow.WithDetails("filter-plugin", v.name()))
+	defer w.Finish(nil)
 	candidateNodes := set{}
 	for i := range nodes {
 		candidateNodes.add(i)
@@ -1112,7 +1156,7 @@ func (v *volumeNodeSelectorFilter) filter(ctx context.Context, nodes []v1.Node) 
 		}
 		nodeSelector, err := nodeaffinity.NewNodeSelector(pv.Spec.NodeAffinity.Required)
 		if err != nil {
-			klog.Errorf("failed to get node selector from node affinity (%v): %v", pv.Spec.NodeAffinity.Required, err)
+			w.Logger().Errorf(err, "failed to get node selector from node affinity (%v)", pv.Spec.NodeAffinity.Required)
 			continue
 		}
 		// acknowledge that there can be duplicates in the slice
@@ -1123,7 +1167,7 @@ func (v *volumeNodeSelectorFilter) filter(ctx context.Context, nodes []v1.Node) 
 		node := nodes[candidateNode.(int)]
 		for _, volumeNodeSelector := range volumeNodeSelectors {
 			if !volumeNodeSelector.Match(&node) {
-				klog.Infof("Removing node (%s) from replica candidates: volume node selector (%+v) cannot be matched with the node.", node.Name, volumeNodeSelector)
+				w.Logger().V(5).Infof("Removing node (%s) from replica candidates: volume node selector (%+v) cannot be matched with the node.", node.Name, volumeNodeSelector)
 				candidateNodes.remove(candidateNode)
 			}
 		}
@@ -1159,11 +1203,13 @@ func (s *scoreByNodeCapacity) setup(pods []v1.Pod, volumes []string, sharedState
 }
 
 func (s *scoreByNodeCapacity) score(ctx context.Context, nodeScores map[string]int) (map[string]int, error) {
+	ctx, w := workflow.New(ctx, workflow.WithDetails("score-plugin", s.name()))
+	defer w.Finish(nil)
 	for nodeName, score := range nodeScores {
 		remainingCapacity, err := getNodeRemainingCapacity(ctx, s.sharedState.cachedClient, nil, nodeName)
 		if err != nil {
 			// if failed to get node's remaining capacity, remove the node from the candidate list and proceed
-			klog.Errorf("failed to get remaining capacity of node (%s): %v", nodeName, err)
+			w.Logger().Errorf(err, "failed to get remaining capacity of node (%s)", nodeName)
 			delete(nodeScores, nodeName)
 		}
 		if remainingCapacity-len(s.volumes) <= 0 {
@@ -1171,7 +1217,7 @@ func (s *scoreByNodeCapacity) score(ctx context.Context, nodeScores map[string]i
 		}
 
 		nodeScores[nodeName] = score + (nodeScoreLowCoefficient * remainingCapacity)
-		klog.Infof("node (%s) can accept %d more attachments", nodeName, remainingCapacity)
+		w.Logger().V(5).Infof("node (%s) can accept %d more attachments", nodeName, remainingCapacity)
 	}
 	return nodeScores, nil
 }
@@ -1191,10 +1237,12 @@ func (s *scoreByReplicaCount) setup(pods []v1.Pod, volumes []string, sharedState
 }
 
 func (s *scoreByReplicaCount) score(ctx context.Context, nodeScores map[string]int) (map[string]int, error) {
+	ctx, w := workflow.New(ctx, workflow.WithDetails("score-plugin", s.name()))
+	defer w.Finish(nil)
 	for _, volume := range s.volumes {
 		azVolumeAttachments, err := getAzVolumeAttachmentsForVolume(ctx, s.sharedState.cachedClient, volume, all)
 		if err != nil {
-			klog.V(5).Infof("Error listing AzVolumeAttachments for azvolume %s. Error: %v.", volume, err)
+			w.Logger().V(5).Errorf(err, "Error listing AzVolumeAttachments for azvolume %s", volume)
 			continue
 		}
 
@@ -1212,16 +1260,21 @@ func (s *scoreByReplicaCount) score(ctx context.Context, nodeScores map[string]i
 }
 
 func (c *SharedState) getRankedNodesForReplicaAttachments(ctx context.Context, volumes []string, podObjs []v1.Pod) ([]string, error) {
-	klog.V(5).Info("Getting ranked list of nodes for creating AzVolumeAttachments")
+	var err error
+	ctx, w := workflow.New(ctx)
+	defer func() { w.Finish(err) }()
+
+	w.Logger().V(5).Info("Getting ranked list of nodes for creating AzVolumeAttachments")
 
 	nodeList := &v1.NodeList{}
 	if err := c.cachedClient.List(ctx, nodeList); err != nil {
 		return nil, err
 	}
 
-	selectedNodeObjs, err := c.selectNodesPerTopology(ctx, nodeList.Items, podObjs, volumes)
+	var selectedNodeObjs []v1.Node
+	selectedNodeObjs, err = c.selectNodesPerTopology(ctx, nodeList.Items, podObjs, volumes)
 	if err != nil {
-		klog.Errorf("failed to select nodes for volumes (%+v): %v", volumes, err)
+		w.Logger().Errorf(err, "failed to select nodes for volumes (%+v)", volumes)
 		return nil, err
 	}
 
@@ -1230,21 +1283,26 @@ func (c *SharedState) getRankedNodesForReplicaAttachments(ctx context.Context, v
 		selectedNodes[i] = selectedNodeObj.Name
 	}
 
-	klog.Infof("Selected nodes (%+v) for replica AzVolumeAttachments for volumes (%+v)", selectedNodes, volumes)
+	w.Logger().V(5).Infof("Selected nodes (%+v) for replica AzVolumeAttachments for volumes (%+v)", selectedNodes, volumes)
 	return selectedNodes, nil
 }
 
 func (c *SharedState) filterNodes(ctx context.Context, nodes []v1.Node, pods []v1.Pod, volumes []string) ([]v1.Node, error) {
+	var err error
+	ctx, w := workflow.New(ctx)
+	defer func() { w.Finish(err) }()
+
 	pvs := make([]*v1.PersistentVolume, len(volumes))
 	for i, volume := range volumes {
-		azVolume, err := azureutils.GetAzVolume(ctx, c.cachedClient, c.azClient, volume, c.objectNamespace, true)
+		var azVolume *v1beta1.AzVolume
+		azVolume, err = azureutils.GetAzVolume(ctx, c.cachedClient, c.azClient, volume, c.objectNamespace, true)
 		if err != nil {
-			klog.V(5).Infof("AzVolume for volume %s is not found.", volume)
+			w.Logger().V(5).Errorf(err, "AzVolume for volume %s is not found.", volume)
 			return nil, err
 		}
 
 		var pv v1.PersistentVolume
-		if err := c.cachedClient.Get(ctx, types.NamespacedName{Name: azVolume.Spec.PersistentVolume}, &pv); err != nil {
+		if err = c.cachedClient.Get(ctx, types.NamespacedName{Name: azVolume.Spec.PersistentVolume}, &pv); err != nil {
 			return nil, err
 		}
 		pvs[i] = &pv
@@ -1263,14 +1321,14 @@ func (c *SharedState) filterNodes(ctx context.Context, nodes []v1.Node, pods []v
 	for _, filterPlugin := range filterPlugins {
 		filterPlugin.setup(pods, pvs, c)
 		if updatedFilteredNodes, err := filterPlugin.filter(ctx, filteredNodes); err != nil {
-			klog.Errorf("failed to filter node with filter plugin (%s): %v", filterPlugin.name(), err)
+			w.Logger().Errorf(err, "failed to filter node with filter plugin (%s). Ignoring filtered results.", filterPlugin.name())
 		} else {
 			filteredNodes = updatedFilteredNodes
 			nodeStrs := make([]string, len(filteredNodes))
 			for i, filteredNode := range filteredNodes {
 				nodeStrs[i] = filteredNode.Name
 			}
-			klog.Infof("Filtered node list from filter plugin (%s): %+v", filterPlugin.name(), nodeStrs)
+			w.Logger().V(2).Infof("Filtered node list from filter plugin (%s): %+v", filterPlugin.name(), nodeStrs)
 		}
 	}
 
@@ -1278,6 +1336,9 @@ func (c *SharedState) filterNodes(ctx context.Context, nodes []v1.Node, pods []v
 }
 
 func (c *SharedState) prioritizeNodes(ctx context.Context, pods []v1.Pod, volumes []string, nodes []v1.Node) []v1.Node {
+	ctx, w := workflow.New(ctx)
+	defer w.Finish(nil)
+
 	nodeScores := map[string]int{}
 	for _, node := range nodes {
 		nodeScores[node.Name] = 0
@@ -1291,7 +1352,7 @@ func (c *SharedState) prioritizeNodes(ctx context.Context, pods []v1.Pod, volume
 	for _, nodeScorerPlugin := range nodeScorerPlugins {
 		nodeScorerPlugin.setup(pods, volumes, c)
 		if updatedNodeScores, err := nodeScorerPlugin.score(ctx, nodeScores); err != nil {
-			klog.Errorf("failed to score nodes by node scorer (%s): %v", nodeScorerPlugin.name(), err)
+			w.Logger().Errorf(err, "failed to score nodes by node scorer (%s)", nodeScorerPlugin.name())
 		} else {
 			// update node scores if scorer plugin returned success
 			nodeScores = updatedNodeScores
@@ -1313,9 +1374,14 @@ func (c *SharedState) prioritizeNodes(ctx context.Context, pods []v1.Pod, volume
 }
 
 func (c *SharedState) filterAndSortNodes(ctx context.Context, nodes []v1.Node, pods []v1.Pod, volumes []string) ([]v1.Node, error) {
-	filteredNodes, err := c.filterNodes(ctx, nodes, pods, volumes)
+	var err error
+	ctx, w := workflow.New(ctx)
+	defer func() { w.Finish(err) }()
+
+	var filteredNodes []v1.Node
+	filteredNodes, err = c.filterNodes(ctx, nodes, pods, volumes)
 	if err != nil {
-		klog.Errorf("failed to filter nodes for volumes (%+v): %v", volumes, err)
+		w.Logger().Errorf(err, "failed to filter nodes for volumes (%+v): %v", volumes, err)
 		return nil, err
 	}
 	sortedNodes := c.prioritizeNodes(ctx, pods, volumes, filteredNodes)
@@ -1323,6 +1389,10 @@ func (c *SharedState) filterAndSortNodes(ctx context.Context, nodes []v1.Node, p
 }
 
 func (c *SharedState) selectNodesPerTopology(ctx context.Context, nodes []v1.Node, pods []v1.Pod, volumes []string) ([]v1.Node, error) {
+	var err error
+	ctx, w := workflow.New(ctx)
+	defer func() { w.Finish(err) }()
+
 	selectedNodes := []v1.Node{}
 	numReplicas := 0
 
@@ -1330,18 +1400,19 @@ func (c *SharedState) selectNodesPerTopology(ctx context.Context, nodes []v1.Nod
 	compatibleZonesSet := set{}
 	var primaryNode string
 	for i, volume := range volumes {
-		azVolume, err := azureutils.GetAzVolume(ctx, c.cachedClient, c.azClient, volume, c.objectNamespace, true)
+		var azVolume *v1beta1.AzVolume
+		azVolume, err = azureutils.GetAzVolume(ctx, c.cachedClient, c.azClient, volume, c.objectNamespace, true)
 		if err != nil {
-			klog.V(5).Infof("AzVolume for volume %s is not found.", volume)
+			err = status.Errorf(codes.Aborted, "failed to get AzVolume CRI (%s)", volume)
 			return nil, err
 		}
 
 		numReplicas = max(numReplicas, azVolume.Spec.MaxMountReplicaCount)
-		klog.V(5).Infof("Number of requested replicas for azvolume %s is: %d. Max replica count is: %d.",
+		w.Logger().V(5).Infof("Number of requested replicas for Azvolume (%s) is: %d. Max replica count is: %d.",
 			volume, numReplicas, azVolume.Spec.MaxMountReplicaCount)
 
 		var pv v1.PersistentVolume
-		if err := c.cachedClient.Get(ctx, types.NamespacedName{Name: azVolume.Spec.PersistentVolume}, &pv); err != nil {
+		if err = c.cachedClient.Get(ctx, types.NamespacedName{Name: azVolume.Spec.PersistentVolume}, &pv); err != nil {
 			return nil, err
 		}
 
@@ -1380,26 +1451,25 @@ func (c *SharedState) selectNodesPerTopology(ctx context.Context, nodes []v1.Nod
 	}
 
 	if len(compatibleZones) == 0 {
-		var err error
 		selectedNodes, err = c.filterAndSortNodes(ctx, nodes, pods, volumes)
 		if err != nil {
-			klog.Errorf("failed to select nodes for volumes (%+v): %v", volumes, err)
+			err = status.Errorf(codes.Aborted, "failed to select nodes for volumes (%+v): %v", volumes, err)
 			return nil, err
 		}
 	} else {
-		klog.Infof("The list of zones to select nodes from is: %s", strings.Join(compatibleZones, ","))
+		w.Logger().V(5).Infof("The list of zones to select nodes from is: %s", strings.Join(compatibleZones, ","))
 
 		var primaryNodeZone string
 		if primaryNode != "" {
 			nodeObj := &v1.Node{}
-			err := c.cachedClient.Get(ctx, types.NamespacedName{Name: primaryNode}, nodeObj)
+			err = c.cachedClient.Get(ctx, types.NamespacedName{Name: primaryNode}, nodeObj)
 			if err != nil {
-				klog.Errorf("failed to retrieve the primary node: %v", err)
+				w.Logger().Errorf(err, "failed to retrieve the primary node")
 			}
 
 			var ok bool
 			if primaryNodeZone, ok = nodeObj.Labels[consts.WellKnownTopologyKey]; ok {
-				klog.Infof("failed to find zone annotations for primary node")
+				w.Logger().V(5).Infof("failed to find zone annotations for primary node")
 			}
 		}
 
@@ -1408,8 +1478,8 @@ func (c *SharedState) selectNodesPerTopology(ctx context.Context, nodes []v1.Nod
 		nodeSelector = nodeSelector.Add(*zoneRequirement)
 
 		compatibleNodes := &v1.NodeList{}
-		if err := c.cachedClient.List(ctx, compatibleNodes, &client.ListOptions{LabelSelector: nodeSelector}); err != nil {
-			klog.Errorf("failed to retrieve node list: %v", err)
+		if err = c.cachedClient.List(ctx, compatibleNodes, &client.ListOptions{LabelSelector: nodeSelector}); err != nil {
+			err = status.Errorf(codes.Aborted, "failed to retrieve node list: %v", err)
 			return nodes, err
 		}
 
@@ -1425,9 +1495,10 @@ func (c *SharedState) selectNodesPerTopology(ctx context.Context, nodes []v1.Nod
 		primaryZoneNodes := []v1.Node{}
 		totalCount := 0
 		for zone, nodeList := range zoneToNodeMap {
-			sortedNodes, err := c.filterAndSortNodes(ctx, nodeList, pods, volumes)
+			var sortedNodes []v1.Node
+			sortedNodes, err = c.filterAndSortNodes(ctx, nodeList, pods, volumes)
 			if err != nil {
-				klog.Errorf("failed to select nodes for volumes (%+v): %v", volumes, err)
+				err = status.Errorf(codes.Aborted, "failed to select nodes for volumes (%+v): %v", volumes, err)
 				return nil, err
 			}
 
@@ -1525,10 +1596,11 @@ func getNodeRemainingCapacity(ctx context.Context, cachedClient client.Client, n
 }
 
 func (c *SharedState) getNodesWithReplica(ctx context.Context, volumeName string) ([]string, error) {
-	klog.V(5).Infof("Getting nodes with replica AzVolumeAttachments for volume %s.", volumeName)
+	w, _ := workflow.GetWorkflowFromContext(ctx)
+	w.Logger().V(5).Infof("Getting nodes with replica AzVolumeAttachments for volume %s.", volumeName)
 	azVolumeAttachments, err := getAzVolumeAttachmentsForVolume(ctx, c.cachedClient, volumeName, replicaOnly)
 	if err != nil {
-		klog.V(5).Infof("Error getting AzVolumeAttachments for volume %s. Error: %v", volumeName, err)
+		w.Logger().V(5).Errorf(err, "failed to get AzVolumeAttachments for volume %s.", volumeName)
 		return nil, err
 	}
 
@@ -1536,24 +1608,31 @@ func (c *SharedState) getNodesWithReplica(ctx context.Context, volumeName string
 	for _, azVolumeAttachment := range azVolumeAttachments {
 		nodes = append(nodes, azVolumeAttachment.Spec.NodeName)
 	}
-	klog.V(5).Infof("Nodes with AzVolumeAttachments for volume %s are: %v, Len: %d", volumeName, nodes, len(nodes))
+	w.Logger().V(5).Infof("Nodes with AzVolumeAttachments for volume %s are: %v, Len: %d", volumeName, nodes, len(nodes))
 	return nodes, nil
 }
 
 func (c *SharedState) createReplicaAzVolumeAttachment(ctx context.Context, volumeID, node string, volumeContext map[string]string) error {
-	klog.V(5).Infof("Creating replica AzVolumeAttachments for volumeId %s on node %s. ", volumeID, node)
-	diskName, err := azureutils.GetDiskName(volumeID)
+	var err error
+	ctx, w := workflow.New(ctx, workflow.WithDetails(consts.NodeNameLabel, node))
+	defer func() { w.Finish(err) }()
+
+	var diskName string
+	diskName, err = azureutils.GetDiskName(volumeID)
 	if err != nil {
-		klog.Warningf("Error getting Diskname for replica AzVolumeAttachments for volumeId %s on node %s. Error: %v. ", volumeID, node, err)
+		err = status.Errorf(codes.Internal, "failed to extract volume name from volumeID (%s)", volumeID)
 		return err
 	}
+	w.AddDetailToLogger(consts.VolumeNameLabel, diskName)
+
+	w.Logger().V(5).Info("Creating replica AzVolumeAttachments")
 	if volumeContext == nil {
 		volumeContext = make(map[string]string)
 	}
 	// creating azvolumeattachment
 	volumeName := strings.ToLower(diskName)
 	replicaName := azureutils.GetAzVolumeAttachmentName(volumeName, node)
-	_, err = c.azClient.DiskV1beta1().AzVolumeAttachments(c.objectNamespace).Create(ctx, &diskv1beta1.AzVolumeAttachment{
+	azVolumeAttachment := diskv1beta1.AzVolumeAttachment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      replicaName,
 			Namespace: c.objectNamespace,
@@ -1571,49 +1650,62 @@ func (c *SharedState) createReplicaAzVolumeAttachment(ctx context.Context, volum
 			RequestedRole: diskv1beta1.ReplicaRole,
 			VolumeContext: volumeContext,
 		},
-	}, metav1.CreateOptions{})
+	}
+	w.AnnotateObject(&azVolumeAttachment)
+	_, err = c.azClient.DiskV1beta1().AzVolumeAttachments(c.objectNamespace).Create(ctx, &azVolumeAttachment, metav1.CreateOptions{})
 	if err != nil {
-		klog.Warning("Failed creating replica AzVolumeAttachment %s. Error: %v", replicaName, err)
+		err = status.Errorf(codes.Internal, "failed to create replica AzVolumeAttachment %s.", replicaName)
 		return err
 	}
-	klog.V(5).Infof("Replica AzVolumeAttachment %s has been successfully created.", replicaName)
 	return nil
 }
 
 func (c *SharedState) cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azVolumeName string, caller operationRequester, role roleMode, deleteMode cleanUpMode) ([]diskv1beta1.AzVolumeAttachment, error) {
-	klog.Infof("AzVolumeAttachment clean up requested by %s for AzVolume (%s)", caller, azVolumeName)
+	var err error
+	ctx, w := workflow.New(ctx, workflow.WithDetails(consts.VolumeNameLabel, azVolumeName))
+	defer func() { w.Finish(err) }()
 
-	attachments, err := getAzVolumeAttachmentsForVolume(ctx, c.cachedClient, azVolumeName, role)
+	w.Logger().Infof("AzVolumeAttachment clean up requested by %s for AzVolume (%s)", caller, azVolumeName)
+
+	var attachments []v1beta1.AzVolumeAttachment
+	attachments, err = getAzVolumeAttachmentsForVolume(ctx, c.cachedClient, azVolumeName, role)
 	if err != nil {
 		if apiErrors.IsNotFound(err) {
+			err = nil
 			return nil, nil
 		}
-		klog.Errorf("failed to get AzVolumeAttachments: %v", err)
+		err = status.Errorf(codes.Aborted, "failed to get AzVolumeAttachments: %v", err)
 		return nil, err
 	}
 
-	if err := c.cleanUpAzVolumeAttachments(ctx, attachments, deleteMode, caller); err != nil {
+	if err = c.cleanUpAzVolumeAttachments(ctx, attachments, deleteMode, caller); err != nil {
 		return attachments, err
 	}
 	c.unmarkVolumeVisited(azVolumeName)
-	klog.Infof("successfully requested deletion of AzVolumeAttachments for AzVolume (%s)", azVolumeName)
 	return attachments, nil
 }
 
 func (c *SharedState) cleanUpAzVolumeAttachmentByNode(ctx context.Context, azDriverNodeName string, caller operationRequester, role roleMode, deleteMode cleanUpMode) ([]diskv1beta1.AzVolumeAttachment, error) {
-	klog.Infof("AzVolumeAttachment clean up requested by %s for AzDriverNode (%s)", caller, azDriverNodeName)
-	nodeRequirement, err := azureutils.CreateLabelRequirements(consts.NodeNameLabel, selection.Equals, azDriverNodeName)
+	var err error
+	ctx, w := workflow.New(ctx, workflow.WithDetails(consts.NodeNameLabel, azDriverNodeName))
+	defer func() { w.Finish(err) }()
+	w.Logger().Infof("AzVolumeAttachment clean up requested by %s for AzDriverNode (%s)", caller, azDriverNodeName)
+
+	var nodeRequirement *labels.Requirement
+	nodeRequirement, err = azureutils.CreateLabelRequirements(consts.NodeNameLabel, selection.Equals, azDriverNodeName)
 	if err != nil {
 		return nil, err
 	}
 	labelSelector := labels.NewSelector().Add(*nodeRequirement)
 
-	attachments, err := c.azClient.DiskV1beta1().AzVolumeAttachments(c.objectNamespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})
+	var attachments *diskv1beta1.AzVolumeAttachmentList
+	attachments, err = c.azClient.DiskV1beta1().AzVolumeAttachments(c.objectNamespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})
 	if err != nil {
 		if apiErrors.IsNotFound(err) {
+			err = nil
 			return nil, nil
 		}
-		klog.Errorf("failed to get AzVolumeAttachments: %v", err)
+		err = status.Errorf(codes.Aborted, "failed to get AzVolumeAttachments: %v", err)
 		return nil, err
 	}
 
@@ -1626,17 +1718,12 @@ func (c *SharedState) cleanUpAzVolumeAttachmentByNode(ctx context.Context, azDri
 
 	for volumeName, cleanUps := range cleanUpMap {
 		volumeName := volumeName
-		cleanUps := cleanUps
-		c.addToOperationQueue(
+		defer w.Finish(nil)
+		c.addToOperationQueue(ctx,
 			volumeName,
 			caller,
-			func() error {
-				ctx := context.Background()
-				err := c.cleanUpAzVolumeAttachments(ctx, cleanUps, deleteMode, caller)
-				if err == nil {
-					klog.Infof("successfully requested deletion of AzVolumeAttachments for AzDriverNode (%s)", azDriverNodeName)
-				}
-				return err
+			func(ctx context.Context) error {
+				return c.cleanUpAzVolumeAttachments(ctx, cleanUps, deleteMode, caller)
 			},
 			false)
 	}
@@ -1644,6 +1731,9 @@ func (c *SharedState) cleanUpAzVolumeAttachmentByNode(ctx context.Context, azDri
 }
 
 func (c *SharedState) cleanUpAzVolumeAttachments(ctx context.Context, attachments []diskv1beta1.AzVolumeAttachment, cleanUp cleanUpMode, caller operationRequester) error {
+	var err error
+	w, _ := workflow.GetWorkflowFromContext(ctx)
+
 	for _, attachment := range attachments {
 		var patchRequired bool
 		patched := attachment.DeepCopy()
@@ -1662,24 +1752,25 @@ func (c *SharedState) cleanUpAzVolumeAttachments(ctx context.Context, attachment
 		}
 
 		if patchRequired {
-			if err := c.cachedClient.Status().Patch(ctx, patched, client.MergeFrom(&attachment)); err != nil && apiErrors.IsNotFound(err) {
-				klog.Errorf("failed to delete AzVolumeAttachment (%s): %v", attachment.Name, err)
+			if err = c.cachedClient.Status().Patch(ctx, patched, client.MergeFrom(&attachment)); err != nil && apiErrors.IsNotFound(err) {
+				err = status.Errorf(codes.Internal, "failed to patch AzVolumeAttachment (%s)", attachment.Name)
 				return err
 			}
 		}
 		if !objectDeletionRequested(patched) {
 			if err := c.cachedClient.Delete(ctx, patched); err != nil && apiErrors.IsNotFound(err) {
-				klog.Errorf("failed to delete AzVolumeAttachment (%s): %v", attachment.Name, err)
+				err = status.Errorf(codes.Internal, "failed to delete AzVolumeAttachment (%s)", attachment.Name)
 				return err
 			}
-			klog.V(5).Infof("Set deletion timestamp for AzVolumeAttachment (%s)", attachment.Name)
+			w.Logger().V(5).Infof("Set deletion timestamp for AzVolumeAttachment (%s)", attachment.Name)
 		}
 	}
 	return nil
 }
 
 func getAzVolumeAttachmentsForVolume(ctx context.Context, azclient client.Client, volumeName string, azVolumeAttachmentRole roleMode) (attachments []diskv1beta1.AzVolumeAttachment, err error) {
-	klog.V(5).Infof("Getting the list of AzVolumeAttachments for %s.", volumeName)
+	w, _ := workflow.GetWorkflowFromContext(ctx)
+	w.Logger().V(5).Infof("Getting AzVolumeAttachment list for volume (%s)", volumeName)
 	if azVolumeAttachmentRole == all {
 		return getAzVolumeAttachmentsWithLabel(ctx, azclient, labelPair{consts.VolumeNameLabel, volumeName})
 	}
@@ -1687,7 +1778,8 @@ func getAzVolumeAttachmentsForVolume(ctx context.Context, azclient client.Client
 }
 
 func getAzVolumeAttachmentsForNode(ctx context.Context, azclient client.Client, nodeName string, azVolumeAttachmentRole roleMode) (attachments []diskv1beta1.AzVolumeAttachment, err error) {
-	klog.V(5).Infof("Getting the list of AzVolumeAttachments for %s.", nodeName)
+	w, _ := workflow.GetWorkflowFromContext(ctx)
+	w.Logger().V(5).Infof("Getting AzVolumeAttachment list for node (%s)", nodeName)
 	if azVolumeAttachmentRole == all {
 		return getAzVolumeAttachmentsWithLabel(ctx, azclient, labelPair{consts.NodeNameLabel, nodeName})
 	}
@@ -1695,22 +1787,23 @@ func getAzVolumeAttachmentsForNode(ctx context.Context, azclient client.Client, 
 }
 
 func getAzVolumeAttachmentsWithLabel(ctx context.Context, azclient client.Client, labelPairs ...labelPair) (attachments []diskv1beta1.AzVolumeAttachment, err error) {
+	w, _ := workflow.GetWorkflowFromContext(ctx)
 	labelSelector := labels.NewSelector()
 	for _, labelPair := range labelPairs {
 		var req *labels.Requirement
 		req, err = azureutils.CreateLabelRequirements(labelPair.key, selection.Equals, labelPair.entry)
 		if err != nil {
-			klog.Errorf("failed to create label (%s, %s) for listing AzVolumeAttachment", labelPair.key, labelPair.entry)
+			err = status.Errorf(codes.Internal, "failed to create label (%s, %s) for listing AzVolumeAttachment", labelPair.key, labelPair.entry)
 			return
 		}
 		labelSelector = labelSelector.Add(*req)
 	}
 
-	klog.V(5).Infof("Label selector is: %v.", labelSelector)
+	w.Logger().V(5).Infof("Label selector is: %v.", labelSelector)
 	azVolumeAttachments := &diskv1beta1.AzVolumeAttachmentList{}
 	err = azclient.List(ctx, azVolumeAttachments, &client.ListOptions{LabelSelector: labelSelector})
 	if err != nil {
-		klog.V(5).Infof("Error retrieving AzVolumeAttachments for label %s. Error: %v", labelSelector, err)
+		err = status.Errorf(codes.Internal, "failed to list AzVolumeAttachments for label %v", labelSelector)
 		return
 	}
 	attachments = azVolumeAttachments.Items
@@ -1763,10 +1856,10 @@ func getQualifiedName(namespace, name string) string {
 	return fmt.Sprintf("%s/%s", namespace, name)
 }
 
-func parseQualifiedName(qualifiedName string) (namespace, name string) {
+func parseQualifiedName(qualifiedName string) (namespace, name string, err error) {
 	parsed := strings.Split(qualifiedName, "/")
 	if len(parsed) != 2 {
-		klog.Errorf("pod's qualified name should be of <namespace>/<name>")
+		err = status.Errorf(codes.Internal, "pod's qualified name (%s) should be of <namespace>/<name>", qualifiedName)
 		return
 	}
 	namespace = parsed[0]
@@ -1787,21 +1880,23 @@ func reconcileReturnOnSuccess(objectName string, retryInfo *retryInfo) (reconcil
 	return reconcile.Result{}, nil
 }
 
-func reconcileReturnOnError(obj runtime.Object, operationType string, err error, retryInfo *retryInfo) (reconcile.Result, error) {
+func reconcileReturnOnError(ctx context.Context, obj runtime.Object, operationType string, err error, retryInfo *retryInfo) (reconcile.Result, error) {
 	var (
 		requeue    bool = status.Code(err) != codes.FailedPrecondition
 		retryAfter time.Duration
 	)
 
+	w := workflow.GetWorkflow(ctx, obj)
+
 	if meta, metaErr := meta.Accessor(obj); metaErr == nil {
 		objectName := meta.GetName()
 		objectType := reflect.TypeOf(obj)
 		if !requeue {
-			klog.Errorf("failed to %s %v (%s) with no retry: %v", operationType, objectType, objectName, err)
+			w.Logger().Errorf(err, "failed to %s %v (%s) with no retry", operationType, objectType, objectName)
 			retryInfo.deleteEntry(objectName)
 		} else {
 			retryAfter = retryInfo.nextRequeue(objectName)
-			klog.Errorf("failed to %s %v (%s) with retry after %v: %v", operationType, objectType, objectName, retryAfter, err)
+			w.Logger().Errorf(err, "failed to %s %v (%s) with retry after %v", operationType, objectType, objectName, retryAfter)
 		}
 	}
 
@@ -1864,11 +1959,12 @@ func (c *SharedState) createReplicaRequestsQueue() {
 		})
 }
 
-func (vq *VolumeReplicaRequestsPriorityQueue) Push(replicaRequest *ReplicaRequest) {
+func (vq *VolumeReplicaRequestsPriorityQueue) Push(ctx context.Context, replicaRequest *ReplicaRequest) {
+	w, _ := workflow.GetWorkflowFromContext(ctx)
 	err := vq.queue.Add(replicaRequest)
 	atomic.AddInt32(&vq.size, 1)
 	if err != nil {
-		klog.Infof("Failed to add replica request for volume %s: %v", replicaRequest.VolumeName, err)
+		w.Logger().Errorf(err, "failed to add replica request for volume %s", replicaRequest.VolumeName)
 	}
 }
 
@@ -1887,14 +1983,16 @@ func (vq *VolumeReplicaRequestsPriorityQueue) DrainQueue() []*ReplicaRequest {
 
 ///Removes replica requests from the priority queue and adds to operation queue.
 func (c *SharedState) tryCreateFailedReplicas(ctx context.Context, requestor operationRequester) error {
+	ctx, w := workflow.New(ctx)
+	defer w.Finish(nil)
 	requests := c.priorityReplicaRequestsQueue.DrainQueue()
 	for i := 0; i < len(requests); i++ {
 		replicaRequest := requests[i]
-		c.addToOperationQueue(
+		c.addToOperationQueue(ctx,
 			replicaRequest.VolumeName,
 			requestor,
-			func() error {
-				return c.manageReplicas(context.Background(), replicaRequest.VolumeName)
+			func(ctx context.Context) error {
+				return c.manageReplicas(ctx, replicaRequest.VolumeName)
 			},
 			false,
 		)
@@ -1904,11 +2002,11 @@ func (c *SharedState) tryCreateFailedReplicas(ctx context.Context, requestor ope
 
 func (c *SharedState) garbageCollectReplicas(ctx context.Context, volumeName string, requester operationRequester) {
 	c.addToOperationQueue(
+		ctx,
 		volumeName,
 		replica,
-		func() error {
-			_, err := c.cleanUpAzVolumeAttachmentByVolume(context.Background(), volumeName, requester, replicaOnly, detachAndDeleteCRI)
-			if err != nil {
+		func(ctx context.Context) error {
+			if _, err := c.cleanUpAzVolumeAttachmentByVolume(ctx, volumeName, requester, replicaOnly, detachAndDeleteCRI); err != nil {
 				return err
 			}
 			c.addToGcExclusionList(volumeName, replica)
@@ -1931,51 +2029,61 @@ func (c *SharedState) removeGarbageCollection(volumeName string) {
 }
 
 func (c *SharedState) manageReplicas(ctx context.Context, volumeName string) error {
-	azVolume, err := azureutils.GetAzVolume(ctx, c.cachedClient, c.azClient, volumeName, c.objectNamespace, true)
+	var err error
+	ctx, w := workflow.New(ctx)
+	defer func() { w.Finish(err) }()
+
+	var azVolume *diskv1beta1.AzVolume
+	azVolume, err = azureutils.GetAzVolume(ctx, c.cachedClient, c.azClient, volumeName, c.objectNamespace, true)
 	if apiErrors.IsNotFound(err) {
-		klog.Infof("Aborting replica management... volume (%s) does not exist", volumeName)
+		w.Logger().Info("Volume no longer exists. Aborting manage replica operation")
 		return nil
 	} else if err != nil {
-		klog.Errorf("failed to get AzVolume (%s): %v", volumeName, err)
+		w.Logger().Error(err, "failed to get AzVolume")
 		return err
 	}
 
 	// replica management should not be executed or retried if AzVolume is scheduled for a deletion or not created.
 	if !isCreated(azVolume) || objectDeletionRequested(azVolume) {
-		klog.Errorf("azVolume (%s) is scheduled for deletion or has no underlying volume object", azVolume.Name)
+		w.Logger().Errorf(err, "azVolume is scheduled for deletion or has no underlying volume object")
 		return nil
 	}
 
 	azVolumeAttachments, err := getAzVolumeAttachmentsForVolume(ctx, c.cachedClient, volumeName, replicaOnly)
 	if err != nil {
-		klog.Errorf("failed to list AzVolumeAttachment: %v", err)
+		w.Logger().Errorf(err, "failed to list replica AzVolumeAttachments")
 		return err
 	}
 
 	desiredReplicaCount, currentReplicaCount := azVolume.Spec.MaxMountReplicaCount, len(azVolumeAttachments)
-	klog.Infof("control number of replicas for volume (%s): desired=%d,\tcurrent:%d", azVolume.Spec.VolumeName, desiredReplicaCount, currentReplicaCount)
+	w.Logger().Infof("Control number of replicas for volume (%s): desired=%d,\tcurrent:%d", azVolume.Spec.VolumeName, desiredReplicaCount, currentReplicaCount)
 
 	if desiredReplicaCount > currentReplicaCount {
-		klog.Infof("Need %d more replicas for volume (%s)", desiredReplicaCount-currentReplicaCount, azVolume.Spec.VolumeName)
+		w.Logger().Infof("Need %d more replicas for volume (%s)", desiredReplicaCount-currentReplicaCount, azVolume.Spec.VolumeName)
 		if azVolume.Status.Detail == nil || azVolume.Status.State == diskv1beta1.VolumeDeleting || azVolume.Status.State == diskv1beta1.VolumeDeleted {
 			// underlying volume does not exist, so volume attachment cannot be made
 			return nil
 		}
 		if err = c.createReplicas(ctx, desiredReplicaCount-currentReplicaCount, azVolume.Name, azVolume.Status.Detail.VolumeID, azVolume.Spec.Parameters); err != nil {
-			klog.Errorf("failed to create %d replicas for volume (%s): %v", desiredReplicaCount-currentReplicaCount, azVolume.Spec.VolumeName, err)
+			w.Logger().Errorf(err, "failed to create %d replicas for volume (%s): %v", desiredReplicaCount-currentReplicaCount, azVolume.Spec.VolumeName, err)
 			return err
 		}
 	}
 	return nil
 }
 func (c *SharedState) createReplicas(ctx context.Context, remainingReplicas int, volumeName, volumeID string, volumeContext map[string]string) error {
+	var err error
+	ctx, w := workflow.New(ctx)
+	defer func() { w.Finish(err) }()
+
 	// if volume is scheduled for clean up, skip replica creation
 	if _, cleanUpScheduled := c.cleanUpMap.Load(volumeName); cleanUpScheduled {
 		return nil
 	}
 
 	// get pods linked to the volume
-	pods, err := c.getPodsFromVolume(ctx, c.cachedClient, volumeName)
+	var pods []v1.Pod
+	pods, err = c.getPodsFromVolume(ctx, c.cachedClient, volumeName)
 	if err != nil {
 		return err
 	}
@@ -1989,19 +2097,20 @@ func (c *SharedState) createReplicas(ctx context.Context, remainingReplicas int,
 		defer podLock.Unlock()
 	}
 
-	nodes, err := c.getNodesForReplica(ctx, volumeName, pods, remainingReplicas)
+	var nodes []string
+	nodes, err = c.getNodesForReplica(ctx, volumeName, pods, remainingReplicas)
 	if err != nil {
-		klog.Errorf("failed to get a list of nodes for replica attachment: %v", err)
+		w.Logger().Errorf(err, "failed to get a list of nodes for replica attachment")
 		return err
 	}
 
 	requiredReplicas := remainingReplicas
 	for _, node := range nodes {
-		if err := c.createReplicaAzVolumeAttachment(ctx, volumeID, node, volumeContext); err != nil {
-			klog.Errorf("failed to create replica AzVolumeAttachment for volume %s: %v", volumeName, err)
+		if err = c.createReplicaAzVolumeAttachment(ctx, volumeID, node, volumeContext); err != nil {
+			w.Logger().Errorf(err, "failed to create replica AzVolumeAttachment for volume %s", volumeName)
 			//Push to queue the failed replica number
 			request := ReplicaRequest{VolumeName: volumeName, Priority: remainingReplicas}
-			c.priorityReplicaRequestsQueue.Push(&request)
+			c.priorityReplicaRequestsQueue.Push(ctx, &request)
 			return err
 		}
 		remainingReplicas--
@@ -2010,7 +2119,7 @@ func (c *SharedState) createReplicas(ctx context.Context, remainingReplicas int,
 	if remainingReplicas > 0 {
 		//no failed replica attachments, but there are still more replicas to reach MaxShares
 		request := ReplicaRequest{VolumeName: volumeName, Priority: remainingReplicas}
-		c.priorityReplicaRequestsQueue.Push(&request)
+		c.priorityReplicaRequestsQueue.Push(ctx, &request)
 		for _, pod := range pods {
 			c.eventRecorder.Eventf(pod.DeepCopyObject(), v1.EventTypeWarning, consts.ReplicaAttachmentFailedEvent, "Not enough suitable nodes to attach %d of %d replica mount(s) for volume %s", remainingReplicas, requiredReplicas, volumeName)
 		}
@@ -2020,6 +2129,9 @@ func (c *SharedState) createReplicas(ctx context.Context, remainingReplicas int,
 
 func (c *SharedState) getNodesForReplica(ctx context.Context, volumeName string, pods []v1.Pod, numReplica int) ([]string, error) {
 	var err error
+	ctx, w := workflow.New(ctx)
+	defer func() { w.Finish(err) }()
+
 	if len(pods) == 0 {
 		pods, err = c.getPodsFromVolume(ctx, c.cachedClient, volumeName)
 		if err != nil {
@@ -2027,17 +2139,20 @@ func (c *SharedState) getNodesForReplica(ctx context.Context, volumeName string,
 		}
 	}
 
-	volumes, err := c.getVolumesForPodObjs(pods)
+	var volumes []string
+	volumes, err = c.getVolumesForPodObjs(ctx, pods)
 	if err != nil {
 		return nil, err
 	}
 
-	nodes, err := c.getRankedNodesForReplicaAttachments(ctx, volumes, pods)
+	var nodes []string
+	nodes, err = c.getRankedNodesForReplicaAttachments(ctx, volumes, pods)
 	if err != nil {
 		return nil, err
 	}
 
-	replicaNodes, err := c.getNodesWithReplica(ctx, volumeName)
+	var replicaNodes []string
+	replicaNodes, err = c.getNodesWithReplica(ctx, volumeName)
 	if err != nil {
 		return nil, err
 	}

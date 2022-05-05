@@ -30,6 +30,7 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e/framework"
 
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 )
@@ -50,6 +51,7 @@ func (pod *PodDetails) SetupWithDynamicVolumes(client clientset.Interface, names
 	cleanupFuncs := make([]func(), 0)
 	for n, v := range pod.Volumes {
 		tpvc, funcs := v.SetupDynamicPersistentVolumeClaim(client, namespace, csiDriver, storageClassParameters)
+		pod.Volumes[n].PersistentVolumeClaim = tpvc.PersistentVolumeClaim.DeepCopy()
 		cleanupFuncs = append(cleanupFuncs, funcs...)
 		ginkgo.By("setting up the pod")
 		if v.VolumeMode == Block {
@@ -75,13 +77,18 @@ func (pod *PodDetails) SetupWithDynamicMultipleVolumes(client clientset.Interfac
 	}
 	accountTypeCount := len(supportedStorageAccountTypes)
 	for n, v := range pod.Volumes {
-		storageClassParameters := map[string]string{"skuName": supportedStorageAccountTypes[n%accountTypeCount]}
+		storageClassParameters := map[string]string{consts.SkuNameField: supportedStorageAccountTypes[n%accountTypeCount]}
 		tpvc, funcs := v.SetupDynamicPersistentVolumeClaim(client, namespace, csiDriver, storageClassParameters)
+		pod.Volumes[n].PersistentVolumeClaim = tpvc.PersistentVolumeClaim.DeepCopy()
 		cleanupFuncs = append(cleanupFuncs, funcs...)
 		if v.VolumeMode == Block {
 			tpod.SetupRawBlockVolume(tpvc.PersistentVolumeClaim, fmt.Sprintf("%s%d", v.VolumeDevice.NameGenerate, n+1), v.VolumeDevice.DevicePath)
 		} else {
 			tpod.SetupVolume(tpvc.PersistentVolumeClaim, fmt.Sprintf("%s%d", v.VolumeMount.NameGenerate, n+1), fmt.Sprintf("%s%d", v.VolumeMount.MountPathGenerate, n+1), v.VolumeMount.ReadOnly)
+		}
+		if tpvc.PersistentVolume != nil {
+			klog.Infof("adding PV (%s) to pod (%s)", tpvc.PersistentVolume.Name, tpod.Pod.Name)
+			pod.Volumes[n].PersistentVolume = tpvc.PersistentVolume.DeepCopy()
 		}
 	}
 	return tpod, cleanupFuncs
@@ -139,7 +146,7 @@ func (pod *PodDetails) SetupDeployment(client clientset.Interface, namespace *v1
 		ginkgo.By("setting up the PVC")
 		tpvc := NewTestPersistentVolumeClaim(client, namespace, volume.ClaimSize, volume.VolumeMode, volume.VolumeAccessMode, &createdStorageClass)
 		tpvc.Create()
-		if volume.VolumeBindingMode == nil || *volume.VolumeBindingMode == storagev1.VolumeBindingImmediate {
+		if createdStorageClass.VolumeBindingMode == nil || *createdStorageClass.VolumeBindingMode == storagev1.VolumeBindingImmediate {
 			tpvc.WaitForBound()
 			tpvc.ValidateProvisionedPersistentVolume()
 		}

@@ -1,0 +1,2 @@
+kubeconfig: "" # default is "$HOME/.kube/config"
+driverNamespace: "" # default is "azure-disk-csi"

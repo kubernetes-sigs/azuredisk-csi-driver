@@ -20,7 +20,7 @@ import (
 	"context"
 
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/klog/v2"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/workflow"
 )
 
 type conditionWaiter struct {
@@ -34,6 +34,7 @@ func (w *conditionWaiter) Wait(ctx context.Context) (runtime.Object, error) {
 	var obj runtime.Object
 	var err error
 	namespace := w.watcher.namespace
+
 	switch w.objType {
 	case azVolumeType:
 		obj, err = w.watcher.informerFactory.Disk().V1beta1().AzVolumes().Lister().AzVolumes(namespace).Get(w.objName)
@@ -52,13 +53,16 @@ func (w *conditionWaiter) Wait(ctx context.Context) (runtime.Object, error) {
 		}
 	}
 
+	_, wf := workflow.New(ctx, workflow.WithDetails(workflow.GetObjectDetails(obj)...))
+	defer func() { wf.Finish(err) }()
+
 	// if not wait for the event handler signal
 	select {
 	case <-ctx.Done():
-		klog.Errorf("context timeout for %s (%s)", w.objType, w.objName)
-		return nil, ctx.Err()
+		err = ctx.Err()
+		return nil, err
 	case waitResult := <-w.entry.waitChan:
-		klog.Infof("received result for %s (%s): error :%v", w.objType, w.objName, waitResult.err)
+		err = waitResult.err
 		return waitResult.obj, waitResult.err
 	}
 }
