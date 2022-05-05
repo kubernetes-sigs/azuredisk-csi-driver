@@ -33,7 +33,7 @@ type AzDiskSchedulerExtenderSimplePodSchedulingTest struct {
 }
 
 func (t *AzDiskSchedulerExtenderSimplePodSchedulingTest) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
-	tpod := resources.NewTestPod(client, namespace, t.Pod.Cmd, schedulerName, t.Pod.IsWindows)
+	tpod := resources.NewTestPod(client, namespace, t.Pod.Cmd, schedulerName, t.Pod.IsWindows, t.Pod.WinServerVer)
 
 	// Get the list of available nodes for scheduling the pod
 	nodeNames := nodeutil.ListNodeNames(client)
