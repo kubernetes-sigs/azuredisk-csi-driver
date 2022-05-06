@@ -1,5 +1,5 @@
 /*
-Copyright © 2022 NAME HERE <EMAIL ADDRESS>
+Copyright 2022 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,11 +13,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+
 package cmd
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
 )
 
@@ -33,33 +32,20 @@ This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		filePath := args[0]
-		volume, _ := cmd.Flags().GetStringSlice("volume")
-		node, _ := cmd.Flags().GetStringSlice("node")
-		requestId, _ := cmd.Flags().GetStringSlice("request-id")
+		volumes, _ := cmd.Flags().GetStringSlice("volume")
+		nodes, _ := cmd.Flags().GetStringSlice("node")
+		requestIds, _ := cmd.Flags().GetStringSlice("request-id")
 		afterTime, _ := cmd.Flags().GetString("after-time")
-		// isWatch, _ := cmd.Flags().GetBool("volume")
-		// isPrevious, _ := cmd.Flags().GetBool("volume")
 
-		GetLogsByFile(filePath, volume, node, requestId,afterTime)
-		fmt.Printf("file called")
+		GetLogsByFile(filePath, volumes, nodes, requestIds, afterTime)
 	},
 }
 
 func init() {
 	getCmd.AddCommand(fileCmd)
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// fileCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// fileCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
 
-func GetLogsByFile(path string, volume []string, node []string, requestId []string, afterTime string) []string{
+func GetLogsByFile(path string, volumes []string, nodes []string, requestIds []string, afterTime string) {
 	// f, err := os.Open(*fptr)
     // if err != nil {
     //     log.Fatal(err)
@@ -77,5 +63,4 @@ func GetLogsByFile(path string, volume []string, node []string, requestId []stri
     // if err != nil {
     //     log.Fatal(err)
     // }
-	return []string{}
 }
