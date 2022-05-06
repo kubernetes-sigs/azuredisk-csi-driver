@@ -895,28 +895,30 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azurediskInformers.
 		var objForUpdate client.Object
 		switch target := obj.(type) {
 		case *diskv1beta1.AzVolume:
+			updateTarget := &diskv1beta1.AzVolume{}
 			if informerFactory != nil {
-				target, err = informerFactory.Disk().V1beta1().AzVolumes().Lister().AzVolumes(target.Namespace).Get(objName)
+				updateTarget, err = informerFactory.Disk().V1beta1().AzVolumes().Lister().AzVolumes(target.Namespace).Get(objName)
 			} else if cachedClient != nil {
-				err = cachedClient.Get(ctx, types.NamespacedName{Namespace: target.Namespace, Name: objName}, target)
+				err = cachedClient.Get(ctx, types.NamespacedName{Namespace: target.Namespace, Name: objName}, updateTarget)
 			} else {
-				target, err = azDiskClient.DiskV1beta1().AzVolumes(target.Namespace).Get(ctx, objName, metav1.GetOptions{})
+				updateTarget, err = azDiskClient.DiskV1beta1().AzVolumes(target.Namespace).Get(ctx, objName, metav1.GetOptions{})
 			}
 			if err == nil {
-				objForUpdate = target
-				copyForUpdate = target.DeepCopy()
+				objForUpdate = updateTarget
+				copyForUpdate = updateTarget.DeepCopy()
 			}
 		case *diskv1beta1.AzVolumeAttachment:
+			updateTarget := &diskv1beta1.AzVolumeAttachment{}
 			if informerFactory != nil {
-				target, err = informerFactory.Disk().V1beta1().AzVolumeAttachments().Lister().AzVolumeAttachments(target.Namespace).Get(objName)
+				updateTarget, err = informerFactory.Disk().V1beta1().AzVolumeAttachments().Lister().AzVolumeAttachments(target.Namespace).Get(objName)
 			} else if cachedClient != nil {
-				err = cachedClient.Get(ctx, types.NamespacedName{Namespace: target.Namespace, Name: objName}, target)
+				err = cachedClient.Get(ctx, types.NamespacedName{Namespace: target.Namespace, Name: objName}, updateTarget)
 			} else {
-				target, err = azDiskClient.DiskV1beta1().AzVolumeAttachments(target.Namespace).Get(ctx, objName, metav1.GetOptions{})
+				updateTarget, err = azDiskClient.DiskV1beta1().AzVolumeAttachments(target.Namespace).Get(ctx, objName, metav1.GetOptions{})
 			}
 			if err == nil {
-				objForUpdate = target
-				copyForUpdate = target.DeepCopy()
+				objForUpdate = updateTarget
+				copyForUpdate = updateTarget.DeepCopy()
 			}
 		default:
 			return status.Errorf(codes.Internal, "object (%v) not supported.", reflect.TypeOf(target))
