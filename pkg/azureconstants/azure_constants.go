@@ -133,7 +133,8 @@ const (
 	CRIUpdateRetryStep      = 5
 	ZonedField              = "zoned"
 	NormalUpdateMaxNetRetry = 0
-	ForcedUpdateMaxNetRetry = 5
+	ForcedUpdateMaxNetRetry = 10
+	DefaultBackoffCap       = 10 * time.Minute
 	EnableAsyncAttachField  = "enableasyncattach"
 	TooManyRequests         = "TooManyRequests"
 	ClientThrottled         = "client throttled"
