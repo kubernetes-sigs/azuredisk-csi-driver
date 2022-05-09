@@ -45,8 +45,6 @@ rollout_and_wait() {
     fi
 }
 
-FSGROUP_SUPPORT_ENABLED=$(expr "$(kubectl get CSIDriver $DRIVER.csi.azure.com --output jsonpath='{$.spec.fsGroupPolicy}')" : "File" != 0 || true)
-
 EXAMPLES=()
 
 if [[ "$1" == "linux" ]]; then
@@ -55,6 +53,7 @@ if [[ "$1" == "linux" ]]; then
         deploy/example/statefulset.yaml \
         )
 
+    FSGROUP_SUPPORT_ENABLED=$(expr "$(kubectl get CSIDriver $DRIVER.csi.azure.com --output jsonpath='{$.spec.fsGroupPolicy}')" : "File" != 0 || true)
     if [[ ${FSGROUP_SUPPORT_ENABLED} -eq 1 ]]; then
         EXAMPLES+=(deploy/example/statefulset-nonroot.yaml)
     fi

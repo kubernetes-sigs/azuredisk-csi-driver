@@ -34,7 +34,7 @@ setup_e2e_binaries() {
     tar -xvf e2e-tests.tar.gz && rm e2e-tests.tar.gz
 
     # test on alternative driver name
-    export EXTRA_HELM_OPTIONS="--set controller.disableAvailabilitySetNodes=true --set controller.replicas=1 --set driver.name=$DRIVER.csi.azure.com --set controller.name=csi-$DRIVER-controller --set linux.dsName=csi-$DRIVER-node --set windows.dsName=csi-$DRIVER-node-win --set controller.vmssCacheTTLInSeconds=60"
+    export EXTRA_HELM_OPTIONS="--set controller.replicas=1 --set driver.name=$DRIVER.csi.azure.com --set controller.name=csi-$DRIVER-controller --set linux.dsName=csi-$DRIVER-node --set windows.dsName=csi-$DRIVER-node-win --set controller.vmssCacheTTLInSeconds=60"
     # install the azuredisk-csi-driver driver
     make e2e-bootstrap
     sed -i "s/csi-azuredisk-controller/csi-$DRIVER-controller/g" deploy/example/metrics/csi-azuredisk-controller-svc.yaml
@@ -43,7 +43,11 @@ setup_e2e_binaries() {
 
 print_logs() {
     sed -i "s/disk.csi.azure.com/$DRIVER.csi.azure.com/g" deploy/example/storageclass-azuredisk-csi.yaml
-    bash ./hack/verify-examples.sh linux azurepubliccloud ephemeral $DRIVER
+    if [ ! -z ${TEST_WINDOWS} ]; then
+        bash ./hack/verify-examples.sh windows
+    else
+        bash ./hack/verify-examples.sh linux azurepubliccloud ephemeral $DRIVER
+    fi
     echo "print out driver logs ..."
     bash ./test/utils/azuredisk_log.sh $DRIVER
 }
