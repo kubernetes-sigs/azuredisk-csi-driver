@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/onsi/ginkgo"
@@ -30,6 +31,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
+	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
@@ -95,6 +97,36 @@ func VerifySuccessfulAzVolumeAttachments(pod PodDetails, azDiskClient *azDiskCli
 	}
 	isVerified = true
 	return
+}
+
+func pollForStringWorker(namespace string, pod string, command []string, expectedString string, ch chan<- error) {
+	args := append([]string{"exec", pod, "--"}, command...)
+	err := wait.PollImmediate(testconsts.Poll, testconsts.PollForStringTimeout, func() (bool, error) {
+		stdout, err := framework.RunKubectl(namespace, args...)
+		if err != nil {
+			framework.Logf("Error waiting for output %q in pod %q: %v.", expectedString, pod, err)
+			return false, nil
+		}
+		if !strings.Contains(stdout, expectedString) {
+			framework.Logf("The stdout did not contain output %q in pod %q, found: %q.", expectedString, pod, stdout)
+			return false, nil
+		}
+		return true, nil
+	})
+	ch <- err
+}
+
+// Execute the command for all pods in the namespace, looking for expectedString in stdout
+func pollForStringInPodsExec(namespace string, pods []string, command []string, expectedString string) {
+	ch := make(chan error, len(pods))
+	for _, pod := range pods {
+		go pollForStringWorker(namespace, pod, command, expectedString, ch)
+	}
+	errs := make([]error, 0, len(pods))
+	for range pods {
+		errs = append(errs, <-ch)
+	}
+	framework.ExpectNoError(utilerrors.NewAggregate(errs), "Failed to find %q in at least one pod's output.", expectedString)
 }
 
 func generatePVC(namespace, storageClassName, name, claimSize string, volumeMode v1.PersistentVolumeMode, accessMode v1.PersistentVolumeAccessMode, dataSource *v1.TypedLocalObjectReference) *v1.PersistentVolumeClaim {

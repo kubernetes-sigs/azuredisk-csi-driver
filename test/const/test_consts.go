@@ -81,9 +81,10 @@ const (
 	// Description that will printed during tests
 	FailedConditionDescription = "Error status code"
 
-	Poll            = 2 * time.Second
-	PollLongTimeout = 5 * time.Minute
-	PollTimeout     = 10 * time.Minute
+	Poll                 = 2 * time.Second
+	PollLongTimeout      = 5 * time.Minute
+	PollTimeout          = 10 * time.Minute
+	PollForStringTimeout = 1 * time.Minute
 
 	testTolerationKey   = "test-toleration-key"
 	testTolerationValue = "test-toleration-value"

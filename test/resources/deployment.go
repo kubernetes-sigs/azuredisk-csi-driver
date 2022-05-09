@@ -173,11 +173,16 @@ func (t *TestDeployment) WaitForPodReady() {
 	}
 }
 
-func (t *TestDeployment) Exec(command []string, expectedString string) {
-	for _, pod := range t.Pods {
-		_, err := framework.LookForStringInPodExec(t.Namespace.Name, pod.Name, command, expectedString, testconsts.ExecTimeout)
-		framework.ExpectNoError(err)
+func (t *TestDeployment) podNames() []string {
+	names := make([]string, 0, len(t.Pods))
+	for _, podDetails := range t.Pods {
+		names = append(names, podDetails.Name)
 	}
+	return names
+}
+
+func (t *TestDeployment) PollForStringInPodsExec(command []string, expectedString string) {
+	pollForStringInPodsExec(t.Namespace.Name, t.podNames(), command, expectedString)
 }
 
 func (t *TestDeployment) DeletePodAndWait() {
