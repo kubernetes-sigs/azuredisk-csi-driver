@@ -67,6 +67,7 @@ type DriverOptions struct {
 	GetNodeInfoFromLabels      bool
 	EnableDiskCapacityCheck    bool
 	VMSSCacheTTLInSeconds      int64
+	VMType                     string
 }
 
 // CSIDriver defines the interface for a CSI driver.
@@ -107,6 +108,7 @@ type DriverCore struct {
 	getNodeInfoFromLabels      bool
 	enableDiskCapacityCheck    bool
 	vmssCacheTTLInSeconds      int64
+	vmType                     string
 }
 
 // Driver is the v1 implementation of the Azure Disk CSI Driver.
@@ -140,6 +142,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.getNodeInfoFromLabels = options.GetNodeInfoFromLabels
 	driver.enableDiskCapacityCheck = options.EnableDiskCapacityCheck
 	driver.vmssCacheTTLInSeconds = options.VMSSCacheTTLInSeconds
+	driver.vmType = options.VMType
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
@@ -174,6 +177,11 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 	d.cloud = cloud
 	d.kubeconfig = kubeconfig
 
+	if d.vmType != "" {
+		klog.V(2).Infof("override VMType(%s) in cloud config as %s", d.cloud.VMType, d.vmType)
+		d.cloud.VMType = d.vmType
+	}
+
 	if d.NodeID == "" {
 		// Disable UseInstanceMetadata for controller to mitigate a timeout issue using IMDS
 		// https://github.com/kubernetes-sigs/azuredisk-csi-driver/issues/168
@@ -188,7 +196,7 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 				klog.Warningf("DisableAvailabilitySetNodes for controller is set as false while current VMType is vmss")
 			}
 		}
-		klog.V(2).Infof("location: %s, rg: %s, VMType: %s, PrimaryScaleSetName: %s", d.cloud.Location, d.cloud.ResourceGroup, d.cloud.VMType, d.cloud.PrimaryScaleSetName)
+		klog.V(2).Infof("cloud: %s, location: %s, rg: %s, VMType: %s, PrimaryScaleSetName: %s, PrimaryAvailabilitySetName: %s", d.cloud.Cloud, d.cloud.Location, d.cloud.ResourceGroup, d.cloud.VMType, d.cloud.PrimaryScaleSetName, d.cloud.PrimaryAvailabilitySetName)
 	}
 
 	if d.vmssCacheTTLInSeconds > 0 {
