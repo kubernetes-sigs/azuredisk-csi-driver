@@ -41,7 +41,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/component-helpers/scheduling/corev1/nodeaffinity"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 	azClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
@@ -1294,7 +1293,7 @@ func (c *SharedState) filterNodes(ctx context.Context, nodes []v1.Node, pods []v
 
 	pvs := make([]*v1.PersistentVolume, len(volumes))
 	for i, volume := range volumes {
-		var azVolume *v1beta1.AzVolume
+		var azVolume *diskv1beta1.AzVolume
 		azVolume, err = azureutils.GetAzVolume(ctx, c.cachedClient, c.azClient, volume, c.objectNamespace, true)
 		if err != nil {
 			w.Logger().V(5).Errorf(err, "AzVolume for volume %s is not found.", volume)
@@ -1400,7 +1399,7 @@ func (c *SharedState) selectNodesPerTopology(ctx context.Context, nodes []v1.Nod
 	compatibleZonesSet := set{}
 	var primaryNode string
 	for i, volume := range volumes {
-		var azVolume *v1beta1.AzVolume
+		var azVolume *diskv1beta1.AzVolume
 		azVolume, err = azureutils.GetAzVolume(ctx, c.cachedClient, c.azClient, volume, c.objectNamespace, true)
 		if err != nil {
 			err = status.Errorf(codes.Aborted, "failed to get AzVolume CRI (%s)", volume)
@@ -1667,7 +1666,7 @@ func (c *SharedState) cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azV
 
 	w.Logger().Infof("AzVolumeAttachment clean up requested by %s for AzVolume (%s)", caller, azVolumeName)
 
-	var attachments []v1beta1.AzVolumeAttachment
+	var attachments []diskv1beta1.AzVolumeAttachment
 	attachments, err = getAzVolumeAttachmentsForVolume(ctx, c.cachedClient, azVolumeName, role)
 	if err != nil {
 		if apiErrors.IsNotFound(err) {
@@ -1982,22 +1981,24 @@ func (vq *VolumeReplicaRequestsPriorityQueue) DrainQueue() []*ReplicaRequest {
 }
 
 ///Removes replica requests from the priority queue and adds to operation queue.
-func (c *SharedState) tryCreateFailedReplicas(ctx context.Context, requestor operationRequester) error {
-	ctx, w := workflow.New(ctx)
-	defer w.Finish(nil)
-	requests := c.priorityReplicaRequestsQueue.DrainQueue()
-	for i := 0; i < len(requests); i++ {
-		replicaRequest := requests[i]
-		c.addToOperationQueue(ctx,
-			replicaRequest.VolumeName,
-			requestor,
-			func(ctx context.Context) error {
-				return c.manageReplicas(ctx, replicaRequest.VolumeName)
-			},
-			false,
-		)
+func (c *SharedState) tryCreateFailedReplicas(ctx context.Context, requestor operationRequester) {
+	if atomic.SwapInt32(&c.processingReplicaRequestQueue, 1) == 0 {
+		ctx, w := workflow.New(ctx)
+		defer w.Finish(nil)
+		requests := c.priorityReplicaRequestsQueue.DrainQueue()
+		for i := 0; i < len(requests); i++ {
+			replicaRequest := requests[i]
+			c.addToOperationQueue(ctx,
+				replicaRequest.VolumeName,
+				requestor,
+				func(ctx context.Context) error {
+					return c.manageReplicas(ctx, replicaRequest.VolumeName)
+				},
+				false,
+			)
+		}
+		atomic.StoreInt32(&c.processingReplicaRequestQueue, 0)
 	}
-	return nil
 }
 
 func (c *SharedState) garbageCollectReplicas(ctx context.Context, volumeName string, requester operationRequester) {

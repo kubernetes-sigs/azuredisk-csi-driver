@@ -357,14 +357,6 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		}
 		if !testconsts.IsUsingInTreeVolumePlugin && testutil.IsZRSSupported(location) {
 			test.StorageClassParameters = map[string]string{consts.SkuNameField: "Premium_ZRS"}
-			for _, pod := range pods {
-				for _, volume := range pod.Volumes {
-					volume.AllowedTopologyValues = make([]string, 0)
-
-					immediate := storagev1.VolumeBindingImmediate
-					volume.VolumeBindingMode = &immediate
-				}
-			}
 		}
 		if testconsts.IsAzureStackCloud {
 			test.StorageClassParameters = map[string]string{consts.SkuNameField: "Standard_LRS"}
@@ -1725,6 +1717,61 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			Pod:                    pod,
 			PodCheck:               podCheck,
 			StorageClassParameters: storageClassParameters,
+		}
+		test.Run(cs, ns, schedulerName)
+	})
+
+	ginkgo.It("should check failed replica attachments are recreated after space is made from a volume detaching.", func() {
+		testutil.SkipIfUsingInTreeVolumePlugin()
+		skuName := "StandardSSD_LRS"
+		if isMultiZone {
+			testutil.SkipIfNotZRSSupported(location)
+			skuName = "StandardSSD_ZRS"
+		}
+
+		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
+		framework.ExpectNoError(err, "Failed to create disk client.")
+
+		pod := resources.PodDetails{
+			Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
+			Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
+				{
+					FSType:    "ext3",
+					ClaimSize: "5Gi",
+					VolumeMount: resources.VolumeMountDetails{
+						NameGenerate:      "test-volume-",
+						MountPathGenerate: "/mnt/test-",
+					},
+				},
+			}, []string{}, isMultiZone),
+			IsWindows: testconsts.IsWindowsCluster,
+		}
+
+		newPod := resources.PodDetails{
+			Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
+			Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
+				{
+					ClaimSize: "5Gi",
+					MountOptions: []string{
+						"barrier=1",
+						"acl",
+					},
+					VolumeMount: resources.VolumeMountDetails{
+						NameGenerate:      "test-volume-",
+						MountPathGenerate: "/mnt/test-",
+					},
+				},
+			}, t.allowedTopologyValues, isMultiZone),
+			IsWindows: testconsts.IsWindowsCluster,
+			UseCMD:    false,
+		}
+
+		test := testsuites.DynamicallyProvisionedScaleReplicasOnDetach{
+			CSIDriver:              testDriver,
+			StatefulSetPod:         pod,
+			NewPod:                 newPod,
+			StorageClassParameters: map[string]string{consts.SkuNameField: skuName, "maxShares": "2", "cachingMode": "None"},
+			AzDiskClient:           azDiskClient,
 		}
 		test.Run(cs, ns, schedulerName)
 	})

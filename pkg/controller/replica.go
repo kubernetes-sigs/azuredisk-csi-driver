@@ -23,11 +23,14 @@ import (
 
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/util/wait"
 	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/workflow"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -152,15 +155,48 @@ func (r *ReconcileReplica) triggerGarbageCollection(ctx context.Context, volumeN
 	workflowCtx, w := workflow.New(deletionCtx, workflow.WithDetails(consts.VolumeNameLabel, volumeName))
 	w.Logger().V(5).Infof("Garbage collection of AzVolumeAttachments for AzVolume (%s) scheduled in %s.", volumeName, r.timeUntilGarbageCollection.String())
 
-	go func(ctx context.Context) {
+	go func() {
 		defer w.Finish(nil)
 		select {
-		case <-ctx.Done():
+		case <-workflowCtx.Done():
 			return
 		case <-time.After(r.timeUntilGarbageCollection):
 			r.controllerSharedState.garbageCollectReplicas(workflowCtx, volumeName, replica)
+			r.triggerCreateFailedReplicas(workflowCtx, volumeName)
 		}
-	}(deletionCtx)
+	}()
+
+}
+
+// After volumes are garbage collected and attachment capacity opens up on a node, this method
+// attempts to create previously failed replicas
+func (r *ReconcileReplica) triggerCreateFailedReplicas(ctx context.Context, volumeName string) {
+	w, _ := workflow.GetWorkflowFromContext(ctx)
+	w.Logger().V(5).Info("Checking for replicas to be created after garbage collection.")
+	volRequirement, err := azureutils.CreateLabelRequirements(consts.VolumeNameLabel, selection.Equals, volumeName)
+	if err != nil {
+		w.Logger().Errorf(err, "Failed to create label requirements.")
+		return
+	}
+	labelSelector := labels.NewSelector().Add(*volRequirement)
+	listOptions := client.ListOptions{LabelSelector: labelSelector}
+	err = wait.PollImmediateWithContext(ctx, deletionPollingInterval, 10*time.Minute, func(ctx context.Context) (bool, error) {
+		azVolumeAttachmentList := &diskv1beta1.AzVolumeAttachmentList{}
+		err := r.controllerSharedState.cachedClient.List(ctx, azVolumeAttachmentList, &listOptions)
+		if err != nil {
+			if errors.IsNotFound(err) {
+				return true, nil
+			}
+			w.Logger().Errorf(err, "Failed to get AzVolumeAttachments.")
+			return false, err
+		}
+		return len(azVolumeAttachmentList.Items) == 0, nil
+	})
+	if err != nil {
+		w.Logger().Errorf(err, "Failed polling for AzVolumeAttachments to be zero length.")
+		return
+	}
+	r.controllerSharedState.tryCreateFailedReplicas(ctx, "replicaController")
 }
 
 func NewReplicaController(mgr manager.Manager, controllerSharedState *SharedState) (*ReconcileReplica, error) {
