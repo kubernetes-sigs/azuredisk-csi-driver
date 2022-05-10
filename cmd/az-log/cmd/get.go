@@ -42,7 +42,7 @@ func init() {
 	getCmd.PersistentFlags().StringSlice("volume", []string{}, "insert-volume-name") // TBD: empty slice or nil?
 	getCmd.PersistentFlags().StringSlice("node", []string{}, "insert-node-name")
 	getCmd.PersistentFlags().StringSlice("request-id", []string{}, "insert-request-id")
-	getCmd.PersistentFlags().String("after-time", "", "insert-after-time")
-	getCmd.PersistentFlags().Bool("watch", false, "watch-logs")
+	getCmd.PersistentFlags().String("since-time", "", "insert-timestamp")
+	getCmd.PersistentFlags().Bool("follow", false, "watch-logs")
 	getCmd.PersistentFlags().Bool("previous", false, "fetch-and-prepend-logs-from-the-previously-terminated-container")
 }

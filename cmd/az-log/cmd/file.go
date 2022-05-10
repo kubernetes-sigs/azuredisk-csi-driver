@@ -17,6 +17,10 @@ limitations under the License.
 package cmd
 
 import (
+	"bufio"
+	"log"
+	"os"
+
 	"github.com/spf13/cobra"
 )
 
@@ -32,12 +36,9 @@ This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		filePath := args[0]
-		volumes, _ := cmd.Flags().GetStringSlice("volume")
-		nodes, _ := cmd.Flags().GetStringSlice("node")
-		requestIds, _ := cmd.Flags().GetStringSlice("request-id")
-		afterTime, _ := cmd.Flags().GetString("after-time")
+        volumes, nodes, requestIds, sinceTime, _, _ := GetFlags(cmd)
 
-		GetLogsByFile(filePath, volumes, nodes, requestIds, afterTime)
+		GetLogsByFile(filePath, volumes, nodes, requestIds, sinceTime)
 	},
 }
 
@@ -45,7 +46,23 @@ func init() {
 	getCmd.AddCommand(fileCmd)
 }
 
-func GetLogsByFile(path string, volumes []string, nodes []string, requestIds []string, afterTime string) {
+func GetLogsByFile(path string, volumes []string, nodes []string, requestIds []string, sinceTime string) {
+    file, err := os.Open(path)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    defer func() {
+        if err = file.Close(); err != nil {
+            log.Fatal(err)
+        }
+    }()
+
+    buf := bufio.NewScanner(file)
+    // TODO : convert timestamp to Klog
+    LogFilter(buf, volumes, nodes, requestIds, sinceTime)
+
+
 	// f, err := os.Open(*fptr)
     // if err != nil {
     //     log.Fatal(err)

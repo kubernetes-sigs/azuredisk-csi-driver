@@ -37,9 +37,12 @@ to quickly create a Cobra application.`,
 			fmt.Println("Node is a required argument for the node command")
 		} else {
 			podName := args[0];
-			volumes, nodes, requestIds, afterTime, isWatch, isPrevious := GetFlags(cmd)
+			volumes, nodes, requestIds, sinceTime, isFollow, isPrevious := GetFlags(cmd)
 
-			GetLogsByAzDriverPod("azuredisk", podName, volumes, nodes, requestIds, afterTime, isWatch, isPrevious)
+			config := getConfig()
+			clientsetK8s := getKubernetesClientset(config)
+
+			GetLogsByAzDriverPod(clientsetK8s, "azuredisk", podName, volumes, nodes, requestIds, sinceTime, isFollow, isPrevious)
 		}
 	},
 }

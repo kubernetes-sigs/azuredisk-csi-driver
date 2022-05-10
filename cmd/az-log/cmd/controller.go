@@ -17,7 +17,14 @@ limitations under the License.
 package cmd
 
 import (
+	"context"
+	"errors"
+	"strings"
+
 	"github.com/spf13/cobra"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
 // controllerCmd represents the controller command
@@ -31,9 +38,12 @@ Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		volumes, nodes, requestIds, afterTime, isWatch, isPrevious := GetFlags(cmd)
+		// volumes, nodes, requestIds, sinceTime, isFollow, isPrevious := GetFlags(cmd)
+		config := getConfig()
+		clientsetK8s := getKubernetesClientset(config)
 
-		GetLogsByAzDriverPod("csi-azuredisk2-controller-6cb54cc5b5-6h6bt", "azuredisk", volumes, nodes, requestIds, "2019-08-22T12:00:00Z", true, false) // TODO: find constant
+		pod := getControllerPodName(clientsetK8s)
+		GetLogsByAzDriverPod(clientsetK8s, pod, "azuredisk", nil, nil, nil, "2022-05-10T22:07:40Z", false, false) // 17:57:01.170816
 	},
 }
 
@@ -41,7 +51,32 @@ func init() {
 	getCmd.AddCommand(controllerCmd)
 }
 
-func getControllerPodName() string {
-	return ""
+func getControllerPodName(clientsetK8s kubernetes.Interface) string {
+	// client, err := coordinationv1.NewForConfig(config)
+	// if err != nil {
+	// 	panic(err.Error())
+	// }
+
+	// lease, err := client.Leases("azure-disk-csi").Get(context.Background(), "default", metav1.GetOptions{})
+
+	lease, err := clientsetK8s.CoordinationV1().Leases(consts.DefaultAzureDiskCrdNamespace).Get(context.Background(), "default", metav1.GetOptions{}) //List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		panic(err.Error())
+	}
+	holder := *lease.Spec.HolderIdentity
+	node := strings.Split(holder, "_")[0]
+
+	pods, err := clientsetK8s.CoreV1().Pods(consts.ReleaseNamespace).List(context.Background(), metav1.ListOptions{
+		FieldSelector: "spec.nodeName=" + node,
+		LabelSelector: "app=csi-azuredisk2-controller",
+	})
+	if err != nil {
+		panic(err.Error())
+	}
+	if len(pods.Items) > 1 {
+		panic(errors.New("More than one controller pods were found."))
+	}
+
+	return pods.Items[0].Name
 }
 

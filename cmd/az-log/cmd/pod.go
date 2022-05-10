@@ -41,9 +41,12 @@ to quickly create a Cobra application.`,
 		} else {
 			podName := names[0]
 			container := names[1]
-			volumes, nodes, requestIds, afterTime, isWatch, isPrevious := GetFlags(cmd)
+			volumes, nodes, requestIds, sinceTime, isFollow, isPrevious := GetFlags(cmd)
 
-			GetLogsByAzDriverPod(podName, container, volumes, nodes, requestIds, afterTime, isWatch, isPrevious)
+			config := getConfig()
+			clientsetK8s := getKubernetesClientset(config)
+
+			GetLogsByAzDriverPod(clientsetK8s, podName, container, volumes, nodes, requestIds, sinceTime, isFollow, isPrevious)
 		}
 	},
 }
