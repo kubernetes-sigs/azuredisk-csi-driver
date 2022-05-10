@@ -52,14 +52,7 @@ func init() {
 }
 
 func getControllerPodName(clientsetK8s kubernetes.Interface) string {
-	// client, err := coordinationv1.NewForConfig(config)
-	// if err != nil {
-	// 	panic(err.Error())
-	// }
-
-	// lease, err := client.Leases("azure-disk-csi").Get(context.Background(), "default", metav1.GetOptions{})
-
-	lease, err := clientsetK8s.CoordinationV1().Leases(consts.DefaultAzureDiskCrdNamespace).Get(context.Background(), "default", metav1.GetOptions{}) //List(context.Background(), metav1.ListOptions{})
+	lease, err := clientsetK8s.CoordinationV1().Leases(consts.DefaultAzureDiskCrdNamespace).Get(context.Background(), "default", metav1.GetOptions{})
 	if err != nil {
 		panic(err.Error())
 	}

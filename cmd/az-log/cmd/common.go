@@ -33,8 +33,6 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
-	// coordinationv1 "k8s.io/client-go/kubernetes/typed/coordination/v1"
-	// azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 )
 
 func GetFlags(cmd *cobra.Command) ([]string, []string, []string, string, bool, bool){

@@ -61,23 +61,4 @@ func GetLogsByFile(path string, volumes []string, nodes []string, requestIds []s
     buf := bufio.NewScanner(file)
     // TODO : convert timestamp to Klog
     LogFilter(buf, volumes, nodes, requestIds, sinceTime)
-
-
-	// f, err := os.Open(*fptr)
-    // if err != nil {
-    //     log.Fatal(err)
-    // }
-    // defer func() {
-    //     if err = f.Close(); err != nil {
-    //     log.Fatal(err)
-    // }
-    // }()
-    // s := bufio.NewScanner(f)
-    // for s.Scan() {
-    //     fmt.Println(s.Text())
-    // }
-    // err = s.Err()
-    // if err != nil {
-    //     log.Fatal(err)
-    // }
 }
