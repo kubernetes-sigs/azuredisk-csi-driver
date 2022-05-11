@@ -67,6 +67,7 @@ type DriverOptions struct {
 	GetNodeInfoFromLabels      bool
 	EnableDiskCapacityCheck    bool
 	VMSSCacheTTLInSeconds      int64
+	VMType                     string
 }
 
 // CSIDriver defines the interface for a CSI driver.
@@ -107,6 +108,7 @@ type DriverCore struct {
 	getNodeInfoFromLabels      bool
 	enableDiskCapacityCheck    bool
 	vmssCacheTTLInSeconds      int64
+	vmType                     string
 }
 
 // Driver is the v1 implementation of the Azure Disk CSI Driver.
@@ -140,6 +142,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.getNodeInfoFromLabels = options.GetNodeInfoFromLabels
 	driver.enableDiskCapacityCheck = options.EnableDiskCapacityCheck
 	driver.vmssCacheTTLInSeconds = options.VMSSCacheTTLInSeconds
+	driver.vmType = options.VMType
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
@@ -174,21 +177,27 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 	d.cloud = cloud
 	d.kubeconfig = kubeconfig
 
+	if d.vmType != "" {
+		klog.V(2).Infof("override VMType(%s) in cloud config as %s", d.cloud.VMType, d.vmType)
+		d.cloud.VMType = d.vmType
+	}
+
 	if d.NodeID == "" {
 		// Disable UseInstanceMetadata for controller to mitigate a timeout issue using IMDS
 		// https://github.com/kubernetes-sigs/azuredisk-csi-driver/issues/168
 		klog.V(2).Infof("disable UseInstanceMetadata for controller")
 		d.cloud.Config.UseInstanceMetadata = false
 
-		if d.cloud.VMType == azurecloudconsts.VMTypeVMSS && !d.cloud.DisableAvailabilitySetNodes {
-			if disableAVSetNodes {
-				klog.V(2).Infof("DisableAvailabilitySetNodes for controller since current VMType is vmss")
-				d.cloud.DisableAvailabilitySetNodes = true
-			} else {
-				klog.Warningf("DisableAvailabilitySetNodes for controller is set as false while current VMType is vmss")
-			}
+		if d.cloud.VMType == azurecloudconsts.VMTypeStandard && d.cloud.DisableAvailabilitySetNodes {
+			klog.V(2).Infof("set DisableAvailabilitySetNodes as false since VMType is %s", d.cloud.VMType)
+			d.cloud.DisableAvailabilitySetNodes = false
 		}
-		klog.V(2).Infof("location: %s, rg: %s, VMType: %s, PrimaryScaleSetName: %s", d.cloud.Location, d.cloud.ResourceGroup, d.cloud.VMType, d.cloud.PrimaryScaleSetName)
+
+		if d.cloud.VMType == azurecloudconsts.VMTypeVMSS && !d.cloud.DisableAvailabilitySetNodes && disableAVSetNodes {
+			klog.V(2).Infof("DisableAvailabilitySetNodes for controller since current VMType is vmss")
+			d.cloud.DisableAvailabilitySetNodes = true
+		}
+		klog.V(2).Infof("cloud: %s, location: %s, rg: %s, VMType: %s, PrimaryScaleSetName: %s, PrimaryAvailabilitySetName: %s, DisableAvailabilitySetNodes: %v", d.cloud.Cloud, d.cloud.Location, d.cloud.ResourceGroup, d.cloud.VMType, d.cloud.PrimaryScaleSetName, d.cloud.PrimaryAvailabilitySetName, d.cloud.DisableAvailabilitySetNodes)
 	}
 
 	if d.vmssCacheTTLInSeconds > 0 {

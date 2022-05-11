@@ -99,16 +99,27 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 	}
 	d.cloud = cloud
 
+	if d.vmType != "" {
+		klog.V(2).Infof("override VMType(%s) in cloud config as %s", d.cloud.VMType, d.vmType)
+		d.cloud.VMType = d.vmType
+	}
+
 	if d.NodeID == "" {
 		// Disable UseInstanceMetadata for controller to mitigate a timeout issue using IMDS
 		// https://github.com/kubernetes-sigs/azuredisk-csi-driver/issues/168
-		klog.Infoln("disable UseInstanceMetadata for controller")
+		klog.V(2).Infof("disable UseInstanceMetadata for controller")
 		d.cloud.Config.UseInstanceMetadata = false
 
-		if disableAVSetNodes && d.cloud.VMType == consts.VMTypeVMSS {
+		if d.cloud.VMType == consts.VMTypeStandard && d.cloud.DisableAvailabilitySetNodes {
+			klog.V(2).Infof("set DisableAvailabilitySetNodes as false since VMType is %s", d.cloud.VMType)
+			d.cloud.DisableAvailabilitySetNodes = false
+		}
+
+		if d.cloud.VMType == consts.VMTypeVMSS && !d.cloud.DisableAvailabilitySetNodes && disableAVSetNodes {
 			klog.V(2).Infof("DisableAvailabilitySetNodes for controller since current VMType is vmss")
 			d.cloud.DisableAvailabilitySetNodes = true
 		}
+		klog.V(2).Infof("cloud: %s, location: %s, rg: %s, VMType: %s, PrimaryScaleSetName: %s, PrimaryAvailabilitySetName: %s, DisableAvailabilitySetNodes: %v", d.cloud.Cloud, d.cloud.Location, d.cloud.ResourceGroup, d.cloud.VMType, d.cloud.PrimaryScaleSetName, d.cloud.PrimaryAvailabilitySetName, d.cloud.DisableAvailabilitySetNodes)
 	}
 
 	d.deviceHelper = optimization.NewSafeDeviceHelper()

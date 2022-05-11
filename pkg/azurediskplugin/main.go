@@ -46,7 +46,8 @@ var (
 	volumeAttachLimit          = flag.Int64("volume-attach-limit", -1, "maximum number of attachable volumes per node")
 	supportZone                = flag.Bool("support-zone", true, "boolean flag to get zone info in NodeGetInfo")
 	getNodeInfoFromLabels      = flag.Bool("get-node-info-from-labels", false, "boolean flag to get zone info from node labels in NodeGetInfo")
-	disableAVSetNodes          = flag.Bool("disable-avset-nodes", true, "disable DisableAvailabilitySetNodes in cloud config for controller")
+	disableAVSetNodes          = flag.Bool("disable-avset-nodes", false, "disable DisableAvailabilitySetNodes in cloud config for controller")
+	vmType                     = flag.String("vm-type", "", "type of agent node. available values: vmss, standard")
 	enablePerfOptimization     = flag.Bool("enable-perf-optimization", false, "boolean flag to enable disk perf optimization")
 	cloudConfigSecretName      = flag.String("cloud-config-secret-name", "azure-cloud-provider", "cloud config secret name")
 	cloudConfigSecretNamespace = flag.String("cloud-config-secret-namespace", "kube-system", "cloud config secret namespace")
@@ -103,6 +104,7 @@ func handle() {
 		GetNodeInfoFromLabels:      *getNodeInfoFromLabels,
 		EnableDiskCapacityCheck:    *enableDiskCapacityCheck,
 		VMSSCacheTTLInSeconds:      *vmssCacheTTLInSeconds,
+		VMType:                     *vmType,
 	}
 	driver := azuredisk.NewDriver(&driverOptions)
 	if driver == nil {
