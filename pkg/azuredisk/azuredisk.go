@@ -188,15 +188,16 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 		klog.V(2).Infof("disable UseInstanceMetadata for controller")
 		d.cloud.Config.UseInstanceMetadata = false
 
-		if d.cloud.VMType == azurecloudconsts.VMTypeVMSS && !d.cloud.DisableAvailabilitySetNodes {
-			if disableAVSetNodes {
-				klog.V(2).Infof("DisableAvailabilitySetNodes for controller since current VMType is vmss")
-				d.cloud.DisableAvailabilitySetNodes = true
-			} else {
-				klog.Warningf("DisableAvailabilitySetNodes for controller is set as false while current VMType is vmss")
-			}
+		if d.cloud.VMType == azurecloudconsts.VMTypeStandard && d.cloud.DisableAvailabilitySetNodes {
+			klog.V(2).Infof("set DisableAvailabilitySetNodes as false since VMType is %s", d.cloud.VMType)
+			d.cloud.DisableAvailabilitySetNodes = false
 		}
-		klog.V(2).Infof("cloud: %s, location: %s, rg: %s, VMType: %s, PrimaryScaleSetName: %s, PrimaryAvailabilitySetName: %s", d.cloud.Cloud, d.cloud.Location, d.cloud.ResourceGroup, d.cloud.VMType, d.cloud.PrimaryScaleSetName, d.cloud.PrimaryAvailabilitySetName)
+
+		if d.cloud.VMType == azurecloudconsts.VMTypeVMSS && !d.cloud.DisableAvailabilitySetNodes && disableAVSetNodes {
+			klog.V(2).Infof("DisableAvailabilitySetNodes for controller since current VMType is vmss")
+			d.cloud.DisableAvailabilitySetNodes = true
+		}
+		klog.V(2).Infof("cloud: %s, location: %s, rg: %s, VMType: %s, PrimaryScaleSetName: %s, PrimaryAvailabilitySetName: %s, DisableAvailabilitySetNodes: %v", d.cloud.Cloud, d.cloud.Location, d.cloud.ResourceGroup, d.cloud.VMType, d.cloud.PrimaryScaleSetName, d.cloud.PrimaryAvailabilitySetName, d.cloud.DisableAvailabilitySetNodes)
 	}
 
 	if d.vmssCacheTTLInSeconds > 0 {
