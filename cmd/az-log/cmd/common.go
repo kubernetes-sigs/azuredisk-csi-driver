@@ -35,6 +35,8 @@ import (
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
+const AzureDiskContainer = "azuredisk"
+
 func GetFlags(cmd *cobra.Command) ([]string, []string, []string, string, bool, bool){
 	volumes, _ := cmd.Flags().GetStringSlice("volume")
 	nodes, _ := cmd.Flags().GetStringSlice("node")

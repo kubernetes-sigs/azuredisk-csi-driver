@@ -42,7 +42,7 @@ to quickly create a Cobra application.`,
 			config := getConfig()
 			clientsetK8s := getKubernetesClientset(config)
 
-			GetLogsByAzDriverPod(clientsetK8s, "azuredisk", podName, volumes, nodes, requestIds, sinceTime, isFollow, isPrevious)
+			GetLogsByAzDriverPod(clientsetK8s, podName, AzureDiskContainer, volumes, nodes, requestIds, sinceTime, isFollow, isPrevious)
 		}
 	},
 }
