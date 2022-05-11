@@ -71,9 +71,8 @@ func (t *PodFailoverWithReplicas) Run(client clientset.Interface, namespace *v1.
 	tDeployment.WaitForPodReady()
 
 	if t.PodCheck != nil {
-		ginkgo.By("sleep 3s and then check pod exec")
-		time.Sleep(3 * time.Second)
-		tDeployment.Exec(t.PodCheck.Cmd, t.PodCheck.ExpectedString)
+		ginkgo.By("check pod exec")
+		tDeployment.PollForStringInPodsExec(t.PodCheck.Cmd, t.PodCheck.ExpectedString)
 	}
 
 	//Check that AzVolumeAttachment resources were created correctly
@@ -144,10 +143,9 @@ func (t *PodFailoverWithReplicas) Run(client clientset.Interface, namespace *v1.
 	tDeployment.WaitForPodReady()
 
 	if t.PodCheck != nil {
-		ginkgo.By("sleep 3s and then check pod exec")
-		time.Sleep(3 * time.Second)
+		ginkgo.By("check pod exec")
 		// pod will be restarted so expect to see 2 instances of string
-		tDeployment.Exec(t.PodCheck.Cmd, t.PodCheck.ExpectedString+t.PodCheck.ExpectedString)
+		tDeployment.PollForStringInPodsExec(t.PodCheck.Cmd, t.PodCheck.ExpectedString+t.PodCheck.ExpectedString)
 	}
 
 	ginkgo.By("Verifying that pod got created on the correct node.")

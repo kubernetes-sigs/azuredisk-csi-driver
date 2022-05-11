@@ -182,11 +182,8 @@ func (t *TestStatefulset) WaitForPodReadyOrFail() error {
 	return err
 }
 
-func (t *TestStatefulset) Exec(command []string, expectedString string) {
-	for _, podName := range t.PodNames {
-		_, err := framework.LookForStringInPodExec(t.Namespace.Name, podName, command, expectedString, testconsts.ExecTimeout)
-		framework.ExpectNoError(err)
-	}
+func (t *TestStatefulset) PollForStringInPodsExec(command []string, expectedString string) {
+	pollForStringInPodsExec(t.Namespace.Name, t.PodNames, command, expectedString)
 }
 
 func (t *TestStatefulset) DeletePodAndWait() {
