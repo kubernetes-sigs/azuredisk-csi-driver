@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"log"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -35,7 +36,11 @@ import (
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
-const AzureDiskContainer = "azuredisk"
+const (
+	AzureDiskContainer = "azuredisk"
+	RFC3339Format = `^\d{4}-(\d{2})-(\d{2})T(\d{2}:\d{2}:\d{2}(.\d+)?)`
+	KlogTimeFormat = `^(\d{4}) (\d{2}:\d{2}:\d{2}(.\d+)?)`
+)
 
 func GetFlags(cmd *cobra.Command) ([]string, []string, []string, string, bool, bool){
 	volumes, _ := cmd.Flags().GetStringSlice("volume")
@@ -73,18 +78,40 @@ func getKubernetesClientset(config *rest.Config) *kubernetes.Clientset {
 func GetLogsByAzDriverPod(clientsetK8s kubernetes.Interface, podName string, container string, volumes []string,
 	nodes []string, requestIds []string, sinceTime string, isFollow bool, isPrevious bool) {
 
-	// TODO: if sinceTime format is Klog
+	var tt time.Time
+	// sinceTime input validation and convert it to time.Time from string
+	if sinceTime != "" {
+		if isMatch, _ := regexp.MatchString(RFC3339Format, sinceTime); isMatch {
+			t, err := time.Parse(time.RFC3339, sinceTime)
+			if err != nil {
+				fmt.Printf("error: %v\n", err)
+				return
+			}
+			tt = t
 
-	t, _ := time.Parse(time.RFC3339, sinceTime)
-	timestamp := metav1.NewTime(t)
+		} else if isMatch, _ := regexp.MatchString(KlogTimeFormat, sinceTime); isMatch{
+			t, err := time.Parse("20060102 15:04:05", fmt.Sprint(time.Now().Year()) + sinceTime)
+			if err != nil {
+				fmt.Printf("error: %v\n", err)
+				return
+			}
+			tt = t
 
+		} else {
+			fmt.Printf("\"%v\" is not a valid timestamp format\n", sinceTime)
+			return
+		}
+	}
+
+	timestamp := metav1.NewTime(tt)
 	podLogOptions := make([]v1.PodLogOptions, 0)
 
+	// If logs from previous container is needed
 	if isPrevious {
 		podLogOptions = append(podLogOptions, v1.PodLogOptions {
 			Container: container,
 			Previous: isPrevious,
-			Follow: isFollow,
+			Follow: false,
 			SinceTime: &timestamp,
 		})
 	}
@@ -114,57 +141,57 @@ func LogFilter(buf *bufio.Scanner, volumes []string, nodes []string, requestIds 
 	for buf.Scan() {
         log := buf.Text()
 
-        // TODO: timestamp filter for file
-
-        isPrint := true
-		if len(volumes) > 0 {
-			isPrint = false
-			for _, v := range volumes {
-				isPrint = strings.Contains(log, v)
-				if isPrint {
-					break
+		if sinceTime == "" || log[1:21] >= sinceTime {
+			isPrint := true
+			if len(volumes) > 0 {
+				isPrint = false
+				for _, v := range volumes {
+					isPrint = strings.Contains(log, v)
+					if isPrint {
+						break
+					}
 				}
 			}
-		}
 
-        if !isPrint {
-            fmt.Println("No logs are queried")
-            return
-        }
+			if !isPrint {
+				fmt.Println("No logs are queried")
+				return
+			}
 
-		if len(nodes) > 0 {
-			isPrint = false
-			for _, n := range nodes{
-				isPrint = strings.Contains(log, n)
-				if isPrint {
-					break
+			if len(nodes) > 0 {
+				isPrint = false
+				for _, n := range nodes{
+					isPrint = strings.Contains(log, n)
+					if isPrint {
+						break
+					}
 				}
 			}
-		}
 
-        if !isPrint {
-            fmt.Println("No logs are queried")
-            return
-        }
+			if !isPrint {
+				fmt.Println("No logs are queried")
+				return
+			}
 
-		if len(requestIds) > 0 {
-			isPrint = false
-			for _, rid := range requestIds{
-				isPrint = strings.Contains(log, rid)
-				if isPrint {
-					break
+			if len(requestIds) > 0 {
+				isPrint = false
+				for _, rid := range requestIds{
+					isPrint = strings.Contains(log, rid)
+					if isPrint {
+						break
+					}
 				}
 			}
+
+			if !isPrint {
+				fmt.Println("No logs are queried")
+				return
+			}
+
+			if isPrint {
+				fmt.Println(log)
+			}
 		}
-
-		if !isPrint {
-            fmt.Println("No logs are queried")
-            return
-        }
-
-        if isPrint {
-            fmt.Println(log)
-        }
     }
 
     err := buf.Err()

@@ -38,12 +38,12 @@ Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		// volumes, nodes, requestIds, sinceTime, isFollow, isPrevious := GetFlags(cmd)
+		volumes, nodes, requestIds, sinceTime, isFollow, isPrevious := GetFlags(cmd)
 		config := getConfig()
 		clientsetK8s := getKubernetesClientset(config)
 
 		pod := getControllerPodName(clientsetK8s)
-		GetLogsByAzDriverPod(clientsetK8s, pod, AzureDiskContainer, nil, nil, nil, "2022-05-10T22:07:40Z", false, false) // 17:57:01.170816
+		GetLogsByAzDriverPod(clientsetK8s, pod, AzureDiskContainer, volumes, nodes, requestIds, sinceTime, isFollow, isPrevious) // 17:57:01.170816 "2022-05-10T22:07:40Z"
 	},
 }
 
@@ -52,6 +52,7 @@ func init() {
 }
 
 func getControllerPodName(clientsetK8s kubernetes.Interface) string {
+	//Get node that leader controller pod is running in
 	lease, err := clientsetK8s.CoordinationV1().Leases(consts.DefaultAzureDiskCrdNamespace).Get(context.Background(), "default", metav1.GetOptions{})
 	if err != nil {
 		panic(err.Error())
@@ -59,6 +60,7 @@ func getControllerPodName(clientsetK8s kubernetes.Interface) string {
 	holder := *lease.Spec.HolderIdentity
 	node := strings.Split(holder, "_")[0]
 
+	// Get pod name of the leader controller
 	pods, err := clientsetK8s.CoreV1().Pods(consts.ReleaseNamespace).List(context.Background(), metav1.ListOptions{
 		FieldSelector: "spec.nodeName=" + node,
 		LabelSelector: "app=csi-azuredisk2-controller",
