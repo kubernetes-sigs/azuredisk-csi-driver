@@ -78,32 +78,13 @@ func getKubernetesClientset(config *rest.Config) *kubernetes.Clientset {
 func GetLogsByAzDriverPod(clientsetK8s kubernetes.Interface, podName string, container string, volumes []string,
 	nodes []string, requestIds []string, sinceTime string, isFollow bool, isPrevious bool) {
 
-	var tt time.Time
-	// sinceTime input validation and convert it to time.Time from string
-	if sinceTime != "" {
-		if isMatch, _ := regexp.MatchString(RFC3339Format, sinceTime); isMatch {
-			t, err := time.Parse(time.RFC3339, sinceTime)
-			if err != nil {
-				fmt.Printf("error: %v\n", err)
-				return
-			}
-			tt = t
-
-		} else if isMatch, _ := regexp.MatchString(KlogTimeFormat, sinceTime); isMatch{
-			t, err := time.Parse("20060102 15:04:05", fmt.Sprint(time.Now().Year()) + sinceTime)
-			if err != nil {
-				fmt.Printf("error: %v\n", err)
-				return
-			}
-			tt = t
-
-		} else {
-			fmt.Printf("\"%v\" is not a valid timestamp format\n", sinceTime)
-			return
-		}
+	t, err := TimestampValidation(sinceTime)
+	if err != nil {
+		fmt.Println(err.Error())
+		return
 	}
 
-	timestamp := metav1.NewTime(tt)
+	timestamp := metav1.NewTime(t)
 	podLogOptions := make([]v1.PodLogOptions, 0)
 
 	// If logs from previous container is needed
@@ -135,6 +116,30 @@ func GetLogsByAzDriverPod(clientsetK8s kubernetes.Interface, podName string, con
 		buf := bufio.NewScanner(podLogs)
 		LogFilter(buf, volumes, nodes, requestIds, "")
 	}
+}
+
+func TimestampValidation(sinceTime string) (time.Time, error){
+	var t time.Time
+	var err error
+	// sinceTime input validation and convert it to time.Time from string
+	if sinceTime != "" {
+		if isMatch, _ := regexp.MatchString(RFC3339Format, sinceTime); isMatch {
+			t, err = time.Parse(time.RFC3339, sinceTime)
+			if err != nil {
+				return t, fmt.Errorf("error: %v", err)
+			}
+
+		} else if isMatch, _ := regexp.MatchString(KlogTimeFormat, sinceTime); isMatch{
+			t, err = time.Parse("20060102 15:04:05Z07:00", fmt.Sprint(time.Now().Year()) + sinceTime)
+			if err != nil {
+				return t, fmt.Errorf("error: %v", err)
+			}
+
+		} else {
+			return t, fmt.Errorf("\"%v\" is not a valid timestamp format", sinceTime)
+		}
+	}
+	return t, nil
 }
 
 func LogFilter(buf *bufio.Scanner, volumes []string, nodes []string, requestIds []string, sinceTime string) {

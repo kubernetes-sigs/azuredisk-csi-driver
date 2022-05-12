@@ -21,8 +21,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"regexp"
-	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -51,28 +49,14 @@ func init() {
 
 func GetLogsByFile(path string, volumes []string, nodes []string, requestIds []string, sinceTime string) {
     if sinceTime != "" {
-        if isMatch, _ := regexp.MatchString(RFC3339Format, sinceTime); isMatch {
-            // sinceTime is RFC3339 format, input validation, convert it to UTC time and then Klog format
-            t, err := time.Parse(time.RFC3339, sinceTime)
-            if err != nil {
-                fmt.Printf("error: %v\n", err)
-                return
-            }
-
-            t = t.UTC()
-            sinceTime = t.Format("0102 15:04:05")
-
-        } else if isMatch, _ := regexp.MatchString(KlogTimeFormat, sinceTime); isMatch {
-            // Input validation
-            _, err := time.Parse("0102 15:04:05", sinceTime)
-            if err != nil {
-                fmt.Printf("error: %v\n", err)
-                return
-            }
-        } else {
-            fmt.Printf("\"%v\" is not a valid timestamp format\n", sinceTime)
-			return
+        t, err := TimestampValidation(sinceTime)
+        if err != nil {
+            fmt.Println(err.Error())
+            return
         }
+
+        t = t.UTC()
+        sinceTime = t.Format("0102 15:04:05")
     }
 
     // Open file
