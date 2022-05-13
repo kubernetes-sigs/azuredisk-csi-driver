@@ -18,6 +18,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 )
@@ -34,16 +35,16 @@ This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 0 {
-			fmt.Println("Node is a required argument for the node command")
-		} else {
-			podName := args[0];
-			volumes, nodes, requestIds, sinceTime, isFollow, isPrevious := GetFlags(cmd)
-
-			config := getConfig()
-			clientsetK8s := getKubernetesClientset(config)
-
-			GetLogsByAzDriverPod(clientsetK8s, podName, AzureDiskContainer, volumes, nodes, requestIds, sinceTime, isFollow, isPrevious)
+			fmt.Println("node is a required argument for \"node\" command")
+			os.Exit(0)
 		}
+		podName := args[0];
+		volumes, nodes, requestIds, since, sinceTime, isFollow, isPrevious := GetFlags(cmd)
+
+		config := getConfig()
+		clientsetK8s := getKubernetesClientset(config)
+
+		GetLogsByAzDriverPod(clientsetK8s, podName, AzureDiskContainer, volumes, nodes, requestIds, since, sinceTime, isFollow, isPrevious)
 	},
 }
 

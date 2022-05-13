@@ -45,4 +45,5 @@ func init() {
 	getCmd.PersistentFlags().String("since-time", "", "insert-timestamp")
 	getCmd.PersistentFlags().Bool("follow", false, "watch-logs")
 	getCmd.PersistentFlags().Bool("previous", false, "fetch-and-prepend-logs-from-the-previously-terminated-container")
+	getCmd.PersistentFlags().String("since", "", "insert-time-duration")
 }

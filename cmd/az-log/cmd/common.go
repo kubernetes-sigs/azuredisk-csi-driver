@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -39,18 +40,24 @@ import (
 const (
 	AzureDiskContainer = "azuredisk"
 	RFC3339Format = `^\d{4}-(\d{2})-(\d{2})T(\d{2}:\d{2}:\d{2}(.\d+)?)`
-	KlogTimeFormat = `^(\d{4}) (\d{2}:\d{2}:\d{2}(.\d+)?)`
+	KlogTimeFormat = `(\d{4}) (\d{2}:\d{2}:\d{2}(.\d+)?)`
 )
 
-func GetFlags(cmd *cobra.Command) ([]string, []string, []string, string, bool, bool){
+func GetFlags(cmd *cobra.Command) ([]string, []string, []string, string, string, bool, bool){
 	volumes, _ := cmd.Flags().GetStringSlice("volume")
 	nodes, _ := cmd.Flags().GetStringSlice("node")
 	requestIds, _ := cmd.Flags().GetStringSlice("request-id")
-	afterTime, _ := cmd.Flags().GetString("since-time")
+	since, _ := cmd.Flags().GetString("since")
+	sinceTime, _ := cmd.Flags().GetString("since-time")
 	isFollow, _ := cmd.Flags().GetBool("follow")
 	isPrevious, _ := cmd.Flags().GetBool("previous")
 
-	return volumes, nodes, requestIds, afterTime, isFollow, isPrevious
+	if (since != "" && sinceTime != "") {
+		fmt.Println("error: only one of --since/--since-time may be specified")
+		os.Exit(0)
+	}
+
+	return volumes, nodes, requestIds, since, sinceTime, isFollow, isPrevious
 }
 
 func getConfig() *rest.Config {
@@ -76,33 +83,42 @@ func getKubernetesClientset(config *rest.Config) *kubernetes.Clientset {
 }
 
 func GetLogsByAzDriverPod(clientsetK8s kubernetes.Interface, podName string, container string, volumes []string,
-	nodes []string, requestIds []string, sinceTime string, isFollow bool, isPrevious bool) {
+	nodes []string, requestIds []string, since string, sinceTime string, isFollow bool, isPrevious bool) {
 
-	t, err := TimestampValidation(sinceTime)
-	if err != nil {
-		fmt.Println(err.Error())
-		return
+	v1PodLogOptions := v1.PodLogOptions {
+		Container: container,
+		Follow: isFollow,
 	}
 
-	timestamp := metav1.NewTime(t)
+	// If since/sinceTime is specified, data type conversion and set up PodLogOptions
+	if since != "" {
+		d, err := time.ParseDuration(since)
+		if err != nil {
+			fmt.Println(err.Error())
+			os.Exit(0)
+		}
+		timeDuration := int64(d.Seconds())
+		v1PodLogOptions.SinceSeconds = &timeDuration
+	} else if sinceTime != "" {
+		t, err := TimestampFormatValidation(sinceTime)
+		if err != nil {
+			fmt.Println(err.Error())
+			os.Exit(0)
+		}
+		timestamp := metav1.NewTime(t)
+		v1PodLogOptions.SinceTime = &timestamp
+	}
+
 	podLogOptions := make([]v1.PodLogOptions, 0)
 
 	// If logs from previous container is needed
 	if isPrevious {
-		podLogOptions = append(podLogOptions, v1.PodLogOptions {
-			Container: container,
-			Previous: isPrevious,
-			Follow: false,
-			SinceTime: &timestamp,
-		})
+		v1PodLogOptions.Previous = true
+		podLogOptions = append(podLogOptions, v1PodLogOptions)
+		v1PodLogOptions.Previous = false
 	}
 
-	podLogOptions = append(podLogOptions, v1.PodLogOptions {
-		Container: container,
-		Previous: false,
-		Follow: isFollow,
-		SinceTime: &timestamp,
-	})
+	podLogOptions = append(podLogOptions, v1PodLogOptions)
 
 	for i := 0; i < len(podLogOptions); i++ {
 		req := clientsetK8s.CoreV1().Pods(consts.ReleaseNamespace).GetLogs(podName, &podLogOptions[i])
@@ -118,35 +134,54 @@ func GetLogsByAzDriverPod(clientsetK8s kubernetes.Interface, podName string, con
 	}
 }
 
-func TimestampValidation(sinceTime string) (time.Time, error){
+func TimestampFormatValidation(sinceTime string) (time.Time, error){
 	var t time.Time
 	var err error
+
 	// sinceTime input validation and convert it to time.Time from string
-	if sinceTime != "" {
-		if isMatch, _ := regexp.MatchString(RFC3339Format, sinceTime); isMatch {
-			t, err = time.Parse(time.RFC3339, sinceTime)
-			if err != nil {
-				return t, fmt.Errorf("error: %v", err)
-			}
-
-		} else if isMatch, _ := regexp.MatchString(KlogTimeFormat, sinceTime); isMatch{
-			t, err = time.Parse("20060102 15:04:05Z07:00", fmt.Sprint(time.Now().Year()) + sinceTime)
-			if err != nil {
-				return t, fmt.Errorf("error: %v", err)
-			}
-
-		} else {
-			return t, fmt.Errorf("\"%v\" is not a valid timestamp format", sinceTime)
+	if isMatch, _ := regexp.MatchString(RFC3339Format, sinceTime); isMatch {
+		t, err = time.Parse(time.RFC3339, sinceTime)
+		if err != nil {
+			return t, fmt.Errorf("error: %v", err)
 		}
+	} else if isMatch, _ := regexp.MatchString(KlogTimeFormat, sinceTime); isMatch{
+		if isUTC, _ := regexp.MatchString(KlogTimeFormat + `$`, sinceTime); isUTC {
+			sinceTime += "Z"
+		}
+
+		t, err = time.Parse("20060102 15:04:05Z07:00", fmt.Sprint(time.Now().Year()) + sinceTime)
+		if err != nil {
+			return t, fmt.Errorf("error: %v", err)
+		}
+
+	} else {
+		return t, fmt.Errorf("\"%v\" is not a valid timestamp format", sinceTime)
 	}
+
 	return t, nil
 }
 
+func LogTimeFilter(log string, sinceTime string) bool{
+	isMatch, _ := regexp.MatchString(KlogTimeFormat, log)
+	return isMatch && len(log) > 21 && log[1:21] >= sinceTime
+}
+
 func LogFilter(buf *bufio.Scanner, volumes []string, nodes []string, requestIds []string, sinceTime string) {
+	var isAfterTime bool
+	if (sinceTime == "") {
+		isAfterTime = true
+	} else {
+		isAfterTime = false
+	}
+
 	for buf.Scan() {
         log := buf.Text()
 
-		if sinceTime == "" || log[1:21] >= sinceTime {
+		if !isAfterTime {
+			isAfterTime = LogTimeFilter(log, sinceTime)
+		}
+
+		if isAfterTime {
 			isPrint := true
 			if len(volumes) > 0 {
 				isPrint = false
@@ -160,7 +195,7 @@ func LogFilter(buf *bufio.Scanner, volumes []string, nodes []string, requestIds 
 
 			if !isPrint {
 				fmt.Println("No logs are queried")
-				return
+				os.Exit(0)
 			}
 
 			if len(nodes) > 0 {
@@ -175,7 +210,7 @@ func LogFilter(buf *bufio.Scanner, volumes []string, nodes []string, requestIds 
 
 			if !isPrint {
 				fmt.Println("No logs are queried")
-				return
+				os.Exit(0)
 			}
 
 			if len(requestIds) > 0 {
@@ -190,7 +225,7 @@ func LogFilter(buf *bufio.Scanner, volumes []string, nodes []string, requestIds 
 
 			if !isPrint {
 				fmt.Println("No logs are queried")
-				return
+				os.Exit(0)
 			}
 
 			if isPrint {

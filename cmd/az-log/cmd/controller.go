@@ -38,12 +38,12 @@ Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		volumes, nodes, requestIds, sinceTime, isFollow, isPrevious := GetFlags(cmd)
+		volumes, nodes, requestIds, since, sinceTime, isFollow, isPrevious := GetFlags(cmd)
 		config := getConfig()
 		clientsetK8s := getKubernetesClientset(config)
 
 		pod := getControllerPodName(clientsetK8s)
-		GetLogsByAzDriverPod(clientsetK8s, pod, AzureDiskContainer, volumes, nodes, requestIds, sinceTime, isFollow, isPrevious) // 17:57:01.170816 "2022-05-10T22:07:40Z"
+		GetLogsByAzDriverPod(clientsetK8s, pod, AzureDiskContainer, volumes, nodes, requestIds, since, sinceTime, isFollow, isPrevious) // 17:57:01.170816 "2022-05-10T22:07:40Z"
 	},
 }
 
