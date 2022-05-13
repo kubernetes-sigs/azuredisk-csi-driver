@@ -39,11 +39,11 @@ import (
 
 const (
 	AzureDiskContainer = "azuredisk"
-	RFC3339Format = `^\d{4}-(\d{2})-(\d{2})T(\d{2}:\d{2}:\d{2}(.\d+)?)`
-	KlogTimeFormat = `(\d{4}) (\d{2}:\d{2}:\d{2}(.\d+)?)`
+	RFC3339Format      = `^\d{4}-(\d{2})-(\d{2})T(\d{2}:\d{2}:\d{2}(.\d+)?)`
+	KlogTimeFormat     = `(\d{4}) (\d{2}:\d{2}:\d{2}(.\d+)?)`
 )
 
-func GetFlags(cmd *cobra.Command) ([]string, []string, []string, string, string, bool, bool){
+func GetFlags(cmd *cobra.Command) ([]string, []string, []string, string, string, bool, bool) {
 	volumes, _ := cmd.Flags().GetStringSlice("volume")
 	nodes, _ := cmd.Flags().GetStringSlice("node")
 	requestIds, _ := cmd.Flags().GetStringSlice("request-id")
@@ -52,7 +52,7 @@ func GetFlags(cmd *cobra.Command) ([]string, []string, []string, string, string,
 	isFollow, _ := cmd.Flags().GetBool("follow")
 	isPrevious, _ := cmd.Flags().GetBool("previous")
 
-	if (since != "" && sinceTime != "") {
+	if since != "" && sinceTime != "" {
 		fmt.Println("error: only one of --since/--since-time may be specified")
 		os.Exit(0)
 	}
@@ -85,9 +85,9 @@ func getKubernetesClientset(config *rest.Config) *kubernetes.Clientset {
 func GetLogsByAzDriverPod(clientsetK8s kubernetes.Interface, podName string, container string, volumes []string,
 	nodes []string, requestIds []string, since string, sinceTime string, isFollow bool, isPrevious bool) {
 
-	v1PodLogOptions := v1.PodLogOptions {
+	v1PodLogOptions := v1.PodLogOptions{
 		Container: container,
-		Follow: isFollow,
+		Follow:    isFollow,
 	}
 
 	// If since/sinceTime is specified, data type conversion and set up PodLogOptions
@@ -134,7 +134,7 @@ func GetLogsByAzDriverPod(clientsetK8s kubernetes.Interface, podName string, con
 	}
 }
 
-func TimestampFormatValidation(sinceTime string) (time.Time, error){
+func TimestampFormatValidation(sinceTime string) (time.Time, error) {
 	var t time.Time
 	var err error
 
@@ -144,12 +144,12 @@ func TimestampFormatValidation(sinceTime string) (time.Time, error){
 		if err != nil {
 			return t, fmt.Errorf("error: %v", err)
 		}
-	} else if isMatch, _ := regexp.MatchString(KlogTimeFormat, sinceTime); isMatch{
-		if isUTC, _ := regexp.MatchString(KlogTimeFormat + `$`, sinceTime); isUTC {
+	} else if isMatch, _ := regexp.MatchString(KlogTimeFormat, sinceTime); isMatch {
+		if isUTC, _ := regexp.MatchString(KlogTimeFormat+`$`, sinceTime); isUTC {
 			sinceTime += "Z"
 		}
 
-		t, err = time.Parse("20060102 15:04:05Z07:00", fmt.Sprint(time.Now().Year()) + sinceTime)
+		t, err = time.Parse("20060102 15:04:05Z07:00", fmt.Sprint(time.Now().Year())+sinceTime)
 		if err != nil {
 			return t, fmt.Errorf("error: %v", err)
 		}
@@ -161,21 +161,21 @@ func TimestampFormatValidation(sinceTime string) (time.Time, error){
 	return t, nil
 }
 
-func LogTimeFilter(log string, sinceTime string) bool{
+func LogTimeFilter(log string, sinceTime string) bool {
 	isMatch, _ := regexp.MatchString(KlogTimeFormat, log)
 	return isMatch && len(log) > 21 && log[1:21] >= sinceTime
 }
 
 func LogFilter(buf *bufio.Scanner, volumes []string, nodes []string, requestIds []string, sinceTime string) {
 	var isAfterTime bool
-	if (sinceTime == "") {
+	if sinceTime == "" {
 		isAfterTime = true
 	} else {
 		isAfterTime = false
 	}
 
 	for buf.Scan() {
-        log := buf.Text()
+		log := buf.Text()
 
 		if !isAfterTime {
 			isAfterTime = LogTimeFilter(log, sinceTime)
@@ -200,7 +200,7 @@ func LogFilter(buf *bufio.Scanner, volumes []string, nodes []string, requestIds 
 
 			if len(nodes) > 0 {
 				isPrint = false
-				for _, n := range nodes{
+				for _, n := range nodes {
 					isPrint = strings.Contains(log, n)
 					if isPrint {
 						break
@@ -215,7 +215,7 @@ func LogFilter(buf *bufio.Scanner, volumes []string, nodes []string, requestIds 
 
 			if len(requestIds) > 0 {
 				isPrint = false
-				for _, rid := range requestIds{
+				for _, rid := range requestIds {
 					isPrint = strings.Contains(log, rid)
 					if isPrint {
 						break
@@ -232,10 +232,10 @@ func LogFilter(buf *bufio.Scanner, volumes []string, nodes []string, requestIds 
 				fmt.Println(log)
 			}
 		}
-    }
+	}
 
-    err := buf.Err()
-    if err != nil {
-        log.Fatal(err)
-    }
+	err := buf.Err()
+	if err != nil {
+		log.Fatal(err)
+	}
 }

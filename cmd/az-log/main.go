@@ -18,5 +18,5 @@ package main
 import "sigs.k8s.io/azuredisk-csi-driver/cmd/az-log/cmd"
 
 func main() {
-  cmd.Execute()
+	cmd.Execute()
 }

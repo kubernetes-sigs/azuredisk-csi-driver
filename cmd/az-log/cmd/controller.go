@@ -74,4 +74,3 @@ func getControllerPodName(clientsetK8s kubernetes.Interface) string {
 
 	return pods.Items[0].Name
 }
-

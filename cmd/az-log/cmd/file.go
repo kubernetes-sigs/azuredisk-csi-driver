@@ -37,12 +37,12 @@ Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
-        if (len(args) == 0) {
-            fmt.Println("file name is a required argument for \"file\" command")
+		if len(args) == 0 {
+			fmt.Println("file name is a required argument for \"file\" command")
 			os.Exit(0)
-        }
+		}
 		filePath := args[0]
-        volumes, nodes, requestIds, since, sinceTime, _, _ := GetFlags(cmd)
+		volumes, nodes, requestIds, since, sinceTime, _, _ := GetFlags(cmd)
 
 		GetLogsByFile(filePath, volumes, nodes, requestIds, since, sinceTime)
 	},
@@ -53,40 +53,40 @@ func init() {
 }
 
 func GetLogsByFile(path string, volumes []string, nodes []string, requestIds []string, since string, sinceTime string) {
-    if sinceTime != "" {
-        t, err := TimestampFormatValidation(sinceTime)
-        if err != nil {
-            fmt.Println(err.Error())
-            os.Exit(0)
-        }
-
-        t = t.UTC()
-        sinceTime = t.Format("0102 15:04:05.000000")
-    } else if since != "" {
-        d, err := time.ParseDuration(since)
+	if sinceTime != "" {
+		t, err := TimestampFormatValidation(sinceTime)
 		if err != nil {
 			fmt.Println(err.Error())
 			os.Exit(0)
 		}
 
-        currTime := time.Now().UTC()
-        sinceTime = currTime.Add(-d).Format("0102 15:04:05.000000")
-    }
+		t = t.UTC()
+		sinceTime = t.Format("0102 15:04:05.000000")
+	} else if since != "" {
+		d, err := time.ParseDuration(since)
+		if err != nil {
+			fmt.Println(err.Error())
+			os.Exit(0)
+		}
 
-    // Open file
-    file, err := os.Open(path)
-    if err != nil {
-        log.Fatal(err)
-    }
+		currTime := time.Now().UTC()
+		sinceTime = currTime.Add(-d).Format("0102 15:04:05.000000")
+	}
 
-    defer func() {
-        if err = file.Close(); err != nil {
-            log.Fatal(err)
-        }
-    }()
+	// Open file
+	file, err := os.Open(path)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-    // Read file
-    buf := bufio.NewScanner(file)
+	defer func() {
+		if err = file.Close(); err != nil {
+			log.Fatal(err)
+		}
+	}()
 
-    LogFilter(buf, volumes, nodes, requestIds, sinceTime)
+	// Read file
+	buf := bufio.NewScanner(file)
+
+	LogFilter(buf, volumes, nodes, requestIds, sinceTime)
 }

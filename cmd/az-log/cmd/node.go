@@ -38,7 +38,7 @@ to quickly create a Cobra application.`,
 			fmt.Println("node is a required argument for \"node\" command")
 			os.Exit(0)
 		}
-		podName := args[0];
+		podName := args[0]
 		volumes, nodes, requestIds, since, sinceTime, isFollow, isPrevious := GetFlags(cmd)
 
 		config := getConfig()
