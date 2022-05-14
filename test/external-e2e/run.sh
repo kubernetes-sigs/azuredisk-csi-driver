@@ -22,8 +22,8 @@ PROJECT_ROOT=$(git rev-parse --show-toplevel)
 DRIVER="test"
 
 install_ginkgo () {
-    sudo apt update -y
-    sudo apt install -y golang-ginkgo-dev
+    apt update -y
+    apt install -y golang-ginkgo-dev
 }
 
 setup_e2e_binaries() {
@@ -34,7 +34,7 @@ setup_e2e_binaries() {
     tar -xvf e2e-tests.tar.gz && rm e2e-tests.tar.gz
 
     # test on alternative driver name
-    export EXTRA_HELM_OPTIONS="--set controller.disableAvailabilitySetNodes=true --set controller.runOnMaster=true --set controller.replicas=1 --set driver.name=$DRIVER.csi.azure.com --set controller.name=csi-$DRIVER-controller --set linux.dsName=csi-$DRIVER-node --set windows.dsName=csi-$DRIVER-node-win --set driver.azureGoSDKLogLevel=DEBUGs"
+    export EXTRA_HELM_OPTIONS="--set controller.disableAvailabilitySetNodes=true --set controller.runOnMaster=true --set controller.replicas=1 --set schedulerExtender.replicas=1 --set driver.name=$DRIVER.csi.azure.com --set controller.name=csi-$DRIVER-controller --set schedulerExtender.name=csi-$DRIVER-scheduler-extender --set linux.dsName=csi-$DRIVER-node --set windows.dsName=csi-$DRIVER-node-win --set driver.azureGoSDKLogLevel=DEBUGs"
 
     # install the azuredisk-csi-driver driver
     make e2e-bootstrap
