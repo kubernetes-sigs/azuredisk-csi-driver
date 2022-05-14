@@ -24,7 +24,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -50,6 +49,8 @@ import (
 )
 
 var (
+	kubeconfig = flag.String("kubeconfig", "", "Absolute path to the kubeconfig file. Required only when running out of cluster.")
+
 	azVolumeAttachmentInformer azurediskInformerTypes.AzVolumeAttachmentInformer
 	azDriverNodeInformer       azurediskInformerTypes.AzDriverNodeInformer
 	pvcInformer                kubeInformerTypes.PersistentVolumeClaimInformer
@@ -312,17 +313,10 @@ func prioritize(context context.Context, schedulerExtenderArgs schedulerapi.Exte
 }
 
 func getKubeConfig() (config *rest.Config, err error) {
-	config, err = rest.InClusterConfig()
-	if err != nil {
-		klog.Warning("failed getting the in cluster config: %v", err)
-		// fallback to kubeconfig
-		kubeConfigPath := os.Getenv("KUBECONFIG")
-		if len(kubeConfigPath) == 0 {
-			kubeConfigPath = filepath.Join(os.Getenv("HOME"), ".kube", "config")
-		}
-
-		// create the config from the path
-		config, err = clientcmd.BuildConfigFromFlags("", kubeConfigPath)
+	if len(*kubeconfig) != 0 {
+		config, err = clientcmd.BuildConfigFromFlags("", *kubeconfig)
+	} else {
+		config, err = rest.InClusterConfig()
 	}
 	return
 }
