@@ -27,6 +27,7 @@ import (
 )
 
 const (
+	DoNotSubmit        = "DO NOT SUBMIT"
 	AzureDriverNameVar = "AZURE_STORAGE_DRIVER"
 	TopologyKey        = "topology." + azureconstants.DefaultDriverName + "/zone"
 	HostNameLabel      = "kubernetes.io/hostname"
