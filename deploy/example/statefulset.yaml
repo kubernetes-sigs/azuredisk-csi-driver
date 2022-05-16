@@ -16,9 +16,15 @@ spec:
     spec:
       nodeSelector:
         "kubernetes.io/os": linux
+      schedulerName: csi-azuredisk-scheduler-extender
       containers:
         - name: statefulset-azuredisk
           image: mcr.microsoft.com/oss/nginx/nginx:1.19.5
+          resources:
+            requests:
+              csi.azure.disk.com/azuredisk: 1
+            limits:
+              csi.azure.disk.com/azuredisk: 1
           command:
             - "/bin/bash"
             - "-c"

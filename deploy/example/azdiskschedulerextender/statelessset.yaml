@@ -1,0 +1,28 @@
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: statelessset-azuredisk
+  namespace: perf-test
+  labels:
+    app: nginx
+spec:
+  podManagementPolicy: Parallel  # default is OrderedReady
+  serviceName: statelessset-azuredisk
+  replicas: 5800
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      nodeSelector:
+        "kubernetes.io/os": linux
+      schedulerName: csi-azuredisk-scheduler-extender
+      containers:
+        - name: statefulset-azuredisk
+          image: mcr.microsoft.com/oss/nginx/nginx:1.19.5
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: nginx

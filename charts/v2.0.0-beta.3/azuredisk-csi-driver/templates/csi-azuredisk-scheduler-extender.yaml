@@ -23,6 +23,9 @@ data:
     - urlPrefix: "http://localhost:{{ .Values.schedulerExtender.servicePort }}/azdiskschedulerextender"
       filterVerb: "filter"
       prioritizeVerb: "prioritize"
+      managedResources:
+      - name: csi.azure.disk.com/azuredisk
+        ignoredByScheduler: true
       weight: 1
       nodeCacheCapable: false
       ignorable: true
