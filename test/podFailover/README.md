@@ -22,7 +22,7 @@ make pod-failover-test-containers
 - Create the metrics service where the workload pod can publish it's metrics using the command mentioned below:
 
 ```console
-wget https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/test/podFailover/metrics-svc.yaml
+wget https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/main_v2/test/podFailover/metrics-svc.yaml
 ```
 
 - Edit the value of metrics-service-image and run:
@@ -34,7 +34,7 @@ kubectl apply -f metrics-svc.yaml
 - Create the service monitor to enable Prometheus to scrape the pod failover service metrics.
 
 ```console
-wget https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/test/podFailover/service-monitor.yaml
+wget https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/main_v2/test/podFailover/service-monitor.yaml
 kubectl apply -f service-monitor.yaml
 ```
 
@@ -43,7 +43,7 @@ kubectl apply -f service-monitor.yaml
 - Get the deployment file to deploy the controller
 
 ```console
-wget https://raw.githubusercontent.com/abhisheksinghbaghel/azuredisk-csi-driver/master/test/podFailover/deployment.yaml
+wget https://raw.githubusercontent.com/abhisheksinghbaghel/azuredisk-csi-driver/main_v2/test/podFailover/deployment.yaml
 ```
 
 - Modify the values the following parameters:
