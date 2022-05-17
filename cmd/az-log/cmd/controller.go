@@ -19,12 +19,14 @@ package cmd
 import (
 	"context"
 	"errors"
+	// "fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	v1 "k8s.io/api/core/v1"
 )
 
 // controllerCmd represents the controller command
@@ -42,8 +44,15 @@ to quickly create a Cobra application.`,
 		config := getConfig()
 		clientsetK8s := getKubernetesClientset(config)
 
-		pod := GetAzuredisk2Controller(clientsetK8s)
-		GetLogsByAzDriverPod(clientsetK8s, pod, AzureDiskContainer, volumes, nodes, requestIds, since, sinceTime, isFollow, isPrevious)
+		for {
+			pod := GetAzuredisk2Controller(clientsetK8s)
+			GetLogsByAzDriverPod(clientsetK8s, pod.Name, AzureDiskContainer, volumes, nodes, requestIds, since, sinceTime, isFollow, isPrevious)
+			// If in watch mode (--follow) and the pod failover and restarts, keep watching logs from new controller
+			if isFollow == false || pod.Status.Conditions[1].Status == v1.ConditionTrue {
+				break
+			}
+		}
+
 	},
 }
 
@@ -51,7 +60,7 @@ func init() {
 	getCmd.AddCommand(controllerCmd)
 }
 
-func GetAzuredisk2Controller(clientsetK8s kubernetes.Interface) string {
+func GetAzuredisk2Controller(clientsetK8s kubernetes.Interface) *v1.Pod {
 	//Get node that leader controller pod is running in
 	lease, err := clientsetK8s.CoordinationV1().Leases(consts.DefaultAzureDiskCrdNamespace).Get(context.Background(), "default", metav1.GetOptions{})
 	if err != nil {
@@ -71,6 +80,6 @@ func GetAzuredisk2Controller(clientsetK8s kubernetes.Interface) string {
 	if len(pods.Items) > 1 {
 		panic(errors.New("more than one controller pods were found"))
 	}
-
-	return pods.Items[0].Name
+	//fmt.Println(pods.Items[0].Status.Conditions[1].Status) // Type == v1.PodReady // == v1.ConditionTrue
+	return &pods.Items[0]
 }

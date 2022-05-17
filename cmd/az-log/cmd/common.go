@@ -143,7 +143,7 @@ func LogFilter(buf *bufio.Scanner, volumes []string, nodes []string, requestIds 
 }
 
 func ContainsAny(log *string, objects []string) bool {
-	if len(objects) > 0 {
+	if len(objects) == 0 {
 		return true
 	}
 

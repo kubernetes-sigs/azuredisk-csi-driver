@@ -26,6 +26,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	v1 "k8s.io/api/core/v1"
 )
 
 // nodeCmd represents the node command
@@ -46,12 +47,17 @@ to quickly create a Cobra application.`,
 
 		config := getConfig()
 		clientsetK8s := getKubernetesClientset(config)
-
-		nodeName := args[0]
-		podName := GetAzuredisk2Node(clientsetK8s, nodeName)
 		volumes, nodes, requestIds, since, sinceTime, isFollow, isPrevious := GetFlags(cmd)
+		nodeName := args[0]
 
-		GetLogsByAzDriverPod(clientsetK8s, podName, AzureDiskContainer, volumes, nodes, requestIds, since, sinceTime, isFollow, isPrevious)
+		for {
+			pod := GetAzuredisk2Node(clientsetK8s, nodeName)
+			GetLogsByAzDriverPod(clientsetK8s, pod.Name, AzureDiskContainer, volumes, nodes, requestIds, since, sinceTime, isFollow, isPrevious)
+			// If in watch mode (--follow) and the pod failover and restarts, keep watching logs from newly created pos in the same node
+			if isFollow == false || pod.Status.Conditions[1].Status == v1.ConditionTrue {
+				break
+			}
+		}
 	},
 }
 
@@ -59,7 +65,7 @@ func init() {
 	getCmd.AddCommand(nodeCmd)
 }
 
-func GetAzuredisk2Node(clientsetK8s kubernetes.Interface, node string) string {
+func GetAzuredisk2Node(clientsetK8s kubernetes.Interface, node string) *v1.Pod {
 	// Get pod name of the azuredisk2-node running on given node
 	pods, err := clientsetK8s.CoreV1().Pods(consts.ReleaseNamespace).List(context.Background(), metav1.ListOptions{
 		FieldSelector: "spec.nodeName=" + node,
@@ -72,5 +78,5 @@ func GetAzuredisk2Node(clientsetK8s kubernetes.Interface, node string) string {
 		panic(errors.New("more than one node pods were found"))
 	}
 
-	return pods.Items[0].Name
+	return &pods.Items[0]
 }
