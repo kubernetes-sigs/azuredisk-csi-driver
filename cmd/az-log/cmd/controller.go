@@ -23,10 +23,10 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
-	v1 "k8s.io/api/core/v1"
 )
 
 // controllerCmd represents the controller command

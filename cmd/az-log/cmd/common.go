@@ -130,7 +130,7 @@ func LogFilter(buf *bufio.Scanner, volumes []string, nodes []string, requestIds 
 		}
 
 		if isAfterTime {
-			if ContainsAny(&log, volumes) && ContainsAny(&log, nodes) && ContainsAny(&log, requestIds){
+			if ContainsAny(&log, volumes) && ContainsAny(&log, nodes) && ContainsAny(&log, requestIds) {
 				fmt.Println(log)
 			}
 		}
@@ -148,7 +148,7 @@ func ContainsAny(log *string, objects []string) bool {
 	}
 
 	for _, obj := range objects {
-		if  strings.Contains(*log, obj) {
+		if strings.Contains(*log, obj) {
 			return true
 		}
 	}
