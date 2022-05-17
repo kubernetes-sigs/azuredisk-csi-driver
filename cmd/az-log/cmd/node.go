@@ -17,10 +17,15 @@ limitations under the License.
 package cmd
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
 // nodeCmd represents the node command
@@ -38,11 +43,13 @@ to quickly create a Cobra application.`,
 			fmt.Println("node is a required argument for \"node\" command")
 			os.Exit(0)
 		}
-		podName := args[0]
-		volumes, nodes, requestIds, since, sinceTime, isFollow, isPrevious := GetFlags(cmd)
 
 		config := getConfig()
 		clientsetK8s := getKubernetesClientset(config)
+
+		nodeName := args[0]
+		podName := GetAzuredisk2Node(clientsetK8s, nodeName)
+		volumes, nodes, requestIds, since, sinceTime, isFollow, isPrevious := GetFlags(cmd)
 
 		GetLogsByAzDriverPod(clientsetK8s, podName, AzureDiskContainer, volumes, nodes, requestIds, since, sinceTime, isFollow, isPrevious)
 	},
@@ -50,4 +57,20 @@ to quickly create a Cobra application.`,
 
 func init() {
 	getCmd.AddCommand(nodeCmd)
+}
+
+func GetAzuredisk2Node(clientsetK8s kubernetes.Interface, node string) string {
+	// Get pod name of the azuredisk2-node running on given node
+	pods, err := clientsetK8s.CoreV1().Pods(consts.ReleaseNamespace).List(context.Background(), metav1.ListOptions{
+		FieldSelector: "spec.nodeName=" + node,
+		LabelSelector: "app=csi-azuredisk2-node",
+	})
+	if err != nil {
+		panic(err.Error())
+	}
+	if len(pods.Items) > 1 {
+		panic(errors.New("more than one node pods were found"))
+	}
+
+	return pods.Items[0].Name
 }

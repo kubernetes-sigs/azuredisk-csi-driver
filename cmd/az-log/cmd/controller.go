@@ -42,7 +42,7 @@ to quickly create a Cobra application.`,
 		config := getConfig()
 		clientsetK8s := getKubernetesClientset(config)
 
-		pod := getControllerPodName(clientsetK8s)
+		pod := GetAzuredisk2Controller(clientsetK8s)
 		GetLogsByAzDriverPod(clientsetK8s, pod, AzureDiskContainer, volumes, nodes, requestIds, since, sinceTime, isFollow, isPrevious)
 	},
 }
@@ -51,7 +51,7 @@ func init() {
 	getCmd.AddCommand(controllerCmd)
 }
 
-func getControllerPodName(clientsetK8s kubernetes.Interface) string {
+func GetAzuredisk2Controller(clientsetK8s kubernetes.Interface) string {
 	//Get node that leader controller pod is running in
 	lease, err := clientsetK8s.CoordinationV1().Leases(consts.DefaultAzureDiskCrdNamespace).Get(context.Background(), "default", metav1.GetOptions{})
 	if err != nil {
