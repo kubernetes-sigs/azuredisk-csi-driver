@@ -163,7 +163,7 @@ func GetCloudProviderFromClient(kubeClient *clientset.Clientset, secretName, sec
 			fromSecret = true
 		}
 		if err != nil {
-			klog.Warningf("InitializeCloudFromSecret: failed to get cloud config from secret %s/%s: %v", az.SecretNamespace, az.SecretName, err)
+			klog.V(2).Infof("InitializeCloudFromSecret: failed to get cloud config from secret %s/%s: %v", az.SecretNamespace, az.SecretName, err)
 		}
 	}
 
