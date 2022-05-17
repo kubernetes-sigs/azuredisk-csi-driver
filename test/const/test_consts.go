@@ -91,7 +91,12 @@ const (
 	testLabelKey        = "test-label-key"
 	testLabelValue      = "test-label-value"
 
-	MasterNodeLabel = "node-role.kubernetes.io/master"
+	OsNodeLabel           = "kubernetes.io/os"
+	ControlPlaneNodeLabel = "node-role.kubernetes.io/control-plane"
+	MasterNodeLabel       = "node-role.kubernetes.io/master"
+
+	LinuxOsNodeLabelValue   = "linux"
+	WindowsOsNodeLabelValue = "windows"
 )
 
 var (

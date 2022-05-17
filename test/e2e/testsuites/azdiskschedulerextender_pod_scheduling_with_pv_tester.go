@@ -45,9 +45,9 @@ func (t *AzDiskSchedulerExtenderPodSchedulingWithPVTest) Run(client clientset.In
 	tpod.SetupVolume(tpvc.PersistentVolumeClaim, volumeName, volume.VolumeMount.MountPathGenerate+"1", volume.VolumeMount.ReadOnly)
 
 	// Get the list of available nodes for scheduling the pod
-	nodeNames := nodeutil.ListNodeNames(client)
+	nodeNames := nodeutil.ListAgentNodeNames(client, t.Pod.IsWindows)
 	if len(nodeNames) < 1 {
-		ginkgo.Skip("need at least 1 nodes to verify the test case. Current node count is %d", len(nodeNames))
+		ginkgo.Skip("need at least 1 agent node to verify the test case. Current agent node count is %d", len(nodeNames))
 	}
 
 	ginkgo.By("deploying the pod")

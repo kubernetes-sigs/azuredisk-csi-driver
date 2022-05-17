@@ -55,23 +55,27 @@ type PodAffinity struct {
 }
 
 func (t *PodAffinity) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
-	_, maxMountReplicaCount := azureutils.GetMaxSharesAndMaxMountReplicaCount(t.StorageClassParameters, false)
-
-	// Get the list of available nodes for scheduling the pod
-	nodes := nodeutil.ListNodeNames(client)
-	if len(nodes) < maxMountReplicaCount+1 {
-		ginkgo.Skip("need at least %d nodes to verify the test case. Current node count is %d", maxMountReplicaCount+1, len(nodes))
+	numPods := len(t.Pods)
+	if numPods < 2 {
+		ginkgo.Skip("need at least 2 pods to verify the test case.")
 	}
 
-	if len(t.Pods) < 2 {
-		ginkgo.Skip("need at least 2 pods to verify the test case.")
+	_, maxMountReplicaCount := azureutils.GetMaxSharesAndMaxMountReplicaCount(t.StorageClassParameters, false)
+
+	// Need independent nodes for the primary for each pod plus at least one for each replica.
+	numNodesRequired := numPods + maxMountReplicaCount
+
+	// Get the list of available nodes for scheduling the pod
+	nodes := nodeutil.ListAgentNodeNames(client, t.Pods[0].IsWindows)
+	if len(nodes) < numNodesRequired {
+		ginkgo.Skip("need at least %d agent nodes to verify the test case. Current agent node count is %d", numNodesRequired+1, len(nodes))
 	}
 
 	ctx := context.Background()
 
 	scheduledNodes := map[string]struct{}{}
-	for i := range t.Pods {
-		tpod, cleanup := t.Pods[i].SetupWithDynamicVolumes(client, namespace, t.CSIDriver, t.StorageClassParameters, schedulerName)
+	for podIndex := range t.Pods {
+		tpod, cleanup := t.Pods[podIndex].SetupWithDynamicVolumes(client, namespace, t.CSIDriver, t.StorageClassParameters, schedulerName)
 		// defer must be called here for resources not get removed before using them
 		for j := range cleanup {
 			defer cleanup[j]()
@@ -81,7 +85,7 @@ func (t *PodAffinity) Run(client clientset.Interface, namespace *v1.Namespace, s
 
 		// set inter-pod affinity with topologyKey == "kubernetes.io/hostname" so that second pod can be placed on the same node as first pod
 		// or anti-affinity so that second pod and its replicaMounts can be placed on different node as the first pod
-		if i == 0 {
+		if podIndex == 0 {
 			tpod.SetLabel(testconsts.TestLabel)
 		} else {
 			if t.IsAntiAffinityTest {
@@ -90,7 +94,7 @@ func (t *PodAffinity) Run(client clientset.Interface, namespace *v1.Namespace, s
 				tpod.SetAffinity(&testconsts.TestPodAffinity)
 			}
 		}
-		ginkgo.By(fmt.Sprintf("deploying pod %d", i))
+		ginkgo.By(fmt.Sprintf("deploying pod %d", podIndex))
 		tpod.Create()
 		defer tpod.Cleanup()
 		ginkgo.By("checking that the pod is running")
@@ -98,7 +102,7 @@ func (t *PodAffinity) Run(client clientset.Interface, namespace *v1.Namespace, s
 
 		klog.Infof("volumes: %+v", pod.Spec.Volumes)
 		diskNames := make([]string, len(pod.Spec.Volumes))
-		for j, volume := range pod.Spec.Volumes {
+		for volumeIndex, volume := range pod.Spec.Volumes {
 			if volume.PersistentVolumeClaim == nil {
 				framework.Failf("volume (%s) does not hold PersistentVolumeClaim field", volume.Name)
 			}
@@ -112,7 +116,7 @@ func (t *PodAffinity) Run(client clientset.Interface, namespace *v1.Namespace, s
 
 			diskName, err := azureutils.GetDiskName(pv.Spec.CSI.VolumeHandle)
 			framework.ExpectNoError(err)
-			diskNames[j] = strings.ToLower(diskName)
+			diskNames[volumeIndex] = strings.ToLower(diskName)
 		}
 
 		err := wait.PollImmediate(testconsts.Poll, testconsts.PollTimeout,
@@ -140,7 +144,7 @@ func (t *PodAffinity) Run(client clientset.Interface, namespace *v1.Namespace, s
 
 					// if first pod, check which nodes pod's volumes were attached to
 					for _, azVolumeAttachment := range azVolumeAttachments.Items {
-						if i == 0 {
+						if podIndex == 0 {
 							// for anti-affinity, we don't expect the node filter to exclude replica nodes
 							if t.IsAntiAffinityTest && azVolumeAttachment.Spec.RequestedRole == diskv1beta1.ReplicaRole {
 								continue

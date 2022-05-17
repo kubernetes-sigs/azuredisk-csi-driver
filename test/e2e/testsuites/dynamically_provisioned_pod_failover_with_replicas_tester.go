@@ -55,13 +55,13 @@ func (t *PodFailoverWithReplicas) Run(client clientset.Interface, namespace *v1.
 	}
 
 	//Cordon nodes except for one worker node
-	nodes := nodeutil.ListNodeNames(client)
+	nodes := nodeutil.ListAgentNodeNames(client, t.Pod.IsWindows)
 	numRequiredNodes := 2
 	if t.IsMultiZone {
 		numRequiredNodes = 4
 	}
 	if len(nodes) < numRequiredNodes {
-		ginkgo.Skip("need at least %d nodes to verify the test case. Current node count is %d", numRequiredNodes, len(nodes))
+		ginkgo.Skip("need at least %d agent nodes to verify the test case. Current agent node count is %d", numRequiredNodes, len(nodes))
 	}
 
 	ginkgo.By("deploying the deployment")

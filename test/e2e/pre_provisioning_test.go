@@ -310,6 +310,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			testutil.SkipIfUsingInTreeVolumePlugin()
 			testutil.SkipIfOnAzureStackCloud()
 			testutil.SkipIfNotUsingCSIDriverV2()
+			testutil.SkipIfTestingInWindowsCluster()
 
 			sharedDiskSize := 256
 			volumeName := "shared-disk-replicas"
