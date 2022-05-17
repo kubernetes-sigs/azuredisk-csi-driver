@@ -25,21 +25,21 @@ import (
 // getCmd represents the get command
 var getCmd = &cobra.Command{
 	Use:   "get",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+	Short: "Fetching logs of pods in kube-system namesapce",
+	Long:  `Fetching logs of pods in kube-system namesapce`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("get called")
+		if len(args) == 0 {
+			fmt.Printf("You must specify which source to etrieve and process logs from to \"%s\".\n", cmd.Name())
+			fmt.Printf("Run 'az-log --help' for usage.\n")
+		} else {
+			fmt.Printf("error: the tool doesn't support a source type \"%s\".\n", args[0])
+		}
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(getCmd)
-	getCmd.PersistentFlags().StringSlice("volume", []string{}, "insert-volume-name") // TBD: empty slice or nil?
+	getCmd.PersistentFlags().StringSlice("volume", []string{}, "insert-volume-name")
 	getCmd.PersistentFlags().StringSlice("node", []string{}, "insert-node-name")
 	getCmd.PersistentFlags().StringSlice("request-id", []string{}, "insert-request-id")
 	getCmd.PersistentFlags().String("since-time", "", "insert-timestamp")
