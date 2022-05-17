@@ -126,53 +126,7 @@ func LogFilter(buf *bufio.Scanner, volumes []string, nodes []string, requestIds 
 		}
 
 		if isAfterTime {
-			isPrint := true
-			if len(volumes) > 0 {
-				isPrint = false
-				for _, v := range volumes {
-					isPrint = strings.Contains(log, v)
-					if isPrint {
-						break
-					}
-				}
-			}
-
-			if !isPrint {
-				fmt.Println("No logs are queried")
-				os.Exit(0)
-			}
-
-			if len(nodes) > 0 {
-				isPrint = false
-				for _, n := range nodes {
-					isPrint = strings.Contains(log, n)
-					if isPrint {
-						break
-					}
-				}
-			}
-
-			if !isPrint {
-				fmt.Println("No logs are queried")
-				os.Exit(0)
-			}
-
-			if len(requestIds) > 0 {
-				isPrint = false
-				for _, rid := range requestIds {
-					isPrint = strings.Contains(log, rid)
-					if isPrint {
-						break
-					}
-				}
-			}
-
-			if !isPrint {
-				fmt.Println("No logs are queried")
-				os.Exit(0)
-			}
-
-			if isPrint {
+			if ContainsAny(&log, volumes) && ContainsAny(&log, nodes) && ContainsAny(&log, requestIds){
 				fmt.Println(log)
 			}
 		}
@@ -182,4 +136,18 @@ func LogFilter(buf *bufio.Scanner, volumes []string, nodes []string, requestIds 
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+func ContainsAny(log *string, objects []string) bool {
+	if len(objects) > 0 {
+		return true
+	}
+
+	for _, obj := range objects {
+		if  strings.Contains(*log, obj) {
+			return true
+		}
+	}
+
+	return false
 }
