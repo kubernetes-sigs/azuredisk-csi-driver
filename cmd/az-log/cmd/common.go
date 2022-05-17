@@ -28,6 +28,7 @@ import (
 
 	homedir "github.com/mitchellh/go-homedir"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -57,9 +58,12 @@ func GetFlags(cmd *cobra.Command) ([]string, []string, []string, string, string,
 }
 
 func getConfig() *rest.Config {
-	var kubeconfig string
-	if home, _ := homedir.Dir(); home != "" {
-		kubeconfig = filepath.Join(home, ".kube", "config")
+	kubeconfig := viper.GetString("kubeconfig")
+
+	if kubeconfig == "" {
+		if home, _ := homedir.Dir(); home != "" {
+			kubeconfig = filepath.Join(home, ".kube", "config")
+		}
 	}
 
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
