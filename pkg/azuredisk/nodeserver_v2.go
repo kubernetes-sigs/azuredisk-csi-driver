@@ -380,24 +380,12 @@ func (d *DriverV2) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapa
 
 // NodeGetInfo return info of the node on which this plugin is running
 func (d *DriverV2) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
-	var instanceType string
-	var failureDomainFromLabels, instanceTypeFromLabels string
-	var err error
-
-	instances, ok := d.cloudProvisioner.GetCloud().Instances()
-	if !ok {
-		return nil, status.Error(codes.Internal, "failed to get instances from cloud provider")
-	}
-
-	instanceType, err = instances.InstanceType(ctx, types.NodeName(d.NodeID))
-	if err != nil {
-		klog.Warningf("failed to get instance type from Azure cloud provider, nodeName: %v, error: %v", d.NodeID, err)
-		instanceType = ""
-	}
-
 	topology := &csi.Topology{
 		Segments: map[string]string{topologyKey: ""},
 	}
+
+	var failureDomainFromLabels, instanceTypeFromLabels string
+	var err error
 
 	if d.supportZone {
 		var zone cloudprovider.Zone
@@ -431,6 +419,7 @@ func (d *DriverV2) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest)
 
 	maxDataDiskCount := d.VolumeAttachLimit
 	if maxDataDiskCount < 0 {
+		var instanceType string
 		if d.getNodeInfoFromLabels {
 			if instanceTypeFromLabels == "" {
 				_, instanceTypeFromLabels, err = getNodeInfoFromLabels(ctx, d.NodeID, d.cloudProvisioner.GetCloud().KubeClient)
@@ -451,22 +440,22 @@ func (d *DriverV2) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest)
 				} else {
 					instanceType, err = instances.InstanceType(ctx, types.NodeName(d.NodeID))
 				}
-				if err != nil {
-					klog.Warningf("get instance type(%s) failed with: %v", d.NodeID, err)
-				}
-				if instanceType, err = instances.InstanceType(ctx, types.NodeName(d.NodeID)); err != nil {
-					klog.Warningf("get instance type(%s) failed with: %v", d.NodeID, err)
-					_, instanceTypeFromLabels, err = getNodeInfoFromLabels(ctx, d.NodeID, d.cloudProvisioner.GetCloud().KubeClient)
-				}
 			}
 			if err != nil {
-				klog.Warningf("getNodeInfoFromLabels on node(%s) failed with %v", d.NodeID, err)
+				klog.Warningf("get instance type(%s) failed with: %v", d.NodeID, err)
 			}
-			if instanceType == "" {
-				instanceType = instanceTypeFromLabels
+			if instanceType == "" && instanceTypeFromLabels == "" {
+				klog.Warningf("fall back to get instance type from node labels")
+				_, instanceTypeFromLabels, err = getNodeInfoFromLabels(ctx, d.NodeID, d.cloudProvisioner.GetCloud().KubeClient)
 			}
-			maxDataDiskCount = getMaxDataDiskCount(instanceType)
 		}
+		if err != nil {
+			klog.Warningf("getNodeInfoFromLabels on node(%s) failed with %v", d.NodeID, err)
+		}
+		if instanceType == "" {
+			instanceType = instanceTypeFromLabels
+		}
+		maxDataDiskCount = getMaxDataDiskCount(instanceType)
 	}
 
 	return &csi.NodeGetInfoResponse{
