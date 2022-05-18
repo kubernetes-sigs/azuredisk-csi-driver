@@ -851,7 +851,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			Volume:                 volume,
 			Pod:                    pod,
 			ResizeOffline:          false,
-			StorageClassParameters: map[string]string{consts.SkuNameField: "Standard_LRS"},
+			StorageClassParameters: map[string]string{consts.SkuNameField: "StandardSSD_LRS"},
 		}
 		test.Run(cs, ns, schedulerName)
 	})
@@ -891,7 +891,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			Volume:                 volume,
 			Pod:                    pod,
 			ResizeOffline:          false,
-			StorageClassParameters: map[string]string{consts.SkuNameField: "Standard_LRS"},
+			StorageClassParameters: map[string]string{consts.SkuNameField: "StandardSSD_LRS"},
 		}
 		test.Run(cs, ns, schedulerName)
 	})
