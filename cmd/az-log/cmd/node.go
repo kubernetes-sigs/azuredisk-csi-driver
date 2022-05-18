@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 	v1 "k8s.io/api/core/v1"
@@ -45,11 +46,15 @@ var nodeCmd = &cobra.Command{
 		volumes, nodes, requestIds, since, sinceTime, isFollow, isPrevious := GetFlags(cmd)
 		nodeName := args[0]
 
+		pod := GetAzuredisk2Node(clientsetK8s, nodeName)
 		for {
-			pod := GetAzuredisk2Node(clientsetK8s, nodeName)
-			GetLogsByAzDriverPod(clientsetK8s, pod.Name, AzureDiskContainer, volumes, nodes, requestIds, since, sinceTime, isFollow, isPrevious)
+			currPodName := pod.Name
+			GetLogsByAzDriverPod(clientsetK8s, currPodName, AzureDiskContainer, volumes, nodes, requestIds, since, sinceTime, isFollow, isPrevious)
 			// If in watch mode (--follow) and the pod failover and restarts, keep watching logs from newly created pos in the same node
-			if isFollow == false || pod.Status.Conditions[1].Status == v1.ConditionTrue {
+			time.Sleep(10 * time.Second)
+
+			pod = GetAzuredisk2Node(clientsetK8s, nodeName)
+			if !isFollow || pod.Name == currPodName {
 				break
 			}
 		}

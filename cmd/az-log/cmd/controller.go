@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	v1 "k8s.io/api/core/v1"
@@ -38,15 +39,18 @@ var controllerCmd = &cobra.Command{
 		config := getConfig()
 		clientsetK8s := getKubernetesClientset(config)
 
+		pod := GetAzuredisk2Controller(clientsetK8s)
 		for {
-			pod := GetAzuredisk2Controller(clientsetK8s)
-			GetLogsByAzDriverPod(clientsetK8s, pod.Name, AzureDiskContainer, volumes, nodes, requestIds, since, sinceTime, isFollow, isPrevious)
-			// If in watch mode (--follow) and the pod failover and restarts, keep watching logs from new controller
-			if isFollow == false || pod.Status.Conditions[1].Status == v1.ConditionTrue {
+			currPodName := pod.Name
+			GetLogsByAzDriverPod(clientsetK8s, currPodName, AzureDiskContainer, volumes, nodes, requestIds, since, sinceTime, isFollow, isPrevious)
+			// If in watch mode (--follow) and the pod failover and restarts, keep watching logs from newly created pos in the same node
+			time.Sleep(20 * time.Second)
+
+			pod = GetAzuredisk2Controller(clientsetK8s)
+			if !isFollow || pod.Name == currPodName {
 				break
 			}
 		}
-
 	},
 }
 
