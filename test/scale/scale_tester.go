@@ -150,6 +150,7 @@ scaleInTest:
 		if numberOfRemainingVolumeAtts <= 0 || time.Since(startScaleIn) > time.Duration(*scaleTestTimeout)*time.Minute {
 			break
 		}
+		time.Sleep(30 * time.Second)
 	}
 	scaleInCompleted := time.Since(startScaleIn).Minutes()
 
