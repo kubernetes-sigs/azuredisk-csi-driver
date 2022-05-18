@@ -52,7 +52,7 @@ type DynamicallyProvisionedResizeVolumeTest struct {
 }
 
 func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface, namespace *v1.Namespace) {
-	tStatefulSet, cleanup := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, driver.GetParameters())
+	tStatefulSet, cleanup := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, t.StorageClassParameters)
 	// Defer must be called here for resources not get removed before using them
 	for i := range cleanup {
 		i := i
