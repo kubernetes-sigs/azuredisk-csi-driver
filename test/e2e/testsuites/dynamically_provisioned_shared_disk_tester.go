@@ -20,7 +20,6 @@ import (
 	"context"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/onsi/ginkgo"
 	"github.com/onsi/gomega"
@@ -65,9 +64,8 @@ func (t *DynamicallyProvisionedSharedDiskTester) Run(client clientset.Interface,
 	tDeployment.WaitForPodReady()
 
 	if t.PodCheck != nil {
-		ginkgo.By("sleep 5s and then check pod exec")
-		time.Sleep(5 * time.Second)
-		tDeployment.Exec(t.PodCheck.Cmd, t.PodCheck.ExpectedString)
+		ginkgo.By("check pod exec")
+		tDeployment.PollForStringInPodsExec(t.PodCheck.Cmd, t.PodCheck.ExpectedString)
 	}
 
 	ginkgo.By("verifying shared attachment")
