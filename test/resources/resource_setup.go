@@ -257,24 +257,24 @@ func (pod *PodDetails) SetupDeploymentWithPreProvisionedVolumes(client clientset
 func (pod *PodDetails) CreateStorageClass(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.DynamicPVTestDriver, storageClassParameters map[string]string) (storagev1.StorageClass, func()) {
 	ginkgo.By("setting up the StorageClass")
 	var allowedTopologyValues []string
-	var volumeBindingMode storagev1.VolumeBindingMode
+	var volumeBindingMode *storagev1.VolumeBindingMode
 
 	nodes, err := client.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 	framework.ExpectNoError(err)
 	allowedTopologyValuesMap := make(map[string]bool)
 	for _, node := range nodes.Items {
-		if zone, ok := node.Labels[testconsts.TopologyKey]; ok {
+		if zone, ok := node.Labels[testconsts.TopologyKey]; ok && zone != "" {
 			allowedTopologyValuesMap[zone] = true
 		}
 	}
 	for k := range allowedTopologyValuesMap {
 		allowedTopologyValues = append(allowedTopologyValues, k)
-
-		volumeBindingMode = storagev1.VolumeBindingWaitForFirstConsumer
+		waitForFirstCustomer := storagev1.VolumeBindingWaitForFirstConsumer
+		volumeBindingMode = &waitForFirstCustomer
 	}
 
 	reclaimPolicy := v1.PersistentVolumeReclaimDelete
-	storageClass := csiDriver.GetDynamicProvisionStorageClass(storageClassParameters, []string{}, &reclaimPolicy, &volumeBindingMode, allowedTopologyValues, namespace.Name)
+	storageClass := csiDriver.GetDynamicProvisionStorageClass(storageClassParameters, []string{}, &reclaimPolicy, volumeBindingMode, allowedTopologyValues, namespace.Name)
 	tsc := NewTestStorageClass(client, namespace, storageClass)
 	createdStorageClass := tsc.Create()
 	return createdStorageClass, tsc.Cleanup
