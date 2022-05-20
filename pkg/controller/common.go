@@ -1214,12 +1214,15 @@ func (s *scoreByNodeCapacity) score(ctx context.Context, nodeScores map[string]i
 			// if failed to get node's remaining capacity, remove the node from the candidate list and proceed
 			w.Logger().Errorf(err, "failed to get remaining capacity of node (%s)", nodeName)
 			delete(nodeScores, nodeName)
-		}
-		if remainingCapacity-len(s.volumes) <= 0 {
-			delete(nodeScores, nodeName)
+			continue
 		}
 
 		nodeScores[nodeName] = score + (nodeScoreLowCoefficient * remainingCapacity)
+
+		if remainingCapacity-len(s.volumes) < 0 {
+			delete(nodeScores, nodeName)
+		}
+
 		w.Logger().V(5).Infof("node (%s) can accept %d more attachments", nodeName, remainingCapacity)
 	}
 	return nodeScores, nil
@@ -1363,9 +1366,11 @@ func (c *SharedState) prioritizeNodes(ctx context.Context, pods []v1.Pod, volume
 	}
 
 	// normalize score
+	numFiltered := 0
 	for _, node := range nodes {
 		if _, exists := nodeScores[node.Name]; !exists {
 			nodeScores[node.Name] = -1
+			numFiltered++
 		}
 	}
 
@@ -1373,7 +1378,7 @@ func (c *SharedState) prioritizeNodes(ctx context.Context, pods []v1.Pod, volume
 		return nodeScores[nodes[i].Name] > nodeScores[nodes[j].Name]
 	})
 
-	return nodes
+	return nodes[:len(nodes)-numFiltered]
 }
 
 func (c *SharedState) filterAndSortNodes(ctx context.Context, nodes []v1.Node, pods []v1.Pod, volumes []string) ([]v1.Node, error) {

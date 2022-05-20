@@ -19,13 +19,16 @@ package controller
 import (
 	"context"
 	"fmt"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-logr/logr"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
-	"k8s.io/apimachinery/pkg/util/wait"
 	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
@@ -39,10 +42,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
-)
-
-const (
-	deletionPollingInterval = time.Duration(10) * time.Second
 )
 
 type ReconcileReplica struct {
@@ -91,7 +90,9 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 		}
 		// create a replacement replica if replica attachment failed
 		if objectDeletionRequested(azVolumeAttachment) {
-			if azVolumeAttachment.Status.State == diskv1beta1.DetachmentFailed {
+			switch azVolumeAttachment.Status.State {
+			case diskv1beta1.Detaching:
+			case diskv1beta1.DetachmentFailed:
 				if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, func(obj interface{}) error {
 					azVolumeAttachment := obj.(*diskv1beta1.AzVolumeAttachment)
 					_, err = updateState(azVolumeAttachment, diskv1beta1.ForceDetachPending, normalUpdate)
@@ -99,6 +100,8 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 				}, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
 					return reconcile.Result{Requeue: true}, err
 				}
+			default:
+				return reconcile.Result{Requeue: true}, err
 			}
 			if !isCleanupRequested(azVolumeAttachment) || !volumeDetachRequested(azVolumeAttachment) {
 				go func() {
@@ -174,22 +177,46 @@ func (r *ReconcileReplica) triggerCreateFailedReplicas(ctx context.Context, volu
 	}
 	labelSelector := labels.NewSelector().Add(*volRequirement)
 	listOptions := client.ListOptions{LabelSelector: labelSelector}
-	err = wait.PollImmediateWithContext(ctx, deletionPollingInterval, 10*time.Minute, func(ctx context.Context) (bool, error) {
-		azVolumeAttachmentList := &diskv1beta1.AzVolumeAttachmentList{}
-		err := r.controllerSharedState.cachedClient.List(ctx, azVolumeAttachmentList, &listOptions)
-		if err != nil {
-			if errors.IsNotFound(err) {
-				return true, nil
-			}
-			w.Logger().Errorf(err, "Failed to get AzVolumeAttachments.")
-			return false, err
-		}
-		return len(azVolumeAttachmentList.Items) == 0, nil
-	})
-	if err != nil {
-		w.Logger().Errorf(err, "Failed polling for AzVolumeAttachments to be zero length.")
+	azVolumeAttachmentList := &diskv1beta1.AzVolumeAttachmentList{}
+	if err = r.controllerSharedState.cachedClient.List(ctx, azVolumeAttachmentList, &listOptions); errors.IsNotFound(err) {
 		return
 	}
+
+	var wg sync.WaitGroup
+	var numErr uint32
+	errs := make([]error, len(azVolumeAttachmentList.Items))
+	for i := range azVolumeAttachmentList.Items {
+		wg.Add(1)
+		go func(index int) {
+			var err error
+			defer wg.Done()
+			defer func() {
+				if err != nil {
+					_ = atomic.AddUint32(&numErr, 1)
+				}
+			}()
+
+			var waiter *watcher.ConditionWaiter
+			waiter, err = r.controllerSharedState.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeAttachmentType, azVolumeAttachmentList.Items[index].Name, verifyObjectDeleted)
+			if err != nil {
+				errs[index] = err
+				return
+			}
+			defer waiter.Close()
+			if _, err = waiter.Wait(ctx); err != nil {
+				errs[index] = err
+			}
+		}(i)
+	}
+	// wait for all AzVolumeAttachments to be deleted
+	wg.Wait()
+
+	if numErr > 0 {
+		err := status.Errorf(codes.Internal, "%+v", errs)
+		w.Logger().Error(err, "failed to wait for replica AzVolumeAttachments cleanup.")
+		return
+	}
+
 	r.controllerSharedState.tryCreateFailedReplicas(ctx, "replicaController")
 }
 
