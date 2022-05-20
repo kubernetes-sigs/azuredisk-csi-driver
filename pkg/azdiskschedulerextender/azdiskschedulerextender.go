@@ -169,7 +169,7 @@ func filter(context context.Context, schedulerExtenderArgs schedulerapi.Extender
 		}
 	}
 
-	diskRequestedByPod, diskRequestedByPodCount := getDisksRequestedByPod(ns, requestedVolumes, v1.ReadOnlyMany, v1.ReadWriteMany)
+	diskRequestedByPod, diskRequestedByPodCount := getDisksRequestedByPodExcludeAccessModes(ns, requestedVolumes)
 	if diskRequestedByPodCount == 0 {
 		return formatFilterResult(schedulerExtenderArgs.Nodes.Items, schedulerExtenderArgs.NodeNames, failedNodes, ""), nil
 	}
@@ -244,7 +244,7 @@ func prioritize(context context.Context, schedulerExtenderArgs schedulerapi.Exte
 		go getAzVolumeAttachments(context, volumesChan)
 
 		// create a lookup map of all the volumes the pod needs
-		volumesPodNeeds, _ := getDisksRequestedByPod(ns, requestedVolumes)
+		volumesPodNeeds, _ := getDisksRequestedByPodExcludeAccessModes(ns, requestedVolumes, v1.ReadOnlyMany, v1.ReadWriteMany)
 
 		// get all nodes that have azDriverNode running
 		azDriverNodesMeta := <-nodesChan
@@ -431,7 +431,7 @@ func setNodeScoresToZero(nodes []v1.Node) (priorityList schedulerapi.HostPriorit
 	return
 }
 
-func getDisksRequestedByPod(ns string, requestedVolumes []v1.Volume, filterOutAccessModes ...v1.PersistentVolumeAccessMode) (disksRequestedByPod map[string]struct{}, requestedDiskCount int) {
+func getDisksRequestedByPodExcludeAccessModes(ns string, requestedVolumes []v1.Volume, filterOutAccessModes ...v1.PersistentVolumeAccessMode) (disksRequestedByPod map[string]struct{}, requestedDiskCount int) {
 	// create a set of all volumes needed
 	disksRequestedByPod = map[string]struct{}{}
 	for _, volume := range requestedVolumes {
