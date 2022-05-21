@@ -51,7 +51,7 @@ func (t *DynamicallyProvisionedCollocatedPodTest) Run(client clientset.Interface
 		defer tpod.Cleanup()
 
 		ginkgo.By("checking that the pod is running")
-		tpod.WaitForRunning()
+		tpod.WaitForRunningLong()
 		nodeName = tpod.pod.Spec.NodeName
 	}
 }
