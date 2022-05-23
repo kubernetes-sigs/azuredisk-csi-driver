@@ -73,13 +73,13 @@ func GetLeaderControllerPod(clientsetK8s kubernetes.Interface) *v1.Pod {
 	// Get pod name of the leader controller
 	pods, err := clientsetK8s.CoreV1().Pods(consts.ReleaseNamespace).List(context.Background(), metav1.ListOptions{
 		FieldSelector: "spec.nodeName=" + node,
-		LabelSelector: "app=csi-azuredisk2-controller",
+		LabelSelector: "app=" + IsV2InstalledSideBySide() + "-controller",
 	})
 	if err != nil {
 		panic(err.Error())
 	}
-	if len(pods.Items) != 1 {
-		panic(errors.New("zero or more than one controller pods were found"))
+	if len(pods.Items) !=  1 {
+		panic(errors.New("zero or more than one controller plugins were found"))
 	}
 
 	return &pods.Items[0]

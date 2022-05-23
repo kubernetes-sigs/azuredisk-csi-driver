@@ -72,13 +72,13 @@ func GetAzurediskPodFromNode(clientsetK8s kubernetes.Interface, node string) *v1
 	// Get pod name of the azuredisk2-node running on given node
 	pods, err := clientsetK8s.CoreV1().Pods(consts.ReleaseNamespace).List(context.Background(), metav1.ListOptions{
 		FieldSelector: "spec.nodeName=" + node,
-		LabelSelector: "app=csi-azuredisk2-node",
+		LabelSelector: "app=" + IsV2InstalledSideBySide() + "-node",
 	})
 	if err != nil {
 		panic(err.Error())
 	}
-	if len(pods.Items) != 1 {
-		panic(errors.New("zero or more than one node pods were found"))
+	if len(pods.Items) !=  1 {
+		panic(errors.New("zero or more than one node plugins were found"))
 	}
 
 	return &pods.Items[0]
