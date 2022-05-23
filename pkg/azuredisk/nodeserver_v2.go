@@ -249,7 +249,7 @@ func (d *DriverV2) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVo
 	defer d.volumeLocks.Release(volumeID)
 
 	klog.V(2).Infof("NodeUnstageVolume: unmounting %s", stagingTargetPath)
-	err := d.nodeProvisioner.CleanupMountPoint(stagingTargetPath, false)
+	err := d.nodeProvisioner.CleanupMountPoint(stagingTargetPath, true /*extensiveMountPointCheck*/)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to unmount staging target %q: %v", stagingTargetPath, err)
 	}
@@ -361,7 +361,7 @@ func (d *DriverV2) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpubli
 	}
 
 	klog.V(2).Infof("NodeUnpublishVolume: unmounting volume %s on %s", volumeID, targetPath)
-	err := d.nodeProvisioner.CleanupMountPoint(targetPath, false)
+	err := d.nodeProvisioner.CleanupMountPoint(targetPath, true /*extensiveMountPointCheck*/)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to unmount target %q: %v", targetPath, err)
 	}
