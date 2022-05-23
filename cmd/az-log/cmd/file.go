@@ -37,7 +37,16 @@ var fileCmd = &cobra.Command{
 			os.Exit(0)
 		}
 		filePath := args[0]
-		volumes, nodes, requestIds, since, sinceTime, _, _ := GetFlags(cmd)
+		volumes, nodes, requestIds, since, sinceTime, isFollow, isPrevious := GetFlags(cmd)
+
+		if isFollow {
+			fmt.Println("file source can't work with --follow")
+			os.Exit(0)
+		}
+		if isPrevious {
+			fmt.Println("file source can't work with --previous")
+			os.Exit(0)
+		}
 
 		GetLogsByFile(filePath, volumes, nodes, requestIds, since, sinceTime)
 	},

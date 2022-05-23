@@ -28,7 +28,6 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
 // podCmd represents the pod command
@@ -95,7 +94,7 @@ func GetLogsByAzDriverPod(clientsetK8s kubernetes.Interface, podName string, con
 	podLogOptions = append(podLogOptions, v1PodLogOptions)
 
 	for i := 0; i < len(podLogOptions); i++ {
-		req := clientsetK8s.CoreV1().Pods(consts.ReleaseNamespace).GetLogs(podName, &podLogOptions[i])
+		req := clientsetK8s.CoreV1().Pods(GetReleaseNamespace()).GetLogs(podName, &podLogOptions[i])
 		podLogs, err := req.Stream(context.TODO())
 		if err != nil {
 			panic(err.Error())

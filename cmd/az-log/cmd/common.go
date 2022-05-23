@@ -32,6 +32,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
 const (
@@ -154,4 +155,12 @@ func ContainsAny(log *string, objects []string) bool {
 	}
 
 	return false
+}
+
+func GetReleaseNamespace() string {
+	releaseNamespace := viper.GetString("releaseNamespace")
+	if releaseNamespace == "" {
+		releaseNamespace = consts.ReleaseNamespace
+	}
+	return releaseNamespace
 }

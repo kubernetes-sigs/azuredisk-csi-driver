@@ -78,8 +78,8 @@ func GetLeaderControllerPod(clientsetK8s kubernetes.Interface) *v1.Pod {
 	if err != nil {
 		panic(err.Error())
 	}
-	if len(pods.Items) > 1 {
-		panic(errors.New("more than one controller pods were found"))
+	if len(pods.Items) != 1 {
+		panic(errors.New("zero or more than one controller pods were found"))
 	}
 
 	return &pods.Items[0]

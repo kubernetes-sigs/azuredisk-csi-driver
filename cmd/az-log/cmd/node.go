@@ -77,8 +77,8 @@ func GetAzurediskPodFromNode(clientsetK8s kubernetes.Interface, node string) *v1
 	if err != nil {
 		panic(err.Error())
 	}
-	if len(pods.Items) > 1 {
-		panic(errors.New("more than one node pods were found"))
+	if len(pods.Items) != 1 {
+		panic(errors.New("zero or more than one node pods were found"))
 	}
 
 	return &pods.Items[0]
