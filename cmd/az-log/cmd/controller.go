@@ -39,14 +39,14 @@ var controllerCmd = &cobra.Command{
 		config := getConfig()
 		clientsetK8s := getKubernetesClientset(config)
 
-		pod := GetAzuredisk2Controller(clientsetK8s)
+		pod := GetLeaderControllerPod(clientsetK8s)
 		for {
 			currPodName := pod.Name
 			GetLogsByAzDriverPod(clientsetK8s, currPodName, AzureDiskContainer, volumes, nodes, requestIds, since, sinceTime, isFollow, isPrevious)
 			// If in watch mode (--follow) and the pod failover and restarts, keep watching logs from newly created pos in the same node
 			time.Sleep(20 * time.Second)
 
-			pod = GetAzuredisk2Controller(clientsetK8s)
+			pod = GetLeaderControllerPod(clientsetK8s)
 			if !isFollow || pod.Name == currPodName {
 				break
 			}
@@ -58,7 +58,7 @@ func init() {
 	getCmd.AddCommand(controllerCmd)
 }
 
-func GetAzuredisk2Controller(clientsetK8s kubernetes.Interface) *v1.Pod {
+func GetLeaderControllerPod(clientsetK8s kubernetes.Interface) *v1.Pod {
 	//Get node that leader controller pod is running in
 	lease, err := clientsetK8s.CoordinationV1().Leases(consts.DefaultAzureDiskCrdNamespace).Get(context.Background(), "default", metav1.GetOptions{})
 	if err != nil {

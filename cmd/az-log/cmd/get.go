@@ -29,7 +29,7 @@ var getCmd = &cobra.Command{
 	Long:  `Fetching logs of pods in kube-system namesapce`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 0 {
-			fmt.Printf("You must specify which source to etrieve and process logs from to \"%s\".\n", cmd.Name())
+			fmt.Printf("You must specify which source to retrieve and process logs from to \"%s\".\n", cmd.Name())
 			fmt.Printf("Run 'az-log --help' for usage.\n")
 		} else {
 			fmt.Printf("error: the tool doesn't support a source type \"%s\".\n", args[0])

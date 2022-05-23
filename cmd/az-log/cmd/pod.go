@@ -37,20 +37,18 @@ var podCmd = &cobra.Command{
 	Short: "A pod in kube-system namespace",
 	Long:  `A pod in kube-system namespace`,
 	Run: func(cmd *cobra.Command, args []string) {
-		names := strings.Split(args[0], "/")
-		if len(names) < 2 {
-			fmt.Println("pod and container are required arguments for \"pod\" command")
+		if len(args) == 0 || len(strings.Split(args[0], "/")) < 2{
+			fmt.Println("pod and container names are required arguments for \"pod\" command")
 			os.Exit(0)
 		}
 
-		podName := names[0]
-		container := names[1]
+		podContainerNames := strings.Split(args[0], "/")
 		volumes, nodes, requestIds, since, sinceTime, isFollow, isPrevious := GetFlags(cmd)
 
 		config := getConfig()
 		clientsetK8s := getKubernetesClientset(config)
 
-		GetLogsByAzDriverPod(clientsetK8s, podName, container, volumes, nodes, requestIds, since, sinceTime, isFollow, isPrevious)
+		GetLogsByAzDriverPod(clientsetK8s, podContainerNames[0], podContainerNames[1], volumes, nodes, requestIds, since, sinceTime, isFollow, isPrevious)
 	},
 }
 

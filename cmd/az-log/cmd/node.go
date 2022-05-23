@@ -37,7 +37,7 @@ var nodeCmd = &cobra.Command{
 	Long:  `csi-azuredisk2-node`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 0 {
-			fmt.Println("node is a required argument for \"node\" command")
+			fmt.Println("node name is a required argument for \"node\" command")
 			os.Exit(0)
 		}
 
@@ -46,14 +46,14 @@ var nodeCmd = &cobra.Command{
 		volumes, nodes, requestIds, since, sinceTime, isFollow, isPrevious := GetFlags(cmd)
 		nodeName := args[0]
 
-		pod := GetAzuredisk2Node(clientsetK8s, nodeName)
+		pod := GetAzurediskPodFromNode(clientsetK8s, nodeName)
 		for {
 			currPodName := pod.Name
 			GetLogsByAzDriverPod(clientsetK8s, currPodName, AzureDiskContainer, volumes, nodes, requestIds, since, sinceTime, isFollow, isPrevious)
 			// If in watch mode (--follow) and the pod failover and restarts, keep watching logs from newly created pos in the same node
 			time.Sleep(10 * time.Second)
 
-			pod = GetAzuredisk2Node(clientsetK8s, nodeName)
+			pod = GetAzurediskPodFromNode(clientsetK8s, nodeName)
 			if !isFollow || pod.Name == currPodName {
 				break
 			}
@@ -65,7 +65,7 @@ func init() {
 	getCmd.AddCommand(nodeCmd)
 }
 
-func GetAzuredisk2Node(clientsetK8s kubernetes.Interface, node string) *v1.Pod {
+func GetAzurediskPodFromNode(clientsetK8s kubernetes.Interface, node string) *v1.Pod {
 	// Get pod name of the azuredisk2-node running on given node
 	pods, err := clientsetK8s.CoreV1().Pods(consts.ReleaseNamespace).List(context.Background(), metav1.ListOptions{
 		FieldSelector: "spec.nodeName=" + node,
