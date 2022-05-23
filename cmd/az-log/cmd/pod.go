@@ -36,7 +36,7 @@ var podCmd = &cobra.Command{
 	Short: "A pod in kube-system namespace",
 	Long:  `A pod in kube-system namespace`,
 	Run: func(cmd *cobra.Command, args []string) {
-		if len(args) == 0 || len(strings.Split(args[0], "/")) < 2{
+		if len(args) == 0 || len(strings.Split(args[0], "/")) < 2 {
 			fmt.Println("pod and container names are required arguments for \"pod\" command")
 			os.Exit(0)
 		}

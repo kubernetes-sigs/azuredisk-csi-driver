@@ -45,7 +45,7 @@ var controllerCmd = &cobra.Command{
 			GetLogsByAzDriverPod(clientsetK8s, currPodName, AzureDiskContainer, volumes, nodes, requestIds, since, sinceTime, isFollow, isPrevious)
 			// If in watch mode (--follow) and the pod failover and restarts, keep watching logs from newly created pos in the same node
 			if !isFollow {
-				break;
+				break
 			} else {
 				time.Sleep(20 * time.Second)
 				pod = GetLeaderControllerPod(clientsetK8s)
@@ -78,7 +78,7 @@ func GetLeaderControllerPod(clientsetK8s kubernetes.Interface) *v1.Pod {
 	if err != nil {
 		panic(err.Error())
 	}
-	if len(pods.Items) !=  1 {
+	if len(pods.Items) != 1 {
 		panic(errors.New("zero or more than one controller plugins were found"))
 	}
 
