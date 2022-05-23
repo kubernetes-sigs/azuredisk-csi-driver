@@ -1573,6 +1573,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		}
 		test.Run(cs, ns, schedulerName)
 	})
+
 	ginkgo.It("Should test pod failover and check for correct number of replicas", func() {
 		testutil.SkipIfUsingInTreeVolumePlugin()
 		skuName := "StandardSSD_LRS"
@@ -1580,6 +1581,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			testutil.SkipIfNotZRSSupported(location)
 			skuName = "StandardSSD_ZRS"
 		}
+
+		// BUG: Issue #1349 Test case currently fails on Windows
+		testutil.SkipIfTestingInWindowsCluster()
+
 		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
 		if err != nil {
 			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
@@ -1632,6 +1637,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		}
 		test.Run(cs, ns, schedulerName)
 	})
+
 	ginkgo.It("Should test an increase in replicas when scaling up", func() {
 		testutil.SkipIfUsingInTreeVolumePlugin()
 		skuName := "StandardSSD_LRS"
@@ -1689,6 +1695,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		}
 		test.Run(cs, ns, schedulerName)
 	})
+
 	ginkgo.It("should succeed when attaching a shared block volume to multiple pods [disk.csi.azure.com][shared disk]", func() {
 		testutil.SkipIfUsingInTreeVolumePlugin()
 		testutil.SkipIfOnAzureStackCloud()
