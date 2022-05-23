@@ -44,11 +44,14 @@ var controllerCmd = &cobra.Command{
 			currPodName := pod.Name
 			GetLogsByAzDriverPod(clientsetK8s, currPodName, AzureDiskContainer, volumes, nodes, requestIds, since, sinceTime, isFollow, isPrevious)
 			// If in watch mode (--follow) and the pod failover and restarts, keep watching logs from newly created pos in the same node
-			time.Sleep(20 * time.Second)
-
-			pod = GetLeaderControllerPod(clientsetK8s)
-			if !isFollow || pod.Name == currPodName {
-				break
+			if !isFollow {
+				break;
+			} else {
+				time.Sleep(20 * time.Second)
+				pod = GetLeaderControllerPod(clientsetK8s)
+				if pod.Name == currPodName {
+					break
+				}
 			}
 		}
 	},
