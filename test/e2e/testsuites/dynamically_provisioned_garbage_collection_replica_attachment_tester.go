@@ -48,8 +48,8 @@ type DynamicallyProvisionedScaleReplicasOnDetach struct {
 }
 
 func (t *DynamicallyProvisionedScaleReplicasOnDetach) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
-	nodes := nodeutil.ListNodeNames(client)
-	skipper.SkipUnlessAtLeast(len(nodes), 3, "Need at least 3 nodes to verify the test case.")
+	nodes := nodeutil.ListAgentNodeNames(client, t.StatefulSetPod.IsWindows)
+	skipper.SkipUnlessAtLeast(len(nodes), 3, "Need at least 3 agent nodes to verify the test case.")
 
 	testPod := resources.TestPod{
 		Client: client,

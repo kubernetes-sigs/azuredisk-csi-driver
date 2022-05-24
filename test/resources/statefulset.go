@@ -48,7 +48,7 @@ type TestStatefulset struct {
 	AllPods     []PodDetails
 }
 
-func NewTestStatefulset(c clientset.Interface, ns *v1.Namespace, command string, pvc []v1.PersistentVolumeClaim, volumeMount []v1.VolumeMount, isWindows, useCMD bool, schedulerName string, replicaCount int, labels map[string]string) *TestStatefulset {
+func NewTestStatefulset(c clientset.Interface, ns *v1.Namespace, command string, pvc []v1.PersistentVolumeClaim, volumeMount []v1.VolumeMount, isWindows, useCMD bool, schedulerName string, replicaCount int, labels map[string]string, winServerVer string) *TestStatefulset {
 	generateName := "azuredisk-volume-tester-"
 	if labels == nil {
 		labels = make(map[string]string)
@@ -101,7 +101,7 @@ func NewTestStatefulset(c clientset.Interface, ns *v1.Namespace, command string,
 		testStatefulset.Statefulset.Spec.Template.Spec.NodeSelector = map[string]string{
 			"kubernetes.io/os": "windows",
 		}
-		testStatefulset.Statefulset.Spec.Template.Spec.Containers[0].Image = "mcr.microsoft.com/windows/servercore:ltsc2019"
+		testStatefulset.Statefulset.Spec.Template.Spec.Containers[0].Image = "mcr.microsoft.com/windows/servercore:" + getWinImageTag(winServerVer)
 		if useCMD {
 			testStatefulset.Statefulset.Spec.Template.Spec.Containers[0].Command = []string{"cmd"}
 			testStatefulset.Statefulset.Spec.Template.Spec.Containers[0].Args = []string{"/c", command}

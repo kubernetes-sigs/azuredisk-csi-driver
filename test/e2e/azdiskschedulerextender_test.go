@@ -68,9 +68,10 @@ func schedulerExtenderTests(isMultiZone bool) {
 		testutil.SkipIfNotUsingCSIDriverV2()
 
 		pod := resources.PodDetails{
-			Cmd:       testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world'"),
-			Volumes:   []resources.VolumeDetails{},
-			IsWindows: testconsts.IsWindowsCluster,
+			Cmd:          testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world'"),
+			Volumes:      []resources.VolumeDetails{},
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
 		}
 		test := testsuites.AzDiskSchedulerExtenderSimplePodSchedulingTest{
 			CSIDriver: testDriver,
@@ -95,7 +96,8 @@ func schedulerExtenderTests(isMultiZone bool) {
 					},
 				},
 			}, []string{}, isMultiZone),
-			IsWindows: testconsts.IsWindowsCluster,
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
 		}
 
 		test := testsuites.AzDiskSchedulerExtenderPodSchedulingWithPVTest{
@@ -130,8 +132,9 @@ func schedulerExtenderTests(isMultiZone bool) {
 					VolumeMount: volume.VolumeMount,
 				},
 			}, []string{}, isMultiZone),
-			IsWindows: testconsts.IsWindowsCluster,
-			UseCMD:    false,
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
+			UseCMD:       false,
 		}
 
 		test := testsuites.AzDiskSchedulerExtenderPodSchedulingOnFailover{
@@ -160,9 +163,10 @@ func schedulerExtenderTests(isMultiZone bool) {
 		}
 
 		pod := resources.PodDetails{
-			Cmd:       testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
-			Volumes:   resources.NormalizeVolumes(volumes, []string{}, isMultiZone),
-			IsWindows: testconsts.IsWindowsCluster,
+			Cmd:          testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
+			Volumes:      resources.NormalizeVolumes(volumes, []string{}, isMultiZone),
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
 		}
 		test := testsuites.AzDiskSchedulerExtenderPodSchedulingWithMultiplePVTest{
 			CSIDriver: testDriver,
@@ -197,9 +201,10 @@ func schedulerExtenderTests(isMultiZone bool) {
 		}
 
 		pod := resources.PodDetails{
-			Cmd:       testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
-			Volumes:   resources.NormalizeVolumes(volumes, []string{}, isMultiZone),
-			IsWindows: testconsts.IsWindowsCluster,
+			Cmd:          testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
+			Volumes:      resources.NormalizeVolumes(volumes, []string{}, isMultiZone),
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
 		}
 		test := testsuites.AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV{
 			CSIDriver:              testDriver,
@@ -237,9 +242,10 @@ func schedulerExtenderTests(isMultiZone bool) {
 		}
 
 		pod := resources.PodDetails{
-			Cmd:       testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
-			Volumes:   resources.NormalizeVolumes(volumes, []string{}, isMultiZone),
-			IsWindows: testconsts.IsWindowsCluster,
+			Cmd:          testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
+			Volumes:      resources.NormalizeVolumes(volumes, []string{}, isMultiZone),
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
 		}
 		test := testsuites.AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV{
 			CSIDriver:              testDriver,

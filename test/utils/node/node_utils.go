@@ -24,6 +24,8 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
@@ -31,12 +33,35 @@ import (
 	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 )
 
 func ListNodeNames(c clientset.Interface) []string {
+	return listNodeNames(c, metav1.ListOptions{})
+}
+
+func ListAgentNodeNames(c clientset.Interface, isWindowsTest bool) []string {
+	osLabelValue := testconsts.LinuxOsNodeLabelValue
+	if isWindowsTest {
+		osLabelValue = testconsts.WindowsOsNodeLabelValue
+	}
+	includeOsLabel, err := azureutils.CreateLabelRequirements(testconsts.OsNodeLabel, selection.Equals, osLabelValue)
+	framework.ExpectNoError(err)
+
+	excludeMasterNodeLabel, err := azureutils.CreateLabelRequirements(testconsts.MasterNodeLabel, selection.DoesNotExist)
+	framework.ExpectNoError(err)
+	excludeControlPlaneNodeLabel, err := azureutils.CreateLabelRequirements(testconsts.ControlPlaneNodeLabel, selection.DoesNotExist)
+	framework.ExpectNoError(err)
+
+	selector := labels.NewSelector().Add(*includeOsLabel, *excludeControlPlaneNodeLabel, *excludeMasterNodeLabel)
+
+	return listNodeNames(c, metav1.ListOptions{LabelSelector: selector.String()})
+}
+
+func listNodeNames(c clientset.Interface, listOpts metav1.ListOptions) []string {
 	var nodeNames []string
-	nodes, err := c.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+	nodes, err := c.CoreV1().Nodes().List(context.TODO(), listOpts)
 	framework.ExpectNoError(err)
 	for _, item := range nodes.Items {
 		nodeNames = append(nodeNames, item.Name)

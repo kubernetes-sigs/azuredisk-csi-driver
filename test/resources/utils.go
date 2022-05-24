@@ -287,3 +287,11 @@ func getPVFromPVC(client clientset.Interface, pvc *v1.PersistentVolumeClaim) (pv
 	}
 	return
 }
+
+func getWinImageTag(winServerVer string) string {
+	testWinImageTag := "ltsc2019"
+	if testconsts.WinServerVer == "windows-2022" {
+		testWinImageTag = "ltsc2022"
+	}
+	return testWinImageTag
+}

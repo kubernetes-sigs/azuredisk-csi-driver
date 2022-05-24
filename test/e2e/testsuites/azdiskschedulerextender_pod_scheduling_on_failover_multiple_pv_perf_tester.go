@@ -72,9 +72,9 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV) Run(client cl
 	wg.Wait()
 
 	// Get the list of available nodes for scheduling the pod
-	nodes := nodeutil.ListNodeNames(client)
+	nodes := nodeutil.ListAgentNodeNames(client, t.Pod.IsWindows)
 	if len(nodes) < 2 {
-		ginkgo.Skip("need at least 2 nodes to verify the test case. Current node count is %d", len(nodes))
+		ginkgo.Skip("need at least 2 agent nodes to verify the test case. Current agent node count is %d", len(nodes))
 	}
 
 	time.Sleep(10 * time.Second)

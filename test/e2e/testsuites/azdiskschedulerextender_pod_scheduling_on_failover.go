@@ -46,9 +46,9 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailover) Run(client clientset.In
 	defer cleanup(15 * time.Minute)
 
 	// Get the list of available nodes for scheduling the pod
-	nodes := nodeutil.ListNodeNames(client)
+	nodes := nodeutil.ListAgentNodeNames(client, t.Pod.IsWindows)
 	if len(nodes) < 1 {
-		ginkgo.Skip("need at least 1 nodes to verify the test case. Current node count is %d", len(nodes))
+		ginkgo.Skip("need at least 1 agent node to verify the test case. Current agent node count is %d", len(nodes))
 	}
 
 	ginkgo.By("deploying the statefulset")

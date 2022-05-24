@@ -50,9 +50,9 @@ type PodNodeScaleUp struct {
 func (t *PodNodeScaleUp) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
 	ctx := context.Background()
 	// Get the list of available nodes for scheduling the pod
-	nodes := nodeutil.ListNodeNames(client)
+	nodes := nodeutil.ListAgentNodeNames(client, t.Pod.IsWindows)
 	if len(nodes) < 2 {
-		ginkgo.Skip("need at least 2 nodes to verify the test case. Current node count is %d", len(nodes))
+		ginkgo.Skip("need at least 2 agent nodes to verify the test case. Current agent node count is %d", len(nodes))
 	}
 
 	//Cordon nodes except for one worker node

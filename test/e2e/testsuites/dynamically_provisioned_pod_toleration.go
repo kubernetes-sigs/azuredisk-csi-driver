@@ -55,10 +55,10 @@ func (t *PodToleration) Run(client clientset.Interface, namespace *v1.Namespace,
 	_, maxMountReplicaCount := azureutils.GetMaxSharesAndMaxMountReplicaCount(t.StorageClassParameters, false)
 
 	// Get the list of available nodes for scheduling the pod
-	nodes := nodeutil.ListNodeNames(client)
+	nodes := nodeutil.ListAgentNodeNames(client, t.Pod.IsWindows)
 	necessaryNodeCount := maxMountReplicaCount + 2
 	if len(nodes) < necessaryNodeCount {
-		ginkgo.Skip("need at least %d nodes to verify the test case. Current node count is %d", necessaryNodeCount, len(nodes))
+		ginkgo.Skip("need at least %d agent nodes to verify the test case. Current agent node count is %d", necessaryNodeCount, len(nodes))
 	}
 
 	ctx := context.Background()

@@ -68,9 +68,10 @@ func scaleTests(isMultiZone bool) {
 		}
 
 		pod := resources.PodDetails{
-			Cmd:       testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
-			Volumes:   resources.NormalizeVolumes(volumes, []string{}, isMultiZone),
-			IsWindows: testconsts.IsWindowsCluster,
+			Cmd:          testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
+			Volumes:      resources.NormalizeVolumes(volumes, []string{}, isMultiZone),
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
 		}
 		test := PodSchedulingWithPVScaleTest{}
 
@@ -100,10 +101,11 @@ func scaleTests(isMultiZone bool) {
 		}
 
 		pod := resources.PodDetails{
-			Cmd:       testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
-			Volumes:   resources.NormalizeVolumes([]resources.VolumeDetails{volume}, []string{}, isMultiZone),
-			IsWindows: testconsts.IsWindowsCluster,
-			UseCMD:    false,
+			Cmd:          testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
+			Volumes:      resources.NormalizeVolumes([]resources.VolumeDetails{volume}, []string{}, isMultiZone),
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
+			UseCMD:       false,
 		}
 
 		test := PodSchedulingOnFailoverScaleTest{}
@@ -135,9 +137,10 @@ func scaleTests(isMultiZone bool) {
 		}
 
 		pod := resources.PodDetails{
-			Cmd:       testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
-			Volumes:   resources.NormalizeVolumes(volumes, []string{}, isMultiZone),
-			IsWindows: testconsts.IsWindowsCluster,
+			Cmd:          testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
+			Volumes:      resources.NormalizeVolumes(volumes, []string{}, isMultiZone),
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
 		}
 
 		test := PodSchedulingWithPVScaleTest{}
@@ -166,9 +169,10 @@ func scaleTests(isMultiZone bool) {
 		}
 
 		pod := resources.PodDetails{
-			Cmd:       testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
-			Volumes:   resources.NormalizeVolumes(volumes, []string{}, isMultiZone),
-			IsWindows: testconsts.IsWindowsCluster,
+			Cmd:          testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
+			Volumes:      resources.NormalizeVolumes(volumes, []string{}, isMultiZone),
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
 		}
 
 		test := PodSchedulingOnFailoverScaleTest{}

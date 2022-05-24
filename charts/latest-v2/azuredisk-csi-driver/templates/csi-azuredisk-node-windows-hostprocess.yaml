@@ -1,4 +1,38 @@
 {{- if and (.Values.windows.enabled) (eq .Values.windows.useHostProcessContainers true) }}
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: {{ .Values.windows.dsName }}-init
+  namespace: {{ .Release.Namespace }}
+data:
+  Initialize-Pod.ps1: |
+    New-Item -ItemType Directory -Path "C:/var/lib/kubelet/plugins/{{ .Values.driver.name }}" -Force
+
+    $server = "https://${env:KUBERNETES_SERVICE_HOST}:${env:KUBERNETES_SERVICE_PORT_HTTPS}"
+    $kubeconfig = @"
+    apiVersion: v1
+    kind: Config
+    clusters:
+    - cluster:
+        certificate-authority: ca.crt
+        server: $server
+      name: default
+    contexts:
+    - context:
+        cluster: default
+        namespace: default
+        user: default
+      name: default
+    current-context: default
+    users:
+    - name: default
+      user:
+        tokenFile: token
+    "@
+
+    $kubeconfig | Out-File -Encoding ascii -FilePath "${env:CONTAINER_SANDBOX_MOUNT_POINT}/var/run/secrets/kubernetes.io/serviceaccount/kubeconfig.conf"
+---
 kind: DaemonSet
 apiVersion: apps/v1
 metadata:
@@ -49,12 +83,11 @@ spec:
           command:
             - "powershell.exe"
             - "-c"
-            - "New-Item"
-            - "-ItemType"
-            - "Directory"
-            - "-Path"
-            - "C:\\var\\lib\\kubelet\\plugins\\{{ .Values.driver.name }}\\"
-            - "-Force"
+            - ".\\etc\\config\\Initialize-Pod.ps1"
+          volumeMounts:
+            - name: init-script
+              mountPath: /etc/config
+              readOnly: true
       containers:
         - name: liveness-probe
 {{- if hasPrefix "/" .Values.image.livenessProbe.repository }}
@@ -115,11 +148,14 @@ spec:
           command:
             - "azurediskplugin.exe"
           args:
+            - "--kubeconfig=.\\var\\run\\secrets\\kubernetes.io\\serviceaccount\\kubeconfig.conf"
             - "--v={{ .Values.node.logLevel }}"
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--nodeid=$(KUBE_NODE_NAME)"
             - "--metrics-address=0.0.0.0:{{ .Values.node.metricsPort }}"
+            - "--is-node-plugin=true"
             - "--drivername={{ .Values.driver.name }}"
+            - "--driver-object-namespace={{ .Values.driver.objectNamespace }}"
             - "--volume-attach-limit={{ .Values.driver.volumeAttachLimit }}"
             - "--cloud-config-secret-name={{ .Values.node.cloudConfigSecretName }}"
             - "--cloud-config-secret-namespace={{ .Values.node.cloudConfigSecretNamespace }}"
@@ -127,6 +163,7 @@ spec:
             - "--user-agent-suffix={{ .Values.driver.userAgentSuffix }}"
             - "--allow-empty-cloud-config={{ .Values.node.allowEmptyCloudConfig }}"
             - "--support-zone={{ .Values.node.supportZone }}"
+            - "--get-node-info-from-labels={{ .Values.windows.getNodeInfoFromLabels }}"
           ports:
             - containerPort: {{ .Values.node.livenessProbe.healthPort }}
               name: healthz
@@ -160,4 +197,11 @@ spec:
               value: C:\k\azurestackcloud.json
             {{- end }}
           imagePullPolicy: {{ .Values.image.azuredisk.pullPolicy }}
+      volumes:
+        - name: init-script
+          configMap:
+            name: {{ .Values.windows.dsName }}-init
+            items:
+              - key: "Initialize-Pod.ps1"
+                path: "Initialize-Pod.ps1"
 {{- end -}}

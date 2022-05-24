@@ -68,8 +68,9 @@ const (
 	ReportDirEnvVar  = "ARTIFACTS"
 	DefaultReportDir = "/workspace/_artifacts"
 
-	testMigrationEnvVar     = "TEST_MIGRATION"
-	testWindowsEnvVar       = "TEST_WINDOWS"
+	TestMigrationEnvVar     = "TEST_MIGRATION"
+	TestWindowsEnvVar       = "TEST_WINDOWS"
+	TestWinServerVerEnvVar  = "WINDOWS_SERVER_VERSION"
 	CloudNameEnvVar         = "AZURE_CLOUD_NAME"
 	inTreeStorageClass      = "kubernetes.io/azure-disk"
 	BuildV2Driver           = "BUILD_V2"
@@ -91,7 +92,12 @@ const (
 	testLabelKey        = "test-label-key"
 	testLabelValue      = "test-label-value"
 
-	MasterNodeLabel = "node-role.kubernetes.io/master"
+	OsNodeLabel           = "kubernetes.io/os"
+	ControlPlaneNodeLabel = "node-role.kubernetes.io/control-plane"
+	MasterNodeLabel       = "node-role.kubernetes.io/master"
+
+	LinuxOsNodeLabelValue   = "linux"
+	WindowsOsNodeLabelValue = "windows"
 )
 
 var (
@@ -184,8 +190,9 @@ var (
 	}
 
 	IsUsingInTreeVolumePlugin   = os.Getenv(AzureDriverNameVar) == inTreeStorageClass
-	IsTestingMigration          = os.Getenv(testMigrationEnvVar) != ""
-	IsWindowsCluster            = os.Getenv(testWindowsEnvVar) != ""
+	IsTestingMigration          = os.Getenv(TestMigrationEnvVar) != ""
+	IsWindowsCluster            = os.Getenv(TestWindowsEnvVar) != ""
+	WinServerVer                = os.Getenv(TestWinServerVerEnvVar)
 	IsUsingCSIDriverV2          = strings.EqualFold(os.Getenv(BuildV2Driver), "true")
 	IsUsingOnlyDefaultScheduler = os.Getenv(useOnlyDefaultScheduler) != ""
 	IsAzureStackCloud           = strings.EqualFold(os.Getenv(CloudNameEnvVar), "AZURESTACKCLOUD")

@@ -34,7 +34,7 @@ type AzDiskSchedulerExtenderPodSchedulingWithPVTest struct {
 }
 
 func (t *AzDiskSchedulerExtenderPodSchedulingWithPVTest) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
-	tpod := resources.NewTestPod(client, namespace, t.Pod.Cmd, schedulerName, t.Pod.IsWindows)
+	tpod := resources.NewTestPod(client, namespace, t.Pod.Cmd, schedulerName, t.Pod.IsWindows, t.Pod.WinServerVer)
 	volume := t.Pod.Volumes[0]
 	tpvc, pvcCleanup := volume.SetupDynamicPersistentVolumeClaim(client, namespace, t.CSIDriver, t.StorageClassParameters)
 	for i := range pvcCleanup {
@@ -45,9 +45,9 @@ func (t *AzDiskSchedulerExtenderPodSchedulingWithPVTest) Run(client clientset.In
 	tpod.SetupVolume(tpvc.PersistentVolumeClaim, volumeName, volume.VolumeMount.MountPathGenerate+"1", volume.VolumeMount.ReadOnly)
 
 	// Get the list of available nodes for scheduling the pod
-	nodeNames := nodeutil.ListNodeNames(client)
+	nodeNames := nodeutil.ListAgentNodeNames(client, t.Pod.IsWindows)
 	if len(nodeNames) < 1 {
-		ginkgo.Skip("need at least 1 nodes to verify the test case. Current node count is %d", len(nodeNames))
+		ginkgo.Skip("need at least 1 agent node to verify the test case. Current agent node count is %d", len(nodeNames))
 	}
 
 	ginkgo.By("deploying the pod")
