@@ -1525,7 +1525,6 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	ginkgo.It("Should test pod failover with cordoning a node using ZRS", func() {
 		testutil.SkipIfUsingInTreeVolumePlugin()
 		testutil.SkipIfNotZRSSupported(location)
-		testutil.SkipIfTestingInWindowsCluster()
 
 		volume := resources.VolumeDetails{
 			ClaimSize: "10Gi",
@@ -1581,9 +1580,6 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			testutil.SkipIfNotZRSSupported(location)
 			skuName = "StandardSSD_ZRS"
 		}
-
-		// BUG: Issue #1349 Test case currently fails on Windows
-		testutil.SkipIfTestingInWindowsCluster()
 
 		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
 		if err != nil {
