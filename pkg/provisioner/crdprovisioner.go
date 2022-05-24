@@ -420,8 +420,8 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 			// if volume is still being deleted, don't update
 			return nil
 		}
-		// otherwise update the AzVolume with delete request annotation
 		w.AnnotateObject(updateInstance)
+		// otherwise update the AzVolume with delete request annotation
 		updateInstance.Status.Annotations = azureutils.AddToMap(updateInstance.Status.Annotations, consts.VolumeDeleteRequestAnnotation, "cloud-delete-volume")
 		// remove deletion failure error from AzVolume CRI to retrigger deletion
 		updateInstance.Status.Error = nil

@@ -68,7 +68,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 	if azVolumeAttachment.Spec.RequestedRole == azdiskv1beta2.PrimaryRole {
 		// Deletion Event
 		if objectDeletionRequested(azVolumeAttachment) {
-			if volumeDetachRequested(azVolumeAttachment) {
+			if volumeDetachRequested(azVolumeAttachment) && !r.controllerSharedState.isDriverUninstall() {
 				// If primary attachment is marked for deletion, queue garbage collection for replica attachments
 				r.triggerGarbageCollection(ctx, azVolumeAttachment.Spec.VolumeName) //nolint:contextcheck // Garbage collection is asynchronous; context is not inherited by design
 			}

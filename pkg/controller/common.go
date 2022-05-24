@@ -21,6 +21,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"reflect"
 	"sort"
 	"strings"
@@ -32,6 +33,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	v1 "k8s.io/api/core/v1"
+	crd "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	crdClientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
+	crdInformers "k8s.io/apiextensions-apiserver/pkg/client/informers/externalversions"
 	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -41,6 +45,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/component-helpers/scheduling/corev1/nodeaffinity"
+	"k8s.io/klog/v2"
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	azdiskinformers "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions"
@@ -237,6 +242,7 @@ func newLockableEntry(entry interface{}) *lockableEntry {
 
 type SharedState struct {
 	recoveryComplete              uint32
+	driverUninstall               uint32
 	driverName                    string
 	objectNamespace               string
 	topologyKey                   string
@@ -260,10 +266,36 @@ type SharedState struct {
 	conditionWatcher              *watcher.ConditionWatcher
 }
 
-func NewSharedState(driverName, objectNamespace, topologyKey string, eventRecorder record.EventRecorder, cachedClient client.Client, azClient azdisk.Interface, kubeClient kubernetes.Interface) *SharedState {
-	newSharedState := &SharedState{driverName: driverName, objectNamespace: objectNamespace, topologyKey: topologyKey, eventRecorder: eventRecorder, cachedClient: cachedClient, azClient: azClient, kubeClient: kubeClient, conditionWatcher: watcher.New(context.Background(), azClient, azdiskinformers.NewSharedInformerFactory(azClient, consts.DefaultInformerResync), objectNamespace)}
+func NewSharedState(ctx context.Context, driverName, objectNamespace, topologyKey string, eventRecorder record.EventRecorder, cachedClient client.Client, azClient azdisk.Interface, kubeClient kubernetes.Interface, crdClient crdClientset.Interface) *SharedState {
+	newSharedState := &SharedState{driverName: driverName, objectNamespace: objectNamespace, topologyKey: topologyKey, eventRecorder: eventRecorder, cachedClient: cachedClient, azClient: azClient, kubeClient: kubeClient, conditionWatcher: watcher.New(ctx, azClient, azdiskinformers.NewSharedInformerFactory(azClient, consts.DefaultInformerResync), objectNamespace)}
+	if crdClient != nil {
+		crdInformerFactory := crdInformers.NewSharedInformerFactoryWithOptions(crdClient, consts.DefaultInformerResync)
+		crdInformer := crdInformerFactory.Apiextensions().V1().CustomResourceDefinitions().Informer()
+		crdInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc: nil,
+			UpdateFunc: func(_ interface{}, new interface{}) {
+				crdObj := new.(*crd.CustomResourceDefinition)
+				if objectDeletionRequested(crdObj) && (crdObj.Name == consts.AzVolumeAttachmentCRDName || crdObj.Name == consts.AzVolumeCRDName) {
+					atomic.AddUint32(&newSharedState.driverUninstall, 1)
+				}
+			},
+			DeleteFunc: nil,
+		})
+
+		go crdInformerFactory.Start(ctx.Done())
+
+		synced := cache.WaitForCacheSync(ctx.Done(), crdInformer.HasSynced)
+		if !synced {
+			klog.Fatalf("Unable to sync caches for CRDs")
+			os.Exit(1)
+		}
+	}
 	newSharedState.createReplicaRequestsQueue()
 	return newSharedState
+}
+
+func (c *SharedState) isDriverUninstall() bool {
+	return atomic.LoadUint32(&c.driverUninstall) > 0
 }
 
 func (c *SharedState) isRecoveryComplete() bool {
@@ -1767,8 +1799,8 @@ func isDemotionRequested(attachment *azdiskv1beta2.AzVolumeAttachment) bool {
 	return attachment != nil && attachment.Status.Detail != nil && attachment.Status.Detail.Role == azdiskv1beta2.PrimaryRole && attachment.Spec.RequestedRole == azdiskv1beta2.ReplicaRole
 }
 
-func isPreProvisionCleanupRequested(volume *azdiskv1beta2.AzVolume) bool {
-	return volume != nil && azureutils.MapContains(volume.Status.Annotations, consts.PreProvisionedVolumeCleanupAnnotation)
+func isPreProvisioned(volume *azdiskv1beta2.AzVolume) bool {
+	return volume != nil && azureutils.MapContains(volume.Status.Annotations, consts.PreProvisionedVolumeAnnotation)
 }
 
 func getQualifiedName(namespace, name string) string {

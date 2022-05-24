@@ -107,8 +107,8 @@ func (r *ReconcileAttachDetach) Reconcile(ctx context.Context, request reconcile
 		return reconcileReturnOnSuccess(azVolumeAttachment.Name, r.retryInfo)
 	}
 
-	// detachment request
-	if objectDeletionRequested(azVolumeAttachment) {
+	// detachment request or driver uninstallation request
+	if objectDeletionRequested(azVolumeAttachment) || r.controllerSharedState.isDriverUninstall() {
 		if err := r.triggerDetach(ctx, azVolumeAttachment); err != nil {
 			return reconcileReturnOnError(ctx, azVolumeAttachment, "detach", err, r.retryInfo)
 		}
@@ -305,10 +305,14 @@ func (r *ReconcileAttachDetach) triggerDetach(ctx context.Context, azVolumeAttac
 	var err error
 	ctx, w := workflow.New(ctx)
 	defer func() { w.Finish(err) }()
+
 	// only detach if detachment request was made for underlying volume attachment object
+	isDriverUninstall := r.controllerSharedState.isDriverUninstall()
 	detachmentRequested := volumeDetachRequested(azVolumeAttachment)
 
-	if detachmentRequested {
+	shouldDetach := detachmentRequested
+
+	if shouldDetach {
 		defer r.stateLock.Delete(azVolumeAttachment.Name)
 		if _, ok := r.stateLock.LoadOrStore(azVolumeAttachment.Name, nil); ok {
 			return getOperationRequeueError("detach", azVolumeAttachment)
@@ -317,7 +321,11 @@ func (r *ReconcileAttachDetach) triggerDetach(ctx context.Context, azVolumeAttac
 		updateFunc := func(obj client.Object) error {
 			azv := obj.(*azdiskv1beta2.AzVolumeAttachment)
 			// Update state to detaching
-			_, derr := updateState(azv, azdiskv1beta2.Detaching, normalUpdate)
+			updateMode := normalUpdate
+			if isDriverUninstall {
+				updateMode = forceUpdate
+			}
+			_, derr := updateState(azv, azdiskv1beta2.Detaching, updateMode)
 			return derr
 		}
 

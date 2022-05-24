@@ -214,11 +214,11 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *azdiskv
 	defer func() { w.Finish(err) }()
 
 	// Determine if this is a controller server requested deletion or driver clean up
+	isPreProvisioned := isPreProvisioned(azVolume)
 	volumeDeleteRequested := volumeDeleteRequested(azVolume)
-	preProvisionCleanupRequested := isPreProvisionCleanupRequested(azVolume)
 
 	mode := deleteCRIOnly
-	if volumeDeleteRequested || preProvisionCleanupRequested {
+	if volumeDeleteRequested || isPreProvisioned {
 		mode = detachAndDeleteCRI
 	}
 
@@ -230,9 +230,8 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *azdiskv
 		}
 	}()
 
-	// only try deleting underlying volume 1) if volume creation was successful and 2) volumeDeleteRequestAnnotation is present
-	// if the annotation is not present, only delete the CRI and not the underlying volume
-	if isCreated(azVolume) && mode == detachAndDeleteCRI {
+	// delete CRI only when either 1) volume is not created, 2) driver is uninstalling, or 3) volume is pre-provisioned
+	if isCreated(azVolume) && volumeDeleteRequested {
 		// requeue if AzVolume's state is being updated by a different worker
 		defer r.stateLock.Delete(azVolume.Name)
 		if _, ok := r.stateLock.LoadOrStore(azVolume.Name, nil); ok {
