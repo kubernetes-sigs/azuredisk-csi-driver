@@ -71,9 +71,9 @@ func GetLeaderControllerPod(clientsetK8s kubernetes.Interface) *v1.Pod {
 	node := strings.Split(holder, "_")[0]
 
 	// Get pod name of the leader controller
-	pods, err := clientsetK8s.CoreV1().Pods(consts.ReleaseNamespace).List(context.Background(), metav1.ListOptions{
+	pods, err := clientsetK8s.CoreV1().Pods(GetReleaseNamespace()).List(context.Background(), metav1.ListOptions{
 		FieldSelector: "spec.nodeName=" + node,
-		LabelSelector: "app=" + IsV2InstalledSideBySide() + "-controller",
+		LabelSelector: "app=" + GetDriverInstallationType() + "-controller",
 	})
 	if err != nil {
 		panic(err.Error())

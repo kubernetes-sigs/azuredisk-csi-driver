@@ -27,7 +27,6 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
 // nodeCmd represents the node command
@@ -70,9 +69,9 @@ func init() {
 
 func GetAzurediskPodFromNode(clientsetK8s kubernetes.Interface, node string) *v1.Pod {
 	// Get pod name of the azuredisk2-node running on given node
-	pods, err := clientsetK8s.CoreV1().Pods(consts.ReleaseNamespace).List(context.Background(), metav1.ListOptions{
+	pods, err := clientsetK8s.CoreV1().Pods(GetReleaseNamespace()).List(context.Background(), metav1.ListOptions{
 		FieldSelector: "spec.nodeName=" + node,
-		LabelSelector: "app=" + IsV2InstalledSideBySide() + "-node",
+		LabelSelector: "app=" + GetDriverInstallationType() + "-node",
 	})
 	if err != nil {
 		panic(err.Error())
