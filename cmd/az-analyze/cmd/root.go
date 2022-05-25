@@ -69,7 +69,7 @@ func initConfig() {
 	} else {
 		// Search config in home directory with name ".az-analyze" (without extension).
 		viper.SetConfigType("yaml")
-		viper.AddConfigPath("./config")
+		viper.AddConfigPath("/var/tmp/azuredisk-csi-driver/cmd/az-analyze/config")
 		viper.SetConfigName("az-analyze")
 	}
 
