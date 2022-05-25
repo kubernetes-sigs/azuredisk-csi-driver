@@ -110,9 +110,9 @@ func TimestampFormatValidation(sinceTime string) (time.Time, error) {
 	return t, nil
 }
 
-func LogTimeFilter(log string, sinceTime string) bool {
-	isMatch, _ := regexp.MatchString(KlogTimeFormat, log)
-	return isMatch && len(log) > 21 && log[1:21] >= sinceTime
+func LogTimeFilter(log *string, sinceTime string) bool {
+	isMatch, _ := regexp.MatchString(KlogTimeFormat, *log)
+	return isMatch && len(*log) > 21 && (*log)[1:21] >= sinceTime
 }
 
 func LogFilter(buf *bufio.Scanner, volumes []string, nodes []string, requestIds []string, sinceTime string) {
@@ -127,7 +127,7 @@ func LogFilter(buf *bufio.Scanner, volumes []string, nodes []string, requestIds 
 		log := buf.Text()
 
 		if !isAfterTime {
-			isAfterTime = LogTimeFilter(log, sinceTime)
+			isAfterTime = LogTimeFilter(&log, sinceTime)
 		}
 
 		if isAfterTime {

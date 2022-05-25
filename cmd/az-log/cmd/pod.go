@@ -26,6 +26,7 @@ import (
 
 	"github.com/spf13/cobra"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
@@ -97,7 +98,12 @@ func GetLogsByAzDriverPod(clientsetK8s kubernetes.Interface, podName string, con
 		req := clientsetK8s.CoreV1().Pods(GetReleaseNamespace()).GetLogs(podName, &podLogOptions[i])
 		podLogs, err := req.Stream(context.TODO())
 		if err != nil {
-			panic(err.Error())
+			if errors.IsBadRequest(err) {
+				fmt.Println(err)
+				os.Exit(0)
+			} else {
+				panic(err.Error())
+			}
 		}
 
 		defer podLogs.Close()
