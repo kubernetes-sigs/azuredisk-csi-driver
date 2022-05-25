@@ -81,9 +81,10 @@ func preparePublishPath(path string, m *mount.SafeFormatAndMount) error {
 }
 
 func CleanupMountPoint(path string, m *mount.SafeFormatAndMount, extensiveCheck bool) error {
-	// CSI proxy alpha does not support fixing the corrupted directory. So we will
-	// just do the unmount for now.
-	return m.Unmount(path)
+	if proxy, ok := m.Interface.(mounter.CSIProxyMounter); ok {
+		return proxy.Unmount(path)
+	}
+	return fmt.Errorf("could not cast to csi proxy class")
 }
 
 func getDevicePathWithMountPath(mountPath string, m *mount.SafeFormatAndMount) (string, error) {
