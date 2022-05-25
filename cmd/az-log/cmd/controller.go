@@ -18,7 +18,8 @@ package cmd
 
 import (
 	"context"
-	"errors"
+	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -79,7 +80,8 @@ func GetLeaderControllerPod(clientsetK8s kubernetes.Interface) *v1.Pod {
 		panic(err.Error())
 	}
 	if len(pods.Items) != 1 {
-		panic(errors.New("zero or more than one controller plugins were found"))
+		fmt.Println("zero or more than one controller plugins were found")
+		os.Exit(0)
 	}
 
 	return &pods.Items[0]
