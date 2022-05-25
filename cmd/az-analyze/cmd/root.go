@@ -29,10 +29,8 @@ var cfgFile string
 var rootCmd = &cobra.Command{
 	Use:   "az-analyze",
 	Short: "Azure Disk CSI Driver Debugging and Analysis Tools",
-	Long: `Azure Disk CSI Driver Debugging and Analysis Tools to facilitate analysis and debugging of the Azure Disk CSI Driver
-in Kubernetes cluster, including:
-  Storage Analysis tool: a command-line tool that enables exploration of Azure Disk CSI Driver custom resources;
-  Log Analysis tool:     a command-line tool that enable gathering of Azure Disk CSI Driver logs for specific operations.`,
+	Long: `Storage analysis tool will enable users to get the relevant data about the Kubernetes objects
+and custom resources in relation to each other`,
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
 	//	Run: func(cmd *cobra.Command, args []string) { },
