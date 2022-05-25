@@ -99,8 +99,12 @@ func GetLogsByAzDriverPod(clientsetK8s kubernetes.Interface, podName string, con
 		podLogs, err := req.Stream(context.TODO())
 		if err != nil {
 			if errors.IsBadRequest(err) {
-				fmt.Println(err)
-				os.Exit(0)
+				if podLogOptions[i].Previous == true {
+					continue;
+				} else {
+					fmt.Println(err)
+					os.Exit(0)
+				}
 			} else {
 				panic(err.Error())
 			}
