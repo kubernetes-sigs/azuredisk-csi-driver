@@ -780,7 +780,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			CSIDriver:              testDriver,
 			Volume:                 volume,
 			Pod:                    pod,
-			ResizeOffline:          true,
+			ResizeOffline:          isWindowsCluster,
 			StorageClassParameters: map[string]string{"skuName": "Standard_LRS"},
 		}
 		if !isUsingInTreeVolumePlugin && supportsZRS {
@@ -794,7 +794,6 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 
 	ginkgo.It("should create a volume on demand and dynamically resize it without detaching [disk.csi.azure.com] ", func() {
 		skipIfUsingInTreeVolumePlugin()
-		skipIfNotDynamicallyResizeSuported()
 		//Subscription must be registered for LiveResize
 		volume := testsuites.VolumeDetails{
 			ClaimSize: "10Gi",
@@ -826,7 +825,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			CSIDriver:              testDriver,
 			Volume:                 volume,
 			Pod:                    pod,
-			ResizeOffline:          false,
+			ResizeOffline:          isWindowsCluster,
 			StorageClassParameters: map[string]string{"skuName": "Standard_LRS"},
 		}
 		test.Run(cs, ns)
@@ -834,7 +833,6 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 
 	ginkgo.It("should create a block volume on demand and dynamically resize it without detaching [disk.csi.azure.com] ", func() {
 		skipIfUsingInTreeVolumePlugin()
-		skipIfNotDynamicallyResizeSuported()
 		//Subscription must be registered for LiveResize
 		volume := testsuites.VolumeDetails{
 			ClaimSize: "10Gi",
@@ -867,7 +865,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			CSIDriver:              testDriver,
 			Volume:                 volume,
 			Pod:                    pod,
-			ResizeOffline:          false,
+			ResizeOffline:          isWindowsCluster,
 			StorageClassParameters: map[string]string{"skuName": "Standard_LRS"},
 		}
 		test.Run(cs, ns)
@@ -980,7 +978,6 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 
 	ginkgo.It("Should test pod failover with cordoning a node", func() {
 		skipIfUsingInTreeVolumePlugin()
-		skipIfTestingInWindowsCluster()
 		if isMultiZone {
 			ginkgo.Skip("test case does not apply to multi az case")
 		}
@@ -1035,7 +1032,6 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	ginkgo.It("Should test pod failover with cordoning a node using ZRS", func() {
 		skipIfUsingInTreeVolumePlugin()
 		skipIfNotZRSSupported()
-		skipIfTestingInWindowsCluster()
 
 		volume := testsuites.VolumeDetails{
 			ClaimSize: "10Gi",

@@ -61,7 +61,6 @@ var (
 	isAzureStackCloud         = strings.EqualFold(os.Getenv(cloudNameEnvVar), "AZURESTACKCLOUD")
 	location                  string
 	supportsZRS               bool
-	supportsDynamicResize     bool
 )
 
 type testCmd struct {
@@ -100,35 +99,6 @@ var _ = ginkgo.BeforeSuite(func() {
 
 		if location == "westus2" || location == "westeurope" || location == "northeurope" || location == "francecentral" {
 			supportsZRS = true
-		}
-
-		dynamicResizeZones := []string{
-			"westcentralus",
-			"francesouth",
-			"westindia",
-			"norwaywest",
-			"eastasia",
-			"francecentral",
-			"germanywestcentral",
-			"japanwest",
-			"southafricanorth",
-			"jioindiawest",
-			"canadacentral",
-			"australiacentral",
-			"japaneast",
-			"northeurope",
-			"centralindia",
-			"uaecentral",
-			"switzerlandwest",
-			"brazilsouth",
-			"uksouth"}
-
-		supportsDynamicResize = false
-		for _, zone := range dynamicResizeZones {
-			if location == zone {
-				supportsDynamicResize = true
-				break
-			}
 		}
 
 		// Install Azure Disk CSI Driver on cluster from project root
@@ -314,12 +284,6 @@ func skipIfOnAzureStackCloud() {
 func skipIfNotZRSSupported() {
 	if !supportsZRS {
 		ginkgo.Skip("test case not supported on regions without ZRS")
-	}
-}
-
-func skipIfNotDynamicallyResizeSuported() {
-	if !supportsDynamicResize {
-		ginkgo.Skip("test case not supported on regions without dynamic resize support")
 	}
 }
 
