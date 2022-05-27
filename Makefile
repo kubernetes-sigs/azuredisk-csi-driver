@@ -147,7 +147,7 @@ else
 endif
 
 .PHONY: e2e-upgrade-v2
-e2e-upgrade-v2: 
+e2e-upgrade-v2:
 	USE_HELM_UPGRADE=true BUILD_V2=true $(MAKE) e2e-bootstrap
 
 .PHONY: install-helm
@@ -216,7 +216,7 @@ container-windows:
 		--file ./pkg/azurediskplugin/Windows.Dockerfile \
 		--build-arg ARCH=${ARCH} \
 		--build-arg PLUGIN_NAME=${PLUGIN_NAME} \
-		--build-arg OSVERSION=$(OSVERSION) 
+		--build-arg OSVERSION=$(OSVERSION)
 
 .PHONY: azdiskschedulerextender-container
 azdiskschedulerextender-container: azdiskschedulerextender
@@ -250,7 +250,7 @@ azdiskschedulerextender-all: container-setup
 		ARCH=$${arch} $(MAKE) azdiskschedulerextender; \
 		ARCH=$${arch} $(MAKE) azdiskschedulerextender-container-linux; \
 	done
-	
+
 .PHONY: container-all
 container-all: azuredisk-windows container-setup
 	for arch in $(ALL_ARCH.linux); do \
@@ -263,7 +263,7 @@ container-all: azuredisk-windows container-setup
 
 .PHONY: push-manifest
 push-manifest:
-	docker manifest create --amend $(IMAGE_TAG) $(foreach osarch, $(ALL_OS_ARCH), $(IMAGE_TAG)-${osarch}) 
+	docker manifest create --amend $(IMAGE_TAG) $(foreach osarch, $(ALL_OS_ARCH), $(IMAGE_TAG)-${osarch})
 	# add "os.version" field to windows images (based on https://github.com/kubernetes/kubernetes/blob/master/build/pause/Makefile)
 	set -x; \
 	for arch in $(ALL_ARCH.windows); do \
@@ -360,7 +360,7 @@ override POD_FAILOVER_IMAGE_VERSION = $(GIT_COMMIT)
 endif
 .PHONY: pod-failover-test-containers
 pod-failover-test-containers:
-	CGO_ENABLED=0 go build -a -mod vendor -o _output/${ARCH}/workloadPod ./test/podFailover/workload 
+	CGO_ENABLED=0 go build -a -mod vendor -o _output/${ARCH}/workloadPod ./test/podFailover/workload
 	CGO_ENABLED=0 go build -a -mod vendor -o _output/${ARCH}/controllerPod ./test/podFailover/controller
 	CGO_ENABLED=0 go build  -o _output/${ARCH}/metricsPod ./test/podFailover/metrics
 	docker build -t $(REGISTRY)/workloadpod:$(POD_FAILOVER_IMAGE_VERSION) -f ./test/podFailover/workload/Dockerfile .
@@ -373,3 +373,17 @@ pod-failover-test-containers:
 .PHONY: upgrade-test
 upgrade-test:
 	go test -v -timeout=0 ${GOTAGS} ./test/upgrade
+
+.PHONY: install-az-analyze
+install-az-analyze:
+	go install ./cmd/az-analyze
+	mkdir -p /var/tmp/azuredisk-csi-driver/cmd/az-analyze/config
+	rm -f /var/tmp/azuredisk-csi-driver/cmd/az-analyze/config/az-analyze.yaml
+	ln -s $(PWD)/cmd/az-analyze/config/az-analyze.yaml /var/tmp/azuredisk-csi-driver/cmd/az-analyze/config/az-analyze.yaml
+
+.PHONY: install-az-log
+install-az-log:
+	go install ./cmd/az-log
+	mkdir -p /var/tmp/azuredisk-csi-driver/cmd/az-log/config
+	rm -f /var/tmp/azuredisk-csi-driver/cmd/az-log/config/az-log.yaml
+	ln -s $(PWD)/cmd/az-log/config/az-log.yaml /var/tmp/azuredisk-csi-driver/cmd/az-log/config/az-log.yaml
