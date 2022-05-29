@@ -123,6 +123,7 @@ ifdef TEST_WINDOWS
 		--set windows.useHostProcessContainers=${WINDOWS_USE_HOST_PROCESS_CONTAINERS} \
 		--set linux.enabled=false \
 		--set controller.replicas=1 \
+		--set controller.runOnMaster=true \
 		--set controller.logLevel=6 \
 		--set node.logLevel=6 \
 		--set cloud=$(CLOUD)
