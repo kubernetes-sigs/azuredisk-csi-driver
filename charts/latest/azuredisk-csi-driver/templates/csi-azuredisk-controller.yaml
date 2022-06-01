@@ -26,7 +26,11 @@ spec:
       nodeSelector:
         kubernetes.io/os: linux
         {{- if .Values.controller.runOnMaster}}
+            {{- if ge .Capabilities.KubeVersion.Minor "25" }}
+        node-role.kubernetes.io/control-plane: ""
+            {{- else }}
         node-role.kubernetes.io/master: ""
+            {{- end }}
         {{- end}}
       priorityClassName: system-cluster-critical
 {{- with .Values.controller.tolerations }}
