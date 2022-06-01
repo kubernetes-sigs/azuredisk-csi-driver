@@ -37,6 +37,7 @@ import (
 	azurediskInformers "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/watcher"
 )
 
 const (
@@ -147,14 +148,14 @@ func NewTestCrdProvisioner(controller *gomock.Controller) *CrdProvisioner {
 	return &CrdProvisioner{
 		azDiskClient:     fakeDiskClient,
 		namespace:        testNameSpace,
-		conditionWatcher: newConditionWatcher(context.Background(), fakeDiskClient, informerFactory, testNameSpace),
+		conditionWatcher: watcher.New(context.Background(), fakeDiskClient, informerFactory, testNameSpace),
 	}
 }
 
 func UpdateTestCrdProvisionerWithNewClient(provisioner *CrdProvisioner, azDiskClient azDiskClientSet.Interface) {
 	informerFactory := azurediskInformers.NewSharedInformerFactory(azDiskClient, testResync)
 	provisioner.azDiskClient = azDiskClient
-	provisioner.conditionWatcher = newConditionWatcher(context.Background(), azDiskClient, informerFactory, testNameSpace)
+	provisioner.conditionWatcher = watcher.New(context.Background(), azDiskClient, informerFactory, testNameSpace)
 }
 
 func TestCrdProvisionerCreateVolume(t *testing.T) {

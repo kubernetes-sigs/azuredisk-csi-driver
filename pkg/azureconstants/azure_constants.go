@@ -131,6 +131,7 @@ const (
 	CRIUpdateRetryDuration  = time.Duration(1) * time.Second
 	CRIUpdateRetryFactor    = 3.0
 	CRIUpdateRetryStep      = 5
+	DefaultInformerResync   = time.Duration(30) * time.Second
 	ZonedField              = "zoned"
 	NormalUpdateMaxNetRetry = 0
 	ForcedUpdateMaxNetRetry = 10

@@ -70,6 +70,7 @@ func TestReplicaReconcile(t *testing.T) {
 				replicaAttachment := testReplicaAzVolumeAttachment
 				now := metav1.Time{Time: metav1.Now().Add(-1000)}
 				replicaAttachment.DeletionTimestamp = &now
+				replicaAttachment.Status.State = diskv1beta1.Detaching
 
 				newVolume := testAzVolume0.DeepCopy()
 				newVolume.Status.Detail = &diskv1beta1.AzVolumeStatusDetail{
