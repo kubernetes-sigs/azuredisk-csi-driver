@@ -63,6 +63,7 @@ var (
 	vmssCacheTTLInSeconds      = flag.Int64("vmss-cache-ttl-seconds", -1, "vmss cache TTL in seconds (600 by default)")
 )
 
+// main func
 func main() {
 	flag.Parse()
 	if *version {
