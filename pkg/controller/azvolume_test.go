@@ -211,10 +211,7 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 				require.False(t, result.Requeue)
 				conditionFunc := func() (bool, error) {
 					azVolume, localError := controller.controllerSharedState.azClient.DiskV1beta2().AzVolumes(testAzVolume0.Namespace).Get(context.TODO(), testAzVolume0.Name, metav1.GetOptions{})
-					if localError != nil {
-						return false, nil
-					}
-					return azVolume.Status.State == azdiskv1beta2.VolumeDeleted, nil
+					return len(azVolume.Finalizers) == 0, localError
 				}
 				conditionError := wait.PollImmediate(verifyCRIInterval, verifyCRITimeout, conditionFunc)
 				require.NoError(t, conditionError)
@@ -263,7 +260,7 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 				checkAzVolumeDeletion := func() (bool, error) {
 					var azVolume azdiskv1beta2.AzVolume
 					err := controller.controllerSharedState.cachedClient.Get(context.Background(), types.NamespacedName{Namespace: controller.controllerSharedState.objectNamespace, Name: testPersistentVolume0Name}, &azVolume)
-					return azVolume.Status.State == azdiskv1beta2.VolumeDeleted, err
+					return len(azVolume.Finalizers) == 0, err
 				}
 				err = wait.PollImmediate(verifyCRIInterval, verifyCRITimeout, checkAzVolumeDeletion)
 				require.NoError(t, err)

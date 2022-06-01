@@ -1024,9 +1024,9 @@ func initDiskControllers(az *Cloud) error {
 	attachBatchFn := func(ctx context.Context, key string, values []interface{}) ([]interface{}, error) {
 		subscriptionID, resourceGroup, nodeName := metrics.AttributesFromKey(key)
 
-		disksToAttach := make([]attachDiskParams, len(values))
+		disksToAttach := make([]*AttachDiskParams, len(values))
 		for i, value := range values {
-			disksToAttach[i] = value.(attachDiskParams)
+			disksToAttach[i] = value.(*AttachDiskParams)
 		}
 
 		lunChans, err := common.attachDiskBatchToNode(ctx, subscriptionID, resourceGroup, types.NodeName(nodeName), disksToAttach)
@@ -1049,9 +1049,9 @@ func initDiskControllers(az *Cloud) error {
 	detachBatchFn := func(ctx context.Context, key string, values []interface{}) ([]interface{}, error) {
 		subscriptionID, resourceGroup, nodeName := metrics.AttributesFromKey(key)
 
-		disksToDetach := make([]detachDiskParams, len(values))
+		disksToDetach := make([]*detachDiskParams, len(values))
 		for i, value := range values {
-			disksToDetach[i] = value.(detachDiskParams)
+			disksToDetach[i] = value.(*detachDiskParams)
 		}
 
 		err := common.detachDiskBatchFromNode(ctx, subscriptionID, resourceGroup, types.NodeName(nodeName), disksToDetach)

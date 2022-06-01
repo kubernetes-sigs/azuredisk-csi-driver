@@ -38,6 +38,12 @@ rules:
   - apiGroups: ["disk.csi.azure.com"]
     resources: ["azdrivernodes/status", "azvolumeattachments/status", "azvolumes/status"]
     verbs: ["get", "patch", "update"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["volumeattachments"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["volumeattachments/status"]
+    verbs: ["get", "list", "watch", "update", "patch"]
 
 ---
 
@@ -68,6 +74,9 @@ rules:
     resources: ["persistentvolumes"]
     verbs: ["get", "list", "watch", "update"]
   - apiGroups: [""]
+    resources: ["persistentvolumes/status"]
+    verbs: ["get", "list", "watch", "update"]
+  - apiGroups: [""]
     resources: ["nodes"]
     verbs: ["get", "list", "watch"]
   - apiGroups: ["csi.storage.k8s.io"]
@@ -75,6 +84,9 @@ rules:
     verbs: ["get", "list", "watch"]
   - apiGroups: ["storage.k8s.io"]
     resources: ["volumeattachments"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["volumeattachments/status"]
     verbs: ["get", "list", "watch", "update", "patch"]
   - apiGroups: ["coordination.k8s.io"]
     resources: ["leases"]

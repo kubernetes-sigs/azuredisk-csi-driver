@@ -669,7 +669,7 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 			expectedError:        nil,
 		},
 		{
-			description: "[Success] Update an existing AzVolumeAttachment CRI with no Details and PublishContext for the diskURI and nodeID",
+			description: "[Success] Update an existing AzVolumeAttachment CRI with Error for the diskURI and nodeID",
 			existingAzVolAttachment: []azdiskv1beta2.AzVolumeAttachment{
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -687,7 +687,9 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 						VolumeContext: make(map[string]string),
 						RequestedRole: azdiskv1beta2.PrimaryRole,
 					},
-					Status: azdiskv1beta2.AzVolumeAttachmentStatus{},
+					Status: azdiskv1beta2.AzVolumeAttachmentStatus{
+						Error: &azdiskv1beta2.AzError{},
+					},
 				},
 			},
 			diskURI:              testDiskURI,
@@ -766,7 +768,6 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 				}
 				provisioner.azDiskClient = azdiskfakes.NewSimpleClientset(existingList...)
 			}
-
 			UpdateTestCrdProvisionerWithNewClient(provisioner, provisioner.azDiskClient)
 
 			if tt.definePrependReactor {
@@ -779,6 +780,7 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 					"azvolumeattachments",
 					func(action testingClient.Action) (bool, runtime.Object, error) {
 						objCreated := action.(testingClient.CreateAction).GetObject().(*azdiskv1beta2.AzVolumeAttachment)
+						objCreated.Status.Detail = &successAzVADetail
 
 						var err error
 						if action.GetSubresource() == "" {
@@ -799,11 +801,14 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 					"azvolumeattachments",
 					func(action testingClient.Action) (bool, runtime.Object, error) {
 						objCreated := action.(testingClient.UpdateAction).GetObject().(*azdiskv1beta2.AzVolumeAttachment)
+						objCreated.Status.Detail = &successAzVADetail
+
 						err := tracker.Update(action.GetResource(), objCreated, action.GetNamespace())
 
 						if err != nil {
 							return true, nil, err
 						}
+
 						return true, objCreated, nil
 					})
 			}
@@ -905,6 +910,7 @@ func TestCrdProvisionerWaitForAttach(t *testing.T) {
 					func(action testingClient.Action) (bool, runtime.Object, error) {
 						objCreated := action.(testingClient.UpdateAction).GetObject().(*azdiskv1beta2.AzVolumeAttachment)
 						objCreated.Status.Detail = &successAzVADetail
+						objCreated.Status.State = azdiskv1beta2.Attached
 
 						err := tracker.Update(action.GetResource(), objCreated, action.GetNamespace())
 

@@ -19,11 +19,17 @@ if [[ "$#" -lt 2 ]]; then
   exit 1
 fi
 
+echo "Registering PV object for volume $2"
+test/integration/register-pv.sh $2
+
+echo "Registering volumeattachment object for node $1 and volume $2"
+test/integration/register-volumeattachment.sh $1 $2
+
 echo $0
 
-azVA="$1-$2-attachment"
+azVA="$2-$1-attachment"
 
-until kubectl get azvolumeattachments $azVA -n azure-disk-csi -o=jsonpath='{.status.detail.publish_context}' | grep LUN
+until kubectl get azvolumeattachments $azVA -n azure-disk-csi -o=jsonpath='{.status.state}' | grep Attached
 do
     echo "Waiting for $azVA to be attached" 
     sleep 15

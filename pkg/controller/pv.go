@@ -26,6 +26,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	"k8s.io/kubernetes/pkg/features"
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
@@ -61,21 +63,33 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 
 	var pv corev1.PersistentVolume
 	var azVolume azdiskv1beta2.AzVolume
+	var diskName string
+	var err error
+
 	// Ignore not found errors as they cannot be fixed by a requeue
 	if err := r.controllerSharedState.cachedClient.Get(ctx, request.NamespacedName, &pv); err != nil {
 		if errors.IsNotFound(err) {
+			r.controllerSharedState.deletePV(request.Name)
 			return reconcileReturnOnSuccess(request.Name, r.controllerRetryInfo)
 		}
 		logger.Error(err, "failed to get PV")
 		return reconcileReturnOnError(ctx, &pv, "get", err, r.controllerRetryInfo)
 	}
 
-	// ignore PV-s for non-csi volumes
-	if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != r.controllerSharedState.driverName {
-		return reconcileReturnOnSuccess(pv.Name, r.controllerRetryInfo)
+	// migration case
+	if utilfeature.DefaultFeatureGate.Enabled(features.CSIMigration) &&
+		utilfeature.DefaultFeatureGate.Enabled(features.CSIMigrationAzureDisk) &&
+		pv.Spec.AzureDisk != nil {
+		diskName = pv.Spec.AzureDisk.DiskName
+	} else {
+		// ignore PV-s for non-csi volumes
+		if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != r.controllerSharedState.driverName {
+			return reconcileReturnOnSuccess(pv.Name, r.controllerRetryInfo)
+		}
+		diskName, err = azureutils.GetDiskName(pv.Spec.CSI.VolumeHandle)
 	}
+
 	// get the AzVolume name for the PV
-	diskName, err := azureutils.GetDiskName(pv.Spec.CSI.VolumeHandle)
 	azVolumeName := strings.ToLower(diskName)
 	// ignoring cases when we can't get the disk name from volumehandle as this error will not be fixed with a requeue
 	if err != nil {
@@ -142,12 +156,40 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 		return reconcileReturnOnSuccess(pv.Name, r.controllerRetryInfo)
 	}
 
-	if azVolume.Spec.PersistentVolume == "" {
-		err := azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, &azVolume, func(obj interface{}) error {
+	var azVolumeUpdateFunc func(interface{}) error
+
+	if azVolume.Spec.PersistentVolume != pv.Name {
+		azVolumeUpdateFunc = func(obj interface{}) error {
 			azVolume := obj.(*azdiskv1beta2.AzVolume)
 			azVolume.Spec.PersistentVolume = pv.Name
 			return nil
-		}, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRI)
+		}
+	}
+
+	// if AzVolume's PVC Labels are not up to date, update them
+	pvcName, pvcLabelExists := azureutils.GetFromMap(azVolume.Labels, consts.PvcNameLabel)
+	pvcNamespace, pvcNamespaceLabelExists := azureutils.GetFromMap(azVolume.Labels, consts.PvcNamespaceLabel)
+	if pv.Spec.ClaimRef != nil {
+		if !pvcLabelExists || pv.Spec.ClaimRef.Name != pvcName || !pvcNamespaceLabelExists || pv.Spec.ClaimRef.Namespace != pvcNamespace {
+			azureutils.AppendToUpdateFunc(azVolumeUpdateFunc, func(obj interface{}) error {
+				azv := obj.(*azdiskv1beta2.AzVolume)
+				azv.Labels = azureutils.AddToMap(azv.Labels, consts.PvcNameLabel, pv.Spec.ClaimRef.Name, consts.PvcNamespaceLabel, pv.Spec.ClaimRef.Namespace)
+				return nil
+			})
+		}
+	} else {
+		if pvcLabelExists || pvcNamespaceLabelExists {
+			azureutils.AppendToUpdateFunc(azVolumeUpdateFunc, func(obj interface{}) error {
+				azv := obj.(*azdiskv1beta2.AzVolume)
+				delete(azv.Labels, consts.PvcNameLabel)
+				delete(azv.Labels, consts.PvcNamespaceLabel)
+				return nil
+			})
+		}
+	}
+
+	if azVolumeUpdateFunc != nil {
+		err := azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, &azVolume, azVolumeUpdateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRI)
 		if err != nil {
 			return reconcileReturnOnError(ctx, &pv, "update", err, r.controllerRetryInfo)
 		}
@@ -159,7 +201,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 	switch phase := pv.Status.Phase; phase {
 	case corev1.VolumeBound:
 		pvClaimName := getQualifiedName(pv.Spec.ClaimRef.Namespace, pv.Spec.ClaimRef.Name)
-		r.controllerSharedState.addVolumeAndClaim(azVolumeName, pvClaimName)
+		r.controllerSharedState.addVolumeAndClaim(azVolumeName, pv.Name, pvClaimName)
 	case corev1.VolumeReleased:
 		if err := r.triggerRelease(ctx, &azVolume); err != nil {
 			logger.Error(err, "failed to release AzVolume")
@@ -184,24 +226,24 @@ func (r *ReconcilePV) Recover(ctx context.Context) error {
 	ctx, w := workflow.New(ctx)
 	defer func() { w.Finish(err) }()
 
-	var volumes *v1.PersistentVolumeList
-	volumes, err = r.controllerSharedState.kubeClient.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
+	var pvs *v1.PersistentVolumeList
+	pvs, err = r.controllerSharedState.kubeClient.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
-	for _, volume := range volumes.Items {
-		if volume.Spec.CSI == nil || volume.Spec.CSI.Driver != r.controllerSharedState.driverName || volume.Spec.ClaimRef == nil {
+	for _, pv := range pvs.Items {
+		if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != r.controllerSharedState.driverName || pv.Spec.ClaimRef == nil {
 			continue
 		}
 
 		var diskName string
-		diskName, err = azureutils.GetDiskName(volume.Spec.CSI.VolumeHandle)
+		diskName, err = azureutils.GetDiskName(pv.Spec.CSI.VolumeHandle)
 		if err != nil {
 			return err
 		}
 		azVolumeName := strings.ToLower(diskName)
-		pvClaimName := getQualifiedName(volume.Spec.ClaimRef.Namespace, volume.Spec.ClaimRef.Name)
-		r.controllerSharedState.addVolumeAndClaim(azVolumeName, pvClaimName)
+		pvClaimName := getQualifiedName(pv.Spec.ClaimRef.Namespace, pv.Spec.ClaimRef.Name)
+		r.controllerSharedState.addVolumeAndClaim(azVolumeName, pv.Name, pvClaimName)
 	}
 	return nil
 }

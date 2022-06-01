@@ -935,6 +935,17 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azdiskinformers.Sha
 				objForUpdate = updateTarget
 				copyForUpdate = updateTarget.DeepCopy()
 			}
+		case *storagev1.VolumeAttachment:
+			updateTarget := &storagev1.VolumeAttachment{}
+			if cachedClient != nil {
+				err = cachedClient.Get(ctx, types.NamespacedName{Namespace: target.Namespace, Name: objName}, updateTarget)
+			} else {
+				return status.Errorf(codes.Internal, "cannot update VolumeAttachment object if controller runtime client is not provided.")
+			}
+			if err == nil {
+				objForUpdate = updateTarget
+				copyForUpdate = updateTarget.DeepCopy()
+			}
 		default:
 			return status.Errorf(codes.Internal, "object (%v) not supported.", reflect.TypeOf(target))
 		}
@@ -972,8 +983,17 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azdiskinformers.Sha
 			if (updateMode & UpdateCRI) != 0 {
 				_, err = azDiskClient.DiskV1beta2().AzVolumeAttachments(target.Namespace).Update(ctx, target, metav1.UpdateOptions{})
 			}
-		}
 
+		case *storagev1.VolumeAttachment:
+			if (updateMode&UpdateCRIStatus) != 0 && !reflect.DeepEqual(objForUpdate.(*storagev1.VolumeAttachment).Status, target.Status) {
+				if err = cachedClient.Status().Update(ctx, target); err != nil {
+					return err
+				}
+			}
+			if (updateMode & UpdateCRI) != 0 {
+				err = cachedClient.Update(ctx, target)
+			}
+		}
 		return err
 	}
 
@@ -1006,6 +1026,17 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azdiskinformers.Sha
 		ExitOnNetError(err, maxRetry > 0 && curRetry >= maxRetry)
 	}
 	return err
+}
+
+func AppendToUpdateFunc(updateFunc, newFunc func(interface{}) error) func(interface{}) error {
+	if updateFunc != nil {
+		innerFunc := updateFunc
+		return func(obj interface{}) error {
+			obj = innerFunc(obj)
+			return newFunc(obj)
+		}
+	}
+	return newFunc
 }
 
 func isFatalNetError(err error) bool {
@@ -1078,12 +1109,27 @@ func SleepIfThrottled(err error, sleepSec int) {
 	}
 }
 
-func AddToMap(mmap map[string]string, key, value string) map[string]string {
+// AddToMap requires arguments to be passed in <map, key1, value1, key2, value2, ...> format
+func AddToMap(mmap map[string]string, entries ...string) map[string]string {
 	if mmap == nil {
 		mmap = map[string]string{}
 	}
-	mmap[key] = value
+	// if odd number of entries are given, do not update and return instantly
+	if len(entries)%2 == 1 {
+		panic("AddToMap requires entries to be in key, value pair.")
+	}
+	for i := 0; i < len(entries); i = i + 2 {
+		mmap[entries[i]] = entries[i+1]
+	}
 	return mmap
+}
+
+func GetFromMap(mmap map[string]string, key string) (value string, exists bool) {
+	if mmap == nil {
+		return
+	}
+	value, exists = mmap[key]
+	return
 }
 
 func MapContains(mmap map[string]string, key string) bool {

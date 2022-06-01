@@ -343,12 +343,8 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *azdiskv
 					updateMode = azureutils.UpdateAll
 					updateFunc = func(obj interface{}) error {
 						azv := obj.(*azdiskv1beta2.AzVolume)
-						azv = r.deleteFinalizer(azv, map[string]bool{consts.AzVolumeFinalizer: true})
-						var derr error
-						if volumeDeleteRequested {
-							_, derr = r.updateState(azv, azdiskv1beta2.VolumeDeleted, forceUpdate)
-						}
-						return derr
+						_ = r.deleteFinalizer(azv, map[string]bool{consts.AzVolumeFinalizer: true})
+						return nil
 					}
 				}
 			}
@@ -685,7 +681,14 @@ func (c *SharedState) createAzVolumeFromPv(ctx context.Context, pv v1.Persistent
 	}
 
 	if azVolume != nil {
-
+		if azVolume.Labels == nil {
+			azVolume.Labels = map[string]string{}
+		}
+		azVolume.Labels[consts.PvNameLabel] = pv.Name
+		if pv.Spec.ClaimRef != nil {
+			azVolume.Labels[consts.PvcNameLabel] = pv.Spec.ClaimRef.Name
+			azVolume.Labels[consts.PvcNamespaceLabel] = pv.Spec.ClaimRef.Namespace
+		}
 		azVolume.Spec.CapacityRange = &azdiskv1beta2.CapacityRange{RequiredBytes: requiredBytes}
 		azVolume.Spec.VolumeCapability = volumeCapability
 		azVolume.Spec.PersistentVolume = pv.Name
@@ -694,8 +697,8 @@ func (c *SharedState) createAzVolumeFromPv(ctx context.Context, pv v1.Persistent
 		w.AddDetailToLogger(consts.PvNameKey, pv.Name, consts.VolumeNameLabel, azVolume.Name)
 
 		w.Logger().Info("Creating AzVolume CRI")
-		if err := c.createAzVolume(ctx, azVolume); err != nil {
-			err = status.Error(codes.Internal, "failed to create AzVolume CRI")
+		if err = c.createAzVolume(ctx, azVolume); err != nil {
+			err = status.Errorf(codes.Internal, "failed to create AzVolume (%s) for PV (%s): %v", azVolume.Name, pv.Name, err)
 			return err
 		}
 	}
@@ -776,13 +779,11 @@ func (c *SharedState) createAzVolume(ctx context.Context, azVolume *azdiskv1beta
 	var err error
 
 	if updated, err = c.azClient.DiskV1beta2().AzVolumes(c.objectNamespace).Create(ctx, azVolume, metav1.CreateOptions{}); err != nil {
-		err = status.Errorf(codes.Internal, "failed to create AzVolume CRI")
 		return err
 	}
 	updated = updated.DeepCopy()
 	updated.Status = azVolume.Status
 	if _, err := c.azClient.DiskV1beta2().AzVolumes(c.objectNamespace).UpdateStatus(ctx, updated, metav1.UpdateOptions{}); err != nil {
-		err = status.Errorf(codes.Internal, "failed to update AzVolume CRI Status")
 		return err
 	}
 	// if AzVolume CRI successfully recreated, also recreate the operation queue for the volume
