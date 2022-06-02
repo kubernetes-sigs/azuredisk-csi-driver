@@ -100,7 +100,7 @@ func GetLogsByAzDriverPod(clientsetK8s kubernetes.Interface, podName string, con
 		if err != nil {
 			// If previous container doesn't exist, just skip it.
 			if errors.IsBadRequest(err) {
-				if podLogOptions[i].Previous == true {
+				if podLogOptions[i].Previous {
 					continue
 				} else {
 					fmt.Println(err)
