@@ -98,9 +98,10 @@ func GetLogsByAzDriverPod(clientsetK8s kubernetes.Interface, podName string, con
 		req := clientsetK8s.CoreV1().Pods(GetReleaseNamespace()).GetLogs(podName, &podLogOptions[i])
 		podLogs, err := req.Stream(context.TODO())
 		if err != nil {
+			// If previous container doesn't exist, just skip it.
 			if errors.IsBadRequest(err) {
 				if podLogOptions[i].Previous == true {
-					continue;
+					continue
 				} else {
 					fmt.Println(err)
 					os.Exit(0)
