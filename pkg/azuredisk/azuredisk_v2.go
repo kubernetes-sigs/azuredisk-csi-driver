@@ -95,7 +95,7 @@ type DriverV2 struct {
 
 // NewDriver creates a driver object.
 func NewDriver(options *DriverOptions) CSIDriver {
-	return newDriverV2(options, *driverObjectNamespace, "default", "default", *heartbeatFrequencyInSec, *controllerLeaseDurationInSec, *controllerLeaseRenewDeadlineInSec, *controllerLeaseRetryPeriodInSec)
+	return newDriverV2(options, *driverObjectNamespace, "csi-azuredisk-node", "csi-azuredisk-controller", *heartbeatFrequencyInSec, *controllerLeaseDurationInSec, *controllerLeaseRenewDeadlineInSec, *controllerLeaseRetryPeriodInSec)
 }
 
 // newDriverV2 Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
