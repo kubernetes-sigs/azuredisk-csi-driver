@@ -167,7 +167,7 @@ func GetReleaseNamespace() string {
 
 func GetDriverInstallationType() string {
 	installedSideBySide := viper.GetString("v2InstalledSideBySide")
-	if installedSideBySide == "" {
+	if installedSideBySide == "" || installedSideBySide == "false" {
 		return "csi-azuredisk"
 	}
 	return "csi-azuredisk2"
