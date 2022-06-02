@@ -29,7 +29,7 @@ var cfgFile string
 var rootCmd = &cobra.Command{
 	Use:   "az-analyze",
 	Short: "Azure Disk CSI Driver Debugging and Analysis Tools",
-	Long: `Storage analysis tool will enable users to get the relevant data about the Kubernetes objects
+	Long: `Storage analysis tool will enable users to get the relevant data about the Kubernetes resources
 and custom resources in relation to each other`,
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
