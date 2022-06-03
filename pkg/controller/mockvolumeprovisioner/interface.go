@@ -25,7 +25,7 @@ import (
 	reflect "reflect"
 
 	gomock "github.com/golang/mock/gomock"
-	v1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	azdiskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 )
 
 // MockVolumeProvisioner is a mock of VolumeProvisioner interface.
@@ -52,10 +52,10 @@ func (m *MockVolumeProvisioner) EXPECT() *MockVolumeProvisionerMockRecorder {
 }
 
 // CreateVolume mocks base method.
-func (m *MockVolumeProvisioner) CreateVolume(ctx context.Context, volumeName string, capacityRange *v1alpha2.CapacityRange, volumeCapabilities []v1alpha2.VolumeCapability, parameters, secrets map[string]string, volumeContentSource *v1alpha2.ContentVolumeSource, accessibilityTopology *v1alpha2.TopologyRequirement) (*v1alpha2.AzVolumeStatusDetail, error) {
+func (m *MockVolumeProvisioner) CreateVolume(ctx context.Context, volumeName string, capacityRange *azdiskv1beta1.CapacityRange, volumeCapabilities []azdiskv1beta1.VolumeCapability, parameters, secrets map[string]string, volumeContentSource *azdiskv1beta1.ContentVolumeSource, accessibilityTopology *azdiskv1beta1.TopologyRequirement) (*azdiskv1beta1.AzVolumeStatusDetail, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CreateVolume", ctx, volumeName, capacityRange, volumeCapabilities, parameters, secrets, volumeContentSource, accessibilityTopology)
-	ret0, _ := ret[0].(*v1alpha2.AzVolumeStatusDetail)
+	ret0, _ := ret[0].(*azdiskv1beta1.AzVolumeStatusDetail)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -81,10 +81,10 @@ func (mr *MockVolumeProvisionerMockRecorder) DeleteVolume(ctx, volumeID, secrets
 }
 
 // ExpandVolume mocks base method.
-func (m *MockVolumeProvisioner) ExpandVolume(ctx context.Context, volumeID string, capacityRange *v1alpha2.CapacityRange, secrets map[string]string) (*v1alpha2.AzVolumeStatusDetail, error) {
+func (m *MockVolumeProvisioner) ExpandVolume(ctx context.Context, volumeID string, capacityRange *azdiskv1beta1.CapacityRange, secrets map[string]string) (*azdiskv1beta1.AzVolumeStatusDetail, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ExpandVolume", ctx, volumeID, capacityRange, secrets)
-	ret0, _ := ret[0].(*v1alpha2.AzVolumeStatusDetail)
+	ret0, _ := ret[0].(*azdiskv1beta1.AzVolumeStatusDetail)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

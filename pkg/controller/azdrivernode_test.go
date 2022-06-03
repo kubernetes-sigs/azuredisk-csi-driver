@@ -28,7 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2/klogr"
-	diskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
+	azdiskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller/mockclient"
@@ -37,7 +37,7 @@ import (
 
 func NewTestAzDriverNodeController(controller *gomock.Controller, namespace string, objects ...runtime.Object) *ReconcileAzDriverNode {
 	azDiskObjs, _ := splitObjects(objects...)
-	controllerSharedState := initState(mockclient.NewMockClient(controller), diskfakes.NewSimpleClientset(azDiskObjs...), nil, objects...)
+	controllerSharedState := initState(mockclient.NewMockClient(controller), azdiskfakes.NewSimpleClientset(azDiskObjs...), nil, objects...)
 
 	return &ReconcileAzDriverNode{
 		controllerSharedState: controllerSharedState,

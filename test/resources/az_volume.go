@@ -25,19 +25,19 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e/framework"
-	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
-	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1beta1"
+	azdiskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
 type TestAzVolume struct {
-	Azclient             azDiskClientSet.DiskV1beta1Interface
+	Azclient             azdisk.Interface
 	Namespace            string
 	UnderlyingVolume     string
 	MaxMountReplicaCount int
 }
 
-func SetupTestAzVolume(azclient azDiskClientSet.DiskV1beta1Interface, namespace string, underlyingVolume string, maxMountReplicaCount int) *TestAzVolume {
+func SetupTestAzVolume(azclient azdisk.Interface, namespace, underlyingVolume string, maxMountReplicaCount int) *TestAzVolume {
 	return &TestAzVolume{
 		Azclient:             azclient,
 		Namespace:            namespace,
@@ -46,33 +46,34 @@ func SetupTestAzVolume(azclient azDiskClientSet.DiskV1beta1Interface, namespace 
 	}
 }
 
-func NewTestAzVolume(azVolume azDiskClientSet.AzVolumeInterface, underlyingVolumeName string, maxMountReplicaCount int) *diskv1beta1.AzVolume {
+func NewTestAzVolume(azclient azdisk.Interface, namespace, underlyingVolumeName string, maxMountReplicaCount int) *azdiskv1beta1.AzVolume {
 	// Delete leftover azVolumes from previous runs
-	if _, err := azVolume.Get(context.Background(), underlyingVolumeName, metav1.GetOptions{}); err == nil {
-		err := azVolume.Delete(context.Background(), underlyingVolumeName, metav1.DeleteOptions{})
+	azVolumes := azclient.DiskV1beta1().AzVolumes(namespace)
+	if _, err := azVolumes.Get(context.Background(), underlyingVolumeName, metav1.GetOptions{}); err == nil {
+		err := azVolumes.Delete(context.Background(), underlyingVolumeName, metav1.DeleteOptions{})
 		framework.ExpectNoError(err)
 	}
-	newAzVolume, err := azVolume.Create(context.Background(), &diskv1beta1.AzVolume{
+	newAzVolume, err := azVolumes.Create(context.Background(), &azdiskv1beta1.AzVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: underlyingVolumeName,
 		},
-		Spec: diskv1beta1.AzVolumeSpec{
+		Spec: azdiskv1beta1.AzVolumeSpec{
 			VolumeName:           underlyingVolumeName,
 			MaxMountReplicaCount: maxMountReplicaCount,
-			VolumeCapability: []diskv1beta1.VolumeCapability{
+			VolumeCapability: []azdiskv1beta1.VolumeCapability{
 				{
-					AccessType: diskv1beta1.VolumeCapabilityAccessMount,
-					AccessMode: diskv1beta1.VolumeCapabilityAccessModeSingleNodeWriter,
+					AccessType: azdiskv1beta1.VolumeCapabilityAccessMount,
+					AccessMode: azdiskv1beta1.VolumeCapabilityAccessModeSingleNodeWriter,
 				},
 			},
-			CapacityRange: &diskv1beta1.CapacityRange{
+			CapacityRange: &azdiskv1beta1.CapacityRange{
 				RequiredBytes: 0,
 				LimitBytes:    0,
 			},
-			AccessibilityRequirements: &diskv1beta1.TopologyRequirement{},
+			AccessibilityRequirements: &azdiskv1beta1.TopologyRequirement{},
 		},
-		Status: diskv1beta1.AzVolumeStatus{
-			State: diskv1beta1.VolumeOperationPending,
+		Status: azdiskv1beta1.AzVolumeStatus{
+			State: azdiskv1beta1.VolumeOperationPending,
 		},
 	}, metav1.CreateOptions{})
 	framework.ExpectNoError(err)
@@ -80,17 +81,16 @@ func NewTestAzVolume(azVolume azDiskClientSet.AzVolumeInterface, underlyingVolum
 	return newAzVolume
 }
 
-func (t *TestAzVolume) Create() *diskv1beta1.AzVolume {
+func (t *TestAzVolume) Create() *azdiskv1beta1.AzVolume {
 	// create test az volume
-	azVolClient := t.Azclient.AzVolumes(t.Namespace)
-	azVolume := NewTestAzVolume(azVolClient, t.UnderlyingVolume, t.MaxMountReplicaCount)
+	azVolume := NewTestAzVolume(t.Azclient, t.Namespace, t.UnderlyingVolume, t.MaxMountReplicaCount)
 
 	return azVolume
 }
 
 func (t *TestAzVolume) Cleanup() {
 	klog.Info("cleaning up TestAzVolume")
-	err := t.Azclient.AzVolumes(t.Namespace).Delete(context.Background(), t.UnderlyingVolume, metav1.DeleteOptions{})
+	err := t.Azclient.DiskV1beta1().AzVolumes(t.Namespace).Delete(context.Background(), t.UnderlyingVolume, metav1.DeleteOptions{})
 	if !errors.IsNotFound(err) {
 		framework.ExpectNoError(err)
 	}
@@ -100,7 +100,7 @@ func (t *TestAzVolume) Cleanup() {
 
 func (t *TestAzVolume) WaitForFinalizer(timeout time.Duration) error {
 	conditionFunc := func() (bool, error) {
-		azVolume, err := t.Azclient.AzVolumes(t.Namespace).Get(context.TODO(), t.UnderlyingVolume, metav1.GetOptions{})
+		azVolume, err := t.Azclient.DiskV1beta1().AzVolumes(t.Namespace).Get(context.TODO(), t.UnderlyingVolume, metav1.GetOptions{})
 		if err != nil {
 			return false, err
 		}
@@ -121,7 +121,7 @@ func (t *TestAzVolume) WaitForFinalizer(timeout time.Duration) error {
 func (t *TestAzVolume) WaitForDelete(timeout time.Duration) error {
 	klog.Infof("Waiting for delete azVolume object")
 	conditionFunc := func() (bool, error) {
-		_, err := t.Azclient.AzVolumes(t.Namespace).Get(context.TODO(), t.UnderlyingVolume, metav1.GetOptions{})
+		_, err := t.Azclient.DiskV1beta1().AzVolumes(t.Namespace).Get(context.TODO(), t.UnderlyingVolume, metav1.GetOptions{})
 		if errors.IsNotFound(err) {
 			klog.Infof("azVolume %s deleted.", t.UnderlyingVolume)
 			return true, nil

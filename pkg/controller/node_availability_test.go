@@ -30,8 +30,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	fakev1 "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/klog/v2/klogr"
-	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
-	diskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
+	azdiskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	azdiskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller/mockclient"
@@ -40,7 +40,7 @@ import (
 
 func NewTestNodeAvailabilityController(controller *gomock.Controller, namespace string, objects ...runtime.Object) *ReconcileNodeAvailability {
 	diskv1alpha1Objs, kubeObjs := splitObjects(objects...)
-	controllerSharedState := initState(mockclient.NewMockClient(controller), diskfakes.NewSimpleClientset(diskv1alpha1Objs...), fakev1.NewSimpleClientset(kubeObjs...), objects...)
+	controllerSharedState := initState(mockclient.NewMockClient(controller), azdiskfakes.NewSimpleClientset(diskv1alpha1Objs...), fakev1.NewSimpleClientset(kubeObjs...), objects...)
 
 	return &ReconcileNodeAvailability{
 		controllerSharedState: controllerSharedState,
@@ -60,10 +60,10 @@ func TestNodeAvailabilityController(t *testing.T) {
 			request:     testSchedulableNodeRequest,
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileNodeAvailability {
 				newAttachment := testPrimaryAzVolumeAttachment0.DeepCopy()
-				newAttachment.Status.State = diskv1beta1.Attached
+				newAttachment.Status.State = azdiskv1beta1.Attached
 
 				newVolume := testAzVolume0.DeepCopy()
-				newVolume.Status.Detail = &diskv1beta1.AzVolumeStatusDetail{
+				newVolume.Status.Detail = &azdiskv1beta1.AzVolumeStatusDetail{
 					VolumeID: testManagedDiskURI0,
 				}
 
@@ -90,7 +90,7 @@ func TestNodeAvailabilityController(t *testing.T) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
 
-				roleReq, _ := azureutils.CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(diskv1beta1.ReplicaRole))
+				roleReq, _ := azureutils.CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(azdiskv1beta1.ReplicaRole))
 				labelSelector := labels.NewSelector().Add(*roleReq)
 
 				conditionFunc := func() (bool, error) {

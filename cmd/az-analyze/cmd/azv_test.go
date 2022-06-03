@@ -21,7 +21,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	v1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	azdiskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
@@ -29,21 +29,21 @@ var azvResource1 = AzvResource{
 	ResourceType: TestPod0,
 	Namespace:    consts.DefaultAzureDiskCrdNamespace,
 	Name:         TestAzVolume0,
-	State:        v1beta1.VolumeCreated,
+	State:        azdiskv1beta1.VolumeCreated,
 }
 
 var azvResource2 = AzvResource{
 	ResourceType: TestPod0,
 	Namespace:    consts.DefaultAzureDiskCrdNamespace,
 	Name:         TestAzVolume1,
-	State:        v1beta1.VolumeCreated,
+	State:        azdiskv1beta1.VolumeCreated,
 }
 
 var azvResource3 = AzvResource{
 	ResourceType: TestPod1,
 	Namespace:    consts.DefaultAzureDiskCrdNamespace,
 	Name:         TestAzVolume0,
-	State:        v1beta1.VolumeCreated,
+	State:        azdiskv1beta1.VolumeCreated,
 }
 
 func TestGetAzVolumesByPod(t *testing.T) {

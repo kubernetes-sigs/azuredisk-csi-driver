@@ -26,8 +26,8 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
 	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
-	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
-	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	azdiskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 	nodeutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/node"
@@ -42,7 +42,7 @@ type PodFailoverWithReplicas struct {
 	Volume                 resources.VolumeDetails
 	PodCheck               *PodExecCheck
 	StorageClassParameters map[string]string
-	AzDiskClient           *azDiskClientSet.Clientset
+	AzDiskClient           *azdisk.Clientset
 	IsMultiZone            bool
 }
 
@@ -77,12 +77,12 @@ func (t *PodFailoverWithReplicas) Run(client clientset.Interface, namespace *v1.
 
 	//Check that AzVolumeAttachment resources were created correctly
 	allAttached := true
-	var failedAttachments []diskv1beta1.AzVolumeAttachment
-	var allAttachments []diskv1beta1.AzVolumeAttachment
+	var failedAttachments []azdiskv1beta1.AzVolumeAttachment
+	var allAttachments []azdiskv1beta1.AzVolumeAttachment
 
 	err := wait.Poll(15*time.Second, 10*time.Minute, func() (bool, error) {
-		failedAttachments = []diskv1beta1.AzVolumeAttachment{}
-		allAttachments = []diskv1beta1.AzVolumeAttachment{}
+		failedAttachments = []azdiskv1beta1.AzVolumeAttachment{}
+		allAttachments = []azdiskv1beta1.AzVolumeAttachment{}
 		allAttached = true
 		var err error
 
@@ -118,7 +118,7 @@ func (t *PodFailoverWithReplicas) Run(client clientset.Interface, namespace *v1.
 	var primaryNode string
 	replicaNodeSet := map[string]struct{}{}
 	for _, attachment := range allAttachments {
-		if attachment.Spec.RequestedRole == diskv1beta1.PrimaryRole {
+		if attachment.Spec.RequestedRole == azdiskv1beta1.PrimaryRole {
 			primaryNode = attachment.Spec.NodeName
 		} else {
 			replicaNodeSet[attachment.Spec.NodeName] = struct{}{}

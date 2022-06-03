@@ -30,9 +30,9 @@ import (
 	"k8s.io/klog/v2"
 
 	"k8s.io/client-go/tools/cache"
-	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
-	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
-	azurediskInformers "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions"
+	azdiskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	azdiskinformers "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions"
 )
 
 type ObjectType string
@@ -62,12 +62,12 @@ type waitEntry struct {
 }
 
 type ConditionWatcher struct {
-	informerFactory azurediskInformers.SharedInformerFactory
+	informerFactory azdiskinformers.SharedInformerFactory
 	waitMap         sync.Map // maps namespaced name to waitEntry
 	namespace       string
 }
 
-func New(ctx context.Context, azDiskClient azDiskClientSet.Interface, informerFactory azurediskInformers.SharedInformerFactory, namespace string) *ConditionWatcher {
+func New(ctx context.Context, azDiskClient azdisk.Interface, informerFactory azdiskinformers.SharedInformerFactory, namespace string) *ConditionWatcher {
 	azVolumeAttachmentInformer := informerFactory.Disk().V1beta1().AzVolumeAttachments().Informer()
 	azVolumeInformer := informerFactory.Disk().V1beta1().AzVolumes().Informer()
 	azDriverNodeInformer := informerFactory.Disk().V1beta1().AzDriverNodes().Informer()
@@ -105,7 +105,7 @@ func New(ctx context.Context, azDiskClient azDiskClientSet.Interface, informerFa
 	return &c
 }
 
-func (c *ConditionWatcher) InformerFactory() azurediskInformers.SharedInformerFactory {
+func (c *ConditionWatcher) InformerFactory() azdiskinformers.SharedInformerFactory {
 	return c.informerFactory
 }
 
@@ -152,11 +152,11 @@ func (c *ConditionWatcher) handleEvent(obj interface{}, eventType eventType) {
 
 	var objType ObjectType
 	switch obj.(type) {
-	case *diskv1beta1.AzVolume:
+	case *azdiskv1beta1.AzVolume:
 		objType = AzVolumeType
-	case *diskv1beta1.AzVolumeAttachment:
+	case *azdiskv1beta1.AzVolumeAttachment:
 		objType = AzVolumeAttachmentType
-	case *diskv1beta1.AzDriverNode:
+	case *azdiskv1beta1.AzDriverNode:
 		objType = AzDriverNodeType
 	default:
 		// unknown object type

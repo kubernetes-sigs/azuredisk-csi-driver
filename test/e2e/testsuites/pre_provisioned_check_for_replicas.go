@@ -35,7 +35,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e/framework"
-	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 )
@@ -46,7 +46,7 @@ type PreProvisionedCheckForReplicasTest struct {
 	CSIDriver     driver.PreProvisionedVolumeTestDriver
 	Pods          []resources.PodDetails
 	VolumeName    string
-	AzDiskClient  azDiskClientSet.Interface
+	AzDiskClient  azdisk.Interface
 	VolumeContext map[string]string
 }
 

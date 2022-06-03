@@ -25,8 +25,8 @@ import (
 	gomock "github.com/golang/mock/gomock"
 	v1 "k8s.io/api/core/v1"
 	reflect "reflect"
-	v1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
-	versioned "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	azdiskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	azureconstants "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
@@ -68,10 +68,10 @@ func (mr *MockCrdProvisionerMockRecorder) RegisterDriverNode(ctx, node, nodePart
 }
 
 // CreateVolume mocks base method
-func (m *MockCrdProvisioner) CreateVolume(ctx context.Context, volumeName string, capacityRange *v1beta1.CapacityRange, volumeCapabilities []v1beta1.VolumeCapability, parameters, secrets map[string]string, volumeContentSource *v1beta1.ContentVolumeSource, accessibilityReq *v1beta1.TopologyRequirement) (*v1beta1.AzVolumeStatusDetail, error) {
+func (m *MockCrdProvisioner) CreateVolume(ctx context.Context, volumeName string, capacityRange *azdiskv1beta1.CapacityRange, volumeCapabilities []azdiskv1beta1.VolumeCapability, parameters, secrets map[string]string, volumeContentSource *azdiskv1beta1.ContentVolumeSource, accessibilityReq *azdiskv1beta1.TopologyRequirement) (*azdiskv1beta1.AzVolumeStatusDetail, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CreateVolume", ctx, volumeName, capacityRange, volumeCapabilities, parameters, secrets, volumeContentSource, accessibilityReq)
-	ret0, _ := ret[0].(*v1beta1.AzVolumeStatusDetail)
+	ret0, _ := ret[0].(*azdiskv1beta1.AzVolumeStatusDetail)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -97,7 +97,7 @@ func (mr *MockCrdProvisionerMockRecorder) DeleteVolume(ctx, volumeID, secrets in
 }
 
 // PublishVolume mocks base method
-func (m *MockCrdProvisioner) PublishVolume(ctx context.Context, volumeID, nodeID string, volumeCapability *v1beta1.VolumeCapability, readOnly bool, secrets, volumeContext map[string]string) (map[string]string, error) {
+func (m *MockCrdProvisioner) PublishVolume(ctx context.Context, volumeID, nodeID string, volumeCapability *azdiskv1beta1.VolumeCapability, readOnly bool, secrets, volumeContext map[string]string) (map[string]string, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "PublishVolume", ctx, volumeID, nodeID, volumeCapability, readOnly, secrets, volumeContext)
 	ret0, _ := ret[0].(map[string]string)
@@ -112,10 +112,10 @@ func (mr *MockCrdProvisionerMockRecorder) PublishVolume(ctx, volumeID, nodeID, v
 }
 
 // WaitForAttach mocks base method
-func (m *MockCrdProvisioner) WaitForAttach(ctx context.Context, volume, node string) (*v1beta1.AzVolumeAttachment, error) {
+func (m *MockCrdProvisioner) WaitForAttach(ctx context.Context, volume, node string) (*azdiskv1beta1.AzVolumeAttachment, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "WaitForAttach", ctx, volume, node)
-	ret0, _ := ret[0].(*v1beta1.AzVolumeAttachment)
+	ret0, _ := ret[0].(*azdiskv1beta1.AzVolumeAttachment)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -155,10 +155,10 @@ func (mr *MockCrdProvisionerMockRecorder) WaitForDetach(ctx, volume, node interf
 }
 
 // GetAzVolumeAttachment mocks base method
-func (m *MockCrdProvisioner) GetAzVolumeAttachment(ctx context.Context, volumeID, nodeID string) (*v1beta1.AzVolumeAttachment, error) {
+func (m *MockCrdProvisioner) GetAzVolumeAttachment(ctx context.Context, volumeID, nodeID string) (*azdiskv1beta1.AzVolumeAttachment, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAzVolumeAttachment", ctx, volumeID, nodeID)
-	ret0, _ := ret[0].(*v1beta1.AzVolumeAttachment)
+	ret0, _ := ret[0].(*azdiskv1beta1.AzVolumeAttachment)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -170,10 +170,10 @@ func (mr *MockCrdProvisionerMockRecorder) GetAzVolumeAttachment(ctx, volumeID, n
 }
 
 // ExpandVolume mocks base method
-func (m *MockCrdProvisioner) ExpandVolume(ctx context.Context, volumeID string, capacityRange *v1beta1.CapacityRange, secrets map[string]string) (*v1beta1.AzVolumeStatusDetail, error) {
+func (m *MockCrdProvisioner) ExpandVolume(ctx context.Context, volumeID string, capacityRange *azdiskv1beta1.CapacityRange, secrets map[string]string) (*azdiskv1beta1.AzVolumeStatusDetail, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ExpandVolume", ctx, volumeID, capacityRange, secrets)
-	ret0, _ := ret[0].(*v1beta1.AzVolumeStatusDetail)
+	ret0, _ := ret[0].(*azdiskv1beta1.AzVolumeStatusDetail)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -185,10 +185,10 @@ func (mr *MockCrdProvisionerMockRecorder) ExpandVolume(ctx, volumeID, capacityRa
 }
 
 // GetDiskClientSet mocks base method
-func (m *MockCrdProvisioner) GetDiskClientSet() versioned.Interface {
+func (m *MockCrdProvisioner) GetDiskClientSet() azdisk.Interface {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetDiskClientSet")
-	ret0, _ := ret[0].(versioned.Interface)
+	ret0, _ := ret[0].(azdisk.Interface)
 	return ret0
 }
 

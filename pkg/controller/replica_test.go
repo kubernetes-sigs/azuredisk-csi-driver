@@ -33,8 +33,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	fakev1 "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/klog/v2/klogr"
-	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
-	diskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
+	azdiskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	azdiskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller/mockclient"
@@ -47,7 +47,7 @@ const (
 
 func NewTestReplicaController(controller *gomock.Controller, namespace string, objects ...runtime.Object) *ReconcileReplica {
 	azDiskObjs, kubeObjs := splitObjects(objects...)
-	controllerSharedState := initState(mockclient.NewMockClient(controller), diskfakes.NewSimpleClientset(azDiskObjs...), fakev1.NewSimpleClientset(kubeObjs...), objects...)
+	controllerSharedState := initState(mockclient.NewMockClient(controller), azdiskfakes.NewSimpleClientset(azDiskObjs...), fakev1.NewSimpleClientset(kubeObjs...), objects...)
 
 	return &ReconcileReplica{
 		controllerSharedState:      controllerSharedState,
@@ -70,10 +70,10 @@ func TestReplicaReconcile(t *testing.T) {
 				replicaAttachment := testReplicaAzVolumeAttachment
 				now := metav1.Time{Time: metav1.Now().Add(-1000)}
 				replicaAttachment.DeletionTimestamp = &now
-				replicaAttachment.Status.State = diskv1beta1.Detaching
+				replicaAttachment.Status.State = azdiskv1beta1.Detaching
 
 				newVolume := testAzVolume0.DeepCopy()
-				newVolume.Status.Detail = &diskv1beta1.AzVolumeStatusDetail{
+				newVolume.Status.Detail = &azdiskv1beta1.AzVolumeStatusDetail{
 					VolumeID: testManagedDiskURI0,
 				}
 
@@ -105,7 +105,7 @@ func TestReplicaReconcile(t *testing.T) {
 				require.False(t, result.Requeue)
 
 				conditionFunc := func() (bool, error) {
-					roleReq, _ := azureutils.CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(diskv1beta1.ReplicaRole))
+					roleReq, _ := azureutils.CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(azdiskv1beta1.ReplicaRole))
 					labelSelector := labels.NewSelector().Add(*roleReq)
 					replicas, localError := controller.controllerSharedState.azClient.DiskV1beta1().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
 					require.NoError(t, localError)
@@ -121,19 +121,19 @@ func TestReplicaReconcile(t *testing.T) {
 			request:     testReplicaAzVolumeAttachmentRequest,
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileReplica {
 				replicaAttachment := testReplicaAzVolumeAttachment.DeepCopy()
-				replicaAttachment.Status = diskv1beta1.AzVolumeAttachmentStatus{
-					Detail: &diskv1beta1.AzVolumeAttachmentStatusDetail{
+				replicaAttachment.Status = azdiskv1beta1.AzVolumeAttachmentStatus{
+					Detail: &azdiskv1beta1.AzVolumeAttachmentStatusDetail{
 						PublishContext: map[string]string{},
-						Role:           diskv1beta1.ReplicaRole,
+						Role:           azdiskv1beta1.ReplicaRole,
 					},
-					State: diskv1beta1.Attached,
+					State: azdiskv1beta1.Attached,
 				}
 
-				replicaAttachment.Spec.RequestedRole = diskv1beta1.PrimaryRole
-				replicaAttachment = updateRole(replicaAttachment, diskv1beta1.PrimaryRole)
+				replicaAttachment.Spec.RequestedRole = azdiskv1beta1.PrimaryRole
+				replicaAttachment = updateRole(replicaAttachment, azdiskv1beta1.PrimaryRole)
 
 				newVolume := testAzVolume0.DeepCopy()
-				newVolume.Status.Detail = &diskv1beta1.AzVolumeStatusDetail{
+				newVolume.Status.Detail = &azdiskv1beta1.AzVolumeStatusDetail{
 					VolumeID: testManagedDiskURI0,
 				}
 
@@ -154,7 +154,7 @@ func TestReplicaReconcile(t *testing.T) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
 				conditionFunc := func() (bool, error) {
-					roleReq, _ := azureutils.CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(diskv1beta1.ReplicaRole))
+					roleReq, _ := azureutils.CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(azdiskv1beta1.ReplicaRole))
 					labelSelector := labels.NewSelector().Add(*roleReq)
 					replicas, localError := controller.controllerSharedState.azClient.DiskV1beta1().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
 					require.NoError(t, localError)
@@ -175,7 +175,7 @@ func TestReplicaReconcile(t *testing.T) {
 				primaryAttachment.Status.Annotations = map[string]string{consts.VolumeDetachRequestAnnotation: "true"}
 
 				newVolume := testAzVolume0.DeepCopy()
-				newVolume.Status.Detail = &diskv1beta1.AzVolumeStatusDetail{
+				newVolume.Status.Detail = &azdiskv1beta1.AzVolumeStatusDetail{
 					VolumeID: testManagedDiskURI0,
 				}
 
@@ -198,7 +198,7 @@ func TestReplicaReconcile(t *testing.T) {
 
 				// wait for the garbage collection to queue
 				time.Sleep(controller.timeUntilGarbageCollection + time.Minute)
-				roleReq, _ := azureutils.CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(diskv1beta1.ReplicaRole))
+				roleReq, _ := azureutils.CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(azdiskv1beta1.ReplicaRole))
 				labelSelector := labels.NewSelector().Add(*roleReq)
 				replicas, localError := controller.controllerSharedState.azClient.DiskV1beta1().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
 				require.NoError(t, localError)
@@ -214,16 +214,16 @@ func TestReplicaReconcile(t *testing.T) {
 				now := metav1.Time{Time: metav1.Now().Add(-1000)}
 				primaryAttachment.DeletionTimestamp = &now
 				replicaAttachment := testReplicaAzVolumeAttachment.DeepCopy()
-				replicaAttachment.Status = diskv1beta1.AzVolumeAttachmentStatus{
-					Detail: &diskv1beta1.AzVolumeAttachmentStatusDetail{
+				replicaAttachment.Status = azdiskv1beta1.AzVolumeAttachmentStatus{
+					Detail: &azdiskv1beta1.AzVolumeAttachmentStatusDetail{
 						PublishContext: map[string]string{},
-						Role:           diskv1beta1.ReplicaRole,
+						Role:           azdiskv1beta1.ReplicaRole,
 					},
-					State: diskv1beta1.Attached,
+					State: azdiskv1beta1.Attached,
 				}
 
 				newVolume := testAzVolume0.DeepCopy()
-				newVolume.Status.Detail = &diskv1beta1.AzVolumeStatusDetail{
+				newVolume.Status.Detail = &azdiskv1beta1.AzVolumeStatusDetail{
 					VolumeID: testManagedDiskURI0,
 				}
 
@@ -250,8 +250,8 @@ func TestReplicaReconcile(t *testing.T) {
 				require.NoError(t, err)
 
 				// promote replica to primary
-				replicaAttachment.Spec.RequestedRole = diskv1beta1.PrimaryRole
-				replicaAttachment = updateRole(replicaAttachment.DeepCopy(), diskv1beta1.PrimaryRole)
+				replicaAttachment.Spec.RequestedRole = azdiskv1beta1.PrimaryRole
+				replicaAttachment = updateRole(replicaAttachment.DeepCopy(), azdiskv1beta1.PrimaryRole)
 
 				err = controller.controllerSharedState.cachedClient.Update(context.TODO(), replicaAttachment)
 				require.NoError(t, err)
@@ -263,7 +263,7 @@ func TestReplicaReconcile(t *testing.T) {
 				require.False(t, result.Requeue)
 
 				time.Sleep(controller.timeUntilGarbageCollection + time.Minute)
-				roleReq, _ := azureutils.CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(diskv1beta1.ReplicaRole))
+				roleReq, _ := azureutils.CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(azdiskv1beta1.ReplicaRole))
 				labelSelector := labels.NewSelector().Add(*roleReq)
 				replicas, localError := controller.controllerSharedState.azClient.DiskV1beta1().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
 				require.NoError(t, localError)
@@ -304,7 +304,7 @@ func TestGetNodesForReplica(t *testing.T) {
 				replicaAttachment.DeletionTimestamp = &now
 
 				newVolume := testAzVolume0.DeepCopy()
-				newVolume.Status.Detail = &diskv1beta1.AzVolumeStatusDetail{
+				newVolume.Status.Detail = &azdiskv1beta1.AzVolumeStatusDetail{
 					VolumeID: testManagedDiskURI0,
 				}
 
@@ -353,7 +353,7 @@ func TestGetNodesForReplica(t *testing.T) {
 				}
 
 				newVolume := testAzVolume0.DeepCopy()
-				newVolume.Status.Detail = &diskv1beta1.AzVolumeStatusDetail{
+				newVolume.Status.Detail = &azdiskv1beta1.AzVolumeStatusDetail{
 					VolumeID: testManagedDiskURI0,
 				}
 

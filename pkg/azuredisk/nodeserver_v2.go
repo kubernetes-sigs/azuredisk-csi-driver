@@ -39,7 +39,7 @@ import (
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/volume"
-	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	azdiskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 )
@@ -107,7 +107,7 @@ func (d *DriverV2) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolume
 
 	// wait for volume to be attached to node if not already done so or wait for attachment to be promoted if not already done so
 	waitedForAttach := false
-	if azVolumeAttachment.Status.State != diskv1beta1.Attached || (azVolumeAttachment.Status.Detail != nil && azVolumeAttachment.Status.Detail.Role != diskv1beta1.PrimaryRole) {
+	if azVolumeAttachment.Status.State != azdiskv1beta1.Attached || (azVolumeAttachment.Status.Detail != nil && azVolumeAttachment.Status.Detail.Role != azdiskv1beta1.PrimaryRole) {
 		if azVolumeAttachment, err = d.crdProvisioner.WaitForAttach(ctx, diskURI, d.NodeID); err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to wait for volume (%s) to be attached to node (%s): %v", diskURI, d.NodeID, err)
 		}

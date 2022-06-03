@@ -31,7 +31,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	restclientset "k8s.io/client-go/rest"
 	"k8s.io/kubernetes/test/e2e/framework"
-	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
@@ -982,7 +982,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	ginkgo.It(fmt.Sprintf("should delete AzVolumeAttachment after pod deleted when maxMountReplicaCount == 0 [disk.csi.azure.com] [%s]", schedulerName), func() {
 		testutil.SkipIfNotUsingCSIDriverV2()
 
-		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
+		azDiskClient, err := azdisk.NewForConfig(f.ClientConfig())
 		if err != nil {
 			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		}
@@ -1021,7 +1021,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		testutil.SkipIfNotUsingCSIDriverV2()
 		testutil.SkipIfUsingInTreeVolumePlugin()
 
-		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
+		azDiskClient, err := azdisk.NewForConfig(f.ClientConfig())
 		if err != nil {
 			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		}
@@ -1100,7 +1100,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		}
 		testutil.SkipIfNotUsingCSIDriverV2()
 
-		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
+		azDiskClient, err := azdisk.NewForConfig(f.ClientConfig())
 		if err != nil {
 			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		}
@@ -1155,7 +1155,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		}
 		testutil.SkipIfNotUsingCSIDriverV2()
 
-		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
+		azDiskClient, err := azdisk.NewForConfig(f.ClientConfig())
 		if err != nil {
 			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		}
@@ -1210,7 +1210,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		}
 		testutil.SkipIfNotUsingCSIDriverV2()
 
-		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
+		azDiskClient, err := azdisk.NewForConfig(f.ClientConfig())
 		if err != nil {
 			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		}
@@ -1266,7 +1266,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		}
 		testutil.SkipIfNotUsingCSIDriverV2()
 
-		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
+		azDiskClient, err := azdisk.NewForConfig(f.ClientConfig())
 		if err != nil {
 			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		}
@@ -1342,7 +1342,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		testutil.SkipIfNotUsingCSIDriverV2()
 		testutil.SkipIfNotZRSSupported(location)
 
-		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
+		azDiskClient, err := azdisk.NewForConfig(f.ClientConfig())
 		if err != nil {
 			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		}
@@ -1401,7 +1401,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		}
 		testutil.SkipIfNotUsingCSIDriverV2()
 
-		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
+		azDiskClient, err := azdisk.NewForConfig(f.ClientConfig())
 		if err != nil {
 			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		}
@@ -1581,7 +1581,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			skuName = "StandardSSD_ZRS"
 		}
 
-		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
+		azDiskClient, err := azdisk.NewForConfig(f.ClientConfig())
 		if err != nil {
 			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		}
@@ -1641,7 +1641,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			testutil.SkipIfNotZRSSupported(location)
 			skuName = "StandardSSD_ZRS"
 		}
-		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
+		azDiskClient, err := azdisk.NewForConfig(f.ClientConfig())
 		if err != nil {
 			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		}
@@ -1764,7 +1764,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			skuName = "StandardSSD_ZRS"
 		}
 
-		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
+		azDiskClient, err := azdisk.NewForConfig(f.ClientConfig())
 		framework.ExpectNoError(err, "Failed to create disk client.")
 
 		pod := resources.PodDetails{

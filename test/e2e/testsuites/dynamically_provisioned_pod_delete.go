@@ -21,7 +21,7 @@ import (
 	"strings"
 	"time"
 
-	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
@@ -38,7 +38,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e/framework"
-	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	azdiskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 )
 
 // DynamicallyProvisionedPodDelete will provision required StorageClass(es), PVC(s) and Pod(s)
@@ -47,7 +47,7 @@ type DynamicallyProvisionedPodDelete struct {
 	CSIDriver              driver.DynamicPVTestDriver
 	Pod                    resources.PodDetails
 	StorageClassParameters map[string]string
-	AzDiskClient           *azDiskClientSet.Clientset
+	AzDiskClient           *azdisk.Clientset
 }
 
 func (t *DynamicallyProvisionedPodDelete) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
@@ -119,7 +119,7 @@ func (t *DynamicallyProvisionedPodDelete) Run(client clientset.Interface, namesp
 					return len(azVolumeAttachments.Items) == 0, nil
 				}
 				for _, azVolumeAttachment := range azVolumeAttachments.Items {
-					if azVolumeAttachment.Status.Detail == nil || azVolumeAttachment.Status.Detail.Role != diskv1beta1.ReplicaRole {
+					if azVolumeAttachment.Status.Detail == nil || azVolumeAttachment.Status.Detail.Role != azdiskv1beta1.ReplicaRole {
 						return false, nil
 					}
 				}

@@ -32,8 +32,8 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
-	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
-	azVolumeClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	azdiskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller"
@@ -53,7 +53,7 @@ const (
 var (
 	crdProvisioner *provisioner.CrdProvisioner
 	config         *rest.Config
-	azVolumeClient azVolumeClientSet.Interface
+	azVolumeClient azdisk.Interface
 )
 
 func setUpConfig() error {
@@ -139,10 +139,10 @@ func checkReplicaCount(volumeName string, desiredNumReplica int) (bool, error) {
 
 	numReplicas := 0
 	for _, azVA := range azVAs.Items {
-		if azVA.Spec.RequestedRole == diskv1beta1.ReplicaRole &&
+		if azVA.Spec.RequestedRole == azdiskv1beta1.ReplicaRole &&
 			azVA.Status.Detail != nil &&
 			azVA.Status.Detail.PublishContext != nil &&
-			azVA.Status.Detail.Role == diskv1beta1.ReplicaRole {
+			azVA.Status.Detail.Role == azdiskv1beta1.ReplicaRole {
 			numReplicas++
 		}
 	}
@@ -156,22 +156,22 @@ func TestAzVolume(t *testing.T) {
 	tests := []struct {
 		testName            string
 		volumeName          string
-		capacityRange       *diskv1beta1.CapacityRange
-		volumeCapabilities  []diskv1beta1.VolumeCapability
+		capacityRange       *azdiskv1beta1.CapacityRange
+		volumeCapabilities  []azdiskv1beta1.VolumeCapability
 		parameters          map[string]string
 		secrets             map[string]string
-		volumeContentSource *diskv1beta1.ContentVolumeSource
-		accessibilityReq    *diskv1beta1.TopologyRequirement
+		volumeContentSource *azdiskv1beta1.ContentVolumeSource
+		accessibilityReq    *azdiskv1beta1.TopologyRequirement
 		testFunc            func(*testing.T, string)
 		cleanUpFunc         func(*testing.T, string)
 	}{
 		{
 			testName:   "create volume and check if finalizers have been properly populated.",
 			volumeName: "test-volume",
-			capacityRange: &diskv1beta1.CapacityRange{
+			capacityRange: &azdiskv1beta1.CapacityRange{
 				RequiredBytes: 1073741824,
 			},
-			volumeCapabilities: []diskv1beta1.VolumeCapability{},
+			volumeCapabilities: []azdiskv1beta1.VolumeCapability{},
 			parameters: map[string]string{
 				"kind":              "managed",
 				"maxShares":         "1",
@@ -213,10 +213,10 @@ func TestAzVolume(t *testing.T) {
 		{
 			testName:   "delete volume and check if volume and all its attachments get deleted",
 			volumeName: "test-volume",
-			capacityRange: &diskv1beta1.CapacityRange{
+			capacityRange: &azdiskv1beta1.CapacityRange{
 				RequiredBytes: 274877906944,
 			},
-			volumeCapabilities: []diskv1beta1.VolumeCapability{},
+			volumeCapabilities: []azdiskv1beta1.VolumeCapability{},
 			parameters: map[string]string{
 				"kind":              "managed",
 				"maxShares":         "2",
@@ -246,7 +246,7 @@ func TestAzVolume(t *testing.T) {
 					}
 
 					for _, azVolumeAttachment := range azVolumeAttachments.Items {
-						if azVolumeAttachment.Spec.RequestedRole == diskv1beta1.ReplicaRole && azVolumeAttachment.Status.Detail != nil {
+						if azVolumeAttachment.Spec.RequestedRole == azdiskv1beta1.ReplicaRole && azVolumeAttachment.Status.Detail != nil {
 							klog.Infof("Replica AzVolumeAttachment (%s) successfully created and attached.", azVolumeAttachment.Name)
 							return true, nil
 						}
@@ -399,7 +399,7 @@ func TestAzVolumeAttachment(t *testing.T) {
 		testName         string
 		volumeName       string
 		primaryNode      string
-		volumeCapability *diskv1beta1.VolumeCapability
+		volumeCapability *azdiskv1beta1.VolumeCapability
 		readOnly         bool
 		secrets          map[string]string
 		volumeContext    map[string]string
@@ -417,7 +417,7 @@ func TestAzVolumeAttachment(t *testing.T) {
 			volumeContext:    nil,
 			setUpFunc: func(t *testing.T, volumeName string) {
 				// create volume
-				_, err := crdProvisioner.CreateVolume(context.Background(), volumeName, &diskv1beta1.CapacityRange{RequiredBytes: 274877906944}, []diskv1beta1.VolumeCapability{}, map[string]string{"kind": "managed", "maxShares": "1", consts.SkuNameField: "StandardSSD_LRS"}, nil, nil, nil)
+				_, err := crdProvisioner.CreateVolume(context.Background(), volumeName, &azdiskv1beta1.CapacityRange{RequiredBytes: 274877906944}, []azdiskv1beta1.VolumeCapability{}, map[string]string{"kind": "managed", "maxShares": "1", consts.SkuNameField: "StandardSSD_LRS"}, nil, nil, nil)
 				require.NoError(t, err)
 			},
 			testFunc: func(t *testing.T, volumeName, nodeName string) {
@@ -463,7 +463,7 @@ func TestAzVolumeAttachment(t *testing.T) {
 			volumeContext:    nil,
 			setUpFunc: func(t *testing.T, volumeName string) {
 				// create volume
-				_, err := crdProvisioner.CreateVolume(context.Background(), volumeName, &diskv1beta1.CapacityRange{RequiredBytes: 274877906944}, []diskv1beta1.VolumeCapability{}, map[string]string{"kind": "managed", "maxShares": "2", consts.SkuNameField: "Premium_LRS"}, nil, nil, nil)
+				_, err := crdProvisioner.CreateVolume(context.Background(), volumeName, &azdiskv1beta1.CapacityRange{RequiredBytes: 274877906944}, []azdiskv1beta1.VolumeCapability{}, map[string]string{"kind": "managed", "maxShares": "2", consts.SkuNameField: "Premium_LRS"}, nil, nil, nil)
 				require.NoError(t, err)
 			},
 			testFunc: func(t *testing.T, volumeName, nodeName string) {
@@ -485,7 +485,7 @@ func TestAzVolumeAttachment(t *testing.T) {
 			volumeContext:    nil,
 			setUpFunc: func(t *testing.T, volumeName string) {
 				// create volume
-				_, err := crdProvisioner.CreateVolume(context.Background(), volumeName, &diskv1beta1.CapacityRange{RequiredBytes: 274877906944}, []diskv1beta1.VolumeCapability{}, map[string]string{"kind": "managed", "maxShares": "2", consts.SkuNameField: "Premium_LRS"}, nil, nil, nil)
+				_, err := crdProvisioner.CreateVolume(context.Background(), volumeName, &azdiskv1beta1.CapacityRange{RequiredBytes: 274877906944}, []azdiskv1beta1.VolumeCapability{}, map[string]string{"kind": "managed", "maxShares": "2", consts.SkuNameField: "Premium_LRS"}, nil, nil, nil)
 				require.NoError(t, err)
 			},
 			testFunc: func(t *testing.T, volumeName, nodeName string) {
@@ -506,9 +506,9 @@ func TestAzVolumeAttachment(t *testing.T) {
 				labelSelector := fmt.Sprintf("%s=%s", consts.VolumeNameLabel, diskName)
 				azVAs, err := azVolumeClient.DiskV1beta1().AzVolumeAttachments(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: labelSelector})
 				require.NoError(t, err)
-				var deletedReplica *diskv1beta1.AzVolumeAttachment
+				var deletedReplica *azdiskv1beta1.AzVolumeAttachment
 				for _, azVA := range azVAs.Items {
-					if azVA.Spec.RequestedRole == diskv1beta1.ReplicaRole {
+					if azVA.Spec.RequestedRole == azdiskv1beta1.ReplicaRole {
 						err = azVolumeClient.DiskV1beta1().AzVolumeAttachments(namespace).Delete(context.Background(), azVA.Name, metav1.DeleteOptions{})
 						require.NoError(t, err)
 						klog.Infof("Deleting replica AzVolumeAttachment (%s)", azVA.Name)
@@ -539,11 +539,11 @@ func TestAzVolumeAttachment(t *testing.T) {
 				require.NoError(t, err)
 
 				// restore azdrivernode
-				_, err = azVolumeClient.DiskV1beta1().AzDriverNodes(namespace).Create(context.Background(), &diskv1beta1.AzDriverNode{
+				_, err = azVolumeClient.DiskV1beta1().AzDriverNodes(namespace).Create(context.Background(), &azdiskv1beta1.AzDriverNode{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: deletedReplica.Spec.NodeName,
 					},
-					Spec: diskv1beta1.AzDriverNodeSpec{
+					Spec: azdiskv1beta1.AzDriverNodeSpec{
 						NodeName: deletedReplica.Spec.NodeName,
 					},
 				}, metav1.CreateOptions{})
@@ -558,7 +558,7 @@ func TestAzVolumeAttachment(t *testing.T) {
 					require.NotEmpty(t, azVAs.Items)
 
 					for _, azVA := range azVAs.Items {
-						if azVA.Spec.RequestedRole == diskv1beta1.ReplicaRole && azVA.Status.Detail != nil && azVA.Status.Detail.Role == diskv1beta1.ReplicaRole && azVA.Status.Detail.PublishContext != nil {
+						if azVA.Spec.RequestedRole == azdiskv1beta1.ReplicaRole && azVA.Status.Detail != nil && azVA.Status.Detail.Role == azdiskv1beta1.ReplicaRole && azVA.Status.Detail.PublishContext != nil {
 							klog.Infof("A new replica AzVolumeAttachment (%s) found successfully attached to node (%s)", azVA.Name, azVA.Spec.NodeName)
 							return true, nil
 						}
@@ -581,7 +581,7 @@ func TestAzVolumeAttachment(t *testing.T) {
 			volumeContext:    nil,
 			setUpFunc: func(t *testing.T, volumeName string) {
 				// create volume
-				_, err := crdProvisioner.CreateVolume(context.Background(), volumeName, &diskv1beta1.CapacityRange{RequiredBytes: 1099511627776}, []diskv1beta1.VolumeCapability{}, map[string]string{"kind": "managed", "maxShares": "3", consts.SkuNameField: "Premium_LRS"}, nil, nil, nil)
+				_, err := crdProvisioner.CreateVolume(context.Background(), volumeName, &azdiskv1beta1.CapacityRange{RequiredBytes: 1099511627776}, []azdiskv1beta1.VolumeCapability{}, map[string]string{"kind": "managed", "maxShares": "3", consts.SkuNameField: "Premium_LRS"}, nil, nil, nil)
 				require.NoError(t, err)
 			},
 			testFunc: func(t *testing.T, volumeName, nodeName string) {
@@ -605,7 +605,7 @@ func TestAzVolumeAttachment(t *testing.T) {
 
 				numReplicaDeleted := 0
 				for _, azVA := range azVAs.Items {
-					if azVA.Spec.RequestedRole == diskv1beta1.ReplicaRole {
+					if azVA.Spec.RequestedRole == azdiskv1beta1.ReplicaRole {
 						err = azVolumeClient.DiskV1beta1().AzVolumeAttachments(namespace).Delete(context.Background(), azVA.Name, metav1.DeleteOptions{})
 						require.NoError(t, err)
 						klog.Infof("Deleting two replica AzVolumeAttachment (%s)", azVA.Name)
@@ -641,7 +641,7 @@ func TestAzVolumeAttachment(t *testing.T) {
 			volumeContext:    nil,
 			setUpFunc: func(t *testing.T, volumeName string) {
 				// create volume
-				_, err := crdProvisioner.CreateVolume(context.Background(), volumeName, &diskv1beta1.CapacityRange{RequiredBytes: 274877906944}, []diskv1beta1.VolumeCapability{}, map[string]string{"kind": "managed", "maxShares": "2", consts.SkuNameField: "Premium_LRS"}, nil, nil, nil)
+				_, err := crdProvisioner.CreateVolume(context.Background(), volumeName, &azdiskv1beta1.CapacityRange{RequiredBytes: 274877906944}, []azdiskv1beta1.VolumeCapability{}, map[string]string{"kind": "managed", "maxShares": "2", consts.SkuNameField: "Premium_LRS"}, nil, nil, nil)
 				require.NoError(t, err)
 			},
 			testFunc: func(t *testing.T, volumeName, nodeName string) {
@@ -692,7 +692,7 @@ func TestAzVolumeAttachment(t *testing.T) {
 			volumeContext:    nil,
 			setUpFunc: func(t *testing.T, volumeName string) {
 				// create volume
-				_, err := crdProvisioner.CreateVolume(context.Background(), volumeName, &diskv1beta1.CapacityRange{RequiredBytes: 274877906944}, []diskv1beta1.VolumeCapability{}, map[string]string{"kind": "managed", "maxShares": "2", consts.SkuNameField: "Premium_LRS"}, nil, nil, nil)
+				_, err := crdProvisioner.CreateVolume(context.Background(), volumeName, &azdiskv1beta1.CapacityRange{RequiredBytes: 274877906944}, []azdiskv1beta1.VolumeCapability{}, map[string]string{"kind": "managed", "maxShares": "2", consts.SkuNameField: "Premium_LRS"}, nil, nil, nil)
 				require.NoError(t, err)
 			},
 			testFunc: func(t *testing.T, volumeName, nodeName string) {
@@ -718,7 +718,7 @@ func TestAzVolumeAttachment(t *testing.T) {
 				time.Sleep(controller.DefaultTimeUntilGarbageCollection / 2)
 
 				klog.Infof("Publishing volume (%s) to node (%s)", volumeID, nodeName)
-				response, err := crdProvisioner.PublishVolume(context.Background(), volumeID, nodeName, &diskv1beta1.VolumeCapability{}, false, nil, nil)
+				response, err := crdProvisioner.PublishVolume(context.Background(), volumeID, nodeName, &azdiskv1beta1.VolumeCapability{}, false, nil, nil)
 				if !assert.NotNil(t, response) || !assert.NoError(t, err) {
 					return
 				}

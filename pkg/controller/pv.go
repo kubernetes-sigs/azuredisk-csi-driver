@@ -26,7 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	azdiskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/workflow"
@@ -60,7 +60,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 	ctx = logr.NewContext(ctx, logger)
 
 	var pv corev1.PersistentVolume
-	var azVolume diskv1beta1.AzVolume
+	var azVolume azdiskv1beta1.AzVolume
 	// Ignore not found errors as they cannot be fixed by a requeue
 	if err := r.controllerSharedState.cachedClient.Get(ctx, request.NamespacedName, &pv); err != nil {
 		if errors.IsNotFound(err) {
@@ -101,7 +101,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 		// AzVolume does exist and needs to be deleted
 		// add annotation to mark AzVolumeAttachment cleanup
 		updateFunc := func(obj interface{}) error {
-			azv := obj.(*diskv1beta1.AzVolume)
+			azv := obj.(*azdiskv1beta1.AzVolume)
 			azv.Status.Annotations = azureutils.AddToMap(azv.Status.Annotations, consts.PreProvisionedVolumeCleanupAnnotation, "true")
 			return nil
 		}
@@ -144,7 +144,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 
 	if azVolume.Spec.PersistentVolume == "" {
 		err := azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, &azVolume, func(obj interface{}) error {
-			azVolume := obj.(*diskv1beta1.AzVolume)
+			azVolume := obj.(*azdiskv1beta1.AzVolume)
 			azVolume.Spec.PersistentVolume = pv.Name
 			return nil
 		}, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRI)
@@ -172,7 +172,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 }
 
 //nolint:contextcheck // Garbage collection is asynchronous; context is not inherited by design
-func (r *ReconcilePV) triggerRelease(ctx context.Context, azVolume *diskv1beta1.AzVolume) error {
+func (r *ReconcilePV) triggerRelease(ctx context.Context, azVolume *azdiskv1beta1.AzVolume) error {
 	gcCtx, w := workflow.New(context.Background(), workflow.WithDetails(consts.VolumeNameLabel, azVolume.Spec.VolumeName))
 	defer w.Finish(nil)
 	r.controllerSharedState.garbageCollectReplicas(gcCtx, azVolume.Name, pv)

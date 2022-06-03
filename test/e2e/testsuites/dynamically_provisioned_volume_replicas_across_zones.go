@@ -30,7 +30,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e/framework"
-	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
@@ -41,7 +41,7 @@ import (
 type DynamicallyProvisionedVolumeReplicasAcrossZones struct {
 	Pod                    resources.PodDetails
 	CSIDriver              driver.DynamicPVTestDriver
-	AzDiskClient           *azDiskClientSet.Clientset
+	AzDiskClient           *azdisk.Clientset
 	StorageClassParameters map[string]string
 }
 
