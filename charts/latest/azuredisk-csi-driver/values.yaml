@@ -45,6 +45,7 @@ controller:
   livenessProbe:
     healthPort: 29602
   runOnMaster: false
+  runOnControlPlane: false
   disableAvailabilitySetNodes: false
   vmType: ""
   provisionerWorkerThreads: 40
