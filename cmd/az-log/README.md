@@ -28,8 +28,8 @@ $ cat $GOPATH/src/sigs.k8s.io/azuredisk-csi-driver/cmd/az-log/config/az-log.yaml
 ### Retrieval Options
 |Flag|Description|
 |---|---|
-|--follow |Specify if logs should be streamed.|
-|--previous |Print logs for previous container in a pod if it exists as well as for current container.|
+|--follow |Specify if logs should be streamed. Can't be used with `get file`.|
+|--previous |Print logs for previous container in a pod if it exists as well as for current container. Can't be used with `get file`.|
 
 ### Query Options
 |Flag|Description|
