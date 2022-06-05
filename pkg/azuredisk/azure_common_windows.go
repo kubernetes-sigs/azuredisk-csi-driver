@@ -20,9 +20,11 @@ limitations under the License.
 package azuredisk
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 
+	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/status"
 	"k8s.io/klog/v2"
 	"k8s.io/mount-utils"
@@ -158,4 +160,12 @@ func rescanVolume(io azureutils.IOHandler, devicePath string) error {
 // rescanAllVolumes rescan all devices
 func rescanAllVolumes(io azureutils.IOHandler) error {
 	return nil
+}
+
+func GetVolumeStats(ctx context.Context, m *mount.SafeFormatAndMount, target string, hostutil hostUtil) ([]*csi.VolumeUsage, error) {
+	if proxy, ok := m.Interface.(mounter.CSIProxyMounter); ok {
+		volUsage, err := proxy.GetVolumeStats(ctx, target)
+		return []*csi.VolumeUsage{volUsage}, err
+	}
+	return []*csi.VolumeUsage{}, fmt.Errorf("could not cast to csi proxy class")
 }
