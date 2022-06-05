@@ -94,14 +94,8 @@ spec:
             type: object
           status:
             description: status represents the current state of AzVolumeAttachment.
-              includes error, state, and attachment status
+              includes error, state, and attachment status Required
             properties:
-              annotation:
-                additionalProperties:
-                  type: string
-                description: Annotations contains additional resource information
-                  to guide driver actions
-                type: object
               detail:
                 description: Status summarizes the current attachment state of the
                   volume attachment Nil Status indicates that the volume has not yet
@@ -145,8 +139,7 @@ spec:
         type: object
     served: true
     storage: false
-    subresources:
-      status: {}
+    subresources: {}
   - additionalPrinterColumns:
     - description: The age of the attachment
       jsonPath: .metadata.creationTimestamp
