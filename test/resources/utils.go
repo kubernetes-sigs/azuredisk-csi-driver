@@ -37,7 +37,7 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e/framework"
 	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
-	azdiskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
@@ -54,7 +54,7 @@ func NormalizeVolumes(volumes []VolumeDetails, allowedTopologies []string, isMul
 	return volumes
 }
 
-func VerifySuccessfulAzVolumeAttachments(pod PodDetails, azDiskClient *azdisk.Clientset, storageClassParameters map[string]string, client clientset.Interface, namespace *v1.Namespace) (isVerified bool, allAttachments, failedAttachments []azdiskv1beta1.AzVolumeAttachment, err error) {
+func VerifySuccessfulAzVolumeAttachments(pod PodDetails, azDiskClient *azdisk.Clientset, storageClassParameters map[string]string, client clientset.Interface, namespace *v1.Namespace) (isVerified bool, allAttachments, failedAttachments []azdiskv1beta2.AzVolumeAttachment, err error) {
 	var expectedNumberOfReplicas int
 	nodes := getSchedulableNodes(azDiskClient, client, pod, namespace)
 	nodesAvailableForReplicas := len(nodes) - 1
@@ -84,7 +84,7 @@ func VerifySuccessfulAzVolumeAttachments(pod PodDetails, azDiskClient *azdisk.Cl
 		allAttachments = append(allAttachments, pvAttachments.Items...)
 
 		for _, attachment := range pvAttachments.Items {
-			if attachment.Status.State != azdiskv1beta1.Attached {
+			if attachment.Status.State != azdiskv1beta2.Attached {
 				e2elog.Logf("found attachment %s, currently not attached", attachment.Name)
 				failedAttachments = append(failedAttachments, attachment)
 			} else {
@@ -161,7 +161,7 @@ func generatePVC(namespace, storageClassName, name, claimSize string, volumeMode
 	}
 }
 
-func getAzVolumeAttachmentsForPV(persistentVolume *v1.PersistentVolume, client clientset.Interface, namespace *v1.Namespace, azDiskClient *azdisk.Clientset) (*azdiskv1beta1.AzVolumeAttachmentList, error) {
+func getAzVolumeAttachmentsForPV(persistentVolume *v1.PersistentVolume, client clientset.Interface, namespace *v1.Namespace, azDiskClient *azdisk.Clientset) (*azdiskv1beta2.AzVolumeAttachmentList, error) {
 	pv, err := client.CoreV1().PersistentVolumes().Get(context.TODO(), persistentVolume.Name, metav1.GetOptions{})
 	if err != nil {
 		ginkgo.Fail("failed to get persistent volume")
@@ -170,7 +170,7 @@ func getAzVolumeAttachmentsForPV(persistentVolume *v1.PersistentVolume, client c
 	if err != nil {
 		ginkgo.Fail("failed to get persistent volume diskname")
 	}
-	azVolumeAttachments, err := azDiskClient.DiskV1beta1().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: labels.Set(map[string]string{consts.VolumeNameLabel: diskname}).String()})
+	azVolumeAttachments, err := azDiskClient.DiskV1beta2().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: labels.Set(map[string]string{consts.VolumeNameLabel: diskname}).String()})
 	if err != nil {
 		ginkgo.Fail("failed while getting replica attachments")
 	}

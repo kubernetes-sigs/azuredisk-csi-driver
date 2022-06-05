@@ -47,7 +47,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	schedulerapi "k8s.io/kube-scheduler/extender/v1"
-	azdiskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	azdiskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
 	azdiskinformers "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions"
@@ -815,38 +815,38 @@ func gotExpectedPrioritizeList(got, want schedulerapi.HostPriorityList, order []
 	return true
 }
 
-func getVolumeAttachment(attachmentName, ns, volumeName, nodeName string) *azdiskv1beta1.AzVolumeAttachment {
-	return &azdiskv1beta1.AzVolumeAttachment{
+func getVolumeAttachment(attachmentName, ns, volumeName, nodeName string) *azdiskv1beta2.AzVolumeAttachment {
+	return &azdiskv1beta2.AzVolumeAttachment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      attachmentName,
 			Namespace: ns,
 			Labels:    map[string]string{consts.NodeNameLabel: nodeName},
 		},
-		Spec: azdiskv1beta1.AzVolumeAttachmentSpec{
+		Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
 			VolumeName:    volumeName,
 			NodeName:      nodeName,
-			RequestedRole: azdiskv1beta1.PrimaryRole,
+			RequestedRole: azdiskv1beta2.PrimaryRole,
 		},
-		Status: azdiskv1beta1.AzVolumeAttachmentStatus{
-			Detail: &azdiskv1beta1.AzVolumeAttachmentStatusDetail{
-				Role: azdiskv1beta1.PrimaryRole,
+		Status: azdiskv1beta2.AzVolumeAttachmentStatus{
+			Detail: &azdiskv1beta2.AzVolumeAttachmentStatusDetail{
+				Role: azdiskv1beta2.PrimaryRole,
 			},
-			State: azdiskv1beta1.Attached,
+			State: azdiskv1beta2.Attached,
 		},
 	}
 }
 
-func getDriverNode(driverNodeName, ns, nodeName string, ready bool) *azdiskv1beta1.AzDriverNode {
+func getDriverNode(driverNodeName, ns, nodeName string, ready bool) *azdiskv1beta2.AzDriverNode {
 	heartbeat := metav1.Now()
-	return &azdiskv1beta1.AzDriverNode{
+	return &azdiskv1beta2.AzDriverNode{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      driverNodeName,
 			Namespace: ns,
 		},
-		Spec: azdiskv1beta1.AzDriverNodeSpec{
+		Spec: azdiskv1beta2.AzDriverNodeSpec{
 			NodeName: nodeName,
 		},
-		Status: &azdiskv1beta1.AzDriverNodeStatus{
+		Status: &azdiskv1beta2.AzDriverNodeStatus{
 			ReadyForVolumeAllocation: &ready,
 			LastHeartbeatTime:        &heartbeat,
 		},
@@ -941,8 +941,8 @@ func setupTestInformers(versionedInterface azdisk.Interface, coreInterface kuber
 	v1alpah1InformerFactory := azdiskinformers.NewSharedInformerFactory(kubeExtensionClientset, noResyncPeriodFunc())
 	coreInformerFactory := informers.NewSharedInformerFactory(coreInterface, noResyncPeriodFunc())
 
-	azVolumeAttachmentInformer = v1alpah1InformerFactory.Disk().V1beta1().AzVolumeAttachments()
-	azDriverNodeInformer = v1alpah1InformerFactory.Disk().V1beta1().AzDriverNodes()
+	azVolumeAttachmentInformer = v1alpah1InformerFactory.Disk().V1beta2().AzVolumeAttachments()
+	azDriverNodeInformer = v1alpah1InformerFactory.Disk().V1beta2().AzDriverNodes()
 	pvInformer = coreInformerFactory.Core().V1().PersistentVolumes()
 	pvcInformer = coreInformerFactory.Core().V1().PersistentVolumeClaims()
 

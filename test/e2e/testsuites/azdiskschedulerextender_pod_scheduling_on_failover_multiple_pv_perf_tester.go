@@ -27,7 +27,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
 	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
-	azdiskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
@@ -98,11 +98,11 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV) Run(client cl
 
 	//Check that AzVolumeAttachment resources were created correctly
 	allAttached := true
-	failedAttachments := []azdiskv1beta1.AzVolumeAttachment{}
+	failedAttachments := []azdiskv1beta2.AzVolumeAttachment{}
 	err := wait.Poll(15*time.Second, 10*time.Minute, func() (bool, error) {
 		allAttached = true
 
-		failedAttachments = []azdiskv1beta1.AzVolumeAttachment{}
+		failedAttachments = []azdiskv1beta2.AzVolumeAttachment{}
 		for _, ss := range tStatefulSets {
 			for _, pod := range ss.AllPods {
 				attached, _, podFailedAttachments, err := resources.VerifySuccessfulAzVolumeAttachments(pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)

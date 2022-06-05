@@ -28,7 +28,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
 
-	azdiskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
@@ -67,7 +67,7 @@ var _ = ginkgo.Describe("Controller", func() {
 
 			for _, pod := range pods.Items {
 				if strings.Contains(pod.Spec.NodeName, "csi-azuredisk-node") {
-					azN := azDiskClient.DiskV1beta1().AzDriverNodes(namespace)
+					azN := azDiskClient.DiskV1beta2().AzDriverNodes(namespace)
 					dNode, err := azN.Get(context.Background(), pod.Spec.NodeName, metav1.GetOptions{})
 					framework.ExpectNoError(err)
 					ginkgo.By("Checking AzDriverNode/Status")
@@ -133,10 +133,10 @@ var _ = ginkgo.Describe("Controller", func() {
 			framework.ExpectNoError(err)
 
 			// Delete the underlying AzVolume so that a new AzVolumeAttachment to replace the deleted one doesn't get spawned
-			err = azDiskClient.DiskV1beta1().AzVolumes(namespace).Delete(context.Background(), volName, metav1.DeleteOptions{})
+			err = azDiskClient.DiskV1beta2().AzVolumes(namespace).Delete(context.Background(), volName, metav1.DeleteOptions{})
 			framework.ExpectNoError(err)
 
-			err = azDiskClient.DiskV1beta1().AzVolumeAttachments(namespace).Delete(context.Background(), att.Name, metav1.DeleteOptions{})
+			err = azDiskClient.DiskV1beta2().AzVolumeAttachments(namespace).Delete(context.Background(), att.Name, metav1.DeleteOptions{})
 			framework.ExpectNoError(err)
 
 			err = testAzAtt.WaitForDelete(primaryNode, time.Duration(5)*time.Minute)
@@ -173,7 +173,7 @@ var _ = ginkgo.Describe("Controller", func() {
 			_ = testAzAtt.Create()
 			err := testAzAtt.WaitForReplicas(1, time.Duration(5)*time.Minute)
 			framework.ExpectNoError(err)
-			attachments, err := azDiskClient.DiskV1beta1().AzVolumeAttachments(namespace).List(context.Background(), metav1.ListOptions{})
+			attachments, err := azDiskClient.DiskV1beta2().AzVolumeAttachments(namespace).List(context.Background(), metav1.ListOptions{})
 			framework.ExpectNoError(err)
 
 			// fail primary attachment
@@ -181,23 +181,23 @@ var _ = ginkgo.Describe("Controller", func() {
 			defer resources.NewTestAzDriverNode(azDiskClient, namespace, primaryNode)
 			framework.ExpectNoError(err)
 
-			err = azDiskClient.DiskV1beta1().AzVolumeAttachments(namespace).Delete(context.Background(), azureutils.GetAzVolumeAttachmentName(volName, primaryNode), metav1.DeleteOptions{})
+			err = azDiskClient.DiskV1beta2().AzVolumeAttachments(namespace).Delete(context.Background(), azureutils.GetAzVolumeAttachmentName(volName, primaryNode), metav1.DeleteOptions{})
 			framework.ExpectNoError(err)
 			err = testAzAtt.WaitForDelete(primaryNode, time.Duration(5)*time.Minute)
 			framework.ExpectNoError(err)
 
 			// failover to one of replicas
-			var replica *azdiskv1beta1.AzVolumeAttachment
+			var replica *azdiskv1beta2.AzVolumeAttachment
 			for _, attachment := range attachments.Items {
-				if attachment.Status.Detail != nil && attachment.Status.Detail.Role == azdiskv1beta1.ReplicaRole {
+				if attachment.Status.Detail != nil && attachment.Status.Detail.Role == azdiskv1beta2.ReplicaRole {
 					attachment := attachment
 					replica = &attachment
 					break
 				}
 			}
 			promoted := replica.DeepCopy()
-			promoted.Spec.RequestedRole = azdiskv1beta1.PrimaryRole
-			_, err = azDiskClient.DiskV1beta1().AzVolumeAttachments(namespace).Update(context.Background(), promoted, metav1.UpdateOptions{})
+			promoted.Spec.RequestedRole = azdiskv1beta2.PrimaryRole
+			_, err = azDiskClient.DiskV1beta2().AzVolumeAttachments(namespace).Update(context.Background(), promoted, metav1.UpdateOptions{})
 			framework.ExpectNoError(err)
 
 			// check if a new primary has been created
@@ -222,13 +222,13 @@ var _ = ginkgo.Describe("Controller", func() {
 			_ = testAzAtt.Create()
 			err := testAzAtt.WaitForReplicas(1, time.Duration(5)*time.Minute)
 			framework.ExpectNoError(err)
-			attachments, err := azDiskClient.DiskV1beta1().AzVolumeAttachments(namespace).List(context.Background(), metav1.ListOptions{})
+			attachments, err := azDiskClient.DiskV1beta2().AzVolumeAttachments(namespace).List(context.Background(), metav1.ListOptions{})
 			framework.ExpectNoError(err)
 
 			// fail replica attachment
-			var replica *azdiskv1beta1.AzVolumeAttachment
+			var replica *azdiskv1beta2.AzVolumeAttachment
 			for _, attachment := range attachments.Items {
-				if attachment.Status.Detail != nil && attachment.Status.Detail.Role == azdiskv1beta1.ReplicaRole {
+				if attachment.Status.Detail != nil && attachment.Status.Detail.Role == azdiskv1beta2.ReplicaRole {
 					attachment := attachment
 					replica = &attachment
 					break
@@ -238,7 +238,7 @@ var _ = ginkgo.Describe("Controller", func() {
 			defer resources.NewTestAzDriverNode(azDiskClient, namespace, replica.Spec.NodeName)
 			framework.ExpectNoError(err)
 
-			err = azDiskClient.DiskV1beta1().AzVolumeAttachments(namespace).Delete(context.Background(), replica.Name, metav1.DeleteOptions{})
+			err = azDiskClient.DiskV1beta2().AzVolumeAttachments(namespace).Delete(context.Background(), replica.Name, metav1.DeleteOptions{})
 			framework.ExpectNoError(err)
 			err = testAzAtt.WaitForDelete(replica.Spec.NodeName, time.Duration(5)*time.Minute)
 			framework.ExpectNoError(err)
@@ -264,17 +264,17 @@ var _ = ginkgo.Describe("Controller", func() {
 			defer testAzAtt.Cleanup()
 			err := testAzAtt.WaitForReplicas(replicaCount, time.Duration(5)*time.Minute)
 			framework.ExpectNoError(err)
-			attachments, err := azDiskClient.DiskV1beta1().AzVolumeAttachments(namespace).List(context.Background(), metav1.ListOptions{})
+			attachments, err := azDiskClient.DiskV1beta2().AzVolumeAttachments(namespace).List(context.Background(), metav1.ListOptions{})
 			framework.ExpectNoError(err)
 
 			// fail replica attachments
 			i := 0
 			for _, attachment := range attachments.Items {
-				if attachment.Status.Detail != nil && attachment.Status.Detail.Role == azdiskv1beta1.ReplicaRole {
-					err = azDiskClient.DiskV1beta1().AzVolumeAttachments(namespace).Delete(context.Background(), attachment.Name, metav1.DeleteOptions{})
+				if attachment.Status.Detail != nil && attachment.Status.Detail.Role == azdiskv1beta2.ReplicaRole {
+					err = azDiskClient.DiskV1beta2().AzVolumeAttachments(namespace).Delete(context.Background(), attachment.Name, metav1.DeleteOptions{})
 					framework.ExpectNoError(err)
 					// below will be commented out until the controller test uses AzureDiskDriver_v2 running on a separate dedicated namespace for testing
-					// err = resources.WaitForDelete(azDiskClient.DiskV1beta1().AzVolumeAttachments(namespace), att.Namespace, replica.Name, time.Duration(5)*time.Minute)
+					// err = resources.WaitForDelete(azDiskClient.DiskV1beta2().AzVolumeAttachments(namespace), att.Namespace, replica.Name, time.Duration(5)*time.Minute)
 					// framework.ExpectNoError(err)
 					i++
 				}
@@ -310,7 +310,7 @@ var _ = ginkgo.Describe("Controller", func() {
 			defer resources.NewTestAzDriverNode(azDiskClient, namespace, primaryNode)
 			framework.ExpectNoError(err)
 
-			err = azDiskClient.DiskV1beta1().AzVolumeAttachments(namespace).Delete(context.Background(), primary.Name, metav1.DeleteOptions{})
+			err = azDiskClient.DiskV1beta2().AzVolumeAttachments(namespace).Delete(context.Background(), primary.Name, metav1.DeleteOptions{})
 			framework.ExpectNoError(err)
 			err = testAzAtt.WaitForDelete(primaryNode, time.Duration(5)*time.Minute)
 			framework.ExpectNoError(err)
@@ -344,18 +344,18 @@ var _ = ginkgo.Describe("Controller", func() {
 			defer resources.NewTestAzDriverNode(azDiskClient, namespace, primaryNode)
 			framework.ExpectNoError(err)
 
-			err = azDiskClient.DiskV1beta1().AzVolumeAttachments(namespace).Delete(context.Background(), azureutils.GetAzVolumeAttachmentName(volName, primaryNode), metav1.DeleteOptions{})
+			err = azDiskClient.DiskV1beta2().AzVolumeAttachments(namespace).Delete(context.Background(), azureutils.GetAzVolumeAttachmentName(volName, primaryNode), metav1.DeleteOptions{})
 			framework.ExpectNoError(err)
 			err = testAzAtt.WaitForDelete(primaryNode, time.Duration(5)*time.Minute)
 			framework.ExpectNoError(err)
 
 			// failover to one of replicas
-			attachments, err := azDiskClient.DiskV1beta1().AzVolumeAttachments(namespace).List(context.Background(), metav1.ListOptions{})
+			attachments, err := azDiskClient.DiskV1beta2().AzVolumeAttachments(namespace).List(context.Background(), metav1.ListOptions{})
 			framework.ExpectNoError(err)
 
-			var replica *azdiskv1beta1.AzVolumeAttachment
+			var replica *azdiskv1beta2.AzVolumeAttachment
 			for _, attachment := range attachments.Items {
-				if attachment.Status.Detail != nil && attachment.Status.Detail.Role == azdiskv1beta1.ReplicaRole {
+				if attachment.Status.Detail != nil && attachment.Status.Detail.Role == azdiskv1beta2.ReplicaRole {
 					attachment := attachment
 					replica = &attachment
 					break
@@ -363,8 +363,8 @@ var _ = ginkgo.Describe("Controller", func() {
 			}
 
 			promoted := replica.DeepCopy()
-			promoted.Spec.RequestedRole = azdiskv1beta1.PrimaryRole
-			_, err = azDiskClient.DiskV1beta1().AzVolumeAttachments(namespace).Update(context.Background(), promoted, metav1.UpdateOptions{})
+			promoted.Spec.RequestedRole = azdiskv1beta2.PrimaryRole
+			_, err = azDiskClient.DiskV1beta2().AzVolumeAttachments(namespace).Update(context.Background(), promoted, metav1.UpdateOptions{})
 			framework.ExpectNoError(err)
 
 			// check if a new primary has been created
@@ -403,7 +403,7 @@ var _ = ginkgo.Describe("Controller", func() {
 
 			err = testAzVolume.WaitForFinalizer(time.Duration(5) * time.Minute)
 			framework.ExpectNoError(err)
-			err = azDiskClient.DiskV1beta1().AzVolumes(namespace).Delete(context.Background(), volume.Name, metav1.DeleteOptions{})
+			err = azDiskClient.DiskV1beta2().AzVolumes(namespace).Delete(context.Background(), volume.Name, metav1.DeleteOptions{})
 			framework.ExpectNoError(err)
 
 			err = testAzVolume.WaitForDelete(time.Duration(3) * time.Minute)
@@ -427,7 +427,7 @@ var _ = ginkgo.Describe("Controller", func() {
 			time.Sleep(time.Duration(3) * time.Minute)
 
 			// If AzVolume is deleted, AzVolumeAttachment referring to the deleted AzVolume should also be deleted.
-			err = azDiskClient.DiskV1beta1().AzVolumes(namespace).Delete(context.Background(), volName, metav1.DeleteOptions{})
+			err = azDiskClient.DiskV1beta2().AzVolumes(namespace).Delete(context.Background(), volName, metav1.DeleteOptions{})
 			framework.ExpectNoError(err)
 
 			err = testAzAtt.WaitForDelete(nodes[0], time.Duration(5)*time.Minute)

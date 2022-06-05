@@ -28,7 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-	azdiskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
@@ -94,9 +94,9 @@ type AzvaResource struct {
 	Namespace   string
 	Name        string
 	Age         time.Duration
-	RequestRole azdiskv1beta1.Role
-	Role        azdiskv1beta1.Role
-	State       azdiskv1beta1.AzVolumeAttachmentAttachmentState
+	RequestRole azdiskv1beta2.Role
+	Role        azdiskv1beta2.Role
+	State       azdiskv1beta2.AzVolumeAttachmentAttachmentState
 }
 
 // return azVolumeAttachements with all Pods/Nodes/Zones when no flags is provided
@@ -124,7 +124,7 @@ func GetAllAzVolumeAttachements(clientsetK8s kubernetes.Interface, clientsetAzDi
 	}
 
 	// get azVolumeAttachments with the same claim name in pvcClaimNameSet
-	azVolumeAttachments, err := clientsetAzDisk.DiskV1beta1().AzVolumeAttachments(getDriverNamesapce()).List(context.Background(), metav1.ListOptions{})
+	azVolumeAttachments, err := clientsetAzDisk.DiskV1beta2().AzVolumeAttachments(getDriverNamesapce()).List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		panic(err.Error())
 	}
@@ -186,7 +186,7 @@ func GetAzVolumeAttachementsByPod(clientsetK8s kubernetes.Interface, clientsetAz
 	}
 
 	// get azVolumeAttachments with the same claim name in pvcClaimNameSet
-	azVolumeAttachments, err := clientsetAzDisk.DiskV1beta1().AzVolumeAttachments(getDriverNamesapce()).List(context.Background(), metav1.ListOptions{})
+	azVolumeAttachments, err := clientsetAzDisk.DiskV1beta2().AzVolumeAttachments(getDriverNamesapce()).List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		panic(err.Error())
 	}
@@ -218,7 +218,7 @@ func GetAzVolumeAttachementsByPod(clientsetK8s kubernetes.Interface, clientsetAz
 func GetAzVolumeAttachementsByNode(clientsetAzDisk azdisk.Interface, nodeName string) []AzvaResource {
 	result := make([]AzvaResource, 0)
 
-	azVolumeAttachments, err := clientsetAzDisk.DiskV1beta1().AzVolumeAttachments(getDriverNamesapce()).List(context.Background(), metav1.ListOptions{})
+	azVolumeAttachments, err := clientsetAzDisk.DiskV1beta2().AzVolumeAttachments(getDriverNamesapce()).List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		panic(err.Error())
 	}
@@ -260,7 +260,7 @@ func GetAzVolumeAttachementsByZone(clientsetK8s kubernetes.Interface, clientsetA
 	}
 
 	// get azVolumeAttachments of the nodes in the zone
-	azVolumeAttachments, err := clientsetAzDisk.DiskV1beta1().AzVolumeAttachments(getDriverNamesapce()).List(context.Background(), metav1.ListOptions{})
+	azVolumeAttachments, err := clientsetAzDisk.DiskV1beta2().AzVolumeAttachments(getDriverNamesapce()).List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		panic(err.Error())
 	}

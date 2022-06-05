@@ -75,7 +75,7 @@ func TestPVControllerReconcile(t *testing.T) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
 				waitErr := wait.PollImmediate(verifyCRIInterval, verifyCRITimeout, func() (bool, error) {
-					azVolumeAttachments, err := controller.controllerSharedState.azClient.DiskV1beta1().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{})
+					azVolumeAttachments, err := controller.controllerSharedState.azClient.DiskV1beta2().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{})
 					return len(azVolumeAttachments.Items) == 0, err
 				})
 				require.NoError(t, waitErr)

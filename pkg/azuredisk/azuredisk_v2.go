@@ -44,7 +44,7 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/record"
-	azdiskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller"
@@ -289,7 +289,7 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 	retryPeriod := time.Duration(d.controllerLeaseRetryPeriodInSec) * time.Second
 	scheme := apiRuntime.NewScheme()
 	clientgoscheme.AddToScheme(scheme)
-	azdiskv1beta1.AddToScheme(scheme)
+	azdiskv1beta2.AddToScheme(scheme)
 
 	// Setup a Manager
 	klog.V(2).Info("Setting up controller manager")
@@ -431,8 +431,8 @@ func (d *DriverV2) RegisterAzDriverNodeOrDie(ctx context.Context) {
 func (d *DriverV2) RunAzDriverNodeHeartbeatLoop(ctx context.Context) {
 
 	var err error
-	var cachedAzDriverNode *azdiskv1beta1.AzDriverNode
-	azN := d.crdProvisioner.GetDiskClientSet().DiskV1beta1().AzDriverNodes(d.objectNamespace)
+	var cachedAzDriverNode *azdiskv1beta2.AzDriverNode
+	azN := d.crdProvisioner.GetDiskClientSet().DiskV1beta2().AzDriverNodes(d.objectNamespace)
 	heartbeatFrequency := time.Duration(d.heartbeatFrequencyInSec) * time.Second
 	klog.V(1).Infof("Starting heartbeat loop with frequency (%v)", heartbeatFrequency)
 	for {
@@ -463,7 +463,7 @@ func (d *DriverV2) RunAzDriverNodeHeartbeatLoop(ctx context.Context) {
 		statusMessage := "Driver node healthy."
 		klog.V(2).Infof("Updating status for (%v)", azDriverNodeToUpdate)
 		if azDriverNodeToUpdate.Status == nil {
-			azDriverNodeToUpdate.Status = &azdiskv1beta1.AzDriverNodeStatus{}
+			azDriverNodeToUpdate.Status = &azdiskv1beta2.AzDriverNodeStatus{}
 		}
 		azDriverNodeToUpdate.Status.ReadyForVolumeAllocation = &readyForAllocation
 		azDriverNodeToUpdate.Status.LastHeartbeatTime = &timestamp

@@ -26,7 +26,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
 	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
-	azdiskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
@@ -77,12 +77,12 @@ func (t *PodFailoverWithReplicas) Run(client clientset.Interface, namespace *v1.
 
 	//Check that AzVolumeAttachment resources were created correctly
 	allAttached := true
-	var failedAttachments []azdiskv1beta1.AzVolumeAttachment
-	var allAttachments []azdiskv1beta1.AzVolumeAttachment
+	var failedAttachments []azdiskv1beta2.AzVolumeAttachment
+	var allAttachments []azdiskv1beta2.AzVolumeAttachment
 
 	err := wait.Poll(15*time.Second, 10*time.Minute, func() (bool, error) {
-		failedAttachments = []azdiskv1beta1.AzVolumeAttachment{}
-		allAttachments = []azdiskv1beta1.AzVolumeAttachment{}
+		failedAttachments = []azdiskv1beta2.AzVolumeAttachment{}
+		allAttachments = []azdiskv1beta2.AzVolumeAttachment{}
 		allAttached = true
 		var err error
 
@@ -118,7 +118,7 @@ func (t *PodFailoverWithReplicas) Run(client clientset.Interface, namespace *v1.
 	var primaryNode string
 	replicaNodeSet := map[string]struct{}{}
 	for _, attachment := range allAttachments {
-		if attachment.Spec.RequestedRole == azdiskv1beta1.PrimaryRole {
+		if attachment.Spec.RequestedRole == azdiskv1beta2.PrimaryRole {
 			primaryNode = attachment.Spec.NodeName
 		} else {
 			replicaNodeSet[attachment.Spec.NodeName] = struct{}{}

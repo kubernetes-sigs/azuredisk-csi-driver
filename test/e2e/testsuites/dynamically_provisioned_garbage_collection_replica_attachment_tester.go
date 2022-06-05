@@ -28,7 +28,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/skipper"
-	azdiskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
@@ -91,7 +91,7 @@ func (t *DynamicallyProvisionedScaleReplicasOnDetach) Run(client clientset.Inter
 	tStatefulSet.Create()
 	// Check that AzVolumeAttachment resources were created correctly
 	ginkgo.By("Verifying that the stateful set attachments are successful.")
-	verifyStatefulSetAttachments := func() (bool, []azdiskv1beta1.AzVolumeAttachment, error) {
+	verifyStatefulSetAttachments := func() (bool, []azdiskv1beta2.AzVolumeAttachment, error) {
 		return t.getStatefulSetAttachmentStatus(client, namespace, tStatefulSet)
 	}
 	failedAttachments, err := t.pollForFailedAttachments(verifyStatefulSetAttachments)
@@ -123,7 +123,7 @@ func (t *DynamicallyProvisionedScaleReplicasOnDetach) Run(client clientset.Inter
 	wrappedCleanup()
 
 	ginkgo.By("Verifying that the new pod has successful replica attachment.")
-	verifyPodAttachment := func() (bool, []azdiskv1beta1.AzVolumeAttachment, error) {
+	verifyPodAttachment := func() (bool, []azdiskv1beta2.AzVolumeAttachment, error) {
 		isVerified, _, failedAttachments, err := resources.VerifySuccessfulAzVolumeAttachments(t.NewPod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
 		return isVerified, failedAttachments, err
 	}
@@ -161,8 +161,8 @@ func (t *DynamicallyProvisionedScaleReplicasOnDetach) pollForReplicaFailedEvent(
 }
 
 // Verifies that the stateful set has successful attachments for all pods
-func (t *DynamicallyProvisionedScaleReplicasOnDetach) pollForFailedAttachments(verifyFunc func() (bool, []azdiskv1beta1.AzVolumeAttachment, error)) ([]azdiskv1beta1.AzVolumeAttachment, error) {
-	var finalFailedAttachments []azdiskv1beta1.AzVolumeAttachment
+func (t *DynamicallyProvisionedScaleReplicasOnDetach) pollForFailedAttachments(verifyFunc func() (bool, []azdiskv1beta2.AzVolumeAttachment, error)) ([]azdiskv1beta2.AzVolumeAttachment, error) {
+	var finalFailedAttachments []azdiskv1beta2.AzVolumeAttachment
 	err := wait.PollImmediate(testconsts.Poll, testconsts.PollTimeout, func() (bool, error) {
 		allAttached, failedAttachments, err := verifyFunc()
 		finalFailedAttachments = failedAttachments
@@ -172,9 +172,9 @@ func (t *DynamicallyProvisionedScaleReplicasOnDetach) pollForFailedAttachments(v
 }
 
 // Iterates over all pods in the stateful set to verify attachments for each pod
-func (t *DynamicallyProvisionedScaleReplicasOnDetach) getStatefulSetAttachmentStatus(client clientset.Interface, namespace *v1.Namespace, tStatefulSet *resources.TestStatefulset) (bool, []azdiskv1beta1.AzVolumeAttachment, error) {
+func (t *DynamicallyProvisionedScaleReplicasOnDetach) getStatefulSetAttachmentStatus(client clientset.Interface, namespace *v1.Namespace, tStatefulSet *resources.TestStatefulset) (bool, []azdiskv1beta2.AzVolumeAttachment, error) {
 	allAttached := true
-	var failedAttachments []azdiskv1beta1.AzVolumeAttachment
+	var failedAttachments []azdiskv1beta2.AzVolumeAttachment
 	for _, pod := range tStatefulSet.AllPods {
 		isAttached, _, podFailedReplicaAttachments, err := resources.VerifySuccessfulAzVolumeAttachments(pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
 		failedAttachments = append(failedAttachments, podFailedReplicaAttachments...)

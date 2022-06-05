@@ -218,7 +218,7 @@ func SetCSINodeDriver(c clientset.Interface, nodeName string) (cleanup func(), e
 
 func ListAzDriverNodeNames(azDiskClient azdisk.Interface) []string {
 	var nodeNames []string
-	nodes, err := azDiskClient.DiskV1beta1().AzDriverNodes(azureconstants.DefaultAzureDiskCrdNamespace).List(context.TODO(), metav1.ListOptions{})
+	nodes, err := azDiskClient.DiskV1beta2().AzDriverNodes(azureconstants.DefaultAzureDiskCrdNamespace).List(context.TODO(), metav1.ListOptions{})
 	framework.ExpectNoError(err)
 	for _, item := range nodes.Items {
 		nodeNames = append(nodeNames, item.Name)
