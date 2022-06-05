@@ -17,15 +17,12 @@ $ cat $GOPATH/src/sigs.k8s.io/azuredisk-csi-driver/cmd/az-analyze/config/az-anal
 ## Features
 |Command|Description|
 |---|---|
-|az-analyze get azv|Show all azVolumes with a pod column.
-|--pod \<pod-name\>|Show all azVolumes used by a given pod|
-|--namespace \<pod-namespace\>|Specify the namespace of the pod. If it's not specified, default namesapce is used.|
-
-|Command|Description|
-|---|---|
+|az-analyze get azv|Show all azVolumes with a pod column.|
 |az-analyze get azva|Show all azVolumesAttachments with pod, node, and zone as columns|
-|--pod \<pod-name\>|Show all azVolumesAttachments that are used by a given pod.|
-|--namespace \<pod-namespace\>|Specify the namespace of the pod. If it's not specified, default namesapce is used.|
+
+|Option|Description|
+|---|---|
+|--pod \<pod-name\>|Show all azVolumes/azVolumesAttachments that are used by a given pod.|
 |--node \<node-name\>|Show all azVolumesAttachments that are present in a given node.|
 |--zone \<zone-name\>|Show all azVolumesAttachments that are present in a given zone.|
-
+|--namespace \<pod-namespace\>|Specify the namespace of the pod. If it's not specified, default namesapce is used.|
