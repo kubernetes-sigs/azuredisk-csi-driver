@@ -328,7 +328,7 @@ func (mounter *csiProxyMounterV1Beta) GetVolumeStats(ctx context.Context, path s
 	if err != nil || volIDResp == nil {
 		return nil, fmt.Errorf("GetVolumeIDFromMount(%s) failed with error: %v, response: %v", path, err, volIDResp)
 	}
-	klog.V(4).Infof("GetVolumeStats(%s) returned volumeID(%s)", path, volIDResp.VolumeId)
+	klog.V(6).Infof("GetVolumeStats(%s) returned volumeID(%s)", path, volIDResp.VolumeId)
 	resp, err := mounter.VolumeClient.VolumeStats(ctx, &volume.VolumeStatsRequest{VolumeId: volIDResp.VolumeId})
 	if err != nil || resp == nil {
 		return nil, fmt.Errorf("GetVolumeStats(%s) failed with error: %v, response: %v", volIDResp.VolumeId, err, resp)
