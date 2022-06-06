@@ -32,8 +32,7 @@
 - [add the Chart repository](#add-the-helm-chart-repository)
 
 ### Tips
-
-- make controller only run on master node: `--set controller.runOnMaster=true`
+ - schedule controller running on control plane node: `--set controller.runOnControlPlane=true`
 - set replica of controller as `1`: `--set controller.replicas=1`
 - specify different cloud config secret for the driver:
   - `--set controller.cloudConfigSecretName`
@@ -158,7 +157,8 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `controller.replicas`                             | the replicas of csi-azuredisk-controller                   | `2`                                                            |
 | `controller.metricsPort`                          | metrics port of csi-azuredisk-controller                   | `29604`                                                        |
 | `controller.livenessProbe.healthPort`             | health check port for liveness probe                       | `29602` |
-| `controller.runOnMaster`                          | run csi-azuredisk-controller on master node                | `false`                                                        |
+| `controller.runOnMaster`                          | run csi-azuredisk-controller on master node(deprecated on k8s 1.25+)                | `false`                                                        |
+| `controller.runOnControlPlane`                    | run controller on control plane node                                                          |`false`                                                           |
 | `controller.vmssCacheTTLInSeconds`                | vmss cache TTL in seconds (600 by default)                                |`-1` (use default value)                                                          |
 | `controller.vmType`                | type of agent node. available values: `vmss`, `standard`                     |`` (use default value in cloud config)                                                          |
 | `controller.logLevel`                             | controller driver log level                                |`5`                                                           |
