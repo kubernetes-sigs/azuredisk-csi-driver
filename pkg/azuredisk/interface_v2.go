@@ -56,5 +56,6 @@ type NodeProvisioner interface {
 	CleanupMountPoint(path string, extensiveCheck bool) error
 	RescanVolume(devicePath string) error
 	Resize(source, target string) error
+	NeedsResize(devicePath, volumePath string) (bool, error)
 	GetBlockSizeBytes(devicePath string) (int64, error)
 }

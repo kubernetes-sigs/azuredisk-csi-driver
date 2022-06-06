@@ -20,8 +20,6 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2021-02-01/storage"
-
-	"k8s.io/component-base/featuregate"
 )
 
 const (
@@ -72,10 +70,6 @@ const (
 	DefaultDiskMBpsReadWrite = 100
 
 	DiskEncryptionSetIDFormat = "/subscriptions/{subs-id}/resourceGroups/{rg-name}/providers/Microsoft.Compute/diskEncryptionSets/{diskEncryptionSet-name}"
-
-	// IPv6DualStack is here to avoid having to import features pkg
-	// and violate import rules
-	IPv6DualStack featuregate.Feature = "IPv6DualStack"
 
 	// MachineIDTemplate is the template of the virtual machine
 	MachineIDTemplate = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/virtualMachines/%s"
@@ -326,6 +320,9 @@ const (
 	// LoadBalancerBackendPoolConfigurationTypePODIP is the lb backend pool config type pod ip
 	// TODO (nilo19): support pod IP in the future
 	LoadBalancerBackendPoolConfigurationTypePODIP = "podIP"
+
+	// To get pip, we need both resource group name and pip name, key in cache has format: pip_rg:pip_name
+	PIPCacheKeySeparator = ":"
 )
 
 // error messages
@@ -353,7 +350,7 @@ const (
 // metadata service
 const (
 	// ImdsInstanceAPIVersion is the imds instance api version
-	ImdsInstanceAPIVersion = "2019-03-11"
+	ImdsInstanceAPIVersion = "2021-10-01"
 	// ImdsLoadBalancerAPIVersion is the imds load balancer api version
 	ImdsLoadBalancerAPIVersion = "2020-10-01"
 	// ImdsServer is the imds server endpoint
@@ -401,7 +398,53 @@ const (
 	// This is only useful for the HTTP and HTTPS, and would be ignored when using TCP. If not set,
 	// `/healthz` would be configured by default.
 	HealthProbeParamsRequestPath  HealthProbeParams = "request-path"
-	HealthProbeDefaultRequestPath string            = "/healthz"
+	HealthProbeDefaultRequestPath string            = "/"
 )
 
 type HealthProbeParams string
+
+// private link service
+const (
+	// ServiceAnnotationPLSCreation determines whether a PLS needs to be created.
+	ServiceAnnotationPLSCreation = "service.beta.kubernetes.io/azure-pls-create"
+
+	// ServiceAnnotationPLSName determines name of the PLS resource to create.
+	ServiceAnnotationPLSName = "service.beta.kubernetes.io/azure-pls-name"
+
+	// ServiceAnnotationPLSIpConfigurationSubnet determines the subnet name to deploy the PLS resource.
+	ServiceAnnotationPLSIpConfigurationSubnet = "service.beta.kubernetes.io/azure-pls-ip-configuration-subnet"
+
+	// ServiceAnnotationPLSIpConfigurationIPAddressCount determines number of IPs to be associated with the PLS.
+	ServiceAnnotationPLSIpConfigurationIPAddressCount = "service.beta.kubernetes.io/azure-pls-ip-configuration-ip-address-count"
+
+	// ServiceAnnotationPLSIPConfigurationIPAddress determines a space separated list of static IPs for the PLS.
+	// Total number of IPs should not be greater than the IP count specified in ServiceAnnotationPLSIpConfigurationIPAddressCount.
+	// If there are fewer IPs specified, the rest are dynamically allocated. The first IP in the list is set as Primary.
+	ServiceAnnotationPLSIpConfigurationIPAddress = "service.beta.kubernetes.io/azure-pls-ip-configuration-ip-address"
+
+	// ServiceAnnotationPLSFqdns determines a space separated list of fqdns associated with the PLS.
+	ServiceAnnotationPLSFqdns = "service.beta.kubernetes.io/azure-pls-fqdns"
+
+	// ServiceAnnotationPLSProxyProtocol determines whether TCP Proxy protocol needs to be enabled on the PLS.
+	ServiceAnnotationPLSProxyProtocol = "service.beta.kubernetes.io/azure-pls-proxy-protocol"
+
+	// ServiceAnnotationPLSVisibility determines a space separated list of Azure subscription IDs for which the PLS is visible.
+	// Use "*" to expose the PLS to all subscriptions.
+	ServiceAnnotationPLSVisibility = "service.beta.kubernetes.io/azure-pls-visibility"
+
+	// ServiceAnnotationPLSAutoApproval determines a space separated list of Azure subscription IDs from which requests can be
+	// automatically approved, only works when visibility is set to "*".
+	ServiceAnnotationPLSAutoApproval = "service.beta.kubernetes.io/azure-pls-auto-approval"
+
+	// ID string used to create a not existing PLS placehold in plsCache to avoid redundant
+	PrivateLinkServiceNotExistID = "PrivateLinkServiceNotExistID"
+
+	// Key of tag indicating owner service of the PLS.
+	OwnerServiceTagKey = "k8s-azure-owner-service"
+
+	// Key of tag indicating cluster name of the service that owns PLS.
+	ClusterNameTagKey = "k8s-azure-cluster-name"
+
+	// Default number of IP configs for PLS
+	PLSDefaultNumOfIPConfig = 1
+)

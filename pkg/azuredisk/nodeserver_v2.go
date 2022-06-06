@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -207,20 +208,24 @@ func (d *DriverV2) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolume
 
 	// FormatAndMount will format only if needed
 	klog.V(2).Infof("NodeStageVolume: formatting %s and mounting at %s with mount options(%s)", source, target, options)
-	err = d.nodeProvisioner.FormatAndMount(source, target, fstype, options)
-	if err != nil {
-		msg := fmt.Sprintf("could not format %q(lun: %q), and mount it at %q", source, lun, target)
-		return nil, status.Error(codes.Internal, msg)
+	if err := d.nodeProvisioner.FormatAndMount(source, target, fstype, options); err != nil {
+		return nil, status.Errorf(codes.Internal, "could not format %s(lun: %d), and mount it at %s", source, lun, target)
 	}
 	klog.V(2).Infof("NodeStageVolume: format %s and mounting at %s successfully.", source, target)
 
-	// if resize is required, resize filesystem
-	if required, ok := req.GetVolumeContext()[consts.ResizeRequired]; ok && required == "true" {
-		klog.V(2).Infof("NodeStageVolume: fs resize initiating on target(%s) volumeid(%s)", target, diskURI)
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "NodeStageVolume: Could not get volume path for %s: %v", target, err)
+	var needResize bool
+	if required, ok := req.GetVolumeContext()[consts.ResizeRequired]; ok && strings.EqualFold(required, consts.TrueValue) {
+		needResize = true
+	}
+	if !needResize {
+		if needResize, err = d.nodeProvisioner.NeedsResize(source, target); err != nil {
+			klog.Errorf("NodeStageVolume: could not determine if volume %s needs to be resized: %v", diskURI, err)
 		}
+	}
 
+	// if resize is required, resize filesystem
+	if needResize {
+		klog.V(2).Infof("NodeStageVolume: fs resize initiating on target(%s) volumeid(%s)", target, diskURI)
 		if err := d.nodeProvisioner.Resize(source, target); err != nil {
 			return nil, status.Errorf(codes.Internal, "NodeStageVolume: Could not resize volume %q (%q):  %v", diskURI, source, err)
 		}

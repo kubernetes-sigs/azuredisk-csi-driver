@@ -663,7 +663,7 @@ func NewAttachDetachController(mgr manager.Manager, cloudDiskAttacher CloudDiskA
 	c, err := controller.New("azvolumeattachment-controller", mgr, controller.Options{
 		MaxConcurrentReconciles: 10,
 		Reconciler:              &reconciler,
-		Log:                     logger,
+		LogConstructor:          func(req *reconcile.Request) logr.Logger { return logger },
 	})
 
 	if err != nil {

@@ -9,10 +9,10 @@ spec:
   accessModes:
     - ReadWriteOnce
   persistentVolumeReclaimPolicy: Retain
+  storageClassName: managed-csi
   csi:
     driver: disk.csi.azure.com
     readOnly: false
     volumeHandle: /subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id}
     volumeAttributes:
       fsType: ext4
-      partition: "1"  # optional, remove this if there is no partition

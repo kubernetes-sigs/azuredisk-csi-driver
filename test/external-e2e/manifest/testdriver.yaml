@@ -4,6 +4,7 @@ SnapshotClass:
     FromName: true
 DriverInfo:
     Name: test.csi.azure.com
+    SupportedFsType: {"ext4", "ext3", "ext2", "xfs", "btrfs", "ntfs"}
     Capabilities:
         persistence: true
         multipods: true
@@ -15,3 +16,4 @@ DriverInfo:
         nodeExpansion: false
         volumeLimits: true
         snapshotDataSource: true
+        pvcDataSource: true

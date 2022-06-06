@@ -111,6 +111,11 @@ func (p *NodeProvisioner) Resize(source, target string) error {
 	return nil
 }
 
+// NeedsResize returns true if the volume needs to be resized.
+func (p *NodeProvisioner) NeedsResize(devicePath, volumePath string) (bool, error) {
+	return false, nil
+}
+
 // GetBlockSizeBytes returns the block size, in bytes, of the block device at the specified path.
 func (p *NodeProvisioner) GetBlockSizeBytes(devicePath string) (int64, error) {
 	proxy, ok := p.mounter.Interface.(mounter.CSIProxyMounter)

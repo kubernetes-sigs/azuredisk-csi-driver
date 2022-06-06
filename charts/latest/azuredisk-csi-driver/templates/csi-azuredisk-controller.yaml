@@ -26,7 +26,7 @@ spec:
       nodeSelector:
         kubernetes.io/os: linux
         {{- if .Values.controller.runOnMaster}}
-        kubernetes.io/role: master
+        node-role.kubernetes.io/master: ""
         {{- end}}
       priorityClassName: system-cluster-critical
 {{- with .Values.controller.tolerations }}
@@ -147,12 +147,14 @@ spec:
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--metrics-address=0.0.0.0:{{ .Values.controller.metricsPort }}"
             - "--disable-avset-nodes={{ .Values.controller.disableAvailabilitySetNodes }}"
+            - "--vm-type={{ .Values.controller.vmType }}"
             - "--drivername={{ .Values.driver.name }}"
             - "--cloud-config-secret-name={{ .Values.controller.cloudConfigSecretName }}"
             - "--cloud-config-secret-namespace={{ .Values.controller.cloudConfigSecretNamespace }}"
             - "--custom-user-agent={{ .Values.driver.customUserAgent }}"
             - "--user-agent-suffix={{ .Values.driver.userAgentSuffix }}"
             - "--allow-empty-cloud-config={{ .Values.controller.allowEmptyCloudConfig }}"
+            - "--vmss-cache-ttl-seconds={{ .Values.controller.vmssCacheTTLInSeconds }}"
           ports:
             - containerPort: {{ .Values.controller.livenessProbe.healthPort }}
               name: healthz

@@ -22,6 +22,7 @@ package provisioner
 import (
 	"fmt"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -82,6 +83,17 @@ func (p *NodeProvisioner) Resize(source, target string) error {
 	}
 
 	return nil
+}
+
+// NeedsResize returns true if the volume needs to be resized.
+func (p *NodeProvisioner) NeedsResize(devicePath, volumePath string) (bool, error) {
+	if runtime.GOOS == "darwin" {
+		return false, nil
+	}
+
+	resizer := mount.NewResizeFs(p.mounter.Exec)
+
+	return resizer.NeedResize(devicePath, volumePath)
 }
 
 // GetBlockSizeBytes returns the block size, in bytes, of the block device at the specified path.

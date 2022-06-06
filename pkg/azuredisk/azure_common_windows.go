@@ -145,6 +145,11 @@ func resizeVolume(devicePath, volumePath string, m *mount.SafeFormatAndMount) er
 	return nil
 }
 
+// needResizeVolume check whether device needs resize
+func needResizeVolume(devicePath, volumePath string, m *mount.SafeFormatAndMount) (bool, error) {
+	return false, nil
+}
+
 // rescanVolume rescan device for detecting device size expansion
 func rescanVolume(io azureutils.IOHandler, devicePath string) error {
 	return nil

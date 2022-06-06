@@ -1,5 +1,5 @@
 ## CSI driver debug tips
-### Case#1: disk create/delete/attach/detach/snapshot/restore failed
+### case#1: disk create/delete/attach/detach/snapshot/restore failed
  - locate csi driver pod
 ```console
 kubectl get po -o wide -n kube-system | grep csi-azuredisk-controller
@@ -24,7 +24,7 @@ kubectl describe $diskControllerName -n kube-system > $diskControllerName-descri
 kubectl logs $diskControllerName -n kube-system -c azuredisk > $diskControllerName.log
 ```
 
-### Case#2: volume mount/unmount failed
+### case#2: volume mount/unmount failed
  - locate csi driver pod that does the actual volume mount/unmount
 ```console
 kubectl get po -o wide -n kube-system | grep csi-azuredisk-node
@@ -86,3 +86,6 @@ change below deployment config, e.g.
         image: mcr.microsoft.com/k8s/csi/azuredisk-csi:v1.8.0
         imagePullPolicy: Always
 ```
+
+#### Links
+ - [Errors when mounting Azure disk volumes](https://docs.microsoft.com/en-us/troubleshoot/azure/azure-kubernetes/fail-to-mount-azure-disk-volume)

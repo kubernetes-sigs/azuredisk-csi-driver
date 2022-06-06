@@ -181,10 +181,24 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 		userAgent := GetUserAgent(d.Name, d.customUserAgent, d.userAgentSuffix)
 		klog.V(2).Infof("driver userAgent: %s", userAgent)
 
-		d.cloudProvisioner, err = provisioner.NewCloudProvisioner(d.kubeClient, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, d.getPerfOptimizationEnabled(), topologyKey, userAgent, d.enableDiskOnlineResize)
+		d.cloudProvisioner, err = provisioner.NewCloudProvisioner(
+			d.kubeClient,
+			d.cloudConfigSecretName,
+			d.cloudConfigSecretNamespace,
+			d.getPerfOptimizationEnabled(),
+			topologyKey,
+			userAgent,
+			d.enableDiskOnlineResize,
+			d.allowEmptyCloudConfig,
+		)
 		if err != nil {
 			klog.Fatalf("Failed to get controller provisioner. Error: %v", err)
 		}
+	}
+
+	if d.vmType != "" {
+		klog.V(2).Infof("override VMType(%s) in cloud config as %s", d.cloudProvisioner.GetCloud().VMType, d.vmType)
+		d.cloudProvisioner.GetCloud().VMType = d.vmType
 	}
 
 	if d.NodeID == "" {
@@ -192,6 +206,11 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 		// https://github.com/kubernetes-sigs/azuredisk-csi-driver/issues/168
 		klog.V(2).Infof("disable UseInstanceMetadata for controller")
 		d.cloudProvisioner.GetCloud().Config.UseInstanceMetadata = false
+
+		if d.cloudProvisioner.GetCloud().VMType == azurecloudconsts.VMTypeStandard && d.cloudProvisioner.GetCloud().DisableAvailabilitySetNodes {
+			klog.V(2).Infof("set DisableAvailabilitySetNodes as false since VMType is %s", d.cloudProvisioner.GetCloud().VMType)
+			d.cloudProvisioner.GetCloud().DisableAvailabilitySetNodes = false
+		}
 
 		if d.cloudProvisioner.GetCloud().VMType == azurecloudconsts.VMTypeVMSS && !d.cloudProvisioner.GetCloud().DisableAvailabilitySetNodes {
 			if disableAVSetNodes {
@@ -201,6 +220,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 				klog.Warningf("DisableAvailabilitySetNodes for controller is set as false while current VMType is vmss")
 			}
 		}
+		klog.V(2).Infof("cloud: %s, location: %s, rg: %s, VMType: %s, PrimaryScaleSetName: %s, PrimaryAvailabilitySetName: %s, DisableAvailabilitySetNodes: %v", d.cloudProvisioner.GetCloud().Cloud, d.cloudProvisioner.GetCloud().Location, d.cloudProvisioner.GetCloud().ResourceGroup, d.cloudProvisioner.GetCloud().VMType, d.cloudProvisioner.GetCloud().PrimaryScaleSetName, d.cloudProvisioner.GetCloud().PrimaryAvailabilitySetName, d.cloudProvisioner.GetCloud().DisableAvailabilitySetNodes)
 	}
 
 	d.deviceHelper = optimization.NewSafeDeviceHelper()
