@@ -47,10 +47,10 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	schedulerapi "k8s.io/kube-scheduler/extender/v1"
-	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
-	versionedClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
-	fakeV1alpha1ClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
-	azurediskInformers "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions"
+	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
+	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	azdiskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
+	azdiskinformers "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
@@ -129,7 +129,7 @@ func TestFilterAndPrioritizeRequestResponseCode(t *testing.T) {
 
 	for _, test := range tests {
 		// create fake clients
-		var testClientSet versionedClientSet.Interface = fakeV1alpha1ClientSet.NewSimpleClientset(
+		testClientSet := azdiskfakes.NewSimpleClientset(
 			getVolumeAttachment("volumeAttachment", criNamespace, "vol", "node"),
 			getDriverNode("driverNode", criNamespace, "node", true),
 		)
@@ -168,7 +168,7 @@ func TestFilterAndPrioritizeRequestResponseCode(t *testing.T) {
 func TestFilterAndPrioritizeResponses(t *testing.T) {
 	tests := []struct {
 		name                     string
-		v1alpha1ClientSet        versionedClientSet.Interface
+		v1alpha1ClientSet        azdisk.Interface
 		kubeClientSet            kubernetes.Interface
 		schedulerArgs            schedulerapi.ExtenderArgs
 		expectedFilterResult     schedulerapi.ExtenderFilterResult
@@ -177,7 +177,7 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 	}{
 		{
 			name: "Test simple case of one pod/node/volume",
-			v1alpha1ClientSet: fakeV1alpha1ClientSet.NewSimpleClientset(
+			v1alpha1ClientSet: azdiskfakes.NewSimpleClientset(
 				getVolumeAttachment("volumeAttachment", criNamespace, "vol", "node"),
 				getDriverNode("driverNode", criNamespace, "node", true),
 			),
@@ -206,7 +206,7 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 		},
 		{
 			name: "Test simple case of pod/node/volume with pending azDriverNode",
-			v1alpha1ClientSet: fakeV1alpha1ClientSet.NewSimpleClientset(
+			v1alpha1ClientSet: azdiskfakes.NewSimpleClientset(
 
 				getVolumeAttachment("volumeAttachment", criNamespace, "vol", "node"),
 				getDriverNode("driverNode", criNamespace, "node", false),
@@ -236,7 +236,7 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 		},
 		{
 			name: "Test simple case of single node/volume with no pod volume requests",
-			v1alpha1ClientSet: fakeV1alpha1ClientSet.NewSimpleClientset(
+			v1alpha1ClientSet: azdiskfakes.NewSimpleClientset(
 				getVolumeAttachment("volumeAttachment", criNamespace, "vol", "node"),
 				getDriverNode("driverNode", criNamespace, "node", true),
 			),
@@ -261,7 +261,7 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 		},
 		{
 			name: "Test case with 2 nodes and one pod/volume",
-			v1alpha1ClientSet: fakeV1alpha1ClientSet.NewSimpleClientset(
+			v1alpha1ClientSet: azdiskfakes.NewSimpleClientset(
 				getVolumeAttachment("volumeAttachment", criNamespace, "vol", "node0"),
 				getDriverNode("driverNode0", criNamespace, "node0", true),
 				getDriverNode("driverNode1", criNamespace, "node1", true),
@@ -306,7 +306,7 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 		},
 		{
 			name: "Test case with 1 ready and 1 pending nodes and one pod/volume",
-			v1alpha1ClientSet: fakeV1alpha1ClientSet.NewSimpleClientset(
+			v1alpha1ClientSet: azdiskfakes.NewSimpleClientset(
 				getVolumeAttachment("volumeAttachment", criNamespace, "vol", "node1"),
 				getDriverNode("driverNode0", criNamespace, "node0", false),
 				getDriverNode("driverNode1", criNamespace, "node1", true),
@@ -350,7 +350,7 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 		},
 		{
 			name: "Test case with 2 nodes where 2 requested volumes are attached to 1 node",
-			v1alpha1ClientSet: fakeV1alpha1ClientSet.NewSimpleClientset(
+			v1alpha1ClientSet: azdiskfakes.NewSimpleClientset(
 				getVolumeAttachment("volumeAttachment0", criNamespace, "vol0", "node0"),
 				getVolumeAttachment("volumeAttachment1", criNamespace, "vol1", "node0"),
 				getDriverNode("driverNode0", criNamespace, "node0", true),
@@ -399,7 +399,7 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 		},
 		{
 			name: "Test case with 3 nodes where 2, 3, 1 requested volume are attached to node 0, 1, 2",
-			v1alpha1ClientSet: fakeV1alpha1ClientSet.NewSimpleClientset(
+			v1alpha1ClientSet: azdiskfakes.NewSimpleClientset(
 				getVolumeAttachment("volumeAttachment0", criNamespace, "vol0", "node0"),
 				getVolumeAttachment("volumeAttachment1", criNamespace, "vol1", "node0"),
 				getVolumeAttachment("volumeAttachment2", criNamespace, "vol0", "node1"),
@@ -452,7 +452,7 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 		},
 		{
 			name: "Test case with 3 nodes where 2, 3 requested volumes and 1 unrequested volume are attached to node 0, 1, 2",
-			v1alpha1ClientSet: fakeV1alpha1ClientSet.NewSimpleClientset(
+			v1alpha1ClientSet: azdiskfakes.NewSimpleClientset(
 				getVolumeAttachment("volumeAttachment0", criNamespace, "vol0", "node0"),
 				getVolumeAttachment("volumeAttachment1", criNamespace, "vol1", "node0"),
 				getVolumeAttachment("volumeAttachment2", criNamespace, "vol0", "node1"),
@@ -507,7 +507,7 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 		},
 		{
 			name: "Test case with 3 nodes where 2 requested volumes are attached to node 0, 1 and 1 unrequested volume is attached to node 1, 2",
-			v1alpha1ClientSet: fakeV1alpha1ClientSet.NewSimpleClientset(
+			v1alpha1ClientSet: azdiskfakes.NewSimpleClientset(
 				getVolumeAttachment("volumeAttachment0", criNamespace, "vol0", "node0"),
 				getVolumeAttachment("volumeAttachment1", criNamespace, "vol1", "node0"),
 				getVolumeAttachment("volumeAttachment2", criNamespace, "vol0", "node1"),
@@ -673,7 +673,7 @@ func TestFilterAndPrioritizeInRandomizedLargeCluster(t *testing.T) {
 				coreResources = append(coreResources, getPV(volumeName), getPVC(fmt.Sprintf("claim%d", i), volumeName))
 			}
 
-			v1alpha1ClientSet := fakeV1alpha1ClientSet.NewSimpleClientset(
+			v1alpha1ClientSet := azdiskfakes.NewSimpleClientset(
 				v1alpha1Resources...,
 			)
 			coreClientSet := fakeCoreClientSet.NewSimpleClientset(
@@ -815,38 +815,38 @@ func gotExpectedPrioritizeList(got, want schedulerapi.HostPriorityList, order []
 	return true
 }
 
-func getVolumeAttachment(attachmentName, ns, volumeName, nodeName string) *diskv1beta1.AzVolumeAttachment {
-	return &diskv1beta1.AzVolumeAttachment{
+func getVolumeAttachment(attachmentName, ns, volumeName, nodeName string) *azdiskv1beta2.AzVolumeAttachment {
+	return &azdiskv1beta2.AzVolumeAttachment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      attachmentName,
 			Namespace: ns,
 			Labels:    map[string]string{consts.NodeNameLabel: nodeName},
 		},
-		Spec: diskv1beta1.AzVolumeAttachmentSpec{
+		Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
 			VolumeName:    volumeName,
 			NodeName:      nodeName,
-			RequestedRole: diskv1beta1.PrimaryRole,
+			RequestedRole: azdiskv1beta2.PrimaryRole,
 		},
-		Status: diskv1beta1.AzVolumeAttachmentStatus{
-			Detail: &diskv1beta1.AzVolumeAttachmentStatusDetail{
-				Role: diskv1beta1.PrimaryRole,
+		Status: azdiskv1beta2.AzVolumeAttachmentStatus{
+			Detail: &azdiskv1beta2.AzVolumeAttachmentStatusDetail{
+				Role: azdiskv1beta2.PrimaryRole,
 			},
-			State: diskv1beta1.Attached,
+			State: azdiskv1beta2.Attached,
 		},
 	}
 }
 
-func getDriverNode(driverNodeName, ns, nodeName string, ready bool) *diskv1beta1.AzDriverNode {
+func getDriverNode(driverNodeName, ns, nodeName string, ready bool) *azdiskv1beta2.AzDriverNode {
 	heartbeat := metav1.Now()
-	return &diskv1beta1.AzDriverNode{
+	return &azdiskv1beta2.AzDriverNode{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      driverNodeName,
 			Namespace: ns,
 		},
-		Spec: diskv1beta1.AzDriverNodeSpec{
+		Spec: azdiskv1beta2.AzDriverNodeSpec{
 			NodeName: nodeName,
 		},
-		Status: &diskv1beta1.AzDriverNodeStatus{
+		Status: &azdiskv1beta2.AzDriverNodeStatus{
 			ReadyForVolumeAllocation: &ready,
 			LastHeartbeatTime:        &heartbeat,
 		},
@@ -937,12 +937,12 @@ func cleanConfigAndRestoreEnv(path string, envVariableName string, envValue stri
 	os.Remove(path)
 }
 
-func setupTestInformers(versionedInterface versionedClientSet.Interface, coreInterface kubernetes.Interface) {
-	v1alpah1InformerFactory := azurediskInformers.NewSharedInformerFactory(kubeExtensionClientset, noResyncPeriodFunc())
+func setupTestInformers(versionedInterface azdisk.Interface, coreInterface kubernetes.Interface) {
+	v1alpah1InformerFactory := azdiskinformers.NewSharedInformerFactory(kubeExtensionClientset, noResyncPeriodFunc())
 	coreInformerFactory := informers.NewSharedInformerFactory(coreInterface, noResyncPeriodFunc())
 
-	azVolumeAttachmentInformer = v1alpah1InformerFactory.Disk().V1beta1().AzVolumeAttachments()
-	azDriverNodeInformer = v1alpah1InformerFactory.Disk().V1beta1().AzDriverNodes()
+	azVolumeAttachmentInformer = v1alpah1InformerFactory.Disk().V1beta2().AzVolumeAttachments()
+	azDriverNodeInformer = v1alpah1InformerFactory.Disk().V1beta2().AzDriverNodes()
 	pvInformer = coreInformerFactory.Core().V1().PersistentVolumes()
 	pvcInformer = coreInformerFactory.Core().V1().PersistentVolumeClaims()
 

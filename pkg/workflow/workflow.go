@@ -34,7 +34,7 @@ import (
 	k8sRuntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog/v2/klogr"
 	"k8s.io/utils/pointer"
-	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 )
 
 type workflowKey struct{}
@@ -69,11 +69,11 @@ func GetWorkflowFromObj(ctx context.Context, obj k8sRuntime.Object, opts ...Opti
 
 func GetObjectDetails(obj k8sRuntime.Object) []interface{} {
 	switch target := obj.(type) {
-	case *diskv1beta1.AzVolume:
+	case *azdiskv1beta2.AzVolume:
 		if target != nil {
 			return []interface{}{consts.VolumeNameLabel, target.Spec.VolumeName, consts.PvNameKey, target.Spec.PersistentVolume}
 		}
-	case *diskv1beta1.AzVolumeAttachment:
+	case *azdiskv1beta2.AzVolumeAttachment:
 		if target != nil {
 			return []interface{}{consts.VolumeNameLabel, target.Spec.VolumeName, consts.NodeNameLabel, target.Spec.NodeName, consts.RoleLabel, target.Spec.RequestedRole}
 		}

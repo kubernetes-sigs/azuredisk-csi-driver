@@ -48,6 +48,11 @@ rbac:
   create: true
   name: azuredisk
 
+api:
+  version:
+    v1beta1:
+      enabled: false
+
 controller:
   name: csi-azuredisk-controller
   cloudConfigSecretName: azure-cloud-provider

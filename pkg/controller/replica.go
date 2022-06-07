@@ -29,7 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
-	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/watcher"
@@ -65,7 +65,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 		return reconcile.Result{Requeue: true}, err
 	}
 
-	if azVolumeAttachment.Spec.RequestedRole == diskv1beta1.PrimaryRole {
+	if azVolumeAttachment.Spec.RequestedRole == azdiskv1beta2.PrimaryRole {
 		// Deletion Event
 		if objectDeletionRequested(azVolumeAttachment) {
 			if volumeDetachRequested(azVolumeAttachment) {
@@ -77,7 +77,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 			r.controllerSharedState.removeGarbageCollection(azVolumeAttachment.Spec.VolumeName)
 
 			// If promotion event, create a replacement replica
-			if isAttached(azVolumeAttachment) && azVolumeAttachment.Status.Detail.PreviousRole == diskv1beta1.ReplicaRole {
+			if isAttached(azVolumeAttachment) && azVolumeAttachment.Status.Detail.PreviousRole == azdiskv1beta2.ReplicaRole {
 				r.triggerManageReplica(ctx, azVolumeAttachment.Spec.VolumeName)
 			}
 		}
@@ -91,11 +91,11 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 		// create a replacement replica if replica attachment failed
 		if objectDeletionRequested(azVolumeAttachment) {
 			switch azVolumeAttachment.Status.State {
-			case diskv1beta1.Detaching:
-			case diskv1beta1.DetachmentFailed:
+			case azdiskv1beta2.Detaching:
+			case azdiskv1beta2.DetachmentFailed:
 				if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, func(obj interface{}) error {
-					azVolumeAttachment := obj.(*diskv1beta1.AzVolumeAttachment)
-					_, err = updateState(azVolumeAttachment, diskv1beta1.ForceDetachPending, normalUpdate)
+					azVolumeAttachment := obj.(*azdiskv1beta2.AzVolumeAttachment)
+					_, err = updateState(azVolumeAttachment, azdiskv1beta2.ForceDetachPending, normalUpdate)
 					return err
 				}, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
 					return reconcile.Result{Requeue: true}, err
@@ -116,7 +116,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 					r.triggerManageReplica(goCtx, azVolumeAttachment.Spec.VolumeName)
 				}()
 			}
-		} else if azVolumeAttachment.Status.State == diskv1beta1.AttachmentFailed {
+		} else if azVolumeAttachment.Status.State == azdiskv1beta2.AttachmentFailed {
 			// if attachment failed for replica AzVolumeAttachment, delete the CRI so that replace replica AzVolumeAttachment can be created.
 			if err := r.controllerSharedState.cachedClient.Delete(ctx, azVolumeAttachment); err != nil {
 				return reconcile.Result{Requeue: true}, err
@@ -177,7 +177,7 @@ func (r *ReconcileReplica) triggerCreateFailedReplicas(ctx context.Context, volu
 	}
 	labelSelector := labels.NewSelector().Add(*volRequirement)
 	listOptions := client.ListOptions{LabelSelector: labelSelector}
-	azVolumeAttachmentList := &diskv1beta1.AzVolumeAttachmentList{}
+	azVolumeAttachmentList := &azdiskv1beta2.AzVolumeAttachmentList{}
 	if err = r.controllerSharedState.cachedClient.List(ctx, azVolumeAttachmentList, &listOptions); errors.IsNotFound(err) {
 		return
 	}
@@ -240,10 +240,10 @@ func NewReplicaController(mgr manager.Manager, controllerSharedState *SharedStat
 
 	logger.Info("Starting to watch AzVolumeAttachments.")
 
-	err = c.Watch(&source.Kind{Type: &diskv1beta1.AzVolumeAttachment{}}, &handler.EnqueueRequestForObject{}, predicate.Funcs{
+	err = c.Watch(&source.Kind{Type: &azdiskv1beta2.AzVolumeAttachment{}}, &handler.EnqueueRequestForObject{}, predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
-			azVolumeAttachment, ok := e.Object.(*diskv1beta1.AzVolumeAttachment)
-			if ok && azVolumeAttachment.Spec.RequestedRole == diskv1beta1.PrimaryRole {
+			azVolumeAttachment, ok := e.Object.(*azdiskv1beta2.AzVolumeAttachment)
+			if ok && azVolumeAttachment.Spec.RequestedRole == azdiskv1beta2.PrimaryRole {
 				return true
 			}
 			return false

@@ -30,7 +30,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e/framework"
-	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
@@ -216,9 +216,9 @@ func SetCSINodeDriver(c clientset.Interface, nodeName string) (cleanup func(), e
 	return
 }
 
-func ListAzDriverNodeNames(azDiskClient azDiskClientSet.Interface) []string {
+func ListAzDriverNodeNames(azDiskClient azdisk.Interface) []string {
 	var nodeNames []string
-	nodes, err := azDiskClient.DiskV1beta1().AzDriverNodes(azureconstants.DefaultAzureDiskCrdNamespace).List(context.TODO(), metav1.ListOptions{})
+	nodes, err := azDiskClient.DiskV1beta2().AzDriverNodes(azureconstants.DefaultAzureDiskCrdNamespace).List(context.TODO(), metav1.ListOptions{})
 	framework.ExpectNoError(err)
 	for _, item := range nodes.Items {
 		nodeNames = append(nodeNames, item.Name)

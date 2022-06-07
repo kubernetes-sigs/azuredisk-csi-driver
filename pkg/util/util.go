@@ -30,7 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	volerr "k8s.io/cloud-provider/volume/errors"
-	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
@@ -41,44 +41,44 @@ const (
 )
 
 var (
-	strToCode = map[diskv1beta1.AzErrorCode]codes.Code{
-		diskv1beta1.AzErrorCodeOK:                 codes.OK,
-		diskv1beta1.AzErrorCodeCanceled:           codes.Canceled,
-		diskv1beta1.AzErrorCodeUnknown:            codes.Unknown,
-		diskv1beta1.AzErrorCodeInvalidArgument:    codes.InvalidArgument,
-		diskv1beta1.AzErrorCodeDeadlineExceeded:   codes.DeadlineExceeded,
-		diskv1beta1.AzErrorCodeNotFound:           codes.NotFound,
-		diskv1beta1.AzErrorCodeAlreadyExists:      codes.AlreadyExists,
-		diskv1beta1.AzErrorCodePermissionDenied:   codes.PermissionDenied,
-		diskv1beta1.AzErrorCodeResourceExhausted:  codes.ResourceExhausted,
-		diskv1beta1.AzErrorCodeFailedPrecondition: codes.FailedPrecondition,
-		diskv1beta1.AzErrorCodeAborted:            codes.Aborted,
-		diskv1beta1.AzErrorCodeOutOfRange:         codes.OutOfRange,
-		diskv1beta1.AzErrorCodeUnimplemented:      codes.Unimplemented,
-		diskv1beta1.AzErrorCodeInternal:           codes.Internal,
-		diskv1beta1.AzErrorCodeUnavailable:        codes.Unavailable,
-		diskv1beta1.AzErrorCodeDataLoss:           codes.DataLoss,
-		diskv1beta1.AzErrorCodeUnauthenticated:    codes.Unauthenticated,
+	strToCode = map[azdiskv1beta2.AzErrorCode]codes.Code{
+		azdiskv1beta2.AzErrorCodeOK:                 codes.OK,
+		azdiskv1beta2.AzErrorCodeCanceled:           codes.Canceled,
+		azdiskv1beta2.AzErrorCodeUnknown:            codes.Unknown,
+		azdiskv1beta2.AzErrorCodeInvalidArgument:    codes.InvalidArgument,
+		azdiskv1beta2.AzErrorCodeDeadlineExceeded:   codes.DeadlineExceeded,
+		azdiskv1beta2.AzErrorCodeNotFound:           codes.NotFound,
+		azdiskv1beta2.AzErrorCodeAlreadyExists:      codes.AlreadyExists,
+		azdiskv1beta2.AzErrorCodePermissionDenied:   codes.PermissionDenied,
+		azdiskv1beta2.AzErrorCodeResourceExhausted:  codes.ResourceExhausted,
+		azdiskv1beta2.AzErrorCodeFailedPrecondition: codes.FailedPrecondition,
+		azdiskv1beta2.AzErrorCodeAborted:            codes.Aborted,
+		azdiskv1beta2.AzErrorCodeOutOfRange:         codes.OutOfRange,
+		azdiskv1beta2.AzErrorCodeUnimplemented:      codes.Unimplemented,
+		azdiskv1beta2.AzErrorCodeInternal:           codes.Internal,
+		azdiskv1beta2.AzErrorCodeUnavailable:        codes.Unavailable,
+		azdiskv1beta2.AzErrorCodeDataLoss:           codes.DataLoss,
+		azdiskv1beta2.AzErrorCodeUnauthenticated:    codes.Unauthenticated,
 	}
 
-	codeToStr = map[codes.Code]diskv1beta1.AzErrorCode{
-		codes.OK:                 diskv1beta1.AzErrorCodeOK,
-		codes.Canceled:           diskv1beta1.AzErrorCodeCanceled,
-		codes.Unknown:            diskv1beta1.AzErrorCodeUnknown,
-		codes.InvalidArgument:    diskv1beta1.AzErrorCodeInvalidArgument,
-		codes.DeadlineExceeded:   diskv1beta1.AzErrorCodeDeadlineExceeded,
-		codes.NotFound:           diskv1beta1.AzErrorCodeNotFound,
-		codes.AlreadyExists:      diskv1beta1.AzErrorCodeAlreadyExists,
-		codes.PermissionDenied:   diskv1beta1.AzErrorCodePermissionDenied,
-		codes.ResourceExhausted:  diskv1beta1.AzErrorCodeResourceExhausted,
-		codes.FailedPrecondition: diskv1beta1.AzErrorCodeFailedPrecondition,
-		codes.Aborted:            diskv1beta1.AzErrorCodeAborted,
-		codes.OutOfRange:         diskv1beta1.AzErrorCodeOutOfRange,
-		codes.Unimplemented:      diskv1beta1.AzErrorCodeUnimplemented,
-		codes.Internal:           diskv1beta1.AzErrorCodeInternal,
-		codes.Unavailable:        diskv1beta1.AzErrorCodeUnavailable,
-		codes.DataLoss:           diskv1beta1.AzErrorCodeDataLoss,
-		codes.Unauthenticated:    diskv1beta1.AzErrorCodeUnauthenticated,
+	codeToStr = map[codes.Code]azdiskv1beta2.AzErrorCode{
+		codes.OK:                 azdiskv1beta2.AzErrorCodeOK,
+		codes.Canceled:           azdiskv1beta2.AzErrorCodeCanceled,
+		codes.Unknown:            azdiskv1beta2.AzErrorCodeUnknown,
+		codes.InvalidArgument:    azdiskv1beta2.AzErrorCodeInvalidArgument,
+		codes.DeadlineExceeded:   azdiskv1beta2.AzErrorCodeDeadlineExceeded,
+		codes.NotFound:           azdiskv1beta2.AzErrorCodeNotFound,
+		codes.AlreadyExists:      azdiskv1beta2.AzErrorCodeAlreadyExists,
+		codes.PermissionDenied:   azdiskv1beta2.AzErrorCodePermissionDenied,
+		codes.ResourceExhausted:  azdiskv1beta2.AzErrorCodeResourceExhausted,
+		codes.FailedPrecondition: azdiskv1beta2.AzErrorCodeFailedPrecondition,
+		codes.Aborted:            azdiskv1beta2.AzErrorCodeAborted,
+		codes.OutOfRange:         azdiskv1beta2.AzErrorCodeOutOfRange,
+		codes.Unimplemented:      azdiskv1beta2.AzErrorCodeUnimplemented,
+		codes.Internal:           azdiskv1beta2.AzErrorCodeInternal,
+		codes.Unavailable:        azdiskv1beta2.AzErrorCodeUnavailable,
+		codes.DataLoss:           azdiskv1beta2.AzErrorCodeDataLoss,
+		codes.Unauthenticated:    azdiskv1beta2.AzErrorCodeUnauthenticated,
 	}
 
 	azureRetryErrorRegEx     = regexp.MustCompile("Retriable: (true|false), RetryAfter: ([0-9]+)s, HTTPStatusCode: ([0-9]+), RawError: ")
@@ -211,14 +211,14 @@ func (vl *VolumeLocks) Release(volumeID string) {
 	vl.locks.Delete(volumeID)
 }
 
-func azErrorCodeFromRPCCode(c codes.Code) diskv1beta1.AzErrorCode {
+func azErrorCodeFromRPCCode(c codes.Code) azdiskv1beta2.AzErrorCode {
 	if val, ok := codeToStr[c]; ok {
 		return val
 	}
-	return diskv1beta1.AzErrorCodeUnknown
+	return azdiskv1beta2.AzErrorCodeUnknown
 }
 
-func rpcCodeFromAzErrorCode(errorCode diskv1beta1.AzErrorCode) codes.Code {
+func rpcCodeFromAzErrorCode(errorCode azdiskv1beta2.AzErrorCode) codes.Code {
 	if val, ok := strToCode[errorCode]; ok {
 		return val
 	}
@@ -226,15 +226,15 @@ func rpcCodeFromAzErrorCode(errorCode diskv1beta1.AzErrorCode) codes.Code {
 }
 
 // NewAzError returns a new AzError object representing the specified error.
-func NewAzError(err error) *diskv1beta1.AzError {
+func NewAzError(err error) *azdiskv1beta2.AzError {
 	var (
-		errorCode    diskv1beta1.AzErrorCode
+		errorCode    azdiskv1beta2.AzErrorCode
 		errorMessage = err.Error()
 		parameters   = make(map[string]string)
 	)
 
 	if derr, ok := err.(*volerr.DanglingAttachError); ok {
-		errorCode = diskv1beta1.AzErrorCodeDanglingAttach
+		errorCode = azdiskv1beta2.AzErrorCodeDanglingAttach
 		parameters[azureconstants.CurrentNodeParameter] = string(derr.CurrentNode)
 		parameters[azureconstants.DevicePathParameter] = derr.DevicePath
 	} else {
@@ -255,7 +255,7 @@ func NewAzError(err error) *diskv1beta1.AzError {
 		errorCode = azErrorCodeFromRPCCode(code)
 	}
 
-	return &diskv1beta1.AzError{
+	return &azdiskv1beta2.AzError{
 		Code:       errorCode,
 		Message:    errorMessage,
 		Parameters: parameters,
@@ -263,12 +263,12 @@ func NewAzError(err error) *diskv1beta1.AzError {
 }
 
 // ErrorFromAzError returns an error object for the specified AzError instance.
-func ErrorFromAzError(azError *diskv1beta1.AzError) error {
+func ErrorFromAzError(azError *azdiskv1beta2.AzError) error {
 	if azError == nil {
 		return nil
 	}
 
-	if azError.Code == diskv1beta1.AzErrorCodeDanglingAttach {
+	if azError.Code == azdiskv1beta2.AzErrorCodeDanglingAttach {
 		currentName := ""
 		devicePath := ""
 

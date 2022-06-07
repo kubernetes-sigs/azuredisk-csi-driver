@@ -26,8 +26,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-	v1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
+	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
@@ -67,11 +67,11 @@ type AzvResource struct {
 	ResourceType string
 	Namespace    string
 	Name         string
-	State        v1beta1.AzVolumeState
+	State        azdiskv1beta2.AzVolumeState
 }
 
 // return azVolumes by pod. If pod name isn't provided, return by all pods
-func GetAzVolumesByPod(clientsetK8s kubernetes.Interface, clientsetAzDisk versioned.Interface, podName string, namespace string) []AzvResource {
+func GetAzVolumesByPod(clientsetK8s kubernetes.Interface, clientsetAzDisk azdisk.Interface, podName string, namespace string) []AzvResource {
 	result := make([]AzvResource, 0)
 
 	// get pvc claim name set of pod
@@ -108,7 +108,7 @@ func GetAzVolumesByPod(clientsetK8s kubernetes.Interface, clientsetAzDisk versio
 	}
 
 	// get azVolumes with the same claim name in pvcSet
-	azVolumes, err := clientsetAzDisk.DiskV1beta1().AzVolumes(getDriverNamesapce()).List(context.Background(), metav1.ListOptions{})
+	azVolumes, err := clientsetAzDisk.DiskV1beta2().AzVolumes(getDriverNamesapce()).List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		panic(err.Error())
 	}

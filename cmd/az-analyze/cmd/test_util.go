@@ -23,8 +23,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
-	v1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
-	diskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
+	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
+	azdiskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
@@ -122,36 +122,36 @@ func NewTestK8sClientset() *fake.Clientset {
 	return fake.NewSimpleClientset(objs...)
 }
 
-func NewTestAzDiskClientset() *diskfakes.Clientset {
-	fakeAzvs := []v1beta1.AzVolume{
+func NewTestAzDiskClientset() *azdiskfakes.Clientset {
+	fakeAzvs := []azdiskv1beta2.AzVolume{
 		{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      TestAzVolume0,
 				Namespace: consts.DefaultAzureDiskCrdNamespace,
 			},
-			Spec: v1beta1.AzVolumeSpec{
+			Spec: azdiskv1beta2.AzVolumeSpec{
 				VolumeName: TestAzVolume0,
 				Parameters: map[string]string{consts.PvcNameKey: TestPvcClaimName0},
 			},
-			Status: v1beta1.AzVolumeStatus{
-				State: v1beta1.VolumeCreated,
+			Status: azdiskv1beta2.AzVolumeStatus{
+				State: azdiskv1beta2.VolumeCreated,
 			},
 		}, {
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      TestAzVolume1,
 				Namespace: consts.DefaultAzureDiskCrdNamespace,
 			},
-			Spec: v1beta1.AzVolumeSpec{
+			Spec: azdiskv1beta2.AzVolumeSpec{
 				VolumeName: TestAzVolume1,
 				Parameters: map[string]string{consts.PvcNameKey: TestPvcClaimName1},
 			},
-			Status: v1beta1.AzVolumeStatus{
-				State: v1beta1.VolumeCreated,
+			Status: azdiskv1beta2.AzVolumeStatus{
+				State: azdiskv1beta2.VolumeCreated,
 			},
 		},
 	}
 
-	fakeAzvas := []v1beta1.AzVolumeAttachment{
+	fakeAzvas := []azdiskv1beta2.AzVolumeAttachment{
 		{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      TestAzVolumeAttachment0,
@@ -160,16 +160,16 @@ func NewTestAzDiskClientset() *diskfakes.Clientset {
 					Time: time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC),
 				},
 			},
-			Spec: v1beta1.AzVolumeAttachmentSpec{
+			Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
 				VolumeContext: map[string]string{consts.PvcNameKey: TestPvcClaimName0},
 				NodeName:      TestNode0,
-				RequestedRole: v1beta1.PrimaryRole,
+				RequestedRole: azdiskv1beta2.PrimaryRole,
 			},
-			Status: v1beta1.AzVolumeAttachmentStatus{
-				Detail: &v1beta1.AzVolumeAttachmentStatusDetail{
-					Role: v1beta1.PrimaryRole,
+			Status: azdiskv1beta2.AzVolumeAttachmentStatus{
+				Detail: &azdiskv1beta2.AzVolumeAttachmentStatusDetail{
+					Role: azdiskv1beta2.PrimaryRole,
 				},
-				State: v1beta1.Attached,
+				State: azdiskv1beta2.Attached,
 			},
 		}, {
 			ObjectMeta: metav1.ObjectMeta{
@@ -179,16 +179,16 @@ func NewTestAzDiskClientset() *diskfakes.Clientset {
 					Time: time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC),
 				},
 			},
-			Spec: v1beta1.AzVolumeAttachmentSpec{
+			Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
 				VolumeContext: map[string]string{consts.PvcNameKey: TestPvcClaimName1},
 				NodeName:      TestNode1,
-				RequestedRole: v1beta1.ReplicaRole,
+				RequestedRole: azdiskv1beta2.ReplicaRole,
 			},
-			Status: v1beta1.AzVolumeAttachmentStatus{
-				Detail: &v1beta1.AzVolumeAttachmentStatusDetail{
-					Role: v1beta1.ReplicaRole,
+			Status: azdiskv1beta2.AzVolumeAttachmentStatus{
+				Detail: &azdiskv1beta2.AzVolumeAttachmentStatusDetail{
+					Role: azdiskv1beta2.ReplicaRole,
 				},
-				State: v1beta1.Attached,
+				State: azdiskv1beta2.Attached,
 			},
 		}, {
 			ObjectMeta: metav1.ObjectMeta{
@@ -198,16 +198,16 @@ func NewTestAzDiskClientset() *diskfakes.Clientset {
 					Time: time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC),
 				},
 			},
-			Spec: v1beta1.AzVolumeAttachmentSpec{
+			Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
 				VolumeContext: map[string]string{consts.PvcNameKey: TestPvcClaimName2},
 				NodeName:      TestNode1,
-				RequestedRole: v1beta1.PrimaryRole,
+				RequestedRole: azdiskv1beta2.PrimaryRole,
 			},
-			Status: v1beta1.AzVolumeAttachmentStatus{
-				Detail: &v1beta1.AzVolumeAttachmentStatusDetail{
-					Role: v1beta1.PrimaryRole,
+			Status: azdiskv1beta2.AzVolumeAttachmentStatus{
+				Detail: &azdiskv1beta2.AzVolumeAttachmentStatusDetail{
+					Role: azdiskv1beta2.PrimaryRole,
 				},
-				State: v1beta1.Attached,
+				State: azdiskv1beta2.Attached,
 			},
 		},
 	}
@@ -223,5 +223,5 @@ func NewTestAzDiskClientset() *diskfakes.Clientset {
 		objs = append(objs, &azva)
 	}
 
-	return diskfakes.NewSimpleClientset(objs...)
+	return azdiskfakes.NewSimpleClientset(objs...)
 }

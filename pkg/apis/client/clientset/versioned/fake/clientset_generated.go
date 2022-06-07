@@ -27,6 +27,8 @@ import (
 	clientset "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1beta1"
 	fakediskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1beta1/fake"
+	diskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1beta2"
+	fakediskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1beta2/fake"
 )
 
 // NewSimpleClientset returns a clientset that will respond with the provided objects.
@@ -82,4 +84,9 @@ var (
 // DiskV1beta1 retrieves the DiskV1beta1Client
 func (c *Clientset) DiskV1beta1() diskv1beta1.DiskV1beta1Interface {
 	return &fakediskv1beta1.FakeDiskV1beta1{Fake: &c.Fake}
+}
+
+// DiskV1beta2 retrieves the DiskV1beta2Client
+func (c *Clientset) DiskV1beta2() diskv1beta2.DiskV1beta2Interface {
+	return &fakediskv1beta2.FakeDiskV1beta2{Fake: &c.Fake}
 }

@@ -58,7 +58,7 @@ func (r *ReconcileAzDriverNode) Reconcile(ctx context.Context, request reconcile
 	// If the node is not found, delete the corresponding AzDriverNode
 	if errors.IsNotFound(err) {
 		// Delete the azDriverNode, since corresponding node is deleted
-		azN := r.controllerSharedState.azClient.DiskV1beta1().AzDriverNodes(r.controllerSharedState.objectNamespace)
+		azN := r.controllerSharedState.azClient.DiskV1beta2().AzDriverNodes(r.controllerSharedState.objectNamespace)
 		err = azN.Delete(ctx, request.Name, metav1.DeleteOptions{})
 
 		// If there is an issue in deleting the AzDriverNode, requeue

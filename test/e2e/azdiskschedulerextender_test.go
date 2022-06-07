@@ -23,7 +23,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
-	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
@@ -184,7 +184,7 @@ func schedulerExtenderTests(isMultiZone bool) {
 		}
 
 		volumes := []resources.VolumeDetails{}
-		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
+		azDiskClient, err := azdisk.NewForConfig(f.ClientConfig())
 		if err != nil {
 			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		}
@@ -225,7 +225,7 @@ func schedulerExtenderTests(isMultiZone bool) {
 		}
 
 		volumes := []resources.VolumeDetails{}
-		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
+		azDiskClient, err := azdisk.NewForConfig(f.ClientConfig())
 		if err != nil {
 			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		}
