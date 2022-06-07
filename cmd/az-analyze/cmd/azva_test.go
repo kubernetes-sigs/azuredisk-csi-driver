@@ -22,7 +22,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	v1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
@@ -33,9 +33,9 @@ var azvaResourceAll0 = AzvaResource{
 	Namespace:   consts.DefaultAzureDiskCrdNamespace,
 	Name:        TestAzVolumeAttachment0,
 	Age:         metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
-	RequestRole: v1beta1.PrimaryRole,
-	Role:        v1beta1.PrimaryRole,
-	State:       v1beta1.Attached,
+	RequestRole: azdiskv1beta2.PrimaryRole,
+	Role:        azdiskv1beta2.PrimaryRole,
+	State:       azdiskv1beta2.Attached,
 }
 
 var azvaResourceAll1 = AzvaResource{
@@ -45,9 +45,9 @@ var azvaResourceAll1 = AzvaResource{
 	Namespace:   consts.DefaultAzureDiskCrdNamespace,
 	Name:        TestAzVolumeAttachment0,
 	Age:         metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
-	RequestRole: v1beta1.PrimaryRole,
-	Role:        v1beta1.PrimaryRole,
-	State:       v1beta1.Attached,
+	RequestRole: azdiskv1beta2.PrimaryRole,
+	Role:        azdiskv1beta2.PrimaryRole,
+	State:       azdiskv1beta2.Attached,
 }
 
 var azvaResourceAll2 = AzvaResource{
@@ -57,9 +57,9 @@ var azvaResourceAll2 = AzvaResource{
 	Namespace:   consts.DefaultAzureDiskCrdNamespace,
 	Name:        TestAzVolumeAttachment1,
 	Age:         metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
-	RequestRole: v1beta1.ReplicaRole,
-	Role:        v1beta1.ReplicaRole,
-	State:       v1beta1.Attached,
+	RequestRole: azdiskv1beta2.ReplicaRole,
+	Role:        azdiskv1beta2.ReplicaRole,
+	State:       azdiskv1beta2.Attached,
 }
 
 var azvaResourcePod0 = AzvaResource{
@@ -69,9 +69,9 @@ var azvaResourcePod0 = AzvaResource{
 	Namespace:   consts.DefaultAzureDiskCrdNamespace,
 	Name:        TestAzVolumeAttachment0,
 	Age:         metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
-	RequestRole: v1beta1.PrimaryRole,
-	Role:        v1beta1.PrimaryRole,
-	State:       v1beta1.Attached,
+	RequestRole: azdiskv1beta2.PrimaryRole,
+	Role:        azdiskv1beta2.PrimaryRole,
+	State:       azdiskv1beta2.Attached,
 }
 
 var azvaResourcePod1 = AzvaResource{
@@ -81,9 +81,9 @@ var azvaResourcePod1 = AzvaResource{
 	Namespace:   consts.DefaultAzureDiskCrdNamespace,
 	Name:        TestAzVolumeAttachment1,
 	Age:         metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
-	RequestRole: v1beta1.ReplicaRole,
-	Role:        v1beta1.ReplicaRole,
-	State:       v1beta1.Attached,
+	RequestRole: azdiskv1beta2.ReplicaRole,
+	Role:        azdiskv1beta2.ReplicaRole,
+	State:       azdiskv1beta2.Attached,
 }
 
 var azvaResourceNode0 = AzvaResource{
@@ -93,9 +93,9 @@ var azvaResourceNode0 = AzvaResource{
 	Namespace:   consts.DefaultAzureDiskCrdNamespace,
 	Name:        TestAzVolumeAttachment0,
 	Age:         metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
-	RequestRole: v1beta1.PrimaryRole,
-	Role:        v1beta1.PrimaryRole,
-	State:       v1beta1.Attached,
+	RequestRole: azdiskv1beta2.PrimaryRole,
+	Role:        azdiskv1beta2.PrimaryRole,
+	State:       azdiskv1beta2.Attached,
 }
 
 var azvaResourceNode1 = AzvaResource{
@@ -105,9 +105,9 @@ var azvaResourceNode1 = AzvaResource{
 	Namespace:   consts.DefaultAzureDiskCrdNamespace,
 	Name:        TestAzVolumeAttachment1,
 	Age:         metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
-	RequestRole: v1beta1.ReplicaRole,
-	Role:        v1beta1.ReplicaRole,
-	State:       v1beta1.Attached,
+	RequestRole: azdiskv1beta2.ReplicaRole,
+	Role:        azdiskv1beta2.ReplicaRole,
+	State:       azdiskv1beta2.Attached,
 }
 
 var azvaResourceNode2 = AzvaResource{
@@ -117,9 +117,9 @@ var azvaResourceNode2 = AzvaResource{
 	Namespace:   consts.DefaultAzureDiskCrdNamespace,
 	Name:        TestAzVolumeAttachment2,
 	Age:         metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
-	RequestRole: v1beta1.PrimaryRole,
-	Role:        v1beta1.PrimaryRole,
-	State:       v1beta1.Attached,
+	RequestRole: azdiskv1beta2.PrimaryRole,
+	Role:        azdiskv1beta2.PrimaryRole,
+	State:       azdiskv1beta2.Attached,
 }
 
 var azvaResourceZone0 = AzvaResource{
@@ -129,9 +129,9 @@ var azvaResourceZone0 = AzvaResource{
 	Namespace:   consts.DefaultAzureDiskCrdNamespace,
 	Name:        TestAzVolumeAttachment0,
 	Age:         metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
-	RequestRole: v1beta1.PrimaryRole,
-	Role:        v1beta1.PrimaryRole,
-	State:       v1beta1.Attached,
+	RequestRole: azdiskv1beta2.PrimaryRole,
+	Role:        azdiskv1beta2.PrimaryRole,
+	State:       azdiskv1beta2.Attached,
 }
 
 var azvaResourceZone1 = AzvaResource{
@@ -141,9 +141,9 @@ var azvaResourceZone1 = AzvaResource{
 	Namespace:   consts.DefaultAzureDiskCrdNamespace,
 	Name:        TestAzVolumeAttachment1,
 	Age:         metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
-	RequestRole: v1beta1.ReplicaRole,
-	Role:        v1beta1.ReplicaRole,
-	State:       v1beta1.Attached,
+	RequestRole: azdiskv1beta2.ReplicaRole,
+	Role:        azdiskv1beta2.ReplicaRole,
+	State:       azdiskv1beta2.Attached,
 }
 
 var azvaResourceZone2 = AzvaResource{
@@ -153,9 +153,9 @@ var azvaResourceZone2 = AzvaResource{
 	Namespace:   consts.DefaultAzureDiskCrdNamespace,
 	Name:        TestAzVolumeAttachment2,
 	Age:         metav1.Now().Sub(time.Date(2022, 4, 27, 20, 34, 58, 651387237, time.UTC)),
-	RequestRole: v1beta1.PrimaryRole,
-	Role:        v1beta1.PrimaryRole,
-	State:       v1beta1.Attached,
+	RequestRole: azdiskv1beta2.PrimaryRole,
+	Role:        azdiskv1beta2.PrimaryRole,
+	State:       azdiskv1beta2.Attached,
 }
 
 func TestGetAllAzVolumeAttachements(t *testing.T) {

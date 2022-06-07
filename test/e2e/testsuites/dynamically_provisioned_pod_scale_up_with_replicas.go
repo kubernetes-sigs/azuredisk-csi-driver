@@ -28,8 +28,8 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
 	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
-	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
-	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
+	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 	nodeutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/node"
@@ -42,7 +42,7 @@ type PodNodeScaleUp struct {
 	Pod                    resources.PodDetails
 	Volume                 resources.VolumeDetails
 	IsMultiZone            bool
-	AzDiskClient           *azDiskClientSet.Clientset
+	AzDiskClient           *azdisk.Clientset
 	StorageClassParameters map[string]string
 	PodCheck               *PodExecCheck
 }
@@ -95,13 +95,13 @@ func (t *PodNodeScaleUp) Run(client clientset.Interface, namespace *v1.Namespace
 	t.Pod.Name = tpod.Pod.Name
 
 	time.Sleep(10 * time.Second)
-	var successfulAttachments []diskv1beta1.AzVolumeAttachment
+	var successfulAttachments []azdiskv1beta2.AzVolumeAttachment
 	//Check that only 1 AzVolumeAttachment is created
 
 	_, allAttachments, _, err := resources.VerifySuccessfulAzVolumeAttachments(t.Pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
 	framework.ExpectNoError(err)
 	for _, attachment := range allAttachments {
-		if attachment.Status.Detail != nil && attachment.Status.State == diskv1beta1.Attached {
+		if attachment.Status.Detail != nil && attachment.Status.State == azdiskv1beta2.Attached {
 			successfulAttachments = append(successfulAttachments, attachment)
 		}
 	}
@@ -116,7 +116,7 @@ func (t *PodNodeScaleUp) Run(client clientset.Interface, namespace *v1.Namespace
 
 	//Check that AzVolumeAttachment resources were created correctly
 	isAttached := true
-	var failedAttachments []diskv1beta1.AzVolumeAttachment
+	var failedAttachments []azdiskv1beta2.AzVolumeAttachment
 	err = wait.Poll(15*time.Second, 10*time.Minute, func() (bool, error) {
 		var err error
 		isAttached, _, failedAttachments, err = resources.VerifySuccessfulAzVolumeAttachments(t.Pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)

@@ -33,7 +33,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e/framework"
-	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
@@ -223,7 +223,7 @@ func upgradeTest(isMultiZone bool) {
 		testutil.ExecTestCmd([]testutil.TestCmd{e2eUpgrade})
 
 		ginkgo.By("checking whether necessary CRIs are created.")
-		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
+		azDiskClient, err := azdisk.NewForConfig(f.ClientConfig())
 		framework.ExpectNoError(err)
 
 		diskNames := make([]string, len(podObj.Spec.Volumes))
@@ -252,7 +252,7 @@ func upgradeTest(isMultiZone bool) {
 		}
 
 		checkAzDriverNodes := func() (bool, error) {
-			azDriverNodes, err := azDiskClient.DiskV1beta1().AzDriverNodes(consts.DefaultAzureDiskCrdNamespace).List(ctx, metav1.ListOptions{})
+			azDriverNodes, err := azDiskClient.DiskV1beta2().AzDriverNodes(consts.DefaultAzureDiskCrdNamespace).List(ctx, metav1.ListOptions{})
 			if err != nil && !errors.IsNotFound(err) {
 				return false, err
 			}
@@ -260,7 +260,7 @@ func upgradeTest(isMultiZone bool) {
 		}
 
 		checkAzVolumes := func() (bool, error) {
-			azVolumes, err := azDiskClient.DiskV1beta1().AzVolumes(consts.DefaultAzureDiskCrdNamespace).List(ctx, metav1.ListOptions{})
+			azVolumes, err := azDiskClient.DiskV1beta2().AzVolumes(consts.DefaultAzureDiskCrdNamespace).List(ctx, metav1.ListOptions{})
 			if err != nil && !errors.IsNotFound(err) {
 				return false, err
 			}
@@ -307,7 +307,7 @@ func upgradeTest(isMultiZone bool) {
 		}
 
 		checkAzVolumeAttachments := func() (bool, error) {
-			azVolumeAttachments, err := azDiskClient.DiskV1beta1().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(ctx, metav1.ListOptions{})
+			azVolumeAttachments, err := azDiskClient.DiskV1beta2().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(ctx, metav1.ListOptions{})
 			if err != nil && !errors.IsNotFound(err) {
 				return false, err
 			}

@@ -29,12 +29,12 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/workqueue"
 
-	azVolumeClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
-	azVolumeInformerV1Alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions/azuredisk/v1beta1"
+	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	azdiskinformers "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions/azuredisk/v1beta1"
 )
 
 // retrieve the Kubernetes cluster client from outside of the cluster
-func getKubernetesClient() (kubernetes.Interface, azVolumeClientSet.Interface) {
+func getKubernetesClient() (kubernetes.Interface, azdisk.Interface) {
 
 	// construct the path to resolve to `~/.kube/config`
 	kubeConfigPath := os.Getenv("KUBERNETES_KUBE_CONFIG")
@@ -54,7 +54,7 @@ func getKubernetesClient() (kubernetes.Interface, azVolumeClientSet.Interface) {
 		log.Fatalf("getClusterConfig: %v", err)
 	}
 
-	azVolumeClient, err := azVolumeClientSet.NewForConfig(config)
+	azVolumeClient, err := azdisk.NewForConfig(config)
 	if err != nil {
 		log.Fatalf("getClusterConfig: %v", err)
 	}
@@ -68,7 +68,7 @@ func main() {
 	// get the Kubernetes client for connectivity
 	client, volumeClient := getKubernetesClient()
 
-	volumeInformer := azVolumeInformerV1Alpha2.NewAzVolumeInformer(
+	volumeInformer := azdiskinformers.NewAzVolumeInformer(
 		volumeClient,
 		meta_v1.NamespaceAll,
 		0,

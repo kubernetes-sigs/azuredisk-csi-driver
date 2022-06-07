@@ -33,9 +33,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/record"
-	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
-	azClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
-	azVolumeClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
+	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	diskscheme "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/scheme"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
@@ -117,14 +116,14 @@ var (
 		},
 	}
 
-	testAzDriverNode0 = diskv1beta1.AzDriverNode{
+	testAzDriverNode0 = azdiskv1beta2.AzDriverNode{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      testNode0Name,
 			Namespace: testNamespace,
 		},
 	}
 
-	testAzDriverNode1 = diskv1beta1.AzDriverNode{
+	testAzDriverNode1 = azdiskv1beta2.AzDriverNode{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      testNode1Name,
 			Namespace: testNamespace,
@@ -133,7 +132,7 @@ var (
 
 	testNode1Request = createReconcileRequest(testNamespace, testNode1Name)
 
-	testAzDriverNode1NotFoundError = k8serrors.NewNotFound(diskv1beta1.Resource("azdrivernodes"), testNode1Name)
+	testAzDriverNode1NotFoundError = k8serrors.NewNotFound(azdiskv1beta2.Resource("azdrivernodes"), testNode1Name)
 
 	testPersistentVolume0Name = "test-volume-0"
 	testPersistentVolume1Name = "test-volume-1"
@@ -153,17 +152,17 @@ var (
 	testPrimaryAzVolumeAttachment0Name = azureutils.GetAzVolumeAttachmentName(testPersistentVolume0Name, testNode0Name)
 	testPrimaryAzVolumeAttachment1Name = azureutils.GetAzVolumeAttachmentName(testPersistentVolume1Name, testNode0Name)
 
-	testPrimaryAzVolumeAttachment0 = createTestAzVolumeAttachment(testPersistentVolume0Name, testNode0Name, diskv1beta1.PrimaryRole)
+	testPrimaryAzVolumeAttachment0 = createTestAzVolumeAttachment(testPersistentVolume0Name, testNode0Name, azdiskv1beta2.PrimaryRole)
 
 	testPrimaryAzVolumeAttachment0Request = createReconcileRequest(testNamespace, testPrimaryAzVolumeAttachment0Name)
 
-	testPrimaryAzVolumeAttachment1 = createTestAzVolumeAttachment(testPersistentVolume1Name, testNode0Name, diskv1beta1.PrimaryRole)
+	testPrimaryAzVolumeAttachment1 = createTestAzVolumeAttachment(testPersistentVolume1Name, testNode0Name, azdiskv1beta2.PrimaryRole)
 
 	testPrimaryAzVolumeAttachment1Request = createReconcileRequest(testNamespace, testPrimaryAzVolumeAttachment1Name)
 
 	testReplicaAzVolumeAttachmentName = azureutils.GetAzVolumeAttachmentName(testPersistentVolume0Name, testNode1Name)
 
-	testReplicaAzVolumeAttachment = createTestAzVolumeAttachment(testPersistentVolume0Name, testNode1Name, diskv1beta1.ReplicaRole)
+	testReplicaAzVolumeAttachment = createTestAzVolumeAttachment(testPersistentVolume0Name, testNode1Name, azdiskv1beta2.ReplicaRole)
 
 	testReplicaAzVolumeAttachmentRequest = createReconcileRequest(testNamespace, testReplicaAzVolumeAttachmentName)
 
@@ -268,15 +267,15 @@ func createReconcileRequest(namespace, name string) reconcile.Request {
 	return reconcile.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: name}}
 }
 
-func createTestAzVolume(pvName string, maxMountReplicaCount int) diskv1beta1.AzVolume {
-	azVolume := diskv1beta1.AzVolume{
+func createTestAzVolume(pvName string, maxMountReplicaCount int) azdiskv1beta2.AzVolume {
+	azVolume := azdiskv1beta2.AzVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      pvName,
 			Namespace: testNamespace,
 		},
-		Spec: diskv1beta1.AzVolumeSpec{
+		Spec: azdiskv1beta2.AzVolumeSpec{
 			VolumeName: pvName,
-			CapacityRange: &diskv1beta1.CapacityRange{
+			CapacityRange: &azdiskv1beta2.CapacityRange{
 				RequiredBytes: util.GiBToBytes(10),
 			},
 			MaxMountReplicaCount: maxMountReplicaCount,
@@ -287,9 +286,9 @@ func createTestAzVolume(pvName string, maxMountReplicaCount int) diskv1beta1.AzV
 	return azVolume
 }
 
-func createTestAzVolumeAttachment(pvName, nodeName string, role diskv1beta1.Role) diskv1beta1.AzVolumeAttachment {
+func createTestAzVolumeAttachment(pvName, nodeName string, role azdiskv1beta2.Role) azdiskv1beta2.AzVolumeAttachment {
 	volumeID := getTestDiskURI(pvName)
-	azVolumeAttachment := diskv1beta1.AzVolumeAttachment{
+	azVolumeAttachment := azdiskv1beta2.AzVolumeAttachment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      azureutils.GetAzVolumeAttachmentName(pvName, nodeName),
 			Namespace: testNamespace,
@@ -299,7 +298,7 @@ func createTestAzVolumeAttachment(pvName, nodeName string, role diskv1beta1.Role
 				consts.RoleLabel:       string(role),
 			},
 		},
-		Spec: diskv1beta1.AzVolumeAttachmentSpec{
+		Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
 			RequestedRole: role,
 			VolumeName:    strings.ToLower(pvName),
 			VolumeID:      volumeID,
@@ -340,7 +339,7 @@ func createPod(podNamespace, podName string, pvcs []string) v1.Pod {
 	return testPod
 }
 
-func initState(client client.Client, azClient azClientSet.Interface, kubeClient kubernetes.Interface, objs ...runtime.Object) (c *SharedState) {
+func initState(client client.Client, azClient azdisk.Interface, kubeClient kubernetes.Interface, objs ...runtime.Object) (c *SharedState) {
 	c = NewSharedState(consts.DefaultDriverName, consts.DefaultAzureDiskCrdNamespace, consts.WellKnownTopologyKey, &record.FakeRecorder{}, client, azClient, kubeClient)
 	c.MarkRecoveryComplete()
 
@@ -396,19 +395,19 @@ func splitObjects(objs ...runtime.Object) (azDiskObjs, kubeObjs []runtime.Object
 }
 
 type mockStatusClient struct {
-	azVolumeClient azVolumeClientSet.Interface
+	azVolumeClient azdisk.Interface
 }
 
 func (s *mockStatusClient) updateStatus(ctx context.Context, obj client.Object) error {
 	switch target := obj.(type) {
-	case *diskv1beta1.AzVolume:
-		_, err := s.azVolumeClient.DiskV1beta1().AzVolumes(obj.GetNamespace()).UpdateStatus(ctx, target, metav1.UpdateOptions{})
+	case *azdiskv1beta2.AzVolume:
+		_, err := s.azVolumeClient.DiskV1beta2().AzVolumes(obj.GetNamespace()).UpdateStatus(ctx, target, metav1.UpdateOptions{})
 		if err != nil {
 			return err
 		}
 
-	case *diskv1beta1.AzVolumeAttachment:
-		_, err := s.azVolumeClient.DiskV1beta1().AzVolumeAttachments(obj.GetNamespace()).UpdateStatus(ctx, target, metav1.UpdateOptions{})
+	case *azdiskv1beta2.AzVolumeAttachment:
+		_, err := s.azVolumeClient.DiskV1beta2().AzVolumeAttachments(obj.GetNamespace()).UpdateStatus(ctx, target, metav1.UpdateOptions{})
 		if err != nil {
 			return err
 		}
@@ -432,23 +431,23 @@ func (s *mockStatusClient) Update(ctx context.Context, obj client.Object, _ ...c
 	return s.updateStatus(ctx, obj)
 }
 
-func mockClients(mockClient *mockclient.MockClient, azVolumeClient azVolumeClientSet.Interface, kubeClient kubernetes.Interface) {
+func mockClients(mockClient *mockclient.MockClient, azVolumeClient azdisk.Interface, kubeClient kubernetes.Interface) {
 	statusClient := mockStatusClient{azVolumeClient: azVolumeClient}
 	mockClient.EXPECT().Status().Return(&statusClient).AnyTimes()
 	mockClient.EXPECT().
 		Get(gomock.Any(), gomock.Any(), gomock.Any()).
 		DoAndReturn(func(ctx context.Context, key types.NamespacedName, obj runtime.Object) error {
 			switch target := obj.(type) {
-			case *diskv1beta1.AzVolume:
-				azVolume, err := azVolumeClient.DiskV1beta1().AzVolumes(key.Namespace).Get(ctx, key.Name, metav1.GetOptions{})
+			case *azdiskv1beta2.AzVolume:
+				azVolume, err := azVolumeClient.DiskV1beta2().AzVolumes(key.Namespace).Get(ctx, key.Name, metav1.GetOptions{})
 				if err != nil {
 					return err
 				}
 
 				azVolume.DeepCopyInto(target)
 
-			case *diskv1beta1.AzVolumeAttachment:
-				azVolumeAttachment, err := azVolumeClient.DiskV1beta1().AzVolumeAttachments(key.Namespace).Get(ctx, key.Name, metav1.GetOptions{})
+			case *azdiskv1beta2.AzVolumeAttachment:
+				azVolumeAttachment, err := azVolumeClient.DiskV1beta2().AzVolumeAttachments(key.Namespace).Get(ctx, key.Name, metav1.GetOptions{})
 				if err != nil {
 					return err
 				}
@@ -507,14 +506,14 @@ func mockClients(mockClient *mockclient.MockClient, azVolumeClient azVolumeClien
 			}
 
 			switch target := obj.(type) {
-			case *diskv1beta1.AzVolume:
-				_, err := azVolumeClient.DiskV1beta1().AzVolumes(obj.GetNamespace()).Patch(ctx, obj.GetName(), patch.Type(), data, metav1.PatchOptions{})
+			case *azdiskv1beta2.AzVolume:
+				_, err := azVolumeClient.DiskV1beta2().AzVolumes(obj.GetNamespace()).Patch(ctx, obj.GetName(), patch.Type(), data, metav1.PatchOptions{})
 				if err != nil {
 					return err
 				}
 
-			case *diskv1beta1.AzVolumeAttachment:
-				_, err := azVolumeClient.DiskV1beta1().AzVolumeAttachments(obj.GetNamespace()).Patch(ctx, obj.GetName(), patch.Type(), data, metav1.PatchOptions{})
+			case *azdiskv1beta2.AzVolumeAttachment:
+				_, err := azVolumeClient.DiskV1beta2().AzVolumeAttachments(obj.GetNamespace()).Patch(ctx, obj.GetName(), patch.Type(), data, metav1.PatchOptions{})
 				if err != nil {
 					return err
 				}
@@ -534,14 +533,14 @@ func mockClients(mockClient *mockclient.MockClient, azVolumeClient azVolumeClien
 		Update(gomock.Any(), gomock.Any(), gomock.Any()).
 		DoAndReturn(func(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error {
 			switch target := obj.(type) {
-			case *diskv1beta1.AzVolume:
-				_, err := azVolumeClient.DiskV1beta1().AzVolumes(obj.GetNamespace()).Update(ctx, target, metav1.UpdateOptions{})
+			case *azdiskv1beta2.AzVolume:
+				_, err := azVolumeClient.DiskV1beta2().AzVolumes(obj.GetNamespace()).Update(ctx, target, metav1.UpdateOptions{})
 				if err != nil {
 					return err
 				}
 
-			case *diskv1beta1.AzVolumeAttachment:
-				_, err := azVolumeClient.DiskV1beta1().AzVolumeAttachments(obj.GetNamespace()).Update(ctx, target, metav1.UpdateOptions{})
+			case *azdiskv1beta2.AzVolumeAttachment:
+				_, err := azVolumeClient.DiskV1beta2().AzVolumeAttachments(obj.GetNamespace()).Update(ctx, target, metav1.UpdateOptions{})
 				if err != nil {
 					return err
 				}
@@ -564,15 +563,15 @@ func mockClients(mockClient *mockclient.MockClient, azVolumeClient azVolumeClien
 			options.ApplyOptions(opts)
 
 			switch target := list.(type) {
-			case *diskv1beta1.AzVolumeAttachmentList:
-				azVolumeAttachments, err := azVolumeClient.DiskV1beta1().AzVolumeAttachments(testNamespace).List(ctx, *options.AsListOptions())
+			case *azdiskv1beta2.AzVolumeAttachmentList:
+				azVolumeAttachments, err := azVolumeClient.DiskV1beta2().AzVolumeAttachments(testNamespace).List(ctx, *options.AsListOptions())
 				if err != nil {
 					return err
 				}
 
 				azVolumeAttachments.DeepCopyInto(target)
-			case *diskv1beta1.AzDriverNodeList:
-				azDriverNodes, err := azVolumeClient.DiskV1beta1().AzDriverNodes(testNamespace).List(ctx, *options.AsListOptions())
+			case *azdiskv1beta2.AzDriverNodeList:
+				azDriverNodes, err := azVolumeClient.DiskV1beta2().AzDriverNodes(testNamespace).List(ctx, *options.AsListOptions())
 				if err != nil {
 					return err
 				}
@@ -603,14 +602,14 @@ func mockClients(mockClient *mockclient.MockClient, azVolumeClient azVolumeClien
 		Delete(gomock.Any(), gomock.Any(), gomock.Any()).
 		DoAndReturn(func(ctx context.Context, obj client.Object, opts ...client.ListOption) error {
 			switch target := obj.(type) {
-			case *diskv1beta1.AzVolume:
-				err := azVolumeClient.DiskV1beta1().AzVolumes(obj.GetNamespace()).Delete(ctx, target.Name, metav1.DeleteOptions{})
+			case *azdiskv1beta2.AzVolume:
+				err := azVolumeClient.DiskV1beta2().AzVolumes(obj.GetNamespace()).Delete(ctx, target.Name, metav1.DeleteOptions{})
 				if err != nil {
 					return err
 				}
 
-			case *diskv1beta1.AzVolumeAttachment:
-				err := azVolumeClient.DiskV1beta1().AzVolumeAttachments(obj.GetNamespace()).Delete(ctx, target.Name, metav1.DeleteOptions{})
+			case *azdiskv1beta2.AzVolumeAttachment:
+				err := azVolumeClient.DiskV1beta2().AzVolumeAttachments(obj.GetNamespace()).Delete(ctx, target.Name, metav1.DeleteOptions{})
 				if err != nil {
 					return err
 				}

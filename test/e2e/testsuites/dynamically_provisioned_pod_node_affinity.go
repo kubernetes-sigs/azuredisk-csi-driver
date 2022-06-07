@@ -32,7 +32,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e/framework"
-	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
@@ -48,7 +48,7 @@ type PodNodeAffinity struct {
 	Pod                    resources.PodDetails
 	IsMultiZone            bool
 	Volume                 resources.VolumeDetails
-	AzDiskClient           *azDiskClientSet.Clientset
+	AzDiskClient           *azdisk.Clientset
 	StorageClassParameters map[string]string
 }
 
@@ -127,7 +127,7 @@ func (t *PodNodeAffinity) Run(client clientset.Interface, namespace *v1.Namespac
 				framework.ExpectNoError(err)
 				labelSelector = labelSelector.Add(*volReq)
 
-				azVolumeAttachments, err := t.AzDiskClient.DiskV1beta1().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})
+				azVolumeAttachments, err := t.AzDiskClient.DiskV1beta2().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})
 				if err != nil {
 					return false, err
 				}

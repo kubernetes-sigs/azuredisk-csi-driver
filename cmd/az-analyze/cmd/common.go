@@ -27,7 +27,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
-	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
@@ -57,8 +57,8 @@ func getKubernetesClientset(config *rest.Config) *kubernetes.Clientset {
 	}
 	return clientsetK8s
 }
-func getAzDiskClientset(config *rest.Config) *azDiskClientSet.Clientset {
-	clientsetAzDisk, err := azDiskClientSet.NewForConfig(config)
+func getAzDiskClientset(config *rest.Config) *azdisk.Clientset {
+	clientsetAzDisk, err := azdisk.NewForConfig(config)
 	if err != nil {
 		panic(err.Error())
 	}

@@ -38,11 +38,11 @@ func (w *ConditionWaiter) Wait(ctx context.Context) (runtime.Object, error) {
 
 	switch w.objType {
 	case AzVolumeType:
-		obj, err = w.watcher.informerFactory.Disk().V1beta1().AzVolumes().Lister().AzVolumes(namespace).Get(w.objName)
+		obj, err = w.watcher.informerFactory.Disk().V1beta2().AzVolumes().Lister().AzVolumes(namespace).Get(w.objName)
 	case AzVolumeAttachmentType:
-		obj, err = w.watcher.informerFactory.Disk().V1beta1().AzVolumeAttachments().Lister().AzVolumeAttachments(namespace).Get(w.objName)
+		obj, err = w.watcher.informerFactory.Disk().V1beta2().AzVolumeAttachments().Lister().AzVolumeAttachments(namespace).Get(w.objName)
 	case AzDriverNodeType:
-		obj, err = w.watcher.informerFactory.Disk().V1beta1().AzDriverNodes().Lister().AzDriverNodes(namespace).Get(w.objName)
+		obj, err = w.watcher.informerFactory.Disk().V1beta2().AzDriverNodes().Lister().AzDriverNodes(namespace).Get(w.objName)
 	}
 
 	_, wf := workflow.New(ctx, workflow.WithDetails(workflow.GetObjectDetails(obj)...))

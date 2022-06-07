@@ -25,7 +25,6 @@ import (
 
 // AzVolume is a specification for an AzVolume resource
 // +kubebuilder:object:root=true
-// +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Namespaced
 // +kubebuilder:printcolumn:name="State",type="string",JSONPath=`.status.state`,description="Indicates the state of the volume"
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=`.status.detail.phase`,description="Indicates the phase of the underlying persistent volume"
@@ -38,7 +37,7 @@ type AzVolume struct {
 	Spec AzVolumeSpec `json:"spec"`
 	// status represents the current state of AzVolume.
 	// includes error, state, and volume status
-	// +optional
+	// +required
 	Status AzVolumeStatus `json:"status"`
 }
 
@@ -76,9 +75,6 @@ type AzVolumeSpec struct {
 	//Specifies where the provisioned volume should be accessible.
 	//+optional
 	AccessibilityRequirements *TopologyRequirement `json:"accessibilityRequirements,omitempty"`
-	//The name of the PersistentVolume that corresponds to the AzVolume instance.
-	//+optional
-	PersistentVolume string `json:"persistentVolume"`
 }
 
 type AzVolumeState string
@@ -98,6 +94,10 @@ const (
 
 // AzVolumeStatus is the status for an AzVolume resource
 type AzVolumeStatus struct {
+	//The name of the PersistentVolume that corresponds to the AzVolume instance.
+	//+optional
+	PersistentVolume string `json:"persistentVolume"`
+
 	//Current status detail of the AzVolume
 	//Nil detail indicates that the volume has not been created
 	//+optional
@@ -110,10 +110,6 @@ type AzVolumeStatus struct {
 	//Error occurred during creation/deletion of volume
 	//+optional
 	Error *AzError `json:"error,omitempty"`
-
-	//Annotations contains additional resource information to guide driver actions
-	//+optional
-	Annotations map[string]string `json:"annotation,omitempty"`
 }
 
 // AzVolumeStatusDetail is the status of the underlying Volume resource
@@ -144,7 +140,6 @@ type AzVolumeList struct {
 
 // AzVolumeAttachment is a specification for a AzVolumeAttachment resource
 // +kubebuilder:object:root=true
-// +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Namespaced
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp",description="The age of the attachment"
 // +kubebuilder:printcolumn:name="NodeName",type=string,JSONPath=`.spec.nodeName`,description="Name of the Node which this AzVolumeAttachment object is attached to",priority=10
@@ -166,7 +161,7 @@ type AzVolumeAttachment struct {
 
 	// status represents the current state of AzVolumeAttachment.
 	// includes error, state, and attachment status
-	// +optional
+	// Required
 	Status AzVolumeAttachmentStatus `json:"status,omitempty"`
 }
 
@@ -225,9 +220,6 @@ type AzVolumeAttachmentStatus struct {
 	//Error occurred during attach/detach of volume
 	//+optional
 	Error *AzError `json:"error,omitempty"`
-	//Annotations contains additional resource information to guide driver actions
-	//+optional
-	Annotations map[string]string `json:"annotation,omitempty"`
 }
 
 // AzVolumeAttachmentStatusDetail is the status of the attachment between specified node and volume.
