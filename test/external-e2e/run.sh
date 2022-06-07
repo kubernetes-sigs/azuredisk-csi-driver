@@ -34,7 +34,7 @@ setup_e2e_binaries() {
     tar -xvf e2e-tests.tar.gz && rm e2e-tests.tar.gz
 
     # test on alternative driver name
-    export EXTRA_HELM_OPTIONS="--set controller.disableAvailabilitySetNodes=true --set controller.replicas=1 --set driver.name=$DRIVER.csi.azure.com --set controller.name=csi-$DRIVER-controller --set linux.dsName=csi-$DRIVER-node --set windows.dsName=csi-$DRIVER-node-win --set controller.vmssCacheTTLInSeconds=60"
+    export EXTRA_HELM_OPTIONS="--set controller.disableAvailabilitySetNodes=true --set controller.replicas=1 --set driver.name=$DRIVER.csi.azure.com --set controller.name=csi-$DRIVER-controller --set linux.dsName=csi-$DRIVER-node --set windows.dsName=csi-$DRIVER-node-win --set controller.vmssCacheTTLInSeconds=60 --set node.logLevel=6"
     # install the azuredisk-csi-driver driver
     make e2e-bootstrap
     sed -i "s/csi-azuredisk-controller/csi-$DRIVER-controller/g" deploy/example/metrics/csi-azuredisk-controller-svc.yaml
