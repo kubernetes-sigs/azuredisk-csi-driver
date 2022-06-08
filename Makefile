@@ -374,16 +374,6 @@ pod-failover-test-containers:
 upgrade-test:
 	go test -v -timeout=0 ${GOTAGS} ./test/upgrade
 
-.PHONY: install-az-analyze
-install-az-analyze:
-	go install ./cmd/az-analyze
-	mkdir -p /var/tmp/azuredisk-csi-driver/cmd/az-analyze/config
-	rm -f /var/tmp/azuredisk-csi-driver/cmd/az-analyze/config/az-analyze.yaml
-	ln -s $(PWD)/cmd/az-analyze/config/az-analyze.yaml /var/tmp/azuredisk-csi-driver/cmd/az-analyze/config/az-analyze.yaml
-
 .PHONY: install-az-log
 install-az-log:
 	go install ./cmd/az-log
-	mkdir -p /var/tmp/azuredisk-csi-driver/cmd/az-log/config
-	rm -f /var/tmp/azuredisk-csi-driver/cmd/az-log/config/az-log.yaml
-	ln -s $(PWD)/cmd/az-log/config/az-log.yaml /var/tmp/azuredisk-csi-driver/cmd/az-log/config/az-log.yaml

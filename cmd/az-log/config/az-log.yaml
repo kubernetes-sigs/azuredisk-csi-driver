@@ -1,4 +1,0 @@
-kubeconfig: "" # default is "$HOME/.kube/config"
-driverNamespace: "" # default is "azure-disk-csi"
-releaseNamesapce: "" # default is "kube-system"
-v2InstalledSideBySide: "" # default is "false"

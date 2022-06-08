@@ -10,11 +10,25 @@ $ make install-az-log
 ```
 
 ## Configuration
-Check if any configuration settings need to be updated.
+Create an az-log config file in one of the three paths below:
 ```console
-$ cat $GOPATH/src/sigs.k8s.io/azuredisk-csi-driver/cmd/az-log/config/az-log.yaml
+$ cat > /etc/az-log.yaml
 ```
-
+or
+```console
+$ cat > $HOME/.config/az-log.yaml
+```
+or
+```console
+$ cat > az-log.yaml
+```
+Write configuration settings and press Ctrl+D to exit the file.
+```console
+kubeconfig: "" # default is "$HOME/.kube/config"
+driverNamespace: "" # default is "azure-disk-csi"
+releaseNamesapce: "" # default is "kube-system"
+v2InstalledSideBySide: "" # default is "false"
+```
 ## Features
 
 ### Source Options
@@ -23,16 +37,16 @@ $ cat $GOPATH/src/sigs.k8s.io/azuredisk-csi-driver/cmd/az-log/config/az-log.yaml
 |az-log get controller |Fetch and output logs from the leader controller plugin.|
 |az-log get node \<node-name\> |Fetch and output logs from the node plugin on the given node.|
 |az-log get file \<file-name\> |Fetch and output logs from a *.log file.|
-|az-log get pod \<pod-name\>/\<container-name\> |Fetch and output logs from a specific container and plugin running for the driver.|
+|az-log get pod \<pod-name\>/\<container-name\> |Fetch and output logs from a specific container and a plugin of the driver. Separate container name and pod name by forward slash.|
 
 ### Retrieval Options
-|Flag|Description|
+|Option|Description|
 |---|---|
 |--follow |Specify if logs should be streamed. Can't be used with `get file`.|
 |--previous |Print logs for previous container in a pod if it exists as well as for current container. Can't be used with `get file`.|
 
 ### Query Options
-|Flag|Description|
+|Option|Description|
 |---|---|
 |--volume \<volume-names\> |Filter out logs linked to the given volumes. Multiple arguments should be separated by comma.|
 |--node \<node-names\> |Filter out logs linked to the given nodes. Multiple arguments should be separated by comma.|
