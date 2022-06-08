@@ -9,9 +9,22 @@ $ cd $GOPATH/src/sigs.k8s.io/azuredisk-csi-driver
 $ make install-az-analyze
 ```
 ## Configuration
-Check if any configuration settings need to be updated.
+Create an az-analyze config file in one of the three paths below:
 ```console
-$ cat $GOPATH/src/sigs.k8s.io/azuredisk-csi-driver/cmd/az-analyze/config/az-analyze.yaml
+$ cat > /etc/az-analyze.yaml
+```
+or
+```console
+$ cat > $HOME/.config/az-analyze.yaml
+```
+or
+```console
+$ cat > az-analyze.yaml
+```
+Write configuration settings and press Ctrl+D to exit the file.
+```console
+kubeconfig: "" # default is "$HOME/.kube/config"
+driverNamespace: "" # default is "azure-disk-csi"
 ```
 
 ## Features
