@@ -192,7 +192,7 @@ func (d *DriverV2) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolume
 		if mnt.FsType != "" {
 			fstype = mnt.FsType
 		}
-		options = append(options, mnt.MountFlags...)
+		options = append(options, collectMountOptions(fstype, mnt.MountFlags)...)
 	}
 
 	volContextFSType := azureutils.GetFStype(req.GetVolumeContext())
