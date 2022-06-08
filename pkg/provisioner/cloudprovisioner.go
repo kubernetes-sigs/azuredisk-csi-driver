@@ -58,6 +58,7 @@ type CloudProvisioner struct {
 	enableOnlineDiskResize     bool
 	perfOptimizationEnabled    bool
 	allowEmptyCloudConfig      bool
+	enableAsyncAttach          bool
 	// a timed cache GetDisk throttling
 	getDiskThrottlingCache *azcache.TimedCache
 }
@@ -78,9 +79,10 @@ func NewCloudProvisioner(
 	topologyKey string,
 	userAgent string,
 	enableOnlineDiskResize bool,
-	allowEmpyCloudConfig bool,
+	allowEmptyCloudConfig bool,
+	enableAsyncAttach bool,
 ) (*CloudProvisioner, error) {
-	azCloud, err := azureutils.GetCloudProviderFromClient(kubeClient, cloudConfigSecretName, cloudConfigSecretNamespace, userAgent, allowEmpyCloudConfig)
+	azCloud, err := azureutils.GetCloudProviderFromClient(kubeClient, cloudConfigSecretName, cloudConfigSecretNamespace, userAgent, allowEmptyCloudConfig)
 	if err != nil || azCloud.TenantID == "" || azCloud.SubscriptionID == "" {
 		klog.Fatalf("failed to get Azure Cloud Provider, error: %v", err)
 		return nil, err
@@ -102,7 +104,8 @@ func NewCloudProvisioner(
 		cloudConfigSecretNamespace: cloudConfigSecretNamespace,
 		enableOnlineDiskResize:     enableOnlineDiskResize,
 		perfOptimizationEnabled:    perfOptimizationEnabled,
-		allowEmptyCloudConfig:      allowEmpyCloudConfig,
+		allowEmptyCloudConfig:      allowEmptyCloudConfig,
+		enableAsyncAttach:          enableAsyncAttach,
 		getDiskThrottlingCache:     cache,
 	}, nil
 }
@@ -377,11 +380,7 @@ func (c *CloudProvisioner) PublishVolume(
 			return nil, err
 		}
 
-		asyncAttach := true
-		if enableAsync, ok := volumeContext[azureconstants.EnableAsyncAttachField]; ok && enableAsync == azureconstants.FalseValue {
-			asyncAttach = false
-		}
-
+		asyncAttach := azureutils.IsAsyncAttachEnabled(c.enableAsyncAttach, volumeContext)
 		lun, err = c.cloud.AttachDisk(ctx, asyncAttach, diskName, volumeID, nodeName, cachingMode, disk)
 		if err != nil {
 			w.Logger().Errorf(err, "attach volume %q to instance %q failed", volumeID, nodeName)

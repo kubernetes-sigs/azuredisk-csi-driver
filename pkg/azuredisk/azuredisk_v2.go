@@ -190,6 +190,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 			userAgent,
 			d.enableDiskOnlineResize,
 			d.allowEmptyCloudConfig,
+			d.enableAsyncAttach,
 		)
 		if err != nil {
 			klog.Fatalf("Failed to get controller provisioner. Error: %v", err)
