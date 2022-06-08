@@ -636,7 +636,7 @@ func NewAzVolumeController(mgr manager.Manager, volumeProvisioner VolumeProvisio
 	c, err := controller.New("azvolume-controller", mgr, controller.Options{
 		MaxConcurrentReconciles: 10,
 		Reconciler:              &reconciler,
-		Log:                     logger,
+		LogConstructor:          func(req *reconcile.Request) logr.Logger { return logger },
 	})
 
 	if err != nil {

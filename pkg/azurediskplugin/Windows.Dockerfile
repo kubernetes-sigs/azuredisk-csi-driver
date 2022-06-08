@@ -10,5 +10,6 @@ LABEL description="CSI Azure disk plugin"
 
 ARG ARCH
 ARG PLUGIN_NAME=azurediskplugin
-COPY ./_output/${ARCH}/${PLUGIN_NAME}.exe /azurediskplugin.exe
+ARG binary=./_output/${ARCH}/${PLUGIN_NAME}.exe
+COPY ${binary} /azurediskplugin.exe
 ENTRYPOINT ["/azurediskplugin.exe"]

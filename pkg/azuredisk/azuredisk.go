@@ -65,6 +65,8 @@ type DriverOptions struct {
 	SupportZone                bool
 	GetNodeInfoFromLabels      bool
 	EnableDiskCapacityCheck    bool
+	VMSSCacheTTLInSeconds      int64
+	VMType                     string
 	RestClientQPS              int
 }
 
@@ -106,6 +108,8 @@ type DriverCore struct {
 	supportZone                bool
 	getNodeInfoFromLabels      bool
 	enableDiskCapacityCheck    bool
+	vmssCacheTTLInSeconds      int64
+	vmType                     string
 }
 
 // Driver is the v1 implementation of the Azure Disk CSI Driver.
@@ -142,6 +146,8 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.supportZone = options.SupportZone
 	driver.getNodeInfoFromLabels = options.GetNodeInfoFromLabels
 	driver.enableDiskCapacityCheck = options.EnableDiskCapacityCheck
+	driver.vmssCacheTTLInSeconds = options.VMSSCacheTTLInSeconds
+	driver.vmType = options.VMType
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
@@ -171,12 +177,17 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 	userAgent := GetUserAgent(d.Name, d.customUserAgent, d.userAgentSuffix)
 	klog.V(2).Infof("driver userAgent: %s", userAgent)
 
-	cloud, err := azureutils.GetCloudProvider(kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, userAgent)
+	cloud, err := azureutils.GetCloudProvider(kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, userAgent, d.allowEmptyCloudConfig)
 	if err != nil {
 		klog.Fatalf("failed to get Azure Cloud Provider, error: %v", err)
 	}
 	d.cloud = cloud
 	d.kubeconfig = kubeconfig
+
+	if d.vmType != "" {
+		klog.V(2).Infof("override VMType(%s) in cloud config as %s", d.cloud.VMType, d.vmType)
+		d.cloud.VMType = d.vmType
+	}
 
 	if d.NodeID == "" {
 		// Disable UseInstanceMetadata for controller to mitigate a timeout issue using IMDS
@@ -184,14 +195,22 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 		klog.V(2).Infof("disable UseInstanceMetadata for controller")
 		d.cloud.Config.UseInstanceMetadata = false
 
-		if d.cloud.VMType == azurecloudconsts.VMTypeVMSS && !d.cloud.DisableAvailabilitySetNodes {
-			if disableAVSetNodes {
-				klog.V(2).Infof("DisableAvailabilitySetNodes for controller since current VMType is vmss")
-				d.cloud.DisableAvailabilitySetNodes = true
-			} else {
-				klog.Warningf("DisableAvailabilitySetNodes for controller is set as false while current VMType is vmss")
-			}
+		if d.cloud.VMType == azurecloudconsts.VMTypeStandard && d.cloud.DisableAvailabilitySetNodes {
+			klog.V(2).Infof("set DisableAvailabilitySetNodes as false since VMType is %s", d.cloud.VMType)
+			d.cloud.DisableAvailabilitySetNodes = false
 		}
+
+		if d.cloud.VMType == azurecloudconsts.VMTypeVMSS && !d.cloud.DisableAvailabilitySetNodes && disableAVSetNodes {
+			klog.V(2).Infof("DisableAvailabilitySetNodes for controller since current VMType is vmss")
+			d.cloud.DisableAvailabilitySetNodes = true
+		}
+		klog.V(2).Infof("cloud: %s, location: %s, rg: %s, VMType: %s, PrimaryScaleSetName: %s, PrimaryAvailabilitySetName: %s, DisableAvailabilitySetNodes: %v", d.cloud.Cloud, d.cloud.Location, d.cloud.ResourceGroup, d.cloud.VMType, d.cloud.PrimaryScaleSetName, d.cloud.PrimaryAvailabilitySetName, d.cloud.DisableAvailabilitySetNodes)
+	}
+
+	if d.vmssCacheTTLInSeconds > 0 {
+		klog.V(2).Infof("reset vmssCacheTTLInSeconds as %d", d.vmssCacheTTLInSeconds)
+		d.cloud.VMCacheTTLInSeconds = int(d.vmssCacheTTLInSeconds)
+		d.cloud.VmssCacheTTLInSeconds = int(d.vmssCacheTTLInSeconds)
 	}
 
 	d.deviceHelper = optimization.NewSafeDeviceHelper()

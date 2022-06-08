@@ -41,6 +41,7 @@ const PrivateDNSZoneName = "privatelink.file.core.windows.net"
 
 // AccountOptions contains the fields which are used to create storage account.
 type AccountOptions struct {
+	SubscriptionID                            string
 	Name, Type, Kind, ResourceGroup, Location string
 	EnableHTTPSTrafficOnly                    bool
 	// indicate whether create new account when Name is empty or when account does not exists
@@ -56,6 +57,7 @@ type AccountOptions struct {
 	VNetResourceGroup                       string
 	VNetName                                string
 	SubnetName                              string
+	MatchTags                               bool
 }
 
 type accountWithLocation struct {
@@ -67,7 +69,7 @@ func (az *Cloud) getStorageAccounts(ctx context.Context, accountOptions *Account
 	if az.StorageAccountClient == nil {
 		return nil, fmt.Errorf("StorageAccountClient is nil")
 	}
-	result, rerr := az.StorageAccountClient.ListByResourceGroup(ctx, accountOptions.ResourceGroup)
+	result, rerr := az.StorageAccountClient.ListByResourceGroup(ctx, accountOptions.SubscriptionID, accountOptions.ResourceGroup)
 	if rerr != nil {
 		return nil, rerr.Error()
 	}
@@ -94,12 +96,12 @@ func (az *Cloud) getStorageAccounts(ctx context.Context, accountOptions *Account
 }
 
 // GetStorageAccesskey gets the storage account access key
-func (az *Cloud) GetStorageAccesskey(ctx context.Context, account, resourceGroup string) (string, error) {
+func (az *Cloud) GetStorageAccesskey(ctx context.Context, subsID, account, resourceGroup string) (string, error) {
 	if az.StorageAccountClient == nil {
 		return "", fmt.Errorf("StorageAccountClient is nil")
 	}
 
-	result, rerr := az.StorageAccountClient.ListKeys(ctx, resourceGroup, account)
+	result, rerr := az.StorageAccountClient.ListKeys(ctx, subsID, resourceGroup, account)
 	if rerr != nil {
 		return "", rerr.Error()
 	}
@@ -142,6 +144,21 @@ func (az *Cloud) EnsureStorageAccount(ctx context.Context, accountOptions *Accou
 		subnetName = az.SubnetName
 	}
 
+	if accountOptions.SubscriptionID != "" && !strings.EqualFold(accountOptions.SubscriptionID, az.Config.SubscriptionID) && accountOptions.ResourceGroup == "" {
+		return "", "", fmt.Errorf("resourceGroup must be specified when subscriptionID(%s) is not empty", accountOptions.SubscriptionID)
+	}
+
+	subsID := az.Config.SubscriptionID
+	if accountOptions.SubscriptionID != "" {
+		subsID = accountOptions.SubscriptionID
+	}
+
+	if len(accountOptions.Tags) == 0 {
+		accountOptions.Tags = make(map[string]string)
+	}
+	// set built-in tags
+	accountOptions.Tags[consts.CreatedByTag] = "azure"
+
 	var createNewAccount bool
 	if len(accountName) == 0 {
 		createNewAccount = true
@@ -166,7 +183,7 @@ func (az *Cloud) EnsureStorageAccount(ctx context.Context, accountOptions *Accou
 		createNewAccount = false
 		if accountOptions.CreateAccount {
 			// check whether account exists
-			if _, err := az.GetStorageAccesskey(ctx, accountName, resourceGroup); err != nil {
+			if _, err := az.GetStorageAccesskey(ctx, subsID, accountName, resourceGroup); err != nil {
 				klog.V(2).Infof("get storage key for storage account %s returned with %v", accountName, err)
 				createNewAccount = true
 			}
@@ -184,6 +201,12 @@ func (az *Cloud) EnsureStorageAccount(ctx context.Context, accountOptions *Accou
 		// Create DNS zone first, this could make sure driver has write permission on vnetResourceGroup
 		if err := az.createPrivateDNSZone(ctx, vnetResourceGroup); err != nil {
 			return "", "", fmt.Errorf("Failed to create private DNS zone(%s) in resourceGroup(%s), error: %v", PrivateDNSZoneName, vnetResourceGroup, err)
+		}
+
+		// Create virtual link to the private DNS zone
+		vNetLinkName := accountName + "-vnetlink"
+		if err := az.createVNetLink(ctx, vNetLinkName, vnetResourceGroup, vnetName); err != nil {
+			return "", "", fmt.Errorf("Failed to create virtual link for vnet(%s) and DNS Zone(%s) in resourceGroup(%s), error: %v", vnetName, PrivateDNSZoneName, vnetResourceGroup, err)
 		}
 	}
 
@@ -224,10 +247,6 @@ func (az *Cloud) EnsureStorageAccount(ctx context.Context, accountOptions *Accou
 		if accountKind != "" {
 			kind = storage.Kind(accountKind)
 		}
-		if len(accountOptions.Tags) == 0 {
-			accountOptions.Tags = make(map[string]string)
-		}
-		accountOptions.Tags[consts.CreatedByTag] = "azure"
 		tags := convertMapToMapPointer(accountOptions.Tags)
 
 		klog.V(2).Infof("azure - no matching account found, begin to create a new account %s in resource group %s, location: %s, accountType: %s, accountKind: %s, tags: %+v",
@@ -258,7 +277,7 @@ func (az *Cloud) EnsureStorageAccount(ctx context.Context, accountOptions *Accou
 			return "", "", fmt.Errorf("StorageAccountClient is nil")
 		}
 
-		if rerr := az.StorageAccountClient.Create(ctx, resourceGroup, accountName, cp); rerr != nil {
+		if rerr := az.StorageAccountClient.Create(ctx, subsID, resourceGroup, accountName, cp); rerr != nil {
 			return "", "", fmt.Errorf("failed to create storage account %s, error: %v", accountName, rerr)
 		}
 
@@ -279,7 +298,7 @@ func (az *Cloud) EnsureStorageAccount(ctx context.Context, accountOptions *Accou
 
 		if accountOptions.CreatePrivateEndpoint {
 			// Get properties of the storageAccount
-			storageAccount, err := az.StorageAccountClient.GetProperties(ctx, resourceGroup, accountName)
+			storageAccount, err := az.StorageAccountClient.GetProperties(ctx, subsID, resourceGroup, accountName)
 			if err != nil {
 				return "", "", fmt.Errorf("Failed to get the properties of storage account(%s), resourceGroup(%s), error: %v", accountName, resourceGroup, err)
 			}
@@ -288,12 +307,6 @@ func (az *Cloud) EnsureStorageAccount(ctx context.Context, accountOptions *Accou
 			privateEndpointName := accountName + "-pvtendpoint"
 			if err := az.createPrivateEndpoint(ctx, accountName, storageAccount.ID, privateEndpointName, vnetResourceGroup, vnetName, subnetName, location); err != nil {
 				return "", "", fmt.Errorf("Failed to create private endpoint for storage account(%s), resourceGroup(%s), error: %v", accountName, vnetResourceGroup, err)
-			}
-
-			// Create virtual link to the zone private DNS zone
-			vNetLinkName := accountName + "-vnetlink"
-			if err := az.createVNetLink(ctx, vNetLinkName, vnetResourceGroup, vnetName); err != nil {
-				return "", "", fmt.Errorf("Failed to create virtual link for vnet(%s) and DNS Zone(%s) in resourceGroup(%s), error: %v", vnetName, PrivateDNSZoneName, vnetResourceGroup, err)
 			}
 
 			// Create dns zone group
@@ -305,7 +318,7 @@ func (az *Cloud) EnsureStorageAccount(ctx context.Context, accountOptions *Accou
 	}
 
 	// find the access key with this account
-	accountKey, err := az.GetStorageAccesskey(ctx, accountName, resourceGroup)
+	accountKey, err := az.GetStorageAccesskey(ctx, subsID, accountName, resourceGroup)
 	if err != nil {
 		return "", "", fmt.Errorf("could not get storage key for storage account %s: %w", accountName, err)
 	}
@@ -340,19 +353,20 @@ func (az *Cloud) createPrivateEndpoint(ctx context.Context, accountName string, 
 		Location:                  &location,
 		PrivateEndpointProperties: &network.PrivateEndpointProperties{Subnet: &subnet, PrivateLinkServiceConnections: &privateLinkServiceConnections},
 	}
-	return az.privateendpointclient.CreateOrUpdate(ctx, vnetResourceGroup, privateEndpointName, privateEndpoint, true)
+
+	return az.privateendpointclient.CreateOrUpdate(ctx, vnetResourceGroup, privateEndpointName, privateEndpoint, "", true).Error()
 }
 
 func (az *Cloud) createPrivateDNSZone(ctx context.Context, vnetResourceGroup string) error {
 	klog.V(2).Infof("Creating private dns zone(%s) in resourceGroup (%s)", PrivateDNSZoneName, vnetResourceGroup)
 	location := LocationGlobal
 	privateDNSZone := privatedns.PrivateZone{Location: &location}
-	if err := az.privatednsclient.CreateOrUpdate(ctx, vnetResourceGroup, PrivateDNSZoneName, privateDNSZone, true); err != nil {
-		if strings.Contains(err.Error(), "exists already") {
+	if err := az.privatednsclient.CreateOrUpdate(ctx, vnetResourceGroup, PrivateDNSZoneName, privateDNSZone, "", true); err != nil {
+		if strings.Contains(err.Error().Error(), "exists already") {
 			klog.V(2).Infof("private dns zone(%s) in resourceGroup (%s) already exists", PrivateDNSZoneName, vnetResourceGroup)
 			return nil
 		}
-		return err
+		return err.Error()
 	}
 	return nil
 }
@@ -367,7 +381,7 @@ func (az *Cloud) createVNetLink(ctx context.Context, vNetLinkName, vnetResourceG
 			VirtualNetwork:      &privatedns.SubResource{ID: &vnetID},
 			RegistrationEnabled: to.BoolPtr(true)},
 	}
-	return az.virtualNetworkLinksClient.CreateOrUpdate(ctx, vnetResourceGroup, PrivateDNSZoneName, vNetLinkName, parameters, false)
+	return az.virtualNetworkLinksClient.CreateOrUpdate(ctx, vnetResourceGroup, PrivateDNSZoneName, vNetLinkName, parameters, "", false).Error()
 }
 
 func (az *Cloud) createPrivateDNSZoneGroup(ctx context.Context, dnsZoneGroupName, privateEndpointName, vnetResourceGroup, vnetName string) error {
@@ -385,15 +399,15 @@ func (az *Cloud) createPrivateDNSZoneGroup(ctx context.Context, dnsZoneGroupName
 			PrivateDNSZoneConfigs: &privateDNSZoneConfigs,
 		},
 	}
-	return az.privatednszonegroupclient.CreateOrUpdate(ctx, vnetResourceGroup, privateEndpointName, dnsZoneGroupName, privateDNSZoneGroup, false)
+	return az.privatednszonegroupclient.CreateOrUpdate(ctx, vnetResourceGroup, privateEndpointName, dnsZoneGroupName, privateDNSZoneGroup, "", false).Error()
 }
 
 // AddStorageAccountTags add tags to storage account
-func (az *Cloud) AddStorageAccountTags(ctx context.Context, resourceGroup, account string, tags map[string]*string) *retry.Error {
+func (az *Cloud) AddStorageAccountTags(ctx context.Context, subsID, resourceGroup, account string, tags map[string]*string) *retry.Error {
 	if az.StorageAccountClient == nil {
 		return retry.NewError(false, fmt.Errorf("StorageAccountClient is nil"))
 	}
-	result, rerr := az.StorageAccountClient.GetProperties(ctx, resourceGroup, account)
+	result, rerr := az.StorageAccountClient.GetProperties(ctx, subsID, resourceGroup, account)
 	if rerr != nil {
 		return rerr
 	}
@@ -409,15 +423,15 @@ func (az *Cloud) AddStorageAccountTags(ctx context.Context, resourceGroup, accou
 	}
 
 	updateParams := storage.AccountUpdateParameters{Tags: newTags}
-	return az.StorageAccountClient.Update(ctx, resourceGroup, account, updateParams)
+	return az.StorageAccountClient.Update(ctx, subsID, resourceGroup, account, updateParams)
 }
 
 // RemoveStorageAccountTag remove tag from storage account
-func (az *Cloud) RemoveStorageAccountTag(ctx context.Context, resourceGroup, account, key string) *retry.Error {
+func (az *Cloud) RemoveStorageAccountTag(ctx context.Context, subsID, resourceGroup, account, key string) *retry.Error {
 	if az.StorageAccountClient == nil {
 		return retry.NewError(false, fmt.Errorf("StorageAccountClient is nil"))
 	}
-	result, rerr := az.StorageAccountClient.GetProperties(ctx, resourceGroup, account)
+	result, rerr := az.StorageAccountClient.GetProperties(ctx, subsID, resourceGroup, account)
 	if rerr != nil {
 		return rerr
 	}
@@ -430,7 +444,7 @@ func (az *Cloud) RemoveStorageAccountTag(ctx context.Context, resourceGroup, acc
 	delete(result.Tags, key)
 	if originalLen != len(result.Tags) {
 		updateParams := storage.AccountUpdateParameters{Tags: result.Tags}
-		return az.StorageAccountClient.Update(ctx, resourceGroup, account, updateParams)
+		return az.StorageAccountClient.Update(ctx, subsID, resourceGroup, account, updateParams)
 	}
 	return nil
 }
@@ -498,6 +512,11 @@ func isTaggedWithSkip(account storage.Account) bool {
 }
 
 func isTagsEqual(account storage.Account, accountOptions *AccountOptions) bool {
+	if !accountOptions.MatchTags {
+		// always return true when tags matching is false (by default)
+		return true
+	}
+
 	// nil and empty map should be regarded as equal
 	if len(account.Tags) == 0 && len(accountOptions.Tags) == 0 {
 		return true

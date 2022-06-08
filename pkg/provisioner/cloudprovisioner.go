@@ -57,6 +57,8 @@ type CloudProvisioner struct {
 	cloudConfigSecretNamespace string
 	enableOnlineDiskResize     bool
 	perfOptimizationEnabled    bool
+	allowEmptyCloudConfig      bool
+	enableAsyncAttach          bool
 	// a timed cache GetDisk throttling
 	getDiskThrottlingCache *azcache.TimedCache
 }
@@ -77,8 +79,10 @@ func NewCloudProvisioner(
 	topologyKey string,
 	userAgent string,
 	enableOnlineDiskResize bool,
+	allowEmptyCloudConfig bool,
+	enableAsyncAttach bool,
 ) (*CloudProvisioner, error) {
-	azCloud, err := azureutils.GetCloudProviderFromClient(kubeClient, cloudConfigSecretName, cloudConfigSecretNamespace, userAgent)
+	azCloud, err := azureutils.GetCloudProviderFromClient(kubeClient, cloudConfigSecretName, cloudConfigSecretNamespace, userAgent, allowEmptyCloudConfig)
 	if err != nil || azCloud.TenantID == "" || azCloud.SubscriptionID == "" {
 		klog.Fatalf("failed to get Azure Cloud Provider, error: %v", err)
 		return nil, err
@@ -100,6 +104,8 @@ func NewCloudProvisioner(
 		cloudConfigSecretNamespace: cloudConfigSecretNamespace,
 		enableOnlineDiskResize:     enableOnlineDiskResize,
 		perfOptimizationEnabled:    perfOptimizationEnabled,
+		allowEmptyCloudConfig:      allowEmptyCloudConfig,
+		enableAsyncAttach:          enableAsyncAttach,
 		getDiskThrottlingCache:     cache,
 	}, nil
 }
@@ -147,7 +153,7 @@ func (c *CloudProvisioner) CreateVolume(
 	}
 
 	if diskParams.UserAgent != "" {
-		localCloud, err = azureutils.GetCloudProviderFromClient(c.kubeClient, c.cloudConfigSecretName, c.cloudConfigSecretNamespace, diskParams.UserAgent)
+		localCloud, err = azureutils.GetCloudProviderFromClient(c.kubeClient, c.cloudConfigSecretName, c.cloudConfigSecretNamespace, diskParams.UserAgent, c.allowEmptyCloudConfig)
 		if err != nil {
 			err = fmt.Errorf("create cloud with UserAgent(%s) failed with: (%s)", diskParams.UserAgent, err)
 			return nil, err
@@ -157,17 +163,21 @@ func (c *CloudProvisioner) CreateVolume(
 	var skuName compute.DiskStorageAccountTypes
 	skuName, err = azureutils.NormalizeStorageAccountType(diskParams.AccountType, localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud)
 	if err != nil {
-		return nil, err
+		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
 	if _, err = azureutils.NormalizeCachingMode(diskParams.CachingMode, diskParams.MaxShares); err != nil {
-		return nil, err
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	if err = azureutils.ValidateDiskEncryptionType(diskParams.DiskEncryptionType); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
 	var networkAccessPolicy compute.NetworkAccessPolicy
 	networkAccessPolicy, err = azureutils.NormalizeNetworkAccessPolicy(diskParams.NetworkAccessPolicy)
 	if err != nil {
-		return nil, err
+		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
 	selectedAvailabilityZone := pickAvailabilityZone(accessibilityRequirements, c.GetCloud().Location)
@@ -251,6 +261,7 @@ func (c *CloudProvisioner) CreateVolume(
 		SourceResourceID:    sourceID,
 		SourceType:          sourceType,
 		DiskEncryptionSetID: diskParams.DiskEncryptionSetID,
+		DiskEncryptionType:  diskParams.DiskEncryptionType,
 		MaxShares:           int32(diskParams.MaxShares),
 		LogicalSectorSize:   int32(diskParams.LogicalSectorSize),
 		BurstingEnabled:     diskParams.EnableBursting,
@@ -369,11 +380,7 @@ func (c *CloudProvisioner) PublishVolume(
 			return nil, err
 		}
 
-		asyncAttach := true
-		if enableAsync, ok := volumeContext[azureconstants.EnableAsyncAttachField]; ok && enableAsync == azureconstants.FalseValue {
-			asyncAttach = false
-		}
-
+		asyncAttach := azureutils.IsAsyncAttachEnabled(c.enableAsyncAttach, volumeContext)
 		lun, err = c.cloud.AttachDisk(ctx, asyncAttach, diskName, volumeID, nodeName, cachingMode, disk)
 		if err != nil {
 			w.Logger().Errorf(err, "attach volume %q to instance %q failed", volumeID, nodeName)
@@ -511,7 +518,7 @@ func (c *CloudProvisioner) CreateSnapshot(
 			location = v
 		case azureconstants.UserAgentField:
 			newUserAgent := v
-			localCloud, err = azureutils.GetCloudProviderFromClient(c.kubeClient, c.cloudConfigSecretName, c.cloudConfigSecretNamespace, newUserAgent)
+			localCloud, err = azureutils.GetCloudProviderFromClient(c.kubeClient, c.cloudConfigSecretName, c.cloudConfigSecretNamespace, newUserAgent, c.allowEmptyCloudConfig)
 			if err != nil {
 				return nil, fmt.Errorf("create cloud with UserAgent(%s) failed with: (%s)", newUserAgent, err)
 			}

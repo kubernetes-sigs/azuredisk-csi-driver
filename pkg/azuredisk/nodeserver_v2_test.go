@@ -21,6 +21,7 @@ package azuredisk
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"runtime"
 	"testing"
@@ -81,6 +82,9 @@ func TestNodeStageVolumeMountRecovery(t *testing.T) {
 	fsckAction := func() ([]byte, []byte, error) {
 		return []byte{}, []byte{}, nil
 	}
+	blockSizeAction := func() ([]byte, []byte, error) {
+		return []byte(fmt.Sprintf("%d", stdCapacityRange.RequiredBytes)), []byte{}, nil
+	}
 
 	tests := []struct {
 		desc          string
@@ -131,7 +135,7 @@ func TestNodeStageVolumeMountRecovery(t *testing.T) {
 					detachState: detachCompleted,
 				}
 				d.crdProvisioner.(*mockprovisioner.MockCrdProvisioner).EXPECT().GetAzVolumeAttachment(gomock.Any(), gomock.Any(), gomock.Any()).Return(&testAzVolumeAttachment, nil)
-				d.setNextCommandOutputScripts(blkidAction, fsckAction)
+				d.setNextCommandOutputScripts(blkidAction, fsckAction, blockSizeAction, blkidAction, blockSizeAction, blkidAction)
 				d.crdProvisioner.(*mockprovisioner.MockCrdProvisioner).EXPECT().WaitForAttach(gomock.Any(), gomock.Any(), gomock.Any()).Return(publishContext, nil)
 			},
 			req: csi.NodeStageVolumeRequest{VolumeId: "vol_1", StagingTargetPath: sourceTest,
@@ -150,7 +154,7 @@ func TestNodeStageVolumeMountRecovery(t *testing.T) {
 					detachState: detachCompleted,
 				}
 				d.crdProvisioner.(*mockprovisioner.MockCrdProvisioner).EXPECT().GetAzVolumeAttachment(gomock.Any(), gomock.Any(), gomock.Any()).Return(publishContext, nil)
-				d.setNextCommandOutputScripts(blkidAction, fsckAction)
+				d.setNextCommandOutputScripts(blkidAction, fsckAction, blockSizeAction, blkidAction, blockSizeAction, blkidAction)
 			},
 			req: csi.NodeStageVolumeRequest{VolumeId: "vol_1", StagingTargetPath: sourceTest,
 				VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap,

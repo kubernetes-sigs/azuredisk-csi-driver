@@ -230,7 +230,7 @@ func NewReplicaController(mgr manager.Manager, controllerSharedState *SharedStat
 	c, err := controller.New("replica-controller", mgr, controller.Options{
 		MaxConcurrentReconciles: 10,
 		Reconciler:              &reconciler,
-		Log:                     logger,
+		LogConstructor:          func(req *reconcile.Request) logr.Logger { return logger },
 	})
 
 	if err != nil {

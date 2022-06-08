@@ -23,4 +23,4 @@ CONTROLLERTOOLS_PKG=${CONTROLLERTOOLS_PKG:-$(cd "${SCRIPT_ROOT}"; ls -d -1 ./ven
 # find or download controller-gen
 pushd "${CONTROLLERTOOLS_PKG}"
 trap popd exit
-go run -v ./cmd/controller-gen crd:crdVersions=v1,trivialVersions=false paths="${SCRIPT_ROOT}/pkg/apis/azuredisk/..." output:crd:dir="${SCRIPT_ROOT}/pkg/apis/config"
+go run -v ./cmd/controller-gen crd:crdVersions=v1 paths="${SCRIPT_ROOT}/pkg/apis/azuredisk/..." output:crd:dir="${SCRIPT_ROOT}/pkg/apis/config"
