@@ -86,6 +86,9 @@ func timeFmt(t time.Duration) string {
 	var buffer bytes.Buffer
 	if day > 0 {
 		buffer.WriteString(fmt.Sprintf("%dd", day))
+		if hour == 0 {
+			return buffer.String()
+		}
 	}
 	if hour > 0 {
 		buffer.WriteString(fmt.Sprintf("%dh", hour))
