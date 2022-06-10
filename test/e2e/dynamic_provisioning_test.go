@@ -31,7 +31,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	restclientset "k8s.io/client-go/rest"
 	"k8s.io/kubernetes/test/e2e/framework"
-	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
@@ -121,14 +121,15 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 						VolumeAccessMode: v1.ReadWriteOnce,
 					},
 				}, t.allowedTopologyValues, isMultiZone),
-				IsWindows: testconsts.IsWindowsCluster,
+				IsWindows:    testconsts.IsWindowsCluster,
+				WinServerVer: testconsts.WinServerVer,
 			},
 		}
 		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
 			CSIDriver: testDriver,
 			Pods:      pods,
 			StorageClassParameters: map[string]string{
-				"skuName": "Standard_LRS",
+				consts.SkuNameField: "Standard_LRS",
 			},
 		}
 
@@ -137,10 +138,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			test.StorageClassParameters = map[string]string{"Kind": "managed"}
 		} else if isMultiZone {
 			if testutil.IsZRSSupported(location) {
-				test.StorageClassParameters["skuName"] = "StandardSSD_ZRS"
+				test.StorageClassParameters[consts.SkuNameField] = "StandardSSD_ZRS"
 				test.StorageClassParameters["networkAccessPolicy"] = "AllowAll"
 			} else {
-				test.StorageClassParameters["skuName"] = "UltraSSD_LRS"
+				test.StorageClassParameters[consts.SkuNameField] = "UltraSSD_LRS"
 				test.StorageClassParameters["diskIopsReadWrite"] = "2000"
 				test.StorageClassParameters["diskMbpsReadWrite"] = "320"
 				test.StorageClassParameters["logicalSectorSize"] = "512"
@@ -171,11 +172,13 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 						VolumeAccessMode: v1.ReadWriteOnce,
 					},
 				},
-				IsWindows: testconsts.IsWindowsCluster,
+				IsWindows:    testconsts.IsWindowsCluster,
+				WinServerVer: testconsts.WinServerVer,
 			},
 		}
 
 		scParameters := map[string]string{
+			/*hard code skuName key to verify e2e test utils handle storage class params case insensitive*/
 			"skuName":             "Standard_LRS",
 			"networkAccessPolicy": "DenyAll",
 			"userAgent":           "azuredisk-e2e-test",
@@ -206,15 +209,16 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 						VolumeAccessMode: v1.ReadWriteOnce,
 					},
 				}, t.allowedTopologyValues, isMultiZone),
-				IsWindows: testconsts.IsWindowsCluster,
+				IsWindows:    testconsts.IsWindowsCluster,
+				WinServerVer: testconsts.WinServerVer,
 			},
 		}
 		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
 			CSIDriver: testDriver,
 			Pods:      pods,
 			StorageClassParameters: map[string]string{
-				"skuName":     "Premium_LRS",
-				"perfProfile": "Basic",
+				consts.SkuNameField: "Premium_LRS",
+				"perfProfile":       "Basic",
 				// enableBursting can only be applied to Premium disk, disk size > 512GB, Ultra & shared disk is not supported.
 				"enableBursting":    "true",
 				"userAgent":         "azuredisk-e2e-test",
@@ -241,14 +245,15 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 						VolumeAccessMode: v1.ReadWriteOnce,
 					},
 				}, t.allowedTopologyValues, isMultiZone),
-				IsWindows: testconsts.IsWindowsCluster,
+				IsWindows:    testconsts.IsWindowsCluster,
+				WinServerVer: testconsts.WinServerVer,
 			},
 		}
 		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
 			CSIDriver: testDriver,
 			Pods:      pods,
 			StorageClassParameters: map[string]string{
-				"skuName":                            "Premium_LRS",
+				consts.SkuNameField:                  "Premium_LRS",
 				"perfProfile":                        "Advanced",
 				"device-setting/queue/read_ahead_kb": "8",
 				"device-setting/queue/nomerges":      "0",
@@ -287,13 +292,13 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		test := testsuites.DynamicallyProvisionedInvalidMountOptions{
 			CSIDriver:              testDriver,
 			Pods:                   pods,
-			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
+			StorageClassParameters: map[string]string{consts.SkuNameField: "StandardSSD_LRS"},
 		}
 		if !testconsts.IsUsingInTreeVolumePlugin && (location == "westus2" || location == "westeurope") {
-			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
+			test.StorageClassParameters = map[string]string{consts.SkuNameField: "StandardSSD_ZRS"}
 		}
 		if testconsts.IsAzureStackCloud {
-			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}
+			test.StorageClassParameters = map[string]string{consts.SkuNameField: "Standard_LRS"}
 		}
 		test.Run(cs, ns, schedulerName)
 	})
@@ -320,10 +325,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
 			CSIDriver:              testDriver,
 			Pods:                   pods,
-			StorageClassParameters: map[string]string{"skuName": "Premium_LRS"},
+			StorageClassParameters: map[string]string{consts.SkuNameField: "Premium_LRS"},
 		}
 		if !testconsts.IsUsingInTreeVolumePlugin && testutil.IsZRSSupported(location) {
-			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
+			test.StorageClassParameters = map[string]string{consts.SkuNameField: "StandardSSD_ZRS"}
 		}
 
 		test.Run(cs, ns, schedulerName)
@@ -346,27 +351,20 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 						VolumeAccessMode: v1.ReadWriteOnce,
 					},
 				}, t.allowedTopologyValues, isMultiZone),
-				IsWindows: testconsts.IsWindowsCluster,
+				IsWindows:    testconsts.IsWindowsCluster,
+				WinServerVer: testconsts.WinServerVer,
 			},
 		}
 		test := testsuites.DynamicallyProvisionedReadOnlyVolumeTest{
 			CSIDriver:              testDriver,
 			Pods:                   pods,
-			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
+			StorageClassParameters: map[string]string{consts.SkuNameField: "StandardSSD_LRS"},
 		}
 		if !testconsts.IsUsingInTreeVolumePlugin && testutil.IsZRSSupported(location) {
-			test.StorageClassParameters = map[string]string{"skuName": "Premium_ZRS"}
-			for _, pod := range pods {
-				for _, volume := range pod.Volumes {
-					volume.AllowedTopologyValues = make([]string, 0)
-
-					immediate := storagev1.VolumeBindingImmediate
-					volume.VolumeBindingMode = &immediate
-				}
-			}
+			test.StorageClassParameters = map[string]string{consts.SkuNameField: "Premium_ZRS"}
 		}
 		if testconsts.IsAzureStackCloud {
-			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}
+			test.StorageClassParameters = map[string]string{consts.SkuNameField: "Standard_LRS"}
 		}
 		test.Run(cs, ns, schedulerName)
 	})
@@ -386,7 +384,8 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 						VolumeAccessMode: v1.ReadWriteOnce,
 					},
 				}, t.allowedTopologyValues, isMultiZone),
-				IsWindows: testconsts.IsWindowsCluster,
+				IsWindows:    testconsts.IsWindowsCluster,
+				WinServerVer: testconsts.WinServerVer,
 			},
 			{
 				Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
@@ -401,7 +400,8 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 						VolumeAccessMode: v1.ReadWriteOnce,
 					},
 				}, t.allowedTopologyValues, isMultiZone),
-				IsWindows: testconsts.IsWindowsCluster,
+				IsWindows:    testconsts.IsWindowsCluster,
+				WinServerVer: testconsts.WinServerVer,
 			},
 			{
 				Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
@@ -416,17 +416,18 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 						VolumeAccessMode: v1.ReadWriteOnce,
 					},
 				}, t.allowedTopologyValues, isMultiZone),
-				IsWindows: testconsts.IsWindowsCluster,
+				IsWindows:    testconsts.IsWindowsCluster,
+				WinServerVer: testconsts.WinServerVer,
 			},
 		}
 		test := testsuites.DynamicallyProvisionedCollocatedPodTest{
 			CSIDriver:              testDriver,
 			Pods:                   pods,
 			ColocatePods:           true,
-			StorageClassParameters: map[string]string{"skuName": "Premium_LRS"},
+			StorageClassParameters: map[string]string{consts.SkuNameField: "Premium_LRS"},
 		}
 		if !testconsts.IsUsingInTreeVolumePlugin && testutil.IsZRSSupported(location) {
-			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
+			test.StorageClassParameters = map[string]string{consts.SkuNameField: "StandardSSD_ZRS"}
 		}
 
 		test.Run(cs, ns, schedulerName)
@@ -446,8 +447,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 					VolumeAccessMode: v1.ReadWriteOnce,
 				},
 			}, t.allowedTopologyValues, isMultiZone),
-			IsWindows: testconsts.IsWindowsCluster,
-			UseCMD:    false,
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
+			UseCMD:       false,
 		}
 
 		podCheckCmd := []string{"cat", "/mnt/test-1/data"}
@@ -533,8 +535,8 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			Pod:                 pod,
 			PodWithClonedVolume: podWithClonedVolume,
 			StorageClassParameters: map[string]string{
-				"skuName": "Standard_LRS",
-				"fsType":  "xfs",
+				consts.SkuNameField: "Standard_LRS",
+				"fsType":            "xfs",
 			},
 		}
 
@@ -570,13 +572,13 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			PodWithClonedVolume: podWithClonedVolume,
 			ClonedVolumeSize:    clonedVolumeSize,
 			StorageClassParameters: map[string]string{
-				"skuName": "Standard_LRS",
-				"fsType":  "xfs",
+				consts.SkuNameField: "Standard_LRS",
+				"fsType":            "xfs",
 			},
 		}
 		if !testconsts.IsUsingInTreeVolumePlugin && testutil.IsZRSSupported(location) {
 			test.StorageClassParameters = map[string]string{
-				"skuName":             "StandardSSD_ZRS",
+				consts.SkuNameField:   "StandardSSD_ZRS",
 				"fsType":              "xfs",
 				"networkAccessPolicy": "DenyAll",
 			}
@@ -617,19 +619,20 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 						VolumeAccessMode: v1.ReadWriteOnce,
 					},
 				}, t.allowedTopologyValues, isMultiZone),
-				IsWindows: testconsts.IsWindowsCluster,
+				IsWindows:    testconsts.IsWindowsCluster,
+				WinServerVer: testconsts.WinServerVer,
 			},
 		}
 		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
 			CSIDriver:              testDriver,
 			Pods:                   pods,
-			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
+			StorageClassParameters: map[string]string{consts.SkuNameField: "StandardSSD_LRS"},
 		}
 		if testconsts.IsAzureStackCloud {
-			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}
+			test.StorageClassParameters = map[string]string{consts.SkuNameField: "Standard_LRS"}
 		}
 		if !testconsts.IsUsingInTreeVolumePlugin && testutil.IsZRSSupported(location) {
-			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
+			test.StorageClassParameters = map[string]string{consts.SkuNameField: "StandardSSD_ZRS"}
 		}
 		test.Run(cs, ns, schedulerName)
 	})
@@ -667,10 +670,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
 			CSIDriver:              testDriver,
 			Pods:                   pods,
-			StorageClassParameters: map[string]string{"skuName": "Premium_LRS"},
+			StorageClassParameters: map[string]string{consts.SkuNameField: "Premium_LRS"},
 		}
 		if !testconsts.IsUsingInTreeVolumePlugin && testutil.IsZRSSupported(location) {
-			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
+			test.StorageClassParameters = map[string]string{consts.SkuNameField: "StandardSSD_ZRS"}
 		}
 		test.Run(cs, ns, schedulerName)
 	})
@@ -701,13 +704,13 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			Pod:                    pod,
 			ShouldOverwrite:        false,
 			PodWithSnapshot:        podWithSnapshot,
-			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
+			StorageClassParameters: map[string]string{consts.SkuNameField: "StandardSSD_LRS"},
 		}
 		if testconsts.IsAzureStackCloud {
-			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}
+			test.StorageClassParameters = map[string]string{consts.SkuNameField: "Standard_LRS"}
 		}
 		if !testconsts.IsUsingInTreeVolumePlugin && testutil.IsZRSSupported(location) {
-			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
+			test.StorageClassParameters = map[string]string{consts.SkuNameField: "StandardSSD_ZRS"}
 		}
 		test.Run(cs, snapshotrcs, ns, schedulerName)
 	})
@@ -745,13 +748,13 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			ShouldOverwrite:        true,
 			PodOverwrite:           podOverwrite,
 			PodWithSnapshot:        podWithSnapshot,
-			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
+			StorageClassParameters: map[string]string{consts.SkuNameField: "StandardSSD_LRS"},
 		}
 		if testconsts.IsAzureStackCloud {
-			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}
+			test.StorageClassParameters = map[string]string{consts.SkuNameField: "Standard_LRS"}
 		}
 		if !testconsts.IsUsingInTreeVolumePlugin && testutil.IsZRSSupported(location) {
-			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
+			test.StorageClassParameters = map[string]string{consts.SkuNameField: "StandardSSD_ZRS"}
 		}
 		test.Run(cs, snapshotrcs, ns, schedulerName)
 	})
@@ -772,9 +775,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 
 		pods := []resources.PodDetails{
 			{
-				Cmd:       testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
-				Volumes:   resources.NormalizeVolumes(volumes, t.allowedTopologyValues, isMultiZone),
-				IsWindows: testconsts.IsWindowsCluster,
+				Cmd:          testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
+				Volumes:      resources.NormalizeVolumes(volumes, t.allowedTopologyValues, isMultiZone),
+				IsWindows:    testconsts.IsWindowsCluster,
+				WinServerVer: testconsts.WinServerVer,
 			},
 		}
 		test := testsuites.DynamicallyProvisionedPodWithMultiplePVsTest{
@@ -807,8 +811,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 					VolumeAccessMode: v1.ReadWriteOnce,
 				},
 			}, t.allowedTopologyValues, isMultiZone),
-			IsWindows: testconsts.IsWindowsCluster,
-			UseCMD:    false,
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
+			UseCMD:       false,
 		}
 
 		test := testsuites.DynamicallyProvisionedResizeVolumeTest{
@@ -816,10 +821,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			Volume:                 volume,
 			Pod:                    pod,
 			ResizeOffline:          true,
-			StorageClassParameters: map[string]string{"skuName": "Standard_LRS"},
+			StorageClassParameters: map[string]string{consts.SkuNameField: "Standard_LRS"},
 		}
 		if !testconsts.IsUsingInTreeVolumePlugin && testutil.IsZRSSupported(location) {
-			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS", "fsType": "btrfs"}
+			test.StorageClassParameters = map[string]string{consts.SkuNameField: "StandardSSD_ZRS", "fsType": "btrfs"}
 		}
 		test.Run(cs, ns, schedulerName)
 	})
@@ -849,8 +854,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 					VolumeAccessMode: v1.ReadWriteOnce,
 				},
 			}, t.allowedTopologyValues, isMultiZone),
-			IsWindows: testconsts.IsWindowsCluster,
-			UseCMD:    false,
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
+			UseCMD:       false,
 		}
 
 		test := testsuites.DynamicallyProvisionedResizeVolumeTest{
@@ -858,7 +864,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			Volume:                 volume,
 			Pod:                    pod,
 			ResizeOffline:          false,
-			StorageClassParameters: map[string]string{"skuName": "Standard_LRS"},
+			StorageClassParameters: map[string]string{consts.SkuNameField: "StandardSSD_LRS"},
 		}
 		test.Run(cs, ns, schedulerName)
 	})
@@ -889,8 +895,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 					VolumeAccessMode: v1.ReadWriteOnce,
 				},
 			}, t.allowedTopologyValues, isMultiZone),
-			IsWindows: testconsts.IsWindowsCluster,
-			UseCMD:    false,
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
+			UseCMD:       false,
 		}
 
 		test := testsuites.DynamicallyProvisionedResizeVolumeTest{
@@ -898,7 +905,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			Volume:                 volume,
 			Pod:                    pod,
 			ResizeOffline:          false,
-			StorageClassParameters: map[string]string{"skuName": "Standard_LRS"},
+			StorageClassParameters: map[string]string{consts.SkuNameField: "StandardSSD_LRS"},
 		}
 		test.Run(cs, ns, schedulerName)
 	})
@@ -922,18 +929,19 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 						VolumeAccessMode: v1.ReadWriteOnce,
 					},
 				}, t.allowedTopologyValues, isMultiZone),
-				IsWindows: testconsts.IsWindowsCluster,
+				IsWindows:    testconsts.IsWindowsCluster,
+				WinServerVer: testconsts.WinServerVer,
 			},
 		}
 		tags := "disk=test"
 		test := testsuites.DynamicallyProvisionedAzureDiskWithTag{
 			CSIDriver:              testDriver,
 			Pods:                   pods,
-			StorageClassParameters: map[string]string{"skuName": "Standard_LRS", "tags": tags},
+			StorageClassParameters: map[string]string{consts.SkuNameField: "Standard_LRS", "tags": tags},
 			Tags:                   tags,
 		}
 		if !testconsts.IsUsingInTreeVolumePlugin && testutil.IsZRSSupported(location) {
-			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS", "tags": tags}
+			test.StorageClassParameters = map[string]string{consts.SkuNameField: "StandardSSD_ZRS", "tags": tags}
 		}
 		test.Run(cs, ns, schedulerName)
 	})
@@ -956,16 +964,17 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 						VolumeAccessMode: v1.ReadWriteOnce,
 					},
 				}, t.allowedTopologyValues, isMultiZone),
-				IsWindows: testconsts.IsWindowsCluster,
+				IsWindows:    testconsts.IsWindowsCluster,
+				WinServerVer: testconsts.WinServerVer,
 			},
 		}
 		test := testsuites.DynamicallyProvisionedAzureDiskDetach{
 			CSIDriver:              testDriver,
 			Pods:                   pods,
-			StorageClassParameters: map[string]string{"skuName": "Standard_LRS"},
+			StorageClassParameters: map[string]string{consts.SkuNameField: "Standard_LRS"},
 		}
 		if !testconsts.IsUsingInTreeVolumePlugin && testutil.IsZRSSupported(location) {
-			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
+			test.StorageClassParameters = map[string]string{consts.SkuNameField: "StandardSSD_ZRS"}
 		}
 		test.Run(cs, ns, schedulerName)
 	})
@@ -973,7 +982,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	ginkgo.It(fmt.Sprintf("should delete AzVolumeAttachment after pod deleted when maxMountReplicaCount == 0 [disk.csi.azure.com] [%s]", schedulerName), func() {
 		testutil.SkipIfNotUsingCSIDriverV2()
 
-		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
+		azDiskClient, err := azdisk.NewForConfig(f.ClientConfig())
 		if err != nil {
 			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		}
@@ -987,9 +996,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		}
 
 		pod := resources.PodDetails{
-			Cmd:       testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
-			Volumes:   resources.NormalizeVolumes([]resources.VolumeDetails{volume}, t.allowedTopologyValues, isMultiZone),
-			IsWindows: testconsts.IsWindowsCluster,
+			Cmd:          testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
+			Volumes:      resources.NormalizeVolumes([]resources.VolumeDetails{volume}, t.allowedTopologyValues, isMultiZone),
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
 		}
 
 		storageClassParameters := map[string]string{
@@ -1011,7 +1021,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		testutil.SkipIfNotUsingCSIDriverV2()
 		testutil.SkipIfUsingInTreeVolumePlugin()
 
-		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
+		azDiskClient, err := azdisk.NewForConfig(f.ClientConfig())
 		if err != nil {
 			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		}
@@ -1025,9 +1035,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		}
 
 		pod := resources.PodDetails{
-			Cmd:       testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
-			Volumes:   resources.NormalizeVolumes([]resources.VolumeDetails{volume}, t.allowedTopologyValues, isMultiZone),
-			IsWindows: testconsts.IsWindowsCluster,
+			Cmd:          testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
+			Volumes:      resources.NormalizeVolumes([]resources.VolumeDetails{volume}, t.allowedTopologyValues, isMultiZone),
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
 		}
 
 		storageClassParameters := map[string]string{
@@ -1059,8 +1070,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 					VolumeAccessMode: v1.ReadWriteOnce,
 				},
 			}, t.allowedTopologyValues, isMultiZone),
-			IsWindows: testconsts.IsWindowsCluster,
-			UseCMD:    false,
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
+			UseCMD:       false,
 		}
 
 		podCheckCmd := []string{"cat", "/mnt/test-1/data"}
@@ -1088,7 +1100,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		}
 		testutil.SkipIfNotUsingCSIDriverV2()
 
-		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
+		azDiskClient, err := azdisk.NewForConfig(f.ClientConfig())
 		if err != nil {
 			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		}
@@ -1114,8 +1126,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 					VolumeAccessMode: volume.VolumeAccessMode,
 				},
 			}, t.allowedTopologyValues, false),
-			IsWindows: testconsts.IsWindowsCluster,
-			UseCMD:    false,
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
+			UseCMD:       false,
 		}
 
 		storageClassParameters := map[string]string{
@@ -1142,7 +1155,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		}
 		testutil.SkipIfNotUsingCSIDriverV2()
 
-		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
+		azDiskClient, err := azdisk.NewForConfig(f.ClientConfig())
 		if err != nil {
 			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		}
@@ -1168,8 +1181,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 					VolumeAccessMode: volume.VolumeAccessMode,
 				},
 			}, t.allowedTopologyValues, false),
-			IsWindows: testconsts.IsWindowsCluster,
-			UseCMD:    false,
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
+			UseCMD:       false,
 		}
 
 		storageClassParameters := map[string]string{
@@ -1196,7 +1210,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		}
 		testutil.SkipIfNotUsingCSIDriverV2()
 
-		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
+		azDiskClient, err := azdisk.NewForConfig(f.ClientConfig())
 		if err != nil {
 			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		}
@@ -1222,8 +1236,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 					VolumeAccessMode: volume.VolumeAccessMode,
 				},
 			}, t.allowedTopologyValues, false),
-			IsWindows: testconsts.IsWindowsCluster,
-			UseCMD:    false,
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
+			UseCMD:       false,
 		}
 
 		storageClassParameters := map[string]string{
@@ -1251,7 +1266,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		}
 		testutil.SkipIfNotUsingCSIDriverV2()
 
-		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
+		azDiskClient, err := azdisk.NewForConfig(f.ClientConfig())
 		if err != nil {
 			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		}
@@ -1278,8 +1293,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 						VolumeAccessMode: volume.VolumeAccessMode,
 					},
 				}, t.allowedTopologyValues, isMultiZone),
-				IsWindows: testconsts.IsWindowsCluster,
-				UseCMD:    false,
+				IsWindows:    testconsts.IsWindowsCluster,
+				WinServerVer: testconsts.WinServerVer,
+				UseCMD:       false,
 			},
 			{
 				Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
@@ -1294,8 +1310,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 						VolumeAccessMode: v1.ReadWriteOnce,
 					},
 				}, t.allowedTopologyValues, isMultiZone),
-				IsWindows: testconsts.IsWindowsCluster,
-				UseCMD:    false,
+				IsWindows:    testconsts.IsWindowsCluster,
+				WinServerVer: testconsts.WinServerVer,
+				UseCMD:       false,
 			},
 		}
 
@@ -1325,7 +1342,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		testutil.SkipIfNotUsingCSIDriverV2()
 		testutil.SkipIfNotZRSSupported(location)
 
-		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
+		azDiskClient, err := azdisk.NewForConfig(f.ClientConfig())
 		if err != nil {
 			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		}
@@ -1356,8 +1373,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 					VolumeBindingMode:     &volumeBindingMode,
 				},
 			},
-			IsWindows: testconsts.IsWindowsCluster,
-			UseCMD:    false,
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
+			UseCMD:       false,
 		}
 
 		storageClassParameters := map[string]string{
@@ -1383,7 +1401,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		}
 		testutil.SkipIfNotUsingCSIDriverV2()
 
-		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
+		azDiskClient, err := azdisk.NewForConfig(f.ClientConfig())
 		if err != nil {
 			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		}
@@ -1410,8 +1428,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 						VolumeAccessMode: volume.VolumeAccessMode,
 					},
 				}, t.allowedTopologyValues, isMultiZone),
-				IsWindows: testconsts.IsWindowsCluster,
-				UseCMD:    false,
+				IsWindows:    testconsts.IsWindowsCluster,
+				WinServerVer: testconsts.WinServerVer,
+				UseCMD:       false,
 			},
 			{
 				Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
@@ -1426,8 +1445,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 						VolumeAccessMode: v1.ReadWriteOnce,
 					},
 				}, t.allowedTopologyValues, isMultiZone),
-				IsWindows: testconsts.IsWindowsCluster,
-				UseCMD:    false,
+				IsWindows:    testconsts.IsWindowsCluster,
+				WinServerVer: testconsts.WinServerVer,
+				UseCMD:       false,
 			},
 		}
 
@@ -1476,8 +1496,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 					VolumeAccessMode: volume.VolumeAccessMode,
 				},
 			}, t.allowedTopologyValues, false),
-			IsWindows: testconsts.IsWindowsCluster,
-			UseCMD:    false,
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
+			UseCMD:       false,
 		}
 		podCheckCmd := []string{"cat", "/mnt/test-1/data"}
 		expectedString := "hello world\n"
@@ -1486,7 +1507,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			expectedString = "hello world\r\n"
 		}
 
-		storageClassParameters := map[string]string{"skuName": "StandardSSD_LRS"}
+		storageClassParameters := map[string]string{consts.SkuNameField: "StandardSSD_LRS"}
 
 		test := testsuites.PodFailover{
 			CSIDriver: testDriver,
@@ -1504,7 +1525,6 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	ginkgo.It("Should test pod failover with cordoning a node using ZRS", func() {
 		testutil.SkipIfUsingInTreeVolumePlugin()
 		testutil.SkipIfNotZRSSupported(location)
-		testutil.SkipIfTestingInWindowsCluster()
 
 		volume := resources.VolumeDetails{
 			ClaimSize: "10Gi",
@@ -1527,8 +1547,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 					VolumeAccessMode: volume.VolumeAccessMode,
 				},
 			}, t.allowedTopologyValues, false),
-			IsWindows: testconsts.IsWindowsCluster,
-			UseCMD:    false,
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
+			UseCMD:       false,
 		}
 		podCheckCmd := []string{"cat", "/mnt/test-1/data"}
 		expectedString := "hello world\n"
@@ -1537,7 +1558,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			expectedString = "hello world\r\n"
 		}
 
-		storageClassParameters := map[string]string{"skuName": "StandardSSD_ZRS"}
+		storageClassParameters := map[string]string{consts.SkuNameField: "StandardSSD_ZRS"}
 
 		test := testsuites.PodFailover{
 			CSIDriver: testDriver,
@@ -1551,6 +1572,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		}
 		test.Run(cs, ns, schedulerName)
 	})
+
 	ginkgo.It("Should test pod failover and check for correct number of replicas", func() {
 		testutil.SkipIfUsingInTreeVolumePlugin()
 		skuName := "StandardSSD_LRS"
@@ -1558,7 +1580,8 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			testutil.SkipIfNotZRSSupported(location)
 			skuName = "StandardSSD_ZRS"
 		}
-		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
+
+		azDiskClient, err := azdisk.NewForConfig(f.ClientConfig())
 		if err != nil {
 			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		}
@@ -1583,8 +1606,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 					VolumeAccessMode: volume.VolumeAccessMode,
 				},
 			}, t.allowedTopologyValues, isMultiZone),
-			IsWindows: testconsts.IsWindowsCluster,
-			UseCMD:    false,
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
+			UseCMD:       false,
 		}
 		podCheckCmd := []string{"cat", "/mnt/test-1/data"}
 		expectedString := "hello world\n"
@@ -1593,7 +1617,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			expectedString = "hello world\r\n"
 		}
 
-		storageClassParameters := map[string]string{"skuName": skuName, "maxShares": "2"}
+		storageClassParameters := map[string]string{consts.SkuNameField: skuName, "maxShares": "2"}
 
 		test := testsuites.PodFailoverWithReplicas{
 			CSIDriver: testDriver,
@@ -1609,6 +1633,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		}
 		test.Run(cs, ns, schedulerName)
 	})
+
 	ginkgo.It("Should test an increase in replicas when scaling up", func() {
 		testutil.SkipIfUsingInTreeVolumePlugin()
 		skuName := "StandardSSD_LRS"
@@ -1616,7 +1641,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			testutil.SkipIfNotZRSSupported(location)
 			skuName = "StandardSSD_ZRS"
 		}
-		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
+		azDiskClient, err := azdisk.NewForConfig(f.ClientConfig())
 		if err != nil {
 			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		}
@@ -1639,8 +1664,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 					VolumeMount: volume.VolumeMount,
 				},
 			}, t.allowedTopologyValues, isMultiZone),
-			IsWindows: testconsts.IsWindowsCluster,
-			UseCMD:    false,
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
+			UseCMD:       false,
 		}
 		podCheckCmd := []string{"cat", "/mnt/test-1/data"}
 		expectedString := "hello world\n"
@@ -1649,7 +1675,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			expectedString = "hello world\r\n"
 		}
 
-		storageClassParameters := map[string]string{"skuName": skuName, "maxShares": "3", "cachingMode": "None"}
+		storageClassParameters := map[string]string{consts.SkuNameField: skuName, "maxShares": "3", "cachingMode": "None"}
 
 		test := testsuites.PodNodeScaleUp{
 			CSIDriver: testDriver,
@@ -1665,6 +1691,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		}
 		test.Run(cs, ns, schedulerName)
 	})
+
 	ginkgo.It("should succeed when attaching a shared block volume to multiple pods [disk.csi.azure.com][shared disk]", func() {
 		testutil.SkipIfUsingInTreeVolumePlugin()
 		testutil.SkipIfOnAzureStackCloud()
@@ -1688,17 +1715,18 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			}, t.allowedTopologyValues, isMultiZone),
 			UseCMD:          false,
 			IsWindows:       testconsts.IsWindowsCluster,
+			WinServerVer:    testconsts.WinServerVer,
 			UseAntiAffinity: isMultiZone,
 			ReplicaCount:    2,
 		}
 
 		storageClassParameters := map[string]string{
-			"skuName":     "StandardSSD_LRS",
-			"maxshares":   "2",
-			"cachingmode": "None",
+			consts.SkuNameField: "StandardSSD_LRS",
+			"maxshares":         "2",
+			"cachingmode":       "None",
 		}
 		if testutil.IsZRSSupported(location) {
-			storageClassParameters["skuName"] = "StandardSSD_ZRS"
+			storageClassParameters[consts.SkuNameField] = "StandardSSD_ZRS"
 		}
 
 		podCheck := &testsuites.PodExecCheck{
@@ -1724,6 +1752,63 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			Pod:                    pod,
 			PodCheck:               podCheck,
 			StorageClassParameters: storageClassParameters,
+		}
+		test.Run(cs, ns, schedulerName)
+	})
+
+	ginkgo.It("should check failed replica attachments are recreated after space is made from a volume detaching.", func() {
+		testutil.SkipIfUsingInTreeVolumePlugin()
+		skuName := "StandardSSD_LRS"
+		if isMultiZone {
+			testutil.SkipIfNotZRSSupported(location)
+			skuName = "StandardSSD_ZRS"
+		}
+
+		azDiskClient, err := azdisk.NewForConfig(f.ClientConfig())
+		framework.ExpectNoError(err, "Failed to create disk client.")
+
+		pod := resources.PodDetails{
+			Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
+			Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
+				{
+					FSType:    "ext3",
+					ClaimSize: "5Gi",
+					VolumeMount: resources.VolumeMountDetails{
+						NameGenerate:      "test-volume-",
+						MountPathGenerate: "/mnt/test-",
+					},
+				},
+			}, []string{}, isMultiZone),
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
+		}
+
+		newPod := resources.PodDetails{
+			Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
+			Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
+				{
+					ClaimSize: "5Gi",
+					MountOptions: []string{
+						"barrier=1",
+						"acl",
+					},
+					VolumeMount: resources.VolumeMountDetails{
+						NameGenerate:      "test-volume-",
+						MountPathGenerate: "/mnt/test-",
+					},
+				},
+			}, t.allowedTopologyValues, isMultiZone),
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
+			UseCMD:       false,
+		}
+
+		test := testsuites.DynamicallyProvisionedScaleReplicasOnDetach{
+			CSIDriver:              testDriver,
+			StatefulSetPod:         pod,
+			NewPod:                 newPod,
+			StorageClassParameters: map[string]string{consts.SkuNameField: skuName, "maxShares": "2", "cachingMode": "None"},
+			AzDiskClient:           azDiskClient,
 		}
 		test.Run(cs, ns, schedulerName)
 	})

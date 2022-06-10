@@ -26,7 +26,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/workflow"
@@ -107,7 +107,7 @@ func (r *ReconcilePod) createReplicas(ctx context.Context, podKey string) error 
 			pod,
 			func(ctx context.Context) error {
 				var err error
-				var azVolume *v1beta1.AzVolume
+				var azVolume *azdiskv1beta2.AzVolume
 				w, _ := workflow.GetWorkflowFromContext(ctx)
 				azVolume, err = azureutils.GetAzVolume(ctx, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, volume, r.controllerSharedState.objectNamespace, true)
 				if err != nil {
@@ -181,7 +181,7 @@ func NewPodController(mgr manager.Manager, controllerSharedState *SharedState) (
 	c, err := controller.New("pod-controller", mgr, controller.Options{
 		MaxConcurrentReconciles: 10,
 		Reconciler:              &reconciler,
-		Log:                     logger,
+		LogConstructor:          func(req *reconcile.Request) logr.Logger { return logger },
 	})
 
 	if err != nil {

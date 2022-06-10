@@ -23,7 +23,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
-	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
@@ -68,9 +68,10 @@ func schedulerExtenderTests(isMultiZone bool) {
 		testutil.SkipIfNotUsingCSIDriverV2()
 
 		pod := resources.PodDetails{
-			Cmd:       testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world'"),
-			Volumes:   []resources.VolumeDetails{},
-			IsWindows: testconsts.IsWindowsCluster,
+			Cmd:          testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world'"),
+			Volumes:      []resources.VolumeDetails{},
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
 		}
 		test := testsuites.AzDiskSchedulerExtenderSimplePodSchedulingTest{
 			CSIDriver: testDriver,
@@ -95,13 +96,14 @@ func schedulerExtenderTests(isMultiZone bool) {
 					},
 				},
 			}, []string{}, isMultiZone),
-			IsWindows: testconsts.IsWindowsCluster,
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
 		}
 
 		test := testsuites.AzDiskSchedulerExtenderPodSchedulingWithPVTest{
 			CSIDriver:              testDriver,
 			Pod:                    pod,
-			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
+			StorageClassParameters: map[string]string{consts.SkuNameField: "StandardSSD_LRS"},
 		}
 		test.Run(cs, ns, schedulerName)
 	})
@@ -130,14 +132,15 @@ func schedulerExtenderTests(isMultiZone bool) {
 					VolumeMount: volume.VolumeMount,
 				},
 			}, []string{}, isMultiZone),
-			IsWindows: testconsts.IsWindowsCluster,
-			UseCMD:    false,
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
+			UseCMD:       false,
 		}
 
 		test := testsuites.AzDiskSchedulerExtenderPodSchedulingOnFailover{
 			CSIDriver:              testDriver,
 			Pod:                    pod,
-			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
+			StorageClassParameters: map[string]string{consts.SkuNameField: "StandardSSD_LRS"},
 		}
 		test.Run(cs, ns, schedulerName)
 	})
@@ -160,9 +163,10 @@ func schedulerExtenderTests(isMultiZone bool) {
 		}
 
 		pod := resources.PodDetails{
-			Cmd:       testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
-			Volumes:   resources.NormalizeVolumes(volumes, []string{}, isMultiZone),
-			IsWindows: testconsts.IsWindowsCluster,
+			Cmd:          testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
+			Volumes:      resources.NormalizeVolumes(volumes, []string{}, isMultiZone),
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
 		}
 		test := testsuites.AzDiskSchedulerExtenderPodSchedulingWithMultiplePVTest{
 			CSIDriver: testDriver,
@@ -180,7 +184,7 @@ func schedulerExtenderTests(isMultiZone bool) {
 		}
 
 		volumes := []resources.VolumeDetails{}
-		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
+		azDiskClient, err := azdisk.NewForConfig(f.ClientConfig())
 		if err != nil {
 			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		}
@@ -197,15 +201,16 @@ func schedulerExtenderTests(isMultiZone bool) {
 		}
 
 		pod := resources.PodDetails{
-			Cmd:       testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
-			Volumes:   resources.NormalizeVolumes(volumes, []string{}, isMultiZone),
-			IsWindows: testconsts.IsWindowsCluster,
+			Cmd:          testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
+			Volumes:      resources.NormalizeVolumes(volumes, []string{}, isMultiZone),
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
 		}
 		test := testsuites.AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV{
 			CSIDriver:              testDriver,
 			Pod:                    pod,
 			Replicas:               1,
-			StorageClassParameters: map[string]string{"skuName": skuName},
+			StorageClassParameters: map[string]string{consts.SkuNameField: skuName},
 			AzDiskClient:           azDiskClient,
 		}
 		test.Run(cs, ns, schedulerName)
@@ -220,7 +225,7 @@ func schedulerExtenderTests(isMultiZone bool) {
 		}
 
 		volumes := []resources.VolumeDetails{}
-		azDiskClient, err := azDiskClientSet.NewForConfig(f.ClientConfig())
+		azDiskClient, err := azdisk.NewForConfig(f.ClientConfig())
 		if err != nil {
 			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		}
@@ -237,15 +242,16 @@ func schedulerExtenderTests(isMultiZone bool) {
 		}
 
 		pod := resources.PodDetails{
-			Cmd:       testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
-			Volumes:   resources.NormalizeVolumes(volumes, []string{}, isMultiZone),
-			IsWindows: testconsts.IsWindowsCluster,
+			Cmd:          testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
+			Volumes:      resources.NormalizeVolumes(volumes, []string{}, isMultiZone),
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
 		}
 		test := testsuites.AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV{
 			CSIDriver:              testDriver,
 			Pod:                    pod,
 			Replicas:               1,
-			StorageClassParameters: map[string]string{"skuName": skuName, "maxShares": "2", "cachingmode": "None"},
+			StorageClassParameters: map[string]string{consts.SkuNameField: skuName, "maxShares": "2", "cachingmode": "None"},
 			AzDiskClient:           azDiskClient,
 		}
 		test.Run(cs, ns, schedulerName)

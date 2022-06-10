@@ -40,7 +40,8 @@ type VolumeDetails struct {
 	VolumeDevice          VolumeDeviceDetails
 	VolumeAccessMode      v1.PersistentVolumeAccessMode
 	// Optional, used to get AzVolumeAttachments
-	PersistentVolume *v1.PersistentVolume
+	PersistentVolume      *v1.PersistentVolume
+	PersistentVolumeClaim *v1.PersistentVolumeClaim
 	// Optional, used with pre-provisioned volumes
 	VolumeID string
 	// Optional, used with PVCs created from snapshots or pvc
@@ -98,7 +99,7 @@ func (volume *VolumeDetails) SetupDynamicPersistentVolumeClaim(client clientset.
 	tpvc.Create()
 	cleanupFuncs = append(cleanupFuncs, tpvc.Cleanup)
 	// PV will not be ready until PVC is used in a pod when volumeBindingMode: WaitForFirstConsumer
-	if volume.VolumeBindingMode == nil || *volume.VolumeBindingMode == storagev1.VolumeBindingImmediate {
+	if storageClass.VolumeBindingMode == nil || *storageClass.VolumeBindingMode == storagev1.VolumeBindingImmediate {
 		tpvc.WaitForBound()
 		tpvc.ValidateProvisionedPersistentVolume()
 	}

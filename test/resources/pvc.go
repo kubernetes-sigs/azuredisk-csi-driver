@@ -160,6 +160,10 @@ func (t *TestPersistentVolumeClaim) Cleanup() {
 	// attempts may fail, as the volume is still attached to a node because
 	// kubelet is slowly cleaning up the previous pod, however it should succeed
 	// in a couple of minutes.
+	if t.PersistentVolume == nil {
+		t.PersistentVolume, err = t.Client.CoreV1().PersistentVolumes().Get(context.Background(), t.PersistentVolumeClaim.Spec.VolumeName, metav1.GetOptions{})
+		framework.ExpectNoError(err)
+	}
 	if t.PersistentVolume.Spec.PersistentVolumeReclaimPolicy == v1.PersistentVolumeReclaimDelete {
 		ginkgo.By(fmt.Sprintf("waiting for claim's PV %q to be deleted", t.PersistentVolume.Name))
 		err := e2epv.WaitForPersistentVolumeDeleted(t.Client, t.PersistentVolume.Name, 5*time.Second, 10*time.Minute)

@@ -83,11 +83,10 @@ func (p *NodeProvisioner) PreparePublishPath(path string) error {
 
 // CleanupMountPoint unmounts the given path and deletes the remaining directory if successful.
 func (p *NodeProvisioner) CleanupMountPoint(path string, extensiveCheck bool) error {
-	// TODO - Is this OS-specific code needed anymore?
-
-	// CSI proxy alpha does not support fixing the corrupted directory. So we will
-	// just do the unmount for now.
-	return p.mounter.Unmount(path)
+	if proxy, ok := p.mounter.Interface.(mounter.CSIProxyMounter); ok {
+		return proxy.Unmount(path)
+	}
+	return fmt.Errorf("could not cast to csi proxy class")
 }
 
 // RescanVolume forces a re-read of a disk's partition table.
@@ -110,6 +109,11 @@ func (p *NodeProvisioner) Resize(source, target string) error {
 	}
 
 	return nil
+}
+
+// NeedsResize returns true if the volume needs to be resized.
+func (p *NodeProvisioner) NeedsResize(devicePath, volumePath string) (bool, error) {
+	return false, nil
 }
 
 // GetBlockSizeBytes returns the block size, in bytes, of the block device at the specified path.

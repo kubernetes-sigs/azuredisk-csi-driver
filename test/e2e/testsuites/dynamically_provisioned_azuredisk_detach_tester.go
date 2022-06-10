@@ -50,8 +50,10 @@ type DynamicallyProvisionedAzureDiskDetach struct {
 
 func (t *DynamicallyProvisionedAzureDiskDetach) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
 	for _, pod := range t.Pods {
-		tpod, cleanup := pod.SetupWithDynamicVolumes(client, namespace, t.CSIDriver, t.StorageClassParameters, schedulerName)
-
+		tpod, cleanupFuncs := pod.SetupWithDynamicVolumes(client, namespace, t.CSIDriver, t.StorageClassParameters, schedulerName)
+		for _, cleanupFunc := range cleanupFuncs {
+			defer cleanupFunc()
+		}
 		ginkgo.By("deploying the pod")
 		tpod.Create()
 
@@ -104,8 +106,5 @@ func (t *DynamicallyProvisionedAzureDiskDetach) Run(client clientset.Interface, 
 			return false, nil
 		})
 		framework.ExpectNoError(err, fmt.Sprintf("waiting for disk detach complete returned with error: %v", err))
-		for i := range cleanup {
-			cleanup[i]()
-		}
 	}
 }

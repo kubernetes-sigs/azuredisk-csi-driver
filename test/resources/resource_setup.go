@@ -30,6 +30,7 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e/framework"
 
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 )
@@ -39,16 +40,18 @@ type PodDetails struct {
 	Cmd             string
 	Volumes         []VolumeDetails
 	IsWindows       bool
+	WinServerVer    string
 	UseCMD          bool
 	UseAntiAffinity bool
 	ReplicaCount    int32
 }
 
 func (pod *PodDetails) SetupWithDynamicVolumes(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.DynamicPVTestDriver, storageClassParameters map[string]string, schedulerName string) (*TestPod, []func()) {
-	tpod := NewTestPod(client, namespace, pod.Cmd, schedulerName, pod.IsWindows)
+	tpod := NewTestPod(client, namespace, pod.Cmd, schedulerName, pod.IsWindows, pod.WinServerVer)
 	cleanupFuncs := make([]func(), 0)
 	for n, v := range pod.Volumes {
 		tpvc, funcs := v.SetupDynamicPersistentVolumeClaim(client, namespace, csiDriver, storageClassParameters)
+		pod.Volumes[n].PersistentVolumeClaim = tpvc.PersistentVolumeClaim.DeepCopy()
 		cleanupFuncs = append(cleanupFuncs, funcs...)
 		ginkgo.By("setting up the pod")
 		if v.VolumeMode == Block {
@@ -66,7 +69,7 @@ func (pod *PodDetails) SetupWithDynamicVolumes(client clientset.Interface, names
 
 // SetupWithDynamicMultipleVolumes each pod will be mounted with multiple volumes with different storage account types
 func (pod *PodDetails) SetupWithDynamicMultipleVolumes(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.DynamicPVTestDriver, schedulerName string) (*TestPod, []func()) {
-	tpod := NewTestPod(client, namespace, pod.Cmd, schedulerName, pod.IsWindows)
+	tpod := NewTestPod(client, namespace, pod.Cmd, schedulerName, pod.IsWindows, pod.WinServerVer)
 	cleanupFuncs := make([]func(), 0)
 	supportedStorageAccountTypes := testconsts.AzurePublicCloudSupportedStorageAccountTypes
 	if testconsts.IsAzureStackCloud {
@@ -74,20 +77,25 @@ func (pod *PodDetails) SetupWithDynamicMultipleVolumes(client clientset.Interfac
 	}
 	accountTypeCount := len(supportedStorageAccountTypes)
 	for n, v := range pod.Volumes {
-		storageClassParameters := map[string]string{"skuName": supportedStorageAccountTypes[n%accountTypeCount]}
+		storageClassParameters := map[string]string{consts.SkuNameField: supportedStorageAccountTypes[n%accountTypeCount]}
 		tpvc, funcs := v.SetupDynamicPersistentVolumeClaim(client, namespace, csiDriver, storageClassParameters)
+		pod.Volumes[n].PersistentVolumeClaim = tpvc.PersistentVolumeClaim.DeepCopy()
 		cleanupFuncs = append(cleanupFuncs, funcs...)
 		if v.VolumeMode == Block {
 			tpod.SetupRawBlockVolume(tpvc.PersistentVolumeClaim, fmt.Sprintf("%s%d", v.VolumeDevice.NameGenerate, n+1), v.VolumeDevice.DevicePath)
 		} else {
 			tpod.SetupVolume(tpvc.PersistentVolumeClaim, fmt.Sprintf("%s%d", v.VolumeMount.NameGenerate, n+1), fmt.Sprintf("%s%d", v.VolumeMount.MountPathGenerate, n+1), v.VolumeMount.ReadOnly)
 		}
+		if tpvc.PersistentVolume != nil {
+			klog.Infof("adding PV (%s) to pod (%s)", tpvc.PersistentVolume.Name, tpod.Pod.Name)
+			pod.Volumes[n].PersistentVolume = tpvc.PersistentVolume.DeepCopy()
+		}
 	}
 	return tpod, cleanupFuncs
 }
 
 func (pod *PodDetails) SetupWithDynamicVolumesWithSubpath(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.DynamicPVTestDriver, storageClassParameters map[string]string, schedulerName string) (*TestPod, []func()) {
-	tpod := NewTestPod(client, namespace, pod.Cmd, schedulerName, pod.IsWindows)
+	tpod := NewTestPod(client, namespace, pod.Cmd, schedulerName, pod.IsWindows, pod.WinServerVer)
 	cleanupFuncs := make([]func(), 0)
 	for n, v := range pod.Volumes {
 		tpvc, funcs := v.SetupDynamicPersistentVolumeClaim(client, namespace, csiDriver, storageClassParameters)
@@ -98,7 +106,7 @@ func (pod *PodDetails) SetupWithDynamicVolumesWithSubpath(client clientset.Inter
 }
 
 func (pod *PodDetails) SetupWithInlineVolumes(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.PreProvisionedVolumeTestDriver, diskURI string, readOnly bool, schedulerName string) (*TestPod, []func()) {
-	tpod := NewTestPod(client, namespace, pod.Cmd, schedulerName, pod.IsWindows)
+	tpod := NewTestPod(client, namespace, pod.Cmd, schedulerName, pod.IsWindows, pod.WinServerVer)
 	cleanupFuncs := make([]func(), 0)
 	for n, v := range pod.Volumes {
 		tpod.SetupInlineVolume(fmt.Sprintf("%s%d", v.VolumeMount.NameGenerate, n+1), fmt.Sprintf("%s%d", v.VolumeMount.MountPathGenerate, n+1), diskURI, readOnly)
@@ -107,7 +115,7 @@ func (pod *PodDetails) SetupWithInlineVolumes(client clientset.Interface, namesp
 }
 
 func (pod *PodDetails) SetupWithPreProvisionedVolumes(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.PreProvisionedVolumeTestDriver, volumeContext map[string]string, schedulerName string) (*TestPod, []func()) {
-	tpod := NewTestPod(client, namespace, pod.Cmd, schedulerName, pod.IsWindows)
+	tpod := NewTestPod(client, namespace, pod.Cmd, schedulerName, pod.IsWindows, pod.WinServerVer)
 	cleanupFuncs := make([]func(), 0)
 	for n, v := range pod.Volumes {
 		tpvc, funcs := v.SetupPreProvisionedPersistentVolumeClaim(client, namespace, csiDriver, volumeContext)
@@ -138,7 +146,7 @@ func (pod *PodDetails) SetupDeployment(client clientset.Interface, namespace *v1
 		ginkgo.By("setting up the PVC")
 		tpvc := NewTestPersistentVolumeClaim(client, namespace, volume.ClaimSize, volume.VolumeMode, volume.VolumeAccessMode, &createdStorageClass)
 		tpvc.Create()
-		if volume.VolumeBindingMode == nil || *volume.VolumeBindingMode == storagev1.VolumeBindingImmediate {
+		if createdStorageClass.VolumeBindingMode == nil || *createdStorageClass.VolumeBindingMode == storagev1.VolumeBindingImmediate {
 			tpvc.WaitForBound()
 			tpvc.ValidateProvisionedPersistentVolume()
 		}
@@ -184,7 +192,7 @@ func (pod *PodDetails) SetupDeployment(client clientset.Interface, namespace *v1
 	if pod.ReplicaCount == 0 {
 		pod.ReplicaCount = 1
 	}
-	tDeployment := NewTestDeployment(client, namespace, pod.Cmd, volumeMounts, volumeDevices, volumes, pod.ReplicaCount, pod.IsWindows, pod.UseCMD, pod.UseAntiAffinity, schedulerName)
+	tDeployment := NewTestDeployment(client, namespace, pod.Cmd, volumeMounts, volumeDevices, volumes, pod.ReplicaCount, pod.IsWindows, pod.UseCMD, pod.UseAntiAffinity, schedulerName, pod.WinServerVer)
 
 	cleanupFuncs = append(cleanupFuncs, tDeployment.Cleanup)
 	return tDeployment, cleanupFuncs
@@ -241,7 +249,7 @@ func (pod *PodDetails) SetupDeploymentWithPreProvisionedVolumes(client clientset
 	if pod.ReplicaCount == 0 {
 		pod.ReplicaCount = 1
 	}
-	tDeployment := NewTestDeployment(client, namespace, pod.Cmd, volumeMounts, volumeDevices, volumes, pod.ReplicaCount, pod.IsWindows, pod.UseCMD, pod.UseAntiAffinity, schedulerName)
+	tDeployment := NewTestDeployment(client, namespace, pod.Cmd, volumeMounts, volumeDevices, volumes, pod.ReplicaCount, pod.IsWindows, pod.UseCMD, pod.UseAntiAffinity, schedulerName, pod.WinServerVer)
 
 	cleanupFuncs = append(cleanupFuncs, tDeployment.Cleanup)
 	return tDeployment, cleanupFuncs
@@ -250,24 +258,24 @@ func (pod *PodDetails) SetupDeploymentWithPreProvisionedVolumes(client clientset
 func (pod *PodDetails) CreateStorageClass(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.DynamicPVTestDriver, storageClassParameters map[string]string) (storagev1.StorageClass, func()) {
 	ginkgo.By("setting up the StorageClass")
 	var allowedTopologyValues []string
-	var volumeBindingMode storagev1.VolumeBindingMode
+	var volumeBindingMode *storagev1.VolumeBindingMode
 
 	nodes, err := client.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 	framework.ExpectNoError(err)
 	allowedTopologyValuesMap := make(map[string]bool)
 	for _, node := range nodes.Items {
-		if zone, ok := node.Labels[testconsts.TopologyKey]; ok {
+		if zone, ok := node.Labels[testconsts.TopologyKey]; ok && zone != "" {
 			allowedTopologyValuesMap[zone] = true
 		}
 	}
 	for k := range allowedTopologyValuesMap {
 		allowedTopologyValues = append(allowedTopologyValues, k)
-
-		volumeBindingMode = storagev1.VolumeBindingWaitForFirstConsumer
+		waitForFirstCustomer := storagev1.VolumeBindingWaitForFirstConsumer
+		volumeBindingMode = &waitForFirstCustomer
 	}
 
 	reclaimPolicy := v1.PersistentVolumeReclaimDelete
-	storageClass := csiDriver.GetDynamicProvisionStorageClass(storageClassParameters, []string{}, &reclaimPolicy, &volumeBindingMode, allowedTopologyValues, namespace.Name)
+	storageClass := csiDriver.GetDynamicProvisionStorageClass(storageClassParameters, []string{}, &reclaimPolicy, volumeBindingMode, allowedTopologyValues, namespace.Name)
 	tsc := NewTestStorageClass(client, namespace, storageClass)
 	createdStorageClass := tsc.Create()
 	return createdStorageClass, tsc.Cleanup
@@ -294,7 +302,7 @@ func (pod *PodDetails) SetupStatefulset(client clientset.Interface, namespace *v
 		pvcs = append(pvcs, *tpvc.RequestedPersistentVolumeClaim)
 	}
 	ginkgo.By("setting up the statefulset")
-	tStatefulset := NewTestStatefulset(client, namespace, pod.Cmd, pvcs, volumeMounts, pod.IsWindows, pod.UseCMD, schedulerName, replicaCount, labels)
+	tStatefulset := NewTestStatefulset(client, namespace, pod.Cmd, pvcs, volumeMounts, pod.IsWindows, pod.UseCMD, schedulerName, replicaCount, labels, pod.WinServerVer)
 
 	return tStatefulset, tStatefulset.Cleanup
 }

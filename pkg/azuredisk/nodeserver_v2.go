@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -39,7 +40,7 @@ import (
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/volume"
-	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 )
@@ -107,7 +108,7 @@ func (d *DriverV2) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolume
 
 	// wait for volume to be attached to node if not already done so or wait for attachment to be promoted if not already done so
 	waitedForAttach := false
-	if azVolumeAttachment.Status.State != diskv1beta1.Attached || (azVolumeAttachment.Status.Detail != nil && azVolumeAttachment.Status.Detail.Role != diskv1beta1.PrimaryRole) {
+	if azVolumeAttachment.Status.State != azdiskv1beta2.Attached || (azVolumeAttachment.Status.Detail != nil && azVolumeAttachment.Status.Detail.Role != azdiskv1beta2.PrimaryRole) {
 		if azVolumeAttachment, err = d.crdProvisioner.WaitForAttach(ctx, diskURI, d.NodeID); err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to wait for volume (%s) to be attached to node (%s): %v", diskURI, d.NodeID, err)
 		}
@@ -191,7 +192,7 @@ func (d *DriverV2) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolume
 		if mnt.FsType != "" {
 			fstype = mnt.FsType
 		}
-		options = append(options, mnt.MountFlags...)
+		options = append(options, collectMountOptions(fstype, mnt.MountFlags)...)
 	}
 
 	volContextFSType := azureutils.GetFStype(req.GetVolumeContext())
@@ -207,20 +208,24 @@ func (d *DriverV2) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolume
 
 	// FormatAndMount will format only if needed
 	klog.V(2).Infof("NodeStageVolume: formatting %s and mounting at %s with mount options(%s)", source, target, options)
-	err = d.nodeProvisioner.FormatAndMount(source, target, fstype, options)
-	if err != nil {
-		msg := fmt.Sprintf("could not format %q(lun: %q), and mount it at %q", source, lun, target)
-		return nil, status.Error(codes.Internal, msg)
+	if err := d.nodeProvisioner.FormatAndMount(source, target, fstype, options); err != nil {
+		return nil, status.Errorf(codes.Internal, "could not format %s(lun: %d), and mount it at %s", source, lun, target)
 	}
 	klog.V(2).Infof("NodeStageVolume: format %s and mounting at %s successfully.", source, target)
 
-	// if resize is required, resize filesystem
-	if required, ok := req.GetVolumeContext()[consts.ResizeRequired]; ok && required == "true" {
-		klog.V(2).Infof("NodeStageVolume: fs resize initiating on target(%s) volumeid(%s)", target, diskURI)
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "NodeStageVolume: Could not get volume path for %s: %v", target, err)
+	var needResize bool
+	if required, ok := req.GetVolumeContext()[consts.ResizeRequired]; ok && strings.EqualFold(required, consts.TrueValue) {
+		needResize = true
+	}
+	if !needResize {
+		if needResize, err = d.nodeProvisioner.NeedsResize(source, target); err != nil {
+			klog.Errorf("NodeStageVolume: could not determine if volume %s needs to be resized: %v", diskURI, err)
 		}
+	}
 
+	// if resize is required, resize filesystem
+	if needResize {
+		klog.V(2).Infof("NodeStageVolume: fs resize initiating on target(%s) volumeid(%s)", target, diskURI)
 		if err := d.nodeProvisioner.Resize(source, target); err != nil {
 			return nil, status.Errorf(codes.Internal, "NodeStageVolume: Could not resize volume %q (%q):  %v", diskURI, source, err)
 		}
@@ -249,7 +254,7 @@ func (d *DriverV2) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVo
 	defer d.volumeLocks.Release(volumeID)
 
 	klog.V(2).Infof("NodeUnstageVolume: unmounting %s", stagingTargetPath)
-	err := d.nodeProvisioner.CleanupMountPoint(stagingTargetPath, false)
+	err := d.nodeProvisioner.CleanupMountPoint(stagingTargetPath, true /*extensiveMountPointCheck*/)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to unmount staging target %q: %v", stagingTargetPath, err)
 	}
@@ -361,7 +366,7 @@ func (d *DriverV2) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpubli
 	}
 
 	klog.V(2).Infof("NodeUnpublishVolume: unmounting volume %s on %s", volumeID, targetPath)
-	err := d.nodeProvisioner.CleanupMountPoint(targetPath, false)
+	err := d.nodeProvisioner.CleanupMountPoint(targetPath, true /*extensiveMountPointCheck*/)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to unmount target %q: %v", targetPath, err)
 	}
@@ -380,24 +385,12 @@ func (d *DriverV2) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapa
 
 // NodeGetInfo return info of the node on which this plugin is running
 func (d *DriverV2) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
-	var instanceType string
-	var failureDomainFromLabels, instanceTypeFromLabels string
-	var err error
-
-	instances, ok := d.cloudProvisioner.GetCloud().Instances()
-	if !ok {
-		return nil, status.Error(codes.Internal, "failed to get instances from cloud provider")
-	}
-
-	instanceType, err = instances.InstanceType(ctx, types.NodeName(d.NodeID))
-	if err != nil {
-		klog.Warningf("failed to get instance type from Azure cloud provider, nodeName: %v, error: %v", d.NodeID, err)
-		instanceType = ""
-	}
-
 	topology := &csi.Topology{
 		Segments: map[string]string{topologyKey: ""},
 	}
+
+	var failureDomainFromLabels, instanceTypeFromLabels string
+	var err error
 
 	if d.supportZone {
 		var zone cloudprovider.Zone
@@ -431,6 +424,7 @@ func (d *DriverV2) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest)
 
 	maxDataDiskCount := d.VolumeAttachLimit
 	if maxDataDiskCount < 0 {
+		var instanceType string
 		if d.getNodeInfoFromLabels {
 			if instanceTypeFromLabels == "" {
 				_, instanceTypeFromLabels, err = getNodeInfoFromLabels(ctx, d.NodeID, d.cloudProvisioner.GetCloud().KubeClient)
@@ -451,22 +445,22 @@ func (d *DriverV2) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest)
 				} else {
 					instanceType, err = instances.InstanceType(ctx, types.NodeName(d.NodeID))
 				}
-				if err != nil {
-					klog.Warningf("get instance type(%s) failed with: %v", d.NodeID, err)
-				}
-				if instanceType, err = instances.InstanceType(ctx, types.NodeName(d.NodeID)); err != nil {
-					klog.Warningf("get instance type(%s) failed with: %v", d.NodeID, err)
-					_, instanceTypeFromLabels, err = getNodeInfoFromLabels(ctx, d.NodeID, d.cloudProvisioner.GetCloud().KubeClient)
-				}
 			}
 			if err != nil {
-				klog.Warningf("getNodeInfoFromLabels on node(%s) failed with %v", d.NodeID, err)
+				klog.Warningf("get instance type(%s) failed with: %v", d.NodeID, err)
 			}
-			if instanceType == "" {
-				instanceType = instanceTypeFromLabels
+			if instanceType == "" && instanceTypeFromLabels == "" {
+				klog.Warningf("fall back to get instance type from node labels")
+				_, instanceTypeFromLabels, err = getNodeInfoFromLabels(ctx, d.NodeID, d.cloudProvisioner.GetCloud().KubeClient)
 			}
-			maxDataDiskCount = getMaxDataDiskCount(instanceType)
 		}
+		if err != nil {
+			klog.Warningf("getNodeInfoFromLabels on node(%s) failed with %v", d.NodeID, err)
+		}
+		if instanceType == "" {
+			instanceType = instanceTypeFromLabels
+		}
+		maxDataDiskCount = getMaxDataDiskCount(instanceType)
 	}
 
 	return &csi.NodeGetInfoResponse{

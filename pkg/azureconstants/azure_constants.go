@@ -34,8 +34,8 @@ const (
 	DefaultAzureDiskCrdNamespace  = "azure-disk-csi"
 	DefaultDriverName             = "disk.csi.azure.com"
 	DesIDField                    = "diskencryptionsetid"
+	DiskEncryptionTypeField       = "diskencryptiontype"
 	DiskAccessIDField             = "diskaccessid"
-	DiskEncryptionSetID           = "diskencryptionsetid"
 	DiskIOPSReadWriteField        = "diskiopsreadwrite"
 	DiskMBPSReadWriteField        = "diskmbpsreadwrite"
 	DiskNameField                 = "diskname"
@@ -131,13 +131,21 @@ const (
 	CRIUpdateRetryDuration  = time.Duration(1) * time.Second
 	CRIUpdateRetryFactor    = 3.0
 	CRIUpdateRetryStep      = 5
+	DefaultInformerResync   = time.Duration(30) * time.Second
 	ZonedField              = "zoned"
-	NormalUpdateMaxNetRetry = 0
-	ForcedUpdateMaxNetRetry = 5
-	EnableAsyncAttachField  = "enableasyncattach"
 	TooManyRequests         = "TooManyRequests"
 	ClientThrottled         = "client throttled"
+	VolumeID                = "volumeid"
+	Node                    = "node"
+	SourceResourceID        = "source_resource_id"
+	SnapshotName            = "snapshot_name"
+	SnapshotID              = "snapshot_id"
 	Latency                 = "latency"
+	NormalUpdateMaxNetRetry = 0
+	ForcedUpdateMaxNetRetry = 10
+	DefaultBackoffCap       = 10 * time.Minute
+	EnableAsyncAttachField  = "enableasyncattach"
+
 	// define different sleep time when hit throttling
 	SnapshotOpThrottlingSleepSec = 50
 

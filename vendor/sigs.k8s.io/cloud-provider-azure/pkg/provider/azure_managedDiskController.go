@@ -66,6 +66,8 @@ type ManagedDiskOptions struct {
 	SourceType string
 	// ResourceId of the disk encryption set to use for enabling encryption at rest.
 	DiskEncryptionSetID string
+	// DiskEncryption type, available values: EncryptionAtRestWithCustomerKey, EncryptionAtRestWithPlatformAndCustomerKeys
+	DiskEncryptionType string
 	// The size in GB.
 	SizeGB int
 	// The maximum number of VMs that can attach to the disk at the same time. Value greater than one indicates a disk that can be mounted on multiple VMs at the same time.
@@ -80,8 +82,8 @@ type ManagedDiskOptions struct {
 	DiskAccessID *string
 	// BurstingEnabled - Set to true to enable bursting beyond the provisioned performance target of the disk.
 	BurstingEnabled *bool
-	// SubscrtionID - specify a different SubscrtionID
-	SubscrtionID string
+	// SubscriptionID - specify a different SubscriptionID
+	SubscriptionID string
 }
 
 //CreateManagedDisk : create managed disk
@@ -117,12 +119,12 @@ func (c *ManagedDiskController) CreateManagedDisk(ctx context.Context, options *
 	if options.ResourceGroup != "" {
 		rg = options.ResourceGroup
 	}
-	subsID := c.common.subscriptionID
-	if options.SubscrtionID != "" {
-		subsID = options.SubscrtionID
+	if options.SubscriptionID != "" && !strings.EqualFold(options.SubscriptionID, c.common.subscriptionID) && options.ResourceGroup == "" {
+		return "", fmt.Errorf("resourceGroup must be specified when subscriptionID(%s) is not empty", options.SubscriptionID)
 	}
-	if options.SubscrtionID != "" && !strings.EqualFold(options.SubscrtionID, c.common.subscriptionID) && options.ResourceGroup == "" {
-		return "", fmt.Errorf("resourceGroup must be specified when subscriptionID(%s) is not empty", subsID)
+	subsID := c.common.subscriptionID
+	if options.SubscriptionID != "" {
+		subsID = options.SubscriptionID
 	}
 
 	creationData, err := getValidCreationData(subsID, rg, options.SourceResourceID, options.SourceType)
@@ -190,9 +192,18 @@ func (c *ManagedDiskController) CreateManagedDisk(ctx context.Context, options *
 		if strings.Index(strings.ToLower(options.DiskEncryptionSetID), "/subscriptions/") != 0 {
 			return "", fmt.Errorf("AzureDisk - format of DiskEncryptionSetID(%s) is incorrect, correct format: %s", options.DiskEncryptionSetID, consts.DiskEncryptionSetIDFormat)
 		}
+		encryptionType := compute.EncryptionTypeEncryptionAtRestWithCustomerKey
+		if options.DiskEncryptionType != "" {
+			encryptionType = compute.EncryptionType(options.DiskEncryptionType)
+			klog.V(4).Infof("azureDisk - DiskEncryptionType: %s, DiskEncryptionSetID: %s", options.DiskEncryptionType, options.DiskEncryptionSetID)
+		}
 		diskProperties.Encryption = &compute.Encryption{
 			DiskEncryptionSetID: &options.DiskEncryptionSetID,
-			Type:                compute.EncryptionTypeEncryptionAtRestWithCustomerKey,
+			Type:                encryptionType,
+		}
+	} else {
+		if options.DiskEncryptionType != "" {
+			return "", fmt.Errorf("AzureDisk - DiskEncryptionType(%s) should be empty when DiskEncryptionSetID is not set", options.DiskEncryptionType)
 		}
 	}
 

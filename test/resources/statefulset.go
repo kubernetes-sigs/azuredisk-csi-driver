@@ -48,7 +48,7 @@ type TestStatefulset struct {
 	AllPods     []PodDetails
 }
 
-func NewTestStatefulset(c clientset.Interface, ns *v1.Namespace, command string, pvc []v1.PersistentVolumeClaim, volumeMount []v1.VolumeMount, isWindows, useCMD bool, schedulerName string, replicaCount int, labels map[string]string) *TestStatefulset {
+func NewTestStatefulset(c clientset.Interface, ns *v1.Namespace, command string, pvc []v1.PersistentVolumeClaim, volumeMount []v1.VolumeMount, isWindows, useCMD bool, schedulerName string, replicaCount int, labels map[string]string, winServerVer string) *TestStatefulset {
 	generateName := "azuredisk-volume-tester-"
 	if labels == nil {
 		labels = make(map[string]string)
@@ -101,7 +101,7 @@ func NewTestStatefulset(c clientset.Interface, ns *v1.Namespace, command string,
 		testStatefulset.Statefulset.Spec.Template.Spec.NodeSelector = map[string]string{
 			"kubernetes.io/os": "windows",
 		}
-		testStatefulset.Statefulset.Spec.Template.Spec.Containers[0].Image = "mcr.microsoft.com/windows/servercore:ltsc2019"
+		testStatefulset.Statefulset.Spec.Template.Spec.Containers[0].Image = "mcr.microsoft.com/windows/servercore:" + getWinImageTag(winServerVer)
 		if useCMD {
 			testStatefulset.Statefulset.Spec.Template.Spec.Containers[0].Command = []string{"cmd"}
 			testStatefulset.Statefulset.Spec.Template.Spec.Containers[0].Args = []string{"/c", command}
@@ -127,6 +127,7 @@ func (t *TestStatefulset) Create() {
 	framework.ExpectNoError(err)
 	for _, pod := range statefulSetPods.Items {
 		t.PodNames = append(t.PodNames, pod.Name)
+		t.updateAllPods(pod)
 	}
 }
 
@@ -141,24 +142,28 @@ func (t *TestStatefulset) CreateWithoutWaiting() {
 	framework.ExpectNoError(err)
 	for _, pod := range statefulSetPods.Items {
 		t.PodNames = append(t.PodNames, pod.Name)
-		var podPersistentVolumes []VolumeDetails
-		for _, volume := range pod.Spec.Volumes {
-			if volume.VolumeSource.PersistentVolumeClaim != nil {
-				pvc, err := t.Client.CoreV1().PersistentVolumeClaims(t.Namespace.Name).Get(context.TODO(), volume.VolumeSource.PersistentVolumeClaim.ClaimName, metav1.GetOptions{})
-				framework.ExpectNoError(err)
-				newVolume := VolumeDetails{
-					PersistentVolume: &v1.PersistentVolume{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: pvc.Spec.VolumeName,
-						},
-					},
-					VolumeAccessMode: v1.ReadWriteOnce,
-				}
-				podPersistentVolumes = append(podPersistentVolumes, newVolume)
-			}
-		}
-		t.AllPods = append(t.AllPods, PodDetails{Volumes: podPersistentVolumes, Name: pod.Name})
+		t.updateAllPods(pod)
 	}
+}
+
+func (t *TestStatefulset) updateAllPods(pod v1.Pod) {
+	var podPersistentVolumes []VolumeDetails
+	for _, volume := range pod.Spec.Volumes {
+		if volume.VolumeSource.PersistentVolumeClaim != nil {
+			pvc, err := t.Client.CoreV1().PersistentVolumeClaims(t.Namespace.Name).Get(context.TODO(), volume.VolumeSource.PersistentVolumeClaim.ClaimName, metav1.GetOptions{})
+			framework.ExpectNoError(err)
+			newVolume := VolumeDetails{
+				PersistentVolume: &v1.PersistentVolume{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: pvc.Spec.VolumeName,
+					},
+				},
+				VolumeAccessMode: v1.ReadWriteOnce,
+			}
+			podPersistentVolumes = append(podPersistentVolumes, newVolume)
+		}
+	}
+	t.AllPods = append(t.AllPods, PodDetails{Volumes: podPersistentVolumes, Name: pod.Name})
 }
 
 func (t *TestStatefulset) WaitForPodReadyOrFail() error {
@@ -177,11 +182,8 @@ func (t *TestStatefulset) WaitForPodReadyOrFail() error {
 	return err
 }
 
-func (t *TestStatefulset) Exec(command []string, expectedString string) {
-	for _, podName := range t.PodNames {
-		_, err := framework.LookForStringInPodExec(t.Namespace.Name, podName, command, expectedString, testconsts.ExecTimeout)
-		framework.ExpectNoError(err)
-	}
+func (t *TestStatefulset) PollForStringInPodsExec(command []string, expectedString string) {
+	pollForStringInPodsExec(t.Namespace.Name, t.PodNames, command, expectedString)
 }
 
 func (t *TestStatefulset) DeletePodAndWait() {

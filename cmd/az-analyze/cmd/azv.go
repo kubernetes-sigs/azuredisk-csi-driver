@@ -23,8 +23,11 @@ import (
 
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	v1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	"k8s.io/client-go/kubernetes"
+	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
+	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
@@ -37,7 +40,12 @@ var azvCmd = &cobra.Command{
 		pod, _ := cmd.Flags().GetString("pod")
 		namespace, _ := cmd.Flags().GetString("namespace")
 
-		result := GetAzVolumesByPod(pod, namespace)
+		// access to Config and Clientsets
+		config := getConfig()
+		clientsetK8s := getKubernetesClientset(config)
+		clientsetAzDisk := getAzDiskClientset(config)
+
+		result := GetAzVolumesByPod(clientsetK8s, clientsetAzDisk, pod, namespace)
 
 		// display
 		if len(result) != 0 {
@@ -52,36 +60,36 @@ var azvCmd = &cobra.Command{
 func init() {
 	getCmd.AddCommand(azvCmd)
 	azvCmd.PersistentFlags().StringP("pod", "p", "", "insert-pod-name")
-	azvCmd.PersistentFlags().StringP("namespace", "n", "default", "insert-namespace (optional).")
+	azvCmd.PersistentFlags().StringP("namespace", "n", metav1.NamespaceDefault, "insert-namespace")
 }
 
 type AzvResource struct {
 	ResourceType string
 	Namespace    string
 	Name         string
-	State        v1beta1.AzVolumeState
+	State        azdiskv1beta2.AzVolumeState
 }
 
 // return azVolumes by pod. If pod name isn't provided, return by all pods
-func GetAzVolumesByPod(podName string, namespace string) []AzvResource {
-	// access to Config and Clientsets
-	config := getConfig()
-	clientsetK8s := getKubernetesClientset(config)
-	clientsetAzDisk := getAzDiskClientset(config)
-
+func GetAzVolumesByPod(clientsetK8s kubernetes.Interface, clientsetAzDisk azdisk.Interface, podName string, namespace string) []AzvResource {
 	result := make([]AzvResource, 0)
 
 	// get pvc claim name set of pod
-	pvcClaimNameSet := make(map[string]string)
+	pvcClaimNameSet := make(map[string][]string)
 	if podName != "" {
 		singlePod, err := clientsetK8s.CoreV1().Pods(namespace).Get(context.Background(), podName, metav1.GetOptions{})
 		if err != nil {
-			panic(err.Error())
+			if errors.IsNotFound(err) {
+				fmt.Println(err)
+				os.Exit(0)
+			} else {
+				panic(err.Error())
+			}
 		}
 
 		for _, v := range singlePod.Spec.Volumes {
 			if v.PersistentVolumeClaim != nil {
-				pvcClaimNameSet[v.PersistentVolumeClaim.ClaimName] = singlePod.Name
+				pvcClaimNameSet[v.PersistentVolumeClaim.ClaimName] = append(pvcClaimNameSet[v.PersistentVolumeClaim.ClaimName], singlePod.Name)
 			}
 		}
 	} else { // if pod name isn't provided, print all pods
@@ -93,30 +101,30 @@ func GetAzVolumesByPod(podName string, namespace string) []AzvResource {
 		for _, pod := range pods.Items {
 			for _, v := range pod.Spec.Volumes {
 				if v.PersistentVolumeClaim != nil {
-					pvcClaimNameSet[v.PersistentVolumeClaim.ClaimName] = pod.Name
+					pvcClaimNameSet[v.PersistentVolumeClaim.ClaimName] = append(pvcClaimNameSet[v.PersistentVolumeClaim.ClaimName], pod.Name)
 				}
 			}
 		}
 	}
 
 	// get azVolumes with the same claim name in pvcSet
-	azVolumes, err := clientsetAzDisk.DiskV1beta1().AzVolumes(getDriverNamesapce()).List(context.Background(), metav1.ListOptions{})
+	azVolumes, err := clientsetAzDisk.DiskV1beta2().AzVolumes(getDriverNamesapce()).List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		panic(err.Error())
 	}
 	for _, azVolume := range azVolumes.Items {
 		pvcClaimName := azVolume.Spec.Parameters[consts.PvcNameKey]
-
 		// if pvcClaimName is contained in pvcClaimNameSet, add the azVolume to result
-		if pName, ok := pvcClaimNameSet[pvcClaimName]; ok {
-			result = append(result, AzvResource{
-				ResourceType: pName,
-				Namespace:    azVolume.Namespace,
-				Name:         azVolume.Spec.VolumeName,
-				State:        azVolume.Status.State})
+		if pNames, ok := pvcClaimNameSet[pvcClaimName]; ok {
+			for _, pName := range pNames {
+				result = append(result, AzvResource{
+					ResourceType: pName,
+					Namespace:    azVolume.Namespace,
+					Name:         azVolume.Spec.VolumeName,
+					State:        azVolume.Status.State})
+			}
 		}
 	}
-
 	return result
 }
 

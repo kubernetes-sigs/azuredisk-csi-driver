@@ -19,7 +19,7 @@ package provisioner
 import (
 	"context"
 
-	v1alpha2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
@@ -38,12 +38,12 @@ func NewFakeCrdProvisioner(cloudProv *FakeCloudProvisioner) (*FakeCrdProvisioner
 func (c *FakeCrdProvisioner) CreateVolume(
 	ctx context.Context,
 	volumeName string,
-	capacityRange *v1alpha2.CapacityRange,
-	volumeCapabilities []v1alpha2.VolumeCapability,
+	capacityRange *azdiskv1beta2.CapacityRange,
+	volumeCapabilities []azdiskv1beta2.VolumeCapability,
 	parameters map[string]string,
 	secrets map[string]string,
-	volumeContentSource *v1alpha2.ContentVolumeSource,
-	accessibilityReq *v1alpha2.TopologyRequirement) (*v1alpha2.AzVolumeStatusDetail, error) {
+	volumeContentSource *azdiskv1beta2.ContentVolumeSource,
+	accessibilityReq *azdiskv1beta2.TopologyRequirement) (*azdiskv1beta2.AzVolumeStatusDetail, error) {
 	return c.fakeCloudProv.CreateVolume(ctx, volumeName, capacityRange, volumeCapabilities, parameters, secrets, volumeContentSource, accessibilityReq)
 }
 
@@ -55,7 +55,7 @@ func (c *FakeCrdProvisioner) PublishVolume(
 	ctx context.Context,
 	volumeID string,
 	nodeID string,
-	volumeCapability *v1alpha2.VolumeCapability,
+	volumeCapability *azdiskv1beta2.VolumeCapability,
 	readOnly bool,
 	secrets map[string]string,
 	volumeContext map[string]string) (map[string]string, error) {
@@ -74,7 +74,7 @@ func (c *FakeCrdProvisioner) UnpublishVolume(
 func (c *FakeCrdProvisioner) ExpandVolume(
 	ctx context.Context,
 	volumeID string,
-	capacityRange *v1alpha2.CapacityRange,
-	secrets map[string]string) (*v1alpha2.AzVolumeStatusDetail, error) {
+	capacityRange *azdiskv1beta2.CapacityRange,
+	secrets map[string]string) (*azdiskv1beta2.AzVolumeStatusDetail, error) {
 	return c.fakeCloudProv.ExpandVolume(ctx, volumeID, capacityRange, secrets)
 }

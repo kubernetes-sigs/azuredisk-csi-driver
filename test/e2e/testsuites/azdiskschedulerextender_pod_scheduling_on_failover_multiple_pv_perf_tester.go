@@ -27,8 +27,8 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
 	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
-	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
-	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
+	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 	nodeutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/node"
@@ -42,7 +42,7 @@ type AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV struct {
 	Pod                    resources.PodDetails
 	Replicas               int
 	StorageClassParameters map[string]string
-	AzDiskClient           *azDiskClientSet.Clientset
+	AzDiskClient           *azdisk.Clientset
 }
 
 func (t *AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
@@ -72,9 +72,9 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV) Run(client cl
 	wg.Wait()
 
 	// Get the list of available nodes for scheduling the pod
-	nodes := nodeutil.ListNodeNames(client)
+	nodes := nodeutil.ListAgentNodeNames(client, t.Pod.IsWindows)
 	if len(nodes) < 2 {
-		ginkgo.Skip("need at least 2 nodes to verify the test case. Current node count is %d", len(nodes))
+		ginkgo.Skip("need at least 2 agent nodes to verify the test case. Current agent node count is %d", len(nodes))
 	}
 
 	time.Sleep(10 * time.Second)
@@ -97,31 +97,33 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV) Run(client cl
 	}
 
 	//Check that AzVolumeAttachment resources were created correctly
-	allReplicasAttached := true
-	failedReplicaAttachments := &diskv1beta1.AzVolumeAttachmentList{}
+	allAttached := true
+	failedAttachments := []azdiskv1beta2.AzVolumeAttachment{}
 	err := wait.Poll(15*time.Second, 10*time.Minute, func() (bool, error) {
-		allReplicasAttached = true
-		var err error
-		var attached bool
-		var podFailedReplicaAttachments *diskv1beta1.AzVolumeAttachmentList
+		allAttached = true
+
+		failedAttachments = []azdiskv1beta2.AzVolumeAttachment{}
 		for _, ss := range tStatefulSets {
 			for _, pod := range ss.AllPods {
-				attached, podFailedReplicaAttachments, err = resources.VerifySuccessfulReplicaAzVolumeAttachments(pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
-				allReplicasAttached = allReplicasAttached && attached
-				if podFailedReplicaAttachments != nil {
-					failedReplicaAttachments.Items = append(failedReplicaAttachments.Items, podFailedReplicaAttachments.Items...)
+				attached, _, podFailedAttachments, err := resources.VerifySuccessfulAzVolumeAttachments(pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
+				allAttached = allAttached && attached
+				if podFailedAttachments != nil {
+					failedAttachments = append(failedAttachments, podFailedAttachments...)
+				}
+				if err != nil {
+					return allAttached, err
 				}
 			}
 		}
-		return allReplicasAttached, err
+		return allAttached, nil
 	})
-	if len(failedReplicaAttachments.Items) > 0 {
-		e2elog.Logf("found %d azvolumeattachments failed:", len(failedReplicaAttachments.Items))
-		for _, podAttachments := range failedReplicaAttachments.Items {
+	if len(failedAttachments) > 0 {
+		e2elog.Logf("found %d azvolumeattachments failed:", len(failedAttachments))
+		for _, podAttachments := range failedAttachments {
 			e2elog.Logf("azvolumeattachment: %s, err: %s", podAttachments.Name, podAttachments.Status.Error.Message)
 		}
 		ginkgo.Fail("failed due to replicas failing to attach")
-	} else if !allReplicasAttached {
+	} else if !allAttached {
 		ginkgo.Fail("could not find correct number of replicas")
 	} else if err != nil {
 		ginkgo.Fail(fmt.Sprintf("failed to verify replica attachments, err: %s", err))

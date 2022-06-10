@@ -44,7 +44,7 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/record"
-	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller"
@@ -181,10 +181,25 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 		userAgent := GetUserAgent(d.Name, d.customUserAgent, d.userAgentSuffix)
 		klog.V(2).Infof("driver userAgent: %s", userAgent)
 
-		d.cloudProvisioner, err = provisioner.NewCloudProvisioner(d.kubeClient, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, d.getPerfOptimizationEnabled(), topologyKey, userAgent, d.enableDiskOnlineResize)
+		d.cloudProvisioner, err = provisioner.NewCloudProvisioner(
+			d.kubeClient,
+			d.cloudConfigSecretName,
+			d.cloudConfigSecretNamespace,
+			d.getPerfOptimizationEnabled(),
+			topologyKey,
+			userAgent,
+			d.enableDiskOnlineResize,
+			d.allowEmptyCloudConfig,
+			d.enableAsyncAttach,
+		)
 		if err != nil {
 			klog.Fatalf("Failed to get controller provisioner. Error: %v", err)
 		}
+	}
+
+	if d.vmType != "" {
+		klog.V(2).Infof("override VMType(%s) in cloud config as %s", d.cloudProvisioner.GetCloud().VMType, d.vmType)
+		d.cloudProvisioner.GetCloud().VMType = d.vmType
 	}
 
 	if d.NodeID == "" {
@@ -192,6 +207,11 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 		// https://github.com/kubernetes-sigs/azuredisk-csi-driver/issues/168
 		klog.V(2).Infof("disable UseInstanceMetadata for controller")
 		d.cloudProvisioner.GetCloud().Config.UseInstanceMetadata = false
+
+		if d.cloudProvisioner.GetCloud().VMType == azurecloudconsts.VMTypeStandard && d.cloudProvisioner.GetCloud().DisableAvailabilitySetNodes {
+			klog.V(2).Infof("set DisableAvailabilitySetNodes as false since VMType is %s", d.cloudProvisioner.GetCloud().VMType)
+			d.cloudProvisioner.GetCloud().DisableAvailabilitySetNodes = false
+		}
 
 		if d.cloudProvisioner.GetCloud().VMType == azurecloudconsts.VMTypeVMSS && !d.cloudProvisioner.GetCloud().DisableAvailabilitySetNodes {
 			if disableAVSetNodes {
@@ -201,6 +221,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 				klog.Warningf("DisableAvailabilitySetNodes for controller is set as false while current VMType is vmss")
 			}
 		}
+		klog.V(2).Infof("cloud: %s, location: %s, rg: %s, VMType: %s, PrimaryScaleSetName: %s, PrimaryAvailabilitySetName: %s, DisableAvailabilitySetNodes: %v", d.cloudProvisioner.GetCloud().Cloud, d.cloudProvisioner.GetCloud().Location, d.cloudProvisioner.GetCloud().ResourceGroup, d.cloudProvisioner.GetCloud().VMType, d.cloudProvisioner.GetCloud().PrimaryScaleSetName, d.cloudProvisioner.GetCloud().PrimaryAvailabilitySetName, d.cloudProvisioner.GetCloud().DisableAvailabilitySetNodes)
 	}
 
 	d.deviceHelper = optimization.NewSafeDeviceHelper()
@@ -289,7 +310,7 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 	retryPeriod := time.Duration(d.controllerLeaseRetryPeriodInSec) * time.Second
 	scheme := apiRuntime.NewScheme()
 	clientgoscheme.AddToScheme(scheme)
-	diskv1beta1.AddToScheme(scheme)
+	azdiskv1beta2.AddToScheme(scheme)
 
 	// Setup a Manager
 	klog.V(2).Info("Setting up controller manager")
@@ -431,8 +452,8 @@ func (d *DriverV2) RegisterAzDriverNodeOrDie(ctx context.Context) {
 func (d *DriverV2) RunAzDriverNodeHeartbeatLoop(ctx context.Context) {
 
 	var err error
-	var cachedAzDriverNode *diskv1beta1.AzDriverNode
-	azN := d.crdProvisioner.GetDiskClientSet().DiskV1beta1().AzDriverNodes(d.objectNamespace)
+	var cachedAzDriverNode *azdiskv1beta2.AzDriverNode
+	azN := d.crdProvisioner.GetDiskClientSet().DiskV1beta2().AzDriverNodes(d.objectNamespace)
 	heartbeatFrequency := time.Duration(d.heartbeatFrequencyInSec) * time.Second
 	klog.V(1).Infof("Starting heartbeat loop with frequency (%v)", heartbeatFrequency)
 	for {
@@ -463,7 +484,7 @@ func (d *DriverV2) RunAzDriverNodeHeartbeatLoop(ctx context.Context) {
 		statusMessage := "Driver node healthy."
 		klog.V(2).Infof("Updating status for (%v)", azDriverNodeToUpdate)
 		if azDriverNodeToUpdate.Status == nil {
-			azDriverNodeToUpdate.Status = &diskv1beta1.AzDriverNodeStatus{}
+			azDriverNodeToUpdate.Status = &azdiskv1beta2.AzDriverNodeStatus{}
 		}
 		azDriverNodeToUpdate.Status.ReadyForVolumeAllocation = &readyForAllocation
 		azDriverNodeToUpdate.Status.LastHeartbeatTime = &timestamp

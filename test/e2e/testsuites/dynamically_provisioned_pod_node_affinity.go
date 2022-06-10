@@ -18,6 +18,7 @@ package testsuites
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/onsi/ginkgo"
@@ -31,7 +32,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e/framework"
-	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
@@ -47,18 +48,18 @@ type PodNodeAffinity struct {
 	Pod                    resources.PodDetails
 	IsMultiZone            bool
 	Volume                 resources.VolumeDetails
-	AzDiskClient           *azDiskClientSet.Clientset
+	AzDiskClient           *azdisk.Clientset
 	StorageClassParameters map[string]string
 }
 
 func (t *PodNodeAffinity) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
 	_, maxMountReplicaCount := azureutils.GetMaxSharesAndMaxMountReplicaCount(t.StorageClassParameters, false)
 
-	// Get the list of available nodes for scheduling the pod
-	nodes := nodeutil.ListNodeNames(client)
+	// Get the list of available agent nodes for scheduling the pod
+	nodes := nodeutil.ListAgentNodeNames(client, t.Pod.IsWindows)
 	necessaryNodeCount := maxMountReplicaCount + 2
 	if len(nodes) < necessaryNodeCount {
-		ginkgo.Skip("need at least %d nodes to verify the test case. Current node count is %d", necessaryNodeCount, len(nodes))
+		ginkgo.Skip("need at least %d agent nodes to verify the test case. Current agent node count is %d", necessaryNodeCount, len(nodes))
 	}
 
 	ctx := context.Background()
@@ -67,20 +68,17 @@ func (t *PodNodeAffinity) Run(client clientset.Interface, namespace *v1.Namespac
 	numNodesWithLabel := maxMountReplicaCount + 1
 	nodesWithLabel := map[string]struct{}{}
 	count := 0
-	for i := range nodes {
-		nodeObj, err := client.CoreV1().Nodes().Get(ctx, nodes[i], metav1.GetOptions{})
+	for _, nodeName := range nodes {
+		nodeObj, err := client.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
 		framework.ExpectNoError(err)
 
-		if _, ok := nodeObj.Labels[testconsts.MasterNodeLabel]; ok {
-			continue
-		}
-
-		if i < numNodesWithLabel {
+		if count < numNodesWithLabel {
 			var labelCleanup func()
 			_, labelCleanup, err = nodeutil.SetNodeLabels(client, nodeObj, testconsts.TestLabel)
 			framework.ExpectNoError(err)
 			defer labelCleanup()
-			nodesWithLabel[nodes[i]] = struct{}{}
+			ginkgo.By(fmt.Sprintf("Applied label to node %s", nodeName))
+			nodesWithLabel[nodeName] = struct{}{}
 			count++
 		}
 	}
@@ -129,7 +127,7 @@ func (t *PodNodeAffinity) Run(client clientset.Interface, namespace *v1.Namespac
 				framework.ExpectNoError(err)
 				labelSelector = labelSelector.Add(*volReq)
 
-				azVolumeAttachments, err := t.AzDiskClient.DiskV1beta1().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})
+				azVolumeAttachments, err := t.AzDiskClient.DiskV1beta2().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})
 				if err != nil {
 					return false, err
 				}

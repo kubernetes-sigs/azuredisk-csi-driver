@@ -19,15 +19,22 @@ package controller
 import (
 	"context"
 	"fmt"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-logr/logr"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/util/wait"
-	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
+	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/watcher"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/workflow"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -35,10 +42,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
-)
-
-const (
-	deletionPollingInterval = time.Duration(10) * time.Second
 )
 
 type ReconcileReplica struct {
@@ -62,7 +65,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 		return reconcile.Result{Requeue: true}, err
 	}
 
-	if azVolumeAttachment.Spec.RequestedRole == diskv1beta1.PrimaryRole {
+	if azVolumeAttachment.Spec.RequestedRole == azdiskv1beta2.PrimaryRole {
 		// Deletion Event
 		if objectDeletionRequested(azVolumeAttachment) {
 			if volumeDetachRequested(azVolumeAttachment) {
@@ -74,7 +77,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 			r.controllerSharedState.removeGarbageCollection(azVolumeAttachment.Spec.VolumeName)
 
 			// If promotion event, create a replacement replica
-			if isAttached(azVolumeAttachment) && azVolumeAttachment.Status.Detail.PreviousRole == diskv1beta1.ReplicaRole {
+			if isAttached(azVolumeAttachment) && azVolumeAttachment.Status.Detail.PreviousRole == azdiskv1beta2.ReplicaRole {
 				r.triggerManageReplica(ctx, azVolumeAttachment.Spec.VolumeName)
 			}
 		}
@@ -87,36 +90,33 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 		}
 		// create a replacement replica if replica attachment failed
 		if objectDeletionRequested(azVolumeAttachment) {
-			if azVolumeAttachment.Status.State == diskv1beta1.DetachmentFailed {
+			switch azVolumeAttachment.Status.State {
+			case azdiskv1beta2.Detaching:
+			case azdiskv1beta2.DetachmentFailed:
 				if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, func(obj interface{}) error {
-					azVolumeAttachment := obj.(*diskv1beta1.AzVolumeAttachment)
-					_, err = updateState(azVolumeAttachment, diskv1beta1.ForceDetachPending, normalUpdate)
+					azVolumeAttachment := obj.(*azdiskv1beta2.AzVolumeAttachment)
+					_, err = updateState(azVolumeAttachment, azdiskv1beta2.ForceDetachPending, normalUpdate)
 					return err
 				}, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
 					return reconcile.Result{Requeue: true}, err
 				}
+			default:
+				return reconcile.Result{Requeue: true}, err
 			}
 			if !isCleanupRequested(azVolumeAttachment) || !volumeDetachRequested(azVolumeAttachment) {
 				go func() {
 					goCtx := context.Background()
 
 					// wait for replica AzVolumeAttachment deletion
-					conditionFunc := func() (bool, error) {
-						var tmp diskv1beta1.AzVolumeAttachment
-						err := r.controllerSharedState.cachedClient.Get(goCtx, request.NamespacedName, &tmp)
-						if errors.IsNotFound(err) {
-							return true, nil
-						}
-
-						return false, err
-					}
-					_ = wait.PollImmediateInfinite(deletionPollingInterval, conditionFunc)
+					waiter, _ := r.controllerSharedState.conditionWatcher.NewConditionWaiter(goCtx, watcher.AzVolumeAttachmentType, azVolumeAttachment.Name, verifyObjectDeleted)
+					defer waiter.Close()
+					_, _ = waiter.Wait(goCtx)
 
 					// add replica management operation to the queue
 					r.triggerManageReplica(goCtx, azVolumeAttachment.Spec.VolumeName)
 				}()
 			}
-		} else if azVolumeAttachment.Status.State == diskv1beta1.AttachmentFailed {
+		} else if azVolumeAttachment.Status.State == azdiskv1beta2.AttachmentFailed {
 			// if attachment failed for replica AzVolumeAttachment, delete the CRI so that replace replica AzVolumeAttachment can be created.
 			if err := r.controllerSharedState.cachedClient.Delete(ctx, azVolumeAttachment); err != nil {
 				return reconcile.Result{Requeue: true}, err
@@ -152,15 +152,72 @@ func (r *ReconcileReplica) triggerGarbageCollection(ctx context.Context, volumeN
 	workflowCtx, w := workflow.New(deletionCtx, workflow.WithDetails(consts.VolumeNameLabel, volumeName))
 	w.Logger().V(5).Infof("Garbage collection of AzVolumeAttachments for AzVolume (%s) scheduled in %s.", volumeName, r.timeUntilGarbageCollection.String())
 
-	go func(ctx context.Context) {
+	go func() {
 		defer w.Finish(nil)
 		select {
-		case <-ctx.Done():
+		case <-workflowCtx.Done():
 			return
 		case <-time.After(r.timeUntilGarbageCollection):
 			r.controllerSharedState.garbageCollectReplicas(workflowCtx, volumeName, replica)
+			r.triggerCreateFailedReplicas(workflowCtx, volumeName)
 		}
-	}(deletionCtx)
+	}()
+
+}
+
+// After volumes are garbage collected and attachment capacity opens up on a node, this method
+// attempts to create previously failed replicas
+func (r *ReconcileReplica) triggerCreateFailedReplicas(ctx context.Context, volumeName string) {
+	w, _ := workflow.GetWorkflowFromContext(ctx)
+	w.Logger().V(5).Info("Checking for replicas to be created after garbage collection.")
+	volRequirement, err := azureutils.CreateLabelRequirements(consts.VolumeNameLabel, selection.Equals, volumeName)
+	if err != nil {
+		w.Logger().Errorf(err, "Failed to create label requirements.")
+		return
+	}
+	labelSelector := labels.NewSelector().Add(*volRequirement)
+	listOptions := client.ListOptions{LabelSelector: labelSelector}
+	azVolumeAttachmentList := &azdiskv1beta2.AzVolumeAttachmentList{}
+	if err = r.controllerSharedState.cachedClient.List(ctx, azVolumeAttachmentList, &listOptions); errors.IsNotFound(err) {
+		return
+	}
+
+	var wg sync.WaitGroup
+	var numErr uint32
+	errs := make([]error, len(azVolumeAttachmentList.Items))
+	for i := range azVolumeAttachmentList.Items {
+		wg.Add(1)
+		go func(index int) {
+			var err error
+			defer wg.Done()
+			defer func() {
+				if err != nil {
+					_ = atomic.AddUint32(&numErr, 1)
+				}
+			}()
+
+			var waiter *watcher.ConditionWaiter
+			waiter, err = r.controllerSharedState.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeAttachmentType, azVolumeAttachmentList.Items[index].Name, verifyObjectDeleted)
+			if err != nil {
+				errs[index] = err
+				return
+			}
+			defer waiter.Close()
+			if _, err = waiter.Wait(ctx); err != nil {
+				errs[index] = err
+			}
+		}(i)
+	}
+	// wait for all AzVolumeAttachments to be deleted
+	wg.Wait()
+
+	if numErr > 0 {
+		err := status.Errorf(codes.Internal, "%+v", errs)
+		w.Logger().Error(err, "failed to wait for replica AzVolumeAttachments cleanup.")
+		return
+	}
+
+	r.controllerSharedState.tryCreateFailedReplicas(ctx, "replicaController")
 }
 
 func NewReplicaController(mgr manager.Manager, controllerSharedState *SharedState) (*ReconcileReplica, error) {
@@ -173,7 +230,7 @@ func NewReplicaController(mgr manager.Manager, controllerSharedState *SharedStat
 	c, err := controller.New("replica-controller", mgr, controller.Options{
 		MaxConcurrentReconciles: 10,
 		Reconciler:              &reconciler,
-		Log:                     logger,
+		LogConstructor:          func(req *reconcile.Request) logr.Logger { return logger },
 	})
 
 	if err != nil {
@@ -183,10 +240,10 @@ func NewReplicaController(mgr manager.Manager, controllerSharedState *SharedStat
 
 	logger.Info("Starting to watch AzVolumeAttachments.")
 
-	err = c.Watch(&source.Kind{Type: &diskv1beta1.AzVolumeAttachment{}}, &handler.EnqueueRequestForObject{}, predicate.Funcs{
+	err = c.Watch(&source.Kind{Type: &azdiskv1beta2.AzVolumeAttachment{}}, &handler.EnqueueRequestForObject{}, predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
-			azVolumeAttachment, ok := e.Object.(*diskv1beta1.AzVolumeAttachment)
-			if ok && azVolumeAttachment.Spec.RequestedRole == diskv1beta1.PrimaryRole {
+			azVolumeAttachment, ok := e.Object.(*azdiskv1beta2.AzVolumeAttachment)
+			if ok && azVolumeAttachment.Spec.RequestedRole == azdiskv1beta2.PrimaryRole {
 				return true
 			}
 			return false

@@ -24,7 +24,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -41,33 +40,35 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 	schedulerapi "k8s.io/kube-scheduler/extender/v1"
-	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
-	azurediskInformers "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions"
-	azurediskInformerTypes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions/azuredisk/v1beta1"
+	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
+	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	azdiskinformers "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions"
+	azdiskinformertypes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions/azuredisk/v1beta2"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 )
 
 var (
-	azVolumeAttachmentInformer azurediskInformerTypes.AzVolumeAttachmentInformer
-	azDriverNodeInformer       azurediskInformerTypes.AzDriverNodeInformer
+	kubeconfig = flag.String("kubeconfig", "", "Absolute path to the kubeconfig file. Required only when running out of cluster.")
+
+	azVolumeAttachmentInformer azdiskinformertypes.AzVolumeAttachmentInformer
+	azDriverNodeInformer       azdiskinformertypes.AzDriverNodeInformer
 	pvcInformer                kubeInformerTypes.PersistentVolumeClaimInformer
 	pvInformer                 kubeInformerTypes.PersistentVolumeInformer
 	kubeClientset              kubernetes.Interface
-	kubeExtensionClientset     versioned.Interface
+	kubeExtensionClientset     azdisk.Interface
 	criNamespace               string
 	pvcToPvMap                 sync.Map
 	pvToDiskNameMap            sync.Map
 )
 
 type azDriverNodesMeta struct {
-	nodes []*diskv1beta1.AzDriverNode
+	nodes []*azdiskv1beta2.AzDriverNode
 	err   error
 }
 
 type azVolumeAttachmentsMeta struct {
-	volumeAttachments []*diskv1beta1.AzVolumeAttachment
+	volumeAttachments []*azdiskv1beta2.AzVolumeAttachment
 	err               error
 }
 
@@ -93,11 +94,11 @@ func initSchedulerExtender(ctx context.Context) {
 
 	RegisterMetrics(metricsList...)
 
-	azurediskInformerFactory := azurediskInformers.NewSharedInformerFactory(kubeExtensionClientset, time.Second*30)
+	azurediskInformerFactory := azdiskinformers.NewSharedInformerFactory(kubeExtensionClientset, time.Second*30)
 	coreInformerFactory := informers.NewSharedInformerFactory(kubeClientset, time.Second*30)
 
-	azVolumeAttachmentInformer = azurediskInformerFactory.Disk().V1beta1().AzVolumeAttachments()
-	azDriverNodeInformer = azurediskInformerFactory.Disk().V1beta1().AzDriverNodes()
+	azVolumeAttachmentInformer = azurediskInformerFactory.Disk().V1beta2().AzVolumeAttachments()
+	azDriverNodeInformer = azurediskInformerFactory.Disk().V1beta2().AzDriverNodes()
 	pvcInformer = coreInformerFactory.Core().V1().PersistentVolumeClaims()
 	pvInformer = coreInformerFactory.Core().V1().PersistentVolumes()
 
@@ -168,7 +169,7 @@ func filter(context context.Context, schedulerExtenderArgs schedulerapi.Extender
 		}
 	}
 
-	diskRequestedByPod, diskRequestedByPodCount := getDisksRequestedByPod(ns, requestedVolumes, v1.ReadOnlyMany, v1.ReadWriteMany)
+	diskRequestedByPod, diskRequestedByPodCount := getDisksRequestedByPodExcludeAccessModes(ns, requestedVolumes)
 	if diskRequestedByPodCount == 0 {
 		return formatFilterResult(schedulerExtenderArgs.Nodes.Items, schedulerExtenderArgs.NodeNames, failedNodes, ""), nil
 	}
@@ -243,7 +244,7 @@ func prioritize(context context.Context, schedulerExtenderArgs schedulerapi.Exte
 		go getAzVolumeAttachments(context, volumesChan)
 
 		// create a lookup map of all the volumes the pod needs
-		volumesPodNeeds, _ := getDisksRequestedByPod(ns, requestedVolumes)
+		volumesPodNeeds, _ := getDisksRequestedByPodExcludeAccessModes(ns, requestedVolumes, v1.ReadOnlyMany, v1.ReadWriteMany)
 
 		// get all nodes that have azDriverNode running
 		azDriverNodesMeta := <-nodesChan
@@ -287,7 +288,7 @@ func prioritize(context context.Context, schedulerExtenderArgs schedulerapi.Exte
 			if requestedByPod {
 				klog.V(2).Infof("Volume attachment is needed: Name: %s, Volume: %s.", attachedVolume.Name, attachedVolume.Spec.VolumeName)
 				nodeNameToRequestedVolumeMap[attachedVolume.Spec.NodeName] = append(nodeNameToRequestedVolumeMap[attachedVolume.Spec.NodeName], attachedVolume.Spec.VolumeName)
-				if attachedVolume.Status.State != diskv1beta1.Attached {
+				if attachedVolume.Status.State != azdiskv1beta2.Attached {
 					nodeNameToAttachingVolumeMap[attachedVolume.Spec.NodeName] = append(nodeNameToAttachingVolumeMap[attachedVolume.Spec.NodeName], attachedVolume.Spec.VolumeName)
 				}
 			}
@@ -312,22 +313,15 @@ func prioritize(context context.Context, schedulerExtenderArgs schedulerapi.Exte
 }
 
 func getKubeConfig() (config *rest.Config, err error) {
-	config, err = rest.InClusterConfig()
-	if err != nil {
-		klog.Warning("failed getting the in cluster config: %v", err)
-		// fallback to kubeconfig
-		kubeConfigPath := os.Getenv("KUBECONFIG")
-		if len(kubeConfigPath) == 0 {
-			kubeConfigPath = filepath.Join(os.Getenv("HOME"), ".kube", "config")
-		}
-
-		// create the config from the path
-		config, err = clientcmd.BuildConfigFromFlags("", kubeConfigPath)
+	if len(*kubeconfig) != 0 {
+		config, err = clientcmd.BuildConfigFromFlags("", *kubeconfig)
+	} else {
+		config, err = rest.InClusterConfig()
 	}
 	return
 }
 
-func getKubernetesExtensionClientsets() (azKubeExtensionClientset versioned.Interface, err error) {
+func getKubernetesExtensionClientsets() (azKubeExtensionClientset azdisk.Interface, err error) {
 	// getKubeConfig gets config object from config file
 	config, err := getKubeConfig()
 	if err != nil {
@@ -335,7 +329,7 @@ func getKubernetesExtensionClientsets() (azKubeExtensionClientset versioned.Inte
 	}
 
 	// generate the clientset extension based off of the config
-	azKubeExtensionClientset, err = versioned.NewForConfig(config)
+	azKubeExtensionClientset, err = azdisk.NewForConfig(config)
 	if err != nil {
 		return azKubeExtensionClientset, fmt.Errorf("cannot create the clientset: %v", err)
 	}
@@ -396,7 +390,7 @@ func getAzVolumeAttachments(context context.Context, out chan azVolumeAttachment
 	out <- activeVolumeAttachments
 }
 
-func getAdditionalAzVolumeAttachmentsOnNode(nodeName string, volumeNames []string) ([]*diskv1beta1.AzVolumeAttachment, error) {
+func getAdditionalAzVolumeAttachmentsOnNode(nodeName string, volumeNames []string) ([]*azdiskv1beta2.AzVolumeAttachment, error) {
 	nodeNameFilter, err := azureutils.CreateLabelRequirements(consts.NodeNameLabel, selection.Equals, nodeName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create a filter label for listing AzVolumeAttachments for node %s: %v", nodeName, err)
@@ -437,7 +431,7 @@ func setNodeScoresToZero(nodes []v1.Node) (priorityList schedulerapi.HostPriorit
 	return
 }
 
-func getDisksRequestedByPod(ns string, requestedVolumes []v1.Volume, filterOutAccessModes ...v1.PersistentVolumeAccessMode) (disksRequestedByPod map[string]struct{}, requestedDiskCount int) {
+func getDisksRequestedByPodExcludeAccessModes(ns string, requestedVolumes []v1.Volume, filterOutAccessModes ...v1.PersistentVolumeAccessMode) (disksRequestedByPod map[string]struct{}, requestedDiskCount int) {
 	// create a set of all volumes needed
 	disksRequestedByPod = map[string]struct{}{}
 	for _, volume := range requestedVolumes {

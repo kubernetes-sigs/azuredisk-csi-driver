@@ -35,7 +35,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	kfake "k8s.io/client-go/kubernetes/fake"
 	cloudprovider "k8s.io/cloud-provider"
-	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
+	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
@@ -141,7 +141,7 @@ var (
 		},
 	}
 
-	testAzSnapshot *diskv1beta1.Snapshot
+	testAzSnapshot *azdiskv1beta2.Snapshot
 
 	missingSnapshotName = "missing-snapshot"
 	missingSnapshotURI  = fmt.Sprintf(computeSnapshotURIFormat, testSubscription, testResourceGroup, missingSnapshotName)
@@ -394,12 +394,12 @@ func TestCreateVolume(t *testing.T) {
 	tests := []struct {
 		description   string
 		diskName      string
-		capacity      *diskv1beta1.CapacityRange
-		capabilities  []diskv1beta1.VolumeCapability
+		capacity      *azdiskv1beta2.CapacityRange
+		capabilities  []azdiskv1beta2.VolumeCapability
 		parameter     map[string]string
 		secrets       map[string]string
-		contentSource *diskv1beta1.ContentVolumeSource
-		topology      *diskv1beta1.TopologyRequirement
+		contentSource *azdiskv1beta2.ContentVolumeSource
+		topology      *azdiskv1beta2.TopologyRequirement
 		expectedError error
 		disabled      bool
 	}{
@@ -411,13 +411,13 @@ func TestCreateVolume(t *testing.T) {
 		{
 			description: "[Success] Creates a disk with specific parameters",
 			diskName:    "disk-with-specific-parameters",
-			capacity: &diskv1beta1.CapacityRange{
+			capacity: &azdiskv1beta2.CapacityRange{
 				RequiredBytes: util.GiBToBytes(10),
 				LimitBytes:    util.GiBToBytes(10),
 			},
-			capabilities: []diskv1beta1.VolumeCapability{
+			capabilities: []azdiskv1beta2.VolumeCapability{
 				{
-					AccessMode: diskv1beta1.VolumeCapabilityAccessModeSingleNodeWriter,
+					AccessMode: azdiskv1beta2.VolumeCapabilityAccessModeSingleNodeWriter,
 				},
 			},
 			parameter: map[string]string{
@@ -428,12 +428,12 @@ func TestCreateVolume(t *testing.T) {
 			secrets: map[string]string{
 				"sh": "a secret",
 			},
-			contentSource: &diskv1beta1.ContentVolumeSource{
-				ContentSource:   diskv1beta1.ContentVolumeSourceTypeVolume,
+			contentSource: &azdiskv1beta2.ContentVolumeSource{
+				ContentSource:   azdiskv1beta2.ContentVolumeSourceTypeVolume,
 				ContentSourceID: testDiskURI,
 			},
-			topology: &diskv1beta1.TopologyRequirement{
-				Requisite: []diskv1beta1.Topology{
+			topology: &azdiskv1beta2.TopologyRequirement{
+				Requisite: []azdiskv1beta2.Topology{
 					{
 						Segments: map[string]string{
 							topologyKeyStr: "testregion-1",
@@ -447,13 +447,13 @@ func TestCreateVolume(t *testing.T) {
 			description: "[Failure] advanced perfProfile fails if no device settings provided",
 			disabled:    !provisioner.perfOptimizationEnabled,
 			diskName:    "disk-with-specific-parameters",
-			capacity: &diskv1beta1.CapacityRange{
+			capacity: &azdiskv1beta2.CapacityRange{
 				RequiredBytes: util.GiBToBytes(10),
 				LimitBytes:    util.GiBToBytes(10),
 			},
-			capabilities: []diskv1beta1.VolumeCapability{
+			capabilities: []azdiskv1beta2.VolumeCapability{
 				{
-					AccessMode: diskv1beta1.VolumeCapabilityAccessModeSingleNodeWriter,
+					AccessMode: azdiskv1beta2.VolumeCapabilityAccessModeSingleNodeWriter,
 				},
 			},
 			parameter: map[string]string{
@@ -465,12 +465,12 @@ func TestCreateVolume(t *testing.T) {
 			secrets: map[string]string{
 				"sh": "a secret",
 			},
-			contentSource: &diskv1beta1.ContentVolumeSource{
-				ContentSource:   diskv1beta1.ContentVolumeSourceTypeVolume,
+			contentSource: &azdiskv1beta2.ContentVolumeSource{
+				ContentSource:   azdiskv1beta2.ContentVolumeSourceTypeVolume,
 				ContentSourceID: testDiskURI,
 			},
-			topology: &diskv1beta1.TopologyRequirement{
-				Requisite: []diskv1beta1.Topology{
+			topology: &azdiskv1beta2.TopologyRequirement{
+				Requisite: []azdiskv1beta2.Topology{
 					{
 						Segments: map[string]string{
 							topologyKeyStr: "testregion-1",
@@ -484,13 +484,13 @@ func TestCreateVolume(t *testing.T) {
 			description: "[Failure] advanced perfProfile fails if invalid device settings provided",
 			disabled:    !provisioner.perfOptimizationEnabled,
 			diskName:    "disk-with-specific-parameters",
-			capacity: &diskv1beta1.CapacityRange{
+			capacity: &azdiskv1beta2.CapacityRange{
 				RequiredBytes: util.GiBToBytes(10),
 				LimitBytes:    util.GiBToBytes(10),
 			},
-			capabilities: []diskv1beta1.VolumeCapability{
+			capabilities: []azdiskv1beta2.VolumeCapability{
 				{
-					AccessMode: diskv1beta1.VolumeCapabilityAccessModeSingleNodeWriter,
+					AccessMode: azdiskv1beta2.VolumeCapabilityAccessModeSingleNodeWriter,
 				},
 			},
 			parameter: map[string]string{
@@ -504,12 +504,12 @@ func TestCreateVolume(t *testing.T) {
 			secrets: map[string]string{
 				"sh": "a secret",
 			},
-			contentSource: &diskv1beta1.ContentVolumeSource{
-				ContentSource:   diskv1beta1.ContentVolumeSourceTypeVolume,
+			contentSource: &azdiskv1beta2.ContentVolumeSource{
+				ContentSource:   azdiskv1beta2.ContentVolumeSourceTypeVolume,
 				ContentSourceID: testDiskURI,
 			},
-			topology: &diskv1beta1.TopologyRequirement{
-				Requisite: []diskv1beta1.Topology{
+			topology: &azdiskv1beta2.TopologyRequirement{
+				Requisite: []azdiskv1beta2.Topology{
 					{
 						Segments: map[string]string{
 							topologyKeyStr: "testregion-1",
@@ -524,13 +524,13 @@ func TestCreateVolume(t *testing.T) {
 			description: "[Success] advanced perfProfile succeeds if valid device settings provided",
 			disabled:    !provisioner.perfOptimizationEnabled,
 			diskName:    "disk-with-specific-parameters",
-			capacity: &diskv1beta1.CapacityRange{
+			capacity: &azdiskv1beta2.CapacityRange{
 				RequiredBytes: util.GiBToBytes(10),
 				LimitBytes:    util.GiBToBytes(10),
 			},
-			capabilities: []diskv1beta1.VolumeCapability{
+			capabilities: []azdiskv1beta2.VolumeCapability{
 				{
-					AccessMode: diskv1beta1.VolumeCapabilityAccessModeSingleNodeWriter,
+					AccessMode: azdiskv1beta2.VolumeCapabilityAccessModeSingleNodeWriter,
 				},
 			},
 			parameter: map[string]string{
@@ -543,12 +543,12 @@ func TestCreateVolume(t *testing.T) {
 			secrets: map[string]string{
 				"sh": "a secret",
 			},
-			contentSource: &diskv1beta1.ContentVolumeSource{
-				ContentSource:   diskv1beta1.ContentVolumeSourceTypeVolume,
+			contentSource: &azdiskv1beta2.ContentVolumeSource{
+				ContentSource:   azdiskv1beta2.ContentVolumeSourceTypeVolume,
 				ContentSourceID: testDiskURI,
 			},
-			topology: &diskv1beta1.TopologyRequirement{
-				Requisite: []diskv1beta1.Topology{
+			topology: &azdiskv1beta2.TopologyRequirement{
+				Requisite: []azdiskv1beta2.Topology{
 					{
 						Segments: map[string]string{
 							topologyKeyStr: "testregion-1",
@@ -569,7 +569,7 @@ func TestCreateVolume(t *testing.T) {
 		{
 			description: "[Success] Returns no error for existing disk when same creation parameters are used (CreateVolume is idempotent)",
 			diskName:    testDiskName,
-			capacity: &diskv1beta1.CapacityRange{
+			capacity: &azdiskv1beta2.CapacityRange{
 				RequiredBytes: util.GiBToBytes(int64(testDiskSizeGiB)),
 				LimitBytes:    util.GiBToBytes(int64(testDiskSizeGiB)),
 			},
@@ -581,7 +581,7 @@ func TestCreateVolume(t *testing.T) {
 		{
 			description: "[Failure] Returns an error for existing disk when different a different size is requested",
 			diskName:    testDiskName,
-			capacity: &diskv1beta1.CapacityRange{
+			capacity: &azdiskv1beta2.CapacityRange{
 				RequiredBytes: util.GiBToBytes(int64(testDiskSizeGiB * 2)),
 				LimitBytes:    util.GiBToBytes(int64(testDiskSizeGiB * 2)),
 			},
@@ -593,7 +593,7 @@ func TestCreateVolume(t *testing.T) {
 		{
 			description: "[Failure] Returns an error when requested size is larger than limit",
 			diskName:    "disk-with-invalid-capacity",
-			capacity: &diskv1beta1.CapacityRange{
+			capacity: &azdiskv1beta2.CapacityRange{
 				RequiredBytes: util.GiBToBytes(100),
 				LimitBytes:    util.GiBToBytes(10),
 			},
@@ -613,7 +613,7 @@ func TestCreateVolume(t *testing.T) {
 			parameter: map[string]string{
 				"storageAccountType": "SuperPremiumSSD_URS",
 			},
-			expectedError: errors.New("azureDisk - SuperPremiumSSD_URS is not supported sku/storageaccounttype. Supported values are [Premium_LRS Premium_ZRS Standard_LRS StandardSSD_LRS StandardSSD_ZRS UltraSSD_LRS]"),
+			expectedError: status.Error(codes.InvalidArgument, "azureDisk - SuperPremiumSSD_URS is not supported sku/storageaccounttype. Supported values are [Premium_LRS Premium_ZRS Standard_LRS StandardSSD_LRS StandardSSD_ZRS UltraSSD_LRS]"),
 		},
 		{
 			description: "[Failure] Returns an error when an unsupported caching mode is specified",
@@ -621,7 +621,7 @@ func TestCreateVolume(t *testing.T) {
 			parameter: map[string]string{
 				"cachingmode": "InvalidCachingMode",
 			},
-			expectedError: errors.New("azureDisk - InvalidCachingMode is not supported cachingmode. Supported values are [None ReadOnly ReadWrite]"),
+			expectedError: status.Error(codes.InvalidArgument, "azureDisk - InvalidCachingMode is not supported cachingmode. Supported values are [None ReadOnly ReadWrite]"),
 		},
 	}
 
@@ -851,13 +851,13 @@ func TestExpandVolume(t *testing.T) {
 	tests := []struct {
 		description   string
 		diskURI       string
-		newCapacity   diskv1beta1.CapacityRange
+		newCapacity   azdiskv1beta2.CapacityRange
 		expectedError error
 	}{
 		{
 			description: "[Success] Expands an existing disk",
 			diskURI:     testDiskURI,
-			newCapacity: diskv1beta1.CapacityRange{
+			newCapacity: azdiskv1beta2.CapacityRange{
 				RequiredBytes: util.GiBToBytes(int64(testDiskSizeGiB * 2)),
 				LimitBytes:    util.GiBToBytes(int64(testDiskSizeGiB * 2)),
 			},
@@ -866,7 +866,7 @@ func TestExpandVolume(t *testing.T) {
 		{
 			description: "[Failure] Returns an error for missing disk",
 			diskURI:     missingDiskURI,
-			newCapacity: diskv1beta1.CapacityRange{
+			newCapacity: azdiskv1beta2.CapacityRange{
 				RequiredBytes: util.GiBToBytes(int64(testDiskSizeGiB * 2)),
 				LimitBytes:    util.GiBToBytes(int64(testDiskSizeGiB * 2)),
 			},
@@ -875,7 +875,7 @@ func TestExpandVolume(t *testing.T) {
 		{
 			description: "[Failure] Returns an error for invalid URI",
 			diskURI:     "invalid URI",
-			newCapacity: diskv1beta1.CapacityRange{
+			newCapacity: azdiskv1beta2.CapacityRange{
 				RequiredBytes: util.GiBToBytes(int64(testDiskSizeGiB * 2)),
 				LimitBytes:    util.GiBToBytes(int64(testDiskSizeGiB * 2)),
 			},
@@ -1398,7 +1398,7 @@ func TestGetSnapshotByID(t *testing.T) {
 		description    string
 		snapshotURI    string
 		sourceVolumeID string
-		expectedResult *diskv1beta1.Snapshot
+		expectedResult *azdiskv1beta2.Snapshot
 		expectedError  error
 	}{
 		{

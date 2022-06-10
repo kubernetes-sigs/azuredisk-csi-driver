@@ -28,7 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2/klogr"
-	diskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
+	azdiskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller/mockclient"
@@ -37,7 +37,7 @@ import (
 
 func NewTestAzDriverNodeController(controller *gomock.Controller, namespace string, objects ...runtime.Object) *ReconcileAzDriverNode {
 	azDiskObjs, _ := splitObjects(objects...)
-	controllerSharedState := initState(mockclient.NewMockClient(controller), diskfakes.NewSimpleClientset(azDiskObjs...), nil, objects...)
+	controllerSharedState := initState(mockclient.NewMockClient(controller), azdiskfakes.NewSimpleClientset(azDiskObjs...), nil, objects...)
 
 	return &ReconcileAzDriverNode{
 		controllerSharedState: controllerSharedState,
@@ -72,7 +72,7 @@ func TestAzDriverNodeControllerReconcile(t *testing.T) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
 
-				_, err2 := controller.controllerSharedState.azClient.DiskV1beta1().AzDriverNodes(testNamespace).Get(context.TODO(), testNode1Name, metav1.GetOptions{})
+				_, err2 := controller.controllerSharedState.azClient.DiskV1beta2().AzDriverNodes(testNamespace).Get(context.TODO(), testNode1Name, metav1.GetOptions{})
 				require.EqualValues(t, testAzDriverNode1NotFoundError, err2)
 			},
 		},
@@ -103,13 +103,13 @@ func TestAzDriverNodeControllerReconcile(t *testing.T) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
 
-				_, err2 := controller.controllerSharedState.azClient.DiskV1beta1().AzDriverNodes(testNamespace).Get(context.TODO(), testNode1Name, metav1.GetOptions{})
+				_, err2 := controller.controllerSharedState.azClient.DiskV1beta2().AzDriverNodes(testNamespace).Get(context.TODO(), testNode1Name, metav1.GetOptions{})
 				require.EqualValues(t, testAzDriverNode1NotFoundError, err2)
 
 				nodeRequirement, _ := azureutils.CreateLabelRequirements(consts.NodeNameLabel, selection.Equals, testNode1Name)
 				labelSelector := labels.NewSelector().Add(*nodeRequirement)
 				conditionFunc := func() (bool, error) {
-					attachments, _ := controller.controllerSharedState.azClient.DiskV1beta1().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
+					attachments, _ := controller.controllerSharedState.azClient.DiskV1beta2().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
 					return len(attachments.Items) == 0, nil
 				}
 				err = wait.PollImmediate(verifyCRIInterval, verifyCRITimeout, conditionFunc)
@@ -137,7 +137,7 @@ func TestAzDriverNodeControllerReconcile(t *testing.T) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
 
-				_, err2 := controller.controllerSharedState.azClient.DiskV1beta1().AzDriverNodes(testNamespace).Get(context.TODO(), testNode1Name, metav1.GetOptions{})
+				_, err2 := controller.controllerSharedState.azClient.DiskV1beta2().AzDriverNodes(testNamespace).Get(context.TODO(), testNode1Name, metav1.GetOptions{})
 				require.NoError(t, err2)
 			},
 		},
@@ -162,7 +162,7 @@ func TestAzDriverNodeControllerReconcile(t *testing.T) {
 				require.EqualValues(t, testNode1ServerTimeoutError, err)
 				require.True(t, result.Requeue)
 
-				_, err2 := controller.controllerSharedState.azClient.DiskV1beta1().AzDriverNodes(testNamespace).Get(context.TODO(), testNode1Name, metav1.GetOptions{})
+				_, err2 := controller.controllerSharedState.azClient.DiskV1beta2().AzDriverNodes(testNamespace).Get(context.TODO(), testNode1Name, metav1.GetOptions{})
 				require.NoError(t, err2)
 			},
 		},

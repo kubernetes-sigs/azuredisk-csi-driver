@@ -26,11 +26,13 @@ import (
 	rest "k8s.io/client-go/rest"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"
 	diskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1beta1"
+	diskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/typed/azuredisk/v1beta2"
 )
 
 type Interface interface {
 	Discovery() discovery.DiscoveryInterface
 	DiskV1beta1() diskv1beta1.DiskV1beta1Interface
+	DiskV1beta2() diskv1beta2.DiskV1beta2Interface
 }
 
 // Clientset contains the clients for groups. Each group has exactly one
@@ -38,11 +40,17 @@ type Interface interface {
 type Clientset struct {
 	*discovery.DiscoveryClient
 	diskV1beta1 *diskv1beta1.DiskV1beta1Client
+	diskV1beta2 *diskv1beta2.DiskV1beta2Client
 }
 
 // DiskV1beta1 retrieves the DiskV1beta1Client
 func (c *Clientset) DiskV1beta1() diskv1beta1.DiskV1beta1Interface {
 	return c.diskV1beta1
+}
+
+// DiskV1beta2 retrieves the DiskV1beta2Client
+func (c *Clientset) DiskV1beta2() diskv1beta2.DiskV1beta2Interface {
+	return c.diskV1beta2
 }
 
 // Discovery retrieves the DiscoveryClient
@@ -60,6 +68,10 @@ func (c *Clientset) Discovery() discovery.DiscoveryInterface {
 // where httpClient was generated with rest.HTTPClientFor(c).
 func NewForConfig(c *rest.Config) (*Clientset, error) {
 	configShallowCopy := *c
+
+	if configShallowCopy.UserAgent == "" {
+		configShallowCopy.UserAgent = rest.DefaultKubernetesUserAgent()
+	}
 
 	// share the transport between all clients
 	httpClient, err := rest.HTTPClientFor(&configShallowCopy)
@@ -89,6 +101,10 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 	if err != nil {
 		return nil, err
 	}
+	cs.diskV1beta2, err = diskv1beta2.NewForConfigAndClient(&configShallowCopy, httpClient)
+	if err != nil {
+		return nil, err
+	}
 
 	cs.DiscoveryClient, err = discovery.NewDiscoveryClientForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
@@ -111,6 +127,7 @@ func NewForConfigOrDie(c *rest.Config) *Clientset {
 func New(c rest.Interface) *Clientset {
 	var cs Clientset
 	cs.diskV1beta1 = diskv1beta1.New(c)
+	cs.diskV1beta2 = diskv1beta2.New(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClient(c)
 	return &cs

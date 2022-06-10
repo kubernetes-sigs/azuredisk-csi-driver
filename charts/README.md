@@ -32,8 +32,7 @@
 - [add the Chart repository](#add-the-helm-chart-repository)
 
 ### Tips
-
-- make controller only run on master node: `--set controller.runOnMaster=true`
+ - schedule controller running on control plane node: `--set controller.runOnControlPlane=true`
 - set replica of controller as `1`: `--set controller.replicas=1`
 - specify different cloud config secret for the driver:
   - `--set controller.cloudConfigSecretName`
@@ -71,7 +70,7 @@ helm repo update azuredisk-csi-driver
 ### install a specific version
 
 ```console
-helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v1.14.0
+helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v1.18.0
 ```
 
 ### install on Azure Stack
@@ -139,10 +138,10 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `image.csiResizer.tag`                            | csi-resizer docker image tag                               | `v1.4.0`                                                       |
 | `image.csiResizer.pullPolicy`                     | csi-resizer image pull policy                              | `IfNotPresent`                                                 |
 | `image.livenessProbe.repository`                  | liveness-probe docker image                                | `/oss/kubernetes-csi/livenessprobe`           |
-| `image.livenessProbe.tag`                         | liveness-probe docker image tag                            | `v2.5.0`                                                       |
+| `image.livenessProbe.tag`                         | liveness-probe docker image tag                            | `v2.6.0`                                                       |
 | `image.livenessProbe.pullPolicy`                  | liveness-probe image pull policy                           | `IfNotPresent`                                                 |
 | `image.nodeDriverRegistrar.repository`            | csi-node-driver-registrar docker image                     | `/oss/kubernetes-csi/csi-node-driver-registrar` |
-| `image.nodeDriverRegistrar.tag`                   | csi-node-driver-registrar docker image tag                 | `v2.4.0`                                                       |
+| `image.nodeDriverRegistrar.tag`                   | csi-node-driver-registrar docker image tag                 | `v2.5.0`                                                       |
 | `image.nodeDriverRegistrar.pullPolicy`            | csi-node-driver-registrar image pull policy                | `IfNotPresent`                                                 |
 | `imagePullSecrets`                                | Specify docker-registry secret names as an array           | [] (does not add image pull secrets to deployed pods)        |                                       |
 | `serviceAccount.create`                           | whether create service account of csi-azuredisk-controller, csi-azuredisk-node, and snapshot-controller| `true`                                                    |
@@ -158,7 +157,10 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `controller.replicas`                             | the replicas of csi-azuredisk-controller                   | `2`                                                            |
 | `controller.metricsPort`                          | metrics port of csi-azuredisk-controller                   | `29604`                                                        |
 | `controller.livenessProbe.healthPort`             | health check port for liveness probe                       | `29602` |
-| `controller.runOnMaster`                          | run csi-azuredisk-controller on master node                | `false`                                                        |
+| `controller.runOnMaster`                          | run csi-azuredisk-controller on master node(deprecated on k8s 1.25+)                | `false`                                                        |
+| `controller.runOnControlPlane`                    | run controller on control plane node                                                          |`false`                                                           |
+| `controller.vmssCacheTTLInSeconds`                | vmss cache TTL in seconds (600 by default)                                |`-1` (use default value)                                                          |
+| `controller.vmType`                | type of agent node. available values: `vmss`, `standard`                     |`` (use default value in cloud config)                                                          |
 | `controller.logLevel`                             | controller driver log level                                |`5`                                                           |
 | `controller.affinity`                             | controller pod affinity                                    |                                                                |
 | `controller.tolerations`                          | controller pod tolerations                                 | Tolerates scheduling to control plane                          |
@@ -243,7 +245,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 Applicable to any Kubernetes cluster without the Azure Disk CSI Driver V1 installed. If V1 is installed, proceed to side-by-side installation instructions below. The V1 driver is installed by default in AKS clusters with Kubernetes version 1.21 and later.
 
 ```console
-helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v2.0.0-beta.2
+helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v2.0.0-beta.3
 ```
 
 ### install Azure Disk CSI Driver V2 side-by-side with Azure Disk CSI Driver V1 (Preview)
@@ -252,8 +254,8 @@ Since VolumeSnapshot CRDs and other components are created first when V1 driver 
 
 ```console
 helm install azuredisk-csi-driver-v2 azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system \
-  --version v2.0.0-beta.2 \
-  --values https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts/v2.0.0-beta.2/azuredisk-csi-driver/side-by-side-values.yaml
+  --version v2.0.0-beta.3 \
+  --values https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts/v2.0.0-beta.3/azuredisk-csi-driver/side-by-side-values.yaml
 ```
 
 > NOTE: When installing the V2 driver side-by-side with the V1 driver in an AKS cluster, you will need to grant the agentpool service principal or managed identity `Contributor` access to the resource groups used to store managed disks. By default, this is the resource group prefixed by `MC_` corresponding to your AKS cluster.
@@ -283,7 +285,7 @@ helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --na
 This assumes you have already installed Azure Disk CSI Driver V1 to a non-AKS cluster, e.g. one created using [aks-engine](https://github.com/Azure/aks-engine) or [Cluster API Provider for Azure (CAPZ)](https://github.com/kubernetes-sigs/cluster-api-provider-azure).
 
 ```console
-helm upgrade azure-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v2.0.0-beta.2
+helm upgrade azure-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v2.0.0-beta.3
 ```
 
 ---
@@ -296,12 +298,12 @@ In addition to the parameters supported by the V1 driver, Azure Disk CSI driver 
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `image.azuredisk.tag` | Azure Disk CSI Driver V2 docker image tag | `v2.0.0-beta.2` |
+| `image.azuredisk.tag` | Azure Disk CSI Driver V2 docker image tag | `v2.0.0-beta.3` |
 | `image.curl.repository` | curl docker image | `docker.io/curlimages/curl` |
 | `image.curl.tag` | curl docker image tag | `latest` |
 | `image.curl.pullPolicy` | curl docker image pull policy | `IfNotPresent` |
 | `image.schedulerExtender.repository` | Azure Disk CSI Driver V2 Scheduler Extender docker image | `/oss/csi/azdiskschedulerextender-csi` |
-| `image.schedulerExtender.tag` | Azure Disk CSI Driver V2 Scheduler Extender docker image tag | `v2.0.0-beta.2` |
+| `image.schedulerExtender.tag` | Azure Disk CSI Driver V2 Scheduler Extender docker image tag | `v2.0.0-beta.3` |
 | `image.schedulerExtender.pullPolicy` | Azure Disk CSI Driver V2 Scheduler Extender docker image pull policy | `IfNotPresent` |
 | `image.kubeScheduler.repository` | kube-scheduler docker image | `/oss/kubernetes/kube-scheduler` |
 | `image.kubeScheduler.tag` | kube-scheduler docker image tag - this version should be the same as the Kubernetes cluster version | `v1.21.2` |

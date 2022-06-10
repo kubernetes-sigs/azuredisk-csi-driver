@@ -35,7 +35,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e/framework"
-	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 )
@@ -46,7 +46,7 @@ type PreProvisionedCheckForReplicasTest struct {
 	CSIDriver     driver.PreProvisionedVolumeTestDriver
 	Pods          []resources.PodDetails
 	VolumeName    string
-	AzDiskClient  azDiskClientSet.Interface
+	AzDiskClient  azdisk.Interface
 	VolumeContext map[string]string
 }
 
@@ -84,7 +84,7 @@ func (t *PreProvisionedCheckForReplicasTest) Run(client clientset.Interface, nam
 		labelSelector := metav1.LabelSelector{MatchLabels: map[string]string{consts.VolumeNameLabel: t.VolumeName, consts.RoleLabel: "Replica"}}
 		err := wait.PollImmediate(testconsts.Poll, testconsts.PollTimeout,
 			func() (bool, error) {
-				azVolumeAttachments, err := t.AzDiskClient.DiskV1beta1().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: labels.Set(labelSelector.MatchLabels).String()})
+				azVolumeAttachments, err := t.AzDiskClient.DiskV1beta2().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: labels.Set(labelSelector.MatchLabels).String()})
 				if err != nil {
 					return false, status.Errorf(codes.Internal, "failed to get replica attachments. Error: %v", err)
 				}

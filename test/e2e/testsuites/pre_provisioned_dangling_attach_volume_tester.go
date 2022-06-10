@@ -18,7 +18,6 @@ package testsuites
 
 import (
 	"context"
-	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
 	"github.com/onsi/ginkgo"
@@ -52,26 +51,16 @@ func (t *PreProvisionedDanglingAttachVolumeTest) Run(client clientset.Interface,
 	}
 
 	// Get the list of available nodes for scheduling the pod
-	nodes := nodeutil.ListNodeNames(client)
+	nodes := nodeutil.ListAgentNodeNames(client, t.Pod.IsWindows)
 	if len(nodes) < 2 {
-		ginkgo.Skip("need at least 2 nodes to verify the test case. Current node count is %d", len(nodes))
-	}
-	var node string
-	for _, n := range nodes {
-		if !strings.Contains(n, "control-plane") {
-			node = n
-			break
-		}
-	}
-	if node == "" {
-		ginkgo.Skip("cannot get a suitable agent node to run test case")
+		ginkgo.Skip("need at least 2 agent nodes to verify the test case. Current agent node count is %d", len(nodes))
 	}
 
 	ginkgo.By("attaching disk to node#0")
 	diskURI := t.Pod.Volumes[0].VolumeID
 	diskName, err := azureutils.GetDiskName(diskURI)
 	framework.ExpectNoError(err)
-	nodeName := types.NodeName(nodes[0])
+	node0Name := nodes[0]
 	cachingMode, ok := t.VolumeContext[consts.CachingModeField]
 	if !ok {
 		cachingMode = "None"
@@ -80,12 +69,12 @@ func (t *PreProvisionedDanglingAttachVolumeTest) Run(client clientset.Interface,
 	framework.ExpectNoError(err)
 	disk, rerr := t.AzureCloud.DisksClient.Get(context.Background(), t.AzureCloud.SubscriptionID, resourceGroup, diskName)
 	framework.ExpectNoError(rerr.Error())
-	_, err = t.AzureCloud.AttachDisk(context.Background(), true, diskName, diskURI, nodeName, compute.CachingTypes(cachingMode), &disk)
+	_, err = t.AzureCloud.AttachDisk(context.Background(), false, diskName, diskURI, types.NodeName(node0Name), compute.CachingTypes(cachingMode), &disk)
 	framework.ExpectNoError(err)
 
 	// Make node#0 unschedulable to ensure that pods are scheduled on a different node
-	tpod.SetNodeUnschedulable(node, true)        // kubeclt cordon node
-	defer tpod.SetNodeUnschedulable(node, false) // defer kubeclt uncordon node
+	tpod.SetNodeUnschedulable(node0Name, true)        // kubeclt cordon node
+	defer tpod.SetNodeUnschedulable(node0Name, false) // defer kubeclt uncordon node
 
 	// Create a pod with the pvc mount for the disk currently attached to node#0 and wait for success
 	ginkgo.By("deploying the pod")

@@ -20,7 +20,7 @@ IMAGE_NAME ?= azuredisk-csi
 SCHEDULER_EXTENDER_IMAGE_NAME ?= azdiskschedulerextender-csi
 ifneq ($(BUILD_V2), true)
 PLUGIN_NAME = azurediskplugin
-IMAGE_VERSION ?= v1.15.0
+IMAGE_VERSION ?= v1.19.0
 CHART_VERSION ?= latest
 else
 PLUGIN_NAME = azurediskpluginv2
@@ -377,3 +377,7 @@ upgrade-test:
 .PHONY: install-az-log
 install-az-log:
 	go install ./cmd/az-log
+
+.PHONY: install-az-analyze
+install-az-analyze:
+	go install ./cmd/az-analyze

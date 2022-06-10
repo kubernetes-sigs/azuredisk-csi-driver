@@ -21,5 +21,6 @@ LABEL description="Azure Disk CSI Driver"
 
 ARG ARCH=amd64
 ARG PLUGIN_NAME=azurediskplugin
-COPY ./_output/${ARCH}/${PLUGIN_NAME} /azurediskplugin
+ARG binary=./_output/${ARCH}/${PLUGIN_NAME}
+COPY ${binary} /azurediskplugin
 ENTRYPOINT ["/azurediskplugin"]

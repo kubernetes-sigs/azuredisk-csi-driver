@@ -20,11 +20,13 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"time"
 
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
 	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
@@ -42,7 +44,7 @@ type TestDeployment struct {
 	Pods       []PodDetails
 }
 
-func NewTestDeployment(c clientset.Interface, ns *v1.Namespace, command string, volumeMounts []v1.VolumeMount, volumeDevices []v1.VolumeDevice, volumes []v1.Volume, replicaCount int32, isWindows, useCMD, useAntiAffinity bool, schedulerName string) *TestDeployment {
+func NewTestDeployment(c clientset.Interface, ns *v1.Namespace, command string, volumeMounts []v1.VolumeMount, volumeDevices []v1.VolumeDevice, volumes []v1.Volume, replicaCount int32, isWindows, useCMD, useAntiAffinity bool, schedulerName, winServerVer string) *TestDeployment {
 	generateName := "azuredisk-volume-tester-"
 	selectorValue := fmt.Sprintf("%s%d", generateName, rand.Int())
 
@@ -103,7 +105,7 @@ func NewTestDeployment(c clientset.Interface, ns *v1.Namespace, command string, 
 		testDeployment.Deployment.Spec.Template.Spec.NodeSelector = map[string]string{
 			"kubernetes.io/os": "windows",
 		}
-		testDeployment.Deployment.Spec.Template.Spec.Containers[0].Image = "mcr.microsoft.com/windows/servercore:ltsc2019"
+		testDeployment.Deployment.Spec.Template.Spec.Containers[0].Image = "mcr.microsoft.com/windows/servercore:" + getWinImageTag(winServerVer)
 		if useCMD {
 			testDeployment.Deployment.Spec.Template.Spec.Containers[0].Command = []string{"cmd"}
 			testDeployment.Deployment.Spec.Template.Spec.Containers[0].Args = []string{"/c", command}
@@ -134,7 +136,27 @@ func (t *TestDeployment) WaitForPodReady() {
 	framework.ExpectNoError(err)
 	t.Pods = []PodDetails{}
 	for _, pod := range pods.Items {
-		t.Pods = append(t.Pods, PodDetails{Name: pod.Name})
+		var podPersistentVolumes []VolumeDetails
+		for _, volume := range pod.Spec.Volumes {
+			if volume.VolumeSource.PersistentVolumeClaim != nil {
+				pvc, err := t.Client.CoreV1().PersistentVolumeClaims(t.Namespace.Name).Get(context.TODO(), volume.VolumeSource.PersistentVolumeClaim.ClaimName, metav1.GetOptions{})
+				framework.ExpectNoError(err)
+				accessMode := v1.ReadWriteOnce
+				if len(pvc.Spec.AccessModes) > 0 {
+					accessMode = pvc.Spec.AccessModes[0]
+				}
+				newVolume := VolumeDetails{
+					PersistentVolume: &v1.PersistentVolume{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: pvc.Spec.VolumeName,
+						},
+					},
+					VolumeAccessMode: accessMode,
+				}
+				podPersistentVolumes = append(podPersistentVolumes, newVolume)
+			}
+		}
+		t.Pods = append(t.Pods, PodDetails{Name: pod.Name, Volumes: podPersistentVolumes})
 	}
 	ch := make(chan error, len(t.Pods))
 	defer close(ch)
@@ -151,11 +173,16 @@ func (t *TestDeployment) WaitForPodReady() {
 	}
 }
 
-func (t *TestDeployment) Exec(command []string, expectedString string) {
-	for _, pod := range t.Pods {
-		_, err := framework.LookForStringInPodExec(t.Namespace.Name, pod.Name, command, expectedString, testconsts.ExecTimeout)
-		framework.ExpectNoError(err)
+func (t *TestDeployment) podNames() []string {
+	names := make([]string, 0, len(t.Pods))
+	for _, podDetails := range t.Pods {
+		names = append(names, podDetails.Name)
 	}
+	return names
+}
+
+func (t *TestDeployment) PollForStringInPodsExec(command []string, expectedString string) {
+	pollForStringInPodsExec(t.Namespace.Name, t.podNames(), command, expectedString)
 }
 
 func (t *TestDeployment) DeletePodAndWait() {
@@ -177,20 +204,60 @@ func (t *TestDeployment) DeletePodAndWait() {
 		}
 	}
 
-	for _, pod := range t.Pods {
-		e2elog.Logf("Waiting for pod %q in namespace %q to be fully deleted", pod.Name, t.Namespace.Name)
-		go func(client clientset.Interface, ns, podName string) {
-			err := e2epod.WaitForPodNoLongerRunningInNamespace(client, podName, ns)
-			ch <- err
-		}(t.Client, t.Namespace.Name, pod.Name)
+	conditionFunc := func(podName string, ch chan error) {
+		e2elog.Logf("Waiting for pod %q in namespace %q to be fully deleted", podName, t.Namespace.Name)
+		err := e2epod.WaitForPodNoLongerRunningInNamespace(t.Client, podName, t.Namespace.Name)
+		ch <- err
 	}
-	// Wait on all goroutines to report on pod terminating
+	t.WaitForPodStatus(conditionFunc)
+}
+
+func (t *TestDeployment) ForceDeletePod(podName string) error {
+	err := t.Client.CoreV1().Pods(t.Deployment.Namespace).Delete(context.Background(), podName, *metav1.NewDeleteOptions(0))
+	if err != nil && !errors.IsNotFound(err) {
+		return err
+	}
+
+	// remove pod from the deployment's pod list
+	pods := make([]PodDetails, len(t.Pods)-1)
+	i := 0
+	for _, tPod := range t.Pods {
+		if tPod.Name == podName {
+			continue
+		}
+		pods[i] = tPod
+		i++
+	}
+	t.Pods = pods
+	return nil
+}
+
+func (t *TestDeployment) WaitForPodTerminating(timeout time.Duration) {
+	conditionFunc := func(podName string, ch chan error) {
+		e2elog.Logf("Waiting for pod %q in namespace %q to start terminating", podName, t.Namespace.Name)
+		err := wait.PollImmediate(time.Duration(15)*time.Second, timeout, func() (bool, error) {
+			podObj, err := t.Client.CoreV1().Pods(t.Namespace.Name).Get(context.Background(), podName, metav1.GetOptions{})
+			if err != nil && !errors.IsNotFound(err) {
+				return false, err
+			}
+			return !podObj.DeletionTimestamp.IsZero(), nil
+		})
+		ch <- err
+	}
+	t.WaitForPodStatus(conditionFunc)
+}
+
+func (t *TestDeployment) WaitForPodStatus(conditionFunc func(podName string, ch chan error)) {
+	ch := make(chan error, len(t.Pods))
+
+	for _, pod := range t.Pods {
+		go conditionFunc(pod.Name, ch)
+	}
+
 	for _, pod := range t.Pods {
 		err := <-ch
-		if err != nil {
-			if !errors.IsNotFound(err) {
-				framework.ExpectNoError(fmt.Errorf("pod %q error waiting for delete: %v", pod.Name, err))
-			}
+		if err != nil && !errors.IsNotFound(err) {
+			framework.ExpectNoError(fmt.Errorf("pod %q error waiting for delete: %v", pod.Name, err))
 		}
 	}
 }

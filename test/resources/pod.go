@@ -41,7 +41,7 @@ type TestPod struct {
 	Namespace *v1.Namespace
 }
 
-func NewTestPod(c clientset.Interface, ns *v1.Namespace, command, schedulerName string, isWindows bool) *TestPod {
+func NewTestPod(c clientset.Interface, ns *v1.Namespace, command, schedulerName string, isWindows bool, winServerVer string) *TestPod {
 	testPod := &TestPod{
 		Client:    c,
 		Namespace: ns,
@@ -69,7 +69,7 @@ func NewTestPod(c clientset.Interface, ns *v1.Namespace, command, schedulerName 
 		testPod.Pod.Spec.NodeSelector = map[string]string{
 			"kubernetes.io/os": "windows",
 		}
-		testPod.Pod.Spec.Containers[0].Image = "mcr.microsoft.com/windows/servercore:ltsc2019"
+		testPod.Pod.Spec.Containers[0].Image = "mcr.microsoft.com/windows/servercore:" + getWinImageTag(winServerVer)
 		testPod.Pod.Spec.Containers[0].Command = []string{"powershell.exe"}
 		testPod.Pod.Spec.Containers[0].Args = []string{"-Command", command}
 	}

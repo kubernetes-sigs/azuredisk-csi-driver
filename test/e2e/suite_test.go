@@ -19,6 +19,8 @@ package e2e
 import (
 	"context"
 	"flag"
+	"fmt"
+	"log"
 	"os"
 	"path"
 	"path/filepath"
@@ -53,6 +55,11 @@ var (
 )
 
 var _ = ginkgo.BeforeSuite(func() {
+	log.Println(testconsts.AzureDriverNameVar, os.Getenv(testconsts.AzureDriverNameVar), fmt.Sprintf("%v", testconsts.IsUsingInTreeVolumePlugin))
+	log.Println(testconsts.TestMigrationEnvVar, os.Getenv(testconsts.TestMigrationEnvVar), fmt.Sprintf("%v", testconsts.IsTestingMigration))
+	log.Println(testconsts.TestWindowsEnvVar, os.Getenv(testconsts.TestWindowsEnvVar), fmt.Sprintf("%v", testconsts.IsWindowsCluster))
+	log.Println(testconsts.TestWinServerVerEnvVar, os.Getenv(testconsts.TestWinServerVerEnvVar), fmt.Sprintf("%v", testconsts.WinServerVer))
+
 	// k8s.io/kubernetes/test/e2e/framework requires env KUBECONFIG to be set
 	// it does not fall back to defaults
 	if os.Getenv(testconsts.KubeconfigEnvVar) == "" {
@@ -102,7 +109,13 @@ var _ = ginkgo.BeforeSuite(func() {
 		kubeconfig := os.Getenv(testconsts.KubeconfigEnvVar)
 		kubeclient, err := azureutils.GetKubeClient(kubeconfig)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		azureCloud, err = azureutils.GetCloudProviderFromClient(kubeclient, driverOptions.CloudConfigSecretName, driverOptions.CloudConfigSecretNamespace, azuredisk.GetUserAgent(driverOptions.DriverName, driverOptions.CustomUserAgent, driverOptions.UserAgentSuffix))
+		azureCloud, err = azureutils.GetCloudProviderFromClient(
+			kubeclient,
+			driverOptions.CloudConfigSecretName,
+			driverOptions.CloudConfigSecretNamespace,
+			azuredisk.GetUserAgent(driverOptions.DriverName, driverOptions.CustomUserAgent, driverOptions.UserAgentSuffix),
+			driverOptions.AllowEmptyCloudConfig,
+		)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	}
 })
@@ -133,6 +146,9 @@ var _ = ginkgo.AfterSuite(func() {
 		cloud := "azurepubliccloud"
 		if testconsts.IsWindowsCluster {
 			os = "windows"
+			if testconsts.WinServerVer == "windows-2022" {
+				os = testconsts.WinServerVer
+			}
 		}
 		if testconsts.IsAzureStackCloud {
 			cloud = "azurestackcloud"

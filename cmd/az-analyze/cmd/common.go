@@ -17,13 +17,17 @@ limitations under the License.
 package cmd
 
 import (
+	"bytes"
+	"fmt"
+	"path/filepath"
+	"time"
+
 	homedir "github.com/mitchellh/go-homedir"
 	"github.com/spf13/viper"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
-	"path/filepath"
-	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
@@ -53,8 +57,8 @@ func getKubernetesClientset(config *rest.Config) *kubernetes.Clientset {
 	}
 	return clientsetK8s
 }
-func getAzDiskClientset(config *rest.Config) *azDiskClientSet.Clientset {
-	clientsetAzDisk, err := azDiskClientSet.NewForConfig(config)
+func getAzDiskClientset(config *rest.Config) *azdisk.Clientset {
+	clientsetAzDisk, err := azdisk.NewForConfig(config)
 	if err != nil {
 		panic(err.Error())
 	}
@@ -68,4 +72,33 @@ func getDriverNamesapce() string {
 		driverNamespace = consts.DefaultAzureDiskCrdNamespace
 	}
 	return driverNamespace
+}
+
+func timeFmt(t time.Duration) string {
+	day := t / (24 * time.Hour)
+	t = t % (24 * time.Hour)
+	hour := t / time.Hour
+	t = t % time.Hour
+	minute := t / time.Minute
+	t = t % time.Minute
+	second := int(t / time.Second)
+
+	var buffer bytes.Buffer
+	if day > 0 {
+		buffer.WriteString(fmt.Sprintf("%dd", day))
+		if hour == 0 {
+			return buffer.String()
+		}
+	}
+	if hour > 0 {
+		buffer.WriteString(fmt.Sprintf("%dh", hour))
+		return buffer.String()
+	}
+	if minute > 0 {
+		buffer.WriteString(fmt.Sprintf("%dm", minute))
+	}
+	if second > 0 {
+		buffer.WriteString(fmt.Sprintf("%ds", second))
+	}
+	return buffer.String()
 }

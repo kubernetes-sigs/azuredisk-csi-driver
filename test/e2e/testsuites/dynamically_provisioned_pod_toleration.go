@@ -31,7 +31,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e/framework"
-	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
@@ -47,7 +47,7 @@ type PodToleration struct {
 	Pod                    resources.PodDetails
 	Volume                 resources.VolumeDetails
 	IsMultiZone            bool
-	AzDiskClient           *azDiskClientSet.Clientset
+	AzDiskClient           *azdisk.Clientset
 	StorageClassParameters map[string]string
 }
 
@@ -55,10 +55,10 @@ func (t *PodToleration) Run(client clientset.Interface, namespace *v1.Namespace,
 	_, maxMountReplicaCount := azureutils.GetMaxSharesAndMaxMountReplicaCount(t.StorageClassParameters, false)
 
 	// Get the list of available nodes for scheduling the pod
-	nodes := nodeutil.ListNodeNames(client)
+	nodes := nodeutil.ListAgentNodeNames(client, t.Pod.IsWindows)
 	necessaryNodeCount := maxMountReplicaCount + 2
 	if len(nodes) < necessaryNodeCount {
-		ginkgo.Skip("need at least %d nodes to verify the test case. Current node count is %d", necessaryNodeCount, len(nodes))
+		ginkgo.Skip("need at least %d agent nodes to verify the test case. Current agent node count is %d", necessaryNodeCount, len(nodes))
 	}
 
 	ctx := context.Background()
@@ -128,7 +128,7 @@ func (t *PodToleration) Run(client clientset.Interface, namespace *v1.Namespace,
 				framework.ExpectNoError(err)
 				labelSelector = labelSelector.Add(*volReq)
 
-				azVolumeAttachments, err := t.AzDiskClient.DiskV1beta1().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})
+				azVolumeAttachments, err := t.AzDiskClient.DiskV1beta2().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})
 				if err != nil {
 					return false, err
 				}

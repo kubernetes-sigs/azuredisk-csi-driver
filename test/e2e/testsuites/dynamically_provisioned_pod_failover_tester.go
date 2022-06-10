@@ -17,8 +17,6 @@ limitations under the License.
 package testsuites
 
 import (
-	"time"
-
 	"github.com/onsi/ginkgo"
 	v1 "k8s.io/api/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -46,9 +44,9 @@ func (t *PodFailover) Run(client clientset.Interface, namespace *v1.Namespace, s
 	}
 
 	// Get the list of available nodes for scheduling the pod
-	nodes := nodeutil.ListNodeNames(client)
+	nodes := nodeutil.ListAgentNodeNames(client, t.Pod.IsWindows)
 	if len(nodes) < 2 {
-		ginkgo.Skip("need at least 2 nodes to verify the test case. Current node count is %d", len(nodes))
+		ginkgo.Skip("need at least 2 agent nodes to verify the test case. Current agent node count is %d", len(nodes))
 	}
 
 	ginkgo.By("deploying the deployment")
@@ -58,9 +56,8 @@ func (t *PodFailover) Run(client clientset.Interface, namespace *v1.Namespace, s
 	tDeployment.WaitForPodReady()
 
 	if t.PodCheck != nil {
-		ginkgo.By("sleep 3s and then check pod exec")
-		time.Sleep(3 * time.Second)
-		tDeployment.Exec(t.PodCheck.Cmd, t.PodCheck.ExpectedString)
+		ginkgo.By("check pod exec")
+		tDeployment.PollForStringInPodsExec(t.PodCheck.Cmd, t.PodCheck.ExpectedString)
 	}
 
 	ginkgo.By("cordoning node 0")
@@ -80,9 +77,8 @@ func (t *PodFailover) Run(client clientset.Interface, namespace *v1.Namespace, s
 	tDeployment.WaitForPodReady()
 
 	if t.PodCheck != nil {
-		ginkgo.By("sleep 3s and then check pod exec")
-		time.Sleep(3 * time.Second)
+		ginkgo.By("check pod exec")
 		// pod will be restarted so expect to see 2 instances of string
-		tDeployment.Exec(t.PodCheck.Cmd, t.PodCheck.ExpectedString+t.PodCheck.ExpectedString)
+		tDeployment.PollForStringInPodsExec(t.PodCheck.Cmd, t.PodCheck.ExpectedString+t.PodCheck.ExpectedString)
 	}
 }

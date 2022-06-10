@@ -21,6 +21,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
@@ -67,16 +68,17 @@ func scaleTests(isMultiZone bool) {
 		}
 
 		pod := resources.PodDetails{
-			Cmd:       testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
-			Volumes:   resources.NormalizeVolumes(volumes, []string{}, isMultiZone),
-			IsWindows: testconsts.IsWindowsCluster,
+			Cmd:          testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
+			Volumes:      resources.NormalizeVolumes(volumes, []string{}, isMultiZone),
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
 		}
 		test := PodSchedulingWithPVScaleTest{}
 
 		test.CSIDriver = testDriver
 		test.Pod = pod
 		test.Replicas = 1000
-		test.StorageClassParameters = map[string]string{"skuName": "Premium_LRS", "maxShares": "1", "cachingmode": "None"}
+		test.StorageClassParameters = map[string]string{consts.SkuNameField: "Premium_LRS", "maxShares": "1", "cachingmode": "None"}
 
 		test.Run(cs, ns, schedulerName)
 	})
@@ -99,10 +101,11 @@ func scaleTests(isMultiZone bool) {
 		}
 
 		pod := resources.PodDetails{
-			Cmd:       testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
-			Volumes:   resources.NormalizeVolumes([]resources.VolumeDetails{volume}, []string{}, isMultiZone),
-			IsWindows: testconsts.IsWindowsCluster,
-			UseCMD:    false,
+			Cmd:          testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
+			Volumes:      resources.NormalizeVolumes([]resources.VolumeDetails{volume}, []string{}, isMultiZone),
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
+			UseCMD:       false,
 		}
 
 		test := PodSchedulingOnFailoverScaleTest{}
@@ -110,7 +113,7 @@ func scaleTests(isMultiZone bool) {
 		test.Pod = pod
 		test.Replicas = 1
 		test.PodCount = 1000
-		test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_LRS", "maxShares": "2", "cachingmode": "None"}
+		test.StorageClassParameters = map[string]string{consts.SkuNameField: "StandardSSD_LRS", "maxShares": "2", "cachingmode": "None"}
 
 		test.Run(cs, ns, schedulerName)
 	})
@@ -134,9 +137,10 @@ func scaleTests(isMultiZone bool) {
 		}
 
 		pod := resources.PodDetails{
-			Cmd:       testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
-			Volumes:   resources.NormalizeVolumes(volumes, []string{}, isMultiZone),
-			IsWindows: testconsts.IsWindowsCluster,
+			Cmd:          testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
+			Volumes:      resources.NormalizeVolumes(volumes, []string{}, isMultiZone),
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
 		}
 
 		test := PodSchedulingWithPVScaleTest{}
@@ -165,9 +169,10 @@ func scaleTests(isMultiZone bool) {
 		}
 
 		pod := resources.PodDetails{
-			Cmd:       testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
-			Volumes:   resources.NormalizeVolumes(volumes, []string{}, isMultiZone),
-			IsWindows: testconsts.IsWindowsCluster,
+			Cmd:          testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
+			Volumes:      resources.NormalizeVolumes(volumes, []string{}, isMultiZone),
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
 		}
 
 		test := PodSchedulingOnFailoverScaleTest{}
@@ -175,7 +180,7 @@ func scaleTests(isMultiZone bool) {
 		test.Pod = pod
 		test.Replicas = volMountedOnPod
 		test.PodCount = 350
-		test.StorageClassParameters = map[string]string{"skuName": "Premium_LRS", "maxShares": "2", "cachingmode": "None"}
+		test.StorageClassParameters = map[string]string{consts.SkuNameField: "Premium_LRS", "maxShares": "2", "cachingmode": "None"}
 
 		test.Run(cs, ns, schedulerName)
 	})

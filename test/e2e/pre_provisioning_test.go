@@ -31,7 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
-	azDiskClientSet "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
@@ -53,7 +53,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 	var (
 		cs           clientset.Interface
 		ns           *v1.Namespace
-		azDiskClient azDiskClientSet.Interface
+		azDiskClient azdisk.Interface
 		testDriver   driver.PreProvisionedVolumeTestDriver
 		volumeID     string
 		// Set to true if the volume should not be deleted automatically after test
@@ -65,7 +65,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 		ns = f.Namespace
 		var err error
 		if testconsts.IsUsingCSIDriverV2 {
-			azDiskClient, err = azDiskClientSet.NewForConfig(f.ClientConfig())
+			azDiskClient, err = azdisk.NewForConfig(f.ClientConfig())
 		}
 		framework.ExpectNoError(err, fmt.Sprintf("Failed to create disk client. Error: %v", err))
 		testDriver = driver.InitAzureDiskDriver()
@@ -89,7 +89,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 				labelSelector := metav1.LabelSelector{MatchLabels: map[string]string{consts.VolumeNameLabel: diskName}}
 				err = wait.PollImmediate(poll, pollTimeout,
 					func() (bool, error) {
-						azVolumeAttachments, listErr := azDiskClient.DiskV1beta1().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: labels.Set(labelSelector.MatchLabels).String()})
+						azVolumeAttachments, listErr := azDiskClient.DiskV1beta2().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: labels.Set(labelSelector.MatchLabels).String()})
 						if listErr != nil {
 							if errors.IsNotFound(listErr) {
 								return true, nil
@@ -137,7 +137,8 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 							VolumeAccessMode: v1.ReadWriteOnce,
 						},
 					},
-					IsWindows: testconsts.IsWindowsCluster,
+					IsWindows:    testconsts.IsWindowsCluster,
+					WinServerVer: testconsts.WinServerVer,
 				},
 			}
 			test := testsuites.PreProvisionedReadOnlyVolumeTest{
@@ -177,7 +178,8 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 						VolumeAccessMode: v1.ReadWriteOnce,
 					},
 				},
-				IsWindows: testconsts.IsWindowsCluster,
+				IsWindows:    testconsts.IsWindowsCluster,
+				WinServerVer: testconsts.WinServerVer,
 			}
 
 			test := testsuites.PreProvisionedDanglingAttachVolumeTest{
@@ -248,9 +250,9 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 
 			sharedDiskSize := 10
 			volumeContext := map[string]string{
-				"skuName":     "Premium_LRS",
-				"maxshares":   "2",
-				"cachingMode": "None",
+				consts.SkuNameField: "Premium_LRS",
+				"maxshares":         "2",
+				"cachingMode":       "None",
 			}
 			volumeID, err = CreateVolume("shared-disk-multiple-pods", sharedDiskSize, volumeContext)
 			if err != nil {
@@ -276,6 +278,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 				},
 				UseCMD:       false,
 				IsWindows:    testconsts.IsWindowsCluster,
+				WinServerVer: testconsts.WinServerVer,
 				ReplicaCount: 2,
 			}
 
@@ -310,6 +313,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			testutil.SkipIfUsingInTreeVolumePlugin()
 			testutil.SkipIfOnAzureStackCloud()
 			testutil.SkipIfNotUsingCSIDriverV2()
+			testutil.SkipIfTestingInWindowsCluster()
 
 			sharedDiskSize := 256
 			volumeName := "shared-disk-replicas"
@@ -345,7 +349,8 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 							VolumeMode:       resources.Block,
 						},
 					},
-					IsWindows: testconsts.IsWindowsCluster,
+					IsWindows:    testconsts.IsWindowsCluster,
+					WinServerVer: testconsts.WinServerVer,
 				}
 				pods = append(pods, pod)
 			}
@@ -391,7 +396,8 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 							VolumeAccessMode: v1.ReadWriteOnce,
 						},
 					},
-					IsWindows: testconsts.IsWindowsCluster,
+					IsWindows:    testconsts.IsWindowsCluster,
+					WinServerVer: testconsts.WinServerVer,
 				},
 			}
 
