@@ -20,9 +20,11 @@ limitations under the License.
 package provisioner
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 
+	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/status"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
@@ -132,6 +134,16 @@ func (p *NodeProvisioner) GetBlockSizeBytes(devicePath string) (int64, error) {
 	}
 
 	return sizeInBytes, nil
+}
+
+// GetVolumeStats returns usage information for the specified volume.
+func (p *NodeProvisioner) GetVolumeStats(ctx context.Context, target string) ([]*csi.VolumeUsage, error) {
+	if proxy, ok := p.mounter.Interface.(mounter.CSIProxyMounter); ok {
+		volUsage, err := proxy.GetVolumeStats(ctx, target)
+		return []*csi.VolumeUsage{volUsage}, err
+	}
+
+	return []*csi.VolumeUsage{}, fmt.Errorf("could not cast to csi proxy class")
 }
 
 // readyMountPoint readies the mount point for mount.

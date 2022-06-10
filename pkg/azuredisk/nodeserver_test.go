@@ -41,7 +41,6 @@ import (
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockprovisioner"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization/mockoptimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
@@ -351,7 +350,7 @@ func TestNodeGetVolumeStats(t *testing.T) {
 		{
 			desc: "Block volume path success",
 			setupFunc: func(t *testing.T, d FakeDriver) {
-				d.getHostUtil().(*azureutils.FakeHostUtil).SetPathIsDeviceResult(blockVolumePath, true, nil)
+				d.setPathIsDeviceResult(blockVolumePath, true, nil)
 				d.setNextCommandOutputScripts(blockdevAction)
 			},
 			req:           csi.NodeGetVolumeStatsRequest{VolumePath: blockVolumePath, VolumeId: "vol_1"},
@@ -371,25 +370,28 @@ func TestNodeGetVolumeStats(t *testing.T) {
 	// Setup
 	_ = makeDir(fakePath)
 	_ = makeDir(blockVolumePath)
-	d, _ := NewFakeDriver(t)
-	mounter, err := mounter.NewFakeSafeMounter()
-	assert.NoError(t, err)
-	d.setMounter(mounter)
 
 	for _, test := range tests {
-		if !(test.skipOnDarwin && runtime.GOOS == "darwin") && !(test.skipOnWindows && runtime.GOOS == "windows") {
-			if test.setupFunc != nil {
-				test.setupFunc(t, d)
+		test := test
+		t.Run(test.desc, func(t *testing.T) {
+			d, _ := NewFakeDriver(t)
+			mounter, err := mounter.NewFakeSafeMounter()
+			assert.NoError(t, err)
+			d.setMounter(mounter)
+			if !(test.skipOnDarwin && runtime.GOOS == "darwin") && !(test.skipOnWindows && runtime.GOOS == "windows") {
+				if test.setupFunc != nil {
+					test.setupFunc(t, d)
+				}
+				_, err := d.NodeGetVolumeStats(context.Background(), &test.req)
+				if !testutil.IsErrorEquivalent(err, test.expectedErr) {
+					t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
+				}
 			}
-			_, err := d.NodeGetVolumeStats(context.Background(), &test.req)
-			if !testutil.IsErrorEquivalent(err, test.expectedErr) {
-				t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
-			}
-		}
+		})
 	}
 
 	// Clean up
-	err = os.RemoveAll(fakePath)
+	err := os.RemoveAll(fakePath)
 	assert.NoError(t, err)
 	err = os.RemoveAll(blockVolumePath)
 	assert.NoError(t, err)

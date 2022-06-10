@@ -19,9 +19,12 @@ package azureutils
 import (
 	"fmt"
 	"os"
+
+	"k8s.io/kubernetes/pkg/volume/util/hostutil"
 )
 
 type FakeHostUtil struct {
+	hostutil.FakeHostUtil
 	pathIsDeviceResult map[string]struct {
 		isDevice bool
 		err      error

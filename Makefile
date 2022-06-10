@@ -177,7 +177,7 @@ azuredisk-windows:
 
 .PHONY: azuredisk-windows-v2
 azuredisk-windows-v2:
-	BUILD_V2=true $(MAKE) azuredisk
+	BUILD_V2=true $(MAKE) azuredisk-windows
 
 .PHONY: azuredisk-darwin
 azuredisk-darwin:

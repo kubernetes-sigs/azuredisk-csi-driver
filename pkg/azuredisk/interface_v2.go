@@ -19,6 +19,7 @@ package azuredisk
 import (
 	"context"
 
+	"github.com/container-storage-interface/spec/lib/go/csi"
 	v1 "k8s.io/api/core/v1"
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
@@ -58,4 +59,5 @@ type NodeProvisioner interface {
 	Resize(source, target string) error
 	NeedsResize(devicePath, volumePath string) (bool, error)
 	GetBlockSizeBytes(devicePath string) (int64, error)
+	GetVolumeStats(ctx context.Context, target string) ([]*csi.VolumeUsage, error)
 }
