@@ -17,9 +17,9 @@ limitations under the License.
 package provisioner
 
 import (
-	"k8s.io/kubernetes/pkg/volume/util/hostutil"
 	mount "k8s.io/mount-utils"
 	testingexec "k8s.io/utils/exec/testing"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
 )
 
@@ -40,7 +40,7 @@ func NewFakeNodeProvisioner() (*FakeNodeProvisioner, error) {
 		return nil, err
 	}
 
-	fakeHostUtil := hostutil.NewFakeHostUtil(make(map[string]hostutil.FileType))
+	fakeHostUtil := azureutils.NewFakeHostUtil()
 
 	return &FakeNodeProvisioner{
 			NodeProvisioner: NodeProvisioner{mounter: fakeSafeMounter, host: fakeHostUtil, ioHandler: &fakeIOHandler{}},

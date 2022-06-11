@@ -20,11 +20,13 @@ limitations under the License.
 package azuredisk
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"strconv"
 	"strings"
 
+	"github.com/container-storage-interface/spec/lib/go/csi"
 	"k8s.io/klog/v2"
 	mount "k8s.io/mount-utils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
@@ -115,4 +117,8 @@ func rescanAllVolumes(io azureutils.IOHandler) error {
 		}
 	}
 	return nil
+}
+
+func GetVolumeStats(ctx context.Context, m *mount.SafeFormatAndMount, target string, hostutil hostUtil) ([]*csi.VolumeUsage, error) {
+	return []*csi.VolumeUsage{}, nil
 }

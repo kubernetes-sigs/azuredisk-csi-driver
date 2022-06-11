@@ -25,6 +25,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/container-storage-interface/spec/lib/go/csi"
 	disk "github.com/kubernetes-csi/csi-proxy/client/api/disk/v1beta2"
 	diskclient "github.com/kubernetes-csi/csi-proxy/client/groups/disk/v1beta2"
 
@@ -319,6 +320,26 @@ func (mounter *csiProxyMounterV1Beta) GetVolumeSizeInBytes(devicePath string) (i
 	}
 
 	return resp.VolumeSize, nil
+}
+
+// GetVolumeStats get volume usage
+func (mounter *csiProxyMounterV1Beta) GetVolumeStats(ctx context.Context, path string) (*csi.VolumeUsage, error) {
+	volIDResp, err := mounter.VolumeClient.GetVolumeIDFromMount(ctx, &volume.VolumeIDFromMountRequest{Mount: path})
+	if err != nil || volIDResp == nil {
+		return nil, fmt.Errorf("GetVolumeIDFromMount(%s) failed with error: %v, response: %v", path, err, volIDResp)
+	}
+	klog.V(6).Infof("GetVolumeStats(%s) returned volumeID(%s)", path, volIDResp.VolumeId)
+	resp, err := mounter.VolumeClient.VolumeStats(ctx, &volume.VolumeStatsRequest{VolumeId: volIDResp.VolumeId})
+	if err != nil || resp == nil {
+		return nil, fmt.Errorf("GetVolumeStats(%s) failed with error: %v, response: %v", volIDResp.VolumeId, err, resp)
+	}
+	volUsage := &csi.VolumeUsage{
+		Unit:      csi.VolumeUsage_BYTES,
+		Available: resp.VolumeSize - resp.VolumeUsedSize,
+		Total:     resp.VolumeSize,
+		Used:      resp.VolumeUsedSize,
+	}
+	return volUsage, nil
 }
 
 // GetAPIVersions returns the versions of the client APIs this mounter is using.

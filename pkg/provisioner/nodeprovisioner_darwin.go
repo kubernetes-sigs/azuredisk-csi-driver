@@ -19,7 +19,18 @@ limitations under the License.
 
 package provisioner
 
+import (
+	"context"
+
+	"github.com/container-storage-interface/spec/lib/go/csi"
+)
+
 // NeedsResize returns true if the volume needs to be resized.
 func (p *NodeProvisioner) NeedsResize(devicePath, volumePath string) (bool, error) {
 	return false, nil
+}
+
+// GetVolumeStats returns usage information for the specified volume.
+func (p *NodeProvisioner) GetVolumeStats(ctx context.Context, target string) ([]*csi.VolumeUsage, error) {
+	return []*csi.VolumeUsage{}, nil
 }

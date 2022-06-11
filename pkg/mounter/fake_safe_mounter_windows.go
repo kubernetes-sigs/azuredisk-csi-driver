@@ -20,11 +20,13 @@ limitations under the License.
 package mounter
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
 	"strings"
 
+	"github.com/container-storage-interface/spec/lib/go/csi"
 	"k8s.io/mount-utils"
 )
 
@@ -117,6 +119,11 @@ func (fake *FakeSafeMounter) GetVolumeSizeInBytes(devicePath string) (int64, err
 // ResizeVolume resizes the volume to the maximum available size.
 func (fake *FakeSafeMounter) ResizeVolume(devicePath string) error {
 	return nil
+}
+
+// GetVolumeStats get volume usage
+func (fake *FakeSafeMounter) GetVolumeStats(ctx context.Context, path string) (*csi.VolumeUsage, error) {
+	return &csi.VolumeUsage{}, nil
 }
 
 func (fake *FakeSafeMounter) GetAPIVersions() string {
