@@ -143,6 +143,7 @@ spec:
             - "--user-agent-suffix=OSS-kubectl"
             - "--disable-avset-nodes=false"
             - "--allow-empty-cloud-config=false"
+            - "--leader-election-namespace=kube-system"
           ports:
             - containerPort: 29602
               name: healthz

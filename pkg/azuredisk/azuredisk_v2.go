@@ -64,6 +64,9 @@ var heartbeatFrequencyInSec = flag.Int("heartbeat-frequency-in-sec", 30, "Freque
 var controllerLeaseDurationInSec = flag.Int("lease-duration-in-sec", 15, "The duration that non-leader candidates will wait to force acquire leadership")
 var controllerLeaseRenewDeadlineInSec = flag.Int("lease-renew-deadline-in-sec", 10, "The duration that the acting controlplane will retry refreshing leadership before giving up.")
 var controllerLeaseRetryPeriodInSec = flag.Int("lease-retry-period-in-sec", 2, "The duration the LeaderElector clients should wait between tries of actions.")
+var leaderElectionNamespace = flag.String("leader-election-namespace", consts.ReleaseNamespace, "The leader election namespace for controller")
+var nodePartition = flag.String("node-partition", consts.DefaultNodePartitionName, "The partition name for node plugin.")
+var controllerPartition = flag.String("controller-partition", consts.DefaultControllerPartitionName, "The partition name for controller plugin.")
 var isTestRun = flag.Bool("is-test-run", false, "Boolean flag to indicate whether this instance is being used for sanity or integration tests")
 
 // OutputCallDepth is the stack depth where we can find the origin of this call
@@ -87,6 +90,7 @@ type DriverV2 struct {
 	controllerLeaseDurationInSec      int
 	controllerLeaseRenewDeadlineInSec int
 	controllerLeaseRetryPeriodInSec   int
+	leaderElectionNamespace           string
 	kubeConfig                        *rest.Config
 	kubeClient                        *clientset.Clientset
 	deviceChecker                     *deviceChecker
@@ -95,7 +99,7 @@ type DriverV2 struct {
 
 // NewDriver creates a driver object.
 func NewDriver(options *DriverOptions) CSIDriver {
-	return newDriverV2(options, *driverObjectNamespace, "default", "default", *heartbeatFrequencyInSec, *controllerLeaseDurationInSec, *controllerLeaseRenewDeadlineInSec, *controllerLeaseRetryPeriodInSec)
+	return newDriverV2(options, *driverObjectNamespace, *nodePartition, *controllerPartition, *heartbeatFrequencyInSec, *controllerLeaseDurationInSec, *controllerLeaseRenewDeadlineInSec, *controllerLeaseRetryPeriodInSec, *leaderElectionNamespace)
 }
 
 // newDriverV2 Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
@@ -107,7 +111,8 @@ func newDriverV2(options *DriverOptions,
 	heartbeatFrequency int,
 	leaseDurationInSec int,
 	leaseRenewDeadlineInSec int,
-	leaseRetryPeriodInSec int) *DriverV2 {
+	leaseRetryPeriodInSec int,
+	leaderElectionNamespace string) *DriverV2 {
 
 	klog.Warning("Using DriverV2")
 	driver := DriverV2{}
@@ -120,6 +125,7 @@ func newDriverV2(options *DriverOptions,
 	driver.controllerLeaseDurationInSec = leaseDurationInSec
 	driver.controllerLeaseRenewDeadlineInSec = leaseRenewDeadlineInSec
 	driver.controllerLeaseRetryPeriodInSec = leaseRetryPeriodInSec
+	driver.leaderElectionNamespace = leaderElectionNamespace
 	driver.NodeID = options.NodeID
 	driver.VolumeAttachLimit = options.VolumeAttachLimit
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
@@ -319,7 +325,7 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 		Logger:                        log,
 		LeaderElection:                true,
 		LeaderElectionResourceLock:    resourcelock.LeasesResourceLock,
-		LeaderElectionNamespace:       d.objectNamespace,
+		LeaderElectionNamespace:       d.leaderElectionNamespace,
 		LeaderElectionID:              d.controllerPartition,
 		LeaseDuration:                 &leaseDuration,
 		RenewDeadline:                 &renewDeadline,

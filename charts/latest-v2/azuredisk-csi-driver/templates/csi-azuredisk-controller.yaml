@@ -151,6 +151,7 @@ spec:
             - "--disable-avset-nodes={{ .Values.controller.disableAvailabilitySetNodes }}"
             - "--drivername={{ .Values.driver.name }}"
             - "--driver-object-namespace={{ .Values.driver.objectNamespace }}"
+            - "--leader-election-namespace={{ .Release.Namespace }}"
             - "--cloud-config-secret-name={{ .Values.controller.cloudConfigSecretName }}"
             - "--cloud-config-secret-namespace={{ .Values.controller.cloudConfigSecretNamespace }}"
             - "--custom-user-agent={{ .Values.driver.customUserAgent }}"
