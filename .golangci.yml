@@ -13,3 +13,6 @@ issues:
     - path: 'cmd/az-analyze'
       linters:
         - forbidigo
+    - path: 'cmd/az-log'
+      linters:
+        - forbidigo

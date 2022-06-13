@@ -374,6 +374,10 @@ pod-failover-test-containers:
 upgrade-test:
 	go test -v -timeout=0 ${GOTAGS} ./test/upgrade
 
+.PHONY: install-az-log
+install-az-log:
+	go install ./cmd/az-log
+
 .PHONY: install-az-analyze
 install-az-analyze:
 	go install ./cmd/az-analyze
