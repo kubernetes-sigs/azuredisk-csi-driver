@@ -64,6 +64,8 @@ controller:
       effect: "NoSchedule"
   hostNetwork: true # this setting could be disabled if controller does not depend on MSI setting
   podLabels: {}
+  nodeSelector: {}
+  affinity: {}
   resources:
     csiProvisioner:
       limits:
@@ -159,6 +161,8 @@ linux:
   hostNetwork: true # this setting could be disabled if perfProfile is `none`
   getNodeInfoFromLabels: false # get node info from node labels instead of IMDS
   podLabels: {}
+  nodeSelector: {}
+  affinity: {}
   nodeAffinity:
     requiredDuringSchedulingIgnoredDuringExecution:
       nodeSelectorTerms:
@@ -197,6 +201,8 @@ windows:
       operator: "Exists"
       effect: "NoSchedule"
   podLabels: {}
+  nodeSelector: {}
+  affinity: {}
   nodeAffinity:
     requiredDuringSchedulingIgnoredDuringExecution:
       nodeSelectorTerms:
