@@ -521,3 +521,36 @@ type ListSnapshotsResult struct {
 	// +optional
 	NextToken string `json:"next_token,omitempty"`
 }
+
+type AzDiskDriverConfiguration struct {
+	Controller ControllerConfiguartion `json:"controller"`
+	Node NodeConfiguration `json:"node"`
+	// The namespace where driver related custom resources are created
+	DriverObjectNamespace string `json:"diverObjectNamespace"`
+	// Boolean field to indicate whether this instance is being used for sanity or integration tests
+	IsTestRun bool `json:"isTestRun"` // not sure if it belongs to controller
+}
+
+type ControllerConfiguartion struct {
+	// Boolean field to indicate this instance is running as controller
+	IsControllerPlugin bool `json:"isControllerPlugin"`
+	// The duration that non-leader candidates will wait to force acquire leadership
+	ControllerLeaseDurationInSec int `json:"controllerLeaseDurationInSec"`
+	// The duration that the acting controlplane will retry refreshing leadership before giving up
+	ControllerLeaseRenewDeadlineInSec int `json:"controllerLeaseRenewDeadlineInSec"`
+	// The duration the LeaderElector clients should wait between tries of actions
+	ControllerLeaseRetryPeriodInSec int `json:"controllerLeaseRetryPeriodInSec"`
+	// The leader election namespace for controller
+	LeaderElectionNamespace string `json:"leaderElectionNamespace"`
+	// The partition name for controller plugin
+	ControllerPartition string `json:"controllerPartition"`
+}
+
+type NodeConfiguration struct {
+	// Boolean field to indicate this instance is running as node daemon
+	IsNodePlugin bool `json:"isNodePlugin"`
+	// Frequency in seconds at which node driver sends heartbeat
+	HeartbeatFrequencyInSec int `json:"heartbeatFrequencyInSec"`
+	// The partition name for node plugin
+	NodePartition string `json:"nodePartition"`
+}

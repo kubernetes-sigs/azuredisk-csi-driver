@@ -57,17 +57,20 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
 
-var isControllerPlugin = flag.Bool("is-controller-plugin", false, "Boolean flag to indicate this instance is running as controller.")
-var isNodePlugin = flag.Bool("is-node-plugin", false, "Boolean flag to indicate this instance is running as node daemon.")
-var driverObjectNamespace = flag.String("driver-object-namespace", consts.DefaultAzureDiskCrdNamespace, "The namespace where driver related custom resources are created.")
-var heartbeatFrequencyInSec = flag.Int("heartbeat-frequency-in-sec", 30, "Frequency in seconds at which node driver sends heartbeat.")
-var controllerLeaseDurationInSec = flag.Int("lease-duration-in-sec", 15, "The duration that non-leader candidates will wait to force acquire leadership")
-var controllerLeaseRenewDeadlineInSec = flag.Int("lease-renew-deadline-in-sec", 10, "The duration that the acting controlplane will retry refreshing leadership before giving up.")
-var controllerLeaseRetryPeriodInSec = flag.Int("lease-retry-period-in-sec", 2, "The duration the LeaderElector clients should wait between tries of actions.")
-var leaderElectionNamespace = flag.String("leader-election-namespace", consts.ReleaseNamespace, "The leader election namespace for controller")
-var nodePartition = flag.String("node-partition", consts.DefaultNodePartitionName, "The partition name for node plugin.")
-var controllerPartition = flag.String("controller-partition", consts.DefaultControllerPartitionName, "The partition name for controller plugin.")
-var isTestRun = flag.Bool("is-test-run", false, "Boolean flag to indicate whether this instance is being used for sanity or integration tests")
+// var isControllerPlugin = flag.Bool("is-controller-plugin", false, "Boolean flag to indicate this instance is running as controller.")
+// var isNodePlugin = flag.Bool("is-node-plugin", false, "Boolean flag to indicate this instance is running as node daemon.")
+// var driverObjectNamespace = flag.String("driver-object-namespace", consts.DefaultAzureDiskCrdNamespace, "The namespace where driver related custom resources are created.")
+// var heartbeatFrequencyInSec = flag.Int("heartbeat-frequency-in-sec", 30, "Frequency in seconds at which node driver sends heartbeat.")
+// var controllerLeaseDurationInSec = flag.Int("lease-duration-in-sec", 15, "The duration that non-leader candidates will wait to force acquire leadership")
+// var controllerLeaseRenewDeadlineInSec = flag.Int("lease-renew-deadline-in-sec", 10, "The duration that the acting controlplane will retry refreshing leadership before giving up.")
+// var controllerLeaseRetryPeriodInSec = flag.Int("lease-retry-period-in-sec", 2, "The duration the LeaderElector clients should wait between tries of actions.")
+// var leaderElectionNamespace = flag.String("leader-election-namespace", consts.ReleaseNamespace, "The leader election namespace for controller")
+// var nodePartition = flag.String("node-partition", consts.DefaultNodePartitionName, "The partition name for node plugin.")
+// var controllerPartition = flag.String("controller-partition", consts.DefaultControllerPartitionName, "The partition name for controller plugin.")
+// var isTestRun = flag.Bool("is-test-run", false, "Boolean flag to indicate whether this instance is being used for sanity or integration tests")
+
+var driverConfigPath = flag.String("azdisk-driver-config", "", "The configuration for the driver")
+var driverConfig AzDiskDriverConfiguration
 
 // OutputCallDepth is the stack depth where we can find the origin of this call
 const OutputCallDepth = 6
@@ -97,9 +100,24 @@ type DriverV2 struct {
 	kubeClientQPS                     int
 }
 
+func GetDriverConfig() {
+	yamlFile, err := ioutil.ReadFile(driverConfigPath)
+	if err != nil {
+		klog.Fatalf("failed to get the driver config, error: %v", err)
+	}
+
+	err = yaml.Unmarshal(yamlFile, driverConfig)
+	if err != nil {
+		klog.Fatalf("failed to unmarshal the driver config, error: %v", err)
+	}
+}
+
 // NewDriver creates a driver object.
 func NewDriver(options *DriverOptions) CSIDriver {
-	return newDriverV2(options, *driverObjectNamespace, *nodePartition, *controllerPartition, *heartbeatFrequencyInSec, *controllerLeaseDurationInSec, *controllerLeaseRenewDeadlineInSec, *controllerLeaseRetryPeriodInSec, *leaderElectionNamespace)
+	GetDriverConfig()
+	return newDriverV2(options, *driverConfig.DriverObjectNamespace, *driverConfig.Node.NodePartition,
+		*driverConfig.Controller.ControllerPartition, *driverConfig.Node.HeartbeatFrequencyInSec, *driverConfig.Controller.ControllerLeaseDurationInSec,
+		*driverConfig.Controller.ControllerLeaseRenewDeadlineInSec, *driverConfig.Controller.ControllerLeaseRetryPeriodInSec, *driverConfig.Controller.LeaderElectionNamespace)
 }
 
 // newDriverV2 Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
