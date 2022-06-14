@@ -163,6 +163,8 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `controller.vmType`                | type of agent node. available values: `vmss`, `standard`                     |`` (use default value in cloud config)                                                          |
 | `controller.logLevel`                             | controller driver log level                                |`5`                                                           |
 | `controller.tolerations`                          | controller pod tolerations                                 |                                                              |
+| `controller.affinity`                             | controller pod affinity                               | `{}`                                                             |
+| `controller.nodeSelector`                         | controller pod node selector                          | `{}`                                                             |
 | `controller.hostNetwork`                          | `hostNetwork` setting on controller driver(could be disabled if controller does not depend on MSI setting)                            | `true`                                                            | `true`, `false`
 | `controller.resources.csiProvisioner.limits.memory`   | csi-provisioner memory limits                         | 500Mi                                                          |
 | `controller.resources.csiProvisioner.requests.cpu`    | csi-provisioner cpu requests                   | 10m                                                            |
@@ -208,6 +210,8 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `linux.getNodeInfoFromLabels`                     | get node info from node labels instead of IMDS on Linux agent node       | `false`                                                |
 | `linux.distro`                                    | configure ssl certificates for different Linux distribution(available values: `debian`, `fedora`)                  | `debian`                                                |
 | `linux.tolerations`                               | linux node driver tolerations                              |                                                              |
+| `linux.affinity`                                  | linux node pod affinity                                     | `{}`                                                             |
+| `linux.nodeSelector`                              | linux node pod node selector                                | `{}`                                                             |
 | `linux.hostNetwork`                               | `hostNetwork` setting on linux node driver(could be disabled if perfProfile is `none`)                            | `true`                                                            | `true`, `false`
 | `linux.resources.livenessProbe.limits.memory`          | liveness-probe memory limits                          | 100Mi                                                          |
 | `linux.resources.livenessProbe.requests.cpu`           | liveness-probe cpu requests                    | 10m                                                            |
@@ -223,6 +227,8 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `windows.kubelet`                                 | configure kubelet directory path on Windows agent node     | `'C:\var\lib\kubelet'`                                            |
 | `windows.getNodeInfoFromLabels`                   | get node info from node labels instead of IMDS on windows agent node       | `false`                                                |
 | `windows.tolerations`                             | windows node driver tolerations                            |                                                              |
+| `windows.affinity`                                | windows node pod affinity                                     | `{}`                                                             |
+| `windows.nodeSelector`                            | windows node pod node selector                                | `{}`                                                             |
 | `windows.resources.livenessProbe.limits.memory`          | liveness-probe memory limits                          | 100Mi                                                          |
 | `windows.resources.livenessProbe.requests.cpu`           | liveness-probe cpu requests                    | 10m                                                            |
 | `windows.resources.livenessProbe.requests.memory`        | liveness-probe memory requests                 | 40Mi                                                           |
