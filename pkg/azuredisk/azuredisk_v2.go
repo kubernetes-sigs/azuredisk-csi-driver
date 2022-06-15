@@ -518,23 +518,3 @@ func (d *DriverV2) RunAzDriverNodeHeartbeatLoop(ctx context.Context) {
 func (d *DriverV2) getVolumeLocks() *volumehelper.VolumeLocks {
 	return d.volumeLocks
 }
-
-func (d *DriverV2) addControllerFinalizer(finalizers []string, finalizerToAdd string) []string {
-	for _, finalizer := range finalizers {
-		if finalizer == finalizerToAdd {
-			return finalizers
-		}
-	}
-	finalizers = append(finalizers, finalizerToAdd)
-	return finalizers
-}
-
-func (d *DriverV2) removeControllerFinalizer(finalizers []string, finalizerToRemove string) []string {
-	removed := []string{}
-	for _, finalizer := range finalizers {
-		if finalizer != finalizerToRemove {
-			removed = append(removed, finalizer)
-		}
-	}
-	return removed
-}
