@@ -67,10 +67,10 @@ import (
 // var leaderElectionNamespace = flag.String("leader-election-namespace", consts.ReleaseNamespace, "The leader election namespace for controller")
 // var nodePartition = flag.String("node-partition", consts.DefaultNodePartitionName, "The partition name for node plugin.")
 // var controllerPartition = flag.String("controller-partition", consts.DefaultControllerPartitionName, "The partition name for controller plugin.")
-// var isTestRun = flag.Bool("is-test-run", false, "Boolean flag to indicate whether this instance is being used for sanity or integration tests")
+var isTestRun = flag.Bool("is-test-run", false, "Boolean flag to indicate whether this instance is being used for sanity or integration tests")
 
-var driverConfigPath = flag.String("azdisk-driver-config", "", "The configuration for the driver")
-var driverConfig AzDiskDriverConfiguration
+var driverConfigPath = flag.String("config", "", "The configuration path for the driver")
+var driverConfig azdiskv1beta2.AzDiskDriverConfiguration
 
 // OutputCallDepth is the stack depth where we can find the origin of this call
 const OutputCallDepth = 6
@@ -115,9 +115,9 @@ func GetDriverConfig() {
 // NewDriver creates a driver object.
 func NewDriver(options *DriverOptions) CSIDriver {
 	GetDriverConfig()
-	return newDriverV2(options, *driverConfig.DriverObjectNamespace, *driverConfig.Node.NodePartition,
-		*driverConfig.Controller.ControllerPartition, *driverConfig.Node.HeartbeatFrequencyInSec, *driverConfig.Controller.ControllerLeaseDurationInSec,
-		*driverConfig.Controller.ControllerLeaseRenewDeadlineInSec, *driverConfig.Controller.ControllerLeaseRetryPeriodInSec, *driverConfig.Controller.LeaderElectionNamespace)
+	return newDriverV2(options, *driverConfig.objectNamespace, *driverConfig.Node.PartitionName,
+		*driverConfig.Controller.PartitionName, *driverConfig.Node.HeartbeatFrequencyInSec, *driverConfig.Controller.LeaseDurationInSec,
+		*driverConfig.Controller.LeaseRenewDeadlineInSec, *driverConfig.Controller.LeaseRetryPeriodInSec, *driverConfig.Controller.LeaderElectionNamespace)
 }
 
 // newDriverV2 Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
