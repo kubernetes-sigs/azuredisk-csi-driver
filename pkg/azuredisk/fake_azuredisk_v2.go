@@ -31,6 +31,7 @@ import (
 	"k8s.io/klog/v2"
 	mount "k8s.io/mount-utils"
 	testingexec "k8s.io/utils/exec/testing"
+	azdiskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
@@ -88,14 +89,14 @@ func newFakeDriverV2(t *testing.T) (*fakeDriverV2, error) {
 
 	driver.nodeProvisioner = nodeProvisioner
 
+	driver.azdiskClient = azdiskfakes.NewSimpleClientset()
+
 	crdProvisioner, err := provisioner.NewFakeCrdProvisioner(driver.cloudProvisioner.(*provisioner.FakeCloudProvisioner))
 	if err != nil {
 		return nil, err
 	}
 
 	driver.crdProvisioner = crdProvisioner
-
-	driver.deviceHelper = mockoptimization.NewMockInterface(ctrl)
 
 	driver.deviceHelper = mockoptimization.NewMockInterface(ctrl)
 

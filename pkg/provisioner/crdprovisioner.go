@@ -26,7 +26,6 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	v1 "k8s.io/api/core/v1"
 	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -34,8 +33,6 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/rest"
-	"k8s.io/klog/v2"
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	azdiskinformers "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions"
@@ -58,79 +55,14 @@ const (
 	interval = time.Duration(1) * time.Second
 )
 
-func NewCrdProvisioner(kubeConfig *rest.Config, objNamespace string) (*CrdProvisioner, error) {
-	diskClient, err := azureutils.GetAzDiskClient(kubeConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	informerFactory := azdiskinformers.NewSharedInformerFactory(diskClient, consts.DefaultInformerResync)
+func NewCrdProvisioner(azdiskClient azdisk.Interface, objNamespace string) (*CrdProvisioner, error) {
+	informerFactory := azdiskinformers.NewSharedInformerFactory(azdiskClient, consts.DefaultInformerResync)
 
 	return &CrdProvisioner{
-		azDiskClient:     diskClient,
+		azDiskClient:     azdiskClient,
 		namespace:        objNamespace,
-		conditionWatcher: watcher.New(context.Background(), diskClient, informerFactory, objNamespace),
+		conditionWatcher: watcher.New(context.Background(), azdiskClient, informerFactory, objNamespace),
 	}, nil
-}
-
-func (c *CrdProvisioner) RegisterDriverNode(
-	ctx context.Context,
-	node *v1.Node,
-	nodePartition string,
-	nodeID string) error {
-	azN := c.azDiskClient.DiskV1beta2().AzDriverNodes(c.namespace)
-	azDriverNodeFromCache, err := azN.Get(ctx, strings.ToLower(nodeID), metav1.GetOptions{})
-	var azDriverNodeUpdate *azdiskv1beta2.AzDriverNode
-
-	if err == nil && azDriverNodeFromCache != nil {
-		// We found that the object already exists.
-		klog.V(2).Infof("AzDriverNode (%s) exists, will update status. azDriverNodeFromCache=(%v)", nodeID, azDriverNodeFromCache)
-		azDriverNodeUpdate = azDriverNodeFromCache.DeepCopy()
-	} else if apiErrors.IsNotFound(err) {
-		// If AzDriverNode object is not there create it
-		klog.V(2).Infof("AzDriverNode (%s) is not registered yet, will create.", nodeID)
-		azDriverNodeNew := &azdiskv1beta2.AzDriverNode{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: strings.ToLower(nodeID),
-			},
-			Spec: azdiskv1beta2.AzDriverNodeSpec{
-				NodeName: nodeID,
-			},
-		}
-		if azDriverNodeNew.Labels == nil {
-			azDriverNodeNew.Labels = make(map[string]string)
-		}
-		azDriverNodeNew.Labels[consts.PartitionLabel] = nodePartition
-		klog.V(2).Infof("Creating AzDriverNode with details (%v)", azDriverNodeNew)
-		azDriverNodeCreated, err := azN.Create(ctx, azDriverNodeNew, metav1.CreateOptions{})
-		if err != nil || azDriverNodeCreated == nil {
-			klog.Errorf("Failed to create/update azdrivernode resource for node (%s), error: %v", nodeID, err)
-			return err
-		}
-		azDriverNodeUpdate = azDriverNodeCreated.DeepCopy()
-	} else {
-		klog.Errorf("Failed to get AzDriverNode for node (%s), error: %v", nodeID, err)
-		return apiErrors.NewBadRequest("Failed to get AzDriverNode or node not found, can not register the plugin.")
-	}
-
-	// Do an initial update to AzDriverNode status
-	if azDriverNodeUpdate.Status == nil {
-		azDriverNodeUpdate.Status = &azdiskv1beta2.AzDriverNodeStatus{}
-	}
-	readyForAllocation := false
-	timestamp := metav1.Now()
-	statusMessage := "Driver node initializing."
-	azDriverNodeUpdate.Status.ReadyForVolumeAllocation = &readyForAllocation
-	azDriverNodeUpdate.Status.LastHeartbeatTime = &timestamp
-	azDriverNodeUpdate.Status.StatusMessage = &statusMessage
-	klog.V(2).Infof("Updating status for AzDriverNode Status=(%v)", azDriverNodeUpdate)
-	_, err = azN.UpdateStatus(ctx, azDriverNodeUpdate, metav1.UpdateOptions{})
-	if err != nil {
-		klog.Errorf("Failed to update status of azdrivernode resource for node (%s), error: %v", nodeID, err)
-		return err
-	}
-
-	return nil
 }
 
 /*

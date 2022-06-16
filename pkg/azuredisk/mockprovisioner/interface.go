@@ -23,7 +23,6 @@ package mockprovisioner
 import (
 	context "context"
 	gomock "github.com/golang/mock/gomock"
-	v1 "k8s.io/api/core/v1"
 	reflect "reflect"
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
@@ -51,20 +50,6 @@ func NewMockCrdProvisioner(ctrl *gomock.Controller) *MockCrdProvisioner {
 // EXPECT returns an object that allows the caller to indicate expected use
 func (m *MockCrdProvisioner) EXPECT() *MockCrdProvisionerMockRecorder {
 	return m.recorder
-}
-
-// RegisterDriverNode mocks base method
-func (m *MockCrdProvisioner) RegisterDriverNode(ctx context.Context, node *v1.Node, nodePartition, nodeID string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RegisterDriverNode", ctx, node, nodePartition, nodeID)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// RegisterDriverNode indicates an expected call of RegisterDriverNode
-func (mr *MockCrdProvisionerMockRecorder) RegisterDriverNode(ctx, node, nodePartition, nodeID interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterDriverNode", reflect.TypeOf((*MockCrdProvisioner)(nil).RegisterDriverNode), ctx, node, nodePartition, nodeID)
 }
 
 // CreateVolume mocks base method

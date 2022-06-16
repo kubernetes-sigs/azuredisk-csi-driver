@@ -23,12 +23,14 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"math/rand"
 	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/go-logr/logr"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -36,6 +38,7 @@ import (
 	apiRuntime "k8s.io/apimachinery/pkg/runtime"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/klog/v2"
 	"k8s.io/klog/v2/klogr"
@@ -45,6 +48,9 @@ import (
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/record"
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
+	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	azdiskinformers "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions"
+	azdiskinformertypes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions/azuredisk/v1beta2"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller"
@@ -76,6 +82,13 @@ const OutputCallDepth = 6
 // when logging klogv1 to klogv2
 const DefaultPrefixLength = 30
 
+type azDriverNodeStatus string
+
+const (
+	azDriverNodeInitializing azDriverNodeStatus = "Driver node initializing."
+	azDriverNodeHealthy      azDriverNodeStatus = "Driver node healthy."
+)
+
 // DriverV2 implements all interfaces of CSI drivers
 type DriverV2 struct {
 	DriverCore
@@ -93,6 +106,8 @@ type DriverV2 struct {
 	leaderElectionNamespace           string
 	kubeConfig                        *rest.Config
 	kubeClient                        *clientset.Clientset
+	azdiskClient                      azdisk.Interface
+	azDriverNodeInformer              azdiskinformertypes.AzDriverNodeInformer
 	deviceChecker                     *deviceChecker
 	kubeClientQPS                     int
 }
@@ -174,9 +189,15 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 
 	d.kubeConfig.QPS = float32(d.kubeClientQPS)
 	d.kubeConfig.Burst = d.kubeClientQPS * 2
+
+	d.azdiskClient, err = azureutils.GetAzDiskClient(d.kubeConfig)
+	if err != nil || d.azdiskClient == nil {
+		klog.Fatalf("failed to get azdiskclient with kubeconfig (%s), error: %v. Exiting application...", kubeconfig, err)
+	}
+
 	// d.crdProvisioner is set by NewFakeDriver for unit tests.
 	if d.crdProvisioner == nil {
-		d.crdProvisioner, err = provisioner.NewCrdProvisioner(d.kubeConfig, d.objectNamespace)
+		d.crdProvisioner, err = provisioner.NewCrdProvisioner(d.azdiskClient, d.objectNamespace)
 		if err != nil {
 			klog.Fatalf("Failed to get crd provisioner. Error: %v", err)
 		}
@@ -287,7 +308,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 
 	// Register the AzDriverNode
 	if *isNodePlugin {
-		d.RegisterAzDriverNodeOrDie(ctx)
+		d.registerAzDriverNodeOrDie(ctx)
 	}
 
 	// Start the CSI endpoint/server
@@ -297,7 +318,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 
 	// Start sending hearbeat and mark node as ready
 	if *isNodePlugin {
-		go d.RunAzDriverNodeHeartbeatLoop(ctx)
+		go d.runAzDriverNodeHeartbeatLoop(ctx)
 	}
 
 	// Signal that the driver is ready.
@@ -434,91 +455,146 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 	os.Exit(0)
 }
 
-// RegisterAzDriverNodeOrDie creates custom resource for this driverNode
-func (d *DriverV2) RegisterAzDriverNodeOrDie(ctx context.Context) {
-	var node *v1.Node
-	var err error
+// registerAzDriverNodeOrDie creates custom resource for this driverNode
+func (d *DriverV2) registerAzDriverNodeOrDie(ctx context.Context) {
 	if d.NodeID == "" {
-		klog.Errorf("NodeID is nil, can not initialize AzDriverNode")
+		klog.Fatalf("cannot create azdrivernode because node id is not provided")
 	}
 
-	if !*isTestRun {
-		klog.V(2).Infof("Registering AzDriverNode for node (%s)", d.NodeID)
-		node, err := d.kubeClient.CoreV1().Nodes().Get(ctx, d.NodeID, metav1.GetOptions{})
-		if err != nil || node == nil {
-			klog.Errorf("Failed to get node (%s), error: %v", d.NodeID, err)
-			err = errors.NewBadRequest("Failed to get node or node not found, can not register the plugin.")
-		}
+	nodeSelector := fmt.Sprintf("metadata.name=%s", d.NodeID)
+
+	azdiskInformer := azdiskinformers.NewSharedInformerFactoryWithOptions(
+		d.azdiskClient,
+		consts.DefaultInformerResync,
+		azdiskinformers.WithNamespace(d.objectNamespace),
+		azdiskinformers.WithTweakListOptions(func(opt *metav1.ListOptions) {
+			opt.FieldSelector = nodeSelector
+		}),
+	)
+
+	d.azDriverNodeInformer = azdiskInformer.Disk().V1beta2().AzDriverNodes()
+	d.azDriverNodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		DeleteFunc: func(obj interface{}) {
+			if azDriverNode, ok := obj.(*azdiskv1beta2.AzDriverNode); ok && strings.EqualFold(azDriverNode.Name, d.NodeID) {
+				_ = d.updateAzDriverNodeHearbeat(context.Background())
+			}
+		},
+	})
+
+	go azdiskInformer.Start(ctx.Done())
+
+	if !cache.WaitForCacheSync(ctx.Done(), d.azDriverNodeInformer.Informer().HasSynced) {
+		klog.Fatal("failed to sync azdrivernode informer")
 	}
 
-	if err == nil {
-		err = d.crdProvisioner.RegisterDriverNode(ctx, node, d.nodePartition, d.NodeID)
-	}
+	err := d.registerAzDriverNode(ctx)
 
 	if err != nil {
-		klog.Fatalf("Failed to register AzDriverNode, error: %v. Exiting process...", err)
+		klog.Fatalf("failed to register azdrivernode: %v", err)
 	}
 }
 
-// RunAzDriverNodeHeartbeatLoop runs a loop to send heartbeat from the node
-func (d *DriverV2) RunAzDriverNodeHeartbeatLoop(ctx context.Context) {
+// runAzDriverNodeHeartbeatLoop runs a loop to send heartbeat from the node
+func (d *DriverV2) runAzDriverNodeHeartbeatLoop(ctx context.Context) {
+	_ = d.updateAzDriverNodeHearbeat(ctx)
 
-	var err error
-	var cachedAzDriverNode *azdiskv1beta2.AzDriverNode
-	azN := d.crdProvisioner.GetDiskClientSet().DiskV1beta2().AzDriverNodes(d.objectNamespace)
-	heartbeatFrequency := time.Duration(d.heartbeatFrequencyInSec) * time.Second
-	klog.V(1).Infof("Starting heartbeat loop with frequency (%v)", heartbeatFrequency)
+	// To prevent a regular update storm when lots of nodes start around the same time,
+	// delay a random interval within the configured heartbeat frequency before starting
+	// the timed loop.
+	heartbeatFrequencyMillis := d.heartbeatFrequencyInSec * 1000
+	initialDelay := time.Duration(rand.Int63n(int64(heartbeatFrequencyMillis))) * time.Millisecond
+	heartbeatFrequency := time.Duration(heartbeatFrequencyMillis) * time.Millisecond
+
+	klog.V(1).Infof("Starting heartbeat loop with initial delay %v and frequency %v", initialDelay, heartbeatFrequency)
+
+	time.Sleep(initialDelay)
+
+	ticker := time.NewTicker(heartbeatFrequency)
+	defer ticker.Stop()
+
 	for {
-
-		// Check if we have a cached copy of the
-		// If not then get it
-		if cachedAzDriverNode == nil {
-			klog.V(2).Info("Don't have current AzDriverNodeStatus. Getting current AzDriverNodes status.")
-			cachedAzDriverNode, err = azN.Get(context.Background(), strings.ToLower(d.NodeID), metav1.GetOptions{})
-			// If we are not able to get the AzDriverNode, just wait and retry
-			// In heartbeat loop we don't try to create the AzDriverNode object
-			// If the object is deleted, the heartbeat for the node will become stale
-			// Scheduler will stop scheduling nodes here
-			// An external process should take action to recover this node
-			if err != nil || cachedAzDriverNode == nil {
-				klog.Errorf("Failed to get AzDriverNode resource from the api server. Error: %v", err)
-				time.Sleep(heartbeatFrequency)
-				cachedAzDriverNode = nil
-
-				continue
-			}
-		}
-
-		// Send heartbeat
-		azDriverNodeToUpdate := cachedAzDriverNode.DeepCopy()
-		timestamp := metav1.Now()
-		readyForAllocation := true
-		statusMessage := "Driver node healthy."
-		klog.V(2).Infof("Updating status for (%v)", azDriverNodeToUpdate)
-		if azDriverNodeToUpdate.Status == nil {
-			azDriverNodeToUpdate.Status = &azdiskv1beta2.AzDriverNodeStatus{}
-		}
-		azDriverNodeToUpdate.Status.ReadyForVolumeAllocation = &readyForAllocation
-		azDriverNodeToUpdate.Status.LastHeartbeatTime = &timestamp
-		azDriverNodeToUpdate.Status.StatusMessage = &statusMessage
-		klog.V(2).Infof("Sending heartbeat ReadyForVolumeAllocation=(%v) LastHeartbeatTime=(%v)", *azDriverNodeToUpdate.Status.ReadyForVolumeAllocation, *azDriverNodeToUpdate.Status.LastHeartbeatTime)
-		cachedAzDriverNode, err = azN.UpdateStatus(ctx, azDriverNodeToUpdate, metav1.UpdateOptions{})
-		if err != nil {
-			klog.Errorf("Failed to update heartbeat for AzDriverNode resource. Error: %v", err)
-			cachedAzDriverNode = nil
-		}
-
-		// If context is cancelled just return
 		select {
+		// If context is cancelled just return
 		case <-ctx.Done():
-			klog.Errorf("Context cancelled, stopped sending heartbeat.")
+			klog.Info("Context cancelled, stopped sending heartbeat.")
 			return
-		default:
-			// sleep
-			time.Sleep(heartbeatFrequency)
-			continue
+		// Loop and update heartbeat at update frequency
+		case <-ticker.C:
+			_ = d.updateAzDriverNodeHearbeat(ctx)
 		}
 	}
+}
+
+// registerAzDriverNode initializes the AzDriverNode object
+func (d *DriverV2) registerAzDriverNode(ctx context.Context) error {
+	innerCtx, w := workflow.New(ctx, workflow.WithDetails(consts.NamespaceLabel, d.objectNamespace, consts.NodeNameLabel, d.NodeID))
+
+	err := d.updateOrCreateAzDriverNode(innerCtx, azDriverNodeInitializing)
+
+	w.Finish(err)
+
+	return err
+}
+
+// updateAzDriverNodeHearbeat updates the AzDriverNode health status
+func (d *DriverV2) updateAzDriverNodeHearbeat(ctx context.Context) error {
+	innerCtx, w := workflow.New(ctx, workflow.WithDetails(consts.NamespaceLabel, d.objectNamespace, consts.NodeNameLabel, d.NodeID))
+
+	err := d.updateOrCreateAzDriverNode(innerCtx, azDriverNodeHealthy)
+
+	w.Finish(err)
+
+	return err
+}
+
+// updateOrCreateAzDriverNode updates the AzDriverNode status, creating a new object if one does not exist
+func (d *DriverV2) updateOrCreateAzDriverNode(ctx context.Context, status azDriverNodeStatus) error {
+	logger := logr.FromContextOrDiscard(ctx)
+
+	statusMessage := string(status)
+	readyForAllocation := status == azDriverNodeHealthy
+	lastHeartbeatTime := metav1.Now()
+
+	logger.V(2).Info("Updating heartbeat", "ReadyForVolumeAllocation", readyForAllocation, "LastHeartbeatTime", lastHeartbeatTime, "StatusMessage", statusMessage)
+
+	azDriverNodes := d.azdiskClient.DiskV1beta2().AzDriverNodes(d.objectNamespace)
+	azDriverNodeLister := d.azDriverNodeInformer.Lister().AzDriverNodes(d.objectNamespace)
+
+	thisNode, err := azDriverNodeLister.Get(d.NodeID)
+	if err != nil {
+		if !errors.IsNotFound(err) {
+			logger.Error(err, "Failed to get AzDriverNode")
+			return err
+		}
+
+		thisNode = &azdiskv1beta2.AzDriverNode{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: d.NodeID,
+			},
+			Spec: azdiskv1beta2.AzDriverNodeSpec{
+				NodeName: d.NodeID,
+			},
+		}
+
+		if thisNode, err = azDriverNodes.Create(ctx, thisNode, metav1.CreateOptions{}); err != nil {
+			logger.Error(err, "Failed to create AzDriverNode object")
+			return err
+		}
+	}
+
+	thisNode = thisNode.DeepCopy()
+	thisNode.Status = &azdiskv1beta2.AzDriverNodeStatus{
+		ReadyForVolumeAllocation: &readyForAllocation,
+		StatusMessage:            &statusMessage,
+		LastHeartbeatTime:        &lastHeartbeatTime,
+	}
+
+	if _, err := azDriverNodes.UpdateStatus(ctx, thisNode, metav1.UpdateOptions{}); err != nil {
+		logger.Error(err, "Failed to update AzDriverNode status after creation")
+		return err
+	}
+
+	return nil
 }
 
 func (d *DriverV2) getVolumeLocks() *volumehelper.VolumeLocks {
