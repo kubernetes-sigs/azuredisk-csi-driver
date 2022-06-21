@@ -523,38 +523,27 @@ type ListSnapshotsResult struct {
 }
 
 type AzDiskDriverConfiguration struct {
-	Controller ControllerConfiguration `json:"controller"`
-	Node NodeConfiguration `json:"node"`
+	ControllerConfig ControllerConfiguration `json:"controller"`
+	NodeConfig NodeConfiguration `json:"node"`
+	CloudConfig CloudConfiguration `json:"cloud"`
+	ClientConfig ClientConfiguration `json:"client"`
 	// The namespace where driver related custom resources are created
 	ObjectNamespace string `json:"objectNamespace"`
 	// CSI endpoint
 	Endpoint string `json:"endpoint"`
-	// node id
-	NodeID string `json:"nodeID"`
-	// Print the version and exit
-	Version bool `json:"version"`
 	// export the metrics
 	MetricsAddress string `json:"metricAddress"`
-	// Absolute path to the kubeconfig file. Required only when running out of cluster
-	Kubeconfig string `json:"kubeconfig"`
 	// name of the driver
 	DriverName string `json:"driverName"`
-	// boolean field to enable disk perf optimization
-	EnablePerfOptimization bool `json:"enablePerfOptimization"`
-	// cloud config secret name
-	CloudConfigSecretName string `json:"cloudConfigSecretName"`
-	// cloud config secret namespace
-	CloudConfigSecretNamespace string `json:"cloudConfigSecretNamesapce"`
-	// custom userAgent
-	CustomUserAgent string `json:"customUserAgent"`
-	// userAgent suffix
-	UserAgentSuffix string `json:"userAgentSuffix"`
-	// boolean field to enable csi-proxy GA interface on Windows
-	UseCSIProxyGAInterface bool `json:"useCSIProxyGAInterface"`
+}
+
+type ControllerConfiguration struct {
+	// disable DisableAvailabilitySetNodes in cloud config for controller
+	DisableAVSetNodes bool `json:"disableAVSetNodes"`
+	// type of agent node. available values: vmss, standard
+	VMType string `json:"vmType"`
 	// boolean field to enable disk online resize
 	EnableDiskOnlineResize bool `json:"enableDiskOnlineResize"`
-	// Whether allow running driver without cloud config
-	AllowEmptyCloudConfig bool `json:"allowEmptyCloudConfig"`
 	// boolean field to enable async attach
 	EnableAsyncAttach bool `json:"enableAsyncAttach"`
 	// boolean field to enable ListVolumes on controller
@@ -563,17 +552,6 @@ type AzDiskDriverConfiguration struct {
 	EnableListSnapshots bool `json:"enableListSnapshots"`
 	// boolean field to enable volume capacity check in CreateVolume
 	EnableDiskCapacityCheck bool `json:"enableDiskCapacityCheck"`
-	// QPS for the rest client. Defaults to 15
-	KubeClientQPS int `json:"kubeClientQPS"`
-	// vmss cache TTL in seconds (600 by default)
-	VmssCacheTTLInSeconds int64 `json:"vmssCacheTTLInSeconds"`
-}
-
-type ControllerConfiguration struct {
-	// disable DisableAvailabilitySetNodes in cloud config for controller
-	DisableAVSetNodes bool `json:"disableAVSetNodes"`
-	// type of agent node. available values: vmss, standard
-	VMType string `json:"vmType"`
 	// Boolean field to indicate this instance is running as controller
 	Enabled bool `json:"enabled"`
 	// The duration that non-leader candidates will wait to force acquire leadership
@@ -589,16 +567,44 @@ type ControllerConfiguration struct {
 }
 
 type NodeConfiguration struct {
+	// node id
+	NodeID string `json:"nodeID"`
 	// maximum number of attachable volumes per node
 	VolumeAttachLimit int64 `json:"volumeAttachLimit"`
 	// boolean flag to get zone info in NodeGetInfo
 	SupportZone bool `json:"supportZone"`
+	// boolean field to enable disk perf optimization
+	EnablePerfOptimization bool `json:"enablePerfOptimization"`
+	// boolean field to enable csi-proxy GA interface on Windows
+	UseCSIProxyGAInterface bool `json:"useCSIProxyGAInterface"`
 	// boolean flag to get zone info from node labels in NodeGetInfo
-	GetNodeInfoFromLabels bool `json:"getNodeInformationFromLabels"`
+	GetNodeInfoFromLabels bool `json:"getNodeInfoFromLabels"`
 	// Boolean field to indicate this instance is running as node daemon
 	Enabled bool `json:"enabled"`
 	// Frequency in seconds at which node driver sends heartbeat
 	HeartbeatFrequencyInSec int `json:"heartbeatFrequencyInSec"`
 	// The partition name for node plugin
 	PartitionName string `json:"partitionName"`
+}
+
+type CloudConfiguration struct {
+	// cloud config secret name
+	CloudConfigSecretName string `json:"cloudConfigSecretName"`
+	// cloud config secret namespace
+	CloudConfigSecretNamespace string `json:"cloudConfigSecretNamesapce"`
+	// custom userAgent
+	CustomUserAgent string `json:"customUserAgent"`
+	// userAgent suffix
+	UserAgentSuffix string `json:"userAgentSuffix"`
+	// Whether allow running driver without cloud config
+	AllowEmptyCloudConfig bool `json:"allowEmptyCloudConfig"`
+	// vmss cache TTL in seconds (600 by default)
+	VmssCacheTTLInSeconds int64 `json:"vmssCacheTTLInSeconds"`
+}
+
+type ClientConfiguration struct {
+	// Absolute path to the kubeconfig file. Required only when running out of cluster
+	Kubeconfig string `json:"kubeconfig"`
+	// QPS for the rest client. Defaults to 15
+	KubeClientQPS int `json:"kubeClientQPS"`
 }

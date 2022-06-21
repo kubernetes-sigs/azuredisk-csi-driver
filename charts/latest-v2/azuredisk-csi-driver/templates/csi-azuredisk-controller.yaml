@@ -1,3 +1,53 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: csi-azuredisk-controller-config
+  namespace: {{ .Release.Namespace }}
+{{ include "azuredisk.labels" . | indent 2 }}
+data:
+  config.yaml: |
+    apiVersion: kubescheduler.config.k8s.io/v1beta2
+    kind: AzDiskDriverConfiguration
+    controllerConfig:
+      disableAVSetNodes: false
+      vmType:
+      enableDiskOnlineResize: true
+      enableAsyncAttach: false
+      enableListVolumes: false
+      enableListSnapshots: false
+      enableDiskCapacityCheck: false
+      enabled: true
+      leaseDurationInSec: 15
+      leaseRenewDeadlineInSec: 10
+      leaseRetryPeriodInSec: 2
+      leaderElectionNamespace: {{ .Release.Namespace }}
+      partitionName: csi-azuredisk-controller
+    nodeConfig:
+      nodeID:
+      volumeAttachLimit: {{ .Values.driver.volumeAttachLimit }}
+      supportZone: {{ .Values.node.supportZone }}
+      enablePerfOptimization: {{ .Values.linux.enablePerfOptimization }}
+      useCSIProxyGAInterface: true
+      getNodeInfoFromLabels: false
+      enabled: false
+      heartbeatFrequencyInSec: 30
+      partitionName: csi-azuredisk-node
+    cloudConfig:
+      cloudConfigSecretName: {{ .Values.controller.cloudConfigSecretName }}
+      cloudConfigSecretNamesapce: {{ .Values.controller.cloudConfigSecretNamespace }}
+      customUserAgent: {{ .Values.driver.customUserAgent }}
+      userAgentSuffix: {{ .Values.driver.userAgentSuffix }}
+      allowEmptyCloudConfig: {{ .Values.node.allowEmptyCloudConfig }}
+      vmssCacheTTLInSeconds: -1
+    clientConfig:
+      kubeconfig:
+      kubeClientQPS: 15
+    objectNamespace: {{ .Values.driver.objectNamespace }}
+    endpoint: $(CSI_ENDPOINT)
+    metricsAddress: 0.0.0.0:{{ .Values.controller.metrics.port }}
+    driverName: {{ .Values.driver.name }}
+---
 kind: Deployment
 apiVersion: apps/v1
 metadata:
@@ -157,6 +207,7 @@ spec:
             - "--custom-user-agent={{ .Values.driver.customUserAgent }}"
             - "--user-agent-suffix={{ .Values.driver.userAgentSuffix }}"
             - "--allow-empty-cloud-config={{ .Values.controller.allowEmptyCloudConfig }}"
+            - "--config=/etc/csi-azuredisk-controller/config.yaml"
           ports:
             - containerPort: {{ .Values.controller.livenessProbe.healthPort }}
               name: healthz
@@ -193,6 +244,8 @@ spec:
               name: socket-dir
             - mountPath: /etc/kubernetes/
               name: azure-cred
+            - mountPAth: /etc/csi-azuredisk-controller
+              name: csi-azuredisk-controller-config
             {{- if eq .Values.cloud "AzureStackCloud" }}
             - name: ssl
               mountPath: /etc/ssl/certs
@@ -227,3 +280,6 @@ spec:
           hostPath:
             path: /etc/pki/ca-trust/extracted
         {{- end }}
+        - name: csi-azuredisk-controller-config
+          configMap:
+            name: csi-azuredisk-controller-config
