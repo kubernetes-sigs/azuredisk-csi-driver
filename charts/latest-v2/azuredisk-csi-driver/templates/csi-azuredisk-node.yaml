@@ -24,7 +24,6 @@ data:
       leaderElectionNamespace: {{ .Release.Namespace }}
       partitionName: csi-azuredisk-controller
     nodeConfig:
-      nodeID: $(KUBE_NODE_NAME)
       volumeAttachLimit: {{ .Values.driver.volumeAttachLimit }}
       supportZone: {{ .Values.node.supportZone }}
       enablePerfOptimization: {{ .Values.linux.enablePerfOptimization }}
@@ -44,7 +43,7 @@ data:
       kubeconfig:
       kubeClientQPS: 15
     objectNamespace: {{ .Values.driver.objectNamespace }}
-    endpoint: $(CSI_ENDPOINT)
+    endpoint: unix:///csi/csi.sock
     metricsAddress:0.0.0.0:{{ .Values.node.metrics.port }}
     driverName: {{ .Values.driver.name }}
 ---

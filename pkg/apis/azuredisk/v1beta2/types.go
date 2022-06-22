@@ -567,8 +567,6 @@ type ControllerConfiguration struct {
 }
 
 type NodeConfiguration struct {
-	// node id
-	NodeID string `json:"nodeID"`
 	// maximum number of attachable volumes per node
 	VolumeAttachLimit int64 `json:"volumeAttachLimit"`
 	// boolean flag to get zone info in NodeGetInfo
