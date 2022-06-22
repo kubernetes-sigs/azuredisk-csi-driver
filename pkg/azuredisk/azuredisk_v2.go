@@ -55,22 +55,22 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/workflow"
 	azurecloudconsts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azurediskplugin"
 )
-
-// var isControllerPlugin = flag.Bool("is-controller-plugin", false, "Boolean flag to indicate this instance is running as controller.")
-// var isNodePlugin = flag.Bool("is-node-plugin", false, "Boolean flag to indicate this instance is running as node daemon.")
-// var driverObjectNamespace = flag.String("driver-object-namespace", consts.DefaultAzureDiskCrdNamespace, "The namespace where driver related custom resources are created.")
-// var heartbeatFrequencyInSec = flag.Int("heartbeat-frequency-in-sec", 30, "Frequency in seconds at which node driver sends heartbeat.")
-// var controllerLeaseDurationInSec = flag.Int("lease-duration-in-sec", 15, "The duration that non-leader candidates will wait to force acquire leadership")
-// var controllerLeaseRenewDeadlineInSec = flag.Int("lease-renew-deadline-in-sec", 10, "The duration that the acting controlplane will retry refreshing leadership before giving up.")
-// var controllerLeaseRetryPeriodInSec = flag.Int("lease-retry-period-in-sec", 2, "The duration the LeaderElector clients should wait between tries of actions.")
-// var leaderElectionNamespace = flag.String("leader-election-namespace", consts.ReleaseNamespace, "The leader election namespace for controller")
-// var nodePartition = flag.String("node-partition", consts.DefaultNodePartitionName, "The partition name for node plugin.")
-// var controllerPartition = flag.String("controller-partition", consts.DefaultControllerPartitionName, "The partition name for controller plugin.")
+var DriverConfig azdiskv1beta2.AzDiskDriverConfiguration
+var DriverConfigPath = flag.String("config", "", "The configuration path for the driver")
 var isTestRun = flag.Bool("is-test-run", false, "Boolean flag to indicate whether this instance is being used for sanity or integration tests")
-
-var driverConfigPath = flag.String("config", "", "The configuration path for the driver")
-var driverConfig azdiskv1beta2.AzDiskDriverConfiguration
+// Deprecated command-line parameters
+var isControllerPlugin = flag.Bool("is-controller-plugin", false, "Boolean flag to indicate this instance is running as controller.")
+var isNodePlugin = flag.Bool("is-node-plugin", false, "Boolean flag to indicate this instance is running as node daemon.")
+var driverObjectNamespace = flag.String("driver-object-namespace", consts.DefaultAzureDiskCrdNamespace, "The namespace where driver related custom resources are created.")
+var heartbeatFrequencyInSec = flag.Int("heartbeat-frequency-in-sec", 30, "Frequency in seconds at which node driver sends heartbeat.")
+var controllerLeaseDurationInSec = flag.Int("lease-duration-in-sec", 15, "The duration that non-leader candidates will wait to force acquire leadership")
+var controllerLeaseRenewDeadlineInSec = flag.Int("lease-renew-deadline-in-sec", 10, "The duration that the acting controlplane will retry refreshing leadership before giving up.")
+var controllerLeaseRetryPeriodInSec = flag.Int("lease-retry-period-in-sec", 2, "The duration the LeaderElector clients should wait between tries of actions.")
+var leaderElectionNamespace = flag.String("leader-election-namespace", consts.ReleaseNamespace, "The leader election namespace for controller")
+var nodePartition = flag.String("node-partition", consts.DefaultNodePartitionName, "The partition name for node plugin.")
+var controllerPartition = flag.String("controller-partition", consts.DefaultControllerPartitionName, "The partition name for controller plugin.")
 
 // OutputCallDepth is the stack depth where we can find the origin of this call
 const OutputCallDepth = 6
@@ -100,24 +100,16 @@ type DriverV2 struct {
 	kubeClientQPS                     int
 }
 
-func GetDriverConfig() {
-	yamlFile, err := ioutil.ReadFile(driverConfigPath)
-	if err != nil {
-		klog.Fatalf("failed to get the driver config, error: %v", err)
-	}
-
-	err = yaml.Unmarshal(yamlFile, driverConfig)
-	if err != nil {
-		klog.Fatalf("failed to unmarshal the driver config, error: %v", err)
-	}
-}
-
 // NewDriver creates a driver object.
 func NewDriver(options *DriverOptions) CSIDriver {
-	GetDriverConfig()
-	return newDriverV2(options, *driverConfig.objectNamespace, *driverConfig.Node.PartitionName,
-		*driverConfig.Controller.PartitionName, *driverConfig.Node.HeartbeatFrequencyInSec, *driverConfig.Controller.LeaseDurationInSec,
-		*driverConfig.Controller.LeaseRenewDeadlineInSec, *driverConfig.Controller.LeaseRetryPeriodInSec, *driverConfig.Controller.LeaderElectionNamespace)
+	if *azurediskplugin.driverConfigPath != "" {
+		return newDriverV2(options, azurediskplugin.DriverConfig.objectNamespace, driverConfig.Node.PartitionName,
+			driverConfig.Controller.PartitionName, driverConfig.Node.HeartbeatFrequencyInSec, driverConfig.Controller.LeaseDurationInSec,
+			driverConfig.Controller.LeaseRenewDeadlineInSec, driverConfig.Controller.LeaseRetryPeriodInSec, driverConfig.Controller.LeaderElectionNamespace)
+	}
+
+	return newDriverV2(options, *driverObjectNamespace, *nodePartition, *controllerPartition, *heartbeatFrequencyInSec, *controllerLeaseDurationInSec,
+		*controllerLeaseRenewDeadlineInSec, *controllerLeaseRetryPeriodInSec, *leaderElectionNamespace)
 }
 
 // newDriverV2 Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
@@ -299,13 +291,26 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 	ctx := context.Background()
 
 	// Start the controllers if this is a controller plug-in
-	if *isControllerPlugin {
-		go d.StartControllersAndDieOnExit(ctx)
+	if *azurediskplugin.DriverConfigPath != "" {
+		if azurediskplugin.DriverConfig.ControllerConfig.Enabled {
+			go d.StartControllersAndDieOnExit(ctx)
+		}
+	} else {
+		if *isControllerPlugin {
+			go d.StartControllersAndDieOnExit(ctx)
+		}
 	}
 
+
 	// Register the AzDriverNode
-	if *isNodePlugin {
-		d.RegisterAzDriverNodeOrDie(ctx)
+	if *azurediskplugin.DriverConfigPath != "" {
+		if azurediskplugin.DriverConfig.NodeConfig.Enabled {
+			d.RegisterAzDriverNodeOrDie(ctx)
+		}
+	} else {
+		if *isNodePlugin {
+			d.RegisterAzDriverNodeOrDie(ctx)
+		}
 	}
 
 	// Start the CSI endpoint/server
