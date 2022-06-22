@@ -1769,6 +1769,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			skuName = "StandardSSD_ZRS"
 		}
 
+		// TODO: Disable flakey test until #1378 is fixed.
+		ginkgo.Skip("Skip flakey test until #1378 is fixed.")
+
 		azDiskClient, err := azdisk.NewForConfig(f.ClientConfig())
 		framework.ExpectNoError(err, "Failed to create disk client.")
 
