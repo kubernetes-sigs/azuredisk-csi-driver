@@ -8,6 +8,7 @@ metadata:
     "helm.sh/hook-delete-policy": hook-succeeded
 {{ include "azuredisk.labels" . | indent 2 }}
 spec:
+  ttlSecondsAfterFinished: 300
   template:
     spec:
       {{- if .Values.imagePullSecrets }}
