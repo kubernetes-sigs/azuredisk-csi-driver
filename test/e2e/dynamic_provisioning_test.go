@@ -1581,6 +1581,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			skuName = "StandardSSD_ZRS"
 		}
 
+		// BUG: Issue #1349 Test case currently fails on Windows
+		testutil.SkipIfTestingInWindowsCluster()
+
 		azDiskClient, err := azdisk.NewForConfig(f.ClientConfig())
 		if err != nil {
 			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
@@ -1765,6 +1768,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			testutil.SkipIfNotZRSSupported(location)
 			skuName = "StandardSSD_ZRS"
 		}
+
+		// TODO: Disable flakey test until #1378 is fixed.
+		ginkgo.Skip("Skip flakey test until #1378 is fixed.")
 
 		azDiskClient, err := azdisk.NewForConfig(f.ClientConfig())
 		framework.ExpectNoError(err, "Failed to create disk client.")
