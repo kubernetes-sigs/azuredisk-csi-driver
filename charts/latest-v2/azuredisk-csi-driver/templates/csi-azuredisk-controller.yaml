@@ -243,7 +243,7 @@ spec:
               name: socket-dir
             - mountPath: /etc/kubernetes/
               name: azure-cred
-            - mountPAth: /etc/csi-azuredisk-controller
+            - mountPath: /etc/csi-azuredisk-controller
               name: csi-azuredisk-controller-config
             {{- if eq .Values.cloud "AzureStackCloud" }}
             - name: ssl

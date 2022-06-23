@@ -55,10 +55,9 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/workflow"
 	azurecloudconsts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/azurediskplugin"
 )
+
 var DriverConfig azdiskv1beta2.AzDiskDriverConfiguration
-var DriverConfigPath = flag.String("config", "", "The configuration path for the driver")
 var isTestRun = flag.Bool("is-test-run", false, "Boolean flag to indicate whether this instance is being used for sanity or integration tests")
 // Deprecated command-line parameters
 var isControllerPlugin = flag.Bool("is-controller-plugin", false, "Boolean flag to indicate this instance is running as controller.")
@@ -102,10 +101,10 @@ type DriverV2 struct {
 
 // NewDriver creates a driver object.
 func NewDriver(options *DriverOptions) CSIDriver {
-	if *azurediskplugin.driverConfigPath != "" {
-		return newDriverV2(options, azurediskplugin.DriverConfig.objectNamespace, driverConfig.Node.PartitionName,
-			driverConfig.Controller.PartitionName, driverConfig.Node.HeartbeatFrequencyInSec, driverConfig.Controller.LeaseDurationInSec,
-			driverConfig.Controller.LeaseRenewDeadlineInSec, driverConfig.Controller.LeaseRetryPeriodInSec, driverConfig.Controller.LeaderElectionNamespace)
+	if DriverConfig != (azdiskv1beta2.AzDiskDriverConfiguration{}) {
+		return newDriverV2(options, DriverConfig.ObjectNamespace, DriverConfig.NodeConfig.PartitionName,
+			DriverConfig.ControllerConfig.PartitionName, DriverConfig.NodeConfig.HeartbeatFrequencyInSec, DriverConfig.ControllerConfig.LeaseDurationInSec,
+			DriverConfig.ControllerConfig.LeaseRenewDeadlineInSec, DriverConfig.ControllerConfig.LeaseRetryPeriodInSec, DriverConfig.ControllerConfig.LeaderElectionNamespace)
 	}
 
 	return newDriverV2(options, *driverObjectNamespace, *nodePartition, *controllerPartition, *heartbeatFrequencyInSec, *controllerLeaseDurationInSec,
@@ -291,8 +290,8 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 	ctx := context.Background()
 
 	// Start the controllers if this is a controller plug-in
-	if *azurediskplugin.DriverConfigPath != "" {
-		if azurediskplugin.DriverConfig.ControllerConfig.Enabled {
+	if DriverConfig != (azdiskv1beta2.AzDiskDriverConfiguration{}) {
+		if DriverConfig.ControllerConfig.Enabled {
 			go d.StartControllersAndDieOnExit(ctx)
 		}
 	} else {
@@ -303,8 +302,8 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 
 
 	// Register the AzDriverNode
-	if *azurediskplugin.DriverConfigPath != "" {
-		if azurediskplugin.DriverConfig.NodeConfig.Enabled {
+	if DriverConfig != (azdiskv1beta2.AzDiskDriverConfiguration{}) {
+		if DriverConfig.NodeConfig.Enabled {
 			d.RegisterAzDriverNodeOrDie(ctx)
 		}
 	} else {
@@ -319,9 +318,16 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 	s.Start(endpoint, d, d, d, testingMock)
 
 	// Start sending hearbeat and mark node as ready
-	if *isNodePlugin {
-		go d.RunAzDriverNodeHeartbeatLoop(ctx)
+	if DriverConfig != (azdiskv1beta2.AzDiskDriverConfiguration{}) {
+		if DriverConfig.NodeConfig.Enabled {
+			go d.RunAzDriverNodeHeartbeatLoop(ctx)
+		}
+	} else {
+		if *isNodePlugin {
+			go d.RunAzDriverNodeHeartbeatLoop(ctx)
+		}
 	}
+
 
 	// Signal that the driver is ready.
 	d.signalReady()

@@ -31,8 +31,9 @@ import (
 
 	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/klog/v2"
-	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	"k8s.io/utils/strings/slices"
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
 func init() {
@@ -40,8 +41,8 @@ func init() {
 }
 
 var (
-	DriverConfig azdiskv1beta2.AzDiskDriverConfiguration
-	DriverConfigPath           = flag.String("config", "", "The configuration path for the driver")
+	driverConfig azdiskv1beta2.AzDiskDriverConfiguration
+	driverConfigPath           = flag.String("config", "", "The configuration path for the driver")
 	nodeID                     = flag.String("nodeid", "", "node id")
 	version                    = flag.Bool("version", false, "Print the version and exit.")
 	// Deprecated command-line parameters
@@ -72,6 +73,18 @@ var (
 
 func main() {
 	flag.Parse()
+	// Emit warning log when deprecated command-line parameters are specified
+	params := []string{"endpoint", "metrics-address", "kubeconfig", "drivername", "volume-attach-limit", "support-zone", "get-node-info-from-labels", "disable-avset-nodes",
+		"vm-type", "enable-perf-optimization", "cloud-config-secret-name", "cloud-config-secret-namespace", "custom-user-agent", "user-agent-suffix", "use-csiproxy-ga-interface",
+		"enable-disk-online-resize", "allow-empty-cloud-config", "enable-async-attach", "enable-list-volumes", "enable-list-snapshots", "enable-disk-capacity-check",
+		"kube-client-qps", "vmss-cache-ttl-seconds", "is-controller-plugin", "is-node-plugin", "driver-object-namespace", "heartbeat-frequency-in-sec", "lease-duration-in-sec",
+		"lease-renew-deadline-in-sec", "lease-retry-period-in-sec", "leader-election-namespace", "node-partition", "controller-partition"}
+	flag.Visit(func(f *flag.Flag) {
+		if slices.Contains(params, f.Name) {
+			klog.Warningf("the command-line parameter %v is deprecated, using CongfigMap instead", f.Name)
+		}
+	})
+
 	if *version {
 		info, err := azuredisk.GetVersionYAML(*driverName)
 		if err != nil {
@@ -93,38 +106,40 @@ func main() {
 
 func handle() {
 	var driverOptions azuredisk.DriverOptions
-	if *DriverConfigPath != "" {
-		yamlFile, err := ioutil.ReadFile(*DriverConfigPath)
+	if *driverConfigPath != "" {
+		// Read config file and convert to a strut object
+		yamlFile, err := ioutil.ReadFile(*driverConfigPath)
 		if err != nil {
 			klog.Fatalf("failed to get the driver config, error: %v", err)
 		}
 
-		err = yaml.Unmarshal(yamlFile, DriverConfig)
+		err = yaml.Unmarshal(yamlFile, driverConfig)
 		if err != nil {
 			klog.Fatalf("failed to unmarshal the driver config, error: %v", err)
 		}
+		azuredisk.DriverConfig = driverConfig
 
 		driverOptions = azuredisk.DriverOptions{
 			NodeID:                     *nodeID,
-			DriverName:                 DriverConfig.DriverName,
-			VolumeAttachLimit:          DriverConfig.NodeConfig.VolumeAttachLimit,
-			EnablePerfOptimization:     DriverConfig.NodeConfig.EnablePerfOptimization,
-			CloudConfigSecretName:      DriverConfig.CloudConfig.CloudConfigSecretName,
-			CloudConfigSecretNamespace: DriverConfig.CloudConfig.CloudConfigSecretNamespace,
-			CustomUserAgent:            DriverConfig.CloudConfig.CustomUserAgent,
-			UserAgentSuffix:            DriverConfig.CloudConfig.UserAgentSuffix,
-			UseCSIProxyGAInterface:     DriverConfig.NodeConfig.UseCSIProxyGAInterface,
-			EnableDiskOnlineResize:     DriverConfig.ControllerConfig.EnableDiskOnlineResize,
-			AllowEmptyCloudConfig:      DriverConfig.CloudConfig.AllowEmptyCloudConfig,
-			EnableAsyncAttach:          DriverConfig.ControllerConfig.EnableAsyncAttach,
-			EnableListVolumes:          DriverConfig.ControllerConfig.EnableListVolumes,
-			EnableListSnapshots:        DriverConfig.ControllerConfig.EnableListSnapshots,
-			SupportZone:                DriverConfig.NodeConfig.SupportZone,
-			GetNodeInfoFromLabels:      DriverConfig.NodeConfig.GetNodeInfoFromLabels,
-			EnableDiskCapacityCheck:    DriverConfig.ControllerConfig.EnableDiskCapacityCheck,
-			VMSSCacheTTLInSeconds:      DriverConfig.CloudConfig.VmssCacheTTLInSeconds,
-			VMType:                     DriverConfig.ControllerConfig.VMType,
-			RestClientQPS:              DriverConfig.ClientConfig.KubeClientQPS,
+			DriverName:                 driverConfig.DriverName,
+			VolumeAttachLimit:          driverConfig.NodeConfig.VolumeAttachLimit,
+			EnablePerfOptimization:     driverConfig.NodeConfig.EnablePerfOptimization,
+			CloudConfigSecretName:      driverConfig.CloudConfig.CloudConfigSecretName,
+			CloudConfigSecretNamespace: driverConfig.CloudConfig.CloudConfigSecretNamespace,
+			CustomUserAgent:            driverConfig.CloudConfig.CustomUserAgent,
+			UserAgentSuffix:            driverConfig.CloudConfig.UserAgentSuffix,
+			UseCSIProxyGAInterface:     driverConfig.NodeConfig.UseCSIProxyGAInterface,
+			EnableDiskOnlineResize:     driverConfig.ControllerConfig.EnableDiskOnlineResize,
+			AllowEmptyCloudConfig:      driverConfig.CloudConfig.AllowEmptyCloudConfig,
+			EnableAsyncAttach:          driverConfig.ControllerConfig.EnableAsyncAttach,
+			EnableListVolumes:          driverConfig.ControllerConfig.EnableListVolumes,
+			EnableListSnapshots:        driverConfig.ControllerConfig.EnableListSnapshots,
+			SupportZone:                driverConfig.NodeConfig.SupportZone,
+			GetNodeInfoFromLabels:      driverConfig.NodeConfig.GetNodeInfoFromLabels,
+			EnableDiskCapacityCheck:    driverConfig.ControllerConfig.EnableDiskCapacityCheck,
+			VMSSCacheTTLInSeconds:      driverConfig.CloudConfig.VmssCacheTTLInSeconds,
+			VMType:                     driverConfig.ControllerConfig.VMType,
+			RestClientQPS:              driverConfig.ClientConfig.KubeClientQPS,
 		}
 
 		driver := azuredisk.NewDriver(&driverOptions)
@@ -132,9 +147,8 @@ func handle() {
 			klog.Fatalln("Failed to initialize azuredisk CSI Driver")
 		}
 		testingMock := false
-		driver.Run(DriverConfig.Endpoint, DriverConfig.ClientConfig.Kubeconfig, DriverConfig.ControllerConfig.DisableAVSetNodes, testingMock)
+		driver.Run(driverConfig.Endpoint, driverConfig.ClientConfig.Kubeconfig, driverConfig.ControllerConfig.DisableAVSetNodes, testingMock)
 	} else {
-		klog.Warning("most command-line parameters are deprecated and defined in a ConfigMap instead")
 		driverOptions = azuredisk.DriverOptions{
 			NodeID:                     *nodeID,
 			DriverName:                 *driverName,
@@ -169,8 +183,8 @@ func handle() {
 func exportMetrics() {
 	var l net.Listener
 	var err error
-	if *DriverConfigPath != "" {
-		l, err = net.Listen("tcp", DriverConfig.MetricsAddress)
+	if *driverConfigPath != "" {
+		l, err = net.Listen("tcp", driverConfig.MetricsAddress)
 	} else {
 		l, err = net.Listen("tcp", *metricsAddress)
 	}
