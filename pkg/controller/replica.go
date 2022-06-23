@@ -91,7 +91,6 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 		// create a replacement replica if replica attachment failed
 		if objectDeletionRequested(azVolumeAttachment) {
 			switch azVolumeAttachment.Status.State {
-			case azdiskv1beta2.Detaching:
 			case azdiskv1beta2.DetachmentFailed:
 				if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, func(obj interface{}) error {
 					azVolumeAttachment := obj.(*azdiskv1beta2.AzVolumeAttachment)
@@ -100,8 +99,6 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 				}, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
 					return reconcile.Result{Requeue: true}, err
 				}
-			default:
-				return reconcile.Result{Requeue: true}, err
 			}
 			if !isCleanupRequested(azVolumeAttachment) || !volumeDetachRequested(azVolumeAttachment) {
 				go func() {
