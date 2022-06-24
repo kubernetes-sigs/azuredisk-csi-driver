@@ -51,8 +51,14 @@ spec:
       serviceAccountName: {{ .Values.serviceAccount.schedulerExtender }}
       nodeSelector:
         kubernetes.io/os: linux
+{{- with .Values.schedulerExtender.nodeSelector }}
+{{ toYaml . | indent 8 }}
+{{- end }}
         {{- if .Values.controller.runOnMaster}}
         node-role.kubernetes.io/master: ""
+        {{- end}}
+        {{- if .Values.controller.runOnControlPlane}}
+        node-role.kubernetes.io/control-plane: ""
         {{- end}}
       priorityClassName: system-cluster-critical
 {{- with .Values.schedulerExtender.tolerations }}
