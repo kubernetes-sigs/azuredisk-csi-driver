@@ -523,86 +523,86 @@ type ListSnapshotsResult struct {
 }
 
 type AzDiskDriverConfiguration struct {
-	ControllerConfig ControllerConfiguration `json:"controller"`
-	NodeConfig NodeConfiguration `json:"node"`
-	CloudConfig CloudConfiguration `json:"cloud"`
-	ClientConfig ClientConfiguration `json:"client"`
+	ControllerConfig *ControllerConfiguration `json:"controller,omitempty"`
+	NodeConfig *NodeConfiguration `json:"node,omitempty"`
+	CloudConfig *CloudConfiguration `json:"cloud,omitempty"`
+	ClientConfig *ClientConfiguration `json:"client,omitempty"`
 	// The namespace where driver related custom resources are created
-	ObjectNamespace string `json:"objectNamespace"`
+	ObjectNamespace string `json:"objectNamespace,omitempty"`
 	// CSI endpoint
-	Endpoint string `json:"endpoint"`
+	Endpoint string `json:"endpoint,omitempty"`
 	// export the metrics
-	MetricsAddress string `json:"metricAddress"`
+	MetricsAddress string `json:"metricAddress,omitempty"`
 	// name of the driver
-	DriverName string `json:"driverName"`
+	DriverName string `json:"driverName,omitempty"`
 }
 
 type ControllerConfiguration struct {
 	// disable DisableAvailabilitySetNodes in cloud config for controller
-	DisableAVSetNodes bool `json:"disableAVSetNodes"`
+	DisableAVSetNodes bool `json:"disableAVSetNodes,omitempty"`
 	// type of agent node. available values: vmss, standard
-	VMType string `json:"vmType"`
+	VMType string `json:"vmType,omitempty"`
 	// boolean field to enable disk online resize
-	EnableDiskOnlineResize bool `json:"enableDiskOnlineResize"`
+	EnableDiskOnlineResize bool `json:"enableDiskOnlineResize,omitempty"`
 	// boolean field to enable async attach
-	EnableAsyncAttach bool `json:"enableAsyncAttach"`
+	EnableAsyncAttach bool `json:"enableAsyncAttach,omitempty"`
 	// boolean field to enable ListVolumes on controller
-	EnableListVolumes bool `json:"enableListVolumes"`
+	EnableListVolumes bool `json:"enableListVolumes,omitempty"`
 	// boolean field to enable ListSnapshots on controller
-	EnableListSnapshots bool `json:"enableListSnapshots"`
+	EnableListSnapshots bool `json:"enableListSnapshots,omitempty"`
 	// boolean field to enable volume capacity check in CreateVolume
-	EnableDiskCapacityCheck bool `json:"enableDiskCapacityCheck"`
+	EnableDiskCapacityCheck bool `json:"enableDiskCapacityCheck,omitempty"`
 	// Boolean field to indicate this instance is running as controller
-	Enabled bool `json:"enabled"`
+	Enabled bool `json:"enabled,omitempty"`
 	// The duration that non-leader candidates will wait to force acquire leadership
-	LeaseDurationInSec int `json:"leaseDurationInSec"`
+	LeaseDurationInSec int `json:"leaseDurationInSec,omitempty"`
 	// The duration that the acting controlplane will retry refreshing leadership before giving up
-	LeaseRenewDeadlineInSec int `json:"leaseRenewDeadlineInSec"`
+	LeaseRenewDeadlineInSec int `json:"leaseRenewDeadlineInSec,omitempty"`
 	// The duration the LeaderElector clients should wait between tries of actions
-	LeaseRetryPeriodInSec int `json:"leaseRetryPeriodInSec"`
+	LeaseRetryPeriodInSec int `json:"leaseRetryPeriodInSec,omitempty"`
 	// The leader election namespace for controller
-	LeaderElectionNamespace string `json:"leaderElectionNamespace"`
+	LeaderElectionNamespace string `json:"leaderElectionNamespace,omitempty"`
 	// The partition name for controller plugin
-	PartitionName string `json:"partitionName"`
+	PartitionName string `json:"partitionName,omitempty"`
 }
 
 type NodeConfiguration struct {
 	// maximum number of attachable volumes per node
-	VolumeAttachLimit int64 `json:"volumeAttachLimit"`
+	VolumeAttachLimit int64 `json:"volumeAttachLimit,omitempty"`
 	// boolean flag to get zone info in NodeGetInfo
-	SupportZone bool `json:"supportZone"`
+	SupportZone bool `json:"supportZone,omitempty"`
 	// boolean field to enable disk perf optimization
-	EnablePerfOptimization bool `json:"enablePerfOptimization"`
+	EnablePerfOptimization bool `json:"enablePerfOptimization,omitempty"`
 	// boolean field to enable csi-proxy GA interface on Windows
-	UseCSIProxyGAInterface bool `json:"useCSIProxyGAInterface"`
+	UseCSIProxyGAInterface bool `json:"useCSIProxyGAInterface,omitempty"`
 	// boolean flag to get zone info from node labels in NodeGetInfo
-	GetNodeInfoFromLabels bool `json:"getNodeInfoFromLabels"`
+	GetNodeInfoFromLabels bool `json:"getNodeInfoFromLabels,omitempty"`
 	// Boolean field to indicate this instance is running as node daemon
-	Enabled bool `json:"enabled"`
+	Enabled bool `json:"enabled,omitempty"`
 	// Frequency in seconds at which node driver sends heartbeat
-	HeartbeatFrequencyInSec int `json:"heartbeatFrequencyInSec"`
+	HeartbeatFrequencyInSec int `json:"heartbeatFrequencyInSec,omitempty"`
 	// The partition name for node plugin
-	PartitionName string `json:"partitionName"`
+	PartitionName string `json:"partitionName,omitempty"`
 }
 
 type CloudConfiguration struct {
 	// cloud config secret name
-	CloudConfigSecretName string `json:"cloudConfigSecretName"`
+	CloudConfigSecretName string `json:"cloudConfigSecretName,omitempty"`
 	// cloud config secret namespace
-	CloudConfigSecretNamespace string `json:"cloudConfigSecretNamesapce"`
+	CloudConfigSecretNamespace string `json:"cloudConfigSecretNamesapce,omitempty"`
 	// custom userAgent
-	CustomUserAgent string `json:"customUserAgent"`
+	CustomUserAgent string `json:"customUserAgent,omitempty"`
 	// userAgent suffix
-	UserAgentSuffix string `json:"userAgentSuffix"`
+	UserAgentSuffix string `json:"userAgentSuffix,omitempty"`
 	// Whether allow running driver without cloud config
-	AllowEmptyCloudConfig bool `json:"allowEmptyCloudConfig"`
+	AllowEmptyCloudConfig bool `json:"allowEmptyCloudConfig,omitempty"`
 	// vmss cache TTL in seconds (600 by default)
-	VmssCacheTTLInSeconds int64 `json:"vmssCacheTTLInSeconds"`
+	VmssCacheTTLInSeconds int64 `json:"vmssCacheTTLInSeconds,omitempty"`
 }
 
 type ClientConfiguration struct {
 	// Absolute path to the kubeconfig file. Required only when running out of cluster
-	Kubeconfig string `json:"kubeconfig"`
+	Kubeconfig string `json:"kubeconfig,omitempty"`
 	// QPS for the rest client. Defaults to 15
-	KubeClientQPS int `json:"kubeClientQPS"`
+	KubeClientQPS int `json:"kubeClientQPS,omitempty"`
 }
