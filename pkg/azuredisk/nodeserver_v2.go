@@ -142,11 +142,14 @@ func (d *DriverV2) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolume
 	source, err := d.nodeProvisioner.GetDevicePathWithLUN(ctx, int(lun))
 	if err == nil {
 		d.markRecoveryCompleteIfInProcess(diskURI)
-	} else if !waitedForAttach && d.enableListVolumes {
-		// recovery has a dependency on listVolumes call. Only proceed with recovery if listVolumes is enabled.
-		// if device path could not be found, start mount recovery only if the function's context was not used up waiting for AzVolumeAttachment CRI attachment to complete
-		err = status.Errorf(codes.Internal, "failed to find disk on lun %v. %v", lun, err)
-		go d.recoverMount(diskURI)
+	} else {
+		if !waitedForAttach && d.enableListVolumes {
+			// recovery has a dependency on listVolumes call. Only proceed with recovery if listVolumes is enabled.
+			// if device path could not be found, start mount recovery only if the function's context was not used up waiting for AzVolumeAttachment CRI attachment to complete
+			err = status.Errorf(codes.Internal, "failed to find disk on lun %v. %v", lun, err)
+			go d.recoverMount(diskURI)
+		}
+
 		return nil, err
 	}
 
