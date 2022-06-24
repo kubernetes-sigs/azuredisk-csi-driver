@@ -12,36 +12,36 @@ data:
     controllerConfig:
       disableAVSetNodes: {{ .Values.controller.disableAvailabilitySetNodes }}
       vmType:
-      enableDiskOnlineResize: true
-      enableAsyncAttach: false
-      enableListVolumes: false
-      enableListSnapshots: false
-      enableDiskCapacityCheck: false
+      enableDiskOnlineResize:
+      enableAsyncAttach:
+      enableListVolumes:
+      enableListSnapshots:
+      enableDiskCapacityCheck:
       enabled: true
-      leaseDurationInSec: 15
-      leaseRenewDeadlineInSec: 10
-      leaseRetryPeriodInSec: 2
+      leaseDurationInSec:
+      leaseRenewDeadlineInSec:
+      leaseRetryPeriodInSec:
       leaderElectionNamespace: {{ .Release.Namespace }}
-      partitionName: csi-azuredisk-controller
+      partitionName:
     nodeConfig:
-      volumeAttachLimit: {{ .Values.driver.volumeAttachLimit }}
+      volumeAttachLimit:
       supportZone: {{ .Values.node.supportZone }}
       enablePerfOptimization: {{ .Values.linux.enablePerfOptimization }}
-      useCSIProxyGAInterface: true
-      getNodeInfoFromLabels: false
-      enabled: false
-      heartbeatFrequencyInSec: 30
-      partitionName: csi-azuredisk-node
+      useCSIProxyGAInterface:
+      getNodeInfoFromLabels:
+      enabled:
+      heartbeatFrequencyInSec:
+      partitionName:
     cloudConfig:
       cloudConfigSecretName: {{ .Values.controller.cloudConfigSecretName }}
       cloudConfigSecretNamesapce: {{ .Values.controller.cloudConfigSecretNamespace }}
       customUserAgent: {{ .Values.driver.customUserAgent }}
       userAgentSuffix: {{ .Values.driver.userAgentSuffix }}
       allowEmptyCloudConfig: {{ .Values.node.allowEmptyCloudConfig }}
-      vmssCacheTTLInSeconds: -1
+      vmssCacheTTLInSeconds:
     clientConfig:
       kubeconfig:
-      kubeClientQPS: 15
+      kubeClientQPS:
     objectNamespace: {{ .Values.driver.objectNamespace }}
     endpoint: unix:///csi/csi.sock
     metricsAddress: 0.0.0.0:{{ .Values.controller.metrics.port }}
@@ -193,19 +193,6 @@ spec:
 {{- end }}
           args:
             - "--v={{ .Values.controller.logLevel }}"
-            # - "--endpoint=$(CSI_ENDPOINT)"
-            # - "--metrics-address=0.0.0.0:{{ .Values.controller.metrics.port }}"
-            # - "--is-controller-plugin=true"
-            # - "--enable-perf-optimization={{ .Values.linux.enablePerfOptimization }}"
-            # - "--disable-avset-nodes={{ .Values.controller.disableAvailabilitySetNodes }}"
-            # - "--drivername={{ .Values.driver.name }}"
-            # - "--driver-object-namespace={{ .Values.driver.objectNamespace }}"
-            # - "--leader-election-namespace={{ .Release.Namespace }}"
-            # - "--cloud-config-secret-name={{ .Values.controller.cloudConfigSecretName }}"
-            # - "--cloud-config-secret-namespace={{ .Values.controller.cloudConfigSecretNamespace }}"
-            # - "--custom-user-agent={{ .Values.driver.customUserAgent }}"
-            # - "--user-agent-suffix={{ .Values.driver.userAgentSuffix }}"
-            # - "--allow-empty-cloud-config={{ .Values.controller.allowEmptyCloudConfig }}"
             - "--config=/etc/csi-azuredisk-controller/config.yaml"
           ports:
             - containerPort: {{ .Values.controller.livenessProbe.healthPort }}

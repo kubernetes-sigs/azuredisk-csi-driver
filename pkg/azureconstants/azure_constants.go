@@ -157,6 +157,36 @@ const (
 	ReplicaAttachmentFailedEvent  = "ReplicaAttachmentFailed"
 	ReplicaAttachmentSuccessEvent = "ReplicaAttachmentSucceeded"
 	ClientFailedGetEvent          = "ClientFailedToGetObject"
+
+	// AzDiskDriverConfiguration specific constants
+	Endpoint = "unix://tmp/csi.sock"
+	MetricsAddress = "0.0.0.0:29604"
+	DisableAVSetNodes = false
+	VMType = ""
+	EnableDiskOnlineResize = true
+	EnableAsyncAttach = false
+	EnableListVolumes = false
+	EnableListSnapshots = false
+	EnableDiskCapacityCheck = false
+	IsControllerPlugin = false
+	ControllerLeaseDurationInSec = 15
+	ControllerLeaseRenewDeadlineInSec = 10
+	ControllerLeaseRetryPeriodInSec = 2
+	VolumeAttachLimit = -1
+	SupportZone = true
+	EnablePerfOptimization = false
+	UseCSIProxyGAInterface = true
+	GetNodeInfoFromLabels = false
+	IsNodePlugin = false
+	HeartbeatFrequencyInSec = 30
+	CloudConfigSecretName = "azure-cloud-provider"
+	CloudConfigSecretNamespace = "kube-system"
+	CustomUserAgent = ""
+	UserAgentSuffix = ""
+	AllowEmptyCloudConfig = true
+	VmssCacheTTLInSeconds = -1
+	Kubeconfig = ""
+	KubeClientQPS = 15
 )
 
 type UnpublishMode int

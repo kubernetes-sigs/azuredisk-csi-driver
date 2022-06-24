@@ -10,38 +10,38 @@ data:
     apiVersion: kubescheduler.config.k8s.io/v1beta2
     kind: AzDiskDriverConfiguration
     controllerConfig:
-      disableAVSetNodes: false
+      disableAVSetNodes:
       vmType:
-      enableDiskOnlineResize: true
-      enableAsyncAttach: false
-      enableListVolumes: false
-      enableListSnapshots: false
-      enableDiskCapacityCheck: false
-      enabled: false
-      leaseDurationInSec: 15
-      leaseRenewDeadlineInSec: 10
-      leaseRetryPeriodInSec: 2
-      leaderElectionNamespace: {{ .Release.Namespace }}
-      partitionName: csi-azuredisk-controller
+      enableDiskOnlineResize:
+      enableAsyncAttach:
+      enableListVolumes:
+      enableListSnapshots:
+      enableDiskCapacityCheck:
+      enabled:
+      leaseDurationInSec:
+      leaseRenewDeadlineInSec:
+      leaseRetryPeriodInSec:
+      leaderElectionNamespace:
+      partitionName:
     nodeConfig:
       volumeAttachLimit: {{ .Values.driver.volumeAttachLimit }}
       supportZone: {{ .Values.node.supportZone }}
-      enablePerfOptimization: false
-      useCSIProxyGAInterface: true
+      enablePerfOptimization:
+      useCSIProxyGAInterface:
       getNodeInfoFromLabels: {{ .Values.windows.getNodeInfoFromLabels }}
       enabled: true
-      heartbeatFrequencyInSec: 30
-      partitionName: csi-azuredisk-node
+      heartbeatFrequencyInSec:
+      partitionName:
     cloudConfig:
       cloudConfigSecretName: {{ .Values.controller.cloudConfigSecretName }}
       cloudConfigSecretNamesapce: {{ .Values.controller.cloudConfigSecretNamespace }}
       customUserAgent: {{ .Values.driver.customUserAgent }}
       userAgentSuffix: {{ .Values.driver.userAgentSuffix }}
       allowEmptyCloudConfig: {{ .Values.node.allowEmptyCloudConfig }}
-      vmssCacheTTLInSeconds: -1
+      vmssCacheTTLInSeconds:
     clientConfig:
       kubeconfig:
-      kubeClientQPS: 15
+      kubeClientQPS:
     objectNamespace: {{ .Values.driver.objectNamespace }}
     endpoint: unix://C:\\csi\\csi.sock
     metricsAddress: 0.0.0.0:{{ .Values.node.metrics.port }}
@@ -146,20 +146,7 @@ spec:
 {{- end }}
           args:
             - "--v={{ .Values.node.logLevel }}"
-            # - "--endpoint=$(CSI_ENDPOINT)"
-            # - "--nodeid=$(KUBE_NODE_NAME)"
-            # - "--metrics-address=0.0.0.0:{{ .Values.node.metrics.port }}"
-            # - "--is-node-plugin=true"
-            # - "--drivername={{ .Values.driver.name }}"
-            # - "--driver-object-namespace={{ .Values.driver.objectNamespace }}"
-            # - "--volume-attach-limit={{ .Values.driver.volumeAttachLimit }}"
-            # - "--cloud-config-secret-name={{ .Values.node.cloudConfigSecretName }}"
-            # - "--cloud-config-secret-namespace={{ .Values.node.cloudConfigSecretNamespace }}"
-            # - "--custom-user-agent={{ .Values.driver.customUserAgent }}"
-            # - "--user-agent-suffix={{ .Values.driver.userAgentSuffix }}"
-            # - "--allow-empty-cloud-config={{ .Values.node.allowEmptyCloudConfig }}"
-            # - "--support-zone={{ .Values.node.supportZone }}"
-            # - "--get-node-info-from-labels={{ .Values.windows.getNodeInfoFromLabels }}"
+            - "--nodeid=$(KUBE_NODE_NAME)"
             - "--config=/etc/csi-azuredisk-node-win/config.yaml"
           ports:
             - containerPort: {{ .Values.node.livenessProbe.healthPort }}
