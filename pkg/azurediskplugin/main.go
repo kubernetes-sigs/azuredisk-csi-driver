@@ -74,13 +74,8 @@ var (
 func main() {
 	flag.Parse()
 	// Emit warning log when deprecated command-line parameters are specified
-	params := []string{"endpoint", "metrics-address", "kubeconfig", "drivername", "volume-attach-limit", "support-zone", "get-node-info-from-labels", "disable-avset-nodes",
-		"vm-type", "enable-perf-optimization", "cloud-config-secret-name", "cloud-config-secret-namespace", "custom-user-agent", "user-agent-suffix", "use-csiproxy-ga-interface",
-		"enable-disk-online-resize", "allow-empty-cloud-config", "enable-async-attach", "enable-list-volumes", "enable-list-snapshots", "enable-disk-capacity-check",
-		"kube-client-qps", "vmss-cache-ttl-seconds", "is-controller-plugin", "is-node-plugin", "driver-object-namespace", "heartbeat-frequency-in-sec", "lease-duration-in-sec",
-		"lease-renew-deadline-in-sec", "lease-retry-period-in-sec", "leader-election-namespace", "node-partition", "controller-partition"}
 	flag.Visit(func(f *flag.Flag) {
-		if slices.Contains(params, f.Name) {
+		if slices.Contains(consts.CommandLineParams, f.Name) {
 			klog.Warningf("the command-line parameter %v is deprecated, using CongfigMap instead", f.Name)
 		}
 	})
