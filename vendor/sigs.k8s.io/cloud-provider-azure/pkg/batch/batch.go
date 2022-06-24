@@ -31,6 +31,10 @@ const (
 	defaultVerboseLogLevel int = 1
 )
 
+type EntryValue interface {
+	CleanUp()
+}
+
 // newEntry returns a new batch entry.
 func newEntry(ctx context.Context, value interface{}) *entry {
 	return &entry{ctx: ctx, value: value, resultChan: make(chan Result, 1)}
@@ -38,6 +42,9 @@ func newEntry(ctx context.Context, value interface{}) *entry {
 
 // setResult sets the result of a batch entry.
 func (e *entry) setResult(value interface{}, err error) {
+	if entryValue, ok := e.value.(EntryValue); ok {
+		entryValue.CleanUp()
+	}
 	e.resultChan <- Result{value: value, err: err}
 	close(e.resultChan)
 }

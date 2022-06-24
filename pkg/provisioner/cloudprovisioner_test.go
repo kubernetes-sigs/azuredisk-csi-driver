@@ -726,35 +726,41 @@ func TestPublishVolume(t *testing.T) {
 		AnyTimes()
 
 	tests := []struct {
-		description   string
-		nodeID        string
-		diskURI       string
-		expectedError error
+		description        string
+		nodeID             string
+		diskURI            string
+		expectedError      error
+		expectedAsyncError error
 	}{
+
 		{
-			description:   "[Success] Attaches an existing disk",
-			nodeID:        testVMName,
-			diskURI:       testDiskURI,
-			expectedError: nil,
+			description:        "[Success] Attaches an existing disk",
+			nodeID:             testVMName,
+			diskURI:            testDiskURI,
+			expectedError:      nil,
+			expectedAsyncError: nil,
 		},
 		{
-			description:   "[Failure] Returns error for missing VM",
-			nodeID:        missingVMName,
-			diskURI:       testDiskURI,
-			expectedError: status.Errorf(codes.NotFound, "failed to get azure instance id for node %q: %v", missingVMName, cloudprovider.InstanceNotFound),
+			description:        "[Failure] Returns error for missing VM",
+			nodeID:             missingVMName,
+			diskURI:            testDiskURI,
+			expectedError:      status.Errorf(codes.NotFound, "failed to get azure instance id for node %q: %v", missingVMName, cloudprovider.InstanceNotFound),
+			expectedAsyncError: nil,
 		},
 		{
-			description:   "[Failure] Returns error for missing disk",
-			nodeID:        testVMName,
-			diskURI:       missingDiskURI,
-			expectedError: status.Errorf(codes.NotFound, "Volume not found, failed with error: %v", notFoundError.Error()),
+			description:        "[Failure] Returns error for missing disk",
+			nodeID:             testVMName,
+			diskURI:            missingDiskURI,
+			expectedError:      status.Errorf(codes.NotFound, "Volume not found, failed with error: %v", notFoundError.Error()),
+			expectedAsyncError: nil,
 		},
 	}
 
 	for _, test := range tests {
 		tt := test
 		t.Run(test.description, func(t *testing.T) {
-			_, err := provisioner.PublishVolume(context.TODO(), tt.diskURI, tt.nodeID, map[string]string{})
+			result := provisioner.PublishVolume(context.TODO(), tt.diskURI, tt.nodeID, map[string]string{})
+			err := <-result.ResultChannel()
 			assert.Equal(t, tt.expectedError, err)
 		})
 	}

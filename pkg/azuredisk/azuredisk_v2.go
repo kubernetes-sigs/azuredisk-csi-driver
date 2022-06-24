@@ -386,6 +386,12 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 		klog.Errorf("Failed to initialize PVController. Error: %v. Exiting application...", err)
 		os.Exit(1)
 	}
+	klog.V(2).Info("Initializing VolumeAttachment controller")
+	_, err = controller.NewVolumeAttachmentController(mgr, sharedState)
+	if err != nil {
+		klog.Errorf("Failed to initialize VolumeAttachment Controller. Error: %v. Exiting application...", err)
+		os.Exit(1)
+	}
 	klog.V(2).Info("Initializing Node Availability controller")
 	_, err = controller.NewNodeAvailabilityController(mgr, sharedState)
 	if err != nil {

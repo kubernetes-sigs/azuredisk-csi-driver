@@ -146,13 +146,13 @@ func (r *ReconcileReplica) triggerGarbageCollection(ctx context.Context, volumeN
 		return
 	}
 
-	workflowCtx, w := workflow.New(deletionCtx, workflow.WithDetails(consts.VolumeNameLabel, volumeName))
+	workflowCtx, w := workflow.New(context.Background(), workflow.WithDetails(consts.VolumeNameLabel, volumeName))
 	w.Logger().V(5).Infof("Garbage collection of AzVolumeAttachments for AzVolume (%s) scheduled in %s.", volumeName, r.timeUntilGarbageCollection.String())
 
 	go func() {
 		defer w.Finish(nil)
 		select {
-		case <-workflowCtx.Done():
+		case <-deletionCtx.Done():
 			return
 		case <-time.After(r.timeUntilGarbageCollection):
 			r.controllerSharedState.garbageCollectReplicas(workflowCtx, volumeName, replica)

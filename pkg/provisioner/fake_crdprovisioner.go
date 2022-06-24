@@ -59,7 +59,9 @@ func (c *FakeCrdProvisioner) PublishVolume(
 	readOnly bool,
 	secrets map[string]string,
 	volumeContext map[string]string) (map[string]string, error) {
-	return c.fakeCloudProv.PublishVolume(ctx, volumeID, nodeID, volumeContext)
+	result := c.fakeCloudProv.PublishVolume(ctx, volumeID, nodeID, volumeContext)
+	err := <-result.ResultChannel()
+	return result.PublishContext(), err
 }
 
 func (c *FakeCrdProvisioner) UnpublishVolume(
