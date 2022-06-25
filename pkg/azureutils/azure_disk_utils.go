@@ -898,7 +898,9 @@ func GetAzVolumeAttachmentState(volumeAttachmentStatus storagev1.VolumeAttachmen
 	}
 }
 
-func UpdateCRIWithRetry(ctx context.Context, informerFactory azdiskinformers.SharedInformerFactory, cachedClient client.Client, azDiskClient azdisk.Interface, obj client.Object, updateFunc func(interface{}) error, maxNetRetry int, updateMode CRIUpdateMode) error {
+type UpdateCRIFunc func(client.Object) error
+
+func UpdateCRIWithRetry(ctx context.Context, informerFactory azdiskinformers.SharedInformerFactory, cachedClient client.Client, azDiskClient azdisk.Interface, obj client.Object, updateFunc UpdateCRIFunc, maxNetRetry int, updateMode CRIUpdateMode) error {
 	var err error
 	objName := obj.GetName()
 	ctx, w := workflow.New(ctx)
@@ -1028,11 +1030,13 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azdiskinformers.Sha
 	return err
 }
 
-func AppendToUpdateFunc(updateFunc, newFunc func(interface{}) error) func(interface{}) error {
+func AppendToUpdateCRIFunc(updateFunc, newFunc UpdateCRIFunc) UpdateCRIFunc {
 	if updateFunc != nil {
 		innerFunc := updateFunc
-		return func(obj interface{}) error {
-			obj = innerFunc(obj)
+		return func(obj client.Object) error {
+			if err := innerFunc(obj); err != nil {
+				return err
+			}
 			return newFunc(obj)
 		}
 	}

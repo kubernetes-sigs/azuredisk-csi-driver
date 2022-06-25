@@ -30,6 +30,7 @@ import (
 
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -90,7 +91,7 @@ func (r *ReconcileVolumeAttachment) Reconcile(ctx context.Context, request recon
 		return reconcileReturnOnError(ctx, &volumeAttachment, "get azvolumeattachment", err, r.controllerRetryInfo)
 	}
 
-	updateFunc := func(obj interface{}) error {
+	updateFunc := func(obj client.Object) error {
 		azv := obj.(*azdiskv1beta2.AzVolumeAttachment)
 		// Update the annotation of AzVolumeAttachment with volumeAttachment name
 		azv.Status.Annotations = azureutils.AddToMap(azv.Status.Annotations, consts.VolumeAttachmentKey, volumeAttachment.Name)
