@@ -38,6 +38,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/workflow"
 
 	volerr "k8s.io/cloud-provider/volume/errors"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -158,7 +159,7 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 	}
 
 	// update status block
-	updateFunc := func(obj interface{}) error {
+	updateFunc := func(obj client.Object) error {
 		azv := obj.(*azdiskv1beta2.AzVolumeAttachment)
 		// Update state to attaching, Initialize finalizer and add label to the object
 		_, derr := updateState(azv, azdiskv1beta2.Attaching, normalUpdate)
@@ -248,13 +249,14 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 				}
 			}
 
-			updateFunc := func(obj interface{}) error {
+			updateFunc := func(obj client.Object) error {
 				azv := obj.(*azdiskv1beta2.AzVolumeAttachment)
 				azv = updateError(azv, attachErr)
 				_, uerr := updateState(azv, azdiskv1beta2.AttachmentFailed, forceUpdate)
 				return uerr
 			}
-			_ = azureutils.UpdateCRIWithRetry(goCtx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry, azureutils.UpdateCRIStatus)
+			//nolint:contextcheck // final status update of the CRI must occur even when the current context's deadline passes.
+			_ = azureutils.UpdateCRIWithRetry(context.Background(), nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry, azureutils.UpdateCRIStatus)
 		}
 		handleSuccess = func(asyncComplete bool) {
 			// Publish event to indicate attachment success
@@ -264,7 +266,7 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 				}
 			}
 
-			updateFunc := func(obj interface{}) error {
+			updateFunc := func(obj client.Object) error {
 				azv := obj.(*azdiskv1beta2.AzVolumeAttachment)
 				azv = updateStatusDetail(azv, publishCtx)
 				var uerr error
@@ -277,7 +279,12 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 			if asyncComplete && azVolumeAttachment.Spec.RequestedRole == azdiskv1beta2.PrimaryRole {
 				_ = r.updateVolumeAttachmentWithResult(goCtx, azVolumeAttachment)
 			}
-			_ = azureutils.UpdateCRIWithRetry(goCtx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry, azureutils.UpdateCRIStatus)
+			updateCtx := goCtx
+			if asyncComplete {
+				//nolint:contextcheck // final status update of the CRI must occur even when the current context's deadline passes.
+				updateCtx = context.Background()
+			}
+			_ = azureutils.UpdateCRIWithRetry(updateCtx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry, azureutils.UpdateCRIStatus)
 		}
 
 		attachAndUpdate()
@@ -300,7 +307,7 @@ func (r *ReconcileAttachDetach) triggerDetach(ctx context.Context, azVolumeAttac
 			return getOperationRequeueError("detach", azVolumeAttachment)
 		}
 
-		updateFunc := func(obj interface{}) error {
+		updateFunc := func(obj client.Object) error {
 			azv := obj.(*azdiskv1beta2.AzVolumeAttachment)
 			// Update state to detaching
 			_, derr := updateState(azv, azdiskv1beta2.Detaching, normalUpdate)
@@ -323,30 +330,30 @@ func (r *ReconcileAttachDetach) triggerDetach(ctx context.Context, azVolumeAttac
 			cloudCtx, cloudCancel := context.WithTimeout(goCtx, cloudTimeout)
 			defer cloudCancel()
 
-			var updateFunc func(obj interface{}) error
+			var updateFunc func(obj client.Object) error
 			updateMode := azureutils.UpdateCRIStatus
 			detachErr = r.detachVolume(cloudCtx, azVolumeAttachment.Spec.VolumeID, azVolumeAttachment.Spec.NodeName)
 			if detachErr != nil {
-				updateFunc = func(obj interface{}) error {
+				updateFunc = func(obj client.Object) error {
 					azv := obj.(*azdiskv1beta2.AzVolumeAttachment)
 					azv = updateError(azv, detachErr)
 					_, derr := updateState(azv, azdiskv1beta2.DetachmentFailed, forceUpdate)
 					return derr
 				}
 			} else {
-				updateFunc = func(obj interface{}) error {
+				updateFunc = func(obj client.Object) error {
 					azv := obj.(*azdiskv1beta2.AzVolumeAttachment)
 					_ = r.deleteFinalizer(azv)
 					return nil
 				}
 				updateMode = azureutils.UpdateCRI
 			}
-			// UpdateCRIWithRetry should be called on a context w/o timeout when called in a separate goroutine as it is not going to be retriggered and leave the CRI in unrecoverable transient state instead.
-			_ = azureutils.UpdateCRIWithRetry(goCtx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry, updateMode)
+			//nolint:contextcheck // final status update of the CRI must occur even when the current context's deadline passes.
+			_ = azureutils.UpdateCRIWithRetry(context.Background(), nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry, updateMode)
 		}()
 		<-waitCh
 	} else {
-		updateFunc := func(obj interface{}) error {
+		updateFunc := func(obj client.Object) error {
 			azv := obj.(*azdiskv1beta2.AzVolumeAttachment)
 			// delete finalizer
 			_ = r.deleteFinalizer(azv)
@@ -369,7 +376,7 @@ func (r *ReconcileAttachDetach) promote(ctx context.Context, azVolumeAttachment 
 		return err
 	}
 	// initialize metadata and update status block
-	updateFunc := func(obj interface{}) error {
+	updateFunc := func(obj client.Object) error {
 		azv := obj.(*azdiskv1beta2.AzVolumeAttachment)
 		_ = updateRole(azv, azdiskv1beta2.PrimaryRole)
 		return nil
@@ -387,7 +394,7 @@ func (r *ReconcileAttachDetach) demote(ctx context.Context, azVolumeAttachment *
 
 	w.Logger().Info("Demoting AzVolumeAttachment")
 	// initialize metadata and update status block
-	updateFunc := func(obj interface{}) error {
+	updateFunc := func(obj client.Object) error {
 		azv := obj.(*azdiskv1beta2.AzVolumeAttachment)
 		delete(azv.Status.Annotations, consts.VolumeAttachmentKey)
 		_ = updateRole(azv, azdiskv1beta2.ReplicaRole)
@@ -407,7 +414,7 @@ func (r *ReconcileAttachDetach) updateVolumeAttachmentWithResult(ctx context.Con
 		return err
 	}
 
-	vaUpdateFunc := func(obj interface{}) error {
+	vaUpdateFunc := func(obj client.Object) error {
 		va := obj.(*storagev1.VolumeAttachment)
 		if azVolumeAttachment.Status.Detail != nil {
 			for key, value := range azVolumeAttachment.Status.Detail.PublishContext {
@@ -661,7 +668,7 @@ func (r *ReconcileAttachDetach) recoverAzVolumeAttachment(ctx context.Context, r
 		go func(azv azdiskv1beta2.AzVolumeAttachment, azvMap *sync.Map) {
 			defer wg.Done()
 			var targetState azdiskv1beta2.AzVolumeAttachmentAttachmentState
-			updateFunc := func(obj interface{}) error {
+			updateFunc := func(obj client.Object) error {
 				var err error
 				azv := obj.(*azdiskv1beta2.AzVolumeAttachment)
 				// add a recover annotation to the CRI so that reconciliation can be triggered for the CRI even if CRI's current state == target state

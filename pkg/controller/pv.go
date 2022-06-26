@@ -33,6 +33,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/workflow"
 
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -114,7 +115,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 		}
 		// AzVolume does exist and needs to be deleted
 		// add annotation to mark AzVolumeAttachment cleanup
-		updateFunc := func(obj interface{}) error {
+		updateFunc := func(obj client.Object) error {
 			azv := obj.(*azdiskv1beta2.AzVolume)
 			azv.Status.Annotations = azureutils.AddToMap(azv.Status.Annotations, consts.PreProvisionedVolumeCleanupAnnotation, "true")
 			return nil
@@ -156,10 +157,10 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 		return reconcileReturnOnSuccess(pv.Name, r.controllerRetryInfo)
 	}
 
-	var azVolumeUpdateFunc func(interface{}) error
+	var azVolumeUpdateFunc azureutils.UpdateCRIFunc
 
 	if azVolume.Spec.PersistentVolume != pv.Name {
-		azVolumeUpdateFunc = func(obj interface{}) error {
+		azVolumeUpdateFunc = func(obj client.Object) error {
 			azVolume := obj.(*azdiskv1beta2.AzVolume)
 			azVolume.Spec.PersistentVolume = pv.Name
 			return nil
@@ -171,7 +172,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 	pvcNamespace, pvcNamespaceLabelExists := azureutils.GetFromMap(azVolume.Labels, consts.PvcNamespaceLabel)
 	if pv.Spec.ClaimRef != nil {
 		if !pvcLabelExists || pv.Spec.ClaimRef.Name != pvcName || !pvcNamespaceLabelExists || pv.Spec.ClaimRef.Namespace != pvcNamespace {
-			azureutils.AppendToUpdateFunc(azVolumeUpdateFunc, func(obj interface{}) error {
+			azVolumeUpdateFunc = azureutils.AppendToUpdateCRIFunc(azVolumeUpdateFunc, func(obj client.Object) error {
 				azv := obj.(*azdiskv1beta2.AzVolume)
 				azv.Labels = azureutils.AddToMap(azv.Labels, consts.PvcNameLabel, pv.Spec.ClaimRef.Name, consts.PvcNamespaceLabel, pv.Spec.ClaimRef.Namespace)
 				return nil
@@ -179,7 +180,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 		}
 	} else {
 		if pvcLabelExists || pvcNamespaceLabelExists {
-			azureutils.AppendToUpdateFunc(azVolumeUpdateFunc, func(obj interface{}) error {
+			azVolumeUpdateFunc = azureutils.AppendToUpdateCRIFunc(azVolumeUpdateFunc, func(obj client.Object) error {
 				azv := obj.(*azdiskv1beta2.AzVolume)
 				delete(azv.Labels, consts.PvcNameLabel)
 				delete(azv.Labels, consts.PvcNamespaceLabel)
