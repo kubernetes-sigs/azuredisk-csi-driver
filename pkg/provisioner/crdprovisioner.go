@@ -528,11 +528,12 @@ func (c *CrdProvisioner) PublishVolume(
 			publishContext, err = c.waitForLun(ctx, volumeID, nodeID)
 			return publishContext, err
 		}
-		// if primary attachment failed with an error, and for whatever reason, controllerPublishVolume request was made instead of NodeStageVolume request, reset the error here if ever reached
+		// if primary attachment failed with an error, and for whatever reason, controllerPublishVolume request was made instead of NodeStageVolume request, reset the state, detail and error here if ever reached
 		updateFunc = func(obj client.Object) error {
 			updateInstance := obj.(*azdiskv1beta2.AzVolumeAttachment)
 			w.AnnotateObject(updateInstance)
 			updateInstance.Status.State = azdiskv1beta2.AttachmentPending
+			updateInstance.Status.Detail = nil
 			updateInstance.Status.Error = nil
 			return nil
 		}
@@ -616,10 +617,14 @@ func (c *CrdProvisioner) waitForLunOrAttach(ctx context.Context, volumeID, nodeI
 		if success, err := waitFunc(azVolumeAttachmentInstance, false); success {
 			return azVolumeAttachmentInstance, err
 		} else if err != nil {
-			// If the attachment had previously failed with an error, reset the error and state, and retrigger attach
+			// If the attachment had previously failed with an error, reset the error, detail and state, and retrigger attach
 			updateFunc := func(obj client.Object) error {
 				updateInstance := obj.(*azdiskv1beta2.AzVolumeAttachment)
+				if w, ok := workflow.GetWorkflowFromContext(ctx); ok {
+					w.AnnotateObject(updateInstance)
+				}
 				updateInstance.Status.State = azdiskv1beta2.AttachmentPending
+				updateInstance.Status.Detail = nil
 				updateInstance.Status.Error = nil
 				return nil
 			}
