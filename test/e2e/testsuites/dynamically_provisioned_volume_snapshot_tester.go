@@ -128,6 +128,12 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interfac
 		defer tpod.Cleanup()
 		ginkgo.By("checking that the pod's command exits with no error")
 		tpod.WaitForSuccess()
+
+		// delete the overwrite pod and wait for volume to be unpublished to the original disk is not mounted
+		// to avoid issues with conflicting UUIDs.
+		tpod.Cleanup()
+		err = volutil.WaitForVolumeDetach(client, pvc.Spec.VolumeName, testconsts.Poll, testconsts.PollTimeout)
+		framework.ExpectNoError(err)
 	}
 
 	snapshotVolume := volume

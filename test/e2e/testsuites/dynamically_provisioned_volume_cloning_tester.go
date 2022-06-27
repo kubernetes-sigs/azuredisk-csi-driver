@@ -17,15 +17,19 @@ limitations under the License.
 package testsuites
 
 import (
+	"context"
+
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
-	"time"
+	volutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/volume"
 
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 
 	"github.com/onsi/ginkgo"
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/kubernetes/test/e2e/framework"
 )
 
 // DynamicallyProvisionedVolumeCloningTest will provision required StorageClass(es), PVC(s) and Pod(s)
@@ -55,8 +59,15 @@ func (t *DynamicallyProvisionedVolumeCloningTest) Run(client clientset.Interface
 	defer tpod.Cleanup()
 	ginkgo.By("checking that the pod's command exits with no error")
 	tpod.WaitForSuccess()
-	ginkgo.By("sleep 5s and then clone volume")
-	time.Sleep(5 * time.Second)
+
+	// get the name of the PV created for the PVC
+	pvc, err := client.CoreV1().PersistentVolumeClaims(namespace.Name).Get(context.TODO(), t.Pod.Volumes[0].PersistentVolumeClaim.Name, metav1.GetOptions{})
+	framework.ExpectNoError(err)
+
+	// delete pod and wait for volume to be unpublished to ensure filesystem cache is flushed
+	tpod.Cleanup()
+	err = volutil.WaitForVolumeDetach(client, pvc.Spec.VolumeName, testconsts.Poll, testconsts.PollTimeout)
+	framework.ExpectNoError(err)
 
 	ginkgo.By("cloning existing volume")
 	clonedVolume := t.Pod.Volumes[0]
