@@ -46,6 +46,7 @@ import (
 	azdiskinformers "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/provisioner"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/watcher"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/workflow"
@@ -138,7 +139,7 @@ type CloudProvisioner interface {
 		volumeContentSource *azdiskv1beta2.ContentVolumeSource,
 		accessibilityTopology *azdiskv1beta2.TopologyRequirement) (*azdiskv1beta2.AzVolumeStatusDetail, error)
 	DeleteVolume(ctx context.Context, volumeID string, secrets map[string]string) error
-	PublishVolume(ctx context.Context, volumeID string, nodeID string, volumeContext map[string]string) (map[string]string, error)
+	PublishVolume(ctx context.Context, volumeID string, nodeID string, volumeContext map[string]string) provisioner.CloudAttachResult
 	UnpublishVolume(ctx context.Context, volumeID string, nodeID string) error
 	ExpandVolume(ctx context.Context, volumeID string, capacityRange *azdiskv1beta2.CapacityRange, secrets map[string]string) (*azdiskv1beta2.AzVolumeStatusDetail, error)
 	ListVolumes(ctx context.Context, maxEntries int32, startingToken string) (*azdiskv1beta2.ListVolumesResult, error)
@@ -262,6 +263,7 @@ type SharedState struct {
 	claimToPodsMap                sync.Map
 	volumeToClaimMap              sync.Map
 	claimToVolumeMap              sync.Map
+	pvToVolumeMap                 sync.Map
 	podLocks                      sync.Map
 	visitedVolumes                sync.Map
 	volumeOperationQueues         sync.Map
@@ -667,9 +669,14 @@ func (c *SharedState) deletePod(ctx context.Context, podKey string) error {
 	return nil
 }
 
-func (c *SharedState) addVolumeAndClaim(azVolumeName, pvClaimName string) {
+func (c *SharedState) addVolumeAndClaim(azVolumeName, pvName, pvClaimName string) {
+	c.pvToVolumeMap.Store(pvName, azVolumeName)
 	c.volumeToClaimMap.Store(azVolumeName, pvClaimName)
 	c.claimToVolumeMap.Store(pvClaimName, azVolumeName)
+}
+
+func (c *SharedState) deletePV(pvName string) {
+	c.pvToVolumeMap.Delete(pvName)
 }
 
 func (c *SharedState) deleteVolumeAndClaim(azVolumeName string) {

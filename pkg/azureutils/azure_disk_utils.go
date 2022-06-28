@@ -898,7 +898,9 @@ func GetAzVolumeAttachmentState(volumeAttachmentStatus storagev1.VolumeAttachmen
 	}
 }
 
-func UpdateCRIWithRetry(ctx context.Context, informerFactory azdiskinformers.SharedInformerFactory, cachedClient client.Client, azDiskClient azdisk.Interface, obj client.Object, updateFunc func(interface{}) error, maxNetRetry int, updateMode CRIUpdateMode) error {
+type UpdateCRIFunc func(client.Object) error
+
+func UpdateCRIWithRetry(ctx context.Context, informerFactory azdiskinformers.SharedInformerFactory, cachedClient client.Client, azDiskClient azdisk.Interface, obj client.Object, updateFunc UpdateCRIFunc, maxNetRetry int, updateMode CRIUpdateMode) error {
 	var err error
 	objName := obj.GetName()
 	ctx, w := workflow.New(ctx)
@@ -930,6 +932,17 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azdiskinformers.Sha
 				err = cachedClient.Get(ctx, types.NamespacedName{Namespace: target.Namespace, Name: objName}, updateTarget)
 			} else {
 				updateTarget, err = azDiskClient.DiskV1beta2().AzVolumeAttachments(target.Namespace).Get(ctx, objName, metav1.GetOptions{})
+			}
+			if err == nil {
+				objForUpdate = updateTarget
+				copyForUpdate = updateTarget.DeepCopy()
+			}
+		case *storagev1.VolumeAttachment:
+			updateTarget := &storagev1.VolumeAttachment{}
+			if cachedClient != nil {
+				err = cachedClient.Get(ctx, types.NamespacedName{Namespace: target.Namespace, Name: objName}, updateTarget)
+			} else {
+				return status.Errorf(codes.Internal, "cannot update VolumeAttachment object if controller runtime client is not provided.")
 			}
 			if err == nil {
 				objForUpdate = updateTarget
@@ -972,8 +985,17 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azdiskinformers.Sha
 			if (updateMode & UpdateCRI) != 0 {
 				_, err = azDiskClient.DiskV1beta2().AzVolumeAttachments(target.Namespace).Update(ctx, target, metav1.UpdateOptions{})
 			}
-		}
 
+		case *storagev1.VolumeAttachment:
+			if (updateMode&UpdateCRIStatus) != 0 && !reflect.DeepEqual(objForUpdate.(*storagev1.VolumeAttachment).Status, target.Status) {
+				if err = cachedClient.Status().Update(ctx, target); err != nil {
+					return err
+				}
+			}
+			if (updateMode & UpdateCRI) != 0 {
+				err = cachedClient.Update(ctx, target)
+			}
+		}
 		return err
 	}
 
@@ -1006,6 +1028,19 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azdiskinformers.Sha
 		ExitOnNetError(err, maxRetry > 0 && curRetry >= maxRetry)
 	}
 	return err
+}
+
+func AppendToUpdateCRIFunc(updateFunc, newFunc UpdateCRIFunc) UpdateCRIFunc {
+	if updateFunc != nil {
+		innerFunc := updateFunc
+		return func(obj client.Object) error {
+			if err := innerFunc(obj); err != nil {
+				return err
+			}
+			return newFunc(obj)
+		}
+	}
+	return newFunc
 }
 
 func isFatalNetError(err error) bool {
@@ -1078,12 +1113,27 @@ func SleepIfThrottled(err error, sleepSec int) {
 	}
 }
 
-func AddToMap(mmap map[string]string, key, value string) map[string]string {
+// AddToMap requires arguments to be passed in <map, key1, value1, key2, value2, ...> format
+func AddToMap(mmap map[string]string, entries ...string) map[string]string {
 	if mmap == nil {
 		mmap = map[string]string{}
 	}
-	mmap[key] = value
+	// if odd number of entries are given, do not update and return instantly
+	if len(entries)%2 == 1 {
+		panic("AddToMap requires entries to be in key, value pair.")
+	}
+	for i := 0; i < len(entries); i = i + 2 {
+		mmap[entries[i]] = entries[i+1]
+	}
 	return mmap
+}
+
+func GetFromMap(mmap map[string]string, key string) (value string, exists bool) {
+	if mmap == nil {
+		return
+	}
+	value, exists = mmap[key]
+	return
 }
 
 func MapContains(mmap map[string]string, key string) bool {

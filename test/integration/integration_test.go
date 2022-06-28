@@ -39,7 +39,7 @@ const (
 )
 
 var (
-	nodeids = []string{"integration-test-node-0", "integration-test-node-1", "integration-test-node-2"}
+	nodeid = "integration-test-node-0"
 )
 
 var testDriverVersion = flag.String("test-driver-version", driverV1, "The version of the driver to be tested. Valid values are \"v1\" or \"v2\".")
@@ -62,13 +62,7 @@ func TestIntegrationOnAzurePublicCloud(t *testing.T) {
 
 	useDriverV2 := strings.EqualFold(*testDriverVersion, driverV2)
 
-	if useDriverV2 {
-		os.Setenv("NODEID_0", nodeids[0])
-		os.Setenv("NODEID_1", nodeids[1])
-		os.Setenv("NODEID_2", nodeids[2])
-	} else {
-		os.Setenv("NODEID", nodeids[0])
-	}
+	os.Setenv("NODEID", nodeid)
 
 	azureClient, err := azure.GetAzureClient(creds.Cloud, creds.SubscriptionID, creds.AADClientID, creds.TenantID, creds.AADClientSecret)
 	azure.AssertNoError(t, err)
@@ -89,16 +83,9 @@ func TestIntegrationOnAzurePublicCloud(t *testing.T) {
 		}
 	}()
 
-	// for v2 driver testing, we need multiple VMs for testing AzVolumeAttachment where maxShares > 1
-	numVM := 1
-	if useDriverV2 {
-		numVM = 3
-	}
-	for i := 0; i < numVM; i++ {
-		log.Printf("Creating a VM in %s", creds.ResourceGroup)
-		_, err = azureClient.EnsureVirtualMachine(ctx, creds.ResourceGroup, creds.Location, nodeids[i])
-		azure.AssertNoError(t, err, 1)
-	}
+	log.Printf("Creating a VM in %s", creds.ResourceGroup)
+	_, err = azureClient.EnsureVirtualMachine(ctx, creds.ResourceGroup, creds.Location, nodeid)
+	azure.AssertNoError(t, err, 1)
 
 	// Execute the script from project root
 	err = os.Chdir("../..")

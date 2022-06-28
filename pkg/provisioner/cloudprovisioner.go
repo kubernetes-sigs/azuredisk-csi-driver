@@ -50,6 +50,27 @@ var (
 	topologyKeyStr = "N/A"
 )
 
+type CloudAttachResult struct {
+	publishContext      map[string]string
+	attachResultChannel chan error
+}
+
+func NewCloudAttachResult() CloudAttachResult {
+	return CloudAttachResult{attachResultChannel: make(chan error, 1)}
+}
+
+func (c *CloudAttachResult) SetPublishContext(publishContext map[string]string) {
+	c.publishContext = publishContext
+}
+
+func (c *CloudAttachResult) PublishContext() map[string]string {
+	return c.publishContext
+}
+
+func (c *CloudAttachResult) ResultChannel() chan error {
+	return c.attachResultChannel
+}
+
 type CloudProvisioner struct {
 	cloud                      *azure.Cloud
 	kubeClient                 *clientset.Clientset
@@ -329,12 +350,21 @@ func (c *CloudProvisioner) ListVolumes(
 	return c.listVolumesInNodeResourceGroup(ctx, start, int(maxEntries))
 }
 
+// PublishVolume calls AttachDisk asynchronously and returns early lun assignment value and a channel for the async attach results.
 func (c *CloudProvisioner) PublishVolume(
 	ctx context.Context,
 	volumeID string,
 	nodeID string,
-	volumeContext map[string]string) (map[string]string, error) {
+	volumeContext map[string]string) (attachResult CloudAttachResult) {
 	var err error
+	var waitForCloud bool
+	attachResult = NewCloudAttachResult()
+	defer func() {
+		if !waitForCloud {
+			close(attachResult.ResultChannel())
+		}
+	}()
+
 	ctx, w := workflow.New(ctx)
 	defer func() { w.Finish(err) }()
 
@@ -342,7 +372,8 @@ func (c *CloudProvisioner) PublishVolume(
 	disk, err = c.CheckDiskExists(ctx, volumeID)
 	if err != nil {
 		err = status.Errorf(codes.NotFound, "Volume not found, failed with error: %v", err)
-		return nil, err
+		attachResult.ResultChannel() <- err
+		return
 	}
 
 	nodeName := types.NodeName(nodeID)
@@ -350,7 +381,8 @@ func (c *CloudProvisioner) PublishVolume(
 	var diskName string
 	diskName, err = azureutils.GetDiskName(volumeID)
 	if err != nil {
-		return nil, err
+		attachResult.ResultChannel() <- err
+		return
 	}
 
 	var lun int32
@@ -358,7 +390,8 @@ func (c *CloudProvisioner) PublishVolume(
 	lun, vmState, err = c.cloud.GetDiskLun(diskName, volumeID, nodeName)
 	if err == cloudprovider.InstanceNotFound {
 		err = status.Errorf(codes.NotFound, "failed to get azure instance id for node %q: %v", nodeName, err)
-		return nil, err
+		attachResult.ResultChannel() <- err
+		return
 	}
 
 	w.Logger().V(2).Infof("GetDiskLun returned: %v. Initiating attaching volume %q to node %q.", lun, volumeID, nodeName)
@@ -368,7 +401,8 @@ func (c *CloudProvisioner) PublishVolume(
 			w.Logger().Infof("VM(%q) is in failed state, update VM first", nodeName)
 			if err = c.cloud.UpdateVM(ctx, nodeName); err != nil {
 				err = fmt.Errorf("update instance %q failed with %v", nodeName, err)
-				return nil, err
+				attachResult.ResultChannel() <- err
+				return
 			}
 		}
 		// Volume is already attached to node.
@@ -377,20 +411,41 @@ func (c *CloudProvisioner) PublishVolume(
 		w.Logger().V(2).Infof("Trying to attach volume %q to node %q.", volumeID, nodeName)
 		var cachingMode compute.CachingTypes
 		if cachingMode, err = azureutils.GetCachingMode(volumeContext); err != nil {
-			return nil, err
+			attachResult.ResultChannel() <- err
+			return
 		}
 
+		lunCh := make(chan int32, 1)
+		resultLunCh := make(chan int32, 1)
+		ctx = context.WithValue(ctx, azure.LunChannelContextKey, lunCh)
 		asyncAttach := azureutils.IsAsyncAttachEnabled(c.enableAsyncAttach, volumeContext)
-		lun, err = c.cloud.AttachDisk(ctx, asyncAttach, diskName, volumeID, nodeName, cachingMode, disk)
-		if err != nil {
-			w.Logger().Errorf(err, "attach volume %q to instance %q failed", volumeID, nodeName)
-			return nil, err
+		waitForCloud = true
+		go func() {
+			var resultErr error
+			var resultLun int32
+			ctx, w := workflow.New(ctx)
+			defer func() { w.Finish(resultErr) }()
+
+			resultLun, resultErr = c.cloud.AttachDisk(ctx, asyncAttach, diskName, volumeID, nodeName, cachingMode, disk)
+			attachResult.ResultChannel() <- resultErr
+			close(attachResult.ResultChannel())
+			if resultErr != nil {
+				w.Logger().Errorf(resultErr, "attach volume %q to instance %q failed", volumeID, nodeName)
+			}
+			resultLunCh <- resultLun
+			close(resultLunCh)
+			w.Logger().V(2).Infof("attach operation successful: volume %q attached to node %q.", volumeID, nodeName)
+		}()
+
+		select {
+		case lun = <-lunCh:
+		case lun = <-resultLunCh:
 		}
-		w.Logger().V(2).Infof("attach operation successful: volume %q attached to node %q.", volumeID, nodeName)
 	}
 
-	pvInfo := map[string]string{"LUN": strconv.Itoa(int(lun))}
-	return pvInfo, nil
+	publishContext := map[string]string{"LUN": strconv.Itoa(int(lun))}
+	attachResult.SetPublishContext(publishContext)
+	return
 }
 
 func (c *CloudProvisioner) UnpublishVolume(

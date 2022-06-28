@@ -91,17 +91,14 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 		// create a replacement replica if replica attachment failed
 		if objectDeletionRequested(azVolumeAttachment) {
 			switch azVolumeAttachment.Status.State {
-			case azdiskv1beta2.Detaching:
 			case azdiskv1beta2.DetachmentFailed:
-				if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, func(obj interface{}) error {
+				if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, func(obj client.Object) error {
 					azVolumeAttachment := obj.(*azdiskv1beta2.AzVolumeAttachment)
 					_, err = updateState(azVolumeAttachment, azdiskv1beta2.ForceDetachPending, normalUpdate)
 					return err
 				}, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
 					return reconcile.Result{Requeue: true}, err
 				}
-			default:
-				return reconcile.Result{Requeue: true}, err
 			}
 			if !isCleanupRequested(azVolumeAttachment) || !volumeDetachRequested(azVolumeAttachment) {
 				go func() {
@@ -149,13 +146,13 @@ func (r *ReconcileReplica) triggerGarbageCollection(ctx context.Context, volumeN
 		return
 	}
 
-	workflowCtx, w := workflow.New(deletionCtx, workflow.WithDetails(consts.VolumeNameLabel, volumeName))
+	workflowCtx, w := workflow.New(context.Background(), workflow.WithDetails(consts.VolumeNameLabel, volumeName))
 	w.Logger().V(5).Infof("Garbage collection of AzVolumeAttachments for AzVolume (%s) scheduled in %s.", volumeName, r.timeUntilGarbageCollection.String())
 
 	go func() {
 		defer w.Finish(nil)
 		select {
-		case <-workflowCtx.Done():
+		case <-deletionCtx.Done():
 			return
 		case <-time.After(r.timeUntilGarbageCollection):
 			r.controllerSharedState.garbageCollectReplicas(workflowCtx, volumeName, replica)

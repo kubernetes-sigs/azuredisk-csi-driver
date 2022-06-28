@@ -455,6 +455,12 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 		klog.Errorf("Failed to initialize PVController. Error: %v. Exiting application...", err)
 		os.Exit(1)
 	}
+	klog.V(2).Info("Initializing VolumeAttachment controller")
+	_, err = controller.NewVolumeAttachmentController(mgr, sharedState)
+	if err != nil {
+		klog.Errorf("Failed to initialize VolumeAttachment Controller. Error: %v. Exiting application...", err)
+		os.Exit(1)
+	}
 	klog.V(2).Info("Initializing Node Availability controller")
 	_, err = controller.NewNodeAvailabilityController(mgr, sharedState)
 	if err != nil {
@@ -586,24 +592,4 @@ func (d *DriverV2) RunAzDriverNodeHeartbeatLoop(ctx context.Context) {
 
 func (d *DriverV2) getVolumeLocks() *volumehelper.VolumeLocks {
 	return d.volumeLocks
-}
-
-func (d *DriverV2) addControllerFinalizer(finalizers []string, finalizerToAdd string) []string {
-	for _, finalizer := range finalizers {
-		if finalizer == finalizerToAdd {
-			return finalizers
-		}
-	}
-	finalizers = append(finalizers, finalizerToAdd)
-	return finalizers
-}
-
-func (d *DriverV2) removeControllerFinalizer(finalizers []string, finalizerToRemove string) []string {
-	removed := []string{}
-	for _, finalizer := range finalizers {
-		if finalizer != finalizerToRemove {
-			removed = append(removed, finalizer)
-		}
-	}
-	return removed
 }

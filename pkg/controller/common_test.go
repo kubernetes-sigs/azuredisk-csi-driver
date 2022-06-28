@@ -166,6 +166,8 @@ var (
 
 	testReplicaAzVolumeAttachmentRequest = createReconcileRequest(testNamespace, testReplicaAzVolumeAttachmentName)
 
+	testVolumeAttachmentRequest = createReconcileRequest("", testVolumeAttachmentName)
+
 	testSchedulableNodeRequest = createReconcileRequest(testNamespace, testSchedulableNodeName)
 
 	testStorageClassName = "test-storage-class"
@@ -372,6 +374,7 @@ func initState(client client.Client, azClient azdisk.Interface, kubeClient kuber
 			claimName := getQualifiedName(target.Spec.ClaimRef.Namespace, target.Spec.ClaimRef.Name)
 			c.volumeToClaimMap.Store(azVolumeName, claimName)
 			c.claimToVolumeMap.Store(claimName, azVolumeName)
+			c.pvToVolumeMap.Store(target.Name, azVolumeName)
 			c.createOperationQueue(azVolumeName)
 		default:
 			continue

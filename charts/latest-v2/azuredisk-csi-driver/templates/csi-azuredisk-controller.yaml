@@ -11,7 +11,7 @@ data:
     kind: AzDiskDriverConfiguration
     controllerConfig:
       disableAVSetNodes: {{ .Values.controller.disableAvailabilitySetNodes }}
-      vmType:
+      vmType: {{ .Values.controller.vmType }}
       enableDiskOnlineResize:
       enableAsyncAttach:
       enableListVolumes:
@@ -38,7 +38,7 @@ data:
       customUserAgent: {{ .Values.driver.customUserAgent }}
       userAgentSuffix: {{ .Values.driver.userAgentSuffix }}
       allowEmptyCloudConfig: {{ .Values.node.allowEmptyCloudConfig }}
-      vmssCacheTTLInSeconds:
+      vmssCacheTTLInSeconds: {{ .Values.controller.vmssCacheTTLInSeconds }}
     clientConfig:
       kubeconfig:
       kubeClientQPS:
@@ -74,8 +74,14 @@ spec:
       serviceAccountName: {{ .Values.serviceAccount.controller }}
       nodeSelector:
         kubernetes.io/os: linux
+{{- with .Values.controller.nodeSelector }}
+{{ toYaml . | indent 8 }}
+{{- end }}
         {{- if .Values.controller.runOnMaster}}
         node-role.kubernetes.io/master: ""
+        {{- end}}
+        {{- if .Values.controller.runOnControlPlane}}
+        node-role.kubernetes.io/control-plane: ""
         {{- end}}
       priorityClassName: system-cluster-critical
 {{- with .Values.controller.tolerations }}
@@ -88,7 +94,7 @@ spec:
 {{- end }}
       {{- include "azuredisk.pullSecrets" . | indent 6 }}
       containers:
-        - name: csi-provisioner-disk
+        - name: csi-provisioner
 {{- if hasPrefix "/" .Values.image.csiProvisioner.repository }}
           image: "{{ .Values.image.baseRepo }}{{ .Values.image.csiProvisioner.repository }}:{{ .Values.image.csiProvisioner.tag }}"
 {{- else }}

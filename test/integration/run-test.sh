@@ -72,7 +72,8 @@ echo 'Expand volume test'
 echo 'Attach volume test:'
 "$CSC_BIN" controller publish --endpoint "$endpoint" --node-id "$node" --cap 1,block "$volumeid"
 if [[ "$version" == 'v2' ]]; then
-  test/integration/wait-for-attach.sh "$volumename" "$node"
+  test/integration/wait-for-attach.sh "$node" "$volumename"
+  # test/integration/unregister-resources.sh "$node" "$volumename"
 fi
 sleep 20
 

@@ -38,6 +38,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/workflow"
 
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -145,7 +146,7 @@ func (r *ReconcileAzVolume) triggerCreate(ctx context.Context, azVolume *azdiskv
 	}
 
 	// update state
-	updateFunc := func(obj interface{}) error {
+	updateFunc := func(obj client.Object) error {
 		azv := obj.(*azdiskv1beta2.AzVolume)
 		_, err := r.updateState(azv, azdiskv1beta2.VolumeCreating, normalUpdate)
 		return err
@@ -169,12 +170,12 @@ func (r *ReconcileAzVolume) triggerCreate(ctx context.Context, azVolume *azdiskv
 		cloudCtx, cloudCancel := context.WithTimeout(goCtx, cloudTimeout)
 		defer cloudCancel()
 
-		var updateFunc func(interface{}) error
+		var updateFunc azureutils.UpdateCRIFunc
 		var response *azdiskv1beta2.AzVolumeStatusDetail
 		response, createErr = r.createVolume(cloudCtx, azVolume)
 		updateMode := azureutils.UpdateCRIStatus
 		if createErr != nil {
-			updateFunc = func(obj interface{}) error {
+			updateFunc = func(obj client.Object) error {
 				azv := obj.(*azdiskv1beta2.AzVolume)
 				azv = r.updateError(azv, createErr)
 				azv = r.deleteFinalizer(azv, map[string]bool{consts.AzVolumeFinalizer: true})
@@ -185,7 +186,7 @@ func (r *ReconcileAzVolume) triggerCreate(ctx context.Context, azVolume *azdiskv
 		} else {
 			// create operation queue for the volume
 			r.controllerSharedState.createOperationQueue(azVolume.Name)
-			updateFunc = func(obj interface{}) error {
+			updateFunc = func(obj client.Object) error {
 				azv := obj.(*azdiskv1beta2.AzVolume)
 				if response == nil {
 					return status.Errorf(codes.Internal, "non-nil AzVolumeStatusDetail expected but nil given")
@@ -196,8 +197,8 @@ func (r *ReconcileAzVolume) triggerCreate(ctx context.Context, azVolume *azdiskv
 			}
 		}
 
-		// UpdateCRIWithRetry should be called on a context w/o timeout when called in a separate goroutine as it is not going to be retriggered and leave the CRI in unrecoverable transient state instead.
-		_ = azureutils.UpdateCRIWithRetry(goCtx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolume, updateFunc, consts.ForcedUpdateMaxNetRetry, updateMode)
+		//nolint:contextcheck // final status update of the CRI must occur even when the current context's deadline passes.
+		_ = azureutils.UpdateCRIWithRetry(context.Background(), nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolume, updateFunc, consts.ForcedUpdateMaxNetRetry, updateMode)
 	}()
 
 	// wait for the workflow in goroutine to be created
@@ -235,7 +236,7 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *azdiskv
 		if _, ok := r.stateLock.LoadOrStore(azVolume.Name, nil); ok {
 			return getOperationRequeueError("delete", azVolume)
 		}
-		updateFunc := func(obj interface{}) error {
+		updateFunc := func(obj client.Object) error {
 			azv := obj.(*azdiskv1beta2.AzVolume)
 			_, derr := r.updateState(azv, azdiskv1beta2.VolumeDeleting, normalUpdate)
 			return derr
@@ -269,7 +270,7 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *azdiskv
 				return derr
 			}
 
-			var updateFunc func(interface{}) error
+			var updateFunc azureutils.UpdateCRIFunc
 			var err error
 			updateMode := azureutils.UpdateCRIStatus
 
@@ -277,7 +278,7 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *azdiskv
 			var attachments []azdiskv1beta2.AzVolumeAttachment
 			attachments, err = r.controllerSharedState.cleanUpAzVolumeAttachmentByVolume(deleteCtx, azVolume.Name, azvolume, all, mode)
 			if err != nil {
-				updateFunc = func(obj interface{}) error {
+				updateFunc = func(obj client.Object) error {
 					return reportError(obj, err)
 				}
 			} else {
@@ -289,7 +290,7 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *azdiskv
 				for i, attachment := range attachments {
 					waiter, err := r.controllerSharedState.conditionWatcher.NewConditionWaiter(deleteCtx, watcher.AzVolumeAttachmentType, attachment.Name, verifyObjectDeleted)
 					if err != nil {
-						updateFunc = func(obj interface{}) error {
+						updateFunc = func(obj client.Object) error {
 							return reportError(obj, err)
 						}
 						break
@@ -319,7 +320,7 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *azdiskv
 						}
 					}
 					err = status.Errorf(codes.Internal, strings.Join(errMsgs, ", "))
-					updateFunc = func(obj interface{}) error {
+					updateFunc = func(obj client.Object) error {
 						return reportError(obj, err)
 					}
 				}
@@ -333,7 +334,7 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *azdiskv
 					deleteErr = r.deleteVolume(cloudCtx, azVolume)
 				}
 				if deleteErr != nil {
-					updateFunc = func(obj interface{}) error {
+					updateFunc = func(obj client.Object) error {
 						azv := obj.(*azdiskv1beta2.AzVolume)
 						azv = r.updateError(azv, deleteErr)
 						_, derr := r.updateState(azv, azdiskv1beta2.VolumeDeletionFailed, forceUpdate)
@@ -341,24 +342,20 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *azdiskv
 					}
 				} else {
 					updateMode = azureutils.UpdateAll
-					updateFunc = func(obj interface{}) error {
+					updateFunc = func(obj client.Object) error {
 						azv := obj.(*azdiskv1beta2.AzVolume)
-						azv = r.deleteFinalizer(azv, map[string]bool{consts.AzVolumeFinalizer: true})
-						var derr error
-						if volumeDeleteRequested {
-							_, derr = r.updateState(azv, azdiskv1beta2.VolumeDeleted, forceUpdate)
-						}
-						return derr
+						_ = r.deleteFinalizer(azv, map[string]bool{consts.AzVolumeFinalizer: true})
+						return nil
 					}
 				}
 			}
 
-			// UpdateCRIWithRetry should be called on a context w/o timeout when called in a separate goroutine as it is not going to be retriggered and leave the CRI in unrecoverable transient state instead.
-			_ = azureutils.UpdateCRIWithRetry(goCtx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolume, updateFunc, consts.ForcedUpdateMaxNetRetry, updateMode)
+			//nolint:contextcheck // final status update of the CRI must occur even when the current context's deadline passes.
+			_ = azureutils.UpdateCRIWithRetry(context.Background(), nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolume, updateFunc, consts.ForcedUpdateMaxNetRetry, updateMode)
 		}()
 		<-waitCh
 	} else {
-		updateFunc := func(obj interface{}) error {
+		updateFunc := func(obj client.Object) error {
 			azv := obj.(*azdiskv1beta2.AzVolume)
 			_ = r.deleteFinalizer(azv, map[string]bool{consts.AzVolumeFinalizer: true})
 			return nil
@@ -381,7 +378,7 @@ func (r *ReconcileAzVolume) triggerUpdate(ctx context.Context, azVolume *azdiskv
 		err = getOperationRequeueError("update", azVolume)
 		return err
 	}
-	updateFunc := func(obj interface{}) error {
+	updateFunc := func(obj client.Object) error {
 		azv := obj.(*azdiskv1beta2.AzVolume)
 		_, derr := r.updateState(azv, azdiskv1beta2.VolumeUpdating, normalUpdate)
 		return derr
@@ -403,18 +400,18 @@ func (r *ReconcileAzVolume) triggerUpdate(ctx context.Context, azVolume *azdiskv
 		cloudCtx, cloudCancel := context.WithTimeout(goCtx, cloudTimeout)
 		defer cloudCancel()
 
-		var updateFunc func(interface{}) error
+		var updateFunc azureutils.UpdateCRIFunc
 		var response *azdiskv1beta2.AzVolumeStatusDetail
 		response, updateErr = r.expandVolume(cloudCtx, azVolume)
 		if updateErr != nil {
-			updateFunc = func(obj interface{}) error {
+			updateFunc = func(obj client.Object) error {
 				azv := obj.(*azdiskv1beta2.AzVolume)
 				azv = r.updateError(azv, updateErr)
 				_, derr := r.updateState(azv, azdiskv1beta2.VolumeUpdateFailed, forceUpdate)
 				return derr
 			}
 		} else {
-			updateFunc = func(obj interface{}) error {
+			updateFunc = func(obj client.Object) error {
 				azv := obj.(*azdiskv1beta2.AzVolume)
 				if response == nil {
 					return status.Errorf(codes.Internal, "non-nil AzVolumeStatusDetail expected but nil given")
@@ -425,8 +422,8 @@ func (r *ReconcileAzVolume) triggerUpdate(ctx context.Context, azVolume *azdiskv
 			}
 		}
 
-		// UpdateCRIWithRetry should be called on a context w/o timeout when called in a separate goroutine as it is not going to be retriggered and leave the CRI in unrecoverable transient state instead.
-		_ = azureutils.UpdateCRIWithRetry(goCtx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolume, updateFunc, consts.ForcedUpdateMaxNetRetry, azureutils.UpdateCRIStatus)
+		//nolint:contextcheck // final status update of the CRI must occur even when the current context's deadline passes.
+		_ = azureutils.UpdateCRIWithRetry(context.Background(), nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolume, updateFunc, consts.ForcedUpdateMaxNetRetry, azureutils.UpdateCRIStatus)
 	}()
 	<-waitCh
 
@@ -559,7 +556,7 @@ func (r *ReconcileAzVolume) recoverAzVolume(ctx context.Context, recoveredAzVolu
 		go func(azv azdiskv1beta2.AzVolume, azvMap *sync.Map) {
 			defer wg.Done()
 			var targetState azdiskv1beta2.AzVolumeState
-			updateFunc := func(obj interface{}) error {
+			updateFunc := func(obj client.Object) error {
 				var err error
 				azv := obj.(*azdiskv1beta2.AzVolume)
 				// add a recover annotation to the CRI so that reconciliation can be triggered for the CRI even if CRI's current state == target state
@@ -685,7 +682,14 @@ func (c *SharedState) createAzVolumeFromPv(ctx context.Context, pv v1.Persistent
 	}
 
 	if azVolume != nil {
-
+		if azVolume.Labels == nil {
+			azVolume.Labels = map[string]string{}
+		}
+		azVolume.Labels[consts.PvNameLabel] = pv.Name
+		if pv.Spec.ClaimRef != nil {
+			azVolume.Labels[consts.PvcNameLabel] = pv.Spec.ClaimRef.Name
+			azVolume.Labels[consts.PvcNamespaceLabel] = pv.Spec.ClaimRef.Namespace
+		}
 		azVolume.Spec.CapacityRange = &azdiskv1beta2.CapacityRange{RequiredBytes: requiredBytes}
 		azVolume.Spec.VolumeCapability = volumeCapability
 		azVolume.Spec.PersistentVolume = pv.Name
@@ -694,8 +698,8 @@ func (c *SharedState) createAzVolumeFromPv(ctx context.Context, pv v1.Persistent
 		w.AddDetailToLogger(consts.PvNameKey, pv.Name, consts.VolumeNameLabel, azVolume.Name)
 
 		w.Logger().Info("Creating AzVolume CRI")
-		if err := c.createAzVolume(ctx, azVolume); err != nil {
-			err = status.Error(codes.Internal, "failed to create AzVolume CRI")
+		if err = c.createAzVolume(ctx, azVolume); err != nil {
+			err = status.Errorf(codes.Internal, "failed to create AzVolume (%s) for PV (%s): %v", azVolume.Name, pv.Name, err)
 			return err
 		}
 	}
@@ -776,13 +780,11 @@ func (c *SharedState) createAzVolume(ctx context.Context, azVolume *azdiskv1beta
 	var err error
 
 	if updated, err = c.azClient.DiskV1beta2().AzVolumes(c.objectNamespace).Create(ctx, azVolume, metav1.CreateOptions{}); err != nil {
-		err = status.Errorf(codes.Internal, "failed to create AzVolume CRI")
 		return err
 	}
 	updated = updated.DeepCopy()
 	updated.Status = azVolume.Status
 	if _, err := c.azClient.DiskV1beta2().AzVolumes(c.objectNamespace).UpdateStatus(ctx, updated, metav1.UpdateOptions{}); err != nil {
-		err = status.Errorf(codes.Internal, "failed to update AzVolume CRI Status")
 		return err
 	}
 	// if AzVolume CRI successfully recreated, also recreate the operation queue for the volume

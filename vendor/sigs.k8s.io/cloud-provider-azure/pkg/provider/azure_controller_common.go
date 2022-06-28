@@ -41,7 +41,10 @@ import (
 	"sigs.k8s.io/cloud-provider-azure/pkg/metrics"
 )
 
+type CloudContextKey string
+
 const (
+	LunChannelContextKey CloudContextKey = "cloud-provier-azure/lun-chan"
 	// Disk Caching is not supported for disks 4 TiB and larger
 	// https://docs.microsoft.com/en-us/azure/virtual-machines/premium-storage-performance#disk-caching
 	diskCachingLimit = 4096 // GiB
@@ -98,6 +101,7 @@ type AttachDiskOptions struct {
 	diskEncryptionSetID     string
 	writeAcceleratorEnabled bool
 	lun                     int32
+	lunCh                   chan (int32) // channel for early return of lun value
 }
 
 func (a *AttachDiskOptions) String() string {
@@ -143,8 +147,17 @@ func (c *controllerCommon) getNodeVMSet(nodeName types.NodeName, crt azcache.Azu
 // return (lun, error)
 func (c *controllerCommon) AttachDisk(ctx context.Context, async bool, diskName, diskURI string, nodeName types.NodeName,
 	cachingMode compute.CachingTypes, disk *compute.Disk) (int32, error) {
+	// lun channel is used to return assigned lun values preemptively
+
 	diskEncryptionSetID := ""
 	writeAcceleratorEnabled := false
+	var waitForBatch bool
+	var lunCh chan int32
+	defer func() {
+		if !waitForBatch && lunCh != nil {
+			close(lunCh)
+		}
+	}()
 
 	// there is possibility that disk is nil when GetDisk is throttled
 	// don't check disk state when GetDisk is throttled
@@ -201,15 +214,20 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, async bool, diskName,
 		}
 	}
 
+	if val := ctx.Value(LunChannelContextKey); val != nil {
+		lunCh = val.(chan int32)
+	}
+
 	options := &AttachDiskOptions{
 		lun:                     -1,
+		lunCh:                   lunCh,
 		diskName:                diskName,
 		cachingMode:             cachingMode,
 		diskEncryptionSetID:     diskEncryptionSetID,
 		writeAcceleratorEnabled: writeAcceleratorEnabled,
 	}
 
-	diskToAttach := attachDiskParams{
+	diskToAttach := &AttachDiskParams{
 		diskURI: diskURI,
 		options: options,
 		async:   async,
@@ -221,6 +239,7 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, async bool, diskName,
 	}
 
 	batchKey := metrics.KeyFromAttributes(c.subscriptionID, strings.ToLower(resourceGroup), strings.ToLower(string(nodeName)))
+	waitForBatch = true
 	r, err := c.attachDiskProcessor.Do(ctx, batchKey, diskToAttach)
 	if err == nil {
 		select {
@@ -237,10 +256,16 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, async bool, diskName,
 	return -1, err
 }
 
-type attachDiskParams struct {
+type AttachDiskParams struct {
 	diskURI string
 	options *AttachDiskOptions
 	async   bool
+}
+
+func (a *AttachDiskParams) CleanUp() {
+	if a.options != nil && a.options.lunCh != nil {
+		close(a.options.lunCh)
+	}
 }
 
 type attachDiskResult struct {
@@ -248,7 +273,7 @@ type attachDiskResult struct {
 	err error
 }
 
-func (c *controllerCommon) attachDiskBatchToNode(ctx context.Context, subscriptionID, resourceGroup string, nodeName types.NodeName, disksToAttach []attachDiskParams) ([]chan (attachDiskResult), error) {
+func (c *controllerCommon) attachDiskBatchToNode(ctx context.Context, subscriptionID, resourceGroup string, nodeName types.NodeName, disksToAttach []*AttachDiskParams) ([]chan (attachDiskResult), error) {
 	diskMap := make(map[string]*AttachDiskOptions, len(disksToAttach))
 	lunChans := make([]chan (attachDiskResult), len(disksToAttach))
 	async := false
@@ -339,7 +364,7 @@ func (c *controllerCommon) DetachDisk(ctx context.Context, diskName, diskURI str
 		resourceGroup = c.resourceGroup
 	}
 
-	diskToDetach := detachDiskParams{
+	diskToDetach := &detachDiskParams{
 		diskName: diskName,
 		diskURI:  diskURI,
 	}
@@ -359,7 +384,7 @@ type detachDiskParams struct {
 	diskURI  string
 }
 
-func (c *controllerCommon) detachDiskBatchFromNode(ctx context.Context, subscriptionID, resourceGroup string, nodeName types.NodeName, disksToDetach []detachDiskParams) error {
+func (c *controllerCommon) detachDiskBatchFromNode(ctx context.Context, subscriptionID, resourceGroup string, nodeName types.NodeName, disksToDetach []*detachDiskParams) error {
 	diskMap := make(map[string]string, len(disksToDetach))
 	for _, disk := range disksToDetach {
 		diskMap[disk.diskURI] = disk.diskName
@@ -496,6 +521,10 @@ func (c *controllerCommon) SetDiskLun(nodeName types.NodeName, disksPendingAttac
 			opt.lun = lun
 		}
 		opt.lun = availableDiskLuns[count]
+		if opt.lunCh != nil {
+			// if lun channel is provided, feed the channel the determined lun value
+			opt.lunCh <- opt.lun
+		}
 		count++
 	}
 

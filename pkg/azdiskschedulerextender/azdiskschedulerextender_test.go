@@ -974,5 +974,15 @@ func populateCache() error {
 	for _, pv := range pvList {
 		addPvEntry(pv)
 	}
+
+	azVolAtt, err := azVolumeAttachmentInformer.Lister().List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to get azvolatt list")
+		return err
+	}
+	for _, att := range azVolAtt {
+		onAzVolAttAdd(att)
+	}
+
 	return nil
 }

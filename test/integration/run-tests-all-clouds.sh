@@ -36,5 +36,5 @@ if [[ $# -lt 3 || "$2" != "v2" ]]; then
   test/integration/run-test-v1.sh "$endpoint" "$NODEID" "$cloud" "$version"
 else
   echo 'Running the v2 tests'
-  test/integration/run-test-v2.sh "$endpoint" "$NODEID_0" "$cloud" "$version" "$@"
+  test/integration/run-test-v2.sh "$endpoint" "$NODEID" "$cloud" "$version" "$@"
 fi

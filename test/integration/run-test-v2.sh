@@ -47,6 +47,9 @@ echo 'Starting kind'
 KIND_CONFIG=$(cat <<EOF
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
+networking:
+  apiServerAddress: "127.0.0.1"
+  apiServerPort: 6443
 nodes:
 - role: control-plane
   extraPortMappings:
@@ -66,13 +69,9 @@ helm install azuredisk-csi-driver test/latest/azuredisk-csi-driver -n kube-syste
   --set image.azuredisk.tag=$image \
   --set azuredisk.cloudConfig="$(cat "${AZURE_CREDENTIAL_FILE}" | base64 | awk '{printf $0}'; echo)" \
   --set controller.port="${CONTROLLER_PORT}" \
-  --set azuredisk.nodeId="${NODEID_0}" \
+  --set azuredisk.nodeId="${NODEID}" \
   --set azuredisk.supportZone=false \
   > /dev/null
-
-echo "Registering AzDriverNode for ${NODEID_1} and ${NODEID_2}"
-test/integration/register-azdrivernode.sh $NODEID_1
-test/integration/register-azdrivernode.sh $NODEID_2
 
 echo "Starting integration test"
 test/integration/run-test.sh "$@"

@@ -58,6 +58,7 @@ var (
 	kubeClientset              kubernetes.Interface
 	kubeExtensionClientset     azdisk.Interface
 	criNamespace               string
+	azDiskVolumes              sync.Map
 	pvcToPvMap                 sync.Map
 	pvToDiskNameMap            sync.Map
 )
@@ -79,6 +80,7 @@ func init() {
 func initSchedulerExtender(ctx context.Context) {
 	pvcToPvMap = sync.Map{}
 	pvToDiskNameMap = sync.Map{}
+	azDiskVolumes = sync.Map{}
 	var err error
 	kubeExtensionClientset, err = getKubernetesExtensionClientsets()
 	if err != nil {
@@ -112,6 +114,10 @@ func initSchedulerExtender(ctx context.Context) {
 		DeleteFunc: onPvDelete,
 	})
 
+	azVolumeAttachmentInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: onAzVolAttAdd,
+	})
+
 	klog.V(2).Infof("Starting informers.")
 	go azurediskInformerFactory.Start(ctx.Done())
 	go coreInformerFactory.Start(ctx.Done())
@@ -142,11 +148,11 @@ func filter(context context.Context, schedulerExtenderArgs schedulerapi.Extender
 
 	requestedVolumes := schedulerExtenderArgs.Pod.Spec.Volumes
 	ns := schedulerExtenderArgs.Pod.Namespace
-	klog.V(2).Infof("pod %s has requested %d volume/s", schedulerExtenderArgs.Pod.Name, len(requestedVolumes))
 
-	// if no volumes are requested, don't filter the nodes
+	// get requested disks created by Azure Disk V2 driver and return early if none are found
+	diskRequestedByPod, totalRequestedDiskCount := getQualifyingDisksRequestedByPod(ns, requestedVolumes)
+	// TODO: change to len(diskRequestedByPod) when we fix #1097 in the controller
 	if len(requestedVolumes) == 0 {
-		klog.V(2).Infof("no volumes are requested by pod %s, no further filtering is required", schedulerExtenderArgs.Pod.Name, len(requestedVolumes))
 		return formatFilterResult(schedulerExtenderArgs.Nodes.Items, schedulerExtenderArgs.NodeNames, failedNodes, ""), nil
 	}
 
@@ -169,10 +175,6 @@ func filter(context context.Context, schedulerExtenderArgs schedulerapi.Extender
 		}
 	}
 
-	diskRequestedByPod, diskRequestedByPodCount := getDisksRequestedByPodExcludeAccessModes(ns, requestedVolumes)
-	if diskRequestedByPodCount == 0 {
-		return formatFilterResult(schedulerExtenderArgs.Nodes.Items, schedulerExtenderArgs.NodeNames, failedNodes, ""), nil
-	}
 	diskNamesForRequestedVolumes := []string{}
 	for disk := range diskRequestedByPod {
 		diskNamesForRequestedVolumes = append(diskNamesForRequestedVolumes, disk)
@@ -184,11 +186,12 @@ func filter(context context.Context, schedulerExtenderArgs schedulerapi.Extender
 		ready, found := nodeNameToAzDriverNodeStatusMap[node.Name]
 		excludeNode := false
 		if found && ready {
+			// TODO: remove maxDiskCount calculations when we fix #1097 in the controller
 			// get AzVolumeAttachments for the node
 			azVolumeAttachments, err := getAdditionalAzVolumeAttachmentsOnNode(node.Name, diskNamesForRequestedVolumes)
 			klog.V(2).Infof(
 				"number of additional volume attachments for node %s and pod %s is %d. Number of requested volumes is %d. Err: %v",
-				node.Name, schedulerExtenderArgs.Pod.Name, len(azVolumeAttachments), diskRequestedByPodCount, err)
+				node.Name, schedulerExtenderArgs.Pod.Name, len(azVolumeAttachments), len(diskRequestedByPod), err)
 			if err != nil {
 				klog.Warningf("failed to get azVolumeAttachments attached to node (%s): %v", node.Name, err)
 				continue
@@ -201,8 +204,8 @@ func filter(context context.Context, schedulerExtenderArgs schedulerapi.Extender
 				continue
 			}
 
-			if len(azVolumeAttachments)+diskRequestedByPodCount > maxDiskCount {
-				klog.Warningf("max number of azVolumeAttachments for node %s has been reached. The node will be skipped", node.Name, azDriverNodesMeta.err)
+			if len(azVolumeAttachments)+totalRequestedDiskCount > maxDiskCount {
+				klog.Warningf("max number of %v AzVolumeAttachments for node %s has been reached. The node will be skipped", maxDiskCount, node.Name, azDriverNodesMeta.err)
 				excludeNode = true
 				failedNodes[node.Name] = "node(s) reached the maximum number of disk attachments"
 			}
@@ -230,8 +233,9 @@ func prioritize(context context.Context, schedulerExtenderArgs schedulerapi.Exte
 	requestedVolumes := schedulerExtenderArgs.Pod.Spec.Volumes
 	ns := schedulerExtenderArgs.Pod.Namespace
 
-	// if no volumes are requested, return assigning 0 score to all nodes
-	if len(requestedVolumes) == 0 {
+	// get requested disks created by Azure Disk V2 driver and return early if none are found
+	azDisksRequestedByPod, _ := getQualifyingDisksRequestedByPod(ns, requestedVolumes, v1.ReadOnlyMany, v1.ReadWriteMany)
+	if len(azDisksRequestedByPod) == 0 {
 		priorityList = setNodeScoresToZero(availableNodes)
 	} else {
 		nodeNameToRequestedVolumeMap := make(map[string][]string)
@@ -242,9 +246,6 @@ func prioritize(context context.Context, schedulerExtenderArgs schedulerapi.Exte
 
 		go getAzDriverNodes(context, nodesChan)
 		go getAzVolumeAttachments(context, volumesChan)
-
-		// create a lookup map of all the volumes the pod needs
-		volumesPodNeeds, _ := getDisksRequestedByPodExcludeAccessModes(ns, requestedVolumes, v1.ReadOnlyMany, v1.ReadWriteMany)
 
 		// get all nodes that have azDriverNode running
 		azDriverNodesMeta := <-nodesChan
@@ -269,7 +270,7 @@ func prioritize(context context.Context, schedulerExtenderArgs schedulerapi.Exte
 			return
 		}
 
-		// for every volume the pod needs, append its azVolumeAttachment name to the node name
+		// for every volume pod needs, append its azVolumeAttachment name to the node name
 		for _, attachedVolume := range azVolumeAttachmentsMeta.volumeAttachments {
 			klog.V(2).Infof(
 				"volume attachment in consideration: Name: %s, Volume: %s.",
@@ -284,7 +285,7 @@ func prioritize(context context.Context, schedulerExtenderArgs schedulerapi.Exte
 				continue
 			}
 
-			_, requestedByPod := volumesPodNeeds[attachedVolume.Spec.VolumeName]
+			_, requestedByPod := azDisksRequestedByPod[attachedVolume.Spec.VolumeName]
 			if requestedByPod {
 				klog.V(2).Infof("Volume attachment is needed: Name: %s, Volume: %s.", attachedVolume.Name, attachedVolume.Spec.VolumeName)
 				nodeNameToRequestedVolumeMap[attachedVolume.Spec.NodeName] = append(nodeNameToRequestedVolumeMap[attachedVolume.Spec.NodeName], attachedVolume.Spec.VolumeName)
@@ -431,15 +432,15 @@ func setNodeScoresToZero(nodes []v1.Node) (priorityList schedulerapi.HostPriorit
 	return
 }
 
-func getDisksRequestedByPodExcludeAccessModes(ns string, requestedVolumes []v1.Volume, filterOutAccessModes ...v1.PersistentVolumeAccessMode) (disksRequestedByPod map[string]struct{}, requestedDiskCount int) {
+func getQualifyingDisksRequestedByPod(ns string, requestedVolumes []v1.Volume, filterOutAccessModes ...v1.PersistentVolumeAccessMode) (disksRequestedByPod map[string]struct{}, totalRequestedDiskCount int) {
 	// create a set of all volumes needed
 	disksRequestedByPod = map[string]struct{}{}
 	for _, volume := range requestedVolumes {
-		// not the same as len(diskRequestedByPod). PV-s for a new pod might not be cached yet.
 		if volume.PersistentVolumeClaim != nil {
-			requestedDiskCount++
-			if v, ok := pvcToPvMap.Load(getQualifiedName(ns, volume.PersistentVolumeClaim.ClaimName)); ok {
-				pvEntry := v.(*pvcToPVEntry)
+			// not the same as len(diskRequestedByPod). PV-s for a new pod might not be cached yet.
+			totalRequestedDiskCount++
+			if value, ok := pvcToPvMap.Load(getQualifiedName(ns, volume.PersistentVolumeClaim.ClaimName)); ok {
+				pvEntry := value.(*pvcToPVEntry)
 				hasCorrectAccessMode := true
 				for _, filterOutAccessMode := range filterOutAccessModes {
 					if strings.EqualFold(pvEntry.AccessMode, string(filterOutAccessMode)) {
@@ -447,9 +448,11 @@ func getDisksRequestedByPodExcludeAccessModes(ns string, requestedVolumes []v1.V
 					}
 				}
 				if hasCorrectAccessMode {
-					if v, ok := pvToDiskNameMap.Load(pvEntry.VolumeName); ok {
-						diskName := v.(string)
-						disksRequestedByPod[diskName] = struct{}{}
+					if value, ok := pvToDiskNameMap.Load(pvEntry.VolumeName); ok {
+						diskName := value.(string)
+						if _, ok := azDiskVolumes.Load(diskName); ok {
+							disksRequestedByPod[diskName] = struct{}{}
+						}
 					}
 				}
 			}
@@ -465,7 +468,7 @@ func onPvcUpdate(obj interface{}, newObj interface{}) {
 
 func addPvcEntry(pvc *v1.PersistentVolumeClaim) {
 	qualifiedName := getQualifiedName(pvc.Namespace, pvc.Name)
-	klog.V(4).Infof("Updating pvcToPv map cache.PVC: %s PV: %s, AccessMode: %v", qualifiedName, pvc.Spec.VolumeName, pvc.Spec.AccessModes)
+	klog.V(4).Infof("Updating pvcToPv cache. PVC: %s PV: %s, AccessMode: %v", qualifiedName, pvc.Spec.VolumeName, pvc.Spec.AccessModes)
 	cacheValue := pvcToPVEntry{VolumeName: pvc.Spec.VolumeName, AccessMode: fmt.Sprintf("%v", pvc.Spec.AccessModes[0])}
 	pvcToPvMap.Store(qualifiedName, &cacheValue)
 }
@@ -473,7 +476,7 @@ func addPvcEntry(pvc *v1.PersistentVolumeClaim) {
 func onPvcDelete(obj interface{}) {
 	pvc := obj.(*v1.PersistentVolumeClaim)
 	qualifiedName := getQualifiedName(pvc.Namespace, pvc.Name)
-	klog.V(4).Infof("Deleting pvcToPv map cache entry. PVC: %s PV: %s", pvc.Name, pvc.Spec.VolumeName)
+	klog.V(4).Infof("Deleting %s from pvcToPv cache entry.", qualifiedName)
 	pvcToPvMap.Delete(qualifiedName)
 }
 
@@ -486,7 +489,7 @@ func addPvEntry(pv *v1.PersistentVolume) {
 	// TODO: azDiskSchedulerExtender doesn't yet support a flag to set manual driver name, so for now, map all csi volume handles
 	if pv.Spec.CSI != nil {
 		if diskName, err := azureutils.GetDiskName(pv.Spec.CSI.VolumeHandle); err == nil {
-			klog.V(4).Infof("Updating pvToVolume map cache.PV: %s, DiskName: %v", pv.Name, diskName)
+			klog.V(4).Infof("Updating pvToVolume cache. PV: %s, DiskName: %v", pv.Name, diskName)
 			pvToDiskNameMap.Store(pv.Name, strings.ToLower(diskName))
 		}
 	}
@@ -494,8 +497,19 @@ func addPvEntry(pv *v1.PersistentVolume) {
 
 func onPvDelete(obj interface{}) {
 	pv := obj.(*v1.PersistentVolume)
-	klog.V(4).Infof("Deleting pvToVolume map cache.PV: %s", pv.Name)
-	pvToDiskNameMap.Delete(pv.Name)
+	klog.V(4).Infof("Deleting %s from pvToVolume cache.", pv.Name)
+	diskName, loaded := pvToDiskNameMap.LoadAndDelete(pv.Name)
+	if loaded {
+		klog.V(4).Infof("Deleting %s from azDiskVolumes cache.", diskName)
+		azDiskVolumes.Delete(diskName)
+	}
+}
+
+func onAzVolAttAdd(obj interface{}) {
+	azVolAtt := obj.(*azdiskv1beta2.AzVolumeAttachment)
+	qualifiedName := azVolAtt.Spec.VolumeName
+	klog.V(4).Infof("Updating azDiskVolumes cache. DiskName: %s AzVolAtt: %s", qualifiedName, azVolAtt.Name)
+	azDiskVolumes.LoadOrStore(qualifiedName, struct{}{})
 }
 
 func getQualifiedName(namespace, name string) string {

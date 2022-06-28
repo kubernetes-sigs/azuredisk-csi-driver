@@ -54,7 +54,17 @@ install_ginkgo
 setup_e2e_binaries
 trap print_logs EXIT
 
+SKIP_TESTS='\[Disruptive\]|should resize volume when PVC is edited while pod is using it|should provision storage with any volume data source|should mount multiple PV pointing to the same storage on the same node'
+
+# Run non-serial tests in parallel
 ginkgo -p --progress --v -focus="External.Storage.*$DRIVER.csi.azure.com" \
-       -skip='\[Disruptive\]|should resize volume when PVC is edited while pod is using it|should provision storage with any volume data source|should mount multiple PV pointing to the same storage on the same node' kubernetes/test/bin/e2e.test -- \
+       -skip="\[Serial\]|$SKIP_TESTS" \
+       kubernetes/test/bin/e2e.test -- \
+       -storage.testdriver=$PROJECT_ROOT/test/external-e2e/manifest/testdriver.yaml \
+       --kubeconfig=$KUBECONFIG
+# Run serial tests sequentially
+ginkgo --progress --v -focus="External.Storage.*$DRIVER.csi.azure.com.*\[Serial\]" \
+       -skip="$SKIP_TESTS" \
+       kubernetes/test/bin/e2e.test -- \
        -storage.testdriver=$PROJECT_ROOT/test/external-e2e/manifest/testdriver.yaml \
        --kubeconfig=$KUBECONFIG

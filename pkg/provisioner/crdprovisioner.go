@@ -44,6 +44,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/watcher"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/workflow"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type CrdProvisioner struct {
@@ -179,7 +180,7 @@ func (c *CrdProvisioner) CreateVolume(
 
 		w.Logger().V(5).Info("Requeuing CreateVolume request")
 		// otherwise requeue operation
-		updateFunc := func(obj interface{}) error {
+		updateFunc := func(obj client.Object) error {
 			updateInstance := obj.(*azdiskv1beta2.AzVolume)
 			updateInstance.Status.Error = nil
 			updateInstance.Status.State = azdiskv1beta2.VolumeOperationPending
@@ -205,14 +206,17 @@ func (c *CrdProvisioner) CreateVolume(
 		err = status.Errorf(codes.Internal, "failed to get AzVolume CRI: %v", err)
 		return nil, err
 	} else {
-		pv, exists := parameters[consts.PvNameKey]
-		if !exists {
-			w.Logger().Info("CreateVolume request does not contain persistent volume name. Please enable -extra-create-metadata flag in csi-provisioner")
+		pv, pvExists := parameters[consts.PvNameKey]
+		pvc, pvcExists := parameters[consts.PvcNameKey]
+		namespace, namespaceExists := parameters[consts.PvcNamespaceKey]
+		if !pvExists || !pvcExists || !namespaceExists {
+			w.Logger().Info("CreateVolume request does not contain pv, pvc, namespace information. Please enable -extra-create-metadata flag in csi-provisioner")
 		}
 		azVolume := &azdiskv1beta2.AzVolume{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:        azVolumeName,
 				Finalizers:  []string{consts.AzVolumeFinalizer},
+				Labels:      map[string]string{consts.PvNameLabel: pv, consts.PvcNameLabel: pvc, consts.PvcNamespaceLabel: namespace},
 				Annotations: map[string]string{consts.RequestIDKey: w.RequestID(), consts.RequestStartimeKey: w.StartTime().Format(consts.RequestTimeFormat)},
 			},
 			Spec: azdiskv1beta2.AzVolumeSpec{
@@ -240,18 +244,7 @@ func (c *CrdProvisioner) CreateVolume(
 	}
 
 	var waiter *watcher.ConditionWaiter
-	waiter, err = c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeType, azVolumeName, func(obj interface{}, objectDeleted bool) (bool, error) {
-		if obj == nil || objectDeleted {
-			return false, nil
-		}
-		azVolumeInstance := obj.(*azdiskv1beta2.AzVolume)
-		if azVolumeInstance.Status.Detail != nil {
-			return true, nil
-		} else if azVolumeInstance.Status.Error != nil {
-			return false, util.ErrorFromAzError(azVolumeInstance.Status.Error)
-		}
-		return false, nil
-	})
+	waiter, err = c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeType, azVolumeName, waitForCreateVolumeFunc)
 	if err != nil {
 		return nil, err
 	}
@@ -322,40 +315,14 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 		return err
 	}
 
-	var waiter *watcher.ConditionWaiter
-	waiter, err = c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeType, azVolumeName, func(obj interface{}, objectDeleted bool) (bool, error) {
-		// if no object is found, object is deleted
-		if obj == nil || objectDeleted {
-			return true, nil
-		}
-
-		// otherwise, the volume deletion has either failed with error or pending
-		azVolumeInstance := obj.(*azdiskv1beta2.AzVolume)
-		if azVolumeInstance.Status.Error != nil {
-			return false, util.ErrorFromAzError(azVolumeInstance.Status.Error)
-		}
-		return false, nil
-	})
-
-	if err != nil {
-		return err
-	}
-	defer waiter.Close()
-
 	// we don't want to delete pre-provisioned volumes
 	if azureutils.MapContains(azVolumeInstance.Status.Annotations, consts.PreProvisionedVolumeAnnotation) {
 		w.Logger().Info("AzVolume is pre-provisioned and won't be deleted.")
 		return nil
 	}
 
-	// if volume deletion already in process, return to prevent duplicate request
-	if azVolumeInstance.Status.State == azdiskv1beta2.VolumeDeleting {
-		err = status.Errorf(codes.Aborted, "deletion still in process for volume (%s)", volumeName)
-		return err
-	}
-
-	// otherwise requeue deletion
-	updateFunc := func(obj interface{}) error {
+	// if deletion failed requeue deletion
+	updateFunc := func(obj client.Object) error {
 		updateInstance := obj.(*azdiskv1beta2.AzVolume)
 		w.AnnotateObject(updateInstance)
 		updateInstance.Status.Annotations = azureutils.AddToMap(updateInstance.Status.Annotations, consts.VolumeDeleteRequestAnnotation, "cloud-delete-volume")
@@ -367,9 +334,39 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 		return nil
 	}
 
-	// update AzVolume CRI with annotation and reset state with retry upon conflict
-	if err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, azVolumeInstance, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
+	var waiter *watcher.ConditionWaiter
+	switch azVolumeInstance.Status.State {
+	case azdiskv1beta2.VolumeCreating:
+		// if volume is currently being created, wait for the volume creation to complete
+		waiter, err = c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeType, azVolumeName, waitForCreateVolumeFunc)
+		if err != nil {
+			return err
+		}
+		var obj interface{}
+		obj, err = waiter.Wait(ctx)
+		// close cannot be called on defer because this will interfere wait for delete
+		waiter.Close()
+		if err != nil {
+			return err
+		}
+		azVolumeInstance = obj.(*azdiskv1beta2.AzVolume)
+
+	case azdiskv1beta2.VolumeDeleting:
+		// no need to update CRI if volume is already in process of deleting
+		updateFunc = nil
+	}
+
+	waiter, err = c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeType, azVolumeName, waitForDeleteVolumeFunc)
+	if err != nil {
 		return err
+	}
+	defer waiter.Close()
+
+	if updateFunc != nil {
+		// update AzVolume CRI with annotation and reset state with retry upon conflict
+		if err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, azVolumeInstance, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
+			return err
+		}
 	}
 
 	// only make delete request if object's deletion timestamp is not set
@@ -512,11 +509,13 @@ func (c *CrdProvisioner) PublishVolume(
 		_, err = azVAClient.Create(ctx, azVolumeAttachment, metav1.CreateOptions{})
 		if err != nil {
 			err = status.Errorf(codes.Internal, "failed to create AzVolumeAttachment CRI: %v", err)
+			return publishContext, err
 		}
+		publishContext, err = c.waitForLun(ctx, volumeID, nodeID)
 		return publishContext, err
 	}
 
-	var updateFunc func(obj interface{}) error
+	var updateFunc func(obj client.Object) error
 	updateMode := azureutils.UpdateCRIStatus
 	// if attachment is scheduled for deletion, new attachment should only be created after the deletion
 	if attachmentObj.DeletionTimestamp != nil {
@@ -526,13 +525,15 @@ func (c *CrdProvisioner) PublishVolume(
 
 	if attachmentObj.Spec.RequestedRole == azdiskv1beta2.PrimaryRole {
 		if attachmentObj.Status.Error == nil {
-			return publishContext, nil
+			publishContext, err = c.waitForLun(ctx, volumeID, nodeID)
+			return publishContext, err
 		}
-		// if primary attachment failed with an error, and for whatever reason, controllerPublishVolume request was made instead of NodeStageVolume request, reset the error here if ever reached
-		updateFunc = func(obj interface{}) error {
+		// if primary attachment failed with an error, and for whatever reason, controllerPublishVolume request was made instead of NodeStageVolume request, reset the state, detail and error here if ever reached
+		updateFunc = func(obj client.Object) error {
 			updateInstance := obj.(*azdiskv1beta2.AzVolumeAttachment)
 			w.AnnotateObject(updateInstance)
 			updateInstance.Status.State = azdiskv1beta2.AttachmentPending
+			updateInstance.Status.Detail = nil
 			updateInstance.Status.Error = nil
 			return nil
 		}
@@ -542,8 +543,9 @@ func (c *CrdProvisioner) PublishVolume(
 			err = status.Errorf(codes.Aborted, "replica attachment (%s) failed with an error (%v). Will retry once the attachment is deleted.", attachmentName, attachmentObj.Status.Error)
 			return nil, err
 		}
+
 		// otherwise, there is a replica attachment for this volume-node pair, so promote it to primary and return success
-		updateFunc = func(obj interface{}) error {
+		updateFunc = func(obj client.Object) error {
 			updateInstance := obj.(*azdiskv1beta2.AzVolumeAttachment)
 			w.AnnotateObject(updateInstance)
 			updateInstance.Spec.RequestedRole = azdiskv1beta2.PrimaryRole
@@ -560,8 +562,28 @@ func (c *CrdProvisioner) PublishVolume(
 		}
 		updateMode = azureutils.UpdateAll
 	}
-	err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, attachmentObj, updateFunc, consts.NormalUpdateMaxNetRetry, updateMode)
+	if err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, attachmentObj, updateFunc, consts.NormalUpdateMaxNetRetry, updateMode); err != nil {
+		return publishContext, err
+	}
+
+	publishContext, err = c.waitForLun(ctx, volumeID, nodeID)
 	return publishContext, err
+}
+
+func (c *CrdProvisioner) waitForLun(ctx context.Context, volumeID, nodeID string) (map[string]string, error) {
+	var err error
+	ctx, w := workflow.New(ctx)
+	defer func() { w.Finish(err) }()
+
+	var azVolumeAttachment *azdiskv1beta2.AzVolumeAttachment
+	azVolumeAttachment, err = c.waitForLunOrAttach(ctx, volumeID, nodeID, waitForLunFunc)
+	if err != nil {
+		return nil, err
+	}
+	if azVolumeAttachment.Status.Detail == nil {
+		return nil, err
+	}
+	return azVolumeAttachment.Status.Detail.PublishContext, err
 }
 
 func (c *CrdProvisioner) WaitForAttach(ctx context.Context, volumeID, nodeID string) (*azdiskv1beta2.AzVolumeAttachment, error) {
@@ -569,10 +591,15 @@ func (c *CrdProvisioner) WaitForAttach(ctx context.Context, volumeID, nodeID str
 	ctx, w := workflow.New(ctx)
 	defer func() { w.Finish(err) }()
 
+	var azVolumeAttachment *azdiskv1beta2.AzVolumeAttachment
+	azVolumeAttachment, err = c.waitForLunOrAttach(ctx, volumeID, nodeID, waitForAttachVolumeFunc)
+	return azVolumeAttachment, err
+}
+
+func (c *CrdProvisioner) waitForLunOrAttach(ctx context.Context, volumeID, nodeID string, waitFunc func(interface{}, bool) (bool, error)) (*azdiskv1beta2.AzVolumeAttachment, error) {
 	lister := c.conditionWatcher.InformerFactory().Disk().V1beta2().AzVolumeAttachments().Lister().AzVolumeAttachments(c.namespace)
 
-	var volumeName string
-	volumeName, err = azureutils.GetDiskName(volumeID)
+	volumeName, err := azureutils.GetDiskName(volumeID)
 	if err != nil {
 		return nil, err
 	}
@@ -581,47 +608,38 @@ func (c *CrdProvisioner) WaitForAttach(ctx context.Context, volumeID, nodeID str
 
 	azVolumeAttachmentInstance, err := lister.Get(attachmentName)
 	if err != nil {
-		err = status.Errorf(codes.Internal, "unexpected error while getting AzVolumeAttachment (%s): %v", attachmentName, err)
-		return nil, err
+		if !apiErrors.IsNotFound(err) {
+			err = status.Errorf(codes.Internal, "unexpected error while getting AzVolumeAttachment (%s): %v", attachmentName, err)
+			return nil, err
+		}
+	} else {
+		// If the AzVolumeAttachment is attached, return without triggering informer wait
+		if success, err := waitFunc(azVolumeAttachmentInstance, false); success {
+			return azVolumeAttachmentInstance, err
+		} else if err != nil {
+			// If the attachment had previously failed with an error, reset the error, detail and state, and retrigger attach
+			updateFunc := func(obj client.Object) error {
+				updateInstance := obj.(*azdiskv1beta2.AzVolumeAttachment)
+				if w, ok := workflow.GetWorkflowFromContext(ctx); ok {
+					w.AnnotateObject(updateInstance)
+				}
+				updateInstance.Status.State = azdiskv1beta2.AttachmentPending
+				updateInstance.Status.Detail = nil
+				updateInstance.Status.Error = nil
+				return nil
+			}
+			if err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, azVolumeAttachmentInstance, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	var waiter *watcher.ConditionWaiter
-	waiter, err = c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeAttachmentType, attachmentName, func(obj interface{}, objectDeleted bool) (bool, error) {
-		if obj == nil || objectDeleted {
-			return false, nil
-		}
-		azVolumeAttachmentInstance := obj.(*azdiskv1beta2.AzVolumeAttachment)
-		if azVolumeAttachmentInstance.Status.Detail != nil && azVolumeAttachmentInstance.Status.Detail.PublishContext != nil && azVolumeAttachmentInstance.Status.Detail.Role == azdiskv1beta2.PrimaryRole {
-			return true, nil
-		}
-		if azVolumeAttachmentInstance.Status.Error != nil {
-			return false, util.ErrorFromAzError(azVolumeAttachmentInstance.Status.Error)
-		}
-		return false, nil
-	})
-
+	waiter, err = c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeAttachmentType, attachmentName, waitFunc)
 	if err != nil {
 		return nil, err
 	}
 	defer waiter.Close()
-
-	// If the AzVolumeAttachment is attached, return without triggering informer wait
-	if azVolumeAttachmentInstance.Status.Detail != nil && azVolumeAttachmentInstance.Status.Detail.PublishContext != nil && azVolumeAttachmentInstance.Status.Detail.Role == azdiskv1beta2.PrimaryRole {
-		return azVolumeAttachmentInstance, nil
-	}
-
-	// If the attachment had previously failed with an error, reset the error and state, and retrigger attach
-	if azVolumeAttachmentInstance.Status.Error != nil {
-		updateFunc := func(obj interface{}) error {
-			updateInstance := obj.(*azdiskv1beta2.AzVolumeAttachment)
-			updateInstance.Status.State = azdiskv1beta2.AttachmentPending
-			updateInstance.Status.Error = nil
-			return nil
-		}
-		if err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, azVolumeAttachmentInstance, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
-			return nil, err
-		}
-	}
 
 	obj, err := waiter.Wait(ctx)
 	if err != nil {
@@ -698,7 +716,7 @@ func (c *CrdProvisioner) demoteVolume(ctx context.Context, azVolumeAttachment *a
 	ctx, w := workflow.GetWorkflowFromObj(ctx, azVolumeAttachment)
 	w.Logger().V(5).Infof("Requesting AzVolumeAttachment (%s) demotion", azVolumeAttachment.Name)
 
-	updateFunc := func(obj interface{}) error {
+	updateFunc := func(obj client.Object) error {
 		updateInstance := obj.(*azdiskv1beta2.AzVolumeAttachment)
 		w.AnnotateObject(updateInstance)
 		updateInstance.Spec.RequestedRole = azdiskv1beta2.ReplicaRole
@@ -725,7 +743,7 @@ func (c *CrdProvisioner) detachVolume(ctx context.Context, azVolumeAttachment *a
 
 	ctx, w := workflow.GetWorkflowFromObj(ctx, azVolumeAttachment)
 
-	updateFunc := func(obj interface{}) error {
+	updateFunc := func(obj client.Object) error {
 		updateInstance := obj.(*azdiskv1beta2.AzVolumeAttachment)
 		if updateInstance.Annotations == nil {
 			updateInstance.Annotations = map[string]string{}
@@ -745,10 +763,8 @@ func (c *CrdProvisioner) detachVolume(ctx context.Context, azVolumeAttachment *a
 			return err
 		}
 	case azdiskv1beta2.DetachmentFailed:
-		innerFunc := updateFunc
 		// if detachment failed, reset error and state to retrigger operation
-		updateFunc = func(obj interface{}) error {
-			_ = innerFunc(obj)
+		updateFunc = azureutils.AppendToUpdateCRIFunc(updateFunc, func(obj client.Object) error {
 			updateInstance := obj.(*azdiskv1beta2.AzVolumeAttachment)
 
 			// remove detachment failure error from AzVolumeAttachment CRI to retrigger detachment
@@ -757,7 +773,7 @@ func (c *CrdProvisioner) detachVolume(ctx context.Context, azVolumeAttachment *a
 			updateInstance.Status.State = azdiskv1beta2.Attached
 
 			return nil
-		}
+		})
 	}
 
 	w.Logger().V(5).Infof("Requesting AzVolumeAttachment (%s) detachment", azVolumeAttachment.Name)
@@ -796,19 +812,7 @@ func (c *CrdProvisioner) WaitForDetach(ctx context.Context, volumeID, nodeID str
 	lister := c.conditionWatcher.InformerFactory().Disk().V1beta2().AzVolumeAttachments().Lister().AzVolumeAttachments(c.namespace)
 
 	var waiter *watcher.ConditionWaiter
-	waiter, err = c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeAttachmentType, attachmentName, func(obj interface{}, objectDeleted bool) (bool, error) {
-		// if no object is found, return
-		if obj == nil || objectDeleted {
-			return true, nil
-		}
-
-		// otherwise, the volume detachment has either failed with error or pending
-		azVolumeAttachmentInstance := obj.(*azdiskv1beta2.AzVolumeAttachment)
-		if azVolumeAttachmentInstance.Status.Error != nil {
-			return false, util.ErrorFromAzError(azVolumeAttachmentInstance.Status.Error)
-		}
-		return false, nil
-	})
+	waiter, err = c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeAttachmentType, attachmentName, waitForDetachVolumeFunc)
 
 	if err != nil {
 		return err
@@ -867,7 +871,7 @@ func (c *CrdProvisioner) ExpandVolume(
 
 	defer waiter.Close()
 
-	updateFunc := func(obj interface{}) error {
+	updateFunc := func(obj client.Object) error {
 		updateInstance := obj.(*azdiskv1beta2.AzVolume)
 		w.AnnotateObject(updateInstance)
 		updateInstance.Spec.CapacityRange = capacityRange
@@ -881,14 +885,12 @@ func (c *CrdProvisioner) ExpandVolume(
 		err = status.Errorf(codes.Aborted, "expand operation still in process")
 		return nil, err
 	case azdiskv1beta2.VolumeUpdateFailed:
-		innerFunc := updateFunc
-		updateFunc = func(obj interface{}) error {
-			_ = innerFunc(obj)
+		updateFunc = azureutils.AppendToUpdateCRIFunc(updateFunc, func(obj client.Object) error {
 			updateInstance := obj.(*azdiskv1beta2.AzVolume)
 			updateInstance.Status.Error = nil
 			updateInstance.Status.State = azdiskv1beta2.VolumeCreated
 			return nil
-		}
+		})
 		updateMode = azureutils.UpdateAll
 	case azdiskv1beta2.VolumeUpdated:
 		break
@@ -1008,4 +1010,73 @@ func isAzVolumeSpecSameAsRequestParams(defaultAzVolume *azdiskv1beta2.AzVolume,
 		reflect.DeepEqual(defaultSecret, secrets) &&
 		reflect.DeepEqual(defaultVolContentSource, volumeContentSource) &&
 		reflect.DeepEqual(defaultAccReq, accessibilityReq))
+}
+
+func waitForCreateVolumeFunc(obj interface{}, objectDeleted bool) (bool, error) {
+	if obj == nil || objectDeleted {
+		return false, nil
+	}
+	azVolumeInstance := obj.(*azdiskv1beta2.AzVolume)
+	if azVolumeInstance.Status.Detail != nil {
+		return true, nil
+	} else if azVolumeInstance.Status.Error != nil {
+		return false, util.ErrorFromAzError(azVolumeInstance.Status.Error)
+	}
+	return false, nil
+}
+
+func waitForDeleteVolumeFunc(obj interface{}, objectDeleted bool) (bool, error) {
+	// if no object is found, object is deleted
+	if obj == nil || objectDeleted {
+		return true, nil
+	}
+
+	// otherwise, the volume deletion has either failed with error or pending
+	azVolumeInstance := obj.(*azdiskv1beta2.AzVolume)
+	if azVolumeInstance.Status.Error != nil {
+		return false, util.ErrorFromAzError(azVolumeInstance.Status.Error)
+	}
+	return false, nil
+}
+
+func waitForLunFunc(obj interface{}, objectDeleted bool) (bool, error) {
+	if obj == nil || objectDeleted {
+		return false, nil
+	}
+	azVolumeAttachmentInstance := obj.(*azdiskv1beta2.AzVolumeAttachment)
+	if azVolumeAttachmentInstance.Status.Detail != nil && azVolumeAttachmentInstance.Status.Detail.PublishContext != nil {
+		return true, nil
+	}
+	if azVolumeAttachmentInstance.Status.Error != nil {
+		return false, util.ErrorFromAzError(azVolumeAttachmentInstance.Status.Error)
+	}
+	return false, nil
+}
+
+func waitForAttachVolumeFunc(obj interface{}, objectDeleted bool) (bool, error) {
+	if obj == nil || objectDeleted {
+		return false, nil
+	}
+	azVolumeAttachmentInstance := obj.(*azdiskv1beta2.AzVolumeAttachment)
+	if azVolumeAttachmentInstance.Status.Detail != nil && azVolumeAttachmentInstance.Status.Detail.PublishContext != nil && azVolumeAttachmentInstance.Status.Detail.Role == azdiskv1beta2.PrimaryRole && azVolumeAttachmentInstance.Status.State == azdiskv1beta2.Attached {
+		return true, nil
+	}
+	if azVolumeAttachmentInstance.Status.Error != nil {
+		return false, util.ErrorFromAzError(azVolumeAttachmentInstance.Status.Error)
+	}
+	return false, nil
+}
+
+func waitForDetachVolumeFunc(obj interface{}, objectDeleted bool) (bool, error) {
+	// if no object is found, return
+	if obj == nil || objectDeleted {
+		return true, nil
+	}
+
+	// otherwise, the volume detachment has either failed with error or pending
+	azVolumeAttachmentInstance := obj.(*azdiskv1beta2.AzVolumeAttachment)
+	if azVolumeAttachmentInstance.Status.Error != nil {
+		return false, util.ErrorFromAzError(azVolumeAttachmentInstance.Status.Error)
+	}
+	return false, nil
 }
