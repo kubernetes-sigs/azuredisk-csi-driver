@@ -40,10 +40,10 @@ func init() {
 }
 
 var (
-	driverConfig azdiskv1beta2.AzDiskDriverConfiguration
-	driverConfigPath           = flag.String("config", "", "The configuration path for the driver")
-	nodeID                     = flag.String("nodeid", "", "node id")
-	version                    = flag.Bool("version", false, "Print the version and exit.")
+	driverConfig     azdiskv1beta2.AzDiskDriverConfiguration
+	driverConfigPath = flag.String("config", "", "The configuration path for the driver")
+	nodeID           = flag.String("nodeid", "", "node id")
+	version          = flag.Bool("version", false, "Print the version and exit.")
 	// Deprecated command-line parameters
 	endpoint                   = flag.String("endpoint", "unix://tmp/csi.sock", "CSI endpoint")
 	metricsAddress             = flag.String("metrics-address", "0.0.0.0:29604", "export the metrics")
@@ -111,7 +111,7 @@ func getDriverConfig() {
 
 	// Mark the command-line parameters that have been given by user to 1
 	flag.Visit(func(f *flag.Flag) {
-		if _, ok := consts.CommandLineParams[f.Name]; ok{
+		if _, ok := consts.CommandLineParams[f.Name]; ok {
 			consts.CommandLineParams[f.Name] = 1
 		}
 	})
@@ -132,8 +132,8 @@ func getDriverConfig() {
 	}
 	if driverConfig.DriverName == "" {
 		driverConfig.DriverName = *driverName
-		if consts.CommandLineParams["drivername"]  == 1 {
-			consts.CommandLineParams["drivername"]  = 2
+		if consts.CommandLineParams["drivername"] == 1 {
+			consts.CommandLineParams["drivername"] = 2
 		}
 	}
 	if driverConfig.ControllerConfig.DisableAVSetNodes == nil {
@@ -256,7 +256,7 @@ func getDriverConfig() {
 			consts.CommandLineParams["kube-client-qps"] = 2
 		}
 	}
- }
+}
 
 func handle() {
 	driver := azuredisk.NewDriver(&driverConfig)

@@ -59,6 +59,7 @@ import (
 
 var driverConfig *azdiskv1beta2.AzDiskDriverConfiguration
 var isTestRun = flag.Bool("is-test-run", false, "Boolean flag to indicate whether this instance is being used for sanity or integration tests")
+
 // Deprecated command-line parameters
 var isControllerPlugin = flag.Bool("is-controller-plugin", false, "Boolean flag to indicate this instance is running as controller.")
 var isNodePlugin = flag.Bool("is-node-plugin", false, "Boolean flag to indicate this instance is running as node daemon.")

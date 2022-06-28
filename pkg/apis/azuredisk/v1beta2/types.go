@@ -524,9 +524,9 @@ type ListSnapshotsResult struct {
 
 type AzDiskDriverConfiguration struct {
 	ControllerConfig *ControllerConfiguration `json:"controller,omitempty"`
-	NodeConfig *NodeConfiguration `json:"node,omitempty"`
-	CloudConfig *CloudConfiguration `json:"cloud,omitempty"`
-	ClientConfig *ClientConfiguration `json:"client,omitempty"`
+	NodeConfig       *NodeConfiguration       `json:"node,omitempty"`
+	CloudConfig      *CloudConfiguration      `json:"cloud,omitempty"`
+	ClientConfig     *ClientConfiguration     `json:"client,omitempty"`
 	// The namespace where driver related custom resources are created
 	ObjectNamespace string `json:"objectNamespace,omitempty"`
 	// CSI endpoint

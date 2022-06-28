@@ -159,43 +159,44 @@ const (
 	ClientFailedGetEvent          = "ClientFailedToGetObject"
 
 	// AzDiskDriverConfiguration specific constants
-	Endpoint = "unix://tmp/csi.sock"
-	MetricsAddress = "0.0.0.0:29604"
-	DisableAVSetNodes = false
-	VMType = ""
-	EnableDiskOnlineResize = true
-	EnableAsyncAttach = false
-	EnableListVolumes = false
-	EnableListSnapshots = false
-	EnableDiskCapacityCheck = false
-	IsControllerPlugin = false
-	ControllerLeaseDurationInSec = 15
+	Endpoint                          = "unix://tmp/csi.sock"
+	MetricsAddress                    = "0.0.0.0:29604"
+	DisableAVSetNodes                 = false
+	VMType                            = ""
+	EnableDiskOnlineResize            = true
+	EnableAsyncAttach                 = false
+	EnableListVolumes                 = false
+	EnableListSnapshots               = false
+	EnableDiskCapacityCheck           = false
+	IsControllerPlugin                = false
+	ControllerLeaseDurationInSec      = 15
 	ControllerLeaseRenewDeadlineInSec = 10
-	ControllerLeaseRetryPeriodInSec = 2
-	VolumeAttachLimit = -1
-	SupportZone = true
-	EnablePerfOptimization = false
-	UseCSIProxyGAInterface = true
-	GetNodeInfoFromLabels = false
-	IsNodePlugin = false
-	HeartbeatFrequencyInSec = 30
-	CloudConfigSecretName = "azure-cloud-provider"
-	CloudConfigSecretNamespace = "kube-system"
-	CustomUserAgent = ""
-	UserAgentSuffix = ""
-	AllowEmptyCloudConfig = true
-	VmssCacheTTLInSeconds = -1
-	Kubeconfig = ""
-	KubeClientQPS = 15
+	ControllerLeaseRetryPeriodInSec   = 2
+	VolumeAttachLimit                 = -1
+	SupportZone                       = true
+	EnablePerfOptimization            = false
+	UseCSIProxyGAInterface            = true
+	GetNodeInfoFromLabels             = false
+	IsNodePlugin                      = false
+	HeartbeatFrequencyInSec           = 30
+	CloudConfigSecretName             = "azure-cloud-provider"
+	CloudConfigSecretNamespace        = "kube-system"
+	CustomUserAgent                   = ""
+	UserAgentSuffix                   = ""
+	AllowEmptyCloudConfig             = true
+	VmssCacheTTLInSeconds             = -1
+	Kubeconfig                        = ""
+	KubeClientQPS                     = 15
 )
+
 // List of deprecated command-line parameters
 // values: 0 for not set, 1 for set by user but be overrided, and 2 for set and used
-var CommandLineParams = map[string]int {"endpoint":0, "metrics-address":0, "kubeconfig":0, "drivername":0, "volume-attach-limit":0, "support-zone":0,
-"get-node-info-from-labels":0, "disable-avset-nodes":0, "vm-type":0, "enable-perf-optimization":0, "cloud-config-secret-name":0, "cloud-config-secret-namespace":0,
-"custom-user-agent":0, "user-agent-suffix":0, "use-csiproxy-ga-interface":0, "enable-disk-online-resize":0, "allow-empty-cloud-config":0, "enable-async-attach":0,
-"enable-list-volumes":0, "enable-list-snapshots":0, "enable-disk-capacity-check":0, "kube-client-qps":0, "vmss-cache-ttl-seconds":0, "is-controller-plugin":0,
-"is-node-plugin":0, "driver-object-namespace":0, "heartbeat-frequency-in-sec":0, "lease-duration-in-sec":0, "lease-renew-deadline-in-sec":0, "lease-retry-period-in-sec":0,
-"leader-election-namespace":0, "node-partition":0, "controller-partition":0}
+var CommandLineParams = map[string]int{"endpoint": 0, "metrics-address": 0, "kubeconfig": 0, "drivername": 0, "volume-attach-limit": 0, "support-zone": 0,
+	"get-node-info-from-labels": 0, "disable-avset-nodes": 0, "vm-type": 0, "enable-perf-optimization": 0, "cloud-config-secret-name": 0, "cloud-config-secret-namespace": 0,
+	"custom-user-agent": 0, "user-agent-suffix": 0, "use-csiproxy-ga-interface": 0, "enable-disk-online-resize": 0, "allow-empty-cloud-config": 0, "enable-async-attach": 0,
+	"enable-list-volumes": 0, "enable-list-snapshots": 0, "enable-disk-capacity-check": 0, "kube-client-qps": 0, "vmss-cache-ttl-seconds": 0, "is-controller-plugin": 0,
+	"is-node-plugin": 0, "driver-object-namespace": 0, "heartbeat-frequency-in-sec": 0, "lease-duration-in-sec": 0, "lease-renew-deadline-in-sec": 0, "lease-retry-period-in-sec": 0,
+	"leader-election-namespace": 0, "node-partition": 0, "controller-partition": 0}
 
 type UnpublishMode int
 
