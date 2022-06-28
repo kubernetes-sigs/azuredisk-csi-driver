@@ -256,6 +256,10 @@ func getDriverConfig() {
 			consts.CommandLineParams["kube-client-qps"] = 2
 		}
 	}
+
+	if driverConfig == (azdiskv1beta2.AzDiskDriverConfiguration{}) {
+		klog.Fatal("failed to initialize the driverConfig object")
+	}
 }
 
 func handle() {
