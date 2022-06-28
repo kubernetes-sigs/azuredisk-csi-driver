@@ -44,6 +44,7 @@ import (
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	azurecloudconsts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
+	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 )
 
 // DriverOptions defines driver parameters specified in driver deployment
@@ -125,34 +126,32 @@ type Driver struct {
 
 // newDriverV1 Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
 // does not support optional driver plugin info manifest field. Refer to CSI spec for more details.
-func newDriverV1(options *DriverOptions) *Driver {
+func newDriverV1(config *azdiskv1beta2.AzDiskDriverConfiguration) *Driver {
 	driver := Driver{}
-	driver.Name = options.DriverName
+	driver.Name = config.DriverName
 	driver.Version = driverVersion
-	driver.NodeID = options.NodeID
-	driver.VolumeAttachLimit = options.VolumeAttachLimit
+	driver.NodeID = config.NodeConfig.NodeID
+	driver.VolumeAttachLimit = *config.NodeConfig.VolumeAttachLimit
 	driver.ready = make(chan struct{})
-	driver.perfOptimizationEnabled = options.EnablePerfOptimization
-	driver.cloudConfigSecretName = options.CloudConfigSecretName
-	driver.cloudConfigSecretNamespace = options.CloudConfigSecretNamespace
-	driver.customUserAgent = options.CustomUserAgent
-	driver.userAgentSuffix = options.UserAgentSuffix
-	driver.useCSIProxyGAInterface = options.UseCSIProxyGAInterface
-	driver.enableDiskOnlineResize = options.EnableDiskOnlineResize
-	driver.allowEmptyCloudConfig = options.AllowEmptyCloudConfig
-	driver.enableAsyncAttach = options.EnableAsyncAttach
-	driver.enableListVolumes = options.EnableListVolumes
-	driver.enableListSnapshots = options.EnableListVolumes
-	driver.supportZone = options.SupportZone
-	driver.getNodeInfoFromLabels = options.GetNodeInfoFromLabels
-	driver.enableDiskCapacityCheck = options.EnableDiskCapacityCheck
-	driver.vmssCacheTTLInSeconds = options.VMSSCacheTTLInSeconds
-	driver.vmType = options.VMType
+	driver.perfOptimizationEnabled = *config.NodeConfig.EnablePerfOptimization
+	driver.cloudConfigSecretName = config.CloudConfig.SecretName
+	driver.cloudConfigSecretNamespace = config.CloudConfig.SecretNamespace
+	driver.customUserAgent = config.CloudConfig.CustomUserAgent
+	driver.userAgentSuffix = config.CloudConfig.UserAgentSuffix
+	driver.useCSIProxyGAInterface = *config.NodeConfig.UseCSIProxyGAInterface
+	driver.enableDiskOnlineResize = *config.ControllerConfig.EnableDiskOnlineResize
+	driver.allowEmptyCloudConfig = *config.CloudConfig.AllowEmptyCloudConfig
+	driver.enableAsyncAttach = *config.ControllerConfig.EnableAsyncAttach
+	driver.enableListVolumes = *config.ControllerConfig.EnableListVolumes
+	driver.enableListSnapshots = *config.ControllerConfig.EnableListSnapshots
+	driver.supportZone = *config.NodeConfig.SupportZone
+	driver.getNodeInfoFromLabels = *config.NodeConfig.GetNodeInfoFromLabels
+	driver.enableDiskCapacityCheck = *config.ControllerConfig.EnableDiskCapacityCheck
+	driver.vmssCacheTTLInSeconds = *config.CloudConfig.VMSSCacheTTLInSeconds
+	driver.vmType = config.ControllerConfig.VMType
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
-	driver.enableListVolumes = options.EnableListVolumes
-	driver.enableListSnapshots = options.EnableListVolumes
 
 	topologyKey = fmt.Sprintf("topology.%s/zone", driver.Name)
 

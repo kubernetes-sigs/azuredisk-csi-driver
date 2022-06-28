@@ -57,7 +57,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
 
-var DriverConfig azdiskv1beta2.AzDiskDriverConfiguration
+var driverConfig *azdiskv1beta2.AzDiskDriverConfiguration
 var isTestRun = flag.Bool("is-test-run", false, "Boolean flag to indicate whether this instance is being used for sanity or integration tests")
 // Deprecated command-line parameters
 var isControllerPlugin = flag.Bool("is-controller-plugin", false, "Boolean flag to indicate this instance is running as controller.")
@@ -100,64 +100,123 @@ type DriverV2 struct {
 }
 
 // NewDriver creates a driver object.
-func NewDriver(options *DriverOptions) CSIDriver {
-	if DriverConfig != (azdiskv1beta2.AzDiskDriverConfiguration{}) {
-		return newDriverV2(options, DriverConfig.ObjectNamespace, DriverConfig.NodeConfig.PartitionName,
-			DriverConfig.ControllerConfig.PartitionName, DriverConfig.NodeConfig.HeartbeatFrequencyInSec, DriverConfig.ControllerConfig.LeaseDurationInSec,
-			DriverConfig.ControllerConfig.LeaseRenewDeadlineInSec, DriverConfig.ControllerConfig.LeaseRetryPeriodInSec, DriverConfig.ControllerConfig.LeaderElectionNamespace)
+func NewDriver(config *azdiskv1beta2.AzDiskDriverConfiguration) CSIDriver {
+	driverConfig = config
+	getDriverConfig()
+	return newDriverV2(driverConfig)
+}
+
+func getDriverConfig() {
+	if driverConfig.ObjectNamespace == "" {
+		driverConfig.Endpoint = *driverObjectNamespace
+		if consts.CommandLineParams["driver-object-namespace"] == 1 {
+			consts.CommandLineParams["driver-object-namespace"] = 2
+		}
+	}
+	if driverConfig.ControllerConfig.Enabled == nil {
+		driverConfig.ControllerConfig.Enabled = isControllerPlugin
+		if consts.CommandLineParams["is-controller-plugin"] == 1 {
+			consts.CommandLineParams["is-controller-plugin"] = 2
+		}
+	}
+	if driverConfig.ControllerConfig.LeaseDurationInSec == nil {
+		driverConfig.ControllerConfig.LeaseDurationInSec = controllerLeaseDurationInSec
+		if consts.CommandLineParams["lease-duration-in-sec"] == 1 {
+			consts.CommandLineParams["lease-duration-in-sec"] = 2
+		}
+	}
+	if driverConfig.ControllerConfig.LeaseRenewDeadlineInSec == nil {
+		driverConfig.ControllerConfig.LeaseRenewDeadlineInSec = controllerLeaseRenewDeadlineInSec
+		if consts.CommandLineParams["lease-renew-deadline-in-sec"] == 1 {
+			consts.CommandLineParams["lease-renew-deadline-in-sec"] = 2
+		}
+	}
+	if driverConfig.ControllerConfig.LeaseRetryPeriodInSec == nil {
+		driverConfig.ControllerConfig.LeaseRetryPeriodInSec = controllerLeaseRetryPeriodInSec
+		if consts.CommandLineParams["lease-retry-period-in-sec"] == 1 {
+			consts.CommandLineParams["lease-retry-period-in-sec"] = 2
+		}
+	}
+	if driverConfig.ControllerConfig.LeaderElectionNamespace == "" {
+		driverConfig.ControllerConfig.LeaderElectionNamespace = *leaderElectionNamespace
+		if consts.CommandLineParams["leader-election-namespace"] == 1 {
+			consts.CommandLineParams["leader-election-namespace"] = 2
+		}
+	}
+	if driverConfig.ControllerConfig.PartitionName == "" {
+		driverConfig.ControllerConfig.PartitionName = *controllerPartition
+		if consts.CommandLineParams["controller-partition"] == 1 {
+			consts.CommandLineParams["controller-partition"] = 2
+		}
+	}
+	if driverConfig.NodeConfig.Enabled == nil {
+		driverConfig.NodeConfig.Enabled = isNodePlugin
+		if consts.CommandLineParams["is-node-plugin"] == 1 {
+			consts.CommandLineParams["is-node-plugin"] = 2
+		}
+	}
+	if driverConfig.NodeConfig.HeartbeatFrequencyInSec == nil {
+		driverConfig.NodeConfig.HeartbeatFrequencyInSec = heartbeatFrequencyInSec
+		if consts.CommandLineParams["heartbeat-frequency-in-sec"] == 1 {
+			consts.CommandLineParams["heartbeat-frequency-in-sec"] = 2
+		}
+	}
+	if driverConfig.NodeConfig.PartitionName == "" {
+		driverConfig.NodeConfig.PartitionName = *nodePartition
+		if consts.CommandLineParams["node-partition"] == 1 {
+			consts.CommandLineParams["node-partition"] = 2
+		}
 	}
 
-	return newDriverV2(options, *driverObjectNamespace, *nodePartition, *controllerPartition, *heartbeatFrequencyInSec, *controllerLeaseDurationInSec,
-		*controllerLeaseRenewDeadlineInSec, *controllerLeaseRetryPeriodInSec, *leaderElectionNamespace)
+	// Emit warning log for using deprecated command-line parameters
+	for key, val := range consts.CommandLineParams {
+		if val == 1 {
+			klog.Warningf("the command-line parameter %v is deprecated and its value is overrided by CongfigMap", key)
+		} else if val == 2 {
+			klog.Warningf("the command-line parameter %v is deprecated, using CongfigMap instead", key)
+		}
+	}
 }
 
 // newDriverV2 Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
 // does not support optional driver plugin info manifest field. Refer to CSI spec for more details.
-func newDriverV2(options *DriverOptions,
-	driverObjectNamespace string,
-	nodePartition string,
-	controllerPartition string,
-	heartbeatFrequency int,
-	leaseDurationInSec int,
-	leaseRenewDeadlineInSec int,
-	leaseRetryPeriodInSec int,
-	leaderElectionNamespace string) *DriverV2 {
+func newDriverV2(config *azdiskv1beta2.AzDiskDriverConfiguration) *DriverV2 {
 
 	klog.Warning("Using DriverV2")
 	driver := DriverV2{}
-	driver.Name = options.DriverName
+	driver.Name = config.DriverName
 	driver.Version = driverVersion
-	driver.objectNamespace = driverObjectNamespace
-	driver.nodePartition = nodePartition
-	driver.controllerPartition = controllerPartition
-	driver.heartbeatFrequencyInSec = heartbeatFrequency
-	driver.controllerLeaseDurationInSec = leaseDurationInSec
-	driver.controllerLeaseRenewDeadlineInSec = leaseRenewDeadlineInSec
-	driver.controllerLeaseRetryPeriodInSec = leaseRetryPeriodInSec
-	driver.leaderElectionNamespace = leaderElectionNamespace
-	driver.NodeID = options.NodeID
-	driver.VolumeAttachLimit = options.VolumeAttachLimit
+	driver.objectNamespace = config.ObjectNamespace
+	driver.nodePartition = config.NodeConfig.PartitionName
+	driver.controllerPartition = config.ControllerConfig.PartitionName
+	driver.heartbeatFrequencyInSec = *config.NodeConfig.HeartbeatFrequencyInSec
+	driver.controllerLeaseDurationInSec = *config.ControllerConfig.LeaseDurationInSec
+	driver.controllerLeaseRenewDeadlineInSec = *config.ControllerConfig.LeaseRenewDeadlineInSec
+	driver.controllerLeaseRetryPeriodInSec = *config.ControllerConfig.LeaseRetryPeriodInSec
+	driver.leaderElectionNamespace = config.ControllerConfig.LeaderElectionNamespace
+	driver.NodeID = config.NodeConfig.NodeID
+	driver.VolumeAttachLimit = *config.NodeConfig.VolumeAttachLimit
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ready = make(chan struct{})
-	driver.perfOptimizationEnabled = options.EnablePerfOptimization
-	driver.cloudConfigSecretName = options.CloudConfigSecretName
-	driver.cloudConfigSecretNamespace = options.CloudConfigSecretNamespace
-	driver.customUserAgent = options.CustomUserAgent
-	driver.userAgentSuffix = options.UserAgentSuffix
-	driver.useCSIProxyGAInterface = options.UseCSIProxyGAInterface
-	driver.enableDiskOnlineResize = options.EnableDiskOnlineResize
-	driver.allowEmptyCloudConfig = options.AllowEmptyCloudConfig
-	driver.enableAsyncAttach = options.EnableAsyncAttach
-	driver.enableListVolumes = options.EnableListVolumes
-	driver.enableListSnapshots = options.EnableListVolumes
-	driver.supportZone = options.SupportZone
-	driver.getNodeInfoFromLabels = options.GetNodeInfoFromLabels
-	driver.enableDiskCapacityCheck = options.EnableDiskCapacityCheck
+	driver.perfOptimizationEnabled = *config.NodeConfig.EnablePerfOptimization
+	driver.cloudConfigSecretName = config.CloudConfig.SecretName
+	driver.cloudConfigSecretNamespace = config.CloudConfig.SecretNamespace
+	driver.customUserAgent = config.CloudConfig.CustomUserAgent
+	driver.userAgentSuffix = config.CloudConfig.UserAgentSuffix
+	driver.useCSIProxyGAInterface = *config.NodeConfig.UseCSIProxyGAInterface
+	driver.enableDiskOnlineResize = *config.ControllerConfig.EnableDiskOnlineResize
+	driver.allowEmptyCloudConfig = *config.CloudConfig.AllowEmptyCloudConfig
+	driver.enableAsyncAttach = *config.ControllerConfig.EnableAsyncAttach
+	driver.enableListVolumes = *config.ControllerConfig.EnableListVolumes
+	driver.enableListSnapshots = *config.ControllerConfig.EnableListSnapshots
+	driver.supportZone = *config.NodeConfig.SupportZone
+	driver.getNodeInfoFromLabels = *config.NodeConfig.GetNodeInfoFromLabels
+	driver.enableDiskCapacityCheck = *config.ControllerConfig.EnableDiskCapacityCheck
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
 	driver.deviceChecker = &deviceChecker{lock: sync.RWMutex{}, entry: nil}
-	driver.kubeClientQPS = options.RestClientQPS
+	driver.kubeClientQPS = *config.ClientConfig.KubeClientQPS
 
 	topologyKey = fmt.Sprintf("topology.%s/zone", driver.Name)
 	return &driver
@@ -290,26 +349,13 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 	ctx := context.Background()
 
 	// Start the controllers if this is a controller plug-in
-	if DriverConfig != (azdiskv1beta2.AzDiskDriverConfiguration{}) {
-		if DriverConfig.ControllerConfig.Enabled {
-			go d.StartControllersAndDieOnExit(ctx)
-		}
-	} else {
-		if *isControllerPlugin {
-			go d.StartControllersAndDieOnExit(ctx)
-		}
+	if *driverConfig.ControllerConfig.Enabled {
+		go d.StartControllersAndDieOnExit(ctx)
 	}
 
-
 	// Register the AzDriverNode
-	if DriverConfig != (azdiskv1beta2.AzDiskDriverConfiguration{}) {
-		if DriverConfig.NodeConfig.Enabled {
-			d.RegisterAzDriverNodeOrDie(ctx)
-		}
-	} else {
-		if *isNodePlugin {
-			d.RegisterAzDriverNodeOrDie(ctx)
-		}
+	if *driverConfig.NodeConfig.Enabled {
+		d.RegisterAzDriverNodeOrDie(ctx)
 	}
 
 	// Start the CSI endpoint/server
@@ -318,16 +364,9 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 	s.Start(endpoint, d, d, d, testingMock)
 
 	// Start sending hearbeat and mark node as ready
-	if DriverConfig != (azdiskv1beta2.AzDiskDriverConfiguration{}) {
-		if DriverConfig.NodeConfig.Enabled {
-			go d.RunAzDriverNodeHeartbeatLoop(ctx)
-		}
-	} else {
-		if *isNodePlugin {
-			go d.RunAzDriverNodeHeartbeatLoop(ctx)
-		}
+	if *driverConfig.NodeConfig.Enabled {
+		go d.RunAzDriverNodeHeartbeatLoop(ctx)
 	}
-
 
 	// Signal that the driver is ready.
 	d.signalReady()

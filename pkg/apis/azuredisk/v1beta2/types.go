@@ -539,27 +539,27 @@ type AzDiskDriverConfiguration struct {
 
 type ControllerConfiguration struct {
 	// disable DisableAvailabilitySetNodes in cloud config for controller
-	DisableAVSetNodes bool `json:"disableAVSetNodes,omitempty"`
+	DisableAVSetNodes *bool `json:"disableAVSetNodes,omitempty"`
 	// type of agent node. available values: vmss, standard
 	VMType string `json:"vmType,omitempty"`
 	// boolean field to enable disk online resize
-	EnableDiskOnlineResize bool `json:"enableDiskOnlineResize,omitempty"`
+	EnableDiskOnlineResize *bool `json:"enableDiskOnlineResize,omitempty"`
 	// boolean field to enable async attach
-	EnableAsyncAttach bool `json:"enableAsyncAttach,omitempty"`
+	EnableAsyncAttach *bool `json:"enableAsyncAttach,omitempty"`
 	// boolean field to enable ListVolumes on controller
-	EnableListVolumes bool `json:"enableListVolumes,omitempty"`
+	EnableListVolumes *bool `json:"enableListVolumes,omitempty"`
 	// boolean field to enable ListSnapshots on controller
-	EnableListSnapshots bool `json:"enableListSnapshots,omitempty"`
+	EnableListSnapshots *bool `json:"enableListSnapshots,omitempty"`
 	// boolean field to enable volume capacity check in CreateVolume
-	EnableDiskCapacityCheck bool `json:"enableDiskCapacityCheck,omitempty"`
+	EnableDiskCapacityCheck *bool `json:"enableDiskCapacityCheck,omitempty"`
 	// Boolean field to indicate this instance is running as controller
-	Enabled bool `json:"enabled,omitempty"`
+	Enabled *bool `json:"enabled,omitempty"`
 	// The duration that non-leader candidates will wait to force acquire leadership
-	LeaseDurationInSec int `json:"leaseDurationInSec,omitempty"`
+	LeaseDurationInSec *int `json:"leaseDurationInSec,omitempty"`
 	// The duration that the acting controlplane will retry refreshing leadership before giving up
-	LeaseRenewDeadlineInSec int `json:"leaseRenewDeadlineInSec,omitempty"`
+	LeaseRenewDeadlineInSec *int `json:"leaseRenewDeadlineInSec,omitempty"`
 	// The duration the LeaderElector clients should wait between tries of actions
-	LeaseRetryPeriodInSec int `json:"leaseRetryPeriodInSec,omitempty"`
+	LeaseRetryPeriodInSec *int `json:"leaseRetryPeriodInSec,omitempty"`
 	// The leader election namespace for controller
 	LeaderElectionNamespace string `json:"leaderElectionNamespace,omitempty"`
 	// The partition name for controller plugin
@@ -567,42 +567,44 @@ type ControllerConfiguration struct {
 }
 
 type NodeConfiguration struct {
+	// node id
+	NodeID string `json:"nodeID"`
 	// maximum number of attachable volumes per node
-	VolumeAttachLimit int64 `json:"volumeAttachLimit,omitempty"`
+	VolumeAttachLimit *int64 `json:"volumeAttachLimit,omitempty"`
 	// boolean flag to get zone info in NodeGetInfo
-	SupportZone bool `json:"supportZone,omitempty"`
+	SupportZone *bool `json:"supportZone,omitempty"`
 	// boolean field to enable disk perf optimization
-	EnablePerfOptimization bool `json:"enablePerfOptimization,omitempty"`
+	EnablePerfOptimization *bool `json:"enablePerfOptimization,omitempty"`
 	// boolean field to enable csi-proxy GA interface on Windows
-	UseCSIProxyGAInterface bool `json:"useCSIProxyGAInterface,omitempty"`
+	UseCSIProxyGAInterface *bool `json:"useCSIProxyGAInterface,omitempty"`
 	// boolean flag to get zone info from node labels in NodeGetInfo
-	GetNodeInfoFromLabels bool `json:"getNodeInfoFromLabels,omitempty"`
+	GetNodeInfoFromLabels *bool `json:"getNodeInfoFromLabels,omitempty"`
 	// Boolean field to indicate this instance is running as node daemon
-	Enabled bool `json:"enabled,omitempty"`
+	Enabled *bool `json:"enabled,omitempty"`
 	// Frequency in seconds at which node driver sends heartbeat
-	HeartbeatFrequencyInSec int `json:"heartbeatFrequencyInSec,omitempty"`
+	HeartbeatFrequencyInSec *int `json:"heartbeatFrequencyInSec,omitempty"`
 	// The partition name for node plugin
 	PartitionName string `json:"partitionName,omitempty"`
 }
 
 type CloudConfiguration struct {
 	// cloud config secret name
-	CloudConfigSecretName string `json:"cloudConfigSecretName,omitempty"`
+	SecretName string `json:"cloudConfigSecretName,omitempty"`
 	// cloud config secret namespace
-	CloudConfigSecretNamespace string `json:"cloudConfigSecretNamesapce,omitempty"`
+	SecretNamespace string `json:"cloudConfigSecretNamesapce,omitempty"`
 	// custom userAgent
 	CustomUserAgent string `json:"customUserAgent,omitempty"`
 	// userAgent suffix
 	UserAgentSuffix string `json:"userAgentSuffix,omitempty"`
 	// Whether allow running driver without cloud config
-	AllowEmptyCloudConfig bool `json:"allowEmptyCloudConfig,omitempty"`
+	AllowEmptyCloudConfig *bool `json:"allowEmptyCloudConfig,omitempty"`
 	// vmss cache TTL in seconds (600 by default)
-	VmssCacheTTLInSeconds int64 `json:"vmssCacheTTLInSeconds,omitempty"`
+	VMSSCacheTTLInSeconds *int64 `json:"vmssCacheTTLInSeconds,omitempty"`
 }
 
 type ClientConfiguration struct {
 	// Absolute path to the kubeconfig file. Required only when running out of cluster
 	Kubeconfig string `json:"kubeconfig,omitempty"`
 	// QPS for the rest client. Defaults to 15
-	KubeClientQPS int `json:"kubeClientQPS,omitempty"`
+	KubeClientQPS *int `json:"kubeClientQPS,omitempty"`
 }

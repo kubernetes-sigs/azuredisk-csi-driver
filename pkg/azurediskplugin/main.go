@@ -31,7 +31,6 @@ import (
 
 	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/strings/slices"
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
@@ -73,12 +72,6 @@ var (
 
 func main() {
 	flag.Parse()
-	// Emit warning log when deprecated command-line parameters are specified
-	flag.Visit(func(f *flag.Flag) {
-		if slices.Contains(consts.CommandLineParams, f.Name) {
-			klog.Warningf("the command-line parameter %v is deprecated, using CongfigMap instead", f.Name)
-		}
-	})
 
 	if *version {
 		info, err := azuredisk.GetVersionYAML(*driverName)
@@ -94,15 +87,15 @@ func main() {
 		klog.Warning("nodeid is empty")
 	}
 
+	getDriverConfig()
 	exportMetrics()
 	handle()
 	os.Exit(0)
 }
 
-func handle() {
-	var driverOptions azuredisk.DriverOptions
+func getDriverConfig() {
+	// Read config file and convert to a driveConfig object if config path is given
 	if *driverConfigPath != "" {
-		// Read config file and convert to a strut object
 		yamlFile, err := ioutil.ReadFile(*driverConfigPath)
 		if err != nil {
 			klog.Fatalf("failed to get the driver config, error: %v", err)
@@ -112,77 +105,170 @@ func handle() {
 		if err != nil {
 			klog.Fatalf("failed to unmarshal the driver config, error: %v", err)
 		}
-		azuredisk.DriverConfig = driverConfig
-
-		driverOptions = azuredisk.DriverOptions{
-			NodeID:                     *nodeID,
-			DriverName:                 driverConfig.DriverName,
-			VolumeAttachLimit:          driverConfig.NodeConfig.VolumeAttachLimit,
-			EnablePerfOptimization:     driverConfig.NodeConfig.EnablePerfOptimization,
-			CloudConfigSecretName:      driverConfig.CloudConfig.CloudConfigSecretName,
-			CloudConfigSecretNamespace: driverConfig.CloudConfig.CloudConfigSecretNamespace,
-			CustomUserAgent:            driverConfig.CloudConfig.CustomUserAgent,
-			UserAgentSuffix:            driverConfig.CloudConfig.UserAgentSuffix,
-			UseCSIProxyGAInterface:     driverConfig.NodeConfig.UseCSIProxyGAInterface,
-			EnableDiskOnlineResize:     driverConfig.ControllerConfig.EnableDiskOnlineResize,
-			AllowEmptyCloudConfig:      driverConfig.CloudConfig.AllowEmptyCloudConfig,
-			EnableAsyncAttach:          driverConfig.ControllerConfig.EnableAsyncAttach,
-			EnableListVolumes:          driverConfig.ControllerConfig.EnableListVolumes,
-			EnableListSnapshots:        driverConfig.ControllerConfig.EnableListSnapshots,
-			SupportZone:                driverConfig.NodeConfig.SupportZone,
-			GetNodeInfoFromLabels:      driverConfig.NodeConfig.GetNodeInfoFromLabels,
-			EnableDiskCapacityCheck:    driverConfig.ControllerConfig.EnableDiskCapacityCheck,
-			VMSSCacheTTLInSeconds:      driverConfig.CloudConfig.VmssCacheTTLInSeconds,
-			VMType:                     driverConfig.ControllerConfig.VMType,
-			RestClientQPS:              driverConfig.ClientConfig.KubeClientQPS,
-		}
-
-		driver := azuredisk.NewDriver(&driverOptions)
-		if driver == nil {
-			klog.Fatalln("Failed to initialize azuredisk CSI Driver")
-		}
-		testingMock := false
-		driver.Run(driverConfig.Endpoint, driverConfig.ClientConfig.Kubeconfig, driverConfig.ControllerConfig.DisableAVSetNodes, testingMock)
-	} else {
-		driverOptions = azuredisk.DriverOptions{
-			NodeID:                     *nodeID,
-			DriverName:                 *driverName,
-			VolumeAttachLimit:          *volumeAttachLimit,
-			EnablePerfOptimization:     *enablePerfOptimization,
-			CloudConfigSecretName:      *cloudConfigSecretName,
-			CloudConfigSecretNamespace: *cloudConfigSecretNamespace,
-			CustomUserAgent:            *customUserAgent,
-			UserAgentSuffix:            *userAgentSuffix,
-			UseCSIProxyGAInterface:     *useCSIProxyGAInterface,
-			EnableDiskOnlineResize:     *enableDiskOnlineResize,
-			AllowEmptyCloudConfig:      *allowEmptyCloudConfig,
-			EnableAsyncAttach:          *enableAsyncAttach,
-			EnableListVolumes:          *enableListVolumes,
-			EnableListSnapshots:        *enableListSnapshots,
-			SupportZone:                *supportZone,
-			GetNodeInfoFromLabels:      *getNodeInfoFromLabels,
-			EnableDiskCapacityCheck:    *enableDiskCapacityCheck,
-			VMSSCacheTTLInSeconds:      *vmssCacheTTLInSeconds,
-			VMType:                     *vmType,
-			RestClientQPS:              *kubeClientQPS,
-		}
-		driver := azuredisk.NewDriver(&driverOptions)
-		if driver == nil {
-			klog.Fatalln("Failed to initialize azuredisk CSI Driver")
-		}
-		testingMock := false
-		driver.Run(*endpoint, *kubeconfig, *disableAVSetNodes, testingMock)
 	}
+
+	driverConfig.NodeConfig.NodeID = *nodeID
+
+	// Mark the command-line parameters that have been given by user to 1
+	flag.Visit(func(f *flag.Flag) {
+		if _, ok := consts.CommandLineParams[f.Name]; ok{
+			consts.CommandLineParams[f.Name] = 1
+		}
+	})
+
+	// Initialize driverConfig object from command-line parameters (or default values) if not set from config file
+	// Mark the command-line parameters that have been given and used to 2
+	if driverConfig.Endpoint == "" {
+		driverConfig.Endpoint = *endpoint
+		if consts.CommandLineParams["endpoint"] == 1 {
+			consts.CommandLineParams["endpoint"] = 2
+		}
+	}
+	if driverConfig.MetricsAddress == "" {
+		driverConfig.MetricsAddress = *metricsAddress
+		if consts.CommandLineParams["metrics-address"] == 1 {
+			consts.CommandLineParams["metrics-address"] = 2
+		}
+	}
+	if driverConfig.DriverName == "" {
+		driverConfig.DriverName = *driverName
+		if consts.CommandLineParams["drivername"]  == 1 {
+			consts.CommandLineParams["drivername"]  = 2
+		}
+	}
+	if driverConfig.ControllerConfig.DisableAVSetNodes == nil {
+		driverConfig.ControllerConfig.DisableAVSetNodes = disableAVSetNodes
+		if consts.CommandLineParams["disable-avset-nodes"] == 1 {
+			consts.CommandLineParams["disable-avset-nodes"] = 2
+		}
+	}
+	if driverConfig.ControllerConfig.VMType == "" {
+		driverConfig.Endpoint = *endpoint
+		if consts.CommandLineParams["endpoint"] == 1 {
+			consts.CommandLineParams["endpoint"] = 2
+		}
+	}
+	if driverConfig.ControllerConfig.EnableDiskOnlineResize == nil {
+		driverConfig.ControllerConfig.VMType = *vmType
+		if consts.CommandLineParams["vm-type"] == 1 {
+			consts.CommandLineParams["vm-type"] = 2
+		}
+	}
+	if driverConfig.ControllerConfig.EnableAsyncAttach == nil {
+		driverConfig.ControllerConfig.EnableAsyncAttach = enableAsyncAttach
+		if consts.CommandLineParams["enable-async-attach"] == 1 {
+			consts.CommandLineParams["enable-async-attach"] = 2
+		}
+	}
+	if driverConfig.ControllerConfig.EnableListVolumes == nil {
+		driverConfig.ControllerConfig.EnableListVolumes = enableListVolumes
+		if consts.CommandLineParams["enable-list-volumes"] == 1 {
+			consts.CommandLineParams["enable-list-volumes"] = 2
+		}
+	}
+	if driverConfig.ControllerConfig.EnableListSnapshots == nil {
+		driverConfig.ControllerConfig.EnableListSnapshots = enableListSnapshots
+		if consts.CommandLineParams["enable-list-snapshots"] == 1 {
+			consts.CommandLineParams["enable-list-snapshots"] = 2
+		}
+	}
+	if driverConfig.ControllerConfig.EnableDiskCapacityCheck == nil {
+		driverConfig.ControllerConfig.EnableDiskCapacityCheck = enableDiskCapacityCheck
+		if consts.CommandLineParams["enable-disk-capacity-check"] == 1 {
+			consts.CommandLineParams["enable-disk-capacity-check"] = 2
+		}
+	}
+	if driverConfig.NodeConfig.VolumeAttachLimit == nil {
+		driverConfig.NodeConfig.VolumeAttachLimit = volumeAttachLimit
+		if consts.CommandLineParams["volume-attach-limit"] == 1 {
+			consts.CommandLineParams["volume-attach-limit"] = 2
+		}
+	}
+	if driverConfig.NodeConfig.SupportZone == nil {
+		driverConfig.NodeConfig.SupportZone = supportZone
+		if consts.CommandLineParams["support-zone"] == 1 {
+			consts.CommandLineParams["support-zone"] = 2
+		}
+	}
+	if driverConfig.NodeConfig.EnablePerfOptimization == nil {
+		driverConfig.NodeConfig.EnablePerfOptimization = enablePerfOptimization
+		if consts.CommandLineParams["enable-perf-optimization"] == 1 {
+			consts.CommandLineParams["enable-perf-optimization"] = 2
+		}
+	}
+	if driverConfig.NodeConfig.UseCSIProxyGAInterface == nil {
+		driverConfig.NodeConfig.UseCSIProxyGAInterface = useCSIProxyGAInterface
+		if consts.CommandLineParams["use-csiproxy-ga-interface"] == 1 {
+			consts.CommandLineParams["use-csiproxy-ga-interface"] = 2
+		}
+	}
+	if driverConfig.NodeConfig.GetNodeInfoFromLabels == nil {
+		driverConfig.NodeConfig.GetNodeInfoFromLabels = getNodeInfoFromLabels
+		if consts.CommandLineParams["get-node-info-from-labels"] == 1 {
+			consts.CommandLineParams["get-node-info-from-labels"] = 2
+		}
+	}
+	if driverConfig.CloudConfig.SecretName == "" {
+		driverConfig.CloudConfig.SecretName = *cloudConfigSecretName
+		if consts.CommandLineParams["cloud-config-secret-name"] == 1 {
+			consts.CommandLineParams["cloud-config-secret-name"] = 2
+		}
+	}
+	if driverConfig.CloudConfig.SecretNamespace == "" {
+		driverConfig.CloudConfig.SecretNamespace = *cloudConfigSecretNamespace
+		if consts.CommandLineParams["cloud-config-secret-namespace"] == 1 {
+			consts.CommandLineParams["cloud-config-secret-namespace"] = 2
+		}
+	}
+	if driverConfig.CloudConfig.CustomUserAgent == "" {
+		driverConfig.CloudConfig.CustomUserAgent = *customUserAgent
+		if consts.CommandLineParams["custom-user-agent"] == 1 {
+			consts.CommandLineParams["custom-user-agent"] = 2
+		}
+	}
+	if driverConfig.CloudConfig.UserAgentSuffix == "" {
+		driverConfig.CloudConfig.UserAgentSuffix = *userAgentSuffix
+		if consts.CommandLineParams["user-agent-suffix"] == 1 {
+			consts.CommandLineParams["user-agent-suffix"] = 2
+		}
+	}
+	if driverConfig.CloudConfig.AllowEmptyCloudConfig == nil {
+		driverConfig.CloudConfig.AllowEmptyCloudConfig = allowEmptyCloudConfig
+		if consts.CommandLineParams["allow-empty-cloud-config"] == 1 {
+			consts.CommandLineParams["allow-empty-cloud-config"] = 2
+		}
+	}
+	if driverConfig.CloudConfig.VMSSCacheTTLInSeconds == nil {
+		driverConfig.CloudConfig.VMSSCacheTTLInSeconds = vmssCacheTTLInSeconds
+		if consts.CommandLineParams["vmss-cache-ttl-seconds"] == 1 {
+			consts.CommandLineParams["vmss-cache-ttl-seconds"] = 2
+		}
+	}
+	if driverConfig.ClientConfig.Kubeconfig == "" {
+		driverConfig.ClientConfig.Kubeconfig = *kubeconfig
+		if consts.CommandLineParams["kubeconfig"] == 1 {
+			consts.CommandLineParams["kubeconfig"] = 2
+		}
+	}
+	if driverConfig.ClientConfig.KubeClientQPS == nil {
+		driverConfig.ClientConfig.KubeClientQPS = kubeClientQPS
+		if consts.CommandLineParams["kube-client-qps"] == 1 {
+			consts.CommandLineParams["kube-client-qps"] = 2
+		}
+	}
+ }
+
+func handle() {
+	driver := azuredisk.NewDriver(&driverConfig)
+	if driver == nil {
+		klog.Fatalln("Failed to initialize azuredisk CSI Driver")
+	}
+	testingMock := false
+	driver.Run(driverConfig.Endpoint, driverConfig.ClientConfig.Kubeconfig, *driverConfig.ControllerConfig.DisableAVSetNodes, testingMock)
 }
 
 func exportMetrics() {
-	var l net.Listener
-	var err error
-	if *driverConfigPath != "" {
-		l, err = net.Listen("tcp", driverConfig.MetricsAddress)
-	} else {
-		l, err = net.Listen("tcp", *metricsAddress)
-	}
+	l, err := net.Listen("tcp", driverConfig.MetricsAddress)
 
 	if err != nil {
 		klog.Warningf("failed to get listener for metrics endpoint: %v", err)
