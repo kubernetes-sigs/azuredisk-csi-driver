@@ -184,7 +184,7 @@ const (
 	CustomUserAgent                   = ""
 	UserAgentSuffix                   = ""
 	AllowEmptyCloudConfig             = true
-	VmssCacheTTLInSeconds             = -1
+	VMSSCacheTTLInSeconds             = -1
 	Kubeconfig                        = ""
 	KubeClientQPS                     = 15
 )
