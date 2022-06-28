@@ -172,7 +172,7 @@ func getDriverConfig() {
 	// Emit warning log for using deprecated command-line parameters
 	for key, val := range consts.CommandLineParams {
 		if val == 1 {
-			klog.Warningf("the command-line parameter %v is deprecated and its value is overrided by CongfigMap", key)
+			klog.Warningf("the command-line parameter %v is deprecated and its value is overridden by CongfigMap", key)
 		} else if val == 2 {
 			klog.Warningf("the command-line parameter %v is deprecated, using CongfigMap instead", key)
 		}

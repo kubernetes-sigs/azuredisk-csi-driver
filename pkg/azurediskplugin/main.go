@@ -143,15 +143,15 @@ func getDriverConfig() {
 		}
 	}
 	if driverConfig.ControllerConfig.VMType == "" {
-		driverConfig.Endpoint = *endpoint
-		if consts.CommandLineParams["endpoint"] == 1 {
-			consts.CommandLineParams["endpoint"] = 2
-		}
-	}
-	if driverConfig.ControllerConfig.EnableDiskOnlineResize == nil {
 		driverConfig.ControllerConfig.VMType = *vmType
 		if consts.CommandLineParams["vm-type"] == 1 {
 			consts.CommandLineParams["vm-type"] = 2
+		}
+	}
+	if driverConfig.ControllerConfig.EnableDiskOnlineResize == nil {
+		driverConfig.ControllerConfig.EnableDiskOnlineResize = enableDiskOnlineResize
+		if consts.CommandLineParams["enable-disk-online-resize"] == 1 {
+			consts.CommandLineParams["enable-disk-online-resize"] = 2
 		}
 	}
 	if driverConfig.ControllerConfig.EnableAsyncAttach == nil {

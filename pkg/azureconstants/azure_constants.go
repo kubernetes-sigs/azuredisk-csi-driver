@@ -189,8 +189,7 @@ const (
 	KubeClientQPS                     = 15
 )
 
-// List of deprecated command-line parameters
-// values: 0 for not set, 1 for set by user but be overrided, and 2 for set and used
+// CommandLineParams is a map of deprecated command-line parameters with values: 0 for not set, 1 for set by user but be overridden, and 2 for set and used
 var CommandLineParams = map[string]int{"endpoint": 0, "metrics-address": 0, "kubeconfig": 0, "drivername": 0, "volume-attach-limit": 0, "support-zone": 0,
 	"get-node-info-from-labels": 0, "disable-avset-nodes": 0, "vm-type": 0, "enable-perf-optimization": 0, "cloud-config-secret-name": 0, "cloud-config-secret-namespace": 0,
 	"custom-user-agent": 0, "user-agent-suffix": 0, "use-csiproxy-ga-interface": 0, "enable-disk-online-resize": 0, "allow-empty-cloud-config": 0, "enable-async-attach": 0,
