@@ -164,34 +164,34 @@ const (
 	ClientFailedGetEvent          = "ClientFailedToGetObject"
 
 	// AzDiskDriverConfiguration specific constants
-	Endpoint                          = "unix://tmp/csi.sock"
-	MetricsAddress                    = "0.0.0.0:29604"
-	DisableAVSetNodes                 = false
-	VMType                            = ""
-	EnableDiskOnlineResize            = true
-	EnableAsyncAttach                 = false
-	EnableListVolumes                 = false
-	EnableListSnapshots               = false
-	EnableDiskCapacityCheck           = false
-	IsControllerPlugin                = false
-	ControllerLeaseDurationInSec      = 15
-	ControllerLeaseRenewDeadlineInSec = 10
-	ControllerLeaseRetryPeriodInSec   = 2
-	VolumeAttachLimit                 = -1
-	SupportZone                       = true
-	EnablePerfOptimization            = false
-	UseCSIProxyGAInterface            = true
-	GetNodeInfoFromLabels             = false
-	IsNodePlugin                      = false
-	HeartbeatFrequencyInSec           = 30
-	CloudConfigSecretName             = "azure-cloud-provider"
-	CloudConfigSecretNamespace        = "kube-system"
-	CustomUserAgent                   = ""
-	UserAgentSuffix                   = ""
-	AllowEmptyCloudConfig             = true
-	VMSSCacheTTLInSeconds             = -1
-	Kubeconfig                        = ""
-	KubeClientQPS                     = 15
+	DefaultEndpoint                          = "unix://tmp/csi.sock"
+	DefaultMetricsAddress                    = "0.0.0.0:29604"
+	DefaultDisableAVSetNodes                 = false
+	DefaultVMType                            = ""
+	DefaultEnableDiskOnlineResize            = true
+	DefaultEnableAsyncAttach                 = false
+	DefaultEnableListVolumes                 = false
+	DefaultEnableListSnapshots               = false
+	DefaultEnableDiskCapacityCheck           = false
+	DefaultIsControllerPlugin                = false
+	DefaultControllerLeaseDurationInSec      = 15
+	DefaultControllerLeaseRenewDeadlineInSec = 10
+	DefaultControllerLeaseRetryPeriodInSec   = 2
+	DefaultVolumeAttachLimit                 = -1
+	DefaultSupportZone                       = true
+	DefaultEnablePerfOptimization            = false
+	DefaultUseCSIProxyGAInterface            = true
+	DefaultGetNodeInfoFromLabels             = false
+	DefaultIsNodePlugin                      = false
+	DefaultHeartbeatFrequencyInSec           = 30
+	DefaultCloudConfigSecretName             = "azure-cloud-provider"
+	DefaultCloudConfigSecretNamespace        = "kube-system"
+	DefaultCustomUserAgent                   = ""
+	DefaultUserAgentSuffix                   = ""
+	DefaultAllowEmptyCloudConfig             = true
+	DefaultVMSSCacheTTLInSeconds             = -1
+	DefaultKubeconfig                        = ""
+	DefaultKubeClientQPS                     = 15
 )
 
 // CommandLineParams is a map of deprecated command-line parameters with values: 0 for not set, 1 for set by user but be overridden, and 2 for set and used

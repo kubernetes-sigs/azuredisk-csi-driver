@@ -66,13 +66,13 @@ import (
 var isTestRun = flag.Bool("is-test-run", false, "Boolean flag to indicate whether this instance is being used for sanity or integration tests")
 
 // Deprecated command-line parameters
-var isControllerPlugin = flag.Bool("is-controller-plugin", consts.IsControllerPlugin, "Boolean flag to indicate this instance is running as controller.")
-var isNodePlugin = flag.Bool("is-node-plugin", consts.IsNodePlugin, "Boolean flag to indicate this instance is running as node daemon.")
+var isControllerPlugin = flag.Bool("is-controller-plugin", consts.DefaultIsControllerPlugin, "Boolean flag to indicate this instance is running as controller.")
+var isNodePlugin = flag.Bool("is-node-plugin", consts.DefaultIsNodePlugin, "Boolean flag to indicate this instance is running as node daemon.")
 var driverObjectNamespace = flag.String("driver-object-namespace", consts.DefaultAzureDiskCrdNamespace, "The namespace where driver related custom resources are created.")
-var heartbeatFrequencyInSec = flag.Int("heartbeat-frequency-in-sec", consts.HeartbeatFrequencyInSec, "Frequency in seconds at which node driver sends heartbeat.")
-var controllerLeaseDurationInSec = flag.Int("lease-duration-in-sec", consts.ControllerLeaseDurationInSec, "The duration that non-leader candidates will wait to force acquire leadership")
-var controllerLeaseRenewDeadlineInSec = flag.Int("lease-renew-deadline-in-sec", consts.ControllerLeaseRenewDeadlineInSec, "The duration that the acting controlplane will retry refreshing leadership before giving up.")
-var controllerLeaseRetryPeriodInSec = flag.Int("lease-retry-period-in-sec", consts.ControllerLeaseRetryPeriodInSec, "The duration the LeaderElector clients should wait between tries of actions.")
+var heartbeatFrequencyInSec = flag.Int("heartbeat-frequency-in-sec", consts.DefaultHeartbeatFrequencyInSec, "Frequency in seconds at which node driver sends heartbeat.")
+var controllerLeaseDurationInSec = flag.Int("lease-duration-in-sec", consts.DefaultControllerLeaseDurationInSec, "The duration that non-leader candidates will wait to force acquire leadership")
+var controllerLeaseRenewDeadlineInSec = flag.Int("lease-renew-deadline-in-sec", consts.DefaultControllerLeaseRenewDeadlineInSec, "The duration that the acting controlplane will retry refreshing leadership before giving up.")
+var controllerLeaseRetryPeriodInSec = flag.Int("lease-retry-period-in-sec", consts.DefaultControllerLeaseRetryPeriodInSec, "The duration the LeaderElector clients should wait between tries of actions.")
 var leaderElectionNamespace = flag.String("leader-election-namespace", consts.ReleaseNamespace, "The leader election namespace for controller")
 var nodePartition = flag.String("node-partition", consts.DefaultNodePartitionName, "The partition name for node plugin.")
 var controllerPartition = flag.String("controller-partition", consts.DefaultControllerPartitionName, "The partition name for controller plugin.")
@@ -124,7 +124,7 @@ func NewDriver(config *azdiskv1beta2.AzDiskDriverConfiguration) CSIDriver {
 
 func getDriverConfig(driverConfig *azdiskv1beta2.AzDiskDriverConfiguration) {
 	if driverConfig.ObjectNamespace == "" {
-		driverConfig.Endpoint = *driverObjectNamespace
+		driverConfig.ObjectNamespace = *driverObjectNamespace
 		if consts.CommandLineParams["driver-object-namespace"] == 1 {
 			consts.CommandLineParams["driver-object-namespace"] = 2
 		}
