@@ -43,6 +43,7 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/klog/v2/klogr"
 	"k8s.io/kubernetes/pkg/volume/util/hostutil"
+	"k8s.io/utils/strings/slices"
 
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -64,6 +65,7 @@ import (
 )
 
 var isTestRun = flag.Bool("is-test-run", false, "Boolean flag to indicate whether this instance is being used for sanity or integration tests")
+var DriverConfigPath *string
 
 // Deprecated command-line parameters
 var isControllerPlugin = flag.Bool("is-controller-plugin", consts.DefaultIsControllerPlugin, "Boolean flag to indicate this instance is running as controller.")
@@ -123,74 +125,66 @@ func NewDriver(config *azdiskv1beta2.AzDiskDriverConfiguration) CSIDriver {
 }
 
 func getDriverConfig(driverConfig *azdiskv1beta2.AzDiskDriverConfiguration) {
-	if driverConfig.ObjectNamespace == "" {
+	if *DriverConfigPath != "" {
+		if driverConfig.ObjectNamespace == "" {
+			driverConfig.ObjectNamespace = consts.DefaultAzureDiskCrdNamespace
+		}
+		if driverConfig.ControllerConfig.Enabled == nil {
+			c := consts.DefaultIsControllerPlugin
+			driverConfig.ControllerConfig.Enabled = &c
+		}
+		if driverConfig.ControllerConfig.LeaseDurationInSec == nil {
+			c := consts.DefaultControllerLeaseDurationInSec
+			driverConfig.ControllerConfig.LeaseDurationInSec = &c
+		}
+		if driverConfig.ControllerConfig.LeaseRenewDeadlineInSec == nil {
+			c := consts.DefaultControllerLeaseRenewDeadlineInSec
+			driverConfig.ControllerConfig.LeaseRenewDeadlineInSec = &c
+		}
+		if driverConfig.ControllerConfig.LeaseRetryPeriodInSec == nil {
+			c := consts.DefaultControllerLeaseRetryPeriodInSec
+			driverConfig.ControllerConfig.LeaseRetryPeriodInSec = &c
+		}
+		if driverConfig.ControllerConfig.LeaderElectionNamespace == "" {
+			driverConfig.ControllerConfig.LeaderElectionNamespace = consts.ReleaseNamespace
+		}
+		if driverConfig.ControllerConfig.PartitionName == "" {
+			driverConfig.ControllerConfig.PartitionName = consts.DefaultControllerPartitionName
+		}
+		if driverConfig.NodeConfig.Enabled == nil {
+			c := consts.DefaultIsNodePlugin
+			driverConfig.NodeConfig.Enabled = &c
+		}
+		if driverConfig.NodeConfig.HeartbeatFrequencyInSec == nil {
+			c := consts.DefaultHeartbeatFrequencyInSec
+			driverConfig.NodeConfig.HeartbeatFrequencyInSec = &c
+		}
+		if driverConfig.NodeConfig.PartitionName == "" {
+			driverConfig.NodeConfig.PartitionName = consts.DefaultNodePartitionName
+		}
+		// Emit warning log for using deprecated command-line parameters
+		flag.Visit(func(f *flag.Flag) {
+			if slices.Contains(consts.CommandLineParams, f.Name) {
+				klog.Warningf("the command-line parameter %v is deprecated and overridden by CongfigMap", f.Name)
+			}
+		})
+	} else {
 		driverConfig.ObjectNamespace = *driverObjectNamespace
-		if consts.CommandLineParams["driver-object-namespace"] == 1 {
-			consts.CommandLineParams["driver-object-namespace"] = 2
-		}
-	}
-	if driverConfig.ControllerConfig.Enabled == nil {
 		driverConfig.ControllerConfig.Enabled = isControllerPlugin
-		if consts.CommandLineParams["is-controller-plugin"] == 1 {
-			consts.CommandLineParams["is-controller-plugin"] = 2
-		}
-	}
-	if driverConfig.ControllerConfig.LeaseDurationInSec == nil {
 		driverConfig.ControllerConfig.LeaseDurationInSec = controllerLeaseDurationInSec
-		if consts.CommandLineParams["lease-duration-in-sec"] == 1 {
-			consts.CommandLineParams["lease-duration-in-sec"] = 2
-		}
-	}
-	if driverConfig.ControllerConfig.LeaseRenewDeadlineInSec == nil {
 		driverConfig.ControllerConfig.LeaseRenewDeadlineInSec = controllerLeaseRenewDeadlineInSec
-		if consts.CommandLineParams["lease-renew-deadline-in-sec"] == 1 {
-			consts.CommandLineParams["lease-renew-deadline-in-sec"] = 2
-		}
-	}
-	if driverConfig.ControllerConfig.LeaseRetryPeriodInSec == nil {
 		driverConfig.ControllerConfig.LeaseRetryPeriodInSec = controllerLeaseRetryPeriodInSec
-		if consts.CommandLineParams["lease-retry-period-in-sec"] == 1 {
-			consts.CommandLineParams["lease-retry-period-in-sec"] = 2
-		}
-	}
-	if driverConfig.ControllerConfig.LeaderElectionNamespace == "" {
 		driverConfig.ControllerConfig.LeaderElectionNamespace = *leaderElectionNamespace
-		if consts.CommandLineParams["leader-election-namespace"] == 1 {
-			consts.CommandLineParams["leader-election-namespace"] = 2
-		}
-	}
-	if driverConfig.ControllerConfig.PartitionName == "" {
 		driverConfig.ControllerConfig.PartitionName = *controllerPartition
-		if consts.CommandLineParams["controller-partition"] == 1 {
-			consts.CommandLineParams["controller-partition"] = 2
-		}
-	}
-	if driverConfig.NodeConfig.Enabled == nil {
 		driverConfig.NodeConfig.Enabled = isNodePlugin
-		if consts.CommandLineParams["is-node-plugin"] == 1 {
-			consts.CommandLineParams["is-node-plugin"] = 2
-		}
-	}
-	if driverConfig.NodeConfig.HeartbeatFrequencyInSec == nil {
 		driverConfig.NodeConfig.HeartbeatFrequencyInSec = heartbeatFrequencyInSec
-		if consts.CommandLineParams["heartbeat-frequency-in-sec"] == 1 {
-			consts.CommandLineParams["heartbeat-frequency-in-sec"] = 2
-		}
-	}
-	if driverConfig.NodeConfig.PartitionName == "" {
 		driverConfig.NodeConfig.PartitionName = *nodePartition
-		if consts.CommandLineParams["node-partition"] == 1 {
-			consts.CommandLineParams["node-partition"] = 2
-		}
-	}
-
-	// Emit warning log for using deprecated command-line parameters
-	for key, val := range consts.CommandLineParams {
-		if val == 1 {
-			klog.Warningf("the command-line parameter %v is deprecated and its value is overridden by CongfigMap", key)
-		} else if val == 2 {
-			klog.Warningf("the command-line parameter %v is deprecated, using CongfigMap instead", key)
-		}
+		// Emit warning log for using deprecated command-line parameters
+		flag.Visit(func(f *flag.Flag) {
+			if slices.Contains(consts.CommandLineParams, f.Name) {
+				klog.Warningf("the command-line parameter %v is deprecated, setting by CongfigMap is supported", f.Name)
+			}
+		})
 	}
 }
 
