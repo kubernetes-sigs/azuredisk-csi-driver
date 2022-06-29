@@ -94,8 +94,6 @@ func main() {
 }
 
 func getDriverConfig() {
-	azuredisk.DriverConfigPath = driverConfigPath
-
 	if *driverConfigPath != "" {
 		// Read config file and convert to a driveConfig object
 		yamlFile, err := ioutil.ReadFile(*driverConfigPath)

@@ -65,8 +65,7 @@ import (
 )
 
 var isTestRun = flag.Bool("is-test-run", false, "Boolean flag to indicate whether this instance is being used for sanity or integration tests")
-var DriverConfigPath *string
-
+var driverConfigPath = flag.String("config", "", "The configuration path for the driver")
 // Deprecated command-line parameters
 var isControllerPlugin = flag.Bool("is-controller-plugin", consts.DefaultIsControllerPlugin, "Boolean flag to indicate this instance is running as controller.")
 var isNodePlugin = flag.Bool("is-node-plugin", consts.DefaultIsNodePlugin, "Boolean flag to indicate this instance is running as node daemon.")
@@ -125,7 +124,7 @@ func NewDriver(config *azdiskv1beta2.AzDiskDriverConfiguration) CSIDriver {
 }
 
 func getDriverConfig(driverConfig *azdiskv1beta2.AzDiskDriverConfiguration) {
-	if *DriverConfigPath != "" {
+	if *driverConfigPath != "" {
 		if driverConfig.ObjectNamespace == "" {
 			driverConfig.ObjectNamespace = consts.DefaultAzureDiskCrdNamespace
 		}
