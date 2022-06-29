@@ -107,6 +107,7 @@ const (
 	ControllerFinalizer                   = "disk.csi.azure.com/azuredisk-finalizer"
 	CleanUpAnnotation                     = "disk.csi.azure.com/clean-up"
 	NodeNameLabel                         = "disk.csi.azure.com/node-name"
+	NamespaceLabel                        = "disk.csi.azure.com/namespace"
 	PartitionLabel                        = "azdrivernodes.disk.csi.azure.com/partition"
 	RoleLabel                             = "disk.csi.azure.com/requested-role"
 	RoleChangeLabel                       = "disk.csi.azure.com/role-change"

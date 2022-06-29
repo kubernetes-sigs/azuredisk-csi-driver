@@ -95,7 +95,12 @@ func (t *PodNodeSelector) Run(client clientset.Interface, namespace *v1.Namespac
 	tpod.Create()
 	defer tpod.Cleanup()
 	ginkgo.By("checking that the pod is running")
-	tpod.WaitForRunning()
+	if !t.Pod.IsWindows {
+		tpod.WaitForRunning()
+	} else {
+		// For some reason Windows CAP-Z clusters can take more than 5 minutes to pull the ServerCore image - wait long
+		tpod.WaitForRunningLong()
+	}
 
 	klog.Infof("volumes: %+v", pod.Spec.Volumes)
 	diskNames := make([]string, len(pod.Spec.Volumes))
