@@ -97,7 +97,7 @@ type DriverV2 struct {
 	kubeClient                        *clientset.Clientset
 	deviceChecker                     *deviceChecker
 	kubeClientQPS                     int
-	isControllerPlugin				  bool
+	isControllerPlugin                bool
 	isNodePlugin                      bool
 }
 
