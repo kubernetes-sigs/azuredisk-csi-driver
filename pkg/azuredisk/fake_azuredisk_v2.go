@@ -70,6 +70,8 @@ func newFakeDriverV2(t *testing.T) (*fakeDriverV2, error) {
 	driver.ioHandler = azureutils.NewFakeIOHandler()
 	driver.hostUtil = azureutils.NewFakeHostUtil()
 	driver.useCSIProxyGAInterface = true
+	driver.isControllerPlugin = false
+	driver.isNodePlugin = false
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()

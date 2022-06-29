@@ -57,7 +57,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
 
-var driverConfig *azdiskv1beta2.AzDiskDriverConfiguration
 var isTestRun = flag.Bool("is-test-run", false, "Boolean flag to indicate whether this instance is being used for sanity or integration tests")
 
 // Deprecated command-line parameters
@@ -98,16 +97,17 @@ type DriverV2 struct {
 	kubeClient                        *clientset.Clientset
 	deviceChecker                     *deviceChecker
 	kubeClientQPS                     int
+	isControllerPlugin				  bool
+	isNodePlugin                      bool
 }
 
 // NewDriver creates a driver object.
 func NewDriver(config *azdiskv1beta2.AzDiskDriverConfiguration) CSIDriver {
-	driverConfig = config
-	getDriverConfig()
-	return newDriverV2(driverConfig)
+	getDriverConfig(config)
+	return newDriverV2(config)
 }
 
-func getDriverConfig() {
+func getDriverConfig(driverConfig *azdiskv1beta2.AzDiskDriverConfiguration) {
 	if driverConfig.ObjectNamespace == "" {
 		driverConfig.Endpoint = *driverObjectNamespace
 		if consts.CommandLineParams["driver-object-namespace"] == 1 {
@@ -218,6 +218,8 @@ func newDriverV2(config *azdiskv1beta2.AzDiskDriverConfiguration) *DriverV2 {
 	driver.hostUtil = hostutil.NewHostUtil()
 	driver.deviceChecker = &deviceChecker{lock: sync.RWMutex{}, entry: nil}
 	driver.kubeClientQPS = *config.ClientConfig.KubeClientQPS
+	driver.isControllerPlugin = *config.ControllerConfig.Enabled
+	driver.isNodePlugin = *config.NodeConfig.Enabled
 
 	topologyKey = fmt.Sprintf("topology.%s/zone", driver.Name)
 	return &driver
@@ -350,12 +352,12 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 	ctx := context.Background()
 
 	// Start the controllers if this is a controller plug-in
-	if *driverConfig.ControllerConfig.Enabled {
+	if d.isControllerPlugin {
 		go d.StartControllersAndDieOnExit(ctx)
 	}
 
 	// Register the AzDriverNode
-	if *driverConfig.NodeConfig.Enabled {
+	if d.isNodePlugin {
 		d.RegisterAzDriverNodeOrDie(ctx)
 	}
 
@@ -365,7 +367,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 	s.Start(endpoint, d, d, d, testingMock)
 
 	// Start sending hearbeat and mark node as ready
-	if *driverConfig.NodeConfig.Enabled {
+	if d.isNodePlugin {
 		go d.RunAzDriverNodeHeartbeatLoop(ctx)
 	}
 
