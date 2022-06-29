@@ -87,12 +87,12 @@ func setUpClient() error {
 
 func setUpProvisioner() error {
 	var err error
-	if config == nil {
-		if err = setUpConfig(); err != nil {
+	if azVolumeClient == nil {
+		if err = setUpClient(); err != nil {
 			return err
 		}
 	}
-	crdProvisioner, err = provisioner.NewCrdProvisioner(config, namespace)
+	crdProvisioner, err = provisioner.NewCrdProvisioner(azVolumeClient, namespace)
 	return err
 }
 

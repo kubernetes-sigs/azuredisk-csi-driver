@@ -20,6 +20,7 @@ import (
 	"context"
 
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
+	azdiskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
@@ -30,8 +31,10 @@ type FakeCrdProvisioner struct {
 
 func NewFakeCrdProvisioner(cloudProv *FakeCloudProvisioner) (*FakeCrdProvisioner, error) {
 	return &FakeCrdProvisioner{
-		CrdProvisioner: CrdProvisioner{},
-		fakeCloudProv:  cloudProv,
+		CrdProvisioner: CrdProvisioner{
+			azDiskClient: azdiskfakes.NewSimpleClientset(),
+		},
+		fakeCloudProv: cloudProv,
 	}, nil
 }
 

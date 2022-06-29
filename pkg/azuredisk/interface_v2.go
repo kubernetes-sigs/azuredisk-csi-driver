@@ -20,14 +20,12 @@ import (
 	"context"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	v1 "k8s.io/api/core/v1"
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
 type CrdProvisioner interface {
-	RegisterDriverNode(ctx context.Context, node *v1.Node, nodePartition string, nodeID string) error
 	CreateVolume(ctx context.Context, volumeName string, capacityRange *azdiskv1beta2.CapacityRange,
 		volumeCapabilities []azdiskv1beta2.VolumeCapability, parameters map[string]string,
 		secrets map[string]string, volumeContentSource *azdiskv1beta2.ContentVolumeSource,
