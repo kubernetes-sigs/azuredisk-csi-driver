@@ -12,26 +12,10 @@ data:
     controllerConfig:
       disableAVSetNodes: {{ .Values.controller.disableAvailabilitySetNodes }}
       vmType: {{ .Values.controller.vmType }}
-      enableDiskOnlineResize:
-      enableAsyncAttach:
-      enableListVolumes:
-      enableListSnapshots:
-      enableDiskCapacityCheck:
-      enabled: true
-      leaseDurationInSec:
-      leaseRenewDeadlineInSec:
-      leaseRetryPeriodInSec:
       leaderElectionNamespace: {{ .Release.Namespace }}
-      partitionName:
     nodeConfig:
-      volumeAttachLimit:
       supportZone: {{ .Values.node.supportZone }}
       enablePerfOptimization: {{ .Values.linux.enablePerfOptimization }}
-      useCSIProxyGAInterface:
-      getNodeInfoFromLabels:
-      enabled:
-      heartbeatFrequencyInSec:
-      partitionName:
     cloudConfig:
       cloudConfigSecretName: {{ .Values.controller.cloudConfigSecretName }}
       cloudConfigSecretNamesapce: {{ .Values.controller.cloudConfigSecretNamespace }}
@@ -39,9 +23,6 @@ data:
       userAgentSuffix: {{ .Values.driver.userAgentSuffix }}
       allowEmptyCloudConfig: {{ .Values.node.allowEmptyCloudConfig }}
       vmssCacheTTLInSeconds: {{ .Values.controller.vmssCacheTTLInSeconds }}
-    clientConfig:
-      kubeconfig:
-      kubeClientQPS:
     objectNamespace: {{ .Values.driver.objectNamespace }}
     endpoint: unix:///csi/csi.sock
     metricsAddress: 0.0.0.0:{{ .Values.controller.metrics.port }}

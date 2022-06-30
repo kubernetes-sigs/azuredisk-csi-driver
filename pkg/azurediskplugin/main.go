@@ -26,8 +26,8 @@ import (
 	"os"
 	"strings"
 
-	"gopkg.in/yaml.v2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
+	"sigs.k8s.io/yaml"
 
 	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/klog/v2"
@@ -101,7 +101,7 @@ func getDriverConfig() {
 			klog.Fatalf("failed to get the driver config, error: %v", err)
 		}
 
-		err = yaml.Unmarshal(yamlFile, driverConfig)
+		err = yaml.Unmarshal(yamlFile, &driverConfig)
 		if err != nil {
 			klog.Fatalf("failed to unmarshal the driver config, error: %v", err)
 		}

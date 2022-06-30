@@ -9,39 +9,17 @@ data:
   config.yaml: |
     apiVersion: kubescheduler.config.k8s.io/v1beta2
     kind: AzDiskDriverConfiguration
-    controllerConfig:
-      disableAVSetNodes:
-      vmType:
-      enableDiskOnlineResize:
-      enableAsyncAttach:
-      enableListVolumes:
-      enableListSnapshots:
-      enableDiskCapacityCheck:
-      enabled:
-      leaseDurationInSec:
-      leaseRenewDeadlineInSec:
-      leaseRetryPeriodInSec:
-      leaderElectionNamespace:
-      partitionName:
     nodeConfig:
       volumeAttachLimit: {{ .Values.driver.volumeAttachLimit }}
       supportZone: {{ .Values.node.supportZone }}
-      enablePerfOptimization:
-      useCSIProxyGAInterface:
       getNodeInfoFromLabels: {{ .Values.windows.getNodeInfoFromLabels }}
       enabled: true
-      heartbeatFrequencyInSec:
-      partitionName:
     cloudConfig:
       cloudConfigSecretName: {{ .Values.controller.cloudConfigSecretName }}
       cloudConfigSecretNamesapce: {{ .Values.controller.cloudConfigSecretNamespace }}
       customUserAgent: {{ .Values.driver.customUserAgent }}
       userAgentSuffix: {{ .Values.driver.userAgentSuffix }}
       allowEmptyCloudConfig: {{ .Values.node.allowEmptyCloudConfig }}
-      vmssCacheTTLInSeconds:
-    clientConfig:
-      kubeconfig:
-      kubeClientQPS:
     objectNamespace: {{ .Values.driver.objectNamespace }}
     endpoint: unix://C:\\csi\\csi.sock
     metricsAddress: 0.0.0.0:{{ .Values.node.metrics.port }}
