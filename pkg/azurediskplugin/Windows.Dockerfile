@@ -2,12 +2,10 @@ ARG ARCH=amd64
 ARG OSVERSION
 FROM --platform=linux/${ARCH} gcr.io/k8s-staging-e2e-test-images/windows-servercore-cache:1.0-linux-${ARCH}-${OSVERSION} as core
 
-FROM mcr.microsoft.com/windows/nanoserver:${OSVERSION}
+FROM mcr.microsoft.com/oss/kubernetes/windows-pause-image-base:v0.2
 COPY --from=core /Windows/System32/netapi32.dll /Windows/System32/netapi32.dll
 
 USER ContainerAdministrator
-# Delete DiagTrack service as it causes CPU spikes and delays pod/container startup times.
-RUN sc.exe delete diagtrack -f
 
 LABEL description="CSI Azure disk plugin"
 
