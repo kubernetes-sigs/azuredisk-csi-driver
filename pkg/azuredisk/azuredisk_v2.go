@@ -197,7 +197,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 
 	// d.crdProvisioner is set by NewFakeDriver for unit tests.
 	if d.crdProvisioner == nil {
-		d.crdProvisioner, err = provisioner.NewCrdProvisioner(d.azdiskClient, d.objectNamespace)
+		d.crdProvisioner, err = provisioner.NewCrdProvisioner(d.kubeConfig, d.objectNamespace)
 		if err != nil {
 			klog.Fatalf("Failed to get crd provisioner. Error: %v", err)
 		}

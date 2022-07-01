@@ -299,6 +299,7 @@ func createTestAzVolumeAttachment(pvName, nodeName string, role azdiskv1beta2.Ro
 				consts.VolumeNameLabel: strings.ToLower(pvName),
 				consts.RoleLabel:       string(role),
 			},
+			Annotations: map[string]string{consts.VolumeAttachRequestAnnotation: "test"},
 		},
 		Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
 			RequestedRole: role,

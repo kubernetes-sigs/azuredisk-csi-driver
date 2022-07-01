@@ -27,9 +27,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 
+	"k8s.io/client-go/informers"
+	kubeClientset "k8s.io/client-go/kubernetes"
+	fakev1 "k8s.io/client-go/kubernetes/fake"
 	testingClient "k8s.io/client-go/testing"
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
@@ -51,8 +55,10 @@ var (
 	invalidVolumeNameLength       = "invalid-volume-name-length-with-length-above-sixty-three-characters"
 	invalidVolumeNameConvention   = "invalid-volume-name-convention-special-char-%$%"
 	invalidDiskURI                = "/subscriptions/12345678-90ab-cedf-1234-567890abcdef/resourceGroupsrandomtext/test-rg/providers/Microsoft.Compute/disks/test-disk"
-	testNodeName                  = "test-node-name"
-	testNameSpace                 = "test-ns"
+	testNodeName0                 = "test-node-name-0"
+	testNodeName1                 = "test-node-name-1"
+	testNodeName2                 = "test-node-name-2"
+	testNamespace                 = "test-ns"
 
 	defaultAzVolumeWithParamForComparison = azdiskv1beta2.AzVolume{
 		ObjectMeta: metav1.ObjectMeta{
@@ -132,7 +138,7 @@ var (
 
 	successAzVolStatus = azdiskv1beta2.AzVolumeStatus{
 		Detail: &azdiskv1beta2.AzVolumeStatusDetail{
-			VolumeID: testDiskURI,
+			VolumeID: testDiskURI0,
 		},
 	}
 
@@ -144,18 +150,38 @@ var (
 
 func NewTestCrdProvisioner(controller *gomock.Controller) *CrdProvisioner {
 	fakeDiskClient := azdiskfakes.NewSimpleClientset()
-	informerFactory := azdiskinformers.NewSharedInformerFactory(fakeDiskClient, testResync)
+	fakeKubeClient := fakev1.NewSimpleClientset()
+
+	kubeInformerFacotry := informers.NewSharedInformerFactory(fakeKubeClient, testResync)
+	startWatchingKube(context.Background(), kubeInformerFacotry)
+	azInformerFactory := azdiskinformers.NewSharedInformerFactory(fakeDiskClient, testResync)
+
 	return &CrdProvisioner{
 		azDiskClient:     fakeDiskClient,
-		namespace:        testNameSpace,
-		conditionWatcher: watcher.New(context.Background(), fakeDiskClient, informerFactory, testNameSpace),
+		kubeClient:       fakeKubeClient,
+		namespace:        testNamespace,
+		conditionWatcher: watcher.New(context.Background(), fakeDiskClient, azInformerFactory, testNamespace),
+		azCachedReader: CachedReader{
+			azNamespace:  testNamespace,
+			azInformer:   azInformerFactory,
+			kubeInformer: kubeInformerFacotry,
+		},
 	}
 }
 
-func UpdateTestCrdProvisionerWithNewClient(provisioner *CrdProvisioner, azDiskClient azdisk.Interface) {
-	informerFactory := azdiskinformers.NewSharedInformerFactory(azDiskClient, testResync)
+func UpdateTestCrdProvisionerWithNewClient(provisioner *CrdProvisioner, azDiskClient azdisk.Interface, kubeClient kubeClientset.Interface) {
+	azInformerFactory := azdiskinformers.NewSharedInformerFactory(azDiskClient, testResync)
 	provisioner.azDiskClient = azDiskClient
-	provisioner.conditionWatcher = watcher.New(context.Background(), azDiskClient, informerFactory, testNameSpace)
+	kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, testResync)
+	provisioner.kubeClient = kubeClient
+	startWatchingKube(context.Background(), kubeInformerFactory)
+
+	provisioner.conditionWatcher = watcher.New(context.Background(), azDiskClient, azInformerFactory, testNamespace)
+	provisioner.azCachedReader = CachedReader{
+		azNamespace:  testNamespace,
+		azInformer:   azInformerFactory,
+		kubeInformer: kubeInformerFactory,
+	}
 }
 
 func TestCrdProvisionerCreateVolume(t *testing.T) {
@@ -179,7 +205,7 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 		{
 			description:          "[Success] Create an AzVolume CRI with default parameters",
 			existingAzVolumes:    nil,
-			volumeName:           testDiskName,
+			volumeName:           testDiskName0,
 			definePrependReactor: true,
 			capacity:             &azdiskv1beta2.CapacityRange{},
 			capabilities: []azdiskv1beta2.VolumeCapability{
@@ -188,7 +214,7 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 					AccessMode: azdiskv1beta2.VolumeCapabilityAccessModeSingleNodeWriter,
 				},
 			},
-			parameters:    map[string]string{consts.PvNameKey: testDiskName},
+			parameters:    map[string]string{consts.PvNameKey: testDiskName0},
 			secrets:       make(map[string]string),
 			contentSource: &azdiskv1beta2.ContentVolumeSource{},
 			topology:      &azdiskv1beta2.TopologyRequirement{},
@@ -197,13 +223,13 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 		{
 			description:          "[Success] Create an AzVolume CRI with specified parameters",
 			existingAzVolumes:    nil,
-			volumeName:           testDiskName,
+			volumeName:           testDiskName0,
 			definePrependReactor: true,
 			capacity: &azdiskv1beta2.CapacityRange{
 				RequiredBytes: 2,
 				LimitBytes:    2,
 			},
-			parameters: map[string]string{"location": "westus2", consts.PvNameKey: testDiskName},
+			parameters: map[string]string{"location": "westus2", consts.PvNameKey: testDiskName0},
 			secrets:    map[string]string{"test1": "No secret"},
 			contentSource: &azdiskv1beta2.ContentVolumeSource{
 				ContentSource:   azdiskv1beta2.ContentVolumeSourceTypeVolume,
@@ -224,7 +250,7 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 					AccessMode: azdiskv1beta2.VolumeCapabilityAccessModeSingleNodeWriter,
 				},
 			},
-			parameters:    map[string]string{consts.PvNameKey: testDiskName},
+			parameters:    map[string]string{consts.PvNameKey: testDiskName0},
 			secrets:       make(map[string]string),
 			contentSource: &azdiskv1beta2.ContentVolumeSource{},
 			topology:      &azdiskv1beta2.TopologyRequirement{},
@@ -242,7 +268,7 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 					AccessMode: azdiskv1beta2.VolumeCapabilityAccessModeSingleNodeWriter,
 				},
 			},
-			parameters:    map[string]string{consts.PvNameKey: testDiskName},
+			parameters:    map[string]string{consts.PvNameKey: testDiskName0},
 			secrets:       make(map[string]string),
 			contentSource: &azdiskv1beta2.ContentVolumeSource{},
 			topology:      &azdiskv1beta2.TopologyRequirement{},
@@ -253,11 +279,11 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 			existingAzVolumes: []azdiskv1beta2.AzVolume{
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      testDiskName,
+						Name:      testDiskName0,
 						Namespace: provisioner.namespace,
 					},
 					Spec: azdiskv1beta2.AzVolumeSpec{
-						VolumeName: testDiskName,
+						VolumeName: testDiskName0,
 						CapacityRange: &azdiskv1beta2.CapacityRange{
 							RequiredBytes: 2,
 							LimitBytes:    2,
@@ -278,13 +304,13 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 					},
 					Status: azdiskv1beta2.AzVolumeStatus{
 						Detail: &azdiskv1beta2.AzVolumeStatusDetail{
-							VolumeID: testDiskURI,
+							VolumeID: testDiskURI0,
 						},
 						State: azdiskv1beta2.VolumeCreated,
 					},
 				},
 			},
-			volumeName:           testDiskName,
+			volumeName:           testDiskName0,
 			definePrependReactor: true,
 			capacity: &azdiskv1beta2.CapacityRange{
 				RequiredBytes: 2,
@@ -310,11 +336,11 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 			existingAzVolumes: []azdiskv1beta2.AzVolume{
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      testDiskName,
+						Name:      testDiskName0,
 						Namespace: provisioner.namespace,
 					},
 					Spec: azdiskv1beta2.AzVolumeSpec{
-						VolumeName: testDiskName,
+						VolumeName: testDiskName0,
 						CapacityRange: &azdiskv1beta2.CapacityRange{
 							RequiredBytes: 2,
 							LimitBytes:    2,
@@ -341,7 +367,7 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 					},
 				},
 			},
-			volumeName:           testDiskName,
+			volumeName:           testDiskName0,
 			definePrependReactor: true,
 			capacity: &azdiskv1beta2.CapacityRange{
 				RequiredBytes: 2,
@@ -367,11 +393,11 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 			existingAzVolumes: []azdiskv1beta2.AzVolume{
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      testDiskName,
+						Name:      testDiskName0,
 						Namespace: provisioner.namespace,
 					},
 					Spec: azdiskv1beta2.AzVolumeSpec{
-						VolumeName: testDiskName,
+						VolumeName: testDiskName0,
 						VolumeCapability: []azdiskv1beta2.VolumeCapability{
 							{
 								AccessType: azdiskv1beta2.VolumeCapabilityAccessBlock,
@@ -382,14 +408,14 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 					},
 					Status: azdiskv1beta2.AzVolumeStatus{
 						Detail: &azdiskv1beta2.AzVolumeStatusDetail{
-							VolumeID:      testDiskURI,
+							VolumeID:      testDiskURI0,
 							CapacityBytes: 2,
 						},
 						State: azdiskv1beta2.VolumeCreated,
 					},
 				},
 			},
-			volumeName:           testDiskName,
+			volumeName:           testDiskName0,
 			definePrependReactor: false,
 			capacity:             &azdiskv1beta2.CapacityRange{},
 			capabilities: []azdiskv1beta2.VolumeCapability{
@@ -402,7 +428,7 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 			secrets:       make(map[string]string),
 			contentSource: &azdiskv1beta2.ContentVolumeSource{},
 			topology:      &azdiskv1beta2.TopologyRequirement{},
-			expectedError: status.Errorf(codes.AlreadyExists, "Volume with name (%s) already exists with different specifications", testDiskName),
+			expectedError: status.Errorf(codes.AlreadyExists, "Volume with name (%s) already exists with different specifications", testDiskName0),
 		},
 	}
 
@@ -410,8 +436,11 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 		tt := test
 		t.Run(tt.description, func(t *testing.T) {
 			existingWatcher := provisioner.conditionWatcher
+			existingAzCacheReader := provisioner.azCachedReader
+			defer func() { provisioner.azCachedReader = existingAzCacheReader }()
 			defer func() { provisioner.conditionWatcher = existingWatcher }()
 			defer func() { provisioner.azDiskClient = azdiskfakes.NewSimpleClientset() }()
+			defer func() { provisioner.kubeClient = fakev1.NewSimpleClientset() }()
 
 			if tt.existingAzVolumes != nil {
 				existingList := make([]runtime.Object, len(tt.existingAzVolumes))
@@ -422,7 +451,7 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 				provisioner.azDiskClient = azdiskfakes.NewSimpleClientset(existingList...)
 			}
 
-			UpdateTestCrdProvisionerWithNewClient(provisioner, provisioner.azDiskClient)
+			UpdateTestCrdProvisionerWithNewClient(provisioner, provisioner.azDiskClient, provisioner.kubeClient)
 
 			if tt.definePrependReactor {
 				// Using the tracker to insert new object or
@@ -500,11 +529,11 @@ func TestCrdProvisionerDeleteVolume(t *testing.T) {
 			existingAzVolumes: []azdiskv1beta2.AzVolume{
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      testDiskName,
+						Name:      testDiskName0,
 						Namespace: provisioner.namespace,
 					},
 					Spec: azdiskv1beta2.AzVolumeSpec{
-						VolumeName:           testDiskName,
+						VolumeName:           testDiskName0,
 						MaxMountReplicaCount: 2,
 						VolumeCapability: []azdiskv1beta2.VolumeCapability{
 							{
@@ -515,12 +544,12 @@ func TestCrdProvisionerDeleteVolume(t *testing.T) {
 					},
 					Status: azdiskv1beta2.AzVolumeStatus{
 						Detail: &azdiskv1beta2.AzVolumeStatusDetail{
-							VolumeID: testDiskURI,
+							VolumeID: testDiskURI0,
 						},
 					},
 				},
 			},
-			diskURI:       testDiskURI,
+			diskURI:       testDiskURI0,
 			secrets:       nil,
 			expectedError: nil,
 		},
@@ -529,11 +558,11 @@ func TestCrdProvisionerDeleteVolume(t *testing.T) {
 			existingAzVolumes: []azdiskv1beta2.AzVolume{
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      testDiskName,
+						Name:      testDiskName0,
 						Namespace: provisioner.namespace,
 					},
 					Spec: azdiskv1beta2.AzVolumeSpec{
-						VolumeName:           testDiskName,
+						VolumeName:           testDiskName0,
 						MaxMountReplicaCount: 2,
 						VolumeCapability: []azdiskv1beta2.VolumeCapability{
 							{
@@ -544,12 +573,12 @@ func TestCrdProvisionerDeleteVolume(t *testing.T) {
 					},
 					Status: azdiskv1beta2.AzVolumeStatus{
 						Detail: &azdiskv1beta2.AzVolumeStatusDetail{
-							VolumeID: testDiskURI,
+							VolumeID: testDiskURI0,
 						},
 					},
 				},
 			},
-			diskURI:       testDiskURI,
+			diskURI:       testDiskURI0,
 			secrets:       map[string]string{"secret": "not really"},
 			expectedError: nil,
 		},
@@ -574,8 +603,11 @@ func TestCrdProvisionerDeleteVolume(t *testing.T) {
 		t.Run(test.description, func(t *testing.T) {
 			existingClient := provisioner.azDiskClient
 			existingWatcher := provisioner.conditionWatcher
+			existingAzCacheReader := provisioner.azCachedReader
+			defer func() { provisioner.azCachedReader = existingAzCacheReader }()
 			defer func() { provisioner.conditionWatcher = existingWatcher }()
 			defer func() { provisioner.azDiskClient = existingClient }()
+			defer func() { provisioner.kubeClient = fakev1.NewSimpleClientset() }()
 
 			if tt.existingAzVolumes != nil {
 				existingList := make([]runtime.Object, len(tt.existingAzVolumes))
@@ -586,7 +618,7 @@ func TestCrdProvisionerDeleteVolume(t *testing.T) {
 				provisioner.azDiskClient = azdiskfakes.NewSimpleClientset(existingList...)
 			}
 
-			UpdateTestCrdProvisionerWithNewClient(provisioner, provisioner.azDiskClient)
+			UpdateTestCrdProvisionerWithNewClient(provisioner, provisioner.azDiskClient, provisioner.kubeClient)
 
 			actualError := provisioner.DeleteVolume(
 				context.TODO(),
@@ -613,12 +645,13 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 		registerNode            bool
 		definePrependReactor    bool
 		expectedError           error
+		verifyFunc              func()
 	}{
 		{
 			description:             "[Success] Create an AzVolumeAttachment CRI for valid diskURI and nodeID",
 			existingAzVolAttachment: nil,
-			diskURI:                 testDiskURI,
-			nodeID:                  testNodeName,
+			diskURI:                 testDiskURI0,
+			nodeID:                  testNodeName0,
 			volumeContext:           make(map[string]string),
 			definePrependReactor:    true,
 			registerVolume:          true,
@@ -628,8 +661,8 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 		{
 			description:             "[Success] Create an AzVolumeAttachment CRI for valid diskURI, nodeID and volumeContext",
 			existingAzVolAttachment: nil,
-			diskURI:                 testDiskURI,
-			nodeID:                  testNodeName,
+			diskURI:                 testDiskURI0,
+			nodeID:                  testNodeName0,
 			volumeContext:           map[string]string{"volume": "context"},
 			registerVolume:          true,
 			registerNode:            true,
@@ -641,17 +674,18 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 			existingAzVolAttachment: []azdiskv1beta2.AzVolumeAttachment{
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						Name: azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
+						Name: azureutils.GetAzVolumeAttachmentName(testDiskName0, testNodeName0),
 						Labels: map[string]string{
-							consts.NodeNameLabel:   testNodeName,
-							consts.VolumeNameLabel: testDiskURI,
+							consts.NodeNameLabel:   testNodeName0,
+							consts.VolumeNameLabel: testDiskURI0,
+							consts.RoleLabel:       string(azdiskv1beta2.PrimaryRole),
 						},
 						Namespace: provisioner.namespace,
 					},
 					Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
-						VolumeName:    testDiskName,
-						VolumeID:      testDiskURI,
-						NodeName:      testNodeName,
+						VolumeName:    testDiskName0,
+						VolumeID:      testDiskURI0,
+						NodeName:      testNodeName0,
 						VolumeContext: make(map[string]string),
 						RequestedRole: azdiskv1beta2.PrimaryRole,
 					},
@@ -663,8 +697,8 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 						State: azdiskv1beta2.Attached},
 				},
 			},
-			diskURI:              testDiskURI,
-			nodeID:               testNodeName,
+			diskURI:              testDiskURI0,
+			nodeID:               testNodeName0,
 			volumeContext:        make(map[string]string),
 			registerVolume:       true,
 			registerNode:         true,
@@ -676,17 +710,18 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 			existingAzVolAttachment: []azdiskv1beta2.AzVolumeAttachment{
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						Name: azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
+						Name: azureutils.GetAzVolumeAttachmentName(testDiskName0, testNodeName0),
 						Labels: map[string]string{
-							consts.NodeNameLabel:   testNodeName,
-							consts.VolumeNameLabel: testDiskURI,
+							consts.NodeNameLabel:   testNodeName0,
+							consts.VolumeNameLabel: testDiskURI0,
+							consts.RoleLabel:       string(azdiskv1beta2.PrimaryRole),
 						},
 						Namespace: provisioner.namespace,
 					},
 					Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
-						VolumeName:    testDiskName,
-						VolumeID:      testDiskURI,
-						NodeName:      testNodeName,
+						VolumeName:    testDiskName0,
+						VolumeID:      testDiskURI0,
+						NodeName:      testNodeName0,
 						VolumeContext: make(map[string]string),
 						RequestedRole: azdiskv1beta2.PrimaryRole,
 					},
@@ -696,8 +731,8 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 					},
 				},
 			},
-			diskURI:              testDiskURI,
-			nodeID:               testNodeName,
+			diskURI:              testDiskURI0,
+			nodeID:               testNodeName0,
 			volumeContext:        make(map[string]string),
 			registerVolume:       true,
 			registerNode:         true,
@@ -705,10 +740,116 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 			expectedError:        nil,
 		},
 		{
+			description: "[Success] Detach replica AzVolumeAttachment if volume's maxShares have been saturated.",
+			existingAzVolAttachment: []azdiskv1beta2.AzVolumeAttachment{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: azureutils.GetAzVolumeAttachmentName(testDiskName0, testNodeName0),
+						Labels: map[string]string{
+							consts.NodeNameLabel:   testNodeName0,
+							consts.VolumeNameLabel: testDiskName0,
+							consts.RoleLabel:       string(azdiskv1beta2.ReplicaRole),
+						},
+						Namespace: provisioner.namespace,
+					},
+					Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
+						VolumeName:    testDiskName0,
+						VolumeID:      testDiskURI0,
+						NodeName:      testNodeName0,
+						VolumeContext: make(map[string]string),
+						RequestedRole: azdiskv1beta2.ReplicaRole,
+					},
+					Status: azdiskv1beta2.AzVolumeAttachmentStatus{
+						Detail: &azdiskv1beta2.AzVolumeAttachmentStatusDetail{
+							Role:           azdiskv1beta2.ReplicaRole,
+							PublishContext: map[string]string{},
+						},
+						State: azdiskv1beta2.Attached},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: azureutils.GetAzVolumeAttachmentName(testDiskName0, testNodeName1),
+						Labels: map[string]string{
+							consts.NodeNameLabel:   testNodeName1,
+							consts.VolumeNameLabel: testDiskName0,
+							consts.RoleLabel:       string(azdiskv1beta2.ReplicaRole),
+						},
+						Namespace: provisioner.namespace,
+					},
+					Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
+						VolumeName:    testDiskName0,
+						VolumeID:      testDiskURI0,
+						NodeName:      testNodeName1,
+						VolumeContext: make(map[string]string),
+						RequestedRole: azdiskv1beta2.ReplicaRole,
+					},
+					Status: azdiskv1beta2.AzVolumeAttachmentStatus{
+						Detail: &azdiskv1beta2.AzVolumeAttachmentStatusDetail{
+							Role:           azdiskv1beta2.ReplicaRole,
+							PublishContext: map[string]string{},
+						},
+						State: azdiskv1beta2.Attached},
+				},
+			},
+			diskURI:              testDiskURI0,
+			nodeID:               testNodeName2,
+			volumeContext:        make(map[string]string),
+			registerVolume:       true,
+			registerNode:         true,
+			definePrependReactor: true,
+			expectedError:        nil,
+			verifyFunc: func() {
+				volumeAttachments, err := azureutils.GetAzVolumeAttachmentsForVolume(context.Background(), provisioner.azCachedReader, testDiskName0, azureutils.ReplicaOnly)
+				assert.NoError(t, err)
+				assert.Len(t, volumeAttachments, 0)
+			},
+		},
+		{
+			description: "[Success] Detach replica AzVolumeAttachment if node's attach limit has been reached.",
+			existingAzVolAttachment: []azdiskv1beta2.AzVolumeAttachment{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: azureutils.GetAzVolumeAttachmentName(testDiskName1, testNodeName0),
+						Labels: map[string]string{
+							consts.NodeNameLabel:   testNodeName0,
+							consts.VolumeNameLabel: testDiskName1,
+							consts.RoleLabel:       string(azdiskv1beta2.ReplicaRole),
+						},
+						Namespace: provisioner.namespace,
+					},
+					Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
+						VolumeName:    testDiskName1,
+						VolumeID:      testDiskURI1,
+						NodeName:      testNodeName0,
+						VolumeContext: make(map[string]string),
+						RequestedRole: azdiskv1beta2.ReplicaRole,
+					},
+					Status: azdiskv1beta2.AzVolumeAttachmentStatus{
+						Detail: &azdiskv1beta2.AzVolumeAttachmentStatusDetail{
+							Role:           azdiskv1beta2.ReplicaRole,
+							PublishContext: map[string]string{},
+						},
+						State: azdiskv1beta2.Attached},
+				},
+			},
+			diskURI:              testDiskURI0,
+			nodeID:               testNodeName0,
+			volumeContext:        make(map[string]string),
+			registerVolume:       true,
+			registerNode:         true,
+			definePrependReactor: true,
+			expectedError:        nil,
+			verifyFunc: func() {
+				volumeAttachments, err := azureutils.GetAzVolumeAttachmentsForVolume(context.Background(), provisioner.azCachedReader, testDiskName0, azureutils.ReplicaOnly)
+				assert.NoError(t, err)
+				assert.Len(t, volumeAttachments, 0)
+			},
+		},
+		{
 			description:             "[Failure] Return NotFound error when invalid diskURI is passed",
 			existingAzVolAttachment: nil,
 			diskURI:                 invalidDiskURI,
-			nodeID:                  testNodeName,
+			nodeID:                  testNodeName0,
 			volumeContext:           make(map[string]string),
 			definePrependReactor:    false,
 			expectedError:           status.Errorf(codes.NotFound, fmt.Sprintf("Error finding volume : could not get disk name from %s, correct format: %s", invalidDiskURI, managedDiskPathRE)),
@@ -716,24 +857,24 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 		{
 			description:             "[Failure] Return NotFound error when volume does not exist",
 			existingAzVolAttachment: nil,
-			diskURI:                 testDiskURI,
-			nodeID:                  testNodeName,
+			diskURI:                 testDiskURI0,
+			nodeID:                  testNodeName0,
 			volumeContext:           make(map[string]string),
 			registerVolume:          false,
 			registerNode:            true,
 			definePrependReactor:    false,
-			expectedError:           status.Errorf(codes.NotFound, fmt.Sprintf("volume (%s) does not exist: azvolume.disk.csi.azure.com \"%s\" not found", testDiskName, testDiskName)),
+			expectedError:           status.Errorf(codes.NotFound, fmt.Sprintf("volume (%s) does not exist: azvolume.disk.csi.azure.com \"%s\" not found", testDiskName0, testDiskName0)),
 		},
 		{
 			description:             "[Failure] Return NotFound error when node does not exist",
 			existingAzVolAttachment: nil,
-			diskURI:                 testDiskURI,
-			nodeID:                  testNodeName,
+			diskURI:                 testDiskURI0,
+			nodeID:                  testNodeName0,
 			volumeContext:           make(map[string]string),
 			registerVolume:          true,
 			registerNode:            false,
 			definePrependReactor:    false,
-			expectedError:           status.Errorf(codes.NotFound, fmt.Sprintf("node (%s) does not exist: azdrivernode.disk.csi.azure.com \"%s\" not found", testNodeName, testNodeName)),
+			expectedError:           status.Errorf(codes.NotFound, fmt.Sprintf("node (%s) does not exist: azdrivernode.disk.csi.azure.com \"%s\" not found", testNodeName0, testNodeName0)),
 		},
 	}
 
@@ -741,44 +882,58 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 		tt := test
 		t.Run(test.description, func(t *testing.T) {
 			existingWatcher := provisioner.conditionWatcher
-			existingClient := provisioner.azDiskClient
+			existingAzclient := provisioner.azDiskClient
+			existingKubeclient := provisioner.kubeClient
+			existingAzCacheReader := provisioner.azCachedReader
 			defer func() { provisioner.conditionWatcher = existingWatcher }()
-			defer func() { provisioner.azDiskClient = existingClient }()
+			defer func() { provisioner.azDiskClient = existingAzclient }()
+			defer func() { provisioner.kubeClient = existingKubeclient }()
+			defer func() { provisioner.azCachedReader = existingAzCacheReader }()
 
 			if tt.existingAzVolAttachment != nil || tt.registerNode || tt.registerVolume {
-				existingList := make([]runtime.Object, len(tt.existingAzVolAttachment))
+				azExistingList := make([]runtime.Object, len(tt.existingAzVolAttachment))
+				var kubeExistingList []runtime.Object
 				for itr, azVA := range tt.existingAzVolAttachment {
 					azVA := azVA
-					existingList[itr] = &azVA
+					azExistingList[itr] = &azVA
 				}
 				if tt.registerVolume {
 					diskName, err := azureutils.GetDiskName(tt.diskURI)
 					if err == nil {
-						existingList = append(existingList, &azdiskv1beta2.AzVolume{
+						azExistingList = append(azExistingList, &azdiskv1beta2.AzVolume{
 							ObjectMeta: metav1.ObjectMeta{
 								Name:      diskName,
 								Namespace: provisioner.namespace,
+							},
+							Spec: azdiskv1beta2.AzVolumeSpec{
+								MaxMountReplicaCount: 1,
 							},
 						})
 					}
 				}
 				if tt.registerNode {
-					existingList = append(existingList, &azdiskv1beta2.AzDriverNode{
+					kubeExistingList = append(kubeExistingList, &v1.Node{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:   tt.nodeID,
+							Labels: map[string]string{v1.LabelInstanceTypeStable: "BASIC_A0"},
+						},
+					})
+					azExistingList = append(azExistingList, &azdiskv1beta2.AzDriverNode{
 						ObjectMeta: metav1.ObjectMeta{
 							Name:      tt.nodeID,
 							Namespace: provisioner.namespace,
 						},
 					})
 				}
-				provisioner.azDiskClient = azdiskfakes.NewSimpleClientset(existingList...)
+				provisioner.azDiskClient = azdiskfakes.NewSimpleClientset(azExistingList...)
+				provisioner.kubeClient = fakev1.NewSimpleClientset(kubeExistingList...)
 			}
-			UpdateTestCrdProvisionerWithNewClient(provisioner, provisioner.azDiskClient)
+			UpdateTestCrdProvisionerWithNewClient(provisioner, provisioner.azDiskClient, provisioner.kubeClient)
 
 			if tt.definePrependReactor {
 				// Using the tracker to insert new object or
 				// update the existing object as required
 				tracker := provisioner.azDiskClient.(*azdiskfakes.Clientset).Tracker()
-
 				provisioner.azDiskClient.(*azdiskfakes.Clientset).Fake.PrependReactor(
 					"create",
 					"azvolumeattachments",
@@ -854,17 +1009,17 @@ func TestCrdProvisionerWaitForAttach(t *testing.T) {
 			existingAzVolAttachment: []azdiskv1beta2.AzVolumeAttachment{
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						Name: azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
+						Name: azureutils.GetAzVolumeAttachmentName(testDiskName0, testNodeName0),
 						Labels: map[string]string{
-							consts.NodeNameLabel:   testNodeName,
-							consts.VolumeNameLabel: testDiskURI,
+							consts.NodeNameLabel:   testNodeName0,
+							consts.VolumeNameLabel: testDiskURI0,
 						},
 						Namespace: provisioner.namespace,
 					},
 					Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
-						VolumeName:    testDiskName,
-						VolumeID:      testDiskURI,
-						NodeName:      testNodeName,
+						VolumeName:    testDiskName0,
+						VolumeID:      testDiskURI0,
+						NodeName:      testNodeName0,
 						VolumeContext: make(map[string]string),
 						RequestedRole: azdiskv1beta2.PrimaryRole,
 					},
@@ -876,8 +1031,8 @@ func TestCrdProvisionerWaitForAttach(t *testing.T) {
 					},
 				},
 			},
-			diskURI:              testDiskURI,
-			nodeID:               testNodeName,
+			diskURI:              testDiskURI0,
+			nodeID:               testNodeName0,
 			volumeContext:        make(map[string]string),
 			definePrependReactor: true,
 			expectedError:        nil,
@@ -889,6 +1044,8 @@ func TestCrdProvisionerWaitForAttach(t *testing.T) {
 		t.Run(test.description, func(t *testing.T) {
 			existingWatcher := provisioner.conditionWatcher
 			existingClient := provisioner.azDiskClient
+			existingAzCacheReader := provisioner.azCachedReader
+			defer func() { provisioner.azCachedReader = existingAzCacheReader }()
 			defer func() { provisioner.conditionWatcher = existingWatcher }()
 			defer func() { provisioner.azDiskClient = existingClient }()
 
@@ -901,7 +1058,7 @@ func TestCrdProvisionerWaitForAttach(t *testing.T) {
 				provisioner.azDiskClient = azdiskfakes.NewSimpleClientset(existingList...)
 			}
 
-			UpdateTestCrdProvisionerWithNewClient(provisioner, provisioner.azDiskClient)
+			UpdateTestCrdProvisionerWithNewClient(provisioner, provisioner.azDiskClient, provisioner.kubeClient)
 
 			if tt.definePrependReactor {
 				// Using the tracker to insert new object or
@@ -959,7 +1116,7 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 			existingAzVolume: []azdiskv1beta2.AzVolume{
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      testDiskName,
+						Name:      testDiskName0,
 						Namespace: provisioner.namespace,
 					},
 					Spec: azdiskv1beta2.AzVolumeSpec{
@@ -970,17 +1127,17 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 			existingAzVolAttachment: []azdiskv1beta2.AzVolumeAttachment{
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						Name: azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
+						Name: azureutils.GetAzVolumeAttachmentName(testDiskName0, testNodeName0),
 						Labels: map[string]string{
-							consts.NodeNameLabel:   testNodeName,
-							consts.VolumeNameLabel: testDiskURI,
+							consts.NodeNameLabel:   testNodeName0,
+							consts.VolumeNameLabel: testDiskURI0,
 						},
 						Namespace: provisioner.namespace,
 					},
 					Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
-						VolumeName:    testDiskName,
-						VolumeID:      testDiskURI,
-						NodeName:      testNodeName,
+						VolumeName:    testDiskName0,
+						VolumeID:      testDiskURI0,
+						NodeName:      testNodeName0,
 						VolumeContext: nil,
 						RequestedRole: azdiskv1beta2.PrimaryRole,
 					},
@@ -993,8 +1150,8 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 					},
 				},
 			},
-			diskURI:       testDiskURI,
-			nodeID:        testNodeName,
+			diskURI:       testDiskURI0,
+			nodeID:        testNodeName0,
 			secrets:       nil,
 			expectedError: nil,
 		},
@@ -1003,7 +1160,7 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 			existingAzVolume: []azdiskv1beta2.AzVolume{
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      testDiskName,
+						Name:      testDiskName0,
 						Namespace: provisioner.namespace,
 					},
 					Spec: azdiskv1beta2.AzVolumeSpec{
@@ -1014,17 +1171,17 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 			existingAzVolAttachment: []azdiskv1beta2.AzVolumeAttachment{
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						Name: azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
+						Name: azureutils.GetAzVolumeAttachmentName(testDiskName0, testNodeName0),
 						Labels: map[string]string{
-							consts.NodeNameLabel:   testNodeName,
-							consts.VolumeNameLabel: testDiskURI,
+							consts.NodeNameLabel:   testNodeName0,
+							consts.VolumeNameLabel: testDiskURI0,
 						},
 						Namespace: provisioner.namespace,
 					},
 					Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
-						VolumeName:    testDiskName,
-						VolumeID:      testDiskURI,
-						NodeName:      testNodeName,
+						VolumeName:    testDiskName0,
+						VolumeID:      testDiskURI0,
+						NodeName:      testNodeName0,
 						VolumeContext: nil,
 						RequestedRole: azdiskv1beta2.PrimaryRole,
 					},
@@ -1037,8 +1194,8 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 					},
 				},
 			},
-			diskURI:       testDiskURI,
-			nodeID:        testNodeName,
+			diskURI:       testDiskURI0,
+			nodeID:        testNodeName0,
 			secrets:       map[string]string{"secret": "not really"},
 			expectedError: nil,
 		},
@@ -1047,7 +1204,7 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 			existingAzVolume: []azdiskv1beta2.AzVolume{
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      testDiskName,
+						Name:      testDiskName0,
 						Namespace: provisioner.namespace,
 					},
 					Spec: azdiskv1beta2.AzVolumeSpec{
@@ -1058,17 +1215,17 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 			existingAzVolAttachment: []azdiskv1beta2.AzVolumeAttachment{
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						Name: azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
+						Name: azureutils.GetAzVolumeAttachmentName(testDiskName0, testNodeName0),
 						Labels: map[string]string{
-							consts.NodeNameLabel:   testNodeName,
-							consts.VolumeNameLabel: testDiskURI,
+							consts.NodeNameLabel:   testNodeName0,
+							consts.VolumeNameLabel: testDiskURI0,
 						},
 						Namespace: provisioner.namespace,
 					},
 					Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
-						VolumeName:    testDiskName,
-						VolumeID:      testDiskURI,
-						NodeName:      testNodeName,
+						VolumeName:    testDiskName0,
+						VolumeID:      testDiskURI0,
+						NodeName:      testNodeName0,
 						VolumeContext: nil,
 						RequestedRole: azdiskv1beta2.PrimaryRole,
 					},
@@ -1081,8 +1238,8 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 					},
 				},
 			},
-			diskURI:              testDiskURI,
-			nodeID:               testNodeName,
+			diskURI:              testDiskURI0,
+			nodeID:               testNodeName0,
 			secrets:              nil,
 			verifyDemotion:       true,
 			definePrependReactor: true,
@@ -1093,7 +1250,7 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 			existingAzVolume: []azdiskv1beta2.AzVolume{
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      testDiskName,
+						Name:      testDiskName0,
 						Namespace: provisioner.namespace,
 					},
 					Spec: azdiskv1beta2.AzVolumeSpec{
@@ -1104,17 +1261,17 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 			existingAzVolAttachment: []azdiskv1beta2.AzVolumeAttachment{
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						Name: azureutils.GetAzVolumeAttachmentName(testDiskName, testNodeName),
+						Name: azureutils.GetAzVolumeAttachmentName(testDiskName0, testNodeName0),
 						Labels: map[string]string{
-							consts.NodeNameLabel:   testNodeName,
-							consts.VolumeNameLabel: testDiskURI,
+							consts.NodeNameLabel:   testNodeName0,
+							consts.VolumeNameLabel: testDiskURI0,
 						},
 						Namespace: provisioner.namespace,
 					},
 					Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
-						VolumeName:    testDiskName,
-						VolumeID:      testDiskURI,
-						NodeName:      testNodeName,
+						VolumeName:    testDiskName0,
+						VolumeID:      testDiskURI0,
+						NodeName:      testNodeName0,
 						VolumeContext: nil,
 						RequestedRole: azdiskv1beta2.PrimaryRole,
 					},
@@ -1127,8 +1284,8 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 					},
 				},
 			},
-			diskURI:              testDiskURI,
-			nodeID:               testNodeName,
+			diskURI:              testDiskURI0,
+			nodeID:               testNodeName0,
 			secrets:              map[string]string{"secret": "not really"},
 			verifyDemotion:       true,
 			definePrependReactor: true,
@@ -1138,7 +1295,7 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 			description:             "[Success] Return no error when an AzVolumeAttachment CRI for diskURI and nodeID is not found",
 			existingAzVolAttachment: nil,
 			diskURI:                 missingDiskURI,
-			nodeID:                  testNodeName,
+			nodeID:                  testNodeName0,
 			secrets:                 nil,
 			expectedError:           nil,
 		},
@@ -1146,7 +1303,7 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 			description:             "[Failure] Return NotFound error when invalid diskURI is passed",
 			existingAzVolAttachment: nil,
 			diskURI:                 invalidDiskURI,
-			nodeID:                  testNodeName,
+			nodeID:                  testNodeName0,
 			secrets:                 nil,
 			expectedError:           fmt.Errorf("could not get disk name from %s, correct format: %s", invalidDiskURI, managedDiskPathRE),
 		},
@@ -1157,6 +1314,8 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 		t.Run(test.description, func(t *testing.T) {
 			existingWatcher := provisioner.conditionWatcher
 			existingClient := provisioner.azDiskClient
+			existingAzCacheReader := provisioner.azCachedReader
+			defer func() { provisioner.azCachedReader = existingAzCacheReader }()
 			defer func() { provisioner.conditionWatcher = existingWatcher }()
 			defer func() { provisioner.azDiskClient = existingClient }()
 
@@ -1173,7 +1332,7 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 				provisioner.azDiskClient = azdiskfakes.NewSimpleClientset(existingList...)
 			}
 
-			UpdateTestCrdProvisionerWithNewClient(provisioner, provisioner.azDiskClient)
+			UpdateTestCrdProvisionerWithNewClient(provisioner, provisioner.azDiskClient, provisioner.kubeClient)
 
 			if tt.definePrependReactor {
 				// Using the tracker to insert new object or
@@ -1236,11 +1395,11 @@ func TestCrdProvisionerExpandVolume(t *testing.T) {
 			existingAzVolumes: []azdiskv1beta2.AzVolume{
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      testDiskName,
+						Name:      testDiskName0,
 						Namespace: provisioner.namespace,
 					},
 					Spec: azdiskv1beta2.AzVolumeSpec{
-						VolumeName: testDiskName,
+						VolumeName: testDiskName0,
 						VolumeCapability: []azdiskv1beta2.VolumeCapability{
 							{
 								AccessType: azdiskv1beta2.VolumeCapabilityAccessMount,
@@ -1254,13 +1413,13 @@ func TestCrdProvisionerExpandVolume(t *testing.T) {
 					},
 					Status: azdiskv1beta2.AzVolumeStatus{
 						Detail: &azdiskv1beta2.AzVolumeStatusDetail{
-							VolumeID: testDiskURI,
+							VolumeID: testDiskURI0,
 						},
 						State: azdiskv1beta2.VolumeCreated,
 					},
 				},
 			},
-			diskURI: testDiskURI,
+			diskURI: testDiskURI0,
 			capacityRange: &azdiskv1beta2.CapacityRange{
 				RequiredBytes: 4,
 				LimitBytes:    4,
@@ -1274,11 +1433,11 @@ func TestCrdProvisionerExpandVolume(t *testing.T) {
 			existingAzVolumes: []azdiskv1beta2.AzVolume{
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      testDiskName,
+						Name:      testDiskName0,
 						Namespace: provisioner.namespace,
 					},
 					Spec: azdiskv1beta2.AzVolumeSpec{
-						VolumeName: testDiskName,
+						VolumeName: testDiskName0,
 						VolumeCapability: []azdiskv1beta2.VolumeCapability{
 							{
 								AccessType: azdiskv1beta2.VolumeCapabilityAccessMount,
@@ -1292,13 +1451,13 @@ func TestCrdProvisionerExpandVolume(t *testing.T) {
 					},
 					Status: azdiskv1beta2.AzVolumeStatus{
 						Detail: &azdiskv1beta2.AzVolumeStatusDetail{
-							VolumeID: testDiskURI,
+							VolumeID: testDiskURI0,
 						},
 						State: azdiskv1beta2.VolumeCreated,
 					},
 				},
 			},
-			diskURI: testDiskURI,
+			diskURI: testDiskURI0,
 			capacityRange: &azdiskv1beta2.CapacityRange{
 				RequiredBytes: 4,
 				LimitBytes:    4,
@@ -1310,14 +1469,14 @@ func TestCrdProvisionerExpandVolume(t *testing.T) {
 		{
 			description:       "[Failure] Return an error when the AzVolume CRI with the given diskURI doesn't exist",
 			existingAzVolumes: nil,
-			diskURI:           testDiskURI,
+			diskURI:           testDiskURI0,
 			capacityRange: &azdiskv1beta2.CapacityRange{
 				RequiredBytes: 4,
 				LimitBytes:    4,
 			},
 			secrets:              nil,
 			definePrependReactor: false,
-			expectedError:        status.Error(codes.Internal, fmt.Sprintf("failed to retrieve volume id (%s): azvolume.disk.csi.azure.com \"%s\" not found", testDiskURI, testDiskName)),
+			expectedError:        status.Error(codes.Internal, fmt.Sprintf("failed to retrieve volume id (%s): azvolume.disk.csi.azure.com \"%s\" not found", testDiskURI0, testDiskName0)),
 		},
 	}
 
@@ -1326,6 +1485,8 @@ func TestCrdProvisionerExpandVolume(t *testing.T) {
 		t.Run(test.description, func(t *testing.T) {
 			existingWatcher := provisioner.conditionWatcher
 			existingClient := provisioner.azDiskClient
+			existingAzCacheReader := provisioner.azCachedReader
+			defer func() { provisioner.azCachedReader = existingAzCacheReader }()
 			defer func() { provisioner.conditionWatcher = existingWatcher }()
 			defer func() { provisioner.azDiskClient = existingClient }()
 
@@ -1338,7 +1499,7 @@ func TestCrdProvisionerExpandVolume(t *testing.T) {
 				provisioner.azDiskClient = azdiskfakes.NewSimpleClientset(existingList...)
 			}
 
-			UpdateTestCrdProvisionerWithNewClient(provisioner, provisioner.azDiskClient)
+			UpdateTestCrdProvisionerWithNewClient(provisioner, provisioner.azDiskClient, provisioner.kubeClient)
 
 			if tt.definePrependReactor {
 				// Using the tracker to insert new object or

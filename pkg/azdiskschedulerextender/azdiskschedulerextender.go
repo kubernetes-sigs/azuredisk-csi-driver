@@ -198,7 +198,7 @@ func filter(context context.Context, schedulerExtenderArgs schedulerapi.Extender
 			}
 
 			// get the max disk count for the node type
-			maxDiskCount, err := azureutils.GetNodeMaxDiskCount(node.Labels)
+			maxDiskCount, err := azureutils.GetNodeMaxDiskCountWithLabels(node.Labels)
 			if err != nil {
 				klog.Warningf("failed to get node (%s)'s max disk count: %v", node.Name, err)
 				continue

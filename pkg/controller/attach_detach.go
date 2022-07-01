@@ -146,6 +146,11 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 		return err
 	}
 
+	if !volumeAttachRequested(azVolumeAttachment) {
+		err = status.Errorf(codes.FailedPrecondition, "attach operation has not yet been requested")
+		return err
+	}
+
 	var azVolume *azdiskv1beta2.AzVolume
 	if azVolume, err = azureutils.GetAzVolume(ctx, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, strings.ToLower(azVolumeAttachment.Spec.VolumeName), r.controllerSharedState.objectNamespace, true); err != nil {
 		if errors.IsNotFound(err) {
@@ -607,7 +612,8 @@ func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, 
 								consts.NodeNameLabel:   nodeName,
 								consts.VolumeNameLabel: *volumeName,
 							},
-							Finalizers: []string{consts.AzVolumeAttachmentFinalizer},
+							Annotations: map[string]string{consts.VolumeAttachRequestAnnotation: "CRI recovery"},
+							Finalizers:  []string{consts.AzVolumeAttachmentFinalizer},
 						},
 						Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
 
