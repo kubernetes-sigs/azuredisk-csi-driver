@@ -165,7 +165,7 @@ func getDriverConfig(driverConfig *azdiskv1beta2.AzDiskDriverConfiguration) {
 		// Emit warning log for using deprecated command-line parameters
 		flag.Visit(func(f *flag.Flag) {
 			if slices.Contains(consts.CommandLineParams, f.Name) {
-				klog.Warningf("the command-line parameter %v is deprecated and overridden by CongfigMap", f.Name)
+				klog.Warningf("the command-line parameter %v is deprecated and overridden by --config parameter.", f.Name)
 			}
 		})
 	} else {
@@ -182,7 +182,7 @@ func getDriverConfig(driverConfig *azdiskv1beta2.AzDiskDriverConfiguration) {
 		// Emit warning log for using deprecated command-line parameters
 		flag.Visit(func(f *flag.Flag) {
 			if slices.Contains(consts.CommandLineParams, f.Name) {
-				klog.Warningf("the command-line parameter %v is deprecated, setting by CongfigMap is supported", f.Name)
+				klog.Warningf("the command-line parameter %v is deprecated in favor of using the --config parameter.", f.Name)
 			}
 		})
 	}

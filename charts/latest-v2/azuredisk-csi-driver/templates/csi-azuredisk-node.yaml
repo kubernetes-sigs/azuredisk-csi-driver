@@ -7,7 +7,7 @@ metadata:
 {{ include "azuredisk.labels" . | indent 2 }}
 data:
   config.yaml: |
-    apiVersion: kubescheduler.config.k8s.io/v1beta2
+    apiVersion: disk.csi.azure.com/v1beta2
     kind: AzDiskDriverConfiguration
     nodeConfig:
       volumeAttachLimit: {{ .Values.driver.volumeAttachLimit }}

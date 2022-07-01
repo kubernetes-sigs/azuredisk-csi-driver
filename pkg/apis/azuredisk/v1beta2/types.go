@@ -523,6 +523,7 @@ type ListSnapshotsResult struct {
 }
 
 type AzDiskDriverConfiguration struct {
+	metav1.TypeMeta `json:",inline"`
 	ControllerConfig *ControllerConfiguration `json:"controller,omitempty"`
 	NodeConfig       *NodeConfiguration       `json:"node,omitempty"`
 	CloudConfig      *CloudConfiguration      `json:"cloud,omitempty"`
