@@ -98,17 +98,17 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV) Run(client cl
 
 	//Check that AzVolumeAttachment resources were created correctly
 	allAttached := true
-	failedAttachments := []azdiskv1beta2.AzVolumeAttachment{}
+	unattachedAttachments := []azdiskv1beta2.AzVolumeAttachment{}
 	err := wait.Poll(15*time.Second, 10*time.Minute, func() (bool, error) {
 		allAttached = true
 
-		failedAttachments = []azdiskv1beta2.AzVolumeAttachment{}
+		unattachedAttachments = []azdiskv1beta2.AzVolumeAttachment{}
 		for _, ss := range tStatefulSets {
 			for _, pod := range ss.AllPods {
-				attached, _, podFailedAttachments, err := resources.VerifySuccessfulAzVolumeAttachments(pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
+				attached, _, podUnattachedAttachments, err := resources.VerifySuccessfulAzVolumeAttachments(pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
 				allAttached = allAttached && attached
-				if podFailedAttachments != nil {
-					failedAttachments = append(failedAttachments, podFailedAttachments...)
+				if podUnattachedAttachments != nil {
+					unattachedAttachments = append(unattachedAttachments, podUnattachedAttachments...)
 				}
 				if err != nil {
 					return allAttached, err
@@ -117,12 +117,17 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV) Run(client cl
 		}
 		return allAttached, nil
 	})
-	if len(failedAttachments) > 0 {
-		e2elog.Logf("found %d azvolumeattachments failed:", len(failedAttachments))
-		for _, podAttachments := range failedAttachments {
-			e2elog.Logf("azvolumeattachment: %s, err: %s", podAttachments.Name, podAttachments.Status.Error.Message)
+	if len(unattachedAttachments) > 0 {
+		e2elog.Logf("found %d azvolumeattachments not attached:", len(unattachedAttachments))
+		for _, podAttachment := range unattachedAttachments {
+			switch podAttachment.Status.State {
+			case azdiskv1beta2.AttachmentFailed:
+				e2elog.Logf("azvolumeattachment: %s, err: %s", podAttachment.Name, podAttachment.Status.Error.Message)
+			default:
+				e2elog.Logf("expected AzVolumeAttachment (%s) to be in Attached state but instead got %s", podAttachment.Name, podAttachment.Status.State)
+			}
 		}
-		ginkgo.Fail("failed due to replicas failing to attach")
+		ginkgo.Fail("failed due to replicas failing to attach in time.")
 	} else if !allAttached {
 		ginkgo.Fail("could not find correct number of replicas")
 	} else if err != nil {

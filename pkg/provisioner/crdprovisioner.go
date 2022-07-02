@@ -219,7 +219,7 @@ func (c *CrdProvisioner) CreateVolume(
 	defer func() { w.Finish(err) }()
 
 	azVolumeInstance := &azdiskv1beta2.AzVolume{}
-	err = c.azCachedReader.Get(ctx, types.NamespacedName{Namespace: c.namespace, Name: volumeName}, azVolumeInstance)
+	err = c.azCachedReader.Get(ctx, types.NamespacedName{Namespace: c.namespace, Name: azVolumeName}, azVolumeInstance)
 	if err == nil {
 		updateFunc := func(obj client.Object) error {
 			updateInstance := obj.(*azdiskv1beta2.AzVolume)

@@ -94,8 +94,8 @@ func (t *DynamicallyProvisionedScaleReplicasOnDetach) Run(client clientset.Inter
 	verifyStatefulSetAttachments := func() (bool, []azdiskv1beta2.AzVolumeAttachment, error) {
 		return t.getStatefulSetAttachmentStatus(client, namespace, tStatefulSet)
 	}
-	failedAttachments, err := t.pollForFailedAttachments(verifyStatefulSetAttachments)
-	framework.ExpectEmpty(failedAttachments, "Expected there to be no failed attachments.")
+	unattachedAttachments, err := t.pollForFailedAttachments(verifyStatefulSetAttachments)
+	framework.ExpectEmpty(unattachedAttachments, "Expected there to be no failed attachments.")
 	framework.ExpectNoError(err, "Expected the stateful set to have successful attachments.")
 	framework.Logf("Stateful set replica attachments verified successfully.")
 
@@ -124,11 +124,11 @@ func (t *DynamicallyProvisionedScaleReplicasOnDetach) Run(client clientset.Inter
 
 	ginkgo.By("Verifying that the new pod has successful replica attachment.")
 	verifyPodAttachment := func() (bool, []azdiskv1beta2.AzVolumeAttachment, error) {
-		isVerified, _, failedAttachments, err := resources.VerifySuccessfulAzVolumeAttachments(t.NewPod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
-		return isVerified, failedAttachments, err
+		isVerified, _, unattachedAttachments, err := resources.VerifySuccessfulAzVolumeAttachments(t.NewPod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
+		return isVerified, unattachedAttachments, err
 	}
-	failedAttachments, err = t.pollForFailedAttachments(verifyPodAttachment)
-	framework.ExpectEmpty(failedAttachments, "Expected there to be no failed attachments.")
+	unattachedAttachments, err = t.pollForFailedAttachments(verifyPodAttachment)
+	framework.ExpectEmpty(unattachedAttachments, "Expected there to be no failed attachments.")
 	framework.ExpectNoError(err, "Expected the new pod to have successful attachments.")
 }
 
@@ -174,14 +174,14 @@ func (t *DynamicallyProvisionedScaleReplicasOnDetach) pollForFailedAttachments(v
 // Iterates over all pods in the stateful set to verify attachments for each pod
 func (t *DynamicallyProvisionedScaleReplicasOnDetach) getStatefulSetAttachmentStatus(client clientset.Interface, namespace *v1.Namespace, tStatefulSet *resources.TestStatefulset) (bool, []azdiskv1beta2.AzVolumeAttachment, error) {
 	allAttached := true
-	var failedAttachments []azdiskv1beta2.AzVolumeAttachment
+	var unattachedAttachments []azdiskv1beta2.AzVolumeAttachment
 	for _, pod := range tStatefulSet.AllPods {
-		isAttached, _, podFailedReplicaAttachments, err := resources.VerifySuccessfulAzVolumeAttachments(pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
-		failedAttachments = append(failedAttachments, podFailedReplicaAttachments...)
+		isAttached, _, podUnattachedAttachments, err := resources.VerifySuccessfulAzVolumeAttachments(pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
+		unattachedAttachments = append(unattachedAttachments, podUnattachedAttachments...)
 		allAttached = allAttached && isAttached
 		if err != nil {
-			return allAttached, failedAttachments, err
+			return allAttached, unattachedAttachments, err
 		}
 	}
-	return allAttached, failedAttachments, nil
+	return allAttached, unattachedAttachments, nil
 }

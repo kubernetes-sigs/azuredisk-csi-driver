@@ -116,17 +116,22 @@ func (t *PodNodeScaleUp) Run(client clientset.Interface, namespace *v1.Namespace
 
 	//Check that AzVolumeAttachment resources were created correctly
 	isAttached := true
-	var failedAttachments []azdiskv1beta2.AzVolumeAttachment
+	var unattachedAttachments []azdiskv1beta2.AzVolumeAttachment
 	err = wait.Poll(15*time.Second, 10*time.Minute, func() (bool, error) {
 		var err error
-		isAttached, _, failedAttachments, err = resources.VerifySuccessfulAzVolumeAttachments(t.Pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
+		isAttached, _, unattachedAttachments, err = resources.VerifySuccessfulAzVolumeAttachments(t.Pod, t.AzDiskClient, t.StorageClassParameters, client, namespace)
 		return isAttached, err
 	})
 
-	if failedAttachments != nil {
-		e2elog.Logf("found %d azvolumeattachments failed:", len(failedAttachments))
-		for _, attachments := range failedAttachments {
-			e2elog.Logf("azvolumeattachment: %s, err: %s", attachments.Name, attachments.Status.Error.Message)
+	if unattachedAttachments != nil {
+		e2elog.Logf("found %d azvolumeattachments failing to attach in time:", len(unattachedAttachments))
+		for _, attachment := range unattachedAttachments {
+			switch attachment.Status.State {
+			case azdiskv1beta2.AttachmentFailed:
+				e2elog.Logf("azvolumeattachment: %s, err: %s", attachment.Name, attachment.Status.Error.Message)
+			default:
+				e2elog.Logf("expected AzVolumeAttachment (%s) to be in Attached state but instead got %s", attachment.Name, attachment.Status.State)
+			}
 		}
 		ginkgo.Fail("failed due to replicas failing to attach")
 	} else if !isAttached {
