@@ -82,6 +82,22 @@ var (
 		Help:      "Number of HTTP requests, partitioned by status code, method, and host.",
 	}, []string{"code", "method", "host"})
 
+	// client metrics. 
+
+	// TODO: double check implementation
+	RateLimiterLatency = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Subsystem:	RestClientSubsystem,
+		Name:		LatencyKey, 
+		Help:		"Rate limiter latency in seconds. Broken down by verb and URL.",
+		Buckets:	prometheus.ExponentialBuckets(0.001, 2, 10),
+	}, []string{"verb", "url"})
+
+	rateLimiterResult = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Subsystem:	RestClientSubsystem,
+		Name:		ResultKey,
+		Help: 		"Number of HTTP requests, partitioned by status code, method, and host.",
+	}, []string{"code", "method", "host"})
+
 	// reflector metrics.
 
 	// TODO(directxman12): update these to be histograms once the metrics overhaul KEP
@@ -145,10 +161,12 @@ func init() {
 func registerClientMetrics() {
 	// register the metrics with our registry
 	Registry.MustRegister(requestResult)
+	Registry.MustRegister(rateLimiterResult)
 
 	// register the metrics with client-go
 	clientmetrics.Register(clientmetrics.RegisterOpts{
 		RequestResult: &resultAdapter{metric: requestResult},
+		RateLimiterResult: &resultAdapter{metrics: rateLimiterResult},
 	})
 }
 
