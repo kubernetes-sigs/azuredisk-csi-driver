@@ -562,27 +562,31 @@ func (c *CrdProvisioner) PublishVolume(
 	// check remaining node capacity to determine if replica detachment is necessary
 	var maxDiskCount int
 	if maxDiskCount, err = azureutils.GetNodeMaxDiskCount(ctx, c.azCachedReader, nodeID); err != nil {
-		return publishContext, err
-	}
-	volumeLabel := azureutils.LabelPair{Key: consts.VolumeNameLabel, Operator: selection.NotEquals, Entry: volumeName}
-	nodeLabel := azureutils.LabelPair{Key: consts.NodeNameLabel, Operator: selection.Equals, Entry: nodeID}
-	var attachments []azdiskv1beta2.AzVolumeAttachment
-	if attachments, err = azureutils.GetAzVolumeAttachmentsWithLabel(ctx, c.azCachedReader, volumeLabel, nodeLabel); err != nil {
-		return publishContext, err
-	}
+		// continue if k8s node object is not found, we have already verified the node's existence through azdrivernode.
+		if !apiErrors.IsNotFound(err) {
+			return publishContext, err
+		}
+	} else {
+		volumeLabel := azureutils.LabelPair{Key: consts.VolumeNameLabel, Operator: selection.NotEquals, Entry: volumeName}
+		nodeLabel := azureutils.LabelPair{Key: consts.NodeNameLabel, Operator: selection.Equals, Entry: nodeID}
+		var attachments []azdiskv1beta2.AzVolumeAttachment
+		if attachments, err = azureutils.GetAzVolumeAttachmentsWithLabel(ctx, c.azCachedReader, volumeLabel, nodeLabel); err != nil {
+			return publishContext, err
+		}
 
-	numVolumeAttachments, volumeUnpublishOrder := filterVAToDetach(attachments)
+		numVolumeAttachments, volumeUnpublishOrder := filterVAToDetach(attachments)
 
-	requiredVolumeUnpublishCount := numVolumeAttachments - maxDiskCount + 1
+		requiredVolumeUnpublishCount := numVolumeAttachments - maxDiskCount + 1
 
-	if requiredVolumeUnpublishCount > len(volumeUnpublishOrder) {
-		err = status.Errorf(codes.Internal, "Cannot free up %d node capacity: not enough replicas (%d) attached to the node", requiredVolumeUnpublishCount, len(volumeUnpublishOrder))
-	} else if requiredVolumeUnpublishCount > 0 {
-		isPreemptiveCreate = true
-		unpublishOrder = append(unpublishOrder, volumeUnpublishOrder[:requiredVolumeUnpublishCount]...)
-		// if volume needs to be detached prior to attach operation, remove the attach annotation from CRI
-		attachmentObj.Annotations = azureutils.RemoveFromMap(attachmentObj.Annotations, consts.VolumeAttachRequestAnnotation)
-		requiredUnpublishCount += requiredVolumeUnpublishCount
+		if requiredVolumeUnpublishCount > len(volumeUnpublishOrder) {
+			err = status.Errorf(codes.Internal, "Cannot free up %d node capacity: not enough replicas (%d) attached to the node", requiredVolumeUnpublishCount, len(volumeUnpublishOrder))
+		} else if requiredVolumeUnpublishCount > 0 {
+			isPreemptiveCreate = true
+			unpublishOrder = append(unpublishOrder, volumeUnpublishOrder[:requiredVolumeUnpublishCount]...)
+			// if volume needs to be detached prior to attach operation, remove the attach annotation from CRI
+			attachmentObj.Annotations = azureutils.RemoveFromMap(attachmentObj.Annotations, consts.VolumeAttachRequestAnnotation)
+			requiredUnpublishCount += requiredVolumeUnpublishCount
+		}
 	}
 
 	// detach replica volume if volume's maxShares have been fully saturated.

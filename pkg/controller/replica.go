@@ -170,49 +170,58 @@ func (r *ReconcileReplica) triggerCreateFailedReplicas(ctx context.Context, volu
 	w.Logger().V(5).Info("Checking for replicas to be created after garbage collection.")
 	volRequirement, err := azureutils.CreateLabelRequirements(consts.VolumeNameLabel, selection.Equals, volumeName)
 	if err != nil {
-		w.Logger().Errorf(err, "Failed to create label requirements.")
+		w.Logger().Errorf(err, "failed to create label requirements.")
 		return
 	}
 	labelSelector := labels.NewSelector().Add(*volRequirement)
 	listOptions := client.ListOptions{LabelSelector: labelSelector}
 	azVolumeAttachmentList := &azdiskv1beta2.AzVolumeAttachmentList{}
-	if err = r.controllerSharedState.cachedClient.List(ctx, azVolumeAttachmentList, &listOptions); errors.IsNotFound(err) {
-		return
+
+	waitForDelete := true
+	if err = r.controllerSharedState.cachedClient.List(ctx, azVolumeAttachmentList, &listOptions); err != nil {
+		if errors.IsNotFound(err) {
+			waitForDelete = false
+		} else {
+			w.Logger().Errorf(err, "failed to list AzVolumeAttachments for volume (%s)", volumeName)
+			return
+		}
 	}
 
-	var wg sync.WaitGroup
-	var numErr uint32
-	errs := make([]error, len(azVolumeAttachmentList.Items))
-	for i := range azVolumeAttachmentList.Items {
-		wg.Add(1)
-		go func(index int) {
-			var err error
-			defer wg.Done()
-			defer func() {
+	if waitForDelete {
+		var wg sync.WaitGroup
+		var numErr uint32
+		errs := make([]error, len(azVolumeAttachmentList.Items))
+		for i := range azVolumeAttachmentList.Items {
+			wg.Add(1)
+			go func(index int) {
+				var err error
+				defer wg.Done()
+				defer func() {
+					if err != nil {
+						_ = atomic.AddUint32(&numErr, 1)
+					}
+				}()
+
+				var waiter *watcher.ConditionWaiter
+				waiter, err = r.controllerSharedState.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeAttachmentType, azVolumeAttachmentList.Items[index].Name, verifyObjectDeleted)
 				if err != nil {
-					_ = atomic.AddUint32(&numErr, 1)
+					errs[index] = err
+					return
 				}
-			}()
+				defer waiter.Close()
+				if _, err = waiter.Wait(ctx); err != nil {
+					errs[index] = err
+				}
+			}(i)
+		}
+		// wait for all AzVolumeAttachments to be deleted
+		wg.Wait()
 
-			var waiter *watcher.ConditionWaiter
-			waiter, err = r.controllerSharedState.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeAttachmentType, azVolumeAttachmentList.Items[index].Name, verifyObjectDeleted)
-			if err != nil {
-				errs[index] = err
-				return
-			}
-			defer waiter.Close()
-			if _, err = waiter.Wait(ctx); err != nil {
-				errs[index] = err
-			}
-		}(i)
-	}
-	// wait for all AzVolumeAttachments to be deleted
-	wg.Wait()
-
-	if numErr > 0 {
-		err := status.Errorf(codes.Internal, "%+v", errs)
-		w.Logger().Error(err, "failed to wait for replica AzVolumeAttachments cleanup.")
-		return
+		if numErr > 0 {
+			err := status.Errorf(codes.Internal, "%+v", errs)
+			w.Logger().Error(err, "failed to wait for replica AzVolumeAttachments cleanup.")
+			return
+		}
 	}
 
 	r.controllerSharedState.tryCreateFailedReplicas(ctx, "replicaController")

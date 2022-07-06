@@ -1597,7 +1597,8 @@ func (c *SharedState) createReplicaAzVolumeAttachment(ctx context.Context, volum
 				consts.VolumeNameLabel: volumeName,
 				consts.RoleLabel:       string(azdiskv1beta2.ReplicaRole),
 			},
-			Finalizers: []string{consts.AzVolumeAttachmentFinalizer},
+			Annotations: map[string]string{consts.VolumeAttachRequestAnnotation: "controller"},
+			Finalizers:  []string{consts.AzVolumeAttachmentFinalizer},
 		},
 		Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
 			NodeName:      node,
