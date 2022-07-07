@@ -172,7 +172,7 @@ spec:
               mountPath: C:\csi
             - name: azure-config
               mountPath: C:\k
-            - name: csi-azuredisk-node-windows-config
+            - name: csi-azuredisk-node-win-config
               mountPath: /etc/csi-azuredisk-node-win
             - name: csi-proxy-fs-pipe-v1
               mountPath: \\.\pipe\csi-proxy-filesystem-v1
