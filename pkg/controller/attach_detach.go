@@ -261,9 +261,11 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 		}
 		handleSuccess = func(asyncComplete bool) {
 			// Publish event to indicate attachment success
-			if len(pods) > 0 {
-				for _, pod := range pods {
-					r.controllerSharedState.eventRecorder.Eventf(pod.DeepCopyObject(), v1.EventTypeNormal, consts.ReplicaAttachmentSuccessEvent, "Replica mount for volume %s successfully attached to node %s", azVolumeAttachment.Spec.VolumeName, azVolumeAttachment.Spec.NodeName)
+			if asyncComplete {
+				if len(pods) > 0 {
+					for _, pod := range pods {
+						r.controllerSharedState.eventRecorder.Eventf(pod.DeepCopyObject(), v1.EventTypeNormal, consts.ReplicaAttachmentSuccessEvent, "Replica mount for volume %s successfully attached to node %s", azVolumeAttachment.Spec.VolumeName, azVolumeAttachment.Spec.NodeName)
+					}
 				}
 			}
 

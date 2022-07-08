@@ -88,6 +88,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 			r.triggerGarbageCollection(ctx, azVolumeAttachment.Spec.VolumeName)
 			return reconcile.Result{}, nil
 		}
+
 		// create a replacement replica if replica attachment failed
 		if objectDeletionRequested(azVolumeAttachment) {
 			switch azVolumeAttachment.Status.State {
