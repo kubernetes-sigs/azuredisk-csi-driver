@@ -23,7 +23,7 @@ data:
       allowEmptyCloudConfig: {{ .Values.node.allowEmptyCloudConfig }}
     objectNamespace: {{ .Values.driver.objectNamespace }}
     endpoint: unix:///csi/csi.sock
-    metricsAddress:0.0.0.0:{{ .Values.node.metrics.port }}
+    metricsAddress: 0.0.0.0:{{ .Values.node.metrics.port }}
     driverName: {{ .Values.driver.name }}
 ---
 {{- if .Values.linux.enabled}}
