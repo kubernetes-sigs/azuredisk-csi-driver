@@ -124,7 +124,7 @@ func (r *ReconcileAzVolume) Reconcile(ctx context.Context, request reconcile.Req
 			return reconcileReturnOnError(ctx, azVolume, "create", err, r.retryInfo)
 		}
 		// azVolume update
-	} else if azVolume.Spec.CapacityRange != nil && azVolume.Spec.CapacityRange.RequiredBytes != azVolume.Status.Detail.CapacityBytes {
+	} else if azVolume.Spec.CapacityRange != nil && azVolume.Spec.CapacityRange.RequiredBytes > azVolume.Status.Detail.CapacityBytes {
 		if err := r.triggerUpdate(ctx, azVolume); err != nil {
 			return reconcileReturnOnError(ctx, azVolume, "update", err, r.retryInfo)
 		}
@@ -151,13 +151,15 @@ func (r *ReconcileAzVolume) triggerCreate(ctx context.Context, azVolume *azdiskv
 		_, err := r.updateState(azv, azdiskv1beta2.VolumeCreating, normalUpdate)
 		return err
 	}
-	if err = azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolume, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
+
+	var updatedObj client.Object
+	if updatedObj, err = azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolume, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
 		return err
 	}
+	azVolume = updatedObj.(*azdiskv1beta2.AzVolume)
 
 	w.Logger().Info("Creating Volume...")
 	waitCh := make(chan goSignal)
-
 	// create volume
 	//nolint:contextcheck // call is asynchronous; context is not inherited by design
 	go func() {
@@ -198,7 +200,7 @@ func (r *ReconcileAzVolume) triggerCreate(ctx context.Context, azVolume *azdiskv
 		}
 
 		//nolint:contextcheck // final status update of the CRI must occur even when the current context's deadline passes.
-		_ = azureutils.UpdateCRIWithRetry(context.Background(), nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolume, updateFunc, consts.ForcedUpdateMaxNetRetry, updateMode)
+		_, _ = azureutils.UpdateCRIWithRetry(goCtx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolume, updateFunc, consts.ForcedUpdateMaxNetRetry, updateMode)
 	}()
 
 	// wait for the workflow in goroutine to be created
@@ -241,10 +243,11 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *azdiskv
 			_, derr := r.updateState(azv, azdiskv1beta2.VolumeDeleting, normalUpdate)
 			return derr
 		}
-
-		if err = azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolume, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
+		var updatedObj client.Object
+		if updatedObj, err = azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolume, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
 			return err
 		}
+		azVolume = updatedObj.(*azdiskv1beta2.AzVolume)
 
 		if volumeDeleteRequested {
 			w.Logger().Info("Deleting Volume...")
@@ -351,7 +354,7 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *azdiskv
 			}
 
 			//nolint:contextcheck // final status update of the CRI must occur even when the current context's deadline passes.
-			_ = azureutils.UpdateCRIWithRetry(context.Background(), nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolume, updateFunc, consts.ForcedUpdateMaxNetRetry, updateMode)
+			_, _ = azureutils.UpdateCRIWithRetry(goCtx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolume, updateFunc, consts.ForcedUpdateMaxNetRetry, updateMode)
 		}()
 		<-waitCh
 	} else {
@@ -360,7 +363,7 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *azdiskv
 			_ = r.deleteFinalizer(azv, map[string]bool{consts.AzVolumeFinalizer: true})
 			return nil
 		}
-		if err = azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolume, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRI); err != nil {
+		if _, err = azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolume, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRI); err != nil {
 			return err
 		}
 	}
@@ -383,9 +386,11 @@ func (r *ReconcileAzVolume) triggerUpdate(ctx context.Context, azVolume *azdiskv
 		_, derr := r.updateState(azv, azdiskv1beta2.VolumeUpdating, normalUpdate)
 		return derr
 	}
-	if err = azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolume, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
+	var updatedObj client.Object
+	if updatedObj, err = azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolume, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
 		return err
 	}
+	azVolume = updatedObj.(*azdiskv1beta2.AzVolume)
 
 	w.Logger().Infof("Updating Volume")
 	waitCh := make(chan goSignal)
@@ -423,7 +428,7 @@ func (r *ReconcileAzVolume) triggerUpdate(ctx context.Context, azVolume *azdiskv
 		}
 
 		//nolint:contextcheck // final status update of the CRI must occur even when the current context's deadline passes.
-		_ = azureutils.UpdateCRIWithRetry(context.Background(), nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolume, updateFunc, consts.ForcedUpdateMaxNetRetry, azureutils.UpdateCRIStatus)
+		_, _ = azureutils.UpdateCRIWithRetry(goCtx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolume, updateFunc, consts.ForcedUpdateMaxNetRetry, azureutils.UpdateCRIStatus)
 	}()
 	<-waitCh
 
@@ -580,7 +585,7 @@ func (r *ReconcileAzVolume) recoverAzVolume(ctx context.Context, recoveredAzVolu
 				targetState = azv.Status.State
 			}
 
-			if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, &azv, updateFunc, consts.ForcedUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
+			if _, err := azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, &azv, updateFunc, consts.ForcedUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
 				w.Logger().Errorf(err, "failed to update AzVolume (%s) for recovery", azv.Name)
 			} else {
 				// if update succeeded, add the CRI to the recoveryComplete list

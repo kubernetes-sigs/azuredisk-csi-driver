@@ -198,9 +198,11 @@ func (c *CrdProvisioner) CreateVolume(
 			return nil
 		}
 
-		if err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, azVolumeInstance, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateAll); err != nil {
+		var updatedObj client.Object
+		if updatedObj, err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, azVolumeInstance, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateAll); err != nil {
 			return nil, err
 		}
+		azVolumeInstance = updatedObj.(*azdiskv1beta2.AzVolume)
 		// if the error was caused by errors other than IsNotFound, return failure
 	} else if !apiErrors.IsNotFound(err) {
 		err = status.Errorf(codes.Internal, "failed to get AzVolume CRI: %v", err)
@@ -363,10 +365,12 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 	defer waiter.Close()
 
 	if updateFunc != nil {
+		var updateObj client.Object
 		// update AzVolume CRI with annotation and reset state with retry upon conflict
-		if err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, azVolumeInstance, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
+		if updateObj, err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, azVolumeInstance, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
 			return err
 		}
+		azVolumeInstance = updateObj.(*azdiskv1beta2.AzVolume)
 	}
 
 	// only make delete request if object's deletion timestamp is not set
@@ -562,7 +566,7 @@ func (c *CrdProvisioner) PublishVolume(
 		}
 		updateMode = azureutils.UpdateAll
 	}
-	if err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, attachmentObj, updateFunc, consts.NormalUpdateMaxNetRetry, updateMode); err != nil {
+	if _, err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, attachmentObj, updateFunc, consts.NormalUpdateMaxNetRetry, updateMode); err != nil {
 		return publishContext, err
 	}
 
@@ -628,9 +632,12 @@ func (c *CrdProvisioner) waitForLunOrAttach(ctx context.Context, volumeID, nodeI
 				updateInstance.Status.Error = nil
 				return nil
 			}
-			if err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, azVolumeAttachmentInstance, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
+
+			var updatedObj client.Object
+			if updatedObj, err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, azVolumeAttachmentInstance, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
 				return nil, err
 			}
+			azVolumeAttachmentInstance = updatedObj.(*azdiskv1beta2.AzVolumeAttachment)
 		}
 	}
 
@@ -729,7 +736,8 @@ func (c *CrdProvisioner) demoteVolume(ctx context.Context, azVolumeAttachment *a
 		updateInstance.Labels[consts.RoleChangeLabel] = consts.Demoted
 		return nil
 	}
-	return azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateAll)
+	_, err := azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateAll)
+	return err
 }
 
 func (c *CrdProvisioner) detachVolume(ctx context.Context, azVolumeAttachment *azdiskv1beta2.AzVolumeAttachment) error {
@@ -777,10 +785,11 @@ func (c *CrdProvisioner) detachVolume(ctx context.Context, azVolumeAttachment *a
 	}
 
 	w.Logger().V(5).Infof("Requesting AzVolumeAttachment (%s) detachment", azVolumeAttachment.Name)
-
-	if err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
+	var updatedObj client.Object
+	if updatedObj, err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
 		return err
 	}
+	azVolumeAttachment = updatedObj.(*azdiskv1beta2.AzVolumeAttachment)
 
 	// only make delete request if deletionTimestamp is not set
 	if azVolumeAttachment.DeletionTimestamp.IsZero() {
@@ -901,7 +910,7 @@ func (c *CrdProvisioner) ExpandVolume(
 		return nil, err
 	}
 
-	if err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, azVolume, updateFunc, consts.NormalUpdateMaxNetRetry, updateMode); err != nil {
+	if _, err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, azVolume, updateFunc, consts.NormalUpdateMaxNetRetry, updateMode); err != nil {
 		return nil, err
 	}
 

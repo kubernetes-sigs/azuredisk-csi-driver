@@ -166,9 +166,12 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 		_, derr := updateState(azv, azdiskv1beta2.Attaching, normalUpdate)
 		return derr
 	}
-	if err = azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
+
+	var updatedObj client.Object
+	if updatedObj, err = azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
 		return err
 	}
+	azVolumeAttachment = updatedObj.(*azdiskv1beta2.AzVolumeAttachment)
 
 	w.Logger().Info("Attaching volume")
 	waitCh := make(chan goSignal)
@@ -257,7 +260,7 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 				return uerr
 			}
 			//nolint:contextcheck // final status update of the CRI must occur even when the current context's deadline passes.
-			_ = azureutils.UpdateCRIWithRetry(goCtx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry, azureutils.UpdateCRIStatus)
+			_, _ = azureutils.UpdateCRIWithRetry(goCtx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry, azureutils.UpdateCRIStatus)
 		}
 		handleSuccess = func(asyncComplete bool) {
 			// Publish event to indicate attachment success
@@ -282,12 +285,8 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 			if asyncComplete && azVolumeAttachment.Spec.RequestedRole == azdiskv1beta2.PrimaryRole {
 				_ = r.updateVolumeAttachmentWithResult(goCtx, azVolumeAttachment)
 			}
-			updateCtx := goCtx
-			if asyncComplete {
-				//nolint:contextcheck // final status update of the CRI must occur even when the current context's deadline passes.
-				updateCtx = context.Background()
-			}
-			_ = azureutils.UpdateCRIWithRetry(updateCtx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry, azureutils.UpdateCRIStatus)
+			updatedObj, _ = azureutils.UpdateCRIWithRetry(goCtx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry, azureutils.UpdateCRIStatus)
+			azVolumeAttachment = updatedObj.(*azdiskv1beta2.AzVolumeAttachment)
 		}
 
 		attachAndUpdate()
@@ -316,9 +315,12 @@ func (r *ReconcileAttachDetach) triggerDetach(ctx context.Context, azVolumeAttac
 			_, derr := updateState(azv, azdiskv1beta2.Detaching, normalUpdate)
 			return derr
 		}
-		if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
+
+		var updatedObj client.Object
+		if updatedObj, err = azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
 			return err
 		}
+		azVolumeAttachment = updatedObj.(*azdiskv1beta2.AzVolumeAttachment)
 
 		w.Logger().Info("Detaching volume")
 		waitCh := make(chan goSignal)
@@ -352,7 +354,7 @@ func (r *ReconcileAttachDetach) triggerDetach(ctx context.Context, azVolumeAttac
 				updateMode = azureutils.UpdateCRI
 			}
 			//nolint:contextcheck // final status update of the CRI must occur even when the current context's deadline passes.
-			_ = azureutils.UpdateCRIWithRetry(context.Background(), nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry, updateMode)
+			_, _ = azureutils.UpdateCRIWithRetry(context.Background(), nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry, updateMode)
 		}()
 		<-waitCh
 	} else {
@@ -362,7 +364,7 @@ func (r *ReconcileAttachDetach) triggerDetach(ctx context.Context, azVolumeAttac
 			_ = r.deleteFinalizer(azv)
 			return nil
 		}
-		if err = azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRI); err != nil {
+		if _, err = azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRI); err != nil {
 			return err
 		}
 	}
@@ -384,7 +386,7 @@ func (r *ReconcileAttachDetach) promote(ctx context.Context, azVolumeAttachment 
 		_ = updateRole(azv, azdiskv1beta2.PrimaryRole)
 		return nil
 	}
-	if err = azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
+	if _, err = azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
 		return err
 	}
 	return nil
@@ -404,7 +406,7 @@ func (r *ReconcileAttachDetach) demote(ctx context.Context, azVolumeAttachment *
 		return nil
 	}
 
-	if err = azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
+	if _, err = azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
 		return err
 	}
 	return nil
@@ -427,7 +429,7 @@ func (r *ReconcileAttachDetach) updateVolumeAttachmentWithResult(ctx context.Con
 		return nil
 	}
 	va := storagev1.VolumeAttachment{ObjectMeta: metav1.ObjectMeta{Name: vaName}}
-	err = azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, &va, vaUpdateFunc, consts.ForcedUpdateMaxNetRetry, azureutils.UpdateCRIStatus)
+	_, err = azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, &va, vaUpdateFunc, consts.ForcedUpdateMaxNetRetry, azureutils.UpdateCRIStatus)
 	return err
 }
 
@@ -693,7 +695,7 @@ func (r *ReconcileAttachDetach) recoverAzVolumeAttachment(ctx context.Context, r
 				targetState = azv.Status.State
 			}
 
-			if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, &azv, updateFunc, consts.ForcedUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
+			if _, err := azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, &azv, updateFunc, consts.ForcedUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
 				w.Logger().Errorf(err, "failed to update AzVolumeAttachment (%s) for recovery", azv.Name)
 			} else {
 				// if update succeeded, add the CRI to the recoveryComplete list
