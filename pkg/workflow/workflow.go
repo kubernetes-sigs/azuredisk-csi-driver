@@ -124,13 +124,13 @@ func (w Workflow) applyDefault() Workflow {
 }
 
 func (w Workflow) Finish(errs ...error) {
-	_ = atomic.AddInt32(w.pendingCount, -1)
+	pendingCount := atomic.AddInt32(w.pendingCount, -1)
 
 	for _, err := range errs {
 		w.errSet.Store(err, nil)
 	}
 
-	if pendingCount := atomic.LoadInt32(w.pendingCount); pendingCount > 0 {
+	if pendingCount > 0 {
 		return
 	} else if pendingCount < 0 {
 		panic(fmt.Sprintf("finish was called too many times for workflow (%s)", w.name))
