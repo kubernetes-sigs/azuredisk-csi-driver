@@ -46,9 +46,9 @@ const (
 type eventType int
 
 const (
-	create eventType = iota
-	update
-	delete
+	createEvent eventType = iota
+	updateEvent
+	deleteEvent
 )
 
 type waitResult struct {
@@ -116,11 +116,12 @@ func (c *ConditionWatcher) NewConditionWaiter(ctx context.Context, objType Objec
 		waitChan:      make(chan waitResult, 1),
 	}
 
-	_, exists := c.waitMap.LoadOrStore(getTypedName(objType, objName), &entry)
+	key := getTypedName(objType, objName)
+	val, exists := c.waitMap.LoadOrStore(key, map[*waitEntry]struct{}{&entry: {}})
 	if exists {
-		err := status.Errorf(codes.Aborted, "another wait operation in process for %s (%s)", objType, objName)
-		klog.Error(err)
-		return nil, err
+		entries := val.(map[*waitEntry]struct{})
+		entries[&entry] = struct{}{}
+		c.waitMap.Store(key, entries)
 	}
 
 	return &ConditionWaiter{
@@ -132,15 +133,15 @@ func (c *ConditionWatcher) NewConditionWaiter(ctx context.Context, objType Objec
 }
 
 func (c *ConditionWatcher) onCreate(obj interface{}) {
-	c.handleEvent(obj, create)
+	c.handleEvent(obj, createEvent)
 }
 
 func (c *ConditionWatcher) onUpdate(_, newObj interface{}) {
-	c.handleEvent(newObj, update)
+	c.handleEvent(newObj, updateEvent)
 }
 
 func (c *ConditionWatcher) onDelete(obj interface{}) {
-	c.handleEvent(obj, delete)
+	c.handleEvent(obj, deleteEvent)
 }
 
 func (c *ConditionWatcher) handleEvent(obj interface{}, eventType eventType) {
@@ -168,34 +169,47 @@ func (c *ConditionWatcher) handleEvent(obj interface{}, eventType eventType) {
 	if !ok {
 		return
 	}
-	klog.V(5).Infof("found a wait entry for object (%s)", metaObj.GetName())
-	entry := v.(*waitEntry)
-	conditionFunc := entry.conditionFunc
-	waitChan := entry.waitChan
+	entries := v.(map[*waitEntry]struct{})
 
-	result := waitResult{}
-
-	ok, err = conditionFunc(obj, eventType == delete)
-	klog.V(5).Infof("condition result: succeeded: %v, error: %v", ok, err)
-	// if err found, send error through channel
-	if err != nil {
-		result.err = err
-	} else if !ok {
-		// if no error was found but condition not met, return
-		return
+	if len(entries) > 0 {
+		klog.V(5).Infof("found %d wait entries for object (%s)", len(entries), metaObj.GetName())
 	}
 
-	runtimeObj, ok := obj.(runtime.Object)
-	if !ok {
-		result.err = status.Errorf(codes.Internal, "object does not implement runtime.Object interface.")
-	}
-	result.obj = runtimeObj
+	wg := sync.WaitGroup{}
+	for entry := range entries {
+		entry := entry
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			conditionFunc := entry.conditionFunc
+			waitChan := entry.waitChan
 
-	select {
-	case waitChan <- result: // send result through channel if not already occupied or channel closed
-	default:
-		klog.Infof("wait channel for object (%v) is either already occupied or closed.", metaObj.GetName())
+			result := waitResult{}
+
+			ok, err = conditionFunc(obj, eventType == deleteEvent)
+			klog.V(5).Infof("condition result: succeeded: %v, error: %v", ok, err)
+			// if err found, send error through channel
+			if err != nil {
+				result.err = err
+			} else if !ok {
+				// if no error was found but condition not met, return
+				return
+			}
+
+			runtimeObj, ok := obj.(runtime.Object)
+			if !ok {
+				result.err = status.Errorf(codes.Internal, "object does not implement runtime.Object interface.")
+			}
+			result.obj = runtimeObj
+
+			select {
+			case waitChan <- result: // send result through channel if not already occupied or channel closed
+			default:
+				klog.Infof("wait channel for object (%v) is either already occupied or closed.", metaObj.GetName())
+			}
+		}()
 	}
+	wg.Wait()
 }
 
 func getTypedName(objType ObjectType, objName string) string {

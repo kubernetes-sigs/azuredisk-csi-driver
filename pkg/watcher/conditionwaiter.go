@@ -69,5 +69,11 @@ func (w *ConditionWaiter) Wait(ctx context.Context) (runtime.Object, error) {
 }
 
 func (w *ConditionWaiter) Close() {
-	w.watcher.waitMap.Delete(getTypedName(w.objType, w.objName))
+	key := getTypedName(w.objType, w.objName)
+	val, exists := w.watcher.waitMap.Load(key)
+	if exists {
+		entries := val.(map[*waitEntry]struct{})
+		delete(entries, w.entry)
+		w.watcher.waitMap.Store(key, entries)
+	}
 }
