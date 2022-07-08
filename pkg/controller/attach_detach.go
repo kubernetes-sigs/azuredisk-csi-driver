@@ -29,12 +29,12 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/provisioner"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/watcher"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/workflow"
 
 	volerr "k8s.io/cloud-provider/volume/errors"
@@ -93,6 +93,7 @@ func (r *ReconcileAttachDetach) Reconcile(ctx context.Context, request reconcile
 	azVolumeAttachment, err := azureutils.GetAzVolumeAttachment(ctx, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, request.Name, request.Namespace, true)
 	// if object is not found, it means the object has been deleted. Log the deletion and do not requeue
 	if errors.IsNotFound(err) {
+		r.controllerSharedState.azVolumeAttachmentToVaMap.Delete(request.Name)
 		return reconcileReturnOnSuccess(request.Name, r.retryInfo)
 	} else if err != nil {
 		azVolumeAttachment.Name = request.Name
@@ -256,7 +257,7 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 				return uerr
 			}
 			//nolint:contextcheck // final status update of the CRI must occur even when the current context's deadline passes.
-			_ = azureutils.UpdateCRIWithRetry(context.Background(), nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry, azureutils.UpdateCRIStatus)
+			_ = azureutils.UpdateCRIWithRetry(goCtx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry, azureutils.UpdateCRIStatus)
 		}
 		handleSuccess = func(asyncComplete bool) {
 			// Publish event to indicate attachment success
@@ -588,6 +589,7 @@ func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, 
 			}
 			nodeName := volumeAttachment.Spec.NodeName
 			azVolumeAttachmentName := azureutils.GetAzVolumeAttachmentName(diskName, nodeName)
+			r.controllerSharedState.azVolumeAttachmentToVaMap.Store(azVolumeAttachmentName, volumeAttachment.Name)
 
 			// check if the CRI exists already
 			azVolumeAttachment, err := azureutils.GetAzVolumeAttachment(ctx, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachmentName, r.controllerSharedState.objectNamespace, false)
@@ -743,25 +745,13 @@ func NewAttachDetachController(mgr manager.Manager, cloudDiskAttacher CloudDiskA
 }
 
 func (c *SharedState) waitForVolumeAttachmentName(ctx context.Context, azVolumeAttachment *azdiskv1beta2.AzVolumeAttachment) (string, error) {
-	if vaName, ok := azureutils.GetFromMap(azVolumeAttachment.Status.Annotations, consts.VolumeAttachmentKey); ok {
-		return vaName, nil
-	}
-	waiter, _ := c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeAttachmentType, azVolumeAttachment.Name, func(obj interface{}, objectDeleted bool) (bool, error) {
-		if obj == nil || objectDeleted {
-			return false, nil
+	var vaName string
+	err := wait.PollImmediateUntilWithContext(ctx, consts.DefaultPollingRate, func(ctx context.Context) (bool, error) {
+		val, exists := c.azVolumeAttachmentToVaMap.Load(azVolumeAttachment.Name)
+		if exists {
+			vaName = val.(string)
 		}
-		azVolumeAttachmentInstance := obj.(*azdiskv1beta2.AzVolumeAttachment)
-		if azureutils.MapContains(azVolumeAttachmentInstance.Status.Annotations, consts.VolumeAttachmentKey) {
-			return true, nil
-		}
-		return false, nil
+		return exists, nil
 	})
-	defer waiter.Close()
-	val, err := waiter.Wait(ctx)
-	if err != nil {
-		return "", err
-	}
-	azVolumeAttachment = val.(*azdiskv1beta2.AzVolumeAttachment)
-	vaName, _ := azureutils.GetFromMap(azVolumeAttachment.Status.Annotations, consts.VolumeAttachmentKey)
-	return vaName, nil
+	return vaName, err
 }

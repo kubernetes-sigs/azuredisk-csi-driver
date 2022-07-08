@@ -22,12 +22,10 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	fakev1 "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/klog/v2/klogr"
 	azdiskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
-	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller/mockclient"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
@@ -75,34 +73,10 @@ func TestVolumeAttachmentReconcile(t *testing.T) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
 
-				azVolumeAttachment, err := controller.controllerSharedState.azClient.DiskV1beta2().AzVolumeAttachments(testPrimaryAzVolumeAttachment0.Namespace).Get(context.TODO(), testPrimaryAzVolumeAttachment0.Name, metav1.GetOptions{})
-				require.NoError(t, err)
-
-				require.Contains(t, azVolumeAttachment.Status.Annotations, consts.VolumeAttachmentKey)
-				require.Equal(t, azVolumeAttachment.Status.Annotations[consts.VolumeAttachmentKey], testVolumeAttachmentName)
-			},
-		},
-		{
-			description: "[Failure] Should requeue if corresponding AzVolumeAttachment does not yet exist",
-			request:     testVolumeAttachmentRequest,
-			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileVolumeAttachment {
-				newVolumeAttachment := testVolumeAttachment.DeepCopy()
-				newVolumeAttachment.Spec.Source.PersistentVolumeName = &testPersistentVolume0Name
-
-				controller := NewTestVolumeAttachmentController(
-					mockCtl,
-					testNamespace,
-					&testAzVolume0,
-					&testPersistentVolume0,
-					newVolumeAttachment,
-				)
-
-				mockClients(controller.controllerSharedState.cachedClient.(*mockclient.MockClient), controller.controllerSharedState.azClient, controller.controllerSharedState.kubeClient)
-
-				return controller
-			},
-			verifyFunc: func(t *testing.T, controller *ReconcileVolumeAttachment, result reconcile.Result, err error) {
-				require.True(t, result.Requeue)
+				val, ok := controller.controllerSharedState.azVolumeAttachmentToVaMap.Load(testPrimaryAzVolumeAttachment0Name)
+				require.True(t, ok)
+				vaName := val.(string)
+				require.Equal(t, vaName, testVolumeAttachmentName)
 			},
 		},
 	}

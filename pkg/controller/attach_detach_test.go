@@ -96,6 +96,8 @@ func TestAttachDetachReconcile(t *testing.T) {
 					newVolumeAttachment,
 					newAttachment)
 
+				controller.controllerSharedState.azVolumeAttachmentToVaMap.Store(newAttachment.Name, newVolumeAttachment.Name)
+
 				mockClientsAndAttachmentProvisioner(controller)
 
 				return controller
@@ -172,6 +174,8 @@ func TestAttachDetachReconcile(t *testing.T) {
 					&testAzVolume0,
 					newVolumeAttachment,
 					newAttachment)
+
+				controller.controllerSharedState.azVolumeAttachmentToVaMap.Store(newAttachment.Name, newVolumeAttachment.Name)
 
 				mockClientsAndAttachmentProvisioner(controller)
 
