@@ -401,7 +401,7 @@ func (r *ReconcileAzVolume) triggerUpdate(ctx context.Context, azVolume *azdiskv
 		defer goWorkflow.Finish(updateErr)
 		waitCh <- goSignal{}
 
-		goCtx := goWorkflow.SaveToContext(ctx)
+		goCtx := goWorkflow.SaveToContext(context.Background())
 		cloudCtx, cloudCancel := context.WithTimeout(goCtx, cloudTimeout)
 		defer cloudCancel()
 

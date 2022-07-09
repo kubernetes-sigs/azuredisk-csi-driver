@@ -200,11 +200,9 @@ func (c *CrdProvisioner) CreateVolume(
 			return nil
 		}
 
-		var updatedObj client.Object
-		if updatedObj, err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, azVolumeInstance, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateAll); err != nil {
+		if _, err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, azVolumeInstance, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateAll); err != nil {
 			return nil, err
 		}
-		azVolumeInstance = updatedObj.(*azdiskv1beta2.AzVolume)
 		// if the error was caused by errors other than IsNotFound, return failure
 	} else if !apiErrors.IsNotFound(err) {
 		err = status.Errorf(codes.Internal, "failed to get AzVolume CRI: %v", err)
@@ -648,16 +646,14 @@ func (c *CrdProvisioner) waitForLunOrAttach(ctx context.Context, volumeID, nodeI
 				case azdiskv1beta2.Attached:
 				case azdiskv1beta2.Attaching:
 				default:
-					return status.Errorf(codes.Internal, "unexpected publish/stage volume request: azVolumeAttachmen is currently in %s state", updateInstance.Status.State)
+					return status.Errorf(codes.Internal, "unexpected publish/stage volume request: AzVolumeAttachment is currently in %s state", updateInstance.Status.State)
 				}
 				return nil
 			}
 
-			var updatedObj client.Object
-			if updatedObj, err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, azVolumeAttachmentInstance, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
+			if _, err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, azVolumeAttachmentInstance, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
 				return nil, err
 			}
-			azVolumeAttachmentInstance = updatedObj.(*azdiskv1beta2.AzVolumeAttachment)
 		}
 	}
 
@@ -891,7 +887,7 @@ func (c *CrdProvisioner) ExpandVolume(
 			updateInstance.Status.Error = nil
 			updateInstance.Status.State = azdiskv1beta2.VolumeCreated
 		default:
-			err = status.Errorf(codes.Internal, "unexpected expand volume request: volume is currently in %s state", azVolume.Status.State)
+			err = status.Errorf(codes.Internal, "unexpected expand volume request: AzVolume is currently in %s state", azVolume.Status.State)
 			return err
 		}
 		w.AnnotateObject(updateInstance)
