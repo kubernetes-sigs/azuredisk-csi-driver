@@ -89,9 +89,15 @@ func WithDetails(details ...interface{}) Option {
 	}
 }
 
+func WithCaller(skip int) Option {
+	return func(w *Workflow) {
+		w.logger = Logger{w.logger.WithValues("caller", getCallerName(skip+2))}
+	}
+}
+
 // New starts a new child workflow if there is already a workflow saved to the context otherwise a new workflow
 func New(ctx context.Context, opts ...Option) (context.Context, Workflow) {
-	name := getCallerName()
+	name := getCallerName(2)
 
 	w := Workflow{}.applyDefault()
 	w.name = name
@@ -219,8 +225,8 @@ func GetWorkflow(ctx context.Context, obj k8sRuntime.Object) (workflow Workflow)
 	return
 }
 
-func getCallerName() (name string) {
-	pc, _, _, ok := runtime.Caller(2)
+func getCallerName(skip int) (name string) {
+	pc, _, _, ok := runtime.Caller(skip)
 	if ok {
 		details := runtime.FuncForPC(pc)
 		name = details.Name()

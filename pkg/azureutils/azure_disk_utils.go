@@ -23,7 +23,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -904,13 +903,7 @@ type UpdateCRIFunc func(client.Object) error
 func UpdateCRIWithRetry(ctx context.Context, informerFactory azdiskinformers.SharedInformerFactory, cachedClient client.Client, azDiskClient azdisk.Interface, obj client.Object, updateFunc UpdateCRIFunc, maxNetRetry int, updateMode CRIUpdateMode) (client.Object, error) {
 	var err error
 	objName := obj.GetName()
-	var callerName string
-	pc, _, _, ok := runtime.Caller(2)
-	if ok {
-		details := runtime.FuncForPC(pc)
-		callerName = details.Name()
-	}
-	ctx, w := workflow.New(ctx, workflow.WithDetails("caller", callerName))
+	ctx, w := workflow.New(ctx, workflow.WithCaller(1))
 	defer func() { w.Finish(err) }()
 
 	var updatedObj client.Object

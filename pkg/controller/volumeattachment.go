@@ -83,15 +83,7 @@ func (r *ReconcileVolumeAttachment) Reconcile(ctx context.Context, request recon
 	}
 
 	azVolumeAttachmentName := azureutils.GetAzVolumeAttachmentName(diskName, volumeAttachment.Spec.NodeName)
-
-	if val, exists := r.controllerSharedState.azVolumeAttachmentToVaMap.Load(azVolumeAttachmentName); exists {
-		storedVolumeAttachmentName := val.(string)
-		if storedVolumeAttachmentName != volumeAttachment.Name {
-			r.controllerSharedState.azVolumeAttachmentToVaMap.Store(azVolumeAttachmentName, volumeAttachment.Name)
-		}
-	} else {
-		r.controllerSharedState.azVolumeAttachmentToVaMap.Store(azVolumeAttachmentName, volumeAttachment.Name)
-	}
+	r.controllerSharedState.azVolumeAttachmentToVaMap.Store(azVolumeAttachmentName, volumeAttachment.Name)
 
 	return reconcile.Result{}, nil
 }
