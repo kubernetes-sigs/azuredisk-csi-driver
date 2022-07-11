@@ -16,15 +16,6 @@
 
 set -euo pipefail
 
-function cleanup {
-  echo 'pkill -f azurediskplugin'
-  pkill -f azurediskplugin
-}
-
-t="$(date +%s)"
-readonly CSC_BIN="$GOBIN/csc"
-readonly volname="citest-$t"
-
 endpoint='tcp://127.0.0.1:10000'
 if [[ "$#" -gt 0 ]]; then
   endpoint="$1"
@@ -44,6 +35,26 @@ version='v2'
 if [[ "$#" -gt 3 ]]; then
   version="$4"
 fi
+
+function cleanup {
+  echo "===================azuredisk log==================="
+  if [[ "$version" == 'v2' ]]; then
+    "$LOG_SH" azuredisk v2
+  else
+    "$LOG_SH" azuredisk
+  fi
+  echo "==================================================="
+
+  echo 'pkill -f azurediskplugin'
+  pkill -f azurediskplugin
+}
+
+trap cleanup EXIT
+
+t="$(date +%s)"
+readonly CSC_BIN="$GOBIN/csc"
+readonly volname="citest-$t"
+readonly LOG_SH="test/utils/azuredisk_log.sh"
 
 echo "Begin to run $version integration test on $cloud..."
 

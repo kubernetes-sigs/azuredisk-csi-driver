@@ -91,7 +91,7 @@ func WithDetails(details ...interface{}) Option {
 
 func WithCaller(skip int) Option {
 	return func(w *Workflow) {
-		w.logger = Logger{w.logger.WithValues("caller", getCallerName(skip+2))}
+		w.logger = Logger{w.logger.WithValues("caller", getCallerName(skip+3))}
 	}
 }
 

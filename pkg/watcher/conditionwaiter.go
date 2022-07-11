@@ -18,6 +18,7 @@ package watcher
 
 import (
 	"context"
+	"sync"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -72,8 +73,8 @@ func (w *ConditionWaiter) Close() {
 	key := getTypedName(w.objType, w.objName)
 	val, exists := w.watcher.waitMap.Load(key)
 	if exists {
-		entries := val.(map[*waitEntry]struct{})
-		delete(entries, w.entry)
+		entries := val.(*sync.Map)
+		entries.Delete(w.entry)
 		w.watcher.waitMap.Store(key, entries)
 	}
 }

@@ -344,18 +344,20 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 			azVolumeInstance = obj.(*azdiskv1beta2.AzVolume)
 		case azdiskv1beta2.VolumeUpdating:
 			// if volume is still being updated, wait for update
-			waiter, err = c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeType, azVolumeName, waitForExpandVolumeFunc)
-			if err != nil {
-				return err
+			if azVolumeInstance.Spec.CapacityRange != nil {
+				waiter, err = c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeType, azVolumeName, waitForExpandVolumeFunc(azVolumeInstance.Spec.CapacityRange.RequiredBytes))
+				if err != nil {
+					return err
+				}
+				var obj interface{}
+				obj, err = waiter.Wait(ctx)
+				// close cannot be called on defer because this will interfere wait for delete
+				waiter.Close()
+				if err != nil {
+					return err
+				}
+				azVolumeInstance = obj.(*azdiskv1beta2.AzVolume)
 			}
-			var obj interface{}
-			obj, err = waiter.Wait(ctx)
-			// close cannot be called on defer because this will interfere wait for delete
-			waiter.Close()
-			if err != nil {
-				return err
-			}
-			azVolumeInstance = obj.(*azdiskv1beta2.AzVolume)
 		case azdiskv1beta2.VolumeDeleting:
 			// if volume is still being deleted, don't update
 			return nil
@@ -645,6 +647,7 @@ func (c *CrdProvisioner) waitForLunOrAttach(ctx context.Context, volumeID, nodeI
 					updateInstance.Status.Error = nil
 				case azdiskv1beta2.Attached:
 				case azdiskv1beta2.Attaching:
+				case azdiskv1beta2.AttachmentPending:
 				default:
 					return status.Errorf(codes.Internal, "unexpected publish/stage volume request: AzVolumeAttachment is currently in %s state", updateInstance.Status.State)
 				}
@@ -866,7 +869,7 @@ func (c *CrdProvisioner) ExpandVolume(
 	defer func() { w.Finish(err) }()
 
 	var waiter *watcher.ConditionWaiter
-	waiter, err = c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeType, azVolumeName, waitForExpandVolumeFunc)
+	waiter, err = c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeType, azVolumeName, waitForExpandVolumeFunc(capacityRange.RequiredBytes))
 	if err != nil {
 		return nil, err
 	}
@@ -911,8 +914,8 @@ func (c *CrdProvisioner) ExpandVolume(
 	}
 
 	azVolumeInstance := obj.(*azdiskv1beta2.AzVolume)
-	if azVolumeInstance.Status.Detail.CapacityBytes != capacityRange.RequiredBytes {
-		err = status.Error(codes.Internal, "AzVolume status was not updated with the new capacity")
+	if azVolumeInstance.Status.Detail.CapacityBytes < capacityRange.RequiredBytes {
+		err = status.Errorf(codes.Internal, "AzVolume status was not updated with the new capacity: current capacity (%d), requested capacity (%d)", azVolumeInstance.Status.Detail.CapacityBytes, capacityRange.RequiredBytes)
 		return nil, err
 	}
 
@@ -1033,19 +1036,21 @@ func waitForDeleteVolumeFunc(obj interface{}, objectDeleted bool) (bool, error) 
 	return false, nil
 }
 
-func waitForExpandVolumeFunc(obj interface{}, objectDeleted bool) (bool, error) {
-	if obj == nil || objectDeleted {
+func waitForExpandVolumeFunc(newCapacity int64) func(interface{}, bool) (bool, error) {
+	return func(obj interface{}, objectDeleted bool) (bool, error) {
+		if obj == nil || objectDeleted {
+			return false, nil
+		}
+		azVolumeInstance := obj.(*azdiskv1beta2.AzVolume)
+		// Checking that the status is updated with the required capacityRange
+		if azVolumeInstance.Status.Detail != nil && azVolumeInstance.Status.Detail.CapacityBytes >= newCapacity {
+			return true, nil
+		}
+		if azVolumeInstance.Status.Error != nil {
+			return false, util.ErrorFromAzError(azVolumeInstance.Status.Error)
+		}
 		return false, nil
 	}
-	azVolumeInstance := obj.(*azdiskv1beta2.AzVolume)
-	// Checking that the status is updated with the required capacityRange
-	if azVolumeInstance.Status.Detail != nil && azVolumeInstance.Status.Detail.CapacityBytes >= azVolumeInstance.Spec.CapacityRange.RequiredBytes {
-		return true, nil
-	}
-	if azVolumeInstance.Status.Error != nil {
-		return false, util.ErrorFromAzError(azVolumeInstance.Status.Error)
-	}
-	return false, nil
 }
 
 func waitForLunFunc(obj interface{}, objectDeleted bool) (bool, error) {

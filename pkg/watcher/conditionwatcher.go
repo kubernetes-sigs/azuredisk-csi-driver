@@ -117,12 +117,13 @@ func (c *ConditionWatcher) NewConditionWaiter(ctx context.Context, objType Objec
 	}
 
 	key := getTypedName(objType, objName)
-	val, exists := c.waitMap.LoadOrStore(key, map[*waitEntry]struct{}{&entry: {}})
+	entryMap := &sync.Map{}
+	val, exists := c.waitMap.LoadOrStore(key, entryMap)
 	if exists {
-		entries := val.(map[*waitEntry]struct{})
-		entries[&entry] = struct{}{}
-		c.waitMap.Store(key, entries)
+		entryMap = val.(*sync.Map)
 	}
+	entryMap.Store(&entry, struct{}{})
+	c.waitMap.Store(key, entryMap)
 
 	return &ConditionWaiter{
 		objType: objType,
@@ -169,15 +170,11 @@ func (c *ConditionWatcher) handleEvent(obj interface{}, eventType eventType) {
 	if !ok {
 		return
 	}
-	entries := v.(map[*waitEntry]struct{})
-
-	if len(entries) > 0 {
-		klog.V(5).Infof("found %d wait entries for object (%s)", len(entries), metaObj.GetName())
-	}
+	entries := v.(*sync.Map)
 
 	wg := sync.WaitGroup{}
-	for entry := range entries {
-		entry := entry
+	entries.Range(func(key, _ interface{}) bool {
+		entry := key.(*waitEntry)
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -208,7 +205,8 @@ func (c *ConditionWatcher) handleEvent(obj interface{}, eventType eventType) {
 				klog.Infof("wait channel for object (%v) is either already occupied or closed.", metaObj.GetName())
 			}
 		}()
-	}
+		return true
+	})
 	wg.Wait()
 }
 
