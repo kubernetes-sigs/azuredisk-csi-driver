@@ -46,6 +46,7 @@ const (
 	FsTypeField                    = "fstype"
 	IncrementalField               = "incremental"
 	KindField                      = "kind"
+	LatencyKey                     = "rate_limiter_throttling_request_latency_seconds"
 	LocationField                  = "location"
 	LogicalSectorSizeField         = "logicalsectorsize"
 	LUN                            = "LUN"
@@ -72,6 +73,7 @@ const (
 	RateLimited                    = "rate limited"
 	RequestedSizeGib               = "requestedsizegib"
 	ResizeRequired                 = "resizeRequired"
+	RestClientSubsystem            = "kube_client"
 	SubscriptionIDField            = "subscriptionid"
 	ResourceGroupField             = "resourcegroup"
 	ResourceNotFound               = "ResourceNotFound"
@@ -148,6 +150,7 @@ const (
 	SnapshotName            = "snapshot_name"
 	SnapshotID              = "snapshot_id"
 	Latency                 = "latency"
+	LongThrottleLatency     = 50 * time.Millisecond
 	NormalUpdateMaxNetRetry = 0
 	ForcedUpdateMaxNetRetry = 10
 	DefaultBackoffCap       = 10 * time.Minute

@@ -24,6 +24,7 @@ import (
 	"flag"
 	"fmt"
 	"math/rand"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -46,7 +47,10 @@ import (
 
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
+	clientmetrics "k8s.io/client-go/tools/metrics"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/component-base/metrics"
+	"k8s.io/component-base/metrics/legacyregistry"
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	azdiskinformers "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions"
@@ -89,6 +93,27 @@ const (
 	azDriverNodeHealthy      azDriverNodeStatus = "Driver node healthy."
 )
 
+// LatencyAdapter implements LatencyMetric.
+type LatencyAdapter struct {
+	metric *metrics.HistogramVec
+}
+
+// Observe increments the request latency metric for the given verb/URL.
+func (l *LatencyAdapter) Observe(_ context.Context, verb string, u url.URL, latency time.Duration) {
+	if latency > consts.LongThrottleLatency {
+		l.metric.WithLabelValues(verb, u.String()).Observe(latency.Seconds())
+	}
+}
+
+// RateLimiterLatency reports the rate limiter latency in seconds per verb/URL.
+var rateLimiterLatency = metrics.NewHistogramVec(
+	&metrics.HistogramOpts{
+		Subsystem: consts.RestClientSubsystem,
+		Name:      consts.LatencyKey,
+		Help:      "Rate limiter latency in seconds. Broken down by verb and URL.",
+		Buckets:   []float64{1, 5, 10, 15, 30, 45, 60},
+	}, []string{"verb", "url"})
+
 // DriverV2 implements all interfaces of CSI drivers
 type DriverV2 struct {
 	DriverCore
@@ -110,6 +135,11 @@ type DriverV2 struct {
 	azDriverNodeInformer              azdiskinformertypes.AzDriverNodeInformer
 	deviceChecker                     *deviceChecker
 	kubeClientQPS                     int
+}
+
+func init() {
+	legacyregistry.MustRegister(rateLimiterLatency)
+	clientmetrics.RateLimiterLatency = &LatencyAdapter{metric: rateLimiterLatency}
 }
 
 // NewDriver creates a driver object.
