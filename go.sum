@@ -205,8 +205,8 @@ github.com/docker/go-connections v0.4.0/go.mod h1:Gbd7IOopHjR8Iph03tsViu4nIes5Xh
 github.com/docker/go-units v0.4.0/go.mod h1:fgPhTUdO+D/Jk86RDLlptpiXQzgHJF7gydDDbaIK4Dk=
 github.com/docopt/docopt-go v0.0.0-20180111231733-ee0de3bc6815/go.mod h1:WwZ+bS3ebgob9U8Nd0kOddGdZWjyMGR8Wziv+TBNwSE=
 github.com/dustin/go-humanize v1.0.0/go.mod h1:HtrtbFcZ19U5GC7JDqmcUSB87Iq5E25KnS6fMYU6eOk=
-github.com/edreed/cloud-provider-azure v0.7.3-0.20220616180500-37d11c4d6406 h1:M6AyKU282bKYRE6wIiTSlEvgwmr2oAmEZOjLW+qzN7w=
-github.com/edreed/cloud-provider-azure v0.7.3-0.20220616180500-37d11c4d6406/go.mod h1:ajoeNNLS5du72HZZq/+iurfBMOt8kElXxKuuY1prGnI=
+github.com/edreed/cloud-provider-azure v0.7.3-0.20220713165859-f102dafce515 h1:R2sJXvXIb7wFpOTe24GgjVqQdvOnfUe5TSEu2Y1JFas=
+github.com/edreed/cloud-provider-azure v0.7.3-0.20220713165859-f102dafce515/go.mod h1:ajoeNNLS5du72HZZq/+iurfBMOt8kElXxKuuY1prGnI=
 github.com/elazarl/goproxy v0.0.0-20180725130230-947c36da3153 h1:yUdfgN0XgIJw7foRItutHYUIhlcKzcSf5vDpdhQAKTc=
 github.com/elazarl/goproxy v0.0.0-20180725130230-947c36da3153/go.mod h1:/Zj4wYkgs4iZTTu3o/KG3Itv/qCCa8VVMlb3i9OVuzc=
 github.com/emicklei/go-restful v0.0.0-20170410110728-ff4f55a20633/go.mod h1:otzb+WCGbkyDHkqmQmT5YD2WR4BBwUdeQoFo8l/7tVs=
