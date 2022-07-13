@@ -220,7 +220,7 @@ spec:
             {{- end }}
           imagePullPolicy: {{ .Values.image.azuredisk.pullPolicy }}
           volumeMounts:
-            - name: csi-azuredisk-node-windows-hostprocess-config
+            - name: csi-azuredisk-node-win-hp-config
               mountPath: /etc/csi-azuredisk-node-win-hp
       volumes:
         - name: init-script
