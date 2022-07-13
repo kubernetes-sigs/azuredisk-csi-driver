@@ -19,11 +19,13 @@ package armclient
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"html"
 	"io/ioutil"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httputil"
 	"net/url"
 	"strings"
@@ -43,6 +45,29 @@ import (
 
 var _ Interface = &Client{}
 
+// Singleton transport for all connections to ARM.
+var commTransport *http.Transport
+
+func init() {
+	// Use behaviour compatible with DefaultTransport, but override MaxIdleConns and MaxIdleConns
+	const maxIdleConns = 64
+	const maxIdleConnsPerHost = 64
+	defaultTransport := http.DefaultTransport.(*http.Transport)
+	commTransport = &http.Transport{
+		Proxy:                 defaultTransport.Proxy,
+		DialContext:           defaultTransport.DialContext,
+		MaxIdleConns:          maxIdleConns,
+		MaxIdleConnsPerHost:   maxIdleConnsPerHost,
+		IdleConnTimeout:       defaultTransport.IdleConnTimeout,
+		TLSHandshakeTimeout:   defaultTransport.TLSHandshakeTimeout,
+		ExpectContinueTimeout: defaultTransport.ExpectContinueTimeout,
+		TLSClientConfig: &tls.Config{
+			MinVersion:    tls.VersionTLS12,
+			Renegotiation: tls.RenegotiateNever,
+		},
+	}
+}
+
 // Client implements ARM client Interface.
 type Client struct {
 	client           autorest.Client
@@ -55,6 +80,7 @@ type Client struct {
 func New(authorizer autorest.Authorizer, clientConfig azureclients.ClientConfig, baseURI, apiVersion string, sendDecoraters ...autorest.SendDecorator) *Client {
 	restClient := autorest.NewClientWithUserAgent(clientConfig.UserAgent)
 	restClient.Authorizer = authorizer
+	restClient.Sender = getSender()
 
 	if clientConfig.UserAgent == "" {
 		restClient.UserAgent = GetUserAgent(restClient)
@@ -95,15 +121,23 @@ func New(authorizer autorest.Authorizer, clientConfig azureclients.ClientConfig,
 		apiVersion:       apiVersion,
 		regionalEndpoint: fmt.Sprintf("%s.%s", clientConfig.Location, url.Host),
 	}
+
 	client.client.Sender = autorest.DecorateSender(client.client,
 		autorest.DoCloseIfError(),
 		retry.DoExponentialBackoffRetry(backoff),
 		DoHackRegionalRetryDecorator(client),
 	)
 
-	client.client.Sender = autorest.DecorateSender(client.client.Sender, sendDecoraters...)
+	client.client.Sender = autorest.DecorateSender(client.client, sendDecoraters...)
 
 	return client
+}
+
+func getSender() autorest.Sender {
+	// Setup sender with singleton transport so that connections to ARM are shared.
+	// Refer https://github.com/Azure/go-autorest/blob/master/autorest/sender.go#L128 for how the sender is created.
+	j, _ := cookiejar.New(nil)
+	return &http.Client{Jar: j, Transport: commTransport}
 }
 
 // GetUserAgent gets the autorest client with a user agent that
