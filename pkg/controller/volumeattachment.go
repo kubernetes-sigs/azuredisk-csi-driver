@@ -26,11 +26,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/kubernetes/pkg/features"
-	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 
-	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -86,21 +83,7 @@ func (r *ReconcileVolumeAttachment) Reconcile(ctx context.Context, request recon
 	}
 
 	azVolumeAttachmentName := azureutils.GetAzVolumeAttachmentName(diskName, volumeAttachment.Spec.NodeName)
-	azVolumeAttachment, err := azureutils.GetAzVolumeAttachment(ctx, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachmentName, r.controllerSharedState.objectNamespace, true)
-	if err != nil {
-		return reconcileReturnOnError(ctx, &volumeAttachment, "get azvolumeattachment", err, r.controllerRetryInfo)
-	}
-
-	updateFunc := func(obj client.Object) error {
-		azv := obj.(*azdiskv1beta2.AzVolumeAttachment)
-		// Update the annotation of AzVolumeAttachment with volumeAttachment name
-		azv.Status.Annotations = azureutils.AddToMap(azv.Status.Annotations, consts.VolumeAttachmentKey, volumeAttachment.Name)
-		return nil
-	}
-
-	if err = azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
-		return reconcileReturnOnError(ctx, azVolumeAttachment, "update volumeattachment annotation", err, r.controllerRetryInfo)
-	}
+	r.controllerSharedState.azVolumeAttachmentToVaMap.Store(azVolumeAttachmentName, volumeAttachment.Name)
 
 	return reconcile.Result{}, nil
 }

@@ -94,43 +94,45 @@ func (c *CrdProvisioner) CreateVolume(
 	var azVolumeInstance *azdiskv1beta2.AzVolume
 	azVolumeInstance, err = azVLister.Get(azVolumeName)
 	if err == nil {
-		if azVolumeInstance.Status.Detail != nil {
-			// If current request has different specifications than the existing volume, return error.
-			if !isAzVolumeSpecSameAsRequestParams(azVolumeInstance, maxMountReplicaCount, capacityRange, parameters, secrets, volumeContentSource, accessibilityReq) {
-				err = status.Errorf(codes.AlreadyExists, "Volume with name (%s) already exists with different specifications", volumeName)
-				return nil, err
-			}
-			// The volume creation was successful previously,
-			// Returning the response object from the status
-			return azVolumeInstance.Status.Detail, nil
-		}
-		// return if volume creation is already in process to prevent duplicate request
-		if azVolumeInstance.Status.State == azdiskv1beta2.VolumeCreating {
-			err = status.Errorf(codes.Aborted, "creation still in process for volume (%s)", volumeName)
-			return nil, err
-		}
-
-		w.Logger().V(5).Info("Requeuing CreateVolume request")
-		// otherwise requeue operation
 		updateFunc := func(obj client.Object) error {
 			updateInstance := obj.(*azdiskv1beta2.AzVolume)
-			updateInstance.Status.Error = nil
-			updateInstance.Status.State = azdiskv1beta2.VolumeOperationPending
+			switch updateInstance.Status.State {
+			case "":
+				return nil
+			case azdiskv1beta2.VolumeCreated:
+				if updateInstance.Status.Detail != nil {
+					// If current request has different specifications than the existing volume, return error.
+					if !isAzVolumeSpecSameAsRequestParams(updateInstance, maxMountReplicaCount, capacityRange, parameters, secrets, volumeContentSource, accessibilityReq) {
+						err = status.Errorf(codes.AlreadyExists, "Volume with name (%s) already exists with different specifications", volumeName)
+						return err
+					}
+					return nil
+				}
+			case azdiskv1beta2.VolumeCreating:
+				return nil
+			case azdiskv1beta2.VolumeCreationFailed:
+				w.Logger().V(5).Info("Requeuing CreateVolume request")
+				// otherwise requeue operation
+				updateInstance.Status.Error = nil
+				updateInstance.Status.State = azdiskv1beta2.VolumeOperationPending
+				updateInstance.Finalizers = []string{consts.AzVolumeFinalizer}
 
-			if !isAzVolumeSpecSameAsRequestParams(updateInstance, maxMountReplicaCount, capacityRange, parameters, secrets, volumeContentSource, accessibilityReq) {
-				// Updating the spec fields to keep it up to date with the request
-				updateInstance.Spec.MaxMountReplicaCount = maxMountReplicaCount
-				updateInstance.Spec.CapacityRange = capacityRange
-				updateInstance.Spec.Parameters = parameters
-				updateInstance.Spec.Secrets = secrets
-				updateInstance.Spec.ContentVolumeSource = volumeContentSource
-				updateInstance.Spec.AccessibilityRequirements = accessibilityReq
+				if !isAzVolumeSpecSameAsRequestParams(updateInstance, maxMountReplicaCount, capacityRange, parameters, secrets, volumeContentSource, accessibilityReq) {
+					// Updating the spec fields to keep it up to date with the request
+					updateInstance.Spec.MaxMountReplicaCount = maxMountReplicaCount
+					updateInstance.Spec.CapacityRange = capacityRange
+					updateInstance.Spec.Parameters = parameters
+					updateInstance.Spec.Secrets = secrets
+					updateInstance.Spec.ContentVolumeSource = volumeContentSource
+					updateInstance.Spec.AccessibilityRequirements = accessibilityReq
+				}
+			default:
+				return status.Errorf(codes.Internal, "unexpected create volume request: volume is currently in %s state", updateInstance.Status.State)
 			}
-
 			return nil
 		}
 
-		if err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, azVolumeInstance, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateAll); err != nil {
+		if _, err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, azVolumeInstance, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateAll); err != nil {
 			return nil, err
 		}
 		// if the error was caused by errors other than IsNotFound, return failure
@@ -253,9 +255,46 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 		return nil
 	}
 
+	var waiter *watcher.ConditionWaiter
 	// if deletion failed requeue deletion
 	updateFunc := func(obj client.Object) error {
 		updateInstance := obj.(*azdiskv1beta2.AzVolume)
+		switch updateInstance.Status.State {
+		case azdiskv1beta2.VolumeCreating:
+			// if volume is still being created, wait for creation
+			waiter, err = c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeType, azVolumeName, waitForCreateVolumeFunc)
+			if err != nil {
+				return err
+			}
+			var obj interface{}
+			obj, err = waiter.Wait(ctx)
+			// close cannot be called on defer because this will interfere wait for delete
+			waiter.Close()
+			if err != nil {
+				return err
+			}
+			azVolumeInstance = obj.(*azdiskv1beta2.AzVolume)
+		case azdiskv1beta2.VolumeUpdating:
+			// if volume is still being updated, wait for update
+			if azVolumeInstance.Spec.CapacityRange != nil {
+				waiter, err = c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeType, azVolumeName, waitForExpandVolumeFunc(azVolumeInstance.Spec.CapacityRange.RequiredBytes))
+				if err != nil {
+					return err
+				}
+				var obj interface{}
+				obj, err = waiter.Wait(ctx)
+				// close cannot be called on defer because this will interfere wait for delete
+				waiter.Close()
+				if err != nil {
+					return err
+				}
+				azVolumeInstance = obj.(*azdiskv1beta2.AzVolume)
+			}
+		case azdiskv1beta2.VolumeDeleting:
+			// if volume is still being deleted, don't update
+			return nil
+		}
+		// otherwise update the AzVolume with delete request annotation
 		w.AnnotateObject(updateInstance)
 		updateInstance.Status.Annotations = azureutils.AddToMap(updateInstance.Status.Annotations, consts.VolumeDeleteRequestAnnotation, "cloud-delete-volume")
 		// remove deletion failure error from AzVolume CRI to retrigger deletion
@@ -266,40 +305,18 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 		return nil
 	}
 
-	var waiter *watcher.ConditionWaiter
-	switch azVolumeInstance.Status.State {
-	case azdiskv1beta2.VolumeCreating:
-		// if volume is currently being created, wait for the volume creation to complete
-		waiter, err = c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeType, azVolumeName, waitForCreateVolumeFunc)
-		if err != nil {
-			return err
-		}
-		var obj interface{}
-		obj, err = waiter.Wait(ctx)
-		// close cannot be called on defer because this will interfere wait for delete
-		waiter.Close()
-		if err != nil {
-			return err
-		}
-		azVolumeInstance = obj.(*azdiskv1beta2.AzVolume)
-
-	case azdiskv1beta2.VolumeDeleting:
-		// no need to update CRI if volume is already in process of deleting
-		updateFunc = nil
+	var updateObj client.Object
+	// update AzVolume CRI with annotation and reset state with retry upon conflict
+	if updateObj, err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, azVolumeInstance, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
+		return err
 	}
+	azVolumeInstance = updateObj.(*azdiskv1beta2.AzVolume)
 
 	waiter, err = c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeType, azVolumeName, waitForDeleteVolumeFunc)
 	if err != nil {
 		return err
 	}
 	defer waiter.Close()
-
-	if updateFunc != nil {
-		// update AzVolume CRI with annotation and reset state with retry upon conflict
-		if err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, azVolumeInstance, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
-			return err
-		}
-	}
 
 	// only make delete request if object's deletion timestamp is not set
 	if azVolumeInstance.DeletionTimestamp.IsZero() {
@@ -494,7 +511,7 @@ func (c *CrdProvisioner) PublishVolume(
 		}
 		updateMode = azureutils.UpdateAll
 	}
-	if err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, attachmentObj, updateFunc, consts.NormalUpdateMaxNetRetry, updateMode); err != nil {
+	if _, err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, attachmentObj, updateFunc, consts.NormalUpdateMaxNetRetry, updateMode); err != nil {
 		return publishContext, err
 	}
 
@@ -552,15 +569,24 @@ func (c *CrdProvisioner) waitForLunOrAttach(ctx context.Context, volumeID, nodeI
 			// If the attachment had previously failed with an error, reset the error, detail and state, and retrigger attach
 			updateFunc := func(obj client.Object) error {
 				updateInstance := obj.(*azdiskv1beta2.AzVolumeAttachment)
-				if w, ok := workflow.GetWorkflowFromContext(ctx); ok {
-					w.AnnotateObject(updateInstance)
+				switch updateInstance.Status.State {
+				case azdiskv1beta2.AttachmentFailed:
+					if w, ok := workflow.GetWorkflowFromContext(ctx); ok {
+						w.AnnotateObject(updateInstance)
+					}
+					updateInstance.Status.State = azdiskv1beta2.AttachmentPending
+					updateInstance.Status.Detail = nil
+					updateInstance.Status.Error = nil
+				case azdiskv1beta2.Attached:
+				case azdiskv1beta2.Attaching:
+				case azdiskv1beta2.AttachmentPending:
+				default:
+					return status.Errorf(codes.Internal, "unexpected publish/stage volume request: AzVolumeAttachment is currently in %s state", updateInstance.Status.State)
 				}
-				updateInstance.Status.State = azdiskv1beta2.AttachmentPending
-				updateInstance.Status.Detail = nil
-				updateInstance.Status.Error = nil
 				return nil
 			}
-			if err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, azVolumeAttachmentInstance, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
+
+			if _, err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, azVolumeAttachmentInstance, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
 				return nil, err
 			}
 		}
@@ -661,9 +687,9 @@ func (c *CrdProvisioner) demoteVolume(ctx context.Context, azVolumeAttachment *a
 		updateInstance.Labels[consts.RoleChangeLabel] = consts.Demoted
 		return nil
 	}
-	return azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateAll)
+	_, err := azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateAll)
+	return err
 }
-
 func (c *CrdProvisioner) detachVolume(ctx context.Context, azVolumeAttachment *azdiskv1beta2.AzVolumeAttachment) error {
 	var err error
 	attachmentName := azVolumeAttachment.Name
@@ -677,42 +703,34 @@ func (c *CrdProvisioner) detachVolume(ctx context.Context, azVolumeAttachment *a
 
 	updateFunc := func(obj client.Object) error {
 		updateInstance := obj.(*azdiskv1beta2.AzVolumeAttachment)
-		if updateInstance.Annotations == nil {
-			updateInstance.Annotations = map[string]string{}
+		switch azVolumeAttachment.Status.State {
+		// if detachment still in progress, return without update
+		case azdiskv1beta2.Detaching:
+			return nil
+		case azdiskv1beta2.Attaching:
+			// if attachment still in progress, wait for attach to complete
+			w.Logger().V(5).Info("Attachment is in process... Waiting for the attachment to complete.")
+			if azVolumeAttachment, err = c.WaitForAttach(ctx, volumeID, nodeName); err != nil {
+				return err
+			}
+		// if detachment failed, reset error and state to retrigger operation
+		case azdiskv1beta2.DetachmentFailed:
+			// remove detachment failure error from AzVolumeAttachment CRI to retrigger detachment
+			updateInstance.Status.Error = nil
+			// revert attachment state to avoid confusion
+			updateInstance.Status.State = azdiskv1beta2.Attached
 		}
 		w.AnnotateObject(updateInstance)
 		updateInstance.Status.Annotations = azureutils.AddToMap(updateInstance.Status.Annotations, consts.VolumeDetachRequestAnnotation, "crdProvisioner")
 		return nil
 	}
-	switch azVolumeAttachment.Status.State {
-	case azdiskv1beta2.Detaching:
-		// if detachment is pending, return to prevent duplicate request
-		return status.Error(codes.Aborted, "detachment still in process")
-	case azdiskv1beta2.Attaching:
-		// if attachment is still happening in the background async, wait until attachment is complete
-		w.Logger().V(5).Info("Attachment is in process... Waiting for the attachment to complete.")
-		if azVolumeAttachment, err = c.WaitForAttach(ctx, volumeID, nodeName); err != nil {
-			return err
-		}
-	case azdiskv1beta2.DetachmentFailed:
-		// if detachment failed, reset error and state to retrigger operation
-		updateFunc = azureutils.AppendToUpdateCRIFunc(updateFunc, func(obj client.Object) error {
-			updateInstance := obj.(*azdiskv1beta2.AzVolumeAttachment)
-
-			// remove detachment failure error from AzVolumeAttachment CRI to retrigger detachment
-			updateInstance.Status.Error = nil
-			// revert attachment state to avoid confusion
-			updateInstance.Status.State = azdiskv1beta2.Attached
-
-			return nil
-		})
-	}
 
 	w.Logger().V(5).Infof("Requesting AzVolumeAttachment (%s) detachment", azVolumeAttachment.Name)
-
-	if err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
+	var updatedObj client.Object
+	if updatedObj, err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
 		return err
 	}
+	azVolumeAttachment = updatedObj.(*azdiskv1beta2.AzVolumeAttachment)
 
 	// only make delete request if deletionTimestamp is not set
 	if azVolumeAttachment.DeletionTimestamp.IsZero() {
@@ -783,20 +801,7 @@ func (c *CrdProvisioner) ExpandVolume(
 	defer func() { w.Finish(err) }()
 
 	var waiter *watcher.ConditionWaiter
-	waiter, err = c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeType, azVolumeName, func(obj interface{}, objectDeleted bool) (bool, error) {
-		if obj == nil || objectDeleted {
-			return false, nil
-		}
-		azVolumeInstance := obj.(*azdiskv1beta2.AzVolume)
-		// Checking that the status is updated with the required capacityRange
-		if azVolumeInstance.Status.Detail != nil && azVolumeInstance.Status.Detail.CapacityBytes == capacityRange.RequiredBytes {
-			return true, nil
-		}
-		if azVolumeInstance.Status.Error != nil {
-			return false, util.ErrorFromAzError(azVolumeInstance.Status.Error)
-		}
-		return false, nil
-	})
+	waiter, err = c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeType, azVolumeName, waitForExpandVolumeFunc(capacityRange.RequiredBytes))
 	if err != nil {
 		return nil, err
 	}
@@ -805,35 +810,27 @@ func (c *CrdProvisioner) ExpandVolume(
 
 	updateFunc := func(obj client.Object) error {
 		updateInstance := obj.(*azdiskv1beta2.AzVolume)
+		switch azVolume.Status.State {
+		// if volume is still updating, return without updating
+		case azdiskv1beta2.VolumeUpdating:
+			return nil
+		case azdiskv1beta2.VolumeUpdated:
+			return nil
+		case azdiskv1beta2.VolumeCreated:
+		case azdiskv1beta2.VolumeUpdateFailed:
+			updateInstance := obj.(*azdiskv1beta2.AzVolume)
+			updateInstance.Status.Error = nil
+			updateInstance.Status.State = azdiskv1beta2.VolumeCreated
+		default:
+			err = status.Errorf(codes.Internal, "unexpected expand volume request: AzVolume is currently in %s state", azVolume.Status.State)
+			return err
+		}
 		w.AnnotateObject(updateInstance)
 		updateInstance.Spec.CapacityRange = capacityRange
 		return nil
 	}
 
-	updateMode := azureutils.UpdateCRI
-
-	switch azVolume.Status.State {
-	case azdiskv1beta2.VolumeUpdating:
-		err = status.Errorf(codes.Aborted, "expand operation still in process")
-		return nil, err
-	case azdiskv1beta2.VolumeUpdateFailed:
-		updateFunc = azureutils.AppendToUpdateCRIFunc(updateFunc, func(obj client.Object) error {
-			updateInstance := obj.(*azdiskv1beta2.AzVolume)
-			updateInstance.Status.Error = nil
-			updateInstance.Status.State = azdiskv1beta2.VolumeCreated
-			return nil
-		})
-		updateMode = azureutils.UpdateAll
-	case azdiskv1beta2.VolumeUpdated:
-		break
-	case azdiskv1beta2.VolumeCreated:
-		break
-	default:
-		err = status.Errorf(codes.Internal, "unexpected expand volume request: volume is currently in %s state", azVolume.Status.State)
-		return nil, err
-	}
-
-	if err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, azVolume, updateFunc, consts.NormalUpdateMaxNetRetry, updateMode); err != nil {
+	if _, err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, azVolume, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateAll); err != nil {
 		return nil, err
 	}
 
@@ -849,8 +846,8 @@ func (c *CrdProvisioner) ExpandVolume(
 	}
 
 	azVolumeInstance := obj.(*azdiskv1beta2.AzVolume)
-	if azVolumeInstance.Status.Detail.CapacityBytes != capacityRange.RequiredBytes {
-		err = status.Error(codes.Internal, "AzVolume status not updated with the new capacity")
+	if azVolumeInstance.Status.Detail.CapacityBytes < capacityRange.RequiredBytes {
+		err = status.Errorf(codes.Internal, "AzVolume status was not updated with the new capacity: current capacity (%d), requested capacity (%d)", azVolumeInstance.Status.Detail.CapacityBytes, capacityRange.RequiredBytes)
 		return nil, err
 	}
 
@@ -969,6 +966,23 @@ func waitForDeleteVolumeFunc(obj interface{}, objectDeleted bool) (bool, error) 
 		return false, util.ErrorFromAzError(azVolumeInstance.Status.Error)
 	}
 	return false, nil
+}
+
+func waitForExpandVolumeFunc(newCapacity int64) func(interface{}, bool) (bool, error) {
+	return func(obj interface{}, objectDeleted bool) (bool, error) {
+		if obj == nil || objectDeleted {
+			return false, nil
+		}
+		azVolumeInstance := obj.(*azdiskv1beta2.AzVolume)
+		// Checking that the status is updated with the required capacityRange
+		if azVolumeInstance.Status.Detail != nil && azVolumeInstance.Status.Detail.CapacityBytes >= newCapacity {
+			return true, nil
+		}
+		if azVolumeInstance.Status.Error != nil {
+			return false, util.ErrorFromAzError(azVolumeInstance.Status.Error)
+		}
+		return false, nil
+	}
 }
 
 func waitForLunFunc(obj interface{}, objectDeleted bool) (bool, error) {

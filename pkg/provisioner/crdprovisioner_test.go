@@ -280,6 +280,7 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 						Detail: &azdiskv1beta2.AzVolumeStatusDetail{
 							VolumeID: testDiskURI,
 						},
+						State: azdiskv1beta2.VolumeCreated,
 					},
 				},
 			},
@@ -336,6 +337,7 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 						Error: &azdiskv1beta2.AzError{
 							Message: "Test error message here",
 						},
+						State: azdiskv1beta2.VolumeCreationFailed,
 					},
 				},
 			},
@@ -383,6 +385,7 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 							VolumeID:      testDiskURI,
 							CapacityBytes: 2,
 						},
+						State: azdiskv1beta2.VolumeCreated,
 					},
 				},
 			},
@@ -689,6 +692,7 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 					},
 					Status: azdiskv1beta2.AzVolumeAttachmentStatus{
 						Error: &azdiskv1beta2.AzError{},
+						State: azdiskv1beta2.AttachmentFailed,
 					},
 				},
 			},

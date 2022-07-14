@@ -88,11 +88,12 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 			r.triggerGarbageCollection(ctx, azVolumeAttachment.Spec.VolumeName)
 			return reconcile.Result{}, nil
 		}
+
 		// create a replacement replica if replica attachment failed
 		if objectDeletionRequested(azVolumeAttachment) {
 			switch azVolumeAttachment.Status.State {
 			case azdiskv1beta2.DetachmentFailed:
-				if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, func(obj client.Object) error {
+				if _, err := azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, func(obj client.Object) error {
 					azVolumeAttachment := obj.(*azdiskv1beta2.AzVolumeAttachment)
 					_, err = updateState(azVolumeAttachment, azdiskv1beta2.ForceDetachPending, normalUpdate)
 					return err

@@ -431,10 +431,11 @@ func (c *CloudProvisioner) PublishVolume(
 			close(attachResult.ResultChannel())
 			if resultErr != nil {
 				w.Logger().Errorf(resultErr, "attach volume %q to instance %q failed", volumeID, nodeName)
+			} else {
+				w.Logger().V(2).Infof("attach operation successful: volume %q attached to node %q.", volumeID, nodeName)
 			}
 			resultLunCh <- resultLun
 			close(resultLunCh)
-			w.Logger().V(2).Infof("attach operation successful: volume %q attached to node %q.", volumeID, nodeName)
 		}()
 
 		select {
@@ -759,7 +760,7 @@ func (c *CloudProvisioner) CheckDiskExists(ctx context.Context, diskURI string) 
 
 	disk, rerr := c.cloud.DisksClient.Get(ctx, c.cloud.SubscriptionID, resourceGroup, diskName)
 	if rerr != nil {
-		if strings.Contains(rerr.RawError.Error(), azureconstants.RateLimited) {
+		if rerr.IsThrottled() || strings.Contains(rerr.RawError.Error(), azureconstants.RateLimited) {
 			klog.Warningf("checkDiskExists(%s) is throttled with error: %v", diskURI, rerr.Error())
 			c.getDiskThrottlingCache.Set(azureconstants.ThrottlingKey, "")
 			return nil, nil
@@ -819,7 +820,7 @@ func (c *CloudProvisioner) CheckDiskCapacity(ctx context.Context, resourceGroup,
 			return false, status.Errorf(codes.AlreadyExists, "the request volume already exists, but its capacity(%v) is different from (%v)", *disk.DiskProperties.DiskSizeGB, requestGiB)
 		}
 	} else {
-		if strings.Contains(rerr.RawError.Error(), azureconstants.RateLimited) {
+		if rerr.IsThrottled() || strings.Contains(rerr.RawError.Error(), azureconstants.RateLimited) {
 			klog.Warningf("checkDiskCapacity(%s, %s) is throttled with error: %v", resourceGroup, diskName, rerr.Error())
 			c.getDiskThrottlingCache.Set(azureconstants.ThrottlingKey, "")
 		}

@@ -120,7 +120,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 			azv.Status.Annotations = azureutils.AddToMap(azv.Status.Annotations, consts.PreProvisionedVolumeCleanupAnnotation, "true")
 			return nil
 		}
-		if err := azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, &azVolume, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
+		if _, err := azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, &azVolume, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
 			return reconcileReturnOnError(ctx, &pv, "delete", err, r.controllerRetryInfo)
 		}
 
@@ -190,7 +190,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 	}
 
 	if azVolumeUpdateFunc != nil {
-		err := azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, &azVolume, azVolumeUpdateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRI)
+		_, err := azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, &azVolume, azVolumeUpdateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRI)
 		if err != nil {
 			return reconcileReturnOnError(ctx, &pv, "update", err, r.controllerRetryInfo)
 		}
