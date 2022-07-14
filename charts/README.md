@@ -233,7 +233,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `windows.resources.livenessProbe.requests.cpu`           | liveness-probe cpu requests                    | 10m                                                            |
 | `windows.resources.livenessProbe.requests.memory`        | liveness-probe memory requests                 | 40Mi                                                           |
 | `windows.resources.nodeDriverRegistrar.limits.memory`    | csi-node-driver-registrar memory limits               | 100Mi                                                          |
-| `windows.resources.nodeDriverRegistrar.requests.cpu`     | csi-node-driver-registrar cpu requests         | 10m                                                            |
+| `windows.resources.nodeDriverRegistrar.requests.cpu`     | csi-node-driver-registrar cpu requests         | 30m                                                            |
 | `windows.resources.nodeDriverRegistrar.requests.memory`  | csi-node-driver-registrar memory requests      | 40Mi                                                           |
 | `windows.resources.azuredisk.limits.memory`              | azuredisk memory limits                         | 200Mi                                                         |
 | `windows.resources.azuredisk.requests.cpu`               | azuredisk cpu requests                   | 10m                                                            |
