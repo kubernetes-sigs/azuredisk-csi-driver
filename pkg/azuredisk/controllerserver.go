@@ -102,7 +102,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	if diskParams.UserAgent != "" {
 		localCloud, err = azureutils.GetCloudProvider(d.kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, diskParams.UserAgent, d.allowEmptyCloudConfig)
 		if err != nil {
-			return nil, fmt.Errorf("create cloud with UserAgent(%s) failed with: (%s)", diskParams.UserAgent, err)
+			return nil, status.Errorf(codes.Internal, "create cloud with UserAgent(%s) failed with: (%s)", diskParams.UserAgent, err)
 		}
 	}
 	if azureutils.IsAzureStackCloud(localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud) {
@@ -251,7 +251,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		if strings.Contains(err.Error(), consts.NotFound) {
 			return nil, status.Error(codes.NotFound, err.Error())
 		}
-		return nil, err
+		return nil, status.Errorf(codes.Internal, err.Error())
 	}
 
 	isOperationSucceeded = true
@@ -276,7 +276,7 @@ func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest)
 	}
 
 	if err := d.ValidateControllerServiceRequest(csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME); err != nil {
-		return nil, fmt.Errorf("invalid delete volume req: %v", req)
+		return nil, status.Errorf(codes.Internal, "invalid delete volume req: %v", req)
 	}
 	diskURI := volumeID
 
@@ -343,7 +343,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 	nodeName := types.NodeName(nodeID)
 	diskName, err := azureutils.GetDiskName(diskURI)
 	if err != nil {
-		return nil, err
+		return nil, status.Errorf(codes.Internal, err.Error())
 	}
 
 	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_publish_volume", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
@@ -368,7 +368,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		if vmState != nil && strings.ToLower(*vmState) == "failed" {
 			klog.Warningf("VM(%s) is in failed state, update VM first", nodeName)
 			if err := d.cloud.UpdateVM(ctx, nodeName); err != nil {
-				return nil, fmt.Errorf("update instance %q failed with %v", nodeName, err)
+				return nil, status.Errorf(codes.Internal, "update instance %q failed with %v", nodeName, err)
 			}
 		}
 		// Volume is already attached to node.
@@ -376,7 +376,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 	} else {
 		var cachingMode compute.CachingTypes
 		if cachingMode, err = azureutils.GetCachingMode(volumeContext); err != nil {
-			return nil, err
+			return nil, status.Errorf(codes.Internal, err.Error())
 		}
 		klog.V(2).Infof("Trying to attach volume %s to node %s", diskURI, nodeName)
 
@@ -387,7 +387,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		} else {
 			if derr, ok := err.(*volerr.DanglingAttachError); ok {
 				if strings.EqualFold(string(nodeName), string(derr.CurrentNode)) {
-					err := fmt.Errorf("volume %s is actually attached to current node %s, return error", diskURI, nodeName)
+					err := status.Errorf(codes.Internal, "volume %s is actually attached to current node %s, return error", diskURI, nodeName)
 					klog.Warningf("%v", err)
 					return nil, err
 				}
@@ -400,7 +400,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 			}
 			if err != nil {
 				klog.Errorf("Attach volume %s to instance %s failed with %v", diskURI, nodeName, err)
-				return nil, fmt.Errorf("Attach volume %s to instance %s failed with %v", diskURI, nodeName, err)
+				return nil, status.Errorf(codes.Internal, "Attach volume %s to instance %s failed with %v", diskURI, nodeName, err)
 			}
 		}
 		klog.V(2).Infof("attach volume %s to node %s successfully", diskURI, nodeName)
@@ -432,7 +432,7 @@ func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.Control
 
 	diskName, err := azureutils.GetDiskName(diskURI)
 	if err != nil {
-		return nil, err
+		return nil, status.Errorf(codes.Internal, err.Error())
 	}
 
 	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_unpublish_volume", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
@@ -798,13 +798,12 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 			newUserAgent := v
 			localCloud, err = azureutils.GetCloudProvider(d.kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, newUserAgent, d.allowEmptyCloudConfig)
 			if err != nil {
-				return nil, fmt.Errorf("create cloud with UserAgent(%s) failed with: (%s)", newUserAgent, err)
-
+				return nil, status.Errorf(codes.Internal, "create cloud with UserAgent(%s) failed with: (%s)", newUserAgent, err)
 			}
 		case consts.SubscriptionIDField:
 			subsID = v
 		default:
-			return nil, fmt.Errorf("AzureDisk - invalid option %s in VolumeSnapshotClass", k)
+			return nil, status.Errorf(codes.Internal, "AzureDisk - invalid option %s in VolumeSnapshotClass", k)
 		}
 	}
 
@@ -822,7 +821,7 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 
 	customTagsMap, err := volumehelper.ConvertTagsToMap(customTags)
 	if err != nil {
-		return nil, err
+		return nil, status.Errorf(codes.InvalidArgument, err.Error())
 	}
 	tags := make(map[string]*string)
 	for k, v := range customTagsMap {
@@ -886,7 +885,7 @@ func (d *Driver) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequ
 	if azureutils.IsARMResourceID(snapshotID) {
 		snapshotName, resourceGroup, subsID, err = d.getSnapshotInfo(snapshotID)
 		if err != nil {
-			return nil, err
+			return nil, status.Errorf(codes.Internal, err.Error())
 		}
 	}
 
@@ -943,7 +942,7 @@ func (d *Driver) getSnapshotByID(ctx context.Context, subsID, resourceGroup, sna
 	if azureutils.IsARMResourceID(snapshotID) {
 		snapshotName, resourceGroup, subsID, err = d.getSnapshotInfo(snapshotID)
 		if err != nil {
-			return nil, err
+			return nil, status.Errorf(codes.Internal, err.Error())
 		}
 	}
 

@@ -311,7 +311,7 @@ func TestCreateVolume(t *testing.T) {
 				}
 				d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rerr).AnyTimes()
 				_, err := d.CreateVolume(context.Background(), req)
-				expectedErr := fmt.Errorf("Retriable: false, RetryAfter: 0s, HTTPStatusCode: 0, RawError: test")
+				expectedErr := status.Errorf(codes.Internal, "Retriable: false, RetryAfter: 0s, HTTPStatusCode: 0, RawError: test")
 				if err.Error() != expectedErr.Error() {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
@@ -707,7 +707,7 @@ func TestControllerPublishVolume(t *testing.T) {
 				mockVMsClient := d.getCloud().VirtualMachinesClient.(*mockvmclient.MockInterface)
 				mockVMsClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(vm, nil).AnyTimes()
 				mockVMsClient.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&retry.Error{RawError: fmt.Errorf("error")}).AnyTimes()
-				expectedErr := fmt.Errorf("update instance \"unit-test-node\" failed with Retriable: false, RetryAfter: 0s, HTTPStatusCode: 0, RawError: error")
+				expectedErr := status.Errorf(codes.Internal, "update instance \"unit-test-node\" failed with Retriable: false, RetryAfter: 0s, HTTPStatusCode: 0, RawError: error")
 				_, err := d.ControllerPublishVolume(context.Background(), req)
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
@@ -818,7 +818,7 @@ func TestControllerPublishVolume(t *testing.T) {
 				}
 				mockVMsClient := d.getCloud().VirtualMachinesClient.(*mockvmclient.MockInterface)
 				mockVMsClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(vm, nil).AnyTimes()
-				expectedErr := fmt.Errorf("azureDisk - badmode is not supported cachingmode. Supported values are [None ReadOnly ReadWrite]")
+				expectedErr := status.Errorf(codes.Internal, "azureDisk - badmode is not supported cachingmode. Supported values are [None ReadOnly ReadWrite]")
 				_, err := d.ControllerPublishVolume(context.Background(), req)
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (<nil>)", err)
@@ -860,7 +860,7 @@ func TestControllerUnpublishVolume(t *testing.T) {
 				VolumeId: "vol_1",
 				NodeId:   "unit-test-node",
 			},
-			expectedErr: fmt.Errorf("could not get disk name from vol_1, correct format: (?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/disks/(.+)"),
+			expectedErr: status.Errorf(codes.Internal, "could not get disk name from vol_1, correct format: (?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/disks/(.+)"),
 		},
 	}
 	for _, test := range tests {
@@ -1060,7 +1060,7 @@ func TestCreateSnapshot(t *testing.T) {
 				}
 
 				_, err := d.CreateSnapshot(context.Background(), req)
-				expectedErr := fmt.Errorf("AzureDisk - invalid option unit-test in VolumeSnapshotClass")
+				expectedErr := status.Errorf(codes.Internal, "AzureDisk - invalid option unit-test in VolumeSnapshotClass")
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
@@ -1097,7 +1097,7 @@ func TestCreateSnapshot(t *testing.T) {
 				}
 
 				_, err := d.CreateSnapshot(context.Background(), req)
-				expectedErr := fmt.Errorf("Tags 'unit-test' are invalid, the format should like: 'key1=value1,key2=value2'")
+				expectedErr := status.Errorf(codes.InvalidArgument, "Tags 'unit-test' are invalid, the format should like: 'key1=value1,key2=value2'")
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
@@ -1263,7 +1263,7 @@ func TestDeleteSnapshot(t *testing.T) {
 					SnapshotId: "/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name",
 				}
 				d, _ := NewFakeDriver(t)
-				expectedErr := fmt.Errorf("could not get snapshot name from /subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name, correct format: (?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/snapshots/(.+)")
+				expectedErr := status.Errorf(codes.Internal, "could not get snapshot name from /subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name, correct format: (?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/snapshots/(.+)")
 				_, err := d.DeleteSnapshot(context.Background(), req)
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
@@ -1331,7 +1331,7 @@ func TestGetSnapshotByID(t *testing.T) {
 				d, _ := NewFakeDriver(t)
 				d.setCloud(&azure.Cloud{})
 				snapshotID := "testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name"
-				expectedErr := fmt.Errorf("could not get snapshot name from testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name, correct format: (?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/snapshots/(.+)")
+				expectedErr := status.Errorf(codes.Internal, "could not get snapshot name from testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name, correct format: (?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/snapshots/(.+)")
 				_, err := d.getSnapshotByID(ctx, d.getCloud().SubscriptionID, d.getCloud().ResourceGroup, snapshotID, sourceVolumeID)
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
@@ -1357,7 +1357,7 @@ func TestGetSnapshotByID(t *testing.T) {
 				}
 				snapshotVolumeID := "unit-test"
 				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, rerr).AnyTimes()
-				expectedErr := fmt.Errorf("could not get snapshot name from testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name, correct format: (?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/snapshots/(.+)")
+				expectedErr := status.Errorf(codes.Internal, "could not get snapshot name from testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name, correct format: (?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/snapshots/(.+)")
 				_, err := d.getSnapshotByID(context.Background(), d.getCloud().SubscriptionID, d.getCloud().ResourceGroup, snapshotID, snapshotVolumeID)
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
@@ -1382,7 +1382,7 @@ func TestListSnapshots(t *testing.T) {
 					SnapshotId: "testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-nametestVolumeName",
 				}
 				d, _ := NewFakeDriver(t)
-				expectedErr := fmt.Errorf("could not get snapshot name from testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-nametestVolumeName, correct format: (?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/snapshots/(.+)")
+				expectedErr := status.Errorf(codes.Internal, "could not get snapshot name from testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-nametestVolumeName, correct format: (?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/snapshots/(.+)")
 				_, err := d.ListSnapshots(context.TODO(), &req)
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
