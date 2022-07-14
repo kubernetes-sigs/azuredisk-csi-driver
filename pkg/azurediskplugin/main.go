@@ -105,12 +105,6 @@ func main() {
 
 func getDriverConfig() {
 	if *driverConfigPath != "" {
-		// Read yaml file
-		yamlFile, err := os.ReadFile(*driverConfigPath)
-		if err != nil {
-			klog.Fatalf("failed to get the driver config, error: %v", err)
-		}
-
 		// Initialize driveConfig object with default values
 		driverConfig = azdiskv1beta2.AzDiskDriverConfiguration{
 			ControllerConfig: azdiskv1beta2.ControllerConfiguration{
@@ -154,6 +148,12 @@ func getDriverConfig() {
 			Endpoint:        consts.DefaultEndpoint,
 			MetricsAddress:  consts.DefaultMetricsAddress,
 			DriverName:      consts.DefaultDriverName,
+		}
+
+		// Read yaml file
+		yamlFile, err := os.ReadFile(*driverConfigPath)
+		if err != nil {
+			klog.Fatalf("failed to get the driver config, error: %v", err)
 		}
 
 		// Convert yaml to a driveConfig object

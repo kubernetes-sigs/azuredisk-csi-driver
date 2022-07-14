@@ -524,16 +524,16 @@ type ListSnapshotsResult struct {
 
 type AzDiskDriverConfiguration struct {
 	metav1.TypeMeta  `json:",inline"`
-	ControllerConfig ControllerConfiguration `json:"controller,omitempty"`
-	NodeConfig       NodeConfiguration       `json:"node,omitempty"`
-	CloudConfig      CloudConfiguration      `json:"cloud,omitempty"`
-	ClientConfig     ClientConfiguration     `json:"client,omitempty"`
+	ControllerConfig ControllerConfiguration `json:"controllerConfig,omitempty"`
+	NodeConfig       NodeConfiguration       `json:"nodeConfig,omitempty"`
+	CloudConfig      CloudConfiguration      `json:"cloudConfig,omitempty"`
+	ClientConfig     ClientConfiguration     `json:"clientConfig,omitempty"`
 	// The namespace where driver related custom resources are created
 	ObjectNamespace string `json:"objectNamespace,omitempty"`
 	// CSI endpoint
 	Endpoint string `json:"endpoint,omitempty"`
 	// export the metrics
-	MetricsAddress string `json:"metricAddress,omitempty"`
+	MetricsAddress string `json:"metricsAddress,omitempty"`
 	// name of the driver
 	DriverName string `json:"driverName,omitempty"`
 }
@@ -590,9 +590,9 @@ type NodeConfiguration struct {
 
 type CloudConfiguration struct {
 	// cloud config secret name
-	SecretName string `json:"cloudConfigSecretName,omitempty"`
+	SecretName string `json:"secretName,omitempty"`
 	// cloud config secret namespace
-	SecretNamespace string `json:"cloudConfigSecretNamesapce,omitempty"`
+	SecretNamespace string `json:"secretNamespace,omitempty"`
 	// custom userAgent
 	CustomUserAgent string `json:"customUserAgent,omitempty"`
 	// userAgent suffix

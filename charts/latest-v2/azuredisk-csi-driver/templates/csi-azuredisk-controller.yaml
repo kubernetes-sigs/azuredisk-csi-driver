@@ -12,13 +12,13 @@ data:
     controllerConfig:
       disableAVSetNodes: {{ .Values.controller.disableAvailabilitySetNodes }}
       vmType: {{ .Values.controller.vmType }}
+      enabled: true
       leaderElectionNamespace: {{ .Release.Namespace }}
     nodeConfig:
-      supportZone: {{ .Values.node.supportZone }}
       enablePerfOptimization: {{ .Values.linux.enablePerfOptimization }}
     cloudConfig:
-      cloudConfigSecretName: {{ .Values.controller.cloudConfigSecretName }}
-      cloudConfigSecretNamesapce: {{ .Values.controller.cloudConfigSecretNamespace }}
+      secretName: {{ .Values.controller.cloudConfigSecretName }}
+      secretNamesapce: {{ .Values.controller.cloudConfigSecretNamespace }}
       customUserAgent: {{ .Values.driver.customUserAgent }}
       userAgentSuffix: {{ .Values.driver.userAgentSuffix }}
       allowEmptyCloudConfig: {{ .Values.node.allowEmptyCloudConfig }}
