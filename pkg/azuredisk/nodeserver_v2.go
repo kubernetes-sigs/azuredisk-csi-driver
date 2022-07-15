@@ -255,9 +255,8 @@ func (d *DriverV2) NodePublishVolume(ctx context.Context, req *csi.NodePublishVo
 			return nil, status.Errorf(codes.Internal, "failed to find device path with lun %s. %v", lun, err)
 		}
 		klog.V(2).Infof("NodePublishVolume [block]: found device path %s with lun %s", source, lun)
-		err = d.ensureBlockTargetFile(target)
-		if err != nil {
-			return nil, err
+		if err = d.ensureBlockTargetFile(target); err != nil {
+			return nil, status.Errorf(codes.Internal, err.Error())
 		}
 	case *csi.VolumeCapability_Mount:
 		mnt, err := d.ensureMountPoint(target)
