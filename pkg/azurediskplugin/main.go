@@ -99,6 +99,17 @@ func main() {
 	os.Exit(0)
 }
 
+func handle() {
+	driverConfig := getDriverConfig()
+	exportMetrics(driverConfig)
+	driver := azuredisk.NewDriver(driverConfig)
+	if driver == nil {
+		klog.Fatalln("Failed to initialize azuredisk CSI Driver")
+	}
+	testingMock := false
+	driver.Run(driverConfig.Endpoint, driverConfig.ClientConfig.Kubeconfig, driverConfig.ControllerConfig.DisableAVSetNodes, testingMock)
+}
+
 func getDriverConfig() *azdiskv1beta2.AzDiskDriverConfiguration {
 	var driverConfig azdiskv1beta2.AzDiskDriverConfiguration
 
@@ -223,17 +234,6 @@ func getDriverConfig() *azdiskv1beta2.AzDiskDriverConfiguration {
 		klog.Fatal("failed to initialize the driverConfig object")
 	}
 	return &driverConfig
-}
-
-func handle() {
-	driverConfig := getDriverConfig()
-	exportMetrics(driverConfig)
-	driver := azuredisk.NewDriver(driverConfig)
-	if driver == nil {
-		klog.Fatalln("Failed to initialize azuredisk CSI Driver")
-	}
-	testingMock := false
-	driver.Run(driverConfig.Endpoint, driverConfig.ClientConfig.Kubeconfig, driverConfig.ControllerConfig.DisableAVSetNodes, testingMock)
 }
 
 func exportMetrics(driverConfig *azdiskv1beta2.AzDiskDriverConfiguration) {
