@@ -15,15 +15,15 @@ data:
       getNodeInfoFromLabels: {{ .Values.windows.getNodeInfoFromLabels }}
       enabled: true
     cloudConfig:
-      secretName: {{ .Values.controller.cloudConfigSecretName }}
-      secretNamesapce: {{ .Values.controller.cloudConfigSecretNamespace }}
+      secretName: {{ .Values.node.cloudConfigSecretName }}
+      secretNamesapce: {{ .Values.node.cloudConfigSecretNamespace }}
       customUserAgent: {{ .Values.driver.customUserAgent }}
       userAgentSuffix: {{ .Values.driver.userAgentSuffix }}
       allowEmptyCloudConfig: {{ .Values.node.allowEmptyCloudConfig }}
     clientConfig:
       kubeconfig: .\var\run\secrets\kubernetes.io\serviceaccount\kubeconfig.conf
     objectNamespace: {{ .Values.driver.objectNamespace }}
-    endpoint: unix://C:\\var\\lib\\kubelet\\plugins\\{{ .Values.driver.name }}\\csi.sock
+    endpoint: unix://C:\var\lib\kubelet\plugins\{{ .Values.driver.name }}\csi.sock
     metricsAddress: 0.0.0.0:{{ .Values.node.metricsPort }}
     driverName: {{ .Values.driver.name }}
 ---

@@ -21,7 +21,7 @@ data:
       secretNamesapce: {{ .Values.controller.cloudConfigSecretNamespace }}
       customUserAgent: {{ .Values.driver.customUserAgent }}
       userAgentSuffix: {{ .Values.driver.userAgentSuffix }}
-      allowEmptyCloudConfig: {{ .Values.node.allowEmptyCloudConfig }}
+      allowEmptyCloudConfig: {{ .Values.controller.allowEmptyCloudConfig }}
       vmssCacheTTLInSeconds: {{ .Values.controller.vmssCacheTTLInSeconds }}
     objectNamespace: {{ .Values.driver.objectNamespace }}
     endpoint: unix:///csi/csi.sock
