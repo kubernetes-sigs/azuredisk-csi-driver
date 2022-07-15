@@ -40,7 +40,6 @@ func init() {
 }
 
 var (
-	driverConfig     azdiskv1beta2.AzDiskDriverConfiguration
 	driverConfigPath = flag.String("config", "", "The configuration path for the driver")
 	nodeID           = flag.String("nodeid", "", "node id")
 	version          = flag.Bool("version", false, "Print the version and exit.")
@@ -82,7 +81,6 @@ var (
 
 func main() {
 	flag.Parse()
-
 	if *version {
 		info, err := azuredisk.GetVersionYAML(*driverName)
 		if err != nil {
@@ -97,13 +95,13 @@ func main() {
 		klog.Warning("nodeid is empty")
 	}
 
-	getDriverConfig()
-	exportMetrics()
 	handle()
 	os.Exit(0)
 }
 
-func getDriverConfig() {
+func getDriverConfig() *azdiskv1beta2.AzDiskDriverConfiguration {
+	var driverConfig azdiskv1beta2.AzDiskDriverConfiguration
+
 	if *driverConfigPath != "" {
 		// Initialize driveConfig object with default values
 		driverConfig = azdiskv1beta2.AzDiskDriverConfiguration{
@@ -169,39 +167,49 @@ func getDriverConfig() {
 			}
 		})
 	} else {
-		driverConfig.Endpoint = *endpoint
-		driverConfig.MetricsAddress = *metricsAddress
-		driverConfig.DriverName = *driverName
-		driverConfig.ControllerConfig.DisableAVSetNodes = *disableAVSetNodes
-		driverConfig.ControllerConfig.VMType = *vmType
-		driverConfig.ControllerConfig.EnableDiskOnlineResize = *enableDiskOnlineResize
-		driverConfig.ControllerConfig.EnableAsyncAttach = *enableAsyncAttach
-		driverConfig.ControllerConfig.EnableListVolumes = *enableListVolumes
-		driverConfig.ControllerConfig.EnableListSnapshots = *enableListSnapshots
-		driverConfig.ControllerConfig.EnableDiskCapacityCheck = *enableDiskCapacityCheck
-		driverConfig.NodeConfig.VolumeAttachLimit = *volumeAttachLimit
-		driverConfig.NodeConfig.SupportZone = *supportZone
-		driverConfig.NodeConfig.EnablePerfOptimization = *enablePerfOptimization
-		driverConfig.NodeConfig.UseCSIProxyGAInterface = *useCSIProxyGAInterface
-		driverConfig.NodeConfig.GetNodeInfoFromLabels = *getNodeInfoFromLabels
-		driverConfig.CloudConfig.SecretName = *cloudConfigSecretName
-		driverConfig.CloudConfig.SecretNamespace = *cloudConfigSecretNamespace
-		driverConfig.CloudConfig.CustomUserAgent = *customUserAgent
-		driverConfig.CloudConfig.UserAgentSuffix = *userAgentSuffix
-		driverConfig.CloudConfig.AllowEmptyCloudConfig = *allowEmptyCloudConfig
-		driverConfig.CloudConfig.VMSSCacheTTLInSeconds = *vmssCacheTTLInSeconds
-		driverConfig.ClientConfig.Kubeconfig = *kubeconfig
-		driverConfig.ClientConfig.KubeClientQPS = *kubeClientQPS
-		driverConfig.ObjectNamespace = *driverObjectNamespace
-		driverConfig.ControllerConfig.Enabled = *isControllerPlugin
-		driverConfig.ControllerConfig.LeaseDurationInSec = *controllerLeaseDurationInSec
-		driverConfig.ControllerConfig.LeaseRenewDeadlineInSec = *controllerLeaseRenewDeadlineInSec
-		driverConfig.ControllerConfig.LeaseRetryPeriodInSec = *controllerLeaseRetryPeriodInSec
-		driverConfig.ControllerConfig.LeaderElectionNamespace = *leaderElectionNamespace
-		driverConfig.ControllerConfig.PartitionName = *controllerPartition
-		driverConfig.NodeConfig.Enabled = *isNodePlugin
-		driverConfig.NodeConfig.HeartbeatFrequencyInSec = *heartbeatFrequencyInSec
-		driverConfig.NodeConfig.PartitionName = *nodePartition
+		driverConfig = azdiskv1beta2.AzDiskDriverConfiguration{
+			ControllerConfig: azdiskv1beta2.ControllerConfiguration{
+				DisableAVSetNodes:       *disableAVSetNodes,
+				VMType:                  *vmType,
+				EnableDiskOnlineResize:  *enableDiskOnlineResize,
+				EnableAsyncAttach:       *enableAsyncAttach,
+				EnableListVolumes:       *enableListVolumes,
+				EnableListSnapshots:     *enableListSnapshots,
+				EnableDiskCapacityCheck: *enableDiskCapacityCheck,
+				Enabled:                 *isControllerPlugin,
+				LeaseDurationInSec:      *controllerLeaseDurationInSec,
+				LeaseRenewDeadlineInSec: *controllerLeaseRenewDeadlineInSec,
+				LeaseRetryPeriodInSec:   *controllerLeaseRetryPeriodInSec,
+				LeaderElectionNamespace: *leaderElectionNamespace,
+				PartitionName:           *controllerPartition,
+			},
+			NodeConfig: azdiskv1beta2.NodeConfiguration{
+				VolumeAttachLimit:       *volumeAttachLimit,
+				SupportZone:             *supportZone,
+				EnablePerfOptimization:  *enablePerfOptimization,
+				UseCSIProxyGAInterface:  *useCSIProxyGAInterface,
+				GetNodeInfoFromLabels:   *getNodeInfoFromLabels,
+				Enabled:                 *isNodePlugin,
+				HeartbeatFrequencyInSec: *heartbeatFrequencyInSec,
+				PartitionName:           *nodePartition,
+			},
+			CloudConfig: azdiskv1beta2.CloudConfiguration{
+				SecretName:            *cloudConfigSecretName,
+				SecretNamespace:       *cloudConfigSecretNamespace,
+				CustomUserAgent:       *customUserAgent,
+				UserAgentSuffix:       *userAgentSuffix,
+				AllowEmptyCloudConfig: *allowEmptyCloudConfig,
+				VMSSCacheTTLInSeconds: *vmssCacheTTLInSeconds,
+			},
+			ClientConfig: azdiskv1beta2.ClientConfiguration{
+				Kubeconfig:    *kubeconfig,
+				KubeClientQPS: *kubeClientQPS,
+			},
+			ObjectNamespace: *driverObjectNamespace,
+			Endpoint:        *endpoint,
+			MetricsAddress:  *metricsAddress,
+			DriverName:      *driverName,
+		}
 
 		// Emit warning log for using deprecated command-line parameters
 		flag.Visit(func(f *flag.Flag) {
@@ -211,14 +219,16 @@ func getDriverConfig() {
 		})
 	}
 	driverConfig.NodeConfig.NodeID = *nodeID
-
 	if driverConfig == (azdiskv1beta2.AzDiskDriverConfiguration{}) {
 		klog.Fatal("failed to initialize the driverConfig object")
 	}
+	return &driverConfig
 }
 
 func handle() {
-	driver := azuredisk.NewDriver(&driverConfig)
+	driverConfig := getDriverConfig()
+	exportMetrics(driverConfig)
+	driver := azuredisk.NewDriver(driverConfig)
 	if driver == nil {
 		klog.Fatalln("Failed to initialize azuredisk CSI Driver")
 	}
@@ -226,9 +236,8 @@ func handle() {
 	driver.Run(driverConfig.Endpoint, driverConfig.ClientConfig.Kubeconfig, driverConfig.ControllerConfig.DisableAVSetNodes, testingMock)
 }
 
-func exportMetrics() {
+func exportMetrics(driverConfig *azdiskv1beta2.AzDiskDriverConfiguration) {
 	l, err := net.Listen("tcp", driverConfig.MetricsAddress)
-
 	if err != nil {
 		klog.Warningf("failed to get listener for metrics endpoint: %v", err)
 		return
