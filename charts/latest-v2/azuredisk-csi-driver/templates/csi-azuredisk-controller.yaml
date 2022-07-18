@@ -18,7 +18,7 @@ data:
       enablePerfOptimization: {{ .Values.linux.enablePerfOptimization }}
     cloudConfig:
       secretName: {{ .Values.controller.cloudConfigSecretName }}
-      secretNamesapce: {{ .Values.controller.cloudConfigSecretNamespace }}
+      secretNamespace: {{ .Values.controller.cloudConfigSecretNamespace }}
       customUserAgent: {{ .Values.driver.customUserAgent }}
       userAgentSuffix: {{ .Values.driver.userAgentSuffix }}
       allowEmptyCloudConfig: {{ .Values.controller.allowEmptyCloudConfig }}

@@ -17,7 +17,7 @@ data:
       enabled: true
     cloudConfig:
       secretName: {{ .Values.node.cloudConfigSecretName }}
-      secretNamesapce: {{ .Values.node.cloudConfigSecretNamespace }}
+      secretNamespace: {{ .Values.node.cloudConfigSecretNamespace }}
       customUserAgent: {{ .Values.driver.customUserAgent }}
       userAgentSuffix: {{ .Values.driver.userAgentSuffix }}
       allowEmptyCloudConfig: {{ .Values.node.allowEmptyCloudConfig }}
