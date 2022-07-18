@@ -263,6 +263,7 @@ type SharedState struct {
 	claimToPodsMap                sync.Map
 	volumeToClaimMap              sync.Map
 	claimToVolumeMap              sync.Map
+	azVolumeAttachmentToVaMap     sync.Map
 	pvToVolumeMap                 sync.Map
 	podLocks                      sync.Map
 	visitedVolumes                sync.Map

@@ -139,6 +139,7 @@ const (
 	CRIUpdateRetryFactor    = 3.0
 	CRIUpdateRetryStep      = 5
 	DefaultInformerResync   = time.Duration(30) * time.Second
+	DefaultPollingRate      = time.Duration(100) * time.Millisecond
 	ZonedField              = "zoned"
 	TooManyRequests         = "TooManyRequests"
 	ClientThrottled         = "client throttled"

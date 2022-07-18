@@ -89,9 +89,15 @@ func WithDetails(details ...interface{}) Option {
 	}
 }
 
+func WithCaller(skip int) Option {
+	return func(w *Workflow) {
+		w.logger = Logger{w.logger.WithValues("caller", getCallerName(skip+3))}
+	}
+}
+
 // New starts a new child workflow if there is already a workflow saved to the context otherwise a new workflow
 func New(ctx context.Context, opts ...Option) (context.Context, Workflow) {
-	name := getCallerName()
+	name := getCallerName(2)
 
 	w := Workflow{}.applyDefault()
 	w.name = name
@@ -124,13 +130,13 @@ func (w Workflow) applyDefault() Workflow {
 }
 
 func (w Workflow) Finish(errs ...error) {
-	_ = atomic.AddInt32(w.pendingCount, -1)
+	pendingCount := atomic.AddInt32(w.pendingCount, -1)
 
 	for _, err := range errs {
 		w.errSet.Store(err, nil)
 	}
 
-	if pendingCount := atomic.LoadInt32(w.pendingCount); pendingCount > 0 {
+	if pendingCount > 0 {
 		return
 	} else if pendingCount < 0 {
 		panic(fmt.Sprintf("finish was called too many times for workflow (%s)", w.name))
@@ -219,8 +225,8 @@ func GetWorkflow(ctx context.Context, obj k8sRuntime.Object) (workflow Workflow)
 	return
 }
 
-func getCallerName() (name string) {
-	pc, _, _, ok := runtime.Caller(2)
+func getCallerName(skip int) (name string) {
+	pc, _, _, ok := runtime.Caller(skip)
 	if ok {
 		details := runtime.FuncForPC(pc)
 		name = details.Name()

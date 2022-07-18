@@ -77,7 +77,7 @@ func scaleTests(isMultiZone bool) {
 
 		test.CSIDriver = testDriver
 		test.Pod = pod
-		test.Replicas = 1000
+		test.Replicas = *testerReplicas
 		test.StorageClassParameters = map[string]string{consts.SkuNameField: "Premium_LRS", "maxShares": "1", "cachingmode": "None"}
 
 		test.Run(cs, ns, schedulerName)
