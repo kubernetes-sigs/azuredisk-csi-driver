@@ -221,7 +221,7 @@ spec:
           imagePullPolicy: {{ .Values.image.azuredisk.pullPolicy }}
           volumeMounts:
             - name: csi-azuredisk-node-win-hp-config
-              mountPath: /etc/csi-azuredisk-node-win-hp
+              mountPath: \etc\csi-azuredisk-node-win-hp
       volumes:
         - name: init-script
           configMap:

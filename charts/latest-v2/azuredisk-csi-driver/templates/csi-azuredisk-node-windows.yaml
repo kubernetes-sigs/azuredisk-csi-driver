@@ -21,7 +21,7 @@ data:
       userAgentSuffix: {{ .Values.driver.userAgentSuffix }}
       allowEmptyCloudConfig: {{ .Values.node.allowEmptyCloudConfig }}
     objectNamespace: {{ .Values.driver.objectNamespace }}
-    endpoint: unix://C:\\csi\\csi.sock
+    endpoint: unix://C:\csi\csi.sock
     metricsAddress: 0.0.0.0:{{ .Values.node.metrics.port }}
     driverName: {{ .Values.driver.name }}
 ---
@@ -173,7 +173,7 @@ spec:
             - name: azure-config
               mountPath: C:\k
             - name: csi-azuredisk-node-win-config
-              mountPath: /etc/csi-azuredisk-node-win
+              mountPath: \etc\csi-azuredisk-node-win
             - name: csi-proxy-fs-pipe-v1
               mountPath: \\.\pipe\csi-proxy-filesystem-v1
             - name: csi-proxy-disk-pipe-v1
