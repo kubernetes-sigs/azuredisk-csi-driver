@@ -23,7 +23,7 @@ data:
     clientConfig:
       kubeconfig: .\var\run\secrets\kubernetes.io\serviceaccount\kubeconfig.conf
     objectNamespace: {{ .Values.driver.objectNamespace }}
-    endpoint: unix://C:\var\lib\kubelet\plugins\{{ .Values.driver.name }}\csi.sock
+    endpoint: unix://C:\\var\\lib\\kubelet\\plugins\\{{ .Values.driver.name }}\\csi.sock
     metricsAddress: 0.0.0.0:{{ .Values.node.metricsPort }}
     driverName: {{ .Values.driver.name }}
 ---
@@ -185,7 +185,7 @@ spec:
           args:
             - "--v={{ .Values.node.logLevel }}"
             - "--nodeid=$(KUBE_NODE_NAME)"
-            - "--config=\\etc\\csi-azuredisk-node-win-hp\\config.yaml"
+            - "--config=/etc/csi-azuredisk-node-win-hp/config.yaml"
           ports:
             - containerPort: {{ .Values.node.livenessProbe.healthPort }}
               name: healthz
