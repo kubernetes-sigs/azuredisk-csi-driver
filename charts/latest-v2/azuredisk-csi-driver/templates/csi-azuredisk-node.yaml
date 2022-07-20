@@ -127,7 +127,7 @@ spec:
           args:
             - "--v={{ .Values.node.logLevel }}"
             - "--nodeid=$(KUBE_NODE_NAME)"
-            - "--config=/etc/csi-azuredisk-node/config.yaml"
+            - "--config=/etc/{{ .Values.linux.dsName }}/config.yaml"
           ports:
             - containerPort: {{ .Values.node.livenessProbe.healthPort }}
               name: healthz
@@ -190,8 +190,8 @@ spec:
               mountPath: /etc/pki/ca-trust/extracted
               readOnly: true
             {{- end }}
-            - name: csi-azuredisk-node-config
-              mountPath: /etc/csi-azuredisk-node
+            - name: {{ .Values.linux.dsName }}-config
+              mountPath: /etc/{{ .Values.linux.dsName }}
           resources: {{- toYaml .Values.linux.resources.azuredisk | nindent 12 }}
       volumes:
         - hostPath:
@@ -235,7 +235,7 @@ spec:
           hostPath:
             path: /etc/pki/ca-trust/extracted
         {{- end }}
-        - name: csi-azuredisk-node-config
+        - name: {{ .Values.linux.dsName }}-config
           configMap:
-            name: csi-azuredisk-node-config
+            name: {{ .Values.linux.dsName }}-config
 {{- end -}}

@@ -180,7 +180,7 @@ spec:
 {{- end }}
           args:
             - "--v={{ .Values.controller.logLevel }}"
-            - "--config=/etc/csi-azuredisk-controller/config.yaml"
+            - "--config=/etc/{{ .Values.controller.name }}/config.yaml"
           ports:
             - containerPort: {{ .Values.controller.livenessProbe.healthPort }}
               name: healthz
@@ -217,8 +217,8 @@ spec:
               name: socket-dir
             - mountPath: /etc/kubernetes/
               name: azure-cred
-            - mountPath: /etc/csi-azuredisk-controller
-              name: csi-azuredisk-controller-config
+            - mountPath: /etc/{{ .Values.controller.name }}
+              name: {{ .Values.controller.name }}-config
             {{- if eq .Values.cloud "AzureStackCloud" }}
             - name: ssl
               mountPath: /etc/ssl/certs
@@ -253,6 +253,6 @@ spec:
           hostPath:
             path: /etc/pki/ca-trust/extracted
         {{- end }}
-        - name: csi-azuredisk-controller-config
+        - name: {{ .Values.controller.name }}-config
           configMap:
-            name: csi-azuredisk-controller-config
+            name: {{ .Values.controller.name }}-config
