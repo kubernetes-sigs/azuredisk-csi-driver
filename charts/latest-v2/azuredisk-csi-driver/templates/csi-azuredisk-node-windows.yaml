@@ -131,7 +131,7 @@ spec:
           args:
             - "--v={{ .Values.node.logLevel }}"
             - "--nodeid=$(KUBE_NODE_NAME)"
-            - "--config=/etc/csi-azuredisk-node-win/config.yaml"
+            - "--config=\\etc\\csi-azuredisk-node-win\\config.yaml"
           ports:
             - containerPort: {{ .Values.node.livenessProbe.healthPort }}
               name: healthz
