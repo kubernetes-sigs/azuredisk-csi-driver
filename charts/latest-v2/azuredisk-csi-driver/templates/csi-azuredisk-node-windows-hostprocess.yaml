@@ -1,8 +1,9 @@
+{{- if and (.Values.windows.enabled) (eq .Values.windows.useHostProcessContainers true) }}
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: csi-azuredisk-node-win-hp-config
+  name: {{ .Values.windows.dsName }}-config
   namespace: {{ .Release.Namespace }}
 {{ include "azuredisk.labels" . | indent 2 }}
 data:
@@ -26,8 +27,6 @@ data:
     endpoint: unix://C:\var\lib\kubelet\plugins\{{ .Values.driver.name }}\csi.sock
     metricsAddress: 0.0.0.0:{{ .Values.node.metricsPort }}
     driverName: {{ .Values.driver.name }}
----
-{{- if and (.Values.windows.enabled) (eq .Values.windows.useHostProcessContainers true) }}
 ---
 kind: ConfigMap
 apiVersion: v1
@@ -185,7 +184,7 @@ spec:
           args:
             - "--v={{ .Values.node.logLevel }}"
             - "--nodeid=$(KUBE_NODE_NAME)"
-            - "--config=/etc/csi-azuredisk-node-win-hp/config.yaml"
+            - "--config=.\\etc\\csi-azuredisk-node-win-hp\\config.yaml"
           ports:
             - containerPort: {{ .Values.node.livenessProbe.healthPort }}
               name: healthz
@@ -221,7 +220,7 @@ spec:
           imagePullPolicy: {{ .Values.image.azuredisk.pullPolicy }}
           volumeMounts:
             - name: csi-azuredisk-node-win-hp-config
-              mountPath: \etc\csi-azuredisk-node-win-hp
+              mountPath: /etc/csi-azuredisk-node-win-hp
       volumes:
         - name: init-script
           configMap:

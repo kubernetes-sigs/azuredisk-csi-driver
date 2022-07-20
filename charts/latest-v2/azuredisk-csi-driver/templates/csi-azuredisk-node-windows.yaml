@@ -1,8 +1,9 @@
+{{- if and (.Values.windows.enabled) (ne .Values.windows.useHostProcessContainers true) }}
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: csi-azuredisk-node-win-config
+  name: {{ .Values.windows.dsName }}-config
   namespace: {{ .Release.Namespace }}
 {{ include "azuredisk.labels" . | indent 2 }}
 data:
@@ -25,7 +26,6 @@ data:
     metricsAddress: 0.0.0.0:{{ .Values.node.metrics.port }}
     driverName: {{ .Values.driver.name }}
 ---
-{{- if and (.Values.windows.enabled) (ne .Values.windows.useHostProcessContainers true) }}
 kind: DaemonSet
 apiVersion: apps/v1
 metadata:
@@ -131,7 +131,7 @@ spec:
           args:
             - "--v={{ .Values.node.logLevel }}"
             - "--nodeid=$(KUBE_NODE_NAME)"
-            - "--config=/etc/csi-azuredisk-node-win/config.yaml"
+            - "--config=.\\etc\\csi-azuredisk-node-win\\config.yaml"
           ports:
             - containerPort: {{ .Values.node.livenessProbe.healthPort }}
               name: healthz
@@ -173,7 +173,7 @@ spec:
             - name: azure-config
               mountPath: C:\k
             - name: csi-azuredisk-node-win-config
-              mountPath: \etc\csi-azuredisk-node-win
+              mountPath: /etc/csi-azuredisk-node-win
             - name: csi-proxy-fs-pipe-v1
               mountPath: \\.\pipe\csi-proxy-filesystem-v1
             - name: csi-proxy-disk-pipe-v1
