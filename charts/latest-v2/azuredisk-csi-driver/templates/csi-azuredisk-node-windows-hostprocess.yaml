@@ -25,14 +25,14 @@ data:
       kubeconfig: .\var\run\secrets\kubernetes.io\serviceaccount\kubeconfig.conf
     objectNamespace: {{ .Values.driver.objectNamespace }}
     endpoint: unix://C:\var\lib\kubelet\plugins\{{ .Values.driver.name }}\csi.sock
-    metricsAddress: 0.0.0.0:{{ .Values.node.metricsPort }}
+    metricsAddress: 0.0.0.0:{{ .Values.node.metrics.port }}
     driverName: {{ .Values.driver.name }}
 ---
 kind: ConfigMap
 apiVersion: v1
 metadata:
   name: {{ .Values.windows.dsName }}-init
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ .Release.Namespace }}Values.node.
 data:
   Initialize-Pod.ps1: |
     New-Item -ItemType Directory -Path "C:/var/lib/kubelet/plugins/{{ .Values.driver.name }}" -Force
