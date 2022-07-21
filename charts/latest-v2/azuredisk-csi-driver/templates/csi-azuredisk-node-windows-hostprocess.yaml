@@ -32,7 +32,7 @@ kind: ConfigMap
 apiVersion: v1
 metadata:
   name: {{ .Values.windows.dsName }}-init
-  namespace: {{ .Release.Namespace }}Values.node.
+  namespace: {{ .Release.Namespace }}
 data:
   Initialize-Pod.ps1: |
     New-Item -ItemType Directory -Path "C:/var/lib/kubelet/plugins/{{ .Values.driver.name }}" -Force
