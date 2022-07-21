@@ -31,7 +31,7 @@ import (
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
-	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2021-02-01/network"
+	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2021-08-01/network"
 	"github.com/Azure/go-autorest/autorest/to"
 
 	v1 "k8s.io/api/core/v1"
@@ -322,7 +322,15 @@ func (az *Cloud) getRulePrefix(service *v1.Service) string {
 }
 
 func (az *Cloud) getPublicIPName(clusterName string, service *v1.Service) string {
-	return fmt.Sprintf("%s-%s", clusterName, az.GetLoadBalancerName(context.TODO(), clusterName, service))
+	pipName := fmt.Sprintf("%s-%s", clusterName, az.GetLoadBalancerName(context.TODO(), clusterName, service))
+	if prefixID, ok := service.Annotations[consts.ServiceAnnotationPIPPrefixID]; ok && prefixID != "" {
+		prefixName, err := getLastSegment(prefixID, "/")
+		if err != nil {
+			return pipName
+		}
+		pipName = fmt.Sprintf("%s-%s", pipName, prefixName)
+	}
+	return pipName
 }
 
 func (az *Cloud) serviceOwnsRule(service *v1.Service, rule string) bool {
