@@ -54,7 +54,7 @@ func NormalizeVolumes(volumes []VolumeDetails, allowedTopologies []string, isMul
 	return volumes
 }
 
-func VerifySuccessfulAzVolumeAttachments(pod PodDetails, azDiskClient *azdisk.Clientset, storageClassParameters map[string]string, client clientset.Interface, namespace *v1.Namespace) (isVerified bool, allAttachments, failedAttachments []azdiskv1beta2.AzVolumeAttachment, err error) {
+func VerifySuccessfulAzVolumeAttachments(pod PodDetails, azDiskClient *azdisk.Clientset, storageClassParameters map[string]string, client clientset.Interface, namespace *v1.Namespace) (isVerified bool, allAttachments, unattachedAttachments []azdiskv1beta2.AzVolumeAttachment, err error) {
 	var expectedNumberOfReplicas int
 	nodes := getSchedulableNodes(azDiskClient, client, pod, namespace)
 	nodesAvailableForReplicas := len(nodes) - 1
@@ -86,12 +86,12 @@ func VerifySuccessfulAzVolumeAttachments(pod PodDetails, azDiskClient *azdisk.Cl
 		for _, attachment := range pvAttachments.Items {
 			if attachment.Status.State != azdiskv1beta2.Attached {
 				e2elog.Logf("found attachment %s, currently not attached", attachment.Name)
-				failedAttachments = append(failedAttachments, attachment)
+				unattachedAttachments = append(unattachedAttachments, attachment)
 			} else {
 				e2elog.Logf("found attachment %s in attached state", attachment.Name)
 			}
 		}
-		if len(failedAttachments) > 0 {
+		if len(unattachedAttachments) > 0 {
 			return
 		}
 	}

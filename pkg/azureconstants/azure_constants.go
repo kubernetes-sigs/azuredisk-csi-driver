@@ -113,6 +113,7 @@ const (
 	RoleChangeLabel                       = "disk.csi.azure.com/role-change"
 	Demoted                               = "demoted"
 	Promoted                              = "promoted"
+	VolumeAttachRequestAnnotation         = "disk.csi.azure.com/volume-attach-request"
 	VolumeDeleteRequestAnnotation         = "disk.csi.azure.com/volume-delete-request"
 	VolumeDetachRequestAnnotation         = "disk.csi.azure.com/volume-detach-request"
 	RecoverAnnotation                     = "disk.csi.azure.com/recovery" // used to ensure reconciliation is triggered for recovering CRIs

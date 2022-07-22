@@ -19,6 +19,7 @@ package provisioner
 import (
 	"context"
 	"errors"
+	"os"
 	"reflect"
 	"sort"
 	"strings"
@@ -26,10 +27,16 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	v1 "k8s.io/api/core/v1"
 	apiErrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/selection"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/informers"
+	kubeClientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/klog/v2"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -46,8 +53,10 @@ import (
 
 type CrdProvisioner struct {
 	azDiskClient     azdisk.Interface
+	kubeClient       kubeClientset.Interface
 	namespace        string
 	conditionWatcher *watcher.ConditionWatcher
+	azCachedReader   CachedReader
 }
 
 const (
@@ -55,13 +64,132 @@ const (
 	interval = time.Duration(1) * time.Second
 )
 
-func NewCrdProvisioner(azdiskClient azdisk.Interface, objNamespace string) (*CrdProvisioner, error) {
-	informerFactory := azdiskinformers.NewSharedInformerFactory(azdiskClient, consts.DefaultInformerResync)
+type CachedReader struct {
+	kubeInformer informers.SharedInformerFactory
+	azInformer   azdiskinformers.SharedInformerFactory
+	azNamespace  string
+}
+
+func (a CachedReader) Get(_ context.Context, namespacedName types.NamespacedName, object client.Object) error {
+	var err error
+	switch target := object.(type) {
+	case *v1.Node:
+		var node *v1.Node
+		node, err = a.kubeInformer.Core().V1().Nodes().Lister().Get(namespacedName.Name)
+		if err != nil {
+			return err
+		}
+		node.DeepCopyInto(target)
+	case *azdiskv1beta2.AzVolume:
+		var azVolume *azdiskv1beta2.AzVolume
+		azVolume, err = a.azInformer.Disk().V1beta2().AzVolumes().Lister().AzVolumes(namespacedName.Namespace).Get(namespacedName.Name)
+		if err != nil {
+			return err
+		}
+		azVolume.DeepCopyInto(target)
+	case *azdiskv1beta2.AzVolumeAttachment:
+		var azVolumeAttachment *azdiskv1beta2.AzVolumeAttachment
+		azVolumeAttachment, err = a.azInformer.Disk().V1beta2().AzVolumeAttachments().Lister().AzVolumeAttachments(namespacedName.Namespace).Get(namespacedName.Name)
+		if err != nil {
+			return err
+		}
+		azVolumeAttachment.DeepCopyInto(target)
+	case *azdiskv1beta2.AzDriverNode:
+		var azDriverNode *azdiskv1beta2.AzDriverNode
+		azDriverNode, err = a.azInformer.Disk().V1beta2().AzDriverNodes().Lister().AzDriverNodes(namespacedName.Namespace).Get(namespacedName.Name)
+		if err != nil {
+			return err
+		}
+		azDriverNode.DeepCopyInto(target)
+	}
+	return err
+}
+
+func (a CachedReader) List(_ context.Context, objectList client.ObjectList, opts ...client.ListOption) error {
+	clientListOptions := client.ListOptions{}
+	for _, opt := range opts {
+		opt.ApplyToList(&clientListOptions)
+	}
+	labelSelector := clientListOptions.LabelSelector
+
+	var err error
+	switch target := objectList.(type) {
+	case *v1.NodeList:
+		var nodes []*v1.Node
+		nodes, err = a.kubeInformer.Core().V1().Nodes().Lister().List(labelSelector)
+		nodesDeref := make([]v1.Node, len(nodes))
+		for i := range nodes {
+			nodesDeref[i] = *nodes[i]
+		}
+		nodesList := v1.NodeList{Items: nodesDeref}
+		if err != nil {
+			return err
+		}
+		nodesList.DeepCopyInto(target)
+	case *azdiskv1beta2.AzVolumeList:
+		var azVolumes []*azdiskv1beta2.AzVolume
+		azVolumes, err = a.azInformer.Disk().V1beta2().AzVolumes().Lister().AzVolumes(a.azNamespace).List(labelSelector)
+		azVolumeDeref := make([]azdiskv1beta2.AzVolume, len(azVolumes))
+		for i := range azVolumes {
+			azVolumeDeref[i] = *azVolumes[i]
+		}
+		azVolumeList := azdiskv1beta2.AzVolumeList{Items: azVolumeDeref}
+		if err != nil {
+			return err
+		}
+		azVolumeList.DeepCopyInto(target)
+	case *azdiskv1beta2.AzVolumeAttachmentList:
+		var azVolumeAttachments []*azdiskv1beta2.AzVolumeAttachment
+		azVolumeAttachments, err = a.azInformer.Disk().V1beta2().AzVolumeAttachments().Lister().AzVolumeAttachments(a.azNamespace).List(labelSelector)
+		azVolumeAttachmentDeref := make([]azdiskv1beta2.AzVolumeAttachment, len(azVolumeAttachments))
+		for i := range azVolumeAttachments {
+			azVolumeAttachmentDeref[i] = *azVolumeAttachments[i]
+		}
+		azVolumeAttachmentList := azdiskv1beta2.AzVolumeAttachmentList{Items: azVolumeAttachmentDeref}
+		if err != nil {
+			return err
+		}
+		azVolumeAttachmentList.DeepCopyInto(target)
+	case *azdiskv1beta2.AzDriverNodeList:
+		var azDriverNodes []*azdiskv1beta2.AzDriverNode
+		azDriverNodes, err = a.azInformer.Disk().V1beta2().AzDriverNodes().Lister().AzDriverNodes(a.azNamespace).List(labelSelector)
+		azDriverNodeDeref := make([]azdiskv1beta2.AzDriverNode, len(azDriverNodes))
+		for i := range azDriverNodes {
+			azDriverNodeDeref[i] = *azDriverNodes[i]
+		}
+		azDriverNodeList := azdiskv1beta2.AzDriverNodeList{Items: azDriverNodeDeref}
+		if err != nil {
+			return err
+		}
+		azDriverNodeList.DeepCopyInto(target)
+	}
+	return err
+}
+
+func NewCrdProvisioner(kubeConfig *rest.Config, objNamespace string) (*CrdProvisioner, error) {
+	azdiskClient, err := azureutils.GetAzDiskClient(kubeConfig)
+	if err != nil {
+		return nil, err
+	}
+	kubeClient, err := kubeClientset.NewForConfig(kubeConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, consts.DefaultInformerResync)
+	startWatchingKube(context.Background(), kubeInformerFactory)
+
+	azInformerFactory := azdiskinformers.NewSharedInformerFactory(azdiskClient, consts.DefaultInformerResync)
 
 	return &CrdProvisioner{
 		azDiskClient:     azdiskClient,
 		namespace:        objNamespace,
-		conditionWatcher: watcher.New(context.Background(), azdiskClient, informerFactory, objNamespace),
+		conditionWatcher: watcher.New(context.Background(), azdiskClient, azInformerFactory, objNamespace),
+		azCachedReader: CachedReader{
+			azNamespace:  objNamespace,
+			kubeInformer: kubeInformerFactory,
+			azInformer:   azInformerFactory,
+		},
 	}, nil
 }
 
@@ -78,7 +206,6 @@ func (c *CrdProvisioner) CreateVolume(
 	volumeContentSource *azdiskv1beta2.ContentVolumeSource,
 	accessibilityReq *azdiskv1beta2.TopologyRequirement) (*azdiskv1beta2.AzVolumeStatusDetail, error) {
 	var err error
-	azVLister := c.conditionWatcher.InformerFactory().Disk().V1beta2().AzVolumes().Lister().AzVolumes(c.namespace)
 	azVolumeClient := c.azDiskClient.DiskV1beta2().AzVolumes(c.namespace)
 
 	_, maxMountReplicaCount := azureutils.GetMaxSharesAndMaxMountReplicaCount(parameters, azureutils.HasMultiNodeAzVolumeCapabilityAccessMode(volumeCapabilities))
@@ -91,8 +218,8 @@ func (c *CrdProvisioner) CreateVolume(
 	ctx, w := workflow.New(ctx, workflow.WithDetails(consts.VolumeNameLabel, volumeName, consts.PvNameKey, parameters[consts.PvNameKey]))
 	defer func() { w.Finish(err) }()
 
-	var azVolumeInstance *azdiskv1beta2.AzVolume
-	azVolumeInstance, err = azVLister.Get(azVolumeName)
+	azVolumeInstance := &azdiskv1beta2.AzVolume{}
+	err = c.azCachedReader.Get(ctx, types.NamespacedName{Namespace: c.namespace, Name: azVolumeName}, azVolumeInstance)
 	if err == nil {
 		updateFunc := func(obj client.Object) error {
 			updateInstance := obj.(*azdiskv1beta2.AzVolume)
@@ -224,7 +351,6 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 	// snapshot APIs through the CRD provisioner.
 	// Replace them in all instances in this file.
 	var err error
-	lister := c.conditionWatcher.InformerFactory().Disk().V1beta2().AzVolumes().Lister().AzVolumes(c.namespace)
 	azVolumeClient := c.azDiskClient.DiskV1beta2().AzVolumes(c.namespace)
 
 	var volumeName string
@@ -235,8 +361,8 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 
 	azVolumeName := strings.ToLower(volumeName)
 
-	var azVolumeInstance *azdiskv1beta2.AzVolume
-	azVolumeInstance, err = lister.Get(azVolumeName)
+	azVolumeInstance := &azdiskv1beta2.AzVolume{}
+	err = c.azCachedReader.Get(ctx, types.NamespacedName{Namespace: c.namespace, Name: azVolumeName}, azVolumeInstance)
 	ctx, w := workflow.New(ctx, workflow.WithDetails(workflow.GetObjectDetails(azVolumeInstance)...))
 	defer func() { w.Finish(err) }()
 
@@ -345,9 +471,6 @@ func (c *CrdProvisioner) PublishVolume(
 	volumeContext map[string]string,
 ) (map[string]string, error) {
 	var err error
-	azVALister := c.conditionWatcher.InformerFactory().Disk().V1beta2().AzVolumeAttachments().Lister().AzVolumeAttachments(c.namespace)
-	nodeLister := c.conditionWatcher.InformerFactory().Disk().V1beta2().AzDriverNodes().Lister().AzDriverNodes(c.namespace)
-	volumeLister := c.conditionWatcher.InformerFactory().Disk().V1beta2().AzVolumes().Lister().AzVolumes(c.namespace)
 	azVAClient := c.azDiskClient.DiskV1beta2().AzVolumeAttachments(c.namespace)
 	var volumeName string
 	volumeName, err = azureutils.GetDiskName(volumeID)
@@ -360,15 +483,16 @@ func (c *CrdProvisioner) PublishVolume(
 	defer func() { w.Finish(err) }()
 
 	// return error if volume is not found
-	var azVolume *azdiskv1beta2.AzVolume
-	azVolume, err = volumeLister.Get(volumeName)
+	azVolume := &azdiskv1beta2.AzVolume{}
+	err = c.azCachedReader.Get(ctx, types.NamespacedName{Namespace: c.namespace, Name: volumeName}, azVolume)
 	if apiErrors.IsNotFound(err) {
 		err = status.Errorf(codes.NotFound, "volume (%s) does not exist: %v", volumeName, err)
 		return nil, err
 	}
 
 	// return error if node is not found
-	if _, err = nodeLister.Get(nodeID); apiErrors.IsNotFound(err) {
+	azDriverNode := &azdiskv1beta2.AzDriverNode{}
+	if err = c.azCachedReader.Get(ctx, types.NamespacedName{Namespace: c.namespace, Name: nodeID}, azDriverNode); apiErrors.IsNotFound(err) {
 		err = status.Errorf(codes.NotFound, "node (%s) does not exist: %v", nodeID, err)
 		return nil, err
 	}
@@ -379,15 +503,100 @@ func (c *CrdProvisioner) PublishVolume(
 
 	publishContext := map[string]string{}
 
-	// preemptively detach any replica volume if necessary
+	attachmentName := azureutils.GetAzVolumeAttachmentName(volumeName, nodeID)
+
+	attachmentObj := &azdiskv1beta2.AzVolumeAttachment{}
+	var creationNeeded bool
+	err = c.azCachedReader.Get(ctx, types.NamespacedName{Namespace: c.namespace, Name: attachmentName}, attachmentObj)
+	if err != nil {
+		if !apiErrors.IsNotFound(err) {
+			err = status.Errorf(codes.Internal, "failed to get AzVolumeAttachment CRI: %v", err)
+			return nil, err
+		}
+		// if replica AzVolumeAttachment CRI does not exist for the volume-node pair, create one
+		creationNeeded = true
+		attachmentObj = &azdiskv1beta2.AzVolumeAttachment{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: c.namespace,
+				Name:      attachmentName,
+				Labels: map[string]string{
+					consts.NodeNameLabel:   nodeID,
+					consts.VolumeNameLabel: volumeName,
+					consts.RoleLabel:       string(azdiskv1beta2.PrimaryRole),
+				},
+				Finalizers: []string{consts.AzVolumeAttachmentFinalizer},
+				Annotations: map[string]string{
+					consts.VolumeAttachRequestAnnotation: "crdProvisioner",
+					consts.RequestIDKey:                  w.RequestID(),
+					consts.RequestStartimeKey:            w.StartTime().Format(consts.RequestTimeFormat),
+				},
+			},
+			Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
+				VolumeName:    volumeName,
+				VolumeID:      volumeID,
+				NodeName:      nodeID,
+				VolumeContext: volumeContext,
+				RequestedRole: azdiskv1beta2.PrimaryRole,
+			},
+		}
+	}
+
+	filterVAToDetach := func(attachments []azdiskv1beta2.AzVolumeAttachment) (numAttachment int, unpublishOrder []*azdiskv1beta2.AzVolumeAttachment) {
+		for i := range attachments {
+			// only count if deletionTimestamp not set
+			if attachments[i].GetDeletionTimestamp().IsZero() {
+				numAttachment++
+				if attachments[i].Spec.RequestedRole == azdiskv1beta2.ReplicaRole {
+					unpublishOrder = append(unpublishOrder, &attachments[i])
+				}
+			}
+		}
+		return
+	}
+
+	var unpublishOrder []*azdiskv1beta2.AzVolumeAttachment
+	var requiredUnpublishCount int
+	// there can be a race between replica management and primary creation,
+	// so create primary first without triggering attach in case replicas need to be detached/
+	var isPreemptiveCreate bool
+	// check remaining node capacity to determine if replica detachment is necessary
+	var maxDiskCount int
+	if maxDiskCount, err = azureutils.GetNodeMaxDiskCount(ctx, c.azCachedReader, nodeID); err != nil {
+		// continue if k8s node object is not found, we have already verified the node's existence through azdrivernode.
+		if !apiErrors.IsNotFound(err) {
+			return publishContext, err
+		}
+	} else {
+		volumeLabel := azureutils.LabelPair{Key: consts.VolumeNameLabel, Operator: selection.NotEquals, Entry: volumeName}
+		nodeLabel := azureutils.LabelPair{Key: consts.NodeNameLabel, Operator: selection.Equals, Entry: nodeID}
+		var attachments []azdiskv1beta2.AzVolumeAttachment
+		if attachments, err = azureutils.GetAzVolumeAttachmentsWithLabel(ctx, c.azCachedReader, volumeLabel, nodeLabel); err != nil {
+			return publishContext, err
+		}
+
+		numVolumeAttachments, volumeUnpublishOrder := filterVAToDetach(attachments)
+
+		requiredVolumeUnpublishCount := numVolumeAttachments - maxDiskCount + 1
+
+		if requiredVolumeUnpublishCount > len(volumeUnpublishOrder) {
+			err = status.Errorf(codes.Internal, "Cannot free up %d node capacity: not enough replicas (%d) attached to the node", requiredVolumeUnpublishCount, len(volumeUnpublishOrder))
+		} else if requiredVolumeUnpublishCount > 0 {
+			isPreemptiveCreate = true
+			unpublishOrder = append(unpublishOrder, volumeUnpublishOrder[:requiredVolumeUnpublishCount]...)
+			// if volume needs to be detached prior to attach operation, remove the attach annotation from CRI
+			attachmentObj.Annotations = azureutils.RemoveFromMap(attachmentObj.Annotations, consts.VolumeAttachRequestAnnotation)
+			requiredUnpublishCount += requiredVolumeUnpublishCount
+		}
+	}
+
+	// detach replica volume if volume's maxShares have been fully saturated.
 	if azVolume.Spec.MaxMountReplicaCount > 0 {
 		// get undemoted AzVolumeAttachments for volume == volumeName and node != nodeID
-		volumeLabel, _ := azureutils.CreateLabelRequirements(consts.VolumeNameLabel, selection.Equals, volumeName)
-		nodeLabel, _ := azureutils.CreateLabelRequirements(consts.NodeNameLabel, selection.NotEquals, nodeID)
-		azVASelector := labels.NewSelector().Add(*volumeLabel, *nodeLabel)
+		volumeLabel := azureutils.LabelPair{Key: consts.VolumeNameLabel, Operator: selection.Equals, Entry: volumeName}
+		nodeLabel := azureutils.LabelPair{Key: consts.NodeNameLabel, Operator: selection.NotEquals, Entry: nodeID}
 
-		var attachments []*azdiskv1beta2.AzVolumeAttachment
-		attachments, err = azVALister.List(azVASelector)
+		var attachments []azdiskv1beta2.AzVolumeAttachment
+		attachments, err = azureutils.GetAzVolumeAttachmentsWithLabel(ctx, c.azCachedReader, volumeLabel, nodeLabel)
 		if err != nil && !apiErrors.IsNotFound(err) {
 			err = status.Errorf(codes.Internal, "failed to list undemoted AzVolumeAttachments with volume (%s) not attached to node (%s): %v", volumeName, nodeID, err)
 			return nil, err
@@ -400,68 +609,38 @@ func (c *CrdProvisioner) PublishVolume(
 			return iExists && iRole == consts.Demoted
 		})
 
-		var unpublishOrder []*azdiskv1beta2.AzVolumeAttachment
-		// unpublish demoted ones first over undemoted ones
-		for i := range attachments {
-			// only append if deletionTimestamp not set
-			if attachments[i].GetDeletionTimestamp().IsZero() {
-				unpublishOrder = append(unpublishOrder, attachments[i])
-			}
-		}
+		nodeAttachmentCount, nodeUnpublishOrder := filterVAToDetach(attachments)
 
 		// if maxMountReplicaCount has been exceeded, unpublish demoted AzVolumeAttachment or if demoted AzVolumeAttachment does not exist, select one to unpublish
-		requiredUnpublishCount := len(unpublishOrder) - azVolume.Spec.MaxMountReplicaCount
-		for i := 0; requiredUnpublishCount > 0 && i < len(unpublishOrder); i++ {
-			if err = c.detachVolume(ctx, unpublishOrder[i]); err != nil {
-				err = status.Errorf(codes.Internal, "failed to make request to unpublish volume (%s) from node (%s): %v", unpublishOrder[i].Spec.VolumeName, unpublishOrder[i].Spec.NodeName, err)
-				return nil, err
-			}
-			requiredUnpublishCount--
+		requiredNodeUnpublishCount := nodeAttachmentCount - azVolume.Spec.MaxMountReplicaCount
+		if requiredNodeUnpublishCount > 0 {
+			isPreemptiveCreate = true
+			unpublishOrder = append(unpublishOrder, nodeUnpublishOrder[:requiredNodeUnpublishCount]...)
+			// if volume needs to be detached prior to attach operation, remove the attach annotation from CRI
+			attachmentObj.Annotations = azureutils.RemoveFromMap(attachmentObj.Annotations, consts.VolumeAttachRequestAnnotation)
+			requiredUnpublishCount += requiredNodeUnpublishCount
 		}
-
 	}
 
-	attachmentName := azureutils.GetAzVolumeAttachmentName(volumeName, nodeID)
-
-	var attachmentObj *azdiskv1beta2.AzVolumeAttachment
-	attachmentObj, err = azVALister.Get(attachmentName)
-	if err != nil {
-		if !apiErrors.IsNotFound(err) {
-			err = status.Errorf(codes.Internal, "failed to get AzVolumeAttachment CRI: %v", err)
-			return nil, err
-		}
-		// if replica AzVolumeAttachment CRI does not exist for the volume-node pair, create one
-
-		azVolumeAttachment := &azdiskv1beta2.AzVolumeAttachment{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: attachmentName,
-				Labels: map[string]string{
-					consts.NodeNameLabel:   nodeID,
-					consts.VolumeNameLabel: volumeName,
-					consts.RoleLabel:       string(azdiskv1beta2.PrimaryRole),
-				},
-				Finalizers: []string{consts.AzVolumeAttachmentFinalizer},
-				Annotations: map[string]string{
-					consts.RequestIDKey:       w.RequestID(),
-					consts.RequestStartimeKey: w.StartTime().Format(consts.RequestTimeFormat),
-				},
-			},
-			Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
-				VolumeName:    volumeName,
-				VolumeID:      volumeID,
-				NodeName:      nodeID,
-				VolumeContext: volumeContext,
-				RequestedRole: azdiskv1beta2.PrimaryRole,
-			},
-		}
-
-		_, err = azVAClient.Create(ctx, azVolumeAttachment, metav1.CreateOptions{})
+	// create AzVolumeAttachment object
+	if creationNeeded {
+		attachmentObj, err = azVAClient.Create(ctx, attachmentObj, metav1.CreateOptions{})
 		if err != nil {
 			err = status.Errorf(codes.Internal, "failed to create AzVolumeAttachment CRI: %v", err)
 			return publishContext, err
 		}
-		publishContext, err = c.waitForLun(ctx, volumeID, nodeID)
-		return publishContext, err
+		if !isPreemptiveCreate {
+			publishContext, err = c.waitForLun(ctx, volumeID, nodeID)
+			return publishContext, err
+		}
+	}
+
+	for i := 0; requiredUnpublishCount > 0 && i < len(unpublishOrder); i++ {
+		if err = c.detachVolume(ctx, unpublishOrder[i]); err != nil {
+			err = status.Errorf(codes.Internal, "failed to make request to unpublish volume (%s) from node (%s): %v", unpublishOrder[i].Spec.VolumeName, unpublishOrder[i].Spec.NodeName, err)
+			return nil, err
+		}
+		requiredUnpublishCount--
 	}
 
 	var updateFunc func(obj client.Object) error
@@ -473,18 +652,36 @@ func (c *CrdProvisioner) PublishVolume(
 	}
 
 	if attachmentObj.Spec.RequestedRole == azdiskv1beta2.PrimaryRole {
-		if attachmentObj.Status.Error == nil {
-			publishContext, err = c.waitForLun(ctx, volumeID, nodeID)
-			return publishContext, err
-		}
-		// if primary attachment failed with an error, and for whatever reason, controllerPublishVolume request was made instead of NodeStageVolume request, reset the state, detail and error here if ever reached
-		updateFunc = func(obj client.Object) error {
-			updateInstance := obj.(*azdiskv1beta2.AzVolumeAttachment)
-			w.AnnotateObject(updateInstance)
-			updateInstance.Status.State = azdiskv1beta2.AttachmentPending
-			updateInstance.Status.Detail = nil
-			updateInstance.Status.Error = nil
-			return nil
+		// if azVolumeAttachment was preempitvely created without attach trigger, then add attach trigger now
+		if isPreemptiveCreate {
+			// make sure CRI is created
+			var waiter *watcher.ConditionWaiter
+			waiter, err = c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeAttachmentType, attachmentName, waitForCRICreateFunc)
+			if err != nil {
+				return publishContext, err
+			}
+			_, _ = waiter.Wait(ctx)
+			waiter.Close()
+			updateMode = azureutils.UpdateCRI
+			updateFunc = func(obj client.Object) error {
+				updateInstance := obj.(*azdiskv1beta2.AzVolumeAttachment)
+				updateInstance.Annotations = azureutils.AddToMap(updateInstance.Annotations, consts.VolumeAttachRequestAnnotation, "crdProvisioner")
+				return nil
+			}
+		} else {
+			if attachmentObj.Status.Error == nil {
+				publishContext, err = c.waitForLun(ctx, volumeID, nodeID)
+				return publishContext, err
+			}
+			// if primary attachment failed with an error, and for whatever reason, controllerPublishVolume request was made instead of NodeStageVolume request, reset the state, detail and error here if ever reached
+			updateFunc = func(obj client.Object) error {
+				updateInstance := obj.(*azdiskv1beta2.AzVolumeAttachment)
+				w.AnnotateObject(updateInstance)
+				updateInstance.Status.State = azdiskv1beta2.AttachmentPending
+				updateInstance.Status.Detail = nil
+				updateInstance.Status.Error = nil
+				return nil
+			}
 		}
 	} else {
 		if attachmentObj.Status.Error != nil {
@@ -546,8 +743,6 @@ func (c *CrdProvisioner) WaitForAttach(ctx context.Context, volumeID, nodeID str
 }
 
 func (c *CrdProvisioner) waitForLunOrAttach(ctx context.Context, volumeID, nodeID string, waitFunc func(interface{}, bool) (bool, error)) (*azdiskv1beta2.AzVolumeAttachment, error) {
-	lister := c.conditionWatcher.InformerFactory().Disk().V1beta2().AzVolumeAttachments().Lister().AzVolumeAttachments(c.namespace)
-
 	volumeName, err := azureutils.GetDiskName(volumeID)
 	if err != nil {
 		return nil, err
@@ -555,7 +750,8 @@ func (c *CrdProvisioner) waitForLunOrAttach(ctx context.Context, volumeID, nodeI
 	volumeName = strings.ToLower(volumeName)
 	attachmentName := azureutils.GetAzVolumeAttachmentName(volumeName, nodeID)
 
-	azVolumeAttachmentInstance, err := lister.Get(attachmentName)
+	azVolumeAttachmentInstance := &azdiskv1beta2.AzVolumeAttachment{}
+	err = c.azCachedReader.Get(ctx, types.NamespacedName{Namespace: c.namespace, Name: attachmentName}, azVolumeAttachmentInstance)
 	if err != nil {
 		if !apiErrors.IsNotFound(err) {
 			err = status.Errorf(codes.Internal, "unexpected error while getting AzVolumeAttachment (%s): %v", attachmentName, err)
@@ -622,8 +818,6 @@ func (c *CrdProvisioner) UnpublishVolume(
 	secrets map[string]string,
 	mode consts.UnpublishMode) error {
 	var err error
-	azVALister := c.conditionWatcher.InformerFactory().Disk().V1beta2().AzVolumeAttachments().Lister().AzVolumeAttachments(c.namespace)
-
 	var volumeName string
 	volumeName, err = azureutils.GetDiskName(volumeID)
 	if err != nil {
@@ -633,8 +827,8 @@ func (c *CrdProvisioner) UnpublishVolume(
 	attachmentName := azureutils.GetAzVolumeAttachmentName(volumeName, nodeID)
 	volumeName = strings.ToLower(volumeName)
 
-	var azVolumeAttachmentInstance *azdiskv1beta2.AzVolumeAttachment
-	azVolumeAttachmentInstance, err = azVALister.Get(attachmentName)
+	azVolumeAttachmentInstance := &azdiskv1beta2.AzVolumeAttachment{}
+	err = c.azCachedReader.Get(ctx, types.NamespacedName{Namespace: c.namespace, Name: attachmentName}, azVolumeAttachmentInstance)
 	ctx, w := workflow.New(ctx, workflow.WithDetails(workflow.GetObjectDetails(azVolumeAttachmentInstance)...))
 	defer func() { w.Finish(err) }()
 
@@ -783,15 +977,14 @@ func (c *CrdProvisioner) ExpandVolume(
 	capacityRange *azdiskv1beta2.CapacityRange,
 	secrets map[string]string) (*azdiskv1beta2.AzVolumeStatusDetail, error) {
 	var err error
-	lister := c.conditionWatcher.InformerFactory().Disk().V1beta2().AzVolumes().Lister().AzVolumes(c.namespace)
-
 	volumeName, err := azureutils.GetDiskName(volumeID)
 	if err != nil {
 		return nil, err
 	}
 	azVolumeName := strings.ToLower(volumeName)
 
-	azVolume, err := lister.Get(volumeName)
+	azVolume := &azdiskv1beta2.AzVolume{}
+	err = c.azCachedReader.Get(ctx, types.NamespacedName{Namespace: c.namespace, Name: azVolumeName}, azVolume)
 	if err != nil || azVolume == nil {
 		err = status.Errorf(codes.Internal, "failed to retrieve volume id (%s): %v", volumeID, err)
 		return nil, err
@@ -859,14 +1052,14 @@ func (c *CrdProvisioner) GetAzVolumeAttachment(ctx context.Context, volumeID str
 	if err != nil {
 		return nil, err
 	}
-	azVolumeAttachmentName := azureutils.GetAzVolumeAttachmentName(diskName, nodeID)
-	var azVolumeAttachment *azdiskv1beta2.AzVolumeAttachment
-
-	if azVolumeAttachment, err = c.conditionWatcher.InformerFactory().Disk().V1beta2().AzVolumeAttachments().Lister().AzVolumeAttachments(c.namespace).Get(azVolumeAttachmentName); err != nil {
+	attachmentName := azureutils.GetAzVolumeAttachmentName(diskName, nodeID)
+	azVolumeAttachmentInstance := &azdiskv1beta2.AzVolumeAttachment{}
+	err = c.azCachedReader.Get(ctx, types.NamespacedName{Namespace: c.namespace, Name: attachmentName}, azVolumeAttachmentInstance)
+	if err != nil {
 		return nil, err
 	}
 
-	return azVolumeAttachment, nil
+	return azVolumeAttachmentInstance, nil
 }
 
 func (c *CrdProvisioner) GetDiskClientSet() azdisk.Interface {
@@ -999,6 +1192,10 @@ func waitForLunFunc(obj interface{}, objectDeleted bool) (bool, error) {
 	return false, nil
 }
 
+func waitForCRICreateFunc(obj interface{}, objectDeleted bool) (bool, error) {
+	return obj != nil && !objectDeleted, nil
+}
+
 func waitForAttachVolumeFunc(obj interface{}, objectDeleted bool) (bool, error) {
 	if obj == nil || objectDeleted {
 		return false, nil
@@ -1025,4 +1222,16 @@ func waitForDetachVolumeFunc(obj interface{}, objectDeleted bool) (bool, error) 
 		return false, util.ErrorFromAzError(azVolumeAttachmentInstance.Status.Error)
 	}
 	return false, nil
+}
+
+func startWatchingKube(ctx context.Context, kubeInformerFactory informers.SharedInformerFactory) {
+	nodeInformer := kubeInformerFactory.Core().V1().Nodes().Informer()
+
+	go kubeInformerFactory.Start(ctx.Done())
+
+	synced := cache.WaitForCacheSync(ctx.Done(), nodeInformer.HasSynced)
+	if !synced {
+		klog.Fatalf("Unable to sync caches for kube objects")
+		os.Exit(1)
+	}
 }

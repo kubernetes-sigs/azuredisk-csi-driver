@@ -279,7 +279,7 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *azdiskv
 
 			// Delete all AzVolumeAttachment objects bound to the deleted AzVolume
 			var attachments []azdiskv1beta2.AzVolumeAttachment
-			attachments, err = r.controllerSharedState.cleanUpAzVolumeAttachmentByVolume(deleteCtx, azVolume.Name, azvolume, all, mode)
+			attachments, err = r.controllerSharedState.cleanUpAzVolumeAttachmentByVolume(deleteCtx, azVolume.Name, azvolume, azureutils.AllRoles, mode)
 			if err != nil {
 				updateFunc = func(obj client.Object) error {
 					return reportError(obj, err)

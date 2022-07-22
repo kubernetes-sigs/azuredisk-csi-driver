@@ -84,6 +84,25 @@ const (
 	diskNameGenerateMaxLength = 76
 )
 
+var AttachmentRoles = map[AttachmentRoleMode]string{
+	PrimaryOnly: string(azdiskv1beta2.PrimaryRole),
+	ReplicaOnly: string(azdiskv1beta2.ReplicaRole),
+}
+
+type AttachmentRoleMode int
+
+const (
+	PrimaryOnly AttachmentRoleMode = iota
+	ReplicaOnly
+	AllRoles
+)
+
+type LabelPair struct {
+	Key      string
+	Operator selection.Operator
+	Entry    string
+}
+
 type ClientOperationMode int
 
 type ManagedDiskParameters struct {
@@ -186,7 +205,7 @@ func GetFStype(attributes map[string]string) string {
 	return ""
 }
 
-func GetNodeMaxDiskCount(labels map[string]string) (int, error) {
+func GetNodeMaxDiskCountWithLabels(labels map[string]string) (int, error) {
 	if labels == nil {
 		return 0, fmt.Errorf("labels for the node are not provided")
 	}
@@ -200,6 +219,54 @@ func GetNodeMaxDiskCount(labels map[string]string) (int, error) {
 		return 0, fmt.Errorf("disk count for the node instance type %s is not found", vmsize)
 	}
 	return int(maxDataDiskCount), nil
+}
+
+func GetNodeMaxDiskCount(ctx context.Context, cachedReader client.Reader, nodeName string) (int, error) {
+	nodeObj := &v1.Node{}
+	if err := cachedReader.Get(ctx, types.NamespacedName{Name: nodeName}, nodeObj); err != nil {
+		return -1, err
+	}
+
+	return GetNodeMaxDiskCountWithLabels(nodeObj.Labels)
+}
+
+func GetNodeRemainingDiskCount(ctx context.Context, cachedReader client.Reader, nodeName string) (int, error) {
+	nodeObj := &v1.Node{}
+	if err := cachedReader.Get(ctx, types.NamespacedName{Name: nodeName}, nodeObj); err != nil {
+		return -1, err
+	}
+
+	// get all replica azvolumeattachments on the node
+	attachments, err := GetAzVolumeAttachmentsForNode(ctx, cachedReader, nodeName, AllRoles)
+	if err != nil {
+		return -1, err
+	}
+
+	// get node instance type to query node capacity
+	capacity := 0
+	queryAttachable := false
+
+	if nodeObj.Labels == nil {
+		queryAttachable = true
+	} else {
+		if _, ok := nodeObj.Labels[v1.LabelInstanceTypeStable]; !ok {
+			queryAttachable = true
+		} else {
+			capacity, _ = GetNodeMaxDiskCountWithLabels(nodeObj.Labels)
+		}
+	}
+
+	if queryAttachable {
+		// check node capacity
+		maxAttachables, ok := nodeObj.Status.Allocatable[consts.AttachableVolumesField]
+		if !ok {
+			err := status.Errorf(codes.Internal, "failed to get the max node capacity for node (%s).", nodeName)
+			return -1, err
+		}
+		capacity = int(maxAttachables.Value())
+	}
+
+	return capacity - len(attachments), nil
 }
 
 func GetMaxShares(attributes map[string]string) (int, error) {
@@ -886,6 +953,48 @@ func ListAzVolumeAttachments(ctx context.Context, cachedClient client.Client, az
 	return *azVolumeAttachmentList, err
 }
 
+func GetAzVolumeAttachmentsForVolume(ctx context.Context, cachedClient client.Reader, volumeName string, azVolumeAttachmentRole AttachmentRoleMode) (attachments []azdiskv1beta2.AzVolumeAttachment, err error) {
+	w, _ := workflow.GetWorkflowFromContext(ctx)
+	w.Logger().V(5).Infof("Getting AzVolumeAttachment list for volume (%s)", volumeName)
+	if azVolumeAttachmentRole == AllRoles {
+		return GetAzVolumeAttachmentsWithLabel(ctx, cachedClient, LabelPair{consts.VolumeNameLabel, selection.Equals, volumeName})
+	}
+	return GetAzVolumeAttachmentsWithLabel(ctx, cachedClient, LabelPair{consts.VolumeNameLabel, selection.Equals, volumeName}, LabelPair{consts.RoleLabel, selection.Equals, AttachmentRoles[azVolumeAttachmentRole]})
+}
+
+func GetAzVolumeAttachmentsForNode(ctx context.Context, cachedReader client.Reader, nodeName string, azVolumeAttachmentRole AttachmentRoleMode) (attachments []azdiskv1beta2.AzVolumeAttachment, err error) {
+	w, _ := workflow.GetWorkflowFromContext(ctx)
+	w.Logger().V(5).Infof("Getting AzVolumeAttachment list for node (%s)", nodeName)
+	if azVolumeAttachmentRole == AllRoles {
+		return GetAzVolumeAttachmentsWithLabel(ctx, cachedReader, LabelPair{consts.NodeNameLabel, selection.Equals, nodeName})
+	}
+	return GetAzVolumeAttachmentsWithLabel(ctx, cachedReader, LabelPair{consts.NodeNameLabel, selection.Equals, nodeName}, LabelPair{consts.RoleLabel, selection.Equals, AttachmentRoles[azVolumeAttachmentRole]})
+}
+
+func GetAzVolumeAttachmentsWithLabel(ctx context.Context, cachedClient client.Reader, labelPairs ...LabelPair) (attachments []azdiskv1beta2.AzVolumeAttachment, err error) {
+	w, _ := workflow.GetWorkflowFromContext(ctx)
+	labelSelector := labels.NewSelector()
+	for _, labelPair := range labelPairs {
+		var req *labels.Requirement
+		req, err = CreateLabelRequirements(labelPair.Key, labelPair.Operator, labelPair.Entry)
+		if err != nil {
+			err = status.Errorf(codes.Internal, "failed to create label (%s, %s) for listing AzVolumeAttachment", labelPair.Key, labelPair.Entry)
+			return
+		}
+		labelSelector = labelSelector.Add(*req)
+	}
+
+	w.Logger().V(5).Infof("Label selector is: %v.", labelSelector)
+	azVolumeAttachments := &azdiskv1beta2.AzVolumeAttachmentList{}
+	err = cachedClient.List(ctx, azVolumeAttachments, &client.ListOptions{LabelSelector: labelSelector})
+	if err != nil {
+		err = status.Errorf(codes.Internal, "failed to list AzVolumeAttachments for label %v", labelSelector)
+		return
+	}
+	attachments = azVolumeAttachments.Items
+	return
+}
+
 func GetAzVolumeAttachmentState(volumeAttachmentStatus storagev1.VolumeAttachmentStatus) azdiskv1beta2.AzVolumeAttachmentAttachmentState {
 	if volumeAttachmentStatus.Attached {
 		return azdiskv1beta2.Attached
@@ -966,6 +1075,7 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azdiskinformers.Sha
 		// if updateFunc doesn't change the object, don't bother making an update request
 		if reflect.DeepEqual(objForUpdate, copyForUpdate) {
 			updatedObj = copyForUpdate
+			w.Logger().Info("Skip update. No update needed.")
 			return nil
 		}
 
@@ -1129,6 +1239,17 @@ func AddToMap(mmap map[string]string, entries ...string) map[string]string {
 	}
 	for i := 0; i < len(entries); i = i + 2 {
 		mmap[entries[i]] = entries[i+1]
+	}
+	return mmap
+}
+
+// RemoveFromMap requires arguments to be passed in <map, key1, key2, key3, ...> format
+func RemoveFromMap(mmap map[string]string, keys ...string) map[string]string {
+	if mmap == nil {
+		mmap = map[string]string{}
+	}
+	for _, key := range keys {
+		delete(mmap, key)
 	}
 	return mmap
 }

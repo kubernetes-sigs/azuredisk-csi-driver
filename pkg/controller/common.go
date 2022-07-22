@@ -86,24 +86,11 @@ const (
 	pod                                 = "pod-controller"
 )
 
-type labelPair struct {
-	key   string
-	entry string
-}
-
 type cleanUpMode int
 
 const (
 	deleteCRIOnly cleanUpMode = iota
 	detachAndDeleteCRI
-)
-
-type roleMode int
-
-const (
-	primaryOnly roleMode = iota
-	replicaOnly
-	all
 )
 
 type updateMode int
@@ -112,11 +99,6 @@ const (
 	normalUpdate updateMode = iota
 	forceUpdate
 )
-
-var roles = map[roleMode]string{
-	primaryOnly: string(azdiskv1beta2.PrimaryRole),
-	replicaOnly: string(azdiskv1beta2.ReplicaRole),
-}
 
 type updateWithLock bool
 
@@ -777,7 +759,7 @@ func (p *interPodAffinityFilter) filter(ctx context.Context, nodes []v1.Node) ([
 				// add nodes, to which replica attachments of matching pods' volumes are attached, to replicaNodes
 				if volumes, err := p.sharedState.getVolumesForPodObjs(ctx, pods); err == nil {
 					for _, volume := range volumes {
-						attachments, err := getAzVolumeAttachmentsForVolume(ctx, p.sharedState.cachedClient, volume, replicaOnly)
+						attachments, err := azureutils.GetAzVolumeAttachmentsForVolume(ctx, p.sharedState.cachedClient, volume, azureutils.ReplicaOnly)
 						if err != nil {
 							continue
 						}
@@ -1217,7 +1199,7 @@ func (s *scoreByNodeCapacity) score(ctx context.Context, nodeScores map[string]i
 	ctx, w := workflow.New(ctx, workflow.WithDetails("score-plugin", s.name()))
 	defer w.Finish(nil)
 	for nodeName, score := range nodeScores {
-		remainingCapacity, err := getNodeRemainingCapacity(ctx, s.sharedState.cachedClient, nil, nodeName)
+		remainingCapacity, err := azureutils.GetNodeRemainingDiskCount(ctx, s.sharedState.cachedClient, nodeName)
 		if err != nil {
 			// if failed to get node's remaining capacity, remove the node from the candidate list and proceed
 			w.Logger().Errorf(err, "failed to get remaining capacity of node (%s)", nodeName)
@@ -1254,7 +1236,7 @@ func (s *scoreByReplicaCount) score(ctx context.Context, nodeScores map[string]i
 	ctx, w := workflow.New(ctx, workflow.WithDetails("score-plugin", s.name()))
 	defer w.Finish(nil)
 	for _, volume := range s.volumes {
-		azVolumeAttachments, err := getAzVolumeAttachmentsForVolume(ctx, s.sharedState.cachedClient, volume, all)
+		azVolumeAttachments, err := azureutils.GetAzVolumeAttachmentsForVolume(ctx, s.sharedState.cachedClient, volume, azureutils.AllRoles)
 		if err != nil {
 			w.Logger().V(5).Errorf(err, "Error listing AzVolumeAttachments for azvolume %s", volume)
 			continue
@@ -1451,7 +1433,7 @@ func (c *SharedState) selectNodesPerTopology(ctx context.Context, nodes []v1.Nod
 
 		// find primary node if not already found
 		if primaryNode == "" {
-			if primaryAttachment, err := getAzVolumeAttachmentsForVolume(ctx, c.cachedClient, volume, primaryOnly); err != nil || len(primaryAttachment) == 0 {
+			if primaryAttachment, err := azureutils.GetAzVolumeAttachmentsForVolume(ctx, c.cachedClient, volume, azureutils.PrimaryOnly); err != nil || len(primaryAttachment) == 0 {
 				continue
 			} else {
 				primaryNode = primaryAttachment[0].Spec.NodeName
@@ -1569,52 +1551,10 @@ func getSupportedZones(nodeSelectorTerms []v1.NodeSelectorTerm, topologyKey stri
 	return supportedZones
 }
 
-func getNodeRemainingCapacity(ctx context.Context, cachedClient client.Client, nodeObj *v1.Node, nodeName string) (int, error) {
-	// get node if necessary
-	if nodeObj == nil {
-		nodeObj = &v1.Node{}
-		if err := cachedClient.Get(ctx, types.NamespacedName{Name: nodeName}, nodeObj); err != nil {
-			return -1, err
-		}
-	}
-
-	// get all replica azvolumeattachments on the node
-	attachments, err := getAzVolumeAttachmentsForNode(ctx, cachedClient, nodeName, all)
-	if err != nil {
-		return -1, err
-	}
-
-	// get node instance type to query node capacity
-	capacity := 0
-	queryAttachable := false
-
-	if nodeObj.Labels == nil {
-		queryAttachable = true
-	} else {
-		if _, ok := nodeObj.Labels[v1.LabelInstanceTypeStable]; !ok {
-			queryAttachable = true
-		} else {
-			capacity, _ = azureutils.GetNodeMaxDiskCount(nodeObj.Labels)
-		}
-	}
-
-	if queryAttachable {
-		// check node capacity
-		maxAttachables, ok := nodeObj.Status.Allocatable[consts.AttachableVolumesField]
-		if !ok {
-			err := status.Errorf(codes.Internal, "failed to get the max node capacity for node (%s).", nodeName)
-			return -1, err
-		}
-		capacity = int(maxAttachables.Value())
-	}
-
-	return capacity - len(attachments), nil
-}
-
 func (c *SharedState) getNodesWithReplica(ctx context.Context, volumeName string) ([]string, error) {
 	w, _ := workflow.GetWorkflowFromContext(ctx)
 	w.Logger().V(5).Infof("Getting nodes with replica AzVolumeAttachments for volume %s.", volumeName)
-	azVolumeAttachments, err := getAzVolumeAttachmentsForVolume(ctx, c.cachedClient, volumeName, replicaOnly)
+	azVolumeAttachments, err := azureutils.GetAzVolumeAttachmentsForVolume(ctx, c.cachedClient, volumeName, azureutils.ReplicaOnly)
 	if err != nil {
 		w.Logger().V(5).Errorf(err, "failed to get AzVolumeAttachments for volume %s.", volumeName)
 		return nil, err
@@ -1657,7 +1597,8 @@ func (c *SharedState) createReplicaAzVolumeAttachment(ctx context.Context, volum
 				consts.VolumeNameLabel: volumeName,
 				consts.RoleLabel:       string(azdiskv1beta2.ReplicaRole),
 			},
-			Finalizers: []string{consts.AzVolumeAttachmentFinalizer},
+			Annotations: map[string]string{consts.VolumeAttachRequestAnnotation: "controller"},
+			Finalizers:  []string{consts.AzVolumeAttachmentFinalizer},
 		},
 		Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
 			NodeName:      node,
@@ -1676,7 +1617,7 @@ func (c *SharedState) createReplicaAzVolumeAttachment(ctx context.Context, volum
 	return nil
 }
 
-func (c *SharedState) cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azVolumeName string, caller operationRequester, role roleMode, deleteMode cleanUpMode) ([]azdiskv1beta2.AzVolumeAttachment, error) {
+func (c *SharedState) cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azVolumeName string, caller operationRequester, role azureutils.AttachmentRoleMode, deleteMode cleanUpMode) ([]azdiskv1beta2.AzVolumeAttachment, error) {
 	var err error
 	ctx, w := workflow.New(ctx, workflow.WithDetails(consts.VolumeNameLabel, azVolumeName))
 	defer func() { w.Finish(err) }()
@@ -1684,7 +1625,7 @@ func (c *SharedState) cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azV
 	w.Logger().Infof("AzVolumeAttachment clean up requested by %s for AzVolume (%s)", caller, azVolumeName)
 
 	var attachments []azdiskv1beta2.AzVolumeAttachment
-	attachments, err = getAzVolumeAttachmentsForVolume(ctx, c.cachedClient, azVolumeName, role)
+	attachments, err = azureutils.GetAzVolumeAttachmentsForVolume(ctx, c.cachedClient, azVolumeName, role)
 	if err != nil {
 		if apiErrors.IsNotFound(err) {
 			err = nil
@@ -1701,7 +1642,7 @@ func (c *SharedState) cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azV
 	return attachments, nil
 }
 
-func (c *SharedState) cleanUpAzVolumeAttachmentByNode(ctx context.Context, azDriverNodeName string, caller operationRequester, role roleMode, deleteMode cleanUpMode) ([]azdiskv1beta2.AzVolumeAttachment, error) {
+func (c *SharedState) cleanUpAzVolumeAttachmentByNode(ctx context.Context, azDriverNodeName string, caller operationRequester, role azureutils.AttachmentRoleMode, deleteMode cleanUpMode) ([]azdiskv1beta2.AzVolumeAttachment, error) {
 	var err error
 	ctx, w := workflow.New(ctx, workflow.WithDetails(consts.NodeNameLabel, azDriverNodeName))
 	defer func() { w.Finish(err) }()
@@ -1784,50 +1725,8 @@ func (c *SharedState) cleanUpAzVolumeAttachments(ctx context.Context, attachment
 	return nil
 }
 
-func getAzVolumeAttachmentsForVolume(ctx context.Context, azclient client.Client, volumeName string, azVolumeAttachmentRole roleMode) (attachments []azdiskv1beta2.AzVolumeAttachment, err error) {
-	w, _ := workflow.GetWorkflowFromContext(ctx)
-	w.Logger().V(5).Infof("Getting AzVolumeAttachment list for volume (%s)", volumeName)
-	if azVolumeAttachmentRole == all {
-		return getAzVolumeAttachmentsWithLabel(ctx, azclient, labelPair{consts.VolumeNameLabel, volumeName})
-	}
-	return getAzVolumeAttachmentsWithLabel(ctx, azclient, labelPair{consts.VolumeNameLabel, volumeName}, labelPair{consts.RoleLabel, roles[azVolumeAttachmentRole]})
-}
-
-func getAzVolumeAttachmentsForNode(ctx context.Context, azclient client.Client, nodeName string, azVolumeAttachmentRole roleMode) (attachments []azdiskv1beta2.AzVolumeAttachment, err error) {
-	w, _ := workflow.GetWorkflowFromContext(ctx)
-	w.Logger().V(5).Infof("Getting AzVolumeAttachment list for node (%s)", nodeName)
-	if azVolumeAttachmentRole == all {
-		return getAzVolumeAttachmentsWithLabel(ctx, azclient, labelPair{consts.NodeNameLabel, nodeName})
-	}
-	return getAzVolumeAttachmentsWithLabel(ctx, azclient, labelPair{consts.NodeNameLabel, nodeName}, labelPair{consts.RoleLabel, roles[azVolumeAttachmentRole]})
-}
-
-func getAzVolumeAttachmentsWithLabel(ctx context.Context, azclient client.Client, labelPairs ...labelPair) (attachments []azdiskv1beta2.AzVolumeAttachment, err error) {
-	w, _ := workflow.GetWorkflowFromContext(ctx)
-	labelSelector := labels.NewSelector()
-	for _, labelPair := range labelPairs {
-		var req *labels.Requirement
-		req, err = azureutils.CreateLabelRequirements(labelPair.key, selection.Equals, labelPair.entry)
-		if err != nil {
-			err = status.Errorf(codes.Internal, "failed to create label (%s, %s) for listing AzVolumeAttachment", labelPair.key, labelPair.entry)
-			return
-		}
-		labelSelector = labelSelector.Add(*req)
-	}
-
-	w.Logger().V(5).Infof("Label selector is: %v.", labelSelector)
-	azVolumeAttachments := &azdiskv1beta2.AzVolumeAttachmentList{}
-	err = azclient.List(ctx, azVolumeAttachments, &client.ListOptions{LabelSelector: labelSelector})
-	if err != nil {
-		err = status.Errorf(codes.Internal, "failed to list AzVolumeAttachments for label %v", labelSelector)
-		return
-	}
-	attachments = azVolumeAttachments.Items
-	return
-}
-
-func shouldCleanUp(attachment azdiskv1beta2.AzVolumeAttachment, mode roleMode) bool {
-	return mode == all || (attachment.Spec.RequestedRole == azdiskv1beta2.PrimaryRole && mode == primaryOnly) || (attachment.Spec.RequestedRole == azdiskv1beta2.ReplicaRole && mode == replicaOnly)
+func shouldCleanUp(attachment azdiskv1beta2.AzVolumeAttachment, mode azureutils.AttachmentRoleMode) bool {
+	return mode == azureutils.AllRoles || (attachment.Spec.RequestedRole == azdiskv1beta2.PrimaryRole && mode == azureutils.PrimaryOnly) || (attachment.Spec.RequestedRole == azdiskv1beta2.ReplicaRole && mode == azureutils.ReplicaOnly)
 }
 
 func isAttached(attachment *azdiskv1beta2.AzVolumeAttachment) bool {
@@ -1850,6 +1749,10 @@ func objectDeletionRequested(obj runtime.Object) bool {
 
 func isCleanupRequested(attachment *azdiskv1beta2.AzVolumeAttachment) bool {
 	return attachment != nil && azureutils.MapContains(attachment.Status.Annotations, consts.CleanUpAnnotation)
+}
+
+func volumeAttachRequested(attachment *azdiskv1beta2.AzVolumeAttachment) bool {
+	return attachment != nil && azureutils.MapContains(attachment.Annotations, consts.VolumeAttachRequestAnnotation)
 }
 
 func volumeDetachRequested(attachment *azdiskv1beta2.AzVolumeAttachment) bool {
@@ -2024,7 +1927,7 @@ func (c *SharedState) garbageCollectReplicas(ctx context.Context, volumeName str
 		volumeName,
 		replica,
 		func(ctx context.Context) error {
-			if _, err := c.cleanUpAzVolumeAttachmentByVolume(ctx, volumeName, requester, replicaOnly, detachAndDeleteCRI); err != nil {
+			if _, err := c.cleanUpAzVolumeAttachmentByVolume(ctx, volumeName, requester, azureutils.ReplicaOnly, detachAndDeleteCRI); err != nil {
 				return err
 			}
 			c.addToGcExclusionList(volumeName, replica)
@@ -2067,7 +1970,7 @@ func (c *SharedState) manageReplicas(ctx context.Context, volumeName string) err
 		return nil
 	}
 
-	azVolumeAttachments, err := getAzVolumeAttachmentsForVolume(ctx, c.cachedClient, volumeName, replicaOnly)
+	azVolumeAttachments, err := azureutils.GetAzVolumeAttachmentsForVolume(ctx, c.cachedClient, volumeName, azureutils.ReplicaOnly)
 	if err != nil {
 		w.Logger().Errorf(err, "failed to list replica AzVolumeAttachments")
 		return err

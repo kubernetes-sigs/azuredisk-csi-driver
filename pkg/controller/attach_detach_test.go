@@ -80,7 +80,7 @@ func TestAttachDetachReconcile(t *testing.T) {
 		verifyFunc  func(*testing.T, *ReconcileAttachDetach, reconcile.Result, error)
 	}{
 		{
-			description: "[Success] Should attach volume when new primary AzVolumeAttachment is created.",
+			description: "[Success] Should attach volume when new primary AzVolumeAttachment is created with attach request annotation.",
 			request:     testPrimaryAzVolumeAttachment0Request,
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAttachDetach {
 				newAttachment := testPrimaryAzVolumeAttachment0.DeepCopy()
@@ -112,6 +112,40 @@ func TestAttachDetachReconcile(t *testing.T) {
 						return false, nil
 					}
 					return azVolumeAttachment.Status.State == azdiskv1beta2.Attached, nil
+				}
+
+				conditionError := wait.PollImmediate(verifyCRIInterval, verifyCRITimeout, conditionFunc)
+				require.NoError(t, conditionError)
+			},
+		},
+
+		{
+			description: "[Failure] Should not attach volume when new primary AzVolumeAttachment is created without attach request annotation.",
+			request:     testPrimaryAzVolumeAttachment0Request,
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAttachDetach {
+				newAttachment := testPrimaryAzVolumeAttachment0.DeepCopy()
+				newAttachment.Annotations = azureutils.RemoveFromMap(newAttachment.Annotations, consts.VolumeAttachRequestAnnotation)
+				newAttachment.Status.Annotations = azureutils.AddToMap(newAttachment.Status.Annotations, consts.VolumeAttachmentKey, testVolumeAttachmentName)
+
+				newVolumeAttachment := testVolumeAttachment.DeepCopy()
+
+				controller := NewTestAttachDetachController(
+					mockCtl,
+					testNamespace,
+					&testAzVolume0,
+					newVolumeAttachment,
+					newAttachment)
+
+				mockClientsAndAttachmentProvisioner(controller)
+
+				return controller
+			},
+			verifyFunc: func(t *testing.T, controller *ReconcileAttachDetach, result reconcile.Result, err error) {
+				require.False(t, result.Requeue)
+
+				conditionFunc := func() (bool, error) {
+					azVolumeAttachment, localError := controller.controllerSharedState.azClient.DiskV1beta2().AzVolumeAttachments(testPrimaryAzVolumeAttachment0.Namespace).Get(context.TODO(), testPrimaryAzVolumeAttachment0.Name, metav1.GetOptions{})
+					return azVolumeAttachment.Status.State != azdiskv1beta2.Attached && azVolumeAttachment.Status.State != azdiskv1beta2.Attaching, localError
 				}
 
 				conditionError := wait.PollImmediate(verifyCRIInterval, verifyCRITimeout, conditionFunc)

@@ -68,14 +68,16 @@ var (
 
 	provisioningStateSucceeded = "Succeeded"
 
-	testDiskName              = "test-disk"
-	testDiskURI               = fmt.Sprintf(computeDiskURIFormat, testSubscription, testResourceGroup, testDiskName)
+	testDiskName0             = "test-disk-0"
+	testDiskURI0              = fmt.Sprintf(computeDiskURIFormat, testSubscription, testResourceGroup, testDiskName0)
+	testDiskName1             = "test-disk-1"
+	testDiskURI1              = fmt.Sprintf(computeDiskURIFormat, testSubscription, testResourceGroup, testDiskName1)
 	testDiskSizeGiB     int32 = 10
 	testDiskTimeCreated       = date.Time{Time: time.Now()}
 
 	testDisk = compute.Disk{
-		Name: &testDiskName,
-		ID:   &testDiskURI,
+		Name: &testDiskName0,
+		ID:   &testDiskURI0,
 		DiskProperties: &compute.DiskProperties{
 			DiskSizeGB:        &testDiskSizeGiB,
 			DiskState:         compute.DiskStateUnattached,
@@ -97,7 +99,7 @@ var (
 		DiskProperties: &compute.DiskProperties{
 			CreationData: &compute.CreationData{
 				CreateOption:     compute.DiskCreateOptionCopy,
-				SourceResourceID: &testDiskURI,
+				SourceResourceID: &testDiskURI0,
 			},
 			DiskSizeGB:        &clonedDiskSizeGiB,
 			DiskState:         compute.DiskStateUnattached,
@@ -133,7 +135,7 @@ var (
 		ID:   &testSnapshotURI,
 		SnapshotProperties: &compute.SnapshotProperties{
 			CreationData: &compute.CreationData{
-				SourceResourceID: &testDiskURI,
+				SourceResourceID: &testDiskURI0,
 			},
 			DiskSizeGB:        &testSnapshotSizeGiB,
 			ProvisioningState: &provisioningStateSucceeded,
@@ -181,7 +183,7 @@ var (
 
 func init() {
 	var err error
-	testAzSnapshot, err = azureutils.NewAzureDiskSnapshot(testDiskURI, &testSnapshot)
+	testAzSnapshot, err = azureutils.NewAzureDiskSnapshot(testDiskURI0, &testSnapshot)
 	if err != nil {
 		panic(err)
 	}
@@ -208,7 +210,7 @@ func NewTestCloudProvisioner(controller *gomock.Controller) *CloudProvisioner {
 
 func mockExistingDisk(provisioner *CloudProvisioner) {
 	provisioner.GetCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().
-		Get(gomock.Any(), testSubscription, testResourceGroup, testDiskName).
+		Get(gomock.Any(), testSubscription, testResourceGroup, testDiskName0).
 		Return(testDisk, nil).
 		AnyTimes()
 }
@@ -316,7 +318,7 @@ func mockSnapshotsList(provisioner *CloudProvisioner, disk1Count, disk2Count int
 	totalCount := disk1Count + disk2Count
 	azssList := make([]compute.Snapshot, totalCount)
 	sourceDiskURIs := [2]string{
-		testDiskURI,
+		testDiskURI0,
 		fmt.Sprintf(computeDiskURIFormat, testSubscription, testResourceGroup, "test-disk-2"),
 	}
 
@@ -369,7 +371,7 @@ func TestCreateVolume(t *testing.T) {
 		DoAndReturn(func(ctx context.Context, subscriptionID, resourceGroupName, diskName string, disk compute.Disk) *retry.Error {
 			var mockedDisk compute.Disk
 
-			if resourceGroupName == testResourceGroup && diskName == testDiskName {
+			if resourceGroupName == testResourceGroup && diskName == testDiskName0 {
 				mockedDisk = testDisk
 			} else {
 				mockedDisk = disk
@@ -430,7 +432,7 @@ func TestCreateVolume(t *testing.T) {
 			},
 			contentSource: &azdiskv1beta2.ContentVolumeSource{
 				ContentSource:   azdiskv1beta2.ContentVolumeSourceTypeVolume,
-				ContentSourceID: testDiskURI,
+				ContentSourceID: testDiskURI0,
 			},
 			topology: &azdiskv1beta2.TopologyRequirement{
 				Requisite: []azdiskv1beta2.Topology{
@@ -467,7 +469,7 @@ func TestCreateVolume(t *testing.T) {
 			},
 			contentSource: &azdiskv1beta2.ContentVolumeSource{
 				ContentSource:   azdiskv1beta2.ContentVolumeSourceTypeVolume,
-				ContentSourceID: testDiskURI,
+				ContentSourceID: testDiskURI0,
 			},
 			topology: &azdiskv1beta2.TopologyRequirement{
 				Requisite: []azdiskv1beta2.Topology{
@@ -506,7 +508,7 @@ func TestCreateVolume(t *testing.T) {
 			},
 			contentSource: &azdiskv1beta2.ContentVolumeSource{
 				ContentSource:   azdiskv1beta2.ContentVolumeSourceTypeVolume,
-				ContentSourceID: testDiskURI,
+				ContentSourceID: testDiskURI0,
 			},
 			topology: &azdiskv1beta2.TopologyRequirement{
 				Requisite: []azdiskv1beta2.Topology{
@@ -545,7 +547,7 @@ func TestCreateVolume(t *testing.T) {
 			},
 			contentSource: &azdiskv1beta2.ContentVolumeSource{
 				ContentSource:   azdiskv1beta2.ContentVolumeSourceTypeVolume,
-				ContentSourceID: testDiskURI,
+				ContentSourceID: testDiskURI0,
 			},
 			topology: &azdiskv1beta2.TopologyRequirement{
 				Requisite: []azdiskv1beta2.Topology{
@@ -568,7 +570,7 @@ func TestCreateVolume(t *testing.T) {
 		},
 		{
 			description: "[Success] Returns no error for existing disk when same creation parameters are used (CreateVolume is idempotent)",
-			diskName:    testDiskName,
+			diskName:    testDiskName0,
 			capacity: &azdiskv1beta2.CapacityRange{
 				RequiredBytes: util.GiBToBytes(int64(testDiskSizeGiB)),
 				LimitBytes:    util.GiBToBytes(int64(testDiskSizeGiB)),
@@ -580,7 +582,7 @@ func TestCreateVolume(t *testing.T) {
 		},
 		{
 			description: "[Failure] Returns an error for existing disk when different a different size is requested",
-			diskName:    testDiskName,
+			diskName:    testDiskName0,
 			capacity: &azdiskv1beta2.CapacityRange{
 				RequiredBytes: util.GiBToBytes(int64(testDiskSizeGiB * 2)),
 				LimitBytes:    util.GiBToBytes(int64(testDiskSizeGiB * 2)),
@@ -631,7 +633,7 @@ func TestCreateVolume(t *testing.T) {
 		}
 		tt := test
 		t.Run(test.description, func(t *testing.T) {
-			if tt.diskName != testDiskName {
+			if tt.diskName != testDiskName0 {
 				provisioner.GetCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().
 					Get(gomock.Any(), gomock.Any(), gomock.Any(), tt.diskName).
 					Return(compute.Disk{}, notFoundError).
@@ -663,7 +665,7 @@ func TestDeleteVolume(t *testing.T) {
 
 	mockExistingDisk(provisioner)
 	provisioner.GetCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().
-		Delete(gomock.Any(), testSubscription, testResourceGroup, testDiskName).
+		Delete(gomock.Any(), testSubscription, testResourceGroup, testDiskName0).
 		Return(nil).
 		MaxTimes(1)
 
@@ -676,7 +678,7 @@ func TestDeleteVolume(t *testing.T) {
 	}{
 		{
 			description:   "[Success] Deletes an existing disk",
-			diskURI:       testDiskURI,
+			diskURI:       testDiskURI0,
 			expectedError: nil,
 		},
 		{
@@ -736,14 +738,14 @@ func TestPublishVolume(t *testing.T) {
 		{
 			description:        "[Success] Attaches an existing disk",
 			nodeID:             testVMName,
-			diskURI:            testDiskURI,
+			diskURI:            testDiskURI0,
 			expectedError:      nil,
 			expectedAsyncError: nil,
 		},
 		{
 			description:        "[Failure] Returns error for missing VM",
 			nodeID:             missingVMName,
-			diskURI:            testDiskURI,
+			diskURI:            testDiskURI0,
 			expectedError:      status.Errorf(codes.NotFound, "failed to get azure instance id for node %q: %v", missingVMName, cloudprovider.InstanceNotFound),
 			expectedAsyncError: nil,
 		},
@@ -778,7 +780,7 @@ func TestUnpublishVolume(t *testing.T) {
 	attachedDisks := []compute.DataDisk{
 		{
 			Lun:  &lun,
-			Name: &testDiskName,
+			Name: &testDiskName0,
 		},
 	}
 
@@ -816,13 +818,13 @@ func TestUnpublishVolume(t *testing.T) {
 		{
 			description:   "[Success] Detaches an attached disk",
 			nodeID:        testVMName,
-			diskURI:       testDiskURI,
+			diskURI:       testDiskURI0,
 			expectedError: nil,
 		},
 		{
 			description:   "[Success] Returns no error for missing VM",
 			nodeID:        missingVMName,
-			diskURI:       testDiskURI,
+			diskURI:       testDiskURI0,
 			expectedError: nil,
 		},
 		{
@@ -849,7 +851,7 @@ func TestExpandVolume(t *testing.T) {
 
 	mockExistingDisk(provisioner)
 	provisioner.GetCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().
-		Update(gomock.Any(), testSubscription, testResourceGroup, testDiskName, gomock.Any()).
+		Update(gomock.Any(), testSubscription, testResourceGroup, testDiskName0, gomock.Any()).
 		Return(nil).
 		AnyTimes()
 	mockMissingDisk(provisioner)
@@ -862,7 +864,7 @@ func TestExpandVolume(t *testing.T) {
 	}{
 		{
 			description: "[Success] Expands an existing disk",
-			diskURI:     testDiskURI,
+			diskURI:     testDiskURI0,
 			newCapacity: azdiskv1beta2.CapacityRange{
 				RequiredBytes: util.GiBToBytes(int64(testDiskSizeGiB * 2)),
 				LimitBytes:    util.GiBToBytes(int64(testDiskSizeGiB * 2)),
@@ -946,7 +948,7 @@ func TestCreateSnapshot(t *testing.T) {
 	}{
 		{
 			description:   "[Success] Creates a snapshot for existing disk",
-			sourceDiskURI: testDiskURI,
+			sourceDiskURI: testDiskURI0,
 			snapshotName:  "new-snapshot",
 			expectedError: nil,
 		},
@@ -1134,7 +1136,7 @@ func TestListSnapshots(t *testing.T) {
 			description:    "[Success] Lists all snapshots for a specific disk in one call",
 			maxEntries:     totalSnapshotCount,
 			expectedTotal:  disk1Count,
-			sourceVolumeID: testDiskURI,
+			sourceVolumeID: testDiskURI0,
 			snapshotID:     "",
 			expectedError:  nil,
 		},
@@ -1150,7 +1152,7 @@ func TestListSnapshots(t *testing.T) {
 			description:    "[Success] Lists all snapshots for a specific disk in multiple calls",
 			maxEntries:     disk1Count / 2,
 			expectedTotal:  disk1Count,
-			sourceVolumeID: testDiskURI,
+			sourceVolumeID: testDiskURI0,
 			snapshotID:     "",
 			expectedError:  nil,
 		},
@@ -1166,7 +1168,7 @@ func TestListSnapshots(t *testing.T) {
 			description:    "[Success] Lists one snapshots when snapshot ID is specified",
 			maxEntries:     totalSnapshotCount,
 			expectedTotal:  1,
-			sourceVolumeID: testDiskURI,
+			sourceVolumeID: testDiskURI0,
 			snapshotID:     fmt.Sprintf(computeSnapshotURIFormat, testSubscription, testResourceGroup, "snapshot-2"),
 			expectedError:  nil,
 		},
@@ -1174,7 +1176,7 @@ func TestListSnapshots(t *testing.T) {
 			description:    "[Success] Lists zero snapshots when missing snapshot ID is specified",
 			maxEntries:     totalSnapshotCount,
 			expectedTotal:  0,
-			sourceVolumeID: testDiskURI,
+			sourceVolumeID: testDiskURI0,
 			snapshotID:     missingSnapshotURI,
 			expectedError:  nil,
 		},
@@ -1236,7 +1238,7 @@ func TestCheckDiskExists(t *testing.T) {
 	}{
 		{
 			description:   "[Success] Returns expected disk for existing disk",
-			diskURI:       testDiskURI,
+			diskURI:       testDiskURI0,
 			expectedError: false,
 		},
 		{
@@ -1286,7 +1288,7 @@ func TestGetSourceDiskSize(t *testing.T) {
 	}{
 		{
 			description:   "[Success] Returns size for existing disk",
-			diskName:      testDiskName,
+			diskName:      testDiskName0,
 			curDepth:      0,
 			expectedSize:  testDiskSizeGiB,
 			expectedError: nil,
@@ -1359,14 +1361,14 @@ func TestCheckDiskCapacity(t *testing.T) {
 	}{
 		{
 			description:    "[Success] Size check is successful for existing disk",
-			diskName:       testDiskName,
+			diskName:       testDiskName0,
 			requestedSize:  int(testDiskSizeGiB),
 			expectedResult: true,
 			expectedError:  nil,
 		},
 		{
 			description:    "[Failure] Returns error for existing disk of unexpected size",
-			diskName:       testDiskName,
+			diskName:       testDiskName0,
 			requestedSize:  11,
 			expectedResult: false,
 			expectedError:  status.Errorf(codes.AlreadyExists, "the request volume already exists, but its capacity(10) is different from (11)"),
@@ -1410,7 +1412,7 @@ func TestGetSnapshotByID(t *testing.T) {
 		{
 			description:    "[Success] Returns expected snapshot for existing snapshot",
 			snapshotURI:    testSnapshotURI,
-			sourceVolumeID: testDiskURI,
+			sourceVolumeID: testDiskURI0,
 			expectedResult: testAzSnapshot,
 			expectedError:  nil,
 		},
