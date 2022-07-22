@@ -1,3 +1,33 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.controller.name }}-config
+  namespace: {{ .Release.Namespace }}
+{{ include "azuredisk.labels" . | indent 2 }}
+data:
+  config.yaml: |
+    apiVersion: disk.csi.azure.com/v1beta2
+    kind: AzDiskDriverConfiguration
+    controllerConfig:
+      disableAVSetNodes: {{ .Values.controller.disableAvailabilitySetNodes }}
+      vmType: {{ .Values.controller.vmType }}
+      enabled: true
+      leaderElectionNamespace: {{ .Release.Namespace }}
+    nodeConfig:
+      enablePerfOptimization: {{ .Values.linux.enablePerfOptimization }}
+    cloudConfig:
+      secretName: {{ .Values.controller.cloudConfigSecretName }}
+      secretNamespace: {{ .Values.controller.cloudConfigSecretNamespace }}
+      customUserAgent: {{ .Values.driver.customUserAgent }}
+      userAgentSuffix: {{ .Values.driver.userAgentSuffix }}
+      allowEmptyCloudConfig: {{ .Values.controller.allowEmptyCloudConfig }}
+      vmssCacheTTLInSeconds: {{ .Values.controller.vmssCacheTTLInSeconds }}
+    objectNamespace: {{ .Values.driver.objectNamespace }}
+    endpoint: unix:///csi/csi.sock
+    metricsAddress: 0.0.0.0:{{ .Values.controller.metrics.port }}
+    driverName: {{ .Values.driver.name }}
+---
 kind: Deployment
 apiVersion: apps/v1
 metadata:
@@ -150,21 +180,7 @@ spec:
 {{- end }}
           args:
             - "--v={{ .Values.controller.logLevel }}"
-            - "--endpoint=$(CSI_ENDPOINT)"
-            - "--metrics-address=0.0.0.0:{{ .Values.controller.metrics.port }}"
-            - "--is-controller-plugin=true"
-            - "--enable-perf-optimization={{ .Values.linux.enablePerfOptimization }}"
-            - "--disable-avset-nodes={{ .Values.controller.disableAvailabilitySetNodes }}"
-            - "--vm-type={{ .Values.controller.vmType }}"
-            - "--drivername={{ .Values.driver.name }}"
-            - "--driver-object-namespace={{ .Values.driver.objectNamespace }}"
-            - "--leader-election-namespace={{ .Release.Namespace }}"
-            - "--cloud-config-secret-name={{ .Values.controller.cloudConfigSecretName }}"
-            - "--cloud-config-secret-namespace={{ .Values.controller.cloudConfigSecretNamespace }}"
-            - "--custom-user-agent={{ .Values.driver.customUserAgent }}"
-            - "--user-agent-suffix={{ .Values.driver.userAgentSuffix }}"
-            - "--allow-empty-cloud-config={{ .Values.controller.allowEmptyCloudConfig }}"
-            - "--vmss-cache-ttl-seconds={{ .Values.controller.vmssCacheTTLInSeconds }}"
+            - "--config=/etc/{{ .Values.controller.name }}/config.yaml"
           ports:
             - containerPort: {{ .Values.controller.livenessProbe.healthPort }}
               name: healthz
@@ -201,6 +217,8 @@ spec:
               name: socket-dir
             - mountPath: /etc/kubernetes/
               name: azure-cred
+            - mountPath: /etc/{{ .Values.controller.name }}
+              name: {{ .Values.controller.name }}-config
             {{- if eq .Values.cloud "AzureStackCloud" }}
             - name: ssl
               mountPath: /etc/ssl/certs
@@ -235,3 +253,6 @@ spec:
           hostPath:
             path: /etc/pki/ca-trust/extracted
         {{- end }}
+        - name: {{ .Values.controller.name }}-config
+          configMap:
+            name: {{ .Values.controller.name }}-config

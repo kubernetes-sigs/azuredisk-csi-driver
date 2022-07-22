@@ -63,16 +63,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
 
-var isControllerPlugin = flag.Bool("is-controller-plugin", false, "Boolean flag to indicate this instance is running as controller.")
-var isNodePlugin = flag.Bool("is-node-plugin", false, "Boolean flag to indicate this instance is running as node daemon.")
-var driverObjectNamespace = flag.String("driver-object-namespace", consts.DefaultAzureDiskCrdNamespace, "The namespace where driver related custom resources are created.")
-var heartbeatFrequencyInSec = flag.Int("heartbeat-frequency-in-sec", 30, "Frequency in seconds at which node driver sends heartbeat.")
-var controllerLeaseDurationInSec = flag.Int("lease-duration-in-sec", 15, "The duration that non-leader candidates will wait to force acquire leadership")
-var controllerLeaseRenewDeadlineInSec = flag.Int("lease-renew-deadline-in-sec", 10, "The duration that the acting controlplane will retry refreshing leadership before giving up.")
-var controllerLeaseRetryPeriodInSec = flag.Int("lease-retry-period-in-sec", 2, "The duration the LeaderElector clients should wait between tries of actions.")
-var leaderElectionNamespace = flag.String("leader-election-namespace", consts.ReleaseNamespace, "The leader election namespace for controller")
-var nodePartition = flag.String("node-partition", consts.DefaultNodePartitionName, "The partition name for node plugin.")
-var controllerPartition = flag.String("controller-partition", consts.DefaultControllerPartitionName, "The partition name for controller plugin.")
 var isTestRun = flag.Bool("is-test-run", false, "Boolean flag to indicate whether this instance is being used for sanity or integration tests")
 
 // OutputCallDepth is the stack depth where we can find the origin of this call
@@ -110,60 +100,56 @@ type DriverV2 struct {
 	azDriverNodeInformer              azdiskinformertypes.AzDriverNodeInformer
 	deviceChecker                     *deviceChecker
 	kubeClientQPS                     int
+	isControllerPlugin                bool
+	isNodePlugin                      bool
 }
 
 // NewDriver creates a driver object.
-func NewDriver(options *DriverOptions) CSIDriver {
-	return newDriverV2(options, *driverObjectNamespace, *nodePartition, *controllerPartition, *heartbeatFrequencyInSec, *controllerLeaseDurationInSec, *controllerLeaseRenewDeadlineInSec, *controllerLeaseRetryPeriodInSec, *leaderElectionNamespace)
+func NewDriver(config *azdiskv1beta2.AzDiskDriverConfiguration) CSIDriver {
+	return newDriverV2(config)
 }
 
 // newDriverV2 Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
 // does not support optional driver plugin info manifest field. Refer to CSI spec for more details.
-func newDriverV2(options *DriverOptions,
-	driverObjectNamespace string,
-	nodePartition string,
-	controllerPartition string,
-	heartbeatFrequency int,
-	leaseDurationInSec int,
-	leaseRenewDeadlineInSec int,
-	leaseRetryPeriodInSec int,
-	leaderElectionNamespace string) *DriverV2 {
+func newDriverV2(config *azdiskv1beta2.AzDiskDriverConfiguration) *DriverV2 {
 
 	klog.Warning("Using DriverV2")
 	driver := DriverV2{}
-	driver.Name = options.DriverName
+	driver.Name = config.DriverName
 	driver.Version = driverVersion
-	driver.objectNamespace = driverObjectNamespace
-	driver.nodePartition = nodePartition
-	driver.controllerPartition = controllerPartition
-	driver.heartbeatFrequencyInSec = heartbeatFrequency
-	driver.controllerLeaseDurationInSec = leaseDurationInSec
-	driver.controllerLeaseRenewDeadlineInSec = leaseRenewDeadlineInSec
-	driver.controllerLeaseRetryPeriodInSec = leaseRetryPeriodInSec
-	driver.leaderElectionNamespace = leaderElectionNamespace
-	driver.NodeID = options.NodeID
-	driver.VolumeAttachLimit = options.VolumeAttachLimit
+	driver.objectNamespace = config.ObjectNamespace
+	driver.nodePartition = config.NodeConfig.PartitionName
+	driver.controllerPartition = config.ControllerConfig.PartitionName
+	driver.heartbeatFrequencyInSec = config.NodeConfig.HeartbeatFrequencyInSec
+	driver.controllerLeaseDurationInSec = config.ControllerConfig.LeaseDurationInSec
+	driver.controllerLeaseRenewDeadlineInSec = config.ControllerConfig.LeaseRenewDeadlineInSec
+	driver.controllerLeaseRetryPeriodInSec = config.ControllerConfig.LeaseRetryPeriodInSec
+	driver.leaderElectionNamespace = config.ControllerConfig.LeaderElectionNamespace
+	driver.NodeID = config.NodeConfig.NodeID
+	driver.VolumeAttachLimit = config.NodeConfig.VolumeAttachLimit
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ready = make(chan struct{})
-	driver.perfOptimizationEnabled = options.EnablePerfOptimization
-	driver.cloudConfigSecretName = options.CloudConfigSecretName
-	driver.cloudConfigSecretNamespace = options.CloudConfigSecretNamespace
-	driver.customUserAgent = options.CustomUserAgent
-	driver.userAgentSuffix = options.UserAgentSuffix
-	driver.useCSIProxyGAInterface = options.UseCSIProxyGAInterface
-	driver.enableDiskOnlineResize = options.EnableDiskOnlineResize
-	driver.allowEmptyCloudConfig = options.AllowEmptyCloudConfig
-	driver.enableAsyncAttach = options.EnableAsyncAttach
-	driver.enableListVolumes = options.EnableListVolumes
-	driver.enableListSnapshots = options.EnableListVolumes
-	driver.supportZone = options.SupportZone
-	driver.getNodeInfoFromLabels = options.GetNodeInfoFromLabels
-	driver.enableDiskCapacityCheck = options.EnableDiskCapacityCheck
+	driver.perfOptimizationEnabled = config.NodeConfig.EnablePerfOptimization
+	driver.cloudConfigSecretName = config.CloudConfig.SecretName
+	driver.cloudConfigSecretNamespace = config.CloudConfig.SecretNamespace
+	driver.customUserAgent = config.CloudConfig.CustomUserAgent
+	driver.userAgentSuffix = config.CloudConfig.UserAgentSuffix
+	driver.useCSIProxyGAInterface = config.NodeConfig.UseCSIProxyGAInterface
+	driver.enableDiskOnlineResize = config.ControllerConfig.EnableDiskOnlineResize
+	driver.allowEmptyCloudConfig = config.CloudConfig.AllowEmptyCloudConfig
+	driver.enableAsyncAttach = config.ControllerConfig.EnableAsyncAttach
+	driver.enableListVolumes = config.ControllerConfig.EnableListVolumes
+	driver.enableListSnapshots = config.ControllerConfig.EnableListSnapshots
+	driver.supportZone = config.NodeConfig.SupportZone
+	driver.getNodeInfoFromLabels = config.NodeConfig.GetNodeInfoFromLabels
+	driver.enableDiskCapacityCheck = config.ControllerConfig.EnableDiskCapacityCheck
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
 	driver.deviceChecker = &deviceChecker{lock: sync.RWMutex{}, entry: nil}
-	driver.kubeClientQPS = options.RestClientQPS
+	driver.kubeClientQPS = config.ClientConfig.KubeClientQPS
+	driver.isControllerPlugin = config.ControllerConfig.Enabled
+	driver.isNodePlugin = config.NodeConfig.Enabled
 
 	topologyKey = fmt.Sprintf("topology.%s/zone", driver.Name)
 	return &driver
@@ -302,12 +288,12 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 	ctx := context.Background()
 
 	// Start the controllers if this is a controller plug-in
-	if *isControllerPlugin {
+	if d.isControllerPlugin {
 		go d.StartControllersAndDieOnExit(ctx)
 	}
 
 	// Register the AzDriverNode
-	if *isNodePlugin {
+	if d.isNodePlugin {
 		d.registerAzDriverNodeOrDie(ctx)
 	}
 
@@ -317,7 +303,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 	s.Start(endpoint, d, d, d, testingMock)
 
 	// Start sending hearbeat and mark node as ready
-	if *isNodePlugin {
+	if d.isNodePlugin {
 		go d.runAzDriverNodeHeartbeatLoop(ctx)
 	}
 

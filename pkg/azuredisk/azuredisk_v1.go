@@ -19,8 +19,10 @@ limitations under the License.
 
 package azuredisk
 
+import azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
+
 // NewDriver Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
 // does not support optional driver plugin info manifest field. Refer to CSI spec for more details.
-func NewDriver(options *DriverOptions) CSIDriver {
-	return newDriverV1(options)
+func NewDriver(config *azdiskv1beta2.AzDiskDriverConfiguration) CSIDriver {
+	return newDriverV1(config)
 }

@@ -1,3 +1,31 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.linux.dsName }}-config
+  namespace: {{ .Release.Namespace }}
+{{ include "azuredisk.labels" . | indent 2 }}
+data:
+  config.yaml: |
+    apiVersion: disk.csi.azure.com/v1beta2
+    kind: AzDiskDriverConfiguration
+    nodeConfig:
+      volumeAttachLimit: {{ .Values.driver.volumeAttachLimit }}
+      supportZone: {{ .Values.node.supportZone }}
+      enablePerfOptimization: {{ .Values.linux.enablePerfOptimization }}
+      getNodeInfoFromLabels: {{ .Values.linux.getNodeInfoFromLabels }}
+      enabled: true
+    cloudConfig:
+      secretName: {{ .Values.node.cloudConfigSecretName }}
+      secretNamespace: {{ .Values.node.cloudConfigSecretNamespace }}
+      customUserAgent: {{ .Values.driver.customUserAgent }}
+      userAgentSuffix: {{ .Values.driver.userAgentSuffix }}
+      allowEmptyCloudConfig: {{ .Values.node.allowEmptyCloudConfig }}
+    objectNamespace: {{ .Values.driver.objectNamespace }}
+    endpoint: unix:///csi/csi.sock
+    metricsAddress: 0.0.0.0:{{ .Values.node.metrics.port }}
+    driverName: {{ .Values.driver.name }}
+---
 {{- if .Values.linux.enabled}}
 kind: DaemonSet
 apiVersion: apps/v1
@@ -98,21 +126,8 @@ spec:
 {{- end }}
           args:
             - "--v={{ .Values.node.logLevel }}"
-            - "--endpoint=$(CSI_ENDPOINT)"
             - "--nodeid=$(KUBE_NODE_NAME)"
-            - "--metrics-address=0.0.0.0:{{ .Values.node.metrics.port }}"
-            - "--enable-perf-optimization={{ .Values.linux.enablePerfOptimization }}"
-            - "--is-node-plugin=true"
-            - "--drivername={{ .Values.driver.name }}"
-            - "--driver-object-namespace={{ .Values.driver.objectNamespace }}"
-            - "--volume-attach-limit={{ .Values.driver.volumeAttachLimit }}"
-            - "--cloud-config-secret-name={{ .Values.node.cloudConfigSecretName }}"
-            - "--cloud-config-secret-namespace={{ .Values.node.cloudConfigSecretNamespace }}"
-            - "--custom-user-agent={{ .Values.driver.customUserAgent }}"
-            - "--user-agent-suffix={{ .Values.driver.userAgentSuffix }}"
-            - "--allow-empty-cloud-config={{ .Values.node.allowEmptyCloudConfig }}"
-            - "--support-zone={{ .Values.node.supportZone }}"
-            - "--get-node-info-from-labels={{ .Values.linux.getNodeInfoFromLabels }}"
+            - "--config=/etc/{{ .Values.linux.dsName }}/config.yaml"
           ports:
             - containerPort: {{ .Values.node.livenessProbe.healthPort }}
               name: healthz
@@ -175,6 +190,8 @@ spec:
               mountPath: /etc/pki/ca-trust/extracted
               readOnly: true
             {{- end }}
+            - name: {{ .Values.linux.dsName }}-config
+              mountPath: /etc/{{ .Values.linux.dsName }}
           resources: {{- toYaml .Values.linux.resources.azuredisk | nindent 12 }}
       volumes:
         - hostPath:
@@ -218,4 +235,7 @@ spec:
           hostPath:
             path: /etc/pki/ca-trust/extracted
         {{- end }}
+        - name: {{ .Values.linux.dsName }}-config
+          configMap:
+            name: {{ .Values.linux.dsName }}-config
 {{- end -}}

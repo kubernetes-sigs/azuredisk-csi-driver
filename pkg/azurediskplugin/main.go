@@ -26,9 +26,12 @@ import (
 	"strings"
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
+	"sigs.k8s.io/yaml"
 
 	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/strings/slices"
+	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
@@ -37,31 +40,43 @@ func init() {
 }
 
 var (
-	endpoint                   = flag.String("endpoint", "unix://tmp/csi.sock", "CSI endpoint")
-	nodeID                     = flag.String("nodeid", "", "node id")
-	version                    = flag.Bool("version", false, "Print the version and exit.")
-	metricsAddress             = flag.String("metrics-address", "0.0.0.0:29604", "export the metrics")
-	kubeconfig                 = flag.String("kubeconfig", "", "Absolute path to the kubeconfig file. Required only when running out of cluster.")
-	driverName                 = flag.String("drivername", consts.DefaultDriverName, "name of the driver")
-	volumeAttachLimit          = flag.Int64("volume-attach-limit", -1, "maximum number of attachable volumes per node")
-	supportZone                = flag.Bool("support-zone", true, "boolean flag to get zone info in NodeGetInfo")
-	getNodeInfoFromLabels      = flag.Bool("get-node-info-from-labels", false, "boolean flag to get zone info from node labels in NodeGetInfo")
-	disableAVSetNodes          = flag.Bool("disable-avset-nodes", false, "disable DisableAvailabilitySetNodes in cloud config for controller")
-	vmType                     = flag.String("vm-type", "", "type of agent node. available values: vmss, standard")
-	enablePerfOptimization     = flag.Bool("enable-perf-optimization", false, "boolean flag to enable disk perf optimization")
-	cloudConfigSecretName      = flag.String("cloud-config-secret-name", "azure-cloud-provider", "cloud config secret name")
-	cloudConfigSecretNamespace = flag.String("cloud-config-secret-namespace", "kube-system", "cloud config secret namespace")
-	customUserAgent            = flag.String("custom-user-agent", "", "custom userAgent")
-	userAgentSuffix            = flag.String("user-agent-suffix", "", "userAgent suffix")
-	useCSIProxyGAInterface     = flag.Bool("use-csiproxy-ga-interface", true, "boolean flag to enable csi-proxy GA interface on Windows")
-	enableDiskOnlineResize     = flag.Bool("enable-disk-online-resize", true, "boolean flag to enable disk online resize")
-	allowEmptyCloudConfig      = flag.Bool("allow-empty-cloud-config", true, "Whether allow running driver without cloud config")
-	enableAsyncAttach          = flag.Bool("enable-async-attach", false, "boolean flag to enable async attach")
-	enableListVolumes          = flag.Bool("enable-list-volumes", false, "boolean flag to enable ListVolumes on controller")
-	enableListSnapshots        = flag.Bool("enable-list-snapshots", false, "boolean flag to enable ListSnapshots on controller")
-	enableDiskCapacityCheck    = flag.Bool("enable-disk-capacity-check", false, "boolean flag to enable volume capacity check in CreateVolume")
-	kubeClientQPS              = flag.Int("kube-client-qps", 15, "QPS for the rest client. Defaults to 15.")
-	vmssCacheTTLInSeconds      = flag.Int64("vmss-cache-ttl-seconds", -1, "vmss cache TTL in seconds (600 by default)")
+	driverConfigPath = flag.String("config", "", "The configuration path for the driver")
+	nodeID           = flag.String("nodeid", "", "node id")
+	version          = flag.Bool("version", false, "Print the version and exit.")
+	// Deprecated command-line parameters
+	endpoint                          = flag.String("endpoint", consts.DefaultEndpoint, "CSI endpoint")
+	metricsAddress                    = flag.String("metrics-address", consts.DefaultMetricsAddress, "export the metrics")
+	kubeconfig                        = flag.String("kubeconfig", consts.DefaultKubeconfig, "Absolute path to the kubeconfig file. Required only when running out of cluster.")
+	driverName                        = flag.String("drivername", consts.DefaultDriverName, "name of the driver")
+	volumeAttachLimit                 = flag.Int64("volume-attach-limit", consts.DefaultVolumeAttachLimit, "maximum number of attachable volumes per node")
+	supportZone                       = flag.Bool("support-zone", consts.DefaultSupportZone, "boolean flag to get zone info in NodeGetInfo")
+	getNodeInfoFromLabels             = flag.Bool("get-node-info-from-labels", consts.DefaultGetNodeInfoFromLabels, "boolean flag to get zone info from node labels in NodeGetInfo")
+	disableAVSetNodes                 = flag.Bool("disable-avset-nodes", consts.DefaultDisableAVSetNodes, "disable DisableAvailabilitySetNodes in cloud config for controller")
+	vmType                            = flag.String("vm-type", consts.DefaultVMType, "type of agent node. available values: vmss, standard")
+	enablePerfOptimization            = flag.Bool("enable-perf-optimization", consts.DefaultEnablePerfOptimization, "boolean flag to enable disk perf optimization")
+	cloudConfigSecretName             = flag.String("cloud-config-secret-name", consts.DefaultCloudConfigSecretName, "cloud config secret name")
+	cloudConfigSecretNamespace        = flag.String("cloud-config-secret-namespace", consts.DefaultCloudConfigSecretNamespace, "cloud config secret namespace")
+	customUserAgent                   = flag.String("custom-user-agent", consts.DefaultCustomUserAgent, "custom userAgent")
+	userAgentSuffix                   = flag.String("user-agent-suffix", consts.DefaultUserAgentSuffix, "userAgent suffix")
+	useCSIProxyGAInterface            = flag.Bool("use-csiproxy-ga-interface", consts.DefaultUseCSIProxyGAInterface, "boolean flag to enable csi-proxy GA interface on Windows")
+	enableDiskOnlineResize            = flag.Bool("enable-disk-online-resize", consts.DefaultEnableDiskOnlineResize, "boolean flag to enable disk online resize")
+	allowEmptyCloudConfig             = flag.Bool("allow-empty-cloud-config", consts.DefaultAllowEmptyCloudConfig, "Whether allow running driver without cloud config")
+	enableAsyncAttach                 = flag.Bool("enable-async-attach", consts.DefaultEnableAsyncAttach, "boolean flag to enable async attach")
+	enableListVolumes                 = flag.Bool("enable-list-volumes", consts.DefaultEnableListVolumes, "boolean flag to enable ListVolumes on controller")
+	enableListSnapshots               = flag.Bool("enable-list-snapshots", consts.DefaultEnableListSnapshots, "boolean flag to enable ListSnapshots on controller")
+	enableDiskCapacityCheck           = flag.Bool("enable-disk-capacity-check", consts.DefaultEnableDiskCapacityCheck, "boolean flag to enable volume capacity check in CreateVolume")
+	kubeClientQPS                     = flag.Int("kube-client-qps", consts.DefaultKubeClientQPS, "QPS for the rest client. Defaults to 15.")
+	vmssCacheTTLInSeconds             = flag.Int64("vmss-cache-ttl-seconds", consts.DefaultVMSSCacheTTLInSeconds, "vmss cache TTL in seconds (600 by default)")
+	isControllerPlugin                = flag.Bool("is-controller-plugin", consts.DefaultIsControllerPlugin, "Boolean flag to indicate this instance is running as controller.")
+	isNodePlugin                      = flag.Bool("is-node-plugin", consts.DefaultIsNodePlugin, "Boolean flag to indicate this instance is running as node daemon.")
+	driverObjectNamespace             = flag.String("driver-object-namespace", consts.DefaultAzureDiskCrdNamespace, "The namespace where driver related custom resources are created.")
+	heartbeatFrequencyInSec           = flag.Int("heartbeat-frequency-in-sec", consts.DefaultHeartbeatFrequencyInSec, "Frequency in seconds at which node driver sends heartbeat.")
+	controllerLeaseDurationInSec      = flag.Int("lease-duration-in-sec", consts.DefaultControllerLeaseDurationInSec, "The duration that non-leader candidates will wait to force acquire leadership")
+	controllerLeaseRenewDeadlineInSec = flag.Int("lease-renew-deadline-in-sec", consts.DefaultControllerLeaseRenewDeadlineInSec, "The duration that the acting controlplane will retry refreshing leadership before giving up.")
+	controllerLeaseRetryPeriodInSec   = flag.Int("lease-retry-period-in-sec", consts.DefaultControllerLeaseRetryPeriodInSec, "The duration the LeaderElector clients should wait between tries of actions.")
+	leaderElectionNamespace           = flag.String("leader-election-namespace", consts.ReleaseNamespace, "The leader election namespace for controller")
+	nodePartition                     = flag.String("node-partition", consts.DefaultNodePartitionName, "The partition name for node plugin.")
+	controllerPartition               = flag.String("controller-partition", consts.DefaultControllerPartitionName, "The partition name for controller plugin.")
 )
 
 func main() {
@@ -80,44 +95,149 @@ func main() {
 		klog.Warning("nodeid is empty")
 	}
 
-	exportMetrics()
 	handle()
 	os.Exit(0)
 }
 
 func handle() {
-	driverOptions := azuredisk.DriverOptions{
-		NodeID:                     *nodeID,
-		DriverName:                 *driverName,
-		VolumeAttachLimit:          *volumeAttachLimit,
-		EnablePerfOptimization:     *enablePerfOptimization,
-		CloudConfigSecretName:      *cloudConfigSecretName,
-		CloudConfigSecretNamespace: *cloudConfigSecretNamespace,
-		CustomUserAgent:            *customUserAgent,
-		UserAgentSuffix:            *userAgentSuffix,
-		UseCSIProxyGAInterface:     *useCSIProxyGAInterface,
-		EnableDiskOnlineResize:     *enableDiskOnlineResize,
-		AllowEmptyCloudConfig:      *allowEmptyCloudConfig,
-		EnableAsyncAttach:          *enableAsyncAttach,
-		EnableListVolumes:          *enableListVolumes,
-		EnableListSnapshots:        *enableListSnapshots,
-		SupportZone:                *supportZone,
-		GetNodeInfoFromLabels:      *getNodeInfoFromLabels,
-		EnableDiskCapacityCheck:    *enableDiskCapacityCheck,
-		VMSSCacheTTLInSeconds:      *vmssCacheTTLInSeconds,
-		VMType:                     *vmType,
-		RestClientQPS:              *kubeClientQPS,
-	}
-	driver := azuredisk.NewDriver(&driverOptions)
+	driverConfig := getDriverConfig()
+	exportMetrics(driverConfig)
+	driver := azuredisk.NewDriver(driverConfig)
 	if driver == nil {
 		klog.Fatalln("Failed to initialize azuredisk CSI Driver")
 	}
 	testingMock := false
-	driver.Run(*endpoint, *kubeconfig, *disableAVSetNodes, testingMock)
+	driver.Run(driverConfig.Endpoint, driverConfig.ClientConfig.Kubeconfig, driverConfig.ControllerConfig.DisableAVSetNodes, testingMock)
 }
 
-func exportMetrics() {
-	l, err := net.Listen("tcp", *metricsAddress)
+func getDriverConfig() *azdiskv1beta2.AzDiskDriverConfiguration {
+	var driverConfig azdiskv1beta2.AzDiskDriverConfiguration
+
+	if *driverConfigPath != "" {
+		// Initialize driveConfig object with default values
+		driverConfig = azdiskv1beta2.AzDiskDriverConfiguration{
+			ControllerConfig: azdiskv1beta2.ControllerConfiguration{
+				DisableAVSetNodes:       consts.DefaultDisableAVSetNodes,
+				VMType:                  consts.DefaultVMType,
+				EnableDiskOnlineResize:  consts.DefaultEnableDiskOnlineResize,
+				EnableAsyncAttach:       consts.DefaultEnableAsyncAttach,
+				EnableListVolumes:       consts.DefaultEnableListVolumes,
+				EnableListSnapshots:     consts.DefaultEnableListSnapshots,
+				EnableDiskCapacityCheck: consts.DefaultEnableDiskCapacityCheck,
+				Enabled:                 consts.DefaultIsControllerPlugin,
+				LeaseDurationInSec:      consts.DefaultControllerLeaseDurationInSec,
+				LeaseRenewDeadlineInSec: consts.DefaultControllerLeaseRenewDeadlineInSec,
+				LeaseRetryPeriodInSec:   consts.DefaultControllerLeaseRetryPeriodInSec,
+				LeaderElectionNamespace: consts.ReleaseNamespace,
+				PartitionName:           consts.DefaultControllerPartitionName,
+			},
+			NodeConfig: azdiskv1beta2.NodeConfiguration{
+				VolumeAttachLimit:       consts.DefaultVolumeAttachLimit,
+				SupportZone:             consts.DefaultSupportZone,
+				EnablePerfOptimization:  consts.DefaultEnablePerfOptimization,
+				UseCSIProxyGAInterface:  consts.DefaultUseCSIProxyGAInterface,
+				GetNodeInfoFromLabels:   consts.DefaultGetNodeInfoFromLabels,
+				Enabled:                 consts.DefaultIsNodePlugin,
+				HeartbeatFrequencyInSec: consts.DefaultHeartbeatFrequencyInSec,
+				PartitionName:           consts.DefaultNodePartitionName,
+			},
+			CloudConfig: azdiskv1beta2.CloudConfiguration{
+				SecretName:            consts.DefaultCloudConfigSecretName,
+				SecretNamespace:       consts.DefaultCloudConfigSecretNamespace,
+				CustomUserAgent:       consts.DefaultCustomUserAgent,
+				UserAgentSuffix:       consts.DefaultUserAgentSuffix,
+				AllowEmptyCloudConfig: consts.DefaultAllowEmptyCloudConfig,
+				VMSSCacheTTLInSeconds: consts.DefaultVMSSCacheTTLInSeconds,
+			},
+			ClientConfig: azdiskv1beta2.ClientConfiguration{
+				Kubeconfig:    consts.DefaultKubeconfig,
+				KubeClientQPS: consts.DefaultKubeClientQPS,
+			},
+			ObjectNamespace: consts.DefaultAzureDiskCrdNamespace,
+			Endpoint:        consts.DefaultEndpoint,
+			MetricsAddress:  consts.DefaultMetricsAddress,
+			DriverName:      consts.DefaultDriverName,
+		}
+
+		// Read yaml file
+		yamlFile, err := os.ReadFile(*driverConfigPath)
+		if err != nil {
+			klog.Fatalf("failed to get the driver config, error: %v", err)
+		}
+
+		// Convert yaml to a driveConfig object
+		err = yaml.Unmarshal(yamlFile, &driverConfig)
+		if err != nil {
+			klog.Fatalf("failed to unmarshal the driver config, error: %v", err)
+		}
+
+		// Emit warning log for using deprecated command-line parameters
+		flag.Visit(func(f *flag.Flag) {
+			if slices.Contains(consts.CommandLineParams, f.Name) {
+				klog.Warningf("the command-line parameter %v is deprecated and overridden by --config parameter.", f.Name)
+			}
+		})
+	} else {
+		driverConfig = azdiskv1beta2.AzDiskDriverConfiguration{
+			ControllerConfig: azdiskv1beta2.ControllerConfiguration{
+				DisableAVSetNodes:       *disableAVSetNodes,
+				VMType:                  *vmType,
+				EnableDiskOnlineResize:  *enableDiskOnlineResize,
+				EnableAsyncAttach:       *enableAsyncAttach,
+				EnableListVolumes:       *enableListVolumes,
+				EnableListSnapshots:     *enableListSnapshots,
+				EnableDiskCapacityCheck: *enableDiskCapacityCheck,
+				Enabled:                 *isControllerPlugin,
+				LeaseDurationInSec:      *controllerLeaseDurationInSec,
+				LeaseRenewDeadlineInSec: *controllerLeaseRenewDeadlineInSec,
+				LeaseRetryPeriodInSec:   *controllerLeaseRetryPeriodInSec,
+				LeaderElectionNamespace: *leaderElectionNamespace,
+				PartitionName:           *controllerPartition,
+			},
+			NodeConfig: azdiskv1beta2.NodeConfiguration{
+				VolumeAttachLimit:       *volumeAttachLimit,
+				SupportZone:             *supportZone,
+				EnablePerfOptimization:  *enablePerfOptimization,
+				UseCSIProxyGAInterface:  *useCSIProxyGAInterface,
+				GetNodeInfoFromLabels:   *getNodeInfoFromLabels,
+				Enabled:                 *isNodePlugin,
+				HeartbeatFrequencyInSec: *heartbeatFrequencyInSec,
+				PartitionName:           *nodePartition,
+			},
+			CloudConfig: azdiskv1beta2.CloudConfiguration{
+				SecretName:            *cloudConfigSecretName,
+				SecretNamespace:       *cloudConfigSecretNamespace,
+				CustomUserAgent:       *customUserAgent,
+				UserAgentSuffix:       *userAgentSuffix,
+				AllowEmptyCloudConfig: *allowEmptyCloudConfig,
+				VMSSCacheTTLInSeconds: *vmssCacheTTLInSeconds,
+			},
+			ClientConfig: azdiskv1beta2.ClientConfiguration{
+				Kubeconfig:    *kubeconfig,
+				KubeClientQPS: *kubeClientQPS,
+			},
+			ObjectNamespace: *driverObjectNamespace,
+			Endpoint:        *endpoint,
+			MetricsAddress:  *metricsAddress,
+			DriverName:      *driverName,
+		}
+
+		// Emit warning log for using deprecated command-line parameters
+		flag.Visit(func(f *flag.Flag) {
+			if slices.Contains(consts.CommandLineParams, f.Name) {
+				klog.Warningf("the command-line parameter %v is deprecated in favor of using the --config parameter.", f.Name)
+			}
+		})
+	}
+	driverConfig.NodeConfig.NodeID = *nodeID
+	if driverConfig == (azdiskv1beta2.AzDiskDriverConfiguration{}) {
+		klog.Fatal("failed to initialize the driverConfig object")
+	}
+	return &driverConfig
+}
+
+func exportMetrics(driverConfig *azdiskv1beta2.AzDiskDriverConfiguration) {
+	l, err := net.Listen("tcp", driverConfig.MetricsAddress)
 	if err != nil {
 		klog.Warningf("failed to get listener for metrics endpoint: %v", err)
 		return

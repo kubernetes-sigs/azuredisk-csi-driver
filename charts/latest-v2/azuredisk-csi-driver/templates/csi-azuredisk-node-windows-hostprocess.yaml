@@ -1,5 +1,33 @@
 {{- if and (.Values.windows.enabled) (eq .Values.windows.useHostProcessContainers true) }}
 ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.windows.dsName }}-config
+  namespace: {{ .Release.Namespace }}
+{{ include "azuredisk.labels" . | indent 2 }}
+data:
+  config.yaml: |
+    apiVersion: disk.csi.azure.com/v1beta2
+    kind: AzDiskDriverConfiguration
+    nodeConfig:
+      volumeAttachLimit: {{ .Values.driver.volumeAttachLimit }}
+      supportZone: {{ .Values.node.supportZone }}
+      getNodeInfoFromLabels: {{ .Values.windows.getNodeInfoFromLabels }}
+      enabled: true
+    cloudConfig:
+      secretName: {{ .Values.node.cloudConfigSecretName }}
+      secretNamespace: {{ .Values.node.cloudConfigSecretNamespace }}
+      customUserAgent: {{ .Values.driver.customUserAgent }}
+      userAgentSuffix: {{ .Values.driver.userAgentSuffix }}
+      allowEmptyCloudConfig: {{ .Values.node.allowEmptyCloudConfig }}
+    clientConfig:
+      kubeconfig: .\var\run\secrets\kubernetes.io\serviceaccount\kubeconfig.conf
+    objectNamespace: {{ .Values.driver.objectNamespace }}
+    endpoint: unix://C:\var\lib\kubelet\plugins\{{ .Values.driver.name }}\csi.sock
+    metricsAddress: 0.0.0.0:{{ .Values.node.metrics.port }}
+    driverName: {{ .Values.driver.name }}
+---
 kind: ConfigMap
 apiVersion: v1
 metadata:
@@ -154,22 +182,9 @@ spec:
           command:
             - "azurediskplugin.exe"
           args:
-            - "--kubeconfig=.\\var\\run\\secrets\\kubernetes.io\\serviceaccount\\kubeconfig.conf"
             - "--v={{ .Values.node.logLevel }}"
-            - "--endpoint=$(CSI_ENDPOINT)"
             - "--nodeid=$(KUBE_NODE_NAME)"
-            - "--metrics-address=0.0.0.0:{{ .Values.node.metricsPort }}"
-            - "--is-node-plugin=true"
-            - "--drivername={{ .Values.driver.name }}"
-            - "--driver-object-namespace={{ .Values.driver.objectNamespace }}"
-            - "--volume-attach-limit={{ .Values.driver.volumeAttachLimit }}"
-            - "--cloud-config-secret-name={{ .Values.node.cloudConfigSecretName }}"
-            - "--cloud-config-secret-namespace={{ .Values.node.cloudConfigSecretNamespace }}"
-            - "--custom-user-agent={{ .Values.driver.customUserAgent }}"
-            - "--user-agent-suffix={{ .Values.driver.userAgentSuffix }}"
-            - "--allow-empty-cloud-config={{ .Values.node.allowEmptyCloudConfig }}"
-            - "--support-zone={{ .Values.node.supportZone }}"
-            - "--get-node-info-from-labels={{ .Values.windows.getNodeInfoFromLabels }}"
+            - "--config=.\\etc\\{{ .Values.windows.dsName }}\\config.yaml"
           ports:
             - containerPort: {{ .Values.node.livenessProbe.healthPort }}
               name: healthz
@@ -203,6 +218,9 @@ spec:
               value: C:\k\azurestackcloud.json
             {{- end }}
           imagePullPolicy: {{ .Values.image.azuredisk.pullPolicy }}
+          volumeMounts:
+            - name: {{ .Values.windows.dsName }}-config
+              mountPath: /etc/{{ .Values.windows.dsName }}
       volumes:
         - name: init-script
           configMap:
@@ -210,4 +228,7 @@ spec:
             items:
               - key: "Initialize-Pod.ps1"
                 path: "Initialize-Pod.ps1"
+        - name: {{ .Values.windows.dsName }}-config
+          configMap:
+            name: {{ .Values.windows.dsName }}-config
 {{- end -}}
