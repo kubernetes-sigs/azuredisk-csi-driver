@@ -19,10 +19,12 @@ package scale
 import (
 	"context"
 	"os"
+	"path"
 	"path/filepath"
 	"testing"
 
 	"github.com/onsi/ginkgo"
+	"github.com/onsi/ginkgo/reporters"
 	"github.com/onsi/gomega"
 	"k8s.io/kubernetes/test/e2e/framework"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
@@ -133,5 +135,10 @@ var _ = ginkgo.AfterSuite(func() {
 
 func TestScale(t *testing.T) {
 	gomega.RegisterFailHandler(ginkgo.Fail)
-	ginkgo.RunSpecs(t, "AzureDisk CSI Driver Scale Tests")
+	reportDir := os.Getenv(testconsts.ReportDirEnvVar)
+	if reportDir == "" {
+		reportDir = testconsts.DefaultReportDir
+	}
+	r := []ginkgo.Reporter{reporters.NewJUnitReporter(path.Join(reportDir, "junit_01.xml"))}
+	ginkgo.RunSpecsWithDefaultAndCustomReporters(t, "AzureDisk CSI Driver Scale Tests", r)
 }
