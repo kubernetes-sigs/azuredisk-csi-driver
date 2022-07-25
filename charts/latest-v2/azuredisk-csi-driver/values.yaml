@@ -6,7 +6,7 @@ image:
     pullPolicy: IfNotPresent
   csiProvisioner:
     repository: /oss/kubernetes-csi/csi-provisioner
-    tag: v3.1.1
+    tag: v3.2.0
     pullPolicy: IfNotPresent
   csiAttacher:
     repository: /oss/kubernetes-csi/csi-attacher
@@ -269,7 +269,7 @@ windows:
       limits:
         memory: 100Mi
       requests:
-        cpu: 10m
+        cpu: 30m
         memory: 40Mi
     azuredisk:
       limits:
