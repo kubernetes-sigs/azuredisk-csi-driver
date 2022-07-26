@@ -31,7 +31,7 @@ spec:
           effect: "NoSchedule"
       containers:
         - name: csi-provisioner
-          image: mcr.microsoft.com/oss/kubernetes-csi/csi-provisioner:v3.1.0
+          image: mcr.microsoft.com/oss/kubernetes-csi/csi-provisioner:v3.2.0
           args:
             - "--feature-gates=Topology=true"
             - "--csi-address=$(ADDRESS)"
@@ -55,7 +55,7 @@ spec:
               cpu: 10m
               memory: 20Mi
         - name: csi-attacher
-          image: mcr.microsoft.com/oss/kubernetes-csi/csi-attacher:v3.4.0
+          image: mcr.microsoft.com/oss/kubernetes-csi/csi-attacher:v3.5.0
           args:
             - "-v=2"
             - "-csi-address=$(ADDRESS)"
@@ -95,7 +95,7 @@ spec:
               cpu: 10m
               memory: 20Mi
         - name: csi-resizer
-          image: mcr.microsoft.com/oss/kubernetes-csi/csi-resizer:v1.4.0
+          image: mcr.microsoft.com/oss/kubernetes-csi/csi-resizer:v1.5.0
           args:
             - "-csi-address=$(ADDRESS)"
             - "-v=2"
@@ -117,7 +117,7 @@ spec:
               cpu: 10m
               memory: 20Mi
         - name: liveness-probe
-          image: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe:v2.5.0
+          image: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe:v2.7.0
           args:
             - --csi-address=/csi/csi.sock
             - --probe-timeout=3s
@@ -143,6 +143,7 @@ spec:
             - "--user-agent-suffix=OSS-kubectl"
             - "--disable-avset-nodes=false"
             - "--allow-empty-cloud-config=false"
+            - "--leader-election-namespace=kube-system"
             - "--is-controller-plugin=true"
           ports:
             - containerPort: 29602
