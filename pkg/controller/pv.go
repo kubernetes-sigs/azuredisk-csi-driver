@@ -43,7 +43,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
-//Struct for the reconciler
+// Struct for the reconciler
 type ReconcilePV struct {
 	logger logr.Logger
 	// retryMap allows volumeAttachment controller to retry Get operation for AzVolume in case the CRI has not been created yet

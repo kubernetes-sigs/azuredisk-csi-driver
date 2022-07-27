@@ -25,7 +25,8 @@ import (
 	nodeutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/node"
 )
 
-//  will provision required PV(s), PVC(s) and Pod(s)
+// Will provision required PV(s), PVC(s) and Pod(s)
+//
 // Pod should successfully be re-scheduled on failover in a cluster with AzDriverNode and AzVolumeAttachment resources
 type PodFailover struct {
 	CSIDriver              driver.DynamicPVTestDriver

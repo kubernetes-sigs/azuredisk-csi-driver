@@ -37,7 +37,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
-//Struct for the reconciler
+// Struct for the reconciler
 type ReconcileVolumeAttachment struct {
 	logger                logr.Logger
 	controllerRetryInfo   *retryInfo

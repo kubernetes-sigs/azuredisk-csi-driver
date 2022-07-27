@@ -1900,7 +1900,7 @@ func (vq *VolumeReplicaRequestsPriorityQueue) DrainQueue() []*ReplicaRequest {
 	return listRequests
 }
 
-///Removes replica requests from the priority queue and adds to operation queue.
+// Removes replica requests from the priority queue and adds to operation queue.
 func (c *SharedState) tryCreateFailedReplicas(ctx context.Context, requestor operationRequester) {
 	if atomic.SwapInt32(&c.processingReplicaRequestQueue, 1) == 0 {
 		ctx, w := workflow.New(ctx)
