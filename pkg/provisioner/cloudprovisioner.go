@@ -176,7 +176,7 @@ func (c *CloudProvisioner) CreateVolume(
 	if diskParams.UserAgent != "" {
 		localCloud, err = azureutils.GetCloudProviderFromClient(c.kubeClient, c.cloudConfigSecretName, c.cloudConfigSecretNamespace, diskParams.UserAgent, c.allowEmptyCloudConfig)
 		if err != nil {
-			err = fmt.Errorf("create cloud with UserAgent(%s) failed with: (%s)", diskParams.UserAgent, err)
+			err = status.Errorf(codes.Internal, "create cloud with UserAgent(%s) failed with: (%s)", diskParams.UserAgent, err)
 			return nil, err
 		}
 	}
@@ -305,7 +305,7 @@ func (c *CloudProvisioner) CreateVolume(
 			err = status.Error(codes.NotFound, err.Error())
 			return nil, err
 		}
-		return nil, err
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	w.Logger().V(2).Infof("create disk(%s) account type(%s) rg(%s) location(%s) size(%d) tags(%s) successfully", diskParams.DiskName, skuName, diskParams.ResourceGroup, diskParams.Location, requestGiB, diskParams.Tags)
@@ -381,6 +381,7 @@ func (c *CloudProvisioner) PublishVolume(
 	var diskName string
 	diskName, err = azureutils.GetDiskName(volumeID)
 	if err != nil {
+		err = status.Error(codes.Internal, err.Error())
 		attachResult.ResultChannel() <- err
 		return
 	}
@@ -400,7 +401,7 @@ func (c *CloudProvisioner) PublishVolume(
 		if vmState != nil && strings.ToLower(*vmState) == "failed" {
 			w.Logger().Infof("VM(%q) is in failed state, update VM first", nodeName)
 			if err = c.cloud.UpdateVM(ctx, nodeName); err != nil {
-				err = fmt.Errorf("update instance %q failed with %v", nodeName, err)
+				err = status.Errorf(codes.Internal, "update instance %q failed with %v", nodeName, err)
 				attachResult.ResultChannel() <- err
 				return
 			}
@@ -411,6 +412,7 @@ func (c *CloudProvisioner) PublishVolume(
 		w.Logger().V(2).Infof("Trying to attach volume %q to node %q.", volumeID, nodeName)
 		var cachingMode compute.CachingTypes
 		if cachingMode, err = azureutils.GetCachingMode(volumeContext); err != nil {
+			err = status.Error(codes.Internal, err.Error())
 			attachResult.ResultChannel() <- err
 			return
 		}
@@ -462,7 +464,7 @@ func (c *CloudProvisioner) UnpublishVolume(
 	var diskName string
 	diskName, err = azureutils.GetDiskName(volumeID)
 	if err != nil {
-		return err
+		return status.Error(codes.Internal, err.Error())
 	}
 
 	w.Logger().V(2).Infof("Trying to detach volume %s from node %s", volumeID, nodeID)
@@ -576,10 +578,10 @@ func (c *CloudProvisioner) CreateSnapshot(
 			newUserAgent := v
 			localCloud, err = azureutils.GetCloudProviderFromClient(c.kubeClient, c.cloudConfigSecretName, c.cloudConfigSecretNamespace, newUserAgent, c.allowEmptyCloudConfig)
 			if err != nil {
-				return nil, fmt.Errorf("create cloud with UserAgent(%s) failed with: (%s)", newUserAgent, err)
+				return nil, status.Errorf(codes.Internal, "create cloud with UserAgent(%s) failed with: (%s)", newUserAgent, err)
 			}
 		default:
-			return nil, fmt.Errorf("AzureDisk - invalid option %s in VolumeSnapshotClass", k)
+			return nil, status.Errorf(codes.Internal, "AzureDisk - invalid option %s in VolumeSnapshotClass", k)
 		}
 	}
 
@@ -597,7 +599,7 @@ func (c *CloudProvisioner) CreateSnapshot(
 
 	customTagsMap, err := volumehelper.ConvertTagsToMap(customTags)
 	if err != nil {
-		return nil, err
+		return nil, status.Errorf(codes.InvalidArgument, err.Error())
 	}
 	tags := make(map[string]*string)
 	for k, v := range customTagsMap {
@@ -651,7 +653,7 @@ func (c *CloudProvisioner) ListSnapshots(
 			if strings.Contains(err.Error(), azureconstants.ResourceNotFound) {
 				return &azdiskv1beta2.ListSnapshotsResult{}, nil
 			}
-			return nil, err
+			return nil, status.Error(codes.Internal, err.Error())
 		}
 		entries := []azdiskv1beta2.Snapshot{*snapshot}
 

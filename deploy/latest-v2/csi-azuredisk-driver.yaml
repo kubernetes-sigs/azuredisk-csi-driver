@@ -4,8 +4,8 @@ kind: CSIDriver
 metadata:
   name: disk.csi.azure.com
   annotations:
-    csiDriver: latest
-    snapshot: v4.2.1
+    csiDriver: v2.0.0-beta.5
+    snapshot: v5.0.1
 spec:
   attachRequired: true
   podInfoOnMount: false

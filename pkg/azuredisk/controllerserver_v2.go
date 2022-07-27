@@ -181,7 +181,7 @@ func (d *DriverV2) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeReques
 	}
 
 	if err := d.ValidateControllerServiceRequest(csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME); err != nil {
-		return nil, fmt.Errorf("invalid delete volume req: %v", req)
+		return nil, status.Errorf(codes.Internal, "invalid delete volume req: %v", req)
 	}
 
 	if acquired := d.volumeLocks.TryAcquire(volumeID); !acquired {
@@ -534,7 +534,7 @@ func (d *DriverV2) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRe
 	if azureutils.IsARMResourceID(snapshotID) {
 		snapshotName, err = azureutils.GetSnapshotNameFromURI(snapshotID)
 		if err != nil {
-			return nil, err
+			return nil, status.Errorf(codes.Internal, err.Error())
 		}
 	}
 

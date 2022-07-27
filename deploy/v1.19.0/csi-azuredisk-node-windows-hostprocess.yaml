@@ -41,7 +41,7 @@ spec:
       hostNetwork: true
       initContainers:
         - name: init
-          image: mcr.microsoft.com/k8s/csi/azuredisk-csi:v1.19.0
+          image: mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v1.19.0
           imagePullPolicy: IfNotPresent
           command:
             - "powershell.exe"
@@ -94,7 +94,7 @@ spec:
                 fieldRef:
                   fieldPath: spec.nodeName
         - name: azuredisk
-          image: mcr.microsoft.com/k8s/csi/azuredisk-csi:v1.19.0
+          image: mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v1.19.0
           imagePullPolicy: IfNotPresent
           command:
             - "azurediskplugin.exe"

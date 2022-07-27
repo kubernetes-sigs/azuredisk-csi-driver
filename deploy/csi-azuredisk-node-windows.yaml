@@ -88,7 +88,7 @@ spec:
             limits:
               memory: 100Mi
             requests:
-              cpu: 10m
+              cpu: 30m
               memory: 40Mi
         - name: azuredisk
           image: mcr.microsoft.com/k8s/csi/azuredisk-csi:latest

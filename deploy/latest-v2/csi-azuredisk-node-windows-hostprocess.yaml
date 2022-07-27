@@ -54,7 +54,7 @@ spec:
             - "-Force"
       containers:
         - name: liveness-probe
-          image: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe:v2.5.0
+          image: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe:v2.7.0
           command:
             - "livenessprobe.exe"
           args:
@@ -65,8 +65,14 @@ spec:
           env:
             - name: CSI_ENDPOINT
               value: unix://C:\\var\\lib\\kubelet\\plugins\\disk.csi.azure.com\\csi.sock
+          resources:
+            limits:
+              memory: 100Mi
+            requests:
+              cpu: 10m
+              memory: 40Mi
         - name: node-driver-registrar
-          image: mcr.microsoft.com/oss/kubernetes-csi/csi-node-driver-registrar:v2.4.0
+          image: mcr.microsoft.com/oss/kubernetes-csi/csi-node-driver-registrar:v2.5.1
           command:
             - "csi-node-driver-registrar.exe"
           args:
@@ -93,6 +99,12 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+          resources:
+            limits:
+              memory: 100Mi
+            requests:
+              cpu: 30m
+              memory: 40Mi
         - name: azuredisk
           image: mcr.microsoft.com/k8s/csi/azuredisk-csi:latest
           imagePullPolicy: IfNotPresent
@@ -130,3 +142,9 @@ spec:
                 fieldRef:
                   apiVersion: v1
                   fieldPath: spec.nodeName
+          resources:
+            limits:
+              memory: 200Mi
+            requests:
+              cpu: 10m
+              memory: 40Mi

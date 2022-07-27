@@ -133,7 +133,7 @@ spec:
               cpu: 10m
               memory: 20Mi
         - name: azuredisk
-          image: mcr.microsoft.com/k8s/csi/azuredisk-csi:v1.17.0
+          image: mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v1.17.0
           imagePullPolicy: IfNotPresent
           args:
             - "--v=5"
