@@ -58,9 +58,9 @@ type CrdDetacher interface {
 
 /*
 Attach Detach controller is responsible for
-	1. attaching volume to a specified node upon creation of AzVolumeAttachment CRI
-	2. promoting AzVolumeAttachment to primary upon spec update
-	3. detaching volume upon deletions marked with certain annotations
+ 1. attaching volume to a specified node upon creation of AzVolumeAttachment CRI
+ 2. promoting AzVolumeAttachment to primary upon spec update
+ 3. detaching volume upon deletions marked with certain annotations
 */
 type ReconcileAttachDetach struct {
 	logger                logr.Logger

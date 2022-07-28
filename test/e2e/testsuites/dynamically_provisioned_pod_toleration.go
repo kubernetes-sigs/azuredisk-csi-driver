@@ -40,7 +40,8 @@ import (
 	nodeutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/node"
 )
 
-//  will provision required PV(s), PVC(s) and Pod(s)
+// Will provision required PV(s), PVC(s) and Pod(s)
+//
 // Primary and replica AzVolumeAttachments should be created on set of nodes without node taint
 type PodToleration struct {
 	CSIDriver              driver.DynamicPVTestDriver

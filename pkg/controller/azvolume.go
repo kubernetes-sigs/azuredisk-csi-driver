@@ -61,7 +61,7 @@ type VolumeProvisioner interface {
 	ExpandVolume(ctx context.Context, volumeID string, capacityRange *azdiskv1beta2.CapacityRange, secrets map[string]string) (*azdiskv1beta2.AzVolumeStatusDetail, error)
 }
 
-//Struct for the reconciler
+// Struct for the reconciler
 type ReconcileAzVolume struct {
 	logger                logr.Logger
 	volumeProvisioner     VolumeProvisioner

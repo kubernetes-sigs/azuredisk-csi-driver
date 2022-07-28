@@ -40,7 +40,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
-//Struct for the reconciler
+// Struct for the reconciler
 type ReconcilePod struct {
 	logger                logr.Logger
 	namespace             string

@@ -496,7 +496,6 @@ func ParseMaxShares(maxSharesValue string) (int, error) {
 // and may contain only letters, numbers, underscores, periods, or hyphens.
 // See https://docs.microsoft.com/en-us/rest/api/compute/disks/createorupdate#uri-parameters
 //
-//
 // Snapshot name must begin with a letter or number, end with a letter, number or underscore,
 // and may contain only letters, numbers, underscores, periods, or hyphens.
 // See https://docs.microsoft.com/en-us/rest/api/compute/snapshots/createorupdate#uri-parameters
