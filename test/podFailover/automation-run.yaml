@@ -76,4 +76,5 @@ spec:
         - "--test-name=$(TEST_NAME)"
         - "--auth-enabled=$(AUTH_ENABLED)"
         - "--all-pods-on-one-node=$(BOOL_ALL_PODS_ON_SAME_NODE)"
+        - "--storage-class-name=$(STORAGE_CLASS_NAME)"
       restartPolicy: Never
