@@ -1,0 +1,18 @@
+{{- if .Values.schedulerExtender.metrics.service.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.schedulerExtender.name }}
+  namespace: {{ .Release.Namespace }}
+{{ include "azuredisk.labels" . | indent 2 }}
+    app: {{ .Values.schedulerExtender.name }}
+spec:
+  selector:
+    app: {{ .Values.schedulerExtender.name }}
+  ports:
+    - name: "metrics"
+      port: {{ .Values.schedulerExtender.metrics.port }}
+      targetPort: {{ .Values.schedulerExtender.metrics.port }}
+  type: ClusterIP
+{{- end -}}

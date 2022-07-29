@@ -1,0 +1,130 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: csi-azuredisk-scheduler-extender-config
+  namespace: {{ .Release.Namespace }}
+{{ include "azuredisk.labels" . | indent 2 }}
+data:
+  config.yaml: |
+    apiVersion: kubescheduler.config.k8s.io/v1beta1
+    kind: KubeSchedulerConfiguration
+    leaderElection:
+      leaderElect: true
+      leaseDuration: "15s"
+      renewDeadline: "10s"
+      retryPeriod: "2s"
+      resourceLock: leases
+      resourceName: csi-azuredisk-scheduler-extender
+      resourceNamespace: {{ .Release.Namespace }}
+    profiles:
+    - schedulerName: csi-azuredisk-scheduler-extender
+    extenders:
+    - urlPrefix: "http://localhost:{{ .Values.schedulerExtender.servicePort }}/azdiskschedulerextender"
+      filterVerb: "filter"
+      prioritizeVerb: "prioritize"
+      weight: 1
+      nodeCacheCapable: false
+      ignorable: true
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.schedulerExtender.name }}
+  namespace: {{ .Release.Namespace }}
+{{ include "azuredisk.labels" . | indent 2 }}
+    app: {{ .Values.schedulerExtender.name }}
+spec:
+  replicas: {{ .Values.schedulerExtender.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Values.schedulerExtender.name }}
+  template:
+    metadata:
+{{ include "azuredisk.labels" . | indent 6 }}
+        app: {{ .Values.schedulerExtender.name }}
+    spec:
+      {{- if .Values.imagePullSecrets }}
+      imagePullSecrets:
+{{ toYaml .Values.imagePullSecrets | indent 8 }}
+      {{- end }}
+      serviceAccountName: {{ .Values.serviceAccount.schedulerExtender }}
+      nodeSelector:
+        kubernetes.io/os: linux
+{{- with .Values.schedulerExtender.nodeSelector }}
+{{ toYaml . | indent 8 }}
+{{- end }}
+        {{- if .Values.controller.runOnMaster}}
+        node-role.kubernetes.io/master: ""
+        {{- end}}
+        {{- if .Values.controller.runOnControlPlane}}
+        node-role.kubernetes.io/control-plane: ""
+        {{- end}}
+      priorityClassName: system-cluster-critical
+{{- with .Values.schedulerExtender.tolerations }}
+      tolerations:
+{{ toYaml . | indent 8 }}
+{{- end }}
+{{- with .Values.schedulerExtender.affinity }}
+      affinity:
+{{ toYaml . | indent 8 }}
+{{- end }}
+      volumes:
+      - name: csi-azuredisk-scheduler-extender-config
+        configMap:
+          name: csi-azuredisk-scheduler-extender-config
+      containers:
+      - name: csi-azuredisk-scheduler
+{{- if hasPrefix "/" .Values.image.kubeScheduler.repository }}
+        image: "{{ .Values.image.baseRepo }}{{ .Values.image.kubeScheduler.repository }}:{{ .Values.image.kubeScheduler.tag }}"
+{{- else }}
+        image: "{{ .Values.image.kubeScheduler.repository }}:{{ .Values.image.kubeScheduler.tag }}"
+{{- end }}
+        imagePullPolicy: IfNotPresent
+        args:
+        - kube-scheduler
+        - --config=/azdiskschedulerextender/config.yaml
+        - --v=5
+        - --feature-gates
+        - CSIInlineVolume=true,LocalStorageCapacityIsolation=true,ServiceNodeExclusion=true
+        volumeMounts:
+        - name: csi-azuredisk-scheduler-extender-config
+          mountPath: /azdiskschedulerextender
+      - name: csi-azuredisk-scheduler-extender
+{{- if hasPrefix "/" .Values.image.schedulerExtender.repository }}
+        image: "{{ .Values.image.baseRepo }}{{ .Values.image.schedulerExtender.repository }}:{{ .Values.image.schedulerExtender.tag }}"
+{{- else }}
+        image: "{{ .Values.image.schedulerExtender.repository }}:{{ .Values.image.schedulerExtender.tag }}"
+{{- end }}
+        imagePullPolicy: {{ .Values.image.schedulerExtender.pullPolicy }}
+        args:
+        - "--port={{ .Values.schedulerExtender.servicePort }}"
+        - "--metrics-address=0.0.0.0:{{ .Values.schedulerExtender.metrics.port }}"
+        - "--driver-object-namespace={{ .Values.driver.objectNamespace }}"
+        - "--drivername={{ .Values.driver.name }}"
+        - "--v=5"
+        livenessProbe:
+          httpGet:
+            path: /ping
+            port: extender-port
+          failureThreshold: 2
+          periodSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /ping
+            port: extender-port
+          failureThreshold: 3
+          periodSeconds: 10
+        startupProbe:
+          httpGet:
+            path: /ping
+            port: extender-port
+          failureThreshold: 20
+          periodSeconds: 3
+        ports:
+          - name: extender-port
+            containerPort: {{ .Values.schedulerExtender.servicePort }}
+            hostPort: {{ .Values.schedulerExtender.servicePort }}
+          - name: metrics-port
+            containerPort: {{ .Values.schedulerExtender.metrics.port }}
+            protocol: TCP

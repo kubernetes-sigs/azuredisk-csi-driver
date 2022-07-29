@@ -14,8 +14,12 @@ $ make azuredisk
 ```
 
  - Build CSI driver v2
+
+Development of the V2 driver is currently ongoing in the `main_v2` branch.
+
 ```console
 $ cd $GOPATH/src/sigs.k8s.io/azuredisk-csi-driver
+$ git checkout main_v2
 $ BUILD_V2=true make azuredisk
 ```
 
@@ -134,17 +138,45 @@ make container-all
 # create a manifest list for the images above
 make push-manifest
 ```
-
- - Replace `mcr.microsoft.com/k8s/csi/azuredisk-csi:latest` in [`csi-azuredisk-controller.yaml`](https://github.com/kubernetes-sigs/azuredisk-csi-driver/blob/master/deploy/csi-azuredisk-controller.yaml) and [`csi-azuredisk-node.yaml`](https://github.com/kubernetes-sigs/azuredisk-csi-driver/blob/master/deploy/csi-azuredisk-node.yaml) with above dockerhub image urls and then follow [install CSI driver master version](https://github.com/kubernetes-sigs/azuredisk-csi-driver/blob/master/docs/install-csi-driver-master.md)
+ - For the V2 driver, set the BUILD_V2 environment variable before building the images. You will also need to build the scheduler extender image as well.
 ```console
-wget -O csi-azuredisk-controller.yaml https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/csi-azuredisk-controller.yaml
-# edit csi-azuredisk-controller.yaml
-kubectl apply -f csi-azuredisk-controller.yaml
+export REGISTRY=<dockerhub-alias>
+export IMAGE_VERSION=latest-v2
+export BUILD_V2=true
+# checkout the V2 development branch
+git checkout main_v2
+# build linux, windows images
+make container-all
+# create a manifest list for the images above
+make push-manifest
+# build scheduler extender image
+make azdiskschedulerextender-all
+# create a manifest list for the scheduler extender images
+make push-manifest-azdiskschedulerextender
+```
 
-wget -O csi-azuredisk-node.yaml https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/csi-azuredisk-node.yaml
-# edit csi-azuredisk-node.yaml
-kubectl apply -f csi-azuredisk-node.yaml
- ```
+ - Install your private build using Helm.
+```console
+curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash
+helm install azuredisk-csi-driver charts/latest/azuredisk-csi-driver \
+  --namespace kube-system \
+  --set image.azuredisk.repository=$REGISTRY/azuredisk-csi-driver \
+  --set image.azuredisk.tag=$IMAGE_VERSION \
+  --set image.azuredisk.pullPolicy=Always
+```
+
+ - Install your private build of the V2 driver using Helm.
+```console
+curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash
+helm install azuredisk-csi-driver charts/latest-v2/azuredisk-csi-driver \
+  --namespace kube-system \
+  --set image.azuredisk.repository=$REGISTRY/azuredisk-csi-driver \
+  --set image.azuredisk.tag=$IMAGE_VERSION \
+  --set image.azuredisk.pullPolicy=Always \
+  --set image.schedulerExtender.repository=$REGISTRY/azuredisk-csi-driver \
+  --set image.schedulerExtender.tag=$IMAGE_VERSION \
+  --set image.schedulerExtender.pullPolicy=Always
+```
 
 ### How to update Azure cloud provider library
  - get latest version of [github.com/kubernetes/legacy-cloud-providers](https://github.com/kubernetes/legacy-cloud-providers/tree/master/azure)
