@@ -162,7 +162,11 @@ func (t *TestDeployment) WaitForPodReady() {
 	defer close(ch)
 	for _, pod := range pods.Items {
 		go func(client clientset.Interface, pod v1.Pod) {
-			err = e2epod.WaitForPodRunningInNamespace(t.Client, &pod)
+			if testconsts.IsWindowsCluster {
+				err = e2epod.WaitForPodRunningInNamespace(t.Client, &pod)
+			} else {
+				err = e2epod.WaitForPodRunningInNamespaceSlow(t.Client, pod.Name, pod.Namespace)
+			}
 			ch <- err
 		}(t.Client, pod)
 	}
