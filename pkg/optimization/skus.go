@@ -31,34 +31,35 @@ import (
 
 // NodeInfo stores VM/Node specific static information
 // VM information is present in sku.json in below format
-// {
-// 	"resourceType": "virtualmachines",
-// 	"name": "Standard_E16-4ds_v4",
-// 	"tier": "Standard",
-// 	"size": "E16-4ds_v4",
-// 	"capabilities": [
-// 	 {
-// 	  "name": "vCPUs",
-// 	  "value": "16"
-// 	 },
-// 	 {
-// 	  "name": "MemoryGB",
-// 	  "value": "128"
-// 	 },
-// 	 {
-// 	  "name": "MaxDataDiskCount",
-// 	  "value": "32"
-// 	 },
-// 	 {
-// 	  "name": "UncachedDiskIOPS",
-// 	  "value": "25600"
-// 	 },
-// 	 {
-// 	  "name": "UncachedDiskBytesPerSecond",
-// 	  "value": "402653184"
-// 	 }
-// 	]
-// }
+//
+//	{
+//		"resourceType": "virtualmachines",
+//		"name": "Standard_E16-4ds_v4",
+//		"tier": "Standard",
+//		"size": "E16-4ds_v4",
+//		"capabilities": [
+//		 {
+//		  "name": "vCPUs",
+//		  "value": "16"
+//		 },
+//		 {
+//		  "name": "MemoryGB",
+//		  "value": "128"
+//		 },
+//		 {
+//		  "name": "MaxDataDiskCount",
+//		  "value": "32"
+//		 },
+//		 {
+//		  "name": "UncachedDiskIOPS",
+//		  "value": "25600"
+//		 },
+//		 {
+//		  "name": "UncachedDiskBytesPerSecond",
+//		  "value": "402653184"
+//		 }
+//		]
+//	}
 type NodeInfo struct {
 	SkuName          string
 	MaxDataDiskCount int
@@ -71,37 +72,38 @@ type NodeInfo struct {
 
 // DiskSkuInfo stores disk sku information
 // disk sku information is present in sku.json in below format
-// {
-// 	"resourceType": "disks",
-// 	"name": "Premium_LRS",
-// 	"tier": "Premium",
-// 	"size": "P4",
-// 	"capabilities": [
-// 	 {
-// 	  "name": "MaxSizeGiB",
-// 	  "value": "32"
-// 	 {
-// 	  "name": "MaxIOps",
-// 	  "value": "120"
-// 	 },
-// 	 {
-// 	  "name": "MaxBandwidthMBps",
-// 	  "value": "25"
-// 	 },
-// 	 {
-// 	  "name": "MaxValueOfMaxShares",
-// 	  "value": "1"
-// 	 },
-// 	 {
-// 	  "name": "MaxBurstIops",
-// 	  "value": "3500"
-// 	 },
-// 	 {
-// 	  "name": "MaxBurstBandwidthMBps",
-// 	  "value": "170"
-// 	 }
-// 	]
-//}
+//
+//	{
+//		"resourceType": "disks",
+//		"name": "Premium_LRS",
+//		"tier": "Premium",
+//		"size": "P4",
+//		"capabilities": [
+//		 {
+//		  "name": "MaxSizeGiB",
+//		  "value": "32"
+//		 {
+//		  "name": "MaxIOps",
+//		  "value": "120"
+//		 },
+//		 {
+//		  "name": "MaxBandwidthMBps",
+//		  "value": "25"
+//		 },
+//		 {
+//		  "name": "MaxValueOfMaxShares",
+//		  "value": "1"
+//		 },
+//		 {
+//		  "name": "MaxBurstIops",
+//		  "value": "3500"
+//		 },
+//		 {
+//		  "name": "MaxBurstBandwidthMBps",
+//		  "value": "170"
+//		 }
+//		]
+//	}
 type DiskSkuInfo struct {
 	StorageAccountType string
 	StorageTier        string
