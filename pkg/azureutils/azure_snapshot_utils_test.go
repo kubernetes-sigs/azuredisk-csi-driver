@@ -222,12 +222,6 @@ func TestGetEntriesAndNextToken(t *testing.T) {
 			},
 			error(nil),
 		},
-		{
-			&csi.ListSnapshotsRequest{
-				MaxEntries: 	1,
-				
-			}
-		}
 	}
 
 	for _, test := range tests {
