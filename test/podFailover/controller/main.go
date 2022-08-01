@@ -64,6 +64,7 @@ var (
 	delayBeforeFailover    = flag.Int("delay-before-failover", 0, "Time in seconds for which the controller should wait before failing the pod")
 	deployAllPodsOnOneNode = flag.Bool("all-pods-on-one-node", false, "Specify whether to deploy all the pods on the same node")
 	testName               = flag.String("test-name", "default-test-run", "The name of the test to be used as metrics label to distinguish metrics sent from multiple test runs")
+	storageClassName       = flag.String("storage-class-name", "", "Name of storage class if provisioning beforehand")
 )
 
 func main() {
@@ -89,10 +90,15 @@ func main() {
 	if deleteNamespace {
 		defer deleteTestNamespace(ctx, clientset)
 	}
-	scName, err := createStorageClass(ctx, clientset, *maxShares)
-	if err != nil {
-		klog.Errorf("Error occurred while creating storageClass: %v", err)
-		return
+	var scName string
+	if *storageClassName != "" {
+		scName = *storageClassName
+	} else {
+		scName, err = createStorageClass(ctx, clientset, *maxShares)
+		if err != nil {
+			klog.Errorf("Error occurred while creating storageClass: %v", err)
+			return
+		}
 	}
 	defer deleteStorageClass(ctx, clientset, scName)
 
