@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestNewFakeDriver(t *testing.T) {
+func TestNewFakeHostUtil(t *testing.T) {
 	fakeHostUtil := NewFakeHostUtil()
 	fakeHostUtil.SetPathIsDeviceResult("/home/", true, nil)
 
