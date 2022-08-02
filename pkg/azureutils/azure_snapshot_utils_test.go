@@ -97,6 +97,41 @@ func TestGenerateCSISnapshot(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "sourceVolumeID property is missed",
+			testFunc: func(t *testing.T) {
+				provisioningState := "succeeded"
+				DiskSize := int32(10)
+				snapshotID := "test"
+				sourceResourceID := "unit test"
+				snapshot := compute.Snapshot{
+					SnapshotProperties: &compute.SnapshotProperties{
+						TimeCreated:       &date.Time{},
+						ProvisioningState: &provisioningState,
+						DiskSizeGB:        &DiskSize,
+						CreationData: &compute.CreationData{
+							SourceResourceID: &sourceResourceID,
+						},
+					},
+					ID: &snapshotID,
+				}
+				sourceVolumeID := ""
+				response, err := GenerateCSISnapshot(sourceVolumeID, &snapshot)
+				tp := timestamppb.New(snapshot.SnapshotProperties.TimeCreated.ToTime())
+				ready := true
+				expectedresponse := &csi.Snapshot{
+					SizeBytes:      volumehelper.GiBToBytes(int64(*snapshot.SnapshotProperties.DiskSizeGB)),
+					SnapshotId:     *snapshot.ID,
+					SourceVolumeId: sourceResourceID,
+					CreationTime:   tp,
+					ReadyToUse:     ready,
+				}
+				if !reflect.DeepEqual(expectedresponse, response) || err != nil {
+					t.Errorf("actualresponse: (%+v), expectedresponse: (%+v)\n", response, expectedresponse)
+					t.Errorf("err:%v", err)
+				}
+			},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -133,6 +168,12 @@ func TestGetEntriesAndNextToken(t *testing.T) {
 		expectedResponse *csi.ListSnapshotsResponse
 		expectedError    error
 	}{
+		{
+			nil,
+			[]compute.Snapshot{},
+			nil,
+			status.Errorf(codes.Aborted, "request is nil"),
+		},
 		{
 			&csi.ListSnapshotsRequest{
 				MaxEntries:    2,
@@ -171,10 +212,31 @@ func TestGetEntriesAndNextToken(t *testing.T) {
 		},
 		{
 			&csi.ListSnapshotsRequest{
+				MaxEntries:    2,
+				StartingToken: "0",
+			},
+			append([]compute.Snapshot{}, compute.Snapshot{}),
+			nil,
+			fmt.Errorf("failed to generate snapshot entry: %v", fmt.Errorf("snapshot property is nil")),
+		},
+		{
+			&csi.ListSnapshotsRequest{
 				MaxEntries:     2,
 				SourceVolumeId: sourceVolumeID,
 			},
 			snapshots,
+			&csi.ListSnapshotsResponse{
+				Entries:   entries,
+				NextToken: "1",
+			},
+			error(nil),
+		},
+		{
+			&csi.ListSnapshotsRequest{
+				MaxEntries:     1,
+				SourceVolumeId: sourceVolumeID,
+			},
+			append(snapshots, snapshot),
 			&csi.ListSnapshotsResponse{
 				Entries:   entries,
 				NextToken: "1",
