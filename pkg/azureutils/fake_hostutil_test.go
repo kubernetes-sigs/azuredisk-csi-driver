@@ -26,7 +26,7 @@ func TestNewFakeHostUtil(t *testing.T) {
 			fmt.Errorf("path %q does not exist", "/hame/"),
 		},
 		{
-			"/mnt/",
+			".",
 			false,
 			nil,
 		},
