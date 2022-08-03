@@ -296,6 +296,7 @@ func (d *DriverV2) NodePublishVolume(ctx context.Context, req *csi.NodePublishVo
 		return nil, status.Error(codes.InvalidArgument, "Target path not provided")
 	}
 
+	klog.V(2).Infof("NodePublishVolume: preparing to publish at %s", target)
 	err = d.nodeProvisioner.PreparePublishPath(target)
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Target path could not be prepared: %v", err))
@@ -366,13 +367,13 @@ func (d *DriverV2) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpubli
 		return nil, status.Error(codes.InvalidArgument, "Target path missing in request")
 	}
 
-	klog.V(2).Infof("NodeUnpublishVolume: unmounting volume %s on %s", volumeID, targetPath)
-	err := d.nodeProvisioner.CleanupMountPoint(targetPath, true /*extensiveMountPointCheck*/)
+	klog.V(2).Infof("NodeUnpublishVolume: clean up publish path %q", targetPath)
+	err := d.nodeProvisioner.CleanupPublishPath(targetPath)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to unmount target %q: %v", targetPath, err)
+		return nil, status.Errorf(codes.Internal, "failed to clean up publish path %q: %v", targetPath, err)
 	}
 
-	klog.V(2).Infof("NodeUnpublishVolume: unmount volume %s on %s successfully", volumeID, targetPath)
+	klog.V(2).Infof("NodeUnpublishVolume: clean up publish path %q successfully", targetPath)
 
 	return &csi.NodeUnpublishVolumeResponse{}, nil
 }

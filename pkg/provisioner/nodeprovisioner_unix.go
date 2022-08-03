@@ -61,6 +61,11 @@ func (p *NodeProvisioner) PreparePublishPath(path string) error {
 	return nil
 }
 
+// CleanupPublishPath cleans up the publishing path.
+func (p *NodeProvisioner) CleanupPublishPath(path string) error {
+	return nil
+}
+
 // CleanupMountPoint unmounts the given path and deletes the remaining directory if successful.
 func (p *NodeProvisioner) CleanupMountPoint(path string, extensiveCheck bool) error {
 	return mount.CleanupMountPoint(path, p.mounter, extensiveCheck)

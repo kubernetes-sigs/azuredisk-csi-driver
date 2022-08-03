@@ -83,6 +83,28 @@ func (p *NodeProvisioner) PreparePublishPath(path string) error {
 	return nil
 }
 
+// CleanupPublishPath cleans up the publishing path.
+func (p *NodeProvisioner) CleanupPublishPath(path string) error {
+	proxy, ok := p.mounter.Interface.(mounter.CSIProxyMounter)
+	if !ok {
+		return fmt.Errorf("could not cast to csi proxy class")
+	}
+
+	isExists, err := proxy.ExistsPath(path)
+	if err != nil {
+		return err
+	}
+
+	if isExists {
+		err = proxy.Rmdir(path)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // CleanupMountPoint unmounts the given path and deletes the remaining directory if successful.
 func (p *NodeProvisioner) CleanupMountPoint(path string, extensiveCheck bool) error {
 	if proxy, ok := p.mounter.Interface.(mounter.CSIProxyMounter); ok {

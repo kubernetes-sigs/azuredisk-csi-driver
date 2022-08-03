@@ -36,6 +36,9 @@ import (
 	volume "github.com/kubernetes-csi/csi-proxy/client/api/volume/v1"
 	volumeclient "github.com/kubernetes-csi/csi-proxy/client/groups/volume/v1"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"k8s.io/klog/v2"
 	"k8s.io/mount-utils"
 	utilexec "k8s.io/utils/exec"
@@ -107,18 +110,26 @@ func (mounter *csiProxyMounter) Rmdir(path string) error {
 
 // Unmount - Removes the directory - equivalent to unmount on Linux.
 func (mounter *csiProxyMounter) Unmount(target string) error {
-	// WriteVolumeCache before unmount
 	response, err := mounter.VolumeClient.GetVolumeIDFromTargetPath(context.Background(), &volume.GetVolumeIDFromTargetPathRequest{TargetPath: target})
-	if err != nil || response == nil {
-		klog.Warningf("GetVolumeIDFromTargetPath(%s) failed with error: %v, response: %v", target, err, response)
-	} else {
-		request := &volume.WriteVolumeCacheRequest{
-			VolumeId: response.VolumeId,
-		}
-		if res, err := mounter.VolumeClient.WriteVolumeCache(context.Background(), request); err != nil {
-			klog.Warningf("WriteVolumeCache(%s) failed with error: %v, response: %v", response.VolumeId, err, res)
-		}
+	if err != nil {
+		klog.Errorf("GetVolumeIDFromTargetPath(%s) failed with error: %v, response: %v", target, err, response)
+		return err
 	}
+
+	if response == nil {
+		klog.Errorf("GetVolumeIDFromTargetPath(%s) returned no response", target)
+		return status.Errorf(codes.Internal, "GetVolumeIDFromTargetPath(%s) returned no response", target)
+	}
+
+	request := &volume.UnmountVolumeRequest{
+		VolumeId:   response.VolumeId,
+		TargetPath: normalizeWindowsPath(target),
+	}
+	if res, err := mounter.VolumeClient.UnmountVolume(context.Background(), request); err != nil {
+		klog.Errorf("UnmountVolume(%s, %s) failed with error: %v, response: %v", request.VolumeId, request.TargetPath, err, res)
+		return err
+	}
+
 	return mounter.Rmdir(target)
 }
 
@@ -306,6 +317,8 @@ func (mounter *csiProxyMounter) FormatAndMount(source string, target string, fst
 
 	// If the volume is not formatted, then format it, else proceed to mount.
 	if !isVolumeFormattedResponse.Formatted {
+		klog.Infof("Disk %q appears to be unformatted, attempting to format as type: ntfs", source)
+
 		formatVolumeRequest := &volume.FormatVolumeRequest{
 			VolumeId: volumeID,
 			// TODO: Accept the filesystem and other options
@@ -314,9 +327,12 @@ func (mounter *csiProxyMounter) FormatAndMount(source string, target string, fst
 		if err != nil {
 			return err
 		}
+
+		klog.Infof("Disk successfully formatted (csiproxy.FormatVolume): ntfs - %s %s", source, target)
 	}
 
 	// Mount the volume by calling the CSI proxy call.
+	klog.V(4).Infof("Attempting to mount disk %s (%s) in ntfs format at %s", source, volumeID, target)
 	mountVolumeRequest := &volume.MountVolumeRequest{
 		VolumeId:   volumeID,
 		TargetPath: normalizeWindowsPath(target),

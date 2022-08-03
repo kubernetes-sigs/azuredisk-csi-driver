@@ -47,6 +47,7 @@ type NodeProvisioner interface {
 	GetDevicePathWithMountPath(mountPath string) (string, error)
 	IsBlockDevicePath(path string) (bool, error)
 	PreparePublishPath(target string) error
+	CleanupPublishPath(path string) error
 	EnsureMountPointReady(target string) (bool, error)
 	EnsureBlockTargetReady(target string) error
 	FormatAndMount(source, target, fstype string, options []string) error

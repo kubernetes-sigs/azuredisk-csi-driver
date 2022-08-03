@@ -369,7 +369,7 @@ if [[ -z ${AZURE_CLIENT_ID:-} ]]; then
   else
     echo "Creating service principal $AZURE_CLIENT_NAME..."
     mapfile -t AZURE_CLIENT_INFO < <(az ad sp create-for-rbac \
-      --name="http://$AZURE_CLIENT_NAME" \
+      --name="$AZURE_CLIENT_NAME" \
       --role="Contributor" \
       --scopes="$AZURE_SUBSCRIPTION_URI" \
       --output=tsv \
