@@ -23,6 +23,9 @@ import (
 	"os"
 	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	testingexec "k8s.io/utils/exec/testing"
 )
 
 var (
@@ -48,6 +51,12 @@ func TestMain(m *testing.M) {
 
 	_ = m.Run()
 
+}
+
+func TestNewFakeSafeMounter(t *testing.T) {
+	resp, err := NewFakeSafeMounter()
+	assert.NotNil(t, resp)
+	assert.Nil(t, err)
 }
 
 func TestMount(t *testing.T) {
@@ -154,4 +163,50 @@ func TestIsLikelyNotMountPoint(t *testing.T) {
 			t.Errorf("Unexpected error: %v", err)
 		}
 	}
+}
+
+func TestSetNextCommandOutputScripts(t *testing.T) {
+	findmntAction := func() ([]byte, []byte, error) {
+		return []byte("test"), []byte{}, nil
+	}
+	blkidAction := func() ([]byte, []byte, error) {
+		return []byte("DEVICE=test\nTYPE=ext4"), []byte{}, nil
+	}
+	resize2fsAction := func() ([]byte, []byte, error) {
+		return []byte{}, []byte{}, nil
+	}
+
+	tests := []struct {
+		scripts []testingexec.FakeAction
+		cmd     string
+		args    []string
+	}{
+		{
+			scripts: []testingexec.FakeAction{},
+			cmd:     "cd .",
+			args:    []string{"args"},
+		},
+		{
+			scripts: []testingexec.FakeAction{findmntAction},
+			cmd:     "cd .",
+			args:    []string{"args"},
+		},
+		{
+			scripts: []testingexec.FakeAction{findmntAction, blkidAction, resize2fsAction},
+			cmd:     "cd .",
+			args:    []string{"args", "arg"},
+		},
+	}
+
+	fakeMounter := &FakeSafeMounter{}
+
+	for _, test := range tests {
+		fakeMounter.SetNextCommandOutputScripts(test.scripts...)
+		if fakeMounter.CommandScript != nil {
+			for num := 0; num < len(fakeMounter.CommandScript); num++ {
+				fakeMounter.CommandScript[num](test.cmd, test.args...)
+			}
+		}
+	}
+
 }
