@@ -176,37 +176,49 @@ func TestSetNextCommandOutputScripts(t *testing.T) {
 		return []byte{}, []byte{}, nil
 	}
 
+	stdout := [][]byte{}
+
 	tests := []struct {
-		scripts []testingexec.FakeAction
-		cmd     string
-		args    []string
+		scripts                 []testingexec.FakeAction
+		cmd                     string
+		args                    []string
+		expectedCmdOutputStdout [][]byte
+		expectedCmdOutputErr    []error
 	}{
 		{
-			scripts: []testingexec.FakeAction{},
-			cmd:     "cd .",
-			args:    []string{"args"},
+			scripts:                 []testingexec.FakeAction{},
+			cmd:                     "cd .",
+			args:                    []string{"args"},
+			expectedCmdOutputStdout: stdout,
+			expectedCmdOutputErr:    []error{},
 		},
 		{
-			scripts: []testingexec.FakeAction{findmntAction},
-			cmd:     "cd .",
-			args:    []string{"args"},
+			scripts:                 []testingexec.FakeAction{findmntAction},
+			cmd:                     "cd .",
+			args:                    []string{"args"},
+			expectedCmdOutputStdout: append(stdout, []byte("test")),
+			expectedCmdOutputErr:    []error{nil},
 		},
 		{
-			scripts: []testingexec.FakeAction{findmntAction, blkidAction, resize2fsAction},
-			cmd:     "cd .",
-			args:    []string{"args", "arg"},
+			scripts:                 []testingexec.FakeAction{findmntAction, blkidAction, resize2fsAction},
+			cmd:                     "cd .",
+			args:                    []string{"args", "arg"},
+			expectedCmdOutputStdout: append(stdout, []byte("test"), []byte("DEVICE=test\nTYPE=ext4"), []byte{}),
+			expectedCmdOutputErr:    []error{nil, nil, nil},
 		},
 	}
 
-	fakeMounter := &FakeSafeMounter{}
-
 	for _, test := range tests {
+		fakeMounter := &FakeSafeMounter{}
 		fakeMounter.SetNextCommandOutputScripts(test.scripts...)
 		if fakeMounter.CommandScript != nil {
 			for num := 0; num < len(fakeMounter.CommandScript); num++ {
-				fakeMounter.CommandScript[num](test.cmd, test.args...)
+				resultCmd := fakeMounter.CommandScript[num](test.cmd, test.args...)
+				resultCmdOutputStdout, resultCmdOutputErr := resultCmd.Output()
+				if !reflect.DeepEqual(resultCmdOutputStdout, test.expectedCmdOutputStdout[num]) || !reflect.DeepEqual(resultCmdOutputErr, test.expectedCmdOutputErr[num]) {
+					t.Errorf("resultCmdOutputStdout: %v, expectedCmdOutputStdout: %v, resultCmdOutputErr: %v, expectedCmdOutputErr: %v", resultCmdOutputStdout, test.expectedCmdOutputStdout[num], resultCmdOutputErr, test.expectedCmdOutputErr[num])
+				}
 			}
 		}
 	}
-
 }

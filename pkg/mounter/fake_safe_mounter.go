@@ -88,6 +88,7 @@ func (f *FakeSafeMounter) SetNextCommandOutputScripts(scripts ...testingexec.Fak
 			fakeCmd := &testingexec.FakeCmd{}
 			fakeCmd.OutputScript = outputScripts
 			fakeCmd.CombinedOutputScript = outputScripts
+			fakeCmd.OutputCalls = 0
 
 			return testingexec.InitFakeCmd(fakeCmd, cmd, args...)
 		}
