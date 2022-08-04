@@ -23,6 +23,9 @@ import (
 	"os"
 	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	testingexec "k8s.io/utils/exec/testing"
 )
 
 var (
@@ -48,6 +51,12 @@ func TestMain(m *testing.M) {
 
 	_ = m.Run()
 
+}
+
+func TestNewFakeSafeMounter(t *testing.T) {
+	resp, err := NewFakeSafeMounter()
+	assert.NotNil(t, resp)
+	assert.Nil(t, err)
 }
 
 func TestMount(t *testing.T) {
@@ -152,6 +161,64 @@ func TestIsLikelyNotMountPoint(t *testing.T) {
 		_, err := fakeMounter.IsLikelyNotMountPoint(test.file)
 		if !reflect.DeepEqual(err, test.expectedErr) {
 			t.Errorf("Unexpected error: %v", err)
+		}
+	}
+}
+
+func TestSetNextCommandOutputScripts(t *testing.T) {
+	findmntAction := func() ([]byte, []byte, error) {
+		return []byte("test"), []byte{}, nil
+	}
+	blkidAction := func() ([]byte, []byte, error) {
+		return []byte("DEVICE=test\nTYPE=ext4"), []byte{}, nil
+	}
+	resize2fsAction := func() ([]byte, []byte, error) {
+		return []byte{}, []byte{}, nil
+	}
+
+	stdout := [][]byte{}
+
+	tests := []struct {
+		scripts                 []testingexec.FakeAction
+		cmd                     string
+		args                    []string
+		expectedCmdOutputStdout [][]byte
+		expectedCmdOutputErr    []error
+	}{
+		{
+			scripts:                 []testingexec.FakeAction{},
+			cmd:                     "cd .",
+			args:                    []string{"args"},
+			expectedCmdOutputStdout: stdout,
+			expectedCmdOutputErr:    []error{},
+		},
+		{
+			scripts:                 []testingexec.FakeAction{findmntAction},
+			cmd:                     "cd .",
+			args:                    []string{"args"},
+			expectedCmdOutputStdout: append(stdout, []byte("test")),
+			expectedCmdOutputErr:    []error{nil},
+		},
+		{
+			scripts:                 []testingexec.FakeAction{findmntAction, blkidAction, resize2fsAction},
+			cmd:                     "cd .",
+			args:                    []string{"args", "arg"},
+			expectedCmdOutputStdout: append(stdout, []byte("test"), []byte("DEVICE=test\nTYPE=ext4"), []byte{}),
+			expectedCmdOutputErr:    []error{nil, nil, nil},
+		},
+	}
+
+	for _, test := range tests {
+		fakeMounter := &FakeSafeMounter{}
+		fakeMounter.SetNextCommandOutputScripts(test.scripts...)
+		if fakeMounter.CommandScript != nil {
+			for num := 0; num < len(fakeMounter.CommandScript); num++ {
+				resultCmd := fakeMounter.CommandScript[num](test.cmd, test.args...)
+				resultCmdOutputStdout, resultCmdOutputErr := resultCmd.Output()
+				if !reflect.DeepEqual(resultCmdOutputStdout, test.expectedCmdOutputStdout[num]) || !reflect.DeepEqual(resultCmdOutputErr, test.expectedCmdOutputErr[num]) {
+					t.Errorf("resultCmdOutputStdout: %v, expectedCmdOutputStdout: %v, resultCmdOutputErr: %v, expectedCmdOutputErr: %v", resultCmdOutputStdout, test.expectedCmdOutputStdout[num], resultCmdOutputErr, test.expectedCmdOutputErr[num])
+				}
+			}
 		}
 	}
 }
