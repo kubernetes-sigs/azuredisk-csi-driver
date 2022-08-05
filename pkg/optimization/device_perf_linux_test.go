@@ -21,9 +21,100 @@ package optimization
 
 import (
 	"os"
+	"path"
 	"strings"
 	"testing"
 )
+
+func Test_OptimizeDiskPerformance(t *testing.T) {
+	deviceHelper := NewDeviceHelper()
+	tests := []struct {
+		name                string
+		nodeInfo            *NodeInfo
+		devicePath          string
+		perfProfile         string
+		accountType         string
+		diskSizeGibStr      string
+		diskIopsStr         string
+		diskBwMbpsStr       string
+		wantErr             bool
+		blockDeviceRootPath string
+		mkdirPath           []string
+	}{
+		{
+			name:                "could not have queue dir for device should return error",
+			nodeInfo:            &NodeInfo{SkuName: "Standard_DS14", MaxBurstIops: 51200, MaxIops: 51200, MaxBwMbps: 512, MaxBurstBwMbps: 512},
+			devicePath:          "sda1",
+			perfProfile:         "basic",
+			accountType:         "Premium_LRS",
+			diskSizeGibStr:      "512",
+			diskIopsStr:         "100",
+			diskBwMbpsStr:       "100",
+			wantErr:             true,
+			blockDeviceRootPath: ".",
+			mkdirPath:           []string{""},
+		},
+		{
+			name:                "could not have queue/iosched dir for device should return error",
+			nodeInfo:            &NodeInfo{SkuName: "Standard_DS14", MaxBurstIops: 51200, MaxIops: 51200, MaxBwMbps: 512, MaxBurstBwMbps: 512},
+			devicePath:          "sda2",
+			perfProfile:         "basic",
+			accountType:         "Premium_LRS",
+			diskSizeGibStr:      "512",
+			diskIopsStr:         "100",
+			diskBwMbpsStr:       "100",
+			wantErr:             true,
+			blockDeviceRootPath: ".",
+			mkdirPath:           []string{"queue"},
+		},
+		{
+			name:                "could not have device dir for device should return error",
+			nodeInfo:            &NodeInfo{SkuName: "Standard_DS14", MaxBurstIops: 51200, MaxIops: 51200, MaxBwMbps: 512, MaxBurstBwMbps: 512},
+			devicePath:          "sda3",
+			perfProfile:         "basic",
+			accountType:         "Premium_LRS",
+			diskSizeGibStr:      "512",
+			diskIopsStr:         "100",
+			diskBwMbpsStr:       "100",
+			wantErr:             true,
+			blockDeviceRootPath: ".",
+			mkdirPath:           []string{"queue/iosched"},
+		},
+		{
+			name:                "valid device",
+			nodeInfo:            &NodeInfo{SkuName: "Standard_DS14", MaxBurstIops: 51200, MaxIops: 51200, MaxBwMbps: 512, MaxBurstBwMbps: 512},
+			devicePath:          "sda4",
+			perfProfile:         "basic",
+			accountType:         "Premium_LRS",
+			diskSizeGibStr:      "512",
+			diskIopsStr:         "100",
+			diskBwMbpsStr:       "100",
+			wantErr:             false,
+			blockDeviceRootPath: ".",
+			mkdirPath:           []string{"queue/iosched", "device"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.blockDeviceRootPath != "" {
+				deviceHelper.blockDeviceRootPath = tt.blockDeviceRootPath
+				for _, mkdir := range tt.mkdirPath {
+					err := os.MkdirAll(path.Join(tt.blockDeviceRootPath, tt.devicePath, mkdir), os.ModePerm)
+					if err != nil {
+						t.Errorf("mkdir err: %v", err)
+					} else {
+						defer os.RemoveAll(path.Join(tt.blockDeviceRootPath, tt.devicePath))
+					}
+				}
+			}
+			if deviceHelper.DiskSupportsPerfOptimization(tt.perfProfile, tt.accountType) {
+				if err := deviceHelper.OptimizeDiskPerformance(tt.nodeInfo, tt.devicePath, tt.perfProfile, tt.accountType, tt.diskSizeGibStr, tt.diskIopsStr, tt.diskBwMbpsStr); (err != nil) != tt.wantErr {
+					t.Errorf("DeviceHelper.OptimizeDiskPerformance() error = %v, wantErr %v", err, tt.wantErr)
+				}
+			}
+		})
+	}
+}
 
 func Test_getOptimalDeviceSettings(t *testing.T) {
 	accountType := "Premium_LRS"
