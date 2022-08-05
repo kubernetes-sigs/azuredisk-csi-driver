@@ -405,3 +405,35 @@ func getNodeInfoFromLabels(ctx context.Context, nodeName string, kubeClient clie
 	}
 	return node.Labels[consts.WellKnownTopologyKey], node.Labels[consts.InstanceTypeKey], nil
 }
+
+// getDefaultDiskIOPSReadWrite according to requestGiB
+//
+//	ref: https://docs.microsoft.com/en-us/azure/virtual-machines/disks-types#ultra-disk-iops
+func getDefaultDiskIOPSReadWrite(requestGiB int) int {
+	iops := azurecloudconsts.DefaultDiskIOPSReadWrite
+	if requestGiB > iops {
+		iops = requestGiB
+	}
+	if iops > 160000 {
+		iops = 160000
+	}
+	return iops
+}
+
+// getDefaultDiskMBPSReadWrite according to requestGiB
+//
+//	ref: https://docs.microsoft.com/en-us/azure/virtual-machines/disks-types#ultra-disk-throughput
+func getDefaultDiskMBPSReadWrite(requestGiB int) int {
+	bandwidth := azurecloudconsts.DefaultDiskMBpsReadWrite
+	iops := getDefaultDiskIOPSReadWrite(requestGiB)
+	if iops/256 > bandwidth {
+		bandwidth = iops / 256
+	}
+	if bandwidth > iops/4 {
+		bandwidth = iops / 4
+	}
+	if bandwidth > 4000 {
+		bandwidth = 4000
+	}
+	return bandwidth
+}

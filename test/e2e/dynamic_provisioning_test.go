@@ -136,10 +136,8 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			test.StorageClassParameters = map[string]string{
 				"skuName":           "UltraSSD_LRS",
 				"cachingmode":       "None",
-				"diskMbpsReadWrite": "320",
 				"logicalSectorSize": "512",
 				"zoned":             "true",
-				"fsType":            "btrfs",
 			}
 		}
 		if isUsingInTreeVolumePlugin {
