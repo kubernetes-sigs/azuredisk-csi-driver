@@ -33,6 +33,7 @@ import (
 	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/klog/v2"
 	schedulerapi "k8s.io/kube-scheduler/extender/v1"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
 func init() {
@@ -42,6 +43,7 @@ func init() {
 var (
 	metricsAddress              = flag.String("metrics-address", "0.0.0.0:29606", "export the metrics")
 	azDiskSchedulerExtenderPort = flag.String("port", "8889", "port used by az scheduler extender")
+	driverName                  = flag.String("drivername", consts.DefaultDriverName, "name of the driver")
 )
 
 const (
