@@ -105,6 +105,28 @@ func TestDeviceHelper_OptimizeDiskPerformance(t *testing.T) {
 			diskBwMbpsStr:  "100",
 			wantErr:        true,
 		},
+		{
+			name:           "invalid device path should return error",
+			nodeInfo:       &NodeInfo{SkuName: "Standard_DS14", MaxBurstIops: 51200, MaxIops: 51200, MaxBwMbps: 512, MaxBurstBwMbps: 512},
+			devicePath:     "blah",
+			perfProfile:    "basic",
+			accountType:    "Premium_LRS",
+			diskSizeGibStr: "512",
+			diskIopsStr:    "100",
+			diskBwMbpsStr:  "100",
+			wantErr:        true,
+		},
+		{
+			name:           "could not set max_sectors_kb for device should return error",
+			nodeInfo:       &NodeInfo{SkuName: "Standard_DS14", MaxBurstIops: 51200, MaxIops: 51200, MaxBwMbps: 512, MaxBurstBwMbps: 512},
+			devicePath:     ".",
+			perfProfile:    "basic",
+			accountType:    "Premium_LRS",
+			diskSizeGibStr: "512",
+			diskIopsStr:    "100",
+			diskBwMbpsStr:  "100",
+			wantErr:        true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

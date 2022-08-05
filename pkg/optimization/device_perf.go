@@ -23,13 +23,17 @@ type Interface interface {
 		devicePath, perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr string) error
 }
 
+const (
+	blockDeviceRootPathDefault = "/sys/block"
+)
+
 // Compile-time check to ensure all Mounter DeviceHelper satisfy
 // the DeviceHelper interface.
-var _ Interface = &DeviceHelper{}
+var _ Interface = &DeviceHelper{blockDeviceRootPath: blockDeviceRootPathDefault}
 
 func NewSafeDeviceHelper() *SafeDeviceHelper {
 	return &SafeDeviceHelper{
-		Interface: &DeviceHelper{},
+		Interface: &DeviceHelper{blockDeviceRootPath: blockDeviceRootPathDefault},
 	}
 }
 

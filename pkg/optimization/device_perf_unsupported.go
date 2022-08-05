@@ -21,7 +21,9 @@ package optimization
 
 import "fmt"
 
-type DeviceHelper struct{}
+type DeviceHelper struct {
+	blockDeviceRootPath string
+}
 
 func (deviceHelper *DeviceHelper) DiskSupportsPerfOptimization(diskPerfProfile, diskAccountType string) bool {
 	// return false on unsupported platforms
