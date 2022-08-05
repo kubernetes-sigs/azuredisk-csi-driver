@@ -51,7 +51,7 @@ rbac:
 api:
   version:
     v1beta1:
-      enabled: false
+      enabled: true
 
 controller:
   name: csi-azuredisk-controller

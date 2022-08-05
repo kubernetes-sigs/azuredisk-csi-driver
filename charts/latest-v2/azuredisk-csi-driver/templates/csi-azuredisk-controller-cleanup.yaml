@@ -4,7 +4,7 @@ metadata:
   name: csi-azuredisk-controller-cleanup
   namespace: {{ .Release.Namespace }}
   annotations:
-    "helm.sh/hook": pre-delete, pre-upgrade
+    "helm.sh/hook": pre-delete
     "helm.sh/hook-delete-policy": hook-succeeded
 {{ include "azuredisk.labels" . | indent 2 }}
 spec:

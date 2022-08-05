@@ -24,6 +24,10 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/workflow"
+
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -75,6 +79,30 @@ func (r *ReconcileAzDriverNode) Reconcile(ctx context.Context, request reconcile
 	}
 
 	return reconcile.Result{Requeue: true}, err
+}
+
+// run an update on existing azdrivernode objects to store them under new version if necessary
+func (r *ReconcileAzDriverNode) Recover(ctx context.Context) error {
+	var err error
+	ctx, w := workflow.New(ctx)
+	defer func() { w.Finish(err) }()
+
+	var nodes *azdiskv1beta2.AzDriverNodeList
+	if nodes, err = r.controllerSharedState.azClient.DiskV1beta2().AzDriverNodes(r.controllerSharedState.objectNamespace).List(ctx, metav1.ListOptions{}); err != nil {
+		if errors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
+	for _, node := range nodes.Items {
+		updated := node.DeepCopy()
+		updated.Annotations = azureutils.AddToMap(updated.Annotations, consts.RecoverAnnotation, "azDriverNode")
+		if _, err = r.controllerSharedState.azClient.DiskV1beta2().AzDriverNodes(r.controllerSharedState.objectNamespace).Update(ctx, updated, metav1.UpdateOptions{}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // NewAzDriverNodeController initializes azdrivernode-controller
