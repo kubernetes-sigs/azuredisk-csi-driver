@@ -19,6 +19,7 @@ package controller
 import (
 	"container/list"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -40,6 +41,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/component-helpers/scheduling/corev1/nodeaffinity"
 	"k8s.io/klog/v2"
@@ -58,6 +60,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	cache "k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/kubernetes/pkg/features"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -298,37 +301,43 @@ func (c *SharedState) deleteAPIVersion(ctx context.Context, deleteVersion string
 	w, _ := workflow.GetWorkflowFromContext(ctx)
 	crdNames := []string{consts.AzDriverNodeCRDName, consts.AzVolumeCRDName, consts.AzVolumeAttachmentCRDName}
 	for _, crdName := range crdNames {
-		crd, err := c.crdClient.ApiextensionsV1().CustomResourceDefinitions().Get(ctx, crdName, metav1.GetOptions{})
+		err := retry.RetryOnConflict(retry.DefaultBackoff,
+			func() error {
+				crd, err := c.crdClient.ApiextensionsV1().CustomResourceDefinitions().Get(ctx, crdName, metav1.GetOptions{})
+				if err != nil {
+					if apiErrors.IsNotFound(err) {
+						return err
+					}
+					return nil
+				}
+
+				if !objectsDeleted {
+					return nil
+				}
+
+				updated := crd.DeepCopy()
+				var storedVersions []string
+				// remove version from status stored versions
+				for _, version := range updated.Status.StoredVersions {
+					if version == deleteVersion {
+						continue
+					}
+					storedVersions = append(storedVersions, version)
+				}
+				updated.Status.StoredVersions = storedVersions
+				crd, err = c.crdClient.ApiextensionsV1().CustomResourceDefinitions().UpdateStatus(ctx, updated, metav1.UpdateOptions{})
+				if err != nil {
+					// log the error and continue
+					return err
+				}
+				return nil
+			})
+
 		if err != nil {
-			if apiErrors.IsNotFound(err) {
-				return err
-			}
-			continue
+			w.Logger().Errorf(err, "failed to delete %s api version from CRD (%s)", deleteVersion, crdName)
 		}
 
-		if !objectsDeleted {
-			continue
-		}
-
-		updated := crd.DeepCopy()
-		var storedVersions []string
-		// remove version from status stored versions
-		for _, version := range updated.Status.StoredVersions {
-			if version == deleteVersion {
-				continue
-			}
-			storedVersions = append(storedVersions, version)
-		}
-		updated.Status.StoredVersions = storedVersions
-		crd, err = c.crdClient.ApiextensionsV1().CustomResourceDefinitions().UpdateStatus(ctx, updated, metav1.UpdateOptions{})
-		if err != nil {
-			// log the error and continue
-			w.Logger().Errorf(err, "failed to remove %s stored version from CRD (%s) status", deleteVersion, crd.Name)
-			continue
-		}
-
-		// Need to decide whether we will remove old version from spec as well.
-
+		// Uncomment when the all deployments have rolled over to v1beta1.
 		// updated = crd.DeepCopy()
 		// // remove version from spec versions
 		// var specVersions []crdv1.CustomResourceDefinitionVersion
@@ -354,7 +363,7 @@ func (c *SharedState) deleteAPIVersion(ctx context.Context, deleteVersion string
 func (c *SharedState) deleteOldInstances(ctx context.Context, deleteVersion string) error {
 	var err error
 
-	klog.Info("Deleting Instances With v1beta1 api versions")
+	klog.Info("Deleting Instances With %s api versions", deleteVersion)
 	v1beta1Client := c.azClient.DiskV1beta1()
 
 	// azdrivernode deprecate
@@ -362,17 +371,29 @@ func (c *SharedState) deleteOldInstances(ctx context.Context, deleteVersion stri
 	if azdrivernodes, err = v1beta1Client.AzDriverNodes(c.objectNamespace).List(ctx, metav1.ListOptions{}); err != nil && !apiErrors.IsNotFound(err) {
 		return err
 	}
-	klog.Infof("found %d AzDriverNodes to delete", len(azdrivernodes.Items))
+	klog.V(5).Infof("found %d AzDriverNodes to delete", len(azdrivernodes.Items))
 	for _, azdrivernode := range azdrivernodes.Items {
-		if azdrivernode.APIVersion != fmt.Sprintf("%s/%s", consts.DefaultDriverName, deleteVersion) {
-			klog.Infof("Skipping %s: API Version of this object is %s", azdrivernode.APIVersion)
-			continue
-		}
 		updated := azdrivernode.DeepCopy()
 		updated.Finalizers = nil
-		if _, err = v1beta1Client.AzDriverNodes(c.objectNamespace).Update(ctx, updated, metav1.UpdateOptions{}); err != nil && !apiErrors.IsNotFound(err) {
+
+		originalData, err := json.Marshal(azdrivernode)
+		if err != nil {
+			return fmt.Errorf("failed to marshal original data for AzDriverNode (%s): %v", azdrivernode.Name, err)
+		}
+		updatedData, err := json.Marshal(updated)
+		if err != nil {
+			return fmt.Errorf("failed to marshal new data for AzDriverNode (%s): %v", updated.Name, err)
+		}
+
+		patchBytes, err := strategicpatch.CreateTwoWayMergePatch(originalData, updatedData, azdiskv1beta1.AzDriverNode{})
+		if err != nil {
+			return fmt.Errorf("failed to create patch for AzDriverNode (%s): %v", azdrivernode.Name, err)
+		}
+
+		if _, err = v1beta1Client.AzDriverNodes(c.objectNamespace).Patch(ctx, updated.Name, types.StrategicMergePatchType, patchBytes, metav1.PatchOptions{}); err != nil && !apiErrors.IsNotFound(err) {
 			return err
 		}
+
 		if err = v1beta1Client.AzDriverNodes(c.objectNamespace).Delete(ctx, azdrivernode.Name, metav1.DeleteOptions{}); err != nil && !apiErrors.IsNotFound(err) {
 			return err
 		}
@@ -383,15 +404,30 @@ func (c *SharedState) deleteOldInstances(ctx context.Context, deleteVersion stri
 	if azvolumes, err = v1beta1Client.AzVolumes(c.objectNamespace).List(ctx, metav1.ListOptions{}); err != nil && !apiErrors.IsNotFound(err) {
 		return err
 	}
-	klog.Infof("found %d AzVolumes to delete", len(azvolumes.Items))
+	klog.V(5).Infof("found %d AzVolumes to delete", len(azvolumes.Items))
 	for _, azvolume := range azvolumes.Items {
-		if azvolume.APIVersion != fmt.Sprintf("%s/%s", consts.DefaultDriverName, deleteVersion) {
-			klog.Infof("Skipping %s: API Version of this object is %s", azvolume.APIVersion)
-			continue
-		}
 		updated := azvolume.DeepCopy()
 		updated.Finalizers = nil
-		if _, err = v1beta1Client.AzVolumes(c.objectNamespace).Update(ctx, updated, metav1.UpdateOptions{}); err != nil && !apiErrors.IsNotFound(err) {
+
+		originalData, err := json.Marshal(azvolume)
+		if err != nil {
+			return fmt.Errorf("failed to marshal original data for AzVolume (%s): %v", azvolume.Name, err)
+		}
+		updatedData, err := json.Marshal(updated)
+		if err != nil {
+			return fmt.Errorf("failed to marshal new data for AzVolume (%s): %v", updated.Name, err)
+		}
+
+		patchBytes, err := strategicpatch.CreateTwoWayMergePatch(originalData, updatedData, azdiskv1beta1.AzVolume{})
+		if err != nil {
+			return fmt.Errorf("failed to create patch for AzVolume (%s): %v", azvolume.Name, err)
+		}
+
+		if _, err = v1beta1Client.AzVolumes(c.objectNamespace).Patch(ctx, updated.Name, types.StrategicMergePatchType, patchBytes, metav1.PatchOptions{}); err != nil && !apiErrors.IsNotFound(err) {
+			return err
+		}
+
+		if err = v1beta1Client.AzVolumes(c.objectNamespace).Delete(ctx, azvolume.Name, metav1.DeleteOptions{}); err != nil && !apiErrors.IsNotFound(err) {
 			return err
 		}
 		if err = v1beta1Client.AzVolumes(c.objectNamespace).Delete(ctx, azvolume.Name, metav1.DeleteOptions{}); err != nil && !apiErrors.IsNotFound(err) {
@@ -403,15 +439,30 @@ func (c *SharedState) deleteOldInstances(ctx context.Context, deleteVersion stri
 	if azvolumeattachments, err = v1beta1Client.AzVolumeAttachments(c.objectNamespace).List(ctx, metav1.ListOptions{}); err != nil && !apiErrors.IsNotFound(err) {
 		return err
 	}
-	klog.Infof("found %d AzVolumeAttachments to delete", len(azvolumeattachments.Items))
+	klog.V(5).Infof("found %d AzVolumeAttachments to delete", len(azvolumeattachments.Items))
 	for _, azvolumeattachment := range azvolumeattachments.Items {
-		if azvolumeattachment.APIVersion != fmt.Sprintf("%s/%s", consts.DefaultDriverName, deleteVersion) {
-			klog.Infof("Skipping %s: API Version of this object is %s", azvolumeattachment.APIVersion)
-			continue
-		}
 		updated := azvolumeattachment.DeepCopy()
 		updated.Finalizers = nil
-		if _, err = v1beta1Client.AzVolumeAttachments(c.objectNamespace).Update(ctx, updated, metav1.UpdateOptions{}); err != nil && !apiErrors.IsNotFound(err) {
+
+		originalData, err := json.Marshal(azvolumeattachment)
+		if err != nil {
+			return fmt.Errorf("failed to marshal original data for AzVolumeAttachment (%s): %v", azvolumeattachment.Name, err)
+		}
+		updatedData, err := json.Marshal(updated)
+		if err != nil {
+			return fmt.Errorf("failed to marshal new data for AzVolumeAttachment (%s): %v", updated.Name, err)
+		}
+
+		patchBytes, err := strategicpatch.CreateTwoWayMergePatch(originalData, updatedData, azdiskv1beta1.AzVolumeAttachment{})
+		if err != nil {
+			return fmt.Errorf("failed to create patch for AzVolumeAttachment (%s): %v", azvolumeattachment.Name, err)
+		}
+
+		if _, err = v1beta1Client.AzVolumeAttachments(c.objectNamespace).Patch(ctx, updated.Name, types.StrategicMergePatchType, patchBytes, metav1.PatchOptions{}); err != nil && !apiErrors.IsNotFound(err) {
+			return err
+		}
+
+		if err = v1beta1Client.AzVolumeAttachments(c.objectNamespace).Delete(ctx, azvolumeattachment.Name, metav1.DeleteOptions{}); err != nil && !apiErrors.IsNotFound(err) {
 			return err
 		}
 		if err = v1beta1Client.AzVolumeAttachments(c.objectNamespace).Delete(ctx, azvolumeattachment.Name, metav1.DeleteOptions{}); err != nil && !apiErrors.IsNotFound(err) {
