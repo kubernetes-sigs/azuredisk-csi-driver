@@ -32,6 +32,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	v1 "k8s.io/api/core/v1"
+	crdClientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -55,6 +56,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	cache "k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/kubernetes/pkg/features"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -257,11 +259,12 @@ type SharedState struct {
 	cachedClient                  client.Client
 	azClient                      azdisk.Interface
 	kubeClient                    kubernetes.Interface
+	crdClient                     crdClientset.Interface
 	conditionWatcher              *watcher.ConditionWatcher
 }
 
-func NewSharedState(driverName, objectNamespace, topologyKey string, eventRecorder record.EventRecorder, cachedClient client.Client, azClient azdisk.Interface, kubeClient kubernetes.Interface) *SharedState {
-	newSharedState := &SharedState{driverName: driverName, objectNamespace: objectNamespace, topologyKey: topologyKey, eventRecorder: eventRecorder, cachedClient: cachedClient, azClient: azClient, kubeClient: kubeClient, conditionWatcher: watcher.New(context.Background(), azClient, azdiskinformers.NewSharedInformerFactory(azClient, consts.DefaultInformerResync), objectNamespace)}
+func NewSharedState(driverName, objectNamespace, topologyKey string, eventRecorder record.EventRecorder, cachedClient client.Client, azClient azdisk.Interface, kubeClient kubernetes.Interface, crdClient crdClientset.Interface) *SharedState {
+	newSharedState := &SharedState{driverName: driverName, objectNamespace: objectNamespace, topologyKey: topologyKey, eventRecorder: eventRecorder, cachedClient: cachedClient, azClient: azClient, kubeClient: kubeClient, crdClient: crdClient, conditionWatcher: watcher.New(context.Background(), azClient, azdiskinformers.NewSharedInformerFactory(azClient, consts.DefaultInformerResync), objectNamespace)}
 	newSharedState.createReplicaRequestsQueue()
 	return newSharedState
 }
@@ -272,6 +275,65 @@ func (c *SharedState) isRecoveryComplete() bool {
 
 func (c *SharedState) MarkRecoveryComplete() {
 	atomic.StoreUint32(&c.recoveryComplete, 1)
+}
+
+func (c *SharedState) DeleteAPIVersion(ctx context.Context, deleteVersion string) error {
+	w, _ := workflow.GetWorkflowFromContext(ctx)
+	crdNames := []string{consts.AzDriverNodeCRDName, consts.AzVolumeCRDName, consts.AzVolumeAttachmentCRDName}
+	for _, crdName := range crdNames {
+		err := retry.RetryOnConflict(retry.DefaultBackoff,
+			func() error {
+				crd, err := c.crdClient.ApiextensionsV1().CustomResourceDefinitions().Get(ctx, crdName, metav1.GetOptions{})
+				if err != nil {
+					if apiErrors.IsNotFound(err) {
+						return err
+					}
+					return nil
+				}
+
+				updated := crd.DeepCopy()
+				var storedVersions []string
+				// remove version from status stored versions
+				for _, version := range updated.Status.StoredVersions {
+					if version == deleteVersion {
+						continue
+					}
+					storedVersions = append(storedVersions, version)
+				}
+				updated.Status.StoredVersions = storedVersions
+				crd, err = c.crdClient.ApiextensionsV1().CustomResourceDefinitions().UpdateStatus(ctx, updated, metav1.UpdateOptions{})
+				if err != nil {
+					// log the error and continue
+					return err
+				}
+				return nil
+			})
+
+		if err != nil {
+			w.Logger().Errorf(err, "failed to delete %s api version from CRD (%s)", deleteVersion, crdName)
+		}
+
+		// Uncomment when the all deployments have rolled over to v1beta1.
+		// updated = crd.DeepCopy()
+		// // remove version from spec versions
+		// var specVersions []crdv1.CustomResourceDefinitionVersion
+		// for _, version := range updated.Spec.Versions {
+		// 	if version.Name == deleteVersion {
+		// 		continue
+		// 	}
+		// 	specVersions = append(specVersions, version)
+		// }
+		// updated.Spec.Versions = specVersions
+
+		// // update the crd
+		// crd, err = c.crdClient.ApiextensionsV1().CustomResourceDefinitions().Update(ctx, updated, metav1.UpdateOptions{})
+		// if err != nil {
+		// 	// log the error and continue
+		// 	w.Logger().Errorf(err, "failed to remove %s spec version from CRD (%s)", deleteVersion, crd.Name)
+		// 	continue
+		// }
+	}
+	return nil
 }
 
 func (c *SharedState) createOperationQueue(volumeName string) {

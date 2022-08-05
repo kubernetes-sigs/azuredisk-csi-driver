@@ -600,37 +600,50 @@ func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, 
 			azVolumeAttachmentName := azureutils.GetAzVolumeAttachmentName(diskName, nodeName)
 			r.controllerSharedState.azVolumeAttachmentToVaMap.Store(azVolumeAttachmentName, volumeAttachment.Name)
 
+			desiredAzVolumeAttachment := &azdiskv1beta2.AzVolumeAttachment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: azVolumeAttachmentName,
+					Labels: map[string]string{
+						consts.NodeNameLabel:   nodeName,
+						consts.VolumeNameLabel: *volumeName,
+					},
+					Annotations: map[string]string{consts.VolumeAttachRequestAnnotation: "CRI recovery"},
+					Finalizers:  []string{consts.AzVolumeAttachmentFinalizer},
+				},
+				Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
+
+					VolumeName:    *volumeName,
+					VolumeID:      pv.Spec.CSI.VolumeHandle,
+					NodeName:      nodeName,
+					RequestedRole: azdiskv1beta2.PrimaryRole,
+					VolumeContext: map[string]string{},
+				},
+			}
 			// check if the CRI exists already
 			azVolumeAttachment, err := azureutils.GetAzVolumeAttachment(ctx, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachmentName, r.controllerSharedState.objectNamespace, false)
 			if err != nil {
 				if errors.IsNotFound(err) {
 					w.Logger().Infof("Recreating AzVolumeAttachment(%s)", azVolumeAttachmentName)
-					azVolumeAttachment = &azdiskv1beta2.AzVolumeAttachment{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: azVolumeAttachmentName,
-							Labels: map[string]string{
-								consts.NodeNameLabel:   nodeName,
-								consts.VolumeNameLabel: *volumeName,
-							},
-							Annotations: map[string]string{consts.VolumeAttachRequestAnnotation: "CRI recovery"},
-							Finalizers:  []string{consts.AzVolumeAttachmentFinalizer},
-						},
-						Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
 
-							VolumeName:    *volumeName,
-							VolumeID:      pv.Spec.CSI.VolumeHandle,
-							NodeName:      nodeName,
-							RequestedRole: azdiskv1beta2.PrimaryRole,
-							VolumeContext: map[string]string{},
-						},
-					}
-					azVolumeAttachment, err = r.controllerSharedState.azClient.DiskV1beta2().AzVolumeAttachments(r.controllerSharedState.objectNamespace).Create(ctx, azVolumeAttachment, metav1.CreateOptions{})
+					azVolumeAttachment, err = r.controllerSharedState.azClient.DiskV1beta2().AzVolumeAttachments(r.controllerSharedState.objectNamespace).Create(ctx, desiredAzVolumeAttachment, metav1.CreateOptions{})
 					if err != nil {
 						w.Logger().Errorf(err, "failed to create AzVolumeAttachment (%s) for volume (%s) and node (%s): %v", azVolumeAttachmentName, *volumeName, nodeName, err)
 						return syncedVolumeAttachments, volumesToSync, err
 					}
 				} else {
 					w.Logger().Errorf(err, "failed to get AzVolumeAttachment (%s): %v", azVolumeAttachmentName, err)
+					return syncedVolumeAttachments, volumesToSync, err
+				}
+			} else {
+				w.Logger().Infof("Reapplying AzVolumeAttachment(%s)", azVolumeAttachmentName)
+				azVolumeAttachment.Spec = desiredAzVolumeAttachment.Spec
+				azVolumeAttachment.Labels = desiredAzVolumeAttachment.Labels
+				azVolumeAttachment.Annotations = desiredAzVolumeAttachment.Annotations
+				azVolumeAttachment.Finalizers = desiredAzVolumeAttachment.Finalizers
+
+				azVolumeAttachment, err = r.controllerSharedState.azClient.DiskV1beta2().AzVolumeAttachments(r.controllerSharedState.objectNamespace).Update(ctx, azVolumeAttachment, metav1.UpdateOptions{})
+				if err != nil {
+					w.Logger().Errorf(err, "failed to update AzVolumeAttachment (%s) for volume (%s) and node (%s): %v", azVolumeAttachmentName, *volumeName, nodeName, err)
 					return syncedVolumeAttachments, volumesToSync, err
 				}
 			}
@@ -659,6 +672,7 @@ func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, 
 
 func (r *ReconcileAttachDetach) recoverAzVolumeAttachment(ctx context.Context, recoveredAzVolumeAttachments *sync.Map) error {
 	w, _ := workflow.GetWorkflowFromContext(ctx)
+
 	// list all AzVolumeAttachment
 	azVolumeAttachments, err := r.controllerSharedState.azClient.DiskV1beta2().AzVolumeAttachments(r.controllerSharedState.objectNamespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
@@ -680,9 +694,18 @@ func (r *ReconcileAttachDetach) recoverAzVolumeAttachment(ctx context.Context, r
 		go func(azv azdiskv1beta2.AzVolumeAttachment, azvMap *sync.Map) {
 			defer wg.Done()
 			var targetState azdiskv1beta2.AzVolumeAttachmentAttachmentState
+			updateMode := azureutils.UpdateCRIStatus
+			if azv.Spec.RequestedRole == azdiskv1beta2.ReplicaRole {
+				updateMode = azureutils.UpdateAll
+			}
 			updateFunc := func(obj client.Object) error {
 				var err error
 				azv := obj.(*azdiskv1beta2.AzVolumeAttachment)
+				if azv.Spec.RequestedRole == azdiskv1beta2.ReplicaRole {
+					// conversion logic from v1beta1 to v1beta2 for replicas come here
+					azv.Status.Annotations = azv.ObjectMeta.Annotations
+					azv.ObjectMeta.Annotations = map[string]string{consts.VolumeAttachRequestAnnotation: "CRI recovery"}
+				}
 				// add a recover annotation to the CRI so that reconciliation can be triggered for the CRI even if CRI's current state == target state
 				azv.Status.Annotations = azureutils.AddToMap(azv.Status.Annotations, consts.RecoverAnnotation, "azVolumeAttachment")
 				if azv.Status.State != targetState {
@@ -701,7 +724,7 @@ func (r *ReconcileAttachDetach) recoverAzVolumeAttachment(ctx context.Context, r
 				targetState = azv.Status.State
 			}
 
-			if _, err := azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, &azv, updateFunc, consts.ForcedUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
+			if _, err := azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, &azv, updateFunc, consts.ForcedUpdateMaxNetRetry, updateMode); err != nil {
 				w.Logger().Errorf(err, "failed to update AzVolumeAttachment (%s) for recovery", azv.Name)
 			} else {
 				// if update succeeded, add the CRI to the recoveryComplete list

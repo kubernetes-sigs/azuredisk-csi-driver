@@ -28,6 +28,7 @@ import (
 	"google.golang.org/grpc/status"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/kubernetes/pkg/features"
@@ -665,46 +666,46 @@ func (c *SharedState) createAzVolumeFromPv(ctx context.Context, pv v1.Persistent
 	ctx, w := workflow.New(ctx)
 	defer func() { w.Finish(err) }()
 
-	var azVolume *azdiskv1beta2.AzVolume
+	var desiredAzVolume *azdiskv1beta2.AzVolume
 	requiredBytes, _ := pv.Spec.Capacity.Storage().AsInt64()
 	volumeCapability := getVolumeCapabilityFromPv(&pv)
 
 	// create AzVolume CRI for CSI Volume Source
 	if pv.Spec.CSI != nil && pv.Spec.CSI.Driver == c.driverName {
-		azVolume, err = c.createAzVolumeFromCSISource(pv.Spec.CSI)
+		desiredAzVolume, err = c.createAzVolumeFromCSISource(pv.Spec.CSI)
 		if err != nil {
 			return err
 		}
 		if azureutils.IsMultiNodePersistentVolume(pv) {
-			azVolume.Spec.MaxMountReplicaCount = 0
+			desiredAzVolume.Spec.MaxMountReplicaCount = 0
 		}
 
 		// create AzVolume CRI for AzureDisk Volume Source for migration case
 	} else if utilfeature.DefaultFeatureGate.Enabled(features.CSIMigration) &&
 		utilfeature.DefaultFeatureGate.Enabled(features.CSIMigrationAzureDisk) &&
 		pv.Spec.AzureDisk != nil {
-		azVolume = c.createAzVolumeFromAzureDiskVolumeSource(pv.Spec.AzureDisk)
+		desiredAzVolume = c.createAzVolumeFromAzureDiskVolumeSource(pv.Spec.AzureDisk)
 	}
 
-	if azVolume != nil {
-		if azVolume.Labels == nil {
-			azVolume.Labels = map[string]string{}
+	if desiredAzVolume != nil {
+		if desiredAzVolume.Labels == nil {
+			desiredAzVolume.Labels = map[string]string{}
 		}
-		azVolume.Labels[consts.PvNameLabel] = pv.Name
+		desiredAzVolume.Labels[consts.PvNameLabel] = pv.Name
 		if pv.Spec.ClaimRef != nil {
-			azVolume.Labels[consts.PvcNameLabel] = pv.Spec.ClaimRef.Name
-			azVolume.Labels[consts.PvcNamespaceLabel] = pv.Spec.ClaimRef.Namespace
+			desiredAzVolume.Labels[consts.PvcNameLabel] = pv.Spec.ClaimRef.Name
+			desiredAzVolume.Labels[consts.PvcNamespaceLabel] = pv.Spec.ClaimRef.Namespace
 		}
-		azVolume.Spec.CapacityRange = &azdiskv1beta2.CapacityRange{RequiredBytes: requiredBytes}
-		azVolume.Spec.VolumeCapability = volumeCapability
-		azVolume.Spec.PersistentVolume = pv.Name
-		azVolume.Status.Annotations = annotations
+		desiredAzVolume.Spec.CapacityRange = &azdiskv1beta2.CapacityRange{RequiredBytes: requiredBytes}
+		desiredAzVolume.Spec.VolumeCapability = volumeCapability
+		desiredAzVolume.Spec.PersistentVolume = pv.Name
+		desiredAzVolume.Status.Annotations = annotations
 
-		w.AddDetailToLogger(consts.PvNameKey, pv.Name, consts.VolumeNameLabel, azVolume.Name)
+		w.AddDetailToLogger(consts.PvNameKey, pv.Name, consts.VolumeNameLabel, desiredAzVolume.Name)
 
 		w.Logger().Info("Creating AzVolume CRI")
-		if err = c.createAzVolume(ctx, azVolume); err != nil {
-			err = status.Errorf(codes.Internal, "failed to create AzVolume (%s) for PV (%s): %v", azVolume.Name, pv.Name, err)
+		if err = c.createAzVolume(ctx, desiredAzVolume); err != nil {
+			err = status.Errorf(codes.Internal, "failed to create AzVolume (%s) for PV (%s): %v", desiredAzVolume.Name, pv.Name, err)
 			return err
 		}
 	}
@@ -780,20 +781,27 @@ func (c *SharedState) createAzVolumeFromAzureDiskVolumeSource(source *v1.AzureDi
 	return &azVolume
 }
 
-func (c *SharedState) createAzVolume(ctx context.Context, azVolume *azdiskv1beta2.AzVolume) error {
-	var updated *azdiskv1beta2.AzVolume
+func (c *SharedState) createAzVolume(ctx context.Context, desiredAzVolume *azdiskv1beta2.AzVolume) error {
 	var err error
+	var azVolume *azdiskv1beta2.AzVolume
 
-	if updated, err = c.azClient.DiskV1beta2().AzVolumes(c.objectNamespace).Create(ctx, azVolume, metav1.CreateOptions{}); err != nil {
-		return err
+	if azVolume, err = c.azClient.DiskV1beta2().AzVolumes(c.objectNamespace).Get(ctx, desiredAzVolume.Name, metav1.GetOptions{}); err != nil {
+		if apiErrors.IsNotFound(err) {
+			if azVolume, err = c.azClient.DiskV1beta2().AzVolumes(c.objectNamespace).Create(ctx, desiredAzVolume, metav1.CreateOptions{}); err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
 	}
-	updated = updated.DeepCopy()
-	updated.Status = azVolume.Status
+
+	updated := azVolume.DeepCopy()
+	updated.Status = desiredAzVolume.Status
 	if _, err := c.azClient.DiskV1beta2().AzVolumes(c.objectNamespace).UpdateStatus(ctx, updated, metav1.UpdateOptions{}); err != nil {
 		return err
 	}
 	// if AzVolume CRI successfully recreated, also recreate the operation queue for the volume
-	c.createOperationQueue(azVolume.Name)
+	c.createOperationQueue(desiredAzVolume.Name)
 	return nil
 }
 
