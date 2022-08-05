@@ -32,6 +32,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	v1 "k8s.io/api/core/v1"
+	crdClientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -41,6 +42,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/component-helpers/scheduling/corev1/nodeaffinity"
+	"k8s.io/klog/v2"
+	azdiskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	azdiskinformers "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions"
@@ -257,11 +260,12 @@ type SharedState struct {
 	cachedClient                  client.Client
 	azClient                      azdisk.Interface
 	kubeClient                    kubernetes.Interface
+	crdClient                     crdClientset.Interface
 	conditionWatcher              *watcher.ConditionWatcher
 }
 
-func NewSharedState(driverName, objectNamespace, topologyKey string, eventRecorder record.EventRecorder, cachedClient client.Client, azClient azdisk.Interface, kubeClient kubernetes.Interface) *SharedState {
-	newSharedState := &SharedState{driverName: driverName, objectNamespace: objectNamespace, topologyKey: topologyKey, eventRecorder: eventRecorder, cachedClient: cachedClient, azClient: azClient, kubeClient: kubeClient, conditionWatcher: watcher.New(context.Background(), azClient, azdiskinformers.NewSharedInformerFactory(azClient, consts.DefaultInformerResync), objectNamespace)}
+func NewSharedState(driverName, objectNamespace, topologyKey string, eventRecorder record.EventRecorder, cachedClient client.Client, azClient azdisk.Interface, kubeClient kubernetes.Interface, crdClient crdClientset.Interface) *SharedState {
+	newSharedState := &SharedState{driverName: driverName, objectNamespace: objectNamespace, topologyKey: topologyKey, eventRecorder: eventRecorder, cachedClient: cachedClient, azClient: azClient, kubeClient: kubeClient, crdClient: crdClient, conditionWatcher: watcher.New(context.Background(), azClient, azdiskinformers.NewSharedInformerFactory(azClient, consts.DefaultInformerResync), objectNamespace)}
 	newSharedState.createReplicaRequestsQueue()
 	return newSharedState
 }
@@ -272,6 +276,149 @@ func (c *SharedState) isRecoveryComplete() bool {
 
 func (c *SharedState) MarkRecoveryComplete() {
 	atomic.StoreUint32(&c.recoveryComplete, 1)
+}
+
+func (c *SharedState) DeprecateOldAPI(ctx context.Context, deleteVersion string) error {
+	var err error
+	ctx, w := workflow.New(ctx)
+	defer func() { w.Finish(err) }()
+
+	var objectDeleted bool
+	// delete old instances first
+	if err = c.deleteOldInstances(ctx, deleteVersion); err == nil {
+		objectDeleted = true
+	}
+
+	// stop serving old api version
+	err = c.deleteAPIVersion(ctx, deleteVersion, objectDeleted)
+	return err
+}
+
+func (c *SharedState) deleteAPIVersion(ctx context.Context, deleteVersion string, objectsDeleted bool) error {
+	w, _ := workflow.GetWorkflowFromContext(ctx)
+	crdNames := []string{consts.AzDriverNodeCRDName, consts.AzVolumeCRDName, consts.AzVolumeAttachmentCRDName}
+	for _, crdName := range crdNames {
+		crd, err := c.crdClient.ApiextensionsV1().CustomResourceDefinitions().Get(ctx, crdName, metav1.GetOptions{})
+		if err != nil {
+			if apiErrors.IsNotFound(err) {
+				return err
+			}
+			continue
+		}
+
+		if !objectsDeleted {
+			continue
+		}
+
+		updated := crd.DeepCopy()
+		var storedVersions []string
+		// remove version from status stored versions
+		for _, version := range updated.Status.StoredVersions {
+			if version == deleteVersion {
+				continue
+			}
+			storedVersions = append(storedVersions, version)
+		}
+		updated.Status.StoredVersions = storedVersions
+		crd, err = c.crdClient.ApiextensionsV1().CustomResourceDefinitions().UpdateStatus(ctx, updated, metav1.UpdateOptions{})
+		if err != nil {
+			// log the error and continue
+			w.Logger().Errorf(err, "failed to remove %s stored version from CRD (%s) status", deleteVersion, crd.Name)
+			continue
+		}
+
+		// Need to decide whether we will remove old version from spec as well.
+
+		// updated = crd.DeepCopy()
+		// // remove version from spec versions
+		// var specVersions []crdv1.CustomResourceDefinitionVersion
+		// for _, version := range updated.Spec.Versions {
+		// 	if version.Name == deleteVersion {
+		// 		continue
+		// 	}
+		// 	specVersions = append(specVersions, version)
+		// }
+		// updated.Spec.Versions = specVersions
+
+		// // update the crd
+		// crd, err = c.crdClient.ApiextensionsV1().CustomResourceDefinitions().Update(ctx, updated, metav1.UpdateOptions{})
+		// if err != nil {
+		// 	// log the error and continue
+		// 	w.Logger().Errorf(err, "failed to remove %s spec version from CRD (%s)", deleteVersion, crd.Name)
+		// 	continue
+		// }
+	}
+	return nil
+}
+
+func (c *SharedState) deleteOldInstances(ctx context.Context, deleteVersion string) error {
+	var err error
+
+	klog.Info("Deleting Instances With v1beta1 api versions")
+	v1beta1Client := c.azClient.DiskV1beta1()
+
+	// azdrivernode deprecate
+	var azdrivernodes *azdiskv1beta1.AzDriverNodeList
+	if azdrivernodes, err = v1beta1Client.AzDriverNodes(c.objectNamespace).List(ctx, metav1.ListOptions{}); err != nil && !apiErrors.IsNotFound(err) {
+		return err
+	}
+	klog.Infof("found %d AzDriverNodes to delete", len(azdrivernodes.Items))
+	for _, azdrivernode := range azdrivernodes.Items {
+		if azdrivernode.APIVersion != fmt.Sprintf("%s/%s", consts.DefaultDriverName, deleteVersion) {
+			klog.Infof("Skipping %s: API Version of this object is %s", azdrivernode.APIVersion)
+			continue
+		}
+		updated := azdrivernode.DeepCopy()
+		updated.Finalizers = nil
+		if _, err = v1beta1Client.AzDriverNodes(c.objectNamespace).Update(ctx, updated, metav1.UpdateOptions{}); err != nil && !apiErrors.IsNotFound(err) {
+			return err
+		}
+		if err = v1beta1Client.AzDriverNodes(c.objectNamespace).Delete(ctx, azdrivernode.Name, metav1.DeleteOptions{}); err != nil && !apiErrors.IsNotFound(err) {
+			return err
+		}
+	}
+
+	// azvolume deprecate
+	var azvolumes *azdiskv1beta1.AzVolumeList
+	if azvolumes, err = v1beta1Client.AzVolumes(c.objectNamespace).List(ctx, metav1.ListOptions{}); err != nil && !apiErrors.IsNotFound(err) {
+		return err
+	}
+	klog.Infof("found %d AzVolumes to delete", len(azvolumes.Items))
+	for _, azvolume := range azvolumes.Items {
+		if azvolume.APIVersion != fmt.Sprintf("%s/%s", consts.DefaultDriverName, deleteVersion) {
+			klog.Infof("Skipping %s: API Version of this object is %s", azvolume.APIVersion)
+			continue
+		}
+		updated := azvolume.DeepCopy()
+		updated.Finalizers = nil
+		if _, err = v1beta1Client.AzVolumes(c.objectNamespace).Update(ctx, updated, metav1.UpdateOptions{}); err != nil && !apiErrors.IsNotFound(err) {
+			return err
+		}
+		if err = v1beta1Client.AzVolumes(c.objectNamespace).Delete(ctx, azvolume.Name, metav1.DeleteOptions{}); err != nil && !apiErrors.IsNotFound(err) {
+			return err
+		}
+	}
+	// azvolumeattachment deprecate
+	var azvolumeattachments *azdiskv1beta1.AzVolumeAttachmentList
+	if azvolumeattachments, err = v1beta1Client.AzVolumeAttachments(c.objectNamespace).List(ctx, metav1.ListOptions{}); err != nil && !apiErrors.IsNotFound(err) {
+		return err
+	}
+	klog.Infof("found %d AzVolumeAttachments to delete", len(azvolumeattachments.Items))
+	for _, azvolumeattachment := range azvolumeattachments.Items {
+		if azvolumeattachment.APIVersion != fmt.Sprintf("%s/%s", consts.DefaultDriverName, deleteVersion) {
+			klog.Infof("Skipping %s: API Version of this object is %s", azvolumeattachment.APIVersion)
+			continue
+		}
+		updated := azvolumeattachment.DeepCopy()
+		updated.Finalizers = nil
+		if _, err = v1beta1Client.AzVolumeAttachments(c.objectNamespace).Update(ctx, updated, metav1.UpdateOptions{}); err != nil && !apiErrors.IsNotFound(err) {
+			return err
+		}
+		if err = v1beta1Client.AzVolumeAttachments(c.objectNamespace).Delete(ctx, azvolumeattachment.Name, metav1.DeleteOptions{}); err != nil && !apiErrors.IsNotFound(err) {
+			return err
+		}
+	}
+	return nil
 }
 
 func (c *SharedState) createOperationQueue(volumeName string) {

@@ -34,6 +34,7 @@ import (
 	"github.com/go-logr/logr"
 
 	v1 "k8s.io/api/core/v1"
+	crdClientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	apiRuntime "k8s.io/apimachinery/pkg/runtime"
@@ -378,7 +379,12 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: d.kubeClient.CoreV1().Events("")})
 	eventRecorder := eventBroadcaster.NewRecorder(clientgoscheme.Scheme, v1.EventSource{Component: consts.AzureDiskCSIDriverName})
-	sharedState := controller.NewSharedState(d.Name, d.objectNamespace, topologyKey, eventRecorder, mgr.GetClient(), d.crdProvisioner.GetDiskClientSet(), d.kubeClient)
+	crdClient, err := crdClientset.NewForConfig(d.kubeConfig)
+	if err != nil {
+		klog.Errorf("failed to initialize crd clientset. Error: %v. Exiting application...", err)
+	}
+
+	sharedState := controller.NewSharedState(d.Name, d.objectNamespace, topologyKey, eventRecorder, mgr.GetClient(), d.crdProvisioner.GetDiskClientSet(), d.kubeClient, crdClient)
 
 	// Setup a new controller to clean-up AzDriverNodes
 	// objects for the nodes which get deleted
@@ -443,7 +449,10 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 		ctx, w := workflow.New(ctx)
 		defer func() { w.Finish(err) }()
 		// recover lost states if necessary
-		w.Logger().Infof("Elected as leader; initiating CRI recovery...")
+		w.Logger().Infof("Elected as leader; initiating CRI deperecation / recovery...")
+		if err := sharedState.DeprecateOldAPI(ctx, consts.V1beta1); err != nil {
+			errors = append(errors, err)
+		}
 		if err := azvReconciler.Recover(ctx); err != nil {
 			errors = append(errors, err)
 		}

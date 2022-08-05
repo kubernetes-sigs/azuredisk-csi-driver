@@ -27,6 +27,7 @@ import (
 
 const (
 	AzureDiskCSIDriverName         = "azuredisk_csi_driver"
+	V1beta1                        = "v1beta1"
 	CachingModeField               = "cachingmode"
 	DefaultAzureCredentialFileEnv  = "AZURE_CREDENTIAL_FILE"
 	DefaultCredFilePathLinux       = "/etc/kubernetes/azure.json"
@@ -138,25 +139,28 @@ const (
 	ReleaseNamespace                  = "kube-system"
 	NamespaceField                    = "metadata.namespace"
 
-	CRIUpdateRetryDuration  = time.Duration(1) * time.Second
-	CRIUpdateRetryFactor    = 3.0
-	CRIUpdateRetryStep      = 5
-	DefaultInformerResync   = time.Duration(30) * time.Second
-	DefaultPollingRate      = time.Duration(100) * time.Millisecond
-	ZonedField              = "zoned"
-	TooManyRequests         = "TooManyRequests"
-	ClientThrottled         = "client throttled"
-	VolumeID                = "volumeid"
-	Node                    = "node"
-	SourceResourceID        = "source_resource_id"
-	SnapshotName            = "snapshot_name"
-	SnapshotID              = "snapshot_id"
-	Latency                 = "latency"
-	LongThrottleLatency     = 50 * time.Millisecond
-	NormalUpdateMaxNetRetry = 0
-	ForcedUpdateMaxNetRetry = 10
-	DefaultBackoffCap       = 10 * time.Minute
-	EnableAsyncAttachField  = "enableasyncattach"
+	AzVolumeCRDName           = "azvolumes.disk.csi.azure.com"
+	AzVolumeAttachmentCRDName = "azvolumeattachments.disk.csi.azure.com"
+	AzDriverNodeCRDName       = "azdrivernodes.disk.csi.azure.com"
+	CRIUpdateRetryDuration    = time.Duration(1) * time.Second
+	CRIUpdateRetryFactor      = 3.0
+	CRIUpdateRetryStep        = 5
+	DefaultInformerResync     = time.Duration(30) * time.Second
+	DefaultPollingRate        = time.Duration(100) * time.Millisecond
+	ZonedField                = "zoned"
+	TooManyRequests           = "TooManyRequests"
+	ClientThrottled           = "client throttled"
+	VolumeID                  = "volumeid"
+	Node                      = "node"
+	SourceResourceID          = "source_resource_id"
+	SnapshotName              = "snapshot_name"
+	SnapshotID                = "snapshot_id"
+	Latency                   = "latency"
+	LongThrottleLatency       = 50 * time.Millisecond
+	NormalUpdateMaxNetRetry   = 0
+	ForcedUpdateMaxNetRetry   = 10
+	DefaultBackoffCap         = 10 * time.Minute
+	EnableAsyncAttachField    = "enableasyncattach"
 
 	// define different sleep time when hit throttling
 	SnapshotOpThrottlingSleepSec = 50
