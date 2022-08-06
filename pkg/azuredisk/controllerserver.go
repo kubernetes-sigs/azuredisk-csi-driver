@@ -357,7 +357,12 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("failed to get azure instance id for node %q (%v)", nodeName, err))
 	}
 
-	klog.V(2).Infof("GetDiskLun returned: %v. Initiating attaching volume %s to node %s.", err, diskURI, nodeName)
+	vmStateStr := "<nil>"
+	if vmState != nil {
+		vmStateStr = *vmState
+	}
+
+	klog.V(2).Infof("GetDiskLun returned: %v. Initiating attaching volume %s to node %s (vmState %s).", err, diskURI, nodeName, vmStateStr)
 
 	volumeContext := req.GetVolumeContext()
 	if volumeContext == nil {
