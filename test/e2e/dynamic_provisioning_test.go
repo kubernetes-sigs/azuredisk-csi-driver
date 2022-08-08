@@ -101,7 +101,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	ginkgo.It("should create a volume on demand with mount options [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func() {
 		pvcSize := "10Gi"
 		if isMultiZone {
-			pvcSize = "1000Gi"
+			pvcSize = "512Gi"
 		}
 		pods := []testsuites.PodDetails{
 			{
@@ -136,17 +136,8 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			test.StorageClassParameters = map[string]string{
 				"skuName":           "UltraSSD_LRS",
 				"cachingmode":       "None",
-				"diskIopsReadWrite": "2000",
-				"diskMbpsReadWrite": "320",
 				"logicalSectorSize": "512",
 				"zoned":             "true",
-				"fsType":            "btrfs",
-			}
-		}
-		if !isUsingInTreeVolumePlugin && supportsZRS {
-			test.StorageClassParameters = map[string]string{
-				"skuName":             "StandardSSD_ZRS",
-				"networkAccessPolicy": "AllowAll",
 			}
 		}
 		if isUsingInTreeVolumePlugin {
