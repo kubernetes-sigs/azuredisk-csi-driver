@@ -24,7 +24,7 @@ data:
       filterVerb: "filter"
       prioritizeVerb: "prioritize"
       weight: 1
-      nodeCacheCapable: false
+      nodeCacheCapable: true
       ignorable: true
 ---
 apiVersion: apps/v1

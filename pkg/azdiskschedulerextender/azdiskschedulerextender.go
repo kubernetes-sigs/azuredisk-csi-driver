@@ -135,7 +135,6 @@ func initSchedulerExtender(ctx context.Context) {
 
 func filter(context context.Context, schedulerExtenderArgs schedulerapi.ExtenderArgs) (*schedulerapi.ExtenderFilterResult, error) {
 	var (
-		filteredNodes          []v1.Node
 		filteredNodeNames      *[]string
 		storeFilteredNodeNames []string
 		failedNodes            map[string]string
@@ -151,20 +150,21 @@ func filter(context context.Context, schedulerExtenderArgs schedulerapi.Extender
 
 	// get requested disks created by Azure Disk V2 driver and return early if none are found
 	diskRequestedByPod := getQualifyingDisksRequestedByPod(ns, requestedVolumes)
-	// when there are no v2 disks requested by the pod, skip filtering and return all nodes.
 	if len(diskRequestedByPod) == 0 {
-		return formatFilterResult(schedulerExtenderArgs.Nodes.Items, schedulerExtenderArgs.NodeNames, failedNodes, ""), nil
+		return formatFilterResult(nil, schedulerExtenderArgs.NodeNames, failedNodes, ""), nil
 	}
 
 	nodesChan := make(chan azDriverNodesMeta)
-	// all node candidates
-	allNodes := schedulerExtenderArgs.Nodes.Items
+	allNodes := schedulerExtenderArgs.NodeNames // all node candidates
+	if allNodes == nil || len(*allNodes) == 0 {
+		return formatFilterResult(nil, schedulerExtenderArgs.NodeNames, failedNodes, ""), nil
+	}
 
 	go getAzDriverNodes(context, nodesChan)
 	azDriverNodesMeta := <-nodesChan
 	if azDriverNodesMeta.err != nil {
 		klog.Warningf("failed to get the list of azDriverNodes: %v. Further filtering is skipped", azDriverNodesMeta.err)
-		return formatFilterResult(schedulerExtenderArgs.Nodes.Items, schedulerExtenderArgs.NodeNames, failedNodes, ""), nil
+		return formatFilterResult(nil, schedulerExtenderArgs.NodeNames, failedNodes, ""), nil
 	}
 
 	// map node name to azDriverNode state
@@ -178,32 +178,26 @@ func filter(context context.Context, schedulerExtenderArgs schedulerapi.Extender
 		}
 	}
 
-	diskNamesForRequestedVolumes := []string{}
-	for disk := range diskRequestedByPod {
-		diskNamesForRequestedVolumes = append(diskNamesForRequestedVolumes, disk)
-	}
-
 	// filter the nodes based on AzDiverNode status and number of disk attachments
 	failedNodes = make(map[string]string)
-	for _, node := range allNodes {
-		if ready, found := nodeNameToAzDriverNodeStatusMap[node.Name]; found {
+	for _, node := range *allNodes {
+		if ready, found := nodeNameToAzDriverNodeStatusMap[node]; found {
 			if ready {
-				filteredNodes = append(filteredNodes, node)
-				storeFilteredNodeNames = append(storeFilteredNodeNames, node.Name)
+				storeFilteredNodeNames = append(storeFilteredNodeNames, node)
 			} else {
-				failedNodes[node.Name] = fmt.Sprintf("AzDriverNode for %s is not ready.", node.Name)
+				failedNodes[node] = fmt.Sprintf("AzDriverNode for %s is not ready.", node)
 			}
 		} else {
 			// if AzDriverNode cannot be found for the node, either 1) AzDriverNode cache is stale or 2) the node plugin has not started and needs to be scheduled.
 			// so add the node to filtered node list.
-			storeFilteredNodeNames = append(storeFilteredNodeNames, node.Name)
+			storeFilteredNodeNames = append(storeFilteredNodeNames, node)
 		}
 	}
 	filteredNodeNames = &storeFilteredNodeNames
 
 	klog.V(2).Infof("request to Filter completed with the following filter and failed node lists. Filtered nodes: %+v. Failed nodes: %+v.", storeFilteredNodeNames, failedNodes)
 
-	return formatFilterResult(filteredNodes, filteredNodeNames, failedNodes, ""), nil
+	return formatFilterResult(nil, filteredNodeNames, failedNodes, ""), nil
 }
 
 func prioritize(context context.Context, schedulerExtenderArgs schedulerapi.ExtenderArgs) (priorityList schedulerapi.HostPriorityList, err error) {
@@ -211,85 +205,84 @@ func prioritize(context context.Context, schedulerExtenderArgs schedulerapi.Exte
 	defer func() {
 		PrioritizeNodesDuration.WithLabelValues("Prioritize").Observe(DurationSince("Prioritize", startTime))
 	}()
-	availableNodes := schedulerExtenderArgs.Nodes.Items
+
 	requestedVolumes := schedulerExtenderArgs.Pod.Spec.Volumes
 	ns := schedulerExtenderArgs.Pod.Namespace
+	availableNodes := schedulerExtenderArgs.NodeNames
+	if availableNodes == nil || len(*availableNodes) == 0 {
+		return
+	}
 
 	// get requested disks created by Azure Disk V2 driver and return early if none are found
 	azDisksRequestedByPod := getQualifyingDisksRequestedByPod(ns, requestedVolumes, v1.ReadOnlyMany, v1.ReadWriteMany)
 	if len(azDisksRequestedByPod) == 0 {
+		return setNodeScoresToZero(availableNodes), nil
+	}
+
+	nodeNameToNumCreatedAttachmentsForPodMap := make(map[string]int)
+	nodeNameToNumAttachedAttachmentsForPodsMap := make(map[string]int)
+	nodeNameToNumAllAttachmentsMap := make(map[string]int)
+	nodeNameToHeartbeatMap := make(map[string]metav1.Time)
+	nodesChan, volumesChan := make(chan azDriverNodesMeta), make(chan azVolumeAttachmentsMeta)
+
+	go getAzDriverNodes(context, nodesChan)
+	go getAzVolumeAttachments(context, volumesChan)
+
+	// get all nodes that have azDriverNode running
+	azDriverNodesMeta := <-nodesChan
+	if azDriverNodesMeta.err != nil {
 		priorityList = setNodeScoresToZero(availableNodes)
-	} else {
-		nodeNameToNumCreatedAttachmentsForPodMap := make(map[string]int)
-		nodeNameToNumAttachedAttachmentsForPodsMap := make(map[string]int)
-		nodeNameToNumAllAttachmentsMap := make(map[string]int)
-		nodeNameToHeartbeatMap := make(map[string]metav1.Time)
-		nodesChan, volumesChan := make(chan azDriverNodesMeta), make(chan azVolumeAttachmentsMeta)
+		klog.Warningf("failed to get the list of azDriverNodes: %v", azDriverNodesMeta.err)
+		return
+	}
 
-		go getAzDriverNodes(context, nodesChan)
-		go getAzVolumeAttachments(context, volumesChan)
-
-		// get all nodes that have azDriverNode running
-		azDriverNodesMeta := <-nodesChan
-		if azDriverNodesMeta.err != nil {
-			priorityList = setNodeScoresToZero(availableNodes)
-			klog.Warningf("failed to get the list of azDriverNodes: %v", azDriverNodesMeta.err)
-			return
-		}
-
-		// map azDriverNode name to its heartbeat
-		for _, azDriverNode := range azDriverNodesMeta.nodes {
-			if azDriverNode.Status != nil {
-				nodeNameToHeartbeatMap[azDriverNode.Spec.NodeName] = *azDriverNode.Status.LastHeartbeatTime
-			}
-		}
-
-		// get all azVolumeAttachments running in the cluster
-		azVolumeAttachmentsMeta := <-volumesChan
-		if azVolumeAttachmentsMeta.err != nil {
-			priorityList = setNodeScoresToZero(availableNodes)
-			klog.Warningf("failed to get the list of azVolumeAttachments: %v", azVolumeAttachmentsMeta.err)
-			return
-		}
-
-		// for every volume pod needs, append its azVolumeAttachment name to the node name
-		for _, azVolumeAttachment := range azVolumeAttachmentsMeta.volumeAttachments {
-			klog.V(2).Infof(
-				"volume attachment in consideration: Name: %s, Volume: %s.",
-				azVolumeAttachment.Name,
-				azVolumeAttachment.Spec.VolumeName,
-			)
-
-			nodeNameToNumAllAttachmentsMap[azVolumeAttachment.Spec.NodeName] += 1
-
-			if !azVolumeAttachment.DeletionTimestamp.IsZero() || azVolumeAttachment.Status.Error != nil {
-				klog.V(2).Infof("AzVolumeAttachment excluded because it is to be deleted or its attach operation failed: Name %s, Volume: %s", azVolumeAttachment.Name, azVolumeAttachment.Spec.VolumeName)
-				continue
-			}
-
-			_, requestedByPod := azDisksRequestedByPod[azVolumeAttachment.Spec.VolumeName]
-			if requestedByPod {
-				klog.V(2).Infof("Volume attachment is needed: Name: %s, Volume: %s.", azVolumeAttachment.Name, azVolumeAttachment.Spec.VolumeName)
-				nodeNameToNumCreatedAttachmentsForPodMap[azVolumeAttachment.Spec.NodeName] += 1
-				if azVolumeAttachment.Status.State == azdiskv1beta2.Attached {
-					nodeNameToNumAttachedAttachmentsForPodsMap[azVolumeAttachment.Spec.NodeName] += 1
-				}
-			}
-		}
-
-		// score nodes based in how many azVolumeAttchments are appended to its name
-		klog.V(2).Infof("scoring nodes for pod %+v.", schedulerExtenderArgs.Pod.Name)
-		for _, node := range availableNodes {
-			klog.V(2).Infof("node %+v has %d/%d of requested volumes' volumeAttachment created", node.Name, nodeNameToNumCreatedAttachmentsForPodMap[node.Name], len(requestedVolumes))
-			score := getNodeScore(nodeNameToNumCreatedAttachmentsForPodMap[node.Name],
-				nodeNameToNumAttachedAttachmentsForPodsMap[node.Name],
-				nodeNameToNumAllAttachmentsMap[node.Name],
-				nodeNameToHeartbeatMap[node.Name],
-				&node)
-			hostPriority := schedulerapi.HostPriority{Host: node.Name, Score: score}
-			priorityList = append(priorityList, hostPriority)
+	// map azDriverNode name to its heartbeat
+	for _, azDriverNode := range azDriverNodesMeta.nodes {
+		if azDriverNode.Status != nil {
+			nodeNameToHeartbeatMap[azDriverNode.Spec.NodeName] = *azDriverNode.Status.LastHeartbeatTime
 		}
 	}
+
+	// get all azVolumeAttachments running in the cluster
+	azVolumeAttachmentsMeta := <-volumesChan
+	if azVolumeAttachmentsMeta.err != nil {
+		priorityList = setNodeScoresToZero(availableNodes)
+		klog.Warningf("failed to get the list of azVolumeAttachments: %v", azVolumeAttachmentsMeta.err)
+		return
+	}
+
+	// for every volume pod needs, append its azVolumeAttachment name to the node name
+	for _, azVolumeAttachment := range azVolumeAttachmentsMeta.volumeAttachments {
+		nodeNameToNumAllAttachmentsMap[azVolumeAttachment.Spec.NodeName] += 1
+
+		if !azVolumeAttachment.DeletionTimestamp.IsZero() || azVolumeAttachment.Status.Error != nil {
+			klog.V(4).Infof("AzVolumeAttachment excluded because it is to be deleted or its attach operation failed: Name %s, Volume: %s", azVolumeAttachment.Name, azVolumeAttachment.Spec.VolumeName)
+			continue
+		}
+
+		_, requestedByPod := azDisksRequestedByPod[azVolumeAttachment.Spec.VolumeName]
+		if requestedByPod {
+			klog.V(4).Infof("Volume attachment is needed: Name: %s, Volume: %s.", azVolumeAttachment.Name, azVolumeAttachment.Spec.VolumeName)
+			nodeNameToNumCreatedAttachmentsForPodMap[azVolumeAttachment.Spec.NodeName] += 1
+			if azVolumeAttachment.Status.State == azdiskv1beta2.Attached {
+				nodeNameToNumAttachedAttachmentsForPodsMap[azVolumeAttachment.Spec.NodeName] += 1
+			}
+		}
+	}
+
+	// score nodes based in how many azVolumeAttchments are appended to its name
+	klog.V(4).Infof("scoring nodes for pod %+v.", schedulerExtenderArgs.Pod.Name)
+	for _, nodeName := range *availableNodes {
+		klog.V(4).Infof("node %+v has %d/%d of requested volumeAttachments created", nodeName, nodeNameToNumCreatedAttachmentsForPodMap[nodeName], len(requestedVolumes))
+		score := getNodeScore(nodeNameToNumCreatedAttachmentsForPodMap[nodeName],
+			nodeNameToNumAttachedAttachmentsForPodsMap[nodeName],
+			nodeNameToNumAllAttachmentsMap[nodeName],
+			nodeNameToHeartbeatMap[nodeName],
+			nodeName)
+		hostPriority := schedulerapi.HostPriority{Host: nodeName, Score: score}
+		priorityList = append(priorityList, hostPriority)
+	}
+
 	klog.V(2).Infof("request to Prioritize completed with the following priority list: %+v", priorityList)
 	return
 }
@@ -335,29 +328,26 @@ func getKubernetesClientset() (*kubernetes.Clientset, error) {
 	return kubeClient, nil
 }
 
-func getNodeScore(createdAttachmentsForPodCount, attachedAttachmentsForPodCount, allAttachmentsCount int, latestHeartbeat metav1.Time, node *v1.Node) int64 {
+func getNodeScore(createdAttachmentsForPodCount, attachedAttachmentsForPodCount, allAttachmentsCount int, latestHeartbeat metav1.Time, nodeName string) int64 {
 	now := time.Now()
 	latestHeartbeatWas := latestHeartbeat.Time
 	latestHeartbeatCanBe := now.Add(-2 * time.Minute)
 
 	if latestHeartbeatWas.Before(latestHeartbeatCanBe) {
 		klog.Warningf(
-			"node is unresponsive. Latest node heartbeat for %v was: %v. Latest accepted heartbeat is: %s",
-			node.Name,
+			"node is unresponsive. Latest node heartbeat for %s was: %v. Latest accepted heartbeat is: %s",
+			nodeName,
 			latestHeartbeatWas.Format(time.UnixDate),
 			latestHeartbeatCanBe.Format(time.UnixDate))
 		return 0
 	}
 
-	var remainingNodeCapacity int
-	if nodeMaxCapacity, err := azureutils.GetNodeMaxDiskCountWithLabels(node.Labels); err != nil {
-		remainingNodeCapacity = 0
-	} else {
-		remainingNodeCapacity = nodeMaxCapacity - allAttachmentsCount
+	// TODO: add nodeMaxCapacity to AzDriver nodes to be used in scoring
+	// we prioritze in the following order: 1) number of created requested attachments, 2) number of attached requested attachments, and 3) node capacity
+	score := int64(createdAttachmentsForPodCount*100) + int64(attachedAttachmentsForPodCount*10) - int64(allAttachmentsCount-createdAttachmentsForPodCount)
+	if score < 0 {
+		score = 0
 	}
-
-	// we prioritze in the following order: 1) number of created requested attachments, 2) number of attached requested attachments, and 3) remaining node capacity
-	score := int64(createdAttachmentsForPodCount*100) + int64(attachedAttachmentsForPodCount*10) + int64(remainingNodeCapacity)
 	return score
 }
 
@@ -367,7 +357,6 @@ func getAzDriverNodes(context context.Context, out chan azDriverNodesMeta) {
 	// get all nodes that have azDriverNode running
 	var activeDriverNodes azDriverNodesMeta
 	activeDriverNodes.nodes, activeDriverNodes.err = azDriverNodeInformer.Lister().AzDriverNodes(criNamespace).List(labels.Everything())
-	klog.V(2).Infof("AzDriverNodes: %d", len(activeDriverNodes.nodes))
 	out <- activeDriverNodes
 }
 
@@ -402,20 +391,22 @@ func getAdditionalAzVolumeAttachmentsOnNode(nodeName string, volumeNames []strin
 	return attachments, nil
 }
 
-func formatFilterResult(filteredNodes []v1.Node, nodeNames *[]string, failedNodes map[string]string, errorMessage string) *schedulerapi.ExtenderFilterResult {
+func formatFilterResult(filteredNodes *v1.NodeList, nodeNames *[]string, failedNodes map[string]string, errorMessage string) *schedulerapi.ExtenderFilterResult {
 	return &schedulerapi.ExtenderFilterResult{
-		Nodes: &v1.NodeList{
-			Items: filteredNodes,
-		},
+		Nodes:       filteredNodes,
 		NodeNames:   nodeNames,
 		FailedNodes: failedNodes,
 		Error:       errorMessage,
 	}
 }
 
-func setNodeScoresToZero(nodes []v1.Node) (priorityList schedulerapi.HostPriorityList) {
-	for _, node := range nodes {
-		hostPriority := schedulerapi.HostPriority{Host: node.Name, Score: 0}
+func setNodeScoresToZero(nodeNames *[]string) (priorityList schedulerapi.HostPriorityList) {
+	if nodeNames == nil {
+		return
+	}
+
+	for _, node := range *nodeNames {
+		hostPriority := schedulerapi.HostPriority{Host: node, Score: 0}
 		priorityList = append(priorityList, hostPriority)
 	}
 	return
@@ -427,7 +418,6 @@ func getQualifyingDisksRequestedByPod(ns string, requestedVolumes []v1.Volume, f
 	disksRequestedByPod = map[string]struct{}{}
 	for _, volume := range requestedVolumes {
 		if volume.PersistentVolumeClaim != nil {
-			// not the same as len(diskRequestedByPod). PV-s for a new pod might not be cached yet.
 			if value, ok := pvcToPvMap.Load(getQualifiedName(ns, volume.PersistentVolumeClaim.ClaimName)); ok {
 				pvEntry := value.(*pvcToPVEntry)
 				hasCorrectAccessMode := true
