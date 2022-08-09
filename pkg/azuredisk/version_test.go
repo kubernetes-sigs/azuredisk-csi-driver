@@ -38,7 +38,7 @@ func TestGetVersion(t *testing.T) {
 		GoVersion:     runtime.Version(),
 		Compiler:      runtime.Compiler,
 		Platform:      fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH),
-		TopologyKey:   "N/A",
+		TopologyKey:   fmt.Sprintf("topology.%s/zone", consts.DefaultDriverName),
 	}
 
 	if !reflect.DeepEqual(version, expected) {
