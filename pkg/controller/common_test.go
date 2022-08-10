@@ -342,7 +342,7 @@ func createPod(podNamespace, podName string, pvcs []string) v1.Pod {
 	return testPod
 }
 
-func initState(client client.Client, azClient azdisk.Interface, kubeClient kubernetes.Interface, objs ...runtime.Object) (c *SharedState) {
+func initState(client client.Client, azClient azdisk.Interface, kubeClient kubernetes.Interface, objs ...runtime.Object) (c *sharedState) {
 	c = NewSharedState(consts.DefaultDriverName, consts.DefaultAzureDiskCrdNamespace, consts.WellKnownTopologyKey, &record.FakeRecorder{}, client, azClient, kubeClient, nil)
 	c.MarkRecoveryComplete()
 

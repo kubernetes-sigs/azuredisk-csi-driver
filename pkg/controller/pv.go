@@ -47,15 +47,15 @@ import (
 type ReconcilePV struct {
 	logger logr.Logger
 	// retryMap allows volumeAttachment controller to retry Get operation for AzVolume in case the CRI has not been created yet
-	controllerRetryInfo   *retryInfo
-	controllerSharedState *SharedState
+	controllerRetryInfo *retryInfo
+	*sharedState
 }
 
 // Implement reconcile.Reconciler so the controller can reconcile objects
 var _ reconcile.Reconciler = &ReconcilePV{}
 
 func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
-	if !r.controllerSharedState.isRecoveryComplete() {
+	if !r.isRecoveryComplete() {
 		return reconcile.Result{Requeue: true}, nil
 	}
 
@@ -68,9 +68,9 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 	var err error
 
 	// Ignore not found errors as they cannot be fixed by a requeue
-	if err := r.controllerSharedState.cachedClient.Get(ctx, request.NamespacedName, &pv); err != nil {
+	if err := r.cachedClient.Get(ctx, request.NamespacedName, &pv); err != nil {
 		if errors.IsNotFound(err) {
-			r.controllerSharedState.deletePV(request.Name)
+			r.deletePV(request.Name)
 			return reconcileReturnOnSuccess(request.Name, r.controllerRetryInfo)
 		}
 		logger.Error(err, "failed to get PV")
@@ -84,7 +84,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 		diskName = pv.Spec.AzureDisk.DiskName
 	} else {
 		// ignore PV-s for non-csi volumes
-		if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != r.controllerSharedState.driverName {
+		if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != r.driverName {
 			return reconcileReturnOnSuccess(pv.Name, r.controllerRetryInfo)
 		}
 		diskName, err = azureutils.GetDiskName(pv.Spec.CSI.VolumeHandle)
@@ -103,7 +103,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 
 	// PV is deleted
 	if objectDeletionRequested(&pv) {
-		if err := r.controllerSharedState.cachedClient.Get(ctx, types.NamespacedName{Namespace: r.controllerSharedState.objectNamespace, Name: azVolumeName}, &azVolume); err != nil {
+		if err := r.cachedClient.Get(ctx, types.NamespacedName{Namespace: r.objectNamespace, Name: azVolumeName}, &azVolume); err != nil {
 			// AzVolume doesn't exist, so there is nothing for us to do
 			if errors.IsNotFound(err) {
 				return reconcileReturnOnSuccess(pv.Name, r.controllerRetryInfo)
@@ -120,11 +120,11 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 			azv.Status.Annotations = azureutils.AddToMap(azv.Status.Annotations, consts.PreProvisionedVolumeCleanupAnnotation, "true")
 			return nil
 		}
-		if _, err := azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, &azVolume, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
+		if _, err := azureutils.UpdateCRIWithRetry(ctx, nil, r.cachedClient, r.azClient, &azVolume, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
 			return reconcileReturnOnError(ctx, &pv, "delete", err, r.controllerRetryInfo)
 		}
 
-		if err := r.controllerSharedState.azClient.DiskV1beta2().AzVolumes(r.controllerSharedState.objectNamespace).Delete(ctx, azVolumeName, metav1.DeleteOptions{}); err != nil {
+		if err := r.azClient.DiskV1beta2().AzVolumes(r.objectNamespace).Delete(ctx, azVolumeName, metav1.DeleteOptions{}); err != nil {
 			logger.Error(err, "failed to set the deletion timestamp for AzVolume")
 			return reconcileReturnOnError(ctx, &pv, "delete", err, r.controllerRetryInfo)
 		}
@@ -136,7 +136,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 	}
 
 	// PV exists but AzVolume doesn't
-	if err := r.controllerSharedState.cachedClient.Get(ctx, types.NamespacedName{Namespace: r.controllerSharedState.objectNamespace, Name: azVolumeName}, &azVolume); err != nil {
+	if err := r.cachedClient.Get(ctx, types.NamespacedName{Namespace: r.objectNamespace, Name: azVolumeName}, &azVolume); err != nil {
 		// if getting AzVolume failed due to errors other than it doesn't exist, we requeue and retry
 		if !errors.IsNotFound(err) {
 			logger.Error(err, "failed to get AzVolume")
@@ -147,7 +147,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 		annotation := map[string]string{
 			consts.PreProvisionedVolumeAnnotation: "true",
 		}
-		if err := r.controllerSharedState.createAzVolumeFromPv(ctx, pv, annotation); err != nil {
+		if err := r.createAzVolumeFromPv(ctx, pv, annotation); err != nil {
 			if !errors.IsAlreadyExists(err) {
 				// if creating AzVolume failed, retry with exponential back off
 				logger.Error(err, "failed to create AzVolume")
@@ -190,7 +190,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 	}
 
 	if azVolumeUpdateFunc != nil {
-		_, err := azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, &azVolume, azVolumeUpdateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRI)
+		_, err := azureutils.UpdateCRIWithRetry(ctx, nil, r.cachedClient, r.azClient, &azVolume, azVolumeUpdateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRI)
 		if err != nil {
 			return reconcileReturnOnError(ctx, &pv, "update", err, r.controllerRetryInfo)
 		}
@@ -202,13 +202,13 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 	switch phase := pv.Status.Phase; phase {
 	case corev1.VolumeBound:
 		pvClaimName := getQualifiedName(pv.Spec.ClaimRef.Namespace, pv.Spec.ClaimRef.Name)
-		r.controllerSharedState.addVolumeAndClaim(azVolumeName, pv.Name, pvClaimName)
+		r.addVolumeAndClaim(azVolumeName, pv.Name, pvClaimName)
 	case corev1.VolumeReleased:
 		if err := r.triggerRelease(ctx, &azVolume); err != nil {
 			logger.Error(err, "failed to release AzVolume")
 			return reconcileReturnOnError(ctx, &pv, "release", err, r.controllerRetryInfo)
 		}
-		r.controllerSharedState.deleteVolumeAndClaim(azVolumeName)
+		r.deleteVolumeAndClaim(azVolumeName)
 	}
 
 	return reconcileReturnOnSuccess(pv.Name, r.controllerRetryInfo)
@@ -218,7 +218,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 func (r *ReconcilePV) triggerRelease(ctx context.Context, azVolume *azdiskv1beta2.AzVolume) error {
 	gcCtx, w := workflow.New(context.Background(), workflow.WithDetails(consts.VolumeNameLabel, azVolume.Spec.VolumeName))
 	defer w.Finish(nil)
-	r.controllerSharedState.garbageCollectReplicas(gcCtx, azVolume.Name, pv)
+	r.garbageCollectReplicas(gcCtx, azVolume.Name, pv)
 	return nil
 }
 
@@ -228,12 +228,12 @@ func (r *ReconcilePV) Recover(ctx context.Context) error {
 	defer func() { w.Finish(err) }()
 
 	var pvs *v1.PersistentVolumeList
-	pvs, err = r.controllerSharedState.kubeClient.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
+	pvs, err = r.kubeClient.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
 	for _, pv := range pvs.Items {
-		if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != r.controllerSharedState.driverName || pv.Spec.ClaimRef == nil {
+		if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != r.driverName || pv.Spec.ClaimRef == nil {
 			continue
 		}
 
@@ -244,17 +244,17 @@ func (r *ReconcilePV) Recover(ctx context.Context) error {
 		}
 		azVolumeName := strings.ToLower(diskName)
 		pvClaimName := getQualifiedName(pv.Spec.ClaimRef.Namespace, pv.Spec.ClaimRef.Name)
-		r.controllerSharedState.addVolumeAndClaim(azVolumeName, pv.Name, pvClaimName)
+		r.addVolumeAndClaim(azVolumeName, pv.Name, pvClaimName)
 	}
 	return nil
 }
 
-func NewPVController(mgr manager.Manager, controllerSharedState *SharedState) (*ReconcilePV, error) {
+func NewPVController(mgr manager.Manager, controllerSharedState *sharedState) (*ReconcilePV, error) {
 	logger := mgr.GetLogger().WithValues("controller", "pv")
 	reconciler := ReconcilePV{
-		controllerRetryInfo:   newRetryInfo(),
-		controllerSharedState: controllerSharedState,
-		logger:                logger,
+		controllerRetryInfo: newRetryInfo(),
+		sharedState:         controllerSharedState,
+		logger:              logger,
 	}
 
 	c, err := controller.New("pv-controller", mgr, controller.Options{

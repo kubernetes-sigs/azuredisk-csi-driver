@@ -40,20 +40,20 @@ import (
 
 // ReconcileAzDriverNode reconciles AzDriverNode
 type ReconcileAzDriverNode struct {
-	logger                logr.Logger
-	controllerSharedState *SharedState
+	logger logr.Logger
+	*sharedState
 }
 
 // Implement reconcile.Reconciler so the controller can reconcile objects
 var _ reconcile.Reconciler = &ReconcileAzDriverNode{}
 
 func (r *ReconcileAzDriverNode) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
-	if !r.controllerSharedState.isRecoveryComplete() {
+	if !r.isRecoveryComplete() {
 		return reconcile.Result{Requeue: true}, nil
 	}
 
 	n := &corev1.Node{}
-	err := r.controllerSharedState.cachedClient.Get(ctx, request.NamespacedName, n)
+	err := r.cachedClient.Get(ctx, request.NamespacedName, n)
 
 	// If the node still exists don't delete the AzDriverNode
 	if err == nil {
@@ -63,7 +63,7 @@ func (r *ReconcileAzDriverNode) Reconcile(ctx context.Context, request reconcile
 	// If the node is not found, delete the corresponding AzDriverNode
 	if errors.IsNotFound(err) {
 		// Delete the azDriverNode, since corresponding node is deleted
-		azN := r.controllerSharedState.azClient.DiskV1beta2().AzDriverNodes(r.controllerSharedState.objectNamespace)
+		azN := r.azClient.DiskV1beta2().AzDriverNodes(r.objectNamespace)
 		err = azN.Delete(ctx, request.Name, metav1.DeleteOptions{})
 
 		// If there is an issue in deleting the AzDriverNode, requeue
@@ -72,7 +72,7 @@ func (r *ReconcileAzDriverNode) Reconcile(ctx context.Context, request reconcile
 		}
 
 		// Delete all volumeAttachments attached to this node, if failed, requeue
-		if _, err = r.controllerSharedState.cleanUpAzVolumeAttachmentByNode(ctx, request.Name, azdrivernode, azureutils.AllRoles, detachAndDeleteCRI); err != nil {
+		if _, err = r.cleanUpAzVolumeAttachmentByNode(ctx, request.Name, azdrivernode, azureutils.AllRoles, detachAndDeleteCRI); err != nil {
 			return reconcile.Result{Requeue: true}, err
 		}
 		return reconcile.Result{}, nil
@@ -106,11 +106,11 @@ func (r *ReconcileAzDriverNode) Recover(ctx context.Context) error {
 }
 
 // NewAzDriverNodeController initializes azdrivernode-controller
-func NewAzDriverNodeController(mgr manager.Manager, controllerSharedState *SharedState) (*ReconcileAzDriverNode, error) {
+func NewAzDriverNodeController(mgr manager.Manager, controllerSharedState *sharedState) (*ReconcileAzDriverNode, error) {
 	logger := mgr.GetLogger().WithValues("controller", "azdrivernode")
 	reconciler := ReconcileAzDriverNode{
-		controllerSharedState: controllerSharedState,
-		logger:                logger,
+		sharedState: controllerSharedState,
+		logger:      logger,
 	}
 
 	c, err := controller.New("azdrivernode-controller", mgr, controller.Options{

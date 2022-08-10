@@ -45,19 +45,19 @@ import (
 )
 
 type ReconcileReplica struct {
-	logger                     logr.Logger
-	controllerSharedState      *SharedState
+	logger logr.Logger
+	*sharedState
 	timeUntilGarbageCollection time.Duration
 }
 
 var _ reconcile.Reconciler = &ReconcileReplica{}
 
 func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
-	if !r.controllerSharedState.isRecoveryComplete() {
+	if !r.isRecoveryComplete() {
 		return reconcile.Result{Requeue: true}, nil
 	}
 
-	azVolumeAttachment, err := azureutils.GetAzVolumeAttachment(ctx, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, request.Name, request.Namespace, true)
+	azVolumeAttachment, err := azureutils.GetAzVolumeAttachment(ctx, r.cachedClient, r.azClient, request.Name, request.Namespace, true)
 	if errors.IsNotFound(err) {
 		return reconcile.Result{}, nil
 	} else if err != nil {
@@ -74,7 +74,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 			}
 		} else {
 			// If not, cancel scheduled garbage collection if there is one enqueued
-			r.controllerSharedState.removeGarbageCollection(azVolumeAttachment.Spec.VolumeName)
+			r.removeGarbageCollection(azVolumeAttachment.Spec.VolumeName)
 
 			// If promotion event, create a replacement replica
 			if isAttached(azVolumeAttachment) && azVolumeAttachment.Status.Detail.PreviousRole == azdiskv1beta2.ReplicaRole {
@@ -93,7 +93,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 		if objectDeletionRequested(azVolumeAttachment) {
 			switch azVolumeAttachment.Status.State {
 			case azdiskv1beta2.DetachmentFailed:
-				if _, err := azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, func(obj client.Object) error {
+				if _, err := azureutils.UpdateCRIWithRetry(ctx, nil, r.cachedClient, r.azClient, azVolumeAttachment, func(obj client.Object) error {
 					azVolumeAttachment := obj.(*azdiskv1beta2.AzVolumeAttachment)
 					_, err = updateState(azVolumeAttachment, azdiskv1beta2.ForceDetachPending, normalUpdate)
 					return err
@@ -106,7 +106,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 					goCtx := context.Background()
 
 					// wait for replica AzVolumeAttachment deletion
-					waiter, _ := r.controllerSharedState.conditionWatcher.NewConditionWaiter(goCtx, watcher.AzVolumeAttachmentType, azVolumeAttachment.Name, verifyObjectDeleted)
+					waiter, _ := r.conditionWatcher.NewConditionWaiter(goCtx, watcher.AzVolumeAttachmentType, azVolumeAttachment.Name, verifyObjectDeleted)
 					defer waiter.Close()
 					_, _ = waiter.Wait(goCtx)
 
@@ -116,7 +116,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 			}
 		} else if azVolumeAttachment.Status.State == azdiskv1beta2.AttachmentFailed {
 			// if attachment failed for replica AzVolumeAttachment, delete the CRI so that replace replica AzVolumeAttachment can be created.
-			if err := r.controllerSharedState.cachedClient.Delete(ctx, azVolumeAttachment); err != nil {
+			if err := r.cachedClient.Delete(ctx, azVolumeAttachment); err != nil {
 				return reconcile.Result{Requeue: true}, err
 			}
 		}
@@ -128,12 +128,12 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 func (r *ReconcileReplica) triggerManageReplica(ctx context.Context, volumeName string) {
 	manageReplicaCtx, w := workflow.New(context.Background(), workflow.WithDetails(consts.VolumeNameLabel, volumeName))
 	defer w.Finish(nil)
-	r.controllerSharedState.addToOperationQueue(
+	r.addToOperationQueue(
 		manageReplicaCtx,
 		volumeName,
 		replica,
 		func(ctx context.Context) error {
-			return r.controllerSharedState.manageReplicas(ctx, volumeName)
+			return r.manageReplicas(ctx, volumeName)
 		},
 		false,
 	)
@@ -142,7 +142,7 @@ func (r *ReconcileReplica) triggerManageReplica(ctx context.Context, volumeName 
 //nolint:contextcheck // Garbage collection is asynchronous; context is not inherited by design
 func (r *ReconcileReplica) triggerGarbageCollection(ctx context.Context, volumeName string) {
 	deletionCtx, cancelFunc := context.WithCancel(context.Background())
-	if _, ok := r.controllerSharedState.cleanUpMap.LoadOrStore(volumeName, cancelFunc); ok {
+	if _, ok := r.cleanUpMap.LoadOrStore(volumeName, cancelFunc); ok {
 		cancelFunc()
 		return
 	}
@@ -156,7 +156,7 @@ func (r *ReconcileReplica) triggerGarbageCollection(ctx context.Context, volumeN
 		case <-deletionCtx.Done():
 			return
 		case <-time.After(r.timeUntilGarbageCollection):
-			r.controllerSharedState.garbageCollectReplicas(workflowCtx, volumeName, replica)
+			r.garbageCollectReplicas(workflowCtx, volumeName, replica)
 			r.triggerCreateFailedReplicas(workflowCtx, volumeName)
 		}
 	}()
@@ -178,7 +178,7 @@ func (r *ReconcileReplica) triggerCreateFailedReplicas(ctx context.Context, volu
 	azVolumeAttachmentList := &azdiskv1beta2.AzVolumeAttachmentList{}
 
 	waitForDelete := true
-	if err = r.controllerSharedState.cachedClient.List(ctx, azVolumeAttachmentList, &listOptions); err != nil {
+	if err = r.cachedClient.List(ctx, azVolumeAttachmentList, &listOptions); err != nil {
 		if errors.IsNotFound(err) {
 			waitForDelete = false
 		} else {
@@ -203,7 +203,7 @@ func (r *ReconcileReplica) triggerCreateFailedReplicas(ctx context.Context, volu
 				}()
 
 				var waiter *watcher.ConditionWaiter
-				waiter, err = r.controllerSharedState.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeAttachmentType, azVolumeAttachmentList.Items[index].Name, verifyObjectDeleted)
+				waiter, err = r.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeAttachmentType, azVolumeAttachmentList.Items[index].Name, verifyObjectDeleted)
 				if err != nil {
 					errs[index] = err
 					return
@@ -224,13 +224,13 @@ func (r *ReconcileReplica) triggerCreateFailedReplicas(ctx context.Context, volu
 		}
 	}
 
-	r.controllerSharedState.tryCreateFailedReplicas(ctx, "replicaController")
+	r.tryCreateFailedReplicas(ctx, "replicaController")
 }
 
-func NewReplicaController(mgr manager.Manager, controllerSharedState *SharedState) (*ReconcileReplica, error) {
+func NewReplicaController(mgr manager.Manager, controllerSharedState *sharedState) (*ReconcileReplica, error) {
 	logger := mgr.GetLogger().WithValues("controller", "replica")
 	reconciler := ReconcileReplica{
-		controllerSharedState:      controllerSharedState,
+		sharedState:                controllerSharedState,
 		timeUntilGarbageCollection: DefaultTimeUntilGarbageCollection,
 		logger:                     logger,
 	}
