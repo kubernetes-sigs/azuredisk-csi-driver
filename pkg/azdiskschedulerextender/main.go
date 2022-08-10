@@ -116,13 +116,6 @@ func handleFilterRequest(response http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	allNodes := args.Nodes.Items
-	if len(allNodes) == 0 {
-		klog.Errorf("handleFilterRequest: No nodes received in filter request")
-		http.Error(response, "Bad request", http.StatusBadRequest)
-		return
-	}
-
 	responseBody, err := filter(request.Context(), args)
 	if err != nil {
 		klog.Errorf("handleFilterRequest: Failed to filter: %v", err)

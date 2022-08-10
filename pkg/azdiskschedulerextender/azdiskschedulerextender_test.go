@@ -108,16 +108,8 @@ func TestFilterAndPrioritizeRequestResponseCode(t *testing.T) {
 		{
 			inputArgs: &schedulerapi.ExtenderArgs{
 				Pod:       &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod"}},
-				Nodes:     &v1.NodeList{Items: []v1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node"}}}},
 				NodeNames: &[]string{"node"}},
 			want: http.StatusOK,
-		},
-		{
-			inputArgs: &schedulerapi.ExtenderArgs{
-				Pod:       &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod"}},
-				Nodes:     &v1.NodeList{Items: nil},
-				NodeNames: &[]string{"node"}},
-			want: http.StatusBadRequest,
 		},
 	}
 
@@ -192,16 +184,14 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 						Volumes: []v1.Volume{
 							getVolume("vol", "claim"),
 						}}},
-				Nodes:     &v1.NodeList{Items: []v1.Node{*getNode("node")}},
 				NodeNames: &[]string{"node"},
 			},
 			expectedFilterResult: schedulerapi.ExtenderFilterResult{
-				Nodes:       &v1.NodeList{Items: []v1.Node{*getNode("node")}},
 				NodeNames:   &[]string{"node"},
 				FailedNodes: make(map[string]string),
 				Error:       "",
 			},
-			expectedPrioritizeResult: schedulerapi.HostPriorityList{schedulerapi.HostPriority{Host: "node", Score: getNodeScore(1, 1, 1, metav1.Now(), getNode("node"))}},
+			expectedPrioritizeResult: schedulerapi.HostPriorityList{schedulerapi.HostPriority{Host: "node", Score: getNodeScore(1, 1, 1, metav1.Now(), "node")}},
 			expectedPrioritizeOrder:  []string{"node"},
 		},
 		{
@@ -222,16 +212,14 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 						Volumes: []v1.Volume{
 							getVolume("vol", "claim"),
 						}}},
-				Nodes:     &v1.NodeList{Items: []v1.Node{*getNode("node")}},
 				NodeNames: &[]string{"node"},
 			},
 			expectedFilterResult: schedulerapi.ExtenderFilterResult{
-				Nodes:       &v1.NodeList{Items: nil},
 				NodeNames:   nil,
 				FailedNodes: map[string]string{"node": "AzDriverNode for node is not ready."},
 				Error:       "",
 			},
-			expectedPrioritizeResult: schedulerapi.HostPriorityList{schedulerapi.HostPriority{Host: "node", Score: getNodeScore(1, 1, 1, metav1.Now(), getNode("node"))}},
+			expectedPrioritizeResult: schedulerapi.HostPriorityList{schedulerapi.HostPriority{Host: "node", Score: getNodeScore(1, 1, 1, metav1.Now(), "node")}},
 			expectedPrioritizeOrder:  []string{"node"},
 		},
 		{
@@ -247,16 +235,14 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 			schedulerArgs: schedulerapi.ExtenderArgs{
 				Pod: &v1.Pod{
 					ObjectMeta: metav1.ObjectMeta{Name: "pod"}},
-				Nodes:     &v1.NodeList{Items: []v1.Node{*getNode("node")}},
 				NodeNames: &[]string{"node"},
 			},
 			expectedFilterResult: schedulerapi.ExtenderFilterResult{
-				Nodes:       &v1.NodeList{Items: []v1.Node{*getNode("node")}},
 				NodeNames:   &[]string{"node"},
 				FailedNodes: nil,
 				Error:       "",
 			},
-			expectedPrioritizeResult: schedulerapi.HostPriorityList{schedulerapi.HostPriority{Host: "node", Score: getNodeScore(0, 0, 1, metav1.Now(), getNode("node"))}},
+			expectedPrioritizeResult: schedulerapi.HostPriorityList{schedulerapi.HostPriority{Host: "node", Score: getNodeScore(0, 0, 1, metav1.Now(), "node")}},
 			expectedPrioritizeOrder:  []string{"node"},
 		},
 		{
@@ -279,28 +265,16 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 						},
 					},
 				},
-				Nodes: &v1.NodeList{
-					Items: []v1.Node{
-						*getNode("node0"),
-						*getNode("node1"),
-					},
-				},
-				NodeNames: &[]string{"node0, node1"},
+				NodeNames: &[]string{"node0", "node1"},
 			},
 			expectedFilterResult: schedulerapi.ExtenderFilterResult{
-				Nodes: &v1.NodeList{
-					Items: []v1.Node{
-						*getNode("node0"),
-						*getNode("node1"),
-					},
-				},
 				NodeNames:   &[]string{"node0", "node1"},
 				FailedNodes: make(map[string]string),
 				Error:       "",
 			},
 			expectedPrioritizeResult: schedulerapi.HostPriorityList{
-				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(1, 1, 1, metav1.Now(), getNode("node0"))},
-				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(0, 0, 0, metav1.Now(), getNode("node1"))},
+				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(1, 1, 1, metav1.Now(), "node0")},
+				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(0, 0, 0, metav1.Now(), "node1")},
 			},
 			expectedPrioritizeOrder: []string{"node0", "node1"},
 		},
@@ -324,27 +298,16 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 						},
 					},
 				},
-				Nodes: &v1.NodeList{
-					Items: []v1.Node{
-						*getNode("node0"),
-						*getNode("node1"),
-					},
-				},
-				NodeNames: &[]string{"node0, node1"},
+				NodeNames: &[]string{"node0", "node1"},
 			},
 			expectedFilterResult: schedulerapi.ExtenderFilterResult{
-				Nodes: &v1.NodeList{
-					Items: []v1.Node{
-						*getNode("node1"),
-					},
-				},
 				NodeNames:   &[]string{"node1"},
 				FailedNodes: map[string]string{"node0": "AzDriverNode for node0 is not ready."},
 				Error:       "",
 			},
 			expectedPrioritizeResult: schedulerapi.HostPriorityList{
-				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(0, 0, 0, metav1.Now(), getNode("node0"))},
-				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(1, 1, 1, metav1.Now(), getNode("node1"))},
+				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(0, 0, 0, metav1.Now(), "node0")},
+				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(1, 1, 1, metav1.Now(), "node1")},
 			},
 			expectedPrioritizeOrder: []string{"node1", "node0"},
 		},
@@ -372,28 +335,16 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 						},
 					},
 				},
-				Nodes: &v1.NodeList{
-					Items: []v1.Node{
-						*getNode("node0"),
-						*getNode("node1"),
-					},
-				},
-				NodeNames: &[]string{"node0, node1"},
+				NodeNames: &[]string{"node0", "node1"},
 			},
 			expectedFilterResult: schedulerapi.ExtenderFilterResult{
-				Nodes: &v1.NodeList{
-					Items: []v1.Node{
-						*getNode("node0"),
-						*getNode("node1"),
-					},
-				},
 				NodeNames:   &[]string{"node0", "node1"},
 				FailedNodes: make(map[string]string),
 				Error:       "",
 			},
 			expectedPrioritizeResult: schedulerapi.HostPriorityList{
-				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(2, 2, 2, metav1.Now(), getNode("node0"))},
-				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(0, 0, 0, metav1.Now(), getNode("node1"))},
+				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(2, 2, 2, metav1.Now(), "node0")},
+				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(0, 0, 0, metav1.Now(), "node1")},
 			},
 			expectedPrioritizeOrder: []string{"node0", "node1"},
 		},
@@ -426,27 +377,17 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 							getVolume("vol0", "claim0"),
 							getVolume("vol1", "claim1"),
 							getVolume("vol2", "claim2")}}},
-				Nodes: &v1.NodeList{
-					Items: []v1.Node{
-						*getNode("node0"),
-						*getNode("node1"),
-						*getNode("node2")}},
 				NodeNames: &[]string{"node0", "node1", "node2"},
 			},
 			expectedFilterResult: schedulerapi.ExtenderFilterResult{
-				Nodes: &v1.NodeList{
-					Items: []v1.Node{
-						*getNode("node0"),
-						*getNode("node1"),
-						*getNode("node2")}},
 				NodeNames:   &[]string{"node0", "node1", "node2"},
 				FailedNodes: make(map[string]string),
 				Error:       "",
 			},
 			expectedPrioritizeResult: schedulerapi.HostPriorityList{
-				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(2, 2, 2, metav1.Now(), getNode("node0"))},
-				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(3, 3, 3, metav1.Now(), getNode("node1"))},
-				schedulerapi.HostPriority{Host: "node2", Score: getNodeScore(1, 1, 1, metav1.Now(), getNode("node2"))},
+				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(2, 2, 2, metav1.Now(), "node0")},
+				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(3, 3, 3, metav1.Now(), "node1")},
+				schedulerapi.HostPriority{Host: "node2", Score: getNodeScore(1, 1, 1, metav1.Now(), "node2")},
 			},
 			expectedPrioritizeOrder: []string{"node1", "node0", "node2"},
 		},
@@ -481,27 +422,17 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 							getVolume("vol0", "claim0"),
 							getVolume("vol1", "claim1"),
 							getVolume("vol2", "claim2")}}},
-				Nodes: &v1.NodeList{
-					Items: []v1.Node{
-						*getNode("node0"),
-						*getNode("node1"),
-						*getNode("node2")}},
 				NodeNames: &[]string{"node0", "node1", "node2"},
 			},
 			expectedFilterResult: schedulerapi.ExtenderFilterResult{
-				Nodes: &v1.NodeList{
-					Items: []v1.Node{
-						*getNode("node0"),
-						*getNode("node1"),
-						*getNode("node2")}},
 				NodeNames:   &[]string{"node0", "node1", "node2"},
 				FailedNodes: make(map[string]string),
 				Error:       "",
 			},
 			expectedPrioritizeResult: schedulerapi.HostPriorityList{
-				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(2, 2, 2, metav1.Now(), getNode("node0"))},
-				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(3, 3, 3, metav1.Now(), getNode("node1"))},
-				schedulerapi.HostPriority{Host: "node2", Score: getNodeScore(0, 0, 1, metav1.Now(), getNode("node2"))},
+				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(2, 2, 2, metav1.Now(), "node0")},
+				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(3, 3, 3, metav1.Now(), "node1")},
+				schedulerapi.HostPriority{Host: "node2", Score: getNodeScore(0, 0, 1, metav1.Now(), "node2")},
 			},
 			expectedPrioritizeOrder: []string{"node1", "node0", "node2"},
 		},
@@ -533,27 +464,17 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 						Volumes: []v1.Volume{
 							getVolume("vol0", "claim0"),
 							getVolume("vol1", "claim1")}}},
-				Nodes: &v1.NodeList{
-					Items: []v1.Node{
-						*getNode("node0"),
-						*getNode("node1"),
-						*getNode("node2")}},
 				NodeNames: &[]string{"node0", "node1", "node2"},
 			},
 			expectedFilterResult: schedulerapi.ExtenderFilterResult{
-				Nodes: &v1.NodeList{
-					Items: []v1.Node{
-						*getNode("node0"),
-						*getNode("node1"),
-						*getNode("node2")}},
 				NodeNames:   &[]string{"node0", "node1", "node2"},
 				FailedNodes: make(map[string]string),
 				Error:       "",
 			},
 			expectedPrioritizeResult: schedulerapi.HostPriorityList{
-				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(2, 2, 2, metav1.Now(), getNode("node0"))},
-				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(2, 2, 3, metav1.Now(), getNode("node1"))},
-				schedulerapi.HostPriority{Host: "node2", Score: getNodeScore(0, 0, 1, metav1.Now(), getNode("node2"))},
+				schedulerapi.HostPriority{Host: "node0", Score: getNodeScore(2, 2, 2, metav1.Now(), "node0")},
+				schedulerapi.HostPriority{Host: "node1", Score: getNodeScore(2, 2, 3, metav1.Now(), "node1")},
+				schedulerapi.HostPriority{Host: "node2", Score: getNodeScore(0, 0, 1, metav1.Now(), "node2")},
 			},
 			expectedPrioritizeOrder: []string{"node0", "node1", "node2"},
 		},
@@ -618,7 +539,7 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 
 			if !gotExpectedPrioritizeList(actualPrioritizeList, test.expectedPrioritizeResult, test.expectedPrioritizeOrder) {
 				klog.Infof("actual: %+v,\nwanted: %+v", actualPrioritizeList, test.expectedPrioritizeResult)
-				t.Errorf("Actual prioritize response (%s) does not equal expected response.", prioritizeResultRecorder.Body)
+				t.Errorf("Actual prioritize response (%v) does not equal expected response (%v).", actualPrioritizeList, test.expectedPrioritizeResult)
 			}
 		})
 	}
@@ -626,7 +547,6 @@ func TestFilterAndPrioritizeResponses(t *testing.T) {
 
 // TODO test only checks the response code. add check for response body
 func TestFilterAndPrioritizeInRandomizedLargeCluster(t *testing.T) {
-	var nodes []v1.Node
 	var nodeNames []string
 
 	//TODO increase numberOfPodsToSchedule when changing the implementation to reuse goroutines
@@ -661,7 +581,6 @@ func TestFilterAndPrioritizeInRandomizedLargeCluster(t *testing.T) {
 			// generate large number of nodes
 			for i := 0; i < numberOfClusterNodes; i++ {
 				nodeName := fmt.Sprintf("node%d", i)
-				nodes = append(nodes, *getNode(nodeName))
 				nodeNames = append(nodeNames, nodeName)
 				v1alpha1Resources = append(v1alpha1Resources, getDriverNode(fmt.Sprintf("driverNode%d", i), criNamespace, nodeName, true))
 			}
@@ -714,7 +633,6 @@ func TestFilterAndPrioritizeInRandomizedLargeCluster(t *testing.T) {
 
 					schedulerArgs := schedulerapi.ExtenderArgs{
 						Pod:       testPod,
-						Nodes:     &v1.NodeList{Items: nodes},
 						NodeNames: &nodeNames,
 					}
 
@@ -864,17 +782,6 @@ func getVolume(volumeName, claimName string) v1.Volume {
 		VolumeSource: v1.VolumeSource{
 			PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
 				ClaimName: claimName,
-			},
-		},
-	}
-}
-
-func getNode(nodeName string) *v1.Node {
-	return &v1.Node{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: nodeName,
-			Labels: map[string]string{
-				v1.LabelInstanceTypeStable: testDefaultVMType,
 			},
 		},
 	}
