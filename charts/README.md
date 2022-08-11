@@ -282,7 +282,7 @@ schedulerExtender:
       monitor:
         enabled: true
 EOF
-helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v2.0.0-alpha.1 --values /tmp/azure-isk-csi-driver-overrides.yaml
+helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v2.0.0-beta.5 --values /tmp/azuredisk-csi-driver-overrides.yaml
 ```
 
 ### upgrade Azure Disk CSI Driver V1 to V2 (Preview)
