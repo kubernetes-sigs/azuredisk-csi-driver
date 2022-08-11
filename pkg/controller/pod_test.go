@@ -44,7 +44,7 @@ func NewTestPodController(controller *gomock.Controller, namespace string, objec
 
 	return &ReconcilePod{
 		namespace:   namespace,
-		sharedState: controllerSharedState,
+		SharedState: controllerSharedState,
 		logger:      klogr.New(),
 	}
 }

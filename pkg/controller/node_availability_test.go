@@ -43,7 +43,7 @@ func NewTestNodeAvailabilityController(controller *gomock.Controller, namespace 
 	controllerSharedState := initState(mockclient.NewMockClient(controller), azdiskfakes.NewSimpleClientset(diskv1alpha1Objs...), fakev1.NewSimpleClientset(kubeObjs...), objects...)
 
 	return &ReconcileNodeAvailability{
-		sharedState: controllerSharedState,
+		SharedState: controllerSharedState,
 		logger:      klogr.New(),
 	}
 }

@@ -45,8 +45,8 @@ import (
 )
 
 type ReconcileReplica struct {
-	logger logr.Logger
-	*sharedState
+	*SharedState
+	logger                     logr.Logger
 	timeUntilGarbageCollection time.Duration
 }
 
@@ -227,10 +227,10 @@ func (r *ReconcileReplica) triggerCreateFailedReplicas(ctx context.Context, volu
 	r.tryCreateFailedReplicas(ctx, "replicaController")
 }
 
-func NewReplicaController(mgr manager.Manager, controllerSharedState *sharedState) (*ReconcileReplica, error) {
+func NewReplicaController(mgr manager.Manager, controllerSharedState *SharedState) (*ReconcileReplica, error) {
 	logger := mgr.GetLogger().WithValues("controller", "replica")
 	reconciler := ReconcileReplica{
-		sharedState:                controllerSharedState,
+		SharedState:                controllerSharedState,
 		timeUntilGarbageCollection: DefaultTimeUntilGarbageCollection,
 		logger:                     logger,
 	}

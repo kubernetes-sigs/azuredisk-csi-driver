@@ -49,7 +49,7 @@ func NewTestAzVolumeController(controller *gomock.Controller, namespace string, 
 		volumeProvisioner: mockvolumeprovisioner.NewMockVolumeProvisioner(controller),
 		stateLock:         &sync.Map{},
 		retryInfo:         newRetryInfo(),
-		sharedState:       controllerSharedState,
+		SharedState:       controllerSharedState,
 		logger:            klogr.New(),
 	}
 }

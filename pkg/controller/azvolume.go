@@ -64,9 +64,9 @@ type VolumeProvisioner interface {
 
 // Struct for the reconciler
 type ReconcileAzVolume struct {
+	*SharedState
 	logger            logr.Logger
 	volumeProvisioner VolumeProvisioner
-	*sharedState
 	// stateLock prevents concurrent cloud operation for same volume to be executed due to state update race
 	stateLock *sync.Map
 	retryInfo *retryInfo
@@ -625,14 +625,14 @@ func (r *ReconcileAzVolume) Recover(ctx context.Context) error {
 	return err
 }
 
-func NewAzVolumeController(mgr manager.Manager, volumeProvisioner VolumeProvisioner, controllerSharedState *sharedState) (*ReconcileAzVolume, error) {
+func NewAzVolumeController(mgr manager.Manager, volumeProvisioner VolumeProvisioner, controllerSharedState *SharedState) (*ReconcileAzVolume, error) {
 	logger := mgr.GetLogger().WithValues("controller", "azvolume")
 
 	reconciler := ReconcileAzVolume{
 		volumeProvisioner: volumeProvisioner,
 		stateLock:         &sync.Map{},
 		retryInfo:         newRetryInfo(),
-		sharedState:       controllerSharedState,
+		SharedState:       controllerSharedState,
 		logger:            logger,
 	}
 
@@ -661,7 +661,7 @@ func NewAzVolumeController(mgr manager.Manager, volumeProvisioner VolumeProvisio
 	return &reconciler, nil
 }
 
-func (c *sharedState) createAzVolumeFromPv(ctx context.Context, pv v1.PersistentVolume, annotations map[string]string) error {
+func (c *SharedState) createAzVolumeFromPv(ctx context.Context, pv v1.PersistentVolume, annotations map[string]string) error {
 	var err error
 	ctx, w := workflow.New(ctx)
 	defer func() { w.Finish(err) }()
@@ -712,7 +712,7 @@ func (c *sharedState) createAzVolumeFromPv(ctx context.Context, pv v1.Persistent
 	return nil
 }
 
-func (c *sharedState) createAzVolumeFromInline(ctx context.Context, inline *v1.AzureDiskVolumeSource) (err error) {
+func (c *SharedState) createAzVolumeFromInline(ctx context.Context, inline *v1.AzureDiskVolumeSource) (err error) {
 	azVolume := c.createAzVolumeFromAzureDiskVolumeSource(inline)
 
 	if err = c.createAzVolume(ctx, azVolume); err != nil {
@@ -721,7 +721,7 @@ func (c *sharedState) createAzVolumeFromInline(ctx context.Context, inline *v1.A
 	return
 }
 
-func (c *sharedState) createAzVolumeFromCSISource(source *v1.CSIPersistentVolumeSource) (*azdiskv1beta2.AzVolume, error) {
+func (c *SharedState) createAzVolumeFromCSISource(source *v1.CSIPersistentVolumeSource) (*azdiskv1beta2.AzVolume, error) {
 	diskName, err := azureutils.GetDiskName(source.VolumeHandle)
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract diskName from volume handle (%s): %v", source.VolumeHandle, err)
@@ -759,7 +759,7 @@ func (c *sharedState) createAzVolumeFromCSISource(source *v1.CSIPersistentVolume
 	return &azVolume, nil
 }
 
-func (c *sharedState) createAzVolumeFromAzureDiskVolumeSource(source *v1.AzureDiskVolumeSource) *azdiskv1beta2.AzVolume {
+func (c *SharedState) createAzVolumeFromAzureDiskVolumeSource(source *v1.AzureDiskVolumeSource) *azdiskv1beta2.AzVolume {
 	azVolume := azdiskv1beta2.AzVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:       source.DiskName,
@@ -781,7 +781,7 @@ func (c *sharedState) createAzVolumeFromAzureDiskVolumeSource(source *v1.AzureDi
 	return &azVolume
 }
 
-func (c *sharedState) createAzVolume(ctx context.Context, desiredAzVolume *azdiskv1beta2.AzVolume) error {
+func (c *SharedState) createAzVolume(ctx context.Context, desiredAzVolume *azdiskv1beta2.AzVolume) error {
 	var err error
 	var azVolume *azdiskv1beta2.AzVolume
 

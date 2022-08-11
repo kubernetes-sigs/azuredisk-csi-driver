@@ -236,21 +236,21 @@ func shouldRequeueReplicaOperation(isReplicaGarbageCollection bool, err error) b
 
 type filterPlugin interface {
 	name() string
-	setup(pods []v1.Pod, persistentVolumes []*v1.PersistentVolume, state *sharedState)
+	setup(pods []v1.Pod, persistentVolumes []*v1.PersistentVolume, state *SharedState)
 	filter(ctx context.Context, nodes []v1.Node) ([]v1.Node, error)
 }
 
 // interPodAffinityFilter selects nodes that either meets inter-pod affinity rules or has replica mounts of volumes of pods with matching labels
 type interPodAffinityFilter struct {
 	pods  []v1.Pod
-	state *sharedState
+	state *SharedState
 }
 
 func (p *interPodAffinityFilter) name() string {
 	return "inter-pod affinity filter"
 }
 
-func (p *interPodAffinityFilter) setup(pods []v1.Pod, persistentVolumes []*v1.PersistentVolume, state *sharedState) {
+func (p *interPodAffinityFilter) setup(pods []v1.Pod, persistentVolumes []*v1.PersistentVolume, state *SharedState) {
 	p.pods = pods
 	p.state = state
 }
@@ -396,14 +396,14 @@ func (p *interPodAffinityFilter) filter(ctx context.Context, nodes []v1.Node) ([
 
 type interPodAntiAffinityFilter struct {
 	pods  []v1.Pod
-	state *sharedState
+	state *SharedState
 }
 
 func (p *interPodAntiAffinityFilter) name() string {
 	return "inter-pod anti-affinity filter"
 }
 
-func (p *interPodAntiAffinityFilter) setup(pods []v1.Pod, persistentVolumes []*v1.PersistentVolume, state *sharedState) {
+func (p *interPodAntiAffinityFilter) setup(pods []v1.Pod, persistentVolumes []*v1.PersistentVolume, state *SharedState) {
 	p.pods = pods
 	p.state = state
 }
@@ -519,7 +519,7 @@ func (p *podTolerationFilter) name() string {
 	return "pod toleration filter"
 }
 
-func (p *podTolerationFilter) setup(pods []v1.Pod, persistentVolumes []*v1.PersistentVolume, state *sharedState) {
+func (p *podTolerationFilter) setup(pods []v1.Pod, persistentVolumes []*v1.PersistentVolume, state *SharedState) {
 	p.pods = pods
 }
 
@@ -590,7 +590,7 @@ func (p *podNodeAffinityFilter) name() string {
 	return "pod node-affinity filter"
 }
 
-func (p *podNodeAffinityFilter) setup(pods []v1.Pod, persistentVolumes []*v1.PersistentVolume, state *sharedState) {
+func (p *podNodeAffinityFilter) setup(pods []v1.Pod, persistentVolumes []*v1.PersistentVolume, state *SharedState) {
 	p.pods = pods
 }
 
@@ -630,14 +630,14 @@ func (p *podNodeAffinityFilter) filter(ctx context.Context, nodes []v1.Node) ([]
 
 type podNodeSelectorFilter struct {
 	pods  []v1.Pod
-	state *sharedState
+	state *SharedState
 }
 
 func (p *podNodeSelectorFilter) name() string {
 	return "pod node-selector filter"
 }
 
-func (p *podNodeSelectorFilter) setup(pods []v1.Pod, persistentVolumes []*v1.PersistentVolume, state *sharedState) {
+func (p *podNodeSelectorFilter) setup(pods []v1.Pod, persistentVolumes []*v1.PersistentVolume, state *SharedState) {
 	p.pods = pods
 	p.state = state
 }
@@ -681,7 +681,7 @@ func (v *volumeNodeSelectorFilter) name() string {
 	return "volume node-selector filter"
 }
 
-func (v *volumeNodeSelectorFilter) setup(pods []v1.Pod, persistentVolumes []*v1.PersistentVolume, state *sharedState) {
+func (v *volumeNodeSelectorFilter) setup(pods []v1.Pod, persistentVolumes []*v1.PersistentVolume, state *SharedState) {
 	v.persistentVolumes = persistentVolumes
 }
 
@@ -728,20 +728,20 @@ func (v *volumeNodeSelectorFilter) filter(ctx context.Context, nodes []v1.Node) 
 
 type nodeScorerPlugin interface {
 	name() string
-	setup(pods []v1.Pod, volumes []string, state *sharedState)
+	setup(pods []v1.Pod, volumes []string, state *SharedState)
 	score(ctx context.Context, nodeScores map[string]int) (map[string]int, error)
 }
 
 type scoreByNodeCapacity struct {
 	volumes []string
-	state   *sharedState
+	state   *SharedState
 }
 
 func (s *scoreByNodeCapacity) name() string {
 	return "score by node capacity"
 }
 
-func (s *scoreByNodeCapacity) setup(pods []v1.Pod, volumes []string, state *sharedState) {
+func (s *scoreByNodeCapacity) setup(pods []v1.Pod, volumes []string, state *SharedState) {
 	s.volumes = volumes
 	s.state = state
 }
@@ -771,14 +771,14 @@ func (s *scoreByNodeCapacity) score(ctx context.Context, nodeScores map[string]i
 
 type scoreByReplicaCount struct {
 	volumes []string
-	state   *sharedState
+	state   *SharedState
 }
 
 func (s *scoreByReplicaCount) name() string {
 	return "score by replica count"
 }
 
-func (s *scoreByReplicaCount) setup(pods []v1.Pod, volumes []string, state *sharedState) {
+func (s *scoreByReplicaCount) setup(pods []v1.Pod, volumes []string, state *SharedState) {
 	s.volumes = volumes
 	s.state = state
 }

@@ -50,7 +50,7 @@ func NewTestReplicaController(controller *gomock.Controller, namespace string, o
 	controllerSharedState := initState(mockclient.NewMockClient(controller), azdiskfakes.NewSimpleClientset(azDiskObjs...), fakev1.NewSimpleClientset(kubeObjs...), objects...)
 
 	return &ReconcileReplica{
-		sharedState:                controllerSharedState,
+		SharedState:                controllerSharedState,
 		timeUntilGarbageCollection: testTimeUntilGarbageCollection,
 		logger:                     klogr.New(),
 	}

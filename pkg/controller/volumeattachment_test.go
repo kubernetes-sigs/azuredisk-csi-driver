@@ -36,7 +36,7 @@ func NewTestVolumeAttachmentController(controller *gomock.Controller, namespace 
 
 	return &ReconcileVolumeAttachment{
 		controllerRetryInfo: newRetryInfo(),
-		sharedState:         controllerSharedState,
+		SharedState:         controllerSharedState,
 		logger:              klogr.New(),
 	}
 }

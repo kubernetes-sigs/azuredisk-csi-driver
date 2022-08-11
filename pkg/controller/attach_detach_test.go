@@ -46,7 +46,7 @@ func NewTestAttachDetachController(controller *gomock.Controller, namespace stri
 		cloudDiskAttacher: mockattachmentprovisioner.NewMockCloudDiskAttachDetacher(controller),
 		stateLock:         &sync.Map{},
 		retryInfo:         newRetryInfo(),
-		sharedState:       controllerSharedState,
+		SharedState:       controllerSharedState,
 		logger:            klogr.New(),
 	}
 }

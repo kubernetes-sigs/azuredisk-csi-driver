@@ -63,12 +63,12 @@ Attach Detach controller is responsible for
  3. detaching volume upon deletions marked with certain annotations
 */
 type ReconcileAttachDetach struct {
+	*SharedState
 	logger            logr.Logger
 	crdDetacher       CrdDetacher
 	cloudDiskAttacher CloudDiskAttachDetacher
 	stateLock         *sync.Map
 	retryInfo         *retryInfo
-	*sharedState
 }
 
 var _ reconcile.Reconciler = &ReconcileAttachDetach{}
@@ -742,14 +742,14 @@ func (r *ReconcileAttachDetach) recoverAzVolumeAttachment(ctx context.Context, r
 	return nil
 }
 
-func NewAttachDetachController(mgr manager.Manager, cloudDiskAttacher CloudDiskAttachDetacher, crdDetacher CrdDetacher, controllerSharedState *sharedState) (*ReconcileAttachDetach, error) {
+func NewAttachDetachController(mgr manager.Manager, cloudDiskAttacher CloudDiskAttachDetacher, crdDetacher CrdDetacher, controllerSharedState *SharedState) (*ReconcileAttachDetach, error) {
 	logger := mgr.GetLogger().WithValues("controller", "azvolumeattachment")
 	reconciler := ReconcileAttachDetach{
 		crdDetacher:       crdDetacher,
 		cloudDiskAttacher: cloudDiskAttacher,
 		stateLock:         &sync.Map{},
 		retryInfo:         newRetryInfo(),
-		sharedState:       controllerSharedState,
+		SharedState:       controllerSharedState,
 		logger:            logger,
 	}
 
@@ -778,7 +778,7 @@ func NewAttachDetachController(mgr manager.Manager, cloudDiskAttacher CloudDiskA
 }
 
 // waitForVolumeAttachmentNAme waits for the VolumeAttachment name to be updated in the azVolumeAttachmentVaMap by the volumeattachment controller
-func (c *sharedState) waitForVolumeAttachmentName(ctx context.Context, azVolumeAttachment *azdiskv1beta2.AzVolumeAttachment) (string, error) {
+func (c *SharedState) waitForVolumeAttachmentName(ctx context.Context, azVolumeAttachment *azdiskv1beta2.AzVolumeAttachment) (string, error) {
 	var vaName string
 	err := wait.PollImmediateUntilWithContext(ctx, consts.DefaultPollingRate, func(ctx context.Context) (bool, error) {
 		val, exists := c.azVolumeAttachmentToVaMap.Load(azVolumeAttachment.Name)

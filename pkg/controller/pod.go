@@ -42,9 +42,9 @@ import (
 
 // Struct for the reconciler
 type ReconcilePod struct {
+	*SharedState
 	logger    logr.Logger
 	namespace string
-	*sharedState
 }
 
 // Implement reconcile.Reconciler so the controller can reconcile objects
@@ -172,10 +172,10 @@ func (r *ReconcilePod) Recover(ctx context.Context) error {
 	return nil
 }
 
-func NewPodController(mgr manager.Manager, controllerSharedState *sharedState) (*ReconcilePod, error) {
+func NewPodController(mgr manager.Manager, controllerSharedState *SharedState) (*ReconcilePod, error) {
 	logger := mgr.GetLogger().WithValues("controller", "pod")
 	reconciler := ReconcilePod{
-		sharedState: controllerSharedState,
+		SharedState: controllerSharedState,
 		logger:      logger,
 	}
 	c, err := controller.New("pod-controller", mgr, controller.Options{

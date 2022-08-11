@@ -40,8 +40,8 @@ import (
 
 // ReconcileAzDriverNode reconciles AzDriverNode
 type ReconcileAzDriverNode struct {
+	*SharedState
 	logger logr.Logger
-	*sharedState
 }
 
 // Implement reconcile.Reconciler so the controller can reconcile objects
@@ -88,7 +88,7 @@ func (r *ReconcileAzDriverNode) Recover(ctx context.Context) error {
 	defer func() { w.Finish(err) }()
 
 	var nodes *azdiskv1beta2.AzDriverNodeList
-	if nodes, err = r.controllerSharedState.azClient.DiskV1beta2().AzDriverNodes(r.controllerSharedState.objectNamespace).List(ctx, metav1.ListOptions{}); err != nil {
+	if nodes, err = r.azClient.DiskV1beta2().AzDriverNodes(r.objectNamespace).List(ctx, metav1.ListOptions{}); err != nil {
 		if errors.IsNotFound(err) {
 			return nil
 		}
@@ -98,7 +98,7 @@ func (r *ReconcileAzDriverNode) Recover(ctx context.Context) error {
 	for _, node := range nodes.Items {
 		updated := node.DeepCopy()
 		updated.Annotations = azureutils.AddToMap(updated.Annotations, consts.RecoverAnnotation, "azDriverNode")
-		if _, err = r.controllerSharedState.azClient.DiskV1beta2().AzDriverNodes(r.controllerSharedState.objectNamespace).Update(ctx, updated, metav1.UpdateOptions{}); err != nil {
+		if _, err = r.azClient.DiskV1beta2().AzDriverNodes(r.objectNamespace).Update(ctx, updated, metav1.UpdateOptions{}); err != nil {
 			return err
 		}
 	}
@@ -106,10 +106,10 @@ func (r *ReconcileAzDriverNode) Recover(ctx context.Context) error {
 }
 
 // NewAzDriverNodeController initializes azdrivernode-controller
-func NewAzDriverNodeController(mgr manager.Manager, controllerSharedState *sharedState) (*ReconcileAzDriverNode, error) {
+func NewAzDriverNodeController(mgr manager.Manager, controllerSharedState *SharedState) (*ReconcileAzDriverNode, error) {
 	logger := mgr.GetLogger().WithValues("controller", "azdrivernode")
 	reconciler := ReconcileAzDriverNode{
-		sharedState: controllerSharedState,
+		SharedState: controllerSharedState,
 		logger:      logger,
 	}
 

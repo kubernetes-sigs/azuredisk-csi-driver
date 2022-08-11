@@ -39,7 +39,7 @@ func newTestPVController(controller *gomock.Controller, namespace string, object
 
 	return &ReconcilePV{
 		controllerRetryInfo: newRetryInfo(),
-		sharedState:         controllerSharedState,
+		SharedState:         controllerSharedState,
 		logger:              klogr.New(),
 	}
 }

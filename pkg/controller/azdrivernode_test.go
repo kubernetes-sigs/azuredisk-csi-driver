@@ -40,7 +40,7 @@ func NewTestAzDriverNodeController(controller *gomock.Controller, namespace stri
 	controllerSharedState := initState(mockclient.NewMockClient(controller), azdiskfakes.NewSimpleClientset(azDiskObjs...), nil, objects...)
 
 	return &ReconcileAzDriverNode{
-		sharedState: controllerSharedState,
+		SharedState: controllerSharedState,
 		logger:      klogr.New(),
 	}
 }

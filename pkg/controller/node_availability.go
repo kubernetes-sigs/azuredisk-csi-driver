@@ -33,8 +33,8 @@ import (
 )
 
 type ReconcileNodeAvailability struct {
+	*SharedState
 	logger logr.Logger
-	*sharedState
 }
 
 var _ reconcile.Reconciler = &ReconcileNodeAvailability{}
@@ -64,10 +64,10 @@ func (r *ReconcileNodeAvailability) Reconcile(ctx context.Context, request recon
 	return reconcile.Result{Requeue: false}, err
 }
 
-func NewNodeAvailabilityController(mgr manager.Manager, controllerSharedState *sharedState) (*ReconcileNodeAvailability, error) {
+func NewNodeAvailabilityController(mgr manager.Manager, controllerSharedState *SharedState) (*ReconcileNodeAvailability, error) {
 	logger := mgr.GetLogger().WithValues("controller", "nodeavailability")
 	reconciler := ReconcileNodeAvailability{
-		sharedState: controllerSharedState,
+		SharedState: controllerSharedState,
 		logger:      logger,
 	}
 

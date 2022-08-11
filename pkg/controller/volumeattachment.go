@@ -39,9 +39,9 @@ import (
 
 // Struct for the reconciler
 type ReconcileVolumeAttachment struct {
+	*SharedState
 	logger              logr.Logger
 	controllerRetryInfo *retryInfo
-	*sharedState
 }
 
 // Implement reconcile.Reconciler so the controller can reconcile objects
@@ -88,11 +88,11 @@ func (r *ReconcileVolumeAttachment) Reconcile(ctx context.Context, request recon
 	return reconcile.Result{}, nil
 }
 
-func NewVolumeAttachmentController(mgr manager.Manager, controllerSharedState *sharedState) (*ReconcileVolumeAttachment, error) {
+func NewVolumeAttachmentController(mgr manager.Manager, controllerSharedState *SharedState) (*ReconcileVolumeAttachment, error) {
 	logger := mgr.GetLogger().WithValues("controller", "volumeattachment")
 	reconciler := ReconcileVolumeAttachment{
 		controllerRetryInfo: newRetryInfo(),
-		sharedState:         controllerSharedState,
+		SharedState:         controllerSharedState,
 		logger:              logger,
 	}
 

@@ -49,7 +49,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-type sharedState struct {
+type SharedState struct {
 	recoveryComplete              uint32
 	driverName                    string
 	objectNamespace               string
@@ -75,21 +75,33 @@ type sharedState struct {
 	conditionWatcher              *watcher.ConditionWatcher
 }
 
-func NewSharedState(driverName, objectNamespace, topologyKey string, eventRecorder record.EventRecorder, cachedClient client.Client, azClient azdisk.Interface, kubeClient kubernetes.Interface, crdClient crdClientset.Interface) *sharedState {
-	newSharedState := &sharedState{driverName: driverName, objectNamespace: objectNamespace, topologyKey: topologyKey, eventRecorder: eventRecorder, cachedClient: cachedClient, azClient: azClient, kubeClient: kubeClient, crdClient: crdClient, conditionWatcher: watcher.New(context.Background(), azClient, azdiskinformers.NewSharedInformerFactory(azClient, consts.DefaultInformerResync), objectNamespace)}
+func NewSharedState(driverName, objectNamespace, topologyKey string, eventRecorder record.EventRecorder, cachedClient client.Client, azClient azdisk.Interface, kubeClient kubernetes.Interface, crdClient crdClientset.Interface) *SharedState {
+	newSharedState := &SharedState{
+		driverName:      driverName,
+		objectNamespace: objectNamespace,
+		topologyKey:     topologyKey,
+		eventRecorder:   eventRecorder,
+		cachedClient:    cachedClient,
+		crdClient:       crdClient,
+		azClient:        azClient,
+		kubeClient:      kubeClient,
+		conditionWatcher: watcher.New(context.Background(),
+			azClient, azdiskinformers.NewSharedInformerFactory(azClient, consts.DefaultInformerResync), objectNamespace),
+	}
 	newSharedState.createReplicaRequestsQueue()
+
 	return newSharedState
 }
 
-func (c *sharedState) isRecoveryComplete() bool {
+func (c *SharedState) isRecoveryComplete() bool {
 	return atomic.LoadUint32(&c.recoveryComplete) == 1
 }
 
-func (c *sharedState) MarkRecoveryComplete() {
+func (c *SharedState) MarkRecoveryComplete() {
 	atomic.StoreUint32(&c.recoveryComplete, 1)
 }
 
-func (c *sharedState) DeleteAPIVersion(ctx context.Context, deleteVersion string) error {
+func (c *SharedState) DeleteAPIVersion(ctx context.Context, deleteVersion string) error {
 	w, _ := workflow.GetWorkflowFromContext(ctx)
 	crdNames := []string{consts.AzDriverNodeCRDName, consts.AzVolumeCRDName, consts.AzVolumeAttachmentCRDName}
 	for _, crdName := range crdNames {
@@ -148,11 +160,11 @@ func (c *sharedState) DeleteAPIVersion(ctx context.Context, deleteVersion string
 	return nil
 }
 
-func (c *sharedState) createOperationQueue(volumeName string) {
+func (c *SharedState) createOperationQueue(volumeName string) {
 	_, _ = c.volumeOperationQueues.LoadOrStore(volumeName, newLockableEntry(newOperationQueue()))
 }
 
-func (c *sharedState) addToOperationQueue(ctx context.Context, volumeName string, requester operationRequester, operationFunc func(context.Context) error, isReplicaGarbageCollection bool) {
+func (c *SharedState) addToOperationQueue(ctx context.Context, volumeName string, requester operationRequester, operationFunc func(context.Context) error, isReplicaGarbageCollection bool) {
 	// It is expected for caller to provide parent workflow via context.
 	// The child workflow will be created below and be fed to the queued operation for necessary workflow information.
 	ctx, w := workflow.New(ctx, workflow.WithDetails(consts.VolumeNameLabel, volumeName))
@@ -218,7 +230,7 @@ func (c *sharedState) addToOperationQueue(ctx context.Context, volumeName string
 	}
 }
 
-func (c *sharedState) deleteOperationQueue(volumeName string) {
+func (c *SharedState) deleteOperationQueue(volumeName string) {
 	v, ok := c.volumeOperationQueues.LoadAndDelete(volumeName)
 	// if operation queue has already been deleted, return
 	if !ok {
@@ -231,7 +243,7 @@ func (c *sharedState) deleteOperationQueue(volumeName string) {
 	lockable.Unlock()
 }
 
-func (c *sharedState) closeOperationQueue(volumeName string) func() {
+func (c *SharedState) closeOperationQueue(volumeName string) func() {
 	v, ok := c.volumeOperationQueues.Load(volumeName)
 	if !ok {
 		return nil
@@ -244,7 +256,7 @@ func (c *sharedState) closeOperationQueue(volumeName string) func() {
 	return lockable.Unlock
 }
 
-func (c *sharedState) addToGcExclusionList(volumeName string, target operationRequester) {
+func (c *SharedState) addToGcExclusionList(volumeName string, target operationRequester) {
 	v, ok := c.volumeOperationQueues.Load(volumeName)
 	if !ok {
 		return
@@ -255,7 +267,7 @@ func (c *sharedState) addToGcExclusionList(volumeName string, target operationRe
 	lockable.Unlock()
 }
 
-func (c *sharedState) removeFromExclusionList(volumeName string, target operationRequester) {
+func (c *SharedState) removeFromExclusionList(volumeName string, target operationRequester) {
 	v, ok := c.volumeOperationQueues.Load(volumeName)
 	if !ok {
 		return
@@ -266,7 +278,7 @@ func (c *sharedState) removeFromExclusionList(volumeName string, target operatio
 	lockable.Unlock()
 }
 
-func (c *sharedState) dequeueGarbageCollection(volumeName string) {
+func (c *SharedState) dequeueGarbageCollection(volumeName string) {
 	v, ok := c.volumeOperationQueues.Load(volumeName)
 	if !ok {
 		return
@@ -285,7 +297,7 @@ func (c *sharedState) dequeueGarbageCollection(volumeName string) {
 	lockable.Unlock()
 }
 
-func (c *sharedState) getVolumesFromPod(ctx context.Context, podName string) ([]string, error) {
+func (c *SharedState) getVolumesFromPod(ctx context.Context, podName string) ([]string, error) {
 	w, _ := workflow.GetWorkflowFromContext(ctx)
 
 	var claims []string
@@ -317,7 +329,7 @@ func (c *sharedState) getVolumesFromPod(ctx context.Context, podName string) ([]
 	return volumes, nil
 }
 
-func (c *sharedState) getPodsFromVolume(ctx context.Context, client client.Client, volumeName string) ([]v1.Pod, error) {
+func (c *SharedState) getPodsFromVolume(ctx context.Context, client client.Client, volumeName string) ([]v1.Pod, error) {
 	w, _ := workflow.GetWorkflowFromContext(ctx)
 	pods, err := c.getPodNamesFromVolume(volumeName)
 	if err != nil {
@@ -339,7 +351,7 @@ func (c *sharedState) getPodsFromVolume(ctx context.Context, client client.Clien
 	return podObjs, nil
 }
 
-func (c *sharedState) getPodNamesFromVolume(volumeName string) ([]string, error) {
+func (c *SharedState) getPodNamesFromVolume(volumeName string) ([]string, error) {
 	v, ok := c.volumeToClaimMap.Load(volumeName)
 	if !ok {
 		return nil, status.Errorf(codes.NotFound, "no bound persistent volume claim was found for AzVolume (%s)", volumeName)
@@ -377,7 +389,7 @@ func (c *sharedState) getPodNamesFromVolume(volumeName string) ([]string, error)
 	return pods, nil
 }
 
-func (c *sharedState) getVolumesForPodObjs(ctx context.Context, pods []v1.Pod) ([]string, error) {
+func (c *SharedState) getVolumesForPodObjs(ctx context.Context, pods []v1.Pod) ([]string, error) {
 	volumes := []string{}
 	for _, pod := range pods {
 		podVolumes, err := c.getVolumesFromPod(ctx, getQualifiedName(pod.Namespace, pod.Name))
@@ -389,7 +401,7 @@ func (c *sharedState) getVolumesForPodObjs(ctx context.Context, pods []v1.Pod) (
 	return volumes, nil
 }
 
-func (c *sharedState) addPod(ctx context.Context, pod *v1.Pod, updateOption updateWithLock) error {
+func (c *SharedState) addPod(ctx context.Context, pod *v1.Pod, updateOption updateWithLock) error {
 	w, _ := workflow.GetWorkflowFromContext(ctx)
 	podKey := getQualifiedName(pod.Namespace, pod.Name)
 	v, _ := c.podLocks.LoadOrStore(podKey, &sync.Mutex{})
@@ -463,7 +475,7 @@ func (c *sharedState) addPod(ctx context.Context, pod *v1.Pod, updateOption upda
 	return nil
 }
 
-func (c *sharedState) deletePod(ctx context.Context, podKey string) error {
+func (c *SharedState) deletePod(ctx context.Context, podKey string) error {
 	w, _ := workflow.GetWorkflowFromContext(ctx)
 	value, exists := c.podLocks.LoadAndDelete(podKey)
 	if !exists {
@@ -522,17 +534,17 @@ func (c *sharedState) deletePod(ctx context.Context, podKey string) error {
 	return nil
 }
 
-func (c *sharedState) addVolumeAndClaim(azVolumeName, pvName, pvClaimName string) {
+func (c *SharedState) addVolumeAndClaim(azVolumeName, pvName, pvClaimName string) {
 	c.pvToVolumeMap.Store(pvName, azVolumeName)
 	c.volumeToClaimMap.Store(azVolumeName, pvClaimName)
 	c.claimToVolumeMap.Store(pvClaimName, azVolumeName)
 }
 
-func (c *sharedState) deletePV(pvName string) {
+func (c *SharedState) deletePV(pvName string) {
 	c.pvToVolumeMap.Delete(pvName)
 }
 
-func (c *sharedState) deleteVolumeAndClaim(azVolumeName string) {
+func (c *SharedState) deleteVolumeAndClaim(azVolumeName string) {
 	v, ok := c.volumeToClaimMap.LoadAndDelete(azVolumeName)
 	if ok {
 		pvClaimName := v.(string)
@@ -540,20 +552,20 @@ func (c *sharedState) deleteVolumeAndClaim(azVolumeName string) {
 	}
 }
 
-func (c *sharedState) markVolumeVisited(azVolumeName string) {
+func (c *SharedState) markVolumeVisited(azVolumeName string) {
 	c.visitedVolumes.Store(azVolumeName, struct{}{})
 }
 
-func (c *sharedState) unmarkVolumeVisited(azVolumeName string) {
+func (c *SharedState) unmarkVolumeVisited(azVolumeName string) {
 	c.visitedVolumes.Delete(azVolumeName)
 }
 
-func (c *sharedState) isVolumeVisited(azVolumeName string) bool {
+func (c *SharedState) isVolumeVisited(azVolumeName string) bool {
 	_, visited := c.visitedVolumes.Load(azVolumeName)
 	return visited
 }
 
-func (c *sharedState) getRankedNodesForReplicaAttachments(ctx context.Context, volumes []string, podObjs []v1.Pod) ([]string, error) {
+func (c *SharedState) getRankedNodesForReplicaAttachments(ctx context.Context, volumes []string, podObjs []v1.Pod) ([]string, error) {
 	var err error
 	ctx, w := workflow.New(ctx)
 	defer func() { w.Finish(err) }()
@@ -581,7 +593,7 @@ func (c *sharedState) getRankedNodesForReplicaAttachments(ctx context.Context, v
 	return selectedNodes, nil
 }
 
-func (c *sharedState) filterNodes(ctx context.Context, nodes []v1.Node, pods []v1.Pod, volumes []string) ([]v1.Node, error) {
+func (c *SharedState) filterNodes(ctx context.Context, nodes []v1.Node, pods []v1.Pod, volumes []string) ([]v1.Node, error) {
 	var err error
 	ctx, w := workflow.New(ctx)
 	defer func() { w.Finish(err) }()
@@ -629,7 +641,7 @@ func (c *sharedState) filterNodes(ctx context.Context, nodes []v1.Node, pods []v
 	return filteredNodes, nil
 }
 
-func (c *sharedState) prioritizeNodes(ctx context.Context, pods []v1.Pod, volumes []string, nodes []v1.Node) []v1.Node {
+func (c *SharedState) prioritizeNodes(ctx context.Context, pods []v1.Pod, volumes []string, nodes []v1.Node) []v1.Node {
 	ctx, w := workflow.New(ctx)
 	defer w.Finish(nil)
 
@@ -669,7 +681,7 @@ func (c *sharedState) prioritizeNodes(ctx context.Context, pods []v1.Pod, volume
 	return nodes[:len(nodes)-numFiltered]
 }
 
-func (c *sharedState) filterAndSortNodes(ctx context.Context, nodes []v1.Node, pods []v1.Pod, volumes []string) ([]v1.Node, error) {
+func (c *SharedState) filterAndSortNodes(ctx context.Context, nodes []v1.Node, pods []v1.Pod, volumes []string) ([]v1.Node, error) {
 	var err error
 	ctx, w := workflow.New(ctx)
 	defer func() { w.Finish(err) }()
@@ -684,7 +696,7 @@ func (c *sharedState) filterAndSortNodes(ctx context.Context, nodes []v1.Node, p
 	return sortedNodes, nil
 }
 
-func (c *sharedState) selectNodesPerTopology(ctx context.Context, nodes []v1.Node, pods []v1.Pod, volumes []string) ([]v1.Node, error) {
+func (c *SharedState) selectNodesPerTopology(ctx context.Context, nodes []v1.Node, pods []v1.Pod, volumes []string) ([]v1.Node, error) {
 	var err error
 	ctx, w := workflow.New(ctx)
 	defer func() { w.Finish(err) }()
@@ -828,7 +840,7 @@ func (c *sharedState) selectNodesPerTopology(ctx context.Context, nodes []v1.Nod
 	return selectedNodes[:min(len(selectedNodes), numReplicas)], nil
 }
 
-func (c *sharedState) getNodesWithReplica(ctx context.Context, volumeName string) ([]string, error) {
+func (c *SharedState) getNodesWithReplica(ctx context.Context, volumeName string) ([]string, error) {
 	w, _ := workflow.GetWorkflowFromContext(ctx)
 	w.Logger().V(5).Infof("Getting nodes with replica AzVolumeAttachments for volume %s.", volumeName)
 	azVolumeAttachments, err := azureutils.GetAzVolumeAttachmentsForVolume(ctx, c.cachedClient, volumeName, azureutils.ReplicaOnly)
@@ -845,7 +857,7 @@ func (c *sharedState) getNodesWithReplica(ctx context.Context, volumeName string
 	return nodes, nil
 }
 
-func (c *sharedState) createReplicaAzVolumeAttachment(ctx context.Context, volumeID, node string, volumeContext map[string]string) error {
+func (c *SharedState) createReplicaAzVolumeAttachment(ctx context.Context, volumeID, node string, volumeContext map[string]string) error {
 	var err error
 	ctx, w := workflow.New(ctx, workflow.WithDetails(consts.NodeNameLabel, node))
 	defer func() { w.Finish(err) }()
@@ -894,7 +906,7 @@ func (c *sharedState) createReplicaAzVolumeAttachment(ctx context.Context, volum
 	return nil
 }
 
-func (c *sharedState) cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azVolumeName string, caller operationRequester, role azureutils.AttachmentRoleMode, deleteMode cleanUpMode) ([]azdiskv1beta2.AzVolumeAttachment, error) {
+func (c *SharedState) cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azVolumeName string, caller operationRequester, role azureutils.AttachmentRoleMode, deleteMode cleanUpMode) ([]azdiskv1beta2.AzVolumeAttachment, error) {
 	var err error
 	ctx, w := workflow.New(ctx, workflow.WithDetails(consts.VolumeNameLabel, azVolumeName))
 	defer func() { w.Finish(err) }()
@@ -919,7 +931,7 @@ func (c *sharedState) cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azV
 	return attachments, nil
 }
 
-func (c *sharedState) cleanUpAzVolumeAttachmentByNode(ctx context.Context, azDriverNodeName string, caller operationRequester, role azureutils.AttachmentRoleMode, deleteMode cleanUpMode) ([]azdiskv1beta2.AzVolumeAttachment, error) {
+func (c *SharedState) cleanUpAzVolumeAttachmentByNode(ctx context.Context, azDriverNodeName string, caller operationRequester, role azureutils.AttachmentRoleMode, deleteMode cleanUpMode) ([]azdiskv1beta2.AzVolumeAttachment, error) {
 	var err error
 	ctx, w := workflow.New(ctx, workflow.WithDetails(consts.NodeNameLabel, azDriverNodeName))
 	defer func() { w.Finish(err) }()
@@ -964,7 +976,7 @@ func (c *sharedState) cleanUpAzVolumeAttachmentByNode(ctx context.Context, azDri
 	return attachments.Items, nil
 }
 
-func (c *sharedState) cleanUpAzVolumeAttachments(ctx context.Context, attachments []azdiskv1beta2.AzVolumeAttachment, cleanUp cleanUpMode, caller operationRequester) error {
+func (c *SharedState) cleanUpAzVolumeAttachments(ctx context.Context, attachments []azdiskv1beta2.AzVolumeAttachment, cleanUp cleanUpMode, caller operationRequester) error {
 	var err error
 	w, _ := workflow.GetWorkflowFromContext(ctx)
 
@@ -1002,7 +1014,7 @@ func (c *sharedState) cleanUpAzVolumeAttachments(ctx context.Context, attachment
 	return nil
 }
 
-func (c *sharedState) createReplicaRequestsQueue() {
+func (c *SharedState) createReplicaRequestsQueue() {
 	c.priorityReplicaRequestsQueue = &VolumeReplicaRequestsPriorityQueue{}
 	c.priorityReplicaRequestsQueue.queue = cache.NewHeap(
 		func(obj interface{}) (string, error) {
@@ -1014,7 +1026,7 @@ func (c *sharedState) createReplicaRequestsQueue() {
 }
 
 ///Removes replica requests from the priority queue and adds to operation queue.
-func (c *sharedState) tryCreateFailedReplicas(ctx context.Context, requestor operationRequester) {
+func (c *SharedState) tryCreateFailedReplicas(ctx context.Context, requestor operationRequester) {
 	if atomic.SwapInt32(&c.processingReplicaRequestQueue, 1) == 0 {
 		ctx, w := workflow.New(ctx)
 		defer w.Finish(nil)
@@ -1034,7 +1046,7 @@ func (c *sharedState) tryCreateFailedReplicas(ctx context.Context, requestor ope
 	}
 }
 
-func (c *sharedState) garbageCollectReplicas(ctx context.Context, volumeName string, requester operationRequester) {
+func (c *SharedState) garbageCollectReplicas(ctx context.Context, volumeName string, requester operationRequester) {
 	c.addToOperationQueue(
 		ctx,
 		volumeName,
@@ -1052,7 +1064,7 @@ func (c *sharedState) garbageCollectReplicas(ctx context.Context, volumeName str
 	)
 }
 
-func (c *sharedState) removeGarbageCollection(volumeName string) {
+func (c *SharedState) removeGarbageCollection(volumeName string) {
 	v, ok := c.cleanUpMap.LoadAndDelete(volumeName)
 	if ok {
 		cancelFunc := v.(context.CancelFunc)
@@ -1062,7 +1074,7 @@ func (c *sharedState) removeGarbageCollection(volumeName string) {
 	c.dequeueGarbageCollection(volumeName)
 }
 
-func (c *sharedState) manageReplicas(ctx context.Context, volumeName string) error {
+func (c *SharedState) manageReplicas(ctx context.Context, volumeName string) error {
 	var err error
 	ctx, w := workflow.New(ctx)
 	defer func() { w.Finish(err) }()
@@ -1105,7 +1117,7 @@ func (c *sharedState) manageReplicas(ctx context.Context, volumeName string) err
 	}
 	return nil
 }
-func (c *sharedState) createReplicas(ctx context.Context, remainingReplicas int, volumeName, volumeID string, volumeContext map[string]string) error {
+func (c *SharedState) createReplicas(ctx context.Context, remainingReplicas int, volumeName, volumeID string, volumeContext map[string]string) error {
 	var err error
 	ctx, w := workflow.New(ctx)
 	defer func() { w.Finish(err) }()
@@ -1161,7 +1173,7 @@ func (c *sharedState) createReplicas(ctx context.Context, remainingReplicas int,
 	return nil
 }
 
-func (c *sharedState) getNodesForReplica(ctx context.Context, volumeName string, pods []v1.Pod, numReplica int) ([]string, error) {
+func (c *SharedState) getNodesForReplica(ctx context.Context, volumeName string, pods []v1.Pod, numReplica int) ([]string, error) {
 	var err error
 	ctx, w := workflow.New(ctx)
 	defer func() { w.Finish(err) }()

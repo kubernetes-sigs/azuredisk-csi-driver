@@ -45,10 +45,10 @@ import (
 
 // Struct for the reconciler
 type ReconcilePV struct {
+	*SharedState
 	logger logr.Logger
 	// retryMap allows volumeAttachment controller to retry Get operation for AzVolume in case the CRI has not been created yet
 	controllerRetryInfo *retryInfo
-	*sharedState
 }
 
 // Implement reconcile.Reconciler so the controller can reconcile objects
@@ -249,11 +249,11 @@ func (r *ReconcilePV) Recover(ctx context.Context) error {
 	return nil
 }
 
-func NewPVController(mgr manager.Manager, controllerSharedState *sharedState) (*ReconcilePV, error) {
+func NewPVController(mgr manager.Manager, controllerSharedState *SharedState) (*ReconcilePV, error) {
 	logger := mgr.GetLogger().WithValues("controller", "pv")
 	reconciler := ReconcilePV{
 		controllerRetryInfo: newRetryInfo(),
-		sharedState:         controllerSharedState,
+		SharedState:         controllerSharedState,
 		logger:              logger,
 	}
 
