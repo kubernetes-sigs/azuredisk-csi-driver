@@ -250,7 +250,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 Applicable to any Kubernetes cluster without the Azure Disk CSI Driver V1 installed. If V1 is installed, proceed to side-by-side installation instructions below. The V1 driver is installed by default in AKS clusters with Kubernetes version 1.21 and later.
 
 ```console
-helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v2.0.0-beta.5
+helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v2.0.0-beta.6
 ```
 
 ### install Azure Disk CSI Driver V2 side-by-side with Azure Disk CSI Driver V1 (Preview)
@@ -259,8 +259,8 @@ Since VolumeSnapshot CRDs and other components are created first when V1 driver 
 
 ```console
 helm install azuredisk-csi-driver-v2 azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system \
-  --version v2.0.0-beta.5 \
-  --values https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts/v2.0.0-beta.5/azuredisk-csi-driver/side-by-side-values.yaml
+  --version v2.0.0-beta.6 \
+  --values https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts/v2.0.0-beta.6/azuredisk-csi-driver/side-by-side-values.yaml
 ```
 
 > NOTE: When installing the V2 driver side-by-side with the V1 driver in an AKS cluster, you will need to grant the agentpool service principal or managed identity `Contributor` access to the resource groups used to store managed disks. By default, this is the resource group prefixed by `MC_` corresponding to your AKS cluster.
@@ -282,7 +282,7 @@ schedulerExtender:
       monitor:
         enabled: true
 EOF
-helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v2.0.0-beta.5 --values /tmp/azuredisk-csi-driver-overrides.yaml
+helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v2.0.0-beta.6 --values /tmp/azuredisk-csi-driver-overrides.yaml
 ```
 
 ### upgrade Azure Disk CSI Driver V1 to V2 (Preview)
@@ -290,7 +290,7 @@ helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --na
 This assumes you have already installed Azure Disk CSI Driver V1 to a non-AKS cluster, e.g. one created using [aks-engine](https://github.com/Azure/aks-engine) or [Cluster API Provider for Azure (CAPZ)](https://github.com/kubernetes-sigs/cluster-api-provider-azure).
 
 ```console
-helm upgrade azure-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v2.0.0-beta.5
+helm upgrade azure-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v2.0.0-beta.6
 ```
 
 ---
@@ -303,12 +303,12 @@ In addition to the parameters supported by the V1 driver, Azure Disk CSI driver 
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `image.azuredisk.tag` | Azure Disk CSI Driver V2 docker image tag | `v2.0.0-beta.5` |
+| `image.azuredisk.tag` | Azure Disk CSI Driver V2 docker image tag | `v2.0.0-beta.6` |
 | `image.curl.repository` | curl docker image | `docker.io/curlimages/curl` |
 | `image.curl.tag` | curl docker image tag | `latest` |
 | `image.curl.pullPolicy` | curl docker image pull policy | `IfNotPresent` |
 | `image.schedulerExtender.repository` | Azure Disk CSI Driver V2 Scheduler Extender docker image | `/oss/csi/azdiskschedulerextender-csi` |
-| `image.schedulerExtender.tag` | Azure Disk CSI Driver V2 Scheduler Extender docker image tag | `v2.0.0-beta.5` |
+| `image.schedulerExtender.tag` | Azure Disk CSI Driver V2 Scheduler Extender docker image tag | `v2.0.0-beta.6` |
 | `image.schedulerExtender.pullPolicy` | Azure Disk CSI Driver V2 Scheduler Extender docker image pull policy | `IfNotPresent` |
 | `image.kubeScheduler.repository` | kube-scheduler docker image | `/oss/kubernetes/kube-scheduler` |
 | `image.kubeScheduler.tag` | kube-scheduler docker image tag - this version should be the same as the Kubernetes cluster version | `v1.21.2` |
