@@ -42,16 +42,16 @@ import (
 
 // Struct for the reconciler
 type ReconcilePod struct {
-	logger                logr.Logger
-	namespace             string
-	controllerSharedState *SharedState
+	*SharedState
+	logger    logr.Logger
+	namespace string
 }
 
 // Implement reconcile.Reconciler so the controller can reconcile objects
 var _ reconcile.Reconciler = &ReconcilePod{}
 
 func (r *ReconcilePod) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
-	if !r.controllerSharedState.isRecoveryComplete() {
+	if !r.isRecoveryComplete() {
 		return reconcile.Result{Requeue: true}, nil
 	}
 
@@ -59,11 +59,11 @@ func (r *ReconcilePod) Reconcile(ctx context.Context, request reconcile.Request)
 	podKey := getQualifiedName(request.Namespace, request.Name)
 	logger := r.logger.WithValues(consts.PodNameKey, request.Name)
 
-	if err := r.controllerSharedState.cachedClient.Get(ctx, request.NamespacedName, &pod); err != nil {
+	if err := r.cachedClient.Get(ctx, request.NamespacedName, &pod); err != nil {
 		// if the pod has been deleted, remove entry from podToClaimsMap and claimToPodMap
 		if errors.IsNotFound(err) {
 			logger.V(5).Info("No need to reconcile. Pod was deleted.")
-			if err := r.controllerSharedState.deletePod(ctx, podKey); err != nil {
+			if err := r.deletePod(ctx, podKey); err != nil {
 				return reconcile.Result{Requeue: true}, err
 			}
 			return reconcile.Result{}, nil
@@ -71,7 +71,7 @@ func (r *ReconcilePod) Reconcile(ctx context.Context, request reconcile.Request)
 		r.logger.Error(err, fmt.Sprintf("failed to get pod (%s)", podKey))
 		return reconcile.Result{Requeue: true}, err
 	}
-	if err := r.controllerSharedState.addPod(ctx, &pod, acquireLock); err != nil {
+	if err := r.addPod(ctx, &pod, acquireLock); err != nil {
 		return reconcile.Result{Requeue: true}, err
 	}
 
@@ -91,7 +91,7 @@ func (r *ReconcilePod) createReplicas(ctx context.Context, podKey string) error 
 	w.Logger().V(5).Infof("Creating replicas for pod %s.", podKey)
 
 	var volumes []string
-	volumes, err = r.controllerSharedState.getVolumesFromPod(ctx, podKey)
+	volumes, err = r.getVolumesFromPod(ctx, podKey)
 	if err != nil {
 		w.Logger().V(5).Errorf(err, "failed to get volumes for pod %s", podKey)
 		return err
@@ -101,7 +101,7 @@ func (r *ReconcilePod) createReplicas(ctx context.Context, podKey string) error 
 	// creating replica attachments for each volume
 	for _, volume := range volumes {
 		volume := volume
-		r.controllerSharedState.addToOperationQueue(
+		r.addToOperationQueue(
 			ctx,
 			volume,
 			pod,
@@ -109,7 +109,7 @@ func (r *ReconcilePod) createReplicas(ctx context.Context, podKey string) error 
 				var err error
 				var azVolume *azdiskv1beta2.AzVolume
 				w, _ := workflow.GetWorkflowFromContext(ctx)
-				azVolume, err = azureutils.GetAzVolume(ctx, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, volume, r.controllerSharedState.objectNamespace, true)
+				azVolume, err = azureutils.GetAzVolume(ctx, r.cachedClient, r.azClient, volume, r.objectNamespace, true)
 				if err != nil {
 					w.Logger().V(5).Errorf(err, "failed to get AzVolumes for pod %s", podKey)
 					return err
@@ -121,21 +121,21 @@ func (r *ReconcilePod) createReplicas(ctx context.Context, podKey string) error 
 				}
 
 				// get all replica attachments for the given volume
-				if r.controllerSharedState.isVolumeVisited(volume) {
+				if r.isVolumeVisited(volume) {
 					w.Logger().V(5).Infof("No need to create replica attachment for volume (%s). Replica controller is responsible for it", volume)
 					return nil
 				}
 
-				err = r.controllerSharedState.manageReplicas(ctx, azVolume.Spec.VolumeName)
+				err = r.manageReplicas(ctx, azVolume.Spec.VolumeName)
 				if err != nil {
 					err = status.Errorf(codes.Internal, "failed to create replica AzVolumeAttachment for pod %s and volume %s: %v", podKey, volume, err)
 					return err
 				}
 
 				// once replica attachment batch is created by pod controller, future replica reconciliation needs to be handled by replica controller
-				r.controllerSharedState.markVolumeVisited(volume)
+				r.markVolumeVisited(volume)
 				// remove replica controller from the blacklist
-				r.controllerSharedState.removeFromExclusionList(volume, replica)
+				r.removeFromExclusionList(volume, replica)
 				return nil
 			},
 			false,
@@ -152,7 +152,7 @@ func (r *ReconcilePod) Recover(ctx context.Context) error {
 	w.Logger().V(5).Info("Recover pod state.")
 	// recover replica AzVolumeAttachments
 	var pods corev1.PodList
-	if err = r.controllerSharedState.cachedClient.List(ctx, &pods, &client.ListOptions{}); err != nil {
+	if err = r.cachedClient.List(ctx, &pods, &client.ListOptions{}); err != nil {
 		err = status.Errorf(codes.Internal, "failed to list pods: %v", err)
 		return err
 	}
@@ -160,7 +160,7 @@ func (r *ReconcilePod) Recover(ctx context.Context) error {
 	for _, pod := range pods.Items {
 		// update the shared map
 		podKey := getQualifiedName(pod.Namespace, pod.Name)
-		if err := r.controllerSharedState.addPod(ctx, &pod, skipLock); err != nil {
+		if err := r.addPod(ctx, &pod, skipLock); err != nil {
 			w.Logger().V(5).Infof("failed to add necessary components for pod (%s)", podKey)
 			continue
 		}
@@ -175,8 +175,8 @@ func (r *ReconcilePod) Recover(ctx context.Context) error {
 func NewPodController(mgr manager.Manager, controllerSharedState *SharedState) (*ReconcilePod, error) {
 	logger := mgr.GetLogger().WithValues("controller", "pod")
 	reconciler := ReconcilePod{
-		controllerSharedState: controllerSharedState,
-		logger:                logger,
+		SharedState: controllerSharedState,
+		logger:      logger,
 	}
 	c, err := controller.New("pod-controller", mgr, controller.Options{
 		MaxConcurrentReconciles: 10,

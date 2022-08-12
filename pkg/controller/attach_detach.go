@@ -63,12 +63,12 @@ Attach Detach controller is responsible for
  3. detaching volume upon deletions marked with certain annotations
 */
 type ReconcileAttachDetach struct {
-	logger                logr.Logger
-	crdDetacher           CrdDetacher
-	cloudDiskAttacher     CloudDiskAttachDetacher
-	controllerSharedState *SharedState
-	stateLock             *sync.Map
-	retryInfo             *retryInfo
+	*SharedState
+	logger            logr.Logger
+	crdDetacher       CrdDetacher
+	cloudDiskAttacher CloudDiskAttachDetacher
+	stateLock         *sync.Map
+	retryInfo         *retryInfo
 }
 
 var _ reconcile.Reconciler = &ReconcileAttachDetach{}
@@ -86,14 +86,14 @@ var allowedTargetAttachmentStates = map[string][]string{
 }
 
 func (r *ReconcileAttachDetach) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
-	if !r.controllerSharedState.isRecoveryComplete() {
+	if !r.isRecoveryComplete() {
 		return reconcile.Result{Requeue: true}, nil
 	}
 
-	azVolumeAttachment, err := azureutils.GetAzVolumeAttachment(ctx, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, request.Name, request.Namespace, true)
+	azVolumeAttachment, err := azureutils.GetAzVolumeAttachment(ctx, r.cachedClient, r.azClient, request.Name, request.Namespace, true)
 	// if object is not found, it means the object has been deleted. Log the deletion and do not requeue
 	if errors.IsNotFound(err) {
-		r.controllerSharedState.azVolumeAttachmentToVaMap.Delete(request.Name)
+		r.azVolumeAttachmentToVaMap.Delete(request.Name)
 		return reconcileReturnOnSuccess(request.Name, r.retryInfo)
 	} else if err != nil {
 		azVolumeAttachment.Name = request.Name
@@ -152,7 +152,7 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 	}
 
 	var azVolume *azdiskv1beta2.AzVolume
-	if azVolume, err = azureutils.GetAzVolume(ctx, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, strings.ToLower(azVolumeAttachment.Spec.VolumeName), r.controllerSharedState.objectNamespace, true); err != nil {
+	if azVolume, err = azureutils.GetAzVolume(ctx, r.cachedClient, r.azClient, strings.ToLower(azVolumeAttachment.Spec.VolumeName), r.objectNamespace, true); err != nil {
 		if errors.IsNotFound(err) {
 			w.Logger().V(5).Infof("Aborting attach operation for AzVolumeAttachment (%s): AzVolume (%s) not found", azVolumeAttachment.Name, azVolumeAttachment.Spec.VolumeName)
 			err = nil
@@ -173,7 +173,7 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 	}
 
 	var updatedObj client.Object
-	if updatedObj, err = azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
+	if updatedObj, err = azureutils.UpdateCRIWithRetry(ctx, nil, r.cachedClient, r.azClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
 		return err
 	}
 	azVolumeAttachment = updatedObj.(*azdiskv1beta2.AzVolumeAttachment)
@@ -196,7 +196,7 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 		var pods []v1.Pod
 		if azVolumeAttachment.Spec.RequestedRole == azdiskv1beta2.ReplicaRole {
 			var err error
-			pods, err = r.controllerSharedState.getPodsFromVolume(goCtx, r.controllerSharedState.cachedClient, azVolumeAttachment.Spec.VolumeName)
+			pods, err = r.getPodsFromVolume(goCtx, r.cachedClient, azVolumeAttachment.Spec.VolumeName)
 			if err != nil {
 				goWorkflow.Logger().Error(err, "failed to list pods for volume")
 			}
@@ -220,7 +220,7 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 		handleError = func() {
 			if len(pods) > 0 {
 				for _, pod := range pods {
-					r.controllerSharedState.eventRecorder.Eventf(pod.DeepCopyObject(), v1.EventTypeWarning, consts.ReplicaAttachmentFailedEvent, "Replica mount for volume %s failed to be attached to node %s with error: %v", azVolumeAttachment.Spec.VolumeName, azVolumeAttachment.Spec.NodeName, attachErr)
+					r.eventRecorder.Eventf(pod.DeepCopyObject(), v1.EventTypeWarning, consts.ReplicaAttachmentFailedEvent, "Replica mount for volume %s failed to be attached to node %s with error: %v", azVolumeAttachment.Spec.VolumeName, azVolumeAttachment.Spec.NodeName, attachErr)
 				}
 			}
 
@@ -232,7 +232,7 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 				goWorkflow.Logger().Infof("Dangling attach detected for %s", currentNodeName)
 
 				// check if AzVolumeAttachment exists for the existing attachment
-				_, err := r.controllerSharedState.azClient.DiskV1beta2().AzVolumeAttachments(r.controllerSharedState.objectNamespace).Get(cloudCtx, currentAttachmentName, metav1.GetOptions{})
+				_, err := r.azClient.DiskV1beta2().AzVolumeAttachments(r.objectNamespace).Get(cloudCtx, currentAttachmentName, metav1.GetOptions{})
 				var detachErr error
 				if errors.IsNotFound(err) {
 					// AzVolumeAttachment doesn't exist so we only need to detach disk from cloud
@@ -265,14 +265,14 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 				return uerr
 			}
 			//nolint:contextcheck // final status update of the CRI must occur even when the current context's deadline passes.
-			_, _ = azureutils.UpdateCRIWithRetry(goCtx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry, azureutils.UpdateCRIStatus)
+			_, _ = azureutils.UpdateCRIWithRetry(goCtx, nil, r.cachedClient, r.azClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry, azureutils.UpdateCRIStatus)
 		}
 		handleSuccess = func(asyncComplete bool) {
 			// Publish event to indicate attachment success
 			if asyncComplete {
 				if len(pods) > 0 {
 					for _, pod := range pods {
-						r.controllerSharedState.eventRecorder.Eventf(pod.DeepCopyObject(), v1.EventTypeNormal, consts.ReplicaAttachmentSuccessEvent, "Replica mount for volume %s successfully attached to node %s", azVolumeAttachment.Spec.VolumeName, azVolumeAttachment.Spec.NodeName)
+						r.eventRecorder.Eventf(pod.DeepCopyObject(), v1.EventTypeNormal, consts.ReplicaAttachmentSuccessEvent, "Replica mount for volume %s successfully attached to node %s", azVolumeAttachment.Spec.VolumeName, azVolumeAttachment.Spec.NodeName)
 					}
 				}
 			}
@@ -290,7 +290,7 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 			if asyncComplete && azVolumeAttachment.Spec.RequestedRole == azdiskv1beta2.PrimaryRole {
 				_ = r.updateVolumeAttachmentWithResult(goCtx, azVolumeAttachment)
 			}
-			updatedObj, _ = azureutils.UpdateCRIWithRetry(goCtx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry, azureutils.UpdateCRIStatus)
+			updatedObj, _ = azureutils.UpdateCRIWithRetry(goCtx, nil, r.cachedClient, r.azClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry, azureutils.UpdateCRIStatus)
 			azVolumeAttachment = updatedObj.(*azdiskv1beta2.AzVolumeAttachment)
 		}
 
@@ -322,7 +322,7 @@ func (r *ReconcileAttachDetach) triggerDetach(ctx context.Context, azVolumeAttac
 		}
 
 		var updatedObj client.Object
-		if updatedObj, err = azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
+		if updatedObj, err = azureutils.UpdateCRIWithRetry(ctx, nil, r.cachedClient, r.azClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
 			return err
 		}
 		azVolumeAttachment = updatedObj.(*azdiskv1beta2.AzVolumeAttachment)
@@ -359,7 +359,7 @@ func (r *ReconcileAttachDetach) triggerDetach(ctx context.Context, azVolumeAttac
 				updateMode = azureutils.UpdateCRI
 			}
 			//nolint:contextcheck // final status update of the CRI must occur even when the current context's deadline passes.
-			_, _ = azureutils.UpdateCRIWithRetry(goCtx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry, updateMode)
+			_, _ = azureutils.UpdateCRIWithRetry(goCtx, nil, r.cachedClient, r.azClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry, updateMode)
 		}()
 		<-waitCh
 	} else {
@@ -369,7 +369,7 @@ func (r *ReconcileAttachDetach) triggerDetach(ctx context.Context, azVolumeAttac
 			_ = r.deleteFinalizer(azv)
 			return nil
 		}
-		if _, err = azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRI); err != nil {
+		if _, err = azureutils.UpdateCRIWithRetry(ctx, nil, r.cachedClient, r.azClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRI); err != nil {
 			return err
 		}
 	}
@@ -391,7 +391,7 @@ func (r *ReconcileAttachDetach) promote(ctx context.Context, azVolumeAttachment 
 		_ = updateRole(azv, azdiskv1beta2.PrimaryRole)
 		return nil
 	}
-	if _, err = azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
+	if _, err = azureutils.UpdateCRIWithRetry(ctx, nil, r.cachedClient, r.azClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
 		return err
 	}
 	return nil
@@ -411,7 +411,7 @@ func (r *ReconcileAttachDetach) demote(ctx context.Context, azVolumeAttachment *
 		return nil
 	}
 
-	if _, err = azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
+	if _, err = azureutils.UpdateCRIWithRetry(ctx, nil, r.cachedClient, r.azClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
 		return err
 	}
 	return nil
@@ -419,7 +419,7 @@ func (r *ReconcileAttachDetach) demote(ctx context.Context, azVolumeAttachment *
 
 func (r *ReconcileAttachDetach) updateVolumeAttachmentWithResult(ctx context.Context, azVolumeAttachment *azdiskv1beta2.AzVolumeAttachment) error {
 	var vaName string
-	vaName, err := r.controllerSharedState.waitForVolumeAttachmentName(ctx, azVolumeAttachment)
+	vaName, err := r.waitForVolumeAttachmentName(ctx, azVolumeAttachment)
 	if err != nil {
 		return err
 	}
@@ -434,7 +434,7 @@ func (r *ReconcileAttachDetach) updateVolumeAttachmentWithResult(ctx context.Con
 		return nil
 	}
 	va := storagev1.VolumeAttachment{ObjectMeta: metav1.ObjectMeta{Name: vaName}}
-	_, err = azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, &va, vaUpdateFunc, consts.ForcedUpdateMaxNetRetry, azureutils.UpdateCRIStatus)
+	_, err = azureutils.UpdateCRIWithRetry(ctx, nil, r.cachedClient, r.azClient, &va, vaUpdateFunc, consts.ForcedUpdateMaxNetRetry, azureutils.UpdateCRIStatus)
 	return err
 }
 
@@ -555,7 +555,7 @@ func updateState(azVolumeAttachment *azdiskv1beta2.AzVolumeAttachment, state azd
 func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, syncedVolumeAttachments map[string]bool, volumesToSync map[string]bool) (map[string]bool, map[string]bool, error) {
 	w, _ := workflow.GetWorkflowFromContext(ctx)
 	// Get all volumeAttachments
-	volumeAttachments, err := r.controllerSharedState.kubeClient.StorageV1().VolumeAttachments().List(ctx, metav1.ListOptions{})
+	volumeAttachments, err := r.kubeClient.StorageV1().VolumeAttachments().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return syncedVolumeAttachments, volumesToSync, err
 	}
@@ -573,19 +573,19 @@ func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, 
 		if syncedVolumeAttachments[volumeAttachment.Name] {
 			continue
 		}
-		if volumeAttachment.Spec.Attacher == r.controllerSharedState.driverName {
+		if volumeAttachment.Spec.Attacher == r.driverName {
 			volumeName := volumeAttachment.Spec.Source.PersistentVolumeName
 			if volumeName == nil {
 				continue
 			}
 			// get PV and retrieve diskName
-			pv, err := r.controllerSharedState.kubeClient.CoreV1().PersistentVolumes().Get(ctx, *volumeName, metav1.GetOptions{})
+			pv, err := r.kubeClient.CoreV1().PersistentVolumes().Get(ctx, *volumeName, metav1.GetOptions{})
 			if err != nil {
 				w.Logger().Errorf(err, "failed to get PV (%s)", *volumeName)
 				return syncedVolumeAttachments, volumesToSync, err
 			}
 
-			if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != r.controllerSharedState.driverName {
+			if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != r.driverName {
 				continue
 			}
 			volumesToSync[pv.Spec.CSI.VolumeHandle] = true
@@ -598,7 +598,7 @@ func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, 
 			}
 			nodeName := volumeAttachment.Spec.NodeName
 			azVolumeAttachmentName := azureutils.GetAzVolumeAttachmentName(diskName, nodeName)
-			r.controllerSharedState.azVolumeAttachmentToVaMap.Store(azVolumeAttachmentName, volumeAttachment.Name)
+			r.azVolumeAttachmentToVaMap.Store(azVolumeAttachmentName, volumeAttachment.Name)
 
 			desiredAzVolumeAttachment := &azdiskv1beta2.AzVolumeAttachment{
 				ObjectMeta: metav1.ObjectMeta{
@@ -620,12 +620,12 @@ func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, 
 				},
 			}
 			// check if the CRI exists already
-			azVolumeAttachment, err := azureutils.GetAzVolumeAttachment(ctx, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, azVolumeAttachmentName, r.controllerSharedState.objectNamespace, false)
+			azVolumeAttachment, err := azureutils.GetAzVolumeAttachment(ctx, r.cachedClient, r.azClient, azVolumeAttachmentName, r.objectNamespace, false)
 			if err != nil {
 				if errors.IsNotFound(err) {
 					w.Logger().Infof("Recreating AzVolumeAttachment(%s)", azVolumeAttachmentName)
 
-					azVolumeAttachment, err = r.controllerSharedState.azClient.DiskV1beta2().AzVolumeAttachments(r.controllerSharedState.objectNamespace).Create(ctx, desiredAzVolumeAttachment, metav1.CreateOptions{})
+					azVolumeAttachment, err = r.azClient.DiskV1beta2().AzVolumeAttachments(r.objectNamespace).Create(ctx, desiredAzVolumeAttachment, metav1.CreateOptions{})
 					if err != nil {
 						w.Logger().Errorf(err, "failed to create AzVolumeAttachment (%s) for volume (%s) and node (%s): %v", azVolumeAttachmentName, *volumeName, nodeName, err)
 						return syncedVolumeAttachments, volumesToSync, err
@@ -641,7 +641,7 @@ func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, 
 				azVolumeAttachment.Annotations = desiredAzVolumeAttachment.Annotations
 				azVolumeAttachment.Finalizers = desiredAzVolumeAttachment.Finalizers
 
-				azVolumeAttachment, err = r.controllerSharedState.azClient.DiskV1beta2().AzVolumeAttachments(r.controllerSharedState.objectNamespace).Update(ctx, azVolumeAttachment, metav1.UpdateOptions{})
+				azVolumeAttachment, err = r.azClient.DiskV1beta2().AzVolumeAttachments(r.objectNamespace).Update(ctx, azVolumeAttachment, metav1.UpdateOptions{})
 				if err != nil {
 					w.Logger().Errorf(err, "failed to update AzVolumeAttachment (%s) for volume (%s) and node (%s): %v", azVolumeAttachmentName, *volumeName, nodeName, err)
 					return syncedVolumeAttachments, volumesToSync, err
@@ -658,7 +658,7 @@ func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, 
 				}
 			}
 			// update status
-			_, err = r.controllerSharedState.azClient.DiskV1beta2().AzVolumeAttachments(r.controllerSharedState.objectNamespace).UpdateStatus(ctx, azVolumeAttachment, metav1.UpdateOptions{})
+			_, err = r.azClient.DiskV1beta2().AzVolumeAttachments(r.objectNamespace).UpdateStatus(ctx, azVolumeAttachment, metav1.UpdateOptions{})
 			if err != nil {
 				w.Logger().Errorf(err, "failed to update status of AzVolumeAttachment (%s) for volume (%s) and node (%s): %v", azVolumeAttachmentName, *volumeName, nodeName, err)
 				return syncedVolumeAttachments, volumesToSync, err
@@ -674,7 +674,7 @@ func (r *ReconcileAttachDetach) recoverAzVolumeAttachment(ctx context.Context, r
 	w, _ := workflow.GetWorkflowFromContext(ctx)
 
 	// list all AzVolumeAttachment
-	azVolumeAttachments, err := r.controllerSharedState.azClient.DiskV1beta2().AzVolumeAttachments(r.controllerSharedState.objectNamespace).List(ctx, metav1.ListOptions{})
+	azVolumeAttachments, err := r.azClient.DiskV1beta2().AzVolumeAttachments(r.objectNamespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		w.Logger().Error(err, "failed to get list of existing AzVolumeAttachment CRI in controller recovery stage")
 		return err
@@ -724,7 +724,7 @@ func (r *ReconcileAttachDetach) recoverAzVolumeAttachment(ctx context.Context, r
 				targetState = azv.Status.State
 			}
 
-			if _, err := azureutils.UpdateCRIWithRetry(ctx, nil, r.controllerSharedState.cachedClient, r.controllerSharedState.azClient, &azv, updateFunc, consts.ForcedUpdateMaxNetRetry, updateMode); err != nil {
+			if _, err := azureutils.UpdateCRIWithRetry(ctx, nil, r.cachedClient, r.azClient, &azv, updateFunc, consts.ForcedUpdateMaxNetRetry, updateMode); err != nil {
 				w.Logger().Errorf(err, "failed to update AzVolumeAttachment (%s) for recovery", azv.Name)
 			} else {
 				// if update succeeded, add the CRI to the recoveryComplete list
@@ -745,12 +745,12 @@ func (r *ReconcileAttachDetach) recoverAzVolumeAttachment(ctx context.Context, r
 func NewAttachDetachController(mgr manager.Manager, cloudDiskAttacher CloudDiskAttachDetacher, crdDetacher CrdDetacher, controllerSharedState *SharedState) (*ReconcileAttachDetach, error) {
 	logger := mgr.GetLogger().WithValues("controller", "azvolumeattachment")
 	reconciler := ReconcileAttachDetach{
-		crdDetacher:           crdDetacher,
-		cloudDiskAttacher:     cloudDiskAttacher,
-		stateLock:             &sync.Map{},
-		retryInfo:             newRetryInfo(),
-		controllerSharedState: controllerSharedState,
-		logger:                logger,
+		crdDetacher:       crdDetacher,
+		cloudDiskAttacher: cloudDiskAttacher,
+		stateLock:         &sync.Map{},
+		retryInfo:         newRetryInfo(),
+		SharedState:       controllerSharedState,
+		logger:            logger,
 	}
 
 	c, err := controller.New("azvolumeattachment-controller", mgr, controller.Options{

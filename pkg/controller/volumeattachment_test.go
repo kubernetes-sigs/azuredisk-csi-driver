@@ -35,9 +35,9 @@ func NewTestVolumeAttachmentController(controller *gomock.Controller, namespace 
 	controllerSharedState := initState(mockclient.NewMockClient(controller), azdiskfakes.NewSimpleClientset(azDiskObjs...), fakev1.NewSimpleClientset(kubeObjs...), objects...)
 
 	return &ReconcileVolumeAttachment{
-		controllerRetryInfo:   newRetryInfo(),
-		controllerSharedState: controllerSharedState,
-		logger:                klogr.New(),
+		controllerRetryInfo: newRetryInfo(),
+		SharedState:         controllerSharedState,
+		logger:              klogr.New(),
 	}
 }
 
@@ -65,7 +65,7 @@ func TestVolumeAttachmentReconcile(t *testing.T) {
 					newVolumeAttachment,
 					newAzVolumeAttachment)
 
-				mockClients(controller.controllerSharedState.cachedClient.(*mockclient.MockClient), controller.controllerSharedState.azClient, controller.controllerSharedState.kubeClient)
+				mockClients(controller.cachedClient.(*mockclient.MockClient), controller.azClient, controller.kubeClient)
 
 				return controller
 			},
@@ -73,7 +73,7 @@ func TestVolumeAttachmentReconcile(t *testing.T) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
 
-				val, ok := controller.controllerSharedState.azVolumeAttachmentToVaMap.Load(testPrimaryAzVolumeAttachment0Name)
+				val, ok := controller.azVolumeAttachmentToVaMap.Load(testPrimaryAzVolumeAttachment0Name)
 				require.True(t, ok)
 				vaName := val.(string)
 				require.Equal(t, vaName, testVolumeAttachmentName)

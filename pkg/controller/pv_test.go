@@ -38,9 +38,9 @@ func newTestPVController(controller *gomock.Controller, namespace string, object
 	controllerSharedState := initState(mockclient.NewMockClient(controller), azdiskfakes.NewSimpleClientset(azDiskObjs...), fakev1.NewSimpleClientset(kubeObjs...), objects...)
 
 	return &ReconcilePV{
-		controllerRetryInfo:   newRetryInfo(),
-		controllerSharedState: controllerSharedState,
-		logger:                klogr.New(),
+		controllerRetryInfo: newRetryInfo(),
+		SharedState:         controllerSharedState,
+		logger:              klogr.New(),
 	}
 }
 
@@ -67,7 +67,7 @@ func TestPVControllerReconcile(t *testing.T) {
 					&testReplicaAzVolumeAttachment,
 					pv)
 
-				mockClients(controller.controllerSharedState.cachedClient.(*mockclient.MockClient), controller.controllerSharedState.azClient, controller.controllerSharedState.kubeClient)
+				mockClients(controller.cachedClient.(*mockclient.MockClient), controller.azClient, controller.kubeClient)
 
 				return controller
 			},
@@ -75,7 +75,7 @@ func TestPVControllerReconcile(t *testing.T) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
 				waitErr := wait.PollImmediate(verifyCRIInterval, verifyCRITimeout, func() (bool, error) {
-					azVolumeAttachments, err := controller.controllerSharedState.azClient.DiskV1beta2().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{})
+					azVolumeAttachments, err := controller.azClient.DiskV1beta2().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{})
 					return len(azVolumeAttachments.Items) == 0, err
 				})
 				require.NoError(t, waitErr)

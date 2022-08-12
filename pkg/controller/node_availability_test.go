@@ -43,8 +43,8 @@ func NewTestNodeAvailabilityController(controller *gomock.Controller, namespace 
 	controllerSharedState := initState(mockclient.NewMockClient(controller), azdiskfakes.NewSimpleClientset(diskv1alpha1Objs...), fakev1.NewSimpleClientset(kubeObjs...), objects...)
 
 	return &ReconcileNodeAvailability{
-		controllerSharedState: controllerSharedState,
-		logger:                klogr.New(),
+		SharedState: controllerSharedState,
+		logger:      klogr.New(),
 	}
 }
 
@@ -81,8 +81,8 @@ func TestNodeAvailabilityController(t *testing.T) {
 					newPod,
 				)
 
-				mockClients(controller.controllerSharedState.cachedClient.(*mockclient.MockClient), controller.controllerSharedState.azClient, controller.controllerSharedState.kubeClient)
-				controller.controllerSharedState.priorityReplicaRequestsQueue.Push(context.TODO(), &ReplicaRequest{VolumeName: testPersistentVolume0Name, Priority: 1})
+				mockClients(controller.cachedClient.(*mockclient.MockClient), controller.azClient, controller.kubeClient)
+				controller.priorityReplicaRequestsQueue.Push(context.TODO(), &ReplicaRequest{VolumeName: testPersistentVolume0Name, Priority: 1})
 
 				return controller
 			},
@@ -94,7 +94,7 @@ func TestNodeAvailabilityController(t *testing.T) {
 				labelSelector := labels.NewSelector().Add(*roleReq)
 
 				conditionFunc := func() (bool, error) {
-					replicas, localError := controller.controllerSharedState.azClient.DiskV1beta2().AzVolumeAttachments(testPrimaryAzVolumeAttachment0.Namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
+					replicas, localError := controller.azClient.DiskV1beta2().AzVolumeAttachments(testPrimaryAzVolumeAttachment0.Namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
 					require.NoError(t, localError)
 					require.NotNil(t, replicas)
 					return len(replicas.Items) == 1, nil

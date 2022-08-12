@@ -39,21 +39,21 @@ import (
 
 // Struct for the reconciler
 type ReconcileVolumeAttachment struct {
-	logger                logr.Logger
-	controllerRetryInfo   *retryInfo
-	controllerSharedState *SharedState
+	*SharedState
+	logger              logr.Logger
+	controllerRetryInfo *retryInfo
 }
 
 // Implement reconcile.Reconciler so the controller can reconcile objects
 var _ reconcile.Reconciler = &ReconcileVolumeAttachment{}
 
 func (r *ReconcileVolumeAttachment) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
-	if !r.controllerSharedState.isRecoveryComplete() {
+	if !r.isRecoveryComplete() {
 		return reconcile.Result{Requeue: true}, nil
 	}
 
 	var volumeAttachment storagev1.VolumeAttachment
-	if err := r.controllerSharedState.cachedClient.Get(ctx, request.NamespacedName, &volumeAttachment); err != nil {
+	if err := r.cachedClient.Get(ctx, request.NamespacedName, &volumeAttachment); err != nil {
 		if errors.IsNotFound(err) {
 			return reconcileReturnOnSuccess(request.Name, r.controllerRetryInfo)
 		}
@@ -75,7 +75,7 @@ func (r *ReconcileVolumeAttachment) Reconcile(ctx context.Context, request recon
 			return reconcile.Result{}, nil
 		}
 	} else if pv := volumeAttachment.Spec.Source.PersistentVolumeName; pv != nil {
-		val, ok := r.controllerSharedState.pvToVolumeMap.Load(*pv)
+		val, ok := r.pvToVolumeMap.Load(*pv)
 		if !ok {
 			return reconcileReturnOnError(ctx, &volumeAttachment, "get disk name", status.Errorf(codes.Internal, "failed to find disk name for the provided pv"), r.controllerRetryInfo)
 		}
@@ -83,7 +83,7 @@ func (r *ReconcileVolumeAttachment) Reconcile(ctx context.Context, request recon
 	}
 
 	azVolumeAttachmentName := azureutils.GetAzVolumeAttachmentName(diskName, volumeAttachment.Spec.NodeName)
-	r.controllerSharedState.azVolumeAttachmentToVaMap.Store(azVolumeAttachmentName, volumeAttachment.Name)
+	r.azVolumeAttachmentToVaMap.Store(azVolumeAttachmentName, volumeAttachment.Name)
 
 	return reconcile.Result{}, nil
 }
@@ -91,9 +91,9 @@ func (r *ReconcileVolumeAttachment) Reconcile(ctx context.Context, request recon
 func NewVolumeAttachmentController(mgr manager.Manager, controllerSharedState *SharedState) (*ReconcileVolumeAttachment, error) {
 	logger := mgr.GetLogger().WithValues("controller", "volumeattachment")
 	reconciler := ReconcileVolumeAttachment{
-		controllerRetryInfo:   newRetryInfo(),
-		controllerSharedState: controllerSharedState,
-		logger:                logger,
+		controllerRetryInfo: newRetryInfo(),
+		SharedState:         controllerSharedState,
+		logger:              logger,
 	}
 
 	c, err := controller.New("va-controller", mgr, controller.Options{

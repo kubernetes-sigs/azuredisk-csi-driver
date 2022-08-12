@@ -33,19 +33,19 @@ import (
 )
 
 type ReconcileNodeAvailability struct {
-	logger                logr.Logger
-	controllerSharedState *SharedState
+	*SharedState
+	logger logr.Logger
 }
 
 var _ reconcile.Reconciler = &ReconcileNodeAvailability{}
 
 func (r *ReconcileNodeAvailability) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
-	if !r.controllerSharedState.isRecoveryComplete() {
+	if !r.isRecoveryComplete() {
 		return reconcile.Result{Requeue: true}, nil
 	}
 
 	n := &corev1.Node{}
-	err := r.controllerSharedState.cachedClient.Get(ctx, request.NamespacedName, n)
+	err := r.cachedClient.Get(ctx, request.NamespacedName, n)
 
 	if errors.IsNotFound(err) {
 		return reconcile.Result{}, nil
@@ -57,7 +57,7 @@ func (r *ReconcileNodeAvailability) Reconcile(ctx context.Context, request recon
 		if !n.Spec.Unschedulable {
 			//Node is schedulable, proceed to attempt creation of replica attachment
 			logger.Info("Node is now available. Will requeue failed replica creation requests.")
-			r.controllerSharedState.tryCreateFailedReplicas(ctx, nodeavailability)
+			r.tryCreateFailedReplicas(ctx, nodeavailability)
 			return reconcile.Result{Requeue: false}, nil
 		}
 	}
@@ -67,8 +67,8 @@ func (r *ReconcileNodeAvailability) Reconcile(ctx context.Context, request recon
 func NewNodeAvailabilityController(mgr manager.Manager, controllerSharedState *SharedState) (*ReconcileNodeAvailability, error) {
 	logger := mgr.GetLogger().WithValues("controller", "nodeavailability")
 	reconciler := ReconcileNodeAvailability{
-		controllerSharedState: controllerSharedState,
-		logger:                logger,
+		SharedState: controllerSharedState,
+		logger:      logger,
 	}
 
 	c, err := controller.New("nodeavailability-controller", mgr, controller.Options{

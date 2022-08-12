@@ -43,16 +43,16 @@ func NewTestAttachDetachController(controller *gomock.Controller, namespace stri
 	controllerSharedState := initState(mockclient.NewMockClient(controller), azdiskfakes.NewSimpleClientset(azDiskObjs...), fakev1.NewSimpleClientset(kubeObjs...), objects...)
 
 	return &ReconcileAttachDetach{
-		cloudDiskAttacher:     mockattachmentprovisioner.NewMockCloudDiskAttachDetacher(controller),
-		stateLock:             &sync.Map{},
-		retryInfo:             newRetryInfo(),
-		controllerSharedState: controllerSharedState,
-		logger:                klogr.New(),
+		cloudDiskAttacher: mockattachmentprovisioner.NewMockCloudDiskAttachDetacher(controller),
+		stateLock:         &sync.Map{},
+		retryInfo:         newRetryInfo(),
+		SharedState:       controllerSharedState,
+		logger:            klogr.New(),
 	}
 }
 
 func mockClientsAndAttachmentProvisioner(controller *ReconcileAttachDetach) {
-	mockClients(controller.controllerSharedState.cachedClient.(*mockclient.MockClient), controller.controllerSharedState.azClient, controller.controllerSharedState.kubeClient)
+	mockClients(controller.cachedClient.(*mockclient.MockClient), controller.azClient, controller.kubeClient)
 
 	controller.cloudDiskAttacher.(*mockattachmentprovisioner.MockCloudDiskAttachDetacher).EXPECT().
 		PublishVolume(gomock.Any(), testManagedDiskURI0, gomock.Any(), gomock.Any()).
@@ -96,7 +96,7 @@ func TestAttachDetachReconcile(t *testing.T) {
 					newVolumeAttachment,
 					newAttachment)
 
-				controller.controllerSharedState.azVolumeAttachmentToVaMap.Store(newAttachment.Name, newVolumeAttachment.Name)
+				controller.azVolumeAttachmentToVaMap.Store(newAttachment.Name, newVolumeAttachment.Name)
 
 				mockClientsAndAttachmentProvisioner(controller)
 
@@ -107,7 +107,7 @@ func TestAttachDetachReconcile(t *testing.T) {
 				require.False(t, result.Requeue)
 
 				conditionFunc := func() (bool, error) {
-					azVolumeAttachment, localError := controller.controllerSharedState.azClient.DiskV1beta2().AzVolumeAttachments(testPrimaryAzVolumeAttachment0.Namespace).Get(context.TODO(), testPrimaryAzVolumeAttachment0.Name, metav1.GetOptions{})
+					azVolumeAttachment, localError := controller.azClient.DiskV1beta2().AzVolumeAttachments(testPrimaryAzVolumeAttachment0.Namespace).Get(context.TODO(), testPrimaryAzVolumeAttachment0.Name, metav1.GetOptions{})
 					if localError != nil {
 						return false, nil
 					}
@@ -144,7 +144,7 @@ func TestAttachDetachReconcile(t *testing.T) {
 				require.False(t, result.Requeue)
 
 				conditionFunc := func() (bool, error) {
-					azVolumeAttachment, localError := controller.controllerSharedState.azClient.DiskV1beta2().AzVolumeAttachments(testPrimaryAzVolumeAttachment0.Namespace).Get(context.TODO(), testPrimaryAzVolumeAttachment0.Name, metav1.GetOptions{})
+					azVolumeAttachment, localError := controller.azClient.DiskV1beta2().AzVolumeAttachments(testPrimaryAzVolumeAttachment0.Namespace).Get(context.TODO(), testPrimaryAzVolumeAttachment0.Name, metav1.GetOptions{})
 					return azVolumeAttachment.Status.State != azdiskv1beta2.Attached && azVolumeAttachment.Status.State != azdiskv1beta2.Attaching, localError
 				}
 
@@ -178,7 +178,7 @@ func TestAttachDetachReconcile(t *testing.T) {
 				require.False(t, result.Requeue)
 
 				conditionFunc := func() (bool, error) {
-					azVolumeAttachment, localError := controller.controllerSharedState.azClient.DiskV1beta2().AzVolumeAttachments(testPrimaryAzVolumeAttachment0.Namespace).Get(context.TODO(), testPrimaryAzVolumeAttachment0.Name, metav1.GetOptions{})
+					azVolumeAttachment, localError := controller.azClient.DiskV1beta2().AzVolumeAttachments(testPrimaryAzVolumeAttachment0.Namespace).Get(context.TODO(), testPrimaryAzVolumeAttachment0.Name, metav1.GetOptions{})
 					return len(azVolumeAttachment.Finalizers) == 0, localError
 				}
 
@@ -209,7 +209,7 @@ func TestAttachDetachReconcile(t *testing.T) {
 					newVolumeAttachment,
 					newAttachment)
 
-				controller.controllerSharedState.azVolumeAttachmentToVaMap.Store(newAttachment.Name, newVolumeAttachment.Name)
+				controller.azVolumeAttachmentToVaMap.Store(newAttachment.Name, newVolumeAttachment.Name)
 
 				mockClientsAndAttachmentProvisioner(controller)
 
@@ -219,7 +219,7 @@ func TestAttachDetachReconcile(t *testing.T) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
 
-				azVolumeAttachment, localError := controller.controllerSharedState.azClient.DiskV1beta2().AzVolumeAttachments(testReplicaAzVolumeAttachment.Namespace).Get(context.TODO(), testReplicaAzVolumeAttachment.Name, metav1.GetOptions{})
+				azVolumeAttachment, localError := controller.azClient.DiskV1beta2().AzVolumeAttachments(testReplicaAzVolumeAttachment.Namespace).Get(context.TODO(), testReplicaAzVolumeAttachment.Name, metav1.GetOptions{})
 				require.NoError(t, localError)
 				require.NotNil(t, azVolumeAttachment)
 				require.NotNil(t, azVolumeAttachment.Status.Detail)
@@ -263,7 +263,7 @@ func TestAttachDetachRecover(t *testing.T) {
 			verifyFunc: func(t *testing.T, controller *ReconcileAttachDetach, err error) {
 				require.NoError(t, err)
 
-				azVolumeAttachments, localErr := controller.controllerSharedState.azClient.DiskV1beta2().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{})
+				azVolumeAttachments, localErr := controller.azClient.DiskV1beta2().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{})
 				require.NoError(t, localErr)
 				require.Len(t, azVolumeAttachments.Items, 1)
 			},
@@ -290,12 +290,12 @@ func TestAttachDetachRecover(t *testing.T) {
 			verifyFunc: func(t *testing.T, controller *ReconcileAttachDetach, err error) {
 				require.NoError(t, err)
 
-				azVolumeAttachment, localErr := controller.controllerSharedState.azClient.DiskV1beta2().AzVolumeAttachments(testNamespace).Get(context.TODO(), testPrimaryAzVolumeAttachment0Name, metav1.GetOptions{})
+				azVolumeAttachment, localErr := controller.azClient.DiskV1beta2().AzVolumeAttachments(testNamespace).Get(context.TODO(), testPrimaryAzVolumeAttachment0Name, metav1.GetOptions{})
 				require.NoError(t, localErr)
 				require.Equal(t, azVolumeAttachment.Status.State, azdiskv1beta2.AttachmentPending)
 				require.Contains(t, azVolumeAttachment.Status.Annotations, consts.RecoverAnnotation)
 
-				azVolumeAttachment, localErr = controller.controllerSharedState.azClient.DiskV1beta2().AzVolumeAttachments(testNamespace).Get(context.TODO(), testPrimaryAzVolumeAttachment1Name, metav1.GetOptions{})
+				azVolumeAttachment, localErr = controller.azClient.DiskV1beta2().AzVolumeAttachments(testNamespace).Get(context.TODO(), testPrimaryAzVolumeAttachment1Name, metav1.GetOptions{})
 				require.NoError(t, localErr)
 				require.Equal(t, azVolumeAttachment.Status.State, azdiskv1beta2.Attached)
 				require.Contains(t, azVolumeAttachment.Status.Annotations, consts.RecoverAnnotation)
