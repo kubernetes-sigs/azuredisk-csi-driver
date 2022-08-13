@@ -1018,45 +1018,32 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azdiskinformers.Sha
 
 	conditionFunc := func() error {
 		var err error
-		var copyForUpdate client.Object
-		var objForUpdate client.Object
+		var originalObj client.Object
 		switch target := obj.(type) {
 		case *azdiskv1beta2.AzVolume:
-			updateTarget := &azdiskv1beta2.AzVolume{}
 			if informerFactory != nil {
-				updateTarget, err = informerFactory.Disk().V1beta2().AzVolumes().Lister().AzVolumes(target.Namespace).Get(objName)
+				originalObj, err = informerFactory.Disk().V1beta2().AzVolumes().Lister().AzVolumes(target.Namespace).Get(objName)
 			} else if cachedClient != nil {
-				err = cachedClient.Get(ctx, types.NamespacedName{Namespace: target.Namespace, Name: objName}, updateTarget)
+				originalObj = &azdiskv1beta2.AzVolume{}
+				err = cachedClient.Get(ctx, types.NamespacedName{Namespace: target.Namespace, Name: objName}, originalObj)
 			} else {
-				updateTarget, err = azDiskClient.DiskV1beta2().AzVolumes(target.Namespace).Get(ctx, objName, metav1.GetOptions{})
-			}
-			if err == nil {
-				objForUpdate = updateTarget
-				copyForUpdate = updateTarget.DeepCopy()
+				originalObj, err = azDiskClient.DiskV1beta2().AzVolumes(target.Namespace).Get(ctx, objName, metav1.GetOptions{})
 			}
 		case *azdiskv1beta2.AzVolumeAttachment:
-			updateTarget := &azdiskv1beta2.AzVolumeAttachment{}
 			if informerFactory != nil {
-				updateTarget, err = informerFactory.Disk().V1beta2().AzVolumeAttachments().Lister().AzVolumeAttachments(target.Namespace).Get(objName)
+				originalObj, err = informerFactory.Disk().V1beta2().AzVolumeAttachments().Lister().AzVolumeAttachments(target.Namespace).Get(objName)
 			} else if cachedClient != nil {
-				err = cachedClient.Get(ctx, types.NamespacedName{Namespace: target.Namespace, Name: objName}, updateTarget)
+				originalObj = &azdiskv1beta2.AzVolumeAttachment{}
+				err = cachedClient.Get(ctx, types.NamespacedName{Namespace: target.Namespace, Name: objName}, originalObj)
 			} else {
-				updateTarget, err = azDiskClient.DiskV1beta2().AzVolumeAttachments(target.Namespace).Get(ctx, objName, metav1.GetOptions{})
-			}
-			if err == nil {
-				objForUpdate = updateTarget
-				copyForUpdate = updateTarget.DeepCopy()
+				originalObj, err = azDiskClient.DiskV1beta2().AzVolumeAttachments(target.Namespace).Get(ctx, objName, metav1.GetOptions{})
 			}
 		case *storagev1.VolumeAttachment:
-			updateTarget := &storagev1.VolumeAttachment{}
 			if cachedClient != nil {
-				err = cachedClient.Get(ctx, types.NamespacedName{Namespace: target.Namespace, Name: objName}, updateTarget)
+				originalObj = &storagev1.VolumeAttachment{}
+				err = cachedClient.Get(ctx, types.NamespacedName{Namespace: target.Namespace, Name: objName}, originalObj)
 			} else {
 				return status.Errorf(codes.Internal, "cannot update VolumeAttachment object if controller runtime client is not provided.")
-			}
-			if err == nil {
-				objForUpdate = updateTarget
-				copyForUpdate = updateTarget.DeepCopy()
 			}
 		default:
 			return status.Errorf(codes.Internal, "object (%v) not supported.", reflect.TypeOf(target))
@@ -1067,12 +1054,13 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azdiskinformers.Sha
 			return err
 		}
 
+		copyForUpdate := originalObj.DeepCopyObject().(client.Object)
 		if err = updateFunc(copyForUpdate); err != nil {
 			return err
 		}
 
 		// if updateFunc doesn't change the object, don't bother making an update request
-		if reflect.DeepEqual(objForUpdate, copyForUpdate) {
+		if reflect.DeepEqual(originalObj, copyForUpdate) {
 			updatedObj = copyForUpdate
 			w.Logger().Info("Skip update. No update needed.")
 			return nil
@@ -1080,7 +1068,7 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azdiskinformers.Sha
 
 		switch target := copyForUpdate.(type) {
 		case *azdiskv1beta2.AzVolume:
-			if (updateMode&UpdateCRIStatus) != 0 && !reflect.DeepEqual(objForUpdate.(*azdiskv1beta2.AzVolume).Status, target.Status) {
+			if (updateMode&UpdateCRIStatus) != 0 && !reflect.DeepEqual(originalObj.(*azdiskv1beta2.AzVolume).Status, target.Status) {
 				if updatedObj, err = azDiskClient.DiskV1beta2().AzVolumes(target.Namespace).UpdateStatus(ctx, target, metav1.UpdateOptions{}); err != nil {
 					return err
 				}
@@ -1089,7 +1077,7 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azdiskinformers.Sha
 				updatedObj, err = azDiskClient.DiskV1beta2().AzVolumes(target.Namespace).Update(ctx, target, metav1.UpdateOptions{})
 			}
 		case *azdiskv1beta2.AzVolumeAttachment:
-			if (updateMode&UpdateCRIStatus) != 0 && !reflect.DeepEqual(objForUpdate.(*azdiskv1beta2.AzVolumeAttachment).Status, target.Status) {
+			if (updateMode&UpdateCRIStatus) != 0 && !reflect.DeepEqual(originalObj.(*azdiskv1beta2.AzVolumeAttachment).Status, target.Status) {
 				if updatedObj, err = azDiskClient.DiskV1beta2().AzVolumeAttachments(target.Namespace).UpdateStatus(ctx, target, metav1.UpdateOptions{}); err != nil {
 					return err
 				}
@@ -1099,7 +1087,7 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azdiskinformers.Sha
 			}
 
 		case *storagev1.VolumeAttachment:
-			if (updateMode&UpdateCRIStatus) != 0 && !reflect.DeepEqual(objForUpdate.(*storagev1.VolumeAttachment).Status, target.Status) {
+			if (updateMode&UpdateCRIStatus) != 0 && !reflect.DeepEqual(originalObj.(*storagev1.VolumeAttachment).Status, target.Status) {
 				if err = cachedClient.Status().Update(ctx, target); err != nil {
 					return err
 				}
@@ -1110,7 +1098,19 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azdiskinformers.Sha
 				updatedObj = target
 			}
 		}
-		return err
+
+		if err != nil {
+			// Return the raw error from the Update[Status] call here since the isRetriable check relies on this to determine
+			// whether or not to retry.
+			return err
+		}
+
+		if updatedObj == nil {
+			w.Logger().Info("No update applied - returning original object.")
+			updatedObj = originalObj.DeepCopyObject().(client.Object)
+		}
+
+		return nil
 	}
 
 	curRetry := 0
