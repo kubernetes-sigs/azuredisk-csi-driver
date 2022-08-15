@@ -10,7 +10,7 @@ kind: StorageClass
 apiVersion: storage.k8s.io/v1
 metadata:
   name: hdd
-provisioner: kubernetes.io/azure-disk  # or disk.csi.azure.com
+provisioner: disk.csi.azure.com
 parameters:
   skuname: Standard_LRS
 allowVolumeExpansion: true
