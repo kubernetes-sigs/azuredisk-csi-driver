@@ -108,26 +108,16 @@ var rateLimiterLatency = metrics.NewHistogramVec(
 // DriverV2 implements all interfaces of CSI drivers
 type DriverV2 struct {
 	DriverCore
-	nodeProvisioner                   NodeProvisioner
-	cloudProvisioner                  controller.CloudProvisioner
-	crdProvisioner                    CrdProvisioner
-	volumeLocks                       *volumehelper.VolumeLocks
-	objectNamespace                   string
-	nodePartition                     string
-	controllerPartition               string
-	heartbeatFrequencyInSec           int
-	controllerLeaseDurationInSec      int
-	controllerLeaseRenewDeadlineInSec int
-	controllerLeaseRetryPeriodInSec   int
-	leaderElectionNamespace           string
-	kubeConfig                        *rest.Config
-	kubeClient                        *clientset.Clientset
-	azdiskClient                      azdisk.Interface
-	azDriverNodeInformer              azdiskinformertypes.AzDriverNodeInformer
-	deviceChecker                     *deviceChecker
-	kubeClientQPS                     int
-	isControllerPlugin                bool
-	isNodePlugin                      bool
+	config               *azdiskv1beta2.AzDiskDriverConfiguration
+	nodeProvisioner      NodeProvisioner
+	cloudProvisioner     controller.CloudProvisioner
+	crdProvisioner       CrdProvisioner
+	volumeLocks          *volumehelper.VolumeLocks
+	kubeConfig           *rest.Config
+	kubeClient           *clientset.Clientset
+	azdiskClient         azdisk.Interface
+	azDriverNodeInformer azdiskinformertypes.AzDriverNodeInformer
+	deviceChecker        *deviceChecker
 }
 
 func init() {
@@ -146,41 +136,16 @@ func newDriverV2(config *azdiskv1beta2.AzDiskDriverConfiguration) *DriverV2 {
 
 	klog.Warning("Using DriverV2")
 	driver := DriverV2{}
+	driver.config = config
 	driver.Name = config.DriverName
 	driver.Version = driverVersion
-	driver.objectNamespace = config.ObjectNamespace
-	driver.nodePartition = config.NodeConfig.PartitionName
-	driver.controllerPartition = config.ControllerConfig.PartitionName
-	driver.heartbeatFrequencyInSec = config.NodeConfig.HeartbeatFrequencyInSec
-	driver.controllerLeaseDurationInSec = config.ControllerConfig.LeaseDurationInSec
-	driver.controllerLeaseRenewDeadlineInSec = config.ControllerConfig.LeaseRenewDeadlineInSec
-	driver.controllerLeaseRetryPeriodInSec = config.ControllerConfig.LeaseRetryPeriodInSec
-	driver.leaderElectionNamespace = config.ControllerConfig.LeaderElectionNamespace
 	driver.NodeID = config.NodeConfig.NodeID
 	driver.VolumeAttachLimit = config.NodeConfig.VolumeAttachLimit
-	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ready = make(chan struct{})
-	driver.perfOptimizationEnabled = config.NodeConfig.EnablePerfOptimization
-	driver.cloudConfigSecretName = config.CloudConfig.SecretName
-	driver.cloudConfigSecretNamespace = config.CloudConfig.SecretNamespace
-	driver.customUserAgent = config.CloudConfig.CustomUserAgent
-	driver.userAgentSuffix = config.CloudConfig.UserAgentSuffix
-	driver.useCSIProxyGAInterface = config.NodeConfig.UseCSIProxyGAInterface
-	driver.enableDiskOnlineResize = config.ControllerConfig.EnableDiskOnlineResize
-	driver.allowEmptyCloudConfig = config.CloudConfig.AllowEmptyCloudConfig
-	driver.enableAsyncAttach = config.ControllerConfig.EnableAsyncAttach
-	driver.enableListVolumes = config.ControllerConfig.EnableListVolumes
-	driver.enableListSnapshots = config.ControllerConfig.EnableListSnapshots
-	driver.supportZone = config.NodeConfig.SupportZone
-	driver.getNodeInfoFromLabels = config.NodeConfig.GetNodeInfoFromLabels
-	driver.enableDiskCapacityCheck = config.ControllerConfig.EnableDiskCapacityCheck
-	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
+	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.deviceChecker = &deviceChecker{lock: sync.RWMutex{}, entry: nil}
-	driver.kubeClientQPS = config.ClientConfig.KubeClientQPS
-	driver.isControllerPlugin = config.ControllerConfig.Enabled
-	driver.isNodePlugin = config.NodeConfig.Enabled
 
 	topologyKey = fmt.Sprintf("topology.%s/zone", driver.Name)
 	return &driver
@@ -204,8 +169,8 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 		klog.Fatalf("failed to get kubeclient with kubeconfig (%s), error: %v. Exiting application...", kubeconfig, err)
 	}
 
-	d.kubeConfig.QPS = float32(d.kubeClientQPS)
-	d.kubeConfig.Burst = d.kubeClientQPS * 2
+	d.kubeConfig.QPS = float32(d.config.ClientConfig.KubeClientQPS)
+	d.kubeConfig.Burst = d.config.ClientConfig.KubeClientQPS * 2
 
 	d.azdiskClient, err = azureutils.GetAzDiskClient(d.kubeConfig)
 	if err != nil || d.azdiskClient == nil {
@@ -214,7 +179,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 
 	// d.crdProvisioner is set by NewFakeDriver for unit tests.
 	if d.crdProvisioner == nil {
-		d.crdProvisioner, err = provisioner.NewCrdProvisioner(d.kubeConfig, d.objectNamespace)
+		d.crdProvisioner, err = provisioner.NewCrdProvisioner(d.kubeConfig, d.config.ObjectNamespace)
 		if err != nil {
 			klog.Fatalf("Failed to get crd provisioner. Error: %v", err)
 		}
@@ -222,28 +187,28 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 
 	// d.cloudProvisioner is set by NewFakeDriver for unit tests.
 	if d.cloudProvisioner == nil {
-		userAgent := GetUserAgent(d.Name, d.customUserAgent, d.userAgentSuffix)
+		userAgent := GetUserAgent(d.Name, d.config.CloudConfig.CustomUserAgent, d.config.CloudConfig.UserAgentSuffix)
 		klog.V(2).Infof("driver userAgent: %s", userAgent)
 
 		d.cloudProvisioner, err = provisioner.NewCloudProvisioner(
 			d.kubeClient,
-			d.cloudConfigSecretName,
-			d.cloudConfigSecretNamespace,
+			d.config.CloudConfig.SecretName,
+			d.config.CloudConfig.SecretNamespace,
 			d.getPerfOptimizationEnabled(),
 			topologyKey,
 			userAgent,
-			d.enableDiskOnlineResize,
-			d.allowEmptyCloudConfig,
-			d.enableAsyncAttach,
+			d.config.ControllerConfig.EnableDiskOnlineResize,
+			d.config.CloudConfig.AllowEmptyCloudConfig,
+			d.config.ControllerConfig.EnableAsyncAttach,
 		)
 		if err != nil {
 			klog.Fatalf("Failed to get controller provisioner. Error: %v", err)
 		}
 	}
 
-	if d.vmType != "" {
-		klog.V(2).Infof("override VMType(%s) in cloud config as %s", d.cloudProvisioner.GetCloud().VMType, d.vmType)
-		d.cloudProvisioner.GetCloud().VMType = d.vmType
+	if d.config.ControllerConfig.VMType != "" {
+		klog.V(2).Infof("override VMType(%s) in cloud config as %s", d.cloudProvisioner.GetCloud().VMType, d.config.ControllerConfig.VMType)
+		d.cloudProvisioner.GetCloud().VMType = d.config.ControllerConfig.VMType
 	}
 
 	if d.NodeID == "" {
@@ -279,7 +244,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 
 	// d.nodeProvisioner is set by NewFakeDriver for unit tests.
 	if d.nodeProvisioner == nil {
-		d.nodeProvisioner, err = provisioner.NewNodeProvisioner(d.useCSIProxyGAInterface)
+		d.nodeProvisioner, err = provisioner.NewNodeProvisioner(d.config.NodeConfig.UseCSIProxyGAInterface)
 		if err != nil {
 			klog.Fatalf("Failed to get node provisioner. Error: %v", err)
 		}
@@ -293,10 +258,10 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 		csi.ControllerServiceCapability_RPC_EXPAND_VOLUME,
 		csi.ControllerServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER,
 	}
-	if d.enableListVolumes {
+	if d.config.ControllerConfig.EnableListVolumes {
 		controllerCap = append(controllerCap, csi.ControllerServiceCapability_RPC_LIST_VOLUMES, csi.ControllerServiceCapability_RPC_LIST_VOLUMES_PUBLISHED_NODES)
 	}
-	if d.enableListSnapshots {
+	if d.config.ControllerConfig.EnableListSnapshots {
 		controllerCap = append(controllerCap, csi.ControllerServiceCapability_RPC_LIST_SNAPSHOTS)
 	}
 
@@ -319,12 +284,12 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 	ctx := context.Background()
 
 	// Start the controllers if this is a controller plug-in
-	if d.isControllerPlugin {
+	if d.config.ControllerConfig.Enabled {
 		go d.StartControllersAndDieOnExit(ctx)
 	}
 
 	// Register the AzDriverNode
-	if d.isNodePlugin {
+	if d.config.NodeConfig.Enabled {
 		d.registerAzDriverNodeOrDie(ctx)
 	}
 
@@ -334,7 +299,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 	s.Start(endpoint, d, d, d, testingMock)
 
 	// Start sending hearbeat and mark node as ready
-	if d.isNodePlugin {
+	if d.config.NodeConfig.Enabled {
 		go d.runAzDriverNodeHeartbeatLoop(ctx)
 	}
 
@@ -347,11 +312,11 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 
 // StartControllersAndDieOnExit starts all the controllers for a certain object partition
 func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
-	log := klogr.New().WithName("AzDiskControllerManager").WithValues("namespace", d.objectNamespace).WithValues("partition", d.controllerPartition)
+	log := klogr.New().WithName("AzDiskControllerManager").WithValues("namespace", d.config.ObjectNamespace).WithValues("partition", d.config.ControllerConfig.PartitionName)
 
-	leaseDuration := time.Duration(d.controllerLeaseDurationInSec) * time.Second
-	renewDeadline := time.Duration(d.controllerLeaseRenewDeadlineInSec) * time.Second
-	retryPeriod := time.Duration(d.controllerLeaseRetryPeriodInSec) * time.Second
+	leaseDuration := time.Duration(d.config.ControllerConfig.LeaseDurationInSec) * time.Second
+	renewDeadline := time.Duration(d.config.ControllerConfig.LeaseRenewDeadlineInSec) * time.Second
+	retryPeriod := time.Duration(d.config.ControllerConfig.LeaseRetryPeriodInSec) * time.Second
 	scheme := apiRuntime.NewScheme()
 	clientgoscheme.AddToScheme(scheme)
 	azdiskv1beta2.AddToScheme(scheme)
@@ -363,8 +328,8 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 		Logger:                        log,
 		LeaderElection:                true,
 		LeaderElectionResourceLock:    resourcelock.LeasesResourceLock,
-		LeaderElectionNamespace:       d.leaderElectionNamespace,
-		LeaderElectionID:              d.controllerPartition,
+		LeaderElectionNamespace:       d.config.ControllerConfig.LeaderElectionNamespace,
+		LeaderElectionID:              d.config.ControllerConfig.PartitionName,
 		LeaseDuration:                 &leaseDuration,
 		RenewDeadline:                 &renewDeadline,
 		RetryPeriod:                   &retryPeriod,
@@ -384,7 +349,7 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 		klog.Errorf("failed to initialize crd clientset. Error: %v. Exiting application...", err)
 	}
 
-	sharedState := controller.NewSharedState(d.Name, d.objectNamespace, topologyKey, eventRecorder, mgr.GetClient(), d.crdProvisioner.GetDiskClientSet(), d.kubeClient, crdClient)
+	sharedState := controller.NewSharedState(d.Name, d.config.ObjectNamespace, topologyKey, eventRecorder, mgr.GetClient(), d.crdProvisioner.GetDiskClientSet(), d.kubeClient, crdClient)
 
 	// Setup a new controller to clean-up AzDriverNodes
 	// objects for the nodes which get deleted
@@ -494,7 +459,7 @@ func (d *DriverV2) registerAzDriverNodeOrDie(ctx context.Context) {
 	azdiskInformer := azdiskinformers.NewSharedInformerFactoryWithOptions(
 		d.azdiskClient,
 		consts.DefaultInformerResync,
-		azdiskinformers.WithNamespace(d.objectNamespace),
+		azdiskinformers.WithNamespace(d.config.ObjectNamespace),
 		azdiskinformers.WithTweakListOptions(func(opt *metav1.ListOptions) {
 			opt.FieldSelector = nodeSelector
 		}),
@@ -529,7 +494,7 @@ func (d *DriverV2) runAzDriverNodeHeartbeatLoop(ctx context.Context) {
 	// To prevent a regular update storm when lots of nodes start around the same time,
 	// delay a random interval within the configured heartbeat frequency before starting
 	// the timed loop.
-	heartbeatFrequencyMillis := d.heartbeatFrequencyInSec * 1000
+	heartbeatFrequencyMillis := d.config.NodeConfig.HeartbeatFrequencyInSec * 1000
 	initialDelay := time.Duration(rand.Int63n(int64(heartbeatFrequencyMillis))) * time.Millisecond
 	heartbeatFrequency := time.Duration(heartbeatFrequencyMillis) * time.Millisecond
 
@@ -555,7 +520,7 @@ func (d *DriverV2) runAzDriverNodeHeartbeatLoop(ctx context.Context) {
 
 // registerAzDriverNode initializes the AzDriverNode object
 func (d *DriverV2) registerAzDriverNode(ctx context.Context) error {
-	innerCtx, w := workflow.New(ctx, workflow.WithDetails(consts.NamespaceLabel, d.objectNamespace, consts.NodeNameLabel, d.NodeID))
+	innerCtx, w := workflow.New(ctx, workflow.WithDetails(consts.NamespaceLabel, d.config.ObjectNamespace, consts.NodeNameLabel, d.NodeID))
 
 	err := d.updateOrCreateAzDriverNode(innerCtx, azDriverNodeInitializing)
 
@@ -566,7 +531,7 @@ func (d *DriverV2) registerAzDriverNode(ctx context.Context) error {
 
 // updateAzDriverNodeHearbeat updates the AzDriverNode health status
 func (d *DriverV2) updateAzDriverNodeHearbeat(ctx context.Context) error {
-	innerCtx, w := workflow.New(ctx, workflow.WithDetails(consts.NamespaceLabel, d.objectNamespace, consts.NodeNameLabel, d.NodeID))
+	innerCtx, w := workflow.New(ctx, workflow.WithDetails(consts.NamespaceLabel, d.config.ObjectNamespace, consts.NodeNameLabel, d.NodeID))
 
 	err := d.updateOrCreateAzDriverNode(innerCtx, azDriverNodeHealthy)
 
@@ -585,8 +550,8 @@ func (d *DriverV2) updateOrCreateAzDriverNode(ctx context.Context, status azDriv
 
 	logger.V(2).Info("Updating heartbeat", "ReadyForVolumeAllocation", readyForAllocation, "LastHeartbeatTime", lastHeartbeatTime, "StatusMessage", statusMessage)
 
-	azDriverNodes := d.azdiskClient.DiskV1beta2().AzDriverNodes(d.objectNamespace)
-	azDriverNodeLister := d.azDriverNodeInformer.Lister().AzDriverNodes(d.objectNamespace)
+	azDriverNodes := d.azdiskClient.DiskV1beta2().AzDriverNodes(d.config.ObjectNamespace)
+	azDriverNodeLister := d.azDriverNodeInformer.Lister().AzDriverNodes(d.config.ObjectNamespace)
 
 	thisNode, err := azDriverNodeLister.Get(d.NodeID)
 	if err != nil {
@@ -627,4 +592,14 @@ func (d *DriverV2) updateOrCreateAzDriverNode(ctx context.Context, status azDriv
 
 func (d *DriverV2) getVolumeLocks() *volumehelper.VolumeLocks {
 	return d.volumeLocks
+}
+
+// getPerfOptimizationEnabled returns the value of the perfOptimizationEnabled field. It is intended for use with unit tests.
+func (d *DriverV2) getPerfOptimizationEnabled() bool {
+	return d.config.NodeConfig.EnablePerfOptimization
+}
+
+// setPerfOptimizationEnabled sets the value of the perfOptimizationEnabled field. It is intended for use with unit tests.
+func (d *DriverV2) setPerfOptimizationEnabled(enabled bool) {
+	d.config.NodeConfig.EnablePerfOptimization = enabled
 }

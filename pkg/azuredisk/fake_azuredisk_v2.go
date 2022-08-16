@@ -31,6 +31,7 @@ import (
 	"k8s.io/klog/v2"
 	mount "k8s.io/mount-utils"
 	testingexec "k8s.io/utils/exec/testing"
+	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	azdiskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
@@ -58,21 +59,20 @@ func NewFakeDriver(t *testing.T) (FakeDriver, error) {
 func newFakeDriverV2(t *testing.T) (*fakeDriverV2, error) {
 	klog.Warning("Using DriverV2")
 	driver := fakeDriverV2{}
+	driver.config = &azdiskv1beta2.AzDiskDriverConfiguration{}
 	driver.Name = fakeDriverName
 	driver.Version = fakeDriverVersion
 	driver.NodeID = fakeNodeID
 	driver.CSIDriver = *csicommon.NewFakeCSIDriver()
 	driver.ready = make(chan struct{})
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
-	driver.objectNamespace = fakeObjNamespace
+	driver.config.ObjectNamespace = fakeObjNamespace
 
 	driver.VolumeAttachLimit = -1
-	driver.supportZone = true
+	driver.config.NodeConfig.SupportZone = true
 	driver.ioHandler = azureutils.NewFakeIOHandler()
 	driver.hostUtil = azureutils.NewFakeHostUtil()
-	driver.useCSIProxyGAInterface = true
-	driver.isControllerPlugin = false
-	driver.isNodePlugin = false
+	driver.config.NodeConfig.UseCSIProxyGAInterface = true
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -192,7 +192,7 @@ func isTestingDriverV2() bool {
 }
 
 func (d *fakeDriverV2) setPerfOptimizationEnabled(enabled bool) {
-	d.perfOptimizationEnabled = enabled
+	d.config.NodeConfig.EnablePerfOptimization = enabled
 	d.cloudProvisioner.(*provisioner.FakeCloudProvisioner).SetPerfOptimizationEnabled(enabled)
 }
 

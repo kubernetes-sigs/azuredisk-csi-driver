@@ -143,7 +143,7 @@ func (d *DriverV2) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolume
 	if err == nil {
 		d.markRecoveryCompleteIfInProcess(diskURI)
 	} else {
-		if !waitedForAttach && d.enableListVolumes {
+		if !waitedForAttach && d.config.ControllerConfig.EnableListVolumes {
 			// recovery has a dependency on listVolumes call. Only proceed with recovery if listVolumes is enabled.
 			// if device path could not be found, start mount recovery only if the function's context was not used up waiting for AzVolumeAttachment CRI attachment to complete
 			err = status.Errorf(codes.Internal, "failed to find disk on lun %v. %v", lun, err)
@@ -393,9 +393,9 @@ func (d *DriverV2) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest)
 	var failureDomainFromLabels, instanceTypeFromLabels string
 	var err error
 
-	if d.supportZone {
+	if d.config.NodeConfig.SupportZone {
 		var zone cloudprovider.Zone
-		if d.getNodeInfoFromLabels {
+		if d.config.NodeConfig.GetNodeInfoFromLabels {
 			failureDomainFromLabels, instanceTypeFromLabels, err = getNodeInfoFromLabels(ctx, d.NodeID, d.cloudProvisioner.GetCloud().KubeClient)
 		} else {
 			if runtime.GOOS == "windows" && (!d.cloudProvisioner.GetCloud().UseInstanceMetadata || d.cloudProvisioner.GetCloud().Metadata == nil) {
@@ -426,7 +426,7 @@ func (d *DriverV2) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest)
 	maxDataDiskCount := d.VolumeAttachLimit
 	if maxDataDiskCount < 0 {
 		var instanceType string
-		if d.getNodeInfoFromLabels {
+		if d.config.NodeConfig.GetNodeInfoFromLabels {
 			if instanceTypeFromLabels == "" {
 				_, instanceTypeFromLabels, err = getNodeInfoFromLabels(ctx, d.NodeID, d.cloudProvisioner.GetCloud().KubeClient)
 			}
@@ -513,7 +513,7 @@ func (d *DriverV2) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolu
 	}
 
 	if isBlock {
-		if d.enableDiskOnlineResize {
+		if d.config.ControllerConfig.EnableDiskOnlineResize {
 			klog.V(2).Info("NodeExpandVolume begin to rescan all devices on block volume(%s)", volumeID)
 			if err := rescanAllVolumes(d.ioHandler); err != nil {
 				klog.Errorf("NodeExpandVolume rescanAllVolumes failed with error: %v", err)
@@ -543,7 +543,7 @@ func (d *DriverV2) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolu
 		return nil, status.Errorf(codes.NotFound, err.Error())
 	}
 
-	if d.enableDiskOnlineResize {
+	if d.config.ControllerConfig.EnableDiskOnlineResize {
 		klog.Errorf("NodeExpandVolume begin to rescan device %s on volume(%s)", devicePath, volumeID)
 		if err := d.nodeProvisioner.RescanVolume(devicePath); err != nil {
 			klog.Errorf("NodeExpandVolume rescanVolume failed with error: %v", err)
