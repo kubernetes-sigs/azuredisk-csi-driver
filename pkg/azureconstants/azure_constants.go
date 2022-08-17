@@ -18,6 +18,8 @@ package azureconstants
 
 import (
 	"regexp"
+
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
 )
 
 const (
@@ -87,6 +89,7 @@ const (
 	SnapshotID                    = "snapshot_id"
 	// define different sleep time when hit throttling
 	SnapshotOpThrottlingSleepSec = 50
+	PremiumV2LRS                 = compute.DiskStorageAccountTypes("PremiumV2_LRS")
 )
 
 var (

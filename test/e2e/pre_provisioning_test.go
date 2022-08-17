@@ -247,6 +247,25 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			test.Run(cs, ns)
 		})
 
+		ginkgo.It("should succeed when creating a PremiumV2_LRS disk [disk.csi.azure.com][windows]", func() {
+			skipIfUsingInTreeVolumePlugin()
+			skipIfOnAzureStackCloud()
+			req := makeCreateVolumeReq("premium-v2-disk", 100)
+			req.Parameters = map[string]string{
+				"skuName":  "PremiumV2_LRS",
+				"location": "eastus", // eastus2euap, swedencentral, westeurope
+			}
+			req.VolumeCapabilities[0].AccessType = &csi.VolumeCapability_Block{
+				Block: &csi.VolumeCapability_BlockVolume{},
+			}
+			resp, err := azurediskDriver.CreateVolume(context.Background(), req)
+			if err != nil {
+				ginkgo.Fail(fmt.Sprintf("create volume error: %v", err))
+			}
+			volumeID = resp.Volume.VolumeId
+			ginkgo.By(fmt.Sprintf("Successfully provisioned a PremiumV2_LRS disk volume: %q\n", volumeID))
+		})
+
 		ginkgo.It("should succeed when reattaching a disk to a new node on DanglingAttachError [disk.csi.azure.com]", func() {
 			skipIfUsingInTreeVolumePlugin()
 			skipIfOnAzureStackCloud()
