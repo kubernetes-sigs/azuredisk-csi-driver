@@ -90,16 +90,27 @@ type hostUtil interface {
 // DriverCore contains fields common to both the V1 and V2 driver, and implements all interfaces of CSI drivers
 type DriverCore struct {
 	csicommon.CSIDriver
-	ready                      chan struct{}
+	ready        chan struct{}
+	deviceHelper optimization.Interface
+	nodeInfo     *optimization.NodeInfo
+	ioHandler    azureutils.IOHandler
+	hostUtil     hostUtil
+}
+
+// Driver is the v1 implementation of the Azure Disk CSI Driver.
+type Driver struct {
+	DriverCore
+	cloud       *azure.Cloud
+	kubeconfig  string
+	mounter     *mount.SafeFormatAndMount
+	volumeLocks *volumehelper.VolumeLocks
+	// a timed cache GetDisk throttling
+	getDiskThrottlingCache     *azcache.TimedCache
 	perfOptimizationEnabled    bool
 	cloudConfigSecretName      string
 	cloudConfigSecretNamespace string
 	customUserAgent            string
 	userAgentSuffix            string
-	deviceHelper               optimization.Interface
-	nodeInfo                   *optimization.NodeInfo
-	ioHandler                  azureutils.IOHandler
-	hostUtil                   hostUtil
 	useCSIProxyGAInterface     bool
 	enableDiskOnlineResize     bool
 	allowEmptyCloudConfig      bool
@@ -111,17 +122,6 @@ type DriverCore struct {
 	enableDiskCapacityCheck    bool
 	vmssCacheTTLInSeconds      int64
 	vmType                     string
-}
-
-// Driver is the v1 implementation of the Azure Disk CSI Driver.
-type Driver struct {
-	DriverCore
-	cloud       *azure.Cloud
-	kubeconfig  string
-	mounter     *mount.SafeFormatAndMount
-	volumeLocks *volumehelper.VolumeLocks
-	// a timed cache GetDisk throttling
-	getDiskThrottlingCache *azcache.TimedCache
 }
 
 // newDriverV1 Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
@@ -331,6 +331,16 @@ func (d *Driver) getVolumeLocks() *volumehelper.VolumeLocks {
 	return d.volumeLocks
 }
 
+// getPerfOptimizationEnabled returns the value of the perfOptimizationEnabled field. It is intended for use with unit tests.
+func (d *Driver) getPerfOptimizationEnabled() bool {
+	return d.perfOptimizationEnabled
+}
+
+// setPerfOptimizationEnabled sets the value of the perfOptimizationEnabled field. It is intended for use with unit tests.
+func (d *Driver) setPerfOptimizationEnabled(enabled bool) {
+	d.perfOptimizationEnabled = enabled
+}
+
 func (d *DriverCore) Ready() <-chan struct{} {
 	return d.ready
 }
@@ -362,16 +372,6 @@ func (d *DriverCore) setNodeID(nodeID string) {
 // setName sets the Version field. It is intended for use with unit tests.
 func (d *DriverCore) setVersion(version string) {
 	d.Version = version
-}
-
-// getPerfOptimizationEnabled returns the value of the perfOptimizationEnabled field. It is intended for use with unit tests.
-func (d *DriverCore) getPerfOptimizationEnabled() bool {
-	return d.perfOptimizationEnabled
-}
-
-// setPerfOptimizationEnabled sets the value of the perfOptimizationEnabled field. It is intended for use with unit tests.
-func (d *DriverCore) setPerfOptimizationEnabled(enabled bool) {
-	d.perfOptimizationEnabled = enabled
 }
 
 // getDeviceHelper returns the value of the deviceHelper field. It is intended for use with unit tests.
