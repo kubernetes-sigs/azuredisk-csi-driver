@@ -1,6 +1,6 @@
 ## Pod Failover Test
 
-This test run creates a controller pod and a workload pod. The controller pod is responsible for repeatedly creating and deleting workload pod over the given duration. The workload pod will publish a metric called "default_failover_testing_workload_downtime" with the value of the downtime seen by the workload pod in seconds.
+This test run creates a controller pod and a workload pod. The controller pod is responsible for repeatedly deleting pods with the label app=pod-failover. The workload pod will use a custom CRD or file to calculate downtime and can publish a metric called "default_failover_testing_workload_downtime" with the value of the downtime seen by the workload pod in seconds to prometheus or publish downtime to Azure Event Hub.
 
 ## Prerequisite
 
@@ -17,50 +17,37 @@ export REGISTRY=<your-personal-docker-repo>
 make pod-failover-test-containers
 ```
 
-### Create metrics service
-
-- Create the metrics service where the workload pod can publish it's metrics using the command mentioned below:
-
-```console
-wget https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/main_v2/test/podFailover/metrics-svc.yaml
-```
-
-- Edit the value of metrics-service-image and run:
-
-```console
-kubectl apply -f metrics-svc.yaml
-```
-
-- Create the service monitor to enable Prometheus to scrape the pod failover service metrics.
-
-```console
-wget https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/main_v2/test/podFailover/service-monitor.yaml
-kubectl apply -f service-monitor.yaml
-```
-
 ### Run failover test
 
-- Get the deployment file to deploy the controller
+- Modify test/podFailover/controller/chart/values.yaml
 
-```console
-wget https://raw.githubusercontent.com/abhisheksinghbaghel/azuredisk-csi-driver/main_v2/test/podFailover/deployment.yaml
+- Values/Parameters - controllerPodImage(required), metricPodImage(optional, used for prometheus metrics)
+
+
+- Deployment via helm chart (controller/metrics)
+``` console
+helm install pod-failover-controller test/podFailover/controller/chart/
 ```
 
-- Modify the values the following parameters:
-    1. controller-pod-image
-    2. driver-version
-    3. maxshares
-    4. duration
-    5. workload-image
-    6. pod-count
-    7. pvc-per-pod
-    8. delay-before-failover
-    9. all-pods-on-one-node
-    10. test-name
-    11. auth-enabled
+- Create or use a scenario from test/podFailover/workload/scenarios
 
-- Run the below command to deploy the controller. This will start the test for the given duration and will also start pushing metrics to the metrics-svc.
+- The following values/parameters are required for workloads.
+    1. namespace
+    2. podCount
+    3. pvcCount (can be 0 if running stateless)
+    4. failureType
+    5. workloadPodImage
+- The following are optional parameters.
+    1. storageClass(see 1pod1pvc for example. includes all fields related to storageClass creation)
+    2. metricsEndpoint (used for sending metrics to prometheus)
+    3. azureClientId, azureClientSecret, azureTenantId (used for authenticating to event hub to send metrics to kusto, use the azdiskdrivertest-sp service principal)
+    4. driverVersion (reports driver version to kusto)
+    5. runID
+
+- Deployment via helm chart (workload)
 
 ```console
-kubectl apply -f deployment.yaml
+helm install pod-failover-workload test/podFailover/workload/chart/ --values test/podFailover/workload/scenarios/1pod1pvc.yaml --set azureClientId=$AZURE_CLIENT_ID --set azureClientSecret=$AZURE_CLIENT_SECRET --set azureTenantId=$AZURE_TENANT_ID
 ```
+
+

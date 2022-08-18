@@ -1,0 +1,21 @@
+storageClass:
+  name: azdisk-pod-failover-1pod1pvc-sc
+  parameters:
+    cachingmode: None
+    skuName: Premium_LRS
+    maxShares: "2"
+  additionalValues:
+    reclaimPolicy: Delete
+    volumeBindingMode: Immediate
+    allowVolumeExpansion: true
+  provisioner: disk.csi.azure.com
+
+namespace: azdisk-pod-failover-1pod1pvc
+
+podCount: 1
+
+pvcCount: 1
+
+failureType: delete-pod
+
+workloadPodImage: registry.hub.docker.com/connorbradshaw/workloadpod

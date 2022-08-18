@@ -360,12 +360,12 @@ override POD_FAILOVER_IMAGE_VERSION = $(GIT_COMMIT)
 endif
 .PHONY: pod-failover-test-containers
 pod-failover-test-containers:
-	CGO_ENABLED=0 go build -a -mod vendor -o _output/${ARCH}/workloadPod ./test/podFailover/workload
-	CGO_ENABLED=0 go build -a -mod vendor -o _output/${ARCH}/controllerPod ./test/podFailover/controller
-	CGO_ENABLED=0 go build  -o _output/${ARCH}/metricsPod ./test/podFailover/metrics
-	docker build -t $(REGISTRY)/workloadpod:$(POD_FAILOVER_IMAGE_VERSION) -f ./test/podFailover/workload/Dockerfile .
-	docker build -t $(REGISTRY)/controllerpod:$(POD_FAILOVER_IMAGE_VERSION) -f ./test/podFailover/controller/Dockerfile .
-	docker build -t $(REGISTRY)/metricspod:$(POD_FAILOVER_IMAGE_VERSION) -f ./test/podFailover/metrics/Dockerfile .
+	CGO_ENABLED=0 go build -a -mod vendor -o _output/${ARCH}/workloadPod ./test/podFailover/workload/cmd
+	CGO_ENABLED=0 go build -a -mod vendor -o _output/${ARCH}/controllerPod ./test/podFailover/controller/cmd
+	CGO_ENABLED=0 go build  -o _output/${ARCH}/metricsPod ./test/podFailover/metrics/cmd
+	docker build -t $(REGISTRY)/workloadpod:$(POD_FAILOVER_IMAGE_VERSION) -f ./test/podFailover/workload/cmd/Dockerfile .
+	docker build -t $(REGISTRY)/controllerpod:$(POD_FAILOVER_IMAGE_VERSION) -f ./test/podFailover/controller/cmd/Dockerfile .
+	docker build -t $(REGISTRY)/metricspod:$(POD_FAILOVER_IMAGE_VERSION) -f ./test/podFailover/metrics/cmd/Dockerfile .
 	docker push $(REGISTRY)/workloadpod:$(POD_FAILOVER_IMAGE_VERSION)
 	docker push $(REGISTRY)/controllerpod:$(POD_FAILOVER_IMAGE_VERSION)
 	docker push $(REGISTRY)/metricspod:$(POD_FAILOVER_IMAGE_VERSION)

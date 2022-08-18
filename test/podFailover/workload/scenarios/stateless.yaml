@@ -1,0 +1,10 @@
+namespace: stateless-pod-failover
+
+podCount: 3
+
+pvcCount: 0
+
+failureType: delete-pod
+
+workloadPodImage: 
+

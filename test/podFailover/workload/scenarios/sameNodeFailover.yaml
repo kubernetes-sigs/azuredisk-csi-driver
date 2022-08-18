@@ -1,0 +1,21 @@
+storageClass:
+  name: samenode-pod-failover-1pod1pvc-sc
+  parameters:
+    cachingmode: None
+    skuName: Premium_LRS
+    maxShares: "1"
+  additionalValues:
+    reclaimPolicy: Delete
+    volumeBindingMode: Immediate
+    allowVolumeExpansion: true
+  provisioner: disk.csi.azure.com
+
+namespace: samenode-pod-failover-1pod1pvc
+
+podCount: 3
+
+pvcCount: 3
+
+failureType: same-node-failover
+
+workloadPodImage:

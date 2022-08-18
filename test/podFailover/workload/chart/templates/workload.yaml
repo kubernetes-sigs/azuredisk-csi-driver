@@ -1,0 +1,160 @@
+kind: Namespace
+apiVersion: v1
+metadata:
+  name: {{ .Values.namespace }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: workload-pod-sa
+  namespace: {{ .Values.namespace }}
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ .Values.namespace }}-workload-pod-sa-role
+rules:
+  - apiGroups: ["podfailover.azure.com"]
+    resources: ["podfailures"]
+    verbs: ["get", "list", "update", "create", "delete"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["csidrivers"]
+    verbs: ["get", "list"]
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ .Values.namespace }}-workload-pod-sa-role
+subjects:
+  - kind: ServiceAccount
+    name: workload-pod-sa
+    namespace: {{ .Values.namespace }}
+roleRef:
+  kind: ClusterRole
+  name: {{ .Values.namespace }}-workload-pod-sa-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: azuresp
+  namespace: {{ .Values.namespace }}
+type: Opaque
+stringData:
+  AZURE_CLIENT_ID: {{ .Values.azureClientId }}
+  AZURE_CLIENT_SECRET: {{ .Values.azureClientSecret }}
+  AZURE_TENANT_ID: {{ .Values.azureTenantId }}
+---
+{{- if .Values.storageClass }}
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{ .Values.storageClass.name }}
+{{- with .Values.storageClass.parameters }}
+parameters:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+provisioner: {{ .Values.storageClass.provisioner }}
+{{ with .Values.storageClass.additionalValues }}
+{{- toYaml .}}
+{{- end }}
+---
+{{- end}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.namespace }}-service
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: pod-failover
+spec:
+  ports:
+  - port: 9091
+    name: cleanup
+  clusterIP: None
+  selector:
+    app: pod-failover
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: pod-failover-statefulset
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: pod-failover
+spec:
+  replicas: {{ .Values.podCount }}
+  serviceName: {{ .Values.namespace }}-service
+  podManagementPolicy: "Parallel"
+  selector:
+    matchLabels:
+      app: pod-failover
+  template:
+    metadata:
+      labels:
+        app: pod-failover
+        failureType: {{ .Values.failureType }}
+    spec:
+      nodeSelector:
+        kubernetes.io/os: linux
+      serviceAccountName: workload-pod-sa
+      containers:
+        - name: pod-failover-workload
+          image: {{ .Values.workloadPodImage }}
+          imagePullPolicy: Always
+          lifecycle:
+            preStop:
+              httpGet:
+                path: /cleanup
+                port: 9091
+          {{- if .Values.pvcCount }}
+          volumeMounts:
+            {{- range $index := until (.Values.pvcCount | int) }}
+            - mountPath: {{ printf "/mnt/%s-%d" $.Values.namespace $index}}
+              name: {{ printf "volume-%d" $index}}
+            {{- end}}
+          {{- end}}
+          args:
+            - {{ printf "--mount-path=/mnt/%s-0" $.Values.namespace}}
+            {{- if .Values.runID }}
+            - {{ printf "--run-id=%s" $.Values.runID}}
+            {{- else }}
+            {{$runID := randNumeric 5}}
+            - {{ printf "--run-id=%s" $runID}}
+            {{- end}}
+            - {{ printf "--workload-type=%dpod%dpvc" (int $.Values.podCount) (int $.Values.pvcCount)}}
+            {{- if .Values.storageClass }}
+            - {{ printf "--storage-provisioner=%s" $.Values.storageClass.provisioner}}
+            {{- end}}
+            {{- if .Values.metricsEndpoint }}
+            - {{ printf "--metrics-endpoint=%s" $.Values.metricsEndpoint}}
+            {{- end}}
+            {{- if .Values.driverVersion }}
+            - {{ printf "--driver-version=%s" $.Values.driverVersion}}
+            {{- end}}
+            - {{ printf "--namespace=%s" $.Values.namespace}}
+          {{- if .Values.azureClientId }}
+          envFrom:
+          - secretRef:
+              name: azuresp
+          {{- end}}
+          env:
+            - name: MY_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+      restartPolicy: Always
+  {{- if .Values.pvcCount }}
+  volumeClaimTemplates:
+    {{- range $index := until (.Values.pvcCount | int) }}
+    - metadata:
+        name: {{ printf "volume-%d" $index}}
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        storageClassName: {{ printf "%s" $.Values.storageClass.name}}
+        resources:
+          requests:
+            storage: 1Gi
+    {{- end}}
+  {{- end}}
+
