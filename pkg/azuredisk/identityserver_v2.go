@@ -80,7 +80,7 @@ func (f *DriverV2) GetPluginCapabilities(ctx context.Context, req *csi.GetPlugin
 		},
 	}
 
-	if f.enableDiskOnlineResize {
+	if f.config.ControllerConfig.EnableDiskOnlineResize {
 		pluginCapability := &csi.PluginCapability{
 			Type: &csi.PluginCapability_VolumeExpansion_{
 				VolumeExpansion: &csi.PluginCapability_VolumeExpansion{
