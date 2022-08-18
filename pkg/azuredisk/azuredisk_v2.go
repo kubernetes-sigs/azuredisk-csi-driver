@@ -382,6 +382,7 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 	crdClient, err := crdClientset.NewForConfig(d.kubeConfig)
 	if err != nil {
 		klog.Errorf("failed to initialize crd clientset. Error: %v. Exiting application...", err)
+		os.Exit(1)
 	}
 
 	sharedState := controller.NewSharedState(d.Name, d.objectNamespace, topologyKey, eventRecorder, mgr.GetClient(), d.crdProvisioner.GetDiskClientSet(), d.kubeClient, crdClient)
