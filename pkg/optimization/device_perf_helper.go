@@ -25,7 +25,7 @@ import (
 )
 
 // IsValidPerfProfile Checks to see if perf profile passed is correct
-// Right now we are only supporing basic profile
+// Right now we are only supporting basic profile
 // Other advanced profiles to come later
 func IsValidPerfProfile(profile string) bool {
 	return isPerfTuningEnabled(profile) || strings.EqualFold(profile, consts.PerfProfileNone)

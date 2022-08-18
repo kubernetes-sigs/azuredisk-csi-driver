@@ -333,7 +333,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 	// Driver d acts as IdentityServer, ControllerServer and NodeServer
 	s.Start(endpoint, d, d, d, testingMock)
 
-	// Start sending hearbeat and mark node as ready
+	// Start sending heartbeat and mark node as ready
 	if d.isNodePlugin {
 		go d.runAzDriverNodeHeartbeatLoop(ctx)
 	}

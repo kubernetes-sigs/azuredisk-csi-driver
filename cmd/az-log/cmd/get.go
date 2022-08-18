@@ -25,8 +25,8 @@ import (
 // getCmd represents the get command
 var getCmd = &cobra.Command{
 	Use:   "get",
-	Short: "Fetching logs of pods in kube-system namesapce",
-	Long:  `Fetching logs of pods in kube-system namesapce`,
+	Short: "Fetching logs of pods in kube-system namespace",
+	Long:  `Fetching logs of pods in kube-system namespace`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 0 {
 			fmt.Printf("You must specify which source to retrieve and process logs from to \"%s\".\n", cmd.Name())
