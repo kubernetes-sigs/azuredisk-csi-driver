@@ -324,7 +324,7 @@ func TestGetVolumesFromPod(t *testing.T) {
 			},
 		},
 		{
-			description: "[Sucess] Sucessfully return Volumes for the given podName",
+			description: "[Success] Successfully return Volumes for the given podName",
 			podName:     "test-pod-0",
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *SharedState {
 				testSharedState := NewTestSharedState(
