@@ -648,7 +648,7 @@ func TestGetSnapshotInfo(t *testing.T) {
 			expectedError:        nil,
 		},
 		{
-			// case insentive check
+			// case insensitive check
 			snapshotID:           "testurl/subscriptions/12/resourcegroups/23/providers/Microsoft.Compute/snapshots/snapshot-name",
 			expectedSnapshotName: "snapshot-name",
 			expectedRGName:       "23",
