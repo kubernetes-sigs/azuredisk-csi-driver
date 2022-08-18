@@ -155,7 +155,7 @@ func (t *PodFailoverWithReplicas) Run(client clientset.Interface, namespace *v1.
 	}
 
 	ginkgo.By("Verifying that pod got created on the correct node.")
-	// verfiy that the pod failed over the replica node
+	// verify that the pod failed over the replica node
 	podObjs, err := podutil.GetPodsForDeployment(tDeployment.Client, tDeployment.Deployment)
 	framework.ExpectNoError(err)
 	for _, podObj := range podObjs.Items {

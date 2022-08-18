@@ -38,4 +38,4 @@ driverNamespace: "" # default is "azure-disk-csi"
 |--pod \<pod-name\>|Show all azVolumes/azVolumesAttachments that are used by a given pod.|
 |--node \<node-name\>|Show all azVolumesAttachments that are present in a given node.|
 |--zone \<zone-name\>|Show all azVolumesAttachments that are present in a given zone.|
-|--namespace \<pod-namespace\>|Specify the namespace of the pod. If it's not specified, default namesapce is used.|
+|--namespace \<pod-namespace\>|Specify the namespace of the pod. If it's not specified, default namespace is used.|
