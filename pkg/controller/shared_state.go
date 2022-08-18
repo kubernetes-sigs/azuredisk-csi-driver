@@ -447,7 +447,10 @@ func (c *SharedState) addPod(ctx context.Context, pod *v1.Pod, updateOption upda
 		}
 		namespacedClaimName := getQualifiedName(pod.Namespace, volume.PersistentVolumeClaim.ClaimName)
 		if _, ok := c.claimToVolumeMap.Load(namespacedClaimName); !ok {
-			w.Logger().V(5).Infof("Skipping Pod %s. Volume %s not csi. Driver: %+v", pod.Name, volume.Name, volume.CSI)
+			// Log message if the Pod status is Running
+			if pod.Status.Phase == v1.PodRunning {
+				w.Logger().V(5).Infof("Skipping Pod %s. Volume %s not csi. Driver: %+v", pod.Name, volume.Name, volume.CSI)
+			}
 			continue
 		}
 		w.Logger().V(5).Infof("Pod %s. Volume %v is csi.", pod.Name, volume)
