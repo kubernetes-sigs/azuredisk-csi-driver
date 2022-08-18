@@ -24,7 +24,7 @@ import (
 )
 
 // IsValidPerfProfile Checks to see if perf profile passed is correct
-// Right now we are only supporing basic profile
+// Right now we are only supporting basic profile
 // Other advanced profiles to come later
 func IsValidPerfProfile(profile string) bool {
 	return strings.EqualFold(profile, consts.PerfProfileBasic) || strings.EqualFold(profile, consts.PerfProfileNone)
