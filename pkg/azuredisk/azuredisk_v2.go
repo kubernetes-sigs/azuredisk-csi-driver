@@ -347,6 +347,7 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 	crdClient, err := crdClientset.NewForConfig(d.kubeConfig)
 	if err != nil {
 		klog.Errorf("failed to initialize crd clientset. Error: %v. Exiting application...", err)
+		os.Exit(1)
 	}
 
 	sharedState := controller.NewSharedState(d.Name, d.config.ObjectNamespace, topologyKey, eventRecorder, mgr.GetClient(), d.crdProvisioner.GetDiskClientSet(), d.kubeClient, crdClient)
@@ -469,7 +470,7 @@ func (d *DriverV2) registerAzDriverNodeOrDie(ctx context.Context) {
 	d.azDriverNodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		DeleteFunc: func(obj interface{}) {
 			if azDriverNode, ok := obj.(*azdiskv1beta2.AzDriverNode); ok && strings.EqualFold(azDriverNode.Name, d.NodeID) {
-				_ = d.updateAzDriverNodeHearbeat(context.Background())
+				_ = d.updateAzDriverNodeHeartbeat(context.Background())
 			}
 		},
 	})
@@ -489,7 +490,7 @@ func (d *DriverV2) registerAzDriverNodeOrDie(ctx context.Context) {
 
 // runAzDriverNodeHeartbeatLoop runs a loop to send heartbeat from the node
 func (d *DriverV2) runAzDriverNodeHeartbeatLoop(ctx context.Context) {
-	_ = d.updateAzDriverNodeHearbeat(ctx)
+	_ = d.updateAzDriverNodeHeartbeat(ctx)
 
 	// To prevent a regular update storm when lots of nodes start around the same time,
 	// delay a random interval within the configured heartbeat frequency before starting
@@ -513,7 +514,7 @@ func (d *DriverV2) runAzDriverNodeHeartbeatLoop(ctx context.Context) {
 			return
 		// Loop and update heartbeat at update frequency
 		case <-ticker.C:
-			_ = d.updateAzDriverNodeHearbeat(ctx)
+			_ = d.updateAzDriverNodeHeartbeat(ctx)
 		}
 	}
 }
@@ -529,8 +530,8 @@ func (d *DriverV2) registerAzDriverNode(ctx context.Context) error {
 	return err
 }
 
-// updateAzDriverNodeHearbeat updates the AzDriverNode health status
-func (d *DriverV2) updateAzDriverNodeHearbeat(ctx context.Context) error {
+// updateAzDriverNodeHeartbeat updates the AzDriverNode health status
+func (d *DriverV2) updateAzDriverNodeHeartbeat(ctx context.Context) error {
 	innerCtx, w := workflow.New(ctx, workflow.WithDetails(consts.NamespaceLabel, d.config.ObjectNamespace, consts.NodeNameLabel, d.NodeID))
 
 	err := d.updateOrCreateAzDriverNode(innerCtx, azDriverNodeHealthy)
