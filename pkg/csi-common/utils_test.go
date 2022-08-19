@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"context"
 	"flag"
+	"os"
 	"testing"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -28,6 +29,25 @@ import (
 
 	"github.com/stretchr/testify/assert"
 )
+
+func init() {
+	klog.InitFlags(nil)
+}
+
+func TestMain(m *testing.M) {
+	if e := flag.Set("logtostderr", "false"); e != nil {
+		klog.Error(e)
+	}
+	if e := flag.Set("alsologtostderr", "false"); e != nil {
+		klog.Error(e)
+	}
+	if e := flag.Set("v", "100"); e != nil {
+		klog.Error(e)
+	}
+	flag.Parse()
+	exitVal := m.Run()
+	os.Exit(exitVal)
+}
 
 func TestParseEndpoint(t *testing.T) {
 
@@ -84,17 +104,6 @@ func TestParseEndpoint(t *testing.T) {
 
 func TestLogGRPC(t *testing.T) {
 	// SET UP
-	klog.InitFlags(nil)
-	if e := flag.Set("logtostderr", "false"); e != nil {
-		t.Error(e)
-	}
-	if e := flag.Set("alsologtostderr", "false"); e != nil {
-		t.Error(e)
-	}
-	if e := flag.Set("v", "100"); e != nil {
-		t.Error(e)
-	}
-	flag.Parse()
 
 	buf := new(bytes.Buffer)
 	klog.SetOutput(buf)
