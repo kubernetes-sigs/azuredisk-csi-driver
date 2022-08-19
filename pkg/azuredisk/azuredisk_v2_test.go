@@ -132,7 +132,7 @@ func TestRunAzDriverNodeHeartbeatLoop(t *testing.T) {
 			newContextFn: func(t *testing.T, d *fakeDriverV2) (context.Context, context.CancelFunc) {
 				ctx, cancel := context.WithCancel(context.TODO())
 				go func() {
-					<-time.After(time.Duration(2*d.heartbeatFrequencyInSec) * time.Second)
+					<-time.After(time.Duration(2*d.config.NodeConfig.HeartbeatFrequencyInSec) * time.Second)
 					cancel()
 				}()
 
@@ -144,7 +144,7 @@ func TestRunAzDriverNodeHeartbeatLoop(t *testing.T) {
 		{
 			description: "Should sleep and return when context deadline exceeded",
 			newContextFn: func(t *testing.T, d *fakeDriverV2) (context.Context, context.CancelFunc) {
-				ctx, cancel := context.WithTimeout(context.TODO(), time.Duration(2*d.heartbeatFrequencyInSec)*time.Second)
+				ctx, cancel := context.WithTimeout(context.TODO(), time.Duration(2*d.config.NodeConfig.HeartbeatFrequencyInSec)*time.Second)
 
 				return ctx, func() {
 					defer cancel()
@@ -165,7 +165,7 @@ func TestRunAzDriverNodeHeartbeatLoop(t *testing.T) {
 
 			d.registerAzDriverNodeOrDie(regCtx)
 
-			d.heartbeatFrequencyInSec = 1
+			d.config.NodeConfig.HeartbeatFrequencyInSec = 1
 
 			ctx, cancel := test.newContextFn(t, d)
 			defer cancel()
@@ -176,7 +176,7 @@ func TestRunAzDriverNodeHeartbeatLoop(t *testing.T) {
 }
 
 func verifyAzDriverNode(t *testing.T, d *fakeDriverV2, expectedStatusMessage string, expectedReadyForAllocation bool) {
-	azDriverNode, err := d.azdiskClient.DiskV1beta2().AzDriverNodes(d.objectNamespace).Get(context.TODO(), d.NodeID, metav1.GetOptions{})
+	azDriverNode, err := d.azdiskClient.DiskV1beta2().AzDriverNodes(d.config.ObjectNamespace).Get(context.TODO(), d.NodeID, metav1.GetOptions{})
 	require.NoError(t, err)
 	require.NotNil(t, azDriverNode.Status)
 	assert.NotNil(t, azDriverNode.Status.StatusMessage)
