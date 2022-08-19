@@ -1,0 +1,103 @@
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+exclude: "vendor/"
+repos:
+-   repo: https://github.com/commitizen-tools/commitizen
+    rev: v2.32.1
+    hooks:
+    -   id: commitizen
+        stages: [ commit-msg ]
+-   repo: https://github.com/codespell-project/codespell
+    rev: v2.2.1
+    hooks:
+    -   id: codespell
+        args:
+        -   "--skip"
+        -   "./.git,./.github/workflows/codespell.yml,.git,*.png,*.jpg,*.svg,*.sum,./vendor,go.sum,crd-csi-snapshot-ga.yaml,crd-csi-snapshot.yaml"
+        -   "--ignore-words-list"
+        -   "AKS,aks,ro"
+        -   "--check-filenames"
+        stages: [ commit ]
+-   repo: local
+    hooks:
+    -   id: verify-gofmt
+        name: Verify Go Formatting
+        entry: ./hack/verify-gofmt.sh
+        types: [ go ]
+        exclude: '^vendor/'
+        pass_filenames: false
+        language: system
+        stages: [ commit ]
+    -   id: verify-govet
+        name: Vet Go Code
+        entry: ./hack/verify-govet.sh
+        types: [ go ]
+        exclude: '^vendor/'
+        pass_filenames: false
+        language: system
+        stages: [ commit ]
+    -   id: verify-gomod
+        name: Verify Go Modules
+        entry: ./hack/verify-gomod.sh
+        types: [ file ]
+        files: '(^vendor/)|(^go.mod)|(^go.sum)|\.go'
+        pass_filenames: false
+        require_serial: true
+        fail_fast: true
+        language: system
+        stages: [ commit ]
+    -   id: verify-codegen
+        name: Verify Go Code Generation
+        entry: ./hack/verify-codegen.sh
+        types: [ file ]
+        files: '^pkg/api/'
+        pass_filenames: false
+        require_serial: true
+        fail_fast: true
+        language: system
+        stages: [ commit ]
+    -   id: verify-crd
+        name: Verify Custom Resource Generation
+        entry: ./hack/verify-gocrd.sh
+        types: [ file ]
+        files: '^pkg/api/(azuredisk|config)/'
+        pass_filenames: false
+        require_serial: true
+        fail_fast: true
+        language: system
+        stages: [ commit ]
+    -   id: verify-yamllint
+        name: Lint YAML Files
+        entry: ./hack/verify-yamllint.sh
+        types: [ yaml ]
+        exclude: '^vendor/'
+        pass_filenames: false
+        fail_fast: true
+        language: system
+        stages: [ commit ]
+    -   id: verify-boilerplate
+        name: Verify File Boilerplate
+        entry: ./hack/verify-boilerplate.sh
+        types: [ go, makefile, python, shell ]
+        exclude: '^vendor/'
+        pass_filenames: false
+        language: system
+        stages: [ commit ]
+    -   id: verify-helm-chart-files
+        name: Verify Helm Chart Files
+        entry: ./hack/verify-helm-chart-files.sh
+        types: [ file ]
+        files: '^charts/'
+        pass_filenames: false
+        require_serial: true
+        language: system
+        stages: [ commit ]
+    -   id: verify-helm-chart
+        name: Verify Helm Chart
+        entry: ./hack/verify-helm-chart.sh
+        types: [ file ]
+        files: '^charts/'
+        pass_filenames: false
+        require_serial: true
+        language: system
+        stages: [ commit ]
