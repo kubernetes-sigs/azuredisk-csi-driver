@@ -1,6 +1,6 @@
 ## CSI driver debug tips
 ### case#1: disk create/delete/attach/detach/snapshot/restore failed
-> This step is not available if you are using [managed CSI driver on AKS](https://docs.microsoft.com/en-us/azure/aks/csi-storage-drivers).
+> This step is not applicable if you are using [managed CSI driver on AKS](https://docs.microsoft.com/en-us/azure/aks/csi-storage-drivers).
  - find csi driver controller pod
 > There could be multiple controller pods (only one pod is the leader), if there are no helpful logs, try to get logs from the leader controller pod.
 ```console
