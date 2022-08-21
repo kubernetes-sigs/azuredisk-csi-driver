@@ -31,7 +31,7 @@ csi-azuredisk-node-dr4s4                       3/3     Running   0          7m4s
 
  - get pod description and logs
 ```console
-kubectl describe pod csi-azuredisk-node-cvgbs -c azuredisk -n kube-system > csi-azuredisk-node-description.log
+kubectl describe pod csi-azuredisk-node-cvgbs -n kube-system > csi-azuredisk-node-description.log
 kubectl logs csi-azuredisk-node-cvgbs -c azuredisk -n kube-system > csi-azuredisk-node.log
 ```
 
