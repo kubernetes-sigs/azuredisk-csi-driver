@@ -1,0 +1,25 @@
+storageClass:
+  name: azfile-pod-failover-1pod1pvc-sc
+  parameters:
+    skuName: Premium_LRS
+  additionalValues:
+    allowVolumeExpansion: true
+    mountOptions:
+      - dir_mode=0777
+      - file_mode=0777
+      - uid=0
+      - gid=0
+      - mfsymlinks
+      - cache=strict
+      - actimeo=30
+  provisioner: file.csi.azure.com
+
+namespace: azfile-pod-failover-1pod1pvc
+
+podCount: 1
+
+pvcCount: 1
+
+failureType: delete-pod
+
+workloadPodImage:

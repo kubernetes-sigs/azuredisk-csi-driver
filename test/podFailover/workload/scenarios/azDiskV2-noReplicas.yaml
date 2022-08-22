@@ -1,0 +1,21 @@
+storageClass:
+  name: azdiskv2-pod-failover-1pod1pvc-sc
+  parameters:
+    cachingmode: None
+    skuName: Premium_LRS
+    maxShares: "1"
+  additionalValues:
+    reclaimPolicy: Delete
+    volumeBindingMode: Immediate
+    allowVolumeExpansion: true
+  provisioner: disk.csi.azure.com
+
+namespace: azdiskv2-pod-failover-1pod1pvc
+
+podCount: 1
+
+pvcCount: 1
+
+failureType: delete-pod
+
+workloadPodImage:
