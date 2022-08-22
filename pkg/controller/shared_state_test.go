@@ -45,14 +45,14 @@ func TestGetNodesForReplica(t *testing.T) {
 		description string
 		volumes     []string
 		pods        []v1.Pod
-		setupFunc   func(*testing.T, *gomock.Controller) *ReconcileReplica
+		setupFunc   func(*testing.T, *gomock.Controller) *SharedState
 		verifyFunc  func(*testing.T, []string, error)
 	}{
 		{
 			description: "[Success] Should not select nodes with no remaining capacity.",
 			volumes:     []string{testPersistentVolume0Name},
 			pods:        []v1.Pod{testPod0},
-			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileReplica {
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *SharedState {
 				replicaAttachment := testReplicaAzVolumeAttachment
 				now := metav1.Time{Time: metav1.Now().Add(-1000)}
 				replicaAttachment.DeletionTimestamp = &now
@@ -65,7 +65,7 @@ func TestGetNodesForReplica(t *testing.T) {
 				newNode := testNode0.DeepCopy()
 				newNode.Status.Allocatable[consts.AttachableVolumesField] = resource.MustParse("0")
 
-				controller := NewTestReplicaController(
+				testSharedState := NewTestSharedState(
 					mockCtl,
 					testNamespace,
 					newVolume,
@@ -75,8 +75,8 @@ func TestGetNodesForReplica(t *testing.T) {
 					&testPod0,
 				)
 
-				mockClients(controller.cachedClient.(*mockclient.MockClient), controller.azClient, controller.kubeClient)
-				return controller
+				mockClients(testSharedState.cachedClient.(*mockclient.MockClient), testSharedState.azClient, testSharedState.kubeClient)
+				return testSharedState
 			},
 			verifyFunc: func(t *testing.T, nodes []string, err error) {
 				require.NoError(t, err)
@@ -88,7 +88,7 @@ func TestGetNodesForReplica(t *testing.T) {
 			description: "[Success] Should not create replica attachment on a node that does not match volume's node affinity rule",
 			volumes:     []string{testPersistentVolume0Name},
 			pods:        []v1.Pod{testPod0},
-			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileReplica {
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *SharedState {
 				replicaAttachment := testReplicaAzVolumeAttachment
 				now := metav1.Time{Time: metav1.Now().Add(-1000)}
 				replicaAttachment.DeletionTimestamp = &now
@@ -114,7 +114,7 @@ func TestGetNodesForReplica(t *testing.T) {
 				newNode := testNode0.DeepCopy()
 				newNode.Labels = map[string]string{consts.TopologyRegionKey: "westus2"}
 
-				controller := NewTestReplicaController(
+				testSharedState := NewTestSharedState(
 					mockCtl,
 					testNamespace,
 					newVolume,
@@ -124,8 +124,8 @@ func TestGetNodesForReplica(t *testing.T) {
 					&testPod0,
 				)
 
-				mockClients(controller.cachedClient.(*mockclient.MockClient), controller.azClient, controller.kubeClient)
-				return controller
+				mockClients(testSharedState.cachedClient.(*mockclient.MockClient), testSharedState.azClient, testSharedState.kubeClient)
+				return testSharedState
 			},
 			verifyFunc: func(t *testing.T, nodes []string, err error) {
 				require.NoError(t, err)
@@ -507,6 +507,94 @@ func TestGetNodesWithReplica(t *testing.T) {
 			defer mockCtl.Finish()
 			sharedState := tt.setupFunc(t, mockCtl)
 			nodes, err := sharedState.getNodesWithReplica(context.TODO(), tt.volumeName)
+			tt.verifyFunc(t, nodes, err)
+		})
+	}
+}
+
+func TestFilterAndSortNodes(t *testing.T) {
+	tests := []struct {
+		description string
+		nodes       []v1.Node
+		volumes     []string
+		pods        []v1.Pod
+		setupFunc   func(*testing.T, *gomock.Controller) *SharedState
+		verifyFunc  func(*testing.T, []v1.Node, error)
+	}{
+		{
+			description: "[Failure] Should throw error when AzVolume not found",
+			nodes:       []v1.Node{testNode0},
+			volumes:     []string{"random-volume-name"},
+			pods:        []v1.Pod{testPod0},
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *SharedState {
+				newVolume := testAzVolume0.DeepCopy()
+				newVolume.Status.Detail = &azdiskv1beta2.AzVolumeStatusDetail{
+					VolumeID: testManagedDiskURI0,
+				}
+
+				testSharedState := NewTestSharedState(
+					mockCtl,
+					testNamespace,
+					newVolume,
+					&testPersistentVolume0,
+					&testNode2,
+					&testPod0,
+				)
+
+				mockClients(testSharedState.cachedClient.(*mockclient.MockClient), testSharedState.azClient, testSharedState.kubeClient)
+				return testSharedState
+			},
+			verifyFunc: func(t *testing.T, nodes []v1.Node, err error) {
+				require.Error(t, err)
+				require.Nil(t, nodes)
+			},
+		},
+		{
+			description: "[Success] Should return filtered and sorted list of nodes when AzVolume is valid",
+			nodes:       []v1.Node{testNode0, testNode1},
+			volumes:     []string{testPersistentVolume0Name, testPersistentVolume1Name},
+			pods:        []v1.Pod{testPod0, testPod1},
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *SharedState {
+				newVolume := testAzVolume0.DeepCopy()
+				newVolume.Status.Detail = &azdiskv1beta2.AzVolumeStatusDetail{
+					VolumeID: testManagedDiskURI0,
+				}
+
+				newVolume1 := testAzVolume1.DeepCopy()
+				newVolume1.Status.Detail = &azdiskv1beta2.AzVolumeStatusDetail{
+					VolumeID: testManagedDiskURI0,
+				}
+
+				testSharedState := NewTestSharedState(
+					mockCtl,
+					testNamespace,
+					newVolume,
+					newVolume1,
+					&testPersistentVolume0,
+					&testPersistentVolume1,
+					&testNode0,
+					&testNode1,
+					&testPod0,
+					&testPod1,
+				)
+
+				mockClients(testSharedState.cachedClient.(*mockclient.MockClient), testSharedState.azClient, testSharedState.kubeClient)
+				return testSharedState
+			},
+			verifyFunc: func(t *testing.T, nodes []v1.Node, err error) {
+				require.NoError(t, err)
+				require.Len(t, nodes, 2)
+			},
+		},
+	}
+
+	for _, test := range tests {
+		tt := test
+		t.Run(tt.description, func(t *testing.T) {
+			mockCtl := gomock.NewController(t)
+			defer mockCtl.Finish()
+			sharedState := tt.setupFunc(t, mockCtl)
+			nodes, err := sharedState.filterAndSortNodes(context.TODO(), tt.nodes, tt.pods, tt.volumes)
 			tt.verifyFunc(t, nodes, err)
 		})
 	}
