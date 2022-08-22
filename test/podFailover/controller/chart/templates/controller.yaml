@@ -20,7 +20,7 @@ rules:
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["get", "list","create","delete"]
-  - apiGroups: ["podfailover.azure.com"]
+  - apiGroups: ["podfailure.azure.com"]
     resources: ["podfailures"]
     verbs: ["get", "list", "update"]
 ---
