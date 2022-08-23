@@ -194,7 +194,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 			d.kubeClient,
 			d.config.CloudConfig.SecretName,
 			d.config.CloudConfig.SecretNamespace,
-			d.getPerfOptimizationEnabled(),
+			d.config.NodeConfig.EnablePerfOptimization,
 			topologyKey,
 			userAgent,
 			d.config.ControllerConfig.EnableDiskOnlineResize,
@@ -235,7 +235,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 
 	d.deviceHelper = optimization.NewSafeDeviceHelper()
 
-	if d.getPerfOptimizationEnabled() {
+	if d.config.NodeConfig.EnablePerfOptimization {
 		d.nodeInfo, err = optimization.NewNodeInfo(context.Background(), d.cloudProvisioner.GetCloud(), d.NodeID)
 		if err != nil {
 			klog.Errorf("Failed to get node info. Error: %v", err)
@@ -589,18 +589,4 @@ func (d *DriverV2) updateOrCreateAzDriverNode(ctx context.Context, status azDriv
 	}
 
 	return nil
-}
-
-func (d *DriverV2) getVolumeLocks() *volumehelper.VolumeLocks {
-	return d.volumeLocks
-}
-
-// getPerfOptimizationEnabled returns the value of the perfOptimizationEnabled field. It is intended for use with unit tests.
-func (d *DriverV2) getPerfOptimizationEnabled() bool {
-	return d.config.NodeConfig.EnablePerfOptimization
-}
-
-// setPerfOptimizationEnabled sets the value of the perfOptimizationEnabled field. It is intended for use with unit tests.
-func (d *DriverV2) setPerfOptimizationEnabled(enabled bool) {
-	d.config.NodeConfig.EnablePerfOptimization = enabled
 }
