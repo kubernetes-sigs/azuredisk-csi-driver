@@ -118,15 +118,17 @@ var (
 
 	testAzDriverNode0 = azdiskv1beta2.AzDriverNode{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      testNode0Name,
-			Namespace: testNamespace,
+			Name:        testNode0Name,
+			Namespace:   testNamespace,
+			Annotations: map[string]string{"key": "value"},
 		},
 	}
 
 	testAzDriverNode1 = azdiskv1beta2.AzDriverNode{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      testNode1Name,
-			Namespace: testNamespace,
+			Name:        testNode1Name,
+			Namespace:   testNamespace,
+			Annotations: map[string]string{"key": "value"},
 		},
 	}
 
