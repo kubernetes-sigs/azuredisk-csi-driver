@@ -196,6 +196,10 @@ func (d *fakeDriverV2) setPerfOptimizationEnabled(enabled bool) {
 	d.cloudProvisioner.(*provisioner.FakeCloudProvisioner).SetPerfOptimizationEnabled(enabled)
 }
 
+func (d *fakeDriverV2) getPerfOptimizationEnabled() bool {
+	return d.config.NodeConfig.EnablePerfOptimization
+}
+
 func (d *fakeDriverV2) GetSourceDiskSize(ctx context.Context, subsID, resourceGroup, diskName string, curDepth, maxDepth int) (*int32, error) {
 	var returnVal int32 = 0
 	return &returnVal, nil
@@ -204,4 +208,8 @@ func (d *fakeDriverV2) GetSourceDiskSize(ctx context.Context, subsID, resourceGr
 func (d *fakeDriverV2) getSnapshotByID(ctx context.Context, subsID, resourceGroup, snapshotID, sourceVolumeID string) (*csi.Snapshot, error) {
 	snapshotVal := csi.Snapshot{}
 	return &snapshotVal, nil
+}
+
+func (d *fakeDriverV2) getVolumeLocks() *volumehelper.VolumeLocks {
+	return d.volumeLocks
 }
