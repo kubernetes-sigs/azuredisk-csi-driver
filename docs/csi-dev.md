@@ -1,10 +1,21 @@
 # Azure disk CSI driver development guide
 
+## Prerequisites
+
+- [Install Python 3](https://www.python.org/about/gettingstarted/)
+- [Install pip](https://pip.pypa.io/en/stable/installation/)
+- [Install pre-commit](https://pre-commit.com/#install)
+
 ## How to build this project
  - Clone repo
 ```console
 $ mkdir -p $GOPATH/src/sigs.k8s.io/
 $ git clone https://github.com/kubernetes-sigs/azuredisk-csi-driver $GOPATH/src/sigs.k8s.io/azuredisk-csi-driver
+```
+
+ - Setup repo
+```console
+$ pre-commit install -t pre-commit -t commit-msg -t pre-push
 ```
 
  - Build CSI driver
