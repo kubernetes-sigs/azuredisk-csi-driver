@@ -95,3 +95,13 @@ repos:
         require_serial: true
         language: system
         stages: [ commit ]
+    -   id: unit-test
+        name: Run Unit Tests
+        entry: "make unit-test"
+        types: [go]
+        files: '^pkg/|^test/utils/credentials'
+        pass_filenames: false
+        fail_fast: true
+        require_serial: true
+        language: system
+        stages: [ push ]
