@@ -14,7 +14,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: {{ .Values.namespace }}-workload-pod-sa-role
 rules:
-  - apiGroups: ["podfailover.azure.com"]
+  - apiGroups: ["podfailure.azure.com"]
     resources: ["podfailures"]
     verbs: ["get", "list", "update", "create", "delete"]
   - apiGroups: ["storage.k8s.io"]

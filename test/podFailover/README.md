@@ -19,35 +19,34 @@ make pod-failover-test-containers
 
 ### Run failover test
 
-- Modify test/podFailover/controller/chart/values.yaml
 
 - Values/Parameters - controllerPodImage(required), metricPodImage(optional, used for prometheus metrics)
-
+- Use --set to set these parameters
 
 - Deployment via helm chart (controller/metrics)
 ``` console
-helm install pod-failover-controller test/podFailover/controller/chart/
+helm install pod-failover-controller test/podFailover/controller/chart/ --set controllerPodImage=CONTROLLER_IMAGE
 ```
 
 - Create or use a scenario from test/podFailover/workload/scenarios
 
 - The following values/parameters are required for workloads.
-    1. namespace
+    1. workloadPodImage 
     2. podCount
     3. pvcCount (can be 0 if running stateless)
     4. failureType
-    5. workloadPodImage
+    5. namespace
 - The following are optional parameters.
     1. storageClass(see 1pod1pvc for example. includes all fields related to storageClass creation)
     2. metricsEndpoint (used for sending metrics to prometheus)
     3. azureClientId, azureClientSecret, azureTenantId (used for authenticating to event hub to send metrics to kusto, use the azdiskdrivertest-sp service principal)
     4. driverVersion (reports driver version to kusto)
-    5. runID
+    5. runID (generates random ID if not set)
+
+-- Use --set to override params or set new parameters
 
 - Deployment via helm chart (workload)
 
 ```console
-helm install pod-failover-workload test/podFailover/workload/chart/ --values test/podFailover/workload/scenarios/1pod1pvc.yaml --set azureClientId=$AZURE_CLIENT_ID --set azureClientSecret=$AZURE_CLIENT_SECRET --set azureTenantId=$AZURE_TENANT_ID
+helm install pod-failover-workload test/podFailover/workload/chart/ --values test/podFailover/workload/scenarios/1pod1pvc.yaml --set workloadPodImage=WORKLOAD_IMAGE --set azureClientId=$AZURE_CLIENT_ID --set azureClientSecret=$AZURE_CLIENT_SECRET --set azureTenantId=$AZURE_TENANT_ID
 ```
-
-

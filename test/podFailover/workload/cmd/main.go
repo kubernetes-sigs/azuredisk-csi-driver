@@ -39,7 +39,8 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
-	podfailure "sigs.k8s.io/azuredisk-csi-driver/test/podFailover/api"
+	podfailure "sigs.k8s.io/azuredisk-csi-driver/test/podFailover/apis/client/clientset/versioned"
+	podfailurev1beta1 "sigs.k8s.io/azuredisk-csi-driver/test/podFailover/apis/podfailure/v1beta1"
 )
 
 var mountPath = flag.String("mount-path", "/", "The path of the file where timestamps will be logged")
@@ -50,7 +51,7 @@ var storageProvisioner = flag.String("storage-provisioner", "", "The underlying 
 var workloadType = flag.String("workload-type", "default-workload-type", "The type of test being run (1pod1pvc, 3pod3pvc, etc)")
 var driverVersion = flag.String("driver-version", "", "The version of csi-driver")
 var namespace = flag.String("namespace", "pod-failover", "The namespace resources are created in")
-var kubeconfig = flag.String("kube-config", "", "kube config path for cluster")
+var kubeconfig = flag.String("kubeconfig", "", "kube config path for cluster")
 
 type DowntimeMetric struct {
 	TimeStamp     string `json:"timeStamp"`
@@ -67,15 +68,18 @@ func main() {
 	flag.Parse()
 	var config *rest.Config
 	var err error
+	// get config from flag first, then env variable, then inclusterconfig, then default
 	if *kubeconfig != "" {
 		config, _ = clientcmd.BuildConfigFromFlags("", *kubeconfig)
 	} else {
-		config, err = rest.InClusterConfig()
-		if err != nil {
-			kubeConfigPath := os.Getenv("KUBECONFIG")
-			if len(kubeConfigPath) == 0 {
-				kubeConfigPath = filepath.Join(os.Getenv("HOME"), ".kube", "config")
+		kubeConfigPath := os.Getenv("KUBECONFIG")
+		if len(kubeConfigPath) == 0 {
+			config, err = rest.InClusterConfig()
+			if err != nil {
+				defaultKubeConfigPath := filepath.Join(os.Getenv("HOME"), ".kube", "config")
+				config, _ = clientcmd.BuildConfigFromFlags("", defaultKubeConfigPath)
 			}
+		} else {
 			config, _ = clientcmd.BuildConfigFromFlags("", kubeConfigPath)
 		}
 	}
@@ -91,7 +95,7 @@ func main() {
 
 	podName := os.Getenv("MY_POD_NAME")
 
-	var podfailurecrd *podfailure.PodFailure
+	var podfailurecrd *podfailurev1beta1.PodFailure
 	podfailurecrd, err = getCrd(ctx, podFailoverClient, podName)
 	if err != nil {
 		klog.Errorf("Error occurred while getting podfailure crd for pod %s: %v", podName, err)
@@ -147,7 +151,7 @@ func runStatefulWorkload(ctx context.Context, clientset *kubernetes.Clientset) {
 
 }
 
-func runStatelessWorkload(ctx context.Context, clientset *kubernetes.Clientset, podFailoverClient *podfailure.PodFailoverClient, failureCrd *podfailure.PodFailure) {
+func runStatelessWorkload(ctx context.Context, clientset *kubernetes.Clientset, podFailoverClient *podfailure.Clientset, failureCrd *podfailurev1beta1.PodFailure) {
 	go reportTimestamp(ctx, podFailoverClient, failureCrd)
 	preStopMux := http.NewServeMux()
 	preStopMux.HandleFunc("/cleanup", func(w http.ResponseWriter, r *http.Request) {
@@ -252,18 +256,18 @@ func logTimestamp(file *os.File) {
 	}
 }
 
-func reportTimestamp(ctx context.Context, clientset *podfailure.PodFailoverClient, crd *podfailure.PodFailure) {
+func reportTimestamp(ctx context.Context, clientset *podfailure.Clientset, crd *podfailurev1beta1.PodFailure) {
 	for {
-		podfailureobj, err := clientset.PodFailures(*namespace).Get(ctx, crd.Name, metav1.GetOptions{})
+		podfailureobj, err := clientset.PodfailureV1beta1().PodFailures(*namespace).Get(ctx, crd.Name, metav1.GetOptions{})
 		if err != nil {
 			klog.Errorf("failed to get crd for pod %q: %v", crd.Name, err)
 		}
-		updatedPodFailure := &podfailure.PodFailure{}
+		updatedPodFailure := &podfailurev1beta1.PodFailure{}
 		podfailureobj.DeepCopyInto(updatedPodFailure)
 
 		updatedPodFailure.Status.HeartBeat = time.Now().Format(time.RFC3339)
 
-		_, err = clientset.PodFailures(*namespace).Update(ctx, updatedPodFailure, metav1.UpdateOptions{})
+		_, err = clientset.PodfailureV1beta1().PodFailures(*namespace).Update(ctx, updatedPodFailure, metav1.UpdateOptions{})
 		if err != nil {
 			klog.Errorf("Error updating pod failure crd for pod %s: %v", crd.Spec.PodName, err)
 		}
@@ -271,8 +275,8 @@ func reportTimestamp(ctx context.Context, clientset *podfailure.PodFailoverClien
 	}
 }
 
-func getCrd(ctx context.Context, podFailoverClient *podfailure.PodFailoverClient, podName string) (*podfailure.PodFailure, error) {
-	podfailureobj, err := podFailoverClient.PodFailures(*namespace).Get(ctx, podName, metav1.GetOptions{})
+func getCrd(ctx context.Context, podFailoverClient *podfailure.Clientset, podName string) (*podfailurev1beta1.PodFailure, error) {
+	podfailureobj, err := podFailoverClient.PodfailureV1beta1().PodFailures(*namespace).Get(ctx, podName, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return nil, nil
@@ -282,17 +286,17 @@ func getCrd(ctx context.Context, podFailoverClient *podfailure.PodFailoverClient
 	return podfailureobj, nil
 }
 
-func createCrd(ctx context.Context, podFailoverClient *podfailure.PodFailoverClient, podName string) (*podfailure.PodFailure, error) {
-	newpodfailureobj := &podfailure.PodFailure{
+func createCrd(ctx context.Context, podFailoverClient *podfailure.Clientset, podName string) (*podfailurev1beta1.PodFailure, error) {
+	newpodfailureobj := &podfailurev1beta1.PodFailure{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: podName,
 		},
-		Spec: podfailure.PodFailureSpec{
+		Spec: podfailurev1beta1.PodFailureSpec{
 			PodName: podName,
 		},
-		Status: podfailure.PodFailureStatus{},
+		Status: podfailurev1beta1.PodFailureStatus{},
 	}
-	podfailureobj, err := podFailoverClient.PodFailures(*namespace).Create(ctx, newpodfailureobj, metav1.CreateOptions{})
+	podfailureobj, err := podFailoverClient.PodfailureV1beta1().PodFailures(*namespace).Create(ctx, newpodfailureobj, metav1.CreateOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create pod failure crd for pod %s: %v", podName, err)
 	}

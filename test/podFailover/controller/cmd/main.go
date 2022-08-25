@@ -18,6 +18,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"math/rand"
 	"os"
@@ -35,8 +36,10 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
-	podfailure "sigs.k8s.io/azuredisk-csi-driver/test/podFailover/api"
+	podfailure "sigs.k8s.io/azuredisk-csi-driver/test/podFailover/apis/client/clientset/versioned"
 )
+
+var kubeconfig = flag.String("kubeconfig", "", "kube config path for cluster")
 
 const (
 	podFailoverLabelKey    = "app"
@@ -46,13 +49,23 @@ const (
 )
 
 func main() {
-	config, err := rest.InClusterConfig()
-	if err != nil {
+	flag.Parse()
+	var config *rest.Config
+	var err error
+	// get config from flag first, then env variable, then inclusterconfig, then default
+	if *kubeconfig != "" {
+		config, _ = clientcmd.BuildConfigFromFlags("", *kubeconfig)
+	} else {
 		kubeConfigPath := os.Getenv("KUBECONFIG")
 		if len(kubeConfigPath) == 0 {
-			kubeConfigPath = filepath.Join(os.Getenv("HOME"), ".kube", "config")
+			config, err = rest.InClusterConfig()
+			if err != nil {
+				defaultKubeConfigPath := filepath.Join(os.Getenv("HOME"), ".kube", "config")
+				config, _ = clientcmd.BuildConfigFromFlags("", defaultKubeConfigPath)
+			}
+		} else {
+			config, _ = clientcmd.BuildConfigFromFlags("", kubeConfigPath)
 		}
-		config, _ = clientcmd.BuildConfigFromFlags("", kubeConfigPath)
 	}
 
 	clientset, _ := kubernetes.NewForConfig(config)
@@ -91,7 +104,7 @@ func main() {
 	}
 }
 
-func deleteAndRestartPods(ctx context.Context, clientset *kubernetes.Clientset, podFailoverClient *podfailure.PodFailoverClient, pod v1.Pod, unscheduleNode bool, failureType string) {
+func deleteAndRestartPods(ctx context.Context, clientset *kubernetes.Clientset, podFailoverClient *podfailure.Clientset, pod v1.Pod, unscheduleNode bool, failureType string) {
 
 	var nodeName string
 
@@ -126,7 +139,7 @@ func deleteAndRestartPods(ctx context.Context, clientset *kubernetes.Clientset, 
 	}
 }
 
-func sameNodeFailover(ctx context.Context, clientset *kubernetes.Clientset, podFailoverClient *podfailure.PodFailoverClient, pods []v1.Pod, failureType string) {
+func sameNodeFailover(ctx context.Context, clientset *kubernetes.Clientset, podFailoverClient *podfailure.Clientset, pods []v1.Pod, failureType string) {
 	var nodeName string
 	if len(pods) > 0 {
 		nodeName = pods[0].Spec.NodeName
@@ -251,18 +264,17 @@ func getFailureType(pod v1.Pod) (string, error) {
 	return failureType, nil
 }
 
-func getCrdAndReportFailure(ctx context.Context, podName string, namespace string, failureType string, clientset *podfailure.PodFailoverClient) error {
-	podfailureobj, err := clientset.PodFailures(namespace).Get(ctx, podName, metav1.GetOptions{})
+func getCrdAndReportFailure(ctx context.Context, podName string, namespace string, failureType string, clientset *podfailure.Clientset) error {
+	podfailureobj, err := clientset.PodfailureV1beta1().PodFailures(namespace).Get(ctx, podName, metav1.GetOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to get crd for pod %q: %v", podName, err)
 	}
 
-	updatedPodFailure := &podfailure.PodFailure{}
-	podfailureobj.DeepCopyInto(updatedPodFailure)
+	updatedPodFailure := podfailureobj.DeepCopy()
 
 	updatedPodFailure.Status.FailureType = failureType
 
-	_, err = clientset.PodFailures(namespace).Update(ctx, updatedPodFailure, metav1.UpdateOptions{})
+	_, err = clientset.PodfailureV1beta1().PodFailures(namespace).Update(ctx, updatedPodFailure, metav1.UpdateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to update crd for pod %q: %v", podName, err)
 	}
