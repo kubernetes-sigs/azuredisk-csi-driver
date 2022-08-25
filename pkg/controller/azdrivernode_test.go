@@ -179,3 +179,49 @@ func TestAzDriverNodeControllerReconcile(t *testing.T) {
 		})
 	}
 }
+
+func TestAzDriverNodeRecover(t *testing.T) {
+	tests := []struct {
+		description string
+		setupFunc   func(*testing.T, *gomock.Controller) *ReconcileAzDriverNode
+		verifyFunc  func(*testing.T, *ReconcileAzDriverNode, error)
+	}{
+		{
+			description: "[Success] Should update annotations of all AzDriverNodes.",
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAzDriverNode {
+				controller := NewTestAzDriverNodeController(
+					mockCtl,
+					testNamespace,
+					&testAzDriverNode0,
+					&testAzDriverNode1)
+
+				controller.cachedClient.(*mockclient.MockClient).EXPECT().
+					Get(gomock.Any(), testNode1Request.NamespacedName, gomock.Any()).
+					Return(testNode1ServerTimeoutError).
+					AnyTimes()
+
+				return controller
+			},
+			verifyFunc: func(t *testing.T, controller *ReconcileAzDriverNode, err error) {
+				require.NoError(t, err)
+				azDriverNodes, err := controller.azClient.DiskV1beta2().AzDriverNodes(testNamespace).List(context.TODO(), metav1.ListOptions{})
+				require.NoError(t, err)
+				require.Len(t, azDriverNodes.Items, 2)
+				for _, azDriverNode := range azDriverNodes.Items {
+					require.Equal(t, azDriverNode.Annotations, map[string]string{consts.RecoverAnnotation: "azDriverNode", "key": "value"})
+				}
+			},
+		},
+	}
+
+	for _, test := range tests {
+		tt := test
+		t.Run(tt.description, func(t *testing.T) {
+			mockCtl := gomock.NewController(t)
+			defer mockCtl.Finish()
+			controller := tt.setupFunc(t, mockCtl)
+			err := controller.Recover(context.TODO())
+			tt.verifyFunc(t, controller, err)
+		})
+	}
+}
