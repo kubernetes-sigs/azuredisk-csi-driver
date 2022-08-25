@@ -10,7 +10,3 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - uses: codespell-project/actions-codespell@master
-        with:
-          check_filenames: true
-          skip: ./.git,./.github/workflows/codespell.yml,.git,*.png,*.jpg,*.svg,*.sum,./vendor,go.sum,crd-csi-snapshot-ga.yaml,crd-csi-snapshot.yaml
-          ignore_words_list: "AKS,aks,ro"

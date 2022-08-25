@@ -16,11 +16,36 @@
 
 set -euo pipefail
 
+# Returns true iff the current user is root.
+is_root_user() {
+  [ "${EUID:-$(id -u)}" -eq 0 ];
+}
+
+# Installs Helm (must be run as root)
+install_helm() {
+  local install_helm_script
+
+  install_helm_script=$(cat <<EOF
+apt-key add hack/helm-signing.asc
+apt-get install apt-transport-https --yes
+echo "deb https://baltocdn.com/helm/stable/debian/ all main" | tee /etc/apt/sources.list.d/helm-stable-debian.list
+apt-get update
+apt-get install helm
+EOF
+)
+
+  if is_root_user; then
+    bash -c "$install_helm_script"
+  else
+    sudo -E -H bash -c "$install_helm_script"
+  fi
+}
+
 echo "begin to verify chart tgz files ..."
 git config core.filemode false
 
 # verify whether chart config has changed
-diff=`git diff`
+diff=$(git diff)
 if [[ -n "${diff}" ]]; then
   echo "${diff}"
   exit 1
@@ -28,15 +53,15 @@ fi
 
 for dir in charts/*
 do
-  if [ -d $dir ]; then
-    if [ -f $dir/*.tgz ]; then
+  if [ -d "$dir" ]; then
+    if [ -f "$dir/*.tgz" ]; then
       echo "verify $dir ..."
-      tar -xvf $dir/*.tgz -C $dir/
+      tar -xvf "$dir/*.tgz" -C "$dir/"
     fi
   fi
 done
 
-diff=`git diff`
+diff=$(git diff)
 if [[ -n "${diff}" ]]; then
   echo
   echo
@@ -49,12 +74,11 @@ fi
 echo "chart tgz files verified."
 
 echo "verify helm chart index ..."
-echo "install helm ..."
-apt-key add hack/helm-signing.asc
-apt-get install apt-transport-https --yes
-echo "deb https://baltocdn.com/helm/stable/debian/ all main" | tee /etc/apt/sources.list.d/helm-stable-debian.list
-apt-get update
-apt-get install helm
+
+if [[ -z "$(command -v helm)" ]]; then
+  echo "install helm ..."
+  install_helm
+fi
 
 helm repo add azuredisk-csi-driver https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts
 helm search repo -l azuredisk-csi-driver
