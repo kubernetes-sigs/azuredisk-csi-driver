@@ -11,12 +11,6 @@ repos:
     rev: v2.2.1
     hooks:
     -   id: codespell
-        args:
-        -   "--skip"
-        -   "./.git,./.github/workflows/codespell.yml,.git,*.png,*.jpg,*.svg,*.sum,./vendor,go.sum,crd-csi-snapshot-ga.yaml,crd-csi-snapshot.yaml"
-        -   "--ignore-words-list"
-        -   "AKS,aks,ro"
-        -   "--check-filenames"
         stages: [ commit ]
 -   repo: local
     hooks:

@@ -1,0 +1,4 @@
+[codespell]
+skip=./.git,./.github/workflows/codespell.yml,.git,*.png,*.jpg,*.svg,*.sum,./vendor,go.sum,crd-csi-snapshot-ga.yaml,crd-csi-snapshot.yaml
+ignore-words-list=AKS,aks,ro
+check-filenames=
