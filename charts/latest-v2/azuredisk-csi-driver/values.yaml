@@ -149,6 +149,13 @@ schedulerExtender:
       monitor:
         enabled: false
   servicePort: 8889
+  resources:
+    requests:
+      cpu: 150m
+      memory: 200Mi
+    limits:
+      cpu: 300m
+      memory: 300Mi
   tolerations:
     - key: "node-role.kubernetes.io/master"
       operator: "Exists"

@@ -86,6 +86,13 @@ spec:
             port: extender-port
           failureThreshold: 20
           periodSeconds: 3
+        resources:
+          requests:
+            cpu: 150m
+            memory: 200Mi
+          limits:
+            cpu: 300m
+            memory: 300Mi
         ports:
           - name: extender-port
             containerPort: 8889
