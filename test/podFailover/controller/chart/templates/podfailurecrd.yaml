@@ -22,7 +22,6 @@ spec:
                   type: string
             status:
               type: object
-              required: ["failureType", "heartbeat"]
               properties:
                 failureType:
                   type: string
