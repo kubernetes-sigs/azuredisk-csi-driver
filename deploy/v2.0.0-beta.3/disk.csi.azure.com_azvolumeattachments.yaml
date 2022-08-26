@@ -1,0 +1,148 @@
+
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.5.0
+  creationTimestamp: null
+  name: azvolumeattachments.disk.csi.azure.com
+spec:
+  group: disk.csi.azure.com
+  names:
+    kind: AzVolumeAttachment
+    listKind: AzVolumeAttachmentList
+    plural: azvolumeattachments
+    singular: azvolumeattachment
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - description: The age of the attachment
+      jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    - description: Name of the Node which this AzVolumeAttachment object is attached
+        to
+      jsonPath: .spec.nodeName
+      name: NodeName
+      priority: 10
+      type: string
+    - description: Name of the volume which this AzVolumeAttachment object references
+      jsonPath: .spec.volumeName
+      name: VolumeName
+      priority: 10
+      type: string
+    - description: Indicates if the volume attachment should be primary attachment
+        or not
+      jsonPath: .spec.role
+      name: RequestedRole
+      type: string
+    - description: Indicates if the volume attachment is primary attachment or not
+      jsonPath: .status.detail.role
+      name: Role
+      type: string
+    - description: Describes the previous volume attachment role
+      jsonPath: .status.detail.previous_role
+      name: PreviousRole
+      priority: 10
+      type: string
+    - description: Indicates the state of the volume attachment
+      jsonPath: .status.state
+      name: State
+      type: string
+    name: v1beta1
+    schema:
+      openAPIV3Schema:
+        description: AzVolumeAttachment is a specification for a AzVolumeAttachment
+          resource
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of a AzVolumeAttachment. Required.
+            properties:
+              nodeName:
+                type: string
+              role:
+                description: Role indicates if the volume attachment is replica attachment
+                  or not
+                type: string
+              volume_context:
+                additionalProperties:
+                  type: string
+                type: object
+              volume_id:
+                type: string
+              volumeName:
+                type: string
+            required:
+            - nodeName
+            - role
+            - volumeName
+            - volume_context
+            - volume_id
+            type: object
+          status:
+            description: status represents the current state of AzVolumeAttachment.
+              includes error, state, and attachment status Required
+            properties:
+              detail:
+                description: Status summarizes the current attachment state of the
+                  volume attachment Nil Status indicates that the volume has not yet
+                  been attached to the node
+                properties:
+                  previous_role:
+                    description: The previous attachment role.
+                    type: string
+                  publish_context:
+                    additionalProperties:
+                      type: string
+                    type: object
+                  role:
+                    description: The current attachment role.
+                    type: string
+                required:
+                - role
+                type: object
+              error:
+                description: Error occurred during attach/detach of volume
+                properties:
+                  code:
+                    type: string
+                  message:
+                    type: string
+                  parameters:
+                    additionalProperties:
+                      type: string
+                    type: object
+                required:
+                - code
+                - message
+                type: object
+              state:
+                description: State shows the current attachment state (whether operations
+                  are in progress or not)
+                type: string
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []

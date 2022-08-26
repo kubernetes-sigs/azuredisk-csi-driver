@@ -1,0 +1,41 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: csi-azuredisk-controller-cleanup
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    "helm.sh/hook": pre-delete, pre-upgrade
+    "helm.sh/hook-delete-policy": hook-succeeded
+{{ include "azuredisk.labels" . | indent 2 }}
+spec:
+  template:
+    spec:
+      {{- if .Values.imagePullSecrets }}
+      imagePullSecrets:
+{{ toYaml .Values.imagePullSecrets | indent 8 }}
+      {{- end }}
+      serviceAccountName: {{ .Values.serviceAccount.controller }}
+      nodeSelector:
+        kubernetes.io/os: linux
+        {{- if .Values.controller.runOnMaster}}
+        node-role.kubernetes.io/master: ""
+        {{- end}}
+      priorityClassName: system-cluster-critical
+{{- with .Values.controller.tolerations }}
+      tolerations:
+{{ toYaml . | indent 8 }}
+{{- end }}
+      {{- include "azuredisk.pullSecrets" . | indent 6 }}
+      restartPolicy: Never
+      containers:
+        - name: delete-azvolume
+{{- if hasPrefix "/" .Values.image.curl.repository }}
+          image: {{ .Values.image.baseRepo }}{{ .Values.image.curl.repository }}:{{ .Values.image.curl.tag }}
+{{- else }}
+          image: {{ .Values.image.curl.repository }}:{{ .Values.image.curl.tag }}
+{{- end }}
+          imagePullPolicy: {{ .Values.image.curl.pullPolicy }}
+          command:
+            - "/bin/sh"
+            - "-c"
+            - "(kubectl delete customresourcedefinition azvolumes.disk.csi.azure.com || true) && (kubectl delete customresourcedefinition azvolumeattachments.disk.csi.azure.com || true) && (kubectl delete customresourcedefinition azdrivernodes.disk.csi.azure.com || true)"
