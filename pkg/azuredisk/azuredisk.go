@@ -40,6 +40,7 @@ import (
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	azurecloudconsts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
@@ -427,10 +428,10 @@ func getDefaultDiskMBPSReadWrite(requestGiB int) int {
 	bandwidth := azurecloudconsts.DefaultDiskMBpsReadWrite
 	iops := getDefaultDiskIOPSReadWrite(requestGiB)
 	if iops/256 > bandwidth {
-		bandwidth = iops / 256
+		bandwidth = int(util.RoundUpSize(int64(iops), 256))
 	}
 	if bandwidth > iops/4 {
-		bandwidth = iops / 4
+		bandwidth = int(util.RoundUpSize(int64(iops), 4))
 	}
 	if bandwidth > 4000 {
 		bandwidth = 4000
