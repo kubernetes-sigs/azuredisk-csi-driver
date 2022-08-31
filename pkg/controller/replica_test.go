@@ -23,6 +23,7 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
+
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -68,7 +69,6 @@ func TestReplicaReconcile(t *testing.T) {
 				replicaAttachment := testReplicaAzVolumeAttachment
 				now := metav1.Time{Time: metav1.Now().Add(-1000)}
 				replicaAttachment.DeletionTimestamp = &now
-				replicaAttachment.Status.State = azdiskv1beta2.Detaching
 
 				newVolume := testAzVolume0.DeepCopy()
 				newVolume.Status.Detail = &azdiskv1beta2.AzVolumeStatusDetail{
@@ -115,6 +115,116 @@ func TestReplicaReconcile(t *testing.T) {
 			},
 		},
 		{
+			description: "[Success] Should update state if replicas in DetachmentFailed upon replica deletion.",
+			request:     testReplicaAzVolumeAttachmentRequest,
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileReplica {
+				replicaAttachment := testReplicaAzVolumeAttachment
+				now := metav1.Time{Time: metav1.Now().Add(-1000)}
+				replicaAttachment.DeletionTimestamp = &now
+				replicaAttachment.Status.State = azdiskv1beta2.DetachmentFailed
+
+				newVolume := testAzVolume0.DeepCopy()
+				newVolume.Status.Detail = &azdiskv1beta2.AzVolumeStatusDetail{
+					VolumeID: testManagedDiskURI0,
+				}
+
+				controller := NewTestReplicaController(
+					mockCtl,
+					testNamespace,
+					newVolume,
+					&testPersistentVolume0,
+					&testNode0,
+					&testNode1,
+					&testPod0,
+					&replicaAttachment)
+
+				mockClients(controller.cachedClient.(*mockclient.MockClient), controller.azClient, controller.kubeClient)
+				return controller
+			},
+			verifyFunc: func(t *testing.T, controller *ReconcileReplica, result reconcile.Result, err error) {
+				require.NoError(t, err)
+				require.False(t, result.Requeue)
+
+				azva, err := controller.azClient.DiskV1beta2().AzVolumeAttachments(testNamespace).Get(context.TODO(), testReplicaAzVolumeAttachmentName, metav1.GetOptions{})
+				require.NoError(t, err)
+				require.Equal(t, azdiskv1beta2.ForceDetachPending, azva.Status.State)
+			},
+		},
+		{
+			description: "[Success] Should clean up replica attachments upon primary demotion.",
+			request:     testPrimaryAzVolumeAttachment0Request,
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileReplica {
+				primaryAttachment := testPrimaryAzVolumeAttachment0.DeepCopy()
+				primaryAttachment.Status.Detail = &azdiskv1beta2.AzVolumeAttachmentStatusDetail{}
+				primaryAttachment.Status.Detail.Role = azdiskv1beta2.PrimaryRole
+				primaryAttachment.Spec.RequestedRole = azdiskv1beta2.ReplicaRole
+
+				newVolume := testAzVolume0.DeepCopy()
+				newVolume.Status.Detail = &azdiskv1beta2.AzVolumeStatusDetail{
+					VolumeID: testManagedDiskURI0,
+				}
+
+				controller := NewTestReplicaController(
+					mockCtl,
+					testNamespace,
+					newVolume,
+					primaryAttachment,
+					&testPersistentVolume0,
+					&testNode0,
+					&testNode1,
+					&testReplicaAzVolumeAttachment)
+
+				mockClients(controller.cachedClient.(*mockclient.MockClient), controller.azClient, controller.kubeClient)
+				return controller
+			},
+			verifyFunc: func(t *testing.T, controller *ReconcileReplica, result reconcile.Result, err error) {
+				require.NoError(t, err)
+				require.False(t, result.Requeue)
+
+				// wait for the garbage collection to queue
+				time.Sleep(controller.timeUntilGarbageCollection + time.Minute)
+				roleReq, _ := azureutils.CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(azdiskv1beta2.ReplicaRole))
+				labelSelector := labels.NewSelector().Add(*roleReq)
+				replicas, localError := controller.azClient.DiskV1beta2().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
+				require.NoError(t, localError)
+				require.NotNil(t, replicas)
+				require.Len(t, replicas.Items, 0)
+			},
+		},
+		{
+			description: "[Success] Should delete a failed-attachment replica.",
+			request:     testReplicaAzVolumeAttachmentRequest,
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileReplica {
+				replicaAttachment := testReplicaAzVolumeAttachment.DeepCopy()
+				replicaAttachment.Status.State = azdiskv1beta2.AttachmentFailed
+
+				newVolume := testAzVolume0.DeepCopy()
+				newVolume.Status.Detail = &azdiskv1beta2.AzVolumeStatusDetail{
+					VolumeID: testManagedDiskURI0,
+				}
+
+				controller := NewTestReplicaController(
+					mockCtl,
+					testNamespace,
+					newVolume,
+					&testPersistentVolume0,
+					&testNode0,
+					&testNode1,
+					&testPod0,
+					replicaAttachment)
+
+				mockClients(controller.cachedClient.(*mockclient.MockClient), controller.azClient, controller.kubeClient)
+				return controller
+			},
+			verifyFunc: func(t *testing.T, controller *ReconcileReplica, result reconcile.Result, err error) {
+				require.NoError(t, err)
+				require.False(t, result.Requeue)
+
+				_, err = controller.azClient.DiskV1beta2().AzVolumeAttachments(testNamespace).Get(context.TODO(), testReplicaAzVolumeAttachmentName, metav1.GetOptions{})
+				require.True(t, errors.IsNotFound(err))
+			},
+		},
+		{
 			description: "[Success] Should create a replacement replica attachment upon replica promotion.",
 			request:     testReplicaAzVolumeAttachmentRequest,
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileReplica {
@@ -128,6 +238,7 @@ func TestReplicaReconcile(t *testing.T) {
 				}
 
 				replicaAttachment.Spec.RequestedRole = azdiskv1beta2.PrimaryRole
+				replicaAttachment.Labels = map[string]string{consts.RoleLabel: string(azdiskv1beta2.PrimaryRole)}
 				replicaAttachment = updateRole(replicaAttachment, azdiskv1beta2.PrimaryRole)
 
 				newVolume := testAzVolume0.DeepCopy()
@@ -211,6 +322,8 @@ func TestReplicaReconcile(t *testing.T) {
 				primaryAttachment := testPrimaryAzVolumeAttachment0.DeepCopy()
 				now := metav1.Time{Time: metav1.Now().Add(-1000)}
 				primaryAttachment.DeletionTimestamp = &now
+				primaryAttachment.Status.Annotations = map[string]string{consts.VolumeDetachRequestAnnotation: "true"}
+
 				replicaAttachment := testReplicaAzVolumeAttachment.DeepCopy()
 				replicaAttachment.Status = azdiskv1beta2.AzVolumeAttachmentStatus{
 					Detail: &azdiskv1beta2.AzVolumeAttachmentStatusDetail{
@@ -249,6 +362,7 @@ func TestReplicaReconcile(t *testing.T) {
 
 				// promote replica to primary
 				replicaAttachment.Spec.RequestedRole = azdiskv1beta2.PrimaryRole
+				replicaAttachment.Labels = map[string]string{consts.RoleLabel: string(azdiskv1beta2.PrimaryRole)}
 				replicaAttachment = updateRole(replicaAttachment.DeepCopy(), azdiskv1beta2.PrimaryRole)
 
 				err = controller.cachedClient.Update(context.TODO(), replicaAttachment)
