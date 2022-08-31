@@ -29,7 +29,6 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/wait"
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
@@ -775,17 +774,4 @@ func NewAttachDetachController(mgr manager.Manager, cloudDiskAttacher CloudDiskA
 
 	c.GetLogger().Info("Controller set-up successful.")
 	return &reconciler, nil
-}
-
-// waitForVolumeAttachmentNAme waits for the VolumeAttachment name to be updated in the azVolumeAttachmentVaMap by the volumeattachment controller
-func (c *SharedState) waitForVolumeAttachmentName(ctx context.Context, azVolumeAttachment *azdiskv1beta2.AzVolumeAttachment) (string, error) {
-	var vaName string
-	err := wait.PollImmediateUntilWithContext(ctx, consts.DefaultPollingRate, func(ctx context.Context) (bool, error) {
-		val, exists := c.azVolumeAttachmentToVaMap.Load(azVolumeAttachment.Name)
-		if exists {
-			vaName = val.(string)
-		}
-		return exists, nil
-	})
-	return vaName, err
 }
