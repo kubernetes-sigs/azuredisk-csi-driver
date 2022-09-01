@@ -251,6 +251,10 @@ func TestGetDefaultDiskMBPSReadWrite(t *testing.T) {
 			requestGiB: 512000000,
 			expected:   625,
 		},
+		{
+			requestGiB: 65535,
+			expected:   256,
+		},
 	}
 
 	for _, test := range tests {
