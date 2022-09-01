@@ -34,6 +34,13 @@ metadata:
   name: {{ .Values.controller.name }}
   namespace: {{ .Release.Namespace }}
 {{ include "azuredisk.labels" . | indent 2 }}
+{{- with .Values.controller.labels }}
+{{ . | toYaml | indent 4 }}
+{{- end }}
+{{- with .Values.controller.annotations }}
+  annotations:
+{{ . | toYaml | indent 4 }}
+{{- end }}
 spec:
   replicas: {{ .Values.controller.replicas }}
   selector:
@@ -44,6 +51,10 @@ spec:
 {{ include "azuredisk.labels" . | indent 6 }}
         app: {{ .Values.controller.name }}
 {{- with .Values.controller.podLabels }}
+{{ toYaml . | indent 8 }}
+{{- end }}
+{{- with .Values.controller.podAnnotations }}
+      annotations:
 {{ toYaml . | indent 8 }}
 {{- end }}
     spec:
