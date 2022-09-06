@@ -112,6 +112,27 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 		verifyFunc  func(*testing.T, *ReconcileAzVolume, reconcile.Result, error)
 	}{
 		{
+			description: "[Success] Should delete AzVolume from operation queue if it's not found.",
+			request:     testAzVolume0Request,
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAzVolume {
+				controller := NewTestAzVolumeController(
+					mockCtl,
+					testNamespace)
+
+				mockClientsAndVolumeProvisioner(controller)
+				controller.volumeOperationQueues.Store(testPersistentVolume0Name, newLockableEntry(newOperationQueue()))
+
+				return controller
+			},
+			verifyFunc: func(t *testing.T, controller *ReconcileAzVolume, result reconcile.Result, err error) {
+				require.NoError(t, err)
+				require.False(t, result.Requeue)
+
+				_, ok := controller.volumeOperationQueues.Load(testPersistentVolume0Name)
+				require.False(t, ok)
+			},
+		},
+		{
 			description: "[Success] Should create a volume when a new AzVolume instance is created.",
 			request:     testAzVolume0Request,
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAzVolume {
