@@ -53,6 +53,7 @@ type AccountOptions struct {
 	EnableNfsV3                             *bool
 	AllowBlobPublicAccess                   *bool
 	RequireInfrastructureEncryption         *bool
+	AllowSharedKeyAccess                    *bool
 	KeyName                                 *string
 	KeyVersion                              *string
 	KeyVaultURI                             *string
@@ -281,17 +282,30 @@ func (az *Cloud) EnsureStorageAccount(ctx context.Context, accountOptions *Accou
 			klog.V(2).Infof("set RequireInfrastructureEncryption(%v) for storage account(%s)", *accountOptions.RequireInfrastructureEncryption, accountName)
 			cp.AccountPropertiesCreateParameters.Encryption = &storage.Encryption{
 				RequireInfrastructureEncryption: accountOptions.RequireInfrastructureEncryption,
+				KeySource:                       storage.KeySourceMicrosoftStorage,
+				Services: &storage.EncryptionServices{
+					File: &storage.EncryptionService{Enabled: to.BoolPtr(true)},
+					Blob: &storage.EncryptionService{Enabled: to.BoolPtr(true)},
+				},
 			}
+		}
+		if accountOptions.AllowSharedKeyAccess != nil {
+			klog.V(2).Infof("set Allow SharedKeyAccess (%v) for storage account (%s)", *accountOptions.AllowSharedKeyAccess, accountName)
+			cp.AccountPropertiesCreateParameters.AllowSharedKeyAccess = accountOptions.AllowSharedKeyAccess
 		}
 		if accountOptions.KeyVaultURI != nil {
 			klog.V(2).Infof("set KeyVault(%v) for storage account(%s)", accountOptions.KeyVaultURI, accountName)
-			if cp.AccountPropertiesCreateParameters.Encryption == nil {
-				cp.AccountPropertiesCreateParameters.Encryption = &storage.Encryption{}
-			}
-			cp.AccountPropertiesCreateParameters.Encryption.KeyVaultProperties = &storage.KeyVaultProperties{
-				KeyName:     accountOptions.KeyName,
-				KeyVersion:  accountOptions.KeyVersion,
-				KeyVaultURI: accountOptions.KeyVaultURI,
+			cp.AccountPropertiesCreateParameters.Encryption = &storage.Encryption{
+				KeyVaultProperties: &storage.KeyVaultProperties{
+					KeyName:     accountOptions.KeyName,
+					KeyVersion:  accountOptions.KeyVersion,
+					KeyVaultURI: accountOptions.KeyVaultURI,
+				},
+				KeySource: storage.KeySourceMicrosoftKeyvault,
+				Services: &storage.EncryptionServices{
+					File: &storage.EncryptionService{Enabled: to.BoolPtr(true)},
+					Blob: &storage.EncryptionService{Enabled: to.BoolPtr(true)},
+				},
 			}
 		}
 		if az.StorageAccountClient == nil {
@@ -303,16 +317,16 @@ func (az *Cloud) EnsureStorageAccount(ctx context.Context, accountOptions *Accou
 		}
 
 		if accountOptions.DisableFileServiceDeleteRetentionPolicy {
-			klog.V(2).Infof("disable DisableFileServiceDeleteRetentionPolicy on account(%s), resource group(%s)", accountName, resourceGroup)
-			prop, err := az.FileClient.GetServiceProperties(resourceGroup, accountName)
+			klog.V(2).Infof("disable DisableFileServiceDeleteRetentionPolicy on account(%s), subscroption(%s), resource group(%s)", accountName, subsID, resourceGroup)
+			prop, err := az.FileClient.WithSubscriptionID(subsID).GetServiceProperties(resourceGroup, accountName)
 			if err != nil {
 				return "", "", err
 			}
 			if prop.FileServicePropertiesProperties == nil {
-				return "", "", fmt.Errorf("FileServicePropertiesProperties of account(%s), resource group(%s) is nil", accountName, resourceGroup)
+				return "", "", fmt.Errorf("FileServicePropertiesProperties of account(%s), subscroption(%s), resource group(%s) is nil", accountName, subsID, resourceGroup)
 			}
 			prop.FileServicePropertiesProperties.ShareDeleteRetentionPolicy = &storage.DeleteRetentionPolicy{Enabled: to.BoolPtr(false)}
-			if _, err := az.FileClient.SetServiceProperties(resourceGroup, accountName, prop); err != nil {
+			if _, err := az.FileClient.WithSubscriptionID(subsID).SetServiceProperties(resourceGroup, accountName, prop); err != nil {
 				return "", "", err
 			}
 		}

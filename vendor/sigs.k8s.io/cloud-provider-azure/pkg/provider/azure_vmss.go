@@ -369,9 +369,9 @@ func (ss *ScaleSet) GetInstanceIDByNodeName(name string) (string, error) {
 	}
 
 	resourceID := vm.ID
-	convertedResourceID, err := convertResourceGroupNameToLower(resourceID)
+	convertedResourceID, err := ConvertResourceGroupNameToLower(resourceID)
 	if err != nil {
-		klog.Errorf("convertResourceGroupNameToLower failed with error: %v", err)
+		klog.Errorf("ConvertResourceGroupNameToLower failed with error: %v", err)
 		return "", err
 	}
 	return convertedResourceID, nil
@@ -932,7 +932,7 @@ func (ss *ScaleSet) getPrimaryNetworkInterfaceConfiguration(networkConfiguration
 }
 
 // getPrimaryNetworkInterfaceConfigurationForScaleSet gets primary network interface configuration for scale set.
-func (ss *ScaleSet) getPrimaryNetworkInterfaceConfigurationForScaleSet(networkConfigurations []compute.VirtualMachineScaleSetNetworkConfiguration, vmssName string) (*compute.VirtualMachineScaleSetNetworkConfiguration, error) {
+func getPrimaryNetworkInterfaceConfigurationForScaleSet(networkConfigurations []compute.VirtualMachineScaleSetNetworkConfiguration, vmssName string) (*compute.VirtualMachineScaleSetNetworkConfiguration, error) {
 	if len(networkConfigurations) == 1 {
 		return &networkConfigurations[0], nil
 	}
@@ -963,7 +963,7 @@ func getPrimaryIPConfigFromVMSSNetworkConfig(config *compute.VirtualMachineScale
 	return nil, fmt.Errorf("failed to find a primary IP configuration")
 }
 
-func (ss *ScaleSet) getConfigForScaleSetByIPFamily(config *compute.VirtualMachineScaleSetNetworkConfiguration, nodeName string, IPv6 bool) (*compute.VirtualMachineScaleSetIPConfiguration, error) {
+func getConfigForScaleSetByIPFamily(config *compute.VirtualMachineScaleSetNetworkConfiguration, nodeName string, IPv6 bool) (*compute.VirtualMachineScaleSetIPConfiguration, error) {
 	ipConfigurations := *config.IPConfigurations
 
 	var ipVersion compute.IPVersion
@@ -994,7 +994,9 @@ func (ss *ScaleSet) EnsureHostInPool(service *v1.Service, nodeName types.NodeNam
 		}
 
 		klog.Errorf("EnsureHostInPool: failed to get VMSS VM %s: %v", vmName, err)
-		return "", "", "", nil, err
+		if !errors.Is(err, ErrorNotVmssInstance) {
+			return "", "", "", nil, err
+		}
 	}
 
 	klog.V(2).Infof("ensuring node %q of scaleset %q in LB backendpool %q", nodeName, vm.VMSSName, backendPoolID)
@@ -1052,7 +1054,7 @@ func (ss *ScaleSet) EnsureHostInPool(service *v1.Service, nodeName types.NodeNam
 		// For IPv6 or dualstack service, we need to pick the right IP configuration based on the cluster ip family
 		// IPv6 configuration is only supported as non-primary, so we need to fetch the ip configuration where the
 		// privateIPAddressVersion matches the clusterIP family
-		primaryIPConfiguration, err = ss.getConfigForScaleSetByIPFamily(primaryNetworkInterfaceConfiguration, vmName, ipv6)
+		primaryIPConfiguration, err = getConfigForScaleSetByIPFamily(primaryNetworkInterfaceConfiguration, vmName, ipv6)
 		if err != nil {
 			return "", "", "", nil, err
 		}
@@ -1186,7 +1188,7 @@ func (ss *ScaleSet) ensureVMSSInPool(service *v1.Service, nodes []*v1.Node, back
 			continue
 		}
 		vmssNIC := *vmss.VirtualMachineProfile.NetworkProfile.NetworkInterfaceConfigurations
-		primaryNIC, err := ss.getPrimaryNetworkInterfaceConfigurationForScaleSet(vmssNIC, vmssName)
+		primaryNIC, err := getPrimaryNetworkInterfaceConfigurationForScaleSet(vmssNIC, vmssName)
 		if err != nil {
 			return err
 		}
@@ -1200,7 +1202,7 @@ func (ss *ScaleSet) ensureVMSSInPool(service *v1.Service, nodes []*v1.Node, back
 				return err
 			}
 		} else {
-			primaryIPConfig, err = ss.getConfigForScaleSetByIPFamily(primaryNIC, "", ipv6)
+			primaryIPConfig, err = getConfigForScaleSetByIPFamily(primaryNIC, "", ipv6)
 			if err != nil {
 				return err
 			}
@@ -1707,7 +1709,7 @@ func (ss *ScaleSet) EnsureBackendPoolDeletedFromVMSets(vmssNamesMap map[string]b
 			continue
 		}
 		vmssNIC := *vmss.VirtualMachineProfile.NetworkProfile.NetworkInterfaceConfigurations
-		primaryNIC, err := ss.getPrimaryNetworkInterfaceConfigurationForScaleSet(vmssNIC, vmssName)
+		primaryNIC, err := getPrimaryNetworkInterfaceConfigurationForScaleSet(vmssNIC, vmssName)
 		if err != nil {
 			klog.Errorf("ensureBackendPoolDeletedFromVMSS: failed to get the primary network interface config of the VMSS %s: %v", vmssName, err)
 			errors = append(errors, err)
