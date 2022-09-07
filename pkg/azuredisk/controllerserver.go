@@ -237,6 +237,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		SourceResourceID:    sourceID,
 		SourceType:          sourceType,
 		Tags:                diskParams.Tags,
+		Location:            diskParams.Location,
 	}
 
 	volumeOptions.SkipGetDiskOperation = d.isGetDiskThrottled()
