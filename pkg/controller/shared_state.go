@@ -649,7 +649,7 @@ func (c *SharedState) filterNodes(ctx context.Context, nodes []v1.Node, pods []v
 			for i, filteredNode := range filteredNodes {
 				nodeStrs[i] = filteredNode.Name
 			}
-			w.Logger().V(2).Infof("Filtered node list from filter plugin (%s): %+v", filterPlugin.name(), nodeStrs)
+			w.Logger().V(10).Infof("Filtered node list from filter plugin (%s): %+v", filterPlugin.name(), nodeStrs)
 		}
 	}
 
@@ -668,16 +668,24 @@ func (c *SharedState) prioritizeNodes(ctx context.Context, pods []v1.Pod, volume
 	var nodeScorerPlugins = []nodeScorerPlugin{
 		&scoreByNodeCapacity{},
 		&scoreByReplicaCount{},
+		&scoreByInterPodAffinity{},
+		&scoreByInterPodAntiAffinity{},
+		&scoreByPodNodeAffinity{},
 	}
 
 	for _, nodeScorerPlugin := range nodeScorerPlugins {
-		nodeScorerPlugin.setup(pods, volumes, c)
+		nodeScorerPlugin.setup(nodes, pods, volumes, c)
 		if updatedNodeScores, err := nodeScorerPlugin.score(ctx, nodeScores); err != nil {
 			w.Logger().Errorf(err, "failed to score nodes by node scorer (%s)", nodeScorerPlugin.name())
 		} else {
 			// update node scores if scorer plugin returned success
 			nodeScores = updatedNodeScores
 		}
+		var nodeScoreResult string
+		for nodeName, score := range nodeScores {
+			nodeScoreResult += fmt.Sprintf("<%s: %d> ", nodeName, score)
+		}
+		w.Logger().V(10).Infof("node score after node score plugin (%s): %s", nodeScorerPlugin.name(), nodeScoreResult)
 	}
 
 	// normalize score
@@ -1428,4 +1436,139 @@ func (c *SharedState) waitForVolumeAttachmentName(ctx context.Context, azVolumeA
 		return exists, nil
 	})
 	return vaName, err
+}
+
+// Returns set of node names that qualify pod affinity term and set of node names with qualifying replica attachments.
+func (c *SharedState) getQualifiedNodesForPodAffinityTerm(ctx context.Context, nodes []v1.Node, podNamespace string, affinityTerm v1.PodAffinityTerm) (podNodes, replicaNodes set) {
+	var err error
+	w, _ := workflow.GetWorkflowFromContext(ctx)
+	candidateNodes := set{}
+	for _, node := range nodes {
+		candidateNodes.add(node.Name)
+	}
+	podNodes = set{}
+	replicaNodes = set{}
+
+	var podSelector labels.Selector
+	podSelector, err = metav1.LabelSelectorAsSelector(affinityTerm.LabelSelector)
+	// if failed to convert pod affinity label selector to selector, log error and skip
+	if err != nil {
+		w.Logger().Errorf(err, "failed to convert pod affinity (%v) to selector", affinityTerm.LabelSelector)
+	}
+
+	nsList := &v1.NamespaceList{}
+	if affinityTerm.NamespaceSelector != nil {
+		nsSelector, err := metav1.LabelSelectorAsSelector(affinityTerm.NamespaceSelector)
+		// if failed to convert pod affinity label selector to selector, log error and skip
+		if err != nil {
+			w.Logger().Errorf(err, "failed to convert pod affinity (%v) to selector", affinityTerm.LabelSelector)
+		} else {
+			if err = c.cachedClient.List(ctx, nsList, &client.ListOptions{LabelSelector: nsSelector}); err != nil {
+				w.Logger().Errorf(err, "failed to list namespaces with selector (%v)", nsSelector)
+				return
+			}
+
+		}
+	}
+
+	namespaces := affinityTerm.Namespaces
+	for _, ns := range nsList.Items {
+		namespaces = append(namespaces, ns.Name)
+	}
+
+	pods := []v1.Pod{}
+	if len(namespaces) > 0 {
+		for _, namespace := range namespaces {
+			podList := &v1.PodList{}
+			if err = c.cachedClient.List(ctx, podList, &client.ListOptions{LabelSelector: podSelector, Namespace: namespace}); err != nil {
+				w.Logger().Errorf(err, "failed to retrieve pod list: %v", err)
+				pods = append(pods, podList.Items...)
+			}
+		}
+	} else {
+		podList := &v1.PodList{}
+		if err = c.cachedClient.List(ctx, podList, &client.ListOptions{LabelSelector: podSelector, Namespace: podNamespace}); err != nil {
+			w.Logger().Errorf(err, "failed to retrieve pod list: %v", err)
+		}
+		pods = podList.Items
+	}
+
+	// get replica nodes for pods that satisfy pod label selector
+	replicaNodes = c.getReplicaNodesForPods(ctx, pods)
+	for replicaNode := range replicaNodes {
+		if !candidateNodes.has(replicaNode) {
+			candidateNodes.remove(replicaNode)
+		}
+	}
+
+	// get nodes with pod that share the same topology as pods satisfying pod label selector
+	for _, pod := range pods {
+		podNodes.add(pod.Spec.NodeName)
+	}
+
+	var podNodeObjs []v1.Node
+	for node := range podNodes {
+		var nodeObj v1.Node
+		if err = c.cachedClient.Get(ctx, types.NamespacedName{Name: node.(string)}, &nodeObj); err != nil {
+			w.Logger().Errorf(err, "failed to get node (%s)", node.(string))
+			continue
+		}
+		podNodeObjs = append(podNodeObjs, nodeObj)
+	}
+
+	topologyLabel := c.getNodesTopologySelector(ctx, podNodeObjs, affinityTerm.TopologyKey)
+	for _, node := range nodes {
+		if topologyLabel != nil && topologyLabel.Matches(labels.Set(node.Labels)) {
+			podNodes.add(node.Name)
+		}
+	}
+	return
+}
+
+// Returns set of node names where replica mounts of given pod can be found
+func (c *SharedState) getReplicaNodesForPods(ctx context.Context, pods []v1.Pod) (replicaNodes set) {
+	// add nodes, to which replica attachments of matching pods' volumes are attached, to replicaNodes
+	replicaNodes = set{}
+	if volumes, err := c.getVolumesForPodObjs(ctx, pods); err == nil {
+		for _, volume := range volumes {
+			attachments, err := azureutils.GetAzVolumeAttachmentsForVolume(ctx, c.cachedClient, volume, azureutils.ReplicaOnly)
+			if err != nil {
+				continue
+			}
+			for _, attachment := range attachments {
+				node := attachment.Spec.NodeName
+				replicaNodes.add(node)
+			}
+		}
+	}
+
+	return replicaNodes
+}
+
+// Returns a label selector corresponding to a list of nodes and a topology key (aka label key)
+func (c *SharedState) getNodesTopologySelector(ctx context.Context, nodes []v1.Node, topologyKey string) labels.Selector {
+	w, _ := workflow.GetWorkflowFromContext(ctx)
+	if len(nodes) == 0 {
+		return nil
+	}
+
+	topologyValues := set{}
+	for _, node := range nodes {
+		nodeLabels := node.GetLabels()
+		if topologyValue, exists := nodeLabels[topologyKey]; exists {
+			topologyValues.add(topologyValue)
+		} else {
+			w.Logger().V(5).Infof("node (%s) doesn't have label value for topologyKey (%s)", node.Name, topologyKey)
+		}
+	}
+
+	topologySelector := labels.NewSelector()
+	topologyRequirement, err := azureutils.CreateLabelRequirements(topologyKey, selection.In, topologyValues.toStringSlice()...)
+	// if failed to create label requirement, log error and return empty selector
+	if err != nil {
+		w.Logger().Errorf(err, "failed to create label requirement for topologyKey (%s)", topologyKey)
+	} else {
+		topologySelector = topologySelector.Add(*topologyRequirement)
+	}
+	return topologySelector
 }
