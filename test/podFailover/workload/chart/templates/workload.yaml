@@ -122,7 +122,11 @@ spec:
             {{$runID := randNumeric 5}}
             - {{ printf "--run-id=%s" $runID}}
             {{- end}}
+            {{- if .Values.workloadType }}
+            - {{ printf "--workload-type=%s" $.Values.workloadType}}
+            {{- else }}
             - {{ printf "--workload-type=%dpod%dpvc" (int $.Values.podCount) (int $.Values.pvcCount)}}
+            {{- end}}
             {{- if .Values.storageClass }}
             - {{ printf "--storage-provisioner=%s" $.Values.storageClass.provisioner}}
             {{- end}}

@@ -12,6 +12,8 @@ storageClass:
 
 namespace: azdiskv2-pod-failover-1pod1pvc
 
+workloadType: 1pod1pvc1replica
+
 podCount: 1
 
 pvcCount: 1
