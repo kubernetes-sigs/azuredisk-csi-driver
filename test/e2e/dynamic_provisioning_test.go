@@ -715,15 +715,16 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		test.Run(cs, snapshotrcs, ns, schedulerName)
 	})
 
-	ginkgo.It(fmt.Sprintf("should create a pod, write to its pv, take a volume snapshot, overwrite data in original pv, create another pod from the snapshot, and read unaltered original data from original pv[disk.csi.azure.com] [%s]", schedulerName), func() {
-		testutil.SkipIfTestingInWindowsCluster()
+	ginkgo.It(fmt.Sprintf("should create a pod, write to its pv, take a volume snapshot, overwrite data in original pv, create another pod from the snapshot, schedule it in the same node as the overwrite pod, and read unaltered original data from original pv[disk.csi.azure.com] [%s]", schedulerName), func() {
 		testutil.SkipIfUsingInTreeVolumePlugin()
 
 		pod := resources.PodDetails{
-			Cmd: "echo 'hello world' > /mnt/test-1/data",
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
+			Cmd:          "echo 'hello world' > /mnt/test-1/data",
 			Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
 				{
-					FSType:    "ext4",
+					FSType:    testutil.GetFSType(testconsts.IsWindowsCluster),
 					ClaimSize: "10Gi",
 					VolumeMount: resources.VolumeMountDetails{
 						NameGenerate:      "test-volume-",
@@ -735,11 +736,15 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		}
 
 		podOverwrite := resources.PodDetails{
-			Cmd: "echo 'overwrite' > /mnt/test-1/data",
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
+			Cmd:          "echo 'overwrite' > /mnt/test-1/data; sleep 300",
 		}
 
 		podWithSnapshot := resources.PodDetails{
-			Cmd: "grep 'hello world' /mnt/test-1/data",
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
+			Cmd:          testutil.ConvertToPowershellorCmdCommandIfNecessary("grep 'hello world' /mnt/test-1/data"),
 		}
 
 		test := testsuites.DynamicallyProvisionedVolumeSnapshotTest{
@@ -749,6 +754,56 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			PodOverwrite:           podOverwrite,
 			PodWithSnapshot:        podWithSnapshot,
 			StorageClassParameters: map[string]string{consts.SkuNameField: "StandardSSD_LRS"},
+			IsAffinity:             true,
+		}
+		if testconsts.IsAzureStackCloud {
+			test.StorageClassParameters = map[string]string{consts.SkuNameField: "Standard_LRS"}
+		}
+		if !testconsts.IsUsingInTreeVolumePlugin && testutil.IsZRSSupported(location) {
+			test.StorageClassParameters = map[string]string{consts.SkuNameField: "StandardSSD_ZRS"}
+		}
+		test.Run(cs, snapshotrcs, ns, schedulerName)
+	})
+
+	ginkgo.It(fmt.Sprintf("should create a pod, write to its pv, take a volume snapshot, overwrite data in original pv, create another pod from the snapshot, schedule it in the different node as the overwrite pod, and read unaltered original data from original pv[disk.csi.azure.com] [%s]", schedulerName), func() {
+		testutil.SkipIfUsingInTreeVolumePlugin()
+
+		pod := resources.PodDetails{
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
+			Cmd:          "echo 'hello world' > /mnt/test-1/data",
+			Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
+				{
+					FSType:    testutil.GetFSType(testconsts.IsWindowsCluster),
+					ClaimSize: "10Gi",
+					VolumeMount: resources.VolumeMountDetails{
+						NameGenerate:      "test-volume-",
+						MountPathGenerate: "/mnt/test-",
+					},
+					VolumeAccessMode: v1.ReadWriteOnce,
+				},
+			}, t.allowedTopologyValues, isMultiZone),
+		}
+		podOverwrite := resources.PodDetails{
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
+			Cmd:          "echo 'overwrite' > /mnt/test-1/data; sleep 300",
+		}
+
+		podWithSnapshot := resources.PodDetails{
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
+			Cmd:          testutil.ConvertToPowershellorCmdCommandIfNecessary("grep 'hello world' /mnt/test-1/data"),
+		}
+
+		test := testsuites.DynamicallyProvisionedVolumeSnapshotTest{
+			CSIDriver:              testDriver,
+			Pod:                    pod,
+			ShouldOverwrite:        true,
+			PodOverwrite:           podOverwrite,
+			PodWithSnapshot:        podWithSnapshot,
+			StorageClassParameters: map[string]string{consts.SkuNameField: "StandardSSD_LRS"},
+			IsAffinity:             false,
 		}
 		if testconsts.IsAzureStackCloud {
 			test.StorageClassParameters = map[string]string{consts.SkuNameField: "Standard_LRS"}

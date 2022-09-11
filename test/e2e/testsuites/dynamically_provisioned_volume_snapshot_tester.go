@@ -50,6 +50,7 @@ type DynamicallyProvisionedVolumeSnapshotTest struct {
 	PodOverwrite           resources.PodDetails
 	PodWithSnapshot        resources.PodDetails
 	StorageClassParameters map[string]string
+	IsAffinity             bool
 }
 
 func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interface, restclient restclientset.Interface, namespace *v1.Namespace, schedulerName string) {
@@ -123,17 +124,26 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interfac
 		tpod = resources.NewTestPod(client, namespace, t.PodOverwrite.Cmd, schedulerName, t.PodOverwrite.IsWindows, t.PodOverwrite.WinServerVer)
 
 		tpod.SetupVolume(tpvc.PersistentVolumeClaim, volume.VolumeMount.NameGenerate+"1", volume.VolumeMount.MountPathGenerate+"1", volume.VolumeMount.ReadOnly)
+		ginkgo.By("AAAAAAAAAAAAAAAAAAAAAAAAAA SetLabel for overwrite pod")
+		tpod.SetLabel(testconsts.TestLabel)
 		ginkgo.By("deploying a new pod to overwrite pv data")
 		tpod.Create()
 		defer tpod.Cleanup()
-		ginkgo.By("checking that the pod's command exits with no error")
-		tpod.WaitForSuccess()
+		ginkgo.By("checking that the pod is running")
+		tpod.WaitForRunning()
 
+		/* TODO: the Disk Resource Provider (DiskRP) team has made a change to managed disk creation
+		   from snapshot that ensures the copy gets a new partition UUID. Needn't delete the overwrite
+		   pod to avoid issues with conflicting UUIDs, once the change is in production.
+		*/
 		// delete the overwrite pod and wait for volume to be unpublished to the original disk is not mounted
 		// to avoid issues with conflicting UUIDs.
-		tpod.Cleanup()
-		err = volutil.WaitForVolumeDetach(client, pvc.Spec.VolumeName, testconsts.Poll, testconsts.PollTimeout)
-		framework.ExpectNoError(err)
+		// if t.IsAffinity {
+		// 	tpod.Cleanup()
+		// 	err = volutil.WaitForVolumeDetach(client, pvc.Spec.VolumeName, testconsts.Poll, testconsts.PollTimeout)
+		// 	framework.ExpectNoError(err)
+		// }
+
 	}
 
 	snapshotVolume := volume
@@ -146,10 +156,38 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interfac
 	for i := range tPodWithSnapshotCleanup {
 		defer tPodWithSnapshotCleanup[i]()
 	}
+
+	/* TODO: add tPodWithSnapshot.SetAffinity(&testconsts.TestPodAffinity) if IsAffinity is true.
+	   Currently we couldn't set affinity when IsAffinity is true,
+	   because we delete the overwrite pod to avoid issues with conflicting UUIDs. It's not allowed
+	   to set affinity when no other pod is running.
+	*/
+	if t.ShouldOverwrite {
+		if t.IsAffinity {
+			ginkgo.By("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA IsAffinity == true,   TestPodAffinity: " + testconsts.TestPodAffinity.String())
+			tPodWithSnapshot.SetAffinity(&testconsts.TestPodAffinity)
+		} else {
+			ginkgo.By("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA IsAffinity == false,  TestPodAntiAffinity: " + testconsts.TestPodAntiAffinity.String())
+			tPodWithSnapshot.SetAffinity(&testconsts.TestPodAntiAffinity)
+		}
+
+	}
+
 	ginkgo.By("deploying a pod with a volume restored from the snapshot")
 	tPodWithSnapshot.Create()
 	defer tPodWithSnapshot.Cleanup()
-	ginkgo.By("checking that the pod's command exits with no error")
+	ginkgo.By("checking that the snapshot pod's command exits with no error")
 	tPodWithSnapshot.WaitForSuccess()
 
+	/* TODO: add WaitForSuccess() for the overwrite pod if IsAffinity is true.
+	   Currently we couldn't WaitForSuccess(), because the overwrite pod has been cleaned up already.
+	*/
+	// if t.ShouldOverwrite && !t.IsAffinity {
+	// 	ginkgo.By("checking that the pod's command exits with no error")
+	// 	tpod.WaitForSuccess()
+	// }
+	if t.ShouldOverwrite {
+		ginkgo.By("checking that the overwrite pod's command exits with no error")
+		tpod.WaitForSuccess()
+	}
 }
