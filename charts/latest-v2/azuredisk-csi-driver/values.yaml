@@ -276,8 +276,8 @@ windows:
       limits:
         memory: 100Mi
       requests:
-        cpu: 30m
-        memory: 40Mi
+        cpu: 20m
+        memory: 50Mi
     azuredisk:
       limits:
         memory: 200Mi
