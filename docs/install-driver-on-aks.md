@@ -12,8 +12,19 @@ Follow AKS doc: [Enable CSI drivers for Azure disks and Azure Files on AKS (prev
  - Prerequisites
 
 AKS cluster is created with user assigned identity(with naming rule [`AKS Cluster Name-agentpool`](https://docs.microsoft.com/en-us/azure/aks/use-managed-identity#summary-of-managed-identities)) on agent node pool by default, make sure that identity has `Contributor` role on node resource group, follow below instruction to set up `Contributor` role on node resource group
-![image](https://user-images.githubusercontent.com/4178417/120978367-f68f0a00-c7a6-11eb-8e87-89247d1ddc0b.png):
+![image](https://user-images.githubusercontent.com/4178417/120978367-f68f0a00-c7a6-11eb-8e87-89247d1ddc0b.png)
 
+<details><summary>least privilege for CSI driver controller</summary>
+<pre>
+"Microsoft.Resources/subscriptions/resourceGroups/read",
+"Microsoft.Compute/disks/*",
+"Microsoft.Compute/snapshots/*",
+"Microsoft.Compute/virtualMachines/*/read",
+"Microsoft.Compute/virtualMachineScaleSets/virtualMachines/write",
+"Microsoft.Compute/virtualMachineScaleSets/*/read",
+"Microsoft.Compute/virtualMachineScaleSets/read" 
+</pre>
+</details>
 
  - Install CSI driver
 
