@@ -14,7 +14,7 @@ namespace: samenode-pod-failover-1pod1pvc
 
 podCount: 3
 
-pvcCount: 3
+pvcCount: 1
 
 failureType: same-node-failover
 

@@ -23,7 +23,6 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
-	"reflect"
 	"sync"
 	"time"
 
@@ -89,14 +88,17 @@ func main() {
 			}
 			switch failureType {
 			case sameNodeFailoverConst:
+				klog.Info("Facilitating same node failover.")
 				sameNodePods, err := getSameNodePods(selectedPod, pods)
 				if err != nil {
 					klog.Errorf("Error occurred while getting same node pods %s: %v", selectedPod.Name, err)
 				}
 				sameNodeFailover(ctx, clientset, podFailoverClient, sameNodePods, failureType)
 			case deletePodFailoverConst:
+				klog.Info("Facilitating delete-pod failover.")
 				deleteAndRestartPods(ctx, clientset, podFailoverClient, selectedPod, true, failureType)
 			default:
+				klog.Info("Facilitating delete-pod failover.")
 				deleteAndRestartPods(ctx, clientset, podFailoverClient, selectedPod, true, failureType)
 			}
 			time.Sleep(10 * time.Second)
@@ -157,6 +159,7 @@ func sameNodeFailover(ctx context.Context, clientset *kubernetes.Clientset, podF
 		wg.Add(1)
 
 		pod := pods[i]
+		klog.Infof("Failing over node: %s in same node failover", pod.Name)
 		go func() {
 			defer wg.Done()
 			deleteAndRestartPods(ctx, clientset, podFailoverClient, pod, false, failureType)
@@ -241,13 +244,11 @@ func getPods(ctx context.Context, client *kubernetes.Clientset) (*v1.PodList, er
 }
 
 func getSameNodePods(selectedPod v1.Pod, pods []v1.Pod) ([]v1.Pod, error) {
-	selectedLabels := selectedPod.GetObjectMeta().GetLabels()
 	var samePods []v1.Pod
-	samePods = append(samePods, selectedPod)
 	for _, pod := range pods {
 		podLabels := pod.GetObjectMeta().GetLabels()
-		eq := reflect.DeepEqual(selectedLabels, podLabels)
-		if eq {
+		app, exists := podLabels["app"]
+		if exists && app == "pod-failover" {
 			samePods = append(samePods, pod)
 		}
 	}
@@ -257,7 +258,7 @@ func getSameNodePods(selectedPod v1.Pod, pods []v1.Pod) ([]v1.Pod, error) {
 func getFailureType(pod v1.Pod) (string, error) {
 	podLabels := pod.GetObjectMeta().GetLabels()
 	failureType, exists := podLabels["failureType"]
-
+	klog.Infof("Failure type: %s", failureType)
 	if !exists {
 		return "", fmt.Errorf("failed to get failureType for Pod %q", pod.Name)
 	}
