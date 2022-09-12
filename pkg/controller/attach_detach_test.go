@@ -226,6 +226,46 @@ func TestAttachDetachReconcile(t *testing.T) {
 				require.Equal(t, azVolumeAttachment.Status.Detail.Role, azdiskv1beta2.PrimaryRole)
 			},
 		},
+		{
+			description: "[Success] Should demote AzVolumeAttachment upon request.",
+			request:     testPrimaryAzVolumeAttachment0Request,
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAttachDetach {
+				newAttachment := testPrimaryAzVolumeAttachment0.DeepCopy()
+				newAttachment.Status.Detail = &azdiskv1beta2.AzVolumeAttachmentStatusDetail{
+					PublishContext: map[string]string{},
+					Role:           azdiskv1beta2.PrimaryRole,
+				}
+				newAttachment.Labels = map[string]string{consts.RoleLabel: string(azdiskv1beta2.ReplicaRole)}
+				newAttachment.Spec.RequestedRole = azdiskv1beta2.ReplicaRole
+				newAttachment.Status.State = azdiskv1beta2.Attached
+				newAttachment.Status.Annotations = azureutils.AddToMap(newAttachment.Status.Annotations, consts.VolumeAttachmentKey, testVolumeAttachmentName)
+
+				newVolumeAttachment := testVolumeAttachment.DeepCopy()
+
+				controller := NewTestAttachDetachController(
+					mockCtl,
+					testNamespace,
+					&testAzVolume0,
+					newVolumeAttachment,
+					newAttachment)
+
+				controller.azVolumeAttachmentToVaMap.Store(newAttachment.Name, newVolumeAttachment.Name)
+
+				mockClientsAndAttachmentProvisioner(controller)
+
+				return controller
+			},
+			verifyFunc: func(t *testing.T, controller *ReconcileAttachDetach, result reconcile.Result, err error) {
+				require.NoError(t, err)
+				require.False(t, result.Requeue)
+
+				azVolumeAttachment, localError := controller.azClient.DiskV1beta2().AzVolumeAttachments(testPrimaryAzVolumeAttachment0.Namespace).Get(context.TODO(), testPrimaryAzVolumeAttachment0.Name, metav1.GetOptions{})
+				require.NoError(t, localError)
+				require.NotNil(t, azVolumeAttachment)
+				require.NotNil(t, azVolumeAttachment.Status.Detail)
+				require.Equal(t, azVolumeAttachment.Status.Detail.Role, azdiskv1beta2.ReplicaRole)
+			},
+		},
 	}
 
 	for _, test := range tests {
@@ -266,6 +306,33 @@ func TestAttachDetachRecover(t *testing.T) {
 				azVolumeAttachments, localErr := controller.azClient.DiskV1beta2().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{})
 				require.NoError(t, localErr)
 				require.Len(t, azVolumeAttachments.Items, 1)
+			},
+		},
+		{
+			description: "[Success] Should reapply if AzVolumeAttachment instances already exist.",
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAttachDetach {
+				azVolumeAttachment := testPrimaryAzVolumeAttachment0.DeepCopy()
+
+				controller := NewTestAttachDetachController(
+					mockCtl,
+					testNamespace,
+					&testVolumeAttachment,
+					&testPersistentVolume0,
+					azVolumeAttachment)
+
+				mockClientsAndAttachmentProvisioner(controller)
+
+				return controller
+			},
+			verifyFunc: func(t *testing.T, controller *ReconcileAttachDetach, err error) {
+				require.NoError(t, err)
+
+				azVolumeAttachments, localErr := controller.azClient.DiskV1beta2().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{})
+				require.NoError(t, localErr)
+				require.Len(t, azVolumeAttachments.Items, 1)
+				azva := azVolumeAttachments.Items[0]
+				require.Equal(t, "CRI recovery", azva.Annotations[consts.VolumeAttachRequestAnnotation])
+				require.NotNil(t, azva.Finalizers)
 			},
 		},
 		{
