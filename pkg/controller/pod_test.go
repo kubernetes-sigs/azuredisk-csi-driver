@@ -133,6 +133,7 @@ func TestPodReconcile(t *testing.T) {
 					&testPersistentVolume1,
 					&testNode0,
 					&testNode1,
+					&testNode2,
 					newPod)
 
 				mockClients(controller.cachedClient.(*mockclient.MockClient), controller.azClient, controller.kubeClient)
@@ -193,6 +194,7 @@ func TestPodReconcile(t *testing.T) {
 					&testPersistentVolume1,
 					&testNode0,
 					&testNode1,
+					&testNode2,
 					newPod0,
 					newPod1)
 
@@ -219,6 +221,62 @@ func TestPodReconcile(t *testing.T) {
 				}
 				err = wait.PollImmediate(verifyCRIInterval, verifyCRITimeout, conditionFunc)
 				require.NoError(t, err)
+			},
+		},
+		{
+			description: "[Success] Should remove entry from podToClaimsMap and claimToPodMap if pod has been deleted.",
+			request:     testPod0Request,
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcilePod {
+				newPod0 := testPod0.DeepCopy()
+
+				newAttachment := testPrimaryAzVolumeAttachment0.DeepCopy()
+				newAttachment.Status.State = azdiskv1beta2.Attached
+
+				newVolume := testAzVolume0.DeepCopy()
+				newVolume.Status.Detail = &azdiskv1beta2.AzVolumeStatusDetail{
+					VolumeID: testManagedDiskURI0,
+				}
+
+				controller := NewTestPodController(
+					mockCtl,
+					testNamespace,
+					newVolume,
+					newAttachment,
+					&testNode0,
+					&testNode1,
+					&testPersistentVolume0,
+					newPod0)
+
+				mockClients(controller.cachedClient.(*mockclient.MockClient), controller.azClient, controller.kubeClient)
+
+				result, err := controller.Reconcile(context.TODO(), testPod0Request)
+				require.NoError(t, err)
+				require.False(t, result.Requeue)
+
+				podKey := getQualifiedName(testNamespace, testPod0Name)
+				_, ok := controller.podToClaimsMap.Load(podKey)
+				require.True(t, ok)
+
+				namespacedClaimName := getQualifiedName(testNamespace, testPersistentVolumeClaim0Name)
+				_, ok = controller.claimToPodsMap.Load(namespacedClaimName)
+				require.True(t, ok)
+
+				err = controller.kubeClient.CoreV1().Pods(testNamespace).Delete(context.TODO(), testPod0Name, metav1.DeleteOptions{})
+				require.NoError(t, err)
+
+				return controller
+			},
+			verifyFunc: func(t *testing.T, controller *ReconcilePod, result reconcile.Result, err error) {
+				require.NoError(t, err)
+				require.False(t, result.Requeue)
+
+				podKey := getQualifiedName(testNamespace, testPod0Name)
+				_, ok := controller.podToClaimsMap.Load(podKey)
+				require.False(t, ok)
+
+				namespacedClaimName := getQualifiedName(testNamespace, testPersistentVolumeClaim0Name)
+				_, ok = controller.claimToPodsMap.Load(namespacedClaimName)
+				require.False(t, ok)
 			},
 		},
 	}
