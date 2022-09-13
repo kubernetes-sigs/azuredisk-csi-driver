@@ -88,16 +88,15 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 			return reconcileReturnOnSuccess(pv.Name, r.controllerRetryInfo)
 		}
 		diskName, err = azureutils.GetDiskName(pv.Spec.CSI.VolumeHandle)
+		// ignoring cases when we can't get the disk name from volumehandle as this error will not be fixed with a requeue
+		if err != nil {
+			logger.Error(err, "failed to extract proper diskName from PV's volume handle (%s)", pv.Spec.CSI.VolumeHandle)
+			return reconcileReturnOnError(ctx, &pv, "get", err, r.controllerRetryInfo)
+		}
 	}
 
 	// get the AzVolume name for the PV
 	azVolumeName := strings.ToLower(diskName)
-	// ignoring cases when we can't get the disk name from volumehandle as this error will not be fixed with a requeue
-	if err != nil {
-		logger.Error(err, "failed to extract proper diskName from PV's volume handle (%s)", pv.Spec.CSI.VolumeHandle)
-		return reconcileReturnOnError(ctx, &pv, "get", err, r.controllerRetryInfo)
-	}
-
 	logger = logger.WithValues(consts.VolumeNameLabel, azVolumeName)
 	ctx = logr.NewContext(ctx, logger)
 

@@ -372,13 +372,15 @@ func initState(client client.Client, azClient azdisk.Interface, kubeClient kuber
 			}
 			c.podToClaimsMap.Store(podKey, claims)
 		case *v1.PersistentVolume:
-			diskName, _ := azureutils.GetDiskName(target.Spec.CSI.VolumeHandle)
-			azVolumeName := strings.ToLower(diskName)
-			claimName := getQualifiedName(target.Spec.ClaimRef.Namespace, target.Spec.ClaimRef.Name)
-			c.volumeToClaimMap.Store(azVolumeName, claimName)
-			c.claimToVolumeMap.Store(claimName, azVolumeName)
-			c.pvToVolumeMap.Store(target.Name, azVolumeName)
-			c.createOperationQueue(azVolumeName)
+			if target.Spec.CSI != nil {
+				diskName, _ := azureutils.GetDiskName(target.Spec.CSI.VolumeHandle)
+				azVolumeName := strings.ToLower(diskName)
+				claimName := getQualifiedName(target.Spec.ClaimRef.Namespace, target.Spec.ClaimRef.Name)
+				c.volumeToClaimMap.Store(azVolumeName, claimName)
+				c.claimToVolumeMap.Store(claimName, azVolumeName)
+				c.pvToVolumeMap.Store(target.Name, azVolumeName)
+				c.createOperationQueue(azVolumeName)
+			}
 		default:
 			continue
 		}
