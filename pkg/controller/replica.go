@@ -78,7 +78,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 
 			// If promotion event, create a replacement replica
 			if isAttached(azVolumeAttachment) && azVolumeAttachment.Status.Detail.PreviousRole == azdiskv1beta2.ReplicaRole {
-				r.triggerManageReplica(ctx, azVolumeAttachment.Spec.VolumeName)
+				r.triggerManageReplica(azVolumeAttachment.Spec.VolumeName)
 			}
 		}
 	} else {
@@ -101,31 +101,28 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 					return reconcile.Result{Requeue: true}, err
 				}
 			}
-			if !isCleanupRequested(azVolumeAttachment) || !volumeDetachRequested(azVolumeAttachment) {
-				go func() {
-					goCtx := context.Background()
-
-					// wait for replica AzVolumeAttachment deletion
-					waiter, _ := r.conditionWatcher.NewConditionWaiter(goCtx, watcher.AzVolumeAttachmentType, azVolumeAttachment.Name, verifyObjectDeleted)
-					defer waiter.Close()
-					_, _ = waiter.Wait(goCtx)
-
-					// add replica management operation to the queue
-					r.triggerManageReplica(goCtx, azVolumeAttachment.Spec.VolumeName)
-				}()
-			}
 		} else if azVolumeAttachment.Status.State == azdiskv1beta2.AttachmentFailed {
 			// if attachment failed for replica AzVolumeAttachment, delete the CRI so that replace replica AzVolumeAttachment can be created.
 			if err := r.cachedClient.Delete(ctx, azVolumeAttachment); err != nil {
 				return reconcile.Result{Requeue: true}, err
 			}
+			go func() {
+				goCtx := context.Background()
+
+				// wait for replica AzVolumeAttachment deletion
+				waiter, _ := r.conditionWatcher.NewConditionWaiter(goCtx, watcher.AzVolumeAttachmentType, azVolumeAttachment.Name, verifyObjectDeleted)
+				defer waiter.Close()
+				_, _ = waiter.Wait(goCtx)
+				// add replica management operation to the queue
+				r.triggerManageReplica(azVolumeAttachment.Spec.VolumeName)
+			}()
 		}
 	}
 	return reconcile.Result{}, nil
 }
 
 //nolint:contextcheck // context is not inherited by design
-func (r *ReconcileReplica) triggerManageReplica(ctx context.Context, volumeName string) {
+func (r *ReconcileReplica) triggerManageReplica(volumeName string) {
 	manageReplicaCtx, w := workflow.New(context.Background(), workflow.WithDetails(consts.VolumeNameLabel, volumeName))
 	defer w.Finish(nil)
 	r.addToOperationQueue(

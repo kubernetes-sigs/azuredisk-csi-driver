@@ -30,6 +30,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
+	sf "golang.org/x/sync/singleflight"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -82,6 +83,7 @@ type CloudProvisioner struct {
 	enableAsyncAttach          bool
 	// a timed cache GetDisk throttling
 	getDiskThrottlingCache *azcache.TimedCache
+	singleflight           sf.Group
 }
 
 // listVolumeStatus explains the return status of `listVolumesByResourceGroup`
@@ -400,7 +402,10 @@ func (c *CloudProvisioner) PublishVolume(
 	if err == nil {
 		if vmState != nil && strings.ToLower(*vmState) == "failed" {
 			w.Logger().Infof("VM(%q) is in failed state, update VM first", nodeName)
-			if err = c.cloud.UpdateVM(ctx, nodeName); err != nil {
+			_, err, _ = c.singleflight.Do(string(nodeName), func() (_ interface{}, err error) {
+				return nil, c.cloud.UpdateVM(ctx, nodeName)
+			})
+			if err != nil {
 				err = status.Errorf(codes.Internal, "update instance %q failed with %v", nodeName, err)
 				attachResult.ResultChannel() <- err
 				return

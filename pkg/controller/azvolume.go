@@ -289,7 +289,7 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *azdiskv
 
 				// start waiting for replica AzVolumeAttachment CRIs to be deleted
 				for i, attachment := range attachments {
-					waiter, err := r.conditionWatcher.NewConditionWaiter(deleteCtx, watcher.AzVolumeAttachmentType, attachment.Name, verifyObjectDeleted)
+					waiter, err := r.conditionWatcher.NewConditionWaiter(deleteCtx, watcher.AzVolumeAttachmentType, attachment.Name, verifyObjectFailedOrDeleted)
 					if err != nil {
 						updateFunc = func(obj client.Object) error {
 							return reportError(obj, err)

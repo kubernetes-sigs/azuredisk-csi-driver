@@ -199,35 +199,34 @@ func (c *SharedState) addToOperationQueue(ctx context.Context, volumeName string
 	if isFirst {
 		go func() {
 			lockable.Lock()
+			defer lockable.Unlock()
 			for {
 				operationQueue := lockable.entry.(*operationQueue)
 				// pop the first operation
 				front := operationQueue.Front()
 				operation := front.Value.(*replicaOperation)
-				lockable.Unlock()
 
 				// only run the operation if the operation requester is not enlisted in blacklist
 				if !operationQueue.gcExclusionList.has(operation.requester) {
-					if err := operation.operationFunc(operation.ctx); err != nil {
+					lockable.Unlock()
+					err := operation.operationFunc(operation.ctx)
+					lockable.Lock()
+					if err != nil {
 						if shouldRequeueReplicaOperation(operation.isReplicaGarbageCollection, err) {
 							// if failed, push it to the end of the queue
-							lockable.Lock()
 							if operationQueue.isActive {
 								operationQueue.PushBack(operation)
 							}
-							lockable.Unlock()
 						}
 					}
 				}
 
-				lockable.Lock()
 				operationQueue.remove(front)
 				// there is no entry remaining, exit the loop
 				if operationQueue.Front() == nil {
 					break
 				}
 			}
-			lockable.Unlock()
 		}()
 	}
 }
@@ -241,8 +240,8 @@ func (c *SharedState) deleteOperationQueue(volumeName string) {
 	// clear the queue in case, there still is an entry in queue
 	lockable := v.(*lockableEntry)
 	lockable.Lock()
+	defer lockable.Unlock()
 	lockable.entry.(*operationQueue).Init()
-	lockable.Unlock()
 }
 
 func (c *SharedState) closeOperationQueue(volumeName string) func() {
@@ -265,8 +264,8 @@ func (c *SharedState) addToGcExclusionList(volumeName string, target operationRe
 	}
 	lockable := v.(*lockableEntry)
 	lockable.Lock()
+	defer lockable.Unlock()
 	lockable.entry.(*operationQueue).gcExclusionList.add(target)
-	lockable.Unlock()
 }
 
 func (c *SharedState) removeFromExclusionList(volumeName string, target operationRequester) {
@@ -276,8 +275,8 @@ func (c *SharedState) removeFromExclusionList(volumeName string, target operatio
 	}
 	lockable := v.(*lockableEntry)
 	lockable.Lock()
-	delete(lockable.entry.(*operationQueue).gcExclusionList, target)
 	lockable.Unlock()
+	delete(lockable.entry.(*operationQueue).gcExclusionList, target)
 }
 
 func (c *SharedState) dequeueGarbageCollection(volumeName string) {
@@ -287,6 +286,7 @@ func (c *SharedState) dequeueGarbageCollection(volumeName string) {
 	}
 	lockable := v.(*lockableEntry)
 	lockable.Lock()
+	defer lockable.Unlock()
 	queue := lockable.entry.(*operationQueue)
 	// look for garbage collection operation in the queue and remove from queue
 	var next *list.Element
@@ -296,7 +296,6 @@ func (c *SharedState) dequeueGarbageCollection(volumeName string) {
 			queue.remove(cur)
 		}
 	}
-	lockable.Unlock()
 }
 
 func (c *SharedState) getVolumesFromPod(ctx context.Context, podName string) ([]string, error) {
@@ -1106,7 +1105,14 @@ func (c *SharedState) manageReplicas(ctx context.Context, volumeName string) err
 		return err
 	}
 
-	desiredReplicaCount, currentReplicaCount := azVolume.Spec.MaxMountReplicaCount, len(azVolumeAttachments)
+	validReplicaAttachments := 0
+	for _, azVolumaAttachment := range azVolumeAttachments {
+		if !azVolumaAttachment.DeletionTimestamp.IsZero() {
+			validReplicaAttachments++
+		}
+	}
+
+	desiredReplicaCount, currentReplicaCount := azVolume.Spec.MaxMountReplicaCount, validReplicaAttachments
 	w.Logger().Infof("Control number of replicas for volume (%s): desired=%d,\tcurrent:%d", azVolume.Spec.VolumeName, desiredReplicaCount, currentReplicaCount)
 
 	if desiredReplicaCount > currentReplicaCount {

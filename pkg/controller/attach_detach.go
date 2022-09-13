@@ -209,7 +209,8 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 			if publishCtx = attachResult.PublishContext(); publishCtx != nil {
 				handleSuccess(false)
 			}
-			if attachErr = <-attachResult.ResultChannel(); attachErr != nil {
+			var ok bool
+			if attachErr, ok = <-attachResult.ResultChannel(); !ok || attachErr != nil {
 				handleError()
 			} else {
 				handleSuccess(true)
@@ -635,7 +636,6 @@ func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, 
 				}
 			} else {
 				w.Logger().Infof("Reapplying AzVolumeAttachment(%s)", azVolumeAttachmentName)
-				azVolumeAttachment.Spec = desiredAzVolumeAttachment.Spec
 				azVolumeAttachment.Labels = desiredAzVolumeAttachment.Labels
 				azVolumeAttachment.Annotations = desiredAzVolumeAttachment.Annotations
 				azVolumeAttachment.Finalizers = desiredAzVolumeAttachment.Finalizers
