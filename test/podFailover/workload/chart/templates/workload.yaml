@@ -95,6 +95,20 @@ spec:
         app: pod-failover
         failureType: {{ .Values.failureType }}
     spec:
+      {{- if .Values.schedulerName }}
+      schedulerName: {{ .Values.schedulerName }}
+      {{- end}}
+      {{- if eq .Values.failureType "same-node-failover"}}
+      affinity:
+        podAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  failureType: same-node-failover
+              topologyKey: kubernetes.io/hostname
+      {{- end}}
       nodeSelector:
         kubernetes.io/os: linux
       serviceAccountName: workload-pod-sa

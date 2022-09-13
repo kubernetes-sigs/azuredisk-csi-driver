@@ -10,6 +10,9 @@ storageClass:
     allowVolumeExpansion: true
   provisioner: disk.csi.azure.com
 
+# use only with standalone installations of azdisk or it will break the pods
+schedulerName: csi-azuredisk-scheduler-extender
+
 namespace: azdiskv2-pod-failover-1pod1pvc
 
 workloadType: 1pod1pvc1replica
