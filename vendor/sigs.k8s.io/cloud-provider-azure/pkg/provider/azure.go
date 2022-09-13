@@ -214,6 +214,9 @@ type Config struct {
 	CloudProviderBackoffRetries int `json:"cloudProviderBackoffRetries,omitempty" yaml:"cloudProviderBackoffRetries,omitempty"`
 	// Backoff duration
 	CloudProviderBackoffDuration int `json:"cloudProviderBackoffDuration,omitempty" yaml:"cloudProviderBackoffDuration,omitempty"`
+	// NonVmssUniformNodesCacheTTLInSeconds sets the Cache TTL for NonVmssUniformNodesCacheTTLInSeconds
+	// if not set, will use default value
+	NonVmssUniformNodesCacheTTLInSeconds int `json:"nonVmssUniformNodesCacheTTLInSeconds,omitempty" yaml:"nonVmssUniformNodesCacheTTLInSeconds,omitempty"`
 	// AvailabilitySetNodesCacheTTLInSeconds sets the Cache TTL for availabilitySetNodesCache
 	// if not set, will use default value
 	AvailabilitySetNodesCacheTTLInSeconds int `json:"availabilitySetNodesCacheTTLInSeconds,omitempty" yaml:"availabilitySetNodesCacheTTLInSeconds,omitempty"`
@@ -610,7 +613,12 @@ func (az *Cloud) InitializeCloudFromConfig(config *Config, fromSecret, callFromC
 		az.MaximumLoadBalancerRuleCount = consts.MaximumLoadBalancerRuleCount
 	}
 
-	if strings.EqualFold(consts.VMTypeVMSS, az.Config.VMType) {
+	if strings.EqualFold(consts.VMTypeVmssFlex, az.Config.VMType) {
+		az.VMSet, err = newFlexScaleSet(az)
+		if err != nil {
+			return err
+		}
+	} else if strings.EqualFold(consts.VMTypeVMSS, az.Config.VMType) {
 		az.VMSet, err = newScaleSet(az)
 		if err != nil {
 			return err
