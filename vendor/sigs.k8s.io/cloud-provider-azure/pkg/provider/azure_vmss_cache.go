@@ -98,7 +98,7 @@ func (ss *ScaleSet) newVMSSCache() (*azcache.TimedCache, error) {
 					klog.Warning("failed to get the name of VMSS")
 					continue
 				}
-				if scaleSet.OrchestrationMode != compute.OrchestrationModeFlexible {
+				if scaleSet.OrchestrationMode == "" || scaleSet.OrchestrationMode == compute.OrchestrationModeUniform {
 					localCache.Store(*scaleSet.Name, &vmssEntry{
 						vmss:          &scaleSet,
 						resourceGroup: resourceGroup,
