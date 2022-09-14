@@ -37,6 +37,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 
+	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/azure"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/credentials"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
@@ -99,22 +100,22 @@ var _ = ginkgo.BeforeSuite(func() {
 			testutil.ExecTestCmd([]testutil.TestCmd{e2eBootstrap, createMetricsSVC})
 		}
 
-		driverOptions := azuredisk.DriverOptions{
-			NodeID:                 os.Getenv("nodeid"),
-			DriverName:             consts.DefaultDriverName,
-			VolumeAttachLimit:      16,
-			EnablePerfOptimization: false,
-		}
 		os.Setenv("AZURE_CREDENTIAL_FILE", testconsts.TempAzureCredentialFilePath)
 		kubeconfig := os.Getenv(testconsts.KubeconfigEnvVar)
 		kubeclient, err := azureutils.GetKubeClient(kubeconfig)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		cloudConfig := azdiskv1beta2.CloudConfiguration{
+			SecretName:                               "",
+			SecretNamespace:                          "",
+			AllowEmptyCloudConfig:                    false,
+			EnableAzureClientAttachDetachRateLimiter: consts.DefaultEnableAzureClientAttachDetachRateLimiter,
+			AzureClientAttachDetachRateLimiterQPS:    consts.DefaultAzureClientAttachDetachRateLimiterQPS,
+			AzureClientAttachDetachRateLimiterBucket: consts.DefaultAzureClientAttachDetachRateLimiterBucket,
+		}
 		azureCloud, err = azureutils.GetCloudProviderFromClient(
 			kubeclient,
-			driverOptions.CloudConfigSecretName,
-			driverOptions.CloudConfigSecretNamespace,
-			azuredisk.GetUserAgent(driverOptions.DriverName, driverOptions.CustomUserAgent, driverOptions.UserAgentSuffix),
-			driverOptions.AllowEmptyCloudConfig,
+			cloudConfig,
+			azuredisk.GetUserAgent(consts.DefaultDriverName, "E2E", ""),
 		)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	}

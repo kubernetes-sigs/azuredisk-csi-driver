@@ -44,39 +44,42 @@ var (
 	nodeID           = flag.String("nodeid", "", "node id")
 	version          = flag.Bool("version", false, "Print the version and exit.")
 	// Deprecated command-line parameters
-	endpoint                          = flag.String("endpoint", consts.DefaultEndpoint, "CSI endpoint")
-	metricsAddress                    = flag.String("metrics-address", consts.DefaultMetricsAddress, "export the metrics")
-	kubeconfig                        = flag.String("kubeconfig", consts.DefaultKubeconfig, "Absolute path to the kubeconfig file. Required only when running out of cluster.")
-	driverName                        = flag.String("drivername", consts.DefaultDriverName, "name of the driver")
-	volumeAttachLimit                 = flag.Int64("volume-attach-limit", consts.DefaultVolumeAttachLimit, "maximum number of attachable volumes per node")
-	supportZone                       = flag.Bool("support-zone", consts.DefaultSupportZone, "boolean flag to get zone info in NodeGetInfo")
-	getNodeInfoFromLabels             = flag.Bool("get-node-info-from-labels", consts.DefaultGetNodeInfoFromLabels, "boolean flag to get zone info from node labels in NodeGetInfo")
-	disableAVSetNodes                 = flag.Bool("disable-avset-nodes", consts.DefaultDisableAVSetNodes, "disable DisableAvailabilitySetNodes in cloud config for controller")
-	vmType                            = flag.String("vm-type", consts.DefaultVMType, "type of agent node. available values: vmss, standard")
-	enablePerfOptimization            = flag.Bool("enable-perf-optimization", consts.DefaultEnablePerfOptimization, "boolean flag to enable disk perf optimization")
-	cloudConfigSecretName             = flag.String("cloud-config-secret-name", consts.DefaultCloudConfigSecretName, "cloud config secret name")
-	cloudConfigSecretNamespace        = flag.String("cloud-config-secret-namespace", consts.DefaultCloudConfigSecretNamespace, "cloud config secret namespace")
-	customUserAgent                   = flag.String("custom-user-agent", consts.DefaultCustomUserAgent, "custom userAgent")
-	userAgentSuffix                   = flag.String("user-agent-suffix", consts.DefaultUserAgentSuffix, "userAgent suffix")
-	useCSIProxyGAInterface            = flag.Bool("use-csiproxy-ga-interface", consts.DefaultUseCSIProxyGAInterface, "boolean flag to enable csi-proxy GA interface on Windows")
-	enableDiskOnlineResize            = flag.Bool("enable-disk-online-resize", consts.DefaultEnableDiskOnlineResize, "boolean flag to enable disk online resize")
-	allowEmptyCloudConfig             = flag.Bool("allow-empty-cloud-config", consts.DefaultAllowEmptyCloudConfig, "Whether allow running driver without cloud config")
-	enableAsyncAttach                 = flag.Bool("enable-async-attach", consts.DefaultEnableAsyncAttach, "boolean flag to enable async attach")
-	enableListVolumes                 = flag.Bool("enable-list-volumes", consts.DefaultEnableListVolumes, "boolean flag to enable ListVolumes on controller")
-	enableListSnapshots               = flag.Bool("enable-list-snapshots", consts.DefaultEnableListSnapshots, "boolean flag to enable ListSnapshots on controller")
-	enableDiskCapacityCheck           = flag.Bool("enable-disk-capacity-check", consts.DefaultEnableDiskCapacityCheck, "boolean flag to enable volume capacity check in CreateVolume")
-	kubeClientQPS                     = flag.Int("kube-client-qps", consts.DefaultKubeClientQPS, "QPS for the rest client. Defaults to 15.")
-	vmssCacheTTLInSeconds             = flag.Int64("vmss-cache-ttl-seconds", consts.DefaultVMSSCacheTTLInSeconds, "vmss cache TTL in seconds (600 by default)")
-	isControllerPlugin                = flag.Bool("is-controller-plugin", consts.DefaultIsControllerPlugin, "Boolean flag to indicate this instance is running as controller.")
-	isNodePlugin                      = flag.Bool("is-node-plugin", consts.DefaultIsNodePlugin, "Boolean flag to indicate this instance is running as node daemon.")
-	driverObjectNamespace             = flag.String("driver-object-namespace", consts.DefaultAzureDiskCrdNamespace, "The namespace where driver related custom resources are created.")
-	heartbeatFrequencyInSec           = flag.Int("heartbeat-frequency-in-sec", consts.DefaultHeartbeatFrequencyInSec, "Frequency in seconds at which node driver sends heartbeat.")
-	controllerLeaseDurationInSec      = flag.Int("lease-duration-in-sec", consts.DefaultControllerLeaseDurationInSec, "The duration that non-leader candidates will wait to force acquire leadership")
-	controllerLeaseRenewDeadlineInSec = flag.Int("lease-renew-deadline-in-sec", consts.DefaultControllerLeaseRenewDeadlineInSec, "The duration that the acting controlplane will retry refreshing leadership before giving up.")
-	controllerLeaseRetryPeriodInSec   = flag.Int("lease-retry-period-in-sec", consts.DefaultControllerLeaseRetryPeriodInSec, "The duration the LeaderElector clients should wait between tries of actions.")
-	leaderElectionNamespace           = flag.String("leader-election-namespace", consts.ReleaseNamespace, "The leader election namespace for controller")
-	nodePartition                     = flag.String("node-partition", consts.DefaultNodePartitionName, "The partition name for node plugin.")
-	controllerPartition               = flag.String("controller-partition", consts.DefaultControllerPartitionName, "The partition name for controller plugin.")
+	endpoint                                 = flag.String("endpoint", consts.DefaultEndpoint, "CSI endpoint")
+	metricsAddress                           = flag.String("metrics-address", consts.DefaultMetricsAddress, "export the metrics")
+	kubeconfig                               = flag.String("kubeconfig", consts.DefaultKubeconfig, "Absolute path to the kubeconfig file. Required only when running out of cluster.")
+	driverName                               = flag.String("drivername", consts.DefaultDriverName, "name of the driver")
+	volumeAttachLimit                        = flag.Int64("volume-attach-limit", consts.DefaultVolumeAttachLimit, "maximum number of attachable volumes per node")
+	supportZone                              = flag.Bool("support-zone", consts.DefaultSupportZone, "boolean flag to get zone info in NodeGetInfo")
+	getNodeInfoFromLabels                    = flag.Bool("get-node-info-from-labels", consts.DefaultGetNodeInfoFromLabels, "boolean flag to get zone info from node labels in NodeGetInfo")
+	disableAVSetNodes                        = flag.Bool("disable-avset-nodes", consts.DefaultDisableAVSetNodes, "disable DisableAvailabilitySetNodes in cloud config for controller")
+	vmType                                   = flag.String("vm-type", consts.DefaultVMType, "type of agent node. available values: vmss, standard")
+	enablePerfOptimization                   = flag.Bool("enable-perf-optimization", consts.DefaultEnablePerfOptimization, "boolean flag to enable disk perf optimization")
+	cloudConfigSecretName                    = flag.String("cloud-config-secret-name", consts.DefaultCloudConfigSecretName, "cloud config secret name")
+	cloudConfigSecretNamespace               = flag.String("cloud-config-secret-namespace", consts.DefaultCloudConfigSecretNamespace, "cloud config secret namespace")
+	customUserAgent                          = flag.String("custom-user-agent", consts.DefaultCustomUserAgent, "custom userAgent")
+	userAgentSuffix                          = flag.String("user-agent-suffix", consts.DefaultUserAgentSuffix, "userAgent suffix")
+	useCSIProxyGAInterface                   = flag.Bool("use-csiproxy-ga-interface", consts.DefaultUseCSIProxyGAInterface, "boolean flag to enable csi-proxy GA interface on Windows")
+	enableDiskOnlineResize                   = flag.Bool("enable-disk-online-resize", consts.DefaultEnableDiskOnlineResize, "boolean flag to enable disk online resize")
+	allowEmptyCloudConfig                    = flag.Bool("allow-empty-cloud-config", consts.DefaultAllowEmptyCloudConfig, "Whether allow running driver without cloud config")
+	enableAsyncAttach                        = flag.Bool("enable-async-attach", consts.DefaultEnableAsyncAttach, "boolean flag to enable async attach")
+	enableListVolumes                        = flag.Bool("enable-list-volumes", consts.DefaultEnableListVolumes, "boolean flag to enable ListVolumes on controller")
+	enableListSnapshots                      = flag.Bool("enable-list-snapshots", consts.DefaultEnableListSnapshots, "boolean flag to enable ListSnapshots on controller")
+	enableDiskCapacityCheck                  = flag.Bool("enable-disk-capacity-check", consts.DefaultEnableDiskCapacityCheck, "boolean flag to enable volume capacity check in CreateVolume")
+	kubeClientQPS                            = flag.Int("kube-client-qps", consts.DefaultKubeClientQPS, "QPS for the rest client. Defaults to 15.")
+	vmssCacheTTLInSeconds                    = flag.Int64("vmss-cache-ttl-seconds", consts.DefaultVMSSCacheTTLInSeconds, "vmss cache TTL in seconds (600 by default)")
+	enableAzureClientAttachDetachRateLimiter = flag.Bool("enable-attach-detach-rate-limiter", consts.DefaultEnableAzureClientAttachDetachRateLimiter, "azure client rate limiter for attach/detach operations (true by default)")
+	azureClientAttachDetachRateLimiterQPS    = flag.Float64("attach-detach-rate-limiter-qps", consts.DefaultAzureClientAttachDetachRateLimiterQPS, "QPS for azure client rate limiter for attach/detach operations (1.3 by default)")
+	azureClientAttachDetachRateLimiterBucket = flag.Int("attach-detach-rate-limiter-bucket", consts.DefaultAzureClientAttachDetachRateLimiterBucket, "bucket for azure client rate limiter for attach/detach operations (80 by default)")
+	isControllerPlugin                       = flag.Bool("is-controller-plugin", consts.DefaultIsControllerPlugin, "Boolean flag to indicate this instance is running as controller.")
+	isNodePlugin                             = flag.Bool("is-node-plugin", consts.DefaultIsNodePlugin, "Boolean flag to indicate this instance is running as node daemon.")
+	driverObjectNamespace                    = flag.String("driver-object-namespace", consts.DefaultAzureDiskCrdNamespace, "The namespace where driver related custom resources are created.")
+	heartbeatFrequencyInSec                  = flag.Int("heartbeat-frequency-in-sec", consts.DefaultHeartbeatFrequencyInSec, "Frequency in seconds at which node driver sends heartbeat.")
+	controllerLeaseDurationInSec             = flag.Int("lease-duration-in-sec", consts.DefaultControllerLeaseDurationInSec, "The duration that non-leader candidates will wait to force acquire leadership")
+	controllerLeaseRenewDeadlineInSec        = flag.Int("lease-renew-deadline-in-sec", consts.DefaultControllerLeaseRenewDeadlineInSec, "The duration that the acting controlplane will retry refreshing leadership before giving up.")
+	controllerLeaseRetryPeriodInSec          = flag.Int("lease-retry-period-in-sec", consts.DefaultControllerLeaseRetryPeriodInSec, "The duration the LeaderElector clients should wait between tries of actions.")
+	leaderElectionNamespace                  = flag.String("leader-election-namespace", consts.ReleaseNamespace, "The leader election namespace for controller")
+	nodePartition                            = flag.String("node-partition", consts.DefaultNodePartitionName, "The partition name for node plugin.")
+	controllerPartition                      = flag.String("controller-partition", consts.DefaultControllerPartitionName, "The partition name for controller plugin.")
 )
 
 func main() {
@@ -142,12 +145,15 @@ func getDriverConfig() *azdiskv1beta2.AzDiskDriverConfiguration {
 				PartitionName:           consts.DefaultNodePartitionName,
 			},
 			CloudConfig: azdiskv1beta2.CloudConfiguration{
-				SecretName:            consts.DefaultCloudConfigSecretName,
-				SecretNamespace:       consts.DefaultCloudConfigSecretNamespace,
-				CustomUserAgent:       consts.DefaultCustomUserAgent,
-				UserAgentSuffix:       consts.DefaultUserAgentSuffix,
-				AllowEmptyCloudConfig: consts.DefaultAllowEmptyCloudConfig,
-				VMSSCacheTTLInSeconds: consts.DefaultVMSSCacheTTLInSeconds,
+				SecretName:                               consts.DefaultCloudConfigSecretName,
+				SecretNamespace:                          consts.DefaultCloudConfigSecretNamespace,
+				CustomUserAgent:                          consts.DefaultCustomUserAgent,
+				UserAgentSuffix:                          consts.DefaultUserAgentSuffix,
+				AllowEmptyCloudConfig:                    consts.DefaultAllowEmptyCloudConfig,
+				VMSSCacheTTLInSeconds:                    consts.DefaultVMSSCacheTTLInSeconds,
+				EnableAzureClientAttachDetachRateLimiter: consts.DefaultEnableAzureClientAttachDetachRateLimiter,
+				AzureClientAttachDetachRateLimiterQPS:    consts.DefaultAzureClientAttachDetachRateLimiterQPS,
+				AzureClientAttachDetachRateLimiterBucket: consts.DefaultAzureClientAttachDetachRateLimiterBucket,
 			},
 			ClientConfig: azdiskv1beta2.ClientConfiguration{
 				Kubeconfig:    consts.DefaultKubeconfig,
@@ -205,12 +211,15 @@ func getDriverConfig() *azdiskv1beta2.AzDiskDriverConfiguration {
 				PartitionName:           *nodePartition,
 			},
 			CloudConfig: azdiskv1beta2.CloudConfiguration{
-				SecretName:            *cloudConfigSecretName,
-				SecretNamespace:       *cloudConfigSecretNamespace,
-				CustomUserAgent:       *customUserAgent,
-				UserAgentSuffix:       *userAgentSuffix,
-				AllowEmptyCloudConfig: *allowEmptyCloudConfig,
-				VMSSCacheTTLInSeconds: *vmssCacheTTLInSeconds,
+				SecretName:                               *cloudConfigSecretName,
+				SecretNamespace:                          *cloudConfigSecretNamespace,
+				CustomUserAgent:                          *customUserAgent,
+				UserAgentSuffix:                          *userAgentSuffix,
+				AllowEmptyCloudConfig:                    *allowEmptyCloudConfig,
+				VMSSCacheTTLInSeconds:                    *vmssCacheTTLInSeconds,
+				EnableAzureClientAttachDetachRateLimiter: *enableAzureClientAttachDetachRateLimiter,
+				AzureClientAttachDetachRateLimiterQPS:    float32(*azureClientAttachDetachRateLimiterQPS),
+				AzureClientAttachDetachRateLimiterBucket: *azureClientAttachDetachRateLimiterBucket,
 			},
 			ClientConfig: azdiskv1beta2.ClientConfiguration{
 				Kubeconfig:    *kubeconfig,

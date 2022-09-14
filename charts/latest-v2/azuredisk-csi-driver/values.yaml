@@ -74,6 +74,9 @@ controller:
   provisionerWorkerThreads: 40
   attacherWorkerThreads: 500
   vmssCacheTTLInSeconds: -1
+  enableAzureClientAttachDetachRateLimiter: true
+  azureClientAttachDetachRateLimiterQPS: 1.3
+  azureClientAttachDetachRateLimiterBucket: 80
   logLevel: 5
   tolerations:
     - key: "node-role.kubernetes.io/master"

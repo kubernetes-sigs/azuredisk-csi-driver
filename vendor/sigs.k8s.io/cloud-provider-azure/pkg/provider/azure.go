@@ -994,13 +994,20 @@ func initDiskControllers(az *Cloud) error {
 	// Common controller contains the function
 	// needed by both blob disk and managed disk controllers
 
+	enableAttachDetachDiskRateLimiter := true
 	qps := rate.Limit(defaultAttachDetachDiskQPS)
 	bucket := defaultAttachDetachDiskBucket
+
 	if az.Config.AttachDetachDiskRateLimit != nil {
+		enableAttachDetachDiskRateLimiter = az.Config.AttachDetachDiskRateLimit.CloudProviderRateLimit
 		qps = rate.Limit(az.Config.AttachDetachDiskRateLimit.CloudProviderRateLimitQPSWrite)
 		bucket = az.Config.AttachDetachDiskRateLimit.CloudProviderRateLimitBucketWrite
 	}
-	klog.V(2).Infof("attach/detach disk operation rate limit QPS: %f, Bucket: %d", qps, bucket)
+	klog.V(2).Infof(
+		"attach/detach disk operation rate limiter configuration - Enabled: %t QPS: %f, Bucket: %d",
+		enableAttachDetachDiskRateLimiter,
+		qps,
+		bucket)
 
 	common := &controllerCommon{
 		location:              az.Location,
@@ -1011,14 +1018,16 @@ func initDiskControllers(az *Cloud) error {
 		lockMap:               newLockMap(),
 	}
 
-	attachDetachRateLimiter := rate.NewLimiter(qps, bucket)
-
 	logger := klogr.NewWithOptions(klogr.WithFormat(klogr.FormatKlog)).WithName("cloud-provider-azure").WithValues("type", "batch")
 
 	processorOptions := []batch.ProcessorOption{
 		batch.WithVerboseLogLevel(3),
 		batch.WithDelayBeforeStart(1 * time.Second),
-		batch.WithGlobalLimiter(attachDetachRateLimiter),
+	}
+
+	if enableAttachDetachDiskRateLimiter {
+		attachDetachRateLimiter := rate.NewLimiter(qps, bucket)
+		processorOptions = append(processorOptions, batch.WithGlobalLimiter(attachDetachRateLimiter))
 	}
 
 	attachBatchFn := func(ctx context.Context, key string, values []interface{}) ([]interface{}, error) {

@@ -72,14 +72,12 @@ func (c *CloudAttachResult) ResultChannel() chan error {
 }
 
 type CloudProvisioner struct {
-	cloud                      *azure.Cloud
-	kubeClient                 *clientset.Clientset
-	cloudConfigSecretName      string
-	cloudConfigSecretNamespace string
-	enableOnlineDiskResize     bool
-	perfOptimizationEnabled    bool
-	allowEmptyCloudConfig      bool
-	enableAsyncAttach          bool
+	cloud                   *azure.Cloud
+	kubeClient              *clientset.Clientset
+	cloudConfiguration      azdiskv1beta2.CloudConfiguration
+	enableOnlineDiskResize  bool
+	perfOptimizationEnabled bool
+	enableAsyncAttach       bool
 	// a timed cache GetDisk throttling
 	getDiskThrottlingCache *azcache.TimedCache
 }
@@ -94,16 +92,17 @@ type listVolumeStatus struct {
 
 func NewCloudProvisioner(
 	kubeClient *clientset.Clientset,
-	cloudConfigSecretName string,
-	cloudConfigSecretNamespace string,
+	cloudConfig azdiskv1beta2.CloudConfiguration,
 	perfOptimizationEnabled bool,
 	topologyKey string,
 	userAgent string,
 	enableOnlineDiskResize bool,
-	allowEmptyCloudConfig bool,
 	enableAsyncAttach bool,
 ) (*CloudProvisioner, error) {
-	azCloud, err := azureutils.GetCloudProviderFromClient(kubeClient, cloudConfigSecretName, cloudConfigSecretNamespace, userAgent, allowEmptyCloudConfig)
+	azCloud, err := azureutils.GetCloudProviderFromClient(
+		kubeClient,
+		cloudConfig,
+		userAgent)
 	if err != nil || azCloud.TenantID == "" || azCloud.SubscriptionID == "" {
 		klog.Fatalf("failed to get Azure Cloud Provider, error: %v", err)
 		return nil, err
@@ -119,15 +118,13 @@ func NewCloudProvisioner(
 	}
 
 	return &CloudProvisioner{
-		cloud:                      azCloud,
-		kubeClient:                 kubeClient,
-		cloudConfigSecretName:      cloudConfigSecretName,
-		cloudConfigSecretNamespace: cloudConfigSecretNamespace,
-		enableOnlineDiskResize:     enableOnlineDiskResize,
-		perfOptimizationEnabled:    perfOptimizationEnabled,
-		allowEmptyCloudConfig:      allowEmptyCloudConfig,
-		enableAsyncAttach:          enableAsyncAttach,
-		getDiskThrottlingCache:     cache,
+		cloud:                   azCloud,
+		kubeClient:              kubeClient,
+		cloudConfiguration:      cloudConfig,
+		enableOnlineDiskResize:  enableOnlineDiskResize,
+		perfOptimizationEnabled: perfOptimizationEnabled,
+		enableAsyncAttach:       enableAsyncAttach,
+		getDiskThrottlingCache:  cache,
 	}, nil
 }
 
@@ -174,7 +171,10 @@ func (c *CloudProvisioner) CreateVolume(
 	}
 
 	if diskParams.UserAgent != "" {
-		localCloud, err = azureutils.GetCloudProviderFromClient(c.kubeClient, c.cloudConfigSecretName, c.cloudConfigSecretNamespace, diskParams.UserAgent, c.allowEmptyCloudConfig)
+		localCloud, err = azureutils.GetCloudProviderFromClient(
+			c.kubeClient,
+			c.cloudConfiguration,
+			diskParams.UserAgent)
 		if err != nil {
 			err = status.Errorf(codes.Internal, "create cloud with UserAgent(%s) failed with: (%s)", diskParams.UserAgent, err)
 			return nil, err
@@ -576,7 +576,10 @@ func (c *CloudProvisioner) CreateSnapshot(
 			location = v
 		case azureconstants.UserAgentField:
 			newUserAgent := v
-			localCloud, err = azureutils.GetCloudProviderFromClient(c.kubeClient, c.cloudConfigSecretName, c.cloudConfigSecretNamespace, newUserAgent, c.allowEmptyCloudConfig)
+			localCloud, err = azureutils.GetCloudProviderFromClient(
+				c.kubeClient,
+				c.cloudConfiguration,
+				newUserAgent)
 			if err != nil {
 				return nil, status.Errorf(codes.Internal, "create cloud with UserAgent(%s) failed with: (%s)", newUserAgent, err)
 			}

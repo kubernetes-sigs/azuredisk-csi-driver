@@ -192,15 +192,12 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 
 		d.cloudProvisioner, err = provisioner.NewCloudProvisioner(
 			d.kubeClient,
-			d.config.CloudConfig.SecretName,
-			d.config.CloudConfig.SecretNamespace,
+			d.config.CloudConfig,
 			d.config.NodeConfig.EnablePerfOptimization,
 			topologyKey,
 			userAgent,
 			d.config.ControllerConfig.EnableDiskOnlineResize,
-			d.config.CloudConfig.AllowEmptyCloudConfig,
-			d.config.ControllerConfig.EnableAsyncAttach,
-		)
+			d.config.ControllerConfig.EnableAsyncAttach)
 		if err != nil {
 			klog.Fatalf("Failed to get controller provisioner. Error: %v", err)
 		}

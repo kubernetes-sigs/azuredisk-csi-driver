@@ -173,43 +173,46 @@ const (
 	ClientFailedGetEvent          = "ClientFailedToGetObject"
 
 	// AzDiskDriverConfiguration specific constants
-	DefaultEndpoint                          = "unix://tmp/csi.sock"
-	DefaultMetricsAddress                    = "0.0.0.0:29604"
-	DefaultDisableAVSetNodes                 = false
-	DefaultVMType                            = ""
-	DefaultEnableDiskOnlineResize            = true
-	DefaultEnableAsyncAttach                 = false
-	DefaultEnableListVolumes                 = false
-	DefaultEnableListSnapshots               = false
-	DefaultEnableDiskCapacityCheck           = false
-	DefaultIsControllerPlugin                = false
-	DefaultControllerLeaseDurationInSec      = 15
-	DefaultControllerLeaseRenewDeadlineInSec = 10
-	DefaultControllerLeaseRetryPeriodInSec   = 2
-	DefaultVolumeAttachLimit                 = -1
-	DefaultSupportZone                       = true
-	DefaultEnablePerfOptimization            = false
-	DefaultUseCSIProxyGAInterface            = true
-	DefaultGetNodeInfoFromLabels             = false
-	DefaultIsNodePlugin                      = false
-	DefaultHeartbeatFrequencyInSec           = 30
-	DefaultCloudConfigSecretName             = "azure-cloud-provider"
-	DefaultCloudConfigSecretNamespace        = "kube-system"
-	DefaultCustomUserAgent                   = ""
-	DefaultUserAgentSuffix                   = ""
-	DefaultAllowEmptyCloudConfig             = true
-	DefaultVMSSCacheTTLInSeconds             = -1
-	DefaultKubeconfig                        = ""
-	DefaultKubeClientQPS                     = 15
+	DefaultEndpoint                                 = "unix://tmp/csi.sock"
+	DefaultMetricsAddress                           = "0.0.0.0:29604"
+	DefaultDisableAVSetNodes                        = false
+	DefaultVMType                                   = ""
+	DefaultEnableDiskOnlineResize                   = true
+	DefaultEnableAsyncAttach                        = false
+	DefaultEnableListVolumes                        = false
+	DefaultEnableListSnapshots                      = false
+	DefaultEnableDiskCapacityCheck                  = false
+	DefaultIsControllerPlugin                       = false
+	DefaultControllerLeaseDurationInSec             = 15
+	DefaultControllerLeaseRenewDeadlineInSec        = 10
+	DefaultControllerLeaseRetryPeriodInSec          = 2
+	DefaultVolumeAttachLimit                        = -1
+	DefaultSupportZone                              = true
+	DefaultEnablePerfOptimization                   = false
+	DefaultUseCSIProxyGAInterface                   = true
+	DefaultGetNodeInfoFromLabels                    = false
+	DefaultIsNodePlugin                             = false
+	DefaultHeartbeatFrequencyInSec                  = 30
+	DefaultCloudConfigSecretName                    = "azure-cloud-provider"
+	DefaultCloudConfigSecretNamespace               = "kube-system"
+	DefaultCustomUserAgent                          = ""
+	DefaultUserAgentSuffix                          = ""
+	DefaultAllowEmptyCloudConfig                    = true
+	DefaultVMSSCacheTTLInSeconds                    = -1
+	DefaultKubeconfig                               = ""
+	DefaultKubeClientQPS                            = 15
+	DefaultEnableAzureClientAttachDetachRateLimiter = true
+	DefaultAzureClientAttachDetachRateLimiterQPS    = (240.0 / 180.0)                                          // Default compute QPS limit is 240 queries / 3 minutes
+	DefaultAzureClientAttachDetachRateLimiterBucket = int(DefaultAzureClientAttachDetachRateLimiterQPS * 60.0) // Allow for a burst of a minutes worth of quota
 )
 
 // CommandLineParams is a list of deprecated command-line parameters
 var CommandLineParams = []string{"endpoint", "metrics-address", "kubeconfig", "drivername", "volume-attach-limit", "support-zone", "get-node-info-from-labels",
 	"disable-avset-nodes", "vm-type", "enable-perf-optimization", "cloud-config-secret-name", "cloud-config-secret-namespace", "custom-user-agent", "user-agent-suffix",
 	"use-csiproxy-ga-interface", "enable-disk-online-resize", "allow-empty-cloud-config", "enable-async-attach", "enable-list-volumes", "enable-list-snapshots",
-	"enable-disk-capacity-check", "kube-client-qps", "vmss-cache-ttl-seconds", "is-controller-plugin", "is-node-plugin", "driver-object-namespace",
-	"heartbeat-frequency-in-sec", "lease-duration-in-sec", "lease-renew-deadline-in-sec", "lease-retry-period-in-sec", "leader-election-namespace", "node-partition",
-	"controller-partition"}
+	"enable-disk-capacity-check", "kube-client-qps", "vmss-cache-ttl-seconds", "enable-attach-detach-rate-limiter", "attach-detach-rate-limiter-qps", "attach-detach-rate-limiter-bucket",
+	"is-controller-plugin", "is-node-plugin", "driver-object-namespace", "heartbeat-frequency-in-sec", "lease-duration-in-sec", "lease-renew-deadline-in-sec", "lease-retry-period-in-sec",
+	"leader-election-namespace", "node-partition", "controller-partition"}
 
 type UnpublishMode int
 

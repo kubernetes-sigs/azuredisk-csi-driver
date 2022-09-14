@@ -601,6 +601,12 @@ type CloudConfiguration struct {
 	AllowEmptyCloudConfig bool `json:"allowEmptyCloudConfig,omitempty"`
 	// vmss cache TTL in seconds (600 by default)
 	VMSSCacheTTLInSeconds int64 `json:"vmssCacheTTLInSeconds,omitempty"`
+	// enable azure client attach/detach rate limiter
+	EnableAzureClientAttachDetachRateLimiter bool `json:"enableAzureClientAttachDetachRateLimiter,omitempty"`
+	// azure client attach/Detach rate limiter QPS
+	AzureClientAttachDetachRateLimiterQPS float32 `json:"azureClientAttachDetachRateLimiterQPS,omitempty"`
+	// azure client attach/Detach rate limiter bucket
+	AzureClientAttachDetachRateLimiterBucket int `json:"azureClientAttachDetachRateLimiterBucket,omitempty"`
 }
 
 type ClientConfiguration struct {
