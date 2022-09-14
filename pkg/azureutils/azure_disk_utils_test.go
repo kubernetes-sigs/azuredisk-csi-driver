@@ -17,6 +17,7 @@ limitations under the License.
 package azureutils
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -24,17 +25,34 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	v1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8sRuntime "k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	testingClient "k8s.io/client-go/testing"
+	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
+	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	azdiskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
+	azdiskinformers "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils/mockclient"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func TestCheckDiskName(t *testing.T) {
@@ -1778,5 +1796,1037 @@ func TestIsAsyncAttachEnabled(t *testing.T) {
 		if result != test.expected {
 			t.Errorf("test(%s): result(%v) != expected result(%v)", test.name, result, test.expected)
 		}
+	}
+}
+
+func TestUpdateCRIWithRetry(t *testing.T) {
+	tests := []struct {
+		name         string
+		setupClients func(*testing.T, *gomock.Controller) (azdiskinformers.SharedInformerFactory, client.Client, azdisk.Interface, client.Object)
+		updateFunc   UpdateCRIFunc
+		maxNetRetry  int
+		updateMode   CRIUpdateMode
+		verifyFunc   func(*testing.T, client.Object, error)
+		expectedErr  error
+	}{
+		// AzVolume unit test cases
+		{
+			name: "[Success] Updates AzVolume CRI",
+			setupClients: func(t *testing.T, c *gomock.Controller) (azdiskinformers.SharedInformerFactory, client.Client, azdisk.Interface, client.Object) {
+				originalObj := &azdiskv1beta2.AzVolume{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "pvc-test",
+					},
+				}
+
+				cachedObj := originalObj.DeepCopy()
+				cachedClient := mockclient.NewMockClient(c)
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+						if objToUpdate, ok := obj.(*azdiskv1beta2.AzVolume); ok {
+							cachedObj.DeepCopyInto(objToUpdate)
+							return nil
+						}
+
+						return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+					}).
+					Times(1)
+
+				azdiskClient := azdiskfakes.NewSimpleClientset(cachedObj)
+
+				return nil, cachedClient, azdiskClient, originalObj
+			},
+			updateFunc: func(obj client.Object) error {
+				if objToUpdate, ok := obj.(*azdiskv1beta2.AzVolume); ok {
+					objToUpdate.Spec.VolumeName = objToUpdate.Name
+					return nil
+				}
+
+				return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+			},
+			updateMode: UpdateCRI,
+			verifyFunc: func(t *testing.T, obj client.Object, err error) {
+				updatedObj, ok := obj.(*azdiskv1beta2.AzVolume)
+				require.True(t, ok, "Unexpected object type: %s", reflect.TypeOf(obj).Name())
+				assert.Equal(t, "pvc-test", updatedObj.Name)
+				assert.Equal(t, "pvc-test", updatedObj.Spec.VolumeName)
+			},
+		},
+		{
+			name: "[Success] Updates AzVolume CRI with conflict",
+			setupClients: func(t *testing.T, c *gomock.Controller) (azdiskinformers.SharedInformerFactory, client.Client, azdisk.Interface, client.Object) {
+				originalObj := &azdiskv1beta2.AzVolume{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "pvc-test",
+					},
+				}
+
+				cachedObj := originalObj.DeepCopy()
+				cachedClient := mockclient.NewMockClient(c)
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+						if objToUpdate, ok := obj.(*azdiskv1beta2.AzVolume); ok {
+							cachedObj.DeepCopyInto(objToUpdate)
+							return nil
+						}
+
+						return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+					}).
+					Times(2)
+
+				azdiskClient := azdiskfakes.NewSimpleClientset(cachedObj)
+				firstCall := true
+				azdiskClient.PrependReactor(
+					"update",
+					"azvolumes",
+					func(action testingClient.Action) (bool, k8sRuntime.Object, error) {
+						if !firstCall {
+							return false, nil, nil
+						}
+						firstCall = false
+						return true, nil, k8serrors.NewConflict(azdiskv1beta2.Resource("azvolumes"), "pvc-test", errors.New("conflict"))
+					})
+
+				return nil, cachedClient, azdiskClient, originalObj
+			},
+			updateFunc: func(obj client.Object) error {
+				if objToUpdate, ok := obj.(*azdiskv1beta2.AzVolume); ok {
+					objToUpdate.Spec.VolumeName = objToUpdate.Name
+					return nil
+				}
+
+				return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+			},
+			updateMode: UpdateCRI,
+			verifyFunc: func(t *testing.T, obj client.Object, err error) {
+				updatedObj, ok := obj.(*azdiskv1beta2.AzVolume)
+				require.True(t, ok, "Unexpected object type: %s", reflect.TypeOf(obj).Name())
+				assert.Equal(t, "pvc-test", updatedObj.Name)
+				assert.Equal(t, "pvc-test", updatedObj.Spec.VolumeName)
+			},
+		},
+		{
+			name: "[Success] Updates AzVolume CRI with transient net error",
+			setupClients: func(t *testing.T, c *gomock.Controller) (azdiskinformers.SharedInformerFactory, client.Client, azdisk.Interface, client.Object) {
+				originalObj := &azdiskv1beta2.AzVolume{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "pvc-test",
+					},
+				}
+
+				cachedObj := originalObj.DeepCopy()
+				cachedClient := mockclient.NewMockClient(c)
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+						if objToUpdate, ok := obj.(*azdiskv1beta2.AzVolume); ok {
+							cachedObj.DeepCopyInto(objToUpdate)
+							return nil
+						}
+
+						return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+					}).
+					Times(2)
+
+				azdiskClient := azdiskfakes.NewSimpleClientset(cachedObj)
+				firstCall := true
+				azdiskClient.PrependReactor(
+					"update",
+					"azvolumes",
+					func(action testingClient.Action) (bool, k8sRuntime.Object, error) {
+						if !firstCall {
+							return false, nil, nil
+						}
+						firstCall = false
+						return true, nil, syscall.ECONNRESET
+					})
+
+				return nil, cachedClient, azdiskClient, originalObj
+			},
+			maxNetRetry: 1,
+			updateFunc: func(obj client.Object) error {
+				if objToUpdate, ok := obj.(*azdiskv1beta2.AzVolume); ok {
+					objToUpdate.Spec.VolumeName = objToUpdate.Name
+					return nil
+				}
+
+				return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+			},
+			updateMode: UpdateCRI,
+			verifyFunc: func(t *testing.T, obj client.Object, err error) {
+				updatedObj, ok := obj.(*azdiskv1beta2.AzVolume)
+				require.True(t, ok, "Unexpected object type: %s", reflect.TypeOf(obj).Name())
+				assert.Equal(t, "pvc-test", updatedObj.Name)
+				assert.Equal(t, "pvc-test", updatedObj.Spec.VolumeName)
+			},
+		},
+		{
+			name: "[Success] Updates AzVolume Status",
+			setupClients: func(t *testing.T, c *gomock.Controller) (azdiskinformers.SharedInformerFactory, client.Client, azdisk.Interface, client.Object) {
+				originalObj := &azdiskv1beta2.AzVolume{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "pvc-test",
+					},
+				}
+
+				cachedObj := originalObj.DeepCopy()
+				cachedClient := mockclient.NewMockClient(c)
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+						if objToUpdate, ok := obj.(*azdiskv1beta2.AzVolume); ok {
+							cachedObj.DeepCopyInto(objToUpdate)
+							return nil
+						}
+
+						return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+					}).
+					Times(1)
+
+				azdiskClient := azdiskfakes.NewSimpleClientset(cachedObj)
+
+				return nil, cachedClient, azdiskClient, originalObj
+			},
+			updateFunc: func(obj client.Object) error {
+				if objToUpdate, ok := obj.(*azdiskv1beta2.AzVolume); ok {
+					objToUpdate.Status.State = azdiskv1beta2.VolumeCreated
+					return nil
+				}
+
+				return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+			},
+			updateMode: UpdateCRIStatus,
+			verifyFunc: func(t *testing.T, obj client.Object, err error) {
+				updatedObj, ok := obj.(*azdiskv1beta2.AzVolume)
+				require.True(t, ok, "Unexpected object type: %s", reflect.TypeOf(obj).Name())
+				assert.Equal(t, "pvc-test", updatedObj.Name)
+				assert.Equal(t, azdiskv1beta2.VolumeCreated, updatedObj.Status.State)
+			},
+		},
+		{
+			name: "[Success] Unchanged AzVolume still returns an updated object",
+			setupClients: func(t *testing.T, c *gomock.Controller) (azdiskinformers.SharedInformerFactory, client.Client, azdisk.Interface, client.Object) {
+				originalObj := &azdiskv1beta2.AzVolume{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "pvc-test",
+					},
+				}
+
+				cachedObj := originalObj.DeepCopy()
+				cachedClient := mockclient.NewMockClient(c)
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+						if objToUpdate, ok := obj.(*azdiskv1beta2.AzVolume); ok {
+							cachedObj.DeepCopyInto(objToUpdate)
+							return nil
+						}
+
+						return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+					}).
+					Times(1)
+
+				azdiskClient := azdiskfakes.NewSimpleClientset(cachedObj)
+
+				return nil, cachedClient, azdiskClient, originalObj
+			},
+			updateFunc: func(obj client.Object) error {
+				if _, ok := obj.(*azdiskv1beta2.AzVolume); ok {
+					return nil
+				}
+
+				return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+			},
+			updateMode: UpdateCRIStatus,
+			verifyFunc: func(t *testing.T, obj client.Object, err error) {
+				updatedObj, ok := obj.(*azdiskv1beta2.AzVolume)
+				require.True(t, ok, "Unexpected object type: %s", reflect.TypeOf(obj).Name())
+				assert.Equal(t, "pvc-test", updatedObj.Name)
+			},
+		},
+		{
+			name: "[Success] Unchanged AzVolume Status with accidental Spec change still returns an updated object",
+			setupClients: func(t *testing.T, c *gomock.Controller) (azdiskinformers.SharedInformerFactory, client.Client, azdisk.Interface, client.Object) {
+				originalObj := &azdiskv1beta2.AzVolume{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "pvc-test",
+					},
+				}
+
+				cachedObj := originalObj.DeepCopy()
+				cachedObj.Status.State = azdiskv1beta2.VolumeCreated
+				cachedClient := mockclient.NewMockClient(c)
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+						if objToUpdate, ok := obj.(*azdiskv1beta2.AzVolume); ok {
+							cachedObj.DeepCopyInto(objToUpdate)
+							return nil
+						}
+
+						return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+					}).
+					Times(1)
+
+				azdiskClient := azdiskfakes.NewSimpleClientset(cachedObj)
+
+				return nil, cachedClient, azdiskClient, originalObj
+			},
+			updateFunc: func(obj client.Object) error {
+				if objToUpdate, ok := obj.(*azdiskv1beta2.AzVolume); ok {
+					objToUpdate.Spec.VolumeName = objToUpdate.Name
+					objToUpdate.Status.State = azdiskv1beta2.VolumeCreated
+					return nil
+				}
+
+				return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+			},
+			updateMode: UpdateCRIStatus,
+			verifyFunc: func(t *testing.T, obj client.Object, err error) {
+				updatedObj, ok := obj.(*azdiskv1beta2.AzVolume)
+				require.True(t, ok, "Unexpected object type: %s", reflect.TypeOf(obj).Name())
+				assert.Equal(t, "pvc-test", updatedObj.Name)
+				assert.Equal(t, azdiskv1beta2.VolumeCreated, updatedObj.Status.State)
+			},
+		},
+		{
+			name: "[Failure] Non-existing AzVolume returns an error",
+			setupClients: func(t *testing.T, c *gomock.Controller) (azdiskinformers.SharedInformerFactory, client.Client, azdisk.Interface, client.Object) {
+				originalObj := &azdiskv1beta2.AzVolume{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "pvc-non-existing",
+					},
+				}
+
+				cachedClient := mockclient.NewMockClient(c)
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: "pvc-non-existing"}, gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+						if _, ok := obj.(*azdiskv1beta2.AzVolume); ok {
+							return errors.New("not found")
+						}
+
+						return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+					}).
+					Times(1)
+
+				azdiskClient := azdiskfakes.NewSimpleClientset()
+
+				return nil, cachedClient, azdiskClient, originalObj
+			},
+			updateFunc: func(obj client.Object) error {
+				return errors.New("unexpected call to update function")
+			},
+			updateMode: UpdateCRI,
+			verifyFunc: func(t *testing.T, obj client.Object, err error) {
+			},
+			expectedErr: status.Errorf(codes.Internal, "failed to get object: not found"),
+		},
+		{
+			name: "[Failure] Failure to update AzVolume returns error",
+			setupClients: func(t *testing.T, c *gomock.Controller) (azdiskinformers.SharedInformerFactory, client.Client, azdisk.Interface, client.Object) {
+				originalObj := &azdiskv1beta2.AzVolume{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "pvc-test",
+					},
+				}
+
+				cachedObj := originalObj.DeepCopy()
+				cachedClient := mockclient.NewMockClient(c)
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+						if objToUpdate, ok := obj.(*azdiskv1beta2.AzVolume); ok {
+							cachedObj.DeepCopyInto(objToUpdate)
+							return nil
+						}
+
+						return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+					}).
+					Times(1)
+
+				azdiskClient := azdiskfakes.NewSimpleClientset(cachedObj)
+				azdiskClient.PrependReactor(
+					"update",
+					"azvolumes",
+					func(action testingClient.Action) (bool, k8sRuntime.Object, error) {
+						return true, nil, errors.New("access denied")
+					})
+				return nil, cachedClient, azdiskClient, originalObj
+			},
+			updateFunc: func(obj client.Object) error {
+				if objToUpdate, ok := obj.(*azdiskv1beta2.AzVolume); ok {
+					objToUpdate.Spec.VolumeName = objToUpdate.Name
+					return nil
+				}
+
+				return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+			},
+			updateMode: UpdateCRI,
+			verifyFunc: func(t *testing.T, obj client.Object, err error) {
+			},
+			expectedErr: errors.New("access denied"),
+		},
+		{
+			name: "[Failure] Failure to update AzVolume status returns error",
+			setupClients: func(t *testing.T, c *gomock.Controller) (azdiskinformers.SharedInformerFactory, client.Client, azdisk.Interface, client.Object) {
+				originalObj := &azdiskv1beta2.AzVolume{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "pvc-test",
+					},
+				}
+
+				cachedObj := originalObj.DeepCopy()
+				cachedClient := mockclient.NewMockClient(c)
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+						if objToUpdate, ok := obj.(*azdiskv1beta2.AzVolume); ok {
+							cachedObj.DeepCopyInto(objToUpdate)
+							return nil
+						}
+
+						return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+					}).
+					Times(1)
+
+				azdiskClient := azdiskfakes.NewSimpleClientset(cachedObj)
+				azdiskClient.PrependReactor(
+					"update",
+					"azvolumes",
+					func(action testingClient.Action) (bool, k8sRuntime.Object, error) {
+						return true, nil, errors.New("access denied")
+					})
+
+				return nil, cachedClient, azdiskClient, originalObj
+			},
+			updateFunc: func(obj client.Object) error {
+				if objToUpdate, ok := obj.(*azdiskv1beta2.AzVolume); ok {
+					objToUpdate.Status.State = azdiskv1beta2.VolumeCreated
+					return nil
+				}
+
+				return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+			},
+			updateMode: UpdateCRIStatus,
+			verifyFunc: func(t *testing.T, obj client.Object, err error) {
+			},
+			expectedErr: errors.New("access denied"),
+		},
+		// AzVolumeAttachment unit test cases
+		{
+			name: "[Success] Updates AzVolumeAttachment CRI",
+			setupClients: func(t *testing.T, c *gomock.Controller) (azdiskinformers.SharedInformerFactory, client.Client, azdisk.Interface, client.Object) {
+				originalObj := &azdiskv1beta2.AzVolumeAttachment{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-attachment",
+					},
+				}
+
+				cachedObj := originalObj.DeepCopy()
+				cachedClient := mockclient.NewMockClient(c)
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+						if objToUpdate, ok := obj.(*azdiskv1beta2.AzVolumeAttachment); ok {
+							cachedObj.DeepCopyInto(objToUpdate)
+							return nil
+						}
+
+						return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+					}).
+					Times(1)
+
+				azdiskClient := azdiskfakes.NewSimpleClientset(cachedObj)
+
+				return nil, cachedClient, azdiskClient, originalObj
+			},
+			updateFunc: func(obj client.Object) error {
+				if objToUpdate, ok := obj.(*azdiskv1beta2.AzVolumeAttachment); ok {
+					objToUpdate.Spec.VolumeName = objToUpdate.Name
+					return nil
+				}
+
+				return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+			},
+			updateMode: UpdateCRI,
+			verifyFunc: func(t *testing.T, obj client.Object, err error) {
+				updatedObj, ok := obj.(*azdiskv1beta2.AzVolumeAttachment)
+				require.True(t, ok, "Unexpected object type: %s", reflect.TypeOf(obj).Name())
+				assert.Equal(t, "test-attachment", updatedObj.Name)
+				assert.Equal(t, updatedObj.Spec.VolumeName, "test-attachment")
+			},
+		},
+		{
+			name: "[Success] Updates AzVolumeAttachment Status",
+			setupClients: func(t *testing.T, c *gomock.Controller) (azdiskinformers.SharedInformerFactory, client.Client, azdisk.Interface, client.Object) {
+				originalObj := &azdiskv1beta2.AzVolumeAttachment{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-attachment",
+					},
+				}
+
+				cachedObj := originalObj.DeepCopy()
+				cachedClient := mockclient.NewMockClient(c)
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+						if objToUpdate, ok := obj.(*azdiskv1beta2.AzVolumeAttachment); ok {
+							cachedObj.DeepCopyInto(objToUpdate)
+							return nil
+						}
+
+						return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+					}).
+					Times(1)
+
+				azdiskClient := azdiskfakes.NewSimpleClientset(cachedObj)
+
+				return nil, cachedClient, azdiskClient, originalObj
+			},
+			updateFunc: func(obj client.Object) error {
+				if objToUpdate, ok := obj.(*azdiskv1beta2.AzVolumeAttachment); ok {
+					objToUpdate.Status.State = azdiskv1beta2.Attached
+					return nil
+				}
+
+				return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+			},
+			updateMode: UpdateCRIStatus,
+			verifyFunc: func(t *testing.T, obj client.Object, err error) {
+				updatedObj, ok := obj.(*azdiskv1beta2.AzVolumeAttachment)
+				require.True(t, ok, "Unexpected object type: %s", reflect.TypeOf(obj).Name())
+				assert.Equal(t, "test-attachment", updatedObj.Name)
+				assert.Equal(t, azdiskv1beta2.Attached, updatedObj.Status.State)
+			},
+		},
+		{
+			name: "[Success] Unchanged AzVolumeAttachment still returns an updated object",
+			setupClients: func(t *testing.T, c *gomock.Controller) (azdiskinformers.SharedInformerFactory, client.Client, azdisk.Interface, client.Object) {
+				originalObj := &azdiskv1beta2.AzVolumeAttachment{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-attachment",
+					},
+				}
+
+				cachedObj := originalObj.DeepCopy()
+				cachedClient := mockclient.NewMockClient(c)
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+						if objToUpdate, ok := obj.(*azdiskv1beta2.AzVolumeAttachment); ok {
+							cachedObj.DeepCopyInto(objToUpdate)
+							return nil
+						}
+
+						return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+					}).
+					Times(1)
+
+				azdiskClient := azdiskfakes.NewSimpleClientset(cachedObj)
+
+				return nil, cachedClient, azdiskClient, originalObj
+			},
+			updateFunc: func(obj client.Object) error {
+				if _, ok := obj.(*azdiskv1beta2.AzVolumeAttachment); ok {
+					return nil
+				}
+
+				return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+			},
+			updateMode: UpdateCRIStatus,
+			verifyFunc: func(t *testing.T, obj client.Object, err error) {
+				updatedObj, ok := obj.(*azdiskv1beta2.AzVolumeAttachment)
+				require.True(t, ok, "Unexpected object type: %s", reflect.TypeOf(obj).Name())
+				assert.Equal(t, "test-attachment", updatedObj.Name)
+			},
+		},
+		{
+			name: "[Success] Unchanged AzVolumeAttachment Status with accidental Spec change still returns an updated object",
+			setupClients: func(t *testing.T, c *gomock.Controller) (azdiskinformers.SharedInformerFactory, client.Client, azdisk.Interface, client.Object) {
+				originalObj := &azdiskv1beta2.AzVolumeAttachment{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-attachment",
+					},
+				}
+
+				cachedObj := originalObj.DeepCopy()
+				cachedObj.Status.State = azdiskv1beta2.Attached
+				cachedClient := mockclient.NewMockClient(c)
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+						if objToUpdate, ok := obj.(*azdiskv1beta2.AzVolumeAttachment); ok {
+							cachedObj.DeepCopyInto(objToUpdate)
+							return nil
+						}
+
+						return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+					}).
+					Times(1)
+
+				azdiskClient := azdiskfakes.NewSimpleClientset(cachedObj)
+
+				return nil, cachedClient, azdiskClient, originalObj
+			},
+			updateFunc: func(obj client.Object) error {
+				if objToUpdate, ok := obj.(*azdiskv1beta2.AzVolumeAttachment); ok {
+					objToUpdate.Spec.VolumeName = objToUpdate.Name
+					objToUpdate.Status.State = azdiskv1beta2.Attached
+					return nil
+				}
+
+				return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+			},
+			updateMode: UpdateCRIStatus,
+			verifyFunc: func(t *testing.T, obj client.Object, err error) {
+				updatedObj, ok := obj.(*azdiskv1beta2.AzVolumeAttachment)
+				require.True(t, ok, "Unexpected object type: %s", reflect.TypeOf(obj).Name())
+				assert.Equal(t, "test-attachment", updatedObj.Name)
+				assert.Equal(t, azdiskv1beta2.Attached, updatedObj.Status.State)
+			},
+		},
+		{
+			name: "[Failure] Non-existing AzVolumeAttachment returns an error",
+			setupClients: func(t *testing.T, c *gomock.Controller) (azdiskinformers.SharedInformerFactory, client.Client, azdisk.Interface, client.Object) {
+				originalObj := &azdiskv1beta2.AzVolumeAttachment{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "non-existing-attachment",
+					},
+				}
+
+				cachedClient := mockclient.NewMockClient(c)
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: "non-existing-attachment"}, gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+						if _, ok := obj.(*azdiskv1beta2.AzVolumeAttachment); ok {
+							return errors.New("not found")
+						}
+
+						return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+					}).
+					Times(1)
+
+				azdiskClient := azdiskfakes.NewSimpleClientset()
+
+				return nil, cachedClient, azdiskClient, originalObj
+			},
+			updateFunc: func(obj client.Object) error {
+				return errors.New("unexpected call to update function")
+			},
+			updateMode: UpdateCRI,
+			verifyFunc: func(t *testing.T, obj client.Object, err error) {
+			},
+			expectedErr: status.Errorf(codes.Internal, "failed to get object: not found"),
+		},
+		{
+			name: "[Failure] Failure to update AzVolumeAttachment returns error",
+			setupClients: func(t *testing.T, c *gomock.Controller) (azdiskinformers.SharedInformerFactory, client.Client, azdisk.Interface, client.Object) {
+				originalObj := &azdiskv1beta2.AzVolumeAttachment{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-attachment",
+					},
+				}
+
+				cachedObj := originalObj.DeepCopy()
+				cachedClient := mockclient.NewMockClient(c)
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+						if objToUpdate, ok := obj.(*azdiskv1beta2.AzVolumeAttachment); ok {
+							cachedObj.DeepCopyInto(objToUpdate)
+							return nil
+						}
+
+						return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+					}).
+					Times(1)
+
+				azdiskClient := azdiskfakes.NewSimpleClientset(cachedObj)
+				azdiskClient.PrependReactor(
+					"update",
+					"azvolumeattachments",
+					func(action testingClient.Action) (bool, k8sRuntime.Object, error) {
+						return true, nil, errors.New("access denied")
+					})
+				return nil, cachedClient, azdiskClient, originalObj
+			},
+			updateFunc: func(obj client.Object) error {
+				if objToUpdate, ok := obj.(*azdiskv1beta2.AzVolumeAttachment); ok {
+					objToUpdate.Spec.VolumeName = objToUpdate.Name
+					return nil
+				}
+
+				return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+			},
+			updateMode: UpdateCRI,
+			verifyFunc: func(t *testing.T, obj client.Object, err error) {
+			},
+			expectedErr: errors.New("access denied"),
+		},
+		{
+			name: "[Failure] Failure to update AzVolumeAttachment status returns error",
+			setupClients: func(t *testing.T, c *gomock.Controller) (azdiskinformers.SharedInformerFactory, client.Client, azdisk.Interface, client.Object) {
+				originalObj := &azdiskv1beta2.AzVolumeAttachment{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-attachment",
+					},
+				}
+
+				cachedObj := originalObj.DeepCopy()
+				cachedClient := mockclient.NewMockClient(c)
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+						if objToUpdate, ok := obj.(*azdiskv1beta2.AzVolumeAttachment); ok {
+							cachedObj.DeepCopyInto(objToUpdate)
+							return nil
+						}
+
+						return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+					}).
+					Times(1)
+
+				azdiskClient := azdiskfakes.NewSimpleClientset(cachedObj)
+				azdiskClient.PrependReactor(
+					"update",
+					"azvolumeattachments",
+					func(action testingClient.Action) (bool, k8sRuntime.Object, error) {
+						return true, nil, errors.New("access denied")
+					})
+
+				return nil, cachedClient, azdiskClient, originalObj
+			},
+			updateFunc: func(obj client.Object) error {
+				if objToUpdate, ok := obj.(*azdiskv1beta2.AzVolumeAttachment); ok {
+					objToUpdate.Status.State = azdiskv1beta2.Attached
+					return nil
+				}
+
+				return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+			},
+			updateMode: UpdateCRIStatus,
+			verifyFunc: func(t *testing.T, obj client.Object, err error) {
+			},
+			expectedErr: errors.New("access denied"),
+		},
+		// VolumeAttachment unit test cases
+		{
+			name: "[Success] Updates VolumeAttachment CRI",
+			setupClients: func(t *testing.T, c *gomock.Controller) (azdiskinformers.SharedInformerFactory, client.Client, azdisk.Interface, client.Object) {
+				originalObj := &storagev1.VolumeAttachment{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-attachment",
+					},
+				}
+
+				cachedObj := originalObj.DeepCopy()
+				cachedClient := mockclient.NewMockClient(c)
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+						if objToUpdate, ok := obj.(*storagev1.VolumeAttachment); ok {
+							cachedObj.DeepCopyInto(objToUpdate)
+							return nil
+						}
+
+						return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+					}).
+					Times(1)
+				cachedClient.EXPECT().Update(gomock.Any(), gomock.Any()).
+					Return(nil).
+					Times(1)
+
+				azdiskClient := azdiskfakes.NewSimpleClientset()
+
+				return nil, cachedClient, azdiskClient, originalObj
+			},
+			updateFunc: func(obj client.Object) error {
+				if objToUpdate, ok := obj.(*storagev1.VolumeAttachment); ok {
+					objToUpdate.Spec.Source.PersistentVolumeName = &objToUpdate.Name
+					return nil
+				}
+
+				return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+			},
+			updateMode: UpdateCRI,
+			verifyFunc: func(t *testing.T, obj client.Object, err error) {
+				updatedObj, ok := obj.(*storagev1.VolumeAttachment)
+				require.True(t, ok, "Unexpected object type: %s", reflect.TypeOf(obj).Name())
+				assert.Equal(t, "test-attachment", updatedObj.Name)
+				require.NotNil(t, updatedObj.Spec.Source.PersistentVolumeName)
+				assert.Equal(t, "test-attachment", *updatedObj.Spec.Source.PersistentVolumeName)
+			},
+		},
+		{
+			name: "[Success] Updates VolumeAttachment Status",
+			setupClients: func(t *testing.T, c *gomock.Controller) (azdiskinformers.SharedInformerFactory, client.Client, azdisk.Interface, client.Object) {
+				originalObj := &storagev1.VolumeAttachment{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-attachment",
+					},
+				}
+
+				cachedObj := originalObj.DeepCopy()
+				cachedClient := mockclient.NewMockClient(c)
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+						if objToUpdate, ok := obj.(*storagev1.VolumeAttachment); ok {
+							cachedObj.DeepCopyInto(objToUpdate)
+							return nil
+						}
+
+						return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+					}).
+					Times(1)
+				statusWriter := mockclient.NewMockStatusWriter(c)
+				cachedClient.EXPECT().Status().Return(statusWriter).AnyTimes()
+				statusWriter.EXPECT().Update(gomock.Any(), gomock.Any()).
+					Return(nil).
+					Times(1)
+
+				azdiskClient := azdiskfakes.NewSimpleClientset()
+
+				return nil, cachedClient, azdiskClient, originalObj
+			},
+			updateFunc: func(obj client.Object) error {
+				if objToUpdate, ok := obj.(*storagev1.VolumeAttachment); ok {
+					objToUpdate.Status.AttachmentMetadata = map[string]string{azureconstants.LUN: "0"}
+					return nil
+				}
+
+				return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+			},
+			updateMode: UpdateCRIStatus,
+			verifyFunc: func(t *testing.T, obj client.Object, err error) {
+				updatedObj, ok := obj.(*storagev1.VolumeAttachment)
+				require.True(t, ok, "Unexpected object type: %s", reflect.TypeOf(obj).Name())
+				assert.Equal(t, "test-attachment", updatedObj.Name)
+				assert.Equal(t, map[string]string{azureconstants.LUN: "0"}, updatedObj.Status.AttachmentMetadata)
+			},
+		},
+		{
+			name: "[Success] Unchanged VolumeAttachment still returns an updated object",
+			setupClients: func(t *testing.T, c *gomock.Controller) (azdiskinformers.SharedInformerFactory, client.Client, azdisk.Interface, client.Object) {
+				originalObj := &storagev1.VolumeAttachment{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-attachment",
+					},
+				}
+
+				cachedObj := originalObj.DeepCopy()
+				cachedClient := mockclient.NewMockClient(c)
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+						if objToUpdate, ok := obj.(*storagev1.VolumeAttachment); ok {
+							cachedObj.DeepCopyInto(objToUpdate)
+							return nil
+						}
+
+						return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+					}).
+					Times(1)
+
+				azdiskClient := azdiskfakes.NewSimpleClientset()
+
+				return nil, cachedClient, azdiskClient, originalObj
+			},
+			updateFunc: func(obj client.Object) error {
+				if _, ok := obj.(*storagev1.VolumeAttachment); ok {
+					return nil
+				}
+
+				return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+			},
+			updateMode: UpdateCRIStatus,
+			verifyFunc: func(t *testing.T, obj client.Object, err error) {
+				updatedObj, ok := obj.(*storagev1.VolumeAttachment)
+				require.True(t, ok, "Unexpected object type: %s", reflect.TypeOf(obj).Name())
+				assert.Equal(t, updatedObj.Name, "test-attachment")
+			},
+		},
+		{
+			name: "[Success] Unchanged VolumeAttachment Status with accidental Spec change still returns an updated object",
+			setupClients: func(t *testing.T, c *gomock.Controller) (azdiskinformers.SharedInformerFactory, client.Client, azdisk.Interface, client.Object) {
+				originalObj := &storagev1.VolumeAttachment{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-attachment",
+					},
+				}
+
+				cachedObj := originalObj.DeepCopy()
+				cachedObj.Status.AttachmentMetadata = map[string]string{azureconstants.LUN: "0"}
+				cachedClient := mockclient.NewMockClient(c)
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+						if objToUpdate, ok := obj.(*storagev1.VolumeAttachment); ok {
+							cachedObj.DeepCopyInto(objToUpdate)
+							return nil
+						}
+
+						return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+					}).
+					Times(1)
+
+				azdiskClient := azdiskfakes.NewSimpleClientset()
+
+				return nil, cachedClient, azdiskClient, originalObj
+			},
+			updateFunc: func(obj client.Object) error {
+				if objToUpdate, ok := obj.(*storagev1.VolumeAttachment); ok {
+					objToUpdate.Spec.Source.PersistentVolumeName = &objToUpdate.Name
+					objToUpdate.Status.AttachmentMetadata = map[string]string{azureconstants.LUN: "0"}
+					return nil
+				}
+
+				return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+			},
+			updateMode: UpdateCRIStatus,
+			verifyFunc: func(t *testing.T, obj client.Object, err error) {
+				updatedObj, ok := obj.(*storagev1.VolumeAttachment)
+				require.True(t, ok, "Unexpected object type: %s", reflect.TypeOf(obj).Name())
+				assert.Equal(t, "test-attachment", updatedObj.Name)
+				assert.Equal(t, map[string]string{azureconstants.LUN: "0"}, updatedObj.Status.AttachmentMetadata)
+			},
+		},
+		{
+			name: "[Failure] Non-existing VolumeAttachment returns an error",
+			setupClients: func(t *testing.T, c *gomock.Controller) (azdiskinformers.SharedInformerFactory, client.Client, azdisk.Interface, client.Object) {
+				originalObj := &storagev1.VolumeAttachment{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "non-existing-attachment",
+					},
+				}
+
+				cachedClient := mockclient.NewMockClient(c)
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: "non-existing-attachment"}, gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+						if _, ok := obj.(*storagev1.VolumeAttachment); ok {
+							return errors.New("not found")
+						}
+
+						return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+					}).
+					Times(1)
+
+				azdiskClient := azdiskfakes.NewSimpleClientset()
+
+				return nil, cachedClient, azdiskClient, originalObj
+			},
+			updateFunc: func(obj client.Object) error {
+				return errors.New("unexpected call to update function")
+			},
+			updateMode: UpdateCRI,
+			verifyFunc: func(t *testing.T, obj client.Object, err error) {
+			},
+			expectedErr: status.Errorf(codes.Internal, "failed to get object: not found"),
+		},
+		{
+			name: "[Failure] Failure to update VolumeAttachment returns error",
+			setupClients: func(t *testing.T, c *gomock.Controller) (azdiskinformers.SharedInformerFactory, client.Client, azdisk.Interface, client.Object) {
+				originalObj := &storagev1.VolumeAttachment{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-attachment",
+					},
+				}
+
+				cachedObj := originalObj.DeepCopy()
+				cachedClient := mockclient.NewMockClient(c)
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+						if objToUpdate, ok := obj.(*storagev1.VolumeAttachment); ok {
+							cachedObj.DeepCopyInto(objToUpdate)
+							return nil
+						}
+
+						return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+					}).
+					Times(1)
+				cachedClient.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).
+					DoAndReturn(func(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error {
+						if _, ok := obj.(*storagev1.VolumeAttachment); ok {
+							return errors.New("access denied")
+						}
+
+						return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+					}).
+					Times(1)
+
+				azdiskClient := azdiskfakes.NewSimpleClientset()
+
+				return nil, cachedClient, azdiskClient, originalObj
+			},
+			updateFunc: func(obj client.Object) error {
+				if objToUpdate, ok := obj.(*storagev1.VolumeAttachment); ok {
+					objToUpdate.Spec.Source.PersistentVolumeName = &objToUpdate.Name
+					return nil
+				}
+
+				return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+			},
+			updateMode: UpdateCRI,
+			verifyFunc: func(t *testing.T, obj client.Object, err error) {
+			},
+			expectedErr: errors.New("access denied"),
+		},
+		{
+			name: "[Failure] Failure to update VolumeAttachment status returns error",
+			setupClients: func(t *testing.T, c *gomock.Controller) (azdiskinformers.SharedInformerFactory, client.Client, azdisk.Interface, client.Object) {
+				originalObj := &storagev1.VolumeAttachment{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-attachment",
+					},
+				}
+
+				cachedObj := originalObj.DeepCopy()
+				cachedClient := mockclient.NewMockClient(c)
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+						if objToUpdate, ok := obj.(*storagev1.VolumeAttachment); ok {
+							cachedObj.DeepCopyInto(objToUpdate)
+							return nil
+						}
+
+						return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+					}).
+					Times(1)
+				statusClient := mockclient.NewMockStatusWriter(c)
+				cachedClient.EXPECT().Status().Return(statusClient).AnyTimes()
+				statusClient.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).
+					DoAndReturn(func(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error {
+						if _, ok := obj.(*storagev1.VolumeAttachment); ok {
+							return errors.New("access denied")
+						}
+
+						return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+					}).
+					Times(1)
+
+				azdiskClient := azdiskfakes.NewSimpleClientset()
+
+				return nil, cachedClient, azdiskClient, originalObj
+			},
+			updateFunc: func(obj client.Object) error {
+				if objToUpdate, ok := obj.(*storagev1.VolumeAttachment); ok {
+					objToUpdate.Status.AttachmentMetadata = map[string]string{azureconstants.LUN: "0"}
+					return nil
+				}
+
+				return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+			},
+			updateMode: UpdateCRIStatus,
+			verifyFunc: func(t *testing.T, obj client.Object, err error) {
+			},
+			expectedErr: errors.New("access denied"),
+		},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			informerFactory, cachedClient, azdiskClient, originalObj := test.setupClients(t, ctrl)
+			updatedObj, err := UpdateCRIWithRetry(
+				context.TODO(),
+				informerFactory,
+				cachedClient,
+				azdiskClient,
+				originalObj,
+				test.updateFunc,
+				test.maxNetRetry,
+				test.updateMode)
+			require.Equal(t, test.expectedErr, err)
+			if err == nil {
+				require.NotNil(t, updatedObj)
+			}
+			test.verifyFunc(t, updatedObj, err)
+		})
 	}
 }
