@@ -29,6 +29,8 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	"k8s.io/kubernetes/pkg/features"
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
@@ -585,6 +587,21 @@ func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, 
 				return syncedVolumeAttachments, volumesToSync, err
 			}
 
+			// if pv is migrated intree pv, convert it to csi pv for processing
+			// translate intree pv to csi pv to convert them into AzVolume resource
+			if utilfeature.DefaultFeatureGate.Enabled(features.CSIMigration) &&
+				utilfeature.DefaultFeatureGate.Enabled(features.CSIMigrationAzureDisk) &&
+				pv.Spec.AzureDisk != nil {
+				// translate intree pv to csi pv to convert them into AzVolume resource
+				if utilfeature.DefaultFeatureGate.Enabled(features.CSIMigration) &&
+					utilfeature.DefaultFeatureGate.Enabled(features.CSIMigrationAzureDisk) &&
+					pv.Spec.AzureDisk != nil {
+					if pv, err = r.translateInTreePVToCSI(pv); err != nil {
+						w.Logger().V(5).Errorf(err, "skipping azVolumeAttachment creation for volumeAttachment (%s)", volumeAttachment.Name)
+					}
+				}
+			}
+
 			if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != r.driverName {
 				continue
 			}
@@ -611,12 +628,11 @@ func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, 
 					Finalizers:  []string{consts.AzVolumeAttachmentFinalizer},
 				},
 				Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
-
 					VolumeName:    *volumeName,
 					VolumeID:      pv.Spec.CSI.VolumeHandle,
 					NodeName:      nodeName,
 					RequestedRole: azdiskv1beta2.PrimaryRole,
-					VolumeContext: map[string]string{},
+					VolumeContext: pv.Spec.CSI.VolumeAttributes,
 				},
 			}
 			// check if the CRI exists already
@@ -636,7 +652,6 @@ func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, 
 				}
 			} else {
 				w.Logger().Infof("Reapplying AzVolumeAttachment(%s)", azVolumeAttachmentName)
-				azVolumeAttachment.Spec = desiredAzVolumeAttachment.Spec
 				azVolumeAttachment.Labels = desiredAzVolumeAttachment.Labels
 				azVolumeAttachment.Annotations = desiredAzVolumeAttachment.Annotations
 				azVolumeAttachment.Finalizers = desiredAzVolumeAttachment.Finalizers
@@ -648,15 +663,8 @@ func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, 
 				}
 			}
 
-			azVolumeAttachment.Status = azdiskv1beta2.AzVolumeAttachmentStatus{
-				Annotations: map[string]string{consts.VolumeAttachmentKey: volumeAttachment.Name},
-				State:       azureutils.GetAzVolumeAttachmentState(volumeAttachment.Status),
-			}
-			if azVolumeAttachment.Status.State == azdiskv1beta2.Attached {
-				azVolumeAttachment.Status.Detail = &azdiskv1beta2.AzVolumeAttachmentStatusDetail{
-					Role: azdiskv1beta2.PrimaryRole,
-				}
-			}
+			azVolumeAttachment.Status.Annotations = map[string]string{consts.VolumeAttachmentKey: volumeAttachment.Name}
+
 			// update status
 			_, err = r.azClient.DiskV1beta2().AzVolumeAttachments(r.objectNamespace).UpdateStatus(ctx, azVolumeAttachment, metav1.UpdateOptions{})
 			if err != nil {

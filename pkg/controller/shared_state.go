@@ -40,6 +40,7 @@ import (
 	cache "k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
+	csitranslator "k8s.io/csi-translation-lib/plugins"
 	"k8s.io/kubernetes/pkg/features"
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
@@ -75,6 +76,7 @@ type SharedState struct {
 	kubeClient                    kubernetes.Interface
 	crdClient                     crdClientset.Interface
 	conditionWatcher              *watcher.ConditionWatcher
+	azureDiskCSITranslator        csitranslator.InTreePlugin
 }
 
 func NewSharedState(driverName, objectNamespace, topologyKey string, eventRecorder record.EventRecorder, cachedClient client.Client, azClient azdisk.Interface, kubeClient kubernetes.Interface, crdClient crdClientset.Interface) *SharedState {
@@ -89,6 +91,7 @@ func NewSharedState(driverName, objectNamespace, topologyKey string, eventRecord
 		kubeClient:      kubeClient,
 		conditionWatcher: watcher.New(context.Background(),
 			azClient, azdiskinformers.NewSharedInformerFactory(azClient, consts.DefaultInformerResync), objectNamespace),
+		azureDiskCSITranslator: csitranslator.NewAzureDiskCSITranslator(),
 	}
 	newSharedState.createReplicaRequestsQueue()
 
@@ -402,6 +405,7 @@ func (c *SharedState) getVolumesForPodObjs(ctx context.Context, pods []v1.Pod) (
 }
 
 func (c *SharedState) addPod(ctx context.Context, pod *v1.Pod, updateOption updateWithLock) error {
+	var err error
 	w, _ := workflow.GetWorkflowFromContext(ctx)
 	podKey := getQualifiedName(pod.Namespace, pod.Name)
 	v, _ := c.podLocks.LoadOrStore(podKey, &sync.Mutex{})
@@ -429,8 +433,16 @@ func (c *SharedState) addPod(ctx context.Context, pod *v1.Pod, updateOption upda
 			utilfeature.DefaultFeatureGate.Enabled(features.CSIMigrationAzureDisk) &&
 			volume.AzureDisk != nil {
 			// inline volume: create AzVolume resource
+			var pv *v1.PersistentVolume
+			if pv, err = c.azureDiskCSITranslator.TranslateInTreeInlineVolumeToCSI(&volume, pod.Namespace); err != nil {
+				w.Logger().V(5).Errorf(err, "failed to translate inline volume to csi")
+				continue
+			} else if pv == nil {
+				w.Logger().V(5).Errorf(status.Errorf(codes.Internal, "unexpected failure in translating inline volume to csi"), "nil pv returned")
+				continue
+			}
 			w.Logger().V(5).Infof("Creating AzVolume instance for inline volume %s.", volume.AzureDisk.DiskName)
-			if err := c.createAzVolumeFromInline(ctx, volume.AzureDisk); err != nil {
+			if err := c.createAzVolumeFromPv(ctx, *pv, map[string]string{consts.InlineVolumeAnnotation: volume.AzureDisk.DataDiskURI}); err != nil {
 				return err
 			}
 			v, exists := c.podToInlineMap.Load(podKey)
@@ -1237,21 +1249,35 @@ func (c *SharedState) createAzVolumeFromPv(ctx context.Context, pv v1.Persistent
 	requiredBytes, _ := pv.Spec.Capacity.Storage().AsInt64()
 	volumeCapability := getVolumeCapabilityFromPv(&pv)
 
+	// translate intree pv to csi pv to convert them into AzVolume resource
+	if utilfeature.DefaultFeatureGate.Enabled(features.CSIMigration) &&
+		utilfeature.DefaultFeatureGate.Enabled(features.CSIMigrationAzureDisk) &&
+		pv.Spec.AzureDisk != nil {
+		var transPV *v1.PersistentVolume
+		// if an error occurs while translating, it's unrecoverable, so return no error
+		if transPV, err = c.translateInTreePVToCSI(&pv); err != nil {
+			return err
+		}
+		pv = *transPV
+	}
+
 	// create AzVolume CRI for CSI Volume Source
 	if pv.Spec.CSI != nil && pv.Spec.CSI.Driver == c.driverName {
 		desiredAzVolume, err = c.createAzVolumeFromCSISource(pv.Spec.CSI)
 		if err != nil {
 			return err
 		}
+		if capacity, ok := pv.Spec.Capacity[v1.ResourceStorage]; ok {
+			desiredAzVolume.Status.Detail.CapacityBytes = capacity.Value()
+		}
+		if pv.Spec.NodeAffinity != nil && pv.Spec.NodeAffinity.Required != nil {
+			desiredAzVolume.Status.Detail.AccessibleTopology = azureutils.GetTopologyFromNodeSelector(*pv.Spec.NodeAffinity.Required, c.topologyKey)
+		}
 		if azureutils.IsMultiNodePersistentVolume(pv) {
 			desiredAzVolume.Spec.MaxMountReplicaCount = 0
 		}
 
 		// create AzVolume CRI for AzureDisk Volume Source for migration case
-	} else if utilfeature.DefaultFeatureGate.Enabled(features.CSIMigration) &&
-		utilfeature.DefaultFeatureGate.Enabled(features.CSIMigrationAzureDisk) &&
-		pv.Spec.AzureDisk != nil {
-		desiredAzVolume = c.createAzVolumeFromAzureDiskVolumeSource(pv.Spec.AzureDisk)
 	}
 
 	if desiredAzVolume != nil {
@@ -1266,7 +1292,9 @@ func (c *SharedState) createAzVolumeFromPv(ctx context.Context, pv v1.Persistent
 		desiredAzVolume.Spec.CapacityRange = &azdiskv1beta2.CapacityRange{RequiredBytes: requiredBytes}
 		desiredAzVolume.Spec.VolumeCapability = volumeCapability
 		desiredAzVolume.Spec.PersistentVolume = pv.Name
-		desiredAzVolume.Status.Annotations = annotations
+		for k, v := range annotations {
+			desiredAzVolume.Status.Annotations = azureutils.AddToMap(desiredAzVolume.Status.Annotations, k, v)
+		}
 
 		w.AddDetailToLogger(consts.PvNameKey, pv.Name, consts.VolumeNameLabel, desiredAzVolume.Name)
 
@@ -1277,15 +1305,6 @@ func (c *SharedState) createAzVolumeFromPv(ctx context.Context, pv v1.Persistent
 		}
 	}
 	return nil
-}
-
-func (c *SharedState) createAzVolumeFromInline(ctx context.Context, inline *v1.AzureDiskVolumeSource) (err error) {
-	azVolume := c.createAzVolumeFromAzureDiskVolumeSource(inline)
-
-	if err = c.createAzVolume(ctx, azVolume); err != nil {
-		err = status.Errorf(codes.Internal, "failed to create AzVolume (%s) for inline (%s): %v", azVolume.Name, inline.DiskName, err)
-	}
-	return
 }
 
 func (c *SharedState) createAzVolumeFromCSISource(source *v1.CSIPersistentVolumeSource) (*azdiskv1beta2.AzVolume, error) {
@@ -1317,35 +1336,14 @@ func (c *SharedState) createAzVolumeFromCSISource(source *v1.CSIPersistentVolume
 		},
 		Status: azdiskv1beta2.AzVolumeStatus{
 			Detail: &azdiskv1beta2.AzVolumeStatusDetail{
-				VolumeID: source.VolumeHandle,
+				VolumeID:      source.VolumeHandle,
+				VolumeContext: source.VolumeAttributes,
 			},
 			State: azdiskv1beta2.VolumeCreated,
 		},
 	}
 
 	return &azVolume, nil
-}
-
-func (c *SharedState) createAzVolumeFromAzureDiskVolumeSource(source *v1.AzureDiskVolumeSource) *azdiskv1beta2.AzVolume {
-	azVolume := azdiskv1beta2.AzVolume{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:       source.DiskName,
-			Finalizers: []string{consts.AzVolumeFinalizer},
-		},
-		Spec: azdiskv1beta2.AzVolumeSpec{
-			VolumeName:       source.DiskName,
-			VolumeCapability: []azdiskv1beta2.VolumeCapability{},
-		},
-		Status: azdiskv1beta2.AzVolumeStatus{
-			Detail: &azdiskv1beta2.AzVolumeStatusDetail{
-				VolumeID: source.DataDiskURI,
-			},
-			State:       azdiskv1beta2.VolumeCreated,
-			Annotations: map[string]string{consts.InlineVolumeAnnotation: source.DataDiskURI},
-		},
-	}
-
-	return &azVolume
 }
 
 func (c *SharedState) createAzVolume(ctx context.Context, desiredAzVolume *azdiskv1beta2.AzVolume) error {
@@ -1370,6 +1368,20 @@ func (c *SharedState) createAzVolume(ctx context.Context, desiredAzVolume *azdis
 	// if AzVolume CRI successfully recreated, also recreate the operation queue for the volume
 	c.createOperationQueue(desiredAzVolume.Name)
 	return nil
+}
+
+func (c *SharedState) translateInTreePVToCSI(pv *v1.PersistentVolume) (*v1.PersistentVolume, error) {
+	var err error
+	// translate intree pv to csi pv to convert them into AzVolume resource
+	if utilfeature.DefaultFeatureGate.Enabled(features.CSIMigration) &&
+		utilfeature.DefaultFeatureGate.Enabled(features.CSIMigrationAzureDisk) &&
+		pv.Spec.AzureDisk != nil {
+		// if an error occurs while translating, it's unrecoverable, so return no error
+		if pv, err = c.azureDiskCSITranslator.TranslateInTreePVToCSI(pv); pv == nil {
+			err = status.Errorf(codes.Internal, "unexpected failure in translating inline volume to csi")
+		}
+	}
+	return pv, err
 }
 
 // waitForVolumeAttachmentNAme waits for the VolumeAttachment name to be updated in the azVolumeAttachmentVaMap by the volumeattachment controller

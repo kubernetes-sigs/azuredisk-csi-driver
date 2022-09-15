@@ -808,6 +808,19 @@ func PickAvailabilityZone(requirement *csi.TopologyRequirement, region, topology
 	return ""
 }
 
+func GetTopologyFromNodeSelector(nodeSelector v1.NodeSelector, topologyKey string) (topologies []azdiskv1beta2.Topology) {
+	for _, selectorTerm := range nodeSelector.NodeSelectorTerms {
+		for _, matchExpression := range selectorTerm.MatchExpressions {
+			if matchExpression.Key == topologyKey {
+				for _, value := range matchExpression.Values {
+					topologies = append(topologies, azdiskv1beta2.Topology{Segments: map[string]string{matchExpression.Key: value}})
+				}
+			}
+		}
+	}
+	return
+}
+
 func IsValidVolumeCapabilities(volCaps []*csi.VolumeCapability, maxShares int) bool {
 	if ok := IsValidAccessModes(volCaps); !ok {
 		return false

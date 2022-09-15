@@ -54,6 +54,7 @@ require (
 	github.com/spf13/cobra v1.5.0
 	github.com/spf13/viper v1.10.0
 	k8s.io/apiextensions-apiserver v0.24.0
+	k8s.io/csi-translation-lib v0.24.0-alpha.4
 )
 
 require (
