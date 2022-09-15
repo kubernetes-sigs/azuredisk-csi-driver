@@ -209,7 +209,8 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 			if publishCtx = attachResult.PublishContext(); publishCtx != nil {
 				handleSuccess(false)
 			}
-			if attachErr = <-attachResult.ResultChannel(); attachErr != nil {
+			var ok bool
+			if attachErr, ok = <-attachResult.ResultChannel(); !ok || attachErr != nil {
 				handleError()
 			} else {
 				handleSuccess(true)

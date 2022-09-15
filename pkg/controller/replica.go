@@ -78,7 +78,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 
 			// If promotion event, create a replacement replica
 			if isAttached(azVolumeAttachment) && azVolumeAttachment.Status.Detail.PreviousRole == azdiskv1beta2.ReplicaRole {
-				r.triggerManageReplica(ctx, azVolumeAttachment.Spec.VolumeName)
+				r.triggerManageReplica(azVolumeAttachment.Spec.VolumeName)
 			}
 		}
 	} else {
@@ -111,7 +111,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 					_, _ = waiter.Wait(goCtx)
 
 					// add replica management operation to the queue
-					r.triggerManageReplica(goCtx, azVolumeAttachment.Spec.VolumeName)
+					r.triggerManageReplica(azVolumeAttachment.Spec.VolumeName)
 				}()
 			}
 		} else if azVolumeAttachment.Status.State == azdiskv1beta2.AttachmentFailed {
@@ -125,7 +125,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 }
 
 //nolint:contextcheck // context is not inherited by design
-func (r *ReconcileReplica) triggerManageReplica(ctx context.Context, volumeName string) {
+func (r *ReconcileReplica) triggerManageReplica(volumeName string) {
 	manageReplicaCtx, w := workflow.New(context.Background(), workflow.WithDetails(consts.VolumeNameLabel, volumeName))
 	defer w.Finish(nil)
 	r.addToOperationQueue(
