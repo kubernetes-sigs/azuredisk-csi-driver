@@ -995,6 +995,13 @@ func verifyObjectDeleted(obj interface{}, objectDeleted bool) (bool, error) {
 	if obj == nil || objectDeleted {
 		return true, nil
 	}
+	return false, nil
+}
+
+func verifyObjectFailedOrDeleted(obj interface{}, objectDeleted bool) (bool, error) {
+	if obj == nil || objectDeleted {
+		return true, nil
+	}
 
 	// otherwise, the volume detachment has either failed with error or pending
 	azVolumeAttachmentInstance := obj.(*azdiskv1beta2.AzVolumeAttachment)
