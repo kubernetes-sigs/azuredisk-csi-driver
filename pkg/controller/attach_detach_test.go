@@ -32,8 +32,8 @@ import (
 	azdiskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils/mockclient"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller/mockattachmentprovisioner"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller/mockclient"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/provisioner"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )

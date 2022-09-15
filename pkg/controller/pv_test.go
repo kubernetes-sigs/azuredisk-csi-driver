@@ -32,7 +32,7 @@ import (
 	"k8s.io/klog/v2/klogr"
 	azdiskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller/mockclient"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils/mockclient"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 

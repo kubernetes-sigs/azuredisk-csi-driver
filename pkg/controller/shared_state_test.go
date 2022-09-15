@@ -30,7 +30,7 @@ import (
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	azdiskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller/mockclient"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils/mockclient"
 )
 
 func NewTestSharedState(controller *gomock.Controller, namespace string, objects ...runtime.Object) *SharedState {

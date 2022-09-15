@@ -15,4 +15,4 @@ limitations under the License.
 */
 
 // Package mockclient implements the mock client for sigs.k8s.io/controller-runtime/pkg/client.
-package mockclient // import "sigs.k8s.io/azuredisk-csi-driver/pkg/controller/mockclient"
+package mockclient // import "sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils/mockclient"
