@@ -83,3 +83,7 @@ func (c *FakeCrdProvisioner) ExpandVolume(
 	secrets map[string]string) (*azdiskv1beta2.AzVolumeStatusDetail, error) {
 	return c.fakeCloudProv.ExpandVolume(ctx, volumeID, capacityRange, secrets)
 }
+
+func (c *FakeCrdProvisioner) WaitForAttach(ctx context.Context, volumeID, nodeID string) (*azdiskv1beta2.AzVolumeAttachment, error) {
+	return &azdiskv1beta2.AzVolumeAttachment{}, nil
+}
