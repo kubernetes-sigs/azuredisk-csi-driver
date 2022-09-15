@@ -75,6 +75,7 @@ const (
 	inTreeStorageClass      = "kubernetes.io/azure-disk"
 	BuildV2Driver           = "BUILD_V2"
 	useOnlyDefaultScheduler = "USE_ONLY_DEFAULT_SCHEDULER"
+	ImageVersion            = "IMAGE_VERSION"
 
 	ExecTimeout = 10 * time.Second
 	// Some pods can take much longer to get ready due to volume attach/detach latency.

@@ -972,6 +972,19 @@ func ListAzVolumes(ctx context.Context, cachedClient client.Client, azDiskClient
 	return *azVolumeList, err
 }
 
+func AnnotateAPIVersion(obj client.Object) {
+	switch obj.(type) {
+	case *azdiskv1beta2.AzDriverNode:
+	case *azdiskv1beta2.AzVolume:
+	case *azdiskv1beta2.AzVolumeAttachment:
+	default:
+		return
+	}
+	annotations := obj.GetAnnotations()
+	annotations = AddToMap(annotations, consts.APIVersion, azdiskv1beta2.APIVersion)
+	obj.SetAnnotations(annotations)
+}
+
 func GetAzVolumeAttachment(ctx context.Context, cachedClient client.Client, azDiskClient azdisk.Interface, azVolumeAttachmentName, namespace string, useCache bool) (*azdiskv1beta2.AzVolumeAttachment, error) {
 	var azVolumeAttachment *azdiskv1beta2.AzVolumeAttachment
 	var err error

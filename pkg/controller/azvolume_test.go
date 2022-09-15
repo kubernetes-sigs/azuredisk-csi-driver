@@ -333,6 +333,54 @@ func TestAzVolumeControllerRecover(t *testing.T) {
 			},
 		},
 		{
+			description: "[Success] Should convert existing AzVolume instances if using older api version.",
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAzVolume {
+				azVolume := testAzVolume0.DeepCopy()
+				convertToV1Beta1(azVolume)
+				testMap := map[string]string{"testKey": "testValue"}
+				azVolume.Annotations = azureutils.AddToMap(azVolume.Annotations, "testKey", "testValue")
+				azVolume.Spec.Parameters = testMap
+				azVolume.Status.Detail = &azdiskv1beta2.AzVolumeStatusDetail{
+					VolumeContext: testMap,
+				}
+
+				controller := NewTestAzVolumeController(
+					mockCtl,
+					testNamespace,
+					&testStorageClass,
+					&testPersistentVolume0,
+					azVolume,
+				)
+
+				mockClientsAndVolumeProvisioner(controller)
+
+				return controller
+			},
+			verifyFunc: func(t *testing.T, controller *ReconcileAzVolume, err error) {
+				require.NoError(t, err)
+
+				azVolumes, localErr := controller.azClient.DiskV1beta2().AzVolumes(testNamespace).List(context.TODO(), metav1.ListOptions{})
+				require.NoError(t, localErr)
+				require.Len(t, azVolumes.Items, 1)
+				azVolume := azVolumes.Items[0]
+				annotations := azVolume.Annotations
+				require.Equal(t, annotations[consts.APIVersion], azdiskv1beta2.APIVersion)
+
+				annotations = azVolume.Status.Annotations
+				require.Equal(t, annotations["testKey"], "testValue")
+
+				require.Equal(t, azVolume.Spec.PersistentVolume, testPersistentVolume0.Name)
+
+				require.NotNil(t, azVolume.Spec.Parameters)
+				require.Equal(t, azVolume.Spec.Parameters["testKey"], "testValue")
+
+				require.NotNil(t, azVolume.Status.Detail)
+				require.NotNil(t, azVolume.Status.Detail.VolumeContext)
+				require.Equal(t, azVolume.Status.Detail.VolumeContext["testKey"], "testValue")
+
+			},
+		},
+		{
 			description: "[Success] Should update AzVolume CRIs to right state",
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAzVolume {
 				newAzVolume0 := testAzVolume0.DeepCopy()

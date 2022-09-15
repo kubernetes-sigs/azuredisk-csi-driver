@@ -309,16 +309,23 @@ func TestAttachDetachRecover(t *testing.T) {
 			},
 		},
 		{
-			description: "[Success] Should reapply if AzVolumeAttachment instances already exist.",
+			description: "[Success] Should convert existing AzVolumeAttachment instances if using older api version.",
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAttachDetach {
 				azVolumeAttachment := testPrimaryAzVolumeAttachment0.DeepCopy()
+				convertToV1Beta1(azVolumeAttachment)
+				azVolumeAttachment.Annotations = azureutils.AddToMap(azVolumeAttachment.Annotations, "testKey", "testValue")
+				testMap := map[string]string{"testKey": "testValue"}
+				azVolumeAttachment.Spec.VolumeContext = testMap
+				azVolumeAttachment.Status.Detail = &azdiskv1beta2.AzVolumeAttachmentStatusDetail{
+					PublishContext: testMap,
+				}
 
 				controller := NewTestAttachDetachController(
 					mockCtl,
 					testNamespace,
 					&testVolumeAttachment,
-					&testPersistentVolume0,
-					azVolumeAttachment)
+					azVolumeAttachment,
+					&testPersistentVolume0)
 
 				mockClientsAndAttachmentProvisioner(controller)
 
@@ -330,9 +337,21 @@ func TestAttachDetachRecover(t *testing.T) {
 				azVolumeAttachments, localErr := controller.azClient.DiskV1beta2().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{})
 				require.NoError(t, localErr)
 				require.Len(t, azVolumeAttachments.Items, 1)
-				azva := azVolumeAttachments.Items[0]
-				require.Equal(t, "CRI recovery", azva.Annotations[consts.VolumeAttachRequestAnnotation])
-				require.NotNil(t, azva.Finalizers)
+
+				azVolumeAttachment := azVolumeAttachments.Items[0]
+				annotations := azVolumeAttachment.Annotations
+				require.Equal(t, annotations[consts.APIVersion], azdiskv1beta2.APIVersion)
+
+				annotations = azVolumeAttachment.Status.Annotations
+				require.Equal(t, annotations["testKey"], "testValue")
+				require.Equal(t, annotations[consts.VolumeAttachmentKey], testVolumeAttachment.Name)
+
+				require.NotNil(t, azVolumeAttachment.Spec.VolumeContext)
+				require.Equal(t, azVolumeAttachment.Spec.VolumeContext["testKey"], "testValue")
+
+				require.NotNil(t, azVolumeAttachment.Status.Detail)
+				require.NotNil(t, azVolumeAttachment.Status.Detail.PublishContext)
+				require.Equal(t, azVolumeAttachment.Status.Detail.PublishContext["testKey"], "testValue")
 			},
 		},
 		{

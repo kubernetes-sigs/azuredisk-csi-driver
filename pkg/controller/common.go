@@ -78,7 +78,7 @@ const (
 	pv               operationRequester = "pv-controller"
 	replica          operationRequester = "replica-controller"
 	nodeavailability operationRequester = "nodeavailability-controller"
-	pod                                 = "pod-controller"
+	pod              operationRequester = "pod-controller"
 )
 
 type cleanUpMode int

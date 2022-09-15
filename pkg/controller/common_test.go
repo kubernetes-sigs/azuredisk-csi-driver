@@ -19,12 +19,14 @@ package controller
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
 	"github.com/golang/mock/gomock"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -33,6 +35,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/klog/v2"
+	azdiskv1beta1 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta1"
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	diskscheme "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/scheme"
@@ -286,7 +290,7 @@ func createTestAzVolume(pvName string, maxMountReplicaCount int) azdiskv1beta2.A
 			PersistentVolume:     pvName,
 		},
 	}
-
+	azureutils.AnnotateAPIVersion(&azVolume)
 	return azVolume
 }
 
@@ -310,7 +314,26 @@ func createTestAzVolumeAttachment(pvName, nodeName string, role azdiskv1beta2.Ro
 			NodeName:      nodeName,
 		},
 	}
+	azureutils.AnnotateAPIVersion(&azVolumeAttachment)
 	return azVolumeAttachment
+}
+
+// convertToV1Beta1 doesn't return v1beta1 object but superficially v1beta2 object with missing fields from incompatible api updates from v1beta1 to v1beta2.
+func convertToV1Beta1(obj runtime.Object) (oldObj runtime.Object) {
+	switch target := obj.(type) {
+	case *azdiskv1beta2.AzVolumeAttachment:
+		target.Annotations = target.Status.Annotations
+		target.Annotations = azureutils.RemoveFromMap(target.Annotations, consts.APIVersion)
+		target.DeepCopyInto(obj.(*azdiskv1beta2.AzVolumeAttachment))
+	case *azdiskv1beta2.AzVolume:
+		target.Spec.PersistentVolume = ""
+		target.Annotations = target.Status.Annotations
+		target.Annotations = azureutils.RemoveFromMap(target.Annotations, consts.APIVersion)
+		target.DeepCopyInto(obj.(*azdiskv1beta2.AzVolume))
+	default:
+		klog.Errorf("%v not supported.", reflect.TypeOf(target))
+	}
+	return
 }
 
 func createPod(podNamespace, podName string, pvcs []string) v1.Pod {
@@ -449,18 +472,32 @@ func mockClients(mockClient *mockclient.MockClient, azVolumeClient azdisk.Interf
 			case *azdiskv1beta2.AzVolume:
 				azVolume, err := azVolumeClient.DiskV1beta2().AzVolumes(key.Namespace).Get(ctx, key.Name, metav1.GetOptions{})
 				if err != nil {
+					if errors.IsNotFound(err) {
+						// check v1beta1 client
+						oldVolume, err := azVolumeClient.DiskV1beta1().AzVolumes(key.Namespace).Get(ctx, key.Name, metav1.GetOptions{})
+						if err != nil {
+							return err
+						}
+						oldVolume.DeepCopyInto(obj.(*azdiskv1beta1.AzVolume))
+					}
 					return err
 				}
-
-				azVolume.DeepCopyInto(target)
-
+				azVolume.DeepCopyInto(obj.(*azdiskv1beta2.AzVolume))
 			case *azdiskv1beta2.AzVolumeAttachment:
 				azVolumeAttachment, err := azVolumeClient.DiskV1beta2().AzVolumeAttachments(key.Namespace).Get(ctx, key.Name, metav1.GetOptions{})
 				if err != nil {
 					return err
 				}
 
-				azVolumeAttachment.DeepCopyInto(target)
+				azVolumeAttachment.DeepCopyInto(obj.(*azdiskv1beta2.AzVolumeAttachment))
+
+			case *azdiskv1beta1.AzVolumeAttachment:
+				azVolumeAttachment, err := azVolumeClient.DiskV1beta1().AzVolumeAttachments(key.Namespace).Get(ctx, key.Name, metav1.GetOptions{})
+				if err != nil {
+					return err
+				}
+
+				azVolumeAttachment.DeepCopyInto(obj.(*azdiskv1beta1.AzVolumeAttachment))
 
 			case *v1.PersistentVolume:
 				pv, err := kubeClient.CoreV1().PersistentVolumes().Get(ctx, key.Name, metav1.GetOptions{})

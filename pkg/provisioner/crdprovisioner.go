@@ -292,6 +292,7 @@ func (c *CrdProvisioner) CreateVolume(
 				PersistentVolume:          pv,
 			},
 		}
+		azureutils.AnnotateAPIVersion(azVolume)
 
 		w.Logger().V(5).Info("Creating AzVolume CRI")
 
@@ -539,6 +540,7 @@ func (c *CrdProvisioner) PublishVolume(
 				RequestedRole: azdiskv1beta2.PrimaryRole,
 			},
 		}
+		azureutils.AnnotateAPIVersion(attachmentObj)
 	}
 
 	filterVAToDetach := func(attachments []azdiskv1beta2.AzVolumeAttachment) (numAttachment int, unpublishOrder []*azdiskv1beta2.AzVolumeAttachment) {
@@ -776,6 +778,8 @@ func (c *CrdProvisioner) waitForLunOrAttach(ctx context.Context, volumeID, nodeI
 				case azdiskv1beta2.Attached:
 				case azdiskv1beta2.Attaching:
 				case azdiskv1beta2.AttachmentPending:
+					// ensure that volumeAttachRequestAnnotation is present to retrigger attach operation.
+					azVolumeAttachmentInstance.Annotations = azureutils.AddToMap(azVolumeAttachmentInstance.Annotations, consts.VolumeAttachRequestAnnotation, "crdProvisioner")
 				default:
 					return status.Errorf(codes.Internal, "unexpected publish/stage volume request: AzVolumeAttachment is currently in %s state", updateInstance.Status.State)
 				}

@@ -71,6 +71,7 @@ const (
 	PvNameTag                      = "kubernetes.io-created-for-pv-name"
 	PvNameLabel                    = "disk.csi.azure.com/pv"
 	VolumeAttachmentKey            = "disk.csi.azure.com/volumeattachment"
+	APIVersion                     = "disk.csi.azure.com/apiversion"
 	RateLimited                    = "rate limited"
 	RequestedSizeGib               = "requestedsizegib"
 	ResizeRequired                 = "resizeRequired"
