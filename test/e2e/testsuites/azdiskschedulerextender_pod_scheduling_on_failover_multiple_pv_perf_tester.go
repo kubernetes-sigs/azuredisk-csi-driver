@@ -79,7 +79,7 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV) Run(client cl
 
 	time.Sleep(10 * time.Second)
 	for i := 0; i < 3; i++ {
-		podutil.DeleteAllPodsWithMatchingLabel(client, namespace, map[string]string{"group": "delete-for-failover"})
+		podutil.DeleteAllPodsWithMatchingLabelWithSleep(client, namespace, map[string]string{"group": "delete-for-failover"})
 		for _, tStatefulSet := range tStatefulSets {
 			go func(ss *resources.TestStatefulset) {
 				defer ginkgo.GinkgoRecover()
