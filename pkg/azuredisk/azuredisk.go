@@ -47,30 +47,6 @@ import (
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
-// DriverOptions defines driver parameters specified in driver deployment
-type DriverOptions struct {
-	NodeID                     string
-	DriverName                 string
-	VolumeAttachLimit          int64
-	EnablePerfOptimization     bool
-	CloudConfigSecretName      string
-	CloudConfigSecretNamespace string
-	CustomUserAgent            string
-	UserAgentSuffix            string
-	UseCSIProxyGAInterface     bool
-	EnableDiskOnlineResize     bool
-	AllowEmptyCloudConfig      bool
-	EnableAsyncAttach          bool
-	EnableListVolumes          bool
-	EnableListSnapshots        bool
-	SupportZone                bool
-	GetNodeInfoFromLabels      bool
-	EnableDiskCapacityCheck    bool
-	VMSSCacheTTLInSeconds      int64
-	VMType                     string
-	RestClientQPS              int
-}
-
 // CSIDriver defines the interface for a CSI driver.
 type CSIDriver interface {
 	csi.ControllerServer
@@ -176,7 +152,15 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 	userAgent := GetUserAgent(d.Name, d.customUserAgent, d.userAgentSuffix)
 	klog.V(2).Infof("driver userAgent: %s", userAgent)
 
-	cloud, err := azureutils.GetCloudProvider(kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, userAgent, d.allowEmptyCloudConfig)
+	cloud, err := azureutils.GetCloudProvider(
+		kubeconfig,
+		d.cloudConfigSecretName,
+		d.cloudConfigSecretNamespace,
+		userAgent,
+		d.allowEmptyCloudConfig,
+		consts.DefaultEnableAzureClientAttachDetachRateLimiter,
+		consts.DefaultAzureClientAttachDetachRateLimiterQPS,
+		consts.DefaultAzureClientAttachDetachRateLimiterBucket)
 	if err != nil {
 		klog.Fatalf("failed to get Azure Cloud Provider, error: %v", err)
 	}

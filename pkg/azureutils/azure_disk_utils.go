@@ -525,14 +525,17 @@ func CreateValidDiskName(volumeName string, usedForLabel bool) string {
 }
 
 // GetCloudProviderFromClient get Azure Cloud Provider
-func GetCloudProviderFromClient(kubeClient *clientset.Clientset, secretName, secretNamespace, userAgent string, allowEmptyCloudConfig bool) (*azure.Cloud, error) {
+func GetCloudProviderFromClient(
+	kubeClient *clientset.Clientset,
+	cloudConfig azdiskv1beta2.CloudConfiguration,
+	userAgent string) (*azure.Cloud, error) {
 	var config *azure.Config
 	var fromSecret bool
 	var err error
 	az := &azure.Cloud{
 		InitSecretConfig: azure.InitSecretConfig{
-			SecretName:      secretName,
-			SecretNamespace: secretNamespace,
+			SecretName:      cloudConfig.SecretName,
+			SecretNamespace: cloudConfig.SecretNamespace,
 			CloudConfigKey:  "cloud-config",
 		},
 	}
@@ -575,12 +578,19 @@ func GetCloudProviderFromClient(kubeClient *clientset.Clientset, secretName, sec
 	}
 
 	if config == nil {
-		if allowEmptyCloudConfig {
+		if cloudConfig.AllowEmptyCloudConfig {
 			klog.V(2).Infof("no cloud config provided, error: %v, driver will run without cloud config", err)
 		} else {
 			return nil, fmt.Errorf("no cloud config provided, error: %v", err)
 		}
 	} else {
+		// configure client rate limit
+		config.AttachDetachDiskRateLimit = &azureclients.RateLimitConfig{
+			CloudProviderRateLimit:            cloudConfig.EnableAzureClientAttachDetachRateLimiter,
+			CloudProviderRateLimitQPSWrite:    cloudConfig.AzureClientAttachDetachRateLimiterQPS,
+			CloudProviderRateLimitBucketWrite: cloudConfig.AzureClientAttachDetachRateLimiterBucket,
+		}
+
 		// disable disk related rate limit
 		config.DiskRateLimit = &azureclients.RateLimitConfig{
 			CloudProviderRateLimit: false,
@@ -608,7 +618,14 @@ func GetCloudProviderFromClient(kubeClient *clientset.Clientset, secretName, sec
 }
 
 // GetCloudProviderFromConfig get Azure Cloud Provider
-func GetCloudProvider(kubeConfig, secretName, secretNamespace, userAgent string, allowEmptyCloudConfig bool) (*azure.Cloud, error) {
+func GetCloudProvider(
+	kubeConfig, secretName,
+	secretNamespace,
+	userAgent string,
+	allowEmptyCloudConfig bool,
+	enableAzureClientAttachDetachRateLimiter bool,
+	azureClientAttachDetachRateLimiterQPS float32,
+	azureClientAttachDetachRateLimiterBucket int) (*azure.Cloud, error) {
 	kubeClient, err := GetKubeClient(kubeConfig)
 	if err != nil {
 		klog.Warningf("get kubeconfig(%s) failed with error: %v", kubeConfig, err)
@@ -616,7 +633,18 @@ func GetCloudProvider(kubeConfig, secretName, secretNamespace, userAgent string,
 			return nil, fmt.Errorf("failed to get KubeClient: %v", err)
 		}
 	}
-	return GetCloudProviderFromClient(kubeClient, secretName, secretNamespace, userAgent, allowEmptyCloudConfig)
+	cloudConfig := azdiskv1beta2.CloudConfiguration{
+		SecretName:                               secretName,
+		SecretNamespace:                          secretNamespace,
+		AllowEmptyCloudConfig:                    allowEmptyCloudConfig,
+		EnableAzureClientAttachDetachRateLimiter: enableAzureClientAttachDetachRateLimiter,
+		AzureClientAttachDetachRateLimiterQPS:    azureClientAttachDetachRateLimiterQPS,
+		AzureClientAttachDetachRateLimiterBucket: azureClientAttachDetachRateLimiterBucket,
+	}
+	return GetCloudProviderFromClient(
+		kubeClient,
+		cloudConfig,
+		userAgent)
 }
 
 // GetKubeConfig gets config object from config file

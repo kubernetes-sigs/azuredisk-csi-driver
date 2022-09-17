@@ -400,8 +400,16 @@ users:
 				t.Error(err)
 			}
 		}
-		cloud, err := GetCloudProvider(test.kubeconfig, "", "", test.userAgent, test.allowEmptyCloudConfig)
-		if !reflect.DeepEqual(err, test.expectedErr) && !strings.Contains(err.Error(), test.expectedErr.Error()) {
+		cloud, err := GetCloudProvider(
+			test.kubeconfig,
+			"",
+			"",
+			test.userAgent,
+			test.allowEmptyCloudConfig,
+			consts.DefaultEnableAzureClientAttachDetachRateLimiter,
+			consts.DefaultAzureClientAttachDetachRateLimiterQPS,
+			consts.DefaultAzureClientAttachDetachRateLimiterBucket)
+		if !reflect.DeepEqual(err, test.expectedErr) && (err == nil || !strings.Contains(err.Error(), test.expectedErr.Error())) {
 			t.Errorf("desc: %s,\n input: %q, GetCloudProvider err: %v, expectedErr: %v", test.desc, test.kubeconfig, err, test.expectedErr)
 		}
 		if cloud != nil {
