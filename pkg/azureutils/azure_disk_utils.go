@@ -409,6 +409,10 @@ func IsAzureStackCloud(cloud string, disableAzureStackCloud bool) bool {
 
 // IsValidAvailabilityZone returns true if the zone is in format of <region>-<zone-id>.
 func IsValidAvailabilityZone(zone, region string) bool {
+	if region == "" {
+		index := strings.Index(zone, "-")
+		return index > 0 && index < len(zone)-1
+	}
 	return strings.HasPrefix(zone, fmt.Sprintf("%s-", region))
 }
 
