@@ -255,6 +255,11 @@ type Config struct {
 	PutVMSSVMBatchSize int `json:"putVMSSVMBatchSize" yaml:"putVMSSVMBatchSize"`
 	// PrivateLinkServiceResourceGroup determines the specific resource group of the private link services user want to use
 	PrivateLinkServiceResourceGroup string `json:"privateLinkServiceResourceGroup,omitempty" yaml:"privateLinkServiceResourceGroup,omitempty"`
+	// AttachDetachBatchInitialDelayInMillis determines the initial attach/detach disk batch processing delay in milliseconds.
+	// A value of `0` indicates to use the default initial delay of 1s.
+	// A negative value indicates no initial delay.
+	// A positive value determines the initial delay in milliseconds.
+	AttachDetachBatchInitialDelayInMillis int `json:"attachDetachBatchInitialDelayInMillis,omitempty" yaml:"attachDetachBatchInitialDelayInMillis,omitempty"`
 }
 
 type InitSecretConfig struct {
@@ -1020,9 +1025,17 @@ func initDiskControllers(az *Cloud) error {
 
 	logger := klogr.NewWithOptions(klogr.WithFormat(klogr.FormatKlog)).WithName("cloud-provider-azure").WithValues("type", "batch")
 
+	delayBeforeStart := defaultAttachDetachBatchInitialDelay
+	switch {
+	case az.Config.AttachDetachBatchInitialDelayInMillis < 0:
+		delayBeforeStart = 0
+	case az.Config.AttachDetachBatchInitialDelayInMillis > 0:
+		delayBeforeStart = time.Duration(az.Config.AttachDetachBatchInitialDelayInMillis) * time.Millisecond
+	}
+
 	processorOptions := []batch.ProcessorOption{
 		batch.WithVerboseLogLevel(3),
-		batch.WithDelayBeforeStart(1 * time.Second),
+		batch.WithDelayBeforeStart(delayBeforeStart),
 	}
 
 	if enableAttachDetachDiskRateLimiter {

@@ -591,6 +591,9 @@ func GetCloudProviderFromClient(
 			CloudProviderRateLimitBucketWrite: cloudConfig.AzureClientAttachDetachRateLimiterBucket,
 		}
 
+		// configure batching parameters
+		config.AttachDetachBatchInitialDelayInMillis = cloudConfig.AzureClientAttachDetachBatchInitialDelayInMillis
+
 		// disable disk related rate limit
 		config.DiskRateLimit = &azureclients.RateLimitConfig{
 			CloudProviderRateLimit: false,

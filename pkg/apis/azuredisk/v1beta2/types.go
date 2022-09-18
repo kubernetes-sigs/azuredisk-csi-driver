@@ -607,6 +607,11 @@ type CloudConfiguration struct {
 	AzureClientAttachDetachRateLimiterQPS float32 `json:"azureClientAttachDetachRateLimiterQPS,omitempty"`
 	// azure client attach/Detach rate limiter bucket
 	AzureClientAttachDetachRateLimiterBucket int `json:"azureClientAttachDetachRateLimiterBucket,omitempty"`
+	// azure client batch attach/detach initial delay in milliseconds
+	// A value of `0` indicates to use the default initial delay of 1s.
+	// A negative value indicates no initial delay.
+	// A positive value determines the initial delay in milliseconds.
+	AzureClientAttachDetachBatchInitialDelayInMillis int `json:"azureClientAttachDetachBatchInitialDelayInMillis,omitempty"`
 }
 
 type ClientConfiguration struct {

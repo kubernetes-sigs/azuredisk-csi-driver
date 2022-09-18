@@ -26,6 +26,7 @@ data:
       enableAzureClientAttachDetachRateLimiter: {{ .Values.controller.enableAzureClientAttachDetachRateLimiter }}
       azureClientAttachDetachRateLimiterQPS: {{ .Values.controller.azureClientAttachDetachRateLimiterQPS }}
       azureClientAttachDetachRateLimiterBucket: {{ .Values.controller.azureClientAttachDetachRateLimiterBucket }}
+      azureClientAttachDetachBatchInitialDelayInMillis: {{ .Values.controller.azureClientAttachDetachBatchInitialDelayInMillis }}
     objectNamespace: {{ .Values.driver.objectNamespace }}
     endpoint: unix:///csi/csi.sock
     metricsAddress: 0.0.0.0:{{ .Values.controller.metrics.port }}
