@@ -17,13 +17,16 @@ limitations under the License.
 package provider
 
 import (
+	"time"
+
 	azclients "sigs.k8s.io/cloud-provider-azure/pkg/azureclients"
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
 )
 
 const (
-	defaultAttachDetachDiskQPS    = (240.0 / 180.0)                        // Default compute QPS limit is 240 queries / 3 minutes
-	defaultAttachDetachDiskBucket = int(defaultAttachDetachDiskQPS * 60.0) // Allow for a burst of a minutes worth of quota
+	defaultAttachDetachDiskQPS           = (240.0 / 180.0)                        // Default compute QPS limit is 240 queries / 3 minutes
+	defaultAttachDetachDiskBucket        = int(defaultAttachDetachDiskQPS * 60.0) // Allow for a burst of a minutes worth of quota
+	defaultAttachDetachBatchInitialDelay = 1 * time.Second                        // The initial delay before processing a batch of attach or detach disk requests
 )
 
 // CloudProviderRateLimitConfig indicates the rate limit config for each clients.

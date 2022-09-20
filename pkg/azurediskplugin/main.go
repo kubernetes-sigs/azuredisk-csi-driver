@@ -67,9 +67,10 @@ var (
 	enableDiskCapacityCheck                  = flag.Bool("enable-disk-capacity-check", consts.DefaultEnableDiskCapacityCheck, "boolean flag to enable volume capacity check in CreateVolume")
 	kubeClientQPS                            = flag.Int("kube-client-qps", consts.DefaultKubeClientQPS, "QPS for the rest client. Defaults to 15.")
 	vmssCacheTTLInSeconds                    = flag.Int64("vmss-cache-ttl-seconds", consts.DefaultVMSSCacheTTLInSeconds, "vmss cache TTL in seconds (600 by default)")
-	enableAzureClientAttachDetachRateLimiter = flag.Bool("enable-attach-detach-rate-limiter", consts.DefaultEnableAzureClientAttachDetachRateLimiter, "azure client rate limiter for attach/detach operations (true by default)")
-	azureClientAttachDetachRateLimiterQPS    = flag.Float64("attach-detach-rate-limiter-qps", consts.DefaultAzureClientAttachDetachRateLimiterQPS, "QPS for azure client rate limiter for attach/detach operations (1.3 by default)")
-	azureClientAttachDetachRateLimiterBucket = flag.Int("attach-detach-rate-limiter-bucket", consts.DefaultAzureClientAttachDetachRateLimiterBucket, "bucket for azure client rate limiter for attach/detach operations (80 by default)")
+	enableAzureClientAttachDetachRateLimiter = flag.Bool("enable-attach-detach-rate-limiter", consts.DefaultEnableAzureClientAttachDetachRateLimiter, "Azure client rate limiter for attach/detach operations")
+	azureClientAttachDetachRateLimiterQPS    = flag.Float64("attach-detach-rate-limiter-qps", consts.DefaultAzureClientAttachDetachRateLimiterQPS, "QPS for azure client rate limiter for attach/detach operations")
+	azureClientAttachDetachRateLimiterBucket = flag.Int("attach-detach-rate-limiter-bucket", consts.DefaultAzureClientAttachDetachRateLimiterBucket, "Bucket for azure client rate limiter for attach/detach operations")
+	azureClientAttachDetachBatchInitialDelay = flag.Duration("attach-detach-batch-initial-delay", consts.DefaultAzureClientAttachDetachBatchInitialDelay, "Initial batch processing start delay for attach/detach operations. A value of zero indicates the default of 1s and a negative value disables the delay. Otherwise, the supplied delay is used.")
 	isControllerPlugin                       = flag.Bool("is-controller-plugin", consts.DefaultIsControllerPlugin, "Boolean flag to indicate this instance is running as controller.")
 	isNodePlugin                             = flag.Bool("is-node-plugin", consts.DefaultIsNodePlugin, "Boolean flag to indicate this instance is running as node daemon.")
 	driverObjectNamespace                    = flag.String("driver-object-namespace", consts.DefaultAzureDiskCrdNamespace, "The namespace where driver related custom resources are created.")
@@ -145,15 +146,16 @@ func getDriverConfig() *azdiskv1beta2.AzDiskDriverConfiguration {
 				PartitionName:           consts.DefaultNodePartitionName,
 			},
 			CloudConfig: azdiskv1beta2.CloudConfiguration{
-				SecretName:                               consts.DefaultCloudConfigSecretName,
-				SecretNamespace:                          consts.DefaultCloudConfigSecretNamespace,
-				CustomUserAgent:                          consts.DefaultCustomUserAgent,
-				UserAgentSuffix:                          consts.DefaultUserAgentSuffix,
-				AllowEmptyCloudConfig:                    consts.DefaultAllowEmptyCloudConfig,
-				VMSSCacheTTLInSeconds:                    consts.DefaultVMSSCacheTTLInSeconds,
-				EnableAzureClientAttachDetachRateLimiter: consts.DefaultEnableAzureClientAttachDetachRateLimiter,
-				AzureClientAttachDetachRateLimiterQPS:    consts.DefaultAzureClientAttachDetachRateLimiterQPS,
-				AzureClientAttachDetachRateLimiterBucket: consts.DefaultAzureClientAttachDetachRateLimiterBucket,
+				SecretName:                                       consts.DefaultCloudConfigSecretName,
+				SecretNamespace:                                  consts.DefaultCloudConfigSecretNamespace,
+				CustomUserAgent:                                  consts.DefaultCustomUserAgent,
+				UserAgentSuffix:                                  consts.DefaultUserAgentSuffix,
+				AllowEmptyCloudConfig:                            consts.DefaultAllowEmptyCloudConfig,
+				VMSSCacheTTLInSeconds:                            consts.DefaultVMSSCacheTTLInSeconds,
+				EnableAzureClientAttachDetachRateLimiter:         consts.DefaultEnableAzureClientAttachDetachRateLimiter,
+				AzureClientAttachDetachRateLimiterQPS:            consts.DefaultAzureClientAttachDetachRateLimiterQPS,
+				AzureClientAttachDetachRateLimiterBucket:         consts.DefaultAzureClientAttachDetachRateLimiterBucket,
+				AzureClientAttachDetachBatchInitialDelayInMillis: int(consts.DefaultAzureClientAttachDetachBatchInitialDelay.Milliseconds()),
 			},
 			ClientConfig: azdiskv1beta2.ClientConfiguration{
 				Kubeconfig:    consts.DefaultKubeconfig,
@@ -211,15 +213,16 @@ func getDriverConfig() *azdiskv1beta2.AzDiskDriverConfiguration {
 				PartitionName:           *nodePartition,
 			},
 			CloudConfig: azdiskv1beta2.CloudConfiguration{
-				SecretName:                               *cloudConfigSecretName,
-				SecretNamespace:                          *cloudConfigSecretNamespace,
-				CustomUserAgent:                          *customUserAgent,
-				UserAgentSuffix:                          *userAgentSuffix,
-				AllowEmptyCloudConfig:                    *allowEmptyCloudConfig,
-				VMSSCacheTTLInSeconds:                    *vmssCacheTTLInSeconds,
-				EnableAzureClientAttachDetachRateLimiter: *enableAzureClientAttachDetachRateLimiter,
-				AzureClientAttachDetachRateLimiterQPS:    float32(*azureClientAttachDetachRateLimiterQPS),
-				AzureClientAttachDetachRateLimiterBucket: *azureClientAttachDetachRateLimiterBucket,
+				SecretName:                                       *cloudConfigSecretName,
+				SecretNamespace:                                  *cloudConfigSecretNamespace,
+				CustomUserAgent:                                  *customUserAgent,
+				UserAgentSuffix:                                  *userAgentSuffix,
+				AllowEmptyCloudConfig:                            *allowEmptyCloudConfig,
+				VMSSCacheTTLInSeconds:                            *vmssCacheTTLInSeconds,
+				EnableAzureClientAttachDetachRateLimiter:         *enableAzureClientAttachDetachRateLimiter,
+				AzureClientAttachDetachRateLimiterQPS:            float32(*azureClientAttachDetachRateLimiterQPS),
+				AzureClientAttachDetachRateLimiterBucket:         *azureClientAttachDetachRateLimiterBucket,
+				AzureClientAttachDetachBatchInitialDelayInMillis: int(azureClientAttachDetachBatchInitialDelay.Milliseconds()),
 			},
 			ClientConfig: azdiskv1beta2.ClientConfiguration{
 				Kubeconfig:    *kubeconfig,
