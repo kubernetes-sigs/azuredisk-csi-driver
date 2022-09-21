@@ -87,6 +87,8 @@ const (
 	StorageAccountTypeField        = "storageaccounttype"
 	TagsField                      = "tags"
 	ThrottlingKey                  = "throttlingKey"
+	RetryKey                       = "number_of_retry"
+	NetRetryKey                    = "number_of_net_retry"
 	TrueValue                      = "true"
 	FalseValue                     = "false"
 	UserAgentField                 = "useragent"
