@@ -46,7 +46,7 @@ func (w *ConditionWaiter) Wait(ctx context.Context) (runtime.Object, error) {
 		obj, err = w.watcher.informerFactory.Disk().V1beta2().AzDriverNodes().Lister().AzDriverNodes(namespace).Get(w.objName)
 	}
 
-	_, wf := workflow.New(ctx, workflow.WithDetails(workflow.GetObjectDetails(obj)...))
+	_, wf := workflow.New(ctx, workflow.WithCaller(1), workflow.WithDetails(workflow.GetObjectDetails(obj)...))
 	defer func() { wf.Finish(err) }()
 
 	// if there exists an object in cache, evaluate condition function on it
