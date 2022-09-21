@@ -20,6 +20,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
@@ -56,6 +57,47 @@ func TestPodReconcile(t *testing.T) {
 		setupFunc   func(*testing.T, *gomock.Controller) *ReconcilePod
 		verifyFunc  func(*testing.T, *ReconcilePod, reconcile.Result, error)
 	}{
+		{
+			description: "[Success] Should create AzVolume object for pod inline volume.",
+			request:     testPod0Request,
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcilePod {
+				newPod := testPod0.DeepCopy()
+				newPod.Spec.Volumes = append(newPod.Spec.Volumes, v1.Volume{
+					Name: testManagedDiskURI0,
+					VolumeSource: v1.VolumeSource{
+						AzureDisk: &v1.AzureDiskVolumeSource{
+							Kind:        (*v1.AzureDataDiskKind)(to.StringPtr(string(v1.AzureManagedDisk))),
+							DataDiskURI: testManagedDiskURI0,
+						},
+					},
+				})
+
+				controller := NewTestPodController(
+					mockCtl,
+					testNamespace,
+					newPod,
+					&testNode0,
+				)
+
+				mockClients(controller.cachedClient.(*mockclient.MockClient), controller.azClient, controller.kubeClient)
+				return controller
+			},
+			verifyFunc: func(t *testing.T, controller *ReconcilePod, result reconcile.Result, err error) {
+				require.NoError(t, err)
+				require.False(t, result.Requeue)
+
+				azVolume, err := controller.azClient.DiskV1beta2().AzVolumes(testNamespace).Get(context.TODO(), testAzVolume0.Spec.VolumeName, metav1.GetOptions{})
+				require.NoError(t, err)
+				require.NotNil(t, azVolume)
+
+				// check the azVolume's pv and pvc labels are not added
+				require.NotContains(t, azVolume.Labels, consts.PvNameKey)
+				require.NotContains(t, azVolume.Labels, consts.PvcNameKey)
+
+				// check the azVolume is annotated with inlineVolumeAnnotation
+				require.Contains(t, azVolume.Status.Annotations, consts.InlineVolumeAnnotation)
+			},
+		},
 		{
 			description: "[Success] Should attach replica attachment upon pod start.",
 			request:     testPod0Request,

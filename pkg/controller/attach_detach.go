@@ -29,6 +29,8 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	"k8s.io/kubernetes/pkg/features"
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
@@ -585,6 +587,21 @@ func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, 
 				return syncedVolumeAttachments, volumesToSync, err
 			}
 
+			// if pv is migrated intree pv, convert it to csi pv for processing
+			// translate intree pv to csi pv to convert them into AzVolume resource
+			if utilfeature.DefaultFeatureGate.Enabled(features.CSIMigration) &&
+				utilfeature.DefaultFeatureGate.Enabled(features.CSIMigrationAzureDisk) &&
+				pv.Spec.AzureDisk != nil {
+				// translate intree pv to csi pv to convert them into AzVolume resource
+				if utilfeature.DefaultFeatureGate.Enabled(features.CSIMigration) &&
+					utilfeature.DefaultFeatureGate.Enabled(features.CSIMigrationAzureDisk) &&
+					pv.Spec.AzureDisk != nil {
+					if pv, err = r.translateInTreePVToCSI(pv); err != nil {
+						w.Logger().V(5).Errorf(err, "skipping azVolumeAttachment creation for volumeAttachment (%s)", volumeAttachment.Name)
+					}
+				}
+			}
+
 			if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != r.driverName {
 				continue
 			}
@@ -607,18 +624,21 @@ func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, 
 						consts.NodeNameLabel:   nodeName,
 						consts.VolumeNameLabel: *volumeName,
 					},
-					Annotations: map[string]string{consts.VolumeAttachRequestAnnotation: "CRI recovery"},
-					Finalizers:  []string{consts.AzVolumeAttachmentFinalizer},
+					// if the volumeAttachment shows not yet attached, and VolumeAttachRequestAnnotation needs to be set from the controllerserver
+					// if the volumeAttachment shows attached but the actual volume isn't due to controller restart, VolumeAttachRequestAnnotation needs to be set by the noderserver during NodeStageVolume
+					Finalizers: []string{consts.AzVolumeAttachmentFinalizer},
 				},
 				Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
-
 					VolumeName:    *volumeName,
 					VolumeID:      pv.Spec.CSI.VolumeHandle,
 					NodeName:      nodeName,
 					RequestedRole: azdiskv1beta2.PrimaryRole,
-					VolumeContext: map[string]string{},
+					VolumeContext: pv.Spec.CSI.VolumeAttributes,
 				},
 			}
+			azureutils.AnnotateAPIVersion(desiredAzVolumeAttachment)
+
+			statusUpdateRequired := true
 			// check if the CRI exists already
 			azVolumeAttachment, err := azureutils.GetAzVolumeAttachment(ctx, r.cachedClient, r.azClient, azVolumeAttachmentName, r.objectNamespace, false)
 			if err != nil {
@@ -634,34 +654,42 @@ func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, 
 					w.Logger().Errorf(err, "failed to get AzVolumeAttachment (%s): %v", azVolumeAttachmentName, err)
 					return syncedVolumeAttachments, volumesToSync, err
 				}
-			} else {
-				w.Logger().Infof("Reapplying AzVolumeAttachment(%s)", azVolumeAttachmentName)
-				azVolumeAttachment.Spec = desiredAzVolumeAttachment.Spec
-				azVolumeAttachment.Labels = desiredAzVolumeAttachment.Labels
-				azVolumeAttachment.Annotations = desiredAzVolumeAttachment.Annotations
-				azVolumeAttachment.Finalizers = desiredAzVolumeAttachment.Finalizers
+			} else if apiVersion, ok := azureutils.GetFromMap(azVolumeAttachment.Annotations, consts.APIVersion); !ok || apiVersion != azdiskv1beta2.APIVersion {
+				w.Logger().Infof("Found AzVolumeAttachment (%s) with older api version. Converting to apiVersion(%s)", azVolumeAttachmentName, azdiskv1beta2.APIVersion)
+
+				for k, v := range desiredAzVolumeAttachment.Labels {
+					azVolumeAttachment.Labels = azureutils.AddToMap(azVolumeAttachment.Labels, k, v)
+				}
+
+				for k, v := range azVolumeAttachment.Annotations {
+					azVolumeAttachment.Status.Annotations = azureutils.AddToMap(azVolumeAttachment.Status.Annotations, k, v)
+				}
+
+				// for now, we don't empty the meta annotatinos after migrating them to status annotation for safety.
+				// note that this will leave some remnant garbage entries in meta annotations
+
+				for k, v := range desiredAzVolumeAttachment.Annotations {
+					azVolumeAttachment.Annotations = azureutils.AddToMap(azVolumeAttachment.Status.Annotations, k, v)
+				}
 
 				azVolumeAttachment, err = r.azClient.DiskV1beta2().AzVolumeAttachments(r.objectNamespace).Update(ctx, azVolumeAttachment, metav1.UpdateOptions{})
 				if err != nil {
 					w.Logger().Errorf(err, "failed to update AzVolumeAttachment (%s) for volume (%s) and node (%s): %v", azVolumeAttachmentName, *volumeName, nodeName, err)
 					return syncedVolumeAttachments, volumesToSync, err
 				}
+			} else {
+				statusUpdateRequired = false
 			}
 
-			azVolumeAttachment.Status = azdiskv1beta2.AzVolumeAttachmentStatus{
-				Annotations: map[string]string{consts.VolumeAttachmentKey: volumeAttachment.Name},
-				State:       azureutils.GetAzVolumeAttachmentState(volumeAttachment.Status),
-			}
-			if azVolumeAttachment.Status.State == azdiskv1beta2.Attached {
-				azVolumeAttachment.Status.Detail = &azdiskv1beta2.AzVolumeAttachmentStatusDetail{
-					Role: azdiskv1beta2.PrimaryRole,
+			if statusUpdateRequired {
+				azVolumeAttachment.Status.Annotations = azureutils.AddToMap(azVolumeAttachment.Status.Annotations, consts.VolumeAttachmentKey, volumeAttachment.Name)
+
+				// update status
+				_, err = r.azClient.DiskV1beta2().AzVolumeAttachments(r.objectNamespace).UpdateStatus(ctx, azVolumeAttachment, metav1.UpdateOptions{})
+				if err != nil {
+					w.Logger().Errorf(err, "failed to update status of AzVolumeAttachment (%s) for volume (%s) and node (%s): %v", azVolumeAttachmentName, *volumeName, nodeName, err)
+					return syncedVolumeAttachments, volumesToSync, err
 				}
-			}
-			// update status
-			_, err = r.azClient.DiskV1beta2().AzVolumeAttachments(r.objectNamespace).UpdateStatus(ctx, azVolumeAttachment, metav1.UpdateOptions{})
-			if err != nil {
-				w.Logger().Errorf(err, "failed to update status of AzVolumeAttachment (%s) for volume (%s) and node (%s): %v", azVolumeAttachmentName, *volumeName, nodeName, err)
-				return syncedVolumeAttachments, volumesToSync, err
 			}
 
 			syncedVolumeAttachments[volumeAttachment.Name] = true

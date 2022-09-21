@@ -808,6 +808,19 @@ func PickAvailabilityZone(requirement *csi.TopologyRequirement, region, topology
 	return ""
 }
 
+func GetTopologyFromNodeSelector(nodeSelector v1.NodeSelector, topologyKey string) (topologies []azdiskv1beta2.Topology) {
+	for _, selectorTerm := range nodeSelector.NodeSelectorTerms {
+		for _, matchExpression := range selectorTerm.MatchExpressions {
+			if matchExpression.Key == topologyKey {
+				for _, value := range matchExpression.Values {
+					topologies = append(topologies, azdiskv1beta2.Topology{Segments: map[string]string{matchExpression.Key: value}})
+				}
+			}
+		}
+	}
+	return
+}
+
 func IsValidVolumeCapabilities(volCaps []*csi.VolumeCapability, maxShares int) bool {
 	if ok := IsValidAccessModes(volCaps); !ok {
 		return false
@@ -957,6 +970,19 @@ func ListAzVolumes(ctx context.Context, cachedClient client.Client, azDiskClient
 		azVolumeList, err = azDiskClient.DiskV1beta2().AzVolumes(namespace).List(ctx, metav1.ListOptions{})
 	}
 	return *azVolumeList, err
+}
+
+func AnnotateAPIVersion(obj client.Object) {
+	switch obj.(type) {
+	case *azdiskv1beta2.AzDriverNode:
+	case *azdiskv1beta2.AzVolume:
+	case *azdiskv1beta2.AzVolumeAttachment:
+	default:
+		return
+	}
+	annotations := obj.GetAnnotations()
+	annotations = AddToMap(annotations, consts.APIVersion, azdiskv1beta2.APIVersion)
+	obj.SetAnnotations(annotations)
 }
 
 func GetAzVolumeAttachment(ctx context.Context, cachedClient client.Client, azDiskClient azdisk.Interface, azVolumeAttachmentName, namespace string, useCache bool) (*azdiskv1beta2.AzVolumeAttachment, error) {

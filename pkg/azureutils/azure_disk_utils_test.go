@@ -2838,3 +2838,29 @@ func TestUpdateCRIWithRetry(t *testing.T) {
 		})
 	}
 }
+
+func TestAnnotateAPIVersion(t *testing.T) {
+	tests := []struct {
+		name    string
+		testObj client.Object
+	}{
+		{
+			name:    "Annotate AzVolumeAttachment with ApiVersion",
+			testObj: &azdiskv1beta2.AzVolumeAttachment{},
+		},
+		{
+			name:    "Annotate AzVolume with ApiVersion",
+			testObj: &azdiskv1beta2.AzVolume{},
+		},
+		{
+			name:    "Annotate AzDriverNode with ApiVersion",
+			testObj: &azdiskv1beta2.AzDriverNode{},
+		},
+	}
+	for _, test := range tests {
+		AnnotateAPIVersion(test.testObj)
+		annotations := test.testObj.GetAnnotations()
+		require.Contains(t, annotations, consts.APIVersion)
+		require.Equal(t, annotations[consts.APIVersion], azdiskv1beta2.APIVersion)
+	}
+}

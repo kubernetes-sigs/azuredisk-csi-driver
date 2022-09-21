@@ -78,9 +78,9 @@ var _ = ginkgo.BeforeSuite(func() {
 	// Install Azure Disk CSI Driver on cluster from project root
 	os.Unsetenv(testconsts.BuildV2Driver)
 	e2eBootstrap := testutil.TestCmd{
-		Command:  "make",
-		Args:     []string{"e2e-bootstrap"},
-		StartLog: "Installing Azure Disk CSI Driver...",
+		Command:  "helm",
+		Args:     []string{"install", "azuredisk-csi-driver", fmt.Sprintf("%s/azuredisk-csi-driver", *helmRepoName), "--namespace", "kube-system", "--version", *imageVersion},
+		StartLog: fmt.Sprintf("Installing Azure Disk CSI Driver %s", *imageVersion),
 		EndLog:   "Azure Disk CSI Driver installed",
 	}
 
@@ -175,7 +175,7 @@ func upgradeTest(isMultiZone bool) {
 		scheduler = testutil.GetSchedulerForE2E()
 	})
 
-	ginkgo.It("Should create a pod with 3 volumes with v1 Azure Disk CSI Driver and should successfully create necessary CRIs upon upgrade to v2 Azure Disk CSI Driver.", func() {
+	ginkgo.It(fmt.Sprintf("Should create a pod with 3 volumes with Azure Disk CSI Driver %s and should successfully create or update necessary CRIs upon upgrade to the latest v2 Azure Disk CSI Driver.", *imageVersion), func() {
 		ctx := context.Background()
 		nodes := nodeutil.ListNodeNames(cs)
 		volumes := []resources.VolumeDetails{}
@@ -217,8 +217,8 @@ func upgradeTest(isMultiZone bool) {
 		e2eUpgrade := testutil.TestCmd{
 			Command:  "make",
 			Args:     []string{"e2e-upgrade-v2"},
-			StartLog: "upgrading to v2 driver ...",
-			EndLog:   "upgraded to v2 driver",
+			StartLog: "upgrading to latest v2 driver ...",
+			EndLog:   "upgraded to latest v2 driver",
 		}
 		testutil.ExecTestCmd([]testutil.TestCmd{e2eUpgrade})
 
@@ -227,6 +227,7 @@ func upgradeTest(isMultiZone bool) {
 		framework.ExpectNoError(err)
 
 		diskNames := make([]string, len(podObj.Spec.Volumes))
+		volumeIDSet := map[string]bool{}
 		for j, volume := range podObj.Spec.Volumes {
 			if volume.PersistentVolumeClaim == nil {
 				framework.Failf("volume (%s) does not hold PersistentVolumeClaim field", volume.Name)
@@ -239,6 +240,7 @@ func upgradeTest(isMultiZone bool) {
 			framework.ExpectNotEqual(pv.Spec.CSI, nil)
 			framework.ExpectEqual(pv.Spec.CSI.Driver, consts.DefaultDriverName)
 
+			volumeIDSet[pv.Spec.CSI.VolumeHandle] = false
 			diskName, err := azureutils.GetDiskName(pv.Spec.CSI.VolumeHandle)
 			framework.ExpectNoError(err)
 			diskNames[j] = strings.ToLower(diskName)
@@ -269,9 +271,15 @@ func upgradeTest(isMultiZone bool) {
 			}
 			azVolumeSet := map[string]struct{}{}
 			for _, azVolume := range azVolumes.Items {
-				if azVolume.Status.Detail == nil {
+				if azVolume.Status.Detail == nil || azVolume.Status.Detail.VolumeContext != nil {
 					return false, nil
 				}
+				if _, ok := volumeIDSet[azVolume.Status.Detail.VolumeID]; !ok {
+					return false, nil
+				}
+				// mark volumeID visited
+				volumeIDSet[azVolume.Status.Detail.VolumeID] = true
+
 				klog.Infof("AzVolume CRI (%s) successfully created and populated", azVolume.Name)
 				azVolumeSet[azVolume.Name] = struct{}{}
 			}
@@ -282,11 +290,14 @@ func upgradeTest(isMultiZone bool) {
 			}
 			return true, nil
 		}
+
 		volumeAttachments, err := cs.StorageV1().VolumeAttachments().List(ctx, metav1.ListOptions{})
 		framework.ExpectNoError(err, fmt.Sprintf("failed to list AzVolumeAttachment CRIs under namespace (%s): %v", consts.DefaultAzureDiskCrdNamespace, err))
 
+		volumeAttachmentSet := map[string]bool{}
 		var attachmentNames []string
 		for _, volumeAttachment := range volumeAttachments.Items {
+			volumeAttachmentSet[volumeAttachment.Name] = false
 			volumeName := volumeAttachment.Spec.Source.PersistentVolumeName
 			if volumeName == nil {
 				continue
@@ -316,9 +327,18 @@ func upgradeTest(isMultiZone bool) {
 			}
 			azVolumeAttachmentSet := map[string]struct{}{}
 			for _, azVolumeAttachment := range azVolumeAttachments.Items {
-				if azVolumeAttachment.Status.Detail == nil {
+				if azVolumeAttachment.Status.Detail == nil || azVolumeAttachment.Status.Detail.PublishContext == nil {
 					return false, nil
 				}
+
+				if volumeAttachment, ok := azVolumeAttachment.Status.Annotations[consts.VolumeAttachmentKey]; !ok {
+					return false, nil
+				} else if _, ok := volumeAttachmentSet[volumeAttachment]; !ok {
+					return false, nil
+				} else {
+					volumeAttachmentSet[volumeAttachment] = true
+				}
+
 				klog.Infof("AzVolumeAttachment CRI (%s) successfully created and populated", azVolumeAttachment.Name)
 				azVolumeAttachmentSet[azVolumeAttachment.Name] = struct{}{}
 			}
@@ -332,6 +352,19 @@ func upgradeTest(isMultiZone bool) {
 		}
 
 		verifyLoop(checkAzDriverNodes, checkAzVolumes, checkAzVolumeAttachments)
+
+		// check that there are CRIs created for all PVs, and VolumeAttachments
+		for k, v := range volumeIDSet {
+			if !v {
+				ginkgo.Fail(fmt.Sprintf("unable to find AzVolume CRI for volumeID (%s)", k))
+			}
+		}
+
+		for k, v := range volumeAttachmentSet {
+			if !v {
+				ginkgo.Fail(fmt.Sprintf("unable to find AzVolumeAttachment CRI for VolumeAttachment (%s)", k))
+			}
+		}
 	})
 
 }

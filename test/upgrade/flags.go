@@ -25,6 +25,8 @@ import (
 
 var (
 	driverExists = flag.Bool("driverExists", false, "flag to indicate that there already is a driver intsalled")
+	helmRepoName = flag.String("helmRepositoryName", "azuredisk-csi-driver", "flag to indicate the name of the helm repository to use for installing the driver")
+	imageVersion = flag.String("imageVersion", "v2.0.0-beta.6", "flag to indicate which driver version to upgrade from in the test scenario")
 )
 
 // handleFlags sets up all flags and parses the command line.
