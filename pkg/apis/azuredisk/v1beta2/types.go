@@ -622,5 +622,7 @@ type ClientConfiguration struct {
 	// Absolute path to the kubeconfig file. Required only when running out of cluster
 	Kubeconfig string `json:"kubeconfig,omitempty"`
 	// QPS for the rest client. Defaults to 15
-	KubeClientQPS int `json:"kubeClientQPS,omitempty"`
+	KubeClientQPS float32 `json:"kubeClientQPS,omitempty"`
+	// Burst for the rest client. Defaults to 30
+	KubeClientBurst int `json:"kubeClientBurst,omitempty"`
 }

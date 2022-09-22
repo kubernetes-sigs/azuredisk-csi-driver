@@ -65,8 +65,9 @@ var (
 	enableListVolumes                        = flag.Bool("enable-list-volumes", consts.DefaultEnableListVolumes, "boolean flag to enable ListVolumes on controller")
 	enableListSnapshots                      = flag.Bool("enable-list-snapshots", consts.DefaultEnableListSnapshots, "boolean flag to enable ListSnapshots on controller")
 	enableDiskCapacityCheck                  = flag.Bool("enable-disk-capacity-check", consts.DefaultEnableDiskCapacityCheck, "boolean flag to enable volume capacity check in CreateVolume")
-	kubeClientQPS                            = flag.Int("kube-client-qps", consts.DefaultKubeClientQPS, "QPS for the rest client. Defaults to 15.")
-	vmssCacheTTLInSeconds                    = flag.Int64("vmss-cache-ttl-seconds", consts.DefaultVMSSCacheTTLInSeconds, "vmss cache TTL in seconds (600 by default)")
+	kubeClientQPS                            = flag.Float64("kube-client-qps", consts.DefaultKubeClientQPS, "QPS for the rest client.")
+	kubeClientBurst                          = flag.Int("kube-client-burst", consts.DefaultKubeClientQPS, "Burst for the rest client.")
+	vmssCacheTTLInSeconds                    = flag.Int64("vmss-cache-ttl-seconds", consts.DefaultVMSSCacheTTLInSeconds, "vmss cache TTL in seconds")
 	enableAzureClientAttachDetachRateLimiter = flag.Bool("enable-attach-detach-rate-limiter", consts.DefaultEnableAzureClientAttachDetachRateLimiter, "Azure client rate limiter for attach/detach operations")
 	azureClientAttachDetachRateLimiterQPS    = flag.Float64("attach-detach-rate-limiter-qps", consts.DefaultAzureClientAttachDetachRateLimiterQPS, "QPS for azure client rate limiter for attach/detach operations")
 	azureClientAttachDetachRateLimiterBucket = flag.Int("attach-detach-rate-limiter-bucket", consts.DefaultAzureClientAttachDetachRateLimiterBucket, "Bucket for azure client rate limiter for attach/detach operations")
@@ -158,8 +159,9 @@ func getDriverConfig() *azdiskv1beta2.AzDiskDriverConfiguration {
 				AzureClientAttachDetachBatchInitialDelayInMillis: int(consts.DefaultAzureClientAttachDetachBatchInitialDelay.Milliseconds()),
 			},
 			ClientConfig: azdiskv1beta2.ClientConfiguration{
-				Kubeconfig:    consts.DefaultKubeconfig,
-				KubeClientQPS: consts.DefaultKubeClientQPS,
+				Kubeconfig:      consts.DefaultKubeconfig,
+				KubeClientQPS:   consts.DefaultKubeClientQPS,
+				KubeClientBurst: consts.DefaultKubeClientBurst,
 			},
 			ObjectNamespace: consts.DefaultAzureDiskCrdNamespace,
 			Endpoint:        consts.DefaultEndpoint,
@@ -225,8 +227,9 @@ func getDriverConfig() *azdiskv1beta2.AzDiskDriverConfiguration {
 				AzureClientAttachDetachBatchInitialDelayInMillis: int(azureClientAttachDetachBatchInitialDelay.Milliseconds()),
 			},
 			ClientConfig: azdiskv1beta2.ClientConfiguration{
-				Kubeconfig:    *kubeconfig,
-				KubeClientQPS: *kubeClientQPS,
+				Kubeconfig:      *kubeconfig,
+				KubeClientQPS:   float32(*kubeClientQPS),
+				KubeClientBurst: *kubeClientBurst,
 			},
 			ObjectNamespace: *driverObjectNamespace,
 			Endpoint:        *endpoint,

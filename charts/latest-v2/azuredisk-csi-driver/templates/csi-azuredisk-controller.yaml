@@ -23,6 +23,8 @@ data:
       userAgentSuffix: {{ .Values.driver.userAgentSuffix }}
       allowEmptyCloudConfig: {{ .Values.controller.allowEmptyCloudConfig }}
       vmssCacheTTLInSeconds: {{ .Values.controller.vmssCacheTTLInSeconds }}
+      kubeClientQPS: {{ .Values.controller.kubeClientQPS }}
+      kubeClientBurst: {{ .Values.controller.kubeClientBurst }}
       enableAzureClientAttachDetachRateLimiter: {{ .Values.controller.enableAzureClientAttachDetachRateLimiter }}
       azureClientAttachDetachRateLimiterQPS: {{ .Values.controller.azureClientAttachDetachRateLimiterQPS }}
       azureClientAttachDetachRateLimiterBucket: {{ .Values.controller.azureClientAttachDetachRateLimiterBucket }}
