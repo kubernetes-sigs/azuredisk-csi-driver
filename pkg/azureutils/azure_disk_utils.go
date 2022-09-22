@@ -1067,9 +1067,16 @@ type UpdateCRIFunc func(client.Object) error
 
 func UpdateCRIWithRetry(ctx context.Context, informerFactory azdiskinformers.SharedInformerFactory, cachedClient client.Client, azDiskClient azdisk.Interface, obj client.Object, updateFunc UpdateCRIFunc, maxNetRetry int, updateMode CRIUpdateMode) (client.Object, error) {
 	var err error
+
+	curNetRetry := 0
+	curRetry := 0
+
 	objName := obj.GetName()
 	ctx, w := workflow.New(ctx, workflow.WithCaller(1))
-	defer func() { w.Finish(err) }()
+	defer func() {
+		w.AddDetailToLogger(consts.RetryKey, curRetry, consts.NetRetryKey, curNetRetry)
+		w.Finish(err)
+	}()
 
 	var updatedObj client.Object
 
@@ -1170,15 +1177,14 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azdiskinformers.Sha
 		return nil
 	}
 
-	curRetry := 0
-	maxRetry := maxNetRetry
 	isRetriable := func(err error) bool {
 		if k8serrors.IsConflict(err) {
+			curRetry++
 			return true
 		}
 		if isNetError(err) {
-			defer func() { curRetry++ }()
-			return curRetry < maxRetry
+			defer func() { curNetRetry++ }()
+			return curNetRetry < maxNetRetry
 		}
 		return false
 	}
@@ -1196,7 +1202,7 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azdiskinformers.Sha
 
 	// if encountered net error from api server unavailability, exit process
 	if isNetError(err) {
-		ExitOnNetError(err, maxRetry > 0 && curRetry >= maxRetry)
+		ExitOnNetError(err, maxNetRetry > 0 && curNetRetry >= maxNetRetry)
 	}
 	return updatedObj, err
 }
