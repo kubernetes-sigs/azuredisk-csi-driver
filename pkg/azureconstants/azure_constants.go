@@ -201,7 +201,8 @@ const (
 	DefaultAllowEmptyCloudConfig                    = true
 	DefaultVMSSCacheTTLInSeconds                    = -1
 	DefaultKubeconfig                               = ""
-	DefaultKubeClientQPS                            = 15
+	DefaultKubeClientQPS                            = 15.0
+	DefaultKubeClientBurst                          = int(2 * DefaultKubeClientQPS)
 	DefaultEnableAzureClientAttachDetachRateLimiter = true
 	DefaultAzureClientAttachDetachRateLimiterQPS    = (240.0 / 180.0)                                          // Default compute QPS limit is 240 queries / 3 minutes
 	DefaultAzureClientAttachDetachRateLimiterBucket = int(DefaultAzureClientAttachDetachRateLimiterQPS * 60.0) // Allow for a burst of a minutes worth of quota
@@ -212,9 +213,10 @@ const (
 var CommandLineParams = []string{"endpoint", "metrics-address", "kubeconfig", "drivername", "volume-attach-limit", "support-zone", "get-node-info-from-labels",
 	"disable-avset-nodes", "vm-type", "enable-perf-optimization", "cloud-config-secret-name", "cloud-config-secret-namespace", "custom-user-agent", "user-agent-suffix",
 	"use-csiproxy-ga-interface", "enable-disk-online-resize", "allow-empty-cloud-config", "enable-async-attach", "enable-list-volumes", "enable-list-snapshots",
-	"enable-disk-capacity-check", "kube-client-qps", "vmss-cache-ttl-seconds", "enable-attach-detach-rate-limiter", "attach-detach-rate-limiter-qps", "attach-detach-rate-limiter-bucket",
-	"attach-detach-batch-initial-delay", "is-controller-plugin", "is-node-plugin", "driver-object-namespace", "heartbeat-frequency-in-sec", "lease-duration-in-sec",
-	"lease-renew-deadline-in-sec", "lease-retry-period-in-sec", "leader-election-namespace", "node-partition", "controller-partition"}
+	"enable-disk-capacity-check", "kube-client-qps", "kube-client-burst", "vmss-cache-ttl-seconds", "enable-attach-detach-rate-limiter", "attach-detach-rate-limiter-qps",
+	"attach-detach-rate-limiter-bucket", "attach-detach-batch-initial-delay", "is-controller-plugin", "is-node-plugin", "driver-object-namespace",
+	"heartbeat-frequency-in-sec", "lease-duration-in-sec", "lease-renew-deadline-in-sec", "lease-retry-period-in-sec", "leader-election-namespace", "node-partition",
+	"controller-partition"}
 
 type UnpublishMode int
 

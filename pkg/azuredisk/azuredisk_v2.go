@@ -170,7 +170,9 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 	}
 
 	d.kubeConfig.QPS = float32(d.config.ClientConfig.KubeClientQPS)
-	d.kubeConfig.Burst = d.config.ClientConfig.KubeClientQPS * 2
+	d.kubeConfig.Burst = d.config.ClientConfig.KubeClientBurst
+
+	klog.Infof("KubeClient limiter set to %f QPS with burst size of %d", d.kubeConfig.QPS, d.kubeConfig.Burst)
 
 	d.azdiskClient, err = azureutils.GetAzDiskClient(d.kubeConfig)
 	if err != nil || d.azdiskClient == nil {
