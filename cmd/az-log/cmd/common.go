@@ -172,3 +172,17 @@ func GetDriverInstallationType() string {
 	}
 	return "csi-azuredisk2"
 }
+
+func GetLeaderElectionNamespaceAndLeaseName() (string, string) {
+	leaderElectionNamespace := viper.GetString("leaderElectionNamespace")
+	leaseName := viper.GetString("leaseName")
+
+	if leaderElectionNamespace == "" {
+		leaderElectionNamespace = consts.ReleaseNamespace
+	}
+
+	if leaseName == "" {
+		leaseName = consts.DefaultControllerPartitionName
+	}
+	return leaderElectionNamespace, leaseName
+}
