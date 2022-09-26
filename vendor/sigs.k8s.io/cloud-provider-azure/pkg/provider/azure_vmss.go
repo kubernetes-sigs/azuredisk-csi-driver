@@ -74,7 +74,7 @@ type ScaleSet struct {
 	// this also allows for clusters with both VM and VMSS nodes.
 	availabilitySet VMSet
 
-	// flexScaleSet is required for self hosted K8s cluster (for exmaple, capz)
+	// flexScaleSet is required for self hosted K8s cluster (for example, capz)
 	// It is also used when there are vmssflex node and other types of node in
 	// the same cluster.
 	flexScaleSet VMSet
