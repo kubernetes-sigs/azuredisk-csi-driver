@@ -114,7 +114,7 @@ type ExtendedLocation struct {
 // getNodeVMSet gets the VMSet interface based on config.VMType and the real virtual machine type.
 func (c *controllerCommon) getNodeVMSet(nodeName types.NodeName, crt azcache.AzureCacheReadType) (VMSet, error) {
 	// 1. vmType is standard, return cloud.VMSet directly.
-	if c.cloud.VMType == consts.VMTypeStandard || c.cloud.VMType == consts.VMTypeVmssFlex {
+	if c.cloud.VMType == consts.VMTypeStandard {
 		return c.cloud.VMSet, nil
 	}
 

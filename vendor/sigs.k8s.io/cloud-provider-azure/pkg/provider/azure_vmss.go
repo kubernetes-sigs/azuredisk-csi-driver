@@ -74,11 +74,19 @@ type ScaleSet struct {
 	// this also allows for clusters with both VM and VMSS nodes.
 	availabilitySet VMSet
 
+	// flexScaleSet is required for self hosted K8s cluster (for exmaple, capz)
+	// It is also used when there are vmssflex node and other types of node in
+	// the same cluster.
 	flexScaleSet VMSet
 
 	vmssCache   *azcache.TimedCache
 	vmssVMCache *sync.Map // [resourcegroup/vmssname]*azcache.TimedCache
 
+	// nonVmssUniformNodesCache is used to store node names from non uniform vm.
+	// Currently, the nodes can from avset or vmss flex or individual vm.
+	// This cache contains an entry called nonVmssUniformNodesEntry.
+	// nonVmssUniformNodesEntry contains avSetVMNodeNames list, clusterNodeNames list
+	// and current clusterNodeNames.
 	nonVmssUniformNodesCache *azcache.TimedCache
 
 	// lockMap in cache refresh
@@ -109,11 +117,9 @@ func newScaleSet(az *Cloud) (VMSet, error) {
 		lockMap:         newLockMap(),
 	}
 
-	if !ss.DisableAvailabilitySetNodes {
-		ss.nonVmssUniformNodesCache, err = ss.newNonVmssUniformNodesCache()
-		if err != nil {
-			return nil, err
-		}
+	ss.nonVmssUniformNodesCache, err = ss.newNonVmssUniformNodesCache()
+	if err != nil {
+		return nil, err
 	}
 
 	ss.vmssCache, err = ss.newVMSSCache()
@@ -1473,7 +1479,7 @@ func (ss *ScaleSet) ensureHostsInPool(service *v1.Service, nodes []*v1.Node, bac
 // EnsureHostsInPool ensures the given Node's primary IP configurations are
 // participating in the specified LoadBalancer Backend Pool.
 func (ss *ScaleSet) EnsureHostsInPool(service *v1.Service, nodes []*v1.Node, backendPoolID string, vmSetNameOfLB string) error {
-	if ss.DisableAvailabilitySetNodes {
+	if ss.DisableAvailabilitySetNodes && !ss.EnableVmssFlexNodes {
 		return ss.ensureHostsInPool(service, nodes, backendPoolID, vmSetNameOfLB)
 	}
 	vmssUniformNodes := make([]*v1.Node, 0)
