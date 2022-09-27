@@ -3,12 +3,6 @@
 ## About
 az-log is a command line tool to fetch and parse appropriate logs from the driver plugins to track the operation workflow end to end and bring better insight of driver behaviors.
 
-## Installation
-```console
-$ cd $GOPATH/src/sigs.k8s.io/azuredisk-csi-driver
-$ make install-az-log
-```
-
 ## Configuration
 Create an az-log config file in one of the three paths below:
 ```console
@@ -28,7 +22,16 @@ kubeconfig: "" # default is "$HOME/.kube/config"
 driverNamespace: "" # default is "azure-disk-csi"
 releaseNamesapce: "" # default is "kube-system"
 v2InstalledSideBySide: "" # default is "false"
+leaderElectionNamespace: "" # default is "kube-system"
+leaseName: "" # default is "csi-azuredisk-controller"
 ```
+
+## Installation
+```console
+$ cd $GOPATH/src/sigs.k8s.io/azuredisk-csi-driver
+$ make install-az-log
+```
+
 ## Features
 
 ### Source Options

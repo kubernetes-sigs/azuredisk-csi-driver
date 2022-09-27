@@ -26,8 +26,9 @@ import (
 	"github.com/spf13/cobra"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes"
-	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
 // controllerCmd represents the controller command
@@ -48,6 +49,7 @@ var controllerCmd = &cobra.Command{
 			if !isFollow {
 				break
 			} else {
+				sinceTime = time.Now().Format(time.RFC3339)
 				time.Sleep(20 * time.Second)
 				pod = GetLeaderControllerPod(clientsetK8s)
 				if pod.Name == currPodName {
@@ -63,26 +65,31 @@ func init() {
 }
 
 func GetLeaderControllerPod(clientsetK8s kubernetes.Interface) *v1.Pod {
-	//Get node that leader controller pod is running in
-	lease, err := clientsetK8s.CoordinationV1().Leases(consts.DefaultAzureDiskCrdNamespace).Get(context.Background(), "default", metav1.GetOptions{})
+	// get LeaderElectionNamespace and PartitionName
+	leaderElectionNamespace, leaseName := GetLeaderElectionNamespaceAndLeaseName()
+
+	//get node that leader controller pod is running on
+	lease, err := clientsetK8s.CoordinationV1().Leases(leaderElectionNamespace).Get(context.Background(), leaseName, metav1.GetOptions{})
 	if err != nil {
 		panic(err.Error())
 	}
 	holder := *lease.Spec.HolderIdentity
 	node := strings.Split(holder, "_")[0]
 
-	// Get pod name of the leader controller
+	// get pod name of the leader controller
+	fieldSelector := fields.SelectorFromSet(map[string]string{"spec.nodeName": node})
+	labelSelector := metav1.LabelSelector{MatchLabels: map[string]string{"app": GetDriverInstallationType() + "-controller"}}
 	pods, err := clientsetK8s.CoreV1().Pods(GetReleaseNamespace()).List(context.Background(), metav1.ListOptions{
-		FieldSelector: "spec.nodeName=" + node,
-		LabelSelector: "app=" + GetDriverInstallationType() + "-controller",
+		FieldSelector: fieldSelector.String(),
+		LabelSelector: labels.Set(labelSelector.MatchLabels).String(),
 	})
 	if err != nil {
 		panic(err.Error())
 	}
+
 	if len(pods.Items) != 1 {
 		fmt.Println("zero or more than one controller plugins were found")
 		os.Exit(0)
 	}
-
 	return &pods.Items[0]
 }
