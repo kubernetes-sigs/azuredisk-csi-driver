@@ -25,6 +25,7 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	v1 "k8s.io/api/core/v1"
@@ -665,6 +666,7 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 	tests := []struct {
 		description             string
 		existingAzVolAttachment []azdiskv1beta2.AzVolumeAttachment
+		maxMountReplicaCount    int
 		diskURI                 string
 		nodeID                  string
 		volumeContext           map[string]string
@@ -672,7 +674,7 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 		registerNode            bool
 		definePrependReactor    bool
 		expectedError           error
-		verifyFunc              func()
+		verifyFunc              func(t *testing.T)
 	}{
 		{
 			description:             "[Success] Create an AzVolumeAttachment CRI for valid diskURI and nodeID",
@@ -819,6 +821,7 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 						State: azdiskv1beta2.Attached},
 				},
 			},
+			maxMountReplicaCount: 1,
 			diskURI:              testDiskURI0,
 			nodeID:               testNodeName2,
 			volumeContext:        make(map[string]string),
@@ -826,15 +829,10 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 			registerNode:         true,
 			definePrependReactor: true,
 			expectedError:        nil,
-			verifyFunc: func() {
+			verifyFunc: func(t *testing.T) {
 				azVolumeAttachments, err := azureutils.GetAzVolumeAttachmentsForVolume(context.Background(), provisioner.azCachedReader, testDiskName0, azureutils.ReplicaOnly)
 				assert.NoError(t, err)
-				assert.Len(t, azVolumeAttachments, 2)
-				detachMarked := true
-				for _, azVolumeAttachment := range azVolumeAttachments {
-					detachMarked = azureutils.MapContains(azVolumeAttachment.Status.Annotations, consts.VolumeDetachRequestAnnotation)
-				}
-				assert.True(t, detachMarked)
+				assert.Len(t, azVolumeAttachments, 1)
 			},
 		},
 		{
@@ -872,15 +870,10 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 			registerNode:         true,
 			definePrependReactor: true,
 			expectedError:        nil,
-			verifyFunc: func() {
+			verifyFunc: func(t *testing.T) {
 				azVolumeAttachments, err := azureutils.GetAzVolumeAttachmentsForVolume(context.Background(), provisioner.azCachedReader, testDiskName1, azureutils.ReplicaOnly)
 				assert.NoError(t, err)
-				assert.Len(t, azVolumeAttachments, 2)
-				detachMarked := true
-				for _, azVolumeAttachment := range azVolumeAttachments {
-					detachMarked = azureutils.MapContains(azVolumeAttachment.Status.Annotations, consts.VolumeDetachRequestAnnotation)
-				}
-				assert.True(t, detachMarked)
+				assert.Len(t, azVolumeAttachments, 0)
 			},
 		},
 		{
@@ -938,15 +931,7 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 				if tt.registerVolume {
 					diskName, err := azureutils.GetDiskName(tt.diskURI)
 					if err == nil {
-						azExistingList = append(azExistingList, &azdiskv1beta2.AzVolume{
-							ObjectMeta: metav1.ObjectMeta{
-								Name:      diskName,
-								Namespace: provisioner.config.ObjectNamespace,
-							},
-							Spec: azdiskv1beta2.AzVolumeSpec{
-								MaxMountReplicaCount: 1,
-							},
-						})
+						azExistingList = append(azExistingList, createAzVolume(provisioner.config.ObjectNamespace, diskName, tt.maxMountReplicaCount))
 					}
 				}
 				if tt.registerNode {
@@ -1028,6 +1013,10 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 			if outputErr == nil {
 				assert.NotNil(t, output)
 			}
+
+			if tt.verifyFunc != nil {
+				tt.verifyFunc(t)
+			}
 		})
 	}
 }
@@ -1040,11 +1029,13 @@ func TestCrdProvisionerWaitForAttach(t *testing.T) {
 	tests := []struct {
 		description             string
 		existingAzVolAttachment []azdiskv1beta2.AzVolumeAttachment
+		maxMountReplicaCount    int
 		diskURI                 string
 		nodeID                  string
 		volumeContext           map[string]string
 		definePrependReactor    bool
 		expectedError           error
+		verifyFunc              func(t *testing.T)
 	}{
 		{
 			description: "[Success] Overwrite previous error state in an AzVolumeAttachment CRI",
@@ -1079,27 +1070,194 @@ func TestCrdProvisionerWaitForAttach(t *testing.T) {
 			definePrependReactor: true,
 			expectedError:        nil,
 		},
+		{
+			description: "[Success] Detach replica AzVolumeAttachment if volume's maxShares have been saturated.",
+			existingAzVolAttachment: []azdiskv1beta2.AzVolumeAttachment{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: azureutils.GetAzVolumeAttachmentName(testDiskName0, testNodeName2),
+						Labels: map[string]string{
+							consts.NodeNameLabel:   testNodeName2,
+							consts.VolumeNameLabel: testDiskName0,
+						},
+						Namespace: provisioner.config.ObjectNamespace,
+					},
+					Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
+						VolumeName:    testDiskName0,
+						VolumeID:      testDiskURI0,
+						NodeName:      testNodeName2,
+						VolumeContext: make(map[string]string),
+						RequestedRole: azdiskv1beta2.PrimaryRole,
+					},
+					Status: azdiskv1beta2.AzVolumeAttachmentStatus{
+						Error: &azdiskv1beta2.AzError{
+							Message: "Test error message here",
+						},
+						State: azdiskv1beta2.AttachmentFailed,
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: azureutils.GetAzVolumeAttachmentName(testDiskName0, testNodeName0),
+						Labels: map[string]string{
+							consts.NodeNameLabel:   testNodeName0,
+							consts.VolumeNameLabel: testDiskName0,
+							consts.RoleLabel:       string(azdiskv1beta2.ReplicaRole),
+						},
+						Namespace: provisioner.config.ObjectNamespace,
+					},
+					Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
+						VolumeName:    testDiskName0,
+						VolumeID:      testDiskURI0,
+						NodeName:      testNodeName0,
+						VolumeContext: make(map[string]string),
+						RequestedRole: azdiskv1beta2.ReplicaRole,
+					},
+					Status: azdiskv1beta2.AzVolumeAttachmentStatus{
+						Detail: &azdiskv1beta2.AzVolumeAttachmentStatusDetail{
+							Role:           azdiskv1beta2.ReplicaRole,
+							PublishContext: map[string]string{},
+						},
+						State: azdiskv1beta2.Attached},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: azureutils.GetAzVolumeAttachmentName(testDiskName0, testNodeName1),
+						Labels: map[string]string{
+							consts.NodeNameLabel:   testNodeName1,
+							consts.VolumeNameLabel: testDiskName0,
+							consts.RoleLabel:       string(azdiskv1beta2.ReplicaRole),
+						},
+						Namespace: provisioner.config.ObjectNamespace,
+					},
+					Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
+						VolumeName:    testDiskName0,
+						VolumeID:      testDiskURI0,
+						NodeName:      testNodeName1,
+						VolumeContext: make(map[string]string),
+						RequestedRole: azdiskv1beta2.ReplicaRole,
+					},
+					Status: azdiskv1beta2.AzVolumeAttachmentStatus{
+						Detail: &azdiskv1beta2.AzVolumeAttachmentStatusDetail{
+							Role:           azdiskv1beta2.ReplicaRole,
+							PublishContext: map[string]string{},
+						},
+						State: azdiskv1beta2.Attached},
+				},
+			},
+			maxMountReplicaCount: 1,
+			diskURI:              testDiskURI0,
+			nodeID:               testNodeName2,
+			volumeContext:        make(map[string]string),
+			definePrependReactor: true,
+			expectedError:        nil,
+			verifyFunc: func(t *testing.T) {
+				azVolumeAttachments, err := azureutils.GetAzVolumeAttachmentsForVolume(context.Background(), provisioner.azCachedReader, testDiskName0, azureutils.ReplicaOnly)
+				assert.NoError(t, err)
+				assert.Len(t, azVolumeAttachments, 1)
+			},
+		},
+		{
+			description: "[Success] Detach replica AzVolumeAttachment if node's attach limit has been reached.",
+			existingAzVolAttachment: []azdiskv1beta2.AzVolumeAttachment{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: azureutils.GetAzVolumeAttachmentName(testDiskName0, testNodeName0),
+						Labels: map[string]string{
+							consts.NodeNameLabel:   testNodeName0,
+							consts.VolumeNameLabel: testDiskName0,
+						},
+						Namespace: provisioner.config.ObjectNamespace,
+					},
+					Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
+						VolumeName:    testDiskName0,
+						VolumeID:      testDiskURI0,
+						NodeName:      testNodeName0,
+						VolumeContext: make(map[string]string),
+						RequestedRole: azdiskv1beta2.PrimaryRole,
+					},
+					Status: azdiskv1beta2.AzVolumeAttachmentStatus{
+						Error: &azdiskv1beta2.AzError{
+							Message: "Test error message here",
+						},
+						State: azdiskv1beta2.AttachmentFailed,
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: azureutils.GetAzVolumeAttachmentName(testDiskName1, testNodeName0),
+						Labels: map[string]string{
+							consts.NodeNameLabel:   testNodeName0,
+							consts.VolumeNameLabel: testDiskName1,
+							consts.RoleLabel:       string(azdiskv1beta2.ReplicaRole),
+						},
+						Namespace: provisioner.config.ObjectNamespace,
+					},
+					Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
+						VolumeName:    testDiskName1,
+						VolumeID:      testDiskURI1,
+						NodeName:      testNodeName0,
+						VolumeContext: make(map[string]string),
+						RequestedRole: azdiskv1beta2.ReplicaRole,
+					},
+					Status: azdiskv1beta2.AzVolumeAttachmentStatus{
+						Detail: &azdiskv1beta2.AzVolumeAttachmentStatusDetail{
+							Role:           azdiskv1beta2.ReplicaRole,
+							PublishContext: map[string]string{},
+						},
+						State: azdiskv1beta2.Attached},
+				},
+			},
+			diskURI:              testDiskURI0,
+			nodeID:               testNodeName0,
+			volumeContext:        make(map[string]string),
+			definePrependReactor: true,
+			expectedError:        nil,
+			verifyFunc: func(t *testing.T) {
+				azVolumeAttachments, err := azureutils.GetAzVolumeAttachmentsForVolume(context.Background(), provisioner.azCachedReader, testDiskName0, azureutils.ReplicaOnly)
+				assert.NoError(t, err)
+				assert.Len(t, azVolumeAttachments, 0)
+			},
+		},
 	}
 
 	for _, test := range tests {
 		tt := test
 		t.Run(test.description, func(t *testing.T) {
 			existingWatcher := provisioner.conditionWatcher
-			existingClient := provisioner.azDiskClient
+			existingAzClient := provisioner.azDiskClient
+			existingKubeClent := provisioner.kubeClient
 			existingAzCacheReader := provisioner.azCachedReader
 			defer func() { provisioner.azCachedReader = existingAzCacheReader }()
 			defer func() { provisioner.conditionWatcher = existingWatcher }()
-			defer func() { provisioner.azDiskClient = existingClient }()
+			defer func() { provisioner.azDiskClient = existingAzClient }()
+			defer func() { provisioner.kubeClient = existingKubeClent }()
+
+			var existingAzList []runtime.Object
+			var existingKubeList []runtime.Object
 
 			if tt.existingAzVolAttachment != nil {
-				existingList := make([]runtime.Object, len(tt.existingAzVolAttachment))
-				for itr, azVA := range tt.existingAzVolAttachment {
+				for _, azVA := range tt.existingAzVolAttachment {
 					azVA := azVA
-					existingList[itr] = &azVA
+					existingAzList = append(existingAzList, &azVA)
 				}
-				provisioner.azDiskClient = azdiskfakes.NewSimpleClientset(existingList...)
 			}
 
+			diskName, err := azureutils.GetDiskName(tt.diskURI)
+			require.Nil(t, err)
+			azV := createAzVolume(provisioner.config.ObjectNamespace, diskName, tt.maxMountReplicaCount)
+			existingAzList = append(existingAzList, azV)
+
+			node := &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   tt.nodeID,
+					Labels: map[string]string{v1.LabelInstanceTypeStable: "BASIC_A0"},
+				}}
+
+			existingKubeList = append(existingKubeList, node)
+
+			provisioner.azDiskClient = azdiskfakes.NewSimpleClientset(existingAzList...)
+			provisioner.kubeClient = fakev1.NewSimpleClientset(existingKubeList...)
 			UpdateTestCrdProvisionerWithNewClient(provisioner, provisioner.azDiskClient, provisioner.kubeClient, provisioner.crdClient)
 
 			if tt.definePrependReactor {
@@ -1112,10 +1270,14 @@ func TestCrdProvisionerWaitForAttach(t *testing.T) {
 					"azvolumeattachments",
 					func(action testingClient.Action) (bool, runtime.Object, error) {
 						objCreated := action.(testingClient.UpdateAction).GetObject().(*azdiskv1beta2.AzVolumeAttachment)
-						objCreated.Status.Detail = &successAzVADetail
-						objCreated.Status.State = azdiskv1beta2.Attached
 
-						err := tracker.Update(action.GetResource(), objCreated, action.GetNamespace())
+						if azureutils.MapContains(objCreated.Status.Annotations, consts.VolumeDetachRequestAnnotation) {
+							err = tracker.Delete(action.GetResource(), objCreated.Namespace, objCreated.Name)
+						} else {
+							objCreated.Status.Detail = &successAzVADetail
+							objCreated.Status.State = azdiskv1beta2.Attached
+							err = tracker.Update(action.GetResource(), objCreated, action.GetNamespace())
+						}
 
 						if err != nil {
 							return true, nil, err
@@ -1132,6 +1294,10 @@ func TestCrdProvisionerWaitForAttach(t *testing.T) {
 			assert.Equal(t, tt.expectedError, outputErr)
 			if outputErr == nil {
 				assert.NotNil(t, output)
+			}
+
+			if tt.verifyFunc != nil {
+				tt.verifyFunc(t)
 			}
 		})
 	}
@@ -1760,5 +1926,17 @@ func TestIsAzVolumeSpecSameAsRequestParams(t *testing.T) {
 
 			assert.Equal(t, tt.expectedOutput, output)
 		})
+	}
+}
+
+func createAzVolume(namespace, diskName string, maxMountReplicaCount int) *azdiskv1beta2.AzVolume {
+	return &azdiskv1beta2.AzVolume{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      diskName,
+			Namespace: namespace,
+		},
+		Spec: azdiskv1beta2.AzVolumeSpec{
+			MaxMountReplicaCount: maxMountReplicaCount,
+		},
 	}
 }

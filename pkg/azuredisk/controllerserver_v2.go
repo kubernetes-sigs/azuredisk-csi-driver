@@ -263,7 +263,7 @@ func (d *DriverV2) ControllerPublishVolume(ctx context.Context, req *csi.Control
 		attachContext, w := workflow.New(attachContext)
 		defer func() { w.Finish(err) }()
 
-		if _, err = d.crdProvisioner.WaitForAttach(attachContext, diskURI, nodeID); err == nil {
+		if _, err = d.crdProvisioner.WaitForAttachComplete(attachContext, diskURI, nodeID); err == nil {
 			isAttachSuccessful = true
 		}
 		attachMc.ObserveOperationWithResult(isAttachSuccessful, consts.VolumeID, diskURI, consts.Node, string(nodeName))
