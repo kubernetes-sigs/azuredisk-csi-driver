@@ -40,11 +40,11 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	api "k8s.io/kubernetes/pkg/apis/core"
 	volumeUtil "k8s.io/kubernetes/pkg/volume/util"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	azclients "sigs.k8s.io/cloud-provider-azure/pkg/azureclients"
+	azureconstants "sigs.k8s.io/cloud-provider-azure/pkg/consts"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
@@ -504,7 +504,7 @@ func NormalizeStorageAccountType(storageAccountType, cloud string, disableAzureS
 
 	sku := compute.DiskStorageAccountTypes(storageAccountType)
 	supportedSkuNames := compute.PossibleDiskStorageAccountTypesValues()
-	supportedSkuNames = append(supportedSkuNames, consts.PremiumV2LRS)
+	supportedSkuNames = append(supportedSkuNames, azureconstants.PremiumV2LRS)
 	if IsAzureStackCloud(cloud, disableAzureStackCloud) {
 		supportedSkuNames = []compute.DiskStorageAccountTypes{compute.DiskStorageAccountTypesStandardLRS, compute.DiskStorageAccountTypesPremiumLRS}
 	}
@@ -708,7 +708,7 @@ func InsertDiskProperties(disk *compute.Disk, publishConext map[string]string) {
 }
 
 func SleepIfThrottled(err error, sleepSec int) {
-	if strings.Contains(strings.ToLower(err.Error()), strings.ToLower(azureconstants.TooManyRequests)) || strings.Contains(strings.ToLower(err.Error()), azureconstants.ClientThrottled) {
+	if strings.Contains(strings.ToLower(err.Error()), strings.ToLower(consts.TooManyRequests)) || strings.Contains(strings.ToLower(err.Error()), consts.ClientThrottled) {
 		klog.Warningf("sleep %d more seconds, waiting for throttling complete", sleepSec)
 		time.Sleep(time.Duration(sleepSec) * time.Second)
 	}
