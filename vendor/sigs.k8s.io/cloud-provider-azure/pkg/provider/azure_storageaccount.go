@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-12-01/compute"
 	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2021-08-01/network"
 	"github.com/Azure/azure-sdk-for-go/services/privatedns/mgmt/2018-09-01/privatedns"
 	"github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2021-09-01/storage"
@@ -318,7 +318,7 @@ func (az *Cloud) EnsureStorageAccount(ctx context.Context, accountOptions *Accou
 
 		if accountOptions.DisableFileServiceDeleteRetentionPolicy {
 			klog.V(2).Infof("disable DisableFileServiceDeleteRetentionPolicy on account(%s), subscroption(%s), resource group(%s)", accountName, subsID, resourceGroup)
-			prop, err := az.FileClient.WithSubscriptionID(subsID).GetServiceProperties(resourceGroup, accountName)
+			prop, err := az.FileClient.WithSubscriptionID(subsID).GetServiceProperties(ctx, resourceGroup, accountName)
 			if err != nil {
 				return "", "", err
 			}
@@ -326,7 +326,7 @@ func (az *Cloud) EnsureStorageAccount(ctx context.Context, accountOptions *Accou
 				return "", "", fmt.Errorf("FileServicePropertiesProperties of account(%s), subscroption(%s), resource group(%s) is nil", accountName, subsID, resourceGroup)
 			}
 			prop.FileServicePropertiesProperties.ShareDeleteRetentionPolicy = &storage.DeleteRetentionPolicy{Enabled: to.BoolPtr(false)}
-			if _, err := az.FileClient.WithSubscriptionID(subsID).SetServiceProperties(resourceGroup, accountName, prop); err != nil {
+			if _, err := az.FileClient.WithSubscriptionID(subsID).SetServiceProperties(ctx, resourceGroup, accountName, prop); err != nil {
 				return "", "", err
 			}
 		}
