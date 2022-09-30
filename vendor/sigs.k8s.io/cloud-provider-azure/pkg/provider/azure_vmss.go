@@ -160,10 +160,9 @@ func (ss *ScaleSet) getVmssVMByNodeIdentity(node *nodeIdentity, crt azcache.Azur
 	}
 
 	getter := func(nodeName string, crt azcache.AzureCacheReadType) (*virtualmachine.VirtualMachine, bool, error) {
-		var found bool
 		cached, err := cache.Get(cacheKey, crt)
 		if err != nil {
-			return nil, found, err
+			return nil, false, err
 		}
 
 		virtualMachines := cached.(*sync.Map)
@@ -173,11 +172,10 @@ func (ss *ScaleSet) getVmssVMByNodeIdentity(node *nodeIdentity, crt azcache.Azur
 				klog.Warningf("VM is nil on Node %q, VM is in deleting state", nodeName)
 				return nil, true, nil
 			}
-			found = true
-			return virtualmachine.FromVirtualMachineScaleSetVM(result.virtualMachine, virtualmachine.ByVMSS(result.vmssName)), found, nil
+			return virtualmachine.FromVirtualMachineScaleSetVM(result.virtualMachine, virtualmachine.ByVMSS(result.vmssName)), true, nil
 		}
 
-		return nil, found, nil
+		return nil, false, nil
 	}
 
 	// FIXME(ccc): check only if vmss is uniform.
@@ -192,15 +190,6 @@ func (ss *ScaleSet) getVmssVMByNodeIdentity(node *nodeIdentity, crt azcache.Azur
 	}
 
 	if !found {
-		// lock and try find nodeName from cache again, refresh cache if still not found
-		ss.lockMap.LockEntry(cacheKey)
-		defer ss.lockMap.UnlockEntry(cacheKey)
-		vm, found, err = getter(node.nodeName, crt)
-		if err == nil && found && vm != nil {
-			klog.V(2).Infof("found VMSS VM with nodeName %s after retry", node.nodeName)
-			return vm, nil
-		}
-
 		klog.V(2).Infof("Couldn't find VMSS VM with nodeName %s, refreshing the cache(vmss: %s, rg: %s)", node.nodeName, node.vmssName, node.resourceGroup)
 		vm, found, err = getter(node.nodeName, azcache.CacheReadTypeForceRefresh)
 		if err != nil {
