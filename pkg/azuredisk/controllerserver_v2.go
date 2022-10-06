@@ -299,17 +299,7 @@ func (d *DriverV2) ControllerUnpublishVolume(ctx context.Context, req *csi.Contr
 		mc.ObserveOperationWithResult(isOperationSucceeded, consts.VolumeID, diskURI, consts.Node, string(nodeName))
 	}()
 
-	// attachMc := metrics.NewMetricContext(d.cloudProvisioner.GetMetricPrefix(), "detach_volume_latency", d.cloudProvisioner.GetCloud().ResourceGroup, d.cloudProvisioner.GetCloud().SubscriptionID, d.Name)
-	// isDetachSuccessful := false
-
 	err := d.crdProvisioner.UnpublishVolume(ctx, diskURI, nodeID, req.GetSecrets(), consts.DemoteOrDetach)
-
-	// go func() {
-	// 	if err := d.crdProvisioner.WaitForDetach(ctx, diskURI, nodeID); err == nil {
-	// 		isDetachSuccessful = true
-	// 		mc.ObserveOperationWithResult(isDetachSuccessful, consts.VolumeID, diskURI, consts.Node, string(nodeName))
-	// 	}
-	// }
 
 	if err != nil {
 		return nil, err
