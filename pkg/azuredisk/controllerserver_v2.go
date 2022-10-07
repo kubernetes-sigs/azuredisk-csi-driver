@@ -34,6 +34,7 @@ import (
 
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/workflow"
 	"sigs.k8s.io/cloud-provider-azure/pkg/metrics"
 
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
@@ -246,11 +247,27 @@ func (d *DriverV2) ControllerPublishVolume(ctx context.Context, req *csi.Control
 
 	volumeCapability := generateAzVolumeCapability(volCap)
 
+	attachMc := metrics.NewMetricContext(d.cloudProvisioner.GetMetricPrefix(), "attach_volume_latency", d.cloudProvisioner.GetCloud().ResourceGroup, d.cloudProvisioner.GetCloud().SubscriptionID, d.Name)
+	isAttachSuccessful := false
+
 	response, err := d.crdProvisioner.PublishVolume(ctx, diskURI, nodeID, &volumeCapability, req.GetReadonly(), req.GetSecrets(), req.GetVolumeContext())
 
 	if err != nil {
 		return nil, err
 	}
+
+	// Go Routine to calculate the attach_volume_latency
+	go func() {
+		var err error
+		attachContext := context.Background()
+		attachContext, w := workflow.New(attachContext)
+		defer func() { w.Finish(err) }()
+
+		if _, err = d.crdProvisioner.WaitForAttach(attachContext, diskURI, nodeID); err == nil {
+			isAttachSuccessful = true
+		}
+		attachMc.ObserveOperationWithResult(isAttachSuccessful, consts.VolumeID, diskURI, consts.Node, string(nodeName))
+	}()
 
 	if response == nil {
 		return nil, status.Error(codes.Unknown, "Error publishing volume")
