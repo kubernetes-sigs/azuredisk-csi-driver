@@ -24,10 +24,16 @@ import (
 	"github.com/onsi/ginkgo"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
 	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
+	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
+	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 )
 
 func CountAllVolumeAttachments(cs clientset.Interface) int {
@@ -83,4 +89,38 @@ func WaitForVolumeDetach(c clientset.Interface, pvName string, poll, pollTimeout
 		}
 		return notFound, nil
 	}, ctx.Done())
+}
+
+func WaitForReplicaAttachmentsToAttach(testTimeout int, tickerDuration time.Duration, desiredNumberOfReplicaAtts int, cs *azdisk.Clientset) (numberOfAttachedReplicaAtts int) {
+	ticker := time.NewTicker(tickerDuration)
+	tickerCount := 0
+	timeout := time.After(time.Duration(testTimeout) * time.Minute)
+
+	roleReq, err := azureutils.CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(azdiskv1beta2.ReplicaRole))
+	framework.ExpectNoError(err)
+	labelSelector := labels.NewSelector().Add(*roleReq)
+
+	for {
+		select {
+		case <-timeout:
+			return
+		case <-ticker.C:
+			tickerCount++
+			replicaAtts, err := cs.DiskV1beta2().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
+			if err != nil {
+				e2elog.Failf("Failed to get replica attachments: %v.", err)
+			}
+
+			numberOfAttachedReplicaAtts = 0
+			for _, replicaAtt := range replicaAtts.Items {
+				if replicaAtt.Status.State == azdiskv1beta2.Attached {
+					numberOfAttachedReplicaAtts++
+				}
+			}
+			e2elog.Logf("%d min: %d replica attachments are attached", tickerCount, numberOfAttachedReplicaAtts)
+			if numberOfAttachedReplicaAtts >= desiredNumberOfReplicaAtts {
+				return
+			}
+		}
+	}
 }

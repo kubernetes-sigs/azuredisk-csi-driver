@@ -73,8 +73,8 @@ func (t *PreProvisionedDanglingAttachVolumeTest) Run(client clientset.Interface,
 	framework.ExpectNoError(err)
 
 	// Make node#0 unschedulable to ensure that pods are scheduled on a different node
-	tpod.SetNodeUnschedulable(node0Name, true)        // kubeclt cordon node
-	defer tpod.SetNodeUnschedulable(node0Name, false) // defer kubeclt uncordon node
+	nodeutil.SetNodeUnschedulable(client, node0Name, true)        // kubeclt cordon node
+	defer nodeutil.SetNodeUnschedulable(client, node0Name, false) // defer kubeclt uncordon node
 
 	// Create a pod with the pvc mount for the disk currently attached to node#0 and wait for success
 	ginkgo.By("deploying the pod")

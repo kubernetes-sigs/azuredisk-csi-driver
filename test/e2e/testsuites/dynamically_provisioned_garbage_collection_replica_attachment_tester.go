@@ -51,9 +51,6 @@ func (t *DynamicallyProvisionedScaleReplicasOnDetach) Run(client clientset.Inter
 	nodes := nodeutil.ListAgentNodeNames(client, t.StatefulSetPod.IsWindows)
 	skipper.SkipUnlessAtLeast(len(nodes), 3, "Need at least 3 agent nodes to verify the test case.")
 
-	testPod := resources.TestPod{
-		Client: client,
-	}
 	csiNode, err := client.StorageV1().CSINodes().Get(context.Background(), nodes[0], metav1.GetOptions{})
 	framework.ExpectNoError(err, "Expected to successfully get the CSI node using the API.")
 
@@ -65,10 +62,10 @@ func (t *DynamicallyProvisionedScaleReplicasOnDetach) Run(client clientset.Inter
 	for _, node := range nodes[2:] {
 		node := node
 		framework.Logf("Cordoning %s.", node)
-		testPod.SetNodeUnschedulable(node, true)
+		nodeutil.SetNodeUnschedulable(client, node, true)
 		defer func() {
 			framework.Logf("Uncordoning %s", node)
-			testPod.SetNodeUnschedulable(node, false)
+			nodeutil.SetNodeUnschedulable(client, node, false)
 		}()
 	}
 
@@ -101,7 +98,7 @@ func (t *DynamicallyProvisionedScaleReplicasOnDetach) Run(client clientset.Inter
 
 	ginkgo.By("Creating a pod with volume.")
 	// Uncordon a node for the primary attachment
-	testPod.SetNodeUnschedulable(nodes[2], false)
+	nodeutil.SetNodeUnschedulable(client, nodes[2], false)
 	framework.Logf("Uncordoning %s.", nodes[2])
 	tpod, cleanupFuncs := t.NewPod.SetupWithDynamicVolumes(client, namespace, t.CSIDriver, t.StorageClassParameters, schedulerName)
 	for _, cleanupFunc := range cleanupFuncs {

@@ -225,3 +225,12 @@ func ListAzDriverNodeNames(azDiskClient azdisk.Interface) []string {
 	}
 	return nodeNames
 }
+
+func SetNodeUnschedulable(client clientset.Interface, nodeName string, unschedulable bool) {
+	var err error
+	updateFunc := func(nodeObj *v1.Node) {
+		nodeObj.Spec.Unschedulable = unschedulable
+	}
+	_, err = UpdateNodeWithRetry(client, nodeName, updateFunc)
+	framework.ExpectNoError(err)
+}

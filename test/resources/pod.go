@@ -31,7 +31,6 @@ import (
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
-	nodeutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/node"
 	podutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/pod"
 )
 
@@ -212,15 +211,6 @@ func (t *TestPod) SetLabel(labels map[string]string) {
 
 func (t *TestPod) SetNodeToleration(nodeTolerations ...v1.Toleration) {
 	t.Pod.Spec.Tolerations = nodeTolerations
-}
-
-func (t *TestPod) SetNodeUnschedulable(nodeName string, unschedulable bool) {
-	var err error
-	updateFunc := func(nodeObj *v1.Node) {
-		nodeObj.Spec.Unschedulable = unschedulable
-	}
-	_, err = nodeutil.UpdateNodeWithRetry(t.Client, nodeName, updateFunc)
-	framework.ExpectNoError(err)
 }
 
 func (t *TestPod) Cleanup() {

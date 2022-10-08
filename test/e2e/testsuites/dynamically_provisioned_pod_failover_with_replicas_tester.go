@@ -133,13 +133,9 @@ func (t *PodFailoverWithReplicas) Run(client clientset.Interface, namespace *v1.
 
 	ginkgo.By(fmt.Sprintf("cordoning node (%s) with primary attachment", primaryNode))
 
-	testPod := resources.TestPod{
-		Client: client,
-	}
-
 	// Make primary node unschedulable to ensure that pods are scheduled on a different node
-	testPod.SetNodeUnschedulable(primaryNode, true)        // kubeclt cordon node
-	defer testPod.SetNodeUnschedulable(primaryNode, false) // defer kubeclt uncordon node
+	nodeutil.SetNodeUnschedulable(client, primaryNode, true)        // kubeclt cordon node
+	defer nodeutil.SetNodeUnschedulable(client, primaryNode, false) // defer kubeclt uncordon node
 
 	ginkgo.By("deleting the pod for deployment")
 	time.Sleep(10 * time.Second)

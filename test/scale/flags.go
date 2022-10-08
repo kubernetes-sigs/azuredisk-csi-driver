@@ -27,6 +27,7 @@ var (
 	skipClusterBootstrap = flag.Bool("skip-cluster-bootstrap", false, "flag to indicate that we can skip cluster bootstrap.")
 	scaleTestTimeout     = flag.Int("scale-test-timeout", 40, "flag to indicate the scale in and scale out test timeouts in minutes.")
 	testerReplicas       = flag.Int("replicas", 1000, "flag to indicate the number of replicas for the scale tests.")
+	volMountedToPod      = flag.Int("vol-mounted-to-pod", 1, "flag to indicate the number of volumes mounted to a pod.")
 )
 
 // handleFlags sets up all flags and parses the command line.
