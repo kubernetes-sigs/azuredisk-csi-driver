@@ -23,7 +23,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2021-02-01/network"
+	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2021-08-01/network"
 	"github.com/Azure/go-autorest/autorest/to"
 
 	v1 "k8s.io/api/core/v1"
@@ -299,4 +299,16 @@ func sameContentInSlices(s1 []string, s2 []string) bool {
 		map1[s]--
 	}
 	return true
+}
+
+func removeDuplicatedSecurityRules(rules []network.SecurityRule) []network.SecurityRule {
+	ruleNames := make(map[string]bool)
+	for i := len(rules) - 1; i >= 0; i-- {
+		if _, ok := ruleNames[to.String(rules[i].Name)]; ok {
+			klog.Warningf("Found duplicated rule %s, will be removed.", to.String(rules[i].Name))
+			rules = append(rules[:i], rules[i+1:]...)
+		}
+		ruleNames[to.String(rules[i].Name)] = true
+	}
+	return rules
 }

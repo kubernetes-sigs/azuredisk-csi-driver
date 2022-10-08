@@ -22,13 +22,11 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path"
 	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/onsi/ginkgo"
-	"github.com/onsi/ginkgo/reporters"
+	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 	"k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/config"
@@ -231,12 +229,7 @@ var _ = ginkgo.AfterSuite(func() {
 
 func TestE2E(t *testing.T) {
 	gomega.RegisterFailHandler(ginkgo.Fail)
-	reportDir := os.Getenv(testconsts.ReportDirEnvVar)
-	if reportDir == "" {
-		reportDir = testconsts.DefaultReportDir
-	}
-	r := []ginkgo.Reporter{reporters.NewJUnitReporter(path.Join(reportDir, "junit_01.xml"))}
-	ginkgo.RunSpecsWithDefaultAndCustomReporters(t, "AzureDisk CSI Driver End-to-End Tests", r)
+	ginkgo.RunSpecs(t, "AzureDisk CSI Driver End-to-End Tests")
 }
 
 // handleFlags sets up all flags and parses the command line.

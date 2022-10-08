@@ -70,7 +70,7 @@ helm repo update azuredisk-csi-driver
 ### install a specific version
 
 ```console
-helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v1.21.0
+helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v1.23.0
 ```
 
 ### install on Azure Stack
@@ -165,6 +165,10 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `controller.tolerations`                          | controller pod tolerations                                 |                                                              |
 | `controller.affinity`                             | controller pod affinity                               | `{}`                                                             |
 | `controller.nodeSelector`                         | controller pod node selector                          | `{}`                                                             |
+| `controller.labels`                               | controller deployment extra labels                    | `{}`
+| `controller.annotations`                          | controller deployment extra annotations               | `{}`
+| `controller.podLabels`                            | controller pods extra labels                          | `{}`
+| `controller.podAnnotations`                       | controller pods extra annotations                     | `{}`
 | `controller.hostNetwork`                          | `hostNetwork` setting on controller driver(could be disabled if controller does not depend on MSI setting)                            | `true`                                                            | `true`, `false`
 | `controller.resources.csiProvisioner.limits.memory`   | csi-provisioner memory limits                         | 500Mi                                                          |
 | `controller.resources.csiProvisioner.requests.cpu`    | csi-provisioner cpu requests                   | 10m                                                            |
@@ -201,6 +205,10 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `snapshot.image.csiSnapshotController.pullPolicy` | snapshot-controller image pull policy                      | `IfNotPresent`                                                 |
 | `snapshot.snapshotController.name`                | snapshot controller name                                   | `csi-snapshot-controller`                                                           |
 | `snapshot.snapshotController.replicas`            | the replicas of snapshot-controller                        | `2`                                                            |
+| `snapshot.snapshotController.labels`                               | snapshot controller deployment extra labels                    | `{}`
+| `snapshot.snapshotController.annotations`                          | snapshot controller deployment extra annotations               | `{}`
+| `snapshot.snapshotController.podLabels`                            | snapshot controller pods extra labels                          | `{}`
+| `snapshot.snapshotController.podAnnotations`                       | snapshot controller pods extra annotations                     | `{}`
 | `snapshot.snapshotController.resources.limits.memory`          | csi-snapshot-controller memory limits                          | 100Mi                                                          |
 | `snapshot.snapshotController.resources.requests.cpu`           | csi-snapshot-controller cpu requests                    | 10m                                                            |
 | `snapshot.snapshotController.resources.requests.memory`        | csi-snapshot-controller memory requests                 | 20Mi                                                           |
@@ -213,6 +221,10 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `linux.affinity`                                  | linux node pod affinity                                     | `{}`                                                             |
 | `linux.nodeSelector`                              | linux node pod node selector                                | `{}`                                                             |
 | `linux.hostNetwork`                               | `hostNetwork` setting on linux node driver(could be disabled if perfProfile is `none`)                            | `true`                                                            | `true`, `false`
+| `linux.labels`                                    | linux node daemonset extra labels                     | `{}`
+| `linux.annotations`                               | linux node daemonset extra annotations                | `{}`
+| `linux.podLabels`                                 | linux node pods extra labels                          | `{}`
+| `linux.podAnnotations`                            | linux node pods extra annotations                     | `{}`
 | `linux.resources.livenessProbe.limits.memory`          | liveness-probe memory limits                          | 100Mi                                                          |
 | `linux.resources.livenessProbe.requests.cpu`           | liveness-probe cpu requests                    | 10m                                                            |
 | `linux.resources.livenessProbe.requests.memory`        | liveness-probe memory requests                 | 20Mi                                                           |
@@ -229,10 +241,14 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `windows.tolerations`                             | windows node driver tolerations                            |                                                              |
 | `windows.affinity`                                | windows node pod affinity                                     | `{}`                                                             |
 | `windows.nodeSelector`                            | windows node pod node selector                                | `{}`                                                             |
-| `windows.resources.livenessProbe.limits.memory`          | liveness-probe memory limits                          | 100Mi                                                          |
+| `windows.labels`                                  | windows node daemonset extra labels                     | `{}`
+| `windows.annotations`                             | windows node daemonset extra annotations                | `{}`
+| `windows.podLabels`                               | windows node pods extra labels                          | `{}`
+| `windows.podAnnotations`                          | windows node pods extra annotations                     | `{}`
+| `windows.resources.livenessProbe.limits.memory`          | liveness-probe memory limits                          | 150Mi                                                          |
 | `windows.resources.livenessProbe.requests.cpu`           | liveness-probe cpu requests                    | 10m                                                            |
 | `windows.resources.livenessProbe.requests.memory`        | liveness-probe memory requests                 | 40Mi                                                           |
-| `windows.resources.nodeDriverRegistrar.limits.memory`    | csi-node-driver-registrar memory limits               | 100Mi                                                          |
+| `windows.resources.nodeDriverRegistrar.limits.memory`    | csi-node-driver-registrar memory limits               | 150Mi                                                          |
 | `windows.resources.nodeDriverRegistrar.requests.cpu`     | csi-node-driver-registrar cpu requests         | 30m                                                            |
 | `windows.resources.nodeDriverRegistrar.requests.memory`  | csi-node-driver-registrar memory requests      | 40Mi                                                           |
 | `windows.resources.azuredisk.limits.memory`              | azuredisk memory limits                         | 200Mi                                                         |
@@ -323,8 +339,10 @@ In addition to the parameters supported by the V1 driver, Azure Disk CSI driver 
 | `schedulerExtender.metrics.service.enabled` | whether a `Service` is created for the Azure Disk CSI Driver V2 Scheduler Extender metrics server | `false` |
 | `schedulerExtender.metrics.service.monitor.enabled` | whether a `ServiceMonitor` is created for the Azure Disk CSI Driver V2 Scheduler Extender metrics server `Service`. | `false` |
 | `schedulerExtender.servicePort` | Azure Disk CSI Driver V2 Scheduler Extender service port | `8889` |
-| `schedulerExtender.affinity` | Azure Disk CSI Driver V2 Scheduler Extender pod affinity | |
-| `schedulerExtender.tolerations` | Azure Disk CSI Driver V2 Scheduler Extender pod tolerations | Tolerates scheduling to control plane |
+| `schedulerExtender.labels`                                  | Azure Disk CSI Driver V2 Scheduler Extender deployment extra labels                     | `{}`
+| `schedulerExtender.annotations`                             | Azure Disk CSI Driver V2 Scheduler Extender deployment extra annotations                | `{}`
+| `schedulerExtender.podLabels`                               | Azure Disk CSI Driver V2 Scheduler Extender pods extra labels                          | `{}`
+| `schedulerExtender.podAnnotations`                          | Azure Disk CSI Driver V2 Scheduler Extender pods extra annotations                     | `{}`
 | `snapshot.createCRDs` | whether the snapshot CRDs are created | `true` |
 | `storageClasses.create` | whether to create the default `StorageClass` instances for Azure Disk CSI Driver V2 | `true` |
 | `storageClasses.enableZRS` | whether to create the `StorageClass` instances for ZRS disks (not supported in all regions) | `false` |

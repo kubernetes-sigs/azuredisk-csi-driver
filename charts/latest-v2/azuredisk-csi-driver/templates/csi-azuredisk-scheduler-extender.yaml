@@ -34,6 +34,13 @@ metadata:
   namespace: {{ .Release.Namespace }}
 {{ include "azuredisk.labels" . | indent 2 }}
     app: {{ .Values.schedulerExtender.name }}
+{{- with .Values.schedulerExtender.labels }}
+{{ . | toYaml | indent 4 }}
+{{- end }}
+{{- with .Values.schedulerExtender.annotations }}
+  annotations:
+{{ . | toYaml | indent 4 }}
+{{- end }}
 spec:
   replicas: {{ .Values.schedulerExtender.replicas }}
   selector:
@@ -43,6 +50,13 @@ spec:
     metadata:
 {{ include "azuredisk.labels" . | indent 6 }}
         app: {{ .Values.schedulerExtender.name }}
+{{- with .Values.schedulerExtender.podLabels }}
+{{ toYaml . | indent 8 }}
+{{- end }}
+{{- with .Values.schedulerExtender.podAnnotations }}
+      annotations:
+{{ toYaml . | indent 8 }}
+{{- end }}
     spec:
       {{- if .Values.imagePullSecrets }}
       imagePullSecrets:

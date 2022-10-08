@@ -24,7 +24,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-12-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 
 	"google.golang.org/grpc/codes"
@@ -234,6 +234,15 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		}
 	}
 
+	if skuName == compute.DiskStorageAccountTypesUltraSSDLRS {
+		if diskParams.DiskIOPSReadWrite == "" && diskParams.DiskMBPSReadWrite == "" {
+			// set default DiskIOPSReadWrite, DiskMBPSReadWrite per request size
+			diskParams.DiskIOPSReadWrite = strconv.Itoa(getDefaultDiskIOPSReadWrite(requestGiB))
+			diskParams.DiskMBPSReadWrite = strconv.Itoa(getDefaultDiskMBPSReadWrite(requestGiB))
+			klog.V(2).Infof("set default DiskIOPSReadWrite as %s, DiskMBPSReadWrite as %s on disk(%s)", diskParams.DiskIOPSReadWrite, diskParams.DiskMBPSReadWrite, diskParams.DiskName)
+		}
+	}
+
 	diskParams.VolumeContext[consts.RequestedSizeGib] = strconv.Itoa(requestGiB)
 	volumeOptions := &azure.ManagedDiskOptions{
 		AvailabilityZone:    diskZone,
@@ -252,6 +261,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		SourceResourceID:    sourceID,
 		SourceType:          sourceType,
 		Tags:                diskParams.Tags,
+		Location:            diskParams.Location,
 	}
 
 	volumeOptions.SkipGetDiskOperation = d.isGetDiskThrottled()
@@ -381,7 +391,12 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("failed to get azure instance id for node %q (%v)", nodeName, err))
 	}
 
-	klog.V(2).Infof("GetDiskLun returned: %v. Initiating attaching volume %s to node %s.", err, diskURI, nodeName)
+	vmStateStr := "<nil>"
+	if vmState != nil {
+		vmStateStr = *vmState
+	}
+
+	klog.V(2).Infof("GetDiskLun returned: %v. Initiating attaching volume %s to node %s (vmState %s).", err, diskURI, nodeName, vmStateStr)
 
 	volumeContext := req.GetVolumeContext()
 	if volumeContext == nil {
@@ -398,6 +413,10 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		// Volume is already attached to node.
 		klog.V(2).Infof("Attach operation is successful. volume %s is already attached to node %s at lun %d.", diskURI, nodeName, lun)
 	} else {
+		if strings.Contains(strings.ToLower(err.Error()), strings.ToLower(azureconstants.TooManyRequests)) ||
+			strings.Contains(strings.ToLower(err.Error()), azureconstants.ClientThrottled) {
+			return nil, status.Errorf(codes.Internal, err.Error())
+		}
 		var cachingMode compute.CachingTypes
 		if cachingMode, err = azureutils.GetCachingMode(volumeContext); err != nil {
 			return nil, status.Errorf(codes.Internal, err.Error())

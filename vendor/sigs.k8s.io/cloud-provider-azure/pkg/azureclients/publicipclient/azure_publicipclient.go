@@ -23,7 +23,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2021-02-01/network"
+	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2021-08-01/network"
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/Azure/go-autorest/autorest/to"
@@ -55,6 +55,8 @@ type Client struct {
 	// ARM throttling configures.
 	RetryAfterReader time.Time
 	RetryAfterWriter time.Time
+
+	computeAPIVersion string
 }
 
 // New creates a new PublicIPAddress client with ratelimiting.
@@ -77,6 +79,11 @@ func New(config *azclients.ClientConfig) *Client {
 			config.RateLimitConfig.CloudProviderRateLimitBucketWrite)
 	}
 
+	computeAPIVersion := ComputeAPIVersion
+	if strings.EqualFold(config.CloudName, AzureStackCloudName) && !config.DisableAzureStackCloud {
+		computeAPIVersion = AzureStackComputeAPIVersion
+	}
+
 	client := &Client{
 		armClient:              armClient,
 		rateLimiterReader:      rateLimiterReader,
@@ -84,6 +91,7 @@ func New(config *azclients.ClientConfig) *Client {
 		subscriptionID:         config.SubscriptionID,
 		cloudName:              config.CloudName,
 		disableAzureStackCloud: config.DisableAzureStackCloud,
+		computeAPIVersion:      computeAPIVersion,
 	}
 
 	return client
@@ -194,20 +202,7 @@ func (c *Client) getVMSSPublicIPAddress(ctx context.Context, resourceGroupName s
 	)
 
 	result := network.PublicIPAddress{}
-	computeAPIVersion := ComputeAPIVersion
-	if strings.EqualFold(c.cloudName, AzureStackCloudName) && !c.disableAzureStackCloud {
-		computeAPIVersion = AzureStackComputeAPIVersion
-	}
-	queryParameters := map[string]interface{}{
-		"api-version": computeAPIVersion,
-	}
-	if len(expand) > 0 {
-		queryParameters["$expand"] = autorest.Encode("query", expand)
-	}
-	decorators := []autorest.PrepareDecorator{
-		autorest.WithQueryParameters(queryParameters),
-	}
-	response, rerr := c.armClient.GetResource(ctx, resourceID, decorators...)
+	response, rerr := c.armClient.GetResourceWithExpandAPIVersionQuery(ctx, resourceID, expand, c.computeAPIVersion)
 	defer c.armClient.CloseResponse(ctx, response)
 	if rerr != nil {
 		klog.V(5).Infof("Received error in %s: resourceID: %s, error: %s", "vmsspublicip.get.request", resourceID, rerr.Error())
@@ -404,7 +399,7 @@ func (c *Client) deletePublicIP(ctx context.Context, resourceGroupName string, p
 		publicIPAddressName,
 	)
 
-	return c.armClient.DeleteResource(ctx, resourceID, "")
+	return c.armClient.DeleteResource(ctx, resourceID)
 }
 
 func (c *Client) listResponder(resp *http.Response) (result network.PublicIPAddressListResult, err error) {

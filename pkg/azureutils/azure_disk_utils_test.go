@@ -29,7 +29,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-12-01/compute"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
@@ -933,20 +933,24 @@ func TestIsARMResourceID(t *testing.T) {
 }
 
 func TestIsAvailabilityZone(t *testing.T) {
-	region := "eastus"
 	tests := []struct {
 		desc     string
 		zone     string
+		region   string
 		expected bool
 	}{
-		{"empty string should return false", "", false},
-		{"wrong farmat should return false", "123", false},
-		{"wrong location should return false", "chinanorth-1", false},
-		{"correct zone should return true", "eastus-1", true},
+		{"empty string should return false", "", "eastus", false},
+		{"wrong farmat should return false", "123", "eastus", false},
+		{"wrong location should return false", "chinanorth-1", "eastus", false},
+		{"correct zone should return true", "eastus-1", "eastus", true},
+		{"empty location should return true", "eastus-1", "", true},
+		{"empty location with fault domain should return false", "1", "", false},
+		{"empty location with wrong format should return false", "-1", "", false},
+		{"empty location with wrong format should return false", "eastus-", "", false},
 	}
 
 	for _, test := range tests {
-		actual := IsValidAvailabilityZone(test.zone, region)
+		actual := IsValidAvailabilityZone(test.zone, test.region)
 		if actual != test.expected {
 			t.Errorf("test [%q] get unexpected result: %v != %v", test.desc, actual, test.expected)
 		}
