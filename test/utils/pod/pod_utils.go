@@ -78,6 +78,13 @@ func GetPodsForDeployment(client clientset.Interface, deployment *apps.Deploymen
 	return podList, nil
 }
 
+func DeleteAllPodsWithMatchingLabelWithSleep(cs clientset.Interface, ns *v1.Namespace, matchLabels map[string]string) {
+
+	DeleteAllPodsWithMatchingLabel(cs, ns, matchLabels)
+	//sleep ensure waitForPodready will not pass before old pod is deleted.
+	time.Sleep(60 * time.Second)
+}
+
 func DeleteAllPodsWithMatchingLabel(cs clientset.Interface, ns *v1.Namespace, matchLabels map[string]string) {
 
 	e2elog.Logf("Deleting all pods with %v labels in namespace %s", matchLabels, ns.Name)
@@ -86,9 +93,6 @@ func DeleteAllPodsWithMatchingLabel(cs clientset.Interface, ns *v1.Namespace, ma
 	if !errors.IsNotFound(err) {
 		framework.ExpectNoError(err)
 	}
-
-	//sleep ensure waitForPodready will not pass before old pod is deleted.
-	time.Sleep(60 * time.Second)
 }
 
 func CountAllPodsWithMatchingLabel(cs clientset.Interface, ns *v1.Namespace, matchLabels map[string]string, state string) int {
@@ -106,4 +110,24 @@ func CountAllPodsWithMatchingLabel(cs clientset.Interface, ns *v1.Namespace, mat
 		framework.ExpectNoError(err)
 	}
 	return len(pods.Items)
+}
+
+func WaitForPodsWithMatchingLabelToRun(testTimeout int, tickerDuration time.Duration, desiredNumberOfPods int, cs clientset.Interface, ns *v1.Namespace) (numberOfRunningPods int) {
+	ticker := time.NewTicker(tickerDuration)
+	tickerCount := 0
+	timeout := time.After(time.Duration(testTimeout) * time.Minute)
+
+	for {
+		select {
+		case <-timeout:
+			return
+		case <-ticker.C:
+			tickerCount++
+			numberOfRunningPods = CountAllPodsWithMatchingLabel(cs, ns, map[string]string{"group": "azuredisk-scale-tester"}, string(v1.PodRunning))
+			e2elog.Logf("%d min: %d pods are ready", tickerCount, numberOfRunningPods)
+			if numberOfRunningPods >= desiredNumberOfPods {
+				return
+			}
+		}
+	}
 }

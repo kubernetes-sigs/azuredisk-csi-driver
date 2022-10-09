@@ -56,11 +56,6 @@ func (t *PodNodeScaleUp) Run(client clientset.Interface, namespace *v1.Namespace
 		ginkgo.Skip("need at least 2 agent nodes to verify the test case. Current agent node count is %d", len(nodes))
 	}
 
-	//Cordon nodes except for one worker node
-	testPod := resources.TestPod{
-		Client: client,
-	}
-
 	cordoned := []string{}
 	var selectedNode string
 	for _, node := range nodes {
@@ -75,8 +70,8 @@ func (t *PodNodeScaleUp) Run(client clientset.Interface, namespace *v1.Namespace
 				selectedNode = node
 				continue
 			}
-			testPod.SetNodeUnschedulable(node, true)
-			defer testPod.SetNodeUnschedulable(node, false)
+			nodeutil.SetNodeUnschedulable(client, node, true)
+			defer nodeutil.SetNodeUnschedulable(client, node, false)
 			cordoned = append(cordoned, node)
 		}
 
@@ -112,7 +107,7 @@ func (t *PodNodeScaleUp) Run(client clientset.Interface, namespace *v1.Namespace
 
 	ginkgo.By(fmt.Sprintf("uncordoning nodes: %+v", cordoned))
 	for _, node := range cordoned {
-		testPod.SetNodeUnschedulable(node, false)
+		nodeutil.SetNodeUnschedulable(client, node, false)
 	}
 
 	//Check that AzVolumeAttachment resources were created correctly

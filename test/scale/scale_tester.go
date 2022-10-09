@@ -18,6 +18,7 @@ package scale
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -28,8 +29,12 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e/framework"
+	"k8s.io/kubernetes/test/e2e/framework/skipper"
+	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
+	nodeutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/node"
 	podutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/pod"
 	volutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/volume"
 )
@@ -44,7 +49,7 @@ type PodSchedulingWithPVScaleTest struct {
 type PodSchedulingOnFailoverScaleTest struct {
 	CSIDriver              driver.DynamicPVTestDriver
 	Pod                    resources.PodDetails
-	PodCount               int
+	AzDiskClient           *azdisk.Clientset
 	Replicas               int
 	StorageClassParameters map[string]string
 }
@@ -62,12 +67,12 @@ func (t *PodSchedulingWithPVScaleTest) Run(client clientset.Interface, namespace
 		fiveMinPodsDeleted,
 		tenMinPodsDeleted = totalNumberOfPods, totalNumberOfPods, totalNumberOfPods, totalNumberOfPods, totalNumberOfPods
 
-	startScaleOut := time.Now()
 	tStorageClass, storageCleanup := t.Pod.CreateStorageClass(client, namespace, t.CSIDriver, t.StorageClassParameters)
 	defer storageCleanup()
 	statefulSet, cleanupStatefulSet := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, schedulerName, t.Replicas, &tStorageClass, map[string]string{"group": "azuredisk-scale-tester"})
 	defer cleanupStatefulSet(45 * time.Minute)
 
+	startScaleOut := time.Now()
 	statefulSet.CreateWithoutWaiting()
 	numberOfRunningPods := 0
 	ticker := time.NewTicker(time.Minute)
@@ -178,94 +183,81 @@ scaleInTest:
 }
 
 func (t *PodSchedulingOnFailoverScaleTest) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
-	statefulSets := []*resources.TestStatefulset{}
+	totalNumberOfPods := t.Replicas
+	nodes := nodeutil.ListAgentNodeNames(client, t.Pod.IsWindows)
+	skipper.SkipUnlessAtLeast(len(nodes), 2, "Need at least 2 agent nodes to verify the test case.")
+	midNode := len(nodes) / 2
 
-	ginkgo.By("Initiating statefulset setup")
+	// uncordon the first half nodes and cordon the second half nodes
+	for _, node := range nodes[:midNode] {
+		node := node
+		framework.Logf("Uncordoning %s.", node)
+		nodeutil.SetNodeUnschedulable(client, node, false)
+	}
+
+	for _, node := range nodes[midNode:] {
+		node := node
+		framework.Logf("Cordoning %s.", node)
+		nodeutil.SetNodeUnschedulable(client, node, true)
+	}
 
 	tStorageClass, storageCleanup := t.Pod.CreateStorageClass(client, namespace, t.CSIDriver, t.StorageClassParameters)
 	defer storageCleanup()
+	statefulSet, cleanupStatefulSet := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, schedulerName, t.Replicas, &tStorageClass, map[string]string{"group": "azuredisk-scale-tester"})
+	defer cleanupStatefulSet(45 * time.Minute)
 
-	for i := 0; i < t.PodCount; i++ {
-		ss, cleanup := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, schedulerName, t.Replicas, &tStorageClass, nil)
-		statefulSets = append(statefulSets, ss)
-		defer cleanup(45 * time.Minute)
+	// start scale out test
+	startScaleOut := time.Now()
+	statefulSet.CreateWithoutWaiting()
+	numberOfRunningPods1 := podutil.WaitForPodsWithMatchingLabelToRun(*scaleTestTimeout, time.Minute, totalNumberOfPods, client, namespace)
+	scaleOutCompleted := time.Since(startScaleOut).Minutes()
+
+	// cordon the first half nodes where the running pods sit on
+	for _, node := range nodes[:midNode] {
+		node := node
+		framework.Logf("Cordoning %s.", node)
+		nodeutil.SetNodeUnschedulable(client, node, true)
+		defer func() {
+			framework.Logf("Uncordoning %s", node)
+			nodeutil.SetNodeUnschedulable(client, node, false)
+		}()
 	}
 
-	ginkgo.By("Completed statefulset setup")
+	// uncordon the second nodes and measure the amount of time to create replica attachments
+	maxShares, _ := azureutils.GetMaxSharesAndMaxMountReplicaCount(t.StorageClassParameters, false)
+	totalNumberOfReplicaAtts := totalNumberOfPods * (maxShares - 1)
 
-	ginkgo.By("Initiating statefulset deployment")
 	var wg sync.WaitGroup
-	start := time.Now()
-	for i := range statefulSets {
+	for _, node := range nodes[midNode:] {
+		node := node
 		wg.Add(1)
-		go func(statefulset *resources.TestStatefulset) {
+		go func() {
 			defer wg.Done()
-			defer ginkgo.GinkgoRecover()
-
-			statefulset.Create()
-		}(statefulSets[i])
+			framework.Logf("Uncordoning %s.", node)
+			nodeutil.SetNodeUnschedulable(client, node, false)
+		}()
 	}
-
-	ginkgo.By("Waiting for the pod for all the statefulsets to succeed")
 	wg.Wait()
-	framework.Logf("Time taken to complete deployment of statefulsets : %d", time.Since(start).Milliseconds())
 
-	ginkgo.By("All pods for the statefulsets are ready")
-	ginkgo.By("Initiating scaling down all the statefulsets")
+	startCreateReplicaAtts := time.Now()
+	numberOfAttachedReplicaAtts := volutil.WaitForReplicaAttachmentsToAttach(*scaleTestTimeout, time.Minute, totalNumberOfReplicaAtts, t.AzDiskClient)
+	createReplicaAttsCompleted := time.Since(startCreateReplicaAtts).Minutes()
 
-	for i := range statefulSets {
-		newScale := &scale.Scale{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      statefulSets[i].Statefulset.Name,
-				Namespace: statefulSets[i].Namespace.Name,
-			},
-			Spec: scale.ScaleSpec{
-				Replicas: int32(0),
-			},
-		}
+	// delete all pods
+	podutil.DeleteAllPodsWithMatchingLabel(client, namespace, map[string]string{"group": "azuredisk-scale-tester"})
 
-		go func(ss *resources.TestStatefulset) {
-			defer wg.Done()
-			defer ginkgo.GinkgoRecover()
+	// start failover test
+	startFailoverScale := time.Now()
+	numberOfRunningPods2 := podutil.WaitForPodsWithMatchingLabelToRun(*scaleTestTimeout, time.Minute, totalNumberOfPods, client, namespace)
+	failoverScaleCompleted := time.Since(startFailoverScale).Minutes()
 
-			_, err := client.AppsV1().StatefulSets(ss.Namespace.Name).UpdateScale(context.TODO(), ss.Statefulset.Name, newScale, metav1.UpdateOptions{})
-			framework.ExpectNoError(err)
-			time.Sleep(30 * time.Second)
-			err = ss.WaitForPodReadyOrFail()
-			framework.ExpectNoError(err)
-		}(statefulSets[i])
+	klog.Infof("%d pods are in running state in test completed in %f minutes.", numberOfRunningPods1, scaleOutCompleted)
+	klog.Infof("%d replica attachments are attached in test completed in %f minutes.", numberOfAttachedReplicaAtts, createReplicaAttsCompleted)
+	klog.Infof("%d pods are in running state again after deletion in test completed in %f minutes.", numberOfRunningPods2, failoverScaleCompleted)
+
+	if numberOfRunningPods1 != totalNumberOfPods || numberOfRunningPods2 != totalNumberOfPods || numberOfAttachedReplicaAtts != totalNumberOfReplicaAtts {
+		ginkgo.Fail(fmt.Sprintf("Failover Scale test failed to fully creating running pods and/or attached replica attachments. "+
+			"Number of pods that ran before deletion: %d, Number of pods that ran after deletion: %d, Number of attached replica attachments: %d",
+			numberOfRunningPods1, numberOfRunningPods2, numberOfAttachedReplicaAtts))
 	}
-
-	ginkgo.By("Sleep 30mins waiting for statefulset update to complete")
-	time.Sleep(30 * time.Minute)
-
-	ginkgo.By("Resetting the scale for the statefulsets to 1")
-	start = time.Now()
-
-	for i := range statefulSets {
-		newScale := &scale.Scale{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      statefulSets[i].Statefulset.Name,
-				Namespace: statefulSets[i].Namespace.Name,
-			},
-			Spec: scale.ScaleSpec{
-				Replicas: int32(1),
-			},
-		}
-
-		wg.Add(1)
-		go func(ss *resources.TestStatefulset) {
-			defer wg.Done()
-			defer ginkgo.GinkgoRecover()
-
-			_, err := client.AppsV1().StatefulSets(ss.Namespace.Name).UpdateScale(context.TODO(), ss.Statefulset.Name, newScale, metav1.UpdateOptions{})
-			framework.ExpectNoError(err)
-			time.Sleep(30 * time.Second)
-			err = ss.WaitForPodReadyOrFail()
-			framework.ExpectNoError(err)
-		}(statefulSets[i])
-	}
-
-	wg.Wait()
-	framework.Logf("Time taken to rescale the statefulsets : %d", time.Since(start).Milliseconds())
 }

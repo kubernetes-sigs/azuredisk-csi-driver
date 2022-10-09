@@ -17,10 +17,13 @@ limitations under the License.
 package scale
 
 import (
+	"fmt"
+
 	"github.com/onsi/ginkgo/v2"
 	v1 "k8s.io/api/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
+	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
@@ -55,7 +58,7 @@ func scaleTests(isMultiZone bool) {
 	ginkgo.It("Scale test scheduling and starting multiple pods with a persistent volume.", func() {
 		testutil.SkipIfUsingInTreeVolumePlugin()
 		volumes := []resources.VolumeDetails{}
-		for j := 1; j <= 1; j++ {
+		for j := 1; j <= *volMountedToPod; j++ {
 			volume := resources.VolumeDetails{
 				FSType:    "ext4",
 				ClaimSize: "256Gi",
@@ -83,80 +86,10 @@ func scaleTests(isMultiZone bool) {
 		test.Run(cs, ns, schedulerName)
 	})
 
-	ginkgo.It("Scale test scheduling and rescheduling multiple pod with a persistent volume request on failover.", func() {
+	ginkgo.It("Scale test scheduling and starting multiple pods with persistent volume request and reschedule on deletion.", func() {
 		testutil.SkipIfUsingInTreeVolumePlugin()
-		testutil.SkipIfNotUsingCSIDriverV2()
-
-		volume := resources.VolumeDetails{
-			FSType:    "ext3",
-			ClaimSize: "10Gi",
-			VolumeMount: resources.VolumeMountDetails{
-				NameGenerate:      "test-volume-",
-				MountPathGenerate: "/mnt/test-",
-			},
-			MountOptions: []string{
-				"barrier=1",
-				"acl",
-			},
-		}
-
-		pod := resources.PodDetails{
-			Cmd:          testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
-			Volumes:      resources.NormalizeVolumes([]resources.VolumeDetails{volume}, []string{}, isMultiZone),
-			IsWindows:    testconsts.IsWindowsCluster,
-			WinServerVer: testconsts.WinServerVer,
-			UseCMD:       false,
-		}
-
-		test := PodSchedulingOnFailoverScaleTest{}
-		test.CSIDriver = testDriver
-		test.Pod = pod
-		test.Replicas = 1
-		test.PodCount = 1000
-		test.StorageClassParameters = map[string]string{consts.SkuNameField: "StandardSSD_LRS", "maxShares": "2", "cachingmode": "None"}
-
-		test.Run(cs, ns, schedulerName)
-	})
-
-	ginkgo.It("Scale test scheduling and starting multiple pod with multiple persistent volume requests.", func() {
-		testutil.SkipIfUsingInTreeVolumePlugin()
-		testutil.SkipIfNotUsingCSIDriverV2()
-
-		volMountedToPod := 3
 		volumes := []resources.VolumeDetails{}
-		for j := 1; j <= volMountedToPod; j++ {
-			volume := resources.VolumeDetails{
-				FSType:    "ext3",
-				ClaimSize: "10Gi",
-				VolumeMount: resources.VolumeMountDetails{
-					NameGenerate:      "test-volume-",
-					MountPathGenerate: "/mnt/test-",
-				},
-			}
-			volumes = append(volumes, volume)
-		}
-
-		pod := resources.PodDetails{
-			Cmd:          testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
-			Volumes:      resources.NormalizeVolumes(volumes, []string{}, isMultiZone),
-			IsWindows:    testconsts.IsWindowsCluster,
-			WinServerVer: testconsts.WinServerVer,
-		}
-
-		test := PodSchedulingWithPVScaleTest{}
-		test.CSIDriver = testDriver
-		test.Pod = pod
-		test.Replicas = 350
-
-		test.Run(cs, ns, schedulerName)
-	})
-
-	ginkgo.It("Scale test scheduling and starting multiple pods with multiple persistent volume requests with replicas and reschedule on deletion.", func() {
-		testutil.SkipIfUsingInTreeVolumePlugin()
-
-		volMountedOnPod := 3
-		volumes := []resources.VolumeDetails{}
-		for j := 1; j <= volMountedOnPod; j++ {
+		for j := 1; j <= *volMountedToPod; j++ {
 			volume := resources.VolumeDetails{
 				FSType:    "ext4",
 				ClaimSize: "256Gi",
@@ -168,19 +101,24 @@ func scaleTests(isMultiZone bool) {
 			volumes = append(volumes, volume)
 		}
 
+		azDiskClient, err := azdisk.NewForConfig(f.ClientConfig())
+		if err != nil {
+			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
+		}
+
 		pod := resources.PodDetails{
 			Cmd:          testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
 			Volumes:      resources.NormalizeVolumes(volumes, []string{}, isMultiZone),
 			IsWindows:    testconsts.IsWindowsCluster,
 			WinServerVer: testconsts.WinServerVer,
 		}
-
 		test := PodSchedulingOnFailoverScaleTest{}
+
 		test.CSIDriver = testDriver
 		test.Pod = pod
-		test.Replicas = volMountedOnPod
-		test.PodCount = 350
+		test.Replicas = *testerReplicas
 		test.StorageClassParameters = map[string]string{consts.SkuNameField: "Premium_LRS", "maxShares": "2", "cachingmode": "None"}
+		test.AzDiskClient = azDiskClient
 
 		test.Run(cs, ns, schedulerName)
 	})

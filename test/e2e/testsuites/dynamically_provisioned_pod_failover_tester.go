@@ -63,13 +63,9 @@ func (t *PodFailover) Run(client clientset.Interface, namespace *v1.Namespace, s
 
 	ginkgo.By("cordoning node 0")
 
-	testPod := resources.TestPod{
-		Client: client,
-	}
-
 	// Make node#0 unschedulable to ensure that pods are scheduled on a different node
-	testPod.SetNodeUnschedulable(nodes[0], true)        // kubeclt cordon node
-	defer testPod.SetNodeUnschedulable(nodes[0], false) // defer kubeclt uncordon node
+	nodeutil.SetNodeUnschedulable(client, nodes[0], true)        // kubeclt cordon node
+	defer nodeutil.SetNodeUnschedulable(client, nodes[0], false) // defer kubeclt uncordon node
 
 	ginkgo.By("deleting the pod for deployment")
 	tDeployment.DeletePodAndWait()
