@@ -615,7 +615,7 @@ func TestCreateVolume(t *testing.T) {
 			parameter: map[string]string{
 				"storageAccountType": "SuperPremiumSSD_URS",
 			},
-			expectedError: status.Error(codes.InvalidArgument, "azureDisk - SuperPremiumSSD_URS is not supported sku/storageaccounttype. Supported values are [Premium_LRS Premium_ZRS Standard_LRS StandardSSD_LRS StandardSSD_ZRS UltraSSD_LRS]"),
+			expectedError: status.Error(codes.InvalidArgument, "azureDisk - SuperPremiumSSD_URS is not supported sku/storageaccounttype. Supported values are [Premium_LRS Premium_ZRS Standard_LRS StandardSSD_LRS StandardSSD_ZRS UltraSSD_LRS PremiumV2_LRS]"),
 		},
 		{
 			description: "[Failure] Returns an error when an unsupported caching mode is specified",

@@ -41,7 +41,6 @@ import (
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockprovisioner"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization/mockoptimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
@@ -371,7 +370,7 @@ func TestNodeGetVolumeStats(t *testing.T) {
 		{
 			desc: "failed to determine block device",
 			setupFunc: func(t *testing.T, d FakeDriver) {
-				d.getHostUtil().(*azureutils.FakeHostUtil).SetPathIsDeviceResult(fakePath, true, fmt.Errorf("host util is not device path"))
+				d.setPathIsDeviceResult(fakePath, true, fmt.Errorf("host util is not device path"))
 			},
 			req:           csi.NodeGetVolumeStatsRequest{VolumePath: fakePath, VolumeId: "vol_1"},
 			skipOnDarwin:  true,
@@ -411,15 +410,6 @@ func TestNodeGetVolumeStats(t *testing.T) {
 }
 
 func TestNodeStageVolume(t *testing.T) {
-	d, err := NewFakeDriver(t)
-
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-	d.setCrdProvisioner(mockprovisioner.NewMockCrdProvisioner(ctrl))
-
-	d.setPerfOptimizationEnabled(false)
-	assert.NoError(t, err)
-
 	stdVolCap := &csi.VolumeCapability_Mount{
 		Mount: &csi.VolumeCapability_MountVolume{
 			FsType: defaultLinuxFsType,
@@ -497,7 +487,7 @@ func TestNodeStageVolume(t *testing.T) {
 			desc: "MaxShares value not supported",
 			req: csi.NodeStageVolumeRequest{VolumeId: "vol_1", StagingTargetPath: sourceTest, VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap,
 				AccessType: stdVolCapBlock}, VolumeContext: volumeContextWithMaxShare},
-			expectedErr: status.Error(codes.InvalidArgument, "MaxShares value not supported"),
+			expectedErr: status.Error(codes.InvalidArgument, "invalid value specified by maxShares parameter: parse 0.1 failed with error: strconv.Atoi: parsing \"0.1\": invalid syntax"),
 		},
 		{
 			desc: "Volume operation in progress",
@@ -517,7 +507,7 @@ func TestNodeStageVolume(t *testing.T) {
 				AccessType: stdVolCap}},
 			setupFunc: func(t *testing.T, d FakeDriver) {
 				if isTestingDriverV2() {
-					d.getCrdProvisioner().(*mockprovisioner.MockCrdProvisioner).EXPECT().GetAzVolumeAttachment(gomock.Any(), gomock.Any(), gomock.Any()).Return(createAzVolumeAttachmentWithPublishContext(map[string]string{}), err)
+					d.getCrdProvisioner().(*mockprovisioner.MockCrdProvisioner).EXPECT().GetAzVolumeAttachment(gomock.Any(), gomock.Any(), gomock.Any()).Return(createAzVolumeAttachmentWithPublishContext(map[string]string{}), nil)
 				}
 			},
 			expectedErr: status.Error(codes.InvalidArgument, "lun not provided"),
@@ -533,7 +523,7 @@ func TestNodeStageVolume(t *testing.T) {
 			},
 			setupFunc: func(t *testing.T, d FakeDriver) {
 				if isTestingDriverV2() {
-					d.getCrdProvisioner().(*mockprovisioner.MockCrdProvisioner).EXPECT().GetAzVolumeAttachment(gomock.Any(), gomock.Any(), gomock.Any()).Return(createAzVolumeAttachmentWithPublishContext(invalidLUN), err)
+					d.getCrdProvisioner().(*mockprovisioner.MockCrdProvisioner).EXPECT().GetAzVolumeAttachment(gomock.Any(), gomock.Any(), gomock.Any()).Return(createAzVolumeAttachmentWithPublishContext(invalidLUN), nil)
 				}
 			},
 
@@ -545,7 +535,7 @@ func TestNodeStageVolume(t *testing.T) {
 			skipOnWindows: true,
 			setupFunc: func(t *testing.T, d FakeDriver) {
 				if isTestingDriverV2() {
-					d.getCrdProvisioner().(*mockprovisioner.MockCrdProvisioner).EXPECT().GetAzVolumeAttachment(gomock.Any(), gomock.Any(), gomock.Any()).Return(createAzVolumeAttachmentWithPublishContext(publishContext), err)
+					d.getCrdProvisioner().(*mockprovisioner.MockCrdProvisioner).EXPECT().GetAzVolumeAttachment(gomock.Any(), gomock.Any(), gomock.Any()).Return(createAzVolumeAttachmentWithPublishContext(publishContext), nil)
 				}
 				d.setNextCommandOutputScripts(blkidAction, fsckAction, blockSizeAction, blkidAction, blockSizeAction, blkidAction)
 			},
@@ -563,7 +553,7 @@ func TestNodeStageVolume(t *testing.T) {
 			skipOnWindows: true,
 			setupFunc: func(t *testing.T, d FakeDriver) {
 				if isTestingDriverV2() {
-					d.getCrdProvisioner().(*mockprovisioner.MockCrdProvisioner).EXPECT().GetAzVolumeAttachment(gomock.Any(), gomock.Any(), gomock.Any()).Return(createAzVolumeAttachmentWithPublishContext(publishContext), err)
+					d.getCrdProvisioner().(*mockprovisioner.MockCrdProvisioner).EXPECT().GetAzVolumeAttachment(gomock.Any(), gomock.Any(), gomock.Any()).Return(createAzVolumeAttachmentWithPublishContext(publishContext), nil)
 				}
 				d.setNextCommandOutputScripts(blkidAction, fsckAction, blkidAction, resize2fsAction)
 			},
@@ -580,6 +570,9 @@ func TestNodeStageVolume(t *testing.T) {
 			skipOnDarwin:  true,
 			skipOnWindows: true,
 			setupFunc: func(t *testing.T, d FakeDriver) {
+				if isTestingDriverV2() {
+					d.getCrdProvisioner().(*mockprovisioner.MockCrdProvisioner).EXPECT().GetAzVolumeAttachment(gomock.Any(), gomock.Any(), gomock.Any()).Return(createAzVolumeAttachmentWithPublishContext(publishContext), nil)
+				}
 				d.setPerfOptimizationEnabled(true)
 				d.setNextCommandOutputScripts(blkidAction, fsckAction, blockSizeAction, blockSizeAction)
 			},
@@ -600,7 +593,7 @@ func TestNodeStageVolume(t *testing.T) {
 			skipOnWindows: true,
 			setupFunc: func(t *testing.T, d FakeDriver) {
 				if isTestingDriverV2() {
-					d.getCrdProvisioner().(*mockprovisioner.MockCrdProvisioner).EXPECT().GetAzVolumeAttachment(gomock.Any(), gomock.Any(), gomock.Any()).Return(createAzVolumeAttachmentWithPublishContext(publishContext), err)
+					d.getCrdProvisioner().(*mockprovisioner.MockCrdProvisioner).EXPECT().GetAzVolumeAttachment(gomock.Any(), gomock.Any(), gomock.Any()).Return(createAzVolumeAttachmentWithPublishContext(publishContext), nil)
 				}
 				d.setPerfOptimizationEnabled(true)
 				mockoptimization := d.getDeviceHelper().(*mockoptimization.MockInterface)
@@ -640,6 +633,9 @@ func TestNodeStageVolume(t *testing.T) {
 					Return(fmt.Errorf("failed to optimize device performance")).
 					After(diskSupportsPerfOptimizationCall)
 
+				if isTestingDriverV2() {
+					d.getCrdProvisioner().(*mockprovisioner.MockCrdProvisioner).EXPECT().GetAzVolumeAttachment(gomock.Any(), gomock.Any(), gomock.Any()).Return(createAzVolumeAttachmentWithPublishContext(publishContext), nil)
+				}
 				d.setNextCommandOutputScripts(blkidAction, fsckAction, blockSizeAction, blockSizeAction)
 			},
 			req: csi.NodeStageVolumeRequest{VolumeId: "vol_1", StagingTargetPath: sourceTest,
@@ -664,6 +660,9 @@ func TestNodeStageVolume(t *testing.T) {
 					DiskSupportsPerfOptimization(gomock.Any(), gomock.Any()).
 					Return(false)
 
+				if isTestingDriverV2() {
+					d.getCrdProvisioner().(*mockprovisioner.MockCrdProvisioner).EXPECT().GetAzVolumeAttachment(gomock.Any(), gomock.Any(), gomock.Any()).Return(createAzVolumeAttachmentWithPublishContext(publishContext), nil)
+				}
 				d.setNextCommandOutputScripts(blkidAction, fsckAction, blockSizeAction, blockSizeAction)
 			},
 			req: csi.NodeStageVolumeRequest{VolumeId: "vol_1", StagingTargetPath: sourceTest,
@@ -679,35 +678,48 @@ func TestNodeStageVolume(t *testing.T) {
 		},
 	}
 
-	// Setup
-	_ = makeDir(sourceTest)
-	_ = makeDir(targetTest)
-	fakeMounter, err := mounter.NewFakeSafeMounter()
-	assert.NoError(t, err)
-	d.setMounter(fakeMounter)
-
 	for _, test := range tests {
-		if !(test.skipOnDarwin && runtime.GOOS == "darwin") && !(test.skipOnWindows && runtime.GOOS == "windows") {
-			if test.setupFunc != nil {
-				test.setupFunc(t, d)
-			}
-			_, err := d.NodeStageVolume(context.Background(), &test.req)
-			if test.desc == "failed volume mount" {
-				assert.Error(t, err)
-			} else if !testutil.IsErrorEquivalent(err, test.expectedErr) {
-				t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
-			}
-			if test.cleanupFunc != nil {
-				test.cleanupFunc(t, d)
-			}
-		}
-	}
+		test := test
+		t.Run(test.desc, func(t *testing.T) {
+			if !(test.skipOnDarwin && runtime.GOOS == "darwin") && !(test.skipOnWindows && runtime.GOOS == "windows") {
+				// Setup
+				d, err := NewFakeDriver(t)
 
-	// Clean up
-	err = os.RemoveAll(sourceTest)
-	assert.NoError(t, err)
-	err = os.RemoveAll(targetTest)
-	assert.NoError(t, err)
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				d.setCrdProvisioner(mockprovisioner.NewMockCrdProvisioner(ctrl))
+
+				d.setPerfOptimizationEnabled(false)
+				assert.NoError(t, err)
+
+				_ = makeDir(sourceTest)
+				_ = makeDir(targetTest)
+				fakeMounter, err := mounter.NewFakeSafeMounter()
+				assert.NoError(t, err)
+				d.setMounter(fakeMounter)
+
+				if test.setupFunc != nil {
+					test.setupFunc(t, d)
+				}
+				_, err = d.NodeStageVolume(context.Background(), &test.req)
+				if test.desc == "failed volume mount" {
+					assert.Error(t, err)
+				} else if !testutil.IsErrorEquivalent(err, test.expectedErr) {
+					t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
+				}
+				if test.cleanupFunc != nil {
+					test.cleanupFunc(t, d)
+				}
+
+				// Clean up
+				err = os.RemoveAll(sourceTest)
+				assert.NoError(t, err)
+
+				err = os.RemoveAll(targetTest)
+				assert.NoError(t, err)
+			}
+		})
+	}
 }
 
 func TestNodeUnstageVolume(t *testing.T) {
@@ -864,7 +876,7 @@ func TestNodePublishVolume(t *testing.T) {
 				VolumeId:      "vol_1",
 				VolumeContext: volumeContextWithMaxShare},
 			expectedErr: testutil.TestError{
-				DefaultError: status.Error(codes.InvalidArgument, "MaxShares value not supported"),
+				DefaultError: status.Error(codes.InvalidArgument, "invalid value specified by maxShares parameter: parse 0.1 failed with error: strconv.Atoi: parsing \"0.1\": invalid syntax"),
 			},
 		},
 		{

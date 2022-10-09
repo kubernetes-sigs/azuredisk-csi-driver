@@ -27,11 +27,15 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
 func Test_OptimizeDiskPerformance(t *testing.T) {
+	cwd, err := os.Getwd()
+	require.NoError(t, err)
+
 	deviceHelper := NewDeviceHelper()
 	tests := []struct {
 		name                string
@@ -57,7 +61,7 @@ func Test_OptimizeDiskPerformance(t *testing.T) {
 			diskIopsStr:         "100",
 			diskBwMbpsStr:       "100",
 			wantErr:             true,
-			blockDeviceRootPath: ".",
+			blockDeviceRootPath: cwd,
 			mkdirPath:           []string{""},
 		},
 		{
@@ -70,7 +74,7 @@ func Test_OptimizeDiskPerformance(t *testing.T) {
 			diskIopsStr:         "100",
 			diskBwMbpsStr:       "100",
 			wantErr:             true,
-			blockDeviceRootPath: ".",
+			blockDeviceRootPath: cwd,
 			mkdirPath:           []string{"queue"},
 		},
 		{
@@ -83,7 +87,7 @@ func Test_OptimizeDiskPerformance(t *testing.T) {
 			diskIopsStr:         "100",
 			diskBwMbpsStr:       "100",
 			wantErr:             true,
-			blockDeviceRootPath: ".",
+			blockDeviceRootPath: cwd,
 			mkdirPath:           []string{"queue/iosched"},
 		},
 		{
@@ -96,7 +100,7 @@ func Test_OptimizeDiskPerformance(t *testing.T) {
 			diskIopsStr:         "100",
 			diskBwMbpsStr:       "100",
 			wantErr:             false,
-			blockDeviceRootPath: ".",
+			blockDeviceRootPath: cwd,
 			mkdirPath:           []string{"queue/iosched", "device"},
 		},
 	}

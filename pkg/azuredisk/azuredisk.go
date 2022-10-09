@@ -71,7 +71,6 @@ type DriverCore struct {
 	deviceHelper optimization.Interface
 	nodeInfo     *optimization.NodeInfo
 	ioHandler    azureutils.IOHandler
-	hostUtil     hostUtil
 }
 
 // Driver is the v1 implementation of the Azure Disk CSI Driver.
@@ -81,6 +80,7 @@ type Driver struct {
 	kubeconfig  string
 	mounter     *mount.SafeFormatAndMount
 	volumeLocks *volumehelper.VolumeLocks
+	hostUtil    hostUtil
 	// a timed cache GetDisk throttling
 	getDiskThrottlingCache     *azcache.TimedCache
 	perfOptimizationEnabled    bool
@@ -369,7 +369,7 @@ func (d *DriverCore) getNodeInfo() *optimization.NodeInfo {
 	return d.nodeInfo
 }
 
-func (d *DriverCore) getHostUtil() hostUtil {
+func (d *Driver) getHostUtil() hostUtil {
 	return d.hostUtil
 }
 

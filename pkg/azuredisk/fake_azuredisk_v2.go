@@ -71,7 +71,6 @@ func newFakeDriverV2(t *testing.T) (*fakeDriverV2, error) {
 	driver.VolumeAttachLimit = -1
 	driver.config.NodeConfig.SupportZone = true
 	driver.ioHandler = azureutils.NewFakeIOHandler()
-	driver.hostUtil = azureutils.NewFakeHostUtil()
 	driver.config.NodeConfig.UseCSIProxyGAInterface = true
 
 	ctrl := gomock.NewController(t)

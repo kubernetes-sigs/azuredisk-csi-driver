@@ -84,7 +84,6 @@ type FakeDriver interface {
 	setCrdProvisioner(crdProvisioner CrdProvisioner)
 
 	getDeviceHelper() optimization.Interface
-	getHostUtil() hostUtil
 	setPerfOptimizationEnabled(bool)
 	getPerfOptimizationEnabled() bool
 	setMounter(*mount.SafeFormatAndMount)
@@ -185,7 +184,7 @@ func (d *fakeDriverV1) setCloud(cloud *provider.Cloud) {
 	d.cloud = cloud
 }
 
-func (d *Driver) setPathIsDeviceResult(path string, isDevice bool, err error) {
+func (d *fakeDriverV1) setPathIsDeviceResult(path string, isDevice bool, err error) {
 	d.getHostUtil().(*azureutils.FakeHostUtil).SetPathIsDeviceResult(path, isDevice, err)
 }
 

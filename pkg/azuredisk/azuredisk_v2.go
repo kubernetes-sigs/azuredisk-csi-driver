@@ -44,7 +44,6 @@ import (
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/klog/v2"
 	"k8s.io/klog/v2/klogr"
-	"k8s.io/kubernetes/pkg/volume/util/hostutil"
 
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -143,7 +142,6 @@ func newDriverV2(config *azdiskv1beta2.AzDiskDriverConfiguration) *DriverV2 {
 	driver.VolumeAttachLimit = config.NodeConfig.VolumeAttachLimit
 	driver.ready = make(chan struct{})
 	driver.ioHandler = azureutils.NewOSIOHandler()
-	driver.hostUtil = hostutil.NewHostUtil()
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.deviceChecker = &deviceChecker{lock: sync.RWMutex{}, entry: nil}
 
