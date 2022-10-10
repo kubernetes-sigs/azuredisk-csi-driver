@@ -437,6 +437,8 @@ func CreateVolume(diskName string, sizeGiB int, volumeContext map[string]string)
 		storageAccountType string
 	)
 
+	diskLocation := location
+
 	for k, v := range volumeContext {
 		switch strings.ToLower(k) {
 		case consts.SkuNameField:
@@ -446,6 +448,8 @@ func CreateVolume(diskName string, sizeGiB int, volumeContext map[string]string)
 			if err != nil || maxShares < 1 {
 				maxShares = 1
 			}
+		case consts.LocationField:
+			diskLocation = v
 		}
 	}
 
@@ -459,6 +463,7 @@ func CreateVolume(diskName string, sizeGiB int, volumeContext map[string]string)
 		ResourceGroup:      azureCloud.ResourceGroup,
 		SizeGB:             sizeGiB,
 		MaxShares:          int32(maxShares),
+		Location:           diskLocation,
 	}
 
 	diskURI, err := azureCloud.CreateManagedDisk(context.TODO(), volumeOptions)
