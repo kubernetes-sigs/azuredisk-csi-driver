@@ -716,14 +716,15 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	})
 
 	ginkgo.It(fmt.Sprintf("should create a pod, write to its pv, take a volume snapshot, overwrite data in original pv, create another pod from the snapshot, and read unaltered original data from original pv[disk.csi.azure.com] [%s]", schedulerName), func() {
-		testutil.SkipIfTestingInWindowsCluster()
 		testutil.SkipIfUsingInTreeVolumePlugin()
 
 		pod := resources.PodDetails{
-			Cmd: "echo 'hello world' > /mnt/test-1/data",
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
+			Cmd:          testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data"),
 			Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
 				{
-					FSType:    "ext4",
+					FSType:    testutil.GetFSType(testconsts.IsWindowsCluster),
 					ClaimSize: "10Gi",
 					VolumeMount: resources.VolumeMountDetails{
 						NameGenerate:      "test-volume-",
@@ -735,11 +736,15 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		}
 
 		podOverwrite := resources.PodDetails{
-			Cmd: "echo 'overwrite' > /mnt/test-1/data",
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
+			Cmd:          testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'overwrite' > /mnt/test-1/data; sleep 3600"),
 		}
 
 		podWithSnapshot := resources.PodDetails{
-			Cmd: "grep 'hello world' /mnt/test-1/data",
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
+			Cmd:          testutil.ConvertToPowershellorCmdCommandIfNecessary("grep 'hello world' /mnt/test-1/data"),
 		}
 
 		test := testsuites.DynamicallyProvisionedVolumeSnapshotTest{
