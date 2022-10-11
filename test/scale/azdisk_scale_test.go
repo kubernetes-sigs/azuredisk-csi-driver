@@ -23,6 +23,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
+	admissionapi "k8s.io/pod-security-admission/api"
 	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
@@ -41,6 +42,11 @@ var _ = ginkgo.Describe("Scale testing", func() {
 
 func scaleTests(isMultiZone bool) {
 	f := framework.NewDefaultFramework("azuredisk")
+
+	// Apply the minmally restrictive baseline Pod Security Standard profile to namespaces
+	// created by the Kubernetes end-to-end test framework to enable testing with a nil
+	// Pod security context.
+	f.NamespacePodSecurityEnforceLevel = admissionapi.LevelBaseline
 
 	var (
 		cs            clientset.Interface

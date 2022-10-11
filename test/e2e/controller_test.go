@@ -27,6 +27,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
+	admissionapi "k8s.io/pod-security-admission/api"
 
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
@@ -42,6 +43,11 @@ const (
 
 var _ = ginkgo.Describe("Controller", func() {
 	f := framework.NewDefaultFramework("azuredisk")
+
+	// Apply the minmally restrictive baseline Pod Security Standard profile to namespaces
+	// created by the Kubernetes end-to-end test framework to enable testing with a nil
+	// Pod security context.
+	f.NamespacePodSecurityEnforceLevel = admissionapi.LevelBaseline
 
 	var (
 		cs           clientset.Interface

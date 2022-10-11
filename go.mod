@@ -55,6 +55,7 @@ require (
 	github.com/spf13/viper v1.10.0
 	k8s.io/apiextensions-apiserver v0.25.2
 	k8s.io/csi-translation-lib v0.25.2
+	k8s.io/pod-security-admission v0.0.0
 )
 
 require (
@@ -150,7 +151,6 @@ require (
 	k8s.io/kube-openapi v0.0.0-20220803162953-67bda5d908f1 // indirect
 	k8s.io/kubectl v0.0.0 // indirect
 	k8s.io/kubelet v0.25.2 // indirect
-	k8s.io/pod-security-admission v0.0.0 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.0.32 // indirect
 	sigs.k8s.io/json v0.0.0-20220713155537-f223a00ba0e2 // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.2.3 // indirect

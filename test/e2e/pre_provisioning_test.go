@@ -31,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
+	admissionapi "k8s.io/pod-security-admission/api"
 	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
@@ -49,6 +50,12 @@ const (
 
 var _ = ginkgo.Describe("Pre-Provisioned", func() {
 	f := framework.NewDefaultFramework("azuredisk")
+
+	// Apply the minmally restrictive baseline Pod Security Standard profile to namespaces
+	// created by the Kubernetes end-to-end test framework to enable testing with a nil
+	// Pod security context.
+	f.NamespacePodSecurityEnforceLevel = admissionapi.LevelBaseline
+
 	scheduler := testutil.GetSchedulerForE2E()
 
 	var (
