@@ -188,28 +188,20 @@ func (t *TestDeployment) PollForStringInPodsExec(command []string, expectedStrin
 func (t *TestDeployment) DeletePodAndWait() {
 	ch := make(chan error, len(t.Pods))
 	for _, pod := range t.Pods {
-		e2elog.Logf("Deleting pod %q in namespace %q", pod.Name, t.Namespace.Name)
 		go func(client clientset.Interface, ns, podName string) {
-			err := client.CoreV1().Pods(ns).Delete(context.TODO(), podName, metav1.DeleteOptions{})
+			err := e2epod.DeletePodWithWaitByName(client, podName, ns)
 			ch <- err
 		}(t.Client, t.Namespace.Name, pod.Name)
 	}
 	// Wait on all goroutines to report on pod delete
-	for _, pod := range t.Pods {
+	for range t.Pods {
 		err := <-ch
 		if err != nil {
 			if !errors.IsNotFound(err) {
-				framework.ExpectNoError(fmt.Errorf("pod %q Delete API error: %v", pod.Name, err))
+				framework.ExpectNoError(err)
 			}
 		}
 	}
-
-	conditionFunc := func(podName string, ch chan error) {
-		e2elog.Logf("Waiting for pod %q in namespace %q to be fully deleted", podName, t.Namespace.Name)
-		err := e2epod.WaitForPodNoLongerRunningInNamespace(t.Client, podName, t.Namespace.Name)
-		ch <- err
-	}
-	t.WaitForPodStatus(conditionFunc)
 }
 
 func (t *TestDeployment) ForceDeletePod(podName string) error {
