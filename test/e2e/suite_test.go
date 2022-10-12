@@ -341,6 +341,12 @@ func convertToPowershellorCmdCommandIfNecessary(command string) string {
 		return "echo 'hello world' | Out-File -FilePath C:\\mnt\\test-1\\data.txt; Get-Content C:\\mnt\\test-1\\data.txt | findstr 'hello world'; echo 'hello world' | Out-File -FilePath C:\\mnt\\test-2\\data.txt; Get-Content C:\\mnt\\test-2\\data.txt | findstr 'hello world'; echo 'hello world' | Out-File -FilePath C:\\mnt\\test-3\\data.txt; Get-Content C:\\mnt\\test-3\\data.txt | findstr 'hello world'"
 	case "while true; do sleep 5; done":
 		return "while ($true) { Start-Sleep 5 }"
+	case "echo 'hello world' > /mnt/test-1/data":
+		return "echo 'hello world' | Out-File -FilePath C:\\mnt\\test-1\\data.txt"
+	case "echo 'overwrite' > /mnt/test-1/data; sleep 3600":
+		return "echo 'overwrite' | Out-File -FilePath C:\\mnt\\test-1\\data.txt; Start-Sleep 3600"
+	case "grep 'hello world' /mnt/test-1/data":
+		return "Get-Content C:\\mnt\\test-1\\data.txt | findstr 'hello world'"
 	}
 
 	return command
@@ -352,4 +358,11 @@ func handleFlags() {
 	framework.RegisterCommonFlags(flag.CommandLine)
 	framework.RegisterClusterFlags(flag.CommandLine)
 	flag.Parse()
+}
+
+func getFSType(IsWindowsCluster bool) string {
+	if IsWindowsCluster {
+		return "ntfs"
+	}
+	return "ext4"
 }

@@ -69,6 +69,26 @@ const (
 	pollLongTimeout      = 5 * time.Minute
 	pollTimeout          = 10 * time.Minute
 	pollForStringTimeout = 1 * time.Minute
+
+	testLabelKey   = "test-label-key"
+	testLabelValue = "test-label-value"
+	HostNameLabel  = "kubernetes.io/hostname"
+)
+
+var (
+	TestLabel = map[string]string{
+		testLabelKey: testLabelValue,
+	}
+
+	TestPodAntiAffinity = v1.Affinity{
+		PodAntiAffinity: &v1.PodAntiAffinity{
+			RequiredDuringSchedulingIgnoredDuringExecution: []v1.PodAffinityTerm{
+				{
+					LabelSelector: &metav1.LabelSelector{MatchLabels: TestLabel},
+					TopologyKey:   HostNameLabel,
+				}},
+		},
+	}
 )
 
 type TestStorageClass struct {
@@ -1063,4 +1083,12 @@ func pollForStringInPodsExec(namespace string, pods []string, command []string, 
 		errs = append(errs, <-ch)
 	}
 	framework.ExpectNoError(utilerrors.NewAggregate(errs), "Failed to find %q in at least one pod's output.", expectedString)
+}
+
+func (t *TestPod) SetAffinity(affinity *v1.Affinity) {
+	t.pod.Spec.Affinity = affinity
+}
+
+func (t *TestPod) SetLabel(labels map[string]string) {
+	t.pod.ObjectMeta.Labels = labels
 }

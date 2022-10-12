@@ -108,11 +108,12 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interfac
 		tpod = NewTestPod(client, namespace, t.PodOverwrite.Cmd, t.PodOverwrite.IsWindows, t.Pod.WinServerVer)
 
 		tpod.SetupVolume(tpvc.persistentVolumeClaim, volume.VolumeMount.NameGenerate+"1", volume.VolumeMount.MountPathGenerate+"1", volume.VolumeMount.ReadOnly)
+		tpod.SetLabel(TestLabel)
 		ginkgo.By("deploying a new pod to overwrite pv data")
 		tpod.Create()
 		defer tpod.Cleanup()
-		ginkgo.By("checking that the pod's command exits with no error")
-		tpod.WaitForSuccess()
+		ginkgo.By("checking that the pod is running")
+		tpod.WaitForRunning()
 	}
 
 	defer tvsc.DeleteSnapshot(snapshot)
@@ -128,6 +129,13 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interfac
 	for i := range tPodWithSnapshotCleanup {
 		defer tPodWithSnapshotCleanup[i]()
 	}
+
+	if t.ShouldOverwrite {
+		// 	TODO: add test case which will schedule the original disk and the copied disk on the same node once the conflicting UUID issue is fixed.
+		ginkgo.By("Set pod anti-affinity to make sure two pods are scheduled on different nodes")
+		tPodWithSnapshot.SetAffinity(&TestPodAntiAffinity)
+	}
+
 	ginkgo.By("deploying a pod with a volume restored from the snapshot")
 	tPodWithSnapshot.Create()
 	defer tPodWithSnapshot.Cleanup()
