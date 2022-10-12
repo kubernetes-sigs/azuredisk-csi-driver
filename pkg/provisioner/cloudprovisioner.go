@@ -418,6 +418,13 @@ func (c *CloudProvisioner) PublishVolume(
 		// Volume is already attached to node.
 		w.Logger().V(2).Infof("Attach operation is successful. volume %q is already attached to node %q at lun %d.", volumeID, nodeName, lun)
 	} else {
+		if strings.Contains(strings.ToLower(err.Error()), strings.ToLower(azureconstants.TooManyRequests)) ||
+			strings.Contains(strings.ToLower(err.Error()), azureconstants.ClientThrottled) {
+			err = status.Errorf(codes.Internal, err.Error())
+			attachResult.ResultChannel() <- err
+			return
+		}
+
 		w.Logger().V(2).Infof("Trying to attach volume %q to node %q.", volumeID, nodeName)
 		var cachingMode compute.CachingTypes
 		if cachingMode, err = azureutils.GetCachingMode(volumeContext); err != nil {
