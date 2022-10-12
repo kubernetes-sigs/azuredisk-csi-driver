@@ -1337,3 +1337,35 @@ func MapContains(mmap map[string]string, key string) bool {
 	}
 	return false
 }
+
+// GetDefaultDiskIOPSReadWrite according to requestGiB
+//
+//	ref: https://docs.microsoft.com/en-us/azure/virtual-machines/disks-types#ultra-disk-iops
+func GetDefaultDiskIOPSReadWrite(requestGiB int) int {
+	iops := cloudproviderconsts.DefaultDiskIOPSReadWrite
+	if requestGiB > iops {
+		iops = requestGiB
+	}
+	if iops > 160000 {
+		iops = 160000
+	}
+	return iops
+}
+
+// GetDefaultDiskMBPSReadWrite according to requestGiB
+//
+//	ref: https://docs.microsoft.com/en-us/azure/virtual-machines/disks-types#ultra-disk-throughput
+func GetDefaultDiskMBPSReadWrite(requestGiB int) int {
+	bandwidth := cloudproviderconsts.DefaultDiskMBpsReadWrite
+	iops := GetDefaultDiskIOPSReadWrite(requestGiB)
+	if iops/256 > bandwidth {
+		bandwidth = int(util.RoundUpSize(int64(iops), 256))
+	}
+	if bandwidth > iops/4 {
+		bandwidth = int(util.RoundUpSize(int64(iops), 4))
+	}
+	if bandwidth > 4000 {
+		bandwidth = 4000
+	}
+	return bandwidth
+}

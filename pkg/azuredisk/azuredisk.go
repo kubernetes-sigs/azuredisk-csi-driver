@@ -41,7 +41,6 @@ import (
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	azurecloudconsts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
@@ -388,36 +387,4 @@ func getNodeInfoFromLabels(ctx context.Context, nodeName string, kubeClient clie
 		return "", "", fmt.Errorf("node(%s) label is empty", nodeName)
 	}
 	return node.Labels[consts.WellKnownTopologyKey], node.Labels[consts.InstanceTypeKey], nil
-}
-
-// getDefaultDiskIOPSReadWrite according to requestGiB
-//
-//	ref: https://docs.microsoft.com/en-us/azure/virtual-machines/disks-types#ultra-disk-iops
-func getDefaultDiskIOPSReadWrite(requestGiB int) int {
-	iops := azurecloudconsts.DefaultDiskIOPSReadWrite
-	if requestGiB > iops {
-		iops = requestGiB
-	}
-	if iops > 160000 {
-		iops = 160000
-	}
-	return iops
-}
-
-// getDefaultDiskMBPSReadWrite according to requestGiB
-//
-//	ref: https://docs.microsoft.com/en-us/azure/virtual-machines/disks-types#ultra-disk-throughput
-func getDefaultDiskMBPSReadWrite(requestGiB int) int {
-	bandwidth := azurecloudconsts.DefaultDiskMBpsReadWrite
-	iops := getDefaultDiskIOPSReadWrite(requestGiB)
-	if iops/256 > bandwidth {
-		bandwidth = int(util.RoundUpSize(int64(iops), 256))
-	}
-	if bandwidth > iops/4 {
-		bandwidth = int(util.RoundUpSize(int64(iops), 4))
-	}
-	if bandwidth > 4000 {
-		bandwidth = 4000
-	}
-	return bandwidth
 }

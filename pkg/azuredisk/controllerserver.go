@@ -237,8 +237,8 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	if skuName == compute.DiskStorageAccountTypesUltraSSDLRS {
 		if diskParams.DiskIOPSReadWrite == "" && diskParams.DiskMBPSReadWrite == "" {
 			// set default DiskIOPSReadWrite, DiskMBPSReadWrite per request size
-			diskParams.DiskIOPSReadWrite = strconv.Itoa(getDefaultDiskIOPSReadWrite(requestGiB))
-			diskParams.DiskMBPSReadWrite = strconv.Itoa(getDefaultDiskMBPSReadWrite(requestGiB))
+			diskParams.DiskIOPSReadWrite = strconv.Itoa(azureutils.GetDefaultDiskIOPSReadWrite(requestGiB))
+			diskParams.DiskMBPSReadWrite = strconv.Itoa(azureutils.GetDefaultDiskMBPSReadWrite(requestGiB))
 			klog.V(2).Infof("set default DiskIOPSReadWrite as %s, DiskMBPSReadWrite as %s on disk(%s)", diskParams.DiskIOPSReadWrite, diskParams.DiskMBPSReadWrite, diskParams.DiskName)
 		}
 	}

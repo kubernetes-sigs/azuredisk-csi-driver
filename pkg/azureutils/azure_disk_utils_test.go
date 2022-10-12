@@ -2868,3 +2868,69 @@ func TestAnnotateAPIVersion(t *testing.T) {
 		require.Equal(t, annotations[consts.APIVersion], azdiskv1beta2.APIVersion)
 	}
 }
+
+func TestGetDefaultDiskIOPSReadWrite(t *testing.T) {
+	tests := []struct {
+		requestGiB int
+		expected   int
+	}{
+		{
+			requestGiB: 1,
+			expected:   500,
+		},
+		{
+			requestGiB: 512,
+			expected:   512,
+		},
+		{
+			requestGiB: 51200000,
+			expected:   160000,
+		},
+	}
+
+	for _, test := range tests {
+		result := GetDefaultDiskIOPSReadWrite(test.requestGiB)
+		if result != test.expected {
+			t.Errorf("Unexpected result: %v, expected result: %v, input: %d", result, test.expected, test.requestGiB)
+		}
+	}
+}
+
+func TestGetDefaultDiskMBPSReadWrite(t *testing.T) {
+	tests := []struct {
+		requestGiB int
+		expected   int
+	}{
+		{
+			requestGiB: 1,
+			expected:   100,
+		},
+		{
+			requestGiB: 512,
+			expected:   100,
+		},
+		{
+			requestGiB: 51200,
+			expected:   200,
+		},
+		{
+			requestGiB: 51200000,
+			expected:   625,
+		},
+		{
+			requestGiB: 512000000,
+			expected:   625,
+		},
+		{
+			requestGiB: 65535,
+			expected:   256,
+		},
+	}
+
+	for _, test := range tests {
+		result := GetDefaultDiskMBPSReadWrite(test.requestGiB)
+		if result != test.expected {
+			t.Errorf("Unexpected result: %v, expected result: %v, input: %d", result, test.expected, test.requestGiB)
+		}
+	}
+}
