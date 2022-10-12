@@ -78,3 +78,10 @@ func SkipIfNotDynamicallyResizeSupported(location string) {
 		ginkgo.Skip("test case not supported no regions without dynamic resize support")
 	}
 }
+
+func GetFSType(IsWindowsCluster bool) string {
+	if IsWindowsCluster {
+		return "ntfs"
+	}
+	return "ext4"
+}

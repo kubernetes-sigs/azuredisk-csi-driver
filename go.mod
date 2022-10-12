@@ -161,7 +161,7 @@ replace (
 	github.com/prometheus/client_golang => github.com/prometheus/client_golang v1.11.1
 	go.etcd.io/etcd => go.etcd.io/etcd v0.0.0-20200410171415-59f5fb25a533
 	golang.org/x/crypto => golang.org/x/crypto v0.0.0-20220315160706-3147a52a75dd
-	golang.org/x/text => golang.org/x/text v0.3.7
+	golang.org/x/text => golang.org/x/text v0.3.8
 	k8s.io/api => k8s.io/api v0.25.2
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.25.2
 	k8s.io/apimachinery => k8s.io/apimachinery v0.25.2
