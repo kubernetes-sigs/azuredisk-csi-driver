@@ -81,13 +81,13 @@ kubectl get pods -n${NS} -l${LABEL} \
     | awk 'NR>1 {print $1}' \
     | xargs -I {} bash -c "echo 'dumping logs for ${NS}/{}/${DRIVER}' && kubectl logs {} -c${CONTAINER} -n${NS}"
 
-mapfile -t CONTROLLER_PODS < <(kubectl get pods -n kube-system -l app=csi-azuredisk-controller --output jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}')
+mapfile -t CONTROLLER_PODS < <(kubectl get pods -n kube-system -l app=csi-$DRIVER-controller --output jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}')
 for CONTROLLER_POD in "${CONTROLLER_PODS[@]}"; do
+    echo "print out ${CONTROLLER_POD} metrics ..."
+    echo "======================================================================================"
     kubectl port-forward -n kube-system "pods/${CONTROLLER_POD}" 32000:29604 &
     KUBEPROXY=$!
     sleep 10
-    echo "print out ${CONTROLLER_POD} metrics ..."
-    echo "======================================================================================"
     curl http://localhost:32000/metrics
     kill -9 $KUBEPROXY
 done
