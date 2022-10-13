@@ -48,7 +48,7 @@ controller:
   runOnControlPlane: false
   disableAvailabilitySetNodes: false
   vmType: ""
-  provisionerWorkerThreads: 40
+  provisionerWorkerThreads: 50
   attacherWorkerThreads: 500
   vmssCacheTTLInSeconds: -1
   logLevel: 5
@@ -63,7 +63,10 @@ controller:
       operator: "Exists"
       effect: "NoSchedule"
   hostNetwork: true # this setting could be disabled if controller does not depend on MSI setting
+  labels: {}
+  annotations: {}
   podLabels: {}
+  podAnnotations: {}
   nodeSelector: {}
   affinity: {}
   resources:
@@ -130,7 +133,10 @@ snapshot:
   snapshotController:
     name: csi-snapshot-controller
     replicas: 2
+    labels: {}
+    annotations: {}
     podLabels: {}
+    podAnnotations: {}
     resources:
       limits:
         memory: 100Mi
@@ -149,6 +155,8 @@ driver:
   customUserAgent: ""
   userAgentSuffix: "OSS-helm"
   azureGoSDKLogLevel: "" # available values: ""(no logs), DEBUG, INFO, WARNING, ERROR
+  httpsProxy: ""
+  httpProxy: ""
 
 linux:
   enabled: true
@@ -160,7 +168,10 @@ linux:
     - operator: "Exists"
   hostNetwork: true # this setting could be disabled if perfProfile is `none`
   getNodeInfoFromLabels: false # get node info from node labels instead of IMDS
+  labels: {}
+  annotations: {}
   podLabels: {}
+  podAnnotations: {}
   nodeSelector: {}
   affinity: {}
   nodeAffinity:
@@ -200,7 +211,10 @@ windows:
     - key: "node.kubernetes.io/os"
       operator: "Exists"
       effect: "NoSchedule"
+  labels: {}
+  annotations: {}
   podLabels: {}
+  podAnnotations: {}
   nodeSelector: {}
   affinity: {}
   nodeAffinity:
@@ -214,13 +228,13 @@ windows:
   resources:
     livenessProbe:
       limits:
-        memory: 100Mi
+        memory: 150Mi
       requests:
         cpu: 10m
         memory: 40Mi
     nodeDriverRegistrar:
       limits:
-        memory: 100Mi
+        memory: 150Mi
       requests:
         cpu: 30m
         memory: 40Mi

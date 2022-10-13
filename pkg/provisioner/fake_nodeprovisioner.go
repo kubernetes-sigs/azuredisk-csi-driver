@@ -52,24 +52,9 @@ func NewFakeNodeProvisioner() (*FakeNodeProvisioner, error) {
 		nil
 }
 
-// IsBlockDevicePath return whether the path references a block device.
-// This fake implementation always returns false.
-func (fake *FakeNodeProvisioner) IsBlockDevicePath(path string) (bool, error) {
-	if result, ok := fake.blockDevicePathResults[path]; ok {
-		return result.isDevice, result.err
-	}
-
-	return false, nil
-}
-
 // SetIsBlockDevicePathResult set the result of calling IsBlockDevicePath for the specified path.
 func (fake *FakeNodeProvisioner) SetIsBlockDevicePathResult(path string, isDevice bool, err error) {
-	result := struct {
-		isDevice bool
-		err      error
-	}{isDevice, err}
-
-	fake.blockDevicePathResults[path] = result
+	fake.host.(*azureutils.FakeHostUtil).SetPathIsDeviceResult(path, isDevice, err)
 }
 
 // Mount mounts the volume at the specified path.

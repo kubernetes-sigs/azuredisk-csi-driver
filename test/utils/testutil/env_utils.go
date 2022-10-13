@@ -17,7 +17,7 @@ limitations under the License.
 package testutil
 
 import (
-	"github.com/onsi/ginkgo"
+	"github.com/onsi/ginkgo/v2"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 )
 

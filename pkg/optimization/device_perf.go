@@ -16,6 +16,8 @@ limitations under the License.
 
 package optimization
 
+import consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+
 // This is the interface for DeviceHelper
 type Interface interface {
 	DiskSupportsPerfOptimization(diskPerfProfile, diskAccountType string) bool
@@ -25,11 +27,11 @@ type Interface interface {
 
 // Compile-time check to ensure all Mounter DeviceHelper satisfy
 // the DeviceHelper interface.
-var _ Interface = &DeviceHelper{}
+var _ Interface = &DeviceHelper{blockDeviceRootPath: consts.BlockDeviceRootPathLinux}
 
 func NewSafeDeviceHelper() *SafeDeviceHelper {
 	return &SafeDeviceHelper{
-		Interface: &DeviceHelper{},
+		Interface: &DeviceHelper{blockDeviceRootPath: consts.BlockDeviceRootPathLinux},
 	}
 }
 

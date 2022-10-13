@@ -19,7 +19,8 @@ package consts
 import (
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2021-02-01/storage"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-12-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2021-09-01/storage"
 )
 
 const (
@@ -125,6 +126,8 @@ const (
 	TagKeyValueDelimiter = "="
 	// VMSetNamesSharingPrimarySLBDelimiter is the delimiter of vmSet names sharing the primary SLB
 	VMSetNamesSharingPrimarySLBDelimiter = ","
+	// PremiumV2_LRS type for Azure Disk
+	PremiumV2LRS = compute.DiskStorageAccountTypes("PremiumV2_LRS")
 )
 
 // cache
@@ -135,8 +138,21 @@ const (
 	VMSSKey = "k8svmssKey"
 	// VMASKey is the key when querying vmss cache
 	VMASKey = "k8svmasKey"
+	// NonVmssUniformNodesKey is the key when querying nonVmssUniformNodes cache
+	NonVmssUniformNodesKey = "k8sNonVmssUniformNodesKey"
 	// AvailabilitySetNodesKey is the availability set nodes key
 	AvailabilitySetNodesKey = "k8sAvailabilitySetNodesKey"
+
+	// VmssFlexKey is the key when querying vmssFlexVM cache
+	VmssFlexKey = "k8sVmssFlexKey"
+
+	// GetNodeVmssFlexIDLockKey is the key for getting the lock for getNodeVmssFlexID function
+	GetNodeVmssFlexIDLockKey = "k8sGetNodeVmssFlexIDLockKey"
+	// VMManagementTypeLockKey is the key for getting the lock for getVMManagementType function
+	VMManagementTypeLockKey = "VMManagementType"
+
+	// NonVmssUniformNodesCacheTTLDefaultInSeconds is the TTL of the non vmss uniform node cache
+	NonVmssUniformNodesCacheTTLDefaultInSeconds = 900
 	// AvailabilitySetNodesCacheTTLDefaultInSeconds is the TTL of the availabilitySet node cache
 	AvailabilitySetNodesCacheTTLDefaultInSeconds = 900
 	// VMSSCacheTTLDefaultInSeconds is the TTL of the vmss cache
@@ -145,6 +161,11 @@ const (
 	VMSSVirtualMachinesCacheTTLDefaultInSeconds = 600
 	// VMASCacheTTLDefaultInSeconds is the TTL of the vmas cache
 	VMASCacheTTLDefaultInSeconds = 600
+
+	// VmssFlexCacheTTLDefaultInSeconds is the TTL of the vmss flex cache
+	VmssFlexCacheTTLDefaultInSeconds = 600
+	// VmssFlexVMCacheTTLDefaultInSeconds is the TTL of the vmss flex vm cache
+	VmssFlexVMCacheTTLDefaultInSeconds = 600
 
 	// ZoneFetchingInterval defines the interval of performing zoneClient.GetZones
 	ZoneFetchingInterval = 30 * time.Minute
@@ -230,6 +251,9 @@ const (
 	// ServiceAnnotationPIPName specifies the pip that will be applied to load balancer
 	ServiceAnnotationPIPName = "service.beta.kubernetes.io/azure-pip-name"
 
+	// ServiceAnnotationPIPPrefixID specifies the pip prefix that will be applied to the load balancer.
+	ServiceAnnotationPIPPrefixID = "service.beta.kubernetes.io/azure-pip-prefix-id"
+
 	// ServiceAnnotationIPTagsForPublicIP specifies the iptags used when dynamically creating a public ip
 	ServiceAnnotationIPTagsForPublicIP = "service.beta.kubernetes.io/azure-pip-ip-tags"
 
@@ -271,6 +295,10 @@ const (
 	// and service names tags (which is managed by controller manager itself) would keep unchanged. The supported format
 	// is `a=b,c=d,...`. After updated, the old user-assigned tags would not be replaced by the new ones.
 	ServiceAnnotationAzurePIPTags = "service.beta.kubernetes.io/azure-pip-tags"
+
+	// ServiceAnnotationDisableLoadBalancerFloatingIP is the annotation used on the service to disable floating IP in load balancer rule.
+	// If omitted, the default value is false
+	ServiceAnnotationDisableLoadBalancerFloatingIP = "service.beta.kubernetes.io/azure-disable-load-balancer-floating-ip"
 
 	// ServiceAnnotationAzurePIPTags sets the additional Public IPs (split by comma) besides the service's Public IP configured on LoadBalancer.
 	// These additional Public IPs would be consumed by kube-proxy to configure the iptables rules on each node. Note they would not be configured
@@ -335,6 +363,14 @@ const (
 	CannotDeletePublicIPErrorMessageCode = "PublicIPAddressCannotBeDeleted"
 	// ReferencedResourceNotProvisionedMessageCode means the referenced resource has not been provisioned
 	ReferencedResourceNotProvisionedMessageCode = "ReferencedResourceNotProvisioned"
+	// ParentResourceNotFoundMessageCode is the error code that the parent VMSS of the VM is not found.
+	ParentResourceNotFoundMessageCode = "ParentResourceNotFound"
+	// ConcurrentRequestConflictMessage is the error message that the request failed due to the conflict with another concurrent operation.
+	ConcurrentRequestConflictMessage = "The request failed due to conflict with a concurrent request."
+	// CannotUpdateVMBeingDeletedMessagePrefix is the prefix of the error message that the request failed due to delete a VM that is being deleted
+	CannotUpdateVMBeingDeletedMessagePrefix = "'Put on Virtual Machine Scale Set VM Instance' is not allowed on Virtual Machine Scale Set"
+	// CannotUpdateVMBeingDeletedMessageSuffix is the suffix of the error message that the request failed due to delete a VM that is being deleted
+	CannotUpdateVMBeingDeletedMessageSuffix = "since it is marked for deletion"
 )
 
 // node ipam controller
@@ -447,4 +483,8 @@ const (
 
 	// Default number of IP configs for PLS
 	PLSDefaultNumOfIPConfig = 1
+)
+
+const (
+	VMSSTagForBatchOperation = "aks-managed-coordination"
 )

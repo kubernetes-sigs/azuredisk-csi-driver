@@ -106,13 +106,13 @@ func IsLinuxOS() bool {
 // RoundUpBytes rounds up the volume size in bytes up to multiplications of GiB
 // in the unit of Bytes
 func RoundUpBytes(volumeSizeBytes int64) int64 {
-	return roundUpSize(volumeSizeBytes, GiB) * GiB
+	return RoundUpSize(volumeSizeBytes, GiB) * GiB
 }
 
 // RoundUpGiB rounds up the volume size in bytes up to multiplications of GiB
 // in the unit of GiB
 func RoundUpGiB(volumeSizeBytes int64) int64 {
-	return roundUpSize(volumeSizeBytes, GiB)
+	return RoundUpSize(volumeSizeBytes, GiB)
 }
 
 // BytesToGiB conversts Bytes to GiB
@@ -125,12 +125,12 @@ func GiBToBytes(volumeSizeGiB int64) int64 {
 	return volumeSizeGiB * GiB
 }
 
-// roundUpSize calculates how many allocation units are needed to accommodate
+// RoundUpSize calculates how many allocation units are needed to accommodate
 // a volume of given size. E.g. when user wants 1500MiB volume, while AWS EBS
 // allocates volumes in gibibyte-sized chunks,
 // RoundUpSize(1500 * 1024*1024, 1024*1024*1024) returns '2'
 // (2 GiB is the smallest allocatable volume that can hold 1500MiB)
-func roundUpSize(volumeSizeBytes int64, allocationUnitBytes int64) int64 {
+func RoundUpSize(volumeSizeBytes int64, allocationUnitBytes int64) int64 {
 	roundedUp := volumeSizeBytes / allocationUnitBytes
 	if volumeSizeBytes%allocationUnitBytes > 0 {
 		roundedUp++

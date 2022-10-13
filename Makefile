@@ -20,7 +20,7 @@ IMAGE_NAME ?= azuredisk-csi
 SCHEDULER_EXTENDER_IMAGE_NAME ?= azdiskschedulerextender-csi
 ifneq ($(BUILD_V2), true)
 PLUGIN_NAME = azurediskplugin
-IMAGE_VERSION ?= v1.22.0
+IMAGE_VERSION ?= v1.24.0
 CHART_VERSION ?= latest
 else
 PLUGIN_NAME = azurediskpluginv2
@@ -54,12 +54,14 @@ E2E_HELM_OPTIONS += ${EXTRA_HELM_OPTIONS}
 ifdef DISABLE_ZONE
 E2E_HELM_OPTIONS += --set node.supportZone=false
 endif
-GINKGO_FLAGS = -ginkgo.v
+ARTIFACTS ?= _output
+GINKGO_COMMON_FLAGS = -ginkgo.v -ginkgo.timeout=3h -ginkgo.junit-report="$(ARTIFACTS)/junit_01.xml"
 ifeq ($(ENABLE_TOPOLOGY), true)
 GINKGO_FLAGS += -ginkgo.focus="\[multi-az\]"
 else
 GINKGO_FLAGS += -ginkgo.focus="\[single-az\]"
 endif
+GINKGO_FLAGS += $(GINKGO_COMMON_FLAGS)
 GOPATH ?= $(shell go env GOPATH)
 GOBIN ?= $(GOPATH)/bin
 GO111MODULE = on
@@ -349,7 +351,7 @@ e2e-test-v2:
 
 .PHONY: scale-test
 scale-test:
-	go test -v -timeout=0 ${GOTAGS} ./test/scale -ginkgo.focus="Scale test scheduling and starting multiple pods with a persistent volume";
+	go test -v -timeout=0 ${GOTAGS} ./test/scale ${GINKGO_COMMON_FLAGS} -ginkgo.focus="Scale test scheduling and starting multiple pods with a persistent volume";
 
 .PHONY: scale-test-v2
 scale-test-v2:

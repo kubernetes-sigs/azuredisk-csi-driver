@@ -1,6 +1,7 @@
-# Deprecation notice: online resize is already supported from Azure Disk CSI driver v1.11, for details, go to [Volume Expansion](../../deploy/example/resize)
+## Expand Azure disk PVC with downtime
+> Online resize is already supported from Azure Disk CSI driver v1.11, for details, go to [Volume Expansion](../../deploy/example/resize)
 
-#### Azure disk could not be resized when it's in "attached" state, we could only resize azure disk when it's in "unattached" state, this page will show you how to achieve this.
+#### If you have not registered `LiveResize` feature, Azure disk could not be expanded when it's in "attached" state, we could only resize azure disk when it's in "unattached" state, this page will show you how to achieve this.
 
 **How to use azure disk size grow feature**
  - In the beginning, pls make sure the Azure disk PVC is created by `disk.csi.azure.com` or `kubernetes.io/azure-disk` storage class with `allowVolumeExpansion: true` (default is false)
@@ -9,7 +10,7 @@ kind: StorageClass
 apiVersion: storage.k8s.io/v1
 metadata:
   name: hdd
-provisioner: kubernetes.io/azure-disk  # or disk.csi.azure.com
+provisioner: disk.csi.azure.com
 parameters:
   skuname: Standard_LRS
 allowVolumeExpansion: true

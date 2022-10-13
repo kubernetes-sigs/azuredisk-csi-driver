@@ -67,7 +67,7 @@ spec:
               value: unix://C:\\var\\lib\\kubelet\\plugins\\disk.csi.azure.com\\csi.sock
           resources:
             limits:
-              memory: 100Mi
+              memory: 150Mi
             requests:
               cpu: 10m
               memory: 40Mi
@@ -101,7 +101,7 @@ spec:
                   fieldPath: spec.nodeName
           resources:
             limits:
-              memory: 100Mi
+              memory: 150Mi
             requests:
               cpu: 30m
               memory: 40Mi

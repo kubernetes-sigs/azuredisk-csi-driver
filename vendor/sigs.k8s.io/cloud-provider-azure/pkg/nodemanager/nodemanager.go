@@ -64,10 +64,10 @@ type NodeProvider interface {
 
 // labelReconcileInfo lists Node labels to reconcile, and how to reconcile them.
 // primaryKey and secondaryKey are keys of labels to reconcile.
-//   - If both keys exist, but their values don't match. Use the value from the
-//   primaryKey as the source of truth to reconcile.
-//   - If ensureSecondaryExists is true, and the secondaryKey does not
-//   exist, secondaryKey will be added with the value of the primaryKey.
+// - If both keys exist, but their values don't match. Use the value from the
+// primaryKey as the source of truth to reconcile.
+// - If ensureSecondaryExists is true, and the secondaryKey does not
+// exist, secondaryKey will be added with the value of the primaryKey.
 var labelReconcileInfo = []struct {
 	primaryKey            string
 	secondaryKey          string
@@ -656,7 +656,7 @@ func (cnc *CloudNodeController) updateNetworkingCondition(node *v1.Node, network
 				Type:               v1.NodeNetworkUnavailable,
 				Status:             v1.ConditionFalse,
 				Reason:             "NodeInitialization",
-				Message:            "Should wait for cloud routes",
+				Message:            "Don't need to wait for cloud routes",
 				LastTransitionTime: currentTime,
 			})
 		} else {
@@ -664,7 +664,7 @@ func (cnc *CloudNodeController) updateNetworkingCondition(node *v1.Node, network
 				Type:               v1.NodeNetworkUnavailable,
 				Status:             v1.ConditionTrue,
 				Reason:             "NodeInitialization",
-				Message:            "Don't need to wait for cloud routes",
+				Message:            "Waiting for cloud routes",
 				LastTransitionTime: currentTime,
 			})
 		}
