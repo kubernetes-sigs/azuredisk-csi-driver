@@ -685,11 +685,12 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 	})
 
 	ginkgo.It(fmt.Sprintf("should create a pod, write and read to it, take a volume snapshot, and create another pod from the snapshot [disk.csi.azure.com] [%s]", schedulerName), func() {
-		testutil.SkipIfTestingInWindowsCluster()
 		testutil.SkipIfUsingInTreeVolumePlugin()
 
 		pod := resources.PodDetails{
-			Cmd: "echo 'hello world' > /mnt/test-1/data",
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
+			Cmd:          testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data"),
 			Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
 				{
 					FSType:    "ext4",
@@ -703,7 +704,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			}, t.allowedTopologyValues, isMultiZone),
 		}
 		podWithSnapshot := resources.PodDetails{
-			Cmd: "grep 'hello world' /mnt/test-1/data",
+			IsWindows:    testconsts.IsWindowsCluster,
+			WinServerVer: testconsts.WinServerVer,
+			Cmd:          testutil.ConvertToPowershellorCmdCommandIfNecessary("grep 'hello world' /mnt/test-1/data"),
 		}
 		test := testsuites.DynamicallyProvisionedVolumeSnapshotTest{
 			CSIDriver:              testDriver,
