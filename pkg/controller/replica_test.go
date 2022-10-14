@@ -56,6 +56,8 @@ func NewTestReplicaController(controller *gomock.Controller, namespace string, o
 }
 
 func TestReplicaReconcile(t *testing.T) {
+	testTimestamp := time.Now()
+
 	tests := []struct {
 		description string
 		request     reconcile.Request
@@ -63,12 +65,11 @@ func TestReplicaReconcile(t *testing.T) {
 		verifyFunc  func(*testing.T, *ReconcileReplica, reconcile.Result, error)
 	}{
 		{
-			description: "[Success] Should create a replacement replica attachment upon replica deletion.",
+			description: "[Success] Should create a replacement replica attachment upon replica detachment.",
 			request:     testReplicaAzVolumeAttachmentRequest,
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileReplica {
 				replicaAttachment := testReplicaAzVolumeAttachment
-				now := metav1.Time{Time: metav1.Now().Add(-1000)}
-				replicaAttachment.DeletionTimestamp = &now
+				replicaAttachment.Status.Annotations = azureutils.AddToMap(replicaAttachment.Status.Annotations, consts.VolumeDetachRequestAnnotation, string(azdrivernode))
 
 				newVolume := testAzVolume0.DeepCopy()
 				newVolume.Status.Detail = &azdiskv1beta2.AzVolumeStatusDetail{
@@ -119,8 +120,7 @@ func TestReplicaReconcile(t *testing.T) {
 			request:     testReplicaAzVolumeAttachmentRequest,
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileReplica {
 				replicaAttachment := testReplicaAzVolumeAttachment
-				now := metav1.Time{Time: metav1.Now().Add(-1000)}
-				replicaAttachment.DeletionTimestamp = &now
+				replicaAttachment.Status.Annotations = azureutils.AddToMap(replicaAttachment.Status.Annotations, consts.VolumeDetachRequestAnnotation, string(azdrivernode))
 				replicaAttachment.Status.State = azdiskv1beta2.DetachmentFailed
 
 				newVolume := testAzVolume0.DeepCopy()
@@ -155,6 +155,7 @@ func TestReplicaReconcile(t *testing.T) {
 			request:     testPrimaryAzVolumeAttachment0Request,
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileReplica {
 				primaryAttachment := testPrimaryAzVolumeAttachment0.DeepCopy()
+				primaryAttachment.Labels = azureutils.AddToMap(primaryAttachment.Labels, consts.RoleLabel, string(azdiskv1beta2.ReplicaRole), consts.RoleChangeLabel, consts.Demoted)
 				primaryAttachment.Status.Detail = &azdiskv1beta2.AzVolumeAttachmentStatusDetail{}
 				primaryAttachment.Status.Detail.Role = azdiskv1beta2.PrimaryRole
 				primaryAttachment.Spec.RequestedRole = azdiskv1beta2.ReplicaRole
@@ -188,14 +189,20 @@ func TestReplicaReconcile(t *testing.T) {
 				replicas, localError := controller.azClient.DiskV1beta2().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
 				require.NoError(t, localError)
 				require.NotNil(t, replicas)
-				require.Len(t, replicas.Items, 0)
+				require.Len(t, replicas.Items, 2)
+
+				for _, replica := range replicas.Items {
+					require.NotNil(t, replica.Status.Annotations)
+					require.Contains(t, replica.Status.Annotations, consts.VolumeDetachRequestAnnotation)
+				}
 			},
 		},
 		{
-			description: "[Success] Should delete a failed-attachment replica.",
+			description: "[Success] Should delete a failed-attachment replica and create a replacement replica.",
 			request:     testReplicaAzVolumeAttachmentRequest,
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileReplica {
 				replicaAttachment := testReplicaAzVolumeAttachment.DeepCopy()
+				replicaAttachment.CreationTimestamp.Time = testTimestamp
 				replicaAttachment.Status.State = azdiskv1beta2.AttachmentFailed
 
 				newVolume := testAzVolume0.DeepCopy()
@@ -220,8 +227,22 @@ func TestReplicaReconcile(t *testing.T) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
 
-				_, err = controller.azClient.DiskV1beta2().AzVolumeAttachments(testNamespace).Get(context.TODO(), testReplicaAzVolumeAttachmentName, metav1.GetOptions{})
-				require.True(t, errors.IsNotFound(err))
+				conditionFunc := func() (bool, error) {
+					roleReq, _ := azureutils.CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(azdiskv1beta2.ReplicaRole))
+					labelSelector := labels.NewSelector().Add(*roleReq)
+					replicas, localError := controller.azClient.DiskV1beta2().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
+					if localError != nil {
+						return false, localError
+					}
+					if len(replicas.Items) != 1 {
+						return false, nil
+					}
+
+					// there should be a new replica attachment
+					return !replicas.Items[0].CreationTimestamp.Time.Equal(testTimestamp), nil
+				}
+				err = wait.PollImmediate(verifyCRIInterval, verifyCRITimeout, conditionFunc)
+				require.NoError(t, err)
 			},
 		},
 		{
@@ -275,7 +296,7 @@ func TestReplicaReconcile(t *testing.T) {
 			},
 		},
 		{
-			description: "[Success] Should clean up replica AzVolumeAttachments upon primary AzVolumeAttachment deletion.",
+			description: "[Success] Should clean up replica AzVolumeAttachments upon primary AzVolumeAttachment detach.",
 			request:     testPrimaryAzVolumeAttachment0Request,
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileReplica {
 				primaryAttachment := testPrimaryAzVolumeAttachment0.DeepCopy()
@@ -312,7 +333,12 @@ func TestReplicaReconcile(t *testing.T) {
 				replicas, localError := controller.azClient.DiskV1beta2().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
 				require.NoError(t, localError)
 				require.NotNil(t, replicas)
-				require.Len(t, replicas.Items, 0)
+				require.Len(t, replicas.Items, 1)
+
+				for _, replica := range replicas.Items {
+					require.NotNil(t, replica.Status.Annotations)
+					require.Contains(t, replica.Status.Annotations, consts.VolumeDetachRequestAnnotation)
+				}
 			},
 		},
 		{
@@ -380,8 +406,14 @@ func TestReplicaReconcile(t *testing.T) {
 				replicas, localError := controller.azClient.DiskV1beta2().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
 				require.NoError(t, localError)
 				require.NotNil(t, replicas)
-				// clean up should not have happened
 				require.Len(t, replicas.Items, 1)
+
+				// clean up should not have happened
+				for _, replica := range replicas.Items {
+					if replica.Status.Annotations != nil {
+						require.NotContains(t, replica.Status.Annotations, consts.VolumeDetachRequestAnnotation)
+					}
+				}
 			},
 		},
 	}

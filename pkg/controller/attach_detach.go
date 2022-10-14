@@ -108,8 +108,13 @@ func (r *ReconcileAttachDetach) Reconcile(ctx context.Context, request reconcile
 		return reconcileReturnOnSuccess(azVolumeAttachment.Name, r.retryInfo)
 	}
 
-	// detachment request
+	// deletion request
 	if objectDeletionRequested(azVolumeAttachment) {
+		if err := r.removeFinalizer(ctx, azVolumeAttachment); err != nil {
+			return reconcileReturnOnError(ctx, azVolumeAttachment, "delete", err, r.retryInfo)
+		}
+		// detachment request
+	} else if volumeDetachRequested(azVolumeAttachment) {
 		if err := r.triggerDetach(ctx, azVolumeAttachment); err != nil {
 			return reconcileReturnOnError(ctx, azVolumeAttachment, "detach", err, r.retryInfo)
 		}
@@ -352,30 +357,31 @@ func (r *ReconcileAttachDetach) triggerDetach(ctx context.Context, azVolumeAttac
 					_, derr := updateState(azv, azdiskv1beta2.DetachmentFailed, forceUpdate)
 					return derr
 				}
+				//nolint:contextcheck // final status update of the CRI must occur even when the current context's deadline passes.
+				_, _ = azureutils.UpdateCRIWithRetry(goCtx, nil, r.cachedClient, r.azClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry, updateMode)
 			} else {
-				updateFunc = func(obj client.Object) error {
-					azv := obj.(*azdiskv1beta2.AzVolumeAttachment)
-					_ = r.deleteFinalizer(azv)
-					return nil
-				}
-				updateMode = azureutils.UpdateCRI
+				_ = r.cachedClient.Delete(ctx, azVolumeAttachment)
 			}
-			//nolint:contextcheck // final status update of the CRI must occur even when the current context's deadline passes.
-			_, _ = azureutils.UpdateCRIWithRetry(goCtx, nil, r.cachedClient, r.azClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry, updateMode)
 		}()
 		<-waitCh
-	} else {
-		updateFunc := func(obj client.Object) error {
-			azv := obj.(*azdiskv1beta2.AzVolumeAttachment)
-			// delete finalizer
-			_ = r.deleteFinalizer(azv)
-			return nil
-		}
-		if _, err = azureutils.UpdateCRIWithRetry(ctx, nil, r.cachedClient, r.azClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRI); err != nil {
-			return err
-		}
 	}
 	return nil
+}
+
+func (r *ReconcileAttachDetach) removeFinalizer(ctx context.Context, azVolumeAttachment *azdiskv1beta2.AzVolumeAttachment) error {
+	var err error
+	ctx, w := workflow.New(ctx)
+	defer func() { w.Finish(err) }()
+
+	updateFunc := func(obj client.Object) error {
+		azv := obj.(*azdiskv1beta2.AzVolumeAttachment)
+		// delete finalizer
+		_ = r.deleteFinalizer(azv)
+		return nil
+	}
+
+	_, err = azureutils.UpdateCRIWithRetry(ctx, nil, r.cachedClient, r.azClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRI)
+	return err
 }
 
 func (r *ReconcileAttachDetach) promote(ctx context.Context, azVolumeAttachment *azdiskv1beta2.AzVolumeAttachment) error {

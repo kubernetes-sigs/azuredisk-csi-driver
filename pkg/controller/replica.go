@@ -66,12 +66,10 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 	}
 
 	if azVolumeAttachment.Spec.RequestedRole == azdiskv1beta2.PrimaryRole {
-		// Deletion Event
-		if objectDeletionRequested(azVolumeAttachment) {
-			if volumeDetachRequested(azVolumeAttachment) {
-				// If primary attachment is marked for deletion, queue garbage collection for replica attachments
-				r.triggerGarbageCollection(ctx, azVolumeAttachment.Spec.VolumeName) //nolint:contextcheck // Garbage collection is asynchronous; context is not inherited by design
-			}
+		// Detach Event
+		if volumeDetachRequested(azVolumeAttachment) {
+			// If primary attachment is marked for deletion, queue garbage collection for replica attachments
+			r.triggerGarbageCollection(ctx, azVolumeAttachment.Spec.VolumeName) //nolint:contextcheck // Garbage collection is asynchronous; context is not inherited by design
 		} else {
 			// If not, cancel scheduled garbage collection if there is one enqueued
 			r.removeGarbageCollection(azVolumeAttachment.Spec.VolumeName)
@@ -89,8 +87,8 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 			return reconcile.Result{}, nil
 		}
 
-		// create a replacement replica if replica attachment failed
-		if objectDeletionRequested(azVolumeAttachment) {
+		// create a replica attachment was requested for a detach, create a replacement replica if the attachment is not being cleaned up
+		if volumeDetachRequested(azVolumeAttachment) {
 			switch azVolumeAttachment.Status.State {
 			case azdiskv1beta2.DetachmentFailed:
 				if _, err := azureutils.UpdateCRIWithRetry(ctx, nil, r.cachedClient, r.azClient, azVolumeAttachment, func(obj client.Object) error {
@@ -101,27 +99,29 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 					return reconcile.Result{Requeue: true}, err
 				}
 			}
-			if !isCleanupRequested(azVolumeAttachment) || !volumeDetachRequested(azVolumeAttachment) {
-				go func() {
-					goCtx := context.Background()
-
-					// wait for replica AzVolumeAttachment deletion
-					waiter, _ := r.conditionWatcher.NewConditionWaiter(goCtx, watcher.AzVolumeAttachmentType, azVolumeAttachment.Name, verifyObjectDeleted)
-					defer waiter.Close()
-					_, _ = waiter.Wait(goCtx)
-
-					// add replica management operation to the queue
-					r.triggerManageReplica(azVolumeAttachment.Spec.VolumeName)
-				}()
+			if !isCleanupRequested(azVolumeAttachment) {
+				go r.handleReplicaDelete(context.Background(), azVolumeAttachment)
 			}
+			// if replica attachment failed, delete it and create a replacement
 		} else if azVolumeAttachment.Status.State == azdiskv1beta2.AttachmentFailed {
 			// if attachment failed for replica AzVolumeAttachment, delete the CRI so that replace replica AzVolumeAttachment can be created.
 			if err := r.cachedClient.Delete(ctx, azVolumeAttachment); err != nil {
 				return reconcile.Result{Requeue: true}, err
 			}
+			go r.handleReplicaDelete(context.Background(), azVolumeAttachment)
 		}
 	}
 	return reconcile.Result{}, nil
+}
+
+func (r *ReconcileReplica) handleReplicaDelete(ctx context.Context, azVolumeAttachment *azdiskv1beta2.AzVolumeAttachment) {
+	// wait for replica AzVolumeAttachment deletion
+	waiter, _ := r.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeAttachmentType, azVolumeAttachment.Name, verifyObjectDeleted)
+	defer waiter.Close()
+	_, _ = waiter.Wait(ctx)
+
+	// add replica management operation to the queue
+	r.triggerManageReplica(azVolumeAttachment.Spec.VolumeName)
 }
 
 //nolint:contextcheck // context is not inherited by design

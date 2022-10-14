@@ -546,7 +546,7 @@ func (c *CrdProvisioner) PublishVolume(
 	filterVAToDetach := func(attachments []azdiskv1beta2.AzVolumeAttachment) (numAttachment int, unpublishOrder []*azdiskv1beta2.AzVolumeAttachment) {
 		for i := range attachments {
 			// only count if deletionTimestamp not set
-			if attachments[i].GetDeletionTimestamp().IsZero() {
+			if attachments[i].GetDeletionTimestamp().IsZero() && !azureutils.MapContains(attachments[i].Status.Annotations, consts.VolumeDetachRequestAnnotation) {
 				numAttachment++
 				if attachments[i].Spec.RequestedRole == azdiskv1beta2.ReplicaRole {
 					unpublishOrder = append(unpublishOrder, &attachments[i])
@@ -648,7 +648,7 @@ func (c *CrdProvisioner) PublishVolume(
 	var updateFunc func(obj client.Object) error
 	updateMode := azureutils.UpdateCRIStatus
 	// if attachment is scheduled for deletion, new attachment should only be created after the deletion
-	if attachmentObj.DeletionTimestamp != nil {
+	if attachmentObj.DeletionTimestamp != nil || azureutils.MapContains(attachmentObj.Status.Annotations, consts.VolumeDetachRequestAnnotation) {
 		err = status.Error(codes.Aborted, "need to wait until attachment is fully deleted before attaching")
 		return nil, err
 	}
@@ -890,7 +890,6 @@ func (c *CrdProvisioner) demoteVolume(ctx context.Context, azVolumeAttachment *a
 }
 func (c *CrdProvisioner) detachVolume(ctx context.Context, azVolumeAttachment *azdiskv1beta2.AzVolumeAttachment) error {
 	var err error
-	attachmentName := azVolumeAttachment.Name
 	nodeName := azVolumeAttachment.Spec.NodeName
 	volumeID := azVolumeAttachment.Spec.VolumeID
 	if err != nil {
@@ -924,23 +923,10 @@ func (c *CrdProvisioner) detachVolume(ctx context.Context, azVolumeAttachment *a
 	}
 
 	w.Logger().V(5).Infof("Requesting AzVolumeAttachment (%s) detachment", azVolumeAttachment.Name)
-	var updatedObj client.Object
-	if updatedObj, err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
+	if _, err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
 		return err
 	}
-	azVolumeAttachment = updatedObj.(*azdiskv1beta2.AzVolumeAttachment)
 
-	// only make delete request if deletionTimestamp is not set
-	if azVolumeAttachment.DeletionTimestamp.IsZero() {
-		err = c.azDiskClient.DiskV1beta2().AzVolumeAttachments(c.namespace).Delete(ctx, attachmentName, metav1.DeleteOptions{})
-		if apiErrors.IsNotFound(err) {
-			w.Logger().Infof("Successfully deleted AzVolumeAttachment CRI (%s)", attachmentName)
-			return nil
-		} else if err != nil {
-			err = status.Errorf(codes.Internal, "failed to delete AzVolumeAttachment CRI (%s): %v", attachmentName, err)
-			return err
-		}
-	}
 	return c.WaitForDetach(ctx, volumeID, nodeName)
 }
 
