@@ -65,6 +65,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/workflow"
 	azurecloudconsts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
 var isTestRun = flag.Bool("is-test-run", false, "Boolean flag to indicate whether this instance is being used for sanity or integration tests")
@@ -404,6 +405,12 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 		klog.Errorf("Failed to initialize NodeAvailabilityController. Error: %v. Exiting application...", err)
 		os.Exit(1)
 	}
+	err = controller.WatchObject(mgr, source.Kind{Type: &v1.Namespace{}})
+	if err != nil {
+		klog.Errorf("Failed to watch Namespace. Error: %v. Exiting application...", err)
+		os.Exit(1)
+	}
+
 	// This goroutine is preserved for leader controller manager
 	// Leader controller manager should recover CRI if possible and clean them up before exiting.
 	go func() {

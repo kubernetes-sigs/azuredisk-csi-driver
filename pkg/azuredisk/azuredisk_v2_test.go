@@ -30,6 +30,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/wait"
 	k8stesting "k8s.io/client-go/testing"
 	"k8s.io/klog/v2"
 	azdiskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
@@ -164,6 +165,18 @@ func TestRunAzDriverNodeHeartbeatLoop(t *testing.T) {
 			assert.NoError(t, err)
 
 			d.registerAzDriverNodeOrDie(regCtx)
+
+			// wait for azDriverNode to be created
+			err = wait.PollImmediate(time.Duration(1)*time.Second, time.Duration(1)*time.Minute, func() (bool, error) {
+				_, err := d.azDriverNodeInformer.Lister().AzDriverNodes(d.config.ObjectNamespace).Get(d.NodeID)
+				if err != nil {
+					if apierrors.IsNotFound(err) {
+						return false, nil
+					}
+					return false, err
+				}
+				return true, nil
+			})
 
 			d.config.NodeConfig.HeartbeatFrequencyInSec = 1
 
