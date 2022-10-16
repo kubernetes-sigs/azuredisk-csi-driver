@@ -13,5 +13,7 @@
     "subnetName": "k8s-subnet",                    // optional
     "vnetName": "k8s-vnet-17181929",               // optional
     "vnetResourceGroup": "",                       // optional
+    "extendedLocationType": "edgezone",            // optional
+    "extendedLocationName": "edgezonename",        // optional
     "cloudProviderBackoff": true                   // optional
 }
