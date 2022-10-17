@@ -112,7 +112,7 @@ func CountAllPodsWithMatchingLabel(cs clientset.Interface, ns *v1.Namespace, mat
 	return len(pods.Items)
 }
 
-func WaitForPodsWithMatchingLabelToRun(testTimeout int, tickerDuration time.Duration, desiredNumberOfPods int, cs clientset.Interface, ns *v1.Namespace) (numberOfRunningPods int) {
+func WaitForAllPodsWithMatchingLabelToRun(testTimeout int, tickerDuration time.Duration, desiredNumberOfPods int, cs clientset.Interface, ns *v1.Namespace) (numberOfRunningPods int) {
 	ticker := time.NewTicker(tickerDuration)
 	tickerCount := 0
 	timeout := time.After(time.Duration(testTimeout) * time.Minute)
@@ -126,6 +126,27 @@ func WaitForPodsWithMatchingLabelToRun(testTimeout int, tickerDuration time.Dura
 			numberOfRunningPods = CountAllPodsWithMatchingLabel(cs, ns, map[string]string{"group": "azuredisk-scale-tester"}, string(v1.PodRunning))
 			e2elog.Logf("%d min: %d pods are ready", tickerCount, numberOfRunningPods)
 			if numberOfRunningPods >= desiredNumberOfPods {
+				return
+			}
+		}
+	}
+}
+
+func WaitForAllPodsWithMatchingLabelToDelete(testTimeout int, tickerDuration time.Duration, totalNumberOfPods int, cs clientset.Interface, ns *v1.Namespace) (numberOfRunningPods int) {
+	numberOfRunningPods = totalNumberOfPods
+	ticker := time.NewTicker(tickerDuration)
+	tickerCount := 0
+	timeout := time.After(time.Duration(testTimeout) * time.Minute)
+
+	for {
+		select {
+		case <-timeout:
+			return
+		case <-ticker.C:
+			tickerCount++
+			numberOfRunningPods = CountAllPodsWithMatchingLabel(cs, ns, map[string]string{"group": "azuredisk-scale-tester"}, string(v1.PodRunning))
+			e2elog.Logf("%d min: %d pods are ready", tickerCount, numberOfRunningPods)
+			if numberOfRunningPods <= 0 {
 				return
 			}
 		}

@@ -36,8 +36,29 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 )
 
+func WaitForAllVolumeAttachmentsToDetach(testTimeout int, tickerDuration time.Duration, totalNumberOfVolumeAttachments int, cs clientset.Interface) (numberOfAttachedVolumeAttachments int) {
+	numberOfAttachedVolumeAttachments = totalNumberOfVolumeAttachments
+	ticker := time.NewTicker(tickerDuration)
+	tickerCount := 0
+	timeout := time.After(time.Duration(testTimeout) * time.Minute)
+
+	for {
+		select {
+		case <-timeout:
+			return
+		case <-ticker.C:
+			tickerCount++
+			numberOfAttachedVolumeAttachments = CountAllVolumeAttachments(cs)
+			e2elog.Logf("%.1f min: %d volumes are attached", float32(tickerCount*30)/60, numberOfAttachedVolumeAttachments)
+			if numberOfAttachedVolumeAttachments <= 0 {
+				return
+			}
+		}
+	}
+}
+
 func CountAllVolumeAttachments(cs clientset.Interface) int {
-	e2elog.Logf("Getting all volume attachments")
+	e2elog.Logf("Getting all VolumeAttachments")
 	vatts, err := cs.StorageV1().VolumeAttachments().List(context.TODO(), metav1.ListOptions{})
 	if !errors.IsNotFound(err) {
 		framework.ExpectNoError(err)
@@ -91,14 +112,10 @@ func WaitForVolumeDetach(c clientset.Interface, pvName string, poll, pollTimeout
 	}, ctx.Done())
 }
 
-func WaitForReplicaAttachmentsToAttach(testTimeout int, tickerDuration time.Duration, desiredNumberOfReplicaAtts int, cs *azdisk.Clientset) (numberOfAttachedReplicaAtts int) {
+func WaitForAllReplicaAttachmentsToAttach(testTimeout int, tickerDuration time.Duration, desiredNumberOfReplicaAtts int, cs *azdisk.Clientset) (numberOfAttachedReplicaAtts int) {
 	ticker := time.NewTicker(tickerDuration)
 	tickerCount := 0
 	timeout := time.After(time.Duration(testTimeout) * time.Minute)
-
-	roleReq, err := azureutils.CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(azdiskv1beta2.ReplicaRole))
-	framework.ExpectNoError(err)
-	labelSelector := labels.NewSelector().Add(*roleReq)
 
 	for {
 		select {
@@ -106,21 +123,52 @@ func WaitForReplicaAttachmentsToAttach(testTimeout int, tickerDuration time.Dura
 			return
 		case <-ticker.C:
 			tickerCount++
-			replicaAtts, err := cs.DiskV1beta2().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
-			if err != nil {
-				e2elog.Failf("Failed to get replica attachments: %v.", err)
-			}
-
-			numberOfAttachedReplicaAtts = 0
-			for _, replicaAtt := range replicaAtts.Items {
-				if replicaAtt.Status.State == azdiskv1beta2.Attached {
-					numberOfAttachedReplicaAtts++
-				}
-			}
+			numberOfAttachedReplicaAtts = CountAllAttachedReplicaAttachments(cs)
 			e2elog.Logf("%d min: %d replica attachments are attached", tickerCount, numberOfAttachedReplicaAtts)
 			if numberOfAttachedReplicaAtts >= desiredNumberOfReplicaAtts {
 				return
 			}
 		}
 	}
+}
+
+func WaitForAllReplicaAttachmentsToDetach(testTimeout int, tickerDuration time.Duration, totalNumberOfReplicaAtts int, cs *azdisk.Clientset) (numberOfAttachedReplicaAtts int) {
+	numberOfAttachedReplicaAtts = totalNumberOfReplicaAtts
+	ticker := time.NewTicker(tickerDuration)
+	tickerCount := 0
+	timeout := time.After(time.Duration(testTimeout) * time.Minute)
+
+	for {
+		select {
+		case <-timeout:
+			return
+		case <-ticker.C:
+			tickerCount++
+			numberOfAttachedReplicaAtts = CountAllAttachedReplicaAttachments(cs)
+			e2elog.Logf("%d min: %d replica attachments are attached", tickerCount, numberOfAttachedReplicaAtts)
+			if numberOfAttachedReplicaAtts <= 0 {
+				return
+			}
+		}
+	}
+}
+
+func CountAllAttachedReplicaAttachments(cs *azdisk.Clientset) int {
+	e2elog.Logf("Getting all replica attachments")
+	roleReq, err := azureutils.CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(azdiskv1beta2.ReplicaRole))
+	framework.ExpectNoError(err)
+	labelSelector := labels.NewSelector().Add(*roleReq)
+
+	replicaAtts, err := cs.DiskV1beta2().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
+	if err != nil {
+		e2elog.Failf("Failed to get replica attachments: %v.", err)
+	}
+
+	numberOfAttachedReplicaAtts := 0
+	for _, replicaAtt := range replicaAtts.Items {
+		if replicaAtt.Status.State == azdiskv1beta2.Attached {
+			numberOfAttachedReplicaAtts++
+		}
+	}
+	return numberOfAttachedReplicaAtts
 }

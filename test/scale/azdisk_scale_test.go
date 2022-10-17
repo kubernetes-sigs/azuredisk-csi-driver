@@ -55,7 +55,7 @@ func scaleTests(isMultiZone bool) {
 		testDriver = driver.InitAzureDiskDriver()
 	})
 
-	ginkgo.It("Scale test scheduling and starting multiple pods with a persistent volume.", func() {
+	ginkgo.It("Scale test scheduling and starting multiple pods with persistent volumes.", func() {
 		testutil.SkipIfUsingInTreeVolumePlugin()
 		volumes := []resources.VolumeDetails{}
 		for j := 1; j <= *volMountedToPod; j++ {
@@ -70,6 +70,11 @@ func scaleTests(isMultiZone bool) {
 			volumes = append(volumes, volume)
 		}
 
+		azDiskClient, err := azdisk.NewForConfig(f.ClientConfig())
+		if err != nil {
+			ginkgo.Fail(fmt.Sprintf("Failed to create disk client. Error: %v", err))
+		}
+
 		pod := resources.PodDetails{
 			Cmd:          testutil.ConvertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
 			Volumes:      resources.NormalizeVolumes(volumes, []string{}, isMultiZone),
@@ -81,12 +86,14 @@ func scaleTests(isMultiZone bool) {
 		test.CSIDriver = testDriver
 		test.Pod = pod
 		test.Replicas = *testerReplicas
-		test.StorageClassParameters = map[string]string{consts.SkuNameField: "Premium_LRS", "maxShares": "1", "cachingmode": "None"}
+		test.MaxShares = *testerMaxShares
+		test.StorageClassParameters = map[string]string{consts.SkuNameField: "Premium_LRS", "maxShares": fmt.Sprint(*testerMaxShares), "cachingmode": "None"}
+		test.AzDiskClient = azDiskClient
 
 		test.Run(cs, ns, schedulerName)
 	})
 
-	ginkgo.It("Scale test scheduling and starting multiple pods with persistent volume request and reschedule on deletion.", func() {
+	ginkgo.It("Scale test scheduling and rescheduling multiple pods with persistent volumes on failover.", func() {
 		testutil.SkipIfUsingInTreeVolumePlugin()
 		volumes := []resources.VolumeDetails{}
 		for j := 1; j <= *volMountedToPod; j++ {
