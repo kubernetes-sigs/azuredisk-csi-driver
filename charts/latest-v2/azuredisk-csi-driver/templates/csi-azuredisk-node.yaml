@@ -33,6 +33,13 @@ metadata:
   name: {{ .Values.linux.dsName }}
   namespace: {{ .Release.Namespace }}
 {{ include "azuredisk.labels" . | indent 2 }}
+{{- with .Values.linux.labels }}
+{{ . | toYaml | indent 4 }}
+{{- end }}
+{{- with .Values.linux.annotations }}
+  annotations:
+{{ . | toYaml | indent 4 }}
+{{- end }}
 spec:
   updateStrategy:
     rollingUpdate:
@@ -46,6 +53,10 @@ spec:
 {{ include "azuredisk.labels" . | indent 6 }}
         app: {{ .Values.linux.dsName }}
 {{- with .Values.linux.podLabels }}
+{{ toYaml . | indent 8 }}
+{{- end }}
+{{- with .Values.linux.podAnnotations }}
+      annotations:
 {{ toYaml . | indent 8 }}
 {{- end }}
     spec:

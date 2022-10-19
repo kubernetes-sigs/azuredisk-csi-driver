@@ -28,7 +28,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-12-01/compute"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/pborman/uuid"
@@ -53,12 +53,13 @@ import (
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	azdiskinformers "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/workflow"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients"
+	cloudproviderconsts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -334,6 +335,7 @@ func NormalizeStorageAccountType(storageAccountType, cloud string, disableAzureS
 
 	sku := compute.DiskStorageAccountTypes(storageAccountType)
 	supportedSkuNames := compute.PossibleDiskStorageAccountTypesValues()
+	supportedSkuNames = append(supportedSkuNames, cloudproviderconsts.PremiumV2LRS)
 	if IsAzureStackCloud(cloud, disableAzureStackCloud) {
 		supportedSkuNames = []compute.DiskStorageAccountTypes{compute.DiskStorageAccountTypesStandardLRS, compute.DiskStorageAccountTypesPremiumLRS}
 	}
@@ -472,7 +474,7 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 			// accept all device settings params
 			// device settings need to start with azureconstants.DeviceSettingsKeyPrefix
 			if deviceSettings, err := optimization.GetDeviceSettingFromAttribute(k); err == nil {
-				diskParams.DeviceSettings[filepath.Join(azureconstants.DummyBlockDevicePathLinux, deviceSettings)] = v
+				diskParams.DeviceSettings[filepath.Join(consts.DummyBlockDevicePathLinux, deviceSettings)] = v
 			} else {
 				return diskParams, fmt.Errorf("invalid parameter %s in storage class", k)
 			}
@@ -772,6 +774,10 @@ func IsCorruptedDir(dir string) bool {
 
 // isAvailabilityZone returns true if the zone is in format of <region>-<zone-id>.
 func IsValidAvailabilityZone(zone, region string) bool {
+	if region == "" {
+		index := strings.Index(zone, "-")
+		return index > 0 && index < len(zone)-1
+	}
 	return strings.HasPrefix(zone, fmt.Sprintf("%s-", region))
 }
 
@@ -1330,4 +1336,36 @@ func MapContains(mmap map[string]string, key string) bool {
 		return ok
 	}
 	return false
+}
+
+// GetDefaultDiskIOPSReadWrite according to requestGiB
+//
+//	ref: https://docs.microsoft.com/en-us/azure/virtual-machines/disks-types#ultra-disk-iops
+func GetDefaultDiskIOPSReadWrite(requestGiB int) int {
+	iops := cloudproviderconsts.DefaultDiskIOPSReadWrite
+	if requestGiB > iops {
+		iops = requestGiB
+	}
+	if iops > 160000 {
+		iops = 160000
+	}
+	return iops
+}
+
+// GetDefaultDiskMBPSReadWrite according to requestGiB
+//
+//	ref: https://docs.microsoft.com/en-us/azure/virtual-machines/disks-types#ultra-disk-throughput
+func GetDefaultDiskMBPSReadWrite(requestGiB int) int {
+	bandwidth := cloudproviderconsts.DefaultDiskMBpsReadWrite
+	iops := GetDefaultDiskIOPSReadWrite(requestGiB)
+	if iops/256 > bandwidth {
+		bandwidth = int(util.RoundUpSize(int64(iops), 256))
+	}
+	if bandwidth > iops/4 {
+		bandwidth = int(util.RoundUpSize(int64(iops), 4))
+	}
+	if bandwidth > 4000 {
+		bandwidth = 4000
+	}
+	return bandwidth
 }

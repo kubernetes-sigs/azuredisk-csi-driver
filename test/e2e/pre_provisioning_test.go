@@ -22,8 +22,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
-	"github.com/onsi/ginkgo"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-12-01/compute"
+	"github.com/onsi/ginkgo/v2"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -31,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
+	admissionapi "k8s.io/pod-security-admission/api"
 	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
@@ -44,10 +45,17 @@ import (
 
 const (
 	defaultDiskSize = 10
+	largeDiskSize   = 100
 )
 
 var _ = ginkgo.Describe("Pre-Provisioned", func() {
 	f := framework.NewDefaultFramework("azuredisk")
+
+	// Apply the minmally restrictive baseline Pod Security Standard profile to namespaces
+	// created by the Kubernetes end-to-end test framework to enable testing with a nil
+	// Pod security context.
+	f.NamespacePodSecurityEnforceLevel = admissionapi.LevelBaseline
+
 	scheduler := testutil.GetSchedulerForE2E()
 
 	var (
@@ -146,6 +154,23 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 				Pods:      pods,
 			}
 			test.Run(cs, ns, schedulerName)
+		})
+
+		ginkgo.It("should succeed when creating a PremiumV2_LRS disk [disk.csi.azure.com][windows]", func() {
+			testutil.SkipIfUsingInTreeVolumePlugin()
+			testutil.SkipIfOnAzureStackCloud()
+			var err error
+			volumeContext := map[string]string{
+				consts.SkuNameField:     "PremiumV2_LRS",
+				consts.CachingModeField: "None",
+				consts.LocationField:    "eastus", // eastus2euap, swedencentral, westeurope
+			}
+			volumeID, err = CreateVolume("premium-v2-disk", largeDiskSize, volumeContext)
+			if err != nil {
+				skipVolumeDeletion = true
+				ginkgo.Fail(fmt.Sprintf("create volume error: %v", err))
+			}
+			ginkgo.By(fmt.Sprintf("Successfully provisioned a shared disk volume: %q\n", volumeID))
 		})
 
 		ginkgo.It(fmt.Sprintf("should succeed when reattaching a disk to a new node on DanglingAttachError [disk.csi.azure.com][%s]", scheduler), func() {
@@ -419,6 +444,8 @@ func CreateVolume(diskName string, sizeGiB int, volumeContext map[string]string)
 		storageAccountType string
 	)
 
+	diskLocation := location
+
 	for k, v := range volumeContext {
 		switch strings.ToLower(k) {
 		case consts.SkuNameField:
@@ -428,19 +455,22 @@ func CreateVolume(diskName string, sizeGiB int, volumeContext map[string]string)
 			if err != nil || maxShares < 1 {
 				maxShares = 1
 			}
+		case consts.LocationField:
+			diskLocation = v
 		}
 	}
 
-	accoutType, err := azureutils.NormalizeStorageAccountType(storageAccountType, azureCloud.Config.Cloud, azureCloud.Config.DisableAzureStackCloud)
+	accountType, err := azureutils.NormalizeStorageAccountType(storageAccountType, azureCloud.Config.Cloud, azureCloud.Config.DisableAzureStackCloud)
 	if err != nil {
-		accoutType = compute.DiskStorageAccountTypes(compute.DiskStorageAccountTypesPremiumLRS)
+		accountType = compute.DiskStorageAccountTypes(compute.DiskStorageAccountTypesPremiumLRS)
 	}
 	volumeOptions := &azure.ManagedDiskOptions{
 		DiskName:           diskName,
-		StorageAccountType: accoutType,
+		StorageAccountType: accountType,
 		ResourceGroup:      azureCloud.ResourceGroup,
 		SizeGB:             sizeGiB,
 		MaxShares:          int32(maxShares),
+		Location:           diskLocation,
 	}
 
 	diskURI, err := azureCloud.CreateManagedDisk(context.TODO(), volumeOptions)

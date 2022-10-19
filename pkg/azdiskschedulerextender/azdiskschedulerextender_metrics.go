@@ -37,7 +37,7 @@ var (
 			Namespace:      scheduler,
 			Name:           "extender_filter_nodes_duration_seconds",
 			Help:           "Latency for handling filter nodes request.",
-			Buckets:        metrics.ExponentialBuckets(0.0001, 2, 12),
+			Buckets:        metrics.ExponentialBuckets(0.00001, 2, 12),
 			StabilityLevel: metrics.ALPHA,
 		},
 		[]string{"filter"})
@@ -47,10 +47,10 @@ var (
 			Namespace:      scheduler,
 			Name:           "extender_prioritize_nodes_duration_seconds",
 			Help:           "Latency for handling prioritize nodes request.",
-			Buckets:        metrics.ExponentialBuckets(0.0001, 2, 12),
+			Buckets:        metrics.ExponentialBuckets(0.00001, 2, 12),
 			StabilityLevel: metrics.ALPHA,
 		},
-		[]string{"filter"})
+		[]string{"prioritize"})
 
 	SchedulerExtenderRequestCount = metrics.NewCounter(
 		&metrics.CounterOpts{
@@ -84,6 +84,8 @@ func RegisterMetrics(schedulerMetrics ...metrics.Registerable) {
 
 func DurationSince(functionName string, start time.Time) float64 {
 	requestDuration := time.Since(start).Seconds()
-	klog.V(2).Infof("Call to %v took: %f ms\n", functionName, requestDuration/1000)
+	klog.V(2).InfoS("Observed Request Latency",
+		"latency_seconds", requestDuration,
+		"request", functionName)
 	return requestDuration
 }

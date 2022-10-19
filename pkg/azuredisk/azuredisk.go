@@ -23,7 +23,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-12-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 
 	"google.golang.org/grpc/codes"
@@ -70,7 +70,6 @@ type DriverCore struct {
 	deviceHelper optimization.Interface
 	nodeInfo     *optimization.NodeInfo
 	ioHandler    azureutils.IOHandler
-	hostUtil     hostUtil
 }
 
 // Driver is the v1 implementation of the Azure Disk CSI Driver.
@@ -80,6 +79,7 @@ type Driver struct {
 	kubeconfig  string
 	mounter     *mount.SafeFormatAndMount
 	volumeLocks *volumehelper.VolumeLocks
+	hostUtil    hostUtil
 	// a timed cache GetDisk throttling
 	getDiskThrottlingCache     *azcache.TimedCache
 	perfOptimizationEnabled    bool
@@ -368,7 +368,7 @@ func (d *DriverCore) getNodeInfo() *optimization.NodeInfo {
 	return d.nodeInfo
 }
 
-func (d *DriverCore) getHostUtil() hostUtil {
+func (d *Driver) getHostUtil() hostUtil {
 	return d.hostUtil
 }
 

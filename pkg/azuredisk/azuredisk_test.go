@@ -26,6 +26,7 @@ import (
 	"time"
 
 	clientset "k8s.io/client-go/kubernetes"
+	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
@@ -138,6 +139,45 @@ func TestRun(t *testing.T) {
 				case <-time.After(30 * time.Second):
 					t.Error("Driver failed to ready within timeout")
 				}
+			},
+		},
+		{
+			name: "Successful run with vmss VMType",
+			testFunc: func(t *testing.T) {
+				if err := ioutil.WriteFile(fakeCredFile, []byte(fakeCredContent), 0666); err != nil {
+					t.Error(err)
+				}
+
+				defer func() {
+					if err := os.Remove(fakeCredFile); err != nil {
+						t.Error(err)
+					}
+				}()
+
+				originalCredFile, ok := os.LookupEnv(consts.DefaultAzureCredentialFileEnv)
+				if ok {
+					defer os.Setenv(consts.DefaultAzureCredentialFileEnv, originalCredFile)
+				} else {
+					defer os.Unsetenv(consts.DefaultAzureCredentialFileEnv)
+				}
+				os.Setenv(consts.DefaultAzureCredentialFileEnv, fakeCredFile)
+
+				d := newDriverV1(&azdiskv1beta2.AzDiskDriverConfiguration{
+					NodeConfig: azdiskv1beta2.NodeConfiguration{
+						NodeID:                 "",
+						EnablePerfOptimization: true,
+					},
+					DriverName: consts.DefaultDriverName,
+					ControllerConfig: azdiskv1beta2.ControllerConfiguration{
+						EnableListVolumes:   true,
+						EnableListSnapshots: true,
+						VMType:              "vmss",
+					},
+					CloudConfig: azdiskv1beta2.CloudConfiguration{
+						VMSSCacheTTLInSeconds: 10,
+					},
+				})
+				d.Run("tcp://127.0.0.1:0", "", true, true)
 			},
 		},
 	}

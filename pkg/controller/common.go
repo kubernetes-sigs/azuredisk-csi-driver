@@ -21,23 +21,21 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-12-01/compute"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	v1 "k8s.io/api/core/v1"
 
 	"k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/selection"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/component-helpers/scheduling/corev1/nodeaffinity"
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
@@ -53,7 +51,13 @@ import (
 
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
 const (
@@ -66,9 +70,14 @@ const (
 
 	cloudTimeout = time.Duration(5) * time.Minute
 
-	nodeScoreHighCoefficient = 10
-	nodeScoreLowCoefficient  = 1
+	defaultMaxPodAffinityWeight = 100
 )
+
+type noOpReconciler struct{}
+
+func (n *noOpReconciler) Reconcile(_ context.Context, _ reconcile.Request) (reconcile.Result, error) {
+	return reconcile.Result{}, nil
+}
 
 type operationRequester string
 
@@ -259,138 +268,56 @@ func (p *interPodAffinityFilter) filter(ctx context.Context, nodes []v1.Node) ([
 	ctx, w := workflow.New(ctx, workflow.WithDetails("filter-plugin", p.name()))
 	defer w.Finish(nil)
 	nodeMap := map[string]int{}
-	candidateNodes := set{}
+	qualifyingNodes := set{}
+
 	for i, node := range nodes {
 		nodeMap[node.Name] = i
-		candidateNodes.add(node.Name)
+		qualifyingNodes.add(node.Name)
 	}
 
-	replicaNodes := set{}
-	for i, pod := range p.pods {
+	isFirst := true
+	for _, pod := range p.pods {
 		if pod.Spec.Affinity == nil || pod.Spec.Affinity.PodAffinity == nil {
 			continue
 		}
-
-		for _, podAffinity := range pod.Spec.Affinity.PodAffinity.RequiredDuringSchedulingIgnoredDuringExecution {
-			podSelector, err := metav1.LabelSelectorAsSelector(podAffinity.LabelSelector)
-			// if failed to convert pod affinity label selector to selector, log error and skip
-			if err != nil {
-				w.Logger().Errorf(err, "failed to convert pod affinity (%v) to selector", podAffinity.LabelSelector)
-				continue
-			}
-			requirements, selectable := podSelector.Requirements()
-			if selectable {
-				podAffinities := labels.NewSelector().Add(requirements...)
-				pods := []v1.Pod{}
-
-				if len(podAffinity.Namespaces) > 0 {
-					for _, namespace := range podAffinity.Namespaces {
-						podList := &v1.PodList{}
-						if err = p.state.cachedClient.List(ctx, podList, &client.ListOptions{LabelSelector: podAffinities, Namespace: namespace}); err != nil {
-							w.Logger().Errorf(err, "failed to retrieve pod list: %v", err)
-							continue
-						}
-						pods = append(pods, podList.Items...)
-					}
-				} else {
-					podList := &v1.PodList{}
-					if err = p.state.cachedClient.List(ctx, podList, &client.ListOptions{LabelSelector: podAffinities}); err != nil {
-						w.Logger().Errorf(err, "failed to retrieve pod list: %v", err)
-						continue
-					}
-					pods = podList.Items
+		for _, affinityTerm := range pod.Spec.Affinity.PodAffinity.RequiredDuringSchedulingIgnoredDuringExecution {
+			podNodes, replicaNodes := p.state.getQualifiedNodesForPodAffinityTerm(ctx, nodes, pod.Namespace, affinityTerm)
+			if isFirst {
+				qualifyingNodes = set{}
+				for podNode := range podNodes {
+					qualifyingNodes.add(podNode)
 				}
-
-				nodesWithSelectedPods := set{}
-				for _, pod := range pods {
-					w.Logger().V(5).Infof("Pod (%s) has matching label for pod affinity (%v)", getQualifiedName(pod.Namespace, pod.Name), podAffinities)
-					nodesWithSelectedPods.add(pod.Spec.NodeName)
+				for replicaNode := range replicaNodes {
+					qualifyingNodes.add(replicaNode)
 				}
-
-				// add nodes, to which replica attachments of matching pods' volumes are attached, to replicaNodes
-				if volumes, err := p.state.getVolumesForPodObjs(ctx, pods); err == nil {
-					for _, volume := range volumes {
-						attachments, err := azureutils.GetAzVolumeAttachmentsForVolume(ctx, p.state.cachedClient, volume, azureutils.ReplicaOnly)
-						if err != nil {
-							continue
-						}
-
-						nodeChecker := set{}
-						for _, attachment := range attachments {
-							if i == 0 {
-								w.Logger().V(5).Infof("Adding node (%s) to the replica node set: replica mounts of volume (%s) found on node", attachment.Spec.NodeName, volume)
-								replicaNodes.add(attachment.Spec.NodeName)
-							} else {
-								nodeChecker.add(attachment.Spec.NodeName)
-							}
-						}
-						if i > 0 {
-							// take an intersection of the current pod list's replica nodes with those of preceding pod lists.
-							for node := range replicaNodes {
-								if !nodeChecker.has(node) {
-									w.Logger().V(5).Infof("Removing node (%s) from the replica node set: replica mounts of volume (%s) cannot be found on node", node, volume)
-									replicaNodes.remove(node)
-								}
-							}
-						}
-					}
-				}
-
-				qualifiedLabelSet := map[string]set{}
-				for node := range nodesWithSelectedPods {
-					var nodeInstance v1.Node
-					if err = p.state.cachedClient.Get(ctx, types.NamespacedName{Name: node.(string)}, &nodeInstance); err != nil {
-						w.Logger().Errorf(err, "failed to get node (%s)", node.(string))
-						continue
-					}
-					if value, exists := nodeInstance.GetLabels()[podAffinity.TopologyKey]; exists {
-						labelSet, exists := qualifiedLabelSet[podAffinity.TopologyKey]
-						if !exists {
-							labelSet = set{}
-						}
-						labelSet.add(value)
-						qualifiedLabelSet[podAffinity.TopologyKey] = labelSet
-					} else {
-						w.Logger().V(5).Infof("node (%s) doesn't have label value for topologyKey (%s)", nodeInstance.Name, podAffinity.TopologyKey)
-					}
-				}
-
-				selector := labels.NewSelector()
-				for key, values := range qualifiedLabelSet {
-					labelValues := values.toStringSlice()
-					requirements, err := azureutils.CreateLabelRequirements(key, selection.In, labelValues...)
-					if err != nil {
-						w.Logger().Errorf(err, "failed to create label for key (%s) and values (%+v) :%v", key, labelValues, err)
-						continue
-					}
-					selector = selector.Add(*requirements)
-				}
-
-				// remove any candidate node which does not satisfy the pod affinity
-				for candidateNode := range candidateNodes {
-					if i, exists := nodeMap[candidateNode.(string)]; exists {
-						node := nodes[i]
-						nodeLabels := labels.Set(node.Labels)
-						if !selector.Matches(nodeLabels) {
-							w.Logger().V(5).Infof("Removing node (%s) from candidate nodes: node does not satisfy inter-pod-affinity (%v), label (%v)", candidateNode, podAffinity, selector)
-							candidateNodes.remove(candidateNode)
-						}
+				isFirst = false
+			} else {
+				for qualifyingNode := range qualifyingNodes {
+					if !podNodes.has(qualifyingNode) && !replicaNodes.has(qualifyingNode) {
+						qualifyingNodes.remove(qualifyingNode)
 					}
 				}
 			}
 		}
 	}
 
-	filteredNodes := []v1.Node{}
-	for replicaNode := range replicaNodes {
-		w.Logger().V(5).Infof("Adding node (%s) to candidate node list: node has a replica mount of qualifying pods", replicaNode)
-		candidateNodes.add(replicaNode)
-	}
-	for candidateNode := range candidateNodes {
-		if i, exists := nodeMap[candidateNode.(string)]; exists {
+	var filteredNodes []v1.Node
+	for qualifyingNode := range qualifyingNodes {
+		if i, exists := nodeMap[qualifyingNode.(string)]; exists {
 			filteredNodes = append(filteredNodes, nodes[i])
 		}
 	}
+	// Logging purpose
+	evictedNodes := make([]string, len(nodes)-len(filteredNodes))
+	i := 0
+	for _, node := range nodes {
+		if !qualifyingNodes.has(node.Name) {
+			evictedNodes[i] = node.Name
+			i++
+		}
+	}
+	w.Logger().V(10).Infof("nodes (%+v) filtered out by %s", evictedNodes, p.name())
+
 	return filteredNodes, nil
 }
 
@@ -419,95 +346,49 @@ func (p *interPodAntiAffinityFilter) filter(ctx context.Context, nodes []v1.Node
 		candidateNodes.add(node.Name)
 	}
 
+	qualifyingNodes := set{}
+	isFirst := true
 	for _, pod := range p.pods {
 		if pod.Spec.Affinity == nil || pod.Spec.Affinity.PodAntiAffinity == nil {
 			continue
 		}
-
-		for _, podAntiAffinity := range pod.Spec.Affinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution {
-			podSelector, err := metav1.LabelSelectorAsSelector(podAntiAffinity.LabelSelector)
-			// if failed to convert pod affinity label selector to selector, log error and skip
-			if err != nil {
-				w.Logger().Errorf(err, "failed to convert pod anti-affinity (%v) to selector", podAntiAffinity.LabelSelector)
-				continue
-			}
-			requirements, selectable := podSelector.Requirements()
-			if selectable {
-				podAntiAffinities := labels.NewSelector().Add(requirements...)
-				pods := []v1.Pod{}
-
-				if len(podAntiAffinity.Namespaces) > 0 {
-					for _, namespace := range podAntiAffinity.Namespaces {
-						podList := &v1.PodList{}
-						if err = p.state.cachedClient.List(ctx, podList, &client.ListOptions{LabelSelector: podAntiAffinities, Namespace: namespace}); err != nil {
-							w.Logger().Errorf(err, "failed to retrieve pod list: %v", err)
-							continue
-						}
-						pods = append(pods, podList.Items...)
-					}
-				} else {
-					podList := &v1.PodList{}
-					if err = p.state.cachedClient.List(ctx, podList, &client.ListOptions{LabelSelector: podAntiAffinities}); err != nil {
-						w.Logger().Errorf(err, "failed to retrieve pod list: %v", err)
-						continue
-					}
-					pods = podList.Items
+		for _, affinityTerm := range pod.Spec.Affinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution {
+			podNodes, _ := p.state.getQualifiedNodesForPodAffinityTerm(ctx, nodes, pod.Namespace, affinityTerm)
+			if isFirst {
+				for podNode := range podNodes {
+					qualifyingNodes.add(podNode)
 				}
-
-				nodesWithSelectedPods := set{}
-				for _, pod := range pods {
-					nodesWithSelectedPods.add(pod.Spec.NodeName)
-				}
-
-				qualifiedLabelSet := map[string]set{}
-				for node := range nodesWithSelectedPods {
-					var nodeInstance v1.Node
-					if err = p.state.cachedClient.Get(ctx, types.NamespacedName{Name: node.(string)}, &nodeInstance); err != nil {
-						w.Logger().Errorf(err, "failed to get node (%s)", node.(string))
-						continue
-					}
-					if value, exists := nodeInstance.Labels[podAntiAffinity.TopologyKey]; exists {
-						labelSet, exists := qualifiedLabelSet[podAntiAffinity.TopologyKey]
-						if !exists {
-							labelSet = set{}
-						}
-						labelSet.add(value)
-						qualifiedLabelSet[podAntiAffinity.TopologyKey] = labelSet
-					}
-				}
-
-				selector := labels.NewSelector()
-				for key, values := range qualifiedLabelSet {
-					labelValues := values.toStringSlice()
-					requirements, err := azureutils.CreateLabelRequirements(key, selection.In, labelValues...)
-					if err != nil {
-						w.Logger().Errorf(err, "failed to create label for key (%s) and values (%+v) :%v", key, labelValues, err)
-						continue
-					}
-					selector = selector.Add(*requirements)
-				}
-
-				// remove any candidate node which does not satisfy the pod affinity
-				for candidateNode := range candidateNodes {
-					if i, exists := nodeMap[candidateNode.(string)]; exists {
-						node := nodes[i]
-						nodeLabels := labels.Set(node.Labels)
-						if selector.Matches(nodeLabels) {
-							w.Logger().V(5).Infof("Removing node (%s) from candidate nodes: node satisfies inter-pod anti-affinity (%v), label (%v)", candidateNode, podAntiAffinity, selector)
-							candidateNodes.remove(candidateNode)
-						}
+				isFirst = false
+			} else {
+				for qualifyingNode := range qualifyingNodes {
+					if !podNodes.has(qualifyingNode) {
+						qualifyingNodes.remove(qualifyingNode)
 					}
 				}
 			}
 		}
 	}
 
-	filteredNodes := []v1.Node{}
+	var filteredNodes []v1.Node
 	for candidateNode := range candidateNodes {
-		if i, exists := nodeMap[candidateNode.(string)]; exists {
-			filteredNodes = append(filteredNodes, nodes[i])
+		if !qualifyingNodes.has(candidateNode) {
+			if i, exists := nodeMap[candidateNode.(string)]; exists {
+				filteredNodes = append(filteredNodes, nodes[i])
+			}
 		}
 	}
+
+	// Logging purpose
+	evictedNodes := make([]string, len(nodes)-len(filteredNodes))
+	i := 0
+	for _, node := range nodes {
+		if qualifyingNodes.has(node.Name) {
+			evictedNodes[i] = node.Name
+			i++
+		}
+	}
+	w.Logger().V(10).Infof("nodes (%+v) filtered out by %s", evictedNodes, p.name())
+
 	return filteredNodes, nil
 }
 
@@ -728,11 +609,13 @@ func (v *volumeNodeSelectorFilter) filter(ctx context.Context, nodes []v1.Node) 
 
 type nodeScorerPlugin interface {
 	name() string
-	setup(pods []v1.Pod, volumes []string, state *SharedState)
+	setup(nodes []v1.Node, pods []v1.Pod, volumes []string, state *SharedState)
+	priority() float64 // returns the score plugin's priority in a scale of 1 ~ 5 (5 being the highest priority)
 	score(ctx context.Context, nodeScores map[string]int) (map[string]int, error)
 }
 
 type scoreByNodeCapacity struct {
+	nodes   []v1.Node
 	volumes []string
 	state   *SharedState
 }
@@ -741,7 +624,12 @@ func (s *scoreByNodeCapacity) name() string {
 	return "score by node capacity"
 }
 
-func (s *scoreByNodeCapacity) setup(pods []v1.Pod, volumes []string, state *SharedState) {
+func (s *scoreByNodeCapacity) priority() float64 {
+	return 1
+}
+
+func (s *scoreByNodeCapacity) setup(nodes []v1.Node, pods []v1.Pod, volumes []string, state *SharedState) {
+	s.nodes = nodes
 	s.volumes = volumes
 	s.state = state
 }
@@ -749,22 +637,31 @@ func (s *scoreByNodeCapacity) setup(pods []v1.Pod, volumes []string, state *Shar
 func (s *scoreByNodeCapacity) score(ctx context.Context, nodeScores map[string]int) (map[string]int, error) {
 	ctx, w := workflow.New(ctx, workflow.WithDetails("score-plugin", s.name()))
 	defer w.Finish(nil)
-	for nodeName, score := range nodeScores {
-		remainingCapacity, err := azureutils.GetNodeRemainingDiskCount(ctx, s.state.cachedClient, nodeName)
+	for _, node := range s.nodes {
+		if _, ok := nodeScores[node.Name]; !ok {
+			continue
+		}
+		maxCapacity, err := azureutils.GetNodeMaxDiskCountWithLabels(node.Labels)
+		if err != nil {
+			w.Logger().Errorf(err, "failed to get max capacity of node (%s)", node.Name)
+			delete(nodeScores, node.Name)
+			continue
+		}
+		remainingCapacity, err := azureutils.GetNodeRemainingDiskCount(ctx, s.state.cachedClient, node.Name)
 		if err != nil {
 			// if failed to get node's remaining capacity, remove the node from the candidate list and proceed
-			w.Logger().Errorf(err, "failed to get remaining capacity of node (%s)", nodeName)
-			delete(nodeScores, nodeName)
+			w.Logger().Errorf(err, "failed to get remaining capacity of node (%s)", node.Name)
+			delete(nodeScores, node.Name)
 			continue
 		}
 
-		nodeScores[nodeName] = score + (nodeScoreLowCoefficient * remainingCapacity)
+		nodeScores[node.Name] += int((float64(remainingCapacity) / float64(maxCapacity)) * math.Pow(10, s.priority()))
 
 		if remainingCapacity-len(s.volumes) < 0 {
-			delete(nodeScores, nodeName)
+			delete(nodeScores, node.Name)
 		}
 
-		w.Logger().V(5).Infof("node (%s) can accept %d more attachments", nodeName, remainingCapacity)
+		w.Logger().V(10).Infof("node (%s) can accept %d more attachments", node.Name, remainingCapacity)
 	}
 	return nodeScores, nil
 }
@@ -778,7 +675,11 @@ func (s *scoreByReplicaCount) name() string {
 	return "score by replica count"
 }
 
-func (s *scoreByReplicaCount) setup(pods []v1.Pod, volumes []string, state *SharedState) {
+func (s *scoreByReplicaCount) priority() float64 {
+	return 3
+}
+
+func (s *scoreByReplicaCount) setup(nodes []v1.Node, pods []v1.Pod, volumes []string, state *SharedState) {
 	s.volumes = volumes
 	s.state = state
 }
@@ -786,22 +687,210 @@ func (s *scoreByReplicaCount) setup(pods []v1.Pod, volumes []string, state *Shar
 func (s *scoreByReplicaCount) score(ctx context.Context, nodeScores map[string]int) (map[string]int, error) {
 	ctx, w := workflow.New(ctx, workflow.WithDetails("score-plugin", s.name()))
 	defer w.Finish(nil)
+
+	var requestedReplicaCount int
+
+	nodeReplicaCounts := map[string]int{}
+
 	for _, volume := range s.volumes {
+		azVolume, err := azureutils.GetAzVolume(ctx, s.state.cachedClient, nil, volume, s.state.objectNamespace, true)
+		if err != nil {
+			w.Logger().Errorf(err, "failed to get AzVolume (%s)", volume)
+			continue
+		}
+		requestedReplicaCount += azVolume.Spec.MaxMountReplicaCount
 		azVolumeAttachments, err := azureutils.GetAzVolumeAttachmentsForVolume(ctx, s.state.cachedClient, volume, azureutils.AllRoles)
 		if err != nil {
-			w.Logger().V(5).Errorf(err, "Error listing AzVolumeAttachments for azvolume %s", volume)
+			w.Logger().V(5).Errorf(err, "failed listing AzVolumeAttachments for azvolume %s", volume)
 			continue
 		}
 
 		for _, azVolumeAttachment := range azVolumeAttachments {
-			if score, exists := nodeScores[azVolumeAttachment.Spec.NodeName]; exists {
+			if _, exists := nodeScores[azVolumeAttachment.Spec.NodeName]; exists {
 				if azVolumeAttachment.Spec.RequestedRole == azdiskv1beta2.PrimaryRole {
 					delete(nodeScores, azVolumeAttachment.Spec.NodeName)
 				} else {
-					nodeScores[azVolumeAttachment.Spec.NodeName] = score + nodeScoreHighCoefficient
+					nodeReplicaCounts[azVolumeAttachment.Spec.NodeName]++
 				}
 			}
 		}
+
+		if requestedReplicaCount > 0 {
+			for nodeName, replicaCount := range nodeReplicaCounts {
+				if _, ok := nodeScores[nodeName]; !ok {
+					continue
+				}
+				nodeScores[nodeName] += int((float64(replicaCount) / float64(requestedReplicaCount)) * math.Pow(10, s.priority()))
+			}
+		}
+	}
+	return nodeScores, nil
+}
+
+type scoreByInterPodAffinity struct {
+	nodes   []v1.Node
+	pods    []v1.Pod
+	volumes []string
+	state   *SharedState
+}
+
+func (s *scoreByInterPodAffinity) name() string {
+	return "score by inter pod affinity"
+}
+
+func (s *scoreByInterPodAffinity) priority() float64 {
+	return 2
+}
+
+func (s *scoreByInterPodAffinity) setup(nodes []v1.Node, pods []v1.Pod, volumes []string, state *SharedState) {
+	s.nodes = nodes
+	s.pods = pods
+	s.volumes = volumes
+	s.state = state
+}
+
+func (s *scoreByInterPodAffinity) score(ctx context.Context, nodeScores map[string]int) (map[string]int, error) {
+	ctx, w := workflow.New(ctx, workflow.WithDetails("score-plugin", s.name()))
+	defer w.Finish(nil)
+
+	nodeAffinityScores := map[string]int{}
+	var maxAffinityScore int
+
+	for _, pod := range s.pods {
+		if pod.Spec.Affinity == nil || pod.Spec.Affinity.PodAffinity == nil {
+			continue
+		}
+
+		// pod affinity weight range from 1-100
+		// and as a node can both be a part of 1) nodes that satisfy pod affinity rule and 2) nodes with qualifying replica attachments (for which we give half of the score), we need to 1.5X the max weight
+		maxAffinityScore += 1.5 * defaultMaxPodAffinityWeight * len(pod.Spec.Affinity.PodAffinity.PreferredDuringSchedulingIgnoredDuringExecution)
+
+		for _, weightedAffinityTerm := range pod.Spec.Affinity.PodAffinity.PreferredDuringSchedulingIgnoredDuringExecution {
+			podNodes, replicaNodes := s.state.getQualifiedNodesForPodAffinityTerm(ctx, s.nodes, pod.Namespace, weightedAffinityTerm.PodAffinityTerm)
+			for podNode := range podNodes {
+				w.Logger().Infof("podNode: %s", podNode.(string))
+				nodeAffinityScores[podNode.(string)] += int(weightedAffinityTerm.Weight)
+			}
+			for replicaNode := range replicaNodes {
+				nodeAffinityScores[replicaNode.(string)] += int(weightedAffinityTerm.Weight / 2)
+			}
+		}
+	}
+
+	for node, affinityScore := range nodeAffinityScores {
+		if _, ok := nodeScores[node]; !ok {
+			continue
+		}
+		nodeScores[node] += int((float64(affinityScore) / float64(maxAffinityScore)) * math.Pow(10, s.priority()))
+	}
+
+	return nodeScores, nil
+}
+
+type scoreByInterPodAntiAffinity struct {
+	nodes   []v1.Node
+	pods    []v1.Pod
+	volumes []string
+	state   *SharedState
+}
+
+func (s *scoreByInterPodAntiAffinity) name() string {
+	return "score by inter pod anti affinity"
+}
+
+func (s *scoreByInterPodAntiAffinity) priority() float64 {
+	return 2
+}
+
+func (s *scoreByInterPodAntiAffinity) setup(nodes []v1.Node, pods []v1.Pod, volumes []string, state *SharedState) {
+	s.nodes = nodes
+	s.pods = pods
+	s.volumes = volumes
+	s.state = state
+}
+
+func (s *scoreByInterPodAntiAffinity) score(ctx context.Context, nodeScores map[string]int) (map[string]int, error) {
+	ctx, w := workflow.New(ctx, workflow.WithDetails("score-plugin", s.name()))
+	defer w.Finish(nil)
+
+	nodeAffinityScores := map[string]int{}
+	var maxAffinityScore int
+
+	for _, pod := range s.pods {
+		if pod.Spec.Affinity == nil || pod.Spec.Affinity.PodAntiAffinity == nil {
+			continue
+		}
+
+		// pod affinity weight range from 1-100
+		maxAffinityScore += defaultMaxPodAffinityWeight * len(pod.Spec.Affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution)
+
+		for _, weightedAffinityTerm := range pod.Spec.Affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution {
+			podNodes, _ := s.state.getQualifiedNodesForPodAffinityTerm(ctx, s.nodes, pod.Namespace, weightedAffinityTerm.PodAffinityTerm)
+
+			for node := range nodeScores {
+				if !podNodes.has(node) {
+					nodeAffinityScores[node] += int(weightedAffinityTerm.Weight)
+				}
+			}
+		}
+	}
+
+	for node, affinityScore := range nodeAffinityScores {
+		if _, ok := nodeScores[node]; !ok {
+			continue
+		}
+		nodeScores[node] += int((float64(affinityScore) / float64(maxAffinityScore)) * math.Pow(10, s.priority()))
+	}
+
+	return nodeScores, nil
+}
+
+type scoreByPodNodeAffinity struct {
+	nodes   []v1.Node
+	pods    []v1.Pod
+	volumes []string
+	state   *SharedState
+}
+
+func (s *scoreByPodNodeAffinity) name() string {
+	return "score by pod node affinity"
+}
+
+func (s *scoreByPodNodeAffinity) priority() float64 {
+	return 2
+}
+
+func (s *scoreByPodNodeAffinity) setup(nodes []v1.Node, pods []v1.Pod, volumes []string, state *SharedState) {
+	s.nodes = nodes
+	s.pods = pods
+	s.volumes = volumes
+	s.state = state
+}
+
+func (s *scoreByPodNodeAffinity) score(ctx context.Context, nodeScores map[string]int) (map[string]int, error) {
+	_, w := workflow.New(ctx, workflow.WithDetails("filter-plugin", s.name()))
+	defer w.Finish(nil)
+
+	var preferredSchedulingTerms []v1.PreferredSchedulingTerm
+
+	for _, pod := range s.pods {
+		if pod.Spec.Affinity == nil || pod.Spec.Affinity.NodeAffinity == nil {
+			continue
+		}
+		preferredSchedulingTerms = append(preferredSchedulingTerms, pod.Spec.Affinity.NodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution...)
+	}
+
+	preferredAffinity, err := nodeaffinity.NewPreferredSchedulingTerms(preferredSchedulingTerms)
+	if err != nil {
+		return nodeScores, err
+	}
+
+	for _, node := range s.nodes {
+		nodeScore := preferredAffinity.Score(&node)
+		if _, ok := nodeScores[node.Name]; !ok {
+			continue
+		}
+		nodeScores[node.Name] += int(nodeScore)
 	}
 	return nodeScores, nil
 }
@@ -1009,4 +1098,35 @@ func verifyObjectFailedOrDeleted(obj interface{}, objectDeleted bool) (bool, err
 		return false, util.ErrorFromAzError(azVolumeAttachmentInstance.Status.Error)
 	}
 	return false, nil
+}
+
+// WatchObject creates a noop controller to set up a watch and an informer for an object in controller-runtime manager
+// Use this function if you want to set up a watch for an object without a configuring a separate informer factory.
+func WatchObject(mgr manager.Manager, objKind source.Kind) error {
+	objType := objKind.Type.GetName()
+	c, err := controller.New(fmt.Sprintf("watch %s", objType), mgr, controller.Options{
+		Reconciler: &noOpReconciler{},
+	})
+	if err != nil {
+		return err
+	}
+
+	c.GetLogger().Info("Starting to watch %s", objType)
+
+	// Watch for CRUD events on azVolumeAttachment objects
+	err = c.Watch(&objKind, &handler.EnqueueRequestForObject{}, predicate.Funcs{
+		CreateFunc: func(_ event.CreateEvent) bool {
+			return false
+		},
+		UpdateFunc: func(_ event.UpdateEvent) bool {
+			return true
+		},
+		GenericFunc: func(_ event.GenericEvent) bool {
+			return false
+		},
+		DeleteFunc: func(_ event.DeleteEvent) bool {
+			return false
+		},
+	})
+	return err
 }

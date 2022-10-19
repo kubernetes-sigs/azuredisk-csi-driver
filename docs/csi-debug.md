@@ -1,6 +1,8 @@
 ## CSI driver debug tips
 ### case#1: disk create/delete/attach/detach/snapshot/restore failed
- - locate csi driver pod
+> This step is not applicable if you are using [managed CSI driver on AKS](https://docs.microsoft.com/en-us/azure/aks/csi-storage-drivers).
+ - find csi driver controller pod
+> There could be multiple controller pods (only one pod is the leader), if there are no helpful logs, try to get logs from the leader controller pod.
 ```console
 kubectl get po -o wide -n kube-system | grep csi-azuredisk-controller
 ```
@@ -10,18 +12,10 @@ csi-azuredisk-controller-56bfddd689-dh5tk      5/5     Running   0          35s 
 csi-azuredisk-controller-56bfddd689-sl4ll      5/5     Running   0          35s     10.240.0.23    k8s-agentpool-22533604-1
 </pre>
 
- - get csi driver logs
+ - get pod description and logs
 ```console
 kubectl describe pod csi-azuredisk-controller-56bfddd689-dh5tk -n kube-system > csi-azuredisk-controller-description.log
 kubectl logs csi-azuredisk-controller-56bfddd689-dh5tk -c azuredisk -n kube-system > csi-azuredisk-controller.log
-```
-> Note: there could be multiple controller pods, if there are no helpful logs, try to get logs from other controller pods
-
- - get csi driver logs using scripts (only works when replica of driver controller is `1`)
-```console
-diskControllerName=`kubectl get po -n kube-system | grep csi-azuredisk-controller | cut -d ' ' -f1`
-kubectl describe $diskControllerName -n kube-system > $diskControllerName-description.log
-kubectl logs $diskControllerName -n kube-system -c azuredisk > $diskControllerName.log
 ```
 
 ### case#2: volume mount/unmount failed
@@ -35,8 +29,9 @@ csi-azuredisk-node-cvgbs                       3/3     Running   0          7m4s
 csi-azuredisk-node-dr4s4                       3/3     Running   0          7m4s    10.240.0.4     k8s-agentpool-22533604-0
 </pre>
 
- - get csi driver logs
+ - get pod description and logs
 ```console
+kubectl describe pod csi-azuredisk-node-cvgbs -n kube-system > csi-azuredisk-node-description.log
 kubectl logs csi-azuredisk-node-cvgbs -c azuredisk -n kube-system > csi-azuredisk-node.log
 ```
 

@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/onsi/ginkgo"
+	"github.com/onsi/ginkgo/v2"
 	"github.com/pborman/uuid"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -121,19 +121,13 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interfac
 
 	if t.ShouldOverwrite {
 		tpod = resources.NewTestPod(client, namespace, t.PodOverwrite.Cmd, schedulerName, t.PodOverwrite.IsWindows, t.PodOverwrite.WinServerVer)
-
 		tpod.SetupVolume(tpvc.PersistentVolumeClaim, volume.VolumeMount.NameGenerate+"1", volume.VolumeMount.MountPathGenerate+"1", volume.VolumeMount.ReadOnly)
+		tpod.SetLabel(testconsts.TestLabel)
 		ginkgo.By("deploying a new pod to overwrite pv data")
 		tpod.Create()
 		defer tpod.Cleanup()
-		ginkgo.By("checking that the pod's command exits with no error")
-		tpod.WaitForSuccess()
-
-		// delete the overwrite pod and wait for volume to be unpublished to the original disk is not mounted
-		// to avoid issues with conflicting UUIDs.
-		tpod.Cleanup()
-		err = volutil.WaitForVolumeDetach(client, pvc.Spec.VolumeName, testconsts.Poll, testconsts.PollTimeout)
-		framework.ExpectNoError(err)
+		ginkgo.By("checking that the pod is running")
+		tpod.WaitForRunning()
 	}
 
 	snapshotVolume := volume
@@ -146,6 +140,13 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interfac
 	for i := range tPodWithSnapshotCleanup {
 		defer tPodWithSnapshotCleanup[i]()
 	}
+
+	if t.ShouldOverwrite {
+		// 	TODO: add test case which will schedule the original disk and the copied disk on the same node once the conflicting UUID issue is fixed.
+		ginkgo.By("Set pod anti-affinity to make sure two pods are scheduled on different nodes")
+		tPodWithSnapshot.SetAffinity(&testconsts.TestPodAntiAffinity)
+	}
+
 	ginkgo.By("deploying a pod with a volume restored from the snapshot")
 	tPodWithSnapshot.Create()
 	defer tPodWithSnapshot.Cleanup()

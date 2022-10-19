@@ -75,7 +75,8 @@ var (
 
 	testNode0 = v1.Node{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: testNode0Name,
+			Name:   testNode0Name,
+			Labels: map[string]string{v1.LabelInstanceTypeStable: "BASIC_A3"},
 		},
 		Status: v1.NodeStatus{
 			Allocatable: v1.ResourceList(map[v1.ResourceName]resource.Quantity{
@@ -86,7 +87,8 @@ var (
 
 	testNode1 = v1.Node{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: testNode1Name,
+			Name:   testNode1Name,
+			Labels: map[string]string{v1.LabelInstanceTypeStable: "BASIC_A3"},
 		},
 		Status: v1.NodeStatus{
 			Allocatable: v1.ResourceList(map[v1.ResourceName]resource.Quantity{
@@ -97,7 +99,8 @@ var (
 
 	testNode2 = v1.Node{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: testNode2Name,
+			Name:   testNode2Name,
+			Labels: map[string]string{v1.LabelInstanceTypeStable: "BASIC_A3"},
 		},
 		Status: v1.NodeStatus{
 			Allocatable: v1.ResourceList(map[v1.ResourceName]resource.Quantity{
@@ -108,7 +111,8 @@ var (
 
 	testSchedulableNode1 = v1.Node{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: testSchedulableNodeName,
+			Name:   testSchedulableNodeName,
+			Labels: map[string]string{v1.LabelInstanceTypeStable: "BASIC_A3"},
 		},
 		Status: v1.NodeStatus{
 			Allocatable: v1.ResourceList(map[v1.ResourceName]resource.Quantity{
@@ -142,15 +146,18 @@ var (
 
 	testPersistentVolume0Name = "test-volume-0"
 	testPersistentVolume1Name = "test-volume-1"
+	testPersistentVolume2Name = "test-volume-2"
 
 	testPersistentVolumeClaim0Name = "test-pvc-0"
 	testPersistentVolumeClaim1Name = "test-pvc-1"
+	testPersistentVolumeClaim2Name = "test-pvc-2"
 
 	testPod0Name = "test-pod-0"
 	testPod1Name = "test-pod-1"
 
 	testAzVolume0 = createTestAzVolume(testPersistentVolume0Name, 1)
 	testAzVolume1 = createTestAzVolume(testPersistentVolume1Name, 1)
+	testAzVolume2 = createTestAzVolume(testPersistentVolume2Name, 1)
 
 	testAzVolume0Request = createReconcileRequest(testNamespace, testPersistentVolume0Name)
 	testAzVolume1Request = createReconcileRequest(testNamespace, testPersistentVolume1Name)
@@ -254,6 +261,28 @@ var (
 		},
 	}
 
+	testPersistentVolume2 = v1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: testPersistentVolume2Name,
+		},
+		Spec: v1.PersistentVolumeSpec{
+			PersistentVolumeSource: v1.PersistentVolumeSource{
+				CSI: &v1.CSIPersistentVolumeSource{
+					Driver:       consts.DefaultDriverName,
+					VolumeHandle: fmt.Sprintf(computeDiskURIFormat, testSubscription, testResourceGroup, testPersistentVolume2Name),
+				},
+			},
+			Capacity: v1.ResourceList{
+				v1.ResourceStorage: *resource.NewQuantity(util.GiBToBytes(10), resource.DecimalSI),
+			},
+			ClaimRef: &v1.ObjectReference{
+				Namespace: testNamespace,
+				Name:      testPersistentVolumeClaim2Name,
+			},
+			StorageClassName: testStorageClassName,
+		},
+	}
+
 	testPod0 = createPod(testNamespace, testPod0Name, []string{testPersistentVolumeClaim0Name})
 
 	testPod0Request = createReconcileRequest(testNamespace, testPod0Name)
@@ -336,7 +365,33 @@ func convertToV1Beta1(obj runtime.Object) (oldObj runtime.Object) {
 	return
 }
 
-func createPod(podNamespace, podName string, pvcs []string) v1.Pod {
+type podOption func(*v1.Pod)
+
+func withAffinityRule(affinity v1.Affinity) podOption {
+	return func(pod *v1.Pod) {
+		pod.Spec.Affinity = &affinity
+	}
+}
+
+func withNode(nodeName string) podOption {
+	return func(pod *v1.Pod) {
+		pod.Spec.NodeName = nodeName
+	}
+}
+
+func withNodeSelector(nodeSelector map[string]string) podOption {
+	return func(pod *v1.Pod) {
+		pod.Spec.NodeSelector = nodeSelector
+	}
+}
+
+func withToleration(tolerations []v1.Toleration) podOption {
+	return func(pod *v1.Pod) {
+		pod.Spec.Tolerations = tolerations
+	}
+}
+
+func createPod(podNamespace, podName string, pvcs []string, opts ...podOption) v1.Pod {
 	volumes := []v1.Volume{}
 	for _, pvc := range pvcs {
 		volumes = append(volumes, v1.Volume{
@@ -364,7 +419,31 @@ func createPod(podNamespace, podName string, pvcs []string) v1.Pod {
 		},
 	}
 
+	for _, opt := range opts {
+		opt(&testPod)
+	}
+
 	return testPod
+}
+
+func withTaints(node *v1.Node, taints []v1.Taint) *v1.Node {
+	copy := node.DeepCopy()
+	copy.Spec.Taints = taints
+	return copy
+}
+
+func withLabel(obj client.Object, labels map[string]string) client.Object {
+	copy := obj.DeepCopyObject().(client.Object)
+	copy.SetLabels(labels)
+	return copy
+}
+
+func convertToNode(obj client.Object) *v1.Node {
+	switch target := obj.(type) {
+	case *v1.Node:
+		return target
+	}
+	return nil
 }
 
 func initState(client client.Client, azClient azdisk.Interface, kubeClient kubernetes.Interface, objs ...runtime.Object) (c *SharedState) {
@@ -606,6 +685,7 @@ func mockClients(mockClient *mockclient.MockClient, azVolumeClient azdisk.Interf
 		DoAndReturn(func(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
 			options := client.ListOptions{}
 			options.ApplyOptions(opts)
+			namespace := options.Namespace
 
 			switch target := list.(type) {
 			case *azdiskv1beta2.AzVolumeAttachmentList:
@@ -624,7 +704,7 @@ func mockClients(mockClient *mockclient.MockClient, azVolumeClient azdisk.Interf
 				azDriverNodes.DeepCopyInto(target)
 
 			case *v1.PodList:
-				pods, err := kubeClient.CoreV1().Pods("").List(ctx, *options.AsListOptions())
+				pods, err := kubeClient.CoreV1().Pods(namespace).List(ctx, *options.AsListOptions())
 				if err != nil {
 					return err
 				}

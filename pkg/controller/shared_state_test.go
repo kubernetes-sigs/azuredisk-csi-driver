@@ -30,6 +30,7 @@ import (
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	azdiskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils/mockclient"
 )
 
@@ -53,23 +54,21 @@ func TestGetNodesForReplica(t *testing.T) {
 			volumes:     []string{testPersistentVolume0Name},
 			pods:        []v1.Pod{testPod0},
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *SharedState {
-				replicaAttachment := testReplicaAzVolumeAttachment
-				now := metav1.Time{Time: metav1.Now().Add(-1000)}
-				replicaAttachment.DeletionTimestamp = &now
-
 				newVolume := testAzVolume0.DeepCopy()
 				newVolume.Status.Detail = &azdiskv1beta2.AzVolumeStatusDetail{
 					VolumeID: testManagedDiskURI0,
 				}
 
-				newNode := testNode0.DeepCopy()
-				newNode.Status.Allocatable[consts.AttachableVolumesField] = resource.MustParse("0")
+				newNode := testNode1.DeepCopy()
+				newNode.Status.Allocatable[consts.AttachableVolumesField] = resource.MustParse("1")
+				newNode.Labels = azureutils.AddToMap(newNode.Labels, v1.LabelInstanceTypeStable, "BASIC_A0")
 
 				testSharedState := NewTestSharedState(
 					mockCtl,
 					testNamespace,
 					newVolume,
 					&testPersistentVolume0,
+					&testReplicaAzVolumeAttachment,
 					newNode,
 					&testNode2,
 					&testPod0,
@@ -89,10 +88,6 @@ func TestGetNodesForReplica(t *testing.T) {
 			volumes:     []string{testPersistentVolume0Name},
 			pods:        []v1.Pod{testPod0},
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *SharedState {
-				replicaAttachment := testReplicaAzVolumeAttachment
-				now := metav1.Time{Time: metav1.Now().Add(-1000)}
-				replicaAttachment.DeletionTimestamp = &now
-
 				newPV := testPersistentVolume0.DeepCopy()
 				newPV.Spec.NodeAffinity = &v1.VolumeNodeAffinity{
 					Required: &v1.NodeSelector{
@@ -112,7 +107,7 @@ func TestGetNodesForReplica(t *testing.T) {
 				}
 
 				newNode := testNode0.DeepCopy()
-				newNode.Labels = map[string]string{consts.TopologyRegionKey: "westus2"}
+				newNode.Labels = azureutils.AddToMap(newNode.Labels, consts.TopologyRegionKey, "westus2")
 
 				testSharedState := NewTestSharedState(
 					mockCtl,
@@ -174,6 +169,283 @@ func TestRecoveryLifecycle(t *testing.T) {
 			sharedState := tt.setupFunc(t, mockCtl)
 			isRecoveryComplete := sharedState.isRecoveryComplete()
 			tt.verifyFunc(t, isRecoveryComplete)
+		})
+	}
+}
+
+func TestPrioritizeNodes(t *testing.T) {
+	tests := []struct {
+		description string
+		nodes       []v1.Node
+		volumes     []string
+		pods        []v1.Pod
+		setupFunc   func(*testing.T, *gomock.Controller) *SharedState
+		verifyFunc  func(*testing.T, []v1.Node)
+	}{
+		{
+			description: "[Success] Should prioritize nodes with more node capacity",
+			nodes: []v1.Node{*convertToNode(withLabel(&testNode0, map[string]string{v1.LabelInstanceTypeStable: "BASIC_A3"})),
+				*convertToNode(withLabel(&testNode1, map[string]string{v1.LabelInstanceTypeStable: "BASIC_A3"})),
+				*convertToNode(withLabel(&testNode2, map[string]string{v1.LabelInstanceTypeStable: "BASIC_A3"}))},
+			volumes: []string{testPersistentVolume0Name},
+			pods:    []v1.Pod{testPod0},
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *SharedState {
+				primary1Node1 := createTestAzVolumeAttachment(testPersistentVolume1Name, testNode1Name, azdiskv1beta2.PrimaryRole)
+				primary1Node2 := createTestAzVolumeAttachment(testPersistentVolume1Name, testNode2Name, azdiskv1beta2.PrimaryRole)
+				primary2Node2 := createTestAzVolumeAttachment(testPersistentVolume2Name, testNode2Name, azdiskv1beta2.PrimaryRole)
+				testSharedState := NewTestSharedState(
+					mockCtl,
+					testNamespace,
+					convertToNode(withLabel(&testNode0, map[string]string{v1.LabelInstanceTypeStable: "BASIC_A3"})),
+					convertToNode(withLabel(&testNode1, map[string]string{v1.LabelInstanceTypeStable: "BASIC_A3"})),
+					convertToNode(withLabel(&testNode2, map[string]string{v1.LabelInstanceTypeStable: "BASIC_A3"})),
+					&testAzVolume0,
+					&testPersistentVolume0,
+					&testAzVolume1,
+					&testPersistentVolume1,
+					&testAzVolume2,
+					&testPersistentVolume2,
+					&primary1Node1,
+					&primary1Node2,
+					&primary2Node2,
+				)
+
+				mockClients(testSharedState.cachedClient.(*mockclient.MockClient), testSharedState.azClient, testSharedState.kubeClient)
+				return testSharedState
+			},
+			verifyFunc: func(t *testing.T, nodes []v1.Node) {
+				require.Len(t, nodes, 3)
+				require.Equal(t, nodes[0].Name, testNode0.Name)
+				require.Equal(t, nodes[1].Name, testNode1.Name)
+				require.Equal(t, nodes[2].Name, testNode2.Name)
+			},
+		},
+		{
+			description: "[Success] Should filter nodes with no node capacity",
+			nodes:       []v1.Node{*convertToNode(withLabel(&testNode0, map[string]string{v1.LabelInstanceTypeStable: "BASIC_A0"}))},
+			volumes:     []string{testPersistentVolume0Name},
+			pods:        []v1.Pod{testPod0},
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *SharedState {
+				primary1Node0 := createTestAzVolumeAttachment(testPersistentVolume1Name, testNode0Name, azdiskv1beta2.PrimaryRole)
+				testSharedState := NewTestSharedState(
+					mockCtl,
+					testNamespace,
+					convertToNode(withLabel(&testNode0, map[string]string{v1.LabelInstanceTypeStable: "BASIC_A0"})),
+					&testAzVolume0,
+					&testPersistentVolume0,
+					&testAzVolume1,
+					&testPersistentVolume1,
+					&primary1Node0,
+				)
+
+				mockClients(testSharedState.cachedClient.(*mockclient.MockClient), testSharedState.azClient, testSharedState.kubeClient)
+				return testSharedState
+			},
+			verifyFunc: func(t *testing.T, nodes []v1.Node) {
+				require.Len(t, nodes, 0)
+			},
+		},
+		{
+			description: "[Success] Should prioritize nodes that qualify for inter pod preferred affinity rule",
+			nodes: []v1.Node{*convertToNode(withLabel(&testNode0, map[string]string{"nodeKey": "nodeValue", v1.LabelInstanceTypeStable: "BASIC_A0"})),
+				*convertToNode(withLabel(&testNode1, map[string]string{"nodeKey": "nodeValue", v1.LabelInstanceTypeStable: "BASIC_A0"})),
+				testNode2},
+			volumes: []string{testPersistentVolume0Name},
+			pods: []v1.Pod{createPod(testNamespace, testPod0Name, []string{testPersistentVolumeClaim0Name}, withAffinityRule(v1.Affinity{
+				PodAffinity: &v1.PodAffinity{
+					PreferredDuringSchedulingIgnoredDuringExecution: []v1.WeightedPodAffinityTerm{{
+						PodAffinityTerm: v1.PodAffinityTerm{
+							LabelSelector: &metav1.LabelSelector{
+								MatchLabels: map[string]string{"podKey": "podValue"},
+							},
+							TopologyKey: "nodeKey",
+						},
+						Weight: 10,
+					}},
+				}}))},
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *SharedState {
+				pod0 := createPod(testNamespace, testPod0Name, []string{testPersistentVolumeClaim0Name}, withAffinityRule(v1.Affinity{
+					PodAffinity: &v1.PodAffinity{
+						PreferredDuringSchedulingIgnoredDuringExecution: []v1.WeightedPodAffinityTerm{{
+							PodAffinityTerm: v1.PodAffinityTerm{
+								LabelSelector: &metav1.LabelSelector{
+									MatchLabels: map[string]string{"podKey": "podValue"},
+								},
+								TopologyKey: "nodeKey",
+							},
+							Weight: 10,
+						}},
+					}}))
+
+				pod1 := createPod(testNamespace, testPod1Name, []string{testPersistentVolumeClaim1Name}, withNode(testNode0Name))
+				pod1.Labels = map[string]string{"podKey": "podValue"}
+				testSharedState := NewTestSharedState(
+					mockCtl,
+					testNamespace,
+					&testAzVolume0,
+					&testPersistentVolume0,
+					convertToNode(withLabel(&testNode0, map[string]string{"nodeKey": "nodeValue", v1.LabelInstanceTypeStable: "BASIC_A0"})),
+					convertToNode(withLabel(&testNode1, map[string]string{"nodeKey": "nodeValue", v1.LabelInstanceTypeStable: "BASIC_A0"})),
+					&testNode2,
+					&pod0,
+					&pod1,
+				)
+
+				mockClients(testSharedState.cachedClient.(*mockclient.MockClient), testSharedState.azClient, testSharedState.kubeClient)
+				return testSharedState
+			},
+			verifyFunc: func(t *testing.T, nodes []v1.Node) {
+				require.Len(t, nodes, 3)
+				require.Equal(t, nodes[2].Name, testNode2Name)
+			},
+		},
+		{
+			description: "[Success] Should prioritize nodes that don't satisfy inter pod preferred anti affinity term",
+			nodes: []v1.Node{*convertToNode(withLabel(&testNode0, map[string]string{"nodeKey": "nodeValue", v1.LabelInstanceTypeStable: "BASIC_A0"})),
+				*convertToNode(withLabel(&testNode1, map[string]string{"nodeKey": "nodeValue", v1.LabelInstanceTypeStable: "BASIC_A0"})),
+				testNode2},
+			volumes: []string{testPersistentVolume0Name},
+			pods: []v1.Pod{createPod(testNamespace, testPod0Name, []string{testPersistentVolumeClaim0Name}, withAffinityRule(v1.Affinity{
+				PodAntiAffinity: &v1.PodAntiAffinity{
+					PreferredDuringSchedulingIgnoredDuringExecution: []v1.WeightedPodAffinityTerm{{
+						PodAffinityTerm: v1.PodAffinityTerm{
+							LabelSelector: &metav1.LabelSelector{
+								MatchLabels: map[string]string{"podKey": "podValue"},
+							},
+							TopologyKey: "nodeKey",
+						},
+						Weight: 10,
+					}},
+				}}))},
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *SharedState {
+				pod0 := createPod(testNamespace, testPod0Name, []string{testPersistentVolumeClaim0Name}, withAffinityRule(v1.Affinity{
+					PodAntiAffinity: &v1.PodAntiAffinity{
+						PreferredDuringSchedulingIgnoredDuringExecution: []v1.WeightedPodAffinityTerm{{
+							PodAffinityTerm: v1.PodAffinityTerm{
+								LabelSelector: &metav1.LabelSelector{
+									MatchLabels: map[string]string{"podKey": "podValue"},
+								},
+								TopologyKey: "nodeKey",
+							},
+							Weight: 10,
+						}},
+					}}))
+
+				pod1 := createPod(testNamespace, testPod1Name, []string{testPersistentVolumeClaim1Name}, withNode(testNode0Name))
+				pod1.Labels = map[string]string{"podKey": "podValue"}
+				testSharedState := NewTestSharedState(
+					mockCtl,
+					testNamespace,
+					&testAzVolume0,
+					&testPersistentVolume0,
+					convertToNode(withLabel(&testNode0, map[string]string{"nodeKey": "nodeValue", v1.LabelInstanceTypeStable: "BASIC_A0"})),
+					convertToNode(withLabel(&testNode1, map[string]string{"nodeKey": "nodeValue", v1.LabelInstanceTypeStable: "BASIC_A0"})),
+					&testNode2,
+					&pod0,
+					&pod1,
+				)
+
+				mockClients(testSharedState.cachedClient.(*mockclient.MockClient), testSharedState.azClient, testSharedState.kubeClient)
+				return testSharedState
+			},
+			verifyFunc: func(t *testing.T, nodes []v1.Node) {
+				require.Len(t, nodes, 3)
+				require.Equal(t, nodes[0].Name, testNode2Name)
+			},
+		},
+		{
+			description: "[Success] Should prioritize nodes that don't satisfy node pod preferred affinity term",
+			nodes: []v1.Node{*convertToNode(withLabel(&testNode0, map[string]string{"nodeKey0": "nodeValue", "nodeKey1": "nodeValue", v1.LabelInstanceTypeStable: "BASIC_A0"})),
+				*convertToNode(withLabel(&testNode1, map[string]string{"nodeKey0": "nodeValue", v1.LabelInstanceTypeStable: "BASIC_A0"})),
+				testNode2},
+			volumes: []string{testPersistentVolume0Name},
+			pods: []v1.Pod{createPod(testNamespace, testPod0Name, []string{testPersistentVolumeClaim0Name}, withAffinityRule(v1.Affinity{
+				NodeAffinity: &v1.NodeAffinity{
+					PreferredDuringSchedulingIgnoredDuringExecution: []v1.PreferredSchedulingTerm{{
+						Preference: v1.NodeSelectorTerm{
+							MatchExpressions: []v1.NodeSelectorRequirement{{
+								Key:      "nodeKey0",
+								Operator: v1.NodeSelectorOpIn,
+								Values:   []string{"nodeValue"},
+							}},
+						},
+						Weight: 10,
+					}},
+				}})),
+				createPod(testNamespace, testPod1Name, []string{testPersistentVolumeClaim0Name}, withAffinityRule(v1.Affinity{
+					NodeAffinity: &v1.NodeAffinity{
+						PreferredDuringSchedulingIgnoredDuringExecution: []v1.PreferredSchedulingTerm{{
+							Preference: v1.NodeSelectorTerm{
+								MatchExpressions: []v1.NodeSelectorRequirement{{
+									Key:      "nodeKey1",
+									Operator: v1.NodeSelectorOpIn,
+									Values:   []string{"nodeValue"},
+								}},
+							},
+							Weight: 10,
+						}},
+					}}))},
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *SharedState {
+				pod0 := createPod(testNamespace, testPod0Name, []string{testPersistentVolumeClaim0Name}, withAffinityRule(v1.Affinity{
+					NodeAffinity: &v1.NodeAffinity{
+						PreferredDuringSchedulingIgnoredDuringExecution: []v1.PreferredSchedulingTerm{{
+							Preference: v1.NodeSelectorTerm{
+								MatchExpressions: []v1.NodeSelectorRequirement{{
+									Key:      "nodeKey0",
+									Operator: v1.NodeSelectorOpIn,
+									Values:   []string{"nodeValue"},
+								}},
+							},
+							Weight: 10,
+						}},
+					}}))
+
+				pod1 := createPod(testNamespace, testPod1Name, []string{testPersistentVolumeClaim0Name}, withAffinityRule(v1.Affinity{
+					NodeAffinity: &v1.NodeAffinity{
+						PreferredDuringSchedulingIgnoredDuringExecution: []v1.PreferredSchedulingTerm{{
+							Preference: v1.NodeSelectorTerm{
+								MatchExpressions: []v1.NodeSelectorRequirement{{
+									Key:      "nodeKey1",
+									Operator: v1.NodeSelectorOpIn,
+									Values:   []string{"nodeValue"},
+								}},
+							},
+							Weight: 10,
+						}},
+					}}))
+
+				testSharedState := NewTestSharedState(
+					mockCtl,
+					testNamespace,
+					&testAzVolume0,
+					&testPersistentVolume0,
+					convertToNode(withLabel(&testNode0, map[string]string{"nodeKey0": "nodeValue", "nodeKey1": "nodeValue", v1.LabelInstanceTypeStable: "BASIC_A0"})),
+					convertToNode(withLabel(&testNode1, map[string]string{"nodeKey0": "nodeValue", v1.LabelInstanceTypeStable: "BASIC_A0"})),
+					&testNode2,
+					&pod0,
+					&pod1,
+				)
+
+				mockClients(testSharedState.cachedClient.(*mockclient.MockClient), testSharedState.azClient, testSharedState.kubeClient)
+				return testSharedState
+			},
+			verifyFunc: func(t *testing.T, nodes []v1.Node) {
+				require.Len(t, nodes, 3)
+				require.Equal(t, nodes[0].Name, testNode0Name)
+				require.Equal(t, nodes[1].Name, testNode1Name)
+				require.Equal(t, nodes[2].Name, testNode2Name)
+			},
+		},
+	}
+
+	for _, test := range tests {
+		tt := test
+		t.Run(tt.description, func(t *testing.T) {
+			mockCtl := gomock.NewController(t)
+			defer mockCtl.Finish()
+			sharedState := tt.setupFunc(t, mockCtl)
+			nodes := sharedState.prioritizeNodes(context.TODO(), tt.pods, tt.volumes, tt.nodes)
+			tt.verifyFunc(t, nodes)
 		})
 	}
 }
@@ -241,6 +513,384 @@ func TestFilterNodes(t *testing.T) {
 			verifyFunc: func(t *testing.T, nodes []v1.Node, err error) {
 				require.NoError(t, err)
 				require.Len(t, nodes, 3)
+			},
+		},
+		{
+			description: "[Success] Should not select tainted node that pod cannot tolerate",
+			nodes:       []v1.Node{*withTaints(&testNode0, []v1.Taint{{Key: "nodeKey", Value: "nodeValue", Effect: v1.TaintEffectNoSchedule}}), testNode1, testNode2},
+			volumes:     []string{testPersistentVolume0Name},
+			pods:        []v1.Pod{testPod0},
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *SharedState {
+				testSharedState := NewTestSharedState(
+					mockCtl,
+					testNamespace,
+					&testAzVolume0,
+					&testPersistentVolume0,
+					withTaints(&testNode0, []v1.Taint{{Key: "nodeKey", Value: "nodeValue", Effect: v1.TaintEffectNoSchedule}}),
+					&testNode1,
+					&testNode2,
+				)
+
+				mockClients(testSharedState.cachedClient.(*mockclient.MockClient), testSharedState.azClient, testSharedState.kubeClient)
+				return testSharedState
+			},
+			verifyFunc: func(t *testing.T, nodes []v1.Node, err error) {
+				require.NoError(t, err)
+				require.Len(t, nodes, 2)
+				requiredNodeNames := []string{testNode1Name, testNode2Name}
+				require.Contains(t, requiredNodeNames, nodes[0].Name)
+				require.Contains(t, requiredNodeNames, nodes[1].Name)
+			},
+		},
+		{
+			description: "[Success] Should select tainted node if pod can tolerate",
+			nodes:       []v1.Node{*withTaints(&testNode0, []v1.Taint{{Key: "nodeKey", Value: "nodeValue", Effect: v1.TaintEffectNoSchedule}})},
+			volumes:     []string{testPersistentVolume0Name},
+			pods:        []v1.Pod{createPod(testNamespace, testPod0Name, []string{testPersistentVolumeClaim0Name}, withToleration([]v1.Toleration{{Key: "nodeKey", Operator: v1.TolerationOpEqual, Value: "nodeValue"}}))},
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *SharedState {
+				pod := createPod(testNamespace, testPod0Name, []string{testPersistentVolumeClaim0Name}, withToleration([]v1.Toleration{{Key: "nodeKey", Operator: v1.TolerationOpEqual, Value: "nodeValue"}}))
+				testSharedState := NewTestSharedState(
+					mockCtl,
+					testNamespace,
+					&pod,
+					&testAzVolume0,
+					&testPersistentVolume0,
+					withTaints(&testNode0, []v1.Taint{{Key: "nodeKey", Value: "nodeValue", Effect: v1.TaintEffectNoSchedule}}),
+				)
+
+				mockClients(testSharedState.cachedClient.(*mockclient.MockClient), testSharedState.azClient, testSharedState.kubeClient)
+				return testSharedState
+			},
+			verifyFunc: func(t *testing.T, nodes []v1.Node, err error) {
+				require.NoError(t, err)
+				require.Len(t, nodes, 1)
+				require.Equal(t, nodes[0].Name, testNode0Name)
+			},
+		},
+		{
+			description: "[Success] Should not select node that does not qualify node affinity label selector",
+			nodes:       []v1.Node{*convertToNode(withLabel(&testNode0, map[string]string{"testKey": "testValue"})), testNode1, testNode2},
+			volumes:     []string{testPersistentVolume0Name},
+			pods: []v1.Pod{createPod(testNamespace, testPod0Name, []string{testPersistentVolumeClaim0Name}, withAffinityRule(v1.Affinity{
+				NodeAffinity: &v1.NodeAffinity{
+					RequiredDuringSchedulingIgnoredDuringExecution: &v1.NodeSelector{
+						NodeSelectorTerms: []v1.NodeSelectorTerm{{
+							MatchExpressions: []v1.NodeSelectorRequirement{{
+								Key:      "testKey",
+								Operator: v1.NodeSelectorOpIn,
+								Values:   []string{"testValue"},
+							}},
+						}},
+					}}}))},
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *SharedState {
+				testSharedState := NewTestSharedState(
+					mockCtl,
+					testNamespace,
+					&testAzVolume0,
+					&testPersistentVolume0,
+				)
+
+				mockClients(testSharedState.cachedClient.(*mockclient.MockClient), testSharedState.azClient, testSharedState.kubeClient)
+				return testSharedState
+			},
+			verifyFunc: func(t *testing.T, nodes []v1.Node, err error) {
+				require.NoError(t, err)
+				require.Len(t, nodes, 1)
+				require.Equal(t, nodes[0].Name, testNode0.Name)
+			},
+		},
+		{
+			description: "[Success] Should not select node that does not qualify node affinity field selector",
+			nodes:       []v1.Node{*convertToNode(withLabel(&testNode0, map[string]string{"testKey": "testValue"})), testNode1, testNode2},
+			volumes:     []string{testPersistentVolume0Name},
+			pods: []v1.Pod{createPod(testNamespace, testPod0Name, []string{testPersistentVolumeClaim0Name}, withAffinityRule(v1.Affinity{
+				NodeAffinity: &v1.NodeAffinity{
+					RequiredDuringSchedulingIgnoredDuringExecution: &v1.NodeSelector{
+						NodeSelectorTerms: []v1.NodeSelectorTerm{{
+							MatchFields: []v1.NodeSelectorRequirement{{
+								Key:      "metadata.name",
+								Operator: v1.NodeSelectorOpIn,
+								Values:   []string{testNode0Name},
+							}},
+						}},
+					}}}))},
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *SharedState {
+				testSharedState := NewTestSharedState(
+					mockCtl,
+					testNamespace,
+					&testNode0,
+					&testAzVolume0,
+					&testPersistentVolume0,
+				)
+
+				mockClients(testSharedState.cachedClient.(*mockclient.MockClient), testSharedState.azClient, testSharedState.kubeClient)
+				return testSharedState
+			},
+			verifyFunc: func(t *testing.T, nodes []v1.Node, err error) {
+				require.NoError(t, err)
+				require.Len(t, nodes, 1)
+				require.Equal(t, nodes[0].Name, testNode0.Name)
+			},
+		},
+		{
+			description: "[Success] Should not select node that does not qualify inter pod affinity rule",
+			nodes: []v1.Node{*convertToNode(withLabel(&testNode0, map[string]string{"nodeKey": "nodeValue"})),
+				*convertToNode(withLabel(&testNode1, map[string]string{"nodeKey": "nodeValue"})),
+				testNode2},
+			volumes: []string{testPersistentVolume0Name},
+			pods: []v1.Pod{createPod(testNamespace, testPod0Name, []string{testPersistentVolumeClaim0Name}, withAffinityRule(v1.Affinity{
+				PodAffinity: &v1.PodAffinity{
+					RequiredDuringSchedulingIgnoredDuringExecution: []v1.PodAffinityTerm{{
+						LabelSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{"podKey": "podValue"},
+						},
+						TopologyKey: "nodeKey",
+					}},
+				}}))},
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *SharedState {
+				pod0 := createPod(testNamespace, testPod0Name, []string{testPersistentVolumeClaim0Name}, withAffinityRule(v1.Affinity{
+					PodAffinity: &v1.PodAffinity{
+						RequiredDuringSchedulingIgnoredDuringExecution: []v1.PodAffinityTerm{{
+							LabelSelector: &metav1.LabelSelector{
+								MatchLabels: map[string]string{"podKey": "podValue"},
+							},
+							TopologyKey: "nodeKey",
+						}},
+					}}))
+
+				pod1 := createPod(testNamespace, testPod1Name, []string{testPersistentVolumeClaim1Name}, withNode(testNode0Name))
+				pod1.Labels = map[string]string{"podKey": "podValue"}
+
+				testSharedState := NewTestSharedState(
+					mockCtl,
+					testNamespace,
+					&testAzVolume0,
+					&testPersistentVolume0,
+					convertToNode(withLabel(&testNode0, map[string]string{"nodeKey": "nodeValue"})),
+					convertToNode(withLabel(&testNode1, map[string]string{"nodeKey": "nodeValue"})),
+					&testNode2,
+					&pod0,
+					&pod1,
+				)
+
+				mockClients(testSharedState.cachedClient.(*mockclient.MockClient), testSharedState.azClient, testSharedState.kubeClient)
+				return testSharedState
+			},
+			verifyFunc: func(t *testing.T, nodes []v1.Node, err error) {
+				require.NoError(t, err)
+				require.Len(t, nodes, 2)
+				requiredNodeNames := []string{testNode0.Name, testNode1.Name}
+				require.Contains(t, requiredNodeNames, nodes[0].Name)
+				require.Contains(t, requiredNodeNames, nodes[1].Name)
+			},
+		},
+		{
+			description: "[Success] Should not select node with pod matching affinity requirement but in different namespace",
+			nodes: []v1.Node{*convertToNode(withLabel(&testNode0, map[string]string{"nodeKey": "nodeValue"})),
+				*convertToNode(withLabel(&testNode1, map[string]string{"nodeKey": "nodeValue"})),
+				testNode2},
+			volumes: []string{testPersistentVolume0Name},
+			pods: []v1.Pod{createPod(testNamespace, testPod0Name, []string{testPersistentVolumeClaim0Name}, withAffinityRule(v1.Affinity{
+				PodAffinity: &v1.PodAffinity{
+					RequiredDuringSchedulingIgnoredDuringExecution: []v1.PodAffinityTerm{{
+						LabelSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{"podKey": "podValue"},
+						},
+						TopologyKey: "nodeKey",
+					}},
+				}}))},
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *SharedState {
+				pod0 := createPod(testNamespace, testPod0Name, []string{testPersistentVolumeClaim0Name}, withAffinityRule(v1.Affinity{
+					PodAffinity: &v1.PodAffinity{
+						RequiredDuringSchedulingIgnoredDuringExecution: []v1.PodAffinityTerm{{
+							LabelSelector: &metav1.LabelSelector{
+								MatchLabels: map[string]string{"podKey": "podValue"},
+							},
+							TopologyKey: "nodeKey",
+						}},
+					}}))
+
+				pod1 := createPod("testNamespace-2", testPod1Name, []string{testPersistentVolumeClaim1Name}, withNode(testNode0Name))
+				pod1.Labels = map[string]string{"podKey": "podValue"}
+
+				require.NotEqual(t, pod1.Namespace, pod0.Namespace)
+
+				testSharedState := NewTestSharedState(
+					mockCtl,
+					testNamespace,
+					&testAzVolume0,
+					&testPersistentVolume0,
+					convertToNode(withLabel(&testNode0, map[string]string{"nodeKey": "nodeValue"})),
+					convertToNode(withLabel(&testNode1, map[string]string{"nodeKey": "nodeValue"})),
+					&testNode2,
+					&pod0,
+					&pod1,
+				)
+
+				mockClients(testSharedState.cachedClient.(*mockclient.MockClient), testSharedState.azClient, testSharedState.kubeClient)
+				return testSharedState
+			},
+			verifyFunc: func(t *testing.T, nodes []v1.Node, err error) {
+				require.NoError(t, err)
+				require.Len(t, nodes, 0)
+			},
+		},
+		{
+			description: "[Success] Should not select node that matches inter pod anti affinity rule",
+			nodes: []v1.Node{*convertToNode(withLabel(&testNode0, map[string]string{"nodeKey": "nodeValue"})),
+				*convertToNode(withLabel(&testNode1, map[string]string{"nodeKey": "nodeValue"})),
+				testNode2},
+			volumes: []string{testPersistentVolume0Name},
+			pods: []v1.Pod{createPod(testNamespace, testPod0Name, []string{testPersistentVolumeClaim0Name}, withAffinityRule(v1.Affinity{
+				PodAntiAffinity: &v1.PodAntiAffinity{
+					RequiredDuringSchedulingIgnoredDuringExecution: []v1.PodAffinityTerm{{
+						LabelSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{"podKey": "podValue"},
+						},
+						TopologyKey: "nodeKey",
+					}},
+				}}))},
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *SharedState {
+				pod0 := createPod(testNamespace, testPod0Name, []string{testPersistentVolumeClaim0Name}, withAffinityRule(v1.Affinity{
+					PodAntiAffinity: &v1.PodAntiAffinity{
+						RequiredDuringSchedulingIgnoredDuringExecution: []v1.PodAffinityTerm{{
+							LabelSelector: &metav1.LabelSelector{
+								MatchLabels: map[string]string{"podKey": "podValue"},
+							},
+							TopologyKey: "nodeKey",
+						}},
+					}}))
+
+				pod1 := createPod(testNamespace, testPod1Name, []string{testPersistentVolumeClaim1Name}, withNode(testNode0Name))
+				pod1.Labels = map[string]string{"podKey": "podValue"}
+
+				testSharedState := NewTestSharedState(
+					mockCtl,
+					testNamespace,
+					&testAzVolume0,
+					&testPersistentVolume0,
+					convertToNode(withLabel(&testNode0, map[string]string{"nodeKey": "nodeValue"})),
+					convertToNode(withLabel(&testNode1, map[string]string{"nodeKey": "nodeValue"})),
+					&testNode2,
+					&pod0,
+					&pod1,
+				)
+
+				mockClients(testSharedState.cachedClient.(*mockclient.MockClient), testSharedState.azClient, testSharedState.kubeClient)
+				return testSharedState
+			},
+			verifyFunc: func(t *testing.T, nodes []v1.Node, err error) {
+				require.NoError(t, err)
+				require.Len(t, nodes, 1)
+				require.Equal(t, nodes[0].Name, testNode2Name)
+			},
+		},
+		{
+			description: "[Success] Should not select node that doesn't qualify for pod node selector rule",
+			nodes: []v1.Node{*convertToNode(withLabel(&testNode0, map[string]string{"nodeKey": "nodeValue"})),
+				*convertToNode(withLabel(&testNode1, map[string]string{"nodeKey": "nodeValue"})),
+				testNode2},
+			volumes: []string{testPersistentVolume0Name},
+			pods:    []v1.Pod{createPod(testNamespace, testPod0Name, []string{testPersistentVolumeClaim0Name}, withNodeSelector(map[string]string{"nodeKey": "nodeValue"}))},
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *SharedState {
+				testSharedState := NewTestSharedState(
+					mockCtl,
+					testNamespace,
+					&testAzVolume0,
+					&testPersistentVolume0,
+					convertToNode(withLabel(&testNode0, map[string]string{"nodeKey": "nodeValue"})),
+					convertToNode(withLabel(&testNode1, map[string]string{"nodeKey": "nodeValue"})),
+					&testNode2,
+				)
+
+				mockClients(testSharedState.cachedClient.(*mockclient.MockClient), testSharedState.azClient, testSharedState.kubeClient)
+				return testSharedState
+			},
+			verifyFunc: func(t *testing.T, nodes []v1.Node, err error) {
+				require.NoError(t, err)
+				require.Len(t, nodes, 2)
+				requiredNodeNames := []string{testNode0.Name, testNode1.Name}
+				require.Contains(t, requiredNodeNames, nodes[0].Name)
+				require.Contains(t, requiredNodeNames, nodes[1].Name)
+			},
+		},
+		{
+			description: "[Success] Should not select node that doesn't qualify for volume node label selector",
+			nodes: []v1.Node{*convertToNode(withLabel(&testNode0, map[string]string{"nodeKey": "nodeValue"})),
+				*convertToNode(withLabel(&testNode1, map[string]string{"nodeKey": "nodeValue"})),
+				testNode2},
+			volumes: []string{testPersistentVolume0Name},
+			pods:    []v1.Pod{testPod0},
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *SharedState {
+				pv := testPersistentVolume0.DeepCopy()
+				pv.Spec.NodeAffinity = &v1.VolumeNodeAffinity{
+					Required: &v1.NodeSelector{
+						NodeSelectorTerms: []v1.NodeSelectorTerm{{
+							MatchExpressions: []v1.NodeSelectorRequirement{{
+								Key:      "nodeKey",
+								Operator: v1.NodeSelectorOpIn,
+								Values:   []string{"nodeValue"},
+							}},
+						}},
+					},
+				}
+
+				testSharedState := NewTestSharedState(
+					mockCtl,
+					testNamespace,
+					&testPod0,
+					&testAzVolume0,
+					pv,
+					convertToNode(withLabel(&testNode0, map[string]string{"nodeKey": "nodeValue"})),
+					convertToNode(withLabel(&testNode1, map[string]string{"nodeKey": "nodeValue"})),
+					&testNode2,
+				)
+
+				mockClients(testSharedState.cachedClient.(*mockclient.MockClient), testSharedState.azClient, testSharedState.kubeClient)
+				return testSharedState
+			},
+			verifyFunc: func(t *testing.T, nodes []v1.Node, err error) {
+				require.NoError(t, err)
+				require.Len(t, nodes, 2)
+				requiredNodeNames := []string{testNode0.Name, testNode1.Name}
+				require.Contains(t, requiredNodeNames, nodes[0].Name)
+				require.Contains(t, requiredNodeNames, nodes[1].Name)
+			},
+		},
+		{
+			description: "[Success] Should not select node that does not qualify volume node field selector",
+			nodes:       []v1.Node{*convertToNode(withLabel(&testNode0, map[string]string{"testKey": "testValue"})), testNode1, testNode2},
+			volumes:     []string{testPersistentVolume0Name},
+			pods:        []v1.Pod{createPod(testNamespace, testPod0Name, []string{testPersistentVolumeClaim0Name})},
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *SharedState {
+				pv := testPersistentVolume0.DeepCopy()
+				pv.Spec.NodeAffinity = &v1.VolumeNodeAffinity{
+					Required: &v1.NodeSelector{
+						NodeSelectorTerms: []v1.NodeSelectorTerm{{
+							MatchFields: []v1.NodeSelectorRequirement{{
+								Key:      "metadata.name",
+								Operator: v1.NodeSelectorOpIn,
+								Values:   []string{testNode0Name},
+							}},
+						}},
+					},
+				}
+
+				testSharedState := NewTestSharedState(
+					mockCtl,
+					testNamespace,
+					&testNode0,
+					&testAzVolume0,
+					pv,
+				)
+
+				mockClients(testSharedState.cachedClient.(*mockclient.MockClient), testSharedState.azClient, testSharedState.kubeClient)
+				return testSharedState
+			},
+			verifyFunc: func(t *testing.T, nodes []v1.Node, err error) {
+				require.NoError(t, err)
+				require.Len(t, nodes, 1)
+				require.Equal(t, nodes[0].Name, testNode0.Name)
 			},
 		},
 	}

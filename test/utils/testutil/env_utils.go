@@ -17,7 +17,7 @@ limitations under the License.
 package testutil
 
 import (
-	"github.com/onsi/ginkgo"
+	"github.com/onsi/ginkgo/v2"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 )
 
@@ -77,4 +77,11 @@ func SkipIfNotDynamicallyResizeSupported(location string) {
 	if !supportsDynamicResize {
 		ginkgo.Skip("test case not supported no regions without dynamic resize support")
 	}
+}
+
+func GetFSType(IsWindowsCluster bool) string {
+	if IsWindowsCluster {
+		return "ntfs"
+	}
+	return "ext4"
 }

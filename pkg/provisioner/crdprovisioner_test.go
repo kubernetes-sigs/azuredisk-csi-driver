@@ -840,7 +840,7 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 			definePrependReactor: true,
 			expectedError:        nil,
 			verifyFunc: func() {
-				volumeAttachments, err := azureutils.GetAzVolumeAttachmentsForVolume(context.Background(), provisioner.azCachedReader, testDiskName0, azureutils.ReplicaOnly)
+				volumeAttachments, err := azureutils.GetAzVolumeAttachmentsForVolume(context.Background(), provisioner.azCachedReader, testDiskName1, azureutils.ReplicaOnly)
 				assert.NoError(t, err)
 				assert.Len(t, volumeAttachments, 0)
 			},

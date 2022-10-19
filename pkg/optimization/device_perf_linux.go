@@ -33,7 +33,13 @@ import (
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
-type DeviceHelper struct{}
+type DeviceHelper struct {
+	blockDeviceRootPath string
+}
+
+func NewDeviceHelper() *DeviceHelper {
+	return &DeviceHelper{blockDeviceRootPath: consts.BlockDeviceRootPathLinux}
+}
 
 func (deviceHelper *DeviceHelper) DiskSupportsPerfOptimization(diskPerfProfile, diskAccountType string) bool {
 	return isPerfTuningEnabled(diskPerfProfile) && accountSupportsPerfOptimization(diskAccountType)
@@ -53,7 +59,7 @@ func (deviceHelper *DeviceHelper) OptimizeDiskPerformance(nodeInfo *NodeInfo, de
 	}
 
 	var deviceSettings map[string]string
-	deviceRoot := filepath.Join(consts.BlockDeviceRootPathLinux, deviceName)
+	deviceRoot := filepath.Join(deviceHelper.blockDeviceRootPath, deviceName)
 	switch strings.ToLower(perfProfile) {
 	case consts.PerfProfileBasic:
 		deviceSettings, err = getDeviceSettingsForBasicProfile(nodeInfo,
