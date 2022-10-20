@@ -177,9 +177,8 @@ func (r *ReconcileAzVolume) triggerCreate(ctx context.Context, azVolume *azdiskv
 		if createErr != nil {
 			updateFunc = func(obj client.Object) error {
 				azv := obj.(*azdiskv1beta2.AzVolume)
-				azv = r.updateError(azv, createErr)
 				azv = r.deleteFinalizer(azv, map[string]bool{consts.AzVolumeFinalizer: true})
-				_, derr := r.updateState(azv, azdiskv1beta2.VolumeCreationFailed, forceUpdate)
+				_, derr := r.reportError(azv, azdiskv1beta2.VolumeCreationFailed, createErr)
 				return derr
 			}
 			updateMode = azureutils.UpdateAll
@@ -211,15 +210,6 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *azdiskv
 	ctx, w := workflow.New(ctx)
 	defer func() { w.Finish(err) }()
 
-	// Determine if this is a controller server requested deletion or driver clean up
-	volumeDeleteRequested := volumeDeleteRequested(azVolume)
-	preProvisionCleanupRequested := isPreProvisionCleanupRequested(azVolume)
-
-	mode := deleteCRIOnly
-	if volumeDeleteRequested || preProvisionCleanupRequested {
-		mode = detachAndDeleteCRI
-	}
-
 	// override volume operation queue to prevent any other replica operation from being executed
 	release := r.closeOperationQueue(azVolume.Name)
 	defer func() {
@@ -228,9 +218,14 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *azdiskv
 		}
 	}()
 
-	// only try deleting underlying volume 1) if volume creation was successful and 2) volumeDeleteRequestAnnotation is present
-	// if the annotation is not present, only delete the CRI and not the underlying volume
-	if isCreated(azVolume) && mode == detachAndDeleteCRI {
+	// Determine if this is a controller server requested deletion or driver clean up
+	volumeDeleteRequested := volumeDeleteRequested(azVolume)
+	preProvisionCleanupRequested := isPreProvisionCleanupRequested(azVolume)
+
+	mode := cleanUpAttachmentForUninstall
+	if volumeDeleteRequested || preProvisionCleanupRequested {
+		// primary attachments should be detached only if volume is being deleted or pv was deleted.
+		mode = cleanUpAttachment
 		// requeue if AzVolume's state is being updated by a different worker
 		defer r.stateLock.Delete(azVolume.Name)
 		if _, ok := r.stateLock.LoadOrStore(azVolume.Name, nil); ok {
@@ -250,68 +245,59 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *azdiskv
 		if volumeDeleteRequested {
 			w.Logger().V(5).Info("Deleting Volume...")
 		}
+	}
 
-		waitCh := make(chan goSignal)
-		//nolint:contextcheck // call is asynchronous; context is not inherited by design
-		go func() {
-			_, goWorkflow := workflow.New(ctx)
-			var deleteErr error
-			defer func() { goWorkflow.Finish(deleteErr) }()
-			waitCh <- goSignal{}
+	waitCh := make(chan goSignal)
+	//nolint:contextcheck // call is asynchronous; context is not inherited by design
+	go func() {
+		_, goWorkflow := workflow.New(ctx)
 
-			goCtx := goWorkflow.SaveToContext(context.Background())
+		var deleteErr error
+		defer func() { goWorkflow.Finish(deleteErr) }()
+		waitCh <- goSignal{}
 
-			deleteCtx, deleteCancel := context.WithTimeout(goCtx, cloudTimeout)
-			defer deleteCancel()
+		goCtx := goWorkflow.SaveToContext(context.Background())
 
-			reportError := func(obj interface{}, err error) error {
-				azv := obj.(*azdiskv1beta2.AzVolume)
-				_ = r.updateError(azv, err)
-				_, derr := r.updateState(azv, azdiskv1beta2.VolumeDeletionFailed, forceUpdate)
-				return derr
+		var updateFunc azureutils.UpdateCRIFunc
+		var err error
+		updateMode := azureutils.UpdateCRI
+
+		deleteCtx, deleteCancel := context.WithTimeout(goCtx, cloudTimeout)
+		defer deleteCancel()
+
+		// Delete all AzVolumeAttachment objects bound to the deleted AzVolume
+		var attachments []azdiskv1beta2.AzVolumeAttachment
+		attachments, err = r.cleanUpAzVolumeAttachmentByVolume(deleteCtx, azVolume.Name, azvolume, azureutils.AllRoles, mode)
+		if err == nil {
+			var wg sync.WaitGroup
+			errors := make([]error, len(attachments))
+			numErrors := uint32(0)
+
+			// start waiting for replica AzVolumeAttachment CRIs to be deleted
+			for i, attachment := range attachments {
+				var waiter *watcher.ConditionWaiter
+				waiter, err = r.conditionWatcher.NewConditionWaiter(deleteCtx, watcher.AzVolumeAttachmentType, attachment.Name, verifyObjectFailedOrDeleted)
+				if err != nil {
+					break
+				}
+
+				// wait async and report error to go channel
+				wg.Add(1)
+				go func(ctx context.Context, waiter *watcher.ConditionWaiter, i int) {
+					defer waiter.Close()
+					defer wg.Done()
+					_, err := waiter.Wait(ctx)
+					if err != nil {
+						errors[i] = err
+						atomic.AddUint32(&numErrors, 1)
+					}
+				}(deleteCtx, waiter, i)
 			}
 
-			var updateFunc azureutils.UpdateCRIFunc
-			var err error
-			updateMode := azureutils.UpdateCRIStatus
+			// start waiting for the attachment clean up to complete (outside of the (if err == nil) to avoid child workflow finishing after parent workflow finishing)
+			wg.Wait()
 
-			// Delete all AzVolumeAttachment objects bound to the deleted AzVolume
-			var attachments []azdiskv1beta2.AzVolumeAttachment
-			attachments, err = r.cleanUpAzVolumeAttachmentByVolume(deleteCtx, azVolume.Name, azvolume, azureutils.AllRoles, mode)
-			if err != nil {
-				updateFunc = func(obj client.Object) error {
-					return reportError(obj, err)
-				}
-			} else {
-				var wg sync.WaitGroup
-				errors := make([]error, len(attachments))
-				numErrors := uint32(0)
-
-				// start waiting for replica AzVolumeAttachment CRIs to be deleted
-				for i, attachment := range attachments {
-					waiter, err := r.conditionWatcher.NewConditionWaiter(deleteCtx, watcher.AzVolumeAttachmentType, attachment.Name, verifyObjectFailedOrDeleted)
-					if err != nil {
-						updateFunc = func(obj client.Object) error {
-							return reportError(obj, err)
-						}
-						break
-					}
-
-					// wait async and report error to go channel
-					wg.Add(1)
-					go func(ctx context.Context, waiter *watcher.ConditionWaiter, i int) {
-						defer waiter.Close()
-						defer wg.Done()
-						_, err := waiter.Wait(ctx)
-						if err != nil {
-							errors[i] = err
-							atomic.AddUint32(&numErrors, 1)
-						}
-					}(deleteCtx, waiter, i)
-				}
-
-				wg.Wait()
-
+			if err == nil {
 				// if errors have been found with the wait calls, format the error msg and report via CRI
 				if numErrors > 0 {
 					var errMsgs []string
@@ -321,50 +307,40 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *azdiskv
 						}
 					}
 					err = status.Errorf(codes.Internal, strings.Join(errMsgs, ", "))
-					updateFunc = func(obj client.Object) error {
-						return reportError(obj, err)
-					}
 				}
 			}
+		}
 
-			if err == nil {
-				if volumeDeleteRequested {
-					cloudCtx, cloudCancel := context.WithTimeout(goCtx, cloudTimeout)
-					defer cloudCancel()
+		// if azVolumeAttachment clean up succeeded and volume needs to be deleted
+		if err == nil && volumeDeleteRequested {
+			cloudCtx, cloudCancel := context.WithTimeout(goCtx, cloudTimeout)
+			defer cloudCancel()
 
-					deleteErr = r.deleteVolume(cloudCtx, azVolume)
-				}
-				if deleteErr != nil {
-					updateFunc = func(obj client.Object) error {
-						azv := obj.(*azdiskv1beta2.AzVolume)
-						azv = r.updateError(azv, deleteErr)
-						_, derr := r.updateState(azv, azdiskv1beta2.VolumeDeletionFailed, forceUpdate)
-						return derr
-					}
-				} else {
-					updateMode = azureutils.UpdateAll
-					updateFunc = func(obj client.Object) error {
-						azv := obj.(*azdiskv1beta2.AzVolume)
-						_ = r.deleteFinalizer(azv, map[string]bool{consts.AzVolumeFinalizer: true})
-						return nil
-					}
-				}
+			err = r.deleteVolume(cloudCtx, azVolume)
+		}
+
+		// if any operation was unsuccessful, report the error
+		if err != nil {
+			updateMode = azureutils.UpdateCRIStatus
+			updateFunc = func(obj client.Object) error {
+				azV := obj.(*azdiskv1beta2.AzVolume)
+				_, derr := r.reportError(azV, azdiskv1beta2.VolumeDeletionFailed, err)
+				return derr
 			}
+		} else {
+			// if every operation was successful, delete the finalizer
+			updateFunc = func(obj client.Object) error {
+				azv := obj.(*azdiskv1beta2.AzVolume)
+				_ = r.deleteFinalizer(azv, map[string]bool{consts.AzVolumeFinalizer: true})
+				return nil
+			}
+		}
 
-			//nolint:contextcheck // final status update of the CRI must occur even when the current context's deadline passes.
-			_, _ = azureutils.UpdateCRIWithRetry(goCtx, nil, r.cachedClient, r.azClient, azVolume, updateFunc, consts.ForcedUpdateMaxNetRetry, updateMode)
-		}()
-		<-waitCh
-	} else {
-		updateFunc := func(obj client.Object) error {
-			azv := obj.(*azdiskv1beta2.AzVolume)
-			_ = r.deleteFinalizer(azv, map[string]bool{consts.AzVolumeFinalizer: true})
-			return nil
-		}
-		if _, err = azureutils.UpdateCRIWithRetry(ctx, nil, r.cachedClient, r.azClient, azVolume, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRI); err != nil {
-			return err
-		}
-	}
+		//nolint:contextcheck // final status update of the CRI must occur even when the current context's deadline passes.
+		_, _ = azureutils.UpdateCRIWithRetry(goCtx, nil, r.cachedClient, r.azClient, azVolume, updateFunc, consts.ForcedUpdateMaxNetRetry, updateMode)
+
+	}()
+	<-waitCh
 	return nil
 }
 
@@ -409,8 +385,7 @@ func (r *ReconcileAzVolume) triggerUpdate(ctx context.Context, azVolume *azdiskv
 		if updateErr != nil {
 			updateFunc = func(obj client.Object) error {
 				azv := obj.(*azdiskv1beta2.AzVolume)
-				azv = r.updateError(azv, updateErr)
-				_, derr := r.updateState(azv, azdiskv1beta2.VolumeUpdateFailed, forceUpdate)
+				_, derr := r.reportError(azv, azdiskv1beta2.VolumeUpdateFailed, updateErr)
 				return derr
 			}
 		} else {
@@ -453,6 +428,14 @@ func (r *ReconcileAzVolume) deleteFinalizer(azVolume *azdiskv1beta2.AzVolume, fi
 	return azVolume
 }
 
+func (r *ReconcileAzVolume) reportError(azVolume *azdiskv1beta2.AzVolume, state azdiskv1beta2.AzVolumeState, err error) (*azdiskv1beta2.AzVolume, error) {
+	if azVolume == nil {
+		return nil, status.Errorf(codes.FailedPrecondition, "function `reportError` requires non-nil AzVolume object.")
+	}
+	azVolume = r.updateError(azVolume, err)
+	return r.updateState(azVolume, state, forceUpdate)
+}
+
 func (r *ReconcileAzVolume) updateState(azVolume *azdiskv1beta2.AzVolume, state azdiskv1beta2.AzVolumeState, mode updateMode) (*azdiskv1beta2.AzVolume, error) {
 	var err error
 	if azVolume == nil {
@@ -486,9 +469,7 @@ func (r *ReconcileAzVolume) updateError(azVolume *azdiskv1beta2.AzVolume, err er
 	if azVolume == nil {
 		return nil
 	}
-
 	azVolume.Status.Error = util.NewAzError(err)
-
 	return azVolume
 }
 
