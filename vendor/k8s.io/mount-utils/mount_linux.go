@@ -374,7 +374,7 @@ func (mounter *Mounter) GetMountRefs(pathname string) ([]string, error) {
 // checkAndRepairFileSystem checks and repairs filesystems using command fsck.
 func (mounter *SafeFormatAndMount) checkAndRepairFilesystem(source string) error {
 	klog.V(4).Infof("Checking for issues with fsck on disk: %s", source)
-	args := []string{"-a", source}
+	args := []string{"-a", "-y", source}
 	out, err := mounter.Exec.Command("fsck", args...).CombinedOutput()
 	if err != nil {
 		ee, isExitError := err.(utilexec.ExitError)
