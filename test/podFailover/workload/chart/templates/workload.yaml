@@ -34,6 +34,7 @@ roleRef:
   name: {{ .Values.namespace }}-workload-pod-sa-role
   apiGroup: rbac.authorization.k8s.io
 ---
+{{- if .Values.azureClientId }}
 apiVersion: v1
 kind: Secret
 metadata:
@@ -45,6 +46,7 @@ stringData:
   AZURE_CLIENT_SECRET: {{ .Values.azureClientSecret }}
   AZURE_TENANT_ID: {{ .Values.azureTenantId }}
 ---
+{{- end }}
 {{- if .Values.storageClass }}
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
@@ -95,7 +97,7 @@ spec:
         app: pod-failover
         failureType: {{ .Values.failureType }}
     spec:
-      {{- if .Values.schedulerName }}
+      {{- if and (ne .Values.clusterProvisioner "aks-cli") .Values.schedulerName }}
       schedulerName: {{ .Values.schedulerName }}
       {{- end}}
       {{- if eq .Values.failureType "same-node-failover"}}
@@ -175,4 +177,3 @@ spec:
             storage: 1Gi
     {{- end}}
   {{- end}}
-
