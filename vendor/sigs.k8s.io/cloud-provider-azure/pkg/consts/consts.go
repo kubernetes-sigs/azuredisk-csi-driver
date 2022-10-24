@@ -28,6 +28,8 @@ const (
 	VMTypeVMSS = "vmss"
 	// VMTypeStandard is the vmas vm type
 	VMTypeStandard = "standard"
+	// VMTypeVmssFlex is the vmssflex vm type
+	VMTypeVmssFlex = "vmssflex"
 
 	// ExternalResourceGroupLabel is the label representing the node is in a different
 	// resource group from other cloud provider components
@@ -189,6 +191,16 @@ const (
 	BackoffDurationDefault = 5 // in seconds
 	// BackoffJitterDefault is the default value of the backoff jitter
 	BackoffJitterDefault = 1.0
+)
+
+// LB variables for dual-stack
+var (
+	// Service.Spec.LoadBalancerIP has been deprecated and may be removed in a future release. Those two annotations are introduced as alternatives to set IPv4/IPv6 LoadBalancer IPs.
+	// Refer https://github.com/kubernetes/api/blob/3638040e4063e0f889c129220cd386497f328276/core/v1/types.go#L4459-L4468 for more details.
+	ServiceAnnotationLoadBalancerIPDualStack = map[bool]string{
+		false: "service.beta.kubernetes.io/azure-load-balancer-ipv4",
+		true:  "service.beta.kubernetes.io/azure-load-balancer-ipv6",
+	}
 )
 
 // load balancer
