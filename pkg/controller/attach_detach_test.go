@@ -23,6 +23,7 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
+	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -153,12 +154,42 @@ func TestAttachDetachReconcile(t *testing.T) {
 			},
 		},
 		{
-			description: "[Success] Should detach volume when new primary AzVolumeAttachment is deleted.",
+			description: "[Success] Should detach volume when new primary AzVolumeAttachment is marked with detach request annotation.",
 			request:     testPrimaryAzVolumeAttachment0Request,
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAttachDetach {
 				newAttachment := testPrimaryAzVolumeAttachment0.DeepCopy()
 				newAttachment.Status.State = azdiskv1beta2.Attached
 				newAttachment.Status.Annotations = map[string]string{consts.VolumeDetachRequestAnnotation: "crdProvisioner"}
+				newAttachment.Finalizers = []string{consts.AzVolumeAttachmentFinalizer}
+
+				controller := NewTestAttachDetachController(
+					mockCtl,
+					testNamespace,
+					&testAzVolume0,
+					newAttachment)
+
+				mockClientsAndAttachmentProvisioner(controller)
+
+				return controller
+			},
+			verifyFunc: func(t *testing.T, controller *ReconcileAttachDetach, result reconcile.Result, err error) {
+				require.NoError(t, err)
+				require.False(t, result.Requeue)
+
+				conditionFunc := func() (bool, error) {
+					_, localError := controller.azClient.DiskV1beta2().AzVolumeAttachments(testPrimaryAzVolumeAttachment0.Namespace).Get(context.TODO(), testPrimaryAzVolumeAttachment0.Name, metav1.GetOptions{})
+					return apiErrors.IsNotFound(localError), nil
+				}
+
+				conditionError := wait.PollImmediate(verifyCRIInterval, verifyCRITimeout, conditionFunc)
+				require.NoError(t, conditionError)
+			},
+		},
+		{
+			description: "[Success] Should remove finalizer from AzVolumeAttachment when it is marked with deletion timestamp.",
+			request:     testPrimaryAzVolumeAttachment0Request,
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAttachDetach {
+				newAttachment := testPrimaryAzVolumeAttachment0.DeepCopy()
 				newAttachment.Finalizers = []string{consts.AzVolumeAttachmentFinalizer}
 				now := metav1.Time{Time: metav1.Now().Add(-1000)}
 				newAttachment.DeletionTimestamp = &now

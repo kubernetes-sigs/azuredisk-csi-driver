@@ -30,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	fakev1 "k8s.io/client-go/kubernetes/fake"
+	testingClient "k8s.io/client-go/testing"
 	"k8s.io/klog/v2/klogr"
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	azdiskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
@@ -106,10 +107,11 @@ func mockClientsAndVolumeProvisioner(controller *ReconcileAzVolume) {
 
 func TestAzVolumeControllerReconcile(t *testing.T) {
 	tests := []struct {
-		description string
-		request     reconcile.Request
-		setupFunc   func(*testing.T, *gomock.Controller) *ReconcileAzVolume
-		verifyFunc  func(*testing.T, *ReconcileAzVolume, reconcile.Result, error)
+		description          string
+		request              reconcile.Request
+		setupFunc            func(*testing.T, *gomock.Controller) *ReconcileAzVolume
+		definePrependReactor bool
+		verifyFunc           func(*testing.T, *ReconcileAzVolume, reconcile.Result, error)
 	}{
 		{
 			description: "[Success] Should delete AzVolume from operation queue if it's not found.",
@@ -239,8 +241,9 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 			},
 		},
 		{
-			description: "[Success] Should delete replica volume attachments and delete AzVolume respectively",
-			request:     testAzVolume0Request,
+			description:          "[Success] Should detach replica volume attachments and delete AzVolume respectively",
+			request:              testAzVolume0Request,
+			definePrependReactor: true,
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAzVolume {
 				azVolume := testAzVolume0.DeepCopy()
 
@@ -274,7 +277,12 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 				checkAzVolumeAttachmentDeletion := func() (bool, error) {
 					var attachments azdiskv1beta2.AzVolumeAttachmentList
 					err := controller.cachedClient.List(context.Background(), &attachments, &client.ListOptions{LabelSelector: labelSelector})
-					return len(attachments.Items) == 0, err
+					require.NoError(t, err)
+					detachMarked := true
+					for _, attachment := range attachments.Items {
+						detachMarked = detachMarked && azureutils.MapContains(attachment.Status.Annotations, consts.VolumeDetachRequestAnnotation)
+					}
+					return detachMarked, nil
 				}
 				err = wait.PollImmediate(verifyCRIInterval, verifyCRITimeout, checkAzVolumeAttachmentDeletion)
 				require.NoError(t, err)
@@ -295,6 +303,24 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 			mockCtl := gomock.NewController(t)
 			defer mockCtl.Finish()
 			controller := tt.setupFunc(t, mockCtl)
+
+			if tt.definePrependReactor {
+				tracker := controller.azClient.(*azdiskfakes.Clientset).Tracker()
+				controller.azClient.(*azdiskfakes.Clientset).Fake.PrependReactor(
+					"update",
+					"azvolumeattachments",
+					func(action testingClient.Action) (bool, runtime.Object, error) {
+						objCreated := action.(testingClient.UpdateAction).GetObject().(*azdiskv1beta2.AzVolumeAttachment)
+						if azureutils.MapContains(objCreated.Status.Annotations, consts.VolumeDetachRequestAnnotation) {
+							err := tracker.Delete(action.GetResource(), objCreated.Namespace, objCreated.Name)
+							if err != nil {
+								return true, nil, err
+							}
+						}
+						return true, objCreated, nil
+					})
+
+			}
 			result, err := controller.Reconcile(context.TODO(), tt.request)
 			tt.verifyFunc(t, controller, result, err)
 		})

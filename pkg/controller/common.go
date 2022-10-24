@@ -1021,7 +1021,7 @@ func isOperationInProcess(obj interface{}) bool {
 	case *azdiskv1beta2.AzVolume:
 		return target.Status.State == azdiskv1beta2.VolumeCreating || target.Status.State == azdiskv1beta2.VolumeDeleting || target.Status.State == azdiskv1beta2.VolumeUpdating
 	case *azdiskv1beta2.AzVolumeAttachment:
-		return target.Status.State == azdiskv1beta2.Attaching || target.Status.State == azdiskv1beta2.Detaching
+		return target.Status.State == azdiskv1beta2.Attaching || (target.Status.State == azdiskv1beta2.Detaching && !objectDeletionRequested(target))
 	}
 	return false
 }

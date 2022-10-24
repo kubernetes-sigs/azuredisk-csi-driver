@@ -30,6 +30,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/klog/v2"
 
 	"k8s.io/client-go/informers"
 	kubeClientset "k8s.io/client-go/kubernetes"
@@ -726,8 +727,9 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 						RequestedRole: azdiskv1beta2.PrimaryRole,
 					},
 					Status: azdiskv1beta2.AzVolumeAttachmentStatus{
-						Error: &azdiskv1beta2.AzError{},
-						State: azdiskv1beta2.AttachmentFailed,
+						Error:       &azdiskv1beta2.AzError{},
+						State:       azdiskv1beta2.AttachmentFailed,
+						Annotations: map[string]string{consts.VolumeAttachRequestAnnotation: "crdProvisioner"},
 					},
 				},
 			},
@@ -799,9 +801,14 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 			definePrependReactor: true,
 			expectedError:        nil,
 			verifyFunc: func() {
-				volumeAttachments, err := azureutils.GetAzVolumeAttachmentsForVolume(context.Background(), provisioner.azCachedReader, testDiskName0, azureutils.ReplicaOnly)
+				azVolumeAttachments, err := azureutils.GetAzVolumeAttachmentsForVolume(context.Background(), provisioner.azCachedReader, testDiskName0, azureutils.ReplicaOnly)
 				assert.NoError(t, err)
-				assert.Len(t, volumeAttachments, 0)
+				assert.Len(t, azVolumeAttachments, 2)
+				detachMarked := true
+				for _, azVolumeAttachment := range azVolumeAttachments {
+					detachMarked = azureutils.MapContains(azVolumeAttachment.Status.Annotations, consts.VolumeDetachRequestAnnotation)
+				}
+				assert.True(t, detachMarked)
 			},
 		},
 		{
@@ -840,9 +847,14 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 			definePrependReactor: true,
 			expectedError:        nil,
 			verifyFunc: func() {
-				volumeAttachments, err := azureutils.GetAzVolumeAttachmentsForVolume(context.Background(), provisioner.azCachedReader, testDiskName1, azureutils.ReplicaOnly)
+				azVolumeAttachments, err := azureutils.GetAzVolumeAttachmentsForVolume(context.Background(), provisioner.azCachedReader, testDiskName1, azureutils.ReplicaOnly)
 				assert.NoError(t, err)
-				assert.Len(t, volumeAttachments, 0)
+				assert.Len(t, azVolumeAttachments, 2)
+				detachMarked := true
+				for _, azVolumeAttachment := range azVolumeAttachments {
+					detachMarked = azureutils.MapContains(azVolumeAttachment.Status.Annotations, consts.VolumeDetachRequestAnnotation)
+				}
+				assert.True(t, detachMarked)
 			},
 		},
 		{
@@ -960,9 +972,13 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 					"azvolumeattachments",
 					func(action testingClient.Action) (bool, runtime.Object, error) {
 						objCreated := action.(testingClient.UpdateAction).GetObject().(*azdiskv1beta2.AzVolumeAttachment)
-						objCreated.Status.Detail = &successAzVADetail
-
-						err := tracker.Update(action.GetResource(), objCreated, action.GetNamespace())
+						var err error
+						if azureutils.MapContains(objCreated.Status.Annotations, consts.VolumeDetachRequestAnnotation) {
+							err = tracker.Delete(action.GetResource(), objCreated.Namespace, objCreated.Name)
+						} else if azureutils.MapContains(objCreated.Status.Annotations, consts.VolumeAttachRequestAnnotation) {
+							objCreated.Status.Detail = &successAzVADetail
+							err = tracker.Update(action.GetResource(), objCreated, action.GetNamespace())
+						}
 
 						if err != nil {
 							return true, nil, err
@@ -1150,10 +1166,11 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 					},
 				},
 			},
-			diskURI:       testDiskURI0,
-			nodeID:        testNodeName0,
-			secrets:       nil,
-			expectedError: nil,
+			diskURI:              testDiskURI0,
+			nodeID:               testNodeName0,
+			definePrependReactor: true,
+			secrets:              nil,
+			expectedError:        nil,
 		},
 		{
 			description: "[Success] Delete an AzVolumeAttachment CRI for valid diskURI, nodeID and secrets when volume's maxMountReplicaCount is 0",
@@ -1194,10 +1211,11 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 					},
 				},
 			},
-			diskURI:       testDiskURI0,
-			nodeID:        testNodeName0,
-			secrets:       map[string]string{"secret": "not really"},
-			expectedError: nil,
+			diskURI:              testDiskURI0,
+			nodeID:               testNodeName0,
+			definePrependReactor: true,
+			secrets:              map[string]string{"secret": "not really"},
+			expectedError:        nil,
 		},
 		{
 			description: "[Success] Demote primary AzVolumeAttachment CRI for valid diskURI and nodeID when volume's maxMountReplicaCount is larger than 0",
@@ -1344,10 +1362,18 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 					"azvolumeattachments",
 					func(action testingClient.Action) (bool, runtime.Object, error) {
 						objCreated := action.(testingClient.UpdateAction).GetObject().(*azdiskv1beta2.AzVolumeAttachment)
-						objCreated.Status.Detail.PreviousRole = objCreated.Status.Detail.Role
-						objCreated.Status.Detail.Role = objCreated.Spec.RequestedRole
+						var err error
+						if objCreated.Status.Detail != nil && (objCreated.Spec.RequestedRole != objCreated.Status.Detail.Role) {
+							objCreated.Status.Detail.PreviousRole = objCreated.Status.Detail.Role
+							objCreated.Status.Detail.Role = objCreated.Spec.RequestedRole
+							err = tracker.Update(action.GetResource(), objCreated, action.GetNamespace())
+						}
+						klog.Info("oy?")
 
-						err := tracker.Update(action.GetResource(), objCreated, action.GetNamespace())
+						if azureutils.MapContains(objCreated.Status.Annotations, consts.VolumeDetachRequestAnnotation) {
+							err = tracker.Delete(action.GetResource(), objCreated.Namespace, objCreated.Name)
+							klog.Info("oy")
+						}
 
 						if err != nil {
 							return true, nil, err

@@ -1003,7 +1003,6 @@ func (c *SharedState) cleanUpAzVolumeAttachmentByNode(ctx context.Context, azDri
 
 func (c *SharedState) cleanUpAzVolumeAttachments(ctx context.Context, attachments []azdiskv1beta2.AzVolumeAttachment, cleanUp cleanUpMode, caller operationRequester) error {
 	var err error
-	w, _ := workflow.GetWorkflowFromContext(ctx)
 
 	for _, attachment := range attachments {
 		var patchRequired bool
@@ -1027,13 +1026,6 @@ func (c *SharedState) cleanUpAzVolumeAttachments(ctx context.Context, attachment
 				err = status.Errorf(codes.Internal, "failed to patch AzVolumeAttachment (%s)", attachment.Name)
 				return err
 			}
-		}
-		if !objectDeletionRequested(patched) {
-			if err := c.cachedClient.Delete(ctx, patched); err != nil && apiErrors.IsNotFound(err) {
-				err = status.Errorf(codes.Internal, "failed to delete AzVolumeAttachment (%s)", attachment.Name)
-				return err
-			}
-			w.Logger().V(5).Infof("Set deletion timestamp for AzVolumeAttachment (%s)", attachment.Name)
 		}
 	}
 	return nil

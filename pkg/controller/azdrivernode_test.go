@@ -77,7 +77,7 @@ func TestAzDriverNodeControllerReconcile(t *testing.T) {
 			},
 		},
 		{
-			description: "[Success] Should delete AzDriverNode and AzVolumeAttachments for deleted Node",
+			description: "[Success] Should delete AzDriverNode and detach AzVolumeAttachments for deleted Node",
 			request:     testNode1Request,
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAzDriverNode {
 				controller := NewTestAzDriverNodeController(
@@ -110,7 +110,11 @@ func TestAzDriverNodeControllerReconcile(t *testing.T) {
 				labelSelector := labels.NewSelector().Add(*nodeRequirement)
 				conditionFunc := func() (bool, error) {
 					attachments, _ := controller.azClient.DiskV1beta2().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
-					return len(attachments.Items) == 0, nil
+					detachMarked := true
+					for _, attachment := range attachments.Items {
+						detachMarked = detachMarked && azureutils.MapContains(attachment.Status.Annotations, consts.VolumeDetachRequestAnnotation)
+					}
+					return detachMarked, nil
 				}
 				err = wait.PollImmediate(verifyCRIInterval, verifyCRITimeout, conditionFunc)
 				require.NoError(t, err)
