@@ -36,8 +36,10 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 )
 
-func WaitForAllVolumeAttachmentsToDetach(testTimeout int, tickerDuration time.Duration, totalNumberOfVolumeAttachments int, cs clientset.Interface) (numberOfAttachedVolumeAttachments int) {
-	numberOfAttachedVolumeAttachments = totalNumberOfVolumeAttachments
+// WaitForAllVolumeAttachmentsToDelete waits for all VolumeAttachments to be removed until timeout occurs, whichever comes first,
+// and returns the number of VolumeAttachments.
+func WaitForAllVolumeAttachmentsToDelete(testTimeout int, tickerDuration time.Duration, cs clientset.Interface) (numberOfAttachedVolumeAttachments int) {
+	framework.ExpectEqual(testTimeout > int(tickerDuration.Minutes()), true)
 	ticker := time.NewTicker(tickerDuration)
 	tickerCount := 0
 	timeout := time.After(time.Duration(testTimeout) * time.Minute)
@@ -49,7 +51,7 @@ func WaitForAllVolumeAttachmentsToDetach(testTimeout int, tickerDuration time.Du
 		case <-ticker.C:
 			tickerCount++
 			numberOfAttachedVolumeAttachments = CountAllVolumeAttachments(cs)
-			e2elog.Logf("%.1f min: %d volumes are attached", float32(tickerCount*30)/60, numberOfAttachedVolumeAttachments)
+			e2elog.Logf("%.1f min: %d VolumeAttachments are created", float64(tickerCount)*tickerDuration.Minutes(), numberOfAttachedVolumeAttachments)
 			if numberOfAttachedVolumeAttachments <= 0 {
 				return
 			}
@@ -57,6 +59,7 @@ func WaitForAllVolumeAttachmentsToDetach(testTimeout int, tickerDuration time.Du
 	}
 }
 
+// Returns the number of VolumeAttachments in the cluster
 func CountAllVolumeAttachments(cs clientset.Interface) int {
 	e2elog.Logf("Getting all VolumeAttachments")
 	vatts, err := cs.StorageV1().VolumeAttachments().List(context.TODO(), metav1.ListOptions{})
@@ -66,7 +69,7 @@ func CountAllVolumeAttachments(cs clientset.Interface) int {
 	return len(vatts.Items)
 }
 
-// waitForPersistentVolumeClaimDeleted waits for a PersistentVolumeClaim to be removed from the system until timeout occurs, whichever comes first.
+// WaitForPersistentVolumeClaimDeleted waits for a PersistentVolumeClaim to be removed from the system until timeout occurs, whichever comes first.
 func WaitForPersistentVolumeClaimDeleted(c clientset.Interface, ns string, pvcName string, poll, timeout time.Duration) error {
 	framework.Logf("Waiting up to %v for PersistentVolumeClaim %s to be removed", timeout, pvcName)
 	err := wait.PollImmediate(poll, timeout, func() (bool, error) {
@@ -112,6 +115,8 @@ func WaitForVolumeDetach(c clientset.Interface, pvName string, poll, pollTimeout
 	}, ctx.Done())
 }
 
+// WaitForAllReplicaAttachmentsToAttach waits for all replica attachments to be attached until timeout occurs, whichever comes first,
+// and returns the number of attached replica attachments.
 func WaitForAllReplicaAttachmentsToAttach(testTimeout int, tickerDuration time.Duration, desiredNumberOfReplicaAtts int, cs *azdisk.Clientset) (numberOfAttachedReplicaAtts int) {
 	ticker := time.NewTicker(tickerDuration)
 	tickerCount := 0
@@ -124,7 +129,7 @@ func WaitForAllReplicaAttachmentsToAttach(testTimeout int, tickerDuration time.D
 		case <-ticker.C:
 			tickerCount++
 			numberOfAttachedReplicaAtts = CountAllAttachedReplicaAttachments(cs)
-			e2elog.Logf("%d min: %d replica attachments are attached", tickerCount, numberOfAttachedReplicaAtts)
+			e2elog.Logf("%.1f min: %d replica attachments are attached", float64(tickerCount)*tickerDuration.Minutes(), numberOfAttachedReplicaAtts)
 			if numberOfAttachedReplicaAtts >= desiredNumberOfReplicaAtts {
 				return
 			}
@@ -132,8 +137,10 @@ func WaitForAllReplicaAttachmentsToAttach(testTimeout int, tickerDuration time.D
 	}
 }
 
-func WaitForAllReplicaAttachmentsToDetach(testTimeout int, tickerDuration time.Duration, totalNumberOfReplicaAtts int, cs *azdisk.Clientset) (numberOfAttachedReplicaAtts int) {
-	numberOfAttachedReplicaAtts = totalNumberOfReplicaAtts
+// WaitForAllReplicaAttachmentsToDetach waits for all replica attachments to be detached until timeout occurs, whichever comes first,
+// and returns the number of attached replica attachments.
+func WaitForAllReplicaAttachmentsToDetach(testTimeout int, tickerDuration time.Duration, cs *azdisk.Clientset) (numberOfAttachedReplicaAtts int) {
+	framework.ExpectEqual(testTimeout > int(tickerDuration.Minutes()), true)
 	ticker := time.NewTicker(tickerDuration)
 	tickerCount := 0
 	timeout := time.After(time.Duration(testTimeout) * time.Minute)
@@ -145,7 +152,7 @@ func WaitForAllReplicaAttachmentsToDetach(testTimeout int, tickerDuration time.D
 		case <-ticker.C:
 			tickerCount++
 			numberOfAttachedReplicaAtts = CountAllAttachedReplicaAttachments(cs)
-			e2elog.Logf("%d min: %d replica attachments are attached", tickerCount, numberOfAttachedReplicaAtts)
+			e2elog.Logf("%.1f min: %d replica attachments are attached", float64(tickerCount)*tickerDuration.Minutes(), numberOfAttachedReplicaAtts)
 			if numberOfAttachedReplicaAtts <= 0 {
 				return
 			}
@@ -153,6 +160,7 @@ func WaitForAllReplicaAttachmentsToDetach(testTimeout int, tickerDuration time.D
 	}
 }
 
+// Returns the number of attached replica attachments in the cluster
 func CountAllAttachedReplicaAttachments(cs *azdisk.Clientset) int {
 	e2elog.Logf("Getting all replica attachments")
 	roleReq, err := azureutils.CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(azdiskv1beta2.ReplicaRole))

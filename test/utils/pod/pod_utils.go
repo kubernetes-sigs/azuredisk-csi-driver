@@ -112,6 +112,8 @@ func CountAllPodsWithMatchingLabel(cs clientset.Interface, ns *v1.Namespace, mat
 	return len(pods.Items)
 }
 
+// WaitForAllPodsWithMatchingLabelToRun waits for all pods to be running until timeout occurs, whichever comes first,
+// and returns the number of running pods.
 func WaitForAllPodsWithMatchingLabelToRun(testTimeout int, tickerDuration time.Duration, desiredNumberOfPods int, cs clientset.Interface, ns *v1.Namespace) (numberOfRunningPods int) {
 	ticker := time.NewTicker(tickerDuration)
 	tickerCount := 0
@@ -124,7 +126,7 @@ func WaitForAllPodsWithMatchingLabelToRun(testTimeout int, tickerDuration time.D
 		case <-ticker.C:
 			tickerCount++
 			numberOfRunningPods = CountAllPodsWithMatchingLabel(cs, ns, map[string]string{"group": "azuredisk-scale-tester"}, string(v1.PodRunning))
-			e2elog.Logf("%d min: %d pods are ready", tickerCount, numberOfRunningPods)
+			e2elog.Logf("%.1f min: %d pods are running", float64(tickerCount)*tickerDuration.Minutes(), numberOfRunningPods)
 			if numberOfRunningPods >= desiredNumberOfPods {
 				return
 			}
@@ -132,8 +134,10 @@ func WaitForAllPodsWithMatchingLabelToRun(testTimeout int, tickerDuration time.D
 	}
 }
 
-func WaitForAllPodsWithMatchingLabelToDelete(testTimeout int, tickerDuration time.Duration, totalNumberOfPods int, cs clientset.Interface, ns *v1.Namespace) (numberOfRunningPods int) {
-	numberOfRunningPods = totalNumberOfPods
+// WaitForAllPodsWithMatchingLabelToDelete waits for all pods to be deleted until timeout occurs, whichever comes first,
+// and returns the number of running pods.
+func WaitForAllPodsWithMatchingLabelToDelete(testTimeout int, tickerDuration time.Duration, cs clientset.Interface, ns *v1.Namespace) (numberOfRunningPods int) {
+	framework.ExpectEqual(testTimeout > int(tickerDuration.Minutes()), true)
 	ticker := time.NewTicker(tickerDuration)
 	tickerCount := 0
 	timeout := time.After(time.Duration(testTimeout) * time.Minute)
@@ -145,7 +149,7 @@ func WaitForAllPodsWithMatchingLabelToDelete(testTimeout int, tickerDuration tim
 		case <-ticker.C:
 			tickerCount++
 			numberOfRunningPods = CountAllPodsWithMatchingLabel(cs, ns, map[string]string{"group": "azuredisk-scale-tester"}, string(v1.PodRunning))
-			e2elog.Logf("%d min: %d pods are ready", tickerCount, numberOfRunningPods)
+			e2elog.Logf("%.1f min: %d pods are running", float64(tickerCount)*tickerDuration.Minutes(), numberOfRunningPods)
 			if numberOfRunningPods <= 0 {
 				return
 			}
