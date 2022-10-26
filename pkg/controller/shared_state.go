@@ -77,6 +77,7 @@ type SharedState struct {
 	crdClient                     crdClientset.Interface
 	conditionWatcher              *watcher.ConditionWatcher
 	azureDiskCSITranslator        csitranslator.InTreePlugin
+	nodeDiskAvailabilityMap       sync.Map
 }
 
 func NewSharedState(driverName, objectNamespace, topologyKey string, eventRecorder record.EventRecorder, cachedClient client.Client, azClient azdisk.Interface, kubeClient kubernetes.Interface, crdClient crdClientset.Interface) *SharedState {
@@ -1175,13 +1176,15 @@ func (c *SharedState) createReplicas(ctx context.Context, remainingReplicas int,
 			//Push to queue the failed replica number
 			request := ReplicaRequest{VolumeName: volumeName, Priority: remainingReplicas}
 			c.priorityReplicaRequestsQueue.Push(ctx, &request)
-			return err
+			// return err
+			// don't return err yet, we can still try next node
+			continue
 		}
 		remainingReplicas--
 	}
 
 	if remainingReplicas > 0 {
-		//no failed replica attachments, but there are still more replicas to reach MaxShares
+		//there are still more replicas to reach MaxShares
 		request := ReplicaRequest{VolumeName: volumeName, Priority: remainingReplicas}
 		c.priorityReplicaRequestsQueue.Push(ctx, &request)
 		for _, pod := range pods {
@@ -1215,28 +1218,30 @@ func (c *SharedState) getNodesForReplica(ctx context.Context, volumeName string,
 		return nil, err
 	}
 
-	var replicaNodes []string
-	replicaNodes, err = c.getNodesWithReplica(ctx, volumeName)
-	if err != nil {
-		return nil, err
-	}
+	// var replicaNodes []string
+	// replicaNodes, err = c.getNodesWithReplica(ctx, volumeName)
+	// if err != nil {
+	// 	return nil, err
+	// }
 
-	skipSet := map[string]bool{}
-	for _, replicaNode := range replicaNodes {
-		skipSet[replicaNode] = true
-	}
+	// skipSet := map[string]bool{}
+	// for _, replicaNode := range replicaNodes {
+	// 	skipSet[replicaNode] = true
+	// }
 
 	filtered := []string{}
-	numFiltered := 0
+	// numFiltered := 0
 	for _, node := range nodes {
-		if numFiltered >= numReplica {
-			break
-		}
-		if skipSet[node] {
-			continue
-		}
+		// if numFiltered >= numReplica {
+		// don't break yet, we can provide more nodes than we need in case some concurrency changes happened to nodes
+		// 	break
+		// }
+		// if skipSet[node] {
+		// 	continue
+		// }
 		filtered = append(filtered, node)
-		numFiltered++
+		w.Logger().V(5).Infof("aliceyu? available node: " + node + " which can be used for replica attachment volumeName: " + volumeName)
+		// numFiltered++
 	}
 
 	return filtered, nil
