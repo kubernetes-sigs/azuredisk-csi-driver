@@ -62,7 +62,7 @@ var (
 
 	testVMName     = fakeNodeID
 	testVMURI      = fmt.Sprintf(virtualMachineURIFormat, testSubscription, testResourceGroup, testVMName)
-	testVMSize     = compute.VirtualMachineSizeTypesStandardD3V2
+	testVMSize     = compute.StandardD3V2
 	testVMLocation = "westus"
 	testVMZones    = []string{"1"}
 	testVM         = compute.VirtualMachine{

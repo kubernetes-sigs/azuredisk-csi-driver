@@ -692,7 +692,7 @@ func TestControllerPublishVolume(t *testing.T) {
 				vm.VirtualMachineProperties = &compute.VirtualMachineProperties{
 					ProvisioningState: to.StringPtr(string(compute.ProvisioningStateFailed)),
 					HardwareProfile: &compute.HardwareProfile{
-						VMSize: compute.VirtualMachineSizeTypesStandardA0,
+						VMSize: compute.StandardA0,
 					},
 					InstanceView: &compute.VirtualMachineInstanceView{
 						Statuses: &vmstatus,
@@ -749,7 +749,7 @@ func TestControllerPublishVolume(t *testing.T) {
 				vm.VirtualMachineProperties = &compute.VirtualMachineProperties{
 					ProvisioningState: to.StringPtr(string(compute.ProvisioningStateSucceeded)),
 					HardwareProfile: &compute.HardwareProfile{
-						VMSize: compute.VirtualMachineSizeTypesStandardA0,
+						VMSize: compute.StandardA0,
 					},
 					InstanceView: &compute.VirtualMachineInstanceView{
 						Statuses: &vmstatus,
@@ -807,7 +807,7 @@ func TestControllerPublishVolume(t *testing.T) {
 				vm.VirtualMachineProperties = &compute.VirtualMachineProperties{
 					ProvisioningState: to.StringPtr(string(compute.ProvisioningStateSucceeded)),
 					HardwareProfile: &compute.HardwareProfile{
-						VMSize: compute.VirtualMachineSizeTypesStandardA0,
+						VMSize: compute.StandardA0,
 					},
 					InstanceView: &compute.VirtualMachineInstanceView{
 						Statuses: &vmstatus,
