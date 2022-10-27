@@ -351,7 +351,7 @@ e2e-test-v2:
 
 .PHONY: scale-test
 scale-test:
-	go test -v -timeout=0 ${GOTAGS} ./test/scale ${GINKGO_COMMON_FLAGS} -ginkgo.focus="Scale test scheduling and starting multiple pods with a persistent volume";
+	go test -v -timeout=0 ${GOTAGS} ./test/scale ${GINKGO_COMMON_FLAGS} -ginkgo.focus="Scale test scheduling and starting multiple pods with persistent volumes";
 
 .PHONY: scale-test-v2
 scale-test-v2:
