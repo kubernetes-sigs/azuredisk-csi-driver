@@ -300,6 +300,14 @@ var (
 	_ = testPrimaryAzVolumeAttachment1Request
 )
 
+type FakeDriverLifecycle struct {
+	driverUninstallState uint32
+}
+
+func (d FakeDriverLifecycle) IsDriverUninstall() bool {
+	return atomic.LoadUint32(&d.driverUninstallState) == 1
+}
+
 func getTestDiskURI(pvName string) string {
 	return fmt.Sprintf(computeDiskURIFormat, testSubscription, testResourceGroup, pvName)
 }
@@ -455,7 +463,7 @@ func initState(client client.Client, azClient azdisk.Interface, kubeClient kuber
 		DriverName:      consts.DefaultDriverName,
 		ObjectNamespace: consts.DefaultAzureDiskCrdNamespace,
 	}
-	c = NewSharedState(config, consts.WellKnownTopologyKey, &record.FakeRecorder{}, client, azClient, kubeClient, nil)
+	c = NewSharedState(config, consts.WellKnownTopologyKey, &record.FakeRecorder{}, client, azClient, &FakeDriverLifecycle{}, kubeClient, nil)
 	c.MarkRecoveryComplete()
 
 	for _, obj := range objs {

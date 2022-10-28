@@ -19,10 +19,12 @@ package provisioner
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"reflect"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -38,6 +40,9 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
+	apiext "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	crdClientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
+	crdInformers "k8s.io/apiextensions-apiserver/pkg/client/informers/externalversions"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
@@ -52,11 +57,13 @@ import (
 )
 
 type CrdProvisioner struct {
-	azDiskClient     azdisk.Interface
-	kubeClient       kubeClientset.Interface
-	namespace        string
-	conditionWatcher *watcher.ConditionWatcher
-	azCachedReader   CachedReader
+	azDiskClient         azdisk.Interface
+	kubeClient           kubeClientset.Interface
+	crdClient            crdClientset.Interface
+	namespace            string
+	conditionWatcher     *watcher.ConditionWatcher
+	azCachedReader       CachedReader
+	driverUninstallState uint32
 }
 
 const (
@@ -175,13 +182,16 @@ func NewCrdProvisioner(kubeConfig *rest.Config, objNamespace string) (*CrdProvis
 	if err != nil {
 		return nil, err
 	}
+	crdClient, err := crdClientset.NewForConfig(kubeConfig)
+	if err != nil {
+		return nil, err
+	}
 
 	kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, consts.DefaultInformerResync)
-	startWatchingKube(context.Background(), kubeInformerFactory)
-
 	azInformerFactory := azdiskinformers.NewSharedInformerFactory(azdiskClient, consts.DefaultInformerResync)
+	crdInformerFactory := crdInformers.NewSharedInformerFactory(crdClient, consts.DefaultInformerResync)
 
-	return &CrdProvisioner{
+	crdProvisioner := &CrdProvisioner{
 		azDiskClient:     azdiskClient,
 		namespace:        objNamespace,
 		conditionWatcher: watcher.New(context.Background(), azdiskClient, azInformerFactory, objNamespace),
@@ -190,7 +200,10 @@ func NewCrdProvisioner(kubeConfig *rest.Config, objNamespace string) (*CrdProvis
 			kubeInformer: kubeInformerFactory,
 			azInformer:   azInformerFactory,
 		},
-	}, nil
+	}
+
+	crdProvisioner.startWatchingObjs(context.Background(), kubeInformerFactory, crdInformerFactory, &crdProvisioner.driverUninstallState)
+	return crdProvisioner, nil
 }
 
 /*
@@ -382,6 +395,13 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 		return nil
 	}
 
+	// if the driver is uninstalling, the delete request is rejected.
+	if c.IsDriverUninstall() {
+		err = fmt.Errorf("VolumeDeleteRequestError")
+		w.Logger().Error(err, "AzVolume deletion is being requested as the driver is uninstalling.")
+		return err
+	}
+
 	var waiter *watcher.ConditionWaiter
 	// if deletion failed requeue deletion
 	updateFunc := func(obj client.Object) error {
@@ -423,7 +443,7 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 		}
 		// otherwise update the AzVolume with delete request annotation
 		w.AnnotateObject(updateInstance)
-		updateInstance.Status.Annotations = azureutils.AddToMap(updateInstance.Status.Annotations, consts.VolumeDeleteRequestAnnotation, "cloud-delete-volume")
+		updateInstance.Status.Annotations = azureutils.AddToMap(updateInstance.Status.Annotations, consts.VolumeDeleteRequestAnnotation, consts.CloudDeleteVolume)
 		// remove deletion failure error from AzVolume CRI to retrigger deletion
 		updateInstance.Status.Error = nil
 		// revert volume deletion state to avoid confusion
@@ -1059,6 +1079,35 @@ func (c *CrdProvisioner) GetDiskClientSet() azdisk.Interface {
 	return c.azDiskClient
 }
 
+func (c *CrdProvisioner) IsDriverUninstall() bool {
+	return atomic.LoadUint32(&c.driverUninstallState) == 1
+}
+
+// Initializing nodeInformer and crdInformer and waiting for cache sync
+func (c *CrdProvisioner) startWatchingObjs(ctx context.Context, kubeInformerFactory informers.SharedInformerFactory, crdInformerFactory crdInformers.SharedInformerFactory, driverUninstallState *uint32) {
+	nodeInformer := kubeInformerFactory.Core().V1().Nodes().Informer()
+	go kubeInformerFactory.Start(ctx.Done())
+
+	crdInformer := crdInformerFactory.Apiextensions().V1().CustomResourceDefinitions().Informer()
+	crdInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: func(_, new interface{}) {
+			crdObj := new.(*apiext.CustomResourceDefinition)
+			if crdObj.DeletionTimestamp != nil && (crdObj.Name == consts.AzVolumeAttachmentCRDName || crdObj.Name == consts.AzVolumeCRDName) {
+				go func() {
+					atomic.StoreUint32(driverUninstallState, 1)
+				}()
+			}
+		},
+	})
+	go crdInformerFactory.Start(ctx.Done())
+
+	synced := cache.WaitForCacheSync(ctx.Done(), nodeInformer.HasSynced, crdInformer.HasSynced)
+	if !synced {
+		klog.Fatalf("Unable to sync caches for kube and/or CRD objects")
+		os.Exit(1)
+	}
+}
+
 // Compares the fields in the AzVolumeSpec with the other parameters.
 // Returns true if they are equal, false otherwise.
 func isAzVolumeSpecSameAsRequestParams(defaultAzVolume *azdiskv1beta2.AzVolume,
@@ -1215,16 +1264,4 @@ func waitForDetachVolumeFunc(obj interface{}, objectDeleted bool) (bool, error) 
 		return false, util.ErrorFromAzError(azVolumeAttachmentInstance.Status.Error)
 	}
 	return false, nil
-}
-
-func startWatchingKube(ctx context.Context, kubeInformerFactory informers.SharedInformerFactory) {
-	nodeInformer := kubeInformerFactory.Core().V1().Nodes().Informer()
-
-	go kubeInformerFactory.Start(ctx.Done())
-
-	synced := cache.WaitForCacheSync(ctx.Done(), nodeInformer.HasSynced)
-	if !synced {
-		klog.Fatalf("Unable to sync caches for kube objects")
-		os.Exit(1)
-	}
 }

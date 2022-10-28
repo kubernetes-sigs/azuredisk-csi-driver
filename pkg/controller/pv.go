@@ -117,23 +117,12 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 
 		}
 		// AzVolume does exist and needs to be deleted
-		// add annotation to mark AzVolumeAttachment cleanup
-		updateFunc := func(obj client.Object) error {
-			azv := obj.(*azdiskv1beta2.AzVolume)
-			azv.Status.Annotations = azureutils.AddToMap(azv.Status.Annotations, consts.PreProvisionedVolumeCleanupAnnotation, "true")
-			return nil
-		}
-		if _, err := azureutils.UpdateCRIWithRetry(ctx, nil, r.cachedClient, r.azClient, &azVolume, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
-			return reconcileReturnOnError(ctx, &pv, "delete", err, r.controllerRetryInfo)
-		}
-
 		if err := r.azClient.DiskV1beta2().AzVolumes(r.config.ObjectNamespace).Delete(ctx, azVolumeName, metav1.DeleteOptions{}); err != nil {
 			logger.Error(err, "failed to set the deletion timestamp for AzVolume")
 			return reconcileReturnOnError(ctx, &pv, "delete", err, r.controllerRetryInfo)
 		}
 		// deletion timestamp is set and AzVolume reconcliler will handle the delete request.
-		// For pre-provisioned case when only PV is deleted, we will only be deleting the CRI as VolumeDeleteRequestAnnotation will not be set.
-		// The volume itself will not be deleted.
+		// For pre-provisioned case when only PV is deleted, we should only be deleting CRI
 		logger.Info("Deletion timestamp for AzVolume set")
 		return reconcileReturnOnSuccess(pv.Name, r.controllerRetryInfo)
 	}

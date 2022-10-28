@@ -208,9 +208,6 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAzVolume {
 				azVolume := testAzVolume0.DeepCopy()
 
-				azVolume.Status.Annotations = map[string]string{
-					consts.VolumeDeleteRequestAnnotation: "cloud-delete-volume",
-				}
 				azVolume.Finalizers = []string{consts.AzVolumeFinalizer}
 				azVolume.Status.Detail = &azdiskv1beta2.AzVolumeStatusDetail{
 					VolumeID:      testManagedDiskURI0,
@@ -219,6 +216,9 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 				now := metav1.Time{Time: metav1.Now().Add(-1000)}
 				azVolume.ObjectMeta.DeletionTimestamp = &now
 				azVolume.Status.State = azdiskv1beta2.VolumeCreated
+				azVolume.Status.Annotations = map[string]string{
+					consts.VolumeDeleteRequestAnnotation: consts.CloudDeleteVolume,
+				}
 
 				controller := NewTestAzVolumeController(
 					mockCtl,
@@ -247,9 +247,6 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAzVolume {
 				azVolume := testAzVolume0.DeepCopy()
 
-				azVolume.Status.Annotations = map[string]string{
-					consts.VolumeDeleteRequestAnnotation: "cloud-delete-volume",
-				}
 				azVolume.Finalizers = []string{consts.AzVolumeFinalizer}
 				azVolume.Status.Detail = &azdiskv1beta2.AzVolumeStatusDetail{
 					VolumeID:      testManagedDiskURI0,
@@ -258,6 +255,9 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 				now := metav1.Time{Time: metav1.Now().Add(-1000)}
 				azVolume.ObjectMeta.DeletionTimestamp = &now
 				azVolume.Status.State = azdiskv1beta2.VolumeCreated
+				azVolume.Status.Annotations = map[string]string{
+					consts.VolumeDeleteRequestAnnotation: consts.CloudDeleteVolume,
+				}
 
 				controller := NewTestAzVolumeController(
 					mockCtl,

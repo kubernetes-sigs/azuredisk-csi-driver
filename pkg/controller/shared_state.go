@@ -53,6 +53,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+type DriverLifecycle interface {
+	IsDriverUninstall() bool
+}
+
 type SharedState struct {
 	recoveryComplete              uint32
 	config                        *azdiskv1beta2.AzDiskDriverConfiguration
@@ -78,9 +82,10 @@ type SharedState struct {
 	conditionWatcher              *watcher.ConditionWatcher
 	azureDiskCSITranslator        csitranslator.InTreePlugin
 	availableAttachmentsMap       sync.Map
+	driverLifecycle               DriverLifecycle
 }
 
-func NewSharedState(config *azdiskv1beta2.AzDiskDriverConfiguration, topologyKey string, eventRecorder record.EventRecorder, cachedClient client.Client, azClient azdisk.Interface, kubeClient kubernetes.Interface, crdClient crdClientset.Interface) *SharedState {
+func NewSharedState(config *azdiskv1beta2.AzDiskDriverConfiguration, topologyKey string, eventRecorder record.EventRecorder, cachedClient client.Client, azClient azdisk.Interface, driverLifecycle DriverLifecycle, kubeClient kubernetes.Interface, crdClient crdClientset.Interface) *SharedState {
 	newSharedState := &SharedState{
 		config:        config,
 		topologyKey:   topologyKey,
@@ -95,6 +100,7 @@ func NewSharedState(config *azdiskv1beta2.AzDiskDriverConfiguration, topologyKey
 			azdiskinformers.NewSharedInformerFactory(azClient, consts.DefaultInformerResync),
 			config.ObjectNamespace),
 		azureDiskCSITranslator: csitranslator.NewAzureDiskCSITranslator(),
+		driverLifecycle:        driverLifecycle,
 	}
 	newSharedState.createReplicaRequestsQueue()
 

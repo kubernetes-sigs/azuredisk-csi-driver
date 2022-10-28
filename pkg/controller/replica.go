@@ -67,7 +67,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 
 	if azVolumeAttachment.Spec.RequestedRole == azdiskv1beta2.PrimaryRole {
 		// Detach Event
-		if volumeDetachRequested(azVolumeAttachment) {
+		if volumeDetachRequested(azVolumeAttachment) && !r.driverLifecycle.IsDriverUninstall() {
 			// If primary attachment is marked for deletion, queue garbage collection for replica attachments
 			r.triggerGarbageCollection(ctx, azVolumeAttachment.Spec.VolumeName) //nolint:contextcheck // Garbage collection is asynchronous; context is not inherited by design
 		} else {
@@ -91,6 +91,12 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 		if volumeDetachRequested(azVolumeAttachment) {
 			switch azVolumeAttachment.Status.State {
 			case azdiskv1beta2.DetachmentFailed:
+				// if detachment failed and the driver is uninstalling, delete azvolumeattachment CRI to let uninstallation proceed
+				if r.driverLifecycle.IsDriverUninstall() {
+					r.logger.Info("Deleting AzVolumeAttachment in DetachmentFailed state without detaching disk", workflow.GetObjectDetails(azVolumeAttachment)...)
+					_ = r.cachedClient.Delete(ctx, azVolumeAttachment)
+				}
+
 				if _, err := azureutils.UpdateCRIWithRetry(ctx, nil, r.cachedClient, r.azClient, azVolumeAttachment, func(obj client.Object) error {
 					azVolumeAttachment := obj.(*azdiskv1beta2.AzVolumeAttachment)
 					_, err = updateState(azVolumeAttachment, azdiskv1beta2.ForceDetachPending, normalUpdate)

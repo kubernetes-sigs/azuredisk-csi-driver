@@ -32,6 +32,9 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog/v2"
 
+	crdClientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
+	crdfakes "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
+	crdInformers "k8s.io/apiextensions-apiserver/pkg/client/informers/externalversions"
 	"k8s.io/client-go/informers"
 	kubeClientset "k8s.io/client-go/kubernetes"
 	fakev1 "k8s.io/client-go/kubernetes/fake"
@@ -152,30 +155,35 @@ var (
 func NewTestCrdProvisioner(controller *gomock.Controller) *CrdProvisioner {
 	fakeDiskClient := azdiskfakes.NewSimpleClientset()
 	fakeKubeClient := fakev1.NewSimpleClientset()
+	fakeCRDClient := crdfakes.NewSimpleClientset()
 
-	kubeInformerFacotry := informers.NewSharedInformerFactory(fakeKubeClient, testResync)
-	startWatchingKube(context.Background(), kubeInformerFacotry)
+	kubeInformerFactory := informers.NewSharedInformerFactory(fakeKubeClient, testResync)
 	azInformerFactory := azdiskinformers.NewSharedInformerFactory(fakeDiskClient, testResync)
+	crdInformerFactory := crdInformers.NewSharedInformerFactory(fakeCRDClient, consts.DefaultInformerResync)
 
-	return &CrdProvisioner{
+	crdProvisioner := &CrdProvisioner{
 		azDiskClient:     fakeDiskClient,
 		kubeClient:       fakeKubeClient,
+		crdClient:        fakeCRDClient,
 		namespace:        testNamespace,
 		conditionWatcher: watcher.New(context.Background(), fakeDiskClient, azInformerFactory, testNamespace),
 		azCachedReader: CachedReader{
 			azNamespace:  testNamespace,
+			kubeInformer: kubeInformerFactory,
 			azInformer:   azInformerFactory,
-			kubeInformer: kubeInformerFacotry,
 		},
 	}
+
+	crdProvisioner.startWatchingObjs(context.Background(), kubeInformerFactory, crdInformerFactory, &crdProvisioner.driverUninstallState)
+	return crdProvisioner
 }
 
-func UpdateTestCrdProvisionerWithNewClient(provisioner *CrdProvisioner, azDiskClient azdisk.Interface, kubeClient kubeClientset.Interface) {
+func UpdateTestCrdProvisionerWithNewClient(provisioner *CrdProvisioner, azDiskClient azdisk.Interface, kubeClient kubeClientset.Interface, crdClient crdClientset.Interface) {
 	azInformerFactory := azdiskinformers.NewSharedInformerFactory(azDiskClient, testResync)
 	provisioner.azDiskClient = azDiskClient
 	kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, testResync)
 	provisioner.kubeClient = kubeClient
-	startWatchingKube(context.Background(), kubeInformerFactory)
+	crdInformerFactory := crdInformers.NewSharedInformerFactory(crdClient, consts.DefaultInformerResync)
 
 	provisioner.conditionWatcher = watcher.New(context.Background(), azDiskClient, azInformerFactory, testNamespace)
 	provisioner.azCachedReader = CachedReader{
@@ -183,6 +191,7 @@ func UpdateTestCrdProvisionerWithNewClient(provisioner *CrdProvisioner, azDiskCl
 		azInformer:   azInformerFactory,
 		kubeInformer: kubeInformerFactory,
 	}
+	provisioner.startWatchingObjs(context.Background(), kubeInformerFactory, crdInformerFactory, &provisioner.driverUninstallState)
 }
 
 func TestCrdProvisionerCreateVolume(t *testing.T) {
@@ -452,7 +461,7 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 				provisioner.azDiskClient = azdiskfakes.NewSimpleClientset(existingList...)
 			}
 
-			UpdateTestCrdProvisionerWithNewClient(provisioner, provisioner.azDiskClient, provisioner.kubeClient)
+			UpdateTestCrdProvisionerWithNewClient(provisioner, provisioner.azDiskClient, provisioner.kubeClient, provisioner.crdClient)
 
 			if tt.definePrependReactor {
 				// Using the tracker to insert new object or
@@ -619,7 +628,7 @@ func TestCrdProvisionerDeleteVolume(t *testing.T) {
 				provisioner.azDiskClient = azdiskfakes.NewSimpleClientset(existingList...)
 			}
 
-			UpdateTestCrdProvisionerWithNewClient(provisioner, provisioner.azDiskClient, provisioner.kubeClient)
+			UpdateTestCrdProvisionerWithNewClient(provisioner, provisioner.azDiskClient, provisioner.kubeClient, provisioner.crdClient)
 
 			actualError := provisioner.DeleteVolume(
 				context.TODO(),
@@ -940,7 +949,7 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 				provisioner.azDiskClient = azdiskfakes.NewSimpleClientset(azExistingList...)
 				provisioner.kubeClient = fakev1.NewSimpleClientset(kubeExistingList...)
 			}
-			UpdateTestCrdProvisionerWithNewClient(provisioner, provisioner.azDiskClient, provisioner.kubeClient)
+			UpdateTestCrdProvisionerWithNewClient(provisioner, provisioner.azDiskClient, provisioner.kubeClient, provisioner.crdClient)
 
 			if tt.definePrependReactor {
 				// Using the tracker to insert new object or
@@ -1074,7 +1083,7 @@ func TestCrdProvisionerWaitForAttach(t *testing.T) {
 				provisioner.azDiskClient = azdiskfakes.NewSimpleClientset(existingList...)
 			}
 
-			UpdateTestCrdProvisionerWithNewClient(provisioner, provisioner.azDiskClient, provisioner.kubeClient)
+			UpdateTestCrdProvisionerWithNewClient(provisioner, provisioner.azDiskClient, provisioner.kubeClient, provisioner.crdClient)
 
 			if tt.definePrependReactor {
 				// Using the tracker to insert new object or
@@ -1350,7 +1359,7 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 				provisioner.azDiskClient = azdiskfakes.NewSimpleClientset(existingList...)
 			}
 
-			UpdateTestCrdProvisionerWithNewClient(provisioner, provisioner.azDiskClient, provisioner.kubeClient)
+			UpdateTestCrdProvisionerWithNewClient(provisioner, provisioner.azDiskClient, provisioner.kubeClient, provisioner.crdClient)
 
 			if tt.definePrependReactor {
 				// Using the tracker to insert new object or
@@ -1525,7 +1534,7 @@ func TestCrdProvisionerExpandVolume(t *testing.T) {
 				provisioner.azDiskClient = azdiskfakes.NewSimpleClientset(existingList...)
 			}
 
-			UpdateTestCrdProvisionerWithNewClient(provisioner, provisioner.azDiskClient, provisioner.kubeClient)
+			UpdateTestCrdProvisionerWithNewClient(provisioner, provisioner.azDiskClient, provisioner.kubeClient, provisioner.crdClient)
 
 			if tt.definePrependReactor {
 				// Using the tracker to insert new object or

@@ -965,8 +965,8 @@ func isDemotionRequested(attachment *azdiskv1beta2.AzVolumeAttachment) bool {
 	return attachment != nil && attachment.Status.Detail != nil && attachment.Status.Detail.Role == azdiskv1beta2.PrimaryRole && attachment.Spec.RequestedRole == azdiskv1beta2.ReplicaRole
 }
 
-func isPreProvisionCleanupRequested(volume *azdiskv1beta2.AzVolume) bool {
-	return volume != nil && azureutils.MapContains(volume.Status.Annotations, consts.PreProvisionedVolumeCleanupAnnotation)
+func isPreProvisioned(volume *azdiskv1beta2.AzVolume) bool {
+	return volume != nil && azureutils.MapContains(volume.Status.Annotations, consts.PreProvisionedVolumeAnnotation)
 }
 
 func getQualifiedName(namespace, name string) string {
@@ -1122,7 +1122,7 @@ func WatchObject(mgr manager.Manager, objKind source.Kind) error {
 
 	c.GetLogger().Info("Starting to watch %s", objType)
 
-	// Watch for CRUD events on azVolumeAttachment objects
+	// Watch for CRUD events on objects
 	err = c.Watch(&objKind, &handler.EnqueueRequestForObject{}, predicate.Funcs{
 		CreateFunc: func(_ event.CreateEvent) bool {
 			return false
