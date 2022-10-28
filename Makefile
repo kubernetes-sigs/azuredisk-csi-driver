@@ -384,3 +384,7 @@ install-az-log:
 .PHONY: install-az-analyze
 install-az-analyze:
 	go install ./cmd/az-analyze
+
+.PHONY: generate-vm-to-disk-count-map
+generate-vm-to-disk-count-map:
+	go run pkg/tool/gen-disk-skus-map.go -filepath "pkg/azureutils/azure_dd_max_disk_count.go"
