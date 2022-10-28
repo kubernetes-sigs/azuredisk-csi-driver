@@ -23,7 +23,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-12-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
 	"github.com/Azure/go-autorest/autorest/to"
 
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -66,7 +66,7 @@ const (
 
 func (ss *ScaleSet) newVMSSCache() (*azcache.TimedCache, error) {
 	getter := func(key string) (interface{}, error) {
-		localCache := &sync.Map{} // [vmasName]*vmssEntry
+		localCache := &sync.Map{} // [vmssName]*vmssEntry
 
 		allResourceGroups, err := ss.GetResourceGroups()
 		if err != nil {
@@ -92,7 +92,7 @@ func (ss *ScaleSet) newVMSSCache() (*azcache.TimedCache, error) {
 					klog.Warning("failed to get the name of VMSS")
 					continue
 				}
-				if scaleSet.OrchestrationMode == "" || scaleSet.OrchestrationMode == compute.OrchestrationModeUniform {
+				if scaleSet.OrchestrationMode == "" || scaleSet.OrchestrationMode == compute.Uniform {
 					localCache.Store(*scaleSet.Name, &vmssEntry{
 						vmss:          &scaleSet,
 						resourceGroup: resourceGroup,
@@ -146,16 +146,21 @@ func extractVmssVMName(name string) (string, string, error) {
 func (ss *ScaleSet) getVMSSVMCache(resourceGroup, vmssName string) (string, *azcache.TimedCache, error) {
 	cacheKey := strings.ToLower(fmt.Sprintf("%s/%s", resourceGroup, vmssName))
 	if entry, ok := ss.vmssVMCache.Load(cacheKey); ok {
-		cache := entry.(*azcache.TimedCache)
-		return cacheKey, cache, nil
+		return cacheKey, entry.(*azcache.TimedCache), nil
 	}
 
-	cache, err := ss.newVMSSVirtualMachinesCache(resourceGroup, vmssName, cacheKey)
+	v, err, _ := ss.group.Do(cacheKey, func() (interface{}, error) {
+		cache, err := ss.newVMSSVirtualMachinesCache(resourceGroup, vmssName, cacheKey)
+		if err != nil {
+			return nil, err
+		}
+		ss.vmssVMCache.Store(cacheKey, cache)
+		return cache, nil
+	})
 	if err != nil {
 		return "", nil, err
 	}
-	ss.vmssVMCache.Store(cacheKey, cache)
-	return cacheKey, cache, nil
+	return cacheKey, v.(*azcache.TimedCache), nil
 }
 
 // gcVMSSVMCache delete stale VMSS VMs caches from deleted VMSSes.

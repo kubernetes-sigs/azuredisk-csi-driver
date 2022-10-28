@@ -22,7 +22,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-12-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
 	"github.com/onsi/ginkgo/v2"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -462,7 +462,7 @@ func CreateVolume(diskName string, sizeGiB int, volumeContext map[string]string)
 
 	accountType, err := azureutils.NormalizeStorageAccountType(storageAccountType, azureCloud.Config.Cloud, azureCloud.Config.DisableAzureStackCloud)
 	if err != nil {
-		accountType = compute.DiskStorageAccountTypes(compute.DiskStorageAccountTypesPremiumLRS)
+		accountType = compute.DiskStorageAccountTypes(compute.PremiumLRS)
 	}
 	volumeOptions := &azure.ManagedDiskOptions{
 		DiskName:           diskName,
