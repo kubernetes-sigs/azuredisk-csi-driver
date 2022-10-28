@@ -23,7 +23,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-12-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
 	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2021-08-01/network"
 	"github.com/Azure/go-autorest/autorest/to"
 	v1 "k8s.io/api/core/v1"
@@ -601,7 +601,7 @@ func (fs *FlexScaleSet) ensureVMSSFlexInPool(service *v1.Service, nodes []*v1.No
 			}
 			resourceGroupName, err := fs.GetNodeResourceGroup(node.Name)
 			if err != nil {
-				klog.Error("ensureVMSSInPool: failed to get resoure group of node: %s, will skip checking and continue", node.Name)
+				klog.Error("ensureVMSSInPool: failed to get resource group of node: %s, will skip checking and continue", node.Name)
 				continue
 			}
 

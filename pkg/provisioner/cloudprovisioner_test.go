@@ -24,7 +24,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-12-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
 	"github.com/Azure/go-autorest/autorest/date"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
@@ -80,7 +80,7 @@ var (
 		ID:   &testDiskURI0,
 		DiskProperties: &compute.DiskProperties{
 			DiskSizeGB:        &testDiskSizeGiB,
-			DiskState:         compute.DiskStateUnattached,
+			DiskState:         compute.Unattached,
 			ProvisioningState: &provisioningStateSucceeded,
 			TimeCreated:       &testDiskTimeCreated,
 		},
@@ -98,11 +98,11 @@ var (
 		ID:   &clonedDiskURI,
 		DiskProperties: &compute.DiskProperties{
 			CreationData: &compute.CreationData{
-				CreateOption:     compute.DiskCreateOptionCopy,
+				CreateOption:     compute.Copy,
 				SourceResourceID: &testDiskURI0,
 			},
 			DiskSizeGB:        &clonedDiskSizeGiB,
-			DiskState:         compute.DiskStateUnattached,
+			DiskState:         compute.Unattached,
 			ProvisioningState: &provisioningStateSucceeded,
 			TimeCreated:       &testDiskTimeCreated,
 		},
@@ -294,7 +294,7 @@ func mockPeristentVolumesList(provisioner *CloudProvisioner, pvCount int32) {
 			ID:   &diskURI,
 			DiskProperties: &compute.DiskProperties{
 				DiskSizeGB:        &testDiskSizeGiB,
-				DiskState:         compute.DiskStateUnattached,
+				DiskState:         compute.Unattached,
 				ProvisioningState: &provisioningStateSucceeded,
 				TimeCreated:       &timeCreated,
 			},
