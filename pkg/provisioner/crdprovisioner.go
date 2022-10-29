@@ -736,7 +736,7 @@ func (c *CrdProvisioner) waitForLun(ctx context.Context, volumeID, nodeID string
 
 func (c *CrdProvisioner) WaitForAttach(ctx context.Context, volumeID, nodeID string) (*azdiskv1beta2.AzVolumeAttachment, error) {
 	var err error
-	ctx, w := workflow.New(ctx)
+	ctx, w := workflow.New(ctx, workflow.WithCaller(1))
 	defer func() { w.Finish(err) }()
 
 	var azVolumeAttachment *azdiskv1beta2.AzVolumeAttachment
@@ -932,7 +932,7 @@ func (c *CrdProvisioner) detachVolume(ctx context.Context, azVolumeAttachment *a
 
 func (c *CrdProvisioner) WaitForDetach(ctx context.Context, volumeID, nodeID string) error {
 	var err error
-	ctx, w := workflow.New(ctx)
+	ctx, w := workflow.New(ctx, workflow.WithCaller(1))
 	defer func() { w.Finish(err) }()
 
 	var volumeName string
