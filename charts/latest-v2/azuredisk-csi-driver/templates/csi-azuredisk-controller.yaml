@@ -91,6 +91,10 @@ spec:
       affinity:
 {{ toYaml . | indent 8 }}
 {{- end }}
+{{ with .Values.controller.initContainers }}
+      initContainers:
+{{ toYaml . | indent 8 }}
+{{- end }}
       {{- include "azuredisk.pullSecrets" . | indent 6 }}
       containers:
         - name: csi-provisioner
@@ -216,11 +220,15 @@ spec:
             periodSeconds: 30
           env:
             - name: AZURE_CREDENTIAL_FILE
+              {{- if .Values.controller.credentialFile }}
+              value: {{ .Values.controller.credentialFile }}
+              {{- else }}
               valueFrom:
                 configMapKeyRef:
                   name: azure-cred-file
                   key: path
                   optional: true
+              {{- end }}
             - name: CSI_ENDPOINT
               value: unix:///csi/csi.sock
             - name: AZURE_GO_SDK_LOG_LEVEL
@@ -251,6 +259,9 @@ spec:
               readOnly: true
             {{- end }}
           resources: {{- toYaml .Values.controller.resources.azuredisk | nindent 12 }}
+{{ with .Values.controller.additionalContainers }}
+{{ toYaml . | indent 8 }}
+{{- end }}
       volumes:
         - name: socket-dir
           emptyDir: {}
@@ -274,3 +285,6 @@ spec:
         - name: {{ .Values.controller.name }}-config
           configMap:
             name: {{ .Values.controller.name }}-config
+{{ with .Values.controller.additionalVolumes }}
+{{ toYaml . | indent 8 }}
+{{- end }}
