@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -78,6 +79,7 @@ type SharedState struct {
 	conditionWatcher              *watcher.ConditionWatcher
 	azureDiskCSITranslator        csitranslator.InTreePlugin
 	nodeDiskAvailabilityMap       sync.Map
+	nodeDiskAvailabilityMapLock   sync.Mutex
 }
 
 func NewSharedState(driverName, objectNamespace, topologyKey string, eventRecorder record.EventRecorder, cachedClient client.Client, azClient azdisk.Interface, kubeClient kubernetes.Interface, crdClient crdClientset.Interface) *SharedState {
@@ -861,7 +863,7 @@ func (c *SharedState) selectNodesPerTopology(ctx context.Context, nodes []v1.Nod
 		}
 	}
 
-	return selectedNodes[:min(len(selectedNodes), numReplicas)], nil
+	return selectedNodes, nil
 }
 
 func (c *SharedState) getNodesWithReplica(ctx context.Context, volumeName string) ([]string, error) {
@@ -1181,6 +1183,10 @@ func (c *SharedState) createReplicas(ctx context.Context, remainingReplicas int,
 			continue
 		}
 		remainingReplicas--
+		if remainingReplicas <= 0 {
+			// no more remainingReplicas, don't need to create replica AzVolumeAttachment
+			break
+		}
 	}
 
 	if remainingReplicas > 0 {
@@ -1218,30 +1224,29 @@ func (c *SharedState) getNodesForReplica(ctx context.Context, volumeName string,
 		return nil, err
 	}
 
-	// var replicaNodes []string
-	// replicaNodes, err = c.getNodesWithReplica(ctx, volumeName)
-	// if err != nil {
-	// 	return nil, err
-	// }
+	var replicaNodes []string
+	replicaNodes, err = c.getNodesWithReplica(ctx, volumeName)
+	if err != nil {
+		return nil, err
+	}
 
-	// skipSet := map[string]bool{}
-	// for _, replicaNode := range replicaNodes {
-	// 	skipSet[replicaNode] = true
-	// }
+	skipSet := map[string]bool{}
+	for _, replicaNode := range replicaNodes {
+		skipSet[replicaNode] = true
+	}
 
 	filtered := []string{}
-	// numFiltered := 0
 	for _, node := range nodes {
-		// if numFiltered >= numReplica {
-		// don't break yet, we can provide more nodes than we need in case some concurrency changes happened to nodes
-		// 	break
-		// }
-		// if skipSet[node] {
-		// 	continue
-		// }
+		// if current node doesn't have capacity to attach more disk, skip it
+		remainingCapacity, nodeExists := c.nodeDiskAvailabilityMap.Load(node)
+		if !nodeExists || remainingCapacity.(int) <= 0 {
+			continue
+		}
+		if skipSet[node] {
+			continue
+		}
 		filtered = append(filtered, node)
-		w.Logger().V(5).Infof("aliceyu? available node: " + node + " which can be used for replica attachment volumeName: " + volumeName)
-		// numFiltered++
+		w.Logger().V(5).Infof("aliceyu? available node: " + node + " remainingCapacity: " + strconv.Itoa(remainingCapacity.(int)) + " which can be used for replica attachment volumeName: " + volumeName)
 	}
 
 	return filtered, nil

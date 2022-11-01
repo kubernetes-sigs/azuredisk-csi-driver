@@ -29,7 +29,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-12-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -203,7 +203,7 @@ func (c *CloudProvisioner) CreateVolume(
 
 	selectedAvailabilityZone := pickAvailabilityZone(accessibilityRequirements, c.GetCloud().Location)
 	accessibleTopology := []azdiskv1beta2.Topology{}
-	if skuName == compute.DiskStorageAccountTypesStandardSSDZRS || skuName == compute.DiskStorageAccountTypesPremiumZRS {
+	if skuName == compute.StandardSSDZRS || skuName == compute.PremiumZRS {
 		w.Logger().V(2).Infof("diskZone(%s) is reset as empty since disk(%s) is ZRS(%s)", selectedAvailabilityZone, diskParams.DiskName, skuName)
 		selectedAvailabilityZone = ""
 		// make volume scheduled on all 3 availability zones
@@ -268,7 +268,7 @@ func (c *CloudProvisioner) CreateVolume(
 		}
 	}
 
-	if skuName == compute.DiskStorageAccountTypesUltraSSDLRS {
+	if skuName == compute.UltraSSDLRS {
 		if diskParams.DiskIOPSReadWrite == "" && diskParams.DiskMBPSReadWrite == "" {
 			// set default DiskIOPSReadWrite, DiskMBPSReadWrite per request size
 			diskParams.DiskIOPSReadWrite = strconv.Itoa(azureutils.GetDefaultDiskIOPSReadWrite(requestGiB))
@@ -629,7 +629,7 @@ func (c *CloudProvisioner) CreateSnapshot(
 	snapshot := compute.Snapshot{
 		SnapshotProperties: &compute.SnapshotProperties{
 			CreationData: &compute.CreationData{
-				CreateOption: compute.DiskCreateOptionCopy,
+				CreateOption: compute.Copy,
 				SourceURI:    &sourceVolumeID,
 			},
 			Incremental: &incremental,

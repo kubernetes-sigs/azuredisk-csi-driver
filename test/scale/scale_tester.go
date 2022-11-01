@@ -32,6 +32,7 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework/skipper"
 	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/controller"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 	nodeutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/node"
@@ -42,7 +43,9 @@ import (
 type PodSchedulingWithPVScaleTest struct {
 	CSIDriver              driver.DynamicPVTestDriver
 	Pod                    resources.PodDetails
+	AzDiskClient           *azdisk.Clientset
 	Replicas               int
+	MaxShares              int
 	StorageClassParameters map[string]string
 }
 
@@ -54,60 +57,47 @@ type PodSchedulingOnFailoverScaleTest struct {
 	StorageClassParameters map[string]string
 }
 
+type Result struct {
+	count         int
+	completedTime time.Time
+}
+
 func (t *PodSchedulingWithPVScaleTest) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
+	nodes := nodeutil.ListAgentNodeNames(client, t.Pod.IsWindows)
+	skipper.SkipUnlessAtLeast(len(nodes), t.MaxShares, fmt.Sprintf("Need at least %d agent nodes to verify the test case.", t.MaxShares))
+
 	totalNumberOfPods := t.Replicas
-	var oneMinPodsRunning,
-		twoMinPodsRunning,
-		threeMinPodsRunning,
-		fiveMinPodsRunning,
-		tenMinPodsRunning = totalNumberOfPods, totalNumberOfPods, totalNumberOfPods, totalNumberOfPods, totalNumberOfPods
-	var oneMinPodsDeleted,
-		twoMinPodsDeleted,
-		threeMinPodsDeleted,
-		fiveMinPodsDeleted,
-		tenMinPodsDeleted = totalNumberOfPods, totalNumberOfPods, totalNumberOfPods, totalNumberOfPods, totalNumberOfPods
+	testWithReplicas := t.MaxShares > 1
+	totalNumberOfReplicaAtts := totalNumberOfPods * (t.MaxShares - 1)
 
 	tStorageClass, storageCleanup := t.Pod.CreateStorageClass(client, namespace, t.CSIDriver, t.StorageClassParameters)
 	defer storageCleanup()
 	statefulSet, cleanupStatefulSet := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, schedulerName, t.Replicas, &tStorageClass, map[string]string{"group": "azuredisk-scale-tester"})
 	defer cleanupStatefulSet(45 * time.Minute)
 
+	// start scale out test
 	startScaleOut := time.Now()
 	statefulSet.CreateWithoutWaiting()
-	numberOfRunningPods := 0
-	ticker := time.NewTicker(time.Minute)
-	tickerCount := 0
-	timeout := time.After(time.Duration(*scaleTestTimeout) * time.Minute)
 
-scaleOutTest:
-	for {
-		select {
-		case <-timeout:
-			break scaleOutTest
-		case <-ticker.C:
-			tickerCount = tickerCount + 1
-			numberOfRunningPods = podutil.CountAllPodsWithMatchingLabel(client, namespace, map[string]string{"group": "azuredisk-scale-tester"}, string(v1.PodRunning))
-			if numberOfRunningPods >= totalNumberOfPods {
-				break scaleOutTest
-			}
-
-			if tickerCount == 1 {
-				oneMinPodsRunning = numberOfRunningPods
-			} else if tickerCount == 2 {
-				twoMinPodsRunning = numberOfRunningPods
-			} else if tickerCount == 3 {
-				threeMinPodsRunning = numberOfRunningPods
-			} else if tickerCount == 5 {
-				fiveMinPodsRunning = numberOfRunningPods
-			} else if tickerCount == 10 {
-				tenMinPodsRunning = numberOfRunningPods
-			}
-		}
+	numberOfAttachedReplicaAtts := 0
+	scaleOutReplicaAttsCompleted := float64(0)
+	scaleOutReplicaAttsChan := make(chan Result)
+	if testWithReplicas {
+		go func() {
+			scaleOutReplicaAttsChan <- Result{volutil.WaitForAllReplicaAttachmentsToAttach(*scaleTestTimeout, time.Minute, totalNumberOfReplicaAtts, t.AzDiskClient), time.Now()}
+		}()
 	}
 
-	scaleOutCompleted := time.Since(startScaleOut).Minutes()
+	numberOfRunningPods := podutil.WaitForAllPodsWithMatchingLabelToRun(*scaleTestTimeout, time.Minute, totalNumberOfPods, client, namespace)
+	scaleOutPodsCompleted := time.Since(startScaleOut).Minutes()
 
-	startScaleIn := time.Now()
+	if testWithReplicas {
+		scaleOutReplicaAttsResult := <-scaleOutReplicaAttsChan
+		numberOfAttachedReplicaAtts = scaleOutReplicaAttsResult.count
+		scaleOutReplicaAttsCompleted = scaleOutReplicaAttsResult.completedTime.Sub(startScaleOut).Minutes()
+	}
+
+	// start scale in test
 	newScale := &scale.Scale{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      statefulSet.Statefulset.Name,
@@ -117,68 +107,54 @@ scaleOutTest:
 			Replicas: int32(0),
 		},
 	}
+
+	startScaleIn := time.Now()
 	_, _ = client.AppsV1().StatefulSets(statefulSet.Namespace.Name).UpdateScale(context.TODO(), statefulSet.Statefulset.Name, newScale, metav1.UpdateOptions{})
-
-	numberOfRemainingPods := totalNumberOfPods
-	ticker.Reset(time.Minute)
-	tickerCount = 0
-	timeout = time.After(time.Duration(*scaleTestTimeout) * time.Minute)
-scaleInTest:
-	for {
-		select {
-		case <-timeout:
-			break scaleInTest
-		case <-ticker.C:
-			tickerCount = tickerCount + 1
-			numberOfRemainingPods = podutil.CountAllPodsWithMatchingLabel(client, namespace, map[string]string{"group": "azuredisk-scale-tester"}, string(v1.PodRunning))
-			if numberOfRemainingPods <= 0 {
-				break scaleInTest
-			}
-
-			if tickerCount == 1 {
-				oneMinPodsDeleted = totalNumberOfPods - numberOfRemainingPods
-			} else if tickerCount == 2 {
-				twoMinPodsDeleted = totalNumberOfPods - numberOfRemainingPods
-			} else if tickerCount == 3 {
-				threeMinPodsDeleted = totalNumberOfPods - numberOfRemainingPods
-			} else if tickerCount == 5 {
-				fiveMinPodsDeleted = totalNumberOfPods - numberOfRemainingPods
-			} else if tickerCount == 10 {
-				tenMinPodsDeleted = totalNumberOfPods - numberOfRemainingPods
-			}
-		}
-	}
-
+	numberOfRemainingPods := podutil.WaitForAllPodsWithMatchingLabelToDelete(*scaleTestTimeout, time.Minute, client, namespace)
 	scaleInPodsCompleted := time.Since(startScaleIn).Minutes()
-	for {
-		numberOfRemainingVolumeAtts := volutil.CountAllVolumeAttachments(client)
-		if numberOfRemainingVolumeAtts <= 0 || time.Since(startScaleIn) > time.Duration(*scaleTestTimeout)*time.Minute {
-			break
-		}
-		time.Sleep(30 * time.Second)
-	}
-	scaleInCompleted := time.Since(startScaleIn).Minutes()
 
-	klog.Infof("Scaling out test completed in %f minutes.", scaleOutCompleted)
-	klog.Infof("1 min: %d pods are ready", oneMinPodsRunning)
-	klog.Infof("2 min: %d pods are ready", twoMinPodsRunning)
-	klog.Infof("3 min: %d pods are ready", threeMinPodsRunning)
-	klog.Infof("5 min: %d pods are ready", fiveMinPodsRunning)
-	klog.Infof("10 min: %d pods are ready", tenMinPodsRunning)
+	scaleInVAChan := make(chan Result)
+	go func() {
+		scaleInVAChan <- Result{volutil.WaitForAllVolumeAttachmentsToDelete(*scaleTestTimeout, 30*time.Second, client), time.Now()}
+	}()
+
+	numberOfRemainingReplicaAtts := 0
+	scaleInAttsCompleted := float64(0)
+	if testWithReplicas {
+		time.Sleep(controller.DefaultTimeUntilGarbageCollection)
+		startScaleInAtts := time.Now()
+		numberOfRemainingReplicaAtts = volutil.WaitForAllReplicaAttachmentsToDetach(*scaleTestTimeout, time.Minute, t.AzDiskClient)
+		scaleInAttsCompleted = time.Since(startScaleInAtts).Minutes()
+	}
+
+	scaleInVAResult := <-scaleInVAChan
+	numberOfRemainingVolumeAtts := scaleInVAResult.count
+	scaleInVACompleted := scaleInVAResult.completedTime.Sub(startScaleIn).Minutes()
+
+	klog.Infof("Scaling out test of pods completed in %f minutes.", scaleOutPodsCompleted)
 	klog.Infof("Total number of pods in Running state: %d", numberOfRunningPods)
 
-	klog.Infof("Scaling in test completed in %f minutes.", scaleInPodsCompleted)
-	klog.Infof("1 min: %d pods are deleted", oneMinPodsDeleted)
-	klog.Infof("2 min: %d pods are deleted", twoMinPodsDeleted)
-	klog.Infof("3 min: %d pods are deleted", threeMinPodsDeleted)
-	klog.Infof("5 min: %d pods are deleted", fiveMinPodsDeleted)
-	klog.Infof("10 min: %d pods are deleted", tenMinPodsDeleted)
+	klog.Infof("Scaling in test of pods completed in %f minutes.", scaleInPodsCompleted)
 	klog.Infof("Total number of remaining pods: %d", numberOfRemainingPods)
 
-	klog.Infof("Scaling in detach completed in %f minutes.", scaleInCompleted)
+	klog.Infof("Scaling in test of VolumeAttachments completed in %f minutes.", scaleInVACompleted)
 
-	if numberOfRunningPods != totalNumberOfPods || numberOfRemainingPods != 0 {
-		ginkgo.Fail("Scale test failed to fully scale out/in. Number of pods that ran: %d, number of pods that were not deleted: %d", numberOfRunningPods, numberOfRemainingPods)
+	if testWithReplicas {
+		klog.Infof("Scaling out test of replica attachments completed in %f minutes.", scaleOutReplicaAttsCompleted)
+		klog.Infof("Total number of replica attachments are attached: %d", numberOfAttachedReplicaAtts)
+
+		klog.Infof("Scaling in test of replica attachments completed in %f minutes.", scaleInAttsCompleted)
+		klog.Infof("Total number of remaining replica attachments: %d", numberOfRemainingReplicaAtts)
+	}
+
+	if numberOfRunningPods != totalNumberOfPods || numberOfAttachedReplicaAtts != totalNumberOfReplicaAtts || numberOfRemainingPods != 0 || numberOfRemainingReplicaAtts != 0 || numberOfRemainingVolumeAtts != 0 {
+		podTestResult := fmt.Sprintf("Scale test failed to fully scale out/in. Number of pods that ran: %d, number of pods that were not deleted: %d, number of volumes that were not detached: %d", numberOfRunningPods, numberOfRemainingPods, numberOfRemainingReplicaAtts)
+
+		replicaTestResult := ""
+		if testWithReplicas {
+			replicaTestResult = fmt.Sprintf(", number of replica attachments that were attached: %d, number of replicas that were not detached: %d", numberOfAttachedReplicaAtts, numberOfRemainingReplicaAtts)
+		}
+		ginkgo.Fail(podTestResult + replicaTestResult)
 	}
 }
 
@@ -209,7 +185,7 @@ func (t *PodSchedulingOnFailoverScaleTest) Run(client clientset.Interface, names
 	// start scale out test
 	startScaleOut := time.Now()
 	statefulSet.CreateWithoutWaiting()
-	numberOfRunningPods1 := podutil.WaitForPodsWithMatchingLabelToRun(*scaleTestTimeout, time.Minute, totalNumberOfPods, client, namespace)
+	numberOfRunningPods1 := podutil.WaitForAllPodsWithMatchingLabelToRun(*scaleTestTimeout, time.Minute, totalNumberOfPods, client, namespace)
 	scaleOutCompleted := time.Since(startScaleOut).Minutes()
 
 	// cordon the first half nodes where the running pods sit on
@@ -240,7 +216,7 @@ func (t *PodSchedulingOnFailoverScaleTest) Run(client clientset.Interface, names
 	wg.Wait()
 
 	startCreateReplicaAtts := time.Now()
-	numberOfAttachedReplicaAtts := volutil.WaitForReplicaAttachmentsToAttach(*scaleTestTimeout, time.Minute, totalNumberOfReplicaAtts, t.AzDiskClient)
+	numberOfAttachedReplicaAtts := volutil.WaitForAllReplicaAttachmentsToAttach(*scaleTestTimeout, time.Minute, totalNumberOfReplicaAtts, t.AzDiskClient)
 	createReplicaAttsCompleted := time.Since(startCreateReplicaAtts).Minutes()
 
 	// delete all pods
@@ -248,7 +224,7 @@ func (t *PodSchedulingOnFailoverScaleTest) Run(client clientset.Interface, names
 
 	// start failover test
 	startFailoverScale := time.Now()
-	numberOfRunningPods2 := podutil.WaitForPodsWithMatchingLabelToRun(*scaleTestTimeout, time.Minute, totalNumberOfPods, client, namespace)
+	numberOfRunningPods2 := podutil.WaitForAllPodsWithMatchingLabelToRun(*scaleTestTimeout, time.Minute, totalNumberOfPods, client, namespace)
 	failoverScaleCompleted := time.Since(startFailoverScale).Minutes()
 
 	klog.Infof("%d pods are in running state in test completed in %f minutes.", numberOfRunningPods1, scaleOutCompleted)

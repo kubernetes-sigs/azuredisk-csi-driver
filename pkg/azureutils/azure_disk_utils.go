@@ -28,7 +28,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-12-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/pborman/uuid"
@@ -66,8 +66,8 @@ import (
 
 const (
 	azureStackCloud                               = "AZURESTACKCLOUD"
-	azurePublicCloudDefaultStorageAccountType     = compute.DiskStorageAccountTypesStandardSSDLRS
-	azureStackCloudDefaultStorageAccountType      = compute.DiskStorageAccountTypesStandardLRS
+	azurePublicCloudDefaultStorageAccountType     = compute.StandardSSDLRS
+	azureStackCloudDefaultStorageAccountType      = compute.StandardLRS
 	defaultAzureDataDiskCachingMode               = v1.AzureDataDiskCachingReadOnly
 	defaultAzureDataDiskCachingModeForSharedDisks = v1.AzureDataDiskCachingNone
 
@@ -233,10 +233,13 @@ func GetNodeMaxDiskCount(ctx context.Context, cachedReader client.Reader, nodeNa
 
 func GetNodeRemainingDiskCount(ctx context.Context, cachedReader client.Reader, nodeName string) (int, error) {
 	nodeObj := &v1.Node{}
+	w, _ := workflow.GetWorkflowFromContext(ctx)
 	if err := cachedReader.Get(ctx, types.NamespacedName{Name: nodeName}, nodeObj); err != nil {
+		w.Logger().V(5).Infof("aliceyu? cachedReader.Get returns err for node (%s)", nodeName)
 		return -1, err
 	}
 
+	w.Logger().V(5).Infof("aliceyu? GetNodeRemainingDiskCount node (%s)", nodeName)
 	// get all replica azvolumeattachments on the node
 	attachments, err := GetAzVolumeAttachmentsForNode(ctx, cachedReader, nodeName, AllRoles)
 	if err != nil {
@@ -337,7 +340,7 @@ func NormalizeStorageAccountType(storageAccountType, cloud string, disableAzureS
 	supportedSkuNames := compute.PossibleDiskStorageAccountTypesValues()
 	supportedSkuNames = append(supportedSkuNames, cloudproviderconsts.PremiumV2LRS)
 	if IsAzureStackCloud(cloud, disableAzureStackCloud) {
-		supportedSkuNames = []compute.DiskStorageAccountTypes{compute.DiskStorageAccountTypesStandardLRS, compute.DiskStorageAccountTypesPremiumLRS}
+		supportedSkuNames = []compute.DiskStorageAccountTypes{compute.StandardLRS, compute.PremiumLRS}
 	}
 	for _, s := range supportedSkuNames {
 		if sku == s {
@@ -365,7 +368,7 @@ func NormalizeCachingMode(cachingMode v1.AzureDataDiskCachingMode, maxShares int
 
 func NormalizeNetworkAccessPolicy(networkAccessPolicy string) (compute.NetworkAccessPolicy, error) {
 	if networkAccessPolicy == "" {
-		return compute.NetworkAccessPolicyAllowAll, nil
+		return compute.AllowAll, nil
 	}
 	policy := compute.NetworkAccessPolicy(networkAccessPolicy)
 	for _, s := range compute.PossibleNetworkAccessPolicyValues() {
@@ -733,7 +736,7 @@ func IsARMResourceID(resourceID string) bool {
 func GetValidCreationData(subscriptionID, resourceGroup, sourceResourceID, sourceType string) (compute.CreationData, error) {
 	if sourceResourceID == "" {
 		return compute.CreationData{
-			CreateOption: compute.DiskCreateOptionEmpty,
+			CreateOption: compute.Empty,
 		}, nil
 	}
 
@@ -749,7 +752,7 @@ func GetValidCreationData(subscriptionID, resourceGroup, sourceResourceID, sourc
 		}
 	default:
 		return compute.CreationData{
-			CreateOption: compute.DiskCreateOptionEmpty,
+			CreateOption: compute.Empty,
 		}, nil
 	}
 
@@ -762,7 +765,7 @@ func GetValidCreationData(subscriptionID, resourceGroup, sourceResourceID, sourc
 		return compute.CreationData{}, fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", sourceResourceID, consts.ManagedDiskPathRE)
 	}
 	return compute.CreationData{
-		CreateOption:     compute.DiskCreateOptionCopy,
+		CreateOption:     compute.Copy,
 		SourceResourceID: &sourceResourceID,
 	}, nil
 }

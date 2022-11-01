@@ -57,29 +57,6 @@ func init() {
 
 var _ Interface = &Client{}
 
-// Singleton transport for all connections to ARM.
-var commTransport *http.Transport
-
-func init() {
-	// Use behaviour compatible with DefaultTransport, but override MaxIdleConns and MaxIdleConns
-	const maxIdleConns = 64
-	const maxIdleConnsPerHost = 64
-	defaultTransport := http.DefaultTransport.(*http.Transport)
-	commTransport = &http.Transport{
-		Proxy:                 defaultTransport.Proxy,
-		DialContext:           defaultTransport.DialContext,
-		MaxIdleConns:          maxIdleConns,
-		MaxIdleConnsPerHost:   maxIdleConnsPerHost,
-		IdleConnTimeout:       defaultTransport.IdleConnTimeout,
-		TLSHandshakeTimeout:   defaultTransport.TLSHandshakeTimeout,
-		ExpectContinueTimeout: defaultTransport.ExpectContinueTimeout,
-		TLSClientConfig: &tls.Config{
-			MinVersion:    tls.VersionTLS12,
-			Renegotiation: tls.RenegotiateNever,
-		},
-	}
-}
-
 // Client implements ARM client Interface.
 type Client struct {
 	client           autorest.Client
@@ -99,14 +76,14 @@ func sender() autorest.Sender {
 				Timeout:   30 * time.Second, // the same as default transport
 				KeepAlive: 30 * time.Second, // the same as default transport
 			}).DialContext,
-			ForceAttemptHTTP2:     true,             // always attempt HTTP/2 even though custom dialer is provided
+			ForceAttemptHTTP2:     false,            // We disable HTTP/2 (which allows sharing connections) to get better distribution of requests across ARM front-end machines. ref:https://cs.opensource.google/go/go/+/refs/tags/go1.19:src/net/http/transport.go;l=1062
 			MaxIdleConns:          100,              // Zero means no limit, the same as default transport
 			MaxIdleConnsPerHost:   100,              // Default is 2, ref:https://cs.opensource.google/go/go/+/go1.18.4:src/net/http/transport.go;l=58
 			IdleConnTimeout:       90 * time.Second, // the same as default transport
 			TLSHandshakeTimeout:   10 * time.Second, // the same as default transport
 			ExpectContinueTimeout: 1 * time.Second,  // the same as default transport
 			TLSClientConfig: &tls.Config{
-				MinVersion:    tls.VersionTLS12,     //force to use TLS 1.2
+				MinVersion:    tls.VersionTLS12,     // force to use TLS 1.2
 				Renegotiation: tls.RenegotiateNever, // the same as default transport https://pkg.go.dev/crypto/tls#RenegotiationSupport
 			},
 		}
@@ -175,13 +152,6 @@ func New(authorizer autorest.Authorizer, clientConfig azureclients.ClientConfig,
 	client.client.Sender = autorest.DecorateSender(client.client, sendDecoraters...)
 
 	return client
-}
-
-func getSender() autorest.Sender {
-	// Setup sender with singleton transport so that connections to ARM are shared.
-	// Refer https://github.com/Azure/go-autorest/blob/master/autorest/sender.go#L128 for how the sender is created.
-	j, _ := cookiejar.New(nil)
-	return &http.Client{Jar: j, Transport: commTransport}
 }
 
 // GetUserAgent gets the autorest client with a user agent that

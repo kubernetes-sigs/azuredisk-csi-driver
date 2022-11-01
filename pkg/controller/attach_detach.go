@@ -111,19 +111,19 @@ func (r *ReconcileAttachDetach) Reconcile(ctx context.Context, request reconcile
 
 	// deletion request
 	if objectDeletionRequested(azVolumeAttachment) {
+		r.SharedState.nodeDiskAvailabilityMapLock.Lock()
+		defer r.SharedState.nodeDiskAvailabilityMapLock.Unlock()
 		// aliceyu? delete azVolumeAttachment +1
 		remainingCapacity, nodeExists := r.SharedState.nodeDiskAvailabilityMap.Load(azVolumeAttachment.Spec.NodeName)
 		if nodeExists {
-			r.logger.V(2).Info("aliceyu? delete: azVolumeAttachment.Spec.NodeName: " + azVolumeAttachment.Spec.NodeName)
-			r.logger.V(2).Info("aliceyu? delete: remainingCapacity: " + strconv.Itoa(remainingCapacity.(int)))
+			r.logger.V(2).Info("aliceyu? delete: node: " + azVolumeAttachment.Spec.NodeName + " count: " + strconv.Itoa(remainingCapacity.(int)) + " vol: " + azVolumeAttachment.Spec.VolumeName + " role: " + string(azVolumeAttachment.Spec.RequestedRole))
 			r.SharedState.nodeDiskAvailabilityMap.Store(azVolumeAttachment.Spec.NodeName, remainingCapacity.(int)+1)
 		}
 		if err := r.removeFinalizer(ctx, azVolumeAttachment); err != nil {
 			// aliceyu? delete failed, -1
 			remainingCapacity, nodeExists := r.SharedState.nodeDiskAvailabilityMap.Load(azVolumeAttachment.Spec.NodeName)
 			if nodeExists {
-				r.logger.V(2).Info("aliceyu? delete: azVolumeAttachment.Spec.NodeName: " + azVolumeAttachment.Spec.NodeName)
-				r.logger.V(2).Info("aliceyu? delete: remainingCapacity: " + strconv.Itoa(remainingCapacity.(int)))
+				r.logger.V(2).Info("aliceyu? delete: node: " + azVolumeAttachment.Spec.NodeName + " count: " + strconv.Itoa(remainingCapacity.(int)) + " vol: " + azVolumeAttachment.Spec.VolumeName + " role: " + string(azVolumeAttachment.Spec.RequestedRole))
 				r.SharedState.nodeDiskAvailabilityMap.Store(azVolumeAttachment.Spec.NodeName, remainingCapacity.(int)-1)
 			}
 			return reconcileReturnOnError(ctx, azVolumeAttachment, "delete", err, r.retryInfo)
@@ -136,12 +136,20 @@ func (r *ReconcileAttachDetach) Reconcile(ctx context.Context, request reconcile
 		}
 		// attachment request
 	} else if azVolumeAttachment.Status.Detail == nil {
+
+		r.SharedState.nodeDiskAvailabilityMapLock.Lock()
+		defer r.SharedState.nodeDiskAvailabilityMapLock.Unlock()
 		// aliceyu? azVolumeAttachment state nil means attach -1
 		remainingCapacity, nodeExists := r.SharedState.nodeDiskAvailabilityMap.Load(azVolumeAttachment.Spec.NodeName)
-		if nodeExists {
-			r.logger.V(2).Info("aliceyu? attachment: azVolumeAttachment.Spec.NodeName: " + azVolumeAttachment.Spec.NodeName)
-			r.logger.V(2).Info("aliceyu? attachment: remainingCapacity: " + strconv.Itoa(remainingCapacity.(int)))
+		if nodeExists && remainingCapacity.(int) > 0 {
+			r.logger.V(2).Info("aliceyu? attachment-Node: " + azVolumeAttachment.Spec.NodeName + " count: " + strconv.Itoa(remainingCapacity.(int)) + " vol: " + azVolumeAttachment.Spec.VolumeName + " role: " + string(azVolumeAttachment.Spec.RequestedRole))
 			r.SharedState.nodeDiskAvailabilityMap.Store(azVolumeAttachment.Spec.NodeName, remainingCapacity.(int)-1)
+		} else {
+			if !nodeExists {
+				r.logger.V(2).Info("aliceyu? node is not in my map: " + azVolumeAttachment.Spec.NodeName + " vol: " + azVolumeAttachment.Spec.VolumeName + " role: " + string(azVolumeAttachment.Spec.RequestedRole))
+			}
+			err := status.Errorf(codes.FailedPrecondition, "aliceyu? node doesn't have capacity for disk attachment")
+			return reconcileReturnOnError(ctx, azVolumeAttachment, "attach", err, r.retryInfo)
 		}
 		if err := r.triggerAttach(ctx, azVolumeAttachment); err != nil {
 			// aliceyu? azVolumeAttachment attach failed don't reset count because
