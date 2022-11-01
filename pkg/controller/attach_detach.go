@@ -148,7 +148,10 @@ func (r *ReconcileAttachDetach) Reconcile(ctx context.Context, request reconcile
 			if !nodeExists {
 				r.logger.V(2).Info("aliceyu? node is not in my map: " + azVolumeAttachment.Spec.NodeName + " vol: " + azVolumeAttachment.Spec.VolumeName + " role: " + string(azVolumeAttachment.Spec.RequestedRole))
 			}
-			err := status.Errorf(codes.FailedPrecondition, "aliceyu? node doesn't have capacity for disk attachment")
+			if remainingCapacity.(int) <= 0 {
+				r.logger.V(2).Info("aliceyu? node doesn't have capacity to attach disk: " + azVolumeAttachment.Spec.NodeName + " count: " + strconv.Itoa(remainingCapacity.(int)) + " vol: " + azVolumeAttachment.Spec.VolumeName + " role: " + string(azVolumeAttachment.Spec.RequestedRole))
+			}
+			err := status.Errorf(codes.Aborted, "aliceyu? node is unavailable for disk attachment")
 			return reconcileReturnOnError(ctx, azVolumeAttachment, "attach", err, r.retryInfo)
 		}
 		if err := r.triggerAttach(ctx, azVolumeAttachment); err != nil {

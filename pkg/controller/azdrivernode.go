@@ -58,6 +58,7 @@ func (r *ReconcileAzDriverNode) Reconcile(ctx context.Context, request reconcile
 
 	// If the node still exists don't delete the AzDriverNode
 	if err == nil {
+		r.logger.V(2).Info("aliceyu? Reconcile If the node still exists don't delete the AzDriverNode: " + request.Name)
 		return reconcile.Result{}, nil
 	}
 
@@ -146,14 +147,14 @@ func NewAzDriverNodeController(mgr manager.Manager, controllerSharedState *Share
 	p := predicate.Funcs{
 		// For create node event, add the new node to nodeDiskAvailabilityMap
 		CreateFunc: func(e event.CreateEvent) bool {
-			remainingCapacity, err := azureutils.GetNodeRemainingDiskCount(context.Background(), reconciler.SharedState.cachedClient, e.Object.GetName())
+			diskCount, err := azureutils.GetNodeMaxDiskCountWithLabels(e.Object.GetLabels())
 			if err == nil {
-				logger.V(2).Info("aliceyu? predicate create node:  " + e.Object.GetName() + " count: " + strconv.Itoa(remainingCapacity))
-				reconciler.nodeDiskAvailabilityMap.Store(e.Object.GetName(), remainingCapacity)
+				logger.V(2).Info("aliceyu? predicate create node:  " + e.Object.GetName() + " count: " + strconv.Itoa(diskCount))
+				reconciler.nodeDiskAvailabilityMap.Store(e.Object.GetName(), diskCount)
 			} else {
 				logger.V(2).Info("aliceyu? predicate create node GetNodeRemainingDiskCount returns err: " + err.Error())
 			}
-			return true
+			return false
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			return false
@@ -162,6 +163,7 @@ func NewAzDriverNodeController(mgr manager.Manager, controllerSharedState *Share
 			return false
 		},
 		DeleteFunc: func(e event.DeleteEvent) bool {
+			logger.V(2).Info("aliceyu? predicate DeleteFunc node: " + e.Object.GetName())
 			return true
 		},
 	}

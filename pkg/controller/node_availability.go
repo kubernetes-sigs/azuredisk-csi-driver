@@ -88,7 +88,6 @@ func NewNodeAvailabilityController(mgr manager.Manager, controllerSharedState *S
 			//If new node is unschedulable, do not proceed
 			object, objectOk := e.Object.(*corev1.Node)
 			if objectOk && !object.Spec.Unschedulable {
-				logger.V(2).Info("aliceyu? predicate CreateFunc Node" + object.ObjectMeta.Name)
 				return true
 			}
 			return false
