@@ -71,8 +71,12 @@ controller:
   runOnControlPlane: false
   disableAvailabilitySetNodes: false
   vmType: ""
-  provisionerWorkerThreads: 40
+  provisionerWorkerThreads: 100
+  provisionerQps: 50
+  provisionerBurst: 100
   attacherWorkerThreads: 500
+  attacherQps: 50
+  attacherBurst: 100
   vmssCacheTTLInSeconds: -1
   kubeClientQPS: 32.0
   kubeClientBurst: 240
