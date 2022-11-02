@@ -135,6 +135,10 @@ controller:
       requests:
         cpu: 10m
         memory: 20Mi
+  credentialFile:
+  initContainers: []
+  additionalContainers: []
+  additionalVolumes: []
 
 node:
   cloudConfigSecretName: azure-cloud-provider
