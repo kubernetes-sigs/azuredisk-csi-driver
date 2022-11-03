@@ -113,6 +113,8 @@ spec:
             - "--worker-threads={{ .Values.controller.provisionerWorkerThreads }}"
             - "--extra-create-metadata=true"
             - "--strict-topology=true"
+            - "--kube-api-qps={{ .Values.controller.provisionerQps }}"
+            - "--kube-api-burst={{ .Values.controller.provisionerBurst }}"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -133,6 +135,8 @@ spec:
             - "-leader-election"
             - "--leader-election-namespace={{ .Release.Namespace }}"
             - "-worker-threads={{ .Values.controller.attacherWorkerThreads }}"
+            - "-kube-api-qps={{ .Values.controller.attacherQps }}"
+            - "-kube-api-burst={{ .Values.controller.attacherBurst }}"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
