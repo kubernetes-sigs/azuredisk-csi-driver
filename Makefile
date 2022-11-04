@@ -54,7 +54,7 @@ E2E_HELM_OPTIONS += ${EXTRA_HELM_OPTIONS}
 ifdef DISABLE_ZONE
 E2E_HELM_OPTIONS += --set node.supportZone=false
 endif
-ARTIFACTS ?= _output
+ARTIFACTS ?= /workspace/_artifacts
 GINKGO_COMMON_FLAGS = -ginkgo.v -ginkgo.timeout=3h -ginkgo.junit-report="$(ARTIFACTS)/junit_01.xml"
 ifeq ($(ENABLE_TOPOLOGY), true)
 GINKGO_FLAGS += -ginkgo.focus="\[multi-az\]"
