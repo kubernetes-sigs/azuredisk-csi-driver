@@ -26,7 +26,7 @@ function check_url() {
     if [ $result -ne 200 ]
     then
 	echo "warning: $1 is invalid"
-	local=${PKG_ROOT}${url#*master}
+	local=${PKG_ROOT}${url#*main_v2}
 	echo "check whether $local exists"
 	if [ -f "$local" ]
 	then
