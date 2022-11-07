@@ -334,7 +334,7 @@ func (r *ReconcileAttachDetach) triggerDetach(ctx context.Context, azVolumeAttac
 		}
 		azVolumeAttachment = updatedObj.(*azdiskv1beta2.AzVolumeAttachment)
 
-		w.Logger().Info("Detaching volume")
+		w.Logger().V(5).Info("Detaching volume")
 		waitCh := make(chan goSignal)
 		//nolint:contextcheck // call is asynchronous; context is not inherited by design
 		go func() {
@@ -358,9 +358,14 @@ func (r *ReconcileAttachDetach) triggerDetach(ctx context.Context, azVolumeAttac
 					return derr
 				}
 				//nolint:contextcheck // final status update of the CRI must occur even when the current context's deadline passes.
-				_, _ = azureutils.UpdateCRIWithRetry(goCtx, nil, r.cachedClient, r.azClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry, updateMode)
+				if _, uerr := azureutils.UpdateCRIWithRetry(goCtx, nil, r.cachedClient, r.azClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry, updateMode); uerr != nil {
+					w.Logger().Errorf(uerr, "failed to update final status of AzVolumeAttachement")
+				}
 			} else {
-				_ = r.cachedClient.Delete(ctx, azVolumeAttachment)
+				//nolint:contextcheck // delete of the CRI must occur even when the current context's deadline passes.
+				if derr := r.cachedClient.Delete(goCtx, azVolumeAttachment); derr != nil {
+					w.Logger().Error(derr, "failed to delete AzVolumeAttachment")
+				}
 			}
 		}()
 		<-waitCh
