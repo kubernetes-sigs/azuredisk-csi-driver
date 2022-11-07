@@ -21,7 +21,6 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1178,8 +1177,7 @@ func (c *SharedState) createReplicas(ctx context.Context, remainingReplicas int,
 			//Push to queue the failed replica number
 			request := ReplicaRequest{VolumeName: volumeName, Priority: remainingReplicas}
 			c.priorityReplicaRequestsQueue.Push(ctx, &request)
-			// return err
-			// don't return err yet, we can still try next node
+			// don't return err yet, we can still try the next node
 			continue
 		}
 		remainingReplicas--
@@ -1190,7 +1188,7 @@ func (c *SharedState) createReplicas(ctx context.Context, remainingReplicas int,
 	}
 
 	if remainingReplicas > 0 {
-		//there are still more replicas to reach MaxShares
+		//no failed replica attachments, but there are still more replicas to reach MaxShares
 		request := ReplicaRequest{VolumeName: volumeName, Priority: remainingReplicas}
 		c.priorityReplicaRequestsQueue.Push(ctx, &request)
 		for _, pod := range pods {
@@ -1237,16 +1235,10 @@ func (c *SharedState) getNodesForReplica(ctx context.Context, volumeName string,
 
 	filtered := []string{}
 	for _, node := range nodes {
-		// if current node doesn't have capacity to attach more disk, skip it
-		remainingCapacity, nodeExists := c.nodeDiskAvailabilityMap.Load(node)
-		if !nodeExists || remainingCapacity.(int) <= 0 {
-			continue
-		}
 		if skipSet[node] {
 			continue
 		}
 		filtered = append(filtered, node)
-		w.Logger().V(5).Infof("aliceyu? available node: " + node + " remainingCapacity: " + strconv.Itoa(remainingCapacity.(int)) + " which can be used for replica attachment volumeName: " + volumeName)
 	}
 
 	return filtered, nil

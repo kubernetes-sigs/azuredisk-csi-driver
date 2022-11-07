@@ -36,12 +36,14 @@ spec:
             - "--feature-gates=Topology=true"
             - "--csi-address=$(ADDRESS)"
             - "--v=2"
-            - "--timeout=15s"
+            - "--timeout=30s"
             - "--leader-election"
             - "--leader-election-namespace=kube-system"
-            - "--worker-threads=40"
+            - "--worker-threads=100"
             - "--extra-create-metadata=true"
             - "--strict-topology=true"
+            - "--kube-api-qps=50"
+            - "--kube-api-burst=100"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -63,6 +65,8 @@ spec:
             - "-leader-election"
             - "--leader-election-namespace=kube-system"
             - "-worker-threads=500"
+            - "-kube-api-qps=50"
+            - "-kube-api-burst=100"
           env:
             - name: ADDRESS
               value: /csi/csi.sock

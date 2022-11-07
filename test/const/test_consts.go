@@ -65,8 +65,6 @@ const (
 	SnapshotAPIVersion      = SnapshotAPIGroup + "/" + APIVersionv1
 
 	KubeconfigEnvVar = "KUBECONFIG"
-	ReportDirEnvVar  = "ARTIFACTS"
-	DefaultReportDir = "/workspace/_artifacts"
 
 	TestMigrationEnvVar     = "TEST_MIGRATION"
 	TestWindowsEnvVar       = "TEST_WINDOWS"

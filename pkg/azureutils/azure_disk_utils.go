@@ -233,13 +233,10 @@ func GetNodeMaxDiskCount(ctx context.Context, cachedReader client.Reader, nodeNa
 
 func GetNodeRemainingDiskCount(ctx context.Context, cachedReader client.Reader, nodeName string) (int, error) {
 	nodeObj := &v1.Node{}
-	w, _ := workflow.GetWorkflowFromContext(ctx)
 	if err := cachedReader.Get(ctx, types.NamespacedName{Name: nodeName}, nodeObj); err != nil {
-		w.Logger().V(5).Infof("aliceyu? cachedReader.Get returns err for node (%s)", nodeName)
 		return -1, err
 	}
 
-	w.Logger().V(5).Infof("aliceyu? GetNodeRemainingDiskCount node (%s)", nodeName)
 	// get all replica azvolumeattachments on the node
 	attachments, err := GetAzVolumeAttachmentsForNode(ctx, cachedReader, nodeName, AllRoles)
 	if err != nil {

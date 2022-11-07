@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/selection"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2/klogr"
 	azdiskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
@@ -200,8 +201,18 @@ func TestAzDriverNodeRecover(t *testing.T) {
 					&testAzDriverNode1)
 
 				controller.cachedClient.(*mockclient.MockClient).EXPECT().
-					Get(gomock.Any(), testNode1Request.NamespacedName, gomock.Any()).
-					Return(testNode1ServerTimeoutError).
+					Get(gomock.Any(), types.NamespacedName{Name: testAzDriverNode0.Name}, gomock.Any()).
+					Return(nil).
+					AnyTimes()
+
+				controller.cachedClient.(*mockclient.MockClient).EXPECT().
+					Get(gomock.Any(), types.NamespacedName{Name: testAzDriverNode1.Name}, gomock.Any()).
+					Return(nil).
+					AnyTimes()
+
+				controller.cachedClient.(*mockclient.MockClient).EXPECT().
+					List(gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(nil).
 					AnyTimes()
 
 				return controller

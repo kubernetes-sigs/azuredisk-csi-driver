@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"strconv"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -58,13 +57,11 @@ func (r *ReconcileAzDriverNode) Reconcile(ctx context.Context, request reconcile
 
 	// If the node still exists don't delete the AzDriverNode
 	if err == nil {
-		r.logger.V(2).Info("aliceyu? Reconcile If the node still exists don't delete the AzDriverNode: " + request.Name)
 		return reconcile.Result{}, nil
 	}
 
 	// If the node is not found, delete the corresponding AzDriverNode
 	if errors.IsNotFound(err) {
-		r.logger.V(2).Info("aliceyu? Reconcile node" + request.Name + " not found, delete from nodeDiskAvailabilityMap")
 		r.SharedState.nodeDiskAvailabilityMap.Delete(request.Name)
 
 		// Delete the azDriverNode, since corresponding node is deleted
@@ -88,9 +85,7 @@ func (r *ReconcileAzDriverNode) Reconcile(ctx context.Context, request reconcile
 
 // run an update on existing azdrivernode objects to store them under new version if necessary
 func (r *ReconcileAzDriverNode) Recover(ctx context.Context) error {
-	r.logger.V(2).Info("aliceyu? start Recover")
 	r.SharedState.nodeDiskAvailabilityMap.Range(func(k, v interface{}) bool {
-		r.logger.V(2).Info("aliceyu? before actually Recover Key node name: " + k.(string) + " count: " + strconv.Itoa(v.(int)))
 		return true
 	})
 	var err error
@@ -114,10 +109,8 @@ func (r *ReconcileAzDriverNode) Recover(ctx context.Context) error {
 
 		remainingCapacity, err := azureutils.GetNodeRemainingDiskCount(ctx, r.SharedState.cachedClient, node.ObjectMeta.Name)
 		if err != nil {
-			w.Logger().Errorf(err, "aliceyu? failed to get remaining capacity of node (%s)", node.ObjectMeta.Name)
 			continue
 		}
-		r.logger.V(2).Info("aliceyu? recover nodeName: " + node.ObjectMeta.Name + " remainingCapacity: " + strconv.Itoa(remainingCapacity))
 		r.SharedState.nodeDiskAvailabilityMap.Store(node.ObjectMeta.Name, remainingCapacity)
 	}
 	return nil
@@ -126,7 +119,6 @@ func (r *ReconcileAzDriverNode) Recover(ctx context.Context) error {
 // NewAzDriverNodeController initializes azdrivernode-controller
 func NewAzDriverNodeController(mgr manager.Manager, controllerSharedState *SharedState) (*ReconcileAzDriverNode, error) {
 	logger := mgr.GetLogger().WithValues("controller", "azdrivernode")
-	logger.V(2).Info("aliceyu? NewAzDriverNodeController initializes azdrivernode-controller")
 	reconciler := ReconcileAzDriverNode{
 		SharedState: controllerSharedState,
 		logger:      logger,
@@ -149,10 +141,7 @@ func NewAzDriverNodeController(mgr manager.Manager, controllerSharedState *Share
 		CreateFunc: func(e event.CreateEvent) bool {
 			diskCount, err := azureutils.GetNodeMaxDiskCountWithLabels(e.Object.GetLabels())
 			if err == nil {
-				logger.V(2).Info("aliceyu? predicate create node:  " + e.Object.GetName() + " count: " + strconv.Itoa(diskCount))
 				reconciler.nodeDiskAvailabilityMap.Store(e.Object.GetName(), diskCount)
-			} else {
-				logger.V(2).Info("aliceyu? predicate create node GetNodeRemainingDiskCount returns err: " + err.Error())
 			}
 			return false
 		},
@@ -163,7 +152,6 @@ func NewAzDriverNodeController(mgr manager.Manager, controllerSharedState *Share
 			return false
 		},
 		DeleteFunc: func(e event.DeleteEvent) bool {
-			logger.V(2).Info("aliceyu? predicate DeleteFunc node: " + e.Object.GetName())
 			return true
 		},
 	}

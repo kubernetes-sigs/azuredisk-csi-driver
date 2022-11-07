@@ -98,6 +98,7 @@ func TestAttachDetachReconcile(t *testing.T) {
 					newAttachment)
 
 				controller.azVolumeAttachmentToVaMap.Store(newAttachment.Name, newVolumeAttachment.Name)
+				controller.nodeDiskAvailabilityMap.Store(newAttachment.Spec.NodeName, 1)
 
 				mockClientsAndAttachmentProvisioner(controller)
 
@@ -137,6 +138,8 @@ func TestAttachDetachReconcile(t *testing.T) {
 					newVolumeAttachment,
 					newAttachment)
 
+				controller.nodeDiskAvailabilityMap.Store(newAttachment.Spec.NodeName, 1)
+
 				mockClientsAndAttachmentProvisioner(controller)
 
 				return controller
@@ -167,6 +170,8 @@ func TestAttachDetachReconcile(t *testing.T) {
 					testNamespace,
 					&testAzVolume0,
 					newAttachment)
+
+				controller.nodeDiskAvailabilityMap.Store(newAttachment.Spec.NodeName, 1)
 
 				mockClientsAndAttachmentProvisioner(controller)
 
