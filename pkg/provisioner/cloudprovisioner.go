@@ -370,6 +370,7 @@ func (c *CloudProvisioner) PublishVolume(
 	attachResult = NewCloudAttachResult()
 	defer func() {
 		if !waitForCloud {
+			attachResult.ResultChannel() <- err
 			close(attachResult.ResultChannel())
 		}
 	}()
@@ -381,7 +382,6 @@ func (c *CloudProvisioner) PublishVolume(
 	disk, err = c.CheckDiskExists(ctx, volumeID)
 	if err != nil {
 		err = status.Errorf(codes.NotFound, "Volume not found, failed with error: %v", err)
-		attachResult.ResultChannel() <- err
 		return
 	}
 
@@ -391,7 +391,6 @@ func (c *CloudProvisioner) PublishVolume(
 	diskName, err = azureutils.GetDiskName(volumeID)
 	if err != nil {
 		err = status.Error(codes.Internal, err.Error())
-		attachResult.ResultChannel() <- err
 		return
 	}
 
@@ -400,7 +399,6 @@ func (c *CloudProvisioner) PublishVolume(
 	lun, vmState, err = c.cloud.GetDiskLun(diskName, volumeID, nodeName)
 	if err == cloudprovider.InstanceNotFound {
 		err = status.Errorf(codes.NotFound, "failed to get azure instance id for node %q: %v", nodeName, err)
-		attachResult.ResultChannel() <- err
 		return
 	}
 
@@ -411,7 +409,6 @@ func (c *CloudProvisioner) PublishVolume(
 			w.Logger().Infof("VM(%q) is in failed state, update VM first", nodeName)
 			if err = c.cloud.UpdateVM(ctx, nodeName); err != nil {
 				err = status.Errorf(codes.Internal, "update instance %q failed with %v", nodeName, err)
-				attachResult.ResultChannel() <- err
 				return
 			}
 		}
@@ -421,7 +418,6 @@ func (c *CloudProvisioner) PublishVolume(
 		if strings.Contains(strings.ToLower(err.Error()), strings.ToLower(azureconstants.TooManyRequests)) ||
 			strings.Contains(strings.ToLower(err.Error()), azureconstants.ClientThrottled) {
 			err = status.Errorf(codes.Internal, err.Error())
-			attachResult.ResultChannel() <- err
 			return
 		}
 
@@ -429,7 +425,6 @@ func (c *CloudProvisioner) PublishVolume(
 		var cachingMode compute.CachingTypes
 		if cachingMode, err = azureutils.GetCachingMode(volumeContext); err != nil {
 			err = status.Error(codes.Internal, err.Error())
-			attachResult.ResultChannel() <- err
 			return
 		}
 
