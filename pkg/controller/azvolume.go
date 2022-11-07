@@ -156,7 +156,7 @@ func (r *ReconcileAzVolume) triggerCreate(ctx context.Context, azVolume *azdiskv
 	}
 	azVolume = updatedObj.(*azdiskv1beta2.AzVolume)
 
-	w.Logger().Info("Creating Volume...")
+	w.Logger().V(5).Info("Creating Volume...")
 	waitCh := make(chan goSignal)
 	// create volume
 	//nolint:contextcheck // call is asynchronous; context is not inherited by design
@@ -248,7 +248,7 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *azdiskv
 		azVolume = updatedObj.(*azdiskv1beta2.AzVolume)
 
 		if volumeDeleteRequested {
-			w.Logger().Info("Deleting Volume...")
+			w.Logger().V(5).Info("Deleting Volume...")
 		}
 
 		waitCh := make(chan goSignal)
@@ -607,7 +607,7 @@ func (r *ReconcileAzVolume) Recover(ctx context.Context) error {
 	defer func() { w.Finish(err) }()
 
 	// recover CRI if possible
-	w.Logger().Info("Recovering AzVolume CRIs...")
+	w.Logger().V(5).Info("Recovering AzVolume CRIs...")
 	if err = r.recreateAzVolumes(ctx); err != nil {
 		w.Logger().Error(err, "failed to recreate missing AzVolume CRI")
 	}

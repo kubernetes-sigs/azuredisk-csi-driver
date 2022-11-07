@@ -184,7 +184,7 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 	}
 	azVolumeAttachment = updatedObj.(*azdiskv1beta2.AzVolumeAttachment)
 
-	w.Logger().Info("Attaching volume")
+	w.Logger().V(5).Info("Attaching volume")
 	waitCh := make(chan goSignal)
 	//nolint:contextcheck // call is asynchronous; context is not inherited by design
 	go func() {
@@ -415,7 +415,7 @@ func (r *ReconcileAttachDetach) demote(ctx context.Context, azVolumeAttachment *
 	ctx, w := workflow.New(ctx)
 	defer func() { w.Finish(err) }()
 
-	w.Logger().Info("Demoting AzVolumeAttachment")
+	w.Logger().V(5).Info("Demoting AzVolumeAttachment")
 	// initialize metadata and update status block
 	updateFunc := func(obj client.Object) error {
 		azv := obj.(*azdiskv1beta2.AzVolumeAttachment)
@@ -484,7 +484,7 @@ func (r *ReconcileAttachDetach) Recover(ctx context.Context) error {
 	ctx, w := workflow.New(ctx)
 	defer func() { w.Finish(err) }()
 
-	w.Logger().Info("Recovering AzVolumeAttachment CRIs...")
+	w.Logger().V(5).Info("Recovering AzVolumeAttachment CRIs...")
 	// try to recreate missing AzVolumeAttachment CRI
 	var syncedVolumeAttachments, volumesToSync map[string]bool
 

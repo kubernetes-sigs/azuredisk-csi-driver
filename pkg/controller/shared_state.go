@@ -1099,7 +1099,7 @@ func (c *SharedState) manageReplicas(ctx context.Context, volumeName string) err
 	var azVolume *azdiskv1beta2.AzVolume
 	azVolume, err = azureutils.GetAzVolume(ctx, c.cachedClient, c.azClient, volumeName, c.objectNamespace, true)
 	if apiErrors.IsNotFound(err) {
-		w.Logger().Info("Volume no longer exists. Aborting manage replica operation")
+		w.Logger().V(5).Info("Volume no longer exists. Aborting manage replica operation")
 		return nil
 	} else if err != nil {
 		w.Logger().Error(err, "failed to get AzVolume")
