@@ -25,16 +25,18 @@ import (
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
 	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
-	testutils "k8s.io/kubernetes/test/utils"
+	k8testutils "k8s.io/kubernetes/test/utils"
 	imageutils "k8s.io/kubernetes/test/utils/image"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 	podutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/pod"
+	testutils "sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
 )
 
 type TestDeployment struct {
@@ -115,6 +117,17 @@ func NewTestDeployment(c clientset.Interface, ns *v1.Namespace, command string, 
 		}
 	}
 
+	if testutils.IsUsingAzureDiskScheduler(schedulerName) {
+		testDeployment.Deployment.Spec.Template.Spec.Containers[0].Resources = v1.ResourceRequirements{
+			Requests: v1.ResourceList{
+				"disk.csi.azure.com/mount-replicas": resource.MustParse("1"),
+			},
+			Limits: v1.ResourceList{
+				"disk.csi.azure.com/mount-replicas": resource.MustParse("1"),
+			},
+		}
+	}
+
 	return testDeployment
 }
 
@@ -122,7 +135,7 @@ func (t *TestDeployment) Create() {
 	var err error
 	t.Deployment, err = t.Client.AppsV1().Deployments(t.Namespace.Name).Create(context.TODO(), t.Deployment, metav1.CreateOptions{})
 	framework.ExpectNoError(err)
-	err = testutils.WaitForDeploymentComplete(t.Client, t.Deployment, e2elog.Logf, testconsts.Poll, testconsts.PollLongTimeout)
+	err = k8testutils.WaitForDeploymentComplete(t.Client, t.Deployment, e2elog.Logf, testconsts.Poll, testconsts.PollLongTimeout)
 	framework.ExpectNoError(err)
 	pods, err := podutil.GetPodsForDeployment(t.Client, t.Deployment)
 	framework.ExpectNoError(err)

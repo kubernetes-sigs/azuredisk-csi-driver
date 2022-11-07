@@ -55,6 +55,10 @@ func GetSchedulerForE2E() string {
 	return "csi-azuredisk-scheduler-extender"
 }
 
+func IsUsingAzureDiskScheduler(schedulerName string) bool {
+	return schedulerName == "csi-azuredisk-scheduler-extender"
+}
+
 func IsZRSSupported(location string) bool {
 	return location == "westus2" || location == "westeurope" || location == "northeurope" || location == "francecentral"
 }

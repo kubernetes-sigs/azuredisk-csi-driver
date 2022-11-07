@@ -80,6 +80,6 @@ if [[ -z "$(command -v helm)" ]]; then
   install_helm
 fi
 
-helm repo add azuredisk-csi-driver https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts
+helm repo add azuredisk-csi-driver https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts --force-update
 helm search repo -l azuredisk-csi-driver
 echo "helm chart index verified."

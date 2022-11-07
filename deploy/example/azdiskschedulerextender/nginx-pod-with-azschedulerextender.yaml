@@ -3,9 +3,13 @@ kind: Pod
 metadata:
   name: nginx-test-pod
 spec:
-  schedulerName: csi-azuredisk-scheduler-extender
   containers:
   - name: nginx
     image: nginx
     ports:
     - containerPort: 80
+    resources:
+        requests:
+          disk.csi.azure.com/mount-replicas: 1
+        limits:
+          disk.csi.azure.com/mount-replicas: 1

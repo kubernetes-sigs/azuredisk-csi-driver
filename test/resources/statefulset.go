@@ -26,6 +26,7 @@ import (
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -108,6 +109,17 @@ func NewTestStatefulset(c clientset.Interface, ns *v1.Namespace, command string,
 		} else {
 			testStatefulset.Statefulset.Spec.Template.Spec.Containers[0].Command = []string{"powershell.exe"}
 			testStatefulset.Statefulset.Spec.Template.Spec.Containers[0].Args = []string{"-Command", command}
+		}
+	}
+
+	if testutils.IsUsingAzureDiskScheduler(schedulerName) {
+		testStatefulset.Statefulset.Spec.Template.Spec.Containers[0].Resources = v1.ResourceRequirements{
+			Requests: v1.ResourceList{
+				"disk.csi.azure.com/mount-replicas": resource.MustParse("1"),
+			},
+			Limits: v1.ResourceList{
+				"disk.csi.azure.com/mount-replicas": resource.MustParse("1"),
+			},
 		}
 	}
 

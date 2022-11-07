@@ -20,6 +20,7 @@ import (
 	"context"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	clientset "k8s.io/client-go/kubernetes"
@@ -32,6 +33,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 	podutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/pod"
+	testutils "sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
 )
 
 type TestPod struct {
@@ -71,6 +73,17 @@ func NewTestPod(c clientset.Interface, ns *v1.Namespace, command, schedulerName 
 		testPod.Pod.Spec.Containers[0].Image = "mcr.microsoft.com/windows/servercore:" + getWinImageTag(winServerVer)
 		testPod.Pod.Spec.Containers[0].Command = []string{"powershell.exe"}
 		testPod.Pod.Spec.Containers[0].Args = []string{"-Command", command}
+	}
+
+	if testutils.IsUsingAzureDiskScheduler(schedulerName) {
+		testPod.Pod.Spec.Containers[0].Resources = v1.ResourceRequirements{
+			Requests: v1.ResourceList{
+				"disk.csi.azure.com/mount-replicas": resource.MustParse("1"),
+			},
+			Limits: v1.ResourceList{
+				"disk.csi.azure.com/mount-replicas": resource.MustParse("1"),
+			},
+		}
 	}
 
 	return testPod

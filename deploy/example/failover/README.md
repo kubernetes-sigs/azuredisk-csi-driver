@@ -130,8 +130,6 @@ spec:
       labels:
         app: mysql
     spec:
-      # Use the scheduler extender to ensure the pod is placed on a node with an attachment replica on failover.
-      schedulerName: csi-azuredisk-scheduler-extender
       initContainers:
       - name: init-mysql
         image: mysql:5.7
@@ -199,6 +197,9 @@ spec:
           requests:
             cpu: 500m
             memory: 1Gi
+            disk.csi.azure.com/mount-replicas: 1
+          limits:
+            disk.csi.azure.com/mount-replicas: 1
         livenessProbe:
           exec:
             command: ["mysqladmin", "ping"]
@@ -269,6 +270,9 @@ spec:
           requests:
             cpu: 100m
             memory: 100Mi
+            disk.csi.azure.com/mount-replicas: 1
+          limits:
+            disk.csi.azure.com/mount-replicas: 1
       volumes:
       - name: conf
         emptyDir: {}
