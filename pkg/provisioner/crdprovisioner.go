@@ -850,9 +850,11 @@ func (c *CrdProvisioner) UnpublishVolume(
 		err = derr
 		return err
 	} else if demote {
-		return c.demoteVolume(ctx, azVolumeAttachmentInstance)
+		err = c.demoteVolume(ctx, azVolumeAttachmentInstance)
+		return err
 	}
-	return c.detachVolume(ctx, azVolumeAttachmentInstance)
+	err = c.detachVolume(ctx, azVolumeAttachmentInstance)
+	return err
 }
 
 func (c *CrdProvisioner) shouldDemote(volumeName string, mode consts.UnpublishMode) (bool, error) {
@@ -888,6 +890,7 @@ func (c *CrdProvisioner) demoteVolume(ctx context.Context, azVolumeAttachment *a
 	_, err := azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateAll)
 	return err
 }
+
 func (c *CrdProvisioner) detachVolume(ctx context.Context, azVolumeAttachment *azdiskv1beta2.AzVolumeAttachment) error {
 	var err error
 	nodeName := azVolumeAttachment.Spec.NodeName
