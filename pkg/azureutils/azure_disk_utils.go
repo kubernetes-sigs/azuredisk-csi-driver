@@ -26,7 +26,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-12-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/pborman/uuid"
@@ -51,8 +51,8 @@ import (
 const (
 	azurePublicCloud                          = "AZUREPUBLICCLOUD"
 	azureStackCloud                           = "AZURESTACKCLOUD"
-	azurePublicCloudDefaultStorageAccountType = compute.DiskStorageAccountTypesStandardSSDLRS
-	azureStackCloudDefaultStorageAccountType  = compute.DiskStorageAccountTypesStandardLRS
+	azurePublicCloudDefaultStorageAccountType = compute.StandardSSDLRS
+	azureStackCloudDefaultStorageAccountType  = compute.StandardLRS
 	defaultAzureDataDiskCachingMode           = v1.AzureDataDiskCachingReadOnly
 	// default IOPS Caps & Throughput Cap (MBps) per https://docs.microsoft.com/en-us/azure/virtual-machines/linux/disks-ultra-ssd
 	// see https://docs.microsoft.com/en-us/rest/api/compute/disks/createorupdate#uri-parameters
@@ -357,7 +357,7 @@ func GetSubscriptionIDFromURI(diskURI string) string {
 func GetValidCreationData(subscriptionID, resourceGroup, sourceResourceID, sourceType string) (compute.CreationData, error) {
 	if sourceResourceID == "" {
 		return compute.CreationData{
-			CreateOption: compute.DiskCreateOptionEmpty,
+			CreateOption: compute.Empty,
 		}, nil
 	}
 
@@ -373,7 +373,7 @@ func GetValidCreationData(subscriptionID, resourceGroup, sourceResourceID, sourc
 		}
 	default:
 		return compute.CreationData{
-			CreateOption: compute.DiskCreateOptionEmpty,
+			CreateOption: compute.Empty,
 		}, nil
 	}
 
@@ -386,7 +386,7 @@ func GetValidCreationData(subscriptionID, resourceGroup, sourceResourceID, sourc
 		return compute.CreationData{}, fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", sourceResourceID, consts.ManagedDiskPathRE)
 	}
 	return compute.CreationData{
-		CreateOption:     compute.DiskCreateOptionCopy,
+		CreateOption:     compute.Copy,
 		SourceResourceID: &sourceResourceID,
 	}, nil
 }
@@ -483,7 +483,7 @@ func NormalizeCachingMode(cachingMode v1.AzureDataDiskCachingMode) (v1.AzureData
 
 func NormalizeNetworkAccessPolicy(networkAccessPolicy string) (compute.NetworkAccessPolicy, error) {
 	if networkAccessPolicy == "" {
-		return compute.NetworkAccessPolicyAllowAll, nil
+		return compute.AllowAll, nil
 	}
 	policy := compute.NetworkAccessPolicy(networkAccessPolicy)
 	for _, s := range compute.PossibleNetworkAccessPolicyValues() {
@@ -506,7 +506,7 @@ func NormalizeStorageAccountType(storageAccountType, cloud string, disableAzureS
 	supportedSkuNames := compute.PossibleDiskStorageAccountTypesValues()
 	supportedSkuNames = append(supportedSkuNames, azureconstants.PremiumV2LRS)
 	if IsAzureStackCloud(cloud, disableAzureStackCloud) {
-		supportedSkuNames = []compute.DiskStorageAccountTypes{compute.DiskStorageAccountTypesStandardLRS, compute.DiskStorageAccountTypesPremiumLRS}
+		supportedSkuNames = []compute.DiskStorageAccountTypes{compute.StandardLRS, compute.PremiumLRS}
 	}
 	for _, s := range supportedSkuNames {
 		if sku == s {

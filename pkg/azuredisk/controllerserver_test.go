@@ -22,7 +22,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-12-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
 	"github.com/Azure/go-autorest/autorest/date"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -692,7 +692,7 @@ func TestControllerPublishVolume(t *testing.T) {
 				vm.VirtualMachineProperties = &compute.VirtualMachineProperties{
 					ProvisioningState: to.StringPtr(string(compute.ProvisioningStateFailed)),
 					HardwareProfile: &compute.HardwareProfile{
-						VMSize: compute.VirtualMachineSizeTypesStandardA0,
+						VMSize: compute.StandardA0,
 					},
 					InstanceView: &compute.VirtualMachineInstanceView{
 						Statuses: &vmstatus,
@@ -749,7 +749,7 @@ func TestControllerPublishVolume(t *testing.T) {
 				vm.VirtualMachineProperties = &compute.VirtualMachineProperties{
 					ProvisioningState: to.StringPtr(string(compute.ProvisioningStateSucceeded)),
 					HardwareProfile: &compute.HardwareProfile{
-						VMSize: compute.VirtualMachineSizeTypesStandardA0,
+						VMSize: compute.StandardA0,
 					},
 					InstanceView: &compute.VirtualMachineInstanceView{
 						Statuses: &vmstatus,
@@ -807,7 +807,7 @@ func TestControllerPublishVolume(t *testing.T) {
 				vm.VirtualMachineProperties = &compute.VirtualMachineProperties{
 					ProvisioningState: to.StringPtr(string(compute.ProvisioningStateSucceeded)),
 					HardwareProfile: &compute.HardwareProfile{
-						VMSize: compute.VirtualMachineSizeTypesStandardA0,
+						VMSize: compute.StandardA0,
 					},
 					InstanceView: &compute.VirtualMachineInstanceView{
 						Statuses: &vmstatus,
