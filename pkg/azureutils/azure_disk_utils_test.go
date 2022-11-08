@@ -363,13 +363,7 @@ users:
 				os.Remove(fakeCredFile)
 			}()
 
-			originalCredFile, ok := os.LookupEnv(consts.DefaultAzureCredentialFileEnv)
-			if ok {
-				defer os.Setenv(consts.DefaultAzureCredentialFileEnv, originalCredFile)
-			} else {
-				defer os.Unsetenv(consts.DefaultAzureCredentialFileEnv)
-			}
-			os.Setenv(consts.DefaultAzureCredentialFileEnv, fakeCredFile)
+			t.Setenv(consts.DefaultAzureCredentialFileEnv, fakeCredFile)
 		}
 		if test.createFakeKubeConfig {
 			if err := createTestFile(fakeKubeConfig); err != nil {
