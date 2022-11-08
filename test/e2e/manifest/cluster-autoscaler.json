@@ -23,7 +23,8 @@
                             {
                                 "name": "agentpool1",
                                 "config": {
-                                    "min-nodes": "0"
+                                    "min-nodes": "0",
+                                    "max-nodes": "65535"
                                 }
                             }
                         ]
