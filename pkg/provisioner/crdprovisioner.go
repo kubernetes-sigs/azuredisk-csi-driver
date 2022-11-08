@@ -321,7 +321,7 @@ func (c *CrdProvisioner) CreateVolume(
 		}
 		// if volume creation was unsuccessful, delete the AzVolume CRI and return error
 		go func() {
-			w.Logger().Info("Deleting volume due to failed volume creation")
+			w.Logger().V(5).Info("Deleting volume due to failed volume creation")
 			conditionFunc := func() (bool, error) {
 				if err := azVolumeClient.Delete(context.Background(), azVolumeName, metav1.DeleteOptions{}); err != nil && !apiErrors.IsNotFound(err) {
 					w.Logger().Error(err, "failed to make a delete request for AzVolume CRI")
@@ -369,7 +369,7 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 
 	if err != nil {
 		if apiErrors.IsNotFound(err) {
-			w.Logger().Logger.WithValues(consts.VolumeNameLabel, volumeName).Info("Deletion successful: could not find the AzVolume CRI")
+			w.Logger().Logger.WithValues(consts.VolumeNameLabel, volumeName).V(5).Info("Deletion successful: could not find the AzVolume CRI")
 			return nil
 		}
 		w.Logger().Logger.WithValues(consts.VolumeNameLabel, volumeName).Error(err, "failed to get AzVolume CRI")
@@ -378,7 +378,7 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 
 	// we don't want to delete pre-provisioned volumes
 	if azureutils.MapContains(azVolumeInstance.Status.Annotations, consts.PreProvisionedVolumeAnnotation) {
-		w.Logger().Info("AzVolume is pre-provisioned and won't be deleted.")
+		w.Logger().V(5).Info("AzVolume is pre-provisioned and won't be deleted.")
 		return nil
 	}
 
@@ -838,7 +838,7 @@ func (c *CrdProvisioner) UnpublishVolume(
 
 	if err != nil {
 		if apiErrors.IsNotFound(err) {
-			w.Logger().WithValues(consts.VolumeNameLabel, volumeName, consts.NodeNameLabel, nodeID).Info("Volume detach successful")
+			w.Logger().WithValues(consts.VolumeNameLabel, volumeName, consts.NodeNameLabel, nodeID).V(5).Info("Volume detach successful")
 			err = nil
 			return nil
 		}

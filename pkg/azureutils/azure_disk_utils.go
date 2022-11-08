@@ -1132,7 +1132,7 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azdiskinformers.Sha
 		// if updateFunc doesn't change the object, don't bother making an update request
 		if reflect.DeepEqual(originalObj, copyForUpdate) {
 			updatedObj = copyForUpdate
-			w.Logger().Info("Skip update. No update needed.")
+			w.Logger().V(5).Info("Skip update. No update needed.")
 			return nil
 		}
 
@@ -1176,7 +1176,7 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azdiskinformers.Sha
 		}
 
 		if updatedObj == nil {
-			w.Logger().Info("No update applied - returning original object.")
+			w.Logger().V(5).Info("No update applied - returning original object.")
 			updatedObj = originalObj.DeepCopyObject().(client.Object)
 		}
 
