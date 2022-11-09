@@ -333,6 +333,7 @@ func createTestAzVolume(pvName string, maxMountReplicaCount int) azdiskv1beta2.A
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      pvName,
 			Namespace: testNamespace,
+			Labels:    map[string]string{consts.PvNameLabel: pvName},
 		},
 		Spec: azdiskv1beta2.AzVolumeSpec{
 			VolumeName: pvName,
@@ -744,6 +745,13 @@ func mockClients(mockClient *mockclient.MockClient, azVolumeClient azdisk.Interf
 				}
 
 				azVolumeAttachments.DeepCopyInto(target)
+			case *azdiskv1beta2.AzVolumeList:
+				azVolumes, err := azVolumeClient.DiskV1beta2().AzVolumes(testNamespace).List(ctx, *options.AsListOptions())
+				if err != nil {
+					return err
+				}
+
+				azVolumes.DeepCopyInto(target)
 			case *azdiskv1beta2.AzDriverNodeList:
 				azDriverNodes, err := azVolumeClient.DiskV1beta2().AzDriverNodes(testNamespace).List(ctx, *options.AsListOptions())
 				if err != nil {

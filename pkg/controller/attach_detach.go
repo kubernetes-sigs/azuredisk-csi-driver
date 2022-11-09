@@ -595,14 +595,14 @@ func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, 
 			continue
 		}
 		if volumeAttachment.Spec.Attacher == r.config.DriverName {
-			volumeName := volumeAttachment.Spec.Source.PersistentVolumeName
-			if volumeName == nil {
+			pvName := volumeAttachment.Spec.Source.PersistentVolumeName
+			if pvName == nil {
 				continue
 			}
 			// get PV and retrieve diskName
-			pv, err := r.kubeClient.CoreV1().PersistentVolumes().Get(ctx, *volumeName, metav1.GetOptions{})
+			pv, err := r.kubeClient.CoreV1().PersistentVolumes().Get(ctx, *pvName, metav1.GetOptions{})
 			if err != nil {
-				w.Logger().Errorf(err, "failed to get PV (%s)", *volumeName)
+				w.Logger().Errorf(err, "failed to get PV (%s)", *pvName)
 				return syncedVolumeAttachments, volumesToSync, err
 			}
 
@@ -632,6 +632,7 @@ func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, 
 				delete(volumesToSync, pv.Spec.CSI.VolumeHandle)
 				continue
 			}
+			volumeName := strings.ToLower(diskName)
 			nodeName := volumeAttachment.Spec.NodeName
 			azVolumeAttachmentName := azureutils.GetAzVolumeAttachmentName(diskName, nodeName)
 			r.azVolumeAttachmentToVaMap.Store(azVolumeAttachmentName, volumeAttachment.Name)
@@ -641,14 +642,14 @@ func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, 
 					Name: azVolumeAttachmentName,
 					Labels: map[string]string{
 						consts.NodeNameLabel:   nodeName,
-						consts.VolumeNameLabel: *volumeName,
+						consts.VolumeNameLabel: volumeName,
 					},
 					// if the volumeAttachment shows not yet attached, and VolumeAttachRequestAnnotation needs to be set from the controllerserver
 					// if the volumeAttachment shows attached but the actual volume isn't due to controller restart, VolumeAttachRequestAnnotation needs to be set by the noderserver during NodeStageVolume
 					Finalizers: []string{consts.AzVolumeAttachmentFinalizer},
 				},
 				Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
-					VolumeName:    *volumeName,
+					VolumeName:    volumeName,
 					VolumeID:      pv.Spec.CSI.VolumeHandle,
 					NodeName:      nodeName,
 					RequestedRole: azdiskv1beta2.PrimaryRole,
@@ -666,7 +667,7 @@ func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, 
 
 					azVolumeAttachment, err = r.azClient.DiskV1beta2().AzVolumeAttachments(r.config.ObjectNamespace).Create(ctx, desiredAzVolumeAttachment, metav1.CreateOptions{})
 					if err != nil {
-						w.Logger().Errorf(err, "failed to create AzVolumeAttachment (%s) for volume (%s) and node (%s): %v", azVolumeAttachmentName, *volumeName, nodeName, err)
+						w.Logger().Errorf(err, "failed to create AzVolumeAttachment (%s) for volume (%s) and node (%s): %v", azVolumeAttachmentName, *pvName, nodeName, err)
 						return syncedVolumeAttachments, volumesToSync, err
 					}
 				} else {
@@ -693,7 +694,7 @@ func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, 
 
 				azVolumeAttachment, err = r.azClient.DiskV1beta2().AzVolumeAttachments(r.config.ObjectNamespace).Update(ctx, azVolumeAttachment, metav1.UpdateOptions{})
 				if err != nil {
-					w.Logger().Errorf(err, "failed to update AzVolumeAttachment (%s) for volume (%s) and node (%s): %v", azVolumeAttachmentName, *volumeName, nodeName, err)
+					w.Logger().Errorf(err, "failed to update AzVolumeAttachment (%s) for volume (%s) and node (%s): %v", azVolumeAttachmentName, *pvName, nodeName, err)
 					return syncedVolumeAttachments, volumesToSync, err
 				}
 			} else {
@@ -706,7 +707,7 @@ func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, 
 				// update status
 				_, err = r.azClient.DiskV1beta2().AzVolumeAttachments(r.config.ObjectNamespace).UpdateStatus(ctx, azVolumeAttachment, metav1.UpdateOptions{})
 				if err != nil {
-					w.Logger().Errorf(err, "failed to update status of AzVolumeAttachment (%s) for volume (%s) and node (%s): %v", azVolumeAttachmentName, *volumeName, nodeName, err)
+					w.Logger().Errorf(err, "failed to update status of AzVolumeAttachment (%s) for volume (%s) and node (%s): %v", azVolumeAttachmentName, *pvName, nodeName, err)
 					return syncedVolumeAttachments, volumesToSync, err
 				}
 			}

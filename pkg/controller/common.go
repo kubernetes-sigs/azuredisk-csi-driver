@@ -1101,11 +1101,18 @@ func verifyObjectFailedOrDeleted(obj interface{}, objectDeleted bool) (bool, err
 		return true, nil
 	}
 
-	// otherwise, the volume detachment has either failed with error or pending
-	azVolumeAttachmentInstance := obj.(*azdiskv1beta2.AzVolumeAttachment)
-	if azVolumeAttachmentInstance.Status.Error != nil {
-		return false, util.ErrorFromAzError(azVolumeAttachmentInstance.Status.Error)
+	switch target := obj.(type) {
+	case azdiskv1beta2.AzVolumeAttachment:
+		if target.Status.Error != nil {
+			return false, util.ErrorFromAzError(target.Status.Error)
+		}
+	case azdiskv1beta2.AzVolume:
+		// otherwise, the volume detachment has either failed with error or pending
+		if target.Status.Error != nil {
+			return false, util.ErrorFromAzError(target.Status.Error)
+		}
 	}
+
 	return false, nil
 }
 

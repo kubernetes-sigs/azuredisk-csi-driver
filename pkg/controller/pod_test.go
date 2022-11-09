@@ -93,8 +93,8 @@ func TestPodReconcile(t *testing.T) {
 				require.NotNil(t, azVolume)
 
 				// check the azVolume's pv and pvc labels are not added
-				require.NotContains(t, azVolume.Labels, consts.PvNameKey)
-				require.NotContains(t, azVolume.Labels, consts.PvcNameKey)
+				require.NotContains(t, azVolume.Labels, consts.PvNameLabel)
+				require.NotContains(t, azVolume.Labels, consts.PvcNameLabel)
 
 				// check the azVolume is annotated with inlineVolumeAnnotation
 				require.Contains(t, azVolume.Status.Annotations, consts.InlineVolumeAnnotation)

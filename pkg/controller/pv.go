@@ -71,11 +71,19 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 	// Ignore not found errors as they cannot be fixed by a requeue
 	if err := r.cachedClient.Get(ctx, request.NamespacedName, &pv); err != nil {
 		if apierrors.IsNotFound(err) {
-			r.deletePV(request.Name)
+			//nolint:contextcheck // deletePV is asynchronous; context is not inherited by design
+			if err = r.deletePV(request.Name); err != nil {
+				return reconcileReturnOnError(ctx, &corev1.PersistentVolume{ObjectMeta: metav1.ObjectMeta{Name: request.Name}}, "delete", err, r.controllerRetryInfo)
+			}
 			return reconcileReturnOnSuccess(request.Name, r.controllerRetryInfo)
 		}
 		logger.Error(err, "failed to get PV")
 		return reconcileReturnOnError(ctx, &pv, "get", err, r.controllerRetryInfo)
+	}
+
+	// no need to reconcile further if pv is marked with a deletionTimestamp
+	if deleteRequested, _ := objectDeletionRequested(&pv); deleteRequested {
+		return reconcileReturnOnSuccess(pv.Name, r.controllerRetryInfo)
 	}
 
 	// migration case
@@ -100,32 +108,6 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 	azVolumeName := strings.ToLower(diskName)
 	logger = logger.WithValues(consts.VolumeNameLabel, azVolumeName)
 	ctx = logr.NewContext(ctx, logger)
-
-	// PV is deleted
-	if deleteRequested, deleteAfter := objectDeletionRequested(&pv); deleteRequested {
-		if deleteAfter > 0 {
-			return reconcileAfter(deleteAfter, request.Name, r.controllerRetryInfo)
-		}
-		if err := r.cachedClient.Get(ctx, types.NamespacedName{Namespace: r.config.ObjectNamespace, Name: azVolumeName}, &azVolume); err != nil {
-			// AzVolume doesn't exist, so there is nothing for us to do
-			if apierrors.IsNotFound(err) {
-				return reconcileReturnOnSuccess(pv.Name, r.controllerRetryInfo)
-			}
-			// getting AzVolume failed, for unknown reason, we requeue and retry deleting it on the next cycle
-			logger.Error(err, "failed to get AzVolume")
-			return reconcileReturnOnError(ctx, &pv, "get", err, r.controllerRetryInfo)
-
-		}
-		// AzVolume does exist and needs to be deleted
-		if err := r.azClient.DiskV1beta2().AzVolumes(r.config.ObjectNamespace).Delete(ctx, azVolumeName, metav1.DeleteOptions{}); err != nil {
-			logger.Error(err, "failed to set the deletion timestamp for AzVolume")
-			return reconcileReturnOnError(ctx, &pv, "delete", err, r.controllerRetryInfo)
-		}
-		// deletion timestamp is set and AzVolume reconcliler will handle the delete request.
-		// For pre-provisioned case when only PV is deleted, we should only be deleting CRI
-		logger.Info("Deletion timestamp for AzVolume set")
-		return reconcileReturnOnSuccess(pv.Name, r.controllerRetryInfo)
-	}
 
 	// PV exists but AzVolume doesn't
 	if err := r.cachedClient.Get(ctx, types.NamespacedName{Namespace: r.config.ObjectNamespace, Name: azVolumeName}, &azVolume); err != nil {
@@ -282,7 +264,7 @@ func NewPVController(mgr manager.Manager, controllerSharedState *SharedState) (*
 			return false
 		},
 		DeleteFunc: func(e event.DeleteEvent) bool {
-			return false
+			return true
 		},
 	}
 

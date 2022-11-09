@@ -561,8 +561,88 @@ func (c *SharedState) addVolumeAndClaim(azVolumeName, pvName, pvClaimName string
 	c.claimToVolumeMap.Store(pvClaimName, azVolumeName)
 }
 
-func (c *SharedState) deletePV(pvName string) {
-	c.pvToVolumeMap.Delete(pvName)
+func (c *SharedState) deletePV(pvName string) error {
+	var err error
+
+	ctx := context.Background()
+	ctx, w := workflow.New(ctx, workflow.WithDetails())
+	defer func() { w.Finish(err) }()
+
+	var azVolume azdiskv1beta2.AzVolume
+	if val, ok := c.pvToVolumeMap.Load(pvName); ok {
+		volumeName := val.(string)
+		err = c.cachedClient.Get(ctx, types.NamespacedName{Namespace: c.config.ObjectNamespace, Name: volumeName}, &azVolume)
+		if err != nil {
+			if !apiErrors.IsNotFound(err) {
+				return err
+			}
+			return nil
+		}
+	} else {
+		// if no volume name can be found for PV, try fetching azVolume using labels
+		var azVolumeList azdiskv1beta2.AzVolumeList
+		req, err := azureutils.CreateLabelRequirements(consts.PvNameLabel, selection.Equals, pvName)
+		if err != nil {
+			return err
+		}
+		err = c.cachedClient.List(ctx, &azVolumeList, &client.ListOptions{LabelSelector: labels.NewSelector().Add(*req)})
+		if err != nil && !apiErrors.IsNotFound(err) {
+			return err
+		} else if apiErrors.IsNotFound(err) || len(azVolumeList.Items) == 0 {
+			return nil
+		}
+		azVolume = azVolumeList.Items[0]
+	}
+
+	// deletion timestamp is set and AzVolume reconcliler will handle the delete request.
+	// The volume itself will not be deleted.
+	w.AddDetailToLogger(workflow.GetObjectDetails(&azVolume)...)
+
+	if !isPreProvisioned(&azVolume) {
+		return nil
+	}
+
+	err = c.cachedClient.Delete(ctx, &azVolume)
+	if err != nil {
+		if apiErrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
+	waitCh := make(chan goSignal)
+	go func() {
+		goCtx, w := workflow.New(ctx)
+		defer func() { w.Finish(err) }()
+		waitCh <- goSignal{}
+
+		waiter := c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeType, azVolume.Name, verifyObjectFailedOrDeleted)
+
+		for {
+			// if AzVolume was successfully deleted
+			obj, err := waiter.Wait(goCtx)
+			if err == nil {
+				// remove the entry from pv to volume map, once AzVolumeCRI is deleted
+				c.pvToVolumeMap.Delete(pvName)
+				return
+			}
+
+			azVolume := obj.(*azdiskv1beta2.AzVolume)
+
+			if azVolume.Status.State == azdiskv1beta2.VolumeDeletionFailed || azVolume.Status.Error != nil {
+				updateFunc := func(obj client.Object) error {
+					azVolume := obj.(*azdiskv1beta2.AzVolume)
+					azVolume.Status.Error = nil
+					azVolume.Status.State = azdiskv1beta2.VolumeCreated
+					return nil
+				}
+				_, _ = azureutils.UpdateCRIWithRetry(goCtx, nil, c.cachedClient, c.azClient, azVolume, updateFunc, consts.ForcedUpdateMaxNetRetry, azureutils.UpdateCRIStatus)
+			}
+		}
+	}()
+	<-waitCh
+
+	return nil
 }
 
 func (c *SharedState) deleteVolumeAndClaim(azVolumeName string) {
@@ -1078,7 +1158,7 @@ func (c *SharedState) garbageCollectReplicas(ctx context.Context, volumeName str
 			if _, err := c.cleanUpAzVolumeAttachmentByVolume(ctx, volumeName, requester, azureutils.ReplicaOnly, cleanUpAttachment); err != nil {
 				return err
 			}
-			c.addToGcExclusionList(volumeName, replica)
+			c.addToGcExclusionList(volumeName, requester)
 			c.removeGarbageCollection(volumeName)
 			c.unmarkVolumeVisited(volumeName)
 			return nil
@@ -1388,22 +1468,30 @@ func (c *SharedState) createAzVolume(ctx context.Context, desiredAzVolume *azdis
 			azVolume.Labels = azureutils.AddToMap(azVolume.Labels, k, v)
 		}
 
-		for k, v := range azVolume.Annotations {
-			azVolume.Status.Annotations = azureutils.AddToMap(azVolume.Annotations, k, v)
-		}
-
-		// for now, we don't empty the meta annotatinos after migrating them to status annotation for safety.
+		// for now, we don't empty the meta annotations after migrating them to status annotation for safety.
 		// note that this will leave some remnant garbage entries in meta annotations
+		var statusAnnotation []string
+		for k, v := range azVolume.Annotations {
+			statusAnnotation = append(statusAnnotation, k, v)
+		}
 
 		for k, v := range desiredAzVolume.Annotations {
 			azVolume.Annotations = azureutils.AddToMap(azVolume.Annotations, k, v)
 		}
+
 		updated = azVolume.DeepCopy()
+		if azVolume, err = c.azClient.DiskV1beta2().AzVolumes(c.config.ObjectNamespace).Update(ctx, updated, metav1.UpdateOptions{}); err != nil {
+			return err
+		}
+
+		azVolume.Status.Annotations = azureutils.AddToMap(azVolume.Status.Annotations, statusAnnotation...)
+		updated = azVolume.DeepCopy()
+
 	} else {
 		return nil
 	}
 
-	if _, err := c.azClient.DiskV1beta2().AzVolumes(c.config.ObjectNamespace).UpdateStatus(ctx, updated, metav1.UpdateOptions{}); err != nil {
+	if _, err = c.azClient.DiskV1beta2().AzVolumes(c.config.ObjectNamespace).UpdateStatus(ctx, updated, metav1.UpdateOptions{}); err != nil {
 		return err
 	}
 	// if AzVolume CRI successfully recreated, also recreate the operation queue for the volume

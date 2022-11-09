@@ -1129,7 +1129,9 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azdiskinformers.Sha
 		}
 
 		if err != nil {
-			err = status.Errorf(codes.Internal, "failed to get object: %v", err)
+			if !k8serrors.IsNotFound(err) {
+				err = status.Errorf(codes.Internal, "failed to get object: %v", err)
+			}
 			return err
 		}
 
