@@ -250,7 +250,7 @@ func (d *DriverV2) ControllerPublishVolume(ctx context.Context, req *csi.Control
 	attachMc := metrics.NewMetricContext(d.cloudProvisioner.GetMetricPrefix(), "attach_volume_latency", d.cloudProvisioner.GetCloud().ResourceGroup, d.cloudProvisioner.GetCloud().SubscriptionID, d.Name)
 	isAttachSuccessful := false
 
-	response, err := d.crdProvisioner.PublishVolume(ctx, diskURI, nodeID, &volumeCapability, req.GetReadonly(), req.GetSecrets(), req.GetVolumeContext())
+	response, err := d.crdProvisioner.PublishVolume(ctx, diskURI, nodeID, &volumeCapability, req.GetReadonly(), req.GetSecrets(), req.GetVolumeContext(), d.enableMountReplicas)
 
 	if err != nil {
 		return nil, err
@@ -299,7 +299,7 @@ func (d *DriverV2) ControllerUnpublishVolume(ctx context.Context, req *csi.Contr
 		mc.ObserveOperationWithResult(isOperationSucceeded, consts.VolumeID, diskURI, consts.Node, string(nodeName))
 	}()
 
-	err := d.crdProvisioner.UnpublishVolume(ctx, diskURI, nodeID, req.GetSecrets(), consts.DemoteOrDetach)
+	err := d.crdProvisioner.UnpublishVolume(ctx, diskURI, nodeID, req.GetSecrets(), consts.DemoteOrDetach, d.enableMountReplicas)
 
 	if err != nil {
 		return nil, err

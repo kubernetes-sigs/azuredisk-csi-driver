@@ -200,7 +200,7 @@ func (t *PodSchedulingOnFailoverScaleTest) Run(client clientset.Interface, names
 	}
 
 	// uncordon the second nodes and measure the amount of time to create replica attachments
-	maxShares, _ := azureutils.GetMaxSharesAndMaxMountReplicaCount(t.StorageClassParameters, false)
+	maxShares, _ := azureutils.GetMaxSharesAndMaxMountReplicaCount(t.StorageClassParameters, false, true)
 	totalNumberOfReplicaAtts := totalNumberOfPods * (maxShares - 1)
 
 	var wg sync.WaitGroup

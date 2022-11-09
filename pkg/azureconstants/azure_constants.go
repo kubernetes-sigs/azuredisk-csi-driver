@@ -186,6 +186,7 @@ const (
 	DefaultEnableListSnapshots                      = false
 	DefaultEnableDiskCapacityCheck                  = false
 	DefaultIsControllerPlugin                       = false
+	DefaultEnableMountReplicas                      = false
 	DefaultControllerLeaseDurationInSec             = 15
 	DefaultControllerLeaseRenewDeadlineInSec        = 10
 	DefaultControllerLeaseRetryPeriodInSec          = 2

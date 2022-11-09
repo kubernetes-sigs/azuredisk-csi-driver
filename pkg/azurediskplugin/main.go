@@ -82,6 +82,7 @@ var (
 	leaderElectionNamespace                  = flag.String("leader-election-namespace", consts.ReleaseNamespace, "The leader election namespace for controller")
 	nodePartition                            = flag.String("node-partition", consts.DefaultNodePartitionName, "The partition name for node plugin.")
 	controllerPartition                      = flag.String("controller-partition", consts.DefaultControllerPartitionName, "The partition name for controller plugin.")
+	enableMountReplicas                      = flag.Bool("enable-mount-replicas", consts.DefaultEnableMountReplicas, "bool flag to enable mount replicas")
 )
 
 func main() {
@@ -135,6 +136,7 @@ func getDriverConfig() *azdiskv1beta2.AzDiskDriverConfiguration {
 				LeaseRetryPeriodInSec:   consts.DefaultControllerLeaseRetryPeriodInSec,
 				LeaderElectionNamespace: consts.ReleaseNamespace,
 				PartitionName:           consts.DefaultControllerPartitionName,
+				EnableMountReplicas:     consts.DefaultEnableMountReplicas,
 			},
 			NodeConfig: azdiskv1beta2.NodeConfiguration{
 				VolumeAttachLimit:       consts.DefaultVolumeAttachLimit,
@@ -203,6 +205,7 @@ func getDriverConfig() *azdiskv1beta2.AzDiskDriverConfiguration {
 				LeaseRetryPeriodInSec:   *controllerLeaseRetryPeriodInSec,
 				LeaderElectionNamespace: *leaderElectionNamespace,
 				PartitionName:           *controllerPartition,
+				EnableMountReplicas:     *enableMountReplicas,
 			},
 			NodeConfig: azdiskv1beta2.NodeConfiguration{
 				VolumeAttachLimit:       *volumeAttachLimit,

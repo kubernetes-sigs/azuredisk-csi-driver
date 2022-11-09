@@ -348,7 +348,7 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 		os.Exit(1)
 	}
 
-	sharedState := controller.NewSharedState(d.Name, d.config.ObjectNamespace, topologyKey, eventRecorder, mgr.GetClient(), d.crdProvisioner.GetDiskClientSet(), d.kubeClient, crdClient)
+	sharedState := controller.NewSharedState(d.Name, d.config.ObjectNamespace, topologyKey, eventRecorder, mgr.GetClient(), d.crdProvisioner.GetDiskClientSet(), d.kubeClient, crdClient, d.enableMountReplicas)
 
 	// Setup a new controller to clean-up AzDriverNodes
 	// objects for the nodes which get deleted

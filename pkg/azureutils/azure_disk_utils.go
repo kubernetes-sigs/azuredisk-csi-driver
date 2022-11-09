@@ -903,7 +903,7 @@ func GetAzVolumeAttachmentName(volumeName string, nodeName string) string {
 	return fmt.Sprintf("%s-%s-attachment", strings.ToLower(volumeName), strings.ToLower(nodeName))
 }
 
-func GetMaxSharesAndMaxMountReplicaCount(parameters map[string]string, isMultiNodeVolume bool) (maxShares, maxMountReplicaCount int) {
+func GetMaxSharesAndMaxMountReplicaCount(parameters map[string]string, isMultiNodeVolume, mountReplicasEnabled bool) (maxShares, maxMountReplicaCount int) {
 	maxShares = 1
 	maxMountReplicaCount = -1
 
@@ -930,9 +930,15 @@ func GetMaxSharesAndMaxMountReplicaCount(parameters map[string]string, isMultiNo
 		maxShares = 1
 	}
 
-	if isMultiNodeVolume {
+	if isMultiNodeVolume || !mountReplicasEnabled {
 		if maxMountReplicaCount > 0 {
-			klog.Warning("maxMountReplicaCount is ignored for volumes that can be mounted to multiple nodes... Defaulting current maxMountReplicaCount (%d) to 0", maxMountReplicaCount)
+			if isMultiNodeVolume {
+				klog.Warning("maxMountReplicaCount is ignored for volumes that can be mounted to multiple nodes... Defaulting current maxMountReplicaCount (%d) to 0", maxMountReplicaCount)
+			}
+
+			if !mountReplicasEnabled  {
+				klog.Warning("enableMountReplicas is set to false... Defaulting maxMountReplicaCount (%d) value to 0, ", maxMountReplicaCount)
+			}
 		}
 
 		maxMountReplicaCount = 0

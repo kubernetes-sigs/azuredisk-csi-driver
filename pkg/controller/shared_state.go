@@ -77,9 +77,10 @@ type SharedState struct {
 	crdClient                     crdClientset.Interface
 	conditionWatcher              *watcher.ConditionWatcher
 	azureDiskCSITranslator        csitranslator.InTreePlugin
+	mountReplicasEnabled          bool
 }
 
-func NewSharedState(driverName, objectNamespace, topologyKey string, eventRecorder record.EventRecorder, cachedClient client.Client, azClient azdisk.Interface, kubeClient kubernetes.Interface, crdClient crdClientset.Interface) *SharedState {
+func NewSharedState(driverName, objectNamespace, topologyKey string, eventRecorder record.EventRecorder, cachedClient client.Client, azClient azdisk.Interface, kubeClient kubernetes.Interface, crdClient crdClientset.Interface, mountReplicasEnabled bool) *SharedState {
 	newSharedState := &SharedState{
 		driverName:      driverName,
 		objectNamespace: objectNamespace,
@@ -92,6 +93,7 @@ func NewSharedState(driverName, objectNamespace, topologyKey string, eventRecord
 		conditionWatcher: watcher.New(context.Background(),
 			azClient, azdiskinformers.NewSharedInformerFactory(azClient, consts.DefaultInformerResync), objectNamespace),
 		azureDiskCSITranslator: csitranslator.NewAzureDiskCSITranslator(),
+		mountReplicasEnabled: mountReplicasEnabled,
 	}
 	newSharedState.createReplicaRequestsQueue()
 
@@ -1278,7 +1280,7 @@ func (c *SharedState) createAzVolumeFromPv(ctx context.Context, pv v1.Persistent
 	if pv.Spec.NodeAffinity != nil && pv.Spec.NodeAffinity.Required != nil {
 		desiredAzVolume.Status.Detail.AccessibleTopology = azureutils.GetTopologyFromNodeSelector(*pv.Spec.NodeAffinity.Required, c.topologyKey)
 	}
-	if azureutils.IsMultiNodePersistentVolume(pv) {
+	if azureutils.IsMultiNodePersistentVolume(pv) || !c.enableMountReplicas {
 		desiredAzVolume.Spec.MaxMountReplicaCount = 0
 	}
 
@@ -1317,7 +1319,7 @@ func (c *SharedState) createAzVolumeFromCSISource(source *v1.CSIPersistentVolume
 		return nil, fmt.Errorf("failed to extract diskName from volume handle (%s): %v", source.VolumeHandle, err)
 	}
 
-	_, maxMountReplicaCount := azureutils.GetMaxSharesAndMaxMountReplicaCount(source.VolumeAttributes, false)
+	_, maxMountReplicaCount := azureutils.GetMaxSharesAndMaxMountReplicaCount(source.VolumeAttributes, false, c.enableMountReplicas)
 
 	var volumeParams map[string]string
 	if source.VolumeAttributes == nil {

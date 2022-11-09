@@ -569,6 +569,8 @@ type ControllerConfiguration struct {
 	LeaderElectionNamespace string `json:"leaderElectionNamespace,omitempty"`
 	// The partition name for controller plugin
 	PartitionName string `json:"partitionName,omitempty"`
+	// Boolean field to enable mount replicas during PublishVolume
+	EnableMountReplicas bool `json:"enableMountReplicas,omitempty"`
 }
 
 type NodeConfiguration struct {
