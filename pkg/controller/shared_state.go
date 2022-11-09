@@ -931,7 +931,7 @@ func (c *SharedState) createReplicaAzVolumeAttachment(ctx context.Context, volum
 	return nil
 }
 
-func (c *SharedState) cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azVolumeName string, caller operationRequester, role azureutils.AttachmentRoleMode, deleteMode cleanUpMode) ([]azdiskv1beta2.AzVolumeAttachment, error) {
+func (c *SharedState) cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azVolumeName string, caller operationRequester, role azureutils.AttachmentRoleMode, deleteMode attachmentCleanUpMode) ([]azdiskv1beta2.AzVolumeAttachment, error) {
 	var err error
 	ctx, w := workflow.New(ctx, workflow.WithDetails(consts.VolumeNameLabel, azVolumeName))
 	defer func() { w.Finish(err) }()
@@ -956,7 +956,7 @@ func (c *SharedState) cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azV
 	return attachments, nil
 }
 
-func (c *SharedState) cleanUpAzVolumeAttachmentByNode(ctx context.Context, azDriverNodeName string, caller operationRequester, role azureutils.AttachmentRoleMode, deleteMode cleanUpMode) ([]azdiskv1beta2.AzVolumeAttachment, error) {
+func (c *SharedState) cleanUpAzVolumeAttachmentByNode(ctx context.Context, azDriverNodeName string, caller operationRequester, role azureutils.AttachmentRoleMode, deleteMode attachmentCleanUpMode) ([]azdiskv1beta2.AzVolumeAttachment, error) {
 	var err error
 	ctx, w := workflow.New(ctx, workflow.WithDetails(consts.NodeNameLabel, azDriverNodeName))
 	defer func() { w.Finish(err) }()
@@ -1001,7 +1001,7 @@ func (c *SharedState) cleanUpAzVolumeAttachmentByNode(ctx context.Context, azDri
 	return attachments.Items, nil
 }
 
-func (c *SharedState) cleanUpAzVolumeAttachments(ctx context.Context, attachments []azdiskv1beta2.AzVolumeAttachment, cleanUp cleanUpMode, caller operationRequester) error {
+func (c *SharedState) cleanUpAzVolumeAttachments(ctx context.Context, attachments []azdiskv1beta2.AzVolumeAttachment, cleanUp attachmentCleanUpMode, caller operationRequester) error {
 	var err error
 
 	for _, attachment := range attachments {
@@ -1011,12 +1011,12 @@ func (c *SharedState) cleanUpAzVolumeAttachments(ctx context.Context, attachment
 		// if caller is azdrivernode, don't append cleanup annotation
 		if (caller != azdrivernode && !metav1.HasAnnotation(patched.ObjectMeta, consts.CleanUpAnnotation)) ||
 			// replica attachments should always be detached regardless of the cleanup mode
-			((cleanUp == detachAndDeleteCRI || patched.Spec.RequestedRole == azdiskv1beta2.ReplicaRole) && !metav1.HasAnnotation(patched.ObjectMeta, consts.VolumeDetachRequestAnnotation)) {
+			((cleanUp == cleanUpAttachment || patched.Spec.RequestedRole == azdiskv1beta2.ReplicaRole) && !metav1.HasAnnotation(patched.ObjectMeta, consts.VolumeDetachRequestAnnotation)) {
 			patchRequired = true
 			if caller != azdrivernode {
 				patched.Status.Annotations = azureutils.AddToMap(patched.Status.Annotations, consts.CleanUpAnnotation, string(caller))
 			}
-			if cleanUp == detachAndDeleteCRI || patched.Spec.RequestedRole == azdiskv1beta2.ReplicaRole {
+			if cleanUp == cleanUpAttachment || patched.Spec.RequestedRole == azdiskv1beta2.ReplicaRole {
 				patched.Status.Annotations = azureutils.AddToMap(patched.Status.Annotations, consts.VolumeDetachRequestAnnotation, string(caller))
 			}
 		}
@@ -1069,7 +1069,7 @@ func (c *SharedState) garbageCollectReplicas(ctx context.Context, volumeName str
 		volumeName,
 		replica,
 		func(ctx context.Context) error {
-			if _, err := c.cleanUpAzVolumeAttachmentByVolume(ctx, volumeName, requester, azureutils.ReplicaOnly, detachAndDeleteCRI); err != nil {
+			if _, err := c.cleanUpAzVolumeAttachmentByVolume(ctx, volumeName, requester, azureutils.ReplicaOnly, cleanUpAttachment); err != nil {
 				return err
 			}
 			c.addToGcExclusionList(volumeName, replica)

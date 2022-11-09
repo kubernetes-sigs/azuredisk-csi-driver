@@ -90,11 +90,11 @@ const (
 	pod              operationRequester = "pod-controller"
 )
 
-type cleanUpMode int
+type attachmentCleanUpMode int
 
 const (
-	deleteCRIOnly cleanUpMode = iota
-	detachAndDeleteCRI
+	cleanUpAttachmentForUninstall attachmentCleanUpMode = iota
+	cleanUpAttachment
 )
 
 type updateMode int
