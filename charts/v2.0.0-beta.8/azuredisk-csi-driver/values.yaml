@@ -2,7 +2,7 @@ image:
   baseRepo: mcr.microsoft.com
   azuredisk:
     repository: /oss/kubernetes-csi/azuredisk-csi
-    tag: latest-v2
+    tag: v2.0.0-beta.8
     pullPolicy: IfNotPresent
   csiProvisioner:
     repository: /oss/kubernetes-csi/csi-provisioner
@@ -30,7 +30,7 @@ image:
     pullPolicy: IfNotPresent
   schedulerExtender:
     repository: /oss/kubernetes-csi/azdiskschedulerextender-csi
-    tag: latest-v2
+    tag: v2.0.0-beta.8
     pullPolicy: IfNotPresent
   kubeScheduler:
     repository: /oss/kubernetes/kube-scheduler
