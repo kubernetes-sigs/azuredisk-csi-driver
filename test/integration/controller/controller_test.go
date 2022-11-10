@@ -90,7 +90,7 @@ func setUpProvisioner() error {
 	if err = setUpConfig(); err != nil {
 		return err
 	}
-	crdProvisioner, err = provisioner.NewCrdProvisioner(config, namespace)
+	crdProvisioner, err = provisioner.NewCrdProvisioner(config, namespace, true)
 	return err
 }
 

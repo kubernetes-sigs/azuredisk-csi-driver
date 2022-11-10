@@ -118,6 +118,7 @@ type DriverV2 struct {
 	azdiskClient         azdisk.Interface
 	azDriverNodeInformer azdiskinformertypes.AzDriverNodeInformer
 	deviceChecker        *deviceChecker
+	enableMountReplicas  bool
 }
 
 func init() {
@@ -145,6 +146,7 @@ func newDriverV2(config *azdiskv1beta2.AzDiskDriverConfiguration) *DriverV2 {
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.deviceChecker = &deviceChecker{lock: sync.RWMutex{}, entry: nil}
+	driver.enableMountReplicas = config.ControllerConfig.EnableMountReplicas
 
 	topologyKey = fmt.Sprintf("topology.%s/zone", driver.Name)
 	return &driver
@@ -180,7 +182,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 
 	// d.crdProvisioner is set by NewFakeDriver for unit tests.
 	if d.crdProvisioner == nil {
-		d.crdProvisioner, err = provisioner.NewCrdProvisioner(d.kubeConfig, d.config.ObjectNamespace)
+		d.crdProvisioner, err = provisioner.NewCrdProvisioner(d.kubeConfig, d.config.ObjectNamespace, d.enableMountReplicas)
 		if err != nil {
 			klog.Fatalf("Failed to get crd provisioner. Error: %v", err)
 		}

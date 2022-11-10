@@ -61,7 +61,7 @@ func (t *PodAffinity) Run(client clientset.Interface, namespace *v1.Namespace, s
 		ginkgo.Skip("need at least 2 pods to verify the test case.")
 	}
 
-	_, maxMountReplicaCount := azureutils.GetMaxSharesAndMaxMountReplicaCount(t.StorageClassParameters, false)
+	_, maxMountReplicaCount := azureutils.GetMaxSharesAndMaxMountReplicaCount(t.StorageClassParameters, false, true)
 
 	// Need independent nodes for the primary for each pod plus at least one for each replica.
 	numNodesRequired := numPods + maxMountReplicaCount

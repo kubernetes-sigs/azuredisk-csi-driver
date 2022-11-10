@@ -1,3 +1,4 @@
+{{= if .Values.controller.enableMountReplicas }}
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -100,3 +101,4 @@ spec:
           - name: metrics-port
             containerPort: 29606
             protocol: TCP
+{{- end }}

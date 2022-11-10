@@ -66,7 +66,7 @@ func VerifySuccessfulAzVolumeAttachments(pod PodDetails, azDiskClient *azdisk.Cl
 				continue
 			}
 		}
-		_, maxMountReplicas := azureutils.GetMaxSharesAndMaxMountReplicaCount(storageClassParameters, volume.VolumeMode == Block)
+		_, maxMountReplicas := azureutils.GetMaxSharesAndMaxMountReplicaCount(storageClassParameters, volume.VolumeMode == Block, true)
 		if nodesAvailableForReplicas >= maxMountReplicas {
 			expectedNumberOfReplicas = maxMountReplicas
 		} else {

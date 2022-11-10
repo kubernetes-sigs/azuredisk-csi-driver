@@ -52,11 +52,12 @@ import (
 )
 
 type CrdProvisioner struct {
-	azDiskClient     azdisk.Interface
-	kubeClient       kubeClientset.Interface
-	namespace        string
-	conditionWatcher *watcher.ConditionWatcher
-	azCachedReader   CachedReader
+	azDiskClient         azdisk.Interface
+	kubeClient           kubeClientset.Interface
+	namespace            string
+	conditionWatcher     *watcher.ConditionWatcher
+	azCachedReader       CachedReader
+	mountReplicasEnabled bool
 }
 
 const (
@@ -166,7 +167,7 @@ func (a CachedReader) List(_ context.Context, objectList client.ObjectList, opts
 	return err
 }
 
-func NewCrdProvisioner(kubeConfig *rest.Config, objNamespace string) (*CrdProvisioner, error) {
+func NewCrdProvisioner(kubeConfig *rest.Config, objNamespace string, enableMountReplicas bool) (*CrdProvisioner, error) {
 	azdiskClient, err := azureutils.GetAzDiskClient(kubeConfig)
 	if err != nil {
 		return nil, err
@@ -190,6 +191,7 @@ func NewCrdProvisioner(kubeConfig *rest.Config, objNamespace string) (*CrdProvis
 			kubeInformer: kubeInformerFactory,
 			azInformer:   azInformerFactory,
 		},
+		mountReplicasEnabled: enableMountReplicas,
 	}, nil
 }
 
@@ -204,12 +206,11 @@ func (c *CrdProvisioner) CreateVolume(
 	parameters map[string]string,
 	secrets map[string]string,
 	volumeContentSource *azdiskv1beta2.ContentVolumeSource,
-	accessibilityReq *azdiskv1beta2.TopologyRequirement,
-	mountReplicasEnabled bool) (*azdiskv1beta2.AzVolumeStatusDetail, error) {
+	accessibilityReq *azdiskv1beta2.TopologyRequirement) (*azdiskv1beta2.AzVolumeStatusDetail, error) {
 	var err error
 	azVolumeClient := c.azDiskClient.DiskV1beta2().AzVolumes(c.namespace)
 
-	_, maxMountReplicaCount := azureutils.GetMaxSharesAndMaxMountReplicaCount(parameters, azureutils.HasMultiNodeAzVolumeCapabilityAccessMode(volumeCapabilities), mountReplicasEnabled)
+	_, maxMountReplicaCount := azureutils.GetMaxSharesAndMaxMountReplicaCount(parameters, azureutils.HasMultiNodeAzVolumeCapabilityAccessMode(volumeCapabilities), c.mountReplicasEnabled)
 
 	// Getting the validVolumeName here since after volume
 	// creation the diskURI will consist of the validVolumeName
@@ -471,7 +472,6 @@ func (c *CrdProvisioner) PublishVolume(
 	readOnly bool,
 	secrets map[string]string,
 	volumeContext map[string]string,
-	mountReplicasEnabled bool,
 ) (map[string]string, error) {
 	var err error
 	azVAClient := c.azDiskClient.DiskV1beta2().AzVolumeAttachments(c.namespace)
@@ -595,7 +595,7 @@ func (c *CrdProvisioner) PublishVolume(
 
 	// detach replica volume if volume's maxShares have been fully saturated.
 	// need to validate these conditions only when mountReplicas is enabled.
-	if mountReplicasEnabled && azVolume.Spec.MaxMountReplicaCount > 0 {
+	if c.mountReplicasEnabled && azVolume.Spec.MaxMountReplicaCount > 0 {
 		// get undemoted AzVolumeAttachments for volume == volumeName and node != nodeID
 		volumeLabel := azureutils.LabelPair{Key: consts.VolumeNameLabel, Operator: selection.Equals, Entry: volumeName}
 		nodeLabel := azureutils.LabelPair{Key: consts.NodeNameLabel, Operator: selection.NotEquals, Entry: nodeID}
@@ -823,8 +823,7 @@ func (c *CrdProvisioner) UnpublishVolume(
 	volumeID string,
 	nodeID string,
 	secrets map[string]string,
-	mode consts.UnpublishMode,
-	mountReplicasEnabled bool) error {
+	mode consts.UnpublishMode) error {
 	var err error
 	var volumeName string
 	volumeName, err = azureutils.GetDiskName(volumeID)
@@ -850,9 +849,8 @@ func (c *CrdProvisioner) UnpublishVolume(
 		return err
 	}
 
-	if !mountReplicasEnabled {
+	if !c.mountReplicasEnabled {
 		return c.detachVolume(ctx, azVolumeAttachmentInstance)
-
 	}
 
 	if demote, derr := c.shouldDemote(volumeName, mode); derr != nil {

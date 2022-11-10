@@ -46,7 +46,7 @@ type DynamicallyProvisionedVolumeReplicasAcrossZones struct {
 }
 
 func (t *DynamicallyProvisionedVolumeReplicasAcrossZones) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
-	_, maxMountReplicaCount := azureutils.GetMaxSharesAndMaxMountReplicaCount(t.StorageClassParameters, false)
+	_, maxMountReplicaCount := azureutils.GetMaxSharesAndMaxMountReplicaCount(t.StorageClassParameters, false, true)
 	tpod, cleanups := t.Pod.SetupWithDynamicVolumes(client, namespace, t.CSIDriver, t.StorageClassParameters, schedulerName)
 	for i := range cleanups {
 		defer cleanups[i]()

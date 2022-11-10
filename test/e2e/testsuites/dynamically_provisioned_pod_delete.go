@@ -51,7 +51,7 @@ type DynamicallyProvisionedPodDelete struct {
 }
 
 func (t *DynamicallyProvisionedPodDelete) Run(client clientset.Interface, namespace *v1.Namespace, schedulerName string) {
-	_, maxMountReplicaCount := azureutils.GetMaxSharesAndMaxMountReplicaCount(t.StorageClassParameters, false)
+	_, maxMountReplicaCount := azureutils.GetMaxSharesAndMaxMountReplicaCount(t.StorageClassParameters, false, true)
 
 	// Get the list of available nodes for scheduling the pod
 	nodes := nodeutil.ListAgentNodeNames(client, t.Pod.IsWindows)

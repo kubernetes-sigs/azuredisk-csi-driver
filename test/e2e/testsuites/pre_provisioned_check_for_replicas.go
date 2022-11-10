@@ -70,7 +70,7 @@ func (t *PreProvisionedCheckForReplicasTest) Run(client clientset.Interface, nam
 		tpod.WaitForRunning()
 
 		// get the expected number of replicas
-		_, maxMountReplicaCount := azureutils.GetMaxSharesAndMaxMountReplicaCount(t.VolumeContext, false)
+		_, maxMountReplicaCount := azureutils.GetMaxSharesAndMaxMountReplicaCount(t.VolumeContext, false, true)
 
 		// we can only create as many replicas as there are nodes
 		var expectedNumberOfReplicas int

@@ -207,6 +207,7 @@ spec:
           args:
             - "--v={{ .Values.controller.logLevel }}"
             - "--config=/etc/{{ .Values.controller.name }}/config.yaml"
+            - "--enable-mount-replicas={{ .Values.controller.enableMountReplicas }}"
           ports:
             - containerPort: {{ .Values.controller.livenessProbe.healthPort }}
               name: healthz

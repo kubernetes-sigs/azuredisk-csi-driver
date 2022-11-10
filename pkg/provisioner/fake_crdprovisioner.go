@@ -29,10 +29,11 @@ type FakeCrdProvisioner struct {
 	fakeCloudProv *FakeCloudProvisioner
 }
 
-func NewFakeCrdProvisioner(cloudProv *FakeCloudProvisioner) (*FakeCrdProvisioner, error) {
+func NewFakeCrdProvisioner(cloudProv *FakeCloudProvisioner, mountReplicasEnabled bool) (*FakeCrdProvisioner, error) {
 	return &FakeCrdProvisioner{
 		CrdProvisioner: CrdProvisioner{
-			azDiskClient: azdiskfakes.NewSimpleClientset(),
+			azDiskClient:         azdiskfakes.NewSimpleClientset(),
+			mountReplicasEnabled: mountReplicasEnabled,
 		},
 		fakeCloudProv: cloudProv,
 	}, nil

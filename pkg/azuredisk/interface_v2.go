@@ -29,12 +29,12 @@ type CrdProvisioner interface {
 	CreateVolume(ctx context.Context, volumeName string, capacityRange *azdiskv1beta2.CapacityRange,
 		volumeCapabilities []azdiskv1beta2.VolumeCapability, parameters map[string]string,
 		secrets map[string]string, volumeContentSource *azdiskv1beta2.ContentVolumeSource,
-		accessibilityReq *azdiskv1beta2.TopologyRequirement, mountReplicasEnabled bool) (*azdiskv1beta2.AzVolumeStatusDetail, error)
+		accessibilityReq *azdiskv1beta2.TopologyRequirement) (*azdiskv1beta2.AzVolumeStatusDetail, error)
 	DeleteVolume(ctx context.Context, volumeID string, secrets map[string]string) error
 	PublishVolume(ctx context.Context, volumeID string, nodeID string, volumeCapability *azdiskv1beta2.VolumeCapability,
-		readOnly bool, secrets map[string]string, volumeContext map[string]string, mountReplicasEnabled bool) (map[string]string, error)
+		readOnly bool, secrets map[string]string, volumeContext map[string]string) (map[string]string, error)
 	WaitForAttach(ctx context.Context, volume, node string) (*azdiskv1beta2.AzVolumeAttachment, error)
-	UnpublishVolume(ctx context.Context, volumeID string, nodeID string, secrets map[string]string, mode consts.UnpublishMode, mountReplicasEnabled) error
+	UnpublishVolume(ctx context.Context, volumeID string, nodeID string, secrets map[string]string, mode consts.UnpublishMode) error
 	WaitForDetach(ctx context.Context, volume, node string) error
 	GetAzVolumeAttachment(ctx context.Context, volumeID string, nodeID string) (*azdiskv1beta2.AzVolumeAttachment, error)
 	ExpandVolume(ctx context.Context, volumeID string, capacityRange *azdiskv1beta2.CapacityRange, secrets map[string]string) (*azdiskv1beta2.AzVolumeStatusDetail, error)
