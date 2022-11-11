@@ -930,15 +930,13 @@ func GetMaxSharesAndMaxMountReplicaCount(parameters map[string]string, isMultiNo
 		maxShares = 1
 	}
 
-	if isMultiNodeVolume || !mountReplicasEnabled {
-		if maxMountReplicaCount > 0 {
-			if isMultiNodeVolume {
-				klog.Warning("maxMountReplicaCount is ignored for volumes that can be mounted to multiple nodes... Defaulting current maxMountReplicaCount (%d) to 0", maxMountReplicaCount)
-			}
+	if maxMountReplicaCount > 0 && (isMultiNodeVolume || !mountReplicasEnabled) {
+		if isMultiNodeVolume {
+			klog.Warning("maxMountReplicaCount is ignored for volumes that can be mounted to multiple nodes... Defaulting current maxMountReplicaCount (%d) to 0", maxMountReplicaCount)
+		}
 
-			if !mountReplicasEnabled {
-				klog.Warning("enableMountReplicas is set to false... Defaulting maxMountReplicaCount (%d) value to 0, ", maxMountReplicaCount)
-			}
+		if !mountReplicasEnabled {
+			klog.Warning("enableMountReplicas is set to false... Defaulting maxMountReplicaCount (%d) value to 0, ", maxMountReplicaCount)
 		}
 
 		maxMountReplicaCount = 0

@@ -118,7 +118,6 @@ type DriverV2 struct {
 	azdiskClient         azdisk.Interface
 	azDriverNodeInformer azdiskinformertypes.AzDriverNodeInformer
 	deviceChecker        *deviceChecker
-	enableMountReplicas  bool
 }
 
 func init() {
@@ -146,7 +145,6 @@ func newDriverV2(config *azdiskv1beta2.AzDiskDriverConfiguration) *DriverV2 {
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.deviceChecker = &deviceChecker{lock: sync.RWMutex{}, entry: nil}
-	driver.enableMountReplicas = config.ControllerConfig.EnableMountReplicas
 
 	topologyKey = fmt.Sprintf("topology.%s/zone", driver.Name)
 	return &driver
@@ -182,7 +180,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 
 	// d.crdProvisioner is set by NewFakeDriver for unit tests.
 	if d.crdProvisioner == nil {
-		d.crdProvisioner, err = provisioner.NewCrdProvisioner(d.kubeConfig, d.config.ObjectNamespace, d.enableMountReplicas)
+		d.crdProvisioner, err = provisioner.NewCrdProvisioner(d.kubeConfig, d.config.ObjectNamespace, d.config.ControllerConfig.EnableMountReplicas)
 		if err != nil {
 			klog.Fatalf("Failed to get crd provisioner. Error: %v", err)
 		}
@@ -350,7 +348,7 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 		os.Exit(1)
 	}
 
-	sharedState := controller.NewSharedState(d.Name, d.config.ObjectNamespace, topologyKey, eventRecorder, mgr.GetClient(), d.crdProvisioner.GetDiskClientSet(), d.kubeClient, crdClient, d.enableMountReplicas)
+	sharedState := controller.NewSharedState(d.config, topologyKey, eventRecorder, mgr.GetClient(), d.crdProvisioner.GetDiskClientSet(), d.kubeClient, crdClient)
 
 	// Setup a new controller to clean-up AzDriverNodes
 	// objects for the nodes which get deleted

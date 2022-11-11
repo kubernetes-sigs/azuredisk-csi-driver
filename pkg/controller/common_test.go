@@ -446,8 +446,15 @@ func convertToNode(obj client.Object) *v1.Node {
 	return nil
 }
 
-func initState(client client.Client, azClient azdisk.Interface, kubeClient kubernetes.Interface, objs ...runtime.Object) (c *SharedState) {
-	c = NewSharedState(consts.DefaultDriverName, consts.DefaultAzureDiskCrdNamespace, consts.WellKnownTopologyKey, &record.FakeRecorder{}, client, azClient, kubeClient, nil, true)
+func initState(driverConfig *v1beta2.AzDiskDriverConfiguration, client client.Client, azClient azdisk.Interface, kubeClient kubernetes.Interface, objs ...runtime.Object) (c *SharedState) {
+	driverConfig := &azdiskv1beta2.AzDiskDriverConfiguration {
+		DriverName: consts.DefaultDriverName,
+		ObjectNamespace: consts.DefaultAzureDiskCrdNamespace,
+		ControllerConfig: azdiskv1beta2.ControllerConfiguration {
+			EnableMountReplicas: true,
+		},
+	}
+	c = NewSharedState(driverConfig, consts.WellKnownTopologyKey, &record.FakeRecorder{}, client, azClient, kubeClient, nil, true)
 	c.MarkRecoveryComplete()
 
 	for _, obj := range objs {

@@ -80,10 +80,10 @@ type SharedState struct {
 	mountReplicasEnabled          bool
 }
 
-func NewSharedState(driverName, objectNamespace, topologyKey string, eventRecorder record.EventRecorder, cachedClient client.Client, azClient azdisk.Interface, kubeClient kubernetes.Interface, crdClient crdClientset.Interface, mountReplicasEnabled bool) *SharedState {
+func NewSharedState(driverConfig *azdiskv1beta2.AzDiskDriverConfiguration, topologyKey string, eventRecorder record.EventRecorder, cachedClient client.Client, azClient azdisk.Interface, kubeClient kubernetes.Interface, crdClient crdClientset.Interface) *SharedState {
 	newSharedState := &SharedState{
-		driverName:      driverName,
-		objectNamespace: objectNamespace,
+		driverName:      driverConfig.DriverName,
+		objectNamespace: driverConfig.ObjectNamespace,
 		topologyKey:     topologyKey,
 		eventRecorder:   eventRecorder,
 		cachedClient:    cachedClient,
@@ -91,9 +91,9 @@ func NewSharedState(driverName, objectNamespace, topologyKey string, eventRecord
 		azClient:        azClient,
 		kubeClient:      kubeClient,
 		conditionWatcher: watcher.New(context.Background(),
-			azClient, azdiskinformers.NewSharedInformerFactory(azClient, consts.DefaultInformerResync), objectNamespace),
+			azClient, azdiskinformers.NewSharedInformerFactory(azClient, consts.DefaultInformerResync), driverConfig.ObjectNamespace),
 		azureDiskCSITranslator: csitranslator.NewAzureDiskCSITranslator(),
-		mountReplicasEnabled:   mountReplicasEnabled,
+		mountReplicasEnabled:   driverConfig.ControllerConfig.EnableMountReplicas,
 	}
 	newSharedState.createReplicaRequestsQueue()
 
@@ -1280,7 +1280,7 @@ func (c *SharedState) createAzVolumeFromPv(ctx context.Context, pv v1.Persistent
 	if pv.Spec.NodeAffinity != nil && pv.Spec.NodeAffinity.Required != nil {
 		desiredAzVolume.Status.Detail.AccessibleTopology = azureutils.GetTopologyFromNodeSelector(*pv.Spec.NodeAffinity.Required, c.topologyKey)
 	}
-	if azureutils.IsMultiNodePersistentVolume(pv) || !c.mountReplicasEnabled {
+	if azureutils.IsMultiNodePersistentVolume(pv) {
 		desiredAzVolume.Spec.MaxMountReplicaCount = 0
 	}
 
@@ -1359,12 +1359,18 @@ func (c *SharedState) createAzVolume(ctx context.Context, desiredAzVolume *azdis
 	var err error
 	var azVolume *azdiskv1beta2.AzVolume
 	var updated *azdiskv1beta2.AzVolume
+	var specUpdateNeeded bool
 
 	if azVolume, err = c.azClient.DiskV1beta2().AzVolumes(c.objectNamespace).Get(ctx, desiredAzVolume.Name, metav1.GetOptions{}); err != nil {
 		if apiErrors.IsNotFound(err) {
 			if azVolume, err = c.azClient.DiskV1beta2().AzVolumes(c.objectNamespace).Create(ctx, desiredAzVolume, metav1.CreateOptions{}); err != nil {
 				return err
 			}
+			if azVolume.Spec.MaxMountReplicaCount != desiredAzVolume.Spec.MaxMountReplicaCount {
+				azVolume.Spec.MaxMountReplicaCount = desiredAzVolume.Spec.MaxMountReplicaCount
+				specUpdateNeeded = true
+			}
+
 			updated = azVolume.DeepCopy()
 			updated.Status = desiredAzVolume.Status
 		} else {
@@ -1376,6 +1382,7 @@ func (c *SharedState) createAzVolume(ctx context.Context, desiredAzVolume *azdis
 		w.Logger().Infof("Found AzVolume (%s) with older api version. Converting to apiVersion(%s)", azVolume.Name, azdiskv1beta2.APIVersion)
 
 		azVolume.Spec.PersistentVolume = desiredAzVolume.Spec.PersistentVolume
+		specUpdateNeeded = true
 
 		for k, v := range desiredAzVolume.Labels {
 			azVolume.Labels = azureutils.AddToMap(azVolume.Labels, k, v)
@@ -1394,6 +1401,13 @@ func (c *SharedState) createAzVolume(ctx context.Context, desiredAzVolume *azdis
 		updated = azVolume.DeepCopy()
 	} else {
 		return nil
+	}
+
+	if specUpdateNeeded {
+		_, err := c.azClient.DiskV1beta2().AzVolumes(c.objectNamespace).Update(ctx, updated, metav1.UpdateOptions{})
+		if err != nil {
+			return err
+		}
 	}
 
 	if _, err := c.azClient.DiskV1beta2().AzVolumes(c.objectNamespace).UpdateStatus(ctx, updated, metav1.UpdateOptions{}); err != nil {

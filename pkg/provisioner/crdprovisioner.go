@@ -594,8 +594,7 @@ func (c *CrdProvisioner) PublishVolume(
 	}
 
 	// detach replica volume if volume's maxShares have been fully saturated.
-	// need to validate these conditions only when mountReplicas is enabled.
-	if c.mountReplicasEnabled && azVolume.Spec.MaxMountReplicaCount > 0 {
+	if azVolume.Spec.MaxMountReplicaCount > 0 {
 		// get undemoted AzVolumeAttachments for volume == volumeName and node != nodeID
 		volumeLabel := azureutils.LabelPair{Key: consts.VolumeNameLabel, Operator: selection.Equals, Entry: volumeName}
 		nodeLabel := azureutils.LabelPair{Key: consts.NodeNameLabel, Operator: selection.NotEquals, Entry: nodeID}
@@ -847,10 +846,6 @@ func (c *CrdProvisioner) UnpublishVolume(
 		}
 		w.Logger().WithValues(consts.VolumeNameLabel, volumeName, consts.NodeNameLabel, nodeID).Error(err, "failed to get AzVolumeAttachment")
 		return err
-	}
-
-	if !c.mountReplicasEnabled {
-		return c.detachVolume(ctx, azVolumeAttachmentInstance)
 	}
 
 	if demote, derr := c.shouldDemote(volumeName, mode); derr != nil {

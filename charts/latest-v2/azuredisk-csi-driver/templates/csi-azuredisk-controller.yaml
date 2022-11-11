@@ -14,6 +14,7 @@ data:
       vmType: {{ .Values.controller.vmType }}
       enabled: true
       leaderElectionNamespace: {{ .Release.Namespace }}
+      enableMountReplicas: {{ .Values.controller.enableMountReplicas }}
     nodeConfig:
       enablePerfOptimization: {{ .Values.linux.enablePerfOptimization }}
     cloudConfig:
@@ -207,7 +208,6 @@ spec:
           args:
             - "--v={{ .Values.controller.logLevel }}"
             - "--config=/etc/{{ .Values.controller.name }}/config.yaml"
-            - "--enable-mount-replicas={{ .Values.controller.enableMountReplicas }}"
           ports:
             - containerPort: {{ .Values.controller.livenessProbe.healthPort }}
               name: healthz

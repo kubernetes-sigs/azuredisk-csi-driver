@@ -29,8 +29,6 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	utilfeature "k8s.io/apiserver/pkg/util/feature"
-	"k8s.io/kubernetes/pkg/features"
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
@@ -603,17 +601,8 @@ func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, 
 
 			// if pv is migrated intree pv, convert it to csi pv for processing
 			// translate intree pv to csi pv to convert them into AzVolume resource
-			if utilfeature.DefaultFeatureGate.Enabled(features.CSIMigration) &&
-				utilfeature.DefaultFeatureGate.Enabled(features.CSIMigrationAzureDisk) &&
-				pv.Spec.AzureDisk != nil {
-				// translate intree pv to csi pv to convert them into AzVolume resource
-				if utilfeature.DefaultFeatureGate.Enabled(features.CSIMigration) &&
-					utilfeature.DefaultFeatureGate.Enabled(features.CSIMigrationAzureDisk) &&
-					pv.Spec.AzureDisk != nil {
-					if pv, err = r.translateInTreePVToCSI(pv); err != nil {
-						w.Logger().V(5).Errorf(err, "skipping azVolumeAttachment creation for volumeAttachment (%s)", volumeAttachment.Name)
-					}
-				}
+			if pv, err = r.translateInTreePVToCSI(pv); err != nil {
+				w.Logger().V(5).Errorf(err, "skipping azVolumeAttachment creation for volumeAttachment (%s)", volumeAttachment.Name)
 			}
 
 			if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != r.driverName {
@@ -744,9 +733,14 @@ func (r *ReconcileAttachDetach) recoverAzVolumeAttachment(ctx context.Context, r
 				var err error
 				azv := obj.(*azdiskv1beta2.AzVolumeAttachment)
 				if azv.Spec.RequestedRole == azdiskv1beta2.ReplicaRole {
-					// conversion logic from v1beta1 to v1beta2 for replicas come here
-					azv.Status.Annotations = azv.ObjectMeta.Annotations
-					azv.ObjectMeta.Annotations = map[string]string{consts.VolumeAttachRequestAnnotation: "CRI recovery"}
+					if r.mountReplicasEnabled {
+						// conversion logic from v1beta1 to v1beta2 for replicas come here
+						azv.Status.Annotations = azv.ObjectMeta.Annotations
+						azv.ObjectMeta.Annotations = map[string]string{consts.VolumeAttachRequestAnnotation: "CRI recovery"}
+					} else {
+						azv.Status.Annotations = azv.ObjectMeta.Annotations
+						azv.ObjectMeta.Annotations = map[string]string{consts.VolumeDetachRequestAnnotation: "CRI deletion"}
+					}
 				}
 				// add a recover annotation to the CRI so that reconciliation can be triggered for the CRI even if CRI's current state == target state
 				azv.Status.Annotations = azureutils.AddToMap(azv.Status.Annotations, consts.RecoverAnnotation, "azVolumeAttachment")

@@ -72,7 +72,6 @@ func newFakeDriverV2(t *testing.T) (*fakeDriverV2, error) {
 	driver.config.NodeConfig.SupportZone = true
 	driver.ioHandler = azureutils.NewFakeIOHandler()
 	driver.config.NodeConfig.UseCSIProxyGAInterface = true
-	driver.enableMountReplicas = true
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -93,7 +92,7 @@ func newFakeDriverV2(t *testing.T) (*fakeDriverV2, error) {
 
 	driver.azdiskClient = azdiskfakes.NewSimpleClientset()
 
-	crdProvisioner, err := provisioner.NewFakeCrdProvisioner(driver.cloudProvisioner.(*provisioner.FakeCloudProvisioner), driver.enableMountReplicas)
+	crdProvisioner, err := provisioner.NewFakeCrdProvisioner(driver.cloudProvisioner.(*provisioner.FakeCloudProvisioner), true)
 	if err != nil {
 		return nil, err
 	}

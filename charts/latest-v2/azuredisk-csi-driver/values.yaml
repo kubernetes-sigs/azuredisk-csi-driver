@@ -58,7 +58,7 @@ controller:
   cloudConfigSecretName: azure-cloud-provider
   cloudConfigSecretNamespace: kube-system
   allowEmptyCloudConfig: false
-  enableMountReplicas: false
+  enableMountReplicas: true
   replicas: 2
   metrics:
     port: 29604
