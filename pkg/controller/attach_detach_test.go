@@ -98,6 +98,7 @@ func TestAttachDetachReconcile(t *testing.T) {
 					newAttachment)
 
 				controller.azVolumeAttachmentToVaMap.Store(newAttachment.Name, newVolumeAttachment.Name)
+				addTestNodeInAvailableAttachmentsMap(controller.SharedState, newAttachment.Spec.NodeName, testNodeAvailableAttachmentCount)
 
 				mockClientsAndAttachmentProvisioner(controller)
 
@@ -137,6 +138,7 @@ func TestAttachDetachReconcile(t *testing.T) {
 					newVolumeAttachment,
 					newAttachment)
 
+				addTestNodeInAvailableAttachmentsMap(controller.SharedState, newAttachment.Spec.NodeName, testNodeAvailableAttachmentCount)
 				mockClientsAndAttachmentProvisioner(controller)
 
 				return controller
@@ -168,6 +170,7 @@ func TestAttachDetachReconcile(t *testing.T) {
 					&testAzVolume0,
 					newAttachment)
 
+				addTestNodeInAvailableAttachmentsMap(controller.SharedState, newAttachment.Spec.NodeName, testNodeAvailableAttachmentCount)
 				mockClientsAndAttachmentProvisioner(controller)
 
 				return controller

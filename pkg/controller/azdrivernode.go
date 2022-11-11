@@ -55,8 +55,12 @@ func (r *ReconcileAzDriverNode) Reconcile(ctx context.Context, request reconcile
 	n := &corev1.Node{}
 	err := r.cachedClient.Get(ctx, request.NamespacedName, n)
 
-	// If the node still exists don't delete the AzDriverNode
 	if err == nil {
+		if n.ObjectMeta.DeletionTimestamp.IsZero() {
+			// for create event, add the new node in availableAttachmentsMap
+			r.addNodeToAvailableAttachmentsMap(ctx, n.Name, n.GetLabels())
+		}
+		// for delete even, if the node still exists don't delete the AzDriverNode
 		return reconcile.Result{}, nil
 	}
 
@@ -70,6 +74,7 @@ func (r *ReconcileAzDriverNode) Reconcile(ctx context.Context, request reconcile
 		if err != nil && !errors.IsNotFound(err) {
 			return reconcile.Result{Requeue: true}, err
 		}
+		r.deleteNodeFromAvailableAttachmentsMap(ctx, request.Name)
 
 		// Delete all volumeAttachments attached to this node, if failed, requeue
 		if _, err = r.cleanUpAzVolumeAttachmentByNode(ctx, request.Name, azdrivernode, azureutils.AllRoles, cleanUpAttachment); err != nil {
@@ -101,6 +106,7 @@ func (r *ReconcileAzDriverNode) Recover(ctx context.Context) error {
 		if _, err = r.azClient.DiskV1beta2().AzDriverNodes(r.objectNamespace).Update(ctx, updated, metav1.UpdateOptions{}); err != nil {
 			return err
 		}
+		r.addNodeToAvailableAttachmentsMap(ctx, node.Name, node.GetLabels())
 	}
 	return nil
 }
@@ -127,7 +133,7 @@ func NewAzDriverNodeController(mgr manager.Manager, controllerSharedState *Share
 	// Predicate to only reconcile deleted nodes
 	p := predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
-			return false
+			return true
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			return false

@@ -18,14 +18,18 @@ package controller
 
 import (
 	"context"
+	"fmt"
+	"reflect"
 	"testing"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/selection"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2/klogr"
 	azdiskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
@@ -131,9 +135,12 @@ func TestAzDriverNodeControllerReconcile(t *testing.T) {
 					&testAzDriverNode1)
 
 				controller.cachedClient.(*mockclient.MockClient).EXPECT().
-					Get(gomock.Any(), testNode1Request.NamespacedName, gomock.Any()).
-					Return(nil).
-					AnyTimes()
+					Get(gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(nil).AnyTimes()
+
+				controller.cachedClient.(*mockclient.MockClient).EXPECT().
+					List(gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(nil).AnyTimes()
 
 				return controller
 			},
@@ -170,6 +177,41 @@ func TestAzDriverNodeControllerReconcile(t *testing.T) {
 				require.NoError(t, err2)
 			},
 		},
+		{
+			description: "[Success] Should add new AzDriverNode in availableAttachmentsMap",
+			request:     testNode1Request,
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAzDriverNode {
+				controller := NewTestAzDriverNodeController(
+					mockCtl,
+					testNamespace,
+					&testAzDriverNode1,
+					&testNode1)
+
+				cachedObj := testNode1.DeepCopy()
+				controller.cachedClient.(*mockclient.MockClient).EXPECT().
+					Get(gomock.Any(), gomock.Any(), gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key types.NamespacedName, obj runtime.Object) error {
+						if objToUpdate, ok := obj.(*v1.Node); ok {
+							cachedObj.DeepCopyInto(objToUpdate)
+							return nil
+						}
+						return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+					}).
+					AnyTimes()
+
+				mockClients(controller.cachedClient.(*mockclient.MockClient), controller.azClient, controller.kubeClient)
+				return controller
+			},
+			verifyFunc: func(t *testing.T, controller *ReconcileAzDriverNode, result reconcile.Result, err error) {
+				require.NoError(t, err)
+				require.False(t, result.Requeue)
+
+				_, err2 := controller.azClient.DiskV1beta2().AzDriverNodes(testNamespace).Get(context.TODO(), testNode1Name, metav1.GetOptions{})
+				require.NoError(t, err2)
+				_, nodeExists := controller.availableAttachmentsMap.Load(testNode1Name)
+				require.True(t, nodeExists)
+			},
+		},
 	}
 
 	for _, test := range tests {
@@ -199,9 +241,21 @@ func TestAzDriverNodeRecover(t *testing.T) {
 					&testAzDriverNode0,
 					&testAzDriverNode1)
 
+				cachedObj := testNode1.DeepCopy()
 				controller.cachedClient.(*mockclient.MockClient).EXPECT().
-					Get(gomock.Any(), testNode1Request.NamespacedName, gomock.Any()).
-					Return(testNode1ServerTimeoutError).
+					Get(gomock.Any(), gomock.Any(), gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key types.NamespacedName, obj runtime.Object) error {
+						if objToUpdate, ok := obj.(*v1.Node); ok {
+							cachedObj.DeepCopyInto(objToUpdate)
+							return nil
+						}
+						return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
+					}).
+					AnyTimes()
+
+				controller.cachedClient.(*mockclient.MockClient).EXPECT().
+					List(gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(nil).
 					AnyTimes()
 
 				return controller
@@ -225,6 +279,10 @@ func TestAzDriverNodeRecover(t *testing.T) {
 			defer mockCtl.Finish()
 			controller := tt.setupFunc(t, mockCtl)
 			err := controller.Recover(context.TODO())
+			_, node0Exists := controller.availableAttachmentsMap.Load(testAzDriverNode0.Name)
+			require.True(t, node0Exists)
+			_, node1Exists := controller.availableAttachmentsMap.Load(testAzDriverNode1.Name)
+			require.True(t, node1Exists)
 			tt.verifyFunc(t, controller, err)
 		})
 	}
