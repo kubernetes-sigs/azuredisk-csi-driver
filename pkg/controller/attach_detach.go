@@ -112,7 +112,14 @@ func (r *ReconcileAttachDetach) Reconcile(ctx context.Context, request reconcile
 	if objectDeletionRequested(azVolumeAttachment) {
 		if err := r.removeFinalizer(ctx, azVolumeAttachment); err != nil {
 			return reconcileReturnOnError(ctx, azVolumeAttachment, "delete", err, r.retryInfo)
+		} else {
+			// deletion of azVolumeAttachment is succeeded, the node's remaining capacity of disk attachment should be increased by 1
+			remainingCapacity, nodeExists := r.SharedState.nodeDiskAvailabilityMap.Load(azVolumeAttachment.Spec.NodeName)
+			if nodeExists && remainingCapacity != nil {
+				remainingCapacity.(*atomic.Int32).Add(1)
+			}
 		}
+
 		// detachment request
 	} else if volumeDetachRequested(azVolumeAttachment) {
 		if err := r.triggerDetach(ctx, azVolumeAttachment); err != nil {
@@ -280,6 +287,17 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 				if len(pods) > 0 {
 					for _, pod := range pods {
 						r.eventRecorder.Eventf(pod.DeepCopyObject(), v1.EventTypeNormal, consts.ReplicaAttachmentSuccessEvent, "Replica mount for volume %s successfully attached to node %s", azVolumeAttachment.Spec.VolumeName, azVolumeAttachment.Spec.NodeName)
+					}
+				}
+				// the node's remaining capacity of disk attachment should be decreased by 1, since the disk attachment is succeeded.
+				remainingCapacity, nodeExists := r.SharedState.nodeDiskAvailabilityMap.Load(azVolumeAttachment.Spec.NodeName)
+				if nodeExists && remainingCapacity != nil {
+					currentCapacity := int32(0)
+					for {
+						currentCapacity = remainingCapacity.(*atomic.Int32).Load()
+						if currentCapacity == int32(0) || remainingCapacity.(*atomic.Int32).CompareAndSwap(currentCapacity, currentCapacity-1) {
+							break
+						}
 					}
 				}
 			}

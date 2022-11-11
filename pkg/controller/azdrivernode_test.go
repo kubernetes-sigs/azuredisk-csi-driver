@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/selection"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2/klogr"
 	azdiskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
@@ -131,9 +132,12 @@ func TestAzDriverNodeControllerReconcile(t *testing.T) {
 					&testAzDriverNode1)
 
 				controller.cachedClient.(*mockclient.MockClient).EXPECT().
-					Get(gomock.Any(), testNode1Request.NamespacedName, gomock.Any()).
-					Return(nil).
-					AnyTimes()
+					Get(gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(nil).AnyTimes()
+
+				controller.cachedClient.(*mockclient.MockClient).EXPECT().
+					List(gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(nil).AnyTimes()
 
 				return controller
 			},
@@ -170,6 +174,34 @@ func TestAzDriverNodeControllerReconcile(t *testing.T) {
 				require.NoError(t, err2)
 			},
 		},
+		{
+			description: "[Success] Should add new AzDriverNode in nodeDiskAvailabilityMap",
+			request:     testNode1Request,
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAzDriverNode {
+				controller := NewTestAzDriverNodeController(
+					mockCtl,
+					testNamespace,
+					&testAzDriverNode0)
+
+				controller.cachedClient.(*mockclient.MockClient).EXPECT().
+					Get(gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(nil).
+					AnyTimes()
+
+				mockClients(controller.cachedClient.(*mockclient.MockClient), controller.azClient, nil)
+
+				return controller
+			},
+			verifyFunc: func(t *testing.T, controller *ReconcileAzDriverNode, result reconcile.Result, err error) {
+				require.NoError(t, err)
+				require.False(t, result.Requeue)
+
+				_, err2 := controller.azClient.DiskV1beta2().AzDriverNodes(testNamespace).Get(context.TODO(), testNode0Name, metav1.GetOptions{})
+				require.NoError(t, err2)
+				_, nodeExists := controller.nodeDiskAvailabilityMap.Load(testNode1Name)
+				require.True(t, nodeExists)
+			},
+		},
 	}
 
 	for _, test := range tests {
@@ -200,8 +232,18 @@ func TestAzDriverNodeRecover(t *testing.T) {
 					&testAzDriverNode1)
 
 				controller.cachedClient.(*mockclient.MockClient).EXPECT().
-					Get(gomock.Any(), testNode1Request.NamespacedName, gomock.Any()).
-					Return(testNode1ServerTimeoutError).
+					Get(gomock.Any(), types.NamespacedName{Name: testAzDriverNode0.Name}, gomock.Any()).
+					Return(nil).
+					AnyTimes()
+
+				controller.cachedClient.(*mockclient.MockClient).EXPECT().
+					Get(gomock.Any(), types.NamespacedName{Name: testAzDriverNode1.Name}, gomock.Any()).
+					Return(nil).
+					AnyTimes()
+
+				controller.cachedClient.(*mockclient.MockClient).EXPECT().
+					List(gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(nil).
 					AnyTimes()
 
 				return controller
@@ -225,6 +267,10 @@ func TestAzDriverNodeRecover(t *testing.T) {
 			defer mockCtl.Finish()
 			controller := tt.setupFunc(t, mockCtl)
 			err := controller.Recover(context.TODO())
+			_, node0Exists := controller.nodeDiskAvailabilityMap.Load(testAzDriverNode0.Name)
+			require.True(t, node0Exists)
+			_, node1Exists := controller.nodeDiskAvailabilityMap.Load(testAzDriverNode1.Name)
+			require.True(t, node1Exists)
 			tt.verifyFunc(t, controller, err)
 		})
 	}

@@ -77,6 +77,7 @@ type SharedState struct {
 	crdClient                     crdClientset.Interface
 	conditionWatcher              *watcher.ConditionWatcher
 	azureDiskCSITranslator        csitranslator.InTreePlugin
+	nodeDiskAvailabilityMap       sync.Map
 }
 
 func NewSharedState(driverName, objectNamespace, topologyKey string, eventRecorder record.EventRecorder, cachedClient client.Client, azClient azdisk.Interface, kubeClient kubernetes.Interface, crdClient crdClientset.Interface) *SharedState {
@@ -860,7 +861,7 @@ func (c *SharedState) selectNodesPerTopology(ctx context.Context, nodes []v1.Nod
 		}
 	}
 
-	return selectedNodes[:min(len(selectedNodes), numReplicas)], nil
+	return selectedNodes, nil
 }
 
 func (c *SharedState) getNodesWithReplica(ctx context.Context, volumeName string) ([]string, error) {
@@ -1175,9 +1176,14 @@ func (c *SharedState) createReplicas(ctx context.Context, remainingReplicas int,
 			//Push to queue the failed replica number
 			request := ReplicaRequest{VolumeName: volumeName, Priority: remainingReplicas}
 			c.priorityReplicaRequestsQueue.Push(ctx, &request)
-			return err
+			// don't return err yet, we can still try the next node
+			continue
 		}
 		remainingReplicas--
+		if remainingReplicas <= 0 {
+			// no more remainingReplicas, don't need to create replica AzVolumeAttachment
+			break
+		}
 	}
 
 	if remainingReplicas > 0 {
@@ -1227,16 +1233,17 @@ func (c *SharedState) getNodesForReplica(ctx context.Context, volumeName string,
 	}
 
 	filtered := []string{}
-	numFiltered := 0
 	for _, node := range nodes {
-		if numFiltered >= numReplica {
-			break
-		}
 		if skipSet[node] {
 			continue
 		}
+		// if the node has no capacity for disk attachment, we should skip it
+		remainingCapacity, nodeExists := c.nodeDiskAvailabilityMap.Load(node)
+		if !nodeExists || remainingCapacity == nil || remainingCapacity.(*atomic.Int32).Load() <= 0 {
+			w.Logger().Infof("skip node(%s) because it has no capacity for disk attachment", node)
+			continue
+		}
 		filtered = append(filtered, node)
-		numFiltered++
 	}
 
 	return filtered, nil

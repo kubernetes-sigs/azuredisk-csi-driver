@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/golang/mock/gomock"
@@ -750,4 +751,10 @@ func mockClients(mockClient *mockclient.MockClient, azVolumeClient azdisk.Interf
 			return nil
 		}).
 		AnyTimes()
+}
+
+func addTestNodeInNodeDiskAvailabilityMap(controller *ReconcileAttachDetach, nodeName string) {
+	var count atomic.Int32
+	count.Store(int32(1))
+	controller.nodeDiskAvailabilityMap.Store(nodeName, &count)
 }

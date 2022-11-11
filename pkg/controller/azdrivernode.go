@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"sync/atomic"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -55,8 +56,12 @@ func (r *ReconcileAzDriverNode) Reconcile(ctx context.Context, request reconcile
 	n := &corev1.Node{}
 	err := r.cachedClient.Get(ctx, request.NamespacedName, n)
 
-	// If the node still exists don't delete the AzDriverNode
 	if err == nil {
+		if n.ObjectMeta.DeletionTimestamp == nil {
+			// for create event, add the new node in nodeDiskAvailabilityMap
+			r.AddNodeInNodeDiskAvailabilityMap(ctx, request.Name, n.ObjectMeta.Labels)
+		}
+		// for delete even, if the node still exists don't delete the AzDriverNode
 		return reconcile.Result{}, nil
 	}
 
@@ -69,6 +74,8 @@ func (r *ReconcileAzDriverNode) Reconcile(ctx context.Context, request reconcile
 		// If there is an issue in deleting the AzDriverNode, requeue
 		if err != nil && !errors.IsNotFound(err) {
 			return reconcile.Result{Requeue: true}, err
+		} else {
+			r.SharedState.nodeDiskAvailabilityMap.Delete(request.Name)
 		}
 
 		// Delete all volumeAttachments attached to this node, if failed, requeue
@@ -101,8 +108,16 @@ func (r *ReconcileAzDriverNode) Recover(ctx context.Context) error {
 		if _, err = r.azClient.DiskV1beta2().AzDriverNodes(r.objectNamespace).Update(ctx, updated, metav1.UpdateOptions{}); err != nil {
 			return err
 		}
+		r.AddNodeInNodeDiskAvailabilityMap(ctx, node.Name, node.Labels)
 	}
 	return nil
+}
+
+func (r *ReconcileAzDriverNode) AddNodeInNodeDiskAvailabilityMap(ctx context.Context, nodeName string, nodeLabels map[string]string) {
+	capacity, _ := azureutils.GetNodeRemainingDiskCount(ctx, r.SharedState.cachedClient, nodeName)
+	var count atomic.Int32
+	count.Store(int32(capacity))
+	r.SharedState.nodeDiskAvailabilityMap.Store(nodeName, &count)
 }
 
 // NewAzDriverNodeController initializes azdrivernode-controller
@@ -127,7 +142,7 @@ func NewAzDriverNodeController(mgr manager.Manager, controllerSharedState *Share
 	// Predicate to only reconcile deleted nodes
 	p := predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
-			return false
+			return true
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			return false
