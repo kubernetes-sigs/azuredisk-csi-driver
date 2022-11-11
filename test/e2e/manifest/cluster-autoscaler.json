@@ -27,7 +27,10 @@
                                     "max-nodes": "65535"
                                 }
                             }
-                        ]
+                        ],
+                        "config": {
+                            "max-node-provision-time": "45m0s"
+                        }
                     },
                     {
                         "name": "azuredisk-csi-driver",
