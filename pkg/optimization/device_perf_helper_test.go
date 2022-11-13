@@ -17,6 +17,7 @@ limitations under the License.
 package optimization
 
 import (
+	"strings"
 	"testing"
 
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
@@ -67,13 +68,13 @@ func TestGetDiskPerfAttributes(t *testing.T) {
 	}{
 		{
 			name:               "valid attributes should return all values",
-			wantProfile:        "basic",
+			wantProfile:        "advanced",
 			wantAccountType:    "Premium_LRS",
 			wantDiskSizeGibStr: "1024",
 			wantDiskIopsStr:    "100",
 			wantDiskBwMbpsStr:  "500",
 			wantErr:            false,
-			inAttributes:       map[string]string{consts.PerfProfileField: "basic", consts.SkuNameField: "Premium_LRS", consts.RequestedSizeGib: "1024", consts.DiskIOPSReadWriteField: "100", consts.DiskMBPSReadWriteField: "500"},
+			inAttributes:       map[string]string{consts.PerfProfileField: "advanced", consts.SkuNameField: "Premium_LRS", consts.RequestedSizeGib: "1024", consts.DiskIOPSReadWriteField: "100", consts.DiskMBPSReadWriteField: "500", consts.DeviceSettingsKeyPrefix + "queue/read_ahead_kb": "8", consts.DeviceSettingsKeyPrefix + "queue/nomerges": "0"},
 		},
 		{
 			name:               "incorrect profile should return error",
@@ -99,13 +100,16 @@ func TestGetDiskPerfAttributes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotProfile, gotAccountType, gotDiskSizeGibStr, gotDiskIopsStr, gotDiskBwMbpsStr, gotErr := GetDiskPerfAttributes(tt.inAttributes)
+			gotProfile, gotAccountType, gotDiskSizeGibStr, gotDiskIopsStr, gotDiskBwMbpsStr, settings, gotErr := GetDiskPerfAttributes(tt.inAttributes)
 
 			if (gotErr != nil) != tt.wantErr {
 				t.Errorf("GetDiskPerfAttributes() gotErr = %v, want %v", gotErr, tt.wantErr)
 			}
 
 			if !tt.wantErr {
+				if strings.EqualFold(tt.wantProfile, "advanced") && len(settings) == 0 {
+					t.Errorf("GetDiskPerfAttributes() setting is not parsed")
+				}
 				if gotProfile != tt.wantProfile {
 					t.Errorf("GetDiskPerfAttributes() gotProfile = %v, want %v", gotProfile, tt.wantProfile)
 				}
@@ -125,6 +129,7 @@ func TestGetDiskPerfAttributes(t *testing.T) {
 		})
 	}
 }
+
 func TestIsPerfTuningEnabled(t *testing.T) {
 	tests := []struct {
 		name    string

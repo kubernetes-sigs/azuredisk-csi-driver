@@ -27,6 +27,8 @@ import (
 )
 
 func Test_OptimizeDiskPerformance(t *testing.T) {
+	cwd, _ := os.Getwd()
+
 	deviceHelper := NewDeviceHelper()
 	tests := []struct {
 		name                string
@@ -40,6 +42,7 @@ func Test_OptimizeDiskPerformance(t *testing.T) {
 		wantErr             bool
 		blockDeviceRootPath string
 		mkdirPath           []string
+		volumeContext       map[string]string
 	}{
 		{
 			name:                "could not have queue dir for device should return error",
@@ -90,7 +93,7 @@ func Test_OptimizeDiskPerformance(t *testing.T) {
 			diskIopsStr:         "100",
 			diskBwMbpsStr:       "100",
 			wantErr:             false,
-			blockDeviceRootPath: ".",
+			blockDeviceRootPath: cwd,
 			mkdirPath:           []string{"queue/iosched", "device"},
 		},
 	}
@@ -108,7 +111,7 @@ func Test_OptimizeDiskPerformance(t *testing.T) {
 				}
 			}
 			if deviceHelper.DiskSupportsPerfOptimization(tt.perfProfile, tt.accountType) {
-				if err := deviceHelper.OptimizeDiskPerformance(tt.nodeInfo, tt.devicePath, tt.perfProfile, tt.accountType, tt.diskSizeGibStr, tt.diskIopsStr, tt.diskBwMbpsStr); (err != nil) != tt.wantErr {
+				if err := deviceHelper.OptimizeDiskPerformance(tt.nodeInfo, tt.devicePath, tt.perfProfile, tt.accountType, tt.diskSizeGibStr, tt.diskIopsStr, tt.diskBwMbpsStr, tt.volumeContext); (err != nil) != tt.wantErr {
 					t.Errorf("DeviceHelper.OptimizeDiskPerformance() error = %v, wantErr %v", err, tt.wantErr)
 				}
 			}

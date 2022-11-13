@@ -16,24 +16,22 @@ limitations under the License.
 
 package optimization
 
+import consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+
 // This is the interface for DeviceHelper
 type Interface interface {
 	DiskSupportsPerfOptimization(diskPerfProfile, diskAccountType string) bool
 	OptimizeDiskPerformance(nodeInfo *NodeInfo,
-		devicePath, perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr string) error
+		devicePath, perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr string, deviceSettingsFromCtx map[string]string) error
 }
-
-const (
-	blockDeviceRootPathDefault = "/sys/block"
-)
 
 // Compile-time check to ensure all Mounter DeviceHelper satisfy
 // the DeviceHelper interface.
-var _ Interface = &DeviceHelper{blockDeviceRootPath: blockDeviceRootPathDefault}
+var _ Interface = &DeviceHelper{blockDeviceRootPath: consts.BlockDeviceRootPathLinux}
 
 func NewSafeDeviceHelper() *SafeDeviceHelper {
 	return &SafeDeviceHelper{
-		Interface: &DeviceHelper{blockDeviceRootPath: blockDeviceRootPathDefault},
+		Interface: &DeviceHelper{blockDeviceRootPath: consts.BlockDeviceRootPathLinux},
 	}
 }
 
@@ -47,6 +45,6 @@ func (dh *SafeDeviceHelper) DeviceSupportsPerfOptimization(diskPerfProfile, disk
 }
 
 func (dh *SafeDeviceHelper) OptimizeDiskPerformance(nodeInfo *NodeInfo,
-	devicePath, perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr string) error {
-	return dh.Interface.OptimizeDiskPerformance(nodeInfo, devicePath, perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr)
+	devicePath, perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr string, deviceSettingsFromCtx map[string]string) error {
+	return dh.Interface.OptimizeDiskPerformance(nodeInfo, devicePath, perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr, deviceSettingsFromCtx)
 }

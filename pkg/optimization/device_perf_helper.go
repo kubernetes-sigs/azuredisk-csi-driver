@@ -18,6 +18,7 @@ package optimization
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
@@ -27,13 +28,15 @@ import (
 // Right now we are only supporting basic profile
 // Other advanced profiles to come later
 func IsValidPerfProfile(profile string) bool {
-	return strings.EqualFold(profile, consts.PerfProfileBasic) || strings.EqualFold(profile, consts.PerfProfileNone)
+	return isPerfTuningEnabled(profile) || strings.EqualFold(profile, consts.PerfProfileNone)
 }
 
 // getDiskPerfAttributes gets the per tuning mode and profile set in attributes
-func GetDiskPerfAttributes(attributes map[string]string) (profile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr string, err error) {
+func GetDiskPerfAttributes(attributes map[string]string) (profile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr string, deviceSettings map[string]string, err error) {
+	deviceSettings = make(map[string]string)
 	perfProfilePresent := false
 	for k, v := range attributes {
+		key := strings.ToLower(k)
 		switch strings.ToLower(k) {
 		case consts.PerfProfileField:
 			perfProfilePresent = true
@@ -47,7 +50,9 @@ func GetDiskPerfAttributes(attributes map[string]string) (profile, accountType, 
 		case consts.DiskMBPSReadWriteField:
 			diskBwMbpsStr = v
 		default:
-			continue
+			if setting, err := GetDeviceSettingFromAttribute(key); err == nil {
+				deviceSettings[setting] = v
+			}
 		}
 	}
 
@@ -55,7 +60,7 @@ func GetDiskPerfAttributes(attributes map[string]string) (profile, accountType, 
 	if perfProfilePresent {
 		// Make sure it's a valid perf profile
 		if !IsValidPerfProfile(profile) {
-			return profile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr, fmt.Errorf("Perf profile %s is invalid", profile)
+			return profile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr, deviceSettings, fmt.Errorf("Perf profile %s is invalid", profile)
 		}
 	} else {
 		// if perfProfile parameter was not provided in the attributes
@@ -63,13 +68,15 @@ func GetDiskPerfAttributes(attributes map[string]string) (profile, accountType, 
 		profile = consts.PerfProfileNone
 	}
 
-	return profile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr, nil
+	return profile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr, deviceSettings, nil
 }
 
 // isPerfTuningEnabled checks to see if perf tuning is enabled
 func isPerfTuningEnabled(profile string) bool {
 	switch strings.ToLower(profile) {
 	case consts.PerfProfileBasic:
+		return true
+	case consts.PerfProfileAdvanced:
 		return true
 	default:
 		return false
@@ -83,4 +90,35 @@ func accountSupportsPerfOptimization(accountType string) bool {
 		return true
 	}
 	return false
+}
+
+// Gets device setting from the Disk attribute/param but trimming the consts.DeviceSettingsKeyPrefix prefix
+func GetDeviceSettingFromAttribute(key string) (deviceSetting string, err error) {
+	if !strings.HasPrefix(key, consts.DeviceSettingsKeyPrefix) {
+		return key, fmt.Errorf("GetDeviceSettingFromAttribute: %s is not a valid device setting override", key)
+	}
+	return strings.TrimPrefix(key, consts.DeviceSettingsKeyPrefix), nil
+}
+
+// Checks to see if deviceSettings passed are valid
+func AreDeviceSettingsValid(deviceRoot string, deviceSettings map[string]string) error {
+	if len(deviceSettings) == 0 {
+		return fmt.Errorf("AreDeviceSettingsValid: No deviceSettings passed")
+	}
+
+	for setting := range deviceSettings {
+		// Use absolute setting path
+		absSetting, err := filepath.Abs(setting)
+		if err != nil {
+			return fmt.Errorf("AreDeviceSettingsValid: Failed to get absolute path. Can not allow setting %s for device %s",
+				setting,
+				deviceRoot)
+		}
+
+		if !strings.HasPrefix(absSetting, filepath.Clean(deviceRoot)+"/") {
+			return fmt.Errorf("AreDeviceSettingsValid: Setting %s is not a valid file path under %s", setting, deviceRoot)
+		}
+	}
+
+	return nil
 }
