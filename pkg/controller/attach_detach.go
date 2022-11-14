@@ -109,7 +109,10 @@ func (r *ReconcileAttachDetach) Reconcile(ctx context.Context, request reconcile
 	}
 
 	// deletion request
-	if objectDeletionRequested(azVolumeAttachment) {
+	if deleteRequested, deleteAfter := objectDeletionRequested(azVolumeAttachment); deleteRequested {
+		if deleteAfter > 0 {
+			return reconcileAfter(deleteAfter, request.Name, r.retryInfo)
+		}
 		if err := r.removeFinalizer(ctx, azVolumeAttachment); err != nil {
 			return reconcileReturnOnError(ctx, azVolumeAttachment, "delete", err, r.retryInfo)
 		}
@@ -165,7 +168,7 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 			return nil
 		}
 		return err
-	} else if objectDeletionRequested(azVolume) {
+	} else if deleteRequested, _ := objectDeletionRequested(azVolume); deleteRequested {
 		w.Logger().V(5).Infof("Aborting attach operation for AzVolumeAttachment (%s): AzVolume (%s) scheduled for deletion", azVolumeAttachment.Name, azVolumeAttachment.Spec.VolumeName)
 		return nil
 	}

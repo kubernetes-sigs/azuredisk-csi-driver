@@ -1107,7 +1107,8 @@ func (c *SharedState) manageReplicas(ctx context.Context, volumeName string) err
 	}
 
 	// replica management should not be executed or retried if AzVolume is scheduled for a deletion or not created.
-	if !isCreated(azVolume) || objectDeletionRequested(azVolume) {
+	deleteRequested, _ := objectDeletionRequested(azVolume)
+	if !isCreated(azVolume) || deleteRequested {
 		w.Logger().Errorf(err, "azVolume is scheduled for deletion or has no underlying volume object")
 		return nil
 	}

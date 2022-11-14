@@ -928,14 +928,21 @@ func isCreated(volume *azdiskv1beta2.AzVolume) bool {
 	return volume != nil && volume.Status.Detail != nil
 }
 
-func objectDeletionRequested(obj runtime.Object) bool {
+// objectDeletionRequested returns whether deletion of the specified object has been requested.
+// If so, it will return true and a time.Duration after which to delete the object. If the
+// duration is less than or equal to 0, the object should be deleted immediately.
+func objectDeletionRequested(obj runtime.Object) (bool, time.Duration) {
 	meta, _ := meta.Accessor(obj)
 	if meta == nil {
-		return false
+		return false, time.Duration(0)
 	}
 	deletionTime := meta.GetDeletionTimestamp()
 
-	return !deletionTime.IsZero() && deletionTime.Time.Before(time.Now())
+	if deletionTime.IsZero() {
+		return false, time.Duration(0)
+	}
+
+	return true, time.Until(deletionTime.Time)
 }
 
 func isCleanupRequested(attachment *azdiskv1beta2.AzVolumeAttachment) bool {
@@ -985,11 +992,13 @@ func getOperationRequeueError(desired string, obj client.Object) error {
 	return status.Errorf(codes.Aborted, "requeueing %s operation because another operation is already pending on %v (%s)", desired, reflect.TypeOf(obj), obj.GetName())
 }
 
+// reconcileReturnOnSuccess returns a reconciler result on successful reconciliation.
 func reconcileReturnOnSuccess(objectName string, retryInfo *retryInfo) (reconcile.Result, error) {
 	retryInfo.deleteEntry(objectName)
 	return reconcile.Result{}, nil
 }
 
+// reconcileReturnOnError returns a reconciler result on error that requeues the object for later processing if the error is retriable.
 func reconcileReturnOnError(ctx context.Context, obj runtime.Object, operationType string, err error, retryInfo *retryInfo) (reconcile.Result, error) {
 	var (
 		requeue    bool = status.Code(err) != codes.FailedPrecondition
@@ -1016,12 +1025,19 @@ func reconcileReturnOnError(ctx context.Context, obj runtime.Object, operationTy
 	}, nil
 }
 
+// reconcileAfter returns a reconciler result that requeues the current object for processing after the specified time.
+func reconcileAfter(after time.Duration, objectName string, retryInfo *retryInfo) (reconcile.Result, error) {
+	retryInfo.deleteEntry(objectName)
+	return reconcile.Result{Requeue: true, RequeueAfter: after}, nil
+}
+
 func isOperationInProcess(obj interface{}) bool {
 	switch target := obj.(type) {
 	case *azdiskv1beta2.AzVolume:
 		return target.Status.State == azdiskv1beta2.VolumeCreating || target.Status.State == azdiskv1beta2.VolumeDeleting || target.Status.State == azdiskv1beta2.VolumeUpdating
 	case *azdiskv1beta2.AzVolumeAttachment:
-		return target.Status.State == azdiskv1beta2.Attaching || (target.Status.State == azdiskv1beta2.Detaching && !objectDeletionRequested(target))
+		deleteRequested, _ := objectDeletionRequested(target)
+		return target.Status.State == azdiskv1beta2.Attaching || (target.Status.State == azdiskv1beta2.Detaching && !deleteRequested)
 	}
 	return false
 }
