@@ -59,6 +59,12 @@ func TestSafeDeviceHelper_DeviceSupportsPerfOptimization(t *testing.T) {
 			diskAccountType: "Premium_lrs",
 			want:            util.IsLinuxOS(),
 		},
+		{
+			name:            "valid profile and account should return true",
+			diskPerfProfile: "advanced",
+			diskAccountType: "Premium_lrs",
+			want:            util.IsLinuxOS(),
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -539,9 +539,10 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 	}
 
 	diskParams := ManagedDiskParameters{
-		Incremental:   true, //true by default
-		Tags:          make(map[string]string),
-		VolumeContext: parameters,
+		DeviceSettings: make(map[string]string),
+		Incremental:    true, //true by default
+		Tags:           make(map[string]string),
+		VolumeContext:  parameters,
 	}
 	for k, v := range parameters {
 		switch strings.ToLower(k) {

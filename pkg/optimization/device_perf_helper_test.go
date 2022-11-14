@@ -44,6 +44,11 @@ func TestIsValidPerfProfile(t *testing.T) {
 			profile: "basic",
 			want:    true,
 		},
+		{
+			name:    "advanced profile should return true",
+			profile: "advanced",
+			want:    true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -150,6 +155,11 @@ func TestIsPerfTuningEnabled(t *testing.T) {
 			name:    "incorrect profile should return false",
 			profile: "blah",
 			want:    false,
+		},
+		{
+			name:    "advanced profile should return true",
+			profile: "advanced",
+			want:    true,
 		},
 	}
 	for _, tt := range tests {
