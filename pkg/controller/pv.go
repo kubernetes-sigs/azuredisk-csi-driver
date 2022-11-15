@@ -101,7 +101,10 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 	ctx = logr.NewContext(ctx, logger)
 
 	// PV is deleted
-	if objectDeletionRequested(&pv) {
+	if deleteRequested, deleteAfter := objectDeletionRequested(&pv); deleteRequested {
+		if deleteAfter > 0 {
+			return reconcileAfter(deleteAfter, request.Name, r.controllerRetryInfo)
+		}
 		if err := r.cachedClient.Get(ctx, types.NamespacedName{Namespace: r.objectNamespace, Name: azVolumeName}, &azVolume); err != nil {
 			// AzVolume doesn't exist, so there is nothing for us to do
 			if errors.IsNotFound(err) {

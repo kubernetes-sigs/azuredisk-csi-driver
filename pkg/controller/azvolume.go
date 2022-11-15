@@ -111,7 +111,10 @@ func (r *ReconcileAzVolume) Reconcile(ctx context.Context, request reconcile.Req
 	}
 
 	// azVolume deletion
-	if objectDeletionRequested(azVolume) {
+	if deleteRequested, deleteAfter := objectDeletionRequested(azVolume); deleteRequested {
+		if deleteAfter > 0 {
+			return reconcileAfter(deleteAfter, request.Name, r.retryInfo)
+		}
 		if err := r.triggerDelete(ctx, azVolume); err != nil {
 			//If delete failed, requeue request
 			return reconcileReturnOnError(ctx, azVolume, "delete", err, r.retryInfo)
