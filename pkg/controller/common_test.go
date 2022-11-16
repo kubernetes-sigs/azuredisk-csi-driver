@@ -41,10 +41,12 @@ import (
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	diskscheme "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/scheme"
+	azdiskinformers "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils/mockclient"
 	util "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/watcher"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
@@ -302,10 +304,20 @@ var (
 
 type FakeDriverLifecycle struct {
 	driverUninstallState uint32
+	conditionWatcher     *watcher.ConditionWatcher
+	azDiskClient         azdisk.Interface
 }
 
 func (d FakeDriverLifecycle) IsDriverUninstall() bool {
 	return atomic.LoadUint32(&d.driverUninstallState) == 1
+}
+
+func (d FakeDriverLifecycle) GetConditionWatcher() *watcher.ConditionWatcher {
+	return d.conditionWatcher
+}
+
+func (d FakeDriverLifecycle) GetDiskClientSet() azdisk.Interface {
+	return d.azDiskClient
 }
 
 func getTestDiskURI(pvName string) string {
@@ -463,7 +475,20 @@ func initState(client client.Client, azClient azdisk.Interface, kubeClient kuber
 		DriverName:      consts.DefaultDriverName,
 		ObjectNamespace: consts.DefaultAzureDiskCrdNamespace,
 	}
-	c = NewSharedState(config, consts.WellKnownTopologyKey, &record.FakeRecorder{}, client, azClient, &FakeDriverLifecycle{}, kubeClient, nil)
+
+	azInformerFactory := azdiskinformers.NewSharedInformerFactory(azClient, consts.DefaultInformerResync)
+	azNodeInformer := azureutils.NewAzNodeInformer(azInformerFactory)
+	azVolumeAttachmentInformer := azureutils.NewAzVolumeAttachmentInformer(azInformerFactory)
+	azVolumeInformer := azureutils.NewAzVolumeInformer(azInformerFactory)
+
+	fakeDriverLifecycle := &FakeDriverLifecycle{
+		conditionWatcher: watcher.NewConditionWatcher(azInformerFactory, testNamespace, azNodeInformer, azVolumeAttachmentInformer, azVolumeInformer),
+		azDiskClient:     azClient,
+	}
+
+	azureutils.StartInformersAndWaitForCacheSync(context.Background(), azNodeInformer, azVolumeAttachmentInformer, azVolumeInformer)
+
+	c = NewSharedState(config, consts.WellKnownTopologyKey, &record.FakeRecorder{}, client, nil, kubeClient, fakeDriverLifecycle)
 	c.MarkRecoveryComplete()
 
 	for _, obj := range objs {

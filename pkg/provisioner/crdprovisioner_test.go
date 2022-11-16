@@ -155,43 +155,53 @@ var (
 func NewTestCrdProvisioner(controller *gomock.Controller) *CrdProvisioner {
 	fakeDiskClient := azdiskfakes.NewSimpleClientset()
 	fakeKubeClient := fakev1.NewSimpleClientset()
-	fakeCRDClient := crdfakes.NewSimpleClientset()
+	fakeCrdClient := crdfakes.NewSimpleClientset()
 
 	kubeInformerFactory := informers.NewSharedInformerFactory(fakeKubeClient, testResync)
 	azInformerFactory := azdiskinformers.NewSharedInformerFactory(fakeDiskClient, testResync)
-	crdInformerFactory := crdInformers.NewSharedInformerFactory(fakeCRDClient, consts.DefaultInformerResync)
+	crdInformerFactory := crdInformers.NewSharedInformerFactory(fakeCrdClient, consts.DefaultInformerResync)
 
-	crdProvisioner := &CrdProvisioner{
+	nodeInformer := azureutils.NewNodeInformer(kubeInformerFactory)
+	azNodeInformer := azureutils.NewAzNodeInformer(azInformerFactory)
+	azVolumeAttachmentInformer := azureutils.NewAzVolumeAttachmentInformer(azInformerFactory)
+	azVolumeInformer := azureutils.NewAzVolumeInformer(azInformerFactory)
+	crdInformer := azureutils.NewCrdInformer(crdInformerFactory)
+
+	conditionWatcher := watcher.NewConditionWatcher(azInformerFactory, testNamespace, azNodeInformer, azVolumeAttachmentInformer, azVolumeInformer, crdInformer)
+
+	c := &CrdProvisioner{
 		azDiskClient:     fakeDiskClient,
 		kubeClient:       fakeKubeClient,
-		crdClient:        fakeCRDClient,
+		crdClient:        fakeCrdClient,
 		namespace:        testNamespace,
-		conditionWatcher: watcher.New(context.Background(), fakeDiskClient, azInformerFactory, testNamespace),
-		azCachedReader: CachedReader{
-			azNamespace:  testNamespace,
-			kubeInformer: kubeInformerFactory,
-			azInformer:   azInformerFactory,
-		},
+		conditionWatcher: conditionWatcher,
+		azCachedReader:   NewCachedReader(kubeInformerFactory, azInformerFactory, testNamespace),
 	}
+	azureutils.StartInformersAndWaitForCacheSync(context.Background(), nodeInformer, azNodeInformer, azVolumeAttachmentInformer, azVolumeInformer)
 
-	crdProvisioner.startWatchingObjs(context.Background(), kubeInformerFactory, crdInformerFactory, &crdProvisioner.driverUninstallState)
-	return crdProvisioner
+	return c
 }
 
 func UpdateTestCrdProvisionerWithNewClient(provisioner *CrdProvisioner, azDiskClient azdisk.Interface, kubeClient kubeClientset.Interface, crdClient crdClientset.Interface) {
 	azInformerFactory := azdiskinformers.NewSharedInformerFactory(azDiskClient, testResync)
-	provisioner.azDiskClient = azDiskClient
 	kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, testResync)
-	provisioner.kubeClient = kubeClient
 	crdInformerFactory := crdInformers.NewSharedInformerFactory(crdClient, consts.DefaultInformerResync)
 
-	provisioner.conditionWatcher = watcher.New(context.Background(), azDiskClient, azInformerFactory, testNamespace)
-	provisioner.azCachedReader = CachedReader{
-		azNamespace:  testNamespace,
-		azInformer:   azInformerFactory,
-		kubeInformer: kubeInformerFactory,
-	}
-	provisioner.startWatchingObjs(context.Background(), kubeInformerFactory, crdInformerFactory, &provisioner.driverUninstallState)
+	nodeInformer := azureutils.NewNodeInformer(kubeInformerFactory)
+	azNodeInformer := azureutils.NewAzNodeInformer(azInformerFactory)
+	azVolumeAttachmentInformer := azureutils.NewAzVolumeAttachmentInformer(azInformerFactory)
+	azVolumeInformer := azureutils.NewAzVolumeInformer(azInformerFactory)
+	crdInformer := azureutils.NewCrdInformer(crdInformerFactory)
+
+	conditionWatcher := watcher.NewConditionWatcher(azInformerFactory, testNamespace, azNodeInformer, azVolumeAttachmentInformer, azVolumeInformer, crdInformer)
+
+	provisioner.azDiskClient = azDiskClient
+	provisioner.kubeClient = kubeClient
+	provisioner.crdClient = crdClient
+	provisioner.conditionWatcher = conditionWatcher
+	provisioner.azCachedReader = NewCachedReader(kubeInformerFactory, azInformerFactory, testNamespace)
+
+	azureutils.StartInformersAndWaitForCacheSync(context.Background(), nodeInformer, azNodeInformer, azVolumeAttachmentInformer, azVolumeInformer)
 }
 
 func TestCrdProvisionerCreateVolume(t *testing.T) {
