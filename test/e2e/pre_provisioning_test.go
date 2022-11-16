@@ -252,8 +252,10 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			skipIfOnAzureStackCloud()
 			req := makeCreateVolumeReq("premium-v2-disk", 100)
 			req.Parameters = map[string]string{
-				"skuName":  "PremiumV2_LRS",
-				"location": "eastus", // eastus2euap, swedencentral, westeurope
+				"skuName":           "PremiumV2_LRS",
+				"location":          "eastus", // eastus2euap, swedencentral, westeurope
+				"DiskIOPSReadWrite": "3000",
+				"DiskMBpsReadWrite": "200",
 			}
 			req.VolumeCapabilities[0].AccessType = &csi.VolumeCapability_Block{
 				Block: &csi.VolumeCapability_BlockVolume{},
