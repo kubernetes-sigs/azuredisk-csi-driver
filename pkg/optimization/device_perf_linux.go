@@ -29,6 +29,8 @@ import (
 	"strings"
 
 	"k8s.io/klog/v2"
+
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
 type DeviceHelper struct {
@@ -36,7 +38,7 @@ type DeviceHelper struct {
 }
 
 func NewDeviceHelper() *DeviceHelper {
-	return &DeviceHelper{blockDeviceRootPath: blockDeviceRootPathDefault}
+	return &DeviceHelper{blockDeviceRootPath: consts.BlockDeviceRootPathLinux}
 }
 
 func (deviceHelper *DeviceHelper) DiskSupportsPerfOptimization(diskPerfProfile, diskAccountType string) bool {
@@ -45,16 +47,10 @@ func (deviceHelper *DeviceHelper) DiskSupportsPerfOptimization(diskPerfProfile, 
 
 // OptimizeDiskPerformance optimizes device performance by setting tuning block device settings
 func (deviceHelper *DeviceHelper) OptimizeDiskPerformance(nodeInfo *NodeInfo, devicePath,
-	perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr string) (err error) {
-	klog.V(2).Infof("OptimizeDiskPerformance: Tuning settings for %s", devicePath)
+	perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr string, deviceSettingsFromCtx map[string]string) (err error) {
 
 	if nodeInfo == nil {
 		return fmt.Errorf("OptimizeDiskPerformance: Node info is not provided. Error: invalid parameter")
-	}
-
-	queueDepth, nrRequests, scheduler, maxSectorsKb, readAheadKb, err := getOptimalDeviceSettings(nodeInfo, DiskSkuMap, perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr)
-	if err != nil {
-		return fmt.Errorf("OptimizeDiskPerformance: Failed to get optimal settings for profile %s accountType %s device %s Error: %v", perfProfile, accountType, devicePath, err)
 	}
 
 	deviceName, err := getDeviceName(devicePath)
@@ -62,62 +58,78 @@ func (deviceHelper *DeviceHelper) OptimizeDiskPerformance(nodeInfo *NodeInfo, de
 		return fmt.Errorf("OptimizeDiskPerformance: Could not get deviceName for %s. Error: %v", devicePath, err)
 	}
 
-	klog.V(2).Infof("OptimizeDiskPerformance: Tuning settings for devicePath %s, deviceName %s, profile %s queueDepth %s nrRequests %s scheduler %s maxSectorsKb %s readAheadKb %s",
-		devicePath,
-		deviceName,
+	var deviceSettings map[string]string
+	deviceRoot := filepath.Join(deviceHelper.blockDeviceRootPath, deviceName)
+	switch strings.ToLower(perfProfile) {
+	case consts.PerfProfileBasic:
+		deviceSettings, err = getDeviceSettingsForBasicProfile(nodeInfo,
+			deviceRoot, perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr)
+	case consts.PerfProfileAdvanced:
+		deviceSettings, err = getDeviceSettingsForAdvancedProfile(deviceRoot, deviceSettingsFromCtx)
+	default:
+		return fmt.Errorf("OptimizeDiskPerformance: Invalid perfProfile %s", perfProfile)
+	}
+
+	if err != nil {
+		return fmt.Errorf("OptimizeDiskPerformance: Failed to optimize disk for deviceName %s perfProfile %s. Error: %v",
+			deviceName, perfProfile, err)
+	}
+
+	klog.V(2).Infof("OptimizeDiskPerformance: Tuning settings for deviceRoot %s perfProfile %s accountType %s deviceSettings %v",
+		deviceRoot,
 		perfProfile,
-		queueDepth,
-		nrRequests,
-		scheduler,
-		maxSectorsKb,
-		readAheadKb)
+		accountType,
+		deviceSettings)
+	return applyDeviceSettings(deviceRoot, deviceSettings)
+}
 
-	err = echoToFile(maxSectorsKb, filepath.Join(deviceHelper.blockDeviceRootPath, deviceName, "queue/max_sectors_kb"))
+func getDeviceSettingsForBasicProfile(nodeInfo *NodeInfo,
+	deviceRoot, perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr string) (deviceSettings map[string]string, err error) {
+	klog.V(2).Infof("getDeviceSettingsForBasicProfile: Getting settings for deviceRoot %s",
+		deviceRoot)
+	queueDepth, nrRequests, scheduler, maxSectorsKb, _, err := getOptimalDeviceSettings(nodeInfo, DiskSkuMap, perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr)
 	if err != nil {
-		return fmt.Errorf("OptimizeDiskPerformance: Could not set max_sectors_kb for device %s. Error: %v", deviceName, err)
+		return nil, fmt.Errorf("getDeviceSettingsForBasicProfile: Failed to get optimal settings for profile %s accountType %s. Error: %v", perfProfile, accountType, err)
 	}
 
-	err = echoToFile(scheduler, filepath.Join(deviceHelper.blockDeviceRootPath, deviceName, "queue/scheduler"))
-	if err != nil {
-		return fmt.Errorf("OptimizeDiskPerformance: Could not set queue/scheduler for device %s. Error: %v", deviceName, err)
+	deviceSettings = make(map[string]string)
+	deviceSettings[filepath.Join(deviceRoot, "queue/max_sectors_kb")] = maxSectorsKb
+	deviceSettings[filepath.Join(deviceRoot, "queue/scheduler")] = scheduler
+	deviceSettings[filepath.Join(deviceRoot, "device/queue_depth")] = queueDepth
+	deviceSettings[filepath.Join(deviceRoot, "queue/nr_requests")] = nrRequests
+	deviceSettings[filepath.Join(deviceRoot, "queue/read_ahead_kb")] = "8"
+
+	return deviceSettings, nil
+}
+
+func getDeviceSettingsForAdvancedProfile(deviceRoot string, deviceSettingsFromCtx map[string]string) (deviceSettings map[string]string, err error) {
+	klog.V(2).Infof("getDeviceSettingsForAdvancedProfile: Getting settings for deviceRoot %s deviceSettingsFromCtx %v",
+		deviceRoot,
+		deviceSettingsFromCtx)
+	deviceSettings = make(map[string]string)
+	for setting, value := range deviceSettingsFromCtx {
+		deviceSettings[filepath.Join(deviceRoot, setting)] = value
 	}
 
-	err = echoToFile("1", filepath.Join(deviceHelper.blockDeviceRootPath, deviceName, "queue/iosched/fifo_batch"))
-	if err != nil {
-		return fmt.Errorf("OptimizeDiskPerformance: Could not set queue/iosched/fifo_batch for device %s. Error: %v", deviceName, err)
+	return deviceSettings, nil
+}
+
+func applyDeviceSettings(deviceRoot string, deviceSettings map[string]string) (err error) {
+	if err = AreDeviceSettingsValid(deviceRoot, deviceSettings); err != nil {
+		return err
 	}
 
-	err = echoToFile("1", filepath.Join(deviceHelper.blockDeviceRootPath, deviceName, "queue/iosched/writes_starved"))
-	if err != nil {
-		return fmt.Errorf("OptimizeDiskPerformance: Could not set queue/iosched/writes_starved for device %s. Error: %v", deviceName, err)
+	for setting, value := range deviceSettings {
+		err = echoToFile(value, setting)
+		if err != nil {
+			return fmt.Errorf("applyDeviceSettings: Could not set %s with value %s. Error: %v",
+				setting,
+				value,
+				err)
+		}
 	}
 
-	err = echoToFile(queueDepth, filepath.Join(deviceHelper.blockDeviceRootPath, deviceName, "device/queue_depth"))
-	if err != nil {
-		return fmt.Errorf("OptimizeDiskPerformance: Could not set queue/queue_depth for device %s. Error: %v", deviceName, err)
-	}
-
-	err = echoToFile(nrRequests, filepath.Join(deviceHelper.blockDeviceRootPath, deviceName, "queue/nr_requests"))
-	if err != nil {
-		return fmt.Errorf("OptimizeDiskPerformance: Could not set queue/nr_requests for device %s. Error: %v", deviceName, err)
-	}
-
-	err = echoToFile(readAheadKb, filepath.Join(deviceHelper.blockDeviceRootPath, deviceName, "queue/read_ahead_kb"))
-	if err != nil {
-		return fmt.Errorf("OptimizeDiskPerformance: Could not set queue/read_ahead_kb for device %s. Error: %v", deviceName, err)
-	}
-
-	err = echoToFile("0", filepath.Join(deviceHelper.blockDeviceRootPath, deviceName, "queue/wbt_lat_usec"))
-	if err != nil {
-		return fmt.Errorf("OptimizeDiskPerformance: Could not set queue/wbt_lat_usec for device %s. Error: %v", deviceName, err)
-	}
-
-	err = echoToFile("0", filepath.Join(deviceHelper.blockDeviceRootPath, deviceName, "queue/rotational"))
-	if err != nil {
-		return fmt.Errorf("OptimizeDiskPerformance: Could not set queue/rotational for device %s. Error: %v", deviceName, err)
-	}
-
-	return err
+	return nil
 }
 
 // getDeviceName gets the device name from the device lunpath
@@ -193,12 +205,12 @@ func getOptimalDeviceSettings(nodeInfo *NodeInfo, diskSkus map[string]map[string
 	qdMaxSeqBw := math.Ceil(maxBurstBw * latencyPerIoToGetMaxBwInSec / rsMinSeqIo)
 
 	// queue_depth needed for random IOs to hit IOPS reserved for them
-	qdMaxRandomIops := math.Ceil(maxBurstIops * iopsHeadRoom * latencyForSmallRandOperationInSec)
+	qdMaxRandomIops := math.Ceil(maxBurstIops * latencyForSmallRandOperationInSec)
 
 	maxSectorsKb = fmt.Sprintf("%g", rsMinSeqIo)
 	scheduler = "mq-deadline"
 
-	qdTotal := fmt.Sprintf("%g", math.Ceil(qdMaxRandomIops+qdMaxSeqBw))
+	qdTotal := fmt.Sprintf("%g", math.Ceil(math.Max(((qdMaxRandomIops*iopsHeadRoom)+qdMaxSeqBw), qdMaxRandomIops)))
 	queueDepth = qdTotal
 	nrRequests = qdTotal
 

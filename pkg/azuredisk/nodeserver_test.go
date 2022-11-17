@@ -561,7 +561,7 @@ func TestNodeStageVolume(t *testing.T) {
 					DiskSupportsPerfOptimization(gomock.Any(), gomock.Any()).
 					Return(true)
 				mockoptimization.EXPECT().
-					OptimizeDiskPerformance(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					OptimizeDiskPerformance(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 					Return(nil).
 					After(diskSupportsPerfOptimizationCall)
 
@@ -589,7 +589,7 @@ func TestNodeStageVolume(t *testing.T) {
 					DiskSupportsPerfOptimization(gomock.Any(), gomock.Any()).
 					Return(true)
 				mockoptimization.EXPECT().
-					OptimizeDiskPerformance(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					OptimizeDiskPerformance(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 					Return(fmt.Errorf("failed to optimize device performance")).
 					After(diskSupportsPerfOptimizationCall)
 

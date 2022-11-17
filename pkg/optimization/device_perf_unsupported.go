@@ -31,6 +31,6 @@ func (deviceHelper *DeviceHelper) DiskSupportsPerfOptimization(diskPerfProfile, 
 }
 
 func (deviceHelper *DeviceHelper) OptimizeDiskPerformance(nodeInfo *NodeInfo,
-	devicePath, perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr string) (err error) {
+	devicePath, perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr string, deviceSettingsFromCtx map[string]string) (err error) {
 	return fmt.Errorf("OptimizeDiskPerformance not implemented")
 }

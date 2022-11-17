@@ -437,6 +437,28 @@ func TestCreateVolume(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "[Failure] advanced perfProfile fails if no device settings provided",
+			testFunc: func(t *testing.T) {
+				d, _ := NewFakeDriver(t)
+				d.setPerfOptimizationEnabled(true)
+				stdCapacityRangetest := &csi.CapacityRange{
+					RequiredBytes: volumehelper.GiBToBytes(10),
+					LimitBytes:    volumehelper.GiBToBytes(15),
+				}
+				req := &csi.CreateVolumeRequest{
+					Name:               testVolumeName,
+					VolumeCapabilities: stdVolumeCapabilities,
+					CapacityRange:      stdCapacityRangetest,
+					Parameters:         map[string]string{"perfProfile": "advanced"},
+				}
+				_, err := d.CreateVolume(context.Background(), req)
+				expectedErr := status.Error(codes.InvalidArgument, "AreDeviceSettingsValid: No deviceSettings passed")
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, tc.testFunc)

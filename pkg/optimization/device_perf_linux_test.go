@@ -20,13 +20,22 @@ limitations under the License.
 package optimization
 
 import (
+	"fmt"
 	"os"
 	"path"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
 func Test_OptimizeDiskPerformance(t *testing.T) {
+	cwd, err := os.Getwd()
+	require.NoError(t, err)
+
 	deviceHelper := NewDeviceHelper()
 	tests := []struct {
 		name                string
@@ -39,6 +48,7 @@ func Test_OptimizeDiskPerformance(t *testing.T) {
 		diskBwMbpsStr       string
 		wantErr             bool
 		blockDeviceRootPath string
+		volumeContext       map[string]string
 		mkdirPath           []string
 	}{
 		{
@@ -51,7 +61,7 @@ func Test_OptimizeDiskPerformance(t *testing.T) {
 			diskIopsStr:         "100",
 			diskBwMbpsStr:       "100",
 			wantErr:             true,
-			blockDeviceRootPath: ".",
+			blockDeviceRootPath: cwd,
 			mkdirPath:           []string{""},
 		},
 		{
@@ -64,7 +74,7 @@ func Test_OptimizeDiskPerformance(t *testing.T) {
 			diskIopsStr:         "100",
 			diskBwMbpsStr:       "100",
 			wantErr:             true,
-			blockDeviceRootPath: ".",
+			blockDeviceRootPath: cwd,
 			mkdirPath:           []string{"queue"},
 		},
 		{
@@ -77,7 +87,7 @@ func Test_OptimizeDiskPerformance(t *testing.T) {
 			diskIopsStr:         "100",
 			diskBwMbpsStr:       "100",
 			wantErr:             true,
-			blockDeviceRootPath: ".",
+			blockDeviceRootPath: cwd,
 			mkdirPath:           []string{"queue/iosched"},
 		},
 		{
@@ -90,7 +100,7 @@ func Test_OptimizeDiskPerformance(t *testing.T) {
 			diskIopsStr:         "100",
 			diskBwMbpsStr:       "100",
 			wantErr:             false,
-			blockDeviceRootPath: ".",
+			blockDeviceRootPath: cwd,
 			mkdirPath:           []string{"queue/iosched", "device"},
 		},
 	}
@@ -108,7 +118,7 @@ func Test_OptimizeDiskPerformance(t *testing.T) {
 				}
 			}
 			if deviceHelper.DiskSupportsPerfOptimization(tt.perfProfile, tt.accountType) {
-				if err := deviceHelper.OptimizeDiskPerformance(tt.nodeInfo, tt.devicePath, tt.perfProfile, tt.accountType, tt.diskSizeGibStr, tt.diskIopsStr, tt.diskBwMbpsStr); (err != nil) != tt.wantErr {
+				if err := deviceHelper.OptimizeDiskPerformance(tt.nodeInfo, tt.devicePath, tt.perfProfile, tt.accountType, tt.diskSizeGibStr, tt.diskIopsStr, tt.diskBwMbpsStr, tt.volumeContext); (err != nil) != tt.wantErr {
 					t.Errorf("DeviceHelper.OptimizeDiskPerformance() error = %v, wantErr %v", err, tt.wantErr)
 				}
 			}
@@ -200,6 +210,141 @@ func Test_getOptimalDeviceSettings(t *testing.T) {
 				if gotReadAheadKb == "" {
 					t.Errorf("getOptimalDeviceSettings() failed for gotReadAheadKb")
 				}
+			}
+		})
+	}
+}
+
+func Test_getDeviceSettingsForBasicProfile(t *testing.T) {
+	accountType := "Premium_LRS"
+	tier := "Premium"
+	sizeP20 := "P20"
+	sizeP30 := "P30"
+	diskSkus := make(map[string]map[string]DiskSkuInfo)
+	diskSkus[strings.ToLower(accountType)] = map[string]DiskSkuInfo{}
+	diskSkus[strings.ToLower(accountType)][strings.ToLower(sizeP20)] = DiskSkuInfo{StorageAccountType: accountType, StorageTier: tier, DiskSize: sizeP20, MaxIops: 100, MaxBurstIops: 100, MaxBwMbps: 500, MaxBurstBwMbps: 500, MaxSizeGiB: 1024}
+	diskSkus[strings.ToLower(accountType)][strings.ToLower(sizeP30)] = DiskSkuInfo{StorageAccountType: accountType, StorageTier: tier, DiskSize: sizeP30, MaxIops: 200, MaxBurstIops: 200, MaxBwMbps: 1000, MaxBurstBwMbps: 1000, MaxSizeGiB: 4096}
+	skuName := "Standard_DS14"
+	nodeInfo := &NodeInfo{SkuName: skuName, MaxBurstIops: 51200, MaxIops: 51200, MaxBwMbps: 512, MaxBurstBwMbps: 512}
+
+	tests := []struct {
+		name             string
+		perfProfile      string
+		accountType      string
+		DiskSizeGibStr   string
+		diskIopsStr      string
+		diskBwMbpsStr    string
+		wantQueueDepth   string
+		wantNrRequests   string
+		wantScheduler    string
+		wantMaxSectorsKb string
+		wantReadAheadKb  string
+		wantErr          bool
+		node             *NodeInfo
+	}{
+		{
+			name:           "Should return valid disk perf settings",
+			perfProfile:    "basic",
+			accountType:    "Premium_LRS",
+			DiskSizeGibStr: "512",
+			diskIopsStr:    "100",
+			diskBwMbpsStr:  "100",
+			wantScheduler:  "mq-deadline",
+			wantErr:        false,
+			node:           nodeInfo,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			deviceSettings, err := getDeviceSettingsForBasicProfile(tt.node, "", tt.perfProfile, tt.accountType, tt.DiskSizeGibStr, tt.diskIopsStr, tt.diskBwMbpsStr)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("getDeviceSettingsForBasicProfile() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			} else if !tt.wantErr {
+				if len(deviceSettings) == 0 {
+					t.Errorf("getDeviceSettingsForBasicProfile() failed for get deviceSettings")
+				}
+			}
+		})
+	}
+}
+
+func Test_getDeviceSettingsForAdvancedProfile(t *testing.T) {
+	tests := []struct {
+		name     string
+		wantErr  bool
+		node     *NodeInfo
+		settings map[string]string
+	}{
+		{
+			name:    "Should return valid disk perf settings if settings are passed",
+			wantErr: false,
+			settings: map[string]string{
+				"device/nr_request": "8",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			deviceSettings, err := getDeviceSettingsForAdvancedProfile("/sys/block/sda", tt.settings)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("getDeviceSettingsForAdvancedProfile() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			} else if !tt.wantErr {
+				if len(deviceSettings) == 0 {
+					t.Errorf("getDeviceSettingsForAdvancedProfile() failed for get deviceSettings")
+				}
+			}
+		})
+	}
+}
+
+func Test_applyDeviceSettings(t *testing.T) {
+	tests := []struct {
+		name          string
+		wantErr       bool
+		settings      map[string]string
+		expectedError error
+	}{
+		{
+			name:          "Should fail if nil settings provided",
+			wantErr:       true,
+			settings:      nil,
+			expectedError: fmt.Errorf("AreDeviceSettingsValid: No deviceSettings passed"),
+		},
+		{
+			name:          "Should fail if empty settings provided",
+			wantErr:       true,
+			settings:      map[string]string{},
+			expectedError: fmt.Errorf("AreDeviceSettingsValid: No deviceSettings passed"),
+		},
+		{
+			name:    "Should fail if setting with non absolute path provided",
+			wantErr: true,
+			settings: map[string]string{
+				consts.DummyBlockDevicePathLinux + "/../device/nr_request": "8",
+			},
+			expectedError: fmt.Errorf("AreDeviceSettingsValid: Setting %s is not a valid file path under %s",
+				consts.DummyBlockDevicePathLinux+"/../device/nr_request",
+				consts.DummyBlockDevicePathLinux),
+		},
+		{
+			name:    "Should fail if setting with incorrect prefix provided",
+			wantErr: true,
+			settings: map[string]string{
+				"/sys/block/sdaa/device/nr_request": "8",
+			},
+			expectedError: fmt.Errorf("AreDeviceSettingsValid: Setting %s is not a valid file path under %s",
+				"/sys/block/sdaa/device/nr_request",
+				consts.DummyBlockDevicePathLinux),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := applyDeviceSettings(consts.DummyBlockDevicePathLinux, tt.settings)
+			if tt.wantErr {
+				assert.Equal(t, tt.expectedError, err)
+				return
 			}
 		})
 	}

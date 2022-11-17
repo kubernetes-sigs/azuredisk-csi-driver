@@ -1146,6 +1146,50 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		}
 		test.Run(cs, ns)
 	})
+
+	ginkgo.It("should succeed with advanced perfProfile [disk.csi.azure.com] [Windows]", func() {
+		skipIfUsingInTreeVolumePlugin()
+		skipIfOnAzureStackCloud()
+		skipIfTestingInWindowsCluster()
+		pods := []testsuites.PodDetails{
+			{
+				Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
+				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+					{
+						ClaimSize: "10Gi",
+						MountOptions: []string{
+							"barrier=1",
+							"acl",
+						},
+						VolumeMount: testsuites.VolumeMountDetails{
+							NameGenerate:      "test-volume-",
+							MountPathGenerate: "/mnt/test-",
+						},
+						VolumeAccessMode: v1.ReadWriteOnce,
+					},
+				}, isMultiZone),
+				IsWindows:    isWindowsCluster,
+				WinServerVer: winServerVer,
+			},
+		}
+		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
+			CSIDriver: testDriver,
+			Pods:      pods,
+			StorageClassParameters: map[string]string{
+				"skuname":                             "StandardSSD_LRS",
+				"perfProfile":                         "advanced",
+				"device-setting/queue/max_sectors_kb": "211",
+				"device-setting/queue/scheduler":      "none",
+				"device-setting/device/queue_depth":   "17",
+				"device-setting/queue/nr_requests":    "44",
+				"device-setting/queue/read_ahead_kb":  "256",
+				"device-setting/queue/wbt_lat_usec":   "0",
+				"device-setting/queue/rotational":     "0",
+			},
+		}
+
+		test.Run(cs, ns)
+	})
 }
 
 // Normalize volumes by adding allowed topology values and WaitForFirstConsumer binding mode if we are testing in a multi-az cluster

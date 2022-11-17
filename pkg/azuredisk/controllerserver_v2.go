@@ -42,6 +42,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/cloud-provider-azure/pkg/metrics"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
@@ -71,6 +72,13 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 
 	if !azureutils.IsValidVolumeCapabilities(volCaps, diskParams.MaxShares) {
 		return nil, status.Error(codes.InvalidArgument, "Volume capability not supported")
+	}
+	isAdvancedPerfProfile := strings.EqualFold(diskParams.PerfProfile, azureconstants.PerfProfileAdvanced)
+	// If perfProfile is set to advanced and no/invalid device settings are provided, fail the request
+	if d.getPerfOptimizationEnabled() && isAdvancedPerfProfile {
+		if err := optimization.AreDeviceSettingsValid(azureconstants.DummyBlockDevicePathLinux, diskParams.DeviceSettings); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
 	}
 
 	if acquired := d.volumeLocks.TryAcquire(name); !acquired {

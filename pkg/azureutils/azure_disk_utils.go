@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -102,6 +103,7 @@ var (
 type ManagedDiskParameters struct {
 	AccountType             string
 	CachingMode             v1.AzureDataDiskCachingMode
+	DeviceSettings          map[string]string
 	DiskAccessID            string
 	DiskEncryptionSetID     string
 	DiskEncryptionType      string
@@ -537,9 +539,10 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 	}
 
 	diskParams := ManagedDiskParameters{
-		Incremental:   true, //true by default
-		Tags:          make(map[string]string),
-		VolumeContext: parameters,
+		DeviceSettings: make(map[string]string),
+		Incremental:    true, //true by default
+		Tags:           make(map[string]string),
+		VolumeContext:  parameters,
 	}
 	for k, v := range parameters {
 		switch strings.ToLower(k) {
@@ -623,7 +626,13 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 		case consts.ZonedField:
 			// no op, only for backward compatibility with in-tree driver
 		default:
-			return diskParams, fmt.Errorf("invalid parameter %s in storage class", k)
+			// accept all device settings params
+			// device settings need to start with azureconstants.DeviceSettingsKeyPrefix
+			if deviceSettings, err := optimization.GetDeviceSettingFromAttribute(k); err == nil {
+				diskParams.DeviceSettings[filepath.Join(consts.DummyBlockDevicePathLinux, deviceSettings)] = v
+			} else {
+				return diskParams, fmt.Errorf("invalid parameter %s in storage class", k)
+			}
 		}
 	}
 	return diskParams, nil

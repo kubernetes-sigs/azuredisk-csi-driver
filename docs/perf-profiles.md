@@ -19,7 +19,7 @@
 Azure storage publishes [guidelines](https://docs.microsoft.com/en-us/azure/virtual-machines/premium-storage-performance)
 for the applications to configure the disks' guest OS settings to drive maximum IOPS and Bandwidth.
 
-Azure Disk CSI driver v2 allows customers to tweak the guest OS device settings using perfProfile feature.
+Azure Disk CSI driver allows customers to tweak the guest OS device settings using perfProfile feature.
 Users can chose from a list of `perfProfile` to tweak the IO behavior of their block devices in accordance with their workloads.
 
 `perfProfile` can be set at the `StorageClass` level and applies to all the disks created using the `StorageClass`
@@ -42,7 +42,7 @@ metadata:
 provisioner: disk.csi.azure.com
 parameters:
   skuName: Premium_LRS
-  perfProfile: Basic # available values: "None" (default) and "Basic". The V2 driver adds "Advanced". These values are case insensitive.
+  perfProfile: Basic # available values: "None"(default), "Basic", "Advanced" (case insensitive)
 reclaimPolicy: Delete
 volumeBindingMode: Immediate
 allowVolumeExpansion: true
@@ -50,7 +50,7 @@ allowVolumeExpansion: true
 
 ### Advanced
 
-> Available with v2.0.0-alpha.1+
+> Available with v1.25.0+
 
 `Advanced` `perfProfile` gives users the ultimate flexibility to tweak any device setting they desire, to optimize the disk IOs for their workload.
 
@@ -116,11 +116,7 @@ allowVolumeExpansion: true
 
 Consider `StorageClass` `sc-test-postgresql-p20-optimized` in below example, which can optimize a p20 azure disk to get increased combined throughput, IOPS and better IO latency for a PostresSQL inspired fio workload.
 
-To try the optimizations, follow below step:
-
-- Create an aks cluster with `Standard_D4s_v4` VM SKU nodepool.
-
-- Install azuredisk CSI driver v2 using instructions [here](https://github.com/kubernetes-sigs/azuredisk-csi-driver/tree/main_v2/charts).
+To try the optimizations, follow below steps:
 
 - Install kubestone.
 
@@ -306,16 +302,6 @@ kubectl delete namespace kubestone --ignore-not-found
 
 kustomize build github.com/xridge/kubestone/config/default?ref=v0.5.0 | sed "s/kubestone:latest/kubestone:v0.5.0/" | kubectl delete --ignore-not-found -f -
 ```
-
-- To delete StorageClass
-
-```console
-kubectl delete sc sc-test-postgresql-p20 --ignore-not-found
-
-kubectl delete sc sc-test-postgresql-p20-optimized --ignore-not-found
-```
-
-- To uninstall azuredisk CSI driver v2 use instructions [here](https://github.com/kubernetes-sigs/azuredisk-csi-driver/tree/main_v2/charts)
 
 ## Limitations
 

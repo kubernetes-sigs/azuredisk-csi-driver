@@ -77,13 +77,12 @@ follow guide [here](./docs/install-driver-on-aks.md)
 - [Shared Disk](./deploy/example/sharedisk)
 - [Volume Limits](./deploy/example/volumelimits)
 - [fsGroupPolicy](./deploy/example/fsgroup)
-- [Tune disk performance on Linux](./docs/perf-profiles.md)
+- [Advanced disk performance tuning (Preview)](./docs/perf-profiles.md)
 
 #### New in V2
 
 - [Attachments Replicas for Faster Pod Failover (Preview)](./docs/design-v2.md)
   - See [pod failover demo](./deploy/example/failover/README.md) for example configuration.
-- [Advanced disk performance tuning (Preview)](./docs/perf-profiles.md)
 
 ### Troubleshooting
 
