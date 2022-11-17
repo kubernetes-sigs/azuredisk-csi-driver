@@ -227,6 +227,28 @@ func (fs *FlexScaleSet) UpdateVM(ctx context.Context, nodeName types.NodeName) e
 	return nil
 }
 
+// UpdateVMAsync updates a vm asynchronously
+func (fs *FlexScaleSet) UpdateVMAsync(ctx context.Context, nodeName types.NodeName) (*azure.Future, error) {
+	vmName := mapNodeNameToVMName(nodeName)
+	nodeResourceGroup, err := fs.GetNodeResourceGroup(vmName)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		_ = fs.DeleteCacheForNode(vmName)
+	}()
+
+	klog.V(2).Infof("azureDisk - update(%s): vm(%s)", nodeResourceGroup, vmName)
+
+	future, rerr := fs.VirtualMachinesClient.UpdateAsync(ctx, nodeResourceGroup, vmName, compute.VirtualMachineUpdate{}, "update_vm")
+	klog.V(2).Infof("azureDisk - update(%s): vm(%s) - returned with %v", nodeResourceGroup, vmName, rerr)
+	if rerr != nil {
+		return future, rerr.Error()
+	}
+	return future, nil
+}
+
 // GetDataDisks gets a list of data disks attached to the node.
 func (fs *FlexScaleSet) GetDataDisks(nodeName types.NodeName, crt azcache.AzureCacheReadType) ([]compute.DataDisk, *string, error) {
 	vm, err := fs.getVmssFlexVM(string(nodeName), crt)

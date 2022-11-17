@@ -242,6 +242,34 @@ func (ss *ScaleSet) UpdateVM(ctx context.Context, nodeName types.NodeName) error
 	return nil
 }
 
+// UpdateVMAsync updates a vm asynchronously
+func (ss *ScaleSet) UpdateVMAsync(ctx context.Context, nodeName types.NodeName) (*azure.Future, error) {
+	vmName := mapNodeNameToVMName(nodeName)
+	vm, err := ss.getVmssVM(vmName, azcache.CacheReadTypeDefault)
+	if err != nil {
+		return nil, err
+	}
+
+	nodeResourceGroup, err := ss.GetNodeResourceGroup(vmName)
+	if err != nil {
+		return nil, err
+	}
+
+	// Invalidate the cache right after updating
+	defer func() {
+		_ = ss.DeleteCacheForNode(vmName)
+	}()
+
+	klog.V(2).Infof("azureDisk - update(%s): vm(%s)", nodeResourceGroup, nodeName)
+	future, rerr := ss.VirtualMachineScaleSetVMsClient.UpdateAsync(ctx, nodeResourceGroup, vm.VMSSName, vm.InstanceID, compute.VirtualMachineScaleSetVM{}, "update_vmss_instance")
+
+	klog.V(2).Infof("azureDisk - update(%s): vm(%s) - returned with %v", nodeResourceGroup, nodeName, rerr)
+	if rerr != nil {
+		return future, rerr.Error()
+	}
+	return future, nil
+}
+
 // GetDataDisks gets a list of data disks attached to the node.
 func (ss *ScaleSet) GetDataDisks(nodeName types.NodeName, crt azcache.AzureCacheReadType) ([]compute.DataDisk, *string, error) {
 	vm, err := ss.getVmssVM(string(nodeName), crt)
