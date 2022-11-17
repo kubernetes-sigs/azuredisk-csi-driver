@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
+	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/Azure/go-autorest/autorest/date"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
@@ -715,6 +716,10 @@ func TestPublishVolume(t *testing.T) {
 		AnyTimes()
 	provisioner.GetCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
 		UpdateAsync(gomock.Any(), testResourceGroup, testVMName, gomock.Any(), gomock.Any()).
+		Return(&azure.Future{}, nil).
+		AnyTimes()
+	provisioner.GetCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
+		UpdateAsync(gomock.Any(), testResourceGroup, testVMName, gomock.Any(), gomock.Any()).
 		Return(nil, nil).
 		AnyTimes()
 	provisioner.GetCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
@@ -725,6 +730,11 @@ func TestPublishVolume(t *testing.T) {
 	provisioner.GetCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
 		Get(gomock.Any(), testResourceGroup, missingVMName, gomock.Any()).
 		Return(compute.VirtualMachine{}, notFoundError).
+		AnyTimes()
+
+	provisioner.GetCloud().FutureParser().(*provider.MockFutureParser).EXPECT().
+		ConfigAccepted(gomock.Any()).
+		Return(true).
 		AnyTimes()
 
 	tests := []struct {

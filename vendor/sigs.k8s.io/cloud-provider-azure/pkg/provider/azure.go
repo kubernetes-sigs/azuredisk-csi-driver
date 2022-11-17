@@ -1405,6 +1405,10 @@ func (az *Cloud) ShouldNodeExcludedFromLoadBalancer(nodeName string) (bool, erro
 	return az.excludeLoadBalancerNodes.Has(nodeName), nil
 }
 
+func (az *Cloud) FutureParser() FutureParser {
+	return az.futureParser
+}
+
 func isNodeReady(node *v1.Node) bool {
 	for _, cond := range node.Status.Conditions {
 		if cond.Type == v1.NodeReady && cond.Status == v1.ConditionTrue {

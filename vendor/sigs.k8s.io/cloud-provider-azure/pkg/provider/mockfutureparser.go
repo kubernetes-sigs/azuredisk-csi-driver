@@ -46,16 +46,16 @@ func (m *MockFutureParser) EXPECT() *MockfutureParserMockRecorder {
 	return m.recorder
 }
 
-// configAccepted mocks base method
-func (m *MockFutureParser) configAccepted(future *azure.Future) bool {
+// ConfigAccepted mocks base method
+func (m *MockFutureParser) ConfigAccepted(future *azure.Future) bool {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "configAccepted", future)
+	ret := m.ctrl.Call(m, "ConfigAccepted", future)
 	ret0, _ := ret[0].(bool)
 	return ret0
 }
 
-// configAccepted indicates an expected call of configAccepted
-func (mr *MockfutureParserMockRecorder) configAccepted(future interface{}) *gomock.Call {
+// ConfigAccepted indicates an expected call of ConfigAccepted
+func (mr *MockfutureParserMockRecorder) ConfigAccepted(future interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "configAccepted", reflect.TypeOf((*MockFutureParser)(nil).configAccepted), future)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ConfigAccepted", reflect.TypeOf((*MockFutureParser)(nil).ConfigAccepted), future)
 }

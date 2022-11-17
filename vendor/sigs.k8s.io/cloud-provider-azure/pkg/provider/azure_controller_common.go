@@ -102,7 +102,7 @@ type controllerCommon struct {
 	cloud                 *Cloud
 	attachDiskProcessor   *batch.Processor
 	detachDiskProcessor   *batch.Processor
-	futureParser          futureParser
+	futureParser          FutureParser
 }
 
 // AttachDiskOptions attach disk options
@@ -374,7 +374,7 @@ func (c *controllerCommon) attachDiskBatchToNode(ctx context.Context, subscripti
 		// if no error was returned, attach was successful
 		if err == nil {
 			klog.V(2).Infof("azuredisk - successfully attached disks to node %s: %s", nodeName, diskMap)
-		} else if !errors.Is(err, context.DeadlineExceeded) && c.futureParser.configAccepted(future) {
+		} else if !errors.Is(err, context.DeadlineExceeded) && c.futureParser.ConfigAccepted(future) {
 			err = retry.NewPartialUpdateError(err.Error())
 		}
 
@@ -672,7 +672,7 @@ func (c *controllerCommon) checkDiskExists(ctx context.Context, diskURI string) 
 
 func (c *controllerCommon) vmUpdateRequired(future *azure.Future, err error) bool {
 	errCode := getErrorCode(err)
-	return c.futureParser.configAccepted(future) && errCode != nil && *errCode == consts.OperationPreemptedErrorCode
+	return c.futureParser.ConfigAccepted(future) && errCode != nil && *errCode == consts.OperationPreemptedErrorCode
 }
 
 func getValidCreationData(subscriptionID, resourceGroup, sourceResourceID, sourceType string) (compute.CreationData, error) {
@@ -730,13 +730,13 @@ func getErrorCode(err error) *string {
 	return &matches[1]
 }
 
-type futureParser interface {
-	configAccepted(future *azure.Future) bool
+type FutureParser interface {
+	ConfigAccepted(future *azure.Future) bool
 }
 
 type controllerFutureParser struct{}
 
-func (c *controllerFutureParser) configAccepted(future *azure.Future) bool {
+func (c *controllerFutureParser) ConfigAccepted(future *azure.Future) bool {
 	// if status code indicates success, the storage profile change was committed
 	return future != nil && future.Response() != nil && future.Response().StatusCode/100 == 2
 }
