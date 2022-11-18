@@ -34,7 +34,7 @@ ifndef PUBLISH
 override IMAGE_VERSION := $(IMAGE_VERSION)-$(GIT_COMMIT)
 endif
 endif
-IMAGE_TAG ?= $(REGISTRY)/$(IMAGE_NAME):$(IMAGE_VERSION)
+CSI_IMAGE_TAG ?= $(REGISTRY)/$(IMAGE_NAME):$(IMAGE_VERSION)
 IMAGE_TAG_LATEST = $(REGISTRY)/$(IMAGE_NAME):latest
 REV = $(shell git describe --long --tags --dirty)
 BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -115,7 +115,7 @@ integration-test-v2: azuredisk-v2
 
 .PHONY: e2e-bootstrap
 e2e-bootstrap: install-helm
-	docker pull $(IMAGE_TAG) || make container-all push-manifest
+	docker pull $(CSI_IMAGE_TAG) || make container-all push-manifest
 ifdef TEST_WINDOWS
 	helm install azuredisk-csi-driver charts/${CHART_VERSION}/azuredisk-csi-driver --namespace kube-system --wait --timeout=15m -v=5 --debug \
 		${E2E_HELM_OPTIONS} \
@@ -164,14 +164,14 @@ azuredisk-darwin:
 
 .PHONY: container
 container: azuredisk
-	docker build --no-cache -t $(IMAGE_TAG) --output=type=docker -f ./pkg/azurediskplugin/Dockerfile .
+	docker build --no-cache -t $(CSI_IMAGE_TAG) --output=type=docker -f ./pkg/azurediskplugin/Dockerfile .
 
 .PHONY: container-linux
 container-linux:
 	docker buildx build . \
 		--pull \
 		--output=type=$(OUTPUT_TYPE) \
-		--tag $(IMAGE_TAG)-linux-$(ARCH) \
+		--tag $(CSI_IMAGE_TAG)-linux-$(ARCH) \
 		--file ./pkg/azurediskplugin/Dockerfile \
 		--platform="linux/$(ARCH)" \
 		--build-arg ARCH=${ARCH} \
@@ -183,7 +183,7 @@ container-windows:
 		--pull \
 		--output=type=$(OUTPUT_TYPE) \
 		--platform="windows/$(ARCH)" \
-		--tag $(IMAGE_TAG)-windows-$(OSVERSION)-$(ARCH) \
+		--tag $(CSI_IMAGE_TAG)-windows-$(OSVERSION)-$(ARCH) \
 		--file ./pkg/azurediskplugin/Windows.Dockerfile \
 		--build-arg ARCH=${ARCH} \
 		--build-arg PLUGIN_NAME=${PLUGIN_NAME} \
@@ -210,26 +210,26 @@ endif
 
 .PHONY: push-manifest
 push-manifest:
-	docker manifest create --amend $(IMAGE_TAG) $(foreach osarch, $(ALL_OS_ARCH), $(IMAGE_TAG)-${osarch})
+	docker manifest create --amend $(CSI_IMAGE_TAG) $(foreach osarch, $(ALL_OS_ARCH), $(CSI_IMAGE_TAG)-${osarch})
 	# add "os.version" field to windows images (based on https://github.com/kubernetes/kubernetes/blob/master/build/pause/Makefile)
 	set -x; \
 	for arch in $(ALL_ARCH.windows); do \
 		for osversion in $(ALL_OSVERSIONS.windows); do \
 			BASEIMAGE=mcr.microsoft.com/windows/nanoserver:$${osversion}; \
 			full_version=`docker manifest inspect $${BASEIMAGE} | jq -r '.manifests[0].platform["os.version"]'`; \
-			docker manifest annotate --os windows --arch $${arch} --os-version $${full_version} $(IMAGE_TAG) $(IMAGE_TAG)-windows-$${osversion}-$${arch}; \
+			docker manifest annotate --os windows --arch $${arch} --os-version $${full_version} $(CSI_IMAGE_TAG) $(CSI_IMAGE_TAG)-windows-$${osversion}-$${arch}; \
 		done; \
 	done
-	docker manifest push --purge $(IMAGE_TAG)
-	docker manifest inspect $(IMAGE_TAG)
+	docker manifest push --purge $(CSI_IMAGE_TAG)
+	docker manifest inspect $(CSI_IMAGE_TAG)
 ifdef PUBLISH
-	docker manifest create --amend $(IMAGE_TAG_LATEST) $(foreach osarch, $(ALL_OS_ARCH), $(IMAGE_TAG)-${osarch})
+	docker manifest create --amend $(IMAGE_TAG_LATEST) $(foreach osarch, $(ALL_OS_ARCH), $(CSI_IMAGE_TAG)-${osarch})
 	set -x; \
 	for arch in $(ALL_ARCH.windows); do \
 		for osversion in $(ALL_OSVERSIONS.windows); do \
 			BASEIMAGE=mcr.microsoft.com/windows/nanoserver:$${osversion}; \
 			full_version=`docker manifest inspect $${BASEIMAGE} | jq -r '.manifests[0].platform["os.version"]'`; \
-			docker manifest annotate --os windows --arch $${arch} --os-version $${full_version} $(IMAGE_TAG_LATEST) $(IMAGE_TAG)-windows-$${osversion}-$${arch}; \
+			docker manifest annotate --os windows --arch $${arch} --os-version $${full_version} $(IMAGE_TAG_LATEST) $(CSI_IMAGE_TAG)-windows-$${osversion}-$${arch}; \
 		done; \
 	done
 	docker manifest inspect $(IMAGE_TAG_LATEST)
