@@ -89,6 +89,11 @@ var (
 				}},
 		},
 	}
+
+	// this is to workaround capz node taint issue due to CCM not installed by default
+	capzTolerations = []v1.Toleration{
+		{Key: "node.cloudprovider.kubernetes.io/uninitialized", Operator: "Equal", Value: "true", Effect: v1.TaintEffectNoSchedule},
+	}
 )
 
 type TestStorageClass struct {
@@ -476,6 +481,7 @@ func NewTestDeployment(c clientset.Interface, ns *v1.Namespace, replicaCount int
 								},
 							},
 						},
+						Tolerations: capzTolerations,
 					},
 				},
 			},
@@ -670,6 +676,7 @@ func NewTestStatefulset(c clientset.Interface, ns *v1.Namespace, command string,
 							},
 						},
 						RestartPolicy: v1.RestartPolicyAlways,
+						Tolerations:   capzTolerations,
 					},
 				},
 				VolumeClaimTemplates: volumeClaimTest,
@@ -798,6 +805,7 @@ func NewTestPod(c clientset.Interface, ns *v1.Namespace, command string, isWindo
 				RestartPolicy:                v1.RestartPolicyNever,
 				Volumes:                      make([]v1.Volume, 0),
 				AutomountServiceAccountToken: to.BoolPtr(false),
+				Tolerations:                  capzTolerations,
 			},
 		},
 	}
