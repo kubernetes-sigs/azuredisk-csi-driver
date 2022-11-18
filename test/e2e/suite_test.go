@@ -58,6 +58,7 @@ var (
 	isTestingMigration        = os.Getenv(testMigrationEnvVar) != ""
 	isWindowsCluster          = os.Getenv(testWindowsEnvVar) != ""
 	winServerVer              = os.Getenv(testWinServerVerEnvVar)
+	k8sVersion                = os.Getenv("KUBERNETES_VERSION")
 	isAzureStackCloud         = strings.EqualFold(os.Getenv(cloudNameEnvVar), "AZURESTACKCLOUD")
 	location                  string
 	supportsZRS               bool
@@ -195,13 +196,16 @@ var _ = ginkgo.AfterSuite(func() {
 		if isAzureStackCloud {
 			cloud = "azurestackcloud"
 		}
-		createExampleDeployment := testCmd{
-			command:  "bash",
-			args:     []string{"hack/verify-examples.sh", os, cloud},
-			startLog: "create example deployments",
-			endLog:   "example deployments created",
+		if !strings.EqualFold(k8sVersion, "latest") {
+			// workaround capz taint issue
+			createExampleDeployment := testCmd{
+				command:  "bash",
+				args:     []string{"hack/verify-examples.sh", os, cloud},
+				startLog: "create example deployments",
+				endLog:   "example deployments created",
+			}
+			execTestCmd([]testCmd{createExampleDeployment})
 		}
-		execTestCmd([]testCmd{createExampleDeployment})
 
 		azurediskLog := testCmd{
 			command:  "bash",
@@ -235,14 +239,17 @@ var _ = ginkgo.AfterSuite(func() {
 			}
 			execTestCmd([]testCmd{installDriver})
 
-			// run example deployment again
-			createExampleDeployment := testCmd{
-				command:  "bash",
-				args:     []string{"hack/verify-examples.sh", os, cloud},
-				startLog: "create example deployments#2",
-				endLog:   "example deployments#2 created",
+			if !strings.EqualFold(k8sVersion, "latest") {
+				// workaround capz taint issue
+				// run example deployment again
+				createExampleDeployment := testCmd{
+					command:  "bash",
+					args:     []string{"hack/verify-examples.sh", os, cloud},
+					startLog: "create example deployments#2",
+					endLog:   "example deployments#2 created",
+				}
+				execTestCmd([]testCmd{createExampleDeployment})
 			}
-			execTestCmd([]testCmd{createExampleDeployment})
 
 			// uninstall Azure Disk CSI Driver deployment scripts test
 			uninstallDriver := testCmd{
