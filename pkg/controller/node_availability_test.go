@@ -81,6 +81,7 @@ func TestNodeAvailabilityController(t *testing.T) {
 					newPod,
 				)
 
+				addTestNodeInAvailableAttachmentsMap(controller.SharedState, testSchedulableNode1.Name, testNodeAvailableAttachmentCount)
 				mockClients(controller.cachedClient.(*mockclient.MockClient), controller.azClient, controller.kubeClient)
 				controller.priorityReplicaRequestsQueue.Push(context.TODO(), &ReplicaRequest{VolumeName: testPersistentVolume0Name, Priority: 1})
 

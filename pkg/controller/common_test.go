@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/golang/mock/gomock"
@@ -197,6 +198,9 @@ var (
 	}
 
 	testVolumeAttachmentName = "test-attachment"
+
+	testNodeAvailableAttachmentCount   = 8
+	testNodeNoAvailableAttachmentCount = 0
 
 	testVolumeAttachment = storagev1.VolumeAttachment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -750,4 +754,10 @@ func mockClients(mockClient *mockclient.MockClient, azVolumeClient azdisk.Interf
 			return nil
 		}).
 		AnyTimes()
+}
+
+func addTestNodeInAvailableAttachmentsMap(sharedState *SharedState, nodeName string, capacity int) {
+	var count atomic.Int32
+	count.Store(int32(capacity))
+	sharedState.availableAttachmentsMap.Store(nodeName, &count)
 }

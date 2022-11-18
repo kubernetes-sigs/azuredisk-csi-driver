@@ -41,6 +41,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
 	csitranslator "k8s.io/csi-translation-lib/plugins"
+	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/features"
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
@@ -77,6 +78,7 @@ type SharedState struct {
 	crdClient                     crdClientset.Interface
 	conditionWatcher              *watcher.ConditionWatcher
 	azureDiskCSITranslator        csitranslator.InTreePlugin
+	availableAttachmentsMap       sync.Map
 }
 
 func NewSharedState(driverName, objectNamespace, topologyKey string, eventRecorder record.EventRecorder, cachedClient client.Client, azClient azdisk.Interface, kubeClient kubernetes.Interface, crdClient crdClientset.Interface) *SharedState {
@@ -860,7 +862,7 @@ func (c *SharedState) selectNodesPerTopology(ctx context.Context, nodes []v1.Nod
 		}
 	}
 
-	return selectedNodes[:min(len(selectedNodes), numReplicas)], nil
+	return selectedNodes, nil
 }
 
 func (c *SharedState) getNodesWithReplica(ctx context.Context, volumeName string) ([]string, error) {
@@ -1173,12 +1175,14 @@ func (c *SharedState) createReplicas(ctx context.Context, remainingReplicas int,
 	for _, node := range nodes {
 		if err = c.createReplicaAzVolumeAttachment(ctx, volumeID, node, volumeContext); err != nil {
 			w.Logger().Errorf(err, "failed to create replica AzVolumeAttachment for volume %s", volumeName)
-			//Push to queue the failed replica number
-			request := ReplicaRequest{VolumeName: volumeName, Priority: remainingReplicas}
-			c.priorityReplicaRequestsQueue.Push(ctx, &request)
-			return err
+			// continue to try attachment with next node
+			continue
 		}
 		remainingReplicas--
+		if remainingReplicas <= 0 {
+			// no more remainingReplicas, don't need to create replica AzVolumeAttachment
+			break
+		}
 	}
 
 	if remainingReplicas > 0 {
@@ -1228,16 +1232,17 @@ func (c *SharedState) getNodesForReplica(ctx context.Context, volumeName string,
 	}
 
 	filtered := []string{}
-	numFiltered := 0
 	for _, node := range nodes {
-		if numFiltered >= numReplica {
-			break
-		}
 		if skipSet[node] {
 			continue
 		}
+		// if the node has no capacity for disk attachment, we should skip it
+		remainingCapacity, nodeExists := c.availableAttachmentsMap.Load(node)
+		if !nodeExists || remainingCapacity == nil || remainingCapacity.(*atomic.Int32).Load() <= int32(0) {
+			w.Logger().V(5).Infof("skip node(%s) because it has no capacity for disk attachment", node)
+			continue
+		}
 		filtered = append(filtered, node)
-		numFiltered++
 	}
 
 	return filtered, nil
@@ -1564,4 +1569,59 @@ func (c *SharedState) getNodesTopologySelector(ctx context.Context, nodes []v1.N
 		topologySelector = topologySelector.Add(*topologyRequirement)
 	}
 	return topologySelector
+}
+
+func (c *SharedState) addNodeToAvailableAttachmentsMap(ctx context.Context, nodeName string, nodeLables map[string]string) {
+	if _, ok := c.availableAttachmentsMap.Load(nodeName); !ok {
+		capacity, err := azureutils.GetNodeRemainingDiskCount(ctx, c.cachedClient, nodeName)
+		if err != nil {
+			klog.Errorf("Failed to get node(%s) remaining disk count with error: %v", nodeName, err)
+			// store the maximum capacity if an entry for the node doesn't exist.
+			capacity, err = azureutils.GetNodeMaxDiskCountWithLabels(nodeLables)
+			if err != nil {
+				klog.Errorf("Failed to add node(%s) in availableAttachmentsMap, because get capacity of available attachments is failed with error: %v", nodeName, err)
+				return
+			}
+		}
+		var count atomic.Int32
+		count.Store(int32(capacity))
+		klog.Infof("Added node(%s) to availableAttachmentsMap with capacity: %d", nodeName, capacity)
+		c.availableAttachmentsMap.LoadOrStore(nodeName, &count)
+	}
+}
+
+func (c *SharedState) deleteNodeFromAvailableAttachmentsMap(ctx context.Context, node string) {
+	klog.Infof("Deleted node(%s) from availableAttachmentsMap", node)
+	c.availableAttachmentsMap.Delete(node)
+}
+func (c *SharedState) decrementAttachmentCount(ctx context.Context, node string) bool {
+	remainingCapacity, nodeExists := c.availableAttachmentsMap.Load(node)
+	if nodeExists && remainingCapacity != nil {
+		currentCapacity := int32(0)
+		for {
+			currentCapacity = remainingCapacity.(*atomic.Int32).Load()
+			if currentCapacity == int32(0) || remainingCapacity.(*atomic.Int32).CompareAndSwap(currentCapacity, currentCapacity-1) {
+				if currentCapacity == int32(0) {
+					klog.Errorf("Failed to decrement attachment count for node(%s), because no available attachment", node)
+					return false
+				}
+				return true
+			}
+		}
+	}
+
+	klog.Errorf("Failed to decrement attachment count, because node(%s) not found", node)
+
+	return false
+}
+func (c *SharedState) incrementAttachmentCount(ctx context.Context, node string) bool {
+	remainingCapacity, nodeExists := c.availableAttachmentsMap.Load(node)
+	if nodeExists && remainingCapacity != nil {
+		remainingCapacity.(*atomic.Int32).Add(1)
+		return true
+	}
+
+	klog.Errorf("Failed to increment attachment count, because node(%s) not found", node)
+
+	return false
 }

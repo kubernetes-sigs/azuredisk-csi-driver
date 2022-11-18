@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 
 	"github.com/golang/mock/gomock"
@@ -1246,6 +1247,245 @@ func TestFilterAndSortNodes(t *testing.T) {
 			sharedState := tt.setupFunc(t, mockCtl)
 			nodes, err := sharedState.filterAndSortNodes(context.TODO(), tt.nodes, tt.pods, tt.volumes)
 			tt.verifyFunc(t, nodes, err)
+		})
+	}
+}
+
+func TestAddNodeToAvailableAttachmentsMap(t *testing.T) {
+	tests := []struct {
+		description string
+		nodeName    string
+		nodeLables  map[string]string
+		setupFunc   func(*testing.T, *gomock.Controller) *SharedState
+		verifyFunc  func(*testing.T, any, bool)
+	}{
+		{
+			description: "[Success] Should add node to AvailableAttachmentsMap when node is in cache",
+			nodeName:    testNode0.Name,
+			nodeLables:  testNode0.GetLabels(),
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *SharedState {
+				testSharedState := NewTestSharedState(mockCtl,
+					testNamespace,
+					&testNode0,
+				)
+				testSharedState.cachedClient.(*mockclient.MockClient).EXPECT().
+					Get(gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(testNode1NotFoundError).AnyTimes()
+
+				return testSharedState
+			},
+			verifyFunc: func(t *testing.T, remainingCapacity any, nodeExists bool) {
+				require.True(t, nodeExists)
+				require.NotNil(t, remainingCapacity)
+			},
+		},
+		{
+			description: "[Success] Should add node to AvailableAttachmentsMap when node is not found in cache",
+			nodeName:    testNode0.Name,
+			nodeLables:  testNode0.GetLabels(),
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *SharedState {
+				testSharedState := NewTestSharedState(mockCtl,
+					testNamespace,
+					&testNode0,
+				)
+
+				testSharedState.cachedClient.(*mockclient.MockClient).EXPECT().
+					Get(gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(nil).AnyTimes()
+				testSharedState.cachedClient.(*mockclient.MockClient).EXPECT().
+					List(gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(nil).AnyTimes()
+
+				return testSharedState
+			},
+			verifyFunc: func(t *testing.T, remainingCapacity any, nodeExists bool) {
+				require.True(t, nodeExists)
+				require.NotNil(t, remainingCapacity)
+			},
+		},
+	}
+	for _, test := range tests {
+		tt := test
+		t.Run(tt.description, func(t *testing.T) {
+			mockCtl := gomock.NewController(t)
+			defer mockCtl.Finish()
+			sharedState := tt.setupFunc(t, mockCtl)
+			sharedState.addNodeToAvailableAttachmentsMap(context.TODO(), tt.nodeName, tt.nodeLables)
+			remainingCapacity, nodeExists := sharedState.availableAttachmentsMap.Load(tt.nodeName)
+			tt.verifyFunc(t, remainingCapacity, nodeExists)
+		})
+	}
+}
+
+func TestDeleteNodeToAvailableAttachmentsMap(t *testing.T) {
+	tests := []struct {
+		description string
+		nodeName    string
+		setupFunc   func(*testing.T, *gomock.Controller) *SharedState
+		verifyFunc  func(*testing.T, any, bool)
+	}{
+		{
+			description: "[Success] Should delete node from AvailableAttachmentsMap",
+			nodeName:    testNode0.Name,
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *SharedState {
+				testSharedState := NewTestSharedState(mockCtl,
+					testNamespace,
+					&testNode0,
+				)
+
+				return testSharedState
+			},
+			verifyFunc: func(t *testing.T, remainingCapacity any, nodeExists bool) {
+				require.False(t, nodeExists)
+				require.Nil(t, remainingCapacity)
+			},
+		},
+	}
+	for _, test := range tests {
+		tt := test
+		t.Run(tt.description, func(t *testing.T) {
+			mockCtl := gomock.NewController(t)
+			defer mockCtl.Finish()
+			sharedState := tt.setupFunc(t, mockCtl)
+			sharedState.deleteNodeFromAvailableAttachmentsMap(context.TODO(), tt.nodeName)
+			remainingCapacity, nodeExists := sharedState.availableAttachmentsMap.Load(tt.nodeName)
+			tt.verifyFunc(t, remainingCapacity, nodeExists)
+		})
+	}
+}
+
+func TestDecrementAttachmentCount(t *testing.T) {
+	tests := []struct {
+		description string
+		nodeName    string
+		setupFunc   func(*testing.T, *gomock.Controller) *SharedState
+		verifyFunc  func(*testing.T, any, bool, bool)
+	}{
+		{
+			description: "[Success] Should decrement for the node's remaining capacity of disk attachment in AvailableAttachmentsMap",
+			nodeName:    testNode0.Name,
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *SharedState {
+				testSharedState := NewTestSharedState(mockCtl,
+					testNamespace,
+					&testNode0,
+				)
+
+				addTestNodeInAvailableAttachmentsMap(testSharedState, testNode0.Name, testNodeAvailableAttachmentCount)
+
+				return testSharedState
+			},
+			verifyFunc: func(t *testing.T, remainingCapacity any, nodeExists bool, isDerementSucceeded bool) {
+				require.True(t, nodeExists)
+				require.True(t, isDerementSucceeded)
+				require.NotNil(t, remainingCapacity)
+				require.Equal(t, remainingCapacity.(*atomic.Int32).Load(), int32(7))
+			},
+		},
+		{
+			description: "[Failure] Should return false when decrement for the node's remaining capacity of disk attachment in AvailableAttachmentsMap but the node dose not exist",
+			nodeName:    testNode0.Name,
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *SharedState {
+				testSharedState := NewTestSharedState(mockCtl,
+					testNamespace,
+					&testNode0,
+				)
+
+				return testSharedState
+			},
+			verifyFunc: func(t *testing.T, remainingCapacity any, nodeExists bool, isDerementSucceeded bool) {
+				require.False(t, nodeExists)
+				require.False(t, isDerementSucceeded)
+				require.Nil(t, remainingCapacity)
+			},
+		},
+		{
+			description: "[Failure] Should return false when decrement for the node's remaining capacity of disk attachment in AvailableAttachmentsMap is 0",
+			nodeName:    testNode0.Name,
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *SharedState {
+				testSharedState := NewTestSharedState(mockCtl,
+					testNamespace,
+					&testNode0,
+				)
+
+				addTestNodeInAvailableAttachmentsMap(testSharedState, testNode0.Name, testNodeNoAvailableAttachmentCount)
+
+				return testSharedState
+			},
+			verifyFunc: func(t *testing.T, remainingCapacity any, nodeExists bool, isDerementSucceeded bool) {
+				require.True(t, nodeExists)
+				require.False(t, isDerementSucceeded)
+				require.NotNil(t, remainingCapacity)
+				require.Equal(t, remainingCapacity.(*atomic.Int32).Load(), int32(0))
+			},
+		},
+	}
+	for _, test := range tests {
+		tt := test
+		t.Run(tt.description, func(t *testing.T) {
+			mockCtl := gomock.NewController(t)
+			defer mockCtl.Finish()
+			sharedState := tt.setupFunc(t, mockCtl)
+			isDerementSucceeded := sharedState.decrementAttachmentCount(context.TODO(), tt.nodeName)
+			remainingCapacity, nodeExists := sharedState.availableAttachmentsMap.Load(tt.nodeName)
+			tt.verifyFunc(t, remainingCapacity, nodeExists, isDerementSucceeded)
+		})
+	}
+}
+
+func TestIncrementAttachmentCount(t *testing.T) {
+	tests := []struct {
+		description string
+		nodeName    string
+		setupFunc   func(*testing.T, *gomock.Controller) *SharedState
+		verifyFunc  func(*testing.T, any, bool, bool)
+	}{
+		{
+			description: "[Success] Should increment for the node's remaining capacity of disk attachment in AvailableAttachmentsMap",
+			nodeName:    testNode0.Name,
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *SharedState {
+				testSharedState := NewTestSharedState(mockCtl,
+					testNamespace,
+					&testNode0,
+				)
+
+				addTestNodeInAvailableAttachmentsMap(testSharedState, testNode0.Name, testNodeNoAvailableAttachmentCount)
+
+				return testSharedState
+			},
+			verifyFunc: func(t *testing.T, remainingCapacity any, nodeExists bool, isIncrementSucceeded bool) {
+				require.True(t, nodeExists)
+				require.True(t, isIncrementSucceeded)
+				require.NotNil(t, remainingCapacity)
+				require.Equal(t, remainingCapacity.(*atomic.Int32).Load(), int32(1))
+			},
+		},
+		{
+			description: "[Failure] Should return false when increment for the node's remaining capacity of disk attachment in AvailableAttachmentsMap but the node dose not exist",
+			nodeName:    testNode0.Name,
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *SharedState {
+				testSharedState := NewTestSharedState(mockCtl,
+					testNamespace,
+					&testNode0,
+				)
+
+				return testSharedState
+			},
+			verifyFunc: func(t *testing.T, remainingCapacity any, nodeExists bool, isIncrementSucceeded bool) {
+				require.False(t, nodeExists)
+				require.False(t, isIncrementSucceeded)
+				require.Nil(t, remainingCapacity)
+			},
+		},
+	}
+	for _, test := range tests {
+		tt := test
+		t.Run(tt.description, func(t *testing.T) {
+			mockCtl := gomock.NewController(t)
+			defer mockCtl.Finish()
+			sharedState := tt.setupFunc(t, mockCtl)
+			isIncrementSucceeded := sharedState.incrementAttachmentCount(context.TODO(), tt.nodeName)
+			remainingCapacity, nodeExists := sharedState.availableAttachmentsMap.Load(tt.nodeName)
+			tt.verifyFunc(t, remainingCapacity, nodeExists, isIncrementSucceeded)
 		})
 	}
 }

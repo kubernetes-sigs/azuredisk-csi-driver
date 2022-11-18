@@ -86,6 +86,9 @@ func TestReplicaReconcile(t *testing.T) {
 					&testPod0,
 					&replicaAttachment)
 
+				addTestNodeInAvailableAttachmentsMap(controller.SharedState, testNode0.Name, testNodeAvailableAttachmentCount)
+				addTestNodeInAvailableAttachmentsMap(controller.SharedState, testNode1.Name, testNodeAvailableAttachmentCount)
+
 				mockClients(controller.cachedClient.(*mockclient.MockClient), controller.azClient, controller.kubeClient)
 				return controller
 			},
@@ -138,6 +141,9 @@ func TestReplicaReconcile(t *testing.T) {
 					&testPod0,
 					&replicaAttachment)
 
+				addTestNodeInAvailableAttachmentsMap(controller.SharedState, testNode0.Name, testNodeAvailableAttachmentCount)
+				addTestNodeInAvailableAttachmentsMap(controller.SharedState, testNode1.Name, testNodeAvailableAttachmentCount)
+
 				mockClients(controller.cachedClient.(*mockclient.MockClient), controller.azClient, controller.kubeClient)
 				return controller
 			},
@@ -174,6 +180,9 @@ func TestReplicaReconcile(t *testing.T) {
 					&testNode0,
 					&testNode1,
 					&testReplicaAzVolumeAttachment)
+
+				addTestNodeInAvailableAttachmentsMap(controller.SharedState, testNode0.Name, testNodeAvailableAttachmentCount)
+				addTestNodeInAvailableAttachmentsMap(controller.SharedState, testNode1.Name, testNodeAvailableAttachmentCount)
 
 				mockClients(controller.cachedClient.(*mockclient.MockClient), controller.azClient, controller.kubeClient)
 				return controller
@@ -219,6 +228,9 @@ func TestReplicaReconcile(t *testing.T) {
 					&testNode1,
 					&testPod0,
 					replicaAttachment)
+
+				addTestNodeInAvailableAttachmentsMap(controller.SharedState, testNode0.Name, testNodeAvailableAttachmentCount)
+				addTestNodeInAvailableAttachmentsMap(controller.SharedState, testNode1.Name, testNodeAvailableAttachmentCount)
 
 				mockClients(controller.cachedClient.(*mockclient.MockClient), controller.azClient, controller.kubeClient)
 				return controller
@@ -277,6 +289,9 @@ func TestReplicaReconcile(t *testing.T) {
 					&testPod0,
 					replicaAttachment)
 
+				addTestNodeInAvailableAttachmentsMap(controller.SharedState, testNode0.Name, testNodeAvailableAttachmentCount)
+				addTestNodeInAvailableAttachmentsMap(controller.SharedState, testNode1.Name, testNodeAvailableAttachmentCount)
+
 				mockClients(controller.cachedClient.(*mockclient.MockClient), controller.azClient, controller.kubeClient)
 				return controller
 			},
@@ -318,6 +333,9 @@ func TestReplicaReconcile(t *testing.T) {
 					&testNode0,
 					&testNode1,
 					&testReplicaAzVolumeAttachment)
+
+				addTestNodeInAvailableAttachmentsMap(controller.SharedState, testNode0.Name, testNodeAvailableAttachmentCount)
+				addTestNodeInAvailableAttachmentsMap(controller.SharedState, testNode1.Name, testNodeAvailableAttachmentCount)
 
 				mockClients(controller.cachedClient.(*mockclient.MockClient), controller.azClient, controller.kubeClient)
 				return controller
@@ -374,6 +392,9 @@ func TestReplicaReconcile(t *testing.T) {
 					&testNode1,
 					&testPod0,
 					replicaAttachment)
+
+				addTestNodeInAvailableAttachmentsMap(controller.SharedState, testNode0.Name, testNodeAvailableAttachmentCount)
+				addTestNodeInAvailableAttachmentsMap(controller.SharedState, testNode1.Name, testNodeAvailableAttachmentCount)
 
 				mockClients(controller.cachedClient.(*mockclient.MockClient), controller.azClient, controller.kubeClient)
 

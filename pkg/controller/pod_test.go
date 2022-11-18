@@ -79,6 +79,8 @@ func TestPodReconcile(t *testing.T) {
 					&testNode0,
 				)
 
+				addTestNodeInAvailableAttachmentsMap(controller.SharedState, testNode0.Name, testNodeAvailableAttachmentCount)
+
 				mockClients(controller.cachedClient.(*mockclient.MockClient), controller.azClient, controller.kubeClient)
 				return controller
 			},
@@ -122,6 +124,9 @@ func TestPodReconcile(t *testing.T) {
 					&testNode1,
 					&testPersistentVolume0,
 					newPod)
+
+				addTestNodeInAvailableAttachmentsMap(controller.SharedState, testNode0.Name, testNodeAvailableAttachmentCount)
+				addTestNodeInAvailableAttachmentsMap(controller.SharedState, testNode1.Name, testNodeAvailableAttachmentCount)
 
 				mockClients(controller.cachedClient.(*mockclient.MockClient), controller.azClient, controller.kubeClient)
 				return controller
@@ -177,6 +182,10 @@ func TestPodReconcile(t *testing.T) {
 					&testNode1,
 					&testNode2,
 					newPod)
+
+				addTestNodeInAvailableAttachmentsMap(controller.SharedState, testNode0.Name, testNodeAvailableAttachmentCount)
+				addTestNodeInAvailableAttachmentsMap(controller.SharedState, testNode1.Name, testNodeAvailableAttachmentCount)
+				addTestNodeInAvailableAttachmentsMap(controller.SharedState, testNode2.Name, testNodeAvailableAttachmentCount)
 
 				mockClients(controller.cachedClient.(*mockclient.MockClient), controller.azClient, controller.kubeClient)
 				return controller
@@ -239,6 +248,10 @@ func TestPodReconcile(t *testing.T) {
 					&testNode2,
 					newPod0,
 					newPod1)
+
+				addTestNodeInAvailableAttachmentsMap(controller.SharedState, testNode0.Name, testNodeAvailableAttachmentCount)
+				addTestNodeInAvailableAttachmentsMap(controller.SharedState, testNode1.Name, testNodeAvailableAttachmentCount)
+				addTestNodeInAvailableAttachmentsMap(controller.SharedState, testNode2.Name, testNodeAvailableAttachmentCount)
 
 				mockClients(controller.cachedClient.(*mockclient.MockClient), controller.azClient, controller.kubeClient)
 				result, err := controller.Reconcile(context.TODO(), testPod0Request)
@@ -374,6 +387,9 @@ func TestPodRecover(t *testing.T) {
 					newAttachment0,
 					newAttachment1,
 					newPod)
+
+				addTestNodeInAvailableAttachmentsMap(controller.SharedState, testNode0.Name, testNodeAvailableAttachmentCount)
+				addTestNodeInAvailableAttachmentsMap(controller.SharedState, testNode1.Name, testNodeAvailableAttachmentCount)
 
 				mockClients(controller.cachedClient.(*mockclient.MockClient), controller.azClient, controller.kubeClient)
 				return controller

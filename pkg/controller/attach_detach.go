@@ -116,6 +116,8 @@ func (r *ReconcileAttachDetach) Reconcile(ctx context.Context, request reconcile
 		if err := r.removeFinalizer(ctx, azVolumeAttachment); err != nil {
 			return reconcileReturnOnError(ctx, azVolumeAttachment, "delete", err, r.retryInfo)
 		}
+		// deletion of azVolumeAttachment is succeeded, the node's remaining capacity of disk attachment should be increased by 1
+		r.incrementAttachmentCount(ctx, azVolumeAttachment.Spec.NodeName)
 		// detachment request
 	} else if volumeDetachRequested(azVolumeAttachment) {
 		if err := r.triggerDetach(ctx, azVolumeAttachment); err != nil {
@@ -285,6 +287,8 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 						r.eventRecorder.Eventf(pod.DeepCopyObject(), v1.EventTypeNormal, consts.ReplicaAttachmentSuccessEvent, "Replica mount for volume %s successfully attached to node %s", azVolumeAttachment.Spec.VolumeName, azVolumeAttachment.Spec.NodeName)
 					}
 				}
+				// the node's remaining capacity of disk attachment should be decreased by 1, since the disk attachment is succeeded.
+				r.decrementAttachmentCount(ctx, azVolumeAttachment.Spec.NodeName)
 			}
 
 			updateFunc := func(obj client.Object) error {
