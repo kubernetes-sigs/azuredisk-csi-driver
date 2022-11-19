@@ -514,7 +514,7 @@ func (c *CrdProvisioner) PublishVolume(
 			err = status.Errorf(codes.Internal, "failed to get AzVolumeAttachment CRI: %v", err)
 			return nil, err
 		}
-		// if replica AzVolumeAttachment CRI does not exist for the volume-node pair, create one
+		// if Replica AzVolumeAttachment CRI does not exist for the volume-node pair for failover, create a new Primary
 		creationNeeded = true
 		attachmentObj = &azdiskv1beta2.AzVolumeAttachment{
 			ObjectMeta: metav1.ObjectMeta{
