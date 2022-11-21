@@ -47,38 +47,38 @@ const (
 
 func TestCreateAzureCredentialFileOnAzurePublicCloud(t *testing.T) {
 	t.Run("WithAzureCredentials", func(t *testing.T) {
-		os.Setenv(tenantIDEnvVar, "")
-		os.Setenv(subscriptionIDEnvVar, "")
-		os.Setenv(aadClientIDEnvVar, "")
-		os.Setenv(aadClientSecretEnvVar, "")
-		os.Setenv(resourceGroupEnvVar, testResourceGroup)
-		os.Setenv(locationEnvVar, testLocation)
-		os.Setenv(vmTypeEnvVar, testVMType)
+		t.Setenv(tenantIDEnvVar, "")
+		t.Setenv(subscriptionIDEnvVar, "")
+		t.Setenv(aadClientIDEnvVar, "")
+		t.Setenv(aadClientSecretEnvVar, "")
+		t.Setenv(resourceGroupEnvVar, testResourceGroup)
+		t.Setenv(locationEnvVar, testLocation)
+		t.Setenv(vmTypeEnvVar, testVMType)
 		withAzureCredentials(t)
 	})
 
 	t.Run("WithEnvironmentVariables", func(t *testing.T) {
-		os.Setenv(tenantIDEnvVar, testTenantID)
-		os.Setenv(subscriptionIDEnvVar, testSubscriptionID)
-		os.Setenv(aadClientIDEnvVar, testAadClientID)
-		os.Setenv(aadClientSecretEnvVar, testAadClientSecret)
-		os.Setenv(resourceGroupEnvVar, testResourceGroup)
-		os.Setenv(locationEnvVar, testLocation)
-		os.Setenv(vmTypeEnvVar, testVMType)
+		t.Setenv(tenantIDEnvVar, testTenantID)
+		t.Setenv(subscriptionIDEnvVar, testSubscriptionID)
+		t.Setenv(aadClientIDEnvVar, testAadClientID)
+		t.Setenv(aadClientSecretEnvVar, testAadClientSecret)
+		t.Setenv(resourceGroupEnvVar, testResourceGroup)
+		t.Setenv(locationEnvVar, testLocation)
+		t.Setenv(vmTypeEnvVar, testVMType)
 		withEnvironmentVariables(t)
 	})
 }
 
 func TestCreateAzureCredentialFileOnAzureStackCloud(t *testing.T) {
 	t.Run("WithEnvironmentVariables", func(t *testing.T) {
-		os.Setenv(cloudNameEnvVar, "AzureStackCloud")
-		os.Setenv(tenantIDEnvVar, testTenantID)
-		os.Setenv(subscriptionIDEnvVar, testSubscriptionID)
-		os.Setenv(aadClientIDEnvVar, testAadClientID)
-		os.Setenv(aadClientSecretEnvVar, testAadClientSecret)
-		os.Setenv(resourceGroupEnvVar, testResourceGroup)
-		os.Setenv(locationEnvVar, testLocation)
-		os.Setenv(vmTypeEnvVar, testVMType)
+		t.Setenv(cloudNameEnvVar, "AzureStackCloud")
+		t.Setenv(tenantIDEnvVar, testTenantID)
+		t.Setenv(subscriptionIDEnvVar, testSubscriptionID)
+		t.Setenv(aadClientIDEnvVar, testAadClientID)
+		t.Setenv(aadClientSecretEnvVar, testAadClientSecret)
+		t.Setenv(resourceGroupEnvVar, testResourceGroup)
+		t.Setenv(locationEnvVar, testLocation)
+		t.Setenv(vmTypeEnvVar, testVMType)
 		withEnvironmentVariables(t)
 	})
 }
@@ -91,7 +91,7 @@ func withAzureCredentials(t *testing.T) {
 		assert.NoError(t, err)
 	}()
 
-	os.Setenv("AZURE_CREDENTIALS", tempFile.Name())
+	t.Setenv("AZURE_CREDENTIALS", tempFile.Name())
 
 	_, err = tempFile.Write([]byte(fakeAzureCredentials))
 	assert.NoError(t, err)

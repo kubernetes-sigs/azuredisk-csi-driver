@@ -40,7 +40,7 @@ var useDriverV2 = flag.Bool("temp-use-driver-v2", false, "A temporary flag to en
 
 func TestSanity(t *testing.T) {
 	// Set necessary env vars for creating azure credential file
-	os.Setenv("AZURE_VM_TYPE", vmType)
+	t.Setenv("AZURE_VM_TYPE", vmType)
 
 	creds, err := credentials.CreateAzureCredentialFile()
 	defer func() {
@@ -51,8 +51,8 @@ func TestSanity(t *testing.T) {
 	assert.NotNil(t, creds)
 
 	// Set necessary env vars for sanity test
-	os.Setenv("AZURE_CREDENTIAL_FILE", credentials.TempAzureCredentialFilePath)
-	os.Setenv("nodeid", nodeid)
+	t.Setenv("AZURE_CREDENTIAL_FILE", credentials.TempAzureCredentialFilePath)
+	t.Setenv("nodeid", nodeid)
 
 	azureClient, err := azure.GetAzureClient(creds.Cloud, creds.SubscriptionID, creds.AADClientID, creds.TenantID, creds.AADClientSecret)
 	assert.NoError(t, err)

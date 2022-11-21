@@ -93,13 +93,7 @@ func TestRun(t *testing.T) {
 					}
 				}()
 
-				originalCredFile, ok := os.LookupEnv(consts.DefaultAzureCredentialFileEnv)
-				if ok {
-					defer os.Setenv(consts.DefaultAzureCredentialFileEnv, originalCredFile)
-				} else {
-					defer os.Unsetenv(consts.DefaultAzureCredentialFileEnv)
-				}
-				os.Setenv(consts.DefaultAzureCredentialFileEnv, fakeCredFile)
+				t.Setenv(consts.DefaultAzureCredentialFileEnv, fakeCredFile)
 
 				d, _ := NewFakeDriver(t)
 				d.Run("tcp://127.0.0.1:0", "", true, true)
@@ -118,13 +112,7 @@ func TestRun(t *testing.T) {
 					}
 				}()
 
-				originalCredFile, ok := os.LookupEnv(consts.DefaultAzureCredentialFileEnv)
-				if ok {
-					defer os.Setenv(consts.DefaultAzureCredentialFileEnv, originalCredFile)
-				} else {
-					defer os.Unsetenv(consts.DefaultAzureCredentialFileEnv)
-				}
-				os.Setenv(consts.DefaultAzureCredentialFileEnv, fakeCredFile)
+				t.Setenv(consts.DefaultAzureCredentialFileEnv, fakeCredFile)
 
 				d, _ := NewFakeDriver(t)
 				d.setCloud(&azure.Cloud{})
@@ -145,13 +133,7 @@ func TestRun(t *testing.T) {
 					}
 				}()
 
-				originalCredFile, ok := os.LookupEnv(consts.DefaultAzureCredentialFileEnv)
-				if ok {
-					defer os.Setenv(consts.DefaultAzureCredentialFileEnv, originalCredFile)
-				} else {
-					defer os.Unsetenv(consts.DefaultAzureCredentialFileEnv)
-				}
-				os.Setenv(consts.DefaultAzureCredentialFileEnv, fakeCredFile)
+				t.Setenv(consts.DefaultAzureCredentialFileEnv, fakeCredFile)
 
 				d := newDriverV1(&DriverOptions{
 					NodeID:                 "",
