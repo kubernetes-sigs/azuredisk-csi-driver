@@ -31,7 +31,9 @@ import (
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
+	fakev1 "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/klog/v2/klogr"
+	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	azdiskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
@@ -39,28 +41,78 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
-func NewTestAzDriverNodeController(controller *gomock.Controller, namespace string, objects ...runtime.Object) *ReconcileAzDriverNode {
-	azDiskObjs, _ := splitObjects(objects...)
-	controllerSharedState := initState(mockclient.NewMockClient(controller), azdiskfakes.NewSimpleClientset(azDiskObjs...), nil, objects...)
+func NewTestNodeController(controller *gomock.Controller, namespace string, objects ...runtime.Object) *ReconcileNode {
+	azDiskObjs, kubeObjs := splitObjects(objects...)
+	controllerSharedState := initState(mockclient.NewMockClient(controller), azdiskfakes.NewSimpleClientset(azDiskObjs...), fakev1.NewSimpleClientset(kubeObjs...), objects...)
 
-	return &ReconcileAzDriverNode{
+	return &ReconcileNode{
 		SharedState: controllerSharedState,
 		logger:      klogr.New(),
 	}
 }
 
-func TestAzDriverNodeControllerReconcile(t *testing.T) {
+func TestNodeControllerReconcile(t *testing.T) {
 	tests := []struct {
 		description string
 		request     reconcile.Request
-		setupFunc   func(*testing.T, *gomock.Controller) *ReconcileAzDriverNode
-		verifyFunc  func(*testing.T, *ReconcileAzDriverNode, reconcile.Result, error)
+		setupFunc   func(*testing.T, *gomock.Controller) *ReconcileNode
+		verifyFunc  func(*testing.T, *ReconcileNode, reconcile.Result, error)
 	}{
+		{
+			description: "[Success] Should create new AzVolumeReplica when new node becomes available",
+			request:     testSchedulableNodeRequest,
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileNode {
+				newAttachment := testPrimaryAzVolumeAttachment0.DeepCopy()
+				newAttachment.Status.State = azdiskv1beta2.Attached
+
+				newVolume := testAzVolume0.DeepCopy()
+				newVolume.Status.Detail = &azdiskv1beta2.AzVolumeStatusDetail{
+					VolumeID: testManagedDiskURI0,
+				}
+
+				newPod := testPod1.DeepCopy()
+				newPod.Status.Phase = v1.PodRunning
+
+				controller := NewTestNodeController(
+					mockCtl,
+					testNamespace,
+					newVolume,
+					newAttachment,
+					&testPersistentVolume0,
+					&testNode0,
+					&testSchedulableNode1,
+					newPod,
+				)
+
+				// addTestNodeInAvailableAttachmentsMap(controller.SharedState, testSchedulableNode1.Name, testNodeAvailableAttachmentCount)
+				mockClients(controller.cachedClient.(*mockclient.MockClient), controller.azClient, controller.kubeClient)
+				controller.priorityReplicaRequestsQueue.Push(context.TODO(), &ReplicaRequest{VolumeName: testPersistentVolume0Name, Priority: 1})
+
+				return controller
+			},
+			verifyFunc: func(t *testing.T, controller *ReconcileNode, result reconcile.Result, err error) {
+				require.NoError(t, err)
+				require.False(t, result.Requeue)
+
+				roleReq, _ := azureutils.CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(azdiskv1beta2.ReplicaRole))
+				labelSelector := labels.NewSelector().Add(*roleReq)
+
+				conditionFunc := func() (bool, error) {
+					replicas, localError := controller.azClient.DiskV1beta2().AzVolumeAttachments(testPrimaryAzVolumeAttachment0.Namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
+					require.NoError(t, localError)
+					require.NotNil(t, replicas)
+					return len(replicas.Items) == 1, nil
+				}
+				err = wait.PollImmediate(verifyCRIInterval, verifyCRITimeout, conditionFunc)
+
+				require.NoError(t, err)
+			},
+		},
 		{
 			description: "[Success] Should delete AzDriverNode for deleted Node",
 			request:     testNode1Request,
-			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAzDriverNode {
-				controller := NewTestAzDriverNodeController(
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileNode {
+				controller := NewTestNodeController(
 					mockCtl,
 					testNamespace,
 					&testAzDriverNode0,
@@ -72,7 +124,7 @@ func TestAzDriverNodeControllerReconcile(t *testing.T) {
 
 				return controller
 			},
-			verifyFunc: func(t *testing.T, controller *ReconcileAzDriverNode, result reconcile.Result, err error) {
+			verifyFunc: func(t *testing.T, controller *ReconcileNode, result reconcile.Result, err error) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
 
@@ -83,8 +135,8 @@ func TestAzDriverNodeControllerReconcile(t *testing.T) {
 		{
 			description: "[Success] Should delete AzDriverNode and detach AzVolumeAttachments for deleted Node",
 			request:     testNode1Request,
-			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAzDriverNode {
-				controller := NewTestAzDriverNodeController(
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileNode {
+				controller := NewTestNodeController(
 					mockCtl,
 					testNamespace,
 					&testAzDriverNode0,
@@ -103,7 +155,7 @@ func TestAzDriverNodeControllerReconcile(t *testing.T) {
 
 				return controller
 			},
-			verifyFunc: func(t *testing.T, controller *ReconcileAzDriverNode, result reconcile.Result, err error) {
+			verifyFunc: func(t *testing.T, controller *ReconcileNode, result reconcile.Result, err error) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
 
@@ -127,8 +179,8 @@ func TestAzDriverNodeControllerReconcile(t *testing.T) {
 		{
 			description: "[Success] Should not delete AzDriverNode for existing Node",
 			request:     testNode1Request,
-			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAzDriverNode {
-				controller := NewTestAzDriverNodeController(
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileNode {
+				controller := NewTestNodeController(
 					mockCtl,
 					testNamespace,
 					&testAzDriverNode0,
@@ -144,7 +196,7 @@ func TestAzDriverNodeControllerReconcile(t *testing.T) {
 
 				return controller
 			},
-			verifyFunc: func(t *testing.T, controller *ReconcileAzDriverNode, result reconcile.Result, err error) {
+			verifyFunc: func(t *testing.T, controller *ReconcileNode, result reconcile.Result, err error) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
 
@@ -155,8 +207,8 @@ func TestAzDriverNodeControllerReconcile(t *testing.T) {
 		{
 			description: "[Failure] Should requeue on failure to get Node",
 			request:     testNode1Request,
-			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAzDriverNode {
-				controller := NewTestAzDriverNodeController(
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileNode {
+				controller := NewTestNodeController(
 					mockCtl,
 					testNamespace,
 					&testAzDriverNode0,
@@ -169,7 +221,7 @@ func TestAzDriverNodeControllerReconcile(t *testing.T) {
 
 				return controller
 			},
-			verifyFunc: func(t *testing.T, controller *ReconcileAzDriverNode, result reconcile.Result, err error) {
+			verifyFunc: func(t *testing.T, controller *ReconcileNode, result reconcile.Result, err error) {
 				require.EqualValues(t, testNode1ServerTimeoutError, err)
 				require.True(t, result.Requeue)
 
@@ -180,29 +232,17 @@ func TestAzDriverNodeControllerReconcile(t *testing.T) {
 		{
 			description: "[Success] Should add new AzDriverNode in availableAttachmentsMap",
 			request:     testNode1Request,
-			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAzDriverNode {
-				controller := NewTestAzDriverNodeController(
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileNode {
+				controller := NewTestNodeController(
 					mockCtl,
 					testNamespace,
 					&testAzDriverNode1,
 					&testNode1)
 
-				cachedObj := testNode1.DeepCopy()
-				controller.cachedClient.(*mockclient.MockClient).EXPECT().
-					Get(gomock.Any(), gomock.Any(), gomock.Any()).
-					DoAndReturn(func(ctx context.Context, key types.NamespacedName, obj runtime.Object) error {
-						if objToUpdate, ok := obj.(*v1.Node); ok {
-							cachedObj.DeepCopyInto(objToUpdate)
-							return nil
-						}
-						return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
-					}).
-					AnyTimes()
-
 				mockClients(controller.cachedClient.(*mockclient.MockClient), controller.azClient, controller.kubeClient)
 				return controller
 			},
-			verifyFunc: func(t *testing.T, controller *ReconcileAzDriverNode, result reconcile.Result, err error) {
+			verifyFunc: func(t *testing.T, controller *ReconcileNode, result reconcile.Result, err error) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
 
@@ -229,13 +269,13 @@ func TestAzDriverNodeControllerReconcile(t *testing.T) {
 func TestAzDriverNodeRecover(t *testing.T) {
 	tests := []struct {
 		description string
-		setupFunc   func(*testing.T, *gomock.Controller) *ReconcileAzDriverNode
-		verifyFunc  func(*testing.T, *ReconcileAzDriverNode, error)
+		setupFunc   func(*testing.T, *gomock.Controller) *ReconcileNode
+		verifyFunc  func(*testing.T, *ReconcileNode, error)
 	}{
 		{
 			description: "[Success] Should update annotations of all AzDriverNodes.",
-			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAzDriverNode {
-				controller := NewTestAzDriverNodeController(
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileNode {
+				controller := NewTestNodeController(
 					mockCtl,
 					testNamespace,
 					&testAzDriverNode0,
@@ -260,7 +300,7 @@ func TestAzDriverNodeRecover(t *testing.T) {
 
 				return controller
 			},
-			verifyFunc: func(t *testing.T, controller *ReconcileAzDriverNode, err error) {
+			verifyFunc: func(t *testing.T, controller *ReconcileNode, err error) {
 				require.NoError(t, err)
 				azDriverNodes, err := controller.azClient.DiskV1beta2().AzDriverNodes(testNamespace).List(context.TODO(), metav1.ListOptions{})
 				require.NoError(t, err)

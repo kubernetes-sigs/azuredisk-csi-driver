@@ -352,10 +352,10 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 
 	// Setup a new controller to clean-up AzDriverNodes
 	// objects for the nodes which get deleted
-	klog.V(2).Info("Initializing AzDriverNode controller")
-	nodeReconciler, err := controller.NewAzDriverNodeController(mgr, sharedState)
+	klog.V(2).Info("Initializing Node controller")
+	nodeReconciler, err := controller.NewNodeController(mgr, sharedState)
 	if err != nil {
-		klog.Errorf("Failed to initialize AzDriverNodeController. Error: %v. Exiting application...", err)
+		klog.Errorf("Failed to initialize NodeController. Error: %v. Exiting application...", err)
 		os.Exit(1)
 	}
 
@@ -397,12 +397,6 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 	_, err = controller.NewVolumeAttachmentController(mgr, sharedState)
 	if err != nil {
 		klog.Errorf("Failed to initialize VolumeAttachment Controller. Error: %v. Exiting application...", err)
-		os.Exit(1)
-	}
-	klog.V(2).Info("Initializing Node Availability controller")
-	_, err = controller.NewNodeAvailabilityController(mgr, sharedState)
-	if err != nil {
-		klog.Errorf("Failed to initialize NodeAvailabilityController. Error: %v. Exiting application...", err)
 		os.Exit(1)
 	}
 	err = controller.WatchObject(mgr, source.Kind{Type: &v1.Namespace{}})
