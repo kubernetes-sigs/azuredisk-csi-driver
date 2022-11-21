@@ -35,7 +35,7 @@ override IMAGE_VERSION := $(IMAGE_VERSION)-$(GIT_COMMIT)
 endif
 endif
 CSI_IMAGE_TAG ?= $(REGISTRY)/$(IMAGE_NAME):$(IMAGE_VERSION)
-IMAGE_TAG_LATEST = $(REGISTRY)/$(IMAGE_NAME):latest
+CSI_IMAGE_TAG_LATEST = $(REGISTRY)/$(IMAGE_NAME):latest
 REV = $(shell git describe --long --tags --dirty)
 BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 ENABLE_TOPOLOGY ?= false
@@ -223,24 +223,24 @@ push-manifest:
 	docker manifest push --purge $(CSI_IMAGE_TAG)
 	docker manifest inspect $(CSI_IMAGE_TAG)
 ifdef PUBLISH
-	docker manifest create --amend $(IMAGE_TAG_LATEST) $(foreach osarch, $(ALL_OS_ARCH), $(CSI_IMAGE_TAG)-${osarch})
+	docker manifest create --amend $(CSI_IMAGE_TAG_LATEST) $(foreach osarch, $(ALL_OS_ARCH), $(CSI_IMAGE_TAG)-${osarch})
 	set -x; \
 	for arch in $(ALL_ARCH.windows); do \
 		for osversion in $(ALL_OSVERSIONS.windows); do \
 			BASEIMAGE=mcr.microsoft.com/windows/nanoserver:$${osversion}; \
 			full_version=`docker manifest inspect $${BASEIMAGE} | jq -r '.manifests[0].platform["os.version"]'`; \
-			docker manifest annotate --os windows --arch $${arch} --os-version $${full_version} $(IMAGE_TAG_LATEST) $(CSI_IMAGE_TAG)-windows-$${osversion}-$${arch}; \
+			docker manifest annotate --os windows --arch $${arch} --os-version $${full_version} $(CSI_IMAGE_TAG_LATEST) $(CSI_IMAGE_TAG)-windows-$${osversion}-$${arch}; \
 		done; \
 	done
-	docker manifest inspect $(IMAGE_TAG_LATEST)
+	docker manifest inspect $(CSI_IMAGE_TAG_LATEST)
 endif
 
 .PHONY: push-latest
 push-latest:
 ifdef CI
-	docker manifest push --purge $(IMAGE_TAG_LATEST)
+	docker manifest push --purge $(CSI_IMAGE_TAG_LATEST)
 else
-	docker push $(IMAGE_TAG_LATEST)
+	docker push $(CSI_IMAGE_TAG_LATEST)
 endif
 
 .PHONY: clean
