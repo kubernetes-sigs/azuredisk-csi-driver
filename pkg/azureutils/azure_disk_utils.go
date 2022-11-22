@@ -1108,6 +1108,15 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azdiskinformers.Sha
 			} else {
 				originalObj, err = azDiskClient.DiskV1beta2().AzVolumeAttachments(target.Namespace).Get(ctx, objName, metav1.GetOptions{})
 			}
+		case *azdiskv1beta2.AzDriverNode:
+			if informerFactory != nil {
+				originalObj, err = informerFactory.Disk().V1beta2().AzDriverNodes().Lister().AzDriverNodes(target.Namespace).Get(objName)
+			} else if cachedClient != nil {
+				originalObj = &azdiskv1beta2.AzDriverNode{}
+				err = cachedClient.Get(ctx, types.NamespacedName{Namespace: target.Namespace, Name: objName}, originalObj)
+			} else {
+				originalObj, err = azDiskClient.DiskV1beta2().AzDriverNodes(target.Namespace).Get(ctx, objName, metav1.GetOptions{})
+			}
 		case *storagev1.VolumeAttachment:
 			if cachedClient != nil {
 				originalObj = &storagev1.VolumeAttachment{}
@@ -1155,7 +1164,15 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azdiskinformers.Sha
 			if (updateMode & UpdateCRI) != 0 {
 				updatedObj, err = azDiskClient.DiskV1beta2().AzVolumeAttachments(target.Namespace).Update(ctx, target, metav1.UpdateOptions{})
 			}
-
+		case *azdiskv1beta2.AzDriverNode:
+			if (updateMode&UpdateCRIStatus) != 0 && !reflect.DeepEqual(originalObj.(*azdiskv1beta2.AzDriverNode).Status, target.Status) {
+				if updatedObj, err = azDiskClient.DiskV1beta2().AzDriverNodes(target.Namespace).UpdateStatus(ctx, target, metav1.UpdateOptions{}); err != nil {
+					return err
+				}
+			}
+			if (updateMode & UpdateCRI) != 0 {
+				updatedObj, err = azDiskClient.DiskV1beta2().AzDriverNodes(target.Namespace).Update(ctx, target, metav1.UpdateOptions{})
+			}
 		case *storagev1.VolumeAttachment:
 			if (updateMode&UpdateCRIStatus) != 0 && !reflect.DeepEqual(originalObj.(*storagev1.VolumeAttachment).Status, target.Status) {
 				if err = cachedClient.Status().Update(ctx, target); err != nil {

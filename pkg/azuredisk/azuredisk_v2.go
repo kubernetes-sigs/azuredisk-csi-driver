@@ -411,7 +411,7 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 		<-mgr.Elected()
 		var errors []error
 		ctx, w := workflow.New(ctx)
-		defer func() { w.Finish(err) }()
+		defer func() { w.Finish(errors...) }()
 		// recover lost states if necessary
 		w.Logger().Infof("Elected as leader; initiating CRI deperecation / recovery...")
 		if err := nodeReconciler.Recover(ctx); err != nil {

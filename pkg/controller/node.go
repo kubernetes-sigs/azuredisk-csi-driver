@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -29,6 +30,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/workflow"
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -98,23 +100,45 @@ func (r *ReconcileNode) Recover(ctx context.Context) error {
 	ctx, w := workflow.New(ctx)
 	defer func() { w.Finish(err) }()
 
-	var nodes *azdiskv1beta2.AzDriverNodeList
-	if nodes, err = r.azClient.DiskV1beta2().AzDriverNodes(r.config.ObjectNamespace).List(ctx, metav1.ListOptions{}); err != nil {
-		if errors.IsNotFound(err) {
-			return nil
-		}
+	var azNodes *azdiskv1beta2.AzDriverNodeList
+	if azNodes, err = r.azClient.DiskV1beta2().AzDriverNodes(r.config.ObjectNamespace).List(ctx, metav1.ListOptions{}); err != nil {
 		return err
 	}
 
-	for _, node := range nodes.Items {
-		updated := node.DeepCopy()
-		updated.Annotations = azureutils.AddToMap(updated.Annotations, consts.RecoverAnnotation, "azDriverNode")
-		if _, err = r.azClient.DiskV1beta2().AzDriverNodes(r.config.ObjectNamespace).Update(ctx, updated, metav1.UpdateOptions{}); err != nil {
-			return err
+	errCount := 0
+	for _, azNode := range azNodes.Items {
+		// if the corresponding node has been deleted, delete the azdrivernode object
+		_, err = r.kubeClient.CoreV1().Nodes().Get(ctx, azNode.Spec.NodeName, metav1.GetOptions{})
+		if err != nil {
+			if errors.IsNotFound(err) {
+				n := r.azClient.DiskV1beta2().AzDriverNodes(r.config.ObjectNamespace)
+				if err = n.Delete(ctx, azNode.Name, metav1.DeleteOptions{}); err != nil {
+					w.Logger().Errorf(err, "failed to delete azDriverNode (%s)", azNode.Name)
+					errCount++
+				}
+			} else {
+				w.Logger().Errorf(err, "failed to find node (%s)", azNode.Spec.NodeName)
+				errCount++
+			}
+		} else {
+			updateFunc := func(obj client.Object) error {
+				azNode := obj.(*azdiskv1beta2.AzDriverNode)
+				azNode.Annotations = azureutils.AddToMap(azNode.Annotations, consts.RecoverAnnotation, "azDriverNode")
+				return nil
+			}
+			if _, err = azureutils.UpdateCRIWithRetry(ctx, nil, r.cachedClient, r.azClient, &azNode, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRI); err != nil {
+				w.Logger().Errorf(err, "failed to recover azDriverNode (%s) with annotation", azNode.Name)
+				errCount++
+				continue
+			}
+			r.addNodeToAvailableAttachmentsMap(ctx, azNode.Name, azNode.GetLabels())
 		}
-		r.addNodeToAvailableAttachmentsMap(ctx, node.Name, node.GetLabels())
 	}
-	return nil
+
+	if errCount > 0 {
+		err = fmt.Errorf("failed to recover all azDriverNodes")
+	}
+	return err
 }
 
 // NewNodeController initializes node-controller

@@ -127,18 +127,18 @@ var (
 
 	testAzDriverNode0 = azdiskv1beta2.AzDriverNode{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        testNode0Name,
-			Namespace:   testNamespace,
-			Annotations: map[string]string{"key": "value"},
+			Name:      testNode0Name,
+			Namespace: testNamespace,
 		},
+		Spec: azdiskv1beta2.AzDriverNodeSpec{NodeName: testNode0Name},
 	}
 
 	testAzDriverNode1 = azdiskv1beta2.AzDriverNode{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        testNode1Name,
-			Namespace:   testNamespace,
-			Annotations: map[string]string{"key": "value"},
+			Name:      testNode1Name,
+			Namespace: testNamespace,
 		},
+		Spec: azdiskv1beta2.AzDriverNodeSpec{NodeName: testNode1Name},
 	}
 
 	testNode1Request = createReconcileRequest(testNamespace, testNode1Name)
@@ -585,6 +585,14 @@ func mockClients(mockClient *mockclient.MockClient, azVolumeClient azdisk.Interf
 				}
 
 				azVolumeAttachment.DeepCopyInto(obj.(*azdiskv1beta1.AzVolumeAttachment))
+
+			case *azdiskv1beta2.AzDriverNode:
+				azDriverNode, err := azVolumeClient.DiskV1beta2().AzDriverNodes(key.Namespace).Get(ctx, key.Name, metav1.GetOptions{})
+				if err != nil {
+					return err
+				}
+
+				azDriverNode.DeepCopyInto(obj.(*azdiskv1beta2.AzDriverNode))
 
 			case *v1.PersistentVolume:
 				pv, err := kubeClient.CoreV1().PersistentVolumes().Get(ctx, key.Name, metav1.GetOptions{})
