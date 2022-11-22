@@ -30,6 +30,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/volume/util/hostutil"
@@ -175,6 +176,13 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 	if err != nil {
 		klog.Fatalf("failed to get Azure Cloud Provider, error: %v", err)
 	}
+
+	if kubeClient, err := azureutils.GetKubeClient(kubeconfig); err == nil && kubeClient != nil {
+		klog.V(2).Infof("set informers for CSI driver")
+		sharedInformers := informers.NewSharedInformerFactory(kubeClient, time.Second*30)
+		cloud.SetInformers(sharedInformers)
+	}
+
 	d.cloud = cloud
 	d.kubeconfig = kubeconfig
 
