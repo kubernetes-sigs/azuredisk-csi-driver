@@ -157,6 +157,7 @@ driver:
   azureGoSDKLogLevel: "" # available values: ""(no logs), DEBUG, INFO, WARNING, ERROR
   httpsProxy: ""
   httpProxy: ""
+  noProxy: ""
 
 linux:
   enabled: true

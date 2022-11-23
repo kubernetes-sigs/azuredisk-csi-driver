@@ -151,6 +151,10 @@ spec:
             - name: HTTP_PROXY
               value: {{ .Values.driver.httpProxy }}
             {{- end }}
+            {{- if ne .Values.driver.noProxy "" }}
+            - name: NO_PROXY
+              value: {{ .Values.driver.noProxy }}
+            {{- end }}
             - name: KUBE_NODE_NAME
               valueFrom:
                 fieldRef:

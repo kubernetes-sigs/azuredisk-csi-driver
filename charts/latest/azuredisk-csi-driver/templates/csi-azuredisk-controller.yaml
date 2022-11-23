@@ -208,6 +208,10 @@ spec:
             - name: HTTP_PROXY
               value: {{ .Values.driver.httpProxy }}
             {{- end }}
+            {{- if ne .Values.driver.noProxy "" }}
+            - name: NO_PROXY
+              value: {{ .Values.driver.noProxy }}
+            {{- end }}
             - name: AZURE_GO_SDK_LOG_LEVEL
               value: {{ .Values.driver.azureGoSDKLogLevel }}
             {{- if eq .Values.cloud "AzureStackCloud" }}
