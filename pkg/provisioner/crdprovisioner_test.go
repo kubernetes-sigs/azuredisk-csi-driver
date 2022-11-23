@@ -202,6 +202,7 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 		contentSource        *azdiskv1beta2.ContentVolumeSource
 		topology             *azdiskv1beta2.TopologyRequirement
 		expectedError        error
+		enableMountReplicas  bool
 	}{
 		{
 			description:          "[Success] Create an AzVolume CRI with default parameters",
@@ -209,6 +210,7 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 			volumeName:           testDiskName0,
 			definePrependReactor: true,
 			capacity:             &azdiskv1beta2.CapacityRange{},
+			enableMountReplicas:  true,
 			capabilities: []azdiskv1beta2.VolumeCapability{
 				{
 					AccessType: azdiskv1beta2.VolumeCapabilityAccessMount,
@@ -226,6 +228,26 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 			existingAzVolumes:    nil,
 			volumeName:           testDiskName0,
 			definePrependReactor: true,
+			enableMountReplicas:  true,
+			capacity: &azdiskv1beta2.CapacityRange{
+				RequiredBytes: 2,
+				LimitBytes:    2,
+			},
+			parameters: map[string]string{"location": "westus2", consts.PvNameKey: testDiskName0},
+			secrets:    map[string]string{"test1": "No secret"},
+			contentSource: &azdiskv1beta2.ContentVolumeSource{
+				ContentSource:   azdiskv1beta2.ContentVolumeSourceTypeVolume,
+				ContentSourceID: "content-volume-source",
+			},
+			topology:      &defaultTopology,
+			expectedError: nil,
+		},
+		{
+			description:          "[Success] Create an AzVolume CRI with specified parameters and mountReplicas disabled",
+			existingAzVolumes:    nil,
+			volumeName:           testDiskName0,
+			definePrependReactor: true,
+			enableMountReplicas:  false,
 			capacity: &azdiskv1beta2.CapacityRange{
 				RequiredBytes: 2,
 				LimitBytes:    2,
@@ -244,6 +266,7 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 			existingAzVolumes:    nil,
 			volumeName:           invalidVolumeNameLength,
 			definePrependReactor: true,
+			enableMountReplicas:  true,
 			capacity:             &azdiskv1beta2.CapacityRange{},
 			capabilities: []azdiskv1beta2.VolumeCapability{
 				{
@@ -262,6 +285,7 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 			existingAzVolumes:    nil,
 			volumeName:           invalidVolumeNameConvention,
 			definePrependReactor: true,
+			enableMountReplicas:  true,
 			capacity:             &azdiskv1beta2.CapacityRange{},
 			capabilities: []azdiskv1beta2.VolumeCapability{
 				{
@@ -313,6 +337,7 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 			},
 			volumeName:           testDiskName0,
 			definePrependReactor: true,
+			enableMountReplicas:  true,
 			capacity: &azdiskv1beta2.CapacityRange{
 				RequiredBytes: 2,
 				LimitBytes:    2,
@@ -370,6 +395,7 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 			},
 			volumeName:           testDiskName0,
 			definePrependReactor: true,
+			enableMountReplicas:  true,
 			capacity: &azdiskv1beta2.CapacityRange{
 				RequiredBytes: 2,
 				LimitBytes:    2,
@@ -418,6 +444,7 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 			},
 			volumeName:           testDiskName0,
 			definePrependReactor: false,
+			enableMountReplicas:  true,
 			capacity:             &azdiskv1beta2.CapacityRange{},
 			capabilities: []azdiskv1beta2.VolumeCapability{
 				{
@@ -508,6 +535,9 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 			assert.Equal(t, tt.expectedError, outputErr)
 			if outputErr == nil {
 				assert.NotNil(t, output)
+				if !tt.enableMountReplicas {
+					assert.Equal(t, output.Spec.MaxMountReplicaCount, 0)
+				}
 			}
 		})
 	}
