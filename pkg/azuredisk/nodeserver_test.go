@@ -698,10 +698,7 @@ func TestNodeUnstageVolume(t *testing.T) {
 			req:           csi.NodeUnstageVolumeRequest{StagingTargetPath: errorTarget, VolumeId: "vol_1"},
 			skipOnWindows: true, // no error reported in windows
 			skipOnDarwin:  true,
-			expectedErr: testutil.TestError{
-				DefaultError: status.Error(codes.Internal, fmt.Sprintf("failed to unmount staging target \"%s\": "+
-					"fake IsLikelyNotMountPoint: fake error", errorTarget)),
-			},
+			expectedErr:   testutil.TestError{},
 		},
 		{
 			desc: "[Error] Volume operation in progress",
@@ -976,9 +973,7 @@ func TestNodeUnpublishVolume(t *testing.T) {
 			req:           csi.NodeUnpublishVolumeRequest{TargetPath: errorTarget, VolumeId: "vol_1"},
 			skipOnWindows: true, // no error reported in windows
 			skipOnDarwin:  true, // no error reported in darwin
-			expectedErr: testutil.TestError{
-				DefaultError: status.Error(codes.Internal, fmt.Sprintf("failed to unmount target \"%s\": fake IsLikelyNotMountPoint: fake error", errorTarget)),
-			},
+			expectedErr:   testutil.TestError{},
 		},
 		{
 			desc:        "[Success] Valid request",
