@@ -196,6 +196,9 @@ github.com/matttproud/golang_protobuf_extensions/pbutil
 ## explicit; go 1.13
 github.com/moby/spdystream
 github.com/moby/spdystream/spdy
+# github.com/moby/sys/mountinfo v0.6.2
+## explicit; go 1.16
+github.com/moby/sys/mountinfo
 # github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd
 ## explicit
 github.com/modern-go/concurrent
@@ -1035,11 +1038,11 @@ k8s.io/kubernetes/test/e2e/storage/utils
 k8s.io/kubernetes/test/e2e/testing-manifests
 k8s.io/kubernetes/test/utils
 k8s.io/kubernetes/test/utils/image
-# k8s.io/mount-utils v0.24.0-alpha.4 => k8s.io/mount-utils v0.0.0-20220314200322-2af412bcdc5e
-## explicit; go 1.16
+# k8s.io/mount-utils v0.24.0-alpha.4 => k8s.io/mount-utils v0.0.0-20221109175715-b1f97713a814
+## explicit; go 1.19
 k8s.io/mount-utils
-# k8s.io/utils v0.0.0-20220728103510-ee6ede2d64ed
-## explicit; go 1.12
+# k8s.io/utils v0.0.0-20221107191617-1a15be271d1d
+## explicit; go 1.18
 k8s.io/utils/buffer
 k8s.io/utils/clock
 k8s.io/utils/clock/testing
@@ -1153,7 +1156,7 @@ sigs.k8s.io/yaml
 # k8s.io/kubelet => k8s.io/kubelet v0.24.0-alpha.4
 # k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.24.0-alpha.4
 # k8s.io/metrics => k8s.io/metrics v0.24.0-alpha.4
-# k8s.io/mount-utils => k8s.io/mount-utils v0.0.0-20220314200322-2af412bcdc5e
+# k8s.io/mount-utils => k8s.io/mount-utils v0.0.0-20221109175715-b1f97713a814
 # k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.24.0-alpha.4
 # k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.24.0-alpha.4
 # k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.24.0-alpha.4

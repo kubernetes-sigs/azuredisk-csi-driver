@@ -32,7 +32,7 @@ require (
 	k8s.io/klog/v2 v2.80.1
 	k8s.io/kubernetes v1.24.0-alpha.4
 	k8s.io/mount-utils v0.24.0-alpha.4
-	k8s.io/utils v0.0.0-20220728103510-ee6ede2d64ed
+	k8s.io/utils v0.0.0-20221107191617-1a15be271d1d
 	sigs.k8s.io/cloud-provider-azure v0.7.4
 	sigs.k8s.io/yaml v1.3.0
 )
@@ -67,6 +67,7 @@ require (
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.2-0.20181231171920-c182affec369 // indirect
 	github.com/moby/spdystream v0.2.0 // indirect
+	github.com/moby/sys/mountinfo v0.6.2 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/nxadm/tail v1.4.8 // indirect
@@ -140,7 +141,7 @@ replace (
 	k8s.io/kubelet => k8s.io/kubelet v0.24.0-alpha.4
 	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.24.0-alpha.4
 	k8s.io/metrics => k8s.io/metrics v0.24.0-alpha.4
-	k8s.io/mount-utils => k8s.io/mount-utils v0.0.0-20220314200322-2af412bcdc5e
+	k8s.io/mount-utils => k8s.io/mount-utils v0.0.0-20221109175715-b1f97713a814
 	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.24.0-alpha.4
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.24.0-alpha.4
 	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.24.0-alpha.4
