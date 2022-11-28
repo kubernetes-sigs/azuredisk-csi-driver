@@ -335,10 +335,12 @@ func (mounter *csiProxyMounterV1Beta) GetVolumeStats(ctx context.Context, path s
 	if err != nil || resp == nil {
 		return nil, fmt.Errorf("GetVolumeStats(%s) failed with error: %v, response: %v", volIDResp.VolumeId, err, resp)
 	}
+	// in v1beta interface, VolumeSize is actually availableSize
+	availableSize := resp.VolumeSize
 	volUsage := &csi.VolumeUsage{
 		Unit:      csi.VolumeUsage_BYTES,
-		Available: resp.VolumeSize - resp.VolumeUsedSize,
-		Total:     resp.VolumeSize,
+		Available: availableSize,
+		Total:     availableSize + resp.VolumeUsedSize,
 		Used:      resp.VolumeUsedSize,
 	}
 	return volUsage, nil
