@@ -21,9 +21,10 @@ import (
 	"strings"
 
 	"github.com/go-logr/logr"
+	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
@@ -69,7 +70,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 
 	// Ignore not found errors as they cannot be fixed by a requeue
 	if err := r.cachedClient.Get(ctx, request.NamespacedName, &pv); err != nil {
-		if errors.IsNotFound(err) {
+		if apierrors.IsNotFound(err) {
 			r.deletePV(request.Name)
 			return reconcileReturnOnSuccess(request.Name, r.controllerRetryInfo)
 		}
@@ -107,7 +108,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 		}
 		if err := r.cachedClient.Get(ctx, types.NamespacedName{Namespace: r.config.ObjectNamespace, Name: azVolumeName}, &azVolume); err != nil {
 			// AzVolume doesn't exist, so there is nothing for us to do
-			if errors.IsNotFound(err) {
+			if apierrors.IsNotFound(err) {
 				return reconcileReturnOnSuccess(pv.Name, r.controllerRetryInfo)
 			}
 			// getting AzVolume failed, for unknown reason, we requeue and retry deleting it on the next cycle
@@ -140,7 +141,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 	// PV exists but AzVolume doesn't
 	if err := r.cachedClient.Get(ctx, types.NamespacedName{Namespace: r.config.ObjectNamespace, Name: azVolumeName}, &azVolume); err != nil {
 		// if getting AzVolume failed due to errors other than it doesn't exist, we requeue and retry
-		if !errors.IsNotFound(err) {
+		if !apierrors.IsNotFound(err) {
 			logger.Error(err, "failed to get AzVolume")
 			return reconcileReturnOnError(ctx, &pv, "get", err, r.controllerRetryInfo)
 		}
@@ -150,7 +151,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 			consts.PreProvisionedVolumeAnnotation: "true",
 		}
 		if err := r.createAzVolumeFromPv(ctx, pv, annotation); err != nil {
-			if !errors.IsAlreadyExists(err) {
+			if !apierrors.IsAlreadyExists(err) {
 				// if creating AzVolume failed, retry with exponential back off
 				logger.Error(err, "failed to create AzVolume")
 				return reconcileReturnOnError(ctx, &pv, "create", err, r.controllerRetryInfo)
@@ -234,6 +235,7 @@ func (r *ReconcilePV) Recover(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	errCount := 0
 	for _, pv := range pvs.Items {
 		if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != r.config.DriverName || pv.Spec.ClaimRef == nil {
 			continue
@@ -242,24 +244,32 @@ func (r *ReconcilePV) Recover(ctx context.Context) error {
 		var diskName string
 		diskName, err = azureutils.GetDiskName(pv.Spec.CSI.VolumeHandle)
 		if err != nil {
-			return err
+			w.Logger().Errorf(err, "failed to recover PersistentVolume (%s)", pv.Name)
+			errCount++
+			continue
 		}
 		azVolumeName := strings.ToLower(diskName)
 		pvClaimName := getQualifiedName(pv.Spec.ClaimRef.Namespace, pv.Spec.ClaimRef.Name)
 		r.addVolumeAndClaim(azVolumeName, pv.Name, pvClaimName)
 	}
+	if errCount > 0 {
+		pvCount := pvs.Size()
+		err = errors.New("failed to recover all PersistentVolumes")
+		w.Logger().Errorf(err, "Failed to recover %d out of %d PersistentVolumes.", errCount, pvCount)
+		return err
+	}
 	return nil
 }
 
 func NewPVController(mgr manager.Manager, controllerSharedState *SharedState) (*ReconcilePV, error) {
-	logger := mgr.GetLogger().WithValues("controller", "pv")
+	logger := mgr.GetLogger().WithValues("controller", "PersistentVolume")
 	reconciler := ReconcilePV{
 		controllerRetryInfo: newRetryInfo(),
 		SharedState:         controllerSharedState,
 		logger:              logger,
 	}
 
-	c, err := controller.New("pv-controller", mgr, controller.Options{
+	c, err := controller.New("PersistentVolume-controller", mgr, controller.Options{
 		MaxConcurrentReconciles: consts.DefaultWorkerThreads,
 		Reconciler:              &reconciler,
 		LogConstructor:          func(req *reconcile.Request) logr.Logger { return logger },
@@ -270,7 +280,7 @@ func NewPVController(mgr manager.Manager, controllerSharedState *SharedState) (*
 		return nil, err
 	}
 
-	logger.V(2).Info("Starting to watch PV.")
+	logger.V(2).Info("Starting to watch PersistentVolume.")
 
 	p := predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
@@ -290,7 +300,7 @@ func NewPVController(mgr manager.Manager, controllerSharedState *SharedState) (*
 	// Watch for Update events on PV objects
 	err = c.Watch(&source.Kind{Type: &corev1.PersistentVolume{}}, &handler.EnqueueRequestForObject{}, p)
 	if err != nil {
-		logger.Error(err, "failed to initialize watch for PV")
+		logger.Error(err, "failed to initialize watch for PersistentVolume")
 		return nil, err
 	}
 
