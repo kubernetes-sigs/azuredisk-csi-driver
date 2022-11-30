@@ -120,7 +120,7 @@ func NewAzDriverNodeController(mgr manager.Manager, controllerSharedState *Share
 	}
 
 	c, err := controller.New("azdrivernode-controller", mgr, controller.Options{
-		MaxConcurrentReconciles: 10,
+		MaxConcurrentReconciles: consts.DefaultWorkerThreads,
 		Reconciler:              &reconciler,
 		LogConstructor:          func(req *reconcile.Request) logr.Logger { return logger },
 	})

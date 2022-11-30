@@ -179,7 +179,7 @@ func NewPodController(mgr manager.Manager, controllerSharedState *SharedState) (
 		logger:      logger,
 	}
 	c, err := controller.New("pod-controller", mgr, controller.Options{
-		MaxConcurrentReconciles: 10,
+		MaxConcurrentReconciles: consts.DefaultWorkerThreads,
 		Reconciler:              &reconciler,
 		LogConstructor:          func(req *reconcile.Request) logr.Logger { return logger },
 	})

@@ -189,6 +189,7 @@ const (
 	DefaultControllerLeaseDurationInSec             = 15
 	DefaultControllerLeaseRenewDeadlineInSec        = 10
 	DefaultControllerLeaseRetryPeriodInSec          = 2
+	DefaultWorkerThreads                            = 10
 	DefaultVolumeAttachLimit                        = -1
 	DefaultSupportZone                              = true
 	DefaultEnablePerfOptimization                   = false
@@ -218,7 +219,7 @@ var CommandLineParams = []string{"endpoint", "metrics-address", "kubeconfig", "d
 	"enable-disk-capacity-check", "kube-client-qps", "kube-client-burst", "vmss-cache-ttl-seconds", "enable-attach-detach-rate-limiter", "attach-detach-rate-limiter-qps",
 	"attach-detach-rate-limiter-bucket", "attach-detach-batch-initial-delay", "is-controller-plugin", "is-node-plugin", "driver-object-namespace",
 	"heartbeat-frequency-in-sec", "lease-duration-in-sec", "lease-renew-deadline-in-sec", "lease-retry-period-in-sec", "leader-election-namespace", "node-partition",
-	"controller-partition"}
+	"controller-partition", "worker-threads"}
 
 type UnpublishMode int
 

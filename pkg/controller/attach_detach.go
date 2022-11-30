@@ -800,7 +800,7 @@ func NewAttachDetachController(mgr manager.Manager, cloudDiskAttacher CloudDiskA
 	}
 
 	c, err := controller.New("azvolumeattachment-controller", mgr, controller.Options{
-		MaxConcurrentReconciles: 10,
+		MaxConcurrentReconciles: controllerSharedState.config.ControllerConfig.WorkerThreads,
 		Reconciler:              &reconciler,
 		LogConstructor:          func(req *reconcile.Request) logr.Logger { return logger },
 	})

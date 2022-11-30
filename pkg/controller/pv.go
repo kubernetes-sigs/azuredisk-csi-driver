@@ -260,7 +260,7 @@ func NewPVController(mgr manager.Manager, controllerSharedState *SharedState) (*
 	}
 
 	c, err := controller.New("pv-controller", mgr, controller.Options{
-		MaxConcurrentReconciles: 10,
+		MaxConcurrentReconciles: consts.DefaultWorkerThreads,
 		Reconciler:              &reconciler,
 		LogConstructor:          func(req *reconcile.Request) logr.Logger { return logger },
 	})

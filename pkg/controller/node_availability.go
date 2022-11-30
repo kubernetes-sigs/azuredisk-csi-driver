@@ -72,7 +72,7 @@ func NewNodeAvailabilityController(mgr manager.Manager, controllerSharedState *S
 	}
 
 	c, err := controller.New("nodeavailability-controller", mgr, controller.Options{
-		MaxConcurrentReconciles: 10,
+		MaxConcurrentReconciles: consts.DefaultWorkerThreads,
 		Reconciler:              &reconciler,
 		LogConstructor:          func(req *reconcile.Request) logr.Logger { return logger },
 	})
