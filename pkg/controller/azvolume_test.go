@@ -288,7 +288,7 @@ func TestAzVolumeControllerReconcile(t *testing.T) {
 				require.NoError(t, err)
 				checkAzVolumeDeletion := func() (bool, error) {
 					var azVolume azdiskv1beta2.AzVolume
-					err := controller.cachedClient.Get(context.Background(), types.NamespacedName{Namespace: controller.objectNamespace, Name: testPersistentVolume0Name}, &azVolume)
+					err := controller.cachedClient.Get(context.Background(), types.NamespacedName{Namespace: controller.config.ObjectNamespace, Name: testPersistentVolume0Name}, &azVolume)
 					return len(azVolume.Finalizers) == 0, err
 				}
 				err = wait.PollImmediate(verifyCRIInterval, verifyCRITimeout, checkAzVolumeDeletion)

@@ -523,7 +523,7 @@ func (r *ReconcileAzVolume) recreateAzVolumes(ctx context.Context) error {
 func (r *ReconcileAzVolume) recoverAzVolume(ctx context.Context, recoveredAzVolumes *sync.Map) error {
 	w, _ := workflow.GetWorkflowFromContext(ctx)
 	// list all AzVolumes
-	azVolumes, err := r.azClient.DiskV1beta2().AzVolumes(r.objectNamespace).List(ctx, metav1.ListOptions{})
+	azVolumes, err := r.azClient.DiskV1beta2().AzVolumes(r.config.ObjectNamespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		w.Logger().Error(err, "failed to get list of existing AzVolume CRI in controller recovery stage")
 		return err

@@ -109,7 +109,7 @@ func (r *ReconcilePod) createReplicas(ctx context.Context, podKey string) error 
 				var err error
 				var azVolume *azdiskv1beta2.AzVolume
 				w, _ := workflow.GetWorkflowFromContext(ctx)
-				azVolume, err = azureutils.GetAzVolume(ctx, r.cachedClient, r.azClient, volume, r.objectNamespace, true)
+				azVolume, err = azureutils.GetAzVolume(ctx, r.cachedClient, r.azClient, volume, r.config.ObjectNamespace, true)
 				if err != nil {
 					w.Logger().V(5).Errorf(err, "failed to get AzVolumes for pod %s", podKey)
 					return err

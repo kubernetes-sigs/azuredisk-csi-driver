@@ -84,7 +84,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 		diskName = pv.Spec.AzureDisk.DiskName
 	} else {
 		// ignore PV-s for non-csi volumes
-		if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != r.driverName {
+		if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != r.config.DriverName {
 			return reconcileReturnOnSuccess(pv.Name, r.controllerRetryInfo)
 		}
 		diskName, err = azureutils.GetDiskName(pv.Spec.CSI.VolumeHandle)
@@ -105,7 +105,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 		if deleteAfter > 0 {
 			return reconcileAfter(deleteAfter, request.Name, r.controllerRetryInfo)
 		}
-		if err := r.cachedClient.Get(ctx, types.NamespacedName{Namespace: r.objectNamespace, Name: azVolumeName}, &azVolume); err != nil {
+		if err := r.cachedClient.Get(ctx, types.NamespacedName{Namespace: r.config.ObjectNamespace, Name: azVolumeName}, &azVolume); err != nil {
 			// AzVolume doesn't exist, so there is nothing for us to do
 			if errors.IsNotFound(err) {
 				return reconcileReturnOnSuccess(pv.Name, r.controllerRetryInfo)
@@ -126,7 +126,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 			return reconcileReturnOnError(ctx, &pv, "delete", err, r.controllerRetryInfo)
 		}
 
-		if err := r.azClient.DiskV1beta2().AzVolumes(r.objectNamespace).Delete(ctx, azVolumeName, metav1.DeleteOptions{}); err != nil {
+		if err := r.azClient.DiskV1beta2().AzVolumes(r.config.ObjectNamespace).Delete(ctx, azVolumeName, metav1.DeleteOptions{}); err != nil {
 			logger.Error(err, "failed to set the deletion timestamp for AzVolume")
 			return reconcileReturnOnError(ctx, &pv, "delete", err, r.controllerRetryInfo)
 		}
@@ -138,7 +138,7 @@ func (r *ReconcilePV) Reconcile(ctx context.Context, request reconcile.Request) 
 	}
 
 	// PV exists but AzVolume doesn't
-	if err := r.cachedClient.Get(ctx, types.NamespacedName{Namespace: r.objectNamespace, Name: azVolumeName}, &azVolume); err != nil {
+	if err := r.cachedClient.Get(ctx, types.NamespacedName{Namespace: r.config.ObjectNamespace, Name: azVolumeName}, &azVolume); err != nil {
 		// if getting AzVolume failed due to errors other than it doesn't exist, we requeue and retry
 		if !errors.IsNotFound(err) {
 			logger.Error(err, "failed to get AzVolume")
@@ -235,7 +235,7 @@ func (r *ReconcilePV) Recover(ctx context.Context) error {
 		return err
 	}
 	for _, pv := range pvs.Items {
-		if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != r.driverName || pv.Spec.ClaimRef == nil {
+		if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != r.config.DriverName || pv.Spec.ClaimRef == nil {
 			continue
 		}
 
