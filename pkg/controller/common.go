@@ -693,7 +693,7 @@ func (s *scoreByReplicaCount) score(ctx context.Context, nodeScores map[string]i
 	nodeReplicaCounts := map[string]int{}
 
 	for _, volume := range s.volumes {
-		azVolume, err := azureutils.GetAzVolume(ctx, s.state.cachedClient, nil, volume, s.state.objectNamespace, true)
+		azVolume, err := azureutils.GetAzVolume(ctx, s.state.cachedClient, nil, volume, s.state.config.ObjectNamespace, true)
 		if err != nil {
 			w.Logger().Errorf(err, "failed to get AzVolume (%s)", volume)
 			continue

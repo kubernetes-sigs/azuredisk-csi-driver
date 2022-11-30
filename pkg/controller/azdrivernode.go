@@ -67,7 +67,7 @@ func (r *ReconcileAzDriverNode) Reconcile(ctx context.Context, request reconcile
 	// If the node is not found, delete the corresponding AzDriverNode
 	if errors.IsNotFound(err) {
 		// Delete the azDriverNode, since corresponding node is deleted
-		azN := r.azClient.DiskV1beta2().AzDriverNodes(r.objectNamespace)
+		azN := r.azClient.DiskV1beta2().AzDriverNodes(r.config.ObjectNamespace)
 		err = azN.Delete(ctx, request.Name, metav1.DeleteOptions{})
 
 		// If there is an issue in deleting the AzDriverNode, requeue
@@ -93,7 +93,7 @@ func (r *ReconcileAzDriverNode) Recover(ctx context.Context) error {
 	defer func() { w.Finish(err) }()
 
 	var nodes *azdiskv1beta2.AzDriverNodeList
-	if nodes, err = r.azClient.DiskV1beta2().AzDriverNodes(r.objectNamespace).List(ctx, metav1.ListOptions{}); err != nil {
+	if nodes, err = r.azClient.DiskV1beta2().AzDriverNodes(r.config.ObjectNamespace).List(ctx, metav1.ListOptions{}); err != nil {
 		if errors.IsNotFound(err) {
 			return nil
 		}
@@ -103,7 +103,7 @@ func (r *ReconcileAzDriverNode) Recover(ctx context.Context) error {
 	for _, node := range nodes.Items {
 		updated := node.DeepCopy()
 		updated.Annotations = azureutils.AddToMap(updated.Annotations, consts.RecoverAnnotation, "azDriverNode")
-		if _, err = r.azClient.DiskV1beta2().AzDriverNodes(r.objectNamespace).Update(ctx, updated, metav1.UpdateOptions{}); err != nil {
+		if _, err = r.azClient.DiskV1beta2().AzDriverNodes(r.config.ObjectNamespace).Update(ctx, updated, metav1.UpdateOptions{}); err != nil {
 			return err
 		}
 		r.addNodeToAvailableAttachmentsMap(ctx, node.Name, node.GetLabels())
@@ -120,7 +120,7 @@ func NewAzDriverNodeController(mgr manager.Manager, controllerSharedState *Share
 	}
 
 	c, err := controller.New("azdrivernode-controller", mgr, controller.Options{
-		MaxConcurrentReconciles: 10,
+		MaxConcurrentReconciles: consts.DefaultWorkerThreads,
 		Reconciler:              &reconciler,
 		LogConstructor:          func(req *reconcile.Request) logr.Logger { return logger },
 	})

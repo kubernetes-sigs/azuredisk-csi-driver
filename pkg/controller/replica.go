@@ -235,7 +235,7 @@ func NewReplicaController(mgr manager.Manager, controllerSharedState *SharedStat
 		logger:                     logger,
 	}
 	c, err := controller.New("replica-controller", mgr, controller.Options{
-		MaxConcurrentReconciles: 10,
+		MaxConcurrentReconciles: controllerSharedState.config.ControllerConfig.WorkerThreads,
 		Reconciler:              &reconciler,
 		LogConstructor:          func(req *reconcile.Request) logr.Logger { return logger },
 	})

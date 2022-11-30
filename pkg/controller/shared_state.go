@@ -55,8 +55,7 @@ import (
 
 type SharedState struct {
 	recoveryComplete              uint32
-	driverName                    string
-	objectNamespace               string
+	config                        *azdiskv1beta2.AzDiskDriverConfiguration
 	topologyKey                   string
 	podToClaimsMap                sync.Map
 	podToInlineMap                sync.Map
@@ -81,18 +80,20 @@ type SharedState struct {
 	availableAttachmentsMap       sync.Map
 }
 
-func NewSharedState(driverName, objectNamespace, topologyKey string, eventRecorder record.EventRecorder, cachedClient client.Client, azClient azdisk.Interface, kubeClient kubernetes.Interface, crdClient crdClientset.Interface) *SharedState {
+func NewSharedState(config *azdiskv1beta2.AzDiskDriverConfiguration, topologyKey string, eventRecorder record.EventRecorder, cachedClient client.Client, azClient azdisk.Interface, kubeClient kubernetes.Interface, crdClient crdClientset.Interface) *SharedState {
 	newSharedState := &SharedState{
-		driverName:      driverName,
-		objectNamespace: objectNamespace,
-		topologyKey:     topologyKey,
-		eventRecorder:   eventRecorder,
-		cachedClient:    cachedClient,
-		crdClient:       crdClient,
-		azClient:        azClient,
-		kubeClient:      kubeClient,
-		conditionWatcher: watcher.New(context.Background(),
-			azClient, azdiskinformers.NewSharedInformerFactory(azClient, consts.DefaultInformerResync), objectNamespace),
+		config:        config,
+		topologyKey:   topologyKey,
+		eventRecorder: eventRecorder,
+		cachedClient:  cachedClient,
+		crdClient:     crdClient,
+		azClient:      azClient,
+		kubeClient:    kubeClient,
+		conditionWatcher: watcher.New(
+			context.Background(),
+			azClient,
+			azdiskinformers.NewSharedInformerFactory(azClient, consts.DefaultInformerResync),
+			config.ObjectNamespace),
 		azureDiskCSITranslator: csitranslator.NewAzureDiskCSITranslator(),
 	}
 	newSharedState.createReplicaRequestsQueue()
@@ -507,7 +508,7 @@ func (c *SharedState) deletePod(ctx context.Context, podKey string) error {
 		inlines := value.([]string)
 
 		for _, inline := range inlines {
-			if err := c.azClient.DiskV1beta2().AzVolumes(c.objectNamespace).Delete(ctx, inline, metav1.DeleteOptions{}); err != nil && !apiErrors.IsNotFound(err) {
+			if err := c.azClient.DiskV1beta2().AzVolumes(c.config.ObjectNamespace).Delete(ctx, inline, metav1.DeleteOptions{}); err != nil && !apiErrors.IsNotFound(err) {
 				w.Logger().Errorf(err, "failed to delete AzVolume (%s) for inline (%s): %v", inline, inline, err)
 				return err
 			}
@@ -618,7 +619,7 @@ func (c *SharedState) filterNodes(ctx context.Context, nodes []v1.Node, pods []v
 	pvs := make([]*v1.PersistentVolume, len(volumes))
 	for i, volume := range volumes {
 		var azVolume *azdiskv1beta2.AzVolume
-		azVolume, err = azureutils.GetAzVolume(ctx, c.cachedClient, c.azClient, volume, c.objectNamespace, true)
+		azVolume, err = azureutils.GetAzVolume(ctx, c.cachedClient, c.azClient, volume, c.config.ObjectNamespace, true)
 		if err != nil {
 			w.Logger().V(5).Errorf(err, "AzVolume for volume %s is not found.", volume)
 			return nil, err
@@ -734,7 +735,7 @@ func (c *SharedState) selectNodesPerTopology(ctx context.Context, nodes []v1.Nod
 	var primaryNode string
 	for i, volume := range volumes {
 		var azVolume *azdiskv1beta2.AzVolume
-		azVolume, err = azureutils.GetAzVolume(ctx, c.cachedClient, c.azClient, volume, c.objectNamespace, true)
+		azVolume, err = azureutils.GetAzVolume(ctx, c.cachedClient, c.azClient, volume, c.config.ObjectNamespace, true)
 		if err != nil {
 			err = status.Errorf(codes.Aborted, "failed to get AzVolume CRI (%s)", volume)
 			return nil, err
@@ -905,7 +906,7 @@ func (c *SharedState) createReplicaAzVolumeAttachment(ctx context.Context, volum
 	azVolumeAttachment := azdiskv1beta2.AzVolumeAttachment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      replicaName,
-			Namespace: c.objectNamespace,
+			Namespace: c.config.ObjectNamespace,
 			Labels: map[string]string{
 				consts.NodeNameLabel:   node,
 				consts.VolumeNameLabel: volumeName,
@@ -925,7 +926,7 @@ func (c *SharedState) createReplicaAzVolumeAttachment(ctx context.Context, volum
 	w.AnnotateObject(&azVolumeAttachment)
 	azureutils.AnnotateAPIVersion(&azVolumeAttachment)
 
-	_, err = c.azClient.DiskV1beta2().AzVolumeAttachments(c.objectNamespace).Create(ctx, &azVolumeAttachment, metav1.CreateOptions{})
+	_, err = c.azClient.DiskV1beta2().AzVolumeAttachments(c.config.ObjectNamespace).Create(ctx, &azVolumeAttachment, metav1.CreateOptions{})
 	if err != nil {
 		err = status.Errorf(codes.Internal, "failed to create replica AzVolumeAttachment %s.", replicaName)
 		return err
@@ -972,7 +973,7 @@ func (c *SharedState) cleanUpAzVolumeAttachmentByNode(ctx context.Context, azDri
 	labelSelector := labels.NewSelector().Add(*nodeRequirement)
 
 	var attachments *azdiskv1beta2.AzVolumeAttachmentList
-	attachments, err = c.azClient.DiskV1beta2().AzVolumeAttachments(c.objectNamespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})
+	attachments, err = c.azClient.DiskV1beta2().AzVolumeAttachments(c.config.ObjectNamespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector.String()})
 	if err != nil {
 		if apiErrors.IsNotFound(err) {
 			err = nil
@@ -1099,7 +1100,7 @@ func (c *SharedState) manageReplicas(ctx context.Context, volumeName string) err
 	defer func() { w.Finish(err) }()
 
 	var azVolume *azdiskv1beta2.AzVolume
-	azVolume, err = azureutils.GetAzVolume(ctx, c.cachedClient, c.azClient, volumeName, c.objectNamespace, true)
+	azVolume, err = azureutils.GetAzVolume(ctx, c.cachedClient, c.azClient, volumeName, c.config.ObjectNamespace, true)
 	if apiErrors.IsNotFound(err) {
 		w.Logger().V(5).Info("Volume no longer exists. Aborting manage replica operation")
 		return nil
@@ -1270,7 +1271,7 @@ func (c *SharedState) createAzVolumeFromPv(ctx context.Context, pv v1.Persistent
 	}
 
 	// skip if PV is not managed by azuredisk driver
-	if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != c.driverName {
+	if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != c.config.DriverName {
 		return nil
 	}
 
@@ -1363,9 +1364,9 @@ func (c *SharedState) createAzVolume(ctx context.Context, desiredAzVolume *azdis
 	var azVolume *azdiskv1beta2.AzVolume
 	var updated *azdiskv1beta2.AzVolume
 
-	if azVolume, err = c.azClient.DiskV1beta2().AzVolumes(c.objectNamespace).Get(ctx, desiredAzVolume.Name, metav1.GetOptions{}); err != nil {
+	if azVolume, err = c.azClient.DiskV1beta2().AzVolumes(c.config.ObjectNamespace).Get(ctx, desiredAzVolume.Name, metav1.GetOptions{}); err != nil {
 		if apiErrors.IsNotFound(err) {
-			if azVolume, err = c.azClient.DiskV1beta2().AzVolumes(c.objectNamespace).Create(ctx, desiredAzVolume, metav1.CreateOptions{}); err != nil {
+			if azVolume, err = c.azClient.DiskV1beta2().AzVolumes(c.config.ObjectNamespace).Create(ctx, desiredAzVolume, metav1.CreateOptions{}); err != nil {
 				return err
 			}
 			updated = azVolume.DeepCopy()
@@ -1399,7 +1400,7 @@ func (c *SharedState) createAzVolume(ctx context.Context, desiredAzVolume *azdis
 		return nil
 	}
 
-	if _, err := c.azClient.DiskV1beta2().AzVolumes(c.objectNamespace).UpdateStatus(ctx, updated, metav1.UpdateOptions{}); err != nil {
+	if _, err := c.azClient.DiskV1beta2().AzVolumes(c.config.ObjectNamespace).UpdateStatus(ctx, updated, metav1.UpdateOptions{}); err != nil {
 		return err
 	}
 	// if AzVolume CRI successfully recreated, also recreate the operation queue for the volume

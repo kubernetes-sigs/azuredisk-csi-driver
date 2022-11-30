@@ -569,6 +569,8 @@ type ControllerConfiguration struct {
 	LeaderElectionNamespace string `json:"leaderElectionNamespace,omitempty"`
 	// The partition name for controller plugin
 	PartitionName string `json:"partitionName,omitempty"`
+	// The number of worker thread per custom resource controller (AzVolume, attach/detach and replica controllers).
+	WorkerThreads int `json:"workerThreads,omitempty"`
 }
 
 type NodeConfiguration struct {

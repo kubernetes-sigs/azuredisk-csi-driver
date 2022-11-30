@@ -146,7 +146,7 @@ func TestPVControllerReconcile(t *testing.T) {
 			verifyFunc: func(t *testing.T, controller *ReconcilePV, result reconcile.Result, err error) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
-				_, err = controller.azClient.DiskV1beta2().AzVolumes(controller.objectNamespace).Get(context.Background(), testPersistentVolume0Name, metav1.GetOptions{})
+				_, err = controller.azClient.DiskV1beta2().AzVolumes(controller.config.ObjectNamespace).Get(context.Background(), testPersistentVolume0Name, metav1.GetOptions{})
 				require.True(t, errors.IsNotFound(err))
 			},
 		},
@@ -169,7 +169,7 @@ func TestPVControllerReconcile(t *testing.T) {
 			verifyFunc: func(t *testing.T, controller *ReconcilePV, result reconcile.Result, err error) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
-				azv, err := controller.azClient.DiskV1beta2().AzVolumes(controller.objectNamespace).Get(context.Background(), testPersistentVolume0Name, metav1.GetOptions{})
+				azv, err := controller.azClient.DiskV1beta2().AzVolumes(controller.config.ObjectNamespace).Get(context.Background(), testPersistentVolume0Name, metav1.GetOptions{})
 				require.NoError(t, err)
 				require.Contains(t, azv.Status.Annotations, consts.PreProvisionedVolumeAnnotation)
 			},

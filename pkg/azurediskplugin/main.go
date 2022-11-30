@@ -82,6 +82,7 @@ var (
 	leaderElectionNamespace                  = flag.String("leader-election-namespace", consts.ReleaseNamespace, "The leader election namespace for controller")
 	nodePartition                            = flag.String("node-partition", consts.DefaultNodePartitionName, "The partition name for node plugin.")
 	controllerPartition                      = flag.String("controller-partition", consts.DefaultControllerPartitionName, "The partition name for controller plugin.")
+	workerThreads                            = flag.Int("worker-threads", consts.DefaultWorkerThreads, "The number of worker thread per custom resource controller (AzVolume, attach/detach and replica controllers).")
 )
 
 func main() {
@@ -135,6 +136,7 @@ func getDriverConfig() *azdiskv1beta2.AzDiskDriverConfiguration {
 				LeaseRetryPeriodInSec:   consts.DefaultControllerLeaseRetryPeriodInSec,
 				LeaderElectionNamespace: consts.ReleaseNamespace,
 				PartitionName:           consts.DefaultControllerPartitionName,
+				WorkerThreads:           consts.DefaultWorkerThreads,
 			},
 			NodeConfig: azdiskv1beta2.NodeConfiguration{
 				VolumeAttachLimit:       consts.DefaultVolumeAttachLimit,
@@ -203,6 +205,7 @@ func getDriverConfig() *azdiskv1beta2.AzDiskDriverConfiguration {
 				LeaseRetryPeriodInSec:   *controllerLeaseRetryPeriodInSec,
 				LeaderElectionNamespace: *leaderElectionNamespace,
 				PartitionName:           *controllerPartition,
+				WorkerThreads:           *workerThreads,
 			},
 			NodeConfig: azdiskv1beta2.NodeConfiguration{
 				VolumeAttachLimit:       *volumeAttachLimit,
