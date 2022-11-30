@@ -197,7 +197,7 @@ func (w Workflow) Name() string {
 	return w.name
 }
 
-func (w Workflow) AddDetailToLogger(details ...interface{}) {
+func (w *Workflow) AddDetailToLogger(details ...interface{}) {
 	w.logger = Logger{w.logger.WithValues(details...)}
 }
 
