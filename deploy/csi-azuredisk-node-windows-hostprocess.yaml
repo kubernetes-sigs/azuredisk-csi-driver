@@ -54,7 +54,7 @@ spec:
             - "-Force"
       containers:
         - name: liveness-probe
-          image: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe:v2.7.0
+          image: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe:v2.8.0
           command:
             - "livenessprobe.exe"
           args:
