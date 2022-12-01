@@ -28,8 +28,12 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
+	"github.com/Azure/go-autorest/autorest/azure"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
 	kwait "k8s.io/apimachinery/pkg/util/wait"
 	cloudprovider "k8s.io/cloud-provider"
 	volerr "k8s.io/cloud-provider/volume/errors"
@@ -39,6 +43,7 @@ import (
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
 	"sigs.k8s.io/cloud-provider-azure/pkg/metrics"
+	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
 )
 
 type CloudContextKey string
@@ -57,6 +62,10 @@ const (
 	sourceVolume           = "volume"
 	attachDiskMapKeySuffix = "attachdiskmap"
 	detachDiskMapKeySuffix = "detachdiskmap"
+
+	updateVMUpdateRetryDuration = time.Duration(1) * time.Second
+	updateVMUpdateRetryFactor   = 3.0
+	updateVMUpdateRetrySteps    = 5
 
 	// WriteAcceleratorEnabled support for Azure Write Accelerator on Azure Disks
 	// https://docs.microsoft.com/azure/virtual-machines/windows/how-to-enable-write-accelerator
@@ -79,6 +88,7 @@ var defaultBackOff = kwait.Backoff{
 var (
 	managedDiskPathRE  = regexp.MustCompile(`.*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/disks/(.+)`)
 	diskSnapshotPathRE = regexp.MustCompile(`.*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/snapshots/(.+)`)
+	errorCodeRE        = regexp.MustCompile(`Code="(.*?)".*`)
 )
 
 type controllerCommon struct {
@@ -92,6 +102,7 @@ type controllerCommon struct {
 	cloud                 *Cloud
 	attachDiskProcessor   *batch.Processor
 	detachDiskProcessor   *batch.Processor
+	futureParser          FutureParser
 }
 
 // AttachDiskOptions attach disk options
@@ -313,14 +324,15 @@ func (c *controllerCommon) attachDiskBatchToNode(ctx context.Context, subscripti
 	c.lockMap.LockEntry(string(nodeName))
 	defer c.lockMap.UnlockEntry(string(nodeName))
 
-	klog.V(2).Infof("azuredisk - trying to attach disks to node %s: %s", nodeName, diskMap)
-
 	future, err := vmset.AttachDisk(ctx, nodeName, diskMap)
-	if err != nil {
+	if future == nil {
+		err = status.Errorf(codes.Internal, "nil future was returned: %v", err)
 		return nil, err
 	}
 
 	attachFn := func() {
+		klog.V(2).Infof("azuredisk - trying to attach disks to node %s: %s", nodeName, diskMap)
+
 		resultCtx := ctx
 
 		if async {
@@ -337,9 +349,33 @@ func (c *controllerCommon) attachDiskBatchToNode(ctx context.Context, subscripti
 			}
 		}
 
-		err = vmset.WaitForUpdateResult(resultCtx, future, resourceGroup, "attach_disk")
+		backoffManager := wait.Backoff{
+			Duration: updateVMUpdateRetryDuration,
+			Factor:   updateVMUpdateRetryFactor,
+			Steps:    updateVMUpdateRetrySteps,
+		}
+
+		err = vmset.WaitForUpdateResult(resultCtx, future, nodeName, "attach_disk")
+	updateRetryLoop:
+		for c.vmUpdateRequired(future, err) {
+			select {
+			case <-resultCtx.Done():
+				err = context.DeadlineExceeded
+				break updateRetryLoop
+			case <-time.After(backoffManager.Step()):
+			}
+			klog.V(2).Infof("Retry VM Update on node (%s) due to error (%v)", nodeName, err)
+			future, err = vmset.UpdateVMAsync(resultCtx, nodeName)
+			if err == nil {
+				err = vmset.WaitForUpdateResult(resultCtx, future, nodeName, "attach_disk")
+			}
+		}
+
+		// if no error was returned, attach was successful
 		if err == nil {
 			klog.V(2).Infof("azuredisk - successfully attached disks to node %s: %s", nodeName, diskMap)
+		} else if !errors.Is(err, context.DeadlineExceeded) && c.futureParser.ConfigAccepted(future) {
+			err = retry.NewPartialUpdateError(err.Error())
 		}
 
 		for i, disk := range disksToAttach {
@@ -634,6 +670,11 @@ func (c *controllerCommon) checkDiskExists(ctx context.Context, diskURI string) 
 	return true, nil
 }
 
+func (c *controllerCommon) vmUpdateRequired(future *azure.Future, err error) bool {
+	errCode := getErrorCode(err)
+	return c.futureParser.ConfigAccepted(future) && errCode != nil && *errCode == consts.OperationPreemptedErrorCode
+}
+
 func getValidCreationData(subscriptionID, resourceGroup, sourceResourceID, sourceType string) (compute.CreationData, error) {
 	if sourceResourceID == "" {
 		return compute.CreationData{
@@ -676,4 +717,26 @@ func isInstanceNotFoundError(err error) bool {
 		return true
 	}
 	return strings.Contains(errMsg, errStatusCode400) && strings.Contains(errMsg, errInvalidParameter) && strings.Contains(errMsg, errTargetInstanceIds)
+}
+
+func getErrorCode(err error) *string {
+	if err == nil {
+		return nil
+	}
+	matches := errorCodeRE.FindStringSubmatch(err.Error())
+	if matches == nil {
+		return nil
+	}
+	return &matches[1]
+}
+
+type FutureParser interface {
+	ConfigAccepted(future *azure.Future) bool
+}
+
+type controllerFutureParser struct{}
+
+func (c *controllerFutureParser) ConfigAccepted(future *azure.Future) bool {
+	// if status code indicates success, the storage profile change was committed
+	return future != nil && future.Response() != nil && future.Response().StatusCode/100 == 2
 }
