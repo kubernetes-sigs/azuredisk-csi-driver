@@ -272,45 +272,40 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *azdiskv
 		var attachments []azdiskv1beta2.AzVolumeAttachment
 		attachments, err = r.cleanUpAzVolumeAttachmentByVolume(deleteCtx, azVolume.Name, azvolume, azureutils.AllRoles, mode)
 		if err == nil {
-			var wg sync.WaitGroup
-			errors := make([]error, len(attachments))
-			numErrors := uint32(0)
+			attachmentsCount := len(attachments)
+			errorMessageCh := make(chan string, attachmentsCount)
 
 			// start waiting for replica AzVolumeAttachment CRIs to be deleted
-			for i, attachment := range attachments {
-				var waiter *watcher.ConditionWaiter
-				waiter, err = r.conditionWatcher.NewConditionWaiter(deleteCtx, watcher.AzVolumeAttachmentType, attachment.Name, verifyObjectFailedOrDeleted)
-				if err != nil {
-					break
-				}
-
+			for _, attachment := range attachments {
 				// wait async and report error to go channel
-				wg.Add(1)
-				go func(ctx context.Context, waiter *watcher.ConditionWaiter, i int) {
+				go func(ctx context.Context, attachment azdiskv1beta2.AzVolumeAttachment) {
+					waiter, derr := r.conditionWatcher.NewConditionWaiter(deleteCtx, watcher.AzVolumeAttachmentType, attachment.Name, verifyObjectFailedOrDeleted)
 					defer waiter.Close()
-					defer wg.Done()
-					_, err := waiter.Wait(ctx)
-					if err != nil {
-						errors[i] = err
-						atomic.AddUint32(&numErrors, 1)
+					if derr != nil {
+						errorMessageCh <- fmt.Sprintf("%s: %v", attachment.Name, derr)
+						return
 					}
-				}(deleteCtx, waiter, i)
+
+					_, derr = waiter.Wait(ctx)
+					if derr != nil {
+						errorMessageCh <- fmt.Sprintf("%s: %v", attachment.Name, derr)
+					} else {
+						errorMessageCh <- ""
+					}
+				}(deleteCtx, attachment)
 			}
 
-			// start waiting for the attachment clean up to complete (outside of the (if err == nil) to avoid child workflow finishing after parent workflow finishing)
-			wg.Wait()
-
-			if err == nil {
-				// if errors have been found with the wait calls, format the error msg and report via CRI
-				if numErrors > 0 {
-					var errMsgs []string
-					for i, derr := range errors {
-						if derr != nil {
-							errMsgs = append(errMsgs, fmt.Sprintf("%s: %v", attachments[i].Name, derr))
-						}
-					}
-					err = status.Errorf(codes.Internal, strings.Join(errMsgs, ", "))
+			// if errors have been found with the conditionWatcher calls, format the error msg and report via CRI
+			var errMsgs []string
+			for i := 0; i < attachmentsCount; i++ {
+				v, ok := <-errorMessageCh
+				if ok && v != "" {
+					errMsgs = append(errMsgs, v)
 				}
+			}
+			close(errorMessageCh)
+			if len(errMsgs) > 0 {
+				err = status.Errorf(codes.Internal, strings.Join(errMsgs, ", "))
 			}
 		}
 
