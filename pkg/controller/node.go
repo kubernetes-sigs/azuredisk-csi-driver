@@ -38,31 +38,23 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
-// ReconcileAzDriverNode reconciles AzDriverNode
-type ReconcileAzDriverNode struct {
+// ReconcileNode reconciles AzDriverNode
+type ReconcileNode struct {
 	*SharedState
 	logger logr.Logger
 }
 
 // Implement reconcile.Reconciler so the controller can reconcile objects
-var _ reconcile.Reconciler = &ReconcileAzDriverNode{}
+var _ reconcile.Reconciler = &ReconcileNode{}
 
-func (r *ReconcileAzDriverNode) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
+func (r *ReconcileNode) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
 	if !r.isRecoveryComplete() {
 		return reconcile.Result{Requeue: true}, nil
 	}
+	logger := r.logger.WithValues(consts.NodeNameLabel, request.Name)
 
 	n := &corev1.Node{}
 	err := r.cachedClient.Get(ctx, request.NamespacedName, n)
-
-	if err == nil {
-		if n.ObjectMeta.DeletionTimestamp.IsZero() {
-			// for create event, add the new node in availableAttachmentsMap
-			r.addNodeToAvailableAttachmentsMap(ctx, n.Name, n.GetLabels())
-		}
-		// for delete even, if the node still exists don't delete the AzDriverNode
-		return reconcile.Result{}, nil
-	}
 
 	// If the node is not found, delete the corresponding AzDriverNode
 	if errors.IsNotFound(err) {
@@ -83,11 +75,25 @@ func (r *ReconcileAzDriverNode) Reconcile(ctx context.Context, request reconcile
 		return reconcile.Result{}, nil
 	}
 
-	return reconcile.Result{Requeue: true}, err
+	if err != nil {
+		return reconcile.Result{Requeue: true}, err
+	}
+
+	// If the node has no DeletionTimestamp, it means it's either create event or update event
+	if n.ObjectMeta.DeletionTimestamp.IsZero() && !n.Spec.Unschedulable {
+		// Add the new schedulable node in availableAttachmentsMap
+		r.addNodeToAvailableAttachmentsMap(ctx, n.Name, n.GetLabels())
+
+		// Node is schedulable, proceed to attempt creation of replica attachment
+		logger.Info("Node is now available. Will requeue failed replica creation requests.")
+		r.tryCreateFailedReplicas(ctx, nodeavailability)
+	}
+
+	return reconcile.Result{}, nil
 }
 
 // run an update on existing azdrivernode objects to store them under new version if necessary
-func (r *ReconcileAzDriverNode) Recover(ctx context.Context) error {
+func (r *ReconcileNode) Recover(ctx context.Context) error {
 	var err error
 	ctx, w := workflow.New(ctx)
 	defer func() { w.Finish(err) }()
@@ -111,15 +117,15 @@ func (r *ReconcileAzDriverNode) Recover(ctx context.Context) error {
 	return nil
 }
 
-// NewAzDriverNodeController initializes azdrivernode-controller
-func NewAzDriverNodeController(mgr manager.Manager, controllerSharedState *SharedState) (*ReconcileAzDriverNode, error) {
-	logger := mgr.GetLogger().WithValues("controller", "azdrivernode")
-	reconciler := ReconcileAzDriverNode{
+// NewNodeController initializes node-controller
+func NewNodeController(mgr manager.Manager, controllerSharedState *SharedState) (*ReconcileNode, error) {
+	logger := mgr.GetLogger().WithValues("controller", "node")
+	reconciler := ReconcileNode{
 		SharedState: controllerSharedState,
 		logger:      logger,
 	}
 
-	c, err := controller.New("azdrivernode-controller", mgr, controller.Options{
+	c, err := controller.New("node-controller", mgr, controller.Options{
 		MaxConcurrentReconciles: consts.DefaultWorkerThreads,
 		Reconciler:              &reconciler,
 		LogConstructor:          func(req *reconcile.Request) logr.Logger { return logger },
@@ -130,12 +136,32 @@ func NewAzDriverNodeController(mgr manager.Manager, controllerSharedState *Share
 		return nil, err
 	}
 
-	// Predicate to only reconcile deleted nodes
+	// Predicate to reconcile created, new schedulable and deleted nodes
 	p := predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
 			return true
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
+			// make sure only update event from node taint changed from "unschedulable" gets enqueued to reconciler queue
+			old, oldOk := e.ObjectOld.(*corev1.Node)
+			new, newOk := e.ObjectNew.(*corev1.Node)
+
+			wasUnschedulable := false
+			nowSchedulable := true
+			for _, taint := range old.Spec.Taints {
+				if taint.Key == "node.kubernetes.io/unschedulable" {
+					wasUnschedulable = true
+				}
+			}
+			for _, taint := range new.Spec.Taints {
+				if taint.Key == "node.kubernetes.io/unschedulable" {
+					nowSchedulable = false
+				}
+			}
+
+			if oldOk && newOk && wasUnschedulable && nowSchedulable {
+				return true
+			}
 			return false
 		},
 		GenericFunc: func(e event.GenericEvent) bool {
