@@ -18,8 +18,6 @@ package controller
 
 import (
 	"context"
-	"fmt"
-	"reflect"
 	"testing"
 
 	"github.com/golang/mock/gomock"
@@ -29,7 +27,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/selection"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	fakev1 "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/klog/v2/klogr"
@@ -273,30 +270,41 @@ func TestAzDriverNodeRecover(t *testing.T) {
 		verifyFunc  func(*testing.T, *ReconcileNode, error)
 	}{
 		{
-			description: "[Success] Should update annotations of all AzDriverNodes.",
+			description: "[Success] Should update AzDriverNode annotation and add it to availableAttachmentsMap.",
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileNode {
 				controller := NewTestNodeController(
 					mockCtl,
 					testNamespace,
+					&testNode0,
+					&testAzDriverNode0)
+
+				mockClients(controller.cachedClient.(*mockclient.MockClient), controller.azClient, controller.kubeClient)
+
+				return controller
+			},
+			verifyFunc: func(t *testing.T, controller *ReconcileNode, err error) {
+				require.NoError(t, err)
+				_, node0Exists := controller.availableAttachmentsMap.Load(testAzDriverNode0.Name)
+				require.True(t, node0Exists)
+
+				azDriverNodes, err := controller.azClient.DiskV1beta2().AzDriverNodes(testNamespace).List(context.TODO(), metav1.ListOptions{})
+				require.NoError(t, err)
+				require.Len(t, azDriverNodes.Items, 1)
+				require.Equal(t, testNode0Name, azDriverNodes.Items[0].Name)
+				require.Contains(t, azDriverNodes.Items[0].Annotations, consts.RecoverAnnotation)
+			},
+		},
+		{
+			description: "[Success] Should delete orphaned AzDriverNodes whose corresponding nodes have been deleted.",
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileNode {
+				controller := NewTestNodeController(
+					mockCtl,
+					testNamespace,
+					&testNode0,
 					&testAzDriverNode0,
 					&testAzDriverNode1)
 
-				cachedObj := testNode1.DeepCopy()
-				controller.cachedClient.(*mockclient.MockClient).EXPECT().
-					Get(gomock.Any(), gomock.Any(), gomock.Any()).
-					DoAndReturn(func(ctx context.Context, key types.NamespacedName, obj runtime.Object) error {
-						if objToUpdate, ok := obj.(*v1.Node); ok {
-							cachedObj.DeepCopyInto(objToUpdate)
-							return nil
-						}
-						return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
-					}).
-					AnyTimes()
-
-				controller.cachedClient.(*mockclient.MockClient).EXPECT().
-					List(gomock.Any(), gomock.Any(), gomock.Any()).
-					Return(nil).
-					AnyTimes()
+				mockClients(controller.cachedClient.(*mockclient.MockClient), controller.azClient, controller.kubeClient)
 
 				return controller
 			},
@@ -304,10 +312,8 @@ func TestAzDriverNodeRecover(t *testing.T) {
 				require.NoError(t, err)
 				azDriverNodes, err := controller.azClient.DiskV1beta2().AzDriverNodes(testNamespace).List(context.TODO(), metav1.ListOptions{})
 				require.NoError(t, err)
-				require.Len(t, azDriverNodes.Items, 2)
-				for _, azDriverNode := range azDriverNodes.Items {
-					require.Equal(t, azDriverNode.Annotations, map[string]string{consts.RecoverAnnotation: "azDriverNode", "key": "value"})
-				}
+				require.Len(t, azDriverNodes.Items, 1)
+				require.Equal(t, testNode0Name, azDriverNodes.Items[0].Name)
 			},
 		},
 	}
@@ -319,10 +325,6 @@ func TestAzDriverNodeRecover(t *testing.T) {
 			defer mockCtl.Finish()
 			controller := tt.setupFunc(t, mockCtl)
 			err := controller.Recover(context.TODO())
-			_, node0Exists := controller.availableAttachmentsMap.Load(testAzDriverNode0.Name)
-			require.True(t, node0Exists)
-			_, node1Exists := controller.availableAttachmentsMap.Load(testAzDriverNode1.Name)
-			require.True(t, node1Exists)
 			tt.verifyFunc(t, controller, err)
 		})
 	}
