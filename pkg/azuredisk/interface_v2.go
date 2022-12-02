@@ -39,6 +39,7 @@ type CrdProvisioner interface {
 	GetAzVolumeAttachment(ctx context.Context, volumeID string, nodeID string) (*azdiskv1beta2.AzVolumeAttachment, error)
 	ExpandVolume(ctx context.Context, volumeID string, capacityRange *azdiskv1beta2.CapacityRange, secrets map[string]string) (*azdiskv1beta2.AzVolumeStatusDetail, error)
 	GetDiskClientSet() azdisk.Interface
+	IsDriverUninstall() bool
 }
 
 // NodeProvisioner defines the methods required to manage staging and publishing of mount points.

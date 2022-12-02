@@ -45,6 +45,7 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/klog/v2/klogr"
 
+	apiext "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	clientmetrics "k8s.io/client-go/tools/metrics"
@@ -318,6 +319,7 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 	scheme := apiRuntime.NewScheme()
 	clientgoscheme.AddToScheme(scheme)
 	azdiskv1beta2.AddToScheme(scheme)
+	apiext.AddToScheme(scheme)
 
 	// Setup a Manager
 	klog.V(2).Info("Setting up controller manager")
@@ -348,7 +350,7 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 		os.Exit(1)
 	}
 
-	sharedState := controller.NewSharedState(d.config, topologyKey, eventRecorder, mgr.GetClient(), d.crdProvisioner.GetDiskClientSet(), d.kubeClient, crdClient)
+	sharedState := controller.NewSharedState(d.config, topologyKey, eventRecorder, mgr.GetClient(), d.crdProvisioner.GetDiskClientSet(), d.crdProvisioner, d.kubeClient, crdClient)
 
 	// Setup a new controller to clean-up AzDriverNodes
 	// objects for the nodes which get deleted

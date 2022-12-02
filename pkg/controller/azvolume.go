@@ -140,11 +140,11 @@ func (r *ReconcileAzVolume) triggerCreate(ctx context.Context, azVolume *azdiskv
 	defer func() { w.Finish(err) }()
 
 	// requeue if AzVolume's state is being updated by a different worker
-	defer r.stateLock.Delete(azVolume.Name)
 	if _, ok := r.stateLock.LoadOrStore(azVolume.Name, nil); ok {
 		err = getOperationRequeueError("create", azVolume)
 		return err
 	}
+	defer r.stateLock.Delete(azVolume.Name)
 
 	// update state
 	updateFunc := func(obj client.Object) error {
@@ -223,17 +223,18 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *azdiskv
 
 	// Determine if this is a controller server requested deletion or driver clean up
 	volumeDeleteRequested := volumeDeleteRequested(azVolume)
-	preProvisionCleanupRequested := isPreProvisionCleanupRequested(azVolume)
+	preProvisioned := isPreProvisioned(azVolume)
 
 	mode := cleanUpAttachmentForUninstall
-	if volumeDeleteRequested || preProvisionCleanupRequested {
+	if volumeDeleteRequested || preProvisioned {
 		// primary attachments should be detached only if volume is being deleted or pv was deleted.
 		mode = cleanUpAttachment
 		// requeue if AzVolume's state is being updated by a different worker
-		defer r.stateLock.Delete(azVolume.Name)
 		if _, ok := r.stateLock.LoadOrStore(azVolume.Name, nil); ok {
 			return getOperationRequeueError("delete", azVolume)
 		}
+		defer r.stateLock.Delete(azVolume.Name)
+
 		updateFunc := func(obj client.Object) error {
 			azv := obj.(*azdiskv1beta2.AzVolume)
 			_, derr := r.updateState(azv, azdiskv1beta2.VolumeDeleting, normalUpdate)
@@ -316,10 +317,14 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *azdiskv
 
 		// if azVolumeAttachment clean up succeeded and volume needs to be deleted
 		if err == nil && volumeDeleteRequested {
-			cloudCtx, cloudCancel := context.WithTimeout(goCtx, cloudTimeout)
-			defer cloudCancel()
+			if r.driverLifecycle.IsDriverUninstall() {
+				goWorkflow.Logger().V(12).Infof("trying to delete volume (%s) as the driver is uninstalling, deletion will be ignored", azVolume.Name)
+			} else {
+				cloudCtx, cloudCancel := context.WithTimeout(goCtx, cloudTimeout)
+				defer cloudCancel()
 
-			err = r.deleteVolume(cloudCtx, azVolume)
+				err = r.deleteVolume(cloudCtx, azVolume)
+			}
 		}
 
 		// if any operation was unsuccessful, report the error
@@ -353,11 +358,12 @@ func (r *ReconcileAzVolume) triggerUpdate(ctx context.Context, azVolume *azdiskv
 	defer func() { w.Finish(err) }()
 
 	// requeue if AzVolume's state is being updated by a different worker
-	defer r.stateLock.Delete(azVolume.Name)
 	if _, ok := r.stateLock.LoadOrStore(azVolume.Name, nil); ok {
 		err = getOperationRequeueError("update", azVolume)
 		return err
 	}
+	defer r.stateLock.Delete(azVolume.Name)
+
 	updateFunc := func(obj client.Object) error {
 		azv := obj.(*azdiskv1beta2.AzVolume)
 		_, derr := r.updateState(azv, azdiskv1beta2.VolumeUpdating, normalUpdate)

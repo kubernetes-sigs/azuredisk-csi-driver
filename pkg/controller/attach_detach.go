@@ -151,11 +151,11 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 	defer func() { w.Finish(err) }()
 
 	// requeue if AzVolumeAttachment's state is being updated by a different worker
-	defer r.stateLock.Delete(azVolumeAttachment.Name)
 	if _, ok := r.stateLock.LoadOrStore(azVolumeAttachment.Name, nil); ok {
 		err = getOperationRequeueError("attach", azVolumeAttachment)
 		return err
 	}
+	defer r.stateLock.Delete(azVolumeAttachment.Name)
 
 	if !volumeAttachRequested(azVolumeAttachment) {
 		err = status.Errorf(codes.FailedPrecondition, "attach operation has not yet been requested")
@@ -272,8 +272,7 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 
 			updateFunc := func(obj client.Object) error {
 				azv := obj.(*azdiskv1beta2.AzVolumeAttachment)
-				azv = updateError(azv, attachErr)
-				_, uerr := updateState(azv, azdiskv1beta2.AttachmentFailed, forceUpdate)
+				_, uerr := reportError(azv, azdiskv1beta2.AttachmentFailed, attachErr)
 				return uerr
 			}
 			//nolint:contextcheck // final status update of the CRI must occur even when the current context's deadline passes.
@@ -319,64 +318,58 @@ func (r *ReconcileAttachDetach) triggerDetach(ctx context.Context, azVolumeAttac
 	var err error
 	ctx, w := workflow.New(ctx)
 	defer func() { w.Finish(err) }()
-	// only detach if detachment request was made for underlying volume attachment object
-	detachmentRequested := volumeDetachRequested(azVolumeAttachment)
 
-	if detachmentRequested {
-		defer r.stateLock.Delete(azVolumeAttachment.Name)
-		if _, ok := r.stateLock.LoadOrStore(azVolumeAttachment.Name, nil); ok {
-			return getOperationRequeueError("detach", azVolumeAttachment)
-		}
-
-		updateFunc := func(obj client.Object) error {
-			azv := obj.(*azdiskv1beta2.AzVolumeAttachment)
-			// Update state to detaching
-			_, derr := updateState(azv, azdiskv1beta2.Detaching, normalUpdate)
-			return derr
-		}
-
-		var updatedObj client.Object
-		if updatedObj, err = azureutils.UpdateCRIWithRetry(ctx, nil, r.cachedClient, r.azClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
-			return err
-		}
-		azVolumeAttachment = updatedObj.(*azdiskv1beta2.AzVolumeAttachment)
-
-		w.Logger().V(5).Info("Detaching volume")
-		waitCh := make(chan goSignal)
-		//nolint:contextcheck // call is asynchronous; context is not inherited by design
-		go func() {
-			var detachErr error
-			_, goWorkflow := workflow.New(ctx)
-			defer func() { goWorkflow.Finish(detachErr) }()
-			waitCh <- goSignal{}
-
-			goCtx := goWorkflow.SaveToContext(context.Background())
-			cloudCtx, cloudCancel := context.WithTimeout(goCtx, cloudTimeout)
-			defer cloudCancel()
-
-			var updateFunc func(obj client.Object) error
-			updateMode := azureutils.UpdateCRIStatus
-			detachErr = r.detachVolume(cloudCtx, azVolumeAttachment.Spec.VolumeID, azVolumeAttachment.Spec.NodeName)
-			if detachErr != nil {
-				updateFunc = func(obj client.Object) error {
-					azv := obj.(*azdiskv1beta2.AzVolumeAttachment)
-					azv = updateError(azv, detachErr)
-					_, derr := updateState(azv, azdiskv1beta2.DetachmentFailed, forceUpdate)
-					return derr
-				}
-				//nolint:contextcheck // final status update of the CRI must occur even when the current context's deadline passes.
-				if _, uerr := azureutils.UpdateCRIWithRetry(goCtx, nil, r.cachedClient, r.azClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry, updateMode); uerr != nil {
-					w.Logger().Errorf(uerr, "failed to update final status of AzVolumeAttachement")
-				}
-			} else {
-				//nolint:contextcheck // delete of the CRI must occur even when the current context's deadline passes.
-				if derr := r.cachedClient.Delete(goCtx, azVolumeAttachment); derr != nil {
-					w.Logger().Error(derr, "failed to delete AzVolumeAttachment")
-				}
-			}
-		}()
-		<-waitCh
+	if _, ok := r.stateLock.LoadOrStore(azVolumeAttachment.Name, nil); ok {
+		return getOperationRequeueError("detach", azVolumeAttachment)
 	}
+	defer r.stateLock.Delete(azVolumeAttachment.Name)
+
+	updateFunc := func(obj client.Object) error {
+		azv := obj.(*azdiskv1beta2.AzVolumeAttachment)
+		// Update state to detaching
+		_, derr := updateState(azv, azdiskv1beta2.Detaching, normalUpdate)
+		return derr
+	}
+
+	var updatedObj client.Object
+	if updatedObj, err = azureutils.UpdateCRIWithRetry(ctx, nil, r.cachedClient, r.azClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
+		return err
+	}
+	azVolumeAttachment = updatedObj.(*azdiskv1beta2.AzVolumeAttachment)
+
+	w.Logger().V(5).Info("Detaching volume")
+	waitCh := make(chan goSignal)
+	//nolint:contextcheck // call is asynchronous; context is not inherited by design
+	go func() {
+		var detachErr error
+		_, goWorkflow := workflow.New(ctx)
+		defer func() { goWorkflow.Finish(detachErr) }()
+		waitCh <- goSignal{}
+
+		goCtx := goWorkflow.SaveToContext(context.Background())
+		cloudCtx, cloudCancel := context.WithTimeout(goCtx, cloudTimeout)
+		defer cloudCancel()
+
+		var updateFunc func(obj client.Object) error
+		detachErr = r.detachVolume(cloudCtx, azVolumeAttachment.Spec.VolumeID, azVolumeAttachment.Spec.NodeName)
+		if detachErr != nil {
+			updateFunc = func(obj client.Object) error {
+				azv := obj.(*azdiskv1beta2.AzVolumeAttachment)
+				_, derr := reportError(azv, azdiskv1beta2.DetachmentFailed, detachErr)
+				return derr
+			}
+			//nolint:contextcheck // final status update of the CRI must occur even when the current context's deadline passes.
+			if _, uerr := azureutils.UpdateCRIWithRetry(goCtx, nil, r.cachedClient, r.azClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry, azureutils.UpdateCRIStatus); uerr != nil {
+				w.Logger().Errorf(uerr, "failed to update final status of AzVolumeAttachement")
+			}
+		} else {
+			//nolint:contextcheck // delete of the CRI must occur even when the current context's deadline passes.
+			if derr := r.cachedClient.Delete(goCtx, azVolumeAttachment); derr != nil {
+				w.Logger().Error(derr, "failed to delete AzVolumeAttachment")
+			}
+		}
+	}()
+	<-waitCh
 	return nil
 }
 
@@ -570,6 +563,14 @@ func updateState(azVolumeAttachment *azdiskv1beta2.AzVolumeAttachment, state azd
 		azVolumeAttachment.Status.State = state
 	}
 	return azVolumeAttachment, err
+}
+
+func reportError(azVolumeAttachment *azdiskv1beta2.AzVolumeAttachment, state azdiskv1beta2.AzVolumeAttachmentAttachmentState, err error) (*azdiskv1beta2.AzVolumeAttachment, error) {
+	if azVolumeAttachment == nil {
+		return nil, status.Errorf(codes.FailedPrecondition, "function `reportError` requires non-nil AzVolumeAttachment object.")
+	}
+	azVolumeAttachment = updateError(azVolumeAttachment, err)
+	return updateState(azVolumeAttachment, state, forceUpdate)
 }
 
 func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, syncedVolumeAttachments map[string]bool, volumesToSync map[string]bool) (map[string]bool, map[string]bool, error) {

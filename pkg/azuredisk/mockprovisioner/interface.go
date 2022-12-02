@@ -183,6 +183,20 @@ func (mr *MockCrdProvisionerMockRecorder) GetDiskClientSet() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDiskClientSet", reflect.TypeOf((*MockCrdProvisioner)(nil).GetDiskClientSet))
 }
 
+// IsDriverUninstall mocks base method
+func (m *MockCrdProvisioner) IsDriverUninstall() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsDriverUninstall")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// IsDriverUninstall indicates an expected call of GetDiskClientSet
+func (mr *MockCrdProvisionerMockRecorder) IsDriverUninstall() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsDriverUninstall", reflect.TypeOf((*MockCrdProvisioner)(nil).IsDriverUninstall))
+}
+
 // MockNodeProvisioner is a mock of NodeProvisioner interface
 type MockNodeProvisioner struct {
 	ctrl     *gomock.Controller
