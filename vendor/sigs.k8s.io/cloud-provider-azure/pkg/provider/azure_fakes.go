@@ -126,7 +126,6 @@ func GetTestCloud(ctrl *gomock.Controller) (az *Cloud) {
 	az.LoadBalancerBackendPool = NewMockBackendPool(ctrl)
 
 	_ = initDiskControllers(az)
-	az.common.futureParser = NewMockfutureParser(ctrl)
 
 	az.regionZonesMap = map[string][]string{az.Location: {"1", "2", "3"}}
 

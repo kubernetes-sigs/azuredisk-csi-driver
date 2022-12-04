@@ -97,12 +97,11 @@ func (mr *MockVMSetMockRecorder) DetachDisk(ctx, nodeName, diskMap interface{}) 
 }
 
 // EnsureBackendPoolDeleted mocks base method.
-func (m *MockVMSet) EnsureBackendPoolDeleted(service *v1.Service, backendPoolID, vmSetName string, backendAddressPools *[]network.BackendAddressPool, deleteFromVMSet bool) (bool, error) {
+func (m *MockVMSet) EnsureBackendPoolDeleted(service *v1.Service, backendPoolID, vmSetName string, backendAddressPools *[]network.BackendAddressPool, deleteFromVMSet bool) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "EnsureBackendPoolDeleted", service, backendPoolID, vmSetName, backendAddressPools, deleteFromVMSet)
-	ret0, _ := ret[0].(bool)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret0, _ := ret[0].(error)
+	return ret0
 }
 
 // EnsureBackendPoolDeleted indicates an expected call of EnsureBackendPoolDeleted.
@@ -414,31 +413,16 @@ func (mr *MockVMSetMockRecorder) UpdateVM(ctx, nodeName interface{}) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateVM", reflect.TypeOf((*MockVMSet)(nil).UpdateVM), ctx, nodeName)
 }
 
-// UpdateVMAsync mocks base method
-func (m *MockVMSet) UpdateVMAsync(ctx context.Context, nodeName types.NodeName) (*azure.Future, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateVMAsync", ctx, nodeName)
-	ret0, _ := ret[0].(*azure.Future)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// UpdateVMAsync indicates an expected call of UpdateVMAsync
-func (mr *MockVMSetMockRecorder) UpdateVMAsync(ctx, nodeName interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateVMAsync", reflect.TypeOf((*MockVMSet)(nil).UpdateVMAsync), ctx, nodeName)
-}
-
 // WaitForUpdateResult mocks base method.
-func (m *MockVMSet) WaitForUpdateResult(ctx context.Context, future *azure.Future, nodeName types.NodeName, source string) error {
+func (m *MockVMSet) WaitForUpdateResult(ctx context.Context, future *azure.Future, resourceGroupName, source string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "WaitForUpdateResult", ctx, future, source)
+	ret := m.ctrl.Call(m, "WaitForUpdateResult", ctx, future, resourceGroupName, source)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // WaitForUpdateResult indicates an expected call of WaitForUpdateResult.
-func (mr *MockVMSetMockRecorder) WaitForUpdateResult(ctx, future, nodeName, source interface{}) *gomock.Call {
+func (mr *MockVMSetMockRecorder) WaitForUpdateResult(ctx, future, resourceGroupName, source interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WaitForUpdateResult", reflect.TypeOf((*MockVMSet)(nil).WaitForUpdateResult), ctx, future, source)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WaitForUpdateResult", reflect.TypeOf((*MockVMSet)(nil).WaitForUpdateResult), ctx, future, resourceGroupName, source)
 }
