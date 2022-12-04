@@ -231,32 +231,34 @@ func (c *Client) listVMSSVM(ctx context.Context, resourceGroupName string, virtu
 }
 
 // Update updates a VirtualMachineScaleSetVM.
-func (c *Client) Update(ctx context.Context, resourceGroupName string, VMScaleSetName string, instanceID string, parameters compute.VirtualMachineScaleSetVM, source string) (*compute.VirtualMachineScaleSetVM, *retry.Error) {
+func (c *Client) Update(ctx context.Context, resourceGroupName string, VMScaleSetName string, instanceID string, parameters compute.VirtualMachineScaleSetVM, source string) *retry.Error {
 	mc := metrics.NewMetricContext("vmssvm", "update", resourceGroupName, c.subscriptionID, source)
 
 	// Report errors if the client is rate limited.
 	if !c.rateLimiterWriter.TryAccept() {
 		mc.RateLimitedCount()
-		return nil, retry.GetRateLimitError(true, "VMSSVMUpdate")
+		return retry.GetRateLimitError(true, "VMSSVMUpdate")
 	}
 
 	// Report errors if the client is throttled.
 	if c.RetryAfterWriter.After(time.Now()) {
 		mc.ThrottledCount()
 		rerr := retry.GetThrottlingError("VMSSVMUpdate", "client throttled", c.RetryAfterWriter)
-		return nil, rerr
+		return rerr
 	}
 
-	result, rerr := c.updateVMSSVM(ctx, resourceGroupName, VMScaleSetName, instanceID, parameters)
+	rerr := c.updateVMSSVM(ctx, resourceGroupName, VMScaleSetName, instanceID, parameters)
 	mc.Observe(rerr)
 	if rerr != nil {
 		if rerr.IsThrottled() {
 			// Update RetryAfterReader so that no more requests would be sent until RetryAfter expires.
 			c.RetryAfterWriter = rerr.RetryAfter
 		}
+
+		return rerr
 	}
 
-	return result, rerr
+	return nil
 }
 
 // UpdateAsync updates a VirtualMachineScaleSetVM asynchronously
@@ -300,7 +302,7 @@ func (c *Client) UpdateAsync(ctx context.Context, resourceGroupName string, VMSc
 }
 
 // WaitForUpdateResult waits for the response of the update request
-func (c *Client) WaitForUpdateResult(ctx context.Context, future *azure.Future, resourceGroupName, source string) (*compute.VirtualMachineScaleSetVM, *retry.Error) {
+func (c *Client) WaitForUpdateResult(ctx context.Context, future *azure.Future, resourceGroupName, source string) *retry.Error {
 	mc := metrics.NewMetricContext("vmss", "wait_for_update_result", resourceGroupName, c.subscriptionID, source)
 	response, err := c.armClient.WaitForAsyncOperationResult(ctx, future, "VMSSWaitForUpdateResult")
 	mc.Observe(retry.NewErrorOrNil(false, err))
@@ -310,25 +312,13 @@ func (c *Client) WaitForUpdateResult(ctx context.Context, future *azure.Future, 
 		} else {
 			klog.V(5).Infof("Received error in WaitForAsyncOperationResult: '%s', no response", err.Error())
 		}
-		return nil, retry.GetError(response, err)
+		return retry.GetError(response, err)
 	}
-
-	if response != nil && response.StatusCode != http.StatusNoContent {
-		result, rerr := c.updateResponder(response)
-		if rerr != nil {
-			klog.V(5).Infof("Received error in WaitForAsyncOperationResult updateResponder: '%s'", rerr.Error())
-		}
-
-		return result, rerr
-	}
-
-	result := &compute.VirtualMachineScaleSetVM{}
-	result.Response = autorest.Response{Response: response}
-	return result, nil
+	return nil
 }
 
 // updateVMSSVM updates a VirtualMachineScaleSetVM.
-func (c *Client) updateVMSSVM(ctx context.Context, resourceGroupName string, VMScaleSetName string, instanceID string, parameters compute.VirtualMachineScaleSetVM) (*compute.VirtualMachineScaleSetVM, *retry.Error) {
+func (c *Client) updateVMSSVM(ctx context.Context, resourceGroupName string, VMScaleSetName string, instanceID string, parameters compute.VirtualMachineScaleSetVM) *retry.Error {
 	resourceID := armclient.GetChildResourceID(
 		c.subscriptionID,
 		resourceGroupName,
@@ -342,20 +332,18 @@ func (c *Client) updateVMSSVM(ctx context.Context, resourceGroupName string, VMS
 	defer c.armClient.CloseResponse(ctx, response)
 	if rerr != nil {
 		klog.V(5).Infof("Received error in %s: resourceID: %s, error: %s", "vmssvm.put.request", resourceID, rerr.Error())
-		return nil, rerr
+		return rerr
 	}
 
 	if response != nil && response.StatusCode != http.StatusNoContent {
-		result, rerr := c.updateResponder(response)
+		_, rerr = c.updateResponder(response)
 		if rerr != nil {
 			klog.V(5).Infof("Received error in %s: resourceID: %s, error: %s", "vmssvm.put.respond", resourceID, rerr.Error())
+			return rerr
 		}
-		return result, rerr
 	}
 
-	result := &compute.VirtualMachineScaleSetVM{}
-	result.Response = autorest.Response{Response: response}
-	return result, nil
+	return nil
 }
 
 func (c *Client) updateResponder(resp *http.Response) (*compute.VirtualMachineScaleSetVM, *retry.Error) {

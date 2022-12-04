@@ -384,6 +384,22 @@ type Cloud struct {
 	*controllerCommon
 }
 
+func init() {
+	// In go-autorest SDK https://github.com/Azure/go-autorest/blob/master/autorest/sender.go#L258-L287,
+	// if ARM returns http.StatusTooManyRequests, the sender doesn't increase the retry attempt count,
+	// hence the Azure clients will keep retrying forever until it get a status code other than 429.
+	// So we explicitly removes http.StatusTooManyRequests from autorest.StatusCodesForRetry.
+	// Refer https://github.com/Azure/go-autorest/issues/398.
+	// TODO(feiskyer): Use autorest.SendDecorator to customize the retry policy when new Azure SDK is available.
+	statusCodesForRetry := make([]int, 0)
+	for _, code := range autorest.StatusCodesForRetry {
+		if code != http.StatusTooManyRequests {
+			statusCodesForRetry = append(statusCodesForRetry, code)
+		}
+	}
+	autorest.StatusCodesForRetry = statusCodesForRetry
+}
+
 // NewCloud returns a Cloud with initialized clients
 func NewCloud(configReader io.Reader, callFromCCM bool) (cloudprovider.Interface, error) {
 	az, err := NewCloudWithoutFeatureGates(configReader, callFromCCM)
@@ -1033,7 +1049,6 @@ func initDiskControllers(az *Cloud) error {
 		subscriptionID:        az.SubscriptionID,
 		cloud:                 az,
 		lockMap:               newLockMap(),
-		futureParser:          &controllerFutureParser{},
 	}
 
 	logger := klogr.NewWithOptions(klogr.WithFormat(klogr.FormatKlog)).WithName("cloud-provider-azure").WithValues("type", "batch")
@@ -1387,10 +1402,6 @@ func (az *Cloud) ShouldNodeExcludedFromLoadBalancer(nodeName string) (bool, erro
 	}
 
 	return az.excludeLoadBalancerNodes.Has(nodeName), nil
-}
-
-func (az *Cloud) FutureParser() FutureParser {
-	return az.futureParser
 }
 
 func isNodeReady(node *v1.Node) bool {

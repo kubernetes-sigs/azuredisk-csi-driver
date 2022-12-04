@@ -605,10 +605,7 @@ func (z *Tokenizer) readComment() {
 			z.data.end = z.data.start
 		}
 	}()
-
-	var dashCount int
-	beginning := true
-	for {
+	for dashCount := 2; ; {
 		c := z.readByte()
 		if z.err != nil {
 			// Ignore up to two dashes at EOF.
@@ -623,7 +620,7 @@ func (z *Tokenizer) readComment() {
 			dashCount++
 			continue
 		case '>':
-			if dashCount >= 2 || beginning {
+			if dashCount >= 2 {
 				z.data.end = z.raw.end - len("-->")
 				return
 			}
@@ -641,7 +638,6 @@ func (z *Tokenizer) readComment() {
 			}
 		}
 		dashCount = 0
-		beginning = false
 	}
 }
 
