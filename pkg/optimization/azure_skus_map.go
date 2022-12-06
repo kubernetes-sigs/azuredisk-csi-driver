@@ -370,6 +370,7 @@ var (
 		"standard_nv24s_v2":      {SkuName: "Standard_NV24s_v2", MaxDataDiskCount: 32, VCpus: 24, MaxBurstIops: 0, MaxIops: 0, MaxBwMbps: 0, MaxBurstBwMbps: 0},
 		"standard_e64-32s_v4":    {SkuName: "Standard_E64-32s_v4", MaxDataDiskCount: 32, VCpus: 64, MaxBurstIops: 80000, MaxIops: 80000, MaxBwMbps: 1200, MaxBurstBwMbps: 1200},
 		"standard_e64ds_v4":      {SkuName: "Standard_E64ds_v4", MaxDataDiskCount: 32, VCpus: 64, MaxBurstIops: 80000, MaxIops: 80000, MaxBwMbps: 1200, MaxBurstBwMbps: 1200},
+		"standard_e64ds_v5":      {SkuName: "Standard_E64ds_v5", MaxDataDiskCount: 32, VCpus: 64, MaxBurstIops: 80000, MaxIops: 80000, MaxBwMbps: 1735, MaxBurstBwMbps: 3000},
 		"standard_e96a_v4":       {SkuName: "Standard_E96a_v4", MaxDataDiskCount: 32, VCpus: 96, MaxBurstIops: 0, MaxIops: 0, MaxBwMbps: 0, MaxBurstBwMbps: 0},
 		"standard_e16-4as_v4":    {SkuName: "Standard_E16-4as_v4", MaxDataDiskCount: 32, VCpus: 16, MaxBurstIops: 25600, MaxIops: 25600, MaxBwMbps: 384, MaxBurstBwMbps: 384},
 		"standard_e64-32as_v4":   {SkuName: "Standard_E64-32as_v4", MaxDataDiskCount: 32, VCpus: 64, MaxBurstIops: 80000, MaxIops: 80000, MaxBwMbps: 1200, MaxBurstBwMbps: 1200},
