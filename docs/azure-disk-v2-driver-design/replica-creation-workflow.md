@@ -3,7 +3,7 @@
 ```mermaid
     sequenceDiagram      
     %% setup  
-        participant trigger as Triggers (pod.go, node_availability.go, replica.go) 
+        participant trigger as Triggers (pod.go, node.go, replica.go) 
         participant sharedState as Shared State (shared_state.go)
         participant azVolAttController as AzVolumeAttachment controller (attach_detach.go/replica.go)
         participant cloudProvisioner as Cloud provisioner (cloudprovisioner.go)
