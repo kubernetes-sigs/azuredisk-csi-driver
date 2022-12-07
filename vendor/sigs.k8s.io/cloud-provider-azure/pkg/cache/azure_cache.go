@@ -173,17 +173,3 @@ func (t *TimedCache) Set(key string, data interface{}) {
 		CreatedOn: time.Now().UTC(),
 	})
 }
-
-// Update updates the data cache for the key.
-func (t *TimedCache) Update(key string, data interface{}) {
-	_ = t.Store.Update(&AzureCacheEntry{
-		Key:       key,
-		Data:      data,
-		CreatedOn: time.Now().UTC(),
-	})
-}
-
-// ListKeys returns a list of all of the keys of objects currently in the cache.
-func (t *TimedCache) ListKeys() []string {
-	return t.Store.ListKeys()
-}

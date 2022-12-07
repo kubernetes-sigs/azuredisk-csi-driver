@@ -85,12 +85,11 @@ func (mr *MockInterfaceMockRecorder) List(ctx, resourceGroupName, virtualMachine
 }
 
 // Update mocks base method.
-func (m *MockInterface) Update(ctx context.Context, resourceGroupName, VMScaleSetName, instanceID string, parameters compute.VirtualMachineScaleSetVM, source string) (*compute.VirtualMachineScaleSetVM, *retry.Error) {
+func (m *MockInterface) Update(ctx context.Context, resourceGroupName, VMScaleSetName, instanceID string, parameters compute.VirtualMachineScaleSetVM, source string) *retry.Error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Update", ctx, resourceGroupName, VMScaleSetName, instanceID, parameters, source)
-	ret0, _ := ret[0].(*compute.VirtualMachineScaleSetVM)
-	ret1, _ := ret[1].(*retry.Error)
-	return ret0, ret1
+	ret0, _ := ret[0].(*retry.Error)
+	return ret0
 }
 
 // Update indicates an expected call of Update.
@@ -129,12 +128,11 @@ func (mr *MockInterfaceMockRecorder) UpdateVMs(ctx, resourceGroupName, VMScaleSe
 }
 
 // WaitForUpdateResult mocks base method.
-func (m *MockInterface) WaitForUpdateResult(ctx context.Context, future *azure.Future, resourceGroupName, source string) (*compute.VirtualMachineScaleSetVM, *retry.Error) {
+func (m *MockInterface) WaitForUpdateResult(ctx context.Context, future *azure.Future, resourceGroupName, source string) *retry.Error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "WaitForUpdateResult", ctx, future, resourceGroupName, source)
-	ret0, _ := ret[0].(*compute.VirtualMachineScaleSetVM)
-	ret1, _ := ret[1].(*retry.Error)
-	return ret0, ret1
+	ret0, _ := ret[0].(*retry.Error)
+	return ret0
 }
 
 // WaitForUpdateResult indicates an expected call of WaitForUpdateResult.

@@ -41,7 +41,7 @@ var (
 )
 
 // KeyFromAttributes concatenates the parameters to form a unique key for the referenced resource. Since the
-// values are case-insensitive, they are converted to lowercase before concatenation.
+// values are case-insensitive, they are converted to lowercase before concatentation.
 func KeyFromAttributes(subscriptionID, resourceGroup, resourceName string) string {
 	return strings.Join(
 		[]string{

@@ -18,7 +18,6 @@ package provisioner
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -26,9 +25,7 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
-	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/Azure/go-autorest/autorest/date"
-	autorestmocks "github.com/Azure/go-autorest/autorest/mocks"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/codes"
@@ -718,39 +715,13 @@ func TestPublishVolume(t *testing.T) {
 		AnyTimes()
 	provisioner.GetCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
 		UpdateAsync(gomock.Any(), testResourceGroup, testVMName, gomock.Any(), gomock.Any()).
-		DoAndReturn(func(ctx context.Context, resourceGroup, nodeName string, parameters compute.VirtualMachineUpdate, source string) (*azure.Future, *retry.Error) {
-			vm := &compute.VirtualMachine{
-				Name:                     &nodeName,
-				Plan:                     parameters.Plan,
-				VirtualMachineProperties: parameters.VirtualMachineProperties,
-				Identity:                 parameters.Identity,
-				Zones:                    parameters.Zones,
-				Tags:                     parameters.Tags,
-			}
-			c, err := json.Marshal(vm)
-			if err != nil {
-				return nil, retry.NewError(false, err)
-			}
-
-			r := autorestmocks.NewResponseWithContent(string(c))
-			r.Request.Method = http.MethodPut
-
-			f, err := azure.NewFutureFromResponse(r)
-			if err != nil {
-				return nil, retry.NewError(false, err)
-			}
-
-			return &f, nil
-		}).
+		Return(nil, nil).
 		AnyTimes()
 	provisioner.GetCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
 		WaitForUpdateResult(gomock.Any(), gomock.Any(), testResourceGroup, gomock.Any()).
 		Return(nil).
 		AnyTimes()
-	provisioner.GetCloud().FutureParser().(*provider.MockFutureParser).EXPECT().
-		ConfigAccepted(gomock.Any()).
-		Return(true).
-		AnyTimes()
+
 	provisioner.GetCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
 		Get(gomock.Any(), testResourceGroup, missingVMName, gomock.Any()).
 		Return(compute.VirtualMachine{}, notFoundError).
