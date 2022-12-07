@@ -383,6 +383,8 @@ const (
 	CannotUpdateVMBeingDeletedMessagePrefix = "'Put on Virtual Machine Scale Set VM Instance' is not allowed on Virtual Machine Scale Set"
 	// CannotUpdateVMBeingDeletedMessageSuffix is the suffix of the error message that the request failed due to delete a VM that is being deleted
 	CannotUpdateVMBeingDeletedMessageSuffix = "since it is marked for deletion"
+	// OperationPreemptedErrorCode is the error code returned for vm operation preempted errors
+	OperationPreemptedErrorCode = "OperationPreempted"
 )
 
 // node ipam controller
@@ -431,6 +433,14 @@ const CreatedByTag = "k8s-azure-created-by"
 // health probe
 const (
 	HealthProbeAnnotationPrefixPattern = "service.beta.kubernetes.io/port_%d_health-probe_"
+
+	// HealthProbeParamsProtocol determines the protocol for the health probe params.
+	// It always takes priority over spec.appProtocol or any other specified protocol
+	HealthProbeParamsProtocol HealthProbeParams = "protocol"
+
+	// HealthProbeParamsPort determines the probe port for the health probe params.
+	// It always takes priority over the NodePort of the spec.ports in a Service
+	HealthProbeParamsPort HealthProbeParams = "port"
 
 	// HealthProbeParamsProbeInterval determines the probe interval of the load balancer health probe.
 	// The minimum probe interval is 5 seconds and the default value is 5. The total duration of all intervals cannot exceed 120 seconds.
