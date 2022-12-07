@@ -79,7 +79,7 @@ controller:
   attacherBurst: 100
   driverWorkerThreads: 100
   vmssCacheTTLInSeconds: -1
-  kubeClientQPS: 32.0
+  kubeClientQPS: 60
   kubeClientBurst: 240
   enableAzureClientAttachDetachRateLimiter: true
   azureClientAttachDetachRateLimiterQPS: 1.333
