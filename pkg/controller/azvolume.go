@@ -280,14 +280,10 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *azdiskv
 			for _, attachment := range attachments {
 				// wait async and report error to go channel
 				go func(ctx context.Context, attachment azdiskv1beta2.AzVolumeAttachment) {
-					waiter, derr := r.conditionWatcher.NewConditionWaiter(deleteCtx, watcher.AzVolumeAttachmentType, attachment.Name, verifyObjectFailedOrDeleted)
+					waiter := r.conditionWatcher.NewConditionWaiter(deleteCtx, watcher.AzVolumeAttachmentType, attachment.Name, verifyObjectFailedOrDeleted)
 					defer waiter.Close()
-					if derr != nil {
-						errorMessageCh <- fmt.Sprintf("%s: %v", attachment.Name, derr)
-						return
-					}
 
-					_, derr = waiter.Wait(ctx)
+					_, derr := waiter.Wait(ctx)
 					if derr != nil {
 						errorMessageCh <- fmt.Sprintf("%s: %v", attachment.Name, derr)
 					} else {

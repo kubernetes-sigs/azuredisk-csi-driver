@@ -109,7 +109,7 @@ func (c *ConditionWatcher) InformerFactory() azdiskinformers.SharedInformerFacto
 	return c.informerFactory
 }
 
-func (c *ConditionWatcher) NewConditionWaiter(ctx context.Context, objType ObjectType, objName string, conditionFunc func(obj interface{}, expectDelete bool) (bool, error)) (*ConditionWaiter, error) {
+func (c *ConditionWatcher) NewConditionWaiter(ctx context.Context, objType ObjectType, objName string, conditionFunc func(obj interface{}, expectDelete bool) (bool, error)) *ConditionWaiter {
 	klog.V(5).Infof("Adding a condition function for %s (%s)", objType, objName)
 	entry := waitEntry{
 		conditionFunc: conditionFunc,
@@ -130,7 +130,7 @@ func (c *ConditionWatcher) NewConditionWaiter(ctx context.Context, objType Objec
 		objName: objName,
 		entry:   &entry,
 		watcher: c,
-	}, nil
+	}
 }
 
 func (c *ConditionWatcher) onCreate(obj interface{}) {

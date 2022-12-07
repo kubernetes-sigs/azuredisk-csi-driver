@@ -122,7 +122,7 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 
 func (r *ReconcileReplica) handleReplicaDelete(ctx context.Context, azVolumeAttachment *azdiskv1beta2.AzVolumeAttachment) {
 	// wait for replica AzVolumeAttachment deletion
-	waiter, _ := r.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeAttachmentType, azVolumeAttachment.Name, verifyObjectDeleted)
+	waiter := r.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeAttachmentType, azVolumeAttachment.Name, verifyObjectDeleted)
 	defer waiter.Close()
 	_, _ = waiter.Wait(ctx)
 
@@ -208,12 +208,7 @@ func (r *ReconcileReplica) triggerCreateFailedReplicas(ctx context.Context, volu
 					}
 				}()
 
-				var waiter *watcher.ConditionWaiter
-				waiter, err = r.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeAttachmentType, azVolumeAttachmentList.Items[index].Name, verifyObjectDeleted)
-				if err != nil {
-					errs[index] = err
-					return
-				}
+				waiter := r.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeAttachmentType, azVolumeAttachmentList.Items[index].Name, verifyObjectDeleted)
 				defer waiter.Close()
 				if _, err = waiter.Wait(ctx); err != nil {
 					errs[index] = err

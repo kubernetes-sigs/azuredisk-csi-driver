@@ -318,11 +318,7 @@ func (c *CrdProvisioner) CreateVolume(
 		w.Logger().V(5).Info("Successfully created AzVolume CRI")
 	}
 
-	var waiter *watcher.ConditionWaiter
-	waiter, err = c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeType, azVolumeName, waitForCreateVolumeFunc)
-	if err != nil {
-		return nil, err
-	}
+	waiter := c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeType, azVolumeName, waitForCreateVolumeFunc)
 	defer waiter.Close()
 
 	var obj runtime.Object
@@ -402,19 +398,14 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 		return err
 	}
 
-	var waiter *watcher.ConditionWaiter
 	// if deletion failed requeue deletion
 	updateFunc := func(obj client.Object) error {
 		updateInstance := obj.(*azdiskv1beta2.AzVolume)
 		switch updateInstance.Status.State {
 		case azdiskv1beta2.VolumeCreating:
 			// if volume is still being created, wait for creation
-			waiter, err = c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeType, azVolumeName, waitForCreateVolumeFunc)
-			if err != nil {
-				return err
-			}
-			var obj interface{}
-			obj, err = waiter.Wait(ctx)
+			waiter := c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeType, azVolumeName, waitForCreateVolumeFunc)
+			obj, err := waiter.Wait(ctx)
 			// close cannot be called on defer because this will interfere wait for delete
 			waiter.Close()
 			if err != nil {
@@ -424,12 +415,8 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 		case azdiskv1beta2.VolumeUpdating:
 			// if volume is still being updated, wait for update
 			if azVolumeInstance.Spec.CapacityRange != nil {
-				waiter, err = c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeType, azVolumeName, waitForExpandVolumeFunc(azVolumeInstance.Spec.CapacityRange.RequiredBytes))
-				if err != nil {
-					return err
-				}
-				var obj interface{}
-				obj, err = waiter.Wait(ctx)
+				waiter := c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeType, azVolumeName, waitForExpandVolumeFunc(azVolumeInstance.Spec.CapacityRange.RequiredBytes))
+				obj, err := waiter.Wait(ctx)
 				// close cannot be called on defer because this will interfere wait for delete
 				waiter.Close()
 				if err != nil {
@@ -459,10 +446,7 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 	}
 	azVolumeInstance = updateObj.(*azdiskv1beta2.AzVolume)
 
-	waiter, err = c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeType, azVolumeName, waitForDeleteVolumeFunc)
-	if err != nil {
-		return err
-	}
+	waiter := c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeType, azVolumeName, waitForDeleteVolumeFunc)
 	defer waiter.Close()
 
 	// only make delete request if object's deletion timestamp is not set
@@ -677,11 +661,7 @@ func (c *CrdProvisioner) PublishVolume(
 		// if azVolumeAttachment was preempitvely created without attach trigger, then add attach trigger now
 		if isPreemptiveCreate {
 			// make sure CRI is created
-			var waiter *watcher.ConditionWaiter
-			waiter, err = c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeAttachmentType, attachmentName, waitForCRICreateFunc)
-			if err != nil {
-				return publishContext, err
-			}
+			waiter := c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeAttachmentType, attachmentName, waitForCRICreateFunc)
 			_, _ = waiter.Wait(ctx)
 			waiter.Close()
 			updateMode = azureutils.UpdateCRI
@@ -812,11 +792,7 @@ func (c *CrdProvisioner) waitForLunOrAttach(ctx context.Context, volumeID, nodeI
 		}
 	}
 
-	var waiter *watcher.ConditionWaiter
-	waiter, err = c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeAttachmentType, attachmentName, waitFunc)
-	if err != nil {
-		return nil, err
-	}
+	waiter := c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeAttachmentType, attachmentName, waitFunc)
 	defer waiter.Close()
 
 	obj, err := waiter.Wait(ctx)
@@ -968,12 +944,7 @@ func (c *CrdProvisioner) WaitForDetach(ctx context.Context, volumeID, nodeID str
 
 	lister := c.conditionWatcher.InformerFactory().Disk().V1beta2().AzVolumeAttachments().Lister().AzVolumeAttachments(c.namespace)
 
-	var waiter *watcher.ConditionWaiter
-	waiter, err = c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeAttachmentType, attachmentName, waitForDetachVolumeFunc)
-
-	if err != nil {
-		return err
-	}
+	waiter := c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeAttachmentType, attachmentName, waitForDetachVolumeFunc)
 	defer waiter.Close()
 
 	if _, err := lister.Get(attachmentName); apiErrors.IsNotFound(err) {
@@ -1006,12 +977,7 @@ func (c *CrdProvisioner) ExpandVolume(
 	ctx, w := workflow.New(ctx, workflow.WithDetails(workflow.GetObjectDetails(azVolume)...))
 	defer func() { w.Finish(err) }()
 
-	var waiter *watcher.ConditionWaiter
-	waiter, err = c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeType, azVolumeName, waitForExpandVolumeFunc(capacityRange.RequiredBytes))
-	if err != nil {
-		return nil, err
-	}
-
+	waiter := c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeType, azVolumeName, waitForExpandVolumeFunc(capacityRange.RequiredBytes))
 	defer waiter.Close()
 
 	updateFunc := func(obj client.Object) error {
