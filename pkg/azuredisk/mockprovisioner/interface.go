@@ -27,6 +27,7 @@ import (
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	azureconstants "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/watcher"
 )
 
 // MockCrdProvisioner is a mock of CrdProvisioner interface
@@ -181,6 +182,20 @@ func (m *MockCrdProvisioner) GetDiskClientSet() azdisk.Interface {
 func (mr *MockCrdProvisionerMockRecorder) GetDiskClientSet() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDiskClientSet", reflect.TypeOf((*MockCrdProvisioner)(nil).GetDiskClientSet))
+}
+
+// GetConditionWatcher mocks base method
+func (m *MockCrdProvisioner) GetConditionWatcher() *watcher.ConditionWatcher {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetConditionWatcher")
+	ret0, _ := ret[0].(*watcher.ConditionWatcher)
+	return ret0
+}
+
+// GetConditionWatcher indicates an expected call of GetDiskClientSet
+func (mr *MockCrdProvisionerMockRecorder) GetConditionWatcher() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetConditionWatcher", reflect.TypeOf((*MockCrdProvisioner)(nil).GetConditionWatcher))
 }
 
 // IsDriverUninstall mocks base method

@@ -19,7 +19,6 @@ package watcher
 import (
 	"context"
 	"fmt"
-	"os"
 	"reflect"
 	"sync"
 
@@ -27,12 +26,12 @@ import (
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
-	"k8s.io/client-go/tools/cache"
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
-	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	azdiskinformers "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 )
 
 type ObjectType string
@@ -67,46 +66,21 @@ type ConditionWatcher struct {
 	namespace       string
 }
 
-func New(ctx context.Context, azDiskClient azdisk.Interface, informerFactory azdiskinformers.SharedInformerFactory, namespace string) *ConditionWatcher {
-	azVolumeAttachmentInformer := informerFactory.Disk().V1beta2().AzVolumeAttachments().Informer()
-	azVolumeInformer := informerFactory.Disk().V1beta2().AzVolumes().Informer()
-	azDriverNodeInformer := informerFactory.Disk().V1beta2().AzDriverNodes().Informer()
-
-	c := ConditionWatcher{
+func NewConditionWatcher(informerFactory azdiskinformers.SharedInformerFactory, namespace string, informers ...azureutils.GenericInformer) *ConditionWatcher {
+	c := &ConditionWatcher{
 		informerFactory: informerFactory,
 		waitMap:         sync.Map{},
 		namespace:       namespace,
 	}
 
-	azVolumeAttachmentInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    c.onCreate,
-		UpdateFunc: c.onUpdate,
-		DeleteFunc: c.onDelete,
-	})
-	azVolumeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    c.onCreate,
-		UpdateFunc: c.onUpdate,
-		DeleteFunc: c.onDelete,
-	})
-	azDriverNodeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    c.onCreate,
-		UpdateFunc: c.onUpdate,
-		DeleteFunc: c.onDelete,
-	})
-
-	go informerFactory.Start(ctx.Done())
-
-	synced := cache.WaitForCacheSync(ctx.Done(), azVolumeAttachmentInformer.HasSynced, azVolumeInformer.HasSynced, azDriverNodeInformer.HasSynced)
-	if !synced {
-		klog.Fatalf("Unable to sync caches for azuredisk CRIs")
-		os.Exit(1)
+	for _, informer := range informers {
+		informer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    c.onCreate,
+			UpdateFunc: c.onUpdate,
+			DeleteFunc: c.onDelete,
+		})
 	}
-
-	return &c
-}
-
-func (c *ConditionWatcher) InformerFactory() azdiskinformers.SharedInformerFactory {
-	return c.informerFactory
+	return c
 }
 
 func (c *ConditionWatcher) NewConditionWaiter(ctx context.Context, objType ObjectType, objName string, conditionFunc func(obj interface{}, expectDelete bool) (bool, error)) (*ConditionWaiter, error) {

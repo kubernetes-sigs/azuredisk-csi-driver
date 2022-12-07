@@ -45,7 +45,6 @@ import (
 	"k8s.io/kubernetes/pkg/features"
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
-	azdiskinformers "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/watcher"
@@ -54,6 +53,8 @@ import (
 )
 
 type DriverLifecycle interface {
+	GetDiskClientSet() azdisk.Interface
+	GetConditionWatcher() *watcher.ConditionWatcher
 	IsDriverUninstall() bool
 }
 
@@ -85,20 +86,16 @@ type SharedState struct {
 	driverLifecycle               DriverLifecycle
 }
 
-func NewSharedState(config *azdiskv1beta2.AzDiskDriverConfiguration, topologyKey string, eventRecorder record.EventRecorder, cachedClient client.Client, azClient azdisk.Interface, driverLifecycle DriverLifecycle, kubeClient kubernetes.Interface, crdClient crdClientset.Interface) *SharedState {
+func NewSharedState(config *azdiskv1beta2.AzDiskDriverConfiguration, topologyKey string, eventRecorder record.EventRecorder, cachedClient client.Client, crdClient crdClientset.Interface, kubeClient kubernetes.Interface, driverLifecycle DriverLifecycle) *SharedState {
 	newSharedState := &SharedState{
-		config:        config,
-		topologyKey:   topologyKey,
-		eventRecorder: eventRecorder,
-		cachedClient:  cachedClient,
-		crdClient:     crdClient,
-		azClient:      azClient,
-		kubeClient:    kubeClient,
-		conditionWatcher: watcher.New(
-			context.Background(),
-			azClient,
-			azdiskinformers.NewSharedInformerFactory(azClient, consts.DefaultInformerResync),
-			config.ObjectNamespace),
+		config:                 config,
+		topologyKey:            topologyKey,
+		eventRecorder:          eventRecorder,
+		cachedClient:           cachedClient,
+		crdClient:              crdClient,
+		azClient:               driverLifecycle.GetDiskClientSet(),
+		kubeClient:             kubeClient,
+		conditionWatcher:       driverLifecycle.GetConditionWatcher(),
 		azureDiskCSITranslator: csitranslator.NewAzureDiskCSITranslator(),
 		driverLifecycle:        driverLifecycle,
 	}

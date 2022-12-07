@@ -23,6 +23,7 @@ import (
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/watcher"
 )
 
 type CrdProvisioner interface {
@@ -39,6 +40,7 @@ type CrdProvisioner interface {
 	GetAzVolumeAttachment(ctx context.Context, volumeID string, nodeID string) (*azdiskv1beta2.AzVolumeAttachment, error)
 	ExpandVolume(ctx context.Context, volumeID string, capacityRange *azdiskv1beta2.CapacityRange, secrets map[string]string) (*azdiskv1beta2.AzVolumeStatusDetail, error)
 	GetDiskClientSet() azdisk.Interface
+	GetConditionWatcher() *watcher.ConditionWatcher
 	IsDriverUninstall() bool
 }
 

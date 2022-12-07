@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"reflect"
 	"sort"
 	"strings"
@@ -36,13 +35,10 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/informers"
 	kubeClientset "k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/klog/v2"
 
 	apiext "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	crdClientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
-	crdInformers "k8s.io/apiextensions-apiserver/pkg/client/informers/externalversions"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
@@ -58,8 +54,8 @@ import (
 
 type CrdProvisioner struct {
 	azDiskClient         azdisk.Interface
-	kubeClient           kubeClientset.Interface
-	crdClient            crdClientset.Interface
+	kubeClient           kubeClientset.Interface // for crdprovisioner_test
+	crdClient            crdClientset.Interface  // for crdprovisioner_test
 	namespace            string
 	conditionWatcher     *watcher.ConditionWatcher
 	azCachedReader       CachedReader
@@ -75,6 +71,14 @@ type CachedReader struct {
 	kubeInformer informers.SharedInformerFactory
 	azInformer   azdiskinformers.SharedInformerFactory
 	azNamespace  string
+}
+
+func NewCachedReader(kubeInformerFactory informers.SharedInformerFactory, azInformerFactory azdiskinformers.SharedInformerFactory, objNamespace string) CachedReader {
+	return CachedReader{
+		kubeInformer: kubeInformerFactory,
+		azInformer:   azInformerFactory,
+		azNamespace:  objNamespace,
+	}
 }
 
 func (a CachedReader) Get(_ context.Context, namespacedName types.NamespacedName, object client.Object) error {
@@ -173,37 +177,26 @@ func (a CachedReader) List(_ context.Context, objectList client.ObjectList, opts
 	return err
 }
 
-func NewCrdProvisioner(kubeConfig *rest.Config, objNamespace string) (*CrdProvisioner, error) {
-	azdiskClient, err := azureutils.GetAzDiskClient(kubeConfig)
-	if err != nil {
-		return nil, err
-	}
-	kubeClient, err := kubeClientset.NewForConfig(kubeConfig)
-	if err != nil {
-		return nil, err
-	}
-	crdClient, err := crdClientset.NewForConfig(kubeConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, consts.DefaultInformerResync)
-	azInformerFactory := azdiskinformers.NewSharedInformerFactory(azdiskClient, consts.DefaultInformerResync)
-	crdInformerFactory := crdInformers.NewSharedInformerFactory(crdClient, consts.DefaultInformerResync)
-
-	crdProvisioner := &CrdProvisioner{
+func NewCrdProvisioner(azdiskClient azdisk.Interface, objNamespace string, cw *watcher.ConditionWatcher, azCachedReader CachedReader, informer azureutils.GenericInformer) *CrdProvisioner {
+	c := &CrdProvisioner{
 		azDiskClient:     azdiskClient,
 		namespace:        objNamespace,
-		conditionWatcher: watcher.New(context.Background(), azdiskClient, azInformerFactory, objNamespace),
-		azCachedReader: CachedReader{
-			azNamespace:  objNamespace,
-			kubeInformer: kubeInformerFactory,
-			azInformer:   azInformerFactory,
-		},
+		conditionWatcher: cw,
+		azCachedReader:   azCachedReader,
 	}
 
-	crdProvisioner.startWatchingObjs(context.Background(), kubeInformerFactory, crdInformerFactory, &crdProvisioner.driverUninstallState)
-	return crdProvisioner, nil
+	informer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: func(_, new interface{}) {
+			crdObj := new.(*apiext.CustomResourceDefinition)
+			if crdObj.DeletionTimestamp != nil && (crdObj.Name == consts.AzVolumeAttachmentCRDName || crdObj.Name == consts.AzVolumeCRDName) {
+				go func() {
+					atomic.StoreUint32(&c.driverUninstallState, 1)
+				}()
+			}
+		},
+	})
+
+	return c
 }
 
 /*
@@ -272,7 +265,7 @@ func (c *CrdProvisioner) CreateVolume(
 			return nil
 		}
 
-		if _, err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, azVolumeInstance, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateAll); err != nil {
+		if _, err = azureutils.UpdateCRIWithRetry(ctx, c.azCachedReader.azInformer, nil, c.azDiskClient, azVolumeInstance, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateAll); err != nil {
 			return nil, err
 		}
 		// if the error was caused by errors other than IsNotFound, return failure
@@ -454,7 +447,7 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 
 	var updateObj client.Object
 	// update AzVolume CRI with annotation and reset state with retry upon conflict
-	if updateObj, err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, azVolumeInstance, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
+	if updateObj, err = azureutils.UpdateCRIWithRetry(ctx, c.azCachedReader.azInformer, nil, c.azDiskClient, azVolumeInstance, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
 		return err
 	}
 	azVolumeInstance = updateObj.(*azdiskv1beta2.AzVolume)
@@ -730,7 +723,7 @@ func (c *CrdProvisioner) PublishVolume(
 		}
 		updateMode = azureutils.UpdateAll
 	}
-	if _, err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, attachmentObj, updateFunc, consts.NormalUpdateMaxNetRetry, updateMode); err != nil {
+	if _, err = azureutils.UpdateCRIWithRetry(ctx, c.azCachedReader.azInformer, nil, c.azDiskClient, attachmentObj, updateFunc, consts.NormalUpdateMaxNetRetry, updateMode); err != nil {
 		return publishContext, err
 	}
 
@@ -806,7 +799,7 @@ func (c *CrdProvisioner) waitForLunOrAttach(ctx context.Context, volumeID, nodeI
 				return nil
 			}
 
-			if _, err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, azVolumeAttachmentInstance, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
+			if _, err = azureutils.UpdateCRIWithRetry(ctx, c.azCachedReader.azInformer, nil, c.azDiskClient, azVolumeAttachmentInstance, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
 				return nil, err
 			}
 		}
@@ -881,7 +874,7 @@ func (c *CrdProvisioner) shouldDemote(volumeName string, mode consts.UnpublishMo
 	if mode == consts.Detach {
 		return false, nil
 	}
-	azVolumeInstance, err := c.conditionWatcher.InformerFactory().Disk().V1beta2().AzVolumes().Lister().AzVolumes(c.namespace).Get(volumeName)
+	azVolumeInstance, err := c.azCachedReader.azInformer.Disk().V1beta2().AzVolumes().Lister().AzVolumes(c.namespace).Get(volumeName)
 	if err != nil {
 		return false, err
 	}
@@ -907,7 +900,7 @@ func (c *CrdProvisioner) demoteVolume(ctx context.Context, azVolumeAttachment *a
 		updateInstance.Labels[consts.RoleChangeLabel] = consts.Demoted
 		return nil
 	}
-	_, err := azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateAll)
+	_, err := azureutils.UpdateCRIWithRetry(ctx, c.azCachedReader.azInformer, nil, c.azDiskClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateAll)
 	return err
 }
 
@@ -946,7 +939,7 @@ func (c *CrdProvisioner) detachVolume(ctx context.Context, azVolumeAttachment *a
 	}
 
 	w.Logger().V(5).Infof("Requesting AzVolumeAttachment (%s) detachment", azVolumeAttachment.Name)
-	if _, err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
+	if _, err = azureutils.UpdateCRIWithRetry(ctx, c.azCachedReader.azInformer, nil, c.azDiskClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
 		return err
 	}
 
@@ -966,7 +959,7 @@ func (c *CrdProvisioner) WaitForDetach(ctx context.Context, volumeID, nodeID str
 	volumeName = strings.ToLower(volumeName)
 	attachmentName := azureutils.GetAzVolumeAttachmentName(volumeName, nodeID)
 
-	lister := c.conditionWatcher.InformerFactory().Disk().V1beta2().AzVolumeAttachments().Lister().AzVolumeAttachments(c.namespace)
+	lister := c.azCachedReader.azInformer.Disk().V1beta2().AzVolumeAttachments().Lister().AzVolumeAttachments(c.namespace)
 
 	var waiter *watcher.ConditionWaiter
 	waiter, err = c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeAttachmentType, attachmentName, waitForDetachVolumeFunc)
@@ -1036,7 +1029,7 @@ func (c *CrdProvisioner) ExpandVolume(
 		return nil
 	}
 
-	if _, err = azureutils.UpdateCRIWithRetry(ctx, c.conditionWatcher.InformerFactory(), nil, c.azDiskClient, azVolume, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateAll); err != nil {
+	if _, err = azureutils.UpdateCRIWithRetry(ctx, c.azCachedReader.azInformer, nil, c.azDiskClient, azVolume, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateAll); err != nil {
 		return nil, err
 	}
 
@@ -1079,33 +1072,12 @@ func (c *CrdProvisioner) GetDiskClientSet() azdisk.Interface {
 	return c.azDiskClient
 }
 
-func (c *CrdProvisioner) IsDriverUninstall() bool {
-	return atomic.LoadUint32(&c.driverUninstallState) == 1
+func (c *CrdProvisioner) GetConditionWatcher() *watcher.ConditionWatcher {
+	return c.conditionWatcher
 }
 
-// Initializing nodeInformer and crdInformer and waiting for cache sync
-func (c *CrdProvisioner) startWatchingObjs(ctx context.Context, kubeInformerFactory informers.SharedInformerFactory, crdInformerFactory crdInformers.SharedInformerFactory, driverUninstallState *uint32) {
-	nodeInformer := kubeInformerFactory.Core().V1().Nodes().Informer()
-	go kubeInformerFactory.Start(ctx.Done())
-
-	crdInformer := crdInformerFactory.Apiextensions().V1().CustomResourceDefinitions().Informer()
-	crdInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		UpdateFunc: func(_, new interface{}) {
-			crdObj := new.(*apiext.CustomResourceDefinition)
-			if crdObj.DeletionTimestamp != nil && (crdObj.Name == consts.AzVolumeAttachmentCRDName || crdObj.Name == consts.AzVolumeCRDName) {
-				go func() {
-					atomic.StoreUint32(driverUninstallState, 1)
-				}()
-			}
-		},
-	})
-	go crdInformerFactory.Start(ctx.Done())
-
-	synced := cache.WaitForCacheSync(ctx.Done(), nodeInformer.HasSynced, crdInformer.HasSynced)
-	if !synced {
-		klog.Fatalf("Unable to sync caches for kube and/or CRD objects")
-		os.Exit(1)
-	}
+func (c *CrdProvisioner) IsDriverUninstall() bool {
+	return atomic.LoadUint32(&c.driverUninstallState) == 1
 }
 
 // Compares the fields in the AzVolumeSpec with the other parameters.

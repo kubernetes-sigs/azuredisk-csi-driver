@@ -38,6 +38,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	apiRuntime "k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
@@ -46,6 +47,7 @@ import (
 	"k8s.io/klog/v2/klogr"
 
 	apiext "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	crdInformers "k8s.io/apiextensions-apiserver/pkg/client/informers/externalversions"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	clientmetrics "k8s.io/client-go/tools/metrics"
@@ -63,6 +65,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/provisioner"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/watcher"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/workflow"
 	azurecloudconsts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -117,6 +120,7 @@ type DriverV2 struct {
 	kubeConfig           *rest.Config
 	kubeClient           *clientset.Clientset
 	azdiskClient         azdisk.Interface
+	crdClient            crdClientset.Interface
 	azDriverNodeInformer azdiskinformertypes.AzDriverNodeInformer
 	deviceChecker        *deviceChecker
 }
@@ -179,12 +183,28 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 		klog.Fatalf("failed to get azdiskclient with kubeconfig (%s), error: %v. Exiting application...", kubeconfig, err)
 	}
 
+	d.crdClient, err = crdClientset.NewForConfig(d.kubeConfig)
+	if err != nil {
+		klog.Fatalf("failed to get crdclient with kubeconfig (%s), error: %v. Exiting application...", kubeconfig, err)
+	}
+
 	// d.crdProvisioner is set by NewFakeDriver for unit tests.
 	if d.crdProvisioner == nil {
-		d.crdProvisioner, err = provisioner.NewCrdProvisioner(d.kubeConfig, d.config.ObjectNamespace)
-		if err != nil {
-			klog.Fatalf("Failed to get crd provisioner. Error: %v", err)
-		}
+		kubeInformerFactory := informers.NewSharedInformerFactory(d.kubeClient, consts.DefaultInformerResync)
+		azInformerFactory := azdiskinformers.NewSharedInformerFactory(d.azdiskClient, consts.DefaultInformerResync)
+		crdInformerFactory := crdInformers.NewSharedInformerFactory(d.crdClient, consts.DefaultInformerResync)
+
+		nodeInformer := azureutils.NewNodeInformer(kubeInformerFactory)
+		azNodeInformer := azureutils.NewAzNodeInformer(azInformerFactory)
+		azVolumeAttachmentInformer := azureutils.NewAzVolumeAttachmentInformer(azInformerFactory)
+		azVolumeInformer := azureutils.NewAzVolumeInformer(azInformerFactory)
+		crdInformer := azureutils.NewCrdInformer(crdInformerFactory)
+
+		conditionWatcher := watcher.NewConditionWatcher(azInformerFactory, d.config.ObjectNamespace, azNodeInformer, azVolumeAttachmentInformer, azVolumeInformer)
+
+		d.crdProvisioner = provisioner.NewCrdProvisioner(d.azdiskClient, d.config.ObjectNamespace, conditionWatcher, provisioner.NewCachedReader(kubeInformerFactory, azInformerFactory, d.config.ObjectNamespace), crdInformer)
+
+		azureutils.StartInformersAndWaitForCacheSync(context.Background(), nodeInformer, azNodeInformer, azVolumeAttachmentInformer, azVolumeInformer, crdInformer)
 	}
 
 	// d.cloudProvisioner is set by NewFakeDriver for unit tests.
@@ -344,67 +364,54 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: d.kubeClient.CoreV1().Events("")})
 	eventRecorder := eventBroadcaster.NewRecorder(clientgoscheme.Scheme, v1.EventSource{Component: consts.AzureDiskCSIDriverName})
-	crdClient, err := crdClientset.NewForConfig(d.kubeConfig)
-	if err != nil {
-		klog.Errorf("failed to initialize crd clientset. Error: %v. Exiting application...", err)
-		os.Exit(1)
-	}
 
-	sharedState := controller.NewSharedState(d.config, topologyKey, eventRecorder, mgr.GetClient(), d.crdProvisioner.GetDiskClientSet(), d.crdProvisioner, d.kubeClient, crdClient)
+	sharedState := controller.NewSharedState(d.config, topologyKey, eventRecorder, mgr.GetClient(), d.crdClient, d.kubeClient, d.crdProvisioner)
 
 	// Setup a new controller to clean-up AzDriverNodes
 	// objects for the nodes which get deleted
 	klog.V(2).Info("Initializing Node controller")
 	nodeReconciler, err := controller.NewNodeController(mgr, sharedState)
 	if err != nil {
-		klog.Errorf("Failed to initialize NodeController. Error: %v. Exiting application...", err)
-		os.Exit(1)
+		klog.Fatalf("Failed to initialize NodeController. Error: %v. Exiting application...", err)
 	}
 
 	klog.V(2).Info("Initializing AzVolumeAttachment controller")
 	attachReconciler, err := controller.NewAttachDetachController(mgr, d.cloudProvisioner, d.crdProvisioner, sharedState)
 	if err != nil {
-		klog.Errorf("Failed to initialize AzVolumeAttachmentController. Error: %v. Exiting application...", err)
-		os.Exit(1)
+		klog.Fatalf("Failed to initialize AzVolumeAttachmentController. Error: %v. Exiting application...", err)
 	}
 
 	klog.V(2).Info("Initializing Pod controller")
 	podReconciler, err := controller.NewPodController(mgr, sharedState)
 	if err != nil {
-		klog.Errorf("Failed to initialize PodController. Error: %v. Exiting application...", err)
-		os.Exit(1)
+		klog.Fatalf("Failed to initialize PodController. Error: %v. Exiting application...", err)
 	}
 
 	klog.V(2).Info("Initializing Replica controller")
 	_, err = controller.NewReplicaController(mgr, sharedState)
 	if err != nil {
-		klog.Errorf("Failed to initialize ReplicaController. Error: %v. Exiting application...", err)
-		os.Exit(1)
+		klog.Fatalf("Failed to initialize ReplicaController. Error: %v. Exiting application...", err)
 	}
 
 	klog.V(2).Info("Initializing AzVolume controller")
 	azvReconciler, err := controller.NewAzVolumeController(mgr, d.cloudProvisioner, sharedState)
 	if err != nil {
-		klog.Errorf("Failed to initialize AzVolumeController. Error: %v. Exiting application...", err)
-		os.Exit(1)
+		klog.Fatalf("Failed to initialize AzVolumeController. Error: %v. Exiting application...", err)
 	}
 
 	klog.V(2).Info("Initializing PV controller")
 	pvReconciler, err := controller.NewPVController(mgr, sharedState)
 	if err != nil {
-		klog.Errorf("Failed to initialize PVController. Error: %v. Exiting application...", err)
-		os.Exit(1)
+		klog.Fatalf("Failed to initialize PVController. Error: %v. Exiting application...", err)
 	}
 	klog.V(2).Info("Initializing VolumeAttachment controller")
 	_, err = controller.NewVolumeAttachmentController(mgr, sharedState)
 	if err != nil {
-		klog.Errorf("Failed to initialize VolumeAttachment Controller. Error: %v. Exiting application...", err)
-		os.Exit(1)
+		klog.Fatalf("Failed to initialize VolumeAttachment Controller. Error: %v. Exiting application...", err)
 	}
 	err = controller.WatchObject(mgr, source.Kind{Type: &v1.Namespace{}})
 	if err != nil {
-		klog.Errorf("Failed to watch Namespace. Error: %v. Exiting application...", err)
-		os.Exit(1)
+		klog.Fatalf("Failed to watch Namespace. Error: %v. Exiting application...", err)
 	}
 
 	// This goroutine is preserved for leader controller manager
@@ -439,8 +446,7 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 
 	klog.V(2).Info("Starting controller manager")
 	if err := mgr.Start(ctx); err != nil {
-		klog.Errorf("Controller manager exited: %v", err)
-		os.Exit(1)
+		klog.Fatalf("Controller manager exited: %v", err)
 	}
 	// If manager exits, exit the application
 	// as recommended for the processes doing
@@ -457,7 +463,7 @@ func (d *DriverV2) registerAzDriverNodeOrDie(ctx context.Context) {
 
 	nodeSelector := fmt.Sprintf("metadata.name=%s", d.NodeID)
 
-	azdiskInformer := azdiskinformers.NewSharedInformerFactoryWithOptions(
+	azdiskInformerFactory := azdiskinformers.NewSharedInformerFactoryWithOptions(
 		d.azdiskClient,
 		consts.DefaultInformerResync,
 		azdiskinformers.WithNamespace(d.config.ObjectNamespace),
@@ -466,7 +472,7 @@ func (d *DriverV2) registerAzDriverNodeOrDie(ctx context.Context) {
 		}),
 	)
 
-	d.azDriverNodeInformer = azdiskInformer.Disk().V1beta2().AzDriverNodes()
+	d.azDriverNodeInformer = azdiskInformerFactory.Disk().V1beta2().AzDriverNodes()
 	d.azDriverNodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		DeleteFunc: func(obj interface{}) {
 			if azDriverNode, ok := obj.(*azdiskv1beta2.AzDriverNode); ok && strings.EqualFold(azDriverNode.Name, d.NodeID) {
@@ -475,7 +481,7 @@ func (d *DriverV2) registerAzDriverNodeOrDie(ctx context.Context) {
 		},
 	})
 
-	go azdiskInformer.Start(ctx.Done())
+	azdiskInformerFactory.Start(ctx.Done())
 
 	if !cache.WaitForCacheSync(ctx.Done(), d.azDriverNodeInformer.Informer().HasSynced) {
 		klog.Fatal("failed to sync azdrivernode informer")
