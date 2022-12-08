@@ -32,6 +32,7 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/go-logr/logr"
+	"github.com/pborman/uuid"
 
 	v1 "k8s.io/api/core/v1"
 	crdClientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
@@ -421,15 +422,20 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 		var errors []error
 		ctx, w := workflow.New(ctx)
 		defer func() { w.Finish(errors...) }()
+
+		// Use unique recoveryID as the Recover Annotation, so if it recovers more than once(for example: driver restarts or upgrades)
+		// the objects can still get a new Recover Annotation to force register an UPDATE event for reconciliation.
+		recoveryID := uuid.NewUUID().String()
+
 		// recover lost states if necessary
-		w.Logger().Infof("Elected as leader; initiating CRI deperecation / recovery...")
-		if err := nodeReconciler.Recover(ctx); err != nil {
+		w.Logger().Infof("Elected as leader; initiating CRI deperecation / recovery with recoveryID: %s ...", recoveryID)
+		if err := nodeReconciler.Recover(ctx, recoveryID); err != nil {
 			errors = append(errors, err)
 		}
-		if err := azvReconciler.Recover(ctx); err != nil {
+		if err := azvReconciler.Recover(ctx, recoveryID); err != nil {
 			errors = append(errors, err)
 		}
-		if err := attachReconciler.Recover(ctx); err != nil {
+		if err := attachReconciler.Recover(ctx, recoveryID); err != nil {
 			errors = append(errors, err)
 		}
 		if err := pvReconciler.Recover(ctx); err != nil {

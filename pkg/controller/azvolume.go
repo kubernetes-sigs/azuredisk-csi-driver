@@ -517,7 +517,7 @@ func (r *ReconcileAzVolume) recreateAzVolumes(ctx context.Context) error {
 	return nil
 }
 
-func (r *ReconcileAzVolume) recoverAzVolume(ctx context.Context, recoveredAzVolumes *sync.Map) error {
+func (r *ReconcileAzVolume) recoverAzVolume(ctx context.Context, recoveredAzVolumes *sync.Map, recoveryID string) error {
 	w, _ := workflow.GetWorkflowFromContext(ctx)
 	// list all AzVolumes
 	azVolumes, err := r.azClient.DiskV1beta2().AzVolumes(r.config.ObjectNamespace).List(ctx, metav1.ListOptions{})
@@ -544,7 +544,7 @@ func (r *ReconcileAzVolume) recoverAzVolume(ctx context.Context, recoveredAzVolu
 				var err error
 				azv := obj.(*azdiskv1beta2.AzVolume)
 				// add a recover annotation to the CRI so that reconciliation can be triggered for the CRI even if CRI's current state == target state
-				azv.Status.Annotations = azureutils.AddToMap(azv.Status.Annotations, consts.RecoverAnnotation, "azVolume")
+				azv.Status.Annotations = azureutils.AddToMap(azv.Status.Annotations, consts.RecoverAnnotation, recoveryID)
 				if azv.Status.State != targetState {
 					_, err = r.updateState(azv, targetState, forceUpdate)
 				}
@@ -582,7 +582,7 @@ func (r *ReconcileAzVolume) recoverAzVolume(ctx context.Context, recoveredAzVolu
 	return nil
 }
 
-func (r *ReconcileAzVolume) Recover(ctx context.Context) error {
+func (r *ReconcileAzVolume) Recover(ctx context.Context, recoveryID string) error {
 	var err error
 	ctx, w := workflow.New(ctx)
 	defer func() { w.Finish(err) }()
@@ -595,7 +595,7 @@ func (r *ReconcileAzVolume) Recover(ctx context.Context) error {
 
 	recovered := &sync.Map{}
 	for i := 0; i < maxRetry; i++ {
-		if err = r.recoverAzVolume(ctx, recovered); err == nil {
+		if err = r.recoverAzVolume(ctx, recovered, recoveryID); err == nil {
 			break
 		}
 		w.Logger().Error(err, "failed to recover AzVolume state")

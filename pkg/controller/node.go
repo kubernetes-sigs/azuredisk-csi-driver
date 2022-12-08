@@ -95,7 +95,7 @@ func (r *ReconcileNode) Reconcile(ctx context.Context, request reconcile.Request
 }
 
 // run an update on existing azdrivernode objects to store them under new version if necessary
-func (r *ReconcileNode) Recover(ctx context.Context) error {
+func (r *ReconcileNode) Recover(ctx context.Context, recoveryID string) error {
 	var err error
 	ctx, w := workflow.New(ctx)
 	defer func() { w.Finish(err) }()
@@ -123,7 +123,7 @@ func (r *ReconcileNode) Recover(ctx context.Context) error {
 		} else {
 			updateFunc := func(obj client.Object) error {
 				azNode := obj.(*azdiskv1beta2.AzDriverNode)
-				azNode.Annotations = azureutils.AddToMap(azNode.Annotations, consts.RecoverAnnotation, "azDriverNode")
+				azNode.Annotations = azureutils.AddToMap(azNode.Annotations, consts.RecoverAnnotation, recoveryID)
 				return nil
 			}
 			if _, err = azureutils.UpdateCRIWithRetry(ctx, nil, r.cachedClient, r.azClient, &azNode, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRI); err != nil {
