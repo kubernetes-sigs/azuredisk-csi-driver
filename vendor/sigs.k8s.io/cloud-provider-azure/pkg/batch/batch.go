@@ -203,7 +203,7 @@ func (b *batcher) do(
 			limiter := processor.getLimiterFn(key)
 
 			for !b.deleted && !b.isEmpty() {
-				// Scope the loop deferrals in a function closure.
+				// Scope the loop deferals in a function closure.
 				func() {
 					var (
 						batchSize int
