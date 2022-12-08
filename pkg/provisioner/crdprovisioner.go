@@ -231,7 +231,9 @@ func (c *CrdProvisioner) CreateVolume(
 			updateInstance := obj.(*azdiskv1beta2.AzVolume)
 			switch updateInstance.Status.State {
 			case "":
-				return nil
+				break
+			case azdiskv1beta2.VolumeOperationPending:
+				break
 			case azdiskv1beta2.VolumeCreated:
 				if updateInstance.Status.Detail != nil {
 					// If current request has different specifications than the existing volume, return error.
