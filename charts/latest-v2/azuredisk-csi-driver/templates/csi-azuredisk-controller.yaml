@@ -16,6 +16,7 @@ data:
       leaderElectionNamespace: {{ .Release.Namespace }}
       workerThreads: {{ .Values.controller.driverWorkerThreads }}
       waitForLunEnabled: {{ .Values.controller.waitForLunEnabled}}
+      replicaVolumeAttachRetryLimit: {{ .Values.controller.replicaVolumeAttachRetryLimit }}
     cloudConfig:
       secretName: {{ .Values.controller.cloudConfigSecretName }}
       secretNamespace: {{ .Values.controller.cloudConfigSecretNamespace }}

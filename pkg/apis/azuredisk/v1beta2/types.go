@@ -575,6 +575,8 @@ type ControllerConfiguration struct {
 	WorkerThreads int `json:"workerThreads,omitempty"`
 	// boolean field to enable waiting for lun in PublishVolume
 	WaitForLunEnabled bool `json:"waitForLunEnabled,omitempty"`
+	// The maximum number of retries for creating a replica attachment.
+	ReplicaVolumeAttachRetryLimit int `json:"replicaVolumeAttachRetryLimit,omitempty"`
 }
 
 type NodeConfiguration struct {

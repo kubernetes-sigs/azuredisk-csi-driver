@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -27,7 +28,7 @@ import (
 	"google.golang.org/grpc/status"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/kubernetes/pkg/features"
@@ -39,6 +40,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/workflow"
 
 	volerr "k8s.io/cloud-provider/volume/errors"
+	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -93,7 +95,7 @@ func (r *ReconcileAttachDetach) Reconcile(ctx context.Context, request reconcile
 
 	azVolumeAttachment, err := azureutils.GetAzVolumeAttachment(ctx, r.cachedClient, r.azClient, request.Name, request.Namespace, true)
 	// if object is not found, it means the object has been deleted. Log the deletion and do not requeue
-	if errors.IsNotFound(err) {
+	if apiErrors.IsNotFound(err) {
 		r.azVolumeAttachmentToVaMap.Delete(request.Name)
 		return reconcileReturnOnSuccess(request.Name, r.retryInfo)
 	} else if err != nil {
@@ -128,7 +130,7 @@ func (r *ReconcileAttachDetach) Reconcile(ctx context.Context, request reconcile
 		if err := r.triggerAttach(ctx, azVolumeAttachment); err != nil {
 			return reconcileReturnOnError(ctx, azVolumeAttachment, "attach", err, r.retryInfo)
 		}
-		// promotion request
+		// promotion/demotion request
 	} else if azVolumeAttachment.Spec.RequestedRole != azVolumeAttachment.Status.Detail.Role {
 		switch azVolumeAttachment.Spec.RequestedRole {
 		case azdiskv1beta2.PrimaryRole:
@@ -164,7 +166,7 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 
 	var azVolume *azdiskv1beta2.AzVolume
 	if azVolume, err = azureutils.GetAzVolume(ctx, r.cachedClient, r.azClient, strings.ToLower(azVolumeAttachment.Spec.VolumeName), r.config.ObjectNamespace, true); err != nil {
-		if errors.IsNotFound(err) {
+		if apiErrors.IsNotFound(err) {
 			w.Logger().V(5).Infof("Aborting attach operation for AzVolumeAttachment (%s): AzVolume (%s) not found", azVolumeAttachment.Name, azVolumeAttachment.Spec.VolumeName)
 			err = nil
 			return nil
@@ -246,7 +248,7 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 				// check if AzVolumeAttachment exists for the existing attachment
 				_, err := r.azClient.DiskV1beta2().AzVolumeAttachments(r.config.ObjectNamespace).Get(cloudCtx, currentAttachmentName, metav1.GetOptions{})
 				var detachErr error
-				if errors.IsNotFound(err) {
+				if apiErrors.IsNotFound(err) {
 					// AzVolumeAttachment doesn't exist so we only need to detach disk from cloud
 					detachErr = r.cloudDiskAttacher.UnpublishVolume(goCtx, azVolumeAttachment.Spec.VolumeID, currentNodeName)
 					if detachErr != nil {
@@ -271,8 +273,13 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 			}
 
 			updateFunc := func(obj client.Object) error {
-				azv := obj.(*azdiskv1beta2.AzVolumeAttachment)
-				_, uerr := reportError(azv, azdiskv1beta2.AttachmentFailed, attachErr)
+				azva := obj.(*azdiskv1beta2.AzVolumeAttachment)
+				// add retriable annotation if the attach error is PartialUpdateError or timeout
+				if _, ok := attachErr.(*retry.PartialUpdateError); ok || errors.Is(err, context.DeadlineExceeded) {
+					azva.Status.Annotations = azureutils.AddToMap(azva.Status.Annotations, consts.ReplicaVolumeAttachRetryAnnotation, "true")
+				}
+
+				_, uerr := reportError(azva, azdiskv1beta2.AttachmentFailed, attachErr)
 				return uerr
 			}
 			//nolint:contextcheck // final status update of the CRI must occur even when the current context's deadline passes.
@@ -556,7 +563,7 @@ func updateState(azVolumeAttachment *azdiskv1beta2.AzVolumeAttachment, state azd
 	}
 	if mode == normalUpdate {
 		if expectedStates, exists := allowedTargetAttachmentStates[string(azVolumeAttachment.Status.State)]; !exists || !containsString(string(state), expectedStates) {
-			err = status.Error(codes.FailedPrecondition, formatUpdateStateError("azVolume", string(azVolumeAttachment.Status.State), string(state), expectedStates...))
+			err = status.Error(codes.FailedPrecondition, formatUpdateStateError("azVolumeAttachment", string(azVolumeAttachment.Status.State), string(state), expectedStates...))
 		}
 	}
 	if err == nil {
@@ -662,7 +669,7 @@ func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, 
 			// check if the CRI exists already
 			azVolumeAttachment, err := azureutils.GetAzVolumeAttachment(ctx, r.cachedClient, r.azClient, azVolumeAttachmentName, r.config.ObjectNamespace, false)
 			if err != nil {
-				if errors.IsNotFound(err) {
+				if apiErrors.IsNotFound(err) {
 					w.Logger().Infof("Recreating AzVolumeAttachment(%s)", azVolumeAttachmentName)
 
 					azVolumeAttachment, err = r.azClient.DiskV1beta2().AzVolumeAttachments(r.config.ObjectNamespace).Create(ctx, desiredAzVolumeAttachment, metav1.CreateOptions{})

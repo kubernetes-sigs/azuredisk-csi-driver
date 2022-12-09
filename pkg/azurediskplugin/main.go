@@ -89,6 +89,7 @@ var (
 	waitForLunEnabled                        = flag.Bool("wait-for-lun-enabled", consts.DefaultWaitForLunEnabled, "boolean field to enable waiting for lun in PublishVolume")
 	enableTrafficManager                     = flag.Bool("enable-traffic-manager", false, "boolean flag to enable traffic manager")
 	trafficManagerPort                       = flag.Int64("traffic-manager-port", 7788, "default traffic manager port")
+	replicaVolumeAttachRetryLimit            = flag.Int("volume-attach-retry-limit", consts.DefaultReplicaVolumeAttachRetryLimit, "The maximum number of retries for creating a replica attachment.")
 )
 
 func main() {
@@ -134,21 +135,22 @@ func getDriverConfig() *azdiskv1beta2.AzDiskDriverConfiguration {
 		// Initialize driveConfig object with default values
 		driverConfig = azdiskv1beta2.AzDiskDriverConfiguration{
 			ControllerConfig: azdiskv1beta2.ControllerConfiguration{
-				DisableAVSetNodes:       consts.DefaultDisableAVSetNodes,
-				VMType:                  consts.DefaultVMType,
-				EnableDiskOnlineResize:  consts.DefaultEnableDiskOnlineResize,
-				EnableAsyncAttach:       consts.DefaultEnableAsyncAttach,
-				EnableListVolumes:       consts.DefaultEnableListVolumes,
-				EnableListSnapshots:     consts.DefaultEnableListSnapshots,
-				EnableDiskCapacityCheck: consts.DefaultEnableDiskCapacityCheck,
-				Enabled:                 consts.DefaultIsControllerPlugin,
-				LeaseDurationInSec:      consts.DefaultControllerLeaseDurationInSec,
-				LeaseRenewDeadlineInSec: consts.DefaultControllerLeaseRenewDeadlineInSec,
-				LeaseRetryPeriodInSec:   consts.DefaultControllerLeaseRetryPeriodInSec,
-				LeaderElectionNamespace: consts.ReleaseNamespace,
-				PartitionName:           consts.DefaultControllerPartitionName,
-				WorkerThreads:           consts.DefaultWorkerThreads,
-				WaitForLunEnabled:       consts.DefaultWaitForLunEnabled,
+				DisableAVSetNodes:             consts.DefaultDisableAVSetNodes,
+				VMType:                        consts.DefaultVMType,
+				EnableDiskOnlineResize:        consts.DefaultEnableDiskOnlineResize,
+				EnableAsyncAttach:             consts.DefaultEnableAsyncAttach,
+				EnableListVolumes:             consts.DefaultEnableListVolumes,
+				EnableListSnapshots:           consts.DefaultEnableListSnapshots,
+				EnableDiskCapacityCheck:       consts.DefaultEnableDiskCapacityCheck,
+				Enabled:                       consts.DefaultIsControllerPlugin,
+				LeaseDurationInSec:            consts.DefaultControllerLeaseDurationInSec,
+				LeaseRenewDeadlineInSec:       consts.DefaultControllerLeaseRenewDeadlineInSec,
+				LeaseRetryPeriodInSec:         consts.DefaultControllerLeaseRetryPeriodInSec,
+				LeaderElectionNamespace:       consts.ReleaseNamespace,
+				PartitionName:                 consts.DefaultControllerPartitionName,
+				WorkerThreads:                 consts.DefaultWorkerThreads,
+				WaitForLunEnabled:             consts.DefaultWaitForLunEnabled,
+				ReplicaVolumeAttachRetryLimit: consts.DefaultReplicaVolumeAttachRetryLimit,
 			},
 			NodeConfig: azdiskv1beta2.NodeConfiguration{
 				VolumeAttachLimit:       consts.DefaultVolumeAttachLimit,
@@ -208,21 +210,22 @@ func getDriverConfig() *azdiskv1beta2.AzDiskDriverConfiguration {
 	} else {
 		driverConfig = azdiskv1beta2.AzDiskDriverConfiguration{
 			ControllerConfig: azdiskv1beta2.ControllerConfiguration{
-				DisableAVSetNodes:       *disableAVSetNodes,
-				VMType:                  *vmType,
-				EnableDiskOnlineResize:  *enableDiskOnlineResize,
-				EnableAsyncAttach:       *enableAsyncAttach,
-				EnableListVolumes:       *enableListVolumes,
-				EnableListSnapshots:     *enableListSnapshots,
-				EnableDiskCapacityCheck: *enableDiskCapacityCheck,
-				Enabled:                 *isControllerPlugin,
-				LeaseDurationInSec:      *controllerLeaseDurationInSec,
-				LeaseRenewDeadlineInSec: *controllerLeaseRenewDeadlineInSec,
-				LeaseRetryPeriodInSec:   *controllerLeaseRetryPeriodInSec,
-				LeaderElectionNamespace: *leaderElectionNamespace,
-				PartitionName:           *controllerPartition,
-				WorkerThreads:           *workerThreads,
-				WaitForLunEnabled:       *waitForLunEnabled,
+				DisableAVSetNodes:             *disableAVSetNodes,
+				VMType:                        *vmType,
+				EnableDiskOnlineResize:        *enableDiskOnlineResize,
+				EnableAsyncAttach:             *enableAsyncAttach,
+				EnableListVolumes:             *enableListVolumes,
+				EnableListSnapshots:           *enableListSnapshots,
+				EnableDiskCapacityCheck:       *enableDiskCapacityCheck,
+				Enabled:                       *isControllerPlugin,
+				LeaseDurationInSec:            *controllerLeaseDurationInSec,
+				LeaseRenewDeadlineInSec:       *controllerLeaseRenewDeadlineInSec,
+				LeaseRetryPeriodInSec:         *controllerLeaseRetryPeriodInSec,
+				LeaderElectionNamespace:       *leaderElectionNamespace,
+				PartitionName:                 *controllerPartition,
+				WorkerThreads:                 *workerThreads,
+				WaitForLunEnabled:             *waitForLunEnabled,
+				ReplicaVolumeAttachRetryLimit: *replicaVolumeAttachRetryLimit,
 			},
 			NodeConfig: azdiskv1beta2.NodeConfiguration{
 				VolumeAttachLimit:       *volumeAttachLimit,

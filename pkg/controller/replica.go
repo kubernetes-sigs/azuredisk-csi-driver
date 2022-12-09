@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -111,12 +112,48 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 				if !isCleanupRequested(azVolumeAttachment) {
 					go r.handleReplicaDelete(context.Background(), azVolumeAttachment)
 				}
-				// if replica attachment failed, delete the CRI and create a replacement
 			} else if azVolumeAttachment.Status.State == azdiskv1beta2.AttachmentFailed {
-				if err := r.cachedClient.Delete(ctx, azVolumeAttachment); err != nil {
-					return reconcile.Result{Requeue: true}, err
+				// if the failed attachment isn't retriable, delete the CRI so that replacing replica AzVolumeAttachment can be created
+				if !azureutils.MapContains(azVolumeAttachment.Status.Annotations, consts.ReplicaVolumeAttachRetryAnnotation) {
+					if err := r.cachedClient.Delete(ctx, azVolumeAttachment); err != nil {
+						return reconcile.Result{Requeue: true}, err
+					}
+					go r.handleReplicaDelete(context.Background(), azVolumeAttachment)
+					// else, reset the state to AttachmentPending to retry the attachment
+				} else {
+					retryCount := 0
+					if value, exists := azureutils.GetFromMap(azVolumeAttachment.Status.Annotations, consts.ReplicaVolumeAttachRetryCount); exists {
+						if n, err := strconv.Atoi(value); err == nil {
+							retryCount = n
+						} else {
+							r.logger.Error(err, "failed to convert retry count to int")
+						}
+					}
+
+					var updateFunc azureutils.UpdateCRIFunc
+					if retryCount < r.config.ControllerConfig.ReplicaVolumeAttachRetryLimit {
+						updateFunc = func(obj client.Object) error {
+							azva := obj.(*azdiskv1beta2.AzVolumeAttachment)
+							azureutils.RemoveFromMap(azva.Status.Annotations, consts.ReplicaVolumeAttachRetryAnnotation)
+							azureutils.AddToMap(azva.Status.Annotations, consts.ReplicaVolumeAttachRetryCount, strconv.Itoa(retryCount+1))
+							_, derr := updateState(azva, azdiskv1beta2.AttachmentPending, forceUpdate)
+							azva.Status.Detail = nil
+							azva.Status.Error = nil
+							return derr
+						}
+					} else {
+						updateFunc = func(obj client.Object) error {
+							azva := obj.(*azdiskv1beta2.AzVolumeAttachment)
+							azureutils.AddToMap(azva.Status.Annotations, consts.VolumeDetachRequestAnnotation, "replica-controller")
+							_, derr := updateState(azva, azdiskv1beta2.AttachmentPending, forceUpdate)
+							return derr
+						}
+					}
+
+					if _, err := azureutils.UpdateCRIWithRetry(ctx, nil, r.cachedClient, r.azClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
+						return reconcile.Result{Requeue: true}, err
+					}
 				}
-				go r.handleReplicaDelete(context.Background(), azVolumeAttachment)
 			}
 		}
 	}

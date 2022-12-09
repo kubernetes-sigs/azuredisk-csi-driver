@@ -150,6 +150,7 @@ controller:
   initContainers: []
   additionalContainers: []
   additionalVolumes: []
+  replicaVolumeAttachRetryLimit: 2
 
 node:
   cloudConfigSecretName: azure-cloud-provider

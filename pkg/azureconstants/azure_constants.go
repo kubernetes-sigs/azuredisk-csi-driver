@@ -111,30 +111,32 @@ const (
 	AzVolumeFinalizer           = "disk.csi.azure.com/azvolume-finalizer"
 	// ControllerFinalizer is a finalizer added to the pod running Azuredisk driver controller
 	// to prevent the pod deletion until clean up is completed
-	ControllerFinalizer            = "disk.csi.azure.com/azuredisk-finalizer"
-	CleanUpAnnotation              = "disk.csi.azure.com/clean-up"
-	NodeNameLabel                  = "disk.csi.azure.com/node-name"
-	NamespaceLabel                 = "disk.csi.azure.com/namespace"
-	PartitionLabel                 = "azdrivernodes.disk.csi.azure.com/partition"
-	RoleLabel                      = "disk.csi.azure.com/requested-role"
-	RoleChangeLabel                = "disk.csi.azure.com/role-change"
-	Demoted                        = "demoted"
-	Promoted                       = "promoted"
-	VolumeAttachRequestAnnotation  = "disk.csi.azure.com/volume-attach-request"
-	VolumeDeleteRequestAnnotation  = "disk.csi.azure.com/volume-delete-request"
-	CloudDeleteVolume              = "cloud-delete-volume"
-	VolumeDetachRequestAnnotation  = "disk.csi.azure.com/volume-detach-request"
-	RecoverAnnotation              = "disk.csi.azure.com/recovery" // used to ensure reconciliation is triggered for recovering CRIs
-	VolumeNameLabel                = "disk.csi.azure.com/volume-name"
-	VolumeIDLabel                  = "disk.csi.azure.com/volume-id"
-	InlineVolumeAnnotation         = "disk.csi.azure.com/inline-volume"
-	PodNameKey                     = "disk.csi/azure.com/pod-name"
-	PreProvisionedVolumeAnnotation = "disk.csi.azure.com/pre-provisioned"
-	RequestIDKey                   = "disk.csi.azure.com/request-id"
-	RequestStartimeKey             = "disk.csi.azure.com/request-starttime"
-	RequestTimeFormat              = time.RFC3339Nano
-	RequesterKey                   = "disk.csi.azure.com/requester-name"
-	WorkflowKey                    = "disk.csi.azure.com/requester-name"
+	ControllerFinalizer                = "disk.csi.azure.com/azuredisk-finalizer"
+	CleanUpAnnotation                  = "disk.csi.azure.com/clean-up"
+	NodeNameLabel                      = "disk.csi.azure.com/node-name"
+	NamespaceLabel                     = "disk.csi.azure.com/namespace"
+	PartitionLabel                     = "azdrivernodes.disk.csi.azure.com/partition"
+	RoleLabel                          = "disk.csi.azure.com/requested-role"
+	RoleChangeLabel                    = "disk.csi.azure.com/role-change"
+	Demoted                            = "demoted"
+	Promoted                           = "promoted"
+	VolumeAttachRequestAnnotation      = "disk.csi.azure.com/volume-attach-request"
+	VolumeDeleteRequestAnnotation      = "disk.csi.azure.com/volume-delete-request"
+	CloudDeleteVolume                  = "cloud-delete-volume"
+	VolumeDetachRequestAnnotation      = "disk.csi.azure.com/volume-detach-request"
+	RecoverAnnotation                  = "disk.csi.azure.com/recovery" // used to ensure reconciliation is triggered for recovering CRIs
+	VolumeNameLabel                    = "disk.csi.azure.com/volume-name"
+	VolumeIDLabel                      = "disk.csi.azure.com/volume-id"
+	InlineVolumeAnnotation             = "disk.csi.azure.com/inline-volume"
+	PodNameKey                         = "disk.csi/azure.com/pod-name"
+	PreProvisionedVolumeAnnotation     = "disk.csi.azure.com/pre-provisioned"
+	RequestIDKey                       = "disk.csi.azure.com/request-id"
+	RequestStartimeKey                 = "disk.csi.azure.com/request-starttime"
+	RequestTimeFormat                  = time.RFC3339Nano
+	RequesterKey                       = "disk.csi.azure.com/requester-name"
+	WorkflowKey                        = "disk.csi.azure.com/requester-name"
+	ReplicaVolumeAttachRetryAnnotation = "disk.csi.azure.com/replica-volume-attach-retry"
+	ReplicaVolumeAttachRetryCount      = "disk.csi.azure.com/replica-volume-attach-retry-count"
 
 	ControllerClusterRoleName         = "azuredisk-external-provisioner-role"
 	ControllerClusterRoleBindingName  = "azuredisk-csi-provisioner-binding"
@@ -216,6 +218,7 @@ const (
 	DefaultAzureClientAttachDetachRateLimiterQPS    = (240.0 / 180.0)                                          // Default compute QPS limit is 240 queries / 3 minutes
 	DefaultAzureClientAttachDetachRateLimiterBucket = int(DefaultAzureClientAttachDetachRateLimiterQPS * 60.0) // Allow for a burst of a minutes worth of quota
 	DefaultAzureClientAttachDetachBatchInitialDelay = 1 * time.Second                                          // Wait 1s before processing a batch of attach or detach disk requests
+	DefaultReplicaVolumeAttachRetryLimit            = 2
 )
 
 // CommandLineParams is a list of deprecated command-line parameters
@@ -225,7 +228,7 @@ var CommandLineParams = []string{"endpoint", "metrics-address", "kubeconfig", "d
 	"enable-disk-capacity-check", "kube-client-qps", "kube-client-burst", "vmss-cache-ttl-seconds", "enable-attach-detach-rate-limiter", "attach-detach-rate-limiter-qps",
 	"attach-detach-rate-limiter-bucket", "attach-detach-batch-initial-delay", "is-controller-plugin", "is-node-plugin", "driver-object-namespace",
 	"heartbeat-frequency-in-sec", "lease-duration-in-sec", "lease-renew-deadline-in-sec", "lease-retry-period-in-sec", "leader-election-namespace", "node-partition",
-	"controller-partition", "worker-threads"}
+	"controller-partition", "worker-threads", "waitForLunEnabled", "enableTrafficManager", "trafficManagerPort", "replicaVolumeAttachRetryLimit"}
 
 type UnpublishMode int
 
