@@ -35,6 +35,10 @@ data:
     endpoint: unix:///csi/csi.sock
     metricsAddress: 0.0.0.0:{{ .Values.controller.metrics.port }}
     driverName: {{ .Values.driver.name }}
+{{- if .Values.controller.profiler.port }}
+    profilerAddress: 0.0.0.0:{{ .Values.controller.profiler.port }}
+{{- end }}
+    profileAddress:
 ---
 kind: Deployment
 apiVersion: apps/v1

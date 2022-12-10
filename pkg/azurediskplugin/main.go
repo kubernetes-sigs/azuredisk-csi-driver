@@ -26,6 +26,7 @@ import (
 	"strings"
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/profiler"
 	"sigs.k8s.io/yaml"
 
 	"k8s.io/component-base/metrics/legacyregistry"
@@ -46,6 +47,7 @@ var (
 	// Deprecated command-line parameters
 	endpoint                                 = flag.String("endpoint", consts.DefaultEndpoint, "CSI endpoint")
 	metricsAddress                           = flag.String("metrics-address", consts.DefaultMetricsAddress, "export the metrics")
+	profilerAddress                          = flag.String("profiler-address", consts.DefaultProfilerAddress, "The address to listen on for profiling data requests. If empty or omitted, no server is started. See https://pkg.go.dev/net/http/pprof for supported requests.")
 	kubeconfig                               = flag.String("kubeconfig", consts.DefaultKubeconfig, "Absolute path to the kubeconfig file. Required only when running out of cluster.")
 	driverName                               = flag.String("drivername", consts.DefaultDriverName, "name of the driver")
 	volumeAttachLimit                        = flag.Int64("volume-attach-limit", consts.DefaultVolumeAttachLimit, "maximum number of attachable volumes per node")
@@ -107,6 +109,11 @@ func main() {
 
 func handle() {
 	driverConfig := getDriverConfig()
+
+	if len(driverConfig.ProfilerAddress) > 0 {
+		go profiler.ListenAndServeOrDie(driverConfig.ProfilerAddress)
+	}
+
 	exportMetrics(driverConfig)
 	driver := azuredisk.NewDriver(driverConfig)
 	if driver == nil {
@@ -169,6 +176,7 @@ func getDriverConfig() *azdiskv1beta2.AzDiskDriverConfiguration {
 			Endpoint:        consts.DefaultEndpoint,
 			MetricsAddress:  consts.DefaultMetricsAddress,
 			DriverName:      consts.DefaultDriverName,
+			ProfilerAddress: consts.DefaultProfilerAddress,
 		}
 
 		// Read yaml file
@@ -238,6 +246,7 @@ func getDriverConfig() *azdiskv1beta2.AzDiskDriverConfiguration {
 			Endpoint:        *endpoint,
 			MetricsAddress:  *metricsAddress,
 			DriverName:      *driverName,
+			ProfilerAddress: *profilerAddress,
 		}
 
 		// Emit warning log for using deprecated command-line parameters

@@ -114,6 +114,9 @@ spec:
         args:
         - "--port={{ .Values.schedulerExtender.servicePort }}"
         - "--metrics-address=0.0.0.0:{{ .Values.schedulerExtender.metrics.port }}"
+{{- if .Values.schedulerExtender.profiler.port }}
+        - "--profiler-address=0.0.0.0:{{ .Values.schedulerExtender.profiler.port }}"
+{{- end }}
         - "--driver-object-namespace={{ .Values.driver.objectNamespace }}"
         - "--drivername={{ .Values.driver.name }}"
         - "--v=5"

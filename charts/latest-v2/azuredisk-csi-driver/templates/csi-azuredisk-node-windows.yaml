@@ -25,6 +25,9 @@ data:
     endpoint: unix://C:\csi\csi.sock
     metricsAddress: 0.0.0.0:{{ .Values.node.metrics.port }}
     driverName: {{ .Values.driver.name }}
+{{- if .Values.node.profiler.port }}
+    profilerAddress: 0.0.0.0:{{ .Values.controller.profiler.port }}
+{{- end }}
 ---
 kind: DaemonSet
 apiVersion: apps/v1

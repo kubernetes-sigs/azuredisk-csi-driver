@@ -540,6 +540,8 @@ type AzDiskDriverConfiguration struct {
 	MetricsAddress string `json:"metricsAddress,omitempty"`
 	// name of the driver
 	DriverName string `json:"driverName,omitempty"`
+	// The address to expose profiling data from the pprof package. If empty, no profiler server is started.
+	ProfilerAddress string `json:"profilerAddress,omitempty"`
 }
 
 type ControllerConfiguration struct {
