@@ -17,6 +17,7 @@ limitations under the License.
 package azureutils
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -210,7 +211,7 @@ func GetCloudProviderFromClient(kubeClient *clientset.Clientset, secretName, sec
 			CloudProviderRateLimit: false,
 		}
 		config.UserAgent = userAgent
-		if err = az.InitializeCloudFromConfig(config, fromSecret, false); err != nil {
+		if err = az.InitializeCloudFromConfig(context.Background(), config, fromSecret, false); err != nil {
 			klog.Warningf("InitializeCloudFromConfig failed with error: %v", err)
 		}
 	}

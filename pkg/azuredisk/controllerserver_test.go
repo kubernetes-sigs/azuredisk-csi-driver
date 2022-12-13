@@ -18,12 +18,17 @@ package azuredisk
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"reflect"
+	"strconv"
 	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
+	autorest "github.com/Azure/go-autorest/autorest/azure"
 	"github.com/Azure/go-autorest/autorest/date"
+	autorestmocks "github.com/Azure/go-autorest/autorest/mocks"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
@@ -48,6 +53,36 @@ var (
 	testVolumeName = "unit-test-volume"
 	testVolumeID   = fmt.Sprintf(consts.ManagedDiskPath, "subs", "rg", testVolumeName)
 )
+
+func fakeUpdateAsync(statusCode int) func(context.Context, string, string, compute.VirtualMachineUpdate, string) (*autorest.Future, *retry.Error) {
+	return func(ctx context.Context, resourceGroup, nodeName string, parameters compute.VirtualMachineUpdate, source string) (*autorest.Future, *retry.Error) {
+		vm := &compute.VirtualMachine{
+			Name:                     &nodeName,
+			Plan:                     parameters.Plan,
+			VirtualMachineProperties: parameters.VirtualMachineProperties,
+			Identity:                 parameters.Identity,
+			Zones:                    parameters.Zones,
+			Tags:                     parameters.Tags,
+		}
+		s, err := json.Marshal(vm)
+		if err != nil {
+			return nil, retry.NewError(false, err)
+		}
+
+		body := autorestmocks.NewBodyWithBytes(s)
+		defer body.Close()
+
+		r := autorestmocks.NewResponseWithBodyAndStatus(body, statusCode, strconv.Itoa(statusCode))
+		r.Request.Method = http.MethodPut
+
+		f, err := autorest.NewFutureFromResponse(r)
+		if err != nil {
+			return nil, retry.NewError(false, err)
+		}
+
+		return &f, nil
+	}
+}
 
 func checkTestError(t *testing.T, expectedErrCode codes.Code, err error) {
 	s, ok := status.FromError(err)
@@ -729,6 +764,8 @@ func TestControllerPublishVolume(t *testing.T) {
 				mockVMsClient := d.getCloud().VirtualMachinesClient.(*mockvmclient.MockInterface)
 				mockVMsClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(vm, nil).AnyTimes()
 				mockVMsClient.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&retry.Error{RawError: fmt.Errorf("error")}).AnyTimes()
+				mockVMsClient.EXPECT().UpdateAsync(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(fakeUpdateAsync(200)).MaxTimes(1)
+				mockVMsClient.EXPECT().WaitForUpdateResult(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&retry.Error{RawError: fmt.Errorf("error")}).MaxTimes(1)
 				expectedErr := status.Errorf(codes.Internal, "update instance \"unit-test-node\" failed with Retriable: false, RetryAfter: 0s, HTTPStatusCode: 0, RawError: error")
 				_, err := d.ControllerPublishVolume(context.Background(), req)
 				if !reflect.DeepEqual(err, expectedErr) {
