@@ -65,6 +65,8 @@ controller:
       enabled: false
       monitor:
         enabled: false
+  profiler:
+    port:
   livenessProbe:
     healthPort: 29602
   runOnMaster: false
@@ -153,6 +155,8 @@ node:
   maxUnavailable: 1
   metrics:
     port: 29605
+  profiler:
+    port:
   logLevel: 5
   livenessProbe:
     healthPort: 29603
@@ -166,6 +170,8 @@ schedulerExtender:
       enabled: false
       monitor:
         enabled: false
+  profiler:
+    port:
   servicePort: 8889
   resources:
     requests:

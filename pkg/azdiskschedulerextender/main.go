@@ -34,6 +34,7 @@ import (
 	"k8s.io/klog/v2"
 	schedulerapi "k8s.io/kube-scheduler/extender/v1"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/profiler"
 )
 
 func init() {
@@ -42,6 +43,7 @@ func init() {
 
 var (
 	metricsAddress              = flag.String("metrics-address", "0.0.0.0:29606", "export the metrics")
+	profilerAddress             = flag.String("profiler-address", consts.DefaultProfilerAddress, "The address to listen on for profiling data requests. If empty or omitted, no server is started. See https://pkg.go.dev/net/http/pprof for supported requests.")
 	azDiskSchedulerExtenderPort = flag.String("port", "8889", "port used by az scheduler extender")
 	driverName                  = flag.String("drivername", consts.DefaultDriverName, "name of the driver")
 )
@@ -57,6 +59,11 @@ const (
 func main() {
 	flag.Parse()
 	ctxroot := context.Background()
+
+	if len(*profilerAddress) > 0 {
+		go profiler.ListenAndServeOrDie(*profilerAddress)
+	}
+
 	exportMetrics(ctxroot)
 
 	azDiskSchedulerExtenderEndpoint := fmt.Sprintf("%s%s", ":", *azDiskSchedulerExtenderPort)

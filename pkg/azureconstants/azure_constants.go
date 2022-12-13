@@ -178,6 +178,7 @@ const (
 	// AzDiskDriverConfiguration specific constants
 	DefaultEndpoint                                 = "unix://tmp/csi.sock"
 	DefaultMetricsAddress                           = "0.0.0.0:29604"
+	DefaultProfilerAddress                          = ""
 	DefaultDisableAVSetNodes                        = false
 	DefaultVMType                                   = ""
 	DefaultEnableDiskOnlineResize                   = true
