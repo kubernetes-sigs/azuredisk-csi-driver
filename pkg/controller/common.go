@@ -97,6 +97,13 @@ const (
 	cleanUpAttachment
 )
 
+type deleteMode int
+
+const (
+	deleteOnly deleteMode = iota
+	deleteAndWait
+)
+
 type updateMode int
 
 const (

@@ -511,6 +511,11 @@ func (c *SharedState) deletePod(ctx context.Context, podKey string) error {
 		inlines := value.([]string)
 
 		for _, inline := range inlines {
+			_, err := c.cleanUpAzVolumeAttachmentByVolume(ctx, inline, pod, azureutils.AllRoles, cleanUpAttachment, deleteAndWait)
+			if err != nil && !apiErrors.IsNotFound(err) {
+				w.Logger().Errorf(err, "failed to list AzVolumeAttachments (%s) for inline (%s): %v", inline, inline, err)
+				return err
+			}
 			if err := c.azClient.DiskV1beta2().AzVolumes(c.config.ObjectNamespace).Delete(ctx, inline, metav1.DeleteOptions{}); err != nil && !apiErrors.IsNotFound(err) {
 				w.Logger().Errorf(err, "failed to delete AzVolume (%s) for inline (%s): %v", inline, inline, err)
 				return err
@@ -567,6 +572,11 @@ func (c *SharedState) deletePV(pvName string) error {
 	ctx := context.Background()
 	ctx, w := workflow.New(ctx, workflow.WithDetails())
 	defer func() { w.Finish(err) }()
+	defer func() {
+		if apiErrors.IsNotFound(err) {
+			err = nil
+		}
+	}()
 
 	var azVolume azdiskv1beta2.AzVolume
 	if val, ok := c.pvToVolumeMap.Load(pvName); ok {
@@ -1017,7 +1027,7 @@ func (c *SharedState) createReplicaAzVolumeAttachment(ctx context.Context, volum
 	return nil
 }
 
-func (c *SharedState) cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azVolumeName string, caller operationRequester, role azureutils.AttachmentRoleMode, deleteMode attachmentCleanUpMode) ([]azdiskv1beta2.AzVolumeAttachment, error) {
+func (c *SharedState) cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azVolumeName string, caller operationRequester, role azureutils.AttachmentRoleMode, cleanupMode attachmentCleanUpMode, attachmentDeleteMode deleteMode) ([]azdiskv1beta2.AzVolumeAttachment, error) {
 	var err error
 	ctx, w := workflow.New(ctx, workflow.WithDetails(consts.VolumeNameLabel, azVolumeName))
 	defer func() { w.Finish(err) }()
@@ -1035,14 +1045,49 @@ func (c *SharedState) cleanUpAzVolumeAttachmentByVolume(ctx context.Context, azV
 		return nil, err
 	}
 
-	if err = c.cleanUpAzVolumeAttachments(ctx, attachments, deleteMode, caller); err != nil {
+	if err = c.cleanUpAzVolumeAttachments(ctx, attachments, cleanupMode, caller); err != nil {
 		return attachments, err
 	}
 	c.unmarkVolumeVisited(azVolumeName)
-	return attachments, nil
+
+	if attachmentDeleteMode == deleteAndWait {
+		attachmentsCount := len(attachments)
+		errorMessageCh := make(chan string, attachmentsCount)
+
+		// start waiting for replica AzVolumeAttachment CRIs to be deleted
+		for _, attachment := range attachments {
+			// wait async and report error to go channel
+			go func(ctx context.Context, attachment azdiskv1beta2.AzVolumeAttachment) {
+				waiter := c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeAttachmentType, attachment.Name, verifyObjectFailedOrDeleted)
+				defer waiter.Close()
+
+				_, derr := waiter.Wait(ctx)
+				if derr != nil {
+					errorMessageCh <- fmt.Sprintf("%s: %v", attachment.Name, derr)
+				} else {
+					errorMessageCh <- ""
+				}
+			}(ctx, attachment)
+		}
+
+		// if errors have been found with the conditionWatcher calls, format the error msg and report via CRI
+		var errMsgs []string
+		for i := 0; i < attachmentsCount; i++ {
+			v, ok := <-errorMessageCh
+			if ok && v != "" {
+				errMsgs = append(errMsgs, v)
+			}
+		}
+		close(errorMessageCh)
+		if len(errMsgs) > 0 {
+			err = status.Errorf(codes.Internal, strings.Join(errMsgs, ", "))
+		}
+	}
+
+	return attachments, err
 }
 
-func (c *SharedState) cleanUpAzVolumeAttachmentByNode(ctx context.Context, azDriverNodeName string, caller operationRequester, role azureutils.AttachmentRoleMode, deleteMode attachmentCleanUpMode) ([]azdiskv1beta2.AzVolumeAttachment, error) {
+func (c *SharedState) cleanUpAzVolumeAttachmentByNode(ctx context.Context, azDriverNodeName string, caller operationRequester, role azureutils.AttachmentRoleMode, cleanupMode attachmentCleanUpMode, attachmentDeleteMode deleteMode) ([]azdiskv1beta2.AzVolumeAttachment, error) {
 	var err error
 	ctx, w := workflow.New(ctx, workflow.WithDetails(consts.NodeNameLabel, azDriverNodeName))
 	defer func() { w.Finish(err) }()
@@ -1080,7 +1125,7 @@ func (c *SharedState) cleanUpAzVolumeAttachmentByNode(ctx context.Context, azDri
 			volumeName,
 			caller,
 			func(ctx context.Context) error {
-				return c.cleanUpAzVolumeAttachments(ctx, cleanUps, deleteMode, caller)
+				return c.cleanUpAzVolumeAttachments(ctx, cleanUps, cleanupMode, caller)
 			},
 			false)
 	}
@@ -1155,7 +1200,7 @@ func (c *SharedState) garbageCollectReplicas(ctx context.Context, volumeName str
 		volumeName,
 		replica,
 		func(ctx context.Context) error {
-			if _, err := c.cleanUpAzVolumeAttachmentByVolume(ctx, volumeName, requester, azureutils.ReplicaOnly, cleanUpAttachment); err != nil {
+			if _, err := c.cleanUpAzVolumeAttachmentByVolume(ctx, volumeName, requester, azureutils.ReplicaOnly, cleanUpAttachment, deleteOnly); err != nil {
 				return err
 			}
 			c.addToGcExclusionList(volumeName, requester)

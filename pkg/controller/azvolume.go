@@ -18,8 +18,6 @@ package controller
 
 import (
 	"context"
-	"fmt"
-	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -32,7 +30,6 @@ import (
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	util "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/watcher"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/workflow"
 
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
@@ -227,7 +224,7 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *azdiskv
 
 	mode := cleanUpAttachmentForUninstall
 	if volumeDeleteRequested || preProvisioned {
-		// primary attachments should be detached only if volume is being deleted or pv was deleted.
+		// primary attachments should be detached only if volume is being deleted, or pv was deleted
 		mode = cleanUpAttachment
 		// requeue if AzVolume's state is being updated by a different worker
 		if _, ok := r.stateLock.LoadOrStore(azVolume.Name, nil); ok {
@@ -270,41 +267,7 @@ func (r *ReconcileAzVolume) triggerDelete(ctx context.Context, azVolume *azdiskv
 		defer deleteCancel()
 
 		// Delete all AzVolumeAttachment objects bound to the deleted AzVolume
-		var attachments []azdiskv1beta2.AzVolumeAttachment
-		attachments, err = r.cleanUpAzVolumeAttachmentByVolume(deleteCtx, azVolume.Name, azvolume, azureutils.AllRoles, mode)
-		if err == nil {
-			attachmentsCount := len(attachments)
-			errorMessageCh := make(chan string, attachmentsCount)
-
-			// start waiting for replica AzVolumeAttachment CRIs to be deleted
-			for _, attachment := range attachments {
-				// wait async and report error to go channel
-				go func(ctx context.Context, attachment azdiskv1beta2.AzVolumeAttachment) {
-					waiter := r.conditionWatcher.NewConditionWaiter(deleteCtx, watcher.AzVolumeAttachmentType, attachment.Name, verifyObjectFailedOrDeleted)
-					defer waiter.Close()
-
-					_, derr := waiter.Wait(ctx)
-					if derr != nil {
-						errorMessageCh <- fmt.Sprintf("%s: %v", attachment.Name, derr)
-					} else {
-						errorMessageCh <- ""
-					}
-				}(deleteCtx, attachment)
-			}
-
-			// if errors have been found with the conditionWatcher calls, format the error msg and report via CRI
-			var errMsgs []string
-			for i := 0; i < attachmentsCount; i++ {
-				v, ok := <-errorMessageCh
-				if ok && v != "" {
-					errMsgs = append(errMsgs, v)
-				}
-			}
-			close(errorMessageCh)
-			if len(errMsgs) > 0 {
-				err = status.Errorf(codes.Internal, strings.Join(errMsgs, ", "))
-			}
-		}
+		_, err = r.cleanUpAzVolumeAttachmentByVolume(deleteCtx, azVolume.Name, azvolume, azureutils.AllRoles, mode, deleteAndWait)
 
 		// if azVolumeAttachment clean up succeeded and volume needs to be deleted
 		if err == nil && volumeDeleteRequested {
