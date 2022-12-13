@@ -30,8 +30,10 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	fakev1 "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/klog/v2/klogr"
+	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	azdiskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils/mockclient"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
@@ -124,15 +126,15 @@ func TestPVControllerReconcile(t *testing.T) {
 			},
 		},
 		{
-			description: "[Success] Should delete AzVolume when PV is marked for deletion but AzVolume exists.",
+			description: "[Success] Should delete AzVolume when PV is deleted but AzVolume exists.",
 			request:     testPersistentVolume0Request,
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcilePV {
 				azVolume := testAzVolume0.DeepCopy()
 
 				pv := testPersistentVolume0.DeepCopy()
-				pv.Status.Phase = corev1.VolumeReleased
-				pv.DeletionTimestamp = &metav1.Time{Time: time.Now().Add(time.Minute * -1)}
-
+				azVolume.Status = azdiskv1beta2.AzVolumeStatus{
+					Annotations: azureutils.AddToMap(map[string]string{}, consts.PreProvisionedVolumeAnnotation, "pre-provisioned-volume"),
+				}
 				controller := newTestPVController(
 					mockCtl,
 					testNamespace,
@@ -141,13 +143,20 @@ func TestPVControllerReconcile(t *testing.T) {
 
 				mockClients(controller.cachedClient.(*mockclient.MockClient), controller.azClient, controller.kubeClient)
 
+				err := controller.kubeClient.CoreV1().PersistentVolumes().Delete(context.TODO(), pv.Name, metav1.DeleteOptions{})
+				require.NoError(t, err)
+
 				return controller
 			},
 			verifyFunc: func(t *testing.T, controller *ReconcilePV, result reconcile.Result, err error) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
-				_, err = controller.azClient.DiskV1beta2().AzVolumes(controller.config.ObjectNamespace).Get(context.Background(), testPersistentVolume0Name, metav1.GetOptions{})
-				require.True(t, errors.IsNotFound(err))
+
+				waitErr := wait.PollImmediate(verifyCRIInterval, verifyCRITimeout, func() (bool, error) {
+					_, err = controller.azClient.DiskV1beta2().AzVolumes(controller.config.ObjectNamespace).Get(context.Background(), testPersistentVolume0Name, metav1.GetOptions{})
+					return errors.IsNotFound(err), nil
+				})
+				require.NoError(t, waitErr)
 			},
 		},
 		{
@@ -228,7 +237,7 @@ func TestPVControllerRecover(t *testing.T) {
 
 				mockClients(controller.cachedClient.(*mockclient.MockClient), controller.azClient, controller.kubeClient)
 
-				controller.deletePV(testPersistentVolume0Name)
+				controller.SharedState.pvToVolumeMap.Delete(testPersistentVolume0Name)
 				controller.deleteVolumeAndClaim(testPersistentVolume0Name)
 
 				return controller
