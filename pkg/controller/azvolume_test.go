@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/golang/mock/gomock"
+	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -447,7 +448,7 @@ func TestAzVolumeControllerRecover(t *testing.T) {
 			mockCtl := gomock.NewController(t)
 			defer mockCtl.Finish()
 			controller := tt.setupFunc(t, mockCtl)
-			err := controller.Recover(context.TODO())
+			err := controller.Recover(context.TODO(), uuid.NewUUID().String())
 			tt.verifyFunc(t, controller, err)
 		})
 	}

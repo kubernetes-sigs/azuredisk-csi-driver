@@ -479,7 +479,7 @@ func (r *ReconcileAttachDetach) detachVolume(ctx context.Context, volumeID, node
 	return r.cloudDiskAttacher.UnpublishVolume(ctx, volumeID, node)
 }
 
-func (r *ReconcileAttachDetach) Recover(ctx context.Context) error {
+func (r *ReconcileAttachDetach) Recover(ctx context.Context, recoveryID string) error {
 	var err error
 	ctx, w := workflow.New(ctx)
 	defer func() { w.Finish(err) }()
@@ -497,7 +497,7 @@ func (r *ReconcileAttachDetach) Recover(ctx context.Context) error {
 	// retrigger any aborted operation from possible previous controller crash
 	recovered := &sync.Map{}
 	for i := 0; i < maxRetry; i++ {
-		if err = r.recoverAzVolumeAttachment(ctx, recovered); err == nil {
+		if err = r.recoverAzVolumeAttachment(ctx, recovered, recoveryID); err == nil {
 			break
 		}
 		w.Logger().Error(err, "failed to recover AzVolumeAttachment state")
@@ -717,7 +717,7 @@ func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, 
 	return syncedVolumeAttachments, volumesToSync, nil
 }
 
-func (r *ReconcileAttachDetach) recoverAzVolumeAttachment(ctx context.Context, recoveredAzVolumeAttachments *sync.Map) error {
+func (r *ReconcileAttachDetach) recoverAzVolumeAttachment(ctx context.Context, recoveredAzVolumeAttachments *sync.Map, recoveryID string) error {
 	w, _ := workflow.GetWorkflowFromContext(ctx)
 
 	// list all AzVolumeAttachment
@@ -754,7 +754,7 @@ func (r *ReconcileAttachDetach) recoverAzVolumeAttachment(ctx context.Context, r
 					azv.ObjectMeta.Annotations = map[string]string{consts.VolumeAttachRequestAnnotation: "CRI recovery"}
 				}
 				// add a recover annotation to the CRI so that reconciliation can be triggered for the CRI even if CRI's current state == target state
-				azv.Status.Annotations = azureutils.AddToMap(azv.Status.Annotations, consts.RecoverAnnotation, "azVolumeAttachment")
+				azv.Status.Annotations = azureutils.AddToMap(azv.Status.Annotations, consts.RecoverAnnotation, recoveryID)
 				if azv.Status.State != targetState {
 					_, err = updateState(azv, targetState, forceUpdate)
 				}
