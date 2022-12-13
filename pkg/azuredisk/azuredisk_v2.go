@@ -203,7 +203,12 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 
 		conditionWatcher := watcher.NewConditionWatcher(azInformerFactory, d.config.ObjectNamespace, azNodeInformer, azVolumeAttachmentInformer, azVolumeInformer)
 
-		d.crdProvisioner = provisioner.NewCrdProvisioner(d.azdiskClient, d.config.ObjectNamespace, conditionWatcher, provisioner.NewCachedReader(kubeInformerFactory, azInformerFactory, d.config.ObjectNamespace), crdInformer)
+		d.crdProvisioner = provisioner.NewCrdProvisioner(
+			d.azdiskClient,
+			d.config,
+			conditionWatcher,
+			provisioner.NewCachedReader(kubeInformerFactory, azInformerFactory, d.config.ObjectNamespace),
+			crdInformer)
 
 		azureutils.StartInformersAndWaitForCacheSync(context.Background(), nodeInformer, azNodeInformer, azVolumeAttachmentInformer, azVolumeInformer, crdInformer)
 	}

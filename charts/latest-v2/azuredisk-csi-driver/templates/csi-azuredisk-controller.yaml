@@ -15,6 +15,7 @@ data:
       enabled: true
       leaderElectionNamespace: {{ .Release.Namespace }}
       workerThreads: {{ .Values.controller.driverWorkerThreads }}
+      waitForLunEnabled: {{ .Values.controller.waitForLunEnabled}}
     nodeConfig:
       enablePerfOptimization: {{ .Values.linux.enablePerfOptimization }}
     cloudConfig:
