@@ -17,6 +17,7 @@ limitations under the License.
 package azureutils
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -146,7 +147,7 @@ func GetCachingMode(attributes map[string]string) (compute.CachingTypes, error) 
 }
 
 // GetCloudProviderFromClient get Azure Cloud Provider
-func GetCloudProviderFromClient(kubeClient *clientset.Clientset, secretName, secretNamespace, userAgent string, allowEmptyCloudConfig bool) (*azure.Cloud, error) {
+func GetCloudProviderFromClient(ctx context.Context, kubeClient *clientset.Clientset, secretName, secretNamespace, userAgent string, allowEmptyCloudConfig bool) (*azure.Cloud, error) {
 	var config *azure.Config
 	var fromSecret bool
 	var err error
@@ -210,7 +211,7 @@ func GetCloudProviderFromClient(kubeClient *clientset.Clientset, secretName, sec
 			CloudProviderRateLimit: false,
 		}
 		config.UserAgent = userAgent
-		if err = az.InitializeCloudFromConfig(config, fromSecret, false); err != nil {
+		if err = az.InitializeCloudFromConfig(ctx, config, fromSecret, false); err != nil {
 			klog.Warningf("InitializeCloudFromConfig failed with error: %v", err)
 		}
 	}
@@ -223,7 +224,7 @@ func GetCloudProviderFromClient(kubeClient *clientset.Clientset, secretName, sec
 }
 
 // GetCloudProviderFromConfig get Azure Cloud Provider
-func GetCloudProvider(kubeConfig, secretName, secretNamespace, userAgent string, allowEmptyCloudConfig bool) (*azure.Cloud, error) {
+func GetCloudProvider(ctx context.Context, kubeConfig, secretName, secretNamespace, userAgent string, allowEmptyCloudConfig bool) (*azure.Cloud, error) {
 	kubeClient, err := GetKubeClient(kubeConfig)
 	if err != nil {
 		klog.Warningf("get kubeconfig(%s) failed with error: %v", kubeConfig, err)
@@ -231,7 +232,7 @@ func GetCloudProvider(kubeConfig, secretName, secretNamespace, userAgent string,
 			return nil, fmt.Errorf("failed to get KubeClient: %v", err)
 		}
 	}
-	return GetCloudProviderFromClient(kubeClient, secretName, secretNamespace, userAgent, allowEmptyCloudConfig)
+	return GetCloudProviderFromClient(ctx, kubeClient, secretName, secretNamespace, userAgent, allowEmptyCloudConfig)
 }
 
 // GetKubeConfig gets config object from config file
