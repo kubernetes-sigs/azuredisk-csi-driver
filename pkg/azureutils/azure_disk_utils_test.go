@@ -17,6 +17,7 @@ limitations under the License.
 package azureutils
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -377,7 +378,7 @@ users:
 				t.Error(err)
 			}
 		}
-		cloud, err := GetCloudProvider(test.kubeconfig, "", "", test.userAgent, test.allowEmptyCloudConfig)
+		cloud, err := GetCloudProvider(context.Background(), test.kubeconfig, "", "", test.userAgent, test.allowEmptyCloudConfig)
 		if !reflect.DeepEqual(err, test.expectedErr) && !strings.Contains(err.Error(), test.expectedErr.Error()) {
 			t.Errorf("desc: %s,\n input: %q, GetCloudProvider err: %v, expectedErr: %v", test.desc, test.kubeconfig, err, test.expectedErr)
 		}
