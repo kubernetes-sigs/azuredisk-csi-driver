@@ -1,0 +1,21 @@
+{{- if and .Values.controller.metrics.service.enabled .Values.controller.metrics.service.monitor.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ .Values.controller.name }}
+  namespace: {{ .Release.Namespace }}
+{{ include "azuredisk.labels" . | indent 2 }}
+    app: {{ .Values.controller.name }}
+    release: prometheus 
+spec:
+  selector:
+    matchLabels:
+      app: {{ .Values.controller.name }}
+  namespaceSelector:
+    matchNames:
+    - {{ .Release.Namespace }}
+  endpoints:
+  - port: metrics
+    interval: 15s
+{{- end -}}
